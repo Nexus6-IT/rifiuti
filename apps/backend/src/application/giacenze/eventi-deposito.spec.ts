@@ -136,6 +136,7 @@ describe('leggiEventiDeposito', () => {
       tenantId: 't1',
       registroId: 'reg-A',
       tipoAnnotazione: { not: 'ANNULLAMENTO' },
+      correzioni: { none: {} },
     })
   })
 
@@ -163,15 +164,17 @@ describe('leggiEventiDeposito', () => {
       expect(g.pericoloso).toBe(true)
     })
 
-    it("senza registroId l'asterisco si ricava dalle righe lette, senza groupBy", async () => {
+    it("senza registroId l'asterisco di una riga non vigente conta lo stesso", async () => {
+      // la riga con l'asterisco e' stata rettificata: non e' fra le vigenti lette
       const client = creaClient({
-        movimenti: [mov({ cerCode: '200301' }), mov({ registroId: 'reg-B', cerCode: '20 03 01*' })],
+        movimenti: [mov({ cerCode: '200301' }), mov({ registroId: 'reg-B', cerCode: '20 03 01' })],
+        asterisco: { mov: ['20 03 01*'] },
       })
       const r = await leggiEventiDeposito(client, 't1')
       expect(r.get('reg-A')!.get('200301')!.pericoloso).toBe(true)
       expect(r.get('reg-B')!.get('200301')!.pericoloso).toBe(true)
-      expect(client.wasteMovement.groupBy).not.toHaveBeenCalled()
-      expect(client.giacenzaIniziale.groupBy).not.toHaveBeenCalled()
+      expect(client.wasteMovement.groupBy).toHaveBeenCalledTimes(1)
+      expect(client.giacenzaIniziale.groupBy).toHaveBeenCalledTimes(1)
     })
 
     it('senza asterisco ma pericoloso nel catalogo: pericoloso', async () => {
@@ -201,6 +204,7 @@ describe('leggiEventiDeposito', () => {
           mov({ registroId: 'reg-B', cerCode: '16 06 01' }),
           mov({ registroId: 'reg-C', cerCode: '16 06 01*' }),
         ],
+        asterisco: { mov: ['16 06 01*'] },
       })
       const r = await leggiEventiDeposito(client, 't1')
       for (const reg of ['reg-A', 'reg-B', 'reg-C']) {
@@ -209,22 +213,40 @@ describe('leggiEventiDeposito', () => {
     })
   })
 
+  it('usa le aperture passate dal chiamante senza rileggerle', async () => {
+    const client = creaClient({})
+    const r = await leggiEventiDeposito(client, 't1', {
+      aperture: [
+        {
+          id: 'ap9',
+          registroId: 'reg-A',
+          cerCode: '200301',
+          quantita: 3,
+          unita: 'KG',
+          dataRiferimento: '2026-01-02',
+        },
+      ],
+    })
+    expect(client.giacenzaIniziale.findMany).not.toHaveBeenCalled()
+    expect(r.get('reg-A')!.get('200301')!.famiglie.get('KG')).toHaveLength(1)
+  })
+
   describe('numero di query fisso (M4)', () => {
     const tre = ['reg-A', 'reg-B', 'reg-C']
     const dieci = Array.from({ length: 10 }, (_, i) => `20 03 ${String(i + 1).padStart(2, '0')}`)
     const movimenti = tre.flatMap(registroId => dieci.map(cerCode => mov({ registroId, cerCode })))
 
-    it('senza registroId: una findMany, una lettura aperture, una query catalogo, nessun groupBy', async () => {
+    it('senza registroId: stesse query, compresi i due groupBy', async () => {
       const client = creaClient({ movimenti })
       await leggiEventiDeposito(client, 't1')
       expect(client.wasteMovement.findMany).toHaveBeenCalledTimes(1)
       expect(client.giacenzaIniziale.findMany).toHaveBeenCalledTimes(1)
       expect(client.$queryRaw).toHaveBeenCalledTimes(1)
-      expect(client.wasteMovement.groupBy).not.toHaveBeenCalled()
-      expect(client.giacenzaIniziale.groupBy).not.toHaveBeenCalled()
+      expect(client.wasteMovement.groupBy).toHaveBeenCalledTimes(1)
+      expect(client.giacenzaIniziale.groupBy).toHaveBeenCalledTimes(1)
     })
 
-    it("con registroId: in piu i due groupBy dell'asterisco", async () => {
+    it('con registroId: stesso numero di query', async () => {
       const client = creaClient({ movimenti })
       await leggiEventiDeposito(client, 't1', { registroId: 'reg-A' })
       expect(client.wasteMovement.findMany).toHaveBeenCalledTimes(1)

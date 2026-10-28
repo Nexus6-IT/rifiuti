@@ -95,8 +95,10 @@ export class GiacenzeService {
 
     // Giorno del lotto residuo più vecchio per CER: FIFO per registro e per famiglia di unità,
     // poi il minimo fra registri e famiglie (le somme restano quelle del groupBy).
+    const aperture = await leggiApertureRegistro(this.prisma, tenantId, { registroId })
     const eventi = await leggiEventiDeposito(this.prisma, tenantId, {
       registroId,
+      aperture,
       logger: this.logger,
     })
     const oldestByCer = new Map<string, string>()
@@ -158,7 +160,6 @@ export class GiacenzeService {
 
     // Le aperture del registro contano come carichi (e restano distinte in `inizialeKg`/`iniziale`);
     // un CER con la sola apertura compare comunque.
-    const aperture = await leggiApertureRegistro(this.prisma, tenantId, { registroId })
     for (const ap of aperture) {
       const { chiave, entry } = voceDi(ap.cerCode)
       const u = normalizzaUnitaRegistro(ap.unita)

@@ -404,6 +404,48 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
       expect(righe).toHaveLength(0)
     })
 
+    it("l'asterisco di una riga rettificata conta anche senza registroId", async () => {
+      const az = await azienda()
+      const cerAst = '99 99 06*'
+      const c = await owner.wasteMovement.create({
+        data: {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: ++progressivo,
+          type: 'CARICO',
+          movementDate: new Date('2026-03-01T10:00:00Z'),
+          registrationDate: new Date('2026-03-01T10:00:00Z'),
+          causale: 'PRODUZIONE_INTERNA',
+          cerCode: cerAst,
+          quantity: 10,
+          unit: 'KG',
+          tipoAnnotazione: 'ORDINARIA',
+        },
+      })
+      await owner.wasteMovement.create({
+        data: {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: ++progressivo,
+          type: 'CARICO',
+          movementDate: new Date('2026-03-01T10:00:00Z'),
+          registrationDate: new Date('2026-03-01T10:00:00Z'),
+          causale: 'PRODUZIONE_INTERNA',
+          cerCode: '99 99 06',
+          quantity: 10,
+          unit: 'KG',
+          tipoAnnotazione: 'RETTIFICA',
+          movimentoRettificatoId: c.id,
+          movimentoOriginaleId: c.id,
+          motivoAnnotazione: 'tolto asterisco',
+        },
+      })
+      const eventi = await nelTenant(az.tenantId, () => leggiEventiDeposito(app, az.tenantId))
+      expect(eventi.get(az.registroId)!.get('999906')!.pericoloso).toBe(true)
+    })
+
     it('la pericolosita viene dal catalogo se nessuna riga ha l asterisco', async () => {
       const az = await azienda()
       const pericoloso = await owner.cERCode.findFirst({ where: { isPericoloso: true } })

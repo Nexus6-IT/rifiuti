@@ -12,7 +12,7 @@ import {
   quantitaFifo,
   type EventoFifo,
 } from '../../domain/waste-movement/fifo-deposito'
-import { leggiApertureRegistro } from '../registro/aperture-registro'
+import { leggiApertureRegistro, type ApertureRegistroRiga } from '../registro/aperture-registro'
 
 /** Quello che serve del client Prisma: vale sia per il client base sia per una transazione. */
 export interface ClientEventiDeposito {
@@ -24,6 +24,8 @@ export interface ClientEventiDeposito {
 export interface OpzioniEventiDeposito {
   /** Solo gli eventi di questo registro; senza, tutti i registri dell'azienda. */
   registroId?: string
+  /** Aperture gia' lette dal chiamante (stesso filtro): evita una seconda lettura. */
+  aperture?: ApertureRegistroRiga[]
   /** Per segnalare le righe storiche con quantita non utilizzabile (fuori dal dominio puro). */
   logger?: { warn(messaggio: string): void }
 }
@@ -46,8 +48,9 @@ export type EventiDeposito = Map<string, Map<string, GruppoEventi>>
  *  2. una lettura delle aperture;
  *  3. pericolosita: un CER e' pericoloso, uguale in tutte le sedi, se qualche riga
  *     dell'azienda lo scrive con l'asterisco oppure se il catalogo lo marca `isPericoloso`.
- *     Con `registroId` le righe lette non bastano per l'asterisco, quindi due `groupBy`
- *     (movimenti e aperture dell'azienda, vigenti o no); senza, si ricava dalle righe lette.
+ *     L'asterisco si cerca SEMPRE con due `groupBy` (movimenti e aperture dell'azienda, vigenti
+ *     o no), con o senza `registroId`: le righe lette sono solo le vigenti e le due viste
+ *     devono dare lo stesso esito.
  *     Una sola query sul catalogo (tabella globale) per le cifre presenti.
  * Le quantita non utilizzabili (<= 0 o che arrotondano a zero in millesimi) si saltano con
  * un avviso: `calcolaFifo` le rifiuterebbe.
@@ -74,27 +77,24 @@ export async function leggiEventiDeposito(
       progressiveNumber: true,
     },
   })
-  const aperture = await leggiApertureRegistro(client, tenantId, { registroId })
+  const aperture =
+    opzioni.aperture ?? (await leggiApertureRegistro(client, tenantId, { registroId }))
 
   // (a) asterisco in qualche riga dell'azienda
   const conAsterisco = new Set<string>()
-  if (registroId) {
-    const [mov, ap] = await Promise.all([
-      client.wasteMovement.groupBy({
-        by: ['cerCode'],
-        where: { tenantId, cerCode: { contains: '*' } },
-      }),
-      client.giacenzaIniziale.groupBy({
-        by: ['cerCode'],
-        where: { tenantId, cerCode: { contains: '*' } },
-      }),
-    ])
-    for (const r of [...mov, ...ap]) conAsterisco.add(chiaveConfrontoCer(r.cerCode))
-  } else {
-    for (const r of [...movimenti, ...aperture]) {
-      if (r.cerCode.includes('*')) conAsterisco.add(chiaveConfrontoCer(r.cerCode))
-    }
-  }
+  // Sempre i due groupBy, anche senza registroId: le righe lette sono solo le vigenti, e un
+  // asterisco presente solo in una riga rettificata deve dare lo stesso esito nelle due viste.
+  const [mov, ap] = await Promise.all([
+    client.wasteMovement.groupBy({
+      by: ['cerCode'],
+      where: { tenantId, cerCode: { contains: '*' } },
+    }),
+    client.giacenzaIniziale.groupBy({
+      by: ['cerCode'],
+      where: { tenantId, cerCode: { contains: '*' } },
+    }),
+  ])
+  for (const r of [...mov, ...ap]) conAsterisco.add(chiaveConfrontoCer(r.cerCode))
 
   // (b) catalogo: una sola query per le cifre presenti
   const cifre = new Set<string>()

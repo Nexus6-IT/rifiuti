@@ -419,23 +419,20 @@ describe('GiacenzeService', () => {
       ])
     })
 
-    it('le aperture si leggono per tenant e, se indicato, per registro', async () => {
+    it('le aperture si leggono una sola volta, per tenant e, se indicato, per registro', async () => {
       mockGroupBy([], [])
       await service.getGiacenze('tenant-1', 'reg-A')
-      // la prima lettura è quella del FIFO, la seconda quella delle somme: stesso filtro
-      for (const i of [0, 1]) {
-        expect(prisma.giacenzaIniziale.findMany.mock.calls[i][0].where).toEqual({
-          tenantId: 'tenant-1',
-          registroId: 'reg-A',
-        })
-      }
+      expect(prisma.giacenzaIniziale.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.giacenzaIniziale.findMany.mock.calls[0][0].where).toEqual({
+        tenantId: 'tenant-1',
+        registroId: 'reg-A',
+      })
       prisma.giacenzaIniziale.findMany.mockClear()
       await service.getGiacenze('tenant-1')
-      for (const i of [0, 1]) {
-        expect(prisma.giacenzaIniziale.findMany.mock.calls[i][0].where).toEqual({
-          tenantId: 'tenant-1',
-        })
-      }
+      expect(prisma.giacenzaIniziale.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.giacenzaIniziale.findMany.mock.calls[0][0].where).toEqual({
+        tenantId: 'tenant-1',
+      })
     })
   })
 })
