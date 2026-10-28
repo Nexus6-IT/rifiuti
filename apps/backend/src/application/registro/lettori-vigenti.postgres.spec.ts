@@ -500,6 +500,32 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
       await rettifica(az, c, c, 40)
       expect(await stock(az)).toHaveLength(1)
     })
+    it('due registri: la catena annullata su A non conta e A e B si valutano separati', async () => {
+      const az = await azienda()
+      await owner.rentriUnitaLocale.create({
+        data: {
+          tenantId: az.tenantId,
+          numIscrSito: `OP0001LV${String(++n).padStart(6, '0')}-MI0002`,
+          denominazione: 'Seconda sede',
+        },
+      })
+      const tutti = await nelTenant(az.tenantId, () => registri.assicuraRegistri(az.tenantId))
+      expect(tutti).toHaveLength(2)
+      const b: Az = {
+        tenantId: az.tenantId,
+        registroId: tutti.find(r => r.id !== az.registroId)!.id,
+      }
+      // A: carico 100 annullato + scarico 50; B: carico 100 (il totale 100/50 nasconderebbe A)
+      const c = await inserisci(az, { quantita: 100 })
+      await inserisci(az, { type: 'SCARICO', quantita: 50, data: '2026-03-05T10:00:00Z' })
+      await inserisci(b, { quantita: 100 })
+      expect(await stock(az)).toHaveLength(0)
+      await annulla(az, c, c)
+      const anomalie2 = await stock(az)
+      expect(anomalie2).toHaveLength(1)
+      expect(anomalie2[0].registroId).toBe(az.registroId)
+      expect(anomalie2[0].message).toContain('nel registro «')
+    })
   })
 
   describe('MudAggregazioneService', () => {
