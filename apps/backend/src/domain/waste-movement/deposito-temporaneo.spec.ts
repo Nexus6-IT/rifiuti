@@ -260,13 +260,13 @@ describe('valutaDeposito: criteri e ordinamento', () => {
     expect(dur('2026-10-13')[0].livello).toBe('PREAVVISO')
   })
 
-  it('NON_SCELTO produce entrambi con la frase costante', () => {
+  it('NON_SCELTO produce durata e quantità (senza annuale) con la frase costante', () => {
     const a = valutaDeposito(
       { cer: [cer('2025-10-01', { residuoKg: 30000 })] },
       SOGLIE_PREDEFINITE,
       '2026-10-28'
     )
-    expect(a.map(x => x.tipo).sort()).toEqual(['DURATA', 'DURATA_ANNUALE', 'QUANTITA_TOTALE'])
+    expect(a.map(x => x.tipo).sort()).toEqual(['DURATA', 'QUANTITA_TOTALE'])
     for (const x of a) expect(x.messaggio.endsWith(FRASE_CRITERIO_NON_SCELTO)).toBe(true)
   })
 
@@ -283,5 +283,31 @@ describe('valutaDeposito: criteri e ordinamento', () => {
     expect(primoPreavviso).toBeGreaterThan(0)
     expect(livelli.slice(primoPreavviso)).not.toContain('SUPERATO')
     expect(a[0]).toMatchObject({ tipo: 'DURATA', livello: 'SUPERATO', cerCode: 'B' })
+  })
+})
+
+describe('correzioni di revisione', () => {
+  it('data inesistente: Error', () => {
+    expect(() => aggiungiGiorni('2026-02-30', 1)).toThrow('Giorno non valido')
+    expect(() => giorniTra('2026-13-01', '2026-12-01')).toThrow('Giorno non valido')
+  })
+
+  it('scadenze coincidenti: il motivo dice tre mesi', () => {
+    // 01/02 + 89 giorni = 01/05 = tre mesi
+    const a = valutaDeposito(
+      { cer: [cer('2026-02-01')] },
+      temporale({ giorniMax: 89 }),
+      '2026-05-02'
+    )
+    expect(a[0].messaggio).toContain('(tre mesi)')
+  })
+
+  it('valori in kg senza deriva di virgola mobile', () => {
+    const a = valutaDeposito(
+      { cer: [cer(null, { residuoKg: 0.1 }), cer(null, { residuoKg: 0.2 })] },
+      quantitativo({ kgMaxTotale: 0.3, kgMaxPericolosi: 0.3, preavvisoPercentuale: 0 }),
+      '2026-10-28'
+    )
+    expect(a[0].valore).toBe(0.3)
   })
 })

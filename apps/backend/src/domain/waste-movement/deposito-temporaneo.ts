@@ -117,6 +117,11 @@ const MS_GIORNO = 86_400_000
 function parseGiorno(g: string): { y: number; m: number; d: number } {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(g)
   if (!match) throw new Error(`Giorno non valido: ${g}`)
+  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])]
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+    throw new Error(`Giorno non valido: ${g}`)
+  }
   return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) }
 }
 
@@ -270,8 +275,8 @@ function valutaQuantita(
     tipo,
     livello: superato ? 'SUPERATO' : 'PREAVVISO',
     cerCode: null,
-    valore: totaleKg,
-    soglia: sogliaKg,
+    valore: totaleM / 1000,
+    soglia: sogliaM / 1000,
     unita: 'kg',
     giornoPiuVecchio: null,
     scadenza: null,
@@ -288,6 +293,7 @@ export function valutaDeposito(
   const nonScelto = soglie.criterio === 'NON_SCELTO'
   const conDurata = nonScelto || soglie.criterio === 'TEMPORALE'
   const conQuantitativo = nonScelto || soglie.criterio === 'QUANTITATIVO'
+  const conAnnuale = soglie.criterio === 'QUANTITATIVO'
 
   for (const cer of input.cer) {
     const giorno = cer.giornoPiuVecchio
@@ -295,12 +301,12 @@ export function valutaDeposito(
     if (conDurata) {
       const scadenza = scadenzaTemporale(giorno, soglie.giorniMax)
       const daGiorni =
-        soglie.giorniMax !== null && scadenza === aggiungiGiorni(giorno, soglie.giorniMax)
+        soglie.giorniMax !== null && aggiungiGiorni(giorno, soglie.giorniMax) < treMesiDopo(giorno)
       const motivo = daGiorni ? `soglia dell'azienda di ${soglie.giorniMax} giorni` : 'tre mesi'
       const a = valutaScadenza('DURATA', cer, giorno, scadenza, motivo, soglie, oggi)
       if (a) avvisi.push(a)
     }
-    if (conQuantitativo) {
+    if (conAnnuale) {
       const a = valutaScadenza(
         'DURATA_ANNUALE',
         cer,
@@ -330,6 +336,8 @@ export function valutaDeposito(
   return finale.sort((a, b) => {
     if (a.livello !== b.livello) return a.livello === 'SUPERATO' ? -1 : 1
     if (a.tipo !== b.tipo) return ORDINE_TIPO[a.tipo] - ORDINE_TIPO[b.tipo]
-    return (a.cerCode ?? '').localeCompare(b.cerCode ?? '')
+    const ca = a.cerCode ?? ''
+    const cb = b.cerCode ?? ''
+    return ca < cb ? -1 : ca > cb ? 1 : 0
   })
 }
