@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { GiacenzeService } from './giacenze.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { SoglieDepositoService } from './soglie-deposito.service'
+import { SOGLIE_PREDEFINITE } from '../../domain/waste-movement/deposito-temporaneo'
+import { RegistroNonTrovatoError } from '../registro/registri.service'
 
 describe('GiacenzeService', () => {
   let service: GiacenzeService
@@ -10,6 +13,8 @@ describe('GiacenzeService', () => {
   let eventi: any[]
   /** Scarichi su FIR annullati restituiti alla lettura dedicata. */
   let scarichiFir: any[]
+  let soglieSvc: { soglieApplicate: jest.Mock }
+  let registri: any[]
 
   beforeEach(async () => {
     const mockLogger = {
@@ -21,7 +26,19 @@ describe('GiacenzeService', () => {
     } as any
     eventi = []
     scarichiFir = []
+    registri = [
+      { id: 'reg-A', descrizione: 'Registro A', attivo: true },
+      { id: 'reg-B', descrizione: 'Registro B', attivo: true },
+    ]
+    soglieSvc = {
+      soglieApplicate: jest.fn((_t: string, ids: string[]) =>
+        Promise.resolve(
+          new Map(ids.map(id => [id, { ...SOGLIE_PREDEFINITE, origine: 'PREDEFINITA' }]))
+        )
+      ),
+    }
     prisma = {
+      registroRifiuti: { findMany: jest.fn(() => Promise.resolve(registri)) },
       wasteMovement: {
         groupBy: jest.fn(),
         // due letture: gli scarichi dei FIR annullati (filtro su firId) e gli eventi del FIFO
@@ -42,6 +59,7 @@ describe('GiacenzeService', () => {
         GiacenzeService,
         { provide: PrismaService, useValue: prisma },
         { provide: LoggerService, useValue: mockLogger },
+        { provide: SoglieDepositoService, useValue: soglieSvc },
       ],
     }).compile()
     service = module.get(GiacenzeService)
@@ -179,15 +197,18 @@ describe('GiacenzeService', () => {
     expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).not.toHaveProperty('registroId')
   })
 
-  it('giacenze: gli alert di deposito rispettano il filtro registroId', async () => {
+  it('deposito: gli alert rispettano il filtro registroId e il registro deve essere dell’azienda', async () => {
     mockGroupBy([], [])
 
-    await service.getDepositoTemporaneoAlerts('tenant-1', undefined, undefined, 'reg-A')
+    await service.getDepositoTemporaneoAlerts('tenant-1', 'reg-A')
+    expect(prisma.wasteMovement.findMany.mock.calls[0][0].where).toMatchObject({
+      registroId: 'reg-A',
+    })
+    expect(soglieSvc.soglieApplicate).toHaveBeenCalledWith('tenant-1', ['reg-A'])
 
-    expect(chiamateSomme()).toHaveLength(1)
-    for (const chiamata of chiamateSomme()) {
-      expect(chiamata[0].where).toMatchObject({ registroId: 'reg-A' })
-    }
+    await expect(service.getDepositoTemporaneoAlerts('tenant-1', 'reg-X')).rejects.toBeInstanceOf(
+      RegistroNonTrovatoError
+    )
   })
 
   it('giacenze: gli scarichi su FIR annullati rispettano il filtro registroId', async () => {
@@ -208,51 +229,218 @@ describe('GiacenzeService', () => {
     expect(perFir[0].where).toMatchObject({ registroId: 'reg-A' })
   })
 
-  it('alza alert DURATION quando il carico più vecchio supera i giorni massimi', async () => {
-    mockGroupBy(
-      [{ cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } }],
-      [mov('150101', 'CARICO', 100, '2026-01-01')]
-    )
+  describe('deposito temporaneo (alert e vista per registro)', () => {
+    const soglie = (extra: Record<string, unknown> = {}) => ({
+      ...SOGLIE_PREDEFINITE,
+      origine: 'PREDEFINITA',
+      ...extra,
+    })
+    const impostaSoglie = (perRegistro: Record<string, any>) =>
+      soglieSvc.soglieApplicate.mockImplementation((_t: string, ids: string[]) =>
+        Promise.resolve(new Map(ids.map(id => [id, perRegistro[id] ?? soglie()])))
+      )
 
-    const alerts = await service.getDepositoTemporaneoAlerts(
-      'tenant-1',
-      { maxDurationDays: 90, maxQuantityKg: 1_000_000 },
-      new Date('2026-06-01') // ~151 giorni dopo
-    )
+    it('DURATA: il lotto più vecchio oltre i tre mesi di calendario è SUPERATO', async () => {
+      mockGroupBy([], [mov('150101', 'CARICO', 100, '2026-01-01')])
 
-    expect(alerts).toHaveLength(1)
-    expect(alerts[0].reasons).toContain('DURATION')
-    expect(alerts[0].durationDays).toBeGreaterThan(90)
-  })
+      const alerts = await service.getDepositoTemporaneoAlerts('tenant-1', undefined, '2026-06-01')
 
-  it('alza alert QUANTITY quando la giacenza supera la soglia in kg', async () => {
-    mockGroupBy(
-      [{ cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 50000 } }],
-      [mov('150101', 'CARICO', 50000, '2026-05-30')]
-    )
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0]).toMatchObject({
+        tipo: 'DURATA',
+        livello: 'SUPERATO',
+        cerCode: '15 01 01',
+        valore: 151,
+        scadenza: '2026-04-01',
+        registroId: 'reg-A',
+        registroDescrizione: 'Registro A',
+      })
+    })
 
-    const alerts = await service.getDepositoTemporaneoAlerts(
-      'tenant-1',
-      { maxDurationDays: 90, maxQuantityKg: 30000 },
-      new Date('2026-06-01')
-    )
+    it('QUANTITA_TOTALE: la somma dei CER dello stesso registro raggiunge la soglia', async () => {
+      mockGroupBy(
+        [],
+        [mov('150101', 'CARICO', 20000, '2026-05-30'), mov('170504', 'CARICO', 10000, '2026-05-30')]
+      )
 
-    expect(alerts).toHaveLength(1)
-    expect(alerts[0].reasons).toEqual(['QUANTITY'])
-    expect(alerts[0].giacenzaKg).toBe(50000)
-  })
+      const alerts = await service.getDepositoTemporaneoAlerts('tenant-1', undefined, '2026-06-01')
 
-  it('nessun alert se la giacenza è entro le soglie', async () => {
-    mockGroupBy(
-      [
-        { cerCode: '150101', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } },
-        { cerCode: '150101', type: 'SCARICO', unit: 'KG', _sum: { quantity: 100 } }, // giacenza 0
-      ],
-      [mov('150101', 'CARICO', 100, '2020-01-01'), mov('150101', 'SCARICO', 100, '2020-01-02')]
-    )
+      const q = alerts.filter(a => a.tipo === 'QUANTITA_TOTALE')
+      expect(q).toHaveLength(1)
+      expect(q[0]).toMatchObject({ livello: 'SUPERATO', valore: 30000, cerCode: null })
+    })
 
-    const alerts = await service.getDepositoTemporaneoAlerts('tenant-1')
-    expect(alerts).toEqual([])
+    it('la quantità non si somma fra registri diversi', async () => {
+      mockGroupBy(
+        [],
+        [
+          mov('150101', 'CARICO', 20000, '2026-05-30', { registroId: 'reg-A' }),
+          mov('170504', 'CARICO', 20000, '2026-05-30', { registroId: 'reg-B' }),
+        ]
+      )
+
+      const alerts = await service.getDepositoTemporaneoAlerts('tenant-1', undefined, '2026-06-01')
+
+      // 20000 kg per registro: 66% della soglia di 30000, sotto il preavviso dell'80%
+      expect(alerts.filter(a => a.tipo === 'QUANTITA_TOTALE')).toEqual([])
+    })
+
+    it('usa le soglie del registro al posto di quelle dell’azienda', async () => {
+      mockGroupBy(
+        [],
+        [
+          mov('150101', 'CARICO', 6000, '2026-05-30', { registroId: 'reg-A' }),
+          mov('150101', 'CARICO', 6000, '2026-05-30', { registroId: 'reg-B' }),
+        ]
+      )
+      impostaSoglie({
+        'reg-A': soglie({ criterio: 'QUANTITATIVO', kgMaxTotale: 5000, origine: 'REGISTRO' }),
+      })
+
+      const alerts = await service.getDepositoTemporaneoAlerts('tenant-1', undefined, '2026-06-01')
+
+      const tot = alerts.filter(a => a.tipo === 'QUANTITA_TOTALE')
+      expect(tot).toHaveLength(1)
+      expect(tot[0]).toMatchObject({ registroId: 'reg-A', soglia: 5000 })
+      expect(soglieSvc.soglieApplicate).toHaveBeenCalledTimes(1)
+    })
+
+    it('G6: carico vecchio scaricato del tutto, nessun avviso di durata e età dal carico successivo', async () => {
+      mockGroupBy(
+        [],
+        [
+          mov('150101', 'CARICO', 100, '2025-01-01'),
+          mov('150101', 'SCARICO', 100, '2025-02-01'),
+          mov('150101', 'CARICO', 50, '2026-05-01'),
+        ]
+      )
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+
+      const reg = vista.registri.find(r => r.registroId === 'reg-A')!
+      expect(reg.avvisi.filter(a => a.tipo === 'DURATA')).toEqual([])
+      expect(reg.cer[0]).toMatchObject({
+        giornoPiuVecchio: '2026-05-01',
+        etaGiorni: 31,
+        scadenza: '2026-08-01',
+        residuoKg: 50,
+      })
+    })
+
+    it('nessun avviso se tutto è stato scaricato', async () => {
+      mockGroupBy(
+        [],
+        [mov('150101', 'CARICO', 100, '2020-01-01'), mov('150101', 'SCARICO', 100, '2020-01-02')]
+      )
+
+      const alerts = await service.getDepositoTemporaneoAlerts('tenant-1')
+      expect(alerts).toEqual([])
+    })
+
+    it('I3: CER con soli m³ residui vecchi, DURATA e quantitaParziale', async () => {
+      mockGroupBy([], [mov('150101', 'CARICO', 2, '2026-01-01', { unit: 'M3' })])
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+
+      const reg = vista.registri.find(r => r.registroId === 'reg-A')!
+      expect(reg.quantitaParziale).toBe(true)
+      expect(reg.cer[0]).toMatchObject({ residuoKg: 0, giornoPiuVecchio: '2026-01-01' })
+      expect(reg.cer[0].famiglie[0]).toMatchObject({ unita: 'M3', residuo: 2 })
+      expect(reg.avvisi.find(a => a.tipo === 'DURATA')).toMatchObject({
+        livello: 'SUPERATO',
+        cerCode: '15 01 01',
+      })
+    })
+
+    it('scopertoPresente se uno scarico non è coperto dai carichi', async () => {
+      mockGroupBy([], [mov('150101', 'SCARICO', 10, '2026-05-01')])
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+
+      expect(vista.registri[0].scopertoPresente).toBe(true)
+      expect(vista.registri[0].cer[0].famiglie[0]).toMatchObject({ scoperto: 10, lotti: [] })
+    })
+
+    it('limita a 50 i lotti per famiglia e dichiara quelli omessi', async () => {
+      const lotti = Array.from({ length: 53 }, (_, i) =>
+        mov('150101', 'CARICO', 1, `2026-04-${String((i % 28) + 1).padStart(2, '0')}`)
+      )
+      mockGroupBy([], lotti)
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+
+      const fam = vista.registri[0].cer[0].famiglie[0]
+      expect(fam.lotti).toHaveLength(50)
+      expect(fam.lottiOmessi).toBe(3)
+      expect(fam.residuo).toBe(53)
+    })
+
+    it('registri disattivati senza eventi esclusi, con eventi inclusi', async () => {
+      registri = [
+        { id: 'reg-A', descrizione: 'A', attivo: true },
+        { id: 'reg-B', descrizione: 'B', attivo: false },
+        { id: 'reg-C', descrizione: 'C', attivo: false },
+      ]
+      mockGroupBy([], [mov('150101', 'CARICO', 10, '2026-05-01', { registroId: 'reg-C' })])
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+
+      expect(vista.registri.map(r => r.registroId)).toEqual(['reg-A', 'reg-C'])
+    })
+
+    it('M4: il numero di query non dipende dal numero di registri', async () => {
+      const conta = async (n: number) => {
+        registri = Array.from({ length: n }, (_, i) => ({
+          id: `reg-${i}`,
+          descrizione: `R${i}`,
+          attivo: true,
+        }))
+        mockGroupBy(
+          [],
+          registri.map(r => mov('150101', 'CARICO', 10, '2026-05-01', { registroId: r.id }))
+        )
+        for (const m of [
+          prisma.registroRifiuti.findMany,
+          prisma.wasteMovement.findMany,
+          prisma.wasteMovement.groupBy,
+          prisma.giacenzaIniziale.findMany,
+          prisma.giacenzaIniziale.groupBy,
+          prisma.$queryRaw,
+          soglieSvc.soglieApplicate,
+        ]) {
+          m.mockClear()
+        }
+        await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+        return [
+          prisma.registroRifiuti.findMany,
+          prisma.wasteMovement.findMany,
+          prisma.wasteMovement.groupBy,
+          prisma.giacenzaIniziale.findMany,
+          prisma.giacenzaIniziale.groupBy,
+          prisma.$queryRaw,
+          soglieSvc.soglieApplicate,
+        ].map(m => m.mock.calls.length)
+      }
+      const con2 = await conta(2)
+      const con6 = await conta(6)
+      expect(con6).toEqual(con2)
+    })
+
+    it('un solo warn per chiamata con il numero di avvisi SUPERATO', async () => {
+      mockGroupBy(
+        [],
+        [
+          mov('150101', 'CARICO', 10, '2026-01-01', { registroId: 'reg-A' }),
+          mov('170504', 'CARICO', 10, '2026-01-01', { registroId: 'reg-A' }),
+        ]
+      )
+      const logger = (service as any).logger
+
+      await service.getDepositoTemporaneoAlerts('tenant-1', undefined, '2026-06-01')
+
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      expect(logger.warn.mock.calls[0][0]).toContain('2 avvisi')
+    })
   })
 
   it('converte le tonnellate in kg e tiene i litri fuori dai kg', async () => {

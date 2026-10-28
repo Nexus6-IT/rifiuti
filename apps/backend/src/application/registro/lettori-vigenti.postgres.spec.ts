@@ -27,6 +27,7 @@ import { FIR } from '../../domain/fir/aggregates/fir.aggregate'
 import { FirGiaRegistratoError } from '../../core/domain/errors'
 import { giacenzaDisponibileAl, saldiRegistroCer } from './giacenza-disponibile'
 import { GiacenzeService } from '../giacenze/giacenze.service'
+import { SoglieDepositoService } from '../giacenze/soglie-deposito.service'
 import { leggiEventiDeposito } from '../giacenze/eventi-deposito'
 import { AnomalyDetectionService } from '../anomaly/anomaly-detection.service'
 import { MudAggregazioneService } from '../mud/aggregazione/mud-aggregazione.service'
@@ -166,7 +167,7 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
     const [r] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
     expect(r.u).toBe('wasteflow_app')
     registri = new RegistriService(app, loggerStub as never)
-    giacenze = new GiacenzeService(app, loggerStub as never)
+    giacenze = new GiacenzeService(app, loggerStub as never, new SoglieDepositoService(app))
     anomalie = new AnomalyDetectionService(app, loggerStub as never)
     mud = new MudAggregazioneService(app, {} as never, loggerStub as never)
     giacenzeIniziali = new GiacenzeInizialiService(app, registri)

@@ -24,12 +24,7 @@ describe('GiacenzeController — azienda selezionata', () => {
   it("alert di deposito: usa l'azienda selezionata e passa registroId", async () => {
     await controller.getDepositoTemporaneoAlerts(richiesta, { registroId: 'reg-1' })
 
-    expect(service.getDepositoTemporaneoAlerts).toHaveBeenCalledWith(
-      'B',
-      undefined,
-      undefined,
-      'reg-1'
-    )
+    expect(service.getDepositoTemporaneoAlerts).toHaveBeenCalledWith('B', 'reg-1')
   })
 
   it('senza azienda determinabile: 403, nessuna lettura', async () => {

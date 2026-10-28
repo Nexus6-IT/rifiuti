@@ -4,6 +4,7 @@ import { LoggerModule } from '../../core/logger/logger.module'
 import { AuthModule } from '../../auth/auth.module'
 import { GiacenzeService } from './giacenze.service'
 import { GiacenzeController } from './giacenze.controller'
+import { SoglieDepositoService } from './soglie-deposito.service'
 
 /**
  * GiacenzeModule — giacenze per CER e monitoraggio deposito temporaneo dal
@@ -12,7 +13,7 @@ import { GiacenzeController } from './giacenze.controller'
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule],
   controllers: [GiacenzeController],
-  providers: [GiacenzeService],
+  providers: [GiacenzeService, SoglieDepositoService],
   exports: [GiacenzeService],
 })
 export class GiacenzeModule {}

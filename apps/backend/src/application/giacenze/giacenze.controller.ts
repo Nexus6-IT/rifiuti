@@ -29,15 +29,13 @@ export class GiacenzeController {
   @ApiOperation({
     summary: 'Alert di superamento limiti deposito temporaneo',
     description:
-      'Segnala i CER in giacenza oltre la soglia temporale e/o quantitativa. ' +
-      'Soglie configurabili (vedi deposito-temporaneo.config) — il limite legale è volumetrico.',
+      'Avvisi di durata (tre mesi di calendario) e di quantità per registro, con le soglie del registro. ' +
+      "La soglia in kg è la conversione indicata dall'azienda del limite volumetrico.",
   })
   @ApiResponse({ status: 200, description: 'Alert deposito temporaneo' })
   async getDepositoTemporaneoAlerts(@Req() req: any, @Query() query: GiacenzeQueryDto) {
     return this.giacenzeService.getDepositoTemporaneoAlerts(
       requireRequestTenantId(req),
-      undefined,
-      undefined,
       query.registroId
     )
   }
