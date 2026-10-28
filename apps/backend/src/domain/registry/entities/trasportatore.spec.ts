@@ -12,6 +12,8 @@ describe('Trasportatore Entity', () => {
     it('should create a new Trasportatore', () => {
       const props: TrasportatoreProps = {
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -27,13 +29,15 @@ describe('Trasportatore Entity', () => {
 
       expect(trasportatore.id).toBeDefined()
       expect(trasportatore.ragioneSociale).toBe('Trasporti Eco Srl')
-      expect(trasportatore.partitaIVA.getValue()).toBe('98765432109')
+      expect(trasportatore.partitaIVA?.getValue()).toBe('98765432109')
       expect(trasportatore.numeroIscrizione).toBe('MI/001234')
     })
 
     it('should trim ragione sociale', () => {
       const props: TrasportatoreProps = {
         ragioneSociale: '  Trasporti Eco Srl  ',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -52,6 +56,8 @@ describe('Trasportatore Entity', () => {
     it('should throw error for empty ragione sociale', () => {
       const props: TrasportatoreProps = {
         ragioneSociale: '',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -69,6 +75,8 @@ describe('Trasportatore Entity', () => {
     it('should create without optional fields', () => {
       const props: TrasportatoreProps = {
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -90,6 +98,8 @@ describe('Trasportatore Entity', () => {
     it('should create with optional contact fields', () => {
       const props: TrasportatoreProps = {
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -117,6 +127,8 @@ describe('Trasportatore Entity', () => {
       const trasportatore = Trasportatore.reconstitute({
         id: 'trasp-123',
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -140,6 +152,8 @@ describe('Trasportatore Entity', () => {
     it('should update ragione sociale', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -158,6 +172,8 @@ describe('Trasportatore Entity', () => {
     it('should throw error for empty ragione sociale', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -177,6 +193,8 @@ describe('Trasportatore Entity', () => {
     it('should update sede legale', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -205,6 +223,8 @@ describe('Trasportatore Entity', () => {
     it('should update contact information', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -228,6 +248,8 @@ describe('Trasportatore Entity', () => {
     it('should update numero iscrizione', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -246,6 +268,8 @@ describe('Trasportatore Entity', () => {
     it('should throw error for empty numero iscrizione', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -270,6 +294,8 @@ describe('Trasportatore Entity', () => {
     it('should create without scadenzaIscrizione (anagrafiche esistenti)', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -288,6 +314,8 @@ describe('Trasportatore Entity', () => {
       const scadenza = new Date('2027-01-15')
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -306,6 +334,8 @@ describe('Trasportatore Entity', () => {
     it('should update scadenzaIscrizione', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',
@@ -326,6 +356,8 @@ describe('Trasportatore Entity', () => {
     it('should clear scadenzaIscrizione when updated with undefined', () => {
       const trasportatore = Trasportatore.create({
         ragioneSociale: 'Trasporti Eco Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('98765432109'),
         sedeLegale: Indirizzo.create({
           via: 'Via Milano',

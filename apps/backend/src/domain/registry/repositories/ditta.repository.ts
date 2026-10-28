@@ -17,6 +17,15 @@ export interface RuoloDitta {
   sedeId: string | null
 }
 
+/** Opzioni di lettura di un ruolo. */
+export interface OpzioniLetturaRuolo {
+  /**
+   * Legge il ruolo con indirizzo e contatti di QUESTA sede (attiva e della stessa ditta del
+   * ruolo), invece di quelli della sede predefinita. Altrimenti `SedeNonValidaPerRuoloError`.
+   */
+  sedeId?: string
+}
+
 export interface DittaRepository<C = unknown> {
   /** Advisory lock di transazione su ciascun valore, in ordine alfabetico (niente deadlock). */
   bloccaIdentificativi(client: C, valori: string[]): Promise<void>

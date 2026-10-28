@@ -8,6 +8,7 @@
  * Eseguire con `npm run test:postgres`.
  */
 import { PrismaClient } from '@prisma/client'
+import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
 import { TenantContext } from '../../core/context/tenant-context'
 import { rlsExtension } from '../../infrastructure/persistence/prisma-rls.extension'
 
@@ -72,29 +73,21 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
     utenteAlfaId = utenteAlfa.id
 
     // Un produttore per ciascuna sorella.
-    await base.produttore.create({
-      data: {
-        tenantId: alfaId,
-        ragioneSociale: 'Produttore di Alfa',
-        partitaIVA: piva(4),
-        via: 'Via Alfa',
-        civico: '1',
-        cap: '00100',
-        comune: 'Roma',
-        provincia: 'RM',
-      },
+    await creaDittaConRuolo(base, alfaId, 'PRODUTTORE', {
+      ragioneSociale: 'Produttore di Alfa',
+      via: 'Via Alfa',
+      civico: '1',
+      cap: '00100',
+      comune: 'Roma',
+      provincia: 'RM',
     })
-    await base.produttore.create({
-      data: {
-        tenantId: betaId,
-        ragioneSociale: 'Produttore di Beta',
-        partitaIVA: piva(5),
-        via: 'Via Beta',
-        civico: '2',
-        cap: '20100',
-        comune: 'Milano',
-        provincia: 'MI',
-      },
+    await creaDittaConRuolo(base, betaId, 'PRODUTTORE', {
+      ragioneSociale: 'Produttore di Beta',
+      via: 'Via Beta',
+      civico: '2',
+      cap: '20100',
+      comune: 'Milano',
+      provincia: 'MI',
     })
   })
 

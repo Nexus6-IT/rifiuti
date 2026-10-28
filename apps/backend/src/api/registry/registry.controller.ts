@@ -81,11 +81,16 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
+    const { ruolo, dittaEsistente, avvisi } = result.value
+
     return {
-      id: result.value.id,
-      ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
+      id: ruolo.id,
+      ragioneSociale: ruolo.ragioneSociale,
+      partitaIVA: ruolo.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(ruolo),
+      sedeLegale: this.indirizzoToObject(ruolo.sedeLegale),
+      dittaEsistente,
+      avvisi,
     }
   }
 
@@ -99,13 +104,18 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
+    const { ruolo, dittaEsistente, avvisi } = result.value
+
     return {
-      id: result.value.id,
-      ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
-      numeroIscrizione: result.value.numeroIscrizione,
-      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
+      id: ruolo.id,
+      ragioneSociale: ruolo.ragioneSociale,
+      partitaIVA: ruolo.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(ruolo),
+      sedeLegale: this.indirizzoToObject(ruolo.sedeLegale),
+      numeroIscrizione: ruolo.numeroIscrizione,
+      scadenzaIscrizione: this.dateToIso(ruolo.scadenzaIscrizione),
+      dittaEsistente,
+      avvisi,
     }
   }
 
@@ -119,13 +129,18 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
+    const { ruolo, dittaEsistente, avvisi } = result.value
+
     return {
-      id: result.value.id,
-      ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
-      sede: this.indirizzoToObject(result.value.sede),
-      numeroAutorizzazione: result.value.numeroAutorizzazione,
-      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
+      id: ruolo.id,
+      ragioneSociale: ruolo.ragioneSociale,
+      partitaIVA: ruolo.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(ruolo),
+      sede: this.indirizzoToObject(ruolo.sede),
+      numeroAutorizzazione: ruolo.numeroAutorizzazione,
+      scadenzaAutorizzazione: this.dateToIso(ruolo.scadenzaAutorizzazione),
+      dittaEsistente,
+      avvisi,
     }
   }
 
@@ -147,7 +162,8 @@ export class RegistryController {
     const items = result.value.map(p => ({
       id: p.id,
       ragioneSociale: p.ragioneSociale,
-      partitaIVA: p.partitaIVA.getValue(),
+      partitaIVA: p.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(p),
       sedeLegale: this.indirizzoToObject(p.sedeLegale),
       email: p.email,
       telefono: p.telefono,
@@ -167,7 +183,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       email: result.value.email,
       telefono: result.value.telefono,
@@ -190,7 +207,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       email: result.value.email,
       telefono: result.value.telefono,
@@ -229,7 +247,8 @@ export class RegistryController {
       return {
         id: t.id,
         ragioneSociale: t.ragioneSociale,
-        partitaIVA: t.partitaIVA.getValue(),
+        partitaIVA: t.partitaIVA?.getValue() ?? null,
+        ...this.campiDitta(t),
         sedeLegale: this.indirizzoToObject(t.sedeLegale),
         numeroIscrizione: t.numeroIscrizione,
         email: t.email,
@@ -254,7 +273,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
       email: result.value.email,
@@ -279,7 +299,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
       email: result.value.email,
@@ -318,7 +339,8 @@ export class RegistryController {
       return {
         id: d.id,
         ragioneSociale: d.ragioneSociale,
-        partitaIVA: d.partitaIVA.getValue(),
+        partitaIVA: d.partitaIVA?.getValue() ?? null,
+        ...this.campiDitta(d),
         sede: this.indirizzoToObject(d.sede),
         numeroAutorizzazione: d.numeroAutorizzazione,
         email: d.email,
@@ -343,7 +365,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
       email: result.value.email,
@@ -368,7 +391,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
       email: result.value.email,
@@ -390,6 +414,30 @@ export class RegistryController {
   }
 
   // ============= ERROR / RESPONSE HELPERS =============
+
+  /**
+   * Campi della ditta e della sede predefinita comuni ai tre ruoli (D7). Il codice fiscale di un
+   * privato e' un dato personale: sta solo nel corpo della risposta, mai in log o messaggi.
+   * `numeroSedi` e `ruoliDitta` compaiono solo quando la lettura li ha calcolati (`ruoliDitta`
+   * solo nel dettaglio e nella modifica).
+   */
+  private campiDitta(e: {
+    codiceFiscale: string | null
+    dittaId: string
+    sedeId: string
+    numeroSedi?: number
+    partitaIvaDaVerificare: boolean
+    ruoliDitta?: string[]
+  }) {
+    return {
+      codiceFiscale: e.codiceFiscale,
+      dittaId: e.dittaId,
+      sedeId: e.sedeId,
+      ...(e.numeroSedi !== undefined && { numeroSedi: e.numeroSedi }),
+      partitaIvaDaVerificare: e.partitaIvaDaVerificare,
+      ...(e.ruoliDitta !== undefined && { ruoliDitta: e.ruoliDitta }),
+    }
+  }
 
   /**
    * Mappa il fallimento di un update allo status HTTP corretto: una risorsa
@@ -465,6 +513,7 @@ export class RegistryController {
     return {
       ragioneSociale: dto.ragioneSociale,
       partitaIVA: dto.partitaIVA,
+      codiceFiscale: dto.codiceFiscale,
       sedeLegale: this.mapIndirizzoToCommand(dto.sedeLegale),
       email: dto.email,
       telefono: dto.telefono,
@@ -476,6 +525,7 @@ export class RegistryController {
     return {
       ragioneSociale: dto.ragioneSociale,
       partitaIVA: dto.partitaIVA,
+      codiceFiscale: dto.codiceFiscale,
       sedeLegale: this.mapIndirizzoToCommand(dto.sedeLegale),
       numeroIscrizione: dto.numeroIscrizione,
       email: dto.email,
@@ -489,6 +539,7 @@ export class RegistryController {
     return {
       ragioneSociale: dto.ragioneSociale,
       partitaIVA: dto.partitaIVA,
+      codiceFiscale: dto.codiceFiscale,
       sede: this.mapIndirizzoToCommand(dto.sede),
       numeroAutorizzazione: dto.numeroAutorizzazione,
       email: dto.email,
@@ -503,6 +554,9 @@ export class RegistryController {
   private mapUpdateProduttoreDto(dto: UpdateProduttoreDto) {
     return {
       ragioneSociale: dto.ragioneSociale,
+      codiceFiscale: dto.codiceFiscale,
+      partitaIVA: dto.partitaIVA,
+      sedeId: dto.sedeId,
       sedeLegale: dto.sedeLegale ? this.mapIndirizzoToCommand(dto.sedeLegale) : undefined,
       email: dto.email,
       telefono: dto.telefono,
@@ -513,6 +567,9 @@ export class RegistryController {
   private mapUpdateTrasportatoreDto(dto: UpdateTrasportatoreDto) {
     return {
       ragioneSociale: dto.ragioneSociale,
+      codiceFiscale: dto.codiceFiscale,
+      partitaIVA: dto.partitaIVA,
+      sedeId: dto.sedeId,
       sedeLegale: dto.sedeLegale ? this.mapIndirizzoToCommand(dto.sedeLegale) : undefined,
       numeroIscrizione: dto.numeroIscrizione,
       email: dto.email,
@@ -525,6 +582,9 @@ export class RegistryController {
   private mapUpdateDestinatarioDto(dto: UpdateDestinatarioDto) {
     return {
       ragioneSociale: dto.ragioneSociale,
+      codiceFiscale: dto.codiceFiscale,
+      partitaIVA: dto.partitaIVA,
+      sedeId: dto.sedeId,
       sede: dto.sede ? this.mapIndirizzoToCommand(dto.sede) : undefined,
       numeroAutorizzazione: dto.numeroAutorizzazione,
       email: dto.email,

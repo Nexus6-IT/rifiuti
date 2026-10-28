@@ -25,6 +25,8 @@ describe('snapshot-parti', () => {
     const p = Produttore.reconstitute({
       id: 'p-1',
       ragioneSociale: 'Produttore SpA',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('12345678901'),
       sedeLegale: indirizzo,
       pec: 'prod@pec.it',
@@ -44,6 +46,8 @@ describe('snapshot-parti', () => {
     const p = Produttore.reconstitute({
       id: 'p-2',
       ragioneSociale: 'Produttore SpA',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('12345678901'),
       sedeLegale: indirizzo,
       ...base,
@@ -55,6 +59,8 @@ describe('snapshot-parti', () => {
     const t = Trasportatore.reconstitute({
       id: 't-1',
       ragioneSociale: 'Trasporti Srl',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('22345678901'),
       sedeLegale: indirizzo,
       numeroIscrizione: 'ALBO-123',
@@ -82,6 +88,8 @@ describe('snapshot-parti', () => {
     const d = Destinatario.reconstitute({
       id: 'd-1',
       ragioneSociale: 'Impianto Srl',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('32345678901'),
       sede: indirizzo,
       numeroAutorizzazione: 'AUT-999',

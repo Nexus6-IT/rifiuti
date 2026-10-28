@@ -115,6 +115,8 @@ describe('ModificaFIRUseCase', () => {
         Produttore.reconstitute({
           id,
           ragioneSociale: 'Produttore registro',
+          dittaId: 'ditta-1',
+          sedeId: 'sede-1',
           partitaIVA: PartitaIVA.create('12345678901'),
           sedeLegale: indirizzo,
           pec: 'prod@pec.it',
@@ -128,6 +130,8 @@ describe('ModificaFIRUseCase', () => {
         Trasportatore.reconstitute({
           id,
           ragioneSociale: 'Trasportatore registro',
+          dittaId: 'ditta-1',
+          sedeId: 'sede-1',
           partitaIVA: PartitaIVA.create('22345678901'),
           sedeLegale: indirizzo,
           numeroIscrizione: 'ALBO-1',
@@ -141,6 +145,8 @@ describe('ModificaFIRUseCase', () => {
         Destinatario.reconstitute({
           id,
           ragioneSociale: 'Destinatario registro',
+          dittaId: 'ditta-1',
+          sedeId: 'sede-1',
           partitaIVA: PartitaIVA.create('32345678901'),
           sede: indirizzo,
           numeroAutorizzazione: 'AUT-1',

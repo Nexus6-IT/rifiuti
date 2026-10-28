@@ -178,6 +178,8 @@ class MockProduttoreRepository implements ProduttoreRepository {
     return Produttore.reconstitute({
       id,
       ragioneSociale: 'Produttore SpA',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('12345678901'),
       sedeLegale: Indirizzo.create({
         via: 'Via Roma',
@@ -194,7 +196,8 @@ class MockProduttoreRepository implements ProduttoreRepository {
   async findByTenantId(): Promise<Produttore[]> {
     return []
   }
-  async findByPartitaIVA(): Promise<Produttore | null> {
+  async crea(): Promise<void> {}
+  async findByDittaId(): Promise<Produttore | null> {
     return null
   }
   async delete(): Promise<void> {}
@@ -208,6 +211,8 @@ class MockTrasportatoreRepository implements TrasportatoreRepository {
     return Trasportatore.reconstitute({
       id,
       ragioneSociale: 'Trasporti Srl',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('22345678901'),
       sedeLegale: Indirizzo.create({
         via: 'Via Po',
@@ -224,7 +229,8 @@ class MockTrasportatoreRepository implements TrasportatoreRepository {
   async findByTenantId(): Promise<Trasportatore[]> {
     return []
   }
-  async findByPartitaIVA(): Promise<Trasportatore | null> {
+  async crea(): Promise<void> {}
+  async findByDittaId(): Promise<Trasportatore | null> {
     return null
   }
   async findByNumeroIscrizione(): Promise<Trasportatore | null> {
@@ -241,6 +247,8 @@ class MockDestinatarioRepository implements DestinatarioRepository {
     return Destinatario.reconstitute({
       id,
       ragioneSociale: 'Impianto Recupero Srl',
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
       partitaIVA: PartitaIVA.create('32345678901'),
       sede: Indirizzo.create({
         via: 'Via Etna',
@@ -257,7 +265,8 @@ class MockDestinatarioRepository implements DestinatarioRepository {
   async findByTenantId(): Promise<Destinatario[]> {
     return []
   }
-  async findByPartitaIVA(): Promise<Destinatario | null> {
+  async crea(): Promise<void> {}
+  async findByDittaId(): Promise<Destinatario | null> {
     return null
   }
   async findByNumeroAutorizzazione(): Promise<Destinatario | null> {

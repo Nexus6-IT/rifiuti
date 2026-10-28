@@ -80,6 +80,9 @@ describe('DitteService', () => {
     it('crea ditta e sede principale quando non esiste, dopo il lock', async () => {
       const r = await nelTenant(() => service.risolviPerRuolo(tx as never, 'PRODUTTORE', dati()))
       expect(r.dittaEsistente).toBe(false)
+      // gli identificativi della ditta dopo la risoluzione (servono a chi costruisce la riga di ruolo)
+      expect(r.partitaIva).toBe(PIVA_VALIDA)
+      expect(r.codiceFiscale).toBeNull()
       expect(repo.bloccaIdentificativi).toHaveBeenCalledWith(tx, [PIVA_VALIDA])
       expect(repo.crea).toHaveBeenCalledTimes(1)
       const sede = repo.creaSede.mock.calls[0][1] as SedeDitta

@@ -330,3 +330,14 @@ export class SedeNonTrovataError extends DomainError {
     this.name = 'SedeNonTrovataError'
   }
 }
+
+/**
+ * La sede indicata non e' una sede attiva della ditta del ruolo (D4/D9). 400, come i dati non
+ * validi: il messaggio dice di che ruolo si tratta, mai quale sede o quale ditta.
+ */
+export class SedeNonValidaPerRuoloError extends DatiControparteNonValidiError {
+  constructor(ruolo: 'produttore' | 'trasportatore' | 'destinatario') {
+    super(`La sede indicata non è una sede attiva del ${ruolo} scelto`)
+    this.name = 'SedeNonValidaPerRuoloError'
+  }
+}

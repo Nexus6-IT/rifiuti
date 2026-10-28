@@ -1,6 +1,7 @@
 /**
  * CreateProduttore Use Case
- * Creates a new Produttore entity
+ * Crea il ruolo di produttore su una ditta (F2-10): ditta e sede si riusano se esistono gia'.
+ * Una sola transazione (D3), vedi `creaRuoloSuDitta`.
  */
 
 import { Inject, Injectable, Optional } from '@nestjs/common'
@@ -12,11 +13,24 @@ import {
 import { Produttore } from '../../../domain/registry/entities/produttore'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ClientDitte } from '../../../infrastructure/persistence/ditta-prisma.repository'
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { ReferenceDataService } from '../../reference-data/reference-data.service'
+import { DitteService } from '../ditte/ditte.service'
+import {
+  EsitoCreazioneRuolo,
+  RuoloGiaPresenteError,
+  creaRuoloSuDitta,
+  eErroreDiDittaDaPropagare,
+  messaggioSicuro,
+} from '../crea-ruolo-su-ditta'
 
 export interface CreateProduttoreCommand {
   ragioneSociale: string
+  /** Obbligatoria in questo task (le colonne vecchie sono NOT NULL, Task 3b-2). */
   partitaIVA: string
+  /** In aggiunta alla P.IVA; da solo (privato) dal Task 3b-2. */
+  codiceFiscale?: string
   sedeLegale: {
     via: string
     civico: string
@@ -34,19 +48,16 @@ export interface CreateProduttoreCommand {
 export class CreateProduttoreUseCase {
   constructor(
     @Inject(PRODUTTORE_REPOSITORY)
-    private readonly produttoreRepository: ProduttoreRepository,
+    private readonly produttoreRepository: ProduttoreRepository<ClientDitte>,
+    private readonly prisma: PrismaService,
+    private readonly ditte: DitteService,
     @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
-  async execute(command: CreateProduttoreCommand): Promise<Result<Produttore>> {
+  async execute(
+    command: CreateProduttoreCommand
+  ): Promise<Result<EsitoCreazioneRuolo<Produttore>>> {
     try {
-      // Check if Partita IVA already exists
-      const existing = await this.produttoreRepository.findByPartitaIVA(command.partitaIVA)
-
-      if (existing) {
-        return Result.fail('Produttore with this Partita IVA already exists')
-      }
-
       // Valida comune/provincia contro le tabelle ISTAT condivise (se popolate).
       if (this.referenceData) {
         const v = await this.referenceData.validateLocalita(
@@ -56,26 +67,42 @@ export class CreateProduttoreUseCase {
         if (!v.ok) return Result.fail(v.error!)
       }
 
-      // Create value objects
-      const partitaIVA = PartitaIVA.create(command.partitaIVA)
       const sedeLegale = Indirizzo.create(command.sedeLegale)
 
-      // Create Produttore entity
-      const produttore = Produttore.create({
-        ragioneSociale: command.ragioneSociale,
-        partitaIVA,
-        sedeLegale,
-        email: command.email,
-        telefono: command.telefono,
-        pec: command.pec,
+      const esito = await creaRuoloSuDitta<Produttore>(this.prisma, this.ditte, {
+        ruolo: 'PRODUTTORE',
+        nome: 'produttore',
+        dati: {
+          ragioneSociale: command.ragioneSociale,
+          partitaIva: command.partitaIVA,
+          codiceFiscale: command.codiceFiscale,
+          indirizzo: command.sedeLegale,
+          email: command.email,
+          telefono: command.telefono,
+          pec: command.pec,
+        },
+        esistente: (tx, dittaId) => this.produttoreRepository.findByDittaId(tx, dittaId),
+        costruisci: r =>
+          Produttore.create({
+            dittaId: r.dittaId,
+            sedeId: r.sedeId,
+            // la ragione sociale della ditta vince su quella della richiesta (D3)
+            ragioneSociale: r.ragioneSocialeDitta,
+            partitaIVA: r.partitaIva ? PartitaIVA.create(r.partitaIva) : null,
+            codiceFiscale: r.codiceFiscale,
+            sedeLegale,
+            email: command.email,
+            telefono: command.telefono,
+            pec: command.pec,
+          }),
+        inserisci: (tx, produttore) => this.produttoreRepository.crea(tx, produttore),
       })
 
-      // Save to repository
-      await this.produttoreRepository.save(produttore)
-
-      return Result.ok(produttore)
-    } catch (error: any) {
-      return Result.fail(error.message)
+      return Result.ok(esito)
+    } catch (error: unknown) {
+      if (eErroreDiDittaDaPropagare(error)) throw error
+      if (error instanceof RuoloGiaPresenteError) return Result.fail(error.message)
+      return Result.fail(messaggioSicuro(error))
     }
   }
 }

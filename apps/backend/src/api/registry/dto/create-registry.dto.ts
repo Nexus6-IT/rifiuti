@@ -4,6 +4,8 @@
  */
 
 import {
+  IsUUID,
+  MaxLength,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -50,6 +52,15 @@ export class CreateProduttoreDto {
   @IsNotEmpty()
   partitaIVA: string
 
+  /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(16, {
+    message:
+      'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite',
+  })
+  codiceFiscale?: string
+
   @IsDefined()
   @IsNotEmptyObject()
   @ValidateNested()
@@ -77,6 +88,15 @@ export class CreateTrasportatoreDto {
   @IsString()
   @IsNotEmpty()
   partitaIVA: string
+
+  /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(16, {
+    message:
+      'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite',
+  })
+  codiceFiscale?: string
 
   @IsDefined()
   @IsNotEmptyObject()
@@ -116,6 +136,15 @@ export class CreateDestinatarioDto {
   @IsNotEmpty()
   partitaIVA: string
 
+  /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
+  @IsString()
+  @IsOptional()
+  @MaxLength(16, {
+    message:
+      'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite',
+  })
+  codiceFiscale?: string
+
   @IsDefined()
   @IsNotEmptyObject()
   @ValidateNested()
@@ -146,11 +175,30 @@ export class CreateDestinatarioDto {
 }
 
 // Update DTOs
-// Note: partitaIVA is readonly and cannot be updated
+// Note: gli identificativi gia' impostati non si cambiano (D2.7); unica eccezione D2.8
 export class UpdateProduttoreDto {
   @IsString()
   @IsOptional()
   ragioneSociale?: string
+
+  /** D2.7: aggiunge l'identificativo mancante della ditta. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(16, {
+    message:
+      'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite',
+  })
+  codiceFiscale?: string
+
+  /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  @IsString()
+  @IsOptional()
+  partitaIVA?: string
+
+  /** D7: nuova sede predefinita del ruolo (attiva, della stessa ditta). Esclude l'indirizzo. */
+  @IsOptional()
+  @IsUUID()
+  sedeId?: string
 
   @ValidateNested()
   @Type(() => IndirizzoDto)
@@ -174,6 +222,25 @@ export class UpdateTrasportatoreDto {
   @IsString()
   @IsOptional()
   ragioneSociale?: string
+
+  /** D2.7: aggiunge l'identificativo mancante della ditta. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(16, {
+    message:
+      'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite',
+  })
+  codiceFiscale?: string
+
+  /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  @IsString()
+  @IsOptional()
+  partitaIVA?: string
+
+  /** D7: nuova sede predefinita del ruolo (attiva, della stessa ditta). Esclude l'indirizzo. */
+  @IsOptional()
+  @IsUUID()
+  sedeId?: string
 
   @ValidateNested()
   @Type(() => IndirizzoDto)
@@ -208,6 +275,25 @@ export class UpdateDestinatarioDto {
   @IsString()
   @IsOptional()
   ragioneSociale?: string
+
+  /** D2.7: aggiunge l'identificativo mancante della ditta. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(16, {
+    message:
+      'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite',
+  })
+  codiceFiscale?: string
+
+  /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  @IsString()
+  @IsOptional()
+  partitaIVA?: string
+
+  /** D7: nuova sede predefinita del ruolo (attiva, della stessa ditta). Esclude l'indirizzo. */
+  @IsOptional()
+  @IsUUID()
+  sedeId?: string
 
   @ValidateNested()
   @Type(() => IndirizzoDto)

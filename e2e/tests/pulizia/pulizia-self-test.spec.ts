@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
 import { conRunIsolata } from '../../fixtures/run-isolata'
+import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 
 /**
  * Self-test delle fondamenta E2E (Task 1 del piano UAT/E2E): crea due
@@ -37,10 +38,8 @@ import { conRunIsolata } from '../../fixtures/run-isolata'
  */
 
 function partitaIvaCasuale(): string {
-  // 11 cifre, nessun vincolo di checksum lato dominio (vedi
-  // apps/backend/src/domain/registry/value-objects/partita-iva.ts) — solo
-  // univoca abbastanza da non collidere fra run diverse.
-  return String(Math.floor(1_000_000_0000 + Math.random() * 8_999_999_9999)).slice(0, 11)
+  // con cifra di controllo valida: il backend la verifica quando la imposta (F2-10)
+  return partitaIvaCasualeValida()
 }
 
 function datiProduttore(ragioneSociale: string) {

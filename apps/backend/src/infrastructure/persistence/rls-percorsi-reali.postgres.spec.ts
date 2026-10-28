@@ -49,9 +49,7 @@ import { FIRPrismaRepository } from './fir-prisma.repository'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
 import { GestisciAllegatiFIRUseCase } from '../../application/rentri/gestisci-allegati-fir.use-case'
 import { ProduttorePrismaRepository } from './produttore-prisma.repository'
-import { Produttore } from '../../domain/registry/entities/produttore'
-import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
-import { Indirizzo } from '../../domain/registry/value-objects/indirizzo'
+import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
 import { MudAggregazioneService } from '../../application/mud/aggregazione/mud-aggregazione.service'
 import { MudPresentazioneService } from '../../application/mud/mud-presentazione.service'
 import { MudVersionRegistry } from '../../application/mud/export/mud-version.registry'
@@ -283,20 +281,14 @@ describe('RLS: percorsi reali col ruolo applicativo (Postgres reale)', () => {
 
   it('4. elenco delle anagrafiche: ogni azienda vede solo le proprie', async () => {
     const repo = new ProduttorePrismaRepository(app)
-    const nuovo = (nome: string) =>
-      Produttore.create({
-        ragioneSociale: `${nome} ${run}`,
-        partitaIVA: PartitaIVA.create('12345678903'),
-        sedeLegale: Indirizzo.create({
-          via: 'Via Roma',
-          civico: '1',
-          cap: '00100',
-          citta: 'Roma',
-          provincia: 'RM',
-        }),
-      })
-    await nelContesto(studio, () => repo.save(nuovo('Produttore Studio')))
-    await nelContesto(cliente, () => repo.save(nuovo('Produttore Cliente')))
+    // le anagrafiche si preparano come proprietario (ditta, sede, ruolo); si leggono col ruolo
+    // dell'applicazione, soggetto alla RLS
+    await creaDittaConRuolo(owner, studio, 'PRODUTTORE', {
+      ragioneSociale: `Produttore Studio ${run}`,
+    })
+    await creaDittaConRuolo(owner, cliente, 'PRODUTTORE', {
+      ragioneSociale: `Produttore Cliente ${run}`,
+    })
 
     const dello = await nelContesto(studio, () => repo.findByTenantId(studio))
     expect(dello.map(p => p.ragioneSociale)).toEqual([`Produttore Studio ${run}`])

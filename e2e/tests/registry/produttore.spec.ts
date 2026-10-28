@@ -5,6 +5,7 @@ import { apiLogin, apiPost, apiGet, apiDelete, ApiClientError } from '../../util
 import { registra } from '../../fixtures/risorse'
 import { conPrefisso } from '../../utils/run-id'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
+import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 
 /**
  * UAT/E2E — Produttore (docs/uat/produttore.md contiene i casi e la matrice
@@ -27,9 +28,7 @@ import { AnagrafichePage } from '../../pages/anagrafiche.page'
  */
 
 function nuovaPartitaIVA(): string {
-  const nove = String(Date.now()).slice(-9)
-  const due = String(Math.floor(Math.random() * 100)).padStart(2, '0')
-  return `${nove}${due}`
+  return partitaIvaCasualeValida()
 }
 
 interface IndirizzoPayload {
@@ -180,19 +179,18 @@ test.describe('Produttore — validazioni (via API, dove il backend le applica d
     })
   })
 
-  test('la partita IVA è immutabile: inviarla in update è rifiutata (400, whitelist)', async () => {
+  test('la partita IVA è immutabile: una diversa in update è rifiutata (400)', async () => {
     const token = await apiLogin('operator')
     const { creato } = await creaProduttore(token)
 
     // PUT non ha un helper dedicato in api-client.ts (solo POST/GET/DELETE):
     // usiamo fetch direttamente, stessa base URL, stesso schema di errore.
-    // UpdateProduttoreDto non include partitaIVA e il ValidationPipe globale
-    // ha whitelist+forbidNonWhitelisted (main.ts): il campo extra fa
-    // fallire l'intera richiesta con 400, non viene semplicemente ignorato.
+    // F2-10: la partita IVA impostata non si cambia (D2.7); una diversa, anche con il
+    // checksum corretto, contraddice quella registrata e fa fallire la richiesta con 400.
     const risposta = await fetch(`${getApiUrl()}/registry/produttori/${creato.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ragioneSociale: 'Nome nuovo', partitaIVA: '99999999999' }),
+      body: JSON.stringify({ ragioneSociale: 'Nome nuovo', partitaIVA: partitaIvaCasualeValida() }),
     })
     expect(risposta.status).toBe(400)
   })

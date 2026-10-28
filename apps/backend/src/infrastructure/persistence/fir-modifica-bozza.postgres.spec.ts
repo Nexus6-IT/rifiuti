@@ -94,6 +94,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
       Produttore.reconstitute({
         id,
         ragioneSociale: registro.produttore,
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('12345678901'),
         sedeLegale: indirizzo,
         pec: 'prod@pec.it',
@@ -106,6 +108,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
       Trasportatore.reconstitute({
         id,
         ragioneSociale: `Trasportatore ${id.slice(0, 2)}`,
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('22345678901'),
         sedeLegale: indirizzo,
         numeroIscrizione: 'ALBO-1',
@@ -118,6 +122,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
       Destinatario.reconstitute({
         id,
         ragioneSociale: `${registro.destinatario} ${id.slice(0, 2)}`,
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('32345678901'),
         sede: indirizzo,
         numeroAutorizzazione: 'AUT-1',

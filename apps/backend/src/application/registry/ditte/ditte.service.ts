@@ -52,6 +52,9 @@ export interface RisoluzioneRuolo {
   sedeId: string
   /** Ragione sociale della ditta dopo la risoluzione (quella gia' registrata se esisteva). */
   ragioneSocialeDitta: string
+  /** Identificativi della ditta dopo la risoluzione (comprese le aggiunte di D2.7). */
+  partitaIva: string | null
+  codiceFiscale: string | null
   dittaEsistente: boolean
   avvisi: string[]
 }
@@ -191,6 +194,8 @@ export class DitteService {
       dittaId: ditta.id,
       sedeId: sede.id,
       ragioneSocialeDitta: ditta.ragioneSociale,
+      partitaIva: ditta.partitaIva,
+      codiceFiscale: ditta.codiceFiscale,
       dittaEsistente,
       avvisi,
     }

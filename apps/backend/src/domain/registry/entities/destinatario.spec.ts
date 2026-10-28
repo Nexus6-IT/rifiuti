@@ -12,6 +12,8 @@ describe('Destinatario Entity', () => {
     it('should create a new Destinatario', () => {
       const props: DestinatarioProps = {
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -27,13 +29,15 @@ describe('Destinatario Entity', () => {
 
       expect(destinatario.id).toBeDefined()
       expect(destinatario.ragioneSociale).toBe('Smaltimento Rifiuti SpA')
-      expect(destinatario.partitaIVA.getValue()).toBe('11122233344')
+      expect(destinatario.partitaIVA?.getValue()).toBe('11122233344')
       expect(destinatario.numeroAutorizzazione).toBe('NA/AUT/2023/001')
     })
 
     it('should trim ragione sociale', () => {
       const props: DestinatarioProps = {
         ragioneSociale: '  Smaltimento Rifiuti SpA  ',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -52,6 +56,8 @@ describe('Destinatario Entity', () => {
     it('should throw error for empty ragione sociale', () => {
       const props: DestinatarioProps = {
         ragioneSociale: '',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -69,6 +75,8 @@ describe('Destinatario Entity', () => {
     it('should create without optional fields', () => {
       const props: DestinatarioProps = {
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -90,6 +98,8 @@ describe('Destinatario Entity', () => {
     it('should create with optional contact fields', () => {
       const props: DestinatarioProps = {
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -117,6 +127,8 @@ describe('Destinatario Entity', () => {
       const destinatario = Destinatario.reconstitute({
         id: 'dest-123',
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -140,6 +152,8 @@ describe('Destinatario Entity', () => {
     it('should update ragione sociale', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -158,6 +172,8 @@ describe('Destinatario Entity', () => {
     it('should throw error for empty ragione sociale', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -177,6 +193,8 @@ describe('Destinatario Entity', () => {
     it('should update sede', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -205,6 +223,8 @@ describe('Destinatario Entity', () => {
     it('should update contact information', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -228,6 +248,8 @@ describe('Destinatario Entity', () => {
     it('should update numero autorizzazione', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -246,6 +268,8 @@ describe('Destinatario Entity', () => {
     it('should throw error for empty numero autorizzazione', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -270,6 +294,8 @@ describe('Destinatario Entity', () => {
     it('should create without scadenzaAutorizzazione (anagrafiche esistenti)', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -288,6 +314,8 @@ describe('Destinatario Entity', () => {
       const scadenza = new Date('2027-01-15')
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -306,6 +334,8 @@ describe('Destinatario Entity', () => {
     it('should update scadenzaAutorizzazione', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',
@@ -326,6 +356,8 @@ describe('Destinatario Entity', () => {
     it('should clear scadenzaAutorizzazione when updated with undefined', () => {
       const destinatario = Destinatario.create({
         ragioneSociale: 'Smaltimento Rifiuti SpA',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('11122233344'),
         sede: Indirizzo.create({
           via: 'Via Napoli',

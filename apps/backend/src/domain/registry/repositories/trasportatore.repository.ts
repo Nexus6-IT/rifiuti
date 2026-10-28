@@ -4,17 +4,25 @@
  */
 
 import { Trasportatore } from '../entities/trasportatore'
+import { OpzioniLetturaRuolo } from './ditta.repository'
 
-export interface TrasportatoreRepository {
+export interface TrasportatoreRepository<C = unknown> {
   /**
-   * Save a Trasportatore (create or update)
+   * Inserisce la riga di ruolo (F2-10): con il `client` della transazione che ha gia' risolto
+   * ditta e sede (D3). Per ora scrive anche le colonne vecchie (doppia scrittura, Task 3b-2).
+   */
+  crea(client: C, trasportatore: Trasportatore): Promise<void>
+
+  /**
+   * Modifica un ruolo esistente in una transazione: ragione sociale della ditta, indirizzo e
+   * contatti della sede, riga di ruolo (sede predefinita compresa).
    */
   save(trasportatore: Trasportatore): Promise<void>
 
   /**
    * Find a Trasportatore by ID
    */
-  findById(id: string): Promise<Trasportatore | null>
+  findById(id: string, opzioni?: OpzioniLetturaRuolo): Promise<Trasportatore | null>
 
   /**
    * Find all Trasportatori for a tenant
@@ -22,9 +30,10 @@ export interface TrasportatoreRepository {
   findByTenantId(tenantId: string): Promise<Trasportatore[]>
 
   /**
-   * Find a Trasportatore by Partita IVA
+   * Il ruolo della ditta, se c'e' (una riga per ruolo per ditta, D1). Prende il `client`
+   * della transazione di creazione.
    */
-  findByPartitaIVA(partitaIVA: string): Promise<Trasportatore | null>
+  findByDittaId(client: C, dittaId: string): Promise<Trasportatore | null>
 
   /**
    * Find a Trasportatore by Numero Iscrizione

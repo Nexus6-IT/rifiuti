@@ -11,11 +11,25 @@ import {
 } from '../../../domain/registry/repositories/trasportatore.repository'
 import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { TenantContext } from '../../../core/context/tenant-context'
+import { ClientDitte } from '../../../infrastructure/persistence/ditta-prisma.repository'
 import { ReferenceDataService } from '../../reference-data/reference-data.service'
+import { DitteService } from '../ditte/ditte.service'
+import {
+  MESSAGGIO_SEDE_E_INDIRIZZO,
+  eErroreDiDittaDaPropagare,
+  messaggioSicuro,
+} from '../crea-ruolo-su-ditta'
 
 export interface UpdateTrasportatoreCommand {
   id: string
   ragioneSociale?: string
+  /** D2.7: aggiunge l'identificativo mancante della ditta (mai un cambio di quello impostato). */
+  codiceFiscale?: string
+  /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  partitaIVA?: string
+  /** Nuova sede predefinita del ruolo (attiva e della stessa ditta). Esclude l'indirizzo. */
+  sedeId?: string
   sedeLegale?: {
     via: string
     civico: string
@@ -39,14 +53,43 @@ export interface UpdateTrasportatoreCommand {
 export class UpdateTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
-    private readonly trasportatoreRepository: TrasportatoreRepository,
+    private readonly trasportatoreRepository: TrasportatoreRepository<ClientDitte>,
+    private readonly ditte: DitteService,
     @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
   async execute(command: UpdateTrasportatoreCommand): Promise<Result<Trasportatore>> {
     try {
+      if (command.sedeId && command.sedeLegale) {
+        return Result.fail(MESSAGGIO_SEDE_E_INDIRIZZO)
+      }
+
       // Find existing Trasportatore
-      const trasportatore = await this.trasportatoreRepository.findById(command.id)
+      const esistente = await this.trasportatoreRepository.findById(command.id)
+
+      if (!esistente) {
+        return Result.fail('Trasportatore not found')
+      }
+
+      // Identificativi: si agisce sulla ditta, con i suoi lock e l'audit della correzione
+      const cambiaIdentificativi = !!(command.codiceFiscale || command.partitaIVA)
+      if (cambiaIdentificativi) {
+        await this.ditte.aggiornaDitta(
+          esistente.dittaId,
+          { partitaIva: command.partitaIVA, codiceFiscale: command.codiceFiscale },
+          { userId: TenantContext.getUserId() ?? undefined }
+        )
+      }
+
+      // Si rilegge se serve: identificativi aggiornati e, con sedeId, indirizzo e contatti della
+      // nuova sede predefinita (D7; sede non valida per il ruolo = 400)
+      const trasportatore =
+        cambiaIdentificativi || command.sedeId
+          ? await this.trasportatoreRepository.findById(
+              command.id,
+              command.sedeId ? { sedeId: command.sedeId } : undefined
+            )
+          : esistente
 
       if (!trasportatore) {
         return Result.fail('Trasportatore not found')
@@ -106,8 +149,9 @@ export class UpdateTrasportatoreUseCase {
       await this.trasportatoreRepository.save(trasportatore)
 
       return Result.ok(trasportatore)
-    } catch (error: any) {
-      return Result.fail(error.message)
+    } catch (error: unknown) {
+      if (eErroreDiDittaDaPropagare(error)) throw error
+      return Result.fail(messaggioSicuro(error))
     }
   }
 }

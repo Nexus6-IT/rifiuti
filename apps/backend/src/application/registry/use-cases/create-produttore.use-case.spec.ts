@@ -1,108 +1,182 @@
 /**
- * CreateProduttore Use Case - TDD Tests
+ * CreateProduttore Use Case - TDD Tests (F2-10 Task 3a: ruolo su ditta e sede)
  */
 
+import { Prisma } from '@prisma/client'
 import { CreateProduttoreUseCase } from './create-produttore.use-case'
 import { ProduttoreRepository } from '../../../domain/registry/repositories/produttore.repository'
 import { Produttore } from '../../../domain/registry/entities/produttore'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import {
+  DatiControparteNonValidiError,
+  DittaIdentificativiInConflittoError,
+} from '../../../core/domain/errors'
+import { PIVA_VALIDA } from '../../../test-support/anagrafiche-di-test'
+import { RisoluzioneRuolo } from '../ditte/ditte.service'
+
+const SEDE = { via: 'Via Roma', civico: '10', cap: '00100', citta: 'Roma', provincia: 'RM' }
+
+function risoluzione(over: Partial<RisoluzioneRuolo> = {}): RisoluzioneRuolo {
+  return {
+    dittaId: 'ditta-1',
+    sedeId: 'sede-1',
+    ragioneSocialeDitta: 'Acme Srl',
+    partitaIva: PIVA_VALIDA,
+    codiceFiscale: null,
+    dittaEsistente: false,
+    avvisi: [],
+    ...over,
+  }
+}
 
 describe('CreateProduttoreUseCase', () => {
   let useCase: CreateProduttoreUseCase
   let repository: jest.Mocked<ProduttoreRepository>
+  let ditte: { risolviPerRuolo: jest.Mock }
+  let tx: object
+  let prisma: { $transaction: jest.Mock }
+
+  const comando = (over: object = {}) => ({
+    ragioneSociale: 'Acme Srl',
+    partitaIVA: PIVA_VALIDA,
+    sedeLegale: SEDE,
+    ...over,
+  })
 
   beforeEach(() => {
     repository = {
+      crea: jest.fn().mockResolvedValue(undefined),
       save: jest.fn(),
       findById: jest.fn(),
       findByTenantId: jest.fn(),
-      findByPartitaIVA: jest.fn(),
+      findByDittaId: jest.fn().mockResolvedValue(null),
       delete: jest.fn(),
     } as any
+    tx = { marcatore: 'tx' }
+    prisma = { $transaction: jest.fn(async (fn: (t: unknown) => unknown) => fn(tx)) }
+    ditte = { risolviPerRuolo: jest.fn().mockResolvedValue(risoluzione()) }
 
-    useCase = new CreateProduttoreUseCase(repository)
+    useCase = new CreateProduttoreUseCase(repository, prisma as never, ditte as never)
   })
 
   describe('execute', () => {
-    it('should create a new Produttore', async () => {
-      const command = {
-        ragioneSociale: 'Acme Srl',
-        partitaIVA: '12345678901',
-        sedeLegale: {
-          via: 'Via Roma',
-          civico: '10',
-          cap: '00100',
-          citta: 'Roma',
-          provincia: 'RM',
-        },
-      }
-
-      repository.findByPartitaIVA.mockResolvedValue(null)
-
-      const result = await useCase.execute(command)
+    it('crea il produttore in UNA transazione: ditta e sede risolte, poi la riga di ruolo', async () => {
+      const result = await useCase.execute(comando())
 
       expect(result.isSuccess).toBe(true)
-      expect(result.value.ragioneSociale).toBe('Acme Srl')
-      expect(repository.save).toHaveBeenCalledTimes(1)
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+      expect(ditte.risolviPerRuolo).toHaveBeenCalledWith(
+        tx,
+        'PRODUTTORE',
+        expect.objectContaining({ ragioneSociale: 'Acme Srl', partitaIva: PIVA_VALIDA })
+      )
+      expect(repository.findByDittaId).toHaveBeenCalledWith(tx, 'ditta-1')
+      expect(repository.crea).toHaveBeenCalledTimes(1)
+      expect(repository.crea.mock.calls[0][0]).toBe(tx)
+      const p = result.value.ruolo
+      expect(p.ragioneSociale).toBe('Acme Srl')
+      expect(p.dittaId).toBe('ditta-1')
+      expect(p.sedeId).toBe('sede-1')
+      expect(p.partitaIVA?.getValue()).toBe(PIVA_VALIDA)
+      expect(result.value.dittaEsistente).toBe(false)
+      expect(result.value.avvisi).toEqual([])
     })
 
-    it('should fail if Partita IVA already exists', async () => {
-      const command = {
-        ragioneSociale: 'Acme Srl',
-        partitaIVA: '12345678901',
-        sedeLegale: {
-          via: 'Via Roma',
-          civico: '10',
-          cap: '00100',
-          citta: 'Roma',
-          provincia: 'RM',
-        },
-      }
+    it('riusa una ditta esistente: la ragione sociale della ditta vince e l avviso arriva', async () => {
+      ditte.risolviPerRuolo.mockResolvedValue(
+        risoluzione({
+          dittaEsistente: true,
+          ragioneSocialeDitta: 'ACME S.R.L.',
+          avvisi: [
+            'La ragione sociale registrata per questa ditta è «ACME S.R.L.»: è stata mantenuta.',
+          ],
+        })
+      )
 
-      const existingProduttore = Produttore.create({
-        ragioneSociale: 'Existing Srl',
-        partitaIVA: PartitaIVA.create('12345678901'),
-        sedeLegale: Indirizzo.create({
-          via: 'Via Milano',
-          civico: '20',
-          cap: '20100',
-          citta: 'Milano',
-          provincia: 'MI',
-        }),
-      })
+      const result = await useCase.execute(comando({ ragioneSociale: 'Acme Srl' }))
 
-      repository.findByPartitaIVA.mockResolvedValue(existingProduttore)
+      expect(result.isSuccess).toBe(true)
+      expect(result.value.ruolo.ragioneSociale).toBe('ACME S.R.L.')
+      expect(result.value.dittaEsistente).toBe(true)
+      expect(result.value.avvisi).toHaveLength(1)
+    })
 
-      const result = await useCase.execute(command)
+    it('rifiuta (400) se la ditta ha gia un produttore e non inserisce nulla', async () => {
+      repository.findByDittaId.mockResolvedValue(
+        Produttore.create({
+          dittaId: 'ditta-1',
+          sedeId: 'sede-1',
+          ragioneSociale: 'Esistente Srl',
+          partitaIVA: PartitaIVA.create(PIVA_VALIDA),
+          sedeLegale: Indirizzo.create(SEDE),
+        })
+      )
+
+      const result = await useCase.execute(comando())
 
       expect(result.isFailure).toBe(true)
-      expect(result.error).toContain('already exists')
-      expect(repository.save).not.toHaveBeenCalled()
+      expect(result.error).toBe('Esiste già un produttore per questa ditta')
+      expect(repository.crea).not.toHaveBeenCalled()
     })
 
-    it('should create with optional contact fields', async () => {
-      const command = {
-        ragioneSociale: 'Acme Srl',
-        partitaIVA: '12345678901',
-        sedeLegale: {
-          via: 'Via Roma',
-          civico: '10',
-          cap: '00100',
-          citta: 'Roma',
-          provincia: 'RM',
-        },
-        email: 'info@acme.it',
-        telefono: '06-12345678',
-        pec: 'acme@pec.it',
-      }
+    it('traduce il P2002 sul vincolo (tenant, ditta) nello stesso 400', async () => {
+      repository.crea.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'x',
+          meta: { target: ['tenant_id', 'ditta_id'] },
+        })
+      )
 
-      repository.findByPartitaIVA.mockResolvedValue(null)
+      const result = await useCase.execute(comando())
 
-      const result = await useCase.execute(command)
+      expect(result.isFailure).toBe(true)
+      expect(result.error).toBe('Esiste già un produttore per questa ditta')
+    })
+
+    it('un P2002 su altro vincolo non viene mascherato', async () => {
+      repository.crea.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'x',
+          meta: { target: ['tenant_id', 'altro'] },
+        })
+      )
+
+      const result = await useCase.execute(comando())
+
+      expect(result.isFailure).toBe(true)
+      expect(result.error).not.toContain('per questa ditta')
+    })
+
+    it('lascia passare gli errori di ditta (409/400 tipizzati) senza trasformarli in 400 generico', async () => {
+      ditte.risolviPerRuolo.mockRejectedValue(new DittaIdentificativiInConflittoError())
+      await expect(useCase.execute(comando())).rejects.toBeInstanceOf(
+        DittaIdentificativiInConflittoError
+      )
+
+      ditte.risolviPerRuolo.mockRejectedValue(new DatiControparteNonValidiError('Dato non valido'))
+      await expect(useCase.execute(comando())).rejects.toBeInstanceOf(DatiControparteNonValidiError)
+    })
+
+    it('accetta anche il codice fiscale oltre alla P.IVA e lo passa al servizio', async () => {
+      await useCase.execute(comando({ codiceFiscale: 'RSSMRA80A01H501U' }))
+
+      expect(ditte.risolviPerRuolo).toHaveBeenCalledWith(
+        tx,
+        'PRODUTTORE',
+        expect.objectContaining({ codiceFiscale: 'RSSMRA80A01H501U' })
+      )
+    })
+
+    it('crea con i campi di contatto facoltativi', async () => {
+      const result = await useCase.execute(
+        comando({ email: 'info@acme.it', telefono: '06-12345678', pec: 'acme@pec.it' })
+      )
 
       expect(result.isSuccess).toBe(true)
-      const produttore = result.value
+      const produttore = result.value.ruolo
       expect(produttore.email).toBe('info@acme.it')
       expect(produttore.telefono).toBe('06-12345678')
       expect(produttore.pec).toBe('acme@pec.it')

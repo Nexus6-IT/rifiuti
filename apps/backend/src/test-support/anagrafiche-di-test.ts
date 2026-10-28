@@ -1,3 +1,5 @@
+import { Prisma, PrismaClient } from '@prisma/client'
+
 /**
  * Dati fiscali validi per i test delle anagrafiche (F2-10). Servono perche' l'applicazione
  * controlla il checksum quando un identificativo viene impostato: una P.IVA "di comodo" come
@@ -37,3 +39,93 @@ export function partitaIvaValida(seme: number): string {
 
 /** Partita IVA di 11 cifre con checksum SBAGLIATO (per i dati "da verificare"). */
 export const PIVA_CHECKSUM_ERRATO = '12345678901'
+
+// ---------------------------------------------------------------------------------------------
+// Fixture del database: una ditta con la sua sede e UNA riga di ruolo (F2-10 Task 3a).
+// ---------------------------------------------------------------------------------------------
+
+export interface DatiDittaDiTest {
+  ragioneSociale?: string
+  partitaIva?: string | null
+  codiceFiscale?: string | null
+  via?: string
+  civico?: string
+  cap?: string
+  comune?: string
+  provincia?: string
+  email?: string | null
+  telefono?: string | null
+  pec?: string | null
+  /** Numero di iscrizione (trasportatore) o di autorizzazione (destinatario). */
+  numeroDocumento?: string
+}
+
+export interface RisultatoDittaConRuolo {
+  dittaId: string
+  sedeId: string
+  ruoloId: string
+}
+
+let contatore = 0
+
+/**
+ * Crea ditta, sede principale e riga di ruolo **con** le colonne vecchie (ragione sociale, P.IVA,
+ * indirizzo e contatti), finche' esistono (le toglie il Task 3b-2). Va chiamata con un client che
+ * puo' scrivere (proprietario o `tx`); il `tenantId` e' esplicito perche' non c'e' un contesto.
+ */
+export async function creaDittaConRuolo(
+  client: PrismaClient | Prisma.TransactionClient,
+  tenantId: string,
+  ruolo: 'PRODUTTORE' | 'TRASPORTATORE' | 'DESTINATARIO',
+  dati: DatiDittaDiTest = {}
+): Promise<RisultatoDittaConRuolo> {
+  const n = ++contatore
+  const partitaIva =
+    dati.partitaIva === undefined ? partitaIvaValida(Date.now() + n) : dati.partitaIva
+  const sede = {
+    via: dati.via ?? 'Via Roma',
+    civico: dati.civico ?? '1',
+    cap: dati.cap ?? '00100',
+    comune: dati.comune ?? 'Roma',
+    provincia: dati.provincia ?? 'RM',
+  }
+  const contatti = {
+    email: dati.email ?? null,
+    telefono: dati.telefono ?? null,
+    pec: dati.pec ?? null,
+  }
+  const ragioneSociale = dati.ragioneSociale ?? `Ditta di test ${n}`
+
+  const ditta = await client.ditta.create({
+    data: { tenantId, ragioneSociale, partitaIva, codiceFiscale: dati.codiceFiscale ?? null },
+  })
+  const sedeCreata = await client.sedeDitta.create({
+    data: { tenantId, dittaId: ditta.id, ...sede, ...contatti, principale: true },
+  })
+  const comuni = {
+    tenantId,
+    dittaId: ditta.id,
+    sedeId: sedeCreata.id,
+    ragioneSociale,
+    partitaIVA: partitaIva ?? '',
+    ...sede,
+    ...contatti,
+  }
+  let ruoloId: string
+  if (ruolo === 'PRODUTTORE') {
+    ruoloId = (await client.produttore.create({ data: comuni })).id
+  } else if (ruolo === 'TRASPORTATORE') {
+    ruoloId = (
+      await client.trasportatore.create({
+        data: { ...comuni, numeroIscrizione: dati.numeroDocumento ?? `ALBO-${n}` },
+      })
+    ).id
+  } else {
+    ruoloId = (
+      await client.destinatario.create({
+        data: { ...comuni, numeroAutorizzazione: dati.numeroDocumento ?? `AUT-${n}` },
+      })
+    ).id
+  }
+  return { dittaId: ditta.id, sedeId: sedeCreata.id, ruoloId }
+}

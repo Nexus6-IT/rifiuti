@@ -29,6 +29,10 @@ import { GetDestinatarioUseCase } from '../../application/registry/use-cases/get
 import { UpdateDestinatarioUseCase } from '../../application/registry/use-cases/update-destinatario.use-case'
 import { DeleteDestinatarioUseCase } from '../../application/registry/use-cases/delete-destinatario.use-case'
 
+// Ditte e sedi (F2-10)
+import { DitteService } from '../../application/registry/ditte/ditte.service'
+import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-prisma.repository'
+
 // Repositories
 import { ProduttorePrismaRepository } from '../../infrastructure/persistence/produttore-prisma.repository'
 import { TrasportatorePrismaRepository } from '../../infrastructure/persistence/trasportatore-prisma.repository'
@@ -61,6 +65,10 @@ import { DESTINATARIO_REPOSITORY } from '../../domain/registry/repositories/dest
     GetDestinatarioUseCase,
     UpdateDestinatarioUseCase,
     DeleteDestinatarioUseCase,
+
+    // Ditte e sedi (F2-10)
+    DitteService,
+    DittaPrismaRepository,
 
     // Repositories
     {
