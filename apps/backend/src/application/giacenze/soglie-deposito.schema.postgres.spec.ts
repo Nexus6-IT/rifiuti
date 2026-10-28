@@ -75,6 +75,36 @@ describe('Soglie deposito temporaneo, schema (Postgres reale)', () => {
     )
   }
 
+  /**
+   * Seconda INSERT che deve violare un unico: Prisma non riporta il nome dell'indice (solo il
+   * codice 23505, messaggio "N/A"), quindi lo si legge in un blocco plpgsql con
+   * GET STACKED DIAGNOSTICS.
+   */
+  async function indiceViolato(
+    tenantId: string,
+    registroId: string | null
+  ): Promise<string | null> {
+    const reg = registroId ? `'${registroId}'::uuid` : 'NULL'
+    return comeApp(tenantId, async tx => {
+      await tx.$executeRawUnsafe(
+        `DO $$ DECLARE n text; BEGIN
+           INSERT INTO soglie_deposito_temporaneo
+             (tenant_id, registro_id, criterio, giorni_max, kg_max_totale, kg_max_pericolosi,
+              preavviso_giorni, preavviso_percentuale, impostato_da, updated_at)
+           VALUES ('${tenantId}'::uuid, ${reg}, 'TEMPORALE', 60, 30000, 10000, 7, 90,
+                   gen_random_uuid(), now());
+         EXCEPTION WHEN unique_violation THEN
+           GET STACKED DIAGNOSTICS n = CONSTRAINT_NAME;
+           PERFORM set_config('test.indice', n, true);
+         END $$`
+      )
+      const r = await tx.$queryRawUnsafe<{ v: string }[]>(
+        `SELECT current_setting('test.indice', true) AS v`
+      )
+      return r[0].v || null
+    })
+  }
+
   afterAll(async () => {
     for (const id of tenantCreati) {
       await owner.registroRifiuti.deleteMany({ where: { tenantId: id } })
@@ -106,16 +136,14 @@ describe('Soglie deposito temporaneo, schema (Postgres reale)', () => {
   it('una seconda riga azienda per lo stesso tenant viola l indice parziale', async () => {
     const { tenantId } = await azienda()
     await comeApp(tenantId, tx => inserisci(tx, tenantId))
-    await expect(comeApp(tenantId, tx => inserisci(tx, tenantId))).rejects.toThrow(
-      /Code: `23505`/ // unique_violation: Prisma non riporta il nome dell indice; per due righe azienda solo il parziale puo scattare
-    )
+    expect(await indiceViolato(tenantId, null)).toBe('soglie_deposito_temporaneo_una_per_azienda')
   })
 
   it('una seconda riga per lo stesso registro viola l unico', async () => {
     const { tenantId, registroId } = await azienda()
     await comeApp(tenantId, tx => inserisci(tx, tenantId, { registroId }))
-    await expect(comeApp(tenantId, tx => inserisci(tx, tenantId, { registroId }))).rejects.toThrow(
-      /Code: `23505`/ // unique_violation: per due righe dello stesso registro scatta solo l unico (il parziale e solo per registro_id NULL)
+    expect(await indiceViolato(tenantId, registroId)).toBe(
+      'soglie_deposito_temporaneo_tenant_id_registro_id_key'
     )
   })
 
@@ -130,7 +158,12 @@ describe('Soglie deposito temporaneo, schema (Postgres reale)', () => {
   describe('CHECK', () => {
     const P = 'soglie_deposito_temporaneo_'
     const casi: Array<[string, Valori, RegExp]> = [
-      ['giorni_max 0', { giorniMax: 0, prevGiorni: 0 }, new RegExp(`${P}giorni_max_check`)],
+      // Con giorni_max 0 e preavviso 0 la riga viola anche preavviso_giorni_check (preavviso < giorni_max): Postgres riporta il primo CHECK in ordine di nome.
+      [
+        'giorni_max 0',
+        { giorniMax: 0, prevGiorni: 0 },
+        new RegExp(`${P}(giorni_max|preavviso_giorni)_check`),
+      ],
       ['giorni_max 93', { giorniMax: 93 }, new RegExp(`${P}giorni_max_check`)],
       // Con totale 0 anche i pericolosi (> 0 e <= totale) sono fuori range: Postgres riporta il primo CHECK in ordine di nome.
       ['kg totale 0', { kgTot: 0, kgPer: 0.01 }, new RegExp(`${P}kg_(totale|pericolosi)_check`)],
