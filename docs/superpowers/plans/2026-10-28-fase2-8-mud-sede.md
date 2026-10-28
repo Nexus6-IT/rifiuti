@@ -914,6 +914,13 @@ verificare che compilino e che il PDF non cambi).
    `recoveryKg`/`disposalKg` e giacenze per CER, `versioneCalcolo`, `versionePresentata` letta da
    `MUDReport` per gli anni `SUBMITTED` o `ARCHIVED`, `null` altrimenti o se uguale
    all'attuale). Metodo pubblico `totaliAnno(tenantId, anno)` (D22). Nessuna rotta nuova.
+   **Aggiunta per la vista "Bilancio" (branch `feat/demo-bilancio`):** esportare da
+   `mud-regole.ts` una funzione pura `operazioneDelMovimento(...)` con la precedenza oggi chiusa
+   nel metodo privato `recuperoOSmaltimento` di `MudAggregazioneService` (il metodo la chiama,
+   comportamento identico: gli spec esistenti non cambiano), con spec per ogni gradino. Il
+   Bilancio la userà al posto della sua copia `operazionePreliminare`. Non cambiare le firme già
+   esportate da `mud-regole.ts`/`mud-controlli.ts` senza annotarlo nel rapporto del task: il
+   Bilancio le importa.
 5. Test (nomi): `'stato: un MUD presentato senza versioneCalcolo si confronta con la versione 1 e
    non risulta modificato dopo le giacenze nuove'` (unitario e Postgres: presentazione salvata
    con l'hash dell'oracolo, poi giacenze al 31/12 nel registro → `datiModificatiDopoPresentazione`
