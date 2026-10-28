@@ -80,6 +80,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   // Personalizzazioni delle causali del registro (Fase 2 pezzo 5): dato dell'azienda. Il catalogo di
   // sistema `CausaleRegistro` e' globale (niente tenant_id, niente RLS) e NON sta qui.
   'CausaleRegistroAzienda',
+  // Soglie del deposito temporaneo (Fase 2 pezzo 6): per azienda o per registro, dato dell'azienda.
+  'SogliaDepositoTemporaneo',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

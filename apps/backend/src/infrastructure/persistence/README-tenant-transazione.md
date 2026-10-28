@@ -117,7 +117,7 @@ non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima d
 ## Policy
 
 Migration `20261025130000_rls_policy_aziende`: su ogni tabella di `public` con colonna `tenant_id`
-(32) sono attive `ENABLE` e `FORCE ROW LEVEL SECURITY` e c'e' la policy `isolamento_azienda`, uguale
+(33) sono attive `ENABLE` e `FORCE ROW LEVEL SECURITY` e c'e' la policy `isolamento_azienda`, uguale
 per tutte e senza clausola `TO` (vale per ogni ruolo; `wasteflow` superuser e `wasteflow_sistema`
 BYPASSRLS la ignorano):
 
@@ -128,19 +128,19 @@ WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
 
 Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
 
-- **Coperte (32):** `activity_logs`, `autorizzazioni_impianto`, `autorizzazioni_impianto_discariche`,
-  `company_templates`, `consultant_tenant_associations`, `contracts`, `destinatari`,
+- **Coperte (33):** `activity_logs`, `autorizzazioni_impianto`, `autorizzazioni_impianto_discariche`,
+  `causali_registro_azienda`, `company_templates`, `consultant_tenant_associations`, `contracts`, `destinatari`,
   `fir_allegati_rentri`, `fir_signatures`, `fir_transporters`, `firs`, `giacenze_iniziali`, `mud_reports`, `notifications`,
   `permission_audit_logs`, `permission_requests`, `produttori`, `registri_rifiuti`, `registro_progressivi_iniziali`,
   `rentri_credentials`, `rentri_numeri_vidimati`, `rentri_sync_logs`, `rentri_unita_locali`,
-  `resource_ownership`, `role_change_history`, `roles`, `temporary_permission_grants`,
+  `resource_ownership`, `role_change_history`, `roles`, `soglie_deposito_temporaneo`, `temporary_permission_grants`,
   `trasportatori`, `user_role_assignments`, `users`, `waste_movements`.
 - **`role_permissions` (pezzo 4, migration `20261026090000_rls_role_permissions`):** tabella ponte senza
   `tenant_id`, con `ENABLE` + `FORCE` e la policy `isolamento_via_ruolo` (`USING` e `WITH CHECK`:
   `EXISTS (SELECT 1 FROM roles r WHERE r.id = role_permissions.role_id)`). La subquery su `roles` e' filtrata
   dalla policy di `roles`, quindi col ruolo app si vedono e si scrivono solo righe di ruoli dell'azienda del
   contesto (senza contesto nessuna). Non ha `isolamento_azienda`: non ha la colonna.
-- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 32 tabelle e
+- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 33 tabelle e
   su `role_permissions` c'e' anche `CREATE POLICY sola_lettura ... FOR SELECT TO wasteflow_lettura USING (true)`.
   `wasteflow_lettura` e' un ruolo di gruppo NOLOGIN senza password e senza BYPASSRLS: chi ne e' membro legge
   le righe di tutte le aziende senza contesto, ma non scrive (nessuna policy per INSERT/UPDATE/DELETE).
