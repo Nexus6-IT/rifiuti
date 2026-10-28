@@ -13,6 +13,9 @@ import {
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RegistroNonTrovatoError } from '../registro/registri.service'
 
+/** Stessa lunghezza della colonna `note` (VARCHAR(500)). */
+export const LUNGHEZZA_MAX_NOTA = 500
+
 export type OrigineSoglie = 'REGISTRO' | 'AZIENDA' | 'PREDEFINITA'
 
 export interface SoglieApplicate extends SoglieDeposito {
@@ -139,12 +142,16 @@ export class SoglieDepositoService {
     dati: DatiSoglie
   ): Promise<SoglieConfigurate> {
     const messaggi = validaSoglie(dati)
+    if ((dati.note?.trim().length ?? 0) > LUNGHEZZA_MAX_NOTA) {
+      messaggi.push(`La nota può avere al massimo ${LUNGHEZZA_MAX_NOTA} caratteri.`)
+    }
     if (messaggi.length > 0) throw new SoglieNonValideError(messaggi)
     return this.nelContesto(tenantId, async () => {
-      if (registroId) await this.verificaRegistro(tenantId, registroId)
       const chiave = `soglie-deposito|${tenantId}|${registroId ?? 'azienda'}`
       return this.prisma.$transaction(async tx => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
+        // Dentro la transazione e dopo il lock: il registro non puo' sparire fra verifica e scrittura.
+        if (registroId !== null) await this.verificaRegistro(tx, tenantId, registroId)
         const prima = await tx.sogliaDepositoTemporaneo.findFirst({
           where: { tenantId, registroId },
         })
@@ -184,10 +191,10 @@ export class SoglieDepositoService {
   /** Senza riga non scrive nulla e non da' errore; registro di un'altra azienda: 404. */
   async elimina(tenantId: string, utenteId: string, registroId: string | null): Promise<void> {
     return this.nelContesto(tenantId, async () => {
-      if (registroId) await this.verificaRegistro(tenantId, registroId)
       const chiave = `soglie-deposito|${tenantId}|${registroId ?? 'azienda'}`
       await this.prisma.$transaction(async tx => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
+        if (registroId !== null) await this.verificaRegistro(tx, tenantId, registroId)
         const prima = await tx.sogliaDepositoTemporaneo.findFirst({
           where: { tenantId, registroId },
         })
@@ -208,8 +215,12 @@ export class SoglieDepositoService {
     })
   }
 
-  private async verificaRegistro(tenantId: string, registroId: string): Promise<void> {
-    const registro = await this.prisma.registroRifiuti.findFirst({
+  private async verificaRegistro(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    registroId: string
+  ): Promise<void> {
+    const registro = await tx.registroRifiuti.findFirst({
       where: { id: registroId, tenantId },
       select: { id: true },
     })

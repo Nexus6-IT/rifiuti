@@ -124,6 +124,17 @@ describe('SoglieDepositoService — Postgres reale, ruolo wasteflow_app', () => 
     const righe = await owner.sogliaDepositoTemporaneo.findMany({ where: { tenantId: a.tenantId } })
     expect(righe).toHaveLength(1)
     expect([11000, 13000]).toContain(Number(righe[0].kgMaxTotale))
+    // il lock serializza: due audit, il secondo vede come "prima" il valore scritto dal primo
+    const audit = await owner.activityLog.findMany({
+      where: { tenantId: a.tenantId, action: 'DEPOSITO_SOGLIE_IMPOSTATE' },
+      orderBy: { createdAt: 'asc' },
+    })
+    expect(audit).toHaveLength(2)
+    const meta = audit.map(x => x.metadata as any)
+    expect(meta.filter(m => m.prima === null)).toHaveLength(1)
+    const secondo = meta.find(m => m.prima !== null)
+    const primo = meta.find(m => m.prima === null)
+    expect(secondo.prima.kgMaxTotale).toBe(primo.dopo.kgMaxTotale)
   })
 
   it('soglieApplicate per due registri, con e senza riga propria', async () => {

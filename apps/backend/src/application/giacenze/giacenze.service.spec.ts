@@ -361,11 +361,11 @@ describe('GiacenzeService', () => {
       expect(vista.registri[0].cer[0].famiglie[0]).toMatchObject({ scoperto: 10, lotti: [] })
     })
 
-    it('limita a 50 i lotti per famiglia e dichiara quelli omessi', async () => {
-      const lotti = Array.from({ length: 53 }, (_, i) =>
-        mov('150101', 'CARICO', 1, `2026-04-${String((i % 28) + 1).padStart(2, '0')}`)
-      )
-      mockGroupBy([], lotti)
+    it('limita a 50 i lotti per famiglia: tiene i più vecchi, dichiara quelli omessi', async () => {
+      const giorno = (i: number) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10)
+      // inseriti in ordine sparso: il taglio deve guardare la data, non l'ordine di arrivo
+      const lotti = Array.from({ length: 53 }, (_, i) => mov('150101', 'CARICO', 1, giorno(i)))
+      mockGroupBy([], [...lotti].reverse())
 
       const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
 
@@ -373,6 +373,45 @@ describe('GiacenzeService', () => {
       expect(fam.lotti).toHaveLength(50)
       expect(fam.lottiOmessi).toBe(3)
       expect(fam.residuo).toBe(53)
+      expect(fam.lotti[0].giorno).toBe(giorno(0))
+      expect(fam.lotti[49].giorno).toBe(giorno(49))
+      // il primo omesso è il cinquantunesimo per età
+      expect(fam.lotti.map(l => l.giorno)).not.toContain(giorno(50))
+    })
+
+    it('criterio QUANTITATIVO: lotto di 2 mesi, scadenza a un anno e nessun avviso di durata', async () => {
+      mockGroupBy([], [mov('150101', 'CARICO', 10, '2026-04-01')])
+      impostaSoglie({
+        'reg-A': soglie({ criterio: 'QUANTITATIVO', origine: 'REGISTRO' }),
+      })
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-06-01' })
+
+      const reg = vista.registri.find(r => r.registroId === 'reg-A')!
+      expect(reg.cer[0]).toMatchObject({ giornoPiuVecchio: '2026-04-01', scadenza: '2027-04-01' })
+      expect(reg.avvisi).toEqual([])
+    })
+
+    it('registro disattivato senza eventi, chiesto con registroId: compare con la voce vuota', async () => {
+      registri = [
+        { id: 'reg-A', descrizione: 'A', attivo: true },
+        { id: 'reg-B', descrizione: 'B', attivo: false },
+      ]
+      mockGroupBy([], [mov('150101', 'CARICO', 10, '2026-05-01', { registroId: 'reg-A' })])
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', {
+        registroId: 'reg-B',
+        oggi: '2026-06-01',
+      })
+
+      expect(vista.registri).toHaveLength(1)
+      expect(vista.registri[0]).toMatchObject({
+        registroId: 'reg-B',
+        attivo: false,
+        cer: [],
+        avvisi: [],
+        totaleKg: 0,
+      })
     })
 
     it('registri disattivati senza eventi esclusi, con eventi inclusi', async () => {

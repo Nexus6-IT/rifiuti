@@ -334,9 +334,11 @@ export class GiacenzeService {
       registroId,
       logger: this.logger,
     })
-    const scelti = registri.filter(
-      r => (!registroId || r.id === registroId) && (r.attivo || eventi.has(r.id))
-    )
+    // Con registroId esplicito il registro compare sempre (anche disattivato e senza eventi,
+    // con la voce vuota); altrimenti solo gli attivi e i disattivati che hanno eventi.
+    const scelti = registroId
+      ? registri.filter(r => r.id === registroId)
+      : registri.filter(r => r.attivo || eventi.has(r.id))
     // Senza registri visibili (es. contesto di un'altra azienda) non c'è nulla da leggere.
     const soglie =
       scelti.length > 0

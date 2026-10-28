@@ -47,6 +47,7 @@ function crea() {
       delete: jest.fn().mockResolvedValue(undefined),
     },
     activityLog: { create: jest.fn().mockResolvedValue({}) },
+    registroRifiuti: { findFirst: jest.fn().mockResolvedValue({ id: R1 }) },
   }
   const prisma: any = {
     sogliaDepositoTemporaneo: { findMany: jest.fn().mockResolvedValue([]) },
@@ -131,15 +132,42 @@ describe('SoglieDepositoService', () => {
       expect(tx.sogliaDepositoTemporaneo.create).not.toHaveBeenCalled()
     })
 
-    it('registro di un altra azienda: RegistroNonTrovatoError, nessuna scrittura', async () => {
+    it('registro di un altra azienda: RegistroNonTrovatoError dentro la transazione, dopo il lock, nessuna scrittura', async () => {
       const { service, prisma, tx } = crea()
-      prisma.registroRifiuti.findFirst.mockResolvedValue(null)
+      tx.registroRifiuti.findFirst.mockResolvedValue(null)
       await expect(service.imposta(T, U, R1, DATI)).rejects.toBeInstanceOf(RegistroNonTrovatoError)
-      expect(prisma.registroRifiuti.findFirst).toHaveBeenCalledWith(
+      expect(tx.registroRifiuti.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: R1, tenantId: T } })
       )
-      expect(prisma.$transaction).not.toHaveBeenCalled()
+      expect(prisma.registroRifiuti.findFirst).not.toHaveBeenCalled()
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+      // il lock precede la verifica del registro
+      expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.registroRifiuti.findFirst.mock.invocationCallOrder[0]
+      )
+      expect(tx.sogliaDepositoTemporaneo.create).not.toHaveBeenCalled()
       expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('registroId stringa vuota: non e trattato come azienda, il registro viene verificato', async () => {
+      const { service, tx } = crea()
+      tx.registroRifiuti.findFirst.mockResolvedValue(null)
+      await expect(service.imposta(T, U, '', DATI)).rejects.toBeInstanceOf(RegistroNonTrovatoError)
+      expect(tx.sogliaDepositoTemporaneo.create).not.toHaveBeenCalled()
+    })
+
+    it('nota oltre 500 caratteri: SoglieNonValideError, nessuna transazione', async () => {
+      const { service, prisma } = crea()
+      const p = service.imposta(T, U, null, { ...DATI, note: 'x'.repeat(501) })
+      await expect(p).rejects.toBeInstanceOf(SoglieNonValideError)
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('nota di 500 caratteri: accettata', async () => {
+      const { service } = crea()
+      await expect(
+        service.imposta(T, U, null, { ...DATI, note: 'x'.repeat(500) })
+      ).resolves.toBeDefined()
     })
 
     it('crea con lock e audit nella stessa transazione (prima null, dopo i valori)', async () => {
@@ -178,10 +206,14 @@ describe('SoglieDepositoService', () => {
   })
 
   describe('elimina', () => {
-    it('registro di un altra azienda: RegistroNonTrovatoError', async () => {
+    it('registro di un altra azienda: RegistroNonTrovatoError dentro la transazione, dopo il lock', async () => {
       const { service, prisma, tx } = crea()
-      prisma.registroRifiuti.findFirst.mockResolvedValue(null)
+      tx.registroRifiuti.findFirst.mockResolvedValue(null)
       await expect(service.elimina(T, U, R1)).rejects.toBeInstanceOf(RegistroNonTrovatoError)
+      expect(prisma.registroRifiuti.findFirst).not.toHaveBeenCalled()
+      expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.registroRifiuti.findFirst.mock.invocationCallOrder[0]
+      )
       expect(tx.sogliaDepositoTemporaneo.delete).not.toHaveBeenCalled()
     })
 
@@ -193,9 +225,9 @@ describe('SoglieDepositoService', () => {
     })
 
     it('azienda senza riga: nessuna scrittura', async () => {
-      const { service, tx, prisma } = crea()
+      const { service, tx } = crea()
       await service.elimina(T, U, null)
-      expect(prisma.registroRifiuti.findFirst).not.toHaveBeenCalled()
+      expect(tx.registroRifiuti.findFirst).not.toHaveBeenCalled()
       expect(tx.activityLog.create).not.toHaveBeenCalled()
     })
 

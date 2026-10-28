@@ -192,7 +192,7 @@ describe('GiacenzeService.getGiacenze con giacenze iniziali — Postgres reale, 
           tipoAnnotazione: 'ORDINARIA',
         },
       })
-    await carico(regA, 1, 100, '2026-01-01')
+    await carico(regA, 1, 6000, '2026-01-01')
     await carico(regB, 1, 25000, '2026-03-01')
     // soglie solo per A: durata a 30 giorni; B resta sulle predefinite dell'azienda
     await owner.sogliaDepositoTemporaneo.create({
@@ -218,13 +218,14 @@ describe('GiacenzeService.getGiacenze con giacenze iniziali — Postgres reale, 
     const b = vista.registri.find(r => r.registroId === regB)!
     expect(a.soglie.origine).toBe('REGISTRO')
     expect(b.soglie.origine).toBe('PREDEFINITA')
-    expect(a.cer[0]).toMatchObject({ giornoPiuVecchio: '2026-01-01', residuoKg: 100 })
+    expect(a.cer[0]).toMatchObject({ giornoPiuVecchio: '2026-01-01', residuoKg: 6000 })
     expect(b.cer[0]).toMatchObject({ giornoPiuVecchio: '2026-03-01', residuoKg: 25000 })
     // A: scaduta la soglia di 30 giorni; niente avvisi di quantità (criterio TEMPORALE)
     expect(a.avvisi.map(x => [x.tipo, x.livello])).toEqual([['DURATA', 'SUPERATO']])
-    // B: nessuna durata (tre mesi dal 01/03), preavviso di quantità all'83% della soglia di 30000
+    // B: nessuna durata (tre mesi dal 01/03), preavviso di quantità all'83% della soglia di 30000.
+    // Se i registri si sommassero (6000 + 25000 = 31000) B sarebbe SUPERATO: qui deve restare PREAVVISO.
     expect(b.avvisi.map(x => [x.tipo, x.livello])).toEqual([['QUANTITA_TOTALE', 'PREAVVISO']])
-    expect(a.totaleKg).toBe(100)
+    expect(a.totaleKg).toBe(6000)
     expect(b.totaleKg).toBe(25000)
 
     const alerts = await nelTenant(az.tenantId, () =>
