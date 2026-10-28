@@ -6,6 +6,7 @@ import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
 import { RegistroController } from './registro.controller'
 import { CausaliRegistroController } from './causali-registro.controller'
 import { CausaliRegistroService } from '../../application/registro/causali/causali-registro.service'
+import { CatalogoCausaliAvvioService } from '../../application/registro/causali/catalogo-causali-avvio.service'
 import { RegistraMovimentoUseCase } from '../../application/registro/use-cases/registra-movimento.use-case'
 import { ListMovimentiHandler } from '../../application/registro/queries/list-movimenti.handler'
 import { ProgressivoInizialeService } from '../../application/registro/progressivo-iniziale.service'
@@ -49,6 +50,7 @@ import { VerificaCatenaRegistroService } from '../../application/registro/verifi
     RegistriService,
     VerificaCatenaRegistroService,
     CausaliRegistroService,
+    CatalogoCausaliAvvioService,
   ],
   exports: [
     RegistraMovimentoUseCase,

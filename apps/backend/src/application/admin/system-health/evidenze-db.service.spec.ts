@@ -37,4 +37,18 @@ describe('EvidenzeDbService', () => {
     await service.verificaConnessione()
     expect(sistema.$queryRaw).toHaveBeenCalled()
   })
+
+  describe('verificaCatalogoCausali', () => {
+    it('riporta il numero di causali se il catalogo ha righe', async () => {
+      const sistema = { causaleRegistro: { count: jest.fn().mockResolvedValue(11) } }
+      const service = new EvidenzeDbService(sistema as never)
+      await expect(service.verificaCatalogoCausali()).resolves.toBe('11 causali di sistema presenti')
+    })
+
+    it('solleva se il catalogo e\x27 vuoto, cosi\x27 la voce di stato diventa error', async () => {
+      const sistema = { causaleRegistro: { count: jest.fn().mockResolvedValue(0) } }
+      const service = new EvidenzeDbService(sistema as never)
+      await expect(service.verificaCatalogoCausali()).rejects.toThrow('causali_registro')
+    })
+  })
 })
