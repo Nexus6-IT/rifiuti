@@ -124,6 +124,31 @@ e `test-postgres`) e nel gate del deploy (`deploy.yml`, job `quality`).
 
 ---
 
+## Codici MUD delle unità locali
+
+Ogni unità locale RENTRI (`rentri_unita_locali`) ha un `progressivo_mud`: è il codice che il file MUD
+scrive nella chiave di ogni record della sua dichiarazione. Lo assegnano la migration
+`20261031130000_unita_locali_mud` (backfill: la principale di allora ha 1, le altre seguono per
+data di creazione) e un trigger `BEFORE INSERT` (massimo dell'azienda + 1). **I codici non vanno
+rinumerati a mano**: un MUD già presentato li contiene, e cambiarli farebbe sembrare un'altra sede.
+
+Ripristino a mano della migration (in quest'ordine; il commento in testa al file ha lo stesso elenco):
+
+```sql
+DROP TRIGGER rentri_unita_locali_progressivo_mud ON rentri_unita_locali;
+DROP FUNCTION rentri_unita_locali_assegna_progressivo_mud();
+DROP INDEX rentri_unita_locali_tenant_progressivo_mud_key;
+ALTER TABLE rentri_unita_locali
+  DROP CONSTRAINT rentri_unita_locali_cap_check,
+  DROP CONSTRAINT rentri_unita_locali_provincia_check,
+  DROP CONSTRAINT rentri_unita_locali_numero_addetti_check,
+  DROP CONSTRAINT rentri_unita_locali_progressivo_mud_check,
+  DROP COLUMN indirizzo, DROP COLUMN civico, DROP COLUMN cap, DROP COLUMN comune,
+  DROP COLUMN provincia, DROP COLUMN numero_addetti, DROP COLUMN progressivo_mud;
+```
+
+---
+
 ## Ripristino (Disaster Recovery)
 
 ### Script: `restore.sh`

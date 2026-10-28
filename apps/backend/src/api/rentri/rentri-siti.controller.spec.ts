@@ -25,6 +25,13 @@ const items = [
     // Nulli: questa sede non ha un blocco predefinito ne una soglia di scorta.
     codiceBloccoPredefinito: null,
     dimensioneScortaDesiderata: null,
+    indirizzo: null,
+    civico: null,
+    cap: null,
+    comune: null,
+    provincia: null,
+    numeroAddetti: null,
+    progressivoMud: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   },

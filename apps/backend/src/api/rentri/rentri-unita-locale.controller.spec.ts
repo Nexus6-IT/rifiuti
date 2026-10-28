@@ -24,6 +24,13 @@ const row = {
   updatedAt: new Date(),
   codiceBloccoPredefinito: null,
   dimensioneScortaDesiderata: null,
+  indirizzo: null,
+  civico: null,
+  cap: null,
+  comune: null,
+  provincia: null,
+  numeroAddetti: null,
+  progressivoMud: null,
 }
 
 describe('RentriUnitaLocaleController', () => {
@@ -73,6 +80,23 @@ describe('RentriUnitaLocaleController', () => {
 
     expect(service.update).toHaveBeenCalledWith('tenant-1', 'ul-1', { denominazione: 'Nuovo nome' })
     expect(res.denominazione).toBe('Nuovo nome')
+  })
+
+  it("PUT :id passa i campi dell'anagrafica al servizio", async () => {
+    const dto = {
+      indirizzo: 'Via Roma',
+      civico: '12',
+      cap: '20121',
+      comune: 'Milano',
+      provincia: 'MI',
+      numeroAddetti: 5,
+    }
+    service.update.mockResolvedValue({ ...row, ...dto, progressivoMud: 1 })
+
+    const res = await controller.update('ul-1', dto, req)
+
+    expect(service.update).toHaveBeenCalledWith('tenant-1', 'ul-1', dto)
+    expect(res).toMatchObject(dto)
   })
 
   it('imposta una unità locale come principale', async () => {
