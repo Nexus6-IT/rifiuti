@@ -17,7 +17,7 @@ describe('CatalogoCausaliAvvioService', () => {
 
   afterEach(() => jest.restoreAllMocks())
 
-  it('logga un errore chiaro, senza tenant, se il catalogo e\' vuoto', async () => {
+  it("logga un errore chiaro, senza tenant, se il catalogo e' vuoto", async () => {
     count.mockResolvedValue(0)
 
     await expect(service.onApplicationBootstrap()).resolves.toBeUndefined()
@@ -35,7 +35,7 @@ describe('CatalogoCausaliAvvioService', () => {
     expect(errorSpy).not.toHaveBeenCalled()
   })
 
-  it('non blocca l\'avvio se la lettura fallisce: logga e basta', async () => {
+  it("non blocca l'avvio se la lettura fallisce: logga e basta", async () => {
     count.mockRejectedValue(new Error('relation "causali_registro" does not exist'))
 
     await expect(service.onApplicationBootstrap()).resolves.toBeUndefined()

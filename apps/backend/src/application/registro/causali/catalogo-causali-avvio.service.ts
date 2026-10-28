@@ -3,7 +3,7 @@ import { PrismaSistemaService } from '../../../infrastructure/persistence/prisma
 
 /** Messaggio unico: lo usano il log all'avvio e la voce dello stato del sistema. */
 export const MESSAGGIO_CATALOGO_CAUSALI_VUOTO =
-  'La tabella causali_registro e\' vuota (database creato senza migration?). ' +
+  "La tabella causali_registro e' vuota (database creato senza migration?). " +
   'Il MUD escluderebbe tutti i movimenti e ogni registrazione darebbe 400. ' +
   'Eseguire "prisma migrate deploy" e poi ops/db-ruoli.sh.'
 

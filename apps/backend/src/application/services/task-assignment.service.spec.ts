@@ -383,9 +383,9 @@ describe('TaskAssignmentService', () => {
       firRepository.save.mockResolvedValue(mockFir as any)
 
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
-      await expect(
-        service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
-      ).rejects.toThrow(NotImplementedException)
+      await expect(service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)).rejects.toThrow(
+        NotImplementedException
+      )
       expect(firRepository.save).not.toHaveBeenCalled()
     })
 
@@ -444,9 +444,9 @@ describe('TaskAssignmentService', () => {
       firRepository.save.mockResolvedValue(mockFir as any)
 
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
-      await expect(
-        service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
-      ).rejects.toThrow(NotImplementedException)
+      await expect(service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)).rejects.toThrow(
+        NotImplementedException
+      )
       expect(firRepository.save).not.toHaveBeenCalled()
     })
 
@@ -475,9 +475,9 @@ describe('TaskAssignmentService', () => {
       firRepository.save.mockResolvedValue(mockFir as any)
 
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
-      await expect(
-        service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)
-      ).rejects.toThrow(NotImplementedException)
+      await expect(service.autoAssignTask(firId, mockTenantId, mockFleetManagerId)).rejects.toThrow(
+        NotImplementedException
+      )
       expect(firRepository.save).not.toHaveBeenCalled()
     })
   })
@@ -511,12 +511,7 @@ describe('TaskAssignmentService', () => {
 
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
       await expect(
-        service.manualAssignTask(
-        firId,
-        driverId,
-        mockTenantId,
-        mockFleetManagerId
-      )
+        service.manualAssignTask(firId, driverId, mockTenantId, mockFleetManagerId)
       ).rejects.toThrow(NotImplementedException)
       expect(firRepository.save).not.toHaveBeenCalled()
     })
@@ -549,12 +544,7 @@ describe('TaskAssignmentService', () => {
 
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
       await expect(
-        service.manualAssignTask(
-        firId,
-        driverId,
-        mockTenantId,
-        mockFleetManagerId
-      )
+        service.manualAssignTask(firId, driverId, mockTenantId, mockFleetManagerId)
       ).rejects.toThrow(NotImplementedException)
       expect(firRepository.save).not.toHaveBeenCalled()
     })
@@ -645,12 +635,12 @@ describe('TaskAssignmentService', () => {
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
       await expect(
         service.reassignTask(
-        firId,
-        newDriverId,
-        mockTenantId,
-        mockFleetManagerId,
-        'Driver unavailable'
-      )
+          firId,
+          newDriverId,
+          mockTenantId,
+          mockFleetManagerId,
+          'Driver unavailable'
+        )
       ).rejects.toThrow(NotImplementedException)
       expect(firRepository.save).not.toHaveBeenCalled()
     })
@@ -685,12 +675,12 @@ describe('TaskAssignmentService', () => {
       // Act + Assert: il FIR non ha il concetto di autista, quindi nessuna scrittura
       await expect(
         service.reassignTask(
-        firId,
-        newDriverId,
-        mockTenantId,
-        mockFleetManagerId,
-        'Emergency reassignment'
-      )
+          firId,
+          newDriverId,
+          mockTenantId,
+          mockFleetManagerId,
+          'Emergency reassignment'
+        )
       ).rejects.toThrow(NotImplementedException)
       expect(firRepository.save).not.toHaveBeenCalled()
     })
