@@ -7,9 +7,12 @@ import {
   Min,
   MaxLength,
   Matches,
-  ValidateIf,
 } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger'
+import { Transform } from 'class-transformer'
+
+const senzaSpazi = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value
 
 /**
  * DTO per aggiornare un'unità locale RENTRI esistente. Il numIscrSito NON è
@@ -49,14 +52,12 @@ export class UpdateRentriUnitaLocaleDto {
 
   @ApiPropertyOptional({ example: 'Via Roma', description: 'Indirizzo della sede', nullable: true })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
   @IsString()
   @MaxLength(255)
   indirizzo?: string | null
 
   @ApiPropertyOptional({ example: '12/A', description: 'Numero civico', nullable: true })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
   @IsString()
   @MaxLength(20)
   civico?: string | null
@@ -67,15 +68,14 @@ export class UpdateRentriUnitaLocaleDto {
     nullable: true,
   })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
   @IsString()
   @MaxLength(5)
+  @Transform(senzaSpazi)
   @Matches(/^([0-9]{5})?$/, { message: 'Il CAP deve essere di 5 cifre' })
   cap?: string | null
 
   @ApiPropertyOptional({ example: 'Milano', description: 'Comune della sede', nullable: true })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
   @IsString()
   @MaxLength(100)
   comune?: string | null
@@ -86,9 +86,9 @@ export class UpdateRentriUnitaLocaleDto {
     nullable: true,
   })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
   @IsString()
   @MaxLength(2)
+  @Transform(senzaSpazi)
   @Matches(/^([A-Za-z]{2})?$/, { message: 'La provincia deve essere la sigla di 2 lettere' })
   provincia?: string | null
 
@@ -98,7 +98,6 @@ export class UpdateRentriUnitaLocaleDto {
     nullable: true,
   })
   @IsOptional()
-  @ValidateIf((_, v) => v !== null)
   @IsInt()
   @Min(0)
   numeroAddetti?: number | null

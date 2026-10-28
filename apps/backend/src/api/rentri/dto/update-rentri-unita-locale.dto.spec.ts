@@ -39,6 +39,10 @@ describe('UpdateRentriUnitaLocaleDto — anagrafica della sede', () => {
     ).toEqual([])
   })
 
+  it('accetta CAP e provincia con spazi ai bordi', async () => {
+    expect(await errori({ cap: '20121 ', provincia: ' MI ' })).toEqual([])
+  })
+
   it('rifiuta CAP non di 5 cifre', async () => {
     expect(await errori({ cap: '2012' })).toEqual(['cap'])
     expect(await errori({ cap: '2012A' })).toEqual(['cap'])

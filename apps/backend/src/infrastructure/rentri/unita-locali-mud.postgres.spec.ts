@@ -55,6 +55,7 @@ describe('Migration unita_locali_mud — codice MUD e anagrafica delle sedi (Pos
     unico: randomUUID(), // vincolo di unicità
     check: randomUUID(), // CHECK
     cambio: randomUUID(), // cambio della principale
+    lock: randomUUID(), // inserimenti concorrenti
   }
   const S = {
     vPrincipale: randomUUID(),
@@ -290,6 +291,51 @@ describe('Migration unita_locali_mud — codice MUD e anagrafica delle sedi (Pos
     // valori validi e NULL passano
     await prova(`cap = '20121', provincia = 'MI', numero_addetti = 0`)
     await prova(`cap = NULL, provincia = NULL, numero_addetti = NULL`)
+  })
+
+  it('trigger: due inserimenti concorrenti nella stessa azienda si serializzano sul lock (N+1 e N+2, nessun P2002)', async () => {
+    await sedeVecchia(randomUUID(), T.lock, true, '2026-01-01', 'Base') // N = 1
+    const primo = new PrismaClient({ datasources: { db: { url: urlDb } } })
+    const secondo = new PrismaClient({ datasources: { db: { url: urlDb } } })
+    try {
+      let rilascia!: () => void
+      const via = new Promise<void>(r => (rilascia = r))
+      let primoInserito!: () => void
+      const inserito = new Promise<void>(r => (primoInserito = r))
+
+      // il primo inserisce e tiene aperta la transazione (lock tenuto fino al commit)
+      const t1 = primo.$transaction(
+        async tx => {
+          await tx.rentriUnitaLocale.create({
+            data: { tenantId: T.lock, numIscrSito: iscrizione(), denominazione: 'Concorrente 1' },
+          })
+          primoInserito()
+          await via
+        },
+        { timeout: 30_000 }
+      )
+      await inserito
+
+      // il secondo parte mentre il primo non ha committato: deve restare bloccato sul lock
+      let secondoFinito = false
+      const t2 = secondo.rentriUnitaLocale
+        .create({
+          data: { tenantId: T.lock, numIscrSito: iscrizione(), denominazione: 'Concorrente 2' },
+        })
+        .finally(() => (secondoFinito = true))
+      await new Promise(r => setTimeout(r, 1500))
+      expect(secondoFinito).toBe(false)
+
+      rilascia()
+      await t1
+      await t2
+
+      const p = await progressiviDi(T.lock)
+      expect(p).toEqual({ Base: 1, 'Concorrente 1': 2, 'Concorrente 2': 3 })
+    } finally {
+      await primo.$disconnect()
+      await secondo.$disconnect()
+    }
   })
 
   it('cambiare la principale non cambia i progressivi', async () => {

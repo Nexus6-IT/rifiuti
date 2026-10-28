@@ -39,6 +39,7 @@
 --     DROP CONSTRAINT rentri_unita_locali_progressivo_mud_check,
 --     DROP COLUMN indirizzo, DROP COLUMN civico, DROP COLUMN cap, DROP COLUMN comune,
 --     DROP COLUMN provincia, DROP COLUMN numero_addetti, DROP COLUMN progressivo_mud;
+--   DELETE FROM _prisma_migrations WHERE migration_name = '20261031130000_unita_locali_mud';
 -- I codici gia' scritti in file MUD presentati non vanno rinumerati a mano.
 
 ALTER TABLE "rentri_unita_locali"
@@ -69,6 +70,7 @@ CREATE UNIQUE INDEX "rentri_unita_locali_tenant_progressivo_mud_key"
   ON "rentri_unita_locali" ("tenant_id", "progressivo_mud");
 
 CREATE FUNCTION "rentri_unita_locali_assegna_progressivo_mud"() RETURNS trigger
+SET search_path = public
 LANGUAGE plpgsql VOLATILE AS $$
 BEGIN
   IF NEW."progressivo_mud" IS NULL THEN

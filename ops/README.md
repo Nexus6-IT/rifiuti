@@ -145,6 +145,7 @@ ALTER TABLE rentri_unita_locali
   DROP CONSTRAINT rentri_unita_locali_progressivo_mud_check,
   DROP COLUMN indirizzo, DROP COLUMN civico, DROP COLUMN cap, DROP COLUMN comune,
   DROP COLUMN provincia, DROP COLUMN numero_addetti, DROP COLUMN progressivo_mud;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261031130000_unita_locali_mud';
 ```
 
 ---
