@@ -11,11 +11,23 @@ import { EmettiFIRUseCase } from './emetti-fir.use-case'
 import { EmettiFIRCommand } from '../commands/emetti-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import {
+  CODICE_CERTIFICATO_MANCANTE,
+  MESSAGGIO_CERTIFICATO_MANCANTE,
+} from '../../../infrastructure/rentri/rentri-credential.resolver'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
 import { LoggerService } from '../../../core/logger/logger.service'
+import { annoSolareItaliano } from '../../../core/time/anno-italiano'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
+  FirNonModificabileError,
+  FirNonPiuInBozzaError,
+} from '../../../core/domain/errors'
 
 // Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
@@ -49,6 +61,20 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async prenotaTrasmissioneRentri(): Promise<boolean> {
+    return true
+  }
+
+  async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
+
+  async elencaTrasmissioniRentriSospese(): Promise<
+    Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>
+  > {
+    return []
+  }
+
   async findByRentriNumeroFir(): Promise<FIR | null> {
     return null
   }
@@ -63,9 +89,16 @@ class MockFIRRepository implements IFIRRepository {
     return (await this.findByNumeroProgressivo(numeroProgressivo)) !== null
   }
 
-  async generateNumeroProgressivo(tenantId: string, anno: number): Promise<string> {
-    this.progressiveCounter++
-    return `FIR-${anno}-${String(this.progressiveCounter).padStart(6, '0')}`
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(): Promise<number> {
@@ -254,6 +287,72 @@ describe('EmettiFIRUseCase', () => {
       })
     })
 
+    describe('esito RENTRI registrato durante l’emissione', () => {
+      const preparaEmissione = () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        cryptoRepository = new FakeCryptoFIRRepository(fir.id)
+        useCase = new EmettiFIRUseCase(
+          repository,
+          cryptoRepository,
+          signatureService,
+          trasmissioneRentri as any,
+          logger
+        )
+        return fir
+      }
+
+      it("AUTOMATICA senza certificato: la risposta dell'emissione porta già PERMANENTLY_FAILED RENTRI_CERTIFICATO_MANCANTE", async () => {
+        const fir = preparaEmissione()
+        // L'orchestrazione salva l'esito su una propria istanza (come in produzione, dove
+        // rilegge dal DB): quella in memoria dell'emissione resta PENDING.
+        const riletto = createBozzaFIR()
+        riletto.markRENTRISyncFailed(MESSAGGIO_CERTIFICATO_MANCANTE, CODICE_CERTIFICATO_MANCANTE)
+        trasmissioneRentri.eseguiSeAutomatica.mockImplementation(async () => {
+          jest.spyOn(repository, 'findById').mockResolvedValue(riletto)
+          return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
+        })
+
+        const result = await useCase.execute(
+          new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
+        )
+
+        expect(result.isSuccess).toBe(true)
+        expect(result.value).toBe(riletto)
+        expect(result.value.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(result.value.rentriSyncStatus.getLastErrorCode()).toBe(CODICE_CERTIFICATO_MANCANTE)
+      })
+
+      it('rilettura che fallisce: ripiega sul FIR in memoria, con un warn', async () => {
+        const fir = preparaEmissione()
+        trasmissioneRentri.eseguiSeAutomatica.mockImplementation(async () => {
+          jest.spyOn(repository, 'findById').mockRejectedValue(new Error('db giu'))
+          return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
+        })
+
+        const result = await useCase.execute(
+          new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi')
+        )
+
+        expect(result.isSuccess).toBe(true)
+        expect(result.value.id).toBe(fir.id)
+        expect(result.value.stato).toBe(FIRStato.EMESSO)
+        expect(logger.warn).toHaveBeenCalled()
+      })
+
+      it('rilettura dopo esitoRegistrato fallita → warn con la causa', async () => {
+        const fir = preparaEmissione()
+        trasmissioneRentri.eseguiSeAutomatica.mockImplementation(async () => {
+          jest.spyOn(repository, 'findById').mockRejectedValue(new Error('db giu'))
+          return { avviata: false, motivo: 'CERTIFICATO_MANCANTE', esitoRegistrato: true }
+        })
+
+        await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Mario Rossi'))
+
+        expect(JSON.stringify(logger.warn.mock.calls)).toContain('db giu')
+      })
+    })
+
     it("NON chiama l'orchestrazione RENTRI se l'emissione fallisce (FIR non trovato)", async () => {
       const command = new EmettiFIRCommand('non-existent-id', 'user-123', 'Test')
 
@@ -362,7 +461,7 @@ describe('EmettiFIRUseCase', () => {
       repository.addFIR(fir1)
       repository.addFIR(fir2)
 
-      const spy = jest.spyOn(repository, 'generateNumeroProgressivo')
+      const spy = jest.spyOn(repository, 'emettiConNumerazione')
 
       const cmd1 = new EmettiFIRCommand(fir1.id, 'u1', 'A')
       const cmd2 = new EmettiFIRCommand(fir2.id, 'u2', 'B')
@@ -378,9 +477,85 @@ describe('EmettiFIRUseCase', () => {
 
       const calls = spy.mock.calls
       expect(calls.length).toBe(2)
-      expect(calls[0][0]).toBe(TENANT_ID)
-      expect(calls[0][0]).not.toBe(PRODUTTORE_ID)
-      expect(calls[1][0]).toBe(TENANT_ID)
+      expect(calls[0][0].tenantId).toBe(TENANT_ID)
+      expect(calls[0][0].tenantId).not.toBe(PRODUTTORE_ID)
+      expect(calls[0][1]).toBe(annoSolareItaliano(new Date()))
+      expect(calls[1][0].tenantId).toBe(TENANT_ID)
+    })
+
+    describe('anno di emissione', () => {
+      afterEach(() => {
+        jest.useRealTimers()
+        jest.restoreAllMocks()
+      })
+
+      it("usa l'anno italiano dell'istante di emissione", async () => {
+        // 23:30 UTC del 31/12/2026 = 00:30 del 1/1/2027 in Italia
+        jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] })
+        jest.setSystemTime(new Date('2026-12-31T23:30:00Z'))
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        const spy = jest.spyOn(repository, 'emettiConNumerazione')
+
+        const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+
+        expect(r.isSuccess).toBe(true)
+        expect(spy).toHaveBeenCalledTimes(1)
+        expect(spy.mock.calls[0][1]).toBe(2027)
+        expect(r.value.numeroProgressivo).toMatch(/^FIR-2027-/)
+      })
+
+      it('un FIR non più in bozza nel database dà un errore leggibile, non salva e non avvia RENTRI', async () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        jest
+          .spyOn(repository, 'emettiConNumerazione')
+          .mockRejectedValue(new FirNonPiuInBozzaError(fir.id))
+        const saveSpy = jest.spyOn(repository, 'save')
+
+        const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+
+        expect(r.isFailure).toBe(true)
+        expect(r.error).toContain('non è più in bozza')
+        expect(r.error).toContain('Failed to emit FIR:')
+        expect(saveSpy).not.toHaveBeenCalled()
+        expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+      })
+
+      it('una corsa persa (versione o annullamento) si rilancia: 409 dal filtro, non Result.fail', async () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        const spy = jest.spyOn(repository, 'emettiConNumerazione')
+
+        const modificato = new FirModificatoNelFrattempoError(fir.id)
+        spy.mockRejectedValueOnce(modificato)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(modificato)
+
+        const annullato = new FirAnnullatoNelFrattempoError(fir.id)
+        spy.mockRejectedValueOnce(annullato)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(annullato)
+        const nonModificabile = new FirNonModificabileError('NON_BOZZA')
+        spy.mockRejectedValueOnce(nonModificabile)
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBe(nonModificabile)
+        expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+      })
+
+      it('un errore non di dominio si rilancia', async () => {
+        const fir = createBozzaFIR()
+        repository.addFIR(fir)
+        jest.spyOn(repository, 'emettiConNumerazione').mockRejectedValue(new Error('db giù'))
+
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toThrow('db giù')
+        expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
+      })
     })
 
     it('should include numero progressivo in current year', async () => {

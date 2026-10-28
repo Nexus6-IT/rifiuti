@@ -10,9 +10,15 @@ import {
   InvalidStateTransitionError,
   FIRNonLegatoRentriError,
   MetodoLocaleNonConsentitoSuFirLegatoError,
+  FirNonModificabileError,
+  MotivoFirNonModificabile,
 } from '../../../core/domain/errors'
 import { Quantita, UnitaMisura } from '../value-objects/quantita'
 import { RENTRISyncStatus } from '../rentri-sync-status.vo'
+import { calcolaScostamentoPeso, ScostamentoPeso } from '../scostamento-peso'
+
+/** Limite della colonna `effective_weight Decimal(10,2)`. */
+export const PESO_EFFETTIVO_MASSIMO = 99999999.99
 
 export enum FIRStato {
   BOZZA = 'BOZZA',
@@ -170,6 +176,36 @@ export interface TrattaTrasportoFIR {
   /** Mezzo/identificativo: targa, numero treno o nome nave. */
   mezzo?: string
   dataPresaInCarico?: Date
+}
+
+/** Motivo per cui una bozza non si modifica (ordine unico: piano D1). */
+export type MotivoNonModificabile = MotivoFirNonModificabile
+
+/**
+ * Contenuto di una bozza descritto dal DTO di modifica (piano D6): parti gia' risolte con il loro
+ * snapshot (stesso id = snapshot esistente, id diverso = nuovo snapshot dal registro), rifiuto
+ * senza `descrizione`/`categoria`/`tipoOperazione` (che la modifica conserva).
+ */
+export interface ContenutoBozzaFIR {
+  produttoreId: string
+  trasportatoreId: string
+  destinatarioId: string
+  produttore: ParteFIR
+  trasportatore: ParteFIR
+  destinatario: ParteFIR
+  rifiuto: {
+    cerCode: string
+    quantita: number
+    unitaMisura: UnitaMisura
+    statoFisico?: string | null
+    caratteristichePericolo?: string | null
+    numeroColli?: number | null
+    codiceOperazione?: string | null
+  }
+  trasportatoriAggiuntivi: TrattaTrasportoFIR[]
+  annotazioni?: string | null
+  provenienza: ProvenienzaRifiuto
+  tipoTrattaPrincipale: TipoTratta
 }
 
 export interface FirmaDigitale {
@@ -383,23 +419,23 @@ export class FIR extends AggregateRoot {
     private readonly _id: string,
     private _stato: FIRStato,
     private _numeroProgressivo: string | null,
-    private readonly _produttoreId: string,
-    private readonly _rifiuto: FIRRifiuto,
-    private readonly _trasportatoreId: string,
-    private readonly _destinatarioId: string,
+    private _produttoreId: string,
+    private _rifiuto: FIRRifiuto,
+    private _trasportatoreId: string,
+    private _destinatarioId: string,
     private _dataPresaCarico: Date | null,
     private _dataConsegna: Date | null,
     private _pesoEffettivo: number | null,
     private _firme: FirmeDigitali,
     private readonly _createdAt: Date,
     private readonly _creatoDaUserId: string | null = null,
-    private readonly _produttore: ParteFIR | null = null,
-    private readonly _trasportatore: ParteFIR | null = null,
-    private readonly _destinatario: ParteFIR | null = null,
+    private _produttore: ParteFIR | null = null,
+    private _trasportatore: ParteFIR | null = null,
+    private _destinatario: ParteFIR | null = null,
     private readonly _tenantId: string | null = null,
-    private readonly _trasportatoriAggiuntivi: TrattaTrasportoFIR[] = [],
+    private _trasportatoriAggiuntivi: TrattaTrasportoFIR[] = [],
     /** Campo 17 FIR: annotazioni libere (obbligatorie per alcune tipologie). */
-    private readonly _annotazioni: string | null = null,
+    private _annotazioni: string | null = null,
     /** Data restituzione 4ª copia dal destinatario al produttore. */
     private _fourthCopyReturnedAt: Date | null = null,
     /** Note/esito del destinatario (4ª copia FIR). */
@@ -438,12 +474,36 @@ export class FIR extends AggregateRoot {
      */
     private _motivoAnnullamento: string | null = null,
     /** Provenienza del rifiuto (URBANO/SPECIALE). `null` per i FIR legacy privi del dato. */
-    private readonly _provenienza: ProvenienzaRifiuto | null = null,
+    private _provenienza: ProvenienzaRifiuto | null = null,
     /** Modalità di trasporto della tratta principale (Campo 4). `null` per i FIR legacy privi del dato. */
-    private readonly _tipoTrattaPrincipale: TipoTratta | null = null
+    private _tipoTrattaPrincipale: TipoTratta | null = null,
+    /**
+     * Transazione REST di creazione accettata dall'ente ma di cui non si è
+     * ancora letto l'esito: finché è valorizzata, un nuovo tentativo deve
+     * riprendere il polling invece di creare un secondo formulario.
+     */
+    private _rentriTransazioneInAttesa: string | null = null,
+    /** Istante di avvio dell'ultimo tentativo di trasmissione (rilevamento stalli). */
+    private _rentriSyncAvviatoAt: Date | null = null,
+    /**
+     * Versione della riga letta dal database (lock ottimistico, piano D4-D5): 0 per un FIR
+     * creato in memoria e mai salvato, >= 1 dopo il primo salvataggio.
+     */
+    private _versione: number = 0,
+    /**
+     * Esiste almeno una riga in `fir_signatures` (qualunque ruolo, ciclo di vita o QES): valorizzato
+     * da `toDomain`, serve a `motivoNonModificabile` (piano D1/D12). Il repository resta l'arbitro
+     * sotto lock.
+     */
+    private _firmePresenti: boolean = false,
+    /** Stato DB AWAITING_PRODUCER (in attesa della firma del produttore): valorizzato da `toDomain`. */
+    private _inAttesaFirmaProduttore: boolean = false
   ) {
     super()
   }
+
+  /** Le tratte aggiuntive sono cambiate nell'ultima `modificaBozza` (lo legge il repository). */
+  private _tratteModificate = false
 
   static create(props: CreateFIRProps): FIR {
     const rifiuto: FIRRifiuto = {
@@ -491,11 +551,156 @@ export class FIR extends AggregateRoot {
       null, // rentriStatoFormulario
       null, // motivoAnnullamento
       props.provenienza ?? null,
-      props.tipoTrattaPrincipale ?? null
+      props.tipoTrattaPrincipale ?? null,
+      null, // rentriTransazioneInAttesa
+      null // rentriSyncAvviatoAt
     )
   }
 
   // Business Methods
+
+  /**
+   * Perche' la bozza non si puo' modificare, o `null` se si puo'. UN SOLO ordine dei motivi, identico
+   * a quello del repository sotto lock (piano D1): legata a RENTRI, non in bozza, firmata, in
+   * attesa della firma del produttore.
+   */
+  motivoNonModificabile(): MotivoNonModificabile | null {
+    if (this._rentriNumeroFir) return 'LEGATO_RENTRI'
+    if (this._stato !== FIRStato.BOZZA) return 'NON_BOZZA'
+    if (this._firmePresenti) return 'FIRMATO'
+    if (this._inAttesaFirmaProduttore) return 'IN_ATTESA_FIRMA_PRODUTTORE'
+    return null
+  }
+
+  /**
+   * Sostituisce il contenuto di una bozza (piano D6/D7/D9). Cambia SOLO i campi che il DTO descrive:
+   * `descrizione`, `categoria` e `tipoOperazione` del rifiuto si conservano; stato, numero, firme,
+   * campi RENTRI, tenant e creatore non si toccano. I facoltativi vuoti (`''`/`undefined`) valgono
+   * `null` e si normalizzano PRIMA del confronto. Atomico: se un controllo fallisce non cambia nulla.
+   *
+   * @returns i nomi dei campi cambiati (`[]` = nessun cambiamento, niente da salvare).
+   */
+  modificaBozza(contenuto: ContenutoBozzaFIR): string[] {
+    if (this._rentriNumeroFir) {
+      throw new MetodoLocaleNonConsentitoSuFirLegatoError(
+        'modificaBozza',
+        'la modifica del formulario su RENTRI'
+      )
+    }
+    const motivo = this.motivoNonModificabile()
+    if (motivo) {
+      throw new FirNonModificabileError(motivo)
+    }
+
+    const r = contenuto.rifiuto
+    if (typeof r.quantita !== 'number' || !Number.isFinite(r.quantita)) {
+      throw new DomainError('La quantità del rifiuto deve essere un numero')
+    }
+    // Errore di dominio se <= 0; creata prima di scrivere qualunque campo.
+    const quantita = Quantita.create(r.quantita, r.unitaMisura)
+
+    const vuotoANull = <T>(v: T | null | undefined): T | null =>
+      v === undefined || v === null || (v as unknown) === '' ? null : v
+    const nuovoCerCode = r.cerCode
+    const nuovoStatoFisico = vuotoANull(r.statoFisico)
+    const nuoveHp = vuotoANull(r.caratteristichePericolo)
+    const nuoviColli = vuotoANull(r.numeroColli)
+    const nuovoCodiceOperazione = vuotoANull(r.codiceOperazione)
+    const nuoveAnnotazioni = vuotoANull(contenuto.annotazioni)
+
+    const attuale = this._rifiuto
+    const cambiati: string[] = []
+    const diverso = (campo: string, a: unknown, b: unknown): void => {
+      if (a !== b) cambiati.push(campo)
+    }
+    diverso('cerCode', attuale.cerCode, nuovoCerCode)
+    diverso('quantita', attuale.quantita.valore, quantita.valore)
+    diverso('unitaMisura', attuale.quantita.unitaMisura, quantita.unitaMisura)
+    diverso('statoFisico', vuotoANull(attuale.statoFisico), nuovoStatoFisico)
+    diverso('caratteristichePericolo', vuotoANull(attuale.caratteristichePericolo), nuoveHp)
+    diverso('numeroColli', vuotoANull(attuale.numeroColli), nuoviColli)
+    diverso('codiceOperazione', vuotoANull(attuale.codiceOperazione), nuovoCodiceOperazione)
+
+    if (
+      this._produttoreId !== contenuto.produttoreId ||
+      !FIR.stessaParte(this._produttore, contenuto.produttore)
+    ) {
+      cambiati.push('produttore')
+    }
+    if (
+      this._trasportatoreId !== contenuto.trasportatoreId ||
+      !FIR.stessaParte(this._trasportatore, contenuto.trasportatore)
+    ) {
+      cambiati.push('trasportatore')
+    }
+    if (
+      this._destinatarioId !== contenuto.destinatarioId ||
+      !FIR.stessaParte(this._destinatario, contenuto.destinatario)
+    ) {
+      cambiati.push('destinatario')
+    }
+
+    // Tratte: identiche se coincidono (trasportatoreId, tipoTratta, ordine) nello stesso ordine;
+    // in quel caso restano le righe esistenti (con mezzo e data eventuali).
+    const chiaveTratte = (t: TrattaTrasportoFIR[]): string =>
+      [...t]
+        .sort((x, y) => x.ordine - y.ordine)
+        .map(x => `${x.trasportatoreId ?? ''}|${x.tipoTratta}|${x.ordine}`)
+        .join(';')
+    const tratteCambiate =
+      chiaveTratte(this._trasportatoriAggiuntivi) !==
+      chiaveTratte(contenuto.trasportatoriAggiuntivi)
+    if (tratteCambiate) cambiati.push('trasportatoriAggiuntivi')
+
+    diverso('annotazioni', this._annotazioni, nuoveAnnotazioni)
+    diverso('provenienza', this._provenienza, contenuto.provenienza ?? null)
+    diverso(
+      'tipoTrattaPrincipale',
+      this._tipoTrattaPrincipale,
+      contenuto.tipoTrattaPrincipale ?? null
+    )
+
+    this._tratteModificate = tratteCambiate
+    if (cambiati.length === 0) return []
+
+    // Scrittura: solo i campi descritti dal DTO; descrizione/categoria/tipoOperazione restano.
+    this._rifiuto = {
+      ...attuale,
+      cerCode: nuovoCerCode,
+      quantita,
+      statoFisico: nuovoStatoFisico ?? undefined,
+      caratteristichePericolo: nuoveHp ?? undefined,
+      numeroColli: nuoviColli ?? undefined,
+      codiceOperazione: nuovoCodiceOperazione ?? undefined,
+    }
+    this._produttoreId = contenuto.produttoreId
+    this._trasportatoreId = contenuto.trasportatoreId
+    this._destinatarioId = contenuto.destinatarioId
+    this._produttore = contenuto.produttore
+    this._trasportatore = contenuto.trasportatore
+    this._destinatario = contenuto.destinatario
+    if (tratteCambiate) {
+      this._trasportatoriAggiuntivi = [...contenuto.trasportatoriAggiuntivi]
+    }
+    this._annotazioni = nuoveAnnotazioni
+    this._provenienza = contenuto.provenienza ?? null
+    this._tipoTrattaPrincipale = contenuto.tipoTrattaPrincipale ?? null
+    return cambiati
+  }
+
+  /** Confronto di due snapshot di una parte, con i facoltativi vuoti equivalenti a `null`. */
+  private static stessaParte(a: ParteFIR | null, b: ParteFIR | null): boolean {
+    if (!a || !b) return a === b
+    const n = (v: string | undefined): string | null => (v ? v : null)
+    return (
+      n(a.registroId) === n(b.registroId) &&
+      a.ragioneSociale === b.ragioneSociale &&
+      a.partitaIva === b.partitaIva &&
+      n(a.indirizzo) === n(b.indirizzo) &&
+      n(a.targaVeicolo) === n(b.targaVeicolo) &&
+      n(a.contatto) === n(b.contatto)
+    )
+  }
 
   emetti(numeroProgressivo: string, firmaProduttore: FirmaDigitale): void {
     if (this._stato !== FIRStato.BOZZA) {
@@ -548,10 +753,16 @@ export class FIR extends AggregateRoot {
       throw new InvalidStateTransitionError(this._stato, FIRStato.CONSEGNATO)
     }
 
-    // Validate peso within tolerance (±10%)
-    if (!this._rifiuto.quantita.isWithinTolerance(pesoEffettivo, 10)) {
+    // F2-7: nessuna tolleranza bloccante. Si accetta ogni quantità verificata valida
+    // (finita, > 0, entro il limite della colonna Decimal(10,2)); lo scostamento
+    // dalla dichiarata è un avviso calcolato (`scostamentoPeso`).
+    if (
+      !Number.isFinite(pesoEffettivo) ||
+      pesoEffettivo <= 0 ||
+      pesoEffettivo > PESO_EFFETTIVO_MASSIMO
+    ) {
       throw new DomainError(
-        `Peso effettivo (${pesoEffettivo}) eccede tolleranza 10% rispetto a quantità dichiarata (${this._rifiuto.quantita.valore})`
+        `La quantità verificata a destino deve essere maggiore di zero e non superiore a ${PESO_EFFETTIVO_MASSIMO.toLocaleString('it-IT')}`
       )
     }
 
@@ -654,23 +865,72 @@ export class FIR extends AggregateRoot {
    * esclude un sync già in corso e un fallimento permanente).
    */
   canSyncToRENTRI(): boolean {
+    return this.emessoENonGiaLegatoARentri() && this._rentriSyncStatus.canRetry()
+  }
+
+  /**
+   * Precondizioni comuni a `canSyncToRENTRI` e `avviaTentativoRentri`: il FIR e'
+   * emesso (EMESSO, IN_TRANSITO o CONSEGNATO) e non ha ancora un numero
+   * ufficiale RENTRI. Lo stato di sincronizzazione resta fuori: i due chiamanti
+   * lo valutano diversamente (la ripresa dopo uno stallo ammette SYNCING).
+   */
+  private emessoENonGiaLegatoARentri(): boolean {
     const statoEmesso =
       this._stato === FIRStato.EMESSO ||
       this._stato === FIRStato.IN_TRANSITO ||
       this._stato === FIRStato.CONSEGNATO
     const nonGiaLegato = this._rentriNumeroFir === null
-
-    return statoEmesso && nonGiaLegato && this._rentriSyncStatus.canRetry()
+    return statoEmesso && nonGiaLegato
   }
 
   /**
-   * Segna l'avvio di un tentativo di trasmissione a RENTRI.
+   * Segna l'avvio di un tentativo di trasmissione a RENTRI. Accetta anche un
+   * FIR già in SYNCING: è la ripresa dopo uno stallo (processo morto a metà),
+   * che altrimenti resterebbe bloccato per sempre.
    */
-  startRENTRISync(): void {
-    if (!this.canSyncToRENTRI()) {
+  avviaTentativoRentri(ora: Date): void {
+    const ripresaDaStallo = this._rentriSyncStatus.getStatus() === 'SYNCING'
+    if (
+      !this.emessoENonGiaLegatoARentri() ||
+      !(ripresaDaStallo || this._rentriSyncStatus.canRetry())
+    ) {
       throw new DomainError('FIR non trasmissibile a RENTRI nello stato corrente')
     }
     this._rentriSyncStatus = this._rentriSyncStatus.markAsSyncing()
+    this._rentriSyncAvviatoAt = ora
+  }
+
+  /**
+   * Registra la transazione di creazione accettata dall'ente, prima di
+   * leggerne l'esito: se il processo muore da qui in poi, il tentativo
+   * successivo la riprende invece di creare un doppione.
+   */
+  registraTransazioneInAttesa(transazioneId: string): void {
+    this._rentriTransazioneInAttesa = transazioneId
+    this._rentriTransazioneId = transazioneId
+  }
+
+  /** Chiude la transazione in attesa dopo aver letto un esito negativo. */
+  chiudiTransazioneInAttesa(): void {
+    this._rentriTransazioneInAttesa = null
+  }
+
+  /**
+   * Esito della creazione incerto (timeout/rete dopo l'invio): il formulario
+   * potrebbe esistere presso l'ente. Blocca i tentativi automatici finché un
+   * operatore non verifica (v. `riapriTrasmissioneDopoVerifica`).
+   */
+  segnaTrasmissioneIncerta(motivo: string, correlationId?: string): void {
+    this.markRENTRISyncFailed(motivo, 'RENTRI_TRASMISSIONE_INCERTA', correlationId)
+    this._rentriTransazioneInAttesa = null
+  }
+
+  /** Riapre la trasmissione dopo verifica manuale; vietato su un FIR già legato. */
+  riapriTrasmissioneDopoVerifica(): void {
+    if (this._rentriNumeroFir !== null) {
+      throw new DomainError('FIR già legato a RENTRI: nessuna trasmissione da riaprire')
+    }
+    this._rentriSyncStatus = this._rentriSyncStatus.riapriDopoVerificaManuale()
   }
 
   /**
@@ -690,6 +950,7 @@ export class FIR extends AggregateRoot {
 
     this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
     this._rentriNumeroFir = numeroFir
+    this._rentriTransazioneInAttesa = null
     if (transazioneId) {
       this._rentriTransazioneId = transazioneId
     }
@@ -749,6 +1010,7 @@ export class FIR extends AggregateRoot {
 
     this._rentriSyncStatus = this._rentriSyncStatus.markAsSynced(numeroFir)
     this._rentriNumeroFirProposto = numeroFir
+    this._rentriTransazioneInAttesa = null
     if (transazioneId) {
       // rentriTransazioneId è solo l'identificativo tecnico dell'ultima
       // trasmissione (non la chiave di aggancio): può essere registrato da
@@ -1033,6 +1295,24 @@ export class FIR extends AggregateRoot {
     return this._stato
   }
 
+  /** Versione della riga alla lettura o all'ultimo salvataggio (0 = mai salvato). */
+  get versione(): number {
+    return this._versione
+  }
+
+  /**
+   * Solo infrastruttura: lo chiama il repository dopo una scrittura riuscita, per allineare
+   * l'aggregate alla versione appena scritta. Il dominio non deve invocarlo.
+   */
+  registraVersioneSalvata(versione: number): void {
+    this._versione = versione
+  }
+
+  /** Le tratte aggiuntive sono cambiate nell'ultima `modificaBozza`: il repository le sostituisce. */
+  get tratteModificate(): boolean {
+    return this._tratteModificate
+  }
+
   get numeroProgressivo(): string | null {
     return this._numeroProgressivo
   }
@@ -1063,6 +1343,16 @@ export class FIR extends AggregateRoot {
 
   get pesoEffettivo(): number | null {
     return this._pesoEffettivo
+  }
+
+  /** Scostamento fra quantità dichiarata e verificata a destino (calcolato, non salvato). */
+  get scostamentoPeso(): ScostamentoPeso | null {
+    if (this._pesoEffettivo === null) return null
+    return calcolaScostamentoPeso(
+      this._rifiuto.quantita.valore,
+      this._pesoEffettivo,
+      this._rifiuto.quantita.unitaMisura
+    )
   }
 
   get firme(): FirmeDigitali {
@@ -1134,6 +1424,16 @@ export class FIR extends AggregateRoot {
   /** Identificativo tecnico dell'ultima trasmissione REST verso RENTRI. */
   get rentriTransazioneId(): string | null {
     return this._rentriTransazioneId
+  }
+
+  /** Transazione di creazione accettata di cui non si è ancora letto l'esito. */
+  get rentriTransazioneInAttesa(): string | null {
+    return this._rentriTransazioneInAttesa
+  }
+
+  /** Istante di avvio dell'ultimo tentativo di trasmissione. */
+  get rentriSyncAvviatoAt(): Date | null {
+    return this._rentriSyncAvviatoAt
   }
 
   /** Come è nato il legame con rentriNumeroFir. */

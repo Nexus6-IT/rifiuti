@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
-import { PrismaService } from '../persistence/prisma.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
 import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcilia-stato-rentri.use-case'
+import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
+import { EsitoGiroRentri } from './esito-giro-rentri'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * Job di riconciliazione periodica dello stato RENTRI (R5, Task 4).
@@ -27,59 +32,99 @@ import { RiconciliaStatoRentriUseCase } from '../../application/rentri/riconcili
 @Injectable()
 export class RentriRiconciliazioneJob {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly riconciliaStatoRentri: RiconciliaStatoRentriUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly credenziali: RentriCredentialResolver
   ) {
     this.logger.setContext(RentriRiconciliazioneJob.name)
   }
 
+  /** Handler dello scheduler: non rilancia mai e segnala a Bugsink l'errore generale. */
   @Cron(CronExpression.EVERY_6_HOURS)
   async eseguiRiconciliazione(): Promise<void> {
+    try {
+      await this.riconcilia()
+    } catch (error: unknown) {
+      segnalaErroreJob('eseguiRiconciliazione', error)
+    }
+  }
+
+  /**
+   * Il giro vero e proprio, chiamabile anche dal rilancio manuale. Un errore
+   * generale (es. lettura dei tenant) si logga e si rilancia: lo registra
+   * l'audit come fallito; la segnalazione a Bugsink spetta all'handler @Cron.
+   */
+  async riconcilia(): Promise<EsitoGiroRentri> {
     this.logger.info('Avvio riconciliazione periodica stato RENTRI')
 
-    const tenants = await this.prisma.tenant.findMany({
-      where: {
-        subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
-      },
-      select: { id: true },
-    })
+    try {
+      // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
+      const tenants = await this.sistema.tenant.findMany({
+        where: escludiPiattaforma({
+          subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
+        }),
+        select: { id: true },
+      })
 
-    let tenantConSuccesso = 0
-    let tenantConErrore = 0
+      let tenantConSuccesso = 0
+      let tenantConErrore = 0
 
-    for (const tenant of tenants) {
-      try {
-        const risultato = await this.riconciliaStatoRentri.execute(tenant.id)
-        tenantConSuccesso++
+      for (const tenant of tenants) {
+        // Azienda senza certificato RENTRI (e non legata all'env): non e' un guasto,
+        // si salta con un info e senza segnalazione a Bugsink.
+        try {
+          const haCredenziale = await TenantContext.run(
+            { tenantId: tenant.id },
+            async () => await this.credenziali.haCredenziale(tenant.id)
+          )
+          if (!haCredenziale) {
+            this.logger.info(`azienda ${tenant.id} senza certificato RENTRI: saltata`, {
+              tenantId: tenant.id,
+            })
+            continue
+          }
+          // Il use case apre da se il contesto dell'azienda (TenantContext.run al suo interno)
+          const risultato = await this.riconciliaStatoRentri.execute(tenant.id)
+          tenantConSuccesso++
 
-        this.logger.info('Riconciliazione RENTRI completata per il tenant', {
-          tenantId: tenant.id,
-          controllati: risultato.controllati,
-          corretti: risultato.corretti,
-          segnalati: risultato.segnalati,
-          nessunaDivergenza: risultato.nessunaDivergenza,
-        })
-      } catch (error: unknown) {
-        // Isolamento per tenant: un errore (es. credenziale scaduta,
-        // certificato revocato) NON deve interrompere il giro per gli altri
-        // tenant. Loggato e basta — il giro successivo (fra 6 ore) riprova
-        // da solo, e il tenant vede comunque il proprio stato di errore
-        // nella diagnostica (R5 Task 3), che legge dati locali già esistenti
-        // e non dipende da questo job per essere popolata.
-        tenantConErrore++
-        this.logger.error(
-          'Riconciliazione RENTRI fallita per il tenant, si prosegue con gli altri',
-          error instanceof Error ? error : new Error(String(error)),
-          { tenantId: tenant.id }
-        )
+          this.logger.info('Riconciliazione RENTRI completata per il tenant', {
+            tenantId: tenant.id,
+            controllati: risultato.controllati,
+            corretti: risultato.corretti,
+            segnalati: risultato.segnalati,
+            nessunaDivergenza: risultato.nessunaDivergenza,
+          })
+        } catch (error: unknown) {
+          // Isolamento per tenant: un errore (es. credenziale scaduta,
+          // certificato revocato) NON deve interrompere il giro per gli altri
+          // tenant. Loggato e basta — il giro successivo (fra 6 ore) riprova
+          // da solo, e il tenant vede comunque il proprio stato di errore
+          // nella diagnostica (R5 Task 3), che legge dati locali già esistenti
+          // e non dipende da questo job per essere popolata.
+          tenantConErrore++
+          this.logger.error(
+            'Riconciliazione RENTRI fallita per il tenant, si prosegue con gli altri',
+            error instanceof Error ? error : new Error(String(error)),
+            { tenantId: tenant.id }
+          )
+          segnalaErroreJob('eseguiRiconciliazione', error, { tenantId: tenant.id })
+        }
       }
-    }
 
-    this.logger.info('Riconciliazione periodica stato RENTRI completata', {
-      tenantTotali: tenants.length,
-      tenantConSuccesso,
-      tenantConErrore,
-    })
+      this.logger.info('Riconciliazione periodica stato RENTRI completata', {
+        tenantTotali: tenants.length,
+        tenantConSuccesso,
+        tenantConErrore,
+      })
+
+      return { tenantTotali: tenants.length, tenantConErrore }
+    } catch (error: unknown) {
+      this.logger.error(
+        'Riconciliazione periodica stato RENTRI fallita',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      throw error
+    }
   }
 }

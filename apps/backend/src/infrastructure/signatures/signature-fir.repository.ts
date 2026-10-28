@@ -10,7 +10,7 @@
  * applySignature/getSignatures — non presente nel nuovo aggregate del lifecycle.
  *
  * SICUREZZA: usa `prisma.db` (RLS-aware) per findById (tenant-scoped);
- * `prisma.fIR` (senza RLS) per findByIdPublic (verifica pubblica QR code).
+ * il client di sistema per findByIdPublic (verifica pubblica QR code, tenant ignoto).
  */
 
 import { Injectable } from '@nestjs/common'
@@ -22,8 +22,10 @@ import {
   SignatureMethod,
 } from '../../domain/fir/digital-signature.vo'
 import { PrismaService } from '../persistence/prisma.service'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
+import { FirModificatoNelFrattempoError, FirNonTrovatoError } from '../../core/domain/errors'
 
 // Include per le query firma: signatures + user (per fiscal code legacy)
 const SIGNATURE_INCLUDE = {
@@ -37,6 +39,7 @@ const SIGNATURE_INCLUDE = {
 export class SignatureFIRRepository implements FIRRepository {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly logger: LoggerService
   ) {
     this.logger.setContext(SignatureFIRRepository.name)
@@ -56,9 +59,11 @@ export class SignatureFIRRepository implements FIRRepository {
 
   /**
    * Carica FIR con firme senza filtro tenant (verifica pubblica firma via QR code).
+   * Sistema: rotta pubblica senza contesto, l'azienda del FIR si conosce solo dopo la lettura
+   * (l'id del FIR e' la capability: si restituisce solo cio' che l'endpoint gia' espone).
    */
   async findByIdPublic(id: string): Promise<FIR | null> {
-    const record = await this.prisma.fIR.findUnique({
+    const record = await this.sistema.fIR.findUnique({
       where: { id },
       include: SIGNATURE_INCLUDE,
     })
@@ -71,7 +76,13 @@ export class SignatureFIRRepository implements FIRRepository {
    *
    * Salva SOLO l'ultima firma aggiunta (il chiamante ha già applicato la firma
    * all'aggregate tramite applySignature; qui si scrive solo il delta persistito).
-   * Se la firma per quel ruolo esiste già, è un no-op (idempotente).
+   *
+   * Tutto avviene in una transaction sotto `SELECT ... FOR NO KEY UPDATE` della riga del FIR
+   * (piano D8), in quest'ordine: idempotenza (firma già presente per quel ruolo: no-op, nessuna
+   * scrittura, nessun incremento), confronto della versione letta da `findById` con quella del
+   * database (diversa: `FirModificatoNelFrattempoError`, 409 dal filtro), insert della firma,
+   * incremento della versione. Così una firma calcolata su un contenuto poi modificato non si
+   * salva, e una modifica caricata prima di una firma riceve il conflitto.
    *
    * SICUREZZA: la chiave privata non transita per questo metodo (è già stata
    * usata e scartata dal provider prima di chiamare save).
@@ -84,61 +95,81 @@ export class SignatureFIRRepository implements FIRRepository {
     const firId = fir.getId()
     const tenantId = fir.getTenantId()
     const role = lastSignature.getRole()
-
-    // Idempotenza: evita duplicati se save() viene chiamata più volte
-    const existing = await this.prisma.fIRSignature.findFirst({ where: { firId, role } })
-    if (existing) {
-      this.logger.debug(`Firma ${role} per FIR ${firId} già persistita — skip`)
-      return fir
-    }
-
-    // Recupera userId dal codice fiscale del firmatario nel tenant corrente
     const signerFiscalCode = lastSignature.getSignerFiscalCode()
-    const user = await this.prisma.user.findFirst({
-      where: { fiscalCode: signerFiscalCode.toUpperCase(), tenantId },
-    })
-
-    if (!user) {
-      // NON si può proseguire silenziosamente: il chiamante risponderebbe
-      // `success: true` all'utente mentre in `fir_signatures` non resta nulla,
-      // cioè una firma creduta apposta e in realtà inesistente. Meglio un
-      // errore esplicito che una prova documentale fantasma.
-      this.logger.error(
-        `Utente CF=${signerFiscalCode} non trovato nel tenant ${tenantId}: ` +
-          `firma ${role} per FIR ${firId} NON persistibile in fir_signatures. ` +
-          "Assicurarsi che l'utente sia sincronizzato localmente (provisioning Keycloak)."
-      )
-      throw DomainException.businessRuleViolation(
-        'SIGNER_NOT_PROVISIONED',
-        `Firmatario con codice fiscale ${signerFiscalCode} non presente nel tenant: ` +
-          'la firma non può essere registrata. Sincronizzare l’utente e riprovare.'
-      )
-    }
-
     const sigData = lastSignature.toPlainObject()
 
-    await this.prisma.fIRSignature.create({
-      data: {
-        firId,
-        userId: user.id,
-        role,
-        signedAt: sigData.signedAt,
-        signatureMethod: sigData.signatureMethod,
-        signatureValue: sigData.signatureValue,
-        certificateHash: sigData.certificateHash,
-        documentHash: sigData.documentHash,
-        timestampToken: sigData.timestampToken ?? null,
-        // Campi aggiuntivi (migrazione 20260629200000): firma auto-descrittiva
-        signerFiscalCode: sigData.signerFiscalCode,
-        signerName: sigData.signerName,
-        publicKey: sigData.publicKey,
-      },
+    const nuovaVersione = await this.prisma.$transaction(async tx => {
+      const righe = await tx.$queryRaw<Array<{ versione: number }>>`
+        SELECT versione FROM firs
+        WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid
+        FOR NO KEY UPDATE`
+      if (righe.length === 0) throw new FirNonTrovatoError()
+
+      // Idempotenza DOPO il lock: due save concorrenti della stessa firma si serializzano e la
+      // seconda trova la riga della prima.
+      const existing = await tx.fIRSignature.findFirst({ where: { firId, role } })
+      if (existing) {
+        this.logger.debug(`Firma ${role} per FIR ${firId} già persistita — skip`)
+        return null
+      }
+
+      if (righe[0].versione !== fir.getVersione()) {
+        throw new FirModificatoNelFrattempoError(firId)
+      }
+
+      // Recupera userId dal codice fiscale del firmatario nel tenant corrente
+      const user = await tx.user.findFirst({
+        where: { fiscalCode: signerFiscalCode.toUpperCase(), tenantId },
+      })
+
+      if (!user) {
+        // NON si può proseguire silenziosamente: il chiamante risponderebbe
+        // `success: true` all'utente mentre in `fir_signatures` non resta nulla,
+        // cioè una firma creduta apposta e in realtà inesistente. Meglio un
+        // errore esplicito che una prova documentale fantasma.
+        this.logger.error(
+          `Utente CF=${signerFiscalCode} non trovato nel tenant ${tenantId}: ` +
+            `firma ${role} per FIR ${firId} NON persistibile in fir_signatures. ` +
+            "Assicurarsi che l'utente sia sincronizzato localmente (provisioning Keycloak)."
+        )
+        throw DomainException.businessRuleViolation(
+          'SIGNER_NOT_PROVISIONED',
+          `Firmatario con codice fiscale ${signerFiscalCode} non presente nel tenant: ` +
+            'la firma non può essere registrata. Sincronizzare l’utente e riprovare.'
+        )
+      }
+
+      await tx.fIRSignature.create({
+        data: {
+          firId,
+          tenantId,
+          userId: user.id,
+          role,
+          signedAt: sigData.signedAt,
+          signatureMethod: sigData.signatureMethod,
+          signatureValue: sigData.signatureValue,
+          certificateHash: sigData.certificateHash,
+          documentHash: sigData.documentHash,
+          timestampToken: sigData.timestampToken ?? null,
+          // Campi aggiuntivi (migrazione 20260629200000): firma auto-descrittiva
+          signerFiscalCode: sigData.signerFiscalCode,
+          signerName: sigData.signerName,
+          publicKey: sigData.publicKey,
+        },
+      })
+      await tx.$executeRaw`
+        UPDATE firs SET versione = versione + 1, updated_at = (now() AT TIME ZONE 'UTC')
+        WHERE id = ${firId}::uuid AND tenant_id = ${tenantId}::uuid`
+      return righe[0].versione + 1
     })
 
-    this.logger.info(
-      `Firma ${role} (${sigData.signatureMethod}) persistita per FIR ${firId} — ` +
-        `firmatario=${signerFiscalCode}`
-    )
+    if (nuovaVersione !== null) {
+      fir.registraVersioneSalvata(nuovaVersione)
+      this.logger.info(
+        `Firma ${role} (${sigData.signatureMethod}) persistita per FIR ${firId} — ` +
+          `firmatario=${signerFiscalCode}`
+      )
+    }
 
     return fir
   }
@@ -234,6 +265,8 @@ export class SignatureFIRRepository implements FIRRepository {
         // FIR creati sotto lo schema precedente continuino a rigenerare quella
         // stessa forma (vedi commento su FIR.toSignableDocument).
         schemaVersion: FIR.CURRENT_SCHEMA_VERSION,
+        // Lock ottimistico: NON entra nel documento canonico (toSignableDocument).
+        versione: record.versione ?? 1,
       },
       domainSignatures
     )

@@ -47,7 +47,18 @@ export class AnagrafichePage {
     this.page = page
     this.area = area
     this.nuovoButton = page.getByTestId(`${area}-nuovo-button`)
-    this.formDialog = page.getByTestId(`${area}-form-dialog`)
+    // Il data-testid sta sull'host <p-dialog>, che non ha un riquadro proprio
+    // (maschera e pannello sono figli a position:fixed): Playwright lo giudica
+    // sempre "hidden", anche a dialog aperto (verificato: host con
+    // ng-reflect-visible="true" ma toBeVisible fallisce). Si guarda quindi il
+    // pannello vero, `.p-dialog`, che PrimeNG monta solo a dialog aperto e
+    // rimuove alla chiusura: toBeVisible/toBeHidden diventano affidabili.
+    // ATTENZIONE: questo locator presuppone che i p-dialog delle liste NON abbiano
+    // `appendTo`: con appendTo="body" il pannello uscirebbe dall'host col data-testid
+    // e `.locator('.p-dialog')` non lo troverebbe più. Se si aggiunge appendTo, rivedere
+    // qui. Componenti da controllare (apps/frontend/src/app/features/): le tre liste
+    // delle anagrafiche (produttori, trasportatori, destinatari).
+    this.formDialog = page.getByTestId(`${area}-form-dialog`).locator('.p-dialog')
     this.saveButton = page.getByTestId(`${area}-form-save-button`)
     this.cancelButton = page.getByTestId(`${area}-form-cancel-button`)
     this.confirmDialog = page.getByTestId(`${area}-confirm-dialog`)
@@ -75,16 +86,29 @@ export class AnagrafichePage {
     return this.page.getByTestId(`${this.area}-elimina-${id}`)
   }
 
-  /** Apre il dialog di creazione e attende che sia visibile. */
+  /**
+   * Attende che il dialog sia visibile E che PrimeNG abbia finito di mettere a
+   * fuoco il suo primo campo. Il focus iniziale arriva solo a fine animazione
+   * di apertura: un fill() che parte prima scrive con il focus ancora
+   * altrove, e poi il focus iniziale si sposta (riprodotto sulla build di
+   * produzione: "MI" della provincia finito in coda alla ragione sociale, "1"
+   * del civico perso, quindi validazione fallita e dialog che non si chiude).
+   */
+  private async attendiDialogAperto() {
+    await expect(this.formDialog).toBeVisible()
+    await expect(this.formDialog.locator(':focus')).toHaveCount(1)
+  }
+
+  /** Apre il dialog di creazione e attende che sia visibile e pronto. */
   async apriNuovo() {
     await this.nuovoButton.click()
-    await expect(this.formDialog).toBeVisible()
+    await this.attendiDialogAperto()
   }
 
   /** Apre il dialog di modifica per l'id indicato e attende che sia visibile. */
   async apriModifica(id: string) {
     await this.editButton(id).click()
-    await expect(this.formDialog).toBeVisible()
+    await this.attendiDialogAperto()
   }
 
   /** Clic su "Salva": il dialog resta responsabilità del chiamante da verificare (si chiude solo se il salvataggio va a buon fine). */

@@ -32,6 +32,10 @@ describe('RentriUnitaLocaleService', () => {
       create: jest.Mock
       deleteMany: jest.Mock
     }
+    registroRifiuti: { findMany: jest.Mock; deleteMany: jest.Mock }
+    wasteMovement: { findFirst: jest.Mock }
+    registroProgressivoIniziale: { findFirst: jest.Mock }
+    giacenzaIniziale: { findFirst: jest.Mock }
     $transaction: jest.Mock
   }
   let prisma: { db: typeof db }
@@ -47,6 +51,13 @@ describe('RentriUnitaLocaleService', () => {
         create: jest.fn(),
         deleteMany: jest.fn(),
       },
+      registroRifiuti: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      wasteMovement: { findFirst: jest.fn().mockResolvedValue(null) },
+      registroProgressivoIniziale: { findFirst: jest.fn().mockResolvedValue(null) },
+      giacenzaIniziale: { findFirst: jest.fn().mockResolvedValue(null) },
       // Default: esegue davvero la callback (transazione interattiva) o
       // l'array di promise (transazione batch), a seconda di come viene
       // chiamato — riflette il comportamento reale di Prisma quanto basta
@@ -355,6 +366,95 @@ describe('RentriUnitaLocaleService', () => {
       expect(db.rentriUnitaLocale.deleteMany).toHaveBeenCalledWith({
         where: { id: 'ul-2', tenantId: 'tenant-1' },
       })
+    })
+
+    const MESSAGGIO =
+      'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
+
+    it('rentri-unita-locale remove: sede con registro con movimenti → BadRequest col messaggio esatto', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.wasteMovement.findFirst.mockResolvedValue({ id: 'mov-1' })
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+      expect(db.registroRifiuti.deleteMany).not.toHaveBeenCalled()
+      expect(db.rentriUnitaLocale.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('rentri-unita-locale remove: sede con progressivo iniziale ma senza movimenti → rifiutata', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.registroProgressivoIniziale.findFirst.mockResolvedValue({ id: 'pi-1' })
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+      expect(db.rentriUnitaLocale.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('rentri-unita-locale remove: sede con una giacenza iniziale ma senza movimenti → rifiutata', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.giacenzaIniziale.findFirst.mockResolvedValue({ id: 'gi-1' })
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+      expect(db.giacenzaIniziale.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', registroId: { in: ['reg-2'] } },
+        select: { id: true },
+      })
+      expect(db.registroRifiuti.deleteMany).not.toHaveBeenCalled()
+      expect(db.rentriUnitaLocale.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('rentri-unita-locale remove: sede con registro vuoto → cancella registro e sede nella stessa transazione', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+
+      await service.remove('tenant-1', 'ul-2')
+
+      expect(db.$transaction).toHaveBeenCalledTimes(1)
+      expect(db.registroRifiuti.deleteMany).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', id: { in: ['reg-2'] } },
+      })
+      expect(db.rentriUnitaLocale.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'ul-2', tenantId: 'tenant-1' },
+      })
+      expect(db.registroRifiuti.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+        db.rentriUnitaLocale.deleteMany.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('P2003 anche se al controllo la sede non aveva registro (creato subito dopo): stesso BadRequest, non un 500', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([])
+      db.rentriUnitaLocale.deleteMany.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'x' })
+      )
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
+    })
+
+    it('una registrazione concorrente nel registro appena svuotato (chiave esterna) dà lo stesso BadRequest', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.registroRifiuti.deleteMany.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'x' })
+      )
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe(MESSAGGIO)
     })
   })
 })

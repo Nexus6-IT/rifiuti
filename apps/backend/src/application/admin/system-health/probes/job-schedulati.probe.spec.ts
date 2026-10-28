@@ -72,6 +72,14 @@ describe('JobSchedulatiProbe', () => {
     expect(voce?.actionable).toBe(false)
   })
 
+  it('lo scadenzario MUD non cita più il 30 aprile fisso: la scadenza viene dal tracciato', async () => {
+    const voci = await probe.raccogli(registroCompleto(), evidenzeFinte({}))
+    const voce = voci.find(v => v.key === 'job.scadenzario-mud')
+
+    expect(voce?.detail).not.toContain('scadenza del 30 aprile')
+    expect(voce?.detail).toContain('scadenza del tracciato')
+  })
+
   it('dichiara unknown il job senza effetto osservabile, spiegando il perche', async () => {
     const voci = await probe.raccogli(registroCompleto(), evidenzeFinte({}))
     const voce = voci.find(v => v.key === 'job.rentri-certificato-scadenza')

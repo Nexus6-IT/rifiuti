@@ -4,6 +4,7 @@ import { ButtonModule } from 'primeng/button'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { formattaQuantita } from '../../shared/format/formatta-quantita'
 import { ToastService } from '../../core/services/toast.service'
 import {
   GiacenzeService,
@@ -145,11 +146,36 @@ import {
                 <tr>
                   <td>
                     <strong>{{ g.cerCode }}</strong>
+                    <div *ngFor="let s of g.scarichiSuFirAnnullati" class="mt-1">
+                      <p-tag
+                        severity="warning"
+                        value="Scarico {{ s.numero }} ({{ formattaQuantita(s.quantita) }} {{
+                          s.unita
+                        }}) collegato al FIR {{
+                          s.fir
+                        }}, poi annullato: la giacenza lo conta ancora."
+                      ></p-tag>
+                    </div>
                   </td>
-                  <td class="text-right">{{ g.caricoKg | number: '1.0-2' }}</td>
+                  <td class="text-right">
+                    {{ g.caricoKg | number: '1.0-2' }}
+                    <div
+                      *ngIf="g.inizialeKg > 0"
+                      class="giacenze-altra-unita"
+                      data-testid="giacenza-iniziale-kg"
+                    >
+                      di cui iniziale {{ g.inizialeKg | number: '1.0-2' }}
+                    </div>
+                  </td>
                   <td class="text-right">{{ g.scaricoKg | number: '1.0-2' }}</td>
                   <td class="text-right">
                     <strong>{{ g.giacenzaKg | number: '1.0-2' }}</strong>
+                    <div *ngFor="let a of g.altreUnita" class="giacenze-altra-unita">
+                      {{ formattaQuantita(a.giacenza) }} {{ a.unita }}
+                      <span *ngIf="a.iniziale > 0" data-testid="giacenza-iniziale-altra-unita"
+                        >(di cui iniziale {{ formattaQuantita(a.iniziale) }})</span
+                      >
+                    </div>
                   </td>
                   <td>
                     {{ g.oldestCaricoDate ? (g.oldestCaricoDate | date: 'dd/MM/yyyy') : '-' }}
@@ -232,6 +258,15 @@ import {
         font-size: var(--font-size-sm);
       }
 
+      .giacenze-altra-unita {
+        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+      }
+
+      .mt-1 {
+        margin-top: var(--spacing-xs, 0.25rem);
+      }
+
       .text-right {
         text-align: right;
       }
@@ -301,6 +336,8 @@ export class GiacenzeComponent implements OnInit {
       },
     })
   }
+
+  readonly formattaQuantita = formattaQuantita
 
   reasonLabel(reason: DepositoTemporaneoReason): string {
     return reason === 'DURATION' ? 'Durata superata' : 'Quantità superata'

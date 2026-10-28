@@ -5,6 +5,9 @@ import { Job } from 'bullmq'
 /**
  * Archive Audit Logs Job
  * Monthly partitioning per plan.md
+ *
+ * RLS: oggi non legge nulla. Quando verra' scritto, `audit_logs` ha la RLS: serve il client di
+ * sistema (con il file in punti-di-sistema.spec.ts) oppure un `TenantContext.run` per azienda.
  */
 @Processor('audit-archival')
 export class ArchiveAuditLogsJob extends WorkerHost {

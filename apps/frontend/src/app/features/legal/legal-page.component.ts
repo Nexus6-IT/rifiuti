@@ -50,7 +50,7 @@ const DOCS: Record<string, LegalDoc> = {
         heading: '2. Oggetto del servizio',
         content: [
           'WasteFlow è una piattaforma SaaS multi-tenant per la gestione digitale dei rifiuti speciali: FIR digitali (xFIR), registro cronologico di carico e scarico (art. 190 D.Lgs 152/2006), anagrafiche, export MUD, dashboard, integrazione RENTRI (DM 59/2023).',
-          "Il Servizio è erogato in modalità multi-tenant con isolamento logico dei dati per Cliente (Row-Level Security su PostgreSQL). L'accesso avviene tramite autenticazione SPID/CIE integrata con Keycloak.",
+          "Il Servizio è erogato in modalità multi-tenant con isolamento logico dei dati per Cliente (ogni accesso ai dati è filtrato per Cliente dall'applicazione). L'accesso avviene tramite autenticazione SPID/CIE integrata con Keycloak.",
           'Il Fornitore si riserva di modificare funzionalità non core con ragionevole preavviso, senza che ciò configuri inadempimento contrattuale.',
         ],
       },
@@ -228,7 +228,7 @@ const DOCS: Record<string, LegalDoc> = {
         content: [
           'a) Trattamento solo su istruzione documentata del Titolare, salvo obbligo di legge.',
           'b) Riservatezza: il personale autorizzato è vincolato da impegno di riservatezza.',
-          'c) Sicurezza (art. 32 GDPR): cifratura HTTPS/TLS ≥ 1.2; isolamento dati per tenant (PostgreSQL RLS); backup periodici; accesso con privilegio minimo; log di audit; gestione vulnerabilità.',
+          'c) Sicurezza (art. 32 GDPR): cifratura HTTPS/TLS ≥ 1.2; isolamento logico dei dati per tenant a livello applicativo; backup periodici; accesso con privilegio minimo; log di audit; gestione vulnerabilità.',
           "d) Sub-responsabili: autorizzati quelli elencati nell'Allegato A; modifiche comunicate con 30 giorni di anticipo.",
           'e) Assistenza per diritti degli interessati (artt. 15–22 GDPR): inoltro al Titolare entro 5 giorni lavorativi.',
           'f) Assistenza per sicurezza, DPIA e notifica data breach (art. 33 GDPR).',

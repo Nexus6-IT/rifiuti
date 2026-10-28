@@ -1,7 +1,4 @@
-import type {
-  CausaleMovimento,
-  WasteMovementType,
-} from '../../../domain/waste-movement/waste-movement.entity'
+import type { WasteMovementType } from '../../../domain/waste-movement/waste-movement.entity'
 
 /**
  * Command per la registrazione di un movimento nel registro cronologico
@@ -19,8 +16,8 @@ export class RegistraMovimentoCommand {
     public readonly movementDate: Date,
     /** Data di annotazione nel registro (default: ora corrente). */
     public readonly registrationDate: Date,
-    /** Causale specifica del movimento. */
-    public readonly causale: CausaleMovimento,
+    /** Codice della causale (di sistema o dell'azienda); la validità la decide il catalogo. */
+    public readonly causale: string,
     /** Codice CER (formato canonico "NN NN NN"). */
     public readonly cerCode: string,
     /** Descrizione del rifiuto. */
@@ -42,6 +39,11 @@ export class RegistraMovimentoCommand {
     /** ID del FIR collegato (obbligatorio per SCARICO con causale CONFERIMENTO_TRASPORTATORE). */
     public readonly firId: string | undefined,
     /** Note libere. */
-    public readonly notes: string | undefined
+    public readonly notes: string | undefined,
+    /**
+     * Registro in cui annotare il movimento. Assente: il registro della sede principale o
+     * l'unico registro attivo (con un FIR, sempre quello della sede principale).
+     */
+    public readonly registroId: string | undefined
   ) {}
 }

@@ -58,7 +58,7 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
   it('espone il numero ufficiale dopo la sincronizzazione riuscita', () => {
     const fir = FIR.create(createValidFIRProps())
     fir.emetti('FIR-2026-000002', createMockFirma('Produttore SRL'))
-    fir.startRENTRISync()
+    fir.avviaTentativoRentri(new Date())
     fir.markRENTRISynced('RENTRI-999')
 
     const dto = FIRResponseDto.fromDomain(fir)
@@ -74,7 +74,7 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
   it('distingue il legame proposto (modalità ibrida) dal numero ufficiale', () => {
     const fir = FIR.create(createValidFIRProps())
     fir.emetti('FIR-2026-000003', createMockFirma('Produttore SRL'))
-    fir.startRENTRISync()
+    fir.avviaTentativoRentri(new Date())
     fir.proporreLegameRENTRI('RENTRI-PROPOSTO-1')
 
     const dto = FIRResponseDto.fromDomain(fir)
@@ -87,7 +87,7 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
   it("espone l'ultimo errore e resta trasmissibile dopo un fallimento con tentativi residui", () => {
     const fir = FIR.create(createValidFIRProps())
     fir.emetti('FIR-2026-000004', createMockFirma('Produttore SRL'))
-    fir.startRENTRISync()
+    fir.avviaTentativoRentri(new Date())
     fir.markRENTRISyncFailed('Timeout verso RENTRI')
 
     const dto = FIRResponseDto.fromDomain(fir)
@@ -96,5 +96,92 @@ describe('FIRResponseDto.fromDomain — stato RENTRI', () => {
     expect(dto.rentriLastSyncError).toBe('Timeout verso RENTRI')
     expect(dto.rentriSyncAttempts).toBe(1)
     expect(dto.canSyncToRENTRI).toBe(true)
+  })
+})
+
+describe('FIRResponseDto.fromDomain — data di presa in carico effettiva', () => {
+  it('dataPresaCaricoEffettiva è nulla senza la firma del trasportatore', () => {
+    const fir = FIR.create(createValidFIRProps())
+    fir.emetti('FIR-2026-000005', createMockFirma('Produttore SRL'))
+    // Come fa il repository: emesso, mai preso in carico, ma `transport_date` contiene il
+    // ripiego `new Date()` del primo salvataggio.
+    Object.assign(fir, { _dataPresaCarico: new Date('2026-01-08T10:00:00Z') })
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.dataPresaCaricoEffettiva).toBeNull()
+    expect(dto.dataPresaCarico).toEqual(new Date('2026-01-08T10:00:00Z'))
+  })
+
+  it('dataPresaCaricoEffettiva è la data della presa in carico registrata in WasteFlow', () => {
+    const fir = FIR.create(createValidFIRProps())
+    fir.emetti('FIR-2026-000006', createMockFirma('Produttore SRL'))
+    fir.presaInCarico(new Date('2025-12-28T09:00:00Z'), createMockFirma('TRASPORTATORE'))
+
+    expect(FIRResponseDto.fromDomain(fir).dataPresaCaricoEffettiva).toEqual(
+      new Date('2025-12-28T09:00:00Z')
+    )
+  })
+})
+
+describe('FIRResponseDto.fromDomain — scostamentoPeso (F2-7)', () => {
+  it("è null finché non c'è la quantità verificata a destino", () => {
+    const fir = FIR.create(createValidFIRProps())
+
+    expect(FIRResponseDto.fromDomain(fir).scostamentoPeso).toBeNull()
+  })
+
+  it('espone lo scostamento dopo la consegna, anche oltre soglia', () => {
+    const fir = FIR.create(createValidFIRProps()) // 120 kg
+    fir.emetti('FIR-2026-000001', createMockFirma('Produttore SRL'))
+    fir.presaInCarico(new Date(), createMockFirma('Trasportatore SRL'))
+    fir.confermaConsegna(150, createMockFirma('Destinatario SRL'))
+
+    expect(FIRResponseDto.fromDomain(fir).scostamentoPeso).toEqual({
+      differenza: 30,
+      percentuale: 25,
+      unita: 'kg',
+      oltreSoglia: true,
+    })
+  })
+})
+
+describe('FIRResponseDto.fromDomain — campi per la modifica (D12)', () => {
+  it('una bozza espone versione, provenienza, tipo tratta e modificabile=true', () => {
+    const fir = FIR.create({
+      ...createValidFIRProps(),
+      provenienza: 'SPECIALE' as any,
+      tipoTrattaPrincipale: 'TERRESTRE' as any,
+    })
+    fir.registraVersioneSalvata(4)
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.versione).toBe(4)
+    expect(dto.provenienza).toBe('SPECIALE')
+    expect(dto.tipoTrattaPrincipale).toBe('TERRESTRE')
+    expect(dto.modificabile).toBe(true)
+    expect(dto.motivoNonModificabile).toBeNull()
+  })
+
+  it('un FIR emesso non e modificabile e ne da il motivo', () => {
+    const fir = FIR.create(createValidFIRProps())
+    fir.emetti('FIR-2026-000001', createMockFirma('Produttore SRL'))
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.modificabile).toBe(false)
+    expect(dto.motivoNonModificabile).toBe('NON_BOZZA')
+  })
+
+  it('le tratte aggiuntive espongono trasportatoreId', () => {
+    const fir = FIR.create({
+      ...createValidFIRProps(),
+      trasportatoriAggiuntivi: [
+        { ordine: 2, tipoTratta: 'FERROVIARIA' as any, trasportatoreId: 't2', denominazione: 'X' },
+      ],
+    } as any)
+
+    expect(FIRResponseDto.fromDomain(fir).trasportatoriAggiuntivi[0].trasportatoreId).toBe('t2')
   })
 })

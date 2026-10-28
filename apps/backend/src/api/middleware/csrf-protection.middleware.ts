@@ -131,7 +131,7 @@ export class CsrfProtectionMiddleware implements NestMiddleware {
       this.logger.warn('CSRF token missing from request header', {
         path: req.path,
         method: req.method,
-        user: (req as any).user?.userId,
+        user: (req as any).user?.id,
       })
       throw new HttpException(
         {
@@ -148,7 +148,7 @@ export class CsrfProtectionMiddleware implements NestMiddleware {
       this.logger.warn('CSRF token mismatch', {
         path: req.path,
         method: req.method,
-        user: (req as any).user?.userId,
+        user: (req as any).user?.id,
         ip: req.ip,
       })
       throw new HttpException(

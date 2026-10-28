@@ -70,7 +70,11 @@ function makeService(opts: { userLimitRadice: number; utentiNonAdminFiglia: numb
   }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const enforcement = new SubscriptionEnforcementService(prisma, new ContrattoGruppoService(prisma))
-  return { prisma, keycloak, service: new UserAdminService(prisma, keycloak, logger, enforcement) }
+  return {
+    prisma,
+    keycloak,
+    service: new UserAdminService(prisma, prisma, keycloak, logger, enforcement),
+  }
 }
 
 const adminFiglia = { id: 'admin-uuid', role: 'ADMIN', tenantId: FIGLIA } as any

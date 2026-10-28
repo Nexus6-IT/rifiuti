@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 
 import { JobActionsService, AZIONE_AUDIT, UtenteAzione } from './job-actions.service'
+import { TenantContext } from '../../../core/context/tenant-context'
 
 const UTENTE: UtenteAzione = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -21,8 +22,8 @@ function promessaControllata() {
 
 describe('JobActionsService', () => {
   let prisma: { activityLog: { create: jest.Mock; findMany: jest.Mock } }
-  let riconciliazione: { eseguiRiconciliazione: jest.Mock }
-  let certificati: { eseguiControlloScadenza: jest.Mock }
+  let riconciliazione: { riconcilia: jest.Mock }
+  let certificati: { controllaScadenze: jest.Mock }
   let codifiche: { allineaTutto: jest.Mock }
   let datiRiferimento: { reseedAll: jest.Mock }
   let scadenzario: { checkAuthorizationExpirations: jest.Mock }
@@ -32,13 +33,14 @@ describe('JobActionsService', () => {
     prisma = {
       activityLog: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn() },
     }
-    riconciliazione = { eseguiRiconciliazione: jest.fn().mockResolvedValue(undefined) }
-    certificati = { eseguiControlloScadenza: jest.fn().mockResolvedValue(undefined) }
+    riconciliazione = { riconcilia: jest.fn().mockResolvedValue(undefined) }
+    certificati = { controllaScadenze: jest.fn().mockResolvedValue(undefined) }
     codifiche = { allineaTutto: jest.fn().mockResolvedValue(undefined) }
     datiRiferimento = { reseedAll: jest.fn().mockResolvedValue(undefined) }
     scadenzario = { checkAuthorizationExpirations: jest.fn().mockResolvedValue(undefined) }
 
     service = new JobActionsService(
+      prisma as never,
       prisma as never,
       riconciliazione as never,
       certificati as never,
@@ -77,20 +79,79 @@ describe('JobActionsService', () => {
 
   it('risponde AVVIATO senza attendere la fine del giro', async () => {
     const { promessa, risolvi } = promessaControllata()
-    riconciliazione.eseguiRiconciliazione.mockReturnValue(promessa)
+    riconciliazione.riconcilia.mockReturnValue(promessa)
 
     const esito = await service.avvia('rentri-riconciliazione', UTENTE)
 
     expect(esito).toMatchObject({ jobKey: 'rentri-riconciliazione', stato: 'avviato' })
-    expect(riconciliazione.eseguiRiconciliazione).toHaveBeenCalledTimes(1)
+    expect(riconciliazione.riconcilia).toHaveBeenCalledTimes(1)
 
     risolvi()
     await promessa
   })
 
+  it('job-actions: il job lanciato a mano non eredita il tenant della richiesta', async () => {
+    // Il super admin lancia il job con X-Tenant-ID di un'altra azienda: il job gira su tutte
+    // le aziende, quindi non deve vedere quel tenant nello store.
+    const visti: Array<{ tenantId: string | null; superAdmin: boolean }> = []
+    certificati.controllaScadenze.mockImplementation(async () => {
+      visti.push({
+        tenantId: TenantContext.getStoreTenantId(),
+        superAdmin: TenantContext.isSuperAdmin(),
+      })
+    })
+
+    await TenantContext.run(
+      { tenantId: 'azienda-della-richiesta', isSuperAdmin: true },
+      async () => {
+        await service.avvia('rentri-certificato-scadenza', UTENTE)
+      }
+    )
+    await new Promise(process.nextTick)
+
+    expect(visti).toEqual([{ tenantId: null, superAdmin: false }])
+  })
+
+  it('job-actions: l audit si scrive nel contesto dell azienda dell utente, non in quello della richiesta', async () => {
+    const visti: Array<string | null> = []
+    prisma.activityLog.create.mockImplementation(async () => {
+      visti.push(TenantContext.getStoreTenantId())
+      return {}
+    })
+
+    await TenantContext.run({ tenantId: 'azienda-estranea', isSuperAdmin: true }, async () => {
+      await service.avvia('rentri-certificato-scadenza', UTENTE)
+    })
+    await new Promise(process.nextTick)
+    await new Promise(process.nextTick)
+
+    // avvio + esito: entrambi con il tenant dell'utente, mai quello dell'header
+    expect(visti.length).toBeGreaterThanOrEqual(2)
+    expect(visti.every(t => t === UTENTE.tenantId)).toBe(true)
+  })
+
+  it('job-actions: lo storico dei rilanci (vista su tutte le aziende) passa dal client di sistema', async () => {
+    const applicativo = { activityLog: { findMany: jest.fn(), create: jest.fn() } }
+    const sistema = { activityLog: { findMany: jest.fn().mockResolvedValue([]) } }
+    const servizio = new JobActionsService(
+      applicativo as never,
+      sistema as never,
+      riconciliazione as never,
+      certificati as never,
+      codifiche as never,
+      datiRiferimento as never,
+      scadenzario as never
+    )
+
+    await servizio.storico(10)
+
+    expect(sistema.activityLog.findMany).toHaveBeenCalledTimes(1)
+    expect(applicativo.activityLog.findMany).not.toHaveBeenCalled()
+  })
+
   it('rifiuta con 409 un secondo avvio mentre il primo e ancora in corso', async () => {
     const { promessa, risolvi } = promessaControllata()
-    riconciliazione.eseguiRiconciliazione.mockReturnValue(promessa)
+    riconciliazione.riconcilia.mockReturnValue(promessa)
 
     await service.avvia('rentri-riconciliazione', UTENTE)
     await expect(service.avvia('rentri-riconciliazione', UTENTE)).rejects.toBeInstanceOf(
@@ -109,7 +170,7 @@ describe('JobActionsService', () => {
 
   it('il lucchetto e per chiave: un altro job resta avviabile', async () => {
     const { promessa, risolvi } = promessaControllata()
-    riconciliazione.eseguiRiconciliazione.mockReturnValue(promessa)
+    riconciliazione.riconcilia.mockReturnValue(promessa)
 
     await service.avvia('rentri-riconciliazione', UTENTE)
     await expect(service.avvia('codifiche-rentri', UTENTE)).resolves.toMatchObject({
@@ -144,6 +205,39 @@ describe('JobActionsService', () => {
     const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
     expect(ultima.metadata).toMatchObject({ esito: 'fallito' })
     expect(ultima.description).toContain('RENTRI irraggiungibile')
+  })
+
+  it('un giro con un errore generale finisce nell audit come fallito', async () => {
+    riconciliazione.riconcilia.mockRejectedValue(new Error('lettura tenant fallita'))
+
+    await service.avvia('rentri-riconciliazione', UTENTE)
+    await new Promise(process.nextTick)
+
+    const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
+    expect(ultima.metadata).toMatchObject({ esito: 'fallito' })
+  })
+
+  it('un giro con tenant falliti finisce come parziale', async () => {
+    riconciliazione.riconcilia.mockResolvedValue({ tenantTotali: 3, tenantConErrore: 1 })
+
+    await service.avvia('rentri-riconciliazione', UTENTE)
+    await new Promise(process.nextTick)
+
+    const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
+    expect(ultima.metadata).toMatchObject({ esito: 'parziale' })
+    expect(ultima.description).toBe(
+      'Riconciliazione periodica RENTRI: completato con errori su 1 aziende su 3'
+    )
+  })
+
+  it('un giro senza tenant falliti finisce come completato', async () => {
+    certificati.controllaScadenze.mockResolvedValue({ tenantTotali: 2, tenantConErrore: 0 })
+
+    await service.avvia('rentri-certificato-scadenza', UTENTE)
+    await new Promise(process.nextTick)
+
+    const ultima = prisma.activityLog.create.mock.calls.at(-1)?.[0].data
+    expect(ultima.metadata).toMatchObject({ esito: 'completato' })
   })
 
   it('non fa fallire l avvio se l audit non riesce a scrivere', async () => {

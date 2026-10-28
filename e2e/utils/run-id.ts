@@ -39,3 +39,15 @@ export function conPrefisso(nome: string): string {
 export function haPrefissoDiRun(valore: string): boolean {
   return valore.startsWith(`${runId()}-`)
 }
+
+/**
+ * Come `conPrefisso`, ma con un suffisso casuale a lunghezza fissa: due
+ * chiamate con lo stesso nome danno nomi diversi e nessuno è sottostringa
+ * dell'altro. Serve quando il nome è l'unico modo per ritrovare la risorsa
+ * nella UI (es. una voce di dropdown scelta per testo): con nomi uguali la
+ * ricerca prenderebbe la risorsa di un altro test della stessa run.
+ */
+export function conPrefissoUnico(nome: string): string {
+  const suffisso = Math.random().toString(36).slice(2, 8).padEnd(6, '0')
+  return `${conPrefisso(nome)}-${suffisso}`
+}

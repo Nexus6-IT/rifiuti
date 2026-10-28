@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { RentriDiagnosticaController } from './rentri-diagnostica.controller'
 import {
   GetRentriDiagnosticaUseCase,
@@ -8,6 +9,7 @@ import { RENTRIApiClient } from '../../infrastructure/rentri/rentri-api.client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
 import { RentriRateLimiterService } from '../../infrastructure/rentri/rentri-rate-limiter.service'
+import { RENTRI_CONFIG } from '../../infrastructure/rentri/rentri-config'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
 const user: CurrentUserPayload = {
@@ -18,6 +20,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 function diagnosticaFinta(overrides: Partial<RentriDiagnostica> = {}): RentriDiagnostica {
   return {
     certificato: {
@@ -25,6 +30,7 @@ function diagnosticaFinta(overrides: Partial<RentriDiagnostica> = {}): RentriDia
       scadenza: '2027-01-01T00:00:00.000Z',
       giorniAllaScadenza: 100,
       livelloAvviso: 'ok',
+      origineCredenziale: 'tenant',
     },
     trasmissioniRecenti: [],
     formulariAttenzione: [],
@@ -90,7 +96,7 @@ describe('RentriDiagnosticaController', () => {
     it("passa il tenantId dell'utente corrente, mai un id preso da altrove", async () => {
       useCase.execute.mockResolvedValue(diagnosticaFinta())
 
-      await controller.diagnostica(user)
+      await controller.diagnostica(req)
 
       expect(useCase.execute).toHaveBeenCalledWith('tenant-1')
       expect(useCase.execute).toHaveBeenCalledTimes(1)
@@ -109,14 +115,14 @@ describe('RentriDiagnosticaController', () => {
       })
       useCase.execute.mockResolvedValue(risultato)
 
-      const esito = await controller.diagnostica(user)
+      const esito = await controller.diagnostica(req)
 
       expect(esito).toEqual(risultato)
     })
 
     it('un tenant diverso richiede sempre e solo il proprio tenantId (isolamento)', async () => {
       useCase.execute.mockResolvedValue(diagnosticaFinta())
-      const altroUtente: CurrentUserPayload = { ...user, tenantId: 'tenant-2' }
+      const altroUtente = { tenantId: 'tenant-2', user }
 
       await controller.diagnostica(altroUtente)
 
@@ -146,9 +152,12 @@ describe('RentriDiagnosticaController', () => {
           controllers: [RentriDiagnosticaController],
           providers: [
             GetRentriDiagnosticaUseCase,
+            { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
             { provide: PrismaService, useValue: prisma },
             { provide: RentriCredentialService, useValue: credentialService },
             { provide: RentriRateLimiterService, useValue: rateLimiter },
+            // Nessuna credenziale da env: la diagnostica legge solo questi campi.
+            { provide: RENTRI_CONFIG, useValue: {} },
             // Presente nel container (come lo sarebbe in RentriModule reale),
             // ma MAI iniettato in GetRentriDiagnosticaUseCase: se qualcosa lo
             // toccasse comunque, questo provider lancerebbe immediatamente.
@@ -158,7 +167,7 @@ describe('RentriDiagnosticaController', () => {
 
         const controller = moduleRef.get(RentriDiagnosticaController)
 
-        await expect(controller.diagnostica(user)).resolves.toEqual(
+        await expect(controller.diagnostica(req)).resolves.toEqual(
           expect.objectContaining({
             certificato: expect.objectContaining({ configurato: false }),
           })

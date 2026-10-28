@@ -6,8 +6,14 @@
  */
 
 import { PrismaClient } from '@prisma/client'
+import { risolviUrlSistema } from '../src/infrastructure/persistence/url-sistema'
 
-const prisma = new PrismaClient()
+// Seed cross-tenant: serve il client di sistema (BYPASSRLS); senza DATABASE_URL_SISTEMA ripiega su DATABASE_URL.
+const { url: urlSistema, fallback } = risolviUrlSistema()
+if (fallback) {
+  console.warn("DATABASE_URL_SISTEMA assente: il seed usa la connessione dell'applicazione")
+}
+const prisma = new PrismaClient(urlSistema ? { datasources: { db: { url: urlSistema } } } : undefined)
 
 async function main() {
   console.log('🧪 Creating test tenant and user with NEW Roles & Permissions system...')

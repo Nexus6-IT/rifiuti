@@ -188,10 +188,15 @@ export interface SessioneFirma {
 }
 
 /**
- * Valore di default di `expires_in` (secondi) restituito da
- * `POST /credentials/authorize`. Il tempo reale concesso da RENTRI non è
- * documentato da alcuna fonte (v. ADR, «Lacune ancora aperte»): questo
- * valore è una scelta della fake, non un dato dell'ente.
+ * Durata di default (secondi) della sessione di autorizzazione. NON è più
+ * restituita da `POST /credentials/authorize` (che per contratto risponde col
+ * solo `handle`): serve a dimensionare il timer della sessione. Il tempo reale
+ * concesso da RENTRI non è documentato da alcuna fonte (v. ADR, «Lacune ancora
+ * aperte»): è una scelta della fake, non un dato dell'ente.
+ *
+ * Fedeltà: la fake usa UN solo timer. L'`expires_in` di `authorize-check`
+ * è il tempo residuo di quel timer, non una durata nuova del SAD come farebbe
+ * l'ente.
  */
 export const EXPIRES_IN_DEFAULT_SECONDI = 120
 
@@ -243,7 +248,7 @@ export class Archivio {
   /**
    * Materiale crittografico di test della "CA RENTRI" simulata: il
    * certificato restituito da `GET /credentials/info` e la chiave con cui
-   * `POST /credentials/sign-hash` firma DAVVERO.
+   * `POST /signatures/sign-hash` firma DAVVERO.
    *
    * Generato una volta sola per istanza di `Archivio` (pigro: la generazione
    * di una coppia RSA 2048 costa ~centinaia di ms, e la maggior parte dei
@@ -376,7 +381,7 @@ export class Archivio {
   }
 
   /**
-   * `POST /ca-rentri/v1.0/credentials/sign-hash`: firma DAVVERO il digest con
+   * `POST /ca-rentri/v1.0/signatures/sign-hash`: firma DAVVERO il digest con
    * la chiave privata di test.
    *
    * **Divergenza dichiarata dall'ente reale**: RENTRI dichiara `sign_algo`

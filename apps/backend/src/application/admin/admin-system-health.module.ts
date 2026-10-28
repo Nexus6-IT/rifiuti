@@ -57,6 +57,10 @@ const NOMI_CODE = CODE_ATTESE.map(coda => coda.nome)
     RentriSyncModule,
     ReferenceDataModule,
     NotificationsModule,
+    // Questa istanza di `audit-logging` (come le altre code elencate) serve solo a leggere
+    // conteggi e a rilanciare job gia' esistenti: non aggiunge job. Se in futuro qui si
+    // usera' `add`, vanno passate le opzioni comuni AUDIT_QUEUE_JOB_OPTIONS
+    // (infrastructure/jobs/audit-queue.options), altrimenti i job falliti non scadono.
     BullModule.registerQueue(...NOMI_CODE.map(name => ({ name }))),
   ],
   controllers: [SystemHealthController],

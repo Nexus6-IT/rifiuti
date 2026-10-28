@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import forge from 'node-forge'
 
 /**
@@ -127,4 +129,30 @@ export function emettiCertificatoAccreditato(
 export function emettiCertificatoAltraCa(commonName: string): CertificatoEmesso {
   const altraCa = generaCa('CA-ESTRANEA-TEST')
   return emettiCertificatoFirmatoDa(commonName, altraCa.certificato, altraCa.chiavePrivata, {})
+}
+
+/**
+ * CA di prova RSA fissa dei certificati EC (test/fixture/ec/ca-prova.crt,
+ * generata da scripts/genera-fixture-ec.sh): e' la CA che ha emesso il
+ * certificato EC P-256 usato per provare ES256. Il simulatore si fida anche
+ * di questa, oltre alla CA effimera di processo.
+ *
+ * ATTENZIONE: la chiave privata di questa CA e' pubblica nel repository
+ * (test/fixture/ec/ca-prova.key), quindi chiunque puo' emettere certificati
+ * che la CA fissa considera validi. Un finto avviato dal repository (npm start,
+ * ts-node, CI con working-directory tools/rentri-fake) si fida percio' di
+ * certificati che chiunque puo' produrre: il finto NON e' un confine di
+ * sicurezza. Ne e' esente solo l'immagine Docker: la fixture sta in test/, che
+ * l'immagine NON copia, e se il file non c'e' la CA fissa non si aggiunge e
+ * resta valida solo la CA effimera.
+ */
+const PERCORSO_CA_FISSA = join(__dirname, '..', '..', 'test', 'fixture', 'ec', 'ca-prova.crt')
+
+/** PEM di tutte le CA di cui la fake si fida: effimera sempre, fissa se presente. */
+export function certificatiCaAttendibiliPem(): string[] {
+  const elenco = [certificatoCaPem()]
+  if (existsSync(PERCORSO_CA_FISSA)) {
+    elenco.push(readFileSync(PERCORSO_CA_FISSA, 'utf8'))
+  }
+  return elenco
 }

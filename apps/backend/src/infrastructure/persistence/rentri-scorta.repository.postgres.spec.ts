@@ -44,13 +44,17 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
   })
 
   afterAll(async () => {
-    await prisma.rentriNumeroVidimato.deleteMany({ where: { tenantId } })
-    await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => undefined)
+    // Con un id `undefined` (beforeAll fallito) Prisma toglie il filtro e deleteMany
+    // cancellerebbe l'intera tabella: senza id non si cancella nulla.
+    if (tenantId) {
+      await prisma.rentriNumeroVidimato.deleteMany({ where: { tenantId } })
+      await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => undefined)
+    }
     await prisma.$disconnect()
   })
 
   beforeEach(async () => {
-    await prisma.rentriNumeroVidimato.deleteMany({ where: { tenantId } })
+    if (tenantId) await prisma.rentriNumeroVidimato.deleteMany({ where: { tenantId } })
   })
 
   /** Popola la scorta con `quantita` numeri DISPONIBILI consecutivi. */

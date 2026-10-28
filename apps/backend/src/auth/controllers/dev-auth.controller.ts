@@ -14,15 +14,19 @@ import { ConfigService } from '@nestjs/config'
 import { Public } from '../decorators/public.decorator'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { DevLoginDto } from '../dto/dev-login.dto'
+import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
+// Login di sviluppo: come la sessione, non dipende dall'azienda selezionata.
+@ConsentiSelezioneNonValida()
 @Controller('auth')
 export class DevAuthController {
   constructor(
     private readonly jwtTokensService: JwtTokensService,
     private readonly redisService: RedisService,
-    private readonly prismaService: PrismaService,
+    // Client di sistema: il login (solo sviluppo) cerca l'utente prima di conoscerne l'azienda.
+    private readonly sistema: PrismaSistemaService,
     private readonly configService: ConfigService
   ) {}
 
@@ -40,7 +44,8 @@ export class DevAuthController {
     }
 
     // Find user by email (email is not unique in schema, so use findFirst)
-    const user = await this.prismaService.user.findFirst({
+    // Client di sistema: nessuna azienda nel contesto al login.
+    const user = await this.sistema.user.findFirst({
       where: { email: dto.email },
       include: {
         tenant: true,
@@ -58,6 +63,7 @@ export class DevAuthController {
     }
 
     // Get tenant and role (User has direct tenantId)
+    // azienda primaria: record utente letto dal DB, con cui si emette il token (login)
     const tenantId = user.tenantId || ''
     const role = user.role || 'VIEWER'
 

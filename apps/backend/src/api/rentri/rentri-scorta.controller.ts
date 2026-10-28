@@ -11,12 +11,13 @@ import {
   UseGuards,
   NotFoundException,
   BadRequestException,
+  Req,
 } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import {
@@ -79,11 +80,10 @@ export class RentriScortaController {
       'si limita a elencare quelli già esistenti.',
   })
   @ApiResponse({ status: 200, description: 'Elenco blocchi' })
-  async getBlocchi(
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<{ blocchi: BloccoRentriDto[] }> {
+  async getBlocchi(@Req() req: any): Promise<{ blocchi: BloccoRentriDto[] }> {
+    const tenantId = requireRequestTenantId(req)
     try {
-      return await this.elencaBlocchi.execute(user.tenantId)
+      return await this.elencaBlocchi.execute(tenantId)
     } catch (error: unknown) {
       throw this.mappaErroreDominio(error)
     }
@@ -92,8 +92,9 @@ export class RentriScortaController {
   @Get('scorta')
   @ApiOperation({ summary: 'Numeri FIR pre-vidimati disponibili in scorta, per blocco' })
   @ApiResponse({ status: 200, description: 'Stato della scorta' })
-  async getScortaCorrente(@CurrentUser() user: CurrentUserPayload): Promise<GetScortaRentriResult> {
-    return this.getScorta.execute(user.tenantId)
+  async getScortaCorrente(@Req() req: any): Promise<GetScortaRentriResult> {
+    const tenantId = requireRequestTenantId(req)
+    return this.getScorta.execute(tenantId)
   }
 
   @Post('scorta/vidima')
@@ -111,10 +112,11 @@ export class RentriScortaController {
   })
   async vidimaLotto(
     @Body() dto: VidimaScortaRentriDto,
-    @CurrentUser() user: CurrentUserPayload
+    @Req() req: any
   ): Promise<{ avviato: true; richiesti: number }> {
+    const tenantId = requireRequestTenantId(req)
     this.logger.debug('Avvio vidimazione lotto RENTRI richiesto', {
-      tenantId: user.tenantId,
+      tenantId,
       codiceBlocco: dto.codiceBlocco,
       quantita: dto.quantita,
     })
@@ -125,7 +127,7 @@ export class RentriScortaController {
     // dentro un fire-and-forget. Un ente irraggiungibile qui è transitorio
     // e NON fa fallire questa verifica (v. `AvviaVidimazioneScortaUseCase.verificaBlocco`).
     try {
-      await this.avviaVidimazione.verificaBlocco(user.tenantId, dto.codiceBlocco)
+      await this.avviaVidimazione.verificaBlocco(tenantId, dto.codiceBlocco)
     } catch (error: unknown) {
       throw this.mappaErroreDominio(error)
     }
@@ -133,11 +135,11 @@ export class RentriScortaController {
     // Fire-and-forget deliberato SOLO per il ciclo di vidimazione: non è
     // immediato (v. audit RENTRI), l'endpoint risponde subito 202 dopo la
     // verifica di cui sopra. L'esito arriva via GET /scorta.
-    this.avviaVidimazione.execute(user.tenantId, dto.codiceBlocco, dto.quantita).catch(error => {
+    this.avviaVidimazione.execute(tenantId, dto.codiceBlocco, dto.quantita).catch(error => {
       this.logger.error(
         'Vidimazione lotto RENTRI non riuscita in background',
         error instanceof Error ? error : new Error(String(error)),
-        { tenantId: user.tenantId, codiceBlocco: dto.codiceBlocco }
+        { tenantId, codiceBlocco: dto.codiceBlocco }
       )
     })
 
@@ -154,10 +156,11 @@ export class RentriScortaController {
   })
   async impostaPredefinito(
     @Param('codiceBlocco') codiceBlocco: string,
-    @CurrentUser() user: CurrentUserPayload
+    @Req() req: any
   ): Promise<EsitoImpostaBloccoPredefinito> {
+    const tenantId = requireRequestTenantId(req)
     try {
-      return await this.impostaBloccoPredefinito.execute(user.tenantId, codiceBlocco)
+      return await this.impostaBloccoPredefinito.execute(tenantId, codiceBlocco)
     } catch (error: unknown) {
       throw this.mappaErroreDominio(error)
     }
@@ -173,11 +176,12 @@ export class RentriScortaController {
   })
   @ApiResponse({ status: 200, description: 'Esito della verifica' })
   async getEmissionePossibile(
-    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any,
     @Query('numIscrSito') numIscrSito?: string
   ): Promise<EsitoEmissionePossibile> {
+    const tenantId = requireRequestTenantId(req)
     try {
-      return await this.verificaEmissionePossibile.execute(user.tenantId, numIscrSito)
+      return await this.verificaEmissionePossibile.execute(tenantId, numIscrSito)
     } catch (error: unknown) {
       throw this.mappaErroreDominio(error)
     }

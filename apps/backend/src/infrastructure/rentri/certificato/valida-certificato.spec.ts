@@ -1,3 +1,5 @@
+import * as fs from 'fs'
+import * as path from 'path'
 import * as forge from 'node-forge'
 import { validaCertificato } from './valida-certificato'
 
@@ -81,7 +83,8 @@ describe('validaCertificato', () => {
     const risultato = validaCertificato(certificatePem, privateKeyPem)
 
     expect(risultato.controlli.revoca.esito).toBe('avvertimento')
-    expect(risultato.controlli.revoca.messaggio).toMatch(/dichiara/i)
+    expect(risultato.controlli.revoca.messaggio).toMatch(/dichiara endpoint di revoca/i)
+    expect(risultato.controlli.revoca.messaggio).not.toMatch(/non dichiara/i)
   })
 
   it('certificato scaduto: errore bloccante sulla scadenza', () => {
@@ -119,5 +122,43 @@ describe('validaCertificato', () => {
     expect(risultato.valido).toBe(false)
     expect(risultato.controlli.scadenza.esito).toBe('errore')
     expect(risultato.controlli.coerenzaChiave.esito).toBe('errore')
+  })
+
+  it('certificato EC: scadenza, catena e revoca valutati senza errori', () => {
+    const dir = path.resolve(__dirname, '../../../../../../tools/rentri-fake/test/fixture/ec')
+    const certificatePem = fs.readFileSync(path.join(dir, 'operatore-test-ec.crt'), 'utf8')
+    const privateKeyPem = fs.readFileSync(path.join(dir, 'operatore-test-ec.key'), 'utf8')
+
+    const risultato = validaCertificato(certificatePem, privateKeyPem)
+
+    expect(risultato.valido).toBe(true)
+    expect(risultato.controlli.scadenza.esito).not.toBe('errore')
+    expect(risultato.controlli.coerenzaChiave.esito).toBe('ok')
+    // La fixture EC e' emessa da una CA (issuer diverso dal subject): ramo "non auto-firmato".
+    expect(risultato.controlli.catena.esito).toBe('avvertimento')
+    expect(risultato.controlli.catena.messaggio).toMatch(/non è auto-firmato/)
+    expect(risultato.controlli.catena.messaggio).toMatch(/un solo certificato/)
+    // E non dichiara CRL/OCSP: ramo "nessun endpoint di revoca", non quello degli endpoint dichiarati.
+    expect(risultato.controlli.revoca.esito).toBe('avvertimento')
+    expect(risultato.controlli.revoca.messaggio).toMatch(/non dichiara alcun endpoint di revoca/)
+    expect(risultato.controlli.revoca.messaggio).not.toMatch(/dichiara endpoint di revoca/)
+  })
+
+  it("errore di ASN.1 nelle estensioni: la revoca degrada ad avvertimento, il caricamento non e' bloccato", () => {
+    const { certificatePem, privateKeyPem } = makeCert({})
+    const spia = jest.spyOn(forge.asn1, 'fromDer').mockImplementation(() => {
+      throw new Error('ASN.1 corrotto')
+    })
+    try {
+      const risultato = validaCertificato(certificatePem, privateKeyPem)
+
+      expect(risultato.controlli.revoca.esito).toBe('avvertimento')
+      expect(risultato.controlli.revoca.messaggio).toBe(
+        'estensioni del certificato non analizzabili: lo stato di revoca non è verificabile'
+      )
+      expect(risultato.valido).toBe(true)
+    } finally {
+      spia.mockRestore()
+    }
   })
 })

@@ -41,6 +41,16 @@ export interface CreateFIRDto {
   annotazioni?: string
 }
 
+/**
+ * Corpo di `PUT /fir/:id`: tutti i campi della creazione più la `versione` letta
+ * (controllo ottimistico). Qui `rifiuto.unitaMisura` è obbligatoria: il backend non
+ * applica il predefinito della creazione, per non cambiare l'unità senza che l'utente lo sappia.
+ */
+export interface ModificaFIRDto extends Omit<CreateFIRDto, 'rifiuto'> {
+  rifiuto: CreateFIRDto['rifiuto'] & { unitaMisura: string }
+  versione: number
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -77,6 +87,14 @@ export class FirService {
   }
 
   /**
+   * Modifica una bozza (PUT). 409 `FIR_MODIFICATO_NEL_FRATTEMPO` se la versione è superata,
+   * 409 `FIR_NON_MODIFICABILE` se nel frattempo non è più una bozza modificabile.
+   */
+  modificaFIR(id: string, dto: ModificaFIRDto): Observable<FIR> {
+    return this.http.put<FIR>(`${this.API_URL}/${id}`, dto)
+  }
+
+  /**
    * Emette un FIR: BOZZA → EMESSO (assegna il numero progressivo).
    * La firma del produttore NON è costruita dal frontend: il backend la
    * produce invocando il sottosistema crittografico e la persiste (task 4,
@@ -96,7 +114,7 @@ export class FirService {
 
   /**
    * Conferma consegna (destinatario): IN_TRANSITO → CONSEGNATO.
-   * Richiede il peso effettivo (kg) rilevato a destinazione.
+   * Richiede il peso effettivo rilevato a destinazione, nell'unità di misura del FIR.
    * La firma del destinatario è prodotta dal backend (vedi emettiFIR).
    */
   confermaConsegna(id: string, pesoEffettivo: number): Observable<FIR> {

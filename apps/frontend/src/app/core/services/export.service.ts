@@ -4,11 +4,9 @@ import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { format } from 'date-fns'
-import {
-  Movimento,
-  CausaleMovimento,
-  CAUSALE_LABELS,
-} from '../../features/registro/registro.service'
+import { annotazioneExport, statoExport } from '../../features/registro/registro-correzioni'
+import { conColonnaSede, filtriRegistroExport, sedeDelMovimento } from './registro-export-sede'
+import { Movimento } from '../../features/registro/registro.service'
 
 /**
  * Metadati di intestazione per l'export del registro cronologico C/S.
@@ -23,6 +21,13 @@ export interface RegistroExportMeta {
   filtroTipo?: string | null
   /** Filtro CER attivo. */
   filtroCer?: string | null
+  /** Sede filtrata (etichetta del registro): va nell'intestazione del documento. */
+  sede?: string | null
+  /**
+   * Con più registri e nessun filtro di sede: etichetta della sede di ogni movimento, per la
+   * colonna "Sede". Assente con un solo registro (export identico a prima).
+   */
+  etichettaSede?: (m: Movimento) => string
 }
 
 @Injectable({
@@ -64,6 +69,17 @@ export class ExportService {
     doc.save(filename)
   }
 
+  /** Righe "Dati Rifiuto" del PDF di dettaglio: il peso a destino è nell'unità del FIR. */
+  righeRifiutoPdf(fir: FIR): string[][] {
+    const unita = fir.rifiuto.unitaMisura
+    return [
+      ['Codice CER', fir.rifiuto.cerCode],
+      ['Quantità Dichiarata', `${fir.rifiuto.quantita} ${unita}`],
+      ['Stato Fisico', fir.rifiuto.statoFisico || 'N/D'],
+      ['Peso Effettivo', fir.pesoEffettivo != null ? `${fir.pesoEffettivo} ${unita}` : 'N/D'],
+    ]
+  }
+
   /**
    * Esporta singolo FIR in PDF con dettagli completi
    */
@@ -91,12 +107,7 @@ export class ExportService {
     doc.text('Dati Rifiuto', 14, 60)
     doc.setFontSize(11)
 
-    const rifiutoData = [
-      ['Codice CER', fir.rifiuto.cerCode],
-      ['Quantità Dichiarata', `${fir.rifiuto.quantita} ${fir.rifiuto.unitaMisura}`],
-      ['Stato Fisico', fir.rifiuto.statoFisico || 'N/D'],
-      ['Peso Effettivo', fir.pesoEffettivo ? `${fir.pesoEffettivo} kg` : 'N/D'],
-    ]
+    const rifiutoData = this.righeRifiutoPdf(fir)
 
     autoTable(doc, {
       body: rifiutoData,
@@ -177,7 +188,7 @@ export class ExportService {
       'Quantità Dichiarata': fir.rifiuto.quantita,
       'Unità di Misura': fir.rifiuto.unitaMisura,
       'Stato Fisico': fir.rifiuto.statoFisico || 'N/D',
-      'Peso Effettivo': fir.pesoEffettivo || 'N/D',
+      'Peso Effettivo': fir.pesoEffettivo ?? 'N/D',
       'Produttore ID': fir.produttoreId,
       'Trasportatore ID': fir.trasportatoreId,
       'Destinatario ID': fir.destinatarioId,
@@ -266,9 +277,7 @@ export class ExportService {
     doc.text(`Periodo: ${this.periodoRegistro(movimenti)}`, 14, y)
 
     // Filtri attivi + metadati di generazione
-    const filtri: string[] = []
-    if (meta.filtroTipo) filtri.push(`Tipo: ${meta.filtroTipo}`)
-    if (meta.filtroCer) filtri.push(`CER: ${meta.filtroCer}`)
+    const filtri = filtriRegistroExport(meta)
     const filtriLabel = filtri.length ? filtri.join('  ·  ') : 'Nessun filtro'
     doc.text(`Filtri: ${filtriLabel}`, 14, y + 5)
     doc.text(
@@ -278,41 +287,18 @@ export class ExportService {
       y + 10
     )
 
-    const tableData = movimenti.map(m => [
-      `${m.progressiveYear}/${m.progressiveNumber}`,
-      this.formatDate(m.registrationDate),
-      this.formatDate(m.movementDate),
-      m.type,
-      this.causaleLabel(m.causale),
-      m.cerCode,
-      `${this.formatQuantita(m.quantity)} ${m.unit}`,
-      m.wastePhysicalState || '—',
-      m.counterpartName || '—',
-      m.firId ? 'Sì' : '—',
-    ])
+    const conSede = conColonnaSede(meta)
+    const { head, body } = this.tabellaRegistroPdf(movimenti, meta)
 
     autoTable(doc, {
-      head: [
-        [
-          'Progr.',
-          'Data reg.',
-          'Data op.',
-          'Tipo',
-          'Causale',
-          'CER',
-          'Quantità',
-          'Stato fisico',
-          'Controparte',
-          'FIR',
-        ],
-      ],
-      body: tableData,
+      head: [head],
+      body,
       startY: y + 15,
       styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
       headStyles: { fillColor: teal, textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [240, 253, 250] },
       columnStyles: {
-        6: { halign: 'right' },
+        [conSede ? 9 : 8]: { halign: 'right' },
       },
     })
 
@@ -324,38 +310,27 @@ export class ExportService {
    */
   exportRegistroToExcel(
     movimenti: Movimento[],
-    _meta: RegistroExportMeta = {},
+    meta: RegistroExportMeta = {},
     filename = `registro-cs-${format(new Date(), 'yyyyMMdd')}.xlsx`
   ): void {
-    const excelData = movimenti.map(m => ({
-      Progressivo: `${m.progressiveYear}/${m.progressiveNumber}`,
-      Anno: m.progressiveYear,
-      Numero: m.progressiveNumber,
-      'Data registrazione': this.formatDate(m.registrationDate),
-      'Data operazione': this.formatDate(m.movementDate),
-      Tipo: m.type,
-      Causale: this.causaleLabel(m.causale),
-      CER: m.cerCode,
-      'Descrizione rifiuto': m.wasteDescription || '',
-      Quantità: m.quantity,
-      Unità: m.unit,
-      'Stato fisico': m.wastePhysicalState || '',
-      'Classi HP': m.wasteHazardClasses || '',
-      'Operazione R/D': m.operationCode || '',
-      Controparte: m.counterpartName || '',
-      'Indirizzo controparte': m.counterpartAddress || '',
-      'Rif. FIR': m.firId || '',
-      Note: m.notes || '',
-    }))
+    const conSede = conColonnaSede(meta)
+    const excelData = this.righeRegistroExcel(movimenti, meta)
 
-    const ws = XLSX.utils.json_to_sheet(excelData)
+    // Con la sede filtrata la si scrive sopra la tabella (riga 1), che parte dalla riga 3.
+    const ws = meta.sede
+      ? XLSX.utils.aoa_to_sheet([[`Sede: ${meta.sede}`], []])
+      : XLSX.utils.json_to_sheet(excelData)
+    if (meta.sede) XLSX.utils.sheet_add_json(ws, excelData, { origin: 'A3' })
     ws['!cols'] = [
       { wch: 12 }, // Progressivo
+      ...(conSede ? [{ wch: 30 }] : []), // Sede
       { wch: 6 }, // Anno
       { wch: 8 }, // Numero
       { wch: 18 }, // Data registrazione
       { wch: 16 }, // Data operazione
       { wch: 10 }, // Tipo
+      { wch: 26 }, // Annotazione
+      { wch: 12 }, // Stato
       { wch: 26 }, // Causale
       { wch: 12 }, // CER
       { wch: 28 }, // Descrizione rifiuto
@@ -375,6 +350,76 @@ export class ExportService {
     XLSX.writeFile(wb, filename)
   }
 
+  /** Intestazione e righe della tabella PDF del registro (comprese Annotazione e Stato). */
+  tabellaRegistroPdf(
+    movimenti: Movimento[],
+    meta: RegistroExportMeta = {}
+  ): { head: string[]; body: string[][] } {
+    const conSede = conColonnaSede(meta)
+    const head = [
+      'Progr.',
+      ...(conSede ? ['Sede'] : []),
+      'Data reg.',
+      'Data op.',
+      'Tipo',
+      'Annotazione',
+      'Stato',
+      'Causale',
+      'CER',
+      'Quantità',
+      'Stato fisico',
+      'Controparte',
+      'FIR',
+    ]
+    const body = movimenti.map(m => [
+      `${m.progressiveYear}/${m.progressiveNumber}`,
+      ...(conSede ? [sedeDelMovimento(meta, m) || '—'] : []),
+      this.formatDate(m.registrationDate),
+      this.formatDate(m.movementDate),
+      m.type,
+      annotazioneExport(m),
+      statoExport(m),
+      this.causaleLabel(m),
+      m.cerCode,
+      `${this.formatQuantita(m.quantity)} ${m.unit}`,
+      m.wastePhysicalState || '—',
+      m.counterpartName || '—',
+      m.firId ? 'Sì' : '—',
+    ])
+    return { head, body }
+  }
+
+  /** Righe del foglio Excel del registro (comprese Annotazione e Stato). */
+  righeRegistroExcel(
+    movimenti: Movimento[],
+    meta: RegistroExportMeta = {}
+  ): Record<string, string | number>[] {
+    const conSede = conColonnaSede(meta)
+    return movimenti.map(m => ({
+      Progressivo: `${m.progressiveYear}/${m.progressiveNumber}`,
+      ...(conSede ? { Sede: sedeDelMovimento(meta, m) } : {}),
+      Anno: m.progressiveYear,
+      Numero: m.progressiveNumber,
+      'Data registrazione': this.formatDate(m.registrationDate),
+      'Data operazione': this.formatDate(m.movementDate),
+      Tipo: m.type,
+      Annotazione: annotazioneExport(m),
+      Stato: statoExport(m),
+      Causale: this.causaleLabel(m),
+      CER: m.cerCode,
+      'Descrizione rifiuto': m.wasteDescription || '',
+      Quantità: m.quantity,
+      Unità: m.unit,
+      'Stato fisico': m.wastePhysicalState || '',
+      'Classi HP': m.wasteHazardClasses || '',
+      'Operazione R/D': m.operationCode || '',
+      Controparte: m.counterpartName || '',
+      'Indirizzo controparte': m.counterpartAddress || '',
+      'Rif. FIR': m.firId || '',
+      Note: m.notes || '',
+    }))
+  }
+
   /** Formatta una data ISO (YYYY-MM-DD o ISO datetime) in dd/MM/yyyy. */
   private formatDate(value?: string): string {
     if (!value) return '—'
@@ -390,9 +435,9 @@ export class ExportService {
     }).format(value)
   }
 
-  /** Ottiene la label leggibile della causale del movimento. */
-  private causaleLabel(causale: string): string {
-    return CAUSALE_LABELS[causale as CausaleMovimento] ?? causale
+  /** Etichetta della causale: la descrizione che l'API calcola alla data del movimento, o il codice. */
+  private causaleLabel(m: Pick<Movimento, 'causale' | 'causaleDescrizione'>): string {
+    return m.causaleDescrizione || m.causale
   }
 
   /** Calcola l'intervallo temporale coperto dai movimenti esportati. */

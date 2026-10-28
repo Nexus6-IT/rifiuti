@@ -12,6 +12,7 @@ import { EmettiFIRUseCase } from '../application/fir/use-cases/emetti-fir.use-ca
 import { PresaInCaricoFIRUseCase } from '../application/fir/use-cases/presa-in-carico-fir.use-case'
 import { ConfermaConsegnaFIRUseCase } from '../application/fir/use-cases/conferma-consegna-fir.use-case'
 import { AnnullaFIRUseCase } from '../application/fir/use-cases/annulla-fir.use-case'
+import { ModificaFIRUseCase } from '../application/fir/use-cases/modifica-fir.use-case'
 import { ListFIRsQueryHandler } from '../application/fir/queries/list-firs.handler'
 import { GetFIRByIdQueryHandler } from '../application/fir/queries/get-fir-by-id.handler'
 import { FIRPrismaRepository } from '../infrastructure/persistence/fir-prisma.repository'
@@ -27,6 +28,7 @@ import { FIR_REPOSITORY, FIRRepository as CryptoFIRRepository } from '../domain/
 import { DigitalSignatureService } from '../application/signatures/digital-signature.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from '../application/rentri/trasmetti-fir-secondo-modalita.use-case'
 import { LoggerService } from '../core/logger/logger.service'
+import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
 
 @Module({
   // SignaturesModule: collega il ciclo di vita (emetti/presaInCarico/
@@ -37,7 +39,8 @@ import { LoggerService } from '../core/logger/logger.service'
   // fornisce TrasmettiFIRSecondoModalitaUseCase, il punto di aggancio tra
   // l'emissione del FIR e la trasmissione a RENTRI secondo la modalità del
   // tenant.
-  imports: [PrismaModule, BillingModule, SignaturesModule, RentriSyncModule],
+  // RuoloEffettivoModule: ruolo nell'azienda selezionata per la creazione dei FIR (I1).
+  imports: [PrismaModule, BillingModule, SignaturesModule, RentriSyncModule, RuoloEffettivoModule],
   controllers: [FIRControllerV2],
   providers: [
     // Repositories (provide as concrete classes)
@@ -128,6 +131,36 @@ import { LoggerService } from '../core/logger/logger.service'
       inject: [FIRPrismaRepository],
     },
 
+    {
+      provide: ModificaFIRUseCase,
+      // FIRPrismaRepository soddisfa anche la porta IFIRModificaBozzaRepository: stessa classe, nessun token nuovo.
+      useFactory: (
+        firRepo: FIRPrismaRepository,
+        cerRepo: CERPrismaRepository,
+        produttoreRepo: ProduttorePrismaRepository,
+        trasportatoreRepo: TrasportatorePrismaRepository,
+        destinatarioRepo: DestinatarioPrismaRepository,
+        logger: LoggerService
+      ) => {
+        return new ModificaFIRUseCase(
+          firRepo,
+          cerRepo,
+          produttoreRepo,
+          trasportatoreRepo,
+          destinatarioRepo,
+          logger
+        )
+      },
+      inject: [
+        FIRPrismaRepository,
+        CERPrismaRepository,
+        ProduttorePrismaRepository,
+        TrasportatorePrismaRepository,
+        DestinatarioPrismaRepository,
+        LoggerService,
+      ],
+    },
+
     // Queries
     {
       provide: ListFIRsQueryHandler,
@@ -150,6 +183,7 @@ import { LoggerService } from '../core/logger/logger.service'
     PresaInCaricoFIRUseCase,
     ConfermaConsegnaFIRUseCase,
     AnnullaFIRUseCase,
+    ModificaFIRUseCase,
     ListFIRsQueryHandler,
     GetFIRByIdQueryHandler,
   ],

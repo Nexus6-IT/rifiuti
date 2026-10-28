@@ -1,7 +1,10 @@
-import { Injectable, Inject, BadRequestException } from '@nestjs/common'
+import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common'
+import * as Sentry from '@sentry/node'
+import { RENTRISyncStatus as PrismaRentriSyncStatus } from '@prisma/client'
 import { PrismaService } from '../persistence/prisma.service'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { encryptSecret, decryptSecret } from './rentri-crypto.util'
+import { CODICE_CERTIFICATO_MANCANTE } from './rentri-certificato.costanti'
 
 /**
  * Formato del numero di iscrizione dell'unità locale RENTRI (`num_iscr_sito`),
@@ -65,13 +68,15 @@ export interface RentriCredentialInput {
  */
 @Injectable()
 export class RentriCredentialService {
+  private readonly logger = new Logger(RentriCredentialService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig
   ) {}
 
-  /** Salva (crea o aggiorna) la credenziale RENTRI di un tenant, cifrando la chiave. */
-  async upsertForTenant(tenantId: string, input: RentriCredentialInput): Promise<void> {
+  /** Salva (crea o aggiorna) la credenziale RENTRI di un tenant, cifrando la chiave. Ritorna gli id dei FIR riaperti (v. riapriFirFermiPerCertificatoMancante). */
+  async upsertForTenant(tenantId: string, input: RentriCredentialInput): Promise<string[]> {
     if (input.numIscrSito && !NUM_ISCR_SITO_PATTERN.test(input.numIscrSito)) {
       throw new BadRequestException(
         `Numero di iscrizione dell'unità locale RENTRI non valido: deve rispettare il formato ${NUM_ISCR_SITO_PATTERN.source}`
@@ -107,6 +112,61 @@ export class RentriCredentialService {
       create: { tenantId, ...data },
       update: data,
     })
+
+    return this.riapriFirFermiPerCertificatoMancante(tenantId)
+  }
+
+  /**
+   * Il certificato c'è: i FIR di QUESTA azienda fermi perché ne era privo tornano
+   * PENDING (tentativi azzerati). Il filtro su tenant e codice non tocca gli altri
+   * fallimenti permanenti (403, validazione...) né i FIR annullati. Ritorna gli id
+   * riaperti: in AUTOMATICA/IBRIDA li accoda il chiamante (il controller, perché la
+   * coda sta in RentriSyncModule, che importa RentriModule: iniettarla qui farebbe
+   * un ciclo); in MANUALE l'utente preme «Trasmetti a RENTRI».
+   *
+   * Un errore qui NON fa fallire il salvataggio del certificato (già riuscito): si
+   * logga e si segnala, e i FIR restano fermi finché l'utente non li riapre a mano.
+   */
+  private async riapriFirFermiPerCertificatoMancante(tenantId: string): Promise<string[]> {
+    try {
+      const filtro = {
+        tenantId,
+        rentriSyncStatus: PrismaRentriSyncStatus.PERMANENTLY_FAILED,
+        rentriLastSyncErrorCode: CODICE_CERTIFICATO_MANCANTE,
+        status: { not: 'CANCELLED' as const },
+      }
+      const fermi = await this.prisma.fIR.findMany({ where: filtro, select: { id: true } })
+      if (fermi.length === 0) return []
+      const ids = fermi.map(fir => fir.id)
+      const riaperti = await this.prisma.fIR.updateMany({
+        where: { ...filtro, id: { in: ids } },
+        data: {
+          rentriSyncStatus: PrismaRentriSyncStatus.PENDING,
+          rentriSyncAttempts: 0,
+          rentriLastSyncError: null,
+          rentriLastSyncErrorCode: null,
+          rentriNextRetryAt: null,
+          // Senza una prenotazione pendente: il recupero dei PENDING mai avviati
+          // (rentri_sync_avviato_at nullo) deve poter riprendere questi FIR.
+          rentriSyncAvviatoAt: null,
+        },
+      })
+      this.logger.log(
+        `Certificato RENTRI caricato: ${riaperti.count} FIR fermi per certificato mancante riaperti (tenant ${tenantId})`
+      )
+      return ids
+    } catch (error) {
+      this.logger.error(
+        `Riapertura dei FIR fermi per certificato mancante non riuscita (tenant ${tenantId}): il certificato e' comunque salvato`,
+        error instanceof Error ? error.stack : String(error)
+      )
+      try {
+        Sentry.captureException(error, { extra: { tenantId, fase: 'riapertura-fir-certificato' } })
+      } catch {
+        /* Bugsink irraggiungibile: il salvataggio del certificato non deve cambiare */
+      }
+      return []
+    }
   }
 
   /** Ritorna la credenziale in chiaro del tenant, o null se non configurata. */

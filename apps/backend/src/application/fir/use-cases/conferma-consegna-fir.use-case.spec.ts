@@ -11,7 +11,9 @@ import { ConfermaConsegnaFIRUseCase } from './conferma-consegna-fir.use-case'
 import { ConfermaConsegnaFIRCommand } from '../commands/conferma-consegna-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
+import { FirModificatoNelFrattempoError } from '../../../core/domain/errors'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
@@ -19,6 +21,7 @@ import { LoggerService } from '../../../core/logger/logger.service'
 
 // Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
+  private progressiveCounter = 0
   private firs: Map<string, FIR> = new Map()
 
   async findById(id: string): Promise<FIR | null> {
@@ -45,6 +48,20 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async prenotaTrasmissioneRentri(): Promise<boolean> {
+    return true
+  }
+
+  async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
+
+  async elencaTrasmissioniRentriSospese(): Promise<
+    Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>
+  > {
+    return []
+  }
+
   async findByRentriNumeroFir(): Promise<FIR | null> {
     return null
   }
@@ -59,8 +76,16 @@ class MockFIRRepository implements IFIRRepository {
     return false
   }
 
-  async generateNumeroProgressivo(): Promise<string> {
-    return 'FIR-2025-000001'
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(): Promise<number> {
@@ -184,6 +209,27 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       expect(result.value.dataConsegna).toBeInstanceOf(Date)
     })
 
+    it('salva con la verifica della versione letta e lascia risalire il conflitto', async () => {
+      const fir = createInTransitoFIR()
+      repository.addFIR(fir)
+      const saveSpy = jest.spyOn(repository, 'save')
+
+      await useCase.execute(
+        new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-dest-789', 'Destinatario Bianchi')
+      )
+      expect(saveSpy).toHaveBeenCalledWith(expect.anything(), { verificaVersione: true })
+
+      const fir2 = createInTransitoFIR()
+      repository.addFIR(fir2)
+      const conflitto = new FirModificatoNelFrattempoError(fir2.id)
+      saveSpy.mockRejectedValueOnce(conflitto)
+      await expect(
+        useCase.execute(
+          new ConfermaConsegnaFIRCommand(fir2.id, 120, 'user-dest-789', 'Destinatario Bianchi')
+        )
+      ).rejects.toBe(conflitto)
+    })
+
     it('should persist FIR with firma destinatario (firma crittografica reale)', async () => {
       const fir = createInTransitoFIR()
       repository.addFIR(fir)
@@ -206,52 +252,53 @@ describe('ConfermaConsegnaFIRUseCase', () => {
       expect(saved?.firme.destinatario?.publicKey).toContain('BEGIN PUBLIC KEY')
     })
 
-    it('should accept peso within +10% tolerance', async () => {
+    it.each([
+      [150, 30, true], // +25%
+      [60, -60, true], // -50%
+      [1200, 1080, true], // peso 10 volte la dichiarata
+      [132, 12, false], // +10% esatto
+    ])('accetta il peso %s senza blocco e registra lo scostamento', async (peso, diff, oltre) => {
       const fir = createInTransitoFIR() // quantità dichiarata: 120
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 132, 'user-789', 'Destinatario')
+      const command = new ConfermaConsegnaFIRCommand(fir.id, peso, 'user-789', 'Destinatario')
 
       const result = await useCase.execute(command)
 
       expect(result.isSuccess).toBe(true)
-      expect(result.value.pesoEffettivo).toBe(132)
+      expect(result.value.stato).toBe(FIRStato.CONSEGNATO)
+      expect(result.value.pesoEffettivo).toBe(peso)
+      expect(result.value.scostamentoPeso?.differenza).toBe(diff)
+      expect(result.value.scostamentoPeso?.oltreSoglia).toBe(oltre)
     })
 
-    it('should accept peso within -10% tolerance', async () => {
-      const fir = createInTransitoFIR() // quantità dichiarata: 120
+    it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 100000000])(
+      'fallisce con il peso non valido %s',
+      async peso => {
+        const fir = createInTransitoFIR()
+        repository.addFIR(fir)
+
+        const result = await useCase.execute(
+          new ConfermaConsegnaFIRCommand(fir.id, peso, 'user-789', 'Destinatario')
+        )
+
+        expect(result.isFailure).toBe(true)
+        expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
+      }
+    )
+
+    it('un FIR legato a RENTRI resta non consegnabile in locale', async () => {
+      const fir = createInTransitoFIR()
+      fir.avviaTentativoRentri(new Date())
+      fir.markRENTRISynced('RENTRI-NUM-000123')
       repository.addFIR(fir)
 
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 108, 'user-789', 'Destinatario')
-
-      const result = await useCase.execute(command)
-
-      expect(result.isSuccess).toBe(true)
-      expect(result.value.pesoEffettivo).toBe(108)
-    })
-
-    it('should fail if peso exceeds +10% tolerance', async () => {
-      const fir = createInTransitoFIR() // quantità dichiarata: 120
-      repository.addFIR(fir)
-
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 135, 'user-789', 'Destinatario')
-
-      const result = await useCase.execute(command)
+      const result = await useCase.execute(
+        new ConfermaConsegnaFIRCommand(fir.id, 120, 'user-789', 'Destinatario')
+      )
 
       expect(result.isFailure).toBe(true)
-      expect(result.error).toContain('tolleranza')
-    })
-
-    it('should fail if peso exceeds -10% tolerance', async () => {
-      const fir = createInTransitoFIR() // quantità dichiarata: 120
-      repository.addFIR(fir)
-
-      const command = new ConfermaConsegnaFIRCommand(fir.id, 105, 'user-789', 'Destinatario')
-
-      const result = await useCase.execute(command)
-
-      expect(result.isFailure).toBe(true)
-      expect(result.error).toContain('tolleranza')
+      expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
     })
 
     it('should fail if FIR not found', async () => {

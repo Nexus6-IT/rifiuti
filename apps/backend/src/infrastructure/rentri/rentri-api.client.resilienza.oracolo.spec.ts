@@ -6,8 +6,13 @@ import * as fs from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import Redis from 'ioredis'
-import { RENTRIApiClient, RentriApiError } from './rentri-api.client'
+import {
+  RENTRIApiClient,
+  RentriApiError,
+  TrasmissioneRentriIncertaError,
+} from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { RedisConfig } from '../cache/redis.config'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
@@ -73,7 +78,17 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
       credentialEncKey: 'test-enc-key',
     }
 
-    const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
+    // Ogni azienda del test ha un certificato proprio (uguale a quello di prova): la
+    // credenziale env e' legata a una sola azienda (RENTRI_ENV_TENANT_ID).
+    const credentialService = {
+      getForTenant: jest.fn().mockResolvedValue({
+        clientId: config.clientId,
+        certificatePem: config.certificatePem,
+        privateKeyPem: config.privateKeyPem,
+        algorithm: config.algorithm,
+        environment: 'demo',
+      }),
+    }
     const logger: any = {
       setContext: jest.fn(),
       debug: jest.fn(),
@@ -81,7 +96,11 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     // R5 Task 6, Step 2/3: alcuni test qui sotto passano una MetricsService
     // REALE (non un doppio) per interrogare `/metrics` per davvero — v. le
@@ -188,18 +207,25 @@ describe('RENTRIApiClient — resilienza contro la fake RENTRI (in-process, guas
   }, 20000)
 
   /**
-   * Prova 2: con 503 iniettato una volta, il client ritenta (backoff
-   * esponenziale, nessun `Retry-After` per un 5xx) e alla fine riesce.
+   * Prova 2: con 503 iniettato una volta, la creazione NON ritenta (la POST
+   * non è idempotente: RENTRI potrebbe aver già registrato il FIR) e solleva
+   * `TrasmissioneRentriIncertaError`. La prova che non ci sia stato alcun
+   * ritentativo è che il guasto (una sola occorrenza) è consumato da una SOLA
+   * richiesta.
    */
-  it('creaFormulario: con 503 iniettato una volta, il client ritenta con backoff e alla fine riesce', async () => {
+  it('creaFormulario: con 503 iniettato una volta, il client NON ritenta e solleva TrasmissioneRentriIncertaError', async () => {
     const client = creaClient()
     await impostaGuasto(503, 1)
 
-    const risultato = await client.creaFormulario('', corpoFormularioValido())
+    const spia = jest.spyOn(app.archivio, 'guastoAttivo')
 
-    expect(risultato.transazioneId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    )
+    const errore = await client.creaFormulario('', corpoFormularioValido()).catch((e: unknown) => e)
+
+    expect(errore).toBeInstanceOf(TrasmissioneRentriIncertaError)
+    expect(errore).toMatchObject({ causa: 'HTTP_5XX', status: 503 })
+    expect(spia).toHaveBeenCalledTimes(1)
+
+    spia.mockRestore()
   }, 15000)
 
   /**

@@ -157,9 +157,9 @@ export class RateLimitMiddleware implements NestMiddleware {
   private getIdentifier(req: Request): string {
     const user = (req as any).user
 
-    // Use userId for authenticated requests
-    if (user?.userId) {
-      return `user:${user.userId}`
+    // Use user.id (campo di CurrentUserPayload) per authenticated requests
+    if (user?.id) {
+      return `user:${user.id}`
     }
 
     // Use IP address for unauthenticated requests

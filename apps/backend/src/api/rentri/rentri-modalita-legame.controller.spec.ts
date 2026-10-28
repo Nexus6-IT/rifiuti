@@ -4,6 +4,7 @@ import request from 'supertest'
 import { RentriModalitaLegameController } from './rentri-modalita-legame.controller'
 import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
 const user: CurrentUserPayload = {
@@ -13,6 +14,9 @@ const user: CurrentUserPayload = {
   role: 'ADMIN',
   permissions: [],
 }
+
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
 
 describe('RentriModalitaLegameController', () => {
   let controller: RentriModalitaLegameController
@@ -34,7 +38,7 @@ describe('RentriModalitaLegameController', () => {
         certificatoConfigurato: false,
       })
 
-      const res = await controller.get(user)
+      const res = await controller.get(req)
 
       expect(res).toEqual({ modalitaLegame: 'MANUALE', certificatoConfigurato: false })
       expect(service.getForTenant).toHaveBeenCalledWith('tenant-1')
@@ -48,7 +52,7 @@ describe('RentriModalitaLegameController', () => {
         certificatoConfigurato: true,
       })
 
-      const res = await controller.set({ modalitaLegame: 'IBRIDA' }, user)
+      const res = await controller.set({ modalitaLegame: 'IBRIDA' }, req)
 
       expect(res).toEqual({ modalitaLegame: 'IBRIDA', certificatoConfigurato: true })
       expect(service.setForTenant).toHaveBeenCalledWith('tenant-1', 'IBRIDA')
@@ -58,7 +62,7 @@ describe('RentriModalitaLegameController', () => {
       const error = new Error('serve un certificato')
       service.setForTenant.mockRejectedValue(error)
 
-      await expect(controller.set({ modalitaLegame: 'AUTOMATICA' }, user)).rejects.toBe(error)
+      await expect(controller.set({ modalitaLegame: 'AUTOMATICA' }, req)).rejects.toBe(error)
     })
   })
 })
@@ -91,7 +95,10 @@ describe('RentriModalitaLegameController — autorizzazione (verifica empirica)'
 
     const moduleRef = await Test.createTestingModule({
       controllers: [RentriModalitaLegameController],
-      providers: [{ provide: RentriModalitaLegameService, useValue: service }],
+      providers: [
+        { provide: RentriModalitaLegameService, useValue: service },
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({

@@ -275,6 +275,8 @@ export interface MudAllegatoDR {
   civico?: string
   cap?: string
   quantitaKg: number
+  /** Destinatario estero: nome della nazione, al posto del codice fiscale (A-W-05). */
+  nazione?: string
 }
 
 /** Modulo TE (BB) — rifiuto trasportato da terzi (trasportatore): solo CF + R.S. */
@@ -325,6 +327,11 @@ export interface MudExportData {
   intermediazioni?: MudIntermediazione[]
   /** Istante di creazione del file (testata XX); default: ora corrente. */
   generatedAt?: Date
+  /**
+   * Dichiarazione sostitutiva (A-W-04): presente se per l'anno risulta già una comunicazione
+   * presentata. Il record AA porta allora «annulla e sostituisce» = 1 e la sua data.
+   */
+  sostituisce?: { dataComunicazione: Date }
 }
 
 /** Risultato dell'export: contenuto del file + metadati. */
@@ -345,6 +352,8 @@ export interface MudTracciatoVersion {
   readonly version: string
   /** Anno di dichiarazione coperto (es. 2024). */
   readonly year: number
+  /** Scadenza di presentazione della dichiarazione, 'AAAA-MM-GG' (da DPCM/GU del tracciato). */
+  readonly scadenzaPresentazione: string
   /** Produce il contenuto del file telematico dai dati aggregati. */
   generate(data: MudExportData): string
 }

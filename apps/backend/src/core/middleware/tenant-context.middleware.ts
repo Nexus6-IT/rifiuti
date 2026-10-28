@@ -1,4 +1,11 @@
-import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common'
+import {
+  ForbiddenException,
+  Injectable,
+  NestMiddleware,
+  UnauthorizedException,
+} from '@nestjs/common'
+import { isUUID } from 'class-validator'
+import { AZIENDA_SELEZIONATA_NON_ACCESSIBILE } from '../context/azienda-selezionata-errori'
 import { ConfigService } from '@nestjs/config'
 import { Request, Response, NextFunction } from 'express'
 import * as jwt from 'jsonwebtoken'
@@ -47,6 +54,12 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     let tenantId: string | undefined
     if (isSuperAdmin) {
+      // Il SUPER_ADMIN non passa dalla verifica di membership: l'unico controllo sull'header e'
+      // la forma. Un valore che non e' un UUID non puo' essere un'azienda (Prisma lo rifiuterebbe
+      // con P2023, cioe' con un 500): 403 come per gli utenti normali.
+      if (headerTenantId && !isUUID(headerTenantId, 'all')) {
+        throw new ForbiddenException({ ...AZIENDA_SELEZIONATA_NON_ACCESSIBILE })
+      }
       tenantId = headerTenantId ?? payload.tenantId ?? undefined
       if (!tenantId) tenantId = undefined // '' → undefined (no filtro RLS non valido)
     } else {
@@ -121,65 +134,3 @@ export const TenantId = createParamDecorator((data: unknown, ctx: ExecutionConte
 
   return tenantId
 })
-
-/**
- * Decorator to extract user ID from request
- *
- * Usage in controllers:
- * ```typescript
- * @Post()
- * async createFIR(@UserId() userId: string, @Body() dto: CreateFIRDto) {
- *   // userId is automatically extracted from authenticated user
- * }
- * ```
- */
-export const UserId = createParamDecorator((data: unknown, ctx: ExecutionContext): string => {
-  const request = ctx.switchToHttp().getRequest()
-  const user = request.user
-
-  if (!user || !user.userId) {
-    throw new UnauthorizedException('User ID not found in request context')
-  }
-
-  return user.userId
-})
-
-/**
- * Decorator to extract full user from request
- *
- * Usage in controllers:
- * ```typescript
- * @Get('profile')
- * async getProfile(@CurrentUser() user: AuthenticatedUser) {
- *   // Full user object from JWT token
- * }
- * ```
- */
-export interface AuthenticatedUser {
-  userId: string
-  tenantId: string
-  fiscalCode: string
-  email: string
-  role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
-  keycloakId: string
-}
-
-export const CurrentUser = createParamDecorator(
-  (data: unknown, ctx: ExecutionContext): AuthenticatedUser => {
-    const request = ctx.switchToHttp().getRequest()
-    const user = request.user
-
-    if (!user) {
-      throw new UnauthorizedException('User not authenticated')
-    }
-
-    return {
-      userId: user.userId,
-      tenantId: user.tenantId,
-      fiscalCode: user.fiscalCode,
-      email: user.email,
-      role: user.role,
-      keycloakId: user.keycloakId,
-    }
-  }
-)

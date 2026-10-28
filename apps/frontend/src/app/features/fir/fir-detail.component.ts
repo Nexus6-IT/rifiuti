@@ -15,7 +15,14 @@ import { InputTextareaModule } from 'primeng/inputtextarea'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
-import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { puoModificareFir } from './fir-permissions'
+import { testoMotivoNonModificabile } from './fir-form'
+import { FIR, FIRStato, ScostamentoPeso } from '../../shared/models/fir.model'
+import {
+  formattaNumero,
+  formattaPercentuale,
+  SOGLIA_AVVISO_SCOSTAMENTO_PESO_PERCENTO,
+} from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sync-logs.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
@@ -159,6 +166,11 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               <span data-testid="fir-detail-stato">
                 <p-tag [value]="getStatoLabel(f.stato)" [severity]="getStatoSeverity(f.stato)" />
               </span>
+              @if (motivoNonModificabile(f); as motivo) {
+                <small class="detail-hint" data-testid="fir-detail-motivo-non-modificabile">{{
+                  motivo
+                }}</small>
+              }
             </div>
             <div class="detail-field">
               <span class="detail-label">Data creazione</span>
@@ -177,6 +189,25 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               <span class="detail-value">{{
                 f.dataConsegna ? (f.dataConsegna | date: 'dd/MM/yyyy HH:mm') : '—'
               }}</span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">Quantità verificata a destino</span>
+              <span class="detail-value" data-testid="fir-detail-quantita-verificata">
+                @if (f.pesoEffettivo != null) {
+                  {{ formattaQuantita(f.pesoEffettivo) }} {{ f.rifiuto.unitaMisura }}
+                  @if (f.scostamentoPeso; as s) {
+                    <span
+                      class="detail-scostamento"
+                      [class.detail-scostamento--oltre]="s.oltreSoglia"
+                      data-testid="fir-detail-scostamento"
+                    >
+                      ({{ testoScostamento(s) }})
+                    </span>
+                  }
+                } @else {
+                  —
+                }
+              </span>
             </div>
           </div>
         </section>
@@ -318,6 +349,16 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           <section class="surface-card detail-section" aria-label="Azioni disponibili">
             <h2 class="section-title">Azioni disponibili</h2>
             <div class="row-actions" data-testid="fir-detail-actions">
+              @if (puoModificare(f)) {
+                <p-button
+                  label="Modifica"
+                  icon="pi pi-pencil"
+                  [outlined]="true"
+                  (onClick)="modifica(f)"
+                  data-testid="fir-detail-modifica"
+                  [attr.aria-label]="'Modifica FIR ' + (f.numeroProgressivo || f.id)"
+                />
+              }
               @if (f.stato === 'BOZZA') {
                 <p-button
                   label="Emetti"
@@ -356,6 +397,34 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   data-testid="fir-detail-rentri-riprova"
                   [attr.aria-label]="
                     'Riprova la trasmissione RENTRI del FIR ' + (f.numeroProgressivo || f.id)
+                  "
+                />
+              }
+              @if (mostraRitrasmettiDopoVerifica(f)) {
+                <p-button
+                  label="Ritrasmetti"
+                  icon="pi pi-send"
+                  severity="warning"
+                  [outlined]="true"
+                  (onClick)="ritrasmettiDopoVerifica(f)"
+                  data-testid="fir-detail-rentri-ritrasmetti-dopo-verifica"
+                  [attr.aria-label]="
+                    'Ritrasmetti a RENTRI il FIR ' +
+                    (f.numeroProgressivo || f.id) +
+                    ' dopo la verifica sul portale'
+                  "
+                />
+              }
+              @if (mostraRileggiEsito(f)) {
+                <p-button
+                  label="Rileggi esito"
+                  icon="pi pi-replay"
+                  severity="warning"
+                  [outlined]="true"
+                  (onClick)="rileggiEsito(f)"
+                  data-testid="fir-detail-rentri-rileggi-esito"
+                  [attr.aria-label]="
+                    'Rileggi esito RENTRI del FIR ' + (f.numeroProgressivo || f.id)
                   "
                 />
               }
@@ -717,6 +786,17 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         font-size: var(--font-size-base);
       }
 
+      .detail-hint {
+        display: block;
+        margin-top: 0.25rem;
+        color: var(--text-secondary);
+      }
+
+      .detail-scostamento--oltre {
+        color: var(--color-warning);
+        font-weight: var(--font-weight-medium);
+      }
+
       .cell-mono {
         font-family: var(--font-family-mono);
       }
@@ -1004,10 +1084,38 @@ export class FirDetailComponent implements OnInit {
       : fir.rentriAzioneErrore === 'RIPROVA'
   }
 
-  /** «Vai al certificato»: unica azione utile quando RENTRI ha rifiutato per un certificato non valido (403). */
+  /**
+   * «Ritrasmetti» compare solo quando l'esito della trasmissione è incerto
+   * (`VERIFICA_SU_RENTRI`) e il FIR è fermo: nessun nuovo tentativo parte da
+   * solo e «Riprova» non è proposto. La ritrasmissione passa da una conferma.
+   */
+  mostraRitrasmettiDopoVerifica(fir: FIR): boolean {
+    return (
+      fir.rentriSyncStatus === 'PERMANENTLY_FAILED' &&
+      fir.rentriAzioneErrore === 'VERIFICA_SU_RENTRI' &&
+      !fir.rentriNumeroFir &&
+      this.canManageRENTRI()
+    )
+  }
+
+  /**
+   * «Rileggi esito»: RENTRI ha la transazione ma l'esito non si è letto. Nessun
+   * dialog: la riapertura riprende la stessa transazione, non crea un nuovo
+   * formulario, quindi non c'è un doppione da scongiurare.
+   */
+  mostraRileggiEsito(fir: FIR): boolean {
+    return (
+      fir.rentriSyncStatus === 'PERMANENTLY_FAILED' &&
+      fir.rentriAzioneErrore === 'RILEGGI_ESITO' &&
+      !fir.rentriNumeroFir &&
+      this.canManageRENTRI()
+    )
+  }
+
+  /** «Vai al certificato»: unica azione utile quando il certificato manca o RENTRI l'ha rifiutato (403). Un codice non ritentabile produce sempre PERMANENTLY_FAILED; FAILED resta ammesso per prudenza. */
   mostraVaiAlCertificato(fir: FIR): boolean {
     return (
-      fir.rentriSyncStatus === 'FAILED' &&
+      (fir.rentriSyncStatus === 'FAILED' || fir.rentriSyncStatus === 'PERMANENTLY_FAILED') &&
       fir.rentriAzioneErrore === 'VEDI_CERTIFICATO' &&
       this.canManageRENTRI()
     )
@@ -1035,12 +1143,48 @@ export class FirDetailComponent implements OnInit {
     )
   }
 
+  formattaQuantita(n: number): string {
+    return formattaNumero(n)
+  }
+
+  /** "+25% · +30 kg" accanto alla quantità verificata; con dichiarata assente solo la differenza. */
+  testoScostamento(s: ScostamentoPeso): string {
+    const diff = `${s.differenza > 0 ? '+' : ''}${formattaNumero(s.differenza)} ${s.unita}`
+    const base = s.percentuale === null ? diff : `${formattaPercentuale(s.percentuale)} · ${diff}`
+    return s.oltreSoglia
+      ? `scostamento ${base}: oltre la soglia del ${SOGLIA_AVVISO_SCOSTAMENTO_PESO_PERCENTO}%`
+      : `scostamento ${base}`
+  }
+
+  /** «Modifica» solo su una bozza modificabile e per i ruoli che possono modificare. */
+  puoModificare(fir: FIR): boolean {
+    return (
+      fir.stato === FIRStato.BOZZA &&
+      !!fir.modificabile &&
+      puoModificareFir(this.authService.currentUser()?.role)
+    )
+  }
+
+  /** Perché una bozza non è modificabile (vuoto se lo è o se non è una bozza). */
+  motivoNonModificabile(fir: FIR): string {
+    if (fir.stato !== FIRStato.BOZZA || fir.modificabile !== false) return ''
+    return testoMotivoNonModificabile(fir.motivoNonModificabile)
+  }
+
+  /** Apre la modifica nella lista (il dialog di «Nuovo FIR» è riusato). */
+  modifica(fir: FIR): void {
+    void this.router.navigate(['/fir'], { queryParams: { modifica: fir.id } })
+  }
+
   haAzioni(fir: FIR): boolean {
     return (
+      this.puoModificare(fir) ||
       fir.stato === FIRStato.BOZZA ||
       fir.stato === FIRStato.EMESSO ||
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||
+      this.mostraRitrasmettiDopoVerifica(fir) ||
+      this.mostraRileggiEsito(fir) ||
       this.mostraVaiAlCertificato(fir) ||
       this.canConfermareLegameRentri(fir) ||
       this.canRilasciareLegameRentri(fir) ||
@@ -1106,6 +1250,61 @@ export class FirDetailComponent implements OnInit {
           severity: 'error',
           summary: 'Errore',
           detail: this.extractError(err, 'Errore nella trasmissione a RENTRI'),
+        })
+      },
+    })
+  }
+
+  /**
+   * Ritrasmette il FIR dopo un esito incerto, ma solo dopo una conferma
+   * esplicita: se il formulario esiste già su RENTRI, ritrasmettere crea un doppione.
+   */
+  ritrasmettiDopoVerifica(fir: FIR): void {
+    this.confirmationService.confirm({
+      header: 'Ritrasmetti a RENTRI',
+      message:
+        'Hai controllato sul portale RENTRI che il formulario non esiste? Se esiste, ritrasmettere crea un doppione.',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Ritrasmetti',
+      rejectLabel: 'Annulla',
+      accept: () => {
+        this.rentriSyncService.syncFIR(fir.id, { confermaNuovaTrasmissione: true }).subscribe({
+          next: () => {
+            this.messageService.add({
+              severity: 'success',
+              summary: 'Trasmissione avviata',
+              detail: 'Il FIR è stato messo in coda per la trasmissione a RENTRI',
+            })
+            this.reload()
+          },
+          error: err => {
+            this.messageService.add({
+              severity: 'error',
+              summary: 'Errore',
+              detail: this.extractError(err, 'Errore nella trasmissione a RENTRI'),
+            })
+          },
+        })
+      },
+    })
+  }
+
+  /** Riapre la trasmissione per rileggere l'esito della transazione già accettata da RENTRI. */
+  rileggiEsito(fir: FIR): void {
+    this.rentriSyncService.syncFIR(fir.id, { confermaNuovaTrasmissione: true }).subscribe({
+      next: () => {
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Rilettura avviata',
+          detail: "L'esito della trasmissione a RENTRI verrà riletto a breve",
+        })
+        this.reload()
+      },
+      error: err => {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, "Errore nella rilettura dell'esito RENTRI"),
         })
       },
     })

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks'
+import { Logger } from '@nestjs/common'
 
 /**
  * Dati legati al contesto della richiesta corrente.
@@ -35,7 +36,9 @@ export interface TenantStore {
  * Risoluzione del tenant (in ordine):
  *   1. store AsyncLocalStorage — popolato dal TenantContextMiddleware nel ciclo di
  *      richiesta HTTP a partire dal JWT (produzione).
- *   2. process.env.CURRENT_TENANT_ID — per job in background, script CLI e test.
+ *   2. process.env.CURRENT_TENANT_ID — SOLO con NODE_ENV=test. Altrove è ignorata
+ *      (con un avviso, una volta sola): job e script girano in
+ *      `TenantContext.run({ tenantId }, ...)`, mai su una variabile di processo.
  *
  * Fail-closed: `requireTenantId()` LANCIA se nessun tenant è nel contesto, invece di
  * ricadere su un default. Meglio rifiutare l'operazione che scriverla sul tenant
@@ -46,6 +49,7 @@ export interface TenantStore {
  */
 export class TenantContext {
   private static readonly als = new AsyncLocalStorage<TenantStore>()
+  private static avvisoEnvIgnorataEmesso = false
 
   /**
    * Esegue `callback` (e tutte le continuazioni async che ne derivano) dentro un
@@ -63,7 +67,31 @@ export class TenantContext {
       return fromStore
     }
     const fromEnv = process.env.CURRENT_TENANT_ID
-    return fromEnv && fromEnv.length > 0 ? fromEnv : null
+    if (!fromEnv || fromEnv.length === 0) {
+      return null
+    }
+    if (process.env.NODE_ENV === 'test') {
+      return fromEnv
+    }
+    // Fuori dai test la variabile non decide l'azienda: sarebbe un tenant
+    // unico per tutto il processo. Si avvisa una volta sola, senza il valore.
+    if (!TenantContext.avvisoEnvIgnorataEmesso) {
+      TenantContext.avvisoEnvIgnorataEmesso = true
+      new Logger('TenantContext').warn(
+        'CURRENT_TENANT_ID impostata ma ignorata: vale solo con NODE_ENV=test. ' +
+          'Usare TenantContext.run({ tenantId }, ...).'
+      )
+    }
+    return null
+  }
+
+  /**
+   * Tenant presente nello SOLO store dell'AsyncLocalStorage, senza il fallback
+   * `CURRENT_TENANT_ID`. Lo usa il meccanismo `set_config` per transazione, che
+   * non deve impostare un tenant a job e script privi di contesto.
+   */
+  static getStoreTenantId(): string | null {
+    return TenantContext.als.getStore()?.tenantId || null
   }
 
   /** Tenant corrente, oppure lancia (fail-closed). */

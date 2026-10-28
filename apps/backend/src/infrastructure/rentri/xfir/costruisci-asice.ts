@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import forge from 'node-forge'
+import * as crypto from 'crypto'
 
 /** Mimetype ASiC-E atteso (ETSI TS 102 918), verificato per uguaglianza esatta dal validatore del finto RENTRI. */
 export const MIMETYPE_ASICE = 'application/vnd.etsi.asic-e+zip'
@@ -32,7 +32,7 @@ export interface DocumentoAsicE {
 export interface MaterialeFirmaTest {
   /** Certificato X.509 in PEM (`-----BEGIN CERTIFICATE-----...`). */
   certificatoPem: string
-  /** Chiave privata RSA corrispondente, in PEM. */
+  /** Chiave privata corrispondente, in PEM: RSA (rsa-sha256) oppure EC P-256 (ecdsa-sha256). */
   chiavePrivataPem: string
   /** Nome del file di firma in `META-INF/` (default `signatures.xml`). */
   nomeFileFirma?: string
@@ -62,7 +62,8 @@ export interface OpzioniCostruzioneAsicE {
  *   comunque rifiutato (copertura vacua);
  * - ogni `ds:Reference/DigestValue` deve essere il SHA-256 (base64) reale del
  *   contenuto UTF-8 del file referenziato, cosi' come si trova nel container;
- * - `ds:SignatureValue` deve essere una firma RSA reale sul blocco
+ * - `ds:SignatureValue` deve essere una firma reale (RSA PKCS#1 v1.5, oppure ECDSA in
+ *   formato IEEE P1363 r||s) sul blocco
  *   `ds:SignedInfo` (la sua sottostringa grezza, non una canonicalizzazione
  *   C14N conforme XAdES — limite dichiarato dal finto stesso), verificabile
  *   con la chiave pubblica di `ds:KeyInfo/X509Certificate`.
@@ -128,34 +129,48 @@ export async function costruisciAsicE(opzioni: OpzioniCostruzioneAsicE): Promise
  * Firma XAdES detached di TEST — v. {@link MaterialeFirmaTest} per i limiti
  * (nessun valore legale). Digest e firma sono calcolati con le STESSE
  * primitive che il validatore usera' per riverificarli
- * (`validatore-xades.ts`: SHA-256 su stringa UTF-8 per il digest, RSA-SHA256
- * sulla sottostringa grezza di `ds:SignedInfo` per `SignatureValue`) — non e'
+ * (`validatore-xades.ts`: SHA-256 su stringa UTF-8 per il digest, firma
+ * SHA-256 sulla sottostringa grezza di `ds:SignedInfo` per `SignatureValue`) — non e'
  * un dettaglio incidentale: qualunque scarto (es. canonicalizzazione XML)
  * produrrebbe una firma che il finto rifiuta.
+ *
+ * L'algoritmo si ricava dal tipo di chiave: EC → `ecdsa-sha256` con firma IEEE
+ * P1363 (r||s, 64 byte per P-256, come vuole XMLDSig; il DER ASN.1 di default di
+ * Node NON e' valido), dichiarato in `ds:SignatureMethod`; RSA → `rsa-sha256`
+ * come prima (nessun `SignatureMethod`, output invariato).
  */
 function costruisciFirmaXades(documenti: DocumentoAsicE[], firma: MaterialeFirmaTest): string {
-  const certificato = forge.pki.certificateFromPem(firma.certificatoPem)
-  const chiavePrivata = forge.pki.privateKeyFromPem(
-    firma.chiavePrivataPem
-  ) as forge.pki.rsa.PrivateKey
-  const certificatoBase64 = forge.util.encode64(
-    forge.asn1.toDer(forge.pki.certificateToAsn1(certificato)).getBytes()
-  )
+  const chiavePrivata = crypto.createPrivateKey(firma.chiavePrivataPem)
+  const tipoChiave = chiavePrivata.asymmetricKeyType
+  if (tipoChiave !== 'rsa' && tipoChiave !== 'ec') {
+    throw new Error(
+      `Tipo di chiave non supportato per la firma XAdES: ${tipoChiave ?? 'sconosciuto'}`
+    )
+  }
+  const certificatoBase64 = new crypto.X509Certificate(firma.certificatoPem).raw.toString('base64')
 
   const riferimentiXml = documenti
     .map(documento => {
-      const digest = forge.util.encode64(
-        forge.md.sha256.create().update(documento.contenuto, 'utf8').digest().getBytes()
-      )
+      const digest = crypto
+        .createHash('sha256')
+        .update(documento.contenuto, 'utf8')
+        .digest('base64')
       return `<ds:Reference URI="${escapeXml(documento.nome)}"><ds:DigestValue>${digest}</ds:DigestValue></ds:Reference>`
     })
     .join('')
 
-  const signedInfo = `<ds:SignedInfo>${riferimentiXml}</ds:SignedInfo>`
+  const metodoFirma =
+    tipoChiave === 'ec'
+      ? '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256"/>'
+      : ''
+  const signedInfo = `<ds:SignedInfo>${metodoFirma}${riferimentiXml}</ds:SignedInfo>`
 
-  const md = forge.md.sha256.create()
-  md.update(signedInfo, 'utf8')
-  const signatureValue = forge.util.encode64(chiavePrivata.sign(md))
+  const datiFirmati = Buffer.from(signedInfo, 'utf8')
+  const signatureValue = (
+    tipoChiave === 'ec'
+      ? crypto.sign('sha256', datiFirmati, { key: chiavePrivata, dsaEncoding: 'ieee-p1363' })
+      : crypto.sign('sha256', datiFirmati, chiavePrivata)
+  ).toString('base64')
 
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +

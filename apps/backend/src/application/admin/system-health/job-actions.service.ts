@@ -1,6 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common'
 
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../../infrastructure/persistence/prisma-sistema.service'
+import { TenantContext } from '../../../core/context/tenant-context'
+import { EsitoGiroRentri } from '../../../infrastructure/jobs/esito-giro-rentri'
 import { RentriRiconciliazioneJob } from '../../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { RentriCodificheSyncService } from '../../reference-data/rentri-codifiche-sync.service'
@@ -62,6 +65,7 @@ export class JobActionsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly riconciliazione: RentriRiconciliazioneJob,
     private readonly certificati: RentriCertificatoScadenzaJob,
     private readonly codifiche: RentriCodificheSyncService,
@@ -70,15 +74,18 @@ export class JobActionsService {
   ) {}
 
   /** Le chiavi rilanciabili, con la descrizione mostrata nell'audit. */
-  private get azioni(): Record<string, { descrizione: string; esegui: () => Promise<void> }> {
+  private get azioni(): Record<
+    string,
+    { descrizione: string; esegui: () => Promise<EsitoGiroRentri | void> }
+  > {
     return {
       'rentri-riconciliazione': {
         descrizione: 'Riconciliazione periodica RENTRI',
-        esegui: () => this.riconciliazione.eseguiRiconciliazione(),
+        esegui: () => this.riconciliazione.riconcilia(),
       },
       'rentri-certificato-scadenza': {
         descrizione: 'Controllo scadenza certificati RENTRI',
-        esegui: () => this.certificati.eseguiControlloScadenza(),
+        esegui: () => this.certificati.controllaScadenze(),
       },
       'codifiche-rentri': {
         descrizione: 'Allineamento codifiche RENTRI',
@@ -129,9 +136,20 @@ export class JobActionsService {
     // Deliberatamente NON atteso: v. regola 2 nell'intestazione. L'esito
     // finisce nell'audit, mai in un errore non gestito che abbatterebbe il
     // processo.
-    void azione
-      .esegui()
-      .then(() => this.registra(utente, jobKey, 'completato', `${azione.descrizione}: completato`))
+    // Fuori dal contesto della richiesta: il job lavora su tutte le aziende e non deve
+    // ereditare il tenant (X-Tenant-ID) di chi l'ha lanciato. Store vuoto = nessun tenant.
+    void TenantContext.run({}, async () => await azione.esegui())
+      .then(esito => {
+        if (esito && esito.tenantConErrore > 0) {
+          return this.registra(
+            utente,
+            jobKey,
+            'parziale',
+            `${azione.descrizione}: completato con errori su ${esito.tenantConErrore} aziende su ${esito.tenantTotali}`
+          )
+        }
+        return this.registra(utente, jobKey, 'completato', `${azione.descrizione}: completato`)
+      })
       .catch((errore: Error) => {
         this.logger.error(`Rilancio manuale di "${jobKey}" fallito`, errore)
         return this.registra(
@@ -153,7 +171,9 @@ export class JobActionsService {
 
   /** Storico dei rilanci manuali: chi, quando, quale job, con quale esito. */
   async storico(limite = 50): Promise<EventoAuditJob[]> {
-    const righe = await this.prisma.activityLog.findMany({
+    // Sistema: la pagina e' solo SUPER_ADMIN e mostra i rilanci di tutte le aziende (ogni riga
+    // porta il tenant di chi ha premuto il pulsante), quindi una vista su piu' aziende.
+    const righe = await this.sistema.activityLog.findMany({
       where: { action: AZIONE_AUDIT },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(limite, 1), 200),
@@ -195,15 +215,22 @@ export class JobActionsService {
     descrizione: string
   ): Promise<void> {
     try {
-      await this.prisma.activityLog.create({
-        data: {
-          tenantId: utente.tenantId,
-          userId: utente.id,
-          action: AZIONE_AUDIT,
-          description: descrizione,
-          metadata: { jobKey, esito, utente: utente.email },
-        },
-      })
+      // Nel contesto dell'azienda dell'utente (non in quello della richiesta, che per un super
+      // admin con X-Tenant-ID e' un'altra azienda): il tenant della riga coincide con quello
+      // impostato per la transaction.
+      await TenantContext.run(
+        { tenantId: utente.tenantId },
+        async () =>
+          await this.prisma.activityLog.create({
+            data: {
+              tenantId: utente.tenantId,
+              userId: utente.id,
+              action: AZIONE_AUDIT,
+              description: descrizione,
+              metadata: { jobKey, esito, utente: utente.email },
+            },
+          })
+      )
     } catch (errore) {
       this.logger.error(`Audit del rilancio manuale di "${jobKey}" non registrato`, errore as Error)
     }

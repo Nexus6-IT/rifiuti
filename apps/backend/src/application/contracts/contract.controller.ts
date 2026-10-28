@@ -6,6 +6,7 @@ import {
   Param,
   Body,
   Query,
+  Req,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -14,7 +15,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ContractService, ContractStatus } from './contract.service'
 import { CreateContractDto, ChangeContractStatusDto } from './dto/create-contract.dto'
 
@@ -33,8 +34,8 @@ export class ContractController {
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @ApiOperation({ summary: 'Crea un contratto (stato iniziale DRAFT)' })
   @ApiResponse({ status: 201, description: 'Contratto creato' })
-  async create(@Body() dto: CreateContractDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.contractService.create(user.tenantId, {
+  async create(@Body() dto: CreateContractDto, @Req() req: any) {
+    return this.contractService.create(requireRequestTenantId(req), {
       ...dto,
       startDate: new Date(dto.startDate),
       endDate: dto.endDate ? new Date(dto.endDate) : undefined,
@@ -44,8 +45,8 @@ export class ContractController {
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Lista contratti del tenant (filtro per stato)' })
-  async list(@CurrentUser() user: CurrentUserPayload, @Query('status') status?: ContractStatus) {
-    return this.contractService.list(user.tenantId, status)
+  async list(@Req() req: any, @Query('status') status?: ContractStatus) {
+    return this.contractService.list(requireRequestTenantId(req), status)
   }
 
   @Get('auto-fill')
@@ -55,11 +56,11 @@ export class ContractController {
     description: 'Dato produttore + CER, ritorna la controparte e il pricing dal contratto attivo.',
   })
   async autoFill(
-    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any,
     @Query('producerId') producerId: string,
     @Query('cerCode') cerCode: string
   ) {
-    return this.contractService.getAutoFillForFir(user.tenantId, producerId, cerCode)
+    return this.contractService.getAutoFillForFir(requireRequestTenantId(req), producerId, cerCode)
   }
 
   // ATTENZIONE: deve restare PRIMA di `@Get(':id')`, altrimenti la rotta
@@ -70,15 +71,17 @@ export class ContractController {
     summary: 'Prossimo numero contratto suggerito',
     description: 'Formato CTR-<anno>-<progressivo>. Suggerimento, non prenotazione.',
   })
-  async nextNumber(@CurrentUser() user: CurrentUserPayload) {
-    return { contractNumber: await this.contractService.nextContractNumber(user.tenantId) }
+  async nextNumber(@Req() req: any) {
+    return {
+      contractNumber: await this.contractService.nextContractNumber(requireRequestTenantId(req)),
+    }
   }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Dettaglio contratto' })
-  async getById(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
-    return this.contractService.getById(user.tenantId, id)
+  async getById(@Param('id') id: string, @Req() req: any) {
+    return this.contractService.getById(requireRequestTenantId(req), id)
   }
 
   @Patch(':id/status')
@@ -89,8 +92,12 @@ export class ContractController {
   async changeStatus(
     @Param('id') id: string,
     @Body() dto: ChangeContractStatusDto,
-    @CurrentUser() user: CurrentUserPayload
+    @Req() req: any
   ) {
-    return this.contractService.changeStatus(user.tenantId, id, dto.status as ContractStatus)
+    return this.contractService.changeStatus(
+      requireRequestTenantId(req),
+      id,
+      dto.status as ContractStatus
+    )
   }
 }

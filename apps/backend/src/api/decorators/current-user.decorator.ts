@@ -1,45 +1,8 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common'
-
 /**
- * @CurrentUser Decorator
- * Extracts user data from JWT token in request
- * Per plan.md: User context for authorization and audit
- *
- * Usage:
- * - @CurrentUser() user: JwtPayload - Get full user object
- * - @CurrentUser('userId') userId: string - Get specific field
- * - @CurrentUser('email') email: string - Get email field
+ * Ri-esporta il decoratore canonico di `auth/decorators`: l'utente restituito ha
+ * `tenantId` = azienda su cui la richiesta OPERA (selezionata e validata), non quella
+ * del token. Una copia separata che restituiva `request.user` cosi' com'e' era una
+ * trappola (azienda primaria del token durante uno switch di azienda).
  */
-export const CurrentUser = createParamDecorator(
-  (data: string | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest()
-    const user = request.user
-
-    if (!user) {
-      return null
-    }
-
-    // If data parameter provided, return specific field
-    if (data) {
-      return user[data]
-    }
-
-    // Return full user object
-    return user
-  }
-)
-
-/**
- * JWT Payload Interface
- * Standard structure expected in request.user
- */
-export interface JwtPayload {
-  userId: string
-  tenantId: string
-  email: string
-  spidFiscalCode?: string
-  role?: string
-  lastSpidAuthTimestamp?: number
-  iat?: number
-  exp?: number
-}
+export { CurrentUser } from '../../auth/decorators/current-user.decorator'
+export type { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'

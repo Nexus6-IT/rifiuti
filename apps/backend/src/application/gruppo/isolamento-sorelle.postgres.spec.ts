@@ -110,6 +110,10 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
       })
     }
 
+    // Il movimento punta al registro con ON DELETE RESTRICT: i movimenti vanno prima dei registri,
+    // che il cascade del tenant toglierebbe in ordine non garantito.
+    await base.wasteMovement.deleteMany({ where: { tenantId: { in: [alfaId, betaId] } } })
+
     // onDelete: Cascade sui dati operativi; le figlie prima della madre.
     for (const id of [alfaId, betaId, madreId]) {
       await base.tenant.delete({ where: { id } }).catch(err => {
@@ -250,9 +254,13 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
   })
 
   it('un movimento di registro di Beta non e visibile ad Alfa', async () => {
+    const registroBeta = await base.registroRifiuti.create({
+      data: { tenantId: betaId, descrizione: 'Registro cronologico' },
+    })
     const movimentoBeta = await base.wasteMovement.create({
       data: {
         tenantId: betaId,
+        registroId: registroBeta.id,
         progressiveNumber: 1,
         progressiveYear: 2026,
         type: 'CARICO',

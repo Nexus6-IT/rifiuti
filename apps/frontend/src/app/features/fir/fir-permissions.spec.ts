@@ -1,4 +1,4 @@
-import { puoCreareFir } from './fir-permissions'
+import { puoCreareFir, puoModificareFir } from './fir-permissions'
 
 /**
  * Chi può creare un FIR.
@@ -22,5 +22,15 @@ describe('puoCreareFir', () => {
     expect(puoCreareFir(undefined)).toBe(false)
     expect(puoCreareFir('')).toBe(false)
     expect(puoCreareFir('RUOLO_INVENTATO')).toBe(false)
+  })
+})
+
+describe('puoModificareFir', () => {
+  it('ha la stessa regola della creazione', () => {
+    for (const ruolo of ['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER', 'X', '', undefined, null]) {
+      expect(puoModificareFir(ruolo)).toBe(puoCreareFir(ruolo))
+    }
+    expect(puoModificareFir('OPERATOR')).toBe(true)
+    expect(puoModificareFir('VIEWER')).toBe(false)
   })
 })

@@ -11,7 +11,9 @@ import { PresaInCaricoFIRUseCase } from './presa-in-carico-fir.use-case'
 import { PresaInCaricoFIRCommand } from '../commands/presa-in-carico-fir.command'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
+import { FirModificatoNelFrattempoError } from '../../../core/domain/errors'
 import { FIR as CryptoFIR } from '../../../domain/fir/fir.aggregate'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
@@ -19,6 +21,7 @@ import { LoggerService } from '../../../core/logger/logger.service'
 
 // Mock Repository (ciclo di vita)
 class MockFIRRepository implements IFIRRepository {
+  private progressiveCounter = 0
   private firs: Map<string, FIR> = new Map()
 
   async findById(id: string): Promise<FIR | null> {
@@ -45,6 +48,20 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async prenotaTrasmissioneRentri(): Promise<boolean> {
+    return true
+  }
+
+  async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
+
+  async elencaTrasmissioniRentriSospese(): Promise<
+    Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>
+  > {
+    return []
+  }
+
   async findByRentriNumeroFir(): Promise<FIR | null> {
     return null
   }
@@ -59,8 +76,16 @@ class MockFIRRepository implements IFIRRepository {
     return false
   }
 
-  async generateNumeroProgressivo(): Promise<string> {
-    return 'FIR-2025-000001'
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save(fir)
+    return numero
   }
 
   async count(): Promise<number> {
@@ -170,6 +195,26 @@ describe('PresaInCaricoFIRUseCase', () => {
       expect(result.isSuccess).toBe(true)
       expect(result.value.stato).toBe(FIRStato.IN_TRANSITO)
       expect(result.value.dataPresaCarico).toBeInstanceOf(Date)
+    })
+
+    it('salva con la verifica della versione letta e lascia risalire il conflitto', async () => {
+      const fir = createEmessoFIR()
+      repository.addFIR(fir)
+      const saveSpy = jest.spyOn(repository, 'save')
+      const command = new PresaInCaricoFIRCommand(fir.id, 'user-trans-456', 'Trasportatore Rossi')
+
+      await useCase.execute(command)
+      expect(saveSpy).toHaveBeenCalledWith(expect.anything(), { verificaVersione: true })
+
+      const fir2 = createEmessoFIR()
+      repository.addFIR(fir2)
+      const conflitto = new FirModificatoNelFrattempoError(fir2.id)
+      saveSpy.mockRejectedValueOnce(conflitto)
+      await expect(
+        useCase.execute(
+          new PresaInCaricoFIRCommand(fir2.id, 'user-trans-456', 'Trasportatore Rossi')
+        )
+      ).rejects.toBe(conflitto)
     })
 
     it('should persist FIR with firma trasportatore (firma crittografica reale)', async () => {

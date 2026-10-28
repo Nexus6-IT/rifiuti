@@ -62,7 +62,7 @@ export class SpidStepUpGuard implements CanActivate {
 
     if (!lastSpidAuth) {
       this.logger.warn(
-        `User ${user.userId} attempting high-risk action '${auditAction}' without SPID timestamp`
+        `User ${user.id} attempting high-risk action '${auditAction}' without SPID timestamp`
       )
       throw new UnauthorizedException({
         message: 'SPID authentication required for this operation',
@@ -80,7 +80,7 @@ export class SpidStepUpGuard implements CanActivate {
       const minutesSinceAuth = Math.floor(timeSinceAuth / 60000)
 
       this.logger.warn(
-        `⚠️  Step-up required: User ${user.userId} attempting '${auditAction}' ` +
+        `⚠️  Step-up required: User ${user.id} attempting '${auditAction}' ` +
           `after ${minutesSinceAuth} minutes (threshold: 15 minutes)`
       )
 
@@ -97,7 +97,7 @@ export class SpidStepUpGuard implements CanActivate {
 
     // Log successful step-up validation
     this.logger.debug(
-      `Step-up check passed for user ${user.userId}, action '${auditAction}' ` +
+      `Step-up check passed for user ${user.id}, action '${auditAction}' ` +
         `(${Math.floor(timeSinceAuth / 60000)}m since auth)`
     )
 

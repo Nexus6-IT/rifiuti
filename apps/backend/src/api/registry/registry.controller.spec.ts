@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common'
 /**
  * TDD Task 4 dello scadenzario: l'elenco di trasportatori e destinatari deve
  * riportare lo stato di scadenza (booleano + giorni residui) calcolato al
@@ -8,6 +9,7 @@
  * `DeadlineCheckerService`, Task 1): niente seconda formula.
  */
 import { Test, TestingModule } from '@nestjs/testing'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { RegistryController } from './registry.controller'
 import { CreateProduttoreUseCase } from '../../application/registry/use-cases/create-produttore.use-case'
 import { CreateTrasportatoreUseCase } from '../../application/registry/use-cases/create-trasportatore.use-case'
@@ -74,6 +76,7 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
     const module: TestingModule = await Test.createTestingModule({
       controllers: [RegistryController],
       providers: [
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
         { provide: CreateProduttoreUseCase, useValue: noop },
         { provide: CreateTrasportatoreUseCase, useValue: noop },
         { provide: CreateDestinatarioUseCase, useValue: noop },
@@ -93,6 +96,14 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
     }).compile()
 
     controller = module.get(RegistryController)
+  })
+
+  it('senza azienda determinabile: 403, nessuna lettura (fail-closed)', async () => {
+    await expect(controller.listProduttori({} as any)).rejects.toBeInstanceOf(ForbiddenException)
+    await expect(controller.listTrasportatori({ user: {} } as any)).rejects.toBeInstanceOf(
+      ForbiddenException
+    )
+    await expect(controller.listDestinatari({} as any)).rejects.toBeInstanceOf(ForbiddenException)
   })
 
   function req(tenantId = 'tenant-1'): any {

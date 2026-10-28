@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
+import { risolviUrlSistema } from '../../src/infrastructure/persistence/url-sistema';
 import { seedRolesForTenant } from '../../src/application/admin/system-roles';
+import { escludiPiattaforma } from '../../src/core/context/azienda-piattaforma';
 
 // Re-export per retro-compatibilità con eventuali import esistenti.
 export {
@@ -8,7 +10,12 @@ export {
   type SystemRoleConfig,
 } from '../../src/application/admin/system-roles';
 
-const prisma = new PrismaClient();
+// Seed cross-tenant: serve il client di sistema (BYPASSRLS); senza DATABASE_URL_SISTEMA ripiega su DATABASE_URL.
+const { url: urlSistema, fallback } = risolviUrlSistema()
+if (fallback) {
+  console.warn("DATABASE_URL_SISTEMA assente: il seed usa la connessione dell'applicazione")
+}
+const prisma = new PrismaClient(urlSistema ? { datasources: { db: { url: urlSistema } } } : undefined);
 
 /**
  * Seed default system roles for the WasteFlow platform
@@ -33,7 +40,8 @@ export async function seedRoles() {
   }
 
   // Create roles for each tenant
-  const tenants = await prisma.tenant.findMany();
+  // La piattaforma e' un'azienda tecnica senza utenti: non riceve ruoli.
+  const tenants = await prisma.tenant.findMany({ where: escludiPiattaforma() });
   let rolesCreated = 0;
 
   for (const tenant of tenants) {

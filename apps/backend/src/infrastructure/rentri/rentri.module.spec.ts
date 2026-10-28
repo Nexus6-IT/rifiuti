@@ -13,11 +13,11 @@ import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
 import { RentriVidimazioneClient } from './rentri-vidimazione.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
-import { RentriCredentialController } from '../../api/rentri/rentri-credential.controller'
 import { RentriModalitaLegameController } from '../../api/rentri/rentri-modalita-legame.controller'
 import { RentriUnitaLocaleController } from '../../api/rentri/rentri-unita-locale.controller'
 import { RentriSitiController } from '../../api/rentri/rentri-siti.controller'
 import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica.controller'
+import { RuoloEffettivoModule } from '../../api/me/ruolo-effettivo.module'
 import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri-diagnostica.use-case'
 
 /**
@@ -30,7 +30,12 @@ import { GetRentriDiagnosticaUseCase } from '../../application/rentri/get-rentri
 describe('RentriModule (DI wiring)', () => {
   it('risolve client, auth, firma, credential service/resolver, modalità legame e controller', async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), RentriModule],
+      imports: [
+        ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+        // Globale in AppModule: serve a RolesGuard dei controller del modulo
+        RuoloEffettivoModule,
+        RentriModule,
+      ],
     }).compile()
 
     expect(moduleRef.get(RENTRIApiClient)).toBeDefined()
@@ -39,7 +44,6 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(RentriSignatureService)).toBeDefined()
     expect(moduleRef.get(RentriCredentialService)).toBeDefined()
     expect(moduleRef.get(RentriCredentialResolver)).toBeDefined()
-    expect(moduleRef.get(RentriCredentialController)).toBeDefined()
     expect(moduleRef.get(RentriModalitaLegameService)).toBeDefined()
     expect(moduleRef.get(RentriModalitaLegameController)).toBeDefined()
     expect(moduleRef.get(RentriUnitaLocaleService)).toBeDefined()

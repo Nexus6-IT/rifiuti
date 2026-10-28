@@ -1,23 +1,19 @@
 import {
   IsDateString,
   IsEnum,
-  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsPositive,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
-import {
-  CAUSALI_CARICO,
-  CAUSALI_SCARICO,
-} from '../../../domain/waste-movement/waste-movement.entity'
-
-const ALL_CAUSALI = [...CAUSALI_CARICO, ...CAUSALI_SCARICO] as const
+/** Forma di un codice causale: di sistema (`CESSIONE`) o dell'azienda (`AZ_...`). */
+const FORMATO_CAUSALE = /^[A-Z][A-Z0-9_]*$/
 
 /**
  * Enum dei tipi di movimento. Definito come enum (non array-literal) così che
@@ -46,9 +42,8 @@ export class RegistraMovimentoDto {
 
   @ApiPropertyOptional({
     description:
-      'Data di annotazione nel registro. Se omessa, usa la data corrente. ' +
-      'Termine di legge: 10 gg lavorativi per produttori (art. 190 c. 1 lett. a), ' +
-      '2 gg lavorativi per gestori impianti (lett. d).',
+      'Ignorata: la data di registrazione la assegna il server al momento della conferma. ' +
+      'Resta accettata per compatibilità con i client esistenti.',
     example: '2026-06-29',
   })
   @IsDateString()
@@ -57,13 +52,15 @@ export class RegistraMovimentoDto {
 
   @ApiProperty({
     description:
-      'Causale specifica del movimento. ' +
-      'CARICO: PRODUZIONE_INTERNA | INGRESSO_ESTERNO | RICLASSIFICAZIONE | RECUPERO_PARZIALE | ALTRO_CARICO. ' +
-      'SCARICO: CONFERIMENTO_TRASPORTATORE | AVVIO_RECUPERO | AVVIO_SMALTIMENTO | CESSIONE | RICLASSIFICAZIONE | ALTRO_SCARICO.',
-    enum: ALL_CAUSALI,
+      'Codice della causale del movimento: una di sistema (es. PRODUZIONE_INTERNA, CESSIONE) o una ' +
+      "dell'azienda (prefisso AZ_). L'elenco valido per tipo e data lo dà GET registro/causali.",
+    example: 'PRODUZIONE_INTERNA',
   })
-  @IsIn(ALL_CAUSALI)
-  causale: (typeof ALL_CAUSALI)[number]
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  @Matches(FORMATO_CAUSALE, { message: 'causale deve essere un codice in maiuscolo (A-Z, 0-9, _)' })
+  causale: string
 
   @ApiProperty({
     description: 'Codice CER (6 cifre con o senza spazi, es. "200301" o "20 03 01")',
@@ -81,7 +78,7 @@ export class RegistraMovimentoDto {
   wasteDescription?: string
 
   @ApiProperty({ description: 'Quantità (kg o unità specificata)', example: 100.5 })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   @Type(() => Number)
   quantity: number
@@ -142,6 +139,15 @@ export class RegistraMovimentoDto {
   @IsString()
   @IsOptional()
   notes?: string
+
+  @ApiPropertyOptional({
+    description:
+      'Registro (uuid, di una sede) in cui registrare. Senza: registro della sede principale, ' +
+      "o l'unico registro attivo.",
+  })
+  @IsUUID()
+  @IsOptional()
+  registroId?: string
 }
 
 export class ListMovimentiDto {
@@ -155,10 +161,11 @@ export class ListMovimentiDto {
   @IsOptional()
   cerCode?: string
 
-  @ApiPropertyOptional({ description: 'Filtra per causale specifica', enum: ALL_CAUSALI })
-  @IsIn(ALL_CAUSALI)
+  @ApiPropertyOptional({ description: 'Filtra per codice causale esatto' })
+  @IsString()
+  @MaxLength(100)
   @IsOptional()
-  causale?: (typeof ALL_CAUSALI)[number]
+  causale?: string
 
   @ApiPropertyOptional({ description: 'Data inizio periodo (YYYY-MM-DD)' })
   @IsDateString()
@@ -174,6 +181,11 @@ export class ListMovimentiDto {
   @IsUUID()
   @IsOptional()
   firId?: string
+
+  @ApiPropertyOptional({ description: 'Filtra per registro (uuid)' })
+  @IsUUID()
+  @IsOptional()
+  registroId?: string
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @Transform(({ value }) => parseInt(value, 10))

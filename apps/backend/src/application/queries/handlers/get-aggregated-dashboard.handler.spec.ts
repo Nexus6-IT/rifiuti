@@ -5,6 +5,7 @@
  * (t.name, m.type, m.deadline_date) e falliva a runtime.
  */
 import { GetAggregatedDashboardHandler } from './get-aggregated-dashboard.handler'
+import { TenantContext } from '../../../core/context/tenant-context'
 
 const MADRE = 'tenant-madre-uuid'
 const ALFA = 'tenant-alfa-uuid'
@@ -53,7 +54,7 @@ function makePrisma(firs: Array<{ tenantId: string; status: string }> = []) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     mUDReport: { findMany: jest.fn().mockResolvedValue([]) },
-    rENTRISyncLog: { count: jest.fn().mockResolvedValue(2) },
+    rENTRISyncLog: { count: jest.fn().mockResolvedValue(1) },
   } as any
 }
 
@@ -115,5 +116,91 @@ describe('GetAggregatedDashboardHandler', () => {
     expect(risultato.pendingFirsByClient).toEqual([
       { tenantId: ALFA, tenantName: 'Alfa Srl', pendingCount: 1 },
     ])
+  })
+
+  it("un'azienda segnata come non tenuta al MUD non compare fra le scadenze MUD (A-W-10)", async () => {
+    // Bozze MUD di entrambe le figlie (create prima del flag o dall'export): il doppio di
+    // `mUDReport.findMany` applica il filtro sulla relazione `tenant`, come farebbe Postgres.
+    const flag: Record<string, boolean> = { [ALFA]: true, [BETA]: false }
+    const bozze = [
+      { tenantId: ALFA, year: 2025, status: 'DRAFT' },
+      { tenantId: BETA, year: 2025, status: 'DRAFT' },
+    ]
+    const prisma = makePrisma()
+    prisma.mUDReport.findMany = jest.fn(({ where }: any) =>
+      Promise.resolve(
+        bozze.filter(
+          b =>
+            where.tenantId.in.includes(b.tenantId) &&
+            (where.tenant?.is?.mudNonDovuto === undefined ||
+              where.tenant.is.mudNonDovuto === flag[b.tenantId])
+        )
+      )
+    )
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const risultato = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(risultato.upcomingDeadlines).toEqual([
+      { tenantId: BETA, tenantName: 'Beta Srl', year: 2025, status: 'DRAFT' },
+    ])
+  })
+
+  it('ogni figlia viene letta nel proprio contesto, con il client normale', async () => {
+    const prisma = makePrisma([{ tenantId: ALFA, status: 'DRAFT' }])
+    const visti: Array<string | null> = []
+    const originale = prisma.fIR.findMany
+    prisma.fIR.findMany = jest.fn((args: any) => {
+      visti.push(TenantContext.getStoreTenantId())
+      return originale(args)
+    })
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect([...visti].sort()).toEqual([ALFA, BETA].sort())
+  })
+
+  it('unisce le righe delle figlie con lo stesso ordine e limite di prima', async () => {
+    const prisma = makePrisma()
+    const righe: Record<string, any[]> = {
+      [ALFA]: [{ tenantId: ALFA, firNumber: 'A1', createdAt: new Date('2026-01-02') }],
+      [BETA]: [{ tenantId: BETA, firNumber: 'B1', createdAt: new Date('2026-01-03') }],
+    }
+    prisma.fIR.findMany = jest.fn(({ where }: any) => Promise.resolve(righe[where.tenantId.in[0]]))
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const r = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(r.recentActivity.map(a => a.description)).toEqual(['FIR B1', 'FIR A1'])
+    expect(r.totalRentriSyncFailures).toBe(2)
+  })
+
+  it('cruscotto di gruppo: al massimo 4 aziende lette insieme, risultato invariato', async () => {
+    const figlie = Array.from({ length: 10 }, (_, i) => ({
+      id: `figlia-${i}`,
+      ragioneSociale: `Azienda ${String(i).padStart(2, '0')}`,
+    }))
+    const firs = figlie.map(f => ({ tenantId: f.id, status: 'DRAFT' }))
+    const prisma = makePrisma(firs)
+    prisma.tenant.findMany = jest.fn().mockResolvedValue(figlie)
+    let inCorso = 0
+    let massimo = 0
+    const groupBy = prisma.fIR.groupBy
+    prisma.fIR.groupBy = jest.fn(async (args: any) => {
+      inCorso++
+      massimo = Math.max(massimo, inCorso)
+      await new Promise(r => setTimeout(r, 5))
+      inCorso--
+      return await groupBy(args)
+    })
+    const handler = new GetAggregatedDashboardHandler(prisma)
+
+    const r = await handler.execute({ tenantIdMadre: MADRE } as any)
+
+    expect(massimo).toBeLessThanOrEqual(4)
+    expect(r.totalTenants).toBe(10)
+    expect(r.totalPendingFirs).toBe(10)
+    expect(r.pendingFirsByClient.map(c => c.tenantId)).toEqual(figlie.map(f => f.id))
   })
 })

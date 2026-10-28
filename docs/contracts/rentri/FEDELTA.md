@@ -552,3 +552,15 @@ diventa rosso.
 
 Con queste due eccezioni, la riserva N1 di §6.5 punto 1 può considerarsi **chiusa** per il
 servizio `formulari`: il percorso di scrittura di P2 ha finalmente un oracolo.
+
+### 7.2 Servizio `ca-rentri`: flag `(?i)` in testa al pattern (2026-10-26)
+
+Il contratto di `ca-rentri` ha un pattern con il flag inline .NET `(?i)` **in testa**:
+`(?i)^mobile$` su `AuthObjectData.id`. A differenza di `nazione_id` (§7.1 punto 1, dove il
+flag sta in mezzo al pattern e quindi non e' riducibile al flag `i` senza reinterpretare
+l'espressione), un `(?i)` iniziale vale per tutto il pattern: equivale esattamente al flag
+`i` di JavaScript. Il validatore (`validatore-contratto.ts`) lo traduce in una parola chiave
+ajv dedicata (`x-pattern-insensibile`, confronto con `RegExp(resto, 'iu')`): `authorize` con
+`auth_data[0].id` = `mobile`/`Mobile`/`MOBILE` passa, qualunque altro valore da' 400. La
+traduzione e' limitata al caso «`(?i)` iniziale»: un flag in mezzo al pattern resta in
+`PATTERN_NON_APPLICABILI` e dichiarato qui sopra.

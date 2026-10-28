@@ -133,12 +133,15 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 describe('RentriCodificheController', () => {
   it('chiama sync.allineaTutto con user.tenantId e risponde { eseguito: true }', async () => {
     const sync = { allineaTutto: jest.fn().mockResolvedValue(undefined) }
     const controller = new RentriCodificheController(sync as any, cerRepositoryMock() as any)
 
-    const risposta = await controller.allinea(user)
+    const risposta = await controller.allinea(req)
 
     expect(sync.allineaTutto).toHaveBeenCalledWith('tenant-1')
     expect(risposta).toEqual({ eseguito: true })
@@ -154,7 +157,7 @@ describe('RentriCodificheController', () => {
 
     let errore: unknown
     try {
-      await controller.allinea(user)
+      await controller.allinea(req)
     } catch (e) {
       errore = e
     }
@@ -199,11 +202,11 @@ describe('RentriCodificheController', () => {
           properties: { pericoloso: false },
         },
       ])
-      await expect(controller.allinea(user)).resolves.toEqual({ eseguito: true })
+      await expect(controller.allinea(req)).resolves.toEqual({ eseguito: true })
 
       // Secondo ciclo: l'ente smette di restituirlo.
       client.codiciEer.mockResolvedValueOnce([])
-      await expect(controller.allinea(user)).resolves.toEqual({ eseguito: true })
+      await expect(controller.allinea(req)).resolves.toEqual({ eseguito: true })
 
       const cer = repository.get('20 03 01')
       expect(cer).toBeDefined() // non cancellato

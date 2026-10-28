@@ -18,4 +18,5 @@ import { MudTracciatoV604Base } from './mud-tracciato-v604-base'
 export class MudTracciatoV604_2024 extends MudTracciatoV604Base {
   readonly version = '6.04/24'
   readonly year = 2024
+  readonly scadenzaPresentazione = '2025-06-28'
 }

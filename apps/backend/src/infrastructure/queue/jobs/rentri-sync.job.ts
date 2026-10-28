@@ -1,10 +1,11 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
-import { Worker, Job } from 'bullmq'
+import { Worker, Job, UnrecoverableError } from 'bullmq'
 import { ConfigService } from '@nestjs/config'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { MetricsService } from '../../../core/metrics/metrics.service'
 import { SyncFIRToRENTRIUseCase } from '../../../application/rentri/sync-fir-to-rentri.use-case'
 import { RENTRISyncQueue } from '../rentri-sync.queue'
+import { TenantContext } from '../../../core/context/tenant-context'
 
 /**
  * RENTRI Sync Job Processor
@@ -88,14 +89,31 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       attemptsMade: job.attemptsMade,
     })
 
+    // Un job senza azienda non può lavorare in un contesto: fallisce in modo
+    // definitivo (UnrecoverableError: BullMQ non lo ritenta) prima di toccare
+    // il database. Un retry non può far comparire un tenantId che non c'è.
+    if (typeof tenantId !== 'string' || tenantId.trim().length === 0) {
+      this.logger.error(
+        'Job RENTRI sync senza azienda: fallimento definitivo',
+        new Error('tenantId mancante nel job'),
+        { jobId: job.id, type, attemptsMade: job.attemptsMade }
+      )
+      throw new UnrecoverableError('Job RENTRI sync senza azienda (tenantId mancante)')
+    }
+
     try {
-      if (type === 'single') {
-        return await this.processSingleSync(job)
-      } else if (type === 'batch') {
-        return await this.processBatchSync(job)
-      } else {
-        throw new Error(`Unknown job type: ${type}`)
-      }
+      // Il lavoro gira nel contesto dell'azienda del job: da qui il PrismaService
+      // imposta `app.tenant_id` per ogni operazione (RLS). `await` dentro il
+      // callback: le PrismaPromise sono lazy e vanno risolte nel contesto.
+      return await TenantContext.run({ tenantId: tenantId.trim() }, async () => {
+        if (type === 'single') {
+          return await this.processSingleSync(job)
+        } else if (type === 'batch') {
+          return await this.processBatchSync(job)
+        } else {
+          throw new Error(`Unknown job type: ${type}`)
+        }
+      })
     } catch (error: any) {
       this.logger.error('Job processing failed', error, {
         jobId: job.id,
@@ -133,6 +151,9 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
    * Process single FIR sync
    */
   private async processSingleSync(job: Job): Promise<SyncJobResult> {
+    // Un eventuale `confermaNuovaTrasmissione` rimasto nel data di un job
+    // vecchio si ignora: la riapertura si consuma nel controller, mai qui, così
+    // un retry non può riaprire una trasmissione ferma per verifica.
     const { firId, tenantId, correlationId, richiedeConferma } = job.data
     const startTime = Date.now()
 
@@ -160,6 +181,24 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
       // Un fallimento definitivo (willRetry: false — es. 403, o esito
       // negativo della transazione) NON viene rilanciato: il job si
       // considera concluso, senza nuovi tentativi.
+      // Un altro job possiede la prenotazione della trasmissione: qui non è
+      // stato fatto nulla e non c'è nulla da ritentare (ci pensa l'altro job o,
+      // se si è interrotto, la ripresa periodica delle trasmissioni sospese).
+      if (result.giaInCorso === true) {
+        this.logger.info('Trasmissione RENTRI già in corso su un altro job, nessuna azione', {
+          jobId: job.id,
+          firId,
+          tenantId,
+        })
+        return {
+          jobId: job.id as string,
+          type: 'single',
+          success: false,
+          firId,
+          duration,
+        }
+      }
+
       if (!result.success && result.willRetry) {
         // Il catch sottostante registra già la metrica di durata e logga
         // l'errore prima di rilanciare verso BullMQ.

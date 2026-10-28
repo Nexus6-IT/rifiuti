@@ -3,6 +3,7 @@ import { AxiosResponse } from 'axios'
 import { RentriCodificheClient } from './rentri-codifiche.client'
 import { RentriApiError } from '../rentri-http-resilienza'
 import { RentriAuthService } from '../rentri-auth.service'
+import { RentriCredentialResolver } from '../rentri-credential.resolver'
 import { RentriConfig } from '../rentri-config'
 import { NOME_TABELLE_CODIFICHE_SEMPLICI } from './rentri-codifiche.model'
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -64,7 +65,11 @@ describe('RentriCodificheClient — verifica reale contro la fake RENTRI (in-pro
       warn: jest.fn(),
       error: jest.fn(),
     }
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const metrics: any = { rentriApiErrors: { inc: jest.fn() } }
 
     // httpService reale sostituito da un adattatore su app.inject(): esegue

@@ -45,7 +45,7 @@ export class LoggingInterceptor implements NestInterceptor {
     const { method, url } = request
     const correlationId = (request as any).correlationId || 'unknown'
     const tenantId = (request as any).tenantId
-    const userId = (request as any).user?.userId
+    const userId = (request as any).user?.id
     const startTime = Date.now()
 
     // Log incoming request

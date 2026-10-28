@@ -20,14 +20,23 @@ import {
   HttpStatus,
   BadRequestException,
   UseGuards,
+  Logger,
+  Req,
 } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriCredentialService } from '../../infrastructure/rentri/rentri-credential.service'
+import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
+import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
+import * as Sentry from '@sentry/node'
 import { parsePkcs12 } from '../../infrastructure/rentri/rentri-pkcs12.util'
+import {
+  algoritmoDaChiave,
+  TipoChiaveNonSupportatoError,
+} from '../../infrastructure/rentri/certificato/algoritmo-da-chiave'
 import { validaCertificato } from '../../infrastructure/rentri/certificato/valida-certificato'
 import { SetRentriCredentialDto } from './dto/set-rentri-credential.dto'
 
@@ -41,6 +50,8 @@ interface SuccessResponse {
    * V. `infrastructure/rentri/certificato/valida-certificato.ts`.
    */
   avvertimenti?: string[]
+  /** Algoritmo JOSE ricavato dalla chiave del certificato (RS256 per RSA, ES256 per EC P-256). */
+  algorithm?: 'RS256' | 'ES256'
 }
 
 /** Stato della credenziale del tenant (mai chiave né certificato completo). */
@@ -57,6 +68,8 @@ interface CredentialStatusResponse {
    * (v. `docs/adr/2026-07-26-firma-fir-firma-remota-rentri.md`).
    */
   credentialsIdFirmaRemota?: string | null
+  /** Algoritmo JOSE della credenziale salvata (RS256/ES256): non è un segreto. */
+  algorithm?: 'RS256' | 'ES256'
 }
 
 @ApiTags('rentri')
@@ -69,7 +82,13 @@ interface CredentialStatusResponse {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
 export class RentriCredentialController {
-  constructor(private readonly credentialService: RentriCredentialService) {}
+  private readonly logger = new Logger(RentriCredentialController.name)
+
+  constructor(
+    private readonly credentialService: RentriCredentialService,
+    private readonly modalitaLegameService: RentriModalitaLegameService,
+    private readonly rentriSyncQueue: RENTRISyncQueue
+  ) {}
 
   @Put()
   @HttpCode(HttpStatus.OK)
@@ -81,10 +100,8 @@ export class RentriCredentialController {
   @ApiResponse({ status: 200, description: 'Credenziale salvata' })
   @ApiResponse({ status: 400, description: 'Dati non validi (PKCS#12 illeggibile, PEM mancanti)' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
-  async set(
-    @Body() dto: SetRentriCredentialDto,
-    @CurrentUser() user: CurrentUserPayload
-  ): Promise<SuccessResponse> {
+  async set(@Body() dto: SetRentriCredentialDto, @Req() req: any): Promise<SuccessResponse> {
+    const tenantId = requireRequestTenantId(req)
     let certificatePem: string
     let privateKeyPem: string
 
@@ -129,19 +146,76 @@ export class RentriCredentialController {
       .filter(controllo => controllo.esito === 'avvertimento')
       .map(controllo => controllo.messaggio)
 
-    await this.credentialService.upsertForTenant(user.tenantId, {
+    // L'algoritmo si ricava dalla chiave, non lo sceglie l'utente. Va dopo la
+    // validazione: una chiave illeggibile o non coerente è già stata segnalata
+    // col suo messaggio. `dto.algorithm` resta solo come controllo incrociato.
+    let algorithm: 'RS256' | 'ES256'
+    try {
+      algorithm = algoritmoDaChiave(privateKeyPem)
+    } catch (error) {
+      if (error instanceof TipoChiaveNonSupportatoError) {
+        throw new BadRequestException(error.message)
+      }
+      throw error
+    }
+    if (dto.algorithm && dto.algorithm !== algorithm) {
+      throw new BadRequestException(
+        `L'algoritmo indicato (${dto.algorithm}) non corrisponde alla chiave del certificato (${algorithm})`
+      )
+    }
+
+    const firRiaperti = await this.credentialService.upsertForTenant(tenantId, {
       clientId: dto.clientId,
       certificatePem,
       privateKeyPem,
-      algorithm: dto.algorithm,
+      algorithm,
       environment: dto.environment,
       numIscrSito: dto.numIscrSito,
       numIscrOperatore: dto.numIscrOperatore,
       credentialsIdFirmaRemota: dto.credentialsIdFirmaRemota,
     })
 
+    await this.riavviaFirRiaperti(tenantId, firRiaperti)
+
     // NON restituire mai chiave/cert.
-    return avvertimenti.length > 0 ? { success: true, avvertimenti } : { success: true }
+    return avvertimenti.length > 0
+      ? { success: true, algorithm, avvertimenti }
+      : { success: true, algorithm }
+  }
+
+  /**
+   * Dopo il caricamento del certificato i FIR fermi per certificato mancante sono
+   * tornati PENDING (v. RentriCredentialService). In AUTOMATICA/IBRIDA li si accoda
+   * qui, a priorita bassa; in MANUALE nessun accodamento: l'utente preme «Trasmetti a
+   * RENTRI». L'accodamento sta nel controller e non nel service perche' la coda e'
+   * dichiarata in RentriSyncModule, che importa RentriModule: per questo anche il
+   * controller vive in RentriSyncModule. Un errore qui non fa fallire il caricamento
+   * del certificato (gia' salvato): log error + segnalazione, i FIR restano PENDING.
+   */
+  private async riavviaFirRiaperti(tenantId: string, firIds: string[]): Promise<void> {
+    if (firIds.length === 0) return
+    try {
+      const { modalitaLegame } = await this.modalitaLegameService.getForTenant(tenantId)
+      if (modalitaLegame === 'MANUALE') return
+      for (const firId of firIds) {
+        await this.rentriSyncQueue.addSyncJob({
+          firId,
+          tenantId,
+          richiedeConferma: modalitaLegame === 'IBRIDA',
+          priority: 'low',
+        })
+      }
+    } catch (error) {
+      this.logger.error(
+        `Accodamento dei FIR riaperti dopo il caricamento del certificato non riuscito (tenant ${tenantId}): il certificato e' comunque salvato`,
+        error instanceof Error ? error.stack : String(error)
+      )
+      try {
+        Sentry.captureException(error, { extra: { tenantId, fase: 'accodamento-fir-riaperti' } })
+      } catch {
+        /* Bugsink irraggiungibile: il caricamento del certificato non deve cambiare */
+      }
+    }
   }
 
   @Get()
@@ -152,8 +226,9 @@ export class RentriCredentialController {
   })
   @ApiResponse({ status: 200, description: 'Stato credenziale' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
-  async status(@CurrentUser() user: CurrentUserPayload): Promise<CredentialStatusResponse> {
-    const cred = await this.credentialService.getForTenant(user.tenantId)
+  async status(@Req() req: any): Promise<CredentialStatusResponse> {
+    const tenantId = requireRequestTenantId(req)
+    const cred = await this.credentialService.getForTenant(tenantId)
     if (!cred) {
       return { configured: false }
     }
@@ -166,6 +241,7 @@ export class RentriCredentialController {
       numIscrSito: cred.numIscrSito ?? null,
       numIscrOperatore: cred.numIscrOperatore ?? null,
       credentialsIdFirmaRemota: cred.credentialsIdFirmaRemota ?? null,
+      algorithm: cred.algorithm,
     }
   }
 
@@ -174,8 +250,9 @@ export class RentriCredentialController {
   @ApiOperation({ summary: 'Rimuove la credenziale RENTRI del tenant corrente' })
   @ApiResponse({ status: 200, description: 'Credenziale rimossa' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
-  async remove(@CurrentUser() user: CurrentUserPayload): Promise<SuccessResponse> {
-    await this.credentialService.removeForTenant(user.tenantId)
+  async remove(@Req() req: any): Promise<SuccessResponse> {
+    const tenantId = requireRequestTenantId(req)
+    await this.credentialService.removeForTenant(tenantId)
     return { success: true }
   }
 }

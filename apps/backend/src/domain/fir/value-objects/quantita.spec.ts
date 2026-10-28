@@ -27,39 +27,6 @@ describe('Quantita Value Object', () => {
     })
   })
 
-  describe('isWithinTolerance', () => {
-    it('should return true for exact match', () => {
-      const quantita = Quantita.create(1000)
-      expect(quantita.isWithinTolerance(1000)).toBe(true)
-    })
-
-    it('should return true for +10% tolerance', () => {
-      const quantita = Quantita.create(1000)
-      expect(quantita.isWithinTolerance(1100)).toBe(true) // +10%
-    })
-
-    it('should return true for -10% tolerance', () => {
-      const quantita = Quantita.create(1000)
-      expect(quantita.isWithinTolerance(900)).toBe(true) // -10%
-    })
-
-    it('should return false for +11% (exceeds tolerance)', () => {
-      const quantita = Quantita.create(1000)
-      expect(quantita.isWithinTolerance(1110)).toBe(false) // +11%
-    })
-
-    it('should return false for -11% (exceeds tolerance)', () => {
-      const quantita = Quantita.create(1000)
-      expect(quantita.isWithinTolerance(890)).toBe(false) // -11%
-    })
-
-    it('should support custom tolerance percentage', () => {
-      const quantita = Quantita.create(1000)
-      expect(quantita.isWithinTolerance(1200, 20)).toBe(true) // +20% tolerance
-      expect(quantita.isWithinTolerance(1210, 20)).toBe(false) // +21% exceeds
-    })
-  })
-
   describe('equals', () => {
     it('should return true for same value and unit', () => {
       const q1 = Quantita.create(100, UnitaMisura.KG)

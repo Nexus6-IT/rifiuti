@@ -15,6 +15,15 @@ export interface FIRSearchFilters {
   dataTo?: Date
 }
 
+/**
+ * Opzioni di salvataggio. `verificaVersione`: la scrittura riesce solo se la riga ha ancora la
+ * versione letta dall'aggregate (altrimenti `FirModificatoNelFrattempoError`). Senza l'opzione si
+ * scrive e si incrementa comunque (percorso RENTRI, piano D5).
+ */
+export interface OpzioniSalvataggioFir {
+  verificaVersione?: boolean
+}
+
 export interface IFIRRepository {
   /**
    * Find FIR by ID
@@ -55,14 +64,44 @@ export interface IFIRRepository {
   findByRentriNumeroFir(tenantId: string, numeroFir: string): Promise<FIR | null>
 
   /**
-   * Find FIRs by stato
+   * Prenota in modo atomico la trasmissione RENTRI (un solo UPDATE condizionato):
+   * true se la prenotazione è di chi chiama, false se il FIR è legato, annullato,
+   * di un altro tenant o già prenotato da un tentativo non scaduto (`sogliaStallo`).
    */
-  findByStato(stato: FIRStato, tenantId?: string): Promise<FIR[]>
+  prenotaTrasmissioneRentri(
+    firId: string,
+    tenantId: string,
+    ora: Date,
+    sogliaStallo: Date
+  ): Promise<boolean>
+
+  /**
+   * Scrive subito la transazione di creazione accettata dall'ente. Solo se il FIR è
+   * ancora SYNCING con lo stesso `avviatoAt` (testimone del tentativo): false se la
+   * prenotazione è andata persa.
+   */
+  registraTransazioneInAttesa(
+    firId: string,
+    tenantId: string,
+    transazioneId: string,
+    avviatoAt: Date
+  ): Promise<boolean>
+
+  /**
+   * FIR da riprendere su tutti i tenant (job di recupero): SYNCING oltre la soglia di
+   * stallo e PENDING mai avviati di aziende in AUTOMATICA/IBRIDA. `stato` e' lo stato
+   * di sync del FIR. I PENDING devono avere `updated_at` successivo a `pendingAggiornatiDopo`.
+   */
+  elencaTrasmissioniRentriSospese(
+    sogliaStallo: Date,
+    limite: number,
+    pendingAggiornatiDopo: Date
+  ): Promise<Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>>
 
   /**
    * Save FIR (create or update)
    */
-  save(fir: FIR): Promise<void>
+  save(fir: FIR, opzioni?: OpzioniSalvataggioFir): Promise<void>
 
   /**
    * Delete FIR (soft delete)
@@ -75,9 +114,22 @@ export interface IFIRRepository {
   existsNumeroProgressivo(numeroProgressivo: string): Promise<boolean>
 
   /**
-   * Generate next numero progressivo for tenant
+   * Emissione del FIR con assegnazione del riferimento interno, in una sola
+   * transaction: lock per tenant e anno di emissione, verifica che il FIR sia
+   * ancora in bozza, calcolo del progressivo, `applicaEmissione(numero)` sul
+   * dominio e salvataggio di stato e firme. Restituisce il riferimento interno
+   * assegnato (`formattaNumeroFir`); se il FIR non è più in bozza lancia
+   * `FirNonPiuInBozzaError`.
+   *
+   * È la transaction di emissione in cui il piano
+   * `2026-09-12-collegamento-scorta-emissione.md` aggiungerà il consumo del
+   * numero vidimato.
    */
-  generateNumeroProgressivo(tenantId: string, anno: number): Promise<string>
+  emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applicaEmissione: (numeroProgressivo: string) => void
+  ): Promise<string>
 
   /**
    * Count FIRs by filters

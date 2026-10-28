@@ -11,6 +11,9 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
+
 describe('RentriScortaController', () => {
   const mockLogger = {
     setContext: jest.fn(),
@@ -55,7 +58,7 @@ describe('RentriScortaController', () => {
     const { controller, elencaBlocchi } = build()
     elencaBlocchi.execute.mockResolvedValue({ blocchi: [] })
 
-    const risultato = await controller.getBlocchi(user)
+    const risultato = await controller.getBlocchi(req)
 
     expect(elencaBlocchi.execute).toHaveBeenCalledWith('tenant-1')
     expect(risultato).toEqual({ blocchi: [] })
@@ -65,7 +68,7 @@ describe('RentriScortaController', () => {
     const { controller, getScorta } = build()
     getScorta.execute.mockResolvedValue({ totaleDisponibili: 0, perBlocco: [] })
 
-    const risultato = await controller.getScortaCorrente(user)
+    const risultato = await controller.getScortaCorrente(req)
 
     expect(getScorta.execute).toHaveBeenCalledWith('tenant-1')
     expect(risultato).toEqual({ totaleDisponibili: 0, perBlocco: [] })
@@ -80,7 +83,7 @@ describe('RentriScortaController', () => {
       })
     )
 
-    const risultato = await controller.vidimaLotto({ codiceBlocco: 'BLK-A', quantita: 5 }, user)
+    const risultato = await controller.vidimaLotto({ codiceBlocco: 'BLK-A', quantita: 5 }, req)
 
     expect(risultato).toEqual({ avviato: true, richiesti: 5 })
     expect(avviaVidimazione.verificaBlocco).toHaveBeenCalledWith('tenant-1', 'BLK-A')
@@ -97,7 +100,7 @@ describe('RentriScortaController', () => {
     )
 
     await expect(
-      controller.vidimaLotto({ codiceBlocco: 'BLK-X', quantita: 5 }, user)
+      controller.vidimaLotto({ codiceBlocco: 'BLK-X', quantita: 5 }, req)
     ).rejects.toThrow(NotFoundException)
 
     expect(avviaVidimazione.execute).not.toHaveBeenCalled()
@@ -107,14 +110,14 @@ describe('RentriScortaController', () => {
     const { controller, impostaBloccoPredefinito } = build()
     impostaBloccoPredefinito.execute.mockRejectedValue(new NotFoundException('non trovato'))
 
-    await expect(controller.impostaPredefinito('BLK-X', user)).rejects.toThrow(NotFoundException)
+    await expect(controller.impostaPredefinito('BLK-X', req)).rejects.toThrow(NotFoundException)
   })
 
   it('GET /rentri/emissione-possibile propaga numIscrSito opzionale', async () => {
     const { controller, verificaEmissionePossibile } = build()
     verificaEmissionePossibile.execute.mockResolvedValue({ possibile: true, numeriDisponibili: 3 })
 
-    const risultato = await controller.getEmissionePossibile(user, 'OP1234ABC123456-RM1234')
+    const risultato = await controller.getEmissionePossibile(req, 'OP1234ABC123456-RM1234')
 
     expect(verificaEmissionePossibile.execute).toHaveBeenCalledWith(
       'tenant-1',
@@ -129,6 +132,6 @@ describe('RentriScortaController', () => {
       DomainException.businessRuleViolation('CF_TENANT_MANCANTE', 'manca il CF')
     )
 
-    await expect(controller.getBlocchi(user)).rejects.toMatchObject({ status: 400 })
+    await expect(controller.getBlocchi(req)).rejects.toMatchObject({ status: 400 })
   })
 })

@@ -8,9 +8,13 @@ import { RilasciaFormularioRENTRIUseCase } from '../../application/rentri/rilasc
 import { RentriUnitaLocaleService } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
-import { FormularioGiaAgganciatoError } from '../../core/domain/errors'
+import {
+  FirAnnullatoNelFrattempoError,
+  FormularioGiaAgganciatoError,
+} from '../../core/domain/errors'
 import { RentriApiError } from '../../infrastructure/rentri/rentri-http-resilienza'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 
 const user: CurrentUserPayload = {
@@ -21,6 +25,8 @@ const user: CurrentUserPayload = {
   permissions: [],
 }
 
+// richiesta senza switch di azienda: l'azienda selezionata coincide con quella del token
+const req = { tenantId: user.tenantId, user }
 const sedePrincipale = {
   id: 'sede-1',
   numIscrSito: 'OP1234ABC123456-RM1234',
@@ -75,7 +81,7 @@ describe('RentriFormulariController', () => {
       }
       cercaUseCase.execute.mockResolvedValue(risultato)
 
-      const res = await controller.cerca(user)
+      const res = await controller.cerca(req)
 
       expect(res).toBe(risultato)
       expect(cercaUseCase.execute).toHaveBeenCalledWith('tenant-1')
@@ -86,7 +92,7 @@ describe('RentriFormulariController', () => {
         DomainException.businessRuleViolation('CF_TENANT_MANCANTE', 'Configura il CF del tenant.')
       )
 
-      await expect(controller.cerca(user)).rejects.toMatchObject({
+      await expect(controller.cerca(req)).rejects.toMatchObject({
         status: 400,
         message: 'Configura il CF del tenant.',
       })
@@ -97,7 +103,7 @@ describe('RentriFormulariController', () => {
         DomainException.businessRuleViolation('UNITA_LOCALE_MANCANTE', 'dettaglio interno ignorato')
       )
 
-      await expect(controller.cerca(user)).rejects.toMatchObject({
+      await expect(controller.cerca(req)).rejects.toMatchObject({
         status: 400,
         message:
           'Configura il numero di iscrizione della tua unità locale nella pagina del certificato prima di cercare i formulari.',
@@ -115,7 +121,7 @@ describe('RentriFormulariController', () => {
         numeroFir: 'TVXYZ1234AB',
       })
 
-      const res = await controller.aggancia('TVXYZ1234AB', dtoNuovo, user)
+      const res = await controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)
 
       expect(res).toEqual({ firId: 'fir-nuovo-1', numeroFir: 'TVXYZ1234AB' })
       expect(unitaLocaleService.getPrincipale).toHaveBeenCalledWith('tenant-1')
@@ -137,7 +143,7 @@ describe('RentriFormulariController', () => {
         numeroFir: 'TVXYZ1234AB',
       })
 
-      await controller.aggancia('TVXYZ1234AB', dtoEsistente, user)
+      await controller.aggancia('TVXYZ1234AB', dtoEsistente, user, req)
 
       expect(acquisisciUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ scelta: { tipo: 'COLLEGA_ESISTENTE', firId: 'fir-locale-1' } })
@@ -153,7 +159,8 @@ describe('RentriFormulariController', () => {
       await controller.aggancia(
         'TVXYZ1234AB',
         { modalita: 'NUOVO', visibilitaGiaAcquisita: true },
-        user
+        user,
+        req
       )
 
       expect(acquisisciUseCase.execute).toHaveBeenCalledWith(
@@ -164,7 +171,7 @@ describe('RentriFormulariController', () => {
     it('risponde 400 (unità locale non configurata) PRIMA di chiamare il use case, se manca la sede', async () => {
       unitaLocaleService.getPrincipale.mockResolvedValue(null)
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user)).rejects.toMatchObject({
+      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)).rejects.toMatchObject({
         status: 400,
       })
       expect(acquisisciUseCase.execute).not.toHaveBeenCalled()
@@ -173,7 +180,9 @@ describe('RentriFormulariController', () => {
     it('mappa NOT_FOUND (FIR di un altro tenant nel ramo ESISTENTE) su 404, non 403', async () => {
       acquisisciUseCase.execute.mockRejectedValue(DomainException.notFound('FIR', 'fir-locale-1'))
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoEsistente, user)).rejects.toMatchObject({
+      await expect(
+        controller.aggancia('TVXYZ1234AB', dtoEsistente, user, req)
+      ).rejects.toMatchObject({
         status: 404,
         message: 'FIR non trovato',
       })
@@ -187,7 +196,7 @@ describe('RentriFormulariController', () => {
         )
       )
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user)).rejects.toMatchObject({
+      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)).rejects.toMatchObject({
         status: 409,
         message:
           'Questo formulario è già collegato a un altro FIR nel gestionale: rilascialo da lì prima di riprovare qui.',
@@ -202,7 +211,9 @@ describe('RentriFormulariController', () => {
         )
       )
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoEsistente, user)).rejects.toMatchObject({
+      await expect(
+        controller.aggancia('TVXYZ1234AB', dtoEsistente, user, req)
+      ).rejects.toMatchObject({
         status: 409,
         message:
           'Il FIR locale fir-locale-1 è già legato al formulario RENTRI ALTRO999: rilasciare quel legame prima di agganciarne un altro.',
@@ -215,7 +226,7 @@ describe('RentriFormulariController', () => {
       )
 
       try {
-        await controller.aggancia('TVXYZ1234AB', dtoNuovo, user)
+        await controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)
         fail('doveva lanciare')
       } catch (error: any) {
         expect(error.message).not.toContain('Business rule violated')
@@ -225,10 +236,23 @@ describe('RentriFormulariController', () => {
     it('mappa il vincolo di unicità a database (FormularioGiaAgganciatoError, corsa concorrente) su 409', async () => {
       acquisisciUseCase.execute.mockRejectedValue(new FormularioGiaAgganciatoError('TVXYZ1234AB'))
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user)).rejects.toMatchObject({
+      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)).rejects.toMatchObject({
         status: 409,
         message:
           'Questo formulario è già collegato a un altro FIR nel gestionale: rilascialo da lì prima di riprovare qui.',
+      })
+    })
+
+    it('mappa il FIR annullato nel frattempo su 409 con il suo codice, non su 400', async () => {
+      acquisisciUseCase.execute.mockRejectedValue(new FirAnnullatoNelFrattempoError('fir-1'))
+
+      const errore = await controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req).catch(e => e)
+
+      expect(errore.status).toBe(409)
+      expect(errore.getResponse()).toMatchObject({
+        error: 'FIR_ANNULLATO_NEL_FRATTEMPO',
+        message:
+          "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato.",
       })
     })
 
@@ -237,7 +261,7 @@ describe('RentriFormulariController', () => {
         DomainException.validationFailed('NUMERO_FIR_MANCANTE', 'Numero FIR RENTRI mancante')
       )
 
-      await expect(controller.aggancia('', dtoNuovo, user)).rejects.toMatchObject({
+      await expect(controller.aggancia('', dtoNuovo, user, req)).rejects.toMatchObject({
         status: 400,
         message: 'Numero FIR RENTRI mancante',
       })
@@ -248,7 +272,7 @@ describe('RentriFormulariController', () => {
         new RentriApiError(403, 'Forbidden', undefined, false)
       )
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user)).rejects.toMatchObject({
+      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)).rejects.toMatchObject({
         status: 403,
         message:
           'Non risulti tra i soggetti coinvolti in questo formulario: RENTRI non consente di agganciarlo.',
@@ -260,7 +284,7 @@ describe('RentriFormulariController', () => {
         new RentriApiError(429, 'Too Many Requests', undefined, true)
       )
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user)).rejects.toMatchObject({
+      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)).rejects.toMatchObject({
         status: 503,
         message:
           'RENTRI ha temporaneamente sospeso le richieste per troppi tentativi non validi: la trasmissione riprenderà da sola, senza bisogno di intervenire.',
@@ -271,7 +295,7 @@ describe('RentriFormulariController', () => {
       const inatteso = new Error('boom')
       acquisisciUseCase.execute.mockRejectedValue(inatteso)
 
-      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user)).rejects.toBe(inatteso)
+      await expect(controller.aggancia('TVXYZ1234AB', dtoNuovo, user, req)).rejects.toBe(inatteso)
     })
   })
 
@@ -279,7 +303,7 @@ describe('RentriFormulariController', () => {
     it('risolve numIscrSito e rilascia il legame', async () => {
       rilasciaUseCase.execute.mockResolvedValue({ numeroFirRilasciato: 'TVXYZ1234AB' })
 
-      const res = await controller.rilascia('fir-1', {}, user)
+      const res = await controller.rilascia('fir-1', {}, user, req)
 
       expect(res).toEqual({ numeroFirRilasciato: 'TVXYZ1234AB' })
       expect(rilasciaUseCase.execute).toHaveBeenCalledWith({
@@ -295,7 +319,7 @@ describe('RentriFormulariController', () => {
     it('un FIR di un altro tenant risponde 404, non 403 (convenzione P4)', async () => {
       rilasciaUseCase.execute.mockRejectedValue(DomainException.notFound('FIR', 'fir-altro-tenant'))
 
-      await expect(controller.rilascia('fir-altro-tenant', {}, user)).rejects.toMatchObject({
+      await expect(controller.rilascia('fir-altro-tenant', {}, user, req)).rejects.toMatchObject({
         status: 404,
         message: 'FIR non trovato',
       })
@@ -309,7 +333,7 @@ describe('RentriFormulariController', () => {
         )
       )
 
-      await expect(controller.rilascia('fir-1', {}, user)).rejects.toMatchObject({
+      await expect(controller.rilascia('fir-1', {}, user, req)).rejects.toMatchObject({
         status: 400,
         message: 'Nessun legame RENTRI da rilasciare per questo FIR',
       })
@@ -323,7 +347,9 @@ describe('RentriFormulariController', () => {
         )
       )
 
-      await expect(controller.rilascia('fir-1', {}, user)).rejects.toMatchObject({ status: 400 })
+      await expect(controller.rilascia('fir-1', {}, user, req)).rejects.toMatchObject({
+        status: 400,
+      })
     })
   })
 })
@@ -375,6 +401,7 @@ describe('RentriFormulariController — autorizzazione (verifica empirica)', () 
         { provide: RilasciaFormularioRENTRIUseCase, useValue: rilasciaUseCase },
         { provide: RentriUnitaLocaleService, useValue: unitaLocaleService },
         { provide: LoggerService, useValue: logger },
+        { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

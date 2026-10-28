@@ -31,7 +31,7 @@ import { IsString, IsIn } from 'class-validator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { BillingService } from './billing.service'
 import { StripeService } from './stripe.service'
 import { ConfigService } from '@nestjs/config'
@@ -61,8 +61,8 @@ export class BillingController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Stato abbonamento corrente' })
-  async getStatus(@CurrentUser() user: CurrentUserPayload) {
-    return this.billingService.getStatus(user.tenantId)
+  async getStatus(@Req() req: any) {
+    return this.billingService.getStatus(requireRequestTenantId(req))
   }
 
   /**
@@ -76,13 +76,13 @@ export class BillingController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione checkout Stripe per upgrade piano' })
-  async createCheckout(
-    @CurrentUser() user: CurrentUserPayload,
-    @Body() dto: CheckoutRequestDto,
-    @Req() req: Request
-  ) {
+  async createCheckout(@Req() req: Request, @Body() dto: CheckoutRequestDto) {
     const baseUrl = this.resolveBaseUrl(req)
-    const url = await this.billingService.createCheckoutSession(user.tenantId, dto.plan, baseUrl)
+    const url = await this.billingService.createCheckoutSession(
+      requireRequestTenantId(req),
+      dto.plan,
+      baseUrl
+    )
     return {
       url,
       testMode: !this.stripeService.isEnabled,
@@ -102,9 +102,12 @@ export class BillingController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crea sessione Billing Portal Stripe' })
-  async createPortal(@CurrentUser() user: CurrentUserPayload, @Req() req: Request) {
+  async createPortal(@Req() req: Request) {
     const baseUrl = this.resolveBaseUrl(req)
-    const url = await this.billingService.createBillingPortalSession(user.tenantId, baseUrl)
+    const url = await this.billingService.createBillingPortalSession(
+      requireRequestTenantId(req),
+      baseUrl
+    )
     return {
       url,
       testMode: !this.stripeService.isEnabled,

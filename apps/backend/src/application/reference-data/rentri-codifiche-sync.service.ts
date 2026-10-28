@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { RentriCerSyncService, EsitoAllineamentoCer } from './rentri-cer-sync.service'
 import {
   RentriCodificheSempliciSyncService,
@@ -116,7 +117,8 @@ export class RentriCodificheSyncService {
         )
         return
       }
-      throw e
+      this.logger.error('Allineamento schedulato delle codifiche RENTRI fallito', e as Error)
+      segnalaErroreJob('allineamentoSchedulato', e)
     }
   }
 

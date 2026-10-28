@@ -1,6 +1,19 @@
 import { Injectable } from '@nestjs/common'
+import { WHERE_VIGENTE } from '../../domain/waste-movement/vigenza'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { formattaQuantita } from '../../core/format/formatta-quantita'
+import { leggiApertureRegistro } from '../registro/aperture-registro'
+import {
+  cerCanonico,
+  cerSoloCifre,
+  chiaveConfrontoCer,
+} from '../../domain/waste-movement/cer-registro'
+import {
+  convertiInKg,
+  normalizzaUnitaRegistro,
+  simboloUnita,
+} from '../../domain/waste-movement/unita-misura-registro'
 
 export type AnomalyType =
   | 'INVALID_CER'
@@ -29,9 +42,16 @@ const DEFAULT_CONFIG: AnomalyDetectionConfig = {
   maxQuantityKg: 1_000_000,
 }
 
-/** Normalizza un CER a sole cifre per il confronto col catalogo. */
-function normalizeCer(cer: string): string {
-  return (cer || '').replace(/[^0-9]/g, '')
+/** Carico e scarico di un CER in una famiglia di unità (kg per la massa, altrimenti l'unità). */
+interface SaldoUnita {
+  carico: number
+  scarico: number
+}
+
+interface SaldoCer {
+  cerCode: string
+  /** chiave: 'KG' per la massa (kg e t convertiti), altrimenti l'unità normalizzata */
+  perUnita: Map<string, SaldoUnita>
 }
 
 /**
@@ -70,7 +90,7 @@ export class AnomalyDetectionService {
 
     // Catalogo CER valido (normalizzato) per il controllo di validità del codice.
     const catalog = await this.prisma.cERCode.findMany({ select: { code: true } })
-    const validCerSet = new Set(catalog.map(c => normalizeCer(c.code)))
+    const validCerSet = new Set(catalog.map(c => cerSoloCifre(c.code)))
 
     for (const fir of firs) {
       const qty = fir.quantity ? Number(fir.quantity) : 0
@@ -85,7 +105,7 @@ export class AnomalyDetectionService {
         )
       }
 
-      if (validCerSet.size > 0 && !validCerSet.has(normalizeCer(fir.cerCode))) {
+      if (validCerSet.size > 0 && !validCerSet.has(cerSoloCifre(fir.cerCode))) {
         anomalies.push(
           this.fir(
             'INVALID_CER',
@@ -101,33 +121,83 @@ export class AnomalyDetectionService {
       }
     }
 
-    // Giacenze impossibili: scarico complessivo > carico per un CER.
+    anomalies.push(...(await this.giacenzeImpossibili(tenantId)))
+
+    if (anomalies.length > 0) {
+      this.logger.warn(`Rilevate ${anomalies.length} anomalie per tenant ${tenantId}`)
+    }
+    return anomalies
+  }
+
+  /**
+   * Giacenze impossibili (scarico complessivo oltre il carico) con le stesse regole del
+   * registro: le giacenze iniziali contano come carichi, il CER si confronta sulle sole cifre,
+   * kg e tonnellate si sommano in kg, ogni unità non di massa è valutata a parte (mai mescolata
+   * ai kg) e solo se ha almeno un carico.
+   */
+  private async giacenzeImpossibili(tenantId: string): Promise<Anomaly[]> {
     const byType = await this.prisma.wasteMovement.groupBy({
-      by: ['cerCode', 'type'],
-      where: { tenantId },
+      by: ['cerCode', 'type', 'unit'],
+      where: { tenantId, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
-    const stock = new Map<string, { carico: number; scarico: number }>()
+
+    const perCer = new Map<string, SaldoCer>()
     for (const row of byType) {
-      const q = row._sum.quantity ? Number(row._sum.quantity) : 0
-      const e = stock.get(row.cerCode) ?? { carico: 0, scarico: 0 }
-      if (row.type === 'CARICO') e.carico += q
-      else if (row.type === 'SCARICO') e.scarico += q
-      stock.set(row.cerCode, e)
+      const chiave = chiaveConfrontoCer(row.cerCode)
+      const entry = perCer.get(chiave) ?? {
+        cerCode: cerCanonico(row.cerCode),
+        perUnita: new Map<string, SaldoUnita>(),
+      }
+      // L'asterisco vince: se una riga lo porta, il CER si mostra pericoloso.
+      if (row.cerCode.includes('*') && !entry.cerCode.endsWith('*')) entry.cerCode += '*'
+
+      const qty = row._sum.quantity ? Number(row._sum.quantity) : 0
+      const u = normalizzaUnitaRegistro(row.unit)
+      const unita = u.massa ? 'KG' : u.unita
+      const quantita = u.massa ? (convertiInKg(qty, row.unit) as number) : qty
+      const saldo = entry.perUnita.get(unita) ?? { carico: 0, scarico: 0 }
+      if (row.type === 'CARICO') saldo.carico += quantita
+      else if (row.type === 'SCARICO') saldo.scarico += quantita
+      entry.perUnita.set(unita, saldo)
+      perCer.set(chiave, entry)
     }
-    for (const [cerCode, { carico, scarico }] of stock) {
-      if (scarico > carico) {
+
+    // Le giacenze iniziali del registro contano come carichi (sono già un saldo di partenza).
+    const aperture = await leggiApertureRegistro(this.prisma, tenantId)
+    for (const ap of aperture) {
+      const chiave = chiaveConfrontoCer(ap.cerCode)
+      const entry = perCer.get(chiave) ?? {
+        cerCode: cerCanonico(ap.cerCode),
+        perUnita: new Map<string, SaldoUnita>(),
+      }
+      if (ap.cerCode.includes('*') && !entry.cerCode.endsWith('*')) entry.cerCode += '*'
+      const u = normalizzaUnitaRegistro(ap.unita)
+      const unita = u.massa ? 'KG' : u.unita
+      const quantita = u.massa ? (convertiInKg(ap.quantita, ap.unita) as number) : ap.quantita
+      const saldo = entry.perUnita.get(unita) ?? { carico: 0, scarico: 0 }
+      saldo.carico += quantita
+      entry.perUnita.set(unita, saldo)
+      perCer.set(chiave, entry)
+    }
+
+    const anomalies: Anomaly[] = []
+    for (const { cerCode, perUnita } of perCer.values()) {
+      for (const [unita, { carico, scarico }] of perUnita) {
+        // Un'unità non di massa si confronta solo se ha almeno un carico: i carichi manuali sono
+        // sempre in kg, quindi uno scarico in litri o m3 ricopiato da un FIR non è confrontabile.
+        if (unita !== 'KG' && carico <= 0) continue
+        if (scarico <= carico + 1e-9) continue
+        const um = simboloUnita(normalizzaUnitaRegistro(unita))
         anomalies.push({
           type: 'NEGATIVE_STOCK',
           severity: 'HIGH',
           cerCode,
-          message: `Giacenza impossibile per ${cerCode}: scarico (${scarico}) supera carico (${carico})`,
+          message:
+            `Giacenza impossibile per ${cerCode}: scarico (${formattaQuantita(scarico)} ${um}) ` +
+            `supera carico (${formattaQuantita(carico)} ${um})`,
         })
       }
-    }
-
-    if (anomalies.length > 0) {
-      this.logger.warn(`Rilevate ${anomalies.length} anomalie per tenant ${tenantId}`)
     }
     return anomalies
   }

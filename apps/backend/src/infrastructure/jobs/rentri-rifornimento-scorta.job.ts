@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LoggerService } from '../../core/logger/logger.service'
-import { PrismaService } from '../persistence/prisma.service'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
+import { TenantContext } from '../../core/context/tenant-context'
+import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { RentriScortaRepository } from '../persistence/rentri-scorta.repository'
 import { AvviaVidimazioneScortaUseCase } from '../../application/rentri/scorta/avvia-vidimazione-scorta.use-case'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
  * Rifornisce periodicamente la scorta di numeri FIR pre-vidimati (R6): per
@@ -32,11 +36,12 @@ import { AvviaVidimazioneScortaUseCase } from '../../application/rentri/scorta/a
 @Injectable()
 export class RentriRifornimentoScortaJob {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sistema: PrismaSistemaService,
     private readonly unitaLocaleService: RentriUnitaLocaleService,
     private readonly scortaRepo: RentriScortaRepository,
     private readonly avviaVidimazione: AvviaVidimazioneScortaUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly credenziali: RentriCredentialResolver
   ) {
     this.logger.setContext(RentriRifornimentoScortaJob.name)
   }
@@ -45,75 +50,117 @@ export class RentriRifornimentoScortaJob {
   async eseguiRifornimento(): Promise<void> {
     this.logger.info('Avvio rifornimento periodico scorta RENTRI')
 
-    const tenants = await this.prisma.tenant.findMany({
-      where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
-      select: { id: true },
-    })
+    try {
+      // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
+      const tenants = await this.sistema.tenant.findMany({
+        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        select: { id: true },
+      })
 
-    let sediRifornite = 0
-    let sediInErrore = 0
+      let sediRifornite = 0
+      let sediInErrore = 0
 
-    for (const tenant of tenants) {
-      const unitaLocali = await this.unitaLocaleService.listForTenant(tenant.id)
-
-      for (const sede of unitaLocali) {
-        if (!sede.dimensioneScortaDesiderata) {
-          this.logger.debug(
-            'Nessuna soglia di scorta configurata per questa sede, nessun rifornimento',
-            {
-              tenantId: tenant.id,
-              numIscrSito: sede.numIscrSito,
-            }
-          )
-          continue
-        }
-
-        if (!sede.codiceBloccoPredefinito) {
-          this.logger.debug(
-            'Nessun blocco predefinito configurato per questa sede: nessun rifornimento (fail-closed, mai un blocco indovinato)',
-            { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
-          )
-          continue
-        }
-
+      for (const tenant of tenants) {
+        let unitaLocali: Awaited<ReturnType<RentriUnitaLocaleService['listForTenant']>>
         try {
-          const disponibili = await this.scortaRepo.contaTotaleDisponibili(
-            tenant.id,
-            sede.numIscrSito
+          // Azienda senza certificato RENTRI (e non legata all'env): non e' un guasto,
+          // si salta con un info e senza segnalazione a Bugsink.
+          // Da qui in poi l'azienda e' nota: letture nel suo contesto
+          const haCredenziale = await TenantContext.run(
+            { tenantId: tenant.id },
+            async () => await this.credenziali.haCredenziale(tenant.id)
           )
-          const mancanti = sede.dimensioneScortaDesiderata - disponibili
-
-          if (mancanti <= 0) {
+          if (!haCredenziale) {
+            this.logger.info(`azienda ${tenant.id} senza certificato RENTRI: saltata`, {
+              tenantId: tenant.id,
+            })
             continue
           }
-
-          const esito = await this.avviaVidimazione.execute(
-            tenant.id,
-            sede.codiceBloccoPredefinito,
-            mancanti
+          unitaLocali = await TenantContext.run(
+            { tenantId: tenant.id },
+            async () => await this.unitaLocaleService.listForTenant(tenant.id)
           )
-          sediRifornite++
-          this.logger.info('Rifornimento scorta RENTRI eseguito per la sede', {
-            tenantId: tenant.id,
-            numIscrSito: sede.numIscrSito,
-            codiceBlocco: sede.codiceBloccoPredefinito,
-            ...esito,
-          })
         } catch (error: unknown) {
           sediInErrore++
           this.logger.error(
-            'Rifornimento scorta RENTRI fallito per la sede, si prosegue con le altre',
+            'Elenco sedi RENTRI non disponibile per il tenant, si prosegue con gli altri',
             error instanceof Error ? error : new Error(String(error)),
-            { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
+            { tenantId: tenant.id }
           )
+          segnalaErroreJob('eseguiRifornimento', error, { tenantId: tenant.id })
+          continue
+        }
+
+        for (const sede of unitaLocali) {
+          if (!sede.dimensioneScortaDesiderata) {
+            this.logger.debug(
+              'Nessuna soglia di scorta configurata per questa sede, nessun rifornimento',
+              {
+                tenantId: tenant.id,
+                numIscrSito: sede.numIscrSito,
+              }
+            )
+            continue
+          }
+
+          if (!sede.codiceBloccoPredefinito) {
+            this.logger.debug(
+              'Nessun blocco predefinito configurato per questa sede: nessun rifornimento (fail-closed, mai un blocco indovinato)',
+              { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
+            )
+            continue
+          }
+
+          try {
+            // Valori gia' verificati dai guard sopra, fissati prima della closure
+            const soglia = sede.dimensioneScortaDesiderata
+            const codiceBlocco = sede.codiceBloccoPredefinito
+            const esito = await TenantContext.run({ tenantId: tenant.id }, async () => {
+              const disponibili = await this.scortaRepo.contaTotaleDisponibili(
+                tenant.id,
+                sede.numIscrSito
+              )
+              const mancanti = soglia - disponibili
+
+              if (mancanti <= 0) {
+                return null
+              }
+
+              return await this.avviaVidimazione.execute(tenant.id, codiceBlocco, mancanti)
+            })
+            if (!esito) {
+              continue
+            }
+            sediRifornite++
+            this.logger.info('Rifornimento scorta RENTRI eseguito per la sede', {
+              tenantId: tenant.id,
+              numIscrSito: sede.numIscrSito,
+              codiceBlocco: sede.codiceBloccoPredefinito,
+              ...esito,
+            })
+          } catch (error: unknown) {
+            sediInErrore++
+            this.logger.error(
+              'Rifornimento scorta RENTRI fallito per la sede, si prosegue con le altre',
+              error instanceof Error ? error : new Error(String(error)),
+              { tenantId: tenant.id, numIscrSito: sede.numIscrSito }
+            )
+            segnalaErroreJob('eseguiRifornimento', error, { tenantId: tenant.id })
+          }
         }
       }
-    }
 
-    this.logger.info('Rifornimento periodico scorta RENTRI completato', {
-      tenantTotali: tenants.length,
-      sediRifornite,
-      sediInErrore,
-    })
+      this.logger.info('Rifornimento periodico scorta RENTRI completato', {
+        tenantTotali: tenants.length,
+        sediRifornite,
+        sediInErrore,
+      })
+    } catch (error: unknown) {
+      this.logger.error(
+        'Rifornimento periodico scorta RENTRI fallito',
+        error instanceof Error ? error : new Error(String(error))
+      )
+      segnalaErroreJob('eseguiRifornimento', error)
+    }
   }
 }

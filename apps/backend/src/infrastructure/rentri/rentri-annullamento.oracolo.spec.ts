@@ -2,6 +2,7 @@ import { Observable } from 'rxjs'
 import { AxiosResponse } from 'axios'
 import { RENTRIApiClient } from './rentri-api.client'
 import { RentriAuthService } from './rentri-auth.service'
+import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriConfig } from './rentri-config'
 import { GetAzioniDisponibiliUseCase } from '../../application/rentri/get-azioni-disponibili.use-case'
 import { CompletaOperazioneConFirmaUseCase } from '../../application/rentri/completa-operazione-con-firma.use-case'
@@ -65,9 +66,23 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       credentialEncKey: 'test-enc-key',
     }
 
-    const credentialService = { getForTenant: jest.fn().mockResolvedValue(null) }
+    // Ogni azienda del test ha un certificato proprio (uguale a quello di prova): la
+    // credenziale env e' legata a una sola azienda (RENTRI_ENV_TENANT_ID).
+    const credentialService = {
+      getForTenant: jest.fn().mockResolvedValue({
+        clientId: config.clientId,
+        certificatePem: config.certificatePem,
+        privateKeyPem: config.privateKeyPem,
+        algorithm: config.algorithm,
+        environment: 'demo',
+      }),
+    }
     const logger = creaLogger()
-    const auth = new RentriAuthService(credentialService as any, config, logger)
+    const auth = new RentriAuthService(
+      new RentriCredentialResolver(credentialService as any, config),
+      config,
+      logger
+    )
     const signature = { buildIntegrityHeaders: jest.fn().mockResolvedValue({}) }
     const metrics: any = {
       rentriApiRequestDuration: { observe: jest.fn() },
@@ -345,7 +360,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
       .spyOn(client, 'verificaAutorizzazioneFirma')
       .mockImplementation(async (tenant: string, handle: string) => {
         const esito = await originale(tenant, handle)
-        if (esito === 'IN_ATTESA' && !confermata) {
+        if (esito.stato === 'IN_ATTESA' && !confermata) {
           confermata = true
           await app.inject({
             method: 'POST',
@@ -376,13 +391,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'cred-oracolo-annullamento-1',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000001', rateLimiter)
 
     // Precondizione iniziale: 'Annulla' compare nella fase di lavorazione iniziale.
     const azioniIniziali = await client.leggiAzioniDisponibili(tenantId, numeroFir, cf)
@@ -435,13 +444,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'cred-oracolo-annullamento-2',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000002', rateLimiter)
     const spy = jest.spyOn(client, 'annullaFormulario')
 
     await expect(
@@ -471,13 +474,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'cred-oracolo-annullamento-3',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000003', rateLimiter)
     const spyAzioni = jest.spyOn(client, 'leggiAzioniDisponibili')
     const spyAnnulla = jest.spyOn(client, 'annullaFormulario')
 
@@ -509,13 +506,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'cred-oracolo-annullamento-4',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000004', rateLimiter)
 
     const completatore = avviaCompletatoreOperazioni({
       digestToSign: DIGEST,
@@ -554,13 +545,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
     const client = creaClient()
     agganciaConfermaAutomatica(client)
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'cred-oracolo-annullamento-5',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000005', rateLimiter)
 
     const completatore = avviaCompletatoreOperazioni({
       digestToSign: DIGEST,
@@ -605,13 +590,7 @@ describe('AnnullaFIRRentriUseCase — ciclo di annullamento con nota contro la f
 
     const client = creaClient()
     const rateLimiter = creaRateLimiter()
-    const useCase = creaUseCase(
-      firRepository,
-      client,
-      cf,
-      'cred-oracolo-annullamento-6',
-      rateLimiter
-    )
+    const useCase = creaUseCase(firRepository, client, cf, 'ANN000006', rateLimiter)
 
     // Precondizione da /azioni mockata (nessuna rete reale): questo scenario
     // isola il guasto sulla chiamata /annulla-fir, non sulla lettura delle

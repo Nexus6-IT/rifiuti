@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloDelToken } from '../../core/decorators/ruolo-del-token.decorator'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser } from '../../auth/decorators/current-user.decorator'
@@ -33,6 +34,8 @@ import { SetTenantStatusDto } from './dto/set-tenant-status.dto'
  * creare e gestire SOLO le proprie aziende entro la quota `companyLimit`.
  * Lo scoping fine è applicato nel service a partire da `currentUser`.
  */
+// Opera sull'account di casa (currentUser), non sull'azienda selezionata: decide il ruolo del token.
+@RuoloDelToken()
 @Controller('admin/tenants')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TenantController {
@@ -56,7 +59,7 @@ export class TenantController {
   @Get(':id')
   @Roles('SUPER_ADMIN')
   async getById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tenantService.getById(id)
+    return this.tenantService.getById(id, true)
   }
 
   /**

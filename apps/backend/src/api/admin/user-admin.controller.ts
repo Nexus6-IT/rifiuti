@@ -24,6 +24,7 @@ import {
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RuoloDelToken } from '../../core/decorators/ruolo-del-token.decorator'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser } from '../../auth/decorators/current-user.decorator'
@@ -35,6 +36,8 @@ import { UpdateRoleDto } from './dto/update-role.dto'
 import { UpdateStatusDto } from './dto/update-status.dto'
 import { SetCompanyLimitDto } from './dto/set-company-limit.dto'
 
+// Opera sull'account di casa (currentUser), non sull'azienda selezionata: decide il ruolo del token.
+@RuoloDelToken()
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
@@ -144,6 +147,7 @@ export class UserAdminController {
   }) {
     return {
       id: user.id,
+      // azienda primaria: record dell'utente gestito (riga DB), non il token del chiamante
       tenantId: user.tenantId,
       keycloakId: user.keycloakId,
       fiscalCode: user.fiscalCode,

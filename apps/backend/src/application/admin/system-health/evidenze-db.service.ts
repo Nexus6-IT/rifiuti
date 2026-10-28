@@ -1,20 +1,22 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../../infrastructure/persistence/prisma-sistema.service'
 import { ChiaveEvidenza, LettoreEvidenze } from './probes/job-schedulati.probe'
 import { MisuraFreschezza } from './probes/freschezza.probe'
 import { StatoCredenziale } from './probes/credenziali.probe'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/rentri/rentri-certificato-scadenza.util'
+import { escludiPiattaforma } from '../../../core/context/azienda-piattaforma'
 
 /**
  * Le letture in banca dati che alimentano la pagina «Stato del sistema».
  *
- * USA IL CLIENT BASE, NON `prisma.db`: la vista RLS inietta il tenant del
- * chiamante, e questa pagina misura la PIATTAFORMA, non un'azienda — un
- * conteggio filtrato per tenant risponderebbe a una domanda diversa da
- * quella posta. E' anche il motivo per cui la pagina e' riservata al
- * SUPER_ADMIN (v. controller): mostrare dati di sistema a un ADMIN di
- * tenant sarebbe una fuga di informazioni fra aziende.
+ * USA IL CLIENT DI SISTEMA (`PrismaSistemaService`, BYPASSRLS), NON quello
+ * applicativo: questa pagina misura la PIATTAFORMA, non un'azienda — ogni
+ * lettura attraversa tutte le aziende, e con le policy attive il client
+ * normale risponderebbe a una domanda diversa da quella posta. E' anche il
+ * motivo per cui la pagina e' riservata al SUPER_ADMIN (v. controller):
+ * mostrare dati di sistema a un ADMIN di tenant sarebbe una fuga di
+ * informazioni fra aziende.
  *
  * Ogni lettura e' un aggregato (`_max`/`findFirst` su indice): nessuna
  * scansione di tabella, nessun carico apprezzabile ad ogni apertura della
@@ -22,12 +24,12 @@ import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/re
  */
 @Injectable()
 export class EvidenzeDbService implements LettoreEvidenze {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly sistema: PrismaSistemaService) {}
 
   async ultimoEffetto(chiave: ChiaveEvidenza): Promise<Date | null> {
     switch (chiave) {
       case 'riconciliazione-rentri': {
-        const riga = await this.prisma.rENTRISyncLog.findFirst({
+        const riga = await this.sistema.rENTRISyncLog.findFirst({
           where: { origine: 'RICONCILIAZIONE' },
           orderBy: { createdAt: 'desc' },
           select: { createdAt: true },
@@ -35,17 +37,17 @@ export class EvidenzeDbService implements LettoreEvidenze {
         return riga?.createdAt ?? null
       }
       case 'codifiche-rentri': {
-        const aggregato = await this.prisma.rentriCodificaSemplice.aggregate({
+        const aggregato = await this.sistema.rentriCodificaSemplice.aggregate({
           _max: { updatedAt: true },
         })
         return aggregato._max.updatedAt ?? null
       }
       case 'dati-riferimento': {
-        const aggregato = await this.prisma.cERCode.aggregate({ _max: { updatedAt: true } })
+        const aggregato = await this.sistema.cERCode.aggregate({ _max: { updatedAt: true } })
         return aggregato._max.updatedAt ?? null
       }
       case 'notifiche': {
-        const aggregato = await this.prisma.notification.aggregate({ _max: { createdAt: true } })
+        const aggregato = await this.sistema.notification.aggregate({ _max: { createdAt: true } })
         return aggregato._max.createdAt ?? null
       }
     }
@@ -60,13 +62,13 @@ export class EvidenzeDbService implements LettoreEvidenze {
    */
   async freschezza(): Promise<MisuraFreschezza[]> {
     const [ultimoFir, ultimaTrasmissione, ultimaAttivita, backup] = await Promise.all([
-      this.prisma.fIR.aggregate({ _max: { createdAt: true } }),
-      this.prisma.rENTRISyncLog.findFirst({
+      this.sistema.fIR.aggregate({ _max: { createdAt: true } }),
+      this.sistema.rENTRISyncLog.findFirst({
         where: { status: 'SUCCESS' },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
-      this.prisma.activityLog.aggregate({ _max: { createdAt: true } }),
+      this.sistema.activityLog.aggregate({ _max: { createdAt: true } }),
       this.misuraBackup(),
     ])
 
@@ -103,12 +105,12 @@ export class EvidenzeDbService implements LettoreEvidenze {
    * conto.
    */
   async credenziali(): Promise<StatoCredenziale[]> {
-    const tenantAttivi = await this.prisma.tenant.findMany({
-      where: { subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } },
+    const tenantAttivi = await this.sistema.tenant.findMany({
+      where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
       select: { id: true },
     })
 
-    const credenziali = await this.prisma.rentriCredential.findMany({
+    const credenziali = await this.sistema.rentriCredential.findMany({
       where: { tenantId: { in: tenantAttivi.map(t => t.id) } },
       select: { tenantId: true, certificatePem: true },
     })
@@ -127,12 +129,12 @@ export class EvidenzeDbService implements LettoreEvidenze {
 
   /** Verifica di raggiungibilita' della banca dati: contatto reale, non config. */
   async verificaConnessione(): Promise<string> {
-    await this.prisma.$queryRaw`SELECT 1`
+    await this.sistema.$queryRaw`SELECT 1`
     return 'query SELECT 1 eseguita'
   }
 
   private async misuraBackup(): Promise<MisuraFreschezza> {
-    const pianificazione = await this.prisma.backupSchedule.findFirst({
+    const pianificazione = await this.sistema.backupSchedule.findFirst({
       where: { isActive: true },
       orderBy: { nextRunAt: 'asc' },
       select: { frequency: true },
@@ -155,7 +157,7 @@ export class EvidenzeDbService implements LettoreEvidenze {
       }
     }
 
-    const ultimo = await this.prisma.backupHistory.findFirst({
+    const ultimo = await this.sistema.backupHistory.findFirst({
       where: { status: 'SUCCESS' },
       orderBy: { completedAt: 'desc' },
       select: { completedAt: true },

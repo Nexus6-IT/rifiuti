@@ -30,6 +30,7 @@ describe('GetRentriDiagnosticaUseCase', () => {
   let credentialService: { getForTenant: jest.Mock }
   let rateLimiter: { statoAttuale: jest.Mock }
   let useCase: GetRentriDiagnosticaUseCase
+  let config: any
 
   beforeEach(() => {
     prisma = {
@@ -45,21 +46,23 @@ describe('GetRentriDiagnosticaUseCase', () => {
       }),
     }
 
+    config = { certificatePem: 'ENV-CERT', privateKeyPem: 'ENV-KEY', envTenantId: 'tenant-pilota' }
     useCase = new GetRentriDiagnosticaUseCase(
       prisma as unknown as PrismaService,
       credentialService as unknown as RentriCredentialService,
-      rateLimiter as unknown as RentriRateLimiterService
+      rateLimiter as unknown as RentriRateLimiterService,
+      config
     )
     ;(X509Certificate as jest.Mock).mockReset()
   })
 
   describe('nessuna chiamata verso RENTRI (vincolo che decide il task)', () => {
-    it('non importa/usa RENTRIApiClient: il costruttore accetta solo Prisma, credenziali e limitatore', () => {
+    it('non importa/usa RENTRIApiClient: il costruttore accetta solo Prisma, credenziali, limitatore e config (sola lettura)', () => {
       // Verifica strutturale: se in futuro qualcuno aggiungesse RENTRIApiClient
       // come quarta dipendenza, questo test andrebbe aggiornato ESPLICITAMENTE
       // — non può succedere per errore silenzioso, perché il costruttore ha
       // arità fissa verificata qui.
-      expect(GetRentriDiagnosticaUseCase.length).toBe(3)
+      expect(GetRentriDiagnosticaUseCase.length).toBe(4)
     })
 
     it('esegue query esclusivamente locali (Prisma, credenziali, Redis) e produce un risultato coerente', async () => {
@@ -90,7 +93,29 @@ describe('GetRentriDiagnosticaUseCase', () => {
         scadenza: null,
         giorniAllaScadenza: null,
         livelloAvviso: 'ok',
+        origineCredenziale: 'nessuna',
       })
+    })
+
+    it('origine della credenziale: tenant se ha la propria, env se è il tenant legato, altrimenti nessuna', async () => {
+      credentialService.getForTenant.mockResolvedValue(null)
+      expect((await useCase.execute('tenant-pilota')).certificato.origineCredenziale).toBe('env')
+      expect((await useCase.execute('tenant-altro')).certificato.origineCredenziale).toBe('nessuna')
+
+      config.envTenantId = undefined
+      expect((await useCase.execute('tenant-pilota')).certificato.origineCredenziale).toBe(
+        'nessuna'
+      )
+
+      credentialService.getForTenant.mockResolvedValue({
+        clientId: 'c',
+        certificatePem: 'PEM-FINTO',
+        privateKeyPem: 'K',
+      })
+      ;(X509Certificate as jest.Mock).mockImplementation(() => ({
+        validTo: new Date(Date.now() + 100 * 86400000).toUTCString(),
+      }))
+      expect((await useCase.execute('tenant-altro')).certificato.origineCredenziale).toBe('tenant')
     })
 
     function conScadenzaTraGiorni(giorni: number): void {

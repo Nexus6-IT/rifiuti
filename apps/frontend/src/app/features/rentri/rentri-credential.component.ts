@@ -105,6 +105,14 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
                 <dt>Ambiente</dt>
                 <dd>{{ s.environment }}</dd>
               </div>
+              <div
+                class="rentri-meta__row"
+                *ngIf="s.algorithm"
+                data-testid="rentri-credential-algoritmo"
+              >
+                <dt>Algoritmo di firma</dt>
+                <dd>{{ s.algorithm }} (ricavato dalla chiave del certificato)</dd>
+              </div>
             </dl>
             <p class="rentri-sedi-note" data-testid="rentri-credential-sedi-note">
               <i class="pi pi-info-circle" aria-hidden="true"></i>
@@ -161,16 +169,6 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
                 [(ngModel)]="environment"
                 styleClass="w-full"
                 ariaLabel="Ambiente RENTRI"
-              ></p-dropdown>
-            </div>
-            <div class="field col-12 md:col-6">
-              <label for="r-algo" class="block mb-2">Algoritmo</label>
-              <p-dropdown
-                inputId="r-algo"
-                [options]="algoOptions"
-                [(ngModel)]="algorithm"
-                styleClass="w-full"
-                ariaLabel="Algoritmo di firma"
               ></p-dropdown>
             </div>
           </div>
@@ -373,7 +371,6 @@ export class RentriCredentialComponent implements OnInit {
   // Form state
   clientId = ''
   environment = 'demo'
-  algorithm: 'RS256' | 'ES256' = 'RS256'
   mode: 'pkcs12' | 'pem' = 'pkcs12'
   pkcs12Base64 = ''
   pkcs12Passphrase = ''
@@ -383,10 +380,6 @@ export class RentriCredentialComponent implements OnInit {
   readonly envOptions = [
     { label: 'Demo', value: 'demo' },
     { label: 'Produzione', value: 'live' },
-  ]
-  readonly algoOptions = [
-    { label: 'RS256 (certificato RSA)', value: 'RS256' },
-    { label: 'ES256 (certificato EC)', value: 'ES256' },
   ]
   readonly modeOptions = [
     { label: 'File PKCS#12 (.p12/.pfx)', value: 'pkcs12' },
@@ -441,7 +434,6 @@ export class RentriCredentialComponent implements OnInit {
 
     const base = {
       clientId: this.clientId.trim(),
-      algorithm: this.algorithm,
       environment: this.environment,
     }
     const payload =
@@ -454,9 +446,14 @@ export class RentriCredentialComponent implements OnInit {
           }
 
     this.credentialService.setCredential(payload).subscribe({
-      next: () => {
+      next: res => {
         this.saving.set(false)
-        this.toast.success('Certificato RENTRI salvato')
+        // L'algoritmo lo ricava il backend dalla chiave: lo si mostra in sola lettura.
+        this.toast.success(
+          res.algorithm
+            ? `Certificato RENTRI salvato (algoritmo ${res.algorithm})`
+            : 'Certificato RENTRI salvato'
+        )
         this.resetSecrets()
         this.loadStatus()
       },

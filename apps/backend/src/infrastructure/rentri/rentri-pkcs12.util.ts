@@ -1,9 +1,14 @@
+import * as crypto from 'crypto'
 import * as forge from 'node-forge'
 
 /** Certificato + chiave privata estratti da un PKCS#12, in formato PEM. */
 export interface Pkcs12Pem {
   certificatePem: string
   privateKeyPem: string
+  /** Tipo della chiave privata (ricavato da Node crypto, non da node-forge). */
+  tipoChiave: 'rsa' | 'ec'
+  /** Solo per le chiavi EC: nome OpenSSL della curva, es. 'prime256v1'. */
+  curva?: string
 }
 
 /**
@@ -56,21 +61,71 @@ export function parsePkcs12(base64OrBuffer: string | Buffer, passphrase: string)
     ...(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || []),
     ...(keyBags[forge.pki.oids.keyBag] || []),
   ]
-  const privateKey = keyBagList.find(bag => bag.key)?.key
-  if (!privateKey) {
+  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
+  const certBagList = certBags[forge.pki.oids.certBag] || []
+
+  // 3a. Chiave privata. RSA: node-forge la converte (PEM PKCS#1, formato invariato).
+  // EC: node-forge apre il contenitore (MAC e decifratura) ma non sa convertire le
+  // chiavi EC, quindi lascia nel bag solo l'ASN.1 (campo asn1 del bag): lo si
+  // serializza in DER e lo si passa a Node crypto (PKCS#8).
+  let chiave: crypto.KeyObject | undefined
+  let privateKeyPem: string | undefined
+  const chiaveRsa = keyBagList.find(bag => bag.key)?.key
+  if (chiaveRsa) {
+    privateKeyPem = forge.pki.privateKeyToPem(chiaveRsa)
+    chiave = crypto.createPrivateKey(privateKeyPem)
+  } else {
+    for (const bag of keyBagList) {
+      if (!bag.asn1) continue
+      try {
+        const der = Buffer.from(forge.asn1.toDer(bag.asn1).getBytes(), 'binary')
+        chiave = crypto.createPrivateKey({ key: der, format: 'der', type: 'pkcs8' })
+        privateKeyPem = chiave.export({ type: 'pkcs8', format: 'pem' }).toString()
+        break
+      } catch {
+        // bag non convertibile: si prova il successivo (nessun dettaglio nel messaggio)
+      }
+    }
+  }
+  if (!chiave || !privateKeyPem) {
     throw new Error('PKCS#12 privo di chiave privata')
   }
 
-  // 4. Estrai il certificato (primo certBag disponibile).
-  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
-  const certificate = (certBags[forge.pki.oids.certBag] || []).find(bag => bag.cert)?.cert
-  if (!certificate) {
+  // Il tipo si ricava dalla chiave (Node crypto), non e' fissato dal percorso.
+  const tipo = chiave.asymmetricKeyType
+  if (tipo !== 'rsa' && tipo !== 'ec') {
+    throw new Error('PKCS#12 con tipo di chiave non supportato')
+  }
+
+  // Il certificato giusto è quello la cui chiave pubblica combacia con la privata:
+  // il .p12 di solito allega anche la CA, che non va scambiata per la foglia.
+  let certificatePem: string | undefined
+  for (const bag of certBagList) {
+    try {
+      // Se node-forge ha gia' decodificato il certificato (RSA) si restituisce il suo
+      // PEM, invariato; altrimenti (EC) si riparte dall'ASN.1 grezzo.
+      const pemForge = bag.cert ? forge.pki.certificateToPem(bag.cert) : undefined
+      const x509 = pemForge
+        ? new crypto.X509Certificate(pemForge)
+        : bag.asn1
+          ? new crypto.X509Certificate(Buffer.from(forge.asn1.toDer(bag.asn1).getBytes(), 'binary'))
+          : undefined
+      if (x509?.checkPrivateKey(chiave)) {
+        certificatePem = pemForge ?? x509.toString()
+        break
+      }
+    } catch {
+      // certificato non leggibile: si prova il successivo
+    }
+  }
+  if (!certificatePem) {
     throw new Error('PKCS#12 privo di certificato')
   }
 
-  // 5. Serializza in PEM.
   return {
-    certificatePem: forge.pki.certificateToPem(certificate),
-    privateKeyPem: forge.pki.privateKeyToPem(privateKey),
+    certificatePem,
+    privateKeyPem,
+    tipoChiave: tipo,
+    curva: tipo === 'ec' ? chiave.asymmetricKeyDetails?.namedCurve : undefined,
   }
 }

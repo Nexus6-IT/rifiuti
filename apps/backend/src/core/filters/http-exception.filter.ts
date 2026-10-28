@@ -1,11 +1,20 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common'
 import { Request, Response } from 'express'
+import * as Sentry from '@sentry/node'
 import {
   PrismaClientKnownRequestError,
   PrismaClientValidationError,
 } from '@prisma/client/runtime/library'
 import { LoggerService } from '../logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
+import {
+  FirAnnullatoNelFrattempoError,
+  FirModificatoNelFrattempoError,
+  FirNonModificabileError,
+  FirNonTrovatoError,
+} from '../domain/errors'
+import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
+import { CODICE_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-certificato.costanti'
 
 /**
  * Global HTTP Exception Filter
@@ -46,7 +55,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const correlationId = (request as any).correlationId || 'unknown'
     const tenantId = (request as any).tenantId
-    const userId = (request as any).user?.userId
+    // JwtStrategy.validate popola request.user.id
+    const userId = (request as any).user?.id
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR
     let errorCode = 'INTERNAL_SERVER_ERROR'
@@ -88,6 +98,39 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorCode = 'BAD_REQUEST'
       message = 'Richiesta non valida: dati o formato non corretti.'
     }
+    // FIR annullato mentre un'altra operazione lo salvava (FirAnnullatoNelFrattempoError,
+    // un DomainError): corsa prevista, si risponde 409 e non si segnala a Bugsink.
+    else if (exception instanceof FirAnnullatoNelFrattempoError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirAnnullatoNelFrattempoError.CODICE
+      message = FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // Lock ottimistico sul FIR (versione diversa da quella letta): 409, nessuna segnalazione.
+    else if (exception instanceof FirModificatoNelFrattempoError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirModificatoNelFrattempoError.CODICE
+      message = FirModificatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // Bozza non modificabile: 409 col messaggio del motivo (senza id).
+    else if (exception instanceof FirNonModificabileError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirNonModificabileError.CODICE
+      message = exception.message
+    }
+    // FIR assente o di un'altra azienda: 404 senza id.
+    else if (exception instanceof FirNonTrovatoError) {
+      statusCode = HttpStatus.NOT_FOUND
+      errorCode = FirNonTrovatoError.CODICE
+      message = FirNonTrovatoError.MESSAGGIO_UTENTE
+    }
+    // Azienda senza certificato RENTRI: non e' un guasto del server ma serve un'azione
+    // dell'utente (caricare il certificato). 422 col messaggio gia' pensato per l'utente
+    // (senza id del tenant) e nessuna segnalazione a Bugsink (sotto 500).
+    else if (exception instanceof TenantSenzaCertificatoRentriError) {
+      statusCode = HttpStatus.UNPROCESSABLE_ENTITY
+      errorCode = CODICE_CERTIFICATO_MANCANTE
+      message = exception.message
+    }
     // Handle unexpected errors — messaggio generico, nessun leak di dettagli interni.
     else if (exception instanceof Error) {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR
@@ -109,6 +152,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
         method: request.method,
       }
     )
+
+    // Segnalazione a Bugsink dei soli 5xx. Senza SENTRY_DSN l'SDK non è inizializzato e la
+    // chiamata non fa nulla. I 503 delle rotte di health restano fuori (Decisione 4): sono
+    // il segnale normale di un controllo che fallisce, non un errore imprevisto.
+    const percorsoSenzaQuery = request.url.split('?')[0]
+    if (statusCode >= 500 && !/\/health(\/|$)/.test(percorsoSenzaQuery)) {
+      try {
+        Sentry.captureException(exception, {
+          tags: { correlationId, statusCode: String(statusCode) },
+          user: userId ? { id: userId } : undefined,
+          extra: { tenantId, path: percorsoSenzaQuery, method: request.method },
+        })
+      } catch {
+        /* Bugsink irraggiungibile: la risposta al client non deve cambiare */
+      }
+    }
 
     // Send error response
     const errorResponse = {

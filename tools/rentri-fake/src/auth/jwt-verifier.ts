@@ -1,6 +1,6 @@
 import { importX509, jwtVerify } from 'jose'
-import forge from 'node-forge'
-import { certificatoCaPem } from './ca-test'
+import { X509Certificate } from 'crypto'
+import { certificatiCaAttendibiliPem } from './ca-test'
 import { soggettoAccreditato } from './soggetti-accreditati'
 
 export interface OpzioniVerifica {
@@ -40,9 +40,15 @@ export class RegistroReplayMemoria implements RegistroReplay {
 
 export type EsitoVerifica = { valido: true; soggetto: string } | { valido: false; motivo: string }
 
-// ID_AUTH_REST_02 (ModI AgID) vincola l'algoritmo di firma del JWT
-// self-issued a RS256: nessun altro algoritmo, incluso PS256, e' ammesso.
-const ALGORITMO_ATTESO = 'RS256'
+// Algoritmi ammessi per il JWT self-issued: RS256 ed ES256, nient'altro (ne'
+// PS256 ne' none). Prima era solo RS256, citando ModI ID_AUTH_REST_02, ma la
+// prova viene da WinWaste: in produzione sceglie ES256 quando la chiave del
+// certificato RENTRI e' ECC (docs/rentri/01-autenticazione-e-firma.md di
+// WinWaste, righe 40-86). Che la regola AgID ammetta davvero ES256 va
+// verificato sull'ambiente demo: finche' non lo e', questa e' un'ipotesi
+// ricavata da un client reale, non dal testo della specifica. ES256 richiede
+// la firma JWS in formato IEEE P1363 (r||s): la DER viene rifiutata da jose.
+const ALGORITMI_AMMESSI = ['RS256', 'ES256']
 
 // Finestra massima ammessa tra iat ed exp: un token self-issued in direct
 // trust serve a provare il possesso della chiave per la singola richiesta,
@@ -73,11 +79,16 @@ export async function verificaJwt(
     return { valido: false, motivo: 'schema di autorizzazione non Bearer' }
   }
 
-  let intestazione: { x5c?: string[] }
+  let intestazione: { x5c?: string[]; alg?: string }
   try {
     intestazione = JSON.parse(Buffer.from(token.split('.')[0] ?? '', 'base64url').toString('utf8'))
   } catch {
     return { valido: false, motivo: 'intestazione JWT illeggibile' }
+  }
+
+  const algoritmo = intestazione.alg
+  if (!algoritmo || !ALGORITMI_AMMESSI.includes(algoritmo)) {
+    return { valido: false, motivo: `algoritmo '${algoritmo ?? 'assente'}' non ammesso (RS256 o ES256)` }
   }
 
   const x5c = intestazione.x5c
@@ -94,13 +105,14 @@ export async function verificaJwt(
   }
 
   try {
-    const chiavePubblica = await importX509(pem, ALGORITMO_ATTESO)
+    const chiavePubblica = await importX509(pem, algoritmo)
     const { payload } = await jwtVerify(token, chiavePubblica, {
       audience: opzioni.audienceAttesa,
-      // Vincola l'algoritmo: il rifiuto di `alg: none` (e di `PS256`) e' ora
-      // un controllo esplicito, non un effetto collaterale del parsing
+      // Vincola l'algoritmo a quello dichiarato e ammesso, coerente con la
+      // chiave del certificato (importX509 fallisce se divergono): il rifiuto
+      // di `alg: none` (e di `PS256`) e' ora un controllo esplicito, non un effetto collaterale del parsing
       // (FEDELTA.md §5.2 punto 2).
-      algorithms: [ALGORITMO_ATTESO],
+      algorithms: [algoritmo],
       currentDate: adesso,
       // Punto 3: un token senza queste claim non e' un JWT ID_AUTH_REST_02
       // valido, a prescindere dalla firma.
@@ -140,31 +152,35 @@ function verificaCatenaCertificato(
   pemOperatore: string,
   adesso: Date
 ): { valida: true } | { valida: false; motivo: string } {
-  let certificatoOperatore: forge.pki.Certificate
-  let certificatoCa: forge.pki.Certificate
+  // node:crypto e non node-forge: forge non sa leggere un certificato con
+  // chiave pubblica EC, e qui serve verificare anche quelli (ES256).
+  let certificatoOperatore: X509Certificate
+  let certificatiCa: X509Certificate[]
   try {
-    certificatoOperatore = forge.pki.certificateFromPem(pemOperatore)
-    certificatoCa = forge.pki.certificateFromPem(certificatoCaPem())
+    certificatoOperatore = new X509Certificate(pemOperatore)
+    certificatiCa = certificatiCaAttendibiliPem().map(pem => new X509Certificate(pem))
   } catch {
     return { valida: false, motivo: 'certificato illeggibile' }
   }
 
-  if (adesso < certificatoOperatore.validity.notBefore || adesso > certificatoOperatore.validity.notAfter) {
+  if (
+    adesso < new Date(certificatoOperatore.validFrom) ||
+    adesso > new Date(certificatoOperatore.validTo)
+  ) {
     return { valida: false, motivo: 'certificato scaduto o non ancora valido' }
   }
 
-  try {
-    if (!certificatoCa.verify(certificatoOperatore)) {
-      return {
-        valida: false,
-        motivo: "certificato non emesso dalla CA di prova attesa dalla fake",
-      }
+  // Basta una CA attendibile che verifichi la firma del certificato; una che
+  // lancia (algoritmi incompatibili) conta come non verificante.
+  const verificato = certificatiCa.some(ca => {
+    try {
+      return certificatoOperatore.checkIssued(ca) && certificatoOperatore.verify(ca.publicKey)
+    } catch {
+      return false
     }
-  } catch {
-    // node-forge lancia se il certificato non e' strutturalmente
-    // verificabile contro questa CA (es. algoritmi incompatibili): e'
-    // comunque un rifiuto della catena, non un errore da propagare.
-    return { valida: false, motivo: "certificato non emesso dalla CA di prova attesa dalla fake" }
+  })
+  if (!verificato) {
+    return { valida: false, motivo: 'certificato non emesso dalla CA di prova attesa dalla fake' }
   }
 
   return { valida: true }

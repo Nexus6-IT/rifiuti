@@ -6,6 +6,7 @@ import {
   ValidateIf,
   IsBase64,
   Matches,
+  Length,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { NUM_ISCR_SITO_PATTERN } from '../../../infrastructure/rentri/rentri-credential.service'
@@ -74,8 +75,8 @@ export class SetRentriCredentialDto {
 
   @ApiPropertyOptional({
     enum: ['RS256', 'ES256'],
-    default: 'RS256',
-    description: 'Algoritmo di firma',
+    description:
+      "Facoltativo, solo di controllo: l'algoritmo si ricava dalla chiave (RSA → RS256, EC P-256 → ES256). Se indicato e diverso da quello ricavato, il caricamento è rifiutato (400).",
   })
   @IsOptional()
   @IsIn(['RS256', 'ES256'])
@@ -117,11 +118,14 @@ export class SetRentriCredentialDto {
       'Identificativo delle credenziali di FIRMA REMOTA RENTRI (`credentials_id`, API ca-rentri — R3 Task 3). ' +
       "Si ottiene con il boarding sul portale RENTRI (QR Code + PIN dall'area Operatori): è un passo umano, " +
       'WasteFlow non può crearlo. Senza questo valore le operazioni che richiedono una firma (accettazione, ' +
-      'annullamento, ...) restano bloccate nello stato Firma*. Nessun vincolo di formato: non è documentato ' +
-      'da alcuna fonte ufficiale. È un identificativo, NON un segreto: la chiave privata resta sempre presso RENTRI.',
+      'annullamento, ...) restano bloccate nello stato Firma*. Esattamente 9 caratteri: ca-rentri.yaml dichiara ' +
+      'minLength/maxLength 9 su credentials/info, authorize e sign-hash. È un identificativo, NON un segreto: la chiave privata resta sempre presso RENTRI.',
   })
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @Length(9, 9, {
+    message: "L'identificativo delle credenziali di firma remota deve avere 9 caratteri",
+  })
   credentialsIdFirmaRemota?: string
 }

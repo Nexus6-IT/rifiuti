@@ -1,7 +1,10 @@
+import * as Sentry from '@sentry/node'
 import {
   RentriCodificheSyncService,
   AllineamentoRentriGiaInCorsoError,
 } from './rentri-codifiche-sync.service'
+
+jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
 describe('RentriCodificheSyncService', () => {
   let cerSync: { allinea: jest.Mock }
@@ -11,6 +14,7 @@ describe('RentriCodificheSyncService', () => {
   let service: RentriCodificheSyncService
 
   beforeEach(() => {
+    jest.clearAllMocks()
     cerSync = { allinea: jest.fn().mockResolvedValue({ nuovi: 0, aggiornati: 0, rimossi: 0 }) }
     codificheSempliciSync = { allinea: jest.fn().mockResolvedValue([]) }
     territorialiSync = { allinea: jest.fn().mockResolvedValue([]) }
@@ -186,6 +190,17 @@ describe('RentriCodificheSyncService', () => {
 
       primoCiclo.resolve({ nuovi: 0, aggiornati: 0, rimossi: 0 })
       await chiamataManuale
+    })
+
+    it('allineamentoSchedulato non rilancia un errore generico: lo logga e lo segnala', async () => {
+      jest.spyOn(service, 'allineaTutto').mockRejectedValue(new Error('rete'))
+
+      await expect(service.allineamentoSchedulato()).resolves.toBeUndefined()
+
+      expect(logger.error).toHaveBeenCalled()
+      expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+        tags: { job: 'allineamentoSchedulato' },
+      })
     })
   })
 })

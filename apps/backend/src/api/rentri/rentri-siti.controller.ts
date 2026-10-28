@@ -20,12 +20,12 @@
  * che impegna l'azienda verso l'ente, non un'azione operativa quotidiana.
  */
 
-import { Controller, Get, Post, HttpCode, HttpStatus, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { RentriUnitaLocale } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
 
@@ -51,8 +51,9 @@ export class RentriSitiController {
       'Se il tenant ha configurato numIscrOperatore e la cache è scaduta (oltre un’ora), allinea silenziosamente dall’ente prima di rispondere; un guasto verso RENTRI in questa fase non blocca la lettura, restituisce comunque la cache. Se numIscrOperatore non è configurato, restituisce la cache senza tentare alcuna chiamata.',
   })
   @ApiResponse({ status: 200, description: 'Elenco unità locali' })
-  async list(@CurrentUser() user: CurrentUserPayload): Promise<RisultatoSiti> {
-    const items = await this.sincronizzaSitiUseCase.esegui(user.tenantId)
+  async list(@Req() req: any): Promise<RisultatoSiti> {
+    const tenantId = requireRequestTenantId(req)
+    const items = await this.sincronizzaSitiUseCase.esegui(tenantId)
     return { items }
   }
 
@@ -68,8 +69,9 @@ export class RentriSitiController {
     status: 400,
     description: 'numIscrOperatore non configurato: l’allineamento non parte',
   })
-  async aggiorna(@CurrentUser() user: CurrentUserPayload): Promise<RisultatoSiti> {
-    const items = await this.sincronizzaSitiUseCase.esegui(user.tenantId, { forza: true })
+  async aggiorna(@Req() req: any): Promise<RisultatoSiti> {
+    const tenantId = requireRequestTenantId(req)
+    const items = await this.sincronizzaSitiUseCase.esegui(tenantId, { forza: true })
     return { items }
   }
 }

@@ -14,6 +14,9 @@ import {
   RentriApiError,
   estraiNumeroFirDaEsito,
 } from '../../infrastructure/rentri/rentri-api.client'
+import { FirAnnullatoNelFrattempoError } from '../../core/domain/errors'
+import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
+import { SOGLIA_STALLO_RENTRI_MS } from './sync-fir-to-rentri.use-case'
 
 /**
  * Riconciliazione periodica dello stato RENTRI (R5, Task 4).
@@ -39,9 +42,9 @@ import {
  * altra divergenza viene SEGNALATA (mai applicata automaticamente): un
  * auto-fix sbagliato su un documento che vale in caso di contestazione è
  * peggiore del problema che risolve. Le uniche scritture di dominio fatte da
- * questo use case sono `FIR.markRENTRISynced` — lo STESSO metodo che
- * `SyncFIRToRENTRIUseCase` chiama in caso di successo — mai un percorso di
- * scrittura parallelo.
+ * questo use case sono `FIR.markRENTRISynced` (o `FIR.proporreLegameRENTRI`
+ * in modalità IBRIDA) — gli STESSI metodi che `SyncFIRToRENTRIUseCase` chiama
+ * in caso di successo — mai un percorso di scrittura parallelo.
  */
 @Injectable()
 export class RiconciliaStatoRentriUseCase {
@@ -58,20 +61,6 @@ export class RiconciliaStatoRentriUseCase {
    * verrebbero mai controllati.
    */
   static readonly MAX_CAMPIONI_SYNCED_PER_TENANT = 20
-
-  /**
-   * Soglia (ms) oltre la quale un FIR ancora in stato SYNCING è considerato
-   * potenzialmente bloccato: il DOPPIO del tempo massimo di polling atteso
-   * in condizioni normali. Il tempo massimo di polling "normale" è
-   * `RENTRIApiClient.MAX_TENTATIVI_POLLING_DEFAULT` (30) *
-   * `INTERVALLO_POLLING_DEFAULT_MS` (2000ms) = 60000ms = 60s (valori privati
-   * di quella classe, verificati per iscritto qui il 2026-07-26 — se
-   * cambiano lì, questa soglia va aggiornata). Il doppio (120s) lascia
-   * margine a un worker semplicemente lento prima di considerare la
-   * transazione bloccata su un processo morto senza che l'errore sia mai
-   * stato scritto localmente.
-   */
-  static readonly SOGLIA_SYNCING_BLOCCATO_MS = 120_000
 
   /**
    * Soglia (ms, 24 ore) oltre la quale una proposta di legame RENTRI in
@@ -91,7 +80,10 @@ export class RiconciliaStatoRentriUseCase {
     private readonly syncLogRepository: RENTRISyncLogRepository,
     private readonly domainEvents: DomainEventsService,
     private readonly logger: LoggerService,
-    private readonly metrics: MetricsService
+    private readonly metrics: MetricsService,
+    // Modalità del tenant: in IBRIDA la correzione di un SYNCING bloccato
+    // propone il legame invece di chiuderlo (stessa regola della sync).
+    private readonly modalitaLegame: RentriModalitaLegameService
   ) {
     this.logger.setContext('RiconciliaStatoRentriUseCase')
   }
@@ -194,13 +186,19 @@ export class RiconciliaStatoRentriUseCase {
   // sono scritture di dominio, solo selezione dei candidati da verificare).
   // ---------------------------------------------------------------------
 
+  /**
+   * SYNCING "bloccato" = prenotazione più vecchia della soglia di stallo della
+   * sync (la stessa del cron di ripresa), o assente (righe nate prima della
+   * colonna). Non si guarda `updatedAt`: la prenotazione si scrive in SQL grezzo
+   * senza toccarlo, quindi una trasmissione appena partita sembrerebbe ferma.
+   */
   private async selezionaSyncingBloccati(tenantId: string): Promise<string[]> {
-    const soglia = new Date(Date.now() - RiconciliaStatoRentriUseCase.SOGLIA_SYNCING_BLOCCATO_MS)
+    const soglia = new Date(Date.now() - SOGLIA_STALLO_RENTRI_MS)
     const righe = await this.prisma.fIR.findMany({
       where: {
         tenantId,
         rentriSyncStatus: 'SYNCING',
-        updatedAt: { lt: soglia },
+        OR: [{ rentriSyncAvviatoAt: { lt: soglia } }, { rentriSyncAvviatoAt: null }],
       },
       select: { id: true },
     })
@@ -258,9 +256,10 @@ export class RiconciliaStatoRentriUseCase {
    * `maxTentativi: 1`, per non trasformare un controllo periodico in un
    * secondo polling bloccante) — passa quindi dal limitatore/dalla
    * resilienza del client come qualunque altra chiamata, nessuna scorciatoia:
-   * - esito positivo con `numero_fir` → CORREGGE: `FIR.markRENTRISynced`,
-   *   esattamente il metodo che il flusso normale (`SyncFIRToRENTRIUseCase`)
-   *   avrebbe chiamato in caso di successo.
+   * - esito positivo con `numero_fir` → CORREGGE: `FIR.markRENTRISynced`
+   *   (`FIR.proporreLegameRENTRI` se il tenant è IBRIDA), esattamente il
+   *   metodo che il flusso normale (`SyncFIRToRENTRIUseCase`) avrebbe chiamato
+   *   in caso di successo.
    * - qualunque altro esito (ancora in elaborazione, esito negativo, errore
    *   di trasporto) → SEGNALA: la causa è ambigua o richiede la stessa
    *   decisione umana di un fallimento di trasmissione ordinario.
@@ -324,12 +323,15 @@ export class RiconciliaStatoRentriUseCase {
 
       // CORREGGE: riempie un buco (il FIR risultava bloccato localmente ma
       // l'ente aveva già completato l'elaborazione) con lo STESSO metodo di
-      // dominio che il flusso normale avrebbe chiamato in caso di successo.
-      fir.markRENTRISynced(
-        numeroFir,
-        fir.rentriTransazioneId,
-        correlationId ?? `riconciliazione-${randomUUID()}`
-      )
+      // dominio che il flusso normale avrebbe chiamato in caso di successo:
+      // in modalità IBRIDA è la proposta di legame, da confermare a mano.
+      const { modalitaLegame } = await this.modalitaLegame.getForTenant(tenantId)
+      const correlazione = correlationId ?? `riconciliazione-${randomUUID()}`
+      if (modalitaLegame === 'IBRIDA') {
+        fir.proporreLegameRENTRI(numeroFir, fir.rentriTransazioneId, correlazione)
+      } else {
+        fir.markRENTRISynced(numeroFir, fir.rentriTransazioneId, correlazione)
+      }
       await this.firRepository.save(fir)
       await this.pubblicaEventi(fir)
 
@@ -351,10 +353,15 @@ export class RiconciliaStatoRentriUseCase {
           transazioneId: fir.rentriTransazioneId,
         },
         errorMessage: this.messaggioErrore(error),
+        // Un FIR annullato in locale prima che l'ente rispondesse non si riporta in SYNCED
+        // (il repository lo rifiuta) e resta in SYNCING: serve una persona, non un nuovo
+        // tentativo, quindi il codice lo dice invece di sembrare un errore di rete.
         errorCode:
-          error instanceof RentriApiError && error.status === 404
-            ? 'RENTRI_RICONCILIAZIONE_TRANSAZIONE_NON_TROVATA'
-            : 'RENTRI_RICONCILIAZIONE_ERRORE_TRASPORTO',
+          error instanceof FirAnnullatoNelFrattempoError
+            ? 'RENTRI_RICONCILIAZIONE_FIR_ANNULLATO_IN_LOCALE'
+            : error instanceof RentriApiError && error.status === 404
+              ? 'RENTRI_RICONCILIAZIONE_TRANSAZIONE_NON_TROVATA'
+              : 'RENTRI_RICONCILIAZIONE_ERRORE_TRASPORTO',
         durationMs: Date.now() - startTime,
       })
     }

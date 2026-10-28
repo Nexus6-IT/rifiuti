@@ -7,12 +7,12 @@
  * RENTRI), non una preferenza d'uso: riservata a SUPER_ADMIN e ADMIN.
  */
 
-import { Controller, Get, Patch, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common'
+import { Controller, Get, Patch, Body, HttpCode, HttpStatus, UseGuards, Req } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import {
   RentriModalitaLegameService,
   RentriModalitaLegameStatus,
@@ -39,8 +39,9 @@ export class RentriModalitaLegameController {
   @ApiResponse({ status: 200, description: 'Modalità corrente' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   @ApiResponse({ status: 403, description: 'Ruolo non autorizzato (richiede ADMIN o SUPER_ADMIN)' })
-  async get(@CurrentUser() user: CurrentUserPayload): Promise<RentriModalitaLegameStatus> {
-    return this.modalitaLegameService.getForTenant(user.tenantId)
+  async get(@Req() req: any): Promise<RentriModalitaLegameStatus> {
+    const tenantId = requireRequestTenantId(req)
+    return this.modalitaLegameService.getForTenant(tenantId)
   }
 
   @Patch()
@@ -59,8 +60,9 @@ export class RentriModalitaLegameController {
   @ApiResponse({ status: 403, description: 'Ruolo non autorizzato (richiede ADMIN o SUPER_ADMIN)' })
   async set(
     @Body() dto: SetRentriModalitaLegameDto,
-    @CurrentUser() user: CurrentUserPayload
+    @Req() req: any
   ): Promise<RentriModalitaLegameStatus> {
-    return this.modalitaLegameService.setForTenant(user.tenantId, dto.modalitaLegame)
+    const tenantId = requireRequestTenantId(req)
+    return this.modalitaLegameService.setForTenant(tenantId, dto.modalitaLegame)
   }
 }

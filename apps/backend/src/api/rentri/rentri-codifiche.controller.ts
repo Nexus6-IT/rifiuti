@@ -43,12 +43,13 @@ import {
   HttpStatus,
   UseGuards,
   HttpException,
+  Req,
 } from '@nestjs/common'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import {
   RentriCodificheSyncService,
   AllineamentoRentriGiaInCorsoError,
@@ -142,9 +143,10 @@ export class RentriCodificheController {
     status: 409,
     description: 'Un allineamento è già in corso (schedulato o avviato da un altro amministratore)',
   })
-  async allinea(@CurrentUser() user: CurrentUserPayload): Promise<{ eseguito: true }> {
+  async allinea(@Req() req: any): Promise<{ eseguito: true }> {
+    const tenantId = requireRequestTenantId(req)
     try {
-      await this.sync.allineaTutto(user.tenantId)
+      await this.sync.allineaTutto(tenantId)
       return { eseguito: true }
     } catch (e) {
       if (e instanceof AllineamentoRentriGiaInCorsoError) {

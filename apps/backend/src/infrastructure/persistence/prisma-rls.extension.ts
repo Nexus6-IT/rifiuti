@@ -71,11 +71,24 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   // trasmissioni di un'azienda, non è un dato condiviso.
   'RENTRISyncLog',
   'WasteMovement',
+  // Registro dell'azienda, uno per sede (Fase 2 pezzo 1): dato dell'azienda.
+  'RegistroRifiuti',
+  // Primo numero del registro per azienda e anno (C-W-02): dato dell'azienda.
+  'RegistroProgressivoIniziale',
+  // Giacenze di apertura del registro (Fase 2 pezzo 2): dato dell'azienda.
+  'GiacenzaIniziale',
+  // Personalizzazioni delle causali del registro (Fase 2 pezzo 5): dato dell'azienda. Il catalogo di
+  // sistema `CausaleRegistro` e' globale (niente tenant_id, niente RLS) e NON sta qui.
+  'CausaleRegistroAzienda',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
-  // (Le discariche collegate non hanno tenantId: sono raggiunte solo via
-  // relazione dall'autorizzazione, che è già filtrata.)
   'AutorizzazioneImpianto',
+  // Figlie di FIR e autorizzazioni: ora hanno un tenantId proprio (RLS pezzo 3),
+  // garantito uguale a quello del padre da una chiave esterna composta.
+  'FIRSignature',
+  'FIRTransporter',
+  'FIRAllegatoRentri',
+  'AutorizzazioneImpiantoDiscarica',
 ])
 
 /** Operazioni il cui filtro avviene tramite `where`. */

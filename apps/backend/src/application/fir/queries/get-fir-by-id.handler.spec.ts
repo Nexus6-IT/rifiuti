@@ -6,10 +6,12 @@ import { GetFIRByIdQueryHandler } from './get-fir-by-id.handler'
 import { GetFIRByIdQuery } from './get-fir-by-id.query'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { FIR, FIRStato } from '../../../domain/fir/aggregates/fir.aggregate'
+import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
 // Mock Repository
 class MockFIRRepository implements IFIRRepository {
+  private progressiveCounter = 0
   private firs: Map<string, FIR> = new Map()
 
   async findById(id: string): Promise<FIR | null> {
@@ -36,6 +38,20 @@ class MockFIRRepository implements IFIRRepository {
     return []
   }
 
+  async prenotaTrasmissioneRentri(): Promise<boolean> {
+    return true
+  }
+
+  async registraTransazioneInAttesa(): Promise<boolean> {
+    return true
+  }
+
+  async elencaTrasmissioniRentriSospese(): Promise<
+    Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>
+  > {
+    return []
+  }
+
   async findByRentriNumeroFir(): Promise<FIR | null> {
     return null
   }
@@ -48,8 +64,16 @@ class MockFIRRepository implements IFIRRepository {
     return false
   }
 
-  async generateNumeroProgressivo(): Promise<string> {
-    return 'FIR-2025-000001'
+  async emettiConNumerazione(
+    fir: FIR,
+    anno: number,
+    applica: (n: string) => void
+  ): Promise<string> {
+    this.progressiveCounter = (this.progressiveCounter ?? 0) + 1
+    const numero = formattaNumeroFir(anno, this.progressiveCounter)
+    applica(numero)
+    await this.save()
+    return numero
   }
 
   async count(): Promise<number> {

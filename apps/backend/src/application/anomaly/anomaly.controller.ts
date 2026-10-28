@@ -1,7 +1,7 @@
-import { Controller, Get, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Req, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { AnomalyDetectionService } from './anomaly-detection.service'
 
 /**
@@ -22,7 +22,7 @@ export class AnomalyController {
       'CER non in catalogo, quantità anomale, descrizioni mancanti, giacenze impossibili.',
   })
   @ApiResponse({ status: 200, description: 'Elenco anomalie' })
-  async detect(@CurrentUser() user: CurrentUserPayload) {
-    return this.anomalyService.detectAnomalies(user.tenantId)
+  async detect(@Req() req: any) {
+    return this.anomalyService.detectAnomalies(requireRequestTenantId(req))
   }
 }

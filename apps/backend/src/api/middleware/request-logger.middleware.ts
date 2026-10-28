@@ -49,7 +49,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
       method: req.method,
       path: req.path,
       query: Object.keys(req.query).length > 0 ? req.query : undefined,
-      userId: user?.userId || 'anonymous',
+      userId: user?.id || 'anonymous',
       tenantId: user?.tenantId || 'none',
       ip: req.ip,
       userAgent: req.get('user-agent'),
@@ -74,7 +74,7 @@ export class RequestLoggerMiddleware implements NestMiddleware {
       path: req.path,
       statusCode: res.statusCode,
       duration: `${duration}ms`,
-      userId: user?.userId || 'anonymous',
+      userId: user?.id || 'anonymous',
       tenantId: user?.tenantId || 'none',
       contentLength: res.get('content-length'),
     }

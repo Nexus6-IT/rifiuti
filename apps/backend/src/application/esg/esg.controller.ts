@@ -1,7 +1,7 @@
-import { Controller, Get, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Query, Req, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
-import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { EsgService } from './esg.service'
 
 /**
@@ -24,11 +24,11 @@ export class EsgController {
   })
   @ApiResponse({ status: 200, description: 'Report ESG' })
   async getReport(
-    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string
   ) {
-    return this.esgService.getEnvironmentalReport(user.tenantId, {
+    return this.esgService.getEnvironmentalReport(requireRequestTenantId(req), {
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     })

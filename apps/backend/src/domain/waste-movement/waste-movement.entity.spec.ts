@@ -1,17 +1,20 @@
+import { createHash } from 'crypto'
+import { Prisma } from '@prisma/client'
 import {
+  hashAnnotazioneV2,
   WasteMovement,
-  CAUSALI_CARICO,
-  CAUSALI_SCARICO,
   TERMINE_REGISTRAZIONE_PRODUTTORE_GG,
 } from './waste-movement.entity'
 
 describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () => {
   const TENANT = 'tenant-uuid-001'
+  const REGISTRO = 'registro-uuid-001'
   const TODAY = new Date('2026-06-29T10:00:00.000Z')
 
   function buildProps(overrides: Partial<Parameters<typeof WasteMovement.create>[0]> = {}) {
     return {
       tenantId: TENANT,
+      registroId: REGISTRO,
       progressiveNumber: 1,
       progressiveYear: 2026,
       type: 'CARICO' as const,
@@ -21,6 +24,7 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
       cerCode: '20 03 01',
       quantity: 100,
       unit: 'KG',
+      hashPrecedente: '',
       ...overrides,
     }
   }
@@ -56,33 +60,51 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     )
   })
 
-  it('lancia errore se data registrazione precede data operazione', () => {
-    const earlier = new Date(TODAY.getTime() - 60 * 60 * 1000) // 1 ora prima
-    expect(() => WasteMovement.create(buildProps({ registrationDate: earlier }))).toThrow(
-      'La data di registrazione non può precedere la data di operazione'
-    )
+  // La data di registrazione è un istante (assegnato dal server), quella di operazione un
+  // giorno: il confronto si fa sui giorni di calendario italiani.
+  it('accetta una registrazione dello stesso giorno italiano anche se in un istante precedente', () => {
+    const earlier = new Date(TODAY.getTime() - 60 * 60 * 1000) // 1 ora prima, stesso giorno
+    expect(() => WasteMovement.create(buildProps({ registrationDate: earlier }))).not.toThrow()
   })
 
-  it('lancia errore per causale CARICO usata su SCARICO', () => {
+  it('accetta un movimento del giorno registrato alle 00:30 italiane (istante del giorno prima in UTC)', () => {
     expect(() =>
-      WasteMovement.create(buildProps({ type: 'SCARICO', causale: 'PRODUZIONE_INTERNA' as any }))
-    ).toThrow('Causale non valida per SCARICO')
+      WasteMovement.create(
+        buildProps({
+          movementDate: new Date('2026-03-11T00:00:00Z'),
+          registrationDate: new Date('2026-03-10T23:30:00Z'),
+        })
+      )
+    ).not.toThrow()
   })
 
-  it('lancia errore per causale SCARICO usata su CARICO', () => {
+  it('rifiuta una registrazione del giorno prima', () => {
     expect(() =>
-      WasteMovement.create(buildProps({ type: 'CARICO', causale: 'AVVIO_RECUPERO' as any }))
-    ).toThrow('Causale non valida per CARICO')
+      WasteMovement.create(
+        buildProps({
+          movementDate: new Date('2026-03-11T00:00:00Z'),
+          registrationDate: new Date('2026-03-10T12:00:00Z'),
+        })
+      )
+    ).toThrow('La data di registrazione non può precedere la data di operazione')
   })
 
-  // ─── Causali valide ──────────────────────────────────────────────────────────
+  it.each(['pippo', '', '1ABC', 'A B', 'A'.repeat(101)])(
+    'lancia errore per la causale di forma non valida: "%s"',
+    causale => {
+      expect(() => WasteMovement.create(buildProps({ causale }))).toThrow('Causale non valida')
+    }
+  )
 
-  it.each(CAUSALI_CARICO)('accetta causale CARICO: %s', causale => {
-    expect(() => WasteMovement.create(buildProps({ type: 'CARICO', causale }))).not.toThrow()
-  })
-
-  it.each(CAUSALI_SCARICO)('accetta causale SCARICO: %s', causale => {
-    expect(() => WasteMovement.create(buildProps({ type: 'SCARICO', causale }))).not.toThrow()
+  // Il dominio non conosce il catalogo dell'azienda: l'elenco lo controlla il caso d'uso.
+  it.each([
+    ['CARICO', 'PRODUZIONE_INTERNA'],
+    ['CARICO', 'INGRESSO_ESTERNO'],
+    ['SCARICO', 'CONFERIMENTO_TRASPORTATORE'],
+    ['SCARICO', 'AVVIO_SMALTIMENTO'],
+    ['SCARICO', 'AZ_PROVA'],
+  ] as const)('accetta la causale di forma valida: %s %s', (type, causale) => {
+    expect(() => WasteMovement.create(buildProps({ type, causale }))).not.toThrow()
   })
 
   // ─── Hash di vidimazione ─────────────────────────────────────────────────────
@@ -105,6 +127,66 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     expect(m1.entryHash).not.toBe(m2.entryHash)
   })
 
+  // ─── Hash v2 concatenato (R8) ────────────────────────────────────────────────
+
+  describe('hash v2', () => {
+    const dati = {
+      hashPrecedente: '',
+      registroId: REGISTRO,
+      anno: 2026,
+      numero: 1,
+      tipoAnnotazione: 'ORDINARIA',
+      type: 'CARICO',
+      cerCode: '20 03 01',
+      quantita: 100,
+      unit: 'KG',
+      movementDate: TODAY,
+      causale: 'PRODUZIONE_INTERNA',
+    }
+
+    it('segue la formula del piano, con quantita a due decimali e data ISO', () => {
+      const atteso = createHash('sha256')
+        .update(
+          `v2||${REGISTRO}|2026|1|ORDINARIA||CARICO|20 03 01|100.00|KG|2026-06-29T10:00:00.000Z|PRODUZIONE_INTERNA`
+        )
+        .digest('hex')
+      expect(hashAnnotazioneV2(dati)).toBe(atteso)
+    })
+
+    it('accetta number, stringa e Decimal con lo stesso risultato', () => {
+      const h = hashAnnotazioneV2({ ...dati, quantita: 12.5 })
+      expect(hashAnnotazioneV2({ ...dati, quantita: '12.50' })).toBe(h)
+      expect(hashAnnotazioneV2({ ...dati, quantita: new Prisma.Decimal('12.5') })).toBe(h)
+    })
+
+    it('cambia con registro, hash precedente, numero, tipo annotazione e riferimento', () => {
+      const base = hashAnnotazioneV2(dati)
+      const varianti = [
+        { registroId: 'altro' },
+        { hashPrecedente: 'abc' },
+        { numero: 2 },
+        { tipoAnnotazione: 'RETTIFICA' },
+        { movimentoRettificatoId: 'xyz' },
+      ]
+      const hash = varianti.map(v => hashAnnotazioneV2({ ...dati, ...v }))
+      expect(hash).not.toContain(base)
+      expect(new Set(hash).size).toBe(varianti.length)
+    })
+
+    it('la registrazione calcola sempre la v2 concatenata; la v1 resta solo in computeHash', () => {
+      const v2 = WasteMovement.create(buildProps({ hashPrecedente: 'prec' }))
+      expect(v2.entryHash).toBe(
+        hashAnnotazioneV2({ ...dati, hashPrecedente: 'prec', quantita: 100 })
+      )
+      const primo = WasteMovement.create(buildProps())
+      expect(primo.entryHash).toBe(
+        hashAnnotazioneV2({ ...dati, hashPrecedente: '', quantita: 100 })
+      )
+      expect(primo.entryHash).not.toBe(WasteMovement.computeHash(buildProps()))
+      expect(primo.entryHash).not.toBe(v2.entryHash)
+    })
+  })
+
   // ─── Ritardo registrazione ───────────────────────────────────────────────────
 
   it('ritardoRegistrazioneGg = 0 quando registrato nei termini', () => {
@@ -123,12 +205,34 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     expect(m.ritardoRegistrazioneGg).toBe(20 - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
   })
 
+  it('il ritardo si conta in giorni italiani di calendario', () => {
+    const m = WasteMovement.create(
+      buildProps({
+        movementDate: new Date('2026-03-01T00:00:00Z'),
+        registrationDate: new Date('2026-03-31T22:30:00Z'), // 01/04 00:30 a Roma
+      })
+    )
+    expect(m.ritardoRegistrazioneGg).toBe(31 - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
+  })
+
+  it('il ritardo di un movimento ricostituito si conta in giorni italiani di calendario', () => {
+    const m = WasteMovement.reconstitute({
+      ...buildProps({
+        movementDate: new Date('2026-03-01T00:00:00Z'),
+        registrationDate: new Date('2026-03-31T22:30:00Z'),
+      }),
+      entryHash: 'x',
+    })
+    expect(m.ritardoRegistrazioneGg).toBe(31 - TERMINE_REGISTRAZIONE_PRODUTTORE_GG)
+  })
+
   // ─── Ricostituzione ──────────────────────────────────────────────────────────
 
   it('ricostituzione bypass le validazioni (dati già verificati dal DB)', () => {
     const m = WasteMovement.reconstitute({
       id: 'some-id',
       tenantId: TENANT,
+      registroId: REGISTRO,
       progressiveNumber: 99,
       progressiveYear: 2025,
       type: 'CARICO',
@@ -142,5 +246,46 @@ describe('WasteMovement — entità di dominio (art. 190 D.Lgs 152/2006)', () =>
     })
     expect(m.quantity).toBe(0)
     expect(m.progressiveNumber).toBe(99)
+  })
+
+  describe('hash di una correzione', () => {
+    const props = {
+      tenantId: 't',
+      registroId: 'r',
+      progressiveNumber: 3,
+      progressiveYear: 2026,
+      type: 'CARICO' as const,
+      movementDate: new Date('2026-03-01T00:00:00Z'),
+      registrationDate: new Date('2026-03-02T00:00:00Z'),
+      causale: 'PRODUZIONE_INTERNA' as const,
+      cerCode: '20 03 01',
+      quantity: 10,
+      unit: 'KG',
+      hashPrecedente: 'prec',
+    }
+    it('con tipo e predecessore l hash coincide con hashAnnotazioneV2 e differisce dall ordinaria', () => {
+      const corr = WasteMovement.create({
+        ...props,
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: 'x',
+      })
+      expect(corr.entryHash).toBe(
+        hashAnnotazioneV2({
+          hashPrecedente: 'prec',
+          registroId: 'r',
+          anno: 2026,
+          numero: 3,
+          tipoAnnotazione: 'RETTIFICA',
+          movimentoRettificatoId: 'x',
+          type: 'CARICO',
+          cerCode: '20 03 01',
+          quantita: 10,
+          unit: 'KG',
+          movementDate: props.movementDate,
+          causale: 'PRODUZIONE_INTERNA',
+        })
+      )
+      expect(corr.entryHash).not.toBe(WasteMovement.create(props).entryHash)
+    })
   })
 })

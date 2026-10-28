@@ -222,10 +222,10 @@ export class RentriTrasmissioniClient {
     const contesto = `/trasmissioni/operatore/${numIscrSito}/${numeroFir}/estrai`
     const rawBody = JSON.stringify({ xfir: xfirBase64 })
 
-    const authorization = await this.auth.creaAuthorizationHeader(
-      tenantId ?? this.tenantIdCorrente()
-    )
-    const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody)
+    // Stesso tenant effettivo per Bearer e firma di integrità.
+    const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+    const authorization = await this.auth.creaAuthorizationHeader(tenantEffettivo)
+    const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody, tenantEffettivo)
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: authorization,
@@ -398,10 +398,10 @@ export class RentriTrasmissioniClient {
       tentativo <= RentriTrasmissioniClient.MAX_TENTATIVI_RESILIENZA;
       tentativo++
     ) {
-      const authorization = await this.auth.creaAuthorizationHeader(
-        tenantId ?? this.tenantIdCorrente()
-      )
-      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody)
+      // Stesso tenant effettivo per Bearer e firma di integrità.
+      const tenantEffettivo = tenantId ?? this.tenantIdCorrente()
+      const authorization = await this.auth.creaAuthorizationHeader(tenantEffettivo)
+      const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody, tenantEffettivo)
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: authorization,

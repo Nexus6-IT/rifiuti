@@ -22,3 +22,13 @@ export function puoCreareFir(role: string | null | undefined): boolean {
   if (!role) return false
   return (RUOLI_CHE_CREANO_FIR as readonly string[]).includes(role)
 }
+
+/**
+ * Chi può modificare una bozza: stessa lista di `puoCreareFir`. Il backend decide
+ * comunque sul ruolo effettivo nell'azienda selezionata (`PUT /fir/:id`, stessi
+ * `RUOLI_CREAZIONE` della creazione): qui si evita solo di offrire l'azione a chi
+ * sicuramente la vedrebbe rifiutare.
+ */
+export function puoModificareFir(role: string | null | undefined): boolean {
+  return puoCreareFir(role)
+}

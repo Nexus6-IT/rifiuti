@@ -100,7 +100,9 @@ test.describe('Stato RENTRI — lista, dettaglio, cronologia, azione manuale', (
     // indipendentemente dallo stato — v. fir-detail.component.ts, sezione
     // finale fuori da ogni @if di stato.
     await expect(detail.syncLogs).toBeVisible()
-    await expect(detail.syncLogsTable.or(detail.syncLogsEmpty)).toBeVisible()
+    // Il messaggio di stato vuoto sta DENTRO la tabella (emptymessage): con la tabella
+    // vuota i due locator risolvono lo stesso blocco due volte (strict mode violation).
+    await expect(detail.syncLogsTable.or(detail.syncLogsEmpty).first()).toBeVisible()
   })
 
   test("l'azione manuale di trasmissione a RENTRI è disponibile per un FIR non ancora sincronizzato", async ({

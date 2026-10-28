@@ -96,6 +96,15 @@ model Tenant {
   // un'azione esplicita, dopo aver configurato la credenziale (RentriCredential).
   rentriModalitaLegame RentriModalitaLegame @default(MANUALE) @map("rentri_modalita_legame")
 
+  // Azienda non tenuta alla presentazione del MUD (A-W-10, come il flag MUD S/N di
+  // WinWaste). Lo imposta un amministratore dell'azienda (PUT mud/obbligo): niente
+  // promemoria né scadenze del MUD; il file si può generare comunque, con un avviso.
+  // Motivo, data e utente sono valorizzati solo con il flag attivo.
+  mudNonDovuto       Boolean   @default(false) @map("mud_non_dovuto")
+  mudNonDovutoMotivo String?   @map("mud_non_dovuto_motivo") @db.VarChar(500)
+  mudNonDovutoIl     DateTime? @map("mud_non_dovuto_il")
+  mudNonDovutoDa     String?   @map("mud_non_dovuto_da") @db.Uuid
+
   // Relationships
   users                  User[]
   firs                   FIR[]
@@ -109,7 +118,11 @@ model Tenant {
   wasteMovements         WasteMovement[]
   rentriUnitaLocali      RentriUnitaLocale[]
   rentriNumeriVidimati   RentriNumeroVidimato[]
-  madre                  Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  registroProgressiviIniziali RegistroProgressivoIniziale[]
+  registriRifiuti       RegistroRifiuti[]
+  giacenzeIniziali      GiacenzaIniziale[]
+  causaliRegistroAzienda CausaleRegistroAzienda[]
+  madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
@@ -264,6 +277,9 @@ model FIR {
 
   status             FIRStatus @default(DRAFT)
   workflowVersion    Int       @default(1) @map("workflow_version")
+  // Lock ottimistico (piano D4-D5): il repository la incrementa a ogni scrittura e rifiuta il
+  // salvataggio di chi ha letto una versione diversa.
+  versione           Int       @default(1) @map("versione")
   submittedAt        DateTime? @map("submitted_at")
   completedAt        DateTime? @map("completed_at")
   cancelledAt        DateTime? @map("cancelled_at")
@@ -381,6 +397,12 @@ model FIR {
   // di aggancio, serve solo per correlare la trasmissione con il suo esito
   // (polling GET /{transazione_id}/status) e per il supporto.
   rentriTransazioneId     String?                @map("rentri_transazione_id") @db.VarChar(100)
+  // Transazione di creazione accettata dall'ente e non ancora letta fino all'esito:
+  // salvata subito, così un tentativo successivo la riprende invece di creare un doppione.
+  rentriTransazioneInAttesa String?              @map("rentri_transazione_in_attesa") @db.VarChar(100)
+  // Quando un processo ha prenotato la trasmissione (SYNCING): oltre la soglia di stallo
+  // la prenotazione è riprendibile e il job di recupero la elenca.
+  rentriSyncAvviatoAt     DateTime?              @map("rentri_sync_avviato_at") @db.Timestamptz(3)
   // Come è nato il legame con rentriNumeroFir: rilevante per cosa l'utente può
   // fare dopo (es. un legame acquisito da terzi non è ritrasmissibile) e in
   // caso di contestazione su chi ha originato/confermato l'aggancio.
@@ -450,6 +472,9 @@ model FIR {
   // marittima), ognuna con proprio snapshot anagrafico immutabile.
   transportersAggiuntivi FIRTransporter[]
 
+  // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
+  // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
+  @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello
   // stesso tenant non possono puntare allo stesso numero_fir RENTRI — un
@@ -464,6 +489,7 @@ model FIR {
   @@index([tenantId])
   @@index([status])
   @@index([rentriSyncStatus])
+  @@index([rentriSyncStatus, rentriSyncAvviatoAt])
   @@index([transportDate])
   @@index([cerCode])
   @@index([tenantId, wasteOperationType])
@@ -565,6 +591,7 @@ enum WasteOperationType {
 model FIRSignature {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -588,9 +615,10 @@ model FIRSignature {
   /// Nullable per retrocompatibilità. ATTIVARE: popolato da POST /fir/:id/sign.
   publicKey        String? @map("public_key") @db.Text
 
-  fir  FIR  @relation(fields: [firId], references: [id], onDelete: Cascade)
+  fir  FIR  @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 
+  @@index([tenantId])
   @@index([firId])
   @@index([userId])
   @@index([signerFiscalCode])
@@ -624,6 +652,7 @@ enum TipoTratta {
 model FIRTransporter {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
   ordine     Int        @db.Integer
@@ -643,8 +672,9 @@ model FIRTransporter {
   mezzo             String?   @map("mezzo") @db.VarChar(100)
   dataPresaInCarico DateTime? @map("data_presa_in_carico")
 
-  fir FIR @relation(fields: [firId], references: [id], onDelete: Cascade)
+  fir FIR @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([firId])
   @@map("fir_transporters")
 }
@@ -770,6 +800,75 @@ enum NotificationSeverity {
   ERROR
 
   @@map("notification_severity")
+}
+
+/// Primo numero del registro di carico e scarico per registro e anno (decisione C-W-02).
+/// Serve a chi arriva da un altro programma a meta' anno: il primo movimento registrato
+/// qui prende questo numero, cosi' la numerazione gia' trasmessa al RENTRI prosegue.
+/// Si imposta una volta sola, prima del primo movimento dell'anno, sotto lo stesso
+/// advisory lock `<registroId>-<anno>` della numerazione. La migration aggiunge
+/// CHECK (primo_progressivo >= 1).
+model RegistroProgressivoIniziale {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  anno             Int
+  primoProgressivo Int      @map("primo_progressivo")
+  motivo           String   @db.VarChar(500)
+  impostatoDa      String   @map("impostato_da") @db.Uuid
+  impostatoIl      DateTime @default(now()) @map("impostato_il")
+  /// Registro a cui appartiene il progressivo (Fase 2 pezzo 1): uno per registro e anno.
+  registroId       String   @map("registro_id") @db.Uuid
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([registroId, anno])
+  @@map("registro_progressivi_iniziali")
+}
+
+/// Origine di una giacenza di apertura del registro.
+enum GiacenzaInizialeProvenienza {
+  /// Inserita da un amministratore dall'applicazione (le API scrivono sempre questo valore).
+  MANUALE
+  /// Riservato all'importazione da altro programma (Fase 3).
+  IMPORTAZIONE
+
+  @@map("giacenza_iniziale_provenienza")
+}
+
+/// Giacenza di apertura del registro (Fase 2 pezzo 2): quantita' gia' in deposito per registro, CER,
+/// stato fisico e unita' da una certa data. Entra nei saldi come un carico del giorno
+/// `dataRiferimento`, ma NON e' un movimento: non consuma progressivi e non e' "prodotta" ne'
+/// "ricevuta" nel MUD. `cerCode` e' nella forma del catalogo (con "*" se il catalogo lo ha).
+/// `origini` e' un array di { anno, protocollo, quantita? } (relazioni iniziali RENTRI, F2-9).
+/// La migration aggiunge CHECK (quantita > 0) e, sull'indice unico, NULLS NOT DISTINCT (due
+/// aperture con lo stesso stato fisico NULL sono un duplicato): Prisma non la confronta, quindi
+/// `migrate diff` resta pulito. Il controllo "una sola apertura per famiglia di unita'" (kg e t
+/// sono la stessa famiglia) e' nel servizio, sotto lo stesso advisory lock dello scarico.
+model GiacenzaIniziale {
+  id              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                      @map("tenant_id") @db.Uuid
+  registroId      String                      @map("registro_id") @db.Uuid
+  cerCode         String                      @map("cer_code") @db.VarChar(10)
+  statoFisico     String?                     @map("stato_fisico") @db.VarChar(50)
+  quantita        Decimal                     @db.Decimal(10, 2)
+  unita           String                      @db.VarChar(10)
+  dataRiferimento DateTime                    @map("data_riferimento") @db.Date
+  origini         Json                        @default("[]")
+  provenienza     GiacenzaInizialeProvenienza @default(MANUALE)
+  note            String?                     @db.VarChar(500)
+  impostatoDa     String                      @map("impostato_da") @db.Uuid
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([registroId, cerCode, statoFisico, unita], map: "giacenze_iniziali_registro_cer_stato_unita_key")
+  @@index([tenantId])
+  @@index([registroId])
+  @@map("giacenze_iniziali")
 }
 
 model ActivityLog {
@@ -1267,6 +1366,8 @@ model AutorizzazioneImpianto {
   tenant     Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   discariche AutorizzazioneImpiantoDiscarica[]
 
+  // Bersaglio della chiave esterna composta delle discariche.
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("autorizzazioni_impianto")
 }
@@ -1276,14 +1377,16 @@ model AutorizzazioneImpianto {
 model AutorizzazioneImpiantoDiscarica {
   id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   autorizzazioneId String @map("autorizzazione_id") @db.Uuid
+  tenantId         String @map("tenant_id") @db.Uuid
 
   /// 0=ND, 6=rifiuti pericolosi, 7=rifiuti non pericolosi, 8=rifiuti inerti.
   classificazione   Int @default(0) @db.SmallInt
   /// Capacità residua in metri cubi (num 9).
   capacitaResiduaMc Int @default(0) @map("capacita_residua_mc")
 
-  autorizzazione AutorizzazioneImpianto @relation(fields: [autorizzazioneId], references: [id], onDelete: Cascade)
+  autorizzazione AutorizzazioneImpianto @relation(fields: [autorizzazioneId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([autorizzazioneId])
   @@map("autorizzazioni_impianto_discariche")
 }
@@ -1499,6 +1602,7 @@ model TemporaryPermissionGrant {
   autoRevoked           Boolean   @default(false) @map("auto_revoked")
   revokedAt             DateTime? @map("revoked_at")
 
+  @@index([tenantId])
   @@index([userId, tenantId])
   @@index([endTime])
   @@map("temporary_permission_grants")
@@ -1548,6 +1652,7 @@ model PermissionRequest {
   // Relationships
   requestedRole Role? @relation(fields: [requestedRoleId], references: [id])
 
+  @@index([tenantId])
   @@index([userId, tenantId])
   @@index([status])
   @@map("permission_requests")
@@ -1712,9 +1817,8 @@ model WasteMovement {
   /// impianti di recupero/smaltimento (art. 190 c. 1 lett. d).
   registrationDate DateTime @default(now()) @map("registration_date")
 
-  /// Causale specifica del movimento.
-  /// CARICO: PRODUZIONE_INTERNA | INGRESSO_ESTERNO | RICLASSIFICAZIONE | RECUPERO_PARZIALE | ALTRO_CARICO
-  /// SCARICO: CONFERIMENTO_TRASPORTATORE | AVVIO_RECUPERO | AVVIO_SMALTIMENTO | CESSIONE | RICLASSIFICAZIONE | ALTRO_SCARICO
+  /// Causale specifica del movimento: codice di una causale del catalogo (`causali_registro`)
+  /// o dell'azienda (`AZ_…`, con `causaleAziendaId`).
   causale String @db.VarChar(100)
 
   /// Codice CER (formato canonico "NN NN NN" o "NN NN NN*" per pericolosi, max 10 char).
@@ -1736,7 +1840,15 @@ model WasteMovement {
   counterpartAddress String? @map("counterpart_address") @db.VarChar(500)
 
   /// SCARICO: FIR collegato (uscita verso trasportatore/destinatario).
-  firId String? @map("fir_id") @db.Uuid
+  firId         String? @map("fir_id") @db.Uuid
+  /// Copia di firId valorizzata solo dai movimenti registrati dopo l'indice unico
+  /// della ricopia (i movimenti storici restano NULL, e i NULL non collidono):
+  /// un FIR si ricopia nel registro una sola volta per tipo di movimento e chiave.
+  firIdRicopia  String? @map("fir_id_ricopia") @db.Uuid
+  /// Chiave che distingue più movimenti dello stesso FIR e tipo (C-W-03, come WinWaste):
+  /// '' per la ricopia ordinaria, l'unica usata oggi. Lo schema delle chiavi riservate è
+  /// in RICOPIA_ORDINARIA (registra-movimento.use-case.ts); la chiave la impone il flusso.
+  ricopiaChiave String  @default("") @map("ricopia_chiave") @db.VarChar(100)
 
   /// Utente (operatore) che ha registrato l'annotazione.
   recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
@@ -1747,10 +1859,49 @@ model WasteMovement {
 
   notes String? @db.Text
 
-  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  recordedByUser User?  @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
+  /// Registro (per sede) in cui il movimento e' annotato (Fase 2 pezzo 1): numerazione e
+  /// giacenza sono per registro.
+  registroId String @map("registro_id") @db.Uuid
 
-  @@unique([tenantId, progressiveYear, progressiveNumber])
+  /// Fase 2 pezzo 3: rettifica e annullamento sono NUOVE annotazioni (mai UPDATE/DELETE di una riga):
+  /// ORDINARIA = registrazione normale, RETTIFICA = sostituisce la precedente, ANNULLAMENTO = toglie
+  /// dai conteggi l'intera catena. Vigente = non ANNULLAMENTO e nessuna riga la indica come predecessore.
+  tipoAnnotazione        TipoAnnotazioneMovimento @default(ORDINARIA) @map("tipo_annotazione")
+  /// Predecessore diretto (l'annotazione che questa corregge); NULL per le ORDINARIA.
+  movimentoRettificatoId String?                  @map("movimento_rettificato_id") @db.Uuid
+  /// Radice della catena (la ORDINARIA di partenza); coincide col predecessore alla prima correzione.
+  movimentoOriginaleId   String?                  @map("movimento_originale_id") @db.Uuid
+  /// Motivo della correzione (1..500 dopo trim); NULL per le ORDINARIA.
+  motivoAnnotazione      String?                  @map("motivo_annotazione") @db.VarChar(500)
+  /// Versione dell'hash dell'annotazione (1 = storico, 2 = concatenato per registro e anno).
+  hashVersione           Int                      @default(1) @map("hash_versione") @db.SmallInt
+  /// Fase 2 pezzo 5: versione della causale aziendale scelta (NULL per le causali di sistema e per le
+  /// storiche). Non entra nell'hash. Il CHECK `waste_movements_causale_azienda_coerente` lega
+  /// `causale LIKE 'AZ_%'` alla presenza del riferimento; la FK composta fa coincidere codice e verso.
+  causaleAziendaId       String?                  @map("causale_azienda_id") @db.Uuid
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recordedByUser User?           @relation("RecordedMovements", fields: [recordedByUserId], references: [id])
+  registro       RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  /// Predecessore: stesso registro, azienda e tipo (chiave composta verso l'unico sotto). NoAction:
+  /// il controllo e' a fine statement, cosi' una catena intera si cancella in un solo DELETE.
+  rettificato WasteMovement?  @relation("Correzioni", fields: [movimentoRettificatoId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_rettificato_fkey")
+  correzioni  WasteMovement[] @relation("Correzioni")
+  /// Radice della catena, con gli stessi vincoli di registro, azienda e tipo.
+  originale   WasteMovement?  @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
+  catena      WasteMovement[] @relation("Radice")
+  /// Versione della causale aziendale usata. NoAction: la cancellazione a cascata di un'azienda
+  /// toglie movimenti e causali nello stesso statement.
+  causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
+
+  @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
+  @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
+  @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
+  @@index([causaleAziendaId], map: "waste_movements_causale_azienda_id_idx")
+  @@unique([registroId, progressiveYear, progressiveNumber])
+  @@index([registroId, cerCode])
+  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])
@@ -1763,6 +1914,14 @@ enum WasteMovementType {
   SCARICO
 
   @@map("waste_movement_type")
+}
+
+enum TipoAnnotazioneMovimento {
+  ORDINARIA
+  RETTIFICA
+  ANNULLAMENTO
+
+  @@map("tipo_annotazione_movimento")
 }
 
 /// Credenziale RENTRI per-tenant (Modello di Interoperabilità AgID).
@@ -1890,11 +2049,41 @@ model RentriUnitaLocale {
   /// mai un valore di ripiego inventato.
   dimensioneScortaDesiderata Int? @map("dimensione_scorta_desiderata")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registri RegistroRifiuti[]
 
   @@unique([tenantId, numIscrSito])
   @@index([tenantId])
   @@map("rentri_unita_locali")
+}
+
+/// Registro cronologico di carico e scarico di una sede (Fase 2 pezzo 1, D1/D4): un registro per
+/// unita' locale, con codice CARICO_SCARICO. `unitaLocaleId` nullo = registro "senza sede" (azienda
+/// senza sede RENTRI), che si lega a una sede una sola volta (trigger registri_rifiuti_sede_immutabile,
+/// non esprimibile in Prisma, come l'indice unico parziale registri_rifiuti_uno_senza_sede_per_tenant).
+model RegistroRifiuti {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  unitaLocaleId        String? @map("unita_locale_id") @db.Uuid
+  codice               String  @default("CARICO_SCARICO") @db.VarChar(30)
+  descrizione          String  @db.VarChar(255)
+  /// Identificativo del registro assegnato dal RENTRI (non ancora valorizzato: F2-9).
+  identificativoRentri String? @map("identificativo_rentri") @db.VarChar(100)
+  attivo               Boolean @default(true)
+
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
+  movimenti           WasteMovement[]
+  progressiviIniziali RegistroProgressivoIniziale[]
+  giacenzeIniziali    GiacenzaIniziale[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, unitaLocaleId, codice])
+  @@index([tenantId])
+  @@map("registri_rifiuti")
 }
 
 /// Stato di un numero FIR già vidimato dall'ente e tenuto in scorta (R6).
@@ -2021,6 +2210,7 @@ model RENTRISyncLog {
 model FIRAllegatoRentri {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firId     String   @map("fir_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
 
   /// `allegato_id` restituito dall'ente (`EsitoAddAllegatoModel.allegato_id`,
@@ -2047,12 +2237,13 @@ model FIRAllegatoRentri {
   caricatoDa   String   @map("caricato_da") @db.Uuid
   caricatoAlle DateTime @default(now()) @map("caricato_alle")
 
-  fir              FIR  @relation(fields: [firId], references: [id], onDelete: Cascade)
+  fir              FIR  @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: Cascade)
   caricatoDaUtente User @relation(fields: [caricatoDa], references: [id])
 
   // Un allegato dell'ente non può comparire due volte per lo stesso FIR:
   // stessa cautela già applicata a `[tenantId, rentriNumeroFir]` sul FIR.
   @@unique([firId, rentriAllegatoId])
+  @@index([tenantId])
   @@index([firId])
   @@map("fir_allegati_rentri")
 }
@@ -2071,4 +2262,77 @@ enum RENTRISyncLogOrigine {
   RICONCILIAZIONE
 
   @@map("rentri_sync_log_origine")
+}
+
+/// Fase 2 pezzo 5: ruolo di una causale nel MUD.
+enum RuoloMudCausale {
+  PRODOTTO
+  AVVIATO
+  RICEVUTO_DA_TERZI
+  ESCLUSO
+
+  @@map("ruolo_mud_causale")
+}
+
+/// Fase 2 pezzo 5: PROPRIA = causale creata dall'azienda (una riga per versione);
+/// DISATTIVAZIONE = una causale di sistema resa non selezionabile per l'azienda.
+enum NaturaCausaleAzienda {
+  PROPRIA
+  DISATTIVAZIONE
+
+  @@map("natura_causale_azienda")
+}
+
+/// Catalogo di sistema delle causali del registro (Fase 2 pezzo 5). GLOBALE: niente `tenant_id`,
+/// niente RLS. Lo scrive solo la migration (owner); l'applicazione ha solo SELECT (vedi
+/// prisma/sql/ruoli-db.sql). `verso`, `ruolo_mud` e `operazione` di una riga non cambiano mai.
+model CausaleRegistro {
+  codice       String            @db.VarChar(100)
+  verso        WasteMovementType
+  descrizione  String            @db.VarChar(200)
+  ruoloMud     RuoloMudCausale   @map("ruolo_mud")
+  /// Causale RENTRI (contratto CausaliOperazione); NULL = non trasmissibile.
+  codiceRentri String?           @map("codice_rentri") @db.VarChar(5)
+  /// R/D solo per gli scarichi avviati a recupero o smaltimento.
+  operazione   String?           @db.VarChar(1)
+  ordine       Int               @db.SmallInt
+  attiva       Boolean           @default(true)
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  disattivazioni CausaleRegistroAzienda[] @relation("DisattivazioniSistema")
+
+  @@id([codice, verso], map: "causali_registro_pkey")
+  @@map("causali_registro")
+}
+
+/// Personalizzazioni per azienda (Fase 2 pezzo 5): causali PROPRIE (con versioni) e
+/// DISATTIVAZIONI di causali di sistema. RLS per tenant.
+model CausaleRegistroAzienda {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String               @map("tenant_id") @db.Uuid
+  natura               NaturaCausaleAzienda
+  codice               String               @db.VarChar(100)
+  verso                WasteMovementType
+  causaleSistemaCodice String?              @map("causale_sistema_codice") @db.VarChar(100)
+  descrizione          String?              @db.VarChar(200)
+  ruoloMud             RuoloMudCausale?     @map("ruolo_mud")
+  codiceRentri         String?              @map("codice_rentri") @db.VarChar(5)
+  operazione           String?              @db.VarChar(1)
+  ordine               Int                  @default(100) @db.SmallInt
+  validaDal            DateTime?            @map("valida_dal") @db.Date
+  validaAl             DateTime?            @map("valida_al") @db.Date
+  creatoDa             String               @map("creato_da") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  causaleSistema CausaleRegistro? @relation("DisattivazioniSistema", fields: [causaleSistemaCodice, verso], references: [codice, verso], onDelete: Restrict, onUpdate: Cascade, map: "causali_registro_azienda_sistema_fkey")
+  movimenti      WasteMovement[]  @relation("MovimentiCausale")
+
+  @@unique([id, tenantId], map: "causali_registro_azienda_id_tenant_id_key")
+  @@unique([id, tenantId, codice, verso], map: "causali_registro_azienda_id_tenant_codice_verso_key")
+  @@unique([tenantId, codice, verso, validaDal], map: "causali_registro_azienda_versione_key")
+  @@unique([tenantId, causaleSistemaCodice, verso], map: "causali_registro_azienda_disattivazione_key")
+  @@index([tenantId], map: "causali_registro_azienda_tenant_id_idx")
+  @@map("causali_registro_azienda")
 }

@@ -1,9 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
-import { of } from 'rxjs'
+import { provideRouter, ActivatedRoute, Router, convertToParamMap } from '@angular/router'
+import { of, throwError } from 'rxjs'
 import { FirListComponent } from './fir-list.component'
 import { FirService } from './fir.service'
+import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { RegistryService } from '../registry/registry.service'
 import { ExportService } from '../../core/services/export.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
@@ -59,6 +61,7 @@ describe('FirListComponent — campi RENTRI obbligatori (provenienza, tratta pri
           provide: RENTRISyncService,
           useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
         },
+        provideRouter([]),
         MessageService,
         ConfirmationService,
         ExportService,
@@ -176,6 +179,7 @@ describe('FirListComponent — nessun avviso emissione-possibile nel dialogo "Nu
           provide: RENTRISyncService,
           useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
         },
+        provideRouter([]),
         MessageService,
         ConfirmationService,
         ExportService,
@@ -312,6 +316,7 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
           provide: RENTRISyncService,
           useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
         },
+        provideRouter([]),
         MessageService,
         ConfirmationService,
         ExportService,
@@ -374,5 +379,426 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
     component.createFIR()
 
     expect(firService.createFIR).toHaveBeenCalled()
+  })
+})
+
+/**
+ * F2-7: la quantità verificata a destino non è più bloccata dalla tolleranza ±10%. Oltre soglia il
+ * dialog avvisa (role="status") ma Conferma resta attivo; dopo il successo, se il backend
+ * restituisce uno scostamento oltre soglia, il toast è di tipo "warn".
+ */
+describe('FirListComponent — dialog di consegna, quantità verificata e scostamento (F2-7)', () => {
+  let fixture: ComponentFixture<FirListComponent>
+  let component: FirListComponent
+  let firService: jasmine.SpyObj<FirService>
+  let messageService: MessageService
+
+  const firInTransito = {
+    id: 'fir-1',
+    stato: 'IN_TRANSITO',
+    rifiuto: { cerCode: '150101', quantita: 100, unitaMisura: 'kg' },
+  } as any
+
+  beforeEach(() => {
+    firService = jasmine.createSpyObj('FirService', ['getFIRList', 'confermaConsegna'])
+    firService.getFIRList.and.returnValue(of({ items: [], total: 0 }) as any)
+    const registry = jasmine.createSpyObj('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+    ])
+    for (const m of ['getProduttori', 'getTrasportatori', 'getDestinatari']) {
+      registry[m].and.returnValue(of({ items: [], total: 0 }))
+    }
+
+    TestBed.configureTestingModule({
+      imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
+      providers: [
+        { provide: FirService, useValue: firService },
+        { provide: RegistryService, useValue: registry },
+        {
+          provide: AuthService,
+          useValue: { currentUser: () => ({ id: 'u1', email: 'u@example.com', role: 'ADMIN' }) },
+        },
+        {
+          provide: RENTRISyncService,
+          useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
+        },
+        provideRouter([]),
+        MessageService,
+        ConfirmationService,
+        ExportService,
+      ],
+    })
+    fixture = TestBed.createComponent(FirListComponent)
+    component = fixture.componentInstance
+    messageService = fixture.debugElement.injector.get(MessageService)
+    fixture.detectChanges()
+  })
+
+  function apriDialog(peso: number): HTMLElement {
+    component.showConsegnaDialog(firInTransito)
+    component.pesoEffettivo = peso
+    fixture.detectChanges()
+    return document.body
+  }
+
+  it("etichetta il campo con l'unità del FIR e non con kg fisso", () => {
+    component.showConsegnaDialog({
+      ...firInTransito,
+      rifiuto: { ...firInTransito.rifiuto, unitaMisura: 'litri' },
+    })
+    fixture.detectChanges()
+
+    const label = document.body.querySelector('label[for="peso-effettivo"]')
+    expect(label?.textContent).toContain('Quantità verificata a destino (litri)')
+  })
+
+  it('a +10% esatto non mostra alcun avviso', () => {
+    const root = apriDialog(110)
+    expect(root.querySelector('[data-testid="avviso-scostamento"]')).toBeNull()
+  })
+
+  it('oltre soglia mostra l\'avviso con role="status" e il testo previsto', () => {
+    const root = apriDialog(110.01)
+    const avviso = root.querySelector('[data-testid="avviso-scostamento"]')
+    expect(avviso).toBeTruthy()
+    expect(avviso?.getAttribute('role')).toBe('status')
+    expect(avviso?.textContent).toContain('La quantità verificata differisce del +10')
+    expect(avviso?.textContent).toContain('da quella dichiarata (100 kg)')
+    expect(avviso?.textContent).toContain(
+      'puoi confermare, lo scostamento resta registrato sul FIR.'
+    )
+  })
+
+  it("l'avviso non blocca: consegnaFIR invia comunque la quantità", () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apriDialog(300)
+    expect(component.avvisoScostamento).toBeTruthy()
+
+    component.consegnaFIR()
+
+    expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', 300)
+  })
+
+  it('toast "warn" se la risposta ha uno scostamento oltre soglia', () => {
+    const add = spyOn(messageService, 'add').and.callThrough()
+    firService.confermaConsegna.and.returnValue(
+      of({
+        ...firInTransito,
+        scostamentoPeso: { differenza: 50, percentuale: 50, unita: 'kg', oltreSoglia: true },
+      })
+    )
+    apriDialog(150)
+
+    component.consegnaFIR()
+
+    const toast = add.calls
+      .allArgs()
+      .map(a => a[0])
+      .find(m => m.severity === 'warn')
+    expect(toast).toBeTruthy()
+    expect(toast?.detail).toContain('+50%')
+    expect(add.calls.allArgs().some(a => a[0].severity === 'success')).toBeFalse()
+  })
+
+  it('toast "success" se lo scostamento è entro soglia', () => {
+    const add = spyOn(messageService, 'add').and.callThrough()
+    firService.confermaConsegna.and.returnValue(
+      of({
+        ...firInTransito,
+        scostamentoPeso: { differenza: 5, percentuale: 5, unita: 'kg', oltreSoglia: false },
+      })
+    )
+    apriDialog(105)
+
+    component.consegnaFIR()
+
+    expect(add.calls.allArgs().some(a => a[0].severity === 'success')).toBeTrue()
+    expect(add.calls.allArgs().some(a => a[0].severity === 'warn')).toBeFalse()
+  })
+})
+
+/**
+ * Modifica delle bozze: pulsante per riga, dialog riusato e precompilato, invio con la versione,
+ * gestione dei due 409 e apertura da `?modifica=<id>`.
+ */
+describe('FirListComponent — modifica delle bozze', () => {
+  let fixture: ComponentFixture<FirListComponent>
+  let component: FirListComponent
+  let firService: jasmine.SpyObj<FirService>
+  let messageService: MessageService
+  let router: Router
+
+  const bozza = (extra: Partial<FIR> = {}): FIR => ({
+    id: 'f1',
+    numeroProgressivo: null,
+    anno: 2026,
+    stato: FIRStato.BOZZA,
+    versione: 3,
+    modificabile: true,
+    motivoNonModificabile: null,
+    produttoreId: 'p1',
+    trasportatoreId: 't1',
+    destinatarioId: 'd1',
+    provenienza: 'SPECIALE',
+    tipoTrattaPrincipale: 'TERRESTRE',
+    rifiuto: {
+      cerCode: '150101',
+      quantita: 10,
+      unitaMisura: 't',
+      descrizione: 'Imballaggi',
+      categoria: 'URBANI',
+      tipoOperazione: 'RECOVERY',
+    },
+    createdAt: '2026-07-01T10:00:00.000Z',
+    ...extra,
+  })
+
+  function setup(opts: { role?: string; modifica?: string; righe?: FIR[] } = {}) {
+    firService = jasmine.createSpyObj('FirService', [
+      'getFIRList',
+      'getFIRById',
+      'createFIR',
+      'modificaFIR',
+      'emettiFIR',
+      'presaInCarico',
+      'confermaConsegna',
+      'annullaFIR',
+    ])
+    const righe = opts.righe ?? [bozza()]
+    firService.getFIRList.and.returnValue(
+      of({ items: righe, total: righe.length, page: 1, limit: 10, totalPages: 1 }) as any
+    )
+    firService.getFIRById.and.callFake(id => of(righe.find(r => r.id === id) ?? bozza()))
+    firService.modificaFIR.and.returnValue(of(bozza()))
+
+    const registryService = jasmine.createSpyObj('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+    ])
+    registryService.getProduttori.and.returnValue(of({ items: [], total: 0 }))
+    registryService.getTrasportatori.and.returnValue(of({ items: [], total: 0 }))
+    registryService.getDestinatari.and.returnValue(of({ items: [], total: 0 }))
+
+    TestBed.configureTestingModule({
+      imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
+      providers: [
+        provideRouter([]),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              queryParamMap: convertToParamMap(opts.modifica ? { modifica: opts.modifica } : {}),
+            },
+          },
+        },
+        { provide: FirService, useValue: firService },
+        { provide: RegistryService, useValue: registryService },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: () => ({ id: 'u1', email: 'u@x.it', role: opts.role ?? 'ADMIN' }),
+          },
+        },
+        {
+          provide: RENTRISyncService,
+          useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
+        },
+        MessageService,
+        ConfirmationService,
+        ExportService,
+      ],
+    })
+    messageService = TestBed.inject(MessageService)
+    router = TestBed.inject(Router)
+    spyOn(router, 'navigate').and.resolveTo(true)
+    fixture = TestBed.createComponent(FirListComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  }
+
+  const el = () => fixture.nativeElement as HTMLElement
+
+  it('mostra «Modifica» solo sulle bozze modificabili e il motivo sul badge delle altre', () => {
+    setup({
+      righe: [
+        bozza(),
+        bozza({ id: 'f2', modificabile: false, motivoNonModificabile: 'LEGATO_RENTRI' }),
+        bozza({
+          id: 'f3',
+          stato: FIRStato.EMESSO,
+          modificabile: false,
+          motivoNonModificabile: 'NON_BOZZA',
+        }),
+      ],
+    })
+    expect(el().querySelector('[data-testid="fir-modifica-f1"]')).toBeTruthy()
+    expect(el().querySelector('[data-testid="fir-modifica-f2"]')).toBeNull()
+    expect(el().querySelector('[data-testid="fir-modifica-f3"]')).toBeNull()
+    expect(component.motivoNonModificabileRiga(component.firList[1])).toContain('RENTRI')
+    expect(component.motivoNonModificabileRiga(component.firList[0])).toBeUndefined()
+    expect(component.motivoNonModificabileRiga(component.firList[2])).toBeUndefined()
+  })
+
+  it('un VIEWER non vede «Modifica»', () => {
+    setup({ role: 'VIEWER' })
+    expect(el().querySelector('[data-testid="fir-modifica-f1"]')).toBeNull()
+  })
+
+  it('click su Modifica, cambio quantità, Salva: PUT con la versione e senza i campi esclusi', () => {
+    setup()
+    ;(el().querySelector('[data-testid="fir-modifica-f1"] button') as HTMLButtonElement).click()
+    fixture.detectChanges()
+
+    expect(firService.getFIRById).toHaveBeenCalledWith('f1')
+    expect(component.displayCreateDialog).toBeTrue()
+    expect(document.body.textContent).toContain('Modifica bozza FIR')
+    expect(component.newFIR.rifiuto.cerCode).toBe('150101')
+    expect(component.newFIR.rifiuto.unitaMisura).toBe('t')
+
+    const qta = document.querySelector('#new-qta') as HTMLInputElement
+    expect(qta).toBeTruthy()
+    qta.focus()
+    qta.value = '20'
+    qta.dispatchEvent(new Event('input', { bubbles: true }))
+    qta.dispatchEvent(new Event('blur', { bubbles: true }))
+    fixture.detectChanges()
+
+    const salva = document.querySelector(
+      '[data-testid="fir-dialog-salva"] button'
+    ) as HTMLButtonElement
+    expect(salva.textContent).toContain('Salva modifiche')
+    salva.click()
+    fixture.detectChanges()
+
+    expect(firService.createFIR).not.toHaveBeenCalled()
+    expect(firService.modificaFIR).toHaveBeenCalledTimes(1)
+    const [id, dto] = firService.modificaFIR.calls.mostRecent().args
+    expect(id).toBe('f1')
+    expect(dto.versione).toBe(3)
+    expect(dto.rifiuto.quantita).toBe(20)
+    expect(dto.rifiuto.unitaMisura).toBe('t')
+    const rifiuto = dto.rifiuto as Record<string, unknown>
+    expect('descrizione' in rifiuto).toBeFalse()
+    expect('categoria' in rifiuto).toBeFalse()
+    expect('tipoOperazione' in rifiuto).toBeFalse()
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(component.firInModifica).toBeNull()
+  })
+
+  it('409 FIR_MODIFICATO_NEL_FRATTEMPO: avviso, rilettura e form aggiornato con la versione nuova', () => {
+    setup()
+    const add = spyOn(messageService, 'add')
+    component.apriModifica(component.firList[0])
+    firService.modificaFIR.and.returnValue(
+      throwError(() => ({
+        status: 409,
+        error: { error: 'FIR_MODIFICATO_NEL_FRATTEMPO', message: 'Il FIR è cambiato.' },
+      }))
+    )
+    firService.getFIRById.and.returnValue(
+      of(bozza({ versione: 4, rifiuto: { cerCode: '150101', quantita: 99, unitaMisura: 't' } }))
+    )
+
+    component.salvaFIR()
+
+    expect(firService.getFIRById).toHaveBeenCalledTimes(2)
+    expect(component.firInModifica).toEqual({ id: 'f1', versione: 4 })
+    expect(component.newFIR.rifiuto.quantita).toBe(99)
+    expect(component.displayCreateDialog).toBeTrue()
+    expect(component.saving).toBeFalse()
+    expect(add).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        severity: 'warn',
+        detail: jasmine.stringContaining('ripeti la modifica'),
+      })
+    )
+  })
+
+  it('409 FIR_NON_MODIFICABILE: messaggio, dialog chiuso e lista ricaricata', () => {
+    setup()
+    const add = spyOn(messageService, 'add')
+    component.apriModifica(component.firList[0])
+    firService.getFIRList.calls.reset()
+    firService.modificaFIR.and.returnValue(
+      throwError(() => ({
+        status: 409,
+        error: { error: 'FIR_NON_MODIFICABILE', message: 'Il FIR porta già una firma.' },
+      }))
+    )
+
+    component.salvaFIR()
+
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(component.firInModifica).toBeNull()
+    expect(firService.getFIRList).toHaveBeenCalled()
+    expect(add).toHaveBeenCalledWith(
+      jasmine.objectContaining({ severity: 'error', detail: 'Il FIR porta già una firma.' })
+    )
+  })
+
+  it('apre la modifica dal parametro ?modifica= (FIR letto dal backend) e lo toglie dall’URL', () => {
+    setup({ modifica: 'f1', righe: [bozza()] })
+
+    expect(firService.getFIRById).toHaveBeenCalledWith('f1')
+    expect(component.displayCreateDialog).toBeTrue()
+    expect(component.firInModifica).toEqual({ id: 'f1', versione: 3 })
+    expect(router.navigate).toHaveBeenCalledWith([], {
+      queryParams: { modifica: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
+  })
+
+  it('dal parametro ?modifica= su una bozza non modificabile avvisa e non apre il dialog', () => {
+    setup({
+      modifica: 'f1',
+      righe: [bozza({ modificabile: false, motivoNonModificabile: 'FIRMATO' })],
+    })
+    expect(component.displayCreateDialog).toBeFalse()
+  })
+
+  it('non apre la modifica se il FIR ha tratte senza trasportatore mappabile', () => {
+    setup()
+    const add = spyOn(messageService, 'add')
+    const aperto = component.showEditDialog(
+      bozza({ trasportatoriAggiuntivi: [{ tipoTratta: 'MARITTIMA', ordine: 1 }] })
+    )
+    expect(aperto).toBeFalse()
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(component.firInModifica).toBeNull()
+    expect(add).toHaveBeenCalledWith(
+      jasmine.objectContaining({ severity: 'error', detail: jasmine.stringContaining('tratte') })
+    )
+  })
+
+  it('non apre la modifica se la versione non è un numero', () => {
+    setup()
+    const add = spyOn(messageService, 'add')
+    const aperto = component.showEditDialog(bozza({ versione: undefined }))
+    expect(aperto).toBeFalse()
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(component.firInModifica).toBeNull()
+    expect(add).toHaveBeenCalledWith(
+      jasmine.objectContaining({ severity: 'error', detail: jasmine.stringContaining('Versione') })
+    )
+  })
+
+  it('la creazione resta com’era: Nuovo FIR chiama createFIR', () => {
+    setup()
+    component.showCreateDialog()
+    component.newFIR.produttoreId = 'p1'
+    component.newFIR.trasportatoreId = 't1'
+    component.newFIR.destinatarioId = 'd1'
+    component.newFIR.rifiuto.cerCode = '150101'
+    component.newFIR.rifiuto.quantita = 1
+    component.newFIR.provenienza = 'URBANO'
+    component.newFIR.tipoTrattaPrincipale = 'TERRESTRE'
+    firService.createFIR.and.returnValue(of({} as FIR))
+    component.salvaFIR()
+    expect(firService.createFIR).toHaveBeenCalled()
+    expect(firService.modificaFIR).not.toHaveBeenCalled()
   })
 })

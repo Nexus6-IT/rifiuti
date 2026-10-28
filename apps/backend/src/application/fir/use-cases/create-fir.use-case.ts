@@ -3,22 +3,21 @@
  * Business logic orchestration
  */
 
-import {
-  FIR,
-  ParteFIR,
-  TrattaTrasportoFIR,
-  TipoTratta,
-} from '../../../domain/fir/aggregates/fir.aggregate'
+import { FIR, TrattaTrasportoFIR } from '../../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { ICERRepository } from '../../../domain/cer/repositories/cer-repository.interface'
 import { ProduttoreRepository } from '../../../domain/registry/repositories/produttore.repository'
 import { TrasportatoreRepository } from '../../../domain/registry/repositories/trasportatore.repository'
 import { DestinatarioRepository } from '../../../domain/registry/repositories/destinatario.repository'
-import { Produttore } from '../../../domain/registry/entities/produttore'
-import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
-import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { Result } from '../../../core/application/result'
 import { CreateFIRCommand } from '../commands/create-fir.command'
+import { verificaCerPerFormulario } from '../verifica-cer-formulario'
+import {
+  snapshotProduttore,
+  snapshotTrasportatore,
+  snapshotDestinatario,
+  snapshotTratta,
+} from '../snapshot-parti'
 
 export class CreateFIRUseCase {
   constructor(
@@ -33,24 +32,14 @@ export class CreateFIRUseCase {
     // 1. Normalize + validate CER code. Il catalogo memorizza i codici nel
     //    formato canonico "NN NN NN" (con spazi, "*" per i pericolosi): si
     //    accetta anche l'input senza spazi (es. "200301") normalizzandolo.
-    const cerCode = this.normalizeCerCode(command.rifiuto.cerCode)
-    const cerExists = await this.cerRepository.exists(cerCode)
-    if (!cerExists) {
-      return Result.fail<FIR>(`CER code not found: ${command.rifiuto.cerCode}`)
-    }
-    // Il codice esiste per riferimento storico (sopra), ma un FIR NUOVO deve
-    // usare la verifica più stringente: un codice che RENTRI ha smesso di
-    // confermare resta leggibile/stampabile per i FIR già emessi, ma qui non è
-    // più selezionabile (v. piano R4 Task 4, CERCatalogService).
-    const cerUtilizzabile = await this.cerRepository.isUtilizzabilePerNuovoFormulario(cerCode)
-    if (!cerUtilizzabile) {
-      return Result.fail<FIR>(
-        "Questo codice CER non è più valido secondo il registro dell'ente: verificane la sostituzione"
-      )
+    //    Verifica condivisa con la modifica della bozza.
+    const cer = await verificaCerPerFormulario(this.cerRepository, command.rifiuto.cerCode)
+    if (cer.isFailure) {
+      return Result.fail<FIR>(cer.error)
     }
     // Il cerCode normalizzato sovrascrive il valore originale (normalizzato a
     // "NN NN NN" / "NN NN NN*"). Gli altri campi del rifiuto passano invariati.
-    const rifiuto = { ...command.rifiuto, cerCode }
+    const rifiuto = { ...command.rifiuto, cerCode: cer.value }
 
     // 2. Validate the three parties are provided
     if (!command.produttoreId || !command.trasportatoreId || !command.destinatarioId) {
@@ -85,7 +74,7 @@ export class CreateFIRUseCase {
       if (!carrier) {
         return Result.fail<FIR>(`Trasportatore not found: ${tratta.trasportatoreId}`)
       }
-      trasportatoriAggiuntivi.push(this.snapshotTratta(carrier, tratta.ordine, tratta.tipoTratta))
+      trasportatoriAggiuntivi.push(snapshotTratta(carrier, tratta.ordine, tratta.tipoTratta))
     }
 
     // 4. Create FIR aggregate with the frozen anagrafica snapshots
@@ -97,9 +86,9 @@ export class CreateFIRUseCase {
         destinatarioId: command.destinatarioId,
         tenantId: command.tenantId,
         creatoDaUserId: command.userId,
-        produttore: this.snapshotProduttore(produttore),
-        trasportatore: this.snapshotTrasportatore(trasportatore),
-        destinatario: this.snapshotDestinatario(destinatario),
+        produttore: snapshotProduttore(produttore),
+        trasportatore: snapshotTrasportatore(trasportatore),
+        destinatario: snapshotDestinatario(destinatario),
         trasportatoriAggiuntivi,
         annotazioni: command.annotazioni,
         provenienza: command.provenienza,
@@ -113,72 +102,6 @@ export class CreateFIRUseCase {
       return Result.ok<FIR>(fir)
     } catch (error) {
       return Result.fail<FIR>(`Failed to create FIR: ${error.message}`)
-    }
-  }
-
-  /**
-   * Normalizza un codice CER al formato canonico del catalogo "NN NN NN"
-   * (con "*" finale per i pericolosi). Accetta input senza spazi ("200301")
-   * o con spaziatura irregolare; se il formato non è 6 cifre lascia invariato
-   * (la validazione successiva fallirà con messaggio chiaro).
-   */
-  private normalizeCerCode(raw: string): string {
-    if (!raw) return raw
-    const trimmed = raw.trim().toUpperCase()
-    const hazardous = trimmed.includes('*')
-    const digits = trimmed.replace(/[^0-9]/g, '')
-    if (digits.length !== 6) return trimmed
-    const spaced = `${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 6)}`
-    return hazardous ? `${spaced}*` : spaced
-  }
-
-  private snapshotProduttore(p: Produttore): ParteFIR {
-    return {
-      registroId: p.id,
-      ragioneSociale: p.ragioneSociale,
-      partitaIva: p.partitaIVA.getValue(),
-      indirizzo: p.sedeLegale.getFormatted(),
-      contatto: p.pec || p.email || undefined,
-    }
-  }
-
-  private snapshotTrasportatore(t: Trasportatore): ParteFIR {
-    return {
-      registroId: t.id,
-      ragioneSociale: t.ragioneSociale,
-      partitaIva: t.partitaIVA.getValue(),
-      indirizzo: t.sedeLegale.getFormatted(),
-      contatto: t.pec || t.email || undefined,
-    }
-  }
-
-  private snapshotDestinatario(d: Destinatario): ParteFIR {
-    return {
-      registroId: d.id,
-      ragioneSociale: d.ragioneSociale,
-      partitaIva: d.partitaIVA.getValue(),
-      indirizzo: d.sede.getFormatted(),
-      contatto: d.pec || d.email || undefined,
-    }
-  }
-
-  /**
-   * Snapshot anagrafico immutabile di un trasportatore aggiuntivo (tratta
-   * intermodale). Mezzo e data presa in carico restano vuoti alla creazione:
-   * verranno valorizzati a runtime durante l'esecuzione del trasporto.
-   */
-  private snapshotTratta(
-    t: Trasportatore,
-    ordine: number,
-    tipoTratta: TipoTratta
-  ): TrattaTrasportoFIR {
-    return {
-      ordine,
-      tipoTratta,
-      trasportatoreId: t.id,
-      denominazione: t.ragioneSociale,
-      partitaIva: t.partitaIVA.getValue(),
-      numeroIscrizioneAlbo: t.numeroIscrizione,
     }
   }
 }

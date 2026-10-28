@@ -7,9 +7,15 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { AuthController } from './auth.controller'
 import { JwtTokensService } from '../services/jwt-tokens.service'
 import { RedisService } from '../services/redis.service'
-import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { PrismaSistemaService } from '../../infrastructure/persistence/prisma-sistema.service'
 import { ConfigService } from '@nestjs/config'
-import { UnauthorizedException } from '@nestjs/common'
+import { TenantContext } from '../../core/context/tenant-context'
+import {
+  ForbiddenException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common'
+import { RuoloEffettivoService } from '../../api/me/ruolo-effettivo.service'
 import { createPrismaMock, MockPrisma } from '../../../test/utils/prisma-mock'
 import {
   createConfigServiceMock,
@@ -28,6 +34,7 @@ describe('AuthController', () => {
   let redisService: jest.Mocked<RedisService>
   let prismaService: MockPrisma
   let configService: MockConfigService
+  let ruoloEffettivo: { accesso: jest.Mock }
 
   beforeEach(async () => {
     const mockJwtTokensService = {
@@ -47,6 +54,7 @@ describe('AuthController', () => {
     }
 
     prismaService = createPrismaMock()
+    ruoloEffettivo = { accesso: jest.fn() }
     configService = createConfigServiceMock()
 
     const module: TestingModule = await Test.createTestingModule({
@@ -54,8 +62,9 @@ describe('AuthController', () => {
       providers: [
         { provide: JwtTokensService, useValue: mockJwtTokensService },
         { provide: RedisService, useValue: mockRedisService },
-        { provide: PrismaService, useValue: prismaService },
+        { provide: PrismaSistemaService, useValue: prismaService },
         { provide: ConfigService, useValue: configService },
+        { provide: RuoloEffettivoService, useValue: ruoloEffettivo },
       ],
     }).compile()
 
@@ -280,6 +289,137 @@ describe('AuthController', () => {
         fiscalCode: VALID_FISCAL_CODES.MARIO_ROSSI,
         tenantId: 'tenant-123',
         role: 'OPERATOR',
+      })
+      // token del tenant primario (senza azienda nel refresh token): nessuna verifica
+      expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+    })
+
+    it('refresh: utente dal client di sistema', async () => {
+      // @Public: nessun contesto azienda. Il lookup deve passare dal client di sistema.
+      let tenantVisto: string | null = 'non-chiamato'
+      redisService.isRefreshTokenValid.mockResolvedValue(true)
+      jwtTokensService.verifyRefreshToken.mockReturnValue({
+        sub: 'user-123',
+        type: 'refresh',
+      } as any)
+      jwtTokensService.generateAccessToken.mockReturnValue('nuovo')
+      prismaService.user.findUnique.mockImplementation((() => {
+        tenantVisto = TenantContext.getStoreTenantId()
+        return Promise.resolve(
+          createMockUser({ id: 'user-123', tenantId: 'tenant-123', role: 'ADMIN' })
+        )
+      }) as any)
+
+      await TenantContext.run({}, async () => controller.refresh({ refreshToken: 'rt' }))
+
+      expect(tenantVisto).toBeNull()
+      expect(Reflect.getMetadata('design:paramtypes', AuthController)[2]).toBe(PrismaSistemaService)
+    })
+
+    describe('azienda selezionata con lo switch (portata dal refresh token)', () => {
+      const STUDIO = 'tenant-studio'
+      const CLIENTE = 'tenant-cliente'
+      const consulente = createMockUser({
+        id: 'user-123',
+        email: 'c@studio.it',
+        fiscalCode: VALID_FISCAL_CODES.MARIO_ROSSI,
+        tenantId: STUDIO,
+        role: 'ADMIN',
+      })
+
+      beforeEach(() => {
+        redisService.isRefreshTokenValid.mockResolvedValue(true)
+        prismaService.user.findUnique.mockResolvedValue(consulente as any)
+        jwtTokensService.generateAccessToken.mockReturnValue('new-access-token')
+      })
+
+      it("il refresh dopo lo switch conserva l'azienda del cliente", async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          tenantId: CLIENTE,
+          type: 'refresh',
+        })
+        ruoloEffettivo.accesso.mockResolvedValue('VIEWER')
+
+        await controller.refresh({ refreshToken: 'rt' })
+
+        expect(ruoloEffettivo.accesso).toHaveBeenCalledWith(
+          { id: 'user-123', role: 'ADMIN', tenantId: STUDIO },
+          CLIENTE
+        )
+        expect(jwtTokensService.generateAccessToken).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'user-123', tenantId: CLIENTE, role: 'ADMIN' })
+        )
+      })
+
+      it('associazione scaduta: 403 AZIENDA_SELEZIONATA_NON_ACCESSIBILE, mai il tenant primario', async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          tenantId: CLIENTE,
+          type: 'refresh',
+        })
+        ruoloEffettivo.accesso.mockResolvedValue(null)
+
+        const errore: any = await controller.refresh({ refreshToken: 'rt' }).catch(e => e)
+
+        expect(errore).toBeInstanceOf(ForbiddenException)
+        expect(errore.getResponse()).toEqual({
+          message: "L'azienda selezionata non è più accessibile: selezionane un'altra.",
+          error: 'AZIENDA_SELEZIONATA_NON_ACCESSIBILE',
+        })
+        expect(jwtTokensService.generateAccessToken).not.toHaveBeenCalled()
+      })
+
+      it('errore del database nella verifica: 503 VERIFICA_AZIENDA_NON_DISPONIBILE, non 500', async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          tenantId: CLIENTE,
+          type: 'refresh',
+        })
+        ruoloEffettivo.accesso.mockRejectedValue(new Error('connessione al database persa'))
+
+        const errore: any = await controller.refresh({ refreshToken: 'rt' }).catch(e => e)
+
+        expect(errore).toBeInstanceOf(ServiceUnavailableException)
+        expect(errore.getResponse()).toEqual({
+          message: "Verifica dell'azienda selezionata non disponibile, riprova.",
+          error: 'VERIFICA_AZIENDA_NON_DISPONIBILE',
+        })
+        expect(jwtTokensService.generateAccessToken).not.toHaveBeenCalled()
+      })
+
+      it("refresh token con l'azienda primaria: invariato, nessuna verifica", async () => {
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          tenantId: STUDIO,
+          type: 'refresh',
+        })
+
+        await controller.refresh({ refreshToken: 'rt' })
+
+        expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+        expect(jwtTokensService.generateAccessToken).toHaveBeenCalledWith(
+          expect.objectContaining({ tenantId: STUDIO })
+        )
+      })
+
+      it("SUPER_ADMIN: conserva l'azienda scelta senza verifica (come lo switch)", async () => {
+        prismaService.user.findUnique.mockResolvedValue({
+          ...consulente,
+          role: 'SUPER_ADMIN',
+        } as any)
+        jwtTokensService.verifyRefreshToken.mockReturnValue({
+          sub: 'user-123',
+          tenantId: CLIENTE,
+          type: 'refresh',
+        })
+
+        await controller.refresh({ refreshToken: 'rt' })
+
+        expect(ruoloEffettivo.accesso).not.toHaveBeenCalled()
+        expect(jwtTokensService.generateAccessToken).toHaveBeenCalledWith(
+          expect.objectContaining({ tenantId: CLIENTE, role: 'SUPER_ADMIN' })
+        )
       })
     })
   })

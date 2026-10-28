@@ -16,6 +16,8 @@ import {
   RentriStatoRiconciliato,
   ProvenienzaRifiuto,
   TipoTratta,
+  ParteFIR,
+  ContenutoBozzaFIR,
 } from './fir.aggregate'
 import { UnitaMisura } from '../value-objects/quantita'
 import {
@@ -24,6 +26,7 @@ import {
   InvalidQuantityError,
   FIRNonLegatoRentriError,
   MetodoLocaleNonConsentitoSuFirLegatoError,
+  FirNonModificabileError,
 } from '../../../core/domain/errors'
 
 // Test Fixtures
@@ -47,6 +50,18 @@ const createMockFirma = (firmatario: string): FirmaDigitale => ({
 })
 
 describe('FIR Aggregate', () => {
+  describe('versione', () => {
+    it('un FIR appena creato non è mai stato salvato: versione 0', () => {
+      expect(FIR.create(createValidFIRProps()).versione).toBe(0)
+    })
+
+    it('registraVersioneSalvata allinea la versione', () => {
+      const fir = FIR.create(createValidFIRProps())
+      fir.registraVersioneSalvata(3)
+      expect(fir.versione).toBe(3)
+    })
+  })
+
   describe('create', () => {
     it('should create FIR in BOZZA state', () => {
       const fir = FIR.create(createValidFIRProps())
@@ -219,47 +234,55 @@ describe('FIR Aggregate', () => {
       expect((events[0] as FIRConsegnatoEvent).pesoEffettivo).toBe(120)
     })
 
-    it('should accept peso at +10% tolerance boundary', () => {
+    const firInTransito = (): FIR => {
       const fir = FIR.create(createValidFIRProps()) // 120 kg
       fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
       fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+      return fir
+    }
 
-      fir.confermaConsegna(132, createMockFirma('Destinatario')) // Exactly +10%
+    it.each([
+      [150, 30, 25, true], // +25%
+      [60, -60, -50, true], // -50%
+      [1200, 1080, 900, true], // peso 10 volte la dichiarata
+      [132, 12, 10, false], // +10% esatto: nessun avviso
+      [108, -12, -10, false], // -10% esatto: nessun avviso
+    ])('accetta il peso %s e calcola lo scostamento', (peso, differenza, percentuale, oltre) => {
+      const fir = firInTransito()
+
+      fir.confermaConsegna(peso, createMockFirma('Destinatario'))
 
       expect(fir.stato).toBe(FIRStato.CONSEGNATO)
+      expect(fir.pesoEffettivo).toBe(peso)
+      expect(fir.scostamentoPeso).toEqual({
+        differenza,
+        percentuale,
+        unita: UnitaMisura.KG,
+        oltreSoglia: oltre,
+      })
     })
 
-    it('should accept peso at -10% tolerance boundary', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
+    it("scostamentoPeso è null finché non c'è il peso a destino", () => {
+      expect(firInTransito().scostamentoPeso).toBeNull()
+    })
 
-      fir.confermaConsegna(108, createMockFirma('Destinatario')) // Exactly -10%
+    it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY, 100000000])(
+      'rifiuta il peso non valido %s e lascia il FIR IN_TRANSITO',
+      peso => {
+        const fir = firInTransito()
 
+        expect(() => fir.confermaConsegna(peso, createMockFirma('Destinatario'))).toThrow(
+          DomainError
+        )
+        expect(fir.stato).toBe(FIRStato.IN_TRANSITO)
+        expect(fir.pesoEffettivo).toBeNull()
+      }
+    )
+
+    it('accetta il peso massimo della colonna (99.999.999,99)', () => {
+      const fir = firInTransito()
+      fir.confermaConsegna(99999999.99, createMockFirma('Destinatario'))
       expect(fir.stato).toBe(FIRStato.CONSEGNATO)
-    })
-
-    it('should throw error if peso exceeds +10% tolerance', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-
-      expect(
-        () => fir.confermaConsegna(135, createMockFirma('Destinatario')) // +12.5%
-      ).toThrow(DomainError)
-      expect(() => fir.confermaConsegna(135, createMockFirma('Destinatario'))).toThrow(
-        /eccede tolleranza/
-      )
-    })
-
-    it('should throw error if peso exceeds -10% tolerance', () => {
-      const fir = FIR.create(createValidFIRProps()) // 120 kg
-      fir.emetti('FIR-2025-001234', createMockFirma('Produttore'))
-      fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-
-      expect(
-        () => fir.confermaConsegna(105, createMockFirma('Destinatario')) // -12.5%
-      ).toThrow(DomainError)
     })
 
     it('should throw error if not in IN_TRANSITO state', () => {
@@ -417,23 +440,115 @@ describe('FIR Aggregate', () => {
       })
     })
 
-    describe('startRENTRISync', () => {
+    describe('avviaTentativoRentri', () => {
       it('should transition sync status to SYNCING when allowed', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCING')
       })
 
       it('should throw when the FIR cannot be synced (still in BOZZA)', () => {
         const fir = FIR.create(createValidFIRProps())
-        expect(() => fir.startRENTRISync()).toThrow(DomainError)
+        expect(() => fir.avviaTentativoRentri(new Date())).toThrow(DomainError)
+      })
+    })
+
+    describe('transazione in attesa e trasmissione incerta', () => {
+      it('avviaTentativoRentri riprende un SYNCING', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date('2026-10-23T10:00:00Z'))
+        const ora = new Date('2026-10-23T10:05:00Z')
+
+        fir.avviaTentativoRentri(ora)
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('SYNCING')
+        expect(fir.rentriSyncAvviatoAt).toEqual(ora)
+      })
+
+      it('avviaTentativoRentri rifiuta un FIR legato', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.markRENTRISynced('RENTRI-NUM-1', 'tx-1')
+
+        expect(() => fir.avviaTentativoRentri(new Date())).toThrow(DomainError)
+      })
+
+      it('registraTransazioneInAttesa imposta attesa e transazioneId', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        expect(fir.rentriTransazioneInAttesa).toBe('tx-attesa')
+        expect(fir.rentriTransazioneId).toBe('tx-attesa')
+      })
+
+      it('markRENTRISynced azzera la transazione in attesa', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.markRENTRISynced('RENTRI-NUM-2', 'tx-attesa')
+
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('proporreLegameRENTRI azzera la transazione in attesa', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.proporreLegameRENTRI('RENTRI-NUM-3', 'tx-attesa')
+
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('chiudiTransazioneInAttesa azzera la transazione in attesa', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.chiudiTransazioneInAttesa()
+
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('segnaTrasmissioneIncerta: PERMANENTLY_FAILED, codice RENTRI_TRASMISSIONE_INCERTA, transazione in attesa null', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.registraTransazioneInAttesa('tx-attesa')
+
+        fir.segnaTrasmissioneIncerta('timeout in creazione')
+
+        expect(fir.rentriSyncStatus.getStatus()).toBe('PERMANENTLY_FAILED')
+        expect(fir.rentriSyncStatus.getLastErrorCode()).toBe('RENTRI_TRASMISSIONE_INCERTA')
+        expect(fir.rentriTransazioneInAttesa).toBeNull()
+      })
+
+      it('riapriTrasmissioneDopoVerifica: canSyncToRENTRI torna true', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.segnaTrasmissioneIncerta('timeout in creazione')
+        expect(fir.canSyncToRENTRI()).toBe(false)
+
+        fir.riapriTrasmissioneDopoVerifica()
+
+        expect(fir.canSyncToRENTRI()).toBe(true)
+      })
+
+      it('riapriTrasmissioneDopoVerifica rifiuta un FIR già legato', () => {
+        const fir = emettiFIR()
+        fir.avviaTentativoRentri(new Date())
+        fir.markRENTRISynced('RENTRI-NUM-4', 'tx-1')
+
+        expect(() => fir.riapriTrasmissioneDopoVerifica()).toThrow(DomainError)
       })
     })
 
     describe('markRENTRISynced — regola 4: registra il numero ufficiale', () => {
       it('should store the numero ufficiale (rentriNumeroFir), not only the transazioneId', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISynced('RENTRI-NUM-000123', 'tx-abc-789')
 
@@ -446,14 +561,14 @@ describe('FIR Aggregate', () => {
 
       it('should throw if numero ufficiale is missing/empty', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         expect(() => fir.markRENTRISynced('')).toThrow(DomainError)
       })
 
       it('should work without a transazioneId (optional)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISynced('RENTRI-NUM-000999')
 
@@ -465,18 +580,18 @@ describe('FIR Aggregate', () => {
     describe('regola 2: un FIR già legato non è ritrasmissibile (anti-duplicazione)', () => {
       it('should reject a second sync attempt after a successful markRENTRISynced', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123', 'tx-1')
 
         expect(fir.canSyncToRENTRI()).toBe(false)
-        expect(() => fir.startRENTRISync()).toThrow(DomainError)
+        expect(() => fir.avviaTentativoRentri(new Date())).toThrow(DomainError)
       })
     })
 
     describe('markRENTRISyncFailed / needsRENTRIRetry / getNextRENTRIRetryAt — regola 3: tentativi e backoff', () => {
       it('should allow retry after a first failure (attempts below the max)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISyncFailed('Errore di rete', 'RENTRI_API_ERROR')
 
@@ -487,7 +602,7 @@ describe('FIR Aggregate', () => {
 
       it('should schedule the next retry strictly in the future using exponential backoff', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         const before = Date.now()
 
         fir.markRENTRISyncFailed('Errore di rete', 'RENTRI_API_ERROR')
@@ -500,7 +615,7 @@ describe('FIR Aggregate', () => {
 
       it('should stop allowing retries after exhausting the maximum number of attempts', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         // RENTRISyncStatus.MAX_ATTEMPTS = 5: il quinto fallimento consecutivo
         // porta a PERMANENTLY_FAILED (richiede intervento manuale).
@@ -522,7 +637,7 @@ describe('FIR Aggregate', () => {
        */
       it('un errore non ritentabile (403 → RENTRI_FORBIDDEN) ferma il ciclo al primo fallimento, senza consumare tutti i tentativi', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.markRENTRISyncFailed('Certificato non valido', 'RENTRI_FORBIDDEN')
 
@@ -543,7 +658,7 @@ describe('FIR Aggregate', () => {
     describe('proporreLegameRENTRI / confermaLegameRENTRI / rifiutaLegameRENTRI — modalità IBRIDA', () => {
       it('proporreLegameRENTRI registra il numero proposto senza legare ancora il FIR', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.proporreLegameRENTRI('RENTRI-NUM-000555', 'tx-ibrida-1')
 
@@ -555,7 +670,7 @@ describe('FIR Aggregate', () => {
 
       it('proporreLegameRENTRI blocca nuovi tentativi automatici mentre la proposta è pendente', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         fir.proporreLegameRENTRI('RENTRI-NUM-000555')
 
@@ -565,14 +680,14 @@ describe('FIR Aggregate', () => {
 
       it('proporreLegameRENTRI rifiuta un numero ufficiale mancante/vuoto', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
 
         expect(() => fir.proporreLegameRENTRI('')).toThrow(DomainError)
       })
 
       it('confermaLegameRENTRI promuove la proposta al legame ufficiale (origine TRASMESSO_DA_NOI)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.proporreLegameRENTRI('RENTRI-NUM-000555', 'tx-ibrida-1')
 
         fir.confermaLegameRENTRI()
@@ -589,7 +704,7 @@ describe('FIR Aggregate', () => {
 
       it('rifiutaLegameRENTRI cancella la proposta e riporta il FIR a PENDING (ritrasmissibile)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.proporreLegameRENTRI('RENTRI-NUM-000555')
 
         fir.rifiutaLegameRENTRI()
@@ -658,7 +773,7 @@ describe('FIR Aggregate', () => {
 
       it("agganciaManualmente rifiuta un FIR già legato (anche da TRASMESSO_DA_NOI), citando l'origine esistente", () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-NOSTRO')
 
         expect(() => fir.agganciaManualmente('RENTRI-NUM-ALTRO')).toThrow(/TRASMESSO_DA_NOI/)
@@ -705,7 +820,7 @@ describe('FIR Aggregate', () => {
 
       it('rifiuta il rilascio di un legame TRASMESSO_DA_NOI', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-NOSTRO-006')
 
         expect(() => fir.rilasciaLegameRENTRI()).toThrow(DomainError)
@@ -768,7 +883,7 @@ describe('FIR Aggregate', () => {
         "'%s' → FIRStato.IN_TRANSITO (il FIR è in lavorazione presso l'ente)",
         statoRentri => {
           const fir = emettiFIR()
-          fir.startRENTRISync()
+          fir.avviaTentativoRentri(new Date())
           fir.markRENTRISynced('RENTRI-NUM-000123')
 
           fir.applyRentriStato(statoRentri)
@@ -782,7 +897,7 @@ describe('FIR Aggregate', () => {
         "'%s' → FIRStato.CONSEGNATO (esito finale di accettazione)",
         statoRentri => {
           const fir = emettiFIR()
-          fir.startRENTRISync()
+          fir.avviaTentativoRentri(new Date())
           fir.markRENTRISynced('RENTRI-NUM-000123')
 
           fir.applyRentriStato(statoRentri)
@@ -794,7 +909,7 @@ describe('FIR Aggregate', () => {
 
       it("'Annullato' → FIRStato.ANNULLATO", () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         fir.applyRentriStato('Annullato')
@@ -811,7 +926,7 @@ describe('FIR Aggregate', () => {
 
       it('emette RentriStatoRiconciliato con il payload atteso', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.clearDomainEvents() // pulizia eventi pregressi (emissione, sync, ecc.)
 
@@ -831,7 +946,7 @@ describe('FIR Aggregate', () => {
 
       it('registra sempre statoRentriPrecedente = valore precedente su una seconda riconciliazione', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('FirmaAnnotazione')
 
@@ -854,7 +969,7 @@ describe('FIR Aggregate', () => {
        */
       it('non fa regredire FIRStato da CONSEGNATO a IN_TRANSITO per una risposta di polling obsoleta', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Accettato') // FIRStato → CONSEGNATO (terminale)
 
@@ -866,7 +981,7 @@ describe('FIR Aggregate', () => {
 
       it('non fa regredire FIRStato da ANNULLATO a IN_TRANSITO per una risposta di polling obsoleta', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Annullato') // FIRStato → ANNULLATO (terminale)
 
@@ -886,7 +1001,7 @@ describe('FIR Aggregate', () => {
        */
       it('accetta il passaggio fra due stati terminali: un formulario accettato che l’ente annulla diventa ANNULLATO', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Accettato')
         expect(fir.stato).toBe(FIRStato.CONSEGNATO)
@@ -899,7 +1014,7 @@ describe('FIR Aggregate', () => {
 
       it('accetta anche il passaggio inverso fra terminali (annullato poi accettato dall’ente)', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Annullato')
 
@@ -920,7 +1035,7 @@ describe('FIR Aggregate', () => {
     describe('metodi locali bloccati su un FIR legato a RENTRI', () => {
       it('presaInCarico rifiuta un FIR legato', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))).toThrow(
@@ -931,7 +1046,7 @@ describe('FIR Aggregate', () => {
       it('confermaConsegna rifiuta un FIR legato', () => {
         const fir = emettiFIR()
         fir.presaInCarico(new Date(), createMockFirma('Trasportatore'))
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.confermaConsegna(120, createMockFirma('Destinatario'))).toThrow(
@@ -941,7 +1056,7 @@ describe('FIR Aggregate', () => {
 
       it('annulla rifiuta un FIR legato', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.annulla('tentativo locale')).toThrow(
@@ -957,7 +1072,7 @@ describe('FIR Aggregate', () => {
     describe('registraNoteAnnullamentoRentri', () => {
       const firLegatoEAnnullato = (): FIR => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
         fir.applyRentriStato('Annullato')
         return fir
@@ -980,7 +1095,7 @@ describe('FIR Aggregate', () => {
 
       it('rifiuta un FIR legato ma non ancora ANNULLATO', () => {
         const fir = emettiFIR()
-        fir.startRENTRISync()
+        fir.avviaTentativoRentri(new Date())
         fir.markRENTRISynced('RENTRI-NUM-000123')
 
         expect(() => fir.registraNoteAnnullamentoRentri('motivo')).toThrow(
@@ -993,6 +1108,332 @@ describe('FIR Aggregate', () => {
 
         expect(() => fir.registraNoteAnnullamentoRentri('   ')).toThrow(/non può essere vuota/)
         expect(fir.motivoAnnullamento).toBeNull()
+      })
+    })
+  })
+  describe('modifica della bozza', () => {
+    const parte = (id: string, nome = `Parte ${id}`): ParteFIR => ({
+      registroId: id,
+      ragioneSociale: nome,
+      partitaIva: '12345678901',
+      indirizzo: 'Via Roma 1',
+      contatto: `${id}@pec.it`,
+    })
+    const firBozza = (
+      extra: Partial<CreateFIRProps> = {},
+      rifiutoExtra: Partial<CreateFIRProps['rifiuto']> = {}
+    ): FIR =>
+      FIR.create({
+        ...createValidFIRProps(),
+        produttoreId: 'p-1',
+        trasportatoreId: 't-1',
+        destinatarioId: 'd-1',
+        tenantId: 'tenant-1',
+        creatoDaUserId: 'user-1',
+        produttore: parte('p-1'),
+        trasportatore: parte('t-1'),
+        destinatario: parte('d-1'),
+        annotazioni: 'note',
+        provenienza: ProvenienzaRifiuto.SPECIALE,
+        tipoTrattaPrincipale: TipoTratta.TERRESTRE,
+        ...extra,
+        rifiuto: {
+          ...createValidFIRProps().rifiuto,
+          numeroColli: 3,
+          codiceOperazione: 'R1',
+          descrizione: 'Oli esausti',
+          categoria: 'SPECIALE',
+          tipoOperazione: 'RECOVERY',
+          ...rifiutoExtra,
+        },
+      })
+    const contenutoDi = (fir: FIR, mod: Partial<ContenutoBozzaFIR> = {}): ContenutoBozzaFIR => ({
+      produttoreId: fir.produttoreId,
+      trasportatoreId: fir.trasportatoreId,
+      destinatarioId: fir.destinatarioId,
+      produttore: fir.produttore as ParteFIR,
+      trasportatore: fir.trasportatore as ParteFIR,
+      destinatario: fir.destinatario as ParteFIR,
+      rifiuto: {
+        cerCode: fir.rifiuto.cerCode,
+        quantita: fir.rifiuto.quantita.valore,
+        unitaMisura: fir.rifiuto.quantita.unitaMisura,
+        statoFisico: fir.rifiuto.statoFisico,
+        caratteristichePericolo: fir.rifiuto.caratteristichePericolo,
+        numeroColli: fir.rifiuto.numeroColli,
+        codiceOperazione: fir.rifiuto.codiceOperazione,
+      },
+      trasportatoriAggiuntivi: fir.trasportatoriAggiuntivi,
+      annotazioni: fir.annotazioni,
+      provenienza: fir.provenienza as ProvenienzaRifiuto,
+      tipoTrattaPrincipale: fir.tipoTrattaPrincipale as TipoTratta,
+      ...mod,
+    })
+    const imposta = (fir: FIR, campi: Record<string, unknown>): FIR =>
+      Object.assign(fir, campi) as FIR
+
+    describe('motivoNonModificabile', () => {
+      it('bozza libera: null', () => {
+        expect(firBozza().motivoNonModificabile()).toBeNull()
+      })
+      it('legata a RENTRI, anche se firmata e non in bozza: LEGATO_RENTRI', () => {
+        const fir = imposta(firBozza(), {
+          _rentriNumeroFir: 'N-1',
+          _firmePresenti: true,
+          _stato: FIRStato.EMESSO,
+          _inAttesaFirmaProduttore: true,
+        })
+        expect(fir.motivoNonModificabile()).toBe('LEGATO_RENTRI')
+      })
+      it('emessa e firmata: NON_BOZZA', () => {
+        const fir = imposta(firBozza(), { _stato: FIRStato.EMESSO, _firmePresenti: true })
+        expect(fir.motivoNonModificabile()).toBe('NON_BOZZA')
+      })
+      it.each([FIRStato.IN_TRANSITO, FIRStato.CONSEGNATO, FIRStato.ANNULLATO])(
+        'stato %s: NON_BOZZA',
+        stato => {
+          expect(imposta(firBozza(), { _stato: stato }).motivoNonModificabile()).toBe('NON_BOZZA')
+        }
+      )
+      it('in attesa del produttore e con firma: FIRMATO (viene prima)', () => {
+        const fir = imposta(firBozza(), { _firmePresenti: true, _inAttesaFirmaProduttore: true })
+        expect(fir.motivoNonModificabile()).toBe('FIRMATO')
+      })
+      it('solo in attesa del produttore: IN_ATTESA_FIRMA_PRODUTTORE', () => {
+        const fir = imposta(firBozza(), { _inAttesaFirmaProduttore: true })
+        expect(fir.motivoNonModificabile()).toBe('IN_ATTESA_FIRMA_PRODUTTORE')
+      })
+    })
+
+    describe('modificaBozza', () => {
+      it('FIR legato: errore del guard RENTRI, prima di ogni altro motivo', () => {
+        const fir = imposta(firBozza(), { _rentriNumeroFir: 'N-1', _firmePresenti: true })
+        expect(() => fir.modificaBozza(contenutoDi(fir))).toThrow(
+          MetodoLocaleNonConsentitoSuFirLegatoError
+        )
+      })
+      it.each([
+        ['NON_BOZZA', { _stato: FIRStato.EMESSO, _firmePresenti: true }],
+        ['FIRMATO', { _firmePresenti: true, _inAttesaFirmaProduttore: true }],
+        ['IN_ATTESA_FIRMA_PRODUTTORE', { _inAttesaFirmaProduttore: true }],
+      ])('motivo %s: FirNonModificabileError', (motivo, campi) => {
+        const fir = imposta(firBozza(), campi)
+        let errore: unknown
+        try {
+          fir.modificaBozza(contenutoDi(fir))
+        } catch (e) {
+          errore = e
+        }
+        expect(errore).toBeInstanceOf(FirNonModificabileError)
+        expect((errore as FirNonModificabileError).motivo).toBe(motivo)
+      })
+
+      it('contenuto identico: [] e nessuna scrittura', () => {
+        const fir = firBozza()
+        expect(fir.modificaBozza(contenutoDi(fir))).toEqual([])
+        expect(fir.tratteModificate).toBe(false)
+      })
+
+      it('restituisce i nomi dei campi cambiati e li scrive', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        const campi = fir.modificaBozza({
+          ...base,
+          rifiuto: {
+            ...base.rifiuto,
+            cerCode: '20 01 21*',
+            quantita: 200,
+            unitaMisura: UnitaMisura.TONNELLATE,
+            statoFisico: 'Solido',
+            caratteristichePericolo: 'HP3',
+            numeroColli: 5,
+            codiceOperazione: 'R3',
+          },
+          annotazioni: 'altre note',
+          provenienza: ProvenienzaRifiuto.URBANO,
+          tipoTrattaPrincipale: TipoTratta.FERROVIARIA,
+        })
+        expect(campi).toEqual([
+          'cerCode',
+          'quantita',
+          'unitaMisura',
+          'statoFisico',
+          'caratteristichePericolo',
+          'numeroColli',
+          'codiceOperazione',
+          'annotazioni',
+          'provenienza',
+          'tipoTrattaPrincipale',
+        ])
+        expect(fir.rifiuto.cerCode).toBe('20 01 21*')
+        expect(fir.rifiuto.quantita.valore).toBe(200)
+        expect(fir.rifiuto.quantita.unitaMisura).toBe(UnitaMisura.TONNELLATE)
+        expect(fir.annotazioni).toBe('altre note')
+        expect(fir.provenienza).toBe(ProvenienzaRifiuto.URBANO)
+        expect(fir.tipoTrattaPrincipale).toBe(TipoTratta.FERROVIARIA)
+      })
+
+      it('stringa vuota, null e undefined dei facoltativi sono equivalenti: nessun cambiamento', () => {
+        const fir = firBozza(
+          { annotazioni: undefined },
+          {
+            statoFisico: undefined,
+            caratteristichePericolo: undefined,
+            numeroColli: undefined,
+            codiceOperazione: undefined,
+          }
+        )
+        const base = contenutoDi(fir)
+        expect(
+          fir.modificaBozza({
+            ...base,
+            annotazioni: '',
+            rifiuto: {
+              ...base.rifiuto,
+              statoFisico: '',
+              caratteristichePericolo: null,
+              numeroColli: null,
+              codiceOperazione: '',
+            },
+          })
+        ).toEqual([])
+      })
+
+      it('svuotare annotazioni, HP e colli è un cambiamento e riporta i campi a vuoto', () => {
+        const fir = firBozza({}, { caratteristichePericolo: 'HP14' })
+        const base = contenutoDi(fir)
+        const campi = fir.modificaBozza({
+          ...base,
+          annotazioni: '',
+          rifiuto: { ...base.rifiuto, caratteristichePericolo: '', numeroColli: undefined },
+        })
+        expect(campi).toEqual(['caratteristichePericolo', 'numeroColli', 'annotazioni'])
+        expect(fir.annotazioni).toBeNull()
+        expect(fir.rifiuto.caratteristichePericolo).toBeUndefined()
+        expect(fir.rifiuto.numeroColli).toBeUndefined()
+      })
+
+      it('quantità <= 0: errore di dominio e nessun campo cambiato', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        expect(() =>
+          fir.modificaBozza({
+            ...base,
+            annotazioni: 'x',
+            rifiuto: { ...base.rifiuto, quantita: 0 },
+          })
+        ).toThrow(InvalidQuantityError)
+        expect(fir.annotazioni).toBe('note')
+        expect(fir.rifiuto.quantita.valore).toBe(120)
+      })
+
+      it('quantità non numerica: errore di dominio', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        expect(() =>
+          fir.modificaBozza({ ...base, rifiuto: { ...base.rifiuto, quantita: NaN } })
+        ).toThrow(DomainError)
+      })
+
+      it('cambio di parte: id e snapshot sostituiti, solo quella parte segnalata', () => {
+        const fir = firBozza()
+        const campi = fir.modificaBozza(
+          contenutoDi(fir, { destinatarioId: 'd-2', destinatario: parte('d-2') })
+        )
+        expect(campi).toEqual(['destinatario'])
+        expect(fir.destinatarioId).toBe('d-2')
+        expect(fir.destinatario?.registroId).toBe('d-2')
+        expect(fir.produttore?.registroId).toBe('p-1')
+      })
+
+      it('stesso id ma snapshot diverso è un cambiamento della parte', () => {
+        const fir = firBozza()
+        expect(
+          fir.modificaBozza(contenutoDi(fir, { produttore: parte('p-1', 'Nuovo nome') }))
+        ).toEqual(['produttore'])
+      })
+
+      it('tratte: elenco identico lascia le righe esistenti, elenco diverso le sostituisce', () => {
+        const tratta = {
+          ordine: 1,
+          tipoTratta: TipoTratta.TERRESTRE,
+          trasportatoreId: 'ta-1',
+          denominazione: 'A',
+          mezzo: 'AB123CD',
+        }
+        const fir = firBozza({ trasportatoriAggiuntivi: [tratta] })
+        // stessa chiave (trasportatoreId, tipo, ordine) ma denominazione diversa: invariato
+        expect(
+          fir.modificaBozza(
+            contenutoDi(fir, {
+              trasportatoriAggiuntivi: [{ ...tratta, denominazione: 'B', mezzo: undefined }],
+            })
+          )
+        ).toEqual([])
+        expect(fir.tratteModificate).toBe(false)
+        expect(fir.trasportatoriAggiuntivi[0].mezzo).toBe('AB123CD')
+
+        const nuove = [{ ...tratta, trasportatoreId: 'ta-2', denominazione: 'C', mezzo: undefined }]
+        expect(fir.modificaBozza(contenutoDi(fir, { trasportatoriAggiuntivi: nuove }))).toEqual([
+          'trasportatoriAggiuntivi',
+        ])
+        expect(fir.tratteModificate).toBe(true)
+        expect(fir.trasportatoriAggiuntivi).toEqual(nuove)
+        // la chiamata seguente senza cambiamenti azzera il segnale
+        fir.modificaBozza(contenutoDi(fir))
+        expect(fir.tratteModificate).toBe(false)
+      })
+
+      it('copia l elenco delle tratte: modificare l array passato dopo non cambia il FIR', () => {
+        const fir = firBozza()
+        const nuove = [
+          {
+            ordine: 1,
+            tipoTratta: TipoTratta.MARITTIMA,
+            trasportatoreId: 'ta-9',
+            denominazione: 'Nave',
+          },
+        ]
+        fir.modificaBozza(contenutoDi(fir, { trasportatoriAggiuntivi: nuove }))
+        nuove.push({ ...nuove[0], ordine: 2, trasportatoreId: 'ta-10' })
+        expect(fir.trasportatoriAggiuntivi).toHaveLength(1)
+        expect(fir.trasportatoriAggiuntivi).not.toBe(nuove)
+      })
+
+      it('conserva descrizione, categoria e tipoOperazione del rifiuto', () => {
+        const fir = firBozza()
+        const base = contenutoDi(fir)
+        fir.modificaBozza({
+          ...base,
+          rifiuto: { ...base.rifiuto, cerCode: '20 01 21*', quantita: 5 },
+        })
+        expect(fir.rifiuto.descrizione).toBe('Oli esausti')
+        expect(fir.rifiuto.categoria).toBe('SPECIALE')
+        expect(fir.rifiuto.tipoOperazione).toBe('RECOVERY')
+      })
+
+      it('non tocca stato, numero, firme, campi RENTRI, tenant, creatore, id, data di creazione', () => {
+        const fir = firBozza()
+        const foto = (): object => ({
+          id: fir.id,
+          stato: fir.stato,
+          numero: fir.numeroProgressivo,
+          firme: fir.firme,
+          rentri: fir.rentriNumeroFir,
+          sync: fir.rentriSyncStatus,
+          tenant: fir.tenantId,
+          creatore: fir.creatoDaUserId,
+          creato: fir.createdAt,
+          versione: fir.versione,
+        })
+        const prima = foto()
+        const base = contenutoDi(fir)
+        fir.modificaBozza({
+          ...base,
+          rifiuto: { ...base.rifiuto, quantita: 999 },
+          annotazioni: 'z',
+        })
+        expect(foto()).toEqual(prima)
       })
     })
   })

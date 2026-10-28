@@ -1,6 +1,10 @@
 import { DOMParser } from '@xmldom/xmldom'
 import xpath from 'xpath'
 import forge from 'node-forge'
+import * as crypto from 'crypto'
+
+const ALGORITMO_RSA_SHA256 = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+const ALGORITMO_ECDSA_SHA256 = 'http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256'
 
 export interface RiferimentoXades {
   uri: string
@@ -16,12 +20,17 @@ export interface FirmaXades {
    * Sottostringa grezza `<ds:SignedInfo>...</ds:SignedInfo>` cosi' come
    * appare nel documento sorgente. Usata per verificare `SignatureValue`:
    * non e' una canonicalizzazione XML C14N conforme allo standard
-   * XAdES/ETSI EN 319 132 (fuori scopo per una fake), ma una firma RSA reale
+   * XAdES/ETSI EN 319 132 (fuori scopo per una fake), ma una firma (RSA o ECDSA) reale
    * sui byte di questa sottostringa, sufficiente a rilevare manomissioni del
    * contenuto firmato o della firma stessa.
    */
   signedInfoRaw: string
   signatureValue?: string
+  /**
+   * `ds:SignatureMethod/@Algorithm`. Assente nelle firme RSA storiche (che non
+   * dichiaravano il metodo): in tal caso vale rsa-sha256.
+   */
+  algoritmoFirma?: string
   certificatoBase64?: string
 }
 
@@ -50,6 +59,7 @@ export function estraiRiferimenti(nomeFile: string, xml: string): FirmaXades {
 
   const signatureValueNodi = seleziona('//ds:SignatureValue', documento as unknown as Node) as Node[]
   const certNodi = seleziona('//ds:X509Certificate', documento as unknown as Node) as Node[]
+  const metodoNodi = seleziona('//ds:SignedInfo/ds:SignatureMethod', documento as unknown as Node) as Element[]
 
   return {
     nomeFile,
@@ -58,6 +68,7 @@ export function estraiRiferimenti(nomeFile: string, xml: string): FirmaXades {
     signedInfoRaw: estraiSottostringaSignedInfo(xml),
     signatureValue: testoNodo(signatureValueNodi[0])?.replace(/\s+/g, ''),
     certificatoBase64: testoNodo(certNodi[0])?.replace(/\s+/g, ''),
+    algoritmoFirma: metodoNodi[0]?.getAttribute('Algorithm') || undefined,
   }
 }
 
@@ -154,15 +165,38 @@ export function verificaFirmaCrittografica(firma: FirmaXades): EsitoRegola {
   }
 
   try {
+    const algoritmo = firma.algoritmoFirma ?? ALGORITMO_RSA_SHA256
     const pem = `-----BEGIN CERTIFICATE-----\n${firma.certificatoBase64}\n-----END CERTIFICATE-----`
-    const certificato = forge.pki.certificateFromPem(pem)
-    const chiavePubblica = certificato.publicKey as forge.pki.rsa.PublicKey
+    const chiavePubblica = new crypto.X509Certificate(pem).publicKey
+    const dati = Buffer.from(firma.signedInfoRaw, 'utf8')
+    const firmaBytes = Buffer.from(firma.signatureValue, 'base64')
 
-    const md = forge.md.sha256.create()
-    md.update(firma.signedInfoRaw, 'utf8')
-    const firmaBytes = forge.util.decode64(firma.signatureValue)
+    let valida: boolean
+    if (algoritmo === ALGORITMO_ECDSA_SHA256) {
+      // ecdsa-sha256 solo con certificato EC; SignatureValue in IEEE P1363
+      // (r||s, 64 byte per P-256) come vuole XMLDSig: il DER ASN.1 e' rifiutato.
+      if (chiavePubblica.asymmetricKeyType !== 'ec') {
+        return {
+          valido: false,
+          motivo: `firma ${firma.nomeFile}: ecdsa-sha256 dichiarato ma il certificato non e' EC`,
+        }
+      }
+      valida = crypto.verify('sha256', dati, { key: chiavePubblica, dsaEncoding: 'ieee-p1363' }, firmaBytes)
+    } else if (algoritmo === ALGORITMO_RSA_SHA256) {
+      if (chiavePubblica.asymmetricKeyType !== 'rsa') {
+        return {
+          valido: false,
+          motivo: `firma ${firma.nomeFile}: rsa-sha256 dichiarato ma il certificato non e' RSA`,
+        }
+      }
+      valida = crypto.verify('sha256', dati, chiavePubblica, firmaBytes)
+    } else {
+      return {
+        valido: false,
+        motivo: `firma ${firma.nomeFile}: algoritmo di firma non supportato (${algoritmo})`,
+      }
+    }
 
-    const valida = chiavePubblica.verify(md.digest().bytes(), firmaBytes)
     if (!valida) {
       return { valido: false, motivo: `firma ${firma.nomeFile}: verifica crittografica fallita` }
     }

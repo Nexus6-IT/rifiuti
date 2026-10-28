@@ -10,6 +10,8 @@ export interface DiagnosticaCertificato {
   scadenza: string | null
   giorniAllaScadenza: number | null
   livelloAvviso: LivelloAvvisoCertificato
+  /** Da dove verrebbe la credenziale di firma per l'azienda (sola lettura). */
+  origineCredenziale: 'tenant' | 'env' | 'nessuna'
 }
 
 export interface DiagnosticaTrasmissione {
