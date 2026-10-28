@@ -78,6 +78,16 @@ describe('operazionePreliminare', () => {
     ).toBeNull()
   })
 
+  it('causale senza operazione e nessun codice nel movimento: la lettera viene dal FIR', () => {
+    // CONFERIMENTO_TRASPORTATORE non indica R o D: decide il codice del FIR (terzo gradino).
+    expect(
+      operazionePreliminare(catalogo, scarico({ fir: fir({ wasteOperationCode: 'R13' }) }))
+    ).toBe('R13')
+    expect(
+      operazionePreliminare(catalogo, scarico({ fir: fir({ wasteOperationCode: 'D15' }) }))
+    ).toBe('D15')
+  })
+
   it('il codice del movimento vince sulla causale', () => {
     expect(
       operazionePreliminare(
