@@ -1,4 +1,5 @@
 import { limitiAnnoMud } from '../mud/aggregazione/mud-regole'
+import { chiaveMovimento } from '../mud/aggregazione/mud-integrazioni'
 import { WHERE_VIGENTE } from '../../domain/waste-movement/vigenza'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import type { FirBilancio, MovimentoBilancio } from './complementi-bilancio'
@@ -16,6 +17,9 @@ const SELECT_MOVIMENTO = {
   unit: true,
   operationCode: true,
   firId: true,
+  progressiveNumber: true,
+  progressiveYear: true,
+  registroId: true,
 } as const
 
 const SELECT_FIR = {
@@ -59,6 +63,7 @@ export async function leggiMovimentiAnno(
     quantity: Number(r.quantity),
     unit: r.unit,
     operationCode: r.operationCode,
+    chiave: chiaveMovimento(r.progressiveYear, r.progressiveNumber, r.registroId),
     fir: r.firId ? (firPerId.get(r.firId) ?? null) : null,
   }))
 }

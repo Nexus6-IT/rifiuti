@@ -1,6 +1,7 @@
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import type { CatalogoCausali } from '../../domain/waste-movement/catalogo-causali'
 import { convertiInKg } from '../../domain/waste-movement/unita-misura-registro'
+import { collegabilitaFir } from '../../domain/fir/stati-fir'
 import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 import type { MudAggregato } from '../mud/aggregazione/mud-aggregazione.service'
 import {
@@ -30,10 +31,13 @@ export interface SintesiMud {
   perCer: VoceCerSintesi[]
   pericolosiKg: number
   /**
-   * Quota con recupero o smaltimento dedotto o non indicato. `movimenti` li conta tutti;
-   * `senzaKg` sono quelli in litri o m³, che il MUD qui non converte: i loro kg mancano da `kg`.
+   * Quota con recupero o smaltimento dedotto o non indicato. `movimenti` li conta tutti; `kg`
+   * comprende i movimenti in litri o m³ convertiti dal MUD col peso specifico. `senzaKg` sono i
+   * movimenti senza kg nemmeno così: i loro kg non sono compresi in `kg`.
    */
   daVerificare: { kg: number; movimenti: number; senzaKg: number }
+  /** Kg per movimento convertito col peso specifico, per chiave (anno/numero@registro). */
+  convertitiPerChiave: Record<string, number>
   /** Movimenti di UNITA_NON_DI_MASSA. */
   nonConvertiti: number
   /** Kg di CONVERTITO_CON_PESO_SPECIFICO. */
@@ -84,6 +88,10 @@ export function sintesiDalMud(
   const daVerificare = movimentiDi(a.controlli, CODICI_RIPARTIZIONE_RD)
   const nonConvertiti = movimentiDi(a.controlli, ['UNITA_NON_DI_MASSA'])
   const stimati = movimentiDi(a.controlli, ['CONVERTITO_CON_PESO_SPECIFICO'])
+  const convertitiPerChiave: Record<string, number> = {}
+  for (const m of stimati) convertitiPerChiave[chiave(m)] = m.kg ?? 0
+  const kgDi = (m: MudMovimentoSegnalato): number | null =>
+    m.kg ?? convertitiPerChiave[chiave(m)] ?? null
   const giacenze = a.controlli.find(c => c.codice === 'GIACENZE_NON_CALCOLATE')
   const riepilogo = riepilogaAvvisi(a.controlli.filter(c => c.codice !== 'GIACENZE_NON_CALCOLATE'))
 
@@ -94,10 +102,11 @@ export function sintesiDalMud(
     perCer,
     pericolosiKg: arrotondaGrammo(pericolosi),
     daVerificare: {
-      kg: arrotondaGrammo(daVerificare.reduce((s, m) => s + (m.kg ?? 0), 0)),
+      kg: arrotondaGrammo(daVerificare.reduce((s, m) => s + (kgDi(m) ?? 0), 0)),
       movimenti: daVerificare.length,
-      senzaKg: daVerificare.filter(m => m.kg === null).length,
+      senzaKg: daVerificare.filter(m => kgDi(m) === null).length,
     },
+    convertitiPerChiave,
     nonConvertiti: nonConvertiti.length,
     stimatiKg: arrotondaGrammo(stimati.reduce((s, m) => s + (m.kg ?? 0), 0)),
     esclusi: { kg: riepilogo.kgInMeno, nonQuantificati: riepilogo.movimentiNonQuantificati },
@@ -106,20 +115,26 @@ export function sintesiDalMud(
 }
 
 /**
- * Kg grezzi degli scarichi vigenti avviati a terzi entro `al` (giorno italiano), solo unità di
- * massa. Non toglie i doppi dei FIR registrati a cavallo d'anno né le ricopie, come fa il MUD:
- * serve solo al confronto con recupero + smaltimento del MUD.
+ * Kg degli scarichi vigenti avviati a terzi entro `al` (giorno italiano), senza FIR annullati o in
+ * bozza e con litri e m³ convertiti come nel MUD. Non toglie i doppi dei FIR a cavallo d'anno né le
+ * ricopie: serve solo al confronto con recupero + smaltimento del MUD.
  */
 export function scarichiGrezziKg(
   catalogo: CatalogoCausali,
   movimenti: MovimentoBilancio[],
-  al: string
+  al: string,
+  convertitiPerChiave: Record<string, number> = {}
 ): number {
   let totale = 0
   for (const m of movimenti) {
     if (m.type !== 'SCARICO' || classificaMovimento(catalogo, m) !== 'AVVIATO') continue
     if (giornoItaliano(m.movementDate) > al) continue
-    const kg = convertiInKg(m.quantity, m.unit)
+    // Come il MUD: un FIR annullato o in bozza esclude lo scarico
+    if (m.fir && !collegabilitaFir(m.fir).collegabile) continue
+    // Litri e m³ contano coi kg che il MUD ha ricavato dal peso specifico, se li ha ricavati
+    const kg =
+      convertiInKg(m.quantity, m.unit) ??
+      (m.chiave ? (convertitiPerChiave[m.chiave] ?? null) : null)
     if (kg !== null) totale += kg
   }
   return arrotondaGrammo(totale)

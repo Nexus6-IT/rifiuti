@@ -64,7 +64,7 @@ describe('sintesiDalMud', () => {
     expect(s.daVerificare).toEqual({ kg: 150, movimenti: 2, senzaKg: 0 })
   })
 
-  it('da verificare: i movimenti in litri hanno kg nullo e sono contati a parte', () => {
+  it('da verificare: i movimenti in litri senza peso specifico sono contati a parte', () => {
     const s = sintesiDalMud(
       agg(
         [],
@@ -75,6 +75,21 @@ describe('sintesiDalMud', () => {
       )
     )
     expect(s.daVerificare).toEqual({ kg: 100, movimenti: 2, senzaKg: 1 })
+  })
+
+  it('da verificare: i litri convertiti dal MUD col peso specifico hanno i loro kg', () => {
+    const litri = mov(2, 300, 'l')
+    const s = sintesiDalMud(
+      agg(
+        [],
+        [
+          controlliMud.operazioneNonIndicata(mov(1, 100)),
+          controlliMud.operazioneNonIndicata(litri),
+          controlliMud.convertitoConPesoSpecifico('150101', 'l', 0.5, [litri], false),
+        ]
+      )
+    )
+    expect(s.daVerificare).toEqual({ kg: 250, movimenti: 2, senzaKg: 0 })
   })
 
   it('non convertiti: movimenti di UNITA_NON_DI_MASSA', () => {
@@ -116,9 +131,9 @@ describe('sintesiDalMud', () => {
 
 describe('confronto degli scarichi grezzi con il MUD', () => {
   const catalogo = new CatalogoCausali(righeCausaliSistema(), [])
-  const scarico = (quantity: number, unit = 'kg', type = 'SCARICO'): MovimentoBilancio =>
+  const scarico = (quantity: number, unit = 'kg', extra: any = {}): MovimentoBilancio =>
     ({
-      type,
+      type: 'SCARICO',
       causale: 'CONFERIMENTO_TRASPORTATORE',
       causaleAziendaId: null,
       movementDate: new Date('2025-05-10T10:00:00Z'),
@@ -126,15 +141,45 @@ describe('confronto degli scarichi grezzi con il MUD', () => {
       unit,
       operationCode: null,
       fir: null,
+      ...extra,
     }) as any
 
-  it('somma i soli scarichi avviati in unità di massa entro la data', () => {
+  it('somma i soli scarichi avviati entro la data', () => {
     const kg = scarichiGrezziKg(
       catalogo,
-      [scarico(100), scarico(1, 't'), scarico(50, 'l'), scarico(70, 'kg', 'CARICO')],
+      [scarico(100), scarico(1, 't'), scarico(50, 'l'), scarico(70, 'kg', { type: 'CARICO' })],
       '2025-12-31'
     )
     expect(kg).toBe(1100)
+  })
+
+  it('i litri convertiti dal MUD contano coi suoi kg: la lacuna non scatta', () => {
+    const movimenti = [scarico(100), scarico(300, 'l', { chiave: '2025/2@reg' })]
+    const grezzo = scarichiGrezziKg(catalogo, movimenti, '2025-12-31', { '2025/2@reg': 150 })
+    expect(grezzo).toBe(250)
+    expect(scarichiCoincidono(grezzo, 250)).toBe(true)
+  })
+
+  it('uno scarico con FIR annullato o in bozza non conta: la lacuna non scatta', () => {
+    const fir = (status: string) => ({
+      id: 'f',
+      status,
+      firNumber: null,
+      rentriNumeroFir: null,
+      rentriStatoFormulario: null,
+      wasteOperationCode: null,
+    })
+    const grezzo = scarichiGrezziKg(
+      catalogo,
+      [
+        scarico(100),
+        scarico(40, 'kg', { fir: fir('CANCELLED') }),
+        scarico(60, 'kg', { fir: fir('DRAFT') }),
+      ],
+      '2025-12-31'
+    )
+    expect(grezzo).toBe(100)
+    expect(scarichiCoincidono(grezzo, 100)).toBe(true)
   })
 
   it('coincidono quando il grezzo è uguale a R + D', () => {

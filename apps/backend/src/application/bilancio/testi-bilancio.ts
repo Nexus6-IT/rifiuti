@@ -91,9 +91,9 @@ export const lacune = {
   operazioneDaVerificare(kg: number, movimenti: number, senzaKg = 0): LacunaBilancio {
     let testo = `${tonnellate(kg)} (${movimenti === 1 ? '1 movimento' : `${movimenti} movimenti`}) hanno recupero o smaltimento dedotto dal FIR o non indicato: sono la quota da verificare.`
     if (senzaKg === 1) {
-      testo += ' Un movimento in litri, m³ o altra unità non ha i kg: non è in questa quota.'
+      testo += ' Di questi, uno non ha i kg: i suoi kg non sono compresi in questa cifra.'
     } else if (senzaKg > 1) {
-      testo += ` ${senzaKg} movimenti in litri, m³ o altra unità non hanno i kg: non sono in questa quota.`
+      testo += ` Di questi, ${senzaKg} non hanno i kg: i loro kg non sono compresi in questa cifra.`
     }
     return { blocco: 'DESTINAZIONE', codice: 'OPERAZIONE_DA_VERIFICARE', testo }
   },
@@ -102,7 +102,7 @@ export const lacune = {
     return {
       blocco: 'DESTINAZIONE',
       codice: 'SCARICHI_NON_RICONCILIATI',
-      testo: `Gli scarichi vigenti avviati a terzi sommano ${tonnellate(grezzoKg)} nel registro, mentre recupero e smaltimento del MUD sommano ${tonnellate(mudKg)} (il MUD toglie i doppi dello stesso FIR e le ricopie): la quota in operazioni preliminari (R13/D15) e il confronto con l'anno precedente sono una stima.`,
+      testo: `Gli scarichi vigenti avviati a terzi sommano ${tonnellate(grezzoKg)} nel registro e non coincidono con recupero e smaltimento del MUD (${tonnellate(mudKg)}), che applica le sue regole di deduplica e di esclusione: la quota in operazioni preliminari (R13/D15) e il confronto con l'anno precedente sono una stima.`,
     }
   },
 

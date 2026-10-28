@@ -74,10 +74,10 @@ describe('lacune', () => {
       '2,5 t (3 movimenti) hanno recupero o smaltimento dedotto dal FIR o non indicato: sono la quota da verificare.'
     )
     expect(lacune.operazioneDaVerificare(500, 3, 1).testo).toBe(
-      '0,5 t (3 movimenti) hanno recupero o smaltimento dedotto dal FIR o non indicato: sono la quota da verificare. Un movimento in litri, m³ o altra unità non ha i kg: non è in questa quota.'
+      '0,5 t (3 movimenti) hanno recupero o smaltimento dedotto dal FIR o non indicato: sono la quota da verificare. Di questi, uno non ha i kg: i suoi kg non sono compresi in questa cifra.'
     )
     expect(lacune.operazioneDaVerificare(500, 5, 2).testo).toContain(
-      ' 2 movimenti in litri, m³ o altra unità non hanno i kg: non sono in questa quota.'
+      ' Di questi, 2 non hanno i kg: i loro kg non sono compresi in questa cifra.'
     )
   })
 
@@ -86,7 +86,7 @@ describe('lacune', () => {
       blocco: 'DESTINAZIONE',
       codice: 'SCARICHI_NON_RICONCILIATI',
       testo:
-        "Gli scarichi vigenti avviati a terzi sommano 13 t nel registro, mentre recupero e smaltimento del MUD sommano 11 t (il MUD toglie i doppi dello stesso FIR e le ricopie): la quota in operazioni preliminari (R13/D15) e il confronto con l'anno precedente sono una stima.",
+        "Gli scarichi vigenti avviati a terzi sommano 13 t nel registro e non coincidono con recupero e smaltimento del MUD (11 t), che applica le sue regole di deduplica e di esclusione: la quota in operazioni preliminari (R13/D15) e il confronto con l'anno precedente sono una stima.",
     })
   })
 

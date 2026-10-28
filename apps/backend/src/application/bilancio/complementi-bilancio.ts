@@ -21,6 +21,8 @@ export interface MovimentoBilancio extends MovimentoClassificabile {
   unit: string | null
   operationCode: string | null
   fir: FirBilancio | null
+  /** Chiave del movimento come nei controlli del MUD (anno/numero@registro). */
+  chiave?: string
 }
 
 const arrotondaAlGrammo = (kg: number): number => Math.round(kg * 1000) / 1000
