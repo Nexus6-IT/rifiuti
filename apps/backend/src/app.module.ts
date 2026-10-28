@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module'
 import { PrismaModule } from './infrastructure/persistence/prisma.module'
 import { RegistryModule } from './api/registry/registry.module'
 import { FIRModule } from './fir/fir.module'
+import { PiazzaleModule } from './application/piazzale/piazzale.module'
 import { CERModule } from './cer/cer.module'
 
 // New modules - Phase 6-13
@@ -105,6 +106,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     // Domain modules
     RegistryModule,
     FIRModule,
+    PiazzaleModule,
     CERModule,
 
     // Analytics & Reporting
