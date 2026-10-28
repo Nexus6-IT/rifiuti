@@ -74,6 +74,10 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'tutte',
     motivo: 'la catena degli hash comprende ogni riga, vigente o no',
   },
+  'application/bilancio/lettore-movimenti-bilancio.ts': {
+    scelta: 'vigenti',
+    motivo: "movimenti dell'anno del bilancio: stessa vigenza del MUD, così i numeri coincidono",
+  },
   'infrastructure/rentri/rentri-unita-locale.service.ts': {
     scelta: 'tutte',
     motivo: 'una sede con qualunque riga nel registro non si elimina',
