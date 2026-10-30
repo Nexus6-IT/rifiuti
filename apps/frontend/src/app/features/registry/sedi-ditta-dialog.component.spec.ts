@@ -46,8 +46,17 @@ describe('SediDittaDialogComponent', () => {
   let fixture: ComponentFixture<SediDittaDialogComponent>
   let component: SediDittaDialogComponent
   let registry: jasmine.SpyObj<RegistryService>
-  const doc = document.body
-  const q = <T extends HTMLElement>(sel: string) => doc.querySelector(sel) as T | null
+  /** Il dialog aperto (PrimeNG lo monta nel body): le query restano dentro di lui, non su tutto il documento. */
+  const dialog = (): ParentNode => document.querySelector('.p-dialog') ?? document.body
+  const q = <T extends HTMLElement>(sel: string) => dialog().querySelector(sel) as T | null
+  /** Attende una condizione con un tetto (niente singolo setTimeout: sotto carico il focus arriva più tardi). */
+  async function attendi(condizione: () => boolean, tettoMs = 2000): Promise<void> {
+    const fine = Date.now() + tettoMs
+    while (!condizione() && Date.now() < fine) {
+      await new Promise(r => setTimeout(r, 10))
+      fixture.detectChanges()
+    }
+  }
 
   async function apri(puoGestire = true) {
     fixture.componentRef.setInput('dittaId', 'd1')
@@ -91,21 +100,21 @@ describe('SediDittaDialogComponent', () => {
 
   afterEach(() => {
     fixture.destroy()
-    doc.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
+    document.querySelectorAll('.p-dialog-mask, .p-dialog, .p-overlay').forEach(e => e.remove())
   })
 
   it('si apre con le sedi della ditta (anche le disattivate, segnalate) e il titolo con la ragione sociale', async () => {
     await apri()
     expect(registry.getDitta).toHaveBeenCalledOnceWith('d1')
     expect(q('.p-dialog-title')!.textContent).toContain('Sedi di ACME S.r.l.')
-    expect(doc.querySelectorAll('li.sede').length).toBe(3)
+    expect(dialog().querySelectorAll('li.sede').length).toBe(3)
     expect(q('[data-testid="sede-s1"]')!.textContent).toContain('Principale')
     expect(q('[data-testid="sede-s3"]')!.textContent).toContain('Disattivata')
   })
 
   it('chi non può gestire le anagrafiche le legge soltanto', async () => {
     await apri(false)
-    expect(doc.querySelectorAll('li.sede').length).toBe(3)
+    expect(dialog().querySelectorAll('li.sede').length).toBe(3)
     expect(q('[data-testid="sede-aggiungi"]')).toBeNull()
     expect(q('[data-testid="sede-modifica-s2"]')).toBeNull()
   })
@@ -242,12 +251,16 @@ describe('SediDittaDialogComponent', () => {
     fixture.detectChanges()
     await fixture.whenStable() // NgModel scrive il valore iniziale in un microtask
     fixture.detectChanges()
-    await new Promise(r => setTimeout(r))
+    await attendi(() => document.activeElement?.id === 'sede-denominazione')
     expect(document.activeElement?.id).toBe('sede-denominazione')
 
     q<HTMLButtonElement>('[data-testid="sede-annulla"] button')!.click()
     fixture.detectChanges()
-    await new Promise(r => setTimeout(r))
+    await attendi(
+      () =>
+        !q('[data-testid="sede-modulo"]') &&
+        document.activeElement === q('[data-testid="sede-aggiungi"] button')
+    )
     fixture.detectChanges()
     expect(q('[data-testid="sede-modulo"]')).toBeNull()
     expect(document.activeElement).toBe(q('[data-testid="sede-aggiungi"] button'))
@@ -257,7 +270,7 @@ describe('SediDittaDialogComponent', () => {
     await apri()
     const chiusure: boolean[] = []
     component.visibleChange.subscribe(v => chiusure.push(v))
-    doc.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     fixture.detectChanges()
     expect(chiusure).toContain(false)
   })

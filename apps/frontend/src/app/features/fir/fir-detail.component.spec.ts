@@ -47,7 +47,7 @@ describe('FirDetailComponent', () => {
     trasportatoreId: 't1',
     destinatarioId: 'd1',
     produttore: { ragioneSociale: 'Acme SRL', partitaIva: '12345678903' },
-    trasportatore: { ragioneSociale: 'Trasporti SRL', partitaIva: '22345678901' },
+    trasportatore: { ragioneSociale: 'Trasporti SRL', partitaIva: '22345678902' },
     destinatario: { ragioneSociale: 'Impianto SRL', partitaIva: '32345678901' },
     rifiuto: { cerCode: '150101', quantita: 10, unitaMisura: 'kg' },
     createdAt: '2026-07-01T10:00:00.000Z',
@@ -196,7 +196,7 @@ describe('FirDetailComponent', () => {
           partitaIva: '12345678903',
           codiceFiscale: '12345678903',
         },
-        trasportatore: { ragioneSociale: 'Trasporti SRL', partitaIva: '22345678901' },
+        trasportatore: { ragioneSociale: 'Trasporti SRL', partitaIva: '22345678902' },
         destinatario: {
           ragioneSociale: 'Rossi Mario',
           partitaIva: '',
@@ -209,7 +209,7 @@ describe('FirDetailComponent', () => {
     const el: HTMLElement = fixture.nativeElement
     const testo = (id: string) => el.querySelector(`[data-testid="${id}"]`)?.textContent ?? ''
     expect(testo('fir-detail-produttore')).toContain('P.IVA 12345678903 · C.F. 12345678903')
-    expect(testo('fir-detail-trasportatore')).toContain('P.IVA 22345678901')
+    expect(testo('fir-detail-trasportatore')).toContain('P.IVA 22345678902')
     expect(testo('fir-detail-trasportatore')).not.toContain('C.F.')
     expect(testo('fir-detail-destinatario')).toContain('C.F. RSSMRA80A01H501U')
     expect(testo('fir-detail-destinatario')).not.toContain('P.IVA')

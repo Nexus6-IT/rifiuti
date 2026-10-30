@@ -1483,10 +1483,6 @@ export class FirListComponent implements OnInit {
   }
 
   /**
-   * Carica le anagrafiche per i dropdown ricercabili.
-   * La ricerca dei dropdown è client-side sulle opzioni caricate (limit alto).
-   */
-  /**
    * Aggiorna la tendina della sede per produttore o destinatario. `azzera` = true quando cambia il
    * ruolo scelto (la sede torna al valore iniziale); false quando si ricaricano solo le anagrafiche.
    */
@@ -1514,6 +1510,7 @@ export class FirListComponent implements OnInit {
         if (token !== this.tokenSedi[ruolo]) return // nel frattempo è cambiato il ruolo
         sediSignal.set(
           ditta.sedi
+            // La sede attuale del FIR resta in elenco anche se disattivata: l'utente vede dov'è il FIR
             .filter(sede => sede.attiva || sede.id === this.sedeIniziale[ruolo])
             .map(sede => ({ id: sede.id, etichetta: etichettaSede(sede) }))
         )
@@ -1544,6 +1541,10 @@ export class FirListComponent implements OnInit {
     this.sediDestinatario.set([])
   }
 
+  /**
+   * Carica le anagrafiche per i dropdown ricercabili.
+   * La ricerca dei dropdown è client-side sulle opzioni caricate (limit alto).
+   */
   loadAnagrafiche(): void {
     this.loadingAnagrafiche = true
     const limit = 200

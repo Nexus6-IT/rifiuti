@@ -237,7 +237,7 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
   const destinatarioScaduto = {
     id: 'd-scaduto',
     ragioneSociale: 'Impianto Scaduto SRL',
-    partitaIVA: '98765432109',
+    partitaIVA: '98765432103',
     sede: { via: 'Via Milano', civico: '2', cap: '20100', comune: 'Milano', provincia: 'MI' },
     numeroAutorizzazione: 'AUT-1',
     scadenzaAutorizzazione: '2020-01-01',
@@ -250,7 +250,7 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
   const destinatarioOk = {
     id: 'd-ok',
     ragioneSociale: 'Impianto Regolare SRL',
-    partitaIVA: '11122233344',
+    partitaIVA: '11122233346',
     sede: { via: 'Via Napoli', civico: '3', cap: '80100', comune: 'Napoli', provincia: 'NA' },
     numeroAutorizzazione: 'AUT-2',
     scadenzaAutorizzazione: '2099-01-01',
@@ -263,7 +263,7 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
   const destinatarioSenzaScadenza = {
     id: 'd-senza-dato',
     ragioneSociale: 'Impianto Senza Dato SRL',
-    partitaIVA: '55566677788',
+    partitaIVA: '55566677781',
     sede: { via: 'Via Torino', civico: '4', cap: '10100', comune: 'Torino', provincia: 'TO' },
     numeroAutorizzazione: 'AUT-3',
     // scadenzaAutorizzazione assente: anagrafica non aggiornata, non va
@@ -919,7 +919,7 @@ describe('FirListComponent — sede delle parti e codice fiscale (F2-10)', () =>
     registryService.getTrasportatori.and.returnValue(
       of({
         items: [
-          { id: 't1', ragioneSociale: 'Trasporti SRL', partitaIVA: '22345678901' },
+          { id: 't1', ragioneSociale: 'Trasporti SRL', partitaIVA: '22345678902' },
           {
             id: 't-priv',
             ragioneSociale: 'Verdi Luca',
