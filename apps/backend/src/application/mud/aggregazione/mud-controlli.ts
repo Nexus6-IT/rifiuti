@@ -62,6 +62,7 @@ export type MudCodiceControllo =
   | 'UNITA_LOCALE_SENZA_ADDETTI'
   | 'UNITA_LOCALI_PROVINCE_DIVERSE'
   | 'AUTORIZZAZIONI_SULLA_PRINCIPALE'
+  | 'SOSTITUTIVA_PIU_DICHIARAZIONI'
 
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
@@ -315,6 +316,18 @@ export const controlliMud = {
       messaggio: `L'azienda ha ${unita.length} unità locali attive (${unita.map(nome).join(', ')}): il file attribuisce all'unità locale ${nome(principale)} i movimenti di tutti i registri. Non presentare anche dichiarazioni separate per le altre sedi con le stesse quantità: risulterebbero dichiarate due volte. La ripartizione per sede non è ancora supportata.`,
     }
   },
+
+  /**
+   * File sostitutivo con più dichiarazioni (F1): la dichiarazione annullata era una sola (o,
+   * per la versione 2, non si conoscono i progressivi presentati), quindi solo la prima
+   * unità locale porta «annulla e sostituisce».
+   */
+  sostitutivaPiuDichiarazioni: (): MudEsitoControllo => ({
+    codice: 'SOSTITUTIVA_PIU_DICHIARAZIONI',
+    gravita: AVVISO,
+    messaggio:
+      "Il file sostituisce una dichiarazione presentata in precedenza ma contiene più unità locali: solo la dichiarazione dell'unità locale 1 risulta sostitutiva, le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD.",
+  }),
 
   convertitoConPesoSpecifico: (
     cerCode6: string,

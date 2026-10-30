@@ -13,6 +13,7 @@ import {
   avvisiCambianoQuantita,
   avvisiNonConfermati,
   codiciAvvisoDaConfermare,
+  controlliMud,
   haBloccanti,
   riepilogaAvvisi,
 } from '../aggregazione/mud-controlli'
@@ -80,7 +81,23 @@ export class MudExportService {
 
     // Righe dal registro e controlli (aggregazione, dichiarante e profilo).
     const aggregato = await this.aggregazione.aggrega(tenantId, year)
-    const controlli = aggregato.controlli
+    // Dichiarazione sostitutiva (A-W-04): se l'anno risulta presentato, o la presentazione è
+    // stata annullata per sostituirla, il file annulla e sostituisce quella comunicazione. La
+    // lettura è fuori dal lock del report: la voce registra comunque cosa dice il file.
+    const sostituita = dataComunicazioneSostituita(
+      await this.prisma.mUDReport.findUnique({
+        where: { tenantId_year: { tenantId, year } },
+        select: { status: true, submittedAt: true, reportData: true },
+      })
+    )
+
+    // File sostitutivo con più dichiarazioni (F1): avviso da confermare, non riservato agli
+    // amministratori (non cambia le quantità)
+    const nDichiarazioni = (aggregato.dichiarazioni ?? []).length
+    const controlli =
+      sostituita && nDichiarazioni > 1
+        ? [...aggregato.controlli, controlliMud.sostitutivaPiuDichiarazioni()]
+        : aggregato.controlli
     const riepilogo = riepilogaAvvisi(controlli)
 
     if (haBloccanti(controlli)) {
@@ -114,16 +131,6 @@ export class MudExportService {
         details: { controlli, avvisiDaConfermare, riepilogo },
       })
     }
-
-    // Dichiarazione sostitutiva (A-W-04): se l'anno risulta presentato, o la presentazione è
-    // stata annullata per sostituirla, il file annulla e sostituisce quella comunicazione. La
-    // lettura è fuori dal lock del report: la voce registra comunque cosa dice il file.
-    const sostituita = dataComunicazioneSostituita(
-      await this.prisma.mUDReport.findUnique({
-        where: { tenantId_year: { tenantId, year } },
-        select: { status: true, submittedAt: true, reportData: true },
-      })
-    )
 
     // Anagrafica (AA) e schede SA-AUT (AU): le autorizzazioni escono solo se registrate; per i
     // soggetti estranei alla gestione rifiuti la lista è vuota e il record AU non c'è.

@@ -328,6 +328,17 @@ describe('controlliMud', () => {
     expect(r.messaggio).not.toContain('mancano le dichiarazioni separate')
   })
 
+  it('SOSTITUTIVA_PIU_DICHIARAZIONI: avviso con il testo concordato (F1)', () => {
+    const r = controlliMud.sostitutivaPiuDichiarazioni()
+    expect(r.codice).toBe('SOSTITUTIVA_PIU_DICHIARAZIONI')
+    expect(r.gravita).toBe('AVVISO')
+    expect(r.messaggio).toBe(
+      "Il file sostituisce una dichiarazione presentata in precedenza ma contiene più unità locali: solo la dichiarazione dell'unità locale 1 risulta sostitutiva, le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD."
+    )
+    // non cambia le quantità: la conferma non è riservata agli amministratori
+    expect(riepilogaAvvisi([r]).cambianoQuantita).toBe(false)
+  })
+
   it('MUD: il testo contiene "tutti i registri" e "ripartizione per sede non è ancora supportata"', () => {
     const r = controlliMud.piuUnitaLocali([
       { denominazione: 'Sede', numIscrSito: 'OP1', principale: true },

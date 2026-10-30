@@ -596,6 +596,33 @@ describe.each([
       ])
     })
 
+    it('sostitutiva con più pacchetti: «annulla e sostituisce» solo nel pacchetto 1 (F1)', () => {
+      const dato = dueDichiarazioni()
+      dato.sostituisce = { dataComunicazione: new Date('2026-06-29T23:30:00Z') }
+      const aa = linee(tracciato.generate(dato)).filter(r => r.startsWith('AA;'))
+      expect(aa).toHaveLength(2)
+      expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+      expect(aa[1].endsWith(';0;00000000;')).toBe(true)
+      expect(aa[1]).toHaveLength(LUNGHEZZE.AA)
+    })
+
+    it('sostitutiva con un solo pacchetto: come prima, nel pacchetto unico', () => {
+      const dato = fixtureDatoCompleto(anno)
+      dato.sostituisce = { dataComunicazione: new Date('2026-06-29T23:30:00Z') }
+      dato.dichiarazioni = [
+        {
+          progressivoUnitaLocale: 1,
+          unitaLocale: null,
+          rifiuti: dato.rifiuti,
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+        },
+      ]
+      const aa = linee(tracciato.generate(dato)).filter(r => r.startsWith('AA;'))
+      expect(aa).toHaveLength(1)
+      expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+    })
+
     it('elenco di dichiarazioni vuoto: errore, mai un file senza pacchetti', () => {
       const dato = fixtureDatoCompleto(anno)
       dato.dichiarazioni = []
