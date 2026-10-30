@@ -27,6 +27,13 @@ import type { CatalogoCausali } from '../../../domain/waste-movement/catalogo-ca
 import { etichetteRegistri, sediDeiRegistri } from './mud-registri'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
 import {
+  giacenzeDelleDichiarazioni,
+  type EsitoGiacenze,
+  type RicevutoDaTerzi,
+  type SaldoRegistro,
+} from './mud-giacenze'
+import {
+  CHIAVE_AZIENDA,
   anagraficaDichiarazione,
   attribuisciSedi,
   codiceUnitaLocale,
@@ -342,6 +349,25 @@ export class MudAggregazioneService {
         ricevuti
       )
     }
+    // Versione 2: le giacenze al 31/12 entrano nelle righe delle dichiarazioni (D8). Nuove righe,
+    // mai quelle dell'aggregato modificate; le righe senza giacenza restano identiche.
+    const saldiPerRegistro = await this.saldiAl31DicembrePerRegistro(tenantId, fine, anno)
+    let giacenze: EsitoGiacenze | null = null
+    if (versioneCalcolo === 2) {
+      const ricevutiDaTerzi = saldiPerRegistro.some(s => s.kg > 0)
+        ? await this.caricoRicevutoDaTerzi(tenantId, fine, contesto.catalogo)
+        : []
+      giacenze = giacenzeDelleDichiarazioni(
+        saldiPerRegistro,
+        contesto.sedi as ContestoSedi,
+        dichiarazioni,
+        ricevutiDaTerzi,
+        integrazioni
+      )
+      for (const d of dichiarazioni) {
+        d.righe = giacenze.righe.get(d.unitaLocale.id ?? CHIAVE_AZIENDA) ?? d.righe
+      }
+    }
     const righeFinali = dichiarazioni.flatMap(d => d.righe)
     const movimentiPerCer: Record<string, number> = {}
     const pericolosiPerCer: Record<string, true> = {}
@@ -394,8 +420,13 @@ export class MudAggregazioneService {
       }
     }
 
-    const saldi = await this.saldiAl31Dicembre(tenantId, fine, anno)
-    if (saldi.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno, saldi))
+    if (giacenze) {
+      controlli.push(...this.controlliGiacenze(anno, giacenze, dichiarazioni.length > 1))
+    } else {
+      // Versione 1: le giacenze non si scrivono, restano solo nell'avviso di oggi
+      const saldi = this.sommaSaldiPerCer(saldiPerRegistro)
+      if (saldi.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno, saldi))
+    }
 
     if (movimenti.length === 0) {
       controlli.push(
@@ -1014,36 +1045,49 @@ export class MudAggregazioneService {
   }
 
   /**
-   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12
+   * Saldo di ogni registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12
    * italiano), per CER, in kg. Le giacenze iniziali del registro con `data_riferimento` fino al
    * 31/12 contano come carichi (non sono movimenti: non entrano in nessuna riga
    * prodotto/ricevuto). Solo le unità di massa: i movimenti in litri, mc o altro non hanno un
    * peso senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto
-   * del MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
+   * del MUD). Nessun filtro di positività: lo applica il chiamante dopo aver sommato i registri
+   * (versione 1: tutti, A-W-06; versione 2: quelli della stessa dichiarazione, D8).
    */
-  private async saldiAl31Dicembre(
+  private async saldiAl31DicembrePerRegistro(
     tenantId: string,
     fine: Date,
     anno: number
-  ): Promise<Array<{ cerCode6: string; kg: number }>> {
+  ): Promise<SaldoRegistro[]> {
     const gruppi = await this.prisma.wasteMovement.groupBy({
-      by: ['cerCode', 'type', 'unit'],
+      by: ['registroId', 'cerCode', 'type', 'unit'],
       where: { tenantId, movementDate: { lt: fine }, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
-    // chiave = cifre del CER; l'asterisco dei pericolosi vince su qualunque formato del gruppo
-    const perCer = new Map<string, { kg: number; pericoloso: boolean; codice: string }>()
+    // chiave = registro e cifre del CER; l'asterisco dei pericolosi vince su qualunque formato
+    const perRegistroECer = new Map<
+      string,
+      { registroId: string; cer6: string; kg: number; pericoloso: boolean; codice: string }
+    >()
+    const somma = (registroId: string, codice: string, kg: number): void => {
+      const cer6 = chiaveConfrontoCer(codice)
+      const chiave = `${registroId}|${cer6}`
+      const prec = perRegistroECer.get(chiave) ?? {
+        registroId,
+        cer6,
+        kg: 0,
+        pericoloso: false,
+        codice,
+      }
+      perRegistroECer.set(chiave, {
+        ...prec,
+        kg: prec.kg + kg,
+        pericoloso: prec.pericoloso || codice.includes('*'),
+      })
+    }
     for (const g of gruppi) {
       const kg = convertiInKg(Number(g._sum.quantity ?? 0), g.unit)
       if (kg === null) continue
-      const cer6 = chiaveConfrontoCer(g.cerCode)
-      const segno = g.type === 'CARICO' ? 1 : -1
-      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: g.cerCode }
-      perCer.set(cer6, {
-        kg: prec.kg + segno * kg,
-        pericoloso: prec.pericoloso || g.cerCode.includes('*'),
-        codice: prec.codice,
-      })
+      somma(g.registroId, g.cerCode, (g.type === 'CARICO' ? 1 : -1) * kg)
     }
     // `data_riferimento` è già il giorno italiano: si confronta col 31/12 come giorno, non con `fine`.
     const aperture = await leggiApertureRegistro(this.prisma, tenantId, {
@@ -1052,11 +1096,40 @@ export class MudAggregazioneService {
     for (const ap of aperture) {
       const kg = apertureInKg(ap)
       if (kg === null) continue
-      const cer6 = chiaveConfrontoCer(ap.cerCode)
-      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: ap.cerCode }
+      somma(ap.registroId, ap.cerCode, kg)
+    }
+    return [...perRegistroECer.values()]
+      .sort((a, b) =>
+        a.registroId !== b.registroId
+          ? a.registroId < b.registroId
+            ? -1
+            : 1
+          : a.cer6 < b.cer6
+            ? -1
+            : a.cer6 > b.cer6
+              ? 1
+              : 0
+      )
+      .map(v => ({
+        registroId: v.registroId,
+        cerCode6: cerCanonico(v.pericoloso && !v.codice.includes('*') ? `${v.cer6}*` : v.codice),
+        kg: v.kg,
+        pericoloso: v.pericoloso,
+      }))
+  }
+
+  /**
+   * Versione 1: i saldi di tutti i registri sommati per CER, solo quelli sopra mezzo grammo,
+   * ordinati per CER e arrotondati al grammo (A-W-06): l'elenco di sempre.
+   */
+  private sommaSaldiPerCer(saldi: SaldoRegistro[]): Array<{ cerCode6: string; kg: number }> {
+    const perCer = new Map<string, { kg: number; pericoloso: boolean; codice: string }>()
+    for (const s of saldi) {
+      const cer6 = chiaveConfrontoCer(s.cerCode6)
+      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: s.cerCode6 }
       perCer.set(cer6, {
-        kg: prec.kg + kg,
-        pericoloso: prec.pericoloso || ap.cerCode.includes('*'),
+        kg: prec.kg + s.kg,
+        pericoloso: prec.pericoloso || s.pericoloso,
         codice: prec.codice,
       })
     }
@@ -1067,6 +1140,89 @@ export class MudAggregazioneService {
         cerCode6: cerCanonico(v.pericoloso && !v.codice.includes('*') ? `${cer6}*` : v.codice),
         kg: arrotonda3(v.kg),
       }))
+  }
+
+  /**
+   * CER che ogni registro ha ricevuto da terzi fino al 31/12 (D8): una giacenza che include un
+   * rifiuto ricevuto da terzi non si attribuisce al solo produttore. Un gruppo per
+   * (registro, CER, causale, versione aziendale) con la prima e l'ultima data, classificato alle
+   * due date: basta una a dare RICEVUTO_DA_TERZI.
+   * Limite dichiarato: una versione aziendale della causale valida solo fra `_min` e `_max` con un
+   * ruolo diverso non viene vista. È un caso raro: la versione si sceglie con `causaleAziendaId`,
+   * che fa parte del `by`, quindi la data conta solo per le causali di sistema, che non hanno
+   * versioni.
+   */
+  private async caricoRicevutoDaTerzi(
+    tenantId: string,
+    fine: Date,
+    catalogo: CatalogoCausali
+  ): Promise<RicevutoDaTerzi[]> {
+    const gruppi = await this.prisma.wasteMovement.groupBy({
+      by: ['registroId', 'cerCode', 'causale', 'causaleAziendaId'],
+      where: { tenantId, type: 'CARICO', movementDate: { lt: fine }, ...WHERE_VIGENTE },
+      _min: { movementDate: true },
+      _max: { movementDate: true },
+    })
+    const trovati = new Map<string, RicevutoDaTerzi>()
+    for (const g of gruppi) {
+      const date = [g._min?.movementDate, g._max?.movementDate].filter(
+        (d): d is Date => d instanceof Date
+      )
+      const ricevuto = date.some(
+        d =>
+          classificaMovimento(catalogo, {
+            type: 'CARICO',
+            causale: g.causale,
+            causaleAziendaId: g.causaleAziendaId,
+            movementDate: d,
+          }) === 'RICEVUTO_DA_TERZI'
+      )
+      if (ricevuto) {
+        trovati.set(`${g.registroId}|${chiaveConfrontoCer(g.cerCode)}`, {
+          registroId: g.registroId,
+          cerCode: g.cerCode,
+        })
+      }
+    }
+    return [...trovati.values()]
+  }
+
+  /** Avvisi delle giacenze (D8, D9, D16): uno per dichiarazione con voci non scritte, uno per ripartizione. */
+  private controlliGiacenze(
+    anno: number,
+    giacenze: EsitoGiacenze,
+    conSede: boolean
+  ): MudEsitoControllo[] {
+    const esiti: MudEsitoControllo[] = []
+    const nomeSede = (u: { denominazione: string } | null): string => u?.denominazione ?? 'Azienda'
+    // la sede compare solo con più dichiarazioni nel file (D14)
+    const conLaSede = (c: MudEsitoControllo, u: { denominazione: string } | null) =>
+      conSede ? { ...c, sede: nomeSede(u) } : c
+    for (const n of giacenze.nonDichiarate) {
+      esiti.push(conLaSede(controlliMud.giacenzeNonDichiarate(anno, n.voci), n.unitaLocale))
+    }
+    for (const r of giacenze.ripartizioni) {
+      const dati = {
+        cerCode: r.cerCode,
+        cer6: r.cer6,
+        unitaLocaleId: r.unitaLocale?.id ?? null,
+        sede: nomeSede(r.unitaLocale),
+        kg: r.kg,
+      }
+      esiti.push(
+        conLaSede(
+          r.tipo === 'RIPARTITA'
+            ? controlliMud.giacenzaRipartita(anno, {
+                ...dati,
+                recuperoKg: r.recuperoKg,
+                smaltimentoKg: r.smaltimentoKg,
+              })
+            : controlliMud.giacenzaDestinazioneNonIndicata(anno, dati),
+          r.unitaLocale
+        )
+      )
+    }
+    return esiti
   }
 
   /** Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5. */

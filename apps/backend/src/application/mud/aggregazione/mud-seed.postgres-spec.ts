@@ -138,6 +138,10 @@ export interface DatiMovimento {
   quantita: number
   /** giorno `AAAA-MM-GG` (ore 08:00 UTC) */
   giorno: string
+  /** istante ISO che sostituisce `giorno` (per i confini dell'anno italiano) */
+  istante?: string
+  /** unità di misura (predefinita KG) */
+  unita?: string
   firId?: string
   operationCode?: string
   counterpartName?: string
@@ -153,7 +157,7 @@ export async function creaMovimento(
   o: DatiMovimento
 ): Promise<{ id: string }> {
   const tipo = o.tipo ?? 'ORDINARIA'
-  const quando = new Date(`${o.giorno}T08:00:00Z`)
+  const quando = new Date(o.istante ?? `${o.giorno}T08:00:00Z`)
   const m = await client.wasteMovement.create({
     data: {
       tenantId: az.tenantId,
@@ -167,7 +171,7 @@ export async function creaMovimento(
       causaleAziendaId: o.causaleAziendaId ?? null,
       cerCode: o.cerCode,
       quantity: o.quantita,
-      unit: 'KG',
+      unit: o.unita ?? 'KG',
       firId: o.firId,
       operationCode: o.operationCode ?? null,
       counterpartName: o.counterpartName ?? null,

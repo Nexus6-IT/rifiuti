@@ -118,6 +118,8 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
     righe?: number
     /** attese scritte a mano sul risultato di produzione (non ricavate dal codice) */
     verifica?: (attuale: any) => void
+    /** attese scritte a mano sul risultato della versione 2 (giacenze scritte, D8 e D9) */
+    verifica2?: (attuale: any) => void
   }
 
   const scenari: Scenario[] = [
@@ -150,6 +152,13 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
       },
       attesi: [],
       righe: 1,
+      verifica2: attuale => {
+        // saldo a mano: 500 di carico - 200 - 100 di scarichi = 200 kg; avviati 200 a recupero e
+        // 100 a smaltimento → ripartita in proporzione: 133,333 kg a recupero, 66,667 a smaltimento
+        expect(attuale.righe[0].giacenzaRecuperoKg).toBe(133.333)
+        expect(attuale.righe[0].giacenzaSmaltimentoKg).toBe(66.667)
+        expect(attuale.controlli.map((c: any) => c.codice)).toContain('GIACENZA_RIPARTITA')
+      },
     },
     {
       nome: 'FIR annullato',
@@ -282,6 +291,14 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
         ],
       },
       attesi: ['PROFILO_NON_SUPPORTATO'],
+      verifica2: attuale => {
+        // saldo a mano: 100 + 50 = 150 kg, ma il CER è anche ricevuto da terzi: non si scrive
+        expect(attuale.righe[0].giacenzaRecuperoKg).toBeUndefined()
+        expect(attuale.righe[0].giacenzaSmaltimentoKg).toBeUndefined()
+        const c = attuale.controlli.find((x: any) => x.codice === 'GIACENZE_NON_DICHIARATE')
+        expect(c.kgNonDichiarati).toBe(150)
+        expect(c.messaggio).toContain('CER 17 04 05: 150 kg, ricevuto anche da terzi')
+      },
     },
     {
       nome: 'destinatario senza anagrafica risolto dalle integrazioni',
@@ -364,6 +381,18 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
         expect(giacenze.messaggio).toContain('CER 17 04 05: 1.200 kg')
         expect(giacenze.messaggio).toContain('CER 20 03 04: 40 kg')
       },
+      verifica2: attuale => {
+        // 17 04 05: 1.200 kg con avvio solo a recupero (100) → tutto a recupero, nessun avviso;
+        // 20 03 04: 40 kg prodotti e mai avviati → smaltimento, con l'avviso di destinazione
+        const per = (cer: string) => attuale.righe.find((r: any) => r.cerCode === cer)
+        expect(per('170405').giacenzaRecuperoKg).toBe(1200)
+        expect('giacenzaSmaltimentoKg' in per('170405')).toBe(false)
+        expect(per('200304').giacenzaSmaltimentoKg).toBe(40)
+        expect('giacenzaRecuperoKg' in per('200304')).toBe(false)
+        const codici = attuale.controlli.map((c: any) => c.codice)
+        expect(codici).toContain('GIACENZA_DESTINAZIONE_NON_INDICATA')
+        expect(codici).not.toContain('GIACENZE_NON_DICHIARATE')
+      },
     },
     {
       nome: 'movimento non vigente',
@@ -431,10 +460,36 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
     )
   })
 
-  // Versione 2 con una sola sede (D11): le giacenze sono ancora quelle di oggi, quindi il
-  // risultato e' quello dell'oracolo salvo PIU_UNITA_LOCALI (assente con una sede),
-  // MOVIMENTI_SENZA_SEDE e il messaggio di CAUSALE_ESCLUSA.
+  // Versione 2 con una sola sede (D11): il risultato e' quello dell'oracolo salvo i due campi di
+  // giacenza delle righe, i controlli di giacenza (GIACENZE_NON_CALCOLATE dell'oracolo contro
+  // GIACENZE_NON_DICHIARATE / GIACENZA_* della 2), PIU_UNITA_LOCALI (assente con una sede),
+  // MOVIMENTI_SENZA_SEDE e il messaggio di CAUSALE_ESCLUSA. I kg delle giacenze scritte piu' quelli
+  // non dichiarati sono quelli che l'oracolo non dichiara.
   describe('versione 2 con una sede', () => {
+    const CODICI_GIACENZA = [
+      'GIACENZE_NON_CALCOLATE',
+      'GIACENZE_NON_DICHIARATE',
+      'GIACENZA_RIPARTITA',
+      'GIACENZA_DESTINAZIONE_NON_INDICATA',
+    ]
+    /** Il risultato senza i due campi di giacenza e senza i controlli di giacenza */
+    const senzaGiacenze = (a: any) => ({
+      ...a,
+      righe: a.righe.map(({ giacenzaRecuperoKg: _r, giacenzaSmaltimentoKg: _s, ...r }: any) => r),
+      controlli: a.controlli.filter((c: any) => !CODICI_GIACENZA.includes(c.codice)),
+    })
+    const grammi = (kg: number) => Math.round(kg * 1000)
+    /** kg delle giacenze scritte nelle righe */
+    const kgScritti = (a: any): number =>
+      a.righe.reduce(
+        (s: number, r: any) => s + (r.giacenzaRecuperoKg ?? 0) + (r.giacenzaSmaltimentoKg ?? 0),
+        0
+      )
+    const kgDi = (a: any, codice: string): number =>
+      a.controlli
+        .filter((c: any) => c.codice === codice)
+        .reduce((s: number, c: any) => s + (c.kgNonDichiarati ?? 0), 0)
+
     /** Ogni registro dei movimenti e' legato all'unica sede 'ul-1' */
     const conRegistriSullaSede = (dati: DatiPrismaFinto): DatiPrismaFinto => {
       const ids = [...new Set((dati.movimenti ?? []).map(m => m.registroId))]
@@ -451,12 +506,20 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
       const attuale = await servizio.aggrega('t1', 2025)
       const storico = await oracolo.aggrega('t1', 2025)
 
-      expect(normalizza(attuale)).toEqual(normalizza(storico))
+      expect(normalizza(senzaGiacenze(attuale))).toEqual(normalizza(senzaGiacenze(storico)))
+      // giacenze scritte + kgNonDichiarati = kgNonDichiarati dell'oracolo
+      expect(grammi(kgScritti(attuale) + kgDi(attuale, 'GIACENZE_NON_DICHIARATE'))).toBe(
+        grammi(kgDi(storico, 'GIACENZE_NON_CALCOLATE'))
+      )
+      expect(storico.controlli.some(c => c.codice === 'GIACENZE_NON_DICHIARATE')).toBe(false)
       const codici = attuale.controlli.map(c => c.codice)
       for (const atteso of s.attesi) expect(codici).toContain(atteso)
       expect(codici).not.toContain('MOVIMENTI_SENZA_SEDE')
+      expect(codici).not.toContain('GIACENZE_NON_CALCOLATE')
       if (s.righe !== undefined) expect(attuale.righe).toHaveLength(s.righe)
-      s.verifica?.(attuale)
+      // `verifica2` sostituisce `verifica` dove questa descrive le giacenze della versione 1
+      if (s.verifica2) s.verifica2(attuale)
+      else s.verifica?.(attuale)
       // una sede: nessun controllo porta la sede
       expect(attuale.controlli.every(c => c.sede === undefined)).toBe(true)
       expect(attuale.versioneCalcolo).toBe(2)
@@ -481,12 +544,17 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
         ...attuale,
         controlli: attuale.controlli.filter(c => c.codice !== 'MOVIMENTI_SENZA_SEDE'),
       }
-      expect(normalizza(senzaAvviso)).toEqual(normalizza(storico))
+      expect(normalizza(senzaGiacenze(senzaAvviso))).toEqual(normalizza(senzaGiacenze(storico)))
       const avvisi = attuale.controlli.filter(c => c.codice === 'MOVIMENTI_SENZA_SEDE')
       expect(avvisi).toHaveLength(1)
       expect(avvisi[0].gravita).toBe('AVVISO')
       // tre movimenti dello scenario, tutti conteggiati
       expect(avvisi[0].movimenti).toHaveLength(3)
+      // anche la giacenza del registro senza sede segue i movimenti sulla principale
+      expect(grammi(kgScritti(attuale) + kgDi(attuale, 'GIACENZE_NON_DICHIARATE'))).toBe(
+        grammi(kgDi(storico, 'GIACENZE_NON_CALCOLATE'))
+      )
+      expect(attuale.righe[0].giacenzaRecuperoKg).toBe(133.333)
     })
   })
 })

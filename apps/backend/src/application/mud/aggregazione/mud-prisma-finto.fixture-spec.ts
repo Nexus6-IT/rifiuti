@@ -141,6 +141,15 @@ export function creaPrismaFinto(d: DatiPrismaFinto = {}): any {
               _sum: { quantity: 0 },
             })
           g._sum.quantity += m.quantity
+          // `_min`/`_max` della data (query dei carichi ricevuti da terzi)
+          if (args._min?.movementDate) {
+            g._min = { movementDate: g._min?.movementDate ?? m.movementDate }
+            if (m.movementDate < g._min.movementDate) g._min.movementDate = m.movementDate
+          }
+          if (args._max?.movementDate) {
+            g._max = { movementDate: g._max?.movementDate ?? m.movementDate }
+            if (m.movementDate > g._max.movementDate) g._max.movementDate = m.movementDate
+          }
           gruppi.set(chiave, g)
         }
         return [...gruppi.values()]

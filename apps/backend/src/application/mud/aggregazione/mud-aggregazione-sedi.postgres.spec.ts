@@ -203,10 +203,27 @@ describe('MudAggregazione per unità locale — Postgres reale, ruolo wasteflow_
     expect(senzaSede).toHaveLength(1)
     expect(senzaSede[0].movimenti).toHaveLength(1)
     expect(senzaSede[0].messaggio).toContain('principale Sede principale (')
-    // giacenze come oggi, sull'intera azienda: 165 + 20 + 8 + 10 = 203 kg
-    const giacenze = r.controlli.filter(c => c.codice === 'GIACENZE_NON_CALCOLATE')
-    expect(giacenze).toHaveLength(1)
-    expect(giacenze[0].kgNonDichiarati).toBe(203)
+    // giacenze (D8): nessuno scarico, quindi il saldo di ogni sede è la somma dei suoi carichi e,
+    // senza avvii, va tutto a smaltimento; i 5 kg del registro senza sede seguono i movimenti
+    // sulla principale (105 = 100 + 5)
+    const smalt = (d: number) => r.dichiarazioni[d].righe.map(x => x.giacenzaSmaltimentoKg)
+    expect(smalt(0)).toEqual([20, 105])
+    expect(smalt(1)).toEqual([60, 10])
+    expect(smalt(2)).toEqual([8])
+    expect(
+      r.dichiarazioni.flatMap(d => d.righe).every(x => x.giacenzaRecuperoKg === undefined)
+    ).toBe(true)
+    const stimate = r.controlli.filter(c => c.codice === 'GIACENZA_DESTINAZIONE_NON_INDICATA')
+    expect(stimate).toHaveLength(5)
+    expect(stimate.map(c => c.sede).sort()).toEqual([
+      'Deposito',
+      'Deposito',
+      'Ex magazzino',
+      'Sede principale',
+      'Sede principale',
+    ])
+    expect(codici).not.toContain('GIACENZE_NON_CALCOLATE')
+    expect(codici).not.toContain('GIACENZE_NON_DICHIARATE')
     expect(haBloccanti(r.controlli)).toBe(false)
   })
 

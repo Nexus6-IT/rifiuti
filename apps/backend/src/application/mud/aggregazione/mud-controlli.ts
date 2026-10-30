@@ -4,7 +4,12 @@ import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { convertiInKg } from '../../../domain/waste-movement/unita-misura-registro'
 import { STATO_FISICO_PREDEFINITO } from '../export/versions/mud-tracciato-v604-base'
 import type { StatoFisicoRegistro } from './mud-regole'
-import { chiaveDestinatario, chiaveMovimento, chiavePesoSpecifico } from './mud-integrazioni'
+import {
+  chiaveDestinatario,
+  chiaveGiacenza,
+  chiaveMovimento,
+  chiavePesoSpecifico,
+} from './mud-integrazioni'
 
 // Catalogo dei controlli del MUD: il testo dei messaggi è quello concordato, i test lo
 // confrontano carattere per carattere. BLOCCANTE = dato correggibile dall'utente nell'applicazione;
@@ -44,6 +49,9 @@ export type MudCodiceControllo =
   | 'FIR_NON_REGISTRATO'
   | 'ESITO_FIR_RESPINTO'
   | 'GIACENZE_NON_CALCOLATE'
+  | 'GIACENZE_NON_DICHIARATE'
+  | 'GIACENZA_RIPARTITA'
+  | 'GIACENZA_DESTINAZIONE_NON_INDICATA'
   | 'STATO_FISICO_NON_UNIVOCO'
   | 'MUD_NON_DOVUTO'
   | 'MOVIMENTI_SENZA_SEDE'
@@ -66,6 +74,14 @@ export type IntegrazioneRichiesta =
       registroId: string
     }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
+  | {
+      tipo: 'DESTINAZIONE_GIACENZA'
+      chiave: string
+      /** 6 cifre */
+      cerCode: string
+      unitaLocaleId: string | null
+      sede: string
+    }
 
 export interface MudMovimentoSegnalato {
   numero: number
@@ -85,7 +101,7 @@ export interface MudEsitoControllo {
   movimenti?: MudMovimentoSegnalato[]
   fir?: string[]
   integrazione?: IntegrazioneRichiesta
-  /** GIACENZE_NON_CALCOLATE: kg in deposito al 31/12 secondo il registro e non dichiarati */
+  /** GIACENZE_NON_CALCOLATE e GIACENZE_NON_DICHIARATE: kg in deposito al 31/12 non dichiarati */
   kgNonDichiarati?: number
   /**
    * Denominazione della sede (o "Azienda") a cui si riferisce il controllo: solo con più di una
@@ -164,6 +180,29 @@ const arrotondaGrammo = (n: number) => Math.round(n * 1000) / 1000
 
 const BLOCCANTE = 'BLOCCANTE' as const
 const AVVISO = 'AVVISO' as const
+
+/** Giacenza con la destinazione stimata (D9): CER canonico per il testo, 6 cifre per la chiave. */
+interface GiacenzaStimata {
+  cerCode: string
+  cer6: string
+  unitaLocaleId: string | null
+  /** denominazione della sede, "Azienda" se non c'è */
+  sede: string
+  kg: number
+}
+
+interface DatiRipartizione {
+  recuperoKg: number
+  smaltimentoKg: number
+}
+
+const integrazioneGiacenza = (g: GiacenzaStimata): IntegrazioneRichiesta => ({
+  tipo: 'DESTINAZIONE_GIACENZA',
+  chiave: chiaveGiacenza(g.unitaLocaleId, g.cer6),
+  cerCode: g.cer6,
+  unitaLocaleId: g.unitaLocaleId,
+  sede: g.sede,
+})
 
 const nomeSede = (u: { denominazione: string; numIscrSito?: string | null }) =>
   u.numIscrSito ? `${u.denominazione} (${u.numIscrSito})` : u.denominazione
@@ -504,6 +543,44 @@ export const controlliMud = {
     }
   },
 
+  // Giacenze al 31/12 per dichiarazione (D8, D9, D16)
+
+  // Chiamata solo con almeno una voce. `cerCode` è già canonico (con l'asterisco se pericoloso).
+  giacenzeNonDichiarate: (
+    anno: number,
+    voci: Array<{ cerCode: string; kg: number; motivo: 'NESSUN_MOVIMENTO' | 'RICEVUTO_DA_TERZI' }>
+  ): MudEsitoControllo => {
+    const totale = arrotondaGrammo(voci.reduce((s, v) => s + v.kg, 0))
+    const elencoVoci = voci
+      .map(
+        v =>
+          `CER ${v.cerCode}: ${q(v.kg)} kg, ${
+            v.motivo === 'NESSUN_MOVIMENTO' ? 'nessun movimento nel MUD' : 'ricevuto anche da terzi'
+          }`
+      )
+      .join('; ')
+    return {
+      codice: 'GIACENZE_NON_DICHIARATE',
+      gravita: AVVISO,
+      messaggio: `Secondo il registro, al 31/12/${anno} risultano in deposito ${q(totale)} kg che il file non dichiara (${elencoVoci}): un rifiuto senza movimenti nel MUD dell'anno non ha una scheda RIF in cui scrivere la giacenza, e per un rifiuto ricevuto anche da terzi la giacenza non si può attribuire al solo produttore.`,
+      kgNonDichiarati: totale,
+    }
+  },
+
+  giacenzaRipartita: (anno: number, g: GiacenzaStimata & DatiRipartizione): MudEsitoControllo => ({
+    codice: 'GIACENZA_RIPARTITA',
+    gravita: AVVISO,
+    messaggio: `Il rifiuto CER ${g.cerCode} ha ${q(g.kg)} kg in deposito al 31/12/${anno}: nell'anno è stato avviato sia a recupero sia a smaltimento, quindi la giacenza è ripartita in proporzione (${q(g.recuperoKg)} kg a recupero, ${q(g.smaltimentoKg)} kg a smaltimento). Se la destinazione è un'altra, indicarla in MUD > Integrazioni ${anno}, riga "${etichettaGiacenza(g.cer6)}".`,
+    integrazione: integrazioneGiacenza(g),
+  }),
+
+  giacenzaDestinazioneNonIndicata: (anno: number, g: GiacenzaStimata): MudEsitoControllo => ({
+    codice: 'GIACENZA_DESTINAZIONE_NON_INDICATA',
+    gravita: AVVISO,
+    messaggio: `Il rifiuto CER ${g.cerCode} ha ${q(g.kg)} kg in deposito al 31/12/${anno}, ma nell'anno non è stato avviato né a recupero né a smaltimento: la giacenza è considerata da avviare a smaltimento. Se è destinata a recupero, indicarlo in MUD > Integrazioni ${anno}, riga "${etichettaGiacenza(g.cer6)}".`,
+    integrazione: integrazioneGiacenza(g),
+  }),
+
   // Dichiarazioni per unità locale (D2, D5, D6, D7)
 
   movimentiSenzaSede: (
@@ -655,6 +732,22 @@ export const CODICI_RIPARTIZIONE_RD: readonly MudCodiceControllo[] = [
   'OPERAZIONE_DEDOTTA_DAL_FIR',
 ]
 
+/**
+ * Avvisi sulla destinazione stimata delle giacenze (D9): NON fanno parte di CODICI_RIPARTIZIONE_RD
+ * (decisione di Graziano), quindi non cambiano le quantità e la conferma non è riservata agli
+ * amministratori; il riepilogo li menziona con una frase dedicata.
+ */
+const CODICI_GIACENZA_STIMATA: readonly MudCodiceControllo[] = [
+  'GIACENZA_RIPARTITA',
+  'GIACENZA_DESTINAZIONE_NON_INDICATA',
+]
+
+/** Avvisi di giacenza che non cambiano le quantità (non sono una scelta di esclusione, D8). */
+const CODICI_GIACENZA_NON_DICHIARATA: readonly MudCodiceControllo[] = [
+  'GIACENZE_NON_CALCOLATE',
+  'GIACENZE_NON_DICHIARATE',
+]
+
 const chiaveSegnalato = (m: MudMovimentoSegnalato) =>
   chiaveMovimento(m.anno, m.numero, m.registroId)
 
@@ -716,7 +809,8 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   // (quasi ogni produttore ha rifiuti in deposito a fine anno). Restano da confermare.
   const cambianoQuantita =
     voci.some(
-      v => v.codice !== 'GIACENZE_NON_CALCOLATE' && (v.kgEsclusi > 0 || v.kgAggiunti > 0)
+      v =>
+        !CODICI_GIACENZA_NON_DICHIARATA.includes(v.codice) && (v.kgEsclusi > 0 || v.kgAggiunti > 0)
     ) ||
     avvisi.some(e => (e.movimenti ?? []).some(m => !m.incluso)) ||
     haRipartizioneRD
@@ -734,6 +828,10 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
       `Il file dichiara ${parti.join(' e ')} del registro` +
       (kgInPiu > 0 ? ' (conversioni con il peso specifico)' : '') +
       ' per i motivi elencati sotto.'
+  }
+  if (avvisi.some(e => CODICI_GIACENZA_STIMATA.includes(e.codice))) {
+    testo +=
+      ' Per alcune giacenze al 31/12 la destinazione (recupero o smaltimento) è stimata: verificarla negli avvisi sotto.'
   }
   if (movimentiNonQuantificati > 0) {
     testo +=

@@ -1,6 +1,7 @@
 import {
   INTEGRAZIONI_VUOTE,
   chiaveDestinatario,
+  chiaveGiacenza,
   chiaveMovimento,
   chiavePesoSpecifico,
   destinatarioDelMovimento,
@@ -188,5 +189,42 @@ describe('mud-integrazioni', () => {
     expect(pesoSpecificoPlausibile('M3', 1.2)).toBe(false) // t/m³ scritto al posto di kg/m³
     expect(pesoSpecificoPlausibile('LITRI', 1200)).toBe(false) // kg/m³ scritto in una riga in litri
     expect(pesoSpecificoPlausibile('PZ', 5)).toBe(false) // nessun intervallo noto: serve la conferma
+  })
+
+  describe('destinazioni delle giacenze (D9)', () => {
+    it('chiave: sede e CER a 6 cifre, AZIENDA senza sede', () => {
+      expect(chiaveGiacenza('ul-1', '17 04 05')).toBe('ul-1|170405')
+      expect(chiaveGiacenza('ul-1', '170405')).toBe('ul-1|170405')
+      expect(chiaveGiacenza(null, '15 01 10*')).toBe('AZIENDA|150110')
+    })
+
+    it('sono vuote nelle integrazioni vuote e nel JSON senza la sezione', () => {
+      expect(INTEGRAZIONI_VUOTE.destinazioniGiacenza).toEqual({})
+      expect(leggiIntegrazioni({ integrazioni: {} }).destinazioniGiacenza).toEqual({})
+    })
+
+    it('legge solo le voci con destinazione R o D e CER stringa', () => {
+      const r = leggiIntegrazioni({
+        integrazioni: {
+          destinazioniGiacenza: {
+            'ul-1|170405': { cerCode: '170405', unitaLocaleId: 'ul-1', destinazione: 'R' },
+            'AZIENDA|200301': { cerCode: '200301', unitaLocaleId: null, destinazione: 'D' },
+            'ul-1|150110': { cerCode: '150110', unitaLocaleId: 'ul-1', destinazione: 'X' },
+            'ul-1|160101': { cerCode: 160101, unitaLocaleId: 'ul-1', destinazione: 'R' },
+            'ul-1|170904': 'R',
+          },
+        },
+      })
+      expect(r.destinazioniGiacenza).toEqual({
+        'ul-1|170405': { cerCode: '170405', unitaLocaleId: 'ul-1', destinazione: 'R' },
+        'AZIENDA|200301': { cerCode: '200301', unitaLocaleId: null, destinazione: 'D' },
+      })
+    })
+
+    it('una sezione di forma inattesa vale come assente', () => {
+      expect(
+        leggiIntegrazioni({ integrazioni: { destinazioniGiacenza: 'R' } }).destinazioniGiacenza
+      ).toEqual({})
+    })
   })
 })

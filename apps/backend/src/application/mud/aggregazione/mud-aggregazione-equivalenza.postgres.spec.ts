@@ -54,7 +54,29 @@ describe('MudAggregazione: equivalenza con a2bf11e — Postgres reale, ruolo was
     TenantContext.run({ tenantId: az.tenantId }, async () => await fn())
 
   // Stessa normalizzazione dell'equivalenza unitaria: i controlli come multiinsieme, salvo il
-  // messaggio di CAUSALE_ESCLUSA (D13, l'unica differenza ammessa).
+  // messaggio di CAUSALE_ESCLUSA (D13) e le giacenze (D8): la versione 2 le scrive nelle righe e
+  // negli avvisi nuovi, l'oracolo le dichiara non calcolate.
+  const CODICI_GIACENZA = [
+    'GIACENZE_NON_CALCOLATE',
+    'GIACENZE_NON_DICHIARATE',
+    'GIACENZA_RIPARTITA',
+    'GIACENZA_DESTINAZIONE_NON_INDICATA',
+  ]
+  const senzaGiacenze = (a: any) => ({
+    ...a,
+    righe: a.righe.map(({ giacenzaRecuperoKg: _r, giacenzaSmaltimentoKg: _s, ...r }: any) => r),
+    controlli: a.controlli.filter((c: any) => !CODICI_GIACENZA.includes(c.codice)),
+  })
+  const grammi = (kg: number) => Math.round(kg * 1000)
+  const kgScritti = (a: any): number =>
+    a.righe.reduce(
+      (s: number, r: any) => s + (r.giacenzaRecuperoKg ?? 0) + (r.giacenzaSmaltimentoKg ?? 0),
+      0
+    )
+  const kgDi = (a: any, codice: string): number =>
+    a.controlli
+      .filter((c: any) => c.codice === codice)
+      .reduce((s: number, c: any) => s + (c.kgNonDichiarati ?? 0), 0)
   const chiave = (c: any): string =>
     JSON.stringify([
       c.codice,
@@ -256,7 +278,11 @@ describe('MudAggregazione: equivalenza con a2bf11e — Postgres reale, ruolo was
     const attuale = await nelTenant(() => servizio.aggrega(az.tenantId, anno))
     const storico = await nelTenant(() => oracolo.aggrega(az.tenantId, anno))
     expect(attuale.righe.length).toBeGreaterThan(0)
-    expect(normalizza(attuale)).toEqual(normalizza(storico))
+    expect(normalizza(senzaGiacenze(attuale))).toEqual(normalizza(senzaGiacenze(storico)))
+    // giacenze scritte + kgNonDichiarati = kgNonDichiarati dell'oracolo
+    expect(grammi(kgScritti(attuale) + kgDi(attuale, 'GIACENZE_NON_DICHIARATE'))).toBe(
+      grammi(kgDi(storico, 'GIACENZE_NON_CALCOLATE'))
+    )
   })
 
   it('2025: quantità attese scritte a mano', async () => {
@@ -268,8 +294,18 @@ describe('MudAggregazione: equivalenza con a2bf11e — Postgres reale, ruolo was
     expect(riga('200301')).toMatchObject({ prodottoKg: 500, recuperoKg: 0, smaltimentoKg: 100 })
     // saldi al 31/12: 17 04 05 = 1000 + 1000 + 400 - 600 - 200 = 1600; 20 03 01 = 500 - 100 = 400;
     // 15 01 01 = 20 + 7 = 27
-    const giacenze = r.controlli.find(c => c.codice === 'GIACENZE_NON_CALCOLATE')
-    expect(giacenze?.kgNonDichiarati).toBe(2027)
+    // 17 04 05 ha solo avvii a recupero → tutta a recupero; 20 03 01 solo a smaltimento → tutta a
+    // smaltimento; 15 01 01 non ha una riga (ricevuto da terzi ed escluso) → 27 kg non dichiarati
+    expect(riga('170405')).toMatchObject({ giacenzaRecuperoKg: 1600 })
+    expect('giacenzaSmaltimentoKg' in (riga('170405') as object)).toBe(false)
+    expect(riga('200301')).toMatchObject({ giacenzaSmaltimentoKg: 400 })
+    expect('giacenzaRecuperoKg' in (riga('200301') as object)).toBe(false)
+    expect(riga('150101')).toBeUndefined()
+    const nonDichiarate = r.controlli.filter(c => c.codice === 'GIACENZE_NON_DICHIARATE')
+    expect(nonDichiarate).toHaveLength(1)
+    expect(nonDichiarate[0].kgNonDichiarati).toBe(27)
+    expect(r.controlli.map(c => c.codice)).not.toContain('GIACENZE_NON_CALCOLATE')
+    expect(r.controlli.map(c => c.codice)).not.toContain('GIACENZA_RIPARTITA')
   })
 
   it('2026: il FIR dell’anno prima scaricato di nuovo è segnalato, con le quantità a mano', async () => {

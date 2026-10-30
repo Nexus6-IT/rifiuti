@@ -4,6 +4,12 @@ import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fix
 import { WHERE_VIGENTE } from '../../../domain/waste-movement/vigenza'
 import { hashAggregato, limitiAnnoMud } from './mud-regole'
 import { controlliMud, haBloccanti, type MudEsitoControllo } from './mud-controlli'
+import {
+  creaPrismaFinto,
+  type DatiPrismaFinto,
+  type MovimentoFinto,
+  type UnitaLocaleFinta,
+} from './mud-prisma-finto.fixture-spec'
 
 describe('MudAggregazioneService', () => {
   let service: MudAggregazioneService
@@ -1329,7 +1335,7 @@ describe('MudAggregazioneService', () => {
     expect(g).toEqual([controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }])])
     expect(g[0].kgNonDichiarati).toBe(120)
     const args = prisma.wasteMovement.groupBy.mock.calls[0][0]
-    expect(args.by).toEqual(['cerCode', 'type', 'unit'])
+    expect(args.by).toEqual(['registroId', 'cerCode', 'type', 'unit'])
     expect(args.where.tenantId).toBe('t1')
     expect(args.where.movementDate.lt).toEqual(limitiAnnoMud(2025).fine)
     expect(args.where.movementDate.gte).toBeUndefined()
@@ -2454,12 +2460,21 @@ describe('MudAggregazioneService', () => {
       const litri = conCodice(due.controlli, 'UNITA_NON_DI_MASSA')
       expect(litri).toHaveLength(1)
       expect(litri[0].sede).toBe('Sede')
-      // i controlli globali non hanno sede
+      // un avviso di giacenza è della dichiarazione cui appartiene il registro: porta la sede
       prisma.wasteMovement.groupBy.mockResolvedValue([
-        { cerCode: '170405', type: 'CARICO', unit: 'KG', _sum: { quantity: 100 } },
+        {
+          registroId: 'reg-A',
+          cerCode: '150110',
+          type: 'CARICO',
+          unit: 'KG',
+          _sum: { quantity: 100 },
+        },
       ])
       const conGiacenze = await service.aggrega('t1', 2025)
-      expect(conCodice(conGiacenze.controlli, 'GIACENZE_NON_CALCOLATE')[0].sede).toBeUndefined()
+      const nonDichiarate = conCodice(conGiacenze.controlli, 'GIACENZE_NON_DICHIARATE')
+      expect(nonDichiarate).toHaveLength(1)
+      expect(nonDichiarate[0].sede).toBe('Sede')
+      expect(codici(conGiacenze.controlli)).not.toContain('GIACENZE_NON_CALCOLATE')
 
       // una sola dichiarazione: nessuna sede
       impostaDati({ movimenti: movimenti.slice(0, 2) })
@@ -2548,5 +2563,283 @@ describe('MudAggregazioneService', () => {
       )
       expect(v1.righe).toHaveLength(2)
     })
+  })
+})
+
+// Giacenze al 31/12 per sede e CER (Fase 2 pezzo 8, D8 e D9): prisma finto che calcola davvero
+// dai movimenti (campo `vigente`, `groupBy` per `by`). Valori attesi scritti a mano.
+describe('MudAggregazioneService: giacenze al 31/12 (versione 2)', () => {
+  const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  const referenceData: any = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
+
+  const mov = (p: Partial<MovimentoFinto>): MovimentoFinto => ({
+    registroId: 'reg-A',
+    progressiveNumber: 1,
+    progressiveYear: 2025,
+    type: 'CARICO',
+    causale: 'PRODUZIONE_INTERNA',
+    causaleAziendaId: null,
+    cerCode: '17 04 05',
+    quantity: 100,
+    unit: 'KG',
+    operationCode: null,
+    firId: null,
+    firIdRicopia: null,
+    ricopiaChiave: '',
+    counterpartName: null,
+    wastePhysicalState: null,
+    movementDate: new Date('2025-06-10T08:00:00Z'),
+    ...p,
+  })
+  // scarico con una causale che il MUD non dichiara (ALTRO_SCARICO): conta nel saldo, non nelle righe
+  const scaricoFuori = (p: Partial<MovimentoFinto>) =>
+    mov({ type: 'SCARICO', causale: 'ALTRO_SCARICO', ...p })
+  const scaricoFir = (p: Partial<MovimentoFinto>) =>
+    mov({ type: 'SCARICO', causale: 'CONFERIMENTO_TRASPORTATORE', ...p })
+  const fir = (id: string, numero: string) => ({
+    id,
+    firNumber: numero,
+    rentriNumeroFir: null,
+    status: 'COMPLETED',
+    rentriStatoFormulario: null,
+    wasteOperationType: 'RECOVERY',
+    wasteOperationCode: null,
+    receiverId: 'dest-1',
+    receiverName: 'Recupero Metalli Srl',
+    receiverPartitaIva: '33333333333',
+    carrierId: 'car-1',
+    carrierName: 'Trasporti Srl',
+    carrierPartitaIva: '22222222222',
+  })
+  const dest1 = {
+    id: 'dest-1',
+    partitaIVA: '33333333333',
+    ragioneSociale: 'Recupero Metalli Srl',
+    comune: 'Milano',
+    provincia: 'MI',
+    via: 'Via Roma',
+    civico: '1',
+    cap: '20100',
+  }
+  const indirizzo = {
+    indirizzo: 'Via Po',
+    civico: '3',
+    cap: '20100',
+    comune: 'Milano',
+    provincia: 'MI',
+  }
+  const unaSede: UnitaLocaleFinta[] = [
+    { denominazione: 'Sede', numIscrSito: 'OP1', principale: true, ...indirizzo },
+  ]
+  const dueSedi: UnitaLocaleFinta[] = [
+    ...unaSede,
+    { denominazione: 'Deposito', numIscrSito: 'OP2', principale: false, ...indirizzo },
+  ]
+  const registriDueSedi = [
+    { id: 'reg-A', descrizione: 'Registro Sede', unitaLocaleId: 'ul-1' },
+    { id: 'reg-B', descrizione: 'Registro Deposito', unitaLocaleId: 'ul-2' },
+  ]
+  const registroUnaSede = [{ id: 'reg-A', descrizione: 'Registro Sede', unitaLocaleId: 'ul-1' }]
+
+  const calcola = (dati: DatiPrismaFinto, opzioni?: { versioneCalcolo?: 1 | 2 }) => {
+    const prisma = creaPrismaFinto(dati)
+    const servizio = new MudAggregazioneService(prisma, referenceData, logger)
+    return { prisma, servizio, esito: servizio.aggrega('t1', 2025, opzioni) }
+  }
+  const rigaCer = (r: any, dichiarazione: number, cer: string) =>
+    r.dichiarazioni[dichiarazione].righe.find((x: any) => x.cerCode === cer)
+  const conCodice = (r: any, codice: string) => r.controlli.filter((c: any) => c.codice === codice)
+
+  it('v2: giacenza al 31/12 nella riga BA con recupero e smaltimento', async () => {
+    // saldo a mano: 1000 di carico - 300 - 100 di scarichi = 600 kg; avviati 300 a recupero e
+    // 100 a smaltimento → 600 · 300/400 = 450 a recupero, 150 a smaltimento
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 1000 }),
+        scaricoFir({ progressiveNumber: 2, quantity: 300, firId: 'f1', operationCode: 'R13' }),
+        scaricoFir({ progressiveNumber: 3, quantity: 100, firId: 'f2', operationCode: 'D15' }),
+      ],
+      fir: [fir('f1', 'FIR-2025-000123'), fir('f2', 'FIR-2025-000124')],
+      destinatari: [dest1],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405')).toEqual(
+      expect.objectContaining({
+        prodottoKg: 1000,
+        recuperoKg: 300,
+        smaltimentoKg: 100,
+        giacenzaRecuperoKg: 450,
+        giacenzaSmaltimentoKg: 150,
+      })
+    )
+    const ripartita = conCodice(r, 'GIACENZA_RIPARTITA')
+    expect(ripartita).toHaveLength(1)
+    expect(ripartita[0].messaggio).toBe(
+      'Il rifiuto CER 17 04 05 ha 600 kg in deposito al 31/12/2025: nell\'anno è stato avviato sia a recupero sia a smaltimento, quindi la giacenza è ripartita in proporzione (450 kg a recupero, 150 kg a smaltimento). Se la destinazione è un\'altra, indicarla in MUD > Integrazioni 2025, riga "Giacenza CER 170405".'
+    )
+    expect(ripartita[0].integrazione).toEqual({
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: 'ul-1|170405',
+      cerCode: '170405',
+      unitaLocaleId: 'ul-1',
+      sede: 'Sede',
+    })
+    // una dichiarazione sola: nessuna sede sul controllo
+    expect(ripartita[0].sede).toBeUndefined()
+    expect(conCodice(r, 'GIACENZE_NON_CALCOLATE')).toEqual([])
+    // riga e aggregato concordano
+    expect(r.righe).toEqual(r.dichiarazioni[0].righe)
+  })
+
+  it('v2: le giacenze iniziali entrano nel saldo della loro sede', async () => {
+    // reg-B: apertura di 2 t (2000 kg) + carico prodotto di 100 kg = 2100 kg, mai avviati →
+    // smaltimento; reg-A: 50 kg di un altro CER
+    const { esito } = calcola({
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [
+        mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 100 }),
+        mov({ registroId: 'reg-A', progressiveNumber: 1, cerCode: '20 03 01', quantity: 50 }),
+      ],
+      giacenzeIniziali: [
+        {
+          registroId: 'reg-B',
+          cerCode: '17 04 05',
+          quantita: 2,
+          unita: 'T',
+          dataRiferimento: new Date('2025-01-01T00:00:00Z'),
+        },
+        // dal 1/1 dell'anno dopo: fuori
+        {
+          registroId: 'reg-A',
+          cerCode: '20 03 01',
+          quantita: 999,
+          unita: 'KG',
+          dataRiferimento: new Date('2026-01-01T00:00:00Z'),
+        },
+      ],
+    })
+    const r = await esito
+
+    expect(r.dichiarazioni.map((d: any) => d.unitaLocale.denominazione)).toEqual([
+      'Sede',
+      'Deposito',
+    ])
+    expect(rigaCer(r, 1, '170405').giacenzaSmaltimentoKg).toBe(2100)
+    expect(rigaCer(r, 0, '200301').giacenzaSmaltimentoKg).toBe(50)
+    expect('giacenzaRecuperoKg' in rigaCer(r, 1, '170405')).toBe(false)
+  })
+
+  it('v2: un movimento rettificato o annullato conta solo se vigente', async () => {
+    // saldo a mano: carichi vigenti 300, scarichi vigenti 100 → 200 kg; i non vigenti (999 e 50) no
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 300 }),
+        mov({ progressiveNumber: 2, quantity: 999, vigente: false }),
+        scaricoFuori({ progressiveNumber: 3, quantity: 100 }),
+        scaricoFuori({ progressiveNumber: 4, quantity: 50, vigente: false }),
+      ],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405').prodottoKg).toBe(300)
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(200)
+  })
+
+  it('v2: giacenze di due sedi restano separate', async () => {
+    // sede: 100 - 60 = 40 kg; deposito: 100 - 75 = 25 kg; stesso CER, righe e avvisi propri
+    const { esito } = calcola({
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [
+        mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+        scaricoFuori({ registroId: 'reg-A', progressiveNumber: 2, quantity: 60 }),
+        mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 100 }),
+        scaricoFuori({ registroId: 'reg-B', progressiveNumber: 2, quantity: 75 }),
+      ],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(40)
+    expect(rigaCer(r, 1, '170405').giacenzaSmaltimentoKg).toBe(25)
+    const avvisi = conCodice(r, 'GIACENZA_DESTINAZIONE_NON_INDICATA')
+    expect(avvisi.map((a: any) => a.sede)).toEqual(['Sede', 'Deposito'])
+    expect(avvisi.map((a: any) => a.integrazione.chiave)).toEqual(['ul-1|170405', 'ul-2|170405'])
+    expect(avvisi[1].messaggio).toContain('ha 25 kg in deposito al 31/12/2025')
+  })
+
+  it('v2: tonnellate convertite, litri esclusi', async () => {
+    // 0,5 t = 500 kg; i 300 litri non hanno un peso e non entrano nel saldo
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 0.5, unit: 'T' }),
+        mov({ progressiveNumber: 2, quantity: 300, unit: 'LITRI' }),
+      ],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405').prodottoKg).toBe(500)
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(500)
+  })
+
+  it('v2: riga senza giacenza ha lo stesso hashAggregato di oggi', async () => {
+    // I4: saldo a mano 100 - 100 = 0 → nessuna giacenza; la riga è identica a quella dell'oracolo
+    const dati: DatiPrismaFinto = {
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 100 }),
+        scaricoFuori({ progressiveNumber: 2, quantity: 100 }),
+      ],
+    }
+    const { prisma, servizio, esito } = calcola(dati)
+    const r = await esito
+    const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+    const storico = await oracolo.aggrega('t1', 2025)
+
+    const riga = rigaCer(r, 0, '170405')
+    expect('giacenzaRecuperoKg' in riga).toBe(false)
+    expect('giacenzaSmaltimentoKg' in riga).toBe(false)
+    expect(hashAggregato(r.dichiarazioni[0].righe)).toBe(hashAggregato(storico.righe))
+    // con una giacenza l'hash cambia
+    const conGiacenza = await calcola({
+      ...dati,
+      movimenti: [mov({ progressiveNumber: 1, quantity: 100 })],
+    }).esito
+    expect(hashAggregato(conGiacenza.righe)).not.toBe(hashAggregato(storico.righe))
+  })
+
+  it("v1: GIACENZE_NON_CALCOLATE identico all'oracolo", async () => {
+    // saldo a mano: reg-A 100 kg di 17 04 05 + reg-B 60 kg = 160 kg sommati per CER;
+    // 15 01 10* pericoloso nel solo reg-B: 12,5 kg
+    const dati: DatiPrismaFinto = {
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [
+        mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+        mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 60, cerCode: '170405' }),
+        mov({ registroId: 'reg-B', progressiveNumber: 2, quantity: 12.5, cerCode: '15 01 10*' }),
+      ],
+    }
+    const { prisma, servizio, esito } = calcola(dati, { versioneCalcolo: 1 })
+    const v1 = await esito
+    const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+    const storico = await oracolo.aggrega('t1', 2025)
+
+    const g = conCodice(v1, 'GIACENZE_NON_CALCOLATE')
+    expect(g).toEqual(conCodice(storico, 'GIACENZE_NON_CALCOLATE'))
+    expect(g).toHaveLength(1)
+    expect(g[0].kgNonDichiarati).toBe(172.5)
+    expect(g[0].messaggio).toContain('(CER 15 01 10*: 12,5 kg; CER 17 04 05: 160 kg)')
+    expect(v1.righe).toEqual(storico.righe)
+    // la versione 1 non scrive giacenze
+    expect(v1.righe.every((x: any) => x.giacenzaRecuperoKg === undefined)).toBe(true)
   })
 })

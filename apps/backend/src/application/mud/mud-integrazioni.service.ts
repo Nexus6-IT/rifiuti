@@ -217,6 +217,8 @@ export class MudIntegrazioniService {
       destinatariMovimento,
       trasportatori,
       pesiSpecifici,
+      // Le destinazioni delle giacenze si salvano dal Task 7 (D9): qui non c'è ancora l'input
+      destinazioniGiacenza: {},
       aggiornateIl: new Date().toISOString(),
       aggiornateDa: userId,
     }

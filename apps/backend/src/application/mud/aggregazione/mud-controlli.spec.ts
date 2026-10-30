@@ -772,3 +772,119 @@ describe('controlli per unità locale (D16)', () => {
     expect(c.sede).toBe('Azienda')
   })
 })
+
+describe('controlli delle giacenze al 31/12 (D8, D9, D16)', () => {
+  const ripartita = {
+    cerCode: '17 04 05',
+    cer6: '170405',
+    unitaLocaleId: 'ul-1',
+    sede: 'Sede',
+    kg: 100.001,
+    recuperoKg: 33.334,
+    smaltimentoKg: 66.667,
+  }
+
+  it('GIACENZE_NON_DICHIARATE: testo esatto, kg in meno ma nessun cambio di quantità', () => {
+    const c = controlliMud.giacenzeNonDichiarate(2025, [
+      { cerCode: '15 01 10*', kg: 12.5, motivo: 'NESSUN_MOVIMENTO' },
+      { cerCode: '17 04 05', kg: 1200, motivo: 'RICEVUTO_DA_TERZI' },
+    ])
+    expect(c.codice).toBe('GIACENZE_NON_DICHIARATE')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.kgNonDichiarati).toBe(1212.5)
+    expect(c.messaggio).toBe(
+      "Secondo il registro, al 31/12/2025 risultano in deposito 1.212,5 kg che il file non dichiara (CER 15 01 10*: 12,5 kg, nessun movimento nel MUD; CER 17 04 05: 1.200 kg, ricevuto anche da terzi): un rifiuto senza movimenti nel MUD dell'anno non ha una scheda RIF in cui scrivere la giacenza, e per un rifiuto ricevuto anche da terzi la giacenza non si può attribuire al solo produttore."
+    )
+  })
+
+  it('GIACENZE_NON_DICHIARATE conta in kgInMeno ma non cambia le quantità', () => {
+    const r = riepilogaAvvisi([
+      controlliMud.giacenzeNonDichiarate(2025, [
+        { cerCode: '17 04 05', kg: 120, motivo: 'NESSUN_MOVIMENTO' },
+      ]),
+      controlliMud.giacenzeNonDichiarate(2025, [
+        { cerCode: '20 03 01', kg: 30, motivo: 'RICEVUTO_DA_TERZI' },
+      ]),
+    ])
+    expect(r.kgInMeno).toBe(150)
+    expect(r.cambianoQuantita).toBe(false)
+    expect(r.voci).toEqual([
+      expect.objectContaining({ codice: 'GIACENZE_NON_DICHIARATE', casi: 2 }),
+    ])
+  })
+
+  it('GIACENZA_RIPARTITA: testo esatto e integrazione richiesta', () => {
+    const c = controlliMud.giacenzaRipartita(2025, ripartita)
+    expect(c.codice).toBe('GIACENZA_RIPARTITA')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      'Il rifiuto CER 17 04 05 ha 100,001 kg in deposito al 31/12/2025: nell\'anno è stato avviato sia a recupero sia a smaltimento, quindi la giacenza è ripartita in proporzione (33,334 kg a recupero, 66,667 kg a smaltimento). Se la destinazione è un\'altra, indicarla in MUD > Integrazioni 2025, riga "Giacenza CER 170405".'
+    )
+    expect(c.integrazione).toEqual({
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: 'ul-1|170405',
+      cerCode: '170405',
+      unitaLocaleId: 'ul-1',
+      sede: 'Sede',
+    })
+    expect(c.kgNonDichiarati).toBeUndefined()
+  })
+
+  it('GIACENZA_DESTINAZIONE_NON_INDICATA: testo esatto, sede azienda senza id', () => {
+    const c = controlliMud.giacenzaDestinazioneNonIndicata(2025, {
+      cerCode: '15 01 10*',
+      cer6: '150110',
+      unitaLocaleId: null,
+      sede: 'Azienda',
+      kg: 1,
+    })
+    expect(c.codice).toBe('GIACENZA_DESTINAZIONE_NON_INDICATA')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      'Il rifiuto CER 15 01 10* ha 1 kg in deposito al 31/12/2025, ma nell\'anno non è stato avviato né a recupero né a smaltimento: la giacenza è considerata da avviare a smaltimento. Se è destinata a recupero, indicarlo in MUD > Integrazioni 2025, riga "Giacenza CER 150110".'
+    )
+    expect(c.integrazione).toEqual({
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: 'AZIENDA|150110',
+      cerCode: '150110',
+      unitaLocaleId: null,
+      sede: 'Azienda',
+    })
+  })
+
+  it('con i soli avvisi di giacenza cambianoQuantita è false', () => {
+    const c = [
+      controlliMud.giacenzaRipartita(2025, ripartita),
+      controlliMud.giacenzaDestinazioneNonIndicata(2025, { ...ripartita, kg: 80 }),
+      controlliMud.giacenzeNonDichiarate(2025, [
+        { cerCode: '20 03 01', kg: 30, motivo: 'NESSUN_MOVIMENTO' },
+      ]),
+    ]
+    expect(riepilogaAvvisi(c).cambianoQuantita).toBe(false)
+    expect(avvisiCambianoQuantita(c)).toBe(false)
+  })
+
+  it('testo del riepilogo con la sola GIACENZA_RIPARTITA', () => {
+    const r = riepilogaAvvisi([controlliMud.giacenzaRipartita(2025, ripartita)])
+    expect(r.kgInMeno).toBe(0)
+    expect(r.testo).toBe(
+      'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi. Per alcune giacenze al 31/12 la destinazione (recupero o smaltimento) è stimata: verificarla negli avvisi sotto.'
+    )
+    // anche con GIACENZA_DESTINAZIONE_NON_INDICATA, una volta sola
+    const due = riepilogaAvvisi([
+      controlliMud.giacenzaRipartita(2025, ripartita),
+      controlliMud.giacenzaDestinazioneNonIndicata(2025, ripartita),
+    ])
+    expect(due.testo).toBe(r.testo)
+    // senza avvisi di giacenza il testo non lo dice
+    expect(riepilogaAvvisi([controlliMud.scaricoSenzaFir(m)]).testo).not.toContain('stimata')
+  })
+
+  it('GIACENZA_DESTINAZIONE_NON_INDICATA non riserva la conferma agli amministratori', () => {
+    const c = [controlliMud.giacenzaDestinazioneNonIndicata(2025, ripartita)]
+    expect(avvisiCambianoQuantita(c)).toBe(false)
+    // è comunque un avviso da confermare
+    expect(codiciAvvisoDaConfermare(c)).toEqual(['GIACENZA_DESTINAZIONE_NON_INDICATA'])
+    expect(haBloccanti(c)).toBe(false)
+  })
+})
