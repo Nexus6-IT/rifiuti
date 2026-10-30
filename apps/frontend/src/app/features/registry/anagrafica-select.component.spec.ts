@@ -7,8 +7,8 @@ function pagina(items: any[]) {
   return of({ items, total: items.length, page: 1, limit: 500, totalPages: 1 } as any)
 }
 
-const ACME = { id: 'p1', ragioneSociale: 'ACME SPA', partitaIVA: '01234567890' }
-const BETA = { id: 'p2', ragioneSociale: 'BETA SRL', partitaIVA: '09876543210' }
+const ACME = { id: 'p1', ragioneSociale: 'ACME SPA', partitaIVA: '12345678903' }
+const BETA = { id: 'p2', ragioneSociale: 'BETA SRL', partitaIVA: '09876543217' }
 
 describe('AnagraficaSelectComponent', () => {
   let fixture: ComponentFixture<AnagraficaSelectComponent>
@@ -59,7 +59,7 @@ describe('AnagraficaSelectComponent', () => {
 
   it('cerca anche per partita IVA', () => {
     fixture.detectChanges()
-    component.cerca({ query: '0123456', originalEvent: new Event('input') } as any)
+    component.cerca({ query: '1234567', originalEvent: new Event('input') } as any)
 
     expect(component.suggestions().map(s => s.id)).toEqual(['p1'])
   })
@@ -104,7 +104,7 @@ describe('AnagraficaSelectComponent', () => {
     const emessi: string[] = []
     component.registerOnChange(v => emessi.push(v))
 
-    component.onSelezione({ ...ACME, label: 'ACME SPA — 01234567890' })
+    component.onSelezione({ ...ACME, label: 'ACME SPA — 12345678903' })
 
     expect(emessi).toEqual(['p1'])
   })

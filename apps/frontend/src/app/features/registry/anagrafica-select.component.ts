@@ -26,7 +26,9 @@ export type Registro = 'produttori' | 'trasportatori' | 'destinatari'
 interface AnagraficaBase {
   id: string
   ragioneSociale: string
-  partitaIVA: string
+  partitaIVA: string | null
+  /** Un privato non ha la partita IVA: ha solo il codice fiscale (F2-10). */
+  codiceFiscale?: string | null
 }
 
 /** Voce mostrata nel menu: ragione sociale + P.IVA per distinguere omonimie. */
@@ -276,7 +278,7 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
     }
     this.suggestions.set(
       this.voci().filter(
-        v => v.ragioneSociale.toLowerCase().includes(q) || v.partitaIVA.includes(q)
+        v => v.ragioneSociale.toLowerCase().includes(q) || v.partitaIVA.toLowerCase().includes(q)
       )
     )
   }
@@ -326,13 +328,16 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
   private toOption(v: {
     id: string
     ragioneSociale: string
-    partitaIVA: string
+    partitaIVA: string | null
+    codiceFiscale?: string | null
   }): AnagraficaOption {
+    // Un privato non ha la P.IVA: si mostra il suo codice fiscale
+    const identificativo = v.partitaIVA ?? v.codiceFiscale ?? ''
     return {
       id: v.id,
       ragioneSociale: v.ragioneSociale,
-      partitaIVA: v.partitaIVA,
-      label: `${v.ragioneSociale} — ${v.partitaIVA}`,
+      partitaIVA: identificativo,
+      label: `${v.ragioneSociale} — ${identificativo}`,
     }
   }
 }

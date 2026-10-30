@@ -7,6 +7,10 @@ import { RegistryService } from './registry.service'
 import { AuthService } from '../../core/services/auth.service'
 import { Destinatario } from '../../shared/models/registry.model'
 
+// P.IVA con checksum valido (la validazione gemella del backend rifiuta le altre)
+const PIVA_VALIDA = '12345678903'
+const PIVA_VALIDA_2 = '09876543217'
+
 // Stub minimo: solo `currentUser()`, unico membro di AuthService usato dal
 // componente per il gating dei pulsanti (Task N3). Ruolo ADMIN di default,
 // così i test di business logic esistenti (non sul gating) restano validi
@@ -34,7 +38,7 @@ describe('DestinatariListComponent — data di scadenza autorizzazione (facoltat
   const DESTINATARIO_ESISTENTE: Destinatario = {
     id: 'd1',
     ragioneSociale: 'Impianto Verdi S.r.l.',
-    partitaIVA: '01234567890',
+    partitaIVA: PIVA_VALIDA,
     sede: { via: 'Via Torino', civico: '5', cap: '10100', comune: 'Torino', provincia: 'TO' },
     numeroAutorizzazione: 'AUT/2024/001',
     pec: 'impianto@pec.it',
@@ -73,7 +77,7 @@ describe('DestinatariListComponent — data di scadenza autorizzazione (facoltat
 
   function compilaCampiObbligatori(): void {
     component.formData.ragioneSociale = 'Nuovo Impianto S.r.l.'
-    component.formData.partitaIVA = '09876543210'
+    component.formData.partitaIVA = PIVA_VALIDA_2
     component.formData.numeroAutorizzazione = 'AUT/2025/999'
     component.formData.sede = {
       via: 'Via Genova',
@@ -149,7 +153,7 @@ describe('DestinatariListComponent — payload di modifica senza partitaIVA (bug
   const DESTINATARIO_ESISTENTE: Destinatario = {
     id: 'd1',
     ragioneSociale: 'Impianto Verdi S.r.l.',
-    partitaIVA: '01234567890',
+    partitaIVA: PIVA_VALIDA,
     sede: { via: 'Via Torino', civico: '5', cap: '10100', comune: 'Torino', provincia: 'TO' },
     numeroAutorizzazione: 'AUT/2024/001',
     pec: 'impianto@pec.it',
@@ -230,7 +234,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
   const DESTINATARIO_ESISTENTE: Destinatario = {
     id: 'd1',
     ragioneSociale: 'Impianto Verdi S.r.l.',
-    partitaIVA: '01234567890',
+    partitaIVA: PIVA_VALIDA,
     sede: { via: 'Via Torino', civico: '5', cap: '10100', comune: 'Torino', provincia: 'TO' },
     numeroAutorizzazione: 'AUT/2024/001',
     pec: 'impianto@pec.it',
@@ -288,5 +292,182 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
     expect(
       fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
     ).toBeTruthy()
+  })
+})
+
+/**
+ * Codice fiscale, ditta e sedi nella lista (F2-10): colonna "P.IVA / C.F.", badge "Da verificare",
+ * pulsante "Sedi (n)" e validazione gemella del backend nel form.
+ */
+describe('DestinatariListComponent — ditte, codice fiscale e sedi', () => {
+  let fixture: ComponentFixture<DestinatariListComponent>
+  let component: DestinatariListComponent
+  let registryService: jasmine.SpyObj<RegistryService>
+
+  const CF_PERSONA = 'RSSMRA80A01H501U'
+  const RIGA = {
+    id: 'r1',
+    ragioneSociale: 'Ditta Uno S.r.l.',
+    partitaIVA: '12345678901', // checksum errato: P.IVA migrata, da verificare
+    codiceFiscale: null,
+    dittaId: 'dit1',
+    sedeId: 'sed1',
+    numeroSedi: 3,
+    partitaIvaDaVerificare: true,
+    numeroAutorizzazione: 'AUT/1',
+    sede: { via: 'Via Torino', civico: '5', cap: '10100', comune: 'Torino', provincia: 'TO' },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Destinatario
+  const RIGA_PRIVATO = {
+    ...RIGA,
+    id: 'r2',
+    partitaIVA: null,
+    codiceFiscale: CF_PERSONA,
+    partitaIvaDaVerificare: false,
+    numeroSedi: 1,
+  } as unknown as Destinatario
+
+  beforeEach(() => {
+    registryService = jasmine.createSpyObj<RegistryService>('RegistryService', [
+      'getDestinatari',
+      'createDestinatario',
+      'updateDestinatario',
+      'cercaDitta',
+      'getDitta',
+    ])
+    registryService.getDestinatari.and.returnValue(
+      of({ items: [RIGA, RIGA_PRIVATO], total: 2, page: 1, limit: 10, totalPages: 1 })
+    )
+    registryService.createDestinatario.and.returnValue(of(RIGA))
+    registryService.updateDestinatario.and.returnValue(of(RIGA))
+    registryService.cercaDitta.and.returnValue(of({ ditta: null }))
+    registryService.getDitta.and.returnValue(
+      of({
+        id: 'dit1',
+        ragioneSociale: 'Ditta Uno S.r.l.',
+        partitaIva: null,
+        codiceFiscale: null,
+        partitaIvaDaVerificare: true,
+        privato: false,
+        sedi: [],
+        ruoli: {},
+      })
+    )
+    TestBed.configureTestingModule({
+      imports: [DestinatariListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: RegistryService, useValue: registryService },
+        { provide: AuthService, useValue: authServiceStub() },
+        MessageService,
+        ConfirmationService,
+      ],
+    })
+    fixture = TestBed.createComponent(DestinatariListComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  })
+
+  afterEach(() => {
+    fixture.destroy()
+    document.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
+  })
+
+  const el = () => fixture.nativeElement as HTMLElement
+  const tid = (id: string) => el().querySelector(`[data-testid="${id}"]`) as HTMLElement | null
+
+  function compila(): void {
+    component.formData.ragioneSociale = 'Nuova S.r.l.'
+    component.formData.partitaIVA = PIVA_VALIDA
+    component.formData.numeroAutorizzazione = 'AUT/9'
+    component.formData.sede = {
+      via: 'Via Milano',
+      civico: '9',
+      cap: '20121',
+      comune: 'Milano',
+      provincia: 'MI',
+    }
+  }
+
+  it('ha la colonna "P.IVA / C.F." e mostra il codice fiscale di chi non ha la P.IVA', () => {
+    const intestazioni = Array.from(el().querySelectorAll('th')).map(th => th.textContent?.trim())
+    expect(intestazioni).toContain('P.IVA / C.F.')
+    expect(tid('destinatari-identificativo-r1')!.textContent).toContain('12345678901')
+    expect(tid('destinatari-identificativo-r2')!.textContent).toContain(CF_PERSONA)
+  })
+
+  it('segnala "Da verificare" solo sulla riga con la P.IVA da verificare', () => {
+    expect(tid('destinatari-da-verificare-r1')!.textContent).toContain('Da verificare')
+    expect(tid('destinatari-da-verificare-r2')).toBeNull()
+  })
+
+  it('il pulsante "Sedi (n)" mostra il numero di sedi e apre il dialog della ditta (clic reale)', () => {
+    const bottone =
+      tid('destinatari-sedi-r1')!.querySelector('button') ?? tid('destinatari-sedi-r1')!
+    expect(bottone.textContent).toContain('Sedi (3)')
+    expect(tid('destinatari-sedi-r2')!.textContent).toContain('Sedi (1)')
+    ;(bottone as HTMLElement).click()
+    fixture.detectChanges()
+
+    expect(registryService.getDitta).toHaveBeenCalledOnceWith('dit1')
+    expect(document.querySelector('[data-testid="sedi-ditta-dialog"]')).toBeTruthy()
+    expect(document.body.textContent).toContain('Sedi di Ditta Uno S.r.l.')
+  })
+
+  it('in creazione senza alcun identificativo mostra "Indica la partita IVA o il codice fiscale." e non salva', () => {
+    component.showCreateDialog()
+    compila()
+    component.formData.partitaIVA = ''
+
+    component.saveDestinatario()
+
+    expect(registryService.createDestinatario).not.toHaveBeenCalled()
+    expect(component.erroriId.generale).toBe('Indica la partita IVA o il codice fiscale.')
+  })
+
+  it("una P.IVA con checksum errato (nome esplicito: non valida) è rifiutata prima dell'invio", () => {
+    component.showCreateDialog()
+    compila()
+    component.formData.partitaIVA = '12345678901'
+
+    component.saveDestinatario()
+
+    expect(registryService.createDestinatario).not.toHaveBeenCalled()
+    expect(component.erroriId.partitaIva).toContain('Partita IVA non valida')
+  })
+
+  it('un privato (solo codice fiscale di persona) è rifiutato: può essere solo produttore', () => {
+    component.showCreateDialog()
+    compila()
+    component.formData.partitaIVA = ''
+    component.formData.codiceFiscale = CF_PERSONA
+
+    component.saveDestinatario()
+
+    expect(registryService.createDestinatario).not.toHaveBeenCalled()
+    expect(component.erroriId.codiceFiscale).toBe(
+      'Un privato senza partita IVA può essere solo produttore.'
+    )
+  })
+
+  it("D2.8: in modifica la P.IVA da verificare lasciata com'è non viene inviata né ri-validata", () => {
+    component.editDestinatario(RIGA)
+
+    component.saveDestinatario()
+
+    const inviato = registryService.updateDestinatario.calls.mostRecent().args[1]
+    expect('partitaIVA' in inviato).toBeFalse()
+    expect('codiceFiscale' in inviato).toBeFalse()
+  })
+
+  it('D2.8: in modifica la P.IVA da verificare sostituita con una valida viene inviata', () => {
+    component.editDestinatario(RIGA)
+    component.formData.partitaIVA = PIVA_VALIDA
+
+    component.saveDestinatario()
+
+    expect(registryService.updateDestinatario.calls.mostRecent().args[1].partitaIVA).toBe(
+      PIVA_VALIDA
+    )
   })
 })

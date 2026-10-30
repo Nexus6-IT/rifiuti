@@ -15,9 +15,12 @@ import { TagModule } from 'primeng/tag'
 import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateTrasportatoreDto } from './registry.service'
-import { Trasportatore, Indirizzo } from '../../shared/models/registry.model'
+import { Trasportatore, Indirizzo, Ditta, SedeDitta } from '../../shared/models/registry.model'
 import { AuthService } from '../../core/services/auth.service'
 import { puoGestireAnagrafiche } from './registry-permissions'
+import { DittaIdentificativiComponent } from './ditta-identificativi.component'
+import { SediDittaDialogComponent } from './sedi-ditta-dialog.component'
+import { ErroriIdentificativi, identificativiPerSalvataggio } from './identificativo-fiscale'
 
 @Component({
   selector: 'app-trasportatori-list',
@@ -36,6 +39,8 @@ import { puoGestireAnagrafiche } from './registry-permissions'
     TagModule,
     IconFieldModule,
     InputIconModule,
+    DittaIdentificativiComponent,
+    SediDittaDialogComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -108,11 +113,11 @@ import { puoGestireAnagrafiche } from './registry-permissions'
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Ragione sociale</th>
-                <th scope="col">Partita IVA</th>
+                <th scope="col">P.IVA / C.F.</th>
                 <th scope="col">N. iscrizione Albo</th>
                 <th scope="col">Sede legale</th>
                 <th scope="col">PEC</th>
-                <th scope="col" style="width: 7.5rem">Azioni</th>
+                <th scope="col" style="width: 12rem">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-trasportatore>
@@ -122,8 +127,22 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                   <span class="font-semibold">{{ trasportatore.ragioneSociale }}</span>
                 </td>
                 <td>
-                  <span class="cell-label">Partita IVA</span>
-                  <span class="mono">{{ trasportatore.partitaIVA }}</span>
+                  <span class="cell-label">P.IVA / C.F.</span>
+                  <span
+                    class="mono"
+                    [attr.data-testid]="'trasportatori-identificativo-' + trasportatore.id"
+                    >{{ trasportatore.partitaIVA || trasportatore.codiceFiscale }}</span
+                  >
+                  @if (trasportatore.partitaIVA && trasportatore.codiceFiscale) {
+                    <span class="mono ident-secondario">{{ trasportatore.codiceFiscale }}</span>
+                  }
+                  @if (trasportatore.partitaIvaDaVerificare) {
+                    <span
+                      class="badge-da-verificare"
+                      [attr.data-testid]="'trasportatori-da-verificare-' + trasportatore.id"
+                      >Da verificare</span
+                    >
+                  }
                 </td>
                 <td>
                   <span class="cell-label">N. iscrizione Albo</span>
@@ -141,6 +160,19 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
+                  <div class="row-actions">
+                    @if (trasportatore.dittaId) {
+                      <p-button
+                        [label]="'Sedi (' + (trasportatore.numeroSedi ?? 1) + ')'"
+                        icon="pi pi-map-marker"
+                        [text]="true"
+                        size="small"
+                        (onClick)="apriSedi(trasportatore)"
+                        [ariaLabel]="'Sedi di ' + trasportatore.ragioneSociale"
+                        [attr.data-testid]="'trasportatori-sedi-' + trasportatore.id"
+                      />
+                    }
+                  </div>
                   @if (puoGestire()) {
                     <div class="row-actions">
                       <p-button
@@ -230,33 +262,27 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                   id="tra-ragione"
                   name="ragioneSociale"
                   [(ngModel)]="formData.ragioneSociale"
+                  [readOnly]="!!dittaTrovata"
                   placeholder="es. Trasporti S.r.l."
                   required
                   autocomplete="organization"
                 />
               </div>
-              <div class="field col-12 md:col-6">
-                <label for="tra-piva"
-                  >Partita IVA <span class="req" aria-hidden="true">*</span></label
-                >
-                <input
-                  pInputText
-                  id="tra-piva"
-                  name="partitaIVA"
-                  [(ngModel)]="formData.partitaIVA"
-                  placeholder="11 cifre"
-                  maxlength="11"
-                  inputmode="numeric"
-                  required
-                  [disabled]="editMode"
-                  data-testid="trasportatori-piva-input"
+              <div class="field col-12">
+                <app-ditta-identificativi
+                  testidPrefix="trasportatori"
+                  pfx="tra"
+                  tipo="trasportatore"
+                  [modalita]="editMode ? 'edit' : 'create'"
+                  [(partitaIVA)]="formData.partitaIVA"
+                  [(codiceFiscale)]="formData.codiceFiscale"
+                  [partitaIvaOriginale]="selectedTrasportatore?.partitaIVA ?? null"
+                  [codiceFiscaleOriginale]="selectedTrasportatore?.codiceFiscale ?? null"
+                  [partitaIvaDaVerificare]="!!selectedTrasportatore?.partitaIvaDaVerificare"
+                  [errori]="erroriId"
+                  (dittaTrovata)="onDittaTrovata($event)"
+                  (sedeScelta)="onSedeScelta($event)"
                 />
-                <!-- La partita IVA è l'identità fiscale del soggetto: non
-                     modificabile dopo la creazione, il backend la rifiuta in
-                     modifica (400 forbidNonWhitelisted). -->
-                <small class="field-hint" *ngIf="editMode"
-                  >Non modificabile: è l'identità fiscale del soggetto.</small
-                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="tra-iscrizione"
@@ -391,6 +417,14 @@ import { puoGestireAnagrafiche } from './registry-permissions'
         </ng-template>
       </p-dialog>
 
+      <app-sedi-ditta-dialog
+        [(visible)]="sediVisibili"
+        [dittaId]="sediDittaId"
+        [ragioneSociale]="sediRagioneSociale"
+        [puoGestire]="puoGestire()"
+        (modificata)="ricarica()"
+      />
+
       <p-confirmDialog data-testid="trasportatori-confirm-dialog" />
     </div>
   `,
@@ -439,6 +473,21 @@ import { puoGestireAnagrafiche } from './registry-permissions'
       .mono {
         font-family: var(--font-family-mono);
         font-size: var(--font-size-sm);
+      }
+      .ident-secondario {
+        display: block;
+        color: var(--text-tertiary);
+      }
+      .badge-da-verificare {
+        display: inline-block;
+        margin-left: var(--spacing-xs);
+        padding: 0 var(--spacing-sm);
+        border: 1px solid var(--color-warning, #b45309);
+        border-radius: 999px;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        white-space: nowrap;
       }
       .row-actions {
         display: flex;
@@ -555,6 +604,16 @@ export class TrasportatoriListComponent implements OnInit {
 
   formData: CreateTrasportatoreDto = this.getEmptyFormData()
 
+  /** Errori di partita IVA e codice fiscale, mostrati dal componente degli identificativi. */
+  erroriId: ErroriIdentificativi = {}
+  /** Ditta gia' presente trovata dalla ricerca (solo in creazione): blocca la ragione sociale. */
+  dittaTrovata: Ditta | null = null
+
+  // Dialog delle sedi della ditta
+  sediVisibili = false
+  sediDittaId = ''
+  sediRagioneSociale = ''
+
   private readonly authService = inject(AuthService)
   // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
   // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
@@ -581,6 +640,7 @@ export class TrasportatoriListComponent implements OnInit {
       [
         t.ragioneSociale,
         t.partitaIVA,
+        t.codiceFiscale,
         t.numeroIscrizione,
         t.pec,
         t.sedeLegale ? this.formatIndirizzo(t.sedeLegale) : '',
@@ -618,6 +678,8 @@ export class TrasportatoriListComponent implements OnInit {
     this.editMode = false
     this.selectedTrasportatore = null
     this.formData = this.getEmptyFormData()
+    this.erroriId = {}
+    this.dittaTrovata = null
     this.displayDialog = true
   }
 
@@ -626,7 +688,8 @@ export class TrasportatoriListComponent implements OnInit {
     this.selectedTrasportatore = trasportatore
     this.formData = {
       ragioneSociale: trasportatore.ragioneSociale,
-      partitaIVA: trasportatore.partitaIVA,
+      partitaIVA: trasportatore.partitaIVA ?? '',
+      codiceFiscale: trasportatore.codiceFiscale ?? '',
       numeroIscrizione: trasportatore.numeroIscrizione,
       sedeLegale: { ...trasportatore.sedeLegale },
       pec: trasportatore.pec,
@@ -634,11 +697,59 @@ export class TrasportatoriListComponent implements OnInit {
       // direttamente con l'input HTML type="date".
       scadenzaIscrizione: trasportatore.scadenzaIscrizione ?? '',
     }
+    this.erroriId = {}
+    this.dittaTrovata = null
     this.displayDialog = true
   }
 
+  /** Ditta trovata (o non piu' valida): blocca/sblocca la ragione sociale e precompila. */
+  onDittaTrovata(ditta: Ditta | null): void {
+    this.dittaTrovata = ditta
+    if (ditta) this.formData.ragioneSociale = ditta.ragioneSociale
+  }
+
+  /** Sede scelta fra quelle della ditta: precompila l'indirizzo; "Nuova sede" lo svuota. */
+  onSedeScelta(sede: SedeDitta | null): void {
+    this.formData.sedeLegale = {
+      via: sede?.via ?? '',
+      civico: sede?.civico ?? '',
+      cap: sede?.cap ?? '',
+      comune: sede?.citta ?? '',
+      provincia: sede?.provincia ?? '',
+    }
+  }
+
+  apriSedi(trasportatore: Trasportatore): void {
+    this.sediDittaId = trasportatore.dittaId ?? ''
+    this.sediRagioneSociale = trasportatore.ragioneSociale
+    this.sediVisibili = true
+  }
+
+  ricarica(): void {
+    this.loadTrasportatori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
+  }
+
   saveTrasportatore(): void {
-    if (!this.validateForm()) {
+    const id = identificativiPerSalvataggio(
+      {
+        partitaIVA: this.formData.partitaIVA ?? '',
+        codiceFiscale: this.formData.codiceFiscale ?? '',
+      },
+      'trasportatore',
+      this.editMode && this.selectedTrasportatore
+        ? {
+            partitaIva: this.selectedTrasportatore.partitaIVA,
+            codiceFiscale: this.selectedTrasportatore.codiceFiscale ?? null,
+            partitaIvaDaVerificare: !!this.selectedTrasportatore.partitaIvaDaVerificare,
+          }
+        : null
+    )
+    this.erroriId = id.errori
+    const identificativi = {
+      ...(id.partitaIVA && { partitaIVA: id.partitaIVA }),
+      ...(id.codiceFiscale && { codiceFiscale: id.codiceFiscale }),
+    }
+    if (Object.keys(id.errori).length > 0 || !this.validateForm()) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
@@ -657,11 +768,11 @@ export class TrasportatoriListComponent implements OnInit {
       this.editMode && this.selectedTrasportatore
         ? this.registryService.updateTrasportatore(
             this.selectedTrasportatore.id,
-            // NON includere partitaIVA: è l'identità fiscale del soggetto,
-            // UpdateTrasportatoreDto non la accetta (400
-            // forbidNonWhitelisted) e non deve essere modificabile da qui.
+            // Gli identificativi impostati non si cambiano: si inviano solo quelli aggiunti o, per la
+            // P.IVA "da verificare", sostituiti (D2.7-D2.8); mai quelli invariati.
             {
               ragioneSociale: this.formData.ragioneSociale,
+              ...identificativi,
               sedeLegale: this.formData.sedeLegale,
               numeroIscrizione: this.formData.numeroIscrizione,
               pec: this.formData.pec,
@@ -670,11 +781,17 @@ export class TrasportatoriListComponent implements OnInit {
           )
         : this.registryService.createTrasportatore({
             ...this.formData,
+            partitaIVA: id.partitaIVA,
+            codiceFiscale: id.codiceFiscale,
             scadenzaIscrizione,
           })
 
     operation.subscribe({
-      next: () => {
+      next: entity => {
+        // Avvisi non bloccanti del backend (es. ragione sociale mantenuta)
+        for (const avviso of entity.avvisi ?? []) {
+          this.messageService.add({ severity: 'info', summary: 'Informazione', detail: avviso })
+        }
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
@@ -731,7 +848,6 @@ export class TrasportatoriListComponent implements OnInit {
   validateForm(): boolean {
     return !!(
       this.formData.ragioneSociale?.trim() &&
-      this.formData.partitaIVA?.trim() &&
       this.formData.numeroIscrizione?.trim() &&
       this.formData.sedeLegale.via?.trim() &&
       this.formData.sedeLegale.civico?.trim() &&
