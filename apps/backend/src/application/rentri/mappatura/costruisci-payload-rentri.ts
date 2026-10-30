@@ -147,19 +147,24 @@ export class CostruisciPayloadRentri {
       )
     }
 
-    // Denominazione e identificativo dalla ditta. L'indirizzo dalla sede scelta sul FIR (filtrata
-    // per tenant E ditta del ruolo: una sede di un'altra ditta non deve mai uscire) o, se il FIR
-    // non ne ha una (creato prima della migration), dalla predefinita del ruolo. Senza ditta/sede,
-    // la copia sulla riga di ruolo.
+    // Denominazione e identificativo dalla ditta (ditta_id e' NOT NULL: le colonne storiche sulla
+    // riga di ruolo non esistono piu'). L'indirizzo dalla sede scelta sul FIR (filtrata per tenant
+    // E ditta del ruolo: una sede di un'altra ditta non deve mai uscire) o, se il FIR non ne ha
+    // una (creato prima della migration), dalla predefinita del ruolo.
     const ditta = riga.ditta
-    let sedeScelta: IndirizzoRegistro | null = riga.sede
+    if (!ditta) {
+      throw new DatoMancantePerRentriError(
+        nomeParte,
+        'ditta',
+        'la riga di registro non ha una ditta'
+      )
+    }
+    let indirizzo: IndirizzoRegistro | null = riga.sede
     if (parte?.sedeId) {
-      sedeScelta = riga.dittaId
-        ? await this.prisma.db.sedeDitta.findFirst({
-            where: { id: parte.sedeId, tenantId, dittaId: riga.dittaId },
-          })
-        : null
-      if (!sedeScelta) {
+      indirizzo = await this.prisma.db.sedeDitta.findFirst({
+        where: { id: parte.sedeId, tenantId, dittaId: riga.dittaId },
+      })
+      if (!indirizzo) {
         throw new DatoMancantePerRentriError(
           nomeParte,
           'sede',
@@ -167,11 +172,13 @@ export class CostruisciPayloadRentri {
         )
       }
     }
-    const indirizzo = sedeScelta ?? riga
+    if (!indirizzo) {
+      throw new DatoMancantePerRentriError(nomeParte, 'sede', 'la riga di registro non ha una sede')
+    }
     return {
-      ragioneSociale: ditta?.ragioneSociale ?? riga.ragioneSociale,
+      ragioneSociale: ditta.ragioneSociale,
       // Il contratto vuole un solo identificativo fiscale: CF della ditta se c'e', altrimenti P.IVA
-      partitaIVA: ditta ? (ditta.codiceFiscale ?? ditta.partitaIva ?? '') : riga.partitaIVA,
+      partitaIVA: ditta.codiceFiscale ?? ditta.partitaIva ?? '',
       via: indirizzo.via,
       civico: indirizzo.civico,
       cap: indirizzo.cap,
@@ -192,9 +199,7 @@ interface IndirizzoRegistro {
 
 /** Riga di ruolo con ditta e sede, come la restituisce `findFirst` con l'include. */
 interface RigaRegistro extends IndirizzoRegistro {
-  dittaId: string | null
-  ragioneSociale: string
-  partitaIVA: string
+  dittaId: string
   numeroIscrizione?: string | null
   ditta: { ragioneSociale: string; partitaIva: string | null; codiceFiscale: string | null } | null
   sede: IndirizzoRegistro | null
