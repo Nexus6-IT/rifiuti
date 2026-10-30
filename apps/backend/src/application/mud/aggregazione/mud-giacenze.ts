@@ -179,7 +179,9 @@ export function giacenzeDelleDichiarazioni(
       } else if (riga.recuperoKg > 0 && riga.smaltimentoKg > 0) {
         recupero = arrotonda3((kg * riga.recuperoKg) / (riga.recuperoKg + riga.smaltimentoKg))
         smaltimento = arrotonda3(kg - recupero)
-        tipo = 'RIPARTITA'
+        // se l'arrotondamento al grammo dà tutto a una componente è come «solo recupero» o
+        // «solo smaltimento»: niente avviso con «0 kg» (F4)
+        if (recupero > 0 && smaltimento > 0) tipo = 'RIPARTITA'
       } else {
         recupero = 0
         smaltimento = kg

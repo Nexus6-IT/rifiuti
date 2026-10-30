@@ -290,6 +290,15 @@ describe('mud-giacenze: recupero o smaltimento (D9)', () => {
     expect(f.righe.get('ul-1')![0].giacenzaSmaltimentoKg).toBe(0.15)
   })
 
+  it("D9: l'arrotondamento al grammo dà tutto a una componente → nessuna ripartizione (F4)", () => {
+    // 0,001 kg con avvii 1 : 1 → recupero 0,0005 → 0,001; smaltimento 0: niente "0 kg a smaltimento"
+    const e = unaSede({ recuperoKg: 1, smaltimentoKg: 1 }, 0.001)
+    const r = e.righe.get('ul-1')![0]
+    expect(r.giacenzaRecuperoKg).toBe(0.001)
+    expect('giacenzaSmaltimentoKg' in r).toBe(false)
+    expect(e.ripartizioni).toEqual([])
+  })
+
   it('D9: nessun avvio → smaltimento', () => {
     const e = unaSede({ prodottoKg: 500 }, 80)
     const r = e.righe.get('ul-1')![0]
