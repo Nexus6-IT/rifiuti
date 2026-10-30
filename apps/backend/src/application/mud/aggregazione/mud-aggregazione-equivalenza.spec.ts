@@ -116,6 +116,8 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
     /** codici di controllo che devono comparire (scritti a mano) */
     attesi: string[]
     righe?: number
+    /** attese scritte a mano sul risultato di produzione (non ricavate dal codice) */
+    verifica?: (attuale: any) => void
   }
 
   const scenari: Scenario[] = [
@@ -354,6 +356,14 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
       },
       attesi: [],
       righe: 2,
+      verifica: attuale => {
+        // saldo a mano: 17 04 05 = 1 T di apertura + 300 carico - 100 scarico = 1200 kg;
+        // 20 03 04 = 40 kg; totale non dichiarato 1240 kg
+        const giacenze = attuale.controlli.find((c: any) => c.codice === 'GIACENZE_NON_CALCOLATE')
+        expect(giacenze.kgNonDichiarati).toBe(1240)
+        expect(giacenze.messaggio).toContain('CER 17 04 05: 1.200 kg')
+        expect(giacenze.messaggio).toContain('CER 20 03 04: 40 kg')
+      },
     },
     {
       nome: 'movimento non vigente',
@@ -365,6 +375,10 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
       },
       attesi: [],
       righe: 1,
+      verifica: attuale => {
+        // solo i 100 kg del movimento vigente: i 999 kg del non vigente non ci sono
+        expect(attuale.righe[0].prodottoKg).toBe(100)
+      },
     },
     {
       nome: 'due registri con la stessa numerazione',
@@ -408,5 +422,6 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
     const codici = attuale.controlli.map(c => c.codice)
     for (const atteso of s.attesi) expect(codici).toContain(atteso)
     if (s.righe !== undefined) expect(attuale.righe).toHaveLength(s.righe)
+    s.verifica?.(attuale)
   })
 })
