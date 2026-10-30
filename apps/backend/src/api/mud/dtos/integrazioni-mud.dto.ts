@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer'
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -150,6 +151,25 @@ export class VocePesoSpecificoDto {
   confermaFuoriIntervallo?: boolean
 }
 
+/** Destinazione di una giacenza al 31/12 (D9): il tracciato chiede recupero o smaltimento. */
+export class VoceDestinazioneGiacenzaDto {
+  // Le 6 cifre le verifica il servizio con cer-registro (come per il peso specifico).
+  @ApiProperty({ example: '170405' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  cerCode!: string
+
+  @ApiProperty({ nullable: true, description: 'Sede (unità locale); null = senza sede' })
+  @IsOptional()
+  @IsUUID()
+  unitaLocaleId!: string | null
+
+  @ApiProperty({ enum: ['R', 'D'], description: 'R = recupero, D = smaltimento' })
+  @IsIn(['R', 'D'])
+  destinazione!: 'R' | 'D'
+}
+
 export class IntegrazioniMudDto {
   @ApiProperty({ type: [VoceCfDestinatarioDto] })
   @IsArray()
@@ -177,4 +197,12 @@ export class IntegrazioniMudDto {
   @ValidateNested({ each: true })
   @Type(() => VoceTrasportatoreDto)
   trasportatori?: VoceTrasportatoreDto[]
+
+  // Facoltativa: assente = nessuna destinazione (il PUT sostituisce tutto, come le altre voci)
+  @ApiPropertyOptional({ type: [VoceDestinazioneGiacenzaDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VoceDestinazioneGiacenzaDto)
+  destinazioniGiacenza?: VoceDestinazioneGiacenzaDto[]
 }

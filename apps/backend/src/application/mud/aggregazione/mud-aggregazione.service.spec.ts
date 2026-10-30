@@ -2694,6 +2694,33 @@ describe('MudAggregazioneService: giacenze al 31/12 (versione 2)', () => {
     expect(r.righe).toEqual(r.dichiarazioni[0].righe)
   })
 
+  it('il calcolo usa la destinazione salvata', async () => {
+    // saldo a mano: 1000 - 300 (recupero) - 100 (smaltimento) = 600 kg; senza integrazione
+    // sarebbe ripartita 450/150, con l'integrazione 'D' letta dal record vanno tutti a smaltimento
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 1000 }),
+        scaricoFir({ progressiveNumber: 2, quantity: 300, firId: 'f1', operationCode: 'R13' }),
+        scaricoFir({ progressiveNumber: 3, quantity: 100, firId: 'f2', operationCode: 'D15' }),
+      ],
+      fir: [fir('f1', 'FIR-2025-000123'), fir('f2', 'FIR-2025-000124')],
+      destinatari: [dest1],
+      reportData: {
+        integrazioni: {
+          destinazioniGiacenza: {
+            'ul-1|170405': { cerCode: '170405', unitaLocaleId: 'ul-1', destinazione: 'D' },
+          },
+        },
+      },
+    })
+    const r = await esito
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(600)
+    expect('giacenzaRecuperoKg' in rigaCer(r, 0, '170405')).toBe(false)
+    expect(conCodice(r, 'GIACENZA_RIPARTITA')).toEqual([])
+  })
+
   it('v2: le giacenze iniziali entrano nel saldo della loro sede', async () => {
     // reg-B: apertura di 2 t (2000 kg) + carico prodotto di 100 kg = 2100 kg, mai avviati →
     // smaltimento; reg-A: 50 kg di un altro CER
