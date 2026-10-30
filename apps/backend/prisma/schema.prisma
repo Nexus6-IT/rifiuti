@@ -2432,6 +2432,7 @@ model SedeDitta {
   @@index([tenantId], map: "sedi_ditte_tenant_id_idx")
   @@index([dittaId], map: "sedi_ditte_ditta_id_idx")
   @@map("sedi_ditte")
+}
 
 /// Criterio di controllo del deposito temporaneo scelto dall'azienda (art. 185-bis D.Lgs. 152/2006):
 /// la norma lascia scegliere fra il limite di tempo (tre mesi) e quello di quantita'.
