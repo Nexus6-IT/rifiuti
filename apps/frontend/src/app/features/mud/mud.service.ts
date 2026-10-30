@@ -152,7 +152,7 @@ export interface StatoPresentazioneMud {
   esportazioni: EsportazioneMud[]
   /** Data della dichiarazione che il prossimo file annulla e sostituisce, o null (A-W-04) */
   prossimoFileSostituisce: string | null
-  /** Versione del calcolo della presentazione; null se non presentato (o presentato prima del F2-8: vale 1) */
+  /** Versione del calcolo della presentazione; null solo se il MUD non è presentato */
   versioneCalcolo: number | null
   versioneCalcoloAttuale: number
 }
@@ -501,6 +501,9 @@ function righeSalvate(i: IntegrazioniMud): RigaIntegrazione[] {
     righe.push(conSoggetto(rigaVuota('CF_TRASPORTATORE', chiave, etichetta), s))
   }
   for (const [chiave, g] of Object.entries(i.destinazioniGiacenza ?? {})) {
+    // sede che non esiste più: il PUT la rifiuterebbe ("Unità locale non trovata") e
+    // bloccherebbe il salvataggio di tutte le integrazioni
+    if (g.unitaLocaleId && i.unitaLocali && !(g.unitaLocaleId in i.unitaLocali)) continue
     righe.push({
       ...rigaVuota(
         'DESTINAZIONE_GIACENZA',
@@ -539,20 +542,37 @@ function giacenzaInDichiarazione(
   )
 }
 
+/** Regola M9: la voce salvata non è più applicata e conviene dirlo all'utente. */
+function voceGiacenzaNonUsata(
+  dichiarazioni: DichiarazioneRiepilogo[],
+  unitaLocaleId: string | null | undefined,
+  cer6: string
+): boolean {
+  const id = unitaLocaleId ?? null
+  if (giacenzaInDichiarazione(dichiarazioni, id, cer6)) return false
+  // un'altra dichiarazione ha la giacenza (sede principale cambiata) o la sede della voce non ha
+  // più dichiarazione (azienda dopo l'arrivo delle sedi): in entrambi i casi basta che la
+  // giacenza sia altrove; se non è in nessuna dichiarazione la voce è innocua
+  return dichiarazioni.some(
+    d => d.unitaLocale.id !== id && giacenzaInDichiarazione(dichiarazioni, d.unitaLocale.id, cer6)
+  )
+}
+
 /**
  * Righe della sezione Integrazioni: prima i controlli con `integrazione` (bloccanti e avvisi,
  * una riga per tipo e chiave), poi le voci salvate che nessun controllo richiede più. I valori
  * salvati precompilano la riga del controllo con la stessa chiave.
  *
  * Una destinazione di giacenza già indicata fa sparire il suo avviso: la voce salvata resta
- * quindi senza controllo anche quando è in uso. Con `dichiarazioni` si distingue: l'avviso
- * "voce non più usata" (M9) compare solo se nessuna dichiarazione ha più quella giacenza.
- * Senza `dichiarazioni` ogni voce di giacenza non richiesta da un controllo è segnalata.
+ * quindi senza controllo anche quando è in uso. L'avviso "voce non più usata" (M9) compare solo
+ * se la dichiarazione della voce non ha giacenza per quel CER e inoltre un'altra dichiarazione
+ * ce l'ha, oppure nel file non c'è più nessuna dichiarazione per quella sede. Se il CER non ha
+ * giacenza in nessuna dichiarazione la voce è innocua: nessun avviso.
  */
 export function righeIntegrazioni(
   controlli: MudControllo[],
   integrazioni: IntegrazioniMud,
-  dichiarazioni?: DichiarazioneRiepilogo[]
+  dichiarazioni: DichiarazioneRiepilogo[]
 ): RigaIntegrazione[] {
   const salvate = new Map(righeSalvate(integrazioni).map(r => [`${r.tipo}|${r.chiave}`, r]))
   const righe = new Map<string, RigaIntegrazione>()
@@ -571,7 +591,7 @@ export function righeIntegrazioni(
     if (righe.has(id)) continue
     const nonUsata =
       r.tipo === 'DESTINAZIONE_GIACENZA' &&
-      (!dichiarazioni || !giacenzaInDichiarazione(dichiarazioni, r.unitaLocaleId, r.cerCode ?? ''))
+      voceGiacenzaNonUsata(dichiarazioni, r.unitaLocaleId, r.cerCode ?? '')
     righe.set(id, nonUsata ? { ...r, avviso: AVVISO_VOCE_GIACENZA_NON_USATA } : r)
   }
   return [...righe.values()]
