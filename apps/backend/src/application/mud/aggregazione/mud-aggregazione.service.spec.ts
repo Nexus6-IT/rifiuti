@@ -2778,6 +2778,31 @@ describe('MudAggregazioneService: giacenze al 31/12 (versione 2)', () => {
     expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(200)
   })
 
+  it('v2: una sola dichiarazione ma giacenze di due sedi → ogni avviso porta la sede (F3)', async () => {
+    // la Sede ha un movimento (una dichiarazione) con 100 kg in deposito; il Deposito non ha
+    // movimenti nell'anno ma 50 kg di apertura: giacenza non dichiarata, di un'altra sede
+    const { esito } = calcola({
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 })],
+      giacenzeIniziali: [
+        {
+          registroId: 'reg-B',
+          cerCode: '20 03 01',
+          quantita: 50,
+          unita: 'KG',
+          dataRiferimento: new Date('2025-01-01T00:00:00Z'),
+        },
+      ],
+    })
+    const r = await esito
+    expect(r.dichiarazioni).toHaveLength(1)
+    expect(conCodice(r, 'GIACENZA_DESTINAZIONE_NON_INDICATA').map((c: any) => c.sede)).toEqual([
+      'Sede',
+    ])
+    expect(conCodice(r, 'GIACENZE_NON_DICHIARATE').map((c: any) => c.sede)).toEqual(['Deposito'])
+  })
+
   it('v2: giacenze di due sedi restano separate', async () => {
     // sede: 100 - 60 = 40 kg; deposito: 100 - 75 = 25 kg; stesso CER, righe e avvisi propri
     const { esito } = calcola({

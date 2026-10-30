@@ -1194,7 +1194,12 @@ export class MudAggregazioneService {
   ): MudEsitoControllo[] {
     const esiti: MudEsitoControllo[] = []
     const nomeSede = (u: { denominazione: string } | null): string => u?.denominazione ?? 'Azienda'
-    // la sede compare solo con più dichiarazioni nel file (D14)
+    // la sede compare con più dichiarazioni nel file o con giacenze di più sedi (D14, F3)
+    const sediCoinvolte = new Set<string | null>([
+      ...giacenze.nonDichiarate.map(n => n.unitaLocale?.id ?? null),
+      ...giacenze.ripartizioni.map(r => r.unitaLocale?.id ?? null),
+    ])
+    conSede = conSede || sediCoinvolte.size > 1
     const conLaSede = (c: MudEsitoControllo, u: { denominazione: string } | null) =>
       conSede ? { ...c, sede: nomeSede(u) } : c
     for (const n of giacenze.nonDichiarate) {
