@@ -3,6 +3,8 @@ import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misur
 
 /** Apertura di registro (giacenza iniziale) nella forma che serve ai calcoli di saldo. */
 export interface ApertureRegistroRiga {
+  /** Id della giacenza iniziale (facoltativo: i chiamanti che costruiscono la riga a mano non lo hanno). */
+  id?: string
   registroId: string
   cerCode: string
   /** Quantità nell'unità salvata (kg/t convertibili, altrimenti unità non di massa). */
@@ -44,6 +46,7 @@ export async function leggiApertureRegistro(
         : {}),
     },
     select: {
+      id: true,
       registroId: true,
       cerCode: true,
       quantita: true,
@@ -52,6 +55,7 @@ export async function leggiApertureRegistro(
     },
   })
   return righe.map(r => ({
+    id: r.id,
     registroId: r.registroId,
     cerCode: r.cerCode,
     quantita: Number(r.quantita),

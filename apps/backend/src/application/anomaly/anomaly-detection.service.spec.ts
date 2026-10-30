@@ -20,6 +20,7 @@ describe('AnomalyDetectionService', () => {
       cERCode: { findMany: jest.fn() },
       wasteMovement: { groupBy: jest.fn() },
       giacenzaIniziale: { findMany: jest.fn().mockResolvedValue([]) },
+      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
     }
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -34,7 +35,8 @@ describe('AnomalyDetectionService', () => {
   function setup(firs: any[], catalog: string[], movements: any[] = []) {
     prisma.fIR.findMany.mockResolvedValue(firs)
     prisma.cERCode.findMany.mockResolvedValue(catalog.map(code => ({ code })))
-    prisma.wasteMovement.groupBy.mockResolvedValue(movements)
+    // ogni riga appartiene al registro r1 salvo diversa indicazione
+    prisma.wasteMovement.groupBy.mockResolvedValue(movements.map(m => ({ registroId: 'r1', ...m })))
   }
 
   it('non segnala nulla per un FIR valido', async () => {
@@ -96,11 +98,11 @@ describe('AnomalyDetectionService', () => {
   })
 
   describe('giacenza impossibile con le regole del registro', () => {
-    it('raggruppa per CER e unità', async () => {
+    it('raggruppa per registro, CER e unità', async () => {
       setup([], ['150101'])
       await service.detectAnomalies('t1')
       expect(prisma.wasteMovement.groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({ by: ['cerCode', 'type', 'unit'] })
+        expect.objectContaining({ by: ['registroId', 'cerCode', 'type', 'unit'] })
       )
     })
 
@@ -248,6 +250,90 @@ describe('AnomalyDetectionService', () => {
       )
       prisma.giacenzaIniziale.findMany.mockResolvedValue([apertura('13 02 05*', 500, 'L')])
       expect(await service.detectAnomalies('t1')).toHaveLength(1)
+    })
+  })
+  describe('per registro (D11)', () => {
+    const mov = (registroId: string, type: string, quantity: number, cerCode = '150101') => ({
+      registroId,
+      cerCode,
+      type,
+      unit: 'KG',
+      _sum: { quantity },
+    })
+    const registri = [
+      { id: 'rA', descrizione: 'Sede di Milano' },
+      { id: 'rB', descrizione: 'Sede di Roma' },
+    ]
+
+    it('il caso della roadmap: stesso CER, A scarica più di quanto carica, B ha carico', async () => {
+      setup(
+        [],
+        ['150101'],
+        [mov('rA', 'CARICO', 100), mov('rA', 'SCARICO', 150), mov('rB', 'CARICO', 100)]
+      )
+      prisma.registroRifiuti.findMany.mockResolvedValue(registri)
+      const anomalies = await service.detectAnomalies('t1')
+      expect(anomalies).toHaveLength(1)
+      expect(anomalies[0]).toMatchObject({
+        type: 'NEGATIVE_STOCK',
+        registroId: 'rA',
+        cerCode: '15 01 01',
+      })
+      expect(anomalies[0].message).toBe(
+        'Giacenza impossibile per 15 01 01 nel registro «Sede di Milano»: scarico (150 kg) supera carico (100 kg)'
+      )
+      expect(prisma.registroRifiuti.findMany.mock.calls[0][0].where).toEqual({ tenantId: 't1' })
+    })
+
+    it('con un solo registro il messaggio è identico a prima e i registri non si leggono', async () => {
+      setup([], ['150101'], [mov('rA', 'CARICO', 10), mov('rA', 'SCARICO', 40)])
+      prisma.registroRifiuti.findMany.mockResolvedValue([registri[0]])
+      const anomalies = await service.detectAnomalies('t1')
+      expect(anomalies).toHaveLength(1)
+      expect(anomalies[0].message).toBe(
+        'Giacenza impossibile per 15 01 01: scarico (40 kg) supera carico (10 kg)'
+      )
+      expect(anomalies[0].registroId).toBe('rA')
+    })
+
+    it('senza anomalie di giacenza non legge i registri', async () => {
+      prisma.registroRifiuti.findMany.mockResolvedValue(registri)
+      setup([], ['150101'], [mov('rA', 'CARICO', 100), mov('rA', 'SCARICO', 50)])
+      expect(await service.detectAnomalies('t1')).toEqual([])
+      expect(prisma.registroRifiuti.findMany).not.toHaveBeenCalled()
+    })
+
+    it("l'apertura di A non copre lo scarico di B", async () => {
+      setup([], ['150101'], [mov('rB', 'SCARICO', 50)])
+      prisma.registroRifiuti.findMany.mockResolvedValue(registri)
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([
+        {
+          registroId: 'rA',
+          cerCode: '15 01 01',
+          quantita: 100,
+          unita: 'KG',
+          dataRiferimento: new Date('2026-01-10T00:00:00Z'),
+        },
+      ])
+      const anomalies = await service.detectAnomalies('t1')
+      expect(anomalies).toHaveLength(1)
+      expect(anomalies[0]).toMatchObject({ registroId: 'rB' })
+      expect(anomalies[0].message).toContain('«Sede di Roma»')
+    })
+
+    it("l'apertura del proprio registro copre lo scarico", async () => {
+      setup([], ['150101'], [mov('rA', 'SCARICO', 50)])
+      prisma.registroRifiuti.findMany.mockResolvedValue(registri)
+      prisma.giacenzaIniziale.findMany.mockResolvedValue([
+        {
+          registroId: 'rA',
+          cerCode: '15 01 01',
+          quantita: 100,
+          unita: 'KG',
+          dataRiferimento: new Date('2026-01-10T00:00:00Z'),
+        },
+      ])
+      expect(await service.detectAnomalies('t1')).toEqual([])
     })
   })
 })

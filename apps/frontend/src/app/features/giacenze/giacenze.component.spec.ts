@@ -1,8 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 
 import { GiacenzeComponent } from './giacenze.component'
 import { GiacenzeService, Giacenza } from './giacenze.service'
+import { RegistroService } from '../registro/registro.service'
 import { ToastService } from '../../core/services/toast.service'
 
 function giacenza(overrides: Partial<Giacenza> = {}): Giacenza {
@@ -25,15 +26,32 @@ describe('GiacenzeComponent', () => {
   function setup(giacenze: Giacenza[]): void {
     const service = jasmine.createSpyObj<GiacenzeService>('GiacenzeService', [
       'getGiacenze',
-      'getDepositoTemporaneoAlerts',
+      'getDepositoTemporaneo',
+      'getSoglie',
     ])
     service.getGiacenze.and.returnValue(of(giacenze))
-    service.getDepositoTemporaneoAlerts.and.returnValue(of([]))
+    service.getDepositoTemporaneo.and.returnValue(of({ oggi: '2026-10-30', registri: [] }))
+    service.getSoglie.and.returnValue(throwError(() => new Error('non necessario')))
+    const registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
+    registri.listRegistri.and.returnValue(
+      of([
+        {
+          id: 'r1',
+          unitaLocaleId: 'u1',
+          numIscrSito: null,
+          denominazione: 'Sede unica',
+          codice: 'R1',
+          attivo: true,
+          principale: true,
+        },
+      ])
+    )
 
     TestBed.configureTestingModule({
       imports: [GiacenzeComponent],
       providers: [
         { provide: GiacenzeService, useValue: service },
+        { provide: RegistroService, useValue: registri },
         { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['error']) },
       ],
     })
