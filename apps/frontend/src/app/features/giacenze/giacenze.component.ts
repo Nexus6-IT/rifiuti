@@ -22,6 +22,7 @@ import {
   SoglieApplicate,
 } from './giacenze.service'
 import { formattaGiorno } from './giorno'
+import { SoglieDepositoDialogComponent } from './soglie-deposito-dialog.component'
 
 /** Il dropdown non seleziona le voci con valore `null`: "tutte le sedi" è la stringa vuota. */
 const TUTTE_LE_SEDI = ''
@@ -42,6 +43,7 @@ const TUTTE_LE_SEDI = ''
     TableModule,
     TagModule,
     ProgressSpinnerModule,
+    SoglieDepositoDialogComponent,
   ],
   template: `
     <div class="page">
@@ -54,6 +56,15 @@ const TUTTE_LE_SEDI = ''
           </p>
         </div>
         <div class="page-actions">
+          <p-button
+            *ngIf="soglieConfigurate()?.puoImpostare"
+            label="Soglie"
+            icon="pi pi-sliders-h"
+            [outlined]="true"
+            (onClick)="soglieAperte.set(true)"
+            data-testid="soglie-apri"
+            ariaLabel="Configura le soglie del deposito temporaneo"
+          ></p-button>
           <p-button
             label="Aggiorna"
             icon="pi pi-refresh"
@@ -367,6 +378,14 @@ const TUTTE_LE_SEDI = ''
           </div>
         </section>
       </ng-container>
+
+      <app-soglie-deposito-dialog
+        [visible]="soglieAperte()"
+        (visibleChange)="soglieAperte.set($event)"
+        [configurazione]="soglieConfigurate()"
+        [registroIniziale]="registroSel()"
+        (salvato)="reload()"
+      ></app-soglie-deposito-dialog>
     </div>
   `,
   styles: [
@@ -489,6 +508,7 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
   readonly giacenze = signal<Giacenza[]>([])
   readonly deposito = signal<DepositoTemporaneoVista | null>(null)
   readonly soglieConfigurate = signal<ConfigurazioneSoglie | null>(null)
+  readonly soglieAperte = signal(false)
   readonly registri = signal<RegistroVista[]>([])
   /** Registro scelto; null = tutte le sedi. */
   readonly registroSel = signal<string | null>(null)
