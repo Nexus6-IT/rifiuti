@@ -35,7 +35,6 @@ import {
 import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import { ContractService } from '../../contracts/contract.service'
 import { MudAggregazioneService } from './mud-aggregazione.service'
-import { chiaveDestinatario } from './mud-integrazioni'
 
 type Privati = {
   caricaDestinatari(
