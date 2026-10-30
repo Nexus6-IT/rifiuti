@@ -22,6 +22,7 @@ import {
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
   FirNonTrovatoError,
+  SedeNonValidaPerRuoloError,
 } from '../../../core/domain/errors'
 
 const TENANT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -439,5 +440,146 @@ describe('ModificaFIRUseCase', () => {
     await expect(useCase.execute(comando(fir, { annotazioni: 'x' }))).rejects.toBeInstanceOf(
       FirModificatoNelFrattempoError
     )
+  })
+
+  // ---- F2-10 D9.6 / I4: le cinque regole sulla sede di produttore e destinatario ----
+  describe('sede delle parti (D9.6)', () => {
+    const P2 = '66666666-6666-4666-8666-666666666666'
+    const SEDE_A = 'aaaaaaaa-0000-4000-8000-00000000000a'
+    const SEDE_B = 'bbbbbbbb-0000-4000-8000-00000000000b'
+    const SEDE_PREDEFINITA = 'sede-1'
+
+    beforeEach(() => {
+      // Il registro finto onora `sedeId`: la sede letta e' quella indicata, altrimenti la predefinita.
+      produttori.findById.mockImplementation(async (id: string, opzioni?: { sedeId?: string }) =>
+        Produttore.reconstitute({
+          id,
+          ragioneSociale: 'Produttore registro',
+          dittaId: 'ditta-1',
+          sedeId: opzioni?.sedeId ?? SEDE_PREDEFINITA,
+          partitaIVA: PartitaIVA.create('12345678903'),
+          sedeLegale: indirizzo,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+      )
+      destinatari.findById.mockImplementation(async (id: string, opzioni?: { sedeId?: string }) =>
+        Destinatario.reconstitute({
+          id,
+          ragioneSociale: 'Destinatario registro',
+          dittaId: 'ditta-1',
+          sedeId: opzioni?.sedeId ?? SEDE_PREDEFINITA,
+          partitaIVA: PartitaIVA.create('32345678903'),
+          sede: indirizzo,
+          numeroAutorizzazione: 'AUT-1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+      )
+    })
+
+    /** Bozza con lo snapshot del produttore sulla sede indicata (`undefined` = FIR precedente). */
+    function bozzaConSedeProduttore(sedeId?: string): FIR {
+      const fir = bozza()
+      Object.assign(fir, { _produttore: { ...snapP, sedeId } })
+      return fir
+    }
+
+    it('regola 1: stessa parte e sede del DTO assente: si conserva sede e snapshot (anche NULL)', async () => {
+      const fir = bozzaConSedeProduttore(undefined)
+      const snapshot = fir.produttore
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).not.toHaveBeenCalled()
+      expect(fir.produttore).toBe(snapshot)
+      expect(fir.produttore?.sedeId).toBeUndefined()
+      expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
+    })
+
+    it('regola 2: sede del DTO uguale a quella del FIR: invariato, nessuna lettura, nessuna scrittura', async () => {
+      const fir = bozzaConSedeProduttore(SEDE_A)
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { produttoreSedeId: SEDE_A }))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).not.toHaveBeenCalled()
+      expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
+    })
+
+    it('regola 3: FIR con sede NULL e sede del DTO uguale alla predefinita: invariato, nessuna scrittura', async () => {
+      const fir = bozzaConSedeProduttore(undefined)
+      const snapshot = fir.produttore
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { produttoreSedeId: SEDE_PREDEFINITA }))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).toHaveBeenCalledTimes(1)
+      expect(produttori.findById).toHaveBeenCalledWith(P1)
+      expect(fir.produttore).toBe(snapshot)
+      expect(fir.produttore?.sedeId).toBeUndefined()
+      expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
+    })
+
+    it('regola 4: stessa parte e sede diversa: nuovo snapshot da quella sede', async () => {
+      const fir = bozzaConSedeProduttore(SEDE_A)
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { produttoreSedeId: SEDE_B }))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).toHaveBeenCalledWith(P1, { sedeId: SEDE_B })
+      expect(fir.produttore?.sedeId).toBe(SEDE_B)
+      const audit = repo.salvaModificaBozza.mock.calls[0][2]
+      expect(audit.campiModificati).toContain('produttore')
+      expect(audit.partiRisnapshottate).toEqual(['produttore'])
+    })
+
+    it('regola 4 (FIR con sede NULL): sede diversa dalla predefinita: nuovo snapshot', async () => {
+      const fir = bozzaConSedeProduttore(undefined)
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { produttoreSedeId: SEDE_B }))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).toHaveBeenCalledWith(P1)
+      expect(produttori.findById).toHaveBeenCalledWith(P1, { sedeId: SEDE_B })
+      expect(fir.produttore?.sedeId).toBe(SEDE_B)
+      expect(repo.salvaModificaBozza.mock.calls[0][2].partiRisnapshottate).toEqual(['produttore'])
+    })
+
+    it('regola 5: parte cambiata: sede indicata del nuovo ruolo', async () => {
+      const fir = bozzaConSedeProduttore(SEDE_A)
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { produttoreId: P2, produttoreSedeId: SEDE_B }))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).toHaveBeenCalledWith(P2, { sedeId: SEDE_B })
+      expect(fir.produttore?.registroId).toBe(P2)
+      expect(fir.produttore?.sedeId).toBe(SEDE_B)
+    })
+
+    it('regola 5: parte cambiata senza sede nel DTO: predefinita del nuovo ruolo', async () => {
+      const fir = bozzaConSedeProduttore(SEDE_A)
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { produttoreId: P2 }))
+      expect(r.isSuccess).toBe(true)
+      expect(produttori.findById).toHaveBeenCalledWith(P2)
+      expect(fir.produttore?.sedeId).toBe(SEDE_PREDEFINITA)
+    })
+
+    it('le stesse regole valgono per il destinatario (sede diversa: nuovo snapshot)', async () => {
+      const fir = bozza()
+      Object.assign(fir, { _destinatario: { ...snapD, sedeId: SEDE_A } })
+      repo.findById.mockResolvedValue(fir)
+      const r = await useCase.execute(comando(fir, { destinatarioSedeId: SEDE_B }))
+      expect(r.isSuccess).toBe(true)
+      expect(destinatari.findById).toHaveBeenCalledWith(D1, { sedeId: SEDE_B })
+      expect(fir.destinatario?.sedeId).toBe(SEDE_B)
+      expect(repo.salvaModificaBozza.mock.calls[0][2].partiRisnapshottate).toEqual(['destinatario'])
+    })
+
+    it('sede non valida per il ruolo: Result.fail con il messaggio, nessuna scrittura', async () => {
+      const fir = bozzaConSedeProduttore(SEDE_A)
+      repo.findById.mockResolvedValue(fir)
+      produttori.findById.mockRejectedValue(new SedeNonValidaPerRuoloError('produttore'))
+      const r = await useCase.execute(comando(fir, { produttoreSedeId: SEDE_B }))
+      expect(r.isFailure).toBe(true)
+      expect(r.error).toContain('produttore')
+      expect(repo.salvaModificaBozza).not.toHaveBeenCalled()
+    })
   })
 })

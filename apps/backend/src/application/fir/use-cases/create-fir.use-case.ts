@@ -10,6 +10,7 @@ import { ProduttoreRepository } from '../../../domain/registry/repositories/prod
 import { TrasportatoreRepository } from '../../../domain/registry/repositories/trasportatore.repository'
 import { DestinatarioRepository } from '../../../domain/registry/repositories/destinatario.repository'
 import { Result } from '../../../core/application/result'
+import { SedeNonValidaPerRuoloError } from '../../../core/domain/errors'
 import { CreateFIRCommand } from '../commands/create-fir.command'
 import { verificaCerPerFormulario } from '../verifica-cer-formulario'
 import {
@@ -50,9 +51,22 @@ export class CreateFIRUseCase {
     //    the anagrafica must be captured as an immutable SNAPSHOT at creation
     //    time, not referenced live. Missing registry records → cannot produce a
     //    valid FIR.
-    const produttore = await this.produttoreRepository.findById(command.produttoreId)
-    if (!produttore) {
-      return Result.fail<FIR>(`Produttore not found: ${command.produttoreId}`)
+    // F2-10 D9: la sede indicata deve essere attiva e della ditta del ruolo (altrimenti 400); senza
+    // sede nel DTO vale la predefinita del ruolo, come prima della migration.
+    let produttore
+    let destinatario
+    try {
+      produttore = command.produttoreSedeId
+        ? await this.produttoreRepository.findById(command.produttoreId, {
+            sedeId: command.produttoreSedeId,
+          })
+        : await this.produttoreRepository.findById(command.produttoreId)
+      if (!produttore) {
+        return Result.fail<FIR>(`Produttore not found: ${command.produttoreId}`)
+      }
+    } catch (error) {
+      if (error instanceof SedeNonValidaPerRuoloError) return Result.fail<FIR>(error.message)
+      throw error
     }
 
     const trasportatore = await this.trasportatoreRepository.findById(command.trasportatoreId)
@@ -60,9 +74,18 @@ export class CreateFIRUseCase {
       return Result.fail<FIR>(`Trasportatore not found: ${command.trasportatoreId}`)
     }
 
-    const destinatario = await this.destinatarioRepository.findById(command.destinatarioId)
-    if (!destinatario) {
-      return Result.fail<FIR>(`Destinatario not found: ${command.destinatarioId}`)
+    try {
+      destinatario = command.destinatarioSedeId
+        ? await this.destinatarioRepository.findById(command.destinatarioId, {
+            sedeId: command.destinatarioSedeId,
+          })
+        : await this.destinatarioRepository.findById(command.destinatarioId)
+      if (!destinatario) {
+        return Result.fail<FIR>(`Destinatario not found: ${command.destinatarioId}`)
+      }
+    } catch (error) {
+      if (error instanceof SedeNonValidaPerRuoloError) return Result.fail<FIR>(error.message)
+      throw error
     }
 
     // 3b. Load the additional carriers (intermodal legs) from the registry, with

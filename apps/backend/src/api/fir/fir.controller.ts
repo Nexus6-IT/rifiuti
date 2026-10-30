@@ -68,7 +68,10 @@ export class FIRController {
       requireRequestTenantId(req),
       dto.provenienza,
       dto.tipoTrattaPrincipale,
-      dto.trasportatoriAggiuntivi ?? []
+      dto.trasportatoriAggiuntivi ?? [],
+      undefined,
+      dto.produttoreSedeId,
+      dto.destinatarioSedeId
     )
 
     const result = await this.createFIRUseCase.execute(command)

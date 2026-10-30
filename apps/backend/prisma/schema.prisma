@@ -283,6 +283,15 @@ model FIR {
   // Lock ottimistico (piano D4-D5): il repository la incrementa a ogni scrittura e rifiuta il
   // salvataggio di chi ha letto una versione diversa.
   versione           Int       @default(1) @map("versione")
+
+  // F2-10 D9.4: sede scelta per produttore e destinatario (il trasportatore non ha sede sul FIR) e
+  // codice fiscale delle tre parti. Senza FK (snapshot: la sede puo' cambiare o disattivarsi);
+  // NULL per i FIR creati prima della migration 20261031110200.
+  producerSedeId        String? @map("producer_sede_id") @db.Uuid
+  receiverSedeId        String? @map("receiver_sede_id") @db.Uuid
+  producerCodiceFiscale String? @map("producer_codice_fiscale") @db.VarChar(16)
+  carrierCodiceFiscale  String? @map("carrier_codice_fiscale") @db.VarChar(16)
+  receiverCodiceFiscale String? @map("receiver_codice_fiscale") @db.VarChar(16)
   submittedAt        DateTime? @map("submitted_at")
   completedAt        DateTime? @map("completed_at")
   cancelledAt        DateTime? @map("cancelled_at")

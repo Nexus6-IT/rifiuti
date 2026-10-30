@@ -372,6 +372,20 @@ Provato per intero su un database temporaneo (migrate deploy fino alla 110100, r
 `migrate deploy` che riapplica la 110100 senza errori). Le ditte e le sedi create dopo il deploy
 restano in `ditte`/`sedi_ditte` (il codice vecchio le ignora).
 
+### Sede e codice fiscale delle parti del FIR (`20261031110200_fir_parti_sede_cf`, Task 5a)
+
+Additiva: cinque colonne NULL su `firs` (`producer_sede_id`, `receiver_sede_id`,
+`producer_codice_fiscale`, `carrier_codice_fiscale`, `receiver_codice_fiscale`), nessun backfill,
+nessuna FK (snapshot), nessuna policy (`firs` è già sotto RLS). `SET LOCAL lock_timeout = '5s'`:
+se non ottiene il lock fallisce senza modificare nulla ma resta segnata come fallita (P3009), quindi
+prima di rilanciare il deploy `npx prisma migrate resolve --rolled-back 20261031110200_fir_parti_sede_cf`.
+
+Ripristino: `ALTER TABLE firs DROP COLUMN producer_sede_id, DROP COLUMN receiver_sede_id,
+DROP COLUMN producer_codice_fiscale, DROP COLUMN carrier_codice_fiscale,
+DROP COLUMN receiver_codice_fiscale;` e `DELETE FROM _prisma_migrations WHERE migration_name =
+'20261031110200_fir_parti_sede_cf';`. Il codice vecchio ignora le colonne; i FIR con il codice fiscale
+nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP COLUMN`.
+
 ---
 
 ## Rollback

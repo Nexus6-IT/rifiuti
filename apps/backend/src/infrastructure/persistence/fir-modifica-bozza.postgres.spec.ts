@@ -9,6 +9,7 @@
 import { PrismaClient } from '@prisma/client'
 import { createHash } from 'crypto'
 import { urlComeRuolo } from '../database/client-come-ruolo'
+import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -53,6 +54,12 @@ import {
   FirNonTrovatoError,
 } from '../../core/domain/errors'
 
+// P.IVA valide con checksum e sede (UUID) dei registri finti: la sede entra nello snapshot (F2-10).
+const PIVA_P = partitaIvaValida(1111111)
+const PIVA_T = partitaIvaValida(2222222)
+const PIVA_D = partitaIvaValida(3333333)
+const SEDE_REGISTRO = '77777777-7777-4777-8777-777777777777'
+
 const P1 = '11111111-1111-4111-8111-111111111111'
 const T1 = '22222222-2222-4222-8222-222222222222'
 const D1 = '33333333-3333-4333-8333-333333333333'
@@ -95,8 +102,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
         id,
         ragioneSociale: registro.produttore,
         dittaId: 'ditta-1',
-        sedeId: 'sede-1',
-        partitaIVA: PartitaIVA.create('12345678901'),
+        sedeId: SEDE_REGISTRO,
+        partitaIVA: PartitaIVA.create(PIVA_P),
         sedeLegale: indirizzo,
         pec: 'prod@pec.it',
         createdAt: new Date(),
@@ -109,8 +116,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
         id,
         ragioneSociale: `Trasportatore ${id.slice(0, 2)}`,
         dittaId: 'ditta-1',
-        sedeId: 'sede-1',
-        partitaIVA: PartitaIVA.create('22345678901'),
+        sedeId: SEDE_REGISTRO,
+        partitaIVA: PartitaIVA.create(PIVA_T),
         sedeLegale: indirizzo,
         numeroIscrizione: 'ALBO-1',
         createdAt: new Date(),
@@ -123,8 +130,8 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
         id,
         ragioneSociale: `${registro.destinatario} ${id.slice(0, 2)}`,
         dittaId: 'ditta-1',
-        sedeId: 'sede-1',
-        partitaIVA: PartitaIVA.create('32345678901'),
+        sedeId: SEDE_REGISTRO,
+        partitaIVA: PartitaIVA.create(PIVA_D),
         sede: indirizzo,
         numeroAutorizzazione: 'AUT-1',
         createdAt: new Date(),
@@ -201,20 +208,20 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
   const snapP: ParteFIR = {
     registroId: P1,
     ragioneSociale: 'Produttore congelato',
-    partitaIva: '12345678901',
+    partitaIva: PIVA_P,
     indirizzo: 'Via Vecchia 1',
     contatto: 'vecchio@pec.it',
   }
   const snapT: ParteFIR = {
     registroId: T1,
     ragioneSociale: 'Trasportatore congelato',
-    partitaIva: '22345678901',
+    partitaIva: PIVA_T,
     indirizzo: 'Via Vecchia 2',
   }
   const snapD: ParteFIR = {
     registroId: D1,
     ragioneSociale: 'Destinatario congelato',
-    partitaIva: '32345678901',
+    partitaIva: PIVA_D,
     indirizzo: 'Via Vecchia 3',
   }
 
@@ -258,7 +265,7 @@ describe('FIR: modifica della bozza (Postgres reale, ruolo wasteflow_app)', () =
               tipoTratta: TipoTratta.FERROVIARIA,
               trasportatoreId: T2,
               denominazione: 'Ferrovie congelate',
-              partitaIva: '22345678901',
+              partitaIva: PIVA_T,
             },
           ]
         : [],

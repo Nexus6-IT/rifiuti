@@ -19,6 +19,7 @@ import {
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
   FirNonTrovatoError,
+  SedeNonValidaPerRuoloError,
   MetodoLocaleNonConsentitoSuFirLegatoError,
 } from '../../../core/domain/errors'
 import { ModificaFIRCommand } from '../commands/modifica-fir.command'
@@ -63,13 +64,21 @@ export class ModificaFIRUseCase {
     const partiRisnapshottate: string[] = []
 
     let produttore: ParteFIR
-    if (command.produttoreId === fir.produttoreId && fir.produttore) {
-      produttore = fir.produttore
-    } else {
-      const p = await this.produttoreRepository.findById(command.produttoreId)
-      if (!p) return Result.fail<FIR>(`Produttore not found: ${command.produttoreId}`)
-      produttore = snapshotProduttore(p)
-      partiRisnapshottate.push('produttore')
+    try {
+      const gia = await this.parteConSede(
+        command.produttoreId === fir.produttoreId ? fir.produttore : null,
+        command.produttoreSedeId,
+        sedeId =>
+          sedeId
+            ? this.produttoreRepository.findById(command.produttoreId, { sedeId })
+            : this.produttoreRepository.findById(command.produttoreId)
+      )
+      if (!gia) return Result.fail<FIR>(`Produttore not found: ${command.produttoreId}`)
+      produttore = gia.parte ?? snapshotProduttore(gia.ruolo!)
+      if (!gia.parte) partiRisnapshottate.push('produttore')
+    } catch (error) {
+      if (error instanceof SedeNonValidaPerRuoloError) return Result.fail<FIR>(error.message)
+      throw error
     }
 
     let trasportatore: ParteFIR
@@ -83,13 +92,21 @@ export class ModificaFIRUseCase {
     }
 
     let destinatario: ParteFIR
-    if (command.destinatarioId === fir.destinatarioId && fir.destinatario) {
-      destinatario = fir.destinatario
-    } else {
-      const d = await this.destinatarioRepository.findById(command.destinatarioId)
-      if (!d) return Result.fail<FIR>(`Destinatario not found: ${command.destinatarioId}`)
-      destinatario = snapshotDestinatario(d)
-      partiRisnapshottate.push('destinatario')
+    try {
+      const gia = await this.parteConSede(
+        command.destinatarioId === fir.destinatarioId ? fir.destinatario : null,
+        command.destinatarioSedeId,
+        sedeId =>
+          sedeId
+            ? this.destinatarioRepository.findById(command.destinatarioId, { sedeId })
+            : this.destinatarioRepository.findById(command.destinatarioId)
+      )
+      if (!gia) return Result.fail<FIR>(`Destinatario not found: ${command.destinatarioId}`)
+      destinatario = gia.parte ?? snapshotDestinatario(gia.ruolo!)
+      if (!gia.parte) partiRisnapshottate.push('destinatario')
+    } catch (error) {
+      if (error instanceof SedeNonValidaPerRuoloError) return Result.fail<FIR>(error.message)
+      throw error
     }
 
     // Tratte: stesso trasportatore gia' presente = snapshot esistente (con nuovo ordine e tipo);
@@ -160,5 +177,35 @@ export class ModificaFIRUseCase {
       partiRisnapshottate: partiRisnapshottate.filter(p => campiModificati.includes(p)),
     })
     return Result.ok<FIR>(fir)
+  }
+
+  /**
+   * Parte di produttore o destinatario nella modifica di una bozza (F2-10 D9.6). `esistente` e'
+   * lo snapshot del FIR se il ruolo e' lo stesso, altrimenti `null`. Restituisce `{ parte }` se lo
+   * snapshot resta, `{ ruolo }` (letto dal registro) se va rifatto, `null` se il ruolo non esiste.
+   *
+   * Le cinque regole:
+   *  1. stesso ruolo, sede del DTO assente: si conserva lo snapshot (anche per i FIR vecchi);
+   *  2. stesso ruolo, sede del DTO uguale a quella del FIR: invariato;
+   *  3. stesso ruolo, FIR senza sede (precedente alla migration) e sede del DTO uguale alla
+   *     predefinita del ruolo: invariato, il FIR era stato creato su quella sede;
+   *  4. stesso ruolo, sede diversa: nuovo snapshot da quella sede;
+   *  5. ruolo cambiato (o snapshot assente): sede indicata o predefinita del nuovo ruolo.
+   */
+  private async parteConSede<R extends { sedeId: string }>(
+    esistente: ParteFIR | null | undefined,
+    sedeDto: string | undefined,
+    leggi: (sedeId?: string) => Promise<R | null>
+  ): Promise<{ parte?: ParteFIR; ruolo?: R } | null> {
+    if (esistente) {
+      if (!sedeDto || sedeDto === esistente.sedeId) return { parte: esistente }
+      if (!esistente.sedeId) {
+        const predefinita = await leggi()
+        if (!predefinita) return null
+        if (predefinita.sedeId === sedeDto) return { parte: esistente }
+      }
+    }
+    const ruolo = await leggi(sedeDto)
+    return ruolo ? { ruolo } : null
   }
 }

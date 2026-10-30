@@ -234,3 +234,83 @@ describe('FIR Aggregate - versione (lock ottimistico) e documento firmato', () =
     expect(fir.toSignableDocument()).toBe(prima)
   })
 })
+
+/**
+ * F2-10 D9.7: il codice fiscale delle parti entra nel documento firmato SOLO se non nullo. La stringa
+ * GOLDEN e' stata generata col codice PRECEDENTE alla modifica (un FIR con sole P.IVA): deve restare
+ * identica, altrimenti le firme gia apposte non sarebbero piu verificabili.
+ */
+describe('FIR Aggregate - toSignableDocument(): codice fiscale (F2-10 D9.7)', () => {
+  const propsSoloPartitaIva = {
+    id: 'fir-golden',
+    firNumber: '',
+    tenantId: 'tenant-golden',
+    producerPartitaIva: '12345678903',
+    producerName: 'Produttore SRL',
+    producerAddress: 'Via Roma 1, Milano',
+    producerContact: 'produttore@example.it',
+    carrierPartitaIva: '22345678903',
+    carrierName: 'Trasporti SPA',
+    carrierVehiclePlate: 'AB123CD',
+    carrierContact: 'trasporti@example.it',
+    receiverPartitaIva: '32345678903',
+    receiverName: 'Impianto Destinatario SRL',
+    receiverAddress: 'Via Napoli 2, Roma',
+    receiverContact: 'destinatario@example.it',
+    cerCode: '150101',
+    wasteDescription: 'Imballaggi in carta e cartone',
+    wasteCategory: 'Non pericoloso',
+    quantity: 100,
+    unit: 'KG',
+    wasteOperationType: 'RECOVERY',
+    wastePhysicalState: 'Solido',
+    wasteHazardClasses: 'HP4,HP14',
+    wastePackageCount: 5,
+    wasteOperationCode: 'R13',
+    wasteNotes: 'Annotazioni',
+    transportDate: new Date('2026-01-15T08:00:00.000Z'),
+    estimatedArrivalDate: new Date('2026-01-15T12:00:00.000Z'),
+    transportNotes: 'Percorso A1',
+  }
+
+  const GOLDEN_SOLO_PIVA =
+    '{"carrierContact":"trasporti@example.it","carrierName":"Trasporti SPA","carrierPartitaIva":"22345678903","carrierVehiclePlate":"AB123CD","cerCode":"150101","estimatedArrivalDate":"2026-01-15T12:00:00.000Z","id":"fir-golden","producerAddress":"Via Roma 1, Milano","producerContact":"produttore@example.it","producerName":"Produttore SRL","producerPartitaIva":"12345678903","quantity":"100.00","receiverAddress":"Via Napoli 2, Roma","receiverContact":"destinatario@example.it","receiverName":"Impianto Destinatario SRL","receiverPartitaIva":"32345678903","schemaVersion":1,"tenantId":"tenant-golden","transportDate":"2026-01-15T08:00:00.000Z","transportNotes":"Percorso A1","unit":"KG","wasteCategory":"Non pericoloso","wasteDescription":"Imballaggi in carta e cartone","wasteHazardClasses":"HP4,HP14","wasteNotes":"Annotazioni","wasteOperationCode":"R13","wasteOperationType":"RECOVERY","wastePackageCount":5,"wastePhysicalState":"Solido"}'
+
+  it('GOLDEN: un FIR con sole P.IVA da lo stesso documento canonico di prima', () => {
+    expect(FIR.create(propsSoloPartitaIva).toSignableDocument()).toBe(GOLDEN_SOLO_PIVA)
+  })
+
+  it('GOLDEN: codici fiscali null o assenti non cambiano il documento', () => {
+    const fir = FIR.create({
+      ...propsSoloPartitaIva,
+      producerCodiceFiscale: null,
+      carrierCodiceFiscale: null,
+      receiverCodiceFiscale: null,
+    })
+    expect(fir.toSignableDocument()).toBe(GOLDEN_SOLO_PIVA)
+  })
+
+  it('un FIR con il CF del produttore (privato) lo contiene', () => {
+    const fir = FIR.create({
+      ...propsSoloPartitaIva,
+      producerPartitaIva: '',
+      producerCodiceFiscale: 'RSSMRA80A01H501U',
+    })
+    const doc = JSON.parse(fir.toSignableDocument())
+    expect(doc.producerCodiceFiscale).toBe('RSSMRA80A01H501U')
+    expect(doc).not.toHaveProperty('carrierCodiceFiscale')
+    expect(doc).not.toHaveProperty('receiverCodiceFiscale')
+  })
+
+  it('trasportatore e destinatario con CF lo contengono', () => {
+    const fir = FIR.create({
+      ...propsSoloPartitaIva,
+      carrierCodiceFiscale: 'VRDLGI75B02F205X',
+      receiverCodiceFiscale: 'BNCGPP70C03L219Y',
+    })
+    const doc = JSON.parse(fir.toSignableDocument())
+    expect(doc.carrierCodiceFiscale).toBe('VRDLGI75B02F205X')
+    expect(doc.receiverCodiceFiscale).toBe('BNCGPP70C03L219Y')
+    expect(doc).not.toHaveProperty('producerCodiceFiscale')
+  })
+})

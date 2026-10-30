@@ -20,6 +20,7 @@ import {
   TipoTratta,
   ProvenienzaRifiuto,
 } from '../../../domain/fir/aggregates/fir.aggregate'
+import { SedeNonValidaPerRuoloError } from '../../../core/domain/errors'
 import { formattaNumeroFir } from '../../../domain/fir/numero-fir'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 
@@ -569,6 +570,75 @@ describe('CreateFIRUseCase', () => {
 
       const count = await firRepository.count()
       expect(count).toBe(2)
+    })
+  })
+
+  describe('sede delle parti (F2-10 D9)', () => {
+    const SEDE_P = 'aaaaaaaa-0000-4000-8000-00000000000a'
+    const SEDE_D = 'bbbbbbbb-0000-4000-8000-00000000000b'
+
+    beforeEach(() => {
+      cerRepository.addCode('13 02 05*')
+    })
+
+    const comandoConSedi = (produttoreSedeId?: string, destinatarioSedeId?: string) => {
+      const base = createValidCommand()
+      return new CreateFIRCommand(
+        base.produttoreId,
+        base.rifiuto,
+        base.trasportatoreId,
+        base.destinatarioId,
+        base.userId,
+        base.tenantId,
+        base.provenienza,
+        base.tipoTrattaPrincipale,
+        [],
+        undefined,
+        produttoreSedeId,
+        destinatarioSedeId
+      )
+    }
+
+    it('senza sede nel DTO: i registri sono letti senza opzioni (sede predefinita del ruolo)', async () => {
+      const p = jest.spyOn(produttoreRepository, 'findById')
+      const d = jest.spyOn(destinatarioRepository, 'findById')
+      const result = await useCase.execute(comandoConSedi())
+      expect(result.isSuccess).toBe(true)
+      expect(p).toHaveBeenCalledWith('tenant-producer-123')
+      expect(d).toHaveBeenCalledWith('tenant-destination-789')
+      expect(result.value.produttore?.sedeId).toBe('sede-1')
+      expect(result.value.destinatario?.sedeId).toBe('sede-1')
+      // Il trasportatore non ha sede sul FIR.
+      expect(result.value.trasportatore?.sedeId).toBeUndefined()
+    })
+
+    it('con le sedi nel DTO: findById(id, { sedeId }) per produttore e destinatario', async () => {
+      const p = jest.spyOn(produttoreRepository, 'findById')
+      const d = jest.spyOn(destinatarioRepository, 'findById')
+      const result = await useCase.execute(comandoConSedi(SEDE_P, SEDE_D))
+      expect(result.isSuccess).toBe(true)
+      expect(p).toHaveBeenCalledWith('tenant-producer-123', { sedeId: SEDE_P })
+      expect(d).toHaveBeenCalledWith('tenant-destination-789', { sedeId: SEDE_D })
+    })
+
+    it('sede non valida per il produttore: Result.fail (400), nulla salvato', async () => {
+      jest
+        .spyOn(produttoreRepository, 'findById')
+        .mockRejectedValue(new SedeNonValidaPerRuoloError('produttore'))
+      const result = await useCase.execute(comandoConSedi(SEDE_P))
+      expect(result.isFailure).toBe(true)
+      expect(result.error).toBe('La sede indicata non è una sede attiva del produttore scelto')
+      expect(await firRepository.count()).toBe(0)
+    })
+
+    it('sede non valida per il destinatario: Result.fail (400), nulla salvato', async () => {
+      jest
+        .spyOn(destinatarioRepository, 'findById')
+        .mockRejectedValue(new SedeNonValidaPerRuoloError('destinatario'))
+      const result = await useCase.execute(comandoConSedi(undefined, SEDE_D))
+      expect(result.isFailure).toBe(true)
+      expect(result.error).toContain('destinatario')
+      expect(await firRepository.count()).toBe(0)
     })
   })
 })

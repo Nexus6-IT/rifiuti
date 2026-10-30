@@ -45,6 +45,9 @@ export class CreateFIRCommand {
     public readonly tipoTrattaPrincipale: TipoTratta,
     public readonly trasportatoriAggiuntivi: TrasportatoreAggiuntivoInput[] = [],
     /** Campo 17 FIR: annotazioni libere. */
-    public readonly annotazioni?: string
+    public readonly annotazioni?: string,
+    /** Sede scelta (F2-10 D9): assente = sede predefinita del ruolo. */
+    public readonly produttoreSedeId?: string,
+    public readonly destinatarioSedeId?: string
   ) {}
 }

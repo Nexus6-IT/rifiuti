@@ -9,6 +9,7 @@ import {
   IsOptional,
   Min,
   IsEnum,
+  IsUUID,
   IsInt,
   IsArray,
   IsPositive,
@@ -142,6 +143,14 @@ export class CreateFIRDto {
   @IsNotEmpty()
   produttoreId: string
 
+  @ApiPropertyOptional({
+    description:
+      "Sede del produttore da cui prendere l'indirizzo. Se assente: sede predefinita del ruolo (F2-10 D9)",
+  })
+  @IsOptional()
+  @IsUUID()
+  produttoreSedeId?: string
+
   @ApiProperty({ type: RifiutoDto, description: 'Dettagli rifiuto' })
   @ValidateNested()
   @Type(() => RifiutoDto)
@@ -162,6 +171,14 @@ export class CreateFIRDto {
   @IsString()
   @IsNotEmpty()
   destinatarioId: string
+
+  @ApiPropertyOptional({
+    description:
+      "Sede del destinatario da cui prendere l'indirizzo. Se assente: sede predefinita del ruolo (F2-10 D9)",
+  })
+  @IsOptional()
+  @IsUUID()
+  destinatarioSedeId?: string
 
   @ApiPropertyOptional({
     type: [TrasportatoreAggiuntivoDto],

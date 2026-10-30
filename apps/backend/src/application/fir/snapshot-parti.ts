@@ -16,6 +16,8 @@ export function snapshotProduttore(p: Produttore): ParteFIR {
     registroId: p.id,
     ragioneSociale: p.ragioneSociale,
     partitaIva: p.partitaIVA?.getValue() ?? '',
+    codiceFiscale: p.codiceFiscale ?? undefined,
+    sedeId: p.sedeId,
     indirizzo: p.sedeLegale.getFormatted(),
     contatto: p.pec || p.email || undefined,
   }
@@ -26,6 +28,7 @@ export function snapshotTrasportatore(t: Trasportatore): ParteFIR {
     registroId: t.id,
     ragioneSociale: t.ragioneSociale,
     partitaIva: t.partitaIVA?.getValue() ?? '',
+    codiceFiscale: t.codiceFiscale ?? undefined,
     indirizzo: t.sedeLegale.getFormatted(),
     contatto: t.pec || t.email || undefined,
   }
@@ -36,6 +39,8 @@ export function snapshotDestinatario(d: Destinatario): ParteFIR {
     registroId: d.id,
     ragioneSociale: d.ragioneSociale,
     partitaIva: d.partitaIVA?.getValue() ?? '',
+    codiceFiscale: d.codiceFiscale ?? undefined,
+    sedeId: d.sedeId,
     indirizzo: d.sede.getFormatted(),
     contatto: d.pec || d.email || undefined,
   }
@@ -57,6 +62,7 @@ export function snapshotTratta(
     trasportatoreId: t.id,
     denominazione: t.ragioneSociale,
     partitaIva: t.partitaIVA?.getValue() ?? '',
+    codiceFiscale: t.codiceFiscale ?? undefined,
     numeroIscrizioneAlbo: t.numeroIscrizione,
   }
 }

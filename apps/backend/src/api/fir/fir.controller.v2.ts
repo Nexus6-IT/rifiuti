@@ -145,7 +145,9 @@ export class FIRControllerV2 {
       dto.provenienza,
       dto.tipoTrattaPrincipale,
       dto.trasportatoriAggiuntivi ?? [],
-      dto.annotazioni
+      dto.annotazioni,
+      dto.produttoreSedeId,
+      dto.destinatarioSedeId
     )
 
     const result = await this.createFIRUseCase.execute(command)
@@ -201,8 +203,10 @@ export class FIRControllerV2 {
       userId: user.id,
       versione: dto.versione,
       produttoreId: dto.produttoreId,
+      produttoreSedeId: dto.produttoreSedeId,
       trasportatoreId: dto.trasportatoreId,
       destinatarioId: dto.destinatarioId,
+      destinatarioSedeId: dto.destinatarioSedeId,
       rifiuto: dto.rifiuto,
       provenienza: dto.provenienza,
       tipoTrattaPrincipale: dto.tipoTrattaPrincipale,
