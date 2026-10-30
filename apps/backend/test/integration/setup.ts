@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import request from 'supertest'
+import { partitaIvaValida } from '../../src/test-support/anagrafiche-di-test'
 import { Produttore, Trasportatore, Tenant, User } from '@prisma/client'
 
 /**
@@ -144,13 +145,23 @@ export class IntegrationTestSetup {
     })
 
     // Anagrafiche controparti FIR (sostituiscono il vecchio modello Facility)
-    const produttore = (await this.creaRuolo(tenant.id, 'Test Producer Facility', '00000000002', {
-      produttoreId: 'test-produttore-1',
-    })) as Produttore
+    const produttore = (await this.creaRuolo(
+      tenant.id,
+      'Test Producer Facility',
+      partitaIvaValida(2),
+      {
+        produttoreId: 'test-produttore-1',
+      }
+    )) as Produttore
 
-    const trasportatore = (await this.creaRuolo(tenant.id, 'Test Transporter', '00000000003', {
-      trasportatoreId: 'test-trasportatore-1',
-    })) as Trasportatore
+    const trasportatore = (await this.creaRuolo(
+      tenant.id,
+      'Test Transporter',
+      partitaIvaValida(3),
+      {
+        trasportatoreId: 'test-trasportatore-1',
+      }
+    )) as Trasportatore
 
     // Utenti applicativi. L'autorizzazione RolesGuard/@Roles verifica
     // esclusivamente `User.role` (UserRole enum) — non il sistema

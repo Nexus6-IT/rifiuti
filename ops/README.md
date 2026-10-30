@@ -283,8 +283,14 @@ ancora in servizio), la elimina, controlla che nessuna riga di ruolo sia senza d
 `sede_id` NOT NULL, toglie il NOT NULL a ragione sociale, P.IVA e indirizzo della riga di ruolo,
 elimina i tre indici unici `*_tenant_id_partita_iva_key` (l'unicità sta in `ditte`) e commenta le
 colonne come "copia congelata". Nessun dato viene cancellato; il lock sulle tabelle vive è limitato
-da `SET LOCAL lock_timeout = '5s'` (se non lo ottiene, la migration fallisce senza modificare nulla:
-si rilancia il deploy).
+da `SET LOCAL lock_timeout = '5s'`. Se non ottiene il lock la migration fallisce senza modificare
+nulla, ma resta segnata come fallita (P3009): prima di rilanciare il deploy serve
+`npx prisma migrate resolve --rolled-back 20261031110100_anagrafiche_su_ditte` (stessa procedura
+del ripristino da P3009 sopra).
+
+**Finestra di deploy.** Se la 110000 e la 110100 arrivano nello stesso deploy, fra il commit della
+110100 e l'avvio del nuovo backend il backend vecchio non può creare anagrafiche (INSERT senza
+`ditta_id` → 23502 → 500). Fallisce in modo sicuro, senza toccare dati; le letture non cambiano.
 
 Da qui il codice nuovo **non scrive più** le colonne vecchie e non le legge, salvo la ragione sociale
 (`ragioneSocialeStorica`, usata dal MUD per le integrazioni già salvate). Le righe create dopo il
@@ -296,34 +302,75 @@ rimozione fisica delle colonne è un seguito (F2-10b).
 Fino alla `20261031110000_ditte_sedi_controparti` il rollback del codice è innocuo (le migration
 sono additive e le colonne vecchie non cambiano). **Dopo** la `20261031110100_anagrafiche_su_ditte`
 il codice vecchio non legge le anagrafiche create dopo il deploy (colonne vecchie NULL) e non
-conosce i privati: il rollback richiede il **ripristino del backup notturno** oppure questo script
-inverso (prima del rollback del codice, come owner). Ricostruisce le colonne vecchie dalla ditta e
-dalla sede predefinita di ogni riga di ruolo; poi rimette i NOT NULL e gli indici unici.
+conosce i privati: il rollback richiede il **ripristino del backup notturno** oppure lo script
+inverso qui sotto (come owner, prima del rollback del codice).
+
+**Privati (`partita_iva` NULL, solo produttori per D2.5): vanno decisi a mano PRIMA**, cancellando
+la riga di ruolo o assegnando una P.IVA. Controllo:
+`SELECT count(*) FROM produttori r JOIN ditte d ON d.id = r.ditta_id WHERE d.partita_iva IS NULL;`
+Se ce ne sono, il `SET NOT NULL` sulla P.IVA fallisce: lo script è in una transazione, quindi
+**non modifica nulla** (lanciarlo con `psql -v ON_ERROR_STOP=1`).
+
+Lo script ricostruisce le colonne vecchie dalla ditta e dalla sede predefinita, rimette i NOT NULL e
+gli indici unici, **ricrea `f210_collega_anagrafiche()`** (il redeploy rilancerebbe la 110100, che la
+chiama: senza, "function does not exist" → P3009) e **cancella la riga della 110100 da
+`_prisma_migrations`** (`migrate resolve --rolled-back` su una migration applicata con successo è
+rifiutato da Prisma, P3012). La funzione si prende dalla 110000:
+
+```bash
+cd apps/backend
+{ sed -n '/^CREATE FUNCTION f210_collega_anagrafiche/,/^\$f210\$;/p' prisma/migrations/20261031110000_ditte_sedi_controparti/migration.sql
+  echo 'REVOKE EXECUTE ON FUNCTION f210_collega_anagrafiche() FROM PUBLIC;'; } > /tmp/f210_funzione.sql
+# eseguire lo script con psql sullo stesso host/percorso di /tmp/f210_funzione.sql (\i lo legge lì)
+```
 
 ```sql
 BEGIN;
--- 1. privati (nessuna P.IVA): il codice vecchio non li gestisce. Se ce ne sono, decidere a mano
---    (cancellare la riga di ruolo o assegnare una P.IVA) PRIMA di proseguire:
-SELECT count(*) AS privati FROM produttori r JOIN ditte d ON d.id = r.ditta_id WHERE d.partita_iva IS NULL;
--- 2. ricostruzione (ripetere per trasportatori e destinatari cambiando la tabella)
 UPDATE produttori r
    SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
        via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
        email = s.email, telefono = s.telefono, pec = s.pec
   FROM ditte d, sedi_ditte s
  WHERE d.id = r.ditta_id AND s.id = r.sede_id;
--- 3. vincoli (ripetere per ciascuna tabella di ruolo)
 ALTER TABLE produttori
   ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
   ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
   ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
   ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
 CREATE UNIQUE INDEX produttori_tenant_id_partita_iva_key ON produttori (tenant_id, partita_iva);
+UPDATE trasportatori r
+   SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
+       via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
+       email = s.email, telefono = s.telefono, pec = s.pec
+  FROM ditte d, sedi_ditte s
+ WHERE d.id = r.ditta_id AND s.id = r.sede_id;
+ALTER TABLE trasportatori
+  ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
+  ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
+  ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
+  ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
+CREATE UNIQUE INDEX trasportatori_tenant_id_partita_iva_key ON trasportatori (tenant_id, partita_iva);
+UPDATE destinatari r
+   SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
+       via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
+       email = s.email, telefono = s.telefono, pec = s.pec
+  FROM ditte d, sedi_ditte s
+ WHERE d.id = r.ditta_id AND s.id = r.sede_id;
+ALTER TABLE destinatari
+  ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
+  ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
+  ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
+  ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
+CREATE UNIQUE INDEX destinatari_tenant_id_partita_iva_key ON destinatari (tenant_id, partita_iva);
+-- ricrea la funzione di backfill (la richiama la 110100 al redeploy): vedi il comando sed nel README
+\i /tmp/f210_funzione.sql
+DELETE FROM _prisma_migrations WHERE migration_name = '20261031110100_anagrafiche_su_ditte';
 COMMIT;
 ```
 
-Le ditte e le sedi create dopo il deploy restano in `ditte`/`sedi_ditte` (il codice vecchio le
-ignora). Dopo il rollback il `_prisma_migrations` va allineato (`migrate resolve --rolled-back`).
+Provato per intero su un database temporaneo (migrate deploy fino alla 110100, rollback, nuovo
+`migrate deploy` che riapplica la 110100 senza errori). Le ditte e le sedi create dopo il deploy
+restano in `ditte`/`sedi_ditte` (il codice vecchio le ignora).
 
 ---
 

@@ -6,6 +6,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { clientComeRuolo } from '../database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
+import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
 /**
  * Migration `20261031110000_ditte_sedi_controparti` (Fase 2 pezzo 10, Task 1) contro un Postgres
@@ -650,7 +651,7 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
   // dalla 110000 e dai test sopra.
   // -------------------------------------------------------------------------------------------
   describe('migration 20261031110100 (colonne vecchie congelate)', () => {
-    const Z2 = '77777777777'
+    const Z2 = partitaIvaValida(7_700_001)
     const E = randomUUID()
     const orfano = randomUUID()
     const orfanoT = randomUUID()
