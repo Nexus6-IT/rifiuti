@@ -15,7 +15,9 @@ L'età del deposito temporaneo ora si calcola dal rifiuto più vecchio **ancora 
 deposito** (ordine di uscita FIFO), sede per sede. Prima si contava dal primo carico di
 sempre: dopo il primo trimestre quasi ogni CER risultava "oltre i 90 giorni" anche se era
 stato avviato regolarmente. **Ci saranno meno allarmi, e quelli che restano sono
-veri.** Il limite temporale è ora di tre mesi di calendario, come dice l'art. 185-bis
+quasi sempre veri**: fa eccezione il CER con carichi in kg e scarichi in un'altra unità
+(es. litri), che il conteggio non abbina e che l'avviso segnala con una nota, senza
+convertire con il peso specifico. Il limite temporale è ora di tre mesi di calendario, come dice l'art. 185-bis
 (prima 90 giorni fissi); l'azienda può fissarne uno più breve. Il limite quantitativo
 vale per l'intero deposito della sede (tutti i CER insieme), dal momento in cui viene
 raggiunto, con un limite separato per i pericolosi: chi ha molti CER sotto soglia uno
