@@ -606,6 +606,26 @@ describe.each([
       expect(aa[1]).toHaveLength(LUNGHEZZE.AA)
     })
 
+    it('sostitutiva con progressivi {1, 2}: entrambi i pacchetti annullano e sostituiscono (G2)', () => {
+      const dato = dueDichiarazioni()
+      dato.sostituisce = {
+        dataComunicazione: new Date('2026-06-29T23:30:00Z'),
+        progressivi: [1, 2],
+      }
+      const aa = linee(tracciato.generate(dato)).filter(r => r.startsWith('AA;'))
+      expect(aa).toHaveLength(2)
+      expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+      expect(aa[1].endsWith(';1;20260630;')).toBe(true)
+    })
+
+    it('sostitutiva con progressivi {2}: solo il pacchetto 2 sostituisce (G2)', () => {
+      const dato = dueDichiarazioni()
+      dato.sostituisce = { dataComunicazione: new Date('2026-06-29T23:30:00Z'), progressivi: [2] }
+      const aa = linee(tracciato.generate(dato)).filter(r => r.startsWith('AA;'))
+      expect(aa[0].endsWith(';0;00000000;')).toBe(true)
+      expect(aa[1].endsWith(';1;20260630;')).toBe(true)
+    })
+
     it('sostitutiva con un solo pacchetto: come prima, nel pacchetto unico', () => {
       const dato = fixtureDatoCompleto(anno)
       dato.sostituisce = { dataComunicazione: new Date('2026-06-29T23:30:00Z') }

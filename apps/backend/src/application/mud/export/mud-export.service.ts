@@ -13,7 +13,6 @@ import {
   avvisiCambianoQuantita,
   avvisiNonConfermati,
   codiciAvvisoDaConfermare,
-  controlliMud,
   haBloccanti,
   riepilogaAvvisi,
 } from '../aggregazione/mud-controlli'
@@ -21,7 +20,8 @@ import { hashCalcoloMud, hashDichiaranteMud } from '../aggregazione/mud-regole'
 import { pacchettiPerExport } from '../aggregazione/mud-dichiarazioni'
 import {
   aggiornaReportData,
-  dataComunicazioneSostituita,
+  avvisoSostitutiva,
+  comunicazioneSostituita,
   VERSIONE_CALCOLO_MUD,
 } from '../mud-report-data'
 import { MudExportData, MudExportResult } from './mud-export.types'
@@ -84,20 +84,23 @@ export class MudExportService {
     // Dichiarazione sostitutiva (A-W-04): se l'anno risulta presentato, o la presentazione è
     // stata annullata per sostituirla, il file annulla e sostituisce quella comunicazione. La
     // lettura è fuori dal lock del report: la voce registra comunque cosa dice il file.
-    const sostituita = dataComunicazioneSostituita(
+    const sostituita = comunicazioneSostituita(
       await this.prisma.mUDReport.findUnique({
         where: { tenantId_year: { tenantId, year } },
         select: { status: true, submittedAt: true, reportData: true },
       })
     )
 
-    // File sostitutivo con più dichiarazioni (F1): avviso da confermare, non riservato agli
-    // amministratori (non cambia le quantità)
+    // Progressivi dei pacchetti del file: uno per dichiarazione, [1] per il pacchetto unico di
+    // sempre. Il file sostituisce solo i progressivi già presentati; se non coincidono, avviso da
+    // confermare (G2), non riservato agli amministratori (non cambia le quantità).
     const nDichiarazioni = (aggregato.dichiarazioni ?? []).length
-    const controlli =
-      sostituita && nDichiarazioni > 1
-        ? [...aggregato.controlli, controlliMud.sostitutivaPiuDichiarazioni()]
-        : aggregato.controlli
+    const progressiviFile =
+      nDichiarazioni > 0
+        ? (aggregato.dichiarazioni ?? []).map(d => d.progressivo).sort((a, b) => a - b)
+        : [1]
+    const avvisoSost = avvisoSostitutiva(sostituita, progressiviFile)
+    const controlli = avvisoSost ? [...aggregato.controlli, avvisoSost] : aggregato.controlli
     const riepilogo = riepilogaAvvisi(controlli)
 
     if (haBloccanti(controlli)) {
@@ -151,7 +154,14 @@ export class MudExportService {
         ? { dichiarazioni: pacchettiPerExport(dichiarazioni, dichiarante.azienda) }
         : {}),
       autorizzazioni: dichiarante.autorizzazioni,
-      ...(sostituita ? { sostituisce: { dataComunicazione: sostituita } } : {}),
+      ...(sostituita
+        ? {
+            sostituisce: {
+              dataComunicazione: sostituita.data,
+              progressivi: sostituita.progressivi,
+            },
+          }
+        : {}),
     }
 
     const content = tracciato.generate(data)
@@ -188,7 +198,9 @@ export class MudExportService {
           // segnatura della presentazione li confronta a parte
           hashDichiarante: hashDichiaranteMud(dichiarante, aggregato),
           // comunicazione che il file annulla e sostituisce (record AA), o null
-          sostituisce: sostituita ? sostituita.toISOString() : null,
+          sostituisce: sostituita ? sostituita.data.toISOString() : null,
+          // progressivi delle unità locali dei pacchetti del file: la presentazione li conserva
+          progressiviUnitaLocale: progressiviFile,
           avvisiConfermati: codiciAvviso,
           riepilogo: riepilogoQuantita,
           // quelle lette dall'aggregazione che ha fatto il file, non quelle di `p`: un

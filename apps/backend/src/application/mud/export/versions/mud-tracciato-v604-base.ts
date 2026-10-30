@@ -371,8 +371,11 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
 
   /** AA — Scheda SA-1: anagrafica azienda + unità locale (338). */
   protected recordAA(data: DatiPacchetto): string {
-    const sostituisce =
-      (data.pacchetto?.progressivoUnitaLocale ?? 1) === 1 ? data.sostituisce : undefined
+    const sostituisce = (data.sostituisce?.progressivi ?? [1]).includes(
+      data.pacchetto?.progressivoUnitaLocale ?? 1
+    )
+      ? data.sostituisce
+      : undefined
     const a = data.azienda
     // Blocco «unità locale»: la sede del pacchetto, oppure l'azienda (sede legale = unità locale).
     const sede = data.pacchetto?.unitaLocale ?? null
@@ -412,8 +415,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       mudDate(data.generatedAt ?? new Date()), // data compilazione AAAAMMGG
       mudNum(12, 2), // mesi di attività nell'anno (default 12)
       // annulla e sostituisce + data della comunicazione sostituita (giorno italiano AAAAMMGG)
-      // con più pacchetti solo il primo: la dichiarazione annullata era una sola, le altre unità
-      // locali sono dichiarazioni nuove (F1)
+      // solo i pacchetti il cui progressivo era già stato presentato (G2): gli altri sono nuovi
       mudNum(sostituisce ? 1 : 0, 1),
       sostituisce ? mudDate(sostituisce.dataComunicazione) : mudNum(0, 8),
     ])

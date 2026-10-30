@@ -908,15 +908,28 @@ describe('MudExportService', () => {
           controlli: [],
         })
       }
-      const presentato = () =>
+      const presentato = (reportData: Record<string, unknown> = {}) =>
         prisma.mUDReport.findUnique.mockResolvedValue({
           status: 'SUBMITTED',
           submittedAt: new Date('2026-06-30T10:00:00Z'),
           submittedBy: 'u1',
-          reportData: {},
+          reportData,
         })
+      const soloProgressivo = (progressivo: number) => {
+        const dichiarazioni = [dich(progressivo)]
+        aggregazione.aggrega.mockResolvedValue({
+          anno: 2024,
+          versioneCalcolo: 2,
+          righe: dichiarazioni.flatMap(d => d.righe),
+          dichiarazioni,
+          dichiarante: DICHIARANTE_OK,
+          integrazioni: INTEGRAZIONI_VUOTE,
+          movimentiPerCer: {},
+          controlli: [],
+        })
+      }
 
-      it('sostitutiva e due dichiarazioni: avviso da confermare, poi solo il pacchetto 1 sostituisce', async () => {
+      it('presentazione v1 (insieme {1}) e file con 1 e 2: avviso da confermare, poi solo il pacchetto 1 sostituisce', async () => {
         duePacchetti()
         presentato()
         await expect(service.exportTelematico('t1', 2024, admin, [])).rejects.toMatchObject({
@@ -930,6 +943,57 @@ describe('MudExportService', () => {
         expect(aa[1].endsWith(';0;00000000;')).toBe(true)
         const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
         expect(voce.avvisiConfermati).toContain('SOSTITUTIVA_PIU_DICHIARAZIONI')
+        expect(voce.progressiviUnitaLocale).toEqual([1, 2])
+        expect(
+          prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+            .avvisiConfermati
+        ).toEqual(['SOSTITUTIVA_PIU_DICHIARAZIONI'])
+        const dettagli = await service
+          .exportTelematico('t1', 2024, admin, [])
+          .catch((e: any) => e.response.details)
+        expect(dettagli.avvisiDaConfermare).toEqual(['SOSTITUTIVA_PIU_DICHIARAZIONI'])
+        const avviso = dettagli.controlli.find(
+          (c: any) => c.codice === 'SOSTITUTIVA_PIU_DICHIARAZIONI'
+        )
+        expect(avviso.messaggio).toContain('già presentate (1),')
+      })
+
+      it('presentazione v2 con 1 e 2: il nuovo file con 1 e 2 sostituisce entrambi, nessun avviso (G2)', async () => {
+        duePacchetti()
+        presentato({ progressiviUnitaLocale: [1, 2] })
+        const r = await service.exportTelematico('t1', 2024, admin, [])
+        const aa = r.content.split('\r\n').filter(l => l.startsWith('AA;'))
+        expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+        expect(aa[1].endsWith(';1;20260630;')).toBe(true)
+      })
+
+      it('pacchetto unico con progressivo 2 che sostituisce {2}: flag sul 2, nessun avviso (G2)', async () => {
+        soloProgressivo(2)
+        presentato({ progressiviUnitaLocale: [2] })
+        const r = await service.exportTelematico('t1', 2024, admin, [])
+        expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
+        const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+        expect(voce.progressiviUnitaLocale).toEqual([2])
+      })
+
+      it('pacchetto unico con progressivo 2 che sostituisce {1}: nessun flag e avviso (G2)', async () => {
+        soloProgressivo(2)
+        presentato({ progressiviUnitaLocale: [1] })
+        await expect(service.exportTelematico('t1', 2024, admin, [])).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'MUD_AVVISI_DA_CONFERMARE' }),
+        })
+        const r = await service.exportTelematico('t1', 2024, admin, [
+          'SOSTITUTIVA_PIU_DICHIARAZIONI',
+        ])
+        expect(recordAA(r.content).endsWith(';0;00000000;')).toBe(true)
+      })
+
+      it('il file non contiene uno dei progressivi sostituiti: avviso (G2)', async () => {
+        soloProgressivo(1)
+        presentato({ progressiviUnitaLocale: [1, 2] })
+        await expect(service.exportTelematico('t1', 2024, admin, [])).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'MUD_AVVISI_DA_CONFERMARE' }),
+        })
       })
 
       it("l'avviso lo conferma anche chi non è amministratore", async () => {
@@ -964,6 +1028,13 @@ describe('MudExportService', () => {
         const r = await service.exportTelematico('t1', 2024, admin, [])
         expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
       })
+    })
+
+    it("senza dichiarazioni nell'aggregato (pacchetto unico di sempre) la voce registra {1}", async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(null)
+      await service.exportTelematico('t1', 2024, admin)
+      const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+      expect(voce.progressiviUnitaLocale).toEqual([1])
     })
 
     it('senza una presentazione il record AA non sostituisce nulla', async () => {

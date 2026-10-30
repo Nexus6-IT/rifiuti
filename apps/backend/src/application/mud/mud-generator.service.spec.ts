@@ -278,6 +278,57 @@ describe('MUDGeneratorService', () => {
       expect(aggregazione.aggrega).toHaveBeenLastCalledWith('t1', 2025)
     })
 
+    describe('avviso SOSTITUTIVA_PIU_DICHIARAZIONI nei controlli del riepilogo (G1)', () => {
+      const presentata = (reportData: unknown) =>
+        prisma.mUDReport.findUnique.mockResolvedValue({
+          status: 'SUBMITTED',
+          submittedAt: new Date('2026-06-30T10:00:00Z'),
+          reportData,
+        })
+      const riepilogo = async () => {
+        aggregazione.aggrega.mockResolvedValue(dueSedi())
+        return service.generateMUDReport('t1', 2025)
+      }
+
+      it("presentazione v1 (insieme {1}) e file con 1 e 2: l'avviso compare, con la stessa condizione dell'export", async () => {
+        presentata({})
+        const r = await riepilogo()
+        const avviso = r.controlli.find(c => c.codice === 'SOSTITUTIVA_PIU_DICHIARAZIONI')
+        expect(avviso?.messaggio).toContain('già presentate (1),')
+        expect(r.riepilogoAvvisi.voci.map(v => v.codice)).toContain('SOSTITUTIVA_PIU_DICHIARAZIONI')
+      })
+
+      it('presentazione con 1 e 2: nessun avviso', async () => {
+        presentata({ progressiviUnitaLocale: [1, 2], versioneCalcolo: 2 })
+        const r = await riepilogo()
+        expect(r.controlli.map(c => c.codice)).not.toContain('SOSTITUTIVA_PIU_DICHIARAZIONI')
+      })
+
+      it('nessuna presentazione: nessun avviso', async () => {
+        const r = await riepilogo()
+        expect(r.controlli.map(c => c.codice)).not.toContain('SOSTITUTIVA_PIU_DICHIARAZIONI')
+      })
+
+      it('annullata per sostituirla con insieme {2}: avviso con 2', async () => {
+        prisma.mUDReport.findUnique.mockResolvedValue({
+          status: 'DRAFT',
+          submittedAt: null,
+          reportData: {
+            annullamenti: [
+              {
+                motivo: 'DICHIARAZIONE_DA_SOSTITUIRE',
+                submittedAt: '2026-06-30T10:00:00.000Z',
+                progressiviUnitaLocale: [2],
+              },
+            ],
+          },
+        })
+        const r = await riepilogo()
+        const avviso = r.controlli.find(c => c.codice === 'SOSTITUTIVA_PIU_DICHIARAZIONI')
+        expect(avviso?.messaggio).toContain('già presentate (2),')
+      })
+    })
+
     describe('versionePresentata', () => {
       const conRecord = (status: string, reportData: unknown) =>
         prisma.mUDReport.findUnique.mockResolvedValue({ status, reportData })

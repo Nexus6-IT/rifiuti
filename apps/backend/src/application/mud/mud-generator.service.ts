@@ -8,7 +8,12 @@ import {
   type RiepilogoAvvisi,
 } from './aggregazione/mud-controlli'
 import { totaliMud, type TotaliDichiarazioneMud, type TotaliMud } from './mud-totali'
-import { VERSIONE_CALCOLO_MUD, versioneCalcoloSalvata } from './mud-report-data'
+import {
+  avvisoSostitutiva,
+  comunicazioneSostituita,
+  VERSIONE_CALCOLO_MUD,
+  versioneCalcoloSalvata,
+} from './mud-report-data'
 
 export interface MudRiepilogo {
   year: number
@@ -74,6 +79,21 @@ export class MUDGeneratorService {
     const { prodottoKg: produced, recuperoKg: recovery, smaltimentoKg: disposal } = totali.totali
     const avviati = recovery + disposal
 
+    // Presentazione dell'anno, letta una volta: serve alla versione presentata e all'avviso del
+    // file sostitutivo, che è lo stesso dell'export (G1) così la pagina lo mostra e lo conferma.
+    const record = await this.prisma.mUDReport.findUnique({
+      where: { tenantId_year: { tenantId, year } },
+      select: { status: true, submittedAt: true, reportData: true },
+    })
+    const dichiarazioniFile = aggregato.dichiarazioni ?? []
+    const avvisoSost = avvisoSostitutiva(
+      comunicazioneSostituita(record),
+      dichiarazioniFile.length > 0
+        ? dichiarazioniFile.map(d => d.progressivo).sort((a, b) => a - b)
+        : [1]
+    )
+    const controlli = avvisoSost ? [...aggregato.controlli, avvisoSost] : aggregato.controlli
+
     return {
       year,
       tenantId,
@@ -95,19 +115,17 @@ export class MUDGeneratorService {
       },
       dichiarazioni: totali.dichiarazioni,
       versioneCalcolo: VERSIONE_CALCOLO_MUD,
-      versionePresentata: await this.versionePresentata(tenantId, year),
-      controlli: aggregato.controlli,
-      riepilogoAvvisi: riepilogaAvvisi(aggregato.controlli),
+      versionePresentata: this.versionePresentata(record),
+      controlli,
+      riepilogoAvvisi: riepilogaAvvisi(controlli),
       mudNonDovuto: aggregato.mudNonDovuto,
     }
   }
 
   /** Versione della presentazione, solo per un anno SUBMITTED o ARCHIVED con versione diversa. */
-  private async versionePresentata(tenantId: string, year: number): Promise<number | null> {
-    const record = await this.prisma.mUDReport.findUnique({
-      where: { tenantId_year: { tenantId, year } },
-      select: { status: true, reportData: true },
-    })
+  private versionePresentata(
+    record: { status: string; reportData: unknown } | null
+  ): number | null {
     if (!record || (record.status !== 'SUBMITTED' && record.status !== 'ARCHIVED')) return null
     const dati = record.reportData
     const salvata =

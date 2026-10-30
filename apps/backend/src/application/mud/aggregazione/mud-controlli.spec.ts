@@ -328,13 +328,14 @@ describe('controlliMud', () => {
     expect(r.messaggio).not.toContain('mancano le dichiarazioni separate')
   })
 
-  it('SOSTITUTIVA_PIU_DICHIARAZIONI: avviso con il testo concordato (F1)', () => {
-    const r = controlliMud.sostitutivaPiuDichiarazioni()
+  it('SOSTITUTIVA_PIU_DICHIARAZIONI: avviso con il testo concordato (G2)', () => {
+    const r = controlliMud.sostitutivaPiuDichiarazioni([1, 2])
     expect(r.codice).toBe('SOSTITUTIVA_PIU_DICHIARAZIONI')
     expect(r.gravita).toBe('AVVISO')
     expect(r.messaggio).toBe(
-      "Il file sostituisce una dichiarazione presentata in precedenza ma contiene più unità locali: solo la dichiarazione dell'unità locale 1 risulta sostitutiva, le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD."
+      "Il file sostituisce una dichiarazione presentata in precedenza ma le unità locali non coincidono: risultano sostitutive solo quelle già presentate (1, 2), le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD."
     )
+    expect(controlliMud.sostitutivaPiuDichiarazioni([1]).messaggio).toContain('presentate (1),')
     // non cambia le quantità: la conferma non è riservata agli amministratori
     expect(riepilogaAvvisi([r]).cambianoQuantita).toBe(false)
   })

@@ -449,6 +449,103 @@ describe('MudPresentazioneService', () => {
     expect(stato.datiModificatiDopoPresentazione).toBe(true)
   })
 
+  describe('progressivi presentati da conservare (G2)', () => {
+    it('la segnatura copia i progressivi della voce scelta; senza chiave vale {1}', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({
+          reportData: {
+            esportazioni: [voce({ progressiviUnitaLocale: [1, 2] })],
+          },
+        })
+      )
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.progressiviUnitaLocale).toEqual([1, 2])
+
+      prisma.mUDReport.upsert.mockClear()
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({ reportData: { esportazioni: [voce()] } })
+      )
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.progressiviUnitaLocale).toEqual([1])
+    })
+
+    it("l'annullamento copia i progressivi nella voce dello storico e li azzera", async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({
+          status: 'SUBMITTED',
+          submittedAt: new Date('2026-06-30T10:00:00Z'),
+          submittedBy: 'u1',
+          reportData: { hashAggregato: 'h1', progressiviUnitaLocale: [2], esportazioni: [{}] },
+        })
+      )
+      await service.annullaPresentazione('t1', 2025, 'u2', 'DICHIARAZIONE_DA_SOSTITUIRE')
+      const rd = scritto().update.reportData
+      expect(rd.annullamenti[0].progressiviUnitaLocale).toEqual([2])
+      expect(rd.progressiviUnitaLocale).toBeNull()
+    })
+
+    it('ciclo completo: v2 presentata con 1 e 2, annullata, nuovo file con 1 e 2 → entrambi sostitutivi', async () => {
+      const db: any = {
+        tenant: { findUnique: jest.fn(async () => tenant) },
+        autorizzazioneImpianto: { findMany: jest.fn(async () => []) },
+        mUDReport: { findUnique: jest.fn(), upsert: jest.fn() },
+        activityLog: { create: jest.fn() },
+        $executeRaw: jest.fn(),
+        $transaction: async (fn: any) => fn(db),
+      }
+      let rec: any = null
+      db.mUDReport.findUnique.mockImplementation(async () => (rec ? { ...rec } : null))
+      db.mUDReport.upsert.mockImplementation(async ({ create, update }: any) => {
+        rec = rec ? { ...rec, ...update } : { ...create }
+      })
+      const dich = (p: number) => ({
+        codice: String(p).padStart(15, '0'),
+        progressivo: p,
+        unitaLocale: {
+          id: `ul-${p}`,
+          denominazione: `S${p}`,
+          numIscrSito: `S${p}`,
+          principale: p === 1,
+        },
+        anagrafica: null,
+        scheda: null,
+        numeroAddetti: 5,
+        comuneCode: '058091',
+        movimentiPerCer: {},
+        pericolosiPerCer: {},
+        righe: [riga170405],
+        conAutorizzazioni: p === 1,
+        conAllegatiAzienda: p === 1,
+      })
+      const agg = {
+        aggrega: jest.fn().mockResolvedValue({
+          ...aggregato([riga170405], []),
+          versioneCalcolo: 2,
+          dichiarazioni: [dich(1), dich(2)],
+        }),
+      }
+      const registry = new MudVersionRegistry()
+      const presentazione = new MudPresentazioneService(db, registry, agg as any, logger)
+      const esporta = new MudExportService(db, registry, agg as any, logger)
+      const admin = { id: 'u1', role: 'ADMIN' as const }
+      jest.useFakeTimers({ now: new Date('2026-05-02T08:00:00Z') })
+      try {
+        await esporta.exportTelematico('t1', 2025, admin)
+        expect(rec.reportData.esportazioni[0].progressiviUnitaLocale).toEqual([1, 2])
+        jest.setSystemTime(new Date('2026-07-01T08:00:00Z'))
+        await presentazione.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+        await presentazione.annullaPresentazione('t1', 2025, 'u1', 'DICHIARAZIONE_DA_SOSTITUIRE')
+        const file = await esporta.exportTelematico('t1', 2025, admin)
+        const aa = file.content.split('\r\n').filter(l => l.startsWith('AA;'))
+        expect(aa).toHaveLength(2)
+        expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+        expect(aa[1].endsWith(';1;20260630;')).toBe(true)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+  })
+
   it.each(['SEGNATURA_ERRATA', 'DICHIARAZIONE_DA_SOSTITUIRE'] as const)(
     'annullaPresentazione (%s) riporta a DRAFT e conserva lo storico con il motivo',
     async motivo => {

@@ -366,9 +366,10 @@ export interface MudExportData {
   generatedAt?: Date
   /**
    * Dichiarazione sostitutiva (A-W-04): presente se per l'anno risulta già una comunicazione
-   * presentata. Il record AA porta allora «annulla e sostituisce» = 1 e la sua data.
+   * presentata. Il record AA dei pacchetti con un progressivo in `progressivi` (assente = {1})
+   * porta allora «annulla e sostituisce» = 1 e la sua data.
    */
-  sostituisce?: { dataComunicazione: Date }
+  sostituisce?: { dataComunicazione: Date; progressivi?: number[] }
 }
 
 /** Risultato dell'export: contenuto del file + metadati. */

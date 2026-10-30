@@ -15,6 +15,7 @@ import { hashCalcoloMud, hashDichiaranteMud } from './aggregazione/mud-regole'
 import {
   aggiornaReportData,
   dataComunicazioneSostituita,
+  progressiviSalvati,
   VERSIONE_CALCOLO_MUD,
   versioneCalcoloSalvata,
   type MotivoAnnullamento,
@@ -220,6 +221,8 @@ export class MudPresentazioneService {
           hashDichiarante: string | null
           /** versione del calcolo con cui è stato fatto l'hash salvato (D10) */
           versioneCalcolo: number
+          /** progressivi delle unità locali presentate: il prossimo file li sostituisce (G2) */
+          progressiviUnitaLocale: number[]
           esportazionePresentata: string | null
           avvisiConfermatiAllaPresentazione: string[]
           riepilogoAllaPresentazione: ReportDataJson | null
@@ -233,6 +236,7 @@ export class MudPresentazioneService {
             hashDichiarante: dichiaranteAttuale,
             // senza file l'hash è quello di oggi, quindi la versione è quella di oggi
             versioneCalcolo: VERSIONE_CALCOLO_MUD,
+            progressiviUnitaLocale: [1],
             esportazionePresentata: null,
             avvisiConfermatiAllaPresentazione: [],
             riepilogoAllaPresentazione: null,
@@ -266,6 +270,7 @@ export class MudPresentazioneService {
               hashDellaVoce === null
                 ? VERSIONE_CALCOLO_MUD
                 : versioneCalcoloSalvata(voce.versioneCalcolo),
+            progressiviUnitaLocale: progressiviSalvati(voce.progressiviUnitaLocale),
             esportazionePresentata: stringaONull(voce.generatoIl),
             avvisiConfermatiAllaPresentazione: elencoDiStringhe(voce.avvisiConfermati),
             riepilogoAllaPresentazione: isRecord(voce.riepilogo) ? voce.riepilogo : null,
@@ -279,6 +284,7 @@ export class MudPresentazioneService {
           hashAggregato: presentazione.hashAggregato,
           hashDichiarante: presentazione.hashDichiarante,
           versioneCalcolo: presentazione.versioneCalcolo,
+          progressiviUnitaLocale: presentazione.progressiviUnitaLocale,
           esportazionePresentata: presentazione.esportazionePresentata,
           avvisiConfermati: presentazione.avvisiConfermatiAllaPresentazione,
           riepilogo: presentazione.riepilogoAllaPresentazione,
@@ -345,6 +351,7 @@ export class MudPresentazioneService {
               typeof p.versioneCalcolo === 'number'
                 ? versioneCalcoloSalvata(p.versioneCalcolo)
                 : null,
+            progressiviUnitaLocale: progressiviSalvati(p.progressiviUnitaLocale),
             esportazionePresentata: stringaONull(p.esportazionePresentata),
             avvisiConfermati: elenco(p.avvisiConfermatiAllaPresentazione),
             riepilogo: isRecord(p.riepilogoAllaPresentazione) ? p.riepilogoAllaPresentazione : null,
@@ -359,6 +366,7 @@ export class MudPresentazioneService {
               hashAggregato: null,
               hashDichiarante: null,
               versioneCalcolo: null,
+              progressiviUnitaLocale: null,
               esportazionePresentata: null,
               avvisiConfermatiAllaPresentazione: [],
               riepilogoAllaPresentazione: null,

@@ -318,15 +318,13 @@ export const controlliMud = {
   },
 
   /**
-   * File sostitutivo con più dichiarazioni (F1): la dichiarazione annullata era una sola (o,
-   * per la versione 2, non si conoscono i progressivi presentati), quindi solo la prima
-   * unità locale porta «annulla e sostituisce».
+   * File che sostituisce una dichiarazione presentata ma con unità locali diverse da quelle
+   * presentate (G2): sostitutive sono solo quelle già presentate, le altre sono nuove.
    */
-  sostitutivaPiuDichiarazioni: (): MudEsitoControllo => ({
+  sostitutivaPiuDichiarazioni: (sostituiti: readonly number[]): MudEsitoControllo => ({
     codice: 'SOSTITUTIVA_PIU_DICHIARAZIONI',
     gravita: AVVISO,
-    messaggio:
-      "Il file sostituisce una dichiarazione presentata in precedenza ma contiene più unità locali: solo la dichiarazione dell'unità locale 1 risulta sostitutiva, le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD.",
+    messaggio: `Il file sostituisce una dichiarazione presentata in precedenza ma le unità locali non coincidono: risultano sostitutive solo quelle già presentate (${sostituiti.join(', ')}), le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD.`,
   }),
 
   convertitoConPesoSpecifico: (
