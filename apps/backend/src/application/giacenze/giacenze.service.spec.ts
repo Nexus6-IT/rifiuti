@@ -361,6 +361,34 @@ describe('GiacenzeService', () => {
       expect(vista.registri[0].cer[0].famiglie[0]).toMatchObject({ scoperto: 10, lotti: [] })
     })
 
+    it('F1: carico in kg e scarico in litri dello stesso CER: unitaMiste e nota negli avvisi', async () => {
+      mockGroupBy(
+        [],
+        [
+          mov('130205', 'CARICO', 100, '2026-01-01'),
+          mov('130205', 'SCARICO', 80, '2026-02-01', { unit: 'L' }),
+        ]
+      )
+
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-10-01' })
+
+      const reg = vista.registri[0]
+      expect(reg.cer[0].unitaMiste).toBe(true)
+      expect(reg.cer[0].residuoKg).toBe(100)
+      const durata = reg.avvisi.find(a => a.tipo === 'DURATA')!
+      expect(durata.messaggio).toContain("verifica l'unità del FIR")
+    })
+
+    it('F1: solo kg con scoperto: unitaMiste false', async () => {
+      mockGroupBy(
+        [],
+        [mov('150101', 'CARICO', 100, '2026-01-01'), mov('150101', 'SCARICO', 150, '2026-02-01')]
+      )
+      const vista = await service.getDepositoTemporaneo('tenant-1', { oggi: '2026-10-01' })
+      expect(vista.registri[0].cer[0].unitaMiste).toBe(false)
+      expect(vista.registri[0].scopertoPresente).toBe(true)
+    })
+
     it('limita a 50 i lotti per famiglia: tiene i più vecchi, dichiara quelli omessi', async () => {
       const giorno = (i: number) => new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10)
       // inseriti in ordine sparso: il taglio deve guardare la data, non l'ordine di arrivo

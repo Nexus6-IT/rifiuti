@@ -84,6 +84,11 @@ export interface DepositoCer {
   giornoPiuVecchio: string | null
   etaGiorni: number | null
   scadenza: string | null
+  /**
+   * Scarichi in un'unità non di massa (litri, m³) mentre i carichi sono in kg: il FIFO non li
+   * abbina e il lotto in kg resta aperto (F1). Nessuna conversione col peso specifico (M10).
+   */
+  unitaMiste: boolean
   famiglie: DepositoFamiglia[]
 }
 
@@ -359,12 +364,16 @@ export class GiacenzeService {
         let residuoKg = 0
         let giorno: string | null = null
         let haResiduo = false
+        let scopertoAltraUnita = false
         const ordinate = [...gruppo.famiglie].sort(([x], [y]) =>
           x === 'KG' ? -1 : y === 'KG' ? 1 : x < y ? -1 : x > y ? 1 : 0
         )
         for (const [unita, lista] of ordinate) {
           const esito = calcolaFifo(lista)
-          if (esito.scoperto > 0) scopertoPresente = true
+          if (esito.scoperto > 0) {
+            scopertoPresente = true
+            if (unita !== 'KG') scopertoAltraUnita = true
+          }
           if (esito.lotti.length > 0) {
             haResiduo = true
             if (unita === 'KG') residuoKg += esito.residuoTotale
@@ -390,6 +399,7 @@ export class GiacenzeService {
           giornoPiuVecchio: giorno,
           etaGiorni: giorno ? giorniTra(giorno, oggi) : null,
           scadenza: null,
+          unitaMiste: scopertoAltraUnita && residuoKg > 0,
           famiglie,
         })
       }
@@ -402,6 +412,7 @@ export class GiacenzeService {
             pericoloso: c.pericoloso,
             residuoKg: c.residuoKg,
             giornoPiuVecchio: c.giornoPiuVecchio,
+            unitaMiste: c.unitaMiste,
           })),
         },
         soglieR,

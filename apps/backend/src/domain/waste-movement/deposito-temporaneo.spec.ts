@@ -243,6 +243,51 @@ describe('valutaDeposito: quantità', () => {
   })
 })
 
+describe('valutaDeposito: testi di preavviso (F3)', () => {
+  const preavviso = (kg: number, perc: number) =>
+    valutaDeposito(
+      { cer: [cer(null, { residuoKg: kg })] },
+      quantitativo({ preavvisoPercentuale: perc }),
+      '2026-10-28'
+    )[0]
+
+  it('preavviso 80: testo grammaticale con percentuale configurata e reale', () => {
+    expect(preavviso(25000, 80).messaggio).toContain(
+      'Rifiuti in deposito: 25.000 kg, è vicino alla soglia di 30.000 kg (percentuale di preavviso: 80%; raggiunto: 83%).'
+    )
+  })
+
+  it.each([10, 50, 11, 80])('percentuale %i: nessuna preposizione davanti al numero', perc => {
+    const m = preavviso(30000 * (perc / 100) + 300, perc).messaggio
+    expect(m).toContain(`percentuale di preavviso: ${perc}%`)
+    expect(m).not.toMatch(/(all'|\bal|\bdi la)\s*\d/)
+    expect(m).not.toContain('di la soglia')
+  })
+
+  it('il superamento resta "ha raggiunto"', () => {
+    expect(preavviso(30000, 80).messaggio).toContain(
+      'Rifiuti in deposito: 30.000 kg, ha raggiunto la soglia di 30.000 kg.'
+    )
+  })
+})
+
+describe('valutaDeposito: unità miste (F1)', () => {
+  it("l'avviso di durata del CER con unità miste porta la nota", () => {
+    const a = valutaDeposito(
+      { cer: [cer('2026-01-01', { unitaMiste: true })] },
+      temporale(),
+      '2026-10-28'
+    )
+    expect(a[0].tipo).toBe('DURATA')
+    expect(a[0].messaggio).toContain("verifica l'unità del FIR")
+  })
+
+  it('senza unità miste nessuna nota', () => {
+    const a = valutaDeposito({ cer: [cer('2026-01-01')] }, temporale(), '2026-10-28')
+    expect(a[0].messaggio).not.toContain('unità diversa')
+  })
+})
+
 describe('valutaDeposito: criteri e ordinamento', () => {
   it('TEMPORALE non produce avvisi quantitativi', () => {
     const a = valutaDeposito({ cer: [cer(null, { residuoKg: 99999 })] }, temporale(), '2026-10-28')

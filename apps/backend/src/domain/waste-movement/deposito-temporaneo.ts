@@ -52,6 +52,9 @@ export const LIMITI_LEGGE = {
   m3Pericolosi: 10,
 } as const
 
+export const NOTA_UNITA_MISTE =
+  "Scarichi in un'unità diversa dai carichi (es. litri contro kg): il conteggio FIFO non li abbina, verifica l'unità del FIR."
+
 export const FRASE_CRITERIO_NON_SCELTO = 'Criterio non ancora scelto: si controllano entrambi.'
 
 const KG_MASSIMO = 10_000_000
@@ -180,6 +183,8 @@ export interface InputValutazione {
     residuoKg: number
     /** Giorno del lotto residuo piu' vecchio di QUALUNQUE famiglia di unita'; null se nessuno. */
     giornoPiuVecchio: string | null
+    /** Scarichi in un'unita' non di massa mentre i carichi sono in kg (F1): il FIFO non li abbina. */
+    unitaMiste?: boolean
   }>
 }
 
@@ -223,7 +228,8 @@ function valutaScadenza(
   scadenza: string,
   motivo: string,
   soglie: SoglieDeposito,
-  oggi: string
+  oggi: string,
+  unitaMiste = false
 ): AvvisoDeposito | null {
   const superato = oggi > scadenza
   const preavviso =
@@ -235,7 +241,8 @@ function valutaScadenza(
   const verbo = superato ? 'andava avviato' : 'va avviato'
   const messaggio =
     `CER ${cer.cerCode}: il rifiuto più vecchio è in deposito dal ${dataIt(giorno)} ` +
-    `(${eta} giorni); ${verbo} entro il ${dataIt(scadenza)} (${motivo}).`
+    `(${eta} giorni); ${verbo} entro il ${dataIt(scadenza)} (${motivo}).` +
+    (unitaMiste ? ` ${NOTA_UNITA_MISTE}` : '')
   return {
     tipo,
     livello: superato ? 'SUPERATO' : 'PREAVVISO',
@@ -267,9 +274,14 @@ function valutaQuantita(
   const oggetto =
     tipo === 'QUANTITA_TOTALE' ? 'Rifiuti in deposito' : 'Rifiuti pericolosi in deposito'
   const limiteM3 = tipo === 'QUANTITA_TOTALE' ? LIMITI_LEGGE.m3Totale : LIMITI_LEGGE.m3Pericolosi
-  const stato = superato ? 'ha raggiunto' : `è all'${soglie.preavvisoPercentuale}% di`
+  // Niente preposizione davanti al numero (all'80% / al 10% / all'11%): le percentuali stanno
+  // fra parentesi, quella reale e' arrotondata per difetto.
+  const stato = superato ? 'ha raggiunto la' : 'è vicino alla'
+  const dettaglio = superato
+    ? ''
+    : ` (percentuale di preavviso: ${soglie.preavvisoPercentuale}%; raggiunto: ${Math.floor((totaleM * 100) / sogliaM)}%)`
   const messaggio =
-    `${oggetto}: ${formattaQuantita(totaleKg)} kg, ${stato} la soglia di ${formattaQuantita(sogliaKg)} kg. ` +
+    `${oggetto}: ${formattaQuantita(totaleKg)} kg, ${stato} soglia di ${formattaQuantita(sogliaKg)} kg${dettaglio}. ` +
     `La soglia in kg è la conversione indicata dall'azienda del limite di ${limiteM3} m³ fissato dalla norma.`
   return {
     tipo,
@@ -303,7 +315,16 @@ export function valutaDeposito(
       const daGiorni =
         soglie.giorniMax !== null && aggiungiGiorni(giorno, soglie.giorniMax) < treMesiDopo(giorno)
       const motivo = daGiorni ? `soglia dell'azienda di ${soglie.giorniMax} giorni` : 'tre mesi'
-      const a = valutaScadenza('DURATA', cer, giorno, scadenza, motivo, soglie, oggi)
+      const a = valutaScadenza(
+        'DURATA',
+        cer,
+        giorno,
+        scadenza,
+        motivo,
+        soglie,
+        oggi,
+        cer.unitaMiste === true
+      )
       if (a) avvisi.push(a)
     }
     if (conAnnuale) {
@@ -314,7 +335,8 @@ export function valutaDeposito(
         unAnnoDopo(giorno),
         'un anno',
         soglie,
-        oggi
+        oggi,
+        cer.unitaMiste === true
       )
       if (a) avvisi.push(a)
     }
