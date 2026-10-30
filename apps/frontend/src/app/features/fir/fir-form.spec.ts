@@ -1,5 +1,10 @@
 import { FIR, FIRStato } from '../../shared/models/fir.model'
-import { formDaFir, testoMotivoNonModificabile } from './fir-form'
+import {
+  etichettaSede,
+  formDaFir,
+  sedeSoloSeCambiata,
+  testoMotivoNonModificabile,
+} from './fir-form'
 
 describe('formDaFir', () => {
   const fir: FIR = {
@@ -79,6 +84,23 @@ describe('formDaFir', () => {
     ).toBeUndefined()
   })
 
+  it('conserva le sedi del FIR come valore iniziale e non le porta se assenti', () => {
+    const conSedi = formDaFir({
+      ...fir,
+      produttore: { ragioneSociale: 'P', partitaIva: '12345678903', sedeId: 'sede-p' },
+      destinatario: { ragioneSociale: 'D', partitaIva: '', codiceFiscale: 'X', sedeId: 'sede-d' },
+    })
+    expect(conSedi.produttoreSedeId).toBe('sede-p')
+    expect(conSedi.destinatarioSedeId).toBe('sede-d')
+
+    const senza = formDaFir({
+      ...fir,
+      produttore: { ragioneSociale: 'P', partitaIva: '12345678903', sedeId: null },
+    })
+    expect(senza.produttoreSedeId).toBeUndefined()
+    expect(senza.destinatarioSedeId).toBeUndefined()
+  })
+
   it('i null del backend diventano undefined', () => {
     const dto = formDaFir({
       ...fir,
@@ -104,5 +126,38 @@ describe('testoMotivoNonModificabile', () => {
     }
     expect(testoMotivoNonModificabile(null)).toBe('')
     expect(testoMotivoNonModificabile(undefined)).toBe('')
+  })
+})
+
+describe('sedeSoloSeCambiata', () => {
+  it('omette la sede se uguale a quella iniziale o se assente', () => {
+    expect(sedeSoloSeCambiata('s1', 's1')).toBeUndefined()
+    expect(sedeSoloSeCambiata(undefined, 's1')).toBeUndefined()
+    expect(sedeSoloSeCambiata(null, null)).toBeUndefined()
+  })
+
+  it('porta la sede se diversa da quella iniziale, anche quando l’iniziale è nulla', () => {
+    expect(sedeSoloSeCambiata('s2', 's1')).toBe('s2')
+    expect(sedeSoloSeCambiata('s2', null)).toBe('s2')
+    expect(sedeSoloSeCambiata('s2', undefined)).toBe('s2')
+  })
+})
+
+describe('etichettaSede', () => {
+  const base = {
+    denominazione: null,
+    via: 'Via Roma',
+    civico: '1',
+    cap: '20100',
+    citta: 'Milano',
+    provincia: 'MI',
+  }
+
+  it('descrive l’indirizzo, con denominazione e note se ci sono', () => {
+    expect(etichettaSede(base)).toBe('Via Roma 1, 20100 Milano (MI)')
+    expect(etichettaSede({ ...base, denominazione: 'Deposito', principale: true })).toBe(
+      'Deposito — Via Roma 1, 20100 Milano (MI) [principale]'
+    )
+    expect(etichettaSede({ ...base, attiva: false })).toContain('[non attiva]')
   })
 })

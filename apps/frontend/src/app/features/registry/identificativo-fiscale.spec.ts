@@ -4,6 +4,8 @@ import {
   MESSAGGIO_IDENTIFICATIVO_ASSENTE,
   MESSAGGIO_PARTITA_IVA_NON_VALIDA,
   MESSAGGIO_PRIVATO_SOLO_PRODUTTORE,
+  etichettaIdentificativiCompleta,
+  etichettaIdentificativo,
   identificativiPerSalvataggio,
   identificativoPerRicerca,
   normalizzaIdentificativo,
@@ -256,5 +258,24 @@ describe('identificativo-fiscale (gemella del VO del backend)', () => {
       expect(r.errori).toEqual({})
       expect(r.codiceFiscale).toBe(CF_PERSONA_VALIDO)
     })
+  })
+})
+
+describe('etichette dell’identificativo (menu e dettaglio)', () => {
+  it('menu: P.IVA se c’è, altrimenti C.F., mai "null"', () => {
+    expect(etichettaIdentificativo('12345678903', 'RSSMRA80A01H501U')).toBe('P.IVA 12345678903')
+    expect(etichettaIdentificativo(null, 'RSSMRA80A01H501U')).toBe('C.F. RSSMRA80A01H501U')
+    expect(etichettaIdentificativo('', 'RSSMRA80A01H501U')).toBe('C.F. RSSMRA80A01H501U')
+    expect(etichettaIdentificativo(null, null)).toBe('')
+    expect(etichettaIdentificativo(undefined, undefined)).toBe('')
+  })
+
+  it('dettaglio: entrambi con il separatore, solo C.F. per un privato', () => {
+    expect(etichettaIdentificativiCompleta('12345678903', 'RSSMRA80A01H501U')).toBe(
+      'P.IVA 12345678903 · C.F. RSSMRA80A01H501U'
+    )
+    expect(etichettaIdentificativiCompleta('', 'RSSMRA80A01H501U')).toBe('C.F. RSSMRA80A01H501U')
+    expect(etichettaIdentificativiCompleta('12345678903', null)).toBe('P.IVA 12345678903')
+    expect(etichettaIdentificativiCompleta(null, null)).toBe('P.IVA N/D')
   })
 })

@@ -36,7 +36,9 @@ export type PricingModel =
 export interface ContractParty {
   id: string
   ragioneSociale: string
-  partitaIVA: string
+  /** Null per un privato (solo codice fiscale). */
+  partitaIVA: string | null
+  codiceFiscale?: string | null
 }
 
 /** Contratto come restituito dal backend (modello Prisma `Contract`). */

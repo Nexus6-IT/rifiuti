@@ -224,7 +224,7 @@ describe('FirListComponent — avviso di scadenza alla scelta della controparte'
   const trasportatoreScaduto = {
     id: 't-scaduto',
     ragioneSociale: 'Trasporti Scaduti SRL',
-    partitaIVA: '12345678901',
+    partitaIVA: '12345678903',
     sedeLegale: { via: 'Via Roma', civico: '1', cap: '00100', comune: 'Roma', provincia: 'RM' },
     numeroIscrizione: 'AL999',
     scadenzaIscrizione: '2020-01-01',
@@ -800,5 +800,345 @@ describe('FirListComponent — modifica delle bozze', () => {
     component.salvaFIR()
     expect(firService.createFIR).toHaveBeenCalled()
     expect(firService.modificaFIR).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * F2-10: scelta della sede delle parti nel dialog del FIR e identificativo fiscale nelle tendine.
+ * La tendina della sede compare solo se la ditta ha più sedi; il DTO porta la sede solo se
+ * l'utente l'ha cambiata rispetto al valore iniziale (I4).
+ */
+describe('FirListComponent — sede delle parti e codice fiscale (F2-10)', () => {
+  let fixture: ComponentFixture<FirListComponent>
+  let component: FirListComponent
+  let firService: jasmine.SpyObj<FirService>
+  let registryService: jasmine.SpyObj<RegistryService>
+
+  const sede = (id: string, via: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    denominazione: null,
+    via,
+    civico: '1',
+    cap: '20100',
+    citta: 'Milano',
+    provincia: 'MI',
+    referente: null,
+    email: null,
+    telefono: null,
+    pec: null,
+    principale: false,
+    attiva: true,
+    ...extra,
+  })
+  const dittaMulti = {
+    id: 'ditta-multi',
+    ragioneSociale: 'Acme SRL',
+    partitaIva: '12345678903',
+    codiceFiscale: null,
+    partitaIvaDaVerificare: false,
+    privato: false,
+    sedi: [
+      sede('s1', 'Via Uno', { principale: true }),
+      sede('s2', 'Via Due'),
+      sede('s3', 'Via Tre', { attiva: false }),
+    ],
+    ruoli: {},
+  }
+  const dittaSingola = { ...dittaMulti, id: 'ditta-singola', sedi: [sede('u1', 'Via Sola')] }
+
+  const prodMulti = {
+    id: 'p-multi',
+    ragioneSociale: 'Acme SRL',
+    partitaIVA: '12345678903',
+    dittaId: 'ditta-multi',
+    sedeId: 's1',
+    numeroSedi: 3,
+  }
+  const prodSingolo = {
+    id: 'p-singolo',
+    ragioneSociale: 'Beta SRL',
+    partitaIVA: '09876543217',
+    dittaId: 'ditta-singola',
+    sedeId: 'u1',
+    numeroSedi: 1,
+  }
+  const prodPrivato = {
+    id: 'p-privato',
+    ragioneSociale: 'Rossi Mario',
+    partitaIVA: null,
+    codiceFiscale: 'RSSMRA80A01H501U',
+  }
+  const destMulti = {
+    id: 'd-multi',
+    ragioneSociale: 'Impianto SRL',
+    partitaIVA: '12345678903',
+    dittaId: 'ditta-multi',
+    sedeId: 's2',
+    numeroSedi: 3,
+  }
+
+  const bozza = (extra: Partial<FIR> = {}): FIR => ({
+    id: 'f1',
+    numeroProgressivo: null,
+    anno: 2026,
+    stato: FIRStato.BOZZA,
+    versione: 3,
+    modificabile: true,
+    motivoNonModificabile: null,
+    produttoreId: 'p-multi',
+    trasportatoreId: 't1',
+    destinatarioId: 'd-multi',
+    provenienza: 'SPECIALE',
+    tipoTrattaPrincipale: 'TERRESTRE',
+    rifiuto: { cerCode: '150101', quantita: 10, unitaMisura: 't' },
+    createdAt: '2026-07-01T10:00:00.000Z',
+    ...extra,
+  })
+
+  function setup(fir?: FIR) {
+    firService = jasmine.createSpyObj('FirService', [
+      'getFIRList',
+      'getFIRById',
+      'createFIR',
+      'modificaFIR',
+    ])
+    firService.getFIRList.and.returnValue(
+      of({ items: [], total: 0, page: 1, limit: 10, totalPages: 1 }) as any
+    )
+    firService.createFIR.and.returnValue(of({}) as any)
+    firService.modificaFIR.and.returnValue(of(bozza()))
+    registryService = jasmine.createSpyObj('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+      'getDitta',
+    ])
+    registryService.getProduttori.and.returnValue(
+      of({ items: [prodMulti, prodSingolo, prodPrivato], total: 3 }) as any
+    )
+    registryService.getTrasportatori.and.returnValue(
+      of({
+        items: [
+          { id: 't1', ragioneSociale: 'Trasporti SRL', partitaIVA: '22345678901' },
+          {
+            id: 't-priv',
+            ragioneSociale: 'Verdi Luca',
+            partitaIVA: null,
+            codiceFiscale: 'VRDLCU80A01H501X',
+          },
+        ],
+        total: 2,
+      }) as any
+    )
+    registryService.getDestinatari.and.returnValue(of({ items: [destMulti], total: 1 }) as any)
+    registryService.getDitta.and.callFake(
+      (id: string) => of(id === 'ditta-multi' ? dittaMulti : dittaSingola) as any
+    )
+
+    TestBed.configureTestingModule({
+      imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
+      providers: [
+        { provide: FirService, useValue: firService },
+        { provide: RegistryService, useValue: registryService },
+        {
+          provide: AuthService,
+          useValue: { currentUser: () => ({ id: 'u1', email: 'u@x.it', role: 'ADMIN' }) },
+        },
+        {
+          provide: RENTRISyncService,
+          useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
+        },
+        provideRouter([]),
+        MessageService,
+        ConfirmationService,
+        ExportService,
+      ],
+    })
+    fixture = TestBed.createComponent(FirListComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+    if (fir) {
+      component.showEditDialog(fir)
+    } else {
+      component.showCreateDialog()
+    }
+    fixture.detectChanges()
+  }
+
+  /** Apre la tendina con un click reale e sceglie la voce che contiene `testo`. */
+  function scegli(inputId: string, testo: string): void {
+    const radice = document
+      .querySelector('#' + inputId)!
+      .closest('p-dropdown')!
+      .querySelector('.p-dropdown') as HTMLElement
+    radice.click()
+    fixture.detectChanges()
+    const voce = Array.from(document.querySelectorAll('li.p-dropdown-item'))
+      .filter(li => (li.textContent ?? '').includes(testo))
+      .pop() as HTMLElement
+    expect(voce).withContext(`voce «${testo}» in ${inputId}`).toBeTruthy()
+    voce.click()
+    fixture.detectChanges()
+  }
+
+  const sedeProduttore = () => document.querySelector('[data-testid="fir-sede-produttore"]')
+  const salva = () =>
+    (document.querySelector('[data-testid="fir-dialog-salva"] button') as HTMLButtonElement).click()
+
+  function compilaResto(): void {
+    component.newFIR.trasportatoreId = 't1'
+    component.newFIR.destinatarioId = 'd-multi'
+    component.newFIR.rifiuto.cerCode = '150101'
+    component.newFIR.rifiuto.quantita = 10
+    component.newFIR.provenienza = 'SPECIALE'
+    component.newFIR.tipoTrattaPrincipale = 'TERRESTRE'
+    fixture.detectChanges()
+  }
+
+  it('con una sola sede attiva non compare la tendina “Sede del produttore”', () => {
+    setup()
+    scegli('new-produttore', 'Beta SRL')
+
+    expect(registryService.getDitta).toHaveBeenCalledWith('ditta-singola')
+    expect(sedeProduttore()).toBeNull()
+  })
+
+  it('con più sedi compare “Sede del produttore” preimpostata sulla predefinita del ruolo', () => {
+    setup()
+    scegli('new-produttore', 'Acme SRL')
+
+    expect(sedeProduttore()).toBeTruthy()
+    expect(sedeProduttore()!.textContent).toContain('Sede del produttore')
+    expect(component.newFIR.produttoreSedeId).toBe('s1')
+    // la sede non attiva non si propone
+    expect(component.sediProduttore().map(s => s.id)).toEqual(['s1', 's2'])
+  })
+
+  it('compare “Sede del destinatario” per un destinatario con più sedi, preimpostata sulla sua sede predefinita', () => {
+    setup()
+    scegli('new-destinatario', 'Impianto SRL')
+
+    expect(document.querySelector('[data-testid="fir-sede-destinatario"]')).toBeTruthy()
+    expect(component.newFIR.destinatarioSedeId).toBe('s2')
+  })
+
+  it('getDitta una sola volta per ditta, anche se il produttore viene riscelto', () => {
+    setup()
+    scegli('new-produttore', 'Acme SRL')
+    scegli('new-produttore', 'Beta SRL')
+    scegli('new-produttore', 'Acme SRL')
+
+    const chiamate = registryService.getDitta.calls
+      .allArgs()
+      .filter(a => a[0] === 'ditta-multi').length
+    expect(chiamate).toBe(1)
+  })
+
+  it('creazione: la sede NON è nel DTO se l’utente non la cambia', () => {
+    setup()
+    scegli('new-produttore', 'Acme SRL')
+    compilaResto()
+    salva()
+
+    expect(firService.createFIR).toHaveBeenCalledTimes(1)
+    const dto = firService.createFIR.calls.mostRecent().args[0]
+    expect(dto.produttoreId).toBe('p-multi')
+    expect('produttoreSedeId' in dto).toBeFalse()
+    expect('destinatarioSedeId' in dto).toBeFalse()
+  })
+
+  it('creazione: la sede è nel DTO se l’utente la cambia dalla tendina', () => {
+    setup()
+    scegli('new-produttore', 'Acme SRL')
+    scegli('new-produttore-sede', 'Via Due')
+    compilaResto()
+    salva()
+
+    const dto = firService.createFIR.calls.mostRecent().args[0]
+    expect(dto.produttoreSedeId).toBe('s2')
+    expect('destinatarioSedeId' in dto).toBeFalse()
+  })
+
+  it('creazione: tornare alla sede iniziale la toglie dal DTO', () => {
+    setup()
+    scegli('new-produttore', 'Acme SRL')
+    scegli('new-produttore-sede', 'Via Due')
+    scegli('new-produttore-sede', 'Via Uno')
+    compilaResto()
+    salva()
+
+    expect('produttoreSedeId' in firService.createFIR.calls.mostRecent().args[0]).toBeFalse()
+  })
+
+  it('modifica: tendina preimpostata sulla sede del FIR; salvando senza toccarla il DTO non la porta', () => {
+    setup(
+      bozza({
+        produttore: { ragioneSociale: 'Acme SRL', partitaIva: '12345678903', sedeId: 's2' },
+      })
+    )
+
+    expect(sedeProduttore()).toBeTruthy()
+    expect(component.newFIR.produttoreSedeId).toBe('s2')
+    salva()
+
+    const [id, dto] = firService.modificaFIR.calls.mostRecent().args
+    expect(id).toBe('f1')
+    expect('produttoreSedeId' in dto).toBeFalse()
+    expect('destinatarioSedeId' in dto).toBeFalse()
+  })
+
+  it('modifica di un FIR precedente (sede NULL): mostra la predefinita e non la scrive', () => {
+    setup(bozza({ produttore: { ragioneSociale: 'Acme SRL', partitaIva: '12345678903' } }))
+
+    expect(component.newFIR.produttoreSedeId).toBe('s1')
+    salva()
+
+    expect('produttoreSedeId' in firService.modificaFIR.calls.mostRecent().args[1]).toBeFalse()
+  })
+
+  it('modifica: cambiando la sede il DTO la porta', () => {
+    setup(
+      bozza({
+        produttore: { ragioneSociale: 'Acme SRL', partitaIva: '12345678903', sedeId: 's2' },
+      })
+    )
+    scegli('new-produttore-sede', 'Via Uno')
+    salva()
+
+    expect(firService.modificaFIR.calls.mostRecent().args[1].produttoreSedeId).toBe('s1')
+  })
+
+  it('le tendine mostrano “C.F. …” per un privato e mai “P.IVA null”', () => {
+    setup()
+    const radice = document
+      .querySelector('#new-produttore')!
+      .closest('p-dropdown')!
+      .querySelector('.p-dropdown') as HTMLElement
+    radice.click()
+    fixture.detectChanges()
+    const testo = Array.from(document.querySelectorAll('li.p-dropdown-item'))
+      .map(li => li.textContent ?? '')
+      .join('|')
+
+    expect(testo).toContain('C.F. RSSMRA80A01H501U')
+    expect(testo).toContain('P.IVA 12345678903')
+    expect(testo).not.toContain('null')
+    expect(testo).not.toContain('P.IVA RSSMRA')
+  })
+
+  it('anche la tendina del trasportatore mostra “C.F. …” per chi non ha la P.IVA', () => {
+    setup()
+    const radice = document
+      .querySelector('#new-trasportatore')!
+      .closest('p-dropdown')!
+      .querySelector('.p-dropdown') as HTMLElement
+    radice.click()
+    fixture.detectChanges()
+    const testo = Array.from(document.querySelectorAll('li.p-dropdown-item'))
+      .map(li => li.textContent ?? '')
+      .join('|')
+
+    expect(testo).toContain('C.F. VRDLCU80A01H501X')
+    expect(testo).not.toContain('null')
   })
 })

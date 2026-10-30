@@ -216,3 +216,30 @@ export function identificativiPerSalvataggio(
     codiceFiscale: e.codiceFiscale ?? undefined,
   }
 }
+
+/**
+ * Come si mostra l'identificativo di una controparte nei menu: "P.IVA …" se c'è la partita IVA,
+ * altrimenti "C.F. …" (un privato non ha la P.IVA). Stringa vuota se non c'è nessuno dei due:
+ * mai "P.IVA null".
+ */
+export function etichettaIdentificativo(
+  partitaIva: string | null | undefined,
+  codiceFiscale: string | null | undefined
+): string {
+  const piva = partitaIva?.trim()
+  if (piva) return `P.IVA ${piva}`
+  const cf = codiceFiscale?.trim()
+  if (cf) return `C.F. ${cf}`
+  return ''
+}
+
+/** Nel dettaglio si mostrano entrambi: "P.IVA X · C.F. Y"; "C.F. Y" per un privato; "P.IVA N/D" se mancano. */
+export function etichettaIdentificativiCompleta(
+  partitaIva: string | null | undefined,
+  codiceFiscale: string | null | undefined
+): string {
+  const parti: string[] = []
+  if (partitaIva?.trim()) parti.push(`P.IVA ${partitaIva.trim()}`)
+  if (codiceFiscale?.trim()) parti.push(`C.F. ${codiceFiscale.trim()}`)
+  return parti.length > 0 ? parti.join(' · ') : 'P.IVA N/D'
+}

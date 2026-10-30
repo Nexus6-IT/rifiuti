@@ -16,12 +16,15 @@ import { SplitButtonModule } from 'primeng/splitbutton'
 import { CardModule } from 'primeng/card'
 import { MenuItem } from 'primeng/api'
 import { TooltipModule } from 'primeng/tooltip'
+import { Observable } from 'rxjs'
+import { shareReplay } from 'rxjs/operators'
 import { FirService, CreateFIRDto, ModificaFIRDto, TipoTratta } from './fir.service'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ExportService } from '../../core/services/export.service'
 import { RegistryService } from '../registry/registry.service'
-import { Produttore, Trasportatore, Destinatario } from '../../shared/models/registry.model'
+import { Produttore, Trasportatore, Destinatario, Ditta } from '../../shared/models/registry.model'
+import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
 import {
   AnagraficaFormDialogComponent,
   TipoAnagrafica,
@@ -30,7 +33,12 @@ import {
 } from '../registry/anagrafica-form-dialog.component'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { puoCreareFir, puoModificareFir } from './fir-permissions'
-import { formDaFir, testoMotivoNonModificabile } from './fir-form'
+import {
+  etichettaSede,
+  formDaFir,
+  sedeSoloSeCambiata,
+  testoMotivoNonModificabile,
+} from './fir-form'
 import { ActivatedRoute, Router } from '@angular/router'
 import { calcolaScostamentoPeso, testoAvvisoScostamento } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
@@ -39,6 +47,13 @@ import { AuthService } from '../../core/services/auth.service'
 
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
+
+type RuoloConSede = 'produttore' | 'destinatario'
+type FirOriginale = Record<RuoloConSede, { id: string; sedeId: string | null }>
+interface OpzioneSede {
+  id: string
+  etichetta: string
+}
 
 @Component({
   selector: 'app-fir-list',
@@ -350,12 +365,12 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   inputId="new-produttore"
                   [options]="produttori()"
                   [(ngModel)]="newFIR.produttoreId"
-                  (onChange)="clearFirError('produttoreId')"
+                  (onChange)="clearFirError('produttoreId'); aggiornaSedi('produttore')"
                   optionLabel="ragioneSociale"
                   optionValue="id"
                   [required]="true"
                   [filter]="true"
-                  filterBy="ragioneSociale,partitaIVA"
+                  filterBy="ragioneSociale,partitaIVA,codiceFiscale"
                   [showClear]="true"
                   placeholder="Cerca produttore…"
                   [loading]="loadingAnagrafiche"
@@ -366,7 +381,9 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   <ng-template let-opt pTemplate="item">
                     <div class="opt">
                       <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                      <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                      <span class="opt__piva">{{
+                        etichettaIdentificativo(opt.partitaIVA, opt.codiceFiscale)
+                      }}</span>
                     </div>
                   </ng-template>
                 </p-dropdown>
@@ -397,6 +414,20 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                 role="alert"
                 >{{ firErrors['produttoreId'] }}</small
               >
+              @if (sediProduttore().length > 1) {
+                <div class="fir-sede" data-testid="fir-sede-produttore">
+                  <label for="new-produttore-sede">Sede del produttore</label>
+                  <p-dropdown
+                    inputId="new-produttore-sede"
+                    [options]="sediProduttore()"
+                    [(ngModel)]="newFIR.produttoreSedeId"
+                    optionValue="id"
+                    [optionLabel]="'etichetta'"
+                    placeholder="Scegli la sede"
+                    styleClass="w-full"
+                  />
+                </div>
+              }
             </div>
 
             <div class="field">
@@ -413,7 +444,7 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   optionValue="id"
                   [required]="true"
                   [filter]="true"
-                  filterBy="ragioneSociale,partitaIVA"
+                  filterBy="ragioneSociale,partitaIVA,codiceFiscale"
                   [showClear]="true"
                   placeholder="Cerca trasportatore…"
                   [loading]="loadingAnagrafiche"
@@ -426,7 +457,9 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   <ng-template let-opt pTemplate="item">
                     <div class="opt">
                       <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                      <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                      <span class="opt__piva">{{
+                        etichettaIdentificativo(opt.partitaIVA, opt.codiceFiscale)
+                      }}</span>
                     </div>
                   </ng-template>
                 </p-dropdown>
@@ -478,12 +511,12 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   inputId="new-destinatario"
                   [options]="destinatari()"
                   [(ngModel)]="newFIR.destinatarioId"
-                  (onChange)="clearFirError('destinatarioId')"
+                  (onChange)="clearFirError('destinatarioId'); aggiornaSedi('destinatario')"
                   optionLabel="ragioneSociale"
                   optionValue="id"
                   [required]="true"
                   [filter]="true"
-                  filterBy="ragioneSociale,partitaIVA"
+                  filterBy="ragioneSociale,partitaIVA,codiceFiscale"
                   [showClear]="true"
                   placeholder="Cerca destinatario…"
                   [loading]="loadingAnagrafiche"
@@ -496,7 +529,9 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                   <ng-template let-opt pTemplate="item">
                     <div class="opt">
                       <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                      <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                      <span class="opt__piva">{{
+                        etichettaIdentificativo(opt.partitaIVA, opt.codiceFiscale)
+                      }}</span>
                     </div>
                   </ng-template>
                 </p-dropdown>
@@ -527,6 +562,20 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                 role="alert"
                 >{{ firErrors['destinatarioId'] }}</small
               >
+              @if (sediDestinatario().length > 1) {
+                <div class="fir-sede" data-testid="fir-sede-destinatario">
+                  <label for="new-destinatario-sede">Sede del destinatario</label>
+                  <p-dropdown
+                    inputId="new-destinatario-sede"
+                    [options]="sediDestinatario()"
+                    [(ngModel)]="newFIR.destinatarioSedeId"
+                    optionValue="id"
+                    [optionLabel]="'etichetta'"
+                    placeholder="Scegli la sede"
+                    styleClass="w-full"
+                  />
+                </div>
+              }
               <!-- Avviso "a scelta" (Task 4 dello scadenzario): AVVISA, non IMPEDISCE. -->
               @if (destinatarioSelezionato()?.autorizzazioneScaduta) {
                 <p-message
@@ -576,7 +625,7 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                       optionLabel="ragioneSociale"
                       optionValue="id"
                       [filter]="true"
-                      filterBy="ragioneSociale,partitaIVA"
+                      filterBy="ragioneSociale,partitaIVA,codiceFiscale"
                       [showClear]="true"
                       placeholder="Cerca trasportatore…"
                       [attr.aria-label]="'Trasportatore aggiuntivo ' + (i + 2)"
@@ -585,7 +634,9 @@ const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
                       <ng-template let-opt pTemplate="item">
                         <div class="opt">
                           <span class="opt__name">{{ opt.ragioneSociale }}</span>
-                          <span class="opt__piva">P.IVA {{ opt.partitaIVA }}</span>
+                          <span class="opt__piva">{{
+                            etichettaIdentificativo(opt.partitaIVA, opt.codiceFiscale)
+                          }}</span>
                         </div>
                       </ng-template>
                     </p-dropdown>
@@ -1252,6 +1303,22 @@ export class FirListComponent implements OnInit {
   destinatari = signal<Destinatario[]>([])
   loadingAnagrafiche = false
 
+  readonly etichettaIdentificativo = etichettaIdentificativo
+
+  // Sede delle parti (F2-10): la tendina compare solo se la ditta ha più sedi
+  sediProduttore = signal<OpzioneSede[]>([])
+  sediDestinatario = signal<OpzioneSede[]>([])
+  /** Valore iniziale della sede per ruolo: l'invio al backend avviene solo se l'utente lo cambia (I4). */
+  private sedeIniziale: Record<RuoloConSede, string | null> = {
+    produttore: null,
+    destinatario: null,
+  }
+  /** Id di ruolo e sede del FIR aperto in modifica (per ricostruire il valore iniziale). */
+  private firOriginale: FirOriginale | null = null
+  private tokenSedi: Record<RuoloConSede, number> = { produttore: 0, destinatario: 0 }
+  /** `getDitta` una sola volta per ditta, finché il dialog resta aperto. */
+  private dittaInCache = new Map<string, Observable<Ditta>>()
+
   // Sub-dialog crea/modifica anagrafica dalla form FIR (WS-4)
   showAnagraficaDialog = false
   anagraficaTipo: TipoAnagrafica = 'produttore'
@@ -1419,6 +1486,64 @@ export class FirListComponent implements OnInit {
    * Carica le anagrafiche per i dropdown ricercabili.
    * La ricerca dei dropdown è client-side sulle opzioni caricate (limit alto).
    */
+  /**
+   * Aggiorna la tendina della sede per produttore o destinatario. `azzera` = true quando cambia il
+   * ruolo scelto (la sede torna al valore iniziale); false quando si ricaricano solo le anagrafiche.
+   */
+  aggiornaSedi(ruolo: RuoloConSede, azzera = true): void {
+    const sediSignal = ruolo === 'produttore' ? this.sediProduttore : this.sediDestinatario
+    const chiave = ruolo === 'produttore' ? 'produttoreSedeId' : 'destinatarioSedeId'
+    const id = ruolo === 'produttore' ? this.newFIR.produttoreId : this.newFIR.destinatarioId
+    const righe: { id: string; dittaId?: string; sedeId?: string }[] =
+      ruolo === 'produttore' ? this.produttori() : this.destinatari()
+    const riga = id ? righe.find(r => r.id === id) : undefined
+    const originale = this.firOriginale?.[ruolo]
+    // Sede del FIR se il ruolo è quello del FIR; altrimenti la predefinita del ruolo
+    const iniziale =
+      (originale && originale.id === id ? originale.sedeId : null) ?? riga?.sedeId ?? null
+    this.sedeIniziale[ruolo] = iniziale
+    if (azzera || !this.newFIR[chiave]) this.newFIR[chiave] = iniziale ?? undefined
+
+    const token = ++this.tokenSedi[ruolo]
+    if (!riga?.dittaId) {
+      sediSignal.set([])
+      return
+    }
+    this.ditta(riga.dittaId).subscribe({
+      next: ditta => {
+        if (token !== this.tokenSedi[ruolo]) return // nel frattempo è cambiato il ruolo
+        sediSignal.set(
+          ditta.sedi
+            .filter(sede => sede.attiva || sede.id === this.sedeIniziale[ruolo])
+            .map(sede => ({ id: sede.id, etichetta: etichettaSede(sede) }))
+        )
+      },
+      error: () => {
+        if (token === this.tokenSedi[ruolo]) sediSignal.set([])
+      },
+    })
+  }
+
+  private ditta(dittaId: string): Observable<Ditta> {
+    let richiesta = this.dittaInCache.get(dittaId)
+    if (!richiesta) {
+      richiesta = this.registryService.getDitta(dittaId).pipe(shareReplay(1))
+      this.dittaInCache.set(dittaId, richiesta)
+    }
+    return richiesta
+  }
+
+  /** Azzera tendine, valori iniziali e cache all'apertura del dialog. */
+  private reimpostaSedi(originale: FirOriginale | null): void {
+    this.firOriginale = originale
+    this.dittaInCache.clear()
+    this.tokenSedi.produttore++
+    this.tokenSedi.destinatario++
+    this.sedeIniziale = { produttore: null, destinatario: null }
+    this.sediProduttore.set([])
+    this.sediDestinatario.set([])
+  }
+
   loadAnagrafiche(): void {
     this.loadingAnagrafiche = true
     const limit = 200
@@ -1428,7 +1553,10 @@ export class FirListComponent implements OnInit {
       if (pending === 0) this.loadingAnagrafiche = false
     }
     this.registryService.getProduttori(1, limit).subscribe({
-      next: res => this.produttori.set(res.items),
+      next: res => {
+        this.produttori.set(res.items)
+        if (this.newFIR.produttoreId) this.aggiornaSedi('produttore', false)
+      },
       error: () => done(),
       complete: () => done(),
     })
@@ -1438,7 +1566,10 @@ export class FirListComponent implements OnInit {
       complete: () => done(),
     })
     this.registryService.getDestinatari(1, limit).subscribe({
-      next: res => this.destinatari.set(res.items),
+      next: res => {
+        this.destinatari.set(res.items)
+        if (this.newFIR.destinatarioId) this.aggiornaSedi('destinatario', false)
+      },
       error: () => done(),
       complete: () => done(),
     })
@@ -1484,6 +1615,8 @@ export class FirListComponent implements OnInit {
         next: res => {
           this.produttori.set(res.items)
           this.newFIR.produttoreId = entity.id
+          this.dittaInCache.clear() // le sedi possono essere cambiate nel sub-dialog
+          this.aggiornaSedi('produttore')
         },
       })
     } else if (tipo === 'trasportatore') {
@@ -1498,6 +1631,8 @@ export class FirListComponent implements OnInit {
         next: res => {
           this.destinatari.set(res.items)
           this.newFIR.destinatarioId = entity.id
+          this.dittaInCache.clear()
+          this.aggiornaSedi('destinatario')
         },
       })
     }
@@ -1617,6 +1752,7 @@ export class FirListComponent implements OnInit {
     }
     this.trasportatoriAggiuntivi = []
     this.showTrasportatoriAggiuntivi = false
+    this.reimpostaSedi(null)
     this.firErrors = {}
     this.displayCreateDialog = true
   }
@@ -1713,6 +1849,12 @@ export class FirListComponent implements OnInit {
     }))
     this.showTrasportatoriAggiuntivi = this.trasportatoriAggiuntivi.length > 0
     this.firInModifica = { id: fir.id, versione: fir.versione }
+    this.reimpostaSedi({
+      produttore: { id: fir.produttoreId, sedeId: fir.produttore?.sedeId ?? null },
+      destinatario: { id: fir.destinatarioId, sedeId: fir.destinatario?.sedeId ?? null },
+    })
+    this.aggiornaSedi('produttore')
+    this.aggiornaSedi('destinatario')
     this.firErrors = {}
     this.displayCreateDialog = true
     return true
@@ -1803,6 +1945,7 @@ export class FirListComponent implements OnInit {
       rifiuto: { ...this.newFIR.rifiuto },
       versione: target.versione,
     }
+    this.applicaSedeSoloSeCambiata(dto)
     if (aggiuntivi.length > 0) dto.trasportatoriAggiuntivi = aggiuntivi
     else delete dto.trasportatoriAggiuntivi
 
@@ -1824,6 +1967,20 @@ export class FirListComponent implements OnInit {
         this.gestisciErroreModifica(err, target.id)
       },
     })
+  }
+
+  /** Il DTO porta la sede di produttore e destinatario solo se l'utente l'ha cambiata (I4). */
+  private applicaSedeSoloSeCambiata(dto: CreateFIRDto): void {
+    dto.produttoreSedeId = sedeSoloSeCambiata(
+      this.newFIR.produttoreSedeId,
+      this.sedeIniziale.produttore
+    )
+    dto.destinatarioSedeId = sedeSoloSeCambiata(
+      this.newFIR.destinatarioSedeId,
+      this.sedeIniziale.destinatario
+    )
+    if (dto.produttoreSedeId === undefined) delete dto.produttoreSedeId
+    if (dto.destinatarioSedeId === undefined) delete dto.destinatarioSedeId
   }
 
   private gestisciErroreModifica(err: unknown, id: string): void {
@@ -1890,6 +2047,7 @@ export class FirListComponent implements OnInit {
       }))
 
     const dto: CreateFIRDto = { ...this.newFIR }
+    this.applicaSedeSoloSeCambiata(dto)
     if (aggiuntivi.length > 0) {
       dto.trasportatoriAggiuntivi = aggiuntivi
     }

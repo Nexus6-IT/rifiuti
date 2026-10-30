@@ -19,6 +19,10 @@ export interface CreateFIRDto {
   produttoreId: string
   trasportatoreId: string
   destinatarioId: string
+  /** Sede del produttore: solo se l'utente l'ha cambiata (altrimenti vale la predefinita del ruolo o quella del FIR). */
+  produttoreSedeId?: string
+  /** Sede del destinatario: solo se l'utente l'ha cambiata. */
+  destinatarioSedeId?: string
   /** Provenienza del rifiuto (Urbano/Speciale) — obbligatoria per la trasmissione RENTRI. */
   provenienza?: ProvenienzaRifiuto
   /** Modalità di trasporto della tratta principale — obbligatoria per la trasmissione RENTRI. */

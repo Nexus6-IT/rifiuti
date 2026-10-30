@@ -17,6 +17,7 @@ import { FormsModule, ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/f
 import { Observable } from 'rxjs'
 import { AutoCompleteModule, AutoCompleteCompleteEvent } from 'primeng/autocomplete'
 import { RegistryService } from './registry.service'
+import { etichettaIdentificativo } from './identificativo-fiscale'
 import { PaginatedResponse } from '../../shared/models/registry.model'
 
 /** Registro anagrafico interrogabile da questo selettore. */
@@ -35,7 +36,10 @@ interface AnagraficaBase {
 interface AnagraficaOption {
   id: string
   ragioneSociale: string
-  partitaIVA: string
+  partitaIVA: string | null
+  codiceFiscale: string | null
+  /** "P.IVA …" o "C.F. …" (vuoto se non c'è nessuno dei due). */
+  identificativo: string
   label: string
 }
 
@@ -91,7 +95,7 @@ const ETICHETTA_REGISTRO: Record<Registro, string> = {
       <ng-template let-a pTemplate="item">
         <div class="anagrafica-opt">
           <span class="anagrafica-opt__nome">{{ a.ragioneSociale }}</span>
-          <span class="anagrafica-opt__piva">P.IVA {{ a.partitaIVA }}</span>
+          <span class="anagrafica-opt__piva">{{ a.identificativo }}</span>
         </div>
       </ng-template>
       <ng-template pTemplate="empty">
@@ -278,7 +282,10 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
     }
     this.suggestions.set(
       this.voci().filter(
-        v => v.ragioneSociale.toLowerCase().includes(q) || v.partitaIVA.toLowerCase().includes(q)
+        v =>
+          v.ragioneSociale.toLowerCase().includes(q) ||
+          (v.partitaIVA ?? '').toLowerCase().includes(q) ||
+          (v.codiceFiscale ?? '').toLowerCase().includes(q)
       )
     )
   }
@@ -332,12 +339,14 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
     codiceFiscale?: string | null
   }): AnagraficaOption {
     // Un privato non ha la P.IVA: si mostra il suo codice fiscale
-    const identificativo = v.partitaIVA ?? v.codiceFiscale ?? ''
+    const identificativo = etichettaIdentificativo(v.partitaIVA, v.codiceFiscale)
     return {
       id: v.id,
       ragioneSociale: v.ragioneSociale,
-      partitaIVA: identificativo,
-      label: `${v.ragioneSociale} — ${identificativo}`,
+      partitaIVA: v.partitaIVA ?? null,
+      codiceFiscale: v.codiceFiscale ?? null,
+      identificativo,
+      label: identificativo ? `${v.ragioneSociale} — ${identificativo}` : v.ragioneSociale,
     }
   }
 }
