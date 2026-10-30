@@ -139,10 +139,7 @@ export function validaIdentificativi(
   }
 
   const privato =
-    !grezzaPiva &&
-    !partitaIvaGiaPresente &&
-    codiceFiscale !== null &&
-    codiceFiscale.length === 16
+    !grezzaPiva && !partitaIvaGiaPresente && codiceFiscale !== null && codiceFiscale.length === 16
   if (privato && tipo !== 'produttore' && !errori.codiceFiscale) {
     errori.codiceFiscale = MESSAGGIO_PRIVATO_SOLO_PRODUTTORE
   }
