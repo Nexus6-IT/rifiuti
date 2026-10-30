@@ -131,7 +131,9 @@ describe('MudAggregazioneService con il catalogo — Postgres reale, ruolo waste
     nelTenant(tenantId, () => service.aggrega(tenantId, anno))
 
   beforeAll(async () => {
-    expect(process.env.DATABASE_URL ?? '').toContain(':55432/')
+    expect(process.env.DATABASE_URL ?? '').toMatch(
+      /@(127\.0\.0\.1|localhost):(55432|55436)\/wasteflow_ci\b/
+    )
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
     const [a] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
