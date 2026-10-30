@@ -68,11 +68,10 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
 
   async function stato(tenantId: string, ids: { dittaId: string; ruoloId: string }) {
     const ditta = await owner.ditta.findUniqueOrThrow({ where: { id: ids.dittaId } })
-    const ruolo = await owner.produttore.findUniqueOrThrow({ where: { id: ids.ruoloId } })
     const audit = await owner.activityLog.count({
       where: { tenantId, action: AZIONE_PARTITA_IVA_CORRETTA },
     })
-    return { dittaPiva: ditta.partitaIva, colonnaVecchia: ruolo.partitaIVA, audit }
+    return { dittaPiva: ditta.partitaIva, audit }
   }
 
   const useCase = (referenceData?: { validateLocalita: jest.Mock }) =>
@@ -105,7 +104,7 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
     const r = await nelTenant(t, () => useCase().execute({ id: ids.ruoloId, partitaIVA: nuova }))
 
     expect(r.isSuccess).toBe(true)
-    expect(await stato(t, ids)).toEqual({ dittaPiva: nuova, colonnaVecchia: nuova, audit: 1 })
+    expect(await stato(t, ids)).toEqual({ dittaPiva: nuova, audit: 1 })
   })
 
   it('P.IVA corretta + comune non valido (ISTAT): 400, ditta invariata, nessun audit, colonna vecchia invariata', async () => {
@@ -127,7 +126,6 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
     expect(r.error).toBe('Comune non valido')
     expect(await stato(t, ids)).toEqual({
       dittaPiva: PIVA_CHECKSUM_ERRATO,
-      colonnaVecchia: PIVA_CHECKSUM_ERRATO,
       audit: 0,
     })
   })
@@ -149,7 +147,6 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
 
     expect(await stato(t, ids)).toEqual({
       dittaPiva: PIVA_CHECKSUM_ERRATO,
-      colonnaVecchia: PIVA_CHECKSUM_ERRATO,
       audit: 0,
     })
   })
@@ -183,7 +180,6 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
 
     expect(await stato(t, ids)).toEqual({
       dittaPiva: PIVA_CHECKSUM_ERRATO,
-      colonnaVecchia: PIVA_CHECKSUM_ERRATO,
       audit: 0,
     })
     const ditta = await owner.ditta.findUniqueOrThrow({ where: { id: ids.dittaId } })

@@ -274,17 +274,56 @@ Se il deploy si ferma con P3009:
    (o il nome della migration fallita; le virgolette singole fanno espandere `DATABASE_URL_MIGRAZIONI`
    dentro il container, non sulla shell del VPS), poi rilanciare il deploy.
 
+### Colonne vecchie congelate (`20261031110100_anagrafiche_su_ditte`, Task 3b-2)
+
+La migration richiama l'ultima volta `f210_collega_anagrafiche()` (collega le righe create dal
+backend vecchio fra le due migration, perché il deploy applica le migration mentre il vecchio è
+ancora in servizio), la elimina, controlla che nessuna riga di ruolo sia senza ditta o sede (se no
+`RAISE EXCEPTION` con i soli conteggi per tabella e tutto viene annullato), rende `ditta_id` e
+`sede_id` NOT NULL, toglie il NOT NULL a ragione sociale, P.IVA e indirizzo della riga di ruolo,
+elimina i tre indici unici `*_tenant_id_partita_iva_key` (l'unicità sta in `ditte`) e commenta le
+colonne come "copia congelata". Nessun dato viene cancellato; il lock sulle tabelle vive è limitato
+da `SET LOCAL lock_timeout = '5s'` (se non lo ottiene, la migration fallisce senza modificare nulla:
+si rilancia il deploy).
+
+Da qui il codice nuovo **non scrive più** le colonne vecchie e non le legge, salvo la ragione sociale
+(`ragioneSocialeStorica`, usata dal MUD per le integrazioni già salvate). Le righe create dopo il
+deploy hanno quelle colonne NULL. Un privato (solo codice fiscale) esiste solo su `ditte`. La
+rimozione fisica delle colonne è un seguito (F2-10b).
+
 ### Rollback
 
-Le migration sono additive fino al Task 3b-2 (`20261031110100_anagrafiche_su_ditte`): il codice
-precedente continua a funzionare perché le colonne vecchie delle righe di ruolo non cambiano. Dopo
-3b-2 il codice vecchio non legge le anagrafiche create dopo il deploy (colonne vecchie NULL):
-il rollback del codice richiede il **ripristino del backup notturno** oppure uno script inverso che
-ricostruisce le colonne vecchie dalla ditta e dalla sede predefinita
-(`UPDATE produttori r SET partita_iva = d.partita_iva, ragione_sociale = d.ragione_sociale, via = s.via, ...
-FROM ditte d, sedi_ditte s WHERE d.id = r.ditta_id AND s.id = r.sede_id`, per ciascuna tabella di
-ruolo, poi rimettere i NOT NULL e gli indici unici `*_tenant_id_partita_iva_key`), da scrivere e
-provare nel Task 3b-2.
+Fino alla `20261031110000_ditte_sedi_controparti` il rollback del codice è innocuo (le migration
+sono additive e le colonne vecchie non cambiano). **Dopo** la `20261031110100_anagrafiche_su_ditte`
+il codice vecchio non legge le anagrafiche create dopo il deploy (colonne vecchie NULL) e non
+conosce i privati: il rollback richiede il **ripristino del backup notturno** oppure questo script
+inverso (prima del rollback del codice, come owner). Ricostruisce le colonne vecchie dalla ditta e
+dalla sede predefinita di ogni riga di ruolo; poi rimette i NOT NULL e gli indici unici.
+
+```sql
+BEGIN;
+-- 1. privati (nessuna P.IVA): il codice vecchio non li gestisce. Se ce ne sono, decidere a mano
+--    (cancellare la riga di ruolo o assegnare una P.IVA) PRIMA di proseguire:
+SELECT count(*) AS privati FROM produttori r JOIN ditte d ON d.id = r.ditta_id WHERE d.partita_iva IS NULL;
+-- 2. ricostruzione (ripetere per trasportatori e destinatari cambiando la tabella)
+UPDATE produttori r
+   SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
+       via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
+       email = s.email, telefono = s.telefono, pec = s.pec
+  FROM ditte d, sedi_ditte s
+ WHERE d.id = r.ditta_id AND s.id = r.sede_id;
+-- 3. vincoli (ripetere per ciascuna tabella di ruolo)
+ALTER TABLE produttori
+  ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
+  ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
+  ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
+  ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
+CREATE UNIQUE INDEX produttori_tenant_id_partita_iva_key ON produttori (tenant_id, partita_iva);
+COMMIT;
+```
+
+Le ditte e le sedi create dopo il deploy restano in `ditte`/`sedi_ditte` (il codice vecchio le
+ignora). Dopo il rollback il `_prisma_migrations` va allineato (`migrate resolve --rolled-back`).
 
 ---
 

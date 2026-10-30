@@ -17,6 +17,7 @@ import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
  * database di test (`wasteflow`, superuser con BYPASSRLS, come in produzione).
  */
 const MIGRATION = '20261031110000_ditte_sedi_controparti'
+const MIGRATION_CONGELA = '20261031110100_anagrafiche_su_ditte'
 const BACKEND = path.resolve(__dirname, '..', '..', '..')
 const MIGRAZIONI = path.join(BACKEND, 'prisma', 'migrations')
 const URL_PROPRIETARIO =
@@ -641,6 +642,136 @@ describe('Migration F2-10 — ditte e sedi delle controparti (Postgres reale)', 
         `SELECT count(*)::int AS n FROM ditte`
       )
       expect(righe[0].n).toBe(0)
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  // Migration 110100 (Task 3b-2): colonne vecchie congelate. Va in coda: parte dallo stato lasciato
+  // dalla 110000 e dai test sopra.
+  // -------------------------------------------------------------------------------------------
+  describe('migration 20261031110100 (colonne vecchie congelate)', () => {
+    const Z2 = '77777777777'
+    const E = randomUUID()
+    const orfano = randomUUID()
+    const orfanoT = randomUUID()
+    let ruoliPrima: number
+
+    const nullable = async (tabella: string, colonna: string) =>
+      (
+        await sel<{ is_nullable: string }>(
+          `SELECT is_nullable FROM information_schema.columns
+           WHERE table_name = '${tabella}' AND column_name = '${colonna}'`
+        )
+      )[0].is_nullable
+
+    beforeAll(async () => {
+      // backend vecchio ancora in servizio fra le due migration: righe senza ditta ne' sede
+      await azienda(E, 6)
+      await produttore(orfano, E, 'Orfano Srl', Z2, 'Via Orfana', '1', '2026-07-01 10:00:00')
+      await trasportatore(orfanoT, E, 'ORFANO S.R.L.', Z2, 'via orfana', '1', '2026-07-02 10:00:00')
+      ruoliPrima = (
+        await sel<{ n: number }>(
+          `SELECT (SELECT count(*) FROM produttori)::int + (SELECT count(*) FROM trasportatori)::int
+                  + (SELECT count(*) FROM destinatari)::int AS n`
+        )
+      )[0].n
+      prismaCli(
+        [
+          'db',
+          'execute',
+          '--file',
+          path.join(MIGRAZIONI, MIGRATION_CONGELA, 'migration.sql'),
+          '--schema',
+          schemaTmp,
+        ],
+        urlDb
+      )
+    }, 120_000)
+
+    it('le righe nate nella finestra di deploy sono collegate alla stessa ditta e sede', async () => {
+      const ditte = (await ditteDi(E)).filter(d => d.partita_iva === Z2)
+      expect(ditte).toHaveLength(1)
+      const righe = await sel<{ ditta_id: string; sede_id: string }>(
+        `SELECT ditta_id, sede_id FROM produttori WHERE id = '${orfano}'
+         UNION ALL SELECT ditta_id, sede_id FROM trasportatori WHERE id = '${orfanoT}'`
+      )
+      expect(righe).toHaveLength(2)
+      const sedi = await sediDi(ditte[0].id)
+      expect(sedi).toHaveLength(1)
+      for (const r of righe) expect(r).toEqual({ ditta_id: ditte[0].id, sede_id: sedi[0].id })
+    })
+
+    it('la funzione di backfill non esiste piu', async () => {
+      const [r] = await sel<{ f: string | null }>(
+        `SELECT to_regprocedure('f210_collega_anagrafiche()')::text AS f`
+      )
+      expect(r.f).toBeNull()
+    })
+
+    it('ditta_id e sede_id sono NOT NULL; le colonne vecchie no', async () => {
+      for (const t of ['produttori', 'trasportatori', 'destinatari']) {
+        expect(await nullable(t, 'ditta_id')).toBe('NO')
+        expect(await nullable(t, 'sede_id')).toBe('NO')
+        for (const c of [
+          'ragione_sociale',
+          'partita_iva',
+          'via',
+          'civico',
+          'cap',
+          'comune',
+          'provincia',
+        ]) {
+          expect(await nullable(t, c)).toBe('YES')
+        }
+      }
+    })
+
+    it('gli indici unici sulla partita IVA sono caduti, quelli su (azienda, ditta) restano', async () => {
+      const indici = (
+        await sel<{ indexname: string }>(
+          `SELECT indexname FROM pg_indexes WHERE tablename IN ('produttori','trasportatori','destinatari')`
+        )
+      ).map(i => i.indexname)
+      for (const t of ['produttori', 'trasportatori', 'destinatari']) {
+        expect(indici).not.toContain(`${t}_tenant_id_partita_iva_key`)
+        expect(indici).toContain(`${t}_tenant_id_ditta_id_key`)
+      }
+    })
+
+    it('le colonne vecchie hanno il commento "copia congelata" e nessun dato e andato perso', async () => {
+      const [c] = await sel<{ d: string }>(
+        `SELECT col_description('produttori'::regclass, attnum) AS d FROM pg_attribute
+         WHERE attrelid = 'produttori'::regclass AND attname = 'partita_iva'`
+      )
+      expect(c.d).toMatch(/copia congelata/)
+      expect(
+        (
+          await sel<{ v: string }>(`SELECT partita_iva AS v FROM produttori WHERE id = '${orfano}'`)
+        )[0].v
+      ).toBe(Z2)
+      expect(
+        (
+          await sel<{ n: number }>(
+            `SELECT (SELECT count(*) FROM produttori)::int + (SELECT count(*) FROM trasportatori)::int
+                    + (SELECT count(*) FROM destinatari)::int AS n`
+          )
+        )[0].n
+      ).toBe(ruoliPrima)
+    })
+
+    it('dopo la migration una riga di ruolo con le colonne vecchie vuote e valida; senza ditta no', async () => {
+      const dX = (await ditteDi(E)).find(d => d.partita_iva === Z2)!
+      const [s] = await sediDi(dX.id)
+      await q(
+        `INSERT INTO destinatari (tenant_id, updated_at, numero_autorizzazione, ditta_id, sede_id)
+         VALUES ('${E}', now(), 'AUT-NUOVA', '${dX.id}', '${s.id}')`
+      )
+      await expect(
+        q(
+          `INSERT INTO destinatari (tenant_id, updated_at, numero_autorizzazione)
+           VALUES ('${E}', now(), 'AUT-SENZA')`
+        )
+      ).rejects.toThrow(/23502/)
     })
   })
 })

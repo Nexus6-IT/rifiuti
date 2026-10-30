@@ -6,16 +6,12 @@
  * Qui sta tutta la parte comune; ogni repository concreto dice solo come si chiama il modello, quali
  * sono i suoi campi e come si ricostruisce l'entita'.
  *
- * ---------------------------------------------------------------------------------------------
- * F2-10 Task 3a: DOPPIA SCRITTURA. Finche' MUD, contratti e RENTRI leggono ancora le colonne
- * vecchie della riga di ruolo (ragione sociale, P.IVA, indirizzo e contatti), `crea` e `save` le
- * scrivono insieme alle tabelle nuove. La toglie il Task 3b-2.
- * ---------------------------------------------------------------------------------------------
+ * Le colonne vecchie della riga di ruolo (ragione sociale, P.IVA, indirizzo e contatti) sono una
+ * copia congelata (D6): qui non si scrivono piu'.
  */
 import { PrismaService } from './prisma.service'
 import { TenantContext } from '../../core/context/tenant-context'
 import {
-  DatiControparteNonValidiError,
   SedeNonModificabileError,
   SedeNonTrovataError,
   SedeNonValidaPerRuoloError,
@@ -99,7 +95,6 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
         createdAt: entita.createdAt,
         dittaId: entita.dittaId,
         sedeId: entita.sedeId,
-        ...this.colonneVecchie(entita),
         ...this.campiRuolo(entita),
       },
     })
@@ -152,7 +147,6 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
         where: { id: entita.id, tenantId },
         data: {
           sedeId: entita.sedeId,
-          ...this.colonneVecchie(entita, { soloSePresentePiva: true }),
           ...this.campiRuolo(entita),
         },
       })
@@ -283,31 +277,6 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
           ...(d.destinatari?.length ? (['DESTINATARIO'] as const) : []),
         ],
       }),
-    }
-  }
-
-  /**
-   * F2-10 Task 3a: doppia scrittura, la toglie il Task 3b-2.
-   * Le colonne vecchie della riga di ruolo: ragione sociale, P.IVA, indirizzo e contatti della
-   * sede predefinita. La P.IVA e' NOT NULL finche' esistono (nel Task 3a il DTO la esige).
-   */
-  private colonneVecchie(entita: E, opzioni: { soloSePresentePiva?: boolean } = {}) {
-    const indirizzo = this.indirizzoDi(entita)
-    const piva = entita.partitaIVA?.getValue()
-    if (!piva && !opzioni.soloSePresentePiva) {
-      throw new DatiControparteNonValidiError('Indica la partita IVA.')
-    }
-    return {
-      ragioneSociale: entita.ragioneSociale,
-      ...(piva && { partitaIVA: piva }),
-      via: indirizzo.getVia(),
-      civico: indirizzo.getCivico(),
-      cap: indirizzo.getCAP(),
-      comune: indirizzo.getCitta(),
-      provincia: indirizzo.getProvincia(),
-      email: entita.email || null,
-      telefono: entita.telefono || null,
-      pec: entita.pec || null,
     }
   }
 }

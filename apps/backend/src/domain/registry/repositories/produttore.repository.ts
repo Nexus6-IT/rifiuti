@@ -9,7 +9,7 @@ import { OpzioniLetturaRuolo } from './ditta.repository'
 export interface ProduttoreRepository<C = unknown> {
   /**
    * Inserisce la riga di ruolo (F2-10): con il `client` della transazione che ha gia' risolto
-   * ditta e sede (D3). Per ora scrive anche le colonne vecchie (doppia scrittura, Task 3b-2).
+   * ditta e sede (D3).
    */
   crea(client: C, produttore: Produttore): Promise<void>
 

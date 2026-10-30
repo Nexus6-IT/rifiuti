@@ -457,7 +457,7 @@ export class DeadlineCheckerService {
           tenantId: t.tenantId,
           scadenza: t.scadenzaIscrizione as Date,
           identificativo: t.numeroIscrizione,
-          ragioneSociale: t.ditta?.ragioneSociale ?? t.ragioneSociale,
+          ragioneSociale: t.ditta.ragioneSociale,
         })),
         {
           notificationType: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
@@ -481,7 +481,7 @@ export class DeadlineCheckerService {
           tenantId: d.tenantId,
           scadenza: d.scadenzaAutorizzazione as Date,
           identificativo: d.numeroAutorizzazione,
-          ragioneSociale: d.ditta?.ragioneSociale ?? d.ragioneSociale,
+          ragioneSociale: d.ditta.ragioneSociale,
         })),
         {
           notificationType: 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',

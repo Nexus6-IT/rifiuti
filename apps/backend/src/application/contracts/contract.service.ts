@@ -252,8 +252,6 @@ export class ContractService {
     // Nome e identificativi vengono dalla ditta (D10): se la ditta cambia nome, la lista segue
     const select = {
       id: true,
-      ragioneSociale: true,
-      partitaIVA: true,
       ditta: { select: { ragioneSociale: true, partitaIva: true, codiceFiscale: true } },
     }
 
@@ -271,9 +269,9 @@ export class ContractService {
 
     const comeParte = (r: (typeof produttori)[number]): ContractParty => ({
       id: r.id,
-      ragioneSociale: r.ditta?.ragioneSociale ?? r.ragioneSociale,
-      partitaIVA: r.ditta ? r.ditta.partitaIva : r.partitaIVA,
-      codiceFiscale: r.ditta?.codiceFiscale ?? null,
+      ragioneSociale: r.ditta.ragioneSociale,
+      partitaIVA: r.ditta.partitaIva,
+      codiceFiscale: r.ditta.codiceFiscale,
     })
     const perId = (righe: (typeof produttori)[number][]) =>
       new Map(righe.map(r => [r.id, comeParte(r)]))

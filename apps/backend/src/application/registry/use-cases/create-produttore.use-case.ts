@@ -27,9 +27,9 @@ import {
 
 export interface CreateProduttoreCommand {
   ragioneSociale: string
-  /** Obbligatoria in questo task (le colonne vecchie sono NOT NULL, Task 3b-2). */
-  partitaIVA: string
-  /** In aggiunta alla P.IVA; da solo (privato) dal Task 3b-2. */
+  /** Facoltativa se c'e' il codice fiscale (privato, D2). */
+  partitaIVA?: string
+  /** In aggiunta alla P.IVA, oppure da solo (privato). */
   codiceFiscale?: string
   sedeLegale: {
     via: string

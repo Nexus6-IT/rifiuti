@@ -74,6 +74,15 @@ function cablaggio(prisma: PrismaService) {
 
 describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
+
+  /** Le colonne vecchie sono `@ignore` nello schema: si leggono solo con SQL. */
+  const colonneVecchie = async (id: string, tabella: 'produttori' | 'destinatari') => {
+    const righe = await owner.$queryRawUnsafe<Record<string, string | null>[]>(
+      `SELECT ragione_sociale, partita_iva, via, comune, email FROM ${tabella} WHERE id = $1::uuid`,
+      id
+    )
+    return righe[0]
+  }
   let app: PrismaService
   let app2: PrismaService
   let r1: ReturnType<typeof cablaggio>
@@ -132,7 +141,7 @@ describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () 
     await app2.$disconnect()
   })
 
-  it('produttore e destinatario con la stessa P.IVA: una ditta, due ruoli, colonne vecchie valorizzate', async () => {
+  it('produttore e destinatario con la stessa P.IVA: una ditta, due ruoli, colonne vecchie non scritte', async () => {
     const t = await azienda()
     const p = await nelTenant(t, () => r1.creaProduttore.execute(comandoProduttore()))
     const d = await nelTenant(t, () => r1.creaDestinatario.execute(comandoDestinatario()))
@@ -152,25 +161,48 @@ describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () 
     const prodRiga = await owner.produttore.findUniqueOrThrow({ where: { id: p.value.ruolo.id } })
     const destRiga = await owner.destinatario.findUniqueOrThrow({ where: { id: d.value.ruolo.id } })
     for (const riga of [prodRiga, destRiga]) {
-      // F2-10 Task 3a: doppia scrittura, le colonne vecchie restano valorizzate
       expect(riga).toMatchObject({
-        ragioneSociale: 'Rossi S.r.l.',
-        partitaIVA: PIVA_VALIDA,
-        via: 'Via Roma',
-        civico: '1',
-        cap: '00100',
-        comune: 'Roma',
-        provincia: 'RM',
         dittaId: p.value.ruolo.dittaId,
         sedeId: p.value.ruolo.sedeId,
       })
     }
-    expect(prodRiga.email).toBe('rossi@example.it')
+    // D6: le colonne vecchie della riga di ruolo non si scrivono piu' (copia congelata)
+    for (const id of [p.value.ruolo.id, d.value.ruolo.id]) {
+      expect(
+        await colonneVecchie(id, id === p.value.ruolo.id ? 'produttori' : 'destinatari')
+      ).toEqual({ ragione_sociale: null, partita_iva: null, via: null, comune: null, email: null })
+    }
     // lettura: ragione sociale e identificativi vengono dalla ditta
     const letto = await nelTenant(t, () => r1.destinatari.findById(d.value.ruolo.id))
     expect(letto?.ragioneSociale).toBe('Rossi S.r.l.')
     expect(letto?.partitaIVA?.getValue()).toBe(PIVA_VALIDA)
     expect(letto?.ruoliDitta?.sort()).toEqual(['DESTINATARIO', 'PRODUTTORE'])
+  })
+
+  it('un privato (solo codice fiscale) si salva come produttore e si rilegge', async () => {
+    const t = await azienda()
+    const esito = await nelTenant(t, () =>
+      r1.creaProduttore.execute(
+        comandoProduttore({
+          ragioneSociale: 'Mario Rossi',
+          partitaIVA: undefined,
+          codiceFiscale: CF_PERSONA_VALIDO,
+        })
+      )
+    )
+    expect(esito.isSuccess).toBe(true)
+    const id = esito.value.ruolo.id
+
+    const ditta = await owner.ditta.findFirstOrThrow({ where: { tenantId: t } })
+    expect(ditta).toMatchObject({ partitaIva: null, codiceFiscale: CF_PERSONA_VALIDO })
+    expect(await colonneVecchie(id, 'produttori')).toMatchObject({ partita_iva: null, via: null })
+
+    const letto = await nelTenant(t, () => r1.produttori.findById(id))
+    expect(letto?.partitaIVA).toBeNull()
+    expect(letto?.codiceFiscale).toBe(CF_PERSONA_VALIDO)
+    expect(letto?.ragioneSociale).toBe('Mario Rossi')
+    const elenco = await nelTenant(t, () => r1.produttori.findByTenantId(t))
+    expect(elenco.map(x => x.id)).toEqual([id])
   })
 
   it('due creazioni concorrenti dello stesso produttore: una riesce, l altra 400, una sola ditta', async () => {
@@ -220,13 +252,12 @@ describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () 
     expect((await owner.ditta.findFirstOrThrow({ where: { tenantId: t } })).ragioneSociale).toBe(
       'Verdi S.p.A.'
     )
-    // anche la colonna vecchia del destinatario segue
-    const riga = await owner.destinatario.findUniqueOrThrow({ where: { id: d.value.ruolo.id } })
-    expect(riga.ragioneSociale).toBe('Verdi S.p.A.')
+    // la colonna vecchia del destinatario e' congelata: non segue
+    expect((await colonneVecchie(d.value.ruolo.id, 'destinatari')).ragione_sociale).toBeNull()
     expect(p.isSuccess).toBe(true)
   })
 
-  it('cambio di sede predefinita: indirizzo e colonne vecchie seguono, l altro ruolo no', async () => {
+  it('cambio di sede predefinita: segue solo il ruolo modificato, l altro no', async () => {
     const t = await azienda()
     const p = await nelTenant(t, () => r1.creaProduttore.execute(comandoProduttore()))
     const d = await nelTenant(t, () => r1.creaDestinatario.execute(comandoDestinatario()))
@@ -242,9 +273,9 @@ describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () 
     expect(esito.value.sedeId).toBe(sedeMilano.id)
     expect(esito.value.sedeLegale.getCitta()).toBe('Milano')
     const prod = await owner.produttore.findUniqueOrThrow({ where: { id: p.value.ruolo.id } })
-    expect(prod).toMatchObject({ sedeId: sedeMilano.id, comune: 'Milano', provincia: 'MI' })
+    expect(prod.sedeId).toBe(sedeMilano.id)
     const dest = await owner.destinatario.findUniqueOrThrow({ where: { id: d.value.ruolo.id } })
-    expect(dest).toMatchObject({ sedeId: p.value.ruolo.sedeId, comune: 'Roma' })
+    expect(dest.sedeId).toBe(p.value.ruolo.sedeId)
     // la sede di Roma non e stata toccata
     const roma = await owner.sedeDitta.findUniqueOrThrow({ where: { id: p.value.ruolo.sedeId } })
     expect(roma.comune).toBe('Roma')

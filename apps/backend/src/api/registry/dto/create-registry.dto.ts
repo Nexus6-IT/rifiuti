@@ -17,6 +17,7 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiPropertyOptional } from '@nestjs/swagger'
+import { AlmenoUnIdentificativoFiscale } from './almeno-un-identificativo.validator'
 
 export class IndirizzoDto {
   @IsString()
@@ -49,9 +50,14 @@ export class CreateProduttoreDto {
   @IsNotEmpty()
   ragioneSociale: string
 
-  @IsString()
-  @IsNotEmpty()
-  partitaIVA: string
+  /** Facoltativa se c'e' il codice fiscale (privato): serve almeno uno dei due. */
+  @ApiPropertyOptional({
+    description:
+      'Partita IVA (11 cifre). Facoltativa se si indica il codice fiscale: serve almeno uno dei due.',
+    example: '12345678903',
+  })
+  @AlmenoUnIdentificativoFiscale()
+  partitaIVA?: string
 
   /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
   @ApiPropertyOptional({
@@ -92,9 +98,14 @@ export class CreateTrasportatoreDto {
   @IsNotEmpty()
   ragioneSociale: string
 
-  @IsString()
-  @IsNotEmpty()
-  partitaIVA: string
+  /** Facoltativa se c'e' il codice fiscale (privato): serve almeno uno dei due. */
+  @ApiPropertyOptional({
+    description:
+      'Partita IVA (11 cifre). Facoltativa se si indica il codice fiscale: serve almeno uno dei due.',
+    example: '12345678903',
+  })
+  @AlmenoUnIdentificativoFiscale()
+  partitaIVA?: string
 
   /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
   @ApiPropertyOptional({
@@ -145,9 +156,14 @@ export class CreateDestinatarioDto {
   @IsNotEmpty()
   ragioneSociale: string
 
-  @IsString()
-  @IsNotEmpty()
-  partitaIVA: string
+  /** Facoltativa se c'e' il codice fiscale (privato): serve almeno uno dei due. */
+  @ApiPropertyOptional({
+    description:
+      'Partita IVA (11 cifre). Facoltativa se si indica il codice fiscale: serve almeno uno dei due.',
+    example: '12345678903',
+  })
+  @AlmenoUnIdentificativoFiscale()
+  partitaIVA?: string
 
   /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
   @ApiPropertyOptional({

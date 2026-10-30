@@ -105,6 +105,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
   it('destinatario: nome della riga di ruolo, CF ?? P.IVA, sede', async () => {
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Storico SPA',
+      ragioneSocialeStorica: 'Destinatario Storico SPA',
       partitaIva: partitaIvaValida(Date.now() + 21),
       codiceFiscale: CF_PERSONA_VALIDO,
       via: 'Via Vecchia',
@@ -131,9 +132,36 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     expect(info.get(d.ruoloId)?.partitaIVA).toBe(piva)
   })
 
+  it('righe create dopo il deploy (colonne vecchie NULL): il MUD usa il nome attuale della ditta', async () => {
+    const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
+      ragioneSociale: 'Destinatario Nuovo SPA',
+      partitaIva: partitaIvaValida(Date.now() + 41),
+    })
+    const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
+      ragioneSociale: 'Trasporti Nuovi SRL',
+      partitaIva: partitaIvaValida(Date.now() + 42),
+      numeroDocumento: 'MI/222222',
+    })
+    const [riga] = await owner.$queryRawUnsafe<Array<{ ragione_sociale: string | null }>>(
+      `SELECT ragione_sociale FROM destinatari WHERE id = $1::uuid`,
+      d.ruoloId
+    )
+    expect(riga.ragione_sociale).toBeNull()
+    await owner.ditta.update({ where: { id: d.dittaId }, data: { ragioneSociale: 'Rinominata' } })
+
+    const dest = await nelTenant(() => mud.caricaDestinatari(tenantId, [d.ruoloId]))
+    const tras = await nelTenant(() =>
+      mud.caricaTrasportatori(tenantId, [{ carrierId: t.ruoloId }])
+    )
+
+    expect(dest.get(d.ruoloId)?.ragioneSociale).toBe('Rinominata')
+    expect(tras.get(t.ruoloId)?.ragioneSociale).toBe('Trasporti Nuovi SRL')
+  })
+
   it('trasportatore: nome della riga di ruolo, CF ?? P.IVA', async () => {
     const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
       ragioneSociale: 'Trasporti Storici SRL',
+      ragioneSocialeStorica: 'Trasporti Storici SRL',
       partitaIva: partitaIvaValida(Date.now() + 23),
       codiceFiscale: CF_PERSONA_OMOCODICO,
       numeroDocumento: 'MI/123456',
@@ -198,6 +226,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     const piva = partitaIvaValida(Date.now() + 31)
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Integrato SPA',
+      ragioneSocialeStorica: 'Destinatario Integrato SPA',
       partitaIva: piva,
     })
     await owner.ditta.update({

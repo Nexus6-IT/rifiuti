@@ -23,6 +23,7 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
 import {
+  CF_PERSONA_ALTRO,
   CF_PERSONA_VALIDO,
   creaDittaConRuolo,
   partitaIvaValida,
@@ -118,48 +119,43 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
     provincia: 'RM',
   })
 
-  it('denominazione, codice_fiscale e indirizzo coincidono con quelli delle colonne vecchie', async () => {
+  it('denominazione, codice_fiscale e indirizzo vengono dalla ditta e dalla sede (colonne vecchie vuote)', async () => {
     const piva = (seme: number) => partitaIvaValida(Date.now() + seme)
+    const [pivaP, pivaD, pivaT] = [piva(1), piva(2), piva(3)]
     const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', {
       ragioneSociale: 'Produttore Uno SRL',
-      partitaIva: piva(1),
+      partitaIva: pivaP,
       ...sede('Via del Produttore'),
     })
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Due SPA',
-      partitaIva: piva(2),
+      partitaIva: pivaD,
       ...sede('Via del Destinatario'),
     })
     const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
       ragioneSociale: 'Trasporti Tre SRL',
       numeroDocumento: 'MI/123456',
-      partitaIva: piva(3),
+      partitaIva: pivaT,
       ...sede('Via del Trasportatore'),
     })
-    // Valori che il codice PRIMA del cambio avrebbe letto dalle colonne vecchie della riga di ruolo
-    const prima = {
-      p: await owner.produttore.findUniqueOrThrow({ where: { id: p.ruoloId } }),
-      d: await owner.destinatario.findUniqueOrThrow({ where: { id: d.ruoloId } }),
-      t: await owner.trasportatore.findUniqueOrThrow({ where: { id: t.ruoloId } }),
-    }
 
     const payload = (await TenantContext.run({ tenantId }, () =>
       servizio.costruisci(firCon(p.ruoloId, d.ruoloId, t.ruoloId), tenantId)
     )) as unknown as Payload
 
     const { produttore, destinatario, trasportatori } = payload.dati_partenza
-    expect(produttore.denominazione).toBe(prima.p.ragioneSociale)
-    expect(produttore.codice_fiscale).toBe(prima.p.partitaIVA)
+    expect(produttore.denominazione).toBe('Produttore Uno SRL')
+    expect(produttore.codice_fiscale).toBe(pivaP)
     expect(produttore.indirizzo).toMatchObject({
-      indirizzo: prima.p.via,
-      civico: prima.p.civico,
-      cap: prima.p.cap,
+      indirizzo: 'Via del Produttore',
+      civico: '7',
+      cap: '00100',
     })
-    expect(destinatario.denominazione).toBe(prima.d.ragioneSociale)
-    expect(destinatario.codice_fiscale).toBe(prima.d.partitaIVA)
-    expect(destinatario.indirizzo).toMatchObject({ indirizzo: prima.d.via })
-    expect(trasportatori[0].denominazione).toBe(prima.t.ragioneSociale)
-    expect(trasportatori[0].codice_fiscale).toBe(prima.t.partitaIVA)
+    expect(destinatario.denominazione).toBe('Destinatario Due SPA')
+    expect(destinatario.codice_fiscale).toBe(pivaD)
+    expect(destinatario.indirizzo).toMatchObject({ indirizzo: 'Via del Destinatario' })
+    expect(trasportatori[0].denominazione).toBe('Trasporti Tre SRL')
+    expect(trasportatori[0].codice_fiscale).toBe(pivaT)
   })
 
   it('con un codice fiscale sulla ditta, codice_fiscale e quello e non la partita IVA', async () => {
@@ -180,6 +176,28 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
     )) as unknown as Payload
 
     expect(payload.dati_partenza.produttore.codice_fiscale).toBe(CF_PERSONA_VALIDO)
+  })
+
+  it('produttore privato (solo codice fiscale di 16 caratteri): codice_fiscale e quello (I7)', async () => {
+    const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', {
+      ragioneSociale: 'Mario Rossi',
+      partitaIva: null,
+      codiceFiscale: CF_PERSONA_ALTRO,
+      ...sede('Via Privato'),
+    })
+    const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', sede('Via Due'))
+    const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
+      ...sede('Via Tre'),
+      numeroDocumento: 'MI/123456',
+    })
+
+    const payload = (await TenantContext.run({ tenantId }, () =>
+      servizio.costruisci(firCon(p.ruoloId, d.ruoloId, t.ruoloId), tenantId)
+    )) as unknown as Payload
+
+    expect(CF_PERSONA_ALTRO).toHaveLength(16)
+    expect(payload.dati_partenza.produttore.codice_fiscale).toBe(CF_PERSONA_ALTRO)
+    expect(payload.dati_partenza.produttore.denominazione).toBe('Mario Rossi')
   })
 
   it("l'indirizzo viene dalla sede della ditta, non dalla copia sulla riga di ruolo", async () => {

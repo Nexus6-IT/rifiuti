@@ -202,13 +202,18 @@ describe('ContractService', () => {
       prisma.produttore.findMany.mockResolvedValue([
         {
           id: 'p1',
-          ragioneSociale: 'ACME VECCHIA',
-          partitaIVA: PIVA_VALIDA,
           ditta: { ragioneSociale: 'ACME SPA', partitaIva: PIVA_VALIDA, codiceFiscale: null },
         },
       ])
       prisma.trasportatore.findMany.mockResolvedValue([
-        { id: 't1r', ragioneSociale: 'ROSSI TRASPORTI SRL', partitaIVA: partitaIvaValida(7) },
+        {
+          id: 't1r',
+          ditta: {
+            ragioneSociale: 'ROSSI TRASPORTI SRL',
+            partitaIva: partitaIvaValida(7),
+            codiceFiscale: null,
+          },
+        },
       ])
 
       const [riga] = await service.list('t1')

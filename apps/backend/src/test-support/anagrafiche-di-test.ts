@@ -56,6 +56,11 @@ export interface DatiDittaDiTest {
   email?: string | null
   telefono?: string | null
   pec?: string | null
+  /**
+   * Ragione sociale congelata sulla riga di ruolo, come l'hanno le righe migrate (D6/I2). Le righe
+   * create dopo il deploy non l'hanno (NULL): e' il default.
+   */
+  ragioneSocialeStorica?: string | null
   /** Numero di iscrizione (trasportatore) o di autorizzazione (destinatario). */
   numeroDocumento?: string
 }
@@ -69,8 +74,8 @@ export interface RisultatoDittaConRuolo {
 let contatore = 0
 
 /**
- * Crea ditta, sede principale e riga di ruolo **con** le colonne vecchie (ragione sociale, P.IVA,
- * indirizzo e contatti), finche' esistono (le toglie il Task 3b-2). Va chiamata con un client che
+ * Crea ditta, sede principale e riga di ruolo. Le colonne vecchie della riga di ruolo (ragione
+ * sociale, P.IVA, indirizzo, contatti) sono congelate (D6): non si scrivono. Va chiamata con un client che
  * puo' scrivere (proprietario o `tx`); il `tenantId` e' esplicito perche' non c'e' un contesto.
  */
 export async function creaDittaConRuolo(
@@ -106,10 +111,7 @@ export async function creaDittaConRuolo(
     tenantId,
     dittaId: ditta.id,
     sedeId: sedeCreata.id,
-    ragioneSociale,
-    partitaIVA: partitaIva ?? '',
-    ...sede,
-    ...contatti,
+    ragioneSocialeStorica: dati.ragioneSocialeStorica ?? null,
   }
   let ruoloId: string
   if (ruolo === 'PRODUTTORE') {

@@ -936,8 +936,7 @@ export class MudAggregazioneService {
       where: { id: { in: ids }, tenantId },
       select: {
         id: true,
-        ragioneSociale: true,
-        partitaIVA: true,
+        ragioneSocialeStorica: true,
         ditta: { select: { ragioneSociale: true, partitaIva: true, codiceFiscale: true } },
       },
     })
@@ -945,9 +944,9 @@ export class MudAggregazioneService {
       info.set(t.id, {
         // I2: il nome è quello della riga di ruolo (le integrazioni salvate sono agganciate a
         // questo), quello della ditta solo se la riga non lo ha
-        ragioneSociale: t.ragioneSociale || (t.ditta?.ragioneSociale ?? ''),
+        ragioneSociale: t.ragioneSocialeStorica || t.ditta.ragioneSociale,
         // Il campo si chiama partitaIVA ma porta il codice fiscale del soggetto: CF ?? P.IVA
-        partitaIVA: t.ditta ? (t.ditta.codiceFiscale ?? t.ditta.partitaIva ?? '') : t.partitaIVA,
+        partitaIVA: t.ditta.codiceFiscale ?? t.ditta.partitaIva ?? '',
       })
     }
     return info
@@ -976,8 +975,8 @@ export class MudAggregazioneService {
       },
     })
 
-    // L'indirizzo è quello della sede predefinita (D10); senza sede, la copia sulla riga di ruolo
-    const indirizzoDi = (d: (typeof destinatari)[number]) => d.sede ?? d
+    // L'indirizzo è quello della sede predefinita (D10)
+    const indirizzoDi = (d: (typeof destinatari)[number]) => d.sede
 
     // Un solo lookup per coppia (comune, provincia) distinta.
     const comuni = new Map<
@@ -997,9 +996,9 @@ export class MudAggregazioneService {
       const comune = comuni.get(`${indirizzo.comune}|${indirizzo.provincia}`)
       info.set(d.id, {
         // I2: nome della riga di ruolo (vedi caricaTrasportatori)
-        ragioneSociale: d.ragioneSociale || (d.ditta?.ragioneSociale ?? ''),
+        ragioneSociale: d.ragioneSocialeStorica || d.ditta.ragioneSociale,
         // Porta il codice fiscale del soggetto: CF ?? P.IVA
-        partitaIVA: d.ditta ? (d.ditta.codiceFiscale ?? d.ditta.partitaIva ?? '') : d.partitaIVA,
+        partitaIVA: d.ditta.codiceFiscale ?? d.ditta.partitaIva ?? '',
         via: indirizzo.via,
         civico: indirizzo.civico,
         cap: indirizzo.cap,

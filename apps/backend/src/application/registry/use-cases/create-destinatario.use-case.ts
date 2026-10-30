@@ -28,8 +28,8 @@ import {
 
 export interface CreateDestinatarioCommand {
   ragioneSociale: string
-  /** Obbligatoria in questo task (le colonne vecchie sono NOT NULL, Task 3b-2). */
-  partitaIVA: string
+  /** Facoltativa se c'e' il codice fiscale (privato, D2). */
+  partitaIVA?: string
   /** In aggiunta alla P.IVA. */
   codiceFiscale?: string
   sede: {

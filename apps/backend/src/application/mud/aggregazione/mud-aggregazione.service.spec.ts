@@ -48,13 +48,13 @@ describe('MudAggregazioneService', () => {
   })
   const destinatarioDest1 = {
     id: 'dest-1',
-    partitaIVA: '33333333333',
-    ragioneSociale: 'Recupero Metalli Srl',
-    comune: 'Milano',
-    provincia: 'MI',
-    via: 'Via Roma',
-    civico: '1',
-    cap: '20100',
+    ragioneSocialeStorica: 'Recupero Metalli Srl',
+    ditta: {
+      ragioneSociale: 'Recupero Metalli Srl',
+      partitaIva: '33333333333',
+      codiceFiscale: null,
+    },
+    sede: { comune: 'Milano', provincia: 'MI', via: 'Via Roma', civico: '1', cap: '20100' },
   }
   const integrazioni = (i: any) =>
     prisma.mUDReport.findUnique.mockResolvedValue({ reportData: { integrazioni: i } })
@@ -917,7 +917,15 @@ describe('MudAggregazioneService', () => {
       firCollegati: [fir({ carrierId: 'car-9', carrierPartitaIva: '', carrierName: '' })],
     })
     prisma.trasportatore.findMany.mockResolvedValue([
-      { id: 'car-9', partitaIVA: '44444444444', ragioneSociale: 'Autotrasporti Rossi Srl' },
+      {
+        id: 'car-9',
+        ragioneSocialeStorica: 'Autotrasporti Rossi Srl',
+        ditta: {
+          ragioneSociale: 'Autotrasporti Rossi Srl',
+          partitaIva: '44444444444',
+          codiceFiscale: null,
+        },
+      },
     ])
 
     const r = await service.aggrega('t1', 2025)

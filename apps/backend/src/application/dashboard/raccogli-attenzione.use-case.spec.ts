@@ -247,7 +247,7 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'tra-1', ragioneSociale: 'Trasporti Rossi SRL', scadenzaIscrizione },
+              { id: 'tra-1', ditta: { ragioneSociale: 'Trasporti Rossi SRL' }, scadenzaIscrizione },
             ]),
         },
       })
@@ -275,7 +275,6 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest.fn().mockResolvedValue([
             {
               id: 'tra-1',
-              ragioneSociale: 'Nome vecchio',
               ditta: { ragioneSociale: 'Nome Nuovo SRL' },
               scadenzaIscrizione,
             },
@@ -299,7 +298,7 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'tra-1', ragioneSociale: 'Trasporti Rossi SRL', scadenzaIscrizione },
+              { id: 'tra-1', ditta: { ragioneSociale: 'Trasporti Rossi SRL' }, scadenzaIscrizione },
             ]),
         },
       })
@@ -329,7 +328,11 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'des-1', ragioneSociale: 'Impianto Bianchi SPA', scadenzaAutorizzazione },
+              {
+                id: 'des-1',
+                ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
+                scadenzaAutorizzazione,
+              },
             ]),
         },
       })
@@ -357,7 +360,11 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'des-1', ragioneSociale: 'Impianto Bianchi SPA', scadenzaAutorizzazione },
+              {
+                id: 'des-1',
+                ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
+                scadenzaAutorizzazione,
+              },
             ]),
         },
       })
@@ -398,14 +405,18 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'tra-1', ragioneSociale: 'Trasporti Rossi SRL', scadenzaIscrizione: scaduta },
+              {
+                id: 'tra-1',
+                ditta: { ragioneSociale: 'Trasporti Rossi SRL' },
+                scadenzaIscrizione: scaduta,
+              },
             ]),
         },
         destinatario: {
           findMany: jest.fn().mockResolvedValue([
             {
               id: 'des-1',
-              ragioneSociale: 'Impianto Bianchi SPA',
+              ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
               scadenzaAutorizzazione: scaduta,
             },
           ]),

@@ -250,8 +250,8 @@ export class RaccogliAttenzioneUseCase {
         chiave: 'trasportatore-iscrizione',
         gravita: scaduta ? 'critico' : 'avviso',
         titolo: scaduta
-          ? `Iscrizione Albo scaduta — ${trasportatore.ditta?.ragioneSociale ?? trasportatore.ragioneSociale}`
-          : `Iscrizione Albo in scadenza — ${trasportatore.ditta?.ragioneSociale ?? trasportatore.ragioneSociale}`,
+          ? `Iscrizione Albo scaduta — ${trasportatore.ditta.ragioneSociale}`
+          : `Iscrizione Albo in scadenza — ${trasportatore.ditta.ragioneSociale}`,
         dettaglio: scaduta ? `scaduta da ${Math.abs(giorni)} giorni` : `scade fra ${giorni} giorni`,
         azione: { etichetta: 'Vedi trasportatori', rotta: '/trasportatori' },
       }
@@ -289,8 +289,8 @@ export class RaccogliAttenzioneUseCase {
         chiave: 'destinatario-autorizzazione',
         gravita: scaduta ? 'critico' : 'avviso',
         titolo: scaduta
-          ? `Autorizzazione scaduta — ${destinatario.ditta?.ragioneSociale ?? destinatario.ragioneSociale}`
-          : `Autorizzazione in scadenza — ${destinatario.ditta?.ragioneSociale ?? destinatario.ragioneSociale}`,
+          ? `Autorizzazione scaduta — ${destinatario.ditta.ragioneSociale}`
+          : `Autorizzazione in scadenza — ${destinatario.ditta.ragioneSociale}`,
         dettaglio: scaduta ? `scaduta da ${Math.abs(giorni)} giorni` : `scade fra ${giorni} giorni`,
         azione: { etichetta: 'Vedi destinatari', rotta: '/destinatari' },
       }

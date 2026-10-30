@@ -1219,30 +1219,29 @@ model Produttore {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSociale String @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA     String @map("partita_iva") @db.VarChar(11)
+  ragioneSocialeStorica String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA     String? @map("partita_iva") @db.VarChar(11) @ignore
 
   // Sede Legale
-  via       String @db.VarChar(255)
-  civico    String @db.VarChar(20)
-  cap       String @db.VarChar(5)
-  comune    String @db.VarChar(100)
-  provincia String @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @db.VarChar(255)
-  telefono String? @db.VarChar(20)
-  pec      String? @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne sopra diventano copia congelata)
-  dittaId String? @map("ditta_id") @db.Uuid
-  sedeId  String? @map("sede_id") @db.Uuid
-  ditta   Ditta?     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_ditta_fkey")
-  sede    SedeDitta? @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_sede_fkey")
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
+  ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_ditta_fkey")
+  sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_sede_fkey")
 
-  @@unique([tenantId, partitaIVA])
   @@unique([tenantId, dittaId], map: "produttori_tenant_id_ditta_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "produttori_sede_id_idx")
@@ -1255,21 +1254,21 @@ model Trasportatore {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSociale   String @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA       String @map("partita_iva") @db.VarChar(11)
+  ragioneSocialeStorica   String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA       String? @map("partita_iva") @db.VarChar(11) @ignore
   numeroIscrizione String @map("numero_iscrizione") @db.VarChar(50)
 
   // Sede Legale
-  via       String @db.VarChar(255)
-  civico    String @db.VarChar(20)
-  cap       String @db.VarChar(5)
-  comune    String @db.VarChar(100)
-  provincia String @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @db.VarChar(255)
-  telefono String? @db.VarChar(20)
-  pec      String? @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'iscrizione all'Albo Gestori Ambientali. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1279,13 +1278,12 @@ model Trasportatore {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne sopra diventano copia congelata)
-  dittaId String? @map("ditta_id") @db.Uuid
-  sedeId  String? @map("sede_id") @db.Uuid
-  ditta   Ditta?     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_ditta_fkey")
-  sede    SedeDitta? @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
+  ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_ditta_fkey")
+  sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
 
-  @@unique([tenantId, partitaIVA])
   @@unique([tenantId, dittaId], map: "trasportatori_tenant_id_ditta_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "trasportatori_sede_id_idx")
@@ -1298,21 +1296,21 @@ model Destinatario {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSociale       String @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA           String @map("partita_iva") @db.VarChar(11)
+  ragioneSocialeStorica       String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA           String? @map("partita_iva") @db.VarChar(11) @ignore
   numeroAutorizzazione String @map("numero_autorizzazione") @db.VarChar(50)
 
   // Sede
-  via       String @db.VarChar(255)
-  civico    String @db.VarChar(20)
-  cap       String @db.VarChar(5)
-  comune    String @db.VarChar(100)
-  provincia String @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @db.VarChar(255)
-  telefono String? @db.VarChar(20)
-  pec      String? @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'autorizzazione allo smaltimento/recupero. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1322,13 +1320,12 @@ model Destinatario {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne sopra diventano copia congelata)
-  dittaId String? @map("ditta_id") @db.Uuid
-  sedeId  String? @map("sede_id") @db.Uuid
-  ditta   Ditta?     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_ditta_fkey")
-  sede    SedeDitta? @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
+  ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_ditta_fkey")
+  sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
 
-  @@unique([tenantId, partitaIVA])
   @@unique([tenantId, dittaId], map: "destinatari_tenant_id_ditta_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "destinatari_sede_id_idx")

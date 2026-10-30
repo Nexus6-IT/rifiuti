@@ -319,13 +319,6 @@ describe('DitteService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.destinatario.create({
         data: {
           tenantId: t,
-          ragioneSociale: 'Rossi S.r.l.',
-          partitaIVA: PIVA_VALIDA,
-          via: 'Via Roma',
-          civico: '2',
-          cap: '00100',
-          comune: 'Roma',
-          provincia: 'RM',
           numeroAutorizzazione: 'AUT-1',
           dittaId: r.dittaId,
           sedeId: altra.id,
