@@ -56,6 +56,9 @@ describe('UpdateRentriUnitaLocaleDto — anagrafica della sede', () => {
   it('rifiuta addetti negativi o non interi', async () => {
     expect(await errori({ numeroAddetti: -1 })).toEqual(['numeroAddetti'])
     expect(await errori({ numeroAddetti: 1.5 })).toEqual(['numeroAddetti'])
+    // il campo del file ha 5 cifre (F2)
+    expect(await errori({ numeroAddetti: 99999 })).toEqual([])
+    expect(await errori({ numeroAddetti: 100000 })).toEqual(['numeroAddetti'])
   })
 
   it('rifiuta lunghezze oltre il limite', async () => {

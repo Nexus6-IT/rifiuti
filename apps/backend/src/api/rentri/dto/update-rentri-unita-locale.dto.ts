@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsBoolean,
   IsInt,
+  Max,
   Min,
   MaxLength,
   Matches,
@@ -94,11 +95,12 @@ export class UpdateRentriUnitaLocaleDto {
 
   @ApiPropertyOptional({
     example: 12,
-    description: 'Numero di addetti della sede (intero >= 0)',
+    description: 'Numero di addetti della sede (intero da 0 a 99999)',
     nullable: true,
   })
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(99999, { message: 'Il numero di addetti non può avere più di 5 cifre (massimo 99999)' })
   numeroAddetti?: number | null
 }
