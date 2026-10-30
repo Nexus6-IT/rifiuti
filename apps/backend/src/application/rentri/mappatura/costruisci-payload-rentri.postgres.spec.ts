@@ -54,6 +54,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
   let app: PrismaService
   let servizio: CostruisciPayloadRentri
   let tenantId: string
+  const tenantCreati: string[] = []
   let comuneCreato = false
 
   const unitaLocale = { getPrincipale: async () => ({ numIscrSito: 'OP1234ABC000001-AB0001' }) }
@@ -65,12 +66,13 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
     servizio = new CostruisciPayloadRentri(app, unitaLocale as never, logger as never)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: `RP${Date.now()}`.slice(-11),
+        partitaIva: partitaIvaValida(Date.now()),
         ragioneSociale: 'Payload RENTRI test SRL',
         country: 'IT',
       },
     })
     tenantId = t.id
+    tenantCreati.push(t.id)
     if (!(await owner.istatComune.findUnique({ where: { code: CODICE_COMUNE } }))) {
       await owner.istatComune.create({
         data: { code: CODICE_COMUNE, name: NOME_COMUNE, provinciaSigla: 'RM' },
@@ -80,15 +82,20 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
   })
 
   afterAll(async () => {
-    await owner.produttore.deleteMany({ where: { tenantId } })
-    await owner.trasportatore.deleteMany({ where: { tenantId } })
-    await owner.destinatario.deleteMany({ where: { tenantId } })
-    await owner.sedeDitta.deleteMany({ where: { tenantId } })
-    await owner.ditta.deleteMany({ where: { tenantId } })
-    await owner.tenant.deleteMany({ where: { id: tenantId } })
+    // Mai una cancellazione senza id esatti: se il beforeAll e' fallito prima di creare il tenant
+    // un filtro `undefined` verrebbe ignorato da Prisma e cancellerebbe tutto.
+    if (tenantCreati.length > 0) {
+      const where = { tenantId: { in: tenantCreati } }
+      await owner.produttore.deleteMany({ where })
+      await owner.trasportatore.deleteMany({ where })
+      await owner.destinatario.deleteMany({ where })
+      await owner.sedeDitta.deleteMany({ where })
+      await owner.ditta.deleteMany({ where })
+      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    }
     if (comuneCreato) await owner.istatComune.deleteMany({ where: { code: CODICE_COMUNE } })
     await owner.$disconnect()
-    await app.$disconnect()
+    await app?.$disconnect()
   })
 
   const firCon = (p: string, d: string, t: string) =>

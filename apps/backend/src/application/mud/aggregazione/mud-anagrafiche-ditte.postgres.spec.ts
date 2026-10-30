@@ -32,6 +32,7 @@ import {
   creaDittaConRuolo,
   partitaIvaValida,
 } from '../../../test-support/anagrafiche-di-test'
+import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import { ContractService } from '../../contracts/contract.service'
 import { MudAggregazioneService } from './mud-aggregazione.service'
 import { chiaveDestinatario } from './mud-integrazioni'
@@ -58,6 +59,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
   let mud: Privati
   let contratti: ContractService
   let tenantId: string
+  const tenantCreati: string[] = []
 
   const logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const referenceData = { findComuneByName: async () => ({ code: '058091' }) }
@@ -73,29 +75,35 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     contratti = new ContractService(app, logger as never)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: `MD${Date.now()}`.slice(-11),
+        partitaIva: partitaIvaValida(Date.now()),
         ragioneSociale: 'MUD ditte test SRL',
         country: 'IT',
       },
     })
     tenantId = t.id
+    tenantCreati.push(t.id)
   })
 
   afterAll(async () => {
-    await owner.contract.deleteMany({ where: { tenantId } })
-    await owner.produttore.deleteMany({ where: { tenantId } })
-    await owner.trasportatore.deleteMany({ where: { tenantId } })
-    await owner.destinatario.deleteMany({ where: { tenantId } })
-    await owner.sedeDitta.deleteMany({ where: { tenantId } })
-    await owner.ditta.deleteMany({ where: { tenantId } })
-    await owner.tenant.deleteMany({ where: { id: tenantId } })
+    // Mai una cancellazione senza id esatti: se il beforeAll e' fallito prima di creare il tenant
+    // un filtro `undefined` verrebbe ignorato da Prisma e cancellerebbe tutto.
+    if (tenantCreati.length > 0) {
+      const where = { tenantId: { in: tenantCreati } }
+      await owner.contract.deleteMany({ where })
+      await owner.produttore.deleteMany({ where })
+      await owner.trasportatore.deleteMany({ where })
+      await owner.destinatario.deleteMany({ where })
+      await owner.sedeDitta.deleteMany({ where })
+      await owner.ditta.deleteMany({ where })
+      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    }
     await owner.$disconnect()
-    await app.$disconnect()
+    await app?.$disconnect()
   })
 
   const nelTenant = <R>(fn: () => Promise<R>) => TenantContext.run({ tenantId }, async () => fn())
 
-  it('destinatario: nome della riga di ruolo, integrazione ancora agganciata, CF ?? P.IVA, sede', async () => {
+  it('destinatario: nome della riga di ruolo, CF ?? P.IVA, sede', async () => {
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Storico SPA',
       partitaIva: partitaIvaValida(Date.now() + 21),
@@ -113,13 +121,6 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     expect(riga?.partitaIVA).toBe(CF_PERSONA_VALIDO)
     expect(riga?.via).toBe('Via Sede Nuova')
     expect(riga?.istatProvincia).toBe('058')
-
-    // Un'integrazione salvata con la chiave del nome di ruolo resta agganciata
-    const integrazioni: Record<string, { nazione: string }> = {
-      [chiaveDestinatario('Destinatario Storico SPA')]: { nazione: 'IT' },
-    }
-    expect(integrazioni[chiaveDestinatario(riga?.ragioneSociale ?? '')]).toBeDefined()
-    expect(integrazioni[chiaveDestinatario('Gruppo Nuovo')]).toBeUndefined()
   })
 
   it('destinatario senza codice fiscale: il soggetto porta la P.IVA', async () => {
@@ -187,6 +188,93 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
       ragioneSociale: 'Trasporti Contratto',
       partitaIVA: null,
       codiceFiscale: CF_PERSONA_ALTRO,
+    })
+  })
+
+  it('aggrega: il record DR porta il nome della riga di ruolo e il CF ?? P.IVA della ditta', async () => {
+    // Una ditta ha sempre un identificativo (vincolo del database), quindi per un destinatario
+    // anagrafato il DR e' completo e le integrazioni non servono: restano per i soggetti senza
+    // anagrafica. Qui si verifica che la chiave che il MUD userebbe (nome della riga di ruolo)
+    // non cambi quando la ditta viene rinominata.
+    const piva = partitaIvaValida(Date.now() + 31)
+    const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
+      ragioneSociale: 'Destinatario Integrato SPA',
+      partitaIva: piva,
+    })
+    await owner.ditta.update({
+      where: { id: d.dittaId },
+      data: { ragioneSociale: 'Nome Ditta Divergente' },
+    })
+    const mov = {
+      registroId: 'reg-A',
+      progressiveNumber: 1,
+      progressiveYear: 2025,
+      type: 'SCARICO',
+      causale: 'CONFERIMENTO_TRASPORTATORE',
+      causaleAziendaId: null,
+      cerCode: '17 04 05',
+      quantity: 100,
+      unit: 'KG',
+      operationCode: null,
+      firId: 'f1',
+      firIdRicopia: null,
+      ricopiaChiave: '',
+      counterpartName: null,
+      movementDate: new Date('2025-06-10T08:00:00Z'),
+    }
+    const firRiga = {
+      id: 'f1',
+      firNumber: 'FIR-2025-000123',
+      rentriNumeroFir: null,
+      status: 'COMPLETED',
+      rentriStatoFormulario: null,
+      wasteOperationType: 'DISPOSAL',
+      wasteOperationCode: null,
+      receiverId: d.ruoloId,
+      receiverName: 'Destinatario Integrato SPA',
+      receiverPartitaIva: null,
+      carrierId: null,
+      carrierName: 'Trasporti Srl',
+      carrierPartitaIva: partitaIvaValida(Date.now() + 32),
+    }
+    // Le query su movimenti, FIR e catalogo sono finte; destinatari e trasportatori sono quelli
+    // veri del database (e' cio' che il task ha cambiato).
+    const finto = {
+      wasteMovement: {
+        findMany: async (args: { where: { type?: string; movementDate?: { gte?: Date } } }) => {
+          if (args.where.type === 'SCARICO') return []
+          // movimenti degli anni precedenti: nessuno
+          if (args.where.movementDate && !args.where.movementDate.gte) return []
+          return [mov]
+        },
+        groupBy: async () => [],
+      },
+      causaleRegistro: { findMany: async () => righeCausaliSistema() },
+      causaleRegistroAzienda: { findMany: async () => [] },
+      fIR: {
+        findMany: async (args: { where: { id?: unknown } }) => (args.where.id ? [firRiga] : []),
+      },
+      destinatario: app.destinatario,
+      trasportatore: app.trasportatore,
+      tenant: { findUnique: async () => ({ city: 'Roma', province: 'RM', atecoCode: '38.11.00' }) },
+      rentriUnitaLocale: {
+        findMany: async () => [{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }],
+      },
+      mUDReport: { findUnique: async () => null },
+      registroRifiuti: { findMany: async () => [] },
+      giacenzaIniziale: { findMany: async () => [] },
+    }
+
+    const r = await nelTenant(() =>
+      new MudAggregazioneService(finto as never, referenceData as never, logger as never).aggrega(
+        tenantId,
+        2025
+      )
+    )
+
+    expect(r.righe[0].dr?.[0]).toMatchObject({
+      ragioneSociale: 'Destinatario Integrato SPA',
+      codiceFiscale: piva,
     })
   })
 })

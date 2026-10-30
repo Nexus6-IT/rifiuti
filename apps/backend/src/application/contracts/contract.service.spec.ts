@@ -1,3 +1,4 @@
+import { PIVA_VALIDA, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 import { Test, TestingModule } from '@nestjs/testing'
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { ContractService } from './contract.service'
@@ -202,12 +203,12 @@ describe('ContractService', () => {
         {
           id: 'p1',
           ragioneSociale: 'ACME VECCHIA',
-          partitaIVA: '01234567890',
-          ditta: { ragioneSociale: 'ACME SPA', partitaIva: '01234567890', codiceFiscale: null },
+          partitaIVA: PIVA_VALIDA,
+          ditta: { ragioneSociale: 'ACME SPA', partitaIva: PIVA_VALIDA, codiceFiscale: null },
         },
       ])
       prisma.trasportatore.findMany.mockResolvedValue([
-        { id: 't1r', ragioneSociale: 'ROSSI TRASPORTI SRL', partitaIVA: '09876543210' },
+        { id: 't1r', ragioneSociale: 'ROSSI TRASPORTI SRL', partitaIVA: partitaIvaValida(7) },
       ])
 
       const [riga] = await service.list('t1')
@@ -215,7 +216,7 @@ describe('ContractService', () => {
       expect(riga.producer).toEqual({
         id: 'p1',
         ragioneSociale: 'ACME SPA',
-        partitaIVA: '01234567890',
+        partitaIVA: PIVA_VALIDA,
         codiceFiscale: null,
       })
       expect(riga.counterparty?.ragioneSociale).toBe('ROSSI TRASPORTI SRL')

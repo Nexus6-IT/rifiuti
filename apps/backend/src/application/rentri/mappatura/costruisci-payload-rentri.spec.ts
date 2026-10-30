@@ -1,3 +1,4 @@
+import { PIVA_VALIDA } from '../../../test-support/anagrafiche-di-test'
 import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
 
 /**
@@ -12,7 +13,7 @@ import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
 
 const REGISTRO = {
   ragioneSociale: 'Impresa Uno SRL',
-  partitaIVA: '12345678901',
+  partitaIVA: PIVA_VALIDA,
   via: 'Via Roma',
   civico: '1',
   cap: '80100',
