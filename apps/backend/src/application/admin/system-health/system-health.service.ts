@@ -135,6 +135,12 @@ export class SystemHealthService {
         verifica: () => this.evidenze.verificaConnessione(),
       },
       {
+        key: 'catalogo-causali',
+        label: 'Catalogo causali del registro',
+        configurato: true,
+        verifica: () => this.evidenze.verificaCatalogoCausali(),
+      },
+      {
         key: 'redis',
         label: 'Redis (cache e code)',
         configurato: this.code.size > 0,

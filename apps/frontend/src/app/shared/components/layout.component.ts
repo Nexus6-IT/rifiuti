@@ -14,6 +14,8 @@ import { AdminTenantContextService } from '../../core/services/admin-tenant-cont
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { TenantSwitchService } from '../../features/permissions/services/tenant-switch.service'
 import { NotificationBellComponent } from '../../core/layout/notification-bell/notification-bell.component'
+import { TemaService } from '../../core/services/tema.service'
+import { contrassegnoAzienda } from '../utils/contrassegno-azienda'
 import { environment } from '../../../environments/environment'
 
 interface AdminTenant {
@@ -201,6 +203,30 @@ export function ordinaAziendePerGruppo(
           </div>
 
           <div class="topbar__end">
+            <!-- Azienda attiva, solo per chi ne gestisce più d'una: riconoscibile
+                 a colpo d'occhio prima di registrare qualcosa. -->
+            @if (aziendaAttiva(); as azienda) {
+              <span class="topbar__azienda" [attr.title]="'Azienda attiva: ' + azienda.nome">
+                <span class="contrassegno" aria-hidden="true" [style.background]="azienda.colore">{{
+                  azienda.iniziali
+                }}</span>
+                <span class="topbar__azienda-nome"
+                  ><span class="sr-only">Azienda attiva: </span>{{ azienda.nome }}</span
+                >
+              </span>
+            }
+
+            <button
+              type="button"
+              class="topbar__tema"
+              (click)="tema.cicla()"
+              [attr.aria-label]="etichettaTema()"
+              [pTooltip]="etichettaTema()"
+              tooltipPosition="bottom"
+            >
+              <i [class]="iconaTema()" aria-hidden="true"></i>
+            </button>
+
             <app-notification-bell />
 
             <span
@@ -426,7 +452,30 @@ export function ordinaAziendePerGruppo(
             styleClass="tenant-switcher__dropdown"
             [ariaLabel]="'Cambia tenant corrente'"
             (onClear)="onTenantClear()"
-          ></p-dropdown>
+          >
+            <ng-template let-t pTemplate="selectedItem">
+              <span class="azienda-opzione">
+                <span
+                  class="contrassegno contrassegno--sm"
+                  aria-hidden="true"
+                  [style.background]="contrassegno(t.id, t.ragioneSociale).colore"
+                  >{{ contrassegno(t.id, t.ragioneSociale).iniziali }}</span
+                >
+                <span class="azienda-opzione__nome">{{ t.ragioneSociale }}</span>
+              </span>
+            </ng-template>
+            <ng-template let-t pTemplate="item">
+              <span class="azienda-opzione">
+                <span
+                  class="contrassegno contrassegno--sm"
+                  aria-hidden="true"
+                  [style.background]="contrassegno(t.id, t.ragioneSociale).colore"
+                  >{{ contrassegno(t.id, t.ragioneSociale).iniziali }}</span
+                >
+                <span class="azienda-opzione__nome">{{ t.ragioneSociale }}</span>
+              </span>
+            </ng-template>
+          </p-dropdown>
         </div>
       } @else if (userTenants().length >= 2) {
         <!-- Tenant switcher generico per utenti standard multi-azienda -->
@@ -446,15 +495,39 @@ export function ordinaAziendePerGruppo(
             styleClass="tenant-switcher__dropdown"
             [ariaLabel]="'Cambia azienda corrente'"
           >
+            <ng-template let-azienda pTemplate="selectedItem">
+              <span class="azienda-opzione">
+                <span
+                  class="contrassegno contrassegno--sm"
+                  aria-hidden="true"
+                  [style.background]="contrassegno(azienda.id, azienda.name).colore"
+                  >{{ contrassegno(azienda.id, azienda.name).iniziali }}</span
+                >
+                <span class="azienda-opzione__nome">{{ azienda.name }}</span>
+              </span>
+            </ng-template>
             <ng-template let-azienda pTemplate="item">
-              <span [class.azienda-annidata]="azienda.annidata">{{ azienda.name }}</span>
+              <span class="azienda-opzione" [class.azienda-annidata]="azienda.annidata">
+                <span
+                  class="contrassegno contrassegno--sm"
+                  aria-hidden="true"
+                  [style.background]="contrassegno(azienda.id, azienda.name).colore"
+                  >{{ contrassegno(azienda.id, azienda.name).iniziali }}</span
+                >
+                <span class="azienda-opzione__nome">{{ azienda.name }}</span>
+              </span>
             </ng-template>
           </p-dropdown>
         </div>
       } @else {
         <!-- Utente con una sola azienda: mostro il nome (nessuno switch). -->
         <button type="button" class="org-switcher" aria-label="Azienda corrente" [disabled]="true">
-          <span class="org-switcher__avatar" aria-hidden="true">{{ singleTenantInitials() }}</span>
+          <span
+            class="org-switcher__avatar contrassegno"
+            aria-hidden="true"
+            [style.background]="contrassegnoSingolo().colore"
+            >{{ contrassegnoSingolo().iniziali }}</span
+          >
           <span class="org-switcher__text">
             <span class="org-switcher__company">{{ singleTenantName() }}</span>
           </span>
@@ -524,8 +597,8 @@ export function ordinaAziendePerGruppo(
           box-shadow var(--transition-fast);
       }
       .impersonation-banner__exit:hover {
-        background: var(--brand-secondary-dark, #92400e);
-        border-color: var(--brand-secondary-dark, #92400e);
+        background: var(--brand-secondary-dark);
+        border-color: var(--brand-secondary-dark);
       }
       .impersonation-banner__exit:focus-visible {
         outline: 3px solid var(--color-gray-900);
@@ -618,7 +691,7 @@ export function ordinaAziendePerGruppo(
         font-family: var(--font-display);
         font-size: var(--font-size-xl);
         font-weight: var(--font-weight-bold);
-        color: #f8fafc;
+        color: var(--sidebar-ink-strong);
         letter-spacing: -0.01em;
       }
       .sidebar__brand-tagline {
@@ -646,8 +719,8 @@ export function ordinaAziendePerGruppo(
           border-color var(--transition-fast);
       }
       .org-switcher:hover {
-        background: #273449;
-        border-color: #334155;
+        background: var(--sidebar-hover-bg);
+        border-color: var(--sidebar-hover-border);
       }
       .org-switcher__avatar {
         display: grid;
@@ -656,8 +729,6 @@ export function ordinaAziendePerGruppo(
         height: 2rem;
         flex-shrink: 0;
         border-radius: var(--radius-md);
-        background: var(--sidebar-active-bg);
-        color: var(--sidebar-active);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-bold);
         font-family: var(--font-display);
@@ -673,7 +744,7 @@ export function ordinaAziendePerGruppo(
       .org-switcher__company {
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
-        color: #f8fafc;
+        color: var(--sidebar-ink-strong);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -713,15 +784,15 @@ export function ordinaAziendePerGruppo(
         border-radius: var(--radius-md);
       }
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown:not(.p-disabled):hover {
-        border-color: #334155;
-        background: #273449;
+        border-color: var(--sidebar-hover-border);
+        background: var(--sidebar-hover-bg);
       }
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown:not(.p-disabled).p-focus {
         border-color: var(--sidebar-active);
         box-shadow: none;
       }
       :host ::ng-deep .tenant-switcher__dropdown .p-dropdown-label {
-        color: #f8fafc;
+        color: var(--sidebar-ink-strong);
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
       }
@@ -740,7 +811,6 @@ export function ordinaAziendePerGruppo(
        * un discendente dell'host di questo componente.
        */
       ::ng-deep .azienda-annidata {
-        display: inline-block;
         padding-left: 1.25rem;
       }
 
@@ -787,7 +857,7 @@ export function ordinaAziendePerGruppo(
       }
       .nav-item:hover {
         background: var(--sidebar-bg-2);
-        color: #f8fafc;
+        color: var(--sidebar-ink-strong);
         text-decoration: none;
       }
 
@@ -856,7 +926,7 @@ export function ordinaAziendePerGruppo(
       .user-card__name {
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
-        color: #f8fafc;
+        color: var(--sidebar-ink-strong);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -887,8 +957,8 @@ export function ordinaAziendePerGruppo(
         font-size: 1.15rem;
       }
       .user-card__logout:hover {
-        background: rgba(239, 68, 68, 0.18);
-        color: #fca5a5;
+        background: var(--sidebar-danger-bg);
+        color: var(--sidebar-danger);
       }
 
       /* L'avatar usa il brand (override styleClass PrimeNG); teal-700 per 5.47:1 con le iniziali bianche (AA). */
@@ -987,6 +1057,62 @@ export function ordinaAziendePerGruppo(
         display: none;
       }
 
+      .topbar__azienda {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        max-width: 18rem;
+        padding: 0.25rem 0.75rem 0.25rem 0.25rem;
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        min-width: 0;
+      }
+      .topbar__azienda-nome {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      @media (max-width: 767.98px) {
+        .topbar__azienda {
+          padding: 0;
+          border: 0;
+        }
+        /* Su telefono resta il solo contrassegno; il nome rimane per gli screen reader. */
+        .topbar__azienda-nome {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+        }
+      }
+
+      .topbar__tema {
+        display: grid;
+        place-items: center;
+        width: var(--touch-target-min);
+        height: var(--touch-target-min);
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        border-radius: var(--radius-md);
+        color: var(--text-secondary);
+        transition:
+          background var(--transition-fast),
+          color var(--transition-fast);
+      }
+      .topbar__tema i {
+        font-size: 1.15rem;
+      }
+      .topbar__tema:hover {
+        background: var(--surface-hover);
+        color: var(--text-primary);
+      }
+
       /* Da ≥992px: niente hamburger/brand-mobile, mostra titolo contesto */
       @media (min-width: 992px) {
         .topbar__hamburger,
@@ -1043,7 +1169,7 @@ export function ordinaAziendePerGruppo(
       }
       :host ::ng-deep .mobile-drawer .p-sidebar-close:hover {
         background: var(--sidebar-bg-2);
-        color: #f8fafc;
+        color: var(--sidebar-ink-strong);
       }
       /* Il selettore org nel drawer non ha margini laterali doppi */
       :host ::ng-deep .mobile-drawer .org-switcher {
@@ -1064,7 +1190,7 @@ export function ordinaAziendePerGruppo(
         border: 1px solid var(--sidebar-border);
         background: transparent;
         border-radius: var(--radius-md);
-        color: #fca5a5;
+        color: var(--sidebar-danger);
         font-weight: var(--font-weight-semibold);
         font-size: var(--font-size-sm);
         cursor: pointer;
@@ -1073,8 +1199,8 @@ export function ordinaAziendePerGruppo(
           color var(--transition-fast);
       }
       .drawer__logout:hover {
-        background: rgba(239, 68, 68, 0.18);
-        color: #fecaca;
+        background: var(--sidebar-danger-bg);
+        color: var(--sidebar-danger-strong);
       }
     `,
   ],
@@ -1247,11 +1373,53 @@ export class LayoutComponent implements OnInit {
 
   /** Nome del tenant quando l'utente ne ha uno solo (placeholder org-switcher). */
   readonly singleTenantName = computed(() => this.userTenants()[0]?.name ?? 'Azienda')
-  readonly singleTenantInitials = computed(() => {
-    const name = this.singleTenantName()
-    const parts = name.trim().split(/\s+/).filter(Boolean)
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-    return (name.slice(0, 2) || 'AZ').toUpperCase()
+  readonly contrassegnoSingolo = computed(() =>
+    contrassegnoAzienda(this.userTenants()[0]?.id, this.singleTenantName())
+  )
+
+  /** Contrassegno (iniziali + colore fisso) di un'azienda, usato nei selettori. */
+  readonly contrassegno = contrassegnoAzienda
+
+  /**
+   * Azienda attiva mostrata nella topbar: solo per chi ne gestisce più d'una
+   * (SUPER_ADMIN con un tenant selezionato, utente multi-azienda). Chi ne ha
+   * una sola la vede già nella sidebar e non rischia di confonderla.
+   */
+  readonly aziendaAttiva = computed(() => {
+    let id: string | null = null
+    let nome: string | null = null
+    if (this.isSuperAdmin()) {
+      id = this.selectedTenantId()
+      nome =
+        this.tenantContext.selectedTenantName() ??
+        this.adminTenants().find(t => t.id === id)?.ragioneSociale ??
+        null
+    } else if (this.userTenants().length >= 2) {
+      id = this.currentUserTenantId()
+      nome = this.userTenants().find(t => t.id === id)?.name ?? null
+    }
+    if (!id || !nome) return null
+    return { nome, ...contrassegnoAzienda(id, nome) }
+  })
+
+  readonly tema = inject(TemaService)
+
+  readonly iconaTema = computed(() => {
+    const icone = { sistema: 'pi pi-desktop', chiaro: 'pi pi-sun', scuro: 'pi pi-moon' } as const
+    return icone[this.tema.preferenza()]
+  })
+
+  /** Dice il tema attuale e cosa succede premendo (sistema, chiaro, scuro, di nuovo sistema). */
+  readonly etichettaTema = computed(() => {
+    const attuale = {
+      sistema: `come il sistema (ora ${this.tema.effettivo()})`,
+      chiaro: 'chiaro',
+      scuro: 'scuro',
+    }[this.tema.preferenza()]
+    const prossimo = { sistema: 'chiaro', chiaro: 'scuro', scuro: 'come il sistema' }[
+      this.tema.preferenza()
+    ]
+    return `Tema ${attuale}. Passa a: ${prossimo}`
   })
 
   /** Titolo di contesto mostrato in topbar (desktop), derivato dalla rotta attiva. */

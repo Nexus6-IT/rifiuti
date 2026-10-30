@@ -32,7 +32,16 @@
             ],
             "styles": [
               "../../node_modules/primeicons/primeicons.css",
-              "../../node_modules/primeng/resources/themes/aura-light-blue/theme.css",
+              {
+                "input": "../../node_modules/primeng/resources/themes/aura-light-teal/theme.css",
+                "bundleName": "tema-primeng-chiaro",
+                "inject": false
+              },
+              {
+                "input": "../../node_modules/primeng/resources/themes/aura-dark-teal/theme.css",
+                "bundleName": "tema-primeng-scuro",
+                "inject": false
+              },
               "../../node_modules/primeng/resources/primeng.min.css",
               "../../node_modules/primeflex/primeflex.css",
               "src/styles.scss"

@@ -6,6 +6,8 @@ import { TagModule } from 'primeng/tag'
 import { ButtonModule } from 'primeng/button'
 import { ChartModule } from 'primeng/chart'
 import { TooltipModule } from 'primeng/tooltip'
+import { TemaService } from '../../../../core/services/tema.service'
+import { coloriGrafico } from '../../../../shared/utils/colori-grafici'
 
 /**
  * ConsultantDashboardComponent
@@ -532,54 +534,78 @@ export class ConsultantDashboardComponent implements OnInit {
 
   isLoading = signal(false)
 
-  // Chart data for pending FIRs trend
-  pendingFirsTrendData = signal<any>({
+  // Colori dei grafici dal tema attivo (chiaro/scuro): Chart.js non legge i token CSS.
+  private readonly tema = inject(TemaService)
+  private readonly colori = computed(() => coloriGrafico(this.tema.effettivo()))
+
+  // Serie grezza dell'andamento FIR in attesa; colori applicati in pendingFirsTrendData.
+  private readonly pendingFirsTrend = signal<{ labels: string[]; data: number[] }>({
     labels: [],
-    datasets: [
-      {
-        label: 'FIR in attesa',
-        data: [],
-        fill: false,
-        borderColor: '#0d9488',
-        tension: 0.4,
-        pointBackgroundColor: '#0d9488',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
-        pointRadius: 5,
-      },
-    ],
+    data: [],
   })
 
-  chartOptions = signal<any>({
-    maintainAspectRatio: false,
-    responsive: true,
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top',
-      },
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-      },
-    },
-    scales: {
-      x: {
-        display: true,
-        title: {
+  // Chart data for pending FIRs trend
+  pendingFirsTrendData = computed(() => {
+    const c = this.colori()
+    const { labels, data } = this.pendingFirsTrend()
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'FIR in attesa',
+          data,
+          fill: false,
+          borderColor: c.primario,
+          tension: 0.4,
+          pointBackgroundColor: c.primario,
+          pointBorderColor: c.fondo,
+          pointBorderWidth: 2,
+          pointRadius: 5,
+        },
+      ],
+    }
+  })
+
+  chartOptions = computed(() => {
+    const c = this.colori()
+    return {
+      maintainAspectRatio: false,
+      responsive: true,
+      plugins: {
+        legend: {
           display: true,
-          text: 'Data',
+          position: 'top',
+          labels: { color: c.testo },
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
         },
       },
-      y: {
-        display: true,
-        title: {
+      scales: {
+        x: {
           display: true,
-          text: 'Conteggio',
+          ticks: { color: c.testo },
+          grid: { color: c.griglia },
+          title: {
+            display: true,
+            text: 'Data',
+            color: c.testo,
+          },
         },
-        beginAtZero: true,
+        y: {
+          display: true,
+          ticks: { color: c.testo },
+          grid: { color: c.griglia },
+          title: {
+            display: true,
+            text: 'Conteggio',
+            color: c.testo,
+          },
+          beginAtZero: true,
+        },
       },
-    },
+    }
   })
 
   ngOnInit(): void {
@@ -606,22 +632,7 @@ export class ConsultantDashboardComponent implements OnInit {
     const labels = trendData.map(item => item.date)
     const data = trendData.map(item => item.count)
 
-    this.pendingFirsTrendData.set({
-      labels,
-      datasets: [
-        {
-          label: 'FIR in attesa',
-          data,
-          fill: false,
-          borderColor: '#0d9488',
-          tension: 0.4,
-          pointBackgroundColor: '#0d9488',
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 2,
-          pointRadius: 5,
-        },
-      ],
-    })
+    this.pendingFirsTrend.set({ labels, data })
   }
 
   switchToTenant(tenantId: string): void {
