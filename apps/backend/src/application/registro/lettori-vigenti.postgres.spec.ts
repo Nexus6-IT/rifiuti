@@ -51,6 +51,8 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
   let useCase: RegistraMovimentoUseCase
   const tenantCreati: string[] = []
   let cerCreato = false
+  const CER_PERICOLOSO_TEST = '99 99 07*'
+  let cerPericolosoCreato = false
   let n = 0
   let progressivo = 0
 
@@ -191,6 +193,8 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: CER } })
+    if (cerPericolosoCreato)
+      await owner.cERCode.deleteMany({ where: { code: CER_PERICOLOSO_TEST } })
     await app.onModuleDestroy()
     await owner.$disconnect()
   })
@@ -449,8 +453,21 @@ describe('I lettori contano solo le vigenti — Postgres reale, ruolo wasteflow_
 
     it('la pericolosita viene dal catalogo se nessuna riga ha l asterisco', async () => {
       const az = await azienda()
-      const pericoloso = await owner.cERCode.findFirst({ where: { isPericoloso: true } })
-      if (!pericoloso) throw new Error('catalogo senza codici pericolosi: seed mancante')
+      // Usa un codice pericoloso del catalogo; se il database non e' seminato ne crea uno
+      // dedicato (famiglia 9999xx di test) e lo toglie in ogni caso, per codice esatto.
+      let pericoloso = await owner.cERCode.findFirst({ where: { isPericoloso: true } })
+      if (!pericoloso) {
+        pericoloso = await owner.cERCode.create({
+          data: {
+            code: CER_PERICOLOSO_TEST,
+            description: 'CER pericoloso di test',
+            isPericoloso: true,
+            category: '99',
+            subcategory: '',
+          },
+        })
+        cerPericolosoCreato = true
+      }
       const cifre = pericoloso.code.replace(/[^0-9]/g, '')
       const senzaAsterisco = `${cifre.slice(0, 2)} ${cifre.slice(2, 4)} ${cifre.slice(4)}`
       await owner.wasteMovement.create({
