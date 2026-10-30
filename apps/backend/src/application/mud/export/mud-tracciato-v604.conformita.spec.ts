@@ -15,7 +15,15 @@
 import { MudTracciatoV604_2024 } from './versions/mud-tracciato-v604-2024'
 import { MudTracciatoV604_2025 } from './versions/mud-tracciato-v604-2025'
 import { MudVersionRegistry } from './mud-version.registry'
-import { MudExportData, MudRifiutoLine } from './mud-export.types'
+import { MudDichiarazioneExport, MudExportData, MudRifiutoLine } from './mud-export.types'
+import {
+  FILE_COMPLETO_2024,
+  FILE_COMPLETO_2025,
+  FILE_MINIMO_2024,
+  FILE_MINIMO_2025,
+  fixtureDatoCompleto,
+  fixtureDatoMinimo,
+} from './mud-tracciato-v604-legacy.fixture-spec'
 import { LUNGHEZZE_RECORD_V604 } from './versions/mud-tracciato-v604-base'
 
 /** Lunghezze totali dei record, da «Lunghezza totale record X» del tracciato. */
@@ -435,3 +443,193 @@ describe('Controllo di lunghezza in generate()', () => {
     expect(LUNGHEZZE_RECORD_V604).toEqual(LUNGHEZZE)
   })
 })
+
+describe.each([
+  ['6.04/24', 2024, () => new MudTracciatoV604_2024(), FILE_COMPLETO_2024, FILE_MINIMO_2024],
+  ['6.04/25', 2025, () => new MudTracciatoV604_2025(), FILE_COMPLETO_2025, FILE_MINIMO_2025],
+])(
+  'Tracciato MUD %s — una dichiarazione per unità locale',
+  (_v, anno, factory, completo, minimo) => {
+    const tracciato = factory()
+
+    const riga = (cerCode: string, kg: number): MudRifiutoLine => ({
+      cerCode,
+      prodottoKg: kg,
+      recuperoKg: kg,
+      smaltimentoKg: 0,
+      dr: [
+        {
+          codiceFiscale: '98765432109',
+          ragioneSociale: 'Recuperi Sud S.p.A.',
+          istatProvincia: '063',
+          istatComune: '049',
+          quantitaKg: kg,
+        },
+      ],
+    })
+
+    /** Due pacchetti: l'azienda (codice 1, con AU) e una sede (codice 2, senza AU). */
+    function dueDichiarazioni(): MudExportData {
+      const base = fixtureDatoCompleto(anno)
+      base.rifiuti = [riga('170405', 1000)]
+      const dichiarazioni: MudDichiarazioneExport[] = [
+        {
+          progressivoUnitaLocale: 1,
+          unitaLocale: null,
+          rifiuti: [riga('170405', 1000)],
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+        },
+        {
+          progressivoUnitaLocale: 2,
+          unitaLocale: {
+            via: 'Via della Sede',
+            civico: '5',
+            cap: '30100',
+            comune: 'VENEZIA',
+            provincia: 'VE',
+            comuneCode: '027042',
+            numeroAddetti: 7,
+          },
+          rifiuti: [riga('150106', 2000)],
+          conAutorizzazioni: false,
+          conAllegatiAzienda: false,
+        },
+      ]
+      return { ...base, dichiarazioni }
+    }
+
+    const linee = (c: string) => c.split('\r\n').filter(l => l.length > 0)
+    const tipi = (c: string) => linee(c).map(l => l.slice(0, 2))
+
+    it('senza dichiarazioni il file è byte-identico alla fixture (6.04/24 e 6.04/25)', () => {
+      expect(tracciato.generate(fixtureDatoCompleto(anno))).toBe(completo)
+      expect(tracciato.generate(fixtureDatoMinimo(anno))).toBe(minimo)
+    })
+
+    it("una dichiarazione di codice 1 e anagrafica dell'azienda = file della fixture", () => {
+      const dato = fixtureDatoCompleto(anno)
+      dato.dichiarazioni = [
+        {
+          progressivoUnitaLocale: 1,
+          unitaLocale: null,
+          rifiuti: dato.rifiuti,
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+        },
+      ]
+      expect(tracciato.generate(dato)).toBe(completo)
+    })
+
+    it('due dichiarazioni: sequenza XX, AA, AB, AU, BA, BB, AA, AB, BA, BB', () => {
+      expect(tipi(tracciato.generate(dueDichiarazioni()))).toEqual([
+        'XX',
+        'AA',
+        'AB',
+        'AU',
+        'BA',
+        'BB',
+        'AA',
+        'AB',
+        'BA',
+        'BB',
+      ])
+    })
+
+    it('chiave di ogni record con il codice della sua unità locale', () => {
+      const l = linee(tracciato.generate(dueDichiarazioni())).slice(1)
+      const codici = l.map(r => r.split(';')[3])
+      expect(codici).toEqual([
+        '000000000000001',
+        '000000000000001',
+        '000000000000001',
+        '000000000000001',
+        '000000000000001',
+        '000000000000002',
+        '000000000000002',
+        '000000000000002',
+        '000000000000002',
+      ])
+    })
+
+    it("AA della seconda sede: indirizzo della sede, sede legale dell'azienda, addetti della sede", () => {
+      const aa = linee(tracciato.generate(dueDichiarazioni())).filter(r => r.startsWith('AA;'))[1]
+      const c = aa.split(';')
+      expect(c[6]).toBe('00007') // addetti della sede (l'azienda ne ha 42)
+      expect([c[8], c[9]]).toEqual(['027', '042']) // ISTAT della sede
+      expect(c[10]).toBe('VIA DELLA SEDE'.padEnd(30, ' '))
+      expect(c[11]).toBe('5'.padEnd(6, ' '))
+      expect(c[12]).toBe('30100')
+      expect([c[15], c[16]]).toEqual(['028', '060']) // sede legale = azienda
+      expect(c[17]).toBe('VIA CORSO UMBERTO I'.padEnd(30, ' '))
+      expect(c[19]).toBe('35100')
+      // il primo AA (azienda) ha invece gli addetti dell'azienda
+      const aa1 = linee(tracciato.generate(dueDichiarazioni())).filter(r => r.startsWith('AA;'))[0]
+      expect(aa1.split(';')[6]).toBe('00042')
+      expect(aa).toHaveLength(LUNGHEZZE.AA)
+    })
+
+    it('AB del secondo pacchetto: 00 AUT e 00 RIC', () => {
+      const ab = linee(tracciato.generate(dueDichiarazioni())).filter(r => r.startsWith('AB;'))
+      // schede RIF, INT, ..., AUT, RIC: gli ultimi due campi prima del filler
+      const coda = (r: string) => r.split(';').slice(-4, -2)
+      expect(coda(ab[0])).toEqual(['01', '00'])
+      expect(coda(ab[1])).toEqual(['00', '00'])
+      expect(ab[1].split(';')[4]).toBe('000001') // una scheda RIF
+    })
+
+    it('AU nel pacchetto indicato anche se non è il primo', () => {
+      const dato = dueDichiarazioni()
+      dato.dichiarazioni![0].conAutorizzazioni = false
+      dato.dichiarazioni![1].conAutorizzazioni = true
+      expect(tipi(tracciato.generate(dato))).toEqual([
+        'XX',
+        'AA',
+        'AB',
+        'BA',
+        'BB',
+        'AA',
+        'AB',
+        'AU',
+        'BA',
+        'BB',
+      ])
+    })
+
+    it('XX conta i record di tutti i pacchetti', () => {
+      const c = tracciato.generate(dueDichiarazioni())
+      const xx = linee(c)[0].split(';')
+      expect(Number(xx[5])).toBe(9) // totale record escluso XX
+      expect([xx[6], xx[7], xx[8], xx[9]]).toEqual(['00002', '00002', '00002', '00002']) // AA AB BA BB
+      expect(xx[34]).toBe('00001') // AU
+    })
+
+    it('lunghezze di tutti i record invariate', () => {
+      for (const r of linee(tracciato.generate(dueDichiarazioni()))) {
+        expect({ t: r.slice(0, 2), n: r.length }).toEqual({
+          t: r.slice(0, 2),
+          n: LUNGHEZZE[r.slice(0, 2)],
+        })
+      }
+    })
+
+    it('BA scrive le giacenze a recupero e a smaltimento; giacenza assente = 0', () => {
+      const dato = dueDichiarazioni()
+      dato.dichiarazioni![0].rifiuti = [
+        {
+          ...riga('170405', 1000),
+          recuperoKg: 200,
+          giacenzaRecuperoKg: 3000,
+          giacenzaSmaltimentoKg: 1500,
+        },
+      ]
+      dato.dichiarazioni![1].rifiuti = [
+        { ...riga('150106', 2000), recuperoKg: 200, giacenzaRecuperoKg: 3000 },
+      ]
+      const ba = linee(tracciato.generate(dato)).filter(r => r.startsWith('BA;'))
+      const code = ';0000200,000;1;0000000,000;1;'
+      expect(ba[0].endsWith(';0003000,000;1;0001500,000;1' + code)).toBe(true)
+      expect(ba[1].endsWith(';0003000,000;1;0000000,000;1' + code)).toBe(true)
+    })
+  }
+)

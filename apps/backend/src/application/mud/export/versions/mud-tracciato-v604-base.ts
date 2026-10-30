@@ -1,4 +1,5 @@
 import {
+  MudDichiarazioneExport,
   MudExportData,
   MudRifiutoLine,
   MudTracciatoVersion,
@@ -130,6 +131,12 @@ const COUNT_ORDER = [
   'AR',
 ]
 
+/**
+ * Dati con cui si scrive un pacchetto: la vista del pacchetto (rifiuti, schede AU/AR/INT che
+ * contiene) più il riferimento alla dichiarazione, assente se il file ha un solo pacchetto.
+ */
+type DatiPacchetto = MudExportData & { pacchetto?: MudDichiarazioneExport }
+
 /** Numero massimo di discariche dichiarabili in un record AU. */
 const MAX_DISCARICHE_AU = 3
 
@@ -182,6 +189,50 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
   generate(data: MudExportData): string {
     // Il corpo va costruito prima della testata: XX riporta i conteggi per tipo.
     const body: string[] = []
+    // Un pacchetto per dichiarazione, nell'ordine dato; senza dichiarazioni, uno solo come sempre.
+    if (data.dichiarazioni) {
+      for (const dichiarazione of data.dichiarazioni) {
+        body.push(...this.pacchetto(this.vistaPacchetto(data, dichiarazione)))
+      }
+    } else {
+      body.push(...this.pacchetto(data))
+    }
+
+    const xx = this.recordXX(data, body)
+    const righe = [xx, ...body]
+    for (const riga of righe) {
+      const tipo = riga.slice(0, 2)
+      const attesa = LUNGHEZZE_RECORD_V604[tipo]
+      // un tipo nuovo senza lunghezza in tabella non passa senza controllo
+      if (attesa === undefined) {
+        throw new Error(
+          `Record di tipo ${tipo} senza lunghezza nel tracciato: file MUD non conforme`
+        )
+      }
+      if (riga.length !== attesa) {
+        throw new Error(
+          `Record ${tipo} di ${riga.length} caratteri invece di ${attesa}: file MUD non conforme`
+        )
+      }
+    }
+    return righe.join('\r\n') + '\r\n'
+  }
+
+  /** Vista dei dati di un pacchetto: D7, AU solo dove indicato, AR e INT solo con gli allegati. */
+  private vistaPacchetto(data: MudExportData, d: MudDichiarazioneExport): DatiPacchetto {
+    return {
+      ...data,
+      rifiuti: d.rifiuti,
+      autorizzazioni: d.conAutorizzazioni ? data.autorizzazioni : [],
+      riciclaggio: d.conAllegatiAzienda ? data.riciclaggio : [],
+      intermediazioni: d.conAllegatiAzienda ? data.intermediazioni : [],
+      pacchetto: d,
+    }
+  }
+
+  /** I record di una dichiarazione: AA, AB, AU, AR, le schede RIF con i loro allegati, INT. */
+  private pacchetto(data: DatiPacchetto): string[] {
+    const body: string[] = []
     body.push(this.recordAA(data))
     body.push(this.recordAB(data))
 
@@ -220,25 +271,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
       n = 0
       for (const ud of int.ud ?? []) body.push(this.recordDB(data, int, progr, 'UD', ++n, ud))
     })
-
-    const xx = this.recordXX(data, body)
-    const righe = [xx, ...body]
-    for (const riga of righe) {
-      const tipo = riga.slice(0, 2)
-      const attesa = LUNGHEZZE_RECORD_V604[tipo]
-      // un tipo nuovo senza lunghezza in tabella non passa senza controllo
-      if (attesa === undefined) {
-        throw new Error(
-          `Record di tipo ${tipo} senza lunghezza nel tracciato: file MUD non conforme`
-        )
-      }
-      if (riga.length !== attesa) {
-        throw new Error(
-          `Record ${tipo} di ${riga.length} caratteri invece di ${attesa}: file MUD non conforme`
-        )
-      }
-    }
-    return righe.join('\r\n') + '\r\n'
+    return body
   }
 
   // ===================== Helper comuni =====================
@@ -254,19 +287,20 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
   }
 
   /**
-   * Codice di identificazione univoca dell'unità locale (`alfa 15`).
-   *
-   * Il dominio gestisce oggi una sola unità locale per dichiarante: il codice è
-   * costante. Il multi-unità locale richiede un'entità dedicata e la revisione
-   * della chiave di dichiarazione — vedi il piano nell'audit.
+   * Codice di identificazione univoco dell'unità locale (`alfa 15`): quello del pacchetto
+   * che si sta scrivendo, 1 se il file ha un solo pacchetto.
    */
-  protected unitaLocale(): string {
-    return mudNum(1, 15)
+  protected unitaLocale(data: DatiPacchetto): string {
+    return mudNum(data.pacchetto?.progressivoUnitaLocale ?? 1, 15)
   }
 
   /** ISTAT provincia/comune dell'azienda, derivati dal codice comune a 6 cifre. */
   protected istatAzienda(data: MudExportData): { prov: string; com: string } {
-    const code = data.azienda.comuneCode
+    return this.istatDaCodice(data.azienda.comuneCode)
+  }
+
+  /** ISTAT provincia/comune da un codice comune a 6 cifre. */
+  protected istatDaCodice(code?: string): { prov: string; com: string } {
     return {
       prov: mudIstat(code?.slice(0, 3)),
       com: mudIstat(code?.slice(3, 6)),
@@ -278,7 +312,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     return [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
+      this.unitaLocale(data),
       mudNum(schedaProgr, 4),
       mudAlfa(normalizeCer(r.cerCode), 6),
     ]
@@ -325,30 +359,35 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
   }
 
   /** AA — Scheda SA-1: anagrafica azienda + unità locale (338). */
-  protected recordAA(data: MudExportData): string {
+  protected recordAA(data: DatiPacchetto): string {
     const a = data.azienda
+    // Blocco «unità locale»: la sede del pacchetto, oppure l'azienda (sede legale = unità locale).
+    const sede = data.pacchetto?.unitaLocale ?? null
+    const ul = sede ?? a
+    const addetti = sede ? sede.numeroAddetti : (a.numeroAddetti ?? 0)
+    // Il telefono è dell'azienda: la sede non ne ha uno proprio, meglio vuoto che sbagliato.
+    const telefonoUl = sede ? '' : (a.telefono ?? '')
     // ISTAT provincia/comune sono `num 3` da tracciato: vanno zero-paddati.
     // Emetterli spazio-paddati (come faceva la versione precedente) produce un
     // campo numerico riempito di spazi, che fa scartare il file.
     const { prov, com } = this.istatAzienda(data)
-    // Unità locale e sede legale coincidono finché il dominio non modella
-    // sedi distinte: il tracciato chiede comunque entrambi i blocchi.
+    const { prov: provUl, com: comUl } = sede ? this.istatDaCodice(sede.comuneCode) : { prov, com }
     return mudRecord('AA', [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
+      this.unitaLocale(data),
       mudAlfa(a.atecoCode ?? '', 6), // ISTAT attività (ATECO), alfa: zeri significativi
       mudNum(Number(a.reaNumber) || 0, 9), // N° iscrizione REA
-      mudNum(a.numeroAddetti ?? 0, 5), // totale addetti
+      mudNum(addetti, 5), // totale addetti dell'unità locale
       mudAlfa(a.ragioneSociale, 60),
-      prov, // ISTAT provincia unità locale
-      com, // ISTAT comune unità locale
-      mudAlfa(a.via, 30), // indirizzo unità locale
-      mudAlfa(a.civico ?? '', 6), // civico unità locale
-      mudAlfa(a.cap, 5), // CAP unità locale
+      provUl, // ISTAT provincia unità locale
+      comUl, // ISTAT comune unità locale
+      mudAlfa(ul.via, 30), // indirizzo unità locale
+      mudAlfa(ul.civico ?? '', 6), // civico unità locale
+      mudAlfa(ul.cap, 5), // CAP unità locale
       mudAlfa('', 5), // prefisso tel UL
-      mudAlfa(a.telefono ?? '', 10), // num tel UL
-      prov, // ISTAT provincia sede legale (= UL)
+      mudAlfa(telefonoUl, 10), // num tel UL
+      prov, // ISTAT provincia sede legale (sempre l'azienda)
       com, // ISTAT comune sede legale
       mudAlfa(a.via, 30), // indirizzo sede legale
       mudAlfa(a.civico ?? '', 6), // civico sede legale
@@ -366,12 +405,12 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
   }
 
   /** AB — Scheda SA-2: anagrafica riassuntiva (257). */
-  protected recordAB(data: MudExportData): string {
+  protected recordAB(data: DatiPacchetto): string {
     return mudRecord('AB', [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
-      mudNum(data.rifiuti.length, 6), // numero di schede RIF
+      this.unitaLocale(data),
+      mudNum(data.rifiuti.length, 6), // numero di schede RIF del pacchetto
       mudNum((data.intermediazioni ?? []).length, 6), // numero schede INT
       mudNum(0, 1), // veicoli: scheda AUT
       mudNum(0, 1), // veicoli: scheda ROT
@@ -409,7 +448,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     return mudRecord('AU', [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
+      this.unitaLocale(data),
       mudNum(progressivo, 4), // nr progressivo scheda SA-AUT
       mudAlfa(aut.estremi, 20), // estremi autorizzazione / iscrizione
       mudDateOrZero(aut.dataRilascio), // data rilascio / presentazione / rinnovo
@@ -457,7 +496,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     return mudRecord('AR', [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
+      this.unitaLocale(data),
       mudNum(progressivo, 4), // nr progressivo scheda SA-RIC
       mudNum(ric.frazione, 2), // frazione 01..11
       // Operazioni di recupero eseguite (flag), nell'ordine del tracciato.
@@ -697,7 +736,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     return mudRecord('DA', [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
+      this.unitaLocale(data),
       mudNum(progressivo, 4), // nr progressivo scheda INT
       mudAlfa(normalizeCer(int.cerCode), 6), // CER (solo catalogo europeo)
       ...this.statoFisicoFlags(int.statoFisico), // 7 flag stato fisico
@@ -724,7 +763,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     return mudRecord('DB', [
       mudNum(data.year, 4),
       this.cfDichiarante(data),
-      this.unitaLocale(),
+      this.unitaLocale(data),
       mudNum(schedaProgr, 4), // nr progressivo scheda INT
       mudAlfa(normalizeCer(int.cerCode), 6),
       mudAlfa(tipo, 2), // tipo allegato UO / UD

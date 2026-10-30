@@ -314,11 +314,46 @@ export interface MudRifiutoLine {
   giacenzaSmaltimentoKg?: number
 }
 
+/** Anagrafica di un'unità locale (sede) dichiarata in un pacchetto del file. */
+export interface MudUnitaLocaleAnagrafica {
+  via?: string
+  civico?: string
+  cap?: string
+  comune?: string
+  provincia?: string
+  /** Codice ISTAT del comune (6 cifre) dell'unità locale. */
+  comuneCode?: string
+  /** Totale addetti dell'unità locale. */
+  numeroAddetti: number
+}
+
+/**
+ * Una dichiarazione (un pacchetto AA, AB, AU, BA…) per unità locale: tutte nello stesso file,
+ * distinte dal codice dell'unità locale nella chiave di ogni record.
+ */
+export interface MudDichiarazioneExport {
+  /** Codice di identificazione univoca dell'unità locale (1 = azienda / principale). */
+  progressivoUnitaLocale: number
+  /** Anagrafica della sede; `null` = i dati dell'azienda. */
+  unitaLocale: MudUnitaLocaleAnagrafica | null
+  rifiuti: MudRifiutoLine[]
+  /** Il pacchetto porta le schede AU (autorizzazioni). */
+  conAutorizzazioni: boolean
+  /** Il pacchetto porta le schede AR (riciclaggio) e INT (intermediazioni). */
+  conAllegatiAzienda: boolean
+}
+
 /** Dati aggregati per la generazione del file MUD di un anno. */
 export interface MudExportData {
   year: number
   azienda: MudAzienda
   rifiuti: MudRifiutoLine[]
+  /**
+   * Un pacchetto per unità locale, nell'ordine di emissione. Assente = un solo pacchetto con
+   * `rifiuti` e le schede dell'azienda. Con `dichiarazioni`, `rifiuti` è la concatenazione e
+   * non viene usato.
+   */
+  dichiarazioni?: MudDichiarazioneExport[]
   /** Schede SA-AUT (record AU) — autorizzazioni dell'impianto. */
   autorizzazioni?: MudAutorizzazione[]
   /** Schede SA-RIC (record AR) — riciclaggio per frazione. */
