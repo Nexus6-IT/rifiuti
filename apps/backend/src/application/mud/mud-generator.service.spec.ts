@@ -29,6 +29,8 @@ describe('MUDGeneratorService', () => {
     controlli: [],
     mudNonDovuto: false,
     integrazioni: INTEGRAZIONI_VUOTE,
+    versioneCalcolo: 2,
+    dichiarazioni: [],
     ...parziale,
   })
 

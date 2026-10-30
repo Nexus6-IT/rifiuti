@@ -24,8 +24,19 @@ import {
 } from './mud-regole'
 import { caricaCatalogoCausali } from '../../registro/causali/catalogo-causali.repository'
 import type { CatalogoCausali } from '../../../domain/waste-movement/catalogo-causali'
-import { etichetteRegistri } from './mud-registri'
+import { etichetteRegistri, sediDeiRegistri } from './mud-registri'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
+import {
+  anagraficaDichiarazione,
+  attribuisciSedi,
+  codiceUnitaLocale,
+  creaContestoSedi,
+  dichiarazionePerAllegati,
+  provinceDiverse,
+  type ContestoSedi,
+  type MudDichiarazione,
+  type MudUnitaLocaleAnagrafica,
+} from './mud-dichiarazioni'
 import {
   chiaveDestinatario,
   destinatarioDelMovimento,
@@ -54,6 +65,18 @@ export interface MudAggregato {
   mudNonDovuto: boolean
   /** integrazioni dell'anno lette per questa aggregazione: la traccia dell'export registra queste */
   integrazioni: IntegrazioniMud
+  /** 1 = calcolo storico (un solo gruppo), 2 = una dichiarazione per unità locale (D10) */
+  versioneCalcolo: 1 | 2
+  /**
+   * Dichiarazioni in ordine di codice (D15). Versione 1: una sola voce "fusa" (codice 1,
+   * anagrafica null). `righe`, `movimentiPerCer` e `pericolosiPerCer` ne sono la somma.
+   */
+  dichiarazioni: MudDichiarazione[]
+}
+
+export interface OpzioniAggregazione {
+  /** predefinita 2; la 1 resta per lo storico delle presentazioni (D10) */
+  versioneCalcolo?: 1 | 2
 }
 
 interface Movimento {
@@ -163,13 +186,19 @@ interface ContestoAggregazione {
   tenant: {
     city: string | null
     province: string | null
+    numeroAddetti: number | null
     atecoCode: string | null
     mudNonDovuto: boolean
     mudNonDovutoMotivo: string | null
   } | null
   comuneCode: string | null
   atecoNormalizzato: string | null
+  /** versione 1: unità locali attive (PIU_UNITA_LOCALI); versione 2: vuoto */
   unitaLocali: Array<{ denominazione: string; numIscrSito: string; principale: boolean }>
+  /** versione 2: tutte le unità locali dell'azienda (anche cessate, D3) e i loro registri */
+  sedi: ContestoSedi | null
+  /** versione 2: autorizzazioni dell'impianto registrate (D7) */
+  autorizzazioni: number
   integrazioni: IntegrazioniMud
   fonti: FontiSoggetti
   rif: (m: Movimento) => RifMovimento
@@ -218,6 +247,14 @@ const SELECT_MOVIMENTO = {
   movementDate: true,
 } as const
 
+/** Controlli sui soggetti, deduplicati su tutto il file: la correzione vale per tutte le sedi (D14) */
+const CODICI_SOGGETTI = new Set<string>([
+  'DESTINATARIO_SENZA_CF',
+  'DESTINATARIO_SENZA_ISTAT',
+  'DESTINATARIO_ESTERO',
+  'TRASPORTATORE_SENZA_CF',
+])
+
 // Confronto dei doppi storici senza la data (Decisione 20).
 const EPOCA = new Date(0)
 const ORIGINE_REGISTRO = 'dal registro'
@@ -244,8 +281,13 @@ export class MudAggregazioneService {
     this.logger.setContext(MudAggregazioneService.name)
   }
 
-  async aggrega(tenantId: string, anno: number): Promise<MudAggregato> {
-    const contesto = await this.caricaContesto(tenantId, anno)
+  async aggrega(
+    tenantId: string,
+    anno: number,
+    opzioni: OpzioniAggregazione = {}
+  ): Promise<MudAggregato> {
+    const versioneCalcolo = opzioni.versioneCalcolo ?? 2
+    const contesto = await this.caricaContesto(tenantId, anno, versioneCalcolo)
     const {
       fine,
       movimenti,
@@ -270,9 +312,43 @@ export class MudAggregazioneService {
       inclusi: new Set(),
       avviatiPerFir: new Map(),
     }
-    // In questo task c'è un solo gruppo: tutti i movimenti.
-    const gruppo = this.aggregaGruppo(movimenti, contesto, doppi, condivisi, controlli)
-    const { righeFinali, movimentiPerCer, pericolosiPerCer, ricevuti } = gruppo
+    const ricevuti: RifMovimento[] = []
+    let dichiarazioni: MudDichiarazione[]
+    if (versioneCalcolo === 1) {
+      // Calcolo storico: un solo gruppo con tutti i movimenti, una dichiarazione "fusa".
+      const gruppo = this.aggregaGruppo(movimenti, contesto, doppi, condivisi, controlli)
+      ricevuti.push(...gruppo.ricevuti)
+      dichiarazioni = [
+        {
+          codice: codiceUnitaLocale(1),
+          progressivo: 1,
+          unitaLocale: { id: null, denominazione: 'Azienda', numIscrSito: null, principale: false },
+          anagrafica: null,
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+          righe: gruppo.righeFinali,
+          movimentiPerCer: gruppo.movimentiPerCer,
+          pericolosiPerCer: gruppo.pericolosiPerCer,
+        },
+      ]
+    } else {
+      dichiarazioni = await this.dichiarazioniPerSede(
+        contesto,
+        doppi,
+        condivisi,
+        controlli,
+        ricevuti
+      )
+    }
+    const righeFinali = dichiarazioni.flatMap(d => d.righe)
+    const movimentiPerCer: Record<string, number> = {}
+    const pericolosiPerCer: Record<string, true> = {}
+    for (const d of dichiarazioni) {
+      for (const [cer, n] of Object.entries(d.movimentiPerCer)) {
+        movimentiPerCer[cer] = (movimentiPerCer[cer] ?? 0) + n
+      }
+      Object.assign(pericolosiPerCer, d.pericolosiPerCer)
+    }
     const { inclusi, avviatiPerFir } = condivisi
     const { doppiDi, doppiAnnoPrecedente, scaricatiAnchePrima } = doppi
 
@@ -337,7 +413,9 @@ export class MudAggregazioneService {
     }
 
     if (ricevuti.length > 0) controlli.push(controlliMud.profiloNonSupportato(anno, ricevuti))
-    if (unitaLocali.length > 1) controlli.push(controlliMud.piuUnitaLocali(unitaLocali))
+    if (versioneCalcolo === 1 && unitaLocali.length > 1) {
+      controlli.push(controlliMud.piuUnitaLocali(unitaLocali))
+    }
 
     if (!comuneCode) {
       controlli.push(controlliMud.dichiaranteSenzaComuneIstat(tenant?.city, tenant?.province))
@@ -363,11 +441,163 @@ export class MudAggregazioneService {
       dichiarante: { atecoNormalizzato, comuneCode },
       mudNonDovuto,
       integrazioni,
+      versioneCalcolo,
+      dichiarazioni,
     }
   }
 
+  /**
+   * Versione 2 (D1-D7): un gruppo per dichiarazione, in ordine di codice, con le strutture
+   * condivise (D14). Aggiunge ai controlli quelli delle sedi e restituisce le dichiarazioni
+   * con almeno una riga (D3).
+   */
+  private async dichiarazioniPerSede(
+    contesto: ContestoAggregazione,
+    doppi: EsitoDoppi,
+    condivisi: Condivisi,
+    controlli: MudEsitoControllo[],
+    ricevuti: RifMovimento[]
+  ): Promise<MudDichiarazione[]> {
+    const { anno, catalogo, movimenti, tenant, autorizzazioni, rif } = contesto
+    const sedi = contesto.sedi as ContestoSedi
+    if ([...sedi.progressivi.values()].some(p => p.ripiego)) {
+      this.logger.warn(
+        'MUD: unità locale senza progressivo MUD, codice di ripiego assegnato in ordine di creazione'
+      )
+    }
+
+    const attribuzione = attribuisciSedi(movimenti, sedi)
+    const esiti = attribuzione.gruppi.map(g => {
+      const locali: MudEsitoControllo[] = []
+      const esito = this.aggregaGruppo(g.movimenti, contesto, doppi, condivisi, locali)
+      ricevuti.push(...esito.ricevuti)
+      return { g, esito, locali }
+    })
+    const pacchetti = esiti.filter(e => e.esito.righeFinali.length > 0)
+    const piuDichiarazioni = pacchetti.length > 1
+
+    // Controlli nati dentro un gruppo: con la sede solo se le dichiarazioni sono più d'una e mai
+    // quelli sui soggetti, deduplicati su tutto il file (D14).
+    for (const { g, locali } of esiti) {
+      const sede = g.unitaLocale?.denominazione ?? 'Azienda'
+      for (const c of locali) {
+        controlli.push(piuDichiarazioni && !CODICI_SOGGETTI.has(c.codice) ? { ...c, sede } : c)
+      }
+    }
+
+    // D2: registri senza sede
+    const principale = sedi.unitaLocali.find(u => u.principale)
+    const senzaSede = attribuzione.senzaSede.filter(m => condivisi.inclusi.has(m))
+    if (principale && senzaSede.length > 0) {
+      controlli.push(controlliMud.movimentiSenzaSede(anno, senzaSede.map(rif), principale))
+    }
+    const senzaPrincipale = attribuzione.senzaPrincipale.filter(m => {
+      if (doppi.doppi.has(m)) return false
+      const ruolo = classificaMovimento(catalogo, m)
+      return ruolo === 'PRODOTTO' || ruolo === 'AVVIATO'
+    })
+    if (senzaPrincipale.length > 0) {
+      controlli.push(
+        controlliMud.sedePrincipaleMancante(anno, senzaPrincipale.length, sedi.unitaLocali.length)
+      )
+    }
+
+    // D5: anagrafica e comune ISTAT di ogni dichiarazione (un lookup per coppia distinta)
+    const comuni = new Map<string, string | null>()
+    const comuneDellaSede = async (comune: string, provincia: string): Promise<string | null> => {
+      const chiave = `${comune}|${provincia}`
+      if (!comuni.has(chiave)) {
+        const trovato = await this.referenceData.findComuneByName(comune, provincia)
+        comuni.set(chiave, /^\d{6}$/.test(trovato?.code ?? '') ? (trovato?.code ?? null) : null)
+      }
+      return comuni.get(chiave) ?? null
+    }
+
+    const dichiarazioni: MudDichiarazione[] = []
+    const perProvincia: Array<{
+      denominazione: string
+      comuneCode: string | null
+      sigla: string | null
+    }> = []
+    for (const { g, esito } of pacchetti) {
+      const ul = g.unitaLocale
+      const nome = ul?.denominazione ?? 'Azienda'
+      const ana = anagraficaDichiarazione(ul, !piuDichiarazioni, tenant ?? {})
+      let comuneCode = contesto.comuneCode
+      if (ul && ana.anagrafica) {
+        comuneCode = await comuneDellaSede(ul.comune?.trim() ?? '', ul.provincia?.trim() ?? '')
+        if (!comuneCode) {
+          controlli.push(controlliMud.unitaLocaleSenzaComuneIstat(ul, ul.comune, ul.provincia))
+        }
+      }
+      if (ul && ana.campiMancanti.length > 0) {
+        controlli.push(controlliMud.unitaLocaleSenzaIndirizzo(ul, ana.campiMancanti))
+      }
+      if (ul && ana.principaleConIndirizzoAzienda) {
+        controlli.push(controlliMud.principaleConIndirizzoAzienda(ul))
+      }
+      if (ul && ana.addettiMancanti) controlli.push(controlliMud.unitaLocaleSenzaAddetti(ul))
+      perProvincia.push({
+        denominazione: nome,
+        comuneCode,
+        sigla: ul && ana.anagrafica ? ul.provincia : (tenant?.province ?? null),
+      })
+      dichiarazioni.push({
+        codice: g.codice,
+        progressivo: g.progressivo,
+        unitaLocale: ul
+          ? {
+              id: ul.id,
+              denominazione: ul.denominazione,
+              numIscrSito: ul.numIscrSito,
+              principale: ul.principale,
+            }
+          : { id: null, denominazione: nome, numIscrSito: null, principale: false },
+        // con l'addetto risolto: 0 quando manca e le dichiarazioni sono più d'una (D5)
+        anagrafica: ana.anagrafica ? { ...ana.anagrafica, numeroAddetti: ana.numeroAddetti } : null,
+        conAutorizzazioni: false,
+        conAllegatiAzienda: false,
+        righe: esito.righeFinali,
+        movimentiPerCer: esito.movimentiPerCer,
+        pericolosiPerCer: esito.pericolosiPerCer,
+      })
+    }
+
+    // D6: province diverse (le dichiarazioni sono già in ordine di codice)
+    const voci = provinceDiverse(perProvincia)
+    if (voci.length > 0) controlli.push(controlliMud.unitaLocaliProvinceDiverse(voci))
+
+    // D7: AU alla principale (o alla prima per codice), AR e INT nel primo pacchetto
+    if (dichiarazioni.length > 0) {
+      const { au, arEInt } = dichiarazionePerAllegati(
+        dichiarazioni.map(d => ({
+          codice: d.codice,
+          principale: d.unitaLocale.principale,
+          dichiarazione: d,
+        }))
+      )
+      if (au) au.dichiarazione.conAutorizzazioni = true
+      if (arEInt) arEInt.dichiarazione.conAllegatiAzienda = true
+      if (au && dichiarazioni.length > 1 && autorizzazioni > 0) {
+        controlli.push(
+          controlliMud.autorizzazioniSullaPrincipale(
+            dichiarazioni.length,
+            autorizzazioni,
+            au.dichiarazione.unitaLocale,
+            au.dichiarazione.unitaLocale.principale
+          )
+        )
+      }
+    }
+    return dichiarazioni
+  }
+
   /** Tutte le letture dell'aggregazione, nell'ordine di sempre (D17: nessuna logica di calcolo). */
-  private async caricaContesto(tenantId: string, anno: number): Promise<ContestoAggregazione> {
+  private async caricaContesto(
+    tenantId: string,
+    anno: number,
+    versione: 1 | 2
+  ): Promise<ContestoAggregazione> {
     const { inizio, fine } = limitiAnnoMud(anno)
     // Una lettura sola del catalogo per aggregazione; ogni movimento conta con la versione
     // della causale che porta (`causaleAziendaId`), non con quella di oggi.
@@ -451,6 +681,7 @@ export class MudAggregazioneService {
       select: {
         city: true,
         province: true,
+        numeroAddetti: true,
         atecoCode: true,
         mudNonDovuto: true,
         mudNonDovutoMotivo: true,
@@ -466,11 +697,41 @@ export class MudAggregazioneService {
     const comuneCode = /^\d{6}$/.test(codiceComune) ? codiceComune : null
     const atecoNormalizzato = tenant?.atecoCode?.trim() ? normalizeAteco(tenant.atecoCode) : null
 
-    const unitaLocali = await this.prisma.rentriUnitaLocale.findMany({
-      where: { tenantId, attiva: true },
-      select: { denominazione: true, numIscrSito: true, principale: true },
-      orderBy: [{ principale: 'desc' }, { denominazione: 'asc' }],
-    })
+    // Versione 1: le unità locali attive, solo per PIU_UNITA_LOCALI. Versione 2: tutte, anche
+    // le cessate (D3: un registro legato a una sede cessata resta sulla sua dichiarazione),
+    // con i campi dell'anagrafica (D5) e il progressivo (D4); query separata dalla 1.
+    const unitaLocali =
+      versione === 1
+        ? await this.prisma.rentriUnitaLocale.findMany({
+            where: { tenantId, attiva: true },
+            select: { denominazione: true, numIscrSito: true, principale: true },
+            orderBy: [{ principale: 'desc' }, { denominazione: 'asc' }],
+          })
+        : []
+    let sedi: ContestoSedi | null = null
+    let autorizzazioni = 0
+    if (versione === 2) {
+      const tutte: MudUnitaLocaleAnagrafica[] = await this.prisma.rentriUnitaLocale.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          denominazione: true,
+          numIscrSito: true,
+          principale: true,
+          createdAt: true,
+          indirizzo: true,
+          civico: true,
+          cap: true,
+          comune: true,
+          provincia: true,
+          numeroAddetti: true,
+          progressivoMud: true,
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      })
+      sedi = creaContestoSedi(tutte, await sediDeiRegistri(this.prisma, tenantId))
+      autorizzazioni = await this.prisma.autorizzazioneImpianto.count({ where: { tenantId } })
+    }
 
     const record = await this.prisma.mUDReport.findUnique({
       where: { tenantId_year: { tenantId, year: anno } },
@@ -531,6 +792,8 @@ export class MudAggregazioneService {
       comuneCode,
       atecoNormalizzato,
       unitaLocali,
+      sedi,
+      autorizzazioni,
       integrazioni,
       fonti,
       rif,
@@ -608,8 +871,7 @@ export class MudAggregazioneService {
     contesto: ContestoAggregazione,
     { doppi }: EsitoDoppi,
     condivisi: Condivisi,
-    controlli: MudEsitoControllo[],
-    sede?: string
+    controlli: MudEsitoControllo[]
   ): EsitoGruppo {
     const { anno, catalogo, firPerId, integrazioni, fonti, rif } = contesto
     const { inclusi, avviatiPerFir } = condivisi
@@ -743,7 +1005,7 @@ export class MudAggregazioneService {
       )
     }
 
-    const righeFinali = this.completaRighe(righe, integrazioni, anno, controlli, condivisi, sede)
+    const righeFinali = this.completaRighe(righe, integrazioni, anno, controlli, condivisi)
     return { righeFinali, movimentiPerCer, pericolosiPerCer, ricevuti }
   }
 
@@ -948,9 +1210,7 @@ export class MudAggregazioneService {
     integrazioni: IntegrazioniMud,
     anno: number,
     controlli: MudEsitoControllo[],
-    condivisi: Condivisi,
-    // Riservato ai gruppi per sede (D14): qui non cambia nessun messaggio.
-    _sede?: string
+    condivisi: Condivisi
   ): MudRifiutoLine[] {
     // Lo stesso destinatario sotto più CER dà un solo controllo.
     const { segnalati } = condivisi

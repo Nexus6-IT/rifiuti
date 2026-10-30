@@ -414,7 +414,7 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
     const servizio = new MudAggregazioneService(prisma, referenceData, logger)
     const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
 
-    const attuale = await servizio.aggrega('t1', 2025)
+    const attuale = await servizio.aggrega('t1', 2025, { versioneCalcolo: 1 })
     const storico = await oracolo.aggrega('t1', 2025)
 
     expect(normalizza(attuale)).toEqual(normalizza(storico))
@@ -423,5 +423,70 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
     for (const atteso of s.attesi) expect(codici).toContain(atteso)
     if (s.righe !== undefined) expect(attuale.righe).toHaveLength(s.righe)
     s.verifica?.(attuale)
+    // versione 1: una sola dichiarazione "fusa", codice 1, anagrafica dell'azienda
+    expect(attuale.versioneCalcolo).toBe(1)
+    expect(attuale.dichiarazioni).toHaveLength(1)
+    expect(attuale.dichiarazioni[0]).toEqual(
+      expect.objectContaining({ codice: '000000000000001', anagrafica: null })
+    )
+  })
+
+  // Versione 2 con una sola sede (D11): le giacenze sono ancora quelle di oggi, quindi il
+  // risultato e' quello dell'oracolo salvo PIU_UNITA_LOCALI (assente con una sede),
+  // MOVIMENTI_SENZA_SEDE e il messaggio di CAUSALE_ESCLUSA.
+  describe('versione 2 con una sede', () => {
+    /** Ogni registro dei movimenti e' legato all'unica sede 'ul-1' */
+    const conRegistriSullaSede = (dati: DatiPrismaFinto): DatiPrismaFinto => {
+      const ids = [...new Set((dati.movimenti ?? []).map(m => m.registroId))]
+      const registri = dati.registri ?? ids.map(id => ({ id, descrizione: `Registro ${id}` }))
+      return { ...dati, registri: registri.map(r => ({ ...r, unitaLocaleId: 'ul-1' })) }
+    }
+
+    it.each(scenari.map(s => [s.nome, s] as const))('%s', async (_nome, s) => {
+      const dati = conRegistriSullaSede(s.dati)
+      const prisma = creaPrismaFinto(dati)
+      const servizio = new MudAggregazioneService(prisma, referenceData, logger)
+      const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+
+      const attuale = await servizio.aggrega('t1', 2025)
+      const storico = await oracolo.aggrega('t1', 2025)
+
+      expect(normalizza(attuale)).toEqual(normalizza(storico))
+      const codici = attuale.controlli.map(c => c.codice)
+      for (const atteso of s.attesi) expect(codici).toContain(atteso)
+      expect(codici).not.toContain('MOVIMENTI_SENZA_SEDE')
+      if (s.righe !== undefined) expect(attuale.righe).toHaveLength(s.righe)
+      s.verifica?.(attuale)
+      // una sede: nessun controllo porta la sede
+      expect(attuale.controlli.every(c => c.sede === undefined)).toBe(true)
+      expect(attuale.versioneCalcolo).toBe(2)
+      expect(attuale.dichiarazioni).toHaveLength(attuale.righe.length > 0 ? 1 : 0)
+      if (attuale.righe.length > 0) {
+        expect(attuale.dichiarazioni[0].codice).toBe('000000000000001')
+        expect(attuale.dichiarazioni[0].righe).toEqual(attuale.righe)
+      }
+    })
+
+    it('senza registri legati alla sede i movimenti vanno sulla principale con MOVIMENTI_SENZA_SEDE', async () => {
+      // lo stesso scenario senza legare il registro: oracolo + un solo avviso informativo
+      const dati = scenari[0].dati
+      const prisma = creaPrismaFinto(dati)
+      const servizio = new MudAggregazioneService(prisma, referenceData, logger)
+      const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+
+      const attuale = await servizio.aggrega('t1', 2025)
+      const storico = await oracolo.aggrega('t1', 2025)
+
+      const senzaAvviso = {
+        ...attuale,
+        controlli: attuale.controlli.filter(c => c.codice !== 'MOVIMENTI_SENZA_SEDE'),
+      }
+      expect(normalizza(senzaAvviso)).toEqual(normalizza(storico))
+      const avvisi = attuale.controlli.filter(c => c.codice === 'MOVIMENTI_SENZA_SEDE')
+      expect(avvisi).toHaveLength(1)
+      expect(avvisi[0].gravita).toBe('AVVISO')
+      // tre movimenti dello scenario, tutti conteggiati
+      expect(avvisi[0].movimenti).toHaveLength(3)
+    })
   })
 })

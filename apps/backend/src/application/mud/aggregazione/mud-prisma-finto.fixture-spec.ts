@@ -48,6 +48,23 @@ export interface FirFinto {
   carrierPartitaIva: string | null
 }
 
+/** Unità locale del finto: i campi omessi valgono quelli di una sede vera ma senza anagrafica. */
+export interface UnitaLocaleFinta {
+  id?: string
+  denominazione: string
+  numIscrSito: string
+  principale: boolean
+  attiva?: boolean
+  createdAt?: Date
+  indirizzo?: string | null
+  civico?: string | null
+  cap?: string | null
+  comune?: string | null
+  provincia?: string | null
+  numeroAddetti?: number | null
+  progressivoMud?: number | null
+}
+
 export interface DatiPrismaFinto {
   movimenti?: MovimentoFinto[]
   fir?: FirFinto[]
@@ -58,9 +75,10 @@ export interface DatiPrismaFinto {
   registri?: Array<{
     id: string
     descrizione: string
+    unitaLocaleId?: string | null
     unitaLocale?: { denominazione: string } | null
   }>
-  unitaLocali?: Array<{ denominazione: string; numIscrSito: string; principale: boolean }>
+  unitaLocali?: UnitaLocaleFinta[]
   giacenzeIniziali?: Array<{
     registroId: string
     cerCode: string
@@ -140,13 +158,32 @@ export function creaPrismaFinto(d: DatiPrismaFinto = {}): any {
         d.tenant === undefined ? { city: 'Roma', province: 'RM', atecoCode: '38.11.00' } : d.tenant,
     },
     rentriUnitaLocale: {
-      findMany: async () =>
-        d.unitaLocali ?? [{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }],
+      // `where.attiva: true` e' la query della versione 1; la versione 2 le legge tutte
+      findMany: async (args: any) => {
+        const tutte = (
+          d.unitaLocali ?? [{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }]
+        ).map((u, i) => ({
+          id: `ul-${i + 1}`,
+          attiva: true,
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          indirizzo: null,
+          civico: null,
+          cap: null,
+          comune: null,
+          provincia: null,
+          numeroAddetti: null,
+          progressivoMud: i + 1,
+          ...u,
+        }))
+        return args?.where?.attiva === true ? tutte.filter(u => u.attiva) : tutte
+      },
     },
     mUDReport: {
       findUnique: async () => (d.reportData === undefined ? null : { reportData: d.reportData }),
     },
-    registroRifiuti: { findMany: async () => d.registri ?? [] },
+    registroRifiuti: {
+      findMany: async () => (d.registri ?? []).map(r => ({ unitaLocaleId: null, ...r })),
+    },
     giacenzaIniziale: {
       findMany: async (args: any) => {
         const lte: Date | undefined = args?.where?.dataRiferimento?.lte
