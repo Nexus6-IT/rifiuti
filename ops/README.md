@@ -291,11 +291,32 @@ del ripristino da P3009 sopra).
 **Finestra di deploy.** Se la 110000 e la 110100 arrivano nello stesso deploy, fra il commit della
 110100 e l'avvio del nuovo backend il backend vecchio non può creare anagrafiche (INSERT senza
 `ditta_id` → 23502 → 500). Fallisce in modo sicuro, senza toccare dati; le letture non cambiano.
+Le **modifiche (PUT)** servite dal backend vecchio nella stessa finestra invece riescono, ma
+scrivono solo le colonne congelate, che il codice nuovo non legge più: la modifica va persa senza
+alcun errore. Se la finestra non è trascurabile, avvisare di non modificare anagrafiche fra
+`migrate` e `up -d`, e rivedere dopo il deploy quelle toccate in quel lasso di tempo.
 
 Da qui il codice nuovo **non scrive più** le colonne vecchie e non le legge, salvo la ragione sociale
 (`ragioneSocialeStorica`, usata dal MUD per le integrazioni già salvate). Le righe create dopo il
 deploy hanno quelle colonne NULL. Un privato (solo codice fiscale) esiste solo su `ditte`. La
 rimozione fisica delle colonne è un seguito (F2-10b).
+
+### Note di rilascio F2-10 (da riportare nel rapporto di deploy)
+
+- **Ditte fuse con nome divergente** (4 nel censimento del 31/10): la ditta prende il nome della riga
+  aggiornata più di recente. Da quel momento FIR nuovi, contratti, dashboard, mail di scadenza e
+  RENTRI (anche per i FIR già esistenti) usano quel nome per tutti i ruoli; il MUD no (usa la
+  ragione sociale storica della riga). Chiedere all'operatore di rivedere quelle ditte dopo il deploy.
+- **Rollback del solo codice** (senza lo script di ripristino qui sotto): i FIR firmati con il
+  codice fiscale delle parti (`*_codice_fiscale` su `firs`) non sono più verificabili dal codice vecchio.
+- **Controlli dopo il deploy** (come owner, sola lettura): `SELECT count(*) FROM ditte;` atteso
+  circa 7 (come da censimento); nessuna riga di ruolo senza ditta o sede:
+  `SELECT (SELECT count(*) FROM produttori WHERE ditta_id IS NULL OR sede_id IS NULL) +
+  (SELECT count(*) FROM trasportatori WHERE ditta_id IS NULL OR sede_id IS NULL) +
+  (SELECT count(*) FROM destinatari WHERE ditta_id IS NULL OR sede_id IS NULL);` deve dare 0 (con i
+  NOT NULL della 110100 è già garantito dallo schema: il controllo conferma che la migration è applicata).
+- Su una sede già esistente i contatti nuovi non sovrascrivono mai quelli registrati: la risposta
+  porta un avviso e i contatti si cambiano da "Sedi".
 
 ### Rollback
 
@@ -315,60 +336,29 @@ Lo script ricostruisce le colonne vecchie dalla ditta e dalla sede predefinita, 
 gli indici unici, **ricrea `f210_collega_anagrafiche()`** (il redeploy rilancerebbe la 110100, che la
 chiama: senza, "function does not exist" → P3009) e **cancella la riga della 110100 da
 `_prisma_migrations`** (`migrate resolve --rolled-back` su una migration applicata con successo è
-rifiutato da Prisma, P3012). La funzione si prende dalla 110000:
+rifiutato da Prisma, P3012). La funzione si prende dalla 110000 e lo script si trova in `ops/f210-rollback.sql`:
 
 ```bash
-cd apps/backend
-{ sed -n '/^CREATE FUNCTION f210_collega_anagrafiche/,/^\$f210\$;/p' prisma/migrations/20261031110000_ditte_sedi_controparti/migration.sql
-  echo 'REVOKE EXECUTE ON FUNCTION f210_collega_anagrafiche() FROM PUBLIC;'; } > /tmp/f210_funzione.sql
-# eseguire lo script con psql sullo stesso host/percorso di /tmp/f210_funzione.sql (\i lo legge lì)
+cd /opt/rifiuti/site
+COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
+MIGR=apps/backend/prisma/migrations/20261031110000_ditte_sedi_controparti/migration.sql
+{ echo 'BEGIN;'
+  sed -n '/^CREATE FUNCTION f210_collega_anagrafiche/,/^\$f210\$;/p' "$MIGR"
+  echo 'REVOKE EXECUTE ON FUNCTION f210_collega_anagrafiche() FROM PUBLIC;'
+  cat ops/f210-rollback.sql
+} | $COMPOSE exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-```sql
-BEGIN;
-UPDATE produttori r
-   SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
-       via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
-       email = s.email, telefono = s.telefono, pec = s.pec
-  FROM ditte d, sedi_ditte s
- WHERE d.id = r.ditta_id AND s.id = r.sede_id;
-ALTER TABLE produttori
-  ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
-  ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
-  ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
-  ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
-CREATE UNIQUE INDEX produttori_tenant_id_partita_iva_key ON produttori (tenant_id, partita_iva);
-UPDATE trasportatori r
-   SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
-       via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
-       email = s.email, telefono = s.telefono, pec = s.pec
-  FROM ditte d, sedi_ditte s
- WHERE d.id = r.ditta_id AND s.id = r.sede_id;
-ALTER TABLE trasportatori
-  ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
-  ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
-  ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
-  ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
-CREATE UNIQUE INDEX trasportatori_tenant_id_partita_iva_key ON trasportatori (tenant_id, partita_iva);
-UPDATE destinatari r
-   SET ragione_sociale = d.ragione_sociale, partita_iva = d.partita_iva,
-       via = s.via, civico = s.civico, cap = s.cap, comune = s.comune, provincia = s.provincia,
-       email = s.email, telefono = s.telefono, pec = s.pec
-  FROM ditte d, sedi_ditte s
- WHERE d.id = r.ditta_id AND s.id = r.sede_id;
-ALTER TABLE destinatari
-  ALTER COLUMN ragione_sociale SET NOT NULL, ALTER COLUMN partita_iva SET NOT NULL,
-  ALTER COLUMN via SET NOT NULL, ALTER COLUMN civico SET NOT NULL, ALTER COLUMN cap SET NOT NULL,
-  ALTER COLUMN comune SET NOT NULL, ALTER COLUMN provincia SET NOT NULL,
-  ALTER COLUMN ditta_id DROP NOT NULL, ALTER COLUMN sede_id DROP NOT NULL;
-CREATE UNIQUE INDEX destinatari_tenant_id_partita_iva_key ON destinatari (tenant_id, partita_iva);
--- ricrea la funzione di backfill (la richiama la 110100 al redeploy): vedi il comando sed nel README
-\i /tmp/f210_funzione.sql
-DELETE FROM _prisma_migrations WHERE migration_name = '20261031110100_anagrafiche_su_ditte';
-COMMIT;
-```
+Tutto passa su STDIN in un solo flusso, dentro il container `postgres` (il client `psql` gira lì: non
+serve copiare file). `$POSTGRES_USER` è il proprietario del database (`DB_USER`), le virgolette
+singole fanno espandere le variabili dentro il container. Lo script è
+[`ops/f210-rollback.sql`](f210-rollback.sql): ricostruisce le colonne vecchie, rimette i NOT NULL e
+gli indici unici e cancella la riga della 110100 da `_prisma_migrations`; la `BEGIN;` e la funzione
+sono anteposte dal comando. Con `ON_ERROR_STOP` un errore interrompe il flusso e la transazione non
+viene confermata (nessuna modifica).
 
-Provato per intero su un database temporaneo (migrate deploy fino alla 110100, rollback, nuovo
+Provato per intero (il 31/10, con il comando sopra via `docker exec -i … sh -c 'psql …'`) su un
+database temporaneo (migrate deploy fino alla 110100, rollback, nuovo
 `migrate deploy` che riapplica la 110100 senza errori). Le ditte e le sedi create dopo il deploy
 restano in `ditte`/`sedi_ditte` (il codice vecchio le ignora).
 
