@@ -41,6 +41,9 @@ const riepilogo = (r: Partial<MudRiepilogo> = {}): MudRiepilogo => ({
   year: 2025,
   wasteProduced: [],
   totals: { produced: 0, recovery: 0, disposal: 0, recyclingRate: 0 },
+  dichiarazioni: [],
+  versioneCalcolo: 2,
+  versionePresentata: null,
   controlli: [],
   riepilogoAvvisi: {
     kgInMeno: 0,
@@ -94,6 +97,8 @@ const stato = (s: Partial<StatoPresentazioneMud> = {}): StatoPresentazioneMud =>
   fileTracciato: null,
   esportazioni: [],
   prossimoFileSostituisce: null,
+  versioneCalcolo: null,
+  versioneCalcoloAttuale: 2,
   ...s,
 })
 
@@ -110,6 +115,7 @@ const INTEGRAZIONI_VUOTE: IntegrazioniMud = {
   destinatariMovimento: {},
   trasportatori: {},
   pesiSpecifici: {},
+  destinazioniGiacenza: {},
   aggiornateIl: null,
   aggiornateDa: null,
   codiciAzienda: ['01234567897'],
@@ -301,7 +307,17 @@ describe('MudComponent', () => {
       mud.getReport.and.returnValue(
         of(
           riepilogo({
-            wasteProduced: [{ cerCode: '170405', totalQuantity: 1234.567, count: 2 }],
+            wasteProduced: [
+              {
+                cerCode: '170405',
+                totalQuantity: 1234.567,
+                count: 2,
+                recoveryKg: 0,
+                disposalKg: 0,
+                giacenzaRecuperoKg: 0,
+                giacenzaSmaltimentoKg: 0,
+              },
+            ],
             totals: { produced: 0.4, recovery: 1234.567, disposal: 0, recyclingRate: 0 },
           })
         )
@@ -372,6 +388,164 @@ describe('MudComponent', () => {
       expect(t).toContain(
         "I rifiuti prodotti fuori dall'unità locale (cantieri, manutenzioni: modulo RE) non sono distinti: il file li attribuisce all'unità locale."
       )
+    })
+
+    describe('per unità locale', () => {
+      const voce = (cerCode: string, n: number) => ({
+        cerCode,
+        pericoloso: false,
+        prodottoKg: n,
+        recuperoKg: n / 2,
+        smaltimentoKg: n / 4,
+        giacenzaRecuperoKg: n / 5,
+        giacenzaSmaltimentoKg: n / 10,
+        movimenti: 3,
+      })
+      const dichiarazione = (id: string, nome: string, codice: string, n: number) => ({
+        codice,
+        unitaLocale: { id, denominazione: nome, numIscrSito: null },
+        perCer: [voce('17 04 05', n)],
+        totali: {
+          prodottoKg: n,
+          recuperoKg: n / 2,
+          smaltimentoKg: n / 4,
+          giacenzaRecuperoKg: n / 5,
+          giacenzaSmaltimentoKg: n / 10,
+          movimenti: 3,
+        },
+      })
+      const cer = {
+        cerCode: '17 04 05',
+        totalQuantity: 1000,
+        count: 6,
+        recoveryKg: 500,
+        disposalKg: 250,
+        giacenzaRecuperoKg: 200,
+        giacenzaSmaltimentoKg: 100,
+      }
+      const sezioni = () =>
+        Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll('section.mud-dichiarazione')
+        ) as HTMLElement[]
+
+      function carica(r: Partial<MudRiepilogo>) {
+        mud.getReport.and.returnValue(of(riepilogo(r)))
+        crea()
+        component.loadReport()
+        fixture.detectChanges()
+      }
+
+      it('mostra recupero, smaltimento e giacenze per CER', () => {
+        carica({
+          wasteProduced: [cer],
+          dichiarazioni: [dichiarazione('a', 'Sede Nord', '000000000000001', 1000)],
+        })
+        const celle = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr td')
+        ).map(c => c.textContent?.trim())
+        // quantità, recupero, smaltimento, giacenza a recupero, giacenza a smaltimento, movimenti
+        expect(celle).toEqual(['17 04 05', '1.000', '500', '250', '200', '100', '6'])
+        const t = testo()
+        for (const colonna of [
+          'Recupero (kg)',
+          'Smaltimento (kg)',
+          'Giacenza a recupero (kg)',
+          'Giacenza a smaltimento (kg)',
+        ]) {
+          expect(t).toContain(colonna)
+        }
+      })
+
+      it('due sedi: una sezione per sede e la frase sul diritto di segreteria', () => {
+        carica({
+          wasteProduced: [cer],
+          dichiarazioni: [
+            dichiarazione('a', 'Sede Nord', '000000000000001', 600),
+            dichiarazione('b', 'Sede Sud', '000000000000002', 400),
+          ],
+        })
+        expect(testo()).toContain(
+          'Il file contiene 2 dichiarazioni, una per unità locale: ognuna paga il proprio diritto di segreteria.'
+        )
+        const s = sezioni()
+        expect(s.length).toBe(2)
+        expect(s[0].querySelector('h3')?.textContent?.trim()).toBe(
+          'Sede Nord (codice MUD 000000000000001)'
+        )
+        expect(s[1].querySelector('h3')?.textContent?.trim()).toBe(
+          'Sede Sud (codice MUD 000000000000002)'
+        )
+        // totali e tabella della sede, valori scritti a mano
+        const celleNord = Array.from(s[0].querySelectorAll('tbody td')).map(c =>
+          c.textContent?.trim()
+        )
+        expect(celleNord).toEqual(['17 04 05', '600', '300', '150', '120', '60', '3'])
+        expect(s[0].querySelector('dl')?.textContent).toContain('600')
+      })
+
+      it('una sede: nessuna sezione per sede', () => {
+        carica({
+          wasteProduced: [cer],
+          dichiarazioni: [dichiarazione('a', 'Sede Nord', '000000000000001', 1000)],
+        })
+        expect(sezioni().length).toBe(0)
+        expect(testo()).not.toContain('diritto di segreteria')
+      })
+
+      it('controllo con sede: etichetta visibile', () => {
+        carica({
+          wasteProduced: [cer],
+          dichiarazioni: [
+            dichiarazione('a', 'Sede Nord', '000000000000001', 600),
+            dichiarazione('b', 'Sede Sud', '000000000000002', 400),
+          ],
+          controlli: [
+            {
+              codice: 'UNITA_LOCALE_SENZA_ADDETTI',
+              gravita: 'BLOCCANTE',
+              messaggio: 'Mancano gli addetti',
+              sede: 'Sede Sud',
+            },
+            { ...AVVISO_INFO, sede: 'Sede Nord' },
+          ],
+          riepilogoAvvisi: {
+            kgInMeno: 0,
+            kgInPiu: 0,
+            movimentiNonQuantificati: 0,
+            voci: [
+              {
+                codice: 'CAUSALE_ESCLUSA',
+                casi: 1,
+                movimenti: 0,
+                kgEsclusi: 0,
+                kgAggiunti: 0,
+                movimentiNonQuantificati: 0,
+              },
+            ],
+            testo: 'Avvisi',
+            cambianoQuantita: false,
+          },
+        })
+        const etichette = Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll('.mud-sede')
+        ).map(e => e.textContent?.trim())
+        expect(etichette).toEqual(['Sede Sud', 'Sede Nord'])
+        const bloccante = (fixture.nativeElement as HTMLElement).querySelector('.mud-bloccanti li')
+        expect(bloccante?.textContent).toContain('Sede Sud')
+        expect(bloccante?.textContent).toContain('Mancano gli addetti')
+      })
+
+      it('nota della versione presentata', () => {
+        carica({ versionePresentata: 1 })
+        expect(testo()).toContain(
+          'Il MUD presentato è stato calcolato con le regole precedenti (registro unico, giacenze non dichiarate): i numeri qui sotto e un nuovo file seguono le regole attuali.'
+        )
+      })
+
+      it('nessuna nota senza versione presentata', () => {
+        carica({ versionePresentata: null })
+        expect(testo()).not.toContain('regole precedenti')
+      })
     })
 
     it('azienda non tenuta al MUD', () => {
@@ -745,6 +919,133 @@ describe('MudComponent', () => {
       expect(t).toContain('Salva integrazioni')
     })
 
+    describe('giacenze al 31/12', () => {
+      const SEDE_A = 'sede-a'
+      const SEDE_B = 'sede-b'
+      const avvisoGiacenza: MudControllo = {
+        codice: 'GIACENZA_DESTINAZIONE_NON_INDICATA',
+        gravita: 'AVVISO',
+        messaggio: 'Giacenza senza destinazione',
+        integrazione: {
+          tipo: 'DESTINAZIONE_GIACENZA',
+          chiave: `${SEDE_A}|170405`,
+          cerCode: '170405',
+          unitaLocaleId: SEDE_A,
+          sede: 'Nord',
+        },
+      }
+      const dichiarazione = (id: string, giacenzaRecuperoKg: number) => ({
+        codice: '000000000000001',
+        unitaLocale: { id, denominazione: 'x', numIscrSito: null },
+        totali: {
+          prodottoKg: 0,
+          recuperoKg: 0,
+          smaltimentoKg: 0,
+          giacenzaRecuperoKg,
+          giacenzaSmaltimentoKg: 0,
+          movimenti: 0,
+        },
+        perCer: [
+          {
+            cerCode: '17 04 05',
+            pericoloso: false,
+            prodottoKg: 0,
+            recuperoKg: 0,
+            smaltimentoKg: 0,
+            giacenzaRecuperoKg,
+            giacenzaSmaltimentoKg: 0,
+            movimenti: 0,
+          },
+        ],
+      })
+      const sedi = { [SEDE_A]: 'Nord', [SEDE_B]: 'Sud' }
+
+      function carica(r: Partial<MudRiepilogo>, i: Partial<IntegrazioniMud>) {
+        mud.getReport.and.returnValue(of(riepilogo({ ruoloEffettivo: 'ADMIN', ...r })))
+        mud.getIntegrazioni.and.returnValue(of({ ...INTEGRAZIONI_VUOTE, ...i }))
+        crea()
+        component.loadReport()
+        fixture.detectChanges()
+      }
+
+      it('riga di integrazione della giacenza da un avviso, salvata nel PUT', () => {
+        carica({ controlli: [avvisoGiacenza] }, { unitaLocali: sedi })
+        const sezione = elemento('#mud-integrazioni')!
+        expect(sezione.querySelector('.mud-integrazione__etichetta')?.textContent?.trim()).toBe(
+          'Giacenza CER 170405 (Nord)'
+        )
+        // clic vero sul segmento "Smaltimento"
+        const segmenti = Array.from(
+          sezione.querySelectorAll('p-selectButton .p-button, p-selectbutton .p-button')
+        ) as HTMLElement[]
+        expect(segmenti.map(e => e.textContent?.trim())).toEqual(['Recupero', 'Smaltimento'])
+        segmenti[1].click()
+        fixture.detectChanges()
+
+        const salva = Array.from(sezione.querySelectorAll('button')).find(b =>
+          b.textContent?.includes('Salva integrazioni')
+        ) as HTMLButtonElement
+        salva.click()
+
+        expect(mud.salvaIntegrazioni).toHaveBeenCalledTimes(1)
+        expect(mud.salvaIntegrazioni.calls.mostRecent().args[1].destinazioniGiacenza).toEqual([
+          { cerCode: '170405', unitaLocaleId: SEDE_A, destinazione: 'D' },
+        ])
+      })
+
+      it('salvare un altra integrazione rimanda le destinazioni già salvate', () => {
+        carica(
+          { controlli: BLOCCANTI_INTEGRAZIONE, dichiarazioni: [dichiarazione(SEDE_A, 50)] },
+          {
+            unitaLocali: sedi,
+            destinazioniGiacenza: {
+              [`${SEDE_A}|170405`]: {
+                cerCode: '170405',
+                unitaLocaleId: SEDE_A,
+                destinazione: 'R',
+              },
+            },
+          }
+        )
+        // la voce salvata è una riga (nessun avviso la chiede: è già indicata) ed è in uso
+        const voce = component.righe.find(r => r.tipo === 'DESTINAZIONE_GIACENZA')!
+        expect(voce.destinazione).toBe('R')
+        expect(voce.avviso).toBeUndefined()
+        component.righe.find(r => r.tipo === 'CF_DESTINATARIO')!.codiceFiscale = '12345678903'
+
+        component.salvaIntegrazioni()
+
+        const corpo = mud.salvaIntegrazioni.calls.mostRecent().args[1]
+        expect(corpo.destinatari).toEqual([
+          { ragioneSociale: 'Ecologia Srl', codiceFiscale: '12345678903' },
+        ])
+        expect(corpo.destinazioniGiacenza).toEqual([
+          { cerCode: '170405', unitaLocaleId: SEDE_A, destinazione: 'R' },
+        ])
+      })
+
+      it("voce di giacenza non più usata con l'avviso", () => {
+        carica(
+          { controlli: [], dichiarazioni: [dichiarazione(SEDE_B, 50)] },
+          {
+            unitaLocali: sedi,
+            destinazioniGiacenza: {
+              [`${SEDE_A}|170405`]: {
+                cerCode: '170405',
+                unitaLocaleId: SEDE_A,
+                destinazione: 'R',
+              },
+            },
+          }
+        )
+        const t = elemento('#mud-integrazioni')!.textContent ?? ''
+        expect(t).toContain('Giacenza CER 170405 (Nord)')
+        expect(t).toContain(
+          "Voce non più usata: la giacenza ora è in un'altra dichiarazione (per esempio dopo un cambio della sede principale). Indicare di nuovo la destinazione nella riga corretta."
+        )
+      })
+    })
+
     it('niente sezione senza bloccanti né voci salvate', () => {
       crea()
       component.loadReport()
@@ -813,6 +1114,7 @@ describe('MudComponent', () => {
         ],
         trasportatori: [{ ragioneSociale: 'Trasporti Srl', codiceFiscale: '12345678903' }],
         pesiSpecifici: [{ cerCode: '170405', unita: 'LITRI', kgPerUnita: 1.1 }],
+        destinazioniGiacenza: [],
       })
       expect(toast.success).toHaveBeenCalledWith(
         'Integrazioni salvate: il riepilogo è stato ricalcolato.'

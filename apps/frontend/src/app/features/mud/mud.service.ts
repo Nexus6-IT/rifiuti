@@ -56,6 +56,15 @@ export type MudIntegrazioneRichiesta =
       registroId: string
     }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
+  | {
+      tipo: 'DESTINAZIONE_GIACENZA'
+      chiave: string
+      /** 6 cifre */
+      cerCode: string
+      unitaLocaleId: string | null
+      /** Denominazione della sede, "Azienda" se non c'è */
+      sede: string
+    }
 
 export interface MudControllo {
   codice: string
@@ -64,14 +73,61 @@ export interface MudControllo {
   movimenti?: MudMovimentoSegnalato[]
   fir?: string[]
   integrazione?: MudIntegrazioneRichiesta
+  /**
+   * Denominazione della sede (o "Azienda") a cui si riferisce il controllo: solo con più di una
+   * dichiarazione nel file (D14)
+   */
+  sede?: string
+}
+
+/** Somme di una dichiarazione o del file (specchio di `SommeMud`, application/mud/mud-totali.ts). */
+export interface SommeMud {
+  prodottoKg: number
+  recuperoKg: number
+  smaltimentoKg: number
+  giacenzaRecuperoKg: number
+  giacenzaSmaltimentoKg: number
+  movimenti: number
+}
+
+export interface VoceTotaliMud extends SommeMud {
+  /** CER canonico (`17 04 05`), con `*` se pericoloso */
+  cerCode: string
+  pericoloso: boolean
+}
+
+/** Una dichiarazione del file: una per unità locale (specchio di `TotaliDichiarazioneMud`). */
+export interface DichiarazioneRiepilogo {
+  /** Codice MUD della dichiarazione, 15 cifre */
+  codice: string
+  unitaLocale: { id: string | null; denominazione: string; numIscrSito: string | null }
+  perCer: VoceTotaliMud[]
+  totali: SommeMud
 }
 
 /** Riepilogo dell'anno (`GET mud/generate`), con il ruolo nell'azienda selezionata. */
 export interface MudRiepilogo {
   year: number
   /** Una riga per CER: `cerCode` come lo legge l'utente, `count` = movimenti */
-  wasteProduced: Array<{ cerCode: string; totalQuantity: number; count: number }>
+  wasteProduced: Array<{
+    cerCode: string
+    totalQuantity: number
+    count: number
+    recoveryKg: number
+    disposalKg: number
+    giacenzaRecuperoKg: number
+    giacenzaSmaltimentoKg: number
+  }>
   totals: { produced: number; recovery: number; disposal: number; recyclingRate: number }
+  /** Una voce per dichiarazione (unità locale), con i suoi totali per CER */
+  dichiarazioni: DichiarazioneRiepilogo[]
+  /** Versione del calcolo di questo riepilogo (sempre l'attuale) */
+  versioneCalcolo: number
+  /**
+   * Versione con cui è stato fatto il MUD presentato, solo se diversa dall'attuale (D15): i
+   * numeri del riepilogo sono comunque quelli delle regole attuali.
+   */
+  versionePresentata: number | null
   controlli: MudControllo[]
   riepilogoAvvisi: RiepilogoAvvisi
   mudNonDovuto: boolean
@@ -96,6 +152,9 @@ export interface StatoPresentazioneMud {
   esportazioni: EsportazioneMud[]
   /** Data della dichiarazione che il prossimo file annulla e sostituisce, o null (A-W-04) */
   prossimoFileSostituisce: string | null
+  /** Versione del calcolo della presentazione; null se non presentato (o presentato prima del F2-8: vale 1) */
+  versioneCalcolo: number | null
+  versioneCalcoloAttuale: number
 }
 
 export type MotivoAnnullamento = 'SEGNATURA_ERRATA' | 'DICHIARAZIONE_DA_SOSTITUIRE'
@@ -175,10 +234,17 @@ export interface IntegrazioniMud {
     string,
     { cerCode: string; unita: string; kgPerUnita: number; confermatoFuoriIntervallo?: boolean }
   >
+  /** chiave = `unitaLocaleId|cer6` (`AZIENDA|cer6` senza sede) */
+  destinazioniGiacenza: Record<
+    string,
+    { cerCode: string; unitaLocaleId: string | null; destinazione: DestinazioneGiacenza }
+  >
   aggiornateIl: string | null
   aggiornateDa: string | null
   /** Solo nel GET: registro -> sede, vuoto se l'azienda ha un registro solo (nessuna ambiguità) */
   registri?: Record<string, string>
+  /** Solo nel GET: sede (id) -> denominazione, per etichettare le destinazioni delle giacenze */
+  unitaLocali?: Record<string, string>
   /** Solo nel GET: partita IVA e CF dell'azienda, per la conferma della propria azienda */
   codiciAzienda?: string[]
 }
@@ -206,6 +272,12 @@ export interface CorpoIntegrazioniMud {
     unita: string
     kgPerUnita: number
     confermaFuoriIntervallo?: boolean
+  }>
+  /** Il PUT sostituisce tutto: vanno rimandate anche le voci già salvate */
+  destinazioniGiacenza: Array<{
+    cerCode: string
+    unitaLocaleId: string | null
+    destinazione: DestinazioneGiacenza
   }>
 }
 
@@ -252,6 +324,12 @@ export function codiceDellAzienda(codice: string, codiciAzienda: readonly string
   return c !== '' && codiciAzienda.includes(c)
 }
 
+/** R = recupero, D = smaltimento (tracciato MUD). */
+export type DestinazioneGiacenza = 'R' | 'D'
+
+/** Etichetta della riga d'integrazione della giacenza: identica a quella dei messaggi del backend (M5). */
+export const etichettaGiacenza = (cer6: string): string => `Giacenza CER ${cer6}`
+
 /** Riga della sezione Integrazioni: un bloccante da completare o una voce già salvata. */
 export interface RigaIntegrazione {
   tipo: MudIntegrazioneRichiesta['tipo']
@@ -276,6 +354,10 @@ export interface RigaIntegrazione {
   confermaFuoriIntervallo: boolean
   /** PESO_SPECIFICO da un bloccante: quantità dei suoi movimenti, nell'unità */
   totaleUnita: number | null
+  /** DESTINAZIONE_GIACENZA: scelta dell'utente, null = nessuna (la voce non si salva) */
+  destinazione: DestinazioneGiacenza | null
+  /** DESTINAZIONE_GIACENZA: sede (null = senza sede) */
+  unitaLocaleId?: string | null
 }
 
 function rigaVuota(
@@ -295,6 +377,7 @@ function rigaVuota(
     kgPerUnita: null,
     confermaFuoriIntervallo: false,
     totaleUnita: null,
+    destinazione: null,
   }
 }
 
@@ -304,12 +387,31 @@ const etichettaMovimento = (numero: number, anno: number, sede?: string) =>
 
 export const AVVISO_VOCE_SENZA_SEDE =
   'Voce senza sede, non più usata: compila la riga del registro corrispondente.'
+export const AVVISO_VOCE_GIACENZA_NON_USATA =
+  "Voce non più usata: la giacenza ora è in un'altra dichiarazione (per esempio dopo un cambio della sede principale). Indicare di nuovo la destinazione nella riga corretta."
 const etichettaPeso = (cerCode: string, unita: string) => `CER ${cerCode} – ${unita}`
 
-/** Riga di un bloccante che chiede un'integrazione. */
-function rigaDaBloccante(
+/** Solo le cifre del CER: la chiave e il PUT usano le 6 cifre. */
+const cerSoloCifre = (cer: string): string => (cer ?? '').replace(/\D/g, '')
+
+/** Etichetta della giacenza; la sede compare solo se l'azienda ne ha più di una. */
+function etichettaRigaGiacenza(
+  cerCode: string,
+  unitaLocaleId: string | null,
+  sedeControllo: string | undefined,
+  unitaLocali: Record<string, string>
+): string {
+  const base = etichettaGiacenza(cerSoloCifre(cerCode))
+  if (Object.keys(unitaLocali).length <= 1) return base
+  const sede = unitaLocaleId ? (unitaLocali[unitaLocaleId] ?? sedeControllo) : 'Azienda'
+  return sede ? `${base} (${sede})` : base
+}
+
+/** Riga di un controllo che chiede un'integrazione. */
+function rigaDaControllo(
   c: MudControllo,
-  registri: Record<string, string>
+  registri: Record<string, string>,
+  unitaLocali: Record<string, string>
 ): RigaIntegrazione | null {
   const i = c.integrazione
   if (!i) return null
@@ -338,6 +440,16 @@ function rigaDaBloccante(
         cerCode: i.cerCode,
         unita: i.unita,
         totaleUnita: c.movimenti?.length ? c.movimenti.reduce((s, m) => s + m.quantita, 0) : null,
+      }
+    case 'DESTINAZIONE_GIACENZA':
+      return {
+        ...rigaVuota(
+          i.tipo,
+          i.chiave,
+          etichettaRigaGiacenza(i.cerCode, i.unitaLocaleId, i.sede, unitaLocali)
+        ),
+        cerCode: cerSoloCifre(i.cerCode),
+        unitaLocaleId: i.unitaLocaleId,
       }
   }
 }
@@ -388,6 +500,18 @@ function righeSalvate(i: IntegrazioniMud): RigaIntegrazione[] {
     const etichetta = `${s.ragioneSociale} (trasportatore)`
     righe.push(conSoggetto(rigaVuota('CF_TRASPORTATORE', chiave, etichetta), s))
   }
+  for (const [chiave, g] of Object.entries(i.destinazioniGiacenza ?? {})) {
+    righe.push({
+      ...rigaVuota(
+        'DESTINAZIONE_GIACENZA',
+        chiave,
+        etichettaRigaGiacenza(g.cerCode, g.unitaLocaleId, undefined, i.unitaLocali ?? {})
+      ),
+      cerCode: cerSoloCifre(g.cerCode),
+      unitaLocaleId: g.unitaLocaleId,
+      destinazione: g.destinazione,
+    })
+  }
   for (const [chiave, p] of Object.entries(i.pesiSpecifici)) {
     righe.push({
       ...rigaVuota('PESO_SPECIFICO', chiave, etichettaPeso(p.cerCode, p.unita)),
@@ -400,20 +524,40 @@ function righeSalvate(i: IntegrazioniMud): RigaIntegrazione[] {
   return righe
 }
 
+/** La dichiarazione della sede ha una giacenza al 31/12 per il CER (6 cifre). */
+function giacenzaInDichiarazione(
+  dichiarazioni: DichiarazioneRiepilogo[],
+  unitaLocaleId: string | null | undefined,
+  cer6: string
+): boolean {
+  return dichiarazioni.some(
+    d =>
+      d.unitaLocale.id === (unitaLocaleId ?? null) &&
+      d.perCer.some(
+        v => cerSoloCifre(v.cerCode) === cer6 && v.giacenzaRecuperoKg + v.giacenzaSmaltimentoKg > 0
+      )
+  )
+}
+
 /**
- * Righe della sezione Integrazioni: prima i bloccanti con `integrazione` (una riga per tipo e
- * chiave), poi le voci salvate che nessun bloccante richiede più. I valori salvati precompilano
- * la riga del bloccante con la stessa chiave.
+ * Righe della sezione Integrazioni: prima i controlli con `integrazione` (bloccanti e avvisi,
+ * una riga per tipo e chiave), poi le voci salvate che nessun controllo richiede più. I valori
+ * salvati precompilano la riga del controllo con la stessa chiave.
+ *
+ * Una destinazione di giacenza già indicata fa sparire il suo avviso: la voce salvata resta
+ * quindi senza controllo anche quando è in uso. Con `dichiarazioni` si distingue: l'avviso
+ * "voce non più usata" (M9) compare solo se nessuna dichiarazione ha più quella giacenza.
+ * Senza `dichiarazioni` ogni voce di giacenza non richiesta da un controllo è segnalata.
  */
 export function righeIntegrazioni(
   controlli: MudControllo[],
-  integrazioni: IntegrazioniMud
+  integrazioni: IntegrazioniMud,
+  dichiarazioni?: DichiarazioneRiepilogo[]
 ): RigaIntegrazione[] {
   const salvate = new Map(righeSalvate(integrazioni).map(r => [`${r.tipo}|${r.chiave}`, r]))
   const righe = new Map<string, RigaIntegrazione>()
   for (const c of controlli) {
-    if (c.gravita !== 'BLOCCANTE') continue
-    const riga = rigaDaBloccante(c, integrazioni.registri ?? {})
+    const riga = rigaDaControllo(c, integrazioni.registri ?? {}, integrazioni.unitaLocali ?? {})
     if (!riga) continue
     const id = `${riga.tipo}|${riga.chiave}`
     if (righe.has(id)) continue
@@ -423,7 +567,13 @@ export function righeIntegrazioni(
       salvata ? { ...salvata, etichetta: riga.etichetta, totaleUnita: riga.totaleUnita } : riga
     )
   }
-  for (const [id, r] of salvate) if (!righe.has(id)) righe.set(id, r)
+  for (const [id, r] of salvate) {
+    if (righe.has(id)) continue
+    const nonUsata =
+      r.tipo === 'DESTINAZIONE_GIACENZA' &&
+      (!dichiarazioni || !giacenzaInDichiarazione(dichiarazioni, r.unitaLocaleId, r.cerCode ?? ''))
+    righe.set(id, nonUsata ? { ...r, avviso: AVVISO_VOCE_GIACENZA_NON_USATA } : r)
+  }
   return [...righe.values()]
 }
 
@@ -440,6 +590,7 @@ export function corpoIntegrazioni(
     destinatariMovimento: [],
     trasportatori: [],
     pesiSpecifici: [],
+    destinazioniGiacenza: [],
   }
   for (const r of righe) {
     const ragioneSociale = r.ragioneSociale.trim()
@@ -471,6 +622,15 @@ export function corpoIntegrazioni(
       case 'CF_TRASPORTATORE':
         // il codice della propria azienda vale senza conferma: trasporto in conto proprio
         if (codiceFiscale) corpo.trasportatori.push({ ragioneSociale, codiceFiscale })
+        break
+      case 'DESTINAZIONE_GIACENZA':
+        if (r.destinazione && r.cerCode) {
+          corpo.destinazioniGiacenza.push({
+            cerCode: r.cerCode,
+            unitaLocaleId: r.unitaLocaleId ?? null,
+            destinazione: r.destinazione,
+          })
+        }
         break
       case 'PESO_SPECIFICO':
         if (r.kgPerUnita !== null && r.kgPerUnita > 0 && r.cerCode && r.unita) {
