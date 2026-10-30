@@ -5,14 +5,36 @@ import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
 import { CheckboxModule } from 'primeng/checkbox'
+import { DialogModule } from 'primeng/dialog'
 import { TagModule } from 'primeng/tag'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
-import { ConfirmationService } from 'primeng/api'
+import { ConfirmationService, SharedModule } from 'primeng/api'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { RentriUnitaLocaleService, RentriUnitaLocale } from './rentri-unita-locale.service'
 
 const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
+
+/** Stesse regole del DTO backend: CAP vuoto o 5 cifre, provincia vuota o 2 lettere. */
+const RE_CAP = /^([0-9]{5})?$/
+const RE_PROVINCIA = /^([A-Za-z]{2})?$/
+
+interface FormMud {
+  indirizzo: string
+  civico: string
+  cap: string
+  comune: string
+  provincia: string
+  numeroAddetti: string
+}
+const FORM_MUD_VUOTO = (): FormMud => ({
+  indirizzo: '',
+  civico: '',
+  cap: '',
+  comune: '',
+  provincia: '',
+  numeroAddetti: '',
+})
 
 /**
  * Pagina admin per gestire le unità locali RENTRI del tenant (R2 multi-sede).
@@ -33,6 +55,8 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
     ButtonModule,
     InputTextModule,
     CheckboxModule,
+    DialogModule,
+    SharedModule,
     TagModule,
     ConfirmDialogModule,
   ],
@@ -109,6 +133,12 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
               <div class="rentri-sede-row__main">
                 <span class="rentri-sede-row__nome">{{ sede.denominazione }}</span>
                 <span class="rentri-sede-row__codice">{{ sede.numIscrSito }}</span>
+                <span
+                  *ngIf="sede.progressivoMud != null"
+                  class="rentri-sede-row__codice"
+                  [attr.data-testid]="'rentri-unita-locale-codice-mud-' + sede.id"
+                  >Codice MUD {{ sede.progressivoMud }}</span
+                >
               </div>
               <div class="rentri-sede-row__badges">
                 <p-tag
@@ -116,6 +146,12 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
                   severity="info"
                   value="Principale"
                   data-testid="rentri-unita-locale-badge-principale"
+                ></p-tag>
+                <p-tag
+                  *ngIf="indirizzoMudMancante(sede)"
+                  severity="warning"
+                  value="Indirizzo per il MUD mancante"
+                  [attr.data-testid]="'rentri-unita-locale-mud-mancante-' + sede.id"
                 ></p-tag>
                 <p-tag
                   [severity]="sede.attiva ? 'success' : 'danger'"
@@ -133,6 +169,14 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
                   size="small"
                   (onClick)="setPrincipale(sede)"
                   [attr.data-testid]="'rentri-unita-locale-set-principale-' + sede.id"
+                ></p-button>
+                <p-button
+                  label="Dati per il MUD"
+                  icon="pi pi-file-edit"
+                  [text]="true"
+                  size="small"
+                  (onClick)="apriDatiMud(sede)"
+                  [attr.data-testid]="'rentri-unita-locale-dati-mud-' + sede.id"
                 ></p-button>
                 <p-button
                   [label]="sede.attiva ? 'Segna cessata' : 'Riattiva'"
@@ -210,6 +254,139 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
           </section>
         </div>
       </ng-container>
+
+      <p-dialog
+        [visible]="datiMudAperto()"
+        (visibleChange)="!$event && chiudiDatiMud()"
+        header="Dati per il MUD"
+        [modal]="true"
+        [closable]="true"
+        [closeOnEscape]="true"
+        [style]="{ width: '560px', maxWidth: '95vw' }"
+        closeAriaLabel="Chiudi la finestra dei dati per il MUD"
+        (onShow)="focalizzaPrimoCampo()"
+      >
+        <p
+          class="text-secondary mb-3"
+          *ngIf="sedeMud() as s"
+          data-testid="rentri-unita-locale-mud-sede"
+        >
+          Anagrafica di <strong>{{ s.denominazione }}</strong> per la dichiarazione MUD.
+        </p>
+        <div class="field mb-3">
+          <label for="ul-mud-indirizzo" class="block mb-2">Indirizzo</label>
+          <input
+            id="ul-mud-indirizzo"
+            pInputText
+            class="w-full"
+            maxlength="255"
+            [(ngModel)]="formMud.indirizzo"
+            data-testid="rentri-unita-locale-mud-indirizzo"
+          />
+        </div>
+        <div class="field mb-3">
+          <label for="ul-mud-civico" class="block mb-2">Civico</label>
+          <input
+            id="ul-mud-civico"
+            pInputText
+            class="w-full"
+            maxlength="20"
+            [(ngModel)]="formMud.civico"
+            data-testid="rentri-unita-locale-mud-civico"
+          />
+        </div>
+        <div class="field mb-3">
+          <label for="ul-mud-cap" class="block mb-2">CAP</label>
+          <input
+            id="ul-mud-cap"
+            pInputText
+            class="w-full"
+            maxlength="5"
+            inputmode="numeric"
+            [(ngModel)]="formMud.cap"
+            [attr.aria-invalid]="capNonValido() ? true : null"
+            [attr.aria-describedby]="capNonValido() ? 'ul-mud-cap-err' : null"
+            data-testid="rentri-unita-locale-mud-cap"
+          />
+          <small
+            *ngIf="capNonValido()"
+            id="ul-mud-cap-err"
+            role="alert"
+            class="block mt-1 text-danger"
+            data-testid="rentri-unita-locale-mud-cap-errore"
+            >Il CAP deve essere di 5 cifre</small
+          >
+        </div>
+        <div class="field mb-3">
+          <label for="ul-mud-comune" class="block mb-2">Comune</label>
+          <input
+            id="ul-mud-comune"
+            pInputText
+            class="w-full"
+            maxlength="100"
+            [(ngModel)]="formMud.comune"
+            data-testid="rentri-unita-locale-mud-comune"
+          />
+        </div>
+        <div class="field mb-3">
+          <label for="ul-mud-provincia" class="block mb-2">Provincia (sigla)</label>
+          <input
+            id="ul-mud-provincia"
+            pInputText
+            class="w-full"
+            maxlength="2"
+            [(ngModel)]="formMud.provincia"
+            [attr.aria-invalid]="provinciaNonValida() ? true : null"
+            [attr.aria-describedby]="provinciaNonValida() ? 'ul-mud-provincia-err' : null"
+            data-testid="rentri-unita-locale-mud-provincia"
+          />
+          <small
+            *ngIf="provinciaNonValida()"
+            id="ul-mud-provincia-err"
+            role="alert"
+            class="block mt-1 text-danger"
+            data-testid="rentri-unita-locale-mud-provincia-errore"
+            >La provincia deve essere la sigla di 2 lettere</small
+          >
+        </div>
+        <div class="field mb-3">
+          <label for="ul-mud-addetti" class="block mb-2">Numero di addetti</label>
+          <input
+            id="ul-mud-addetti"
+            pInputText
+            class="w-full"
+            inputmode="numeric"
+            [(ngModel)]="formMud.numeroAddetti"
+            [attr.aria-invalid]="addettiNonValidi() ? true : null"
+            [attr.aria-describedby]="addettiNonValidi() ? 'ul-mud-addetti-err' : null"
+            data-testid="rentri-unita-locale-mud-addetti"
+          />
+          <small
+            *ngIf="addettiNonValidi()"
+            id="ul-mud-addetti-err"
+            role="alert"
+            class="block mt-1 text-danger"
+            data-testid="rentri-unita-locale-mud-addetti-errore"
+            >Gli addetti devono essere un numero intero, zero o più</small
+          >
+        </div>
+        <ng-template pTemplate="footer">
+          <p-button
+            label="Annulla"
+            [text]="true"
+            (onClick)="chiudiDatiMud()"
+            data-testid="rentri-unita-locale-mud-annulla"
+          ></p-button>
+          <p-button
+            label="Salva"
+            icon="pi pi-check"
+            [loading]="saving()"
+            [disabled]="!datiMudValidi()"
+            (onClick)="salvaDatiMud()"
+            data-testid="rentri-unita-locale-mud-salva"
+          ></p-button>
+        </ng-template>
+      </p-dialog>
     </div>
   `,
   styles: [
@@ -259,6 +436,9 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
       .text-secondary {
         color: var(--text-secondary);
       }
+      .text-danger {
+        color: var(--red-500, #dc2626);
+      }
       .text-tertiary {
         color: var(--text-tertiary);
       }
@@ -298,6 +478,11 @@ export class RentriUnitaLocaleComponent implements OnInit {
     return !!role && ADMIN_ROLES.includes(role)
   })
 
+  // Dialog "Dati per il MUD"
+  readonly sedeMud = signal<RentriUnitaLocale | null>(null)
+  readonly datiMudAperto = computed(() => this.sedeMud() !== null)
+  formMud: FormMud = FORM_MUD_VUOTO()
+
   // Form aggiunta sede
   denominazione = ''
   numIscrSito = ''
@@ -321,6 +506,80 @@ export class RentriUnitaLocaleComponent implements OnInit {
         this.toast.error('Impossibile caricare le sedi RENTRI del tenant')
       },
     })
+  }
+
+  /** Sede non principale a cui manca un dato dell'indirizzo (la principale ripiega sull'azienda). */
+  indirizzoMudMancante(sede: RentriUnitaLocale): boolean {
+    if (sede.principale) return false
+    return [sede.indirizzo, sede.cap, sede.comune, sede.provincia].some(v => !v || !v.trim())
+  }
+
+  apriDatiMud(sede: RentriUnitaLocale): void {
+    this.formMud = {
+      indirizzo: sede.indirizzo ?? '',
+      civico: sede.civico ?? '',
+      cap: sede.cap ?? '',
+      comune: sede.comune ?? '',
+      provincia: sede.provincia ?? '',
+      numeroAddetti: sede.numeroAddetti == null ? '' : String(sede.numeroAddetti),
+    }
+    this.sedeMud.set(sede)
+  }
+
+  chiudiDatiMud(): void {
+    this.sedeMud.set(null)
+  }
+
+  /** Porta il focus sul primo campo all'apertura del dialog. */
+  focalizzaPrimoCampo(): void {
+    setTimeout(() => document.getElementById('ul-mud-indirizzo')?.focus())
+  }
+
+  capNonValido(): boolean {
+    return !RE_CAP.test((this.formMud.cap ?? '').trim())
+  }
+
+  provinciaNonValida(): boolean {
+    return !RE_PROVINCIA.test((this.formMud.provincia ?? '').trim())
+  }
+
+  addettiNonValidi(): boolean {
+    const v = String(this.formMud.numeroAddetti ?? '').trim()
+    return v !== '' && !/^[0-9]+$/.test(v)
+  }
+
+  datiMudValidi(): boolean {
+    return !this.capNonValido() && !this.provinciaNonValida() && !this.addettiNonValidi()
+  }
+
+  salvaDatiMud(): void {
+    const sede = this.sedeMud()
+    if (!sede || !this.datiMudValidi()) return
+    const f = this.formMud
+    const addetti = String(f.numeroAddetti ?? '').trim()
+    this.saving.set(true)
+    // Stringa vuota = cancella il dato (come il backend); addetti vuoti = null.
+    this.unitaLocaleService
+      .update(sede.id, {
+        indirizzo: (f.indirizzo ?? '').trim(),
+        civico: (f.civico ?? '').trim(),
+        cap: (f.cap ?? '').trim(),
+        comune: (f.comune ?? '').trim(),
+        provincia: (f.provincia ?? '').trim().toUpperCase(),
+        numeroAddetti: addetti === '' ? null : Number(addetti),
+      })
+      .subscribe({
+        next: aggiornata => {
+          this.saving.set(false)
+          this.sedi.update(lista => lista.map(x => (x.id === aggiornata.id ? aggiornata : x)))
+          this.toast.success('Dati per il MUD salvati')
+          this.chiudiDatiMud()
+        },
+        error: err => {
+          this.saving.set(false)
+          this.toast.error(err?.error?.message || 'Errore nel salvataggio dei dati per il MUD')
+        },
+      })
   }
 
   canSubmit(): boolean {

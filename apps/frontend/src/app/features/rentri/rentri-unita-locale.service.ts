@@ -11,6 +11,15 @@ export interface RentriUnitaLocale {
   denominazione: string
   principale: boolean
   attiva: boolean
+  /** Anagrafica per la dichiarazione MUD della sede (null = non indicata). */
+  indirizzo?: string | null
+  civico?: string | null
+  cap?: string | null
+  comune?: string | null
+  provincia?: string | null
+  numeroAddetti?: number | null
+  /** Codice MUD della sede, assegnato dal database: sola lettura. */
+  progressivoMud?: number | null
   createdAt: string
   updatedAt: string
 }
@@ -26,6 +35,12 @@ export interface CreateRentriUnitaLocale {
 export interface UpdateRentriUnitaLocale {
   denominazione?: string
   attiva?: boolean
+  indirizzo?: string | null
+  civico?: string | null
+  cap?: string | null
+  comune?: string | null
+  provincia?: string | null
+  numeroAddetti?: number | null
 }
 
 /**
