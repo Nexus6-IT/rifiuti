@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed — Deposito temporaneo (Fase 2 pezzo 6)
+
+L'età del deposito temporaneo ora si calcola dal rifiuto più vecchio **ancora in
+deposito** (ordine di uscita FIFO), sede per sede. Prima si contava dal primo carico di
+sempre: dopo il primo trimestre quasi ogni CER risultava "oltre i 90 giorni" anche se era
+stato avviato regolarmente. **Ci saranno meno allarmi, e quelli che restano sono
+veri.** Il limite temporale è ora di tre mesi di calendario, come dice l'art. 185-bis
+(prima 90 giorni fissi); l'azienda può fissarne uno più breve. Il limite quantitativo
+vale per l'intero deposito della sede (tutti i CER insieme), dal momento in cui viene
+raggiunto, con un limite separato per i pericolosi: chi ha molti CER sotto soglia uno
+per uno può vedere un avviso nuovo. Ogni azienda (o ogni sede) può scegliere il criterio
+(temporale o quantitativo) e le soglie; i limiti in kg sono una conversione indicata
+dall'azienda del limite di legge in m³. Arrivano anche i preavvisi. Sono solo avvisi:
+nessuna registrazione viene bloccata.
+
+---
+
 ## [1.0.0] - 2025-11-01 - Production Release 🎉
 
 ### Summary
