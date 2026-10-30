@@ -36,10 +36,12 @@ function creaTrasportatore(scadenzaIscrizione?: Date): Trasportatore {
   })
 }
 
+const TX = { tx: true }
+
 describe('UpdateTrasportatoreUseCase', () => {
   let useCase: UpdateTrasportatoreUseCase
   let repository: jest.Mocked<TrasportatoreRepository>
-  let ditte: { aggiornaDitta: jest.Mock }
+  let ditte: { aggiornaDitta: jest.Mock; transazione: jest.Mock }
 
   beforeEach(() => {
     repository = {
@@ -51,7 +53,10 @@ describe('UpdateTrasportatoreUseCase', () => {
       delete: jest.fn(),
     } as any
 
-    ditte = { aggiornaDitta: jest.fn().mockResolvedValue(undefined) }
+    ditte = {
+      aggiornaDitta: jest.fn().mockResolvedValue(undefined),
+      transazione: jest.fn(async (fn: (tx: unknown) => unknown) => fn(TX)),
+    }
     useCase = new UpdateTrasportatoreUseCase(repository, ditte as never)
   })
 
@@ -115,7 +120,8 @@ describe('UpdateTrasportatoreUseCase', () => {
       expect(ditte.aggiornaDitta).toHaveBeenCalledWith(
         'ditta-1',
         { partitaIva: undefined, codiceFiscale: 'RSSMRA80A01H501U' },
-        expect.any(Object)
+        expect.any(Object),
+        TX
       )
       // lettura iniziale + rilettura con gli identificativi aggiornati
       expect(repository.findById).toHaveBeenCalledTimes(2)
@@ -139,7 +145,7 @@ describe('UpdateTrasportatoreUseCase', () => {
       const result = await useCase.execute({ id: ruolo.id, sedeId: 'sede-2' })
 
       expect(result.isSuccess).toBe(true)
-      expect(repository.findById).toHaveBeenLastCalledWith(ruolo.id, { sedeId: 'sede-2' })
+      expect(repository.findById).toHaveBeenLastCalledWith(ruolo.id, { sedeId: 'sede-2' }, TX)
       expect(repository.save).toHaveBeenCalledTimes(1)
     })
 

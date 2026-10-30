@@ -17,12 +17,12 @@ export interface DestinatarioRepository<C = unknown> {
    * Modifica un ruolo esistente in una transazione: ragione sociale della ditta, indirizzo e
    * contatti della sede, riga di ruolo (sede predefinita compresa).
    */
-  save(destinatario: Destinatario): Promise<void>
+  save(destinatario: Destinatario, client?: C): Promise<void>
 
   /**
    * Find a Destinatario by ID
    */
-  findById(id: string, opzioni?: OpzioniLetturaRuolo): Promise<Destinatario | null>
+  findById(id: string, opzioni?: OpzioniLetturaRuolo, client?: C): Promise<Destinatario | null>
 
   /**
    * Find all Destinatari for a tenant

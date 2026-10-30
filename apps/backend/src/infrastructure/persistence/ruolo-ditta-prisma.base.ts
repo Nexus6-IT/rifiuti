@@ -110,9 +110,10 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
    * sede predefinita, riga di ruolo. La ragione sociale e la sede sono condivise con gli altri
    * ruoli della stessa ditta (D7).
    */
-  async save(entita: E): Promise<void> {
+  async save(entita: E, client?: ClientDitte): Promise<void> {
     const tenantId = TenantContext.requireTenantId()
-    await this.prisma.$transaction(async tx => {
+    // con il `client` del chiamante le scritture fanno parte della sua transazione
+    const esegui = async (tx: ClientDitte) => {
       await tx.ditta.updateMany({
         where: { id: entita.dittaId, tenantId },
         data: { ragioneSociale: entita.ragioneSociale },
@@ -155,7 +156,9 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
           ...this.campiRuolo(entita),
         },
       })
-    })
+    }
+    if (client) await esegui(client)
+    else await this.prisma.$transaction(esegui)
   }
 
   async delete(id: string): Promise<void> {
@@ -169,11 +172,16 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
   // Letture
   // -------------------------------------------------------------------------------------------
 
-  async findById(id: string, opzioni: OpzioniLetturaRuolo = {}): Promise<E | null> {
+  async findById(
+    id: string,
+    opzioni: OpzioniLetturaRuolo = {},
+    client?: ClientDitte
+  ): Promise<E | null> {
     // Scoping per tenant: la RLS-extension e' no-op su findUnique, quindi una findUnique per sola
     // PK esporrebbe anagrafiche di altri tenant.
     const tenantId = TenantContext.requireTenantId()
-    const riga = await (this.prisma.db as any)[this.modello].findFirst({
+    const lettore: any = client ?? this.prisma.db
+    const riga = await lettore[this.modello].findFirst({
       where: { id, tenantId },
       include: this.includeDettaglio(),
     })
@@ -182,7 +190,7 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
     let sede: RecordSedeLetto = this.sedeDellaRiga(riga)
     if (opzioni.sedeId && opzioni.sedeId !== riga.sedeId) {
       // la sede indicata deve essere attiva e della stessa ditta del ruolo (D4, D9)
-      const altra = await this.prisma.db.sedeDitta.findFirst({
+      const altra = await lettore.sedeDitta.findFirst({
         where: { id: opzioni.sedeId, dittaId: riga.dittaId, tenantId, attiva: true },
       })
       if (!altra) throw new SedeNonValidaPerRuoloError(NOME_RUOLO[this.ruolo])

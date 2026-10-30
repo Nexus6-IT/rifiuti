@@ -17,6 +17,7 @@ import { ReferenceDataService } from '../../reference-data/reference-data.servic
 import { DitteService } from '../ditte/ditte.service'
 import {
   MESSAGGIO_SEDE_E_INDIRIZZO,
+  RifiutoRichiestaError,
   eErroreDiDittaDaPropagare,
   messaggioSicuro,
 } from '../crea-ruolo-su-ditta'
@@ -71,85 +72,97 @@ export class UpdateTrasportatoreUseCase {
         return Result.fail('Trasportatore not found')
       }
 
-      // Identificativi: si agisce sulla ditta, con i suoi lock e l'audit della correzione
-      const cambiaIdentificativi = !!(command.codiceFiscale || command.partitaIVA)
-      if (cambiaIdentificativi) {
-        await this.ditte.aggiornaDitta(
-          esistente.dittaId,
-          { partitaIva: command.partitaIVA, codiceFiscale: command.codiceFiscale },
-          { userId: TenantContext.getUserId() ?? undefined }
-        )
-      }
-
-      // Si rilegge se serve: identificativi aggiornati e, con sedeId, indirizzo e contatti della
-      // nuova sede predefinita (D7; sede non valida per il ruolo = 400)
-      const trasportatore =
-        cambiaIdentificativi || command.sedeId
-          ? await this.trasportatoreRepository.findById(
-              command.id,
-              command.sedeId ? { sedeId: command.sedeId } : undefined
-            )
-          : esistente
-
-      if (!trasportatore) {
-        return Result.fail('Trasportatore not found')
-      }
-
-      // Check if new Numero Iscrizione already exists (if changing)
-      if (command.numeroIscrizione && command.numeroIscrizione !== trasportatore.numeroIscrizione) {
-        const existing = await this.trasportatoreRepository.findByNumeroIscrizione(
-          command.numeroIscrizione
-        )
-
-        if (existing) {
-          return Result.fail('Another Trasportatore with this Numero Iscrizione already exists')
-        }
-      }
-
-      // Update fields using entity methods
-      if (command.ragioneSociale) {
-        trasportatore.updateRagioneSociale(command.ragioneSociale)
-      }
-
-      if (command.sedeLegale) {
-        if (this.referenceData) {
-          const v = await this.referenceData.validateLocalita(
-            command.sedeLegale.citta,
-            command.sedeLegale.provincia
+      // Tutto o niente: identificativi della ditta, validazioni e salvataggio in UNA transazione.
+      // Un rifiuto o un errore a meta' annulla anche la correzione degli identificativi e l'audit.
+      return await this.ditte.transazione(async tx => {
+        // Identificativi: si agisce sulla ditta, con i suoi lock e l'audit della correzione
+        const cambiaIdentificativi = !!(command.codiceFiscale || command.partitaIVA)
+        if (cambiaIdentificativi) {
+          await this.ditte.aggiornaDitta(
+            esistente.dittaId,
+            { partitaIva: command.partitaIVA, codiceFiscale: command.codiceFiscale },
+            { userId: TenantContext.getUserId() ?? undefined },
+            tx
           )
-          if (!v.ok) return Result.fail(v.error!)
         }
-        trasportatore.updateSedeLegale(Indirizzo.create(command.sedeLegale))
-      }
 
-      if (command.numeroIscrizione) {
-        trasportatore.updateNumeroIscrizione(command.numeroIscrizione)
-      }
+        // Si rilegge se serve: identificativi aggiornati e, con sedeId, indirizzo e contatti della
+        // nuova sede predefinita (D7; sede non valida per il ruolo = 400)
+        const trasportatore =
+          cambiaIdentificativi || command.sedeId
+            ? await this.trasportatoreRepository.findById(
+                command.id,
+                command.sedeId ? { sedeId: command.sedeId } : undefined,
+                tx
+              )
+            : esistente
 
-      // `undefined` = campo non presente nella richiesta, nessuna modifica;
-      // `null` = azzeramento esplicito della scadenza.
-      if (command.scadenzaIscrizione !== undefined) {
-        trasportatore.updateScadenzaIscrizione(command.scadenzaIscrizione ?? undefined)
-      }
+        if (!trasportatore) {
+          throw new RifiutoRichiestaError('Trasportatore not found')
+        }
 
-      // Update contacts if any field is provided
-      if (
-        command.email !== undefined ||
-        command.telefono !== undefined ||
-        command.pec !== undefined
-      ) {
-        trasportatore.updateContatti(
-          command.email !== undefined ? command.email : trasportatore.email,
-          command.telefono !== undefined ? command.telefono : trasportatore.telefono,
-          command.pec !== undefined ? command.pec : trasportatore.pec
-        )
-      }
+        // Check if new Numero Iscrizione already exists (if changing)
+        if (
+          command.numeroIscrizione &&
+          command.numeroIscrizione !== trasportatore.numeroIscrizione
+        ) {
+          const existing = await this.trasportatoreRepository.findByNumeroIscrizione(
+            command.numeroIscrizione
+          )
 
-      // Save updated entity
-      await this.trasportatoreRepository.save(trasportatore)
+          if (existing) {
+            throw new RifiutoRichiestaError(
+              'Another Trasportatore with this Numero Iscrizione already exists'
+            )
+          }
+        }
 
-      return Result.ok(trasportatore)
+        // Update fields using entity methods
+        if (command.ragioneSociale) {
+          trasportatore.updateRagioneSociale(command.ragioneSociale)
+        }
+
+        if (command.sedeLegale) {
+          if (this.referenceData) {
+            const v = await this.referenceData.validateLocalita(
+              command.sedeLegale.citta,
+              command.sedeLegale.provincia
+            )
+            if (!v.ok) throw new RifiutoRichiestaError(v.error!)
+          }
+          trasportatore.updateSedeLegale(Indirizzo.create(command.sedeLegale))
+        }
+
+        if (command.numeroIscrizione) {
+          trasportatore.updateNumeroIscrizione(command.numeroIscrizione)
+        }
+
+        // `undefined` = campo non presente nella richiesta, nessuna modifica;
+        // `null` = azzeramento esplicito della scadenza.
+        if (command.scadenzaIscrizione !== undefined) {
+          trasportatore.updateScadenzaIscrizione(command.scadenzaIscrizione ?? undefined)
+        }
+
+        // Update contacts if any field is provided
+        if (
+          command.email !== undefined ||
+          command.telefono !== undefined ||
+          command.pec !== undefined
+        ) {
+          trasportatore.updateContatti(
+            command.email !== undefined ? command.email : trasportatore.email,
+            command.telefono !== undefined ? command.telefono : trasportatore.telefono,
+            command.pec !== undefined ? command.pec : trasportatore.pec
+          )
+        }
+
+        // Save updated entity
+        await this.trasportatoreRepository.save(trasportatore, tx)
+
+        return Result.ok(trasportatore)
+      })
     } catch (error: unknown) {
+      if (error instanceof RifiutoRichiestaError) return Result.fail(error.message)
       if (eErroreDiDittaDaPropagare(error)) throw error
       return Result.fail(messaggioSicuro(error))
     }

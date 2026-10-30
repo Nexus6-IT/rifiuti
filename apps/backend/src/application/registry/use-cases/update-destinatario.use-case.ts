@@ -17,6 +17,7 @@ import { ReferenceDataService } from '../../reference-data/reference-data.servic
 import { DitteService } from '../ditte/ditte.service'
 import {
   MESSAGGIO_SEDE_E_INDIRIZZO,
+  RifiutoRichiestaError,
   eErroreDiDittaDaPropagare,
   messaggioSicuro,
 } from '../crea-ruolo-su-ditta'
@@ -69,88 +70,97 @@ export class UpdateDestinatarioUseCase {
         return Result.fail('Destinatario not found')
       }
 
-      // Identificativi: si agisce sulla ditta, con i suoi lock e l'audit della correzione
-      const cambiaIdentificativi = !!(command.codiceFiscale || command.partitaIVA)
-      if (cambiaIdentificativi) {
-        await this.ditte.aggiornaDitta(
-          esistente.dittaId,
-          { partitaIva: command.partitaIVA, codiceFiscale: command.codiceFiscale },
-          { userId: TenantContext.getUserId() ?? undefined }
-        )
-      }
-
-      // Si rilegge se serve: identificativi aggiornati e, con sedeId, indirizzo e contatti della
-      // nuova sede predefinita (D7; sede non valida per il ruolo = 400)
-      const destinatario =
-        cambiaIdentificativi || command.sedeId
-          ? await this.destinatarioRepository.findById(
-              command.id,
-              command.sedeId ? { sedeId: command.sedeId } : undefined
-            )
-          : esistente
-
-      if (!destinatario) {
-        return Result.fail('Destinatario not found')
-      }
-
-      // Check if new Numero Autorizzazione already exists (if changing)
-      if (
-        command.numeroAutorizzazione &&
-        command.numeroAutorizzazione !== destinatario.numeroAutorizzazione
-      ) {
-        const existing = await this.destinatarioRepository.findByNumeroAutorizzazione(
-          command.numeroAutorizzazione
-        )
-
-        if (existing) {
-          return Result.fail('Another Destinatario with this Numero Autorizzazione already exists')
-        }
-      }
-
-      // Update fields using entity methods
-      if (command.ragioneSociale) {
-        destinatario.updateRagioneSociale(command.ragioneSociale)
-      }
-
-      if (command.sede) {
-        if (this.referenceData) {
-          const v = await this.referenceData.validateLocalita(
-            command.sede.citta,
-            command.sede.provincia
+      // Tutto o niente: identificativi della ditta, validazioni e salvataggio in UNA transazione.
+      // Un rifiuto o un errore a meta' annulla anche la correzione degli identificativi e l'audit.
+      return await this.ditte.transazione(async tx => {
+        // Identificativi: si agisce sulla ditta, con i suoi lock e l'audit della correzione
+        const cambiaIdentificativi = !!(command.codiceFiscale || command.partitaIVA)
+        if (cambiaIdentificativi) {
+          await this.ditte.aggiornaDitta(
+            esistente.dittaId,
+            { partitaIva: command.partitaIVA, codiceFiscale: command.codiceFiscale },
+            { userId: TenantContext.getUserId() ?? undefined },
+            tx
           )
-          if (!v.ok) return Result.fail(v.error!)
         }
-        destinatario.updateSede(Indirizzo.create(command.sede))
-      }
 
-      if (command.numeroAutorizzazione) {
-        destinatario.updateNumeroAutorizzazione(command.numeroAutorizzazione)
-      }
+        // Si rilegge se serve: identificativi aggiornati e, con sedeId, indirizzo e contatti della
+        // nuova sede predefinita (D7; sede non valida per il ruolo = 400)
+        const destinatario =
+          cambiaIdentificativi || command.sedeId
+            ? await this.destinatarioRepository.findById(
+                command.id,
+                command.sedeId ? { sedeId: command.sedeId } : undefined,
+                tx
+              )
+            : esistente
 
-      // `undefined` = campo non presente nella richiesta, nessuna modifica;
-      // `null` = azzeramento esplicito della scadenza.
-      if (command.scadenzaAutorizzazione !== undefined) {
-        destinatario.updateScadenzaAutorizzazione(command.scadenzaAutorizzazione ?? undefined)
-      }
+        if (!destinatario) {
+          throw new RifiutoRichiestaError('Destinatario not found')
+        }
 
-      // Update contacts if any field is provided
-      if (
-        command.email !== undefined ||
-        command.telefono !== undefined ||
-        command.pec !== undefined
-      ) {
-        destinatario.updateContatti(
-          command.email !== undefined ? command.email : destinatario.email,
-          command.telefono !== undefined ? command.telefono : destinatario.telefono,
-          command.pec !== undefined ? command.pec : destinatario.pec
-        )
-      }
+        // Check if new Numero Autorizzazione already exists (if changing)
+        if (
+          command.numeroAutorizzazione &&
+          command.numeroAutorizzazione !== destinatario.numeroAutorizzazione
+        ) {
+          const existing = await this.destinatarioRepository.findByNumeroAutorizzazione(
+            command.numeroAutorizzazione
+          )
 
-      // Save updated entity
-      await this.destinatarioRepository.save(destinatario)
+          if (existing) {
+            throw new RifiutoRichiestaError(
+              'Another Destinatario with this Numero Autorizzazione already exists'
+            )
+          }
+        }
 
-      return Result.ok(destinatario)
+        // Update fields using entity methods
+        if (command.ragioneSociale) {
+          destinatario.updateRagioneSociale(command.ragioneSociale)
+        }
+
+        if (command.sede) {
+          if (this.referenceData) {
+            const v = await this.referenceData.validateLocalita(
+              command.sede.citta,
+              command.sede.provincia
+            )
+            if (!v.ok) throw new RifiutoRichiestaError(v.error!)
+          }
+          destinatario.updateSede(Indirizzo.create(command.sede))
+        }
+
+        if (command.numeroAutorizzazione) {
+          destinatario.updateNumeroAutorizzazione(command.numeroAutorizzazione)
+        }
+
+        // `undefined` = campo non presente nella richiesta, nessuna modifica;
+        // `null` = azzeramento esplicito della scadenza.
+        if (command.scadenzaAutorizzazione !== undefined) {
+          destinatario.updateScadenzaAutorizzazione(command.scadenzaAutorizzazione ?? undefined)
+        }
+
+        // Update contacts if any field is provided
+        if (
+          command.email !== undefined ||
+          command.telefono !== undefined ||
+          command.pec !== undefined
+        ) {
+          destinatario.updateContatti(
+            command.email !== undefined ? command.email : destinatario.email,
+            command.telefono !== undefined ? command.telefono : destinatario.telefono,
+            command.pec !== undefined ? command.pec : destinatario.pec
+          )
+        }
+
+        // Save updated entity
+        await this.destinatarioRepository.save(destinatario, tx)
+
+        return Result.ok(destinatario)
+      })
     } catch (error: unknown) {
+      if (error instanceof RifiutoRichiestaError) return Result.fail(error.message)
       if (eErroreDiDittaDaPropagare(error)) throw error
       return Result.fail(messaggioSicuro(error))
     }

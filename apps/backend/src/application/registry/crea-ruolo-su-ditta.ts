@@ -45,6 +45,17 @@ export class RuoloGiaPresenteError extends Error {
 }
 
 /**
+ * Rifiuto di una modifica a transazione aperta (es. localita' non valida, numero gia' in uso):
+ * lanciato per annullare la transazione, il use case lo traduce in `Result.fail`.
+ */
+export class RifiutoRichiestaError extends Error {
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'RifiutoRichiestaError'
+  }
+}
+
+/**
  * Errori di ditta e sede che il filtro HTTP sa mappare (400/404/409): i use case li rilanciano
  * invece di appiattirli in un `Result.fail` (che diventerebbe sempre 400).
  */

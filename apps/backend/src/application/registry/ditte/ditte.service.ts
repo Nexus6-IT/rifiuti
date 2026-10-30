@@ -229,11 +229,13 @@ export class DitteService {
    * Ragione sociale, aggiunta dell'identificativo mancante (D2.7) o sostituzione della partita
    * IVA (D2.8). La sostituzione prende il lock su ENTRAMBI i valori (quello vecchio e quello
    * nuovo), verifica l'unicita' e scrive una riga di audit senza valori.
+   * Con `client` lavora dentro la transazione del chiamante invece di aprirne una propria.
    */
   async aggiornaDitta(
     dittaId: string,
     dati: AggiornaDittaDati,
-    contesto: ContestoAudit = {}
+    contesto: ContestoAudit = {},
+    client?: ClientDitte
   ): Promise<DittaDto> {
     const tenantId = TenantContext.requireTenantId()
     const nuovo =
@@ -244,7 +246,7 @@ export class DitteService {
           })
         : null
 
-    return this.prisma.$transaction(async tx => {
+    const esegui = async (tx: ClientDitte): Promise<DittaDto> => {
       // la ditta si legge due volte: la prima per sapere quali valori bloccare, la seconda,
       // dopo i lock, per decidere sullo stato che nessun altro puo' piu' cambiare
       const prima = await this.dittaOppure404(tx, dittaId)
@@ -292,7 +294,14 @@ export class DitteService {
         })
       }
       return this.dto(tx, ditta)
-    })
+    }
+    // con il `client` del chiamante la correzione fa parte della sua transazione (tutto o niente)
+    return client ? esegui(client) : this.prisma.$transaction(esegui)
+  }
+
+  /** Esegue `fn` in UNA transazione (con il tenant corrente): per le modifiche tutto-o-niente. */
+  transazione<T>(fn: (tx: ClientDitte) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(fn)
   }
 
   async aggiungiSede(dittaId: string, dati: DatiSede): Promise<SedeDto> {

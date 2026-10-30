@@ -17,12 +17,12 @@ export interface ProduttoreRepository<C = unknown> {
    * Modifica un ruolo esistente in una transazione: ragione sociale della ditta, indirizzo e
    * contatti della sede, riga di ruolo (sede predefinita compresa).
    */
-  save(produttore: Produttore): Promise<void>
+  save(produttore: Produttore, client?: C): Promise<void>
 
   /**
    * Find a Produttore by ID
    */
-  findById(id: string, opzioni?: OpzioniLetturaRuolo): Promise<Produttore | null>
+  findById(id: string, opzioni?: OpzioniLetturaRuolo, client?: C): Promise<Produttore | null>
 
   /**
    * Find all Produttori for a tenant

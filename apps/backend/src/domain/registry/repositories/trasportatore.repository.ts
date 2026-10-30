@@ -17,12 +17,12 @@ export interface TrasportatoreRepository<C = unknown> {
    * Modifica un ruolo esistente in una transazione: ragione sociale della ditta, indirizzo e
    * contatti della sede, riga di ruolo (sede predefinita compresa).
    */
-  save(trasportatore: Trasportatore): Promise<void>
+  save(trasportatore: Trasportatore, client?: C): Promise<void>
 
   /**
    * Find a Trasportatore by ID
    */
-  findById(id: string, opzioni?: OpzioniLetturaRuolo): Promise<Trasportatore | null>
+  findById(id: string, opzioni?: OpzioniLetturaRuolo, client?: C): Promise<Trasportatore | null>
 
   /**
    * Find all Trasportatori for a tenant
