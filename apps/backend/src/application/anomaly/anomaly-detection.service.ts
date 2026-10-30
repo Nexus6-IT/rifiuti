@@ -31,6 +31,8 @@ export interface Anomaly {
   firId?: string
   firNumber?: string
   cerCode?: string
+  /** Registro (sede) della giacenza impossibile. */
+  registroId?: string
 }
 
 export interface AnomalyDetectionConfig {
@@ -49,6 +51,7 @@ interface SaldoUnita {
 }
 
 interface SaldoCer {
+  registroId: string
   cerCode: string
   /** chiave: 'KG' per la massa (kg e t convertiti), altrimenti l'unità normalizzata */
   perUnita: Map<string, SaldoUnita>
@@ -137,15 +140,16 @@ export class AnomalyDetectionService {
    */
   private async giacenzeImpossibili(tenantId: string): Promise<Anomaly[]> {
     const byType = await this.prisma.wasteMovement.groupBy({
-      by: ['cerCode', 'type', 'unit'],
+      by: ['registroId', 'cerCode', 'type', 'unit'],
       where: { tenantId, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
 
     const perCer = new Map<string, SaldoCer>()
     for (const row of byType) {
-      const chiave = chiaveConfrontoCer(row.cerCode)
+      const chiave = `${row.registroId}|${chiaveConfrontoCer(row.cerCode)}`
       const entry = perCer.get(chiave) ?? {
+        registroId: row.registroId,
         cerCode: cerCanonico(row.cerCode),
         perUnita: new Map<string, SaldoUnita>(),
       }
@@ -166,8 +170,9 @@ export class AnomalyDetectionService {
     // Le giacenze iniziali del registro contano come carichi (sono già un saldo di partenza).
     const aperture = await leggiApertureRegistro(this.prisma, tenantId)
     for (const ap of aperture) {
-      const chiave = chiaveConfrontoCer(ap.cerCode)
+      const chiave = `${ap.registroId}|${chiaveConfrontoCer(ap.cerCode)}`
       const entry = perCer.get(chiave) ?? {
+        registroId: ap.registroId,
         cerCode: cerCanonico(ap.cerCode),
         perUnita: new Map<string, SaldoUnita>(),
       }
@@ -182,7 +187,7 @@ export class AnomalyDetectionService {
     }
 
     const anomalies: Anomaly[] = []
-    for (const { cerCode, perUnita } of perCer.values()) {
+    for (const { registroId, cerCode, perUnita } of perCer.values()) {
       for (const [unita, { carico, scarico }] of perUnita) {
         // Un'unità non di massa si confronta solo se ha almeno un carico: i carichi manuali sono
         // sempre in kg, quindi uno scarico in litri o m3 ricopiato da un FIR non è confrontabile.
@@ -193,10 +198,30 @@ export class AnomalyDetectionService {
           type: 'NEGATIVE_STOCK',
           severity: 'HIGH',
           cerCode,
+          registroId,
           message:
             `Giacenza impossibile per ${cerCode}: scarico (${formattaQuantita(scarico)} ${um}) ` +
             `supera carico (${formattaQuantita(carico)} ${um})`,
         })
+      }
+    }
+    // La sede si nomina solo se l'azienda ne ha più di una; i nomi si leggono solo se servono.
+    if (anomalies.length > 0) {
+      const registri = await this.prisma.registroRifiuti.findMany({
+        where: { tenantId },
+        select: { id: true, descrizione: true },
+      })
+      if (registri.length > 1) {
+        const nomi = new Map(registri.map(r => [r.id, r.descrizione]))
+        for (const a of anomalies) {
+          const nome = a.registroId ? nomi.get(a.registroId) : undefined
+          if (nome) {
+            a.message = a.message.replace(
+              `Giacenza impossibile per ${a.cerCode}:`,
+              `Giacenza impossibile per ${a.cerCode} nel registro «${nome}»:`
+            )
+          }
+        }
       }
     }
     return anomalies

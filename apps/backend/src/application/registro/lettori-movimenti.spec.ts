@@ -27,6 +27,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
   },
+  'application/giacenze/eventi-deposito.ts': {
+    scelta: 'vigenti',
+    motivo:
+      "eventi del FIFO del deposito: solo le vigenti; la pericolosita guarda l'asterisco su tutte le righe dell'azienda",
+  },
   'application/giacenze/giacenze.service.ts': {
     scelta: 'vigenti',
     motivo: 'giacenze, carico piu vecchio e scarichi dei FIR annullati',

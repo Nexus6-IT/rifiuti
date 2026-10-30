@@ -132,15 +132,16 @@ import { AuthService } from '../../core/services/auth.service'
       .auth__brand {
         position: relative;
         overflow: hidden;
-        color: var(--text-inverse);
+        /* Pannello di marca: stesso aspetto in chiaro e in scuro (token fissi). */
+        color: var(--on-brand-panel);
         background:
           radial-gradient(120% 90% at 12% 8%, rgba(255, 255, 255, 0.16) 0%, transparent 46%),
           radial-gradient(130% 120% at 92% 100%, rgba(0, 0, 0, 0.22) 0%, transparent 55%),
           linear-gradient(
             150deg,
-            var(--brand-primary) 0%,
-            var(--brand-primary-dark) 62%,
-            var(--brand-accent-dark) 100%
+            var(--brand-panel-from) 0%,
+            var(--brand-panel-mid) 62%,
+            var(--brand-panel-to) 100%
           );
       }
       .auth__brand::after {
@@ -184,14 +185,14 @@ import { AuthService } from '../../core/services/auth.service'
       }
       .brand-mark__glyph i {
         font-size: 1.35rem;
-        color: #fff;
+        color: var(--on-brand-panel);
       }
       .brand-mark__name {
         font-family: var(--font-display);
         font-weight: var(--font-weight-bold);
         font-size: var(--font-size-xl);
         letter-spacing: -0.01em;
-        color: #fff;
+        color: var(--on-brand-panel);
       }
 
       .brand-hero {
@@ -210,7 +211,7 @@ import { AuthService } from '../../core/services/auth.service'
         font-size: clamp(1.75rem, 3vw, 2.5rem);
         line-height: 1.15;
         font-weight: var(--font-weight-bold);
-        color: #fff;
+        color: var(--on-brand-panel);
         margin: 0 0 var(--spacing-base);
         letter-spacing: -0.02em;
       }
@@ -246,7 +247,7 @@ import { AuthService } from '../../core/services/auth.service'
         border: 1px solid rgba(255, 255, 255, 0.22);
         border-radius: var(--radius-base);
         font-size: 1rem;
-        color: #fff;
+        color: var(--on-brand-panel);
       }
 
       .brand-foot {

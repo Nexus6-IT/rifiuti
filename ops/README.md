@@ -439,6 +439,28 @@ codice; il ripristino a mano dello schema e' nel commento iniziale della migrati
 `20261030100000_causali_registro`. Dopo ogni `prisma migrate deploy` va rieseguito
 `ops/db-ruoli.sh`: la sola lettura di `causali_registro` per i ruoli applicativi sta anche li'.
 
+**Attenzione dopo un rollback del codice con la colonna ancora presente:** la rettifica o
+l'annullamento di un movimento che ha una causale `AZ_...` FALLISCONO. Il codice vecchio non scrive
+`causale_azienda_id` nel movimento di storno, e il CHECK `waste_movements_causale_azienda_coerente`
+respinge l'insert (causale `AZ_...` senza `causale_azienda_id`). Le altre causali non sono toccate.
+
+Se si ripristina a mano anche lo schema (elenco nel commento iniziale della migration
+`20261030100000_causali_registro`), vanno cancellate anche le 2 righe di `_prisma_migrations`,
+altrimenti `prisma migrate deploy` non le riapplica al successivo rilascio:
+`DELETE FROM _prisma_migrations WHERE migration_name IN ('20261030100000_causali_registro',
+'20261030100100_causali_disattivazione_check');`. La migration `..._disattivazione_check` va
+annullata per prima (il suo ripristino e' nel proprio commento iniziale). Le migration gia' applicate
+in produzione non si modificano: il commento iniziale resta com'e'.
+
+Stesso discorso per le **soglie del deposito temporaneo** (Fase 2 pezzo 6, tabella
+`soglie_deposito_temporaneo`): il codice vecchio la ignora, quindi dopo un rollback la pagina
+del deposito torna all'eta' "dal primo carico" e ai 90 giorni fissi, e le soglie
+personalizzate dalle aziende tornano quelle fisse. **Prima del rollback** controllare
+`SELECT tenant_id, count(*) FROM soglie_deposito_temporaneo GROUP BY 1` e avvisare le aziende
+interessate. La tabella resta nel database (migration additiva) e riprende a contare al
+ripristino del codice; il ripristino a mano dello schema e' nel commento iniziale della
+migration `20261031100000_soglie_deposito_temporaneo`.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del

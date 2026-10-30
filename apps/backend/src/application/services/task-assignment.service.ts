@@ -1,6 +1,30 @@
-import { Injectable, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  NotImplementedException,
+} from '@nestjs/common'
 import { ResourceOwnershipRepository } from '../../domain/identity-access/resource-ownership.repository.interface'
 import { FIRRepository } from '../../domain/fir/fir.repository'
+import { FIR } from '../../domain/fir/fir.aggregate'
+
+/**
+ * Dati di assegnazione che il motore di routing si aspetta sul FIR. L'aggregate FIR non li
+ * espone ancora (nessun autista, zona o certificazione richiesta): restano opzionali, cosi' la
+ * lettura e' tipata senza cast a any.
+ */
+interface DatiAssegnazioneFir {
+  requiredCertifications?: string[]
+  pickupZone?: string
+  estimatedWeight?: number
+  assignedDriverId?: string
+}
+
+function datiAssegnazione(fir: FIR): DatiAssegnazioneFir {
+  return fir as FIR & DatiAssegnazioneFir
+}
 
 /**
  * TaskAssignmentService
@@ -62,6 +86,22 @@ export class TaskAssignmentService {
   ) {}
 
   /**
+   * L'aggregate FIR non ha un autista assegnato: non esistono ne' un metodo di dominio ne' una
+   * colonna in cui scriverlo. La vecchia chiamata a un `assignDriver` inesistente lanciava un
+   * TypeError generico prima di qualsiasi save; ora l'errore e' esplicito (501) e non si scrive
+   * nulla. Quando il dominio avra' il concetto di autista, la scrittura dovra' usare
+   * `save(fir, { verificaVersione: true })`.
+   */
+  private assegnaAutista(firId: string, driverId: string, assignedBy: string): never {
+    this.logger.warn(
+      `Assegnazione autista ${driverId} al FIR ${firId} (richiesta di ${assignedBy}) non supportata dal dominio`
+    )
+    throw new NotImplementedException(
+      'L\x27assegnazione di un autista a un FIR non e\x27 ancora supportata: il FIR non ha un campo autista'
+    )
+  }
+
+  /**
    * Find all qualified drivers for a specific FIR
    * Returns drivers ranked by suitability
    */
@@ -72,9 +112,10 @@ export class TaskAssignmentService {
       throw new NotFoundException('FIR not found')
     }
 
-    const requiredCertifications = (fir as any).requiredCertifications || []
-    const pickupZone = (fir as any).pickupZone
-    const estimatedWeight = (fir as any).estimatedWeight || 0
+    const dati = datiAssegnazione(fir)
+    const requiredCertifications = dati.requiredCertifications || []
+    const pickupZone = dati.pickupZone
+    const estimatedWeight = dati.estimatedWeight || 0
 
     // Step 2: Load all active vehicle assignments
     const activeAssignments = await this.resourceOwnershipRepository.findActiveByTenant(
@@ -175,20 +216,7 @@ export class TaskAssignmentService {
     // Select best driver (highest score)
     const selectedDriver = qualifiedDrivers[0]
 
-    // Assign FIR to driver
-    ;(fir as any).assignDriver(selectedDriver.userId, assignedBy)
-    await this.firRepository.save(fir)
-
-    this.logger.log(
-      `Auto-assigned FIR ${firId} to driver ${selectedDriver.userId} (score: ${selectedDriver.score})`
-    )
-
-    return {
-      assignedDriverId: selectedDriver.userId,
-      assignedBy,
-      assignmentMethod: 'automatic',
-      priority: (fir as any).priority,
-    }
+    return this.assegnaAutista(firId, selectedDriver.userId, assignedBy)
   }
 
   /**
@@ -223,7 +251,7 @@ export class TaskAssignmentService {
 
     // Check qualifications and generate warnings
     const warnings: string[] = []
-    const requiredCertifications = (fir as any).requiredCertifications || []
+    const requiredCertifications = datiAssegnazione(fir).requiredCertifications || []
     const metadata = vehicleAssignment.metadata || {}
     const driverCerts = metadata.certifications || []
 
@@ -240,7 +268,7 @@ export class TaskAssignmentService {
     const vehicleCapacity = metadata.capacity || 0
     const currentWorkload = await this.firRepository.getCurrentWorkloadByDriver(driverId, tenantId)
 
-    const estimatedWeight = (fir as any).estimatedWeight || 0
+    const estimatedWeight = datiAssegnazione(fir).estimatedWeight || 0
 
     if (currentWorkload + estimatedWeight > vehicleCapacity) {
       throw new BadRequestException(
@@ -248,20 +276,7 @@ export class TaskAssignmentService {
       )
     }
 
-    // Assign FIR to driver
-    ;(fir as any).assignDriver(driverId, assignedBy)
-    await this.firRepository.save(fir)
-
-    this.logger.log(
-      `Manually assigned FIR ${firId} to driver ${driverId}${warnings.length > 0 ? ' with warnings' : ''}`
-    )
-
-    return {
-      assignedDriverId: driverId,
-      assignedBy,
-      assignmentMethod: 'manual',
-      warnings: warnings.length > 0 ? warnings : undefined,
-    }
+    return this.assegnaAutista(firId, driverId, assignedBy)
   }
 
   /**
@@ -279,7 +294,7 @@ export class TaskAssignmentService {
       throw new NotFoundException('FIR not found')
     }
 
-    const previousDriverId = (fir as any).assignedDriverId
+    const previousDriverId = datiAssegnazione(fir).assignedDriverId
 
     // Use manual assignment logic (includes validation)
     const result = await this.manualAssignTask(firId, newDriverId, tenantId, reassignedBy)

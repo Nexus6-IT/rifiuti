@@ -122,6 +122,7 @@ model Tenant {
   registriRifiuti       RegistroRifiuti[]
   giacenzeIniziali      GiacenzaIniziale[]
   causaliRegistroAzienda CausaleRegistroAzienda[]
+  soglieDeposito        SogliaDepositoTemporaneo[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
   // Fase 2 pezzo 10
@@ -2112,6 +2113,7 @@ model RegistroRifiuti {
   movimenti           WasteMovement[]
   progressiviIniziali RegistroProgressivoIniziale[]
   giacenzeIniziali    GiacenzaIniziale[]
+  soglieDeposito      SogliaDepositoTemporaneo[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, unitaLocaleId, codice])
@@ -2430,4 +2432,46 @@ model SedeDitta {
   @@index([tenantId], map: "sedi_ditte_tenant_id_idx")
   @@index([dittaId], map: "sedi_ditte_ditta_id_idx")
   @@map("sedi_ditte")
+
+/// Criterio di controllo del deposito temporaneo scelto dall'azienda (art. 185-bis D.Lgs. 152/2006):
+/// la norma lascia scegliere fra il limite di tempo (tre mesi) e quello di quantita'.
+enum CriterioDepositoTemporaneo {
+  NON_SCELTO
+  TEMPORALE
+  QUANTITATIVO
+
+  @@map("criterio_deposito_temporaneo")
+}
+
+/// Soglie del deposito temporaneo (Fase 2 pezzo 6). `registro_id` NULL = soglie dell'azienda,
+/// altrimenti quelle di un registro (sede). Nessuna riga = valori predefiniti del codice
+/// (SOGLIE_PREDEFINITE); precedenza per riga intera: registro, azienda, predefinite.
+/// `giorni_max` NULL = nessuna soglia aggiuntiva ai tre mesi di legge. `kg_max_totale` e
+/// `kg_max_pericolosi` sono la conversione in kg, indicata dall'azienda, dei 30 m3 (10 m3 di
+/// pericolosi) della norma; `note` serve a scriverla.
+/// La migration aggiunge i CHECK sui valori (stessi range di `validaSoglie`) e l'indice unico
+/// parziale `soglie_deposito_temporaneo_una_per_azienda` (una sola riga con registro_id NULL per
+/// azienda): Prisma non lo conosce, quindi `migrate diff` resta pulito.
+model SogliaDepositoTemporaneo {
+  id                   String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                     @map("tenant_id") @db.Uuid
+  registroId           String?                    @map("registro_id") @db.Uuid
+  criterio             CriterioDepositoTemporaneo
+  giorniMax            Int?                       @map("giorni_max") @db.SmallInt
+  kgMaxTotale          Decimal                    @map("kg_max_totale") @db.Decimal(12, 2)
+  kgMaxPericolosi      Decimal                    @map("kg_max_pericolosi") @db.Decimal(12, 2)
+  preavvisoGiorni      Int                        @map("preavviso_giorni") @db.SmallInt
+  preavvisoPercentuale Int                        @map("preavviso_percentuale") @db.SmallInt
+  note                 String?                    @db.VarChar(500)
+  impostatoDa          String                     @map("impostato_da") @db.Uuid
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  updatedAt            DateTime                   @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "soglie_deposito_temporaneo_registro_fkey")
+
+  @@unique([id, tenantId], map: "soglie_deposito_temporaneo_id_tenant_id_key")
+  @@unique([tenantId, registroId], map: "soglie_deposito_temporaneo_tenant_id_registro_id_key")
+  @@index([tenantId], map: "soglie_deposito_temporaneo_tenant_id_idx")
+  @@map("soglie_deposito_temporaneo")
 }

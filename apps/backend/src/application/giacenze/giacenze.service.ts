@@ -3,9 +3,20 @@ import { WHERE_VIGENTE } from '../../domain/waste-movement/vigenza'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { leggiApertureRegistro } from '../registro/aperture-registro'
 import { LoggerService } from '../../core/logger/logger.service'
-import { DepositoTemporaneoConfig, DEFAULT_DEPOSITO_TEMPORANEO } from './deposito-temporaneo.config'
 import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
 import { cerCanonico, chiaveConfrontoCer } from '../../domain/waste-movement/cer-registro'
+import { calcolaFifo, type LottoResiduo } from '../../domain/waste-movement/fifo-deposito'
+import {
+  scadenzaTemporale,
+  unAnnoDopo,
+  giorniTra,
+  valutaDeposito,
+  type AvvisoDeposito,
+} from '../../domain/waste-movement/deposito-temporaneo'
+import { giornoItaliano } from '../../core/time/anno-italiano'
+import { RegistroNonTrovatoError } from '../registro/registri.service'
+import { SoglieDepositoService, type SoglieApplicate } from './soglie-deposito.service'
+import { leggiEventiDeposito } from './eventi-deposito'
 import {
   firAnnullato,
   etichettaFir,
@@ -42,23 +53,67 @@ export interface GiacenzaCer {
   /** Giacenza attuale in deposito = carico - scarico (>= 0). */
   giacenzaKg: number
   /**
-   * Data del carico più vecchio ancora "in giacenza" (per il criterio temporale): la più vecchia
-   * fra i carichi e le date di riferimento delle aperture (il calcolo esatto del deposito è F2-6).
+   * Giorno (a mezzanotte UTC) del lotto residuo più vecchio, cioè del carico o dell'apertura
+   * non ancora coperto dagli scarichi secondo il FIFO del registro (F2-6, D9); `null` se non
+   * c'è residuo. Senza `registroId` è il minimo fra i registri, ciascuno calcolato a sé.
    */
   oldestCaricoDate: Date | null
   altreUnita: GiacenzaAltraUnita[]
   scarichiSuFirAnnullati: ScaricoSuFirAnnullato[]
 }
 
-export type DepositoTemporaneoAlertReason = 'DURATION' | 'QUANTITY'
+/** Massimo di lotti residui restituiti per famiglia di unità; oltre, `lottiOmessi`. */
+const MAX_LOTTI_PER_FAMIGLIA = 50
 
-export interface DepositoTemporaneoAlert {
+export interface DepositoFamiglia {
+  /** 'KG' (kg e tonnellate insieme) oppure l'unità normalizzata (es. 'M3'). */
+  unita: string
+  residuo: number
+  /** Scarichi non coperti dai carichi: > 0 solo con uno storico incoerente. */
+  scoperto: number
+  lotti: LottoResiduo[]
+  lottiOmessi: number
+}
+
+export interface DepositoCer {
   cerCode: string
-  giacenzaKg: number
-  reasons: DepositoTemporaneoAlertReason[]
-  /** Giorni trascorsi dal carico più vecchio (se disponibile). */
-  durationDays?: number
-  oldestCaricoDate: Date | null
+  pericoloso: boolean
+  /** Residuo della sola famiglia di massa, in kg. */
+  residuoKg: number
+  /** Giorno (YYYY-MM-DD) del lotto residuo più vecchio di qualunque famiglia. */
+  giornoPiuVecchio: string | null
+  etaGiorni: number | null
+  scadenza: string | null
+  /**
+   * Scarichi in un'unità non di massa (litri, m³) mentre i carichi sono in kg: il FIFO non li
+   * abbina e il lotto in kg resta aperto (F1). Nessuna conversione col peso specifico (M10).
+   */
+  unitaMiste: boolean
+  famiglie: DepositoFamiglia[]
+}
+
+export interface DepositoRegistro {
+  registroId: string
+  registroDescrizione: string
+  attivo: boolean
+  soglie: SoglieApplicate
+  cer: DepositoCer[]
+  totaleKg: number
+  totalePericolosiKg: number
+  /** Un CER ha residuo in una famiglia non di massa (m³, litri): non entra nei kg. */
+  quantitaParziale: boolean
+  scopertoPresente: boolean
+  avvisi: AvvisoDeposito[]
+}
+
+export interface DepositoTemporaneoVista {
+  oggi: string
+  registri: DepositoRegistro[]
+}
+
+export interface AvvisoDepositoRegistro extends AvvisoDeposito {
+  registroId: string
+  registroDescrizione: string
 }
 
 const arrotonda3 = (v: number): number => Math.round(v * 1000) / 1000
@@ -72,7 +127,8 @@ const arrotonda3 = (v: number): number => Math.round(v * 1000) / 1000
 export class GiacenzeService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly soglie: SoglieDepositoService
   ) {
     this.logger.setContext(GiacenzeService.name)
   }
@@ -90,18 +146,23 @@ export class GiacenzeService {
       _sum: { quantity: true },
     })
 
-    // Data del carico più vecchio per CER (criterio temporale del deposito).
-    const oldestCarico = await this.prisma.wasteMovement.groupBy({
-      by: ['cerCode'],
-      where: { tenantId, type: 'CARICO', ...perRegistro, ...WHERE_VIGENTE },
-      _min: { movementDate: true },
+    // Giorno del lotto residuo più vecchio per CER: FIFO per registro e per famiglia di unità,
+    // poi il minimo fra registri e famiglie (le somme restano quelle del groupBy).
+    const aperture = await leggiApertureRegistro(this.prisma, tenantId, { registroId })
+    const eventi = await leggiEventiDeposito(this.prisma, tenantId, {
+      registroId,
+      aperture,
+      logger: this.logger,
     })
-    const oldestByCer = new Map<string, Date | null>()
-    for (const row of oldestCarico) {
-      const chiave = chiaveConfrontoCer(row.cerCode)
-      const data = row._min.movementDate ?? null
-      const attuale = oldestByCer.get(chiave) ?? null
-      oldestByCer.set(chiave, attuale && (!data || attuale < data) ? attuale : data)
+    const oldestByCer = new Map<string, string>()
+    for (const perCerRegistro of eventi.values()) {
+      for (const [chiave, gruppo] of perCerRegistro) {
+        for (const lista of gruppo.famiglie.values()) {
+          const giorno = calcolaFifo(lista).giornoPiuVecchio
+          const attuale = oldestByCer.get(chiave)
+          if (giorno && (!attuale || giorno < attuale)) oldestByCer.set(chiave, giorno)
+        }
+      }
     }
 
     interface Parziale {
@@ -152,12 +213,8 @@ export class GiacenzeService {
 
     // Le aperture del registro contano come carichi (e restano distinte in `inizialeKg`/`iniziale`);
     // un CER con la sola apertura compare comunque.
-    const aperture = await leggiApertureRegistro(this.prisma, tenantId, { registroId })
     for (const ap of aperture) {
       const { chiave, entry } = voceDi(ap.cerCode)
-      const data = new Date(`${ap.dataRiferimento}T00:00:00Z`)
-      const attuale = oldestByCer.get(chiave) ?? null
-      if (!attuale || data < attuale) oldestByCer.set(chiave, data)
       const u = normalizzaUnitaRegistro(ap.unita)
       if (u.massa) {
         const kg = ap.quantita * (u.fattoreKg as number)
@@ -193,7 +250,9 @@ export class GiacenzeService {
         // Non negativa: scarichi > carichi indicano dati incoerenti (gestiti
         // a parte dall'anomaly detection), qui clampiamo a 0.
         giacenzaKg: Math.max(0, arrotonda3(caricoKg - scaricoKg)),
-        oldestCaricoDate: oldestByCer.get(chiave) ?? null,
+        oldestCaricoDate: oldestByCer.has(chiave)
+          ? new Date(`${oldestByCer.get(chiave)}T00:00:00Z`)
+          : null,
         altreUnita: [...entry.altre.values()],
         scarichiSuFirAnnullati: suFirAnnullati.get(chiave) ?? [],
       })
@@ -258,48 +317,159 @@ export class GiacenzeService {
   }
 
   /**
-   * Alert di deposito temporaneo: per ogni CER con giacenza > 0, segnala il
-   * superamento del limite temporale e/o quantitativo (soglie configurabili).
+   * Deposito temporaneo per registro (art. 185-bis): residuo FIFO per CER e famiglia di unità,
+   * età del lotto più vecchio, soglie applicate e avvisi. Numero di query fisso (registri,
+   * movimenti, aperture, pericolosità, soglie) qualunque siano registri e CER.
    */
-  async getDepositoTemporaneoAlerts(
+  async getDepositoTemporaneo(
     tenantId: string,
-    config: DepositoTemporaneoConfig = DEFAULT_DEPOSITO_TEMPORANEO,
-    now: Date = new Date(),
-    registroId?: string
-  ): Promise<DepositoTemporaneoAlert[]> {
-    const giacenze = await this.getGiacenze(tenantId, registroId)
-    const alerts: DepositoTemporaneoAlert[] = []
+    opzioni: { registroId?: string; oggi?: string } = {}
+  ): Promise<DepositoTemporaneoVista> {
+    const { registroId } = opzioni
+    const oggi = opzioni.oggi ?? giornoItaliano(new Date())
+    const registri = await this.prisma.registroRifiuti.findMany({
+      where: { tenantId },
+      select: { id: true, descrizione: true, attivo: true },
+      orderBy: [{ attivo: 'desc' }, { createdAt: 'asc' }],
+    })
+    if (registroId && !registri.some(r => r.id === registroId)) {
+      throw new RegistroNonTrovatoError()
+    }
+    const eventi = await leggiEventiDeposito(this.prisma, tenantId, {
+      registroId,
+      logger: this.logger,
+    })
+    // Con registroId esplicito il registro compare sempre (anche disattivato e senza eventi,
+    // con la voce vuota); altrimenti solo gli attivi e i disattivati che hanno eventi.
+    const scelti = registroId
+      ? registri.filter(r => r.id === registroId)
+      : registri.filter(r => r.attivo || eventi.has(r.id))
+    // Senza registri visibili (es. contesto di un'altra azienda) non c'è nulla da leggere.
+    const soglie =
+      scelti.length > 0
+        ? await this.soglie.soglieApplicate(
+            tenantId,
+            scelti.map(r => r.id)
+          )
+        : new Map<string, SoglieApplicate>()
 
-    for (const g of giacenze) {
-      if (g.giacenzaKg <= 0) continue
-
-      const reasons: DepositoTemporaneoAlertReason[] = []
-      let durationDays: number | undefined
-
-      if (g.oldestCaricoDate) {
-        durationDays = Math.floor(
-          (now.getTime() - g.oldestCaricoDate.getTime()) / (24 * 60 * 60 * 1000)
+    const risultato: DepositoRegistro[] = []
+    for (const r of scelti) {
+      const soglieR = soglie.get(r.id) as SoglieApplicate
+      const cer: DepositoCer[] = []
+      let quantitaParziale = false
+      let scopertoPresente = false
+      for (const gruppo of (eventi.get(r.id) ?? new Map()).values()) {
+        const famiglie: DepositoFamiglia[] = []
+        let residuoKg = 0
+        let giorno: string | null = null
+        let haResiduo = false
+        let scopertoAltraUnita = false
+        const ordinate = [...gruppo.famiglie].sort(([x], [y]) =>
+          x === 'KG' ? -1 : y === 'KG' ? 1 : x < y ? -1 : x > y ? 1 : 0
         )
-        if (durationDays > config.maxDurationDays) reasons.push('DURATION')
-      }
-      if (g.giacenzaKg > config.maxQuantityKg) reasons.push('QUANTITY')
-
-      if (reasons.length > 0) {
-        alerts.push({
-          cerCode: g.cerCode,
-          giacenzaKg: g.giacenzaKg,
-          reasons,
-          durationDays,
-          oldestCaricoDate: g.oldestCaricoDate,
+        for (const [unita, lista] of ordinate) {
+          const esito = calcolaFifo(lista)
+          if (esito.scoperto > 0) {
+            scopertoPresente = true
+            if (unita !== 'KG') scopertoAltraUnita = true
+          }
+          if (esito.lotti.length > 0) {
+            haResiduo = true
+            if (unita === 'KG') residuoKg += esito.residuoTotale
+            else quantitaParziale = true
+          }
+          if (esito.giornoPiuVecchio && (!giorno || esito.giornoPiuVecchio < giorno)) {
+            giorno = esito.giornoPiuVecchio
+          }
+          if (esito.lotti.length === 0 && esito.scoperto <= 0) continue
+          famiglie.push({
+            unita,
+            residuo: esito.residuoTotale,
+            scoperto: esito.scoperto,
+            lotti: esito.lotti.slice(0, MAX_LOTTI_PER_FAMIGLIA),
+            lottiOmessi: Math.max(0, esito.lotti.length - MAX_LOTTI_PER_FAMIGLIA),
+          })
+        }
+        if (!haResiduo && famiglie.length === 0) continue
+        cer.push({
+          cerCode: gruppo.cerCode,
+          pericoloso: gruppo.pericoloso,
+          residuoKg: arrotonda3(residuoKg),
+          giornoPiuVecchio: giorno,
+          etaGiorni: giorno ? giorniTra(giorno, oggi) : null,
+          scadenza: null,
+          unitaMiste: scopertoAltraUnita && residuoKg > 0,
+          famiglie,
         })
       }
+      cer.sort((x, y) => (x.cerCode < y.cerCode ? -1 : x.cerCode > y.cerCode ? 1 : 0))
+
+      const avvisi = valutaDeposito(
+        {
+          cer: cer.map(c => ({
+            cerCode: c.cerCode,
+            pericoloso: c.pericoloso,
+            residuoKg: c.residuoKg,
+            giornoPiuVecchio: c.giornoPiuVecchio,
+            unitaMiste: c.unitaMiste,
+          })),
+        },
+        soglieR,
+        oggi
+      )
+      for (const c of cer) {
+        if (!c.giornoPiuVecchio) continue
+        const daAvviso = avvisi.find(
+          a => a.cerCode === c.cerCode && (a.tipo === 'DURATA' || a.tipo === 'DURATA_ANNUALE')
+        )
+        c.scadenza =
+          daAvviso?.scadenza ??
+          (soglieR.criterio === 'QUANTITATIVO'
+            ? unAnnoDopo(c.giornoPiuVecchio)
+            : scadenzaTemporale(c.giornoPiuVecchio, soglieR.giorniMax))
+      }
+      risultato.push({
+        registroId: r.id,
+        registroDescrizione: r.descrizione,
+        attivo: r.attivo,
+        soglie: soglieR,
+        cer,
+        totaleKg: arrotonda3(cer.reduce((tot, c) => tot + c.residuoKg, 0)),
+        totalePericolosiKg: arrotonda3(
+          cer.reduce((tot, c) => tot + (c.pericoloso ? c.residuoKg : 0), 0)
+        ),
+        quantitaParziale,
+        scopertoPresente,
+        avvisi,
+      })
     }
 
-    if (alerts.length > 0) {
+    const superati = risultato.reduce(
+      (n, r) => n + r.avvisi.filter(a => a.livello === 'SUPERATO').length,
+      0
+    )
+    if (superati > 0) {
       this.logger.warn(
-        `Deposito temporaneo: ${alerts.length} CER oltre soglia per tenant ${tenantId}`
+        `Deposito temporaneo: ${superati} avvisi di superamento per tenant ${tenantId}`
       )
     }
-    return alerts
+    return { oggi, registri: risultato }
+  }
+
+  /** Elenco piatto degli avvisi di tutti i registri (o di uno), con il registro di provenienza. */
+  async getDepositoTemporaneoAlerts(
+    tenantId: string,
+    registroId?: string,
+    oggi?: string
+  ): Promise<AvvisoDepositoRegistro[]> {
+    const vista = await this.getDepositoTemporaneo(tenantId, { registroId, oggi })
+    return vista.registri.flatMap(r =>
+      r.avvisi.map(a => ({
+        ...a,
+        registroId: r.registroId,
+        registroDescrizione: r.registroDescrizione,
+      }))
+    )
   }
 }

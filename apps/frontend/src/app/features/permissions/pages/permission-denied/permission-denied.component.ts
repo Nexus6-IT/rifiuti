@@ -259,8 +259,8 @@ import { PermissionStore } from '../../../../core/state/permission.store'
       }
 
       .permission-code {
-        background: var(--color-gray-900);
-        color: var(--brand-primary-light);
+        background: var(--sidebar-bg);
+        color: var(--sidebar-active);
         padding: var(--spacing-base);
         border-radius: var(--radius-base);
         margin-bottom: var(--spacing-base);
