@@ -46,6 +46,14 @@ export type MudCodiceControllo =
   | 'GIACENZE_NON_CALCOLATE'
   | 'STATO_FISICO_NON_UNIVOCO'
   | 'MUD_NON_DOVUTO'
+  | 'MOVIMENTI_SENZA_SEDE'
+  | 'SEDE_PRINCIPALE_MANCANTE'
+  | 'UNITA_LOCALE_SENZA_INDIRIZZO'
+  | 'UNITA_LOCALE_SENZA_COMUNE_ISTAT'
+  | 'PRINCIPALE_CON_INDIRIZZO_AZIENDA'
+  | 'UNITA_LOCALE_SENZA_ADDETTI'
+  | 'UNITA_LOCALI_PROVINCE_DIVERSE'
+  | 'AUTORIZZAZIONI_SULLA_PRINCIPALE'
 
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
@@ -79,7 +87,15 @@ export interface MudEsitoControllo {
   integrazione?: IntegrazioneRichiesta
   /** GIACENZE_NON_CALCOLATE: kg in deposito al 31/12 secondo il registro e non dichiarati */
   kgNonDichiarati?: number
+  /**
+   * Denominazione della sede (o "Azienda") a cui si riferisce il controllo: solo con più di una
+   * dichiarazione e solo per i controlli nati dentro una dichiarazione (D14)
+   */
+  sede?: string
 }
+
+/** Etichetta della riga d'integrazione della destinazione di una giacenza (D16). */
+export const etichettaGiacenza = (cer6: string): string => `Giacenza CER ${cer6}`
 
 /**
  * CER di un gruppo di movimenti come lo legge l'utente: forma canonica "NN NN NN", con
@@ -148,6 +164,17 @@ const arrotondaGrammo = (n: number) => Math.round(n * 1000) / 1000
 
 const BLOCCANTE = 'BLOCCANTE' as const
 const AVVISO = 'AVVISO' as const
+
+const nomeSede = (u: { denominazione: string; numIscrSito?: string | null }) =>
+  u.numIscrSito ? `${u.denominazione} (${u.numIscrSito})` : u.denominazione
+
+// Un solo campo mancante: articolo, aggettivo e pronome concordano con il genere del campo.
+const CAMPO_SINGOLARE: Record<string, { articolo: string; agg: string; pron: string }> = {
+  indirizzo: { articolo: "l'indirizzo", agg: 'obbligatorio', pron: 'Inserirlo' },
+  CAP: { articolo: 'il CAP', agg: 'obbligatorio', pron: 'Inserirlo' },
+  comune: { articolo: 'il comune', agg: 'obbligatorio', pron: 'Inserirlo' },
+  provincia: { articolo: 'la provincia', agg: 'obbligatoria', pron: 'Inserirla' },
+}
 
 const DOVE_CORREGGERE_AZIENDA =
   "(Amministrazione > Aziende; se la voce non è visibile, chiederlo all'amministratore della piattaforma)"
@@ -474,6 +501,112 @@ export const controlliMud = {
       gravita: AVVISO,
       messaggio: `Secondo il registro, al 31/12/${anno} risultano in deposito ${q(totale)} kg (${elencoCer}) che il file non dichiara: le giacenze di fine anno nel file risultano zero.`,
       kgNonDichiarati: totale,
+    }
+  },
+
+  // Dichiarazioni per unità locale (D2, D5, D6, D7)
+
+  movimentiSenzaSede: (
+    anno: number,
+    ms: RifMovimento[],
+    principale: { denominazione: string; numIscrSito?: string | null }
+  ): MudEsitoControllo => ({
+    codice: 'MOVIMENTI_SENZA_SEDE',
+    gravita: AVVISO,
+    messaggio:
+      ms.length === 1
+        ? `Nel ${anno} il registro senza sede ha 1 movimento nel MUD (n. ${elenco(ms)}): il file lo attribuisce all'unità locale principale ${nomeSede(principale)}. Verificare che sia stato prodotto o gestito in quella sede.`
+        : `Nel ${anno} il registro senza sede ha ${ms.length} movimenti nel MUD (n. ${elenco(ms)}): il file li attribuisce all'unità locale principale ${nomeSede(principale)}. Verificare che siano stati prodotti o gestiti in quella sede.`,
+    movimenti: ms.map(m => segnala(m, true)),
+  }),
+
+  sedePrincipaleMancante: (
+    anno: number,
+    movimenti: number,
+    unitaLocali: number
+  ): MudEsitoControllo => ({
+    codice: 'SEDE_PRINCIPALE_MANCANTE',
+    gravita: BLOCCANTE,
+    messaggio: `Nel ${anno} il registro senza sede ha ${movimenti === 1 ? '1 movimento' : `${movimenti} movimenti`}, ma ${
+      unitaLocali === 1
+        ? "l'unica unità locale dell'azienda non è indicata"
+        : `nessuna delle ${unitaLocali} unità locali dell'azienda è indicata`
+    } come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD ${movimenti === 1 ? 'lo attribuisce' : 'li attribuisce'} a quella sede.`,
+  }),
+
+  unitaLocaleSenzaIndirizzo: (
+    u: { denominazione: string; numIscrSito?: string | null },
+    campi: string[]
+  ): MudEsitoControllo => {
+    const solo = campi.length === 1 ? CAMPO_SINGOLARE[campi[0]] : undefined
+    return {
+      codice: 'UNITA_LOCALE_SENZA_INDIRIZZO',
+      gravita: BLOCCANTE,
+      messaggio: solo
+        ? `Unità locale ${nomeSede(u)}: manca ${solo.articolo} nell'anagrafica della sede, ${solo.agg} nella scheda anagrafica della sua dichiarazione MUD. ${solo.pron} nella pagina delle unità locali RENTRI.`
+        : `Unità locale ${nomeSede(u)}: mancano ${campi.slice(0, -1).join(', ')} e ${campi[campi.length - 1]} nell'anagrafica della sede, obbligatori nella scheda anagrafica della sua dichiarazione MUD. Inserirli nella pagina delle unità locali RENTRI.`,
+    }
+  },
+
+  unitaLocaleSenzaComuneIstat: (
+    u: { denominazione: string; numIscrSito?: string | null },
+    comune?: string | null,
+    provincia?: string | null
+  ): MudEsitoControllo => ({
+    codice: 'UNITA_LOCALE_SENZA_COMUNE_ISTAT',
+    gravita: BLOCCANTE,
+    messaggio: `Comune dell'unità locale ${nomeSede(u)} non trovato nelle tabelle ISTAT (${comune ?? '-'} ${provincia ?? '-'}): correggerlo nella pagina delle unità locali RENTRI.`,
+  }),
+
+  principaleConIndirizzoAzienda: (u: {
+    denominazione: string
+    numIscrSito?: string | null
+  }): MudEsitoControllo => ({
+    codice: 'PRINCIPALE_CON_INDIRIZZO_AZIENDA',
+    gravita: AVVISO,
+    messaggio: `L'unità locale principale ${nomeSede(u)} non ha un indirizzo proprio: nella sua dichiarazione MUD compare l'indirizzo dell'azienda. Se la sede è altrove, inserirne l'indirizzo nella pagina delle unità locali RENTRI.`,
+  }),
+
+  unitaLocaleSenzaAddetti: (u: {
+    denominazione: string
+    numIscrSito?: string | null
+  }): MudEsitoControllo => ({
+    codice: 'UNITA_LOCALE_SENZA_ADDETTI',
+    gravita: AVVISO,
+    messaggio: `Unità locale ${nomeSede(u)}: il numero di addetti della sede non è indicato e nella sua dichiarazione MUD risulta 0. Inserirlo nella pagina delle unità locali RENTRI.`,
+  }),
+
+  /** `voci` ordinate per codice di provincia; `etichetta` = sigla o codice ISTAT (D6) */
+  unitaLocaliProvinceDiverse: (
+    voci: Array<{ denominazione: string; etichetta: string }>
+  ): MudEsitoControllo => ({
+    codice: 'UNITA_LOCALI_PROVINCE_DIVERSE',
+    gravita: BLOCCANTE,
+    messaggio: `Le unità locali da dichiarare sono in province diverse (${voci
+      .map(v => `${v.denominazione}: ${v.etichetta}`)
+      .join(
+        '; '
+      )}): un file MUD può contenere solo dichiarazioni della stessa provincia, altrimenti viene rifiutato. La generazione di un file per provincia non è ancora supportata (contattare l'assistenza).`,
+  }),
+
+  autorizzazioniSullaPrincipale: (
+    dichiarazioni: number,
+    autorizzazioni: number,
+    scelta: { denominazione: string; numIscrSito?: string | null },
+    sceltaPrincipale: boolean
+  ): MudEsitoControllo => {
+    const motivo = sceltaPrincipale ? '' : " (la principale non ha rifiuti da dichiarare nell'anno)"
+    const una = autorizzazioni === 1
+    return {
+      codice: 'AUTORIZZAZIONI_SULLA_PRINCIPALE',
+      gravita: AVVISO,
+      messaggio: `Il file contiene ${dichiarazioni} dichiarazioni e l'azienda ha ${
+        una ? '1 autorizzazione registrata' : `${autorizzazioni} autorizzazioni registrate`
+      }: ${
+        una ? "la scheda dell'autorizzazione è" : 'le schede delle autorizzazioni sono'
+      } nella dichiarazione dell'unità locale ${nomeSede(scelta)}${motivo}, perché le autorizzazioni non indicano la sede. Verificare che ${
+        una ? 'sia' : 'siano'
+      } dell'impianto di quella sede.`,
     }
   },
 }

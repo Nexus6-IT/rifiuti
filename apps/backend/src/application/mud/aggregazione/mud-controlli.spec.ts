@@ -3,6 +3,7 @@ import {
   avvisiCambianoQuantita,
   codiciAvvisoDaConfermare,
   controlliMud,
+  etichettaGiacenza,
   haBloccanti,
   riepilogaAvvisi,
   type RifMovimento,
@@ -650,5 +651,124 @@ describe('controlliMud', () => {
     expect(controlliMud.statoFisicoNonUnivoco('160601*', ['NON_RICONOSCIUTO']).messaggio).toMatch(
       /^Il rifiuto CER 16 06 01\* è registrato/
     )
+  })
+})
+
+describe('controlli per unità locale (D16)', () => {
+  const sede = { denominazione: 'Sede di Milano', numIscrSito: 'OP1234ABC000001-MI0001' }
+  const mov = (n: number): RifMovimento => ({
+    ...m,
+    progressiveNumber: n,
+    causale: 'PRODUZIONE_INTERNA',
+  })
+
+  it('etichettaGiacenza', () => {
+    expect(etichettaGiacenza('170405')).toBe('Giacenza CER 170405')
+  })
+
+  it('MOVIMENTI_SENZA_SEDE con più movimenti', () => {
+    const c = controlliMud.movimentiSenzaSede(2025, [mov(4), mov(5)], sede)
+    expect(c.codice).toBe('MOVIMENTI_SENZA_SEDE')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 2 movimenti nel MUD (n. 4/2025, 5/2025): il file li attribuisce all'unità locale principale Sede di Milano (OP1234ABC000001-MI0001). Verificare che siano stati prodotti o gestiti in quella sede."
+    )
+    expect(c.movimenti).toHaveLength(2)
+  })
+
+  it('MOVIMENTI_SENZA_SEDE con un movimento', () => {
+    const c = controlliMud.movimentiSenzaSede(2025, [mov(4)], sede)
+    expect(c.messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 1 movimento nel MUD (n. 4/2025): il file lo attribuisce all'unità locale principale Sede di Milano (OP1234ABC000001-MI0001). Verificare che sia stato prodotto o gestito in quella sede."
+    )
+  })
+
+  it('SEDE_PRINCIPALE_MANCANTE', () => {
+    const c = controlliMud.sedePrincipaleMancante(2025, 3, 2)
+    expect(c.codice).toBe('SEDE_PRINCIPALE_MANCANTE')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 3 movimenti, ma nessuna delle 2 unità locali dell'azienda è indicata come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD li attribuisce a quella sede."
+    )
+    expect(controlliMud.sedePrincipaleMancante(2025, 1, 1).messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 1 movimento, ma l'unica unità locale dell'azienda non è indicata come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD lo attribuisce a quella sede."
+    )
+  })
+
+  it('UNITA_LOCALE_SENZA_INDIRIZZO', () => {
+    const c = controlliMud.unitaLocaleSenzaIndirizzo(sede, ['indirizzo', 'CAP', 'comune'])
+    expect(c.codice).toBe('UNITA_LOCALE_SENZA_INDIRIZZO')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Unità locale Sede di Milano (OP1234ABC000001-MI0001): mancano indirizzo, CAP e comune nell'anagrafica della sede, obbligatori nella scheda anagrafica della sua dichiarazione MUD. Inserirli nella pagina delle unità locali RENTRI."
+    )
+    expect(controlliMud.unitaLocaleSenzaIndirizzo(sede, ['CAP', 'provincia']).messaggio).toContain(
+      'mancano CAP e provincia nell'
+    )
+    expect(controlliMud.unitaLocaleSenzaIndirizzo(sede, ['provincia']).messaggio).toBe(
+      "Unità locale Sede di Milano (OP1234ABC000001-MI0001): manca la provincia nell'anagrafica della sede, obbligatoria nella scheda anagrafica della sua dichiarazione MUD. Inserirla nella pagina delle unità locali RENTRI."
+    )
+    expect(controlliMud.unitaLocaleSenzaIndirizzo(sede, ['CAP']).messaggio).toContain(
+      'manca il CAP nell'
+    )
+  })
+
+  it('UNITA_LOCALE_SENZA_COMUNE_ISTAT', () => {
+    const c = controlliMud.unitaLocaleSenzaComuneIstat(sede, 'Milan', 'MI')
+    expect(c.codice).toBe('UNITA_LOCALE_SENZA_COMUNE_ISTAT')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Comune dell'unità locale Sede di Milano (OP1234ABC000001-MI0001) non trovato nelle tabelle ISTAT (Milan MI): correggerlo nella pagina delle unità locali RENTRI."
+    )
+  })
+
+  it('PRINCIPALE_CON_INDIRIZZO_AZIENDA', () => {
+    const c = controlliMud.principaleConIndirizzoAzienda(sede)
+    expect(c.codice).toBe('PRINCIPALE_CON_INDIRIZZO_AZIENDA')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      "L'unità locale principale Sede di Milano (OP1234ABC000001-MI0001) non ha un indirizzo proprio: nella sua dichiarazione MUD compare l'indirizzo dell'azienda. Se la sede è altrove, inserirne l'indirizzo nella pagina delle unità locali RENTRI."
+    )
+  })
+
+  it('UNITA_LOCALE_SENZA_ADDETTI', () => {
+    const c = controlliMud.unitaLocaleSenzaAddetti(sede)
+    expect(c.codice).toBe('UNITA_LOCALE_SENZA_ADDETTI')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      'Unità locale Sede di Milano (OP1234ABC000001-MI0001): il numero di addetti della sede non è indicato e nella sua dichiarazione MUD risulta 0. Inserirlo nella pagina delle unità locali RENTRI.'
+    )
+  })
+
+  it('UNITA_LOCALI_PROVINCE_DIVERSE', () => {
+    const c = controlliMud.unitaLocaliProvinceDiverse([
+      { denominazione: 'Torino', etichetta: 'TO' },
+      { denominazione: 'Milano', etichetta: '015' },
+    ])
+    expect(c.codice).toBe('UNITA_LOCALI_PROVINCE_DIVERSE')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Le unità locali da dichiarare sono in province diverse (Torino: TO; Milano: 015): un file MUD può contenere solo dichiarazioni della stessa provincia, altrimenti viene rifiutato. La generazione di un file per provincia non è ancora supportata (contattare l'assistenza)."
+    )
+  })
+
+  it('AUTORIZZAZIONI_SULLA_PRINCIPALE', () => {
+    const sullaPrincipale = controlliMud.autorizzazioniSullaPrincipale(2, 3, sede, true)
+    expect(sullaPrincipale.codice).toBe('AUTORIZZAZIONI_SULLA_PRINCIPALE')
+    expect(sullaPrincipale.gravita).toBe('AVVISO')
+    expect(sullaPrincipale.messaggio).toBe(
+      "Il file contiene 2 dichiarazioni e l'azienda ha 3 autorizzazioni registrate: le schede delle autorizzazioni sono nella dichiarazione dell'unità locale Sede di Milano (OP1234ABC000001-MI0001), perché le autorizzazioni non indicano la sede. Verificare che siano dell'impianto di quella sede."
+    )
+    expect(controlliMud.autorizzazioniSullaPrincipale(3, 1, sede, false).messaggio).toBe(
+      "Il file contiene 3 dichiarazioni e l'azienda ha 1 autorizzazione registrata: la scheda dell'autorizzazione è nella dichiarazione dell'unità locale Sede di Milano (OP1234ABC000001-MI0001) (la principale non ha rifiuti da dichiarare nell'anno), perché le autorizzazioni non indicano la sede. Verificare che sia dell'impianto di quella sede."
+    )
+    expect(controlliMud.autorizzazioniSullaPrincipale(2, 3, sede, false).messaggio).toContain(
+      "(OP1234ABC000001-MI0001) (la principale non ha rifiuti da dichiarare nell'anno), perché"
+    )
+  })
+
+  it('il campo sede è facoltativo e non altera i controlli esistenti', () => {
+    const c = { ...controlliMud.sedePrincipaleMancante(2025, 1, 2), sede: 'Azienda' }
+    expect(c.sede).toBe('Azienda')
   })
 })
