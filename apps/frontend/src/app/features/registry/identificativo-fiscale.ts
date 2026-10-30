@@ -139,7 +139,7 @@ export function validaIdentificativi(
   }
 
   const privato =
-    partitaIva === null &&
+    !grezzaPiva &&
     !partitaIvaGiaPresente &&
     codiceFiscale !== null &&
     codiceFiscale.length === 16

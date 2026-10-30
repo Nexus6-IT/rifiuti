@@ -9,6 +9,7 @@ import { Produttore } from '../../shared/models/registry.model'
 
 // P.IVA con checksum valido (la validazione gemella del backend rifiuta le altre)
 const PIVA_VALIDA = '12345678903'
+const PIVA_CHECKSUM_ERRATO = '12345678901' // non supera il controllo di validità
 
 // Stub minimo: solo `currentUser()`, unico membro di AuthService usato dal
 // componente per il gating dei pulsanti (Task N3). Ruolo ADMIN di default,
@@ -245,7 +246,7 @@ describe('ProduttoriListComponent — ditte, codice fiscale e sedi', () => {
   const RIGA = {
     id: 'r1',
     ragioneSociale: 'Ditta Uno S.r.l.',
-    partitaIVA: '12345678901', // checksum errato: P.IVA migrata, da verificare
+    partitaIVA: PIVA_CHECKSUM_ERRATO, // checksum errato: P.IVA migrata, da verificare
     codiceFiscale: null,
     dittaId: 'dit1',
     sedeId: 'sed1',
@@ -328,7 +329,7 @@ describe('ProduttoriListComponent — ditte, codice fiscale e sedi', () => {
   it('ha la colonna "P.IVA / C.F." e mostra il codice fiscale di chi non ha la P.IVA', () => {
     const intestazioni = Array.from(el().querySelectorAll('th')).map(th => th.textContent?.trim())
     expect(intestazioni).toContain('P.IVA / C.F.')
-    expect(tid('produttori-identificativo-r1')!.textContent).toContain('12345678901')
+    expect(tid('produttori-identificativo-r1')!.textContent).toContain(PIVA_CHECKSUM_ERRATO)
     expect(tid('produttori-identificativo-r2')!.textContent).toContain(CF_PERSONA)
   })
 
@@ -363,7 +364,7 @@ describe('ProduttoriListComponent — ditte, codice fiscale e sedi', () => {
   it("una P.IVA con checksum errato (nome esplicito: non valida) è rifiutata prima dell'invio", () => {
     component.showCreateDialog()
     compila()
-    component.formData.partitaIVA = '12345678901'
+    component.formData.partitaIVA = PIVA_CHECKSUM_ERRATO
 
     component.saveProduttore()
 

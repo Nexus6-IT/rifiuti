@@ -109,6 +109,17 @@ describe('identificativo-fiscale (gemella del VO del backend)', () => {
   })
 
   describe('assenza e privato', () => {
+    it("P.IVA errata con CF di persona: solo l'errore della P.IVA, non quello del privato", () => {
+      for (const tipo of ['trasportatore', 'destinatario'] as const) {
+        const r = validaIdentificativi(
+          { partitaIva: PIVA_CHECKSUM_ERRATO, codiceFiscale: CF_PERSONA_VALIDO },
+          tipo
+        )
+        expect(r.errori).toEqual({ partitaIva: MESSAGGIO_PARTITA_IVA_NON_VALIDA })
+        expect(r.privato).toBeFalse()
+      }
+    })
+
     it('senza nessuno dei due è un errore; stringhe vuote contano come assenti', () => {
       expect(validaIdentificativi({}, 'produttore').errori.generale).toBe(
         MESSAGGIO_IDENTIFICATIVO_ASSENTE

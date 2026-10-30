@@ -190,6 +190,26 @@ describe('SediDittaDialogComponent', () => {
     )
   })
 
+  it("modifica: svuotando l'email di una sede esistente il PUT invia email: null", async () => {
+    registry.getDitta.and.callFake(() => {
+      const d = ditta()
+      d.sedi[1].email = 'sede@example.it'
+      return of(d)
+    })
+    await apri()
+    q<HTMLButtonElement>('[data-testid="sede-modifica-s2"] button')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q<HTMLInputElement>('#sede-email')!.value).toBe('sede@example.it')
+    await scrivi('sede-email', '')
+    q<HTMLButtonElement>('[data-testid="sede-salva"] button')!.click()
+    fixture.detectChanges()
+    const dati = registry.aggiornaSede.calls.mostRecent().args[2] as Record<string, unknown>
+    expect(dati['email']).toBeNull()
+    expect(dati['telefono']).toBeNull()
+  })
+
   it('un errore del backend compare in un messaggio role="alert" e il modulo resta aperto', async () => {
     registry.creaSede.and.returnValue(
       throwError(() => ({ error: { message: 'Esiste già una sede con questo indirizzo.' } }))

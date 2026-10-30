@@ -548,11 +548,7 @@ export class SediDittaDialogComponent implements OnChanges {
       cap: m.cap.trim(),
       citta: m.citta.trim(),
       provincia: m.provincia.trim().toUpperCase(),
-      ...(m.denominazione.trim() && { denominazione: m.denominazione.trim() }),
-      ...(m.referente.trim() && { referente: m.referente.trim() }),
-      ...(m.email.trim() && { email: m.email.trim() }),
-      ...(m.telefono.trim() && { telefono: m.telefono.trim() }),
-      ...(m.pec.trim() && { pec: m.pec.trim() }),
+      ...this.contatti(m),
     }
     this.salvataggio = true
     this.erroreGenerale = ''
@@ -576,6 +572,20 @@ export class SediDittaDialogComponent implements OnChanges {
         this.erroreGenerale = this.messaggio(err, 'Errore durante il salvataggio della sede.')
       },
     })
+  }
+
+  /**
+   * Contatti facoltativi: in creazione un campo vuoto si omette; in modifica si invia `null`
+   * (il backend: undefined = invariato, null = svuota).
+   */
+  private contatti(m: ModuloSede): Partial<DatiSedeDitta> {
+    const out: Record<string, string | null> = {}
+    for (const c of ['denominazione', 'referente', 'email', 'telefono', 'pec'] as const) {
+      const v = m[c].trim()
+      if (v) out[c] = v
+      else if (this.inModifica) out[c] = null
+    }
+    return out
   }
 
   rendiPrincipale(s: SedeDitta): void {

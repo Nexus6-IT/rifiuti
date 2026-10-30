@@ -133,14 +133,14 @@ export interface CercaDittaRisposta {
 }
 
 export interface DatiSedeDitta {
-  denominazione?: string
+  denominazione?: string | null
   via: string
   civico: string
   cap: string
   citta: string
   provincia: string
-  referente?: string
-  email?: string
-  telefono?: string
-  pec?: string
+  referente?: string | null
+  email?: string | null
+  telefono?: string | null
+  pec?: string | null
 }
