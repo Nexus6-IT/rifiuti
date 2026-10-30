@@ -18,7 +18,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common'
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { calcolaScadenza } from '../../application/notifications/scadenza-controparte.util'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
@@ -48,6 +48,50 @@ import {
   UpdateDestinatarioDto,
 } from './dto/create-registry.dto'
 
+// ---- Swagger: campi di ditta e sede comuni alle risposte (F2-10) ----
+const CAMPI_DITTA_SWAGGER = {
+  codiceFiscale: {
+    type: 'string',
+    nullable: true,
+    description: "Codice fiscale della ditta (per un privato è l'unico identificativo)",
+  },
+  dittaId: { type: 'string', format: 'uuid', description: 'Ditta a cui appartiene il ruolo' },
+  sedeId: {
+    type: 'string',
+    format: 'uuid',
+    description: 'Sede predefinita del ruolo (indirizzo e contatti mostrati)',
+  },
+  numeroSedi: { type: 'integer', description: 'Numero di sedi attive della ditta' },
+  partitaIvaDaVerificare: {
+    type: 'boolean',
+    description: 'La partita IVA registrata non passa il controllo di validità: va corretta',
+  },
+}
+const CAMPI_DETTAGLIO_SWAGGER = {
+  ...CAMPI_DITTA_SWAGGER,
+  ruoliDitta: {
+    type: 'array',
+    items: { type: 'string', enum: ['PRODUTTORE', 'TRASPORTATORE', 'DESTINATARIO'] },
+    description: 'Ruoli che la stessa ditta ha in questa azienda',
+  },
+}
+const CAMPI_CREAZIONE_SWAGGER = {
+  ...CAMPI_DITTA_SWAGGER,
+  dittaEsistente: {
+    type: 'boolean',
+    description: 'La ditta era già registrata (per un altro ruolo) ed è stata riusata',
+  },
+  avvisi: {
+    type: 'array',
+    items: { type: 'string' },
+    description:
+      'Avvisi non bloccanti, es. la ragione sociale già registrata per la ditta è stata mantenuta',
+  },
+}
+const rispostaSwagger = (proprieta: Record<string, unknown>) => ({
+  schema: { type: 'object', properties: proprieta },
+})
+
 @ApiTags('registry')
 @ApiBearerAuth()
 @Controller('registry')
@@ -71,6 +115,19 @@ export class RegistryController {
     private readonly deleteDestinatarioUseCase: DeleteDestinatarioUseCase
   ) {}
 
+  @ApiOperation({
+    summary: 'Crea un produttore su una ditta (nuova o già registrata) e relativa sede',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Controparte creata; `dittaEsistente` e `avvisi` dicono se la ditta è stata riusata',
+    ...rispostaSwagger(CAMPI_CREAZIONE_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi, identificativi in conflitto o ruolo già presente per la ditta',
+  })
   @Post('produttori')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
@@ -94,6 +151,19 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary: 'Crea un trasportatore su una ditta (nuova o già registrata) e relativa sede',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Controparte creata; `dittaEsistente` e `avvisi` dicono se la ditta è stata riusata',
+    ...rispostaSwagger(CAMPI_CREAZIONE_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi, identificativi in conflitto o ruolo già presente per la ditta',
+  })
   @Post('trasportatori')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
@@ -119,6 +189,19 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary: 'Crea un destinatario su una ditta (nuova o già registrata) e relativa sede',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Controparte creata; `dittaEsistente` e `avvisi` dicono se la ditta è stata riusata',
+    ...rispostaSwagger(CAMPI_CREAZIONE_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi, identificativi in conflitto o ruolo già presente per la ditta',
+  })
   @Post('destinatari')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
@@ -146,6 +229,11 @@ export class RegistryController {
 
   // ============= PRODUTTORI GET/UPDATE/DELETE =============
 
+  @ApiOperation({ summary: "Elenco dei produttori dell'azienda" })
+  @ApiResponse({
+    status: 200,
+    description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
+  })
   @Get('produttori')
   async listProduttori(@Req() req: any) {
     // req.tenantId è impostato dal TenantContextMiddleware (da JWT) e sovrascritto
@@ -172,6 +260,13 @@ export class RegistryController {
     return this.toPaginated(items)
   }
 
+  @ApiOperation({ summary: 'Dettaglio di un produttore, con i ruoli della ditta' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dettaglio del ruolo, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('produttori/:id')
   async getProduttore(@Param('id') id: string) {
     const result = await this.getProduttoreUseCase.execute({ id })
@@ -192,6 +287,24 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary:
+      'Modifica un produttore (tutto o niente): identificativi della ditta, sede predefinita, indirizzo e contatti',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Controparte aggiornata, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Dati non validi, `sedeId` non valida per il ruolo o `sedeId` insieme all'indirizzo",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Identificativo già di un'altra ditta o indirizzo già di un'altra sede attiva",
+  })
   @Put('produttori/:id')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateProduttore(@Param('id') id: string, @Body() dto: UpdateProduttoreDto) {
@@ -229,6 +342,11 @@ export class RegistryController {
 
   // ============= TRASPORTATORI GET/UPDATE/DELETE =============
 
+  @ApiOperation({ summary: "Elenco dei trasportatori dell'azienda" })
+  @ApiResponse({
+    status: 200,
+    description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
+  })
   @Get('trasportatori')
   async listTrasportatori(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
@@ -262,6 +380,13 @@ export class RegistryController {
     return this.toPaginated(items)
   }
 
+  @ApiOperation({ summary: 'Dettaglio di un trasportatore, con i ruoli della ditta' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dettaglio del ruolo, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('trasportatori/:id')
   async getTrasportatore(@Param('id') id: string) {
     const result = await this.getTrasportatoreUseCase.execute({ id })
@@ -284,6 +409,24 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary:
+      'Modifica un trasportatore (tutto o niente): identificativi della ditta, sede predefinita, indirizzo e contatti',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Controparte aggiornata, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Dati non validi, `sedeId` non valida per il ruolo o `sedeId` insieme all'indirizzo",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Identificativo già di un'altra ditta o indirizzo già di un'altra sede attiva",
+  })
   @Put('trasportatori/:id')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateTrasportatore(@Param('id') id: string, @Body() dto: UpdateTrasportatoreDto) {
@@ -323,6 +466,11 @@ export class RegistryController {
 
   // ============= DESTINATARI GET/UPDATE/DELETE =============
 
+  @ApiOperation({ summary: "Elenco dei destinatari dell'azienda" })
+  @ApiResponse({
+    status: 200,
+    description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
+  })
   @Get('destinatari')
   async listDestinatari(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
@@ -354,6 +502,13 @@ export class RegistryController {
     return this.toPaginated(items)
   }
 
+  @ApiOperation({ summary: 'Dettaglio di un destinatario, con i ruoli della ditta' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dettaglio del ruolo, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('destinatari/:id')
   async getDestinatario(@Param('id') id: string) {
     const result = await this.getDestinatarioUseCase.execute({ id })
@@ -376,6 +531,24 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary:
+      'Modifica un destinatario (tutto o niente): identificativi della ditta, sede predefinita, indirizzo e contatti',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Controparte aggiornata, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Dati non validi, `sedeId` non valida per il ruolo o `sedeId` insieme all'indirizzo",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Identificativo già di un'altra ditta o indirizzo già di un'altra sede attiva",
+  })
   @Put('destinatari/:id')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateDestinatario(@Param('id') id: string, @Body() dto: UpdateDestinatarioDto) {

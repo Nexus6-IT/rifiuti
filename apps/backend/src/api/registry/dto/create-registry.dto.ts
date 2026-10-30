@@ -16,6 +16,7 @@ import {
   IsNotEmptyObject,
 } from 'class-validator'
 import { Type } from 'class-transformer'
+import { ApiPropertyOptional } from '@nestjs/swagger'
 
 export class IndirizzoDto {
   @IsString()
@@ -53,6 +54,12 @@ export class CreateProduttoreDto {
   partitaIVA: string
 
   /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
+  @ApiPropertyOptional({
+    description:
+      'Codice fiscale della ditta (al massimo 16 caratteri), facoltativo e in aggiunta alla partita IVA. Un privato senza partita IVA è ammesso solo come produttore.',
+    maxLength: 16,
+    example: 'RSSMRA80A01H501U',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(16, {
@@ -90,6 +97,12 @@ export class CreateTrasportatoreDto {
   partitaIVA: string
 
   /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
+  @ApiPropertyOptional({
+    description:
+      'Codice fiscale della ditta (al massimo 16 caratteri), facoltativo e in aggiunta alla partita IVA. Un privato senza partita IVA è ammesso solo come produttore.',
+    maxLength: 16,
+    example: 'RSSMRA80A01H501U',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(16, {
@@ -137,6 +150,12 @@ export class CreateDestinatarioDto {
   partitaIVA: string
 
   /** Facoltativo, in aggiunta alla partita IVA. Al massimo 16 caratteri (D2/M8). */
+  @ApiPropertyOptional({
+    description:
+      'Codice fiscale della ditta (al massimo 16 caratteri), facoltativo e in aggiunta alla partita IVA. Un privato senza partita IVA è ammesso solo come produttore.',
+    maxLength: 16,
+    example: 'RSSMRA80A01H501U',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(16, {
@@ -182,6 +201,12 @@ export class UpdateProduttoreDto {
   ragioneSociale?: string
 
   /** D2.7: aggiunge l'identificativo mancante della ditta. */
+  @ApiPropertyOptional({
+    description:
+      'Aggiunge il codice fiscale mancante della ditta; uno già impostato non si cambia.',
+    maxLength: 16,
+    example: 'RSSMRA80A01H501U',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(16, {
@@ -191,11 +216,20 @@ export class UpdateProduttoreDto {
   codiceFiscale?: string
 
   /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  @ApiPropertyOptional({
+    description:
+      'Aggiunge la partita IVA mancante della ditta, oppure sostituisce quella registrata solo se non passa il controllo di validità; una partita IVA valida non si cambia.',
+  })
   @IsString()
   @IsOptional()
   partitaIVA?: string
 
   /** D7: nuova sede predefinita del ruolo (attiva, della stessa ditta). Esclude l'indirizzo. */
+  @ApiPropertyOptional({
+    description:
+      "Nuova sede predefinita del ruolo: deve essere attiva e della stessa ditta. Esclude l'indirizzo (sedeLegale/sede).",
+    format: 'uuid',
+  })
   @IsOptional()
   @IsUUID()
   sedeId?: string
@@ -224,6 +258,12 @@ export class UpdateTrasportatoreDto {
   ragioneSociale?: string
 
   /** D2.7: aggiunge l'identificativo mancante della ditta. */
+  @ApiPropertyOptional({
+    description:
+      'Aggiunge il codice fiscale mancante della ditta; uno già impostato non si cambia.',
+    maxLength: 16,
+    example: 'RSSMRA80A01H501U',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(16, {
@@ -233,11 +273,20 @@ export class UpdateTrasportatoreDto {
   codiceFiscale?: string
 
   /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  @ApiPropertyOptional({
+    description:
+      'Aggiunge la partita IVA mancante della ditta, oppure sostituisce quella registrata solo se non passa il controllo di validità; una partita IVA valida non si cambia.',
+  })
   @IsString()
   @IsOptional()
   partitaIVA?: string
 
   /** D7: nuova sede predefinita del ruolo (attiva, della stessa ditta). Esclude l'indirizzo. */
+  @ApiPropertyOptional({
+    description:
+      "Nuova sede predefinita del ruolo: deve essere attiva e della stessa ditta. Esclude l'indirizzo (sedeLegale/sede).",
+    format: 'uuid',
+  })
   @IsOptional()
   @IsUUID()
   sedeId?: string
@@ -277,6 +326,12 @@ export class UpdateDestinatarioDto {
   ragioneSociale?: string
 
   /** D2.7: aggiunge l'identificativo mancante della ditta. */
+  @ApiPropertyOptional({
+    description:
+      'Aggiunge il codice fiscale mancante della ditta; uno già impostato non si cambia.',
+    maxLength: 16,
+    example: 'RSSMRA80A01H501U',
+  })
   @IsString()
   @IsOptional()
   @MaxLength(16, {
@@ -286,11 +341,20 @@ export class UpdateDestinatarioDto {
   codiceFiscale?: string
 
   /** D2.7 / D2.8: aggiunta, o sostituzione se quella registrata non passa il controllo. */
+  @ApiPropertyOptional({
+    description:
+      'Aggiunge la partita IVA mancante della ditta, oppure sostituisce quella registrata solo se non passa il controllo di validità; una partita IVA valida non si cambia.',
+  })
   @IsString()
   @IsOptional()
   partitaIVA?: string
 
   /** D7: nuova sede predefinita del ruolo (attiva, della stessa ditta). Esclude l'indirizzo. */
+  @ApiPropertyOptional({
+    description:
+      "Nuova sede predefinita del ruolo: deve essere attiva e della stessa ditta. Esclude l'indirizzo (sedeLegale/sede).",
+    format: 'uuid',
+  })
   @IsOptional()
   @IsUUID()
   sedeId?: string
