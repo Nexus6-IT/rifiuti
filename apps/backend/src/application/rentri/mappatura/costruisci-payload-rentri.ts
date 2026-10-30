@@ -147,10 +147,27 @@ export class CostruisciPayloadRentri {
       )
     }
 
-    // Denominazione e identificativo dalla ditta; l'indirizzo dalla sede predefinita (la sede
-    // scelta sul singolo FIR arriva nel 5b). Senza ditta/sede, la copia sulla riga di ruolo.
+    // Denominazione e identificativo dalla ditta. L'indirizzo dalla sede scelta sul FIR (filtrata
+    // per tenant E ditta del ruolo: una sede di un'altra ditta non deve mai uscire) o, se il FIR
+    // non ne ha una (creato prima della migration), dalla predefinita del ruolo. Senza ditta/sede,
+    // la copia sulla riga di ruolo.
     const ditta = riga.ditta
-    const indirizzo = riga.sede ?? riga
+    let sedeScelta: IndirizzoRegistro | null = riga.sede
+    if (parte?.sedeId) {
+      sedeScelta = riga.dittaId
+        ? await this.prisma.db.sedeDitta.findFirst({
+            where: { id: parte.sedeId, tenantId, dittaId: riga.dittaId },
+          })
+        : null
+      if (!sedeScelta) {
+        throw new DatoMancantePerRentriError(
+          nomeParte,
+          'sede',
+          'la sede scelta sul FIR non risulta tra le sedi della ditta'
+        )
+      }
+    }
+    const indirizzo = sedeScelta ?? riga
     return {
       ragioneSociale: ditta?.ragioneSociale ?? riga.ragioneSociale,
       // Il contratto vuole un solo identificativo fiscale: CF della ditta se c'e', altrimenti P.IVA
@@ -175,6 +192,7 @@ interface IndirizzoRegistro {
 
 /** Riga di ruolo con ditta e sede, come la restituisce `findFirst` con l'include. */
 interface RigaRegistro extends IndirizzoRegistro {
+  dittaId: string | null
   ragioneSociale: string
   partitaIVA: string
   numeroIscrizione?: string | null

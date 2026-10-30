@@ -29,6 +29,7 @@ import {
   partitaIvaValida,
 } from '../../../test-support/anagrafiche-di-test'
 import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
+import { DatoMancantePerRentriError } from './mappa-parti'
 
 // Comune di prova: la tabella `istat_comuni` e' condivisa e puo' essere vuota nel database di test
 const CODICE_COMUNE = '999901'
@@ -214,5 +215,85 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
     )) as unknown as Payload
 
     expect(payload.dati_partenza.produttore.indirizzo).toMatchObject({ indirizzo: 'Via Nuova' })
+  })
+
+  // --- D9.8: la sede e' quella scelta sul FIR ---
+
+  const firConSedi = (
+    p: { ruoloId: string; sedeId?: string },
+    d: { ruoloId: string; sedeId?: string },
+    t: string
+  ) =>
+    ({
+      id: 'fir-2',
+      tenantId,
+      provenienza: 'SPECIALE',
+      tipoTrattaPrincipale: 'TERRESTRE',
+      produttore: { registroId: p.ruoloId, sedeId: p.sedeId },
+      destinatario: { registroId: d.ruoloId, sedeId: d.sedeId },
+      trasportatore: { registroId: t },
+      rifiuto: { cerCode: '150106', statoFisico: 'Solido', descrizione: 'Imballaggi misti' },
+    }) as never
+
+  const altraSede = (dittaId: string, via: string) =>
+    owner.sedeDitta.create({ data: { tenantId, dittaId, ...sede(via), principale: false } })
+
+  it('FIR sulla seconda sede: indirizzo della seconda, non della predefinita', async () => {
+    const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', sede('Via Prima'))
+    const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', sede('Via Due'))
+    const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
+      ...sede('Via Tre'),
+      numeroDocumento: 'MI/123456',
+    })
+    const seconda = await altraSede(p.dittaId, 'Via Seconda')
+
+    const payload = (await TenantContext.run({ tenantId }, () =>
+      servizio.costruisci(
+        firConSedi({ ruoloId: p.ruoloId, sedeId: seconda.id }, d, t.ruoloId),
+        tenantId
+      )
+    )) as unknown as Payload
+
+    expect(payload.dati_partenza.produttore.indirizzo).toMatchObject({ indirizzo: 'Via Seconda' })
+    expect(payload.dati_partenza.destinatario.indirizzo).toMatchObject({
+      indirizzo: 'Via Due',
+    })
+  })
+
+  it('FIR precedente (sede NULL): indirizzo della sede predefinita', async () => {
+    const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', sede('Via Predefinita'))
+    const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', sede('Via Due'))
+    const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
+      ...sede('Via Tre'),
+      numeroDocumento: 'MI/123456',
+    })
+    await altraSede(p.dittaId, 'Via Altra')
+
+    const payload = (await TenantContext.run({ tenantId }, () =>
+      servizio.costruisci(firConSedi(p, d, t.ruoloId), tenantId)
+    )) as unknown as Payload
+
+    expect(payload.dati_partenza.produttore.indirizzo).toMatchObject({
+      indirizzo: 'Via Predefinita',
+    })
+  })
+
+  it("una sede di un'altra ditta forzata nel database: errore, mai l'indirizzo altrui", async () => {
+    const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', sede('Via Mia'))
+    const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', sede('Via Due'))
+    const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
+      ...sede('Via Tre'),
+      numeroDocumento: 'MI/123456',
+    })
+    const estranea = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', sede('Via Altrui'))
+
+    await expect(
+      TenantContext.run({ tenantId }, () =>
+        servizio.costruisci(
+          firConSedi({ ruoloId: p.ruoloId, sedeId: estranea.sedeId }, d, t.ruoloId),
+          tenantId
+        )
+      )
+    ).rejects.toBeInstanceOf(DatoMancantePerRentriError)
   })
 })
