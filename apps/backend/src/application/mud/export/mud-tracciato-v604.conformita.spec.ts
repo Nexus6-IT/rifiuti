@@ -596,6 +596,24 @@ describe.each([
       ])
     })
 
+    it('elenco di dichiarazioni vuoto: errore, mai un file senza pacchetti', () => {
+      const dato = fixtureDatoCompleto(anno)
+      dato.dichiarazioni = []
+      expect(() => tracciato.generate(dato)).toThrow(/dichiarazioni vuot/i)
+    })
+
+    it('più di un pacchetto con le schede AU: errore (sarebbero duplicate)', () => {
+      const dato = dueDichiarazioni()
+      dato.dichiarazioni![1].conAutorizzazioni = true
+      expect(() => tracciato.generate(dato)).toThrow(/AU/)
+    })
+
+    it('più di un pacchetto con gli allegati AR e INT: errore (sarebbero duplicati)', () => {
+      const dato = dueDichiarazioni()
+      dato.dichiarazioni![1].conAllegatiAzienda = true
+      expect(() => tracciato.generate(dato)).toThrow(/AR e INT/)
+    })
+
     it('XX conta i record di tutti i pacchetti', () => {
       const c = tracciato.generate(dueDichiarazioni())
       const xx = linee(c)[0].split(';')

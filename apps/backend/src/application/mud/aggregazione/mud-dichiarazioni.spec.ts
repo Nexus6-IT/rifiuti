@@ -6,6 +6,7 @@ import {
   creaContestoSedi,
   dichiarazioneDelRegistro,
   dichiarazionePerAllegati,
+  pacchettiPerExport,
   provinceDiverse,
   type MudUnitaLocaleAnagrafica,
 } from './mud-dichiarazioni'
@@ -252,5 +253,66 @@ describe('mud-dichiarazioni', () => {
       { codice: '000000000000009', principale: false },
     ]
     expect(dichiarazionePerAllegati(d).arEInt).toBe(d[1])
+  })
+})
+
+describe('pacchettiPerExport', () => {
+  const azienda = { ragioneSociale: 'Acme', partitaIva: '1', numeroAddetti: 42, via: 'Via Roma' }
+  const d = (codice: string, principale: boolean, extra: Record<string, unknown> = {}) => ({
+    codice,
+    progressivo: Number(codice),
+    unitaLocale: { principale },
+    anagrafica: null,
+    numeroAddetti: 42,
+    comuneCode: '058091',
+    righe: [],
+    ...extra,
+  })
+
+  it('AU sulla principale, AR e INT sul primo pacchetto, ciascuno una volta sola', () => {
+    const p = pacchettiPerExport(
+      [d('000000000000002', true), d('000000000000001', false)],
+      azienda as never
+    )
+    expect(p.map(x => x.progressivoUnitaLocale)).toEqual([1, 2])
+    expect(p.map(x => x.conAutorizzazioni)).toEqual([false, true])
+    expect(p.map(x => x.conAllegatiAzienda)).toEqual([true, false])
+  })
+
+  it('elenco vuoto: nessun pacchetto', () => {
+    expect(pacchettiPerExport([], azienda as never)).toEqual([])
+  })
+
+  it("anagrafica dell'azienda con gli stessi addetti: null; con addetti diversi: dati azienda e addetti della dichiarazione", () => {
+    const [uguale] = pacchettiPerExport([d('000000000000001', true)], azienda as never)
+    expect(uguale.unitaLocale).toBeNull()
+    const [diverso] = pacchettiPerExport(
+      [d('000000000000001', true, { numeroAddetti: 0 })],
+      azienda as never
+    )
+    expect(diverso.unitaLocale).toMatchObject({ via: 'Via Roma', numeroAddetti: 0 })
+  })
+
+  it('sede con indirizzo: dati della sede, comune ISTAT e addetti della dichiarazione', () => {
+    const sede = ul('b', {
+      indirizzo: 'Via Sede',
+      civico: ' ',
+      cap: '30100',
+      comune: 'Venezia',
+      provincia: 'VE',
+    })
+    const [p] = pacchettiPerExport(
+      [d('000000000000002', false, { anagrafica: sede, numeroAddetti: 7, comuneCode: '027042' })],
+      azienda as never
+    )
+    expect(p.unitaLocale).toEqual({
+      via: 'Via Sede',
+      civico: undefined,
+      cap: '30100',
+      comune: 'Venezia',
+      provincia: 'VE',
+      comuneCode: '027042',
+      numeroAddetti: 7,
+    })
   })
 })

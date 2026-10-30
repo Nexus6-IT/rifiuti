@@ -191,6 +191,17 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     const body: string[] = []
     // Un pacchetto per dichiarazione, nell'ordine dato; senza dichiarazioni, uno solo come sempre.
     if (data.dichiarazioni) {
+      // Difese: un elenco vuoto darebbe un file senza pacchetti, e le schede AU, AR e INT in più
+      // pacchetti sarebbero duplicate (D7: ciascuna sta in un solo pacchetto).
+      if (data.dichiarazioni.length === 0) {
+        throw new Error('Elenco di dichiarazioni vuoto: file MUD non conforme')
+      }
+      if (data.dichiarazioni.filter(d => d.conAutorizzazioni).length > 1) {
+        throw new Error('Schede AU in più di un pacchetto: file MUD non conforme')
+      }
+      if (data.dichiarazioni.filter(d => d.conAllegatiAzienda).length > 1) {
+        throw new Error('Schede AR e INT in più di un pacchetto: file MUD non conforme')
+      }
       for (const dichiarazione of data.dichiarazioni) {
         body.push(...this.pacchetto(this.vistaPacchetto(data, dichiarazione)))
       }

@@ -1,4 +1,9 @@
-import type { MudRifiutoLine } from '../export/mud-export.types'
+import type {
+  MudAzienda,
+  MudDichiarazioneExport,
+  MudRifiutoLine,
+  MudUnitaLocaleAnagrafica as MudUnitaLocaleExport,
+} from '../export/mud-export.types'
 
 // Regole pure delle dichiarazioni MUD per unità locale (Fase 2 pezzo 8, D2, D4-D7).
 // Nessun accesso al database: il servizio carica i dati e li passa qui, così l'attribuzione
@@ -269,4 +274,71 @@ export function dichiarazionePerAllegati<T extends { codice: string; principale:
   const ordinate = [...dichiarazioni].sort((a, b) => a.codice.localeCompare(b.codice))
   const prima = ordinate[0]
   return { au: ordinate.find(d => d.principale) ?? prima, arEInt: prima }
+}
+
+/** Quanto serve di una dichiarazione per portarla nel file (sottoinsieme di `MudDichiarazione`). */
+export type DichiarazionePerExport = Pick<
+  MudDichiarazione,
+  'codice' | 'progressivo' | 'anagrafica' | 'numeroAddetti' | 'comuneCode' | 'righe'
+> & { unitaLocale: Pick<MudDichiarazione['unitaLocale'], 'principale'> }
+
+const senzaVuoti = (v: string | null | undefined): string | undefined => {
+  const t = (v ?? '').trim()
+  return t === '' ? undefined : t
+}
+
+/**
+ * Anagrafica del pacchetto come la legge il generatore. Sede con indirizzo completo (D5) → i suoi
+ * dati. Anagrafica dell'azienda (null): resta null, salvo che gli addetti della dichiarazione
+ * differiscano da quelli dell'azienda (più dichiarazioni, D5: 0 o il dato della sede): allora
+ * si ripetono i dati dell'azienda con gli addetti giusti, perché il generatore con `null`
+ * scriverebbe il totale dell'azienda.
+ */
+function anagraficaPacchetto(
+  d: DichiarazionePerExport,
+  azienda: MudAzienda
+): MudUnitaLocaleExport | null {
+  if (d.anagrafica) {
+    return {
+      via: senzaVuoti(d.anagrafica.indirizzo),
+      civico: senzaVuoti(d.anagrafica.civico),
+      cap: senzaVuoti(d.anagrafica.cap),
+      comune: senzaVuoti(d.anagrafica.comune),
+      provincia: senzaVuoti(d.anagrafica.provincia),
+      comuneCode: d.comuneCode ?? undefined,
+      numeroAddetti: d.numeroAddetti,
+    }
+  }
+  if (d.numeroAddetti === (azienda.numeroAddetti ?? 0)) return null
+  return {
+    via: azienda.via,
+    civico: azienda.civico,
+    cap: azienda.cap,
+    comune: azienda.comune,
+    provincia: azienda.provincia,
+    comuneCode: d.comuneCode ?? azienda.comuneCode,
+    numeroAddetti: d.numeroAddetti,
+  }
+}
+
+/**
+ * Pacchetti del file dalle dichiarazioni dell'aggregazione, in ordine di codice. AU, AR e INT
+ * escono in UN solo pacchetto ciascuno (D7, `dichiarazionePerAllegati`), qualunque siano i flag
+ * portati dalle dichiarazioni: altrimenti le schede sarebbero duplicate. Elenco vuoto → [].
+ */
+export function pacchettiPerExport(
+  dichiarazioni: DichiarazionePerExport[],
+  azienda: MudAzienda
+): MudDichiarazioneExport[] {
+  const ordinate = [...dichiarazioni].sort((a, b) => a.codice.localeCompare(b.codice))
+  const { au, arEInt } = dichiarazionePerAllegati(
+    ordinate.map(d => ({ codice: d.codice, principale: d.unitaLocale.principale }))
+  )
+  return ordinate.map(d => ({
+    progressivoUnitaLocale: d.progressivo,
+    unitaLocale: anagraficaPacchetto(d, azienda),
+    rifiuti: d.righe,
+    conAutorizzazioni: au?.codice === d.codice,
+    conAllegatiAzienda: arEInt?.codice === d.codice,
+  }))
 }
