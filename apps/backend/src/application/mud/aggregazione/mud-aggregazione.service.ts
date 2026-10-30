@@ -324,6 +324,8 @@ export class MudAggregazioneService {
           progressivo: 1,
           unitaLocale: { id: null, denominazione: 'Azienda', numIscrSito: null, principale: false },
           anagrafica: null,
+          numeroAddetti: contesto.tenant?.numeroAddetti ?? 0,
+          comuneCode: contesto.comuneCode,
           conAutorizzazioni: true,
           conAllegatiAzienda: true,
           righe: gruppo.righeFinali,
@@ -555,6 +557,8 @@ export class MudAggregazioneService {
           : { id: null, denominazione: nome, numIscrSito: null, principale: false },
         // con l'addetto risolto: 0 quando manca e le dichiarazioni sono più d'una (D5)
         anagrafica: ana.anagrafica ? { ...ana.anagrafica, numeroAddetti: ana.numeroAddetti } : null,
+        numeroAddetti: ana.numeroAddetti,
+        comuneCode,
         conAutorizzazioni: false,
         conAllegatiAzienda: false,
         righe: esito.righeFinali,

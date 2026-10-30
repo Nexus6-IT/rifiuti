@@ -2389,6 +2389,57 @@ describe('MudAggregazioneService', () => {
       )
     })
 
+    it('v2: principale senza indirizzo con due dichiarazioni: addetti della sede e ISTAT in ogni dichiarazione', async () => {
+      impostaSedi(
+        [sede1({ indirizzo: null, cap: null, numeroAddetti: 5 }), sede2({ numeroAddetti: 3 })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      prisma.tenant.findUnique.mockResolvedValue({
+        city: 'Roma',
+        province: 'RM',
+        atecoCode: '38.11.00',
+        numeroAddetti: 40,
+      })
+      referenceData.findComuneByName.mockImplementation(async (comune: string) =>
+        comune === 'Roma' ? { code: '058091' } : { code: '015146' }
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      // la principale usa l'anagrafica dell'azienda ma gli addetti sono i suoi (5), non i 40
+      expect(r.dichiarazioni[0].anagrafica).toBeNull()
+      expect(r.dichiarazioni.map(d => d.numeroAddetti)).toEqual([5, 3])
+      // ISTAT: azienda (Roma) per la principale, Milano per il deposito
+      expect(r.dichiarazioni.map(d => d.comuneCode)).toEqual(['058091', '015146'])
+      expect(codici(r.controlli)).not.toContain('UNITA_LOCALE_SENZA_ADDETTI')
+
+      // addetti assenti: 0 e avviso, non il totale dell'azienda
+      impostaSedi(
+        [sede1({ indirizzo: null, cap: null, numeroAddetti: null }), sede2({ numeroAddetti: 3 })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      const senza = await service.aggrega('t1', 2025)
+      expect(senza.dichiarazioni.map(d => d.numeroAddetti)).toEqual([0, 3])
+      expect(conCodice(senza.controlli, 'UNITA_LOCALE_SENZA_ADDETTI')).toHaveLength(1)
+    })
+
+    it("v2: una dichiarazione sola: addetti dell'azienda come oggi", async () => {
+      impostaSedi([sede1({ numeroAddetti: null })], [registro('reg-A', 'ul-1')])
+      prisma.tenant.findUnique.mockResolvedValue({
+        city: 'Roma',
+        province: 'RM',
+        atecoCode: '38.11.00',
+        numeroAddetti: 40,
+      })
+      impostaDati({ movimenti: [mov({})] })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni[0].numeroAddetti).toBe(40)
+      expect(r.dichiarazioni[0].comuneCode).toBe('015146')
+    })
+
     it('v2: i controlli di un gruppo portano la sede solo con più dichiarazioni', async () => {
       dueSedi()
       const movimenti = [

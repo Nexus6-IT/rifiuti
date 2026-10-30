@@ -49,6 +49,10 @@ export interface MudDichiarazione {
   }
   /** null = anagrafica dell'azienda */
   anagrafica: MudUnitaLocaleAnagrafica | null
+  /** addetti della dichiarazione (D5), sempre valorizzati anche se l'anagrafica è dell'azienda */
+  numeroAddetti: number
+  /** codice ISTAT a 6 cifre del comune della dichiarazione (sede o azienda); null se non trovato */
+  comuneCode: string | null
   conAutorizzazioni: boolean
   /** AR e INT: primo pacchetto per codice */
   conAllegatiAzienda: boolean
