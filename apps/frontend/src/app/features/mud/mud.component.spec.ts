@@ -655,6 +655,39 @@ describe('MudComponent', () => {
       expect(mud.downloadExport).not.toHaveBeenCalled()
     })
 
+    it("file sostitutivo con unità locali diverse: l'avviso del riepilogo si mostra e si conferma con il suo codice (G1)", () => {
+      const messaggio =
+        'Il file sostituisce una dichiarazione presentata in precedenza ma le unità locali non coincidono: risultano sostitutive solo quelle già presentate (1), le altre sono nuove dichiarazioni.'
+      mud.getReport.and.returnValue(
+        of(
+          riepilogo({
+            controlli: [{ codice: 'SOSTITUTIVA_PIU_DICHIARAZIONI', gravita: 'AVVISO', messaggio }],
+          })
+        )
+      )
+      mud.getPresentazione.and.returnValue(
+        of(
+          stato({
+            status: 'SUBMITTED',
+            submittedAt: '2026-06-30T10:00:00.000Z',
+            prossimoFileSostituisce: '2026-06-30T10:00:00.000Z',
+          })
+        )
+      )
+      crea()
+      component.loadReport()
+      component.download()
+      fixture.detectChanges()
+
+      expect(component.dialogo()).toBe('download')
+      expect(component.codiciAvvisiReport()).toEqual(['SOSTITUTIVA_PIU_DICHIARAZIONI'])
+      expect(component.puoConfermare()).toBeFalse()
+      component.confermaSpuntata = true
+      component.conferma()
+
+      expect(mud.downloadExport).toHaveBeenCalledWith(2025, ['SOSTITUTIVA_PIU_DICHIARAZIONI'])
+    })
+
     it('422 avvisi cambiati: toast e riepilogo ricaricato', async () => {
       mud.downloadExport.and.returnValue(
         throwError(() =>
