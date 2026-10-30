@@ -11,10 +11,12 @@ import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-itali
 import { MudVersionRegistry } from './export/mud-version.registry'
 import { caricaDichiaranteDellAzienda } from './export/mud-dichiarante'
 import { MudAggregazioneService, type MudAggregato } from './aggregazione/mud-aggregazione.service'
-import { hashAggregato, hashDichiarante } from './aggregazione/mud-regole'
+import { hashCalcoloMud, hashDichiaranteMud } from './aggregazione/mud-regole'
 import {
   aggiornaReportData,
   dataComunicazioneSostituita,
+  VERSIONE_CALCOLO_MUD,
+  versioneCalcoloSalvata,
   type MotivoAnnullamento,
   type ReportDataJson,
   type RecordMudReport,
@@ -35,6 +37,13 @@ export interface StatoPresentazioneMud {
    * sarà una prima dichiarazione: la stessa regola dell'export (`dataComunicazioneSostituita`).
    */
   prossimoFileSostituisce: Date | null
+  /**
+   * Versione del calcolo con cui è stata fatta la presentazione (1 = prima di F2-8, 2 = una
+   * dichiarazione per unità locale); null se il MUD non è presentato (D10).
+   */
+  versioneCalcolo: number | null
+  /** Versione che usa il calcolo di oggi, per file e riepilogo nuovi */
+  versioneCalcoloAttuale: number
 }
 
 /** Esportazione registrata, come la pagina la propone per la segnatura. */
@@ -113,6 +122,8 @@ export class MudPresentazioneService {
         fileTracciato: null,
         esportazioni: [],
         prossimoFileSostituisce: null,
+        versioneCalcolo: null,
+        versioneCalcoloAttuale: VERSIONE_CALCOLO_MUD,
       }
     }
     const status = record.status as StatoPresentazioneMud['status']
@@ -127,15 +138,21 @@ export class MudPresentazioneService {
         fileTracciato: null,
         esportazioni,
         prossimoFileSostituisce,
+        versioneCalcolo: null,
+        versioneCalcoloAttuale: VERSIONE_CALCOLO_MUD,
       }
     }
 
     const reportData = isRecord(record.reportData) ? record.reportData : {}
     const hashSalvato = stringaONull(reportData.hashAggregato)
+    // D10: si ricalcola con la versione della presentazione (assente = 1), così le giacenze o la
+    // ripartizione per sede introdotte dopo non fanno comparire «dati modificati» su un MUD
+    // presentato prima.
+    const versioneCalcolo = versioneCalcoloSalvata(reportData.versioneCalcolo)
     let datiModificatiDopoPresentazione = false
     if (hashSalvato !== null) {
-      const aggregato = await this.aggregazione.aggrega(tenantId, year)
-      datiModificatiDopoPresentazione = hashAggregato(aggregato.righe) !== hashSalvato
+      const aggregato = await this.aggregazione.aggrega(tenantId, year, { versioneCalcolo })
+      datiModificatiDopoPresentazione = hashCalcoloMud(aggregato) !== hashSalvato
       // hashAggregato copre solo le righe: anagrafica (AA) e autorizzazioni (AU) si confrontano
       // a parte (segnature precedenti a questo controllo non lo hanno). Senza azienda non c'è
       // nulla da confrontare.
@@ -154,6 +171,8 @@ export class MudPresentazioneService {
       fileTracciato: reportData.fileTracciato === true,
       esportazioni,
       prossimoFileSostituisce,
+      versioneCalcolo,
+      versioneCalcoloAttuale: VERSIONE_CALCOLO_MUD,
     }
   }
 
@@ -179,7 +198,7 @@ export class MudPresentazioneService {
     const submittedAt = dataPresentazione ?? new Date()
 
     const aggregato = await this.aggregazione.aggrega(tenantId, year)
-    const hashAttuale = hashAggregato(aggregato.righe)
+    const hashAttuale = hashCalcoloMud(aggregato)
     const dichiaranteAttuale = await this.hashDichiaranteAttuale(tenantId, aggregato)
 
     let traccia: Record<string, unknown> = {}
@@ -199,6 +218,8 @@ export class MudPresentazioneService {
         let presentazione: {
           hashAggregato: string
           hashDichiarante: string | null
+          /** versione del calcolo con cui è stato fatto l'hash salvato (D10) */
+          versioneCalcolo: number
           esportazionePresentata: string | null
           avvisiConfermatiAllaPresentazione: string[]
           riepilogoAllaPresentazione: ReportDataJson | null
@@ -210,6 +231,8 @@ export class MudPresentazioneService {
           presentazione = {
             hashAggregato: hashAttuale,
             hashDichiarante: dichiaranteAttuale,
+            // senza file l'hash è quello di oggi, quindi la versione è quella di oggi
+            versioneCalcolo: VERSIONE_CALCOLO_MUD,
             esportazionePresentata: null,
             avvisiConfermatiAllaPresentazione: [],
             riepilogoAllaPresentazione: null,
@@ -233,10 +256,16 @@ export class MudPresentazioneService {
               error: 'MUD_DATA_PRECEDENTE_AL_FILE',
             })
           }
+          const hashDellaVoce = stringaONull(voce.hashAggregato)
           presentazione = {
             // ripiego solo per una voce di forma inattesa: l'export scrive sempre l'hash
-            hashAggregato: stringaONull(voce.hashAggregato) ?? hashAttuale,
+            hashAggregato: hashDellaVoce ?? hashAttuale,
             hashDichiarante: stringaONull(voce.hashDichiarante),
+            // la versione della voce (assente = 1); col ripiego sull'hash di oggi, quella di oggi
+            versioneCalcolo:
+              hashDellaVoce === null
+                ? VERSIONE_CALCOLO_MUD
+                : versioneCalcoloSalvata(voce.versioneCalcolo),
             esportazionePresentata: stringaONull(voce.generatoIl),
             avvisiConfermatiAllaPresentazione: elencoDiStringhe(voce.avvisiConfermati),
             riepilogoAllaPresentazione: isRecord(voce.riepilogo) ? voce.riepilogo : null,
@@ -249,6 +278,7 @@ export class MudPresentazioneService {
           submittedAt: submittedAt.toISOString(),
           hashAggregato: presentazione.hashAggregato,
           hashDichiarante: presentazione.hashDichiarante,
+          versioneCalcolo: presentazione.versioneCalcolo,
           esportazionePresentata: presentazione.esportazionePresentata,
           avvisiConfermati: presentazione.avvisiConfermatiAllaPresentazione,
           riepilogo: presentazione.riepilogoAllaPresentazione,
@@ -311,6 +341,10 @@ export class MudPresentazioneService {
             submittedBy: record.submittedBy,
             hashAggregato: stringaONull(p.hashAggregato),
             hashDichiarante: stringaONull(p.hashDichiarante),
+            versioneCalcolo:
+              typeof p.versioneCalcolo === 'number'
+                ? versioneCalcoloSalvata(p.versioneCalcolo)
+                : null,
             esportazionePresentata: stringaONull(p.esportazionePresentata),
             avvisiConfermati: elenco(p.avvisiConfermatiAllaPresentazione),
             riepilogo: isRecord(p.riepilogoAllaPresentazione) ? p.riepilogoAllaPresentazione : null,
@@ -324,6 +358,7 @@ export class MudPresentazioneService {
               ...p,
               hashAggregato: null,
               hashDichiarante: null,
+              versioneCalcolo: null,
               esportazionePresentata: null,
               avvisiConfermatiAllaPresentazione: [],
               riepilogoAllaPresentazione: null,
@@ -381,6 +416,6 @@ export class MudPresentazioneService {
       tenantId,
       aggregato.dichiarante
     )
-    return dichiarante ? hashDichiarante(dichiarante) : null
+    return dichiarante ? hashDichiaranteMud(dichiarante, aggregato) : null
   }
 }

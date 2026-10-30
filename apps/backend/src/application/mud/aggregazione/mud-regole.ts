@@ -83,6 +83,36 @@ export function operazioneDaCatalogo(
   return comportamentoDelMovimento(catalogo, m)?.operazione ?? undefined
 }
 
+/** Da dove viene l'operazione R/D di uno scarico (Decisione 5). */
+export type OrigineOperazione =
+  | 'CODICE_MOVIMENTO'
+  | 'CATALOGO'
+  | 'CODICE_FIR'
+  | 'TIPO_FIR'
+  | 'NON_INDICATA'
+
+/**
+ * Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5: codice operazione del
+ * movimento, causale del catalogo, codice operazione del FIR, tipo operazione del FIR (dedotta:
+ * il default del campo è DISPOSAL, quindi chi chiama avvisa), altrimenti smaltimento «non
+ * indicata» (chi chiama avvisa). Pura: la usano l'aggregazione MUD e la vista Bilancio.
+ */
+export function operazioneDelMovimento(
+  catalogo: CatalogoCausali,
+  m: MovimentoClassificabile & { operationCode: string | null },
+  fir?: { wasteOperationCode: string | null; wasteOperationType: string | null }
+): { operazione: 'R' | 'D'; origine: OrigineOperazione } {
+  const dalCodice = operazioneDaCodice(m.operationCode)
+  if (dalCodice) return { operazione: dalCodice, origine: 'CODICE_MOVIMENTO' }
+  const dalCatalogo = operazioneDaCatalogo(catalogo, m)
+  if (dalCatalogo) return { operazione: dalCatalogo, origine: 'CATALOGO' }
+  const dalCodiceFir = fir ? operazioneDaCodice(fir.wasteOperationCode) : undefined
+  if (dalCodiceFir) return { operazione: dalCodiceFir, origine: 'CODICE_FIR' }
+  if (fir?.wasteOperationType === 'RECOVERY') return { operazione: 'R', origine: 'TIPO_FIR' }
+  if (fir?.wasteOperationType === 'DISPOSAL') return { operazione: 'D', origine: 'TIPO_FIR' }
+  return { operazione: 'D', origine: 'NON_INDICATA' }
+}
+
 /** Valore del registro non vuoto che non corrisponde a nessun flag del tracciato. */
 export type StatoFisicoRegistro = StatoFisico | 'NON_RICONOSCIUTO'
 

@@ -18,12 +18,16 @@ import {
 } from '../aggregazione/mud-controlli'
 import { hashCalcoloMud, hashDichiaranteMud } from '../aggregazione/mud-regole'
 import { pacchettiPerExport } from '../aggregazione/mud-dichiarazioni'
-import { aggiornaReportData, dataComunicazioneSostituita } from '../mud-report-data'
+import {
+  aggiornaReportData,
+  dataComunicazioneSostituita,
+  VERSIONE_CALCOLO_MUD,
+} from '../mud-report-data'
 import { MudExportData, MudExportResult } from './mud-export.types'
 import { caricaDichiarante } from './mud-dichiarante'
 
 /** Versione del calcolo con cui si genera ogni file nuovo (D10). */
-const VERSIONE_CALCOLO_EXPORT = 2
+const VERSIONE_CALCOLO_EXPORT = VERSIONE_CALCOLO_MUD
 
 /** Ruoli che possono confermare gli avvisi che cambiano le quantità (Decisione 19). */
 export const RUOLI_CONFERMA_AVVISI = ['ADMIN', 'SUPER_ADMIN'] as const

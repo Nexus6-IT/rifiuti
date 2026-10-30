@@ -17,8 +17,7 @@ import type { MudAllegatoDR, MudAllegatoTE, MudRifiutoLine } from '../export/mud
 import {
   classificaMovimento,
   limitiAnnoMud,
-  operazioneDaCatalogo,
-  operazioneDaCodice,
+  operazioneDelMovimento,
   statoFisicoMud,
   type StatoFisicoRegistro,
 } from './mud-regole'
@@ -1233,25 +1232,13 @@ export class MudAggregazioneService {
     fir: FirCollegato | undefined,
     controlli: MudEsitoControllo[]
   ): 'R' | 'D' {
-    const indicata =
-      operazioneDaCodice(m.operationCode) ??
-      operazioneDaCatalogo(catalogo, m) ??
-      (fir ? operazioneDaCodice(fir.wasteOperationCode) : undefined)
-    if (indicata) return indicata
-
-    // `wasteOperationType` ha default DISPOSAL: la deduzione va verificata.
-    const dedotta =
-      fir?.wasteOperationType === 'RECOVERY'
-        ? 'R'
-        : fir?.wasteOperationType === 'DISPOSAL'
-          ? 'D'
-          : undefined
-    if (fir && dedotta) {
-      controlli.push(controlliMud.operazioneDedottaDalFir(r, etichettaFir(fir), dedotta))
-      return dedotta
+    const { operazione, origine } = operazioneDelMovimento(catalogo, m, fir)
+    if (origine === 'TIPO_FIR' && fir) {
+      controlli.push(controlliMud.operazioneDedottaDalFir(r, etichettaFir(fir), operazione))
+    } else if (origine === 'NON_INDICATA') {
+      controlli.push(controlliMud.operazioneNonIndicata(r))
     }
-    controlli.push(controlliMud.operazioneNonIndicata(r))
-    return 'D'
+    return operazione
   }
 
   /** DR e TE di uno scarico conteggiato: dal FIR collegabile, altrimenti dal registro. */

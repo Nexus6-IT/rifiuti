@@ -13,6 +13,7 @@ import {
   limitiAnnoMud,
   operazioneDaCatalogo,
   operazioneDaCodice,
+  operazioneDelMovimento,
   statoFisicoMud,
   type MovimentoClassificabile,
   type RuoloMovimento,
@@ -213,6 +214,60 @@ describe('operazione R/D', () => {
         movimento({ type: 'SCARICO', causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })
       )
     ).toBe('R')
+  })
+})
+
+describe('operazioneDelMovimento: precedenza R/D (Decisione 5)', () => {
+  const scarico = (
+    p: Partial<MovimentoClassificabile & { operationCode: string | null }> = {}
+  ) => ({
+    ...movimento({ type: 'SCARICO', causale: 'CONFERIMENTO_TRASPORTATORE' }),
+    operationCode: null as string | null,
+    ...p,
+  })
+  const op = (
+    m: ReturnType<typeof scarico>,
+    fir?: { wasteOperationCode: string | null; wasteOperationType: string | null }
+  ) => operazioneDelMovimento(catalogoSistema(), m, fir)
+
+  it('1. il codice operazione del movimento vince su tutto', () => {
+    expect(
+      op(scarico({ operationCode: 'D15', causale: 'AVVIO_RECUPERO' }), {
+        wasteOperationCode: 'R13',
+        wasteOperationType: 'RECOVERY',
+      })
+    ).toEqual({ operazione: 'D', origine: 'CODICE_MOVIMENTO' })
+  })
+  it('2. senza codice, la causale del catalogo', () => {
+    expect(
+      op(scarico({ causale: 'AVVIO_RECUPERO' }), {
+        wasteOperationCode: 'D15',
+        wasteOperationType: 'DISPOSAL',
+      })
+    ).toEqual({ operazione: 'R', origine: 'CATALOGO' })
+  })
+  it('3. senza catalogo, il codice operazione del FIR', () => {
+    expect(op(scarico(), { wasteOperationCode: 'R13', wasteOperationType: 'DISPOSAL' })).toEqual({
+      operazione: 'R',
+      origine: 'CODICE_FIR',
+    })
+  })
+  it('4. senza codici, il tipo operazione del FIR (dedotta)', () => {
+    expect(op(scarico(), { wasteOperationCode: null, wasteOperationType: 'RECOVERY' })).toEqual({
+      operazione: 'R',
+      origine: 'TIPO_FIR',
+    })
+    expect(op(scarico(), { wasteOperationCode: ' ', wasteOperationType: 'DISPOSAL' })).toEqual({
+      operazione: 'D',
+      origine: 'TIPO_FIR',
+    })
+  })
+  it('5. niente di indicato: smaltimento, non indicata', () => {
+    expect(op(scarico())).toEqual({ operazione: 'D', origine: 'NON_INDICATA' })
+    expect(op(scarico(), { wasteOperationCode: null, wasteOperationType: 'ALTRO' })).toEqual({
+      operazione: 'D',
+      origine: 'NON_INDICATA',
+    })
   })
 })
 

@@ -9,6 +9,17 @@ import type { Prisma } from '@prisma/client'
 
 export type ReportDataJson = Record<string, unknown>
 
+/** Versione del calcolo con cui si generano file e riepilogo nuovi (D10). */
+export const VERSIONE_CALCOLO_MUD = 2
+
+/**
+ * Versione del calcolo salvata in `reportData` (o in una voce di `esportazioni`): un intero 1 o
+ * 2; assente, di tipo diverso o fuori dall'elenco vale 1, il calcolo di prima di F2-8 (D10).
+ */
+export function versioneCalcoloSalvata(valore: unknown): 1 | 2 {
+  return valore === 2 ? 2 : 1
+}
+
 export interface RecordMudReport {
   status: 'DRAFT' | 'REVIEWING' | 'SUBMITTED' | 'ARCHIVED'
   submittedAt: Date | null
