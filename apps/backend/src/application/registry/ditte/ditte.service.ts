@@ -208,7 +208,12 @@ export class DitteService {
   /** Cerca per partita IVA o codice fiscale; la ricerca non esige il checksum (dati migrati). */
   async cerca(identificativo: string): Promise<DittaDto | null> {
     const valore = normalizzaCodiceFiscaleSoggetto(identificativo)
-    if (!/^[A-Z0-9]{11,16}$/.test(valore)) return null
+    // forma sbagliata = 400 (senza riportare il valore); forma giusta ma ignota = nessun risultato
+    if (!/^[A-Z0-9]{11,16}$/.test(valore)) {
+      throw new DatiControparteNonValidiError(
+        'Indica una partita IVA o un codice fiscale in forma valida.'
+      )
+    }
     return this.prisma.$transaction(async tx => {
       const [ditta] = await this.ditte.cercaPerIdentificativi(tx, [valore])
       return ditta ? this.dto(tx, ditta) : null

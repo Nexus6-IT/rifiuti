@@ -244,7 +244,9 @@ describe('DitteService', () => {
       const dto = await nelTenant(() => service.cerca(` it${PIVA_CHECKSUM_ERRATO} `))
       expect(repo.cercaPerIdentificativi).toHaveBeenCalledWith(tx, [PIVA_CHECKSUM_ERRATO])
       expect(dto?.partitaIvaDaVerificare).toBe(true)
-      expect(await nelTenant(() => service.cerca('abc'))).toBeNull()
+      await expect(nelTenant(() => service.cerca('abc'))).rejects.toBeInstanceOf(
+        DatiControparteNonValidiError
+      )
     })
 
     it('nessuna ditta: null', async () => {
