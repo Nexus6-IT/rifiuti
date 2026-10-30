@@ -248,8 +248,8 @@ function oggiIso(): string {
         <h2 class="mud-section-title">Riepilogo {{ r.year }}</h2>
 
         <p *ngIf="r.versionePresentata" class="mud-nota-versione mb-3">
-          Il MUD presentato è stato calcolato con le regole precedenti (registro unico, giacenze non
-          dichiarate): i numeri qui sotto e un nuovo file seguono le regole attuali.
+          Il MUD presentato è stato calcolato con le regole precedenti (tutte le sedi in una sola
+          dichiarazione, giacenze non dichiarate): i numeri qui sotto e un nuovo file seguono le regole attuali.
         </p>
 
         <div *ngIf="r.mudNonDovuto" class="mb-3">

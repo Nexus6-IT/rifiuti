@@ -281,6 +281,23 @@ describe('RentriUnitaLocaleComponent', () => {
       expect(q('rentri-unita-locale-codice-mud-ul-1')?.textContent).toContain('Codice MUD 2')
     })
 
+    it('gli addetti oltre 99999 non sono validi e bloccano il salvataggio (F2)', () => {
+      setup('ADMIN')
+      const prova = (v: string) => {
+        component.formMud.numeroAddetti = v
+        return component.addettiNonValidi()
+      }
+      expect(prova('99999')).toBe(false)
+      expect(prova('100000')).toBe(true)
+      expect(prova('9007199254740993')).toBe(true)
+      expect(prova('')).toBe(false)
+      expect(prova('-1')).toBe(true)
+      component.formMud.cap = ''
+      component.formMud.provincia = ''
+      component.formMud.numeroAddetti = '100000'
+      expect(component.datiMudValidi()).toBe(false)
+    })
+
     it("mostra l'avviso di indirizzo mancante solo per le sedi non principali", () => {
       setup('ADMIN')
       service.list.and.returnValue(

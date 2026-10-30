@@ -367,7 +367,7 @@ const FORM_MUD_VUOTO = (): FormMud => ({
             role="alert"
             class="block mt-1 text-danger"
             data-testid="rentri-unita-locale-mud-addetti-errore"
-            >Gli addetti devono essere un numero intero, zero o più</small
+            >Gli addetti devono essere un numero intero da 0 a 99999</small
           >
         </div>
         <ng-template pTemplate="footer">
@@ -545,7 +545,8 @@ export class RentriUnitaLocaleComponent implements OnInit {
 
   addettiNonValidi(): boolean {
     const v = String(this.formMud.numeroAddetti ?? '').trim()
-    return v !== '' && !/^[0-9]+$/.test(v)
+    // intero da 0 a 99999: il campo del file ha 5 cifre (F2)
+    return v !== '' && !(/^[0-9]+$/.test(v) && Number(v) <= 99999)
   }
 
   datiMudValidi(): boolean {

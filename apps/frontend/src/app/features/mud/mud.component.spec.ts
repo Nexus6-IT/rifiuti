@@ -538,7 +538,7 @@ describe('MudComponent', () => {
       it('nota della versione presentata', () => {
         carica({ versionePresentata: 1 })
         expect(testo()).toContain(
-          'Il MUD presentato è stato calcolato con le regole precedenti (registro unico, giacenze non dichiarate): i numeri qui sotto e un nuovo file seguono le regole attuali.'
+          'Il MUD presentato è stato calcolato con le regole precedenti (tutte le sedi in una sola dichiarazione, giacenze non dichiarate): i numeri qui sotto e un nuovo file seguono le regole attuali.'
         )
       })
 
