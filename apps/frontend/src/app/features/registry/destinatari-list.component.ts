@@ -709,7 +709,7 @@ export class DestinatariListComponent implements OnInit {
     if (ditta) this.formData.ragioneSociale = ditta.ragioneSociale
   }
 
-  /** Sede scelta fra quelle della ditta: precompila l'indirizzo; "Nuova sede" lo svuota. */
+  /** Sede scelta fra quelle della ditta: precompila indirizzo e PEC; "Nuova sede" li svuota. */
   onSedeScelta(sede: SedeDitta | null): void {
     this.formData.sede = {
       via: sede?.via ?? '',
@@ -718,6 +718,8 @@ export class DestinatariListComponent implements OnInit {
       comune: sede?.citta ?? '',
       provincia: sede?.provincia ?? '',
     }
+    // anche i contatti della sede: cosi' quelli mostrati sono quelli che il backend manterra'
+    this.formData.pec = sede?.pec ?? ''
   }
 
   apriSedi(destinatario: Destinatario): void {

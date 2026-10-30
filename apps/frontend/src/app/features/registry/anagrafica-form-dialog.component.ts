@@ -598,7 +598,11 @@ export class AnagraficaFormDialogComponent implements OnChanges {
     this.form.cap = sede?.cap ?? ''
     this.form.comune = sede?.citta ?? ''
     this.form.provincia = sede?.provincia ?? ''
-    for (const c of ['via', 'civico', 'cap', 'comune', 'provincia'] as const) this.clearError(c)
+    // anche i contatti della sede: sono quelli che il backend manterra'
+    this.form.pec = sede?.pec ?? ''
+    for (const c of ['via', 'civico', 'cap', 'comune', 'provincia', 'pec'] as const) {
+      this.clearError(c)
+    }
   }
 
   private prefill(entity: Produttore | Trasportatore | Destinatario): void {

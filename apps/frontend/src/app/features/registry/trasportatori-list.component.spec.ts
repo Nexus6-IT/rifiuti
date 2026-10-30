@@ -395,6 +395,29 @@ describe('TrasportatoriListComponent — ditte, codice fiscale e sedi', () => {
     }
   }
 
+  it('onSedeScelta precompila anche la PEC della sede scelta e "Nuova sede" la svuota', () => {
+    const sede = {
+      id: 's1',
+      denominazione: null,
+      via: 'Via Po',
+      civico: '3',
+      cap: '10100',
+      citta: 'Torino',
+      provincia: 'TO',
+      referente: null,
+      email: null,
+      telefono: null,
+      pec: 'sede@pec.it',
+      principale: true,
+      attiva: true,
+    }
+    component.onSedeScelta(sede)
+    expect(component.formData.sedeLegale.via).toBe('Via Po')
+    expect(component.formData.pec).toBe('sede@pec.it')
+    component.onSedeScelta(null)
+    expect(component.formData.pec).toBe('')
+  })
+
   it('ha la colonna "P.IVA / C.F." e mostra il codice fiscale di chi non ha la P.IVA', () => {
     const intestazioni = Array.from(el().querySelectorAll('th')).map(th => th.textContent?.trim())
     expect(intestazioni).toContain('P.IVA / C.F.')

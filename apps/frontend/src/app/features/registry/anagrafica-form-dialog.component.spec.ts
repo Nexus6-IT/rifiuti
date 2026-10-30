@@ -143,6 +143,29 @@ describe('AnagraficaFormDialogComponent — codice fiscale, ditta già presente,
     doc.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
   })
 
+  it('onSedeScelta precompila anche la PEC della sede scelta e "Nuova sede" la svuota', async () => {
+    await apri('produttore')
+    component.onSedeScelta({
+      id: 's1',
+      denominazione: null,
+      via: 'Via Po',
+      civico: '3',
+      cap: '10100',
+      citta: 'Torino',
+      provincia: 'TO',
+      referente: null,
+      email: null,
+      telefono: null,
+      pec: 'sede@pec.it',
+      principale: true,
+      attiva: true,
+    })
+    expect(component.form.via).toBe('Via Po')
+    expect(component.form.pec).toBe('sede@pec.it')
+    component.onSedeScelta(null)
+    expect(component.form.pec).toBe('')
+  })
+
   it('mostra "Codice fiscale" (max 16) accanto alla P.IVA, che non è più obbligatoria', async () => {
     await apri('produttore')
     expect(q('label[for="ana-produttore-cf"]')!.textContent).toContain('Codice fiscale')

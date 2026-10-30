@@ -57,7 +57,12 @@ export interface RisoluzioneRuolo {
   codiceFiscale: string | null
   dittaEsistente: boolean
   avvisi: string[]
+  /** Contatti EFFETTIVI della sede risolta (non quelli della richiesta, se la sede esisteva). */
+  contatti: { email: string | null; telefono: string | null; pec: string | null }
 }
+
+export const AVVISO_CONTATTI_SEDE_MANTENUTI =
+  'La sede esistente ha già dei contatti: sono stati mantenuti quelli della sede. Per cambiarli usa "Sedi".'
 
 export interface SedeDto {
   id: string
@@ -188,6 +193,28 @@ export class DitteService {
         principale: !dittaEsistente,
       })
       await this.ditte.creaSede(tx, sede)
+    } else {
+      // sede riusata: i contatti vuoti si riempiono con quelli della richiesta, quelli gia'
+      // valorizzati e diversi restano (con un avviso); stessa transazione e stesso lock
+      const richiesti = {
+        email: dati.email,
+        telefono: dati.telefono,
+        pec: dati.pec,
+      }
+      const daScrivere: { email?: string; telefono?: string; pec?: string } = {}
+      let divergono = false
+      for (const campo of ['email', 'telefono', 'pec'] as const) {
+        const voluto = richiesti[campo]?.trim()
+        if (!voluto) continue
+        const attuale = sede[campo]
+        if (!attuale) daScrivere[campo] = voluto
+        else if (attuale.trim().toLowerCase() !== voluto.toLowerCase()) divergono = true
+      }
+      if (Object.keys(daScrivere).length > 0) {
+        sede.aggiorna(daScrivere)
+        await this.scrivi(() => this.ditte.aggiornaSede(tx, sede!))
+      }
+      if (divergono) avvisi.push(AVVISO_CONTATTI_SEDE_MANTENUTI)
     }
 
     return {
@@ -198,6 +225,7 @@ export class DitteService {
       codiceFiscale: ditta.codiceFiscale,
       dittaEsistente,
       avvisi,
+      contatti: { email: sede.email, telefono: sede.telefono, pec: sede.pec },
     }
   }
 

@@ -32,6 +32,7 @@ describe('CreateProduttoreUseCase — validazione ISTAT', () => {
         codiceFiscale: null,
         dittaEsistente: false,
         avvisi: [],
+        contatti: { email: null, telefono: null, pec: null },
       }),
     }
     referenceData = { validateLocalita: jest.fn() }

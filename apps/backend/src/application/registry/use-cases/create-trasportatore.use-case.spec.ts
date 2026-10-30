@@ -44,6 +44,7 @@ describe('CreateTrasportatoreUseCase', () => {
         codiceFiscale: null,
         dittaEsistente: false,
         avvisi: [],
+        contatti: { email: null, telefono: null, pec: null },
       }),
     }
     const prisma = { $transaction: jest.fn(async (fn: (t: unknown) => unknown) => fn(tx)) }

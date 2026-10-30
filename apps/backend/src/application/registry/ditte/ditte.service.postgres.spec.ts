@@ -214,6 +214,54 @@ describe('DitteService — Postgres reale, ruolo wasteflow_app', () => {
     expect(sedi.map(s => s.principale)).toEqual([true, false])
   })
 
+  it('sede riusata: i contatti vuoti si riempiono con quelli della richiesta, risposta coerente col DB', async () => {
+    const t = await azienda()
+    const a = await risolvi(t, 'PRODUTTORE', dati())
+    const b = await risolvi(
+      t,
+      'DESTINATARIO',
+      dati({ email: 'uffici@rossi.it', telefono: '0612345678', pec: 'rossi@pec.it' })
+    )
+    expect(b.sedeId).toBe(a.sedeId)
+    expect(b.avvisi).toEqual([])
+    expect(b.contatti).toEqual({
+      email: 'uffici@rossi.it',
+      telefono: '0612345678',
+      pec: 'rossi@pec.it',
+    })
+    const sede = await owner.sedeDitta.findUniqueOrThrow({ where: { id: a.sedeId } })
+    expect(sede).toMatchObject({
+      email: 'uffici@rossi.it',
+      telefono: '0612345678',
+      pec: 'rossi@pec.it',
+    })
+  })
+
+  it('sede riusata con PEC diversa: resta quella della sede, un solo avviso, risposta coerente', async () => {
+    const t = await azienda()
+    const a = await risolvi(t, 'PRODUTTORE', dati({ pec: 'prima@pec.it', email: 'a@rossi.it' }))
+    const b = await risolvi(
+      t,
+      'DESTINATARIO',
+      dati({ pec: 'altra@pec.it', email: 'b@rossi.it', telefono: '0611111111' })
+    )
+    expect(b.sedeId).toBe(a.sedeId)
+    expect(b.avvisi).toEqual([
+      'La sede esistente ha già dei contatti: sono stati mantenuti quelli della sede. Per cambiarli usa "Sedi".',
+    ])
+    expect(b.contatti).toEqual({
+      email: 'a@rossi.it',
+      telefono: '0611111111',
+      pec: 'prima@pec.it',
+    })
+    const sede = await owner.sedeDitta.findUniqueOrThrow({ where: { id: a.sedeId } })
+    expect(sede).toMatchObject({
+      email: 'a@rossi.it',
+      telefono: '0611111111',
+      pec: 'prima@pec.it',
+    })
+  })
+
   it('un privato come trasportatore o destinatario: errore e nessuna ditta', async () => {
     const t = await azienda()
     for (const ruolo of ['TRASPORTATORE', 'DESTINATARIO'] as const) {

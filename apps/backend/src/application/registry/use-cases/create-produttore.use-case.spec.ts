@@ -26,6 +26,7 @@ function risoluzione(over: Partial<RisoluzioneRuolo> = {}): RisoluzioneRuolo {
     codiceFiscale: null,
     dittaEsistente: false,
     avvisi: [],
+    contatti: { email: null, telefono: null, pec: null },
     ...over,
   }
 }
@@ -102,6 +103,23 @@ describe('CreateProduttoreUseCase', () => {
       expect(result.value.avvisi).toHaveLength(1)
     })
 
+    it('i contatti dell entita sono quelli EFFETTIVI della sede, non quelli della richiesta', async () => {
+      ditte.risolviPerRuolo.mockResolvedValue(
+        risoluzione({
+          dittaEsistente: true,
+          contatti: { email: 'sede@acme.it', telefono: null, pec: 'sede@pec.it' },
+        })
+      )
+
+      const result = await useCase.execute(
+        comando({ email: 'richiesta@acme.it', pec: 'richiesta@pec.it' })
+      )
+
+      expect(result.isSuccess).toBe(true)
+      expect(result.value.ruolo.email).toBe('sede@acme.it')
+      expect(result.value.ruolo.pec).toBe('sede@pec.it')
+    })
+
     it('rifiuta (400) se la ditta ha gia un produttore e non inserisce nulla', async () => {
       repository.findByDittaId.mockResolvedValue(
         Produttore.create({
@@ -171,6 +189,11 @@ describe('CreateProduttoreUseCase', () => {
     })
 
     it('crea con i campi di contatto facoltativi', async () => {
+      ditte.risolviPerRuolo.mockResolvedValue(
+        risoluzione({
+          contatti: { email: 'info@acme.it', telefono: '06-12345678', pec: 'acme@pec.it' },
+        })
+      )
       const result = await useCase.execute(
         comando({ email: 'info@acme.it', telefono: '06-12345678', pec: 'acme@pec.it' })
       )

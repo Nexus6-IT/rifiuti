@@ -91,9 +91,9 @@ export class CreateProduttoreUseCase {
             partitaIVA: r.partitaIva ? PartitaIVA.create(r.partitaIva) : null,
             codiceFiscale: r.codiceFiscale,
             sedeLegale,
-            email: command.email,
-            telefono: command.telefono,
-            pec: command.pec,
+            email: r.contatti.email ?? undefined,
+            telefono: r.contatti.telefono ?? undefined,
+            pec: r.contatti.pec ?? undefined,
           }),
         inserisci: (tx, produttore) => this.produttoreRepository.crea(tx, produttore),
       })
