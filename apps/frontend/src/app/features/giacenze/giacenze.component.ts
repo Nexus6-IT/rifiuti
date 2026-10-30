@@ -1,7 +1,7 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core'
+import { Component, OnDestroy, OnInit, inject, signal, computed } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
-import { forkJoin, of } from 'rxjs'
+import { Subscription, forkJoin, of } from 'rxjs'
 import { catchError } from 'rxjs/operators'
 import { DropdownModule } from 'primeng/dropdown'
 import { ButtonModule } from 'primeng/button'
@@ -22,6 +22,9 @@ import {
   SoglieApplicate,
 } from './giacenze.service'
 import { formattaGiorno } from './giorno'
+
+/** Il dropdown non seleziona le voci con valore `null`: "tutte le sedi" è la stringa vuota. */
+const TUTTE_LE_SEDI = ''
 
 /**
  * Pagina Giacenze e deposito temporaneo: giacenze aggregate per CER e, per ogni registro
@@ -68,7 +71,7 @@ import { formattaGiorno } from './giorno'
           inputId="giacenze-sede"
           data-testid="giacenze-sede"
           [options]="opzioniRegistro()"
-          [ngModel]="registroSel()"
+          [ngModel]="registroSel() ?? ''"
           (onChange)="cambiaRegistro($event.value)"
           optionLabel="label"
           optionValue="value"
@@ -478,7 +481,7 @@ import { formattaGiorno } from './giorno'
     `,
   ],
 })
-export class GiacenzeComponent implements OnInit {
+export class GiacenzeComponent implements OnInit, OnDestroy {
   private readonly giacenzeService = inject(GiacenzeService)
   private readonly registroService = inject(RegistroService)
   private readonly toast = inject(ToastService)
@@ -491,12 +494,14 @@ export class GiacenzeComponent implements OnInit {
   readonly registroSel = signal<string | null>(null)
   readonly loading = signal(false)
   readonly error = signal<string | null>(null)
+  /** Caricamento in corso: va annullato prima di un altro, o la risposta vecchia vincerebbe. */
+  private caricamento?: Subscription
   private readonly lottiAperti = signal<ReadonlySet<string>>(new Set())
 
   readonly piuRegistri = computed(() => this.registri().length > 1)
   readonly opzioniRegistro = computed(() => [
-    { label: 'Tutte le sedi', value: null as string | null },
-    ...this.registri().map(r => ({ label: etichettaRegistro(r), value: r.id as string | null })),
+    { label: 'Tutte le sedi', value: TUTTE_LE_SEDI },
+    ...this.registri().map(r => ({ label: etichettaRegistro(r), value: r.id })),
   ])
 
   /** Somma delle giacenze (kg) su tutti i codici CER. */
@@ -532,16 +537,21 @@ export class GiacenzeComponent implements OnInit {
     })
   }
 
-  cambiaRegistro(registroId: string | null): void {
-    this.registroSel.set(registroId)
+  ngOnDestroy(): void {
+    this.caricamento?.unsubscribe()
+  }
+
+  cambiaRegistro(valore: string | null): void {
+    this.registroSel.set(valore || null)
     this.reload()
   }
 
   reload(): void {
     const registroId = this.registroSel() ?? undefined
+    this.caricamento?.unsubscribe()
     this.loading.set(true)
     this.error.set(null)
-    forkJoin({
+    this.caricamento = forkJoin({
       giacenze: this.giacenzeService.getGiacenze(registroId),
       deposito: this.giacenzeService.getDepositoTemporaneo(registroId),
       // Le note delle soglie sono accessorie: se mancano la pagina funziona lo stesso.

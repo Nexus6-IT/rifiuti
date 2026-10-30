@@ -1,6 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import {
+  HttpClientTestingModule,
+  HttpTestingController,
+  TestRequest,
+} from '@angular/common/http/testing'
 import { of } from 'rxjs'
+import { environment } from '../../../environments/environment'
 
 import { GiacenzeComponent } from './giacenze.component'
 import {
@@ -338,5 +344,81 @@ describe('GiacenzeComponent (DOM)', () => {
     expect(el().textContent).toContain('In deposito dal')
     expect(el().textContent).not.toContain('Carico più vecchio')
     expect(q('giacenza-dal')?.textContent?.trim()).toBe('01/03/2026')
+  })
+})
+
+describe('GiacenzeComponent (DOM): cambio sede con richieste in volo', () => {
+  let fixture: ComponentFixture<GiacenzeComponent>
+  let http: HttpTestingController
+  const base = `${environment.apiUrl}/giacenze`
+
+  const richieste = (url: string, registroId: string | null): TestRequest[] =>
+    http.match(r => r.url === url && (r.params.get('registroId') ?? null) === registroId)
+
+  function rispondi(registroId: string | null, giorno: string): void {
+    const reg = registroId ?? 'tutte'
+    for (const r of richieste(base, registroId)) r.flush([])
+    for (const r of richieste(`${base}/deposito-temporaneo`, registroId))
+      r.flush({ oggi: '2026-10-30', registri: [registro(reg, { registroDescrizione: giorno })] })
+    for (const r of http.match(`${base}/deposito-temporaneo/soglie`).filter(r => !r.cancelled))
+      r.flush({ puoImpostare: false, predefinite, azienda: null, registri: [] })
+  }
+
+  function scegliSede(etichetta: string): void {
+    fixture.nativeElement.querySelector('[data-testid="giacenze-sede"] .p-dropdown').click()
+    fixture.detectChanges()
+    const voce = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.p-dropdown-item')
+    ).find(v => v.textContent?.includes(etichetta))
+    expect(voce).withContext(etichetta).toBeDefined()
+    voce!.click()
+    fixture.detectChanges()
+  }
+
+  beforeEach(() => {
+    const reg = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
+    reg.listRegistri.and.returnValue(of([sede('r1', 'Milano', true), sede('r2', 'Torino')]))
+    TestBed.configureTestingModule({
+      imports: [GiacenzeComponent, HttpClientTestingModule],
+      providers: [
+        provideNoopAnimations(),
+        { provide: RegistroService, useValue: reg },
+        { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['error']) },
+      ],
+    })
+    http = TestBed.inject(HttpTestingController)
+    fixture = TestBed.createComponent(GiacenzeComponent)
+    fixture.detectChanges()
+  })
+
+  afterEach(() => fixture.destroy())
+
+  it('una risposta tardiva della sede precedente non sovrascrive quella selezionata', () => {
+    // r1 resta in sospeso
+    const inSospeso = richieste(`${base}/deposito-temporaneo`, 'r1')
+    expect(inSospeso.length).toBe(1)
+
+    scegliSede('Torino')
+    expect(inSospeso[0].cancelled).withContext('richiesta r1 annullata').toBeTrue()
+    rispondi('r2', 'Deposito Torino')
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('Deposito Torino')
+
+    // la risposta tardiva di r1 non può più arrivare: la richiesta è annullata
+    expect(fixture.nativeElement.textContent).toContain('Deposito Torino')
+    expect(fixture.nativeElement.textContent).not.toContain('Deposito Milano')
+    const residue = http.match(() => true)
+    expect(residue.every(r => r.cancelled))
+      .withContext('richieste residue annullate')
+      .toBeTrue()
+  })
+
+  it('"Tutte le sedi" dopo una sede chiede senza registroId', () => {
+    rispondi('r1', 'Deposito Milano')
+    fixture.detectChanges()
+    scegliSede('Tutte le sedi')
+    expect(richieste(`${base}/deposito-temporaneo`, null).length).toBe(1)
+    expect(richieste(base, null).length).toBe(1)
+    http.match(() => true)
   })
 })
