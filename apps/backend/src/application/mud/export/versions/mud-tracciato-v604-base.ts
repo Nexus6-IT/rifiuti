@@ -377,7 +377,7 @@ export abstract class MudTracciatoV604Base implements MudTracciatoVersion {
     const ul = sede ?? a
     const addetti = sede ? sede.numeroAddetti : (a.numeroAddetti ?? 0)
     // Il telefono è dell'azienda: la sede non ne ha uno proprio, meglio vuoto che sbagliato.
-    const telefonoUl = sede ? '' : (a.telefono ?? '')
+    const telefonoUl = sede ? (sede.telefono ?? '') : (a.telefono ?? '')
     // ISTAT provincia/comune sono `num 3` da tracciato: vanno zero-paddati.
     // Emetterli spazio-paddati (come faceva la versione precedente) produce un
     // campo numerico riempito di spazi, che fa scartare il file.

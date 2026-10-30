@@ -612,9 +612,6 @@ describe('MudExportService', () => {
         .map(l => l.slice(0, 2))
       expect(tipi.filter(t => t === 'AA')).toHaveLength(2)
       expect(tipi.filter(t => t === 'BA')).toHaveLength(2)
-      // AU solo nel pacchetto della principale (una sola scheda), mai duplicata
-      const au = r.content.split('\r\n').filter(l => l.startsWith('AU;'))
-      expect(au.length).toBeLessThanOrEqual(1)
       const aa = r.content.split('\r\n').filter(l => l.startsWith('AA;'))
       expect(aa[1]).toContain('VIA DELLA SEDE')
       expect(aa[1]).toContain(';027;042;')
@@ -644,12 +641,85 @@ describe('MudExportService', () => {
       )
     })
 
-    it('AU, AR e INT escono in un solo pacchetto anche se i flag sono su tutti', async () => {
-      prisma.autorizzazioneImpianto.findMany.mockResolvedValue([])
+    it('AU esce in un solo pacchetto (la principale) anche se i flag sono su tutti', async () => {
+      prisma.autorizzazioneImpianto.findMany.mockResolvedValue([
+        {
+          estremi: 'AUT-1',
+          dataRilascio: new Date('2020-01-01'),
+          dataScadenza: null,
+          enteAutorizzante: '1',
+          tipoAutorizzazione: 1,
+          rinnovoAutocertificazione: false,
+          operazioniRecupero: ['R13'],
+          operazioniSmaltimento: [],
+          gestisceVfu: false,
+          gestisceRaee: false,
+          autorizzazioneEow: false,
+          impiantoIncenerimento: false,
+          capacitaComplessivaTa: 0,
+          capacitaPericolosiTa: 0,
+          capacitaNonPericolosiTa: 0,
+          impiantoCoincenerimento: false,
+          capacitaCoincComplessivaTa: 0,
+          capacitaCoincPericolosiTa: 0,
+          capacitaCoincNonPericolosiTa: 0,
+          discariche: [],
+          emasPrimaRegistrazione: null,
+          emasNumeroRegistrazione: null,
+          iso14001Emissione: null,
+        },
+      ])
       aggregazione.aggrega.mockResolvedValue(aggregatoCon(dueDichiarazioni))
       const r = await service.exportTelematico('t1', 2024, admin, [])
-      const ab = r.content.split('\r\n').filter(l => l.startsWith('AB;'))
+      const righe = r.content.split('\r\n')
+      expect(righe.filter(l => l.startsWith('AU;'))).toHaveLength(1)
+      const ab = righe.filter(l => l.startsWith('AB;'))
       expect(ab).toHaveLength(2)
+      // schede AUT e RIC: ultimi due campi prima del filler
+      const coda = (l: string) => l.split(';').slice(-4, -2)
+      expect(coda(ab[0])).toEqual(['01', '00'])
+      expect(coda(ab[1])).toEqual(['00', '00'])
+    })
+
+    it("principale senza indirizzo con addetti propri: telefono dell'azienda nel record AA", async () => {
+      aggregazione.aggrega.mockResolvedValue(
+        aggregatoCon([{ ...unaDichiarazione, numeroAddetti: 5 }])
+      )
+      const r = await service.exportTelematico('t1', 2024, admin, [])
+      const aa = r.content.split('\r\n').find(l => l.startsWith('AA;'))!
+      // telefono UL e telefono SL entrambi dell'azienda
+      expect(aa.split(';').filter(c => c === '0612345678')).toHaveLength(2)
+    })
+
+    it('principale senza indirizzo: il hash del dichiarante cambia con gli addetti della sede', async () => {
+      aggregazione.aggrega.mockResolvedValue(
+        aggregatoCon([{ ...unaDichiarazione, numeroAddetti: 5 }])
+      )
+      await service.exportTelematico('t1', 2024, admin, [])
+      const h5 = voceSalvata().hashDichiarante
+      prisma.mUDReport.upsert.mockClear()
+      aggregazione.aggrega.mockResolvedValue(
+        aggregatoCon([{ ...unaDichiarazione, numeroAddetti: 6 }])
+      )
+      await service.exportTelematico('t1', 2024, admin, [])
+      expect(voceSalvata().hashDichiarante).not.toBe(h5)
+    })
+
+    it('una dichiarazione "azienda" con addetti uguali: file identico a quello senza dichiarazioni', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2025-03-10T10:00:00Z'))
+      try {
+        aggregazione.aggrega.mockResolvedValue(aggregatoCon([unaDichiarazione]))
+        const con = await service.exportTelematico('t1', 2024, admin, [])
+        aggregazione.aggrega.mockResolvedValue(aggregatoCon([]))
+        aggregazione.aggrega.mockResolvedValue({
+          ...aggregatoCon([]),
+          righe: [rigaValida],
+        })
+        const senza = await service.exportTelematico('t1', 2024, admin, [])
+        expect(con.content).toBe(senza.content)
+      } finally {
+        jest.useRealTimers()
+      }
     })
 
     it('aggregazione senza dichiarazioni: un solo pacchetto come prima', async () => {
@@ -674,6 +744,7 @@ describe('MudExportService', () => {
       aggregazione.aggrega.mockResolvedValue(aggregatoCon([unaDichiarazione], controlli))
       const senza = await service.exportTelematico('t1', 2024, viewer).catch(e => e)
       expect(senza).toBeInstanceOf(UnprocessableEntityException)
+      expect(senza.getResponse()).toMatchObject({ error: 'MUD_AVVISI_DA_CONFERMARE' })
       await expect(
         service.exportTelematico('t1', 2024, viewer, [
           'GIACENZA_RIPARTITA',

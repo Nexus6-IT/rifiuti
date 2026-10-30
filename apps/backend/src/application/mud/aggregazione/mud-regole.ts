@@ -258,11 +258,12 @@ export function hashDichiaranteMud(
   aggregato: { dichiarazioni?: DichiarazionePerExport[] }
 ): string {
   const dichiarazioni = aggregato.dichiarazioni ?? []
-  const conSedi = dichiarazioni.length > 1 || dichiarazioni.some(d => d.anagrafica !== null)
+  const pacchetti = pacchettiPerExport(dichiarazioni, dichiarante.azienda)
+  const conSedi = pacchetti.length > 1 || pacchetti.some(p => p.unitaLocale !== null)
   if (!conSedi) return hashDichiarante(dichiarante)
   return hashDichiarante({
     ...dichiarante,
-    unitaLocali: pacchettiPerExport(dichiarazioni, dichiarante.azienda).map(p => ({
+    unitaLocali: pacchetti.map(p => ({
       progressivo: p.progressivoUnitaLocale,
       unitaLocale: p.unitaLocale,
     })),

@@ -325,6 +325,8 @@ export interface MudUnitaLocaleAnagrafica {
   comuneCode?: string
   /** Totale addetti dell'unità locale. */
   numeroAddetti: number
+  /** Telefono dell'unità locale: solo se è quello dell'azienda (la sede non ne ha uno proprio). */
+  telefono?: string
 }
 
 /**

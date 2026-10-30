@@ -318,6 +318,7 @@ function anagraficaPacchetto(
     provincia: azienda.provincia,
     comuneCode: d.comuneCode ?? azienda.comuneCode,
     numeroAddetti: d.numeroAddetti,
+    telefono: azienda.telefono,
   }
 }
 
