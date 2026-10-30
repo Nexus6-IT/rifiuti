@@ -164,10 +164,8 @@ const TUTTE_LE_SEDI = ''
             <strong>Soglie applicate</strong>
             ({{ testoOrigine(reg.soglie) }})
             <div data-testid="soglie-criterio">{{ testoCriterio(reg.soglie) }}</div>
-            <div class="giacenze-nota">
-              Preavviso a {{ reg.soglie.preavvisoGiorni }} giorni dalla scadenza e all'{{
-                reg.soglie.preavvisoPercentuale
-              }}% dei kg.
+            <div class="giacenze-nota" data-testid="soglie-preavviso">
+              {{ testoPreavviso(reg.soglie) }}
             </div>
             <div class="giacenze-nota" data-testid="soglie-conversione">
               {{ testoConversione(reg.soglie) }}
@@ -237,9 +235,13 @@ const TUTTE_LE_SEDI = ''
                       severity="danger"
                       value="Pericoloso"
                     ></p-tag>
+                    <div *ngIf="c.unitaMiste" class="giacenze-nota" data-testid="nota-unita-miste">
+                      Scarichi in un'unità diversa dai carichi (es. litri contro kg): il conteggio
+                      FIFO non li abbina, verifica l'unità del FIR.
+                    </div>
                   </td>
                   <td class="text-right">
-                    <strong>{{ formattaQuantita(c.residuoKg) }} kg</strong>
+                    <strong *ngIf="haFamigliaKg(c)">{{ formattaQuantita(c.residuoKg) }} kg</strong>
                     <ng-container *ngFor="let f of c.famiglie">
                       <div *ngIf="f.unita !== 'KG'" class="giacenze-altra-unita">
                         {{ formattaQuantita(f.residuo) }} {{ f.unita }}
@@ -296,7 +298,7 @@ const TUTTE_LE_SEDI = ''
           <p *ngIf="reg.quantitaParziale" class="giacenze-nota mt-2" data-testid="nota-parziale">
             Il controllo quantitativo considera solo le quantità in kg: m³ e litri restano fuori.
           </p>
-          <p *ngIf="reg.scopertoPresente" class="giacenze-nota mt-2" data-testid="nota-scoperto">
+          <p *ngIf="scopertoKg(reg)" class="giacenze-nota mt-2" data-testid="nota-scoperto">
             Ci sono scarichi senza un carico corrispondente: vedi Anomalie.
           </p>
         </section>
@@ -618,6 +620,30 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Vero se il CER ha una famiglia in kg (altrimenti la riga "0 kg" sarebbe fuorviante). */
+  haFamigliaKg(c: DepositoCer): boolean {
+    return c.famiglie.some(f => f.unita === 'KG')
+  }
+
+  /** Scoperto nei kg: solo questo e' segnalato anche in Anomalie (che salta le altre unità). */
+  scopertoKg(reg: DepositoRegistro): boolean {
+    return reg.cer.some(c => c.famiglie.some(f => f.unita === 'KG' && f.scoperto > 0))
+  }
+
+  testoPreavviso(s: SoglieApplicate): string {
+    const giorni =
+      s.preavvisoGiorni > 0
+        ? `Preavviso a ${s.preavvisoGiorni} giorni dalla scadenza`
+        : 'Nessun preavviso sulla scadenza'
+    // La percentuale riguarda i soli kg: col criterio temporale non si applica.
+    if (s.criterio === 'TEMPORALE') return `${giorni}.`
+    const kg =
+      s.preavvisoPercentuale > 0
+        ? `percentuale di preavviso sui kg: ${s.preavvisoPercentuale}%`
+        : 'nessun preavviso sui kg'
+    return `${giorni}; ${kg}.`
+  }
+
   testoCriterio(s: SoglieApplicate): string {
     if (s.criterio === 'TEMPORALE') {
       const extra = s.giorniMax ? ` e comunque entro ${s.giorniMax} giorni` : ''
@@ -629,10 +655,17 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
         `${formattaQuantita(s.kgMaxPericolosi)} kg pericolosi, e comunque entro un anno`
       )
     }
-    return 'Criterio non scelto: si controllano entrambi'
+    return (
+      'Criterio non scelto: si controllano entrambi (tre mesi di calendario; ' +
+      `${formattaQuantita(s.kgMaxTotale)} kg complessivi, di cui ` +
+      `${formattaQuantita(s.kgMaxPericolosi)} kg pericolosi)`
+    )
   }
 
   testoConversione(s: SoglieApplicate): string {
+    if (s.criterio === 'TEMPORALE') {
+      return 'Il criterio temporale non usa i limiti in m³ né le soglie in kg.'
+    }
     const base =
       'I limiti di legge sono in m³ (30 m³, di cui 10 m³ di rifiuti pericolosi): i controlli usano i kg indicati qui sopra.'
     return s.origine === 'PREDEFINITA'

@@ -103,6 +103,8 @@ export interface DepositoCer {
   etaGiorni: number | null
   /** `YYYY-MM-DD` entro cui avviare a recupero/smaltimento. */
   scadenza: string | null
+  /** Scarichi in un'unità non di massa contro carichi in kg: il FIFO non li abbina. */
+  unitaMiste: boolean
   famiglie: DepositoFamiglia[]
 }
 

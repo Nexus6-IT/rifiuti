@@ -52,6 +52,7 @@ function cer(p: Partial<DepositoCer> = {}): DepositoCer {
     giornoPiuVecchio: '2026-03-01',
     etaGiorni: 244,
     scadenza: '2026-06-01',
+    unitaMiste: false,
     famiglie: [
       {
         unita: 'KG',
@@ -261,7 +262,17 @@ describe('GiacenzeComponent (DOM)', () => {
 
     setup({
       registri: [sede('r1', 'Unica', true)],
-      deposito: [registro('r1', { quantitaParziale: true, scopertoPresente: true })],
+      deposito: [
+        registro('r1', {
+          quantitaParziale: true,
+          scopertoPresente: true,
+          cer: [
+            cer({
+              famiglie: [{ unita: 'KG', residuo: 0, scoperto: 10, lotti: [], lottiOmessi: 0 }],
+            }),
+          ],
+        }),
+      ],
     })
     expect(q('nota-parziale')?.textContent).toContain(
       'Il controllo quantitativo considera solo le quantità in kg: m³ e litri restano fuori.'
@@ -269,6 +280,95 @@ describe('GiacenzeComponent (DOM)', () => {
     expect(q('nota-scoperto')?.textContent).toContain(
       'Ci sono scarichi senza un carico corrispondente: vedi Anomalie.'
     )
+  })
+
+  it('F1: unità miste, nota specifica vicino al CER e nessun rimando ad Anomalie', () => {
+    const famL = { unita: 'L', residuo: 0, scoperto: 80, lotti: [], lottiOmessi: 0 }
+    const base = cer()
+    setup({
+      registri: [sede('r1', 'Unica', true)],
+      deposito: [
+        registro('r1', {
+          scopertoPresente: true,
+          cer: [{ ...base, unitaMiste: true, famiglie: [...base.famiglie, famL] }],
+        }),
+      ],
+    })
+    expect(q('nota-unita-miste')?.textContent).toContain("verifica l'unità del FIR")
+    expect(q('nota-scoperto')).toBeNull()
+  })
+
+  it('F1: solo kg con scoperto, nota Anomalie presente e nessuna nota unità miste', () => {
+    setup({
+      registri: [sede('r1', 'Unica', true)],
+      deposito: [
+        registro('r1', {
+          scopertoPresente: true,
+          cer: [
+            cer({
+              famiglie: [{ unita: 'KG', residuo: 0, scoperto: 10, lotti: [], lottiOmessi: 0 }],
+            }),
+          ],
+        }),
+      ],
+    })
+    expect(q('nota-scoperto')).not.toBeNull()
+    expect(q('nota-unita-miste')).toBeNull()
+  })
+
+  it('F5: CER con soli m³ non mostra la riga dei kg', () => {
+    setup({
+      registri: [sede('r1', 'Unica', true)],
+      deposito: [
+        registro('r1', {
+          cer: [
+            cer({
+              residuoKg: 0,
+              famiglie: [{ unita: 'M3', residuo: 2, scoperto: 0, lotti: [], lottiOmessi: 0 }],
+            }),
+          ],
+        }),
+      ],
+    })
+    const riga = q('cer-r1-17 04 05')!.textContent!
+    expect(riga).toContain('2 M3')
+    expect(riga).not.toContain('0 kg')
+  })
+
+  it('F3: testo del preavviso corretto per 80, 10, 0 e col criterio temporale', () => {
+    const casi: Array<[Partial<SoglieApplicate>, string, string[]]> = [
+      [{ preavvisoPercentuale: 80 }, 'percentuale di preavviso sui kg: 80%', []],
+      [{ preavvisoPercentuale: 10 }, 'percentuale di preavviso sui kg: 10%', ["all'10"]],
+      [{ preavvisoPercentuale: 0 }, 'nessun preavviso sui kg', ["all'0"]],
+      [{ preavvisoGiorni: 0 }, 'Nessun preavviso sulla scadenza', ['a 0 giorni']],
+      [{ criterio: 'TEMPORALE' }, 'Preavviso a 15 giorni dalla scadenza.', ['kg']],
+    ]
+    for (const [extra, atteso, assenti] of casi) {
+      setup({
+        registri: [sede('r1', 'Unica', true)],
+        deposito: [registro('r1', { soglie: { ...predefinite, ...extra } })],
+      })
+      const t = q('soglie-preavviso')!.textContent!
+      expect(t).toContain(atteso)
+      for (const a of assenti) expect(t).not.toContain(a)
+      fixture.destroy()
+      TestBed.resetTestingModule()
+    }
+  })
+
+  it('F4: la nota di conversione è coerente con i kg mostrati', () => {
+    setup({ registri: [sede('r1', 'Unica', true)], deposito: [registro('r1')] })
+    expect(q('soglie-criterio')?.textContent).toContain('30.000 kg complessivi')
+    expect(q('soglie-conversione')?.textContent).toContain('i controlli usano i kg indicati')
+    fixture.destroy()
+    TestBed.resetTestingModule()
+
+    setup({
+      registri: [sede('r1', 'Unica', true)],
+      deposito: [registro('r1', { soglie: { ...predefinite, criterio: 'TEMPORALE' } })],
+    })
+    expect(q('soglie-criterio')?.textContent).not.toContain('kg')
+    expect(q('soglie-conversione')?.textContent).not.toContain('i controlli usano i kg')
   })
 
   it("descrive le soglie applicate: criterio, origine e note dell'azienda", () => {
