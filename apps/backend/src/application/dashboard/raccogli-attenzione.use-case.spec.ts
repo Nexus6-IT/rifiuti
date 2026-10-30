@@ -325,15 +325,13 @@ describe('RaccogliAttenzioneUseCase', () => {
       const scadenzaAutorizzazione = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
       const prisma = buildPrisma({
         destinatario: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                id: 'des-1',
-                ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
-                scadenzaAutorizzazione,
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'des-1',
+              ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
+              scadenzaAutorizzazione,
+            },
+          ]),
         },
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
@@ -357,15 +355,13 @@ describe('RaccogliAttenzioneUseCase', () => {
       const scadenzaAutorizzazione = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       const prisma = buildPrisma({
         destinatario: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                id: 'des-1',
-                ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
-                scadenzaAutorizzazione,
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'des-1',
+              ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
+              scadenzaAutorizzazione,
+            },
+          ]),
         },
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
@@ -402,15 +398,13 @@ describe('RaccogliAttenzioneUseCase', () => {
             .mockResolvedValue([{ id: 'aut-1', estremi: 'AUT/2026/001', dataScadenza: scaduta }]),
         },
         trasportatore: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              {
-                id: 'tra-1',
-                ditta: { ragioneSociale: 'Trasporti Rossi SRL' },
-                scadenzaIscrizione: scaduta,
-              },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'tra-1',
+              ditta: { ragioneSociale: 'Trasporti Rossi SRL' },
+              scadenzaIscrizione: scaduta,
+            },
+          ]),
         },
         destinatario: {
           findMany: jest.fn().mockResolvedValue([
