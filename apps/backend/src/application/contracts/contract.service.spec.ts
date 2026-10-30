@@ -199,7 +199,12 @@ describe('ContractService', () => {
         { id: 'k1', producerId: 'p1', counterpartyId: 't1r', counterpartyType: 'TRANSPORTER' },
       ])
       prisma.produttore.findMany.mockResolvedValue([
-        { id: 'p1', ragioneSociale: 'ACME SPA', partitaIVA: '01234567890' },
+        {
+          id: 'p1',
+          ragioneSociale: 'ACME VECCHIA',
+          partitaIVA: '01234567890',
+          ditta: { ragioneSociale: 'ACME SPA', partitaIva: '01234567890', codiceFiscale: null },
+        },
       ])
       prisma.trasportatore.findMany.mockResolvedValue([
         { id: 't1r', ragioneSociale: 'ROSSI TRASPORTI SRL', partitaIVA: '09876543210' },
@@ -211,6 +216,7 @@ describe('ContractService', () => {
         id: 'p1',
         ragioneSociale: 'ACME SPA',
         partitaIVA: '01234567890',
+        codiceFiscale: null,
       })
       expect(riga.counterparty?.ragioneSociale).toBe('ROSSI TRASPORTI SRL')
     })

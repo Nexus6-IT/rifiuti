@@ -180,11 +180,9 @@ async function mappaIndirizzo(
 /**
  * Mappa il produttore interno nel modello DatiProduttoreFormularioModel di RENTRI.
  *
- * NOTA (scelta opinabile): "codice_fiscale" viene valorizzato con la partita IVA,
- * perche' in anagrafica non memorizziamo un codice fiscale distinto. Per le persone
- * giuridiche italiane partita IVA e codice fiscale spesso coincidono, ma questo NON
- * e' garantito in generale (es. soggetti esteri, casi particolari) — il limite e'
- * accettato consapevolmente e documentato qui, non silenziato.
+ * NOTA: "codice_fiscale" viene valorizzato con il campo `partitaIVA` della parte, che chi
+ * costruisce il payload riempie con il codice fiscale della ditta se c'e', altrimenti con la
+ * partita IVA (F2-10): per i soggetti con CF distinto o senza P.IVA il dato e' quello giusto.
  */
 export async function mappaProduttore(
   produttore: DatiProduttoreParte,

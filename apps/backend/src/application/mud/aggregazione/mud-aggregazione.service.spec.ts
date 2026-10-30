@@ -1171,9 +1171,9 @@ describe('MudAggregazioneService', () => {
 
     await service.aggrega('t1', 2025)
 
-    expect(prisma.destinatario.findMany).toHaveBeenCalledWith({
-      where: { id: { in: ['dest-1'] }, tenantId: 't1' },
-    })
+    expect(prisma.destinatario.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['dest-1'] }, tenantId: 't1' } })
+    )
   })
 
   const firEmessi = [

@@ -234,6 +234,8 @@ export class RaccogliAttenzioneUseCase {
         tenantId,
         scadenzaIscrizione: { not: null, lte: limite },
       },
+      // Il nome è quello della ditta (D10)
+      include: { ditta: { select: { ragioneSociale: true } } },
     })
 
     return trasportatori.map(trasportatore => {
@@ -248,8 +250,8 @@ export class RaccogliAttenzioneUseCase {
         chiave: 'trasportatore-iscrizione',
         gravita: scaduta ? 'critico' : 'avviso',
         titolo: scaduta
-          ? `Iscrizione Albo scaduta — ${trasportatore.ragioneSociale}`
-          : `Iscrizione Albo in scadenza — ${trasportatore.ragioneSociale}`,
+          ? `Iscrizione Albo scaduta — ${trasportatore.ditta?.ragioneSociale ?? trasportatore.ragioneSociale}`
+          : `Iscrizione Albo in scadenza — ${trasportatore.ditta?.ragioneSociale ?? trasportatore.ragioneSociale}`,
         dettaglio: scaduta ? `scaduta da ${Math.abs(giorni)} giorni` : `scade fra ${giorni} giorni`,
         azione: { etichetta: 'Vedi trasportatori', rotta: '/trasportatori' },
       }
@@ -272,6 +274,7 @@ export class RaccogliAttenzioneUseCase {
         tenantId,
         scadenzaAutorizzazione: { not: null, lte: limite },
       },
+      include: { ditta: { select: { ragioneSociale: true } } },
     })
 
     return destinatari.map(destinatario => {
@@ -286,8 +289,8 @@ export class RaccogliAttenzioneUseCase {
         chiave: 'destinatario-autorizzazione',
         gravita: scaduta ? 'critico' : 'avviso',
         titolo: scaduta
-          ? `Autorizzazione scaduta — ${destinatario.ragioneSociale}`
-          : `Autorizzazione in scadenza — ${destinatario.ragioneSociale}`,
+          ? `Autorizzazione scaduta — ${destinatario.ditta?.ragioneSociale ?? destinatario.ragioneSociale}`
+          : `Autorizzazione in scadenza — ${destinatario.ditta?.ragioneSociale ?? destinatario.ragioneSociale}`,
         dettaglio: scaduta ? `scaduta da ${Math.abs(giorni)} giorni` : `scade fra ${giorni} giorni`,
         azione: { etichetta: 'Vedi destinatari', rotta: '/destinatari' },
       }

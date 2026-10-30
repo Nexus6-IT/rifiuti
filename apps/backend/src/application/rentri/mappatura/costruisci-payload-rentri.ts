@@ -120,16 +120,7 @@ export class CostruisciPayloadRentri {
     nomeParte: 'produttore' | 'destinatario' | 'trasportatore',
     parte: ParteFIR | null,
     tenantId: string
-  ): Promise<{
-    ragioneSociale: string
-    partitaIVA: string
-    via: string
-    civico: string
-    cap: string
-    comune: string
-    provincia: string
-    numeroIscrizione?: string | null
-  }> {
+  ): Promise<ParteRegistro> {
     const registroId = parte?.registroId
     if (!registroId) {
       throw new DatoMancantePerRentriError(
@@ -139,10 +130,15 @@ export class CostruisciPayloadRentri {
       )
     }
 
-    const tabella = this.prisma.db[nomeParte] as {
-      findFirst: (args: unknown) => Promise<Record<string, unknown> | null>
+    // I tre delegate hanno lo stesso insieme di campi letti qui: il tipo del risultato e' esplicito
+    // cosi' tsc controlla ogni campo usato (prima il cast `as never` lo nascondeva).
+    const tabella = this.prisma.db[nomeParte] as unknown as {
+      findFirst: (args: unknown) => Promise<RigaRegistro | null>
     }
-    const riga = await tabella.findFirst({ where: { id: registroId, tenantId } })
+    const riga = await tabella.findFirst({
+      where: { id: registroId, tenantId },
+      include: { ditta: true, sede: true },
+    })
     if (!riga) {
       throw new DatoMancantePerRentriError(
         nomeParte,
@@ -151,8 +147,46 @@ export class CostruisciPayloadRentri {
       )
     }
 
-    return riga as never
+    // Denominazione e identificativo dalla ditta; l'indirizzo dalla sede predefinita (la sede
+    // scelta sul singolo FIR arriva nel 5b). Senza ditta/sede, la copia sulla riga di ruolo.
+    const ditta = riga.ditta
+    const indirizzo = riga.sede ?? riga
+    return {
+      ragioneSociale: ditta?.ragioneSociale ?? riga.ragioneSociale,
+      // Il contratto vuole un solo identificativo fiscale: CF della ditta se c'e', altrimenti P.IVA
+      partitaIVA: ditta ? (ditta.codiceFiscale ?? ditta.partitaIva ?? '') : riga.partitaIVA,
+      via: indirizzo.via,
+      civico: indirizzo.civico,
+      cap: indirizzo.cap,
+      comune: indirizzo.comune,
+      provincia: indirizzo.provincia,
+      numeroIscrizione: riga.numeroIscrizione ?? null,
+    }
   }
+}
+
+interface IndirizzoRegistro {
+  via: string
+  civico: string
+  cap: string
+  comune: string
+  provincia: string
+}
+
+/** Riga di ruolo con ditta e sede, come la restituisce `findFirst` con l'include. */
+interface RigaRegistro extends IndirizzoRegistro {
+  ragioneSociale: string
+  partitaIVA: string
+  numeroIscrizione?: string | null
+  ditta: { ragioneSociale: string; partitaIva: string | null; codiceFiscale: string | null } | null
+  sede: IndirizzoRegistro | null
+}
+
+/** Parte risolta pronta per il mapping. */
+interface ParteRegistro extends IndirizzoRegistro {
+  ragioneSociale: string
+  partitaIVA: string
+  numeroIscrizione?: string | null
 }
 
 function indirizzoDi(riga: {

@@ -449,6 +449,7 @@ export class DeadlineCheckerService {
       // Sistema: scansione dei trasportatori di tutte le aziende
       const trasportatori = await this.sistema.trasportatore.findMany({
         where: { scadenzaIscrizione: { not: null, lte: limite } },
+        include: { ditta: { select: { ragioneSociale: true } } },
       })
       notificationsSent += await this.elaboraScadenzaControparte(
         trasportatori.map(t => ({
@@ -456,7 +457,7 @@ export class DeadlineCheckerService {
           tenantId: t.tenantId,
           scadenza: t.scadenzaIscrizione as Date,
           identificativo: t.numeroIscrizione,
-          ragioneSociale: t.ragioneSociale,
+          ragioneSociale: t.ditta?.ragioneSociale ?? t.ragioneSociale,
         })),
         {
           notificationType: 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA',
@@ -472,6 +473,7 @@ export class DeadlineCheckerService {
       // Sistema: scansione dei destinatari di tutte le aziende
       const destinatari = await this.sistema.destinatario.findMany({
         where: { scadenzaAutorizzazione: { not: null, lte: limite } },
+        include: { ditta: { select: { ragioneSociale: true } } },
       })
       notificationsSent += await this.elaboraScadenzaControparte(
         destinatari.map(d => ({
@@ -479,7 +481,7 @@ export class DeadlineCheckerService {
           tenantId: d.tenantId,
           scadenza: d.scadenzaAutorizzazione as Date,
           identificativo: d.numeroAutorizzazione,
-          ragioneSociale: d.ragioneSociale,
+          ragioneSociale: d.ditta?.ragioneSociale ?? d.ragioneSociale,
         })),
         {
           notificationType: 'DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA',
