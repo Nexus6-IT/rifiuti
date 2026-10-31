@@ -1108,9 +1108,20 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
         if (prenotato) {
           // il POST sarebbe partito con `usato`: deve essere l'identificativo che il registro ha ancora
           expect(finale).toBe(usato)
-          expect(imp.status).toBe('rejected')
+          if (usato === 'RABCDE12345') {
+            // prenota ha vinto il lock: imposta ha trovato righe partite e deve essere stata respinta
+            expect(imp.status).toBe('rejected')
+          } else {
+            // imposta ha vinto il lock e ha committato: prenota ha letto il nuovo identificativo
+            expect(usato).toBe('RZZZZZ99999')
+            expect(imp.status).toBe('fulfilled')
+          }
+        } else {
+          // prenota ha perso il try-lock (GIA_IN_CORSO): nessun lotto, quindi il cambio riesce
+          expect(usato).toBeNull()
+          expect(imp.status).toBe('fulfilled')
+          expect(finale).toBe('RZZZZZ99999')
         }
-        if (imp.status === 'fulfilled') expect(finale).toBe('RZZZZZ99999')
       }
     })
 
