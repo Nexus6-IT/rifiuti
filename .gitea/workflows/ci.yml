@@ -324,6 +324,16 @@ jobs:
           PG_EXEC: "docker exec -i -e PGPORT=55432 ${{ env.POSTGRES_CI_CONTAINER }}"
         run: bash ops/test/backup-verifica.test.sh
 
+      # Diagnosi: se un passo fallisce, il log di Postgres (crash di un backend,
+      # recovery, connessioni rifiutate) e la memoria del runner finiscono nel log
+      # del job prima che il container venga rimosso.
+      - name: Log di PostgreSQL e memoria del runner (solo se fallito)
+        if: failure()
+        run: |
+          docker logs --tail 300 "$POSTGRES_CI_CONTAINER" 2>&1 || true
+          free -m || true
+          docker stats --no-stream 2>/dev/null | head -20 || true
+
       # Cleanup garantito: gira sempre, anche se un passo precedente e'
       # fallito, altrimenti il container Postgres resta orfano sul runner
       # (gia' successo con i volumi buildx — v. cron gitea-runner-cleanup
