@@ -300,10 +300,16 @@ describe('Accessi di pesa — Postgres reale, ruolo wasteflow_app', () => {
         await tx.$executeRaw`UPDATE automezzi SET tara_kg = 7500, tara_aggiornata_il = '2026-10-29T09:00:00Z', updated_at = now() WHERE id = ${mezzo.id}::uuid`
         await attesa
       })
-      await new Promise(r => setTimeout(r, 200))
-      const chiusura = apri(a, aperturaTara)
-      await new Promise(r => setTimeout(r, 400))
-      rilascia()
+      let chiusura!: ReturnType<typeof apri>
+      try {
+        await new Promise(r => setTimeout(r, 200))
+        chiusura = apri(a, aperturaTara)
+        chiusura.catch(() => undefined)
+        await new Promise(r => setTimeout(r, 400))
+      } finally {
+        // la modifica va chiusa SEMPRE: se `apri` fallisce, la transazione non resta aperta col lock
+        rilascia()
+      }
       await modifica
       const v = await chiusura
 

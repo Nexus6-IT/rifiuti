@@ -200,6 +200,24 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
     await inizio
     return { rilascia, finita }
   }
+
+  /**
+   * Come `annulloInCorso`, ma la transazione tenuta aperta viene SEMPRE chiusa a fine prova, anche
+   * se un'asserzione fallisce a meta': altrimenti resterebbe aperta fino al timeout (30 s) con il
+   * lock sulla riga dell'accesso, bloccando la pulizia in `afterAll` e le suite successive.
+   */
+  async function conAnnulloInCorso(
+    accessoId: string,
+    prova: (a: { rilascia: () => void; finita: Promise<unknown> }) => Promise<void>
+  ) {
+    const annullo = await annulloInCorso(accessoId)
+    try {
+      await prova(annullo)
+    } finally {
+      annullo.rilascia()
+      await annullo.finita.catch(() => undefined)
+    }
+  }
   let cerCreato = false
   const attesa = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -320,15 +338,16 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
     it('rettifica con un annullo non ancora committato: aspetta il lock e poi trova l`accesso annullato', async () => {
       const a = await azienda()
       const chiuso = await accessoChiuso(a)
-      const annullo = await annulloInCorso(chiuso.id)
-
-      let conclusa = false
-      const r = rettifica(a, chiuso.pesate[0].id, 23000).finally(() => (conclusa = true))
-      r.catch(() => undefined)
-      await attesa(600)
-      expect(conclusa).toBe(false) // bloccata sul lock dell'accesso
-      annullo.rilascia()
-      await annullo.finita
+      let r!: Promise<unknown>
+      await conAnnulloInCorso(chiuso.id, async annullo => {
+        let conclusa = false
+        r = rettifica(a, chiuso.pesate[0].id, 23000).finally(() => (conclusa = true))
+        r.catch(() => undefined)
+        await attesa(600)
+        expect(conclusa).toBe(false) // bloccata sul lock dell'accesso
+        annullo.rilascia()
+        await annullo.finita
+      })
 
       await expect(r).rejects.toThrow(StatoAccessoNonValidoError)
       expect(await owner.rettificaPeso.count({ where: { pesataId: chiuso.pesate[0].id } })).toBe(0)
@@ -719,17 +738,18 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
       const a = await azienda()
       const chiuso = await accessoChiuso(a)
       const f = await fir(a)
-      const annullo = await annulloInCorso(chiuso.id)
-
-      let conclusa = false
-      const c = nelTenant(a.tenantId, () =>
-        collegamenti.collegaFir(a.tenantId, operatore(a), chiuso.id, f.id)
-      ).finally(() => (conclusa = true))
-      c.catch(() => undefined)
-      await attesa(600)
-      expect(conclusa).toBe(false)
-      annullo.rilascia()
-      await annullo.finita
+      let c!: Promise<unknown>
+      await conAnnulloInCorso(chiuso.id, async annullo => {
+        let conclusa = false
+        c = nelTenant(a.tenantId, () =>
+          collegamenti.collegaFir(a.tenantId, operatore(a), chiuso.id, f.id)
+        ).finally(() => (conclusa = true))
+        c.catch(() => undefined)
+        await attesa(600)
+        expect(conclusa).toBe(false)
+        annullo.rilascia()
+        await annullo.finita
+      })
 
       await expect(c).rejects.toThrow(StatoAccessoNonValidoError)
       expect(await owner.collegamentoAccesso.count({ where: { accessoId: chiuso.id } })).toBe(0)
