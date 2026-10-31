@@ -412,7 +412,13 @@ export class FIRControllerV2 {
   })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
   async confermaConsegna(
-    @Param('id') id: string,
+    @Param(
+      'id',
+      new ParseUUIDPipe({
+        exceptionFactory: () => new BadRequestException('Identificativo FIR non valido'),
+      })
+    )
+    id: string,
     @Body() dto: ConfermaConsegnaFIRDto,
     @CurrentUser() user: CurrentUserPayload,
     @Req() req?: any

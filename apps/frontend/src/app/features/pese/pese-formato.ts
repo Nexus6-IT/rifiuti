@@ -214,3 +214,21 @@ export function messaggioErrorePese(err: any, generico = 'Operazione non riuscit
 /** Il backend ha riconosciuto la chiave di idempotenza: la pesata era gia' stata registrata. */
 export const MESSAGGIO_GIA_REGISTRATA =
   'Pesata già registrata in precedenza: controllare i dati mostrati'
+
+/**
+ * UUID v4. `crypto.randomUUID` esiste solo in contesti sicuri (https/localhost): in http su
+ * LAN manca, quindi si ripiega su `getRandomValues`, disponibile ovunque.
+ */
+export interface MotoreUuid {
+  getRandomValues(a: Uint8Array): Uint8Array
+  randomUUID?: () => string
+}
+
+export function uuidV4(motore: MotoreUuid = crypto as unknown as MotoreUuid): string {
+  if (typeof motore.randomUUID === 'function') return motore.randomUUID()
+  const b = motore.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}

@@ -11,7 +11,13 @@ import { CommonModule } from '@angular/common'
 import { Component, Input, signal } from '@angular/core'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { InputNumberModule } from 'primeng/inputnumber'
-import { giornoRoma, LIMITE_ALLEGATO_BYTE, oraLocaleInIso, preparaAllegato } from './pese-formato'
+import {
+  giornoRoma,
+  LIMITE_ALLEGATO_BYTE,
+  oraLocaleInIso,
+  preparaAllegato,
+  uuidV4,
+} from './pese-formato'
 import { STILI_PESE } from './pese-stili'
 import { PesoItalianoDirective } from './peso-it.directive'
 import { DatiPesataManuale, StrumentoPesa } from './pese.service'
@@ -267,7 +273,7 @@ export class PesataManualeFormComponent {
   @Input() etichettaPeso = 'Peso (kg)'
 
   /** Una per apertura del form: resta uguale ai tentativi successivi. */
-  readonly chiaveIdempotenza = crypto.randomUUID()
+  readonly chiaveIdempotenza = uuidV4()
   readonly avviso = AVVISO_PESATA_MANUALE
   readonly massimo = MASSIMO_PESO_KG
   readonly esterno = ESTERNO

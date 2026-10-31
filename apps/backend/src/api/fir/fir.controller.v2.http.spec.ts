@@ -184,6 +184,16 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
       expect(collegamentiAccesso.pesoPerConsegnaFir).not.toHaveBeenCalled()
     })
 
+    it(':id non UUID → 400 in italiano, use case non chiamato', async () => {
+      const r = await request(app.getHttpServer())
+        .post('/fir/non-un-uuid/conferma-consegna')
+        .set('X-Tenant-ID', CLIENTE)
+        .send({ pesoEffettivo: 1 })
+        .expect(400)
+      expect(r.body.message).toBe('Identificativo FIR non valido')
+      expect(conferma.execute).not.toHaveBeenCalled()
+    })
+
     it('né peso né accesso → 400; entrambi → 400; use case non chiamato', async () => {
       const r = await conf({}).expect(400)
       expect(r.body.message).toBe("Indicare il peso verificato oppure l'accesso da cui prenderlo.")

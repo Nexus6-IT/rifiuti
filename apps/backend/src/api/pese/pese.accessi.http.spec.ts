@@ -537,6 +537,7 @@ describe('PeseController (accessi, rettifiche, allegati) - catena HTTP', () => {
       const r = await http().get(`/pese/allegati/${ID}`).expect(200)
       expect(r.headers['content-type']).toContain('application/pdf')
       expect(r.headers['x-content-type-options']).toBe('nosniff')
+      expect(r.headers['content-security-policy']).toBe('sandbox')
       expect(r.headers['cache-control']).toBe('private, no-store')
       const cd = r.headers['content-disposition']
       expect(cd).toMatch(

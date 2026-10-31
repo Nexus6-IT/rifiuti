@@ -104,6 +104,19 @@ describe('ConsegnaDaAccessoComponent (DOM)', () => {
     expect(emessi.at(-1)).toEqual({ attivo: true, accessoId: 'a1', convertito: 16 })
   })
 
+  it('accesso con pesata manuale: badge in elenco e avviso nell anteprima', () => {
+    apri(firIn('T', 15), [riga('a1', { manuale: true }), riga('a2')])
+    attiva()
+    expect(q('cda-manuale-a1')).not.toBeNull()
+    expect(q('cda-manuale-a2')).toBeNull()
+    q<HTMLInputElement>('cda-radio-a2')!.click()
+    fixture.detectChanges()
+    expect(q('cda-avviso-manuale')).toBeNull()
+    q<HTMLInputElement>('cda-radio-a1')!.click()
+    fixture.detectChanges()
+    expect(q('cda-avviso-manuale')!.textContent).toContain('Pesata inserita a mano')
+  })
+
   it('oltre soglia l avviso è testuale ma non blocca', () => {
     apri(firIn('T', 10))
     attiva()

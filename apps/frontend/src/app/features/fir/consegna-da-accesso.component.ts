@@ -19,6 +19,7 @@ import {
   messaggioErrorePese,
   normalizzaTarga,
 } from '../pese/pese-formato'
+import { AVVISO_PESATA_MANUALE } from '../pese/pesata-manuale-form.component'
 import { AccessoRiepilogo, PeseService } from '../pese/pese.service'
 import { messaggioUnitaNonConvertibile, nettoNellUnitaFir, unitaDiMassa } from './netto-unita-fir'
 import {
@@ -98,7 +99,13 @@ interface Candidato {
             <span
               >{{ c.riga.numero }} — {{ c.riga.targa || 'senza targa' }} —
               {{ data(c.riga.apertoIl) }} — netto {{ kg(c.riga.nettoKg!)
-              }}<ng-container *ngIf="c.stessaTarga"> — stessa targa del FIR</ng-container></span
+              }}<ng-container *ngIf="c.stessaTarga"> — stessa targa del FIR</ng-container>
+              <ng-container *ngIf="c.riga.manuale">
+                —
+                <span class="cda__badge" [attr.data-testid]="'cda-manuale-' + c.riga.id"
+                  >manuale</span
+                ></ng-container
+              ></span
             >
           </label>
           <p class="cda__nota" *ngIf="omessi() > 0" data-testid="cda-troncato">
@@ -137,6 +144,14 @@ interface Candidato {
           <p *ngIf="a.differenza as d" class="cda__riga" data-testid="cda-scostamento">
             Scostamento dalla quantità dichiarata: {{ d }}
           </p>
+          <p
+            *ngIf="a.riga.manuale"
+            role="status"
+            class="cda__avviso"
+            data-testid="cda-avviso-manuale"
+          >
+            {{ avvisoManuale }}
+          </p>
           <p *ngIf="a.avviso as v" role="status" class="cda__avviso" data-testid="cda-avviso">
             {{ v }}
           </p>
@@ -160,6 +175,11 @@ interface Candidato {
       }
       .cda__errore {
         color: var(--red-700, #b91c1c);
+      }
+      .cda__badge {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
       }
       .cda__avviso {
         color: var(--orange-700, #b45309);
@@ -221,6 +241,8 @@ export class ConsegnaDaAccessoComponent implements OnInit {
       return 'Il tuo ruolo nell’azienda selezionata non consente di usare le pese.'
     return null
   }
+
+  readonly avvisoManuale = AVVISO_PESATA_MANUALE
 
   anteprima() {
     const id = this.scelto()

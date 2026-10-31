@@ -368,6 +368,7 @@ export class PeseController {
     res.setHeader('Content-Type', a.mimeType)
     res.setHeader('Content-Disposition', contentDispositionInline(a.nomeFile))
     res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', 'sandbox')
     res.setHeader('Cache-Control', 'private, no-store')
     res.setHeader('Content-Length', String(a.contenuto.length))
     res.end(a.contenuto)

@@ -16,6 +16,7 @@ import {
   LIMITE_ALLEGATO_BYTE,
   SOGLIA_RIDIMENSIONAMENTO_BYTE,
   type MotoreImmagine,
+  uuidV4,
 } from './pese-formato'
 import type { PesataVista } from './pese.service'
 
@@ -192,5 +193,19 @@ describe('preparaAllegato', () => {
     await expectAsync(
       preparaAllegato(file('image/jpeg', SOGLIA_RIDIMENSIONAMENTO_BYTE + 1), motore)
     ).toBeRejectedWithError(MSG_ALLEGATO_GRANDE)
+  })
+})
+
+describe('uuidV4', () => {
+  it('senza randomUUID (contesto non sicuro) produce un UUID v4 valido e diverso a ogni chiamata', () => {
+    const motore = {
+      getRandomValues: <T extends ArrayBufferView>(a: T) => crypto.getRandomValues(a),
+    }
+    const a = uuidV4(motore)
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(uuidV4(motore)).not.toBe(a)
+  })
+  it('con randomUUID lo usa', () => {
+    expect(uuidV4({ getRandomValues: a => a, randomUUID: () => 'x' })).toBe('x')
   })
 })
