@@ -166,10 +166,12 @@ describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', (
     const a = await azienda()
     const b = await azienda()
     await nel(a.tenantId, () => service.crea(a.tenantId, a.utenteId, dati))
-    const doppia = nel(a.tenantId, () => service.crea(a.tenantId, a.utenteId, dati))
-    await doppia.catch(e =>
-      expect(e.getResponse().error).toBe('CONDIZIONE_PAGAMENTO_CODICE_DUPLICATO')
-    )
+    await expect(
+      nel(a.tenantId, () => service.crea(a.tenantId, a.utenteId, dati))
+    ).rejects.toMatchObject({
+      response: { error: 'CONDIZIONE_PAGAMENTO_CODICE_DUPLICATO' },
+      status: 409,
+    })
     await expect(
       nel(b.tenantId, () => service.crea(b.tenantId, b.utenteId, dati))
     ).resolves.toMatchObject({ codice: 'RB3060' })

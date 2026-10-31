@@ -3,7 +3,7 @@
  * sui valori (codice, crescenza delle rate, ...) sono del dominio e rispondono con l'elenco dei
  * messaggi in italiano.
  */
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -11,9 +11,9 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
-  IsOptional,
   IsString,
   Min,
+  ValidateIf,
 } from 'class-validator'
 import { MODALITA_PAGAMENTO } from '../../../domain/clienti/condizione-pagamento'
 
@@ -46,9 +46,42 @@ export class CreaCondizionePagamentoDto {
   fineMese: boolean
 }
 
-export class ModificaCondizionePagamentoDto extends PartialType(CreaCondizionePagamentoDto) {
+/**
+ * Modifica parziale. Non usa `PartialType`: questo aggiunge `IsOptional`, che lascia passare anche
+ * `null` (e `fineMese: null` azzererebbe il flag in silenzio). Qui un campo o manca, o ha il tipo
+ * giusto: `null` e' 400.
+ */
+export class ModificaCondizionePagamentoDto {
+  @ApiPropertyOptional()
+  @ValidateIf((_, v) => v !== undefined)
+  @IsString()
+  codice?: string
+
+  @ApiPropertyOptional()
+  @ValidateIf((_, v) => v !== undefined)
+  @IsString()
+  descrizione?: string
+
+  @ApiPropertyOptional({ enum: MODALITA_PAGAMENTO })
+  @ValidateIf((_, v) => v !== undefined)
+  @IsIn(MODALITA_PAGAMENTO)
+  modalita?: (typeof MODALITA_PAGAMENTO)[number]
+
+  @ApiPropertyOptional({ type: [Number] })
+  @ValidateIf((_, v) => v !== undefined)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(8)
+  @IsInt({ each: true })
+  giorniRate?: number[]
+
+  @ApiPropertyOptional()
+  @ValidateIf((_, v) => v !== undefined)
+  @IsBoolean()
+  fineMese?: boolean
+
   @ApiPropertyOptional({ description: 'false = disattiva, true = riattiva' })
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined)
   @IsBoolean()
   attiva?: boolean
 

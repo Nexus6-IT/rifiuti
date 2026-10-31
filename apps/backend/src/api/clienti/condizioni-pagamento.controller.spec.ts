@@ -181,6 +181,19 @@ describe('CondizioniPagamentoController', () => {
       expect(servizio.modifica).not.toHaveBeenCalled()
     })
 
+    it.each([
+      ['fineMese null', { fineMese: null }],
+      ['attiva null', { attiva: null }],
+      ['modalita null', { modalita: null }],
+      ['giorniRate null', { giorniRate: null }],
+    ])('PATCH %s: 400 (null non azzera in silenzio)', async (_nome, corpo) => {
+      const r = await http()
+        .patch(`/condizioni-pagamento/${ID}`)
+        .send({ ...corpo, versione: 1 })
+      expect(r.status).toBe(400)
+      expect(servizio.modifica).not.toHaveBeenCalled()
+    })
+
     it('PATCH disattiva: attiva=false passa al servizio', async () => {
       await http().patch(`/condizioni-pagamento/${ID}`).send({ attiva: false, versione: 1 })
       expect(servizio.modifica.mock.calls[0][3]).toEqual({ attiva: false, versione: 1 })

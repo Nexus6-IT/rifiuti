@@ -5,7 +5,7 @@
  * - `scriviCondizionato`: la scrittura e' un `updateMany`/`deleteMany` con `versione` nel `where`;
  *   `count === 0` vuol dire che un'altra operazione ha cambiato (o cancellato) la riga.
  * - `confrontaVersione`: controllo anticipato, prima di validare e scrivere.
- * - `traduciErrorePrisma`: P2002 su un vincolo noto -> 409 col codice del vincolo (con la RLS
+ * - `traduciErrorePrisma` (async): P2002 su un vincolo noto -> 409 col codice del vincolo (con la RLS
  *   Postgres non da' il nome del vincolo: vedi il commento nel corpo); P2003 -> 409
  *   `<PREFISSO>_IN_USO`; tutto il resto viene rilanciato.
  *
@@ -23,7 +23,18 @@ export interface DescrizioneEntita {
   femminile: boolean
 }
 
+/**
+ * Vincoli di unicita' noti della tabella, per nome. Deve elencare TUTTE le chiavi uniche di
+ * business della tabella: con piu' di un vincolo, un P2002 senza `meta.target` (RLS) si risolve
+ * solo rileggendo il database, e un vincolo non elencato non si riconoscerebbe.
+ */
 export type VincoliNoti = Readonly<Record<string, { codice: string; messaggio: string }>>
+
+/**
+ * Rilegge il database e restituisce il nome del vincolo violato (una chiave di `VincoliNoti`),
+ * o null se non lo capisce. Va eseguita FUORI dalla transazione abortita.
+ */
+export type RileggiVincolo = () => Promise<string | null>
 
 function modificatoNelFrattempo(e: DescrizioneEntita): ConflictException {
   const [suffisso, participio] = e.femminile
@@ -58,19 +69,27 @@ function corrisponde(target: unknown, nomeVincolo: string): boolean {
   return false
 }
 
-export function traduciErrorePrisma(
+export async function traduciErrorePrisma(
   err: unknown,
   e: DescrizioneEntita,
-  vincoli: VincoliNoti
-): never {
+  vincoli: VincoliNoti,
+  rileggi?: RileggiVincolo
+): Promise<never> {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
       const target = err.meta?.target
       const nomi = Object.keys(vincoli)
       // Con la RLS attiva (ruolo applicativo) Postgres omette il dettaglio "Key (...)" e Prisma
-      // riporta `target: null`: con un solo vincolo noto la risposta e' comunque univoca.
-      const nome =
-        target == null && nomi.length === 1 ? nomi[0] : nomi.find(v => corrisponde(target, v))
+      // riporta `target: null`: con un solo vincolo noto la risposta e' comunque univoca; con
+      // piu' vincoli si rilegge il database (`rileggi`, fuori dalla transazione abortita).
+      let nome: string | undefined
+      if (target == null) {
+        if (nomi.length === 1) nome = nomi[0]
+        else if (rileggi) nome = (await rileggi()) ?? undefined
+      } else {
+        nome = nomi.find(v => corrisponde(target, v))
+      }
+      if (nome && !(nome in vincoli)) nome = undefined
       if (nome) {
         throw new ConflictException({
           error: vincoli[nome].codice,

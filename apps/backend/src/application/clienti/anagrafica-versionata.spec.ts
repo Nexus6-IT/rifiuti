@@ -117,6 +117,42 @@ describe('anagrafica-versionata', () => {
       expect(await eccezione(() => traduciErrorePrisma(originale, CONTO, vincoli))).toBe(originale)
     })
 
+    it('P2002 senza target con più vincoli: usa il nome riletto da `rileggi`', async () => {
+      const rileggi = jest.fn(async () => 'conti_correnti_tenant_id_iban_key')
+      const e = await eccezione(() =>
+        traduciErrorePrisma(errorePrisma('P2002', { target: null }), CONTO, vincoli, rileggi)
+      )
+      expect(rileggi).toHaveBeenCalledTimes(1)
+      expect((e.getResponse() as any).error).toBe('CONTO_CORRENTE_IBAN_DUPLICATO')
+    })
+
+    it('P2002 senza target con più vincoli: se `rileggi` non sa dire, rilancia l’originale', async () => {
+      const originale = errorePrisma('P2002', { target: null })
+      const e = await eccezione(() =>
+        traduciErrorePrisma(originale, CONTO, vincoli, async () => null)
+      )
+      expect(e).toBe(originale)
+    })
+
+    it('`rileggi` non si chiama se il target c’è o se il vincolo è uno solo', async () => {
+      const rileggi = jest.fn(async () => 'conti_correnti_tenant_id_iban_key')
+      await eccezione(() =>
+        traduciErrorePrisma(
+          errorePrisma('P2002', { target: ['tenant_id', 'codice'] }),
+          CONTO,
+          vincoli,
+          rileggi
+        )
+      )
+      const unico = {
+        conti_correnti_tenant_id_codice_key: vincoli.conti_correnti_tenant_id_codice_key,
+      }
+      await eccezione(() =>
+        traduciErrorePrisma(errorePrisma('P2002', { target: null }), CONTO, unico, rileggi)
+      )
+      expect(rileggi).not.toHaveBeenCalled()
+    })
+
     it('P2002 non mappato: rilancia l’errore originale', async () => {
       const originale = errorePrisma('P2002', { target: 'altro_vincolo_key' })
       const e = await eccezione(() => traduciErrorePrisma(originale, CONTO, vincoli))
