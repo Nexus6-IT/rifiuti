@@ -15,6 +15,10 @@ import {
   RegolaPesataError,
   TrasportatoreNonTrovatoError,
 } from '../../application/pese/errori-pese'
+import { AccessiPesaService } from '../../application/pese/accessi-pesa.service'
+import { AllegatiPesaService } from '../../application/pese/allegati-pesa.service'
+import { RettifichePesoService } from '../../application/pese/rettifiche-peso.service'
+import { CollegamentiAccessoService } from '../../application/pese/collegamenti-accesso.service'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -57,6 +61,10 @@ describe('PeseController (anagrafiche) - catena HTTP', () => {
       providers: [
         { provide: StrumentiPesaService, useValue: strumenti },
         { provide: AutomezziService, useValue: automezzi },
+        { provide: AccessiPesaService, useValue: {} },
+        { provide: AllegatiPesaService, useValue: {} },
+        { provide: RettifichePesoService, useValue: {} },
+        { provide: CollegamentiAccessoService, useValue: {} },
         { provide: RuoloEffettivoService, useValue: { ruoloEffettivo } },
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
       ],
