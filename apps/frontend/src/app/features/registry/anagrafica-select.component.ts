@@ -190,6 +190,9 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
   /** Id ricevuto da writeValue prima che la lista fosse pronta. */
   private idInAttesa: string | null = null
 
+  /** Record completi dell'ultimo caricamento (servono a chi apre la modifica dell'anagrafica). */
+  private grezzi: AnagraficaBase[] = []
+
   private onChange: (value: string) => void = () => {}
   onTouched: () => void = () => {}
 
@@ -219,6 +222,20 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
     }
   }
 
+  /**
+   * Rilegge il registro (dopo un censimento o una modifica fatti altrove) e, se
+   * indicato, seleziona la voce `selezionaId` appena la lista è pronta.
+   */
+  ricarica(selezionaId?: string): void {
+    if (selezionaId) this.idInAttesa = selezionaId
+    this.caricaVoci()
+  }
+
+  /** Il record completo di un'anagrafica già caricata, o null. */
+  trovaEntita<T = AnagraficaBase>(id: string): T | null {
+    return (this.grezzi.find(v => v.id === id) as unknown as T) ?? null
+  }
+
   private caricaVoci(): void {
     this.caricato.set(false)
     this.voci.set([])
@@ -226,6 +243,7 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
 
     this.richiestaRegistro().subscribe({
       next: risposta => {
+        this.grezzi = risposta?.items ?? []
         const opzioni = (risposta?.items ?? []).map(v => this.toOption(v))
         this.voci.set(opzioni)
         // Copia, non lo stesso riferimento: i due segnali non devono
