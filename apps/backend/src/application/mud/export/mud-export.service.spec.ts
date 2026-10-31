@@ -5,7 +5,12 @@ import { MudVersionRegistry } from './mud-version.registry'
 import { HttpExceptionFilter } from '../../../core/filters/http-exception.filter'
 import { controlliMud, riepilogaAvvisi, type RifMovimento } from '../aggregazione/mud-controlli'
 import { INTEGRAZIONI_VUOTE } from '../aggregazione/mud-integrazioni'
-import { hashAggregato, hashDichiarante } from '../aggregazione/mud-regole'
+import {
+  hashAggregato,
+  hashDichiarante,
+  hashDichiaranteMud,
+  hashDichiarazioni,
+} from '../aggregazione/mud-regole'
 import type { MudRifiutoLine } from './mud-export.types'
 
 describe('MudExportService', () => {
@@ -508,6 +513,247 @@ describe('MudExportService', () => {
     )
   })
 
+  describe('dichiarazioni per unità locale (Task 5b)', () => {
+    const rigaSede: MudRifiutoLine = { ...rigaValida, cerCode: '150106', prodottoKg: 50 }
+    const base = {
+      scheda: null as null,
+      numeroAddetti: 42,
+      comuneCode: '058091',
+      movimentiPerCer: {},
+      pericolosiPerCer: {},
+      conAutorizzazioni: false,
+      conAllegatiAzienda: false,
+    }
+    const sedeAnagrafica = {
+      id: 'ul-2',
+      denominazione: 'Sede Venezia',
+      numIscrSito: 'VE001',
+      principale: false,
+      createdAt: new Date(0),
+      indirizzo: 'Via della Sede',
+      civico: '5',
+      cap: '30100',
+      comune: 'Venezia',
+      provincia: 'VE',
+      numeroAddetti: 7,
+      progressivoMud: 2,
+    }
+    const unaDichiarazione = {
+      ...base,
+      codice: '000000000000001',
+      progressivo: 1,
+      unitaLocale: { id: null, denominazione: 'Azienda', numIscrSito: null, principale: false },
+      anagrafica: null,
+      righe: [rigaValida],
+      conAutorizzazioni: true,
+      conAllegatiAzienda: true,
+    }
+    const dueDichiarazioni = [
+      {
+        ...unaDichiarazione,
+        unitaLocale: { id: 'ul-1', denominazione: 'Sede', numIscrSito: 'RM001', principale: true },
+      },
+      {
+        ...base,
+        codice: '000000000000002',
+        progressivo: 2,
+        unitaLocale: {
+          id: 'ul-2',
+          denominazione: 'Sede Venezia',
+          numIscrSito: 'VE001',
+          principale: false,
+        },
+        anagrafica: sedeAnagrafica,
+        numeroAddetti: 7,
+        comuneCode: '027042',
+        righe: [rigaSede],
+        // flag di entrambe a vero: l'export non deve duplicare AU, AR e INT
+        conAutorizzazioni: true,
+        conAllegatiAzienda: true,
+      },
+    ]
+    const aggregatoCon = (dichiarazioni: any[], controlli: any[] = []) => ({
+      anno: 2024,
+      versioneCalcolo: 2,
+      righe: dichiarazioni.flatMap(d => d.righe),
+      dichiarazioni,
+      dichiarante: DICHIARANTE_OK,
+      integrazioni: INTEGRAZIONI_VUOTE,
+      movimentiPerCer: { '170405': 1 },
+      controlli,
+    })
+    const voceSalvata = () =>
+      prisma.mUDReport.upsert.mock.calls[0][0].create.reportData.esportazioni[0]
+
+    it('la voce salva versioneCalcolo 2', async () => {
+      aggregazione.aggrega.mockResolvedValue(aggregatoCon([unaDichiarazione]))
+      await service.exportTelematico('t1', 2024, admin, [])
+      expect(voceSalvata().versioneCalcolo).toBe(2)
+      expect(aggregazione.aggrega).toHaveBeenCalledWith('t1', 2024)
+    })
+
+    it("con una sede senza giacenze l'hash è quello di hashAggregato", async () => {
+      aggregazione.aggrega.mockResolvedValue(aggregatoCon([unaDichiarazione]))
+      await service.exportTelematico('t1', 2024, admin, [])
+      const voce = voceSalvata()
+      expect(voce.hashAggregato).toBe(hashAggregato([rigaValida]))
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata).toEqual(
+        expect.objectContaining({ hashAggregato: hashAggregato([rigaValida]), dichiarazioni: 1 })
+      )
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata.versioneCalcolo).toBe(2)
+    })
+
+    it('con due sedi il file ha due pacchetti', async () => {
+      aggregazione.aggrega.mockResolvedValue(aggregatoCon(dueDichiarazioni))
+      const r = await service.exportTelematico('t1', 2024, admin, [])
+      const tipi = r.content
+        .split('\r\n')
+        .filter(Boolean)
+        .map(l => l.slice(0, 2))
+      expect(tipi.filter(t => t === 'AA')).toHaveLength(2)
+      expect(tipi.filter(t => t === 'BA')).toHaveLength(2)
+      const aa = r.content.split('\r\n').filter(l => l.startsWith('AA;'))
+      expect(aa[1]).toContain('VIA DELLA SEDE')
+      expect(aa[1]).toContain(';027;042;')
+      // hash: dichiarazioni (più di una) e dichiarante con le anagrafiche dei pacchetti
+      const voce = voceSalvata()
+      expect(voce.hashAggregato).toBe(
+        hashDichiarazioni([
+          { codice: '000000000000001', righe: [rigaValida] },
+          { codice: '000000000000002', righe: [rigaSede] },
+        ])
+      )
+      expect(voce.hashDichiarante).toBe(
+        hashDichiaranteMud(
+          { azienda: aziendaDichiarante(tenantCompleto, DICHIARANTE_OK), autorizzazioni: [] },
+          { dichiarazioni: dueDichiarazioni }
+        )
+      )
+      expect(voce.hashDichiarante).not.toBe(
+        hashDichiarante({
+          azienda: aziendaDichiarante(tenantCompleto, DICHIARANTE_OK),
+          autorizzazioni: [],
+        })
+      )
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata.dichiarazioni).toBe(2)
+      expect(prisma.activityLog.create.mock.calls[0][0].data.description).toContain(
+        '2 dichiarazioni'
+      )
+    })
+
+    it('AU esce in un solo pacchetto (la principale) anche se i flag sono su tutti', async () => {
+      prisma.autorizzazioneImpianto.findMany.mockResolvedValue([
+        {
+          estremi: 'AUT-1',
+          dataRilascio: new Date('2020-01-01'),
+          dataScadenza: null,
+          enteAutorizzante: '1',
+          tipoAutorizzazione: 1,
+          rinnovoAutocertificazione: false,
+          operazioniRecupero: ['R13'],
+          operazioniSmaltimento: [],
+          gestisceVfu: false,
+          gestisceRaee: false,
+          autorizzazioneEow: false,
+          impiantoIncenerimento: false,
+          capacitaComplessivaTa: 0,
+          capacitaPericolosiTa: 0,
+          capacitaNonPericolosiTa: 0,
+          impiantoCoincenerimento: false,
+          capacitaCoincComplessivaTa: 0,
+          capacitaCoincPericolosiTa: 0,
+          capacitaCoincNonPericolosiTa: 0,
+          discariche: [],
+          emasPrimaRegistrazione: null,
+          emasNumeroRegistrazione: null,
+          iso14001Emissione: null,
+        },
+      ])
+      aggregazione.aggrega.mockResolvedValue(aggregatoCon(dueDichiarazioni))
+      const r = await service.exportTelematico('t1', 2024, admin, [])
+      const righe = r.content.split('\r\n')
+      expect(righe.filter(l => l.startsWith('AU;'))).toHaveLength(1)
+      const ab = righe.filter(l => l.startsWith('AB;'))
+      expect(ab).toHaveLength(2)
+      // schede AUT e RIC: ultimi due campi prima del filler
+      const coda = (l: string) => l.split(';').slice(-4, -2)
+      expect(coda(ab[0])).toEqual(['01', '00'])
+      expect(coda(ab[1])).toEqual(['00', '00'])
+    })
+
+    it("principale senza indirizzo con addetti propri: telefono dell'azienda nel record AA", async () => {
+      aggregazione.aggrega.mockResolvedValue(
+        aggregatoCon([{ ...unaDichiarazione, numeroAddetti: 5 }])
+      )
+      const r = await service.exportTelematico('t1', 2024, admin, [])
+      const aa = r.content.split('\r\n').find(l => l.startsWith('AA;'))!
+      // telefono UL e telefono SL entrambi dell'azienda
+      expect(aa.split(';').filter(c => c === '0612345678')).toHaveLength(2)
+    })
+
+    it('principale senza indirizzo: il hash del dichiarante cambia con gli addetti della sede', async () => {
+      aggregazione.aggrega.mockResolvedValue(
+        aggregatoCon([{ ...unaDichiarazione, numeroAddetti: 5 }])
+      )
+      await service.exportTelematico('t1', 2024, admin, [])
+      const h5 = voceSalvata().hashDichiarante
+      prisma.mUDReport.upsert.mockClear()
+      aggregazione.aggrega.mockResolvedValue(
+        aggregatoCon([{ ...unaDichiarazione, numeroAddetti: 6 }])
+      )
+      await service.exportTelematico('t1', 2024, admin, [])
+      expect(voceSalvata().hashDichiarante).not.toBe(h5)
+    })
+
+    it('una dichiarazione "azienda" con addetti uguali: file identico a quello senza dichiarazioni', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2025-03-10T10:00:00Z'))
+      try {
+        aggregazione.aggrega.mockResolvedValue(aggregatoCon([unaDichiarazione]))
+        const con = await service.exportTelematico('t1', 2024, admin, [])
+        aggregazione.aggrega.mockResolvedValue(aggregatoCon([]))
+        aggregazione.aggrega.mockResolvedValue({
+          ...aggregatoCon([]),
+          righe: [rigaValida],
+        })
+        const senza = await service.exportTelematico('t1', 2024, admin, [])
+        expect(con.content).toBe(senza.content)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('aggregazione senza dichiarazioni: un solo pacchetto come prima', async () => {
+      aggregazione.aggrega.mockResolvedValue({ ...aggregatoCon([]), righe: [rigaValida] })
+      const r = await service.exportTelematico('t1', 2024, admin, [])
+      expect(r.content.split('\r\n').filter(l => l.startsWith('AA;'))).toHaveLength(1)
+      expect(voceSalvata().hashAggregato).toBe(hashAggregato([rigaValida]))
+    })
+
+    it('con i soli avvisi di giacenza un utente non amministratore genera il file dopo la conferma', async () => {
+      const g = {
+        cerCode: '170405',
+        cer6: '170405',
+        unitaLocaleId: null,
+        sede: 'Azienda',
+        kg: 10,
+      }
+      const controlli = [
+        controlliMud.giacenzaRipartita(2024, { ...g, recuperoKg: 6, smaltimentoKg: 4 }),
+        controlliMud.giacenzaDestinazioneNonIndicata(2024, g),
+      ]
+      aggregazione.aggrega.mockResolvedValue(aggregatoCon([unaDichiarazione], controlli))
+      const senza = await service.exportTelematico('t1', 2024, viewer).catch(e => e)
+      expect(senza).toBeInstanceOf(UnprocessableEntityException)
+      expect(senza.getResponse()).toMatchObject({ error: 'MUD_AVVISI_DA_CONFERMARE' })
+      await expect(
+        service.exportTelematico('t1', 2024, viewer, [
+          'GIACENZA_RIPARTITA',
+          'GIACENZA_DESTINAZIONE_NON_INDICATA',
+        ])
+      ).resolves.toBeDefined()
+    })
+  })
+
   it('la città del dichiarante entra nel file senza spazi ai lati (XX e AA)', async () => {
     prisma.tenant.findUnique.mockResolvedValue({ ...tenantCompleto, city: '  Roma ' })
     aggregazione.aggrega.mockResolvedValue({
@@ -626,6 +872,169 @@ describe('MudExportService', () => {
       })
       const r = await service.exportTelematico('t1', 2024, admin)
       expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
+    })
+
+    describe('con più dichiarazioni (F1)', () => {
+      const ul = (id: string, progressivo: number) => ({
+        id,
+        denominazione: `Sede ${progressivo}`,
+        numIscrSito: `S${progressivo}`,
+        principale: progressivo === 1,
+      })
+      const dich = (progressivo: number) => ({
+        codice: String(progressivo).padStart(15, '0'),
+        progressivo,
+        unitaLocale: ul(`ul-${progressivo}`, progressivo),
+        anagrafica: null,
+        scheda: null,
+        numeroAddetti: 5,
+        comuneCode: '058091',
+        movimentiPerCer: {},
+        pericolosiPerCer: {},
+        righe: [{ ...rigaValida, cerCode: progressivo === 1 ? '170405' : '150106' }],
+        conAutorizzazioni: progressivo === 1,
+        conAllegatiAzienda: progressivo === 1,
+      })
+      const duePacchetti = () => {
+        const dichiarazioni = [dich(1), dich(2)]
+        aggregazione.aggrega.mockResolvedValue({
+          anno: 2024,
+          versioneCalcolo: 2,
+          righe: dichiarazioni.flatMap(d => d.righe),
+          dichiarazioni,
+          dichiarante: DICHIARANTE_OK,
+          integrazioni: INTEGRAZIONI_VUOTE,
+          movimentiPerCer: {},
+          controlli: [],
+        })
+      }
+      const presentato = (reportData: Record<string, unknown> = {}) =>
+        prisma.mUDReport.findUnique.mockResolvedValue({
+          status: 'SUBMITTED',
+          submittedAt: new Date('2026-06-30T10:00:00Z'),
+          submittedBy: 'u1',
+          reportData,
+        })
+      const soloProgressivo = (progressivo: number) => {
+        const dichiarazioni = [dich(progressivo)]
+        aggregazione.aggrega.mockResolvedValue({
+          anno: 2024,
+          versioneCalcolo: 2,
+          righe: dichiarazioni.flatMap(d => d.righe),
+          dichiarazioni,
+          dichiarante: DICHIARANTE_OK,
+          integrazioni: INTEGRAZIONI_VUOTE,
+          movimentiPerCer: {},
+          controlli: [],
+        })
+      }
+
+      it('presentazione v1 (insieme {1}) e file con 1 e 2: avviso da confermare, poi solo il pacchetto 1 sostituisce', async () => {
+        duePacchetti()
+        presentato()
+        await expect(service.exportTelematico('t1', 2024, admin, [])).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'MUD_AVVISI_DA_CONFERMARE' }),
+        })
+        const r = await service.exportTelematico('t1', 2024, admin, [
+          'SOSTITUTIVA_PIU_DICHIARAZIONI',
+        ])
+        const aa = r.content.split('\r\n').filter(l => l.startsWith('AA;'))
+        expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+        expect(aa[1].endsWith(';0;00000000;')).toBe(true)
+        const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+        expect(voce.avvisiConfermati).toContain('SOSTITUTIVA_PIU_DICHIARAZIONI')
+        expect(voce.progressiviUnitaLocale).toEqual([1, 2])
+        expect(
+          prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+            .avvisiConfermati
+        ).toEqual(['SOSTITUTIVA_PIU_DICHIARAZIONI'])
+        const dettagli = await service
+          .exportTelematico('t1', 2024, admin, [])
+          .catch((e: any) => e.response.details)
+        expect(dettagli.avvisiDaConfermare).toEqual(['SOSTITUTIVA_PIU_DICHIARAZIONI'])
+        const avviso = dettagli.controlli.find(
+          (c: any) => c.codice === 'SOSTITUTIVA_PIU_DICHIARAZIONI'
+        )
+        expect(avviso.messaggio).toContain('già presentate (1),')
+      })
+
+      it('presentazione v2 con 1 e 2: il nuovo file con 1 e 2 sostituisce entrambi, nessun avviso (G2)', async () => {
+        duePacchetti()
+        presentato({ progressiviUnitaLocale: [1, 2] })
+        const r = await service.exportTelematico('t1', 2024, admin, [])
+        const aa = r.content.split('\r\n').filter(l => l.startsWith('AA;'))
+        expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+        expect(aa[1].endsWith(';1;20260630;')).toBe(true)
+      })
+
+      it('pacchetto unico con progressivo 2 che sostituisce {2}: flag sul 2, nessun avviso (G2)', async () => {
+        soloProgressivo(2)
+        presentato({ progressiviUnitaLocale: [2] })
+        const r = await service.exportTelematico('t1', 2024, admin, [])
+        expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
+        const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+        expect(voce.progressiviUnitaLocale).toEqual([2])
+      })
+
+      it('pacchetto unico con progressivo 2 che sostituisce {1}: nessun flag e avviso (G2)', async () => {
+        soloProgressivo(2)
+        presentato({ progressiviUnitaLocale: [1] })
+        await expect(service.exportTelematico('t1', 2024, admin, [])).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'MUD_AVVISI_DA_CONFERMARE' }),
+        })
+        const r = await service.exportTelematico('t1', 2024, admin, [
+          'SOSTITUTIVA_PIU_DICHIARAZIONI',
+        ])
+        expect(recordAA(r.content).endsWith(';0;00000000;')).toBe(true)
+      })
+
+      it('il file non contiene uno dei progressivi sostituiti: avviso (G2)', async () => {
+        soloProgressivo(1)
+        presentato({ progressiviUnitaLocale: [1, 2] })
+        await expect(service.exportTelematico('t1', 2024, admin, [])).rejects.toMatchObject({
+          response: expect.objectContaining({ error: 'MUD_AVVISI_DA_CONFERMARE' }),
+        })
+      })
+
+      it("l'avviso lo conferma anche chi non è amministratore", async () => {
+        duePacchetti()
+        presentato()
+        const r = await service.exportTelematico('t1', 2024, { id: 'u2', role: 'OPERATOR' }, [
+          'SOSTITUTIVA_PIU_DICHIARAZIONI',
+        ])
+        expect(r.content).toContain('AA;')
+      })
+
+      it('due dichiarazioni ma nessuna sostituzione: nessun avviso', async () => {
+        duePacchetti()
+        prisma.mUDReport.findUnique.mockResolvedValue(null)
+        const r = await service.exportTelematico('t1', 2024, admin, [])
+        expect(r.content.split('\r\n').filter(l => l.startsWith('AA;'))).toHaveLength(2)
+      })
+
+      it('sostitutiva con una sola dichiarazione: nessun avviso', async () => {
+        const dichiarazioni = [dich(1)]
+        aggregazione.aggrega.mockResolvedValue({
+          anno: 2024,
+          versioneCalcolo: 2,
+          righe: dichiarazioni.flatMap(d => d.righe),
+          dichiarazioni,
+          dichiarante: DICHIARANTE_OK,
+          integrazioni: INTEGRAZIONI_VUOTE,
+          movimentiPerCer: {},
+          controlli: [],
+        })
+        presentato()
+        const r = await service.exportTelematico('t1', 2024, admin, [])
+        expect(recordAA(r.content).endsWith(';1;20260630;')).toBe(true)
+      })
+    })
+
+    it("senza dichiarazioni nell'aggregato (pacchetto unico di sempre) la voce registra {1}", async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(null)
+      await service.exportTelematico('t1', 2024, admin)
+      const voce = prisma.mUDReport.upsert.mock.calls[0][0].update.reportData.esportazioni[0]
+      expect(voce.progressiviUnitaLocale).toEqual([1])
     })
 
     it('senza una presentazione il record AA non sostituisce nulla', async () => {

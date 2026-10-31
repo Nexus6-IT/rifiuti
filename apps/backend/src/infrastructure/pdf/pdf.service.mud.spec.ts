@@ -3,6 +3,8 @@ import type { LoggerService } from '../../core/logger/logger.service'
 import { controlliMud, riepilogaAvvisi } from '../../application/mud/aggregazione/mud-controlli'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 
+const PRISMA_SENZA_REPORT = { mUDReport: { findUnique: async () => null } }
+
 describe('PDFService.buildMUDContent - riepilogo dalla stessa aggregazione del file', () => {
   const logger = {
     setContext: jest.fn(),
@@ -132,13 +134,71 @@ describe('PDFService.buildMUDContent - riepilogo dalla stessa aggregazione del f
         mudNonDovuto: false,
       }),
     }
-    const report = await new MUDGeneratorService(aggregazione as any, logger).generateMUDReport(
-      't1',
-      2025
-    )
+    const report = await new MUDGeneratorService(
+      aggregazione as any,
+      logger,
+      PRISMA_SENZA_REPORT as any
+    ).generateMUDReport('t1', 2025)
     const testo = contenuto(report)
     expect(testo).toContain('"17 04 05*"')
     expect(testo).toContain('"15 01 01"')
     expect(testo).not.toContain('15 01 01*')
+  })
+
+  it('PDF: stesso contenuto con una sede', async () => {
+    // la stessa azienda a una sede, prima e dopo F2-8: il riepilogo porta campi in più
+    // (recupero, smaltimento, giacenze, dichiarazioni) che il PDF non stampa
+    const righe = [
+      {
+        cerCode: '170405',
+        prodottoKg: 1234.5,
+        recuperoKg: 1000,
+        smaltimentoKg: 234.5,
+        dr: [],
+        te: [],
+      },
+      { cerCode: '150101', prodottoKg: 5, recuperoKg: 5, smaltimentoKg: 0, dr: [], te: [] },
+    ]
+    const conGiacenze = righe.map(r => ({ ...r, giacenzaRecuperoKg: 77, giacenzaSmaltimentoKg: 8 }))
+    const comune = {
+      anno: 2025,
+      movimentiPerCer: { '170405': 3, '150101': 1 },
+      pericolosiPerCer: { '170405': true as const },
+      dichiarante: { atecoNormalizzato: null, comuneCode: null },
+      controlli: [],
+      mudNonDovuto: false,
+    }
+    const genera = async (aggregato: object) => {
+      const r = await new MUDGeneratorService(
+        { aggrega: jest.fn().mockResolvedValue(aggregato) } as any,
+        logger,
+        PRISMA_SENZA_REPORT as any
+      ).generateMUDReport('t1', 2025)
+      return { ...r, generatedAt: new Date(0) }
+    }
+    const storico = await genera({ ...comune, righe })
+    const nuovo = await genera({
+      ...comune,
+      righe: conGiacenze,
+      versioneCalcolo: 2,
+      dichiarazioni: [
+        {
+          codice: '000000000000001',
+          progressivo: 1,
+          unitaLocale: { id: 'ul-1', denominazione: 'Sede', numIscrSito: 'OP1', principale: true },
+          anagrafica: null,
+          numeroAddetti: 0,
+          comuneCode: null,
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+          righe: conGiacenze,
+          movimentiPerCer: comune.movimentiPerCer,
+          pericolosiPerCer: comune.pericolosiPerCer,
+        },
+      ],
+    })
+    expect(nuovo.wasteProduced[0].giacenzaRecuperoKg).toBe(77)
+    expect(contenuto(nuovo)).toBe(contenuto(storico))
+    expect(contenuto(nuovo)).toContain('"17 04 05*"')
   })
 })

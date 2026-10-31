@@ -1,5 +1,6 @@
 import { chiaveConfrontoCer } from '../../../domain/waste-movement/cer-registro'
 import { normalizzaUnitaRegistro } from '../../../domain/waste-movement/unita-misura-registro'
+import { CHIAVE_AZIENDA } from './mud-dichiarazioni'
 
 // Integrazioni annuali del MUD (dati che il registro non ha): chiavi e lettura difensiva
 // di `MUDReport.reportData.integrazioni`. Funzioni pure.
@@ -26,6 +27,14 @@ export interface IntegrazioniMud {
     string,
     { cerCode: string; unita: string; kgPerUnita: number; confermatoFuoriIntervallo?: boolean }
   >
+  /**
+   * Destinazione (recupero o smaltimento) della giacenza al 31/12 di una sede e di un CER;
+   * chiave = chiaveGiacenza (D9)
+   */
+  destinazioniGiacenza: Record<
+    string,
+    { cerCode: string; unitaLocaleId: string | null; destinazione: 'R' | 'D' }
+  >
   aggiornateIl: string | null
   aggiornateDa: string | null
 }
@@ -35,6 +44,7 @@ export const INTEGRAZIONI_VUOTE: IntegrazioniMud = {
   destinatariMovimento: {},
   trasportatori: {},
   pesiSpecifici: {},
+  destinazioniGiacenza: {},
   aggiornateIl: null,
   aggiornateDa: null,
 }
@@ -75,6 +85,14 @@ export function destinatarioDelMovimento(
 
 export function chiavePesoSpecifico(cerCode6: string, unit: string): string {
   return `${chiaveConfrontoCer(cerCode6)}|${normalizzaUnitaRegistro(unit).unita}`
+}
+
+/**
+ * Chiave della destinazione di una giacenza (D9): `<unitaLocaleId | 'AZIENDA'>|<cer a 6 cifre>`.
+ * La sede fa parte della chiave: la stessa integrazione non vale per un'altra sede.
+ */
+export function chiaveGiacenza(unitaLocaleId: string | null, cerCode6: string): string {
+  return `${unitaLocaleId ?? CHIAVE_AZIENDA}|${chiaveConfrontoCer(cerCode6)}`
 }
 
 /**
@@ -173,11 +191,25 @@ export function leggiIntegrazioni(reportData: unknown): IntegrazioniMud {
       }
     }
   }
+  const destinazioniGiacenza: IntegrazioniMud['destinazioniGiacenza'] = {}
+  if (isRecord(grezze.destinazioniGiacenza)) {
+    for (const [chiave, voce] of Object.entries(grezze.destinazioniGiacenza)) {
+      if (!isRecord(voce)) continue
+      if (voce.destinazione !== 'R' && voce.destinazione !== 'D') continue
+      if (typeof voce.cerCode !== 'string') continue
+      destinazioniGiacenza[chiave] = {
+        cerCode: voce.cerCode,
+        unitaLocaleId: typeof voce.unitaLocaleId === 'string' ? voce.unitaLocaleId : null,
+        destinazione: voce.destinazione,
+      }
+    }
+  }
   return {
     destinatari,
     destinatariMovimento,
     trasportatori,
     pesiSpecifici,
+    destinazioniGiacenza,
     aggiornateIl: typeof grezze.aggiornateIl === 'string' ? grezze.aggiornateIl : null,
     aggiornateDa: typeof grezze.aggiornateDa === 'string' ? grezze.aggiornateDa : null,
   }

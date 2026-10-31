@@ -9,7 +9,10 @@ import { MudVersionRegistry } from './export/mud-version.registry'
 import { MudExportService } from './export/mud-export.service'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 import { controlliMud, type RifMovimento } from './aggregazione/mud-controlli'
-import { hashAggregato, hashDichiarante } from './aggregazione/mud-regole'
+import { hashAggregato, hashCalcoloMud, hashDichiarante } from './aggregazione/mud-regole'
+import { MudAggregazioneService } from './aggregazione/mud-aggregazione.service'
+import { MudAggregazioneOracoloA2bf11e } from './aggregazione/mud-aggregazione-a2bf11e.oracolo-spec'
+import { creaPrismaFinto, type MovimentoFinto } from './aggregazione/mud-prisma-finto.fixture-spec'
 import { aziendaDichiarante } from './export/mud-dichiarante'
 import type { MudRifiutoLine } from './export/mud-export.types'
 
@@ -172,6 +175,8 @@ describe('MudPresentazioneService', () => {
       fileTracciato: null,
       esportazioni: [],
       prossimoFileSostituisce: null,
+      versioneCalcolo: null,
+      versioneCalcoloAttuale: 2,
     })
     expect(prisma.mUDReport.findUnique).toHaveBeenCalledWith({
       where: { tenantId_year: { tenantId: 't1', year: 2025 } },
@@ -444,6 +449,103 @@ describe('MudPresentazioneService', () => {
     expect(stato.datiModificatiDopoPresentazione).toBe(true)
   })
 
+  describe('progressivi presentati da conservare (G2)', () => {
+    it('la segnatura copia i progressivi della voce scelta; senza chiave vale {1}', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({
+          reportData: {
+            esportazioni: [voce({ progressiviUnitaLocale: [1, 2] })],
+          },
+        })
+      )
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.progressiviUnitaLocale).toEqual([1, 2])
+
+      prisma.mUDReport.upsert.mockClear()
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({ reportData: { esportazioni: [voce()] } })
+      )
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.progressiviUnitaLocale).toEqual([1])
+    })
+
+    it("l'annullamento copia i progressivi nella voce dello storico e li azzera", async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({
+          status: 'SUBMITTED',
+          submittedAt: new Date('2026-06-30T10:00:00Z'),
+          submittedBy: 'u1',
+          reportData: { hashAggregato: 'h1', progressiviUnitaLocale: [2], esportazioni: [{}] },
+        })
+      )
+      await service.annullaPresentazione('t1', 2025, 'u2', 'DICHIARAZIONE_DA_SOSTITUIRE')
+      const rd = scritto().update.reportData
+      expect(rd.annullamenti[0].progressiviUnitaLocale).toEqual([2])
+      expect(rd.progressiviUnitaLocale).toBeNull()
+    })
+
+    it('ciclo completo: v2 presentata con 1 e 2, annullata, nuovo file con 1 e 2 → entrambi sostitutivi', async () => {
+      const db: any = {
+        tenant: { findUnique: jest.fn(async () => tenant) },
+        autorizzazioneImpianto: { findMany: jest.fn(async () => []) },
+        mUDReport: { findUnique: jest.fn(), upsert: jest.fn() },
+        activityLog: { create: jest.fn() },
+        $executeRaw: jest.fn(),
+        $transaction: async (fn: any) => fn(db),
+      }
+      let rec: any = null
+      db.mUDReport.findUnique.mockImplementation(async () => (rec ? { ...rec } : null))
+      db.mUDReport.upsert.mockImplementation(async ({ create, update }: any) => {
+        rec = rec ? { ...rec, ...update } : { ...create }
+      })
+      const dich = (p: number) => ({
+        codice: String(p).padStart(15, '0'),
+        progressivo: p,
+        unitaLocale: {
+          id: `ul-${p}`,
+          denominazione: `S${p}`,
+          numIscrSito: `S${p}`,
+          principale: p === 1,
+        },
+        anagrafica: null,
+        scheda: null,
+        numeroAddetti: 5,
+        comuneCode: '058091',
+        movimentiPerCer: {},
+        pericolosiPerCer: {},
+        righe: [riga170405],
+        conAutorizzazioni: p === 1,
+        conAllegatiAzienda: p === 1,
+      })
+      const agg = {
+        aggrega: jest.fn().mockResolvedValue({
+          ...aggregato([riga170405], []),
+          versioneCalcolo: 2,
+          dichiarazioni: [dich(1), dich(2)],
+        }),
+      }
+      const registry = new MudVersionRegistry()
+      const presentazione = new MudPresentazioneService(db, registry, agg as any, logger)
+      const esporta = new MudExportService(db, registry, agg as any, logger)
+      const admin = { id: 'u1', role: 'ADMIN' as const }
+      jest.useFakeTimers({ now: new Date('2026-05-02T08:00:00Z') })
+      try {
+        await esporta.exportTelematico('t1', 2025, admin)
+        expect(rec.reportData.esportazioni[0].progressiviUnitaLocale).toEqual([1, 2])
+        jest.setSystemTime(new Date('2026-07-01T08:00:00Z'))
+        await presentazione.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+        await presentazione.annullaPresentazione('t1', 2025, 'u1', 'DICHIARAZIONE_DA_SOSTITUIRE')
+        const file = await esporta.exportTelematico('t1', 2025, admin)
+        const aa = file.content.split('\r\n').filter(l => l.startsWith('AA;'))
+        expect(aa).toHaveLength(2)
+        expect(aa[0].endsWith(';1;20260630;')).toBe(true)
+        expect(aa[1].endsWith(';1;20260630;')).toBe(true)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+  })
+
   it.each(['SEGNATURA_ERRATA', 'DICHIARAZIONE_DA_SOSTITUIRE'] as const)(
     'annullaPresentazione (%s) riporta a DRAFT e conserva lo storico con il motivo',
     async motivo => {
@@ -647,6 +749,9 @@ describe('MudPresentazioneService', () => {
       fileTracciato: false,
       esportazioni: [],
       prossimoFileSostituisce: new Date('2026-04-30T10:00:00Z'),
+      // record segnato prima di F2-8: nessuna versione salvata = 1
+      versioneCalcolo: 1,
+      versioneCalcoloAttuale: 2,
     })
     expect(aggregazione.aggrega).not.toHaveBeenCalled()
   })
@@ -750,6 +855,191 @@ describe('MudPresentazioneService', () => {
       const file = await esporta.exportTelematico('t1', 2025, admin)
       const aa = file.content.split('\r\n').find(l => l.startsWith('AA;'))!
       expect(aa.endsWith(';1;20260510;')).toBe(true)
+    })
+  })
+
+  describe('versione del calcolo della presentazione (D10)', () => {
+    const SUBMITTED = (reportData: Record<string, unknown>) =>
+      record({ status: 'SUBMITTED', submittedAt: new Date('2026-06-30T10:00:00Z'), reportData })
+
+    // Dichiarazione a una sede con una giacenza al 31/12: 500 prodotti - 200 avviati = 300 kg
+    // ancora in registro, che la versione 2 dichiara e la versione 1 no.
+    const mov = (p: Partial<MovimentoFinto>): MovimentoFinto => ({
+      registroId: 'reg-A',
+      progressiveNumber: 1,
+      progressiveYear: 2025,
+      type: 'CARICO',
+      causale: 'PRODUZIONE_INTERNA',
+      causaleAziendaId: null,
+      cerCode: '17 04 05',
+      quantity: 500,
+      unit: 'KG',
+      operationCode: null,
+      firId: null,
+      firIdRicopia: null,
+      ricopiaChiave: '',
+      counterpartName: null,
+      wastePhysicalState: null,
+      movementDate: new Date('2025-06-10T08:00:00Z'),
+      ...p,
+    })
+    const movimenti = [
+      mov({}),
+      mov({
+        progressiveNumber: 2,
+        type: 'SCARICO',
+        causale: 'AVVIO_RECUPERO',
+        quantity: 200,
+        operationCode: 'R13',
+        counterpartName: 'Recuperi Nord Srl',
+        movementDate: new Date('2025-07-01T08:00:00Z'),
+      }),
+    ]
+    const loggerAgg: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn() }
+    const referenceData: any = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
+    const reale = () => {
+      const finto = creaPrismaFinto({ movimenti })
+      const servizio = new MudAggregazioneService(finto, referenceData, loggerAgg)
+      return {
+        servizio,
+        oracolo: new MudAggregazioneOracoloA2bf11e(finto, referenceData, loggerAgg, servizio),
+      }
+    }
+
+    it('stato: un MUD presentato senza versioneCalcolo si confronta con la versione 1 e non risulta modificato dopo le giacenze nuove', async () => {
+      const { servizio, oracolo } = reale()
+      // il calcolo di oggi ha davvero le giacenze al 31/12 (300 kg), quello di prima no
+      const oggi = await servizio.aggrega('t1', 2025)
+      expect(oggi.righe[0].giacenzaRecuperoKg).toBe(300)
+      const storico = await oracolo.aggrega('t1', 2025)
+      expect(storico.righe[0].giacenzaRecuperoKg).toBeUndefined()
+      // presentazione salvata con l'hash dell'oracolo (a2bf11e), senza versioneCalcolo
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        SUBMITTED({ hashAggregato: hashAggregato(storico.righe), fileTracciato: true })
+      )
+      const spia = jest.spyOn(servizio, 'aggrega')
+      const reale1 = new MudPresentazioneService(prisma, new MudVersionRegistry(), servizio, logger)
+
+      const stato = await reale1.stato('t1', 2025)
+
+      expect(spia).toHaveBeenCalledWith('t1', 2025, { versioneCalcolo: 1 })
+      expect(stato.datiModificatiDopoPresentazione).toBe(false)
+      expect(stato.versioneCalcolo).toBe(1)
+      expect(stato.versioneCalcoloAttuale).toBe(2)
+      // controprova: col calcolo di oggi lo stesso hash risulterebbe diverso
+      expect(hashCalcoloMud(oggi)).not.toBe(hashAggregato(storico.righe))
+    })
+
+    it('stato: con versione 2 una rettifica dopo la presentazione risulta', async () => {
+      const { servizio } = reale()
+      const presentato = await servizio.aggrega('t1', 2025)
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        SUBMITTED({
+          hashAggregato: hashCalcoloMud(presentato),
+          versioneCalcolo: 2,
+          fileTracciato: true,
+        })
+      )
+      const s = new MudPresentazioneService(prisma, new MudVersionRegistry(), servizio, logger)
+      expect((await s.stato('t1', 2025)).datiModificatiDopoPresentazione).toBe(false)
+
+      // una rettifica dopo la presentazione: 200 kg avviati diventano 250
+      const finto2 = creaPrismaFinto({
+        movimenti: [movimenti[0], { ...movimenti[1], quantity: 250 }],
+      })
+      const servizio2 = new MudAggregazioneService(finto2, referenceData, loggerAgg)
+      const spia = jest.spyOn(servizio2, 'aggrega')
+      const s2 = new MudPresentazioneService(prisma, new MudVersionRegistry(), servizio2, logger)
+      const stato = await s2.stato('t1', 2025)
+      expect(spia).toHaveBeenCalledWith('t1', 2025, { versioneCalcolo: 2 })
+      expect(stato.datiModificatiDopoPresentazione).toBe(true)
+      expect(stato.versioneCalcolo).toBe(2)
+    })
+
+    it('stato: una versione salvata fuori dall elenco vale 1', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        SUBMITTED({
+          hashAggregato: hashAggregato([riga170405]),
+          versioneCalcolo: '2',
+          fileTracciato: true,
+        })
+      )
+      const stato = await service.stato('t1', 2025)
+      expect(aggregazione.aggrega).toHaveBeenCalledWith('t1', 2025, { versioneCalcolo: 1 })
+      expect(stato.versioneCalcolo).toBe(1)
+    })
+
+    it('segna: copia la versione della voce', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({
+          reportData: {
+            esportazioni: [
+              voce({ generatoIl: '2026-04-02T08:00:00.000Z', versioneCalcolo: 2 }),
+              voce({ generatoIl: '2026-04-01T08:00:00.000Z', versioneCalcolo: undefined }),
+            ],
+          },
+        })
+      )
+      // ultima voce (senza versione, di prima di F2-8) → 1
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.versioneCalcolo).toBe(1)
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata.versioneCalcolo).toBe(1)
+
+      // voce indicata con la versione 2 → 2
+      prisma.mUDReport.upsert.mockClear()
+      prisma.activityLog.create.mockClear()
+      await service.segnaPresentato(
+        't1',
+        2025,
+        'u1',
+        new Date('2026-06-30T10:00:00Z'),
+        '2026-04-02T08:00:00.000Z'
+      )
+      expect(scritto().update.reportData.versioneCalcolo).toBe(2)
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata.versioneCalcolo).toBe(2)
+    })
+
+    it('segna: hash di ripiego con la versione attuale', async () => {
+      // voce di forma inattesa, senza hash: si salva l'hash di oggi e la versione di oggi
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        record({ reportData: { esportazioni: [{ versioneCalcolo: 1 }] } })
+      )
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.hashAggregato).toBe(hashAggregato([riga170405]))
+      expect(scritto().update.reportData.versioneCalcolo).toBe(2)
+    })
+
+    it('segna senza file: versione attuale', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(record({ reportData: {} }))
+      await service.segnaPresentato('t1', 2025, 'u1', new Date('2026-06-30T10:00:00Z'))
+      expect(scritto().update.reportData.fileTracciato).toBe(false)
+      expect(scritto().update.reportData.versioneCalcolo).toBe(2)
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata.versioneCalcolo).toBe(2)
+    })
+
+    it('annulla: conserva la versione nello storico', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        SUBMITTED({
+          hashAggregato: 'h-file',
+          versioneCalcolo: 2,
+          fileTracciato: true,
+          annullamenti: [],
+        })
+      )
+      await service.annullaPresentazione('t1', 2025, 'u2', 'SEGNATURA_ERRATA')
+      const dati = scritto().update.reportData
+      expect(dati.versioneCalcolo).toBeNull()
+      expect(dati.annullamenti).toHaveLength(1)
+      expect(dati.annullamenti[0].versioneCalcolo).toBe(2)
+      expect(prisma.activityLog.create.mock.calls[0][0].data.metadata.versioneCalcolo).toBe(2)
+
+      // una presentazione di prima di F2-8 non ha la chiave: resta null nello storico
+      prisma.mUDReport.upsert.mockClear()
+      prisma.mUDReport.findUnique.mockResolvedValue(
+        SUBMITTED({ hashAggregato: 'h-file', fileTracciato: true })
+      )
+      await service.annullaPresentazione('t1', 2025, 'u2', 'SEGNATURA_ERRATA')
+      expect(scritto().update.reportData.annullamenti[0].versioneCalcolo).toBeNull()
     })
   })
 })
