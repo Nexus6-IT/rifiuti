@@ -52,6 +52,19 @@ describe('RentriRegistroService', () => {
     r.flush({ accodate: 0, saltate: [], avvio: 'NIENTE_DA_INVIARE' })
   })
 
+  it("escludiInvioAutomatico e includiInvioAutomatico: POST con il motivo, senza corpo per l'inclusione", () => {
+    service.escludiInvioAutomatico('m1', 'Da correggere').subscribe()
+    const e = http.expectOne(`${base}/movimenti/m1/escludi-invio-automatico`)
+    expect(e.request.method).toBe('POST')
+    expect(e.request.body).toEqual({ motivo: 'Da correggere' })
+    e.flush(null, { status: 204, statusText: 'No Content' })
+
+    service.includiInvioAutomatico('m1').subscribe()
+    const i = http.expectOne(`${base}/movimenti/m1/includi-invio-automatico`)
+    expect(i.request.method).toBe('POST')
+    i.flush(null, { status: 204, statusText: 'No Content' })
+  })
+
   it('togliDallaCoda: DELETE; verifica: POST; dichiara: POST', () => {
     service.togliDallaCoda('m1').subscribe()
     const d = http.expectOne(`${base}/movimenti/m1/coda`)

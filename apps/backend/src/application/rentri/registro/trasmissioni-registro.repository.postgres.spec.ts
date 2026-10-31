@@ -694,4 +694,89 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     expect(sb).toEqual({ [mb.id]: 'ATTESA_ESITO' })
     expect((await stati(a.tenantId))[ma.id]).toBe('DA_TRASMETTERE')
   })
+
+  describe("esclusione dall'invio automatico (seguito, 31/10/2026)", () => {
+    const esclusa = (utente: string | null = null) => ({
+      esclusoIl: new Date(),
+      esclusoDa: utente,
+      motivoEsclusione: 'prova',
+    })
+
+    it("prenota non vede ne' sceglie una riga esclusa: restano DA_TRASMETTERE e fuori dalle candidate", async () => {
+      const a = await azienda()
+      const normale = await movimento(a)
+      const fuori = await movimento(a)
+      await riga(a, normale)
+      await riga(a, fuori, esclusa())
+      let viste: string[] = []
+      const r = await repo.prenota(a.tenantId, a.registroId, async (_tx, candidate) => {
+        viste = candidate.map(c => c.movimentoId)
+        return cand(viste)
+      })
+      expect(r.esito).toBe('PRENOTATO')
+      expect(viste).toEqual([normale.id])
+      expect(await stati(a.tenantId)).toEqual({
+        [normale.id]: 'IN_INVIO',
+        [fuori.id]: 'DA_TRASMETTERE',
+      })
+    })
+
+    it('registro con la sola riga esclusa: NIENTE e prepara non viene chiamata', async () => {
+      const a = await azienda()
+      const m = await movimento(a)
+      await riga(a, m, esclusa())
+      const prepara = jest.fn()
+      expect(await repo.prenota(a.tenantId, a.registroId, prepara)).toEqual({ esito: 'NIENTE' })
+      expect(prepara).not.toHaveBeenCalled()
+    })
+
+    it("adottaAutomatiche e adottaCorrezioni non ricreano ne' toccano una riga esclusa", async () => {
+      const dal = new Date('2026-06-01T00:00:00Z')
+      const a = await azienda({ dal })
+      const m = await movimento(a, { createdAt: new Date('2026-06-02T00:00:00Z') })
+      await riga(a, m, { origine: 'AUTOMATICA', ...esclusa() })
+      const trasm = await movimento(a, { createdAt: new Date('2026-06-02T00:00:00Z') })
+      await riga(a, trasm, { stato: 'TRASMESSA', identificativoRentri: IDENT_MOV })
+      const corr = await movimento(a, {
+        createdAt: new Date('2026-06-03T00:00:00Z'),
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: trasm.id,
+        movimentoOriginaleId: trasm.id,
+        motivoAnnotazione: 'x',
+      })
+      await riga(a, corr, { origine: 'CORREZIONE', ...esclusa() })
+      expect(await repo.adottaAutomatiche(a.tenantId, 1000)).toBe(0)
+      expect(await repo.adottaCorrezioni(a.tenantId, 1000)).toBe(0)
+      const r = await owner.movimentoTrasmissioneRentri.findMany({
+        where: { movimentoId: { in: [m.id, corr.id] } },
+      })
+      expect(r).toHaveLength(2)
+      expect(r.every(x => x.stato === 'DA_TRASMETTERE' && x.esclusoIl !== null)).toBe(true)
+    })
+
+    it("il database rifiuta l'esclusione su una riga che non e' DA_TRASMETTERE (mai su righe che RENTRI puo' avere)", async () => {
+      const a = await azienda()
+      for (const stato of [
+        'IN_INVIO',
+        'ATTESA_ESITO',
+        'INCERTA',
+        'TRASMESSA',
+        'GIA_SU_RENTRI',
+      ] as const) {
+        const m = await movimento(a)
+        const dati: Record<string, unknown> = { stato, ...esclusa() }
+        if (stato === 'ATTESA_ESITO') dati.transazioneId = randomUUID()
+        if (stato === 'TRASMESSA') dati.identificativoRentri = IDENT_MOV
+        await expect(riga(a, m, dati)).rejects.toThrow(/esclusione_check/)
+      }
+    })
+
+    it('colonne incoerenti (motivo o data mancanti) rifiutate dal CHECK', async () => {
+      const a = await azienda()
+      const m1 = await movimento(a)
+      await expect(riga(a, m1, { esclusoIl: new Date() })).rejects.toThrow(/esclusione_check/)
+      const m2 = await movimento(a)
+      await expect(riga(a, m2, { motivoEsclusione: 'x' })).rejects.toThrow(/esclusione_check/)
+    })
+  })
 })

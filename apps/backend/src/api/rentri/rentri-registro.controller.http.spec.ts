@@ -61,7 +61,12 @@ jest.mock('../../core/monitoring/segnala-errore-job', () => ({ segnalaErroreJob:
 describe('RentriRegistroController — catena HTTP', () => {
   let app: INestApplication
   let accoda: Record<
-    'accoda' | 'accodaStorico' | 'togliDallaCoda' | 'dichiaraGiaSuRentri',
+    | 'accoda'
+    | 'accodaStorico'
+    | 'togliDallaCoda'
+    | 'dichiaraGiaSuRentri'
+    | 'escludiDaInvioAutomatico'
+    | 'reincludiNellInvioAutomatico',
     jest.Mock
   >
   let trasmetti: { trasmettiRegistro: jest.Mock }
@@ -92,6 +97,8 @@ describe('RentriRegistroController — catena HTTP', () => {
         saltatePerStato: {},
       }),
       togliDallaCoda: jest.fn().mockResolvedValue(undefined),
+      escludiDaInvioAutomatico: jest.fn().mockResolvedValue(undefined),
+      reincludiNellInvioAutomatico: jest.fn().mockResolvedValue(undefined),
       dichiaraGiaSuRentri: jest.fn().mockResolvedValue({
         dichiarate: 4,
         saltate: 1,
@@ -430,12 +437,112 @@ describe('RentriRegistroController — catena HTTP', () => {
     })
   })
 
+  describe("esclusione dall'invio automatico (seguito, 31/10/2026)", () => {
+    const url = (azione: string) => `/rentri/registro/movimenti/${MOVIMENTO}/${azione}`
+
+    it('ADMIN effettivo: escludi passa il ruolo effettivo e il motivo; 204', async () => {
+      await avvia('ADMIN')
+      const r = await cliente(
+        http().post(url('escludi-invio-automatico')).send({ motivo: 'Da correggere' })
+      )
+      expect(r.status).toBe(204)
+      expect(accoda.escludiDaInvioAutomatico).toHaveBeenCalledWith(
+        CLIENTE,
+        CONSULENTE,
+        'ADMIN',
+        MOVIMENTO,
+        'Da correggere'
+      )
+    })
+
+    it('ADMIN effettivo: includi passa il ruolo effettivo; 204', async () => {
+      await avvia('ADMIN')
+      const r = await cliente(http().post(url('includi-invio-automatico')))
+      expect(r.status).toBe(204)
+      expect(accoda.reincludiNellInvioAutomatico).toHaveBeenCalledWith(
+        CLIENTE,
+        CONSULENTE,
+        'ADMIN',
+        MOVIMENTO
+      )
+    })
+
+    it("OPERATOR e VIEWER (anche se il token e' ADMIN): 403 e nessun use case", async () => {
+      for (const ruolo of ['OPERATOR', 'VIEWER']) {
+        await avvia(ruolo)
+        const a = await cliente(http().post(url('escludi-invio-automatico')).send({ motivo: 'x' }))
+        const b = await cliente(http().post(url('includi-invio-automatico')))
+        expect([a.status, b.status]).toEqual([403, 403])
+        expect(accoda.escludiDaInvioAutomatico).not.toHaveBeenCalled()
+        expect(accoda.reincludiNellInvioAutomatico).not.toHaveBeenCalled()
+        await app.close()
+      }
+    })
+
+    it('motivo mancante, vuoto, oltre 500 o campi extra: 400 e nessun use case', async () => {
+      await avvia('ADMIN')
+      for (const corpo of [
+        {},
+        { motivo: '' },
+        { motivo: 'x'.repeat(501) },
+        { motivo: 'x', altro: 1 },
+      ]) {
+        const r = await cliente(http().post(url('escludi-invio-automatico')).send(corpo))
+        expect(r.status).toBe(400)
+      }
+      expect(accoda.escludiDaInvioAutomatico).not.toHaveBeenCalled()
+    })
+
+    it('DELETE coda con motivo (ADMIN) lo passa al use case; errori di dominio mappati', async () => {
+      await avvia('ADMIN')
+      const r = await cliente(
+        http()
+          .delete(`/rentri/registro/movimenti/${MOVIMENTO}/coda`)
+          .send({ motivo: 'Da correggere' })
+      )
+      expect(r.status).toBe(204)
+      expect(accoda.togliDallaCoda).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO, {
+        ruolo: 'ADMIN',
+        motivo: 'Da correggere',
+      })
+      accoda.escludiDaInvioAutomatico.mockRejectedValue(
+        new TrasmissioneNonModificabileError("L'annotazione è già esclusa dall'invio automatico.")
+      )
+      const no = await cliente(http().post(url('escludi-invio-automatico')).send({ motivo: 'x' }))
+      expect(no.status).toBe(409)
+    })
+
+    it('trasmetti: le annotazioni escluse sono riportate fra le saltate con il loro motivo', async () => {
+      await avvia('ADMIN')
+      accoda.accoda.mockResolvedValue({
+        accodate: 0,
+        riaccodate: 0,
+        predecessori: 0,
+        saltate: 2,
+        saltatePerStato: {},
+        saltateEscluse: 2,
+      })
+      const r = await cliente(
+        http()
+          .post('/rentri/registro/trasmetti')
+          .send({ registroId: REGISTRO, movimentoIds: [MOVIMENTO] })
+      )
+      expect(r.body.saltate).toEqual([
+        { motivo: "Esclusa dall'invio automatico: reincludila prima di trasmetterla", numero: 2 },
+      ])
+      expect(r.body.avvio).toBe('NIENTE_DA_INVIARE')
+    })
+  })
+
   describe('coda, verifica, dettaglio, allineamento', () => {
     it('DELETE coda: 204; riga automatica: 409 con la spiegazione del dominio', async () => {
       await avvia('OPERATOR')
       const ok = await cliente(http().delete(`/rentri/registro/movimenti/${MOVIMENTO}/coda`))
       expect(ok.status).toBe(204)
-      expect(accoda.togliDallaCoda).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO)
+      expect(accoda.togliDallaCoda).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO, {
+        ruolo: 'OPERATOR',
+        motivo: undefined,
+      })
       accoda.togliDallaCoda.mockRejectedValue(
         new TrasmissioneNonModificabileError(
           "L'annotazione è stata accodata dall'invio automatico."

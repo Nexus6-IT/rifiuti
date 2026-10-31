@@ -14,6 +14,8 @@ export interface ImpostazioniRegistroRentri {
   perStato: Partial<Record<StatoRentri, number>>
   /** Movimenti mai trasmessi né accodati. */
   nonTrasmessi: number
+  /** Righe in coda escluse dall'invio automatico (comprese in `perStato.DA_TRASMETTERE`). */
+  escluse: number
   haCertificato: boolean
 }
 
@@ -117,6 +119,21 @@ export class RentriRegistroService {
 
   togliDallaCoda(movimentoId: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/movimenti/${encodeURIComponent(movimentoId)}/coda`)
+  }
+
+  /** Solo amministratori: l'annotazione resta in coda ma non parte da sola. */
+  escludiInvioAutomatico(movimentoId: string, motivo: string): Observable<void> {
+    return this.http.post<void>(
+      `${this.base}/movimenti/${encodeURIComponent(movimentoId)}/escludi-invio-automatico`,
+      { motivo }
+    )
+  }
+
+  includiInvioAutomatico(movimentoId: string): Observable<void> {
+    return this.http.post<void>(
+      `${this.base}/movimenti/${encodeURIComponent(movimentoId)}/includi-invio-automatico`,
+      {}
+    )
   }
 
   verifica(movimentoId: string): Observable<EsitoVerificaRentri> {

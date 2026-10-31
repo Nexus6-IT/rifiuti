@@ -73,6 +73,10 @@ export interface Movimento {
     stato: StatoRentri
     identificativo: string | null
     motivo: string | null
+    /** `AUTOMATICA`, `CORREZIONE`, `MANUALE`, `DICHIARATA`. */
+    origine?: string
+    /** Esclusa dall'invio automatico: `motivo` è il motivo dell'esclusione. */
+    escluso?: boolean
   } | null
 }
 

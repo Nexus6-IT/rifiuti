@@ -60,8 +60,10 @@ import {
 import {
   AllineamentoQueryDto,
   DichiaraGiaTrasmessiDto,
+  EscludiInvioAutomaticoDto,
   ImpostaRegistroRentriDto,
   TrasmettiRentriDto,
+  TogliDallaCodaDto,
   TrasmettiStoricoRentriDto,
 } from './dto/rentri-registro.dto'
 
@@ -78,6 +80,8 @@ const MOTIVO_SALTATA: Partial<Record<StatoTrasmissioneRentri, string>> = {
   TRASMESSA: 'Già trasmessa a RENTRI',
   GIA_SU_RENTRI: 'Già su RENTRI',
 }
+
+const MOTIVO_SALTATA_ESCLUSA = "Esclusa dall'invio automatico: reincludila prima di trasmetterla"
 
 /**
  * Stato dell'avvio dell'invio dopo l'accodamento. L'invio gira dopo la risposta: l'esito vero si
@@ -227,14 +231,14 @@ export class RentriRegistroController {
   }
 
   private rispostaAccodamento(esito: EsitoAccodamento): Omit<RispostaAccodamento, 'avvio'> {
-    return {
-      accodate: esito.accodate + esito.riaccodate,
-      saltate: Object.entries(esito.saltatePerStato).map(([stato, numero]) => ({
-        motivo:
-          MOTIVO_SALTATA[stato as StatoTrasmissioneRentri] ?? 'Non accodabile in questo stato',
-        numero: numero as number,
-      })),
+    const saltate = Object.entries(esito.saltatePerStato).map(([stato, numero]) => ({
+      motivo: MOTIVO_SALTATA[stato as StatoTrasmissioneRentri] ?? 'Non accodabile in questo stato',
+      numero: numero as number,
+    }))
+    if ((esito.saltateEscluse ?? 0) > 0) {
+      saltate.push({ motivo: MOTIVO_SALTATA_ESCLUSA, numero: esito.saltateEscluse })
     }
+    return { accodate: esito.accodate + esito.riaccodate, saltate }
   }
 
   // --- Rotte ---
@@ -335,16 +339,65 @@ export class RentriRegistroController {
 
   @Delete('movimenti/:movimentoId/coda')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Toglie dalla coda un'annotazione accodata a mano" })
-  @ApiResponse({ status: 204, description: 'Tolta dalla coda' })
+  @ApiOperation({
+    summary: "Toglie dalla coda un'annotazione accodata a mano",
+    description:
+      "Per un'annotazione dell'invio automatico un amministratore, indicando il `motivo`, la esclude " +
+      "dall'invio automatico; gli altri ruoli ricevono 409.",
+  })
+  @ApiResponse({ status: 204, description: 'Tolta dalla coda (o esclusa dall’invio automatico)' })
   @ApiResponse({ status: 409, description: "Non più in coda, o accodata dall'invio automatico" })
   async togliDallaCoda(
     @Param('movimentoId', uuidAnnotazione) movimentoId: string,
+    @Body() dto: TogliDallaCodaDto,
     @Req() req: any
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediScrittura(req, tenantId)
-    await this.conErrori(() => this.accoda.togliDallaCoda(tenantId, req.user.id, movimentoId))
+    const ruolo = await this.ruolo(req, tenantId)
+    await this.conErrori(() =>
+      this.accoda.togliDallaCoda(tenantId, req.user.id, movimentoId, {
+        ruolo,
+        motivo: dto?.motivo,
+      })
+    )
+  }
+
+  @Post('movimenti/:movimentoId/escludi-invio-automatico')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Esclude un'annotazione dall'invio automatico (amministratori, con motivo)",
+  })
+  @ApiResponse({ status: 204, description: 'Esclusa: resta in coda ma non parte da sola' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 409, description: 'Già partita, già esclusa o accodata a mano' })
+  async escludiInvioAutomatico(
+    @Param('movimentoId', uuidAnnotazione) movimentoId: string,
+    @Body() dto: EscludiInvioAutomaticoDto,
+    @Req() req: any
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    await this.conErrori(() =>
+      this.accoda.escludiDaInvioAutomatico(tenantId, req.user.id, ruolo, movimentoId, dto.motivo)
+    )
+  }
+
+  @Post('movimenti/:movimentoId/includi-invio-automatico')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Annulla l'esclusione dall'invio automatico (amministratori)" })
+  @ApiResponse({ status: 204, description: 'Reinclusa: il prossimo giro la riadotta se spetta' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 409, description: "L'annotazione non è esclusa" })
+  async includiInvioAutomatico(
+    @Param('movimentoId', uuidAnnotazione) movimentoId: string,
+    @Req() req: any
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    await this.conErrori(() =>
+      this.accoda.reincludiNellInvioAutomatico(tenantId, req.user.id, ruolo, movimentoId)
+    )
   }
 
   @Post('movimenti/:movimentoId/verifica')

@@ -490,6 +490,166 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
     })
   })
 
+  describe("esclusione dall'invio automatico (seguito, 31/10/2026)", () => {
+    const MOTIVO = 'Annotazione da correggere prima di inviarla'
+
+    it('ADMIN con motivo: la riga AUTOMATICA/CORREZIONE resta DA_TRASMETTERE ma esclusa, con audit senza testo libero', async () => {
+      const a = await azienda()
+      for (const origine of ['AUTOMATICA', 'CORREZIONE'] as const) {
+        const m = await movimento(a)
+        await riga(a, m, { origine })
+        await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, `  ${MOTIVO} `)
+        expect(await rigaDi(m.id)).toMatchObject({
+          stato: 'DA_TRASMETTERE',
+          origine,
+          esclusoDa: utenteId,
+          motivoEsclusione: MOTIVO,
+        })
+        expect((await rigaDi(m.id))?.esclusoIl).toBeInstanceOf(Date)
+      }
+      const log = await audit(a.tenantId, 'RENTRI_REGISTRO_ESCLUSO_INVIO_AUTOMATICO')
+      expect(log).toHaveLength(2)
+      expect(JSON.stringify(log.map(l => l.metadata))).not.toContain('correggere')
+      expect(JSON.stringify(log[0].metadata)).toContain('motivoLunghezza')
+    })
+
+    it("movimento senza riga (non ancora adottato): crea la riga esclusa, il job non la ricrea ne' la manda", async () => {
+      const a = await azienda()
+      const m = await movimento(a)
+      await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+      expect(await rigaDi(m.id)).toMatchObject({
+        stato: 'DA_TRASMETTERE',
+        origine: 'AUTOMATICA',
+        bloccatoInvio: false,
+      })
+      expect((await rigaDi(m.id))?.esclusoIl).not.toBeNull()
+      expect(await repo.adottaAutomatiche(a.tenantId, 1000)).toBe(0)
+    })
+
+    it('non ADMIN o motivo vuoto/troppo lungo: 403 / 400 e nulla cambia', async () => {
+      const a = await azienda()
+      const m = await movimento(a)
+      await riga(a, m, { origine: 'AUTOMATICA' })
+      await expect(
+        accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'OPERATOR', m.id, MOTIVO)
+      ).rejects.toBeInstanceOf(RuoloNonAutorizzatoRentriError)
+      for (const motivo of ['', '   ', 'x'.repeat(501)]) {
+        await expect(
+          accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, motivo)
+        ).rejects.toBeInstanceOf(RichiestaTrasmissioneNonValidaError)
+      }
+      expect((await rigaDi(m.id))?.esclusoIl).toBeNull()
+    })
+
+    it("righe che RENTRI puo' avere (o gia' in volo) e righe MANUALI: 409 e riga intatta", async () => {
+      const a = await azienda()
+      const casi: Array<Record<string, unknown>> = [
+        { stato: 'IN_INVIO' },
+        { stato: 'ATTESA_ESITO', transazioneId: randomUUID() },
+        { stato: 'INCERTA' },
+        { stato: 'TRASMESSA', identificativoRentri: ID_MOV(9) },
+        { stato: 'GIA_SU_RENTRI' },
+        { stato: 'RIFIUTATA' },
+        { stato: 'NON_TRASMISSIBILE' },
+        { origine: 'MANUALE' },
+      ]
+      for (const dati of casi) {
+        const m = await movimento(a)
+        const prima = await riga(a, m, { origine: 'AUTOMATICA', ...dati })
+        await expect(
+          accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+        ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+        const dopo = await rigaDi(m.id)
+        expect(dopo).toMatchObject({ stato: prima.stato, esclusoIl: null, motivoEsclusione: null })
+      }
+    })
+
+    it("gia' esclusa: 409; movimento di un altro registro/azienda o inesistente: 404", async () => {
+      const a = await azienda()
+      const altra = await azienda()
+      const m = await movimento(a)
+      await riga(a, m, { origine: 'AUTOMATICA' })
+      await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+      await expect(
+        accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+      ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+      await expect(
+        accoda.escludiDaInvioAutomatico(altra.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+      ).rejects.toBeInstanceOf(MovimentoNonTrovatoError)
+      await expect(
+        accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', randomUUID(), MOTIVO)
+      ).rejects.toBeInstanceOf(MovimentoNonTrovatoError)
+    })
+
+    it('togliDallaCoda su AUTOMATICA/CORREZIONE: ADMIN con motivo esclude; senza motivo o non ADMIN resta 409', async () => {
+      const a = await azienda()
+      for (const origine of ['AUTOMATICA', 'CORREZIONE'] as const) {
+        const m = await movimento(a)
+        await riga(a, m, { origine })
+        await expect(
+          accoda.togliDallaCoda(a.tenantId, utenteId, m.id, { ruolo: 'OPERATOR', motivo: MOTIVO })
+        ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+        await expect(
+          accoda.togliDallaCoda(a.tenantId, utenteId, m.id, { ruolo: 'ADMIN' })
+        ).rejects.toThrow(/amministratore/)
+        expect((await rigaDi(m.id))?.esclusoIl).toBeNull()
+        await accoda.togliDallaCoda(a.tenantId, utenteId, m.id, { ruolo: 'ADMIN', motivo: MOTIVO })
+        expect(await rigaDi(m.id)).toMatchObject({
+          stato: 'DA_TRASMETTERE',
+          motivoEsclusione: MOTIVO,
+        })
+      }
+    })
+
+    it('reinclusione (ADMIN): la riga automatica viene tolta e il job la riadotta se spetta; con audit', async () => {
+      const a = await azienda()
+      const m = await movimento(a)
+      await riga(a, m, { origine: 'AUTOMATICA' })
+      await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+      await expect(
+        accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'OPERATOR', m.id)
+      ).rejects.toBeInstanceOf(RuoloNonAutorizzatoRentriError)
+      expect((await rigaDi(m.id))?.esclusoIl).not.toBeNull()
+      await accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id)
+      expect(await rigaDi(m.id)).toBeNull()
+      expect(await audit(a.tenantId, 'RENTRI_REGISTRO_RIINCLUSO_INVIO_AUTOMATICO')).toHaveLength(1)
+      // non piu' esclusa: 409; senza riga: 404
+      await expect(
+        accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id)
+      ).rejects.toBeInstanceOf(MovimentoNonTrovatoError)
+      const n2 = await movimento(a)
+      await riga(a, n2, { origine: 'AUTOMATICA' })
+      await expect(
+        accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'ADMIN', n2.id)
+      ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+    })
+
+    it("reinclusione non tocca mai una riga esclusa che nel frattempo non e' piu' DA_TRASMETTERE", async () => {
+      const a = await azienda()
+      const m = await movimento(a)
+      await riga(a, m, {
+        stato: 'TRASMESSA',
+        identificativoRentri: ID_MOV(8),
+        origine: 'AUTOMATICA',
+      })
+      await expect(
+        accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id)
+      ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+      expect((await rigaDi(m.id))?.stato).toBe('TRASMESSA')
+    })
+
+    it('accoda manuale su una riga esclusa: saltata con il suo motivo, non conta come "gia\' in coda"', async () => {
+      const a = await azienda()
+      const m = await movimento(a)
+      await riga(a, m, { origine: 'AUTOMATICA' })
+      await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+      const r = await accoda.accoda(a.tenantId, utenteId, a.registroId, [m.id])
+      expect(r).toMatchObject({ accodate: 0, riaccodate: 0, saltate: 1, saltateEscluse: 1 })
+      expect(r.saltatePerStato.DA_TRASMETTERE ?? 0).toBe(0)
+      expect((await rigaDi(m.id))?.esclusoIl).not.toBeNull()
+    })
+  })
+
   describe('dichiaraGiaSuRentri', () => {
     it("intervallo: righe GIA_SU_RENTRI bloccate col motivo; TRASMESSA gia' presente non toccata", async () => {
       const a = await azienda()
@@ -1215,6 +1375,13 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       await movimento(a)
       await riga(a, m1, { stato: 'TRASMESSA', identificativoRentri: ID_MOV(11) })
       await riga(a, m2)
+      const m3 = await movimento(a)
+      await riga(a, m3, {
+        origine: 'AUTOMATICA',
+        esclusoIl: new Date(),
+        esclusoDa: utenteId,
+        motivoEsclusione: 'prova',
+      })
       const lista = await impostazioni.leggi(a.tenantId)
       expect(lista).toHaveLength(1)
       expect(lista[0]).toMatchObject({
@@ -1222,9 +1389,11 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
         identificativoRentri: 'RABCDE12345',
         invioAutomatico: false,
         nonTrasmessi: 1,
+        escluse: 1,
         haCertificato: false,
       })
-      expect(lista[0].perStato).toMatchObject({ TRASMESSA: 1, DA_TRASMETTERE: 1 })
+      // Le escluse restano DA_TRASMETTERE nel conteggio per stato (sono righe in quello stato).
+      expect(lista[0].perStato).toMatchObject({ TRASMESSA: 1, DA_TRASMETTERE: 2 })
     })
 
     it('allineamento: locali, trasmessi e conteggio su RENTRI', async () => {

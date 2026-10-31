@@ -98,7 +98,14 @@ export class TrasmissioniRegistroRepository {
         if (inCorso > 0) return { esito: 'GIA_IN_CORSO' }
 
         const righe = await tx.movimentoTrasmissioneRentri.findMany({
-          where: { tenantId, registroId, stato: 'DA_TRASMETTERE', bloccatoInvio: false },
+          where: {
+            tenantId,
+            registroId,
+            stato: 'DA_TRASMETTERE',
+            bloccatoInvio: false,
+            // Esclusa dall'invio automatico (ADMIN): non e' mai candidata a un lotto.
+            esclusoIl: null,
+          },
           select: {
             movimentoId: true,
             movimento: {
@@ -177,6 +184,7 @@ export class TrasmissioniRegistroRepository {
               movimentoId: nt.movimentoId,
               stato: 'DA_TRASMETTERE',
               bloccatoInvio: false,
+              esclusoIl: null,
             },
             data: { stato: 'NON_TRASMISSIBILE', ultimoErrore: tronca(nt.motivi.join('; '), 1000) },
           })
@@ -191,6 +199,7 @@ export class TrasmissioniRegistroRepository {
             movimentoId: { in: lotto },
             stato: 'DA_TRASMETTERE',
             bloccatoInvio: false,
+            esclusoIl: null,
           },
           data: {
             stato: 'IN_INVIO',

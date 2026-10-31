@@ -109,3 +109,24 @@ export class DichiaraGiaTrasmessiDto {
   @MaxLength(500, { message: 'Il motivo può avere al massimo 500 caratteri.' })
   motivo: string
 }
+
+/** `POST /rentri/registro/movimenti/:id/escludi-invio-automatico` (solo amministratori). */
+export class EscludiInvioAutomaticoDto {
+  @ApiProperty({ example: 'Annotazione da correggere prima di inviarla' })
+  @IsString({ message: 'Il motivo deve essere un testo.' })
+  @IsNotEmpty({ message: "Indica il motivo dell'esclusione." })
+  @MaxLength(500, { message: 'Il motivo può avere al massimo 500 caratteri.' })
+  motivo: string
+}
+
+/** `DELETE /rentri/registro/movimenti/:id/coda`: il motivo serve solo agli amministratori. */
+export class TogliDallaCodaDto {
+  @ApiPropertyOptional({
+    description:
+      "Solo per le annotazioni dell'invio automatico: un amministratore le esclude indicando il motivo.",
+  })
+  @IsOptional()
+  @IsString({ message: 'Il motivo deve essere un testo.' })
+  @MaxLength(500, { message: 'Il motivo può avere al massimo 500 caratteri.' })
+  motivo?: string
+}

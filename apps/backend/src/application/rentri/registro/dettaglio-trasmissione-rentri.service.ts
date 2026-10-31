@@ -39,6 +39,9 @@ export interface DettaglioTrasmissione {
   ultimoErrore: string | null
   messaggi: unknown
   trasmessoIl: Date | null
+  /** Esclusa dall'invio automatico (ADMIN): resta in coda ma non parte. */
+  escluso: boolean
+  motivoEsclusione: string | null
 }
 
 /** Lettura dello stato di trasmissione di una singola annotazione (D12). */
@@ -61,6 +64,8 @@ export class DettaglioTrasmissioneRentriService {
             ultimoErrore: true,
             messaggi: true,
             trasmessoIl: true,
+            esclusoIl: true,
+            motivoEsclusione: true,
           },
         })
     )
@@ -75,6 +80,8 @@ export class DettaglioTrasmissioneRentriService {
       ultimoErrore: riga.ultimoErrore,
       messaggi: riga.messaggi,
       trasmessoIl: riga.trasmessoIl,
+      escluso: riga.esclusoIl !== null,
+      motivoEsclusione: riga.motivoEsclusione,
     }
   }
 }

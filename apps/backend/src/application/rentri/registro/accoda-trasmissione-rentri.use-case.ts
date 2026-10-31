@@ -21,6 +21,7 @@ import {
   RichiestaTrasmissioneNonValidaError,
   TrasmissioneNonModificabileError,
   richiediAmministratore,
+  RUOLI_AMMINISTRATORE_RENTRI,
 } from './errori-azioni-rentri-registro'
 
 type Tx = Prisma.TransactionClient
@@ -43,6 +44,8 @@ export interface EsitoAccodamento {
   /** Annotazioni scelte ma non accodabili (gia' in coda, in volo, incerte o trasmesse). */
   saltate: number
   saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>>
+  /** Annotazioni escluse dall'invio automatico: saltate (comprese in `saltate`, non in `saltatePerStato`). */
+  saltateEscluse: number
 }
 
 export interface EsitoDichiarazione {
@@ -109,6 +112,7 @@ export class AccodaTrasmissioneRentriUseCase {
         predecessoriAccodati,
         saltate,
         saltatePerStato,
+        saltateEscluse,
         nuove,
         daRiportare,
       } = await this.applicaAccodamento(
@@ -126,6 +130,7 @@ export class AccodaTrasmissioneRentriUseCase {
         predecessori: predecessoriAccodati,
         saltate,
         saltatePerStato,
+        saltateEscluse,
       }
       await tx.activityLog.create({
         data: {
@@ -181,19 +186,27 @@ export class AccodaTrasmissioneRentriUseCase {
 
     const righe = await tx.movimentoTrasmissioneRentri.findMany({
       where: { tenantId, movimentoId: { in: [...tutti.keys()] } },
-      select: { movimentoId: true, stato: true },
+      select: { movimentoId: true, stato: true, esclusoIl: true },
     })
     const statoDi = new Map(righe.map(r => [r.movimentoId, r.stato]))
+    const escluse = new Set(righe.filter(r => r.esclusoIl !== null).map(r => r.movimentoId))
 
     const nuove: string[] = []
     const daRiportare: string[] = []
     const saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>> = {}
     let saltate = 0
+    let saltateEscluse = 0
     let predecessoriAccodati = 0
     for (const id of tutti.keys()) {
       const stato = statoDi.get(id)
       const eScelto = scelti.has(id)
-      if (stato === undefined) {
+      if (escluse.has(id)) {
+        // Esclusa dall'invio automatico: si riabilita solo con la reinclusione (ADMIN).
+        if (eScelto) {
+          saltate++
+          saltateEscluse++
+        }
+      } else if (stato === undefined) {
         nuove.push(id)
         if (!eScelto) predecessoriAccodati++
       } else if (RIACCODABILI.includes(stato)) {
@@ -244,6 +257,7 @@ export class AccodaTrasmissioneRentriUseCase {
       predecessoriAccodati,
       saltate,
       saltatePerStato,
+      saltateEscluse,
       nuove,
       daRiportare,
     }
@@ -310,6 +324,7 @@ export class AccodaTrasmissioneRentriUseCase {
         predecessori: pred?.predecessoriAccodati ?? 0,
         saltate: 0,
         saltatePerStato: {},
+        saltateEscluse: 0,
       }
       await tx.activityLog.create({
         data: {
@@ -333,11 +348,19 @@ export class AccodaTrasmissioneRentriUseCase {
 
   /**
    * Toglie un'annotazione dalla coda: si cancella la riga solo se `DA_TRASMETTERE` e accodata a mano
-   * (origine `MANUALE`).
+   * (origine `MANUALE`). Una riga `AUTOMATICA`/`CORREZIONE` il job la riadotterebbe: per quella un
+   * amministratore, passando `{ ruolo, motivo }`, ottiene invece l'esclusione dall'invio
+   * automatico ({@link escludiDaInvioAutomatico}); senza ruolo ADMIN o senza motivo resta 409.
    * @throws TrasmissioneNonModificabileError (409) se la riga e' in un altro stato (intatta)
    * @throws MovimentoNonTrovatoError (404) se non c'e' nessuna riga per questa azienda
    */
-  async togliDallaCoda(tenantId: string, utenteId: string, movimentoId: string): Promise<void> {
+  async togliDallaCoda(
+    tenantId: string,
+    utenteId: string,
+    movimentoId: string,
+    amministratore?: { ruolo: string; motivo?: string }
+  ): Promise<void> {
+    let daEscludere = false
     await this.nelTenant(tenantId, async tx => {
       // Solo le righe accodate a mano: le AUTOMATICHE/CORREZIONE le riadotterebbe il job.
       const r = await tx.movimentoTrasmissioneRentri.deleteMany({
@@ -346,12 +369,25 @@ export class AccodaTrasmissioneRentriUseCase {
       if (r.count === 0) {
         const esiste = await tx.movimentoTrasmissioneRentri.findFirst({
           where: { tenantId, movimentoId },
-          select: { stato: true, origine: true },
+          select: { stato: true, origine: true, esclusoIl: true },
         })
         if (!esiste) throw new MovimentoNonTrovatoError()
         if (esiste.stato === 'DA_TRASMETTERE') {
+          if (esiste.esclusoIl) {
+            throw new TrasmissioneNonModificabileError(
+              "L'annotazione è già esclusa dall'invio automatico."
+            )
+          }
+          if (
+            amministratore &&
+            RUOLI_AMMINISTRATORE_RENTRI.includes(amministratore.ruolo) &&
+            (amministratore.motivo ?? '').trim() !== ''
+          ) {
+            daEscludere = true
+            return
+          }
           throw new TrasmissioneNonModificabileError(
-            "L'annotazione è stata accodata dall'invio automatico: se la togliessi, il prossimo giro la riaccoderebbe. Per fermarla disattiva l'invio automatico del registro."
+            "L'annotazione è stata accodata dall'invio automatico: se la togliessi, il prossimo giro la riaccoderebbe. Un amministratore può escluderla dall'invio automatico indicando il motivo."
           )
         }
         throw new TrasmissioneNonModificabileError(
@@ -364,6 +400,145 @@ export class AccodaTrasmissioneRentriUseCase {
           userId: utenteId,
           action: 'RENTRI_REGISTRO_TOLTO_DALLA_CODA',
           description: 'Annotazione tolta dalla coda di trasmissione a RENTRI',
+          metadata: { movimentoId },
+        },
+      })
+    })
+    if (daEscludere && amministratore) {
+      await this.escludiDaInvioAutomatico(
+        tenantId,
+        utenteId,
+        amministratore.ruolo,
+        movimentoId,
+        amministratore.motivo ?? ''
+      )
+    }
+  }
+
+  /**
+   * Esclude una singola annotazione dall'invio automatico (ADMIN, con motivo). La riga resta
+   * `DA_TRASMETTERE` ma la prenotazione non la sceglie e l'adozione non la ricrea (esiste gia').
+   * Un movimento senza riga (non ancora adottato) ottiene una riga esclusa. Vale SOLO per righe
+   * `AUTOMATICA`/`CORREZIONE` in `DA_TRASMETTERE`: ogni altra (in volo, incerta, trasmessa,
+   * rifiutata, manuale) e' 409 e non si tocca; il CHECK del database lo garantisce in piu'.
+   * Il motivo sta sulla riga (come `motivo_blocco`); l'audit ne riporta solo la lunghezza.
+   * @throws MovimentoNonTrovatoError, TrasmissioneNonModificabileError, RichiestaTrasmissioneNonValidaError
+   */
+  async escludiDaInvioAutomatico(
+    tenantId: string,
+    utenteId: string,
+    ruolo: string,
+    movimentoId: string,
+    motivo: string
+  ): Promise<void> {
+    richiediAmministratore(ruolo)
+    const testo = (motivo ?? '').trim()
+    if (testo === '' || testo.length > 500) {
+      throw new RichiestaTrasmissioneNonValidaError(
+        "Indica il motivo dell'esclusione (al massimo 500 caratteri)."
+      )
+    }
+    await this.nelTenant(tenantId, async tx => {
+      const movimento = await tx.wasteMovement.findFirst({
+        where: { id: movimentoId, tenantId },
+        select: { id: true, registroId: true, type: true, movimentoRettificatoId: true },
+      })
+      if (!movimento) throw new MovimentoNonTrovatoError()
+      // Nessuna riga: la si crea gia' esclusa. Una riga comparsa nel frattempo (adozione del job)
+      // non e' un errore: l'UPDATE qui sotto decide in base al suo stato.
+      await tx.$executeRaw`
+        INSERT INTO "movimenti_trasmissione_rentri"
+          ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "accodato_da", "updated_at")
+        VALUES (${tenantId}::uuid, ${movimento.id}::uuid, ${movimento.registroId}::uuid,
+          ${movimento.type}::"waste_movement_type",
+          ${movimento.movimentoRettificatoId ? 'CORREZIONE' : 'AUTOMATICA'}::"origine_trasmissione_rentri",
+          ${utenteId}::uuid, now())
+        ON CONFLICT ("movimento_id") DO NOTHING`
+      const r = await tx.movimentoTrasmissioneRentri.updateMany({
+        where: {
+          tenantId,
+          movimentoId,
+          stato: 'DA_TRASMETTERE',
+          bloccatoInvio: false,
+          origine: { in: ['AUTOMATICA', 'CORREZIONE'] },
+          esclusoIl: null,
+        },
+        data: { esclusoIl: new Date(), esclusoDa: utenteId, motivoEsclusione: testo },
+      })
+      if (r.count === 0) {
+        const riga = await tx.movimentoTrasmissioneRentri.findFirst({
+          where: { tenantId, movimentoId },
+          select: { stato: true, origine: true, esclusoIl: true },
+        })
+        if (!riga) throw new MovimentoNonTrovatoError()
+        if (riga.esclusoIl) {
+          throw new TrasmissioneNonModificabileError(
+            "L'annotazione è già esclusa dall'invio automatico."
+          )
+        }
+        if (riga.stato === 'DA_TRASMETTERE' && riga.origine === 'MANUALE') {
+          throw new TrasmissioneNonModificabileError(
+            "L'annotazione è stata accodata a mano: usa «Togli dalla coda»."
+          )
+        }
+        throw new TrasmissioneNonModificabileError(
+          "L'annotazione non è più in coda: l'esclusione vale solo prima dell'invio."
+        )
+      }
+      await tx.activityLog.create({
+        data: {
+          tenantId,
+          userId: utenteId,
+          action: 'RENTRI_REGISTRO_ESCLUSO_INVIO_AUTOMATICO',
+          description: "Annotazione esclusa dall'invio automatico a RENTRI",
+          metadata: { movimentoId, motivoLunghezza: testo.length },
+        },
+      })
+    })
+  }
+
+  /**
+   * Annulla l'esclusione (ADMIN): la riga esclusa, che non e' mai partita, si cancella e il job la
+   * riadotta se spetta (D3: nessuna riga nasce da qui, quindi nessun nuovo percorso verso
+   * `DA_TRASMETTERE`). La DELETE porta nel `WHERE` lo stato e l'esclusione: una riga che nel
+   * frattempo ha cambiato stato non si tocca.
+   * @throws TrasmissioneNonModificabileError (409) se la riga non e' esclusa
+   * @throws MovimentoNonTrovatoError (404) se non c'e' nessuna riga
+   */
+  async reincludiNellInvioAutomatico(
+    tenantId: string,
+    utenteId: string,
+    ruolo: string,
+    movimentoId: string
+  ): Promise<void> {
+    richiediAmministratore(ruolo)
+    await this.nelTenant(tenantId, async tx => {
+      const r = await tx.movimentoTrasmissioneRentri.deleteMany({
+        where: {
+          tenantId,
+          movimentoId,
+          stato: 'DA_TRASMETTERE',
+          bloccatoInvio: false,
+          origine: { in: ['AUTOMATICA', 'CORREZIONE'] },
+          esclusoIl: { not: null },
+        },
+      })
+      if (r.count === 0) {
+        const riga = await tx.movimentoTrasmissioneRentri.findFirst({
+          where: { tenantId, movimentoId },
+          select: { id: true },
+        })
+        if (!riga) throw new MovimentoNonTrovatoError()
+        throw new TrasmissioneNonModificabileError(
+          "L'annotazione non è esclusa dall'invio automatico."
+        )
+      }
+      await tx.activityLog.create({
+        data: {
+          tenantId,
+          userId: utenteId,
+          action: 'RENTRI_REGISTRO_RIINCLUSO_INVIO_AUTOMATICO',
+          description: "Annotazione reinclusa nell'invio automatico a RENTRI",
           metadata: { movimentoId },
         },
       })

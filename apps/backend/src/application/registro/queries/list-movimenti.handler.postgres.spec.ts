@@ -225,6 +225,8 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
       stato: 'DA_TRASMETTERE',
       identificativo: null,
       motivo: 'Errore di prova',
+      origine: 'MANUALE',
+      escluso: false,
     })
   })
 

@@ -91,6 +91,9 @@ describe('ListMovimentiHandler', () => {
             identificativoRentri: null,
             motivoBlocco: null,
             ultimoErrore: 'Quantita non valida',
+            origine: 'MANUALE',
+            esclusoIl: null,
+            motivoEsclusione: null,
             transazioneId: 'tx',
             accodatoDa: 'u',
           },
@@ -103,6 +106,22 @@ describe('ListMovimentiHandler', () => {
             identificativoRentri: 'M0000000000000000001',
             motivoBlocco: 'Trasmessa a RENTRI',
             ultimoErrore: null,
+            origine: 'AUTOMATICA',
+            esclusoIl: null,
+            motivoEsclusione: null,
+          },
+        },
+        {
+          ...riga('reg-C'),
+          id: 'm3',
+          trasmissioneRentri: {
+            stato: 'DA_TRASMETTERE',
+            identificativoRentri: null,
+            motivoBlocco: null,
+            ultimoErrore: null,
+            origine: 'AUTOMATICA',
+            esclusoIl: new Date('2026-11-02T10:00:00Z'),
+            motivoEsclusione: 'Da correggere',
           },
         },
       ])
@@ -111,15 +130,34 @@ describe('ListMovimentiHandler', () => {
         stato: 'RIFIUTATA',
         identificativo: null,
         motivo: 'Quantita non valida',
+        origine: 'MANUALE',
+        escluso: false,
       })
       expect(value.items[1].trasmissioneRentri).toEqual({
         stato: 'TRASMESSA',
         identificativo: 'M0000000000000000001',
         motivo: 'Trasmessa a RENTRI',
+        origine: 'AUTOMATICA',
+        escluso: false,
+      })
+      expect(value.items[2].trasmissioneRentri).toEqual({
+        stato: 'DA_TRASMETTERE',
+        identificativo: null,
+        motivo: 'Da correggere',
+        origine: 'AUTOMATICA',
+        escluso: true,
       })
       const include = prisma.wasteMovement.findMany.mock.calls[0][0].include
       expect(include.trasmissioneRentri).toEqual({
-        select: { stato: true, identificativoRentri: true, motivoBlocco: true, ultimoErrore: true },
+        select: {
+          stato: true,
+          identificativoRentri: true,
+          motivoBlocco: true,
+          ultimoErrore: true,
+          origine: true,
+          esclusoIl: true,
+          motivoEsclusione: true,
+        },
       })
     })
   })

@@ -57,7 +57,14 @@ export interface MovimentoListItem {
    */
   stato: StatoMovimento
   /** Trasmissione a RENTRI: `null` se l'annotazione non ha mai avuto una riga (F2-9). */
-  trasmissioneRentri: { stato: string; identificativo: string | null; motivo: string | null } | null
+  trasmissioneRentri: {
+    stato: string
+    identificativo: string | null
+    motivo: string | null
+    origine: string
+    /** Esclusa dall'invio automatico (ADMIN): `motivo` e' allora il motivo dell'esclusione. */
+    escluso: boolean
+  } | null
 }
 
 const RIFERIMENTO = {
@@ -140,6 +147,9 @@ export class ListMovimentiHandler {
               identificativoRentri: true,
               motivoBlocco: true,
               ultimoErrore: true,
+              origine: true,
+              esclusoIl: true,
+              motivoEsclusione: true,
             },
           },
         },
@@ -208,7 +218,11 @@ export class ListMovimentiHandler {
           ? {
               stato: r.trasmissioneRentri.stato,
               identificativo: r.trasmissioneRentri.identificativoRentri,
-              motivo: r.trasmissioneRentri.motivoBlocco ?? r.trasmissioneRentri.ultimoErrore,
+              motivo: r.trasmissioneRentri.esclusoIl
+                ? r.trasmissioneRentri.motivoEsclusione
+                : (r.trasmissioneRentri.motivoBlocco ?? r.trasmissioneRentri.ultimoErrore),
+              origine: r.trasmissioneRentri.origine,
+              escluso: r.trasmissioneRentri.esclusoIl !== null,
             }
           : null,
       }

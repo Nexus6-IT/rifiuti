@@ -473,6 +473,17 @@ GRANT (default privileges di `ops/db-ruoli.sh`).
 - **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
   rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
   che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
+- **Esclusione di una singola annotazione dall'invio automatico** (seguito del 31/10/2026, migration
+  `20261102100000_rentri_esclusione_invio_automatico`: tre colonne nullable `escluso_il`,
+  `escluso_da`, `motivo_esclusione` su `movimenti_trasmissione_rentri` e un CHECK che le ammette solo
+  con `stato = 'DA_TRASMETTERE'`; RLS invariata, nessuna tabella nuova). Solo ADMIN, con motivo e
+  audit (`RENTRI_REGISTRO_ESCLUSO_INVIO_AUTOMATICO` / `..._RIINCLUSO_INVIO_AUTOMATICO`, senza testo
+  libero). Una riga esclusa resta `DA_TRASMETTERE` ma `prenota` non la sceglie e l'adozione non la
+  ricrea; l'inclusione di nuovo la cancella (non e' mai partita) e il job la riadotta se spetta.
+  Righe in volo, incerte o trasmesse non si possono escludere (409 e CHECK del database).
+  Controllo: `SELECT count(*) FROM movimenti_trasmissione_rentri WHERE escluso_il IS NOT NULL`.
+  Rollback del codice: innocuo (il codice vecchio ignora le colonne, ma una riga esclusa verrebbe
+  allora inviata dal job: prima di tornare indietro reincludere o accettare l'invio).
 - **Mai cancellare righe `TRASMESSA` per "ripartire"**: l'annotazione verrebbe ritrasmessa a RENTRI
   (doppia registrazione). I trigger rifiutano il DELETE diretto di una riga `TRASMESSA`,
   `GIA_SU_RENTRI`, `INCERTA`, `IN_INVIO` e `ATTESA_ESITO`; la cancellazione a cascata di un'azienda

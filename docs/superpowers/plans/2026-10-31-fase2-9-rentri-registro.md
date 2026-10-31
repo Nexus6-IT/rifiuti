@@ -437,6 +437,7 @@ FIR, CF, targhe) copiati a un servizio del fornitore e il registro in chiaro a Z
     metadata con conteggi e id dei movimenti, mai il corpo.
   - Dopo `accoda`/`accodaStorico` il controller avvia `TrasmettiLottoRegistroUseCase` per quel
     registro senza attendere (`void ... .catch(log + segnalaErroreJob)`), e risponde 202.
+- **D12 bis (seguito, decisione di Graziano del 31/10/2026).** `togliDallaCoda` su `AUTOMATICA`/`CORREZIONE` non e' piu' un 409 per un ADMIN con motivo: la riga resta `DA_TRASMETTERE` ma e' *esclusa* (`escluso_il`, `escluso_da`, `motivo_esclusione`; CHECK: solo con `DA_TRASMETTERE`). `prenota` non la sceglie, l'adozione non la ricrea; la reinclusione (ADMIN) cancella la riga e il job la riadotta se spetta. Non-ADMIN: 409 invariato.
 - **D13. Impostazioni del registro** (`ImpostazioniRentriRegistroService`): `leggi(tenantId)` per
   ogni registro: `identificativoRentri`, `invioAutomatico` (bool) e `invioAutomaticoDal`, conteggi
   per stato e "non trasmessi" (movimenti senza riga), `haCertificato`; `imposta(tenantId, utenteId,

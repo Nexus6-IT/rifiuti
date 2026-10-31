@@ -55,6 +55,14 @@ export function etichettaStatoRentri(stato: StatoRentri | null | undefined): str
   return stato ? ETICHETTE[stato] : 'Non trasmessa'
 }
 
+/** Etichetta della riga in coda ma esclusa dall'invio automatico (ADMIN). */
+export const ETICHETTA_ESCLUSA = "Escluso dall'invio automatico"
+
+export function tooltipEsclusione(motivo: string | null | undefined): string {
+  const m = motivo?.trim()
+  return `${ETICHETTA_ESCLUSA}: non parte da sola.${m ? ' Motivo: ' + m : ''}`
+}
+
 export function severitaStatoRentri(stato: StatoRentri | null | undefined): SeveritaTag {
   return stato ? SEVERITA[stato] : 'secondary'
 }
