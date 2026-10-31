@@ -126,6 +126,14 @@ describe('ContractCreateDialogComponent', () => {
   })
 
   describe('numero contratto', () => {
+    it('in creazione aria-describedby punta al suggerimento "Proposto in automatico"', () => {
+      component.onVisibleChange(true)
+      fixture.detectChanges()
+      const campi = document.body.querySelectorAll('#c-number')
+      expect(campi[campi.length - 1].getAttribute('aria-describedby')).toBe('c-number-hint')
+      expect(document.body.querySelector('#c-number-hint')).not.toBeNull()
+    })
+
     it("all'apertura arriva precompilato dal backend", () => {
       component.onVisibleChange(true)
       expect(component.form.contractNumber).toBe('CTR-2026-004')
@@ -491,6 +499,30 @@ describe('ContractCreateDialogComponent', () => {
       component.form.basePrice = 150
       component.salva()
       expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 150, versione: 4 })
+    })
+
+    it('a dialog aperto, un contratto con un altro id riallinea il form', () => {
+      const a = contratto({ id: 'k1', contractNumber: 'CTR-A' })
+      const b = contratto({ id: 'k2', contractNumber: 'CTR-B', cerCodes: ['200101'] })
+      fixture.componentRef.setInput('contratto', a)
+      fixture.componentRef.setInput('visible', true)
+      fixture.detectChanges()
+      expect(component.form.contractNumber).toBe('CTR-A')
+      component.form.description = 'a metà'
+      fixture.componentRef.setInput('contratto', b)
+      fixture.detectChanges()
+      expect(component.form.contractNumber).toBe('CTR-B')
+      expect(component.form.cerCodes).toEqual(['200101'])
+      expect(component.form.description).toBe('')
+    })
+
+    it('aria-describedby sul numero: nota dei campi bloccati in modifica', async () => {
+      apri(contratto({ status: 'ACTIVE', modificabili: TERMINI, eliminabile: false }))
+      await fixture.whenStable()
+      fixture.detectChanges()
+      const campi = document.body.querySelectorAll('#c-number')
+      expect(campi[campi.length - 1].getAttribute('aria-describedby')).toBe('c-bloccati-nota')
+      expect(document.body.querySelector('#c-bloccati-nota')).not.toBeNull()
     })
 
     it('a dialog aperto, lo stesso contratto con altra versione non azzera quanto digitato', () => {

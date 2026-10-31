@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core'
-import { HttpClient, HttpParams } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
 
@@ -140,6 +140,14 @@ export interface FirAutoFill {
   pricingModel: string
   basePrice: number | null
   unitOfMeasure: string
+}
+
+/** Messaggio del backend (stringa o elenco), mai id; altrimenti il testo di ripiego. */
+export function messaggioDaErrore(err: unknown, ripiego: string): string {
+  const m = err instanceof HttpErrorResponse ? err.error?.message : undefined
+  if (Array.isArray(m) && m.length > 0) return m.join(' ')
+  if (typeof m === 'string' && m.trim()) return m
+  return ripiego
 }
 
 /**

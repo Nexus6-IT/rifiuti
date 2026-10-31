@@ -7,8 +7,18 @@ import { TagModule } from 'primeng/tag'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
+import { TooltipModule } from 'primeng/tooltip'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { ConfirmationService } from 'primeng/api'
+import { HttpErrorResponse } from '@angular/common/http'
 import { ToastService } from '../../core/services/toast.service'
-import { ContractsService, Contract, ContractStatus, ContractType } from './contracts.service'
+import {
+  ContractsService,
+  Contract,
+  ContractStatus,
+  ContractType,
+  messaggioDaErrore,
+} from './contracts.service'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
 import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
 import { SelectOption, STATUS_LABELS, TYPE_LABELS } from './contract-vocabulary'
@@ -47,8 +57,11 @@ const STATUS_SEVERITY: Record<
     DialogModule,
     DropdownModule,
     ProgressSpinnerModule,
+    TooltipModule,
+    ConfirmDialogModule,
     ContractCreateDialogComponent,
   ],
+  providers: [ConfirmationService],
   template: `
     <div class="page">
       <header class="page-header">
@@ -62,7 +75,7 @@ const STATUS_SEVERITY: Record<
           <p-button
             label="Nuovo contratto"
             icon="pi pi-plus"
-            (onClick)="displayCreate = true"
+            (onClick)="apriCreazione()"
             ariaLabel="Crea un nuovo contratto"
           />
         </div>
@@ -132,7 +145,7 @@ const STATUS_SEVERITY: Record<
                 <th scope="col">Tipo</th>
                 <th scope="col">Stato</th>
                 <th scope="col">Periodo</th>
-                <th scope="col" style="width: 120px">Azioni</th>
+                <th scope="col" style="width: 170px">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-c>
@@ -159,16 +172,37 @@ const STATUS_SEVERITY: Record<
                   ></p-tag>
                 </td>
                 <td>{{ periodLabel(c) }}</td>
-                <td>
-                  <p-button
-                    icon="pi pi-sync"
-                    [rounded]="true"
-                    [text]="true"
-                    (onClick)="openStatusDialog(c)"
-                    [disabled]="!nextStatuses(c.status).length"
-                    pTooltip="Cambia stato"
-                    [ariaLabel]="'Cambia stato del contratto ' + c.contractNumber"
-                  />
+                <td class="azioni">
+                  <span [pTooltip]="tooltipModifica(c)" tooltipPosition="top">
+                    <p-button
+                      icon="pi pi-pencil"
+                      [rounded]="true"
+                      [text]="true"
+                      (onClick)="apriModifica(c)"
+                      [disabled]="!c.modificabili?.length"
+                      [ariaLabel]="'Modifica il contratto ' + c.contractNumber"
+                    />
+                  </span>
+                  <span pTooltip="Cambia stato" tooltipPosition="top">
+                    <p-button
+                      icon="pi pi-sync"
+                      [rounded]="true"
+                      [text]="true"
+                      (onClick)="openStatusDialog(c)"
+                      [disabled]="!nextStatuses(c.status).length"
+                      [ariaLabel]="'Cambia stato del contratto ' + c.contractNumber"
+                    />
+                  </span>
+                  <span *ngIf="c.eliminabile" pTooltip="Elimina" tooltipPosition="top">
+                    <p-button
+                      icon="pi pi-trash"
+                      severity="danger"
+                      [rounded]="true"
+                      [text]="true"
+                      (onClick)="chiediEliminazione(c)"
+                      [ariaLabel]="'Elimina il contratto ' + c.contractNumber"
+                    />
+                  </span>
                 </td>
               </tr>
             </ng-template>
@@ -189,8 +223,12 @@ const STATUS_SEVERITY: Record<
 
       <app-contract-create-dialog
         [(visible)]="displayCreate"
+        [contratto]="contrattoInModifica"
         (creato)="loadContracts()"
+        (modificato)="loadContracts()"
       ></app-contract-create-dialog>
+
+      <p-confirmDialog />
 
       <!-- Dialog: cambio stato -->
       <p-dialog
@@ -257,6 +295,9 @@ const STATUS_SEVERITY: Record<
         color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
       }
+      .azioni {
+        white-space: nowrap;
+      }
       .mb-4 {
         margin-bottom: var(--spacing-xl);
       }
@@ -272,6 +313,7 @@ const STATUS_SEVERITY: Record<
 export class ContractsListComponent implements OnInit {
   private readonly contractsService = inject(ContractsService)
   private readonly toast = inject(ToastService)
+  private readonly confirmation = inject(ConfirmationService)
 
   /** "P.IVA …" o "C.F. …" della controparte (un privato non ha la P.IVA). */
   identificativo(p: { partitaIVA: string | null; codiceFiscale?: string | null }): string {
@@ -287,6 +329,12 @@ export class ContractsListComponent implements OnInit {
   statusFilter: ContractStatus | null = null
 
   displayCreate = false
+  /**
+   * Contratto aperto nel dialog (null = creazione). Resta lo stesso oggetto finche' il dialog e'
+   * aperto: il dialog riallinea il form se cambia id, quindi dopo un ricaricamento della lista
+   * non va sostituito con una copia.
+   */
+  contrattoInModifica: Contract | null = null
   displayStatus = false
   targetStatus: ContractStatus | null = null
 
@@ -345,6 +393,65 @@ export class ContractsListComponent implements OnInit {
     if (start && end) return `${start} → ${end}`
     if (start) return `dal ${start}`
     return '—'
+  }
+
+  // --- Creazione, modifica, eliminazione ---
+  apriCreazione(): void {
+    this.contrattoInModifica = null
+    this.displayCreate = true
+  }
+
+  /** Motivo (dal solo stato) per cui Modifica e' disabilitato; "Modifica" se abilitato. */
+  tooltipModifica(c: Contract): string {
+    if (c.modificabili?.length) return 'Modifica'
+    if (c.status === 'PENDING_APPROVAL') return 'Riporta il contratto in bozza per modificarlo'
+    return 'Un contratto scaduto o cessato non si modifica'
+  }
+
+  /** Rilegge il contratto (versione e campi modificabili aggiornati) prima di aprire il dialog. */
+  apriModifica(c: Contract): void {
+    this.contractsService.getById(c.id).subscribe({
+      next: fresco => {
+        if (!fresco.modificabili?.length) {
+          this.toast.warn('Il contratto non è più modificabile')
+          this.loadContracts()
+          return
+        }
+        this.contrattoInModifica = fresco
+        this.displayCreate = true
+      },
+      error: err => {
+        this.toast.error(messaggioDaErrore(err, 'Errore nel caricamento del contratto'))
+        if (err instanceof HttpErrorResponse && err.status === 404) this.loadContracts()
+      },
+    })
+  }
+
+  chiediEliminazione(c: Contract): void {
+    this.confirmation.confirm({
+      header: 'Elimina contratto',
+      message: `Eliminare il contratto ${c.contractNumber}? Il contratto non comparirà più nell'elenco; il numero resta riservato.`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Elimina',
+      rejectLabel: 'Annulla',
+      acceptButtonStyleClass: 'p-button-danger',
+      accept: () => this.elimina(c),
+    })
+  }
+
+  private elimina(c: Contract): void {
+    this.contractsService.elimina(c.id, c.versione).subscribe({
+      next: () => {
+        this.toast.success('Contratto eliminato')
+        this.loadContracts()
+      },
+      error: err => {
+        this.toast.error(messaggioDaErrore(err, "Errore nell'eliminazione del contratto"))
+        // Versione vecchia (409) o contratto gia' sparito (404): i dati in lista sono vecchi
+        const stato = err instanceof HttpErrorResponse ? err.status : 0
+        if (stato === 409 || stato === 404) this.loadContracts()
+      },
+    })
   }
 
   // --- Cambio stato ---

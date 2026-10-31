@@ -49,6 +49,7 @@ import {
   ContractType,
   CreateContractDto,
   ModificaContrattoDto,
+  messaggioDaErrore,
 } from './contracts.service'
 import {
   BILLING_FREQUENCY_LABELS,
@@ -566,7 +567,7 @@ export class ContractCreateDialogComponent implements OnChanges {
       },
       error: (err: unknown) => {
         this.saving.set(false)
-        this.toast.error(this.messaggioErrore(err, 'Errore nella creazione del contratto'))
+        this.toast.error(messaggioDaErrore(err, 'Errore nella creazione del contratto'))
       },
     })
   }
@@ -598,7 +599,7 @@ export class ContractCreateDialogComponent implements OnChanges {
       },
       error: (err: unknown) => {
         this.saving.set(false)
-        this.toast.error(this.messaggioErrore(err, 'Errore nel salvataggio del contratto'))
+        this.toast.error(messaggioDaErrore(err, 'Errore nel salvataggio del contratto'))
         // I dati mostrati sono vecchi (modificato nel frattempo, stato che non consente la
         // modifica, contratto sparito): la lista si ricarica e il dialog si chiude. Numero
         // duplicato, campi non ammessi e 400 lasciano il dialog aperto per correggere.
@@ -669,14 +670,6 @@ export class ContractCreateDialogComponent implements OnChanges {
     return (
       codice === 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO' || codice === 'CONTRATTO_NON_MODIFICABILE'
     )
-  }
-
-  /** Messaggio del backend (stringa o elenco), mai id; altrimenti il testo di ripiego. */
-  private messaggioErrore(err: unknown, ripiego: string): string {
-    const m = err instanceof HttpErrorResponse ? err.error?.message : undefined
-    if (Array.isArray(m) && m.length > 0) return m.join(' ')
-    if (typeof m === 'string' && m.trim()) return m
-    return ripiego
   }
 
   /** Obbligatori compilati; in modifica i campi bloccati non si controllano (dati storici). */

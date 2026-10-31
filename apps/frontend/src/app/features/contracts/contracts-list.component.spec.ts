@@ -1,0 +1,252 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { By } from '@angular/platform-browser'
+import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { HttpErrorResponse } from '@angular/common/http'
+import { of, throwError } from 'rxjs'
+import { ContractsListComponent } from './contracts-list.component'
+import { ContractCreateDialogComponent } from './contract-create-dialog.component'
+import { CAMPI_CONTRATTO, Contract, ContractsService } from './contracts.service'
+import { ToastService } from '../../core/services/toast.service'
+import { RegistryService } from '../registry/registry.service'
+import { CerService } from '../cer/cer.service'
+
+describe('ContractsListComponent — modifica ed eliminazione', () => {
+  let fixture: ComponentFixture<ContractsListComponent>
+  let component: ContractsListComponent
+  let contracts: jasmine.SpyObj<ContractsService>
+  let toast: jasmine.SpyObj<ToastService>
+
+  const contratto = (over: Partial<Contract>): Contract =>
+    ({
+      id: 'id-x',
+      tenantId: 't1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      contractNumber: 'CTR-X',
+      producerId: 'p1',
+      counterpartyId: 'c1',
+      counterpartyType: 'TRANSPORTER',
+      contractType: 'WASTE_TRANSPORT',
+      description: null,
+      cerCodes: ['150101'],
+      pricingModel: 'FLAT_RATE',
+      basePrice: '100',
+      unitOfMeasure: 'kg',
+      startDate: '2026-01-15T00:00:00.000Z',
+      endDate: null,
+      durationMonths: null,
+      autoRenew: false,
+      renewalNoticeDays: 60,
+      paymentTerms: 'net_30',
+      billingFrequency: 'monthly',
+      status: 'DRAFT',
+      versione: 3,
+      modificabili: [...CAMPI_CONTRATTO],
+      eliminabile: true,
+      producer: null,
+      counterparty: null,
+      ...over,
+    }) as Contract
+
+  const bozza = contratto({ id: 'id-1', contractNumber: 'CTR-2026-001' })
+  const inApprovazione = contratto({
+    id: 'id-2',
+    contractNumber: 'CTR-2026-002',
+    status: 'PENDING_APPROVAL',
+    modificabili: [],
+  })
+  const attivo = contratto({
+    id: 'id-3',
+    contractNumber: 'CTR-2026-003',
+    status: 'ACTIVE',
+    modificabili: ['basePrice'],
+    eliminabile: false,
+  })
+  const cessato = contratto({
+    id: 'id-4',
+    contractNumber: 'CTR-2026-004',
+    status: 'TERMINATED',
+    modificabili: [],
+    eliminabile: false,
+  })
+
+  const vuoto = of({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 } as any)
+  const errore = (status: number, body: unknown) =>
+    throwError(() => new HttpErrorResponse({ status, error: body }))
+
+  const pulsante = (etichetta: string) =>
+    document.body.querySelector(`button[aria-label="${etichetta}"]`) as HTMLButtonElement | null
+
+  const caricate = () => contracts.list.calls.count()
+
+  beforeEach(() => {
+    contracts = jasmine.createSpyObj<ContractsService>('ContractsService', [
+      'list',
+      'getById',
+      'elimina',
+      'updateStatus',
+      'nextNumber',
+      'create',
+      'update',
+    ])
+    contracts.list.and.returnValue(of([bozza, inApprovazione, attivo, cessato]))
+    contracts.getById.and.returnValue(of(bozza))
+    contracts.elimina.and.returnValue(of(undefined))
+    contracts.nextNumber.and.returnValue(of({ contractNumber: 'CTR-2026-005' }))
+    toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'warn', 'info'])
+
+    const registry = jasmine.createSpyObj<RegistryService>('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+    ])
+    registry.getProduttori.and.returnValue(vuoto)
+    registry.getTrasportatori.and.returnValue(vuoto)
+    registry.getDestinatari.and.returnValue(vuoto)
+    const cer = jasmine.createSpyObj<CerService>('CerService', ['searchCER'])
+    cer.searchCER.and.returnValue(of([]))
+
+    TestBed.configureTestingModule({
+      imports: [ContractsListComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: ContractsService, useValue: contracts },
+        { provide: ToastService, useValue: toast },
+        { provide: RegistryService, useValue: registry },
+        { provide: CerService, useValue: cer },
+      ],
+    })
+    fixture = TestBed.createComponent(ContractsListComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  })
+
+  describe('pulsanti', () => {
+    it('Modifica disabilitato se modificabili è vuoto, col tooltip del motivo', () => {
+      expect(pulsante('Modifica il contratto CTR-2026-001')?.disabled).toBeFalse()
+      expect(pulsante('Modifica il contratto CTR-2026-003')?.disabled).toBeFalse()
+      expect(pulsante('Modifica il contratto CTR-2026-002')?.disabled).toBeTrue()
+      expect(pulsante('Modifica il contratto CTR-2026-004')?.disabled).toBeTrue()
+      expect(component.tooltipModifica(inApprovazione)).toBe(
+        'Riporta il contratto in bozza per modificarlo'
+      )
+      expect(component.tooltipModifica(cessato)).toBe(
+        'Un contratto scaduto o cessato non si modifica'
+      )
+      expect(component.tooltipModifica(contratto({ status: 'EXPIRED', modificabili: [] }))).toBe(
+        'Un contratto scaduto o cessato non si modifica'
+      )
+      expect(component.tooltipModifica(bozza)).toBe('Modifica')
+    })
+
+    it('Elimina compare solo se eliminabile', () => {
+      expect(pulsante('Elimina il contratto CTR-2026-001')).not.toBeNull()
+      expect(pulsante('Elimina il contratto CTR-2026-002')).not.toBeNull()
+      expect(pulsante('Elimina il contratto CTR-2026-003')).toBeNull()
+      expect(pulsante('Elimina il contratto CTR-2026-004')).toBeNull()
+    })
+  })
+
+  describe('modifica', () => {
+    it('apriModifica rilegge il contratto con getById prima di aprire il dialog', () => {
+      const fresco = contratto({ id: 'id-1', contractNumber: 'CTR-2026-001', versione: 7 })
+      contracts.getById.and.returnValue(of(fresco))
+      pulsante('Modifica il contratto CTR-2026-001')!.click()
+      fixture.detectChanges()
+      expect(contracts.getById).toHaveBeenCalledOnceWith('id-1')
+      expect(component.contrattoInModifica?.versione).toBe(7)
+      expect(component.displayCreate).toBeTrue()
+    })
+
+    it('se nel frattempo non è più modificabile non apre il dialog e ricarica', () => {
+      contracts.getById.and.returnValue(of(contratto({ id: 'id-1', modificabili: [] })))
+      const prima = caricate()
+      component.apriModifica(bozza)
+      expect(component.displayCreate).toBeFalse()
+      expect(toast.warn).toHaveBeenCalledWith('Il contratto non è più modificabile')
+      expect(caricate()).toBe(prima + 1)
+    })
+
+    it('Nuovo contratto apre il dialog in creazione (contratto null)', () => {
+      component.contrattoInModifica = bozza
+      component.apriCreazione()
+      expect(component.contrattoInModifica).toBeNull()
+      expect(component.displayCreate).toBeTrue()
+    })
+
+    it('dopo una modifica riuscita la lista si ricarica', () => {
+      const prima = caricate()
+      const dialog = fixture.debugElement.query(By.directive(ContractCreateDialogComponent))
+      ;(dialog.componentInstance as ContractCreateDialogComponent).modificato.emit()
+      expect(caricate()).toBe(prima + 1)
+    })
+
+    it('dopo il ricaricamento il contratto nel dialog resta lo stesso oggetto', () => {
+      contracts.getById.and.returnValue(of(bozza))
+      component.apriModifica(bozza)
+      const aperto = component.contrattoInModifica
+      component.loadContracts()
+      fixture.detectChanges()
+      expect(component.contrattoInModifica).toBe(aperto)
+    })
+  })
+
+  describe('eliminazione', () => {
+    const apriConferma = () => {
+      pulsante('Elimina il contratto CTR-2026-001')!.click()
+      fixture.detectChanges()
+    }
+    const bottoneConferma = (classe: string) =>
+      document.body.querySelector(`.p-confirm-dialog ${classe}`) as HTMLButtonElement | null
+
+    it('chiede conferma col numero del contratto, senza id', () => {
+      apriConferma()
+      const testo = document.body.querySelector('.p-confirm-dialog-message')?.textContent ?? ''
+      expect(testo).toContain('CTR-2026-001')
+      expect(testo).not.toContain('id-1')
+      expect(contracts.elimina).not.toHaveBeenCalled()
+    })
+
+    it('se confermata chiama elimina con la versione e ricarica la lista', () => {
+      apriConferma()
+      const prima = caricate()
+      bottoneConferma('.p-confirm-dialog-accept')!.click()
+      fixture.detectChanges()
+      expect(contracts.elimina).toHaveBeenCalledOnceWith('id-1', 3)
+      expect(toast.success).toHaveBeenCalledWith('Contratto eliminato')
+      expect(caricate()).toBe(prima + 1)
+    })
+
+    it('se annullata non chiama elimina', () => {
+      apriConferma()
+      bottoneConferma('.p-confirm-dialog-reject')!.click()
+      fixture.detectChanges()
+      expect(contracts.elimina).not.toHaveBeenCalled()
+    })
+
+    it('dopo un 409 mostra il messaggio del backend e ricarica la lista', () => {
+      contracts.elimina.and.returnValue(
+        errore(409, {
+          message: 'Il contratto è stato modificato nel frattempo.',
+          error: 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO',
+        })
+      )
+      apriConferma()
+      const prima = caricate()
+      bottoneConferma('.p-confirm-dialog-accept')!.click()
+      fixture.detectChanges()
+      expect(toast.error).toHaveBeenCalledWith('Il contratto è stato modificato nel frattempo.')
+      expect(caricate()).toBe(prima + 1)
+    })
+
+    it('dopo un 404 ricarica la lista', () => {
+      contracts.elimina.and.returnValue(errore(404, { message: 'Contratto non trovato' }))
+      apriConferma()
+      const prima = caricate()
+      bottoneConferma('.p-confirm-dialog-accept')!.click()
+      fixture.detectChanges()
+      expect(toast.error).toHaveBeenCalledWith('Contratto non trovato')
+      expect(caricate()).toBe(prima + 1)
+    })
+  })
+})
