@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { of, throwError } from 'rxjs'
 
@@ -50,6 +51,7 @@ describe('GiacenzeComponent', () => {
     TestBed.configureTestingModule({
       imports: [GiacenzeComponent],
       providers: [
+        provideRouter([]),
         { provide: GiacenzeService, useValue: service },
         { provide: RegistroService, useValue: registri },
         { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['error']) },

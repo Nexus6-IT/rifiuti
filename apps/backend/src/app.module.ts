@@ -30,6 +30,7 @@ import { NotificationsApiModule } from './api/notifications/notifications-api.mo
 import { PermissionsModule } from './api/permissions/permissions.module'
 import { EsgModule } from './application/esg/esg.module'
 import { GiacenzeModule } from './application/giacenze/giacenze.module'
+import { AbbinamentiModule } from './application/abbinamenti/abbinamenti.module'
 import { AnomalyModule } from './application/anomaly/anomaly.module'
 import { ContractModule } from './application/contracts/contract.module'
 import { ReferenceDataModule } from './application/reference-data/reference-data.module'
@@ -113,6 +114,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     MUDModule,
     EsgModule,
     GiacenzeModule,
+    AbbinamentiModule,
     AnomalyModule,
     ContractModule,
     ReferenceDataModule,

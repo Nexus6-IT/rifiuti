@@ -52,6 +52,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
     // Con un id `undefined` (beforeAll fallito) Prisma toglie il filtro e deleteMany
     // cancellerebbe l'intera tabella: senza id non si cancella nulla.
     if (tenantId) {
+      await prisma.abbinamentoCaricoScarico.deleteMany({ where: { tenantId } })
       await prisma.wasteMovement.deleteMany({ where: { tenantId } })
       await prisma.registroRifiuti.deleteMany({ where: { tenantId } })
       await prisma.tenant.deleteMany({ where: { id: tenantId } })
@@ -61,7 +62,10 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
   })
 
   beforeEach(async () => {
-    if (tenantId) await prisma.wasteMovement.deleteMany({ where: { tenantId } })
+    if (tenantId) {
+      await prisma.abbinamentoCaricoScarico.deleteMany({ where: { tenantId } })
+      await prisma.wasteMovement.deleteMany({ where: { tenantId } })
+    }
   })
 
   function cmd(
@@ -251,6 +255,7 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
 
     afterAll(async () => {
       if (!tenantId) return // senza id deleteMany non avrebbe filtro
+      await prisma.abbinamentoCaricoScarico.deleteMany({ where: { tenantId } })
       await prisma.wasteMovement.deleteMany({ where: { tenantId } })
       await prisma.fIR.deleteMany({ where: { tenantId } })
       await prisma.user.deleteMany({ where: { tenantId } })
@@ -283,6 +288,41 @@ describe('RegistraMovimentoUseCase — giacenza su Postgres reale', () => {
       expect(x.isSuccess && y.isSuccess).toBe(true)
       expect(x.value.id).toBe(y.value.id)
       expect([x.value.giaRegistrato, y.value.giaRegistrato].sort()).toEqual([false, true])
+    })
+
+    it('il retry di una ricopia di scarico (giaRegistrato) non duplica le righe di abbinamento', async () => {
+      // carico in stoccaggio R13: lo scarico registrato si abbina da solo
+      const carico = new RegistraMovimentoCommand(
+        tenantId,
+        USER,
+        'CARICO',
+        new Date('2026-03-01'),
+        new Date('2026-03-01'),
+        'PRODUZIONE_INTERNA',
+        CER,
+        undefined,
+        100,
+        'KG',
+        undefined,
+        undefined,
+        'R13',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined
+      )
+      expect((await useCase.execute(carico)).isSuccess).toBe(true)
+      const primo = await useCase.execute(
+        cmd('SCARICO', 'CONFERIMENTO_TRASPORTATORE', 40, '2026-03-02', 'KG', firId)
+      )
+      expect(primo.isSuccess).toBe(true)
+      expect(await prisma.abbinamentoCaricoScarico.count({ where: { tenantId } })).toBe(1)
+      const retry = await useCase.execute(
+        cmd('SCARICO', 'CONFERIMENTO_TRASPORTATORE', 40, '2026-03-02', 'KG', firId)
+      )
+      expect(retry.value).toMatchObject({ id: primo.value.id, giaRegistrato: true })
+      expect(await prisma.abbinamentoCaricoScarico.count({ where: { tenantId } })).toBe(1)
     })
 
     it('il retry di uno scarico che ha consumato tutta la giacenza non è respinto', async () => {

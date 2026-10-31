@@ -23,6 +23,21 @@ const SRC = join(__dirname, '..', '..')
 type Scelta = 'vigenti' | 'ordinarie' | 'tutte'
 
 const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
+  'application/abbinamenti/abbinamenti-correzioni.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge la testa corrente di UNA catena (ultima annotazione numerata) per confrontare i dati prima/dopo una correzione; il numero dei carichi e quello della radice; le righe vigenti le legge lettore-abbinamenti',
+  },
+  'application/abbinamenti/abbinamenti-scrittura.ts': {
+    scelta: 'tutte',
+    motivo:
+      "legge solo il CER dell'annotazione appena scritta e i CER del registro per prendere i lock; l'ambito lo legge lettore-abbinamenti (vigenti)",
+  },
+  'application/abbinamenti/lettore-abbinamenti.ts': {
+    scelta: 'vigenti',
+    motivo:
+      "ambito dell'abbinamento: teste vigenti con la loro radice; le righe di catene non vigenti risultano INCOERENTI",
+  },
   'application/anomaly/anomaly-detection.service.ts': {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',

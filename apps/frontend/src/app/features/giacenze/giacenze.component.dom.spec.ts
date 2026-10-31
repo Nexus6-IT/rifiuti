@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import {
@@ -149,6 +150,7 @@ describe('GiacenzeComponent (DOM)', () => {
     TestBed.configureTestingModule({
       imports: [GiacenzeComponent],
       providers: [
+        provideRouter([]),
         provideNoopAnimations(),
         { provide: GiacenzeService, useValue: service },
         { provide: RegistroService, useValue: reg },
@@ -481,6 +483,7 @@ describe('GiacenzeComponent (DOM): cambio sede con richieste in volo', () => {
     TestBed.configureTestingModule({
       imports: [GiacenzeComponent, HttpClientTestingModule],
       providers: [
+        provideRouter([]),
         provideNoopAnimations(),
         { provide: RegistroService, useValue: reg },
         { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['error']) },

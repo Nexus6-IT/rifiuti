@@ -36,6 +36,10 @@
  * debito, dal piu vecchio, registrando l'abbinamento (scarico in debito, carico, quantita);
  * solo il resto forma un lotto. Un `scoperto` finale > 0 significa storico incoerente.
  *
+ * Con `{ saldaDebiti: false }` (4.6, D5) il carico non entra nel ciclo dei debiti: lo
+ * scarico resta in debito e `debiti` lo espone (anche col predefinito, dove e la stessa
+ * quota di `scoperto`).
+ *
  * Aritmetica: si lavora in millesimi interi (`Math.round(q * 1000)`) e si restituisce
  * `/1000`, cosi migliaia di eventi non accumulano deriva di virgola mobile.
  *
@@ -94,6 +98,23 @@ export interface EsitoFifo {
   giornoPiuVecchio: string | null
   /** prodotti durante il consumo, debito compreso; per 4.6, l'API di F2-6 non li espone */
   abbinamenti: AbbinamentoFifo[]
+  /** scarichi (o parti di scarico) rimasti senza carico: somma = `scoperto` */
+  debiti: DebitoFifo[]
+}
+
+/** Parte di uno scarico che nessun carico ha coperto. */
+export interface DebitoFifo {
+  scarico: RiferimentoFifo
+  quantita: number
+}
+
+export interface OpzioniFifo {
+  /**
+   * Predefinito `true` (comportamento F2-6): un carico successivo salda i debiti. Con `false`
+   * (abbinamento 4.6) un carico non copre mai uno scarico che lo precede: il debito resta
+   * tale e compare in `debiti`.
+   */
+  saldaDebiti?: boolean
 }
 
 const GIORNO_ISO = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
@@ -146,7 +167,8 @@ interface DebitoInterno {
   mancante: number // millesimi
 }
 
-export function calcolaFifo(eventi: readonly EventoFifo[]): EsitoFifo {
+export function calcolaFifo(eventi: readonly EventoFifo[], opzioni: OpzioniFifo = {}): EsitoFifo {
+  const saldaDebiti = opzioni.saldaDebiti !== false
   const conMillesimi = eventi.map(evento => ({ evento, mill: convalida(evento) }))
   conMillesimi.sort((a, b) => confrontaEventiFifo(a.evento, b.evento))
 
@@ -158,7 +180,7 @@ export function calcolaFifo(eventi: readonly EventoFifo[]): EsitoFifo {
     if (evento.tipo === 'CARICO') {
       let resto = mill
       // il carico salda prima i debiti, dal piu vecchio
-      while (resto > 0 && debiti.length > 0) {
+      while (saldaDebiti && resto > 0 && debiti.length > 0) {
         const d = debiti[0]
         const preso = Math.min(resto, d.mancante)
         abbinamenti.push({ scarico: d.scarico, carico: evento.riferimento, quantita: preso / 1000 })
@@ -201,6 +223,7 @@ export function calcolaFifo(eventi: readonly EventoFifo[]): EsitoFifo {
     scoperto: scoperto / 1000,
     giornoPiuVecchio: risultato[0]?.giorno ?? null,
     abbinamenti,
+    debiti: debiti.map(d => ({ scarico: d.scarico, quantita: d.mancante / 1000 })),
   }
 }
 

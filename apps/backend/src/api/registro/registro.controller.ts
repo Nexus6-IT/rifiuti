@@ -71,7 +71,7 @@ import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.s
  * impostare il progressivo iniziale (C-W-02). La decisione e' presa nel
  * controller sul ruolo effettivo, non con `@Roles`.
  */
-const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
+export const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 export const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 @ApiTags('registro')
