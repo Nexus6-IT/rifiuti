@@ -23,6 +23,11 @@ const SRC = join(__dirname, '..', '..')
 type Scelta = 'vigenti' | 'ordinarie' | 'tutte'
 
 const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
+  'application/abbinamenti/abbinamenti-scrittura.ts': {
+    scelta: 'tutte',
+    motivo:
+      "legge solo il CER dell'annotazione appena scritta e i CER del registro per prendere i lock; l'ambito lo legge lettore-abbinamenti (vigenti)",
+  },
   'application/abbinamenti/lettore-abbinamenti.ts': {
     scelta: 'vigenti',
     motivo:
