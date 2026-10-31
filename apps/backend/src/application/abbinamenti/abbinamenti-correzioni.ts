@@ -269,6 +269,8 @@ export async function riallineaDopoCorrezioneScarico(
     registroId: p.registroId,
     scaricoId: testa.id,
     userId: p.userId,
+    cerCode: testa.cerCode,
+    movimentoOriginaleId: p.scaricoRadiceId === testa.id ? null : p.scaricoRadiceId,
   })
   const nuove = await tx.abbinamentoCaricoScarico.count({
     where: { tenantId: p.tenantId, scaricoId: p.scaricoRadiceId },

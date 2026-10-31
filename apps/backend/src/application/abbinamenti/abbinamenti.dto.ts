@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
+  Max,
   ArrayMaxSize,
   IsArray,
   IsIn,
@@ -53,6 +54,7 @@ export class RigaAbbinamentoDto {
     { message: 'La quantità deve essere un numero con al massimo 3 decimali.' }
   )
   @IsPositive({ message: 'La quantità deve essere maggiore di zero.' })
+  @Max(999_999_999.999, { message: 'La quantità non può superare 999.999.999,999.' })
   quantita!: number
 }
 

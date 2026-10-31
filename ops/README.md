@@ -526,13 +526,22 @@ DROP TYPE origine_abbinamento; DROP INDEX giacenze_iniziali_id_registro_tenant_k
 `DELETE FROM _prisma_migrations WHERE migration_name = '20261101300000_abbinamenti_carico_scarico';`.
 
 Con il codice vecchio e la tabella ancora presente: cancellare una giacenza iniziale gia'
-abbinata fallisce con un errore di chiave esterna non gestito (500), e gli annullamenti di
+abbinata fallisce con un errore di chiave esterna non gestito (500); **modificare una giacenza
+iniziale gia abbinata** (quantita, CER, data) e **rettificare un carico gia abbinato** (ridurlo
+sotto la quantita abbinata, cambiarne CER, unita o data) non vengono controllati: le righe
+restano e al ripristino del codice risultano `INCOERENTE`. Gli annullamenti di
 movimenti lasciano righe che al ripristino del codice risultano `INCOERENTE` (e si correggono
 dalla pagina). Prima di cancellare giacenze iniziali o movimenti col codice vecchio,
 controllare `SELECT count(*) FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`; se
 le righe non servono piu', `DELETE FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`.
 
 Le migration gia' applicate in produzione non si modificano: il commento iniziale resta com'e'.
+
+**Ricalcolo lungo e lock.** Il ricalcolo (`POST /abbinamenti/ricalcolo`) gira in una transazione
+con timeout di 60 s (`maxWait` 10 s); l'override a mano di 15 s (`maxWait` 5 s). Finche il
+ricalcolo e in corso tiene i lock sui CER dell'ambito: le registrazioni di scarichi
+concorrenti sugli stessi CER aspettano. Se un ricalcolo supera il timeout viene annullato per
+intero; rilanciarlo per CER (`cerCode`) o fuori orario.
 
 **Dopo il deploy, cosa controllare:**
 - `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi

@@ -38,6 +38,9 @@ import { stessiDatiRicopia } from '../ricopia-fir'
 import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
 import { RegistriService, RegistroVista } from '../registri.service'
 
+const MSG_ERRORE_REGISTRAZIONE =
+  "Errore durante la registrazione del movimento. Riprova; se il problema persiste contatta l'assistenza."
+
 /**
  * Chiave di ricopia della ricopia ordinaria di un FIR (C-W-03, come WinWaste).
  *
@@ -51,9 +54,6 @@ import { RegistriService, RegistroVista } from '../registri.service'
  * La chiave la impone il flusso, mai l'utente; oggi nessun flusso ne usa una diversa
  * da `''`, quindi per i produttori la regola resta "una ricopia per FIR e tipo".
  */
-const MSG_ERRORE_REGISTRAZIONE =
-  "Errore durante la registrazione del movimento. Riprova; se il problema persiste contatta l'assistenza."
-
 export const RICOPIA_ORDINARIA = ''
 
 export interface MovimentoRegistrato {
@@ -357,6 +357,8 @@ export class RegistraMovimentoUseCase {
               registroId: registroMovimento.id,
               scaricoId: record.id,
               userId: command.userId ?? null,
+              cerCode: record.cerCode,
+              movimentoOriginaleId: record.movimentoOriginaleId ?? null,
             }))
           )
         }

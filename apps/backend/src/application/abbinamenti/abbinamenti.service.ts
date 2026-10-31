@@ -253,6 +253,13 @@ export function costruisciAmbitoVista(a: AmbitoAbbinamento, oggi: string): Ambit
   }
 }
 
+/**
+ * Tempi espliciti delle transazioni: un ricalcolo lungo tiene i lock dei CER e le registrazioni
+ * concorrenti aspettano (vedi `ops/README.md`); l'override a mano e breve.
+ */
+const TRANSAZIONE_RICALCOLO = { timeout: 60_000, maxWait: 10_000 }
+const TRANSAZIONE_OVERRIDE = { timeout: 15_000, maxWait: 5_000 }
+
 @Injectable()
 export class AbbinamentiService {
   constructor(
@@ -377,22 +384,24 @@ export class AbbinamentiService {
         const scarico = costruisciScarico(s, indicizza(a))
         const tutti = righe.length === 0 ? [...avvisi, MSG_SCOLLEGATO] : avvisi
         return { scarico, avvisi: tutti }
-      })
+      }, TRANSAZIONE_OVERRIDE)
     )
   }
 
   async ricalcola(tenantId: string, userId: string, dto: RicalcoloRichiesto) {
     const registro = await this.registri.risolviInLettura(tenantId, dto.registroId)
     return this.nelContesto(tenantId, () =>
-      this.prisma.$transaction(tx =>
-        ricalcolaAbbinamenti(tx, {
-          tenantId,
-          registroId: registro.id,
-          cer: dto.cerCode,
-          modalita: dto.modalita,
-          userId,
-          logger: this.logger,
-        })
+      this.prisma.$transaction(
+        tx =>
+          ricalcolaAbbinamenti(tx, {
+            tenantId,
+            registroId: registro.id,
+            cer: dto.cerCode,
+            modalita: dto.modalita,
+            userId,
+            logger: this.logger,
+          }),
+        TRANSAZIONE_RICALCOLO
       )
     )
   }

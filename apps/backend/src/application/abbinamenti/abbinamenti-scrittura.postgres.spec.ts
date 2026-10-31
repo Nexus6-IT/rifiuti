@@ -213,6 +213,18 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     ])
   })
 
+  it('codice operazione con NBSP o BOM: JS e pre-controllo SQL concordano (nessun carico perso)', async () => {
+    const az = await azienda()
+    const c1 = await carico(az, '2026-03-01', 100, 'R13\u00a0')
+    const c2 = await carico(az, '2026-03-02', 100, '\ufeffR 13')
+    const s = await scarico(az, '2026-03-10', 150)
+    expect(await abbina(az, s)).toEqual([])
+    expect((await righeDi(az)).map(r => [r.caricoId, Number(r.quantita)])).toEqual([
+      [c1, 100],
+      [c2, 50],
+    ])
+  })
+
   it('parziale con avviso', async () => {
     const az = await azienda()
     await carico(az, '2026-03-01', 100)

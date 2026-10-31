@@ -2,6 +2,7 @@ import {
   classeAttesaScarico,
   classeStoccaggio,
   confrontaAbbinamenti,
+  normalizzaCodiceOperazione,
   proponiAbbinamenti,
   residui,
   statoCarico,
@@ -287,5 +288,15 @@ describe('confrontaAbbinamenti', () => {
       { scaricoRadiceId: 'S1', carico: 'M:C', quantitaA: 2, quantitaB: 0 },
       { scaricoRadiceId: 'S3', carico: 'M:A', quantitaA: 0, quantitaB: 7 },
     ])
+  })
+})
+
+describe('normalizzaCodiceOperazione (stessa regola dell SQL)', () => {
+  it('toglie spazi, punti, NBSP e BOM e mette in maiuscolo', () => {
+    expect(normalizzaCodiceOperazione(' r.13\u00a0')).toBe('R13')
+    expect(normalizzaCodiceOperazione('\ufeffD 15\t')).toBe('D15')
+    expect(normalizzaCodiceOperazione(null)).toBe('')
+    expect(classeStoccaggio('R13\u00a0')).toBe('R13')
+    expect(classeAttesaScarico('\ufeffD1', null)).toBe('D15')
   })
 })

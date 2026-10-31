@@ -118,7 +118,7 @@ async function haStoccaggioOAbbinamenti(
         WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
           AND wm.type = 'CARICO'
           AND regexp_replace(wm.cer_code, '[^0-9]', '', 'g') = ${cifre}
-          AND upper(regexp_replace(COALESCE(wm.operation_code, ''), '[[:space:].]', '', 'g'))
+          AND upper(regexp_replace(COALESCE(wm.operation_code, ''), '[[:space:].\\u00a0\\ufeff]', '', 'g'))
               IN ('R13', 'D15')
       )
       OR EXISTS (
@@ -137,12 +137,29 @@ async function haStoccaggioOAbbinamenti(
  */
 export async function abbinaNuovoScarico(
   tx: Prisma.TransactionClient,
-  p: { tenantId: string; registroId: string; scaricoId: string; userId: string | null }
+  p: {
+    tenantId: string
+    registroId: string
+    scaricoId: string
+    userId: string | null
+    /** Se il chiamante li ha gia, si evita la lettura della riga appena scritta. */
+    cerCode?: string
+    /** Radice della catena (null: lo scarico e la radice); indefinito = da leggere. */
+    movimentoOriginaleId?: string | null
+  }
 ): Promise<string[]> {
-  const m = await tx.wasteMovement.findFirst({
-    where: { id: p.scaricoId, tenantId: p.tenantId, registroId: p.registroId, type: 'SCARICO' },
-    select: { cerCode: true, movimentoOriginaleId: true },
-  })
+  const m =
+    p.cerCode !== undefined && p.movimentoOriginaleId !== undefined
+      ? { cerCode: p.cerCode, movimentoOriginaleId: p.movimentoOriginaleId }
+      : await tx.wasteMovement.findFirst({
+          where: {
+            id: p.scaricoId,
+            tenantId: p.tenantId,
+            registroId: p.registroId,
+            type: 'SCARICO',
+          },
+          select: { cerCode: true, movimentoOriginaleId: true },
+        })
   if (!m) return []
   // Pre-controllo leggero (hot path della registrazione): un registro ordinario, senza carichi
   // R13/D15 ne righe di abbinamento per quel CER, non paga ne lock ne letture dell'ambito.

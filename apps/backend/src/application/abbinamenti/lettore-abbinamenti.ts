@@ -133,18 +133,44 @@ export async function leggiAmbitiAbbinamento(
   const aperture = (await leggiApertureRegistro(client, tenantId, { registroId })).filter(
     a => chiaveFiltro === null || chiaveConfrontoCer(a.cerCode) === chiaveFiltro
   )
-  const righeDb = await client.abbinamentoCaricoScarico.findMany({
-    where: { tenantId, registroId },
-    select: {
-      id: true,
-      scaricoId: true,
-      caricoId: true,
-      giacenzaInizialeId: true,
-      famiglia: true,
-      quantita: true,
-      origine: true,
-    },
-  })
+  // Con il filtro per CER le righe si scelgono in SQL (scarico, carico o giacenza iniziale di
+  // quel CER): le righe degli altri rifiuti non vengono lette e non innescano la query delle
+  // righe orfane a ogni registrazione di stoccaggio.
+  const righeDb = cifre
+    ? await client.$queryRaw<
+        Array<{
+          id: string
+          scaricoId: string
+          caricoId: string | null
+          giacenzaInizialeId: string | null
+          famiglia: string
+          quantita: Prisma.Decimal | number | string
+          origine: 'AUTOMATICO' | 'MANUALE'
+        }>
+      >`
+        SELECT a.id::text AS id, a.scarico_id::text AS "scaricoId", a.carico_id::text AS "caricoId",
+               a.giacenza_iniziale_id::text AS "giacenzaInizialeId", a.famiglia, a.quantita,
+               a.origine::text AS origine
+        FROM abbinamenti_carico_scarico a
+        LEFT JOIN waste_movements s ON s.id = a.scarico_id AND s.tenant_id = a.tenant_id
+        LEFT JOIN waste_movements c ON c.id = a.carico_id AND c.tenant_id = a.tenant_id
+        LEFT JOIN giacenze_iniziali g ON g.id = a.giacenza_iniziale_id AND g.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ${tenantId}::uuid AND a.registro_id = ${registroId}::uuid
+          AND (regexp_replace(s.cer_code, '[^0-9]', '', 'g') = ${cifre}
+            OR regexp_replace(c.cer_code, '[^0-9]', '', 'g') = ${cifre}
+            OR regexp_replace(g.cer_code, '[^0-9]', '', 'g') = ${cifre})`
+    : await client.abbinamentoCaricoScarico.findMany({
+        where: { tenantId, registroId },
+        select: {
+          id: true,
+          scaricoId: true,
+          caricoId: true,
+          giacenzaInizialeId: true,
+          famiglia: true,
+          quantita: true,
+          origine: true,
+        },
+      })
   const catalogo = await caricaCatalogoCausali(client, tenantId)
 
   // --- ambiti ---

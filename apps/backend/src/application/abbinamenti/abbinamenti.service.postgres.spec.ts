@@ -244,6 +244,26 @@ describe('AbbinamentiService - Postgres reale, ruolo wasteflow_app', () => {
     expect(p.scoperto).toBe(0)
   })
 
+  it('ricalcolo e override usano timeout espliciti nella transazione', async () => {
+    const az = await azienda()
+    await movimento(az, { type: 'CARICO', giorno: '2026-03-01', quantita: 100, op: 'R13' })
+    const s = await movimento(az, { type: 'SCARICO', giorno: '2026-03-20', quantita: 60 })
+    const spia = jest.spyOn(app, '$transaction')
+    try {
+      await nelTenant(az.tenantId, () =>
+        servizio.ricalcola(az.tenantId, az.userId, {
+          registroId: az.registroId,
+          modalita: 'NON_ABBINATI',
+        })
+      )
+      expect(spia.mock.calls.at(-1)?.[1]).toEqual({ timeout: 60_000, maxWait: 10_000 })
+      await nelTenant(az.tenantId, () => servizio.salvaManuale(az.tenantId, az.userId, s, []))
+      expect(spia.mock.calls.at(-1)?.[1]).toEqual({ timeout: 15_000, maxWait: 5_000 })
+    } finally {
+      spia.mockRestore()
+    }
+  })
+
   it('elenco vuoto: scollega e avvisa che il ricalcolo riabbina; il ricalcolo NON_ABBINATI lo riabbina', async () => {
     const az = await azienda()
     await movimento(az, { type: 'CARICO', giorno: '2026-03-01', quantita: 100, op: 'R13' })

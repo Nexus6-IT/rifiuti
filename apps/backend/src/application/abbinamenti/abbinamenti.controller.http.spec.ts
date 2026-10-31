@@ -106,8 +106,15 @@ describe('AbbinamentiController - catena HTTP', () => {
     expect((await put({ righe: [{ caricoId: 'x', quantita: 1 }] })).status).toBe(400)
     expect((await put({ righe: [{ giacenzaInizialeId: 'x', quantita: 1 }] })).status).toBe(400)
     expect((await put({})).status).toBe(400)
+    const troppo = await put({ righe: [{ caricoId: CA, quantita: 1_000_000_000 }] })
+    expect(troppo.status).toBe(400)
+    expect(JSON.stringify(troppo.body)).toContain('La quantità non può superare 999.999.999,999.')
     expect((await put({ righe: [{ ...riga, extra: 1 }] })).status).toBe(400)
     expect(servizio.salvaManuale).not.toHaveBeenCalled()
+    // il massimo di DECIMAL(12,3) e ammesso (non e un 400 di validazione)
+    expect((await put({ righe: [{ caricoId: CA, quantita: 999_999_999.999 }] })).status).not.toBe(
+      400
+    )
   })
 
   it('PUT con carico e giacenza insieme: 400 col messaggio previsto', async () => {

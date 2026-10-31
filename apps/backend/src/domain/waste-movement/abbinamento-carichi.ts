@@ -10,11 +10,19 @@ import { calcolaFifo, confrontaEventiFifo, millesimiFifo, type EventoFifo } from
 
 export type ClasseStoccaggio = 'R13' | 'D15'
 
+/**
+ * Codice operazione normalizzato: maiuscolo, senza spazi, punti, NBSP (U+00A0) ne BOM (U+FEFF).
+ * La stessa regola vive in SQL (`haStoccaggioOAbbinamenti`): tenerle allineate.
+ */
+export function normalizzaCodiceOperazione(operationCode: string | null | undefined): string {
+  return (operationCode ?? '').toUpperCase().replace(/[ \t\n\v\f\r.\u00a0\ufeff]/g, '')
+}
+
 /** R13 / D15 dal solo codice operazione (tollera spazi, punti e minuscole); altro: null. */
 export function classeStoccaggio(
   operationCode: string | null | undefined
 ): ClasseStoccaggio | null {
-  const c = (operationCode ?? '').toUpperCase().replace(/[\s.]/g, '')
+  const c = normalizzaCodiceOperazione(operationCode)
   return c === 'R13' || c === 'D15' ? c : null
 }
 
@@ -26,7 +34,7 @@ export function classeAttesaScarico(
   operationCode: string | null | undefined,
   operazioneCausale: 'R' | 'D' | null
 ): ClasseStoccaggio | null {
-  const c = (operationCode ?? '').toUpperCase().replace(/[\s.]/g, '')
+  const c = normalizzaCodiceOperazione(operationCode)
   const m = /^([RD])\d/.exec(c)
   const lettera = m ? m[1] : operazioneCausale
   if (lettera === 'R') return 'R13'

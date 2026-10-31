@@ -699,6 +699,8 @@ describe('RegistraMovimentoUseCase', () => {
       registroId: REGISTRO,
       scaricoId: recordScarico.id,
       userId: USER,
+      cerCode: recordScarico.cerCode,
+      movimentoOriginaleId: null,
     })
     expect(r.value.avvisi).toContain('avviso di abbinamento')
   })

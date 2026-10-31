@@ -524,6 +524,70 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     ])
   })
 
+  it('filtro per CER in SQL: le righe di un altro CER non si leggono e non innescano la query delle orfane', async () => {
+    const az = await azienda()
+    // CER2: entrambe le catene annullate -> riga orfana
+    const c2 = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+      cer: CER2,
+    })
+    const s2 = await movimento(az, {
+      type: 'SCARICO',
+      giorno: '2026-03-10',
+      quantita: 10,
+      cer: CER2,
+    })
+    await riga(az, s2, c2, 10)
+    await annullaInDeroga(s2)
+    await annullaInDeroga(c2)
+    // CER: un ambito normale con la sua riga
+    const c1 = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+    })
+    const s1 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 10 })
+    await riga(az, s1, c1, 10)
+
+    const contaOrfane = async (cer?: string) => {
+      let orfane = 0
+      const ambiti = await nelTenant(az.tenantId, () =>
+        app.$transaction(async tx => {
+          const spia = new Proxy(tx, {
+            get(t, k, rcv) {
+              if (k === '$queryRaw') {
+                return (strings: TemplateStringsArray, ...v: unknown[]) => {
+                  if (strings.join('?').includes('id = ANY(')) orfane++
+                  return (t as never as { $queryRaw: (...a: unknown[]) => unknown }).$queryRaw(
+                    strings,
+                    ...v
+                  )
+                }
+              }
+              return Reflect.get(t, k, rcv)
+            },
+          })
+          return leggiAmbitiAbbinamento(spia, az.tenantId, { registroId: az.registroId, cer })
+        })
+      )
+      return { orfane, ambiti }
+    }
+    const filtrato = await contaOrfane(CER)
+    expect(filtrato.orfane).toBe(0)
+    expect(filtrato.ambiti.map(a => a.cerCode)).toEqual([CER])
+    expect(filtrato.ambiti[0].righe.map(r => r.scaricoRadiceId)).toEqual([s1])
+    // senza filtro la riga orfana del CER2 serve ancora (query una volta sola)
+    const tutto = await contaOrfane()
+    expect(tutto.orfane).toBe(1)
+    expect(tutto.ambiti.map(a => a.cerCode).sort()).toEqual([CER, CER2])
+    // filtrato sul CER2: la query delle orfane gira (la riga e di quel CER)
+    expect((await contaOrfane(CER2)).orfane).toBe(1)
+  })
+
   it('righeDelCarico con scarico rettificato: numero e giorno della testa', async () => {
     const az = await azienda()
     const c1 = await movimento(az, {
