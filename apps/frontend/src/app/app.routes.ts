@@ -116,6 +116,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/esg/esg.component').then(m => m.EsgComponent),
       },
       {
+        path: 'pese',
+        loadComponent: () => import('./features/pese/pese.component').then(m => m.PeseComponent),
+      },
+      {
         path: 'giacenze',
         loadComponent: () =>
           import('./features/giacenze/giacenze.component').then(m => m.GiacenzeComponent),
