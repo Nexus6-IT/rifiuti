@@ -35,6 +35,7 @@ import {
   AccessoNonTrovatoError,
   AlibiGiaUsatoError,
   DatiPesaNonValidiError,
+  PesataNonTrovataError,
   RegolaPesataError,
   RuoloPesaInsufficienteError,
   StatoAccessoNonValidoError,
@@ -86,6 +87,11 @@ export async function traduciErroreDatabase(
       return new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
     }
     if (haColonna(target, 'alibi_id')) return new AlibiGiaUsatoError()
+    if (haColonna(target, 'pesata_id')) {
+      return new StatoAccessoNonValidoError(
+        'Un’altra rettifica era in corso su questa pesata: riprovare.'
+      )
+    }
     if (haColonna(target, 'anno') || haColonna(target, 'numero')) {
       return new StatoAccessoNonValidoError('Numero di accesso già assegnato: riprovare.')
     }
@@ -119,6 +125,24 @@ export async function traduciErroreDatabase(
     return new StatoAccessoNonValidoError(
       'Questa operazione non è ammessa nello stato attuale dell’accesso.'
     )
+  }
+  if (ha(MSG_TRIGGER.rettificaPesataNonTrovata)) return new PesataNonTrovataError()
+  if (ha(MSG_TRIGGER.rettificaTara)) {
+    return new StatoAccessoNonValidoError('La tara dichiarata non si rettifica.')
+  }
+  if (ha(MSG_TRIGGER.rettificaAccessoAnnullato)) {
+    return new StatoAccessoNonValidoError("L'accesso è annullato: il peso non si rettifica.")
+  }
+  if (ha(MSG_TRIGGER.rettificaNumero) || ha(MSG_TRIGGER.rettificaPesoPrecedente)) {
+    return new StatoAccessoNonValidoError(
+      'Un’altra rettifica era in corso su questa pesata: riprovare.'
+    )
+  }
+  if (ha(MSG_TRIGGER.collegamentoAccessoNonChiuso)) {
+    return new StatoAccessoNonValidoError('Si può collegare solo un accesso chiuso.')
+  }
+  if (ha(MSG_TRIGGER.collegamentoGiaRevocato)) {
+    return new StatoAccessoNonValidoError('Il collegamento è già stato revocato.')
   }
   if (MSG_TRIGGER_INCOERENZA.some(ha)) {
     return new RegolaPesataError(['La pesata non è coerente con il modo dell’accesso.'])

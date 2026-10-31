@@ -14,6 +14,13 @@ export const MSG_TRIGGER = {
   pesateInsufficienti: "accessi_pesa: pesate insufficienti per chiudere l'accesso",
   collegamentoAttivo: 'accessi_pesa: collegamento attivo, revocarlo prima di annullare',
   transizioneNonAmmessa: 'accessi_pesa: transizione di stato non ammessa',
+  rettificaPesataNonTrovata: 'rettifiche_peso: pesata non trovata',
+  rettificaTara: 'rettifiche_peso: la tara dichiarata non si rettifica',
+  rettificaAccessoAnnullato: 'rettifiche_peso: accesso annullato',
+  rettificaNumero: 'rettifiche_peso: numero non consecutivo',
+  rettificaPesoPrecedente: "rettifiche_peso: il peso precedente non e' quello in vigore",
+  collegamentoAccessoNonChiuso: "collegamenti_accesso: l'accesso deve essere chiuso",
+  collegamentoGiaRevocato: "collegamenti_accesso: collegamento gia' revocato",
 } as const
 
 /** Coerenza fonte/modo/ordine: stessa risposta 422 del servizio. */

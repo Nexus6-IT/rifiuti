@@ -110,3 +110,10 @@ export class AllegatoNonTrovatoError extends DomainError {
     this.name = 'AllegatoNonTrovatoError'
   }
 }
+
+export class CollegamentoNonTrovatoError extends DomainError {
+  constructor() {
+    super('Collegamento non trovato.')
+    this.name = 'CollegamentoNonTrovatoError'
+  }
+}

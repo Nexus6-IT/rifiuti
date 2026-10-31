@@ -1,7 +1,7 @@
 // Costruzione delle viste di un accesso (D15): pesate con rettifiche, netto di D6, verifica
 // delle impronte (D5), nomi degli operatori con UNA sola `user.findMany`. Solo lettura.
 // Non contiene `puoOperare`/`puoRettificare`: dipendono dal ruolo e li aggiunge il controller.
-// I collegamenti sono in forma minima: il Task 5 li arricchisce (FIR, movimento, confronto).
+// I collegamenti portano il documento (FIR o testa vigente dell'annotazione) e il confronto col netto.
 import { Prisma } from '@prisma/client'
 import {
   calcolaNetto,
@@ -12,7 +12,13 @@ import {
 import { improntaPesata, improntaRettifica } from '../../domain/pese/impronta-pesata'
 import { validaPesataManuale } from '../../domain/pese/regole-pesata'
 import { giornoItaliano } from '../../core/time/anno-italiano'
+import {
+  confrontaConDocumento,
+  type ConfrontoDocumento,
+} from '../../domain/pese/confronto-documento'
+import { etichettaFir } from '../../domain/fir/stati-fir'
 import { AccessoNonTrovatoError } from './errori-pese'
+import { leggiMovimentiCollegati } from './movimenti-collegati'
 import { AVVISO_ALIBI_ESTERNO } from './pesate-scrittura'
 
 export const AVVISO_NON_INTEGRA = "Dato alterato fuori dall'applicazione."
@@ -55,9 +61,38 @@ export interface PesataVista {
   avvisi: string[]
 }
 
-export interface CollegamentoVistaMinima {
+/** Stato del FIR nella lingua del dominio (la persistenza usa l'enum inglese). */
+const STATO_FIR_VISTA: Record<string, string> = {
+  DRAFT: 'BOZZA',
+  AWAITING_PRODUCER: 'BOZZA',
+  AWAITING_CARRIER: 'EMESSO',
+  AWAITING_RECEIVER: 'IN_TRANSITO',
+  COMPLETED: 'CONSEGNATO',
+  SYNCED_TO_RENTRI: 'CONSEGNATO',
+  CANCELLED: 'ANNULLATO',
+}
+
+export interface CollegamentoVista {
   id: string
   tipo: string
+  fir?: {
+    id: string
+    numero: string
+    stato: string
+    quantita: number
+    unita: string
+    pesoEffettivo: number | null
+  }
+  movimento?: {
+    id: string
+    numero: string
+    numeroVigente: string | null
+    quantita: number | null
+    unita: string | null
+    annullato: boolean
+  }
+  /** Netto della pesa contro la quantita' del documento; null se l'annotazione e' annullata. */
+  confronto: ConfrontoDocumento | null
   creatoIl: string
   revocatoIl: string | null
   motivoRevoca: string | null
@@ -82,7 +117,7 @@ export interface AccessoVista {
   motivoAnnullamento: string | null
   pesate: PesataVista[]
   netto: EsitoNetto
-  collegamenti: CollegamentoVistaMinima[]
+  collegamenti: CollegamentoVista[]
   avvisi: string[]
   giaRegistrata?: true
 }
@@ -314,6 +349,7 @@ export async function leggiVistaAccesso(
 
   // Un accesso chiuso si valuta al giorno della chiusura (avviso "tara vecchia"), non a oggi.
   const netto = nettoDelleRighe(accesso.verso, accesso.modo, pesate, accesso.chiusoIl ?? adesso)
+  const collegamenti = await vistaCollegamenti(tx, tenantId, accesso.collegamenti, netto.nettoKg)
   const avvisiAccesso = [...netto.avvisi]
   if (viste.some(v => !v.integra)) avvisiAccesso.push(AVVISO_NON_INTEGRA)
   return {
@@ -335,15 +371,94 @@ export async function leggiVistaAccesso(
     motivoAnnullamento: accesso.motivoAnnullamento,
     pesate: viste,
     netto,
-    collegamenti: accesso.collegamenti.map(c => ({
+    collegamenti,
+    avvisi: avvisiAccesso,
+  }
+}
+
+async function vistaCollegamenti(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  righe: {
+    id: string
+    tipo: string
+    firId: string | null
+    movimentoId: string | null
+    creatoIl: Date
+    revocatoIl: Date | null
+    motivoRevoca: string | null
+  }[],
+  nettoKg: number | null
+): Promise<CollegamentoVista[]> {
+  if (righe.length === 0) return []
+  const firIds = righe.flatMap(c => (c.firId ? [c.firId] : []))
+  const radiceIds = righe.flatMap(c => (c.movimentoId ? [c.movimentoId] : []))
+  const [fir, movimenti] = await Promise.all([
+    firIds.length
+      ? tx.fIR.findMany({
+          where: { tenantId, id: { in: firIds } },
+          select: {
+            id: true,
+            firNumber: true,
+            rentriNumeroFir: true,
+            status: true,
+            quantity: true,
+            unit: true,
+            effectiveWeight: true,
+          },
+        })
+      : [],
+    leggiMovimentiCollegati(tx, tenantId, radiceIds),
+  ])
+  const perFir = new Map(fir.map(f => [f.id, f]))
+  return righe.map<CollegamentoVista>(c => {
+    const base = {
       id: c.id,
       tipo: c.tipo,
       creatoIl: c.creatoIl.toISOString(),
       revocatoIl: c.revocatoIl ? c.revocatoIl.toISOString() : null,
       motivoRevoca: c.motivoRevoca,
-    })),
-    avvisi: avvisiAccesso,
-  }
+    }
+    const f = c.firId ? perFir.get(c.firId) : undefined
+    if (f) {
+      const quantita = Number(f.quantity)
+      return {
+        ...base,
+        fir: {
+          id: f.id,
+          numero: etichettaFir({
+            id: f.id,
+            firNumber: f.firNumber,
+            rentriNumeroFir: f.rentriNumeroFir,
+          }),
+          stato: STATO_FIR_VISTA[f.status] ?? 'BOZZA',
+          quantita,
+          unita: f.unit,
+          pesoEffettivo: f.effectiveWeight === null ? null : Number(f.effectiveWeight),
+        },
+        confronto: confrontaConDocumento(nettoKg, quantita, f.unit),
+      }
+    }
+    const m = c.movimentoId ? movimenti.get(c.movimentoId) : undefined
+    if (m) {
+      return {
+        ...base,
+        movimento: {
+          id: m.radiceId,
+          numero: m.numero,
+          numeroVigente: m.numeroVigente,
+          quantita: m.quantita,
+          unita: m.unita,
+          annullato: m.annullato,
+        },
+        confronto:
+          m.quantita === null || m.unita === null
+            ? null
+            : confrontaConDocumento(nettoKg, m.quantita, m.unita),
+      }
+    }
+    return { ...base, confronto: null }
+  })
 }
 
 /** Righe dell'elenco: netto, qualita' e stato dei collegamenti in due letture per pagina. */

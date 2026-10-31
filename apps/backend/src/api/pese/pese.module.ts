@@ -8,6 +8,8 @@ import { AutomezziService } from '../../application/pese/automezzi.service'
 import { StrumentiPesaService } from '../../application/pese/strumenti-pesa.service'
 import { AccessiPesaService } from '../../application/pese/accessi-pesa.service'
 import { AllegatiPesaService } from '../../application/pese/allegati-pesa.service'
+import { RettifichePesoService } from '../../application/pese/rettifiche-peso.service'
+import { CollegamentiAccessoService } from '../../application/pese/collegamenti-accesso.service'
 import { PeseController } from './pese.controller'
 
 /**
@@ -19,7 +21,21 @@ import { PeseController } from './pese.controller'
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule, RegistroModule],
   controllers: [PeseController],
-  providers: [StrumentiPesaService, AutomezziService, AllegatiPesaService, AccessiPesaService],
-  exports: [StrumentiPesaService, AutomezziService, AllegatiPesaService, AccessiPesaService],
+  providers: [
+    StrumentiPesaService,
+    AutomezziService,
+    AllegatiPesaService,
+    AccessiPesaService,
+    RettifichePesoService,
+    CollegamentiAccessoService,
+  ],
+  exports: [
+    StrumentiPesaService,
+    AutomezziService,
+    AllegatiPesaService,
+    AccessiPesaService,
+    RettifichePesoService,
+    CollegamentiAccessoService,
+  ],
 })
 export class PeseModule {}
