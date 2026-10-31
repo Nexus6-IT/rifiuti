@@ -116,6 +116,18 @@ describe('regole del contratto', () => {
       const r = pianificaModifica('DRAFT', bozza(), { contractNumber: null })
       expect(r).toEqual({ esito: 'NON_VALIDA', messaggi: ['Numero è obbligatorio.'] })
     })
+    it('null su campo obbligatorio: accordo di genere e numero', () => {
+      const msg = (c: Parameters<typeof pianificaModifica>[2]) => {
+        const r = pianificaModifica('DRAFT', bozza(), c)
+        return r.esito === 'NON_VALIDA' ? r.messaggi : null
+      }
+      expect(msg({ cerCodes: null })).toEqual(['Codici CER sono obbligatori.'])
+      expect(msg({ renewalNoticeDays: null })).toEqual(['Giorni di preavviso sono obbligatori.'])
+      expect(msg({ billingFrequency: null })).toEqual(['Frequenza di fatturazione è obbligatoria.'])
+      expect(msg({ unitOfMeasure: null })).toEqual(['Unità di misura è obbligatoria.'])
+      expect(msg({ counterpartyId: null })).toEqual(['Controparte è obbligatoria.'])
+      expect(msg({ paymentTerms: null })).toEqual(['Termini di pagamento sono obbligatori.'])
+    })
     it('ACTIVE: cambia basePrice e endDate', () => {
       const r = pianificaModifica('ACTIVE', bozza(), {
         basePrice: 130,

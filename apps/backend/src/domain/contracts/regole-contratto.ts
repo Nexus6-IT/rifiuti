@@ -108,6 +108,27 @@ export const ETICHETTE_CAMPI: Readonly<Record<CampoContratto, string>> = {
   billingFrequency: 'Frequenza di fatturazione',
 }
 
+/** "<Etichetta> è obbligatorio.", con accordo di genere e numero (testo visibile al cliente). */
+export const MESSAGGI_OBBLIGATORIO: Readonly<Record<CampoContratto, string>> = {
+  contractNumber: 'Numero è obbligatorio.',
+  producerId: 'Produttore è obbligatorio.',
+  counterpartyId: 'Controparte è obbligatoria.',
+  counterpartyType: 'Tipo controparte è obbligatorio.',
+  contractType: 'Tipo di contratto è obbligatorio.',
+  description: 'Descrizione è obbligatoria.',
+  cerCodes: 'Codici CER sono obbligatori.',
+  pricingModel: 'Modello di prezzo è obbligatorio.',
+  basePrice: 'Prezzo base è obbligatorio.',
+  unitOfMeasure: 'Unità di misura è obbligatoria.',
+  startDate: 'Data di inizio è obbligatoria.',
+  endDate: 'Data di fine è obbligatoria.',
+  durationMonths: 'Durata in mesi è obbligatoria.',
+  autoRenew: 'Rinnovo automatico è obbligatorio.',
+  renewalNoticeDays: 'Giorni di preavviso sono obbligatori.',
+  paymentTerms: 'Termini di pagamento sono obbligatori.',
+  billingFrequency: 'Frequenza di fatturazione è obbligatoria.',
+}
+
 const TERMINI: readonly CampoContratto[] = [
   'description',
   'cerCodes',
@@ -195,12 +216,12 @@ export function normalizzaDati(g: ContrattoGrezzo): DatiContratto {
 
 export function validaDatiContratto(d: DatiContratto): string[] {
   const m: string[] = []
-  if (d.contractNumber.trim() === '') m.push(`${ETICHETTE_CAMPI.contractNumber} è obbligatorio.`)
+  if (d.contractNumber.trim() === '') m.push(MESSAGGI_OBBLIGATORIO.contractNumber)
   else if (d.contractNumber.length > 50) m.push('Il numero non può superare 50 caratteri.')
   if (d.cerCodes.length === 0) m.push('Indica almeno un codice CER.')
   for (const cer of d.cerCodes) if (!/^\d{6}$/.test(cer)) m.push(`Codice CER non valido: ${cer}.`)
   if (d.basePrice !== null && !(d.basePrice >= 0)) m.push('Il prezzo base non può essere negativo.')
-  if (d.unitOfMeasure === '') m.push(`${ETICHETTE_CAMPI.unitOfMeasure} è obbligatoria.`)
+  if (d.unitOfMeasure === '') m.push(MESSAGGI_OBBLIGATORIO.unitOfMeasure)
   else if (d.unitOfMeasure.length > 10) m.push("L'unità di misura non può superare 10 caratteri.")
   if (d.endDate !== null && d.endDate.getTime() < d.startDate.getTime())
     m.push('La data di fine non può precedere la data di inizio.')
@@ -258,7 +279,7 @@ export function pianificaModifica(
     const v = modifica[campo]
     if (v === null) {
       if (CAMPI_FACOLTATIVI.includes(campo)) dopo[campo] = null
-      else obbligatori.push(`${ETICHETTE_CAMPI[campo]} è obbligatorio.`)
+      else obbligatori.push(MESSAGGI_OBBLIGATORIO[campo])
       continue
     }
     if (campo === 'cerCodes') dopo[campo] = normalizzaCer(v as string[])

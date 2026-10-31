@@ -1,8 +1,28 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import type { Contract } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 
-import type { ContractStatus } from '../../domain/contracts/regole-contratto'
+import {
+  CAMPI_MODIFICABILI,
+  STATI_ELIMINABILI,
+  motivoNonEliminabile,
+  motivoNonModificabile,
+  normalizzaDati,
+  pianificaModifica,
+  validaDatiContratto,
+} from '../../domain/contracts/regole-contratto'
+import type {
+  CampoContratto,
+  ContractStatus,
+  ModificaContratto,
+} from '../../domain/contracts/regole-contratto'
 
 export type { ContractStatus } from '../../domain/contracts/regole-contratto'
 
@@ -65,6 +85,26 @@ export interface FirAutoFill {
   unitOfMeasure: string
 }
 
+export type ContrattoVista = Omit<ContractWithParties<Contract>, 'eliminatoIl' | 'eliminatoDa'> & {
+  modificabili: CampoContratto[]
+  eliminabile: boolean
+}
+
+export interface ModificaContrattoInput extends ModificaContratto {
+  versione: number
+}
+
+const MSG_FRATTEMPO =
+  "Il contratto è stato modificato nel frattempo da un'altra operazione: ricarica per vedere i dati aggiornati e ripeti l'operazione."
+const MSG_NUMERO_DUPLICATO = 'Esiste già un contratto con questo numero.'
+
+const conflitto = (error: string, message: string) => new ConflictException({ message, error })
+const eP2002 = (e: unknown) =>
+  e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'
+
+/** Valore di un campo per l'audit: date in ISO, il resto così com'è. */
+const perAudit = (v: unknown) => (v instanceof Date ? v.toISOString() : v)
+
 /**
  * Gestione contratti produttore↔controparte: CRUD, workflow di stato e
  * auto-compilazione FIR da contratto attivo. Tenant-scoped.
@@ -82,6 +122,30 @@ export class ContractService {
   }
 
   async create(tenantId: string, input: CreateContractInput) {
+    const dati = normalizzaDati({
+      contractNumber: input.contractNumber ?? '',
+      producerId: input.producerId,
+      counterpartyId: input.counterpartyId,
+      counterpartyType: input.counterpartyType,
+      contractType: input.contractType,
+      description: input.description ?? null,
+      cerCodes: input.cerCodes ?? [],
+      pricingModel: input.pricingModel,
+      basePrice: input.basePrice ?? null,
+      unitOfMeasure: input.unitOfMeasure || 'kg',
+      startDate: input.startDate,
+      endDate: input.endDate ?? null,
+      durationMonths: input.durationMonths ?? null,
+      autoRenew: input.autoRenew ?? false,
+      renewalNoticeDays: input.renewalNoticeDays ?? 60,
+      paymentTerms: input.paymentTerms || 'net_30',
+      billingFrequency: input.billingFrequency || 'monthly',
+    })
+    const errori = validaDatiContratto(dati)
+    if (errori.length > 0) {
+      throw new BadRequestException({ message: errori, error: 'CONTRATTO_NON_VALIDO' })
+    }
+
     await this.assertPartiEsistono(
       tenantId,
       input.producerId,
@@ -89,51 +153,192 @@ export class ContractService {
       input.counterpartyType
     )
 
-    return this.prisma.contract.create({
-      data: {
-        tenantId,
-        contractNumber: input.contractNumber,
-        producerId: input.producerId,
-        counterpartyId: input.counterpartyId,
-        counterpartyType: input.counterpartyType as any,
-        contractType: input.contractType as any,
-        description: input.description,
-        cerCodes: input.cerCodes,
-        pricingModel: input.pricingModel as any,
-        basePrice: input.basePrice,
-        unitOfMeasure: input.unitOfMeasure || 'kg',
-        pricingConfig: input.pricingConfig,
-        startDate: input.startDate,
-        endDate: input.endDate,
-        durationMonths: input.durationMonths,
-        autoRenew: input.autoRenew ?? false,
-        renewalNoticeDays: input.renewalNoticeDays ?? 60,
-        paymentTerms: input.paymentTerms || 'net_30',
-        billingFrequency: input.billingFrequency || 'monthly',
-        status: 'DRAFT',
-      },
-    })
+    try {
+      return await this.prisma.contract.create({
+        data: {
+          tenantId,
+          contractNumber: dati.contractNumber,
+          producerId: dati.producerId,
+          counterpartyId: dati.counterpartyId,
+          counterpartyType: dati.counterpartyType as any,
+          contractType: dati.contractType as any,
+          description: dati.description ?? undefined,
+          cerCodes: dati.cerCodes,
+          pricingModel: dati.pricingModel as any,
+          basePrice: dati.basePrice ?? undefined,
+          unitOfMeasure: dati.unitOfMeasure,
+          pricingConfig: input.pricingConfig,
+          startDate: dati.startDate,
+          endDate: dati.endDate ?? undefined,
+          durationMonths: dati.durationMonths ?? undefined,
+          autoRenew: dati.autoRenew,
+          renewalNoticeDays: dati.renewalNoticeDays,
+          paymentTerms: dati.paymentTerms,
+          billingFrequency: dati.billingFrequency,
+          status: 'DRAFT',
+        },
+      })
+    } catch (e) {
+      if (eP2002(e)) throw conflitto('CONTRATTO_NUMERO_DUPLICATO', MSG_NUMERO_DUPLICATO)
+      throw e
+    }
   }
 
-  async list(tenantId: string, status?: ContractStatus) {
+  async list(tenantId: string, status?: ContractStatus): Promise<ContrattoVista[]> {
     const contracts = await this.prisma.contract.findMany({
-      where: { tenantId, ...(status ? { status: status as any } : {}) },
+      where: { tenantId, eliminatoIl: null, ...(status ? { status: status as any } : {}) },
       orderBy: { createdAt: 'desc' },
     })
-    return this.risolviParti(tenantId, contracts)
+    const risolti = await this.risolviParti(tenantId, contracts)
+    return risolti.map(c => this.vista(c))
+  }
+
+  /** Toglie i campi di cancellazione e aggiunge cosa si può fare in questo stato (D10). */
+  private vista(c: ContractWithParties<Contract>): ContrattoVista {
+    const { eliminatoIl: _il, eliminatoDa: _da, ...resto } = c
+    const stato = c.status as ContractStatus
+    return {
+      ...resto,
+      modificabili: motivoNonModificabile(stato) ? [] : [...CAMPI_MODIFICABILI[stato]],
+      eliminabile: motivoNonEliminabile(stato) === null,
+    }
   }
 
   /** Lettura grezza tenant-scoped, senza risoluzione delle parti. */
   private async findOrFail(tenantId: string, id: string) {
-    const contract = await this.prisma.contract.findFirst({ where: { id, tenantId } })
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, tenantId, eliminatoIl: null },
+    })
     if (!contract) throw new NotFoundException('Contratto non trovato')
     return contract
   }
 
-  async getById(tenantId: string, id: string) {
+  async getById(tenantId: string, id: string): Promise<ContrattoVista> {
     const contract = await this.findOrFail(tenantId, id)
     const [risolto] = await this.risolviParti(tenantId, [contract])
-    return risolto
+    return this.vista(risolto)
+  }
+
+  /**
+   * Modifica parziale con lock ottimistico (D4, D7, D8). L'ordine dei controlli e' quello di D4.
+   * `motivoNonModificabile` va chiamato SEMPRE prima di `pianificaModifica`: il messaggio di
+   * CAMPI_NON_AMMESSI presuppone un contratto attivo o sospeso (gli altri stati senza campi
+   * modificabili si fermano prima, con il loro motivo).
+   */
+  async update(
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    input: ModificaContrattoInput
+  ): Promise<ContrattoVista> {
+    const contract = await this.findOrFail(tenantId, id)
+    const stato = contract.status as ContractStatus
+
+    const motivo = motivoNonModificabile(stato)
+    if (motivo) throw conflitto('CONTRATTO_NON_MODIFICABILE', motivo)
+
+    if (contract.versione !== input.versione) {
+      throw conflitto('CONTRATTO_MODIFICATO_NEL_FRATTEMPO', MSG_FRATTEMPO)
+    }
+
+    const { versione: _versione, ...modifica } = input
+    const attuale = normalizzaDati(contract)
+    const piano = pianificaModifica(stato, attuale, modifica)
+
+    if (piano.esito === 'NESSUNA_MODIFICA') return this.getById(tenantId, id)
+    if (piano.esito === 'CAMPI_NON_AMMESSI') {
+      throw conflitto('CONTRATTO_NON_MODIFICABILE', piano.messaggio)
+    }
+    if (piano.esito === 'NON_VALIDA') {
+      throw new BadRequestException({ message: piano.messaggi, error: 'CONTRATTO_NON_VALIDO' })
+    }
+
+    const { dopo, cambiati } = piano
+    if (
+      cambiati.some(c => c === 'producerId' || c === 'counterpartyId' || c === 'counterpartyType')
+    ) {
+      await this.assertPartiEsistono(
+        tenantId,
+        dopo.producerId,
+        dopo.counterpartyId,
+        dopo.counterpartyType
+      )
+    }
+
+    const prima: Record<string, unknown> = {}
+    const dopoAudit: Record<string, unknown> = {}
+    const data: Record<string, unknown> = {}
+    for (const campo of cambiati) {
+      prima[campo] = perAudit(attuale[campo])
+      dopoAudit[campo] = perAudit(dopo[campo])
+      data[campo] = dopo[campo]
+    }
+
+    try {
+      await this.prisma.$transaction(async tx => {
+        const { count } = await tx.contract.updateMany({
+          where: { id, tenantId, versione: contract.versione, eliminatoIl: null },
+          data: { ...data, versione: { increment: 1 }, updatedAt: new Date() },
+        })
+        if (count === 0) throw conflitto('CONTRATTO_MODIFICATO_NEL_FRATTEMPO', MSG_FRATTEMPO)
+        await tx.activityLog.create({
+          data: {
+            tenantId,
+            userId: utenteId,
+            action: 'CONTRATTO_MODIFICATO',
+            description: `Contratto ${attuale.contractNumber} modificato`,
+            metadata: { contrattoId: id, campi: cambiati, prima, dopo: dopoAudit } as any,
+          },
+        })
+      })
+    } catch (e) {
+      if (eP2002(e)) throw conflitto('CONTRATTO_NUMERO_DUPLICATO', MSG_NUMERO_DUPLICATO)
+      throw e
+    }
+
+    this.logger.info(`Contratto ${id} modificato: ${cambiati.join(', ')}`)
+    return this.getById(tenantId, id)
+  }
+
+  /** Cancellazione logica (D3): solo DRAFT e PENDING_APPROVAL, con la versione letta dal client. */
+  async elimina(tenantId: string, utenteId: string, id: string, versione: number): Promise<void> {
+    const contract = await this.findOrFail(tenantId, id)
+    const stato = contract.status as ContractStatus
+
+    const motivo = motivoNonEliminabile(stato)
+    if (motivo) throw conflitto('CONTRATTO_NON_ELIMINABILE', motivo)
+    if (contract.versione !== versione) {
+      throw conflitto('CONTRATTO_MODIFICATO_NEL_FRATTEMPO', MSG_FRATTEMPO)
+    }
+
+    await this.prisma.$transaction(async tx => {
+      const { count } = await tx.contract.updateMany({
+        where: {
+          id,
+          tenantId,
+          versione: contract.versione,
+          eliminatoIl: null,
+          status: { in: [...STATI_ELIMINABILI] as any },
+        },
+        data: {
+          eliminatoIl: new Date(),
+          eliminatoDa: utenteId,
+          versione: { increment: 1 },
+          updatedAt: new Date(),
+        },
+      })
+      if (count === 0) throw conflitto('CONTRATTO_MODIFICATO_NEL_FRATTEMPO', MSG_FRATTEMPO)
+      await tx.activityLog.create({
+        data: {
+          tenantId,
+          userId: utenteId,
+          action: 'CONTRATTO_ELIMINATO',
+          description: `Contratto ${contract.contractNumber} eliminato`,
+          metadata: { contrattoId: id, numero: contract.contractNumber, stato },
+        },
+      })
+    })
+    this.logger.info(`Contratto ${id} eliminato`)
   }
 
   /**
@@ -176,11 +381,15 @@ export class ContractService {
       throw new BadRequestException(`Transizione non ammessa: ${current} → ${newStatus}`)
     }
 
-    this.logger.info(`Contratto ${id}: ${current} → ${newStatus}`)
-    return this.prisma.contract.update({
-      where: { id },
-      data: { status: newStatus as any },
+    // Scrittura condizionata sulla versione letta (D1/D7): una modifica o un cambio di stato
+    // concorrente fa fallire questa, che risponde 409 invece di sovrascrivere.
+    const { count } = await this.prisma.contract.updateMany({
+      where: { id, tenantId, versione: contract.versione, eliminatoIl: null },
+      data: { status: newStatus as any, versione: { increment: 1 }, updatedAt: new Date() },
     })
+    if (count === 0) throw conflitto('CONTRATTO_MODIFICATO_NEL_FRATTEMPO', MSG_FRATTEMPO)
+    this.logger.info(`Contratto ${id}: ${current} → ${newStatus}`)
+    return this.findOrFail(tenantId, id)
   }
 
   /** Registro anagrafico in cui cercare una controparte, per tipo. */
@@ -306,6 +515,7 @@ export class ContractService {
         tenantId,
         producerId,
         status: 'ACTIVE',
+        eliminatoIl: null,
         cerCodes: { has: cerCode },
         startDate: { lte: now },
         OR: [{ endDate: null }, { endDate: { gte: now } }],
