@@ -30,14 +30,16 @@ import type {
 } from './accessi-pesa.tipi'
 import { AllegatiPesaService } from './allegati-pesa.service'
 import { AutomezziService } from './automezzi.service'
-import { bloccaAccesso, bloccaChiaveIdempotenza } from './blocchi-accesso'
+import { bloccaAccesso, bloccaAutomezzo, bloccaChiaveIdempotenza } from './blocchi-accesso'
 import {
+  AccessoNonTrovatoError,
   AlibiGiaUsatoError,
   DatiPesaNonValidiError,
   RegolaPesataError,
   RuoloPesaInsufficienteError,
   StatoAccessoNonValidoError,
 } from './errori-pese'
+import { MSG_TRIGGER, MSG_TRIGGER_INCOERENZA } from './messaggi-trigger-pese'
 import { nelContestoTenant } from './nel-contesto-tenant'
 import {
   inserisciPesataManuale,
@@ -56,28 +58,69 @@ export const ACCESSI_PER_PAGINA = 20
 
 const MSG_NON_SECONDA = 'Solo un accesso a doppia pesata ancora aperto accetta la seconda pesata.'
 
+/** Colonne dell'indice violato: `meta.target` di Prisma 5 (nomi di colonna, o del vincolo). */
+function targetDi(err: Prisma.PrismaClientKnownRequestError): string[] {
+  const t = err.meta?.target
+  if (Array.isArray(t)) return t.map(String)
+  return typeof t === 'string' ? [t] : []
+}
+
+const haColonna = (target: string[], parte: string) => target.some(c => c.includes(parte))
+
 /**
  * Violazioni del database che il servizio non ha anticipato (corse residue): mai un errore
  * Postgres grezzo all'utente, sempre un errore di dominio in italiano.
+ * - P2002: si riconosce dalle COLONNE di `meta.target` (come `correggi-movimento.use-case`);
+ *   senza target si chiama `rileggi`, che rilegge il database per capire quale unicita' e' stata
+ *   violata (il chiamante la esegue FUORI dalla transazione abortita).
+ * - Trigger: uguaglianza col testo esatto dei messaggi (`messaggi-trigger-pese.ts`), mai regex
+ *   generiche: un "riga immutabile" resta un guasto e non diventa "pesata non coerente".
  */
-export function traduciErroreDatabase(err: unknown): unknown {
-  const testo = String((err as { message?: unknown })?.message ?? '')
+export async function traduciErroreDatabase(
+  err: unknown,
+  rileggi?: () => Promise<unknown | null>
+): Promise<unknown> {
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-    if (testo.includes('chiave_idempotenza')) {
+    const target = targetDi(err)
+    if (haColonna(target, 'chiave_idempotenza')) {
       return new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
     }
-    if (testo.includes('alibi_id')) return new AlibiGiaUsatoError()
-    if (testo.includes('registro_id_anno_numero')) {
+    if (haColonna(target, 'alibi_id')) return new AlibiGiaUsatoError()
+    if (haColonna(target, 'anno') || haColonna(target, 'numero')) {
       return new StatoAccessoNonValidoError('Numero di accesso già assegnato: riprovare.')
     }
-    if (testo.includes('accesso_id_ordine')) {
+    if (haColonna(target, 'ordine')) {
       return new StatoAccessoNonValidoError('La pesata di questo passaggio è già stata registrata.')
     }
+    if (target.length === 0 && rileggi) {
+      const trovato = await rileggi()
+      if (trovato) return trovato
+    }
+    return new StatoAccessoNonValidoError(
+      'Un’altra operazione sullo stesso dato era in corso: riprovare.'
+    )
   }
-  if (testo.includes('accesso non aperto')) {
+  const testo = String((err as { message?: unknown })?.message ?? '')
+  const ha = (m: string) => testo.includes(m)
+  if (ha(MSG_TRIGGER.accessoNonAperto)) {
     return new StatoAccessoNonValidoError("L'accesso non è più aperto.")
   }
-  if (/pesate|accessi_pesa/.test(testo) && /ordine|modo|fonte|coerenza/i.test(testo)) {
+  if (ha(MSG_TRIGGER.accessoNonTrovato)) return new AccessoNonTrovatoError()
+  if (ha(MSG_TRIGGER.mancaPrima) || ha(MSG_TRIGGER.pesateInsufficienti)) {
+    return new StatoAccessoNonValidoError("L'accesso non ha ancora tutte le pesate necessarie.")
+  }
+  if (ha(MSG_TRIGGER.collegamentoAttivo)) {
+    return new StatoAccessoNonValidoError('Prima revocare i collegamenti.')
+  }
+  if (ha(MSG_TRIGGER.accessoAnnullatoNonModificabile)) {
+    return new StatoAccessoNonValidoError("L'accesso è già annullato.")
+  }
+  if (ha(MSG_TRIGGER.transizioneNonAmmessa)) {
+    return new StatoAccessoNonValidoError(
+      'Questa operazione non è ammessa nello stato attuale dell’accesso.'
+    )
+  }
+  if (MSG_TRIGGER_INCOERENZA.some(ha)) {
     return new RegolaPesataError(['La pesata non è coerente con il modo dell’accesso.'])
   }
   return err
@@ -129,112 +172,121 @@ export class AccessiPesaService {
       const registro = await this.registri.risolviInLettura(tenantId, dati.registroId ?? undefined)
       if (!registro.attivo) throw new RegistroNonTrovatoError()
       try {
-        return await this.prisma.$transaction(async tx => {
-          await bloccaChiaveIdempotenza(tx, tenantId, dati.chiaveIdempotenza)
-          const gia = await this.accessoDellaChiave(tx, tenantId, dati.chiaveIdempotenza)
-          if (gia)
-            return {
-              ...(await leggiVistaAccesso(tx, tenantId, gia, this.adesso())),
-              giaRegistrata: true as const,
-            }
+        return await this.prisma.$transaction(
+          async tx => {
+            await bloccaChiaveIdempotenza(tx, tenantId, dati.chiaveIdempotenza)
+            const gia = await this.accessoDellaChiave(tx, tenantId, dati.chiaveIdempotenza)
+            if (gia)
+              return {
+                ...(await leggiVistaAccesso(tx, tenantId, gia, this.adesso())),
+                giaRegistrata: true as const,
+              }
 
-          const adesso = this.adesso()
-          const errori: string[] = []
-          const campi = this.campiDescrittivi(dati, errori)
-          if (errori.length > 0) throw new DatiPesaNonValidiError(errori)
-
-          // Automezzo: le targhe dell'anagrafica vincono su quelle digitate
-          let targa: string | null = null
-          let targaRimorchio: string | null = null
-          let automezzoId: string | null = null
-          if (dati.automezzoId) {
-            const mezzo = await this.automezzi.leggiPerAccesso(tx, tenantId, dati.automezzoId)
-            automezzoId = mezzo.id
-            targa = mezzo.targa
-            targaRimorchio = mezzo.targaRimorchio
-          } else {
-            if (dati.targa?.trim()) {
-              targa = normalizzaTarga(dati.targa)
-              if (!targa) errori.push('Targa non valida.')
-            }
-            if (dati.targaRimorchio?.trim()) {
-              targaRimorchio = normalizzaTarga(dati.targaRimorchio)
-              if (!targaRimorchio) errori.push('Targa del rimorchio non valida.')
-            }
+            const adesso = this.adesso()
+            const errori: string[] = []
+            const campi = this.campiDescrittivi(dati, errori)
             if (errori.length > 0) throw new DatiPesaNonValidiError(errori)
-          }
-          if (dati.modo === 'TARA_ANAGRAFICA' && !automezzoId) {
-            throw new RegolaPesataError([
-              'La tara dichiarata richiede un automezzo dell’anagrafica.',
-            ])
-          }
 
-          let cerCode: string | null = null
-          if (dati.cerCode?.trim()) {
-            cerCode = await cerNelCatalogo(tx, normalizzaCerCode(dati.cerCode))
-            if (!cerCode) {
-              throw new DatiPesaNonValidiError(['Il codice CER non è nel catalogo.'])
+            // Automezzo: le targhe dell'anagrafica vincono su quelle digitate
+            let targa: string | null = null
+            let targaRimorchio: string | null = null
+            let automezzoId: string | null = null
+            if (dati.automezzoId) {
+              const mezzo = await this.automezzi.leggiPerAccesso(tx, tenantId, dati.automezzoId)
+              if (!mezzo.attivo) throw new RegolaPesataError(["L'automezzo non è attivo."])
+              automezzoId = mezzo.id
+              targa = mezzo.targa
+              targaRimorchio = mezzo.targaRimorchio
+            } else {
+              if (dati.targa?.trim()) {
+                targa = normalizzaTarga(dati.targa)
+                if (!targa) errori.push('Targa non valida.')
+              }
+              if (dati.targaRimorchio?.trim()) {
+                targaRimorchio = normalizzaTarga(dati.targaRimorchio)
+                if (!targaRimorchio) errori.push('Targa del rimorchio non valida.')
+              }
+              if (errori.length > 0) throw new DatiPesaNonValidiError(errori)
             }
-            cerCode = cerCanonico(cerCode)
-          }
+            if (dati.modo === 'TARA_ANAGRAFICA' && !automezzoId) {
+              throw new RegolaPesataError([
+                'La tara dichiarata richiede un automezzo dell’anagrafica.',
+              ])
+            }
 
-          const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
-          const anno = annoSolareItaliano(adesso)
-          const numero = await this.prossimoNumero(tx, tenantId, registro.id, anno)
-          const accesso = await tx.accessoPesa.create({
-            data: {
+            let cerCode: string | null = null
+            if (dati.cerCode?.trim()) {
+              cerCode = await cerNelCatalogo(tx, normalizzaCerCode(dati.cerCode))
+              if (!cerCode) {
+                throw new DatiPesaNonValidiError(['Il codice CER non è nel catalogo.'])
+              }
+              cerCode = cerCanonico(cerCode)
+            }
+
+            const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
+            this.verificaSedeStrumento(strumento, registro.id)
+            // Tara dichiarata: l'automezzo si blocca PRIMA di creare l'accesso (vedi ordine dei lock)
+            if (dati.modo === 'TARA_ANAGRAFICA') {
+              await bloccaAutomezzo(tx, tenantId, automezzoId as string)
+            }
+            const anno = annoSolareItaliano(adesso)
+            const numero = await this.prossimoNumero(tx, tenantId, registro.id, anno)
+            const accesso = await tx.accessoPesa.create({
+              data: {
+                tenantId,
+                registroId: registro.id,
+                anno,
+                numero,
+                verso: dati.verso,
+                modo: dati.modo,
+                automezzoId,
+                targa,
+                targaRimorchio,
+                cerCode,
+                descrizione: campi.descrizione,
+                note: campi.note,
+                apertoDa: utente.id,
+              },
+            })
+            const contesto = {
               tenantId,
-              registroId: registro.id,
-              anno,
-              numero,
-              verso: dati.verso,
-              modo: dati.modo,
-              automezzoId,
-              targa,
-              targaRimorchio,
-              cerCode,
-              descrizione: campi.descrizione,
-              note: campi.note,
-              apertoDa: utente.id,
-            },
-          })
-          const contesto = {
-            tenantId,
-            utenteId: utente.id,
-            accessoId: accesso.id,
-            modo: dati.modo,
-            chiaveIdempotenza: dati.chiaveIdempotenza,
-            adesso,
-          }
-          const prima = await inserisciPesataManuale(
-            tx,
-            { ...contesto, ordine: 1, strumento, allegati: this.allegati },
-            dati.pesata,
-            allegato
-          )
-          await this.audit(
-            tx,
-            tenantId,
-            utente.id,
-            'PESA_ACCESSO_APERTO',
-            'Accesso alla pesa aperto',
-            {
+              utenteId: utente.id,
               accessoId: accesso.id,
               modo: dati.modo,
-              verso: dati.verso,
+              chiaveIdempotenza: dati.chiaveIdempotenza,
+              adesso,
             }
-          )
-          const scritte: PesataScritta[] = [prima]
-          if (dati.modo === 'TARA_ANAGRAFICA') {
-            scritte.push(await inserisciPesataTaraAnagrafica(tx, contesto, automezzoId as string))
-          }
-          if (dati.modo !== 'DOPPIA') {
-            await this.chiudi(tx, tenantId, utente.id, accesso, scritte, adesso)
-          }
-          return leggiVistaAccesso(tx, tenantId, accesso.id, adesso)
-        })
+            const prima = await inserisciPesataManuale(
+              tx,
+              { ...contesto, ordine: 1, strumento, allegati: this.allegati },
+              dati.pesata,
+              allegato
+            )
+            await this.audit(
+              tx,
+              tenantId,
+              utente.id,
+              'PESA_ACCESSO_APERTO',
+              'Accesso alla pesa aperto',
+              {
+                accessoId: accesso.id,
+                modo: dati.modo,
+                verso: dati.verso,
+              }
+            )
+            const scritte: PesataScritta[] = [prima]
+            if (dati.modo === 'TARA_ANAGRAFICA') {
+              scritte.push(await inserisciPesataTaraAnagrafica(tx, contesto, automezzoId as string))
+            }
+            if (dati.modo !== 'DOPPIA') {
+              await this.chiudi(tx, tenantId, utente.id, accesso, scritte, adesso)
+            }
+            return leggiVistaAccesso(tx, tenantId, accesso.id, adesso)
+          },
+          { timeout: 15_000, maxWait: 5_000 }
+        )
       } catch (err) {
-        throw traduciErroreDatabase(err)
+        throw await traduciErroreDatabase(err, () => this.rileggiConflitto(tenantId, dati))
       }
     })
   }
@@ -249,63 +301,67 @@ export class AccessiPesaService {
     this.richiediOperatore(utente)
     return nelContestoTenant(tenantId, async () => {
       try {
-        return await this.prisma.$transaction(async tx => {
-          await bloccaChiaveIdempotenza(tx, tenantId, dati.chiaveIdempotenza)
-          const gia = await this.accessoDellaChiave(tx, tenantId, dati.chiaveIdempotenza)
-          if (gia) {
-            if (gia !== accessoId) {
-              throw new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
+        return await this.prisma.$transaction(
+          async tx => {
+            await bloccaChiaveIdempotenza(tx, tenantId, dati.chiaveIdempotenza)
+            const gia = await this.accessoDellaChiave(tx, tenantId, dati.chiaveIdempotenza)
+            if (gia) {
+              if (gia !== accessoId) {
+                throw new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
+              }
+              return {
+                ...(await leggiVistaAccesso(tx, tenantId, gia, this.adesso())),
+                giaRegistrata: true as const,
+              }
             }
-            return {
-              ...(await leggiVistaAccesso(tx, tenantId, gia, this.adesso())),
-              giaRegistrata: true as const,
+            // advisory + FOR UPDATE prima di leggere stato e pesate
+            const accesso = await bloccaAccesso(tx, tenantId, accessoId)
+            if (accesso.stato !== 'APERTO' || accesso.modo !== 'DOPPIA') {
+              throw new StatoAccessoNonValidoError(MSG_NON_SECONDA)
             }
-          }
-          // advisory + FOR UPDATE prima di leggere stato e pesate
-          const accesso = await bloccaAccesso(tx, tenantId, accessoId)
-          if (accesso.stato !== 'APERTO' || accesso.modo !== 'DOPPIA') {
-            throw new StatoAccessoNonValidoError(MSG_NON_SECONDA)
-          }
-          const prima = await tx.pesata.findFirst({
-            where: { accessoId, tenantId, ordine: 1 },
-          })
-          if (!prima) throw new StatoAccessoNonValidoError(MSG_NON_SECONDA)
-          const adesso = this.adesso()
-          const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
-          const seconda = await inserisciPesataManuale(
-            tx,
-            {
-              tenantId,
-              utenteId: utente.id,
-              accessoId,
-              ordine: 2,
-              modo: 'DOPPIA',
-              chiaveIdempotenza: dati.chiaveIdempotenza,
-              adesso,
-              strumento,
-              oraPrimaPesata: prima.oraStrumento,
-              allegati: this.allegati,
-            },
-            dati.pesata,
-            allegato
-          )
-          const primaScritta: PesataScritta = {
-            id: prima.id,
-            ordine: 1,
-            fonte: prima.fonte,
-            pesoKg: Number(prima.pesoKg),
-            stabile: prima.stabile,
-            oraStrumento: prima.oraStrumento,
-            oraRicezione: prima.oraRicezione,
-            taraAggiornataIl: prima.taraAggiornataIl,
-            automezzoId: prima.automezzoId,
-            avvisi: [],
-          }
-          await this.chiudi(tx, tenantId, utente.id, accesso, [primaScritta, seconda], adesso)
-          return leggiVistaAccesso(tx, tenantId, accessoId, adesso)
-        })
+            const prima = await tx.pesata.findFirst({
+              where: { accessoId, tenantId, ordine: 1 },
+            })
+            if (!prima) throw new StatoAccessoNonValidoError(MSG_NON_SECONDA)
+            const adesso = this.adesso()
+            const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
+            this.verificaSedeStrumento(strumento, accesso.registroId)
+            const seconda = await inserisciPesataManuale(
+              tx,
+              {
+                tenantId,
+                utenteId: utente.id,
+                accessoId,
+                ordine: 2,
+                modo: 'DOPPIA',
+                chiaveIdempotenza: dati.chiaveIdempotenza,
+                adesso,
+                strumento,
+                oraPrimaPesata: prima.oraStrumento,
+                allegati: this.allegati,
+              },
+              dati.pesata,
+              allegato
+            )
+            const primaScritta: PesataScritta = {
+              id: prima.id,
+              ordine: 1,
+              fonte: prima.fonte,
+              pesoKg: Number(prima.pesoKg),
+              stabile: prima.stabile,
+              oraStrumento: prima.oraStrumento,
+              oraRicezione: prima.oraRicezione,
+              taraAggiornataIl: prima.taraAggiornataIl,
+              automezzoId: prima.automezzoId,
+              avvisi: [],
+            }
+            await this.chiudi(tx, tenantId, utente.id, accesso, [primaScritta, seconda], adesso)
+            return leggiVistaAccesso(tx, tenantId, accessoId, adesso)
+          },
+          { timeout: 15_000, maxWait: 5_000 }
+        )
       } catch (err) {
-        throw traduciErroreDatabase(err)
+        throw await traduciErroreDatabase(err, () => this.rileggiConflitto(tenantId, dati))
       }
     })
   }
@@ -324,46 +380,49 @@ export class AccessiPesaService {
     }
     return nelContestoTenant(tenantId, async () => {
       try {
-        return await this.prisma.$transaction(async tx => {
-          const accesso = await bloccaAccesso(tx, tenantId, accessoId)
-          if (accesso.stato === 'ANNULLATO') {
-            throw new StatoAccessoNonValidoError("L'accesso è già annullato.")
-          }
-          if (accesso.stato === 'CHIUSO' && !RUOLI_RESPONSABILE_PESA.includes(utente.ruolo)) {
-            throw new RuoloPesaInsufficienteError(
-              "Solo un amministratore dell'azienda può annullare un accesso chiuso."
-            )
-          }
-          const attivi = await tx.collegamentoAccesso.count({
-            where: { tenantId, accessoId, revocatoIl: null },
-          })
-          if (attivi > 0) throw new StatoAccessoNonValidoError('Prima revocare i collegamenti.')
-          const adesso = this.adesso()
-          await tx.accessoPesa.update({
-            where: { id: accessoId },
-            data: {
-              stato: 'ANNULLATO',
-              annullatoDa: utente.id,
-              annullatoIl: adesso,
-              motivoAnnullamento: testo,
-            },
-          })
-          await this.audit(
-            tx,
-            tenantId,
-            utente.id,
-            'PESA_ACCESSO_ANNULLATO',
-            'Accesso alla pesa annullato',
-            {
-              accessoId,
-              statoPrecedente: accesso.stato,
-              motivo: testo,
+        return await this.prisma.$transaction(
+          async tx => {
+            const accesso = await bloccaAccesso(tx, tenantId, accessoId)
+            if (accesso.stato === 'ANNULLATO') {
+              throw new StatoAccessoNonValidoError("L'accesso è già annullato.")
             }
-          )
-          return leggiVistaAccesso(tx, tenantId, accessoId, adesso)
-        })
+            if (accesso.stato === 'CHIUSO' && !RUOLI_RESPONSABILE_PESA.includes(utente.ruolo)) {
+              throw new RuoloPesaInsufficienteError(
+                "Solo un amministratore dell'azienda può annullare un accesso chiuso."
+              )
+            }
+            const attivi = await tx.collegamentoAccesso.count({
+              where: { tenantId, accessoId, revocatoIl: null },
+            })
+            if (attivi > 0) throw new StatoAccessoNonValidoError('Prima revocare i collegamenti.')
+            const adesso = this.adesso()
+            await tx.accessoPesa.update({
+              where: { id: accessoId },
+              data: {
+                stato: 'ANNULLATO',
+                annullatoDa: utente.id,
+                annullatoIl: adesso,
+                motivoAnnullamento: testo,
+              },
+            })
+            await this.audit(
+              tx,
+              tenantId,
+              utente.id,
+              'PESA_ACCESSO_ANNULLATO',
+              'Accesso alla pesa annullato',
+              {
+                accessoId,
+                statoPrecedente: accesso.stato,
+                motivoLunghezza: testo.length,
+              }
+            )
+            return leggiVistaAccesso(tx, tenantId, accessoId, adesso)
+          },
+          { timeout: 15_000, maxWait: 5_000 }
+        )
       } catch (err) {
-        throw traduciErroreDatabase(err)
+        throw await traduciErroreDatabase(err)
       }
     })
   }
@@ -432,6 +491,40 @@ export class AccessiPesaService {
     return pesata.strumentoId
       ? this.strumenti.leggiPerPesata(tx, tenantId, pesata.strumentoId)
       : null
+  }
+
+  /** Uno strumento legato a una sede si usa solo nel registro di quella sede; senza sede e' di tutti. */
+  private verificaSedeStrumento(strumento: StrumentoVista | null, registroId: string): void {
+    if (strumento?.registroId && strumento.registroId !== registroId) {
+      throw new RegolaPesataError(['Lo strumento appartiene a un’altra sede.'])
+    }
+  }
+
+  /**
+   * Dopo una P2002 senza `meta.target` (transazione abortita, quindi FUORI da essa) rilegge il
+   * database per capire quale unicita' e' stata violata.
+   */
+  private async rileggiConflitto(
+    tenantId: string,
+    dati: { chiaveIdempotenza: string; pesata: PesataManualeDati }
+  ): Promise<unknown | null> {
+    const stessa = await this.prisma.pesata.findFirst({
+      where: { tenantId, chiaveIdempotenza: dati.chiaveIdempotenza },
+      select: { id: true },
+    })
+    if (stessa) return new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
+    if (dati.pesata.strumentoId && dati.pesata.alibiId?.trim()) {
+      const alibi = await this.prisma.pesata.findFirst({
+        where: {
+          tenantId,
+          strumentoId: dati.pesata.strumentoId,
+          alibiId: dati.pesata.alibiId.trim(),
+        },
+        select: { id: true },
+      })
+      if (alibi) return new AlibiGiaUsatoError()
+    }
+    return null
   }
 
   private async accessoDellaChiave(

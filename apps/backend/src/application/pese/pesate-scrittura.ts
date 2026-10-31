@@ -223,7 +223,7 @@ export const AVVISO_ALIBI_ESTERNO =
 
 /**
  * Pesata 2 con la tara dichiarata dell'automezzo. L'automezzo si legge QUI, nella transazione,
- * con `SELECT ... FOR UPDATE` (e' mutabile: il ruolo applicativo ha UPDATE): una modifica
+ * con `SELECT ... FOR NO KEY UPDATE` (lo stesso lock che il chiamante ha gia' preso con `bloccaAutomezzo` PRIMA di creare l'accesso: `FOR UPDATE` qui andrebbe in deadlock col KEY SHARE delle FK; e' mutabile: il ruolo applicativo ha UPDATE): una modifica
  * concorrente della tara aspetta il commit, quindi peso e `tara_aggiornata_il` copiati sono
  * esattamente quelli del momento in cui l'accesso si chiude. L'automezzo e' quello dell'accesso.
  */
@@ -236,7 +236,7 @@ export async function inserisciPesataTaraAnagrafica(
   const righe = await tx.$queryRaw<
     { tara_kg: Prisma.Decimal | null; tara_aggiornata_il: Date | null }[]
   >`SELECT tara_kg, tara_aggiornata_il FROM automezzi
-    WHERE id = ${automezzoId}::uuid AND tenant_id = ${ctx.tenantId}::uuid FOR UPDATE`
+    WHERE id = ${automezzoId}::uuid AND tenant_id = ${ctx.tenantId}::uuid FOR NO KEY UPDATE`
   const mezzo = righe[0]
   if (!mezzo || mezzo.tara_kg === null || mezzo.tara_aggiornata_il === null) {
     throw new RegolaPesataError(["L'automezzo non ha una tara registrata."])

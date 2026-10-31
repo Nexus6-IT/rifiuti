@@ -412,6 +412,95 @@ describe('Accessi di pesa — Postgres reale, ruolo wasteflow_app', () => {
     })
   })
 
+  describe('concorrenza: automezzo, alibi e lettura', () => {
+    it('due aperture TARA_ANAGRAFICA dello stesso mezzo su due registri: nessun deadlock, entrambe riescono', async () => {
+      for (let i = 0; i < 5; i++) {
+        const a = await azienda()
+        const reg = await owner.registroRifiuti.findFirstOrThrow({
+          where: { tenantId: a.tenantId },
+        })
+        const reg2 = await owner.registroRifiuti.create({
+          data: { tenantId: a.tenantId, descrizione: 'Registro B', codice: 'B' },
+        })
+        const mezzo = await mezzoConTara(a, 'DL111DL', 7000)
+        const su = (registroId: string) =>
+          apri(a, dati({ modo: 'TARA_ANAGRAFICA', automezzoId: mezzo.id, registroId }))
+
+        const esiti = await withTimeout(Promise.allSettled([su(reg.id), su(reg2.id)]), 20_000)
+
+        for (const e of esiti) {
+          if (e.status === 'rejected') throw e.reason
+        }
+        expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+      }
+    }, 60_000)
+
+    it('due aperture parallele con lo stesso strumento+alibi: una riesce, l’altra AlibiGiaUsatoError (italiano)', async () => {
+      for (let i = 0; i < 4; i++) {
+        const a = await azienda()
+        const s = await nelTenant(a.tenantId, () =>
+          strumenti.crea(a.tenantId, a.utenteId, { descrizione: 'Pesa', portataMaxKg: 60000 })
+        )
+        const pesata = {
+          pesoKg: 24000,
+          strumentoId: s.id,
+          alibiId: 'Z-1',
+          motivo: 'm',
+          stabileDichiarato: true,
+        }
+
+        const esiti = await Promise.allSettled([
+          apri(a, dati({ pesata })),
+          apri(a, dati({ pesata })),
+        ])
+
+        expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+        const no = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
+        expect(no.reason).toBeInstanceOf(AlibiGiaUsatoError)
+        expect(no.reason.message).toBe(
+          'Questa memoria alibi è già stata usata per una pesata di questo strumento.'
+        )
+        expect(await owner.accessoPesa.count({ where: { tenantId: a.tenantId } })).toBe(1)
+      }
+    })
+
+    it('accesso CHIUSO: gli avvisi del netto valgono al giorno della chiusura, non a oggi', async () => {
+      const a = await azienda()
+      const mezzo = await mezzoConTara(a, 'AV111AV', 7000)
+      const giorni = (n: number) => new Date(Date.now() + n * 86_400_000)
+      // tara aggiornata 300 giorni fa: alla chiusura non e' ancora "vecchia" (> 365)
+      await owner.$executeRaw`UPDATE automezzi SET tara_aggiornata_il = ${giorni(-300)} WHERE id = ${mezzo.id}::uuid`
+      const chiuso = await apri(a, dati({ modo: 'TARA_ANAGRAFICA', automezzoId: mezzo.id }))
+      expect(chiuso.avvisi.join(' ')).not.toMatch(/più di 365 giorni/)
+
+      // 100 giorni dopo la tara avrebbe 400 giorni: la vista dell'accesso chiuso non cambia
+      ;(service as any).adesso = () => giorni(100)
+      try {
+        const dopo = await nelTenant(a.tenantId, () => service.dettaglio(a.tenantId, chiuso.id))
+        const elenco = await nelTenant(a.tenantId, () => service.elenca(a.tenantId, {}))
+        expect(dopo.avvisi.join(' ')).not.toMatch(/più di 365 giorni/)
+        expect(elenco.righe[0].nettoKg).toBe(17000)
+      } finally {
+        ;(service as any).adesso = () => new Date()
+      }
+    })
+
+    it('automezzo disattivato: 422 e nessun accesso', async () => {
+      const a = await azienda()
+      const m = await nelTenant(a.tenantId, () =>
+        automezzi.crea(a.tenantId, a.utenteId, { targa: 'OF111OF' })
+      )
+      await nelTenant(a.tenantId, () =>
+        automezzi.aggiorna(a.tenantId, a.utenteId, m.id, { targa: 'OF111OF', attivo: false })
+      )
+
+      await expect(apri(a, dati({ automezzoId: m.id }))).rejects.toThrow(
+        "L'automezzo non è attivo."
+      )
+      expect(await owner.accessoPesa.count({ where: { tenantId: a.tenantId } })).toBe(0)
+    })
+  })
+
   describe('annullo e ruoli', () => {
     it('operatore: annulla un APERTO, non un CHIUSO; accesso di un’altra azienda: 404', async () => {
       const a = await azienda()

@@ -221,7 +221,7 @@ describe('pesate-scrittura', () => {
   })
 
   describe('tara dichiarata', () => {
-    it('copia peso e data dell’automezzo letto con FOR UPDATE; chiave derivata diversa', async () => {
+    it('copia peso e data dell’automezzo letto con FOR NO KEY UPDATE; chiave derivata diversa', async () => {
       const agg = new Date('2026-09-01T08:00:00.000Z')
       tx.$queryRaw.mockResolvedValue([
         { tara_kg: new Prisma.Decimal('7120.50'), tara_aggiornata_il: agg },
@@ -254,7 +254,7 @@ describe('pesate-scrittura', () => {
       expect(d.chiaveIdempotenza).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
       )
-      expect(String(tx.$queryRaw.mock.calls[0][0].join(' '))).toMatch(/FOR UPDATE/)
+      expect(String(tx.$queryRaw.mock.calls[0][0].join(' '))).toMatch(/FOR NO KEY UPDATE/)
       expect(r.pesoKg).toBe(7120.5)
     })
 

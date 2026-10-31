@@ -312,7 +312,8 @@ export async function leggiVistaAccesso(
     }
   })
 
-  const netto = nettoDelleRighe(accesso.verso, accesso.modo, pesate, adesso)
+  // Un accesso chiuso si valuta al giorno della chiusura (avviso "tara vecchia"), non a oggi.
+  const netto = nettoDelleRighe(accesso.verso, accesso.modo, pesate, accesso.chiusoIl ?? adesso)
   const avvisiAccesso = [...netto.avvisi]
   if (viste.some(v => !v.integra)) avvisiAccesso.push(AVVISO_NON_INTEGRA)
   return {
@@ -359,6 +360,7 @@ export async function leggiRiepiloghi(
     targa: string | null
     cerCode: string | null
     apertoIl: Date
+    chiusoIl: Date | null
   }[],
   adesso: Date = new Date()
 ): Promise<AccessoRiepilogo[]> {
@@ -374,7 +376,7 @@ export async function leggiRiepiloghi(
   const collegati = new Set(attivi.map(c => c.accessoId))
   return accessi.map(a => {
     const sue = pesate.filter(p => p.accessoId === a.id)
-    const netto = nettoDelleRighe(a.verso, a.modo, sue, adesso)
+    const netto = nettoDelleRighe(a.verso, a.modo, sue, a.chiusoIl ?? adesso)
     return {
       id: a.id,
       numero: `${a.numero}/${a.anno}`,

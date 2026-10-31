@@ -8,6 +8,7 @@ import {
   StatoAccessoNonValidoError,
 } from './errori-pese'
 import { RegistroNonTrovatoError } from '../registro/registri.service'
+import { MSG_TRIGGER } from './messaggi-trigger-pese'
 
 jest.mock('./viste-accesso', () => ({
   leggiVistaAccesso: jest.fn(async (_tx: unknown, _t: string, id: string) => ({ id })),
@@ -79,7 +80,7 @@ describe('AccessiPesaService (Prisma finto)', () => {
     automezzi = {
       leggiPerAccesso: jest
         .fn()
-        .mockResolvedValue({ id: AUTO, targa: 'AB123CD', targaRimorchio: 'XY99' }),
+        .mockResolvedValue({ id: AUTO, targa: 'AB123CD', targaRimorchio: 'XY99', attivo: true }),
     }
     const strumenti = { leggiPerPesata: jest.fn() }
     const allegati = { salva: jest.fn() }
@@ -369,28 +370,145 @@ describe('AccessiPesaService (Prisma finto)', () => {
     })
   })
 
-  describe('traduciErroreDatabase', () => {
-    const p2002 = (vincolo: string) =>
-      new Prisma.PrismaClientKnownRequestError(`Unique constraint failed on ${vincolo}`, {
-        code: 'P2002',
-        clientVersion: 'x',
+  describe('apri: controlli aggiuntivi', () => {
+    it('automezzo disattivato: 422 italiano', async () => {
+      automezzi.leggiPerAccesso.mockResolvedValue({
+        id: AUTO,
+        targa: 'AB123CD',
+        targaRimorchio: null,
+        attivo: false,
       })
 
-    it('traduce unicità e trigger in errori di dominio italiani', () => {
-      expect(traduciErroreDatabase(p2002('pesate_strumento_id_alibi_id_key'))).toBeInstanceOf(
+      await expect(service.apri(T, operatore, apertura({ automezzoId: AUTO }))).rejects.toThrow(
+        "L'automezzo non è attivo."
+      )
+      expect(tx.accessoPesa.create).not.toHaveBeenCalled()
+    })
+
+    it('strumento di un’altra sede: 422; strumento senza sede (condiviso): ok', async () => {
+      const strumenti = (service as any).strumenti
+      strumenti.leggiPerPesata.mockResolvedValue({
+        id: 's',
+        registroId: 'altro-registro',
+        attivo: true,
+        portataMaxKg: null,
+        divisioneKg: null,
+        dataUltimaVerificazione: null,
+      })
+      const conStrumento = apertura({
+        pesata: { ...pesata, strumentoEsterno: null, strumentoId: 's' },
+      })
+
+      await expect(service.apri(T, operatore, conStrumento)).rejects.toThrow(
+        'Lo strumento appartiene a un’altra sede.'
+      )
+
+      strumenti.leggiPerPesata.mockResolvedValue({
+        id: 's',
+        registroId: null,
+        attivo: true,
+        portataMaxKg: null,
+        divisioneKg: null,
+        dataUltimaVerificazione: null,
+      })
+      await expect(service.apri(T, operatore, conStrumento)).resolves.toBeDefined()
+    })
+
+    it('tara dichiarata: l’automezzo è bloccato (FOR NO KEY UPDATE) PRIMA di creare l’accesso', async () => {
+      const ordine: string[] = []
+      tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) => {
+        const q = strings.join('')
+        if (/FOR NO KEY UPDATE/.test(q)) ordine.push('automezzo')
+        return /accessi_pesa/.test(q)
+          ? [{ id: ACC }]
+          : [
+              {
+                tara_kg: new Prisma.Decimal('7000'),
+                tara_aggiornata_il: new Date('2026-09-01T00:00:00Z'),
+              },
+            ]
+      })
+      tx.accessoPesa.create.mockImplementation(async ({ data }: any) => {
+        ordine.push('accesso')
+        return { id: ACC, ...data }
+      })
+
+      await service.apri(T, operatore, apertura({ modo: 'TARA_ANAGRAFICA', automezzoId: AUTO }))
+
+      expect(ordine.slice(0, 2)).toEqual(['automezzo', 'accesso'])
+    })
+
+    it('le transazioni hanno timeout e maxWait espliciti', async () => {
+      const opzioni: any[] = []
+      ;(service as any).prisma = { $transaction: (fn: any, o: any) => (opzioni.push(o), fn(tx)) }
+
+      await service.apri(T, operatore, apertura())
+
+      expect(opzioni[0]).toEqual({ timeout: 15_000, maxWait: 5_000 })
+    })
+  })
+
+  describe('annulla: audit', () => {
+    it('salva solo la lunghezza del motivo, non il testo libero', async () => {
+      tx.accessoPesa.findFirst.mockResolvedValue(accessoAperto())
+
+      await service.annulla(T, admin, ACC, 'Mario Rossi ha sbagliato')
+
+      const meta = tx.activityLog.create.mock.calls[0][0].data.metadata
+      expect(meta).toMatchObject({ motivoLunghezza: 'Mario Rossi ha sbagliato'.length })
+      expect(JSON.stringify(meta)).not.toContain('Mario')
+    })
+  })
+
+  describe('traduciErroreDatabase', () => {
+    const p2002 = (target: unknown) =>
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields', {
+        code: 'P2002',
+        clientVersion: 'x',
+        meta: { target },
+      })
+
+    it('P2002: riconosce l’unicità dalle colonne di meta.target', async () => {
+      expect(await traduciErroreDatabase(p2002(['strumento_id', 'alibi_id']))).toBeInstanceOf(
         AlibiGiaUsatoError
       )
-      expect(
-        traduciErroreDatabase(p2002('pesate_tenant_id_chiave_idempotenza_key'))
-      ).toBeInstanceOf(StatoAccessoNonValidoError)
-      expect(traduciErroreDatabase(new Error('pesate: accesso non aperto'))).toBeInstanceOf(
+      expect(await traduciErroreDatabase(p2002(['tenant_id', 'chiave_idempotenza']))).toEqual(
+        new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
+      )
+      expect(await traduciErroreDatabase(p2002(['registro_id', 'anno', 'numero']))).toEqual(
+        new StatoAccessoNonValidoError('Numero di accesso già assegnato: riprovare.')
+      )
+      expect(await traduciErroreDatabase(p2002(['accesso_id', 'ordine']))).toBeInstanceOf(
         StatoAccessoNonValidoError
       )
     })
 
-    it('un errore sconosciuto passa invariato (è un guasto, non una regola)', () => {
-      const e = new Error('connessione persa')
-      expect(traduciErroreDatabase(e)).toBe(e)
+    it('P2002 senza target: rilegge il database; se non trova nulla, conflitto generico in italiano', async () => {
+      const trovato = new AlibiGiaUsatoError()
+      expect(await traduciErroreDatabase(p2002(undefined), async () => trovato)).toBe(trovato)
+      const generico = (await traduciErroreDatabase(p2002(undefined), async () => null)) as Error
+      expect(generico).toBeInstanceOf(StatoAccessoNonValidoError)
+      expect(generico.message).toMatch(/riprovare/)
+    })
+
+    it('trigger: testo esatto dei messaggi della migration', async () => {
+      const raw = (m: string) => new Error(`Raw query failed. Code: P0001. Message: ERROR: ${m}`)
+      expect(await traduciErroreDatabase(raw(MSG_TRIGGER.accessoNonAperto))).toBeInstanceOf(
+        StatoAccessoNonValidoError
+      )
+      expect(await traduciErroreDatabase(raw(MSG_TRIGGER.collegamentoAttivo))).toEqual(
+        new StatoAccessoNonValidoError('Prima revocare i collegamenti.')
+      )
+      expect(await traduciErroreDatabase(raw(MSG_TRIGGER.singolaSoloOrdine1))).toBeInstanceOf(
+        RegolaPesataError
+      )
+    })
+
+    it('"riga immutabile" e errori sconosciuti restano guasti, non diventano regole', async () => {
+      for (const m of ['pesate: riga immutabile', 'connessione persa', 'pesate: ordine strano']) {
+        const e = new Error(m)
+        expect(await traduciErroreDatabase(e)).toBe(e)
+      }
     })
   })
 })

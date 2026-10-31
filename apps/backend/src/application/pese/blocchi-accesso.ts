@@ -5,6 +5,13 @@
 //   2. `SELECT ... FOR UPDATE` sulla riga dell'accesso    (chi chiude o annulla la tiene fino al
 //      commit; i trigger `pesate_controlli`/`collegamenti_accesso_controlli` leggono la stessa
 //      riga con `FOR SHARE`, quindi un inserimento che sfuggisse al punto 1 aspetterebbe qui).
+// Aperture con tara dichiarata, in questo ordine: chiave di idempotenza -> automezzo
+// `FOR NO KEY UPDATE` (PRIMA di creare l'accesso) -> advisory della numerazione -> insert
+// dell'accesso -> insert delle pesate. `FOR NO KEY UPDATE` non confligge con il `KEY SHARE` che
+// l'FK `accessi_pesa_automezzo_fkey` prende sull'automezzo, ma serializza sia le altre aperture
+// dello stesso mezzo sia `impostaTara` (un UPDATE di colonne non chiave); `FOR UPDATE` invece
+// avrebbe creato un deadlock fra due aperture dello stesso mezzo su registri diversi (una con
+// KEY SHARE da FK, l'altra in attesa di FOR UPDATE).
 // Con il punto 1 sempre per primo non esiste un ciclo di attese: niente deadlock fra
 // `FOR SHARE` (trigger) e l'`UPDATE` successivo sulla stessa riga. Mai `FOR UPDATE` su pesate,
 // rettifiche e allegati (il ruolo applicativo non ha UPDATE: D4).
@@ -42,4 +49,17 @@ export async function bloccaChiaveIdempotenza(
 ): Promise<void> {
   const k = `pesata-chiave|${tenantId}|${chiave}`
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${k}))`
+}
+
+/**
+ * Blocca l'automezzo con `FOR NO KEY UPDATE` (vedi sopra). Va chiamato PRIMA di creare l'accesso
+ * che lo referenzia; poi la lettura della tara nella stessa transazione e' stabile.
+ */
+export async function bloccaAutomezzo(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  automezzoId: string
+): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM automezzi
+    WHERE id = ${automezzoId}::uuid AND tenant_id = ${tenantId}::uuid FOR NO KEY UPDATE`
 }
