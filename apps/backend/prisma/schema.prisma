@@ -139,6 +139,13 @@ model Tenant {
   trasmissioniRentri     MovimentoTrasmissioneRentri[]
   // Fase 4 pezzo 0
   contracts              Contract[]
+  // Fase 4 pezzo 1
+  condizioniPagamento    CondizionePagamento[]
+  contiCorrenti          ContoCorrente[]
+  speseAccessorie        SpesaAccessoria[]
+  registriIva            RegistroIva[]
+  testiFatturazione      TestoFatturazione[]
+  codificheContratto     CodificaContratto[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -2931,4 +2938,153 @@ model AbbinamentoCaricoScarico {
   @@index([caricoId], map: "abbinamenti_cs_carico_id_idx")
   @@index([giacenzaInizialeId], map: "abbinamenti_cs_giacenza_iniziale_id_idx")
   @@map("abbinamenti_carico_scarico")
+}
+
+/// Tipo di una spesa accessoria (D23): spese di incasso ("spese bancarie") o bollo su esenzione.
+enum TipoSpesaAccessoria {
+  INCASSO
+  BOLLO
+
+  @@map("tipo_spesa_accessoria")
+}
+
+/// Genere di una codifica del contratto (D26): tre elenchi di codice e descrizione.
+enum GenereCodificaContratto {
+  CATEGORIA
+  TIPO
+  MOTIVO_ANNULLO
+
+  @@map("genere_codifica_contratto")
+}
+
+/// Condizione di pagamento del cliente (4.1, D6): modalita, rate in giorni, fine mese. Le regole (rate crescenti, 0 solo come rata unica) stanno in `domain/clienti`; i CHECK nella migration sono la rete di sicurezza.
+model CondizionePagamento {
+  id          String  @id(map: "condizioni_pagamento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  codice      String  @db.VarChar(10)
+  descrizione String  @db.VarChar(100)
+  modalita    String  @db.VarChar(4)
+  giorniRate  Int[]   @map("giorni_rate")
+  fineMese    Boolean @default(false) @map("fine_mese")
+  attiva      Boolean @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "condizioni_pagamento_tenant_fkey")
+
+  @@unique([id, tenantId], map: "condizioni_pagamento_id_tenant_id_key")
+  @@unique([tenantId, codice], map: "condizioni_pagamento_tenant_id_codice_key")
+  @@index([tenantId], map: "condizioni_pagamento_tenant_id_idx")
+  @@map("condizioni_pagamento")
+}
+
+/// Conto corrente del gestore (4.1, D21): scelto sul cliente e sul contratto. L'IBAN e' unico per azienda; in elenco si mostra mascherato.
+model ContoCorrente {
+  id          String  @id(map: "conti_correnti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  codice      String  @db.VarChar(10)
+  descrizione String  @db.VarChar(100)
+  banca       String  @db.VarChar(80)
+  iban        String  @db.VarChar(34)
+  bic         String? @db.VarChar(11)
+  attivo      Boolean @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "conti_correnti_tenant_fkey")
+
+  @@unique([id, tenantId], map: "conti_correnti_id_tenant_id_key")
+  @@unique([tenantId, codice], map: "conti_correnti_tenant_id_codice_key")
+  @@unique([tenantId, iban], map: "conti_correnti_tenant_id_iban_key")
+  @@index([tenantId], map: "conti_correnti_tenant_id_idx")
+  @@map("conti_correnti")
+}
+
+/// Spesa accessoria (4.1, D23): spese di incasso o bollo, con importo non negativo. Codice unico per (azienda, tipo).
+model SpesaAccessoria {
+  id          String              @id(map: "spese_accessorie_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String              @map("tenant_id") @db.Uuid
+  tipo        TipoSpesaAccessoria
+  codice      String              @db.VarChar(10)
+  descrizione String              @db.VarChar(100)
+  importo     Decimal             @db.Decimal(10, 2)
+  attiva      Boolean             @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_fkey")
+
+  @@unique([id, tenantId], map: "spese_accessorie_id_tenant_id_key")
+  @@unique([tenantId, tipo, codice], map: "spese_accessorie_tenant_id_tipo_codice_key")
+  @@index([tenantId], map: "spese_accessorie_tenant_id_idx")
+  @@map("spese_accessorie")
+}
+
+/// Registro IVA sezionale delle vendite (4.1, D24): codice di due cifre 01-99; `ricevuteSplit` marca il registro delle ricevute split payment.
+model RegistroIva {
+  id            String  @id(map: "registri_iva_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  codice        String  @db.VarChar(2)
+  descrizione   String  @db.VarChar(60)
+  ricevuteSplit Boolean @default(false) @map("ricevute_split")
+  attivo        Boolean @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "registri_iva_tenant_fkey")
+
+  @@unique([id, tenantId], map: "registri_iva_id_tenant_id_key")
+  @@unique([tenantId, codice], map: "registri_iva_tenant_id_codice_key")
+  @@index([tenantId], map: "registri_iva_tenant_id_idx")
+  @@map("registri_iva")
+}
+
+/// Testo di fatturazione (4.1, D25): da 1 a 16 righe di al massimo 60 caratteri, scelto sul cliente e sul contratto.
+model TestoFatturazione {
+  id       String   @id(map: "testi_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String   @map("tenant_id") @db.Uuid
+  codice   String   @db.VarChar(3)
+  titolo   String   @db.VarChar(60)
+  righe    String[] @db.VarChar(60)
+  attivo   Boolean  @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "testi_fatturazione_tenant_fkey")
+
+  @@unique([id, tenantId], map: "testi_fatturazione_id_tenant_id_key")
+  @@unique([tenantId, codice], map: "testi_fatturazione_tenant_id_codice_key")
+  @@index([tenantId], map: "testi_fatturazione_tenant_id_idx")
+  @@map("testi_fatturazione")
+}
+
+/// Codifica del contratto (4.1, D26): categoria, tipo o motivo di annullo, con codice unico per (azienda, genere).
+model CodificaContratto {
+  id          String                  @id(map: "codifiche_contratto_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String                  @map("tenant_id") @db.Uuid
+  genere      GenereCodificaContratto
+  codice      String                  @db.VarChar(3)
+  descrizione String                  @db.VarChar(60)
+  attiva      Boolean                 @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codifiche_contratto_tenant_fkey")
+
+  @@unique([id, tenantId], map: "codifiche_contratto_id_tenant_id_key")
+  @@unique([tenantId, genere, codice], map: "codifiche_contratto_tenant_id_genere_codice_key")
+  @@index([tenantId], map: "codifiche_contratto_tenant_id_idx")
+  @@map("codifiche_contratto")
 }

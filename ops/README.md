@@ -604,6 +604,16 @@ rifare il controllo di sopra prima di tornare al codice nuovo e, se serve, azzer
 codice vecchio non ne risente. Il ripristino a mano
 dello schema e' nel commento della migration `20261101200000_contratti_modifica_eliminazione`.
 
+Stesso discorso per le **tabelle di fatturazione** (Fase 4 pezzo 1, prima migration
+`20261102200000_anagrafiche_fatturazione_cliente`: `condizioni_pagamento`, `conti_correnti`,
+`spese_accessorie`, `registri_iva`, `testi_fatturazione`, `codifiche_contratto`). Rollback del
+codice: innocuo, il codice vecchio ignora le tabelle. Prima di un ripristino dello schema
+controllare, **come owner** (con RLS FORCE il ruolo applicativo vedrebbe 0 righe):
+`SELECT tenant_id, count(*) FROM condizioni_pagamento GROUP BY 1` e lo stesso per le altre cinque
+tabelle; se non sono vuote i dati si perdono, quindi esportarli prima. Se e' applicata
+`20261102200100_…` (4.1b), ripristinare prima quella, poi questa. Il ripristino a mano dello
+schema e' nel commento della migration.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del
