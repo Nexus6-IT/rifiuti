@@ -4,11 +4,11 @@
  *
  * Non è uno spec (il nome non finisce in `.spec.ts`, escluso da tsc-build e jest come l'oracolo).
  * Tutto si scrive col client proprietario (`wasteflow`) e si pulisce per `tenantId`.
- * `creaSoggettoMud` è l'unico punto che conosce le colonne delle anagrafiche: al merge di F2-10
- * si riallinea a `creaDittaConRuolo`, lasciando invariati i dati.
+ * `creaSoggettoMud` delega a `creaDittaConRuolo` (F2-10): ditta, sede e riga di ruolo.
  */
 import { randomUUID } from 'crypto'
 import type { PrismaClient } from '@prisma/client'
+import { creaDittaConRuolo } from '../../../test-support/anagrafiche-di-test'
 
 export interface AziendaMud {
   tenantId: string
@@ -38,35 +38,17 @@ export async function creaSoggettoMud(
   ruolo: 'DESTINATARIO' | 'TRASPORTATORE',
   dati: DatiSoggettoMud
 ): Promise<string> {
-  const sede = {
-    via: dati.via ?? 'Via Roma',
-    civico: dati.civico ?? '1',
+  const { ruoloId } = await creaDittaConRuolo(client, tenantId, ruolo, {
+    ragioneSociale: dati.ragioneSociale,
+    partitaIva: dati.partitaIva,
+    numeroDocumento: dati.numero,
+    via: dati.via,
+    civico: dati.civico,
     cap: dati.cap ?? '20100',
     comune: dati.comune ?? 'Milano',
     provincia: dati.provincia ?? 'MI',
-  }
-  if (ruolo === 'DESTINATARIO') {
-    const d = await client.destinatario.create({
-      data: {
-        tenantId,
-        ragioneSociale: dati.ragioneSociale,
-        partitaIVA: dati.partitaIva,
-        numeroAutorizzazione: dati.numero ?? 'AUT-1',
-        ...sede,
-      },
-    })
-    return d.id
-  }
-  const t = await client.trasportatore.create({
-    data: {
-      tenantId,
-      ragioneSociale: dati.ragioneSociale,
-      partitaIVA: dati.partitaIva,
-      numeroIscrizione: dati.numero ?? 'ALBO-1',
-      ...sede,
-    },
   })
-  return t.id
+  return ruoloId
 }
 
 /** Azienda con una sede principale, il suo registro e un utente (per FIR e aperture). */
@@ -275,6 +257,8 @@ export async function pulisciAziendeMud(client: PrismaClient, tenantIds: string[
   await client.causaleRegistroAzienda.deleteMany({ where })
   await client.destinatario.deleteMany({ where })
   await client.trasportatore.deleteMany({ where })
+  await client.sedeDitta.deleteMany({ where })
+  await client.ditta.deleteMany({ where })
   await client.registroRifiuti.deleteMany({ where })
   await client.rentriUnitaLocale.deleteMany({ where })
   await client.user.deleteMany({ where })

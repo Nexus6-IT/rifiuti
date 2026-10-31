@@ -2621,13 +2621,13 @@ describe('MudAggregazioneService: giacenze al 31/12 (versione 2)', () => {
   })
   const dest1 = {
     id: 'dest-1',
-    partitaIVA: '33333333333',
-    ragioneSociale: 'Recupero Metalli Srl',
-    comune: 'Milano',
-    provincia: 'MI',
-    via: 'Via Roma',
-    civico: '1',
-    cap: '20100',
+    ragioneSocialeStorica: 'Recupero Metalli Srl',
+    ditta: {
+      ragioneSociale: 'Recupero Metalli Srl',
+      partitaIva: '33333333333',
+      codiceFiscale: null,
+    },
+    sede: { comune: 'Milano', provincia: 'MI', via: 'Via Roma', civico: '1', cap: '20100' },
   }
   const indirizzo = {
     indirizzo: 'Via Po',

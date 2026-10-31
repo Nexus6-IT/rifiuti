@@ -57,13 +57,13 @@ describe('MudAggregazione: equivalenza con a2bf11e (versione 1)', () => {
   })
   const dest1 = {
     id: 'dest-1',
-    partitaIVA: '33333333333',
-    ragioneSociale: 'Recupero Metalli Srl',
-    comune: 'Milano',
-    provincia: 'MI',
-    via: 'Via Roma',
-    civico: '1',
-    cap: '20100',
+    ragioneSocialeStorica: 'Recupero Metalli Srl',
+    ditta: {
+      ragioneSociale: 'Recupero Metalli Srl',
+      partitaIva: '33333333333',
+      codiceFiscale: null,
+    },
+    sede: { comune: 'Milano', provincia: 'MI', via: 'Via Roma', civico: '1', cap: '20100' },
   }
   const dataGiorno = (g: string) => new Date(`${g}T08:00:00Z`)
   const versioneAzienda = (p: Record<string, unknown>) => ({
