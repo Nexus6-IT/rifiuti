@@ -393,10 +393,138 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     expect(righe[0].numeroScarico).toMatch(/^\d+\/\d{4}$/)
   })
 
+  const riga = (az: Az, scaricoId: string, caricoId: string, quantita: number) =>
+    owner.abbinamentoCaricoScarico.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        scaricoId,
+        caricoId,
+        famiglia: 'KG',
+        quantita,
+        origine: 'AUTOMATICO',
+      },
+    })
+
+  it('una riga morta non fa risultare incoerente una riga buona (somme solo sulle valide)', async () => {
+    const az = await azienda()
+    const c = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+    })
+    await movimento(az, { type: 'CARICO', giorno: '2026-03-01', quantita: 100 })
+    const sBuono = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 60 })
+    const sMorto = await movimento(az, { type: 'SCARICO', giorno: '2026-03-11', quantita: 60 })
+    await riga(az, sBuono, c, 60)
+    const morta = await riga(az, sMorto, c, 60)
+    await annulla(az, sMorto)
+    const [a] = await leggi(az)
+    expect(a.righe).toHaveLength(2)
+    expect(a.righeIncoerenti).toEqual([{ id: morta.id, motivo: 'scarico non più vigente' }])
+  })
+
+  it('righe con entrambi i capi fuori ambito non spariscono', async () => {
+    const az = await azienda()
+    // entrambe le catene annullate
+    const c1 = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+    })
+    const s1 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 10 })
+    const r1 = await riga(az, s1, c1, 10)
+    await annulla(az, s1)
+    await annullaInDeroga(c1)
+    // carico non di stoccaggio + scarico annullato
+    const c2 = await movimento(az, { type: 'CARICO', giorno: '2026-03-02', quantita: 100 })
+    const s2 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-12', quantita: 5 })
+    const r2 = await riga(az, s2, c2, 5)
+    await annulla(az, s2)
+    const [a] = await leggi(az)
+    expect(a.righeIncoerenti).toEqual(
+      expect.arrayContaining([
+        { id: r1.id, motivo: 'scarico e carico non più vigenti' },
+        { id: r2.id, motivo: 'scarico non più vigente' },
+      ])
+    )
+    expect(a.righeIncoerenti).toHaveLength(2)
+  })
+
+  it('filtro per CER sui movimenti; motivi neutri con il filtro, esatti senza', async () => {
+    const az = await azienda()
+    const c1 = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+    })
+    const c2 = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+      cer: CER2,
+    })
+    const s1 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 10 })
+    const altroRifiuto = await riga(az, s1, c2, 10)
+    const tutti = await leggi(az)
+    expect(tutti.map(a => a.cerCode).sort()).toEqual([CER, CER2])
+    const diCer = tutti.find(a => a.cerCode === CER)!
+    expect(diCer.righeIncoerenti).toEqual([
+      { id: altroRifiuto.id, motivo: 'carico di un altro rifiuto' },
+    ])
+    const filtrato = await leggi(az, CER)
+    expect(filtrato).toHaveLength(1)
+    expect(filtrato[0].cerCode).toBe(CER)
+    expect(filtrato[0].carichi.map(c => c.chiave)).toEqual([`M:${c1}`])
+    expect(filtrato[0].righeIncoerenti).toEqual([
+      { id: altroRifiuto.id, motivo: 'carico non più vigente o di un altro rifiuto' },
+    ])
+  })
+
+  it('righeDelCarico con scarico rettificato: numero e giorno della testa', async () => {
+    const az = await azienda()
+    const c1 = await movimento(az, {
+      type: 'CARICO',
+      giorno: '2026-03-01',
+      quantita: 100,
+      op: 'R13',
+    })
+    const s1 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 10 })
+    await riga(az, s1, c1, 10)
+    const rett = await nelTenant(az.tenantId, () =>
+      correggi.rettifica({
+        tenantId: az.tenantId,
+        userId: undefined as unknown as string,
+        movimentoId: s1,
+        motivo: 'correzione',
+        dati: {
+          movementDate: new Date('2026-03-12T10:00:00Z'),
+          causale: 'AVVIO_RECUPERO',
+          cerCode: CER,
+          quantity: 10,
+          unit: 'KG',
+        },
+      })
+    )
+    const righe = await nelTenant(az.tenantId, () =>
+      app.$transaction(tx => righeDelCarico(tx, az.tenantId, c1))
+    )
+    expect(righe).toHaveLength(1)
+    expect(righe[0].scaricoRadiceId).toBe(s1)
+    expect(righe[0].giornoScarico).toBe('2026-03-12')
+    expect(righe[0].numeroScarico).toBe(
+      `${rett.movimento.progressiveNumber}/${rett.movimento.progressiveYear}`
+    )
+  })
+
   /**
-   * Annulla un carico gia abbinato: il caso d'uso lo vieta (saldo negativo) solo se lo scarico lo
-   * richiede; qui il carico e l unico e lo scarico lo copre, quindi si inserisce direttamente
-   * l annotazione di annullamento come farebbe un dato storico incoerente.
+   * Annulla un carico che copre ancora uno scarico vigente: il caso d'uso lo rifiuta (il saldo
+   * andrebbe negativo), quindi l'annotazione di annullamento si inserisce a mano, come un dato
+   * storico incoerente.
    */
   async function annullaInDeroga(caricoId: string) {
     const c = await owner.wasteMovement.findUniqueOrThrow({ where: { id: caricoId } })

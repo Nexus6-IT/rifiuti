@@ -82,6 +82,7 @@ interface RigaMovimento {
   causale_azienda_id: string | null
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const numeroDi = (anno: number, numero: number): string => `${numero}/${anno}`
 
 /** Ambiti del registro (o di un solo CER), con carichi, scarichi, righe e righe incoerenti. */
@@ -93,7 +94,7 @@ export async function leggiAmbitiAbbinamento(
 ): Promise<AmbitoAbbinamento[]> {
   const { registroId, cer } = filtro
   const logger = opzioni.logger
-  const cifre = cer ? cerSoloCifre(cer) : null
+  const cifre = cer !== undefined ? cerSoloCifre(cer) : null
   const movimenti = cifre
     ? await client.$queryRaw<RigaMovimento[]>`
         SELECT wm.id::text AS id, r.id::text AS radice_id, wm.type::text AS type, wm.cer_code,
@@ -102,6 +103,7 @@ export async function leggiAmbitiAbbinamento(
                wm.operation_code, wm.causale, wm.causale_azienda_id::text AS causale_azienda_id
         FROM waste_movements wm
         JOIN waste_movements r ON r.id = COALESCE(wm.movimento_originale_id, wm.id)
+          AND r.tenant_id = wm.tenant_id
         WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
           AND ${sqlVigente('wm')}
           AND regexp_replace(wm.cer_code, '[^0-9]', '', 'g') = ${cifre}`
@@ -112,10 +114,11 @@ export async function leggiAmbitiAbbinamento(
                wm.operation_code, wm.causale, wm.causale_azienda_id::text AS causale_azienda_id
         FROM waste_movements wm
         JOIN waste_movements r ON r.id = COALESCE(wm.movimento_originale_id, wm.id)
+          AND r.tenant_id = wm.tenant_id
         WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
           AND ${sqlVigente('wm')}`
 
-  const chiaveFiltro = cer ? chiaveConfrontoCer(cer) : null
+  const chiaveFiltro = cer !== undefined ? chiaveConfrontoCer(cer) : null
   const aperture = (await leggiApertureRegistro(client, tenantId, { registroId })).filter(
     a => chiaveFiltro === null || chiaveConfrontoCer(a.cerCode) === chiaveFiltro
   )
@@ -252,17 +255,72 @@ export async function leggiAmbitiAbbinamento(
     quantita: Number(r.quantita),
     origine: r.origine,
   }))
+  const filtrato = cer !== undefined
+  const neutro = (cosa: 'carico' | 'scarico'): string =>
+    filtrato ? `${cosa} non più vigente o di un altro rifiuto` : `${cosa} non più vigente`
+
+  /** Controlli strutturali (vigenza, famiglia, ambito): non dipendono dalle somme. */
+  function motivoStrutturale(r: (typeof righeDelRegistro)[number]): string | null {
+    const s = scarichiPerRadice.get(r.scaricoId)
+    if (!s) return neutro('scarico')
+    if (scaricoPerRadice.get(r.scaricoId)?.famiglia !== r.famiglia) {
+      return 'famiglia di unità diversa dallo scarico'
+    }
+    const c = ambitoCarichi.get(r.chiave)
+    if (!c) {
+      if (caricoNonStoccaggio.has(r.chiave.slice(2))) return 'carico senza operazione R13 o D15'
+      return r.chiave.startsWith('A:') ? 'giacenza iniziale non trovata' : neutro('carico')
+    }
+    if (caricoPerChiave.get(r.chiave) !== scaricoPerRadice.get(r.scaricoId)) {
+      return 'carico di un altro rifiuto'
+    }
+    return null
+  }
+
+  type RigaLetta = (typeof righeDelRegistro)[number]
+  const attribuite: Array<{ r: RigaLetta; ambito: AmbitoAbbinamento }> = []
+  const orfane: RigaLetta[] = []
+  for (const r of righeDelRegistro) {
+    const ambito =
+      scaricoPerRadice.get(r.scaricoId) ??
+      caricoPerChiave.get(r.chiave) ??
+      (r.chiave.startsWith('M:') ? caricoNonStoccaggio.get(r.chiave.slice(2)) : undefined)
+    if (ambito) attribuite.push({ r, ambito })
+    else orfane.push(r)
+  }
+
+  // Righe con entrambi i capi fuori dall'ambito (es. entrambe le catene annullate): si ricava il
+  // CER dallo scarico con UNA query (numero fisso) per non farle sparire.
+  if (orfane.length > 0) {
+    const ids = [...new Set(orfane.map(r => r.scaricoId))]
+    const trovati = await client.$queryRaw<Array<{ id: string; cer_code: string; unit: string }>>`
+      SELECT id::text AS id, cer_code, unit
+      FROM waste_movements
+      WHERE tenant_id = ${tenantId}::uuid AND registro_id = ${registroId}::uuid
+        AND id = ANY(${ids}::uuid[])`
+    const perId = new Map(trovati.map(t => [t.id, t]))
+    for (const r of orfane) {
+      const t = perId.get(r.scaricoId)
+      if (!t) continue
+      if (chiaveFiltro !== null && chiaveConfrontoCer(t.cer_code) !== chiaveFiltro) continue
+      attribuite.push({ r, ambito: ambitoDi(t.cer_code, t.unit) })
+    }
+  }
+
+  // Le somme contano solo le righe strutturalmente valide: una riga morta non fa risultare
+  // incoerente una riga buona.
+  const motivi = new Map<string, string | null>()
   const perScarico = new Map<string, number>()
   const perCarico = new Map<ChiaveCarico, number>()
-  const attribuite: Array<{ r: (typeof righeDelRegistro)[number]; ambito: AmbitoAbbinamento }> = []
-  for (const r of righeDelRegistro) {
-    const ambito = scaricoPerRadice.get(r.scaricoId) ?? caricoPerChiave.get(r.chiave)
-    if (!ambito) continue
-    attribuite.push({ r, ambito })
+  for (const { r } of attribuite) {
+    const m = motivoStrutturale(r)
+    motivi.set(r.id, m)
+    if (m) continue
     const q = millesimiFifo(r.quantita)
     perScarico.set(r.scaricoId, (perScarico.get(r.scaricoId) ?? 0) + q)
     perCarico.set(r.chiave, (perCarico.get(r.chiave) ?? 0) + q)
   }
+
   for (const { r, ambito } of attribuite) {
     ambito.righe.push({
       scaricoRadiceId: r.scaricoId,
@@ -270,32 +328,24 @@ export async function leggiAmbitiAbbinamento(
       quantita: r.quantita,
       origine: r.origine,
     })
-    const motivo = motivoIncoerenza(r)
+    let motivo = motivi.get(r.id) ?? null
+    if (motivo && !scarichiPerRadice.has(r.scaricoId) && !ambitoCarichi.has(r.chiave)) {
+      // entrambi i capi fuori dall'ambito
+      if (!caricoNonStoccaggio.has(r.chiave.slice(2))) {
+        motivo = filtrato ? neutro('scarico') : 'scarico e carico non più vigenti'
+      }
+    }
+    if (!motivo) {
+      const s = scarichiPerRadice.get(r.scaricoId) as ScaricoAbbinabile
+      const c = ambitoCarichi.get(r.chiave) as CaricoAbbinabile
+      if (confrontaEventiFifo(c.evento, s.evento) > 0) motivo = 'carico successivo allo scarico'
+      else if ((perScarico.get(r.scaricoId) ?? 0) > millesimiFifo(s.evento.quantita)) {
+        motivo = 'abbinato oltre la quantità dello scarico'
+      } else if ((perCarico.get(r.chiave) ?? 0) > millesimiFifo(c.evento.quantita)) {
+        motivo = 'abbinato oltre la quantità del carico'
+      }
+    }
     if (motivo) ambito.righeIncoerenti.push({ id: r.id, motivo })
-  }
-
-  function motivoIncoerenza(r: (typeof righeDelRegistro)[number]): string | null {
-    const s = scarichiPerRadice.get(r.scaricoId)
-    if (!s) return 'scarico non più vigente'
-    if (scaricoPerRadice.get(r.scaricoId)?.famiglia !== r.famiglia) {
-      return 'famiglia di unità diversa dallo scarico'
-    }
-    const c = ambitoCarichi.get(r.chiave)
-    if (!c) {
-      if (caricoNonStoccaggio.has(r.chiave.slice(2))) return 'carico senza operazione R13 o D15'
-      return r.chiave.startsWith('A:') ? 'giacenza iniziale non trovata' : 'carico non più vigente'
-    }
-    if (caricoPerChiave.get(r.chiave) !== scaricoPerRadice.get(r.scaricoId)) {
-      return 'carico di un altro rifiuto'
-    }
-    if (confrontaEventiFifo(c.evento, s.evento) > 0) return 'carico successivo allo scarico'
-    if ((perScarico.get(r.scaricoId) ?? 0) > millesimiFifo(s.evento.quantita)) {
-      return 'abbinato oltre la quantità dello scarico'
-    }
-    if ((perCarico.get(r.chiave) ?? 0) > millesimiFifo(c.evento.quantita)) {
-      return 'abbinato oltre la quantità del carico'
-    }
-    return null
   }
 
   for (const a of ambiti.values()) {
@@ -315,7 +365,7 @@ export async function radiceScarico(
   tenantId: string,
   id: string
 ): Promise<{ radiceId: string; registroId: string; cerCode: string } | null> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
+  if (!UUID.test(id)) return null
   const m = await client.wasteMovement.findFirst({
     where: { id, tenantId, type: 'SCARICO' },
     select: { id: true, movimentoOriginaleId: true, registroId: true, cerCode: true },
@@ -342,6 +392,7 @@ export async function righeDelCarico(
     famiglia: string
   }>
 > {
+  if (!UUID.test(caricoRadiceId)) return []
   const righe = await client.$queryRaw<
     Array<{
       scarico_id: string
@@ -361,7 +412,7 @@ export async function righeDelCarico(
     JOIN waste_movements r ON r.id = a.scarico_id AND r.tenant_id = a.tenant_id
     LEFT JOIN waste_movements h
       ON COALESCE(h.movimento_originale_id, h.id) = a.scarico_id
-     AND h.tenant_id = a.tenant_id AND ${sqlVigente('h')}
+     AND h.tenant_id = a.tenant_id AND h.registro_id = r.registro_id AND ${sqlVigente('h')}
     WHERE a.tenant_id = ${tenantId}::uuid AND a.carico_id = ${caricoRadiceId}::uuid
     ORDER BY COALESCE(h.movement_date, r.movement_date), a.scarico_id`
   return righe.map(r => ({
