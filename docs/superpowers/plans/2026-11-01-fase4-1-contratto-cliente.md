@@ -67,6 +67,13 @@ Nota sul Q1. Nella richiesta `C2` era indicato come "flag degli allegati PDF". I
 (E26, E27): `C2` è il **contratto principale** a cui il contratto è allegato, mentre i PDF sono due
 file associati al contratto fuori dal record. Si portano **entrambi** (D28, D29).
 
+Seconda tornata (31/10, dopo la revisione del piano):
+
+| # | Domanda | Risposta | Dove agisce |
+|---|---|---|---|
+| Q7 | Consegna | **Due PR.** **4.1a** tabelle di fatturazione: Task 0-5, 8, 10-12, la parte "tabelle" del Task 20 (modelli, vocabolari e `TabelleFatturazioneService` delle sei tabelle, `AggiuntaInLinea`), 21-22, e2e e chiusura ridotti del Task 28. **4.1b** agenti, clienti, contratti: Task 6, 7, 9, 13-19, il resto del 20, 23-27, 28. Migration `20261102200000_` nella 4.1a (RLS 44 → 50), `20261102200100_` nella 4.1b (50 → 55). La 4.1b parte da master dopo il merge della 4.1a | Ordine, Task 20, 28 |
+| Q8 | Codice rinnovo `O` | **Non portato**: solo `S`/`N`; i contratti importati con `O` diventano `S` (3.8) | D27, Task 6, 9, 18 |
+
 ---
 
 ## Stato di partenza (branch `feat/fase4-1-contratto-cliente` = `dafa30b` + questo piano, verificato)
@@ -321,7 +328,7 @@ effettivo calcolato** invece della copia (funzioni pure del Task 6, usate da 4.4
 | `C3` 11 | destinatario/sede | `sede_id` → `sedi_ditte` | E29 |
 | `C3` 12-13 | validità | `validita_quantita` (1-999), `validita_unita` (`A`/`S`/`M`/`G`) | E29, D27 |
 | `C3` 14 | codice annullo | `motivo_annullo_id` → `codifiche_contratto` (`MOTIVO_ANNULLO`) + `motivo_annullo` (testo) | E29, D8, D26 |
-| `C3` 15 | codice rinnovo | `codice_rinnovo` (`S`/`N`/`O`) | E29, D27 |
+| `C3` 15 | codice rinnovo | `codice_rinnovo` (`S`/`N`; `O` non portato, Q8) | E29, D27 |
 | `C3` 16 | `ALTRO` | **escluso**: mai visibile né etichettato nella form, quindi nessun operatore lo compila; il valore d'origine, se c'è, resta nello staging di 3.8 | E30 |
 | `C3` 17 | incremento ISTAT | `incremento_istat` | E29, D27 |
 | `C3` 18 | `\D\` | **escluso**: funzione NICA per singola installazione (E17) | E30 |
@@ -496,7 +503,7 @@ annullato_il IS NOT NULL)`; `data_fine IS NULL OR data_fine >= data_inizio`;
 (ritenuta_percentuale > 0 AND ritenuta_percentuale <= 30)` (su clienti e contratti); `soglia_importo
 IS NULL OR soglia_importo > 0`; `soglia_dal IS NULL OR soglia_importo IS NOT NULL`;
 `(validita_quantita IS NULL) = (validita_unita IS NULL)` e `validita_quantita BETWEEN 1 AND 999`;
-`validita_unita IN ('A','S','M','G')`; `codice_rinnovo IN ('S','N','O')`;
+`validita_unita IN ('A','S','M','G')`; `codice_rinnovo IN ('S','N')`;
 `cardinality(annotazioni) <= 3` (e `testi_fatturazione`: `cardinality(righe) BETWEEN 1 AND 16`);
 `spese_accessorie.importo >= 0`; `registri_iva.codice ~ '^[0-9]{2}$'`; allegati: `posizione IN (1,2)`,
 `mime_type = 'application/pdf'`, `dimensione_byte BETWEEN 1 AND 4194304`, `unique (contratto_id,
@@ -639,7 +646,7 @@ Categoria e tipo filtrano elenco e proroga (D11, D17) e in 4.4 l'elaborazione de
 | `sogliaIvaEsclusa` | Boolean, default false | senza soglia → normalizzato a false |
 | `commessa` | VarChar(12)? | `[A-Za-z0-9._/-]{1,12}` → "La commessa può contenere al massimo 12 caratteri fra lettere, cifre, punto, barra, trattino e trattino basso." Testo libero: l'anagrafica delle commesse di WinWaste è una personalizzazione ECOER nei `listini` `G%` (E29) |
 | `validitaQuantita`, `validitaUnita` | Int?, VarChar(1)? | entrambi o nessuno → "Indica sia la durata sia l'unità della validità."; 1-999 → "La durata della validità va da 1 a 999."; unità `A` Anni, `S` Semestri, `M` Mesi, `G` Giorni (E29). Informativo: non calcola la data di fine |
-| `codiceRinnovo` | VarChar(1)? | `S`, `N`, `O` (E29); normalizzazione come WinWaste: `S` e `O` → `rinnovoAutomatico = true`, `N` → `false` (`Contratti.cs:5423-5433`). Etichette: Sì, No, "O (da WinWaste)" |
+| `codiceRinnovo` | VarChar(1)? | `S`, `N` (E29; `O` non portato, Q8); `S` → `rinnovoAutomatico = true`, `N` → `false` (`Contratti.cs:5423-5433`). Etichette: Sì, No |
 | `incrementoIstat` | Boolean, default false | l'aggiornamento dei prezzi ISTAT (F12, `frmaggprezziistat`) è di 4.2 |
 | `escludiDichiarazioneIntento` | Boolean, default false | la dichiarazione d'intento del cliente e la sua applicazione sono di 4.4 (E30) |
 | `annotazioni` | VarChar(45)[] | al massimo 3, ciascuna ≤ 45 → "Al massimo 3 annotazioni di 45 caratteri ciascuna." (E32); vuote tolte |
@@ -1054,7 +1061,7 @@ export const ETICHETTE_STATO: Readonly<Record<StatoContrattoCliente, string>>
 export const TRANSIZIONI: Readonly<Record<StatoContrattoCliente, readonly StatoContrattoCliente[]>>
 export type UnitaValidita = 'A'|'S'|'M'|'G'
 export const ETICHETTE_UNITA_VALIDITA: Readonly<Record<UnitaValidita, string>>   // Anni, Semestri, Mesi, Giorni
-export type CodiceRinnovo = 'S'|'N'|'O'
+export type CodiceRinnovo = 'S'|'N'
 export type CampoContrattoCliente =                      // 37 campi
   | 'numero'|'descrizione'|'clienteId'|'clienteFatturazioneId'|'sedeId'|'categoriaId'|'tipoId'
   | 'dataInizio'|'dataFine'|'dataStipula'|'validitaQuantita'|'validitaUnita'|'contrattoPrincipaleId'
@@ -1113,7 +1120,7 @@ Periodi di fatturazione. Messaggi: D8, D9, D10, D27, D28 (testo esatto).
     `id` (passato nel contesto) → "Un contratto non può essere allegato a sé stesso."; periodi
     sovrapposti (messaggi di `validaPeriodi`); più errori nell'ordine dei campi;
   - `normalizzaContratto`: cliente di fatturazione uguale al cliente → null (E5); date come
-    `YYYY-MM-DD` da `Date` e da stringa ISO; periodi ordinati; `codiceRinnovo 'O'` → `rinnovoAutomatico
+    `YYYY-MM-DD` da `Date` e da stringa ISO; periodi ordinati; `codiceRinnovo 'S'` → `rinnovoAutomatico
     true`, `'N'` → `false`; `sogliaIvaEsclusa true` senza soglia → false; annotazioni vuote tolte;
     decimali normalizzati;
   - `pianificaModifica`: vuota → NESSUNA; stessi valori (date come nuova istanza, periodi in altro
@@ -1706,7 +1713,7 @@ prorogaScadenze(tenantId: string, utenteId: string, f: { scadutiEntro: string; s
 DTO: `CreaContrattoClienteDto` (date `@IsISO8601({ strict: true })` giorno, periodi
 `@ValidateNested({ each: true }) @ArrayMaxSize(12)` con `PeriodoDto` `@IsInt @Min @Max`, decimali
 `@IsString @Matches`, `annotazioni` `@ArrayMaxSize(3) @MaxLength(45, { each: true })`, `validitaUnita`
-`@IsIn(['A','S','M','G'])`, `codiceRinnovo` `@IsIn(['S','N','O'])`, `stato` **non** ammesso),
+`@IsIn(['A','S','M','G'])`, `codiceRinnovo` `@IsIn(['S','N'])`, `stato` **non** ammesso),
 `ModificaContrattoClienteDto` (`PartialType` di crea + `versione`), `CambiaStatoContrattoClienteDto`
 (`stato` `@IsIn`, `versione`, `motivoAnnulloId?` `@IsUUID`, `motivo?` ≤ 255), `RinnovaDto`
 (`versione`), `ProrogaScadenzeDto` (`categoriaId?`).
@@ -2107,6 +2114,4 @@ del cliente); 25 prima di 26 e 27.
 - Job automatico di rinnovo e avvisi di scadenza dei contratti cliente nel `deadline-checker` (Q5).
 - Statistiche e stampe dei contratti (`STAMPCONTR`, `StatisticheContratti…`), calendario festivi (F7).
 - Collegamento del contratto produttore (`Contract`) al contratto cliente: modelli separati (D1).
-- Punto aperto **non bloccante**: l'etichetta del codice rinnovo `O` (E29, ignoto nel codice). Fino
-  a una conferma di Graziano si mostra "O (da WinWaste)" e vale come `S` per il rinnovo automatico,
-  come in WinWaste.
+- Codice rinnovo `O` di WinWaste: **non portato** (Q8). L'import di 3.8 lo convertirà in `S`.
