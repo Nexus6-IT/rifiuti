@@ -472,6 +472,20 @@ aperta (Decisioni aperte, 9).
 
 ---
 
+## 4.6 abbinamenti carico-scarico
+
+Tabella `abbinamenti_carico_scarico` (migration `20261101300000_abbinamenti_carico_scarico`,
+additiva): quale carico, o giacenza iniziale, ha coperto quale scarico del registro. Il codice
+vecchio la ignora; dopo un rollback del codice la tabella resta e riprende a contare al
+ripristino. **Prima del rollback** controllare
+`SELECT tenant_id, count(*) FROM abbinamenti_carico_scarico GROUP BY 1` e avvisare le aziende
+che hanno abbinamenti manuali (si perdono nella vista, non nel database).
+
+Ripristino a mano dello schema (solo se serve): `DROP TABLE abbinamenti_carico_scarico;
+DROP TYPE origine_abbinamento; DROP INDEX giacenze_iniziali_id_registro_tenant_key;` e
+`DELETE FROM _prisma_migrations WHERE migration_name = '20261101300000_abbinamenti_carico_scarico';`.
+Le migration gia' applicate in produzione non si modificano: il commento iniziale resta com'e'.
+
 ## Metriche Prometheus (`/metrics`)
 
 Il backend espone l'endpoint standard Prometheus a:
