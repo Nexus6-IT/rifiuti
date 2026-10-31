@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing'
+import { TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
 import { PeseService, costruisciMultipart, DatiAperturaAccesso } from './pese.service'
 import { environment } from '../../../environments/environment'
@@ -105,6 +105,42 @@ describe('PeseService', () => {
     })
     service.dettaglioAccesso('a1').subscribe()
     http.expectOne(`${base}/accessi/a1`)
-    expect(service.urlAllegato('x')).toBe(`${base}/allegati/x`)
+  })
+
+  it("l'allegato si scarica via HttpClient come blob e si apre da un object URL", fakeAsync(() => {
+    const scheda = { location: { href: '' }, close: jasmine.createSpy('close') }
+    spyOn(window, 'open').and.returnValue(scheda as unknown as Window)
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:abc')
+    const revoca = spyOn(URL, 'revokeObjectURL')
+    service.apriAllegato('x').subscribe()
+    const r = http.expectOne(`${base}/allegati/x`)
+    expect(r.request.responseType).toBe('blob')
+    r.flush(new Blob(['pdf']))
+    expect(scheda.location.href).toBe('blob:abc')
+    tick(60_000)
+    expect(revoca).toHaveBeenCalledWith('blob:abc')
+  }))
+
+  it('se lo scaricamento fallisce la scheda aperta si chiude', () => {
+    const scheda = { location: { href: '' }, close: jasmine.createSpy('close') }
+    spyOn(window, 'open').and.returnValue(scheda as unknown as Window)
+    let errore: unknown
+    service.apriAllegato('x').subscribe({ error: e => (errore = e) })
+    http
+      .expectOne(`${base}/allegati/x`)
+      .error(new ProgressEvent('error'), { status: 404, statusText: 'Not Found' })
+    expect(scheda.close).toHaveBeenCalled()
+    expect(errore).toBeTruthy()
+  })
+
+  it('il nome del file arriva al multipart', () => {
+    service
+      .rettificaPesata('p1', { pesoNuovoKg: 9, motivo: 'm' }, new Blob(['x']), 'foto.jpg')
+      .subscribe()
+    const r = http.expectOne(`${base}/pesate/p1/rettifiche`)
+    expect((r.request.body as FormData).get('allegato') as File).toEqual(
+      jasmine.objectContaining({ name: 'foto.jpg' })
+    )
+    r.flush({})
   })
 })

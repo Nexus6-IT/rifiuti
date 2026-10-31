@@ -195,7 +195,8 @@ describe('AutomezziComponent (DOM)', () => {
     qb('aut-tara-a1')!.click()
     fixture.detectChanges()
     const campo = document.getElementById('tara-valore') as HTMLInputElement
-    expect(campo.getAttribute('aria-labelledby')).toBe('tara-valore-etichetta tara-valore-aiuto')
+    expect(campo.getAttribute('aria-labelledby')).toBe('tara-valore-etichetta')
+    expect(campo.getAttribute('aria-describedby')).toBe('tara-valore-aiuto')
     expect(document.getElementById('tara-valore-aiuto')).not.toBeNull()
     incolla(campo, '12,5')
     pese.impostaTara.and.returnValue(of(automezzo()))
@@ -278,6 +279,7 @@ describe('AutomezziComponent (DOM)', () => {
     expect(pese.elencaAccessi).toHaveBeenCalledWith({ targa: 'AB123CD' })
     const sel = document.getElementById('tara-accesso') as HTMLSelectElement
     expect(sel.textContent).toContain('5/2026')
+    expect(sel.textContent).not.toContain('6/2026')
     sel.value = sel.options[1].value
     sel.dispatchEvent(new Event('change', { bubbles: true }))
     fixture.detectChanges()
@@ -296,5 +298,36 @@ describe('AutomezziComponent (DOM)', () => {
     fixture.detectChanges()
     expect(pese.impostaTara).toHaveBeenCalledOnceWith('a1', { pesataId: 'p9' })
     expect(q('tara-errore')?.textContent).toContain('Questa pesata non è del lato a vuoto.')
+  })
+
+  it('trasportatore non in elenco: testo esplicito; errore di caricamento visibile', () => {
+    registry.getTrasportatori.and.returnValue(
+      throwError(() => ({ error: { message: 'Servizio non disponibile.' } }))
+    )
+    apri(elenco([automezzo()]))
+    expect(q('aut-riga-a1')!.textContent).toContain('Trasportatore non in elenco')
+    expect(q('aut-errore-trasportatori')?.textContent).toContain('Servizio non disponibile.')
+  })
+
+  it('i pulsanti di origine tara espongono aria-pressed sul pulsante vero', () => {
+    apri(elenco([automezzo()]))
+    qb('aut-tara-a1')!.click()
+    fixture.detectChanges()
+    const b = q('tara-modo-dichiarata') as HTMLButtonElement
+    expect(b.tagName).toBe('BUTTON')
+    expect(b.getAttribute('aria-pressed')).toBe('true')
+    expect(q('tara-modo-pesata')!.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('"12.5" rifiutato: l\'input e aria-invalid e collegato al messaggio', () => {
+    apri(elenco([automezzo()]))
+    qb('aut-tara-a1')!.click()
+    fixture.detectChanges()
+    const campo = document.getElementById('tara-valore') as HTMLInputElement
+    incolla(campo, '12.5')
+    fixture.detectChanges()
+    expect(campo.getAttribute('aria-invalid')).toBe('true')
+    expect(campo.getAttribute('aria-describedby')).toBe('tara-valore-aiuto tara-valore-errore')
+    expect(document.getElementById('tara-valore-errore')?.textContent).toContain('virgola')
   })
 })

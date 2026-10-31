@@ -1,8 +1,11 @@
 import {
+  AfterViewInit,
   Directive,
   ElementRef,
   EventEmitter,
+  Input,
   NgZone,
+  OnChanges,
   OnDestroy,
   OnInit,
   Output,
@@ -24,13 +27,33 @@ export function controllaTestoPeso(testo: string): string | null {
 /**
  * Su `p-inputNumber` con locale it-IT: PrimeNG scarta in silenzio il punto digitato ("12.5"
  * diventa 125) e lo toglie dal testo incollato. Qui il punto non e' mai accettato come
- * decimale: il tasto viene bloccato (tranne il tastierino numerico, che PrimeNG converte nella
- * virgola), il testo incollato con un punto fuori posto viene scartato, e `rifiutato` emette
- * il messaggio da mostrare (null quando il campo torna valido).
+ * decimale, da qualunque strada arrivi:
+ * - `keydown` del tasto punto (tranne il tastierino numerico, che PrimeNG converte in virgola);
+ * - `paste`, e `beforeinput` (tastiere Android, trascinamento `insertFromDrop`), dove si valuta
+ *   il testo risultante: un punto fuori dal raggruppamento delle migliaia viene scartato;
+ * - composizione (non annullabile): su `input` se il valore nativo ha un punto fuori posto si
+ *   ripristina l'ultimo valore valido.
+ * `rifiutato` emette il messaggio da mostrare e `null` quando il campo torna valido. Imposta
+ * anche `aria-describedby` (aiuto + errore) e `aria-invalid` sull'input interno, che PrimeNG
+ * non espone.
  */
 @Directive({ selector: 'p-inputNumber[appPesoIt]', standalone: true })
-export class PesoItalianoDirective implements OnInit, OnDestroy {
+export class PesoItalianoDirective implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   @Output() rifiutato = new EventEmitter<string | null>()
+  /** Id del testo di aiuto, collegato con aria-describedby. */
+  @Input() pesoAiutoId: string | null = null
+  /** Id del messaggio d'errore visibile, o null se il campo non e' in errore. */
+  @Input() pesoErroreId: string | null = null
+
+  private ultimoValido = ''
+
+  private interno(): HTMLInputElement | null {
+    return this.host.nativeElement.querySelector('input')
+  }
+
+  private readonly alFuoco = (): void => {
+    this.ultimoValido = this.interno()?.value ?? ''
+  }
 
   private readonly alTasto = (e: Event): void => {
     const k = e as KeyboardEvent
@@ -39,7 +62,7 @@ export class PesoItalianoDirective implements OnInit, OnDestroy {
       k.preventDefault()
       k.stopPropagation()
       this.segnala(MSG_PUNTO_DECIMALE)
-    } else if (/^\d$/.test(k.key) || k.key === ',') {
+    } else if (/^\d$/.test(k.key) || k.key === ',' || k.key === 'Backspace' || k.key === 'Delete') {
       this.segnala(null)
     }
   }
@@ -56,8 +79,38 @@ export class PesoItalianoDirective implements OnInit, OnDestroy {
     }
   }
 
-  private segnala(m: string | null): void {
-    this.zone.run(() => this.rifiutato.emit(m))
+  /** Inserimenti nativi (tastiere che non mandano keydown utili, trascinamento). */
+  private readonly primaDellInput = (e: Event): void => {
+    const ie = e as InputEvent
+    if (ie.inputType !== 'insertText' && ie.inputType !== 'insertFromDrop') return
+    const testo = ie.data ?? ie.dataTransfer?.getData('text') ?? ''
+    if (!testo.includes('.')) return
+    const campo = this.interno()
+    const valore = campo?.value ?? ''
+    const da = campo?.selectionStart ?? valore.length
+    const a = campo?.selectionEnd ?? valore.length
+    const risultante = valore.slice(0, da) + testo + valore.slice(a)
+    const errore = controllaTestoPeso(risultante)
+    if (errore && ie.cancelable) {
+      e.preventDefault()
+      e.stopPropagation()
+      this.segnala(errore)
+    }
+  }
+
+  /** Composizione: l'evento non si annulla, quindi si ripristina il valore. */
+  private readonly alInput = (e: Event): void => {
+    const campo = this.interno()
+    if (!campo || e.target !== campo) return
+    const errore = controllaTestoPeso(campo.value)
+    if (errore) {
+      campo.value = this.ultimoValido
+      e.stopPropagation()
+      this.segnala(errore)
+    } else {
+      this.ultimoValido = campo.value
+      this.segnala(null)
+    }
   }
 
   constructor(
@@ -65,16 +118,46 @@ export class PesoItalianoDirective implements OnInit, OnDestroy {
     private readonly zone: NgZone
   ) {}
 
+  private segnala(m: string | null): void {
+    this.zone.run(() => this.rifiutato.emit(m))
+  }
+
   ngOnInit(): void {
     // Fase di cattura: deve precedere i gestori interni dell'input di PrimeNG.
+    const el = this.host.nativeElement
     this.zone.runOutsideAngular(() => {
-      this.host.nativeElement.addEventListener('keydown', this.alTasto, true)
-      this.host.nativeElement.addEventListener('paste', this.alIncolla, true)
+      el.addEventListener('focusin', this.alFuoco, true)
+      el.addEventListener('keydown', this.alTasto, true)
+      el.addEventListener('paste', this.alIncolla, true)
+      el.addEventListener('beforeinput', this.primaDellInput, true)
+      el.addEventListener('input', this.alInput, true)
     })
   }
 
+  ngAfterViewInit(): void {
+    this.applicaAria()
+  }
+
+  ngOnChanges(): void {
+    this.applicaAria()
+  }
+
+  private applicaAria(): void {
+    const campo = this.interno()
+    if (!campo) return
+    const ids = [this.pesoAiutoId, this.pesoErroreId].filter(Boolean).join(' ')
+    if (ids) campo.setAttribute('aria-describedby', ids)
+    else campo.removeAttribute('aria-describedby')
+    if (this.pesoErroreId) campo.setAttribute('aria-invalid', 'true')
+    else campo.removeAttribute('aria-invalid')
+  }
+
   ngOnDestroy(): void {
-    this.host.nativeElement.removeEventListener('keydown', this.alTasto, true)
-    this.host.nativeElement.removeEventListener('paste', this.alIncolla, true)
+    const el = this.host.nativeElement
+    el.removeEventListener('focusin', this.alFuoco, true)
+    el.removeEventListener('keydown', this.alTasto, true)
+    el.removeEventListener('paste', this.alIncolla, true)
+    el.removeEventListener('beforeinput', this.primaDellInput, true)
+    el.removeEventListener('input', this.alInput, true)
   }
 }

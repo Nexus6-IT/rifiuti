@@ -69,6 +69,15 @@ type Modo = 'dichiarata' | 'pesata'
       {{ e }}
     </p>
 
+    <p
+      *ngIf="erroreTrasportatori() as e"
+      role="alert"
+      class="field-error"
+      data-testid="aut-errore-trasportatori"
+    >
+      {{ e }}
+    </p>
+
     <p-table [value]="righe()" styleClass="p-datatable-sm" data-testid="aut-tabella">
       <ng-template pTemplate="header">
         <tr>
@@ -209,6 +218,13 @@ type Modo = 'dichiarata' | 'pesata'
             formControlName="trasportatoreId"
           >
             <option value="">Nessuno</option>
+            <option
+              *ngIf="trasportatoreAttualeFuoriElenco() as id"
+              [value]="id"
+              data-testid="aut-trasportatore-fuori-elenco"
+            >
+              Trasportatore non in elenco (attuale)
+            </option>
             <option *ngFor="let t of trasportatori()" [value]="t.id">{{ t.ragioneSociale }}</option>
           </select>
         </div>
@@ -260,25 +276,27 @@ type Modo = 'dichiarata' | 'pesata'
       closeAriaLabel="Chiudi la finestra della tara"
     >
       <div role="group" aria-label="Origine della tara" class="aut-modi">
-        <p-button
+        <button
           *ngIf="puoRettificare()"
-          label="Dichiarata"
-          [outlined]="modoTara() !== 'dichiarata'"
-          size="small"
-          (onClick)="scegliModo('dichiarata')"
+          type="button"
+          class="p-button p-component p-button-sm"
+          [class.p-button-outlined]="modoTara() !== 'dichiarata'"
+          (click)="scegliModo('dichiarata')"
           data-testid="tara-modo-dichiarata"
           [attr.aria-pressed]="modoTara() === 'dichiarata'"
-          ariaLabel="Tara dichiarata"
-        ></p-button>
-        <p-button
-          label="Da una pesata"
-          [outlined]="modoTara() !== 'pesata'"
-          size="small"
-          (onClick)="scegliModo('pesata')"
+        >
+          Dichiarata
+        </button>
+        <button
+          type="button"
+          class="p-button p-component p-button-sm"
+          [class.p-button-outlined]="modoTara() !== 'pesata'"
+          (click)="scegliModo('pesata')"
           data-testid="tara-modo-pesata"
           [attr.aria-pressed]="modoTara() === 'pesata'"
-          ariaLabel="Tara da una pesata"
-        ></p-button>
+        >
+          Da una pesata
+        </button>
       </div>
 
       <ng-container *ngIf="modoTara() === 'dichiarata'">
@@ -298,17 +316,20 @@ type Modo = 'dichiarata' | 'pesata'
             [min]="0.01"
             [max]="taraMassima"
             ariaRequired="true"
-            ariaLabelledBy="tara-valore-etichetta tara-valore-aiuto"
+            ariaLabelledBy="tara-valore-etichetta"
+            pesoAiutoId="tara-valore-aiuto"
+            [pesoErroreId]="erroreTaraPeso() ? 'tara-valore-errore' : null"
             styleClass="w-full"
           ></p-inputNumber>
           <small id="tara-valore-aiuto" class="field-hint"
             >Peso a vuoto del mezzo, con la virgola per i decimali (esempio 12500,5), al massimo due
-            decimali.</small
+            decimali. Il punto separa solo le migliaia: 1.250 = milleduecentocinquanta.</small
           >
           <small
             *ngIf="erroreTaraPeso() as e"
             class="field-error"
             role="alert"
+            id="tara-valore-errore"
             data-testid="tara-peso-errore"
             >{{ e }}</small
           >
@@ -452,6 +473,7 @@ export class AutomezziComponent implements OnInit {
   readonly caricamento = signal(false)
   readonly erroreElenco = signal<string | null>(null)
   readonly trasportatori = signal<{ id: string; ragioneSociale: string }[]>([])
+  readonly erroreTrasportatori = signal<string | null>(null)
   readonly salvataggio = signal(false)
 
   readonly dialogAut = signal<{ modifica: Automezzo | null } | null>(null)
@@ -487,9 +509,20 @@ export class AutomezziComponent implements OnInit {
   ngOnInit(): void {
     this.carica()
     this.registry.getTrasportatori(1, 100).subscribe({
-      next: r =>
-        this.trasportatori.set(r.items.map(t => ({ id: t.id, ragioneSociale: t.ragioneSociale }))),
-      error: () => this.trasportatori.set([]),
+      next: r => {
+        this.trasportatori.set(r.items.map(t => ({ id: t.id, ragioneSociale: t.ragioneSociale })))
+        if (r.total > r.items.length) {
+          this.erroreTrasportatori.set(
+            'Elenco dei trasportatori incompleto: alcuni non compaiono nella scelta.'
+          )
+        }
+      },
+      error: err => {
+        this.trasportatori.set([])
+        this.erroreTrasportatori.set(
+          messaggioErrorePese(err, 'Impossibile leggere i trasportatori.')
+        )
+      },
     })
   }
 
@@ -512,7 +545,14 @@ export class AutomezziComponent implements OnInit {
 
   nomeTrasportatore(id: string | null): string {
     if (!id) return '—'
-    return this.trasportatori().find(t => t.id === id)?.ragioneSociale ?? '—'
+    return (
+      this.trasportatori().find(t => t.id === id)?.ragioneSociale ?? 'Trasportatore non in elenco'
+    )
+  }
+
+  trasportatoreAttualeFuoriElenco(): string | null {
+    const id = this.dialogAut()?.modifica?.trasportatoreId ?? null
+    return id && !this.trasportatori().some(t => t.id === id) ? id : null
   }
 
   vecchia(a: Automezzo): boolean {
@@ -619,7 +659,9 @@ export class AutomezziComponent implements OnInit {
         this.caricamentoTara.set(true)
         this.pese.elencaAccessi({ targa: a.targa }).subscribe({
           next: e => {
-            this.accessiTara.set(e.righe.filter(r => r.stato !== 'ANNULLATO'))
+            this.accessiTara.set(
+              e.righe.filter(r => r.stato !== 'ANNULLATO' && r.targa === a.targa)
+            )
             this.caricamentoTara.set(false)
           },
           error: err => {

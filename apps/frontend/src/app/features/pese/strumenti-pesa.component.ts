@@ -25,13 +25,18 @@ import {
 import { PesoItalianoDirective } from './peso-it.directive'
 import { PeseService, StrumentoPesa } from './pese.service'
 
-const MASSIMO = 99_999_999.99
+// Come le colonne: portata Decimal(10,2), divisione Decimal(8,3).
+const MASSIMO_PORTATA = 99_999_999.99
+const MASSIMO_DIVISIONE = 99_999.999
 
-const decimaliAl2: ValidatorFn = c => {
-  const v = c.value as number | null
-  if (v == null) return null
-  return Math.abs(v * 100 - Math.round(v * 100)) < 1e-6 ? null : { decimali: true }
-}
+const decimaliMax =
+  (n: number): ValidatorFn =>
+  c => {
+    const v = c.value as number | null
+    if (v == null) return null
+    const f = 10 ** n
+    return Math.abs(v * f - Math.round(v * f)) < 1e-6 ? null : { decimali: n }
+  }
 
 @Component({
   selector: 'app-pese-strumenti',
@@ -212,17 +217,23 @@ const decimaliAl2: ValidatorFn = c => {
               [minFractionDigits]="0"
               [maxFractionDigits]="2"
               [min]="0.01"
-              [max]="massimo"
-              ariaLabelledBy="str-portata-etichetta str-portata-aiuto"
+              [max]="massimoPortata"
+              ariaLabelledBy="str-portata-etichetta"
+              pesoAiutoId="str-portata-aiuto"
+              [pesoErroreId]="
+                erroreNumero('portataMaxKg', rifiutoPortata()) ? 'str-portata-errore' : null
+              "
               styleClass="w-full"
             ></p-inputNumber>
             <small id="str-portata-aiuto" class="field-hint"
-              >Con la virgola per i decimali. Facoltativa.</small
+              >Con la virgola per i decimali (al massimo due). Il punto separa solo le migliaia:
+              1.250 = milleduecentocinquanta. Facoltativa.</small
             >
             <small
               *ngIf="erroreNumero('portataMaxKg', rifiutoPortata()) as e"
               class="field-error"
               role="alert"
+              id="str-portata-errore"
               data-testid="str-portata-errore"
               >{{ e }}</small
             >
@@ -237,19 +248,25 @@ const decimaliAl2: ValidatorFn = c => {
               mode="decimal"
               locale="it-IT"
               [minFractionDigits]="0"
-              [maxFractionDigits]="2"
-              [min]="0.01"
-              [max]="massimo"
-              ariaLabelledBy="str-divisione-etichetta str-divisione-aiuto"
+              [maxFractionDigits]="3"
+              [min]="0.001"
+              [max]="massimoDivisione"
+              ariaLabelledBy="str-divisione-etichetta"
+              pesoAiutoId="str-divisione-aiuto"
+              [pesoErroreId]="
+                erroreNumero('divisioneKg', rifiutoDivisione()) ? 'str-divisione-errore' : null
+              "
               styleClass="w-full"
             ></p-inputNumber>
             <small id="str-divisione-aiuto" class="field-hint"
-              >Esempio 0,5. Un peso non multiplo della divisione genera un avviso.</small
+              >Esempio 0,5, al massimo tre decimali. Il punto separa solo le migliaia: 1.250 =
+              milleduecentocinquanta. Un peso non multiplo della divisione genera un avviso.</small
             >
             <small
               *ngIf="erroreNumero('divisioneKg', rifiutoDivisione()) as e"
               class="field-error"
               role="alert"
+              id="str-divisione-errore"
               data-testid="str-divisione-errore"
               >{{ e }}</small
             >
@@ -371,7 +388,8 @@ export class StrumentiPesaComponent implements OnInit {
   readonly rifiutoDivisione = signal<string | null>(null)
 
   readonly oggi = giornoRoma()
-  readonly massimo = MASSIMO
+  readonly massimoPortata = MASSIMO_PORTATA
+  readonly massimoDivisione = MASSIMO_DIVISIONE
   readonly kg = formattaKg
   readonly data = dataItalianaDa
 
@@ -381,8 +399,8 @@ export class StrumentiPesaComponent implements OnInit {
     modello: new FormControl('', { nonNullable: true }),
     matricola: new FormControl('', { nonNullable: true }),
     registroId: new FormControl('', { nonNullable: true }),
-    portataMaxKg: new FormControl<number | null>(null, [decimaliAl2]),
-    divisioneKg: new FormControl<number | null>(null, [decimaliAl2]),
+    portataMaxKg: new FormControl<number | null>(null, [decimaliMax(2)]),
+    divisioneKg: new FormControl<number | null>(null, [decimaliMax(3)]),
     dataUltimaVerificazione: new FormControl('', { nonNullable: true }),
     attivo: new FormControl(true, { nonNullable: true }),
   })
@@ -426,8 +444,12 @@ export class StrumentiPesaComponent implements OnInit {
   erroreNumero(campo: 'portataMaxKg' | 'divisioneKg', rifiuto: string | null): string | null {
     if (rifiuto) return rifiuto
     const c = this.form.controls[campo]
-    if (c.hasError('decimali')) return 'Al massimo due decimali.'
-    if (this.tentato() && c.value != null && c.value < 0.01) return 'Deve essere maggiore di zero.'
+    if (c.hasError('decimali')) {
+      return campo === 'divisioneKg' ? 'Al massimo tre decimali.' : 'Al massimo due decimali.'
+    }
+    const minimo = campo === 'divisioneKg' ? 0.001 : 0.01
+    if (this.tentato() && c.value != null && c.value < minimo)
+      return 'Deve essere maggiore di zero.'
     return null
   }
 

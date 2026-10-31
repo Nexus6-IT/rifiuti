@@ -18,6 +18,8 @@ import { PesoItalianoDirective, MSG_PUNTO_DECIMALE, controllaTestoPeso } from '.
       [minFractionDigits]="0"
       [maxFractionDigits]="2"
       ariaLabelledBy="l-peso"
+      pesoAiutoId="aiuto-peso"
+      [pesoErroreId]="messaggio ? 'err-peso' : null"
       (rifiutato)="messaggio = $event"
     ></p-inputNumber>
   `,
@@ -108,5 +110,74 @@ describe('PesoItalianoDirective (eventi reali)', () => {
       new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
     )
     expect(fixture.componentInstance.peso.value).toBe(1250)
+  })
+
+  it('beforeinput con "." (tastiere Android) e annullato e segnalato', () => {
+    const e = new InputEvent('beforeinput', {
+      data: '.',
+      inputType: 'insertText',
+      bubbles: true,
+      cancelable: true,
+    })
+    input.dispatchEvent(e)
+    expect(e.defaultPrevented).toBeTrue()
+    expect(fixture.componentInstance.messaggio).toBe(MSG_PUNTO_DECIMALE)
+  })
+
+  it('beforeinput da trascinamento: "12.5" rifiutato, "1.250" accettato', () => {
+    const drop = (testo: string) => {
+      const dt = new DataTransfer()
+      dt.setData('text', testo)
+      const e = new InputEvent('beforeinput', {
+        inputType: 'insertFromDrop',
+        dataTransfer: dt,
+        bubbles: true,
+        cancelable: true,
+      })
+      input.dispatchEvent(e)
+      return e
+    }
+    expect(drop('12.5').defaultPrevented).toBeTrue()
+    fixture.componentInstance.messaggio = null
+    expect(drop('1.250').defaultPrevented).toBeFalse()
+    expect(fixture.componentInstance.messaggio).toBeNull()
+  })
+
+  it('composizione: il valore nativo con "." viene ripristinato e segnalato', () => {
+    input.value = '12'
+    input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    input.value = '12.5'
+    input.dispatchEvent(
+      new InputEvent('input', { data: '.', inputType: 'insertCompositionText', bubbles: true })
+    )
+    expect(input.value).toBe('12')
+    expect(fixture.componentInstance.messaggio).toBe(MSG_PUNTO_DECIMALE)
+    input.value = '125'
+    input.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertCompositionText', bubbles: true })
+    )
+    expect(fixture.componentInstance.messaggio).toBeNull()
+  })
+
+  it('un valore valido (cancellazione) azzera il messaggio', () => {
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '.', code: 'Period', bubbles: true, cancelable: true })
+    )
+    expect(fixture.componentInstance.messaggio).toBe(MSG_PUNTO_DECIMALE)
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace', bubbles: true })
+    )
+    expect(fixture.componentInstance.messaggio).toBeNull()
+  })
+
+  it("imposta aria-describedby e aria-invalid sull'input interno", () => {
+    expect(input.getAttribute('aria-describedby')).toBe('aiuto-peso')
+    expect(input.hasAttribute('aria-invalid')).toBeFalse()
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '.', code: 'Period', bubbles: true, cancelable: true })
+    )
+    fixture.detectChanges()
+    expect(input.getAttribute('aria-describedby')).toBe('aiuto-peso err-peso')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
   })
 })

@@ -156,4 +156,15 @@ describe('StrumentiPesaComponent (DOM)', () => {
     expect(q('str-errore')?.textContent).toContain('La divisione deve essere maggiore di zero.')
     expect(q('str-errore')?.getAttribute('role')).toBe('alert')
   })
+
+  it('la divisione accetta tre decimali ("0,001"), la portata solo due', () => {
+    apri(elenco([]))
+    qb('str-nuovo')!.click()
+    fixture.detectChanges()
+    scrivi(document.getElementById('str-descrizione') as HTMLInputElement, 'Pesa 3')
+    incolla(document.getElementById('str-divisione') as HTMLInputElement, '0,001')
+    pese.creaStrumento.and.returnValue(of(strumento()))
+    qb('str-salva')!.click()
+    expect(pese.creaStrumento.calls.mostRecent().args[0].divisioneKg).toBe(0.001)
+  })
 })

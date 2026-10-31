@@ -306,20 +306,25 @@ export class PeseService {
   dettaglioAccesso(id: string): Observable<AccessoVista> {
     return this.http.get<AccessoVista>(`${this.API_URL}/accessi/${id}`)
   }
-  apriAccesso(dati: DatiAperturaAccesso, allegato?: Blob | null): Observable<AccessoVista> {
+  apriAccesso(
+    dati: DatiAperturaAccesso,
+    allegato?: Blob | null,
+    nomeFile?: string
+  ): Observable<AccessoVista> {
     return this.http.post<AccessoVista>(
       `${this.API_URL}/accessi`,
-      costruisciMultipart(dati, allegato)
+      costruisciMultipart(dati, allegato, nomeFile)
     )
   }
   secondaPesata(
     accessoId: string,
     dati: DatiSecondaPesata,
-    allegato?: Blob | null
+    allegato?: Blob | null,
+    nomeFile?: string
   ): Observable<AccessoVista> {
     return this.http.post<AccessoVista>(
       `${this.API_URL}/accessi/${accessoId}/seconda-pesata`,
-      costruisciMultipart(dati, allegato)
+      costruisciMultipart(dati, allegato, nomeFile)
     )
   }
   annullaAccesso(accessoId: string, motivo: string): Observable<AccessoVista> {
@@ -328,11 +333,12 @@ export class PeseService {
   rettificaPesata(
     pesataId: string,
     dati: DatiRettifica,
-    allegato?: Blob | null
+    allegato?: Blob | null,
+    nomeFile?: string
   ): Observable<AccessoVista> {
     return this.http.post<AccessoVista>(
       `${this.API_URL}/pesate/${pesataId}/rettifiche`,
-      costruisciMultipart(dati, allegato)
+      costruisciMultipart(dati, allegato, nomeFile)
     )
   }
   collega(accessoId: string, dati: DatiCollegamento): Observable<AccessoVista> {
@@ -344,8 +350,37 @@ export class PeseService {
     })
   }
 
-  /** URL dell'allegato, da aprire in una nuova scheda (il cookie di sessione autentica). */
-  urlAllegato(id: string): string {
-    return `${this.API_URL}/allegati/${id}`
+  /**
+   * Scarica l'allegato con HttpClient: l'autenticazione e' Bearer piu' azienda selezionata
+   * (interceptor), quindi un link diretto in una nuova scheda non sarebbe autenticato.
+   */
+  scaricaAllegato(id: string): Observable<Blob> {
+    return this.http.get(`${this.API_URL}/allegati/${id}`, { responseType: 'blob' })
+  }
+
+  /**
+   * Apre l'allegato in una nuova scheda da un object URL, revocato dopo un minuto. Da chiamare
+   * dentro il gestore del click: la scheda si apre subito (altrimenti il blocco popup la
+   * fermerebbe) e riceve l'indirizzo a scaricamento finito; in caso di errore si chiude.
+   */
+  apriAllegato(id: string): Observable<void> {
+    return new Observable<void>(osservatore => {
+      const scheda = window.open('', '_blank')
+      const sub = this.scaricaAllegato(id).subscribe({
+        next: blob => {
+          const url = URL.createObjectURL(blob)
+          if (scheda) scheda.location.href = url
+          else window.open(url, '_blank')
+          setTimeout(() => URL.revokeObjectURL(url), 60_000)
+          osservatore.next()
+          osservatore.complete()
+        },
+        error: err => {
+          scheda?.close()
+          osservatore.error(err)
+        },
+      })
+      return () => sub.unsubscribe()
+    })
   }
 }

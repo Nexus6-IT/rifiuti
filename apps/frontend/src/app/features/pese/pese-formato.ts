@@ -30,20 +30,26 @@ export function badgePesata(p: PesataVista): string[] {
 }
 
 const FUSO = 'Europe/Rome'
-const formatoOffset = new Intl.DateTimeFormat('en-US', {
+// Campi dell'ora di Roma a un istante dato; niente `longOffset` (non ovunque supportato).
+const formatoCampiRoma = new Intl.DateTimeFormat('en-US', {
   timeZone: FUSO,
-  timeZoneName: 'longOffset',
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
 })
 
 /** Offset di Europe/Rome in minuti all'istante dato (+60, +120). */
 function offsetRomaMinuti(istanteMs: number): number {
-  const nome =
-    formatoOffset.formatToParts(new Date(istanteMs)).find(p => p.type === 'timeZoneName')?.value ??
-    'GMT'
-  const m = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/.exec(nome)
-  if (!m) throw new Error(`Offset non riconosciuto: ${nome}`)
-  if (!m[1]) return 0
-  return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0))
+  const c: Record<string, number> = {}
+  for (const p of formatoCampiRoma.formatToParts(new Date(istanteMs))) {
+    if (p.type !== 'literal') c[p.type] = Number(p.value)
+  }
+  const comeUtc = Date.UTC(c['year'], c['month'] - 1, c['day'], c['hour'], c['minute'], c['second'])
+  return Math.round((comeUtc - Math.floor(istanteMs / 1000) * 1000) / 60_000)
 }
 
 const due = (n: number) => String(n).padStart(2, '0')
@@ -51,6 +57,8 @@ const due = (n: number) => String(n).padStart(2, '0')
 /**
  * Giorno (campi locali di `data`) e ora "HH:mm" letti come ora di Roma, in ISO 8601 con
  * l'offset di quel momento (+01:00 / +02:00), indipendente dal fuso del browser.
+ * Casi di cambio d'ora: un'ora inesistente (29/03 02:30) prende +01:00, cioe' l'istante delle
+ * 03:30 legali; un'ora ripetuta (25/10 02:30) prende la seconda occorrenza (+01:00).
  */
 export function oraLocaleInIso(data: Date, ora: string): string {
   const m = /^(\d{2}):(\d{2})$/.exec(ora)
@@ -68,14 +76,18 @@ export function oraLocaleInIso(data: Date, ora: string): string {
 }
 
 export const SOGLIA_RIDIMENSIONAMENTO_BYTE = 1_500_000
+export const LIMITE_ALLEGATO_BYTE = 4 * 1024 * 1024
 export const LATO_LUNGO_PX = 2000
 export const QUALITA_JPEG = 0.85
+export const MSG_TIPO_ALLEGATO = 'Sono ammessi solo foto JPEG o PNG e documenti PDF.'
+export const MSG_ALLEGATO_GRANDE = "L'allegato supera i 4 MB."
 
 /** Sostituibile nei test: il browser reale usa `motoreBrowser`. */
 export interface MotoreImmagine {
   ridimensiona(file: File, latoLungoPx: number, qualita: number): Promise<Blob>
 }
 
+/** La conversione via canvas ricodifica l'immagine e ne elimina l'EXIF (posizione, orientamento). */
 export const motoreBrowser: MotoreImmagine = {
   async ridimensiona(file, latoLungoPx, qualita) {
     const bitmap = await createImageBitmap(file)
@@ -107,6 +119,35 @@ export async function ridimensionaImmagine(
 ): Promise<Blob> {
   if (!file.type.startsWith('image/') || file.size <= SOGLIA_RIDIMENSIONAMENTO_BYTE) return file
   return motore.ridimensiona(file, LATO_LUNGO_PX, QUALITA_JPEG)
+}
+
+const TIPI_IMMAGINE = ['image/jpeg', 'image/png']
+
+/** Nome con l'estensione giusta per il tipo (la ricodifica produce un JPEG). */
+function nomeConEstensione(nome: string, estensione: string): string {
+  const base = nome.replace(/\.[^./\\]*$/, '') || 'allegato'
+  return `${base}.${estensione}`
+}
+
+/**
+ * Prepara l'allegato per l'invio con le stesse regole del backend: solo JPEG, PNG e PDF (altro
+ * -> errore italiano subito), foto ridimensionate se grandi, al massimo 4 MiB dopo la
+ * preparazione (anche per i PDF). Restituisce il blob e il nome da inviare.
+ */
+export async function preparaAllegato(
+  file: File,
+  motore: MotoreImmagine = motoreBrowser
+): Promise<{ blob: Blob; nomeFile: string }> {
+  const pdf = file.type === 'application/pdf'
+  if (!pdf && !TIPI_IMMAGINE.includes(file.type)) throw new Error(MSG_TIPO_ALLEGATO)
+  let blob: Blob = file
+  let nomeFile = file.name
+  if (!pdf && file.size > SOGLIA_RIDIMENSIONAMENTO_BYTE) {
+    blob = await ridimensionaImmagine(file, motore)
+    if (blob !== file) nomeFile = nomeConEstensione(file.name, 'jpg')
+  }
+  if (blob.size > LIMITE_ALLEGATO_BYTE) throw new Error(MSG_ALLEGATO_GRANDE)
+  return { blob, nomeFile }
 }
 
 const CARATTERI_TARGA = /^[A-Za-z0-9\s.-]+$/
