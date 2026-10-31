@@ -333,4 +333,54 @@ describe('traduciAnnotazione', () => {
       ok(annotazione({ riferimentiCarico: rif })).riferimenti.riferimento_operazione
     ).toBeUndefined()
   })
+
+  describe('ritocchi', () => {
+    it('CER pericoloso con classiPericolo di soli separatori: senza HP', () => {
+      for (const v of [',', ' ; ', ' , ; ']) {
+        expect(ko(annotazione({ cerCode: '16 05 06*', classiPericolo: v })).join(' ')).toMatch(
+          /rifiuto pericoloso senza caratteristiche di pericolo/i
+        )
+      }
+      // HP non traducibile: solo il suo motivo, non anche "senza caratteristiche".
+      const motivi = ko(annotazione({ cerCode: '16 05 06*', classiPericolo: 'XY' }))
+      expect(motivi.join(' ')).not.toMatch(/senza caratteristiche/i)
+    })
+
+    it('verso fissato dalla causale: DT, NP, RE, T* sono carichi; I e aT scarichi', () => {
+      for (const codice of ['DT', 'NP', 'RE']) {
+        expect(ko(annotazione({ codiceRentri: codice, verso: 'SCARICO' })).join(' ')).toMatch(
+          /carico/i
+        )
+      }
+      expect(ko(annotazione({ codiceRentri: 'I', verso: 'CARICO' })).join(' ')).toMatch(/scarico/i)
+      ok(annotazione({ codiceRentri: 'NP' }))
+      ok(annotazione({ codiceRentri: 'I', verso: 'SCARICO' }))
+    })
+
+    it('aT/T* con FIR senza numero: motivo, anche con la data di inizio', () => {
+      const f = fir({ numeroFir: null })
+      expect(ko(annotazione({ codiceRentri: 'T*', fir: f })).join(' ')).toMatch(/numero del FIR/i)
+      expect(ko(annotazione({ codiceRentri: 'aT', verso: 'SCARICO', fir: f })).join(' ')).toMatch(
+        /numero del FIR/i
+      )
+      expect(ko(annotazione({ codiceRentri: 'T*', fir: fir({ numeroFir: '  ' }) })).length).toBe(1)
+    })
+
+    it('quantità oltre il massimo del contratto: motivo', () => {
+      expect(() => traduciQuantita(10_000_000_000, 'KG')).toThrow()
+      expect(ko(annotazione({ quantita: 10_000_000, unit: 'T' })).join(' ')).toMatch(/quantità/i)
+      expect(traduciQuantita(9_999_999_999.9999, 'KG').valore).toBe(9_999_999_999.9999)
+    })
+
+    it('peso verificato a destino: finito, non negativo, a 4 decimali', () => {
+      const base = { codiceRentri: 'aT', verso: 'SCARICO' as const }
+      const c = ok(annotazione({ ...base, fir: fir({ pesoVerificatoDestinoKg: 95.123456 }) }))
+      expect(c.esito.peso_verificato_destino).toBe(95.1235)
+      for (const peso of [-1, Number.NaN, Number.POSITIVE_INFINITY, 10_000_000_000]) {
+        expect(
+          ko(annotazione({ ...base, fir: fir({ pesoVerificatoDestinoKg: peso }) })).join(' ')
+        ).toMatch(/peso verificato/i)
+      }
+    })
+  })
 })

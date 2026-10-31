@@ -69,7 +69,7 @@ type ParteCompilata =
 
 interface RegolaCausale {
   supportata: boolean
-  /** Verso imposto dalla causale, se la causale lo implica con certezza. */
+  /** Verso fissato dal catalogo (CHECK `causali_registro_codice_rentri_verso`) e dal contratto. */
   verso?: 'CARICO' | 'SCARICO'
   /** Parti che richiedono un FIR e i loro dati (altrimenti motivo). */
   richiede: ReadonlyArray<'produttore' | 'destinatario' | 'trasportatore'>
@@ -77,7 +77,10 @@ interface RegolaCausale {
   compila: readonly ParteCompilata[]
 }
 
-const NESSUNA: RegolaCausale = { supportata: true, richiede: [], compila: [] }
+const MAX_QUANTITA = 9_999_999_999.9999
+const arrotonda4 = (x: number) => Math.round(x * 1e4) / 1e4
+
+const NESSUNA: RegolaCausale = { supportata: true, verso: 'CARICO', richiede: [], compila: [] }
 const NON_SUPPORTATA: RegolaCausale = { supportata: false, richiede: [], compila: [] }
 
 /** Parti per causale RENTRI (D4): una tabella, non `switch` sparsi. */
@@ -85,7 +88,7 @@ const REGOLE_CAUSALE: Readonly<Record<string, RegolaCausale>> = {
   DT: NESSUNA,
   NP: NESSUNA,
   RE: NESSUNA,
-  I: { supportata: true, richiede: [], compila: ['destinatoAttivita'] },
+  I: { supportata: true, verso: 'SCARICO', richiede: [], compila: ['destinatoAttivita'] },
   'T*': {
     supportata: true,
     verso: 'CARICO',
@@ -137,7 +140,15 @@ export function traduciQuantita(
   unit: string
 ): { valore: number; unita_misura: 'kg' | 'l' } {
   const u = (unit ?? '').trim().toUpperCase()
-  const tondo = (x: number) => Math.round(x * 1e4) / 1e4
+  const tondo = (x: number) => {
+    const r = arrotonda4(x)
+    if (r > MAX_QUANTITA) {
+      throw new ValoreNonTraducibilePerRentriError('quantita', String(q), [
+        'al massimo 9999999999.9999',
+      ])
+    }
+    return r
+  }
   if (!Number.isFinite(q) || q < 0) {
     throw new ValoreNonTraducibilePerRentriError('quantita', String(q), ['numero >= 0'])
   }
@@ -181,20 +192,22 @@ function rifiuto(a: AnnotazionePerRentri, regola: RegolaCausale | undefined, mot
     motivi.push(
       err.campo === 'unita_misura'
         ? `Unità di misura "${a.unit}" non trasmettibile a RENTRI (ammesse: kg, t, l, m3).`
-        : 'Quantità non valida.'
+        : 'Quantità non valida o oltre il massimo ammesso da RENTRI.'
     )
   }
 
   let hp: string[] = []
+  let hpNonTraducibile = false
   try {
     hp = traduciClassiPericolo(a.classiPericolo)
   } catch (e) {
+    hpNonTraducibile = true
     motivi.push(
       `Caratteristica di pericolo non traducibile: "${(e as ValoreNonTraducibilePerRentriError).valoreRicevuto}".`
     )
   }
   if (hp.length > 0) out.caratteristiche_pericolo = hp
-  else if (a.cerCode.includes('*') && !a.classiPericolo?.trim()) {
+  else if (a.cerCode.includes('*') && !hpNonTraducibile) {
     motivi.push('Rifiuto pericoloso senza caratteristiche di pericolo.')
   }
 
@@ -312,19 +325,25 @@ function traduciMovimento(
       }
       if (regola.compila.includes('integrazioneFir')) {
         const numero = fir.numeroFir?.trim()
-        if (numero && numero.length > 20) motivi.push('Il numero del FIR supera i 20 caratteri.')
-        const integrazione = {
-          ...(numero && numero.length <= 20 ? { numero_fir: numero } : {}),
-          ...(fir.dataInizioTrasporto ? { data_inizio_trasporto: fir.dataInizioTrasporto } : {}),
+        if (!numero) motivi.push('Il FIR collegato non ha il numero del FIR.')
+        else if (numero.length > 20) motivi.push('Il numero del FIR supera i 20 caratteri.')
+        else {
+          corpo.integrazione_fir = {
+            numero_fir: numero,
+            ...(fir.dataInizioTrasporto ? { data_inizio_trasporto: fir.dataInizioTrasporto } : {}),
+          }
         }
-        if (Object.keys(integrazione).length > 0) corpo.integrazione_fir = integrazione
       }
       if (regola.compila.includes('esito')) {
+        const peso = fir.pesoVerificatoDestinoKg
+        const pesoValido =
+          peso !== null && Number.isFinite(peso) && peso >= 0 && arrotonda4(peso) <= MAX_QUANTITA
+        if (peso !== null && !pesoValido) {
+          motivi.push('Il peso verificato a destino non è valido.')
+        }
         const esito = {
           ...(fir.dataFineTrasporto ? { data_fine_trasporto: fir.dataFineTrasporto } : {}),
-          ...(fir.pesoVerificatoDestinoKg !== null
-            ? { peso_verificato_destino: fir.pesoVerificatoDestinoKg }
-            : {}),
+          ...(pesoValido ? { peso_verificato_destino: arrotonda4(peso) } : {}),
         }
         if (Object.keys(esito).length > 0) corpo.esito = esito
       }
