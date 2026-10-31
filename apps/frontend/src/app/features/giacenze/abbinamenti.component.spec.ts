@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { HttpErrorResponse } from '@angular/common/http'
 import { AbbinamentiComponent } from './abbinamenti.component'
-import { AbbinamentiService } from './abbinamenti.service'
+import { AbbinamentiService, PropostaScarico } from './abbinamenti.service'
 import { RegistroService } from '../registro/registro.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ambito, carico, proposta, scarico, sede, vista } from './abbinamenti.fixture.spec'
@@ -99,6 +99,21 @@ describe('AbbinamentiComponent', () => {
     expect(comp.etichettaStato('NON_ABBINATO')).toBe('Non abbinato')
   })
 
+  it('differenze non scaricabili: non si dice "nessuna differenza"', () => {
+    setup()
+    servizio.differenze.and.returnValue(throwError(() => new Error('rete')))
+    comp.reload()
+    expect(comp.differenzeNonDisponibili()).toBe(true)
+    expect(comp.differenze()).toEqual([])
+    expect(comp.vista()).not.toBeNull()
+  })
+
+  it('nessun registro: messaggio e nessuna chiamata', () => {
+    setup([])
+    expect(comp.nessunRegistro()).toBe(true)
+    expect(servizio.vista).not.toHaveBeenCalled()
+  })
+
   it('numeri in formato italiano', () => {
     setup()
     expect(comp.formattaQuantita(1234.5)).toBe('1.234,5')
@@ -189,12 +204,67 @@ describe('AbbinamentiComponent', () => {
       ])
     })
 
+    it('totale oltre lo scarico: il salvataggio e bloccato', () => {
+      setup()
+      comp.apriModifica(s)
+      comp.impostaQuantita(comp.modifica()!.candidati[0], 500)
+      expect(comp.superaScarico()).toBe(true)
+      comp.salvaModifica()
+      expect(servizio.salva).not.toHaveBeenCalled()
+    })
+
+    it('scoperto della proposta e righe esistenti fuori dai candidati', () => {
+      setup()
+      servizio.proposta.and.returnValue(
+        of(
+          proposta({
+            scoperto: 25,
+            scarico: scarico({
+              righe: [
+                {
+                  carico: { tipo: 'MOVIMENTO', id: 'zz', numero: '9/2026', giorno: '2026-05-01' },
+                  quantita: 10,
+                  origine: 'MANUALE',
+                },
+              ],
+            }),
+          })
+        )
+      )
+      comp.apriModifica(s)
+      expect(comp.modifica()?.scoperto).toBe(25)
+      expect(comp.modifica()?.righeFuori.length).toBe(1)
+      expect(comp.testoRigheFuori(comp.modifica()!)).toContain('9/2026')
+      expect(comp.testoRigheFuori(comp.modifica()!)).toContain('vengono tolti')
+    })
+
+    it('una seconda Modifica annulla la proposta precedente', () => {
+      setup()
+      const primo = new Subject<PropostaScarico>()
+      servizio.proposta.and.returnValues(primo, of(proposta()))
+      comp.apriModifica(s)
+      comp.apriModifica(s)
+      primo.next(proposta({ scoperto: 999 }))
+      expect(comp.modifica()?.scoperto).toBe(0)
+    })
+
+    it('Aggiorna chiude l editor aperto', () => {
+      setup()
+      comp.apriModifica(s)
+      expect(comp.modifica()).not.toBeNull()
+      comp.reload()
+      expect(comp.modifica()).toBeNull()
+    })
+
     it('scollega: elenco vuoto e l avviso del server (il ricalcolo riabbina) resta visibile', () => {
       setup()
       comp.apriModifica(s)
       const avviso =
         'Lo scarico è senza abbinamento: il prossimo ricalcolo lo riabbinerà con il FIFO.'
       servizio.salva.and.returnValue(of({ scarico: s, avvisi: [avviso] }))
+      comp.chiediScollega()
+      expect(comp.confermaScollega()).toBe(true)
+      expect(servizio.salva).not.toHaveBeenCalled()
       comp.scollega()
       expect(servizio.salva).toHaveBeenCalledWith('s1', [])
       expect(comp.avvisi()).toEqual([avviso])

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 import { AbbinamentiComponent } from './abbinamenti.component'
 import { AbbinamentiService } from './abbinamenti.service'
 import { RegistroService } from '../registro/registro.service'
@@ -25,7 +25,7 @@ describe('AbbinamentiComponent (DOM)', () => {
     fixture.detectChanges()
   }
 
-  async function setup(v = vista()): Promise<void> {
+  async function setup(v = vista(), registri = [sede('r1', 'Sede unica', true)]): Promise<void> {
     servizio = jasmine.createSpyObj<AbbinamentiService>('AbbinamentiService', [
       'vista',
       'differenze',
@@ -54,7 +54,7 @@ describe('AbbinamentiComponent (DOM)', () => {
       })
     )
     const reg = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
-    reg.listRegistri.and.returnValue(of([sede('r1', 'Sede unica', true)]))
+    reg.listRegistri.and.returnValue(of(registri))
     await TestBed.configureTestingModule({
       imports: [AbbinamentiComponent],
       providers: [
@@ -100,13 +100,25 @@ describe('AbbinamentiComponent (DOM)', () => {
       vista({
         ambiti: [
           ambito({
+            carichi: [
+              carico({ id: 'c1', numero: '1/2026', stato: 'ESAURITO' }),
+              carico({ id: 'c2', numero: '2/2026', stato: 'APERTO' }),
+            ],
             scarichi: [scarico(), scarico({ id: 's2', numero: '4/2026', stato: 'PARZIALE' })],
           }),
         ],
       })
     )
     expect(q('[data-testid="scarico-3/2026"]')).not.toBeNull()
+    expect(q('[data-testid="carico-1/2026"]')).not.toBeNull()
+    expect(q('[data-testid="carico-2/2026"]')).not.toBeNull()
+    expect(q('#ab-filtro-aiuto')?.textContent).toContain(
+      'Nasconde scarichi abbinati e carichi esauriti'
+    )
+    expect(q('#ab-solo-da-completare')?.getAttribute('aria-describedby')).toBe('ab-filtro-aiuto')
     await clic('solo-da-completare')
+    expect(q('[data-testid="carico-1/2026"]')).toBeNull()
+    expect(q('[data-testid="carico-2/2026"]')).not.toBeNull()
     expect(q('[data-testid="scarico-3/2026"]')).toBeNull()
     expect(q('[data-testid="scarico-4/2026"]')).not.toBeNull()
   })
@@ -167,7 +179,7 @@ describe('AbbinamentiComponent (DOM)', () => {
     expect(q('[data-testid="editor"]')?.getAttribute('aria-labelledby')).toBe('ab-ed-titolo')
     const input = q<HTMLInputElement>('#ab-q-0')!
     expect(q('label[for="ab-q-0"]')?.textContent).toContain('residuo 1.000')
-    expect(q('[data-testid="quantita-0"]')?.getAttribute('aria-describedby')).toBe('ab-ed-aiuto')
+    expect(input.getAttribute('aria-labelledby')).toBe('ab-q-lbl-0 ab-ed-aiuto')
     // digitazione reale con la virgola italiana
     input.focus()
     input.value = '12,5'
@@ -194,7 +206,73 @@ describe('AbbinamentiComponent (DOM)', () => {
     servizio.salva.and.returnValue(of({ scarico: scarico(), avvisi: [] }))
     await clic('modifica-3/2026')
     await clic('scollega')
+    expect(servizio.salva).not.toHaveBeenCalled()
+    expect(q('[data-testid="conferma-scollega"]')?.textContent).toContain('lo riabbina con il FIFO')
+    await clic('scollega-conferma')
     expect(servizio.salva).toHaveBeenCalledWith('s1', [])
+  })
+
+  it('Scollega: No riporta il focus sul pulsante, Esc annulla', async () => {
+    await setup()
+    await clic('modifica-3/2026')
+    await clic('scollega')
+    await clic('scollega-annulla')
+    await new Promise(r => setTimeout(r))
+    expect(q('[data-testid="conferma-scollega"]')).toBeNull()
+    expect(document.activeElement).toBe(q('[data-testid="scollega"] button'))
+    await clic('scollega')
+    q('[data-testid="conferma-scollega"]')!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    )
+    fixture.detectChanges()
+    expect(q('[data-testid="conferma-scollega"]')).toBeNull()
+    expect(servizio.salva).not.toHaveBeenCalled()
+  })
+
+  it('Ricalcola: No e Esc annullano e riportano il focus sul pulsante', async () => {
+    await setup()
+    await clic('ricalcola-automatici')
+    await clic('ricalcola-annulla')
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('[data-testid="ricalcola-automatici"] button'))
+    await clic('ricalcola-automatici')
+    q('[data-testid="conferma-ricalcolo"]')!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    )
+    fixture.detectChanges()
+    expect(q('[data-testid="conferma-ricalcolo"]')).toBeNull()
+    expect(servizio.ricalcola).not.toHaveBeenCalled()
+  })
+
+  it('Salva e disabilitato se il totale supera lo scarico, con messaggio', async () => {
+    await setup()
+    await clic('modifica-3/2026')
+    const input = q<HTMLInputElement>('#ab-q-0')!
+    input.focus()
+    input.value = '500'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('blur'))
+    fixture.detectChanges()
+    expect(q('[data-testid="supera-scarico"]')?.textContent).toContain('supera la quantità')
+    expect(q<HTMLButtonElement>('[data-testid="salva-modifica"] button')?.disabled).toBeTrue()
+  })
+
+  it('differenze non disponibili: testo onesto, non "nessuna differenza"', async () => {
+    await setup()
+    servizio.differenze.and.returnValue(throwError(() => new Error('rete')))
+    await clic('aggiorna')
+    await clic('differenze-toggle')
+    expect(q('[data-testid="differenze-non-disponibili"]')?.textContent).toContain(
+      'Differenze non disponibili, riprova'
+    )
+    expect(testo()).not.toContain('Nessuna differenza')
+  })
+
+  it('zero registri: messaggio in italiano', async () => {
+    await setup(vista(), [])
+    expect(q('[data-testid="nessun-registro"]')?.textContent).toContain(
+      'Nessun registro disponibile'
+    )
   })
 
   it('carico con la sola giacenza iniziale: etichetta senza numero', async () => {

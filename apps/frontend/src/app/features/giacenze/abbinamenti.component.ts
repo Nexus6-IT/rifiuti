@@ -1,4 +1,6 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
+import { Component, DestroyRef, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { ActivatedRoute } from '@angular/router'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { Subscription, forkJoin, of } from 'rxjs'
@@ -20,6 +22,7 @@ import {
   CaricoVista,
   DifferenzaVista,
   PropostaScarico,
+  RigaVista,
   RigaDaSalvare,
   ScaricoVista,
   StatoCarico,
@@ -30,6 +33,10 @@ import { formattaGiorno } from './giorno'
 
 export const MSG_NESSUN_AMBITO =
   'Nessun rifiuto in stoccaggio R13/D15 in questo registro. Compaiono qui i carichi con operazione R13 o D15.'
+export const MSG_NESSUN_REGISTRO = 'Nessun registro disponibile per questa azienda.'
+export const MSG_DIFFERENZE_NON_DISPONIBILI = 'Differenze non disponibili, riprova'
+export const MSG_CONFERMA_SCOLLEGA =
+  'Lo scarico resta senza abbinamento; il prossimo ricalcolo lo riabbina con il FIFO.'
 export const MSG_CONFERMA_RICALCOLO =
   'Le righe automatiche di questo registro vengono ricalcolate con FIFO; quelle inserite a mano restano.'
 
@@ -58,7 +65,14 @@ export interface ModificaScarico {
   unita: string
   candidati: CaricoVista[]
   proposta: PropostaScarico['proposta']
+  scoperto: number
+  /** Abbinamenti esistenti su carichi che non sono fra i candidati: un salvataggio li toglie. */
+  righeFuori: RigaVista[]
 }
+
+/** Chiave dell'ambito (CER + famiglia): serve a trackBy e agli id, senza spazi. */
+export const chiaveAmbito = (a: { cerCode: string; famiglia: string }): string =>
+  `${a.cerCode.replace(/\s+/g, '')}-${a.famiglia}`
 
 const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c.id}`
 
@@ -117,6 +131,7 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
             [loading]="loading()"
             (onClick)="reload()"
             ariaLabel="Aggiorna gli abbinamenti"
+            data-testid="aggiorna"
           ></p-button>
         </div>
       </header>
@@ -143,6 +158,7 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
         role="alertdialog"
         aria-labelledby="ab-conferma-testo"
         data-testid="conferma-ricalcolo"
+        (keydown.escape)="annullaRicalcolo()"
       >
         <p id="ab-conferma-testo" class="m-0 mb-3">{{ msgConfermaRicalcolo }}</p>
         <p-button
@@ -158,7 +174,7 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
           label="No"
           [text]="true"
           size="small"
-          (onClick)="confermaRicalcolo.set(false)"
+          (onClick)="annullaRicalcolo()"
           data-testid="ricalcola-annulla"
           ariaLabel="Annulla il ricalcolo"
         ></p-button>
@@ -197,6 +213,10 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
         </div>
       </section>
 
+      <p *ngIf="nessunRegistro()" class="ab-vuoto" data-testid="nessun-registro">
+        {{ msgNessunRegistro }}
+      </p>
+
       <p
         *ngIf="!registroSel() && piuRegistri() && !loading()"
         class="ab-vuoto"
@@ -219,19 +239,23 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
             type="checkbox"
             id="ab-solo-da-completare"
             data-testid="solo-da-completare"
+            aria-describedby="ab-filtro-aiuto"
             [checked]="soloDaCompletare()"
             (change)="soloDaCompletare.set($any($event.target).checked)"
           />
           <label for="ab-solo-da-completare">Solo da completare</label>
+          <small id="ab-filtro-aiuto" class="ab-nota"
+            >Nasconde scarichi abbinati e carichi esauriti.</small
+          >
         </div>
 
         <section
           *ngFor="let a of vista()!.ambiti; trackBy: trackAmbito"
           class="surface-card mb-4"
-          [attr.aria-labelledby]="'ab-titolo-' + a.cerCode"
+          [attr.aria-labelledby]="'ab-titolo-' + chiaveAmbito(a)"
           [attr.data-testid]="'ambito-' + a.cerCode"
         >
-          <h2 class="ab-titolo" [id]="'ab-titolo-' + a.cerCode">{{ titoloAmbito(a) }}</h2>
+          <h2 class="ab-titolo" [id]="'ab-titolo-' + chiaveAmbito(a)">{{ titoloAmbito(a) }}</h2>
           <p *ngIf="a.differenzeFifo > 0" class="ab-nota" data-testid="differenze-ambito">
             {{ a.differenzeFifo }}
             {{ a.differenzeFifo === 1 ? 'scarico diverso' : 'scarichi diversi' }} dal FIFO da capo
@@ -357,42 +381,55 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
               (click)="differenzeAperte.set(!differenzeAperte())"
               data-testid="differenze-toggle"
             >
-              Differenze dal FIFO ({{ differenze().length }})
+              Differenze dal FIFO ({{
+                differenzeNonDisponibili() ? 'non disponibili' : differenze().length
+              }})
             </button>
           </h2>
           <div id="ab-differenze" *ngIf="differenzeAperte()" data-testid="differenze">
-            <p class="ab-nota">
-              Righe salvate a confronto con il FIFO ricalcolato da capo: {{ scarichiDiversi() }}
-              {{ scarichiDiversi() === 1 ? 'scarico diverso' : 'scarichi diversi' }} dal FIFO da
-              capo.
+            <p
+              *ngIf="differenzeNonDisponibili()"
+              class="field-error"
+              role="alert"
+              data-testid="differenze-non-disponibili"
+            >
+              {{ msgDifferenzeNonDisponibili }}
             </p>
-            <p-table [value]="differenze()" styleClass="p-datatable-sm">
-              <ng-template pTemplate="header">
-                <tr>
-                  <th scope="col">Scarico</th>
-                  <th scope="col">Carico</th>
-                  <th scope="col" class="text-right">Salvato</th>
-                  <th scope="col" class="text-right">FIFO</th>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="body" let-d>
-                <tr>
-                  <td>{{ d.scarico.numero }}</td>
-                  <td>
-                    {{
-                      d.carico.numero ?? 'Giacenza iniziale del ' + formattaGiorno(d.carico.giorno)
-                    }}
-                  </td>
-                  <td class="text-right">{{ formattaQuantita(d.persistita) }}</td>
-                  <td class="text-right">{{ formattaQuantita(d.fifo) }}</td>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="emptymessage">
-                <tr>
-                  <td colspan="4">Nessuna differenza: gli abbinamenti coincidono con il FIFO.</td>
-                </tr>
-              </ng-template>
-            </p-table>
+            <ng-container *ngIf="!differenzeNonDisponibili()">
+              <p class="ab-nota">
+                Righe salvate a confronto con il FIFO ricalcolato da capo: {{ scarichiDiversi() }}
+                {{ scarichiDiversi() === 1 ? 'scarico diverso' : 'scarichi diversi' }} dal FIFO da
+                capo.
+              </p>
+              <p-table [value]="differenze()" styleClass="p-datatable-sm">
+                <ng-template pTemplate="header">
+                  <tr>
+                    <th scope="col">Scarico</th>
+                    <th scope="col">Carico</th>
+                    <th scope="col" class="text-right">Salvato</th>
+                    <th scope="col" class="text-right">FIFO</th>
+                  </tr>
+                </ng-template>
+                <ng-template pTemplate="body" let-d>
+                  <tr>
+                    <td>{{ d.scarico.numero }}</td>
+                    <td>
+                      {{
+                        d.carico.numero ??
+                          'Giacenza iniziale del ' + formattaGiorno(d.carico.giorno)
+                      }}
+                    </td>
+                    <td class="text-right">{{ formattaQuantita(d.persistita) }}</td>
+                    <td class="text-right">{{ formattaQuantita(d.fifo) }}</td>
+                  </tr>
+                </ng-template>
+                <ng-template pTemplate="emptymessage">
+                  <tr>
+                    <td colspan="4">Nessuna differenza: gli abbinamenti coincidono con il FIFO.</td>
+                  </tr>
+                </ng-template>
+              </p-table>
+            </ng-container>
           </div>
         </section>
       </ng-container>
@@ -412,8 +449,19 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
           prendere da ogni carico: il totale non può superare lo scarico. Se togli tutti gli
           abbinamenti, il prossimo ricalcolo riabbina lo scarico con il FIFO.
         </p>
+        <p-message
+          *ngIf="m.righeFuori.length > 0"
+          severity="warn"
+          styleClass="w-full mb-2"
+          data-testid="righe-fuori"
+          [text]="testoRigheFuori(m)"
+        ></p-message>
+        <p *ngIf="m.scoperto > 0" class="ab-nota" data-testid="scoperto">
+          I carichi disponibili non coprono tutto lo scarico: con il FIFO restano scoperti
+          {{ formattaQuantita(m.scoperto) }} {{ m.unita }}.
+        </p>
         <div *ngFor="let c of m.candidati; let i = index" class="field ab-riga">
-          <label [for]="'ab-q-' + i">
+          <label [for]="'ab-q-' + i" [id]="'ab-q-lbl-' + i">
             {{ c.numero ? 'Carico n. ' + c.numero : 'Giacenza iniziale' }} del
             {{ formattaGiorno(c.giorno) }}, residuo {{ formattaQuantita(c.residuo) }} {{ m.unita }}
           </label>
@@ -427,7 +475,7 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
             [max]="c.residuo"
             [ngModel]="quantitaDi(c)"
             (ngModelChange)="impostaQuantita(c, $event)"
-            [attr.aria-describedby]="'ab-ed-aiuto'"
+            [ariaLabelledBy]="'ab-q-lbl-' + i + ' ab-ed-aiuto'"
             [attr.data-testid]="'quantita-' + i"
           ></p-inputNumber>
         </div>
@@ -438,6 +486,9 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
           Totale abbinato: {{ formattaQuantita(totaleModifica()) }} di
           {{ formattaQuantita(m.scarico.quantita) }} {{ m.unita }}
         </p>
+        <p *ngIf="superaScarico()" class="field-error" role="alert" data-testid="supera-scarico">
+          Il totale abbinato supera la quantità dello scarico.
+        </p>
         <p *ngIf="erroreModifica()" class="field-error" role="alert" data-testid="errore-modifica">
           {{ erroreModifica() }}
         </p>
@@ -445,6 +496,7 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
           label="Usa la proposta FIFO"
           [outlined]="true"
           size="small"
+          [disabled]="inElaborazione()"
           (onClick)="usaProposta()"
           data-testid="usa-proposta"
         ></p-button>
@@ -452,6 +504,7 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
           label="Salva"
           size="small"
           [loading]="inElaborazione()"
+          [disabled]="superaScarico()"
           (onClick)="salvaModifica()"
           data-testid="salva-modifica"
         ></p-button>
@@ -461,13 +514,40 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
           [text]="true"
           size="small"
           [disabled]="inElaborazione()"
-          (onClick)="scollega()"
+          (onClick)="chiediScollega()"
           data-testid="scollega"
         ></p-button>
+        <div
+          *ngIf="confermaScollega()"
+          role="alertdialog"
+          aria-labelledby="ab-scollega-testo"
+          data-testid="conferma-scollega"
+          (keydown.escape)="annullaScollega()"
+        >
+          <p id="ab-scollega-testo" class="ab-nota">{{ msgConfermaScollega }}</p>
+          <p-button
+            label="Sì, scollega"
+            severity="danger"
+            size="small"
+            [loading]="inElaborazione()"
+            (onClick)="scollega()"
+            data-testid="scollega-conferma"
+            ariaLabel="Conferma lo scollegamento dello scarico"
+          ></p-button>
+          <p-button
+            label="No"
+            [text]="true"
+            size="small"
+            (onClick)="annullaScollega()"
+            data-testid="scollega-annulla"
+            ariaLabel="Annulla lo scollegamento"
+          ></p-button>
+        </div>
         <p-button
           label="Annulla"
           [text]="true"
           size="small"
+          [disabled]="inElaborazione()"
           (onClick)="chiudiModifica()"
           data-testid="annulla-modifica"
         ></p-button>
@@ -543,12 +623,22 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
   readonly erroreModifica = signal<string | null>(null)
   private readonly quantite = signal<Record<string, number | null>>({})
   private caricamento?: Subscription
+  private propostaSub?: Subscription
+  private readonly destroyRef = inject(DestroyRef)
+  private readonly route = inject(ActivatedRoute, { optional: true })
+  readonly nessunRegistro = signal(false)
+  readonly differenzeNonDisponibili = signal(false)
+  readonly confermaScollega = signal(false)
 
   readonly piuRegistri = computed(() => this.registri().length > 1)
   readonly opzioniRegistro = computed(() =>
     this.registri().map(r => ({ label: etichettaRegistro(r), value: r.id }))
   )
   readonly scarichiDiversi = computed(() => new Set(this.differenze().map(d => d.scarico.id)).size)
+  readonly superaScarico = computed(() => {
+    const m = this.modifica()
+    return !!m && Math.round(this.totaleModifica() * 1000) > Math.round(m.scarico.quantita * 1000)
+  })
   readonly totaleModifica = computed(() => {
     const m = this.modifica()
     if (!m) return 0
@@ -559,6 +649,9 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
     return mill / 1000
   })
 
+  readonly msgNessunRegistro = MSG_NESSUN_REGISTRO
+  readonly msgDifferenzeNonDisponibili = MSG_DIFFERENZE_NON_DISPONIBILI
+  readonly msgConfermaScollega = MSG_CONFERMA_SCOLLEGA
   readonly msgConfermaRicalcolo = MSG_CONFERMA_RICALCOLO
   readonly msgNessunAmbito = MSG_NESSUN_AMBITO
   readonly formattaQuantita = formattaQuantita
@@ -566,25 +659,35 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loading.set(true)
-    this.registroService.listRegistri().subscribe({
-      next: registri => {
-        this.registri.set(registri ?? [])
-        const scelto =
-          registri.length === 1 ? registri[0].id : (registroPredefinito(registri) ?? null)
-        this.registroSel.set(scelto)
-        if (scelto) this.reload()
-        else this.loading.set(false)
-      },
-      error: () => {
-        this.loading.set(false)
-        this.error.set('Impossibile caricare i registri.')
-        this.toast.error('Errore nel caricamento dei registri')
-      },
-    })
+    this.registroService
+      .listRegistri()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: registri => {
+          this.registri.set(registri ?? [])
+          this.nessunRegistro.set((registri ?? []).length === 0)
+          const richiesto = this.route?.snapshot?.queryParamMap?.get('registroId')
+          const scelto =
+            richiesto && registri.some(r => r.id === richiesto)
+              ? richiesto
+              : registri.length === 1
+                ? registri[0].id
+                : (registroPredefinito(registri) ?? null)
+          this.registroSel.set(scelto)
+          if (scelto) this.reload()
+          else this.loading.set(false)
+        },
+        error: () => {
+          this.loading.set(false)
+          this.error.set('Impossibile caricare i registri.')
+          this.toast.error('Errore nel caricamento dei registri')
+        },
+      })
   }
 
   ngOnDestroy(): void {
     this.caricamento?.unsubscribe()
+    this.propostaSub?.unsubscribe()
   }
 
   cambiaRegistro(valore: string | null): void {
@@ -600,26 +703,34 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
     const registroId = this.registroSel()
     if (!registroId) return
     this.caricamento?.unsubscribe()
+    // l'editor aperto lavora su dati vecchi: si chiude, la vista si rilegge
+    this.chiudiModifica(false)
     this.loading.set(true)
     this.error.set(null)
     this.caricamento = forkJoin({
       vista: this.servizio.vista(registroId),
       // Le differenze sono accessorie: se mancano la pagina funziona lo stesso.
-      differenze: this.servizio.differenze(registroId).pipe(catchError(() => of([]))),
-    }).subscribe({
-      next: ({ vista, differenze }) => {
-        this.vista.set(vista)
-        this.differenze.set(differenze)
-        this.loading.set(false)
-      },
-      error: e => {
-        this.error.set(this.messaggio(e, 'Impossibile caricare gli abbinamenti.'))
-        this.loading.set(false)
-      },
+      differenze: this.servizio
+        .differenze(registroId)
+        .pipe(catchError(() => of<DifferenzaVista[] | null>(null))),
     })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ({ vista, differenze }) => {
+          this.vista.set(vista)
+          this.differenze.set(differenze ?? [])
+          this.differenzeNonDisponibili.set(differenze === null)
+          this.loading.set(false)
+        },
+        error: e => {
+          this.error.set(this.messaggio(e, 'Impossibile caricare gli abbinamenti.'))
+          this.loading.set(false)
+        },
+      })
   }
 
-  trackAmbito = (_: number, a: AmbitoVista): string => a.cerCode + a.famiglia
+  readonly chiaveAmbito = chiaveAmbito
+  trackAmbito = (_: number, a: AmbitoVista): string => chiaveAmbito(a)
 
   titoloAmbito(a: AmbitoVista): string {
     return `CER ${a.cerCode} · ${a.classi.join(' / ')}`
@@ -662,6 +773,13 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
     })
   }
 
+  annullaRicalcolo(): void {
+    this.confermaRicalcolo.set(false)
+    setTimeout(() =>
+      document.querySelector<HTMLElement>('[data-testid="ricalcola-automatici"] button')?.focus()
+    )
+  }
+
   ricalcolaAutomatici(): void {
     this.confermaRicalcolo.set(false)
     this.ricalcola('AUTOMATICI')
@@ -671,43 +789,54 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
     const registroId = this.registroSel()
     if (!registroId) return
     this.inElaborazione.set(true)
-    this.servizio.ricalcola({ registroId, modalita }).subscribe({
-      next: esito => {
-        this.inElaborazione.set(false)
-        this.avvisi.set(esito.avvisi)
-        this.toast.success(
-          esito.righeScritte === 0 && esito.righeCancellate === 0
-            ? 'Nessun abbinamento da aggiornare.'
-            : 'Abbinamenti aggiornati.'
-        )
-        this.reload()
-      },
-      error: e => {
-        this.inElaborazione.set(false)
-        this.toast.error(this.messaggio(e, 'Impossibile ricalcolare gli abbinamenti.'))
-      },
-    })
+    this.servizio
+      .ricalcola({ registroId, modalita })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: esito => {
+          this.inElaborazione.set(false)
+          this.avvisi.set(esito.avvisi)
+          this.toast.success(
+            esito.righeScritte === 0 && esito.righeCancellate === 0
+              ? 'Nessun abbinamento da aggiornare.'
+              : 'Abbinamenti aggiornati.'
+          )
+          this.reload()
+        },
+        error: e => {
+          this.inElaborazione.set(false)
+          this.toast.error(this.messaggio(e, 'Impossibile ricalcolare gli abbinamenti.'))
+        },
+      })
   }
 
   // --- modifica a mano ---
 
   apriModifica(s: ScaricoVista, unita = ''): void {
     this.erroreModifica.set(null)
-    this.servizio.proposta(s.id).subscribe({
-      next: p => {
-        const iniziali: Record<string, number | null> = {}
-        for (const r of p.scarico.righe) iniziali[chiaveCarico(r.carico)] = r.quantita
-        this.quantite.set(iniziali)
-        this.modifica.set({
-          scarico: p.scarico,
-          unita: unita || this.unitaDi(s.id),
-          candidati: p.candidati,
-          proposta: p.proposta,
-        })
-        setTimeout(() => document.getElementById('ab-ed-titolo')?.focus())
-      },
-      error: e => this.toast.error(this.messaggio(e, 'Impossibile caricare la proposta.')),
-    })
+    this.propostaSub?.unsubscribe()
+    this.propostaSub = this.servizio
+      .proposta(s.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: p => {
+          const iniziali: Record<string, number | null> = {}
+          for (const r of p.scarico.righe) iniziali[chiaveCarico(r.carico)] = r.quantita
+          this.quantite.set(iniziali)
+          this.modifica.set({
+            scarico: p.scarico,
+            unita: unita || this.unitaDi(s.id),
+            candidati: p.candidati,
+            proposta: p.proposta,
+            scoperto: p.scoperto,
+            righeFuori: p.scarico.righe.filter(
+              r => !p.candidati.some(c => chiaveCarico(c) === chiaveCarico(r.carico))
+            ),
+          })
+          setTimeout(() => document.getElementById('ab-ed-titolo')?.focus())
+        },
+        error: e => this.toast.error(this.messaggio(e, 'Impossibile caricare la proposta.')),
+      })
   }
 
   private unitaDi(scaricoId: string): string {
@@ -732,7 +861,7 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
 
   salvaModifica(): void {
     const m = this.modifica()
-    if (!m) return
+    if (!m || this.superaScarico()) return
     const righe: RigaDaSalvare[] = []
     for (const c of m.candidati) {
       const q = this.quantite()[chiaveCarico(c)]
@@ -747,30 +876,57 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
     this.invia(m.scarico.id, righe)
   }
 
+  chiediScollega(): void {
+    this.confermaScollega.set(true)
+    setTimeout(() =>
+      document.querySelector<HTMLElement>('[data-testid="scollega-conferma"] button')?.focus()
+    )
+  }
+
+  annullaScollega(): void {
+    this.confermaScollega.set(false)
+    setTimeout(() =>
+      document.querySelector<HTMLElement>('[data-testid="scollega"] button')?.focus()
+    )
+  }
+
   scollega(): void {
     const m = this.modifica()
+    this.confermaScollega.set(false)
     if (m) this.invia(m.scarico.id, [])
+  }
+
+  testoRigheFuori(m: ModificaScarico): string {
+    const elenco = m.righeFuori
+      .map(r => `${r.carico.numero ?? 'giacenza iniziale'} (${formattaQuantita(r.quantita)})`)
+      .join(', ')
+    return `Questi abbinamenti esistenti non sono fra i carichi disponibili e non si possono modificare qui: ${elenco}. Se salvi, vengono tolti.`
   }
 
   private invia(scaricoId: string, righe: RigaDaSalvare[]): void {
     this.inElaborazione.set(true)
     this.erroreModifica.set(null)
-    this.servizio.salva(scaricoId, righe).subscribe({
-      next: esito => {
-        this.inElaborazione.set(false)
-        this.avvisi.set(esito.avvisi)
-        this.toast.success('Abbinamenti dello scarico salvati.')
-        this.chiudiModifica()
-        this.reload()
-      },
-      error: e => {
-        this.inElaborazione.set(false)
-        this.erroreModifica.set(this.messaggio(e, 'Impossibile salvare gli abbinamenti.'))
-      },
-    })
+    this.servizio
+      .salva(scaricoId, righe)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: esito => {
+          this.inElaborazione.set(false)
+          this.avvisi.set(esito.avvisi)
+          this.toast.success('Abbinamenti dello scarico salvati.')
+          this.chiudiModifica()
+          this.reload()
+        },
+        error: e => {
+          this.inElaborazione.set(false)
+          this.erroreModifica.set(this.messaggio(e, 'Impossibile salvare gli abbinamenti.'))
+        },
+      })
   }
 
   chiudiModifica(rendiFocus = true): void {
+    this.propostaSub?.unsubscribe()
+    this.confermaScollega.set(false)
     const m = this.modifica()
     this.modifica.set(null)
     this.erroreModifica.set(null)

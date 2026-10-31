@@ -22,7 +22,7 @@ import {
   SoglieApplicate,
 } from './giacenze.service'
 import { formattaGiorno } from './giorno'
-import { Router } from '@angular/router'
+import { RouterLink } from '@angular/router'
 import { SoglieDepositoDialogComponent } from './soglie-deposito-dialog.component'
 
 /** Il dropdown non seleziona le voci con valore `null`: "tutte le sedi" è la stringa vuota. */
@@ -45,6 +45,7 @@ const TUTTE_LE_SEDI = ''
     TagModule,
     ProgressSpinnerModule,
     SoglieDepositoDialogComponent,
+    RouterLink,
   ],
   template: `
     <div class="page">
@@ -66,14 +67,16 @@ const TUTTE_LE_SEDI = ''
             data-testid="soglie-apri"
             ariaLabel="Configura le soglie del deposito temporaneo"
           ></p-button>
-          <p-button
+          <a
+            pButton
+            routerLink="/giacenze/abbinamenti"
+            [queryParams]="registroSel() ? { registroId: registroSel() } : null"
             label="Abbinamenti R13/D15"
             icon="pi pi-link"
-            [outlined]="true"
-            (onClick)="vaiAgliAbbinamenti()"
+            class="p-button-outlined"
             data-testid="link-abbinamenti"
-            ariaLabel="Apri gli abbinamenti carichi-scarichi R13/D15"
-          ></p-button>
+            aria-label="Apri gli abbinamenti carichi-scarichi R13/D15"
+          ></a>
           <p-button
             label="Aggiorna"
             icon="pi pi-refresh"
@@ -515,7 +518,6 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
   private readonly giacenzeService = inject(GiacenzeService)
   private readonly registroService = inject(RegistroService)
   private readonly toast = inject(ToastService)
-  private readonly router = inject(Router)
 
   readonly giacenze = signal<Giacenza[]>([])
   readonly deposito = signal<DepositoTemporaneoVista | null>(null)
@@ -602,10 +604,6 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
         this.loading.set(false)
       },
     })
-  }
-
-  vaiAgliAbbinamenti(): void {
-    void this.router.navigateByUrl('/giacenze/abbinamenti')
   }
 
   trackRegistro = (_: number, r: DepositoRegistro): string => r.registroId
