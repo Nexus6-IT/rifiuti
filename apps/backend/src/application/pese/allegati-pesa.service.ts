@@ -24,7 +24,7 @@ function nomePulito(nome: string): string {
   const base = (nome ?? '').split(/[\\/]/).pop() ?? ''
   // eslint-disable-next-line no-control-regex
   const senzaControlli = base.replace(/[\u0000-\u001f\u007f]/g, '').trim()
-  return (senzaControlli || 'allegato').slice(0, 255)
+  return Array.from(senzaControlli || 'allegato').slice(0, 255).join('')
 }
 
 @Injectable()

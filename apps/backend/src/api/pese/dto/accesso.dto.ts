@@ -1,14 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
 import {
   Equals,
   IsIn,
   IsInt,
+  IsDefined,
   IsISO8601,
+  IsObject,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Length,
   Matches,
   Max,
   MaxLength,
@@ -17,8 +20,9 @@ import {
   ValidateNested,
 } from 'class-validator'
 
-/** Motivo libero: 1..500 caratteri dopo il trim (il trim lo ripete il servizio). */
-const MOTIVO = /^\s*\S[\s\S]{0,499}$/
+/** Motivo libero: trim e poi 1..500 caratteri. */
+const senzaSpazi = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value
 
 /**
  * Pesata inserita a mano. ATTENZIONE: una pesata manuale NON ha garanzia metrologica
@@ -58,12 +62,16 @@ export class PesataManualeDto {
   })
   @IsOptional()
   @IsISO8601({ strict: true }, { message: 'L’ora dello strumento non è valida.' })
+  @Matches(/(Z|[+-]\d{2}:?\d{2})$/i, {
+    message: 'L’ora dello strumento deve indicare il fuso orario (es. +02:00).',
+  })
   @MaxLength(40, { message: 'L’ora dello strumento non è valida.' })
   oraStrumento?: string | null
 
   @ApiProperty({ maxLength: 500, description: 'Perché la pesata è stata inserita a mano' })
   @IsString({ message: 'Il motivo è obbligatorio.' })
-  @Matches(MOTIVO, { message: 'Il motivo è obbligatorio (al massimo 500 caratteri).' })
+  @Transform(senzaSpazi)
+  @Length(1, 500, { message: 'Il motivo è obbligatorio (al massimo 500 caratteri).' })
   motivo!: string
 
   @ApiProperty({ enum: [true] })
@@ -114,17 +122,19 @@ export class AperturaAccessoDto {
 
   @ApiPropertyOptional({ nullable: true, maxLength: 255 })
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'La descrizione non è valida.' })
   @MaxLength(255, { message: 'La descrizione può avere al massimo 255 caratteri.' })
   descrizione?: string | null
 
   @ApiPropertyOptional({ nullable: true, maxLength: 1000 })
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'Le note non sono valide.' })
   @MaxLength(1000, { message: 'Le note possono avere al massimo 1000 caratteri.' })
   note?: string | null
 
   @ApiProperty({ type: PesataManualeDto })
+  @IsDefined({ message: 'Mancano i dati della pesata.' })
+  @IsObject({ message: 'I dati della pesata non sono validi.' })
   @ValidateNested()
   @Type(() => PesataManualeDto)
   pesata!: PesataManualeDto
@@ -136,6 +146,8 @@ export class SecondaPesataDto {
   chiaveIdempotenza!: string
 
   @ApiProperty({ type: PesataManualeDto })
+  @IsDefined({ message: 'Mancano i dati della pesata.' })
+  @IsObject({ message: 'I dati della pesata non sono validi.' })
   @ValidateNested()
   @Type(() => PesataManualeDto)
   pesata!: PesataManualeDto
@@ -150,14 +162,16 @@ export class RettificaDto {
 
   @ApiProperty({ maxLength: 500 })
   @IsString({ message: 'Il motivo è obbligatorio.' })
-  @Matches(MOTIVO, { message: 'Il motivo è obbligatorio (al massimo 500 caratteri).' })
+  @Transform(senzaSpazi)
+  @Length(1, 500, { message: 'Il motivo è obbligatorio (al massimo 500 caratteri).' })
   motivo!: string
 }
 
 export class MotivoDto {
   @ApiProperty({ maxLength: 500 })
   @IsString({ message: 'Il motivo è obbligatorio.' })
-  @Matches(MOTIVO, { message: 'Il motivo è obbligatorio (al massimo 500 caratteri).' })
+  @Transform(senzaSpazi)
+  @Length(1, 500, { message: 'Il motivo è obbligatorio (al massimo 500 caratteri).' })
   motivo!: string
 }
 
@@ -200,8 +214,8 @@ export class FiltriAccessiQueryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  @MinLength(1)
+  @IsString({ message: 'Targa non valida.' })
+  @MinLength(1, { message: 'Targa non valida.' })
   @MaxLength(40, { message: 'Targa non valida.' })
   targa?: string
 

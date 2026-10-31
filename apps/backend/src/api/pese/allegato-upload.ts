@@ -1,5 +1,8 @@
 import {
   BadRequestException,
+  CanActivate,
+  ForbiddenException,
+  Type,
   CallHandler,
   ExecutionContext,
   HttpException,
@@ -10,6 +13,8 @@ import {
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { Observable } from 'rxjs'
+import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { DIMENSIONE_MASSIMA_ALLEGATO, riconosciTipoFile } from '../../domain/pese/allegato-pesa'
 import type { FileCaricato } from '../../application/pese/accessi-pesa.tipi'
 import {
@@ -68,6 +73,15 @@ export class AllegatoInterceptor implements NestInterceptor {
 }
 
 /**
+ * multer/busboy decodificano il nome come latin1: "città.jpg" arriva "cittÃ .jpg". Si
+ * ricodifica in UTF-8 solo se il risultato e' UTF-8 valido (nessun U+FFFD), altrimenti resta.
+ */
+export function nomeUtf8(nome: string): string {
+  const ricodificato = Buffer.from(nome ?? '', 'latin1').toString('utf8')
+  return ricodificato.includes('\uFFFD') ? nome : ricodificato
+}
+
+/**
  * Controlla l'allegato PRIMA del servizio: tipo dichiarato ammesso e magic bytes coerenti
  * (un eseguibile rinominato .jpg non passa). 415 o 413 in italiano.
  */
@@ -81,7 +95,7 @@ export function allegatoDaRichiesta(file?: FileMulter): FileCaricato | undefined
     throw new UnsupportedMediaTypeException(MESSAGGIO_TIPO_ALLEGATO)
   }
   return {
-    nomeFile: file.originalname,
+    nomeFile: nomeUtf8(file.originalname),
     mimeDichiarato: file.mimetype,
     contenuto: file.buffer,
   }
@@ -91,11 +105,39 @@ export function allegatoDaRichiesta(file?: FileMulter): FileCaricato | undefined
 export function contentDispositionInline(nome: string): string {
   const base = (nome ?? '').split(/[\\/]/).pop() ?? ''
   // eslint-disable-next-line no-control-regex
-  const pulito = base.replace(/[\u0000-\u001f\u007f]/g, '').trim() || 'allegato'
+  const pulito = (base.replace(/[\u0000-\u001f\u007f]/g, '').trim() || 'allegato').replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    '\uFFFD'
+  )
   const ascii = pulito.replace(/[^\x20-\x7e]/g, '_').replace(/["\\;%]/g, '_')
   const codificato = encodeURIComponent(pulito).replace(
     /['()*]/g,
     c => '%' + c.charCodeAt(0).toString(16).toUpperCase()
   )
   return `inline; filename="${ascii}"; filename*=UTF-8''${codificato}`
+}
+
+/** Guard dei ruoli: 403 prima che l'interceptor legga il multipart. */
+export function RuoloPesaGuard(
+  ammessi: readonly RuoloApplicativo[],
+  chi: 'OPERATORI' | 'AMMINISTRATORI'
+): Type<CanActivate> {
+  @Injectable()
+  class RuoloPesaGuardImpl implements CanActivate {
+    constructor(private readonly membership: RuoloEffettivoService) {}
+    async canActivate(ctx: ExecutionContext): Promise<boolean> {
+      const req = ctx.switchToHttp().getRequest()
+      const tenantId = requireRequestTenantId(req)
+      const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+      if (ammessi.includes(ruolo)) return true
+      throw new ForbiddenException({
+        message:
+          chi === 'AMMINISTRATORI'
+            ? "Solo un amministratore dell'azienda può eseguire questa operazione sulle pese."
+            : "Il tuo ruolo nell'azienda selezionata non consente di operare sulle pese.",
+        error: `PESE_RISERVATE_${chi}`,
+      })
+    }
+  }
+  return RuoloPesaGuardImpl
 }

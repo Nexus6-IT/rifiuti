@@ -71,6 +71,7 @@ import {
   allegatoDaRichiesta,
   contentDispositionInline,
   AllegatoInterceptor,
+  RuoloPesaGuard,
   FileMulter,
 } from './allegato-upload'
 import { leggiDatiMultipart } from './multipart-dati'
@@ -227,6 +228,7 @@ export class PeseController {
   }
 
   @Post('accessi')
+  @UseGuards(RuoloPesaGuard(RUOLI_OPERATORE_PESA, 'OPERATORI'))
   @UseInterceptors(AllegatoInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: schemaMultipart('AperturaAccessoDto') })
@@ -257,6 +259,7 @@ export class PeseController {
   }
 
   @Post('accessi/:id/seconda-pesata')
+  @UseGuards(RuoloPesaGuard(RUOLI_OPERATORE_PESA, 'OPERATORI'))
   @UseInterceptors(AllegatoInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: schemaMultipart('SecondaPesataDto') })
@@ -299,6 +302,7 @@ export class PeseController {
   }
 
   @Post('pesate/:id/rettifiche')
+  @UseGuards(RuoloPesaGuard(RUOLI_RESPONSABILE_PESA, 'AMMINISTRATORI'))
   @UseInterceptors(AllegatoInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: schemaMultipart('RettificaDto') })

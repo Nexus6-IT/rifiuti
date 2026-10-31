@@ -9,7 +9,9 @@ function messaggi(errori: ValidationError[], prefisso = ''): string[] {
   for (const e of errori) {
     if (e.constraints) {
       for (const [chiave, testo] of Object.entries(e.constraints)) {
-        out.push(chiave === 'whitelistValidation' ? `Campo non previsto: ${e.property}.` : testo)
+        out.push(
+          chiave === 'whitelistValidation' ? `Campo non previsto: ${prefisso}${e.property}.` : testo
+        )
       }
     }
     if (e.children?.length) out.push(...messaggi(e.children, `${prefisso}${e.property}.`))

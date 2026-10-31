@@ -275,6 +275,62 @@ describe('PeseController (accessi, rettifiche, allegati) - catena HTTP', () => {
       expect(accessi.apri.mock.calls[0][3].nomeFile).not.toContain('..\\')
     })
 
+    it('nome file non ASCII: arriva al servizio in UTF-8 ("città.jpg")', async () => {
+      await post()
+        .field('dati', JSON.stringify(apertura))
+        .attach('allegato', JPEG, { filename: 'città.jpg', contentType: 'image/jpeg' })
+        .expect(201)
+      expect(accessi.apri.mock.calls[0][3].nomeFile).toBe('città.jpg')
+    })
+
+    it('VIEWER con file di 4 MiB e rettifica da OPERATOR: 403 prima del multipart, servizi non chiamati', async () => {
+      ruolo = 'VIEWER'
+      const grande = Buffer.concat([JPEG, Buffer.alloc(MAX - JPEG.length)])
+      const r = await post()
+        .field('dati', 'non json')
+        .attach('allegato', grande, { filename: 'a.jpg', contentType: 'image/jpeg' })
+        .expect(403)
+      expect(r.body.error).toBe('PESE_RISERVATE_OPERATORI')
+      expect(accessi.apri).not.toHaveBeenCalled()
+      ruolo = 'OPERATOR'
+      await post(`/pese/pesate/${ID}/rettifiche`)
+        .field('dati', 'non json')
+        .attach('allegato', grande, { filename: 'a.jpg', contentType: 'image/jpeg' })
+        .expect(403)
+    })
+
+    it('campi: pesata mancante, ora senza fuso, motivo di soli spazi → 400 in italiano', async () => {
+      const { pesata: _p, ...senza } = apertura
+      let r = await post().field('dati', JSON.stringify(senza)).expect(400)
+      expect(JSON.stringify(r.body.message)).toContain('Mancano i dati della pesata.')
+      r = await post()
+        .field(
+          'dati',
+          JSON.stringify({
+            ...apertura,
+            pesata: { ...pesata, oraStrumento: '2026-10-31T10:00:00' },
+          })
+        )
+        .expect(400)
+      expect(JSON.stringify(r.body.message)).toContain('fuso orario')
+      r = await post()
+        .field(
+          'dati',
+          JSON.stringify({ ...apertura, pesata: { ...pesata, motivo: '   ', extra: 1 } })
+        )
+        .expect(400)
+      expect(JSON.stringify(r.body.message)).toContain('pesata.extra')
+      await post()
+        .field(
+          'dati',
+          JSON.stringify({
+            ...apertura,
+            pesata: { ...pesata, oraStrumento: '2026-10-31T10:00:00+02:00' },
+          })
+        )
+        .expect(201)
+    })
+
     it('VIEWER su POST → 403 PESE_RISERVATE_OPERATORI, servizio non chiamato', async () => {
       ruolo = 'VIEWER'
       const r = await post().field('dati', JSON.stringify(apertura)).expect(403)
@@ -487,6 +543,17 @@ describe('PeseController (accessi, rettifiche, allegati) - catena HTTP', () => {
         /^inline; filename="scontrino _1_\.pdf"; filename\*=UTF-8''scontrino%20%221%22\.pdf$/
       )
       expect(allegati.leggi).toHaveBeenCalledWith(TENANT, ID)
+    })
+
+    it('nome con surrogato spaiato: intestazione ben formata', async () => {
+      allegati.leggi.mockResolvedValue({
+        nomeFile: 'a\uD800b.png',
+        mimeType: 'image/png',
+        sha256: 'x',
+        contenuto: PNG,
+      })
+      const r = await http().get(`/pese/allegati/${ID}`).expect(200)
+      expect(r.headers['content-disposition']).toContain("UTF-8''a%EF%BF%BDb.png")
     })
 
     it('nome con percorso, a capo e apice: nessun carattere pericoloso nell’intestazione', async () => {
