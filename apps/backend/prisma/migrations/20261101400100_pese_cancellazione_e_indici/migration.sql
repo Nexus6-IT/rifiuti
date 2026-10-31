@@ -32,6 +32,9 @@ CREATE FUNCTION pese_cancellazione_vietata() RETURNS trigger LANGUAGE plpgsql AS
 BEGIN
   -- Profondita' 1 = DELETE diretto di un client; la cascata da tenants passa da un trigger
   -- referenziale (profondita' >= 2) ed e' l'unico caso ammesso.
+  -- ATTENZIONE: `<= 1` lascia passare QUALUNQUE cascata. Una futura chiave esterna con ON DELETE
+  -- CASCADE verso queste tabelle (pesate, rettifiche_peso, allegati_pesa) aggirerebbe
+  -- l'immutabilita': non va aggiunta (le FK verso di esse sono NO ACTION).
   IF pg_trigger_depth() <= 1 THEN
     RAISE EXCEPTION '%: le righe non si cancellano', TG_TABLE_NAME;
   END IF;

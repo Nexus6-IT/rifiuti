@@ -53,6 +53,19 @@ export type RlsClient = ReturnType<typeof buildRlsClient>
  */
 export const TABELLE_NON_SVUOTABILI: readonly string[] = ['_prisma_migrations', 'causali_registro']
 
+/**
+ * Tabelle delle pese in sola scrittura (Fase 4 pezzo 8a): un trigger `BEFORE TRUNCATE` le protegge e
+ * l'unica cancellazione ammessa e' la cascata da `tenants`. `cleanDatabase` quindi NON le svuota con
+ * TRUNCATE, e nemmeno le tabelle che le raggiungono con `TRUNCATE ... CASCADE` (ogni tabella che
+ * queste referenziano, direttamente o no: `tenants`, `accessi_pesa`, `automezzi`, `registri_rifiuti`,
+ * `trasportatori`...). Quelle si svuotano con `DELETE FROM tenants`, che a cascata le porta via.
+ */
+export const TABELLE_PESE_IN_SOLA_SCRITTURA: readonly string[] = [
+  'pesate',
+  'rettifiche_peso',
+  'allegati_pesa',
+]
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   /**
@@ -90,8 +103,28 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async cleanDatabase() {
     // For testing: clean all tables
     if (process.env.NODE_ENV === 'test') {
+      // 1. Le aziende, foglie dopo foglie (`parent_tenant_id` e' RESTRICT): la cascata arriva a
+      // profondita' di trigger >= 2 ed e' l'unica cancellazione ammessa per le tabelle delle pese.
+      for (let giro = 0; giro < 10; giro++) {
+        const cancellate = await this.$executeRawUnsafe(
+          `DELETE FROM "public"."tenants" t WHERE NOT EXISTS (SELECT 1 FROM "public"."tenants" c WHERE c."parent_tenant_id" = t."id")`
+        )
+        if (!cancellate) break
+      }
+
+      // 2. TRUNCATE di tutto il resto, escluse le tabelle che raggiungerebbero quelle delle pese.
       const tables = await this.$queryRaw<Array<{ tablename: string }>>`
-        SELECT tablename FROM pg_tables WHERE schemaname='public'
+        WITH RECURSIVE raggiunte(oid) AS (
+          SELECT c.oid FROM pg_class c
+          WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY(${[...TABELLE_PESE_IN_SOLA_SCRITTURA]})
+          UNION
+          SELECT con.confrelid FROM pg_constraint con
+          JOIN raggiunte r ON con.conrelid = r.oid
+          WHERE con.contype = 'f'
+        )
+        SELECT tablename FROM pg_tables
+        WHERE schemaname = 'public'
+          AND tablename NOT IN (SELECT relname FROM pg_class WHERE oid IN (SELECT oid FROM raggiunte))
       `
 
       for (const { tablename } of tables) {

@@ -24,7 +24,7 @@ describe('Pese: vincoli, trigger, privilegi e RLS (Postgres reale)', () => {
   )
   const tenantCreati: string[] = []
   let n = 0
-  const seme = Date.now() % 5_000_000
+  const seme = 5_000_000 + (Date.now() % 4_000_000)
 
   const lett = (v: Valore) =>
     v === null ? 'NULL' : typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : String(v)
@@ -297,12 +297,84 @@ describe('Pese: vincoli, trigger, privilegi e RLS (Postgres reale)', () => {
     }
   })
 
+  describe.each([
+    ['wasteflow_app', 'app'],
+    ['wasteflow_sistema', 'sistema'],
+  ])('percorso positivo coi privilegi reali di %s', (_ruolo, quale) => {
+    const esegui = (tenantId: string, sql: string) =>
+      quale === 'app' ? comeApp(tenantId, sql) : sistema.$executeRawUnsafe(sql)
+
+    it("due pesate, chiusura, collegamento a un FIR e rettifica (FOR SHARE sull'accesso con i soli privilegi applicativi)", async () => {
+      const a = await azienda()
+      const acc = crypto.randomUUID()
+      const ins = (tabella: string, campi: Record<string, Valore>) =>
+        `INSERT INTO ${tabella} (${Object.keys(campi).join(', ')}) VALUES (${Object.values(campi).map(lett).join(', ')})`
+      await esegui(
+        a.t,
+        ins('accessi_pesa', {
+          id: acc,
+          tenant_id: a.t,
+          registro_id: a.reg,
+          anno: 2026,
+          numero: ++n,
+          verso: 'CARICO',
+          modo: 'DOPPIA',
+          aperto_da: a.user,
+        })
+      )
+      const p1 = crypto.randomUUID()
+      for (const [id, ordine, peso] of [
+        [p1, 1, 2000],
+        [crypto.randomUUID(), 2, 1000],
+      ] as const) {
+        await esegui(a.t, ins('pesate', { ...campiPesata(a, acc, { ordine, peso_kg: peso }), id }))
+      }
+      await esegui(
+        a.t,
+        `UPDATE accessi_pesa SET stato = 'CHIUSO', chiuso_da = '${a.user}', chiuso_il = now() WHERE id = '${acc}'`
+      )
+      await esegui(
+        a.t,
+        ins('collegamenti_accesso', {
+          tenant_id: a.t,
+          accesso_id: acc,
+          registro_id: a.reg,
+          verso: 'CARICO',
+          tipo: 'FIR',
+          fir_id: a.fir,
+          creato_da: a.user,
+        })
+      )
+      await esegui(
+        a.t,
+        ins('rettifiche_peso', {
+          tenant_id: a.t,
+          pesata_id: p1,
+          numero: 1,
+          peso_precedente_kg: 2000,
+          peso_nuovo_kg: 2100,
+          motivo: 'errore di trascrizione',
+          autore_id: a.user,
+          impronta: HASH,
+          created_at: new Date().toISOString(),
+        })
+      )
+      const r = await owner.$queryRawUnsafe<{ stato: string; p: number; c: number; r: number }[]>(
+        `SELECT (SELECT stato::text FROM accessi_pesa WHERE id = '${acc}') AS stato,
+                (SELECT count(*)::int FROM pesate WHERE accesso_id = '${acc}') AS p,
+                (SELECT count(*)::int FROM collegamenti_accesso WHERE accesso_id = '${acc}') AS c,
+                (SELECT count(*)::int FROM rettifiche_peso WHERE pesata_id = '${p1}') AS r`
+      )
+      expect(r[0]).toEqual({ stato: 'CHIUSO', p: 2, c: 1, r: 1 })
+    })
+  })
+
   describe('pesate', () => {
     it('stesso strumento e stesso alibi in due accessi → violazione di pesate_strumento_id_alibi_id_key; alibi uguale su strumenti diversi → ammesso', async () => {
       const a = await azienda()
       await pesata(a, await accesso(a), { alibi_id: 'AL-1' })
       await expect(pesata(a, await accesso(a), { alibi_id: 'AL-1' })).rejects.toThrow(
-        /Key \(strumento_id, alibi_id\)/
+        /23505[\s\S]*Key \(strumento_id, alibi_id\)/
       )
       await expect(
         pesata(a, await accesso(a), { alibi_id: 'AL-1', strumento_id: a.strumento2 })
@@ -481,7 +553,7 @@ describe('Pese: vincoli, trigger, privilegi e RLS (Postgres reale)', () => {
       const acc = await accessoChiuso(a)
       const c1 = await collegamento(a, acc, { tipo: 'FIR', fir_id: a.fir })
       await expect(collegamento(a, acc, { tipo: 'FIR', fir_id: a.fir2 })).rejects.toThrow(
-        /Key \(accesso_id\)/
+        /23505[\s\S]*Key \(accesso_id\)/
       )
       const revoca = `UPDATE collegamenti_accesso SET revocato_da = '${a.user}', revocato_il = now(), motivo_revoca = 'errato' WHERE id = '${c1}'`
       await comeApp(a.t, revoca)
