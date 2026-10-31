@@ -13,6 +13,7 @@ import type { IntegrazioniMudDto } from '../../api/mud/dtos/integrazioni-mud.dto
 import { MudVersionRegistry } from './export/mud-version.registry'
 import {
   chiaveDestinatario,
+  chiaveGiacenza,
   chiaveMovimento,
   chiavePesoSpecifico,
   intervalloPesoSpecifico,
@@ -29,6 +30,7 @@ export type TipoModificaIntegrazione =
   | 'DESTINATARIO_MOVIMENTO'
   | 'CF_TRASPORTATORE'
   | 'PESO_SPECIFICO'
+  | 'DESTINAZIONE_GIACENZA'
 
 export interface ModificaIntegrazione {
   tipo: TipoModificaIntegrazione
@@ -79,6 +81,12 @@ function differenzeIntegrazioni(
     ),
     ...differenze('CF_TRASPORTATORE', prima.trasportatori, dopo.trasportatori, valoreSoggetto),
     ...differenze('PESO_SPECIFICO', prima.pesiSpecifici, dopo.pesiSpecifici, v => v.kgPerUnita),
+    ...differenze(
+      'DESTINAZIONE_GIACENZA',
+      prima.destinazioniGiacenza,
+      dopo.destinazioniGiacenza,
+      v => (v.destinazione === 'R' ? 'recupero' : 'smaltimento')
+    ),
   ]
 }
 
@@ -127,6 +135,16 @@ export class MudIntegrazioniService {
   /** Registro -> sede, solo se l'azienda ha più registri (vuota altrimenti): per le etichette dei movimenti. */
   async etichetteRegistri(tenantId: string): Promise<Record<string, string>> {
     return Object.fromEntries(await etichetteRegistri(this.prisma, tenantId))
+  }
+
+  /** Sedi dell'azienda (id -> denominazione): la pagina etichetta le destinazioni delle giacenze. */
+  async etichetteUnitaLocali(tenantId: string): Promise<Record<string, string>> {
+    const sedi = await this.prisma.rentriUnitaLocale.findMany({
+      where: { tenantId },
+      select: { id: true, denominazione: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    return Object.fromEntries(sedi.map(s => [s.id, s.denominazione]))
   }
 
   async salva(
@@ -212,11 +230,39 @@ export class MudIntegrazioniService {
       }
     }
 
+    // D9: la sede deve essere dell'azienda selezionata (RLS + filtro per tenant); messaggio senza id
+    const vociGiacenza = dati.destinazioniGiacenza ?? []
+    const sediChieste = [
+      ...new Set(vociGiacenza.map(v => v.unitaLocaleId).filter(Boolean)),
+    ] as string[]
+    if (sediChieste.length > 0) {
+      const trovate = await this.prisma.rentriUnitaLocale.findMany({
+        where: { tenantId, id: { in: sediChieste } },
+        select: { id: true },
+      })
+      if (trovate.length !== sediChieste.length) {
+        throw new BadRequestException('Unità locale non trovata')
+      }
+    }
+    const destinazioniGiacenza: IntegrazioniMud['destinazioniGiacenza'] = {}
+    for (const v of vociGiacenza) {
+      const cer6 = cerSoloCifre(v.cerCode)
+      if (cer6.length !== 6) {
+        throw new BadRequestException(`Il codice CER "${v.cerCode}" non è valido: servono 6 cifre.`)
+      }
+      destinazioniGiacenza[chiaveGiacenza(v.unitaLocaleId ?? null, cer6)] = {
+        cerCode: chiaveConfrontoCer(cer6),
+        unitaLocaleId: v.unitaLocaleId ?? null,
+        destinazione: v.destinazione,
+      }
+    }
+
     const integrazioni: IntegrazioniMud = {
       destinatari,
       destinatariMovimento,
       trasportatori,
       pesiSpecifici,
+      destinazioniGiacenza,
       aggiornateIl: new Date().toISOString(),
       aggiornateDa: userId,
     }

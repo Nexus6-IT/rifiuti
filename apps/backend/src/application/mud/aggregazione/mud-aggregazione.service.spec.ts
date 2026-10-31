@@ -1,8 +1,15 @@
 import { MudAggregazioneService } from './mud-aggregazione.service'
+import { MudAggregazioneOracoloA2bf11e } from './mud-aggregazione-a2bf11e.oracolo-spec'
 import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import { WHERE_VIGENTE } from '../../../domain/waste-movement/vigenza'
 import { hashAggregato, limitiAnnoMud } from './mud-regole'
 import { controlliMud, haBloccanti, type MudEsitoControllo } from './mud-controlli'
+import {
+  creaPrismaFinto,
+  type DatiPrismaFinto,
+  type MovimentoFinto,
+  type UnitaLocaleFinta,
+} from './mud-prisma-finto.fixture-spec'
 
 describe('MudAggregazioneService', () => {
   let service: MudAggregazioneService
@@ -84,6 +91,24 @@ describe('MudAggregazioneService', () => {
     })
   }
 
+  const sedePrincipale = {
+    id: 'ul-1',
+    denominazione: 'Sede',
+    numIscrSito: 'OP1',
+    principale: true,
+    attiva: true,
+    progressivoMud: 1,
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+    indirizzo: null,
+    civico: null,
+    cap: null,
+    comune: null,
+    provincia: null,
+    numeroAddetti: null,
+  }
+
+  const V1 = { versioneCalcolo: 1 } as const
+
   const codici = (c: MudEsitoControllo[]) => c.map(e => e.codice)
   const conCodice = (c: MudEsitoControllo[], codice: string) => c.filter(e => e.codice === codice)
 
@@ -103,13 +128,19 @@ describe('MudAggregazioneService', () => {
           .fn()
           .mockResolvedValue({ city: 'Roma', province: 'RM', atecoCode: '38.11.00' }),
       },
-      rentriUnitaLocale: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }]),
-      },
+      rentriUnitaLocale: { findMany: jest.fn().mockResolvedValue([sedePrincipale]) },
+      autorizzazioneImpianto: { count: jest.fn().mockResolvedValue(0) },
       mUDReport: { findUnique: jest.fn().mockResolvedValue(null) },
-      registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
+      registroRifiuti: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'reg-A',
+            unitaLocaleId: 'ul-1',
+            descrizione: 'Registro Sede',
+            unitaLocale: { denominazione: 'Sede' },
+          },
+        ]),
+      },
       giacenzaIniziale: { findMany: jest.fn().mockResolvedValue([]) },
     }
     referenceData = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
@@ -372,6 +403,8 @@ describe('MudAggregazioneService', () => {
       expect.objectContaining({
         codice: 'CAUSALE_ESCLUSA',
         gravita: 'AVVISO',
+        messaggio:
+          'Movimento n. 3/2025 (CER 17 04 05, causale "Riclassificazione CER", 40 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.',
         movimenti: [expect.objectContaining({ numero: 3, quantita: 40, incluso: false })],
       })
     )
@@ -408,7 +441,7 @@ describe('MudAggregazioneService', () => {
     prisma.rentriUnitaLocale.findMany.mockResolvedValue(sedi)
     impostaDati({ movimenti: [mov({})] })
 
-    const r = await service.aggrega('t1', 2025)
+    const r = await service.aggrega('t1', 2025, V1)
 
     expect(prisma.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: 't1', attiva: true } })
@@ -424,11 +457,11 @@ describe('MudAggregazioneService', () => {
     ]
     impostaDati({ movimenti: [mov({})] })
     prisma.rentriUnitaLocale.findMany.mockResolvedValue([sedi[0]])
-    const conUna = await service.aggrega('t1', 2025)
+    const conUna = await service.aggrega('t1', 2025, V1)
 
     impostaDati({ movimenti: [mov({})] })
     prisma.rentriUnitaLocale.findMany.mockResolvedValue(sedi)
-    const conDue = await service.aggrega('t1', 2025)
+    const conDue = await service.aggrega('t1', 2025, V1)
 
     const senzaAvviso = (c: typeof conDue.controlli) =>
       c.filter(x => x.codice !== 'PIU_UNITA_LOCALI')
@@ -751,6 +784,8 @@ describe('MudAggregazioneService', () => {
       })
       // con due registri il testo dice di quale sede è il movimento
       expect(bloccanti[0].messaggio).toContain('Movimento n. 5/2025 (Sede B)')
+      // i due registri del mock non hanno sede: i movimenti vanno sulla principale (D2)
+      expect(codici(r.controlli)).toContain('MOVIMENTI_SENZA_SEDE')
       expect(haBloccanti(r.controlli)).toBe(true)
       expect(r.righe[0].dr).toEqual([
         expect.objectContaining({ codiceFiscale: '12345678903', quantitaKg: 300 }),
@@ -1302,13 +1337,13 @@ describe('MudAggregazioneService', () => {
       { cerCode: '170405', type: 'SCARICO', unit: 'kg', _sum: { quantity: 80 } },
     ])
 
-    const r = await service.aggrega('t1', 2025)
+    const r = await service.aggrega('t1', 2025, V1)
 
     const g = conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')
     expect(g).toEqual([controlliMud.giacenzeNonCalcolate(2025, [{ cerCode6: '170405', kg: 120 }])])
     expect(g[0].kgNonDichiarati).toBe(120)
     const args = prisma.wasteMovement.groupBy.mock.calls[0][0]
-    expect(args.by).toEqual(['cerCode', 'type', 'unit'])
+    expect(args.by).toEqual(['registroId', 'cerCode', 'type', 'unit'])
     expect(args.where.tenantId).toBe('t1')
     expect(args.where.movementDate.lt).toEqual(limitiAnnoMud(2025).fine)
     expect(args.where.movementDate.gte).toBeUndefined()
@@ -1333,7 +1368,7 @@ describe('MudAggregazioneService', () => {
       apertura('16 01 01', 500, 'LITRI'),
     ])
 
-    const r = await service.aggrega('t1', 2025)
+    const r = await service.aggrega('t1', 2025, V1)
 
     const g = conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')
     expect(g).toEqual([
@@ -1360,7 +1395,7 @@ describe('MudAggregazioneService', () => {
       { cerCode: '160101', type: 'CARICO', unit: 'LITRI', _sum: { quantity: 500 } },
     ])
 
-    const r = await service.aggrega('t1', 2025)
+    const r = await service.aggrega('t1', 2025, V1)
 
     expect(conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')).toEqual([])
   })
@@ -1372,7 +1407,7 @@ describe('MudAggregazioneService', () => {
       { cerCode: '170503', type: 'CARICO', unit: '', _sum: { quantity: 20 } },
     ])
 
-    const r = await service.aggrega('t1', 2025)
+    const r = await service.aggrega('t1', 2025, V1)
 
     const g = conCodice(r.controlli, 'GIACENZE_NON_CALCOLATE')
     expect(g[0].kgNonDichiarati).toBe(520)
@@ -1925,6 +1960,15 @@ describe('MudAggregazioneService', () => {
       expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')).toHaveLength(1)
     })
 
+    it('una causale aziendale esclusa mostra la propria descrizione', async () => {
+      conVersioni(versione({ ruoloMud: 'ESCLUSO', descrizione: 'Altro carico' }))
+      impostaDati({ movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })] })
+      const r = await service.aggrega('t1', 2025)
+      expect(conCodice(r.controlli, 'CAUSALE_ESCLUSA')[0].messaggio).toBe(
+        'Movimento n. 1/2025 (CER 17 04 05, causale "Altro carico", 100 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.'
+      )
+    })
+
     it('una causale aziendale RICEVUTO_DA_TERZI finisce fra i ricevuti', async () => {
       conVersioni(versione({ ruoloMud: 'RICEVUTO_DA_TERZI' }))
       impostaDati({ movimenti: [mov({ causale: 'AZ_TEST', causaleAziendaId: 'ver-1' })] })
@@ -2001,5 +2045,861 @@ describe('MudAggregazioneService', () => {
       const r = await service.aggrega('t1', 2025)
       expect(r.righe[0].prodottoKg).toBe(100)
     })
+  })
+
+  describe('versione 2: una dichiarazione per unità locale', () => {
+    const COMPLETA = {
+      indirizzo: 'Via Po',
+      civico: '3',
+      cap: '20100',
+      comune: 'Milano',
+      provincia: 'MI',
+    }
+    const sede1 = (p: Partial<any> = {}) => ({ ...sedePrincipale, ...COMPLETA, ...p })
+    const sede2 = (p: Partial<any> = {}) => ({
+      ...sedePrincipale,
+      ...COMPLETA,
+      id: 'ul-2',
+      denominazione: 'Deposito',
+      numIscrSito: 'OP2',
+      principale: false,
+      progressivoMud: 2,
+      createdAt: new Date('2024-02-01T00:00:00Z'),
+      ...p,
+    })
+    const sede3 = (p: Partial<any> = {}) =>
+      sede2({
+        id: 'ul-3',
+        denominazione: 'Magazzino',
+        numIscrSito: 'OP3',
+        progressivoMud: 3,
+        createdAt: new Date('2024-03-01T00:00:00Z'),
+        ...p,
+      })
+    const registro = (id: string, unitaLocaleId: string | null, sede = 'Sede') => ({
+      id,
+      unitaLocaleId,
+      descrizione: `Registro ${id}`,
+      unitaLocale: unitaLocaleId ? { denominazione: sede } : null,
+    })
+    const impostaSedi = (sedi: any[], registri: any[]) => {
+      prisma.rentriUnitaLocale.findMany.mockResolvedValue(sedi)
+      prisma.registroRifiuti.findMany.mockResolvedValue(registri)
+    }
+    const dueSedi = () =>
+      impostaSedi(
+        [sede1(), sede2()],
+        [registro('reg-A', 'ul-1', 'Sede'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+    // un prodotto per sede: reg-A 100 kg di 17 04 05, reg-B 40 kg di 20 03 04
+    const unoPerSede = () => [
+      mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+      mov({ registroId: 'reg-B', progressiveNumber: 1, cerCode: '20 03 04', quantity: 40 }),
+    ]
+
+    it('v2: due sedi danno due dichiarazioni con codici 000000000000001 e 000000000000002', async () => {
+      dueSedi()
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.versioneCalcolo).toBe(2)
+      expect(r.dichiarazioni.map(d => d.codice)).toEqual(['000000000000001', '000000000000002'])
+      expect(r.dichiarazioni.map(d => d.unitaLocale.denominazione)).toEqual(['Sede', 'Deposito'])
+      expect(r.dichiarazioni[0].righe).toEqual([
+        expect.objectContaining({ cerCode: '170405', prodottoKg: 100 }),
+      ])
+      expect(r.dichiarazioni[1].righe).toEqual([
+        expect.objectContaining({ cerCode: '200304', prodottoKg: 40 }),
+      ])
+      // le righe di testa sono la concatenazione, i conteggi la somma
+      expect(r.righe.map(x => x.cerCode)).toEqual(['170405', '200304'])
+      expect(r.movimentiPerCer).toEqual({ '170405': 1, '200304': 1 })
+    })
+
+    it('v2: lo stesso CER in due sedi dà due righe, una per dichiarazione', async () => {
+      dueSedi()
+      impostaDati({
+        movimenti: [
+          mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+          mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 60 }),
+        ],
+      })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.righe).toHaveLength(2)
+      expect(r.dichiarazioni[0].righe).toEqual([
+        expect.objectContaining({ cerCode: '170405', prodottoKg: 100 }),
+      ])
+      expect(r.dichiarazioni[1].righe).toEqual([
+        expect.objectContaining({ cerCode: '170405', prodottoKg: 60 }),
+      ])
+      expect(r.movimentiPerCer['170405']).toBe(2)
+    })
+
+    it('v2: registro senza sede con principale → sulla principale con MOVIMENTI_SENZA_SEDE', async () => {
+      impostaSedi([sede1()], [registro('reg-A', 'ul-1'), registro('reg-B', null)])
+      impostaDati({
+        movimenti: [mov({ registroId: 'reg-B', progressiveNumber: 7, quantity: 30 })],
+      })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni).toHaveLength(1)
+      expect(r.dichiarazioni[0].codice).toBe('000000000000001')
+      expect(r.dichiarazioni[0].righe[0].prodottoKg).toBe(30)
+      const avvisi = conCodice(r.controlli, 'MOVIMENTI_SENZA_SEDE')
+      expect(avvisi).toHaveLength(1)
+      expect(avvisi[0].gravita).toBe('AVVISO')
+      expect(avvisi[0].messaggio).toBe(
+        "Nel 2025 il registro senza sede ha 1 movimento nel MUD (n. 7/2025 (Registro reg-B)): il file lo attribuisce all'unità locale principale Sede (OP1). Verificare che sia stato prodotto o gestito in quella sede."
+      )
+      expect(avvisi[0].movimenti).toEqual([expect.objectContaining({ numero: 7, incluso: true })])
+      expect(haBloccanti(r.controlli)).toBe(false)
+    })
+
+    it('v2: azienda senza unità locali → una dichiarazione azienda con codice 1', async () => {
+      impostaSedi([], [registro('reg-A', null)])
+      impostaDati({ movimenti: [mov({ quantity: 100 })] })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni).toHaveLength(1)
+      expect(r.dichiarazioni[0]).toEqual(
+        expect.objectContaining({
+          codice: '000000000000001',
+          progressivo: 1,
+          anagrafica: null,
+          unitaLocale: { id: null, denominazione: 'Azienda', numIscrSito: null, principale: false },
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+        })
+      )
+      expect(r.righe[0].prodottoKg).toBe(100)
+      expect(codici(r.controlli)).not.toContain('MOVIMENTI_SENZA_SEDE')
+      expect(haBloccanti(r.controlli)).toBe(false)
+    })
+
+    it('v2: unità locali senza principale e registro senza sede → SEDE_PRINCIPALE_MANCANTE', async () => {
+      impostaSedi([sede1({ principale: false })], [registro('reg-B', null)])
+      impostaDati({ movimenti: [mov({ registroId: 'reg-B', quantity: 30 })] })
+
+      const r = await service.aggrega('t1', 2025)
+
+      const c = conCodice(r.controlli, 'SEDE_PRINCIPALE_MANCANTE')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('BLOCCANTE')
+      expect(c[0].messaggio).toBe(
+        "Nel 2025 il registro senza sede ha 1 movimento, ma l'unica unità locale dell'azienda non è indicata come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD lo attribuisce a quella sede."
+      )
+      // i movimenti restano fuori dalle dichiarazioni
+      expect(r.dichiarazioni).toEqual([])
+      expect(r.righe).toEqual([])
+    })
+
+    it('v2: seconda sede senza indirizzo → UNITA_LOCALE_SENZA_INDIRIZZO con i campi mancanti', async () => {
+      impostaSedi(
+        [
+          sede1(),
+          sede2({ indirizzo: null, cap: null, comune: null, provincia: null, civico: null }),
+        ],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      const c = conCodice(r.controlli, 'UNITA_LOCALE_SENZA_INDIRIZZO')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('BLOCCANTE')
+      expect(c[0].messaggio).toBe(
+        "Unità locale Deposito (OP2): mancano indirizzo, CAP, comune e provincia nell'anagrafica della sede, obbligatori nella scheda anagrafica della sua dichiarazione MUD. Inserirli nella pagina delle unità locali RENTRI."
+      )
+      expect(r.dichiarazioni[1].anagrafica).toBeNull()
+    })
+
+    it('v2: principale senza indirizzo: azienda; con due dichiarazioni PRINCIPALE_CON_INDIRIZZO_AZIENDA', async () => {
+      impostaSedi(
+        [sede1({ indirizzo: null, cap: null }), sede2()],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const due = await service.aggrega('t1', 2025)
+
+      expect(due.dichiarazioni[0].anagrafica).toBeNull()
+      expect(due.dichiarazioni[1].anagrafica).toEqual(expect.objectContaining({ id: 'ul-2' }))
+      const c = conCodice(due.controlli, 'PRINCIPALE_CON_INDIRIZZO_AZIENDA')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('AVVISO')
+      expect(c[0].messaggio).toBe(
+        "L'unità locale principale Sede (OP1) non ha un indirizzo proprio: nella sua dichiarazione MUD compare l'indirizzo dell'azienda. Se la sede è altrove, inserirne l'indirizzo nella pagina delle unità locali RENTRI."
+      )
+
+      // una sola dichiarazione: l'indirizzo dell'azienda è quello di oggi, nessun avviso
+      impostaDati({ movimenti: [unoPerSede()[0]] })
+      const una = await service.aggrega('t1', 2025)
+      expect(una.dichiarazioni).toHaveLength(1)
+      expect(una.dichiarazioni[0].anagrafica).toBeNull()
+      expect(codici(una.controlli)).not.toContain('PRINCIPALE_CON_INDIRIZZO_AZIENDA')
+    })
+
+    it('v2: comune della sede non trovato → UNITA_LOCALE_SENZA_COMUNE_ISTAT', async () => {
+      impostaSedi(
+        [sede1(), sede2({ comune: 'Atlantide', provincia: 'MI' })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      referenceData.findComuneByName.mockImplementation(async (comune: string) =>
+        comune === 'Atlantide' ? undefined : { code: '015146' }
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      const c = conCodice(r.controlli, 'UNITA_LOCALE_SENZA_COMUNE_ISTAT')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('BLOCCANTE')
+      expect(c[0].messaggio).toBe(
+        "Comune dell'unità locale Deposito (OP2) non trovato nelle tabelle ISTAT (Atlantide MI): correggerlo nella pagina delle unità locali RENTRI."
+      )
+      expect(haBloccanti(r.controlli)).toBe(true)
+    })
+
+    it('v2: sedi in province diverse → UNITA_LOCALI_PROVINCE_DIVERSE', async () => {
+      impostaSedi(
+        [sede1(), sede2({ comune: 'Roma', provincia: 'RM' })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      referenceData.findComuneByName.mockImplementation(async (comune: string) =>
+        comune === 'Milano' ? { code: '015146' } : { code: '058091' }
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      const c = conCodice(r.controlli, 'UNITA_LOCALI_PROVINCE_DIVERSE')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('BLOCCANTE')
+      expect(c[0].messaggio).toBe(
+        "Le unità locali da dichiarare sono in province diverse (Sede: MI; Deposito: RM): un file MUD può contenere solo dichiarazioni della stessa provincia, altrimenti viene rifiutato. La generazione di un file per provincia non è ancora supportata (contattare l'assistenza)."
+      )
+    })
+
+    it('v2: stessa provincia → nessun UNITA_LOCALI_PROVINCE_DIVERSE', async () => {
+      dueSedi()
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(codici(r.controlli)).not.toContain('UNITA_LOCALI_PROVINCE_DIVERSE')
+    })
+
+    it('v2: autorizzazioni e due dichiarazioni → AUTORIZZAZIONI_SULLA_PRINCIPALE', async () => {
+      dueSedi()
+      prisma.autorizzazioneImpianto.count.mockResolvedValue(2)
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(prisma.autorizzazioneImpianto.count).toHaveBeenCalledWith({
+        where: { tenantId: 't1' },
+      })
+      const c = conCodice(r.controlli, 'AUTORIZZAZIONI_SULLA_PRINCIPALE')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('AVVISO')
+      expect(c[0].messaggio).toBe(
+        "Il file contiene 2 dichiarazioni e l'azienda ha 2 autorizzazioni registrate: le schede delle autorizzazioni sono nella dichiarazione dell'unità locale Sede (OP1), perché le autorizzazioni non indicano la sede. Verificare che siano dell'impianto di quella sede."
+      )
+      expect(r.dichiarazioni.map(d => d.conAutorizzazioni)).toEqual([true, false])
+      expect(r.dichiarazioni.map(d => d.conAllegatiAzienda)).toEqual([true, false])
+    })
+
+    it('v2: … con la principale senza pacchetto il testo nomina la prima sede e il motivo', async () => {
+      impostaSedi(
+        [sede1(), sede2(), sede3()],
+        [
+          registro('reg-A', 'ul-1'),
+          registro('reg-B', 'ul-2', 'Deposito'),
+          registro('reg-C', 'ul-3'),
+        ]
+      )
+      prisma.autorizzazioneImpianto.count.mockResolvedValue(1)
+      impostaDati({
+        movimenti: [
+          mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 10 }),
+          mov({ registroId: 'reg-C', progressiveNumber: 1, quantity: 20 }),
+        ],
+      })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni.map(d => d.codice)).toEqual(['000000000000002', '000000000000003'])
+      const c = conCodice(r.controlli, 'AUTORIZZAZIONI_SULLA_PRINCIPALE')
+      expect(c).toHaveLength(1)
+      expect(c[0].messaggio).toBe(
+        "Il file contiene 2 dichiarazioni e l'azienda ha 1 autorizzazione registrata: la scheda dell'autorizzazione è nella dichiarazione dell'unità locale Deposito (OP2) (la principale non ha rifiuti da dichiarare nell'anno), perché le autorizzazioni non indicano la sede. Verificare che sia dell'impianto di quella sede."
+      )
+      expect(r.dichiarazioni.map(d => d.conAutorizzazioni)).toEqual([true, false])
+    })
+
+    it("v2: una sede cessata con movimenti nell'anno ha la sua dichiarazione", async () => {
+      impostaSedi(
+        [sede1(), sede2({ attiva: false })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      // le unità locali si leggono tutte, anche le cessate (D3)
+      expect(prisma.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't1' } })
+      )
+      expect(r.dichiarazioni.map(d => d.unitaLocale.denominazione)).toEqual(['Sede', 'Deposito'])
+      expect(r.dichiarazioni[1].righe[0]).toEqual(
+        expect.objectContaining({ cerCode: '200304', prodottoKg: 40 })
+      )
+      // il registro della sede cessata non e' "senza sede": nessun avviso
+      expect(codici(r.controlli)).not.toContain('MOVIMENTI_SENZA_SEDE')
+    })
+
+    it('v2: una sede senza righe non ha dichiarazione', async () => {
+      impostaSedi(
+        [sede1(), sede2({ indirizzo: null })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      impostaDati({ movimenti: [unoPerSede()[0]] })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni.map(d => d.codice)).toEqual(['000000000000001'])
+      // la sede senza pacchetto non genera controlli sulla sua anagrafica
+      expect(codici(r.controlli)).not.toContain('UNITA_LOCALE_SENZA_INDIRIZZO')
+      expect(codici(r.controlli)).not.toContain('UNITA_LOCALE_SENZA_ADDETTI')
+    })
+
+    it('v2: addetti mancanti con due dichiarazioni → 0 e UNITA_LOCALE_SENZA_ADDETTI', async () => {
+      impostaSedi(
+        [sede1({ numeroAddetti: 5 }), sede2()],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      prisma.tenant.findUnique.mockResolvedValue({
+        city: 'Roma',
+        province: 'RM',
+        atecoCode: '38.11.00',
+        numeroAddetti: 40,
+      })
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni.map(d => d.anagrafica?.numeroAddetti)).toEqual([5, 0])
+      const c = conCodice(r.controlli, 'UNITA_LOCALE_SENZA_ADDETTI')
+      expect(c).toHaveLength(1)
+      expect(c[0].gravita).toBe('AVVISO')
+      expect(c[0].messaggio).toBe(
+        'Unità locale Deposito (OP2): il numero di addetti della sede non è indicato e nella sua dichiarazione MUD risulta 0. Inserirlo nella pagina delle unità locali RENTRI.'
+      )
+    })
+
+    it('v2: principale senza indirizzo con due dichiarazioni: addetti della sede e ISTAT in ogni dichiarazione', async () => {
+      impostaSedi(
+        [sede1({ indirizzo: null, cap: null, numeroAddetti: 5 }), sede2({ numeroAddetti: 3 })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      prisma.tenant.findUnique.mockResolvedValue({
+        city: 'Roma',
+        province: 'RM',
+        atecoCode: '38.11.00',
+        numeroAddetti: 40,
+      })
+      referenceData.findComuneByName.mockImplementation(async (comune: string) =>
+        comune === 'Roma' ? { code: '058091' } : { code: '015146' }
+      )
+      impostaDati({ movimenti: unoPerSede() })
+
+      const r = await service.aggrega('t1', 2025)
+
+      // la principale usa l'anagrafica dell'azienda ma gli addetti sono i suoi (5), non i 40
+      expect(r.dichiarazioni[0].anagrafica).toBeNull()
+      expect(r.dichiarazioni.map(d => d.numeroAddetti)).toEqual([5, 3])
+      // ISTAT: azienda (Roma) per la principale, Milano per il deposito
+      expect(r.dichiarazioni.map(d => d.comuneCode)).toEqual(['058091', '015146'])
+      expect(codici(r.controlli)).not.toContain('UNITA_LOCALE_SENZA_ADDETTI')
+
+      // addetti assenti: 0 e avviso, non il totale dell'azienda
+      impostaSedi(
+        [sede1({ indirizzo: null, cap: null, numeroAddetti: null }), sede2({ numeroAddetti: 3 })],
+        [registro('reg-A', 'ul-1'), registro('reg-B', 'ul-2', 'Deposito')]
+      )
+      const senza = await service.aggrega('t1', 2025)
+      expect(senza.dichiarazioni.map(d => d.numeroAddetti)).toEqual([0, 3])
+      expect(conCodice(senza.controlli, 'UNITA_LOCALE_SENZA_ADDETTI')).toHaveLength(1)
+    })
+
+    it("v2: una dichiarazione sola: addetti dell'azienda come oggi", async () => {
+      impostaSedi([sede1({ numeroAddetti: null })], [registro('reg-A', 'ul-1')])
+      prisma.tenant.findUnique.mockResolvedValue({
+        city: 'Roma',
+        province: 'RM',
+        atecoCode: '38.11.00',
+        numeroAddetti: 40,
+      })
+      impostaDati({ movimenti: [mov({})] })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni[0].numeroAddetti).toBe(40)
+      expect(r.dichiarazioni[0].comuneCode).toBe('015146')
+    })
+
+    it('v2: i controlli di un gruppo portano la sede solo con più dichiarazioni', async () => {
+      dueSedi()
+      const movimenti = [
+        mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+        mov({ registroId: 'reg-A', progressiveNumber: 2, quantity: 30, unit: 'litri' }),
+        mov({ registroId: 'reg-B', progressiveNumber: 1, cerCode: '20 03 04', quantity: 40 }),
+      ]
+      impostaDati({ movimenti })
+
+      const due = await service.aggrega('t1', 2025)
+
+      const litri = conCodice(due.controlli, 'UNITA_NON_DI_MASSA')
+      expect(litri).toHaveLength(1)
+      expect(litri[0].sede).toBe('Sede')
+      // un avviso di giacenza è della dichiarazione cui appartiene il registro: porta la sede
+      prisma.wasteMovement.groupBy.mockResolvedValue([
+        {
+          registroId: 'reg-A',
+          cerCode: '150110',
+          type: 'CARICO',
+          unit: 'KG',
+          _sum: { quantity: 100 },
+        },
+      ])
+      const conGiacenze = await service.aggrega('t1', 2025)
+      const nonDichiarate = conCodice(conGiacenze.controlli, 'GIACENZE_NON_DICHIARATE')
+      expect(nonDichiarate).toHaveLength(1)
+      expect(nonDichiarate[0].sede).toBe('Sede')
+      expect(codici(conGiacenze.controlli)).not.toContain('GIACENZE_NON_CALCOLATE')
+
+      // una sola dichiarazione: nessuna sede
+      impostaDati({ movimenti: movimenti.slice(0, 2) })
+      const una = await service.aggrega('t1', 2025)
+      expect(una.dichiarazioni).toHaveLength(1)
+      expect(conCodice(una.controlli, 'UNITA_NON_DI_MASSA')[0].sede).toBeUndefined()
+    })
+
+    it('v2: un destinatario senza CF in due sedi dà un solo controllo, senza sede', async () => {
+      dueSedi()
+      impostaDati({
+        movimenti: [
+          scaricoSenzaFir({ registroId: 'reg-A', progressiveNumber: 1 }),
+          scaricoSenzaFir({ registroId: 'reg-B', progressiveNumber: 1 }),
+        ],
+      })
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni).toHaveLength(2)
+      const c = conCodice(r.controlli, 'DESTINATARIO_SENZA_CF')
+      expect(c).toHaveLength(1)
+      expect(c[0].sede).toBeUndefined()
+    })
+
+    it('v2: FIR scaricato in due sedi → FIR_SCARICATO_PIU_VOLTE una volta', async () => {
+      dueSedi()
+      impostaDati({
+        movimenti: [
+          scarico({
+            registroId: 'reg-A',
+            progressiveNumber: 1,
+            quantity: 50,
+            firId: 'f1',
+            operationCode: 'R13',
+          }),
+          scarico({
+            registroId: 'reg-B',
+            progressiveNumber: 1,
+            quantity: 70,
+            firId: 'f1',
+            operationCode: 'R13',
+            movementDate: new Date('2025-06-20T08:00:00Z'),
+          }),
+        ],
+        firCollegati: [fir({})],
+      })
+      prisma.destinatario.findMany.mockResolvedValue([destinatarioDest1])
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni).toHaveLength(2)
+      const c = conCodice(r.controlli, 'FIR_SCARICATO_PIU_VOLTE')
+      expect(c).toHaveLength(1)
+      expect(c[0].sede).toBeUndefined()
+      expect(c[0].movimenti).toHaveLength(2)
+    })
+
+    it('v2: un progressivo MUD mancante usa il ripiego e scrive un warn', async () => {
+      impostaSedi([sede1({ progressivoMud: null })], [registro('reg-A', 'ul-1')])
+      impostaDati({ movimenti: [mov({})] })
+      logger.warn.mockClear()
+
+      const r = await service.aggrega('t1', 2025)
+
+      expect(r.dichiarazioni[0].codice).toBe('000000000000001')
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+    })
+
+    it("v1: identica all'oracolo anche con due sedi (tutto sulla principale, PIU_UNITA_LOCALI)", async () => {
+      dueSedi()
+      impostaDati({ movimenti: unoPerSede() })
+      const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, service)
+
+      const v1 = await service.aggrega('t1', 2025, V1)
+      const storico = await oracolo.aggrega('t1', 2025)
+
+      expect(v1.righe).toEqual(storico.righe)
+      expect(v1.movimentiPerCer).toEqual(storico.movimentiPerCer)
+      expect(v1.controlli).toEqual(storico.controlli)
+      expect(codici(v1.controlli)).toContain('PIU_UNITA_LOCALI')
+      // una sola voce "fusa"
+      expect(v1.dichiarazioni).toHaveLength(1)
+      expect(v1.dichiarazioni[0]).toEqual(
+        expect.objectContaining({ codice: '000000000000001', anagrafica: null })
+      )
+      expect(v1.righe).toHaveLength(2)
+    })
+  })
+})
+
+// Giacenze al 31/12 per sede e CER (Fase 2 pezzo 8, D8 e D9): prisma finto che calcola davvero
+// dai movimenti (campo `vigente`, `groupBy` per `by`). Valori attesi scritti a mano.
+describe('MudAggregazioneService: giacenze al 31/12 (versione 2)', () => {
+  const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
+  const referenceData: any = { findComuneByName: jest.fn().mockResolvedValue({ code: '015146' }) }
+
+  const mov = (p: Partial<MovimentoFinto>): MovimentoFinto => ({
+    registroId: 'reg-A',
+    progressiveNumber: 1,
+    progressiveYear: 2025,
+    type: 'CARICO',
+    causale: 'PRODUZIONE_INTERNA',
+    causaleAziendaId: null,
+    cerCode: '17 04 05',
+    quantity: 100,
+    unit: 'KG',
+    operationCode: null,
+    firId: null,
+    firIdRicopia: null,
+    ricopiaChiave: '',
+    counterpartName: null,
+    wastePhysicalState: null,
+    movementDate: new Date('2025-06-10T08:00:00Z'),
+    ...p,
+  })
+  // scarico con una causale che il MUD non dichiara (ALTRO_SCARICO): conta nel saldo, non nelle righe
+  const scaricoFuori = (p: Partial<MovimentoFinto>) =>
+    mov({ type: 'SCARICO', causale: 'ALTRO_SCARICO', ...p })
+  const scaricoFir = (p: Partial<MovimentoFinto>) =>
+    mov({ type: 'SCARICO', causale: 'CONFERIMENTO_TRASPORTATORE', ...p })
+  const fir = (id: string, numero: string) => ({
+    id,
+    firNumber: numero,
+    rentriNumeroFir: null,
+    status: 'COMPLETED',
+    rentriStatoFormulario: null,
+    wasteOperationType: 'RECOVERY',
+    wasteOperationCode: null,
+    receiverId: 'dest-1',
+    receiverName: 'Recupero Metalli Srl',
+    receiverPartitaIva: '33333333333',
+    carrierId: 'car-1',
+    carrierName: 'Trasporti Srl',
+    carrierPartitaIva: '22222222222',
+  })
+  const dest1 = {
+    id: 'dest-1',
+    ragioneSocialeStorica: 'Recupero Metalli Srl',
+    ditta: {
+      ragioneSociale: 'Recupero Metalli Srl',
+      partitaIva: '33333333333',
+      codiceFiscale: null,
+    },
+    sede: { comune: 'Milano', provincia: 'MI', via: 'Via Roma', civico: '1', cap: '20100' },
+  }
+  const indirizzo = {
+    indirizzo: 'Via Po',
+    civico: '3',
+    cap: '20100',
+    comune: 'Milano',
+    provincia: 'MI',
+  }
+  const unaSede: UnitaLocaleFinta[] = [
+    { denominazione: 'Sede', numIscrSito: 'OP1', principale: true, ...indirizzo },
+  ]
+  const dueSedi: UnitaLocaleFinta[] = [
+    ...unaSede,
+    { denominazione: 'Deposito', numIscrSito: 'OP2', principale: false, ...indirizzo },
+  ]
+  const registriDueSedi = [
+    { id: 'reg-A', descrizione: 'Registro Sede', unitaLocaleId: 'ul-1' },
+    { id: 'reg-B', descrizione: 'Registro Deposito', unitaLocaleId: 'ul-2' },
+  ]
+  const registroUnaSede = [{ id: 'reg-A', descrizione: 'Registro Sede', unitaLocaleId: 'ul-1' }]
+
+  const calcola = (dati: DatiPrismaFinto, opzioni?: { versioneCalcolo?: 1 | 2 }) => {
+    const prisma = creaPrismaFinto(dati)
+    const servizio = new MudAggregazioneService(prisma, referenceData, logger)
+    return { prisma, servizio, esito: servizio.aggrega('t1', 2025, opzioni) }
+  }
+  const rigaCer = (r: any, dichiarazione: number, cer: string) =>
+    r.dichiarazioni[dichiarazione].righe.find((x: any) => x.cerCode === cer)
+  const conCodice = (r: any, codice: string) => r.controlli.filter((c: any) => c.codice === codice)
+
+  it('v2: giacenza al 31/12 nella riga BA con recupero e smaltimento', async () => {
+    // saldo a mano: 1000 di carico - 300 - 100 di scarichi = 600 kg; avviati 300 a recupero e
+    // 100 a smaltimento → 600 · 300/400 = 450 a recupero, 150 a smaltimento
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 1000 }),
+        scaricoFir({ progressiveNumber: 2, quantity: 300, firId: 'f1', operationCode: 'R13' }),
+        scaricoFir({ progressiveNumber: 3, quantity: 100, firId: 'f2', operationCode: 'D15' }),
+      ],
+      fir: [fir('f1', 'FIR-2025-000123'), fir('f2', 'FIR-2025-000124')],
+      destinatari: [dest1],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405')).toEqual(
+      expect.objectContaining({
+        prodottoKg: 1000,
+        recuperoKg: 300,
+        smaltimentoKg: 100,
+        giacenzaRecuperoKg: 450,
+        giacenzaSmaltimentoKg: 150,
+      })
+    )
+    const ripartita = conCodice(r, 'GIACENZA_RIPARTITA')
+    expect(ripartita).toHaveLength(1)
+    expect(ripartita[0].messaggio).toBe(
+      'Il rifiuto CER 17 04 05 ha 600 kg in deposito al 31/12/2025: nell\'anno è stato avviato sia a recupero sia a smaltimento, quindi la giacenza è ripartita in proporzione (450 kg a recupero, 150 kg a smaltimento). Se la destinazione è un\'altra, indicarla in MUD > Integrazioni 2025, riga "Giacenza CER 170405".'
+    )
+    expect(ripartita[0].integrazione).toEqual({
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: 'ul-1|170405',
+      cerCode: '170405',
+      unitaLocaleId: 'ul-1',
+      sede: 'Sede',
+    })
+    // una dichiarazione sola: nessuna sede sul controllo
+    expect(ripartita[0].sede).toBeUndefined()
+    expect(conCodice(r, 'GIACENZE_NON_CALCOLATE')).toEqual([])
+    // riga e aggregato concordano
+    expect(r.righe).toEqual(r.dichiarazioni[0].righe)
+  })
+
+  it('il calcolo usa la destinazione salvata', async () => {
+    // saldo a mano: 1000 - 300 (recupero) - 100 (smaltimento) = 600 kg; senza integrazione
+    // sarebbe ripartita 450/150, con l'integrazione 'D' letta dal record vanno tutti a smaltimento
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 1000 }),
+        scaricoFir({ progressiveNumber: 2, quantity: 300, firId: 'f1', operationCode: 'R13' }),
+        scaricoFir({ progressiveNumber: 3, quantity: 100, firId: 'f2', operationCode: 'D15' }),
+      ],
+      fir: [fir('f1', 'FIR-2025-000123'), fir('f2', 'FIR-2025-000124')],
+      destinatari: [dest1],
+      reportData: {
+        integrazioni: {
+          destinazioniGiacenza: {
+            'ul-1|170405': { cerCode: '170405', unitaLocaleId: 'ul-1', destinazione: 'D' },
+          },
+        },
+      },
+    })
+    const r = await esito
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(600)
+    expect('giacenzaRecuperoKg' in rigaCer(r, 0, '170405')).toBe(false)
+    expect(conCodice(r, 'GIACENZA_RIPARTITA')).toEqual([])
+  })
+
+  it('v2: le giacenze iniziali entrano nel saldo della loro sede', async () => {
+    // reg-B: apertura di 2 t (2000 kg) + carico prodotto di 100 kg = 2100 kg, mai avviati →
+    // smaltimento; reg-A: 50 kg di un altro CER
+    const { esito } = calcola({
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [
+        mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 100 }),
+        mov({ registroId: 'reg-A', progressiveNumber: 1, cerCode: '20 03 01', quantity: 50 }),
+      ],
+      giacenzeIniziali: [
+        {
+          registroId: 'reg-B',
+          cerCode: '17 04 05',
+          quantita: 2,
+          unita: 'T',
+          dataRiferimento: new Date('2025-01-01T00:00:00Z'),
+        },
+        // dal 1/1 dell'anno dopo: fuori
+        {
+          registroId: 'reg-A',
+          cerCode: '20 03 01',
+          quantita: 999,
+          unita: 'KG',
+          dataRiferimento: new Date('2026-01-01T00:00:00Z'),
+        },
+      ],
+    })
+    const r = await esito
+
+    expect(r.dichiarazioni.map((d: any) => d.unitaLocale.denominazione)).toEqual([
+      'Sede',
+      'Deposito',
+    ])
+    expect(rigaCer(r, 1, '170405').giacenzaSmaltimentoKg).toBe(2100)
+    expect(rigaCer(r, 0, '200301').giacenzaSmaltimentoKg).toBe(50)
+    expect('giacenzaRecuperoKg' in rigaCer(r, 1, '170405')).toBe(false)
+  })
+
+  it('v2: un movimento rettificato o annullato conta solo se vigente', async () => {
+    // saldo a mano: carichi vigenti 300, scarichi vigenti 100 → 200 kg; i non vigenti (999 e 50) no
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 300 }),
+        mov({ progressiveNumber: 2, quantity: 999, vigente: false }),
+        scaricoFuori({ progressiveNumber: 3, quantity: 100 }),
+        scaricoFuori({ progressiveNumber: 4, quantity: 50, vigente: false }),
+      ],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405').prodottoKg).toBe(300)
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(200)
+  })
+
+  it('v2: una sola dichiarazione ma giacenze di due sedi → ogni avviso porta la sede (F3)', async () => {
+    // la Sede ha un movimento (una dichiarazione) con 100 kg in deposito; il Deposito non ha
+    // movimenti nell'anno ma 50 kg di apertura: giacenza non dichiarata, di un'altra sede
+    const { esito } = calcola({
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 })],
+      giacenzeIniziali: [
+        {
+          registroId: 'reg-B',
+          cerCode: '20 03 01',
+          quantita: 50,
+          unita: 'KG',
+          dataRiferimento: new Date('2025-01-01T00:00:00Z'),
+        },
+      ],
+    })
+    const r = await esito
+    expect(r.dichiarazioni).toHaveLength(1)
+    expect(conCodice(r, 'GIACENZA_DESTINAZIONE_NON_INDICATA').map((c: any) => c.sede)).toEqual([
+      'Sede',
+    ])
+    expect(conCodice(r, 'GIACENZE_NON_DICHIARATE').map((c: any) => c.sede)).toEqual(['Deposito'])
+  })
+
+  it('v2: giacenze di due sedi restano separate', async () => {
+    // sede: 100 - 60 = 40 kg; deposito: 100 - 75 = 25 kg; stesso CER, righe e avvisi propri
+    const { esito } = calcola({
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [
+        mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+        scaricoFuori({ registroId: 'reg-A', progressiveNumber: 2, quantity: 60 }),
+        mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 100 }),
+        scaricoFuori({ registroId: 'reg-B', progressiveNumber: 2, quantity: 75 }),
+      ],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(40)
+    expect(rigaCer(r, 1, '170405').giacenzaSmaltimentoKg).toBe(25)
+    const avvisi = conCodice(r, 'GIACENZA_DESTINAZIONE_NON_INDICATA')
+    expect(avvisi.map((a: any) => a.sede)).toEqual(['Sede', 'Deposito'])
+    expect(avvisi.map((a: any) => a.integrazione.chiave)).toEqual(['ul-1|170405', 'ul-2|170405'])
+    expect(avvisi[1].messaggio).toContain('ha 25 kg in deposito al 31/12/2025')
+  })
+
+  it('v2: tonnellate convertite, litri esclusi', async () => {
+    // 0,5 t = 500 kg; i 300 litri non hanno un peso e non entrano nel saldo
+    const { esito } = calcola({
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 0.5, unit: 'T' }),
+        mov({ progressiveNumber: 2, quantity: 300, unit: 'LITRI' }),
+      ],
+    })
+    const r = await esito
+
+    expect(rigaCer(r, 0, '170405').prodottoKg).toBe(500)
+    expect(rigaCer(r, 0, '170405').giacenzaSmaltimentoKg).toBe(500)
+  })
+
+  it('v2: riga senza giacenza ha lo stesso hashAggregato di oggi', async () => {
+    // I4: saldo a mano 100 - 100 = 0 → nessuna giacenza; la riga è identica a quella dell'oracolo
+    const dati: DatiPrismaFinto = {
+      unitaLocali: unaSede,
+      registri: registroUnaSede,
+      movimenti: [
+        mov({ progressiveNumber: 1, quantity: 100 }),
+        scaricoFuori({ progressiveNumber: 2, quantity: 100 }),
+      ],
+    }
+    const { prisma, servizio, esito } = calcola(dati)
+    const r = await esito
+    const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+    const storico = await oracolo.aggrega('t1', 2025)
+
+    const riga = rigaCer(r, 0, '170405')
+    expect('giacenzaRecuperoKg' in riga).toBe(false)
+    expect('giacenzaSmaltimentoKg' in riga).toBe(false)
+    expect(hashAggregato(r.dichiarazioni[0].righe)).toBe(hashAggregato(storico.righe))
+    // con una giacenza l'hash cambia
+    const conGiacenza = await calcola({
+      ...dati,
+      movimenti: [mov({ progressiveNumber: 1, quantity: 100 })],
+    }).esito
+    expect(hashAggregato(conGiacenza.righe)).not.toBe(hashAggregato(storico.righe))
+  })
+
+  it("v1: GIACENZE_NON_CALCOLATE identico all'oracolo", async () => {
+    // saldo a mano: reg-A 100 kg di 17 04 05 + reg-B 60 kg = 160 kg sommati per CER;
+    // 15 01 10* pericoloso nel solo reg-B: 12,5 kg
+    const dati: DatiPrismaFinto = {
+      unitaLocali: dueSedi,
+      registri: registriDueSedi,
+      movimenti: [
+        mov({ registroId: 'reg-A', progressiveNumber: 1, quantity: 100 }),
+        mov({ registroId: 'reg-B', progressiveNumber: 1, quantity: 60, cerCode: '170405' }),
+        mov({ registroId: 'reg-B', progressiveNumber: 2, quantity: 12.5, cerCode: '15 01 10*' }),
+      ],
+    }
+    const { prisma, servizio, esito } = calcola(dati, { versioneCalcolo: 1 })
+    const v1 = await esito
+    const oracolo = new MudAggregazioneOracoloA2bf11e(prisma, referenceData, logger, servizio)
+    const storico = await oracolo.aggrega('t1', 2025)
+
+    const g = conCodice(v1, 'GIACENZE_NON_CALCOLATE')
+    expect(g).toEqual(conCodice(storico, 'GIACENZE_NON_CALCOLATE'))
+    expect(g).toHaveLength(1)
+    expect(g[0].kgNonDichiarati).toBe(172.5)
+    expect(g[0].messaggio).toContain('(CER 15 01 10*: 12,5 kg; CER 17 04 05: 160 kg)')
+    expect(v1.righe).toEqual(storico.righe)
+    // la versione 1 non scrive giacenze
+    expect(v1.righe.every((x: any) => x.giacenzaRecuperoKg === undefined)).toBe(true)
   })
 })

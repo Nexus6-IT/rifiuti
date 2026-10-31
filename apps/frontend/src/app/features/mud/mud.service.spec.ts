@@ -14,11 +14,21 @@ import {
   intervalloPesoSpecifico,
   pesoSpecificoPlausibile,
   puoGenerareConAvvisi,
-  righeIntegrazioni,
+  righeIntegrazioni as righeIntegrazioniMud,
+  DichiarazioneRiepilogo,
   testoConferma,
   AVVISO_VOCE_SENZA_SEDE,
+  AVVISO_VOCE_GIACENZA_NON_USATA,
+  etichettaGiacenza,
 } from './mud.service'
 import { environment } from '../../../environments/environment'
+
+/** La funzione vera vuole le dichiarazioni; gli spec che non le riguardano passano nessuna. */
+const righeIntegrazioni = (
+  controlli: MudControllo[],
+  integrazioni: IntegrazioniMud,
+  dichiarazioni: DichiarazioneRiepilogo[] = []
+) => righeIntegrazioniMud(controlli, integrazioni, dichiarazioni)
 
 const API_URL = `${environment.apiUrl}/mud`
 
@@ -40,6 +50,8 @@ const STATO: StatoPresentazioneMud = {
   fileTracciato: null,
   esportazioni: [],
   prossimoFileSostituisce: null,
+  versioneCalcolo: null,
+  versioneCalcoloAttuale: 2,
 }
 
 describe('MudService', () => {
@@ -214,6 +226,7 @@ function integrazioniVuote(): IntegrazioniMud {
     destinatariMovimento: {},
     trasportatori: {},
     pesiSpecifici: {},
+    destinazioniGiacenza: {},
     aggiornateIl: null,
     aggiornateDa: null,
   }
@@ -258,6 +271,7 @@ describe('MudService integrazioni', () => {
       ],
       trasportatori: [{ ragioneSociale: 'Trasporti Srl', codiceFiscale: '12345678903' }],
       pesiSpecifici: [{ cerCode: '170405', unita: 'LITRI', kgPerUnita: 1.1 }],
+      destinazioniGiacenza: [{ cerCode: '170405', unitaLocaleId: null, destinazione: 'D' }],
     }
     service.salvaIntegrazioni(2025, corpo).subscribe()
 
@@ -494,6 +508,7 @@ describe('corpoIntegrazioni', () => {
         { cerCode: '170405', unita: 'LITRI', kgPerUnita: 1.1 },
         { cerCode: '200304', unita: 'M3', kgPerUnita: 1.2, confermaFuoriIntervallo: true },
       ],
+      destinazioniGiacenza: [],
     })
   })
 
@@ -586,5 +601,142 @@ describe('corpoIntegrazioni', () => {
     expect(corpoIntegrazioni(r, codici).destinatari).toEqual([
       { ragioneSociale: 'A Srl', codiceFiscale: '12345678903' },
     ])
+  })
+})
+
+describe('etichettaGiacenza', () => {
+  it('etichetta della riga uguale a quella del backend', () => {
+    // stesso testo di `etichettaGiacenza` in apps/backend/.../mud-controlli.ts (M5)
+    expect(etichettaGiacenza('170405')).toBe('Giacenza CER 170405')
+  })
+})
+
+describe('destinazioni delle giacenze', () => {
+  const SEDE_A = 'sede-a'
+  const SEDE_B = 'sede-b'
+  const avvisoGiacenza = (unitaLocaleId: string | null): MudControllo => ({
+    codice: 'GIACENZA_DESTINAZIONE_NON_INDICATA',
+    gravita: 'AVVISO',
+    messaggio: 'm',
+    integrazione: {
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: `${unitaLocaleId ?? 'AZIENDA'}|170405`,
+      cerCode: '170405',
+      unitaLocaleId,
+      sede: 'Nord',
+    },
+  })
+
+  it('la riga nasce da un avviso e con più sedi porta la sede fra parentesi', () => {
+    const [una] = righeIntegrazioni([avvisoGiacenza(SEDE_A)], {
+      ...integrazioniVuote(),
+      unitaLocali: { [SEDE_A]: 'Nord' },
+    })
+    expect(una.etichetta).toBe('Giacenza CER 170405')
+    const [due] = righeIntegrazioni([avvisoGiacenza(SEDE_A)], {
+      ...integrazioniVuote(),
+      unitaLocali: { [SEDE_A]: 'Nord', [SEDE_B]: 'Sud' },
+    })
+    expect(due.etichetta).toBe('Giacenza CER 170405 (Nord)')
+    expect(due.tipo).toBe('DESTINAZIONE_GIACENZA')
+  })
+
+  it('il corpo del PUT porta la scelta; senza scelta la voce non si manda', () => {
+    const r = righeIntegrazioni([avvisoGiacenza(SEDE_A)], integrazioniVuote())
+    expect(corpoIntegrazioni(r, []).destinazioniGiacenza).toEqual([])
+    r[0].destinazione = 'R'
+    expect(corpoIntegrazioni(r, []).destinazioniGiacenza).toEqual([
+      { cerCode: '170405', unitaLocaleId: SEDE_A, destinazione: 'R' },
+    ])
+  })
+
+  it('una voce salvata precompila la riga del suo avviso', () => {
+    const [r] = righeIntegrazioni([avvisoGiacenza(SEDE_A)], {
+      ...integrazioniVuote(),
+      destinazioniGiacenza: {
+        [`${SEDE_A}|170405`]: { cerCode: '170405', unitaLocaleId: SEDE_A, destinazione: 'D' },
+      },
+    })
+    expect(r.destinazione).toBe('D')
+    expect(r.avviso).toBeUndefined()
+  })
+
+  describe('regola M9 (voce non più usata)', () => {
+    const voceSalvata = (unitaLocaleId: string | null): IntegrazioniMud => ({
+      ...integrazioniVuote(),
+      unitaLocali: { [SEDE_A]: 'Nord', [SEDE_B]: 'Sud' },
+      destinazioniGiacenza: {
+        [`${unitaLocaleId ?? 'AZIENDA'}|170405`]: {
+          cerCode: '170405',
+          unitaLocaleId,
+          destinazione: 'R',
+        },
+      },
+    })
+    const dich = (id: string | null, kg: number, cer = '17 04 05*') => ({
+      codice: '1',
+      unitaLocale: { id, denominazione: 'x', numIscrSito: null },
+      totali: {
+        prodottoKg: 0,
+        recuperoKg: 0,
+        smaltimentoKg: 0,
+        giacenzaRecuperoKg: kg,
+        giacenzaSmaltimentoKg: 0,
+        movimenti: 0,
+      },
+      perCer: [
+        {
+          cerCode: cer,
+          pericoloso: true,
+          prodottoKg: 0,
+          recuperoKg: 0,
+          smaltimentoKg: 0,
+          giacenzaRecuperoKg: kg,
+          giacenzaSmaltimentoKg: 0,
+          movimenti: 0,
+        },
+      ],
+    })
+
+    it('voce in uso: nessun avviso', () => {
+      const [r] = righeIntegrazioni([], voceSalvata(SEDE_A), [dich(SEDE_A, 50), dich(SEDE_B, 5)])
+      expect(r.avviso).toBeUndefined()
+    })
+
+    it('principale cambiata: la giacenza è in un altra dichiarazione, avviso', () => {
+      const [r] = righeIntegrazioni([], voceSalvata(SEDE_A), [dich(SEDE_A, 0), dich(SEDE_B, 50)])
+      expect(r.avviso).toBe(AVVISO_VOCE_GIACENZA_NON_USATA)
+    })
+
+    it('voce dell azienda dopo l arrivo delle sedi: avviso', () => {
+      const [r] = righeIntegrazioni([], voceSalvata(null), [dich(SEDE_A, 50), dich(SEDE_B, 5)])
+      expect(r.avviso).toBe(AVVISO_VOCE_GIACENZA_NON_USATA)
+    })
+
+    it('CER senza giacenza in nessuna dichiarazione: nessun avviso, voce rimandata', () => {
+      const r = righeIntegrazioni([], voceSalvata(SEDE_A), [dich(SEDE_A, 0), dich(SEDE_B, 0)])
+      expect(r[0].avviso).toBeUndefined()
+      expect(corpoIntegrazioni(r, []).destinazioniGiacenza).toHaveSize(1)
+    })
+
+    it('una voce di una sede che non esiste più non si rimanda, le altre sì', () => {
+      const salvate: IntegrazioniMud = {
+        ...voceSalvata(SEDE_A),
+        destinazioniGiacenza: {
+          ...voceSalvata(SEDE_A).destinazioniGiacenza,
+          'sede-morta|200101': {
+            cerCode: '200101',
+            unitaLocaleId: 'sede-morta',
+            destinazione: 'D',
+          },
+          'AZIENDA|150101': { cerCode: '150101', unitaLocaleId: null, destinazione: 'D' },
+        },
+      }
+      const r = righeIntegrazioni([], salvate, [dich(SEDE_A, 50)])
+      expect(corpoIntegrazioni(r, []).destinazioniGiacenza).toEqual([
+        { cerCode: '170405', unitaLocaleId: SEDE_A, destinazione: 'R' },
+        { cerCode: '150101', unitaLocaleId: null, destinazione: 'D' },
+      ])
+    })
   })
 })
