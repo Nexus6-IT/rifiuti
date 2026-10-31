@@ -43,12 +43,23 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'anomalie', label: 'Anomalie' },
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
+  { key: 'pese', label: 'Pese (inserimento manuale)' },
 ]
 
 /** Feature predefinite per piano: l'admin puo' poi sovrascriverle. */
 const TIER_DEFAULT_FEATURES: Record<string, FeatureFlag[]> = {
   TRIAL: ['fir', 'cer', 'anagrafiche'],
-  PROFESSIONAL: ['fir', 'cer', 'anagrafiche', 'mud', 'giacenze', 'contratti', 'esg', 'anomalie'],
+  PROFESSIONAL: [
+    'fir',
+    'cer',
+    'anagrafiche',
+    'mud',
+    'giacenze',
+    'contratti',
+    'esg',
+    'anomalie',
+    'pese',
+  ],
   ENTERPRISE: FEATURE_CATALOG.map(f => f.key),
 }
 

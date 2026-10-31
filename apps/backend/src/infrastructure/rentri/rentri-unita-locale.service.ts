@@ -3,6 +3,9 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../persistence/prisma.service'
 import { NUM_ISCR_SITO_PATTERN } from './rentri-credential.service'
 
+const SEDE_CON_DATI_DI_PESA = 'La sede ha dati di pesa: non si può eliminare.'
+/** Nome del vincolo violato (meta Prisma), mai il testo del messaggio. */
+const FK_PESA = /^(accessi_pesa|strumenti_pesa|pesate|collegamenti_accesso)_/
 const SEDE_CON_REGISTRO_CON_MOVIMENTI =
   'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
 
@@ -306,6 +309,9 @@ export class RentriUnitaLocaleService {
       // Una registrazione concorrente nel registro appena svuotato: la chiave esterna
       // RESTRICT rifiuta la cancellazione.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        const meta = (error.meta ?? {}) as { constraint?: unknown; field_name?: unknown }
+        const vincolo = String(meta.constraint ?? meta.field_name ?? '')
+        if (FK_PESA.test(vincolo)) throw new BadRequestException(SEDE_CON_DATI_DI_PESA)
         throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
       }
       throw error

@@ -1282,6 +1282,7 @@ export class LayoutComponent implements OnInit {
     { label: 'Catalogo CER', route: '/cer', icon: 'pi pi-tags', feature: 'cer' },
     { label: 'MUD', route: '/mud', icon: 'pi pi-file-export', feature: 'mud' },
     { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box', feature: 'giacenze' },
+    { label: 'Pese', route: '/pese', icon: 'pi pi-calculator', feature: 'pese' },
     { label: 'Contratti', route: '/contratti', icon: 'pi pi-briefcase', feature: 'contratti' },
     { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
     {

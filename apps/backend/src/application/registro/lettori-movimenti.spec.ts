@@ -63,6 +63,10 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: "movimenti dell'anno, anni precedenti, scarichi dei FIR, saldi al 31 dicembre",
   },
+  'application/pese/movimenti-collegati.ts': {
+    scelta: 'vigenti',
+    motivo: 'collegamento accesso-annotazione: radice ORDINARIA e testa vigente della catena',
+  },
   'application/rentri/registro/trasmissioni-registro.repository.ts': {
     scelta: 'tutte',
     motivo:

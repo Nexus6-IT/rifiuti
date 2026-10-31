@@ -25,6 +25,7 @@ export const FEATURE_KEYS = [
   'anomalie',
   'rentri',
   'reference_data',
+  'pese',
 ] as const
 
 /** Tipo della singola chiave feature. */
@@ -43,6 +44,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   anomalie: 'Rilevamento anomalie',
   rentri: 'Interoperabilità RENTRI',
   reference_data: 'Dati di riferimento (ISTAT/ATECO)',
+  pese: 'Pese (inserimento manuale)',
 }
 
 /**
@@ -63,6 +65,7 @@ const PROFESSIONAL_FEATURES: FeatureKey[] = [
   'contratti',
   'esg',
   'anomalie',
+  'pese',
 ]
 
 export const PLAN_FEATURES: Record<SubscriptionTier, FeatureKey[]> = {

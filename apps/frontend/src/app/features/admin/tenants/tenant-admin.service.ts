@@ -18,6 +18,7 @@ export type FeatureFlag =
   | 'anomalie'
   | 'rentri'
   | 'reference_data'
+  | 'pese'
 
 /** Stato dell'abbonamento del tenant. */
 export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED' | string

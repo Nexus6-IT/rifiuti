@@ -123,6 +123,13 @@ model Tenant {
   giacenzeIniziali      GiacenzaIniziale[]
   causaliRegistroAzienda CausaleRegistroAzienda[]
   soglieDeposito        SogliaDepositoTemporaneo[]
+  strumentiPesa         StrumentoPesa[]
+  automezzi             Automezzo[]
+  accessiPesa           AccessoPesa[]
+  pesate                Pesata[]
+  rettifichePeso        RettificaPeso[]
+  allegatiPesa          AllegatoPesa[]
+  collegamentiAccesso   CollegamentoAccesso[]
   abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
@@ -488,6 +495,9 @@ model FIR {
   // principale inline Campo 4): N tratte ordinate (terrestre/ferroviaria/
   // marittima), ognuna con proprio snapshot anagrafico immutabile.
   transportersAggiuntivi FIRTransporter[]
+
+  // Pese (Fase 4 pezzo 8a): accessi collegati a questo FIR.
+  collegamentiAccesso CollegamentoAccesso[]
 
   // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
   // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
@@ -1300,6 +1310,8 @@ model Trasportatore {
   ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_ditta_fkey")
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
 
+  automezzi Automezzo[]
+
   @@unique([tenantId, dittaId], map: "trasportatori_tenant_id_ditta_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "trasportatori_sede_id_idx")
@@ -1947,6 +1959,7 @@ model WasteMovement {
   /// toglie movimenti e causali nello stesso statement.
   causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
 
+  collegamentiAccesso CollegamentoAccesso[]
   abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
   abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
 
@@ -2157,6 +2170,8 @@ model RegistroRifiuti {
   tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
   movimenti           WasteMovement[]
+  accessiPesa         AccessoPesa[]
+  strumentiPesa       StrumentoPesa[]
   progressiviIniziali RegistroProgressivoIniziale[]
   giacenzeIniziali    GiacenzaIniziale[]
   soglieDeposito      SogliaDepositoTemporaneo[]
@@ -2525,6 +2540,277 @@ model SogliaDepositoTemporaneo {
   @@unique([tenantId, registroId], map: "soglie_deposito_temporaneo_tenant_id_registro_id_key")
   @@index([tenantId], map: "soglie_deposito_temporaneo_tenant_id_idx")
   @@map("soglie_deposito_temporaneo")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pese (Fase 4 pezzo 8a): strumenti, automezzi, accessi, pesate, rettifiche, allegati, collegamenti.
+// Le regole di immutabilita' stanno nei trigger della migration `20261101600000_pese_modello_dati`
+// e nei privilegi di `prisma/sql/ruoli-db.sql`; i CHECK e gli indici unici parziali (solo SQL)
+// non sono dichiarati qui: Prisma non li conosce, quindi `migrate diff` resta pulito.
+// ---------------------------------------------------------------------------------------------
+
+/// Da dove viene il peso di una pesata. TARA_ANAGRAFICA = tara dichiarata dell'automezzo, non una pesata vera.
+enum FontePesata {
+  STRUMENTO
+  FILE
+  MANUALE
+  TARA_ANAGRAFICA
+
+  @@map("fonte_pesata")
+}
+
+/// Come si ottiene il netto di un accesso: due pesate, una pesata + tara dichiarata, una pesata singola.
+enum ModoPesatura {
+  DOPPIA
+  TARA_ANAGRAFICA
+  SINGOLA
+
+  @@map("modo_pesatura")
+}
+
+enum StatoAccessoPesa {
+  APERTO
+  CHIUSO
+  ANNULLATO
+
+  @@map("stato_accesso_pesa")
+}
+
+enum OrigineTara {
+  DICHIARATA
+  PESATA
+
+  @@map("origine_tara")
+}
+
+enum TipoCollegamentoAccesso {
+  FIR
+  MOVIMENTO
+
+  @@map("tipo_collegamento_accesso")
+}
+
+/// Anagrafica degli strumenti di pesatura (bilance) dell'azienda, per sede (`registro_id`).
+/// Mutabile, mai cancellata (nessuna DELETE per i ruoli DB, `ruoli-db.sql`). Il CHECK
+/// `strumenti_pesa_valori_check` (portata e divisione > 0, descrizione non vuota) sta nella migration.
+model StrumentoPesa {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String    @map("tenant_id") @db.Uuid
+  registroId              String?   @map("registro_id") @db.Uuid
+  descrizione             String    @db.VarChar(255)
+  costruttore             String?   @db.VarChar(100)
+  modello                 String?   @db.VarChar(100)
+  matricola               String?   @db.VarChar(100)
+  portataMaxKg            Decimal?  @map("portata_max_kg") @db.Decimal(10, 2)
+  divisioneKg             Decimal?  @map("divisione_kg") @db.Decimal(8, 3)
+  dataUltimaVerificazione DateTime? @map("data_ultima_verificazione") @db.Date
+  attivo                  Boolean   @default(true)
+  creatoDa                String    @map("creato_da") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "strumenti_pesa_registro_fkey")
+  pesate   Pesata[]
+
+  @@unique([id, tenantId], map: "strumenti_pesa_id_tenant_id_key")
+  @@unique([tenantId, matricola], map: "strumenti_pesa_tenant_id_matricola_key")
+  @@index([tenantId], map: "strumenti_pesa_tenant_id_idx")
+  @@map("strumenti_pesa")
+}
+
+/// Anagrafica degli automezzi (targa + rimorchio) con la tara dichiarata. Mutabile, mai cancellata.
+/// La tara e' tutta o niente (`automezzi_tara_check`); l'indice unico `automezzi_targhe_uniche`
+/// (tenant, targa, rimorchio) e' solo SQL.
+model Automezzo {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String       @map("tenant_id") @db.Uuid
+  targa               String       @db.VarChar(15)
+  targaRimorchio      String?      @map("targa_rimorchio") @db.VarChar(15)
+  trasportatoreId     String?      @map("trasportatore_id") @db.Uuid
+  taraKg              Decimal?     @map("tara_kg") @db.Decimal(10, 2)
+  taraOrigine         OrigineTara? @map("tara_origine")
+  taraPesataId        String?      @map("tara_pesata_id") @db.Uuid
+  taraAggiornataIl    DateTime?    @map("tara_aggiornata_il") @db.Timestamptz(3)
+  ultimaPesataVuotoIl DateTime?    @map("ultima_pesata_vuoto_il") @db.Timestamptz(3)
+  note                String?      @db.VarChar(500)
+  attivo              Boolean      @default(true)
+  creatoDa            String       @map("creato_da") @db.Uuid
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trasportatore Trasportatore? @relation(fields: [trasportatoreId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "automezzi_trasportatore_fkey")
+  taraPesata    Pesata?        @relation("TaraAutomezzo", fields: [taraPesataId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "automezzi_tara_pesata_fkey")
+  accessi       AccessoPesa[]
+  pesate        Pesata[]       @relation("PesateAutomezzo")
+
+  @@unique([id, tenantId], map: "automezzi_id_tenant_id_key")
+  @@index([tenantId], map: "automezzi_tenant_id_idx")
+  @@map("automezzi")
+}
+
+/// Un passaggio di un mezzo sulla pesa, in un registro (sede), con numero `N/AAAA` per registro.
+/// Sono modificabili solo stato e campi descrittivi mentre APERTO: la regola sta nel trigger
+/// `accessi_pesa_controlli`. Mai cancellato (`ruoli-db.sql`).
+model AccessoPesa {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String            @map("tenant_id") @db.Uuid
+  registroId         String            @map("registro_id") @db.Uuid
+  anno               Int               @db.SmallInt
+  numero             Int
+  verso              WasteMovementType
+  modo               ModoPesatura
+  stato              StatoAccessoPesa  @default(APERTO)
+  automezzoId        String?           @map("automezzo_id") @db.Uuid
+  targa              String?           @db.VarChar(15)
+  targaRimorchio     String?           @map("targa_rimorchio") @db.VarChar(15)
+  cerCode            String?           @map("cer_code") @db.VarChar(10)
+  descrizione        String?           @db.VarChar(255)
+  note               String?           @db.VarChar(1000)
+  apertoDa           String            @map("aperto_da") @db.Uuid
+  apertoIl           DateTime          @default(now()) @map("aperto_il") @db.Timestamptz(3)
+  chiusoDa           String?           @map("chiuso_da") @db.Uuid
+  chiusoIl           DateTime?         @map("chiuso_il") @db.Timestamptz(3)
+  annullatoDa        String?           @map("annullato_da") @db.Uuid
+  annullatoIl        DateTime?         @map("annullato_il") @db.Timestamptz(3)
+  motivoAnnullamento String?           @map("motivo_annullamento") @db.VarChar(500)
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registro     RegistroRifiuti       @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "accessi_pesa_registro_fkey")
+  automezzo    Automezzo?            @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "accessi_pesa_automezzo_fkey")
+  pesate       Pesata[]
+  collegamenti CollegamentoAccesso[]
+
+  @@unique([id, tenantId], map: "accessi_pesa_id_tenant_id_key")
+  @@index([automezzoId], map: "accessi_pesa_automezzo_id_idx")
+  @@unique([registroId, anno, numero], map: "accessi_pesa_registro_id_anno_numero_key")
+  @@unique([id, registroId, tenantId, verso], map: "accessi_pesa_id_registro_tenant_verso_key")
+  @@index([tenantId], map: "accessi_pesa_tenant_id_idx")
+  @@map("accessi_pesa")
+}
+
+/// Una pesata di un accesso. MAI modificata ne' cancellata: trigger `pesate_immutabile`, privilegi
+/// solo SELECT e INSERT. Coerenza fonte/modo/ordine nei CHECK `pesate_coerenza_check` e nel trigger
+/// `pesate_controlli`. `impronta` = SHA-256 della riga (`domain/pese/impronta-pesata.ts`).
+model Pesata {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String      @map("tenant_id") @db.Uuid
+  accessoId         String      @map("accesso_id") @db.Uuid
+  ordine            Int         @db.SmallInt
+  fonte             FontePesata
+  strumentoId       String?     @map("strumento_id") @db.Uuid
+  strumentoEsterno  String?     @map("strumento_esterno") @db.VarChar(200)
+  alibiId           String?     @map("alibi_id") @db.VarChar(40)
+  pesoKg            Decimal     @map("peso_kg") @db.Decimal(10, 2)
+  stabile           Boolean
+  oraStrumento      DateTime?   @map("ora_strumento") @db.Timestamptz(3)
+  oraRicezione      DateTime    @map("ora_ricezione") @db.Timestamptz(3)
+  operatoreId       String?     @map("operatore_id") @db.Uuid
+  motivoManuale     String?     @map("motivo_manuale") @db.VarChar(500)
+  allegatoId        String?     @map("allegato_id") @db.Uuid
+  automezzoId       String?     @map("automezzo_id") @db.Uuid
+  taraAggiornataIl  DateTime?   @map("tara_aggiornata_il") @db.Timestamptz(3)
+  chiaveIdempotenza String      @map("chiave_idempotenza") @db.Uuid
+  firmaAgente       String?     @map("firma_agente")
+  impronta          String      @db.VarChar(64)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accesso       AccessoPesa     @relation(fields: [accessoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "pesate_accesso_fkey")
+  strumento     StrumentoPesa?  @relation(fields: [strumentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "pesate_strumento_fkey")
+  allegato      AllegatoPesa?   @relation(fields: [allegatoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "pesate_allegato_fkey")
+  automezzo     Automezzo?      @relation("PesateAutomezzo", fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "pesate_automezzo_fkey")
+  automezziTara Automezzo[]     @relation("TaraAutomezzo")
+  rettifiche    RettificaPeso[]
+
+  @@unique([id, tenantId], map: "pesate_id_tenant_id_key")
+  @@unique([accessoId, ordine], map: "pesate_accesso_id_ordine_key")
+  @@unique([tenantId, chiaveIdempotenza], map: "pesate_tenant_id_chiave_idempotenza_key")
+  @@unique([strumentoId, alibiId], map: "pesate_strumento_id_alibi_id_key")
+  @@index([allegatoId], map: "pesate_allegato_id_idx")
+  @@index([automezzoId], map: "pesate_automezzo_id_idx")
+  @@index([tenantId], map: "pesate_tenant_id_idx")
+  @@map("pesate")
+}
+
+/// Rettifica di un peso: la pesata originale non cambia mai, vale l'ultima rettifica per `numero`.
+/// MAI modificata ne' cancellata (trigger `rettifiche_peso_immutabile`); numerazione e peso
+/// precedente controllati da `rettifiche_peso_controlli`.
+model RettificaPeso {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  pesataId         String   @map("pesata_id") @db.Uuid
+  numero           Int      @db.SmallInt
+  pesoPrecedenteKg Decimal  @map("peso_precedente_kg") @db.Decimal(10, 2)
+  pesoNuovoKg      Decimal  @map("peso_nuovo_kg") @db.Decimal(10, 2)
+  motivo           String   @db.VarChar(500)
+  autoreId         String   @map("autore_id") @db.Uuid
+  allegatoId       String?  @map("allegato_id") @db.Uuid
+  impronta         String   @db.VarChar(64)
+  createdAt        DateTime @map("created_at") @db.Timestamptz(3)
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pesata   Pesata        @relation(fields: [pesataId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "rettifiche_peso_pesata_fkey")
+  allegato AllegatoPesa? @relation(fields: [allegatoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "rettifiche_peso_allegato_fkey")
+
+  @@unique([id, tenantId], map: "rettifiche_peso_id_tenant_id_key")
+  @@unique([pesataId, numero], map: "rettifiche_peso_pesata_id_numero_key")
+  @@index([tenantId], map: "rettifiche_peso_tenant_id_idx")
+  @@map("rettifiche_peso")
+}
+
+/// Foto o PDF dello scontrino, nel database (max 4 MiB, JPEG/PNG/PDF verificati dai magic bytes
+/// dall'applicazione). MAI modificato ne' cancellato (`allegati_pesa_immutabile`).
+model AllegatoPesa {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  nomeFile       String   @map("nome_file") @db.VarChar(255)
+  mimeType       String   @map("mime_type") @db.VarChar(50)
+  dimensioneByte Int      @map("dimensione_byte")
+  sha256         String   @db.VarChar(64)
+  contenuto      Bytes
+  caricatoDa     String   @map("caricato_da") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pesate     Pesata[]
+  rettifiche RettificaPeso[]
+
+  @@unique([id, tenantId], map: "allegati_pesa_id_tenant_id_key")
+  @@index([tenantId], map: "allegati_pesa_tenant_id_idx")
+  @@map("allegati_pesa")
+}
+
+/// Collegamento di un accesso CHIUSO a un FIR o a un'annotazione di registro. Si puo' solo
+/// revocare (una volta): trigger `collegamenti_accesso_controlli`. Le FK composte impongono stessa
+/// azienda, stesso registro e verso uguale al tipo del movimento; gli indici unici parziali
+/// (un collegamento attivo per accesso, per FIR e per movimento) sono solo SQL.
+model CollegamentoAccesso {
+  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String                  @map("tenant_id") @db.Uuid
+  accessoId    String                  @map("accesso_id") @db.Uuid
+  registroId   String                  @map("registro_id") @db.Uuid
+  verso        WasteMovementType
+  tipo         TipoCollegamentoAccesso
+  firId        String?                 @map("fir_id") @db.Uuid
+  movimentoId  String?                 @map("movimento_id") @db.Uuid
+  creatoDa     String                  @map("creato_da") @db.Uuid
+  creatoIl     DateTime                @default(now()) @map("creato_il") @db.Timestamptz(3)
+  revocatoDa   String?                 @map("revocato_da") @db.Uuid
+  revocatoIl   DateTime?               @map("revocato_il") @db.Timestamptz(3)
+  motivoRevoca String?                 @map("motivo_revoca") @db.VarChar(500)
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accesso   AccessoPesa    @relation(fields: [accessoId, registroId, tenantId, verso], references: [id, registroId, tenantId, verso], onDelete: NoAction, onUpdate: NoAction, map: "collegamenti_accesso_accesso_fkey")
+  movimento WasteMovement? @relation(fields: [movimentoId, registroId, tenantId, verso], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "collegamenti_accesso_movimento_fkey")
+  fir       FIR?           @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "collegamenti_accesso_fir_fkey")
+
+  @@unique([id, tenantId], map: "collegamenti_accesso_id_tenant_id_key")
+  @@index([tenantId], map: "collegamenti_accesso_tenant_id_idx")
+  @@index([firId, tenantId], map: "collegamenti_accesso_fir_id_tenant_id_idx")
+  @@index([movimentoId, registroId, tenantId, verso], map: "collegamenti_accesso_movimento_idx")
+  @@map("collegamenti_accesso")
 }
 
 /// F2-9: stato di trasmissione a RENTRI di un'annotazione del registro.

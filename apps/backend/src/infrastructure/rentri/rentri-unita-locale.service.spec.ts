@@ -560,6 +560,23 @@ describe('RentriUnitaLocaleService', () => {
       expect(errore.message).toBe(MESSAGGIO)
     })
 
+    it('P2003 su un vincolo dei dati di pesa: messaggio dedicato', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.registroRifiuti.deleteMany.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('fk', {
+          code: 'P2003',
+          clientVersion: 'x',
+          meta: { constraint: 'accessi_pesa_registro_fkey' },
+        })
+      )
+
+      const errore = await service.remove('tenant-1', 'ul-2').catch(e => e)
+
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe('La sede ha dati di pesa: non si può eliminare.')
+    })
+
     it('una registrazione concorrente nel registro appena svuotato (chiave esterna) dà lo stesso BadRequest', async () => {
       db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
       db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])

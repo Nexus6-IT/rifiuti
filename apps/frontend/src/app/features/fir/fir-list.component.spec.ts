@@ -11,6 +11,8 @@ import { ExportService } from '../../core/services/export.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
 import { MessageService, ConfirmationService } from 'primeng/api'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
+import { AccessoRiepilogo, PeseService } from '../pese/pese.service'
 import { RentriBlocchiService } from '../rentri/rentri-blocchi.service'
 
 /**
@@ -478,7 +480,7 @@ describe('FirListComponent — dialog di consegna, quantità verificata e scosta
 
     component.consegnaFIR()
 
-    expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', 300)
+    expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', { pesoEffettivo: 300 })
   })
 
   it('toast "warn" se la risposta ha uno scostamento oltre soglia', () => {
@@ -516,6 +518,224 @@ describe('FirListComponent — dialog di consegna, quantità verificata e scosta
 
     expect(add.calls.allArgs().some(a => a[0].severity === 'success')).toBeTrue()
     expect(add.calls.allArgs().some(a => a[0].severity === 'warn')).toBeFalse()
+  })
+})
+
+/** Conferma di consegna dal netto di un accesso di pesa (feature `pese`, Fase 4.8a). */
+describe('FirListComponent — consegna dal netto di un accesso di pesa', () => {
+  let fixture: ComponentFixture<FirListComponent>
+  let component: FirListComponent
+  let firService: jasmine.SpyObj<FirService>
+  let pese: jasmine.SpyObj<PeseService>
+  let messageService: MessageService
+  let featurePese = true
+
+  const firInTransito = {
+    id: 'fir-1',
+    stato: 'IN_TRANSITO',
+    rifiuto: { cerCode: '150101', quantita: 15, unitaMisura: 'T' },
+  } as any
+
+  const riga = (id: string): AccessoRiepilogo => ({
+    id,
+    numero: 'ACC-' + id,
+    stato: 'CHIUSO',
+    verso: 'CARICO',
+    modo: 'DOPPIA',
+    targa: 'AB123CD',
+    cerCode: '15 01 01',
+    apertoIl: '2026-10-30T08:00:00.000Z',
+    nettoKg: 16000,
+    qualita: 'DUE_PESATE',
+    manuale: false,
+    rettificato: false,
+    collegato: false,
+  })
+
+  const qd = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+
+  function apri(fir = firInTransito) {
+    component.showConsegnaDialog(fir)
+    fixture.detectChanges()
+  }
+  function scegliAccesso() {
+    qd('cda-interruttore')!.click()
+    fixture.detectChanges()
+    qd('cda-radio-a1')!.click()
+    fixture.detectChanges()
+  }
+  const conferma = () => {
+    const tutti = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('p-dialog button')
+    ).filter(b => b.textContent?.includes('Conferma'))
+    return tutti[tutti.length - 1]
+  }
+
+  beforeEach(() => {
+    featurePese = true
+    firService = jasmine.createSpyObj('FirService', ['getFIRList', 'confermaConsegna'])
+    firService.getFIRList.and.returnValue(of({ items: [], total: 0 }) as any)
+    pese = jasmine.createSpyObj('PeseService', ['elencaAccessi', 'dettaglioAccesso'])
+    pese.elencaAccessi.and.returnValue(
+      of({
+        righe: [riga('a1')],
+        totale: 1,
+        pagina: 1,
+        puoOperare: true,
+        puoRettificare: false,
+      })
+    )
+    const registry = jasmine.createSpyObj('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+    ])
+    for (const m of ['getProduttori', 'getTrasportatori', 'getDestinatari']) {
+      registry[m].and.returnValue(of({ items: [], total: 0 }))
+    }
+    TestBed.configureTestingModule({
+      imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
+      providers: [
+        { provide: FirService, useValue: firService },
+        { provide: PeseService, useValue: pese },
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => featurePese && k === 'pese' },
+        },
+        { provide: RegistryService, useValue: registry },
+        {
+          provide: AuthService,
+          useValue: { currentUser: () => ({ id: 'u1', email: 'u@example.com', role: 'ADMIN' }) },
+        },
+        {
+          provide: RENTRISyncService,
+          useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
+        },
+        provideRouter([]),
+        MessageService,
+        ConfirmationService,
+        ExportService,
+      ],
+    })
+    fixture = TestBed.createComponent(FirListComponent)
+    component = fixture.componentInstance
+    messageService = fixture.debugElement.injector.get(MessageService)
+    fixture.detectChanges()
+  })
+  afterEach(() => fixture?.destroy())
+
+  it('senza la feature pese il dialog resta quello di prima', () => {
+    featurePese = false
+    apri()
+    expect(qd('cda-interruttore')).toBeNull()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).not.toBeNull()
+  })
+
+  it('con la feature pese compare l interruttore e il campo del peso resta finché è spento', () => {
+    apri()
+    expect(qd('cda-interruttore')).not.toBeNull()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).not.toBeNull()
+  })
+
+  it('con accesso: invia accessoId e non pesoEffettivo', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    scegliAccesso()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).toBeNull()
+    conferma().click()
+    expect(firService.confermaConsegna).toHaveBeenCalledOnceWith('fir-1', { accessoId: 'a1' })
+  })
+
+  it('con l interruttore acceso ma senza accesso scelto, Conferma è disabilitato', () => {
+    apri()
+    qd('cda-interruttore')!.click()
+    fixture.detectChanges()
+    expect(conferma().disabled).toBeTrue()
+    conferma().click()
+    expect(firService.confermaConsegna).not.toHaveBeenCalled()
+  })
+
+  it('FIR in M3: interruttore disabilitato con spiegazione', () => {
+    apri({ ...firInTransito, rifiuto: { ...firInTransito.rifiuto, unitaMisura: 'M3' } })
+    expect((qd('cda-interruttore') as HTMLInputElement).disabled).toBeTrue()
+    expect(qd('cda-spiegazione')!.textContent).toContain('Il FIR è in M3')
+  })
+
+  const annulla = () =>
+    Array.from(document.body.querySelectorAll<HTMLButtonElement>('p-dialog button')).find(b =>
+      b.textContent?.includes('Annulla')
+    )!
+  const firM3 = () => ({
+    ...firInTransito,
+    id: 'fir-2',
+    rifiuto: { ...firInTransito.rifiuto, unitaMisura: 'M3' },
+  })
+
+  it('riaperture consecutive (T, M3, T dopo Annulla): il figlio riparte vuoto e si invia ciò che si vede', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    scegliAccesso()
+    annulla().click()
+    fixture.detectChanges()
+    expect(qd('cda-interruttore')).toBeNull()
+
+    apri(firM3())
+    expect((qd('cda-interruttore') as HTMLInputElement).checked).toBeFalse()
+    expect((qd('cda-interruttore') as HTMLInputElement).disabled).toBeTrue()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).not.toBeNull()
+    annulla().click()
+    fixture.detectChanges()
+
+    apri({ ...firInTransito, id: 'fir-3' })
+    expect((qd('cda-interruttore') as HTMLInputElement).checked).toBeFalse()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).not.toBeNull()
+    conferma().click()
+    expect(firService.confermaConsegna).toHaveBeenCalledOnceWith('fir-3', { pesoEffettivo: 15 })
+  })
+
+  it('dopo una consegna riuscita con accesso, la riapertura su un altro FIR parte da zero', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    scegliAccesso()
+    conferma().click()
+    fixture.detectChanges()
+    expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', { accessoId: 'a1' })
+
+    apri({ ...firInTransito, id: 'fir-4' })
+    expect((qd('cda-interruttore') as HTMLInputElement).checked).toBeFalse()
+    conferma().click()
+    expect(firService.confermaConsegna.calls.mostRecent().args).toEqual([
+      'fir-4',
+      { pesoEffettivo: 15 },
+    ])
+  })
+
+  it('campo manuale svuotato, interruttore acceso e accesso scelto: invia comunque l accessoId', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    component.pesoEffettivo = 0
+    scegliAccesso()
+    conferma().click()
+    expect(firService.confermaConsegna).toHaveBeenCalledOnceWith('fir-1', { accessoId: 'a1' })
+  })
+
+  it('un rifiuto del backend si mostra testuale e non chiude il dialog', () => {
+    const add = spyOn(messageService, 'add').and.callThrough()
+    firService.confermaConsegna.and.returnValue(
+      throwError(() => ({
+        status: 409,
+        error: { message: "L'accesso è già collegato a un altro FIR." },
+      }))
+    )
+    apri()
+    scegliAccesso()
+    conferma().click()
+    const errore = add.calls
+      .allArgs()
+      .map(a => a[0])
+      .find(m => m.severity === 'error')
+    expect(errore?.detail).toBe("L'accesso è già collegato a un altro FIR.")
+    expect(component.displayConsegnaDialog).toBeTrue()
   })
 })
 

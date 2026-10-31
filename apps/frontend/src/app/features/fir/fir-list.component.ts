@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core'
+import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { MessageService } from 'primeng/api'
@@ -44,6 +44,8 @@ import { calcolaScostamentoPeso, testoAvvisoScostamento } from './scostamento-pe
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
+import { ConsegnaDaAccessoComponent, SceltaConsegna } from './consegna-da-accesso.component'
 
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
@@ -59,6 +61,7 @@ interface OpzioneSede {
   selector: 'app-fir-list',
   standalone: true,
   imports: [
+    ConsegnaDaAccessoComponent,
     CommonModule,
     FormsModule,
     TableModule,
@@ -936,28 +939,41 @@ interface OpzioneSede {
       <p-dialog
         [(visible)]="displayConsegnaDialog"
         [modal]="true"
-        styleClass="w-full max-w-20rem"
+        [styleClass]="ff.has('pese') ? 'w-full max-w-30rem' : 'w-full max-w-20rem'"
         header="Conferma Consegna"
+        (onHide)="chiudiConsegna()"
       >
-        <div class="dialog-form__field">
-          <label for="peso-effettivo">Quantità verificata a destino ({{ unitaConsegna }})</label>
-          <p-inputNumber
-            inputId="peso-effettivo"
-            [(ngModel)]="pesoEffettivo"
-            [minFractionDigits]="2"
-            [maxFractionDigits]="2"
-            [max]="99999999.99"
-            styleClass="w-full"
-          />
-          @if (avvisoScostamento; as avviso) {
-            <small class="dialog-form__warning" role="status" data-testid="avviso-scostamento">{{
-              avviso
-            }}</small>
+        @if (displayConsegnaDialog && ff.has('pese') && selectedFIR) {
+          @for (f of [selectedFIR]; track f.id) {
+            <app-consegna-da-accesso [fir]="f" (cambio)="scelta = $event"></app-consegna-da-accesso>
           }
-        </div>
+        }
+        @if (!scelta.attivo) {
+          <div class="dialog-form__field">
+            <label for="peso-effettivo">Quantità verificata a destino ({{ unitaConsegna }})</label>
+            <p-inputNumber
+              inputId="peso-effettivo"
+              [(ngModel)]="pesoEffettivo"
+              [minFractionDigits]="2"
+              [maxFractionDigits]="2"
+              [max]="99999999.99"
+              styleClass="w-full"
+            />
+            @if (avvisoScostamento; as avviso) {
+              <small class="dialog-form__warning" role="status" data-testid="avviso-scostamento">{{
+                avviso
+              }}</small>
+            }
+          </div>
+        }
         <ng-template pTemplate="footer">
-          <p-button label="Annulla" [text]="true" (onClick)="displayConsegnaDialog = false" />
-          <p-button label="Conferma" (onClick)="consegnaFIR()" [loading]="saving" />
+          <p-button label="Annulla" [text]="true" (onClick)="chiudiConsegna()" />
+          <p-button
+            label="Conferma"
+            (onClick)="consegnaFIR()"
+            [loading]="saving"
+            [disabled]="scelta.attivo && !scelta.accessoId"
+          />
         </ng-template>
       </p-dialog>
 
@@ -1294,6 +1310,9 @@ export class FirListComponent implements OnInit {
   displayConsegnaDialog = false
   selectedFIR: FIR | null = null
   pesoEffettivo = 0
+  /** Esito dell'interruttore "peso da un accesso di pesa" nel dialog di consegna. */
+  @ViewChild(ConsegnaDaAccessoComponent) consegnaDaAccesso?: ConsegnaDaAccessoComponent
+  scelta: SceltaConsegna = { attivo: false, accessoId: null, convertito: null }
 
   /** Errori di validazione per-campo del form "Nuovo FIR" (mostrati inline). */
   firErrors: Record<string, string> = {}
@@ -1454,6 +1473,8 @@ export class FirListComponent implements OnInit {
 
   private readonly rentriSyncService = inject(RENTRISyncService)
   private readonly authService = inject(AuthService)
+  /** Pubblico: il template decide se offrire la consegna dal netto di un accesso di pesa. */
+  readonly ff = inject(FeatureFlagsService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
 
@@ -2167,14 +2188,23 @@ export class FirListComponent implements OnInit {
   showConsegnaDialog(fir: FIR): void {
     this.selectedFIR = fir
     this.pesoEffettivo = fir.rifiuto.quantita
+    this.scelta = { attivo: false, accessoId: null, convertito: null }
     this.displayConsegnaDialog = true
+  }
+
+  /** Chiude il dialog di consegna e azzera la scelta: la prossima apertura parte da zero. */
+  chiudiConsegna(): void {
+    this.displayConsegnaDialog = false
+    this.scelta = { attivo: false, accessoId: null, convertito: null }
   }
 
   /** Conferma consegna (IN_TRANSITO → CONSEGNATO) con il peso effettivo rilevato. */
   consegnaFIR(): void {
     if (!this.selectedFIR) return
+    const daAccesso = this.scelta.attivo
+    if (daAccesso && !this.scelta.accessoId) return
 
-    if (!this.pesoEffettivo || this.pesoEffettivo <= 0) {
+    if (!daAccesso && (!this.pesoEffettivo || this.pesoEffettivo <= 0)) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Peso non valido',
@@ -2185,7 +2215,10 @@ export class FirListComponent implements OnInit {
 
     const dichiarata = this.selectedFIR.rifiuto.quantita
     this.saving = true
-    this.firService.confermaConsegna(this.selectedFIR.id, this.pesoEffettivo).subscribe({
+    const dati = daAccesso
+      ? { accessoId: this.scelta.accessoId! }
+      : { pesoEffettivo: this.pesoEffettivo }
+    this.firService.confermaConsegna(this.selectedFIR.id, dati).subscribe({
       next: fir => {
         const scostamento = fir?.scostamentoPeso
         if (scostamento?.oltreSoglia) {
@@ -2202,7 +2235,7 @@ export class FirListComponent implements OnInit {
             detail: 'Consegna FIR confermata con successo',
           })
         }
-        this.displayConsegnaDialog = false
+        this.chiudiConsegna()
         this.saving = false
         this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
       },
@@ -2213,6 +2246,8 @@ export class FirListComponent implements OnInit {
           summary: 'Errore',
           detail: this.extractError(err, 'Errore nella conferma della consegna'),
         })
+        // l'accesso potrebbe non essere piu' disponibile (409): si rilegge l'elenco
+        if (daAccesso && err?.status === 409) this.consegnaDaAccesso?.ricarica()
       },
     })
   }

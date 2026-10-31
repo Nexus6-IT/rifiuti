@@ -402,6 +402,54 @@ DROP COLUMN receiver_codice_fiscale;` e `DELETE FROM _prisma_migrations WHERE mi
 '20261031110200_fir_parti_sede_cf';`. Il codice vecchio ignora le colonne; i FIR con il codice fiscale
 nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP COLUMN`.
 
+### Pese: modello dati (`20261101600000_pese_modello_dati`, Fase 4 pezzo 8a, Task 2a)
+
+Additiva: 5 tipi enum e 7 tabelle nuove (`strumenti_pesa`, `automezzi`, `accessi_pesa`, `pesate`,
+`rettifiche_peso`, `allegati_pesa`, `collegamenti_accesso`) con trigger di immutabilità e RLS
+(`ENABLE` + `FORCE`, `isolamento_azienda` e `sola_lettura`). Nessun backfill, nessuna modifica alle
+colonne esistenti; le FK verso `waste_movements`, `firs`, `registri_rifiuti`, `trasportatori` sono
+create con `SET LOCAL lock_timeout = '5s'`: se il lock non arriva la migration fallisce senza
+modificare nulla ma resta segnata come fallita (P3009), quindi prima di rilanciare il deploy
+`npx prisma migrate resolve --rolled-back 20261101600000_pese_modello_dati`. La migration esegue i
+REVOKE dei privilegi (D4) per `wasteflow_app` e `wasteflow_sistema` solo se i ruoli esistono.
+
+Ripristino (le tabelle sono nuove, nessun dato esistente le usa): `DROP TABLE collegamenti_accesso,
+rettifiche_peso, pesate CASCADE; DROP TABLE accessi_pesa, automezzi, allegati_pesa, strumenti_pesa
+CASCADE;` poi `DROP FUNCTION pesate_immutabile(), pesate_controlli(), rettifiche_peso_immutabile(),
+rettifiche_peso_controlli(), allegati_pesa_immutabile(), accessi_pesa_controlli(),
+collegamenti_accesso_controlli();` poi `DROP TYPE tipo_collegamento_accesso, origine_tara,
+stato_accesso_pesa, modo_pesatura, fonte_pesata;` e `DELETE FROM _prisma_migrations WHERE
+migration_name = '20261101600000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
+allegati) sono documentazione del registro e del FIR: esportarle prima di un `DROP`.
+
+#### Pese 4.8a: privilegi, trigger, rilascio e rollback
+
+La migration `20261101600100_pese_cancellazione_e_indici` completa la precedente (entrambe mai applicate
+fuori dai database di test; sono state rinumerate da `20261101400000/400100` a `600000/600100` perche'
+F2-9, gia' in produzione, ha `20261101500000`).
+
+- **Privilegi (`ops/db-ruoli.sh`, `prisma/sql/ruoli-db.sql`):** `pesate`, `rettifiche_peso`,
+  `allegati_pesa` ricevono a `wasteflow_app` e `wasteflow_sistema` solo SELECT e INSERT (REVOKE
+  esplicita di UPDATE/DELETE/TRUNCATE). Dopo ogni `migrate deploy` rilanciare `ops/db-ruoli.sh`.
+- **Trigger:** le tre tabelle sono immutabili (UPDATE rifiutato) e senza DELETE/TRUNCATE a qualunque
+  ruolo, proprietario compreso; passa solo la cascata da `tenants`. `accessi_pesa` e
+  `collegamenti_accesso` hanno trigger di coerenza (stato, registro, verso, FOR SHARE sull'accesso).
+  Per correggere un peso si registra una rettifica (ADMIN), mai un UPDATE.
+- **RLS:** 44 tabelle con `tenant_id` dopo questo pezzo (37 + le 7 delle pese);
+  `rls-catalogo.postgres.spec.ts` lo verifica.
+- **Dopo il deploy:** `SELECT count(*) FROM accessi_pesa` risponde (0 all'inizio); la feature `pese`
+  e' applicata solo nell'interfaccia (menu), non nel backend.
+- **nginx:** il frontend (`apps/frontend/nginx.conf`) ha gia' `client_max_body_size 6m` su `/api/`
+  (allegati delle pesate, 5 MB); il vhost del VPS e' gia' a 25m: nulla da fare sul VPS.
+- **Rollback del codice:** il codice vecchio ignora le tabelle. Le consegne FIR fatte col netto di un
+  accesso restano valide (il peso e' scritto nel FIR). **Controllare prima** quanto e' stato
+  registrato: `SELECT tenant_id, count(*) FROM accessi_pesa GROUP BY 1;` e avvisare che le pesate
+  non saranno piu' visibili nel programma.
+- **Rollback dei dati:** le pesate sono documentazione e per costruzione non si cancellano. La strada
+  e' il restore del backup; il ripristino a mano sopra (DROP) vale solo su un database SENZA accessi.
+  Se la migration fallisce con P3009: `npx prisma migrate resolve --rolled-back
+  20261101600000_pese_modello_dati` (o `...600100_pese_cancellazione_e_indici`) e rilanciare.
+
 ---
 
 ## F2-9 trasmissione del registro a RENTRI
@@ -589,7 +637,7 @@ annullato per intero; rilanciarlo per CER (`cerCode`) o fuori orario.
 - `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi
   di stoccaggio R13/D15; poi cresce con le registrazioni).
 - RLS: la tabella ha `ENABLE` e `FORCE ROW LEVEL SECURITY` e la policy `isolamento_azienda`;
-  in CI `rls-catalogo.postgres.spec.ts` conta 37 tabelle con RLS.
+  in CI `rls-catalogo.postgres.spec.ts` conta 44 tabelle con RLS.
 - Gli scarichi registrati prima del deploy non sono abbinati: l'amministratore li abbina dalla
   pagina Giacenze -> Abbinamenti con "Abbina con FIFO i non abbinati".
 

@@ -251,6 +251,75 @@ describe('Ruoli database (Postgres reale)', () => {
     }
   })
 
+  const SOLO_INSERIMENTO = ['pesate', 'rettifiche_peso', 'allegati_pesa']
+  const SENZA_CANCELLAZIONE = [
+    'accessi_pesa',
+    'collegamenti_accesso',
+    'automezzi',
+    'strumenti_pesa',
+  ]
+  const INSERIMENTO = { SELECT: true, INSERT: true, UPDATE: false, DELETE: false, TRUNCATE: false }
+  const SENZA_DELETE = { SELECT: true, INSERT: true, UPDATE: true, DELETE: false, TRUNCATE: false }
+
+  it('pesate, rettifiche_peso, allegati_pesa: i due ruoli fanno SELECT e INSERT, UPDATE/DELETE/TRUNCATE danno 42501', async () => {
+    for (const [ruolo, pwd] of [
+      ['wasteflow_app', PWD_APP_1],
+      ['wasteflow_sistema', PWD_SIS_1],
+    ]) {
+      const c = comeRuolo(ruolo, pwd)
+      for (const t of SOLO_INSERIMENTO) {
+        expect(await privilegi(ruolo, t)).toEqual(INSERIMENTO)
+        await c.$queryRawUnsafe(`SELECT count(*) FROM ${t}`)
+        for (const sql of [
+          `UPDATE ${t} SET tenant_id = tenant_id`,
+          `DELETE FROM ${t}`,
+          `TRUNCATE ${t}`,
+        ]) {
+          await expect(c.$executeRawUnsafe(sql)).rejects.toThrow(/42501|permission denied/i)
+        }
+      }
+    }
+  })
+
+  it('accessi_pesa, collegamenti_accesso, automezzi, strumenti_pesa: niente DELETE né TRUNCATE', async () => {
+    for (const [ruolo, pwd] of [
+      ['wasteflow_app', PWD_APP_1],
+      ['wasteflow_sistema', PWD_SIS_1],
+    ]) {
+      const c = comeRuolo(ruolo, pwd)
+      for (const t of SENZA_CANCELLAZIONE) {
+        expect(await privilegi(ruolo, t)).toEqual(SENZA_DELETE)
+        for (const sql of [`DELETE FROM ${t}`, `TRUNCATE ${t}`]) {
+          await expect(c.$executeRawUnsafe(sql)).rejects.toThrow(/42501|permission denied/i)
+        }
+      }
+    }
+  })
+
+  it('se un GRANT manuale ridà UPDATE, DELETE o TRUNCATE sulle tabelle delle pese, lo script li toglie di nuovo', async () => {
+    const tutte = [...SOLO_INSERIMENTO, ...SENZA_CANCELLAZIONE]
+    try {
+      await owner.$executeRawUnsafe(
+        `GRANT UPDATE, DELETE, TRUNCATE ON TABLE ${tutte.join(', ')} TO wasteflow_app, wasteflow_sistema`
+      )
+      expect((await privilegi('wasteflow_app', 'pesate')).UPDATE).toBe(true)
+      expect((await privilegi('wasteflow_app', 'accessi_pesa')).TRUNCATE).toBe(true)
+      await eseguiScript(owner, PWD_APP_1, PWD_SIS_1)
+      // Si controlla PRIMA della pulizia, altrimenti la prova sarebbe vuota.
+      for (const ruolo of ['wasteflow_app', 'wasteflow_sistema']) {
+        for (const t of SOLO_INSERIMENTO) expect(await privilegi(ruolo, t)).toEqual(INSERIMENTO)
+        for (const t of SENZA_CANCELLAZIONE) expect(await privilegi(ruolo, t)).toEqual(SENZA_DELETE)
+      }
+    } finally {
+      await owner.$executeRawUnsafe(
+        `REVOKE UPDATE, DELETE, TRUNCATE ON TABLE ${SOLO_INSERIMENTO.join(', ')} FROM wasteflow_app, wasteflow_sistema`
+      )
+      await owner.$executeRawUnsafe(
+        `REVOKE DELETE, TRUNCATE ON TABLE ${SENZA_CANCELLAZIONE.join(', ')} FROM wasteflow_app, wasteflow_sistema`
+      )
+    }
+  })
+
   it("tabella creata dall'owner dopo lo script: accessibile ai due ruoli", async () => {
     await owner.$executeRawUnsafe(`CREATE TABLE ${T_FUTURA} (id serial PRIMARY KEY, v text)`)
     for (const [ruolo, pwd] of [

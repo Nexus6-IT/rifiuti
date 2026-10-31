@@ -3,6 +3,7 @@
  * Configurazione modulo FIR con use cases, queries e repositories
  */
 
+import { PeseModule } from '../api/pese/pese.module'
 import { Module } from '@nestjs/common'
 // Ciclo di vita FIR completo (create/list/get + emetti/presa-in-carico/conferma-consegna).
 // Sostituisce il controller base (solo create/list): entrambi userebbero la rotta @Controller('fir').
@@ -40,7 +41,14 @@ import { RuoloEffettivoModule } from '../api/me/ruolo-effettivo.module'
   // l'emissione del FIR e la trasmissione a RENTRI secondo la modalità del
   // tenant.
   // RuoloEffettivoModule: ruolo nell'azienda selezionata per la creazione dei FIR (I1).
-  imports: [PrismaModule, BillingModule, SignaturesModule, RentriSyncModule, RuoloEffettivoModule],
+  imports: [
+    PrismaModule,
+    BillingModule,
+    SignaturesModule,
+    RentriSyncModule,
+    RuoloEffettivoModule,
+    PeseModule,
+  ],
   controllers: [FIRControllerV2],
   providers: [
     // Repositories (provide as concrete classes)

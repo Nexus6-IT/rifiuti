@@ -192,7 +192,7 @@ describe('FirService', () => {
         pesoEffettivo: 95,
       }
 
-      service.confermaConsegna('fir-1', 95).subscribe({
+      service.confermaConsegna('fir-1', { pesoEffettivo: 95 }).subscribe({
         next: fir => {
           expect(fir.stato).toBe(FIRStato.CONSEGNATO)
           expect(fir.pesoEffettivo).toBe(95)
@@ -204,6 +204,16 @@ describe('FirService', () => {
       expect(req.request.method).toBe('POST')
       expect(req.request.body).toEqual({ pesoEffettivo: 95 })
       req.flush(consegnatoFIR)
+    })
+  })
+
+  describe('confermaConsegna dal netto di un accesso', () => {
+    it('invia solo accessoId, senza pesoEffettivo', done => {
+      service.confermaConsegna('fir-1', { accessoId: 'acc-1' }).subscribe({ next: () => done() })
+      const req = httpMock.expectOne(`${FIR_API_URL}/fir-1/conferma-consegna`)
+      expect(req.request.body).toEqual({ accessoId: 'acc-1' })
+      expect(Object.keys(req.request.body)).toEqual(['accessoId'])
+      req.flush({ ...mockFIR, stato: FIRStato.CONSEGNATO })
     })
   })
 
