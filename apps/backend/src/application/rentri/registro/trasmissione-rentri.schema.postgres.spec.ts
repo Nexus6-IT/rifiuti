@@ -121,11 +121,8 @@ describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo w
   })
 
   afterAll(async () => {
-    // Una riga TRASMESSA non si cancella a mano, ma cade con l'azienda (cascata): vedi il test.
+    // Pulizia per id esatti: la cascata dell'azienda toglie registri, movimenti e righe di trasmissione.
     if (tenantCreati.length > 0) {
-      await owner.wasteMovement
-        .deleteMany({ where: { tenantId: { in: tenantCreati } } })
-        .catch(() => undefined)
       await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
     }
     await app.onModuleDestroy()
@@ -425,6 +422,6 @@ describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo w
           },
         })
       )
-    ).rejects.toThrow()
+    ).rejects.toThrow(/row-level security|violates/i)
   })
 })

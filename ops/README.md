@@ -318,37 +318,7 @@ rimozione fisica delle colonne è un seguito (F2-10b).
 - Su una sede già esistente i contatti nuovi non sovrascrivono mai quelli registrati: la risposta
   porta un avviso e i contatti si cambiano da "Sedi".
 
-### F2-9 trasmissione del registro a RENTRI
-
-Migration `20261101100000_trasmissione_registro_rentri`: tabella `movimenti_trasmissione_rentri`
-(una riga per movimento trasmesso o in via di trasmissione; nessuna riga = non trasmesso), colonna
-`registri_rifiuti.invio_rentri_automatico_dal`, CHECK di formato e unico per azienda
-dell'`identificativo_rentri` del registro. Additiva: nasce vuota, nessun invio retroattivo, nessun
-GRANT (default privileges di `ops/db-ruoli.sh`).
-
-- **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
-  rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
-  che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
-- **Mai cancellare righe `TRASMESSA` per "ripartire"**: l'annotazione verrebbe ritrasmessa a RENTRI
-  (doppia registrazione). I trigger rifiutano il DELETE diretto di una riga `TRASMESSA`,
-  `GIA_SU_RENTRI`, `INCERTA`, `IN_INVIO` e `ATTESA_ESITO`; la cancellazione a cascata di un'azienda
-  passa.
-- **Ripristino a mano della migration: solo per un database SENZA trasmissioni** (i dati
-  andrebbero persi):
-
-  ```sql
-  DROP TABLE movimenti_trasmissione_rentri;
-  DROP TYPE stato_trasmissione_rentri, origine_trasmissione_rentri;
-  ALTER TABLE registri_rifiuti
-    DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
-    DROP CONSTRAINT registri_rifiuti_identificativo_rentri_check,
-    DROP COLUMN invio_rentri_automatico_dal;
-  DELETE FROM _prisma_migrations WHERE migration_name = '20261101100000_trasmissione_registro_rentri';
-  ```
-
----
-
-## Rollback
+### Rollback
 
 Fino alla `20261031110000_ditte_sedi_controparti` il rollback del codice è innocuo (le migration
 sono additive e le colonne vecchie non cambiano). **Dopo** la `20261031110100_anagrafiche_su_ditte`
@@ -405,6 +375,37 @@ DROP COLUMN producer_codice_fiscale, DROP COLUMN carrier_codice_fiscale,
 DROP COLUMN receiver_codice_fiscale;` e `DELETE FROM _prisma_migrations WHERE migration_name =
 '20261031110200_fir_parti_sede_cf';`. Il codice vecchio ignora le colonne; i FIR con il codice fiscale
 nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP COLUMN`.
+
+---
+
+## F2-9 trasmissione del registro a RENTRI
+
+Migration `20261101100000_trasmissione_registro_rentri`: tabella `movimenti_trasmissione_rentri`
+(una riga per movimento trasmesso o in via di trasmissione; nessuna riga = non trasmesso), colonna
+`registri_rifiuti.invio_rentri_automatico_dal`, CHECK di formato e unico per azienda
+dell'`identificativo_rentri` del registro. Additiva: nasce vuota, nessun invio retroattivo, nessun
+GRANT (default privileges di `ops/db-ruoli.sh`).
+
+- **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
+  rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
+  che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
+- **Mai cancellare righe `TRASMESSA` per "ripartire"**: l'annotazione verrebbe ritrasmessa a RENTRI
+  (doppia registrazione). I trigger rifiutano il DELETE diretto di una riga `TRASMESSA`,
+  `GIA_SU_RENTRI`, `INCERTA`, `IN_INVIO` e `ATTESA_ESITO`; la cancellazione a cascata di un'azienda
+  passa.
+- **Ripristino a mano della migration: solo per un database SENZA trasmissioni** (i dati
+  andrebbero persi):
+
+  ```sql
+  DROP TABLE movimenti_trasmissione_rentri;
+  DROP FUNCTION movimenti_trasmissione_rentri_immutabile(), movimenti_trasmissione_rentri_no_delete();
+  DROP TYPE stato_trasmissione_rentri, origine_trasmissione_rentri;
+  ALTER TABLE registri_rifiuti
+    DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
+    DROP CONSTRAINT registri_rifiuti_identificativo_rentri_check,
+    DROP COLUMN invio_rentri_automatico_dal;
+  DELETE FROM _prisma_migrations WHERE migration_name = '20261101100000_trasmissione_registro_rentri';
+  ```
 
 ---
 

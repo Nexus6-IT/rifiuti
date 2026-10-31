@@ -13,6 +13,7 @@
 --
 -- Ripristino (a mano, solo per un database SENZA trasmissioni: vedi ops/README.md):
 --   DROP TABLE movimenti_trasmissione_rentri;
+--   DROP FUNCTION movimenti_trasmissione_rentri_immutabile(), movimenti_trasmissione_rentri_no_delete();
 --   DROP TYPE stato_trasmissione_rentri, origine_trasmissione_rentri;
 --   ALTER TABLE registri_rifiuti
 --     DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
@@ -154,6 +155,8 @@ CREATE TRIGGER "movimenti_trasmissione_rentri_immutabile"
 -- Cancellazione: una riga che ha trasmesso (o e' in volo, incerta, dichiarata) non si cancella con
 -- un DELETE diretto (profondita' di trigger 1). La cancellazione a cascata di un'azienda e' un'azione
 -- RI: il trigger gira a profondita' > 1 e deve passare, altrimenti l'azienda non si cancellerebbe.
+-- NB: il bypass vale per OGNI DELETE a profondita' > 1: nessun trigger futuro deve cancellare righe di
+-- questa tabella.
 CREATE FUNCTION movimenti_trasmissione_rentri_no_delete() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
