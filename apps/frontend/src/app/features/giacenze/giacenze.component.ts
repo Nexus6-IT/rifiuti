@@ -22,6 +22,7 @@ import {
   SoglieApplicate,
 } from './giacenze.service'
 import { formattaGiorno } from './giorno'
+import { Router } from '@angular/router'
 import { SoglieDepositoDialogComponent } from './soglie-deposito-dialog.component'
 
 /** Il dropdown non seleziona le voci con valore `null`: "tutte le sedi" è la stringa vuota. */
@@ -64,6 +65,14 @@ const TUTTE_LE_SEDI = ''
             (onClick)="soglieAperte.set(true)"
             data-testid="soglie-apri"
             ariaLabel="Configura le soglie del deposito temporaneo"
+          ></p-button>
+          <p-button
+            label="Abbinamenti R13/D15"
+            icon="pi pi-link"
+            [outlined]="true"
+            (onClick)="vaiAgliAbbinamenti()"
+            data-testid="link-abbinamenti"
+            ariaLabel="Apri gli abbinamenti carichi-scarichi R13/D15"
           ></p-button>
           <p-button
             label="Aggiorna"
@@ -506,6 +515,7 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
   private readonly giacenzeService = inject(GiacenzeService)
   private readonly registroService = inject(RegistroService)
   private readonly toast = inject(ToastService)
+  private readonly router = inject(Router)
 
   readonly giacenze = signal<Giacenza[]>([])
   readonly deposito = signal<DepositoTemporaneoVista | null>(null)
@@ -592,6 +602,10 @@ export class GiacenzeComponent implements OnInit, OnDestroy {
         this.loading.set(false)
       },
     })
+  }
+
+  vaiAgliAbbinamenti(): void {
+    void this.router.navigateByUrl('/giacenze/abbinamenti')
   }
 
   trackRegistro = (_: number, r: DepositoRegistro): string => r.registroId

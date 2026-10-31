@@ -121,6 +121,11 @@ export const routes: Routes = [
           import('./features/giacenze/giacenze.component').then(m => m.GiacenzeComponent),
       },
       {
+        path: 'giacenze/abbinamenti',
+        loadComponent: () =>
+          import('./features/giacenze/abbinamenti.component').then(m => m.AbbinamentiComponent),
+      },
+      {
         // Registro cronologico di carico/scarico (art. 190 D.Lgs 152/2006)
         path: 'registro',
         loadComponent: () =>
