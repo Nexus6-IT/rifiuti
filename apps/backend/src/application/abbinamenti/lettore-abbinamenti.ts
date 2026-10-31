@@ -148,6 +148,12 @@ export async function leggiAmbitiAbbinamento(
           origine: 'AUTOMATICO' | 'MANUALE'
         }>
       >`
+        WITH radici_cer AS (
+          SELECT DISTINCT COALESCE(h.movimento_originale_id, h.id) AS radice
+          FROM waste_movements h
+          WHERE h.tenant_id = ${tenantId}::uuid AND h.registro_id = ${registroId}::uuid
+            AND regexp_replace(h.cer_code, '[^0-9]', '', 'g') = ${cifre}
+        )
         SELECT a.id::text AS id, a.scarico_id::text AS "scaricoId", a.carico_id::text AS "caricoId",
                a.giacenza_iniziale_id::text AS "giacenzaInizialeId", a.famiglia, a.quantita,
                a.origine::text AS origine
@@ -155,15 +161,11 @@ export async function leggiAmbitiAbbinamento(
         LEFT JOIN giacenze_iniziali g ON g.id = a.giacenza_iniziale_id AND g.tenant_id = a.tenant_id
         WHERE a.tenant_id = ${tenantId}::uuid AND a.registro_id = ${registroId}::uuid
           AND (
-            -- il CER di QUALUNQUE membro delle catene di scarico e carico (radice, rettifiche):
-            -- il lettore assegna l'ambito col CER della testa vigente, che puo essere diverso
-            -- da quello della radice; qui basta un sovrainsieme sicuro
-            EXISTS (
-              SELECT 1 FROM waste_movements h
-              WHERE h.tenant_id = a.tenant_id
-                AND COALESCE(h.movimento_originale_id, h.id) IN (a.scarico_id, a.carico_id)
-                AND regexp_replace(h.cer_code, '[^0-9]', '', 'g') = ${cifre}
-            )
+            -- Radici delle catene che hanno QUALUNQUE membro (radice o rettifica) con questo CER,
+            -- calcolate una volta sola: il lettore assegna l'ambito col CER della testa vigente,
+            -- che puo essere diverso da quello della radice; qui basta un sovrainsieme sicuro.
+            a.scarico_id IN (SELECT radice FROM radici_cer)
+            OR a.carico_id IN (SELECT radice FROM radici_cer)
             OR regexp_replace(g.cer_code, '[^0-9]', '', 'g') = ${cifre})`
     : await client.abbinamentoCaricoScarico.findMany({
         where: { tenantId, registroId },
