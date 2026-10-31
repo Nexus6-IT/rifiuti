@@ -15,6 +15,7 @@ import { RENTRIApiClient } from './rentri-api.client'
 import { RentriVidimazioneClient } from './rentri-vidimazione.client'
 import { RentriCodificheClient } from './codifiche/rentri-codifiche.client'
 import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
+import { RentriRegistriClient } from './rentri-registri.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import { RedisConfig } from '../cache/redis.config'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
@@ -62,6 +63,8 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
     RentriVidimazioneClient,
     RentriCodificheClient,
     RentriAnagraficheClient,
+    // F2-9: registro cronologico (dati-registri); la POST dei movimenti non si ritenta mai.
+    RentriRegistriClient,
     SincronizzaSitiUseCase,
     // Terzo strato di resilienza (R5, task 1): rate limiter preventivo
     // per tenant. `RedisConfig` non ha un modulo dedicato che lo esporti
@@ -79,6 +82,7 @@ import { RentriDiagnosticaController } from '../../api/rentri/rentri-diagnostica
     RentriVidimazioneClient,
     RentriCodificheClient,
     RentriAnagraficheClient,
+    RentriRegistriClient,
     RentriAuthService,
     RentriSignatureService,
     RentriCredentialService,

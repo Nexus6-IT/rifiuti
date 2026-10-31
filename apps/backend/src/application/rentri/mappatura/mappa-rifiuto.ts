@@ -117,7 +117,9 @@ function normalizzaChiave(valore: string): string {
 }
 
 /** Traduce lo stato fisico interno in un codice `StatiFisici` RENTRI, o fallisce. */
-function traduciStatoFisico(wastePhysicalState: string | null | undefined): StatoFisicoRentri {
+export function traduciStatoFisico(
+  wastePhysicalState: string | null | undefined
+): StatoFisicoRentri {
   if (!wastePhysicalState || wastePhysicalState.trim() === '') {
     throw new ValoreNonTraducibilePerRentriError(
       'stato_fisico',
@@ -144,7 +146,7 @@ function traduciStatoFisico(wastePhysicalState: string | null | undefined): Stat
  * Accetta sia la forma puntata (`20.03.99`) sia quella senza punti
  * (`200399`), le uniche osservate nel dominio FIR.
  */
-function codiceEerRichiedeDescrizione(cerCode: string): boolean {
+export function codiceEerRichiedeDescrizione(cerCode: string): boolean {
   const soloCifre = cerCode.replace(/\D/g, '')
   return soloCifre.endsWith('99')
 }

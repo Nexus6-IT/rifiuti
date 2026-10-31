@@ -56,6 +56,8 @@ export interface MovimentoListItem {
    * ANNULLATO: la testa della sua catena e un ANNULLAMENTO (compresa la riga di annullamento).
    */
   stato: StatoMovimento
+  /** Trasmissione a RENTRI: `null` se l'annotazione non ha mai avuto una riga (F2-9). */
+  trasmissioneRentri: { stato: string; identificativo: string | null; motivo: string | null } | null
 }
 
 const RIFERIMENTO = {
@@ -131,6 +133,15 @@ export class ListMovimentiHandler {
           rettificato: RIFERIMENTO,
           // Al piu una (unico su movimento_rettificato_id): una lista per la relazione 1:n.
           correzioni: RIFERIMENTO,
+          // Una sola riga per movimento (unico su movimento_id): solo i campi da mostrare.
+          trasmissioneRentri: {
+            select: {
+              stato: true,
+              identificativoRentri: true,
+              motivoBlocco: true,
+              ultimoErrore: true,
+            },
+          },
         },
       }),
     ])
@@ -193,6 +204,13 @@ export class ListMovimentiHandler {
         rettificaDi: r.rettificato ? riferimento(r.rettificato) : undefined,
         correttoDa: r.correzioni[0] ? riferimento(r.correzioni[0]) : undefined,
         stato: statoDi(r, tipiTesta.get(r.id) ?? (r.tipoAnnotazione as TipoAnnotazioneItem)),
+        trasmissioneRentri: r.trasmissioneRentri
+          ? {
+              stato: r.trasmissioneRentri.stato,
+              identificativo: r.trasmissioneRentri.identificativoRentri,
+              motivo: r.trasmissioneRentri.motivoBlocco ?? r.trasmissioneRentri.ultimoErrore,
+            }
+          : null,
       }
     })
 

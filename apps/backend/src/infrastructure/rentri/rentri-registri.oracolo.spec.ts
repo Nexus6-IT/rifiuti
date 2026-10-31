@@ -25,6 +25,8 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
   let app: any
 
   const REGISTRO = 'R1234ABCDEF'
+  // Stringa vuota: il resolver ricade sulla credenziale da env (pilota single-operator), come prima.
+  const TENANT = ''
 
   beforeAll(async () => {
     app = creaApp()
@@ -173,30 +175,34 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
       })
   }
 
-  it('inviaMovimenti: 202, transazioneId restituito con urlStato verso lo status di dati-registri', async () => {
+  it('inviaMovimenti: 202 e transazioneId', async () => {
     const client = creaClient()
     await apriRegistro()
 
-    const { transazioneId, urlStato } = await client.inviaMovimenti(REGISTRO, [
-      movimentoValido(2026, 1),
-    ])
+    const { transazioneId } = await client.inviaMovimenti(
+      REGISTRO,
+      [movimentoValido(2026, 1)],
+      TENANT
+    )
 
     expect(transazioneId).toMatch(/^[0-9a-f-]{36}$/i)
-    expect(urlStato).toBe(`/dati-registri/v1.0/${transazioneId}/status`)
   })
 
   it('inviaMovimenti rifiuta un corpo non conforme: propaga come RentriApiError HTTP 400', async () => {
     const client = creaClient()
     await apriRegistro()
 
-    await expect(client.inviaMovimenti(REGISTRO, [{}])).rejects.toThrow(/HTTP 400/)
+    const errore = await client.inviaMovimenti(REGISTRO, [{}], TENANT).catch(e => e)
+    expect(errore).toBeInstanceOf(RentriApiError)
+    expect(errore.status).toBe(400)
+    expect(errore.retryable).toBe(false)
   })
 
   it('inviaMovimenti su un registro mai aperto: RentriApiError 404', async () => {
     const client = creaClient()
 
     await expect(
-      client.inviaMovimenti('R0000000000', [movimentoValido(2026, 1)])
+      client.inviaMovimenti('R0000000000', [movimentoValido(2026, 1)], TENANT)
     ).rejects.toBeInstanceOf(RentriApiError)
   })
 
@@ -205,7 +211,11 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
     abilitaPollingSempreRisolve(client)
     await apriRegistro()
 
-    const { transazioneId } = await client.inviaMovimenti(REGISTRO, [movimentoValido(2026, 10)])
+    const { transazioneId } = await client.inviaMovimenti(
+      REGISTRO,
+      [movimentoValido(2026, 10)],
+      TENANT
+    )
 
     setTimeout(() => {
       void completaTransazione(transazioneId)
@@ -236,7 +246,7 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
     const client = creaClient()
     await apriRegistro()
 
-    const invio = await client.inviaMovimenti(REGISTRO, [movimentoValido(2026, 20)])
+    const invio = await client.inviaMovimenti(REGISTRO, [movimentoValido(2026, 20)], TENANT)
     await completaTransazione(invio.transazioneId)
 
     const elenco = await client.elencaMovimenti(REGISTRO, { anno: 2026, progressivo: 20 })
@@ -260,7 +270,11 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
     const client = creaClient()
     await apriRegistro()
 
-    const invioOriginale = await client.inviaMovimenti(REGISTRO, [movimentoValido(2026, 30)])
+    const invioOriginale = await client.inviaMovimenti(
+      REGISTRO,
+      [movimentoValido(2026, 30)],
+      TENANT
+    )
     await completaTransazione(invioOriginale.transazioneId)
 
     const rettifica = movimentoValido(2026, 31)
@@ -268,7 +282,7 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
       anno: 2026,
       progressivo: 30,
     }
-    const invioRettifica = await client.inviaMovimenti(REGISTRO, [rettifica])
+    const invioRettifica = await client.inviaMovimenti(REGISTRO, [rettifica], TENANT)
     await completaTransazione(invioRettifica.transazioneId)
 
     const dettaglio = await client.dettaglioMovimentoPerAnnoProgressivo(REGISTRO, 2026, 30)
@@ -280,7 +294,11 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
     const client = creaClient()
     await apriRegistro()
 
-    const invioOriginale = await client.inviaMovimenti(REGISTRO, [movimentoValido(2026, 40)])
+    const invioOriginale = await client.inviaMovimenti(
+      REGISTRO,
+      [movimentoValido(2026, 40)],
+      TENANT
+    )
     await completaTransazione(invioOriginale.transazioneId)
 
     const annullamento = {
@@ -289,7 +307,7 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
       data_ora_registrazione: '2026-01-12T08:00:00Z',
       annotazioni: 'Registrazione errata',
     }
-    const invioAnnullamento = await client.inviaMovimenti(REGISTRO, [annullamento])
+    const invioAnnullamento = await client.inviaMovimenti(REGISTRO, [annullamento], TENANT)
     await completaTransazione(invioAnnullamento.transazioneId)
 
     const dettaglio = await client.dettaglioMovimentoPerAnnoProgressivo(REGISTRO, 2026, 40)
@@ -321,6 +339,68 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
     expect(esito.esito.numero_registrazioni_file).toBe(3)
   }, 15000)
 
+  it('invio, polling e lettura degli identificativi contro la fake', async () => {
+    const client = creaClient()
+    abilitaPollingSempreRisolve(client)
+    await apriRegistro()
+
+    const { transazioneId } = await client.inviaMovimenti(
+      REGISTRO,
+      [movimentoValido(2026, 50), movimentoValido(2026, 51)],
+      TENANT
+    )
+    setTimeout(() => {
+      void completaTransazione(transazioneId)
+    }, 100)
+
+    const esito = await client.attendiEsitoMovimenti(transazioneId, TENANT, {
+      intervalloMs: 50,
+      maxTentativi: 40,
+    })
+
+    expect(esito.errore).toBe(false)
+    expect(esito.numeroRegistrazioni.map(r => [r.anno, r.progressivo])).toEqual([
+      [2026, 50],
+      [2026, 51],
+    ])
+    for (const r of esito.numeroRegistrazioni) {
+      expect(r.identificativo).toMatch(/^M[0-9A-Z]{19}$/)
+    }
+  }, 15000)
+
+  it('esito con errore: numeroRegistrazioni vuoto e messaggi con indice', async () => {
+    const client = creaClient()
+    abilitaPollingSempreRisolve(client)
+    await apriRegistro()
+
+    const { transazioneId } = await client.inviaMovimenti(
+      REGISTRO,
+      [movimentoValido(2026, 60), movimentoValido(2026, 61)],
+      TENANT
+    )
+    setTimeout(() => {
+      void completaTransazione(transazioneId, {
+        errore: true,
+        validazione: [
+          { indice: 1, campo: 'rifiuto.quantita', tipo: 'Errore', codice_messaggio: 'E123' },
+          { indice: null, campo: null, tipo: 'Avvertimento' },
+        ],
+      })
+    }, 100)
+
+    const esito = await client.attendiEsitoMovimenti(transazioneId, TENANT, {
+      intervalloMs: 50,
+      maxTentativi: 40,
+    })
+
+    expect(esito.errore).toBe(true)
+    expect(esito.numeroRegistrazioni).toEqual([])
+    expect(esito.validazione).toEqual([
+      { indice: 1, campo: 'rifiuto.quantita', tipo: 'Errore', codice: 'E123' },
+      { indice: null, campo: null, tipo: 'Avvertimento', codice: null },
+    ])
+  }, 15000)
+
   it('ultimaTransazioneId: null se non e mai stata inviata alcuna trasmissione, poi il transazione_id dopo un invio', async () => {
     const client = creaClient()
     const registroVergine = 'R0000000001'
@@ -328,9 +408,11 @@ describe('RentriRegistriClient — contro la fake RENTRI (in-process)', () => {
 
     expect(await client.ultimaTransazioneId(registroVergine)).toBeNull()
 
-    const { transazioneId } = await client.inviaMovimenti(registroVergine, [
-      movimentoValido(2026, 1),
-    ])
+    const { transazioneId } = await client.inviaMovimenti(
+      registroVergine,
+      [movimentoValido(2026, 1)],
+      TENANT
+    )
 
     expect(await client.ultimaTransazioneId(registroVergine)).toBe(transazioneId)
   })

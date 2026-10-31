@@ -36,6 +36,7 @@ import { ContractModule } from './application/contracts/contract.module'
 import { ReferenceDataModule } from './application/reference-data/reference-data.module'
 import { RentriModule } from './infrastructure/rentri/rentri.module'
 import { RentriSyncModule } from './application/rentri/rentri-sync.module'
+import { RegistroRentriModule } from './application/rentri/registro/registro-rentri.module'
 // Amministrazione piattaforma (SUPER_ADMIN): tenant + utenti (provisioning Keycloak)
 import { AdminTenantModule } from './application/admin/admin-tenant.module'
 import { AdminUserModule } from './application/admin/admin-user.module'
@@ -123,6 +124,8 @@ import { AccessRequestModule } from './application/access-request/access-request
     // RENTRI sync — use case/coda/worker/log/controller (R0 Task 4: cablati,
     // prima erano otto pezzi orfani non raggiungibili da AppModule)
     RentriSyncModule,
+    // RENTRI — trasmissione del registro di carico/scarico (F2-9)
+    RegistroRentriModule,
 
     // Communication
     NotificationsModule,

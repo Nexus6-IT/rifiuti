@@ -61,7 +61,7 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
       JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
       WHERE k.table_schema = 'public' AND k.column_name = 'tenant_id'
       ORDER BY 1`
-    expect(righe.length).toBe(36)
+    expect(righe.length).toBe(37)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,

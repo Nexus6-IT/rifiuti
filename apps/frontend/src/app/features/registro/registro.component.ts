@@ -68,6 +68,7 @@ import {
   offrireProgressivoIniziale,
   offrireRegistrazione,
   annoItaliano,
+  EsitoCorrezioneMovimento,
 } from './registro.service'
 import { etichettaRegistro, registroPredefinito } from './registro-sede'
 import { messaggioMovimentoRegistrato } from './registro-messaggi'
@@ -81,6 +82,12 @@ import {
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.component'
+import {
+  RentriRegistroPannelloComponent,
+  RentriRigaAzioniComponent,
+  StatoPannelloRentri,
+} from './rentri-registro-pannello.component'
+import { eSelezionabile } from './stato-rentri'
 import { CausaliRegistroDialogComponent } from './causali-registro-dialog.component'
 import {
   CorreggiMovimentoDialogComponent,
@@ -135,6 +142,8 @@ interface FirOption {
     PaginatorModule,
     CerSelectComponent,
     GiacenzeInizialiDialogComponent,
+    RentriRegistroPannelloComponent,
+    RentriRigaAzioniComponent,
     CausaliRegistroDialogComponent,
     CorreggiMovimentoDialogComponent,
   ],
@@ -294,6 +303,17 @@ interface FirOption {
         <span>{{ testoEsito(e) }}</span>
       </section>
 
+      <!-- Trasmissione a RENTRI (solo con un registro determinato) -------------->
+      <app-rentri-registro-pannello
+        *ngIf="registroRentri() as registroId"
+        [registroId]="registroId"
+        [selezionati]="rentriSelezionati()"
+        [annoCorrente]="annoCorrente"
+        [aggiornamento]="rentriVersione()"
+        (statoChange)="rentriStato.set($event)"
+        (aggiornato)="onRentriAggiornato()"
+      ></app-rentri-registro-pannello>
+
       <!-- Errore ---------------------------------------------------------------->
       <section *ngIf="error()" class="surface-card" role="alert">
         <div class="empty-state">
@@ -341,6 +361,9 @@ interface FirOption {
 
             <ng-template pTemplate="header">
               <tr>
+                <th *ngIf="rentriSelezionabile()" scope="col" style="width: 48px">
+                  <span class="sr-only">Seleziona per la trasmissione a RENTRI</span>
+                </th>
                 <th scope="col" style="width: 96px">N° prog.</th>
                 <th *ngIf="piuRegistri()" scope="col" data-testid="registro-col-sede">Sede</th>
                 <th scope="col" style="width: 104px">Tipo</th>
@@ -351,6 +374,14 @@ interface FirOption {
                 <th scope="col">Controparte</th>
                 <th scope="col" style="width: 72px">FIR</th>
                 <th scope="col" style="width: 132px">Stato</th>
+                <th
+                  *ngIf="rentriColonna()"
+                  scope="col"
+                  style="width: 200px"
+                  data-testid="registro-col-rentri"
+                >
+                  RENTRI
+                </th>
                 <th *ngIf="offriCorrezioni()" scope="col" style="width: 168px">
                   <span class="sr-only">Correzioni</span>
                 </th>
@@ -362,6 +393,20 @@ interface FirOption {
                 [class.riga-non-vigente]="!vigente(m)"
                 [attr.data-testid]="'registro-riga-' + m.id"
               >
+                <td *ngIf="rentriSelezionabile()">
+                  <input
+                    type="checkbox"
+                    [attr.data-testid]="'registro-rentri-sel-' + m.id"
+                    [checked]="rentriSelezionati().includes(m.id)"
+                    [disabled]="!rentriSelezionabileRiga(m)"
+                    (change)="rentriSeleziona(m, $any($event.target).checked)"
+                    [attr.aria-label]="
+                      'Seleziona l\\'annotazione ' +
+                      numeroMovimento(m) +
+                      ' per la trasmissione a RENTRI'
+                    "
+                  />
+                </td>
                 <td>
                   <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
                 </td>
@@ -434,6 +479,16 @@ interface FirOption {
                       'Registrato con ' + (m.ritardoGg ?? 0) + ' gg di ritardo sul termine di legge'
                     "
                   ></p-tag>
+                </td>
+                <td *ngIf="rentriColonna()">
+                  <app-rentri-riga-azioni
+                    [movimentoId]="m.id"
+                    [registroId]="m.registroId ?? registroRentri() ?? null"
+                    [numero]="numeroMovimento(m)"
+                    [trasmissione]="m.trasmissioneRentri ?? null"
+                    [puoTrasmettere]="rentriStato().puoTrasmettere"
+                    (cambiato)="onRentriAggiornato()"
+                  ></app-rentri-riga-azioni>
                 </td>
                 <td *ngIf="offriCorrezioni()" class="azioni-col">
                   <ng-container *ngIf="vigente(m)">
@@ -1001,7 +1056,7 @@ interface FirOption {
         [(visible)]="correzioneVisibile"
         [modo]="correzioneModo"
         [movimento]="correzioneMovimento"
-        (corretto)="onCorretto()"
+        (corretto)="onCorretto($event)"
       ></app-correggi-movimento-dialog>
 
       <!-- Dialog gestione causali (solo ADMIN) -------------------------------->
@@ -2014,8 +2069,51 @@ export class RegistroComponent implements OnInit {
 
   /** Colonne della tabella (serve al colspan del messaggio di elenco vuoto). */
   readonly colonne = computed(
-    () => 9 + (this.piuRegistri() ? 1 : 0) + (this.offriCorrezioni() ? 1 : 0)
+    () =>
+      9 +
+      (this.piuRegistri() ? 1 : 0) +
+      (this.offriCorrezioni() ? 1 : 0) +
+      (this.rentriColonna() ? 1 : 0) +
+      (this.rentriSelezionabile() ? 1 : 0)
   )
+
+  // ─── Trasmissione a RENTRI ────────────────────────────────────────────────
+
+  /** Stato comunicato dal pannello: collegato a RENTRI e permesso di trasmettere (dal backend). */
+  readonly rentriStato = signal<StatoPannelloRentri>({ collegato: false, puoTrasmettere: false })
+  readonly rentriSelezionati = signal<string[]>([])
+  /** Il pannello c'è solo con un registro determinato (come le giacenze iniziali). */
+  registroRentri(): string | undefined {
+    return this.registroGiacenzeIniziali()
+  }
+  /**
+   * Con più sedi la colonna e la selezione valgono solo con la sede filtrata: senza filtro
+   * l'elenco mescola registri diversi e un invio con id di altri registri fallirebbe per intero.
+   */
+  readonly rentriColonna = () =>
+    !!this.registroRentri() &&
+    this.rentriStato().collegato &&
+    (!this.piuRegistri() || !!this.filtroRegistro)
+  readonly rentriVersione = signal(0)
+  readonly rentriSelezionabile = () => this.rentriColonna() && this.rentriStato().puoTrasmettere
+
+  rentriSelezionabileRiga(m: Movimento): boolean {
+    return eSelezionabile(m.trasmissioneRentri?.stato) && m.registroId === this.registroRentri()
+  }
+
+  rentriSeleziona(m: Movimento, scelta: boolean): void {
+    if (scelta && !this.rentriSelezionabileRiga(m)) return
+    this.rentriSelezionati.update(ids =>
+      scelta ? (ids.includes(m.id) ? ids : [...ids, m.id]) : ids.filter(id => id !== m.id)
+    )
+  }
+
+  /** Dopo un invio o un'azione di riga: selezione svuotata ed elenco riletto. */
+  onRentriAggiornato(): void {
+    this.rentriSelezionati.set([])
+    this.rentriVersione.update(v => v + 1)
+    this.ricarica(this.paginazione().page)
+  }
 
   /** Registro da verificare: lo stesso delle giacenze iniziali (filtro, predefinito, stato). */
   private registroVerifica(): string | undefined {
@@ -2036,7 +2134,9 @@ export class RegistroComponent implements OnInit {
   }
 
   /** Dopo una correzione riuscita: elenco e stato del progressivo si rileggono. */
-  onCorretto(): void {
+  onCorretto(esito?: EsitoCorrezioneMovimento): void {
+    // Correzione di un'annotazione già su RENTRI: l'utente deve sapere come verrà trasmessa.
+    if (esito?.avvisoRentri) this.toast.warn(esito.avvisoRentri)
     this.esitoVerifica.set(null)
     this.ricarica(this.paginazione().page)
     this.caricaProgressivo()
@@ -2187,6 +2287,9 @@ export class RegistroComponent implements OnInit {
   }
 
   onFiltroRegistroChange(): void {
+    this.rentriStato.set({ collegato: false, puoTrasmettere: false })
+    this.rentriSelezionati.set([])
+    this.rentriVersione.update(v => v + 1)
     this.esitoVerifica.set(null)
     this.ricarica(1)
     this.caricaProgressivo()
@@ -2285,6 +2388,7 @@ export class RegistroComponent implements OnInit {
       .subscribe({
         next: (data: PaginatedMovimenti) => {
           this.movimenti.set(data.items)
+          this.rentriSelezionati.set([])
           this.paginazione.set({
             total: data.total,
             page: data.page,
@@ -2310,7 +2414,12 @@ export class RegistroComponent implements OnInit {
     this.filtroCer = ''
     const cambiaSede = this.filtroRegistro !== null
     this.filtroRegistro = null
-    if (cambiaSede) this.esitoVerifica.set(null)
+    if (cambiaSede) {
+      this.esitoVerifica.set(null)
+      this.rentriStato.set({ collegato: false, puoTrasmettere: false })
+      this.rentriSelezionati.set([])
+      this.rentriVersione.update(v => v + 1)
+    }
     this.ricarica(1)
     if (cambiaSede) this.caricaProgressivo()
   }

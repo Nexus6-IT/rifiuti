@@ -41,6 +41,7 @@ describe('RegistroController.registra — data di registrazione', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
       {} as any
     )
   })
@@ -115,6 +116,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
       {} as any
     )
 
@@ -134,6 +136,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
       {} as any
     )
 
@@ -148,6 +151,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('VIEWER'),
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -173,6 +177,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
       {} as any
     )
 
@@ -188,6 +193,7 @@ describe('RegistroController.registra e lista — azienda selezionata e ruolo ef
       lista as any,
       {} as any,
       ruoli('SUPER_ADMIN'),
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -219,6 +225,7 @@ describe('RegistroController — progressivo iniziale', () => {
       {} as any,
       servizio as any,
       membership,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -363,6 +370,7 @@ describe('RegistroController — registri (Fase 2 pezzo 1)', () => {
       registri as any,
       {} as any,
       {} as any,
+      {} as any,
       {} as any
     )
 
@@ -485,6 +493,7 @@ describe('RegistroController — giacenze iniziali (Fase 2 pezzo 2)', () => {
       {} as any,
       servizio as any,
       {} as any,
+      {} as any,
       {} as any
     )
 
@@ -606,6 +615,7 @@ describe('RegistroController — correzioni e verifica catena (Fase 2 pezzo 3)',
   let correggi: { rettifica: jest.Mock; annulla: jest.Mock }
   let verifica: { verifica: jest.Mock }
   let registri: { risolviInLettura: jest.Mock }
+  let avviso: { calcola: jest.Mock }
 
   const crea = (ruolo: string) =>
     new RegistroController(
@@ -616,10 +626,12 @@ describe('RegistroController — correzioni e verifica catena (Fase 2 pezzo 3)',
       registri as any,
       {} as any,
       correggi as any,
-      verifica as any
+      verifica as any,
+      avviso as any
     )
 
   beforeEach(() => {
+    avviso = { calcola: jest.fn().mockResolvedValue(null) }
     correggi = {
       rettifica: jest.fn().mockResolvedValue({ movimento: {}, avvisi: [] }),
       annulla: jest.fn().mockResolvedValue({ movimento: {}, avvisi: [] }),
@@ -657,6 +669,22 @@ describe('RegistroController — correzioni e verifica catena (Fase 2 pezzo 3)',
         unit: 'KG',
       },
     })
+  })
+
+  it('rettifica e annullamento: avvisoRentri calcolato sul movimento corretto, azienda selezionata', async () => {
+    avviso.calcola.mockResolvedValueOnce('avviso-r').mockResolvedValueOnce('avviso-a')
+    const r = await crea('OPERATOR').rettifica('mov-1', dto as any, richiesta)
+    const a = await crea('OPERATOR').annulla('mov-2', { motivo: 'x' } as any, richiesta)
+    expect(r).toMatchObject({ avvisi: [], avvisoRentri: 'avviso-r' })
+    expect(a).toMatchObject({ avvisi: [], avvisoRentri: 'avviso-a' })
+    expect(avviso.calcola).toHaveBeenNthCalledWith(1, 'azienda-1', 'mov-1', 'RETTIFICA')
+    expect(avviso.calcola).toHaveBeenNthCalledWith(2, 'azienda-1', 'mov-2', 'ANNULLAMENTO')
+  })
+
+  it('correzione rifiutata: nessun avviso calcolato', async () => {
+    correggi.annulla.mockRejectedValue(new Error('no'))
+    await expect(crea('ADMIN').annulla('m', { motivo: 'x' } as any, richiesta)).rejects.toThrow()
+    expect(avviso.calcola).not.toHaveBeenCalled()
   })
 
   it('rettifica: un unit esplicito è mantenuto', async () => {

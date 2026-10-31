@@ -404,6 +404,47 @@ nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP CO
 
 ---
 
+## F2-9 trasmissione del registro a RENTRI
+
+Migration `20261101500000_trasmissione_registro_rentri`: tabella `movimenti_trasmissione_rentri`
+(una riga per movimento trasmesso o in via di trasmissione; nessuna riga = non trasmesso), colonna
+`registri_rifiuti.invio_rentri_automatico_dal`, CHECK di formato e unico per azienda
+dell'`identificativo_rentri` del registro. Additiva: nasce vuota, nessun invio retroattivo, nessun
+GRANT (default privileges di `ops/db-ruoli.sh`).
+
+- **Dopo il deploy non parte nessun invio.** La tabella nasce vuota e nessun registro ha un
+  identificativo: per attivare la trasmissione un amministratore deve inserire l'identificativo
+  RENTRI del registro (`R` + 10 caratteri, dal portale) e, se vuole l'invio automatico, scegliere la
+  modalita' "da oggi". Fino ad allora il job non trova nulla da fare.
+- **Chi arriva da WinWaste** deve prima usare "Dichiara gia' su RENTRI" per le annotazioni gia'
+  inviate dall'altro programma (altrimenti vengono ritrasmesse come doppie registrazioni), poi
+  confrontare con "Verifica allineamento".
+- **Controllo post-deploy:** `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1`
+  (atteso: nessuna riga) e, nei log del backend, il job di trasmissione che gira senza errori e
+  senza invii.
+- **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
+  rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
+  che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
+- **Mai cancellare righe `TRASMESSA` per "ripartire"**: l'annotazione verrebbe ritrasmessa a RENTRI
+  (doppia registrazione). I trigger rifiutano il DELETE diretto di una riga `TRASMESSA`,
+  `GIA_SU_RENTRI`, `INCERTA`, `IN_INVIO` e `ATTESA_ESITO`; la cancellazione a cascata di un'azienda
+  passa.
+- **Ripristino a mano della migration: solo per un database SENZA trasmissioni** (i dati
+  andrebbero persi):
+
+  ```sql
+  DROP TABLE movimenti_trasmissione_rentri;
+  DROP FUNCTION movimenti_trasmissione_rentri_immutabile(), movimenti_trasmissione_rentri_no_delete();
+  DROP TYPE stato_trasmissione_rentri, origine_trasmissione_rentri;
+  ALTER TABLE registri_rifiuti
+    DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
+    DROP CONSTRAINT registri_rifiuti_identificativo_rentri_check,
+    DROP COLUMN invio_rentri_automatico_dal;
+  DELETE FROM _prisma_migrations WHERE migration_name = '20261101500000_trasmissione_registro_rentri';
+  ```
+
+---
+
 ## Rollback
 
 Se lo smoke test fallisce dopo `migrate` e `up -d`, i container nuovi restano
@@ -548,7 +589,7 @@ annullato per intero; rilanciarlo per CER (`cerCode`) o fuori orario.
 - `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi
   di stoccaggio R13/D15; poi cresce con le registrazioni).
 - RLS: la tabella ha `ENABLE` e `FORCE ROW LEVEL SECURITY` e la policy `isolamento_azienda`;
-  in CI `rls-catalogo.postgres.spec.ts` conta 36 tabelle con RLS.
+  in CI `rls-catalogo.postgres.spec.ts` conta 37 tabelle con RLS.
 - Gli scarichi registrati prima del deploy non sono abbinati: l'amministratore li abbina dalla
   pagina Giacenze -> Abbinamenti con "Abbina con FIFO i non abbinati".
 

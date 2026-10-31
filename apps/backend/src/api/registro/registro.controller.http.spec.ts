@@ -26,6 +26,7 @@ import { RegistriService } from '../../application/registro/registri.service'
 import { GiacenzeInizialiService } from '../../application/registro/giacenze-iniziali.service'
 import { CorreggiMovimentoUseCase } from '../../application/registro/use-cases/correggi-movimento.use-case'
 import { VerificaCatenaRegistroService } from '../../application/registro/verifica-catena-registro.service'
+import { AvvisoRentriCorrezioneService } from '../../application/rentri/registro/avviso-rentri-correzione.service'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MembershipService } from '../me/membership.service'
 import { TenantSwitchInterceptor } from '../../core/interceptors/tenant-switch.interceptor'
@@ -131,6 +132,7 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         { provide: RegistriService, useValue: registri },
         { provide: CorreggiMovimentoUseCase, useValue: correggi },
         { provide: VerificaCatenaRegistroService, useValue: verifica },
+        { provide: AvvisoRentriCorrezioneService, useValue: { calcola: async () => null } },
         { provide: GiacenzeInizialiService, useValue: giacenze },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
         {
@@ -460,7 +462,7 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         .set('X-Tenant-ID', CLIENTE)
         .send({ ...rettificaCorpo, confermaAnnoPresentato: true })
       expect(risposta.status).toBe(201)
-      expect(risposta.body).toEqual({ movimento: { id: 'nuova' }, avvisi: [] })
+      expect(risposta.body).toEqual({ movimento: { id: 'nuova' }, avvisi: [], avvisoRentri: null })
       const input = correggi.rettifica.mock.calls[0][0]
       expect(input).toMatchObject({
         tenantId: CLIENTE,
@@ -482,7 +484,11 @@ describe('RegistroController — catena HTTP con azienda selezionata', () => {
         .set('X-Tenant-ID', CLIENTE)
         .send({ motivo: 'Errore di registrazione' })
       expect(risposta.status).toBe(201)
-      expect(risposta.body).toEqual({ movimento: { id: 'annullo' }, avvisi: ['a'] })
+      expect(risposta.body).toEqual({
+        movimento: { id: 'annullo' },
+        avvisi: ['a'],
+        avvisoRentri: null,
+      })
       expect(correggi.annulla).toHaveBeenCalledWith({
         tenantId: CLIENTE,
         userId: CONSULENTE,

@@ -73,7 +73,8 @@ export function calcolaAttesaRetryMs(
   if (retryAfterHeader !== undefined) {
     const secondi = Number(retryAfterHeader)
     if (!Number.isNaN(secondi) && secondi >= 0) {
-      return secondi * 1000
+      // Tetto: un Retry-After enorme non deve bloccare il giro per ore.
+      return Math.min(secondi * 1000, backoff.maxMs)
     }
   }
   return Math.min(backoff.baseMs * 2 ** (tentativo - 1), backoff.maxMs)
