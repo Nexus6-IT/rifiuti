@@ -27,6 +27,7 @@ import {
 import { RegistriService } from '../registro/registri.service'
 import { RegistraMovimentoUseCase } from '../registro/use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from '../registro/commands/registra-movimento.command'
+import { CorreggiMovimentoUseCase } from '../registro/use-cases/correggi-movimento.use-case'
 import {
   abbinaNuovoScarico,
   bloccaAmbiti,
@@ -42,6 +43,7 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
   let app: PrismaService
   let registri: RegistriService
   let registra: RegistraMovimentoUseCase
+  let correggi: CorreggiMovimentoUseCase
   let userId: string
   const cerCreati: string[] = []
   const tenantCreati: string[] = []
@@ -146,6 +148,7 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     expect(r.u).toBe('wasteflow_app')
     registri = new RegistriService(app, loggerStub as never)
     registra = new RegistraMovimentoUseCase(app, loggerStub as never, registri)
+    correggi = new CorreggiMovimentoUseCase(app, loggerStub as never)
     if ((await owner.cERCode.count({ where: { code: CER } })) === 0) cerCreati.push(CER)
     await owner.cERCode.upsert({
       where: { code: CER },
@@ -410,6 +413,116 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     })
     expect(audit).toHaveLength(1)
     expect(audit[0].metadata).toMatchObject({ righeScritte: 1, righeCancellate: 1 })
+  })
+
+  const annullaScarico = (az: Az, id: string) =>
+    nelTenant(az.tenantId, () =>
+      correggi.annulla({
+        tenantId: az.tenantId,
+        userId: undefined as unknown as string,
+        movimentoId: id,
+        motivo: 'inserito per errore',
+      })
+    )
+
+  const ricalcola = (az: Az, modalita: 'NON_ABBINATI' | 'AUTOMATICI') =>
+    inTx(az, tx =>
+      ricalcolaAbbinamenti(tx, {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        modalita,
+        userId,
+      })
+    )
+  const coppie = async (az: Az) =>
+    (await righeDi(az))
+      .map(
+        r =>
+          `${r.scaricoId}|${r.caricoId ?? r.giacenzaInizialeId}|${Number(r.quantita)}|${r.origine}`
+      )
+      .sort()
+
+  it('AUTOMATICI con una riga MANUALE parziale: non lancia e le righe di quello scarico restano identiche', async () => {
+    const az = await azienda()
+    const c1 = await carico(az, '2026-03-01', 100)
+    const s = await scarico(az, '2026-03-10', 30)
+    const sAuto = await scarico(az, '2026-03-11', 20)
+    const manuale = await inTx(az, tx =>
+      salvaAbbinamentoManuale(tx, {
+        tenantId: az.tenantId,
+        scaricoRadiceId: s,
+        userId,
+        righe: [{ caricoId: c1, quantita: 10 }],
+      })
+    )
+    expect(manuale.avvisi).toHaveLength(1)
+    const prima = (await righeDi(az)).filter(r => r.scaricoId === s).map(r => r.id)
+    const esito = await ricalcola(az, 'AUTOMATICI')
+    expect(esito.righeScritte).toBe(1)
+    const dopo = (await righeDi(az)).filter(r => r.scaricoId === s)
+    expect(dopo.map(r => r.id)).toEqual(prima)
+    expect(dopo.map(r => [Number(r.quantita), r.origine])).toEqual([[10, 'MANUALE']])
+    // l'altro scarico e' stato abbinato sul residuo (90)
+    const altro = (await righeDi(az)).filter(r => r.scaricoId === sAuto)
+    expect(altro.map(r => Number(r.quantita))).toEqual([20])
+  })
+
+  it('una riga morta non blocca la capacita e si pulisce solo in AUTOMATICI', async () => {
+    const az = await azienda()
+    const c1 = await carico(az, '2026-03-01', 100)
+    const sMorto = await scarico(az, '2026-03-10', 100)
+    const morta = await owner.abbinamentoCaricoScarico.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        scaricoId: sMorto,
+        caricoId: c1,
+        famiglia: 'KG',
+        quantita: 100,
+        origine: 'AUTOMATICO',
+      },
+    })
+    await annullaScarico(az, sMorto)
+    const s2 = await scarico(az, '2026-03-12', 60)
+    expect(await abbina(az, s2)).toEqual([])
+    expect(
+      (await righeDi(az)).filter(r => r.scaricoId === s2).map(r => Number(r.quantita))
+    ).toEqual([60])
+    await ricalcola(az, 'NON_ABBINATI')
+    expect(await owner.abbinamentoCaricoScarico.count({ where: { id: morta.id } })).toBe(1)
+    const esito = await ricalcola(az, 'AUTOMATICI')
+    expect(esito.righeCancellate).toBeGreaterThanOrEqual(2)
+    expect(await owner.abbinamentoCaricoScarico.count({ where: { id: morta.id } })).toBe(0)
+    expect((await righeDi(az)).map(r => Number(r.quantita))).toEqual([60])
+  })
+
+  it('idempotenza: due ricalcoli di fila', async () => {
+    const az = await azienda()
+    await carico(az, '2026-03-01', 100)
+    await carico(az, '2026-03-02', 100)
+    await scarico(az, '2026-03-10', 40)
+    await scarico(az, '2026-03-11', 90)
+    const primo = await ricalcola(az, 'NON_ABBINATI')
+    expect(primo.righeScritte).toBeGreaterThan(0)
+    const dopoPrimo = await coppie(az)
+    const secondo = await ricalcola(az, 'NON_ABBINATI')
+    expect(secondo.righeScritte).toBe(0)
+    expect(await coppie(az)).toEqual(dopoPrimo)
+    const a1 = await ricalcola(az, 'AUTOMATICI')
+    const dopoA1 = await coppie(az)
+    const a2 = await ricalcola(az, 'AUTOMATICI')
+    expect(a2.righeScritte).toBe(a1.righeScritte)
+    expect(await coppie(az)).toEqual(dopoA1)
+    expect(dopoA1).toEqual(dopoPrimo)
+  })
+
+  it('avviso dedicato quando la classe dello scarico non ha carichi', async () => {
+    const az = await azienda()
+    await carico(az, '2026-03-01', 100, 'R13')
+    const s = await scarico(az, '2026-03-10', 10, { causale: 'AVVIO_SMALTIMENTO' })
+    expect(await abbina(az, s)).toEqual([
+      "Nessun carico in stoccaggio D15 è disponibile per questo scarico: completa l'abbinamento da Giacenze → Abbinamenti.",
+    ])
   })
 
   it('bloccaAmbiti prende i lock senza errori con CER ripetuti e in formati diversi', async () => {

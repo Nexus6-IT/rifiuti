@@ -122,7 +122,8 @@ export async function abbinaNuovoScarico(
   const classe = classeEffettiva(a, s)
   if (!classe) return a.classi.length > 1 ? [MSG_INDETERMINATA] : []
 
-  const rimasti = residui(a.carichi, a.righe)
+  // i residui si calcolano solo sulle righe strutturalmente valide: una riga morta non blocca
+  const rimasti = residui(a.carichi, a.righeValide)
   const { righe, scoperti } = proponiAbbinamenti({
     carichi: carichiDellaClasse(a, classe).map(c => ({
       chiave: c.chiave,
@@ -133,7 +134,7 @@ export async function abbinaNuovoScarico(
       {
         radiceId,
         evento: s.evento,
-        daCoprire: Math.max(sottrai(s.evento.quantita, sommaDi(a.righe, radiceId)), 0),
+        daCoprire: Math.max(sottrai(s.evento.quantita, sommaDi(a.righeValide, radiceId)), 0),
       },
     ],
   })
@@ -142,6 +143,11 @@ export async function abbinaNuovoScarico(
   const scoperto = scoperti.get(radiceId) ?? 0
   if (scoperto <= 0) return []
   const coperto = sottrai(s.evento.quantita, scoperto)
+  if (millesimiFifo(coperto) <= 0) {
+    return [
+      `Nessun carico in stoccaggio ${classe} è disponibile per questo scarico: completa l'abbinamento da Giacenze → Abbinamenti.`,
+    ]
+  }
   return [
     `Lo scarico è coperto dai carichi in stoccaggio ${classe} solo per ${formattaQuantita(coperto)} ${a.unita}: completa l'abbinamento da Giacenze → Abbinamenti.`,
   ]
@@ -177,7 +183,7 @@ export async function salvaAbbinamentoManuale(
   }))
   const rimasti = residui(
     a.carichi,
-    a.righe.filter(r => r.scaricoRadiceId !== radice.radiceId)
+    a.righeValide.filter(r => r.scaricoRadiceId !== radice.radiceId)
   )
   const esito = validaRigheManuali({
     scarico: s,
@@ -238,6 +244,7 @@ export async function ricalcolaAbbinamenti(
     cer?: string
     modalita: 'NON_ABBINATI' | 'AUTOMATICI'
     userId: string
+    logger?: { warn(messaggio: string): void }
   }
 ): Promise<{
   scarichiAbbinati: number
@@ -264,6 +271,7 @@ export async function ricalcolaAbbinamenti(
     cerDaBloccare = [...mov, ...gia].map(r => r.cerCode)
   }
   await bloccaAmbiti(tx, p.registroId, cerDaBloccare)
+  const bloccate = new Set(cerDaBloccare.map(c => chiaveLockGiacenza(p.registroId, c)))
   const ambiti = await leggiAmbitiAbbinamento(tx, p.tenantId, {
     registroId: p.registroId,
     cer: p.cer,
@@ -277,31 +285,51 @@ export async function ricalcolaAbbinamenti(
 
   for (const a of ambiti) {
     if (!a.diStoccaggio) continue
+    // Senza CER i lock si prendono PRIMA di leggere: un CER comparso nel frattempo non e'
+    // bloccato, quindi lo si salta (il ricalcolo successivo lo prendera') invece di scrivere
+    // senza lock.
+    if (!bloccate.has(chiaveLockGiacenza(a.registroId, a.cerCode))) {
+      p.logger?.warn('Ricalcolo abbinamenti: ambito comparso durante il ricalcolo, saltato')
+      continue
+    }
     const idsScarichi = a.scarichi.map(s => s.radiceId)
+    const conRighe = new Set(a.righe.map(r => r.scaricoRadiceId))
+    // Scarichi lasciati come sono: con righe MANUALE (la scelta dell'operatore non si completa
+    // in silenzio) o con classe indeterminata (nessuna partizione automatica li riguarda).
+    const intoccabili = new Set<string>()
+    if (p.modalita === 'AUTOMATICI') {
+      for (const r of a.righe) if (r.origine === 'MANUALE') intoccabili.add(r.scaricoRadiceId)
+      for (const s of a.scarichi) if (classeEffettiva(a, s) === null) intoccabili.add(s.radiceId)
+    }
     let tenute: RigaAbbinamento[]
     let daCancellare: string[] = []
     if (p.modalita === 'AUTOMATICI') {
-      tenute = a.righe.filter(r => r.origine === 'MANUALE')
+      tenute = a.righeValide.filter(r => intoccabili.has(r.scaricoRadiceId))
       const auto = await tx.abbinamentoCaricoScarico.findMany({
         where: {
           tenantId: p.tenantId,
           registroId: p.registroId,
           origine: 'AUTOMATICO',
-          scaricoId: { in: idsScarichi },
+          OR: [
+            { scaricoId: { in: idsScarichi.filter(id => !intoccabili.has(id)) } },
+            // righe morte (un capo non vigente, famiglia o ambito sbagliati)
+            { id: { in: a.righeMorteIds } },
+          ],
         },
-        select: { id: true },
+        select: { id: true, scaricoId: true },
       })
-      daCancellare = auto.map(r => r.id)
+      daCancellare = auto.filter(r => !intoccabili.has(r.scaricoId)).map(r => r.id)
     } else {
-      tenute = a.righe
+      // NON_ABBINATI: le righe morte restano dove sono, ma non contano nei residui
+      tenute = a.righeValide
     }
-    const conRighe = new Set(tenute.map(r => r.scaricoRadiceId))
     const rimasti = residui(a.carichi, tenute)
     const nuove: RigaNuova[] = []
 
     for (const classe of ['R13', 'D15'] as const) {
       const scarichi = a.scarichi
         .filter(s => classeEffettiva(a, s) === classe)
+        .filter(s => !intoccabili.has(s.radiceId))
         .filter(s => p.modalita === 'AUTOMATICI' || !conRighe.has(s.radiceId))
         .map(s => ({
           radiceId: s.radiceId,
@@ -321,9 +349,12 @@ export async function ricalcolaAbbinamenti(
       nuove.push(...righe)
       daCompletare += scoperti.size
     }
+    // scarichi a classe indeterminata ancora da coprire (quelli gia' coperti non si segnalano)
     indeterminati += a.scarichi.filter(
       s =>
-        classeEffettiva(a, s) === null && (p.modalita === 'AUTOMATICI' || !conRighe.has(s.radiceId))
+        classeEffettiva(a, s) === null &&
+        (p.modalita === 'AUTOMATICI' || !conRighe.has(s.radiceId)) &&
+        millesimiFifo(sottrai(s.evento.quantita, sommaDi(a.righeValide, s.radiceId))) > 0
     ).length
 
     await cancellaRighe(tx, daCancellare)

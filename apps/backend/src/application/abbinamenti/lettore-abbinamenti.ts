@@ -6,8 +6,9 @@
  * ogni movimento con la RADICE della catena di correzione (gli abbinamenti puntano alla radice:
  * una rettifica non li rompe); quantita, data, classe e numero sono quelli della testa.
  *
- * Numero di query fisso (nessun N+1): una `$queryRaw` per i movimenti vigenti, le giacenze
- * iniziali, le righe di abbinamento del registro e il catalogo delle causali (2 query).
+ * Numero di query indipendente da quanti movimenti ci sono (nessun N+1): una `$queryRaw` per i
+ * movimenti vigenti, le giacenze iniziali, le righe di abbinamento del registro e il catalogo delle
+ * causali (2 query); una query in piu solo se esistono righe con entrambi i capi fuori ambito.
  */
 import type { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
@@ -54,6 +55,10 @@ export interface AmbitoAbbinamento {
   scarichi: ScaricoAbbinabile[]
   /** righe che puntano a scarichi o carichi dell'ambito */
   righe: RigaAbbinamento[]
+  /** solo le righe strutturalmente valide (vigenza, famiglia, ambito): su queste si calcolano i residui */
+  righeValide: RigaAbbinamento[]
+  /** id delle righe strutturalmente non valide (un capo non vigente, famiglia o ambito sbagliati) */
+  righeMorteIds: string[]
   /** righe che violano I-ABB (D2) */
   righeIncoerenti: Array<{ id: string; motivo: string }>
   /** classi presenti fra i carichi */
@@ -154,6 +159,8 @@ export async function leggiAmbitiAbbinamento(
         carichi: [],
         scarichi: [],
         righe: [],
+        righeValide: [],
+        righeMorteIds: [],
         righeIncoerenti: [],
         classi: [],
         diStoccaggio: false,
@@ -322,12 +329,15 @@ export async function leggiAmbitiAbbinamento(
   }
 
   for (const { r, ambito } of attribuite) {
-    ambito.righe.push({
+    const rigaLetta: RigaAbbinamento = {
       scaricoRadiceId: r.scaricoId,
       carico: r.chiave,
       quantita: r.quantita,
       origine: r.origine,
-    })
+    }
+    ambito.righe.push(rigaLetta)
+    if (motivi.get(r.id)) ambito.righeMorteIds.push(r.id)
+    else ambito.righeValide.push(rigaLetta)
     let motivo = motivi.get(r.id) ?? null
     if (motivo && !scarichiPerRadice.has(r.scaricoId) && !ambitoCarichi.has(r.chiave)) {
       // entrambi i capi fuori dall'ambito
