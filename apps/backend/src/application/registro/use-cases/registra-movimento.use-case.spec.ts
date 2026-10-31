@@ -177,6 +177,7 @@ describe('RegistraMovimentoUseCase', () => {
   function _mockTransazione(record: object) {
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0), // SAVEPOINT dell'abbinamento (4.6)
       $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
       registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
       registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
