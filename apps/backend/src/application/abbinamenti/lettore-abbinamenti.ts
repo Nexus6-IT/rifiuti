@@ -1,0 +1,374 @@
+/**
+ * Lettore dell'ambito degli abbinamenti carico-scarico (4.6, Task 4).
+ *
+ * Un ambito e' un CER (sulle sole cifre) in una famiglia di unita dentro UN registro: lo stesso
+ * insieme su cui lavora il FIFO del deposito. Legge le TESTE vigenti dei movimenti, ma identifica
+ * ogni movimento con la RADICE della catena di correzione (gli abbinamenti puntano alla radice:
+ * una rettifica non li rompe); quantita, data, classe e numero sono quelli della testa.
+ *
+ * Numero di query fisso (nessun N+1): una `$queryRaw` per i movimenti vigenti, le giacenze
+ * iniziali, le righe di abbinamento del registro e il catalogo delle causali (2 query).
+ */
+import type { Prisma } from '@prisma/client'
+import { giornoItaliano } from '../../core/time/anno-italiano'
+import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import {
+  classeAttesaScarico,
+  classeStoccaggio,
+  type CaricoAbbinabile,
+  type ChiaveCarico,
+  type ClasseStoccaggio,
+  type RigaAbbinamento,
+  type ScaricoAbbinabile,
+} from '../../domain/waste-movement/abbinamento-carichi'
+import {
+  cerCanonico,
+  cerSoloCifre,
+  chiaveConfrontoCer,
+} from '../../domain/waste-movement/cer-registro'
+import {
+  confrontaEventiFifo,
+  famigliaFifo,
+  millesimiFifo,
+  quantitaFifo,
+  type EventoFifo,
+} from '../../domain/waste-movement/fifo-deposito'
+import { normalizzaUnitaRegistro } from '../../domain/waste-movement/unita-misura-registro'
+import { sqlVigente } from '../../domain/waste-movement/vigenza'
+import { leggiApertureRegistro } from '../registro/aperture-registro'
+import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
+
+export type ClientAbbinamenti = Prisma.TransactionClient | PrismaService
+
+export interface AmbitoAbbinamento {
+  registroId: string
+  chiaveCer: string
+  /** canonico della testa piu recente */
+  cerCode: string
+  famiglia: string
+  /** 'kg' per la massa */
+  unita: string
+  /** stoccaggio R13/D15 + giacenze iniziali dell'ambito */
+  carichi: CaricoAbbinabile[]
+  /** tutti gli scarichi vigenti dell'ambito */
+  scarichi: ScaricoAbbinabile[]
+  /** righe che puntano a scarichi o carichi dell'ambito */
+  righe: RigaAbbinamento[]
+  /** righe che violano I-ABB (D2) */
+  righeIncoerenti: Array<{ id: string; motivo: string }>
+  /** classi presenti fra i carichi */
+  classi: ClasseStoccaggio[]
+  diStoccaggio: boolean
+}
+
+export interface OpzioniLettoreAbbinamenti {
+  logger?: { warn(messaggio: string): void }
+}
+
+interface RigaMovimento {
+  id: string
+  radice_id: string
+  type: string
+  cer_code: string
+  unit: string
+  quantity: Prisma.Decimal | number | string
+  movement_date: Date
+  progressive_year: number
+  progressive_number: number
+  radice_year: number
+  radice_number: number
+  operation_code: string | null
+  causale: string
+  causale_azienda_id: string | null
+}
+
+const numeroDi = (anno: number, numero: number): string => `${numero}/${anno}`
+
+/** Ambiti del registro (o di un solo CER), con carichi, scarichi, righe e righe incoerenti. */
+export async function leggiAmbitiAbbinamento(
+  client: ClientAbbinamenti,
+  tenantId: string,
+  filtro: { registroId: string; cer?: string },
+  opzioni: OpzioniLettoreAbbinamenti = {}
+): Promise<AmbitoAbbinamento[]> {
+  const { registroId, cer } = filtro
+  const logger = opzioni.logger
+  const cifre = cer ? cerSoloCifre(cer) : null
+  const movimenti = cifre
+    ? await client.$queryRaw<RigaMovimento[]>`
+        SELECT wm.id::text AS id, r.id::text AS radice_id, wm.type::text AS type, wm.cer_code,
+               wm.unit, wm.quantity, wm.movement_date, wm.progressive_year, wm.progressive_number,
+               r.progressive_year AS radice_year, r.progressive_number AS radice_number,
+               wm.operation_code, wm.causale, wm.causale_azienda_id::text AS causale_azienda_id
+        FROM waste_movements wm
+        JOIN waste_movements r ON r.id = COALESCE(wm.movimento_originale_id, wm.id)
+        WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
+          AND ${sqlVigente('wm')}
+          AND regexp_replace(wm.cer_code, '[^0-9]', '', 'g') = ${cifre}`
+    : await client.$queryRaw<RigaMovimento[]>`
+        SELECT wm.id::text AS id, r.id::text AS radice_id, wm.type::text AS type, wm.cer_code,
+               wm.unit, wm.quantity, wm.movement_date, wm.progressive_year, wm.progressive_number,
+               r.progressive_year AS radice_year, r.progressive_number AS radice_number,
+               wm.operation_code, wm.causale, wm.causale_azienda_id::text AS causale_azienda_id
+        FROM waste_movements wm
+        JOIN waste_movements r ON r.id = COALESCE(wm.movimento_originale_id, wm.id)
+        WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
+          AND ${sqlVigente('wm')}`
+
+  const chiaveFiltro = cer ? chiaveConfrontoCer(cer) : null
+  const aperture = (await leggiApertureRegistro(client, tenantId, { registroId })).filter(
+    a => chiaveFiltro === null || chiaveConfrontoCer(a.cerCode) === chiaveFiltro
+  )
+  const righeDb = await client.abbinamentoCaricoScarico.findMany({
+    where: { tenantId, registroId },
+    select: {
+      id: true,
+      scaricoId: true,
+      caricoId: true,
+      giacenzaInizialeId: true,
+      famiglia: true,
+      quantita: true,
+      origine: true,
+    },
+  })
+  const catalogo = await caricaCatalogoCausali(client, tenantId)
+
+  // --- ambiti ---
+  const ambiti = new Map<string, AmbitoAbbinamento>()
+  const piuRecente = new Map<string, EventoFifo>()
+  const ambitoDi = (cerCode: string, unita: string): AmbitoAbbinamento => {
+    const chiaveCer = chiaveConfrontoCer(cerCode)
+    const famiglia = famigliaFifo(unita)
+    const k = `${chiaveCer}|${famiglia}`
+    let a = ambiti.get(k)
+    if (!a) {
+      a = {
+        registroId,
+        chiaveCer,
+        cerCode: cerCanonico(cerCode),
+        famiglia,
+        unita: famiglia === 'KG' ? 'kg' : normalizzaUnitaRegistro(unita).unita,
+        carichi: [],
+        scarichi: [],
+        righe: [],
+        righeIncoerenti: [],
+        classi: [],
+        diStoccaggio: false,
+      }
+      ambiti.set(k, a)
+    }
+    return a
+  }
+
+  /** carichi vigenti non di stoccaggio (radice -> ambito), per motivare le righe incoerenti */
+  const caricoNonStoccaggio = new Map<string, AmbitoAbbinamento>()
+  const scaricoPerRadice = new Map<string, AmbitoAbbinamento>()
+  const caricoPerChiave = new Map<ChiaveCarico, AmbitoAbbinamento>()
+  const ambitoCarichi = new Map<ChiaveCarico, CaricoAbbinabile>()
+  const scarichiPerRadice = new Map<string, ScaricoAbbinabile>()
+
+  for (const m of movimenti) {
+    const quantita = quantitaFifo(Number(m.quantity), m.unit)
+    if (!(quantita > 0) || millesimiFifo(quantita) <= 0) {
+      logger?.warn(`Movimento ${m.id} saltato dagli abbinamenti: quantita non utilizzabile`)
+      continue
+    }
+    const giorno = giornoItaliano(m.movement_date)
+    const ordine = m.radice_year * 1e7 + m.radice_number
+    const ambito = ambitoDi(m.cer_code, m.unit)
+    // cerCode canonico: quello della testa piu recente (giorno, poi ordine)
+    const evento: EventoFifo = {
+      tipo: m.type === 'CARICO' ? 'CARICO' : 'SCARICO',
+      giorno,
+      quantita,
+      origine: 'MOVIMENTO',
+      ordine,
+      riferimento: { id: m.radice_id, numero: numeroDi(m.progressive_year, m.progressive_number) },
+    }
+    const k = `${ambito.chiaveCer}|${ambito.famiglia}`
+    const prec = piuRecente.get(k)
+    if (!prec || confrontaEventiFifo(prec, evento) < 0) {
+      piuRecente.set(k, evento)
+      ambito.cerCode = cerCanonico(m.cer_code)
+    }
+    const numero = numeroDi(m.progressive_year, m.progressive_number)
+    if (evento.tipo === 'CARICO') {
+      const classe = classeStoccaggio(m.operation_code)
+      if (!classe) {
+        caricoNonStoccaggio.set(m.radice_id, ambito)
+        continue
+      }
+      const c: CaricoAbbinabile = { chiave: `M:${m.radice_id}`, evento, classe, numero }
+      ambito.carichi.push(c)
+      caricoPerChiave.set(c.chiave, ambito)
+      ambitoCarichi.set(c.chiave, c)
+    } else {
+      const operazione =
+        catalogo.comportamento('SCARICO', m.causale, giorno, m.causale_azienda_id)?.operazione ??
+        null
+      const s: ScaricoAbbinabile = {
+        radiceId: m.radice_id,
+        evento,
+        classeAttesa: classeAttesaScarico(m.operation_code, operazione),
+        numero,
+      }
+      ambito.scarichi.push(s)
+      scaricoPerRadice.set(s.radiceId, ambito)
+      scarichiPerRadice.set(s.radiceId, s)
+    }
+  }
+
+  for (const a of aperture) {
+    const quantita = quantitaFifo(a.quantita, a.unita)
+    const id = a.id ?? `${a.registroId}:${a.cerCode}:${a.unita}`
+    if (!(quantita > 0) || millesimiFifo(quantita) <= 0) {
+      logger?.warn(`Apertura ${id} saltata dagli abbinamenti: quantita non utilizzabile`)
+      continue
+    }
+    const ambito = ambitoDi(a.cerCode, a.unita)
+    const c: CaricoAbbinabile = {
+      chiave: `A:${id}`,
+      evento: {
+        tipo: 'CARICO',
+        giorno: a.dataRiferimento,
+        quantita,
+        origine: 'APERTURA',
+        ordine: 0,
+        riferimento: { id },
+      },
+      classe: null,
+    }
+    ambito.carichi.push(c)
+    caricoPerChiave.set(c.chiave, ambito)
+    ambitoCarichi.set(c.chiave, c)
+  }
+
+  // --- righe ---
+  const righeDelRegistro = righeDb.map(r => ({
+    id: r.id,
+    scaricoId: r.scaricoId,
+    chiave: r.caricoId ? `M:${r.caricoId}` : `A:${r.giacenzaInizialeId}`,
+    famiglia: r.famiglia,
+    quantita: Number(r.quantita),
+    origine: r.origine,
+  }))
+  const perScarico = new Map<string, number>()
+  const perCarico = new Map<ChiaveCarico, number>()
+  const attribuite: Array<{ r: (typeof righeDelRegistro)[number]; ambito: AmbitoAbbinamento }> = []
+  for (const r of righeDelRegistro) {
+    const ambito = scaricoPerRadice.get(r.scaricoId) ?? caricoPerChiave.get(r.chiave)
+    if (!ambito) continue
+    attribuite.push({ r, ambito })
+    const q = millesimiFifo(r.quantita)
+    perScarico.set(r.scaricoId, (perScarico.get(r.scaricoId) ?? 0) + q)
+    perCarico.set(r.chiave, (perCarico.get(r.chiave) ?? 0) + q)
+  }
+  for (const { r, ambito } of attribuite) {
+    ambito.righe.push({
+      scaricoRadiceId: r.scaricoId,
+      carico: r.chiave,
+      quantita: r.quantita,
+      origine: r.origine,
+    })
+    const motivo = motivoIncoerenza(r)
+    if (motivo) ambito.righeIncoerenti.push({ id: r.id, motivo })
+  }
+
+  function motivoIncoerenza(r: (typeof righeDelRegistro)[number]): string | null {
+    const s = scarichiPerRadice.get(r.scaricoId)
+    if (!s) return 'scarico non più vigente'
+    if (scaricoPerRadice.get(r.scaricoId)?.famiglia !== r.famiglia) {
+      return 'famiglia di unità diversa dallo scarico'
+    }
+    const c = ambitoCarichi.get(r.chiave)
+    if (!c) {
+      if (caricoNonStoccaggio.has(r.chiave.slice(2))) return 'carico senza operazione R13 o D15'
+      return r.chiave.startsWith('A:') ? 'giacenza iniziale non trovata' : 'carico non più vigente'
+    }
+    if (caricoPerChiave.get(r.chiave) !== scaricoPerRadice.get(r.scaricoId)) {
+      return 'carico di un altro rifiuto'
+    }
+    if (confrontaEventiFifo(c.evento, s.evento) > 0) return 'carico successivo allo scarico'
+    if ((perScarico.get(r.scaricoId) ?? 0) > millesimiFifo(s.evento.quantita)) {
+      return 'abbinato oltre la quantità dello scarico'
+    }
+    if ((perCarico.get(r.chiave) ?? 0) > millesimiFifo(c.evento.quantita)) {
+      return 'abbinato oltre la quantità del carico'
+    }
+    return null
+  }
+
+  for (const a of ambiti.values()) {
+    a.classi = [
+      ...new Set(a.carichi.map(c => c.classe).filter((c): c is ClasseStoccaggio => c !== null)),
+    ].sort()
+    a.diStoccaggio = a.classi.length > 0 || a.righe.length > 0
+  }
+  return [...ambiti.values()].sort((x, y) =>
+    `${x.chiaveCer}|${x.famiglia}` < `${y.chiaveCer}|${y.famiglia}` ? -1 : 1
+  )
+}
+
+/** Risolve un id qualunque della catena dello scarico: null se non esiste, non e uno scarico o e di un'altra azienda. */
+export async function radiceScarico(
+  client: ClientAbbinamenti,
+  tenantId: string,
+  id: string
+): Promise<{ radiceId: string; registroId: string; cerCode: string } | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
+  const m = await client.wasteMovement.findFirst({
+    where: { id, tenantId, type: 'SCARICO' },
+    select: { id: true, movimentoOriginaleId: true, registroId: true, cerCode: true },
+  })
+  if (!m) return null
+  return {
+    radiceId: m.movimentoOriginaleId ?? m.id,
+    registroId: m.registroId,
+    cerCode: cerCanonico(m.cerCode),
+  }
+}
+
+/** Righe e scarichi (numero, giorno) che usano la radice di un carico. */
+export async function righeDelCarico(
+  client: ClientAbbinamenti,
+  tenantId: string,
+  caricoRadiceId: string
+): Promise<
+  Array<{
+    scaricoRadiceId: string
+    numeroScarico: string
+    giornoScarico: string
+    quantita: number
+    famiglia: string
+  }>
+> {
+  const righe = await client.$queryRaw<
+    Array<{
+      scarico_id: string
+      anno: number
+      numero: number
+      data: Date
+      quantita: Prisma.Decimal | number | string
+      famiglia: string
+    }>
+  >`
+    SELECT a.scarico_id::text AS scarico_id,
+           COALESCE(h.progressive_year, r.progressive_year) AS anno,
+           COALESCE(h.progressive_number, r.progressive_number) AS numero,
+           COALESCE(h.movement_date, r.movement_date) AS data,
+           a.quantita, a.famiglia
+    FROM abbinamenti_carico_scarico a
+    JOIN waste_movements r ON r.id = a.scarico_id AND r.tenant_id = a.tenant_id
+    LEFT JOIN waste_movements h
+      ON COALESCE(h.movimento_originale_id, h.id) = a.scarico_id
+     AND h.tenant_id = a.tenant_id AND ${sqlVigente('h')}
+    WHERE a.tenant_id = ${tenantId}::uuid AND a.carico_id = ${caricoRadiceId}::uuid
+    ORDER BY COALESCE(h.movement_date, r.movement_date), a.scarico_id`
+  return righe.map(r => ({
+    scaricoRadiceId: r.scarico_id,
+    numeroScarico: numeroDi(r.anno, r.numero),
+    giornoScarico: giornoItaliano(r.data),
+    quantita: Number(r.quantita),
+    famiglia: r.famiglia,
+  }))
+}

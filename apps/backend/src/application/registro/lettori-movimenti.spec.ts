@@ -23,6 +23,11 @@ const SRC = join(__dirname, '..', '..')
 type Scelta = 'vigenti' | 'ordinarie' | 'tutte'
 
 const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
+  'application/abbinamenti/lettore-abbinamenti.ts': {
+    scelta: 'vigenti',
+    motivo:
+      "ambito dell'abbinamento: teste vigenti con la loro radice; le righe di catene non vigenti risultano INCOERENTI",
+  },
   'application/anomaly/anomaly-detection.service.ts': {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
