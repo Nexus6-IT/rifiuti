@@ -7,7 +7,32 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { RentriConfig, RENTRI_CONFIG } from './rentri-config'
 import { RentriAuthService } from './rentri-auth.service'
 import { RentriSignatureService } from './rentri-signature.service'
-import { RentriApiError, gestisciRispostaErroreRentri, attendiMs } from './rentri-http-resilienza'
+import {
+  RentriApiError,
+  estraiProblemDetailsRentri,
+  gestisciRispostaErroreRentri,
+  attendiMs,
+} from './rentri-http-resilienza'
+import { RentriRateLimiterService } from './rentri-rate-limiter.service'
+import {
+  TrasmissioneRentriIncertaError,
+  TransazioneRentriNonTrovataError,
+} from './rentri-api.client'
+
+/** Messaggio di validazione di RENTRI su una riga trasmessa (`EsitoMessaggioModel`). */
+export interface MessaggioRentri {
+  indice: number | null
+  campo: string | null
+  tipo: 'Errore' | 'Avvertimento'
+  codice: string | null
+}
+
+/** Esito tipato di una transazione `POST .../movimenti` (`EsitoMovimentiModel`). */
+export interface EsitoMovimentiRentri {
+  errore: boolean
+  validazione: MessaggioRentri[]
+  numeroRegistrazioni: Array<{ anno: number; progressivo: number; identificativo: string | null }>
+}
 
 /**
  * Client del servizio `dati-registri` di RENTRI
@@ -79,7 +104,9 @@ export class RentriRegistriClient {
     private readonly metrics: MetricsService,
     @Inject(RENTRI_CONFIG) private readonly config: RentriConfig,
     private readonly auth: RentriAuthService,
-    private readonly signature: RentriSignatureService
+    private readonly signature: RentriSignatureService,
+    // Opzionale come in RENTRIApiClient: le costruzioni dirette dei test restano valide.
+    private readonly rateLimiter?: RentriRateLimiterService
   ) {
     this.logger.setContext('RentriRegistriClient')
   }
@@ -88,27 +115,33 @@ export class RentriRegistriClient {
    * `POST /operatore/{identificativo_registro}/movimenti` (righe 227-597):
    * trasmette un elenco (1-1000) di registrazioni, nuove/rettifiche
    * (`MovimentoModel`) o annullamenti (`AnnullamentoMovimentoModel`).
-   * **ASYNC** — 202 Accepted, corpo `TransazioneModel`. L'esito si legge con
-   * {@link attendiEsito} (o manualmente via `/status`+`/result`).
+   * **ASYNC** — 202 Accepted, corpo `TransazioneModel`; l'esito si legge con
+   * {@link attendiEsitoMovimenti}.
+   *
+   * **La POST non e' idempotente e NON si ritenta mai su un esito incerto**
+   * (come `RENTRIApiClient.creaFormulario`): su 5xx, timeout, connessione
+   * chiusa o risposta senza `transazione_id` si solleva
+   * {@link TrasmissioneRentriIncertaError} e il chiamante verifica prima di
+   * reinviare. Si ritentano solo 429/423, dove RENTRI non ha elaborato nulla.
+   * Il corpo inviato non viene mai loggato ne' copiato altrove.
    */
   async inviaMovimenti(
     identificativoRegistro: string,
     movimenti: Array<Record<string, unknown>>,
-    opzioni?: { replyTo?: string },
-    tenantId?: string
-  ): Promise<{ transazioneId: string; urlStato?: string }> {
+    tenantId: string
+  ): Promise<{ transazioneId: string }> {
     const contesto = `/operatore/${identificativoRegistro}/movimenti`
-    const response = await this.post(
+    const response = await this.postNonIdempotente(
       `${RentriRegistriClient.DATI_REGISTRI_PATH}${contesto}`,
       movimenti,
       contesto,
-      opzioni,
       tenantId
     )
-    const urlStato = (response.headers?.location ?? response.headers?.Location) as
-      | string
-      | undefined
-    return { transazioneId: response.data?.transazione_id, urlStato }
+    const transazioneId = response.data?.transazione_id
+    if (typeof transazioneId !== 'string' || transazioneId.trim() === '') {
+      throw new TrasmissioneRentriIncertaError('RISPOSTA_SENZA_TRANSAZIONE')
+    }
+    return { transazioneId }
   }
 
   /**
@@ -294,6 +327,42 @@ export class RentriRegistriClient {
     )
   }
 
+  /**
+   * Come {@link attendiEsito} per una transazione di {@link inviaMovimenti}, con
+   * l'esito tipato. Campi assenti: `[]`/`null`; `errore` assente vale `true`
+   * (prudente: senza una conferma esplicita non si considera registrato nulla).
+   * Una transazione sconosciuta a RENTRI solleva {@link TransazioneRentriNonTrovataError}.
+   */
+  async attendiEsitoMovimenti(
+    transazioneId: string,
+    tenantId: string,
+    opzioni?: { intervalloMs?: number; maxTentativi?: number }
+  ): Promise<EsitoMovimentiRentri> {
+    const grezzo = (await this.attendiEsito(transazioneId, opzioni, tenantId)) as any
+    const validazione: MessaggioRentri[] = (
+      Array.isArray(grezzo?.validazione) ? grezzo.validazione : []
+    ).map((m: any) => ({
+      indice: typeof m?.indice === 'number' ? m.indice : null,
+      campo: typeof m?.campo === 'string' ? m.campo : null,
+      tipo: m?.tipo === 'Avvertimento' ? 'Avvertimento' : 'Errore',
+      codice: typeof m?.codice_messaggio === 'string' ? m.codice_messaggio : null,
+    }))
+    const registrazioni: any[] = Array.isArray(grezzo?.esito?.numero_registrazioni)
+      ? grezzo.esito.numero_registrazioni
+      : []
+    return {
+      errore: typeof grezzo?.errore === 'boolean' ? grezzo.errore : true,
+      validazione,
+      numeroRegistrazioni: registrazioni
+        .filter(r => Number.isInteger(r?.anno) && Number.isInteger(r?.progressivo))
+        .map(r => ({
+          anno: r.anno,
+          progressivo: r.progressivo,
+          identificativo: typeof r.identificativo === 'string' ? r.identificativo : null,
+        })),
+    }
+  }
+
   private queryFiltri(filtri?: FiltriMovimenti): string {
     const query = new URLSearchParams()
     filtri?.identificativiMovimento?.forEach(id => query.append('identificativi_movimento', id))
@@ -326,6 +395,7 @@ export class RentriRegistriClient {
         })
       )
 
+      if (response.status === 404) throw new TransazioneRentriNonTrovataError(transazioneId)
       if (response.status === 200) return { pronto: false }
       if (response.status === 303) {
         const urlEsito = (response.headers?.location ?? response.headers?.Location) as string
@@ -448,6 +518,82 @@ export class RentriRegistriClient {
           },
           tenantId ?? this.tenantIdCorrente()
         )
+      }
+    }
+
+    throw new Error(`Superato il numero massimo di tentativi verso ${contesto}.`)
+  }
+
+  /**
+   * POST non idempotente (trasmissione dei movimenti): rate limiter per tentativo,
+   * nessun ritentativo su 5xx o assenza di risposta ({@link TrasmissioneRentriIncertaError}).
+   * Solo 429/423 si ritentano (richiesta non elaborata). Gli errori PRIMA dell'invio
+   * (auth, firma, rate limiter) si rilanciano invariati: RENTRI non e' stato raggiunto.
+   */
+  private async postNonIdempotente(
+    path: string,
+    body: unknown,
+    contesto: string,
+    tenantId: string
+  ) {
+    const url = `${this.config.baseUrl}${path}`
+    const rawBody = JSON.stringify(body)
+
+    for (
+      let tentativo = 1;
+      tentativo <= RentriRegistriClient.MAX_TENTATIVI_RESILIENZA;
+      tentativo++
+    ) {
+      const permesso = this.rateLimiter ? await this.rateLimiter.acquisisci(tenantId) : undefined
+      try {
+        const authorization = await this.auth.creaAuthorizationHeader(tenantId)
+        const integrityHeaders = await this.signature.buildIntegrityHeaders(rawBody, tenantId)
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          Authorization: authorization,
+          ...integrityHeaders,
+        }
+        try {
+          return await firstValueFrom(
+            this.httpService.post(url, body, { headers, timeout: this.timeout })
+          )
+        } catch (error: any) {
+          const risposta = error?.response
+          if (!risposta || typeof risposta.status !== 'number') {
+            this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+            throw new TrasmissioneRentriIncertaError('NESSUNA_RISPOSTA')
+          }
+          if (risposta.status >= 500) {
+            this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+            throw new TrasmissioneRentriIncertaError('HTTP_5XX', risposta.status)
+          }
+          if (risposta.status === 404) {
+            this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'NOT_FOUND' })
+            throw new RentriApiError(404, 'Non trovato', 'Registro non trovato', false)
+          }
+          if (risposta.status !== 403 && risposta.status !== 429 && risposta.status !== 423) {
+            const problema = estraiProblemDetailsRentri(risposta.data)
+            this.metrics.rentriApiErrors.inc({ endpoint: contesto, error_type: 'HTTP' })
+            throw new RentriApiError(risposta.status, problema.title, problema.detail, false)
+          }
+          // 403 solleva; 429/423 attendono e si riprova (nuovo giro, nuova firma).
+          await gestisciRispostaErroreRentri(
+            risposta,
+            contesto,
+            tentativo,
+            RentriRegistriClient.MAX_TENTATIVI_RESILIENZA,
+            this.logger,
+            this.metrics,
+            ms => attendiMs(ms),
+            {
+              baseMs: RentriRegistriClient.BACKOFF_BASE_MS,
+              maxMs: RentriRegistriClient.BACKOFF_MAX_MS,
+            },
+            tenantId
+          )
+        }
+      } finally {
+        await permesso?.rilascia()
       }
     }
 
