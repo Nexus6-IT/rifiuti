@@ -102,9 +102,7 @@ describe('PeseController (anagrafiche) - catena HTTP', () => {
     const r = await request(app.getHttpServer()).post('/pese/strumenti').send(strumento).expect(403)
     await request(app.getHttpServer()).put(`/pese/strumenti/${ID}`).send(strumento).expect(403)
 
-    expect(r.body.error ?? r.body.code ?? JSON.stringify(r.body)).toContain(
-      'PESE_RISERVATE_AMMINISTRATORI'
-    )
+    expect(r.body.error).toBe('PESE_RISERVATE_AMMINISTRATORI')
     expect(strumenti.crea).not.toHaveBeenCalled()
     expect(strumenti.aggiorna).not.toHaveBeenCalled()
   })
@@ -155,6 +153,11 @@ describe('PeseController (anagrafiche) - catena HTTP', () => {
       .send({ taraKg: 7000, pesataId: PESATA })
       .expect(400)
     await request(app.getHttpServer()).put(`/pese/automezzi/${ID}/tara`).send({}).expect(400)
+    const nullo = await request(app.getHttpServer())
+      .put(`/pese/automezzi/${ID}/tara`)
+      .send({ taraKg: null })
+      .expect(400)
+    expect(JSON.stringify(nullo.body)).toContain('Indicare la tara oppure la pesata')
     expect(automezzi.impostaTara).toHaveBeenCalledTimes(1)
   })
 

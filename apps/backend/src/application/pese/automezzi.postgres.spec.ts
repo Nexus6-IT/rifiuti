@@ -168,43 +168,75 @@ describe('Automezzi e strumenti di pesa — Postgres reale, ruolo wasteflow_app'
     ).rejects.toThrow('Automezzo non trovato.')
   })
 
-  it('tara da pesata copia il peso effettivo (dopo rettifica) e la data della pesata', async () => {
-    const a = await azienda()
+  /** Accesso con le sue pesate (strumento registrato), preparato dal proprietario. */
+  async function accessoConPesate(
+    a: Awaited<ReturnType<typeof azienda>>,
+    strumentoId: string,
+    o: {
+      automezzoId?: string | null
+      targa?: string | null
+      modo?: 'DOPPIA' | 'SINGOLA'
+      verso?: 'CARICO' | 'SCARICO'
+      pesi?: number[]
+      ora?: Date
+      annulla?: boolean
+    } = {}
+  ) {
+    const ora = o.ora ?? new Date('2026-10-20T08:30:00.000Z')
+    const modo = o.modo ?? 'DOPPIA'
+    const [acc] = await owner.$queryRaw<{ id: string }[]>`
+      INSERT INTO accessi_pesa (tenant_id, registro_id, anno, numero, verso, modo, automezzo_id, targa, aperto_da)
+      VALUES (${a.tenantId}::uuid, ${a.registroId}::uuid, 2026, ${++n}, ${o.verso ?? 'CARICO'}::"waste_movement_type",
+              ${modo}::"modo_pesatura", ${o.automezzoId ?? null}::uuid, ${o.targa ?? null}, ${a.utenteId}::uuid)
+      RETURNING id::text AS id`
+    const pesi = o.pesi ?? (modo === 'SINGOLA' ? [7000] : [24000, 7000])
+    const ids: string[] = []
+    for (const [k, peso] of pesi.entries()) {
+      const [p] = await owner.$queryRaw<{ id: string }[]>`
+        INSERT INTO pesate (tenant_id, accesso_id, ordine, fonte, strumento_id, peso_kg, stabile,
+                            ora_ricezione, chiave_idempotenza, impronta)
+        VALUES (${a.tenantId}::uuid, ${acc.id}::uuid, ${k + 1}, 'STRUMENTO', ${strumentoId}::uuid,
+                ${peso}, true, ${ora}, gen_random_uuid(), ${HASH})
+        RETURNING id::text AS id`
+      ids.push(p.id)
+    }
+    if (o.annulla) {
+      await owner.$executeRaw`
+        UPDATE accessi_pesa SET stato = 'ANNULLATO', annullato_da = ${a.utenteId}::uuid,
+               annullato_il = now(), motivo_annullamento = 'x' WHERE id = ${acc.id}::uuid`
+    }
+    return { accessoId: acc.id, pesate: ids, ora }
+  }
+
+  async function mezzoEStrumento(a: Awaited<ReturnType<typeof azienda>>, targa: string) {
     const mezzo = await nelTenant(a.tenantId, () =>
-      automezzi.crea(a.tenantId, a.utenteId, { targa: 'TA111RA' })
+      automezzi.crea(a.tenantId, a.utenteId, { targa })
     )
     const strumento = await nelTenant(a.tenantId, () =>
       strumenti.crea(a.tenantId, a.utenteId, { descrizione: 'Pesa', portataMaxKg: 60000 })
     )
-    const accesso = await owner.$queryRaw<{ id: string }[]>`
-      INSERT INTO accessi_pesa (tenant_id, registro_id, anno, numero, verso, modo, aperto_da)
-      VALUES (${a.tenantId}::uuid, ${a.registroId}::uuid, 2026, 1, 'CARICO', 'DOPPIA', ${a.utenteId}::uuid)
-      RETURNING id::text AS id`
-    const accessoId = accesso[0].id
-    const ora = new Date('2026-10-20T08:30:00.000Z')
-    const inserisciPesata = (ordine: number, peso: number) =>
-      owner.$queryRaw<{ id: string }[]>`
-        INSERT INTO pesate (tenant_id, accesso_id, ordine, fonte, strumento_id, peso_kg, stabile,
-                            ora_ricezione, chiave_idempotenza, impronta)
-        VALUES (${a.tenantId}::uuid, ${accessoId}::uuid, ${ordine}, 'STRUMENTO',
-                ${strumento.id}::uuid, ${peso}, true, ${ora}, gen_random_uuid(), ${HASH})
-        RETURNING id::text AS id`
-    await inserisciPesata(1, 24000)
-    const tara = (await inserisciPesata(2, 7000))[0].id
+    return { mezzo, strumento }
+  }
+
+  const tara = (a: Awaited<ReturnType<typeof azienda>>, id: string, pesataId: string) =>
+    nelTenant(a.tenantId, () => automezzi.impostaTara(a.tenantId, a.utenteId, id, { pesataId }))
+
+  it('tara da pesata copia il peso effettivo (dopo rettifica) e la data della pesata', async () => {
+    const a = await azienda()
+    const { mezzo, strumento } = await mezzoEStrumento(a, 'TA111RA')
+    const { pesate, ora } = await accessoConPesate(a, strumento.id, { automezzoId: mezzo.id })
     await owner.$executeRaw`
       INSERT INTO rettifiche_peso (tenant_id, pesata_id, numero, peso_precedente_kg, peso_nuovo_kg,
                                    motivo, autore_id, impronta, created_at)
-      VALUES (${a.tenantId}::uuid, ${tara}::uuid, 1, 7000, 7120.5, 'errore di lettura',
+      VALUES (${a.tenantId}::uuid, ${pesate[1]}::uuid, 1, 7000, 7120.5, 'errore di lettura',
               ${a.utenteId}::uuid, ${HASH}, now())`
 
-    const vista = await nelTenant(a.tenantId, () =>
-      automezzi.impostaTara(a.tenantId, a.utenteId, mezzo.id, { pesataId: tara })
-    )
+    const vista = await tara(a, mezzo.id, pesate[1])
 
     expect(vista).toMatchObject({
       taraKg: 7120.5,
       taraOrigine: 'PESATA',
-      taraPesataId: tara,
+      taraPesataId: pesate[1],
       taraAggiornataIl: ora.toISOString(),
       ultimaPesataVuotoIl: ora.toISOString(),
     })
@@ -224,6 +256,77 @@ describe('Automezzi e strumenti di pesa — Postgres reale, ruolo wasteflow_app'
     })
     expect(audit).toHaveLength(2)
     expect(audit[1].metadata).toMatchObject({ precedente: 7120.5, nuova: 7300 })
+  })
+
+  describe('tara da pesata: coerenza con l’accesso (422)', () => {
+    it('accesso assegnato a un altro automezzo', async () => {
+      const a = await azienda()
+      const { mezzo, strumento } = await mezzoEStrumento(a, 'AA111AA')
+      const altro = await nelTenant(a.tenantId, () =>
+        automezzi.crea(a.tenantId, a.utenteId, { targa: 'BB222BB' })
+      )
+      const { pesate } = await accessoConPesate(a, strumento.id, { automezzoId: altro.id })
+
+      await expect(tara(a, mezzo.id, pesate[1])).rejects.toThrow('altro automezzo')
+    })
+
+    it('accesso senza automezzo: targa diversa rifiutata, targa uguale accettata', async () => {
+      const a = await azienda()
+      const { mezzo, strumento } = await mezzoEStrumento(a, 'CC333CC')
+      const diversa = await accessoConPesate(a, strumento.id, { targa: 'ZZ999ZZ' })
+      const uguale = await accessoConPesate(a, strumento.id, { targa: 'CC333CC' })
+
+      await expect(tara(a, mezzo.id, diversa.pesate[1])).rejects.toThrow('non corrisponde')
+      await expect(tara(a, mezzo.id, uguale.pesate[1])).resolves.toMatchObject({ taraKg: 7000 })
+    })
+
+    it('pesata singola', async () => {
+      const a = await azienda()
+      const { mezzo, strumento } = await mezzoEStrumento(a, 'DD444DD')
+      const { pesate } = await accessoConPesate(a, strumento.id, {
+        automezzoId: mezzo.id,
+        modo: 'SINGOLA',
+      })
+
+      await expect(tara(a, mezzo.id, pesate[0])).rejects.toThrow('pesata singola')
+    })
+
+    it('lato lordo (carico: prima; scarico: seconda); lato tara accettato', async () => {
+      const a = await azienda()
+      const { mezzo, strumento } = await mezzoEStrumento(a, 'EE555EE')
+      const carico = await accessoConPesate(a, strumento.id, { automezzoId: mezzo.id })
+      const scarico = await accessoConPesate(a, strumento.id, {
+        automezzoId: mezzo.id,
+        verso: 'SCARICO',
+        pesi: [6500, 24000],
+      })
+
+      await expect(tara(a, mezzo.id, carico.pesate[0])).rejects.toThrow('serve la pesata a vuoto')
+      await expect(tara(a, mezzo.id, scarico.pesate[1])).rejects.toThrow('serve la pesata a vuoto')
+      await expect(tara(a, mezzo.id, scarico.pesate[0])).resolves.toMatchObject({ taraKg: 6500 })
+      await expect(tara(a, mezzo.id, carico.pesate[1])).resolves.toMatchObject({ taraKg: 7000 })
+    })
+
+    it('accesso annullato', async () => {
+      const a = await azienda()
+      const { mezzo, strumento } = await mezzoEStrumento(a, 'FF666FF')
+      const { pesate } = await accessoConPesate(a, strumento.id, {
+        automezzoId: mezzo.id,
+        annulla: true,
+      })
+
+      await expect(tara(a, mezzo.id, pesate[1])).rejects.toThrow('annullato')
+    })
+
+    it('pesata di un’altra azienda: 404', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const { mezzo } = await mezzoEStrumento(a, 'GG777GG')
+      const { mezzo: mezzoB, strumento: strumentoB } = await mezzoEStrumento(b, 'GG777GG')
+      const daB = await accessoConPesate(b, strumentoB.id, { automezzoId: mezzoB.id })
+
+      await expect(tara(a, mezzo.id, daB.pesate[1])).rejects.toThrow('Pesata non trovata.')
+    })
   })
 
   it('tara da una pesata inesistente: 404', async () => {

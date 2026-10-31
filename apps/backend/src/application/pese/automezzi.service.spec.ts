@@ -182,8 +182,14 @@ describe('AutomezziService (Prisma finto)', () => {
         stabile: true,
         pesoKg: new Prisma.Decimal('7000'),
         oraRicezione: ora,
-        automezzoId: A,
-        accesso: { stato: 'CHIUSO' },
+        automezzoId: null,
+        accesso: {
+          stato: 'CHIUSO',
+          automezzoId: A,
+          targa: 'AB123CD',
+          modo: 'DOPPIA',
+          verso: 'CARICO',
+        },
         ordine: 2,
         rettifiche: [
           { numero: 1, pesoNuovoKg: new Prisma.Decimal('7100') },
@@ -214,8 +220,14 @@ describe('AutomezziService (Prisma finto)', () => {
         stabile: true,
         pesoKg: new Prisma.Decimal('7000'),
         oraRicezione: new Date(),
-        automezzoId: A,
-        accesso: { stato: 'CHIUSO' },
+        automezzoId: null,
+        accesso: {
+          stato: 'CHIUSO',
+          automezzoId: A,
+          targa: 'AB123CD',
+          modo: 'DOPPIA',
+          verso: 'CARICO',
+        },
         ordine: 2,
         rettifiche: [],
       })
@@ -232,8 +244,14 @@ describe('AutomezziService (Prisma finto)', () => {
         stabile: false,
         pesoKg: new Prisma.Decimal('7000'),
         oraRicezione: new Date(),
-        automezzoId: A,
-        accesso: { stato: 'CHIUSO' },
+        automezzoId: null,
+        accesso: {
+          stato: 'CHIUSO',
+          automezzoId: A,
+          targa: 'AB123CD',
+          modo: 'DOPPIA',
+          verso: 'CARICO',
+        },
         ordine: 2,
         rettifiche: [],
       })
@@ -241,29 +259,63 @@ describe('AutomezziService (Prisma finto)', () => {
       await expect(service.impostaTara(T, U, A, { pesataId: P })).rejects.toThrow(RegolaPesataError)
     })
 
-    it('da pesata di un altro automezzo o di un accesso annullato: 422', async () => {
-      tx.automezzo.findFirst.mockResolvedValue(riga())
-      const base = {
+    describe('da pesata: coerenza con l’accesso (la pesata non porta mai automezzo_id)', () => {
+      const accessoOk = {
+        stato: 'CHIUSO',
+        automezzoId: A,
+        targa: 'AB123CD',
+        modo: 'DOPPIA',
+        verso: 'CARICO',
+      }
+      const pesataCon = (accesso: object, ordine = 2) => ({
         id: P,
         fonte: 'MANUALE',
         stabile: true,
         pesoKg: new Prisma.Decimal('7000'),
         oraRicezione: new Date(),
-        ordine: 2,
+        automezzoId: null,
+        ordine,
         rettifiche: [],
+        accesso,
+      })
+      const rifiuta = async (pesata: object, testo: string) => {
+        tx.automezzo.findFirst.mockResolvedValue(riga())
+        tx.pesata.findFirst.mockResolvedValue(pesata)
+        await expect(service.impostaTara(T, U, A, { pesataId: P })).rejects.toThrow(testo)
+        expect(tx.automezzo.update).not.toHaveBeenCalled()
       }
-      tx.pesata.findFirst.mockResolvedValueOnce({
-        ...base,
-        automezzoId: 'ffffffff-0000-4000-8000-00000000000f',
-        accesso: { stato: 'CHIUSO' },
+
+      it('accesso di un altro automezzo: 422', () =>
+        rifiuta(
+          pesataCon({ ...accessoOk, automezzoId: 'ffffffff-0000-4000-8000-00000000000f' }),
+          'altro automezzo'
+        ))
+      it('accesso senza automezzo e targa diversa: 422', () =>
+        rifiuta(
+          pesataCon({ ...accessoOk, automezzoId: null, targa: 'ZZ999ZZ' }),
+          'non corrisponde'
+        ))
+      it('accesso senza automezzo e senza targa: 422', () =>
+        rifiuta(pesataCon({ ...accessoOk, automezzoId: null, targa: null }), 'non corrisponde'))
+      it('pesata singola: 422', () =>
+        rifiuta(pesataCon({ ...accessoOk, modo: 'SINGOLA' }, 1), 'pesata singola'))
+      it('lato lordo in carico (prima pesata): 422', () =>
+        rifiuta(pesataCon(accessoOk, 1), 'serve la pesata a vuoto'))
+      it('lato lordo in scarico (seconda pesata): 422', () =>
+        rifiuta(pesataCon({ ...accessoOk, verso: 'SCARICO' }, 2), 'serve la pesata a vuoto'))
+      it('accesso annullato: 422', () =>
+        rifiuta(pesataCon({ ...accessoOk, stato: 'ANNULLATO' }), 'annullato'))
+
+      it('senza automezzo ma stessa targa, scarico, prima pesata (tara): ok', async () => {
+        tx.automezzo.findFirst.mockResolvedValue(riga())
+        tx.pesata.findFirst.mockResolvedValue(
+          pesataCon({ ...accessoOk, automezzoId: null, targa: 'AB123CD', verso: 'SCARICO' }, 1)
+        )
+
+        await service.impostaTara(T, U, A, { pesataId: P })
+
+        expect(tx.automezzo.update).toHaveBeenCalledTimes(1)
       })
-      await expect(service.impostaTara(T, U, A, { pesataId: P })).rejects.toThrow(RegolaPesataError)
-      tx.pesata.findFirst.mockResolvedValueOnce({
-        ...base,
-        automezzoId: A,
-        accesso: { stato: 'ANNULLATO' },
-      })
-      await expect(service.impostaTara(T, U, A, { pesataId: P })).rejects.toThrow(RegolaPesataError)
     })
 
     it('pesata assente (o di un altro tenant): 404', async () => {

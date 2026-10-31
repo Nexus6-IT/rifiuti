@@ -132,8 +132,8 @@ export class PeseController {
     @Body() dto: ImpostaTaraDto
   ) {
     const tenantId = requireRequestTenantId(req)
-    const dichiarata = dto.taraKg !== undefined
-    if (dichiarata === (dto.pesataId !== undefined)) {
+    const dichiarata = dto.taraKg != null
+    if (dichiarata === (dto.pesataId != null)) {
       throw new BadRequestException('Indicare la tara oppure la pesata da cui prenderla.')
     }
     if (dichiarata) {

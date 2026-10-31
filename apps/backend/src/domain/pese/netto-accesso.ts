@@ -45,6 +45,14 @@ export function pesoEffettivo(p: PesataPerNetto): number {
   return ultima.pesoNuovoKg
 }
 
+/**
+ * Ordine della pesata che indica la tara (mezzo vuoto), N3: in carico il mezzo esce vuoto
+ * (seconda), in scarico entra vuoto (prima); con la tara dichiarata la tara e' la seconda.
+ */
+export function ordineTara(verso: VersoPesata, modo: ModoPesaturaDominio): 1 | 2 {
+  return modo === 'TARA_ANAGRAFICA' || verso === 'CARICO' ? 2 : 1
+}
+
 const aCentesimi = (kg: number): number => Math.round(kg * 100)
 const daCentesimi = (c: number): number => c / 100
 
@@ -126,7 +134,7 @@ export function calcolaNetto(
   const c2 = aCentesimi(pesoEffettivo(seconda))
   let lordoC: number
   let taraC: number
-  if (modo === 'TARA_ANAGRAFICA' || verso === 'CARICO') {
+  if (ordineTara(verso, modo) === 2) {
     lordoC = c1
     taraC = c2
   } else {

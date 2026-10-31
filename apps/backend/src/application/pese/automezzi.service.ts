@@ -1,7 +1,7 @@
 // Anagrafica degli automezzi (targa + rimorchio) con la tara. Mutabile, mai cancellata.
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { pesoEffettivo } from '../../domain/pese/netto-accesso'
+import { ordineTara, pesoEffettivo } from '../../domain/pese/netto-accesso'
 import { PESO_MASSIMO_KG } from '../../domain/pese/regole-pesata'
 import { normalizzaTarga } from '../../domain/pese/targa'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -70,6 +70,12 @@ export function comeAutomezzoVista(r: RigaAutomezzo): AutomezzoVista {
   }
 }
 
+/** Il testo libero delle note non entra nell'audit: ci va solo il flag `noteModificate`. */
+function senzaNote(v: AutomezzoVista): Omit<AutomezzoVista, 'note'> {
+  const { note: _note, ...resto } = v
+  return resto
+}
+
 const eIndiceUnico = (err: unknown) =>
   (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') ||
   // l'indice a espressione `automezzi_targhe_uniche` e' solo SQL: il driver puo' non mapparlo
@@ -109,7 +115,7 @@ export class AutomezziService {
   constructor(private readonly prisma: PrismaService) {}
 
   async elenca(tenantId: string, targa?: string): Promise<AutomezzoVista[]> {
-    const ricerca = targa?.toUpperCase().replace(/[\s.-]/g, '')
+    const ricerca = targa?.toUpperCase().replace(/[^A-Z0-9]/g, '')
     return nelContestoTenant(tenantId, async () => {
       const righe = await this.prisma.automezzo.findMany({
         where: { tenantId, ...(ricerca ? { targa: { contains: ricerca } } : {}) },
@@ -196,8 +202,9 @@ export class AutomezziService {
               description: 'Automezzo aggiornato',
               metadata: {
                 automezzoId: id,
-                prima: comeAutomezzoVista(prima),
-                dopo: comeAutomezzoVista(riga),
+                prima: senzaNote(comeAutomezzoVista(prima)),
+                dopo: senzaNote(comeAutomezzoVista(riga)),
+                noteModificate: (prima.note ?? null) !== (riga.note ?? null),
               } as unknown as Prisma.InputJsonValue,
             },
           })
@@ -236,7 +243,12 @@ export class AutomezziService {
         } else {
           const pesata = await tx.pesata.findFirst({
             where: { id: richiesta.pesataId, tenantId },
-            include: { rettifiche: true, accesso: { select: { stato: true } } },
+            include: {
+              rettifiche: true,
+              accesso: {
+                select: { stato: true, automezzoId: true, targa: true, modo: true, verso: true },
+              },
+            },
           })
           if (!pesata) throw new PesataNonTrovataError()
           if (pesata.fonte === 'TARA_ANAGRAFICA') {
@@ -250,8 +262,27 @@ export class AutomezziService {
           if (pesata.accesso.stato === 'ANNULLATO') {
             throw new RegolaPesataError(['La pesata appartiene a un accesso annullato.'])
           }
-          if (pesata.automezzoId !== null && pesata.automezzoId !== id) {
-            throw new RegolaPesataError(['La pesata appartiene a un altro automezzo.'])
+          // `pesate.automezzo_id` e' valorizzato solo per TARA_ANAGRAFICA: il legame col mezzo
+          // sta nell'accesso (automezzo scelto, oppure solo la targa digitata).
+          const accesso = pesata.accesso
+          if (accesso.automezzoId !== null) {
+            if (accesso.automezzoId !== id) {
+              throw new RegolaPesataError(['La pesata appartiene a un altro automezzo.'])
+            }
+          } else if (normalizzaTarga(accesso.targa ?? '') !== prima.targa) {
+            throw new RegolaPesataError([
+              'La targa della pesata non corrisponde a quella dell’automezzo.',
+            ])
+          }
+          if (accesso.modo === 'SINGOLA') {
+            throw new RegolaPesataError([
+              'Una pesata singola è un netto letto dallo strumento: non è la tara del mezzo.',
+            ])
+          }
+          if (pesata.ordine !== ordineTara(accesso.verso, accesso.modo)) {
+            throw new RegolaPesataError([
+              'La pesata indica il mezzo carico, non la tara: serve la pesata a vuoto.',
+            ])
           }
           const peso = pesoEffettivo({
             ordine: pesata.ordine === 1 ? 1 : 2,
