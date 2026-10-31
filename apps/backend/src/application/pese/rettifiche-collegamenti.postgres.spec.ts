@@ -5,6 +5,7 @@
  * pulizia cancella SOLO le aziende create qui, per id esatto (le pesate sono immutabili: la
  * cascata da `tenants` e' l'unica via).
  */
+import { nettoNellUnitaFir } from '../../domain/pese/confronto-documento'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 
@@ -780,6 +781,36 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
       // ripetuto: stesso risultato, nessun secondo collegamento
       await expect(peso(a, f.id, chiuso.id)).resolves.toBe(12.35)
       expect(await owner.collegamentoAccesso.count({ where: { accessoId: chiuso.id } })).toBe(1)
+    })
+
+    it('il peso per la consegna e` identico al netto della vista (stessa funzione), ai margini', async () => {
+      const a = await azienda()
+      // [lordo, tara, unita FIR]: 1 kg e 0,4 kg in T sono rifiutati, 999,5 kg → 1 t, massimo in T e in kg
+      const casi: Array<[number, number, string, number | 'errore']> = [
+        [7001, 7000, 'T', 'errore'],
+        [7000.4, 7000, 'T', 'errore'],
+        [7999.5, 7000, 'T', 1],
+        [7001, 7000, 'KG', 1],
+        [7000.4, 7000, 'KG', 0.4],
+        [99999999.99, 7000, 'T', 99993],
+      ]
+      for (const [lordo, tara, unita, atteso] of casi) {
+        const chiuso = await accessoChiuso(a, lordo, tara)
+        const f = await fir(a, 'AWAITING_RECEIVER', unita)
+        if (atteso === 'errore') {
+          await expect(peso(a, f.id, chiuso.id)).rejects.toThrow(
+            'Il netto è troppo piccolo per essere espresso nel FIR'
+          )
+          expect(await owner.collegamentoAccesso.count({ where: { accessoId: chiuso.id } })).toBe(0)
+          continue
+        }
+        const risultato = await peso(a, f.id, chiuso.id)
+        const vista = await dettaglio(a, chiuso.id)
+        expect(risultato).toBe(atteso)
+        expect(risultato).toBe(
+          nettoNellUnitaFir((vista.netto as { nettoKg: number }).nettoKg, unita)
+        )
+      }
     })
 
     it('FIR in kg: netto invariato; con la rettifica del peso il valore segue', async () => {

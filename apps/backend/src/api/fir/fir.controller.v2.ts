@@ -20,8 +20,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsNumber, Max, Min } from 'class-validator'
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiPropertyOptional,
+} from '@nestjs/swagger'
+import { IsString, IsNotEmpty, IsNumber, IsUUID, Max, Min, ValidateIf } from 'class-validator'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ModificaFIRDto } from './dtos/modifica-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
@@ -47,6 +54,9 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { CurrentUser, CurrentUserPayload } from '../../auth/decorators/current-user.decorator'
 import { SubscriptionEnforcementService } from '../../application/billing/subscription-enforcement.service'
+import { CollegamentiAccessoService } from '../../application/pese/collegamenti-accesso.service'
+import { comeHttpPese } from '../pese/errori-http'
+import { RUOLI_OPERATORE_PESA } from '../pese/ruoli-pesa'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 
@@ -71,10 +81,19 @@ export class PresaInCaricoFIRDto {}
 export class ConfermaConsegnaFIRDto {
   // Quantità verificata a destino, nell'unità del FIR. Nessuna tolleranza: il limite
   // alto e i 2 decimali sono quelli della colonna effective_weight Decimal(10,2).
+  // Esattamente uno fra `pesoEffettivo` e `accessoId` (lo verifica il controller).
+  @ApiPropertyOptional({ description: 'Peso verificato a destino, nell’unità del FIR' })
+  @ValidateIf(o => o.pesoEffettivo !== undefined) // null non e' "assente": resta un errore
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   @Max(99999999.99)
-  pesoEffettivo: number
+  pesoEffettivo?: number
+
+  // Accesso alla pesa CHIUSO di carico da cui prendere il netto (D12).
+  @ApiPropertyOptional({ description: 'Accesso alla pesa da cui prendere il netto' })
+  @ValidateIf(o => o.accessoId !== undefined)
+  @IsUUID('all', { message: 'Accesso non valido.' })
+  accessoId?: string
 }
 
 export class AnnullaFIRDto {
@@ -107,7 +126,8 @@ export class FIRControllerV2 {
     private readonly listFIRsHandler: ListFIRsQueryHandler,
     private readonly enforcement: SubscriptionEnforcementService,
     private readonly membership: RuoloEffettivoService,
-    private readonly modificaFIRUseCase: ModificaFIRUseCase
+    private readonly modificaFIRUseCase: ModificaFIRUseCase,
+    private readonly collegamentiAccesso: CollegamentiAccessoService
   ) {}
 
   @Post()
@@ -394,11 +414,36 @@ export class FIRControllerV2 {
   async confermaConsegna(
     @Param('id') id: string,
     @Body() dto: ConfermaConsegnaFIRDto,
-    @CurrentUser() user: CurrentUserPayload
+    @CurrentUser() user: CurrentUserPayload,
+    @Req() req?: any
   ): Promise<FIRResponseDto> {
+    if ((dto.pesoEffettivo != null) === (dto.accessoId != null)) {
+      throw new BadRequestException(
+        "Indicare il peso verificato oppure l'accesso da cui prenderlo."
+      )
+    }
+    let peso = dto.pesoEffettivo as number
+    if (dto.accessoId != null) {
+      // Peso dal netto di un accesso alla pesa (4.8a): azienda selezionata e ruolo effettivo
+      // lì. Il collegamento resta anche se lo use case poi fallisce (e' revocabile).
+      const tenantId = requireRequestTenantId(req)
+      // `req.user` e' l'utente del token (non quello "commutato" dall'interceptor): il ruolo
+      // effettivo si risolve su di lui, come in creazione e modifica.
+      const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+      if (!RUOLI_OPERATORE_PESA.includes(ruolo)) {
+        throw new ForbiddenException({
+          message: "Il tuo ruolo nell'azienda selezionata non consente di operare sulle pese.",
+          error: 'PESE_RISERVATE_OPERATORI',
+        })
+      }
+      const accessoId = dto.accessoId
+      peso = await comeHttpPese(() =>
+        this.collegamentiAccesso.pesoPerConsegnaFir(tenantId, req.user.id, id, accessoId)
+      )
+    }
     // La firma del destinatario è prodotta dal sottosistema crittografico
     // dentro lo use-case (Task 4).
-    const command = new ConfermaConsegnaFIRCommand(id, dto.pesoEffettivo, user.id, user.email)
+    const command = new ConfermaConsegnaFIRCommand(id, peso, user.id, user.email)
 
     const result = await this.confermaConsegnaFIRUseCase.execute(command)
 

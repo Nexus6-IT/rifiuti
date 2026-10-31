@@ -9,7 +9,7 @@
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { firAnnullato, STATI_FIR_EMESSI, STATI_FIR_IN_BOZZA } from '../../domain/fir/stati-fir'
-import { nettoNellUnitaFir } from '../../domain/pese/confronto-documento'
+import { nettoNellUnitaFir, PESO_FIR_MINIMO } from '../../domain/pese/confronto-documento'
 import { chiaveConfrontoCer } from '../../domain/waste-movement/cer-registro'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RUOLI_OPERATORE_PESA, RUOLI_RESPONSABILE_PESA } from '../../api/pese/ruoli-pesa'
@@ -209,6 +209,11 @@ export class CollegamentiAccessoService {
       if (peso === null) {
         throw new CollegamentoNonValidoError(
           `Il FIR è in ${fir.unit}: il peso della pesa (kg) non si converte.`
+        )
+      }
+      if (peso < PESO_FIR_MINIMO) {
+        throw new CollegamentoNonValidoError(
+          `Il netto è troppo piccolo per essere espresso nel FIR (minimo 0,01 ${fir.unit}): indicare il peso a mano.`
         )
       }
       await this.collegaFirSottoLock(tx, tenantId, utenteId, accesso, firId, true)

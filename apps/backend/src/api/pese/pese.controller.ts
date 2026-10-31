@@ -1,13 +1,11 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
   ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -15,7 +13,6 @@ import {
   Query,
   Req,
   Res,
-  UnprocessableEntityException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -31,32 +28,11 @@ import {
 import type { Response } from 'express'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
-import { DomainError } from '../../core/domain/errors'
 import { AutomezziService } from '../../application/pese/automezzi.service'
 import { AccessiPesaService } from '../../application/pese/accessi-pesa.service'
 import { AllegatiPesaService } from '../../application/pese/allegati-pesa.service'
 import { RettifichePesoService } from '../../application/pese/rettifiche-peso.service'
 import { CollegamentiAccessoService } from '../../application/pese/collegamenti-accesso.service'
-import {
-  AccessoNonTrovatoError,
-  AlibiGiaUsatoError,
-  AllegatoNonTrovatoError,
-  AllegatoNonValidoError,
-  AutomezzoDuplicatoError,
-  AutomezzoNonTrovatoError,
-  CollegamentoNonTrovatoError,
-  CollegamentoNonValidoError,
-  DatiPesaNonValidiError,
-  FirNonTrovatoError,
-  PesataNonTrovataError,
-  RegolaPesataError,
-  RuoloPesaInsufficienteError,
-  StatoAccessoNonValidoError,
-  StrumentoDuplicatoError,
-  StrumentoNonTrovatoError,
-  TrasportatoreNonTrovatoError,
-} from '../../application/pese/errori-pese'
-import { RegistroNonTrovatoError } from '../../application/registro/registri.service'
 import { StrumentiPesaService } from '../../application/pese/strumenti-pesa.service'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import {
@@ -74,6 +50,7 @@ import {
   RuoloPesaGuard,
   FileMulter,
 } from './allegato-upload'
+import { comeHttpPese } from './errori-http'
 import { leggiDatiMultipart } from './multipart-dati'
 import { AutomezzoDto, ElencoAutomezziQueryDto } from './dto/automezzo.dto'
 import { StrumentoPesaDto } from './dto/strumento-pesa.dto'
@@ -421,61 +398,7 @@ export class PeseController {
     })
   }
 
-  /** Errori di dominio tradotti in HTTP, con messaggi senza id. */
-  private async comeHttp<R>(fn: () => Promise<R>): Promise<R> {
-    try {
-      return await fn()
-    } catch (err) {
-      if (err instanceof DatiPesaNonValidiError) {
-        throw new BadRequestException({
-          message: err.message,
-          error: 'PESE_DATI_NON_VALIDI',
-          details: { messaggi: err.messaggi },
-        })
-      }
-      if (err instanceof RegolaPesataError) {
-        throw new UnprocessableEntityException({
-          message: err.message,
-          error: 'PESE_REGOLA_NON_RISPETTATA',
-          details: { messaggi: err.messaggi },
-        })
-      }
-      if (
-        err instanceof AutomezzoDuplicatoError ||
-        err instanceof StrumentoDuplicatoError ||
-        err instanceof AlibiGiaUsatoError ||
-        err instanceof StatoAccessoNonValidoError
-      ) {
-        throw new ConflictException(err.message)
-      }
-      if (err instanceof CollegamentoNonValidoError) {
-        throw new UnprocessableEntityException({
-          message: err.message,
-          error: 'PESE_COLLEGAMENTO_NON_VALIDO',
-        })
-      }
-      if (err instanceof RuoloPesaInsufficienteError) {
-        throw new ForbiddenException({ message: err.message, error: 'PESE_RUOLO_INSUFFICIENTE' })
-      }
-      if (err instanceof AllegatoNonValidoError) {
-        throw new BadRequestException(err.message)
-      }
-      if (
-        err instanceof AutomezzoNonTrovatoError ||
-        err instanceof StrumentoNonTrovatoError ||
-        err instanceof TrasportatoreNonTrovatoError ||
-        err instanceof PesataNonTrovataError ||
-        err instanceof AccessoNonTrovatoError ||
-        err instanceof AllegatoNonTrovatoError ||
-        err instanceof CollegamentoNonTrovatoError ||
-        err instanceof FirNonTrovatoError
-      ) {
-        throw new NotFoundException(err.message)
-      }
-      if (err instanceof RegistroNonTrovatoError)
-        throw new NotFoundException('Registro non trovato.')
-      if (err instanceof DomainError) throw new BadRequestException(err.message)
-      throw err
-    }
+  private comeHttp<R>(fn: () => Promise<R>): Promise<R> {
+    return comeHttpPese(fn)
   }
 }

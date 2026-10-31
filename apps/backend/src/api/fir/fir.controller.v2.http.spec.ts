@@ -18,6 +18,11 @@ import { FIRControllerV2 } from './fir.controller.v2'
 import { CreateFIRUseCase } from '../../application/fir/use-cases/create-fir.use-case'
 import { EmettiFIRUseCase } from '../../application/fir/use-cases/emetti-fir.use-case'
 import { PresaInCaricoFIRUseCase } from '../../application/fir/use-cases/presa-in-carico-fir.use-case'
+import { CollegamentiAccessoService } from '../../application/pese/collegamenti-accesso.service'
+import {
+  CollegamentoNonValidoError,
+  StatoAccessoNonValidoError,
+} from '../../application/pese/errori-pese'
 import { ConfermaConsegnaFIRUseCase } from '../../application/fir/use-cases/conferma-consegna-fir.use-case'
 import { AnnullaFIRUseCase } from '../../application/fir/use-cases/annulla-fir.use-case'
 import { ModificaFIRUseCase } from '../../application/fir/use-cases/modifica-fir.use-case'
@@ -92,11 +97,15 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
   let enforcement: { assertNotSuspended: jest.Mock; assertFirLimitNotReached: jest.Mock }
 
   // ADMIN del proprio studio (ruolo del token), che lavora nell'azienda del cliente.
+  let conferma: { execute: jest.Mock }
+  let collegamentiAccesso: { pesoPerConsegnaFir: jest.Mock }
   const utente = { id: CONSULENTE, email: 'c@studio.it', tenantId: STUDIO, role: 'ADMIN' }
 
   async function avvia(ruoloAssociazione = 'OPERATOR') {
     const prisma = prismaFinto(ruoloAssociazione)
     modifica = { execute: jest.fn().mockResolvedValue(Result.ok(firModificato(2))) }
+    conferma = { execute: jest.fn().mockResolvedValue(Result.ok(firModificato(2))) }
+    collegamentiAccesso = { pesoPerConsegnaFir: jest.fn().mockResolvedValue(12.35) }
     enforcement = {
       assertNotSuspended: jest.fn().mockResolvedValue(undefined),
       assertFirLimitNotReached: jest.fn().mockResolvedValue(undefined),
@@ -114,7 +123,8 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
         { provide: CreateFIRUseCase, useValue: { execute: jest.fn() } },
         { provide: EmettiFIRUseCase, useValue: { execute: jest.fn() } },
         { provide: PresaInCaricoFIRUseCase, useValue: { execute: jest.fn() } },
-        { provide: ConfermaConsegnaFIRUseCase, useValue: { execute: jest.fn() } },
+        { provide: ConfermaConsegnaFIRUseCase, useValue: conferma },
+        { provide: CollegamentiAccessoService, useValue: collegamentiAccesso },
         { provide: AnnullaFIRUseCase, useValue: { execute: jest.fn() } },
         { provide: ModificaFIRUseCase, useValue: modifica },
         { provide: GetFIRByIdQueryHandler, useValue: { execute: jest.fn() } },
@@ -156,6 +166,67 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
 
   afterEach(async () => {
     await app?.close()
+  })
+
+  describe('POST /fir/:id/conferma-consegna (peso dal netto di un accesso)', () => {
+    const ACCESSO = '9d9d9d9d-0000-4000-8000-000000000009'
+    const conf = (corpo: unknown) =>
+      request(app.getHttpServer())
+        .post(`/fir/${FIR_ID}/conferma-consegna`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send(corpo as object)
+
+    beforeEach(() => avvia())
+
+    it('solo pesoEffettivo: comportamento invariato, nessuna lettura della pesa', async () => {
+      await conf({ pesoEffettivo: 10.5 }).expect(200)
+      expect(conferma.execute.mock.calls[0][0].pesoEffettivo).toBe(10.5)
+      expect(collegamentiAccesso.pesoPerConsegnaFir).not.toHaveBeenCalled()
+    })
+
+    it('né peso né accesso → 400; entrambi → 400; use case non chiamato', async () => {
+      const r = await conf({}).expect(400)
+      expect(r.body.message).toBe("Indicare il peso verificato oppure l'accesso da cui prenderlo.")
+      await conf({ pesoEffettivo: 1, accessoId: ACCESSO }).expect(400)
+      await conf({ accessoId: 'abc' }).expect(400)
+      expect(conferma.execute).not.toHaveBeenCalled()
+    })
+
+    it('accessoId: lo use case riceve il netto convertito, per l`azienda selezionata', async () => {
+      await conf({ accessoId: ACCESSO }).expect(200)
+      expect(collegamentiAccesso.pesoPerConsegnaFir).toHaveBeenCalledWith(
+        CLIENTE,
+        CONSULENTE,
+        FIR_ID,
+        ACCESSO
+      )
+      expect(conferma.execute.mock.calls[0][0].pesoEffettivo).toBe(12.35)
+    })
+
+    it('accesso collegato a un altro FIR → 409, use case non chiamato', async () => {
+      collegamentiAccesso.pesoPerConsegnaFir.mockRejectedValue(
+        new StatoAccessoNonValidoError("L'accesso o il documento è già collegato.")
+      )
+      await conf({ accessoId: ACCESSO }).expect(409)
+      expect(conferma.execute).not.toHaveBeenCalled()
+    })
+
+    it('FIR legato a RENTRI, in m3 o netto troppo piccolo → 422 in italiano, use case non chiamato', async () => {
+      collegamentiAccesso.pesoPerConsegnaFir.mockRejectedValue(
+        new CollegamentoNonValidoError('Il FIR è in M3: il peso della pesa (kg) non si converte.')
+      )
+      const r = await conf({ accessoId: ACCESSO }).expect(422)
+      expect(r.body.message).toContain('non si converte')
+      expect(conferma.execute).not.toHaveBeenCalled()
+    })
+
+    it('ruolo effettivo di sola lettura (CONSULTANT) con accessoId → 403', async () => {
+      await app.close()
+      await avvia('CONSULTANT')
+      const r = await conf({ accessoId: ACCESSO }).expect(403)
+      expect(r.body.error).toBe('PESE_RISERVATE_OPERATORI')
+      expect(collegamentiAccesso.pesoPerConsegnaFir).not.toHaveBeenCalled()
+    })
   })
 
   describe('esito', () => {

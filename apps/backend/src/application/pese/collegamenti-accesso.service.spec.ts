@@ -311,6 +311,37 @@ describe('CollegamentiAccessoService (Prisma finto)', () => {
       await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).resolves.toBe(12.35)
     })
 
+    it.each([1, 0.4, 4.99])(
+      'FIR in T con netto di %s kg: arrotonda a zero → 422, nessun collegamento né audit',
+      async nettoKg => {
+        const { leggiVistaAccesso } = jest.requireMock('./viste-accesso')
+        leggiVistaAccesso.mockResolvedValueOnce({ id: ACC, netto: { stato: 'CALCOLATO', nettoKg } })
+        tx.fIR.findFirst.mockResolvedValue(fir({ unit: 'T', status: 'AWAITING_RECEIVER' }))
+        await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).rejects.toThrow(
+          'Il netto è troppo piccolo per essere espresso nel FIR (minimo 0,01 T)'
+        )
+        expect(tx.collegamentoAccesso.create).not.toHaveBeenCalled()
+        expect(tx.activityLog.create).not.toHaveBeenCalled()
+      }
+    )
+
+    it('FIR in T con netto di 999,5 kg → 1 t (centesimo piu` vicino); in kg 0,4 resta 0,4', async () => {
+      const { leggiVistaAccesso } = jest.requireMock('./viste-accesso')
+      leggiVistaAccesso.mockResolvedValueOnce({
+        id: ACC,
+        netto: { stato: 'CALCOLATO', nettoKg: 999.5 },
+      })
+      tx.fIR.findFirst.mockResolvedValue(fir({ unit: 'T', status: 'AWAITING_RECEIVER' }))
+      await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).resolves.toBe(1)
+
+      leggiVistaAccesso.mockResolvedValueOnce({
+        id: ACC,
+        netto: { stato: 'CALCOLATO', nettoKg: 0.4 },
+      })
+      tx.fIR.findFirst.mockResolvedValue(fir({ unit: 'KG', status: 'AWAITING_RECEIVER' }))
+      await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).resolves.toBe(0.4)
+    })
+
     it('FIR in M3 → 422 con l`unità nel messaggio', async () => {
       tx.fIR.findFirst.mockResolvedValue(fir({ unit: 'M3', status: 'AWAITING_RECEIVER' }))
       await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).rejects.toThrow(
