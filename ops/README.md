@@ -376,6 +376,26 @@ DROP COLUMN receiver_codice_fiscale;` e `DELETE FROM _prisma_migrations WHERE mi
 '20261031110200_fir_parti_sede_cf';`. Il codice vecchio ignora le colonne; i FIR con il codice fiscale
 nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP COLUMN`.
 
+### Pese: modello dati (`20261101400000_pese_modello_dati`, Fase 4 pezzo 8a, Task 2a)
+
+Additiva: 5 tipi enum e 7 tabelle nuove (`strumenti_pesa`, `automezzi`, `accessi_pesa`, `pesate`,
+`rettifiche_peso`, `allegati_pesa`, `collegamenti_accesso`) con trigger di immutabilità e RLS
+(`ENABLE` + `FORCE`, `isolamento_azienda` e `sola_lettura`). Nessun backfill, nessuna modifica alle
+colonne esistenti; le FK verso `waste_movements`, `firs`, `registri_rifiuti`, `trasportatori` sono
+create con `SET LOCAL lock_timeout = '5s'`: se il lock non arriva la migration fallisce senza
+modificare nulla ma resta segnata come fallita (P3009), quindi prima di rilanciare il deploy
+`npx prisma migrate resolve --rolled-back 20261101400000_pese_modello_dati`. La migration esegue i
+REVOKE dei privilegi (D4) per `wasteflow_app` e `wasteflow_sistema` solo se i ruoli esistono.
+
+Ripristino (le tabelle sono nuove, nessun dato esistente le usa): `DROP TABLE collegamenti_accesso,
+rettifiche_peso, pesate CASCADE; DROP TABLE accessi_pesa, automezzi, allegati_pesa, strumenti_pesa
+CASCADE;` poi `DROP FUNCTION pesate_immutabile(), pesate_controlli(), rettifiche_peso_immutabile(),
+rettifiche_peso_controlli(), allegati_pesa_immutabile(), accessi_pesa_controlli(),
+collegamenti_accesso_controlli();` poi `DROP TYPE tipo_collegamento_accesso, origine_tara,
+stato_accesso_pesa, modo_pesatura, fonte_pesata;` e `DELETE FROM _prisma_migrations WHERE
+migration_name = '20261101400000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
+allegati) sono documentazione del registro e del FIR: esportarle prima di un `DROP`.
+
 ---
 
 ## Rollback

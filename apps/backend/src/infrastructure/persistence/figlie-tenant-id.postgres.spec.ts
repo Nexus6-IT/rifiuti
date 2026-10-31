@@ -129,6 +129,10 @@ describe('tabelle figlie: tenant_id coerente col padre (Postgres reale)', () => 
           await tx.$executeRawUnsafe(
             `ALTER TABLE "autorizzazioni_impianto_discariche" ADD CONSTRAINT "autorizzazioni_impianto_discariche_autorizzazione_id_fkey" FOREIGN KEY ("autorizzazione_id") REFERENCES "autorizzazioni_impianto"("id") ON DELETE CASCADE ON UPDATE CASCADE`
           )
+          // Le pese (Fase 4 pezzo 8a) si appoggiano allo stesso indice unico: la loro FK va tolta prima.
+          await tx.$executeRawUnsafe(
+            `ALTER TABLE "collegamenti_accesso" DROP CONSTRAINT "collegamenti_accesso_fir_fkey"`
+          )
           await tx.$executeRawUnsafe(`DROP INDEX "firs_id_tenant_id_key"`)
           await tx.$executeRawUnsafe(`DROP INDEX "autorizzazioni_impianto_id_tenant_id_key"`)
 
