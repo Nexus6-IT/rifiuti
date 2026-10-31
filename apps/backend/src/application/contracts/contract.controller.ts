@@ -107,7 +107,7 @@ export class ContractController {
   @ApiResponse({
     status: 409,
     description:
-      'CONTRATTO_NON_MODIFICABILE, CONTRATTO_MODIFICATO_NEL_FRATTEMPO o CONTRATTO_NUMERO_DUPLICATO',
+      'CONTRATTO_NON_MODIFICABILE (stato), CONTRATTO_CAMPI_NON_AMMESSI, CONTRATTO_MODIFICATO_NEL_FRATTEMPO o CONTRATTO_NUMERO_DUPLICATO',
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,

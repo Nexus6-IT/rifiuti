@@ -189,7 +189,7 @@ describe('ContractService — Postgres reale, ruolo wasteflow_app', () => {
         })
       )
     )
-    expect(e).toEqual({ status: 409, error: 'CONTRATTO_NON_MODIFICABILE' })
+    expect(e).toEqual({ status: 409, error: 'CONTRATTO_CAMPI_NON_AMMESSI' })
   })
 
   it('numero già usato da un contratto eliminato: 409 CONTRATTO_NUMERO_DUPLICATO', async () => {

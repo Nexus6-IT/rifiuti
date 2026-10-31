@@ -62,9 +62,6 @@ import {
   tipoControparteDaRegistro,
 } from './contract-vocabulary'
 
-/** Inizio del messaggio 409 per i campi non ammessi (backend, `pianificaModifica`). */
-const PREFISSO_CAMPI_NON_AMMESSI = 'In un contratto attivo o sospeso non si possono cambiare'
-
 @Component({
   selector: 'app-contract-create-dialog',
   standalone: true,
@@ -660,20 +657,18 @@ export class ContractCreateDialogComponent implements OnChanges {
   }
 
   /**
-   * Il codice `CONTRATTO_NON_MODIFICABILE` e' lo stesso per lo stato e per i campi non ammessi:
-   * i secondi si riconoscono dal messaggio (D9 del piano 4.0), e il dialog resta aperto.
+   * Dati mostrati ormai vecchi, decisi dal solo codice del backend: modificato nel frattempo,
+   * stato che non consente la modifica (`CONTRATTO_NON_MODIFICABILE`) o contratto sparito (404).
+   * `CONTRATTO_CAMPI_NON_AMMESSI` e `CONTRATTO_NUMERO_DUPLICATO` non lo sono: il dialog resta aperto.
    */
   private datiVecchi(err: unknown): boolean {
     if (!(err instanceof HttpErrorResponse)) return false
     if (err.status === 404) return true
     if (err.status !== 409) return false
     const codice = err.error?.error
-    if (codice === 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO') return true
-    if (codice === 'CONTRATTO_NON_MODIFICABILE') {
-      const m = err.error?.message
-      return !(typeof m === 'string' && m.startsWith(PREFISSO_CAMPI_NON_AMMESSI))
-    }
-    return false
+    return (
+      codice === 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO' || codice === 'CONTRATTO_NON_MODIFICABILE'
+    )
   }
 
   /** Messaggio del backend (stringa o elenco), mai id; altrimenti il testo di ripiego. */

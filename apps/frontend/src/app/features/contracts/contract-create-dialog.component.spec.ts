@@ -388,13 +388,13 @@ describe('ContractCreateDialogComponent', () => {
       expect(chiuso).toHaveBeenCalledWith(false)
     })
 
-    it('409 CONTRATTO_NON_MODIFICABILE per campi non ammessi: dialog resta aperto', () => {
+    it('409 CONTRATTO_CAMPI_NON_AMMESSI: dialog resta aperto (decide il solo codice)', () => {
       apri(contratto())
       component.form.basePrice = 130
       contracts.update.and.returnValue(
         errore(409, {
           message: 'In un contratto attivo o sospeso non si possono cambiare: Produttore.',
-          error: 'CONTRATTO_NON_MODIFICABILE',
+          error: 'CONTRATTO_CAMPI_NON_AMMESSI',
         })
       )
       const emesso = spyOn(component.modificato, 'emit')
@@ -405,6 +405,17 @@ describe('ContractCreateDialogComponent', () => {
       )
       expect(emesso).not.toHaveBeenCalled()
       expect(chiuso).not.toHaveBeenCalled()
+    })
+
+    it('il testo del messaggio non conta: stesso testo, codice CONTRATTO_NON_MODIFICABILE chiude', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      contracts.update.and.returnValue(
+        errore(409, { message: 'Testo qualsiasi.', error: 'CONTRATTO_NON_MODIFICABILE' })
+      )
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(chiuso).toHaveBeenCalledWith(false)
     })
 
     it('409 numero duplicato: dialog resta aperto', () => {

@@ -247,7 +247,7 @@ export class ContractService {
 
     if (piano.esito === 'NESSUNA_MODIFICA') return this.getById(tenantId, id)
     if (piano.esito === 'CAMPI_NON_AMMESSI') {
-      throw conflitto('CONTRATTO_NON_MODIFICABILE', piano.messaggio)
+      throw conflitto('CONTRATTO_CAMPI_NON_AMMESSI', piano.messaggio)
     }
     if (piano.esito === 'NON_VALIDA') {
       throw new BadRequestException({ message: piano.messaggi, error: 'CONTRATTO_NON_VALIDO' })

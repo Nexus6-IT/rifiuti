@@ -205,7 +205,7 @@ incrementa la versione e non lascia audit, ma controlla comunque la versione (ve
 409). Ordine dei controlli: (1) contratto assente o eliminato → 404; (2) stato senza campi
 modificabili (`EXPIRED`, `TERMINATED`, `PENDING_APPROVAL`) → 409 `CONTRATTO_NON_MODIFICABILE`
 col motivo dello stato; (3) versione diversa → 409 `CONTRATTO_MODIFICATO_NEL_FRATTEMPO`; (4) campi
-cambiati non ammessi nello stato → 409 `CONTRATTO_NON_MODIFICABILE` con l'elenco delle etichette;
+cambiati non ammessi nello stato → 409 `CONTRATTO_CAMPI_NON_AMMESSI` con l'elenco delle etichette;
 (5) validazione dei dati risultanti → 400 `CONTRATTO_NON_VALIDO` con i messaggi; (6) parti
 cambiate → `assertPartiEsistono` sui valori risultanti (400 attuali); (7) scrittura condizionata
 (D7); numero duplicato → 409 `CONTRATTO_NUMERO_DUPLICATO`.
@@ -242,8 +242,10 @@ Nessuna modifica al filtro. Codici e testi esatti:
   un'altra operazione: ricarica per vedere i dati aggiornati e ripeti l'operazione."
 - `CONTRATTO_NON_MODIFICABILE` (409): per stato — `PENDING_APPROVAL` "Un contratto in
   approvazione non si modifica: riportalo in bozza per correggerlo.", `EXPIRED` "Un contratto
-  scaduto non si modifica.", `TERMINATED` "Un contratto cessato non si modifica."; per campi —
-  "In un contratto attivo o sospeso non si possono cambiare: <etichette separate da virgola>."
+  scaduto non si modifica.", `TERMINATED` "Un contratto cessato non si modifica."
+- `CONTRATTO_CAMPI_NON_AMMESSI` (409, codice distinto dal precedente perche' il frontend decide
+  dal solo codice se chiudere il dialog): "In un contratto attivo o sospeso non si possono
+  cambiare: <etichette separate da virgola>."
 - `CONTRATTO_NON_ELIMINABILE` (409): "Si eliminano solo i contratti in bozza o in approvazione:
   per chiudere questo contratto portalo in stato Cessato."
 - `CONTRATTO_NON_VALIDO` (400): `message` = array dei messaggi di `validaDatiContratto`.
@@ -562,7 +564,7 @@ reale (ognuna ha il suo test nel task indicato):
     controllo di versione` (versione sbagliata ma risposta "non modificabile");
     `versione diversa → 409 CONTRATTO_MODIFICATO_NEL_FRATTEMPO senza updateMany`; `nessuna
     modifica → nessun updateMany né audit, restituisce la vista`; `campo non ammesso in ACTIVE →
-    409 col messaggio delle etichette`; `dati non validi → 400 con message array`; `controparte
+    409 CONTRATTO_CAMPI_NON_AMMESSI col messaggio delle etichette`; `dati non validi → 400 con message array`; `controparte
     cambiata → assertPartiEsistono sui valori nuovi (registro del nuovo tipo)`; `scrive solo i
     campi cambiati, con versione increment e condizione su id, tenantId, versione,
     eliminatoIl null`; `updateMany count 0 → 409 MODIFICATO_NEL_FRATTEMPO`; `audit

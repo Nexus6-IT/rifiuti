@@ -488,7 +488,7 @@ describe('ContractService', () => {
       expect(e).toBeInstanceOf(ConflictException)
       expect(e.getResponse()).toEqual({
         message: 'In un contratto attivo o sospeso non si possono cambiare: Produttore.',
-        error: 'CONTRATTO_NON_MODIFICABILE',
+        error: 'CONTRATTO_CAMPI_NON_AMMESSI',
       })
     })
     it('startDate null: 400 CONTRATTO_NON_VALIDO "Data di inizio è obbligatoria."', async () => {
