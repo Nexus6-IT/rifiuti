@@ -128,6 +128,7 @@ model Tenant {
   // Fase 2 pezzo 10
   ditte                  Ditta[]
   sediDitte              SedeDitta[]
+  trasmissioniRentri     MovimentoTrasmissioneRentri[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -1925,6 +1926,8 @@ model WasteMovement {
   /// Radice della catena, con gli stessi vincoli di registro, azienda e tipo.
   originale   WasteMovement?  @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
   catena      WasteMovement[] @relation("Radice")
+  /// F2-9: stato di trasmissione a RENTRI (nessuna riga = non trasmesso).
+  trasmissioneRentri MovimentoTrasmissioneRentri?
   /// Versione della causale aziendale usata. NoAction: la cancellazione a cascata di un'azienda
   /// toglie movimenti e causali nello stesso statement.
   causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
@@ -2104,9 +2107,12 @@ model RegistroRifiuti {
   unitaLocaleId        String? @map("unita_locale_id") @db.Uuid
   codice               String  @default("CARICO_SCARICO") @db.VarChar(30)
   descrizione          String  @db.VarChar(255)
-  /// Identificativo del registro assegnato dal RENTRI (non ancora valorizzato: F2-9).
+  /// Identificativo del registro assegnato dal RENTRI (formato R + 10 alfanumerici maiuscoli).
   identificativoRentri String? @map("identificativo_rentri") @db.VarChar(100)
   attivo               Boolean @default(true)
+  /// F2-9: data da cui i movimenti nuovi del registro si trasmettono da soli a RENTRI (NULL = solo
+  /// invio manuale). Mai nel passato: attivarlo la imposta a ora (nessun invio retroattivo).
+  invioRentriAutomaticoDal DateTime? @map("invio_rentri_automatico_dal") @db.Timestamptz(3)
 
   tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
@@ -2117,6 +2123,9 @@ model RegistroRifiuti {
 
   @@unique([id, tenantId])
   @@unique([tenantId, unitaLocaleId, codice])
+  /// F2-9: per azienda, non globale. Il CHECK `registri_rifiuti_identificativo_rentri_check` (solo in
+  /// migration) impone il formato `^R[0-9A-Z]{10}$`.
+  @@unique([tenantId, identificativoRentri], map: "registri_rifiuti_tenant_identificativo_rentri_key")
   @@index([tenantId])
   @@map("registri_rifiuti")
 }
@@ -2475,4 +2484,79 @@ model SogliaDepositoTemporaneo {
   @@unique([tenantId, registroId], map: "soglie_deposito_temporaneo_tenant_id_registro_id_key")
   @@index([tenantId], map: "soglie_deposito_temporaneo_tenant_id_idx")
   @@map("soglie_deposito_temporaneo")
+}
+
+/// F2-9: stato di trasmissione a RENTRI di un'annotazione del registro.
+enum StatoTrasmissioneRentri {
+  /// In coda, non ancora prenotata.
+  DA_TRASMETTERE
+  /// Prenotata, POST in corso.
+  IN_INVIO
+  /// Transazione salvata, esito da leggere.
+  ATTESA_ESITO
+  TRASMESSA
+  /// Esito letto, riga non registrata da RENTRI.
+  RIFIUTATA
+  /// Traduzione fail-closed fallita: il programma non sa tradurre l'annotazione.
+  NON_TRASMISSIBILE
+  /// Esito della POST sconosciuto: bloccata finche' non si verifica.
+  INCERTA
+  /// Dichiarata presente da altro programma o dal portale.
+  GIA_SU_RENTRI
+
+  @@map("stato_trasmissione_rentri")
+}
+
+/// F2-9: come una riga di trasmissione e' nata.
+enum OrigineTrasmissioneRentri {
+  MANUALE
+  AUTOMATICA
+  CORREZIONE
+  DICHIARATA
+
+  @@map("origine_trasmissione_rentri")
+}
+
+/// F2-9: una riga per movimento trasmesso (o in via di trasmissione) a RENTRI. Nessuna riga = non
+/// trasmesso: la migration non crea righe e nulla parte da solo sullo storico. Il corpo inviato non
+/// si salva (solo i messaggi di validazione di RENTRI della riga). Registro, tipo e azienda sono
+/// copie immutabili del movimento, per la FK composta. I trigger `movimenti_trasmissione_rentri_immutabile`
+/// (una TRASMESSA/GIA_SU_RENTRI non torna indietro) e `..._no_delete` (non si cancella una riga che
+/// ha trasmesso, salvo la cascata di un'azienda) e i CHECK stanno solo nella migration: Prisma non
+/// li conosce, quindi `migrate diff` resta pulito.
+model MovimentoTrasmissioneRentri {
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                    @map("tenant_id") @db.Uuid
+  movimentoId          String                    @map("movimento_id") @db.Uuid
+  registroId           String                    @map("registro_id") @db.Uuid
+  tipo                 WasteMovementType
+  stato                StatoTrasmissioneRentri   @default(DA_TRASMETTERE)
+  origine              OrigineTrasmissioneRentri
+  bloccatoInvio        Boolean                   @default(false) @map("bloccato_invio")
+  motivoBlocco         String?                   @map("motivo_blocco") @db.VarChar(500)
+  identificativoRentri String?                   @map("identificativo_rentri") @db.VarChar(20)
+  transazioneId        String?                   @map("transazione_id") @db.Uuid
+  lottoId              String?                   @map("lotto_id") @db.Uuid
+  prenotatoIl          DateTime?                 @map("prenotato_il") @db.Timestamptz(3)
+  trasmessoIl          DateTime?                 @map("trasmesso_il") @db.Timestamptz(3)
+  tentativi            Int                       @default(0)
+  ultimoErrore         String?                   @map("ultimo_errore") @db.VarChar(1000)
+  /// Solo i messaggi di validazione di RENTRI della riga: `{ campo, codice, tipo }`.
+  messaggi             Json                      @default("[]")
+  accodatoDa           String?                   @map("accodato_da") @db.Uuid
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "movimenti_trasmissione_rentri_tenant_fkey")
+  movimento WasteMovement @relation(fields: [movimentoId, registroId, tenantId, tipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "movimenti_trasmissione_rentri_movimento_fkey")
+
+  @@unique([movimentoId], map: "movimenti_trasmissione_rentri_movimento_id_key")
+  @@unique([id, tenantId], map: "movimenti_trasmissione_rentri_id_tenant_id_key")
+  /// Prisma vuole l'unico sui campi esatti della FK composta per accettare la relazione 1:1
+  /// (`trasmissioneRentri?`); l'1:1 vero e' garantito dall'unico su `movimento_id`.
+  @@unique([movimentoId, registroId, tenantId, tipo], map: "movimenti_trasmissione_rentri_movimento_chiave_key")
+  @@index([tenantId], map: "movimenti_trasmissione_rentri_tenant_id_idx")
+  @@index([registroId, stato], map: "movimenti_trasmissione_rentri_registro_stato_idx")
+  @@index([transazioneId], map: "movimenti_trasmissione_rentri_transazione_id_idx")
+  @@map("movimenti_trasmissione_rentri")
 }
