@@ -131,7 +131,9 @@ export class PDFService {
         ? {
             companyName: fir[`${nome}Name`],
             address: fir[`${nome}Address`],
-            vatNumber: fir[`${nome}PartitaIva`],
+            // P.IVA vuota (privato) → assente, cosi' il PDF stampa il codice fiscale (D9.10)
+            vatNumber: fir[`${nome}PartitaIva`] || undefined,
+            fiscalCode: fir[`${nome}CodiceFiscale`] || undefined,
           }
         : undefined)
 

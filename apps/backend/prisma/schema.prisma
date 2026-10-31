@@ -125,6 +125,9 @@ model Tenant {
   soglieDeposito        SogliaDepositoTemporaneo[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
+  // Fase 2 pezzo 10
+  ditte                  Ditta[]
+  sediDitte              SedeDitta[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -281,6 +284,15 @@ model FIR {
   // Lock ottimistico (piano D4-D5): il repository la incrementa a ogni scrittura e rifiuta il
   // salvataggio di chi ha letto una versione diversa.
   versione           Int       @default(1) @map("versione")
+
+  // F2-10 D9.4: sede scelta per produttore e destinatario (il trasportatore non ha sede sul FIR) e
+  // codice fiscale delle tre parti. Senza FK (snapshot: la sede puo' cambiare o disattivarsi);
+  // NULL per i FIR creati prima della migration 20261031110200.
+  producerSedeId        String? @map("producer_sede_id") @db.Uuid
+  receiverSedeId        String? @map("receiver_sede_id") @db.Uuid
+  producerCodiceFiscale String? @map("producer_codice_fiscale") @db.VarChar(16)
+  carrierCodiceFiscale  String? @map("carrier_codice_fiscale") @db.VarChar(16)
+  receiverCodiceFiscale String? @map("receiver_codice_fiscale") @db.VarChar(16)
   submittedAt        DateTime? @map("submitted_at")
   completedAt        DateTime? @map("completed_at")
   cancelledAt        DateTime? @map("cancelled_at")
@@ -1217,25 +1229,32 @@ model Produttore {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSociale String @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA     String @map("partita_iva") @db.VarChar(11)
+  ragioneSocialeStorica String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA     String? @map("partita_iva") @db.VarChar(11) @ignore
 
   // Sede Legale
-  via       String @db.VarChar(255)
-  civico    String @db.VarChar(20)
-  cap       String @db.VarChar(5)
-  comune    String @db.VarChar(100)
-  provincia String @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @db.VarChar(255)
-  telefono String? @db.VarChar(20)
-  pec      String? @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, partitaIVA])
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
+  ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_ditta_fkey")
+  sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_sede_fkey")
+
+  @@unique([tenantId, dittaId], map: "produttori_tenant_id_ditta_id_key")
   @@index([tenantId])
+  @@index([sedeId], map: "produttori_sede_id_idx")
   @@map("produttori")
 }
 
@@ -1245,21 +1264,21 @@ model Trasportatore {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSociale   String @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA       String @map("partita_iva") @db.VarChar(11)
+  ragioneSocialeStorica   String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA       String? @map("partita_iva") @db.VarChar(11) @ignore
   numeroIscrizione String @map("numero_iscrizione") @db.VarChar(50)
 
   // Sede Legale
-  via       String @db.VarChar(255)
-  civico    String @db.VarChar(20)
-  cap       String @db.VarChar(5)
-  comune    String @db.VarChar(100)
-  provincia String @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @db.VarChar(255)
-  telefono String? @db.VarChar(20)
-  pec      String? @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'iscrizione all'Albo Gestori Ambientali. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1269,8 +1288,15 @@ model Trasportatore {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, partitaIVA])
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
+  ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_ditta_fkey")
+  sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
+
+  @@unique([tenantId, dittaId], map: "trasportatori_tenant_id_ditta_id_key")
   @@index([tenantId])
+  @@index([sedeId], map: "trasportatori_sede_id_idx")
   @@map("trasportatori")
 }
 
@@ -1280,21 +1306,21 @@ model Destinatario {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  ragioneSociale       String @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA           String @map("partita_iva") @db.VarChar(11)
+  ragioneSocialeStorica       String? @map("ragione_sociale") @db.VarChar(255)
+  partitaIVA           String? @map("partita_iva") @db.VarChar(11) @ignore
   numeroAutorizzazione String @map("numero_autorizzazione") @db.VarChar(50)
 
   // Sede
-  via       String @db.VarChar(255)
-  civico    String @db.VarChar(20)
-  cap       String @db.VarChar(5)
-  comune    String @db.VarChar(100)
-  provincia String @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @db.VarChar(255)
-  telefono String? @db.VarChar(20)
-  pec      String? @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'autorizzazione allo smaltimento/recupero. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1304,8 +1330,15 @@ model Destinatario {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, partitaIVA])
+  // Fase 2 pezzo 10: ditta e sede predefinita del ruolo (le colonne vecchie sopra sono copia congelata, D6)
+  dittaId String @map("ditta_id") @db.Uuid
+  sedeId  String @map("sede_id") @db.Uuid
+  ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_ditta_fkey")
+  sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
+
+  @@unique([tenantId, dittaId], map: "destinatari_tenant_id_ditta_id_key")
   @@index([tenantId])
+  @@index([sedeId], map: "destinatari_sede_id_idx")
   @@map("destinatari")
 }
 
@@ -2359,6 +2392,68 @@ model CausaleRegistroAzienda {
   @@unique([tenantId, causaleSistemaCodice, verso], map: "causali_registro_azienda_disattivazione_key")
   @@index([tenantId], map: "causali_registro_azienda_tenant_id_idx")
   @@map("causali_registro_azienda")
+}
+
+/// Controparte dell'azienda (Fase 2 pezzo 10): identita' fiscale e ragione sociale. Una ditta puo'
+/// essere produttore, trasportatore e destinatario (una riga di ruolo ciascuno, stessi id di
+/// sempre). Identificata da partita IVA o codice fiscale (un privato ha il solo codice fiscale).
+/// Il checksum non sta nel database (le P.IVA migrate non sono mai state controllate): lo applica
+/// l'applicazione quando un identificativo viene impostato. RLS per tenant.
+model Ditta {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  ragioneSociale String   @map("ragione_sociale") @db.VarChar(255)
+  partitaIva     String?  @map("partita_iva") @db.VarChar(11)
+  codiceFiscale  String?  @map("codice_fiscale") @db.VarChar(16)
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sedi          SedeDitta[]
+  produttori    Produttore[]
+  trasportatori Trasportatore[]
+  destinatari   Destinatario[]
+
+  @@unique([id, tenantId], map: "ditte_id_tenant_id_key")
+  @@unique([tenantId, partitaIva], map: "ditte_tenant_id_partita_iva_key")
+  @@unique([tenantId, codiceFiscale], map: "ditte_tenant_id_codice_fiscale_key")
+  @@index([tenantId], map: "ditte_tenant_id_idx")
+  @@map("ditte")
+}
+
+/// Sede di una ditta (Fase 2 pezzo 10): indirizzo e contatti. Esattamente una principale per
+/// ditta ("al piu' una" nel database con l'indice parziale `sedi_ditte_una_principale`, solo SQL).
+/// Le sedi non si cancellano: si disattivano. RLS per tenant.
+model SedeDitta {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  dittaId       String   @map("ditta_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  denominazione String?  @db.VarChar(255)
+  via           String   @db.VarChar(255)
+  civico        String   @db.VarChar(20)
+  cap           String   @db.VarChar(5)
+  comune        String   @db.VarChar(100)
+  provincia     String   @db.VarChar(2)
+  referente     String?  @db.VarChar(255)
+  email         String?  @db.VarChar(255)
+  telefono      String?  @db.VarChar(20)
+  pec           String?  @db.VarChar(255)
+  principale    Boolean  @default(false)
+  attiva        Boolean  @default(true)
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ditta         Ditta           @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "sedi_ditte_ditta_fkey")
+  produttori    Produttore[]
+  trasportatori Trasportatore[]
+  destinatari   Destinatario[]
+
+  @@unique([id, tenantId], map: "sedi_ditte_id_tenant_id_key")
+  @@unique([id, dittaId, tenantId], map: "sedi_ditte_id_ditta_id_tenant_id_key")
+  @@index([tenantId], map: "sedi_ditte_tenant_id_idx")
+  @@index([dittaId], map: "sedi_ditte_ditta_id_idx")
+  @@map("sedi_ditte")
 }
 
 /// Criterio di controllo del deposito temporaneo scelto dall'azienda (art. 185-bis D.Lgs. 152/2006):

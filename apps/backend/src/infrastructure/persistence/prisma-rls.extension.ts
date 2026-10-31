@@ -52,6 +52,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'Notification',
   'ActivityLog',
   'Produttore',
+  'Ditta',
+  'SedeDitta',
   'Trasportatore',
   'Destinatario',
   'Role',

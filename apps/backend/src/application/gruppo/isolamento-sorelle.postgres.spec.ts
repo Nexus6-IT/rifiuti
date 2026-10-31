@@ -8,6 +8,7 @@
  * Eseguire con `npm run test:postgres`.
  */
 import { PrismaClient } from '@prisma/client'
+import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
 import { TenantContext } from '../../core/context/tenant-context'
 import { rlsExtension } from '../../infrastructure/persistence/prisma-rls.extension'
 
@@ -72,29 +73,21 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
     utenteAlfaId = utenteAlfa.id
 
     // Un produttore per ciascuna sorella.
-    await base.produttore.create({
-      data: {
-        tenantId: alfaId,
-        ragioneSociale: 'Produttore di Alfa',
-        partitaIVA: piva(4),
-        via: 'Via Alfa',
-        civico: '1',
-        cap: '00100',
-        comune: 'Roma',
-        provincia: 'RM',
-      },
+    await creaDittaConRuolo(base, alfaId, 'PRODUTTORE', {
+      ragioneSociale: 'Produttore di Alfa',
+      via: 'Via Alfa',
+      civico: '1',
+      cap: '00100',
+      comune: 'Roma',
+      provincia: 'RM',
     })
-    await base.produttore.create({
-      data: {
-        tenantId: betaId,
-        ragioneSociale: 'Produttore di Beta',
-        partitaIVA: piva(5),
-        via: 'Via Beta',
-        civico: '2',
-        cap: '20100',
-        comune: 'Milano',
-        provincia: 'MI',
-      },
+    await creaDittaConRuolo(base, betaId, 'PRODUTTORE', {
+      ragioneSociale: 'Produttore di Beta',
+      via: 'Via Beta',
+      civico: '2',
+      cap: '20100',
+      comune: 'Milano',
+      provincia: 'MI',
     })
   })
 
@@ -128,10 +121,10 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
 
   it('Alfa non vede le anagrafiche di Beta', async () => {
     await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
-      const produttori = await db.produttore.findMany()
+      const produttori = await db.produttore.findMany({ include: { ditta: true } })
 
       expect(produttori).toHaveLength(1)
-      expect(produttori[0].ragioneSociale).toBe('Produttore di Alfa')
+      expect(produttori[0].ditta.ragioneSociale).toBe('Produttore di Alfa')
     })
   })
 
@@ -177,16 +170,28 @@ describe('Isolamento fra aziende sorelle (Postgres reale)', () => {
 
   it('una scrittura di Alfa nasce dentro Alfa, non altrove', async () => {
     await TenantContext.run({ tenantId: alfaId, userId: utenteAlfaId }, async () => {
-      const creato = await db.produttore.create({
+      // ditta e sede esistono gia' (create dal proprietario): la riga di ruolo nasce nel tenant
+      const ditta = await base.ditta.create({
         data: {
+          tenantId: alfaId,
           ragioneSociale: 'Secondo produttore di Alfa',
-          partitaIVA: piva(6),
+          partitaIva: piva(6),
+        },
+      })
+      const sede = await base.sedeDitta.create({
+        data: {
+          tenantId: alfaId,
+          dittaId: ditta.id,
           via: 'Via Alfa',
           civico: '3',
           cap: '00100',
           comune: 'Roma',
           provincia: 'RM',
-        } as any,
+          principale: true,
+        },
+      })
+      const creato = await db.produttore.create({
+        data: { dittaId: ditta.id, sedeId: sede.id } as any,
       })
 
       expect(creato.tenantId).toBe(alfaId)

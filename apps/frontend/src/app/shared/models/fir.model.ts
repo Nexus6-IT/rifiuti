@@ -36,7 +36,11 @@ export interface ScostamentoPeso {
 export interface ParteFIR {
   registroId?: string
   ragioneSociale: string
+  /** Stringa vuota per un privato (solo codice fiscale). */
   partitaIva: string
+  codiceFiscale?: string | null
+  /** Sede della ditta da cui è stato preso l'indirizzo (produttore e destinatario; assente sui FIR precedenti). */
+  sedeId?: string | null
   indirizzo?: string
   targaVeicolo?: string
   contatto?: string

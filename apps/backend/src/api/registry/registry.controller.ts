@@ -18,7 +18,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common'
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { calcolaScadenza } from '../../application/notifications/scadenza-controparte.util'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
@@ -48,6 +48,50 @@ import {
   UpdateDestinatarioDto,
 } from './dto/create-registry.dto'
 
+// ---- Swagger: campi di ditta e sede comuni alle risposte (F2-10) ----
+const CAMPI_DITTA_SWAGGER = {
+  codiceFiscale: {
+    type: 'string',
+    nullable: true,
+    description: "Codice fiscale della ditta (per un privato è l'unico identificativo)",
+  },
+  dittaId: { type: 'string', format: 'uuid', description: 'Ditta a cui appartiene il ruolo' },
+  sedeId: {
+    type: 'string',
+    format: 'uuid',
+    description: 'Sede predefinita del ruolo (indirizzo e contatti mostrati)',
+  },
+  numeroSedi: { type: 'integer', description: 'Numero di sedi attive della ditta' },
+  partitaIvaDaVerificare: {
+    type: 'boolean',
+    description: 'La partita IVA registrata non passa il controllo di validità: va corretta',
+  },
+}
+const CAMPI_DETTAGLIO_SWAGGER = {
+  ...CAMPI_DITTA_SWAGGER,
+  ruoliDitta: {
+    type: 'array',
+    items: { type: 'string', enum: ['PRODUTTORE', 'TRASPORTATORE', 'DESTINATARIO'] },
+    description: 'Ruoli che la stessa ditta ha in questa azienda',
+  },
+}
+const CAMPI_CREAZIONE_SWAGGER = {
+  ...CAMPI_DITTA_SWAGGER,
+  dittaEsistente: {
+    type: 'boolean',
+    description: 'La ditta era già registrata (per un altro ruolo) ed è stata riusata',
+  },
+  avvisi: {
+    type: 'array',
+    items: { type: 'string' },
+    description:
+      'Avvisi non bloccanti, es. la ragione sociale già registrata per la ditta è stata mantenuta',
+  },
+}
+const rispostaSwagger = (proprieta: Record<string, unknown>) => ({
+  schema: { type: 'object', properties: proprieta },
+})
+
 @ApiTags('registry')
 @ApiBearerAuth()
 @Controller('registry')
@@ -71,6 +115,19 @@ export class RegistryController {
     private readonly deleteDestinatarioUseCase: DeleteDestinatarioUseCase
   ) {}
 
+  @ApiOperation({
+    summary: 'Crea un produttore su una ditta (nuova o già registrata) e relativa sede',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Controparte creata; `dittaEsistente` e `avvisi` dicono se la ditta è stata riusata',
+    ...rispostaSwagger(CAMPI_CREAZIONE_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi, identificativi in conflitto o ruolo già presente per la ditta',
+  })
   @Post('produttori')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
@@ -81,14 +138,32 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
+    const { ruolo, dittaEsistente, avvisi } = result.value
+
     return {
-      id: result.value.id,
-      ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
+      id: ruolo.id,
+      ragioneSociale: ruolo.ragioneSociale,
+      partitaIVA: ruolo.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(ruolo),
+      sedeLegale: this.indirizzoToObject(ruolo.sedeLegale),
+      dittaEsistente,
+      avvisi,
     }
   }
 
+  @ApiOperation({
+    summary: 'Crea un trasportatore su una ditta (nuova o già registrata) e relativa sede',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Controparte creata; `dittaEsistente` e `avvisi` dicono se la ditta è stata riusata',
+    ...rispostaSwagger(CAMPI_CREAZIONE_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi, identificativi in conflitto o ruolo già presente per la ditta',
+  })
   @Post('trasportatori')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
@@ -99,16 +174,34 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
+    const { ruolo, dittaEsistente, avvisi } = result.value
+
     return {
-      id: result.value.id,
-      ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
-      sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
-      numeroIscrizione: result.value.numeroIscrizione,
-      scadenzaIscrizione: this.dateToIso(result.value.scadenzaIscrizione),
+      id: ruolo.id,
+      ragioneSociale: ruolo.ragioneSociale,
+      partitaIVA: ruolo.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(ruolo),
+      sedeLegale: this.indirizzoToObject(ruolo.sedeLegale),
+      numeroIscrizione: ruolo.numeroIscrizione,
+      scadenzaIscrizione: this.dateToIso(ruolo.scadenzaIscrizione),
+      dittaEsistente,
+      avvisi,
     }
   }
 
+  @ApiOperation({
+    summary: 'Crea un destinatario su una ditta (nuova o già registrata) e relativa sede',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Controparte creata; `dittaEsistente` e `avvisi` dicono se la ditta è stata riusata',
+    ...rispostaSwagger(CAMPI_CREAZIONE_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Dati non validi, identificativi in conflitto o ruolo già presente per la ditta',
+  })
   @Post('destinatari')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   @HttpCode(HttpStatus.CREATED)
@@ -119,18 +212,28 @@ export class RegistryController {
       throw new BadRequestException(result.error)
     }
 
+    const { ruolo, dittaEsistente, avvisi } = result.value
+
     return {
-      id: result.value.id,
-      ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
-      sede: this.indirizzoToObject(result.value.sede),
-      numeroAutorizzazione: result.value.numeroAutorizzazione,
-      scadenzaAutorizzazione: this.dateToIso(result.value.scadenzaAutorizzazione),
+      id: ruolo.id,
+      ragioneSociale: ruolo.ragioneSociale,
+      partitaIVA: ruolo.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(ruolo),
+      sede: this.indirizzoToObject(ruolo.sede),
+      numeroAutorizzazione: ruolo.numeroAutorizzazione,
+      scadenzaAutorizzazione: this.dateToIso(ruolo.scadenzaAutorizzazione),
+      dittaEsistente,
+      avvisi,
     }
   }
 
   // ============= PRODUTTORI GET/UPDATE/DELETE =============
 
+  @ApiOperation({ summary: "Elenco dei produttori dell'azienda" })
+  @ApiResponse({
+    status: 200,
+    description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
+  })
   @Get('produttori')
   async listProduttori(@Req() req: any) {
     // req.tenantId è impostato dal TenantContextMiddleware (da JWT) e sovrascritto
@@ -147,7 +250,8 @@ export class RegistryController {
     const items = result.value.map(p => ({
       id: p.id,
       ragioneSociale: p.ragioneSociale,
-      partitaIVA: p.partitaIVA.getValue(),
+      partitaIVA: p.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(p),
       sedeLegale: this.indirizzoToObject(p.sedeLegale),
       email: p.email,
       telefono: p.telefono,
@@ -156,6 +260,13 @@ export class RegistryController {
     return this.toPaginated(items)
   }
 
+  @ApiOperation({ summary: 'Dettaglio di un produttore, con i ruoli della ditta' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dettaglio del ruolo, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('produttori/:id')
   async getProduttore(@Param('id') id: string) {
     const result = await this.getProduttoreUseCase.execute({ id })
@@ -167,7 +278,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       email: result.value.email,
       telefono: result.value.telefono,
@@ -175,6 +287,24 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary:
+      'Modifica un produttore (tutto o niente): identificativi della ditta, sede predefinita, indirizzo e contatti',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Controparte aggiornata, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Dati non validi, `sedeId` non valida per il ruolo o `sedeId` insieme all'indirizzo",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Identificativo già di un'altra ditta o indirizzo già di un'altra sede attiva",
+  })
   @Put('produttori/:id')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateProduttore(@Param('id') id: string, @Body() dto: UpdateProduttoreDto) {
@@ -190,7 +320,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       email: result.value.email,
       telefono: result.value.telefono,
@@ -211,6 +342,11 @@ export class RegistryController {
 
   // ============= TRASPORTATORI GET/UPDATE/DELETE =============
 
+  @ApiOperation({ summary: "Elenco dei trasportatori dell'azienda" })
+  @ApiResponse({
+    status: 200,
+    description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
+  })
   @Get('trasportatori')
   async listTrasportatori(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
@@ -229,7 +365,8 @@ export class RegistryController {
       return {
         id: t.id,
         ragioneSociale: t.ragioneSociale,
-        partitaIVA: t.partitaIVA.getValue(),
+        partitaIVA: t.partitaIVA?.getValue() ?? null,
+        ...this.campiDitta(t),
         sedeLegale: this.indirizzoToObject(t.sedeLegale),
         numeroIscrizione: t.numeroIscrizione,
         email: t.email,
@@ -243,6 +380,13 @@ export class RegistryController {
     return this.toPaginated(items)
   }
 
+  @ApiOperation({ summary: 'Dettaglio di un trasportatore, con i ruoli della ditta' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dettaglio del ruolo, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('trasportatori/:id')
   async getTrasportatore(@Param('id') id: string) {
     const result = await this.getTrasportatoreUseCase.execute({ id })
@@ -254,7 +398,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
       email: result.value.email,
@@ -264,6 +409,24 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary:
+      'Modifica un trasportatore (tutto o niente): identificativi della ditta, sede predefinita, indirizzo e contatti',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Controparte aggiornata, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Dati non validi, `sedeId` non valida per il ruolo o `sedeId` insieme all'indirizzo",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Identificativo già di un'altra ditta o indirizzo già di un'altra sede attiva",
+  })
   @Put('trasportatori/:id')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateTrasportatore(@Param('id') id: string, @Body() dto: UpdateTrasportatoreDto) {
@@ -279,7 +442,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sedeLegale: this.indirizzoToObject(result.value.sedeLegale),
       numeroIscrizione: result.value.numeroIscrizione,
       email: result.value.email,
@@ -302,6 +466,11 @@ export class RegistryController {
 
   // ============= DESTINATARI GET/UPDATE/DELETE =============
 
+  @ApiOperation({ summary: "Elenco dei destinatari dell'azienda" })
+  @ApiResponse({
+    status: 200,
+    description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
+  })
   @Get('destinatari')
   async listDestinatari(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
@@ -318,7 +487,8 @@ export class RegistryController {
       return {
         id: d.id,
         ragioneSociale: d.ragioneSociale,
-        partitaIVA: d.partitaIVA.getValue(),
+        partitaIVA: d.partitaIVA?.getValue() ?? null,
+        ...this.campiDitta(d),
         sede: this.indirizzoToObject(d.sede),
         numeroAutorizzazione: d.numeroAutorizzazione,
         email: d.email,
@@ -332,6 +502,13 @@ export class RegistryController {
     return this.toPaginated(items)
   }
 
+  @ApiOperation({ summary: 'Dettaglio di un destinatario, con i ruoli della ditta' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dettaglio del ruolo, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('destinatari/:id')
   async getDestinatario(@Param('id') id: string) {
     const result = await this.getDestinatarioUseCase.execute({ id })
@@ -343,7 +520,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
       email: result.value.email,
@@ -353,6 +531,24 @@ export class RegistryController {
     }
   }
 
+  @ApiOperation({
+    summary:
+      'Modifica un destinatario (tutto o niente): identificativi della ditta, sede predefinita, indirizzo e contatti',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Controparte aggiornata, con `ruoliDitta`',
+    ...rispostaSwagger(CAMPI_DETTAGLIO_SWAGGER),
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Dati non validi, `sedeId` non valida per il ruolo o `sedeId` insieme all'indirizzo",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Identificativo già di un'altra ditta o indirizzo già di un'altra sede attiva",
+  })
   @Put('destinatari/:id')
   @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
   async updateDestinatario(@Param('id') id: string, @Body() dto: UpdateDestinatarioDto) {
@@ -368,7 +564,8 @@ export class RegistryController {
     return {
       id: result.value.id,
       ragioneSociale: result.value.ragioneSociale,
-      partitaIVA: result.value.partitaIVA.getValue(),
+      partitaIVA: result.value.partitaIVA?.getValue() ?? null,
+      ...this.campiDitta(result.value),
       sede: this.indirizzoToObject(result.value.sede),
       numeroAutorizzazione: result.value.numeroAutorizzazione,
       email: result.value.email,
@@ -390,6 +587,30 @@ export class RegistryController {
   }
 
   // ============= ERROR / RESPONSE HELPERS =============
+
+  /**
+   * Campi della ditta e della sede predefinita comuni ai tre ruoli (D7). Il codice fiscale di un
+   * privato e' un dato personale: sta solo nel corpo della risposta, mai in log o messaggi.
+   * `numeroSedi` e `ruoliDitta` compaiono solo quando la lettura li ha calcolati (`ruoliDitta`
+   * solo nel dettaglio e nella modifica).
+   */
+  private campiDitta(e: {
+    codiceFiscale: string | null
+    dittaId: string
+    sedeId: string
+    numeroSedi?: number
+    partitaIvaDaVerificare: boolean
+    ruoliDitta?: string[]
+  }) {
+    return {
+      codiceFiscale: e.codiceFiscale,
+      dittaId: e.dittaId,
+      sedeId: e.sedeId,
+      ...(e.numeroSedi !== undefined && { numeroSedi: e.numeroSedi }),
+      partitaIvaDaVerificare: e.partitaIvaDaVerificare,
+      ...(e.ruoliDitta !== undefined && { ruoliDitta: e.ruoliDitta }),
+    }
+  }
 
   /**
    * Mappa il fallimento di un update allo status HTTP corretto: una risorsa
@@ -465,6 +686,7 @@ export class RegistryController {
     return {
       ragioneSociale: dto.ragioneSociale,
       partitaIVA: dto.partitaIVA,
+      codiceFiscale: dto.codiceFiscale,
       sedeLegale: this.mapIndirizzoToCommand(dto.sedeLegale),
       email: dto.email,
       telefono: dto.telefono,
@@ -476,6 +698,7 @@ export class RegistryController {
     return {
       ragioneSociale: dto.ragioneSociale,
       partitaIVA: dto.partitaIVA,
+      codiceFiscale: dto.codiceFiscale,
       sedeLegale: this.mapIndirizzoToCommand(dto.sedeLegale),
       numeroIscrizione: dto.numeroIscrizione,
       email: dto.email,
@@ -489,6 +712,7 @@ export class RegistryController {
     return {
       ragioneSociale: dto.ragioneSociale,
       partitaIVA: dto.partitaIVA,
+      codiceFiscale: dto.codiceFiscale,
       sede: this.mapIndirizzoToCommand(dto.sede),
       numeroAutorizzazione: dto.numeroAutorizzazione,
       email: dto.email,
@@ -503,6 +727,9 @@ export class RegistryController {
   private mapUpdateProduttoreDto(dto: UpdateProduttoreDto) {
     return {
       ragioneSociale: dto.ragioneSociale,
+      codiceFiscale: dto.codiceFiscale,
+      partitaIVA: dto.partitaIVA,
+      sedeId: dto.sedeId,
       sedeLegale: dto.sedeLegale ? this.mapIndirizzoToCommand(dto.sedeLegale) : undefined,
       email: dto.email,
       telefono: dto.telefono,
@@ -513,6 +740,9 @@ export class RegistryController {
   private mapUpdateTrasportatoreDto(dto: UpdateTrasportatoreDto) {
     return {
       ragioneSociale: dto.ragioneSociale,
+      codiceFiscale: dto.codiceFiscale,
+      partitaIVA: dto.partitaIVA,
+      sedeId: dto.sedeId,
       sedeLegale: dto.sedeLegale ? this.mapIndirizzoToCommand(dto.sedeLegale) : undefined,
       numeroIscrizione: dto.numeroIscrizione,
       email: dto.email,
@@ -525,6 +755,9 @@ export class RegistryController {
   private mapUpdateDestinatarioDto(dto: UpdateDestinatarioDto) {
     return {
       ragioneSociale: dto.ragioneSociale,
+      codiceFiscale: dto.codiceFiscale,
+      partitaIVA: dto.partitaIVA,
+      sedeId: dto.sedeId,
       sede: dto.sede ? this.mapIndirizzoToCommand(dto.sede) : undefined,
       numeroAutorizzazione: dto.numeroAutorizzazione,
       email: dto.email,

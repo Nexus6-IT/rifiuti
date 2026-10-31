@@ -12,7 +12,11 @@ import {
   Trasportatore,
   Destinatario,
   Indirizzo,
+  Ditta,
+  SedeDitta,
 } from '../../shared/models/registry.model'
+import { DittaIdentificativiComponent } from './ditta-identificativi.component'
+import { ErroriIdentificativi, identificativiPerSalvataggio } from './identificativo-fiscale'
 
 export type TipoAnagrafica = 'produttore' | 'trasportatore' | 'destinatario'
 export type ModalitaAnagrafica = 'create' | 'edit'
@@ -25,6 +29,7 @@ export interface AnagraficaSavedEvent {
 interface FormData {
   ragioneSociale: string
   partitaIVA: string
+  codiceFiscale: string
   pec: string
   via: string
   civico: string
@@ -43,6 +48,7 @@ function emptyForm(): FormData {
   return {
     ragioneSociale: '',
     partitaIVA: '',
+    codiceFiscale: '',
     pec: '',
     via: '',
     civico: '',
@@ -76,6 +82,7 @@ function indirizzoFrom(f: FormData): Indirizzo {
     ButtonModule,
     InputTextModule,
     ProgressSpinnerModule,
+    DittaIdentificativiComponent,
   ],
   template: `
     <p-dialog
@@ -117,7 +124,11 @@ function indirizzoFrom(f: FormData): Indirizzo {
               autocomplete="organization"
               class="w-full"
               [class.input-error]="errors.ragioneSociale"
+              [readOnly]="!!dittaTrovata"
             />
+            <small *ngIf="dittaTrovata" class="field-hint"
+              >Ragione sociale della ditta già registrata: non si modifica da qui.</small
+            >
             <small
               *ngIf="errors.ragioneSociale"
               [id]="pfx + '-ragione-err'"
@@ -127,36 +138,21 @@ function indirizzoFrom(f: FormData): Indirizzo {
             >
           </div>
 
-          <div class="ana-row">
-            <div class="field ana-row__half">
-              <label [for]="pfx + '-piva'">
-                Partita IVA <span class="req" aria-hidden="true">*</span>
-              </label>
-              <input
-                pInputText
-                [id]="pfx + '-piva'"
-                name="partitaIVA"
-                [(ngModel)]="form.partitaIVA"
-                (ngModelChange)="clearError('partitaIVA')"
-                placeholder="11 cifre"
-                maxlength="11"
-                inputmode="numeric"
-                required
-                aria-required="true"
-                [attr.aria-invalid]="errors.partitaIVA ? true : null"
-                [attr.aria-describedby]="errors.partitaIVA ? pfx + '-piva-err' : null"
-                class="w-full"
-                [class.input-error]="errors.partitaIVA"
-              />
-              <small
-                *ngIf="errors.partitaIVA"
-                [id]="pfx + '-piva-err'"
-                class="field-error"
-                role="alert"
-                >{{ errors.partitaIVA }}</small
-              >
-            </div>
+          <app-ditta-identificativi
+            [pfx]="pfx"
+            [tipo]="tipo"
+            [modalita]="modalita"
+            [(partitaIVA)]="form.partitaIVA"
+            [(codiceFiscale)]="form.codiceFiscale"
+            [partitaIvaOriginale]="entityData?.partitaIVA ?? null"
+            [codiceFiscaleOriginale]="entityData?.codiceFiscale ?? null"
+            [partitaIvaDaVerificare]="!!entityData?.partitaIvaDaVerificare"
+            [errori]="erroriId"
+            (dittaTrovata)="onDittaTrovata($event)"
+            (sedeScelta)="onSedeScelta($event)"
+          />
 
+          <div class="ana-row" *ngIf="tipo !== 'produttore'">
             <!-- Numero iscrizione Albo — solo trasportatore -->
             <div class="field ana-row__half" *ngIf="tipo === 'trasportatore'">
               <label [for]="pfx + '-iscrizione'">
@@ -543,6 +539,10 @@ export class AnagraficaFormDialogComponent implements OnChanges {
 
   /** Messaggi di errore per-campo mostrati inline accanto al controllo. */
   errors: Partial<Record<keyof FormData, string>> = {}
+  /** Errori di partita IVA e codice fiscale (mostrati dal componente degli identificativi). */
+  erroriId: ErroriIdentificativi = {}
+  /** Ditta gia' presente trovata dalla ricerca (solo in creazione): blocca la ragione sociale. */
+  dittaTrovata: Ditta | null = null
 
   get pfx(): string {
     return `ana-${this.tipo}`
@@ -574,15 +574,41 @@ export class AnagraficaFormDialogComponent implements OnChanges {
     if (changes['visible'] && changes['visible'].currentValue === true) {
       this.form = emptyForm()
       this.errors = {}
+      this.erroriId = {}
+      this.dittaTrovata = null
       if (this.modalita === 'edit' && this.entityData) {
         this.prefill(this.entityData)
       }
     }
   }
 
+  /** Ditta trovata (o non piu' valida): blocca/sblocca la ragione sociale e precompila. */
+  onDittaTrovata(ditta: Ditta | null): void {
+    this.dittaTrovata = ditta
+    if (ditta) {
+      this.form.ragioneSociale = ditta.ragioneSociale
+      this.clearError('ragioneSociale')
+    }
+  }
+
+  /** Sede scelta fra quelle della ditta: precompila l'indirizzo; "Nuova sede" lo svuota. */
+  onSedeScelta(sede: SedeDitta | null): void {
+    this.form.via = sede?.via ?? ''
+    this.form.civico = sede?.civico ?? ''
+    this.form.cap = sede?.cap ?? ''
+    this.form.comune = sede?.citta ?? ''
+    this.form.provincia = sede?.provincia ?? ''
+    // anche i contatti della sede: sono quelli che il backend manterra'
+    this.form.pec = sede?.pec ?? ''
+    for (const c of ['via', 'civico', 'cap', 'comune', 'provincia', 'pec'] as const) {
+      this.clearError(c)
+    }
+  }
+
   private prefill(entity: Produttore | Trasportatore | Destinatario): void {
     this.form.ragioneSociale = entity.ragioneSociale
-    this.form.partitaIVA = entity.partitaIVA
+    this.form.partitaIVA = entity.partitaIVA ?? ''
+    this.form.codiceFiscale = entity.codiceFiscale ?? ''
     this.form.pec = entity.pec ?? ''
 
     // Indirizzo: produttore/trasportatore → sedeLegale; destinatario → sede
@@ -620,7 +646,6 @@ export class AnagraficaFormDialogComponent implements OnChanges {
     const errors: Partial<Record<keyof FormData, string>> = {}
 
     if (!f.ragioneSociale.trim()) errors.ragioneSociale = 'La ragione sociale è obbligatoria.'
-    if (!f.partitaIVA.trim()) errors.partitaIVA = 'La partita IVA è obbligatoria.'
     if (!f.via.trim()) errors.via = 'La via è obbligatoria.'
     if (!f.civico.trim()) errors.civico = 'Il civico è obbligatorio.'
     if (!f.cap.trim()) errors.cap = 'Il CAP è obbligatorio.'
@@ -634,7 +659,14 @@ export class AnagraficaFormDialogComponent implements OnChanges {
     }
 
     this.errors = errors
-    return Object.keys(errors).length === 0
+    return Object.keys(errors).length === 0 && Object.keys(this.erroriId).length === 0
+  }
+
+  /** Porta il focus sul primo campo non valido, per chi usa la tastiera o uno screen reader. */
+  private focusPrimoErrore(): void {
+    setTimeout(() => {
+      document.querySelector<HTMLElement>('.ana-form [aria-invalid="true"]')?.focus()
+    })
   }
 
   /**
@@ -647,8 +679,10 @@ export class AnagraficaFormDialogComponent implements OnChanges {
       this.errors = { ...this.errors, numeroIscrizione: message }
     } else if (m.includes('autorizzazione')) {
       this.errors = { ...this.errors, numeroAutorizzazione: message }
+    } else if (m.includes('codice fiscale') || m.includes('privato')) {
+      this.erroriId = { ...this.erroriId, codiceFiscale: message }
     } else if (m.includes('partita iva') || m.includes('p.iva') || m.includes('piva')) {
-      this.errors = { ...this.errors, partitaIVA: message }
+      this.erroriId = { ...this.erroriId, partitaIva: message }
     } else if (m.includes('pec') || m.includes('e-mail') || m.includes('email')) {
       this.errors = { ...this.errors, pec: message }
     } else if (m.includes('ragione sociale')) {
@@ -657,7 +691,21 @@ export class AnagraficaFormDialogComponent implements OnChanges {
   }
 
   save(): void {
+    const isEdit = this.modalita === 'edit' && !!this.entityData
+    const id = identificativiPerSalvataggio(
+      this.form,
+      this.tipo,
+      isEdit
+        ? {
+            partitaIva: this.entityData!.partitaIVA,
+            codiceFiscale: this.entityData!.codiceFiscale ?? null,
+            partitaIvaDaVerificare: !!this.entityData!.partitaIvaDaVerificare,
+          }
+        : null
+    )
+    this.erroriId = id.errori
     if (!this.validate()) {
+      this.focusPrimoErrore()
       this.messageService.add({
         severity: 'warn',
         summary: 'Campi mancanti',
@@ -668,7 +716,6 @@ export class AnagraficaFormDialogComponent implements OnChanges {
 
     this.saving = true
     const indirizzo = indirizzoFrom(this.form)
-    const isEdit = this.modalita === 'edit' && !!this.entityData
 
     const onSuccess = (entity: Produttore | Trasportatore | Destinatario): void => {
       this.saving = false
@@ -683,6 +730,10 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         summary: 'Salvato',
         detail: `${tipoLabel} ${isEdit ? 'aggiornato' : 'creato'} con successo.`,
       })
+      // Avvisi non bloccanti del backend (es. ragione sociale mantenuta): toast informativo
+      for (const avviso of entity.avvisi ?? []) {
+        this.messageService.add({ severity: 'info', summary: 'Informazione', detail: avviso })
+      }
       this.saved.emit({ tipo: this.tipo, entity })
       this.chiudi()
     }
@@ -695,12 +746,16 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         : (raw ?? 'Errore durante il salvataggio. Riprova.')
       // Conflitto/validazione backend: evidenzia il campo pertinente, oltre al toast.
       this.mapBackendError(msg)
+      this.focusPrimoErrore()
       this.messageService.add({ severity: 'error', summary: 'Errore', detail: msg })
     }
 
-    // In update la P.IVA è immutabile: il DTO di update del backend NON accetta
-    // `partitaIVA` (whitelist + forbidNonWhitelisted) → la si invia solo in create.
-    const partitaIVA = this.form.partitaIVA.trim()
+    // Gli identificativi impostati non si cambiano: in modifica si inviano solo quelli aggiunti
+    // o, per la P.IVA "da verificare", sostituiti (D2.7-D2.8); in creazione quelli indicati.
+    const identificativi = {
+      ...(id.partitaIVA && { partitaIVA: id.partitaIVA }),
+      ...(id.codiceFiscale && { codiceFiscale: id.codiceFiscale }),
+    }
     if (this.tipo === 'produttore') {
       const base = {
         ragioneSociale: this.form.ragioneSociale.trim(),
@@ -708,8 +763,8 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         pec: this.form.pec.trim() || undefined,
       }
       const op$ = isEdit
-        ? this.registryService.updateProduttore(this.entityData!.id, base)
-        : this.registryService.createProduttore({ ...base, partitaIVA })
+        ? this.registryService.updateProduttore(this.entityData!.id, { ...base, ...identificativi })
+        : this.registryService.createProduttore({ ...base, ...identificativi })
       op$.subscribe({ next: onSuccess, error: onError })
     } else if (this.tipo === 'trasportatore') {
       const base = {
@@ -722,8 +777,11 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         scadenzaIscrizione: this.form.scadenzaIscrizione || (isEdit ? null : undefined),
       }
       const op$ = isEdit
-        ? this.registryService.updateTrasportatore(this.entityData!.id, base)
-        : this.registryService.createTrasportatore({ ...base, partitaIVA })
+        ? this.registryService.updateTrasportatore(this.entityData!.id, {
+            ...base,
+            ...identificativi,
+          })
+        : this.registryService.createTrasportatore({ ...base, ...identificativi })
       op$.subscribe({ next: onSuccess, error: onError })
     } else {
       const base = {
@@ -734,8 +792,11 @@ export class AnagraficaFormDialogComponent implements OnChanges {
         scadenzaAutorizzazione: this.form.scadenzaAutorizzazione || (isEdit ? null : undefined),
       }
       const op$ = isEdit
-        ? this.registryService.updateDestinatario(this.entityData!.id, base)
-        : this.registryService.createDestinatario({ ...base, partitaIVA })
+        ? this.registryService.updateDestinatario(this.entityData!.id, {
+            ...base,
+            ...identificativi,
+          })
+        : this.registryService.createDestinatario({ ...base, ...identificativi })
       op$.subscribe({ next: onSuccess, error: onError })
     }
   }

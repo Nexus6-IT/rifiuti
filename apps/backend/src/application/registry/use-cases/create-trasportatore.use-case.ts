@@ -1,6 +1,8 @@
 /**
  * CreateTrasportatore Use Case
- * Creates a new Trasportatore entity
+ * Crea il ruolo di trasportatore su una ditta (F2-10): ditta e sede si riusano se esistono gia'.
+ * Una sola transazione (D3), vedi `creaRuoloSuDitta`. Il privato (solo codice fiscale) non puo'
+ * essere trasportatore: lo rifiuta `DitteService.risolviPerRuolo` (400).
  */
 
 import { Inject, Injectable, Optional } from '@nestjs/common'
@@ -12,11 +14,24 @@ import {
 import { Trasportatore } from '../../../domain/registry/entities/trasportatore'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ClientDitte } from '../../../infrastructure/persistence/ditta-prisma.repository'
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { ReferenceDataService } from '../../reference-data/reference-data.service'
+import { DitteService } from '../ditte/ditte.service'
+import {
+  EsitoCreazioneRuolo,
+  RuoloGiaPresenteError,
+  creaRuoloSuDitta,
+  eErroreDiDittaDaPropagare,
+  messaggioSicuro,
+} from '../crea-ruolo-su-ditta'
 
 export interface CreateTrasportatoreCommand {
   ragioneSociale: string
-  partitaIVA: string
+  /** Facoltativa se c'e' il codice fiscale (privato, D2). */
+  partitaIVA?: string
+  /** In aggiunta alla P.IVA. */
+  codiceFiscale?: string
   sedeLegale: {
     via: string
     civico: string
@@ -36,19 +51,16 @@ export interface CreateTrasportatoreCommand {
 export class CreateTrasportatoreUseCase {
   constructor(
     @Inject(TRASPORTATORE_REPOSITORY)
-    private readonly trasportatoreRepository: TrasportatoreRepository,
+    private readonly trasportatoreRepository: TrasportatoreRepository<ClientDitte>,
+    private readonly prisma: PrismaService,
+    private readonly ditte: DitteService,
     @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
-  async execute(command: CreateTrasportatoreCommand): Promise<Result<Trasportatore>> {
+  async execute(
+    command: CreateTrasportatoreCommand
+  ): Promise<Result<EsitoCreazioneRuolo<Trasportatore>>> {
     try {
-      // Check if Partita IVA already exists
-      const existingByPIVA = await this.trasportatoreRepository.findByPartitaIVA(command.partitaIVA)
-
-      if (existingByPIVA) {
-        return Result.fail('Trasportatore with this Partita IVA already exists')
-      }
-
       // Check if Numero Iscrizione already exists
       const existingByNumero = await this.trasportatoreRepository.findByNumeroIscrizione(
         command.numeroIscrizione
@@ -67,28 +79,44 @@ export class CreateTrasportatoreUseCase {
         if (!v.ok) return Result.fail(v.error!)
       }
 
-      // Create value objects
-      const partitaIVA = PartitaIVA.create(command.partitaIVA)
       const sedeLegale = Indirizzo.create(command.sedeLegale)
 
-      // Create Trasportatore entity
-      const trasportatore = Trasportatore.create({
-        ragioneSociale: command.ragioneSociale,
-        partitaIVA,
-        sedeLegale,
-        numeroIscrizione: command.numeroIscrizione,
-        email: command.email,
-        telefono: command.telefono,
-        pec: command.pec,
-        scadenzaIscrizione: command.scadenzaIscrizione,
+      const esito = await creaRuoloSuDitta<Trasportatore>(this.prisma, this.ditte, {
+        ruolo: 'TRASPORTATORE',
+        nome: 'trasportatore',
+        dati: {
+          ragioneSociale: command.ragioneSociale,
+          partitaIva: command.partitaIVA,
+          codiceFiscale: command.codiceFiscale,
+          indirizzo: command.sedeLegale,
+          email: command.email,
+          telefono: command.telefono,
+          pec: command.pec,
+        },
+        esistente: (tx, dittaId) => this.trasportatoreRepository.findByDittaId(tx, dittaId),
+        costruisci: r =>
+          Trasportatore.create({
+            dittaId: r.dittaId,
+            sedeId: r.sedeId,
+            // la ragione sociale della ditta vince su quella della richiesta (D3)
+            ragioneSociale: r.ragioneSocialeDitta,
+            partitaIVA: r.partitaIva ? PartitaIVA.create(r.partitaIva) : null,
+            codiceFiscale: r.codiceFiscale,
+            sedeLegale,
+            numeroIscrizione: command.numeroIscrizione,
+            email: r.contatti.email ?? undefined,
+            telefono: r.contatti.telefono ?? undefined,
+            pec: r.contatti.pec ?? undefined,
+            scadenzaIscrizione: command.scadenzaIscrizione,
+          }),
+        inserisci: (tx, trasportatore) => this.trasportatoreRepository.crea(tx, trasportatore),
       })
 
-      // Save to repository
-      await this.trasportatoreRepository.save(trasportatore)
-
-      return Result.ok(trasportatore)
-    } catch (error: any) {
-      return Result.fail(error.message)
+      return Result.ok(esito)
+    } catch (error: unknown) {
+      if (eErroreDiDittaDaPropagare(error)) throw error
+      if (error instanceof RuoloGiaPresenteError) return Result.fail(error.message)
+      return Result.fail(messaggioSicuro(error))
     }
   }
 }

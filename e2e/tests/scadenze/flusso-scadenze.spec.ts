@@ -6,6 +6,7 @@ import { registra } from '../../fixtures/risorse'
 import { conPrefisso } from '../../utils/run-id'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
 import { DashboardPage } from '../../pages/dashboard.page'
+import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 
 /**
  * UAT/E2E — Il flusso delle scadenze dal dato all'avviso (Task 5 del piano).
@@ -80,9 +81,7 @@ const JOB_KEY = 'scadenzario-autorizzazioni'
 const TIPO_NOTIFICA_TRASPORTATORE = 'TRASPORTATORE_ISCRIZIONE_IN_SCADENZA'
 
 function nuovaPartitaIVA(): string {
-  const nove = String(Date.now()).slice(-9)
-  const due = String(Math.floor(Math.random() * 100)).padStart(2, '0')
-  return `${nove}${due}`
+  return partitaIvaCasualeValida()
 }
 
 function nuovoNumeroIscrizione(): string {

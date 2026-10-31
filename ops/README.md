@@ -248,6 +248,162 @@ temporaneo; resta utile provare `restore.sh` su un ambiente di staging.
 
 ---
 
+## F2-10 controparti (ditte e sedi)
+
+Migration `20261031110000_ditte_sedi_controparti` (Fase 2 pezzo 10): ogni anagrafica di ruolo
+(produttori, trasportatori, destinatari) viene collegata a una **ditta** per (azienda, partita IVA)
+e a una **sede**; la stessa P.IVA in più ruoli della stessa azienda diventa UNA ditta. Gli id delle
+righe di ruolo non cambiano, FIR e contratti non vengono toccati. La migration è transazionale e si
+**ferma** (senza modificare nulla) se una P.IVA non è di 11 cifre.
+
+### Censimento PRIMA del merge (lo lancia l'orchestratore sul VPS)
+
+Sola lettura, soli conteggi:
+
+```bash
+docker exec -i <container postgres> psql -U <utente> -d <db>
+```
+
+```sql
+WITH a AS (
+  SELECT 'P' r, tenant_id, btrim(partita_iva) p, lower(btrim(ragione_sociale)) n FROM produttori
+  UNION ALL SELECT 'T', tenant_id, btrim(partita_iva), lower(btrim(ragione_sociale)) FROM trasportatori
+  UNION ALL SELECT 'D', tenant_id, btrim(partita_iva), lower(btrim(ragione_sociale)) FROM destinatari)
+SELECT
+  (SELECT count(*) FROM a) AS anagrafiche,
+  (SELECT count(*) FROM a WHERE p !~ '^[0-9]{11}$') AS piva_non_conformi,
+  (SELECT count(*) FROM (SELECT 1 FROM a GROUP BY tenant_id, p HAVING count(DISTINCT r) > 1) x) AS ditte_fuse,
+  (SELECT count(*) FROM (SELECT 1 FROM a GROUP BY tenant_id, p
+     HAVING count(DISTINCT r) > 1 AND count(DISTINCT n) > 1) x) AS ditte_fuse_nome_divergente;
+```
+
+- `piva_non_conformi > 0` **blocca il merge**: le righe vanno corrette a mano prima.
+- `ditte_fuse_nome_divergente` va nel rapporto finale (la ditta prende la ragione sociale della riga
+  aggiornata più di recente; le righe di ruolo conservano la propria).
+
+### Ripristino da migration fallita (P3009)
+
+La migration è transazionale (DDL e DML in un solo script: un `RAISE EXCEPTION` annulla tutto).
+Se il deploy si ferma con P3009:
+
+1. controllare che la migration non abbia lasciato nulla: `SELECT to_regclass('public.ditte');` deve
+   dare NULL (altrimenti non è stata annullata: fermarsi e chiedere);
+2. correggere il dato indicato dal messaggio (i soli conteggi per tabella; i valori si cercano con il
+   censimento, restringendo la `WHERE` a `p !~ '^[0-9]{11}$'`);
+3. sul VPS, in `/opt/rifiuti/site`, dentro il container backend e COME OWNER (lo stesso modo in cui il
+   job di deploy esegue `migrate deploy`, `.gitea/workflows/deploy.yml`):
+   ```bash
+   cd /opt/rifiuti/site
+   COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
+   $COMPOSE run --rm backend sh -c 'DATABASE_URL="$DATABASE_URL_MIGRAZIONI" npx prisma migrate resolve --rolled-back 20261031110000_ditte_sedi_controparti'
+   ```
+   (o il nome della migration fallita; le virgolette singole fanno espandere `DATABASE_URL_MIGRAZIONI`
+   dentro il container, non sulla shell del VPS), poi rilanciare il deploy.
+
+### Colonne vecchie congelate (`20261031110100_anagrafiche_su_ditte`, Task 3b-2)
+
+La migration richiama l'ultima volta `f210_collega_anagrafiche()` (collega le righe create dal
+backend vecchio fra le due migration, perché il deploy applica le migration mentre il vecchio è
+ancora in servizio), la elimina, controlla che nessuna riga di ruolo sia senza ditta o sede (se no
+`RAISE EXCEPTION` con i soli conteggi per tabella e tutto viene annullato), rende `ditta_id` e
+`sede_id` NOT NULL, toglie il NOT NULL a ragione sociale, P.IVA e indirizzo della riga di ruolo,
+elimina i tre indici unici `*_tenant_id_partita_iva_key` (l'unicità sta in `ditte`) e commenta le
+colonne come "copia congelata". Nessun dato viene cancellato; il lock sulle tabelle vive è limitato
+da `SET LOCAL lock_timeout = '5s'`. Se non ottiene il lock la migration fallisce senza modificare
+nulla, ma resta segnata come fallita (P3009): prima di rilanciare il deploy serve
+`npx prisma migrate resolve --rolled-back 20261031110100_anagrafiche_su_ditte` (stessa procedura
+del ripristino da P3009 sopra).
+
+**Finestra di deploy.** Se la 110000 e la 110100 arrivano nello stesso deploy, fra il commit della
+110100 e l'avvio del nuovo backend il backend vecchio non può creare anagrafiche (INSERT senza
+`ditta_id` → 23502 → 500). Fallisce in modo sicuro, senza toccare dati; le letture non cambiano.
+Le **modifiche (PUT)** servite dal backend vecchio nella stessa finestra invece riescono, ma
+scrivono solo le colonne congelate, che il codice nuovo non legge più: la modifica va persa senza
+alcun errore. Se la finestra non è trascurabile, avvisare di non modificare anagrafiche fra
+`migrate` e `up -d`, e rivedere dopo il deploy quelle toccate in quel lasso di tempo.
+
+Da qui il codice nuovo **non scrive più** le colonne vecchie e non le legge, salvo la ragione sociale
+(`ragioneSocialeStorica`, usata dal MUD per le integrazioni già salvate). Le righe create dopo il
+deploy hanno quelle colonne NULL. Un privato (solo codice fiscale) esiste solo su `ditte`. La
+rimozione fisica delle colonne è un seguito (F2-10b).
+
+### Note di rilascio F2-10 (da riportare nel rapporto di deploy)
+
+- **Ditte fuse con nome divergente** (4 nel censimento del 31/10): la ditta prende il nome della riga
+  aggiornata più di recente. Da quel momento FIR nuovi, contratti, dashboard, mail di scadenza e
+  RENTRI (anche per i FIR già esistenti) usano quel nome per tutti i ruoli; il MUD no (usa la
+  ragione sociale storica della riga). Chiedere all'operatore di rivedere quelle ditte dopo il deploy.
+- **Rollback del solo codice** (senza lo script di ripristino qui sotto): i FIR firmati con il
+  codice fiscale delle parti (`*_codice_fiscale` su `firs`) non sono più verificabili dal codice vecchio.
+- **Controlli dopo il deploy** (come owner, sola lettura): `SELECT count(*) FROM ditte;` atteso
+  circa 7 (come da censimento); nessuna riga di ruolo senza ditta o sede:
+  `SELECT (SELECT count(*) FROM produttori WHERE ditta_id IS NULL OR sede_id IS NULL) +
+  (SELECT count(*) FROM trasportatori WHERE ditta_id IS NULL OR sede_id IS NULL) +
+  (SELECT count(*) FROM destinatari WHERE ditta_id IS NULL OR sede_id IS NULL);` deve dare 0 (con i
+  NOT NULL della 110100 è già garantito dallo schema: il controllo conferma che la migration è applicata).
+- Su una sede già esistente i contatti nuovi non sovrascrivono mai quelli registrati: la risposta
+  porta un avviso e i contatti si cambiano da "Sedi".
+
+### Rollback
+
+Fino alla `20261031110000_ditte_sedi_controparti` il rollback del codice è innocuo (le migration
+sono additive e le colonne vecchie non cambiano). **Dopo** la `20261031110100_anagrafiche_su_ditte`
+il codice vecchio non legge le anagrafiche create dopo il deploy (colonne vecchie NULL) e non
+conosce i privati: il rollback richiede il **ripristino del backup notturno** oppure lo script
+inverso qui sotto (come owner, prima del rollback del codice).
+
+**Privati (`partita_iva` NULL, solo produttori per D2.5): vanno decisi a mano PRIMA**, cancellando
+la riga di ruolo o assegnando una P.IVA. Controllo:
+`SELECT count(*) FROM produttori r JOIN ditte d ON d.id = r.ditta_id WHERE d.partita_iva IS NULL;`
+Se ce ne sono, il `SET NOT NULL` sulla P.IVA fallisce: lo script è in una transazione, quindi
+**non modifica nulla** (lanciarlo con `psql -v ON_ERROR_STOP=1`).
+
+Lo script ricostruisce le colonne vecchie dalla ditta e dalla sede predefinita, rimette i NOT NULL e
+gli indici unici, **ricrea `f210_collega_anagrafiche()`** (il redeploy rilancerebbe la 110100, che la
+chiama: senza, "function does not exist" → P3009) e **cancella la riga della 110100 da
+`_prisma_migrations`** (`migrate resolve --rolled-back` su una migration applicata con successo è
+rifiutato da Prisma, P3012). La funzione si prende dalla 110000 e lo script si trova in `ops/f210-rollback.sql`:
+
+```bash
+cd /opt/rifiuti/site
+COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
+MIGR=apps/backend/prisma/migrations/20261031110000_ditte_sedi_controparti/migration.sql
+{ echo 'BEGIN;'
+  sed -n '/^CREATE FUNCTION f210_collega_anagrafiche/,/^\$f210\$;/p' "$MIGR"
+  echo 'REVOKE EXECUTE ON FUNCTION f210_collega_anagrafiche() FROM PUBLIC;'
+  cat ops/f210-rollback.sql
+} | $COMPOSE exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+Tutto passa su STDIN in un solo flusso, dentro il container `postgres` (il client `psql` gira lì: non
+serve copiare file). `$POSTGRES_USER` è il proprietario del database (`DB_USER`), le virgolette
+singole fanno espandere le variabili dentro il container. Lo script è
+[`ops/f210-rollback.sql`](f210-rollback.sql): ricostruisce le colonne vecchie, rimette i NOT NULL e
+gli indici unici e cancella la riga della 110100 da `_prisma_migrations`; la `BEGIN;` e la funzione
+sono anteposte dal comando. Con `ON_ERROR_STOP` un errore interrompe il flusso e la transazione non
+viene confermata (nessuna modifica).
+
+Provato per intero (il 31/10, con il comando sopra via `docker exec -i … sh -c 'psql …'`) su un
+database temporaneo (migrate deploy fino alla 110100, rollback, nuovo
+`migrate deploy` che riapplica la 110100 senza errori). Le ditte e le sedi create dopo il deploy
+restano in `ditte`/`sedi_ditte` (il codice vecchio le ignora).
+
+### Sede e codice fiscale delle parti del FIR (`20261031110200_fir_parti_sede_cf`, Task 5a)
+
+Additiva: cinque colonne NULL su `firs` (`producer_sede_id`, `receiver_sede_id`,
+`producer_codice_fiscale`, `carrier_codice_fiscale`, `receiver_codice_fiscale`), nessun backfill,
+nessuna FK (snapshot), nessuna policy (`firs` è già sotto RLS). `SET LOCAL lock_timeout = '5s'`:
+se non ottiene il lock fallisce senza modificare nulla ma resta segnata come fallita (P3009), quindi
+prima di rilanciare il deploy `npx prisma migrate resolve --rolled-back 20261031110200_fir_parti_sede_cf`.
+
+Ripristino: `ALTER TABLE firs DROP COLUMN producer_sede_id, DROP COLUMN receiver_sede_id,
+DROP COLUMN producer_codice_fiscale, DROP COLUMN carrier_codice_fiscale,
+DROP COLUMN receiver_codice_fiscale;` e `DELETE FROM _prisma_migrations WHERE migration_name =
+'20261031110200_fir_parti_sede_cf';`. Il codice vecchio ignora le colonne; i FIR con il codice fiscale
+nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP COLUMN`.
+
+---
+
 ## Rollback
 
 Se lo smoke test fallisce dopo `migrate` e `up -d`, i container nuovi restano

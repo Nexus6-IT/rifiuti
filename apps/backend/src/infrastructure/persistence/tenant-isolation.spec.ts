@@ -101,8 +101,8 @@ describe('Multi-Tenant Isolation (RED — riproduce il cross-tenant leak)', () =
   })
 
   it('LETTURA: una query nel contesto del tenant B NON deve filtrare sui dati del tenant A', async () => {
-    // Il consulente, operando su B, cerca un produttore per Partita IVA.
-    await repository.findByPartitaIVA('12345678901')
+    // Il consulente, operando su B, legge un produttore.
+    await repository.findById('prod-1')
 
     // Catturiamo il `where` con cui il repository ha interrogato il DB.
     expect(prismaMock.produttore.findFirst).toHaveBeenCalledTimes(1)
@@ -119,7 +119,9 @@ describe('Multi-Tenant Isolation (RED — riproduce il cross-tenant leak)', () =
   it('SCRITTURA: salvando nel contesto del tenant B NON deve scrivere sotto il tenant A', async () => {
     const produttore = Produttore.create({
       ragioneSociale: 'Cliente del Consulente Srl',
-      partitaIVA: PartitaIVA.create('12345678901'),
+      dittaId: 'ditta-1',
+      sedeId: 'sede-1',
+      partitaIVA: PartitaIVA.create('12345678903'),
       sedeLegale: Indirizzo.create({
         via: 'Via Beta',
         civico: '1',
@@ -129,11 +131,13 @@ describe('Multi-Tenant Isolation (RED — riproduce il cross-tenant leak)', () =
       }),
     })
 
-    await repository.save(produttore)
+    // F2-10: l'insert avviene nella transazione del chiamante (client `tx`)
+    const tx = { produttore: { create: jest.fn().mockResolvedValue(undefined) } }
+    await repository.crea(tx as any, produttore)
 
     // Catturiamo il tenantId effettivamente persistito nel record `create`.
-    expect(prismaMock.produttore.upsert).toHaveBeenCalledTimes(1)
-    const tenantIdScritto = prismaMock.produttore.upsert.mock.calls[0][0].create.tenantId
+    expect(tx.produttore.create).toHaveBeenCalledTimes(1)
+    const tenantIdScritto = tx.produttore.create.mock.calls[0][0].data.tenantId
 
     // ASPETTATIVA CORRETTA: il record deve nascere sotto il tenant del contesto (B).
     expect(tenantIdScritto).toBe(TENANT_B)
@@ -144,7 +148,7 @@ describe('Multi-Tenant Isolation (RED — riproduce il cross-tenant leak)', () =
 
   it('ROOT CAUSE: il tenant corrente NON deve essere risolto con tenant.findFirst() (primo tenant del DB)', async () => {
     // Operazione qualunque che attraversa getContextTenantId().
-    await repository.findByPartitaIVA('99999999999')
+    await repository.findById('prod-2')
 
     // Il bug è proprio l'uso di tenant.findFirst() come "tenant corrente".
     // Un'implementazione corretta legge dal contesto/JWT, NON dal "primo tenant".

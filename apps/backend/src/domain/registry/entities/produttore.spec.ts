@@ -12,6 +12,8 @@ describe('Produttore Entity', () => {
     it('should create a new Produttore', () => {
       const props: ProduttoreProps = {
         ragioneSociale: 'Acme Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('12345678901'),
         sedeLegale: Indirizzo.create({
           via: 'Via Roma',
@@ -26,12 +28,14 @@ describe('Produttore Entity', () => {
 
       expect(produttore.id).toBeDefined()
       expect(produttore.ragioneSociale).toBe('Acme Srl')
-      expect(produttore.partitaIVA.getValue()).toBe('12345678901')
+      expect(produttore.partitaIVA?.getValue()).toBe('12345678901')
     })
 
     it('should trim ragione sociale', () => {
       const props: ProduttoreProps = {
         ragioneSociale: '  Acme Srl  ',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('12345678901'),
         sedeLegale: Indirizzo.create({
           via: 'Via Roma',
@@ -49,6 +53,8 @@ describe('Produttore Entity', () => {
     it('should throw error for empty ragione sociale', () => {
       const props: ProduttoreProps = {
         ragioneSociale: '',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('12345678901'),
         sedeLegale: Indirizzo.create({
           via: 'Via Roma',
@@ -68,6 +74,8 @@ describe('Produttore Entity', () => {
       const produttore = Produttore.reconstitute({
         id: 'prod-123',
         ragioneSociale: 'Acme Srl',
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
         partitaIVA: PartitaIVA.create('12345678901'),
         sedeLegale: Indirizzo.create({
           via: 'Via Roma',

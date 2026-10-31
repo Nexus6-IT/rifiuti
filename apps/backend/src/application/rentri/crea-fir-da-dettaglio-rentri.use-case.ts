@@ -188,14 +188,10 @@ export class CreaFIRDaDettaglioRENTRIUseCase implements CreaFIRDaFormularioRENTR
 
   /**
    * Mappa un soggetto RENTRI (produttore/destinatario/trasportatore
-   * principale) su {@link ParteFIR}. `ParteFIR` ha un solo campo
-   * identificativo (`partitaIva`), mentre RENTRI usa "codice_fiscale" per
-   * tutti i soggetti (può essere una vera Partita IVA a 11 cifre o un codice
-   * fiscale personale a 16 caratteri, v. formulari.yaml). Nessun campo
-   * dedicato `codiceFiscale` su `ParteFIR` in questo giro (aggiungerne uno
-   * persistito richiederebbe una migrazione Prisma, non consentita): si
-   * conserva qui il valore RENTRI così com'è, nel campo disponibile — lacuna
-   * nota, non un dato perso (v. commento di classe, Decisione 4).
+   * principale) su {@link ParteFIR}. RENTRI usa "codice_fiscale" per tutti i
+   * soggetti: con 11 cifre e' una Partita IVA (va in `partitaIva`), altrimenti
+   * e' il codice fiscale di un privato e va in `codiceFiscale`, con
+   * `partitaIva` vuota (F2-10 D9.9; stessa regola delle tratte aggiuntive).
    */
   private mappaParte(
     dati:
@@ -211,9 +207,11 @@ export class CreaFIRDaDettaglioRENTRIUseCase implements CreaFIRDaFormularioRENTR
       throw this.campoMancante(`${nomeCampo}.codice_fiscale`)
     }
 
+    const ePartitaIva = /^\d{11}$/.test(dati.codice_fiscale)
     return {
       ragioneSociale: dati.denominazione,
-      partitaIva: dati.codice_fiscale,
+      partitaIva: ePartitaIva ? dati.codice_fiscale : '',
+      ...(ePartitaIva ? {} : { codiceFiscale: dati.codice_fiscale }),
       indirizzo: 'indirizzo' in dati ? this.mappaIndirizzo(dati.indirizzo) : undefined,
     }
   }

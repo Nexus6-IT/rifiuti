@@ -6,12 +6,19 @@ import {
   PrismaClientValidationError,
 } from '@prisma/client/runtime/library'
 import { LoggerService } from '../logger/logger.service'
+import { mascheraDatiPersonali } from '../monitoring/opzioni-sentry'
 import { DomainException } from '../../domain/shared/domain-exception'
 import {
+  DatiControparteNonValidiError,
+  DittaIdentificativiInConflittoError,
+  DittaNonTrovataError,
   FirAnnullatoNelFrattempoError,
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
   FirNonTrovatoError,
+  IdentificativoNonCorrispondenteError,
+  SedeNonModificabileError,
+  SedeNonTrovataError,
 } from '../domain/errors'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 import { CODICE_CERTIFICATO_MANCANTE } from '../../infrastructure/rentri/rentri-certificato.costanti'
@@ -123,6 +130,33 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorCode = FirNonTrovatoError.CODICE
       message = FirNonTrovatoError.MESSAGGIO_UTENTE
     }
+    // Ditte e sedi delle controparti (F2-10): errori attesi, senza segnalazione a Bugsink e con
+    // messaggi che non riportano mai identificativi fiscali ne' id.
+    else if (exception instanceof DatiControparteNonValidiError) {
+      statusCode = HttpStatus.BAD_REQUEST
+      errorCode = DatiControparteNonValidiError.CODICE
+      message = exception.message
+    } else if (exception instanceof IdentificativoNonCorrispondenteError) {
+      statusCode = HttpStatus.BAD_REQUEST
+      errorCode = IdentificativoNonCorrispondenteError.CODICE
+      message = exception.message
+    } else if (exception instanceof DittaIdentificativiInConflittoError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = DittaIdentificativiInConflittoError.CODICE
+      message = exception.message
+    } else if (exception instanceof SedeNonModificabileError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = SedeNonModificabileError.CODICE
+      message = exception.message
+    } else if (exception instanceof DittaNonTrovataError) {
+      statusCode = HttpStatus.NOT_FOUND
+      errorCode = DittaNonTrovataError.CODICE
+      message = DittaNonTrovataError.MESSAGGIO_UTENTE
+    } else if (exception instanceof SedeNonTrovataError) {
+      statusCode = HttpStatus.NOT_FOUND
+      errorCode = SedeNonTrovataError.CODICE
+      message = SedeNonTrovataError.MESSAGGIO_UTENTE
+    }
     // Azienda senza certificato RENTRI: non e' un guasto del server ma serve un'azione
     // dell'utente (caricare il certificato). 422 col messaggio gia' pensato per l'utente
     // (senza id del tenant) e nessuna segnalazione a Bugsink (sotto 500).
@@ -138,17 +172,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = 'Si è verificato un errore imprevisto. Riprova più tardi.'
     }
 
+    // Percorso senza query string e senza dati personali: una query puo' contenere un CF.
+    // Limite noto: il mascheramento non copre nome e cognome dei privati, che compaiono negli
+    // argomenti stampati da PrismaClientValidationError (D12).
+    const percorsoSenzaQuery = mascheraDatiPersonali(request.url.split('?')[0])
+
     // Log the error
     this.logger.error(
-      `HTTP ${request.method} ${request.url} - ${statusCode} ${errorCode}`,
-      exception instanceof Error ? exception : undefined,
+      `HTTP ${request.method} ${percorsoSenzaQuery} - ${statusCode} ${errorCode}`,
+      exception instanceof Error ? this.erroreSenzaDatiPersonali(exception) : undefined,
       {
         correlationId,
         tenantId,
         userId,
         statusCode,
         errorCode,
-        path: request.url,
+        path: percorsoSenzaQuery,
         method: request.method,
       }
     )
@@ -156,7 +195,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Segnalazione a Bugsink dei soli 5xx. Senza SENTRY_DSN l'SDK non è inizializzato e la
     // chiamata non fa nulla. I 503 delle rotte di health restano fuori (Decisione 4): sono
     // il segnale normale di un controllo che fallisce, non un errore imprevisto.
-    const percorsoSenzaQuery = request.url.split('?')[0]
     if (statusCode >= 500 && !/\/health(\/|$)/.test(percorsoSenzaQuery)) {
       try {
         Sentry.captureException(exception, {
@@ -177,10 +215,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
       ...(details && { details }),
       correlationId,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: percorsoSenzaQuery,
     }
 
     response.status(statusCode).json(errorResponse)
+  }
+
+  /**
+   * Copia dell'errore per il log con messaggio e stack mascherati: i messaggi di Postgres
+   * (`Failing row contains (...)`, `DETAIL: Key (...)`) riportano i valori della riga, codice
+   * fiscale compreso (D12).
+   */
+  private erroreSenzaDatiPersonali(errore: Error): Error {
+    const copia = new Error(mascheraDatiPersonali(errore.message))
+    copia.name = errore.name
+    copia.stack = errore.stack ? mascheraDatiPersonali(errore.stack) : undefined
+    return copia
   }
 
   /**

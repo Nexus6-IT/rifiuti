@@ -5,6 +5,7 @@
 
 import { Module } from '@nestjs/common'
 import { RegistryController } from './registry.controller'
+import { DitteController } from './ditte.controller'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { ReferenceDataModule } from '../../application/reference-data/reference-data.module'
 
@@ -29,6 +30,10 @@ import { GetDestinatarioUseCase } from '../../application/registry/use-cases/get
 import { UpdateDestinatarioUseCase } from '../../application/registry/use-cases/update-destinatario.use-case'
 import { DeleteDestinatarioUseCase } from '../../application/registry/use-cases/delete-destinatario.use-case'
 
+// Ditte e sedi (F2-10)
+import { DitteService } from '../../application/registry/ditte/ditte.service'
+import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-prisma.repository'
+
 // Repositories
 import { ProduttorePrismaRepository } from '../../infrastructure/persistence/produttore-prisma.repository'
 import { TrasportatorePrismaRepository } from '../../infrastructure/persistence/trasportatore-prisma.repository'
@@ -39,7 +44,7 @@ import { DESTINATARIO_REPOSITORY } from '../../domain/registry/repositories/dest
 
 @Module({
   imports: [PrismaModule, ReferenceDataModule],
-  controllers: [RegistryController],
+  controllers: [RegistryController, DitteController],
   providers: [
     // Produttori Use Cases
     CreateProduttoreUseCase,
@@ -61,6 +66,10 @@ import { DESTINATARIO_REPOSITORY } from '../../domain/registry/repositories/dest
     GetDestinatarioUseCase,
     UpdateDestinatarioUseCase,
     DeleteDestinatarioUseCase,
+
+    // Ditte e sedi (F2-10)
+    DitteService,
+    DittaPrismaRepository,
 
     // Repositories
     {

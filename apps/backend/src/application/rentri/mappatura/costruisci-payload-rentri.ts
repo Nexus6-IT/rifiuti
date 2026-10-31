@@ -120,16 +120,7 @@ export class CostruisciPayloadRentri {
     nomeParte: 'produttore' | 'destinatario' | 'trasportatore',
     parte: ParteFIR | null,
     tenantId: string
-  ): Promise<{
-    ragioneSociale: string
-    partitaIVA: string
-    via: string
-    civico: string
-    cap: string
-    comune: string
-    provincia: string
-    numeroIscrizione?: string | null
-  }> {
+  ): Promise<ParteRegistro> {
     const registroId = parte?.registroId
     if (!registroId) {
       throw new DatoMancantePerRentriError(
@@ -139,10 +130,15 @@ export class CostruisciPayloadRentri {
       )
     }
 
-    const tabella = this.prisma.db[nomeParte] as {
-      findFirst: (args: unknown) => Promise<Record<string, unknown> | null>
+    // I tre delegate hanno lo stesso insieme di campi letti qui: il tipo del risultato e' esplicito
+    // cosi' tsc controlla ogni campo usato (prima il cast `as never` lo nascondeva).
+    const tabella = this.prisma.db[nomeParte] as unknown as {
+      findFirst: (args: unknown) => Promise<RigaRegistro | null>
     }
-    const riga = await tabella.findFirst({ where: { id: registroId, tenantId } })
+    const riga = await tabella.findFirst({
+      where: { id: registroId, tenantId },
+      include: { ditta: true, sede: true },
+    })
     if (!riga) {
       throw new DatoMancantePerRentriError(
         nomeParte,
@@ -151,8 +147,69 @@ export class CostruisciPayloadRentri {
       )
     }
 
-    return riga as never
+    // Denominazione e identificativo dalla ditta (ditta_id e' NOT NULL: le colonne storiche sulla
+    // riga di ruolo non esistono piu'). L'indirizzo dalla sede scelta sul FIR (filtrata per tenant
+    // E ditta del ruolo: una sede di un'altra ditta non deve mai uscire) o, se il FIR non ne ha
+    // una (creato prima della migration), dalla predefinita del ruolo.
+    const ditta = riga.ditta
+    if (!ditta) {
+      throw new DatoMancantePerRentriError(
+        nomeParte,
+        'ditta',
+        'la riga di registro non ha una ditta'
+      )
+    }
+    let indirizzo: IndirizzoRegistro | null = riga.sede
+    if (parte?.sedeId) {
+      indirizzo = await this.prisma.db.sedeDitta.findFirst({
+        where: { id: parte.sedeId, tenantId, dittaId: riga.dittaId },
+      })
+      if (!indirizzo) {
+        throw new DatoMancantePerRentriError(
+          nomeParte,
+          'sede',
+          'la sede scelta sul FIR non risulta tra le sedi della ditta'
+        )
+      }
+    }
+    if (!indirizzo) {
+      throw new DatoMancantePerRentriError(nomeParte, 'sede', 'la riga di registro non ha una sede')
+    }
+    return {
+      ragioneSociale: ditta.ragioneSociale,
+      // Il contratto vuole un solo identificativo fiscale: CF della ditta se c'e', altrimenti P.IVA
+      partitaIVA: ditta.codiceFiscale ?? ditta.partitaIva ?? '',
+      via: indirizzo.via,
+      civico: indirizzo.civico,
+      cap: indirizzo.cap,
+      comune: indirizzo.comune,
+      provincia: indirizzo.provincia,
+      numeroIscrizione: riga.numeroIscrizione ?? null,
+    }
   }
+}
+
+interface IndirizzoRegistro {
+  via: string
+  civico: string
+  cap: string
+  comune: string
+  provincia: string
+}
+
+/** Riga di ruolo con ditta e sede, come la restituisce `findFirst` con l'include. */
+interface RigaRegistro extends IndirizzoRegistro {
+  dittaId: string
+  numeroIscrizione?: string | null
+  ditta: { ragioneSociale: string; partitaIva: string | null; codiceFiscale: string | null } | null
+  sede: IndirizzoRegistro | null
+}
+
+/** Parte risolta pronta per il mapping. */
+interface ParteRegistro extends IndirizzoRegistro {
+  ragioneSociale: string
+  partitaIVA: string
+  numeroIscrizione?: string | null
 }
 
 function indirizzoDi(riga: {

@@ -129,7 +129,12 @@ export interface FIRRifiuto {
 export interface ParteFIR {
   registroId?: string
   ragioneSociale: string
+  /** P.IVA, oppure `''` per un privato che ha solo il codice fiscale (F2-10 D9.4). */
   partitaIva: string
+  /** Codice fiscale della parte, se la ditta lo ha (F2-10). */
+  codiceFiscale?: string
+  /** Sede da cui e' stato preso l'indirizzo (produttore e destinatario; non il trasportatore). */
+  sedeId?: string
   indirizzo?: string
   targaVeicolo?: string
   contatto?: string
@@ -696,6 +701,8 @@ export class FIR extends AggregateRoot {
       n(a.registroId) === n(b.registroId) &&
       a.ragioneSociale === b.ragioneSociale &&
       a.partitaIva === b.partitaIva &&
+      n(a.codiceFiscale) === n(b.codiceFiscale) &&
+      n(a.sedeId) === n(b.sedeId) &&
       n(a.indirizzo) === n(b.indirizzo) &&
       n(a.targaVeicolo) === n(b.targaVeicolo) &&
       n(a.contatto) === n(b.contatto)

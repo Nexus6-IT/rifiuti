@@ -27,9 +27,13 @@ describe('ProduttorePrismaRepository — tenant scoping', () => {
       await repo.findById('prod-1')
     })
 
-    expect(prisma.db.produttore.findFirst).toHaveBeenCalledWith({
-      where: { id: 'prod-1', tenantId: 'tenant-A' },
-    })
+    // la lettura porta anche ditta e sede (F2-10): il filtro per tenant resta nel `where`
+    expect(prisma.db.produttore.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'prod-1', tenantId: 'tenant-A' },
+        include: expect.objectContaining({ ditta: expect.anything(), sede: true }),
+      })
+    )
   })
 
   it('delete è scoped per tenant (deleteMany con tenantId)', async () => {
@@ -40,6 +44,32 @@ describe('ProduttorePrismaRepository — tenant scoping', () => {
     expect(prisma.db.produttore.deleteMany).toHaveBeenCalledWith({
       where: { id: 'prod-1', tenantId: 'tenant-A' },
     })
+  })
+
+  it('findByTenantId ordina per ragione sociale della ditta', async () => {
+    prisma.db.produttore.findMany = jest.fn().mockResolvedValue([])
+    await TenantContext.run({ tenantId: 'tenant-A', userId: 'u1' }, async () => {
+      await repo.findByTenantId('tenant-A')
+    })
+
+    expect(prisma.db.produttore.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId: 'tenant-A' },
+        orderBy: { ditta: { ragioneSociale: 'asc' } },
+      })
+    )
+  })
+
+  it('findByDittaId usa il client della transazione e filtra per tenant', async () => {
+    const tx = { produttore: { findFirst: jest.fn().mockResolvedValue(null) } }
+    await TenantContext.run({ tenantId: 'tenant-A', userId: 'u1' }, async () => {
+      await repo.findByDittaId(tx as any, 'ditta-1')
+    })
+
+    expect(tx.produttore.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { dittaId: 'ditta-1', tenantId: 'tenant-A' } })
+    )
+    expect(prisma.db.produttore.findFirst).not.toHaveBeenCalled()
   })
 
   it('fail-closed: senza tenant nel contesto findById lancia', async () => {

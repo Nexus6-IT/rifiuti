@@ -187,21 +187,23 @@ export async function firConPrefissoResidui(): Promise<string[]> {
 export async function anagraficheConPrefissoResidui(): Promise<string[]> {
   const prisma = ottieniClient()
 
+  // Si leggono le RIGHE DI RUOLO con il nome della ditta, non la tabella `ditte`: le ditte
+  // sopravvivono alla DELETE del ruolo e risulterebbero sempre "residue" (F2-10).
+  const conDitta = { id: true, ditta: { select: { ragioneSociale: true } } } as const
   const [produttori, trasportatori, destinatari] = await Promise.all([
-    prisma.produttore.findMany({ select: { id: true, ragioneSociale: true } }),
-    prisma.trasportatore.findMany({ select: { id: true, ragioneSociale: true } }),
-    prisma.destinatario.findMany({ select: { id: true, ragioneSociale: true } }),
+    prisma.produttore.findMany({ select: conDitta }),
+    prisma.trasportatore.findMany({ select: conDitta }),
+    prisma.destinatario.findMany({ select: conDitta }),
   ])
+  const nome = (r: { ditta: { ragioneSociale: string } | null }) => r.ditta?.ragioneSociale ?? ''
 
   return [
-    ...produttori
-      .filter(p => haPrefissoDiRun(p.ragioneSociale))
-      .map(p => `produttore:${p.id}:${p.ragioneSociale}`),
+    ...produttori.filter(p => haPrefissoDiRun(nome(p))).map(p => `produttore:${p.id}:${nome(p)}`),
     ...trasportatori
-      .filter(t => haPrefissoDiRun(t.ragioneSociale))
-      .map(t => `trasportatore:${t.id}:${t.ragioneSociale}`),
+      .filter(t => haPrefissoDiRun(nome(t)))
+      .map(t => `trasportatore:${t.id}:${nome(t)}`),
     ...destinatari
-      .filter(d => haPrefissoDiRun(d.ragioneSociale))
-      .map(d => `destinatario:${d.id}:${d.ragioneSociale}`),
+      .filter(d => haPrefissoDiRun(nome(d)))
+      .map(d => `destinatario:${d.id}:${nome(d)}`),
   ]
 }

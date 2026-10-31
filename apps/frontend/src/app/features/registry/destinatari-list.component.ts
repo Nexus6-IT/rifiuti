@@ -15,9 +15,12 @@ import { TagModule } from 'primeng/tag'
 import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateDestinatarioDto } from './registry.service'
-import { Destinatario, Indirizzo } from '../../shared/models/registry.model'
+import { Destinatario, Indirizzo, Ditta, SedeDitta } from '../../shared/models/registry.model'
 import { AuthService } from '../../core/services/auth.service'
 import { puoGestireAnagrafiche } from './registry-permissions'
+import { DittaIdentificativiComponent } from './ditta-identificativi.component'
+import { SediDittaDialogComponent } from './sedi-ditta-dialog.component'
+import { ErroriIdentificativi, identificativiPerSalvataggio } from './identificativo-fiscale'
 
 @Component({
   selector: 'app-destinatari-list',
@@ -36,6 +39,8 @@ import { puoGestireAnagrafiche } from './registry-permissions'
     TagModule,
     IconFieldModule,
     InputIconModule,
+    DittaIdentificativiComponent,
+    SediDittaDialogComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -105,11 +110,11 @@ import { puoGestireAnagrafiche } from './registry-permissions'
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Ragione sociale</th>
-                <th scope="col">Partita IVA</th>
+                <th scope="col">P.IVA / C.F.</th>
                 <th scope="col">N. autorizzazione</th>
                 <th scope="col">Sede</th>
                 <th scope="col">PEC</th>
-                <th scope="col" style="width: 7.5rem">Azioni</th>
+                <th scope="col" style="width: 12rem">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-destinatario>
@@ -119,8 +124,22 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                   <span class="font-semibold">{{ destinatario.ragioneSociale }}</span>
                 </td>
                 <td>
-                  <span class="cell-label">Partita IVA</span>
-                  <span class="mono">{{ destinatario.partitaIVA }}</span>
+                  <span class="cell-label">P.IVA / C.F.</span>
+                  <span
+                    class="mono"
+                    [attr.data-testid]="'destinatari-identificativo-' + destinatario.id"
+                    >{{ destinatario.partitaIVA || destinatario.codiceFiscale }}</span
+                  >
+                  @if (destinatario.partitaIVA && destinatario.codiceFiscale) {
+                    <span class="mono ident-secondario">{{ destinatario.codiceFiscale }}</span>
+                  }
+                  @if (destinatario.partitaIvaDaVerificare) {
+                    <span
+                      class="badge-da-verificare"
+                      [attr.data-testid]="'destinatari-da-verificare-' + destinatario.id"
+                      >Da verificare</span
+                    >
+                  }
                 </td>
                 <td>
                   <span class="cell-label">N. autorizzazione</span>
@@ -138,6 +157,19 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
+                  <div class="row-actions">
+                    @if (destinatario.dittaId) {
+                      <p-button
+                        [label]="'Sedi (' + (destinatario.numeroSedi ?? 1) + ')'"
+                        icon="pi pi-map-marker"
+                        [text]="true"
+                        size="small"
+                        (onClick)="apriSedi(destinatario)"
+                        [ariaLabel]="'Sedi di ' + destinatario.ragioneSociale"
+                        [attr.data-testid]="'destinatari-sedi-' + destinatario.id"
+                      />
+                    }
+                  </div>
                   @if (puoGestire()) {
                     <div class="row-actions">
                       <p-button
@@ -227,33 +259,27 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                   id="dest-ragione"
                   name="ragioneSociale"
                   [(ngModel)]="formData.ragioneSociale"
+                  [readOnly]="!!dittaTrovata"
                   placeholder="es. Impianto S.r.l."
                   required
                   autocomplete="organization"
                 />
               </div>
-              <div class="field col-12 md:col-6">
-                <label for="dest-piva"
-                  >Partita IVA <span class="req" aria-hidden="true">*</span></label
-                >
-                <input
-                  pInputText
-                  id="dest-piva"
-                  name="partitaIVA"
-                  [(ngModel)]="formData.partitaIVA"
-                  placeholder="11 cifre"
-                  maxlength="11"
-                  inputmode="numeric"
-                  required
-                  [disabled]="editMode"
-                  data-testid="destinatari-piva-input"
+              <div class="field col-12">
+                <app-ditta-identificativi
+                  testidPrefix="destinatari"
+                  pfx="dest"
+                  tipo="destinatario"
+                  [modalita]="editMode ? 'edit' : 'create'"
+                  [(partitaIVA)]="formData.partitaIVA"
+                  [(codiceFiscale)]="formData.codiceFiscale"
+                  [partitaIvaOriginale]="selectedDestinatario?.partitaIVA ?? null"
+                  [codiceFiscaleOriginale]="selectedDestinatario?.codiceFiscale ?? null"
+                  [partitaIvaDaVerificare]="!!selectedDestinatario?.partitaIvaDaVerificare"
+                  [errori]="erroriId"
+                  (dittaTrovata)="onDittaTrovata($event)"
+                  (sedeScelta)="onSedeScelta($event)"
                 />
-                <!-- La partita IVA è l'identità fiscale del soggetto: non
-                     modificabile dopo la creazione, il backend la rifiuta in
-                     modifica (400 forbidNonWhitelisted). -->
-                <small class="field-hint" *ngIf="editMode"
-                  >Non modificabile: è l'identità fiscale del soggetto.</small
-                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="dest-autorizzazione"
@@ -392,6 +418,14 @@ import { puoGestireAnagrafiche } from './registry-permissions'
         </ng-template>
       </p-dialog>
 
+      <app-sedi-ditta-dialog
+        [(visible)]="sediVisibili"
+        [dittaId]="sediDittaId"
+        [ragioneSociale]="sediRagioneSociale"
+        [puoGestire]="puoGestire()"
+        (modificata)="ricarica()"
+      />
+
       <p-confirmDialog data-testid="destinatari-confirm-dialog" />
     </div>
   `,
@@ -440,6 +474,21 @@ import { puoGestireAnagrafiche } from './registry-permissions'
       .mono {
         font-family: var(--font-family-mono);
         font-size: var(--font-size-sm);
+      }
+      .ident-secondario {
+        display: block;
+        color: var(--text-tertiary);
+      }
+      .badge-da-verificare {
+        display: inline-block;
+        margin-left: var(--spacing-xs);
+        padding: 0 var(--spacing-sm);
+        border: 1px solid var(--color-warning, #b45309);
+        border-radius: 999px;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        white-space: nowrap;
       }
       .row-actions {
         display: flex;
@@ -556,6 +605,16 @@ export class DestinatariListComponent implements OnInit {
 
   formData: CreateDestinatarioDto = this.getEmptyFormData()
 
+  /** Errori di partita IVA e codice fiscale, mostrati dal componente degli identificativi. */
+  erroriId: ErroriIdentificativi = {}
+  /** Ditta gia' presente trovata dalla ricerca (solo in creazione): blocca la ragione sociale. */
+  dittaTrovata: Ditta | null = null
+
+  // Dialog delle sedi della ditta
+  sediVisibili = false
+  sediDittaId = ''
+  sediRagioneSociale = ''
+
   private readonly authService = inject(AuthService)
   // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
   // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
@@ -582,6 +641,7 @@ export class DestinatariListComponent implements OnInit {
       [
         d.ragioneSociale,
         d.partitaIVA,
+        d.codiceFiscale,
         d.numeroAutorizzazione,
         d.pec,
         d.sede ? this.formatIndirizzo(d.sede) : '',
@@ -619,6 +679,8 @@ export class DestinatariListComponent implements OnInit {
     this.editMode = false
     this.selectedDestinatario = null
     this.formData = this.getEmptyFormData()
+    this.erroriId = {}
+    this.dittaTrovata = null
     this.displayDialog = true
   }
 
@@ -627,7 +689,8 @@ export class DestinatariListComponent implements OnInit {
     this.selectedDestinatario = destinatario
     this.formData = {
       ragioneSociale: destinatario.ragioneSociale,
-      partitaIVA: destinatario.partitaIVA,
+      partitaIVA: destinatario.partitaIVA ?? '',
+      codiceFiscale: destinatario.codiceFiscale ?? '',
       numeroAutorizzazione: destinatario.numeroAutorizzazione,
       sede: { ...destinatario.sede },
       pec: destinatario.pec,
@@ -635,11 +698,61 @@ export class DestinatariListComponent implements OnInit {
       // direttamente con l'input HTML type="date".
       scadenzaAutorizzazione: destinatario.scadenzaAutorizzazione ?? '',
     }
+    this.erroriId = {}
+    this.dittaTrovata = null
     this.displayDialog = true
   }
 
+  /** Ditta trovata (o non piu' valida): blocca/sblocca la ragione sociale e precompila. */
+  onDittaTrovata(ditta: Ditta | null): void {
+    this.dittaTrovata = ditta
+    if (ditta) this.formData.ragioneSociale = ditta.ragioneSociale
+  }
+
+  /** Sede scelta fra quelle della ditta: precompila indirizzo e PEC; "Nuova sede" li svuota. */
+  onSedeScelta(sede: SedeDitta | null): void {
+    this.formData.sede = {
+      via: sede?.via ?? '',
+      civico: sede?.civico ?? '',
+      cap: sede?.cap ?? '',
+      comune: sede?.citta ?? '',
+      provincia: sede?.provincia ?? '',
+    }
+    // anche i contatti della sede: cosi' quelli mostrati sono quelli che il backend manterra'
+    this.formData.pec = sede?.pec ?? ''
+  }
+
+  apriSedi(destinatario: Destinatario): void {
+    this.sediDittaId = destinatario.dittaId ?? ''
+    this.sediRagioneSociale = destinatario.ragioneSociale
+    this.sediVisibili = true
+  }
+
+  ricarica(): void {
+    this.loadDestinatari({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
+  }
+
   saveDestinatario(): void {
-    if (!this.validateForm()) {
+    const id = identificativiPerSalvataggio(
+      {
+        partitaIVA: this.formData.partitaIVA ?? '',
+        codiceFiscale: this.formData.codiceFiscale ?? '',
+      },
+      'destinatario',
+      this.editMode && this.selectedDestinatario
+        ? {
+            partitaIva: this.selectedDestinatario.partitaIVA,
+            codiceFiscale: this.selectedDestinatario.codiceFiscale ?? null,
+            partitaIvaDaVerificare: !!this.selectedDestinatario.partitaIvaDaVerificare,
+          }
+        : null
+    )
+    this.erroriId = id.errori
+    const identificativi = {
+      ...(id.partitaIVA && { partitaIVA: id.partitaIVA }),
+      ...(id.codiceFiscale && { codiceFiscale: id.codiceFiscale }),
+    }
+    if (Object.keys(id.errori).length > 0 || !this.validateForm()) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
@@ -658,11 +771,11 @@ export class DestinatariListComponent implements OnInit {
       this.editMode && this.selectedDestinatario
         ? this.registryService.updateDestinatario(
             this.selectedDestinatario.id,
-            // NON includere partitaIVA: è l'identità fiscale del soggetto,
-            // UpdateDestinatarioDto non la accetta (400 forbidNonWhitelisted)
-            // e non deve essere modificabile da qui.
+            // Gli identificativi impostati non si cambiano: si inviano solo quelli aggiunti o, per la
+            // P.IVA "da verificare", sostituiti (D2.7-D2.8); mai quelli invariati.
             {
               ragioneSociale: this.formData.ragioneSociale,
+              ...identificativi,
               sede: this.formData.sede,
               numeroAutorizzazione: this.formData.numeroAutorizzazione,
               pec: this.formData.pec,
@@ -671,11 +784,17 @@ export class DestinatariListComponent implements OnInit {
           )
         : this.registryService.createDestinatario({
             ...this.formData,
+            partitaIVA: id.partitaIVA,
+            codiceFiscale: id.codiceFiscale,
             scadenzaAutorizzazione,
           })
 
     operation.subscribe({
-      next: () => {
+      next: entity => {
+        // Avvisi non bloccanti del backend (es. ragione sociale mantenuta)
+        for (const avviso of entity.avvisi ?? []) {
+          this.messageService.add({ severity: 'info', summary: 'Informazione', detail: avviso })
+        }
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
@@ -729,7 +848,6 @@ export class DestinatariListComponent implements OnInit {
   validateForm(): boolean {
     return !!(
       this.formData.ragioneSociale?.trim() &&
-      this.formData.partitaIVA?.trim() &&
       this.formData.numeroAutorizzazione?.trim() &&
       this.formData.sede.via?.trim() &&
       this.formData.sede.civico?.trim() &&

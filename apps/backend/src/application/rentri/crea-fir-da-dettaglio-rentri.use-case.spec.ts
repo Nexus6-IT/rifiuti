@@ -256,6 +256,40 @@ describe('CreaFIRDaDettaglioRENTRIUseCase', () => {
     expect(fir.rifiuto.statoFisico).toBe('VS')
   })
 
+  // --- F2-10 D9.9: privati con codice fiscale di 16 caratteri ---
+
+  it('un produttore con codice fiscale di 16 caratteri va in codiceFiscale e la P.IVA resta vuota', async () => {
+    const dettaglio = dettaglioCompleto()
+    dettaglio.dati_partenza!.produttore!.codice_fiscale = 'RSSMRA80A01H501U'
+
+    const fir = await useCase.creaDaDettaglio(TENANT_ID, USER_ID, dettaglio, NUMERO_FIR)
+
+    expect(fir.produttore?.codiceFiscale).toBe('RSSMRA80A01H501U')
+    expect(fir.produttore?.partitaIva).toBe('')
+  })
+
+  it('con 11 cifre il valore va in partitaIva e codiceFiscale resta assente', async () => {
+    const fir = await useCase.creaDaDettaglio(TENANT_ID, USER_ID, dettaglioCompleto(), NUMERO_FIR)
+
+    expect(fir.produttore?.partitaIva).toBe('01234567890')
+    expect(fir.produttore?.codiceFiscale).toBeUndefined()
+    expect(fir.trasportatore?.partitaIva).toBe('11122233344')
+    expect(fir.trasportatore?.codiceFiscale).toBeUndefined()
+  })
+
+  it('un trasportatore principale e un destinatario con codice fiscale di 16 caratteri', async () => {
+    const dettaglio = dettaglioCompleto()
+    dettaglio.dati_partenza!.trasportatori![0].codice_fiscale = 'BNCLRA85M41F205C'
+    dettaglio.dati_partenza!.destinatario!.codice_fiscale = 'RSSMRA80A01H501U'
+
+    const fir = await useCase.creaDaDettaglio(TENANT_ID, USER_ID, dettaglio, NUMERO_FIR)
+
+    expect(fir.trasportatore?.codiceFiscale).toBe('BNCLRA85M41F205C')
+    expect(fir.trasportatore?.partitaIva).toBe('')
+    expect(fir.destinatario?.codiceFiscale).toBe('RSSMRA80A01H501U')
+    expect(fir.destinatario?.partitaIva).toBe('')
+  })
+
   it('mappa unità di misura "l" in LITRI', async () => {
     const dettaglio = dettaglioCompleto()
     dettaglio.dati_partenza!.rifiuto!.quantita = { valore: 50, unita_misura: 'l' }

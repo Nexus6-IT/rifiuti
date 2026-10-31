@@ -17,8 +17,11 @@ export interface ModificaFIRCommand {
   /** Versione del FIR letta dal client: se non e' piu' quella corrente, 409. */
   versione: number
   produttoreId: string
+  /** Assente = si conserva la sede del FIR (F2-10 D9.6). */
+  produttoreSedeId?: string
   trasportatoreId: string
   destinatarioId: string
+  destinatarioSedeId?: string
   rifiuto: {
     cerCode: string
     quantita: number

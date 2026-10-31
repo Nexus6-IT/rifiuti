@@ -7,10 +7,22 @@
 import { randomUUID } from 'crypto'
 import { PartitaIVA } from '../value-objects/partita-iva'
 import { Indirizzo } from '../value-objects/indirizzo'
+import { partitaIvaDaVerificare } from '../value-objects/identificativo-fiscale'
+import { RuoloControparte } from './sede-ditta'
 
 export interface DestinatarioProps {
   ragioneSociale: string
-  partitaIVA: PartitaIVA
+  /** Ditta e sede predefinita del ruolo (F2-10). */
+  dittaId: string
+  sedeId: string
+  /** Partita IVA della ditta; assente per un privato (solo produttore). */
+  partitaIVA: PartitaIVA | null
+  /** Codice fiscale della ditta (dato personale per un privato: mai in log o messaggi). */
+  codiceFiscale?: string | null
+  /** Sedi attive della ditta (sola lettura, valorizzato dalle letture del repository). */
+  numeroSedi?: number
+  /** Ruoli che la ditta ha in questa azienda (sola lettura, solo nel dettaglio). */
+  ruoliDitta?: RuoloControparte[]
   sede: Indirizzo
   numeroAutorizzazione: string // Numero autorizzazione smaltimento/recupero
   email?: string
@@ -32,7 +44,12 @@ export interface DestinatarioRestoreProps extends DestinatarioProps {
 export class Destinatario {
   private readonly _id: string
   private _ragioneSociale: string
-  private readonly _partitaIVA: PartitaIVA
+  private readonly _dittaId: string
+  private readonly _sedeId: string
+  private readonly _partitaIVA: PartitaIVA | null
+  private readonly _codiceFiscale: string | null
+  private readonly _numeroSedi: number | undefined
+  private readonly _ruoliDitta: RuoloControparte[] | undefined
   private _sede: Indirizzo
   private _numeroAutorizzazione: string
   private _email?: string
@@ -45,7 +62,12 @@ export class Destinatario {
   private constructor(props: DestinatarioRestoreProps) {
     this._id = props.id
     this._ragioneSociale = props.ragioneSociale
+    this._dittaId = props.dittaId
+    this._sedeId = props.sedeId
     this._partitaIVA = props.partitaIVA
+    this._codiceFiscale = props.codiceFiscale ?? null
+    this._numeroSedi = props.numeroSedi
+    this._ruoliDitta = props.ruoliDitta
     this._sede = props.sede
     this._numeroAutorizzazione = props.numeroAutorizzazione
     this._email = props.email
@@ -71,7 +93,12 @@ export class Destinatario {
     return new Destinatario({
       id: randomUUID(),
       ragioneSociale: trimmedRagioneSociale,
+      dittaId: props.dittaId,
+      sedeId: props.sedeId,
       partitaIVA: props.partitaIVA,
+      codiceFiscale: props.codiceFiscale,
+      numeroSedi: props.numeroSedi,
+      ruoliDitta: props.ruoliDitta,
       sede: props.sede,
       numeroAutorizzazione: trimmedNumeroAutorizzazione,
       email: props.email,
@@ -95,8 +122,40 @@ export class Destinatario {
     return this._ragioneSociale
   }
 
-  get partitaIVA(): PartitaIVA {
+  get dittaId(): string {
+    return this._dittaId
+  }
+
+  get sedeId(): string {
+    return this._sedeId
+  }
+
+  get partitaIVA(): PartitaIVA | null {
     return this._partitaIVA
+  }
+
+  get codiceFiscale(): string | null {
+    return this._codiceFiscale
+  }
+
+  /** Privato: solo codice fiscale di 16 caratteri, nessuna partita IVA (ammesso solo produttore). */
+  get privato(): boolean {
+    return (
+      this._partitaIVA === null && this._codiceFiscale !== null && this._codiceFiscale.length === 16
+    )
+  }
+
+  /** Partita IVA migrata che non passa il checksum: da segnalare, mai da correggere in automatico. */
+  get partitaIvaDaVerificare(): boolean {
+    return partitaIvaDaVerificare(this._partitaIVA?.getValue())
+  }
+
+  get numeroSedi(): number | undefined {
+    return this._numeroSedi
+  }
+
+  get ruoliDitta(): RuoloControparte[] | undefined {
+    return this._ruoliDitta
   }
 
   get sede(): Indirizzo {

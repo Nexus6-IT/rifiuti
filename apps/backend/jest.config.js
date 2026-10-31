@@ -39,6 +39,7 @@ module.exports = {
     '!**/*.oracolo-spec.ts',
     '!**/*.fixture-spec.ts',
     '!**/*.postgres-spec.ts',
+    '!**/test-support/**',
     '!**/*.module.ts',
     '!**/main.ts',
     '!**/*.interface.ts',

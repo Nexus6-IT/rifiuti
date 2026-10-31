@@ -6,6 +6,7 @@ import { registra } from '../../fixtures/risorse'
 import { conPrefisso, conPrefissoUnico } from '../../utils/run-id'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
 import { FirListPage } from '../../pages/fir-list.page'
+import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 
 /**
  * UAT/E2E — Trasportatore e Destinatario, incluse le scadenze (Task 4 del
@@ -42,9 +43,7 @@ const SEDE_VALIDA = {
 }
 
 function nuovaPartitaIVA(): string {
-  const nove = String(Date.now()).slice(-9)
-  const due = String(Math.floor(Math.random() * 100)).padStart(2, '0')
-  return `${nove}${due}`
+  return partitaIvaCasualeValida()
 }
 
 interface TrasportatoreResponse {

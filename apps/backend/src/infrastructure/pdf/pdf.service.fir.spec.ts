@@ -110,6 +110,48 @@ describe('PDFService.buildFIRContent - record Prisma grezzo (come lo passa il co
   })
 })
 
+describe('PDFService.buildFIRContent - codice fiscale delle parti (F2-10 D9.10)', () => {
+  const logger = {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  } as unknown as LoggerService
+
+  const base = {
+    status: 'CONSEGNATO',
+    firNumber: 'FIR-2026-000008',
+    createdAt: new Date('2026-03-05T10:00:00Z'),
+    producerName: 'Mario Rossi',
+    producerAddress: 'Via Roma 1',
+    producerPartitaIva: '',
+    producerCodiceFiscale: 'RSSMRA80A01H501U',
+    carrierName: 'Trasportatore SRL',
+    carrierPartitaIva: '09876543210',
+    receiverName: 'Destinatario SRL',
+    receiverAddress: 'Via Milano 2',
+    receiverPartitaIva: '11111111111',
+    cerCode: '13 02 05*',
+    quantity: new Prisma.Decimal('2'),
+    unit: 'kg',
+    signatures: [],
+  }
+  const contenuto = (fir: object) =>
+    JSON.stringify((new PDFService(logger) as any).buildFIRContent(fir))
+
+  it('un privato con la sola P.IVA vuota stampa il codice fiscale, non N/A', () => {
+    const testo = contenuto(base)
+    expect(testo).toContain('RSSMRA80A01H501U')
+  })
+
+  it('con la P.IVA presente stampa quella', () => {
+    const testo = contenuto(base)
+    expect(testo).toContain('09876543210')
+    expect(testo).toContain('11111111111')
+  })
+})
+
 describe('PDFService.buildFIRContent - date e ore in ora italiana', () => {
   const logger = {
     setContext: jest.fn(),

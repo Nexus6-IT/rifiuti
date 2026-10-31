@@ -14,9 +14,12 @@ import { MessageModule } from 'primeng/message'
 import { IconFieldModule } from 'primeng/iconfield'
 import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateProduttoreDto } from './registry.service'
-import { Produttore, Indirizzo } from '../../shared/models/registry.model'
+import { Produttore, Indirizzo, Ditta, SedeDitta } from '../../shared/models/registry.model'
 import { AuthService } from '../../core/services/auth.service'
 import { puoGestireAnagrafiche } from './registry-permissions'
+import { DittaIdentificativiComponent } from './ditta-identificativi.component'
+import { SediDittaDialogComponent } from './sedi-ditta-dialog.component'
+import { ErroriIdentificativi, identificativiPerSalvataggio } from './identificativo-fiscale'
 
 @Component({
   selector: 'app-produttori-list',
@@ -34,6 +37,8 @@ import { puoGestireAnagrafiche } from './registry-permissions'
     MessageModule,
     IconFieldModule,
     InputIconModule,
+    DittaIdentificativiComponent,
+    SediDittaDialogComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -103,10 +108,10 @@ import { puoGestireAnagrafiche } from './registry-permissions'
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Ragione sociale</th>
-                <th scope="col">Partita IVA</th>
+                <th scope="col">P.IVA / C.F.</th>
                 <th scope="col">Sede legale</th>
                 <th scope="col">PEC</th>
-                <th scope="col" style="width: 7.5rem">Azioni</th>
+                <th scope="col" style="width: 12rem">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-produttore>
@@ -116,8 +121,22 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                   <span class="font-semibold">{{ produttore.ragioneSociale }}</span>
                 </td>
                 <td>
-                  <span class="cell-label">Partita IVA</span>
-                  <span class="mono">{{ produttore.partitaIVA }}</span>
+                  <span class="cell-label">P.IVA / C.F.</span>
+                  <span
+                    class="mono"
+                    [attr.data-testid]="'produttori-identificativo-' + produttore.id"
+                    >{{ produttore.partitaIVA || produttore.codiceFiscale }}</span
+                  >
+                  @if (produttore.partitaIVA && produttore.codiceFiscale) {
+                    <span class="mono ident-secondario">{{ produttore.codiceFiscale }}</span>
+                  }
+                  @if (produttore.partitaIvaDaVerificare) {
+                    <span
+                      class="badge-da-verificare"
+                      [attr.data-testid]="'produttori-da-verificare-' + produttore.id"
+                      >Da verificare</span
+                    >
+                  }
                 </td>
                 <td>
                   <span class="cell-label">Sede legale</span>
@@ -131,6 +150,19 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                 </td>
                 <td>
                   <span class="cell-label">Azioni</span>
+                  <div class="row-actions">
+                    @if (produttore.dittaId) {
+                      <p-button
+                        [label]="'Sedi (' + (produttore.numeroSedi ?? 1) + ')'"
+                        icon="pi pi-map-marker"
+                        [text]="true"
+                        size="small"
+                        (onClick)="apriSedi(produttore)"
+                        [ariaLabel]="'Sedi di ' + produttore.ragioneSociale"
+                        [attr.data-testid]="'produttori-sedi-' + produttore.id"
+                      />
+                    }
+                  </div>
                   @if (puoGestire()) {
                     <div class="row-actions">
                       <p-button
@@ -220,33 +252,27 @@ import { puoGestireAnagrafiche } from './registry-permissions'
                   id="prod-ragione"
                   name="ragioneSociale"
                   [(ngModel)]="formData.ragioneSociale"
+                  [readOnly]="!!dittaTrovata"
                   placeholder="es. Azienda S.r.l."
                   required
                   autocomplete="organization"
                 />
               </div>
-              <div class="field col-12 md:col-6">
-                <label for="prod-piva"
-                  >Partita IVA <span class="req" aria-hidden="true">*</span></label
-                >
-                <input
-                  pInputText
-                  id="prod-piva"
-                  name="partitaIVA"
-                  [(ngModel)]="formData.partitaIVA"
-                  placeholder="11 cifre"
-                  maxlength="11"
-                  inputmode="numeric"
-                  required
-                  [disabled]="editMode"
-                  data-testid="produttori-piva-input"
+              <div class="field col-12">
+                <app-ditta-identificativi
+                  testidPrefix="produttori"
+                  pfx="prod"
+                  tipo="produttore"
+                  [modalita]="editMode ? 'edit' : 'create'"
+                  [(partitaIVA)]="formData.partitaIVA"
+                  [(codiceFiscale)]="formData.codiceFiscale"
+                  [partitaIvaOriginale]="selectedProduttore?.partitaIVA ?? null"
+                  [codiceFiscaleOriginale]="selectedProduttore?.codiceFiscale ?? null"
+                  [partitaIvaDaVerificare]="!!selectedProduttore?.partitaIvaDaVerificare"
+                  [errori]="erroriId"
+                  (dittaTrovata)="onDittaTrovata($event)"
+                  (sedeScelta)="onSedeScelta($event)"
                 />
-                <!-- La partita IVA è l'identità fiscale del soggetto: non
-                     modificabile dopo la creazione, il backend la rifiuta in
-                     modifica (400 forbidNonWhitelisted). -->
-                <small class="field-hint" *ngIf="editMode"
-                  >Non modificabile: è l'identità fiscale del soggetto.</small
-                >
               </div>
               <div class="field col-12 md:col-6">
                 <label for="prod-pec">PEC</label>
@@ -356,6 +382,14 @@ import { puoGestireAnagrafiche } from './registry-permissions'
         </ng-template>
       </p-dialog>
 
+      <app-sedi-ditta-dialog
+        [(visible)]="sediVisibili"
+        [dittaId]="sediDittaId"
+        [ragioneSociale]="sediRagioneSociale"
+        [puoGestire]="puoGestire()"
+        (modificata)="ricarica()"
+      />
+
       <p-confirmDialog data-testid="produttori-confirm-dialog" />
     </div>
   `,
@@ -404,6 +438,21 @@ import { puoGestireAnagrafiche } from './registry-permissions'
       .mono {
         font-family: var(--font-family-mono);
         font-size: var(--font-size-sm);
+      }
+      .ident-secondario {
+        display: block;
+        color: var(--text-tertiary);
+      }
+      .badge-da-verificare {
+        display: inline-block;
+        margin-left: var(--spacing-xs);
+        padding: 0 var(--spacing-sm);
+        border: 1px solid var(--color-warning, #b45309);
+        border-radius: 999px;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        white-space: nowrap;
       }
       .row-actions {
         display: flex;
@@ -523,6 +572,16 @@ export class ProduttoriListComponent implements OnInit {
 
   formData: CreateProduttoreDto = this.getEmptyFormData()
 
+  /** Errori di partita IVA e codice fiscale, mostrati dal componente degli identificativi. */
+  erroriId: ErroriIdentificativi = {}
+  /** Ditta gia' presente trovata dalla ricerca (solo in creazione): blocca la ragione sociale. */
+  dittaTrovata: Ditta | null = null
+
+  // Dialog delle sedi della ditta
+  sediVisibili = false
+  sediDittaId = ''
+  sediRagioneSociale = ''
+
   private readonly authService = inject(AuthService)
   // Ricalcola il gating in base al ruolo dell'utente autenticato: stesso
   // schema di `fir-list.component.ts` (`puoCreareFir`). Il backend è
@@ -549,6 +608,7 @@ export class ProduttoriListComponent implements OnInit {
       [
         p.ragioneSociale,
         p.partitaIVA,
+        p.codiceFiscale,
         p.pec,
         p.sedeLegale ? this.formatIndirizzo(p.sedeLegale) : '',
       ]
@@ -585,6 +645,8 @@ export class ProduttoriListComponent implements OnInit {
     this.editMode = false
     this.selectedProduttore = null
     this.formData = this.getEmptyFormData()
+    this.erroriId = {}
+    this.dittaTrovata = null
     this.displayDialog = true
   }
 
@@ -593,15 +655,66 @@ export class ProduttoriListComponent implements OnInit {
     this.selectedProduttore = produttore
     this.formData = {
       ragioneSociale: produttore.ragioneSociale,
-      partitaIVA: produttore.partitaIVA,
+      partitaIVA: produttore.partitaIVA ?? '',
+      codiceFiscale: produttore.codiceFiscale ?? '',
       sedeLegale: { ...produttore.sedeLegale },
       pec: produttore.pec,
     }
+    this.erroriId = {}
+    this.dittaTrovata = null
     this.displayDialog = true
   }
 
+  /** Ditta trovata (o non piu' valida): blocca/sblocca la ragione sociale e precompila. */
+  onDittaTrovata(ditta: Ditta | null): void {
+    this.dittaTrovata = ditta
+    if (ditta) this.formData.ragioneSociale = ditta.ragioneSociale
+  }
+
+  /** Sede scelta fra quelle della ditta: precompila indirizzo e PEC; "Nuova sede" li svuota. */
+  onSedeScelta(sede: SedeDitta | null): void {
+    this.formData.sedeLegale = {
+      via: sede?.via ?? '',
+      civico: sede?.civico ?? '',
+      cap: sede?.cap ?? '',
+      comune: sede?.citta ?? '',
+      provincia: sede?.provincia ?? '',
+    }
+    // anche i contatti della sede: cosi' quelli mostrati sono quelli che il backend manterra'
+    this.formData.pec = sede?.pec ?? ''
+  }
+
+  apriSedi(produttore: Produttore): void {
+    this.sediDittaId = produttore.dittaId ?? ''
+    this.sediRagioneSociale = produttore.ragioneSociale
+    this.sediVisibili = true
+  }
+
+  ricarica(): void {
+    this.loadProduttori({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
+  }
+
   saveProduttore(): void {
-    if (!this.validateForm()) {
+    const id = identificativiPerSalvataggio(
+      {
+        partitaIVA: this.formData.partitaIVA ?? '',
+        codiceFiscale: this.formData.codiceFiscale ?? '',
+      },
+      'produttore',
+      this.editMode && this.selectedProduttore
+        ? {
+            partitaIva: this.selectedProduttore.partitaIVA,
+            codiceFiscale: this.selectedProduttore.codiceFiscale ?? null,
+            partitaIvaDaVerificare: !!this.selectedProduttore.partitaIvaDaVerificare,
+          }
+        : null
+    )
+    this.erroriId = id.errori
+    const identificativi = {
+      ...(id.partitaIVA && { partitaIVA: id.partitaIVA }),
+      ...(id.codiceFiscale && { codiceFiscale: id.codiceFiscale }),
+    }
+    if (Object.keys(id.errori).length > 0 || !this.validateForm()) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Attenzione',
@@ -615,19 +728,27 @@ export class ProduttoriListComponent implements OnInit {
       this.editMode && this.selectedProduttore
         ? this.registryService.updateProduttore(
             this.selectedProduttore.id,
-            // NON includere partitaIVA: è l'identità fiscale del soggetto,
-            // UpdateProduttoreDto non la accetta (400 forbidNonWhitelisted)
-            // e non deve essere modificabile da qui.
+            // Gli identificativi impostati non si cambiano: si inviano solo quelli aggiunti o, per la
+            // P.IVA "da verificare", sostituiti (D2.7-D2.8); mai quelli invariati.
             {
               ragioneSociale: this.formData.ragioneSociale,
+              ...identificativi,
               sedeLegale: this.formData.sedeLegale,
               pec: this.formData.pec,
             }
           )
-        : this.registryService.createProduttore(this.formData)
+        : this.registryService.createProduttore({
+            ...this.formData,
+            partitaIVA: id.partitaIVA,
+            codiceFiscale: id.codiceFiscale,
+          })
 
     operation.subscribe({
-      next: () => {
+      next: entity => {
+        // Avvisi non bloccanti del backend (es. ragione sociale mantenuta)
+        for (const avviso of entity.avvisi ?? []) {
+          this.messageService.add({ severity: 'info', summary: 'Informazione', detail: avviso })
+        }
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
@@ -681,7 +802,6 @@ export class ProduttoriListComponent implements OnInit {
   validateForm(): boolean {
     return !!(
       this.formData.ragioneSociale?.trim() &&
-      this.formData.partitaIVA?.trim() &&
       this.formData.sedeLegale.via?.trim() &&
       this.formData.sedeLegale.civico?.trim() &&
       this.formData.sedeLegale.cap?.trim() &&

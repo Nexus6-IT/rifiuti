@@ -429,4 +429,31 @@ describe('opzioni-sentry', () => {
       expect(r.user).toBeUndefined()
     })
   })
+
+  describe('Failing row contains e DETAIL (M5, F2-10)', () => {
+    const CF = 'RSSMRA80A01H501U'
+    const msg =
+      'new row for relation "ditte" violates check constraint "ditte_codice_fiscale_forma"\n' +
+      `DETAIL: Failing row contains (abc, ${CF}, Rossi Mario).`
+
+    it('toglie il dettaglio da message e da exception.values[].value', () => {
+      const evento: any = {
+        message: msg,
+        exception: { values: [{ type: 'Error', value: msg }] },
+      }
+      const r = ripulisciEventoSentry(evento)
+      for (const testo of [r.message as string, r.exception!.values![0].value!]) {
+        expect(testo).not.toContain(CF)
+        expect(testo).not.toContain('Rossi')
+        expect(testo).not.toContain('abc')
+        expect(testo).toContain('ditte_codice_fiscale_forma')
+      }
+    })
+
+    it('toglie un DETAIL anche senza la forma Key (...)=(...)', () => {
+      expect(mascheraDatiPersonali('boom\nDETAIL: valore segreto qualunque')).toBe(
+        'boom\nDETAIL: ***'
+      )
+    })
+  })
 })

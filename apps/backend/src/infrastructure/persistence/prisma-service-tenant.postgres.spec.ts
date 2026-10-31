@@ -6,7 +6,7 @@
  *
  * Per osservare il valore visto dal database nelle operazioni di MODELLO (dove
  * non si puo' leggere `current_setting` dentro la query) un trigger temporaneo
- * su `produttori` copia `app.tenant_id` nella colonna `via` in INSERT.
+ * su `sedi_ditte` copia `app.tenant_id` nella colonna `via` in INSERT.
  *
  * Eseguire con `npm run test:postgres`.
  */
@@ -16,6 +16,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { PrismaModule } from './prisma.module'
 import { PrismaService } from './prisma.service'
 import { PrismaSistemaService } from './prisma-sistema.service'
+import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 
 const urlBase =
   process.env.DATABASE_URL ??
@@ -23,15 +24,18 @@ const urlBase =
 process.env.DATABASE_URL = urlBase
 
 const PIVA_TENANT = '98765432109'
-const datiProduttore = (tenantId: string, piva: string) => ({
+// P.IVA delle due ditte di prova: servono a ritrovare la sede (la ditta si crea col proprietario)
+const PIVA_DITTA_1 = partitaIvaValida(7_100_001)
+const PIVA_DITTA_2 = partitaIvaValida(7_100_002)
+const datiSede = (tenantId: string, dittaId: string) => ({
   tenantId,
-  ragioneSociale: 'Prova set_config',
-  partitaIVA: piva,
+  dittaId,
   via: 'da-sovrascrivere',
   civico: '1',
   cap: '00100',
   comune: 'Roma',
   provincia: 'RM',
+  principale: true,
 })
 
 describe('PrismaService dal container: tenant per transazione', () => {
@@ -50,9 +54,9 @@ describe('PrismaService dal container: tenant per transazione', () => {
       CREATE OR REPLACE FUNCTION zz_osserva_tenant() RETURNS trigger AS $$
       BEGIN NEW.via := coalesce(current_setting('app.tenant_id', true), '<assente>'); RETURN NEW; END;
       $$ LANGUAGE plpgsql`)
-    await admin.$executeRawUnsafe('DROP TRIGGER IF EXISTS zz_osserva_tenant ON produttori')
+    await admin.$executeRawUnsafe('DROP TRIGGER IF EXISTS zz_osserva_tenant ON sedi_ditte')
     await admin.$executeRawUnsafe(
-      'CREATE TRIGGER zz_osserva_tenant BEFORE INSERT ON produttori FOR EACH ROW EXECUTE FUNCTION zz_osserva_tenant()'
+      'CREATE TRIGGER zz_osserva_tenant BEFORE INSERT ON sedi_ditte FOR EACH ROW EXECUTE FUNCTION zz_osserva_tenant()'
     )
     await admin.tenant.deleteMany({ where: { partitaIva: PIVA_TENANT } })
     const t = await admin.tenant.create({
@@ -63,37 +67,50 @@ describe('PrismaService dal container: tenant per transazione', () => {
 
   afterAll(async () => {
     await admin.tenant.deleteMany({ where: { partitaIva: PIVA_TENANT } })
-    await admin.$executeRawUnsafe('DROP TRIGGER IF EXISTS zz_osserva_tenant ON produttori')
+    await admin.$executeRawUnsafe('DROP TRIGGER IF EXISTS zz_osserva_tenant ON sedi_ditte')
     await admin.$executeRawUnsafe('DROP FUNCTION IF EXISTS zz_osserva_tenant()')
     await admin.$disconnect()
     await modulo.close()
   })
 
+  const creaDitta = async (piva: string) =>
+    (
+      await admin.ditta.create({
+        data: { tenantId, ragioneSociale: 'Ditta prova set_config', partitaIva: piva },
+      })
+    ).id
+
   const leggiVia = async (piva: string) =>
-    (await admin.produttore.findFirstOrThrow({ where: { partitaIVA: piva, tenantId } })).via
+    (await admin.sedeDitta.findFirstOrThrow({ where: { ditta: { partitaIva: piva }, tenantId } }))
+      .via
 
   it('PrismaService dal container: set_config su operazione di modello', async () => {
     // `await` DENTRO il contesto: le operazioni Prisma sono lazy e partono all'await
+    const dittaId = await creaDitta(PIVA_DITTA_1)
     await TenantContext.run({ tenantId }, async () => {
-      await prisma.produttore.create({ data: datiProduttore(tenantId, '11111111111') })
+      await prisma.sedeDitta.create({ data: datiSede(tenantId, dittaId) })
     })
-    expect(await leggiVia('11111111111')).toBe(tenantId)
+    expect(await leggiVia(PIVA_DITTA_1)).toBe(tenantId)
   })
 
   it('PrismaService.db: set_config e filtro tenant insieme', async () => {
     // il filtro inietta il tenantId (non passato) e il set_config e' nella stessa transazione
+    const dittaId = await creaDitta(PIVA_DITTA_2)
     await TenantContext.run({ tenantId }, async () => {
-      await (prisma.db.produttore as any).create({ data: datiProduttore(tenantId, '22222222222') })
-      expect(await prisma.db.produttore.count({ where: { partitaIVA: '22222222222' } })).toBe(1)
+      await (prisma.db.sedeDitta as any).create({ data: datiSede(tenantId, dittaId) })
+      expect(
+        await prisma.db.sedeDitta.count({ where: { ditta: { partitaIva: PIVA_DITTA_2 } } })
+      ).toBe(1)
       // check top-level sul client composto: filtro (conteggio solo del tenant) + set_config
-      expect(await prisma.db.produttore.count()).toBeGreaterThanOrEqual(1)
+      expect(await prisma.db.sedeDitta.count()).toBeGreaterThanOrEqual(1)
     })
-    expect(await leggiVia('22222222222')).toBe(tenantId)
+    expect(await leggiVia(PIVA_DITTA_2)).toBe(tenantId)
     // altro tenant: il filtro nasconde le righe
     const altro = '00000000-0000-0000-0000-0000000000aa'
     const visti = await TenantContext.run(
       { tenantId: altro },
-      async () => await prisma.db.produttore.count({ where: { partitaIVA: '22222222222' } })
+      async () =>
+        await prisma.db.sedeDitta.count({ where: { ditta: { partitaIva: PIVA_DITTA_2 } } })
     )
     expect(visti).toBe(0)
   })
@@ -115,7 +132,7 @@ describe('PrismaService dal container: tenant per transazione', () => {
           { v: string }[]
         >`SELECT current_setting('app.tenant_id', true) AS v`
         expect(r[0].v).toBe(tenantId)
-        return tx.produttore.count({ where: { partitaIVA: '22222222222' } })
+        return tx.sedeDitta.count({ where: { ditta: { partitaIva: PIVA_DITTA_2 } } })
       })
     )
     expect(conteggio).toBe(1)

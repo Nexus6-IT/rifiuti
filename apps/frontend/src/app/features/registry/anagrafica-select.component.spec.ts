@@ -7,8 +7,8 @@ function pagina(items: any[]) {
   return of({ items, total: items.length, page: 1, limit: 500, totalPages: 1 } as any)
 }
 
-const ACME = { id: 'p1', ragioneSociale: 'ACME SPA', partitaIVA: '01234567890' }
-const BETA = { id: 'p2', ragioneSociale: 'BETA SRL', partitaIVA: '09876543210' }
+const ACME = { id: 'p1', ragioneSociale: 'ACME SPA', partitaIVA: '12345678903' }
+const BETA = { id: 'p2', ragioneSociale: 'BETA SRL', partitaIVA: '09876543217' }
 
 describe('AnagraficaSelectComponent', () => {
   let fixture: ComponentFixture<AnagraficaSelectComponent>
@@ -59,9 +59,49 @@ describe('AnagraficaSelectComponent', () => {
 
   it('cerca anche per partita IVA', () => {
     fixture.detectChanges()
-    component.cerca({ query: '0123456', originalEvent: new Event('input') } as any)
+    component.cerca({ query: '1234567', originalEvent: new Event('input') } as any)
 
     expect(component.suggestions().map(s => s.id)).toEqual(['p1'])
+  })
+
+  describe('privato senza partita IVA (F2-10)', () => {
+    const PRIVATO = {
+      id: 'p3',
+      ragioneSociale: 'ROSSI MARIO',
+      partitaIVA: null,
+      codiceFiscale: 'RSSMRA80A01H501U',
+    }
+
+    beforeEach(() => {
+      registry.getProduttori.and.returnValue(pagina([ACME, PRIVATO]))
+    })
+
+    it('mostra il codice fiscale e mai "P.IVA null"', () => {
+      fixture.detectChanges()
+      const voce = component.voci().find(v => v.id === 'p3')
+
+      expect(voce?.identificativo).toBe('C.F. RSSMRA80A01H501U')
+      expect(voce?.label).not.toContain('null')
+      expect(component.voci().find(v => v.id === 'p1')?.identificativo).toBe('P.IVA 12345678903')
+    })
+
+    it('la ricerca non si rompe sulla P.IVA nulla e trova per codice fiscale', () => {
+      fixture.detectChanges()
+
+      expect(() =>
+        component.cerca({ query: 'rssm', originalEvent: new Event('input') } as any)
+      ).not.toThrow()
+      expect(component.suggestions().map(s => s.id)).toEqual(['p3'])
+      component.cerca({ query: 'acme', originalEvent: new Event('input') } as any)
+      expect(component.suggestions().map(s => s.id)).toEqual(['p1'])
+    })
+
+    it('nel menu aperto scrive "C.F. …" per il privato', () => {
+      fixture.detectChanges()
+      const aperto = component.voci().map(v => v.identificativo)
+
+      expect(aperto).toEqual(['P.IVA 12345678903', 'C.F. RSSMRA80A01H501U'])
+    })
   })
 
   /**
@@ -104,7 +144,12 @@ describe('AnagraficaSelectComponent', () => {
     const emessi: string[] = []
     component.registerOnChange(v => emessi.push(v))
 
-    component.onSelezione({ ...ACME, label: 'ACME SPA — 01234567890' })
+    component.onSelezione({
+      ...ACME,
+      codiceFiscale: null,
+      identificativo: 'P.IVA 12345678903',
+      label: 'ACME SPA — P.IVA 12345678903',
+    })
 
     expect(emessi).toEqual(['p1'])
   })

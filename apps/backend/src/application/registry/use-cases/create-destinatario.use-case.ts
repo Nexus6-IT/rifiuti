@@ -1,6 +1,8 @@
 /**
  * CreateDestinatario Use Case
- * Creates a new Destinatario entity
+ * Crea il ruolo di destinatario su una ditta (F2-10): ditta e sede si riusano se esistono gia'.
+ * Una sola transazione (D3), vedi `creaRuoloSuDitta`. Il privato (solo codice fiscale) non puo'
+ * essere destinatario: lo rifiuta `DitteService.risolviPerRuolo` (400).
  */
 
 import { Inject, Injectable, Optional } from '@nestjs/common'
@@ -12,11 +14,24 @@ import {
 import { Destinatario } from '../../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../../domain/registry/value-objects/indirizzo'
+import { ClientDitte } from '../../../infrastructure/persistence/ditta-prisma.repository'
+import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { ReferenceDataService } from '../../reference-data/reference-data.service'
+import { DitteService } from '../ditte/ditte.service'
+import {
+  EsitoCreazioneRuolo,
+  RuoloGiaPresenteError,
+  creaRuoloSuDitta,
+  eErroreDiDittaDaPropagare,
+  messaggioSicuro,
+} from '../crea-ruolo-su-ditta'
 
 export interface CreateDestinatarioCommand {
   ragioneSociale: string
-  partitaIVA: string
+  /** Facoltativa se c'e' il codice fiscale (privato, D2). */
+  partitaIVA?: string
+  /** In aggiunta alla P.IVA. */
+  codiceFiscale?: string
   sede: {
     via: string
     civico: string
@@ -36,19 +51,16 @@ export interface CreateDestinatarioCommand {
 export class CreateDestinatarioUseCase {
   constructor(
     @Inject(DESTINATARIO_REPOSITORY)
-    private readonly destinatarioRepository: DestinatarioRepository,
+    private readonly destinatarioRepository: DestinatarioRepository<ClientDitte>,
+    private readonly prisma: PrismaService,
+    private readonly ditte: DitteService,
     @Optional() private readonly referenceData?: ReferenceDataService
   ) {}
 
-  async execute(command: CreateDestinatarioCommand): Promise<Result<Destinatario>> {
+  async execute(
+    command: CreateDestinatarioCommand
+  ): Promise<Result<EsitoCreazioneRuolo<Destinatario>>> {
     try {
-      // Check if Partita IVA already exists
-      const existingByPIVA = await this.destinatarioRepository.findByPartitaIVA(command.partitaIVA)
-
-      if (existingByPIVA) {
-        return Result.fail('Destinatario with this Partita IVA already exists')
-      }
-
       // Check if Numero Autorizzazione already exists
       const existingByNumero = await this.destinatarioRepository.findByNumeroAutorizzazione(
         command.numeroAutorizzazione
@@ -67,28 +79,44 @@ export class CreateDestinatarioUseCase {
         if (!v.ok) return Result.fail(v.error!)
       }
 
-      // Create value objects
-      const partitaIVA = PartitaIVA.create(command.partitaIVA)
       const sede = Indirizzo.create(command.sede)
 
-      // Create Destinatario entity
-      const destinatario = Destinatario.create({
-        ragioneSociale: command.ragioneSociale,
-        partitaIVA,
-        sede,
-        numeroAutorizzazione: command.numeroAutorizzazione,
-        email: command.email,
-        telefono: command.telefono,
-        pec: command.pec,
-        scadenzaAutorizzazione: command.scadenzaAutorizzazione,
+      const esito = await creaRuoloSuDitta<Destinatario>(this.prisma, this.ditte, {
+        ruolo: 'DESTINATARIO',
+        nome: 'destinatario',
+        dati: {
+          ragioneSociale: command.ragioneSociale,
+          partitaIva: command.partitaIVA,
+          codiceFiscale: command.codiceFiscale,
+          indirizzo: command.sede,
+          email: command.email,
+          telefono: command.telefono,
+          pec: command.pec,
+        },
+        esistente: (tx, dittaId) => this.destinatarioRepository.findByDittaId(tx, dittaId),
+        costruisci: r =>
+          Destinatario.create({
+            dittaId: r.dittaId,
+            sedeId: r.sedeId,
+            // la ragione sociale della ditta vince su quella della richiesta (D3)
+            ragioneSociale: r.ragioneSocialeDitta,
+            partitaIVA: r.partitaIva ? PartitaIVA.create(r.partitaIva) : null,
+            codiceFiscale: r.codiceFiscale,
+            sede,
+            numeroAutorizzazione: command.numeroAutorizzazione,
+            email: r.contatti.email ?? undefined,
+            telefono: r.contatti.telefono ?? undefined,
+            pec: r.contatti.pec ?? undefined,
+            scadenzaAutorizzazione: command.scadenzaAutorizzazione,
+          }),
+        inserisci: (tx, destinatario) => this.destinatarioRepository.crea(tx, destinatario),
       })
 
-      // Save to repository
-      await this.destinatarioRepository.save(destinatario)
-
-      return Result.ok(destinatario)
-    } catch (error: any) {
-      return Result.fail(error.message)
+      return Result.ok(esito)
+    } catch (error: unknown) {
+      if (eErroreDiDittaDaPropagare(error)) throw error
+      if (error instanceof RuoloGiaPresenteError) return Result.fail(error.message)
+      return Result.fail(messaggioSicuro(error))
     }
   }
 }

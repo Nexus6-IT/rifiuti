@@ -17,6 +17,9 @@ export function formDaFir(fir: FIR): CreateFIRDto {
     produttoreId: fir.produttoreId,
     trasportatoreId: fir.trasportatoreId,
     destinatarioId: fir.destinatarioId,
+    // Le sedi del FIR sono il valore iniziale: il dialog le invia solo se l'utente le cambia (I4).
+    produttoreSedeId: fir.produttore?.sedeId ?? undefined,
+    destinatarioSedeId: fir.destinatario?.sedeId ?? undefined,
     provenienza: fir.provenienza ?? undefined,
     tipoTrattaPrincipale: fir.tipoTrattaPrincipale ?? undefined,
     rifiuto: {
@@ -58,4 +61,36 @@ export function testoMotivoNonModificabile(
     default:
       return ''
   }
+}
+
+/**
+ * La sede da inviare al backend: solo se l'utente l'ha cambiata rispetto al valore iniziale
+ * (quella del FIR in modifica, la predefinita del ruolo altrimenti). Se uguale si omette, così una
+ * bozza vecchia (sede NULL) non viene riscritta e la versione non cambia (I4, D9.6).
+ */
+export function sedeSoloSeCambiata(
+  scelta: string | null | undefined,
+  iniziale: string | null | undefined
+): string | undefined {
+  if (!scelta) return undefined
+  return scelta === (iniziale ?? null) ? undefined : scelta
+}
+
+/** Descrizione di una sede nella tendina: denominazione (se c'è), indirizzo e, se serve, lo stato. */
+export function etichettaSede(s: {
+  denominazione: string | null
+  via: string
+  civico: string
+  cap: string
+  citta: string
+  provincia: string
+  principale?: boolean
+  attiva?: boolean
+}): string {
+  const indirizzo = `${s.via} ${s.civico}, ${s.cap} ${s.citta} (${s.provincia})`
+  const nome = s.denominazione?.trim() ? `${s.denominazione.trim()} — ` : ''
+  const note = [s.principale ? 'principale' : '', s.attiva === false ? 'non attiva' : '']
+    .filter(Boolean)
+    .join(', ')
+  return `${nome}${indirizzo}${note ? ` [${note}]` : ''}`
 }

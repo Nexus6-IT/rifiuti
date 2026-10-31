@@ -247,7 +247,7 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'tra-1', ragioneSociale: 'Trasporti Rossi SRL', scadenzaIscrizione },
+              { id: 'tra-1', ditta: { ragioneSociale: 'Trasporti Rossi SRL' }, scadenzaIscrizione },
             ]),
         },
       })
@@ -268,6 +268,29 @@ describe('RaccogliAttenzioneUseCase', () => {
       )
     })
 
+    it('mostra il nome attuale della ditta e la include nella lettura (D10)', async () => {
+      const scadenzaIscrizione = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
+      const prisma = buildPrisma({
+        trasportatore: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'tra-1',
+              ditta: { ragioneSociale: 'Nome Nuovo SRL' },
+              scadenzaIscrizione,
+            },
+          ]),
+        },
+      })
+      const useCase = new RaccogliAttenzioneUseCase(prisma)
+
+      const risultato = await useCase.raccogli(TENANT)
+
+      expect(risultato.voci[0].titolo).toMatch(/Nome Nuovo SRL/)
+      expect(prisma.db.trasportatore.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ include: { ditta: { select: { ragioneSociale: true } } } })
+      )
+    })
+
     it("con un'iscrizione scaduta restituisce gravità critico", async () => {
       const scadenzaIscrizione = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       const prisma = buildPrisma({
@@ -275,7 +298,7 @@ describe('RaccogliAttenzioneUseCase', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([
-              { id: 'tra-1', ragioneSociale: 'Trasporti Rossi SRL', scadenzaIscrizione },
+              { id: 'tra-1', ditta: { ragioneSociale: 'Trasporti Rossi SRL' }, scadenzaIscrizione },
             ]),
         },
       })
@@ -302,11 +325,13 @@ describe('RaccogliAttenzioneUseCase', () => {
       const scadenzaAutorizzazione = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000)
       const prisma = buildPrisma({
         destinatario: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              { id: 'des-1', ragioneSociale: 'Impianto Bianchi SPA', scadenzaAutorizzazione },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'des-1',
+              ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
+              scadenzaAutorizzazione,
+            },
+          ]),
         },
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
@@ -330,11 +355,13 @@ describe('RaccogliAttenzioneUseCase', () => {
       const scadenzaAutorizzazione = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       const prisma = buildPrisma({
         destinatario: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              { id: 'des-1', ragioneSociale: 'Impianto Bianchi SPA', scadenzaAutorizzazione },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'des-1',
+              ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
+              scadenzaAutorizzazione,
+            },
+          ]),
         },
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
@@ -371,17 +398,19 @@ describe('RaccogliAttenzioneUseCase', () => {
             .mockResolvedValue([{ id: 'aut-1', estremi: 'AUT/2026/001', dataScadenza: scaduta }]),
         },
         trasportatore: {
-          findMany: jest
-            .fn()
-            .mockResolvedValue([
-              { id: 'tra-1', ragioneSociale: 'Trasporti Rossi SRL', scadenzaIscrizione: scaduta },
-            ]),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'tra-1',
+              ditta: { ragioneSociale: 'Trasporti Rossi SRL' },
+              scadenzaIscrizione: scaduta,
+            },
+          ]),
         },
         destinatario: {
           findMany: jest.fn().mockResolvedValue([
             {
               id: 'des-1',
-              ragioneSociale: 'Impianto Bianchi SPA',
+              ditta: { ragioneSociale: 'Impianto Bianchi SPA' },
               scadenzaAutorizzazione: scaduta,
             },
           ]),

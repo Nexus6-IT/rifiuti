@@ -185,3 +185,40 @@ describe('FIRResponseDto.fromDomain — campi per la modifica (D12)', () => {
     expect(FIRResponseDto.fromDomain(fir).trasportatoriAggiuntivi[0].trasportatoreId).toBe('t2')
   })
 })
+
+describe('FIRResponseDto.fromDomain — codice fiscale e sede delle parti (F2-10 D9.11)', () => {
+  it('espone codiceFiscale e sedeId di ogni parte', () => {
+    const fir = FIR.create({
+      ...createValidFIRProps(),
+      produttore: {
+        ragioneSociale: 'Mario Rossi',
+        partitaIva: '',
+        codiceFiscale: 'RSSMRA80A01H501U',
+        sedeId: '11111111-1111-4111-8111-111111111111',
+      },
+      destinatario: {
+        ragioneSociale: 'Destinatario SRL',
+        partitaIva: '12345678903',
+        sedeId: '22222222-2222-4222-8222-222222222222',
+      },
+      trasportatore: {
+        ragioneSociale: 'Trasporti SRL',
+        partitaIva: '',
+        codiceFiscale: 'BNCLRA85M41F205C',
+      },
+    })
+
+    const dto = FIRResponseDto.fromDomain(fir)
+
+    expect(dto.produttore).toMatchObject({
+      codiceFiscale: 'RSSMRA80A01H501U',
+      sedeId: '11111111-1111-4111-8111-111111111111',
+    })
+    expect(dto.destinatario).toMatchObject({
+      partitaIva: '12345678903',
+      sedeId: '22222222-2222-4222-8222-222222222222',
+    })
+    expect(dto.trasportatore).toMatchObject({ codiceFiscale: 'BNCLRA85M41F205C' })
+    expect(dto.trasportatore?.sedeId).toBeUndefined()
+  })
+})
