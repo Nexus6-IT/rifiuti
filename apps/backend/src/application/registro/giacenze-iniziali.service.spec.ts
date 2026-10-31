@@ -54,6 +54,7 @@ describe('GiacenzeInizialiService (rami di validazione e sequenza)', () => {
         delete: jest.fn().mockResolvedValue({}),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      abbinamentoCaricoScarico: { count: jest.fn().mockResolvedValue(0) },
     }
     prisma = {
       $transaction: jest.fn().mockImplementation(async (fn: (t: any) => Promise<any>) => fn(tx)),
@@ -319,6 +320,12 @@ describe('GiacenzeInizialiService (rami di validazione e sequenza)', () => {
       return service.modifica(TENANT, USER, ID, { ...resto, ...extra } as any)
     }
 
+    it('abbinata a uno scarico: 409 e non scrive', async () => {
+      tx.abbinamentoCaricoScarico.count.mockResolvedValue(1)
+      await expect(modifica()).rejects.toBeInstanceOf(ConflictException)
+      expect(tx.giacenzaIniziale.update).not.toHaveBeenCalled()
+    })
+
     it("riga inesistente o di un'altra azienda: 404 senza transaction", async () => {
       prisma.giacenzaIniziale.findFirst.mockResolvedValue(null)
       await expect(modifica()).rejects.toBeInstanceOf(NotFoundException)
@@ -381,6 +388,17 @@ describe('GiacenzeInizialiService (rami di validazione e sequenza)', () => {
       tx.$queryRaw.mockResolvedValue([{ trovato: 1 }])
       await expect(service.elimina(TENANT, USER, ID)).rejects.toBeInstanceOf(ConflictException)
       expect(tx.giacenzaIniziale.delete).not.toHaveBeenCalled()
+    })
+
+    it('abbinata a uno scarico: 409 e non cancella', async () => {
+      tx.abbinamentoCaricoScarico.count.mockResolvedValue(1)
+      await expect(service.elimina(TENANT, USER, ID)).rejects.toThrow(
+        'Questa giacenza iniziale è abbinata a uno o più scarichi'
+      )
+      expect(tx.giacenzaIniziale.delete).not.toHaveBeenCalled()
+      expect(tx.abbinamentoCaricoScarico.count).toHaveBeenCalledWith({
+        where: { tenantId: TENANT, giacenzaInizialeId: ID },
+      })
     })
 
     it('non usata: lock, cancellazione e audit', async () => {

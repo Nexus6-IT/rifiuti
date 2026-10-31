@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router'
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
@@ -256,6 +257,7 @@ describe('GiacenzeComponent: pulsante Soglie', () => {
     TestBed.configureTestingModule({
       imports: [GiacenzeComponent],
       providers: [
+        provideRouter([]),
         provideNoopAnimations(),
         { provide: GiacenzeService, useValue: service },
         { provide: RegistroService, useValue: reg },

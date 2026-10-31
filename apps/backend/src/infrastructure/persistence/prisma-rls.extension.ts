@@ -84,6 +84,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'CausaleRegistroAzienda',
   // Soglie del deposito temporaneo (Fase 2 pezzo 6): per azienda o per registro, dato dell'azienda.
   'SogliaDepositoTemporaneo',
+  // Abbinamenti carico-scarico (4.6): dato dell'azienda.
+  'AbbinamentoCaricoScarico',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

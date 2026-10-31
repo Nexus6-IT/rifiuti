@@ -512,6 +512,46 @@ aperta (Decisioni aperte, 9).
 
 ---
 
+## 4.6 abbinamenti carico-scarico
+
+Tabella `abbinamenti_carico_scarico` (migration `20261101300000_abbinamenti_carico_scarico`,
+additiva): quale carico, o giacenza iniziale, ha coperto quale scarico del registro. Il codice
+vecchio la ignora; dopo un rollback del codice la tabella resta e riprende a contare al
+ripristino. **Prima del rollback** controllare
+`SELECT tenant_id, count(*) FROM abbinamenti_carico_scarico GROUP BY 1` e avvisare le aziende
+che hanno abbinamenti manuali (si perdono nella vista, non nel database).
+
+Ripristino a mano dello schema (solo se serve): `DROP TABLE abbinamenti_carico_scarico;
+DROP TYPE origine_abbinamento; DROP INDEX giacenze_iniziali_id_registro_tenant_key;` e
+`DELETE FROM _prisma_migrations WHERE migration_name = '20261101300000_abbinamenti_carico_scarico';`.
+
+Con il codice vecchio e la tabella ancora presente: cancellare una giacenza iniziale gia'
+abbinata fallisce con un errore di chiave esterna non gestito (500); **modificare una giacenza
+iniziale gia abbinata** (quantita, CER, data) e **rettificare un carico gia abbinato** (ridurlo
+sotto la quantita abbinata, cambiarne CER, unita o data) non vengono controllati: le righe
+restano e al ripristino del codice risultano `INCOERENTE`. Gli annullamenti di
+movimenti lasciano righe che al ripristino del codice risultano `INCOERENTE` (e si correggono
+dalla pagina). Prima di cancellare giacenze iniziali o movimenti col codice vecchio,
+controllare `SELECT count(*) FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`; se
+le righe non servono piu', `DELETE FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`.
+
+Le migration gia' applicate in produzione non si modificano: il commento iniziale resta com'e'.
+
+**Ricalcolo lungo e lock.** Il ricalcolo (`POST /abbinamenti/ricalcolo`) gira in una transazione
+con timeout di 60 s (`maxWait` 10 s); l'override a mano di 15 s (`maxWait` 5 s). Finche il
+ricalcolo e in corso tiene i lock sui CER dell'ambito: le registrazioni di scarichi
+concorrenti sugli stessi CER non lo aspettano a lungo, ma falliscono dopo circa 5 s (timeout
+predefinito di Prisma) con un errore e vanno ripetute. Se un ricalcolo supera il timeout viene
+annullato per intero; rilanciarlo per CER (`cerCode`) o fuori orario.
+
+**Dopo il deploy, cosa controllare:**
+- `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi
+  di stoccaggio R13/D15; poi cresce con le registrazioni).
+- RLS: la tabella ha `ENABLE` e `FORCE ROW LEVEL SECURITY` e la policy `isolamento_azienda`;
+  in CI `rls-catalogo.postgres.spec.ts` conta 36 tabelle con RLS.
+- Gli scarichi registrati prima del deploy non sono abbinati: l'amministratore li abbina dalla
+  pagina Giacenze -> Abbinamenti con "Abbina con FIFO i non abbinati".
+
 ## Metriche Prometheus (`/metrics`)
 
 Il backend espone l'endpoint standard Prometheus a:

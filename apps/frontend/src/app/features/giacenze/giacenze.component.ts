@@ -22,6 +22,7 @@ import {
   SoglieApplicate,
 } from './giacenze.service'
 import { formattaGiorno } from './giorno'
+import { RouterLink } from '@angular/router'
 import { SoglieDepositoDialogComponent } from './soglie-deposito-dialog.component'
 
 /** Il dropdown non seleziona le voci con valore `null`: "tutte le sedi" è la stringa vuota. */
@@ -44,6 +45,7 @@ const TUTTE_LE_SEDI = ''
     TagModule,
     ProgressSpinnerModule,
     SoglieDepositoDialogComponent,
+    RouterLink,
   ],
   template: `
     <div class="page">
@@ -65,6 +67,16 @@ const TUTTE_LE_SEDI = ''
             data-testid="soglie-apri"
             ariaLabel="Configura le soglie del deposito temporaneo"
           ></p-button>
+          <a
+            pButton
+            routerLink="/giacenze/abbinamenti"
+            [queryParams]="registroSel() ? { registroId: registroSel() } : null"
+            label="Abbinamenti R13/D15"
+            icon="pi pi-link"
+            class="p-button-outlined"
+            data-testid="link-abbinamenti"
+            aria-label="Apri gli abbinamenti carichi-scarichi R13/D15"
+          ></a>
           <p-button
             label="Aggiorna"
             icon="pi pi-refresh"

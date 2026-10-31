@@ -12,6 +12,11 @@ import { RegistriService, RegistroNonCoerenteConFirError } from '../registri.ser
 import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { hashAnnotazioneV2 } from '../../../domain/waste-movement/waste-movement.entity'
 
+import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
+
+jest.mock('../../abbinamenti/abbinamenti-scrittura')
+const abbinaMock = abbinaNuovoScarico as jest.MockedFunction<typeof abbinaNuovoScarico>
+
 const REGISTRO = 'registro-uuid-001'
 const registroVista = {
   id: REGISTRO,
@@ -193,6 +198,7 @@ describe('RegistraMovimentoUseCase', () => {
   })
 
   beforeEach(async () => {
+    abbinaMock.mockResolvedValue([])
     giacenzaMock.mockResolvedValue({
       saldoComplessivoKg: 1_000_000,
       disponibileAllaDataKg: 1_000_000,
@@ -682,6 +688,37 @@ describe('RegistraMovimentoUseCase', () => {
     expect(chiavi.some((k: string) => k.startsWith('giacenza|'))).toBe(false)
   })
 
+  it('abbinamenti: uno SCARICO chiama la proposta FIFO nella stessa transaction e ne riporta gli avvisi', async () => {
+    giacenzaMock.mockResolvedValue(g(150))
+    const tx = _mockTransazione(recordScarico)
+    abbinaMock.mockResolvedValueOnce(['avviso di abbinamento'])
+    const r = await useCase.execute(scaricoCmd({ quantity: 100 }))
+    expect(r.isSuccess).toBe(true)
+    expect(abbinaMock).toHaveBeenCalledWith(tx, {
+      tenantId: TENANT,
+      registroId: REGISTRO,
+      scaricoId: recordScarico.id,
+      userId: USER,
+      cerCode: recordScarico.cerCode,
+      movimentoOriginaleId: null,
+    })
+    expect(r.value.avvisi).toContain('avviso di abbinamento')
+  })
+
+  it('abbinamenti: un CARICO non chiama la proposta', async () => {
+    _mockTransazione(recordCarico)
+    await useCase.execute(buildCommand())
+    expect(abbinaMock).not.toHaveBeenCalled()
+  })
+
+  it('abbinamenti: un errore della proposta fa fallire la registrazione', async () => {
+    giacenzaMock.mockResolvedValue(g(150))
+    _mockTransazione(recordScarico)
+    abbinaMock.mockRejectedValueOnce(new Error('lettore guasto'))
+    const r = await useCase.execute(scaricoCmd({ quantity: 100 }))
+    expect(r.isSuccess).toBe(false)
+  })
+
   it('un CARICO restituisce avvisi vuoti', async () => {
     _mockTransazione(recordCarico)
     expect((await useCase.execute(buildCommand())).value.avvisi).toEqual([])
@@ -1038,6 +1075,8 @@ describe('RegistraMovimentoUseCase', () => {
     expect(r.value).toMatchObject({ progressiveNumber: 7, giaRegistrato: true, avvisi: [] })
     expect(tx.wasteMovement.create).not.toHaveBeenCalled()
     expect(giacenzaMock).not.toHaveBeenCalled()
+    // ricopia gia registrata: nessuna riga di abbinamento in piu
+    expect(abbinaMock).not.toHaveBeenCalled()
   })
 
   it('il confronto usa la quantità arrotondata come la salva il database', async () => {
@@ -1251,6 +1290,7 @@ describe('RegistraMovimentoUseCase', () => {
 
     expect(r.isFailure).toBe(true)
     expect(r.error).toMatch(/^Errore durante la registrazione/)
+    expect(r.error).not.toContain('connessione persa')
   })
 })
 

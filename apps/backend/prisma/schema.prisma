@@ -123,6 +123,7 @@ model Tenant {
   giacenzeIniziali      GiacenzaIniziale[]
   causaliRegistroAzienda CausaleRegistroAzienda[]
   soglieDeposito        SogliaDepositoTemporaneo[]
+  abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
   // Fase 2 pezzo 10
@@ -878,8 +879,10 @@ model GiacenzaIniziale {
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  abbinamenti AbbinamentoCaricoScarico[]
 
   @@unique([id, tenantId])
+  @@unique([id, registroId, tenantId], map: "giacenze_iniziali_id_registro_tenant_key")
   @@unique([registroId, cerCode, statoFisico, unita], map: "giacenze_iniziali_registro_cer_stato_unita_key")
   @@index([tenantId])
   @@index([registroId])
@@ -1941,6 +1944,9 @@ model WasteMovement {
   /// toglie movimenti e causali nello stesso statement.
   causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
 
+  abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
+  abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
+
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
   @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
@@ -2148,6 +2154,7 @@ model RegistroRifiuti {
   progressiviIniziali RegistroProgressivoIniziale[]
   giacenzeIniziali    GiacenzaIniziale[]
   soglieDeposito      SogliaDepositoTemporaneo[]
+  abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, unitaLocaleId, codice])
@@ -2509,4 +2516,44 @@ model SogliaDepositoTemporaneo {
   @@unique([tenantId, registroId], map: "soglie_deposito_temporaneo_tenant_id_registro_id_key")
   @@index([tenantId], map: "soglie_deposito_temporaneo_tenant_id_idx")
   @@map("soglie_deposito_temporaneo")
+}
+
+enum OrigineAbbinamento {
+  AUTOMATICO
+  MANUALE
+
+  @@map("origine_abbinamento")
+}
+
+/// 4.6: quale carico (o giacenza iniziale) ha coperto quale scarico, e per quanto. Gli id sono
+/// quelli delle radici delle catene di correzione; quantita, data e classe si leggono dalla testa
+/// vigente. I CHECK (un solo carico, quantita > 0, tipo) stanno solo nella migration.
+model AbbinamentoCaricoScarico {
+  id                 String             @id(map: "abbinamenti_cs_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String             @map("tenant_id") @db.Uuid
+  registroId         String             @map("registro_id") @db.Uuid
+  scaricoId          String             @map("scarico_id") @db.Uuid
+  scaricoTipo        WasteMovementType  @default(SCARICO) @map("scarico_tipo")
+  caricoId           String?            @map("carico_id") @db.Uuid
+  caricoTipo         WasteMovementType  @default(CARICO) @map("carico_tipo")
+  giacenzaInizialeId String?            @map("giacenza_iniziale_id") @db.Uuid
+  famiglia           String             @db.VarChar(10)
+  quantita           Decimal            @db.Decimal(12, 3)
+  origine            OrigineAbbinamento
+  creatoDa           String?            @map("creato_da") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "abbinamenti_cs_tenant_id_fkey")
+  registro RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_registro_fkey")
+  scarico  WasteMovement    @relation("AbbinamentiScarico", fields: [scaricoId, registroId, tenantId, scaricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_scarico_fkey")
+  carico   WasteMovement?   @relation("AbbinamentiCarico", fields: [caricoId, registroId, tenantId, caricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_carico_fkey")
+  giacenza GiacenzaIniziale? @relation(fields: [giacenzaInizialeId, registroId, tenantId], references: [id, registroId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_giacenza_fkey")
+
+  @@unique([scaricoId, caricoId], map: "abbinamenti_cs_scarico_carico_key")
+  @@unique([scaricoId, giacenzaInizialeId], map: "abbinamenti_cs_scarico_giacenza_key")
+  @@index([tenantId], map: "abbinamenti_cs_tenant_id_idx")
+  @@index([registroId], map: "abbinamenti_cs_registro_id_idx")
+  @@index([caricoId], map: "abbinamenti_cs_carico_id_idx")
+  @@index([giacenzaInizialeId], map: "abbinamenti_cs_giacenza_iniziale_id_idx")
+  @@map("abbinamenti_carico_scarico")
 }

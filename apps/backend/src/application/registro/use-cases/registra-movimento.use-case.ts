@@ -35,7 +35,11 @@ import {
 } from '../numerazione-annotazione'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
+import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
 import { RegistriService, RegistroVista } from '../registri.service'
+
+const MSG_ERRORE_REGISTRAZIONE =
+  "Errore durante la registrazione del movimento. Riprova; se il problema persiste contatta l'assistenza."
 
 /**
  * Chiave di ricopia della ricopia ordinaria di un FIR (C-W-03, come WinWaste).
@@ -218,7 +222,7 @@ export class RegistraMovimentoUseCase {
     } catch (err) {
       if (err instanceof DomainError) return Result.fail(err.message)
       this.logger.error(`Preparazione dei registri non riuscita: ${err.message}`)
-      return Result.fail(`Errore durante la registrazione: ${err.message}`)
+      return Result.fail(MSG_ERRORE_REGISTRAZIONE)
     }
 
     let movimento: MovimentoRegistrato
@@ -344,6 +348,21 @@ export class RegistraMovimentoUseCase {
           notes: entity.notes,
         })
 
+        // 4.6: proposta FIFO degli abbinamenti carico-scarico, nella stessa transazione (D10).
+        // Un errore qui annulla la registrazione: le righe non possono restare indietro.
+        if (command.type === 'SCARICO') {
+          avvisi.push(
+            ...(await abbinaNuovoScarico(tx, {
+              tenantId: command.tenantId,
+              registroId: registroMovimento.id,
+              scaricoId: record.id,
+              userId: command.userId ?? null,
+              cerCode: record.cerCode,
+              movimentoOriginaleId: record.movimentoOriginaleId ?? null,
+            }))
+          )
+        }
+
         return {
           ...this.movimentoDaRecord(record, ritardoGg, validazione.causaleDescrizione),
           avvisi,
@@ -360,8 +379,9 @@ export class RegistraMovimentoUseCase {
       if (err instanceof ConflictException) throw err
       const doppio = await this.messaggioRicopiaDoppia(err, command)
       if (doppio) return Result.fail(doppio)
+      // Errore inatteso: il dettaglio resta nel log (senza dati personali), all'utente un testo generico.
       this.logger.error(`Errore registrazione movimento: ${err.message}`)
-      return Result.fail(`Errore durante la registrazione: ${err.message}`)
+      return Result.fail(MSG_ERRORE_REGISTRAZIONE)
     }
 
     if (movimento.giaRegistrato) {
