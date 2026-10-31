@@ -127,4 +127,43 @@ describe('riferimentiCaricoPerScarichi', () => {
     const eventi = [carico('c1', '2026-03-01', 10), scarico('s2', '2026-03-02', 5)]
     expect(riferimentiCaricoPerScarichi(eventi, new Map(), new Map()).get('s2')).toEqual([])
   })
+
+  it('carico successivo allo scarico: nessun riferimento', () => {
+    const eventi = [scarico('s1', '2026-03-01', 50), carico('c2', '2026-03-05', 100)]
+    const r = riferimentiCaricoPerScarichi(eventi, new Map([['c2', n(2)]]), new Map())
+    expect(r.get('s1')).toEqual([])
+  })
+
+  it('scarico in parte coperto prima e saldato dopo: solo il carico precedente', () => {
+    const eventi = [
+      carico('c1', '2026-03-01', 10),
+      scarico('s2', '2026-03-02', 50),
+      carico('c3', '2026-03-05', 100),
+    ]
+    const numeri = new Map([
+      ['c1', n(1)],
+      ['c3', n(3)],
+    ])
+    expect(riferimentiCaricoPerScarichi(eventi, numeri, new Map()).get('s2')).toEqual([n(1)])
+  })
+
+  it("carico in L e scarico in M3 dello stesso CER: il riferimento c'e'", () => {
+    const eventi = [
+      carico('c1', '2026-03-01', 3000, { unit: 'L' }),
+      scarico('s2', '2026-03-02', 2, { unit: 'M3' }),
+    ]
+    expect(
+      riferimentiCaricoPerScarichi(eventi, new Map([['c1', n(1)]]), new Map()).get('s2')
+    ).toEqual([n(1)])
+  })
+
+  it('massa e volume dello stesso CER restano separati', () => {
+    const eventi = [
+      carico('c1', '2026-03-01', 100, { unit: 'KG' }),
+      scarico('s2', '2026-03-02', 1, { unit: 'M3' }),
+    ]
+    expect(
+      riferimentiCaricoPerScarichi(eventi, new Map([['c1', n(1)]]), new Map()).get('s2')
+    ).toEqual([])
+  })
 })
