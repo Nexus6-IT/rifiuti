@@ -103,81 +103,22 @@ export class AccodaTrasmissioneRentriUseCase {
       })
       if (trovati.length !== scelti.length) throw new MovimentoNonTrovatoError()
 
-      // Catena dei predecessori: si risale finche' ce ne sono (stesso registro e azienda).
-      const tutti = new Map(trovati.map(m => [m.id, m]))
-      const predecessori = new Set<string>()
-      let fronte = trovati.map(m => m.movimentoRettificatoId).filter((x): x is string => !!x)
-      for (let giro = 0; fronte.length > 0 && giro < PROFONDITA_MASSIMA_CATENA; giro++) {
-        const nuovi = unici(fronte).filter(id => !tutti.has(id))
-        if (nuovi.length === 0) break
-        const letti = await tx.wasteMovement.findMany({
-          where: { id: { in: nuovi }, tenantId, registroId },
-          select: { id: true, type: true, movimentoRettificatoId: true },
-        })
-        for (const m of letti) {
-          tutti.set(m.id, m)
-          predecessori.add(m.id)
-        }
-        fronte = letti.map(m => m.movimentoRettificatoId).filter((x): x is string => !!x)
-      }
-
-      const righe = await tx.movimentoTrasmissioneRentri.findMany({
-        where: { tenantId, movimentoId: { in: [...tutti.keys()] } },
-        select: { movimentoId: true, stato: true },
-      })
-      const statoDi = new Map(righe.map(r => [r.movimentoId, r.stato]))
-
-      const nuove: string[] = []
-      const daRiportare: string[] = []
-      const saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>> = {}
-      let saltate = 0
-      let predecessoriAccodati = 0
-      for (const id of tutti.keys()) {
-        const stato = statoDi.get(id)
-        const eScelto = !predecessori.has(id)
-        if (stato === undefined) {
-          nuove.push(id)
-          if (!eScelto) predecessoriAccodati++
-        } else if (RIACCODABILI.includes(stato)) {
-          daRiportare.push(id)
-          if (!eScelto) predecessoriAccodati++
-        } else if (eScelto) {
-          // Un predecessore gia' trasmesso o in volo non e' un problema: non si conta come saltato.
-          saltate++
-          saltatePerStato[stato] = (saltatePerStato[stato] ?? 0) + 1
-        }
-      }
-
-      let accodate = 0
-      if (nuove.length > 0) {
-        const r = await tx.movimentoTrasmissioneRentri.createMany({
-          data: nuove.map(id => ({
-            tenantId,
-            movimentoId: id,
-            registroId,
-            tipo: tutti.get(id)!.type,
-            origine: 'MANUALE' as const,
-            accodatoDa: utenteId,
-          })),
-          skipDuplicates: true,
-        })
-        accodate = r.count
-        // Una riga comparsa nel frattempo (adozione automatica) non e' un errore: e' gia' in coda.
-        saltate += nuove.length - r.count
-      }
-      let riaccodate = 0
-      if (daRiportare.length > 0) {
-        const r = await tx.movimentoTrasmissioneRentri.updateMany({
-          where: { tenantId, movimentoId: { in: daRiportare }, stato: { in: RIACCODABILI } },
-          data: {
-            stato: 'DA_TRASMETTERE',
-            bloccatoInvio: false,
-            motivoBlocco: null,
-            accodatoDa: utenteId,
-          },
-        })
-        riaccodate = r.count
-      }
+      const {
+        accodate,
+        riaccodate,
+        predecessoriAccodati,
+        saltate,
+        saltatePerStato,
+        nuove,
+        daRiportare,
+      } = await this.applicaAccodamento(
+        tx,
+        tenantId,
+        utenteId,
+        registroId,
+        trovati,
+        new Set(scelti)
+      )
 
       const esito: EsitoAccodamento = {
         accodate,
@@ -204,8 +145,115 @@ export class AccodaTrasmissioneRentriUseCase {
   }
 
   /**
+   * Cuore comune di `accoda` e `accodaStorico`: dato un insieme di movimenti di partenza, risale la
+   * catena dei predecessori (stesso registro e azienda) e accoda tutto: crea le righe mancanti
+   * (`MANUALE`) e riporta in coda solo `RIFIUTATA`/`NON_TRASMISSIBILE`. Le altre righe dei movimenti
+   * `scelti` si contano come saltate; quelle dei predecessori no (gia' trasmesso o in volo e' ok).
+   */
+  private async applicaAccodamento(
+    tx: Tx,
+    tenantId: string,
+    utenteId: string,
+    registroId: string,
+    partenza: Array<{
+      id: string
+      type: 'CARICO' | 'SCARICO'
+      movimentoRettificatoId: string | null
+    }>,
+    scelti: Set<string>
+  ) {
+    const tutti = new Map(partenza.map(m => [m.id, m]))
+    const predecessori = new Set<string>()
+    let fronte = partenza.map(m => m.movimentoRettificatoId).filter((x): x is string => !!x)
+    for (let giro = 0; fronte.length > 0 && giro < PROFONDITA_MASSIMA_CATENA; giro++) {
+      const nuovi = unici(fronte).filter(id => !tutti.has(id))
+      if (nuovi.length === 0) break
+      const letti = await tx.wasteMovement.findMany({
+        where: { id: { in: nuovi }, tenantId, registroId },
+        select: { id: true, type: true, movimentoRettificatoId: true },
+      })
+      for (const m of letti) {
+        tutti.set(m.id, m)
+        predecessori.add(m.id)
+      }
+      fronte = letti.map(m => m.movimentoRettificatoId).filter((x): x is string => !!x)
+    }
+
+    const righe = await tx.movimentoTrasmissioneRentri.findMany({
+      where: { tenantId, movimentoId: { in: [...tutti.keys()] } },
+      select: { movimentoId: true, stato: true },
+    })
+    const statoDi = new Map(righe.map(r => [r.movimentoId, r.stato]))
+
+    const nuove: string[] = []
+    const daRiportare: string[] = []
+    const saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>> = {}
+    let saltate = 0
+    let predecessoriAccodati = 0
+    for (const id of tutti.keys()) {
+      const stato = statoDi.get(id)
+      const eScelto = scelti.has(id)
+      if (stato === undefined) {
+        nuove.push(id)
+        if (!eScelto) predecessoriAccodati++
+      } else if (RIACCODABILI.includes(stato)) {
+        daRiportare.push(id)
+        if (!eScelto) predecessoriAccodati++
+      } else if (eScelto) {
+        // Un predecessore gia' trasmesso o in volo non e' un problema: non si conta come saltato.
+        saltate++
+        saltatePerStato[stato] = (saltatePerStato[stato] ?? 0) + 1
+      }
+    }
+
+    let accodate = 0
+    if (nuove.length > 0) {
+      const r = await tx.movimentoTrasmissioneRentri.createMany({
+        data: nuove.map(id => ({
+          tenantId,
+          movimentoId: id,
+          registroId,
+          tipo: tutti.get(id)!.type,
+          origine: 'MANUALE' as const,
+          accodatoDa: utenteId,
+        })),
+        skipDuplicates: true,
+      })
+      accodate = r.count
+      // Una riga comparsa nel frattempo (adozione automatica) non e' un errore: e' gia' in coda.
+      saltate += nuove.length - r.count
+    }
+    let riaccodate = 0
+    if (daRiportare.length > 0) {
+      const r = await tx.movimentoTrasmissioneRentri.updateMany({
+        where: { tenantId, movimentoId: { in: daRiportare }, stato: { in: RIACCODABILI } },
+        data: {
+          stato: 'DA_TRASMETTERE',
+          bloccatoInvio: false,
+          motivoBlocco: null,
+          ultimoErrore: null,
+          accodatoDa: utenteId,
+        },
+      })
+      riaccodate = r.count
+    }
+
+    return {
+      accodate,
+      riaccodate,
+      predecessoriAccodati,
+      saltate,
+      saltatePerStato,
+      nuove,
+      daRiportare,
+    }
+  }
+
+  /**
    * "Trasmetti lo storico": accoda i movimenti dell'ANNO indicato che non hanno ancora una riga.
-   * Non riporta in coda le rifiutate e non risale ai predecessori di anni precedenti.
+   * Non riporta in coda le rifiutate dell'anno; per le correzioni accoda anche i predecessori non
+   * trasmessi (anche di anni precedenti), come `accoda`.
+   * NB per l'API (Task 10): e' un'operazione massiva, il controller deve riservarla agli ADMIN (ruolo effettivo).
    * @throws RichiestaTrasmissioneNonValidaError senza `conferma: true` o con un anno non valido
    */
   async accodaStorico(
@@ -239,10 +287,27 @@ export class AccodaTrasmissioneRentriUseCase {
         ORDER BY m."progressive_number"
         ON CONFLICT ("movimento_id") DO NOTHING
         RETURNING "movimento_id"`
+      // Le correzioni dell'anno con un predecessore di anni precedenti: si accoda anche quello
+      // ("come accoda"), altrimenti la correzione resterebbe in attesa per sempre.
+      const correzioni = inseriti.length
+        ? await tx.wasteMovement.findMany({
+            where: {
+              tenantId,
+              registroId,
+              id: { in: inseriti.map(r => r.movimento_id) },
+              movimentoRettificatoId: { not: null },
+            },
+            select: { id: true, type: true, movimentoRettificatoId: true },
+          })
+        : []
+      const pred =
+        correzioni.length > 0
+          ? await this.applicaAccodamento(tx, tenantId, utenteId, registroId, correzioni, new Set())
+          : null
       const esito: EsitoAccodamento = {
-        accodate: inseriti.length,
-        riaccodate: 0,
-        predecessori: 0,
+        accodate: inseriti.length + (pred?.accodate ?? 0),
+        riaccodate: pred?.riaccodate ?? 0,
+        predecessori: pred?.predecessoriAccodati ?? 0,
         saltate: 0,
         saltatePerStato: {},
       }
@@ -256,7 +321,8 @@ export class AccodaTrasmissioneRentriUseCase {
             registroId,
             anno,
             storico: true,
-            accodate: inseriti.length,
+            accodate: esito.accodate,
+            predecessori: esito.predecessori,
             movimentoIds: inseriti.slice(0, MAX_ID_IN_AUDIT).map(r => r.movimento_id),
           },
         },
@@ -266,23 +332,30 @@ export class AccodaTrasmissioneRentriUseCase {
   }
 
   /**
-   * Toglie un'annotazione dalla coda: si cancella la riga solo se `DA_TRASMETTERE`.
+   * Toglie un'annotazione dalla coda: si cancella la riga solo se `DA_TRASMETTERE` e accodata a mano
+   * (origine `MANUALE`).
    * @throws TrasmissioneNonModificabileError (409) se la riga e' in un altro stato (intatta)
    * @throws MovimentoNonTrovatoError (404) se non c'e' nessuna riga per questa azienda
    */
   async togliDallaCoda(tenantId: string, utenteId: string, movimentoId: string): Promise<void> {
     await this.nelTenant(tenantId, async tx => {
+      // Solo le righe accodate a mano: le AUTOMATICHE/CORREZIONE le riadotterebbe il job.
       const r = await tx.movimentoTrasmissioneRentri.deleteMany({
-        where: { tenantId, movimentoId, stato: 'DA_TRASMETTERE' },
+        where: { tenantId, movimentoId, stato: 'DA_TRASMETTERE', origine: 'MANUALE' },
       })
       if (r.count === 0) {
         const esiste = await tx.movimentoTrasmissioneRentri.findFirst({
           where: { tenantId, movimentoId },
-          select: { stato: true },
+          select: { stato: true, origine: true },
         })
         if (!esiste) throw new MovimentoNonTrovatoError()
+        if (esiste.stato === 'DA_TRASMETTERE') {
+          throw new TrasmissioneNonModificabileError(
+            "L'annotazione è stata accodata dall'invio automatico: se la togliessi, il prossimo giro la riaccoderebbe. Per fermarla disattiva l'invio automatico del registro."
+          )
+        }
         throw new TrasmissioneNonModificabileError(
-          "L'annotazione non e' piu' in coda: si puo' togliere solo prima dell'invio."
+          "L'annotazione non è più in coda: si può togliere solo prima dell'invio."
         )
       }
       await tx.activityLog.create({
@@ -396,7 +469,8 @@ export class AccodaTrasmissioneRentriUseCase {
         })
         dichiarate += r.count
       }
-      const saltate = movimenti.length - nuovi.length - daRiportare.length
+      // Comprende le righe comparse nel frattempo (adozione automatica): non dichiarate.
+      const saltate = movimenti.length - dichiarate
 
       await tx.activityLog.create({
         data: {

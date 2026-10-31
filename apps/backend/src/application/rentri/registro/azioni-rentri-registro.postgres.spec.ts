@@ -37,6 +37,8 @@ import {
   RuoloNonAutorizzatoRentriError,
   TrasmissioneNonModificabileError,
 } from './errori-azioni-rentri-registro'
+import { ETA_MINIMA_ASSENZA_DEFINITIVA_MS } from './verifica-trasmissione-rentri.use-case'
+import { SOGLIA_STALLO_RENTRI_MS } from '../sync-fir-to-rentri.use-case'
 import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registro.service'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import type { AnnotazionePerRentri } from './mappa-registrazione-rentri'
@@ -67,12 +69,21 @@ class RentriFinto {
     if (r instanceof Error) throw r
     return r
   }
-  async contaMovimenti() {
+  contaFn: (() => unknown) | null = null
+  ultimiFiltriConta: unknown = null
+  async contaMovimenti(_reg: string, filtri?: unknown) {
     this.chiamateConta++
+    this.ultimiFiltriConta = filtri
+    if (this.contaFn) {
+      const r = this.contaFn()
+      if (r instanceof Error) throw r
+      return r
+    }
     return this.conta
   }
 }
 
+const oreFa = (h: number) => new Date(Date.now() - h * 3600_000)
 const non404 = () => new RentriApiError(404, 'Non trovato', 'Registrazione non trovata', false)
 
 describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo wasteflow_app', () => {
@@ -236,6 +247,8 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
     finto.chiamateDettaglio = 0
     finto.chiamateEsito = 0
     finto.chiamateConta = 0
+    finto.contaFn = null
+    finto.conta = 0
     finto.dettaglio = null
     finto.esito = null
   })
@@ -247,6 +260,10 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
     }
     await app.onModuleDestroy()
     await owner.$disconnect()
+  })
+
+  it("la soglia di assenza definitiva e' almeno la soglia di stallo", () => {
+    expect(ETA_MINIMA_ASSENZA_DEFINITIVA_MS).toBeGreaterThanOrEqual(SOGLIA_STALLO_RENTRI_MS)
   })
 
   describe('accoda', () => {
@@ -280,6 +297,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       expect((await rigaDi(rif.id))?.stato).toBe('DA_TRASMETTERE')
       expect((await rigaDi(non.id))?.stato).toBe('DA_TRASMETTERE')
       expect((await rigaDi(rif.id))?.bloccatoInvio).toBe(false)
+      expect((await rigaDi(rif.id))?.ultimoErrore).toBeNull()
     })
 
     it('TRASMESSA, GIA_SU_RENTRI, INCERTA, IN_INVIO, ATTESA_ESITO saltate e contate: righe intatte', async () => {
@@ -397,6 +415,26 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
     })
   })
 
+  describe('accodaStorico e predecessori', () => {
+    it("una correzione dell'anno accoda anche il predecessore di un anno precedente", async () => {
+      const a = await azienda()
+      const vecchio = await movimento(a, { progressiveYear: 2025 })
+      const corr = await movimento(a, {
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: vecchio.id,
+        movimentoOriginaleId: vecchio.id,
+        motivoAnnotazione: 'x',
+      })
+      const r = await accoda.accodaStorico(a.tenantId, utenteId, a.registroId, 2026, true)
+      expect(r.predecessori).toBe(1)
+      expect((await rigaDi(corr.id))?.stato).toBe('DA_TRASMETTERE')
+      expect(await rigaDi(vecchio.id)).toMatchObject({
+        stato: 'DA_TRASMETTERE',
+        origine: 'MANUALE',
+      })
+    })
+  })
+
   describe('togliDallaCoda', () => {
     it('DA_TRASMETTERE cancellata; TRASMESSA: 409 e riga intatta', async () => {
       const a = await azienda()
@@ -411,6 +449,21 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       )
       expect((await rigaDi(trasm.id))?.stato).toBe('TRASMESSA')
       expect(await audit(a.tenantId, 'RENTRI_REGISTRO_TOLTO_DALLA_CODA')).toHaveLength(1)
+    })
+
+    it('righe AUTOMATICA e CORREZIONE in coda: 409 (il job le riadotterebbe), riga intatta', async () => {
+      const a = await azienda()
+      for (const origine of ['AUTOMATICA', 'CORREZIONE'] as const) {
+        const m = await movimento(a)
+        await riga(a, m, { origine })
+        await expect(accoda.togliDallaCoda(a.tenantId, utenteId, m.id)).rejects.toThrow(
+          /invio automatico/
+        )
+        await expect(accoda.togliDallaCoda(a.tenantId, utenteId, m.id)).rejects.toBeInstanceOf(
+          TrasmissioneNonModificabileError
+        )
+        expect((await rigaDi(m.id))?.stato).toBe('DA_TRASMETTERE')
+      }
     })
 
     it('INCERTA e IN_INVIO non si tolgono; movimento senza riga: 404', async () => {
@@ -493,7 +546,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
 
     async function incerta(a: { tenantId: string; registroId: string }, dati = {}) {
       const m = await movimento(a)
-      await riga(a, m, { stato: 'INCERTA', ...dati })
+      await riga(a, m, { stato: 'INCERTA', prenotatoIl: oreFa(10), ...dati })
       return m
     }
 
@@ -639,15 +692,137 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       expect(finto.chiamateDettaglio).toBe(1)
     })
 
-    it('ATTESA_ESITO senza esito leggibile e numero assente: DA_TRASMETTERE solo col 404 definitivo', async () => {
+    it("ATTESA_ESITO con transazione sconosciuta e dettaglio in errore tecnico: resta com'e'", async () => {
       const a = await azienda()
       const transazioneId = randomUUID()
       const m = await movimento(a)
-      await riga(a, m, { stato: 'ATTESA_ESITO', transazioneId })
+      await riga(a, m, { stato: 'ATTESA_ESITO', transazioneId, prenotatoIl: oreFa(10) })
       finto.esito = () => new TransazioneRentriNonTrovataError(transazioneId)
       finto.dettaglio = () => new RentriApiError(503, 'x', undefined, true)
       expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('NON_VERIFICABILE')
       expect((await rigaDi(m.id))?.stato).toBe('ATTESA_ESITO')
+    })
+
+    it('ATTESA_ESITO con transazione sconosciuta, numero assente (404 + conteggio 0), invio vecchio: DA_TRASMETTERE', async () => {
+      const a = await azienda()
+      const transazioneId = randomUUID()
+      const m = await movimento(a)
+      await riga(a, m, { stato: 'ATTESA_ESITO', transazioneId, prenotatoIl: oreFa(10) })
+      finto.esito = () => new TransazioneRentriNonTrovataError(transazioneId)
+      finto.dettaglio = () => non404()
+      const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+      expect(r.esito).toBe('DA_TRASMETTERE')
+      expect(await rigaDi(m.id)).toMatchObject({ stato: 'DA_TRASMETTERE', bloccatoInvio: false })
+    })
+
+    describe('404 del dettaglio: non basta da solo (ruling D11)', () => {
+      it('invio troppo recente: NON_VERIFICABILE, nessun conteggio, riga invariata', async () => {
+        const a = await azienda()
+        const m = await incerta(a, { prenotatoIl: oreFa(1) })
+        finto.dettaglio = () => non404()
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect(r.messaggio).toContain('riprovare più tardi')
+        expect(finto.chiamateConta).toBe(0)
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+
+      it('senza prenotatoIl conta updatedAt (recente): NON_VERIFICABILE', async () => {
+        const a = await azienda()
+        const m = await incerta(a, { prenotatoIl: null })
+        finto.dettaglio = () => non404()
+        expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('NON_VERIFICABILE')
+      })
+
+      it('vecchio + conteggio 0 per anno e progressivo: DA_TRASMETTERE', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.dettaglio = () => non404()
+        finto.conta = 0
+        expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('DA_TRASMETTERE')
+        expect(finto.ultimiFiltriConta).toEqual({ anno: 2026, progressivo: m.progressiveNumber })
+      })
+
+      it('conteggio > 0 (incoerente): NON_VERIFICABILE, riga invariata', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.dettaglio = () => non404()
+        finto.conta = 1
+        expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('NON_VERIFICABILE')
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+
+      it('conteggio 404: registro non trovato su RENTRI, riga invariata', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.dettaglio = () => non404()
+        finto.contaFn = () => non404()
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect(r.messaggio.toLowerCase()).toContain(
+          'identificativo del registro non trovato su rentri'
+        )
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+
+      it.each([
+        ['errore tecnico', () => new RentriApiError(503, 'x', undefined, true)],
+        ['errore sconosciuto', () => new Error('boom')],
+        ['corpo non numerico', () => Number.NaN],
+        ['corpo negativo', () => -1],
+      ])('conteggio con %s: NON_VERIFICABILE, riga invariata', async (_n, f) => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.dettaglio = () => non404()
+        finto.contaFn = f
+        expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('NON_VERIFICABILE')
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+
+      it('la riga cambia mentre si chiama RENTRI (ABA con stesso stato): nessuna decisione', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.dettaglio = () => non404()
+        // un altro processo tocca la riga (stesso stato, updatedAt nuovo) durante la chiamata
+        const originale = finto.contaMovimenti.bind(finto)
+        finto.contaMovimenti = async (reg: string, filtri?: unknown) => {
+          await owner.movimentoTrasmissioneRentri.update({
+            where: { movimentoId: m.id },
+            data: { ultimoErrore: 'toccata' },
+          })
+          return originale(reg, filtri)
+        }
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        finto.contaMovimenti = originale as never
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+    })
+
+    it('dato di RENTRI mancante: resta INCERTA con un motivo diverso da "numero occupato"', async () => {
+      const a = await azienda()
+      const m = await incerta(a)
+      finto.dettaglio = (anno, prog) => ({
+        riferimenti: { numero_registrazione: { anno, progressivo: prog } },
+        annullato: false,
+        rettificato: false,
+      })
+      const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+      expect(r.esito).toBe('DIVERSA')
+      const dopo = await rigaDi(m.id)
+      expect(dopo?.motivoBlocco).not.toContain('occupato')
+      expect(dopo?.motivoBlocco).toContain('non si può confrontare')
+    })
+
+    it('verifica da transazione: nessun audit se lo stato non cambia', async () => {
+      const a = await azienda()
+      const m = await incerta(a, { transazioneId: randomUUID() })
+      // esito che non attribuisce nulla alla riga e non la cambia: lotto vuoto non e' possibile, quindi
+      // si prova col caso opposto: con cambio di stato l'audit c'e' (gia' coperto); qui lo stato resta
+      // quando l'esito e' tecnico (nessun audit).
+      finto.esito = () => new RentriApiError(503, 'x', undefined, true)
+      await verifica.verifica(a.tenantId, utenteId, m.id)
+      expect(await audit(a.tenantId, 'RENTRI_REGISTRO_VERIFICATA')).toHaveLength(0)
     })
 
     it('TRASMESSA con identificativo nullo: lo recupera dal numero, senza cambiare stato', async () => {
@@ -690,6 +865,40 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
             identificativoRentri: 'RABCDE12345',
           })
         ).rejects.toBeInstanceOf(RuoloNonAutorizzatoRentriError)
+      }
+    })
+
+    it('imposta e prenota in concorrenza: nessun lotto parte con un identificativo diverso da quello salvato', async () => {
+      for (let giro = 0; giro < 12; giro++) {
+        const a = await azienda()
+        const m = await movimento(a)
+        await riga(a, m)
+        let usato: string | null = null
+        const [imp, pren] = await Promise.allSettled([
+          impostazioni.imposta(a.tenantId, utenteId, 'ADMIN', a.registroId, {
+            identificativoRentri: 'RZZZZZ99999',
+          }),
+          repo.prenota(a.tenantId, a.registroId, async (tx, candidate) => {
+            usato =
+              (
+                await tx.registroRifiuti.findFirst({
+                  where: { id: a.registroId, tenantId: a.tenantId },
+                  select: { identificativoRentri: true },
+                })
+              )?.identificativoRentri ?? null
+            return { lotto: candidate.map(c => c.movimentoId), nonTrasmissibili: [] }
+          }),
+        ])
+        const finale = (
+          await owner.registroRifiuti.findUniqueOrThrow({ where: { id: a.registroId } })
+        ).identificativoRentri
+        const prenotato = pren.status === 'fulfilled' && pren.value.esito === 'PRENOTATO'
+        if (prenotato) {
+          // il POST sarebbe partito con `usato`: deve essere l'identificativo che il registro ha ancora
+          expect(finale).toBe(usato)
+          expect(imp.status).toBe('rejected')
+        }
+        if (imp.status === 'fulfilled') expect(finale).toBe('RZZZZZ99999')
       }
     })
 
@@ -810,9 +1019,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
 
     it('allineamento: errore tecnico di RENTRI -> suRentri null; senza identificativo -> 400', async () => {
       const a = await azienda()
-      finto.contaMovimenti = async () => {
-        throw new RentriApiError(503, 'x', undefined, true)
-      }
+      finto.contaFn = () => new RentriApiError(503, 'x', undefined, true)
       expect((await impostazioni.allineamento(a.tenantId, a.registroId, 2026)).suRentri).toBeNull()
       const b = await azienda({ identificativo: null })
       await expect(

@@ -53,6 +53,20 @@ export const MOTIVO_NUMERO_OCCUPATO =
   "Il numero è occupato su RENTRI da un'altra registrazione: controllare il portale"
 const MOTIVO_NON_CONFRONTABILE =
   "Il numero è presente su RENTRI ma l'annotazione non si può confrontare: controllare il portale"
+/**
+ * Eta' minima dell'ultimo tentativo di invio perche' "RENTRI non ha il numero" valga come assenza
+ * DEFINITIVA e l'annotazione possa tornare in coda. 6 ore: 24 volte la soglia di stallo della POST
+ * (15 minuti), cioe' molto piu' del tempo in cui una transazione accettata ma ancora in elaborazione
+ * puo' non avere ancora registrato il numero; abbastanza corta da non lasciare l'utente bloccato
+ * oltre il turno di lavoro. Sempre >= SOGLIA_STALLO_RENTRI_MS (verificato dai test).
+ */
+export const ETA_MINIMA_ASSENZA_DEFINITIVA_MS = 6 * 60 * 60 * 1000
+const MOTIVO_TROPPO_RECENTE =
+  "L'ultimo invio è troppo recente per escludere che RENTRI stia ancora elaborando: riprovare più tardi."
+const MOTIVO_REGISTRO_SCONOSCIUTO =
+  'Identificativo del registro non trovato su RENTRI: controllarlo.'
+const MOTIVO_TROVATO_SENZA_NUMERO =
+  'RENTRI dà risposte non coerenti su questo numero: controllare il portale.'
 const MOTIVO_TRASMESSA_VERIFICATA = 'Trasmessa a RENTRI (verificata)'
 
 export interface EsitoVerifica {
@@ -106,6 +120,8 @@ export class VerificaTrasmissioneRentriUseCase {
           registroId: true,
           transazioneId: true,
           identificativoRentri: true,
+          prenotatoIl: true,
+          updatedAt: true,
           movimento: { select: { progressiveYear: true, progressiveNumber: true } },
         },
       })
@@ -211,6 +227,7 @@ export class VerificaTrasmissioneRentriUseCase {
       )
     }
     let dettaglio: MovimentoDettaglioModel | null
+    let assenzaDefinitiva = false
     try {
       dettaglio = await this.client.dettaglioMovimentoPerAnnoProgressivo(
         riga.identificativoRegistro,
@@ -222,6 +239,42 @@ export class VerificaTrasmissioneRentriUseCase {
     } catch (errore) {
       if (errore instanceof RentriApiError && errore.status === 404 && !errore.retryable) {
         dettaglio = null
+        // Un 404 del dettaglio non basta (vale anche per un registro sbagliato, o per un numero non
+        // ancora registrato): serve anche che il registro risponda "zero" su quel numero e che
+        // l'ultimo invio sia abbastanza vecchio.
+        if (!recuperoIdentificativo) {
+          const ultimo = riga.prenotatoIl ?? riga.updatedAt
+          if (Date.now() - ultimo.getTime() < ETA_MINIMA_ASSENZA_DEFINITIVA_MS) {
+            return nonVerificabile(MOTIVO_TROPPO_RECENTE)
+          }
+          try {
+            const quanti = await this.client.contaMovimenti(
+              riga.identificativoRegistro,
+              {
+                anno: riga.movimento.progressiveYear,
+                progressivo: riga.movimento.progressiveNumber,
+              },
+              tenantId
+            )
+            if (!Number.isInteger(quanti) || quanti < 0) {
+              return nonVerificabile(
+                "RENTRI non ha dato una risposta definitiva: riprovare piu' tardi."
+              )
+            }
+            if (quanti > 0) return nonVerificabile(MOTIVO_TROVATO_SENZA_NUMERO)
+            assenzaDefinitiva = true
+          } catch (e) {
+            if (e instanceof RentriApiError && e.status === 404 && !e.retryable) {
+              return nonVerificabile(MOTIVO_REGISTRO_SCONOSCIUTO)
+            }
+            this.logger.warn('Conteggio per numero su RENTRI non riuscito: riga invariata', {
+              tipo: e instanceof Error ? e.name : 'sconosciuto',
+            })
+            return nonVerificabile(
+              "RENTRI non ha dato una risposta definitiva: riprovare piu' tardi."
+            )
+          }
+        }
       } else {
         this.logger.warn('Ricerca per numero su RENTRI non riuscita: riga invariata', {
           tipo: errore instanceof Error ? errore.name : 'sconosciuto',
@@ -235,23 +288,29 @@ export class VerificaTrasmissioneRentriUseCase {
     return this.nelTenant(tenantId, async tx => {
       const adesso = await tx.movimentoTrasmissioneRentri.findFirst({
         where: { id: riga.id, tenantId },
-        select: { stato: true, identificativoRentri: true },
+        select: { stato: true, identificativoRentri: true, updatedAt: true },
       })
       // La riga e' cambiata mentre si chiamava RENTRI: non si decide su dati vecchi.
       if (
         !adesso ||
         adesso.stato !== riga.stato ||
-        adesso.identificativoRentri !== riga.identificativoRentri
+        adesso.identificativoRentri !== riga.identificativoRentri ||
+        adesso.updatedAt.getTime() !== riga.updatedAt.getTime()
       ) {
         return nonVerificabile("L'annotazione è cambiata nel frattempo: rieseguire la verifica.")
       }
 
       if (dettaglio === null) {
-        if (recuperoIdentificativo) {
+        if (recuperoIdentificativo || !assenzaDefinitiva) {
           return nonVerificabile('Annotazione non trovata su RENTRI: controllare il portale.')
         }
         const r = await tx.movimentoTrasmissioneRentri.updateMany({
-          where: { id: riga.id, tenantId, stato: { in: STATI_VERIFICABILI } },
+          where: {
+            id: riga.id,
+            tenantId,
+            stato: { in: STATI_VERIFICABILI },
+            updatedAt: riga.updatedAt,
+          },
           data: {
             stato: 'DA_TRASMETTERE',
             bloccatoInvio: false,
@@ -274,12 +333,18 @@ export class VerificaTrasmissioneRentriUseCase {
       const confronto =
         annotazione && tradotta?.ok
           ? confrontaConRentri(tradotta.corpo, annotazione.tipoAnnotazione, dettaglio)
-          : { uguale: false, identificativo: null }
+          : { uguale: false, identificativo: null, nonConfrontabile: true as const }
 
       if (recuperoIdentificativo) {
         if (confronto.uguale && confronto.identificativo) {
           const r = await tx.movimentoTrasmissioneRentri.updateMany({
-            where: { id: riga.id, tenantId, stato: 'TRASMESSA', identificativoRentri: null },
+            where: {
+              id: riga.id,
+              tenantId,
+              stato: 'TRASMESSA',
+              identificativoRentri: null,
+              updatedAt: riga.updatedAt,
+            },
             data: { identificativoRentri: confronto.identificativo },
           })
           if (r.count === 1) {
@@ -306,7 +371,12 @@ export class VerificaTrasmissioneRentriUseCase {
 
       if (confronto.uguale) {
         const r = await tx.movimentoTrasmissioneRentri.updateMany({
-          where: { id: riga.id, tenantId, stato: { in: STATI_VERIFICABILI } },
+          where: {
+            id: riga.id,
+            tenantId,
+            stato: { in: STATI_VERIFICABILI },
+            updatedAt: riga.updatedAt,
+          },
           data: {
             stato: 'TRASMESSA',
             bloccatoInvio: true,
@@ -327,9 +397,17 @@ export class VerificaTrasmissioneRentriUseCase {
       }
 
       // Trovata ma diversa (o non confrontabile): resta bloccata, mai sovrascritta.
-      const motivo = tradotta?.ok ? MOTIVO_NUMERO_OCCUPATO : MOTIVO_NON_CONFRONTABILE
+      const motivo =
+        tradotta?.ok && !confronto.nonConfrontabile
+          ? MOTIVO_NUMERO_OCCUPATO
+          : MOTIVO_NON_CONFRONTABILE
       await tx.movimentoTrasmissioneRentri.updateMany({
-        where: { id: riga.id, tenantId, stato: { in: STATI_VERIFICABILI } },
+        where: {
+          id: riga.id,
+          tenantId,
+          stato: { in: STATI_VERIFICABILI },
+          updatedAt: riga.updatedAt,
+        },
         data: { stato: 'INCERTA', bloccatoInvio: true, motivoBlocco: motivo, ultimoErrore: motivo },
       })
       await this.audit(tx, tenantId, utenteId, movimentoId, riga.stato, 'INCERTA', via)

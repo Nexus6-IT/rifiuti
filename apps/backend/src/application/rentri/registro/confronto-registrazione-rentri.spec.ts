@@ -71,21 +71,101 @@ describe('confrontaConRentri', () => {
     expect(confrontaConRentri(c, 'ORDINARIA', dettaglio()).uguale).toBe(true)
   })
 
-  it('annullamento: conta il numero, il corpo non ha rifiuto', () => {
-    const c = {
-      numero_registrazione: { anno: 2026, progressivo: 7 },
-      numero_registrazione_annullata: { anno: 2026, progressivo: 3 },
-      annotazioni: 'errore',
-    }
-    expect(confrontaConRentri(c, 'ANNULLAMENTO', dettaglio()).uguale).toBe(true)
-    const d = dettaglio()
+  const annullamento = {
+    numero_registrazione: { anno: 2026, progressivo: 7 },
+    numero_registrazione_annullata: { anno: 2026, progressivo: 3 },
+    annotazioni: 'errore',
+  }
+  const dettaglioAnnullamento = (rettifica: unknown = { anno: 2026, progressivo: 3 }): any => ({
+    riferimenti: {
+      numero_registrazione: { anno: 2026, progressivo: 7, identificativo: 'M0000000000000000007' },
+      numero_registrazione_rettifica: rettifica,
+    },
+    rifiuto: null,
+    annullato: false,
+    rettificato: false,
+  })
+
+  it('annullamento: uguale se numero_registrazione_rettifica coincide e rifiuto assente', () => {
+    expect(confrontaConRentri(annullamento, 'ANNULLAMENTO', dettaglioAnnullamento())).toEqual({
+      uguale: true,
+      identificativo: 'M0000000000000000007',
+    })
+  })
+
+  it.each([
+    ['annullata diversa', dettaglioAnnullamento({ anno: 2026, progressivo: 4 })],
+    ['campo rettifica mancante', dettaglioAnnullamento(null)],
+    ['con rifiuto presente', { ...dettaglioAnnullamento(), rifiuto: { codice_eer: '150101' } }],
+  ])('annullamento %s: non uguale', (_n, d) => {
+    expect(confrontaConRentri(annullamento, 'ANNULLAMENTO', d as any).uguale).toBe(false)
+  })
+
+  it('annullamento: numero proprio diverso: non uguale', () => {
+    const d = dettaglioAnnullamento()
     d.riferimenti.numero_registrazione.progressivo = 9
-    expect(confrontaConRentri(c, 'ANNULLAMENTO', d).uguale).toBe(false)
+    expect(confrontaConRentri(annullamento, 'ANNULLAMENTO', d).uguale).toBe(false)
+  })
+
+  const rettifica = corpo({
+    riferimenti: {
+      numero_registrazione: { anno: 2026, progressivo: 7 },
+      causale_operazione: 'DT',
+      numero_registrazione_rettifica: { anno: 2026, progressivo: 3 },
+    },
+  })
+
+  it('rettifica: uguale solo se il numero rettificato coincide (rifiuto assente ammesso)', () => {
+    const d = dettaglioAnnullamento()
+    expect(confrontaConRentri(rettifica, 'RETTIFICA', d).uguale).toBe(true)
+    expect(
+      confrontaConRentri(
+        rettifica,
+        'RETTIFICA',
+        dettaglioAnnullamento({ anno: 2026, progressivo: 5 })
+      ).uguale
+    ).toBe(false)
+    expect(confrontaConRentri(rettifica, 'RETTIFICA', dettaglioAnnullamento(null)).uguale).toBe(
+      false
+    )
+    // rifiuto presente ma diverso: non uguale; presente e uguale: uguale
+    expect(
+      confrontaConRentri(rettifica, 'RETTIFICA', {
+        ...d,
+        rifiuto: { codice_eer: '200101', quantita: { valore: 1, unita_misura: 'kg' } },
+      }).uguale
+    ).toBe(false)
+    expect(
+      confrontaConRentri(rettifica, 'RETTIFICA', {
+        ...d,
+        rifiuto: { codice_eer: '150101', quantita: { valore: 100, unita_misura: 'kg' } },
+      }).uguale
+    ).toBe(true)
   })
 
   it('dettaglio senza dati confrontabili: non uguale (mai un si per mancanza di dati)', () => {
     expect(
       confrontaConRentri(corpo(), 'ORDINARIA', { annullato: false, rettificato: false }).uguale
     ).toBe(false)
+  })
+
+  it('dato mancante in RENTRI: nonConfrontabile (motivo diverso da "occupato")', () => {
+    expect(
+      confrontaConRentri(corpo(), 'ORDINARIA', { annullato: false, rettificato: false })
+        .nonConfrontabile
+    ).toBe(true)
+    expect(
+      confrontaConRentri(annullamento, 'ANNULLAMENTO', dettaglioAnnullamento(null)).nonConfrontabile
+    ).toBe(true)
+    // un dato diverso NON e' non-confrontabile: e' un'altra registrazione
+    expect(
+      confrontaConRentri(
+        corpo(),
+        'ORDINARIA',
+        dettaglio({
+          rifiuto: { codice_eer: '200101', quantita: { valore: 1, unita_misura: 'kg' } },
+        })
+      ).nonConfrontabile
+    ).toBeUndefined()
   })
 })

@@ -399,8 +399,17 @@ FIR, CF, targhe) copiati a un servizio del fornitore e il registro in chiaro a Z
   coincide (`codice_eer`, quantità e unità, `causale_operazione`; per l'annullamento
   `annullato`/numero) → `TRASMESSA` con l'identificativo; trovata e diversa → resta `INCERTA`,
   motivo "Il numero è occupato su RENTRI da un'altra registrazione: controllare il portale" (mai
-  sovrascritta); `RentriApiError` 404 → `DA_TRASMETTERE` (sblocca, `bloccato_invio = false`) con
-  audit. È l'**unica** via automatica per togliere `bloccato_invio` e vale solo per `INCERTA`.
+  sovrascritta); rettifiche e annullamenti si confrontano sul numero in
+  `numero_registrazione_rettifica` (il dettaglio non porta i dati completi; annullamento: `rifiuto` assente;
+  campo mancante = non uguale). **Il 404 del dettaglio da solo NON basta** (vale anche per un registro
+  sbagliato o un numero non ancora registrato): si torna `DA_TRASMETTERE` (sblocca, `bloccato_invio =
+  false`, con audit) solo se (a) `contaMovimenti(registro, { anno, progressivo })` risponde 200 con 0
+  (404 → "identificativo del registro non trovato su RENTRI", errore o corpo non numerico → non
+  verificabile) e (b) l'ultimo invio (`prenotato_il`, altrimenti `updated_at`) e' piu' vecchio di
+  `ETA_MINIMA_ASSENZA_DEFINITIVA_MS` (6 h, >= soglia di stallo); altrimenti "riprovare piu' tardi".
+  Vale anche dopo `TransazioneRentriNonTrovataError`. Il ricontrollo dopo le chiamate include `updated_at`.
+  `togliDallaCoda` vale solo per righe `MANUALE` (le altre il job le riadotterebbe: 409); `imposta`
+  prende lo stesso advisory lock di `prenota` prima del conteggio. È l'**unica** via automatica per togliere `bloccato_invio` e vale solo per `INCERTA`.
 - **D12. Azioni manuali** (`AccodaTrasmissioneRentriUseCase`):
   - `accoda(tenantId, utenteId, registroId, movimentoIds)` (1..1000 id del registro): crea la riga
     `DA_TRASMETTERE`/`MANUALE` per i movimenti senza riga; riporta a `DA_TRASMETTERE` le

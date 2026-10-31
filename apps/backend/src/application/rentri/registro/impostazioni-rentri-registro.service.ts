@@ -156,6 +156,10 @@ export class ImpostazioniRentriRegistroService {
         const cambia = identificativoFinale !== registro.identificativoRentri
 
         if (cambia) {
+          // Stessa chiave di `prenota` (bloccante qui): o la prenotazione di un lotto e' gia'
+          // committata (e il conteggio la vede), o parte dopo e legge il nuovo identificativo.
+          // Senza il lock un lotto potrebbe partire per il vecchio identificativo mentre cambia.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + registroId}))`
           const partite = await tx.movimentoTrasmissioneRentri.count({
             where: { tenantId, registroId, stato: { in: STATI_GIA_PARTITI } },
           })
@@ -262,7 +266,8 @@ export class ImpostazioniRentriRegistroService {
     }
     let suRentri: number | null = null
     try {
-      suRentri = await this.client.contaMovimenti(identificativo, { anno }, tenantId)
+      const quanti = await this.client.contaMovimenti(identificativo, { anno }, tenantId)
+      suRentri = Number.isInteger(quanti) && quanti >= 0 ? quanti : null
     } catch (errore) {
       this.logger.warn("Conteggio su RENTRI non riuscito: l'allineamento resta parziale", {
         tipo: errore instanceof Error ? errore.name : 'sconosciuto',
