@@ -78,7 +78,7 @@ export function applicaEsitoDettagliato(
     }
     const attuale = confermati.get(k) ?? null
     if (attuale === null) confermati.set(k, r.identificativo)
-    else if (r.identificativo !== null && r.identificativo !== attuale) {
+    else if (r.identificativo !== null && r.identificativo !== attuale && !discordanti.has(k)) {
       discordanti.add(k)
       anomalie.push({
         tipo: 'IDENTIFICATIVI_DISCORDANTI',

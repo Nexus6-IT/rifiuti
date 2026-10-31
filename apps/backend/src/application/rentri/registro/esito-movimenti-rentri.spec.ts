@@ -139,4 +139,20 @@ describe('applicaEsito', () => {
   it('lotto vuoto: nessuna riga', () => {
     expect(applicaEsito([], esito())).toEqual([])
   })
+
+  it('identificativi discordanti: una sola anomalia per numero, anche con tre conferme', () => {
+    const { anomalie } = applicaEsitoDettagliato(
+      lotto,
+      esito({
+        numeroRegistrazioni: [
+          { anno: 2026, progressivo: 1, identificativo: ID(1) },
+          { anno: 2026, progressivo: 1, identificativo: ID(2) },
+          { anno: 2026, progressivo: 1, identificativo: ID(3) },
+        ],
+      })
+    )
+    expect(anomalie).toEqual([
+      { tipo: 'IDENTIFICATIVI_DISCORDANTI', numero: { anno: 2026, progressivo: 1 } },
+    ])
+  })
 })
