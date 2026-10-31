@@ -160,15 +160,34 @@ export function fifoDaCapo(a: AmbitoAbbinamento): Array<Omit<RigaAbbinamento, 'o
   return out
 }
 
-function costruisciScarico(
-  a: AmbitoAbbinamento,
-  s: ScaricoAbbinabile,
-  perChiave: Map<string, CaricoAbbinabile>,
+/** Indici dell'ambito, costruiti una volta: nessuna scansione per scarico o per riga. */
+interface Indici {
+  carichi: Map<string, CaricoAbbinabile>
+  righePerScarico: Map<string, RigaAbbinamento[]>
+  /** `S:<radice>` e `C:<chiave>` coinvolti in una riga incoerente (anche morta) */
   incoerenti: Set<string>
-): ScaricoVista {
-  const righe = a.righeValide
-    .filter(r => r.scaricoRadiceId === s.radiceId)
-    .map(r => ({ r, c: perChiave.get(r.carico) as CaricoAbbinabile }))
+}
+
+function indicizza(a: AmbitoAbbinamento): Indici {
+  const carichi = new Map(a.carichi.map(c => [c.chiave, c]))
+  const scarichi = new Set(a.scarichi.map(s => s.radiceId))
+  const righePerScarico = new Map<string, RigaAbbinamento[]>()
+  for (const r of a.righeValide) {
+    const l = righePerScarico.get(r.scaricoRadiceId)
+    if (l) l.push(r)
+    else righePerScarico.set(r.scaricoRadiceId, [r])
+  }
+  const incoerenti = new Set<string>()
+  for (const r of a.righeIncoerenti) {
+    if (scarichi.has(r.scaricoRadiceId)) incoerenti.add(`S:${r.scaricoRadiceId}`)
+    if (carichi.has(r.caricoChiave)) incoerenti.add(`C:${r.caricoChiave}`)
+  }
+  return { carichi, righePerScarico, incoerenti }
+}
+
+function costruisciScarico(s: ScaricoAbbinabile, idx: Indici): ScaricoVista {
+  const righe = (idx.righePerScarico.get(s.radiceId) ?? [])
+    .map(r => ({ r, c: idx.carichi.get(r.carico) as CaricoAbbinabile }))
     .sort((x, y) => confrontaEventiFifo(x.c.evento, y.c.evento))
   const abbinato = righe.reduce((t, { r }) => t + mill(r.quantita), 0)
   const stato = statoScarico(s.evento.quantita, daMill(abbinato))
@@ -179,26 +198,13 @@ function costruisciScarico(
     quantita: s.evento.quantita,
     classeAttesa: s.classeAttesa,
     abbinato: daMill(abbinato),
-    stato: incoerenti.has(`S:${s.radiceId}`) ? 'INCOERENTE' : stato,
+    stato: idx.incoerenti.has(`S:${s.radiceId}`) ? 'INCOERENTE' : stato,
     righe: righe.map(({ r, c }) => ({
       carico: riferimento(c),
       quantita: r.quantita,
       origine: r.origine,
     })),
   }
-}
-
-function incoerentiPerStato(a: AmbitoAbbinamento, perChiave: Map<string, CaricoAbbinabile>) {
-  const out = new Set<string>()
-  for (const r of a.righeValide) {
-    const c = perChiave.get(r.carico)
-    const s = a.scarichi.find(x => x.radiceId === r.scaricoRadiceId)
-    if (c && s && confrontaEventiFifo(c.evento, s.evento) > 0) {
-      out.add(`S:${s.radiceId}`)
-      out.add(`C:${c.chiave}`)
-    }
-  }
-  return out
 }
 
 function costruisciCarico(
@@ -222,16 +228,17 @@ function costruisciCarico(
 
 /** Ambito per la pagina: carichi in ordine FIFO, scarichi dal piu recente. */
 export function costruisciAmbitoVista(a: AmbitoAbbinamento, oggi: string): AmbitoVista {
-  const perChiave = new Map(a.carichi.map(c => [c.chiave, c]))
-  const incoerenti = incoerentiPerStato(a, perChiave)
+  const idx = indicizza(a)
   const usato = new Map<string, number>()
   for (const r of a.righeValide) usato.set(r.carico, (usato.get(r.carico) ?? 0) + mill(r.quantita))
   const carichi = [...a.carichi]
     .sort((x, y) => confrontaEventiFifo(x.evento, y.evento))
-    .map(c => costruisciCarico(c, usato.get(c.chiave) ?? 0, oggi, incoerenti.has(`C:${c.chiave}`)))
+    .map(c =>
+      costruisciCarico(c, usato.get(c.chiave) ?? 0, oggi, idx.incoerenti.has(`C:${c.chiave}`))
+    )
   const scarichi = [...a.scarichi]
     .sort((x, y) => confrontaEventiFifo(y.evento, x.evento))
-    .map(s => costruisciScarico(a, s, perChiave, incoerenti))
+    .map(s => costruisciScarico(s, idx))
   const differenze = confrontaAbbinamenti(a.righeValide, fifoDaCapo(a))
   const motivi = [...new Set(a.righeIncoerenti.map(r => r.motivo))]
   return {
@@ -307,8 +314,9 @@ export class AbbinamentiService {
       const s = a?.scarichi.find(x => x.radiceId === radice.radiceId)
       if (!a || !s) throw new NotFoundException('Scarico non trovato')
 
-      const perChiave = new Map(a.carichi.map(c => [c.chiave, c]))
-      const scaricoVista = costruisciScarico(a, s, perChiave, incoerentiPerStato(a, perChiave))
+      const idx = indicizza(a)
+      const perChiave = idx.carichi
+      const scaricoVista = costruisciScarico(s, idx)
       const senzaLui = residui(
         a.carichi,
         a.righeValide.filter(r => r.scaricoRadiceId !== radice.radiceId)
@@ -366,8 +374,7 @@ export class AbbinamentiService {
         const a = ambiti.find(x => x.scarichi.some(s => s.radiceId === radice?.radiceId))
         const s = a?.scarichi.find(x => x.radiceId === radice?.radiceId)
         if (!a || !s) throw new NotFoundException('Scarico non trovato')
-        const perChiave = new Map(a.carichi.map(c => [c.chiave, c]))
-        const scarico = costruisciScarico(a, s, perChiave, incoerentiPerStato(a, perChiave))
+        const scarico = costruisciScarico(s, indicizza(a))
         const tutti = righe.length === 0 ? [...avvisi, MSG_SCOLLEGATO] : avvisi
         return { scarico, avvisi: tutti }
       })

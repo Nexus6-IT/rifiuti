@@ -326,7 +326,14 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     // il carico viene annullato dopo l'abbinamento: la riga resta ma e incoerente
     await annullaInDeroga(c1)
     const [sporco] = await leggi(az)
-    expect(sporco.righeIncoerenti).toEqual([{ id: buona.id, motivo: 'carico non più vigente' }])
+    expect(sporco.righeIncoerenti).toEqual([
+      {
+        id: buona.id,
+        scaricoRadiceId: s1,
+        caricoChiave: `M:${c1}`,
+        motivo: 'carico non più vigente',
+      },
+    ])
   })
 
   it('radiceScarico: testa rettificata -> radice; carico -> null; altra azienda -> null', async () => {
@@ -428,7 +435,14 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     await annullaInDeroga(sMorto)
     const [a] = await leggi(az)
     expect(a.righe).toHaveLength(2)
-    expect(a.righeIncoerenti).toEqual([{ id: morta.id, motivo: 'scarico non più vigente' }])
+    expect(a.righeIncoerenti).toEqual([
+      {
+        id: morta.id,
+        scaricoRadiceId: sMorto,
+        caricoChiave: `M:${c}`,
+        motivo: 'scarico non più vigente',
+      },
+    ])
   })
 
   it('righe con entrambi i capi fuori ambito non spariscono', async () => {
@@ -452,8 +466,17 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     const [a] = await leggi(az)
     expect(a.righeIncoerenti).toEqual(
       expect.arrayContaining([
-        { id: r1.id, motivo: 'scarico e carico non più vigenti' },
-        { id: r2.id, motivo: 'scarico non più vigente' },
+        expect.objectContaining({
+          id: r1.id,
+          scaricoRadiceId: s1,
+          motivo: 'scarico e carico non più vigenti',
+        }),
+        expect.objectContaining({
+          id: r2.id,
+          scaricoRadiceId: s2,
+          caricoChiave: `M:${c2}`,
+          motivo: 'scarico non più vigente',
+        }),
       ])
     )
     expect(a.righeIncoerenti).toHaveLength(2)
@@ -480,14 +503,24 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     expect(tutti.map(a => a.cerCode).sort()).toEqual([CER, CER2])
     const diCer = tutti.find(a => a.cerCode === CER)!
     expect(diCer.righeIncoerenti).toEqual([
-      { id: altroRifiuto.id, motivo: 'carico di un altro rifiuto' },
+      {
+        id: altroRifiuto.id,
+        scaricoRadiceId: s1,
+        caricoChiave: `M:${c2}`,
+        motivo: 'carico di un altro rifiuto',
+      },
     ])
     const filtrato = await leggi(az, CER)
     expect(filtrato).toHaveLength(1)
     expect(filtrato[0].cerCode).toBe(CER)
     expect(filtrato[0].carichi.map(c => c.chiave)).toEqual([`M:${c1}`])
     expect(filtrato[0].righeIncoerenti).toEqual([
-      { id: altroRifiuto.id, motivo: 'carico non più vigente o di un altro rifiuto' },
+      {
+        id: altroRifiuto.id,
+        scaricoRadiceId: s1,
+        caricoChiave: `M:${c2}`,
+        motivo: 'carico non più vigente o di un altro rifiuto',
+      },
     ])
   })
 

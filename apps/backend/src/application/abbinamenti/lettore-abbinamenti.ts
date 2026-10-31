@@ -60,7 +60,13 @@ export interface AmbitoAbbinamento {
   /** id delle righe strutturalmente non valide (un capo non vigente, famiglia o ambito sbagliati) */
   righeMorteIds: string[]
   /** righe che violano I-ABB (D2) */
-  righeIncoerenti: Array<{ id: string; motivo: string }>
+  righeIncoerenti: Array<{
+    id: string
+    /** radice dello scarico a cui la riga punta (anche se non piu vigente) */
+    scaricoRadiceId: string
+    caricoChiave: ChiaveCarico
+    motivo: string
+  }>
   /** classi presenti fra i carichi */
   classi: ClasseStoccaggio[]
   diStoccaggio: boolean
@@ -355,7 +361,13 @@ export async function leggiAmbitiAbbinamento(
         motivo = 'abbinato oltre la quantità del carico'
       }
     }
-    if (motivo) ambito.righeIncoerenti.push({ id: r.id, motivo })
+    if (motivo)
+      ambito.righeIncoerenti.push({
+        id: r.id,
+        scaricoRadiceId: r.scaricoId,
+        caricoChiave: r.chiave,
+        motivo,
+      })
   }
 
   for (const a of ambiti.values()) {

@@ -134,7 +134,14 @@ describe('costruisciAmbitoVista', () => {
     expect(costruisciAmbitoVista(b, '2026-03-01').scarichi[0].stato).toBe('PARZIALE')
     const c = ambito({
       righeValide: [{ scaricoRadiceId: 's1', carico: 'M:c3', quantita: 10, origine: 'MANUALE' }],
-      righeIncoerenti: [{ id: 'x', motivo: 'carico successivo allo scarico' }],
+      righeIncoerenti: [
+        {
+          id: 'x',
+          scaricoRadiceId: 's1',
+          caricoChiave: 'M:c3',
+          motivo: 'carico successivo allo scarico',
+        },
+      ],
     })
     c.carichi.push({
       chiave: 'M:c3',
@@ -146,6 +153,28 @@ describe('costruisciAmbitoVista', () => {
     expect(v.scarichi[0].stato).toBe('INCOERENTE')
     expect(v.carichi.find(x => x.id === 'c3')?.stato).toBe('INCOERENTE')
     expect(v.incoerenze).toEqual(['carico successivo allo scarico'])
+  })
+})
+
+describe('righe incoerenti e scarichi', () => {
+  it('uno scarico con una riga morta e INCOERENTE anche se le righe valide lo coprono', () => {
+    const a = ambito({
+      righeValide: [
+        { scaricoRadiceId: 's1', carico: 'M:c1', quantita: 100, origine: 'AUTOMATICO' },
+      ],
+      righeIncoerenti: [
+        {
+          id: 'm',
+          scaricoRadiceId: 's1',
+          caricoChiave: 'M:morto',
+          motivo: 'carico non più vigente',
+        },
+      ],
+    })
+    a.righe = a.righeValide
+    const v = costruisciAmbitoVista(a, '2026-03-01')
+    expect(v.scarichi[0].stato).toBe('INCOERENTE')
+    expect(v.carichi.every(c => c.stato !== 'INCOERENTE')).toBe(true)
   })
 })
 
