@@ -131,6 +131,9 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
   beforeEach(() => queryRaw.mockClear())
 
   afterAll(async () => {
+    await owner.movimentoTrasmissioneRentri.deleteMany({
+      where: { tenantId: { in: tenantCreati }, stato: 'DA_TRASMETTERE' },
+    })
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.registroRifiuti.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.rentriUnitaLocale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
@@ -199,6 +202,29 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
     expect(m[o.progressiveNumber].correttoDa).toMatchObject({
       progressiveNumber: a.progressiveNumber,
       tipoAnnotazione: 'ANNULLAMENTO',
+    })
+  })
+
+  it('trasmissioneRentri: null senza riga, stato/identificativo/motivo con la riga (ruolo applicativo, RLS)', async () => {
+    const az = await azienda()
+    const senza = await inserisci(az)
+    const con = await inserisci(az)
+    await owner.movimentoTrasmissioneRentri.create({
+      data: {
+        tenantId: az.tenantId,
+        movimentoId: con.id,
+        registroId: az.registroId,
+        tipo: 'CARICO',
+        origine: 'MANUALE',
+        ultimoErrore: 'Errore di prova',
+      },
+    })
+    const m = perNumero((await elenca(az)).items)
+    expect(m[senza.progressiveNumber].trasmissioneRentri).toBeNull()
+    expect(m[con.progressiveNumber].trasmissioneRentri).toEqual({
+      stato: 'DA_TRASMETTERE',
+      identificativo: null,
+      motivo: 'Errore di prova',
     })
   })
 

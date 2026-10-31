@@ -31,6 +31,7 @@ const riga = (registroId: string) => ({
   motivoAnnotazione: null,
   rettificato: null,
   correzioni: [] as unknown[],
+  trasmissioneRentri: null as null | Record<string, unknown>,
 })
 
 describe('ListMovimentiHandler', () => {
@@ -71,6 +72,56 @@ describe('ListMovimentiHandler', () => {
       registroId: 'reg-A',
     })
     expect(result.value.items[0].registroId).toBe('reg-A')
+  })
+
+  describe('trasmissione RENTRI', () => {
+    const lista = () => handler.execute(new ListMovimentiQuery('t1', {}, { page: 1, limit: 20 }))
+
+    it('movimento senza riga: trasmissioneRentri null', async () => {
+      const { value } = await lista()
+      expect(value.items[0].trasmissioneRentri).toBeNull()
+    })
+
+    it('movimento con riga: stato, identificativo e motivo (blocco o ultimo errore), niente altro', async () => {
+      prisma.wasteMovement.findMany.mockResolvedValue([
+        {
+          ...riga('reg-A'),
+          trasmissioneRentri: {
+            stato: 'RIFIUTATA',
+            identificativoRentri: null,
+            motivoBlocco: null,
+            ultimoErrore: 'Quantita non valida',
+            transazioneId: 'tx',
+            accodatoDa: 'u',
+          },
+        },
+        {
+          ...riga('reg-B'),
+          id: 'm2',
+          trasmissioneRentri: {
+            stato: 'TRASMESSA',
+            identificativoRentri: 'M0000000000000000001',
+            motivoBlocco: 'Trasmessa a RENTRI',
+            ultimoErrore: null,
+          },
+        },
+      ])
+      const { value } = await lista()
+      expect(value.items[0].trasmissioneRentri).toEqual({
+        stato: 'RIFIUTATA',
+        identificativo: null,
+        motivo: 'Quantita non valida',
+      })
+      expect(value.items[1].trasmissioneRentri).toEqual({
+        stato: 'TRASMESSA',
+        identificativo: 'M0000000000000000001',
+        motivo: 'Trasmessa a RENTRI',
+      })
+      const include = prisma.wasteMovement.findMany.mock.calls[0][0].include
+      expect(include.trasmissioneRentri).toEqual({
+        select: { stato: true, identificativoRentri: true, motivoBlocco: true, ultimoErrore: true },
+      })
+    })
   })
 
   it('lista movimenti: senza registroId non filtra per registro', async () => {

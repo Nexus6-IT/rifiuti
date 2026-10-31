@@ -5,6 +5,8 @@ import { PrismaModule } from '../../../infrastructure/persistence/prisma.module'
 import { RentriModule } from '../../../infrastructure/rentri/rentri.module'
 import { AuthModule } from '../../../auth/auth.module'
 import { RuoloEffettivoModule } from '../../../api/me/ruolo-effettivo.module'
+import { RentriRegistroController } from '../../../api/rentri/rentri-registro.controller'
+import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
@@ -18,7 +20,7 @@ import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registr
  *
  * Il job e' solo provider (nessun export): cosi' il suo `@Cron` non si registra due volte.
  * Esporta gli use case che useranno i controller e le fasi successive. `AuthModule` e `RuoloEffettivoModule`
- * servono a `RentriModule` (guard) e al controller che si aggiunge qui quando arriva l'API.
+ * servono a `RentriModule` (guard) e al controller.
  */
 @Module({
   imports: [
@@ -29,7 +31,9 @@ import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registr
     AuthModule,
     RuoloEffettivoModule,
   ],
+  controllers: [RentriRegistroController],
   providers: [
+    DettaglioTrasmissioneRentriService,
     LettoreAnnotazioniRentri,
     TrasmissioniRegistroRepository,
     TrasmettiLottoRegistroUseCase,

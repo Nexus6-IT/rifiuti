@@ -7,6 +7,7 @@ import { RentriSitiController } from './rentri-siti.controller'
 import { RentriModalitaLegameController } from './rentri-modalita-legame.controller'
 import { RentriDiagnosticaController } from './rentri-diagnostica.controller'
 import { RentriCodificheController } from './rentri-codifiche.controller'
+import { RentriRegistroController } from './rentri-registro.controller'
 
 /**
  * Switch di azienda: il token resta sul tenant A (`user.tenantId`), l'azienda
@@ -158,6 +159,80 @@ describe('controller RENTRI — azienda selezionata (≠ azienda del token)', ()
     expect(modalita.setForTenant).toHaveBeenCalledWith('B', 'IBRIDA')
     expect(diagnostica.execute).toHaveBeenCalledWith('B')
     expect(sync.allineaTutto).toHaveBeenCalledWith('B')
+  })
+
+  it('registro: tutte le azioni usano B e il ruolo effettivo in B (non quello del token)', async () => {
+    const R = '7e7e7e7e-0000-4000-8000-000000000004'
+    const M = '3b3b3b3b-0000-4000-8000-000000000006'
+    const esitoAccodamento = {
+      accodate: 1,
+      riaccodate: 0,
+      predecessori: 0,
+      saltate: 0,
+      saltatePerStato: {},
+    }
+    const accoda = {
+      accoda: jest.fn().mockResolvedValue(esitoAccodamento),
+      accodaStorico: jest.fn().mockResolvedValue(esitoAccodamento),
+      togliDallaCoda: jest.fn().mockResolvedValue(undefined),
+      dichiaraGiaSuRentri: jest.fn().mockResolvedValue({}),
+    }
+    const trasmetti = { trasmettiRegistro: jest.fn().mockResolvedValue({ esito: 'NIENTE' }) }
+    const verifica = { verifica: jest.fn().mockResolvedValue({}) }
+    const impostazioni = {
+      leggi: jest.fn().mockResolvedValue([]),
+      imposta: jest.fn().mockResolvedValue({}),
+      allineamento: jest.fn().mockResolvedValue({}),
+    }
+    const dettaglio = { dettaglio: jest.fn().mockResolvedValue({}) }
+    const credenziali = { haCredenziale: jest.fn().mockResolvedValue(true) }
+    // Il token dice ADMIN nell'azienda A, ma in B l'utente ha un altro ruolo effettivo.
+    const membership = { ruoloEffettivo: jest.fn().mockResolvedValue('ADMIN') }
+    const c = new RentriRegistroController(
+      accoda as any,
+      trasmetti as any,
+      verifica as any,
+      impostazioni as any,
+      dettaglio as any,
+      credenziali as any,
+      membership as any,
+      logger as any
+    )
+
+    await c.registri(reqB)
+    await c.imposta(R, { invioAutomatico: false }, reqB)
+    await c.allineamento(R, { anno: 2026 }, reqB)
+    await c.trasmettiOra({ registroId: R, movimentoIds: [M] }, reqB)
+    await c.trasmettiStorico({ registroId: R, anno: 2025, conferma: true }, reqB)
+    await c.togliDallaCoda(M, reqB)
+    await c.verificaAnnotazione(M, reqB)
+    await c.dichiara(
+      { registroId: R, anno: 2026, daProgressivo: 1, aProgressivo: 2, motivo: 'm' },
+      reqB
+    )
+    await c.dettaglioAnnotazione(M, reqB)
+
+    for (const call of membership.ruoloEffettivo.mock.calls) expect(call[1]).toBe('B')
+    expect(impostazioni.leggi).toHaveBeenCalledWith('B')
+    expect(impostazioni.imposta).toHaveBeenCalledWith('B', 'u1', 'ADMIN', R, {
+      invioAutomatico: false,
+    })
+    expect(impostazioni.allineamento).toHaveBeenCalledWith('B', R, 2026)
+    expect(accoda.accoda).toHaveBeenCalledWith('B', 'u1', R, [M])
+    expect(accoda.accodaStorico).toHaveBeenCalledWith('B', 'u1', R, 2025, true)
+    expect(accoda.togliDallaCoda).toHaveBeenCalledWith('B', 'u1', M)
+    expect(verifica.verifica).toHaveBeenCalledWith('B', 'u1', M)
+    expect(accoda.dichiaraGiaSuRentri).toHaveBeenCalledWith('B', 'u1', 'ADMIN', R, 2026, 1, 2, 'm')
+    expect(dettaglio.dettaglio).toHaveBeenCalledWith('B', M)
+    expect(credenziali.haCredenziale).toHaveBeenCalledWith('B')
+    expect(trasmetti.trasmettiRegistro).toHaveBeenCalledWith('B', R)
+
+    // Senza azienda determinabile: 403 e nessuna azione.
+    accoda.accoda.mockClear()
+    await expect(
+      c.trasmettiOra({ registroId: R, movimentoIds: [M] }, reqSenza)
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    expect(accoda.accoda).not.toHaveBeenCalled()
   })
 
   it('senza azienda determinabile: 403 e nessuna lettura', async () => {

@@ -7,6 +7,8 @@ import { TrasmettiLottoRegistroUseCase } from './trasmetti-lotto-registro.use-ca
 import { AccodaTrasmissioneRentriUseCase } from './accoda-trasmissione-rentri.use-case'
 import { VerificaTrasmissioneRentriUseCase } from './verifica-trasmissione-rentri.use-case'
 import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registro.service'
+import { RentriRegistroController } from '../../../api/rentri/rentri-registro.controller'
+import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { RentriRegistroTrasmissioneJob } from '../../../infrastructure/jobs/rentri-registro-trasmissione.job'
 
 /**
@@ -30,6 +32,8 @@ describe('RegistroRentriModule (DI wiring)', () => {
       VerificaTrasmissioneRentriUseCase,
       ImpostazioniRentriRegistroService,
       RentriRegistroTrasmissioneJob,
+      RentriRegistroController,
+      DettaglioTrasmissioneRentriService,
     ]) {
       expect(moduleRef.get(token, { strict: false })).toBeDefined()
     }
