@@ -1,3 +1,6 @@
+import { MessageService } from 'primeng/api'
+import { signal } from '@angular/core'
+import { AuthService } from '../../core/services/auth.service'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { ConfirmationService } from 'primeng/api'
@@ -113,10 +116,12 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       imports: [ContractsListComponent],
       providers: [
         provideNoopAnimations(),
+        MessageService,
         { provide: ContractsService, useValue: contracts },
         { provide: ToastService, useValue: toast },
         { provide: RegistryService, useValue: registry },
         { provide: CerService, useValue: cer },
+        { provide: AuthService, useValue: { currentUser: signal({ role: 'OPERATOR' }) } },
       ],
     })
     fixture = TestBed.createComponent(ContractsListComponent)

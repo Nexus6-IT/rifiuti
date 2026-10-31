@@ -328,7 +328,8 @@ interface OpzioneSede {
 
       <!-- Create FIR Dialog -->
       <p-dialog
-        [(visible)]="displayCreateDialog"
+        [visible]="displayCreateDialog"
+        (visibleChange)="onCreateDialogVisibleChange($event)"
         [modal]="true"
         styleClass="fir-dialog"
         [style]="{ width: '48rem', maxHeight: '90vh' }"
@@ -1580,6 +1581,15 @@ export class FirListComponent implements OnInit {
    * Apre il sub-dialog anagrafica in modalità create o edit.
    * In modalità edit recupera i dati dall'array già caricato in memoria.
    */
+  /**
+   * Esc nel sub-dialog anagrafica fa chiudere anche questo dialog (PrimeNG chiude ogni dialog
+   * aperto con closeOnEscape): si ignora, o si perde il FIR in compilazione.
+   */
+  onCreateDialogVisibleChange(v: boolean): void {
+    if (!v && this.showAnagraficaDialog) return
+    this.displayCreateDialog = v
+  }
+
   openAnagraficaDialog(
     tipo: TipoAnagrafica,
     modalita: ModalitaAnagrafica,
