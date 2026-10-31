@@ -26,7 +26,7 @@ import { RegistraMovimentoCommand } from '../registro/commands/registra-moviment
 import { CorreggiMovimentoUseCase } from '../registro/use-cases/correggi-movimento.use-case'
 import { formattaQuantita } from '../../core/format/formatta-quantita'
 import * as lettore from './lettore-abbinamenti'
-import { salvaAbbinamentoManuale } from './abbinamenti-scrittura'
+import { ricalcolaAbbinamenti, salvaAbbinamentoManuale } from './abbinamenti-scrittura'
 
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
@@ -424,6 +424,63 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       expect(
         (await righeScarico(az, s)).map(r => [r.caricoId, Number(r.quantita), r.origine])
       ).toEqual([[cB, 60, 'AUTOMATICO']])
+    })
+  })
+
+  describe('catene rettificate di CER (regressione: ambito della testa, non della radice)', () => {
+    it('carico e scarico rettificati X->Y: la lettura per Y vede la riga, nessun doppio abbinamento, il ricalcolo per X non la cancella, il radice dello scarico si risolve', async () => {
+      const az = await azienda()
+      const c = await carico(az, '2026-03-01', 100)
+      await carico(az, '2026-03-05', 100) // tiene il saldo di X
+      await rettifica(az, c, {
+        tipo: 'CARICO',
+        op: 'R13',
+        giorno: '2026-03-01',
+        quantita: 100,
+        cer: CER2,
+      })
+      const s = await scarico(az, '2026-03-10', 60)
+      await rettifica(az, s, { tipo: 'SCARICO', giorno: '2026-03-10', quantita: 60, cer: CER2 })
+      const righe = await righeScarico(az, s)
+      expect(righe.map(r => [r.caricoId, Number(r.quantita)])).toEqual([[c, 60]])
+
+      // la lettura filtrata sul CER nuovo vede la riga (residuo 40)
+      const [aY] = await inTx(az, tx =>
+        lettore.leggiAmbitiAbbinamento(tx, az.tenantId, { registroId: az.registroId, cer: CER2 })
+      )
+      expect(aY.righeValide.map(r => r.scaricoRadiceId)).toEqual([s])
+      expect(aY.carichi.find(x => x.chiave === `M:${c}`)?.evento.quantita).toBe(100)
+
+      // un nuovo scarico di Y non rialloca la stessa quantita: 40 sul residuo, 100 in tutto
+      const s2 = await movimento(az, {
+        type: 'SCARICO',
+        giorno: '2026-03-12',
+        quantita: 40,
+        cer: CER2,
+      })
+      const sulCarico = (await righeDi(az))
+        .filter(r => r.caricoId === c)
+        .reduce((t, r) => t + Number(r.quantita), 0)
+      expect(sulCarico).toBe(100)
+      expect((await righeScarico(az, s2)).map(r => Number(r.quantita))).toEqual([40])
+
+      // il ricalcolo AUTOMATICI filtrato sul vecchio CER non tocca le righe valide del nuovo
+      const prima = (await righeDi(az)).map(r => r.id).sort()
+      await inTx(az, tx =>
+        ricalcolaAbbinamenti(tx, {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          cer: CER,
+          modalita: 'AUTOMATICI',
+          userId,
+        })
+      )
+      expect((await righeDi(az)).map(r => r.id).sort()).toEqual(prima)
+
+      // radiceScarico (proposta/salvaManuale) usa il CER della testa: nessun 404
+      const radice = await inTx(az, tx => lettore.radiceScarico(tx, az.tenantId, s))
+      expect(radice?.cerCode).toBe(CER2)
+      await expect(manuale(az, s, [{ caricoId: c, quantita: 60 }])).resolves.toBeDefined()
     })
   })
 

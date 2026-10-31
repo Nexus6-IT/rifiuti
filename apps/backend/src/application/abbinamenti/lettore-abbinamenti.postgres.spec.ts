@@ -561,7 +561,7 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
             get(t, k, rcv) {
               if (k === '$queryRaw') {
                 return (strings: TemplateStringsArray, ...v: unknown[]) => {
-                  if (strings.join('?').includes('id = ANY(')) orfane++
+                  if (strings.join('?').includes('= ANY(')) orfane++
                   return (t as never as { $queryRaw: (...a: unknown[]) => unknown }).$queryRaw(
                     strings,
                     ...v

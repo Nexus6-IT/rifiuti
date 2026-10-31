@@ -11,11 +11,14 @@ import { calcolaFifo, confrontaEventiFifo, millesimiFifo, type EventoFifo } from
 export type ClasseStoccaggio = 'R13' | 'D15'
 
 /**
- * Codice operazione normalizzato: maiuscolo, senza spazi, punti, NBSP (U+00A0) ne BOM (U+FEFF).
+ * Codice operazione normalizzato: maiuscolo, senza punti ne spazi (ASCII e Unicode: NBSP, U+1680, U+2000-200A,
+ * U+2028/9, U+202F, U+205F, U+3000) ne BOM (U+FEFF): e il vecchio `\s` di JS.
  * La stessa regola vive in SQL (`haStoccaggioOAbbinamenti`): tenerle allineate.
  */
 export function normalizzaCodiceOperazione(operationCode: string | null | undefined): string {
-  return (operationCode ?? '').toUpperCase().replace(/[ \t\n\v\f\r.\u00a0\ufeff]/g, '')
+  return (operationCode ?? '')
+    .toUpperCase()
+    .replace(/[ \t\n\v\f\r.\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/g, '')
 }
 
 /** R13 / D15 dal solo codice operazione (tollera spazi, punti e minuscole); altro: null. */

@@ -152,12 +152,18 @@ export async function leggiAmbitiAbbinamento(
                a.giacenza_iniziale_id::text AS "giacenzaInizialeId", a.famiglia, a.quantita,
                a.origine::text AS origine
         FROM abbinamenti_carico_scarico a
-        LEFT JOIN waste_movements s ON s.id = a.scarico_id AND s.tenant_id = a.tenant_id
-        LEFT JOIN waste_movements c ON c.id = a.carico_id AND c.tenant_id = a.tenant_id
         LEFT JOIN giacenze_iniziali g ON g.id = a.giacenza_iniziale_id AND g.tenant_id = a.tenant_id
         WHERE a.tenant_id = ${tenantId}::uuid AND a.registro_id = ${registroId}::uuid
-          AND (regexp_replace(s.cer_code, '[^0-9]', '', 'g') = ${cifre}
-            OR regexp_replace(c.cer_code, '[^0-9]', '', 'g') = ${cifre}
+          AND (
+            -- il CER di QUALUNQUE membro delle catene di scarico e carico (radice, rettifiche):
+            -- il lettore assegna l'ambito col CER della testa vigente, che puo essere diverso
+            -- da quello della radice; qui basta un sovrainsieme sicuro
+            EXISTS (
+              SELECT 1 FROM waste_movements h
+              WHERE h.tenant_id = a.tenant_id
+                AND COALESCE(h.movimento_originale_id, h.id) IN (a.scarico_id, a.carico_id)
+                AND regexp_replace(h.cer_code, '[^0-9]', '', 'g') = ${cifre}
+            )
             OR regexp_replace(g.cer_code, '[^0-9]', '', 'g') = ${cifre})`
     : await client.abbinamentoCaricoScarico.findMany({
         where: { tenantId, registroId },
@@ -332,11 +338,15 @@ export async function leggiAmbitiAbbinamento(
   // CER dallo scarico con UNA query (numero fisso) per non farle sparire.
   if (orfane.length > 0) {
     const ids = [...new Set(orfane.map(r => r.scaricoId))]
+    // CER e unita della TESTA (ultima annotazione) di ogni catena, non della radice: dopo una
+    // rettifica di CER la riga appartiene all'ambito della testa.
     const trovati = await client.$queryRaw<Array<{ id: string; cer_code: string; unit: string }>>`
-      SELECT id::text AS id, cer_code, unit
+      SELECT DISTINCT ON (COALESCE(movimento_originale_id, id))
+             COALESCE(movimento_originale_id, id)::text AS id, cer_code, unit
       FROM waste_movements
       WHERE tenant_id = ${tenantId}::uuid AND registro_id = ${registroId}::uuid
-        AND id = ANY(${ids}::uuid[])`
+        AND COALESCE(movimento_originale_id, id) = ANY(${ids}::uuid[])
+      ORDER BY COALESCE(movimento_originale_id, id), progressive_year DESC, progressive_number DESC`
     const perId = new Map(trovati.map(t => [t.id, t]))
     for (const r of orfane) {
       const t = perId.get(r.scaricoId)
@@ -416,13 +426,25 @@ export async function radiceScarico(
   if (!UUID.test(id)) return null
   const m = await client.wasteMovement.findFirst({
     where: { id, tenantId, type: 'SCARICO' },
-    select: { id: true, movimentoOriginaleId: true, registroId: true, cerCode: true },
+    select: { id: true, movimentoOriginaleId: true, registroId: true },
   })
   if (!m) return null
+  const radiceId = m.movimentoOriginaleId ?? m.id
+  // il CER e quello della TESTA della catena (l'ambito si assegna cosi), non della radice
+  const testa = await client.wasteMovement.findFirst({
+    where: {
+      tenantId,
+      type: 'SCARICO',
+      OR: [{ id: radiceId }, { movimentoOriginaleId: radiceId }],
+    },
+    orderBy: [{ progressiveYear: 'desc' }, { progressiveNumber: 'desc' }],
+    select: { cerCode: true },
+  })
+  if (!testa) return null
   return {
-    radiceId: m.movimentoOriginaleId ?? m.id,
+    radiceId,
     registroId: m.registroId,
-    cerCode: cerCanonico(m.cerCode),
+    cerCode: cerCanonico(testa.cerCode),
   }
 }
 

@@ -217,11 +217,13 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     const az = await azienda()
     const c1 = await carico(az, '2026-03-01', 100, 'R13\u00a0')
     const c2 = await carico(az, '2026-03-02', 100, '\ufeffR 13')
-    const s = await scarico(az, '2026-03-10', 150)
+    const c3 = await carico(az, '2026-03-03', 100, 'R\u20031\u30003\u202f')
+    const s = await scarico(az, '2026-03-10', 250)
     expect(await abbina(az, s)).toEqual([])
     expect((await righeDi(az)).map(r => [r.caricoId, Number(r.quantita)])).toEqual([
       [c1, 100],
-      [c2, 50],
+      [c2, 100],
+      [c3, 50],
     ])
   })
 

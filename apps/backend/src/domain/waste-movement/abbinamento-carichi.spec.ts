@@ -295,6 +295,8 @@ describe('normalizzaCodiceOperazione (stessa regola dell SQL)', () => {
   it('toglie spazi, punti, NBSP e BOM e mette in maiuscolo', () => {
     expect(normalizzaCodiceOperazione(' r.13\u00a0')).toBe('R13')
     expect(normalizzaCodiceOperazione('\ufeffD 15\t')).toBe('D15')
+    expect(normalizzaCodiceOperazione('r\u20031\u30003\u202f')).toBe('R13')
+    expect(normalizzaCodiceOperazione('D\u16801\u20285\u205f')).toBe('D15')
     expect(normalizzaCodiceOperazione(null)).toBe('')
     expect(classeStoccaggio('R13\u00a0')).toBe('R13')
     expect(classeAttesaScarico('\ufeffD1', null)).toBe('D15')

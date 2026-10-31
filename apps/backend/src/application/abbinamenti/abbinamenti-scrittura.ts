@@ -118,7 +118,7 @@ async function haStoccaggioOAbbinamenti(
         WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
           AND wm.type = 'CARICO'
           AND regexp_replace(wm.cer_code, '[^0-9]', '', 'g') = ${cifre}
-          AND upper(regexp_replace(COALESCE(wm.operation_code, ''), '[[:space:].\\u00a0\\ufeff]', '', 'g'))
+          AND upper(regexp_replace(COALESCE(wm.operation_code, ''), '[[:space:].\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]', '', 'g'))
               IN ('R13', 'D15')
       )
       OR EXISTS (

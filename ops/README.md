@@ -540,8 +540,9 @@ Le migration gia' applicate in produzione non si modificano: il commento inizial
 **Ricalcolo lungo e lock.** Il ricalcolo (`POST /abbinamenti/ricalcolo`) gira in una transazione
 con timeout di 60 s (`maxWait` 10 s); l'override a mano di 15 s (`maxWait` 5 s). Finche il
 ricalcolo e in corso tiene i lock sui CER dell'ambito: le registrazioni di scarichi
-concorrenti sugli stessi CER aspettano. Se un ricalcolo supera il timeout viene annullato per
-intero; rilanciarlo per CER (`cerCode`) o fuori orario.
+concorrenti sugli stessi CER non lo aspettano a lungo, ma falliscono dopo circa 5 s (timeout
+predefinito di Prisma) con un errore e vanno ripetute. Se un ricalcolo supera il timeout viene
+annullato per intero; rilanciarlo per CER (`cerCode`) o fuori orario.
 
 **Dopo il deploy, cosa controllare:**
 - `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi
