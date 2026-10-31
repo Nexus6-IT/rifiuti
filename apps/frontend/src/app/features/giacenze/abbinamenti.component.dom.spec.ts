@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { of, throwError, timer } from 'rxjs'
+import { map } from 'rxjs/operators'
 import { AbbinamentiComponent } from './abbinamenti.component'
 import { AbbinamentiService } from './abbinamenti.service'
 import { RegistroService } from '../registro/registro.service'
@@ -170,6 +171,7 @@ describe('AbbinamentiComponent (DOM)', () => {
 
   it('Modifica apre il dialog dello scarico; salvando mostra l avviso, ricarica e riporta il focus', async () => {
     await setup()
+    fixture.autoDetectChanges(true) // come in app: la vista si ridisegna da sola dopo la risposta
     await clic('modifica-3/2026')
     await new Promise(r => setTimeout(r, 20))
     fixture.detectChanges()
@@ -186,6 +188,8 @@ describe('AbbinamentiComponent (DOM)', () => {
       })
     )
     servizio.vista.calls.reset()
+    // ricarica asincrona: le tabelle spariscono e tornano, il focus deve seguirle
+    servizio.vista.and.returnValue(timer(30).pipe(map(() => vista())))
     document.querySelector<HTMLElement>('[data-testid="scollega"] button')!.click()
     fixture.detectChanges()
     document.querySelector<HTMLElement>('[data-testid="scollega-conferma"] button')!.click()
@@ -196,6 +200,11 @@ describe('AbbinamentiComponent (DOM)', () => {
     expect(servizio.vista).toHaveBeenCalledTimes(1)
     expect(q('[data-testid="avviso"]')?.textContent).toContain('lo riabbinerà con il FIFO')
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    // la risposta asincrona ricrea le tabelle: il focus deve finire sul nuovo pulsante
+    await new Promise(r => setTimeout(r, 50))
+    fixture.detectChanges()
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('[data-testid="modifica-3/2026"] button'))
   })
 
   it('chiudere il dialog con Esc riporta il focus sul pulsante Modifica', async () => {

@@ -498,6 +498,7 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
   readonly scaricoInModifica = signal<ScaricoVista | null>(null)
   readonly unitaInModifica = signal('')
   readonly dialogAperto = signal(false)
+  private numeroDaRifocalizzare: string | null = null
   private caricamento?: Subscription
   private readonly destroyRef = inject(DestroyRef)
   private readonly route = inject(ActivatedRoute, { optional: true })
@@ -580,6 +581,7 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
           this.differenze.set(differenze ?? [])
           this.differenzeNonDisponibili.set(differenze === null)
           this.loading.set(false)
+          this.ripristinaFocus()
         },
         error: e => {
           this.error.set(messaggioErrore(e, 'Impossibile caricare gli abbinamenti.'))
@@ -680,13 +682,29 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
 
   dopoSalvataggio(esito: EsitoSalvataggio): void {
     this.avvisi.set(esito.avvisi)
+    // le tabelle vengono ricreate dal reload: il focus si rimette a vista caricata
+    this.numeroDaRifocalizzare = this.scaricoInModifica()?.numero ?? null
     this.reload()
+  }
+
+  /** Focus sul pulsante Modifica dello scarico appena salvato; se la riga non c'è più, su Aggiorna. */
+  private ripristinaFocus(): void {
+    const numero = this.numeroDaRifocalizzare
+    if (numero === null) return
+    this.numeroDaRifocalizzare = null
+    setTimeout(() =>
+      (
+        document.querySelector<HTMLElement>(`[data-testid="modifica-${numero}"] button`) ??
+        document.querySelector<HTMLElement>('[data-testid="aggiorna"] button')
+      )?.focus()
+    )
   }
 
   chiudiModifica(rendiFocus = true): void {
     const s = this.scaricoInModifica()
     this.dialogAperto.set(false)
-    if (s && rendiFocus) {
+    // con un reload in corso il focus lo rimette ripristinaFocus a vista caricata
+    if (s && rendiFocus && !this.loading()) {
       setTimeout(() =>
         document.querySelector<HTMLElement>(`[data-testid="modifica-${s.numero}"] button`)?.focus()
       )

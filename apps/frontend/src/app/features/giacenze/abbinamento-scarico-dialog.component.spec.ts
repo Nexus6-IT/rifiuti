@@ -14,6 +14,15 @@ describe('AbbinamentoScaricoDialogComponent', () => {
   let toast: jasmine.SpyObj<ToastService>
   const s = scarico({ stato: 'NON_ABBINATO', abbinato: 0, righe: [] })
 
+  afterEach(async () => {
+    // chiude il dialog e svuota le animazioni prima dello smontaggio (niente NG0205)
+    fixture?.componentRef.setInput('visible', false)
+    fixture?.detectChanges()
+    await fixture?.whenStable()
+    await new Promise(r => setTimeout(r, 30))
+    fixture?.destroy()
+  })
+
   function setup(): void {
     servizio = jasmine.createSpyObj<AbbinamentiService>('AbbinamentiService', ['proposta', 'salva'])
     servizio.proposta.and.returnValue(of(proposta()))
