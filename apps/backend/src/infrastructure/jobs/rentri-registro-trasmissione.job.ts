@@ -86,15 +86,16 @@ export class RentriRegistroTrasmissioneJob {
         error instanceof Error ? error : new Error(String(error)),
         { tenantId }
       )
-      segnalaErroreJob('eseguiTrasmissione', error, { tenantId })
+      segnalaErroreJob('eseguiTrasmissione', error, { tenantId, fase })
     }
 
     try {
-      const haCredenziale = await TenantContext.run({ tenantId }, () =>
-        this.credenziali.haCredenziale(tenantId)
+      const haCredenziale = await TenantContext.run(
+        { tenantId },
+        async () => await this.credenziali.haCredenziale(tenantId)
       )
       if (!haCredenziale) {
-        this.logger.info(`azienda ${tenantId} senza certificato RENTRI: saltata`, { tenantId })
+        this.logger.debug(`azienda ${tenantId} senza certificato RENTRI: saltata`, { tenantId })
         return true
       }
     } catch (error: unknown) {
@@ -113,7 +114,7 @@ export class RentriRegistroTrasmissioneJob {
     ]
     for (const [nome, esegui] of fasi) {
       try {
-        await TenantContext.run({ tenantId }, esegui)
+        await TenantContext.run({ tenantId }, async () => await esegui())
       } catch (error: unknown) {
         errore(nome, error)
       }
@@ -121,11 +122,13 @@ export class RentriRegistroTrasmissioneJob {
 
     let registri: Array<{ id: string }>
     try {
-      registri = await TenantContext.run({ tenantId }, () =>
-        this.prisma.registroRifiuti.findMany({
-          where: { tenantId, identificativoRentri: { not: null } },
-          select: { id: true },
-        })
+      registri = await TenantContext.run(
+        { tenantId },
+        async () =>
+          await this.prisma.registroRifiuti.findMany({
+            where: { tenantId, identificativoRentri: { not: null } },
+            select: { id: true },
+          })
       )
     } catch (error: unknown) {
       errore('elenco registri', error)
@@ -134,12 +137,13 @@ export class RentriRegistroTrasmissioneJob {
 
     for (const registro of registri) {
       try {
-        const esito = await TenantContext.run({ tenantId }, () =>
-          this.trasmetti.trasmettiRegistro(tenantId, registro.id)
+        const esito = await TenantContext.run(
+          { tenantId },
+          async () => await this.trasmetti.trasmettiRegistro(tenantId, registro.id)
         )
         if (esito.esito === 'SENZA_CERTIFICATO') {
           // Certificato sparito durante il giro: non e' un guasto, si salta l'azienda.
-          this.logger.info(`azienda ${tenantId} senza certificato RENTRI: saltata`, { tenantId })
+          this.logger.debug(`azienda ${tenantId} senza certificato RENTRI: saltata`, { tenantId })
           break
         }
         if (esito.esito !== 'NIENTE' && esito.esito !== 'GIA_IN_CORSO') {

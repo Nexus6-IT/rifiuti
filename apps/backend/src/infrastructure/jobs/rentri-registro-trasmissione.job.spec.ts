@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/node'
 import { RentriRegistroTrasmissioneJob } from './rentri-registro-trasmissione.job'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
@@ -85,6 +86,10 @@ describe('RentriRegistroTrasmissioneJob', () => {
     expect(trasmetti.trasmettiRegistro).toHaveBeenCalledWith('t1', 'r1')
     expect(repo.stalliInInvio).not.toHaveBeenCalledWith('t-senza', expect.anything())
     expect(mockLogger.error).not.toHaveBeenCalled()
+    expect(mockLogger.info).not.toHaveBeenCalledWith(
+      expect.stringContaining('senza certificato'),
+      expect.anything()
+    )
     expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 
@@ -115,7 +120,7 @@ describe('RentriRegistroTrasmissioneJob', () => {
     expect(trasmetti.trasmettiRegistro).toHaveBeenCalledTimes(3)
     expect(Sentry.captureException).toHaveBeenCalledTimes(1)
     expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      tags: { job: 'eseguiTrasmissione', tenantId: 't1' },
+      tags: { job: 'eseguiTrasmissione', tenantId: 't1', fase: 'invio' },
     })
   })
 
@@ -174,6 +179,7 @@ describe('RentriRegistroTrasmissioneJob', () => {
     const where = (sistema.tenant.findMany.mock.calls[0] as any[])[0].where
     expect(JSON.stringify(where)).toContain('ACTIVE')
     expect(JSON.stringify(where)).toContain('TRIAL')
+    expect(where).toEqual(escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }))
     expect(where).not.toEqual({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } })
   })
 
