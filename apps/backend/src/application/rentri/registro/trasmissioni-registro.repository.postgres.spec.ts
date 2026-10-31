@@ -24,6 +24,7 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
 import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import type { CandidataLotto } from './selezione-lotto-rentri'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 
 const IDENT_MOV = 'M0000000000000000001'
@@ -31,6 +32,7 @@ const IDENT_MOV = 'M0000000000000000001'
 describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
+  const logger: any = { setContext: jest.fn(), warn: jest.fn(), info: jest.fn(), error: jest.fn() }
   let repo: TrasmissioniRegistroRepository
   const tenantCreati: string[] = []
   let n = 0
@@ -123,7 +125,7 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
-    repo = new TrasmissioniRegistroRepository(app)
+    repo = new TrasmissioniRegistroRepository(app, logger)
   })
 
   afterAll(async () => {
@@ -141,7 +143,7 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     const m2 = await movimento(a, { type: 'SCARICO', causale: 'CONFERIMENTO_TRASPORTATORE' })
     await riga(a, m1)
     await riga(a, m2)
-    let viste: any[] = []
+    let viste: CandidataLotto[] = []
     const r = await repo.prenota(a.tenantId, a.registroId, async (_tx, candidate) => {
       viste = candidate
       return cand([m1.id, m2.id])
@@ -272,7 +274,7 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     })
     await riga(a, orig, { stato: 'TRASMESSA' })
     await riga(a, rett, { origine: 'CORREZIONE' })
-    let viste: any[] = []
+    let viste: CandidataLotto[] = []
     await repo.prenota(a.tenantId, a.registroId, async (_tx, c) => {
       viste = c
       return cand([])
@@ -324,6 +326,23 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     })
     expect(x.stato).toBe('ATTESA_ESITO')
     expect(x.transazioneId).toBe(t)
+    await expect(repo.salvaTransazione(a.tenantId, p.lottoId, randomUUID())).rejects.toThrow()
+  })
+
+  it('stallo durante la POST: la transazione viene comunque annotata sulla INCERTA', async () => {
+    const a = await azienda()
+    const m = await movimento(a)
+    await riga(a, m)
+    const p = await repo.prenota(a.tenantId, a.registroId, async () => cand([m.id]))
+    if (p.esito !== 'PRENOTATO') throw new Error('atteso PRENOTATO')
+    expect(await repo.stalliInInvio(a.tenantId, new Date(Date.now() + 1000))).toBe(1)
+    const t = randomUUID()
+    expect(await repo.salvaTransazione(a.tenantId, p.lottoId, t)).toBe('SU_INCERTA')
+    const x = await owner.movimentoTrasmissioneRentri.findFirstOrThrow({
+      where: { movimentoId: m.id },
+    })
+    expect(x).toMatchObject({ stato: 'INCERTA', bloccatoInvio: true, transazioneId: t })
+    // una seconda transazione non sovrascrive la prima
     await expect(repo.salvaTransazione(a.tenantId, p.lottoId, randomUUID())).rejects.toThrow()
   })
 
