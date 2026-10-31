@@ -492,10 +492,11 @@ model FIR {
   // marittima), ognuna con proprio snapshot anagrafico immutabile.
   transportersAggiuntivi FIRTransporter[]
 
-  // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
-  // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
+  // Pese (Fase 4 pezzo 8a): accessi collegati a questo FIR.
   collegamentiAccesso CollegamentoAccesso[]
 
+  // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
+  // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
   @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello
@@ -2633,6 +2634,7 @@ model AccessoPesa {
   collegamenti CollegamentoAccesso[]
 
   @@unique([id, tenantId], map: "accessi_pesa_id_tenant_id_key")
+  @@index([automezzoId], map: "accessi_pesa_automezzo_id_idx")
   @@unique([registroId, anno, numero], map: "accessi_pesa_registro_id_anno_numero_key")
   @@unique([id, registroId, tenantId, verso], map: "accessi_pesa_id_registro_tenant_verso_key")
   @@index([tenantId], map: "accessi_pesa_tenant_id_idx")
@@ -2677,6 +2679,8 @@ model Pesata {
   @@unique([accessoId, ordine], map: "pesate_accesso_id_ordine_key")
   @@unique([tenantId, chiaveIdempotenza], map: "pesate_tenant_id_chiave_idempotenza_key")
   @@unique([strumentoId, alibiId], map: "pesate_strumento_id_alibi_id_key")
+  @@index([allegatoId], map: "pesate_allegato_id_idx")
+  @@index([automezzoId], map: "pesate_automezzo_id_idx")
   @@index([tenantId], map: "pesate_tenant_id_idx")
   @@map("pesate")
 }
@@ -2753,6 +2757,9 @@ model CollegamentoAccesso {
   movimento WasteMovement? @relation(fields: [movimentoId, registroId, tenantId, verso], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "collegamenti_accesso_movimento_fkey")
   fir       FIR?           @relation(fields: [firId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "collegamenti_accesso_fir_fkey")
 
+  @@unique([id, tenantId], map: "collegamenti_accesso_id_tenant_id_key")
   @@index([tenantId], map: "collegamenti_accesso_tenant_id_idx")
+  @@index([firId, tenantId], map: "collegamenti_accesso_fir_id_tenant_id_idx")
+  @@index([movimentoId, registroId, tenantId, verso], map: "collegamenti_accesso_movimento_idx")
   @@map("collegamenti_accesso")
 }
