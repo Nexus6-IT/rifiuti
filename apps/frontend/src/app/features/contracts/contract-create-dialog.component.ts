@@ -42,6 +42,7 @@ import { ToastService } from '../../core/services/toast.service'
 import { AnagraficaSelectComponent } from '../registry/anagrafica-select.component'
 import { CerMultiSelectComponent } from '../cer/cer-multi-select.component'
 import {
+  CAMPI_CONTRATTO,
   CampoContratto,
   Contract,
   ContractsService,
@@ -60,6 +61,9 @@ import {
   registroDaTipoContratto,
   tipoControparteDaRegistro,
 } from './contract-vocabulary'
+
+/** Inizio del messaggio 409 per i campi non ammessi (backend, `pianificaModifica`). */
+const PREFISSO_CAMPI_NON_AMMESSI = 'In un contratto attivo o sospeso non si possono cambiare'
 
 @Component({
   selector: 'app-contract-create-dialog',
@@ -91,6 +95,7 @@ import {
         *ngIf="contratto && ciSonoBloccati()"
         class="text-tertiary"
         role="status"
+        id="c-bloccati-nota"
         data-testid="c-bloccati"
       >
         Alcuni campi non si possono cambiare nello stato attuale del contratto.
@@ -105,9 +110,16 @@ import {
             placeholder="CTR-2026-001"
             class="w-full"
             aria-required="true"
+            [attr.aria-describedby]="
+              contratto
+                ? campoBloccato('contractNumber')
+                  ? 'c-bloccati-nota'
+                  : null
+                : 'c-number-hint'
+            "
             [disabled]="campoBloccato('contractNumber')"
           />
-          <small *ngIf="!contratto" class="block mt-1 text-tertiary"
+          <small *ngIf="!contratto" id="c-number-hint" class="block mt-1 text-tertiary"
             >Proposto in automatico, modificabile.</small
           >
         </div>
@@ -400,31 +412,19 @@ export class ContractCreateDialogComponent implements OnChanges {
   }
 
   ciSonoBloccati(): boolean {
-    const tutti: CampoContratto[] = [
-      'contractNumber',
-      'producerId',
-      'counterpartyId',
-      'counterpartyType',
-      'contractType',
-      'description',
-      'cerCodes',
-      'pricingModel',
-      'basePrice',
-      'unitOfMeasure',
-      'startDate',
-      'endDate',
-      'durationMonths',
-      'autoRenew',
-      'renewalNoticeDays',
-      'paymentTerms',
-      'billingFrequency',
-    ]
-    return tutti.some(c => this.campoBloccato(c))
+    return CAMPI_CONTRATTO.some(c => this.campoBloccato(c))
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // L'apertura la decide il padre con `visible`: PrimeNG non emette true.
-    if (this.visible && (changes['visible'] || changes['contratto'])) this.reimposta()
+    // L'apertura la decide il padre con `visible`: PrimeNG non emette true. Il form si riallinea
+    // solo all'apertura o se, a dialog aperto, arriva un altro contratto: mai mentre si digita.
+    if (!this.visible) return
+    const contratto = changes['contratto']
+    const altroContratto =
+      !!contratto &&
+      !contratto.firstChange &&
+      contratto.previousValue?.id !== contratto.currentValue?.id
+    if (changes['visible'] || altroContratto) this.reimposta()
   }
 
   // ─── Derivazione del registro ─────────────────────────────────────────────
@@ -583,7 +583,7 @@ export class ContractCreateDialogComponent implements OnChanges {
       return
     }
 
-    const cambi = this.campiCambiati(originale, registro as RegistroControparte)
+    const cambi = this.campiCambiati(originale, registro)
     if (Object.keys(cambi).length === 0) {
       this.toast.info('Nessuna modifica da salvare')
       this.chiudi()
@@ -602,10 +602,10 @@ export class ContractCreateDialogComponent implements OnChanges {
       error: (err: unknown) => {
         this.saving.set(false)
         this.toast.error(this.messaggioErrore(err, 'Errore nel salvataggio del contratto'))
-        const stato = err instanceof HttpErrorResponse ? err.status : 0
-        // Conflitto o contratto sparito: i dati mostrati sono vecchi, la lista si ricarica e il
-        // dialog si chiude. Un 400 lascia il dialog aperto per correggere.
-        if (stato === 409 || stato === 404) {
+        // I dati mostrati sono vecchi (modificato nel frattempo, stato che non consente la
+        // modifica, contratto sparito): la lista si ricarica e il dialog si chiude. Numero
+        // duplicato, campi non ammessi e 400 lasciano il dialog aperto per correggere.
+        if (this.datiVecchi(err)) {
           this.modificato.emit()
           this.chiudi()
         }
@@ -619,11 +619,13 @@ export class ContractCreateDialogComponent implements OnChanges {
    */
   private campiCambiati(
     o: Contract,
-    registro: RegistroControparte
+    registro: RegistroControparte | null
   ): Omit<ModificaContrattoDto, 'versione'> {
     const f = this.form
     const cambi: Record<string, unknown> = {}
-    const se = (campo: keyof CreateContractDto, nuovo: unknown, vecchio: unknown) => {
+    // I campi bloccati non vanno mai nel corpo (anche se il form li avesse alterati).
+    const se = (campo: CampoContratto, nuovo: unknown, vecchio: unknown) => {
+      if (this.campoBloccato(campo)) return
       if (nuovo !== vecchio) cambi[campo] = nuovo
     }
     const testoOpz = (v: string | null | undefined) => (v?.trim() ? v.trim() : null)
@@ -633,16 +635,17 @@ export class ContractCreateDialogComponent implements OnChanges {
     se('contractNumber', f.contractNumber.trim(), o.contractNumber.trim())
     se('producerId', f.producerId, o.producerId)
     se('counterpartyId', f.counterpartyId, o.counterpartyId)
-    se('counterpartyType', tipoControparteDaRegistro(registro), o.counterpartyType)
+    if (registro) se('counterpartyType', tipoControparteDaRegistro(registro), o.counterpartyType)
     se('contractType', f.contractType, o.contractType)
     se('description', testoOpz(f.description), testoOpz(o.description))
     const nuoviCer = [...new Set(f.cerCodes)].sort()
     const vecchiCer = [...new Set(o.cerCodes)].sort()
-    if (nuoviCer.join('|') !== vecchiCer.join('|')) cambi['cerCodes'] = nuoviCer
+    if (!this.campoBloccato('cerCodes') && nuoviCer.join('|') !== vecchiCer.join('|'))
+      cambi['cerCodes'] = nuoviCer
     se('pricingModel', f.pricingModel, o.pricingModel)
     se('basePrice', numOpz(f.basePrice), numOpz(o.basePrice))
     se('unitOfMeasure', (f.unitOfMeasure ?? '').trim(), o.unitOfMeasure.trim())
-    se('startDate', this.toIsoDate(this.startDate as Date), o.startDate.slice(0, 10))
+    if (this.startDate) se('startDate', this.toIsoDate(this.startDate), o.startDate.slice(0, 10))
     se(
       'endDate',
       this.endDate ? this.toIsoDate(this.endDate) : null,
@@ -656,6 +659,23 @@ export class ContractCreateDialogComponent implements OnChanges {
     return cambi as Omit<ModificaContrattoDto, 'versione'>
   }
 
+  /**
+   * Il codice `CONTRATTO_NON_MODIFICABILE` e' lo stesso per lo stato e per i campi non ammessi:
+   * i secondi si riconoscono dal messaggio (D9 del piano 4.0), e il dialog resta aperto.
+   */
+  private datiVecchi(err: unknown): boolean {
+    if (!(err instanceof HttpErrorResponse)) return false
+    if (err.status === 404) return true
+    if (err.status !== 409) return false
+    const codice = err.error?.error
+    if (codice === 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO') return true
+    if (codice === 'CONTRATTO_NON_MODIFICABILE') {
+      const m = err.error?.message
+      return !(typeof m === 'string' && m.startsWith(PREFISSO_CAMPI_NON_AMMESSI))
+    }
+    return false
+  }
+
   /** Messaggio del backend (stringa o elenco), mai id; altrimenti il testo di ripiego. */
   private messaggioErrore(err: unknown, ripiego: string): string {
     const m = err instanceof HttpErrorResponse ? err.error?.message : undefined
@@ -664,16 +684,20 @@ export class ContractCreateDialogComponent implements OnChanges {
     return ripiego
   }
 
+  /** Obbligatori compilati; in modifica i campi bloccati non si controllano (dati storici). */
   private validate(registro: RegistroControparte | null): boolean {
-    return !!(
-      this.form.contractNumber?.trim() &&
-      this.form.contractType &&
-      registro &&
-      this.form.producerId?.trim() &&
-      this.form.counterpartyId?.trim() &&
-      this.form.pricingModel &&
-      this.form.cerCodes?.length &&
-      this.startDate
+    const ok = (campo: CampoContratto, valido: unknown) => this.campoBloccato(campo) || !!valido
+    const f = this.form
+    return (
+      ok('contractNumber', f.contractNumber?.trim()) &&
+      ok('contractType', f.contractType) &&
+      (registro !== null ||
+        (this.campoBloccato('counterpartyType') && this.campoBloccato('counterpartyId'))) &&
+      ok('producerId', f.producerId?.trim()) &&
+      ok('counterpartyId', f.counterpartyId?.trim()) &&
+      ok('pricingModel', f.pricingModel) &&
+      ok('cerCodes', f.cerCodes?.length) &&
+      ok('startDate', this.startDate)
     )
   }
 

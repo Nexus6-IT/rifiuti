@@ -30,24 +30,27 @@ export type PricingModel =
   | 'HYBRID'
 
 /** Campi che la modifica di un contratto può toccare. Allineato al backend (`regole-contratto.ts`). */
-export type CampoContratto =
-  | 'contractNumber'
-  | 'producerId'
-  | 'counterpartyId'
-  | 'counterpartyType'
-  | 'contractType'
-  | 'description'
-  | 'cerCodes'
-  | 'pricingModel'
-  | 'basePrice'
-  | 'unitOfMeasure'
-  | 'startDate'
-  | 'endDate'
-  | 'durationMonths'
-  | 'autoRenew'
-  | 'renewalNoticeDays'
-  | 'paymentTerms'
-  | 'billingFrequency'
+export const CAMPI_CONTRATTO = [
+  'contractNumber',
+  'producerId',
+  'counterpartyId',
+  'counterpartyType',
+  'contractType',
+  'description',
+  'cerCodes',
+  'pricingModel',
+  'basePrice',
+  'unitOfMeasure',
+  'startDate',
+  'endDate',
+  'durationMonths',
+  'autoRenew',
+  'renewalNoticeDays',
+  'paymentTerms',
+  'billingFrequency',
+] as const
+
+export type CampoContratto = (typeof CAMPI_CONTRATTO)[number]
 
 /**
  * Parte del contratto risolta verso il registro anagrafico.

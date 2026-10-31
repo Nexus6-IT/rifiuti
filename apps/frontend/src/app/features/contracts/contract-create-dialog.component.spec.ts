@@ -3,7 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { HttpErrorResponse } from '@angular/common/http'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
-import { CampoContratto, Contract, ContractsService } from './contracts.service'
+import { CAMPI_CONTRATTO, CampoContratto, Contract, ContractsService } from './contracts.service'
 import { ToastService } from '../../core/services/toast.service'
 import { RegistryService } from '../registry/registry.service'
 import { CerService } from '../cer/cer.service'
@@ -203,25 +203,7 @@ describe('ContractCreateDialogComponent', () => {
 
   // ─── Modifica (Fase 4 pezzo 0) ────────────────────────────────────────────
   describe('modifica', () => {
-    const TUTTI: CampoContratto[] = [
-      'contractNumber',
-      'producerId',
-      'counterpartyId',
-      'counterpartyType',
-      'contractType',
-      'description',
-      'cerCodes',
-      'pricingModel',
-      'basePrice',
-      'unitOfMeasure',
-      'startDate',
-      'endDate',
-      'durationMonths',
-      'autoRenew',
-      'renewalNoticeDays',
-      'paymentTerms',
-      'billingFrequency',
-    ]
+    const TUTTI: CampoContratto[] = [...CAMPI_CONTRATTO]
     const TERMINI: CampoContratto[] = [
       'description',
       'cerCodes',
@@ -285,8 +267,11 @@ describe('ContractCreateDialogComponent', () => {
       expect(component.startDate).toEqual(new Date(2026, 0, 15))
       expect(component.endDate).toEqual(new Date(2026, 11, 31))
       expect(component.registroEffettivo()).toBe('trasportatori')
-      const intestazione = document.body.querySelector('.p-dialog-title')
-      expect(intestazione?.textContent).toContain('Modifica contratto')
+      // Altri spec possono lasciare dialog nel body: si cerca fra tutte le intestazioni
+      const titoli = Array.from(document.body.querySelectorAll('.p-dialog-title')).map(
+        t => t.textContent
+      )
+      expect(titoli.some(t => t?.includes('Modifica contratto'))).toBeTrue()
     })
 
     it('registro dedotto da counterpartyType anche per un tipo senza registro implicito', () => {
@@ -380,9 +365,129 @@ describe('ContractCreateDialogComponent', () => {
         })
       )
       const emesso = spyOn(component.modificato, 'emit')
+      const chiuso = spyOn(component.visibleChange, 'emit')
       component.salva()
       expect(toast.error).toHaveBeenCalledWith('Il contratto è stato modificato nel frattempo.')
       expect(emesso).toHaveBeenCalled()
+      expect(chiuso).toHaveBeenCalledWith(false)
+    })
+
+    it('409 CONTRATTO_NON_MODIFICABILE per stato: ricarica e chiude', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      contracts.update.and.returnValue(
+        errore(409, {
+          message: 'Un contratto cessato non si modifica.',
+          error: 'CONTRATTO_NON_MODIFICABILE',
+        })
+      )
+      const emesso = spyOn(component.modificato, 'emit')
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(emesso).toHaveBeenCalled()
+      expect(chiuso).toHaveBeenCalledWith(false)
+    })
+
+    it('409 CONTRATTO_NON_MODIFICABILE per campi non ammessi: dialog resta aperto', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      contracts.update.and.returnValue(
+        errore(409, {
+          message: 'In un contratto attivo o sospeso non si possono cambiare: Produttore.',
+          error: 'CONTRATTO_NON_MODIFICABILE',
+        })
+      )
+      const emesso = spyOn(component.modificato, 'emit')
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(toast.error).toHaveBeenCalledWith(
+        'In un contratto attivo o sospeso non si possono cambiare: Produttore.'
+      )
+      expect(emesso).not.toHaveBeenCalled()
+      expect(chiuso).not.toHaveBeenCalled()
+    })
+
+    it('409 numero duplicato: dialog resta aperto', () => {
+      apri(contratto())
+      component.form.contractNumber = 'CTR-2026-009'
+      contracts.update.and.returnValue(
+        errore(409, {
+          message: 'Esiste già un contratto con questo numero.',
+          error: 'CONTRATTO_NUMERO_DUPLICATO',
+        })
+      )
+      const emesso = spyOn(component.modificato, 'emit')
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(toast.error).toHaveBeenCalledWith('Esiste già un contratto con questo numero.')
+      expect(emesso).not.toHaveBeenCalled()
+      expect(chiuso).not.toHaveBeenCalled()
+      expect(component.saving()).toBeFalse()
+    })
+
+    it('404: ricarica e chiude', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      contracts.update.and.returnValue(errore(404, { message: 'Contratto non trovato' }))
+      const emesso = spyOn(component.modificato, 'emit')
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(toast.error).toHaveBeenCalledWith('Contratto non trovato')
+      expect(emesso).toHaveBeenCalled()
+      expect(chiuso).toHaveBeenCalledWith(false)
+    })
+
+    it('contratto attivo con counterpartyType storico incoerente: nessun errore di campi, corpo senza counterpartyType', () => {
+      apri(
+        contratto({
+          status: 'ACTIVE',
+          modificabili: TERMINI,
+          eliminabile: false,
+          contractType: 'WASTE_TRANSPORT',
+          counterpartyType: 'DISPOSER',
+        })
+      )
+      // il registro dedotto dal tipo (trasportatori) non coincide con counterpartyType
+      component.form.basePrice = 150
+      component.salva()
+      expect(toast.warn).not.toHaveBeenCalled()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 150, versione: 4 })
+    })
+
+    it('contratto con controparte BROKER: i campi bloccati non fanno scattare la validazione', () => {
+      apri(
+        contratto({
+          status: 'ACTIVE',
+          modificabili: TERMINI,
+          eliminabile: false,
+          contractType: 'FRAMEWORK',
+          counterpartyType: 'BROKER',
+        })
+      )
+      expect(component.registroEffettivo()).toBeNull()
+      component.form.description = 'Nota'
+      component.salva()
+      expect(toast.warn).not.toHaveBeenCalled()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', {
+        description: 'Nota',
+        versione: 4,
+      })
+    })
+
+    it('un campo bloccato alterato nel form non va mai nel corpo', () => {
+      apri(contratto({ status: 'ACTIVE', modificabili: TERMINI, eliminabile: false }))
+      component.form.producerId = 'altro'
+      component.form.basePrice = 150
+      component.salva()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 150, versione: 4 })
+    })
+
+    it('a dialog aperto, lo stesso contratto con altra versione non azzera quanto digitato', () => {
+      apri(contratto())
+      component.form.description = 'in corso'
+      fixture.componentRef.setInput('contratto', contratto({ versione: 5 }))
+      fixture.detectChanges()
+      expect(component.form.description).toBe('in corso')
     })
 
     it('400 CONTRATTO_NON_VALIDO: toast coi messaggi del backend, dialog resta aperto', () => {
