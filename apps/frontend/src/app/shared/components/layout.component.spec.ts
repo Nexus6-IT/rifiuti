@@ -1,4 +1,8 @@
-import { ordinaAziendePerGruppo } from './layout.component'
+import { HttpClientTestingModule } from '@angular/common/http/testing'
+import { MessageService } from 'primeng/api'
+import { TestBed } from '@angular/core/testing'
+import { provideRouter } from '@angular/router'
+import { LayoutComponent, ordinaAziendePerGruppo } from './layout.component'
 
 describe('ordinaAziendePerGruppo', () => {
   it('mette ogni figlia sotto la propria madre e la marca come annidata', () => {
@@ -30,5 +34,17 @@ describe('ordinaAziendePerGruppo', () => {
 
     expect(risultato.map(a => a.id).sort()).toEqual(['orfana', 'uno'])
     expect(risultato.find(a => a.id === 'orfana')?.annidata).toBe(false)
+  })
+})
+
+describe('LayoutComponent: voce di menu Pese', () => {
+  it('la voce Pese punta a /pese ed è gated dalla feature pese', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const layout = TestBed.createComponent(LayoutComponent).componentInstance
+    const voce = layout.navMain.find(v => v.route === '/pese')
+    expect(voce).toEqual(jasmine.objectContaining({ label: 'Pese', feature: 'pese' }))
   })
 })

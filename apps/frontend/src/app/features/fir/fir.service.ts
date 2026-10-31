@@ -4,6 +4,9 @@ import { Observable } from 'rxjs'
 import { FIR, PaginatedFIRResponse, FIRStato } from '../../shared/models/fir.model'
 import { environment } from '../../../environments/environment'
 
+/** Esattamente uno: il peso verificato a mano oppure l'accesso di pesa da cui prenderlo. */
+export type DatiConsegnaFIR = { pesoEffettivo: number } | { accessoId: string }
+
 export type TipoTratta = 'TERRESTRE' | 'FERROVIARIA' | 'MARITTIMA'
 
 /** Provenienza del rifiuto — richiesta dal contratto RENTRI (Campo 1 FIR). */
@@ -118,13 +121,12 @@ export class FirService {
 
   /**
    * Conferma consegna (destinatario): IN_TRANSITO → CONSEGNATO.
-   * Richiede il peso effettivo rilevato a destinazione, nell'unità di misura del FIR.
+   * Richiede il peso effettivo rilevato a destinazione, nell'unità di misura del FIR, oppure
+   * (feature `pese`) l'accesso di pesa da cui il backend prende il netto: esattamente uno dei due.
    * La firma del destinatario è prodotta dal backend (vedi emettiFIR).
    */
-  confermaConsegna(id: string, pesoEffettivo: number): Observable<FIR> {
-    return this.http.post<FIR>(`${this.API_URL}/${id}/conferma-consegna`, {
-      pesoEffettivo,
-    })
+  confermaConsegna(id: string, dati: DatiConsegnaFIR): Observable<FIR> {
+    return this.http.post<FIR>(`${this.API_URL}/${id}/conferma-consegna`, dati)
   }
 
   /**
