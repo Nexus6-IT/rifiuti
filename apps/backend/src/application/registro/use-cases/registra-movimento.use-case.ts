@@ -35,6 +35,7 @@ import {
 } from '../numerazione-annotazione'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
+import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
 import { RegistriService, RegistroVista } from '../registri.service'
 
 /**
@@ -343,6 +344,19 @@ export class RegistraMovimentoUseCase {
           entryHash: entity.entryHash,
           notes: entity.notes,
         })
+
+        // 4.6: proposta FIFO degli abbinamenti carico-scarico, nella stessa transazione (D10).
+        // Un errore qui annulla la registrazione: le righe non possono restare indietro.
+        if (command.type === 'SCARICO') {
+          avvisi.push(
+            ...(await abbinaNuovoScarico(tx, {
+              tenantId: command.tenantId,
+              registroId: registroMovimento.id,
+              scaricoId: record.id,
+              userId: command.userId ?? null,
+            }))
+          )
+        }
 
         return {
           ...this.movimentoDaRecord(record, ritardoGg, validazione.causaleDescrizione),

@@ -107,6 +107,11 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
       )
     )
     if (!r.isSuccess) throw new Error(`registrazione fallita: ${r.error}`)
+    // dal Task 7 la registrazione abbina da sola: i test del lettore scrivono le righe a mano
+    // (id esatto, mai un filtro vuoto)
+    if (o.type === 'SCARICO' && r.value.id) {
+      await owner.abbinamentoCaricoScarico.deleteMany({ where: { scaricoId: r.value.id } })
+    }
     return r.value.id
   }
 
@@ -406,6 +411,7 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
       },
     })
 
+  // (lo scarico si annulla in deroga: l'annullamento vero libera le righe, qui servono come dato storico)
   it('una riga morta non fa risultare incoerente una riga buona (somme solo sulle valide)', async () => {
     const az = await azienda()
     const c = await movimento(az, {
@@ -419,7 +425,7 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     const sMorto = await movimento(az, { type: 'SCARICO', giorno: '2026-03-11', quantita: 60 })
     await riga(az, sBuono, c, 60)
     const morta = await riga(az, sMorto, c, 60)
-    await annulla(az, sMorto)
+    await annullaInDeroga(sMorto)
     const [a] = await leggi(az)
     expect(a.righe).toHaveLength(2)
     expect(a.righeIncoerenti).toEqual([{ id: morta.id, motivo: 'scarico non più vigente' }])
@@ -436,13 +442,13 @@ describe('Lettore abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     })
     const s1 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 10 })
     const r1 = await riga(az, s1, c1, 10)
-    await annulla(az, s1)
+    await annullaInDeroga(s1)
     await annullaInDeroga(c1)
     // carico non di stoccaggio + scarico annullato
     const c2 = await movimento(az, { type: 'CARICO', giorno: '2026-03-02', quantita: 100 })
     const s2 = await movimento(az, { type: 'SCARICO', giorno: '2026-03-12', quantita: 5 })
     const r2 = await riga(az, s2, c2, 5)
-    await annulla(az, s2)
+    await annullaInDeroga(s2)
     const [a] = await leggi(az)
     expect(a.righeIncoerenti).toEqual(
       expect.arrayContaining([

@@ -178,6 +178,9 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
   })
 
   afterAll(async () => {
+    if (tenantCreati.length > 0) {
+      await owner.abbinamentoCaricoScarico.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+    }
     await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.giacenzaIniziale.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await owner.wasteMovement.deleteMany({ where: { tenantId: { in: tenantCreati } } })
@@ -508,5 +511,54 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
     await new Promise(r => setTimeout(r, 20))
     await movimentoDiretto(az.tenantId, az.registroId, { type: 'SCARICO' })
     for (const fuso of fusi) expect(await usata(fuso)).toBe(true)
+  })
+
+  describe('abbinamenti (4.6)', () => {
+    async function giacenzaAbbinata() {
+      const az = await aziendaConRegistro()
+      const scarico = await movimentoDiretto(az.tenantId, az.registroId, {
+        type: 'SCARICO',
+        createdAt: new Date(Date.now() - 60_000),
+      })
+      const { giacenza } = await crea(az.tenantId, dati(), az.registroId)
+      await owner.abbinamentoCaricoScarico.create({
+        data: {
+          tenantId: az.tenantId,
+          registroId: az.registroId,
+          scaricoId: scarico.id,
+          giacenzaInizialeId: giacenza.id,
+          famiglia: 'KG',
+          quantita: 10,
+          origine: 'AUTOMATICO',
+        },
+      })
+      return { az, giacenza }
+    }
+    const MSG_ABBINATA =
+      "Questa giacenza iniziale è abbinata a uno o più scarichi: togli prima l'abbinamento (Giacenze → Abbinamenti)."
+
+    it('la modifica di una giacenza abbinata è respinta con 409', async () => {
+      const { az, giacenza } = await giacenzaAbbinata()
+      const prima = await owner.giacenzaIniziale.findUnique({ where: { id: giacenza.id } })
+      await expect(
+        nelTenant(az.tenantId, () =>
+          servizio.modifica(az.tenantId, userId, giacenza.id, {
+            quantita: 500,
+            unita: 'kg',
+            dataRiferimento: '2026-01-01',
+          })
+        )
+      ).rejects.toMatchObject({ status: 409, message: MSG_ABBINATA })
+      const dopo = await owner.giacenzaIniziale.findUnique({ where: { id: giacenza.id } })
+      expect(Number(dopo?.quantita)).toBe(Number(prima?.quantita))
+    })
+
+    it('l eliminazione di una giacenza abbinata è respinta con 409', async () => {
+      const { az, giacenza } = await giacenzaAbbinata()
+      await expect(
+        nelTenant(az.tenantId, () => servizio.elimina(az.tenantId, userId, giacenza.id))
+      ).rejects.toMatchObject({ status: 409, message: MSG_ABBINATA })
+      expect(await owner.giacenzaIniziale.count({ where: { id: giacenza.id } })).toBe(1)
+    })
   })
 })

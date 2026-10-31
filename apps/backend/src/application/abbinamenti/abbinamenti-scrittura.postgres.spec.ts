@@ -112,6 +112,11 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
       )
     )
     if (!r.isSuccess) throw new Error(`registrazione fallita: ${r.error}`)
+    // dal Task 7 la registrazione abbina da sola: qui si parte da scarichi senza righe, per
+    // provare le funzioni di scrittura una alla volta (id esatto, mai un filtro vuoto)
+    if (o.type === 'SCARICO' && r.value.id) {
+      await owner.abbinamentoCaricoScarico.deleteMany({ where: { scaricoId: r.value.id } })
+    }
     return r.value.id
   }
 
@@ -471,6 +476,8 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     const az = await azienda()
     const c1 = await carico(az, '2026-03-01', 100)
     const sMorto = await scarico(az, '2026-03-10', 100)
+    // l'annullamento libera le righe: la riga morta si inserisce dopo, a mano
+    await annullaScarico(az, sMorto)
     const morta = await owner.abbinamentoCaricoScarico.create({
       data: {
         tenantId: az.tenantId,
@@ -482,7 +489,6 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
         origine: 'AUTOMATICO',
       },
     })
-    await annullaScarico(az, sMorto)
     const s2 = await scarico(az, '2026-03-12', 60)
     expect(await abbina(az, s2)).toEqual([])
     expect(
@@ -581,6 +587,7 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     const az = await azienda()
     const c1 = await carico(az, '2026-03-01', 100)
     const sMorto = await scarico(az, '2026-03-10', 100)
+    await annullaScarico(az, sMorto)
     await owner.abbinamentoCaricoScarico.create({
       data: {
         tenantId: az.tenantId,
@@ -592,7 +599,6 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
         origine: 'AUTOMATICO',
       },
     })
-    await annullaScarico(az, sMorto)
     const s2 = await scarico(az, '2026-03-12', 80)
     await inTx(az, tx =>
       salvaAbbinamentoManuale(tx, {

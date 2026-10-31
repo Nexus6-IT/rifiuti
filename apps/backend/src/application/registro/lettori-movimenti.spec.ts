@@ -23,6 +23,11 @@ const SRC = join(__dirname, '..', '..')
 type Scelta = 'vigenti' | 'ordinarie' | 'tutte'
 
 const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
+  'application/abbinamenti/abbinamenti-correzioni.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge la testa corrente di UNA catena (ultima annotazione numerata) per confrontare i dati prima/dopo una correzione; il numero dei carichi e quello della radice; le righe vigenti le legge lettore-abbinamenti',
+  },
   'application/abbinamenti/abbinamenti-scrittura.ts': {
     scelta: 'tutte',
     motivo:

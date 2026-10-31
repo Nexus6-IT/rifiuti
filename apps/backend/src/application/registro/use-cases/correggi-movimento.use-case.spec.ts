@@ -10,6 +10,28 @@ import * as giacenzaModulo from '../giacenza-disponibile'
 import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { INDICAZIONE_FIR_ANNULLATO } from '../../../core/domain/errors'
 
+import {
+  fotografiaScarico,
+  riallineaDopoCorrezioneScarico,
+  verificaCorrezioneCarico,
+} from '../../abbinamenti/abbinamenti-correzioni'
+
+jest.mock('../../abbinamenti/abbinamenti-correzioni')
+const verificaMock = verificaCorrezioneCarico as jest.MockedFunction<
+  typeof verificaCorrezioneCarico
+>
+const fotoMock = fotografiaScarico as jest.MockedFunction<typeof fotografiaScarico>
+const riallineaMock = riallineaDopoCorrezioneScarico as jest.MockedFunction<
+  typeof riallineaDopoCorrezioneScarico
+>
+const STATO_PRIMA = {
+  giorno: '2026-03-01',
+  chiaveCer: '999907',
+  famiglia: 'KG',
+  quantita: 100,
+  classeAttesa: null,
+}
+
 const logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
 
 const TENANT = 't-1'
@@ -113,9 +135,82 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
   let saldi: jest.SpyInstance
   beforeEach(() => {
     jest.clearAllMocks()
+    verificaMock.mockResolvedValue(undefined)
+    fotoMock.mockResolvedValue(STATO_PRIMA)
+    riallineaMock.mockResolvedValue([])
     saldi = jest.spyOn(giacenzaModulo, 'saldiRegistroCer').mockResolvedValue(SALDO_OK)
   })
   afterEach(() => saldi.mockRestore())
+
+  describe('abbinamenti (4.6)', () => {
+    it('carico: verifica la correzione con i dati nuovi in famiglia, prima della numerazione', async () => {
+      const tx = creaTx({
+        letti: [riga({ operationCode: 'R13' }), riga({ operationCode: 'R13' })],
+        radice: null,
+      })
+      await creaUseCase(tx).rettifica({
+        ...base,
+        dati: { ...dati, quantity: 2, unit: 't', operationCode: 'r13' },
+      })
+      expect(verificaMock).toHaveBeenCalledTimes(1)
+      expect(verificaMock.mock.calls[0][1]).toMatchObject({
+        tenantId: TENANT,
+        caricoRadiceId: 'o-1',
+        numeroCarico: '5/2026',
+        tipo: 'RETTIFICA',
+        nuovo: {
+          giorno: '2026-03-01',
+          chiaveCer: '999907',
+          famiglia: 'KG',
+          quantita: 2000,
+          classe: 'R13',
+        },
+      })
+      expect(fotoMock).not.toHaveBeenCalled()
+      expect(riallineaMock).not.toHaveBeenCalled()
+      // prima dell'insert
+      expect(verificaMock.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.wasteMovement.create.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('carico: la verifica che rifiuta (409) interrompe la correzione senza insert', async () => {
+      verificaMock.mockRejectedValueOnce(new ConflictException('carico abbinato'))
+      const tx = creaTx({})
+      await expect(creaUseCase(tx).annulla(base)).rejects.toBeInstanceOf(ConflictException)
+      expect(verificaMock.mock.calls[0][1]).toMatchObject({
+        tipo: 'ANNULLAMENTO',
+        nuovo: undefined,
+      })
+      expect(tx.wasteMovement.create).not.toHaveBeenCalled()
+    })
+
+    it("scarico: fotografia prima dell'insert, riallineamento dopo, avvisi riportati", async () => {
+      riallineaMock.mockResolvedValueOnce(['Abbinamento ricalcolato con FIFO.'])
+      const tx = creaTx({ letti: [riga({ type: 'SCARICO' }), riga({ type: 'SCARICO' })] })
+      const esito = await creaUseCase(tx).rettifica({
+        ...base,
+        dati: { ...dati, causale: 'AVVIO_RECUPERO' },
+      })
+      expect(verificaMock).not.toHaveBeenCalled()
+      expect(fotoMock.mock.calls[0][3]).toBe('RETTIFICA')
+      expect(riallineaMock.mock.calls[0][1]).toMatchObject({
+        tenantId: TENANT,
+        registroId: REG,
+        scaricoRadiceId: 'o-1',
+        tipo: 'RETTIFICA',
+        prima: STATO_PRIMA,
+        userId: 'u-1',
+      })
+      expect(fotoMock.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.wasteMovement.create.mock.invocationCallOrder[0]
+      )
+      expect(riallineaMock.mock.invocationCallOrder[0]).toBeGreaterThan(
+        tx.wasteMovement.create.mock.invocationCallOrder[0]
+      )
+      expect(esito.avvisi).toContain('Abbinamento ricalcolato con FIFO.')
+    })
+  })
 
   it('motivo vuoto o oltre 500 caratteri: 400 senza aprire la transazione', async () => {
     const tx = creaTx({})
