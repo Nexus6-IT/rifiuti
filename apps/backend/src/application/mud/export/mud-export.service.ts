@@ -16,10 +16,19 @@ import {
   haBloccanti,
   riepilogaAvvisi,
 } from '../aggregazione/mud-controlli'
-import { hashAggregato, hashDichiarante } from '../aggregazione/mud-regole'
-import { aggiornaReportData, dataComunicazioneSostituita } from '../mud-report-data'
+import { hashCalcoloMud, hashDichiaranteMud } from '../aggregazione/mud-regole'
+import { pacchettiPerExport } from '../aggregazione/mud-dichiarazioni'
+import {
+  aggiornaReportData,
+  avvisoSostitutiva,
+  comunicazioneSostituita,
+  VERSIONE_CALCOLO_MUD,
+} from '../mud-report-data'
 import { MudExportData, MudExportResult } from './mud-export.types'
 import { caricaDichiarante } from './mud-dichiarante'
+
+/** Versione del calcolo con cui si genera ogni file nuovo (D10). */
+const VERSIONE_CALCOLO_EXPORT = VERSIONE_CALCOLO_MUD
 
 /** Ruoli che possono confermare gli avvisi che cambiano le quantità (Decisione 19). */
 export const RUOLI_CONFERMA_AVVISI = ['ADMIN', 'SUPER_ADMIN'] as const
@@ -72,7 +81,26 @@ export class MudExportService {
 
     // Righe dal registro e controlli (aggregazione, dichiarante e profilo).
     const aggregato = await this.aggregazione.aggrega(tenantId, year)
-    const controlli = aggregato.controlli
+    // Dichiarazione sostitutiva (A-W-04): se l'anno risulta presentato, o la presentazione è
+    // stata annullata per sostituirla, il file annulla e sostituisce quella comunicazione. La
+    // lettura è fuori dal lock del report: la voce registra comunque cosa dice il file.
+    const sostituita = comunicazioneSostituita(
+      await this.prisma.mUDReport.findUnique({
+        where: { tenantId_year: { tenantId, year } },
+        select: { status: true, submittedAt: true, reportData: true },
+      })
+    )
+
+    // Progressivi dei pacchetti del file: uno per dichiarazione, [1] per il pacchetto unico di
+    // sempre. Il file sostituisce solo i progressivi già presentati; se non coincidono, avviso da
+    // confermare (G2), non riservato agli amministratori (non cambia le quantità).
+    const nDichiarazioni = (aggregato.dichiarazioni ?? []).length
+    const progressiviFile =
+      nDichiarazioni > 0
+        ? (aggregato.dichiarazioni ?? []).map(d => d.progressivo).sort((a, b) => a - b)
+        : [1]
+    const avvisoSost = avvisoSostitutiva(sostituita, progressiviFile)
+    const controlli = avvisoSost ? [...aggregato.controlli, avvisoSost] : aggregato.controlli
     const riepilogo = riepilogaAvvisi(controlli)
 
     if (haBloccanti(controlli)) {
@@ -107,16 +135,6 @@ export class MudExportService {
       })
     }
 
-    // Dichiarazione sostitutiva (A-W-04): se l'anno risulta presentato, o la presentazione è
-    // stata annullata per sostituirla, il file annulla e sostituisce quella comunicazione. La
-    // lettura è fuori dal lock del report: la voce registra comunque cosa dice il file.
-    const sostituita = dataComunicazioneSostituita(
-      await this.prisma.mUDReport.findUnique({
-        where: { tenantId_year: { tenantId, year } },
-        select: { status: true, submittedAt: true, reportData: true },
-      })
-    )
-
     // Anagrafica (AA) e schede SA-AUT (AU): le autorizzazioni escono solo se registrate; per i
     // soggetti estranei alla gestione rifiuti la lista è vuota e il record AU non c'è.
     const dichiarante = await caricaDichiarante(
@@ -125,17 +143,30 @@ export class MudExportService {
       tenant,
       aggregato.dichiarante
     )
+    // Un pacchetto per dichiarazione dell'aggregato (D5, D7). Senza dichiarazioni (aggregato
+    // vecchio o vuoto) resta il pacchetto unico di sempre: mai un elenco vuoto al generatore.
+    const dichiarazioni = aggregato.dichiarazioni ?? []
     const data: MudExportData = {
       year,
       azienda: dichiarante.azienda,
       rifiuti: aggregato.righe,
+      ...(dichiarazioni.length > 0
+        ? { dichiarazioni: pacchettiPerExport(dichiarazioni, dichiarante.azienda) }
+        : {}),
       autorizzazioni: dichiarante.autorizzazioni,
-      ...(sostituita ? { sostituisce: { dataComunicazione: sostituita } } : {}),
+      ...(sostituita
+        ? {
+            sostituisce: {
+              dataComunicazione: sostituita.data,
+              progressivi: sostituita.progressivi,
+            },
+          }
+        : {}),
     }
 
     const content = tracciato.generate(data)
     this.logger.info(
-      `MUD export generato: tenant ${tenantId}, anno ${year}, versione ${tracciato.version}, ${data.rifiuti.length} righe, ${codiciAvviso.length} avvisi confermati`
+      `MUD export generato: tenant ${tenantId}, anno ${year}, versione ${tracciato.version}, ${data.rifiuti.length} righe, ${Math.max(dichiarazioni.length, 1)} dichiarazioni, ${codiciAvviso.length} avvisi confermati`
     )
 
     const result: MudExportResult = {
@@ -147,7 +178,7 @@ export class MudExportService {
 
     // Traccia dell'esportazione, solo dopo un file generato: con quali avvisi confermati,
     // quale aggregato e quali integrazioni è uscito (rilievo G3-D-06).
-    const hash = hashAggregato(aggregato.righe)
+    const hash = hashCalcoloMud(aggregato)
     const riepilogoQuantita = {
       kgInMeno: riepilogo.kgInMeno,
       kgInPiu: riepilogo.kgInPiu,
@@ -161,11 +192,15 @@ export class MudExportService {
           generatoDa: utente.id,
           versione: result.version,
           hashAggregato: hash,
+          // l'export usa sempre il calcolo attuale (D10); la presentazione leggerà questo campo
+          versioneCalcolo: VERSIONE_CALCOLO_EXPORT,
           // i dati del dichiarante (AA e AU) non entrano in hashAggregato (solo righe): la
           // segnatura della presentazione li confronta a parte
-          hashDichiarante: hashDichiarante(dichiarante),
+          hashDichiarante: hashDichiaranteMud(dichiarante, aggregato),
           // comunicazione che il file annulla e sostituisce (record AA), o null
-          sostituisce: sostituita ? sostituita.toISOString() : null,
+          sostituisce: sostituita ? sostituita.data.toISOString() : null,
+          // progressivi delle unità locali dei pacchetti del file: la presentazione li conserva
+          progressiviUnitaLocale: progressiviFile,
           avvisiConfermati: codiciAvviso,
           riepilogo: riepilogoQuantita,
           // quelle lette dall'aggregazione che ha fatto il file, non quelle di `p`: un
@@ -184,11 +219,13 @@ export class MudExportService {
           tenantId,
           userId: utente.id,
           action: 'MUD_ESPORTATO',
-          description: `File MUD dei dati ${year} generato (tracciato ${result.version}) con ${codiciAvviso.length} avvisi confermati: ${riepilogo.testo}`,
+          description: `File MUD dei dati ${year} generato (tracciato ${result.version}${dichiarazioni.length > 1 ? `, ${dichiarazioni.length} dichiarazioni` : ''}) con ${codiciAvviso.length} avvisi confermati: ${riepilogo.testo}`,
           metadata: {
             year,
             versione: result.version,
             hashAggregato: hash,
+            versioneCalcolo: VERSIONE_CALCOLO_EXPORT,
+            dichiarazioni: Math.max(dichiarazioni.length, 1),
             avvisiConfermati: codiciAvviso,
             riepilogo: riepilogoQuantita,
           } as unknown as Prisma.InputJsonValue,

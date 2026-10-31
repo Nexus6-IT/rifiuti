@@ -4,7 +4,12 @@ import { cerCanonico } from '../../../domain/waste-movement/cer-registro'
 import { convertiInKg } from '../../../domain/waste-movement/unita-misura-registro'
 import { STATO_FISICO_PREDEFINITO } from '../export/versions/mud-tracciato-v604-base'
 import type { StatoFisicoRegistro } from './mud-regole'
-import { chiaveDestinatario, chiaveMovimento, chiavePesoSpecifico } from './mud-integrazioni'
+import {
+  chiaveDestinatario,
+  chiaveGiacenza,
+  chiaveMovimento,
+  chiavePesoSpecifico,
+} from './mud-integrazioni'
 
 // Catalogo dei controlli del MUD: il testo dei messaggi è quello concordato, i test lo
 // confrontano carattere per carattere. BLOCCANTE = dato correggibile dall'utente nell'applicazione;
@@ -44,8 +49,20 @@ export type MudCodiceControllo =
   | 'FIR_NON_REGISTRATO'
   | 'ESITO_FIR_RESPINTO'
   | 'GIACENZE_NON_CALCOLATE'
+  | 'GIACENZE_NON_DICHIARATE'
+  | 'GIACENZA_RIPARTITA'
+  | 'GIACENZA_DESTINAZIONE_NON_INDICATA'
   | 'STATO_FISICO_NON_UNIVOCO'
   | 'MUD_NON_DOVUTO'
+  | 'MOVIMENTI_SENZA_SEDE'
+  | 'SEDE_PRINCIPALE_MANCANTE'
+  | 'UNITA_LOCALE_SENZA_INDIRIZZO'
+  | 'UNITA_LOCALE_SENZA_COMUNE_ISTAT'
+  | 'PRINCIPALE_CON_INDIRIZZO_AZIENDA'
+  | 'UNITA_LOCALE_SENZA_ADDETTI'
+  | 'UNITA_LOCALI_PROVINCE_DIVERSE'
+  | 'AUTORIZZAZIONI_SULLA_PRINCIPALE'
+  | 'SOSTITUTIVA_PIU_DICHIARAZIONI'
 
 export type IntegrazioneRichiesta =
   | { tipo: 'CF_DESTINATARIO'; chiave: string; ragioneSociale: string }
@@ -58,6 +75,14 @@ export type IntegrazioneRichiesta =
       registroId: string
     }
   | { tipo: 'CF_TRASPORTATORE'; chiave: string; ragioneSociale: string }
+  | {
+      tipo: 'DESTINAZIONE_GIACENZA'
+      chiave: string
+      /** 6 cifre */
+      cerCode: string
+      unitaLocaleId: string | null
+      sede: string
+    }
 
 export interface MudMovimentoSegnalato {
   numero: number
@@ -77,9 +102,17 @@ export interface MudEsitoControllo {
   movimenti?: MudMovimentoSegnalato[]
   fir?: string[]
   integrazione?: IntegrazioneRichiesta
-  /** GIACENZE_NON_CALCOLATE: kg in deposito al 31/12 secondo il registro e non dichiarati */
+  /** GIACENZE_NON_CALCOLATE e GIACENZE_NON_DICHIARATE: kg in deposito al 31/12 non dichiarati */
   kgNonDichiarati?: number
+  /**
+   * Denominazione della sede (o "Azienda") a cui si riferisce il controllo: solo con più di una
+   * dichiarazione e solo per i controlli nati dentro una dichiarazione (D14)
+   */
+  sede?: string
 }
+
+/** Etichetta della riga d'integrazione della destinazione di una giacenza (D16). */
+export const etichettaGiacenza = (cer6: string): string => `Giacenza CER ${cer6}`
 
 /**
  * CER di un gruppo di movimenti come lo legge l'utente: forma canonica "NN NN NN", con
@@ -98,6 +131,8 @@ export interface RifMovimento {
   progressiveYear: number
   cerCode: string
   causale: string
+  /** Descrizione della causale del catalogo, solo se diversa dal codice (D13) */
+  causaleDescrizione?: string
   quantity: number
   unit: string
   movementDate?: Date
@@ -146,6 +181,40 @@ const arrotondaGrammo = (n: number) => Math.round(n * 1000) / 1000
 
 const BLOCCANTE = 'BLOCCANTE' as const
 const AVVISO = 'AVVISO' as const
+
+/** Giacenza con la destinazione stimata (D9): CER canonico per il testo, 6 cifre per la chiave. */
+interface GiacenzaStimata {
+  cerCode: string
+  cer6: string
+  unitaLocaleId: string | null
+  /** denominazione della sede, "Azienda" se non c'è */
+  sede: string
+  kg: number
+}
+
+interface DatiRipartizione {
+  recuperoKg: number
+  smaltimentoKg: number
+}
+
+const integrazioneGiacenza = (g: GiacenzaStimata): IntegrazioneRichiesta => ({
+  tipo: 'DESTINAZIONE_GIACENZA',
+  chiave: chiaveGiacenza(g.unitaLocaleId, g.cer6),
+  cerCode: g.cer6,
+  unitaLocaleId: g.unitaLocaleId,
+  sede: g.sede,
+})
+
+const nomeSede = (u: { denominazione: string; numIscrSito?: string | null }) =>
+  u.numIscrSito ? `${u.denominazione} (${u.numIscrSito})` : u.denominazione
+
+// Un solo campo mancante: articolo, aggettivo e pronome concordano con il genere del campo.
+const CAMPO_SINGOLARE: Record<string, { articolo: string; agg: string; pron: string }> = {
+  indirizzo: { articolo: "l'indirizzo", agg: 'obbligatorio', pron: 'Inserirlo' },
+  CAP: { articolo: 'il CAP', agg: 'obbligatorio', pron: 'Inserirlo' },
+  comune: { articolo: 'il comune', agg: 'obbligatorio', pron: 'Inserirlo' },
+  provincia: { articolo: 'la provincia', agg: 'obbligatoria', pron: 'Inserirla' },
+}
 
 const DOVE_CORREGGERE_AZIENDA =
   "(Amministrazione > Aziende; se la voce non è visibile, chiederlo all'amministratore della piattaforma)"
@@ -248,6 +317,16 @@ export const controlliMud = {
     }
   },
 
+  /**
+   * File che sostituisce una dichiarazione presentata ma con unità locali diverse da quelle
+   * presentate (G2): sostitutive sono solo quelle già presentate, le altre sono nuove.
+   */
+  sostitutivaPiuDichiarazioni: (sostituiti: readonly number[]): MudEsitoControllo => ({
+    codice: 'SOSTITUTIVA_PIU_DICHIARAZIONI',
+    gravita: AVVISO,
+    messaggio: `Il file sostituisce una dichiarazione presentata in precedenza ma le unità locali non coincidono: risultano sostitutive solo quelle già presentate (${sostituiti.join(', ')}), le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD.`,
+  }),
+
   convertitoConPesoSpecifico: (
     cerCode6: string,
     unita: string,
@@ -279,7 +358,7 @@ export const controlliMud = {
   causaleEsclusa: (m: RifMovimento): MudEsitoControllo => ({
     codice: 'CAUSALE_ESCLUSA',
     gravita: AVVISO,
-    messaggio: `Movimento n. ${rif(m)} (CER ${m.cerCode}, causale ${m.causale}, ${q(m.quantity)} ${unitaDi(m)}): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.`,
+    messaggio: `Movimento n. ${rif(m)} (CER ${m.cerCode}, causale ${m.causaleDescrizione ? `"${m.causaleDescrizione}"` : m.causale}, ${q(m.quantity)} ${unitaDi(m)}): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.`,
     movimenti: [segnala(m, false)],
   }),
 
@@ -474,6 +553,150 @@ export const controlliMud = {
       kgNonDichiarati: totale,
     }
   },
+
+  // Giacenze al 31/12 per dichiarazione (D8, D9, D16)
+
+  // Chiamata solo con almeno una voce. `cerCode` è già canonico (con l'asterisco se pericoloso).
+  giacenzeNonDichiarate: (
+    anno: number,
+    voci: Array<{ cerCode: string; kg: number; motivo: 'NESSUN_MOVIMENTO' | 'RICEVUTO_DA_TERZI' }>
+  ): MudEsitoControllo => {
+    const totale = arrotondaGrammo(voci.reduce((s, v) => s + v.kg, 0))
+    const elencoVoci = voci
+      .map(
+        v =>
+          `CER ${v.cerCode}: ${q(v.kg)} kg, ${
+            v.motivo === 'NESSUN_MOVIMENTO' ? 'nessun movimento nel MUD' : 'ricevuto anche da terzi'
+          }`
+      )
+      .join('; ')
+    return {
+      codice: 'GIACENZE_NON_DICHIARATE',
+      gravita: AVVISO,
+      messaggio: `Secondo il registro, al 31/12/${anno} risultano in deposito ${q(totale)} kg che il file non dichiara (${elencoVoci}): un rifiuto senza movimenti nel MUD dell'anno non ha una scheda RIF in cui scrivere la giacenza, e per un rifiuto ricevuto anche da terzi la giacenza non si può attribuire al solo produttore.`,
+      kgNonDichiarati: totale,
+    }
+  },
+
+  giacenzaRipartita: (anno: number, g: GiacenzaStimata & DatiRipartizione): MudEsitoControllo => ({
+    codice: 'GIACENZA_RIPARTITA',
+    gravita: AVVISO,
+    messaggio: `Il rifiuto CER ${g.cerCode} ha ${q(g.kg)} kg in deposito al 31/12/${anno}: nell'anno è stato avviato sia a recupero sia a smaltimento, quindi la giacenza è ripartita in proporzione (${q(g.recuperoKg)} kg a recupero, ${q(g.smaltimentoKg)} kg a smaltimento). Se la destinazione è un'altra, indicarla in MUD > Integrazioni ${anno}, riga "${etichettaGiacenza(g.cer6)}".`,
+    integrazione: integrazioneGiacenza(g),
+  }),
+
+  giacenzaDestinazioneNonIndicata: (anno: number, g: GiacenzaStimata): MudEsitoControllo => ({
+    codice: 'GIACENZA_DESTINAZIONE_NON_INDICATA',
+    gravita: AVVISO,
+    messaggio: `Il rifiuto CER ${g.cerCode} ha ${q(g.kg)} kg in deposito al 31/12/${anno}, ma nell'anno non è stato avviato né a recupero né a smaltimento: la giacenza è considerata da avviare a smaltimento. Se è destinata a recupero, indicarlo in MUD > Integrazioni ${anno}, riga "${etichettaGiacenza(g.cer6)}".`,
+    integrazione: integrazioneGiacenza(g),
+  }),
+
+  // Dichiarazioni per unità locale (D2, D5, D6, D7)
+
+  movimentiSenzaSede: (
+    anno: number,
+    ms: RifMovimento[],
+    principale: { denominazione: string; numIscrSito?: string | null }
+  ): MudEsitoControllo => ({
+    codice: 'MOVIMENTI_SENZA_SEDE',
+    gravita: AVVISO,
+    messaggio:
+      ms.length === 1
+        ? `Nel ${anno} il registro senza sede ha 1 movimento nel MUD (n. ${elenco(ms)}): il file lo attribuisce all'unità locale principale ${nomeSede(principale)}. Verificare che sia stato prodotto o gestito in quella sede.`
+        : `Nel ${anno} il registro senza sede ha ${ms.length} movimenti nel MUD (n. ${elenco(ms)}): il file li attribuisce all'unità locale principale ${nomeSede(principale)}. Verificare che siano stati prodotti o gestiti in quella sede.`,
+    movimenti: ms.map(m => segnala(m, true)),
+  }),
+
+  sedePrincipaleMancante: (
+    anno: number,
+    movimenti: number,
+    unitaLocali: number
+  ): MudEsitoControllo => ({
+    codice: 'SEDE_PRINCIPALE_MANCANTE',
+    gravita: BLOCCANTE,
+    messaggio: `Nel ${anno} il registro senza sede ha ${movimenti === 1 ? '1 movimento' : `${movimenti} movimenti`}, ma ${
+      unitaLocali === 1
+        ? "l'unica unità locale dell'azienda non è indicata"
+        : `nessuna delle ${unitaLocali} unità locali dell'azienda è indicata`
+    } come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD ${movimenti === 1 ? 'lo attribuisce' : 'li attribuisce'} a quella sede.`,
+  }),
+
+  unitaLocaleSenzaIndirizzo: (
+    u: { denominazione: string; numIscrSito?: string | null },
+    campi: string[]
+  ): MudEsitoControllo => {
+    const solo = campi.length === 1 ? CAMPO_SINGOLARE[campi[0]] : undefined
+    return {
+      codice: 'UNITA_LOCALE_SENZA_INDIRIZZO',
+      gravita: BLOCCANTE,
+      messaggio: solo
+        ? `Unità locale ${nomeSede(u)}: manca ${solo.articolo} nell'anagrafica della sede, ${solo.agg} nella scheda anagrafica della sua dichiarazione MUD. ${solo.pron} nella pagina delle unità locali RENTRI.`
+        : `Unità locale ${nomeSede(u)}: mancano ${campi.slice(0, -1).join(', ')} e ${campi[campi.length - 1]} nell'anagrafica della sede, obbligatori nella scheda anagrafica della sua dichiarazione MUD. Inserirli nella pagina delle unità locali RENTRI.`,
+    }
+  },
+
+  unitaLocaleSenzaComuneIstat: (
+    u: { denominazione: string; numIscrSito?: string | null },
+    comune?: string | null,
+    provincia?: string | null
+  ): MudEsitoControllo => ({
+    codice: 'UNITA_LOCALE_SENZA_COMUNE_ISTAT',
+    gravita: BLOCCANTE,
+    messaggio: `Comune dell'unità locale ${nomeSede(u)} non trovato nelle tabelle ISTAT (${comune ?? '-'} ${provincia ?? '-'}): correggerlo nella pagina delle unità locali RENTRI.`,
+  }),
+
+  principaleConIndirizzoAzienda: (u: {
+    denominazione: string
+    numIscrSito?: string | null
+  }): MudEsitoControllo => ({
+    codice: 'PRINCIPALE_CON_INDIRIZZO_AZIENDA',
+    gravita: AVVISO,
+    messaggio: `L'unità locale principale ${nomeSede(u)} non ha un indirizzo proprio: nella sua dichiarazione MUD compare l'indirizzo dell'azienda. Se la sede è altrove, inserirne l'indirizzo nella pagina delle unità locali RENTRI.`,
+  }),
+
+  unitaLocaleSenzaAddetti: (u: {
+    denominazione: string
+    numIscrSito?: string | null
+  }): MudEsitoControllo => ({
+    codice: 'UNITA_LOCALE_SENZA_ADDETTI',
+    gravita: AVVISO,
+    messaggio: `Unità locale ${nomeSede(u)}: il numero di addetti della sede non è indicato e nella sua dichiarazione MUD risulta 0. Inserirlo nella pagina delle unità locali RENTRI.`,
+  }),
+
+  /** `voci` ordinate per codice di provincia; `etichetta` = sigla o codice ISTAT (D6) */
+  unitaLocaliProvinceDiverse: (
+    voci: Array<{ denominazione: string; etichetta: string }>
+  ): MudEsitoControllo => ({
+    codice: 'UNITA_LOCALI_PROVINCE_DIVERSE',
+    gravita: BLOCCANTE,
+    messaggio: `Le unità locali da dichiarare sono in province diverse (${voci
+      .map(v => `${v.denominazione}: ${v.etichetta}`)
+      .join(
+        '; '
+      )}): un file MUD può contenere solo dichiarazioni della stessa provincia, altrimenti viene rifiutato. La generazione di un file per provincia non è ancora supportata (contattare l'assistenza).`,
+  }),
+
+  autorizzazioniSullaPrincipale: (
+    dichiarazioni: number,
+    autorizzazioni: number,
+    scelta: { denominazione: string; numIscrSito?: string | null },
+    sceltaPrincipale: boolean
+  ): MudEsitoControllo => {
+    const motivo = sceltaPrincipale ? '' : " (la principale non ha rifiuti da dichiarare nell'anno)"
+    const una = autorizzazioni === 1
+    return {
+      codice: 'AUTORIZZAZIONI_SULLA_PRINCIPALE',
+      gravita: AVVISO,
+      messaggio: `Il file contiene ${dichiarazioni} dichiarazioni e l'azienda ha ${
+        una ? '1 autorizzazione registrata' : `${autorizzazioni} autorizzazioni registrate`
+      }: ${
+        una ? "la scheda dell'autorizzazione è" : 'le schede delle autorizzazioni sono'
+      } nella dichiarazione dell'unità locale ${nomeSede(scelta)}${motivo}, perché le autorizzazioni non indicano la sede. Verificare che ${
+        una ? 'sia' : 'siano'
+      } dell'impianto di quella sede.`,
+    }
+  },
 }
 
 export function haBloccanti(c: MudEsitoControllo[]): boolean {
@@ -518,6 +741,22 @@ export interface RiepilogoAvvisi {
 export const CODICI_RIPARTIZIONE_RD: readonly MudCodiceControllo[] = [
   'OPERAZIONE_NON_INDICATA',
   'OPERAZIONE_DEDOTTA_DAL_FIR',
+]
+
+/**
+ * Avvisi sulla destinazione stimata delle giacenze (D9): NON fanno parte di CODICI_RIPARTIZIONE_RD
+ * (decisione di Graziano), quindi non cambiano le quantità e la conferma non è riservata agli
+ * amministratori; il riepilogo li menziona con una frase dedicata.
+ */
+const CODICI_GIACENZA_STIMATA: readonly MudCodiceControllo[] = [
+  'GIACENZA_RIPARTITA',
+  'GIACENZA_DESTINAZIONE_NON_INDICATA',
+]
+
+/** Avvisi di giacenza che non cambiano le quantità (non sono una scelta di esclusione, D8). */
+const CODICI_GIACENZA_NON_DICHIARATA: readonly MudCodiceControllo[] = [
+  'GIACENZE_NON_CALCOLATE',
+  'GIACENZE_NON_DICHIARATE',
 ]
 
 const chiaveSegnalato = (m: MudMovimentoSegnalato) =>
@@ -581,7 +820,8 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
   // (quasi ogni produttore ha rifiuti in deposito a fine anno). Restano da confermare.
   const cambianoQuantita =
     voci.some(
-      v => v.codice !== 'GIACENZE_NON_CALCOLATE' && (v.kgEsclusi > 0 || v.kgAggiunti > 0)
+      v =>
+        !CODICI_GIACENZA_NON_DICHIARATA.includes(v.codice) && (v.kgEsclusi > 0 || v.kgAggiunti > 0)
     ) ||
     avvisi.some(e => (e.movimenti ?? []).some(m => !m.incluso)) ||
     haRipartizioneRD
@@ -599,6 +839,10 @@ export function riepilogaAvvisi(c: MudEsitoControllo[]): RiepilogoAvvisi {
       `Il file dichiara ${parti.join(' e ')} del registro` +
       (kgInPiu > 0 ? ' (conversioni con il peso specifico)' : '') +
       ' per i motivi elencati sotto.'
+  }
+  if (avvisi.some(e => CODICI_GIACENZA_STIMATA.includes(e.codice))) {
+    testo +=
+      ' Per alcune giacenze al 31/12 la destinazione (recupero o smaltimento) è stimata: verificarla negli avvisi sotto.'
   }
   if (movimentiNonQuantificati > 0) {
     testo +=

@@ -129,6 +129,8 @@ model Tenant {
   // Fase 2 pezzo 10
   ditte                  Ditta[]
   sediDitte              SedeDitta[]
+  // Fase 4 pezzo 0
+  contracts              Contract[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -1780,6 +1782,16 @@ model Contract {
 
   status ContractStatus @default(DRAFT)
 
+  /// Lock ottimistico (Fase 4 pezzo 0), come `FIR.versione`: ogni modifica la incrementa.
+  versione Int @default(1)
+
+  /// Cancellazione logica (Fase 4 pezzo 0, D3): il contratto eliminato resta in tabella ma non
+  /// compare nelle liste. Nessuna FK all'utente: lo storico sopravvive alla sua rimozione.
+  eliminatoIl DateTime? @map("eliminato_il")
+  eliminatoDa String?   @map("eliminato_da") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, contractNumber])
   @@index([tenantId, status])
   @@index([tenantId, producerId])
@@ -2089,10 +2101,32 @@ model RentriUnitaLocale {
   /// mai un valore di ripiego inventato.
   dimensioneScortaDesiderata Int? @map("dimensione_scorta_desiderata")
 
+  // Fase 2 pezzo 8: anagrafica della sede per la sua dichiarazione MUD (record AA, blocco unita'
+  // locale). Inserita a mano dalla pagina delle unita' locali: la sincronizzazione da RENTRI non
+  // la scrive. CHECK nella migration (CAP 5 cifre, provincia 2 lettere maiuscole, addetti >= 0).
+  /// Indirizzo (via/piazza) della sede.
+  indirizzo      String? @db.VarChar(255)
+  /// Numero civico.
+  civico         String? @db.VarChar(20)
+  /// CAP, 5 cifre.
+  cap            String? @db.VarChar(5)
+  /// Comune della sede (risolto sul codice ISTAT con le tabelle di riferimento).
+  comune         String? @db.VarChar(100)
+  /// Sigla della provincia, 2 lettere maiuscole.
+  provincia      String? @db.VarChar(2)
+  /// Numero di addetti della sede.
+  numeroAddetti  Int?    @map("numero_addetti")
+  /// Codice dell'unita' locale nel file MUD (progressivo per azienda, > 0). Assegnato da un
+  /// trigger BEFORE INSERT (massimo dell'azienda + 1) e dal backfill della migration: la
+  /// principale di allora ha 1, il codice che il file usa da sempre. Non modificabile dall'API
+  /// e non cambia se cambia la principale.
+  progressivoMud Int?    @map("progressivo_mud")
+
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registri RegistroRifiuti[]
 
   @@unique([tenantId, numIscrSito])
+  @@unique([tenantId, progressivoMud], map: "rentri_unita_locali_tenant_progressivo_mud_key")
   @@index([tenantId])
   @@map("rentri_unita_locali")
 }

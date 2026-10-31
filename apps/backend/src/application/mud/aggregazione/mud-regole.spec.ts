@@ -1,14 +1,19 @@
 import { annoSolareItaliano } from '../../../core/time/anno-italiano'
-import type { MudModuloGestione } from '../export/mud-export.types'
+import type { MudModuloGestione, MudRifiutoLine } from '../export/mud-export.types'
 import { CatalogoCausali } from '../../../domain/waste-movement/catalogo-causali'
 import type { RigaCausaleAzienda } from '../../../domain/waste-movement/catalogo-causali'
 import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import {
   classificaMovimento,
   hashAggregato,
+  hashCalcoloMud,
+  hashDichiarante,
+  hashDichiaranteMud,
+  hashDichiarazioni,
   limitiAnnoMud,
   operazioneDaCatalogo,
   operazioneDaCodice,
+  operazioneDelMovimento,
   statoFisicoMud,
   type MovimentoClassificabile,
   type RuoloMovimento,
@@ -212,6 +217,60 @@ describe('operazione R/D', () => {
   })
 })
 
+describe('operazioneDelMovimento: precedenza R/D (Decisione 5)', () => {
+  const scarico = (
+    p: Partial<MovimentoClassificabile & { operationCode: string | null }> = {}
+  ) => ({
+    ...movimento({ type: 'SCARICO', causale: 'CONFERIMENTO_TRASPORTATORE' }),
+    operationCode: null as string | null,
+    ...p,
+  })
+  const op = (
+    m: ReturnType<typeof scarico>,
+    fir?: { wasteOperationCode: string | null; wasteOperationType: string | null }
+  ) => operazioneDelMovimento(catalogoSistema(), m, fir)
+
+  it('1. il codice operazione del movimento vince su tutto', () => {
+    expect(
+      op(scarico({ operationCode: 'D15', causale: 'AVVIO_RECUPERO' }), {
+        wasteOperationCode: 'R13',
+        wasteOperationType: 'RECOVERY',
+      })
+    ).toEqual({ operazione: 'D', origine: 'CODICE_MOVIMENTO' })
+  })
+  it('2. senza codice, la causale del catalogo', () => {
+    expect(
+      op(scarico({ causale: 'AVVIO_RECUPERO' }), {
+        wasteOperationCode: 'D15',
+        wasteOperationType: 'DISPOSAL',
+      })
+    ).toEqual({ operazione: 'R', origine: 'CATALOGO' })
+  })
+  it('3. senza catalogo, il codice operazione del FIR', () => {
+    expect(op(scarico(), { wasteOperationCode: 'R13', wasteOperationType: 'DISPOSAL' })).toEqual({
+      operazione: 'R',
+      origine: 'CODICE_FIR',
+    })
+  })
+  it('4. senza codici, il tipo operazione del FIR (dedotta)', () => {
+    expect(op(scarico(), { wasteOperationCode: null, wasteOperationType: 'RECOVERY' })).toEqual({
+      operazione: 'R',
+      origine: 'TIPO_FIR',
+    })
+    expect(op(scarico(), { wasteOperationCode: ' ', wasteOperationType: 'DISPOSAL' })).toEqual({
+      operazione: 'D',
+      origine: 'TIPO_FIR',
+    })
+  })
+  it('5. niente di indicato: smaltimento, non indicata', () => {
+    expect(op(scarico())).toEqual({ operazione: 'D', origine: 'NON_INDICATA' })
+    expect(op(scarico(), { wasteOperationCode: null, wasteOperationType: 'ALTRO' })).toEqual({
+      operazione: 'D',
+      origine: 'NON_INDICATA',
+    })
+  })
+})
+
 describe('hashAggregato', () => {
   const riga = (cer: string, kg: number) => ({
     cerCode: cer,
@@ -301,5 +360,163 @@ describe('statoFisicoMud', () => {
     [undefined, null],
   ])('statoFisicoMud(%j) -> %j', (valore, atteso) => {
     expect(statoFisicoMud(valore)).toBe(atteso)
+  })
+})
+
+// Valori scritti a mano: calcolati con il codice PRIMA della modifica del Task 5b
+// (hashAggregato e hashDichiarante di mud-regole.ts di bb4d136) con
+// `npx ts-node -T -O '{"module":"commonjs","moduleResolution":"node"}' <script>` da apps/backend.
+describe('hash invariati (Task 5b)', () => {
+  const righeFisse = [
+    {
+      cerCode: '170405',
+      prodottoKg: 100,
+      recuperoKg: 80,
+      smaltimentoKg: 20,
+      dr: [
+        {
+          codiceFiscale: '33333333333',
+          ragioneSociale: 'Recupero Metalli Srl',
+          quantitaKg: 100,
+        },
+      ],
+      te: [{ codiceFiscale: '22222222222', ragioneSociale: 'Trasporti Srl' }],
+    },
+    { cerCode: '150101', prodottoKg: 5.5, recuperoKg: 5.5, smaltimentoKg: 0 },
+  ] as unknown as MudRifiutoLine[]
+
+  it('hashAggregato invariato su un caso fisso', () => {
+    expect(hashAggregato(righeFisse)).toBe(
+      '750e1c4a0536d793f7da5bf6d9f63bb4cb4edeb1b59c48748a3f04c518fd64d6'
+    )
+  })
+
+  it('hashDichiarante senza unitaLocali ha il valore di oggi', () => {
+    const d = {
+      azienda: {
+        ragioneSociale: 'Acme Spa',
+        partitaIva: '12345678901',
+        comune: 'Roma',
+        comuneCode: '058091',
+        numeroAddetti: 42,
+      },
+      autorizzazioni: [],
+    } as unknown as Parameters<typeof hashDichiarante>[0]
+    expect(hashDichiarante(d)).toBe(
+      'beb62b153a20b9e479de381aed4b054cd5e805778d311d9d11453f4b2bde8f1f'
+    )
+    expect(hashDichiarante({ ...d, unitaLocali: [] })).not.toBe(hashDichiarante(d))
+  })
+})
+
+describe('hashDichiarazioni e hashCalcoloMud (D10)', () => {
+  const riga = (cer: string, kg: number): MudRifiutoLine => ({
+    cerCode: cer,
+    prodottoKg: kg,
+    recuperoKg: 0,
+    smaltimentoKg: kg,
+    dr: [],
+    te: [],
+  })
+  const dich = (codice: string, righe: MudRifiutoLine[]) => ({
+    codice,
+    righe,
+    progressivo: Number(codice),
+    unitaLocale: { principale: codice === '000000000000001' },
+    anagrafica: null,
+    numeroAddetti: 3,
+    comuneCode: '058091',
+  })
+
+  it("una dichiarazione di codice 2 entra in hashDichiarazioni e cambia l'hash", () => {
+    const righe = [riga('170405', 1)]
+    expect(hashDichiarazioni([dich('000000000000001', righe)])).not.toBe(
+      hashDichiarazioni([dich('000000000000002', righe)])
+    )
+    expect(hashDichiarazioni([dich('000000000000002', righe)])).not.toBe(hashAggregato(righe))
+    expect(
+      hashCalcoloMud({
+        versioneCalcolo: 2,
+        righe,
+        dichiarazioni: [dich('000000000000002', righe)],
+      })
+    ).toBe(hashDichiarazioni([dich('000000000000002', righe)]))
+  })
+
+  it("due dichiarazioni: hash indipendente dall'ordine di lettura", () => {
+    const a = dich('000000000000001', [riga('170405', 1), riga('150101', 2)])
+    const b = dich('000000000000002', [riga('170405', 3)])
+    const invertita = dich('000000000000001', [riga('150101', 2), riga('170405', 1)])
+    expect(hashDichiarazioni([a, b])).toBe(hashDichiarazioni([b, invertita]))
+  })
+
+  it('due dichiarazioni con le stesse righe in sedi diverse hanno un hash diverso', () => {
+    const righe = [riga('170405', 1)]
+    expect(
+      hashDichiarazioni([dich('000000000000001', righe), dich('000000000000002', [])])
+    ).not.toBe(hashDichiarazioni([dich('000000000000001', []), dich('000000000000002', righe)]))
+  })
+
+  it('una dichiarazione di codice 1 senza giacenze: hashCalcoloMud = hashAggregato', () => {
+    const righe = [riga('170405', 1), riga('150101', 2)]
+    const aggregato = {
+      versioneCalcolo: 2 as const,
+      righe,
+      dichiarazioni: [dich('000000000000001', righe)],
+    }
+    expect(hashCalcoloMud(aggregato)).toBe(hashAggregato(righe))
+  })
+
+  it('versione 1 e aggregato senza dichiarazioni: hashAggregato delle righe', () => {
+    const righe = [riga('170405', 1)]
+    expect(
+      hashCalcoloMud({
+        versioneCalcolo: 1,
+        righe,
+        dichiarazioni: [dich('000000000000002', [])],
+      })
+    ).toBe(hashAggregato(righe))
+    expect(hashCalcoloMud({ righe })).toBe(hashAggregato(righe))
+  })
+
+  it('hashDichiaranteMud: valore di oggi con la sola azienda, cambia con le sedi', () => {
+    const d = {
+      azienda: { ragioneSociale: 'Acme', partitaIva: '1', numeroAddetti: 3 },
+      autorizzazioni: [],
+    } as unknown as Parameters<typeof hashDichiarante>[0]
+    const righe = [riga('170405', 1)]
+    const unica = {
+      versioneCalcolo: 2 as const,
+      righe,
+      dichiarazioni: [dich('000000000000001', righe)],
+    }
+    expect(hashDichiaranteMud(d, unica)).toBe(hashDichiarante(d))
+    expect(hashDichiaranteMud(d, {})).toBe(hashDichiarante(d))
+    const sede = {
+      versioneCalcolo: 2 as const,
+      righe,
+      dichiarazioni: [
+        dich('000000000000001', righe),
+        {
+          ...dich('000000000000002', []),
+          anagrafica: {
+            id: 'ul-2',
+            denominazione: 'Sede 2',
+            numIscrSito: 'X',
+            principale: false,
+            createdAt: new Date(0),
+            indirizzo: 'Via Sede',
+            civico: null,
+            cap: '00100',
+            comune: 'Roma',
+            provincia: 'RM',
+            numeroAddetti: 5,
+            progressivoMud: 2,
+          },
+          numeroAddetti: 5,
+        },
+      ],
+    }
+    expect(hashDichiaranteMud(d, sede)).not.toBe(hashDichiarante(d))
   })
 })

@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { CAMPI_MODIFICABILI } from '../../domain/contracts/regole-contratto'
 import { PAYMENT_TERMS, BILLING_FREQUENCIES } from './contract-vocabulary'
 
 /**
@@ -32,5 +33,16 @@ describe('vocabolari del contratto — allineamento backend/frontend', () => {
 
   it("ogni frequenza di fatturazione accettata dall'API ha un'etichetta nel frontend", () => {
     expect(chiaviDi('BILLING_FREQUENCY_LABELS').sort()).toEqual([...BILLING_FREQUENCIES].sort())
+  })
+
+  it('i campi modificabili del frontend (CAMPI_CONTRATTO) coincidono con quelli del dominio', () => {
+    const servizio = readFileSync(
+      resolve(__dirname, '../../../../frontend/src/app/features/contracts/contracts.service.ts'),
+      'utf8'
+    )
+    const blocco = /export const CAMPI_CONTRATTO = \[([\s\S]*?)\] as const/.exec(servizio)
+    if (!blocco) throw new Error('CAMPI_CONTRATTO non trovato nel file frontend')
+    const campiFrontend = [...blocco[1].matchAll(/'([A-Za-z]+)'/g)].map(m => m[1])
+    expect([...campiFrontend].sort()).toEqual([...CAMPI_MODIFICABILI.DRAFT].sort())
   })
 })

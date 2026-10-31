@@ -1,8 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { MudIntegrazioniService } from './mud-integrazioni.service'
 import { MudVersionRegistry } from './export/mud-version.registry'
+import { plainToInstance } from 'class-transformer'
+import { validate } from 'class-validator'
+import { IntegrazioniMudDto } from '../../api/mud/dtos/integrazioni-mud.dto'
 import { INTEGRAZIONI_VUOTE } from './aggregazione/mud-integrazioni'
-import type { IntegrazioniMudDto } from '../../api/mud/dtos/integrazioni-mud.dto'
 
 describe('MudIntegrazioniService', () => {
   let service: MudIntegrazioniService
@@ -27,6 +29,7 @@ describe('MudIntegrazioniService', () => {
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
+      rentriUnitaLocale: { findMany: jest.fn().mockResolvedValue([]) },
       $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     }
@@ -491,5 +494,131 @@ describe('MudIntegrazioniService', () => {
     expect(prisma.mUDReport.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId_year: { tenantId: 't1', year: 2025 } } })
     )
+  })
+
+  describe('destinazione delle giacenze (D9)', () => {
+    const UL1 = '11111111-1111-4111-8111-111111111111'
+    const sedeDi = (...ids: string[]) =>
+      prisma.rentriUnitaLocale.findMany.mockResolvedValue(ids.map(id => ({ id })))
+    const giacenza = (
+      p: Partial<{ cerCode: string; unitaLocaleId: string | null; destinazione: any }>
+    ) => ({
+      cerCode: '17 04 05',
+      unitaLocaleId: UL1,
+      destinazione: 'R',
+      ...p,
+    })
+
+    it('salva la destinazione della giacenza e la registra in ActivityLog', async () => {
+      sedeDi(UL1)
+      const r = await service.salva(
+        't1',
+        2025,
+        'u1',
+        dati({
+          destinazioniGiacenza: [
+            giacenza({}),
+            giacenza({ unitaLocaleId: null, cerCode: '200301', destinazione: 'D' }),
+          ],
+        })
+      )
+      expect(r.destinazioniGiacenza).toEqual({
+        [`${UL1}|170405`]: { cerCode: '170405', unitaLocaleId: UL1, destinazione: 'R' },
+        'AZIENDA|200301': { cerCode: '200301', unitaLocaleId: null, destinazione: 'D' },
+      })
+      expect(scritto().destinazioniGiacenza).toEqual(r.destinazioniGiacenza)
+      // la sede si cerca fra quelle dell'azienda
+      expect(prisma.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tenantId: 't1' }) })
+      )
+      const modifiche = prisma.activityLog.create.mock.calls[0][0].data.metadata.modifiche
+      // ordine per chiave: le cifre dell'id precedono 'AZIENDA'
+      expect(modifiche).toEqual([
+        { tipo: 'DESTINAZIONE_GIACENZA', chiave: `${UL1}|170405`, prima: null, dopo: 'recupero' },
+        {
+          tipo: 'DESTINAZIONE_GIACENZA',
+          chiave: 'AZIENDA|200301',
+          prima: null,
+          dopo: 'smaltimento',
+        },
+      ])
+    })
+
+    it('una destinazione tolta compare in ActivityLog', async () => {
+      sedeDi(UL1)
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        reportData: {
+          integrazioni: {
+            ...INTEGRAZIONI_VUOTE,
+            destinazioniGiacenza: {
+              [`${UL1}|170405`]: { cerCode: '170405', unitaLocaleId: UL1, destinazione: 'R' },
+            },
+          },
+        },
+      })
+      await service.salva('t1', 2025, 'u1', dati({}))
+      const modifiche = prisma.activityLog.create.mock.calls[0][0].data.metadata.modifiche
+      expect(modifiche).toEqual([
+        { tipo: 'DESTINAZIONE_GIACENZA', chiave: `${UL1}|170405`, prima: 'recupero', dopo: null },
+      ])
+    })
+
+    it('destinazione diversa da R o D → 400', async () => {
+      const dto = plainToInstance(IntegrazioniMudDto, {
+        destinatari: [],
+        pesiSpecifici: [],
+        destinazioniGiacenza: [{ cerCode: '170405', unitaLocaleId: null, destinazione: 'X' }],
+      })
+      const errori = await validate(dto)
+      expect(JSON.stringify(errori)).toContain('destinazione')
+      // un CER senza 6 cifre lo rifiuta il servizio
+      const errore = await service
+        .salva(
+          't1',
+          2025,
+          'u1',
+          dati({ destinazioniGiacenza: [giacenza({ cerCode: '1704', unitaLocaleId: null })] })
+        )
+        .catch(e => e)
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+    })
+
+    it("sede di un'altra azienda → 400", async () => {
+      sedeDi() // la ricerca per tenant non la trova
+      const errore = await service
+        .salva('t1', 2025, 'u1', dati({ destinazioniGiacenza: [giacenza({})] }))
+        .catch(e => e)
+      expect(errore).toBeInstanceOf(BadRequestException)
+      expect(errore.message).toBe('Unità locale non trovata')
+      expect(errore.message).not.toContain(UL1)
+      expect(prisma.mUDReport.upsert).not.toHaveBeenCalled()
+    })
+
+    it('PUT senza destinazioniGiacenza le toglie', async () => {
+      prisma.mUDReport.findUnique.mockResolvedValue({
+        reportData: {
+          integrazioni: {
+            ...INTEGRAZIONI_VUOTE,
+            destinazioniGiacenza: {
+              'AZIENDA|170405': { cerCode: '170405', unitaLocaleId: null, destinazione: 'D' },
+            },
+          },
+        },
+      })
+      const r = await service.salva('t1', 2025, 'u1', dati({}))
+      expect(r.destinazioniGiacenza).toEqual({})
+      expect(scritto().destinazioniGiacenza).toEqual({})
+    })
+
+    it('etichette delle unità locali: id → denominazione, per tenant', async () => {
+      prisma.rentriUnitaLocale.findMany.mockResolvedValue([
+        { id: UL1, denominazione: 'Sede di Milano' },
+      ])
+      await expect(service.etichetteUnitaLocali('t1')).resolves.toEqual({ [UL1]: 'Sede di Milano' })
+      expect(prisma.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't1' } })
+      )
+    })
   })
 })

@@ -51,6 +51,14 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze, carico piu vecchio e scarichi dei FIR annullati',
   },
+  'application/mud/aggregazione/mud-aggregazione-a2bf11e.oracolo-spec.ts': {
+    scelta: 'vigenti',
+    motivo: 'oracolo dei test di equivalenza F2-8, mai usato in produzione',
+  },
+  'application/mud/aggregazione/mud-seed.postgres-spec.ts': {
+    scelta: 'tutte',
+    motivo: 'seed degli spec Postgres del MUD: scrive movimenti di prova, non calcola nulla',
+  },
   'application/mud/aggregazione/mud-aggregazione.service.ts': {
     scelta: 'vigenti',
     motivo: "movimenti dell'anno, anni precedenti, scarichi dei FIR, saldi al 31 dicembre",

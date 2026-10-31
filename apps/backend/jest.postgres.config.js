@@ -13,6 +13,6 @@ const base = require('./jest.config')
 module.exports = {
   ...base,
   testPathIgnorePatterns: [],
-  testRegex: '.*\.postgres\.spec\.ts$',
+  testRegex: '.*\\.postgres\\.spec\\.ts$',
   coverageThreshold: undefined,
 }
