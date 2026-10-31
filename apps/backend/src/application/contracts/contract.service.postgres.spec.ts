@@ -128,7 +128,7 @@ describe('ContractService — Postgres reale, ruolo wasteflow_app', () => {
     expect(vista.versione).toBe(2)
     expect(Number(vista.basePrice)).toBe(250)
     expect(vista.description).toBe('X')
-    expect(vista.updatedAt.getTime()).toBeGreaterThanOrEqual(c.updatedAt.getTime())
+    expect(vista.updatedAt.getTime()).toBeGreaterThan(c.updatedAt.getTime())
     const audit = await owner.activityLog.findMany({
       where: { tenantId: a.tenantId, action: 'CONTRATTO_MODIFICATO' },
     })
@@ -149,6 +149,7 @@ describe('ContractService — Postgres reale, ruolo wasteflow_app', () => {
     expect(r.filter(x => x.status === 'fulfilled')).toHaveLength(1)
     const ko = r.find(x => x.status === 'rejected') as PromiseRejectedResult
     expect(ko.reason.getStatus()).toBe(409)
+    expect(ko.reason.getResponse().error).toBe('CONTRATTO_MODIFICATO_NEL_FRATTEMPO')
     expect((await owner.contract.findUniqueOrThrow({ where: { id: c.id } })).versione).toBe(2)
   })
 

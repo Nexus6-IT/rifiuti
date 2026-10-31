@@ -3,7 +3,10 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
+  ParseUUIDPipe,
+  ParseIntPipe,
   Body,
   Query,
   Req,
@@ -18,6 +21,11 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ContractService, ContractStatus } from './contract.service'
 import { CreateContractDto, ChangeContractStatusDto } from './dto/create-contract.dto'
+import { ModificaContrattoDto } from './dto/modifica-contratto.dto'
+
+/** Data da stringa ISO: `null` (svuota) e `undefined` (non cambia) restano tali. */
+const comeData = (v: string | null | undefined): Date | null | undefined =>
+  v === null || v === undefined ? v : new Date(v)
 
 /**
  * Contract Controller — gestione contratti e auto-compilazione FIR.
@@ -82,6 +90,60 @@ export class ContractController {
   @ApiOperation({ summary: 'Dettaglio contratto' })
   async getById(@Param('id') id: string, @Req() req: any) {
     return this.contractService.getById(requireRequestTenantId(req), id)
+  }
+
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Modifica un contratto: solo i campi inviati; `null` svuota un campo facoltativo',
+    description:
+      'Richiede la `versione` letta (lock ottimistico). In un contratto attivo o sospeso si modificano solo i termini; in uno in approvazione, scaduto o cessato nessun campo.',
+  })
+  @ApiResponse({ status: 200, description: 'Contratto aggiornato (o invariato se nulla cambia)' })
+  @ApiResponse({ status: 400, description: 'CONTRATTO_NON_VALIDO: dati non validi' })
+  @ApiResponse({ status: 403, description: 'Ruolo non autorizzato o azienda non determinabile' })
+  @ApiResponse({ status: 404, description: 'Contratto non trovato' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'CONTRATTO_NON_MODIFICABILE, CONTRATTO_MODIFICATO_NEL_FRATTEMPO o CONTRATTO_NUMERO_DUPLICATO',
+  })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ModificaContrattoDto,
+    @Req() req: any
+  ) {
+    const tenantId = requireRequestTenantId(req)
+    return this.contractService.update(tenantId, req.user?.id, id, {
+      ...dto,
+      startDate: dto.startDate === undefined ? undefined : new Date(dto.startDate),
+      endDate: comeData(dto.endDate as string | null | undefined),
+    })
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Elimina un contratto in bozza o in approvazione (cancellazione logica)',
+    description: 'La `versione` letta arriva in query: `?versione=<n>`.',
+  })
+  @ApiResponse({ status: 204, description: 'Contratto eliminato' })
+  @ApiResponse({ status: 400, description: 'Id o versione non validi' })
+  @ApiResponse({ status: 403, description: 'Ruolo non autorizzato o azienda non determinabile' })
+  @ApiResponse({ status: 404, description: 'Contratto non trovato' })
+  @ApiResponse({
+    status: 409,
+    description: 'CONTRATTO_NON_ELIMINABILE o CONTRATTO_MODIFICATO_NEL_FRATTEMPO',
+  })
+  async elimina(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('versione', ParseIntPipe) versione: number,
+    @Req() req: any
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    await this.contractService.elimina(tenantId, req.user?.id, id, versione)
   }
 
   @Patch(':id/status')

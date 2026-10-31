@@ -369,13 +369,17 @@ export class ContractService {
   }
 
   /** Cambia stato applicando le transizioni ammesse del workflow. */
-  async changeStatus(tenantId: string, id: string, newStatus: ContractStatus) {
+  async changeStatus(
+    tenantId: string,
+    id: string,
+    newStatus: ContractStatus
+  ): Promise<ContrattoVista> {
     // Lettura grezza di proposito: il cambio di stato non ha bisogno delle
     // anagrafiche risolte, e interrogarle qui sarebbe lavoro sprecato.
     const contract = await this.findOrFail(tenantId, id)
     const current = contract.status as ContractStatus
 
-    if (current === newStatus) return contract
+    if (current === newStatus) return this.getById(tenantId, id)
 
     if (!ALLOWED_TRANSITIONS[current].includes(newStatus)) {
       throw new BadRequestException(`Transizione non ammessa: ${current} → ${newStatus}`)
@@ -389,7 +393,7 @@ export class ContractService {
     })
     if (count === 0) throw conflitto('CONTRATTO_MODIFICATO_NEL_FRATTEMPO', MSG_FRATTEMPO)
     this.logger.info(`Contratto ${id}: ${current} → ${newStatus}`)
-    return this.findOrFail(tenantId, id)
+    return this.getById(tenantId, id)
   }
 
   /** Registro anagrafico in cui cercare una controparte, per tipo. */

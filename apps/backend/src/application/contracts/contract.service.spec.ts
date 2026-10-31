@@ -623,6 +623,17 @@ describe('ContractService', () => {
       expect(arg.where).toEqual({ id: 'k1', tenantId: 't1', versione: 3, eliminatoIl: null })
       expect(arg.data).toMatchObject({ status: 'PENDING_APPROVAL', versione: { increment: 1 } })
     })
+    it('restituisce la stessa vista di list e getById', async () => {
+      prisma.contract.findFirst
+        .mockResolvedValueOnce(contratto())
+        .mockResolvedValueOnce(contratto({ status: 'PENDING_APPROVAL', versione: 4 }))
+      const r = await service.changeStatus('t1', 'k1', 'PENDING_APPROVAL')
+      expect(r.status).toBe('PENDING_APPROVAL')
+      expect(r.modificabili).toEqual([])
+      expect(r.eliminabile).toBe(true)
+      expect('eliminatoIl' in r).toBe(false)
+      expect('eliminatoDa' in r).toBe(false)
+    })
     it('count 0: 409 MODIFICATO_NEL_FRATTEMPO', async () => {
       prisma.contract.findFirst.mockResolvedValue(contratto())
       prisma.contract.updateMany.mockResolvedValue({ count: 0 })
