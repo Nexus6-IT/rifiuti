@@ -50,7 +50,8 @@ export class LettoreAnnotazioniRentri {
   }
 
   /**
-   * @param movimentoIds annotazioni da leggere, TUTTE del registro indicato
+   * @param movimentoIds annotazioni da leggere, TUTTE del registro indicato e senza ripetizioni
+   *   (lo garantisce il chiamante tramite `selezionaLotto`)
    * @throws Error (errore di programmazione) se una non esiste per l'azienda o e' di un altro registro
    */
   async leggi(
@@ -183,14 +184,12 @@ export class LettoreAnnotazioniRentri {
       const tras = f.carrierId ? trasportatorePerId.get(f.carrierId) : undefined
       const sede = sedeProduttore(f)
       const comuneId = sede ? comuni.get(chiaveComune(sede.comune, sede.provincia)) : undefined
+      const via = sede?.via?.trim()
+      const civico = sede?.civico?.trim()
+      const cap = sede?.cap?.trim()
       const indirizzo: IndirizzoRentri | null =
-        sede && comuneId && sede.via && sede.civico && sede.cap
-          ? {
-              citta: { comune_id: comuneId },
-              indirizzo: sede.via,
-              civico: sede.civico,
-              cap: sede.cap,
-            }
+        comuneId && via && civico && cap
+          ? { citta: { comune_id: comuneId }, indirizzo: via, civico, cap }
           : null
       const cf = (
         snapshot: string | null,
@@ -203,15 +202,15 @@ export class LettoreAnnotazioniRentri {
         dataFineTrasporto: f.actualArrivalDate ? f.actualArrivalDate.toISOString() : null,
         pesoVerificatoDestinoKg: f.effectiveWeight === null ? null : Number(f.effectiveWeight),
         provenienza: f.provenienza === 'URBANO' ? 'U' : f.provenienza === 'SPECIALE' ? 'S' : null,
-        // Comune non risolto o parte non agganciata: produttore null, la traduzione lo segnala.
-        produttore:
-          prod && indirizzo
-            ? {
-                denominazione: prod.ditta.ragioneSociale,
-                codiceFiscale: cf(f.producerCodiceFiscale, prod.ditta),
-                indirizzo,
-              }
-            : null,
+        // Parte agganciata ma sede mancante, di un'altra ditta o comune non riconosciuto: la parte
+        // c'e' con `indirizzo: null` (la traduzione dice quale dato manca). `null` solo se non agganciata.
+        produttore: prod
+          ? {
+              denominazione: prod.ditta.ragioneSociale,
+              codiceFiscale: cf(f.producerCodiceFiscale, prod.ditta),
+              indirizzo,
+            }
+          : null,
         trasportatore: tras
           ? {
               denominazione: tras.ditta.ragioneSociale,

@@ -215,12 +215,17 @@ describe('LettoreAnnotazioniRentri — Postgres reale, ruolo wasteflow_app', () 
     expect(rettifica.fir?.produttore?.indirizzo?.citta.comune_id).toBe('058091')
   })
 
-  it("con il contesto di un'altra azienda le annotazioni non si vedono: errore, non dati", async () => {
+  it('con il contesto di B e i parametri di A la RLS nasconde tutto: errore, non dati', async () => {
     const a = await scenario()
     const b = await scenario()
-    await expect(leggi(b.tenantId, b.registroId, [a.carico.id])).rejects.toThrow(
+    // Prova che la RLS e' attiva: B non vede nemmeno le righe di A con una query diretta.
+    const viste = await nelTenant(b.tenantId, () =>
+      app.$transaction(tx => tx.wasteMovement.findMany({ where: { registroId: a.registroId } }))
+    )
+    expect(viste).toEqual([])
+    // Il lettore, chiesto con i parametri di A nel contesto di B, non restituisce dati di A.
+    await expect(leggi(b.tenantId, a.registroId, [a.carico.id])).rejects.toThrow(
       /errore di programmazione/
     )
-    await expect(leggi(b.tenantId, a.registroId, [a.carico.id])).rejects.toThrow()
   })
 })

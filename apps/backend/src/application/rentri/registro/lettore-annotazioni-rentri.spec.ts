@@ -1,4 +1,5 @@
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
+import { traduciAnnotazione } from './mappa-registrazione-rentri'
 
 const T = 'tenant-1'
 const REG = 'reg-1'
@@ -235,7 +236,7 @@ describe('LettoreAnnotazioniRentri (Prisma finto)', () => {
     expect(a.fir?.produttore?.codiceFiscale).toBe('01234567890')
   })
 
-  it('comune non risolto: il FIR passa produttore null', async () => {
+  it('comune non risolto: produttore presente con indirizzo null e motivo specifico', async () => {
     const { lettore } = nuovo()
     const tx = fakeTx({
       movimenti: [movimento('m1', { firId: 'fir-1' })],
@@ -245,7 +246,11 @@ describe('LettoreAnnotazioniRentri (Prisma finto)', () => {
     })
     const [a] = await lettore.leggi(tx, T, REG, ['m1'])
     expect(a.fir).not.toBeNull()
-    expect(a.fir?.produttore).toBeNull()
+    expect(a.fir?.produttore).not.toBeNull()
+    expect(a.fir?.produttore?.indirizzo).toBeNull()
+    const esito = traduciAnnotazione({ ...a, codiceRentri: 'T*' })
+    expect(esito.ok).toBe(false)
+    expect(!esito.ok && esito.motivi.join(' ')).toMatch(/produttore del FIR non ha un indirizzo/)
   })
 
   it("sede del FIR di un'altra ditta: produttore null", async () => {
@@ -258,7 +263,46 @@ describe('LettoreAnnotazioniRentri (Prisma finto)', () => {
       comuni: [{ code: '058091', name: 'Roma', provinciaSigla: 'RM' }],
     })
     const [a] = await lettore.leggi(tx, T, REG, ['m1'])
+    expect(a.fir?.produttore?.indirizzo).toBeNull()
+    expect(a.fir?.produttore?.denominazione).toBe('Ditta Srl')
+    const esito = traduciAnnotazione({ ...a, codiceRentri: 'T*' })
+    expect(!esito.ok && esito.motivi.join(' ')).toMatch(/produttore del FIR non ha un indirizzo/)
+  })
+
+  it('produttore non agganciato al FIR: produttore null', async () => {
+    const { lettore } = nuovo()
+    const tx = fakeTx({
+      movimenti: [movimento('m1', { firId: 'fir-1' })],
+      firs: [fir({ producerId: null })],
+    })
+    const [a] = await lettore.leggi(tx, T, REG, ['m1'])
     expect(a.fir?.produttore).toBeNull()
+  })
+
+  it('via con soli spazi: indirizzo null', async () => {
+    const { lettore } = nuovo()
+    const tx = fakeTx({
+      movimenti: [movimento('m1', { firId: 'fir-1' })],
+      firs: [fir()],
+      produttori: [{ id: 'p1', dittaId: 'd1', ditta: ditta(), sede: { ...sede, via: '   ' } }],
+      comuni: [{ code: '058091', name: 'Roma', provinciaSigla: 'RM' }],
+    })
+    const [a] = await lettore.leggi(tx, T, REG, ['m1'])
+    expect(a.fir?.produttore?.indirizzo).toBeNull()
+  })
+
+  it('ordine del CF: senza snapshot vince il CF della ditta sulla P.IVA', async () => {
+    const { lettore } = nuovo()
+    const tx = fakeTx({
+      movimenti: [movimento('m1', { firId: 'fir-1' })],
+      firs: [fir()],
+      produttori: [
+        { id: 'p1', dittaId: 'd1', ditta: ditta({ codiceFiscale: 'CFDITTA0000000AA' }), sede },
+      ],
+      comuni: [{ code: '058091', name: 'Roma', provinciaSigla: 'RM' }],
+    })
+    const [a] = await lettore.leggi(tx, T, REG, ['m1'])
+    expect(a.fir?.produttore?.codiceFiscale).toBe('CFDITTA0000000AA')
   })
 
   it("movimento di un altro registro (o inesistente) nell'elenco: Error", async () => {
@@ -446,19 +490,97 @@ describe('LettoreAnnotazioniRentri (Prisma finto)', () => {
     expect(await conta(1)).toBe(await conta(25))
   })
 
-  it('ogni query porta il tenantId', async () => {
-    const { lettore } = nuovo()
-    const tx = fakeTx({
-      movimenti: [movimento('m1', { firId: 'fir-1' })],
-      firs: [fir()],
+  const scenarioCompleto = (n = 1) => {
+    const movs: any[] = [
+      movimento('s1', {
+        type: 'SCARICO',
+        causale: 'CONFERIMENTO_TRASPORTATORE',
+        quantity: 10,
+        firId: 'fir-1',
+        progressiveNumber: 2,
+      }),
+      ...Array.from({ length: n }, (_, i) =>
+        movimento(`r${i}`, {
+          type: 'SCARICO',
+          causale: 'CONFERIMENTO_TRASPORTATORE',
+          tipoAnnotazione: 'RETTIFICA',
+          movimentoRettificatoId: 's1',
+          quantity: 5,
+          firId: `fir-r${i}`,
+          progressiveNumber: 10 + i,
+        })
+      ),
+    ]
+    return fakeTx({
+      movimenti: movs,
+      predecessori: [{ id: 's1', progressiveYear: 2026, progressiveNumber: 2 }],
+      firs: [
+        fir({ producerSedeId: 's9' }),
+        ...Array.from({ length: n }, (_, i) => fir({ id: `fir-r${i}`, producerSedeId: 's9' })),
+      ],
       produttori: [{ id: 'p1', dittaId: 'd1', ditta: ditta(), sede }],
+      sedi: [{ ...sede, id: 's9', dittaId: 'd1' }],
       comuni: [{ code: '058091', name: 'Roma', provinciaSigla: 'RM' }],
+      vigenti: [
+        {
+          id: 'c1',
+          type: 'CARICO',
+          movementDate: new Date('2026-03-01T10:00:00Z'),
+          quantity: 100,
+          unit: 'KG',
+          cerCode: '15 01 01',
+          progressiveYear: 2026,
+          progressiveNumber: 1,
+        },
+      ],
+      aperture: [
+        {
+          id: 'ap1',
+          registroId: REG,
+          cerCode: '15 01 01',
+          quantita: 5,
+          unita: 'KG',
+          dataRiferimento: new Date('2026-01-01T00:00:00Z'),
+          origini: [],
+        },
+      ],
     })
-    await lettore.leggi(tx, T, REG, ['m1'])
-    for (const nome of ['wasteMovement', 'fIR', 'produttore', 'causaleRegistroAzienda']) {
-      for (const [args] of tx[nome].findMany.mock.calls) {
-        expect(JSON.stringify(args.where)).toContain(T)
+  }
+
+  it('ogni query porta il tenantId (scarico, rettifica, sede, vigenti, aperture)', async () => {
+    const { lettore } = nuovo()
+    const tx = scenarioCompleto()
+    await lettore.leggi(tx, T, REG, ['s1', 'r0'])
+    let controllate = 0
+    for (const [nome, delegato] of Object.entries<any>(tx)) {
+      if (!delegato.findMany) continue
+      for (const [args] of delegato.findMany.mock.calls) {
+        // Catalogo di sistema: tabella globale senza tenant_id.
+        if (nome === 'causaleRegistro') continue
+        // istat_comuni e' un catalogo globale: nessun tenant_id.
+        if (nome === 'istatComune') continue
+        expect({ nome, tenant: JSON.stringify(args.where) }).toEqual({
+          nome,
+          tenant: expect.stringContaining(T),
+        })
+        controllate++
       }
     }
+    expect(tx.sedeDitta.findMany).toHaveBeenCalled()
+    expect(tx.giacenzaIniziale.findMany).toHaveBeenCalledTimes(2)
+    expect(controllate).toBeGreaterThanOrEqual(9)
+  })
+
+  it('numero di query fisso anche con molte rettifiche su FIR diversi', async () => {
+    const conta = async (n: number) => {
+      const { lettore } = nuovo()
+      const tx = scenarioCompleto(n)
+      await lettore.leggi(tx, T, REG, ['s1', ...Array.from({ length: n }, (_, i) => `r${i}`)])
+      return Object.values(tx).reduce(
+        (somma: number, d: any) => somma + (d.findMany?.mock?.calls.length ?? 0),
+        0
+      )
+    }
+    expect(await conta(1)).toBe(await conta(20))
   })
 })
