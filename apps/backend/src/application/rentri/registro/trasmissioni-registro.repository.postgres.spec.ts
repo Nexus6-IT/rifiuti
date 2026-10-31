@@ -313,6 +313,48 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     expect(righe.every(r => r.stato === 'IN_INVIO' && r.tentativi === 1)).toBe(true)
   })
 
+  it('RIFIUTATA riaccodata: certificato mancante ripristina; stallo diventa INCERTA', async () => {
+    const a = await azienda()
+    const m = await movimento(a)
+    await riga(a, m, {
+      stato: 'RIFIUTATA',
+      transazioneId: randomUUID(),
+      lottoId: randomUUID(),
+      origine: 'MANUALE',
+    })
+    // riaccodata come fa l'azione manuale: torna DA_TRASMETTERE, la vecchia transazione resta
+    await owner.movimentoTrasmissioneRentri.updateMany({
+      where: { tenantId: a.tenantId, movimentoId: m.id },
+      data: { stato: 'DA_TRASMETTERE' },
+    })
+    const p = await repo.prenota(a.tenantId, a.registroId, async () => cand([m.id]))
+    if (p.esito !== 'PRENOTATO') throw new Error('atteso PRENOTATO')
+    const x = await owner.movimentoTrasmissioneRentri.findFirstOrThrow({
+      where: { movimentoId: m.id },
+    })
+    expect(x.transazioneId).toBeNull()
+    await repo.ripristinaPrenotazione(a.tenantId, p.lottoId)
+    expect((await stati(a.tenantId))[m.id]).toBe('DA_TRASMETTERE')
+    const p2 = await repo.prenota(a.tenantId, a.registroId, async () => cand([m.id]))
+    if (p2.esito !== 'PRENOTATO') throw new Error('atteso PRENOTATO')
+    expect(await repo.stalliInInvio(a.tenantId, new Date(Date.now() + 1000))).toBe(1)
+    expect((await stati(a.tenantId))[m.id]).toBe('INCERTA')
+  })
+
+  it('segnaIncerte con transazione: annotata sulle righe che non ne hanno', async () => {
+    const a = await azienda()
+    const m = await movimento(a)
+    await riga(a, m)
+    const p = await repo.prenota(a.tenantId, a.registroId, async () => cand([m.id]))
+    if (p.esito !== 'PRENOTATO') throw new Error('atteso PRENOTATO')
+    const t = randomUUID()
+    expect(await repo.segnaIncerte(a.tenantId, p.lottoId, 'POST accettata', t)).toBe(1)
+    const x = await owner.movimentoTrasmissioneRentri.findFirstOrThrow({
+      where: { movimentoId: m.id },
+    })
+    expect(x).toMatchObject({ stato: 'INCERTA', transazioneId: t })
+  })
+
   it('salvaTransazione: IN_INVIO diventa ATTESA_ESITO; su un lotto non in invio errore', async () => {
     const a = await azienda()
     const m = await movimento(a)

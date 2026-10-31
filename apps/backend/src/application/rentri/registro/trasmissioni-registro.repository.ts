@@ -198,6 +198,11 @@ export class TrasmissioniRegistroRepository {
             prenotatoIl: new Date(),
             tentativi: { increment: 1 },
             ultimoErrore: null,
+            // Una riga riaccodata (RIFIUTATA/NON_TRASMISSIBILE -> DA_TRASMETTERE) porta ancora la
+            // transazione precedente, il cui esito e' definitivo: si azzera, altrimenti
+            // `ripristinaPrenotazione` e `stalliInInvio` (WHERE transazione_id IS NULL) non la
+            // toccherebbero piu' e il registro resterebbe bloccato per sempre.
+            transazioneId: null,
           },
         })
         if (prenotate.count !== lotto.length) {
@@ -241,26 +246,40 @@ export class TrasmissioniRegistroRepository {
   /**
    * Esito sconosciuto: `IN_INVIO`/`ATTESA_ESITO` -> `INCERTA`, bloccate. Per lotto (POST) o per
    * transazione (polling, stallo di 7 giorni). Ritorna le righe toccate.
+   * `transazioneId` (opzionale, solo per chiave di lotto): annota la transazione RENTRI sulle righe
+   * che non ne hanno ancora una (POST accettata ma `salvaTransazione` fallita), cosi' la verifica
+   * D11 puo' rileggerla.
    */
   async segnaIncerte(
     tenantId: string,
     chiave: string | { transazioneId: string },
-    motivo: string
+    motivo: string,
+    transazioneId?: string
   ): Promise<number> {
     const selettore =
       typeof chiave === 'string' ? { lottoId: chiave } : { transazioneId: chiave.transazioneId }
-    const r = await this.nelTenant(tenantId, tx =>
-      tx.movimentoTrasmissioneRentri.updateMany({
-        where: { tenantId, ...selettore, stato: { in: ['IN_INVIO', 'ATTESA_ESITO'] } },
-        data: {
-          stato: 'INCERTA',
-          bloccatoInvio: true,
-          motivoBlocco: tronca(motivo, 500),
-          ultimoErrore: tronca(motivo, 1000),
-        },
+    const dati = {
+      stato: 'INCERTA' as const,
+      bloccatoInvio: true,
+      motivoBlocco: tronca(motivo, 500),
+      ultimoErrore: tronca(motivo, 1000),
+    }
+    const stati: Array<'IN_INVIO' | 'ATTESA_ESITO'> = ['IN_INVIO', 'ATTESA_ESITO']
+    return this.nelTenant(tenantId, async tx => {
+      let totale = 0
+      if (transazioneId && typeof chiave === 'string') {
+        const senza = await tx.movimentoTrasmissioneRentri.updateMany({
+          where: { tenantId, ...selettore, stato: { in: stati }, transazioneId: null },
+          data: { ...dati, transazioneId },
+        })
+        totale += senza.count
+      }
+      const r = await tx.movimentoTrasmissioneRentri.updateMany({
+        where: { tenantId, ...selettore, stato: { in: stati } },
+        data: dati,
       })
-    )
-    return r.count
+      return totale + r.count
+    })
   }
 
   /** POST respinta con certezza (400/403/404): solo `IN_INVIO` -> `RIFIUTATA`, riaccodabile. */

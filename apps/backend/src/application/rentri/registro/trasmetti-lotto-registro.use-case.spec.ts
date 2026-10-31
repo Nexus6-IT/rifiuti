@@ -195,6 +195,45 @@ describe('TrasmettiLottoRegistroUseCase', () => {
     }
   })
 
+  it('403 della POST: RIFIUTATA con il titolo', async () => {
+    const x = prepara([cand(1)])
+    x.client.inviaMovimenti.mockRejectedValue(
+      new RentriApiError(403, 'Operazione non consentita', undefined, false)
+    )
+    expect((await x.uc.trasmettiRegistro(T, R)).esito).toBe('RIFIUTATO')
+    expect(x.repo.segnaRifiutate).toHaveBeenCalledWith(T, 'lotto-1', 'Operazione non consentita')
+    expect(x.repo.segnaIncerte).not.toHaveBeenCalled()
+  })
+
+  it('400 con dettaglio: titolo e dettaglio, senza CF ne P.IVA e troncato', async () => {
+    const x = prepara([cand(1)])
+    x.client.inviaMovimenti.mockRejectedValue(
+      new RentriApiError(
+        400,
+        'Richiesta non valida',
+        'Campo errato per RSSMRA80A01H501U e 12345678901 ' + 'x'.repeat(500),
+        false
+      )
+    )
+    await x.uc.trasmettiRegistro(T, R)
+    const motivo = x.repo.segnaRifiutate.mock.calls[0][2] as string
+    expect(motivo).toMatch(/^Richiesta non valida: Campo errato per \*\*\* e \*\*\*/)
+    expect(motivo).not.toMatch(/RSSMRA|12345678901/)
+    expect(motivo.length).toBeLessThanOrEqual(330)
+  })
+
+  it('salvaTransazione fallisce dopo la POST accettata: INCERTA con la transazione, nessun polling', async () => {
+    const x = prepara([cand(1)])
+    x.repo.salvaTransazione.mockRejectedValue(new Error('db'))
+    const r = await x.uc.trasmettiRegistro(T, R)
+    expect(r.esito).toBe('INCERTO')
+    expect(x.repo.segnaIncerte).toHaveBeenCalledWith(T, 'lotto-1', expect.any(String), TRANS)
+    expect(x.client.attendiEsitoMovimenti).not.toHaveBeenCalled()
+    expect(x.repo.ripristinaPrenotazione).not.toHaveBeenCalled()
+    expect(JSON.stringify(x.log)).toContain(TRANS)
+    expect(JSON.stringify(x.log)).not.toContain('codice_eer')
+  })
+
   it('senza certificato: prenotazione ripristinata', async () => {
     const x = prepara([cand(1)])
     x.client.inviaMovimenti.mockRejectedValue(new TenantSenzaCertificatoRentriError())
@@ -236,7 +275,8 @@ describe('TrasmettiLottoRegistroUseCase', () => {
     expect(x.repo.applicaEsiti).not.toHaveBeenCalled()
     expect(x.repo.segnaIncerte).not.toHaveBeenCalled()
     expect(r.esito).toBe('INVIATO')
-    expect(r.inAttesa).toBe(1)
+    expect(r.attesaEsito).toBe(1)
+    expect(r.inAttesa).toBe(0)
   })
 
   it('404 della transazione: INCERTA', async () => {
@@ -286,36 +326,75 @@ describe('TrasmettiLottoRegistroUseCase', () => {
     expect(x.repo.applicaEsiti.mock.calls[0][2][0].stato).toBe('RIFIUTATA')
   })
 
-  it('nessun log contiene il corpo', async () => {
-    const x = prepara([cand(1)])
-    await x.uc.trasmettiRegistro(T, R)
-    x.client.inviaMovimenti.mockRejectedValue(new Error('boom'))
-    const y = prepara([cand(1)])
-    y.client.inviaMovimenti.mockRejectedValue(new Error('boom'))
-    await y.uc.trasmettiRegistro(T, R)
-    for (const l of [...x.log, ...y.log]) {
-      expect(JSON.stringify(l)).not.toContain('codice_eer')
+  it('nessun log contiene il corpo (POST, polling, salvaTransazione)', async () => {
+    const casi: Array<(x: ReturnType<typeof prepara>) => void> = [
+      () => undefined,
+      x => x.client.inviaMovimenti.mockRejectedValue(new Error('boom')),
+      x => x.client.attendiEsitoMovimenti.mockRejectedValue(new Error('rete')),
+      x =>
+        x.client.attendiEsitoMovimenti.mockRejectedValue(
+          new TransazioneRentriNonTrovataError(TRANS)
+        ),
+      x => x.repo.salvaTransazione.mockRejectedValue(new Error('db')),
+      x => x.repo.salvaTransazione.mockResolvedValue('SU_INCERTA'),
+    ]
+    for (const imposta of casi) {
+      const x = prepara([cand(1)])
+      imposta(x)
+      await x.uc.trasmettiRegistro(T, R)
+      for (const l of x.log) expect(JSON.stringify(l)).not.toContain('codice_eer')
     }
   })
 
   describe('riprendiAttese', () => {
-    it('ATTESA_ESITO oltre 7 giorni: INCERTA, senza rileggere', async () => {
+    const scaduta = () => ({
+      transazioneId: TRANS,
+      registroId: R,
+      dal: new Date(Date.now() - ETA_MASSIMA_ATTESA_ESITO_MS - 1000),
+    })
+
+    it('ATTESA_ESITO oltre 7 giorni senza esito: ultima lettura, poi INCERTA', async () => {
       const x = prepara([])
-      x.repo.transazioniInAttesa.mockResolvedValue([
-        {
-          transazioneId: TRANS,
-          registroId: R,
-          dal: new Date(Date.now() - ETA_MASSIMA_ATTESA_ESITO_MS - 1000),
-        },
-      ])
+      x.repo.transazioniInAttesa.mockResolvedValue([scaduta()])
+      x.client.attendiEsitoMovimenti.mockRejectedValue(new Error('rete'))
       const r = await x.uc.riprendiAttese(T)
       expect(r).toEqual({ riletti: 0, incerte: 1 })
+      expect(x.client.attendiEsitoMovimenti).toHaveBeenCalledTimes(1)
       expect(x.repo.segnaIncerte).toHaveBeenCalledWith(
         T,
         { transazioneId: TRANS },
         expect.any(String)
       )
-      expect(x.client.attendiEsitoMovimenti).not.toHaveBeenCalled()
+    })
+
+    it('oltre 7 giorni ma l ultima lettura e definitiva: applicata, non INCERTA', async () => {
+      const x = prepara([cand(1)])
+      x.repo.transazioniInAttesa.mockResolvedValue([scaduta()])
+      x.repo.righeDellaTransazione.mockResolvedValue([
+        { movimentoId: 'm1', numero: { anno: 2026, progressivo: 1 } },
+      ])
+      expect(await x.uc.riprendiAttese(T)).toEqual({ riletti: 1, incerte: 0 })
+      expect(x.repo.applicaEsiti).toHaveBeenCalledTimes(1)
+      expect(x.repo.segnaIncerte).not.toHaveBeenCalled()
+    })
+
+    it('un errore su una transazione non ferma le altre; conteggio dal repository', async () => {
+      const x = prepara([cand(1)])
+      x.repo.transazioniInAttesa.mockResolvedValue([
+        { transazioneId: 'a', registroId: R, dal: new Date() },
+        { transazioneId: 'b', registroId: R, dal: new Date() },
+      ])
+      x.repo.righeDellaTransazione
+        .mockRejectedValueOnce(new Error('db'))
+        .mockResolvedValueOnce([{ movimentoId: 'm1', numero: { anno: 2026, progressivo: 1 } }])
+      expect(await x.uc.riprendiAttese(T)).toEqual({ riletti: 1, incerte: 0 })
+      x.client.attendiEsitoMovimenti.mockRejectedValue(new TransazioneRentriNonTrovataError(TRANS))
+      x.repo.transazioniInAttesa.mockResolvedValue([
+        { transazioneId: 'c', registroId: R, dal: new Date() },
+      ])
+      x.repo.righeDellaTransazione.mockResolvedValue([])
+      x.repo.segnaIncerte.mockResolvedValue(3)
+      expect(await x.uc.riprendiAttese(T)).toEqual({ riletti: 0, incerte: 3 })
     })
 
     it('rilegge senza POST e applica l esito', async () => {

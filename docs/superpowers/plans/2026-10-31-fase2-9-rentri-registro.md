@@ -391,7 +391,7 @@ FIR, CF, targhe) copiati a un servizio del fornitore e il registro in chiaro a Z
      403) → la riga **resta `ATTESA_ESITO`** con `ultimo_errore`, mai `DA_TRASMETTERE` (difetto
      WinWaste 3); `TransazioneRentriNonTrovataError` → `INCERTA`.
   4. **Ripresa** (`riprendiAttese`): per ogni `transazione_id` in `ATTESA_ESITO` rilegge l'esito
-     (nessuna POST); dopo 7 giorni senza esito → `INCERTA`. Le `IN_INVIO` con `prenotato_il` più
+     (nessuna POST); dopo 7 giorni senza esito si fa un'ultima lettura: esito definitivo → applicato, altrimenti → `INCERTA`. Le `IN_INVIO` con `prenotato_il` più
      vecchio di `SOGLIA_STALLO_RENTRI_MS` e senza `transazione_id` → `INCERTA` (POST forse partita).
 - **D11. Verifica di un'annotazione incerta** (`VerificaTrasmissioneRentriUseCase`): solo su
   `INCERTA` o `ATTESA_ESITO`. Con `transazione_id` rilegge prima l'esito (come D10.4). Altrimenti
@@ -771,7 +771,8 @@ trasmettiRegistro(tenantId: string, registroId: string): Promise<EsitoGiroRegist
 riprendiAttese(tenantId: string): Promise<{ riletti: number; incerte: number }>
 export interface EsitoGiroRegistro { esito: 'NIENTE' | 'GIA_IN_CORSO' | 'SENZA_IDENTIFICATIVO'
   | 'SENZA_CERTIFICATO' | 'INVIATO' | 'INCERTO' | 'RIFIUTATO'; trasmesse: number; rifiutate: number;
-  nonTrasmissibili: number; inAttesa: number }
+  nonTrasmissibili: number; inAttesa: number /* candidate oltre il lotto */;
+  attesaEsito: number /* righe del lotto ancora in ATTESA_ESITO */ }
 export const ETA_MASSIMA_ATTESA_ESITO_MS = 7 * 24 * 60 * 60 * 1000
 ```
 

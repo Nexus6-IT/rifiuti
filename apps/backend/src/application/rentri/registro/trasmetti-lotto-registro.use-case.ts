@@ -66,7 +66,22 @@ export interface EsitoGiroRegistro {
   trasmesse: number
   rifiutate: number
   nonTrasmissibili: number
+  /** Candidate rimaste fuori dal lotto (correzioni in attesa del predecessore, oltre il massimo). */
   inAttesa: number
+  /** Righe del lotto ancora in `ATTESA_ESITO`: il polling non ha chiuso, le riprende `riprendiAttese`. */
+  attesaEsito: number
+}
+
+/** Token di iniezione del traduttore (solo per i test: in produzione resta `traduciAnnotazione`). */
+export const TRADUTTORE_REGISTRAZIONE_RENTRI = 'TRADUTTORE_REGISTRAZIONE_RENTRI'
+
+/** Il dettaglio di un problema RENTRI puo' riportare valori inviati: si mascherano CF e P.IVA. */
+function dettaglioSicuro(dettaglio: string | undefined): string | null {
+  const t = dettaglio
+    ?.replace(/\b[A-Z0-9]{16}\b/gi, '***')
+    .replace(/\b\d{11}\b/g, '***')
+    .trim()
+  return t ? t.slice(0, 300) : null
 }
 
 type Traduttore = (a: AnnotazionePerRentri) => EsitoTraduzione
@@ -86,7 +101,7 @@ export class TrasmettiLottoRegistroUseCase {
     private readonly logger: LoggerService,
     // Solo per i test: in produzione resta `traduciAnnotazione`.
     @Optional()
-    @Inject('TRADUTTORE_REGISTRAZIONE_RENTRI')
+    @Inject(TRADUTTORE_REGISTRAZIONE_RENTRI)
     private readonly traduci: Traduttore = traduciAnnotazione
   ) {
     this.logger.setContext('TrasmettiLottoRegistroUseCase')
@@ -128,6 +143,7 @@ export class TrasmettiLottoRegistroUseCase {
       rifiutate: 0,
       nonTrasmissibili,
       inAttesa,
+      attesaEsito: 0,
     })
     if (pren.esito !== 'PRENOTATO') return vuoto(pren.esito)
 
@@ -148,10 +164,12 @@ export class TrasmettiLottoRegistroUseCase {
       salvata = await this.repo.salvaTransazione(tenantId, lottoId, transazioneId)
     } catch {
       // La POST e' stata accettata ma la transazione non si e' potuta annotare: non si ritrasmette.
+      // Il transazione_id si annota comunque sulle righe incerte (D11 le rilegge) e si logga (D15).
       this.logger.warn('Transazione RENTRI accettata ma non annotata: righe segnate incerte', {
         righe: preparate.length,
+        transazioneId,
       })
-      await this.repo.segnaIncerte(tenantId, lottoId, MOTIVO_INVIO_INCERTO)
+      await this.repo.segnaIncerte(tenantId, lottoId, MOTIVO_INVIO_INCERTO, transazioneId)
       return vuoto('INCERTO')
     }
     if (salvata === 'SU_INCERTA') {
@@ -179,33 +197,44 @@ export class TrasmettiLottoRegistroUseCase {
       trasmesse: risultato.trasmesse,
       rifiutate: risultato.rifiutate,
       nonTrasmissibili,
-      inAttesa: risultato.esito === 'RESTA_IN_ATTESA' ? preparate.length : inAttesa,
+      inAttesa,
+      attesaEsito: risultato.esito === 'RESTA_IN_ATTESA' ? preparate.length : 0,
     }
   }
 
-  /** Rilegge l'esito delle transazioni in `ATTESA_ESITO` (nessuna POST) e chiude le troppo vecchie. */
+  /**
+   * Rilegge l'esito delle transazioni in `ATTESA_ESITO` (nessuna POST). Oltre 7 giorni senza esito
+   * si fa un'ultima lettura: se e' definitiva si applica, altrimenti la transazione diventa `INCERTA`
+   * (D10.4). Un errore su una transazione non ferma le altre.
+   */
   async riprendiAttese(tenantId: string): Promise<{ riletti: number; incerte: number }> {
     let riletti = 0
     let incerte = 0
     const attese = await this.repo.transazioniInAttesa(tenantId)
     for (const a of attese) {
-      if (Date.now() - a.dal.getTime() > ETA_MASSIMA_ATTESA_ESITO_MS) {
-        incerte += await this.repo.segnaIncerte(
+      try {
+        const scaduta = Date.now() - a.dal.getTime() > ETA_MASSIMA_ATTESA_ESITO_MS
+        const righe = await this.repo.righeDellaTransazione(tenantId, a.transazioneId)
+        const r = await this.leggiEApplica(
           tenantId,
-          { transazioneId: a.transazioneId },
-          MOTIVO_ATTESA_SCADUTA
+          a.transazioneId,
+          righe,
+          scaduta ? 1 : TENTATIVI_POLLING_RIPRESA
         )
-        continue
+        if (r.esito === 'APPLICATO') riletti++
+        else if (r.esito === 'INCERTO') incerte += r.incerte
+        else if (scaduta) {
+          incerte += await this.repo.segnaIncerte(
+            tenantId,
+            { transazioneId: a.transazioneId },
+            MOTIVO_ATTESA_SCADUTA
+          )
+        }
+      } catch (errore) {
+        this.logger.warn('Ripresa di una transazione RENTRI non riuscita: si prosegue', {
+          tipo: errore instanceof Error ? errore.name : 'sconosciuto',
+        })
       }
-      const righe = await this.repo.righeDellaTransazione(tenantId, a.transazioneId)
-      const r = await this.leggiEApplica(
-        tenantId,
-        a.transazioneId,
-        righe,
-        TENTATIVI_POLLING_RIPRESA
-      )
-      if (r.esito === 'APPLICATO') riletti++
-      else if (r.esito === 'INCERTO') incerte += righe.length
     }
     return { riletti, incerte }
   }
@@ -226,10 +255,14 @@ export class TrasmettiLottoRegistroUseCase {
       !errore.retryable &&
       [400, 403, 404].includes(errore.status)
     ) {
+      const titolo = errore.problemTitle ?? 'Richiesta rifiutata da RENTRI'
+      const dettaglio = dettaglioSicuro(errore.problemDetail)
       const motivo =
         errore.status === 404
           ? MOTIVO_REGISTRO_NON_TROVATO
-          : (errore.problemTitle ?? 'Richiesta rifiutata da RENTRI')
+          : dettaglio
+            ? `${titolo}: ${dettaglio}`
+            : titolo
       await this.repo.segnaRifiutate(tenantId, lottoId, motivo)
       return vuoto('RIFIUTATO')
     }
@@ -258,6 +291,7 @@ export class TrasmettiLottoRegistroUseCase {
     esito: 'APPLICATO' | 'RESTA_IN_ATTESA' | 'INCERTO'
     trasmesse: number
     rifiutate: number
+    incerte: number
   }> {
     let esito
     try {
@@ -268,8 +302,12 @@ export class TrasmettiLottoRegistroUseCase {
       )
     } catch (errore) {
       if (errore instanceof TransazioneRentriNonTrovataError) {
-        await this.repo.segnaIncerte(tenantId, { transazioneId }, MOTIVO_TRANSAZIONE_SCONOSCIUTA)
-        return { esito: 'INCERTO', trasmesse: 0, rifiutate: 0 }
+        const incerte = await this.repo.segnaIncerte(
+          tenantId,
+          { transazioneId },
+          MOTIVO_TRANSAZIONE_SCONOSCIUTA
+        )
+        return { esito: 'INCERTO', trasmesse: 0, rifiutate: 0, incerte }
       }
       // Errore tecnico (rete, 5xx, 429/423 esauriti, certificato, tentativi finiti): la riga resta in attesa.
       const descrizione =
@@ -280,7 +318,7 @@ export class TrasmettiLottoRegistroUseCase {
         tipo: errore instanceof Error ? errore.name : 'sconosciuto',
       })
       await this.repo.annotaErrorePolling(tenantId, transazioneId, descrizione)
-      return { esito: 'RESTA_IN_ATTESA', trasmesse: 0, rifiutate: 0 }
+      return { esito: 'RESTA_IN_ATTESA', trasmesse: 0, rifiutate: 0, incerte: 0 }
     }
 
     let righe: EsitoPerRiga[]
@@ -295,13 +333,17 @@ export class TrasmettiLottoRegistroUseCase {
       }
     } catch (errore) {
       if (errore instanceof NumeroDuplicatoNelLottoError) {
-        await this.repo.segnaIncerte(tenantId, { transazioneId }, MOTIVO_ESITO_AMBIGUO)
-        return { esito: 'INCERTO', trasmesse: 0, rifiutate: 0 }
+        const incerte = await this.repo.segnaIncerte(
+          tenantId,
+          { transazioneId },
+          MOTIVO_ESITO_AMBIGUO
+        )
+        return { esito: 'INCERTO', trasmesse: 0, rifiutate: 0, incerte }
       }
       throw errore
     }
     await this.repo.applicaEsiti(tenantId, transazioneId, righe)
     const trasmesse = righe.filter(r => r.stato === 'TRASMESSA').length
-    return { esito: 'APPLICATO', trasmesse, rifiutate: righe.length - trasmesse }
+    return { esito: 'APPLICATO', trasmesse, rifiutate: righe.length - trasmesse, incerte: 0 }
   }
 }
