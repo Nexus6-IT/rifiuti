@@ -709,6 +709,21 @@ describe('ContractCreateDialogComponent', () => {
       expect((component.anagraficaEntityData as any)?.id).toBe('p-1')
     })
 
+    it('Esc chiude solo il sub-dialog anagrafica: il contratto resta aperto con i valori', async () => {
+      apriNuovo()
+      component.form.description = 'da non perdere'
+      bottone('c-nuovo-produttore')!.click()
+      fixture.detectChanges()
+      await fixture.whenStable()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      fixture.detectChanges()
+
+      expect(component.showAnagraficaDialog).toBeFalse()
+      expect(component.visible).toBeTrue()
+      expect(component.form.description).toBe('da non perdere')
+    })
+
     it('alla chiusura il focus torna al pulsante che aveva aperto il dialog', async () => {
       apriNuovo()
       const b = bottone('c-nuovo-produttore')!

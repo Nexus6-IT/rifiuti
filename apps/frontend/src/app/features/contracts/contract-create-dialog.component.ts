@@ -571,11 +571,11 @@ export class ContractCreateDialogComponent implements OnChanges {
   }
 
   apriAnagrafica(tipo: TipoAnagrafica, modalita: ModalitaAnagrafica, ev?: unknown): void {
+    if (modalita === 'create' && this.campoBloccato(this.campoDi(tipo))) return
     const target = (ev as MouseEvent | undefined)?.currentTarget ?? (ev as Event)?.target
     const el = target instanceof HTMLElement ? target : null
     this.triggerAnagrafica = el?.closest('button') ?? el
     const id = tipo === 'produttore' ? this.form.producerId : this.form.counterpartyId
-    if (modalita === 'create' && this.campoBloccato(this.campoDi(tipo))) return
     this.anagraficaTipo = tipo
     this.anagraficaModalita = modalita
     this.anagraficaEntityData =
@@ -607,12 +607,16 @@ export class ContractCreateDialogComponent implements OnChanges {
       if (tipo === 'produttore') this.form.producerId = entity.id
       else this.form.counterpartyId = entity.id
     }
-    this.selettoreDi(tipo)?.ricarica(seleziona ? entity.id : undefined)
+    const idCampo = tipo === 'produttore' ? this.form.producerId : this.form.counterpartyId
+    this.selettoreDi(tipo)?.ricarica(seleziona ? entity.id : idCampo || undefined)
   }
 
   // ─── Apertura / chiusura ──────────────────────────────────────────────────
 
   onVisibleChange(v: boolean): void {
+    // Esc nel sub-dialog anagrafica fa chiudere anche questo (PrimeNG chiude ogni dialog
+    // aperto con closeOnEscape): si ignora, o si perde il form compilato.
+    if (!v && this.showAnagraficaDialog) return
     this.visible = v
     this.visibleChange.emit(v)
     if (v) this.reimposta()
