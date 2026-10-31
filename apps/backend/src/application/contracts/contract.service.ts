@@ -2,13 +2,9 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
 
-export type ContractStatus =
-  | 'DRAFT'
-  | 'PENDING_APPROVAL'
-  | 'ACTIVE'
-  | 'SUSPENDED'
-  | 'EXPIRED'
-  | 'TERMINATED'
+import type { ContractStatus } from '../../domain/contracts/regole-contratto'
+
+export type { ContractStatus } from '../../domain/contracts/regole-contratto'
 
 /**
  * Transizioni di stato ammesse del contratto (workflow di approvazione).
