@@ -297,57 +297,71 @@ export class TrasmissioniRegistroRepository {
    * Applica un esito DECODIFICATO (`applicaEsito`) alle righe ancora `ATTESA_ESITO` della
    * transazione, in un'unica transazione di database. Una riga che nel frattempo ha cambiato stato
    * (es. verificata) non si tocca. Un identificativo fuori formato non blocca la riga: resta
-   * `TRASMESSA` con identificativo null (NB: la verifica D11 oggi parte solo da INCERTA/ATTESA_ESITO e non recupera una TRASMESSA: follow-up).
+   * `TRASMESSA` con identificativo null (la verifica D11 recupera poi l'identificativo dal numero).
    */
   async applicaEsiti(
     tenantId: string,
     transazioneId: string,
     esiti: EsitoPerRiga[]
   ): Promise<void> {
-    await this.nelTenant(tenantId, async tx => {
-      const adesso = new Date()
-      for (const e of esiti) {
-        const messaggi = e.messaggi.map(m => ({ campo: m.campo, codice: m.codice, tipo: m.tipo }))
-        const base = {
-          tenantId,
-          transazioneId,
-          movimentoId: e.movimentoId,
-          stato: 'ATTESA_ESITO' as const,
-        }
-        if (e.stato === 'TRASMESSA') {
-          if (e.identificativo && !FORMATO_IDENTIFICATIVO_MOVIMENTO.test(e.identificativo)) {
-            this.logger.warn('Identificativo di movimento RENTRI fuori formato scartato', {
-              movimentoId: e.movimentoId,
-            })
-          }
-          await tx.movimentoTrasmissioneRentri.updateMany({
-            where: base,
-            data: {
-              stato: 'TRASMESSA',
-              bloccatoInvio: true,
-              motivoBlocco: MOTIVO_TRASMESSA,
-              identificativoRentri:
-                e.identificativo && FORMATO_IDENTIFICATIVO_MOVIMENTO.test(e.identificativo)
-                  ? e.identificativo
-                  : null,
-              trasmessoIl: adesso,
-              ultimoErrore: null,
-              messaggi,
-            },
-          })
-        } else {
-          await tx.movimentoTrasmissioneRentri.updateMany({
-            where: base,
-            data: {
-              stato: 'RIFIUTATA',
-              bloccatoInvio: false,
-              ultimoErrore: tronca(e.motivo ?? 'Rifiutata da RENTRI', 1000),
-              messaggi,
-            },
-          })
-        }
+    await this.nelTenant(tenantId, tx => this.applicaEsitiInTx(tx, tenantId, transazioneId, esiti))
+  }
+
+  /**
+   * Come {@link applicaEsiti} dentro la transazione del chiamante (la verifica D11 ci aggiunge
+   * l'audit). `daStati` dice da quali stati si accetta l'esito: di norma solo `ATTESA_ESITO`; la
+   * verifica ammette anche `INCERTA` (l'esito letto e' definitivo, quindi scioglie l'incertezza).
+   */
+  async applicaEsitiInTx(
+    tx: Tx,
+    tenantId: string,
+    transazioneId: string,
+    esiti: EsitoPerRiga[],
+    daStati: Array<'ATTESA_ESITO' | 'INCERTA'> = ['ATTESA_ESITO']
+  ): Promise<void> {
+    const adesso = new Date()
+    for (const e of esiti) {
+      const messaggi = e.messaggi.map(m => ({ campo: m.campo, codice: m.codice, tipo: m.tipo }))
+      const base = {
+        tenantId,
+        transazioneId,
+        movimentoId: e.movimentoId,
+        stato: { in: daStati },
       }
-    })
+      if (e.stato === 'TRASMESSA') {
+        if (e.identificativo && !FORMATO_IDENTIFICATIVO_MOVIMENTO.test(e.identificativo)) {
+          this.logger.warn('Identificativo di movimento RENTRI fuori formato scartato', {
+            movimentoId: e.movimentoId,
+          })
+        }
+        await tx.movimentoTrasmissioneRentri.updateMany({
+          where: base,
+          data: {
+            stato: 'TRASMESSA',
+            bloccatoInvio: true,
+            motivoBlocco: MOTIVO_TRASMESSA,
+            identificativoRentri:
+              e.identificativo && FORMATO_IDENTIFICATIVO_MOVIMENTO.test(e.identificativo)
+                ? e.identificativo
+                : null,
+            trasmessoIl: adesso,
+            ultimoErrore: null,
+            messaggi,
+          },
+        })
+      } else {
+        await tx.movimentoTrasmissioneRentri.updateMany({
+          where: base,
+          data: {
+            stato: 'RIFIUTATA',
+            bloccatoInvio: false,
+            motivoBlocco: null,
+            ultimoErrore: tronca(e.motivo ?? 'Rifiutata da RENTRI', 1000),
+            messaggi,
+          },
+        })
+      }
+    }
   }
 
   /**

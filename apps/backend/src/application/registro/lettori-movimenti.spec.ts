@@ -45,6 +45,16 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'adozione delle righe di trasmissione: ogni annotazione e una registrazione RENTRI, anche una correzione',
   },
+  'application/rentri/registro/accoda-trasmissione-rentri.use-case.ts': {
+    scelta: 'tutte',
+    motivo:
+      'accodamento manuale e dichiarazione: ogni annotazione, anche una correzione, e una registrazione RENTRI',
+  },
+  'application/rentri/registro/impostazioni-rentri-registro.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      'conteggi di allineamento con RENTRI: ogni annotazione e una registrazione, vigente o no',
+  },
   'application/rentri/registro/lettore-annotazioni-rentri.ts': {
     scelta: 'tutte',
     motivo: 'ogni annotazione e una registrazione RENTRI; i riferimenti di carico usano le vigenti',
