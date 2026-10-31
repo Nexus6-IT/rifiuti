@@ -385,6 +385,47 @@ describe('RentriRegistroController — catena HTTP', () => {
     })
   })
 
+  describe('interruttore di emergenza RENTRI_REGISTRO_INVII_ATTIVI', () => {
+    const originale = process.env.RENTRI_REGISTRO_INVII_ATTIVI
+    afterEach(() => {
+      if (originale === undefined) delete process.env.RENTRI_REGISTRO_INVII_ATTIVI
+      else process.env.RENTRI_REGISTRO_INVII_ATTIVI = originale
+    })
+
+    it("spento: accoda ma l'avvio e' SOSPESO e nessun invio parte", async () => {
+      process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+      await avvia('ADMIN')
+      const r = await cliente(
+        http()
+          .post('/rentri/registro/trasmetti')
+          .send({ registroId: REGISTRO, movimentoIds: [MOVIMENTO] })
+      )
+      expect(r.status).toBe(202)
+      expect(r.body).toMatchObject({ accodate: 3, avvio: 'SOSPESO' })
+      expect(accoda.accoda).toHaveBeenCalledTimes(1)
+      expect(trasmetti.trasmettiRegistro).not.toHaveBeenCalled()
+    })
+
+    it('spento ma nulla da inviare: NIENTE_DA_INVIARE', async () => {
+      process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+      await avvia('ADMIN')
+      accoda.accoda.mockResolvedValue({
+        accodate: 0,
+        riaccodate: 0,
+        predecessori: 0,
+        saltate: 0,
+        saltatePerStato: {},
+        saltateEscluse: 0,
+      })
+      const r = await cliente(
+        http()
+          .post('/rentri/registro/trasmetti')
+          .send({ registroId: REGISTRO, movimentoIds: [MOVIMENTO] })
+      )
+      expect(r.body.avvio).toBe('NIENTE_DA_INVIARE')
+    })
+  })
+
   describe('trasmetti-storico e dichiara', () => {
     it('storico (ADMIN): 202, passa anno e conferma; conferma false e 400 a validazione', async () => {
       await avvia('ADMIN')

@@ -79,6 +79,34 @@ describe('RentriRegistroTrasmissioneJob', () => {
 
   afterEach(() => jest.clearAllMocks())
 
+  describe('interruttore di emergenza RENTRI_REGISTRO_INVII_ATTIVI', () => {
+    const originale = process.env.RENTRI_REGISTRO_INVII_ATTIVI
+    afterEach(() => {
+      if (originale === undefined) delete process.env.RENTRI_REGISTRO_INVII_ATTIVI
+      else process.env.RENTRI_REGISTRO_INVII_ATTIVI = originale
+    })
+
+    it('spento: nessun invio, ripresa degli esiti si, una sola riga di log per giro', async () => {
+      process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+      const { job, trasmetti, chiamate } = build({ t1: ['r1', 'r2'], t2: ['r3'] })
+      await job.eseguiTrasmissione()
+      expect(trasmetti.trasmettiRegistro).not.toHaveBeenCalled()
+      expect(chiamate.filter(c => c === 'ripresa')).toHaveLength(2)
+      const sospesi = mockLogger.warn.mock.calls.filter(c => /invii RENTRI sospesi/i.test(c[0]))
+      expect(sospesi).toHaveLength(1)
+      expect(mockLogger.error).not.toHaveBeenCalled()
+      expect(Sentry.captureException).not.toHaveBeenCalled()
+    })
+
+    it('acceso: nessun log di sospensione', async () => {
+      delete process.env.RENTRI_REGISTRO_INVII_ATTIVI
+      const { job, trasmetti } = build({ t1: ['r1'] })
+      await job.eseguiTrasmissione()
+      expect(trasmetti.trasmettiRegistro).toHaveBeenCalledTimes(1)
+      expect(mockLogger.warn.mock.calls.filter(c => /sospesi/i.test(c[0]))).toHaveLength(0)
+    })
+  })
+
   it('azienda senza certificato saltata senza segnalazione', async () => {
     const { job, repo, trasmetti } = build({ t1: ['r1'], 't-senza': ['r9'] }, ['t-senza'])
     await job.eseguiTrasmissione()

@@ -473,6 +473,19 @@ GRANT (default privileges di `ops/db-ruoli.sh`).
 - **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
   rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
   che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
+- **Interruttore di emergenza degli invii del registro** (seguito del 31/10/2026): variabile
+  `RENTRI_REGISTRO_INVII_ATTIVI`, **attiva di default**; solo il testo esatto `false` sospende gli
+  invii (`FALSE`, `0`, `no`, spazi: restano attivi, di proposito). Per spegnere: aggiungere
+  `RENTRI_REGISTRO_INVII_ATTIVI=false` a `/opt/rifiuti/.env` e riavviare il backend
+  (`docker compose --env-file /opt/rifiuti/.env -f docker-compose.prod.yml up -d backend`); per
+  riaccendere: togliere la riga (o metterla a `true`) e riavviare. Da spenti: nessuna prenotazione e
+  nessuna POST verso RENTRI (il job lo scrive una volta per giro: «Invii RENTRI sospesi»); le
+  annotazioni continuano ad accodarsi e a essere adottate, "Trasmetti" risponde 202 con
+  `avvio: 'SOSPESO'` e la pagina dice «Invii verso RENTRI sospesi dall'amministratore del sistema».
+  La ripresa degli esiti (solo GET) continua, quindi le transazioni gia' aperte si chiudono. Alla
+  riaccensione parte tutto quello che si e' accumulato in coda: controllare prima il numero di
+  righe `DA_TRASMETTERE` (`SELECT count(*) FROM movimenti_trasmissione_rentri WHERE stato =
+  'DA_TRASMETTERE' AND escluso_il IS NULL`).
 - **Esclusione di una singola annotazione dall'invio automatico** (seguito del 31/10/2026, migration
   `20261102100000_rentri_esclusione_invio_automatico`: tre colonne nullable `escluso_il`,
   `escluso_da`, `motivo_esclusione` su `movimenti_trasmissione_rentri` e un CHECK che le ammette solo

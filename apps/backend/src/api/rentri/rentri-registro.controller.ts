@@ -33,6 +33,7 @@ import {
   AccodaTrasmissioneRentriUseCase,
   EsitoDichiarazione,
 } from '../../application/rentri/registro/accoda-trasmissione-rentri.use-case'
+import { inviiRegistroAttivi } from '../../application/rentri/registro/invii-registro-attivi'
 import { TrasmettiLottoRegistroUseCase } from '../../application/rentri/registro/trasmetti-lotto-registro.use-case'
 import {
   EsitoVerifica,
@@ -90,8 +91,15 @@ const MOTIVO_SALTATA_ESCLUSA = "Esclusa dall'invio automatico: reincludila prima
  * - `SENZA_CERTIFICATO`: accodato ma non avviato, manca il certificato RENTRI dell'azienda.
  * - `NIENTE_DA_INVIARE`: nulla di nuovo da accodare e nessuna riga gia' in coda.
  * - `NON_AVVIATO`: accodato ma non si e' potuto verificare il certificato; l'invio parte al giro periodico.
+ * - `SOSPESO`: accodato ma gli invii sono sospesi dall'amministratore del sistema
+ *   (`RENTRI_REGISTRO_INVII_ATTIVI=false`); ripartono quando vengono riattivati.
  */
-export type AvvioInvio = 'AVVIATO' | 'SENZA_CERTIFICATO' | 'NIENTE_DA_INVIARE' | 'NON_AVVIATO'
+export type AvvioInvio =
+  | 'AVVIATO'
+  | 'SENZA_CERTIFICATO'
+  | 'NIENTE_DA_INVIARE'
+  | 'NON_AVVIATO'
+  | 'SOSPESO'
 
 export interface RispostaAccodamento {
   accodate: number
@@ -176,6 +184,7 @@ export class RentriRegistroController {
    * Un giro gia' in corso (`GIA_IN_CORSO`) e' normale, non un errore.
    */
   private async avviaInvio(tenantId: string, registroId: string): Promise<AvvioInvio> {
+    if (!inviiRegistroAttivi()) return 'SOSPESO'
     let haCertificato: boolean
     try {
       haCertificato = await TenantContext.run(

@@ -74,6 +74,10 @@ describe('stato-rentri', () => {
     expect(descrizioneAvvio('SENZA_CERTIFICATO', 2)).toContain('certificato')
     expect(descrizioneAvvio('NIENTE_DA_INVIARE', 0)).toBe('Nessuna nuova annotazione da inviare.')
     expect(descrizioneAvvio('AVVIATO', 0)).toContain('già in coda')
+    expect(descrizioneAvvio('SOSPESO', 2)).toBe(
+      "2 annotazioni in coda. Invii verso RENTRI sospesi dall'amministratore del sistema: partiranno quando saranno riattivati."
+    )
+    expect(descrizioneAvvio('SOSPESO', 1)).toContain('1 annotazione in coda')
   })
 
   it('esito della verifica: usa il messaggio del backend', () => {

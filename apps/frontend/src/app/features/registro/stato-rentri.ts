@@ -111,7 +111,12 @@ export function tooltipStatoRentri(
   }
 }
 
-export type AvvioInvio = 'AVVIATO' | 'SENZA_CERTIFICATO' | 'NIENTE_DA_INVIARE' | 'NON_AVVIATO'
+export type AvvioInvio =
+  | 'AVVIATO'
+  | 'SENZA_CERTIFICATO'
+  | 'NIENTE_DA_INVIARE'
+  | 'NON_AVVIATO'
+  | 'SOSPESO'
 
 const annotazioni = (n: number): string => (n === 1 ? '1 annotazione' : `${n} annotazioni`)
 
@@ -129,6 +134,8 @@ export function descrizioneAvvio(avvio: AvvioInvio, accodate: number): string {
       return `${annotazioni(accodate)} in coda, ma l'invio non è partito: manca il certificato RENTRI dell'azienda.`
     case 'NON_AVVIATO':
       return `${annotazioni(accodate)} in coda. L'invio non è stato avviato adesso e partirà al prossimo giro automatico.`
+    case 'SOSPESO':
+      return `${annotazioni(accodate)} in coda. Invii verso RENTRI sospesi dall'amministratore del sistema: partiranno quando saranno riattivati.`
     case 'NIENTE_DA_INVIARE':
       return 'Nessuna nuova annotazione da inviare.'
   }
