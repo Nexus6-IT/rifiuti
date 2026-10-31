@@ -331,6 +331,32 @@ export class TrasmissioniRegistroRepository {
     })
   }
 
+  /**
+   * Righe della transazione, nell'ordine d'invio ((anno, progressivo): lo stesso con cui si compone
+   * il payload), per rileggere l'esito in `riprendiAttese`. Comprende ogni stato: l'indice dei
+   * messaggi di RENTRI si riferisce alla posizione nel lotto originale.
+   */
+  async righeDellaTransazione(
+    tenantId: string,
+    transazioneId: string
+  ): Promise<Array<{ movimentoId: string; numero: { anno: number; progressivo: number } }>> {
+    const righe = await this.nelTenant(tenantId, tx =>
+      tx.movimentoTrasmissioneRentri.findMany({
+        where: { tenantId, transazioneId },
+        select: {
+          movimentoId: true,
+          movimento: { select: { progressiveYear: true, progressiveNumber: true } },
+        },
+      })
+    )
+    return righe
+      .map(r => ({
+        movimentoId: r.movimentoId,
+        numero: { anno: r.movimento.progressiveYear, progressivo: r.movimento.progressiveNumber },
+      }))
+      .sort((a, b) => a.numero.anno - b.numero.anno || a.numero.progressivo - b.numero.progressivo)
+  }
+
   /** Errore tecnico nel polling: la riga RESTA `ATTESA_ESITO`, si annota solo l'errore. */
   async annotaErrorePolling(
     tenantId: string,

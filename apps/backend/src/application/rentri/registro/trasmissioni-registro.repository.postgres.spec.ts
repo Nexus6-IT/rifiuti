@@ -496,6 +496,20 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
     })
   })
 
+  it("righeDellaTransazione: ordine (anno, progressivo), solo l'azienda richiesta", async () => {
+    const a = await azienda()
+    const m1 = await movimento(a)
+    const m2 = await movimento(a)
+    const t = randomUUID()
+    for (const m of [m2, m1]) {
+      await riga(a, m, { stato: 'ATTESA_ESITO', transazioneId: t, lottoId: randomUUID() })
+    }
+    const r = await repo.righeDellaTransazione(a.tenantId, t)
+    expect(r.map(x => x.movimentoId)).toEqual([m1.id, m2.id])
+    const b = await azienda()
+    expect(await repo.righeDellaTransazione(b.tenantId, t)).toEqual([])
+  })
+
   it('stalliInInvio: IN_INVIO vecchia senza transazione diventa INCERTA; con transazione no', async () => {
     const a = await azienda()
     const vecchia = await movimento(a)
