@@ -64,7 +64,6 @@ import {
   EscludiInvioAutomaticoDto,
   ImpostaRegistroRentriDto,
   TrasmettiRentriDto,
-  TogliDallaCodaDto,
   TrasmettiStoricoRentriDto,
 } from './dto/rentri-registro.dto'
 
@@ -351,25 +350,18 @@ export class RentriRegistroController {
   @ApiOperation({
     summary: "Toglie dalla coda un'annotazione accodata a mano",
     description:
-      "Per un'annotazione dell'invio automatico un amministratore, indicando il `motivo`, la esclude " +
-      "dall'invio automatico; gli altri ruoli ricevono 409.",
+      "Un'annotazione dell'invio automatico non si toglie: un amministratore la esclude con " +
+      '`POST .../escludi-invio-automatico`; qui riceve 409.',
   })
   @ApiResponse({ status: 204, description: 'Tolta dalla coda (o esclusa dall’invio automatico)' })
   @ApiResponse({ status: 409, description: "Non più in coda, o accodata dall'invio automatico" })
   async togliDallaCoda(
     @Param('movimentoId', uuidAnnotazione) movimentoId: string,
-    @Body() dto: TogliDallaCodaDto,
     @Req() req: any
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediScrittura(req, tenantId)
-    const ruolo = await this.ruolo(req, tenantId)
-    await this.conErrori(() =>
-      this.accoda.togliDallaCoda(tenantId, req.user.id, movimentoId, {
-        ruolo,
-        motivo: dto?.motivo,
-      })
-    )
+    await this.conErrori(() => this.accoda.togliDallaCoda(tenantId, req.user.id, movimentoId))
   }
 
   @Post('movimenti/:movimentoId/escludi-invio-automatico')

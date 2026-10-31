@@ -534,18 +534,8 @@ describe('RentriRegistroController — catena HTTP', () => {
       expect(accoda.escludiDaInvioAutomatico).not.toHaveBeenCalled()
     })
 
-    it('DELETE coda con motivo (ADMIN) lo passa al use case; errori di dominio mappati', async () => {
+    it('escludi-invio-automatico: errori di dominio mappati', async () => {
       await avvia('ADMIN')
-      const r = await cliente(
-        http()
-          .delete(`/rentri/registro/movimenti/${MOVIMENTO}/coda`)
-          .send({ motivo: 'Da correggere' })
-      )
-      expect(r.status).toBe(204)
-      expect(accoda.togliDallaCoda).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO, {
-        ruolo: 'ADMIN',
-        motivo: 'Da correggere',
-      })
       accoda.escludiDaInvioAutomatico.mockRejectedValue(
         new TrasmissioneNonModificabileError("L'annotazione è già esclusa dall'invio automatico.")
       )
@@ -580,10 +570,7 @@ describe('RentriRegistroController — catena HTTP', () => {
       await avvia('OPERATOR')
       const ok = await cliente(http().delete(`/rentri/registro/movimenti/${MOVIMENTO}/coda`))
       expect(ok.status).toBe(204)
-      expect(accoda.togliDallaCoda).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO, {
-        ruolo: 'OPERATOR',
-        motivo: undefined,
-      })
+      expect(accoda.togliDallaCoda).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO)
       accoda.togliDallaCoda.mockRejectedValue(
         new TrasmissioneNonModificabileError(
           "L'annotazione è stata accodata dall'invio automatico."

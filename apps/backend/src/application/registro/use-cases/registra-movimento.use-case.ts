@@ -35,7 +35,10 @@ import {
 } from '../numerazione-annotazione'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
-import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
+import {
+  abbinaNuovoScarico,
+  haStoccaggioOAbbinamenti,
+} from '../../abbinamenti/abbinamenti-scrittura'
 import { segnalaErroreJob } from '../../../core/monitoring/segnala-errore-job'
 import { RegistriService, RegistroVista } from '../registri.service'
 
@@ -152,6 +155,19 @@ export function movimentoDaRecord(
  * restituisce il movimento esistente (`giaRegistrato: true`), una ricopia con dati
  * diversi è rifiutata (FirGiaRegistratoError).
  */
+/**
+ * Codice Prisma (`P2xxx`) o SQLSTATE (5 caratteri) di un errore, se c'e': sono identificativi
+ * fissi, senza valori dell'utente. Altrimenti stringa vuota.
+ */
+function codiceErroreSicuro(err: unknown): string {
+  const e = err as { code?: unknown; meta?: { code?: unknown } } | null
+  const forma = /^[0-9A-Z]{5}$/
+  for (const c of [e?.code, e?.meta?.code]) {
+    if (typeof c === 'string' && forma.test(c)) return c
+  }
+  return ''
+}
+
 @Injectable()
 export class RegistraMovimentoUseCase {
   constructor(
@@ -490,6 +506,12 @@ export class RegistraMovimentoUseCase {
     registroId: string,
     scarico: { scaricoId: string; cerCode: string; movimentoOriginaleId: string | null }
   ): Promise<string[]> {
+    // Pre-controllo leggero: un registro ordinario (senza carichi R13/D15 ne' abbinamenti per quel
+    // CER) non apre il SAVEPOINT e non paga round-trip in piu'. E' lo stesso controllo che
+    // `abbinaNuovoScarico` fa all'ingresso: sui registri di stoccaggio si ripete, e' una lettura.
+    if (!(await haStoccaggioOAbbinamenti(tx, command.tenantId, registroId, scarico.cerCode))) {
+      return []
+    }
     // Testo costante (nessun dato dell'utente): `$executeRawUnsafe` evita di contare come advisory lock.
     await tx.$executeRawUnsafe('SAVEPOINT abbinamento')
     try {
@@ -506,13 +528,18 @@ export class RegistraMovimentoUseCase {
     } catch (err) {
       await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT abbinamento')
       const tipo = err instanceof Error ? err.name : 'sconosciuto'
+      const codice = codiceErroreSicuro(err)
       // Un errore "pulito": il messaggio dell'originale potrebbe riportare valori (dati personali).
-      const sicuro = new Error(`Abbinamento FIFO non riuscito (${tipo})`)
+      const sicuro = new Error(
+        `Abbinamento FIFO non riuscito (${tipo}${codice ? ` ${codice}` : ''})`
+      )
       this.logger.error(
         'Abbinamento FIFO dello scarico non riuscito: lo scarico resta registrato e non abbinato',
         sicuro,
-        { tenantId: command.tenantId, registroId, tipoErrore: tipo }
+        { tenantId: command.tenantId, registroId, tipoErrore: tipo, codice }
       )
+      // Il segnale a Bugsink parte subito, prima del commit: se la transazione fallisce piu' avanti
+      // (e la registrazione non resta) puo' risultare spurio.
       segnalaErroreJob('abbinamentoNuovoScarico', sicuro, { tenantId: command.tenantId })
       await tx.activityLog.create({
         data: {
@@ -521,7 +548,7 @@ export class RegistraMovimentoUseCase {
           action: 'ABBINAMENTO_NON_RIUSCITO',
           description:
             'Abbinamento automatico dello scarico non riuscito: scarico registrato non abbinato',
-          metadata: { tipoErrore: tipo },
+          metadata: { tipoErrore: tipo, codice },
         },
       })
       return [AVVISO_ABBINAMENTO_NON_RIUSCITO]

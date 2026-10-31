@@ -204,7 +204,7 @@ describe('controller RENTRI — azienda selezionata (≠ azienda del token)', ()
     await c.allineamento(R, { anno: 2026 }, reqB)
     await c.trasmettiOra({ registroId: R, movimentoIds: [M] }, reqB)
     await c.trasmettiStorico({ registroId: R, anno: 2025, conferma: true }, reqB)
-    await c.togliDallaCoda(M, {}, reqB)
+    await c.togliDallaCoda(M, reqB)
     await c.verificaAnnotazione(M, reqB)
     await c.dichiara(
       { registroId: R, anno: 2026, daProgressivo: 1, aProgressivo: 2, motivo: 'm' },
@@ -220,12 +220,7 @@ describe('controller RENTRI — azienda selezionata (≠ azienda del token)', ()
     expect(impostazioni.allineamento).toHaveBeenCalledWith('B', R, 2026)
     expect(accoda.accoda).toHaveBeenCalledWith('B', 'u1', R, [M])
     expect(accoda.accodaStorico).toHaveBeenCalledWith('B', 'u1', R, 2025, true)
-    expect(accoda.togliDallaCoda).toHaveBeenCalledWith(
-      'B',
-      'u1',
-      M,
-      expect.objectContaining({ ruolo: expect.any(String) })
-    )
+    expect(accoda.togliDallaCoda).toHaveBeenCalledWith('B', 'u1', M)
     expect(verifica.verifica).toHaveBeenCalledWith('B', 'u1', M)
     expect(accoda.dichiaraGiaSuRentri).toHaveBeenCalledWith('B', 'u1', 'ADMIN', R, 2026, 1, 2, 'm')
     expect(dettaglio.dettaglio).toHaveBeenCalledWith('B', M)

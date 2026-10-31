@@ -135,4 +135,22 @@ describe('selezionaLotto', () => {
       r7: 'PREDECESSORE_BLOCCATO',
     })
   })
+
+  it("predecessore escluso dall'invio automatico: PREDECESSORE_BLOCCATO anche se DA_TRASMETTERE", () => {
+    const r = selezionaLotto(
+      [
+        c('r1', 2026, 1, {
+          predecessoreId: 'x',
+          statoPredecessore: 'DA_TRASMETTERE',
+          predecessoreEscluso: true,
+        }),
+        c('r2', 2026, 2, { predecessoreId: 'x', statoPredecessore: 'DA_TRASMETTERE' }),
+      ],
+      100
+    )
+    expect(r.motivoAttesa).toEqual({
+      r1: 'PREDECESSORE_BLOCCATO',
+      r2: 'PREDECESSORE_IN_CORSO',
+    })
+  })
 })

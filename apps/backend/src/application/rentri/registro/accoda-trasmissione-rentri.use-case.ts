@@ -21,7 +21,6 @@ import {
   RichiestaTrasmissioneNonValidaError,
   TrasmissioneNonModificabileError,
   richiediAmministratore,
-  RUOLI_AMMINISTRATORE_RENTRI,
 } from './errori-azioni-rentri-registro'
 
 type Tx = Prisma.TransactionClient
@@ -354,13 +353,7 @@ export class AccodaTrasmissioneRentriUseCase {
    * @throws TrasmissioneNonModificabileError (409) se la riga e' in un altro stato (intatta)
    * @throws MovimentoNonTrovatoError (404) se non c'e' nessuna riga per questa azienda
    */
-  async togliDallaCoda(
-    tenantId: string,
-    utenteId: string,
-    movimentoId: string,
-    amministratore?: { ruolo: string; motivo?: string }
-  ): Promise<void> {
-    let daEscludere = false
+  async togliDallaCoda(tenantId: string, utenteId: string, movimentoId: string): Promise<void> {
     await this.nelTenant(tenantId, async tx => {
       // Solo le righe accodate a mano: le AUTOMATICHE/CORREZIONE le riadotterebbe il job.
       const r = await tx.movimentoTrasmissioneRentri.deleteMany({
@@ -377,14 +370,6 @@ export class AccodaTrasmissioneRentriUseCase {
             throw new TrasmissioneNonModificabileError(
               "L'annotazione è già esclusa dall'invio automatico."
             )
-          }
-          if (
-            amministratore &&
-            RUOLI_AMMINISTRATORE_RENTRI.includes(amministratore.ruolo) &&
-            (amministratore.motivo ?? '').trim() !== ''
-          ) {
-            daEscludere = true
-            return
           }
           throw new TrasmissioneNonModificabileError(
             "L'annotazione è stata accodata dall'invio automatico: se la togliessi, il prossimo giro la riaccoderebbe. Un amministratore può escluderla dall'invio automatico indicando il motivo."
@@ -404,15 +389,6 @@ export class AccodaTrasmissioneRentriUseCase {
         },
       })
     })
-    if (daEscludere && amministratore) {
-      await this.escludiDaInvioAutomatico(
-        tenantId,
-        utenteId,
-        amministratore.ruolo,
-        movimentoId,
-        amministratore.motivo ?? ''
-      )
-    }
   }
 
   /**
@@ -444,6 +420,9 @@ export class AccodaTrasmissioneRentriUseCase {
         select: { id: true, registroId: true, type: true, movimentoRettificatoId: true },
       })
       if (!movimento) throw new MovimentoNonTrovatoError()
+      // Stessa chiave di `prenota` (bloccante qui): una prenotazione in corso si completa prima, e
+      // non vede una riga cambiare sotto i piedi ("Prenotazione incompleta").
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + movimento.registroId}))`
       // Nessuna riga: la si crea gia' esclusa. Una riga comparsa nel frattempo (adozione del job)
       // non e' un errore: l'UPDATE qui sotto decide in base al suo stato.
       await tx.$executeRaw`
@@ -498,10 +477,11 @@ export class AccodaTrasmissioneRentriUseCase {
   }
 
   /**
-   * Annulla l'esclusione (ADMIN): la riga esclusa, che non e' mai partita, si cancella e il job la
-   * riadotta se spetta (D3: nessuna riga nasce da qui, quindi nessun nuovo percorso verso
-   * `DA_TRASMETTERE`). La DELETE porta nel `WHERE` lo stato e l'esclusione: una riga che nel
-   * frattempo ha cambiato stato non si tocca.
+   * Annulla l'esclusione (ADMIN). Una riga nata dall'esclusione (`tentativi = 0` e nessuna
+   * transazione) si cancella e il job la riadotta se spetta (D3: nessuna riga nasce da qui). Una
+   * riga con storia (tentativi o transazione) resta e perde solo le tre colonne `escluso_*`:
+   * era gia' `DA_TRASMETTERE`, nessun nuovo percorso. Stato, blocco e origine stanno nel `WHERE`:
+   * una riga che nel frattempo ha cambiato stato non si tocca.
    * @throws TrasmissioneNonModificabileError (409) se la riga non e' esclusa
    * @throws MovimentoNonTrovatoError (404) se non c'e' nessuna riga
    */
@@ -513,16 +493,33 @@ export class AccodaTrasmissioneRentriUseCase {
   ): Promise<void> {
     richiediAmministratore(ruolo)
     await this.nelTenant(tenantId, async tx => {
-      const r = await tx.movimentoTrasmissioneRentri.deleteMany({
-        where: {
-          tenantId,
-          movimentoId,
-          stato: 'DA_TRASMETTERE',
-          bloccatoInvio: false,
-          origine: { in: ['AUTOMATICA', 'CORREZIONE'] },
-          esclusoIl: { not: null },
-        },
+      const movimento = await tx.wasteMovement.findFirst({
+        where: { id: movimentoId, tenantId },
+        select: { registroId: true },
       })
+      if (!movimento) throw new MovimentoNonTrovatoError()
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rentri-registro|' + movimento.registroId}))`
+      const filtro = {
+        tenantId,
+        movimentoId,
+        stato: 'DA_TRASMETTERE' as const,
+        bloccatoInvio: false,
+        origine: { in: ['AUTOMATICA', 'CORREZIONE'] as Array<'AUTOMATICA' | 'CORREZIONE'> },
+        esclusoIl: { not: null },
+      }
+      // Riga nata dall'esclusione (mai prenotata): si cancella e il job la riadotta se spetta.
+      let r = await tx.movimentoTrasmissioneRentri.deleteMany({
+        where: { ...filtro, tentativi: 0, transazioneId: null },
+      })
+      if (r.count === 0) {
+        // Riga con storia (es. RIFIUTATA e riaccodata, poi esclusa): e' gia' legittimamente
+        // `DA_TRASMETTERE`, non un nuovo percorso. Si azzerano solo le colonne di esclusione, cosi'
+        // tentativi, transazione e messaggi restano.
+        r = await tx.movimentoTrasmissioneRentri.updateMany({
+          where: filtro,
+          data: { esclusoIl: null, esclusoDa: null, motivoEsclusione: null },
+        })
+      }
       if (r.count === 0) {
         const riga = await tx.movimentoTrasmissioneRentri.findFirst({
           where: { tenantId, movimentoId },
@@ -548,7 +545,8 @@ export class AccodaTrasmissioneRentriUseCase {
   /**
    * Per chi arriva da un altro programma che ha gia' trasmesso (D12, riservato agli ADMIN): le
    * annotazioni dell'intervallo (anno, da..a) diventano `GIA_SU_RENTRI`, bloccate col motivo.
-   * Solo su movimenti senza riga o `RIFIUTATA`/`NON_TRASMISSIBILE`; le altre non si toccano.
+   * Solo su movimenti senza riga, `RIFIUTATA`/`NON_TRASMISSIBILE` o `DA_TRASMETTERE` esclusi dall'invio
+   * automatico; le altre non si toccano.
    */
   async dichiaraGiaSuRentri(
     tenantId: string,
@@ -595,19 +593,26 @@ export class AccodaTrasmissioneRentriUseCase {
       })
       const righe = await tx.movimentoTrasmissioneRentri.findMany({
         where: { tenantId, movimentoId: { in: movimenti.map(m => m.id) } },
-        select: { movimentoId: true, stato: true },
+        select: { movimentoId: true, stato: true, esclusoIl: true },
       })
       const statoDi = new Map(righe.map(r => [r.movimentoId, r.stato]))
+      // Un'esclusa dall'invio automatico (DA_TRASMETTERE con esclusione) e' proprio il caso
+      // "gia' inviata da un altro programma": si puo' dichiarare. Il resto delle guardie non cambia.
+      const escluse = new Set(righe.filter(r => r.esclusoIl !== null).map(r => r.movimentoId))
+      const dichiarabile = (id: string): boolean => {
+        const s = statoDi.get(id)
+        return (
+          s !== undefined &&
+          (RIACCODABILI.includes(s) || (s === 'DA_TRASMETTERE' && escluse.has(id)))
+        )
+      }
 
       const nuovi = movimenti.filter(m => !statoDi.has(m.id))
-      const daRiportare = movimenti.filter(m => {
-        const s = statoDi.get(m.id)
-        return s !== undefined && RIACCODABILI.includes(s)
-      })
+      const daRiportare = movimenti.filter(m => dichiarabile(m.id))
       const saltatePerStato: Partial<Record<StatoTrasmissioneRentri, number>> = {}
       for (const m of movimenti) {
         const s = statoDi.get(m.id)
-        if (s !== undefined && !RIACCODABILI.includes(s)) {
+        if (s !== undefined && !dichiarabile(m.id)) {
           saltatePerStato[s] = (saltatePerStato[s] ?? 0) + 1
         }
       }
@@ -638,9 +643,13 @@ export class AccodaTrasmissioneRentriUseCase {
           where: {
             tenantId,
             movimentoId: { in: daRiportare.map(m => m.id) },
-            stato: { in: RIACCODABILI },
+            OR: [
+              { stato: { in: RIACCODABILI } },
+              { stato: 'DA_TRASMETTERE', esclusoIl: { not: null } },
+            ],
           },
-          data: dati,
+          // Il CHECK ammette l'esclusione solo con `DA_TRASMETTERE`: passando a GIA_SU_RENTRI si azzera.
+          data: { ...dati, esclusoIl: null, esclusoDa: null, motivoEsclusione: null },
         })
         dichiarate += r.count
       }

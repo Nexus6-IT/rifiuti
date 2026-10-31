@@ -581,23 +581,15 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       ).rejects.toBeInstanceOf(MovimentoNonTrovatoError)
     })
 
-    it('togliDallaCoda su AUTOMATICA/CORREZIONE: ADMIN con motivo esclude; senza motivo o non ADMIN resta 409', async () => {
+    it('togliDallaCoda su AUTOMATICA/CORREZIONE: 409 per tutti (anche ADMIN), con la spiegazione; si esclude con escludi', async () => {
       const a = await azienda()
       for (const origine of ['AUTOMATICA', 'CORREZIONE'] as const) {
         const m = await movimento(a)
         await riga(a, m, { origine })
-        await expect(
-          accoda.togliDallaCoda(a.tenantId, utenteId, m.id, { ruolo: 'OPERATOR', motivo: MOTIVO })
-        ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
-        await expect(
-          accoda.togliDallaCoda(a.tenantId, utenteId, m.id, { ruolo: 'ADMIN' })
-        ).rejects.toThrow(/amministratore/)
+        await expect(accoda.togliDallaCoda(a.tenantId, utenteId, m.id)).rejects.toThrow(
+          /escluderla dall'invio automatico/
+        )
         expect((await rigaDi(m.id))?.esclusoIl).toBeNull()
-        await accoda.togliDallaCoda(a.tenantId, utenteId, m.id, { ruolo: 'ADMIN', motivo: MOTIVO })
-        expect(await rigaDi(m.id)).toMatchObject({
-          stato: 'DA_TRASMETTERE',
-          motivoEsclusione: MOTIVO,
-        })
       }
     })
 
@@ -622,6 +614,34 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       await expect(
         accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'ADMIN', n2.id)
       ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+    })
+
+    it('reinclusione di una riga con storia (tentativi / transazione): resta, perde solo le colonne escluso_*', async () => {
+      const a = await azienda()
+      const t = await movimento(a)
+      const tr = await movimento(a)
+      await riga(a, t, { origine: 'AUTOMATICA', tentativi: 3 })
+      const transazioneId = randomUUID()
+      await riga(a, tr, { origine: 'CORREZIONE', transazioneId })
+      for (const m of [t, tr]) {
+        await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id, MOTIVO)
+        await accoda.reincludiNellInvioAutomatico(a.tenantId, utenteId, 'ADMIN', m.id)
+      }
+      expect(await rigaDi(t.id)).toMatchObject({
+        stato: 'DA_TRASMETTERE',
+        tentativi: 3,
+        esclusoIl: null,
+        esclusoDa: null,
+        motivoEsclusione: null,
+      })
+      expect(await rigaDi(tr.id)).toMatchObject({
+        stato: 'DA_TRASMETTERE',
+        origine: 'CORREZIONE',
+        transazioneId,
+        esclusoIl: null,
+        esclusoDa: null,
+        motivoEsclusione: null,
+      })
     })
 
     it("reinclusione non tocca mai una riga esclusa che nel frattempo non e' piu' DA_TRASMETTERE", async () => {
@@ -687,6 +707,35 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       const log = await audit(a.tenantId, 'RENTRI_REGISTRO_DICHIARATI')
       expect(log).toHaveLength(1)
       expect(JSON.stringify(log[0].metadata)).not.toContain('programma precedente')
+    })
+
+    it("una riga DA_TRASMETTERE esclusa e' dichiarabile (azzera l'esclusione); una non esclusa resta saltata", async () => {
+      const a = await azienda()
+      const esclusa = await movimento(a, { progressiveNumber: 701 })
+      const normale = await movimento(a, { progressiveNumber: 702 })
+      await riga(a, esclusa, { origine: 'AUTOMATICA' })
+      await riga(a, normale, { origine: 'AUTOMATICA' })
+      await accoda.escludiDaInvioAutomatico(a.tenantId, utenteId, 'ADMIN', esclusa.id, 'x')
+      const r = await accoda.dichiaraGiaSuRentri(
+        a.tenantId,
+        utenteId,
+        'ADMIN',
+        a.registroId,
+        2026,
+        701,
+        702,
+        'Inviata da altro programma'
+      )
+      expect(r.dichiarate).toBe(1)
+      expect(r.saltate).toBe(1)
+      expect(await rigaDi(esclusa.id)).toMatchObject({
+        stato: 'GIA_SU_RENTRI',
+        origine: 'DICHIARATA',
+        bloccatoInvio: true,
+        esclusoIl: null,
+        motivoEsclusione: null,
+      })
+      expect((await rigaDi(normale.id))?.stato).toBe('DA_TRASMETTERE')
     })
 
     it('solo ADMIN; intervallo oltre 10.000 o motivo vuoto: 400', async () => {

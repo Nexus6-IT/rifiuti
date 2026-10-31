@@ -130,10 +130,10 @@ export class TrasmissioniRegistroRepository {
           (predecessoriIds.length
             ? await tx.movimentoTrasmissioneRentri.findMany({
                 where: { tenantId, movimentoId: { in: predecessoriIds } },
-                select: { movimentoId: true, stato: true },
+                select: { movimentoId: true, stato: true, esclusoIl: true },
               })
             : []
-          ).map(p => [p.movimentoId, p.stato])
+          ).map(p => [p.movimentoId, p])
         )
 
         const candidate: CandidataLotto[] = righe
@@ -149,7 +149,9 @@ export class TrasmissioniRegistroRepository {
               statoPredecessore:
                 predecessoreId === null
                   ? null
-                  : (statoPredecessori.get(predecessoreId) ?? ('NON_TRASMESSA' as const)),
+                  : (statoPredecessori.get(predecessoreId)?.stato ?? ('NON_TRASMESSA' as const)),
+              predecessoreEscluso:
+                predecessoreId !== null && !!statoPredecessori.get(predecessoreId)?.esclusoIl,
             }
           })
           .sort(

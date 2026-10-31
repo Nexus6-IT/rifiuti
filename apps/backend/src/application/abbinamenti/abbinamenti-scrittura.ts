@@ -104,7 +104,7 @@ async function cancellaRighe(tx: Prisma.TransactionClient, ids: string[]): Promi
 }
 
 /** Stessa normalizzazione del lettore: cifre del CER e codice operazione senza spazi/punti, maiuscolo. */
-async function haStoccaggioOAbbinamenti(
+export async function haStoccaggioOAbbinamenti(
   tx: Prisma.TransactionClient,
   tenantId: string,
   registroId: string,

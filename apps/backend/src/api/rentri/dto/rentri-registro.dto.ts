@@ -118,15 +118,3 @@ export class EscludiInvioAutomaticoDto {
   @MaxLength(500, { message: 'Il motivo può avere al massimo 500 caratteri.' })
   motivo: string
 }
-
-/** `DELETE /rentri/registro/movimenti/:id/coda`: il motivo serve solo agli amministratori. */
-export class TogliDallaCodaDto {
-  @ApiPropertyOptional({
-    description:
-      "Solo per le annotazioni dell'invio automatico: un amministratore le esclude indicando il motivo.",
-  })
-  @IsOptional()
-  @IsString({ message: 'Il motivo deve essere un testo.' })
-  @MaxLength(500, { message: 'Il motivo può avere al massimo 500 caratteri.' })
-  motivo?: string
-}
