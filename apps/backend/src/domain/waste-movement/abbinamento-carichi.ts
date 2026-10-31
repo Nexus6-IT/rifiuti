@@ -27,7 +27,7 @@ export function classeAttesaScarico(
   operazioneCausale: 'R' | 'D' | null
 ): ClasseStoccaggio | null {
   const c = (operationCode ?? '').toUpperCase().replace(/[\s.]/g, '')
-  const m = /^([RD])\d{1,2}$/.exec(c)
+  const m = /^([RD])\d/.exec(c)
   const lettera = m ? m[1] : operazioneCausale
   if (lettera === 'R') return 'R13'
   if (lettera === 'D') return 'D15'
@@ -123,7 +123,9 @@ function dataItaliana(giorno: string): string {
 function etichettaCarico(c: CaricoAbbinabile): string {
   return c.chiave.startsWith('A:')
     ? `La giacenza iniziale del ${dataItaliana(c.evento.giorno)}`
-    : `Il carico n. ${c.numero ?? ''}`
+    : c.numero
+      ? `Il carico n. ${c.numero}`
+      : `Il carico del ${dataItaliana(c.evento.giorno)}`
 }
 
 export function validaRigheManuali(input: {
@@ -187,6 +189,8 @@ export function validaRigheManuali(input: {
     errori.push(
       `Il totale abbinato (${formattaQuantita(totale / 1000)}) supera la quantità dello scarico (${formattaQuantita(quantitaScarico / 1000)}).`
     )
+  } else if (totale === 0) {
+    avvisi.push('Lo scarico resta senza abbinamento.')
   } else if (totale < quantitaScarico) {
     avvisi.push(
       `Abbinamento parziale: restano ${formattaQuantita((quantitaScarico - totale) / 1000)} da abbinare.`

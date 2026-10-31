@@ -49,6 +49,10 @@ describe('classeStoccaggio e classeAttesaScarico', () => {
     expect(classeAttesaScarico(null, 'R')).toBe('R13')
     expect(classeAttesaScarico('R13', 'D')).toBe('R13')
     expect(classeAttesaScarico(null, null)).toBeNull()
+    expect(classeAttesaScarico('R13/R4', null)).toBe('R13')
+    expect(classeAttesaScarico('r 4', 'D')).toBe('R13')
+    expect(classeAttesaScarico('D15 R4', null)).toBe('D15')
+    expect(classeAttesaScarico('R4 bis', null)).toBe('R13')
   })
 })
 
@@ -93,6 +97,16 @@ describe('proponiAbbinamenti', () => {
       { scaricoRadiceId: 'S', carico: 'M:C1', quantita: 30 },
       { scaricoRadiceId: 'S', carico: 'M:C2', quantita: 20 },
     ])
+  })
+  it('salta carichi con residuo 0 e scarichi con daCoprire 0', () => {
+    const c0 = { ...car('C0', '2026-03-01', 100), residuo: 0 }
+    const s0 = { ...sca('S0', '2026-03-09', 10), daCoprire: 0 }
+    const r = proponiAbbinamenti({
+      carichi: [c0, car('C1', '2026-03-02', 100, ANNO + 2)],
+      scarichi: [s0, sca('S', '2026-03-10', 20)],
+    })
+    expect(r.righe).toEqual([{ scaricoRadiceId: 'S', carico: 'M:C1', quantita: 20 }])
+    expect(r.scoperti.size).toBe(0)
   })
   it('millesimi: 0,1 x 3 contro 0,3 e ordine di input irrilevante', () => {
     const carichi = [0, 1, 2].map(i => car(`C${i}`, '2026-03-01', 0.1, ANNO + i + 1))
@@ -208,6 +222,24 @@ describe('validaRigheManuali', () => {
     })
     expect(r.errori).toEqual(['Il carico n. 3/2026 ha un residuo di 20,5: non basta per 30.'])
   })
+  it('elenco vuoto: avviso dedicato, non il parziale', () => {
+    expect(val([])).toEqual({ errori: [], avvisi: ['Lo scarico resta senza abbinamento.'] })
+  })
+  it('tutte le righe invalide: nessun parziale', () => {
+    const r = val([{ carico: 'M:C1', quantita: 0 }])
+    expect(r.errori).toHaveLength(1)
+    expect(r.avvisi).toEqual(['Lo scarico resta senza abbinamento.'])
+  })
+  it('carico senza numero: ripiego con la data', () => {
+    const senza: CaricoAbbinabile = { ...c1, chiave: 'M:N', numero: undefined }
+    const r = validaRigheManuali({
+      scarico: s,
+      righe: [{ carico: 'M:N', quantita: 30 }],
+      candidati: [senza],
+      residuoEsclusoScarico: new Map([['M:N', 20]]),
+    })
+    expect(r.errori).toEqual(['Il carico del 01/03/2026 ha un residuo di 20: non basta per 30.'])
+  })
   it('avvisi: classe diversa e parziale', () => {
     const sd = {
       ...s,
@@ -235,6 +267,7 @@ describe('stati', () => {
     expect(statoCarico(100, 99.999)).toBe('APERTO')
     expect(statoCarico(100, 100)).toBe('ESAURITO')
     expect(statoCarico(100, 100.001)).toBe('INCOERENTE')
+    expect(statoCarico(100, 99.9995)).toBe('ESAURITO')
   })
 })
 
