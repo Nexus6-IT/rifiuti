@@ -179,52 +179,54 @@ export class VerificaTrasmissioneRentriUseCase {
           throw errore
         }
         const transazioneId = riga.transazioneId
-        return this.nelTenant(tenantId, async tx => {
-          await this.repo.applicaEsitiInTx(
-            tx,
-            tenantId,
-            transazioneId,
-            righe,
-            STATI_VERIFICABILI as Array<'ATTESA_ESITO' | 'INCERTA'>
-          )
-          const dopo = await tx.movimentoTrasmissioneRentri.findFirstOrThrow({
-            where: { id: riga.id, tenantId },
-            select: { stato: true },
-          })
-          await this.audit(
-            tx,
-            tenantId,
-            utenteId,
-            movimentoId,
-            riga.stato,
-            dopo.stato,
-            'TRANSAZIONE'
-          )
-          if (dopo.stato === 'TRASMESSA') {
-            return {
-              esito: 'TRASMESSA' as const,
-              stato: dopo.stato,
-              messaggio: 'RENTRI ha confermato la trasmissione.',
+        const esitoTx = await this.nelTenant(
+          tenantId,
+          async (tx): Promise<EsitoVerifica | null> => {
+            await this.repo.applicaEsitiInTx(
+              tx,
+              tenantId,
+              transazioneId,
+              righe,
+              STATI_VERIFICABILI as Array<'ATTESA_ESITO' | 'INCERTA'>
+            )
+            const dopo = await tx.movimentoTrasmissioneRentri.findFirstOrThrow({
+              where: { id: riga.id, tenantId },
+              select: { stato: true },
+            })
+            // INCERTA (esito senza conferma ne' rifiuto): niente da annunciare, si prosegue per numero.
+            if (dopo.stato !== 'INCERTA' || riga.stato !== 'INCERTA') {
+              await this.audit(
+                tx,
+                tenantId,
+                utenteId,
+                movimentoId,
+                riga.stato,
+                dopo.stato,
+                'TRANSAZIONE'
+              )
             }
-          }
-          if (dopo.stato === 'RIFIUTATA') {
-            return {
-              esito: 'RIFIUTATA' as const,
-              stato: dopo.stato,
-              messaggio:
-                "RENTRI ha risposto che l'annotazione non è stata registrata: si può riaccodare.",
+            if (dopo.stato === 'TRASMESSA') {
+              return {
+                esito: 'TRASMESSA' as const,
+                stato: dopo.stato,
+                messaggio: 'RENTRI ha confermato la trasmissione.',
+              }
             }
-          }
-          if (dopo.stato === 'INCERTA') {
-            return {
-              esito: 'NON_VERIFICABILE' as const,
-              stato: dopo.stato,
-              messaggio:
-                "RENTRI non ha confermato l'annotazione ma non l'ha nemmeno rifiutata: controllare il portale.",
+            if (dopo.stato === 'RIFIUTATA') {
+              return {
+                esito: 'RIFIUTATA' as const,
+                stato: dopo.stato,
+                messaggio:
+                  "RENTRI ha risposto che l'annotazione non è stata registrata: si può riaccodare.",
+              }
             }
+            if (dopo.stato === 'INCERTA') return null
+            return nonVerificabile("L'esito non ha cambiato lo stato dell'annotazione.")
           }
-          return nonVerificabile("L'esito non ha cambiato lo stato dell'annotazione.")
-        })
+        )
+        if (esitoTx) return esitoTx
+        // La riga e' stata aggiornata dall'esito: si ricarica lo stato per i controlli del passo 2.
+        await this.ricarica(tenantId, riga)
       }
     }
 
@@ -432,11 +434,11 @@ export class VerificaTrasmissioneRentriUseCase {
 
   /**
    * Rilegge l'esito dell'ultima transazione del registro quando la riga non ha un `transazione_id`.
-   * Ritorna l'esito della verifica se la riga risulta confermata (`TRASMESSA`) o se la lettura non e'
-   * definitiva (`NON_VERIFICABILE`); `null` = nulla da dire, si prosegue con la ricerca per numero.
-   * Una transazione gia' nota al database (altre righe la citano) non e' orfana: la gestiscono quelle
-   * righe. Un esito definitivo che NON conferma il numero non basta per rifiutare: l'ultima
-   * transazione potrebbe non essere la nostra, quindi si prosegue per numero.
+   * Se la transazione conferma il numero se ne annota SOLO l'id sulla riga (puo' essere di un altro
+   * programma sullo stesso registro: conferma il numero, non il contenuto) e si ritorna `null`: il
+   * chiamante prosegue SEMPRE col confronto per numero. Ritorna un esito solo per `NON_VERIFICABILE`
+   * (lettura non definitiva, riga cambiata). Una transazione gia' nota ad altre righe non e' orfana;
+   * un esito definitivo che non cita il numero non rifiuta nulla (potrebbe non essere la nostra).
    */
   private async verificaTransazioneOrfana(
     tenantId: string,
@@ -445,6 +447,8 @@ export class VerificaTrasmissioneRentriUseCase {
     riga: {
       id: string
       stato: StatoTrasmissioneRentri
+      transazioneId: string | null
+      identificativoRentri: string | null
       identificativoRegistro: string | null
       updatedAt: Date
       movimento: { progressiveYear: number; progressiveNumber: number }
@@ -488,7 +492,9 @@ export class VerificaTrasmissioneRentriUseCase {
     const [mia] = applicaEsitoDettagliato([{ movimentoId, numero }], esito).righe
     if (mia.stato !== 'TRASMESSA') return null
 
-    return this.nelTenant(tenantId, async tx => {
+    // L'ultima transazione puo' essere di un altro programma sullo stesso registro: conferma il numero,
+    // non il contenuto. Si annota solo il transazione_id e si prosegue SEMPRE col confronto per numero.
+    const annotata = await this.nelTenant(tenantId, async tx => {
       const r = await tx.movimentoTrasmissioneRentri.updateMany({
         where: {
           id: riga.id,
@@ -499,27 +505,37 @@ export class VerificaTrasmissioneRentriUseCase {
         },
         data: { transazioneId: ultima },
       })
-      if (r.count !== 1) {
-        return {
-          esito: 'NON_VERIFICABILE' as const,
-          stato: riga.stato,
-          messaggio: "L'annotazione è cambiata nel frattempo: rieseguire la verifica.",
-        }
-      }
-      await this.repo.applicaEsitiInTx(
-        tx,
-        tenantId,
-        ultima,
-        [mia],
-        STATI_VERIFICABILI as Array<'ATTESA_ESITO' | 'INCERTA'>
-      )
-      await this.audit(tx, tenantId, utenteId, movimentoId, riga.stato, 'TRASMESSA', 'TRANSAZIONE')
-      return {
-        esito: 'TRASMESSA' as const,
-        stato: 'TRASMESSA' as const,
-        messaggio: 'RENTRI ha confermato la trasmissione.',
-      }
+      return r.count === 1
     })
+    if (!annotata) {
+      return {
+        esito: 'NON_VERIFICABILE',
+        stato: riga.stato,
+        messaggio: "L'annotazione è cambiata nel frattempo: rieseguire la verifica.",
+      }
+    }
+    await this.ricarica(tenantId, riga)
+    return null
+  }
+
+  /** Rilegge dal database i campi della riga che i controlli del passo 2 confrontano. */
+  private async ricarica(
+    tenantId: string,
+    riga: {
+      id: string
+      stato: StatoTrasmissioneRentri
+      transazioneId: string | null
+      identificativoRentri: string | null
+      updatedAt: Date
+    }
+  ): Promise<void> {
+    const adesso = await this.nelTenant(tenantId, tx =>
+      tx.movimentoTrasmissioneRentri.findFirst({
+        where: { id: riga.id, tenantId },
+        select: { stato: true, transazioneId: true, identificativoRentri: true, updatedAt: true },
+      })
+    )
+    if (adesso) Object.assign(riga, adesso)
   }
 
   private async audit(

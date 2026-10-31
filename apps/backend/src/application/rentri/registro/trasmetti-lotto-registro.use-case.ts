@@ -68,6 +68,8 @@ export interface EsitoGiroRegistro {
     | 'RIFIUTATO'
   trasmesse: number
   rifiutate: number
+  /** Righe del lotto rimaste `INCERTA` dopo un esito senza conferma ne' rifiuto (da verificare). */
+  incerte?: number
   nonTrasmissibili: number
   /** Candidate rimaste fuori dal lotto (correzioni in attesa del predecessore, oltre il massimo). */
   inAttesa: number
@@ -201,6 +203,7 @@ export class TrasmettiLottoRegistroUseCase {
             : 'INVIATO',
       trasmesse: risultato.trasmesse,
       rifiutate: risultato.rifiutate,
+      incerte: risultato.incerte,
       nonTrasmissibili,
       inAttesa,
       attesaEsito: risultato.esito === 'RESTA_IN_ATTESA' ? preparate.length : 0,

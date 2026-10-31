@@ -19,6 +19,8 @@ import {
   TransazioneRentriNonTrovataError,
 } from './rentri-api.client'
 
+const UUID_RENTRI = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** Messaggio di validazione di RENTRI su una riga trasmessa (`EsitoMessaggioModel`). */
 export interface MessaggioRentri {
   indice: number | null
@@ -301,7 +303,11 @@ export class RentriRegistriClient {
   /**
    * `GET /{identificativo_registro}/last-transazione-id` (righe 15-83):
    * riferimento all'ultima trasmissione di registrazioni per il registro.
-   * `null` se non e' mai stata inviata alcuna trasmissione (204 No Content).
+   * 200 -> il `transazione_id`; 204 o corpo senza il campo -> `null` (nessuna trasmissione).
+   * Ogni altro stato e' un {@link RentriApiError} (403/404 non ritentabili; 429/423/5xx con
+   * `retryable = true` dopo i tentativi di resilienza; altri 4xx non ritentabili). Un id che non e' un
+   * UUID e' un errore tecnico ({@link EsitoRentriMalformatoError}): non deve mai arrivare a una
+   * colonna `uuid` del database.
    */
   async ultimaTransazioneId(
     identificativoRegistro: string,
@@ -309,12 +315,47 @@ export class RentriRegistriClient {
   ): Promise<string | null> {
     const contesto = `/${identificativoRegistro}/last-transazione-id`
     const url = `${this.config.baseUrl}${RentriRegistriClient.DATI_REGISTRI_PATH}${contesto}`
-    const headers = await this.buildAuthHeaders(tenantId)
-    const response = await firstValueFrom(
-      this.httpService.get(url, { headers, timeout: this.timeout, validateStatus: () => true })
-    )
-    if (response.status === 204) return null
-    return response.data?.transazione_id ?? null
+
+    for (
+      let tentativo = 1;
+      tentativo <= RentriRegistriClient.MAX_TENTATIVI_RESILIENZA;
+      tentativo++
+    ) {
+      const headers = await this.buildAuthHeaders(tenantId)
+      const response = await firstValueFrom(
+        this.httpService.get(url, { headers, timeout: this.timeout, validateStatus: () => true })
+      )
+      if (response.status === 204) return null
+      if (response.status === 200) {
+        const id = response.data?.transazione_id
+        if (id === undefined || id === null) return null
+        if (typeof id !== 'string' || !UUID_RENTRI.test(id)) {
+          throw new EsitoRentriMalformatoError('transazione_id non valido')
+        }
+        return id
+      }
+      if (response.status === 404) {
+        throw new RentriApiError(404, 'Non trovato', 'Registro non trovato', false)
+      }
+      if (![403, 423, 429].includes(response.status) && response.status < 500) {
+        throw new RentriApiError(response.status, 'Richiesta non accettata', undefined, false)
+      }
+      await gestisciRispostaErroreRentri(
+        response,
+        contesto,
+        tentativo,
+        RentriRegistriClient.MAX_TENTATIVI_RESILIENZA,
+        this.logger,
+        this.metrics,
+        ms => attendiMs(ms),
+        {
+          baseMs: RentriRegistriClient.BACKOFF_BASE_MS,
+          maxMs: RentriRegistriClient.BACKOFF_MAX_MS,
+        },
+        tenantId ?? this.tenantIdCorrente()
+      )
+    }
+    throw new Error(`Superato il numero massimo di tentativi verso ${contesto}.`)
   }
 
   /**
@@ -380,7 +421,13 @@ export class RentriRegistriClient {
       tipo: m?.tipo === 'Avvertimento' ? 'Avvertimento' : 'Errore',
       codice: typeof m?.codice_messaggio === 'string' ? m.codice_messaggio : null,
     }))
-    const grezzeReg = grezzo?.esito?.numero_registrazioni
+    const grezzoEsito = grezzo?.esito
+    const grezzeReg = grezzoEsito?.numero_registrazioni
+    // `esito` presente ma non oggetto: non si sa cosa RENTRI abbia registrato.
+    const esitoIgnoto =
+      grezzoEsito !== undefined &&
+      grezzoEsito !== null &&
+      (typeof grezzoEsito !== 'object' || Array.isArray(grezzoEsito))
     const registrazioni: any[] = Array.isArray(grezzeReg) ? grezzeReg : []
     const conNumero = registrazioni.filter(
       r => Number.isInteger(r?.anno) && Number.isInteger(r?.progressivo)
@@ -389,6 +436,7 @@ export class RentriRegistriClient {
     const senzaNumero =
       registrazioni.length -
       conNumero.length +
+      (esitoIgnoto ? 1 : 0) +
       (grezzeReg !== undefined && grezzeReg !== null && !Array.isArray(grezzeReg) ? 1 : 0)
     return {
       errore: grezzo.errore,

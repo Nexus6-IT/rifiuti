@@ -153,6 +153,7 @@ export class RentriRegistroTrasmissioneJob {
             esito: esito.esito,
             trasmesse: esito.trasmesse,
             rifiutate: esito.rifiutate,
+            incerte: esito.incerte ?? 0,
             nonTrasmissibili: esito.nonTrasmissibili,
             inAttesa: esito.inAttesa,
             attesaEsito: esito.attesaEsito,

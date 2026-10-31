@@ -678,42 +678,106 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       expect(await rigaDi(m.id)).toMatchObject({ stato: 'RIFIUTATA', bloccatoInvio: false })
     })
 
-    it('con transazione: errore=false ma riga non confermata -> resta INCERTA (mai RIFIUTATA)', async () => {
-      const a = await azienda()
-      const transazioneId = randomUUID()
-      const m = await incerta(a, { transazioneId })
-      finto.esito = () => ({ errore: false, validazione: [], numeroRegistrazioni: [] })
-      const r = await verifica.verifica(a.tenantId, utenteId, m.id)
-      expect(r.esito).toBe('NON_VERIFICABILE')
-      expect(r.stato).toBe('INCERTA')
-      expect(await rigaDi(m.id)).toMatchObject({ stato: 'INCERTA', bloccatoInvio: true })
+    describe('esito della transazione senza conferma ne rifiuto (errore=false): si prosegue per numero', () => {
+      const senzaConferma = () => ({ errore: false, validazione: [], numeroRegistrazioni: [] })
+
+      it('RENTRI ha davvero la riga (uguale): TRASMESSA con identificativo', async () => {
+        const a = await azienda()
+        const m = await incerta(a, { transazioneId: randomUUID() })
+        finto.esito = senzaConferma
+        finto.dettaglio = (anno, prog) => uguale(anno, prog, ID_MOV(55))
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('TRASMESSA')
+        expect(await rigaDi(m.id)).toMatchObject({
+          stato: 'TRASMESSA',
+          identificativoRentri: ID_MOV(55),
+        })
+      })
+
+      it('RENTRI non ha la riga (404 + conteggio 0, invio vecchio): DA_TRASMETTERE', async () => {
+        const a = await azienda()
+        const m = await incerta(a, { transazioneId: randomUUID() })
+        finto.esito = senzaConferma
+        finto.dettaglio = () => non404()
+        finto.conta = 0
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('DA_TRASMETTERE')
+        expect(await rigaDi(m.id)).toMatchObject({ stato: 'DA_TRASMETTERE', bloccatoInvio: false })
+      })
+
+      it('404 ma invio recente: resta INCERTA (mai DA_TRASMETTERE)', async () => {
+        const a = await azienda()
+        const m = await incerta(a, { transazioneId: randomUUID(), prenotatoIl: oreFa(1) })
+        finto.esito = senzaConferma
+        finto.dettaglio = () => non404()
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+
+      it('riga ATTESA_ESITO: stessa strada, se RENTRI non risponde sul numero resta INCERTA', async () => {
+        const a = await azienda()
+        const mm = await movimento(a)
+        await riga(a, mm, {
+          stato: 'ATTESA_ESITO',
+          transazioneId: randomUUID(),
+          prenotatoIl: oreFa(10),
+        })
+        finto.esito = senzaConferma
+        finto.dettaglio = () => new RentriApiError(503, 'x', undefined, true)
+        const r = await verifica.verifica(a.tenantId, utenteId, mm.id)
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect((await rigaDi(mm.id))?.stato).toBe('INCERTA')
+      })
     })
 
     describe('POST orfana (INCERTA senza transazione_id)', () => {
-      it("rilegge l'ultima transazione del registro prima del numero: confermata -> TRASMESSA e transazione annotata", async () => {
+      const confermaNumero = (m: { progressiveNumber: number }) => ({
+        errore: false,
+        validazione: [],
+        numeroRegistrazioni: [
+          {
+            anno: 2026,
+            progressivo: m.progressiveNumber,
+            identificativo: ID_MOV(m.progressiveNumber),
+          },
+        ],
+      })
+
+      it("l'ultima transazione conferma il numero: si annota l'id e si confronta SEMPRE il contenuto (uguale -> TRASMESSA)", async () => {
         const a = await azienda()
         const orfana = randomUUID()
         const m = await incerta(a)
         finto.ultima = orfana
-        finto.esito = () => ({
-          errore: false,
-          validazione: [],
-          numeroRegistrazioni: [
-            {
-              anno: 2026,
-              progressivo: m.progressiveNumber,
-              identificativo: ID_MOV(m.progressiveNumber),
-            },
-          ],
-        })
+        finto.esito = () => confermaNumero(m)
+        finto.dettaglio = (anno, prog) => uguale(anno, prog, ID_MOV(66))
         const r = await verifica.verifica(a.tenantId, utenteId, m.id)
         expect(r.esito).toBe('TRASMESSA')
-        expect(finto.chiamateDettaglio).toBe(0)
+        expect(finto.chiamateDettaglio).toBe(1)
         expect(await rigaDi(m.id)).toMatchObject({
           stato: 'TRASMESSA',
           transazioneId: orfana,
-          identificativoRentri: ID_MOV(m.progressiveNumber),
+          identificativoRentri: ID_MOV(66),
         })
+      })
+
+      it('transazione di un altro programma (stesso numero, contenuto diverso): mai TRASMESSA, INCERTA numero occupato', async () => {
+        const a = await azienda()
+        const orfana = randomUUID()
+        const m = await incerta(a)
+        finto.ultima = orfana
+        finto.esito = () => confermaNumero(m)
+        finto.dettaglio = (anno, prog) => ({
+          ...uguale(anno, prog),
+          rifiuto: { codice_eer: '200101', quantita: { valore: 5, unita_misura: 'kg' } },
+        })
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('DIVERSA')
+        const dopo = await rigaDi(m.id)
+        expect(dopo?.stato).toBe('INCERTA')
+        expect(dopo?.bloccatoInvio).toBe(true)
+        expect(dopo?.motivoBlocco).toContain("occupato su RENTRI da un'altra registrazione")
+        expect(dopo?.transazioneId).toBe(orfana)
       })
 
       it('ancora in elaborazione: NON_VERIFICABILE, nessuna ricerca per numero, riga invariata', async () => {

@@ -205,6 +205,58 @@ describe('RentriRegistriClient (HttpService finto)', () => {
     expect(e.registrazioniSenzaNumero).toBe(1)
   })
 
+  it('esito presente ma non oggetto: registrazione ignota (senzaNumero)', async () => {
+    rispondi({ errore: true, esito: 'boh' })
+    const e = await client.attendiEsitoMovimenti(TRANSAZIONE, TENANT)
+    expect(e.registrazioniSenzaNumero).toBe(1)
+  })
+
+  describe('ultimaTransazioneId', () => {
+    const risposta = (status: number, data: unknown = {}) =>
+      of({ status, data, headers: { 'retry-after': '0' } })
+
+    it('200 -> id; 204 -> null; corpo senza campo -> null', async () => {
+      http.get.mockReturnValueOnce(risposta(200, { transazione_id: TRANSAZIONE }))
+      expect(await client.ultimaTransazioneId(REGISTRO, TENANT)).toBe(TRANSAZIONE)
+      http.get.mockReturnValueOnce(risposta(204, ''))
+      expect(await client.ultimaTransazioneId(REGISTRO, TENANT)).toBeNull()
+      http.get.mockReturnValueOnce(risposta(200, {}))
+      expect(await client.ultimaTransazioneId(REGISTRO, TENANT)).toBeNull()
+    })
+
+    it.each([['non-un-uuid'], [42], ['11111111-1111-4111-8111-11111111111Z']])(
+      'id non valido (%p): errore tecnico, mai passato al database',
+      async id => {
+        http.get.mockReturnValueOnce(risposta(200, { transazione_id: id }))
+        await expect(client.ultimaTransazioneId(REGISTRO, TENANT)).rejects.toBeInstanceOf(
+          EsitoRentriMalformatoError
+        )
+      }
+    )
+
+    it('404 e 403: RentriApiError non ritentabile, una sola chiamata', async () => {
+      for (const status of [404, 403, 400]) {
+        http.get.mockClear()
+        http.get.mockReturnValueOnce(risposta(status))
+        const e = await client.ultimaTransazioneId(REGISTRO, TENANT).catch(x => x)
+        expect(e).toBeInstanceOf(RentriApiError)
+        expect(e).toMatchObject({ status, retryable: false })
+        expect(http.get).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('429 e 5xx: RentriApiError ritentabile dopo i tentativi di resilienza', async () => {
+      for (const status of [429, 503]) {
+        http.get.mockReset()
+        http.get.mockReturnValue(risposta(status))
+        const e = await client.ultimaTransazioneId(REGISTRO, TENANT).catch(x => x)
+        expect(e).toBeInstanceOf(RentriApiError)
+        expect(e).toMatchObject({ status, retryable: true })
+        expect(http.get).toHaveBeenCalledTimes(5)
+      }
+    })
+  })
+
   it('polling esaurito: errore dedicato (non un esito)', async () => {
     http.get.mockReturnValue(of({ status: 200, data: {}, headers: {} }))
     await expect(

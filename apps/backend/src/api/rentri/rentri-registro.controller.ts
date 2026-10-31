@@ -198,6 +198,7 @@ export class RentriRegistroController {
           registroId,
           esito: esito.esito,
           attesaEsito: esito.attesaEsito,
+          incerte: esito.incerte ?? 0,
         })
       })
       .catch((error: unknown) => {

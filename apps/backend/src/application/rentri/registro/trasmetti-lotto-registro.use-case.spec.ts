@@ -338,7 +338,7 @@ describe('TrasmettiLottoRegistroUseCase', () => {
       numeroRegistrazioni: [{ anno: 2026, progressivo: 1, identificativo: null }],
     })
     const r = await x.uc.trasmettiRegistro(T, R)
-    expect(r).toMatchObject({ esito: 'INVIATO', trasmesse: 1, rifiutate: 0 })
+    expect(r).toMatchObject({ esito: 'INVIATO', trasmesse: 1, rifiutate: 0, incerte: 1 })
     expect(x.repo.applicaEsiti.mock.calls[0][2].map((e: any) => e.stato)).toEqual([
       'TRASMESSA',
       'INCERTA',

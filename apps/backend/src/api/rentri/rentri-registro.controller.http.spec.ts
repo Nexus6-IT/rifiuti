@@ -454,6 +454,13 @@ describe('RentriRegistroController — catena HTTP', () => {
       expect(verifica.verifica).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO)
     })
 
+    it('GET movimenti/:id: il VIEWER legge (dettaglio senza chiamare RENTRI)', async () => {
+      await avvia('VIEWER')
+      const d = await cliente(http().get(`/rentri/registro/movimenti/${MOVIMENTO}`))
+      expect(d.status).toBe(200)
+      expect(dettaglio.dettaglio).toHaveBeenCalledWith(CLIENTE, MOVIMENTO)
+    })
+
     it('allineamento (chiama RENTRI): VIEWER 403 senza use case', async () => {
       await avvia('VIEWER')
       const a = await cliente(
