@@ -48,7 +48,8 @@ export interface CreateContractInput {
 export interface ContractParty {
   id: string
   ragioneSociale: string
-  partitaIVA: string
+  partitaIVA: string | null
+  codiceFiscale: string | null
 }
 
 /** Contratto con produttore e controparte risolti (null se non più in registro). */
@@ -248,7 +249,11 @@ export class ContractService {
 
     const produttoriIds = [...new Set(contracts.map(c => c.producerId))]
     const controparteIds = [...new Set(contracts.map(c => c.counterpartyId))]
-    const select = { id: true, ragioneSociale: true, partitaIVA: true }
+    // Nome e identificativi vengono dalla ditta (D10): se la ditta cambia nome, la lista segue
+    const select = {
+      id: true,
+      ditta: { select: { ragioneSociale: true, partitaIva: true, codiceFiscale: true } },
+    }
 
     const [produttori, trasportatori, destinatari] = await Promise.all([
       this.prisma.produttore.findMany({ where: { tenantId, id: { in: produttoriIds } }, select }),
@@ -262,7 +267,14 @@ export class ContractService {
       }),
     ])
 
-    const perId = (righe: ContractParty[]) => new Map(righe.map(r => [r.id, r]))
+    const comeParte = (r: (typeof produttori)[number]): ContractParty => ({
+      id: r.id,
+      ragioneSociale: r.ditta.ragioneSociale,
+      partitaIVA: r.ditta.partitaIva,
+      codiceFiscale: r.ditta.codiceFiscale,
+    })
+    const perId = (righe: (typeof produttori)[number][]) =>
+      new Map(righe.map(r => [r.id, comeParte(r)]))
     const mappaProduttori = perId(produttori)
     // Trasportatori e destinatari sono registri distinti: un id sta in uno solo
     // dei due, quindi una mappa unica non può generare collisioni.

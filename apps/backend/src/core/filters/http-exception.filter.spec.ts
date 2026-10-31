@@ -5,12 +5,22 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import * as Sentry from '@sentry/node'
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientUnknownRequestError,
+} from '@prisma/client/runtime/library'
 import { HttpExceptionFilter } from './http-exception.filter'
 import {
+  DatiControparteNonValidiError,
+  DittaIdentificativiInConflittoError,
+  DittaNonTrovataError,
   FirAnnullatoNelFrattempoError,
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
   FirNonTrovatoError,
+  IdentificativoNonCorrispondenteError,
+  SedeNonModificabileError,
+  SedeNonTrovataError,
 } from '../domain/errors'
 import { TenantSenzaCertificatoRentriError } from '../../infrastructure/rentri/rentri-credential.resolver'
 
@@ -163,5 +173,100 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
       })
     )
     expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  describe('ditte e sedi delle controparti (F2-10)', () => {
+    const casi: Array<[string, Error, number, string]> = [
+      [
+        'dati non validi',
+        new DatiControparteNonValidiError('Codice fiscale non valido.'),
+        400,
+        'DATI_CONTROPARTE_NON_VALIDI',
+      ],
+      [
+        'identificativo contraddittorio',
+        new IdentificativoNonCorrispondenteError('Non corrisponde.'),
+        400,
+        'IDENTIFICATIVO_NON_CORRISPONDENTE',
+      ],
+      [
+        'identificativi in conflitto',
+        new DittaIdentificativiInConflittoError(),
+        409,
+        'DITTA_IDENTIFICATIVI_IN_CONFLITTO',
+      ],
+      [
+        'sede non modificabile',
+        new SedeNonModificabileError('È la sede principale.'),
+        409,
+        'SEDE_NON_MODIFICABILE',
+      ],
+      ['ditta non trovata', new DittaNonTrovataError(), 404, 'DITTA_NON_TROVATA'],
+      ['sede non trovata', new SedeNonTrovataError(), 404, 'SEDE_NON_TROVATA'],
+    ]
+    it.each(casi)(
+      '%s: status e codice, senza segnalazione a Bugsink',
+      (_nome, errore, status, codice) => {
+        filter.catch(errore, host)
+        expect(response.status).toHaveBeenCalledWith(status)
+        expect(response.json).toHaveBeenCalledWith(
+          expect.objectContaining({ statusCode: status, error: codice, message: errore.message })
+        )
+        expect(Sentry.captureException).not.toHaveBeenCalled()
+      }
+    )
+  })
+
+  it('la query string non finisce ne nella risposta ne nel log ne in Bugsink (host con CF in query)', () => {
+    filter.catch(new Error('boom'), host) // host: /api/v1/fir?search=<CF>
+    const risposta = JSON.stringify(response.json.mock.calls[0][0])
+    expect(risposta).not.toContain('RSSMRA80A01H501U')
+    expect(response.json.mock.calls[0][0].path).toBe('/api/v1/fir')
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('RSSMRA80A01H501U')
+    expect(JSON.stringify((Sentry.captureException as jest.Mock).mock.calls)).not.toContain(
+      'RSSMRA80A01H501U'
+    )
+  })
+
+  describe('violazioni di vincoli Postgres: nessun dato della riga (M5)', () => {
+    const CF = 'RSSMRA80A01H501U'
+    const messaggioPg =
+      'new row for relation "ditte" violates check constraint "ditte_codice_fiscale_forma"\n' +
+      `DETAIL: Failing row contains (abc, ${CF}, Rossi Mario).`
+
+    const errori: Array<[string, () => Error]> = [
+      [
+        'PrismaClientUnknownRequestError',
+        () =>
+          new PrismaClientUnknownRequestError(`Raw query failed. Message: ${messaggioPg}`, {
+            clientVersion: '5.22.0',
+          }),
+      ],
+      [
+        'P2010',
+        () =>
+          new PrismaClientKnownRequestError(
+            `Raw query failed. Code: 23514. Message: ${messaggioPg}`,
+            {
+              code: 'P2010',
+              clientVersion: '5.22.0',
+              meta: { code: '23514', message: messaggioPg },
+            }
+          ),
+      ],
+    ]
+
+    it.each(errori)('%s: la risposta e il log non contengono il codice fiscale', (_nome, crea) => {
+      filter.catch(crea(), creaHost('/api/v1/registry/ditte/cerca'))
+      expect(response.status).toHaveBeenCalledWith(500)
+      const risposta = JSON.stringify(response.json.mock.calls[0][0])
+      expect(risposta).not.toContain(CF)
+      expect(risposta).not.toContain('Failing row')
+      const registrato = JSON.stringify(
+        logger.error.mock.calls.map(c => [c[0], c[1]?.message, c[1]?.stack])
+      )
+      expect(registrato).not.toContain(CF)
+      expect(registrato).not.toContain('Rossi Mario')
+    })
   })
 })

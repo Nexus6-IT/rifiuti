@@ -36,6 +36,7 @@ module.exports = {
   collectCoverageFrom: [
     '**/*.(t|j)s',
     '!**/*.spec.ts',
+    '!**/test-support/**',
     '!**/*.module.ts',
     '!**/main.ts',
     '!**/*.interface.ts',

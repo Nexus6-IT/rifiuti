@@ -7,19 +7,25 @@ import {
   Destinatario,
   PaginatedResponse,
   Indirizzo,
+  Ditta,
+  SedeDitta,
+  CercaDittaRisposta,
+  DatiSedeDitta,
 } from '../../shared/models/registry.model'
 import { environment } from '../../../environments/environment'
 
 export interface CreateProduttoreDto {
   ragioneSociale: string
-  partitaIVA: string
+  partitaIVA?: string
+  codiceFiscale?: string
   sedeLegale: Indirizzo
   pec?: string
 }
 
 export interface CreateTrasportatoreDto {
   ragioneSociale: string
-  partitaIVA: string
+  partitaIVA?: string
+  codiceFiscale?: string
   sedeLegale: Indirizzo
   numeroIscrizione: string
   pec?: string
@@ -30,7 +36,8 @@ export interface CreateTrasportatoreDto {
 
 export interface CreateDestinatarioDto {
   ragioneSociale: string
-  partitaIVA: string
+  partitaIVA?: string
+  codiceFiscale?: string
   sede: Indirizzo
   numeroAutorizzazione: string
   pec?: string
@@ -136,5 +143,42 @@ export class RegistryService {
   searchDestinatari(query: string): Observable<Destinatario[]> {
     const params = new HttpParams().set('q', query)
     return this.http.get<Destinatario[]>(`${this.API_URL}/destinatari/search`, { params })
+  }
+
+  // ========== DITTE E SEDI (F2-10) ==========
+
+  /**
+   * Cerca la ditta per partita IVA o codice fiscale. POST e non GET: un codice fiscale in query
+   * string finirebbe nei log del proxy.
+   */
+  cercaDitta(identificativo: string): Observable<CercaDittaRisposta> {
+    return this.http.post<CercaDittaRisposta>(`${this.API_URL}/ditte/cerca`, { identificativo })
+  }
+
+  getDitta(id: string): Observable<Ditta> {
+    return this.http.get<Ditta>(`${this.API_URL}/ditte/${id}`)
+  }
+
+  aggiornaDitta(
+    id: string,
+    dto: { ragioneSociale?: string; partitaIva?: string; codiceFiscale?: string }
+  ): Observable<Ditta> {
+    return this.http.put<Ditta>(`${this.API_URL}/ditte/${id}`, dto)
+  }
+
+  creaSede(dittaId: string, dto: DatiSedeDitta): Observable<SedeDitta> {
+    return this.http.post<SedeDitta>(`${this.API_URL}/ditte/${dittaId}/sedi`, dto)
+  }
+
+  aggiornaSede(
+    dittaId: string,
+    sedeId: string,
+    dto: Partial<DatiSedeDitta> & { attiva?: boolean }
+  ): Observable<SedeDitta> {
+    return this.http.put<SedeDitta>(`${this.API_URL}/ditte/${dittaId}/sedi/${sedeId}`, dto)
+  }
+
+  impostaSedePrincipale(dittaId: string, sedeId: string): Observable<Ditta> {
+    return this.http.post<Ditta>(`${this.API_URL}/ditte/${dittaId}/sedi/${sedeId}/principale`, {})
   }
 }

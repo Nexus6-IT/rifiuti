@@ -1,3 +1,4 @@
+import { PIVA_VALIDA } from '../../../test-support/anagrafiche-di-test'
 import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
 
 /**
@@ -12,17 +13,22 @@ import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
 
 const REGISTRO = {
   ragioneSociale: 'Impresa Uno SRL',
-  partitaIVA: '12345678901',
+  partitaIVA: PIVA_VALIDA,
   via: 'Via Roma',
   civico: '1',
   cap: '80100',
   comune: 'Napoli',
   provincia: 'NA',
   numeroIscrizione: 'NA/123456',
+  ditta: { ragioneSociale: 'Impresa Uno SRL', partitaIva: '12345678903', codiceFiscale: null },
+  sede: { via: 'Via Roma', civico: '1', cap: '80100', comune: 'Napoli', provincia: 'NA' },
 }
 
 function prismaFinto(opzioni: { registroPresente?: boolean } = {}) {
-  const trova = jest.fn(async () => (opzioni.registroPresente === false ? null : REGISTRO))
+  const trova = jest.fn(
+    async (): Promise<Record<string, unknown> | null> =>
+      opzioni.registroPresente === false ? null : REGISTRO
+  )
   return {
     db: {
       produttore: { findFirst: trova },
@@ -65,6 +71,41 @@ describe('CostruisciPayloadRentri', () => {
     const corpo = await servizio.costruisci(firFinto() as never, 'tenant-1')
 
     expect(validaNuovoFormulario(corpo)).toBeNull()
+  })
+
+  it('usa ditta e sede nella lettura: CF ?? P.IVA, indirizzo della sede', async () => {
+    const prisma = prismaFinto()
+    prisma.db.produttore.findFirst.mockResolvedValue({
+      ...REGISTRO,
+      ditta: {
+        ragioneSociale: 'Ditta SPA',
+        partitaIva: '12345678903',
+        codiceFiscale: 'RSSMRA80A01H501U',
+      },
+      sede: { via: 'Via Sede', civico: '9', cap: '80100', comune: 'Napoli', provincia: 'NA' },
+    })
+    const servizio = new CostruisciPayloadRentri(
+      prisma as never,
+      unitaLocale as never,
+      logger() as never
+    )
+
+    const corpo = (await servizio.costruisci(firFinto() as never, 'tenant-1')) as {
+      dati_partenza: {
+        produttore: {
+          denominazione: string
+          codice_fiscale: string
+          indirizzo: { indirizzo: string }
+        }
+      }
+    }
+
+    expect(corpo.dati_partenza.produttore.denominazione).toBe('Ditta SPA')
+    expect(corpo.dati_partenza.produttore.codice_fiscale).toBe('RSSMRA80A01H501U')
+    expect(corpo.dati_partenza.produttore.indirizzo.indirizzo).toBe('Via Sede')
+    expect(prisma.db.produttore.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { ditta: true, sede: true } })
+    )
   })
 
   it('rifiuta quando il tenant non ha una unita locale RENTRI', async () => {

@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 /**
  * TDD Task 4 dello scadenzario: l'elenco di trasportatori e destinatari deve
  * riportare lo stato di scadenza (booleano + giorni residui) calcolato al
@@ -27,6 +27,7 @@ import { DeleteProduttoreUseCase } from '../../application/registry/use-cases/de
 import { DeleteTrasportatoreUseCase } from '../../application/registry/use-cases/delete-trasportatore.use-case'
 import { DeleteDestinatarioUseCase } from '../../application/registry/use-cases/delete-destinatario.use-case'
 import { Result } from '../../core/application/result'
+import { Produttore } from '../../domain/registry/entities/produttore'
 import { Trasportatore } from '../../domain/registry/entities/trasportatore'
 import { Destinatario } from '../../domain/registry/entities/destinatario'
 import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
@@ -45,6 +46,8 @@ function creaIndirizzo(): Indirizzo {
 function creaTrasportatore(scadenzaIscrizione?: Date): Trasportatore {
   return Trasportatore.create({
     ragioneSociale: 'Trasporti Rossi SRL',
+    dittaId: 'ditta-1',
+    sedeId: 'sede-1',
     partitaIVA: PartitaIVA.create('12345678901'),
     sedeLegale: creaIndirizzo(),
     numeroIscrizione: 'AL12345',
@@ -55,6 +58,8 @@ function creaTrasportatore(scadenzaIscrizione?: Date): Trasportatore {
 function creaDestinatario(scadenzaAutorizzazione?: Date): Destinatario {
   return Destinatario.create({
     ragioneSociale: 'Impianto Verdi SRL',
+    dittaId: 'ditta-1',
+    sedeId: 'sede-1',
     partitaIVA: PartitaIVA.create('98765432109'),
     sede: creaIndirizzo(),
     numeroAutorizzazione: 'AUT-999',
@@ -66,10 +71,14 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
   let controller: RegistryController
   let listTrasportatoriUseCase: { execute: jest.Mock }
   let listDestinatariUseCase: { execute: jest.Mock }
+  let createProduttoreUseCase: { execute: jest.Mock }
+  let updateProduttoreUseCase: { execute: jest.Mock }
 
   beforeEach(async () => {
     listTrasportatoriUseCase = { execute: jest.fn() }
     listDestinatariUseCase = { execute: jest.fn() }
+    createProduttoreUseCase = { execute: jest.fn() }
+    updateProduttoreUseCase = { execute: jest.fn() }
 
     const noop = { execute: jest.fn() }
 
@@ -77,7 +86,7 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
       controllers: [RegistryController],
       providers: [
         { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
-        { provide: CreateProduttoreUseCase, useValue: noop },
+        { provide: CreateProduttoreUseCase, useValue: createProduttoreUseCase },
         { provide: CreateTrasportatoreUseCase, useValue: noop },
         { provide: CreateDestinatarioUseCase, useValue: noop },
         { provide: ListProduttoriUseCase, useValue: noop },
@@ -86,7 +95,7 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
         { provide: GetProduttoreUseCase, useValue: noop },
         { provide: GetTrasportatoreUseCase, useValue: noop },
         { provide: GetDestinatarioUseCase, useValue: noop },
-        { provide: UpdateProduttoreUseCase, useValue: noop },
+        { provide: UpdateProduttoreUseCase, useValue: updateProduttoreUseCase },
         { provide: UpdateTrasportatoreUseCase, useValue: noop },
         { provide: UpdateDestinatarioUseCase, useValue: noop },
         { provide: DeleteProduttoreUseCase, useValue: noop },
@@ -182,6 +191,116 @@ describe('RegistryController — stato di scadenza nell’elenco (Task 4 scadenz
       await controller.listTrasportatori(req('tenant-xyz'))
 
       expect(listTrasportatoriUseCase.execute).toHaveBeenCalledWith({ tenantId: 'tenant-xyz' })
+    })
+  })
+
+  describe('POST /registry/produttori — risposta compatibile (F2-10)', () => {
+    it('mantiene i campi di oggi e aggiunge dittaId, sedeId, codiceFiscale, dittaEsistente, avvisi', async () => {
+      const produttore = Produttore.create({
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
+        ragioneSociale: 'Acme Srl',
+        partitaIVA: PartitaIVA.create('12345678903'),
+        codiceFiscale: null,
+        sedeLegale: creaIndirizzo(),
+      })
+      createProduttoreUseCase.execute.mockResolvedValue(
+        Result.ok({ ruolo: produttore, dittaEsistente: true, avvisi: ['Avviso di prova'] })
+      )
+
+      const risposta = await controller.createProduttore({
+        ragioneSociale: 'Acme Srl',
+        partitaIVA: '12345678903',
+        sedeLegale: { via: 'Via Roma', civico: '1', cap: '00100', comune: 'Roma', provincia: 'RM' },
+      } as any)
+
+      // corpo di oggi
+      expect(risposta).toMatchObject({
+        id: produttore.id,
+        ragioneSociale: 'Acme Srl',
+        partitaIVA: '12345678903',
+        sedeLegale: { via: 'Via Roma', civico: '1', cap: '00100', comune: 'Roma', provincia: 'RM' },
+      })
+      // aggiunte D7
+      expect(risposta).toMatchObject({
+        codiceFiscale: null,
+        dittaId: 'ditta-1',
+        sedeId: 'sede-1',
+        partitaIvaDaVerificare: false,
+        dittaEsistente: true,
+        avvisi: ['Avviso di prova'],
+      })
+    })
+
+    it('passa il codice fiscale del corpo al caso d uso', async () => {
+      createProduttoreUseCase.execute.mockResolvedValue(Result.fail('x'))
+
+      await expect(
+        controller.createProduttore({
+          ragioneSociale: 'Acme Srl',
+          partitaIVA: '12345678903',
+          codiceFiscale: 'RSSMRA80A01H501U',
+          sedeLegale: {
+            via: 'Via Roma',
+            civico: '1',
+            cap: '00100',
+            comune: 'Roma',
+            provincia: 'RM',
+          },
+        } as any)
+      ).rejects.toBeInstanceOf(BadRequestException)
+
+      expect(createProduttoreUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ codiceFiscale: 'RSSMRA80A01H501U' })
+      )
+    })
+  })
+
+  describe('PUT /registry/produttori/:id — nuovi campi', () => {
+    it('inoltra codiceFiscale, partitaIVA e sedeId al caso d uso', async () => {
+      updateProduttoreUseCase.execute.mockResolvedValue(Result.fail('Produttore not found'))
+
+      await expect(
+        controller.updateProduttore('id-1', {
+          codiceFiscale: 'RSSMRA80A01H501U',
+          partitaIVA: '12345678903',
+          sedeId: '3f2b1a50-8b0e-4b7c-9a52-0d8a2d1c1e11',
+        } as any)
+      ).rejects.toBeInstanceOf(NotFoundException)
+
+      expect(updateProduttoreUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'id-1',
+          codiceFiscale: 'RSSMRA80A01H501U',
+          partitaIVA: '12345678903',
+          sedeId: '3f2b1a50-8b0e-4b7c-9a52-0d8a2d1c1e11',
+        })
+      )
+    })
+  })
+
+  describe('GET lista — campi della ditta', () => {
+    it('riporta dittaId, sedeId, numeroSedi e partitaIvaDaVerificare, senza ruoliDitta', async () => {
+      const t = Trasportatore.create({
+        dittaId: 'ditta-9',
+        sedeId: 'sede-9',
+        ragioneSociale: 'Trasporti Rossi SRL',
+        partitaIVA: PartitaIVA.create('12345678901'), // checksum non valido: dato migrato
+        sedeLegale: creaIndirizzo(),
+        numeroIscrizione: 'AL12345',
+        numeroSedi: 3,
+      })
+      listTrasportatoriUseCase.execute.mockResolvedValue(Result.ok([t]))
+
+      const result = await controller.listTrasportatori(req())
+
+      expect(result.items[0]).toMatchObject({
+        dittaId: 'ditta-9',
+        sedeId: 'sede-9',
+        numeroSedi: 3,
+        partitaIvaDaVerificare: true,
+      })
+      expect(result.items[0]).not.toHaveProperty('ruoliDitta')
     })
   })
 })

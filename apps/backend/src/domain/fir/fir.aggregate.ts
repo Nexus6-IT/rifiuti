@@ -30,18 +30,24 @@ export class FIR extends AggregateRoot {
   private producerName: string | null
   private producerAddress: string | null
   private producerContact: string | null
+  /** Codice fiscale della parte (privati e ditte con CF), F2-10 D9.7: null per i FIR con sole P.IVA. */
+  private producerCodiceFiscale: string | null
 
   // Trasportatore (Campo 7 FIR) — snapshot anagrafico immutabile
   private carrierPartitaIva: string | null
   private carrierName: string | null
   private carrierVehiclePlate: string | null
   private carrierContact: string | null
+  /** Codice fiscale della parte (privati e ditte con CF), F2-10 D9.7: null per i FIR con sole P.IVA. */
+  private carrierCodiceFiscale: string | null
 
   // Destinatario (Campo 9/10 FIR) — snapshot anagrafico immutabile
   private receiverPartitaIva: string | null
   private receiverName: string | null
   private receiverAddress: string | null
   private receiverContact: string | null
+  /** Codice fiscale della parte (privati e ditte con CF), F2-10 D9.7: null per i FIR con sole P.IVA. */
+  private receiverCodiceFiscale: string | null
 
   // Rifiuto (Campo 2/3 FIR)
   private cerCode: string
@@ -80,16 +86,19 @@ export class FIR extends AggregateRoot {
     this.producerName = params.producerName ?? null
     this.producerAddress = params.producerAddress ?? null
     this.producerContact = params.producerContact ?? null
+    this.producerCodiceFiscale = params.producerCodiceFiscale ?? null
 
     this.carrierPartitaIva = params.carrierPartitaIva ?? null
     this.carrierName = params.carrierName ?? null
     this.carrierVehiclePlate = params.carrierVehiclePlate ?? null
     this.carrierContact = params.carrierContact ?? null
+    this.carrierCodiceFiscale = params.carrierCodiceFiscale ?? null
 
     this.receiverPartitaIva = params.receiverPartitaIva ?? null
     this.receiverName = params.receiverName ?? null
     this.receiverAddress = params.receiverAddress ?? null
     this.receiverContact = params.receiverContact ?? null
+    this.receiverCodiceFiscale = params.receiverCodiceFiscale ?? null
 
     this.cerCode = params.cerCode
     this.wasteDescription = params.wasteDescription ?? null
@@ -297,6 +306,12 @@ export class FIR extends AggregateRoot {
       estimatedArrivalDate: FIR.normalizeDate(this.estimatedArrivalDate),
       transportNotes: this.transportNotes,
     }
+
+    // F2-10 D9.7: il codice fiscale entra SOLO se presente, cosi' ogni FIR con sole P.IVA (anche gia'
+    // firmato) rigenera esattamente il documento di prima. La sede non entra.
+    if (this.producerCodiceFiscale) document.producerCodiceFiscale = this.producerCodiceFiscale
+    if (this.carrierCodiceFiscale) document.carrierCodiceFiscale = this.carrierCodiceFiscale
+    if (this.receiverCodiceFiscale) document.receiverCodiceFiscale = this.receiverCodiceFiscale
 
     // Chiavi ordinate: rende il documento deterministico indipendentemente
     // dall'ordine di costruzione dell'oggetto.

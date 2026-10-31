@@ -17,6 +17,8 @@ function urlRipulito(url: unknown): unknown {
 const CHIAVE_POSTGRES =
   /Key \(([^\n]*?)\)=\((?:[^\n]*?\)(?=\s+(?:already exists|is not present|conflicts with))|[^\n]*\))/g
 const RIGA_POSTGRES = /Failing row contains \([^\n]*\)/g
+// `DETAIL: ...` di Postgres: riporta i valori della riga anche senza la forma `Key (...)=(...)`
+const DETTAGLIO_POSTGRES = /DETAIL:[^\n]*/g
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}/gi
 // Codice fiscale di persona fisica, anche omocodico. I confini sono "niente lettera o cifra
 // accanto" invece di `\b`, così il valore viene preso anche accanto a `_` (nomi di file),
@@ -33,6 +35,7 @@ const PARTITA_IVA = /(?<![A-Z0-9])(?:IT)?\d{11}(?![A-Z0-9])/gi
  */
 export function mascheraDatiPersonali(testo: string): string {
   return testo
+    .replace(DETTAGLIO_POSTGRES, 'DETAIL: ***')
     .replace(CHIAVE_POSTGRES, 'Key ($1)=(***)')
     .replace(RIGA_POSTGRES, 'Failing row contains (***)')
     .replace(EMAIL, '***@***')

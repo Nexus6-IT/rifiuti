@@ -1,145 +1,77 @@
 /**
  * Trasportatore Prisma Repository Implementation
- * Maps between Trasportatore domain entity and Trasportatore Prisma model
+ * Il trasportatore e' un ruolo di una ditta (F2-10): identita' fiscale e ragione sociale stanno
+ * sulla ditta, indirizzo e contatti sulla sede predefinita. Parte comune in `RuoloDittaPrismaBase`.
  */
 
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from './prisma.service'
-import { TenantContext } from '../../core/context/tenant-context'
 import { TrasportatoreRepository } from '../../domain/registry/repositories/trasportatore.repository'
 import { Trasportatore } from '../../domain/registry/entities/trasportatore'
 import { PartitaIVA } from '../../domain/registry/value-objects/partita-iva'
 import { Indirizzo } from '../../domain/registry/value-objects/indirizzo'
+import { ClientDitte } from './ditta-prisma.repository'
+import {
+  ContestoDittaLetto,
+  RecordSedeLetto,
+  RuoloDittaPrismaBase,
+} from './ruolo-ditta-prisma.base'
 
 @Injectable()
-export class TrasportatorePrismaRepository implements TrasportatoreRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class TrasportatorePrismaRepository
+  extends RuoloDittaPrismaBase<Trasportatore>
+  implements TrasportatoreRepository<ClientDitte>
+{
+  protected readonly modello = 'trasportatore' as const
+  protected readonly ruolo = 'TRASPORTATORE' as const
 
-  async save(trasportatore: Trasportatore): Promise<void> {
-    const data = {
-      ragioneSociale: trasportatore.ragioneSociale,
-      partitaIVA: trasportatore.partitaIVA.getValue(),
-      numeroIscrizione: trasportatore.numeroIscrizione,
-      via: trasportatore.sedeLegale.getVia(),
-      civico: trasportatore.sedeLegale.getCivico(),
-      cap: trasportatore.sedeLegale.getCAP(),
-      comune: trasportatore.sedeLegale.getCitta(), // Map domain "citta" to database "comune"
-      provincia: trasportatore.sedeLegale.getProvincia(),
-      email: trasportatore.email || null,
-      telefono: trasportatore.telefono || null,
-      pec: trasportatore.pec || null,
-      scadenzaIscrizione: trasportatore.scadenzaIscrizione || null,
-      updatedAt: new Date(),
-    }
-
-    const tenantId = this.getContextTenantId()
-
-    await this.prisma.db.trasportatore.upsert({
-      where: { id: trasportatore.id },
-      create: {
-        id: trasportatore.id,
-        tenantId,
-        ...data,
-        createdAt: trasportatore.createdAt,
-      },
-      update: data,
-    })
-  }
-
-  async findById(id: string): Promise<Trasportatore | null> {
-    // Scoping per tenant: la RLS-extension è no-op su findUnique, quindi una
-    // findUnique per sola PK esporrebbe anagrafiche di altri tenant.
-    const tenantId = this.getContextTenantId()
-    const trasportatore = await this.prisma.db.trasportatore.findFirst({
-      where: { id, tenantId },
-    })
-
-    if (!trasportatore) {
-      return null
-    }
-
-    return this.toDomain(trasportatore)
-  }
-
-  async findByTenantId(tenantId: string): Promise<Trasportatore[]> {
-    const trasportatori = await this.prisma.db.trasportatore.findMany({
-      where: { tenantId },
-      orderBy: { ragioneSociale: 'asc' },
-    })
-
-    return trasportatori.map((t: any) => this.toDomain(t))
-  }
-
-  async findByPartitaIVA(partitaIVA: string): Promise<Trasportatore | null> {
-    const tenantId = this.getContextTenantId()
-
-    const trasportatore = await this.prisma.db.trasportatore.findFirst({
-      where: {
-        tenantId,
-        partitaIVA,
-      },
-    })
-
-    if (!trasportatore) {
-      return null
-    }
-
-    return this.toDomain(trasportatore)
+  constructor(prisma: PrismaService) {
+    super(prisma)
   }
 
   async findByNumeroIscrizione(numeroIscrizione: string): Promise<Trasportatore | null> {
-    const tenantId = this.getContextTenantId()
+    return this.primoPer({ numeroIscrizione })
+  }
 
-    const trasportatore = await this.prisma.db.trasportatore.findFirst({
-      where: {
-        tenantId,
-        numeroIscrizione,
-      },
-    })
+  protected indirizzoDi(t: Trasportatore): Indirizzo {
+    return t.sedeLegale
+  }
 
-    if (!trasportatore) {
-      return null
+  protected campiRuolo(t: Trasportatore): Record<string, unknown> {
+    return {
+      numeroIscrizione: t.numeroIscrizione,
+      scadenzaIscrizione: t.scadenzaIscrizione || null,
     }
-
-    return this.toDomain(trasportatore)
   }
 
-  async delete(id: string): Promise<void> {
-    // deleteMany scoped per tenant: impedisce la cancellazione cross-tenant.
-    const tenantId = this.getContextTenantId()
-    await this.prisma.db.trasportatore.deleteMany({
-      where: { id, tenantId },
-    })
-  }
-
-  private toDomain(record: any): Trasportatore {
+  protected daRecord(
+    riga: any,
+    sede: RecordSedeLetto,
+    contesto: ContestoDittaLetto
+  ): Trasportatore {
     return Trasportatore.reconstitute({
-      id: record.id,
-      ragioneSociale: record.ragioneSociale,
-      partitaIVA: PartitaIVA.create(record.partitaIVA),
+      id: riga.id,
+      dittaId: riga.dittaId,
+      sedeId: riga.sedeId,
+      ragioneSociale: contesto.ditta.ragioneSociale,
+      partitaIVA: contesto.ditta.partitaIva ? PartitaIVA.create(contesto.ditta.partitaIva) : null,
+      codiceFiscale: contesto.ditta.codiceFiscale,
       sedeLegale: Indirizzo.create({
-        via: record.via,
-        civico: record.civico,
-        cap: record.cap,
-        citta: record.comune, // Map database "comune" to domain "citta"
-        provincia: record.provincia,
+        via: sede.via,
+        civico: sede.civico,
+        cap: sede.cap,
+        citta: sede.comune, // Map database "comune" to domain "citta"
+        provincia: sede.provincia,
       }),
-      numeroIscrizione: record.numeroIscrizione,
-      email: record.email || undefined,
-      telefono: record.telefono || undefined,
-      pec: record.pec || undefined,
-      scadenzaIscrizione: record.scadenzaIscrizione || undefined,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
+      numeroIscrizione: riga.numeroIscrizione,
+      email: sede.email || undefined,
+      telefono: sede.telefono || undefined,
+      pec: sede.pec || undefined,
+      scadenzaIscrizione: riga.scadenzaIscrizione || undefined,
+      numeroSedi: contesto.numeroSedi,
+      ruoliDitta: contesto.ruoliDitta,
+      createdAt: riga.createdAt,
+      updatedAt: riga.updatedAt,
     })
-  }
-
-  /**
-   * Tenant corrente risolto dal contesto di richiesta (TenantContext / JWT).
-   * Fail-closed: lancia se il contesto non è impostato, invece di ricadere sul
-   * "primo tenant" del DB (causa del cross-tenant data leak).
-   */
-  private getContextTenantId(): string {
-    return TenantContext.requireTenantId()
   }
 }

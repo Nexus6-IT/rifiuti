@@ -816,16 +816,22 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       producerName: produttore?.ragioneSociale ?? '',
       producerAddress: produttore?.indirizzo ?? '',
       producerContact: produttore?.contatto || null,
+      // F2-10 D9.6: sede e CF scritti con null dove vuoti (C1 di F2-4: undefined = "non toccare").
+      producerSedeId: produttore?.sedeId ?? null,
+      producerCodiceFiscale: produttore?.codiceFiscale ?? null,
       carrierId: trasportatore?.registroId || fir.trasportatoreId || null,
       carrierPartitaIva: trasportatore?.partitaIva ?? '',
       carrierName: trasportatore?.ragioneSociale ?? '',
       carrierVehiclePlate: trasportatore?.targaVeicolo ?? '',
       carrierContact: trasportatore?.contatto || null,
+      carrierCodiceFiscale: trasportatore?.codiceFiscale ?? null,
       receiverId: destinatario?.registroId || fir.destinatarioId || null,
       receiverPartitaIva: destinatario?.partitaIva ?? '',
       receiverName: destinatario?.ragioneSociale ?? '',
       receiverAddress: destinatario?.indirizzo ?? '',
       receiverContact: destinatario?.contatto || null,
+      receiverSedeId: destinatario?.sedeId ?? null,
+      receiverCodiceFiscale: destinatario?.codiceFiscale ?? null,
       cerCode: fir.rifiuto.cerCode,
       quantity: fir.rifiuto.quantita.valore,
       unit: fir.rifiuto.quantita.unitaMisura,
@@ -883,7 +889,10 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
         record.producerName,
         record.producerPartitaIva,
         record.producerAddress,
-        record.producerContact
+        record.producerContact,
+        undefined,
+        record.producerCodiceFiscale,
+        record.producerSedeId
       ),
       trasportatore: this.partyFromRecord(
         record.carrierId,
@@ -891,14 +900,18 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
         record.carrierPartitaIva,
         undefined,
         record.carrierContact,
-        record.carrierVehiclePlate
+        record.carrierVehiclePlate,
+        record.carrierCodiceFiscale
       ),
       destinatario: this.partyFromRecord(
         record.receiverId,
         record.receiverName,
         record.receiverPartitaIva,
         record.receiverAddress,
-        record.receiverContact
+        record.receiverContact,
+        undefined,
+        record.receiverCodiceFiscale,
+        record.receiverSedeId
       ),
       trasportatoriAggiuntivi: (record.transportersAggiuntivi ?? []).map((t: any) => ({
         ordine: t.ordine,
@@ -1002,7 +1015,9 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
     partitaIva?: string | null,
     indirizzo?: string | null,
     contatto?: string | null,
-    targaVeicolo?: string | null
+    targaVeicolo?: string | null,
+    codiceFiscale?: string | null,
+    sedeId?: string | null
   ) {
     if (!ragioneSociale && !partitaIva && !registroId) return undefined
     return {
@@ -1012,6 +1027,8 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       indirizzo: indirizzo || undefined,
       contatto: contatto || undefined,
       targaVeicolo: targaVeicolo || undefined,
+      codiceFiscale: codiceFiscale || undefined,
+      sedeId: sedeId || undefined,
     }
   }
 
@@ -1037,18 +1054,23 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       producerName: produttore?.ragioneSociale || '',
       producerAddress: produttore?.indirizzo || '',
       producerContact: produttore?.contatto || undefined,
+      producerSedeId: produttore?.sedeId || undefined,
+      producerCodiceFiscale: produttore?.codiceFiscale || undefined,
       carrierId: trasportatore?.registroId || fir.trasportatoreId || undefined,
       carrierUserId: undefined, // il trasportatore è un'anagrafica, non uno User
       carrierPartitaIva: trasportatore?.partitaIva || '',
       carrierName: trasportatore?.ragioneSociale || '',
       carrierVehiclePlate: trasportatore?.targaVeicolo || '', // dato di trasporto, compilato alla presa in carico
       carrierContact: trasportatore?.contatto || undefined,
+      carrierCodiceFiscale: trasportatore?.codiceFiscale || undefined,
       receiverId: destinatario?.registroId || fir.destinatarioId || undefined,
       receiverUserId: undefined, // il destinatario è un'anagrafica, non uno User
       receiverPartitaIva: destinatario?.partitaIva || '',
       receiverName: destinatario?.ragioneSociale || '',
       receiverAddress: destinatario?.indirizzo || '',
       receiverContact: destinatario?.contatto || undefined,
+      receiverSedeId: destinatario?.sedeId || undefined,
+      receiverCodiceFiscale: destinatario?.codiceFiscale || undefined,
       cerCode: fir.rifiuto.cerCode,
       wasteDescription: fir.rifiuto.descrizione || '',
       wasteCategory: fir.rifiuto.categoria || '',

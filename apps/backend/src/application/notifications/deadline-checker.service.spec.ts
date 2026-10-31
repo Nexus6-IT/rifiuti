@@ -333,7 +333,13 @@ describe('DeadlineCheckerService', () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+        {
+          id: 'tr1',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/001234',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: fra30,
+        },
       ])
 
       await service.checkAuthorizationExpirations()
@@ -355,7 +361,13 @@ describe('DeadlineCheckerService', () => {
       const ieri = new Date()
       ieri.setDate(ieri.getDate() - 1)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr2', tenantId: 't1', numeroIscrizione: 'MI/009999', scadenzaIscrizione: ieri },
+        {
+          id: 'tr2',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/009999',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: ieri,
+        },
       ])
 
       await service.checkAuthorizationExpirations()
@@ -379,6 +391,7 @@ describe('DeadlineCheckerService', () => {
           id: 'de1',
           tenantId: 't1',
           numeroAutorizzazione: 'NA/AUT/2023/001',
+          ditta: { ragioneSociale: 'Ditta di prova' },
           scadenzaAutorizzazione: fra15,
         },
       ])
@@ -406,6 +419,7 @@ describe('DeadlineCheckerService', () => {
           id: 'de2',
           tenantId: 't1',
           numeroAutorizzazione: 'NA/AUT/2023/999',
+          ditta: { ragioneSociale: 'Ditta di prova' },
           scadenzaAutorizzazione: ieri,
         },
       ])
@@ -427,7 +441,13 @@ describe('DeadlineCheckerService', () => {
       const fra20 = new Date()
       fra20.setDate(fra20.getDate() + 20)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr3', tenantId: 't1', numeroIscrizione: 'MI/000001', scadenzaIscrizione: fra20 },
+        {
+          id: 'tr3',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/000001',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: fra20,
+        },
       ])
 
       await service.checkAuthorizationExpirations()
@@ -503,7 +523,13 @@ describe('DeadlineCheckerService', () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+        {
+          id: 'tr1',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/001234',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: fra30,
+        },
       ])
 
       await service.checkAuthorizationExpirations()
@@ -540,6 +566,7 @@ describe('DeadlineCheckerService', () => {
           id: 'de2',
           tenantId: 't1',
           numeroAutorizzazione: 'NA/AUT/2023/999',
+          ditta: { ragioneSociale: 'Ditta di prova' },
           scadenzaAutorizzazione: ieri,
         },
       ])
@@ -563,7 +590,13 @@ describe('DeadlineCheckerService', () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+        {
+          id: 'tr1',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/001234',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: fra30,
+        },
       ])
 
       await service.checkAuthorizationExpirations()
@@ -583,6 +616,7 @@ describe('DeadlineCheckerService', () => {
           id: 'de2',
           tenantId: 't1',
           numeroAutorizzazione: 'NA/AUT/2023/999',
+          ditta: { ragioneSociale: 'Ditta di prova' },
           scadenzaAutorizzazione: ieri,
         },
       ])
@@ -600,7 +634,13 @@ describe('DeadlineCheckerService', () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+        {
+          id: 'tr1',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/001234',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: fra30,
+        },
       ])
       ;(mockPrisma.notification.findFirst as jest.Mock).mockResolvedValueOnce({
         id: 'n-esistente',
@@ -630,7 +670,13 @@ describe('DeadlineCheckerService', () => {
       const fra30 = new Date()
       fra30.setDate(fra30.getDate() + 30)
       ;(mockPrisma.trasportatore.findMany as jest.Mock).mockResolvedValue([
-        { id: 'tr1', tenantId: 't1', numeroIscrizione: 'MI/001234', scadenzaIscrizione: fra30 },
+        {
+          id: 'tr1',
+          tenantId: 't1',
+          numeroIscrizione: 'MI/001234',
+          ditta: { ragioneSociale: 'Ditta di prova' },
+          scadenzaIscrizione: fra30,
+        },
       ])
       ;(mockEmailService.sendEmail as jest.Mock).mockRejectedValueOnce(
         new Error('connessione SMTP rifiutata')

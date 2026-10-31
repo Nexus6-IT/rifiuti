@@ -934,10 +934,20 @@ export class MudAggregazioneService {
     // Client senza estensione RLS: il perimetro dell'azienda sta nella query.
     const trasportatori = await this.prisma.trasportatore.findMany({
       where: { id: { in: ids }, tenantId },
-      select: { id: true, ragioneSociale: true, partitaIVA: true },
+      select: {
+        id: true,
+        ragioneSocialeStorica: true,
+        ditta: { select: { ragioneSociale: true, partitaIva: true, codiceFiscale: true } },
+      },
     })
     for (const t of trasportatori) {
-      info.set(t.id, { ragioneSociale: t.ragioneSociale, partitaIVA: t.partitaIVA })
+      info.set(t.id, {
+        // I2: il nome è quello della riga di ruolo (le integrazioni salvate sono agganciate a
+        // questo), quello della ditta solo se la riga non lo ha
+        ragioneSociale: t.ragioneSocialeStorica || t.ditta.ragioneSociale,
+        // Il campo si chiama partitaIVA ma porta il codice fiscale del soggetto: CF ?? P.IVA
+        partitaIVA: t.ditta.codiceFiscale ?? t.ditta.partitaIva ?? '',
+      })
     }
     return info
   }
@@ -959,7 +969,14 @@ export class MudAggregazioneService {
     // perimetro dell'azienda esiste solo se sta scritto nella query.
     const destinatari = await this.prisma.destinatario.findMany({
       where: { id: { in: ids }, tenantId },
+      include: {
+        ditta: { select: { ragioneSociale: true, partitaIva: true, codiceFiscale: true } },
+        sede: true,
+      },
     })
+
+    // L'indirizzo è quello della sede predefinita (D10)
+    const indirizzoDi = (d: (typeof destinatari)[number]) => d.sede
 
     // Un solo lookup per coppia (comune, provincia) distinta.
     const comuni = new Map<
@@ -967,20 +984,24 @@ export class MudAggregazioneService {
       Awaited<ReturnType<typeof this.referenceData.findComuneByName>>
     >()
     for (const d of destinatari) {
-      const chiave = `${d.comune}|${d.provincia}`
+      const { comune, provincia } = indirizzoDi(d)
+      const chiave = `${comune}|${provincia}`
       if (!comuni.has(chiave)) {
-        comuni.set(chiave, await this.referenceData.findComuneByName(d.comune, d.provincia))
+        comuni.set(chiave, await this.referenceData.findComuneByName(comune, provincia))
       }
     }
 
     for (const d of destinatari) {
-      const comune = comuni.get(`${d.comune}|${d.provincia}`)
+      const indirizzo = indirizzoDi(d)
+      const comune = comuni.get(`${indirizzo.comune}|${indirizzo.provincia}`)
       info.set(d.id, {
-        ragioneSociale: d.ragioneSociale,
-        partitaIVA: d.partitaIVA,
-        via: d.via,
-        civico: d.civico,
-        cap: d.cap,
+        // I2: nome della riga di ruolo (vedi caricaTrasportatori)
+        ragioneSociale: d.ragioneSocialeStorica || d.ditta.ragioneSociale,
+        // Porta il codice fiscale del soggetto: CF ?? P.IVA
+        partitaIVA: d.ditta.codiceFiscale ?? d.ditta.partitaIva ?? '',
+        via: indirizzo.via,
+        civico: indirizzo.civico,
+        cap: indirizzo.cap,
         // Codice ISTAT 6 cifre = provincia(3) + comune(3).
         istatProvincia: comune?.code?.slice(0, 3),
         istatComune: comune?.code?.slice(3, 6),

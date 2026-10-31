@@ -230,16 +230,19 @@ export class SignatureFIRRepository implements FIRRepository {
         producerName: record.producerName ?? null,
         producerAddress: record.producerAddress ?? null,
         producerContact: record.producerContact ?? null,
+        producerCodiceFiscale: record.producerCodiceFiscale ?? null,
 
         carrierPartitaIva: record.carrierPartitaIva ?? null,
         carrierName: record.carrierName ?? null,
         carrierVehiclePlate: record.carrierVehiclePlate ?? null,
         carrierContact: record.carrierContact ?? null,
+        carrierCodiceFiscale: record.carrierCodiceFiscale ?? null,
 
         receiverPartitaIva: record.receiverPartitaIva ?? null,
         receiverName: record.receiverName ?? null,
         receiverAddress: record.receiverAddress ?? null,
         receiverContact: record.receiverContact ?? null,
+        receiverCodiceFiscale: record.receiverCodiceFiscale ?? null,
 
         cerCode: record.cerCode,
         wasteDescription: record.wasteDescription ?? null,

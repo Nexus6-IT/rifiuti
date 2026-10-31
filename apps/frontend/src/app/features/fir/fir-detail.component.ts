@@ -17,7 +17,7 @@ import { ConfirmationService, MessageService } from 'primeng/api'
 import { FirService } from './fir.service'
 import { puoModificareFir } from './fir-permissions'
 import { testoMotivoNonModificabile } from './fir-form'
-import { FIR, FIRStato, ScostamentoPeso } from '../../shared/models/fir.model'
+import { FIR, FIRStato, ParteFIR, ScostamentoPeso } from '../../shared/models/fir.model'
 import {
   formattaNumero,
   formattaPercentuale,
@@ -25,6 +25,7 @@ import {
 } from './scostamento-peso'
 import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-sync-badge.component'
 import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sync-logs.component'
+import { etichettaIdentificativiCompleta } from '../registry/identificativo-fiscale'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
@@ -219,7 +220,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
             <div class="parte-card" data-testid="fir-detail-produttore">
               <h3>Produttore</h3>
               <p class="parte-ragione">{{ f.produttore?.ragioneSociale || 'N/D' }}</p>
-              <p class="parte-dettaglio">P.IVA {{ f.produttore?.partitaIva || 'N/D' }}</p>
+              <p class="parte-dettaglio">{{ identificativi(f.produttore) }}</p>
               @if (f.produttore?.indirizzo) {
                 <p class="parte-dettaglio">{{ f.produttore?.indirizzo }}</p>
               }
@@ -227,7 +228,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
             <div class="parte-card" data-testid="fir-detail-trasportatore">
               <h3>Trasportatore</h3>
               <p class="parte-ragione">{{ f.trasportatore?.ragioneSociale || 'N/D' }}</p>
-              <p class="parte-dettaglio">P.IVA {{ f.trasportatore?.partitaIva || 'N/D' }}</p>
+              <p class="parte-dettaglio">{{ identificativi(f.trasportatore) }}</p>
               @if (f.trasportatore?.targaVeicolo) {
                 <p class="parte-dettaglio">Targa {{ f.trasportatore?.targaVeicolo }}</p>
               }
@@ -235,7 +236,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
             <div class="parte-card" data-testid="fir-detail-destinatario">
               <h3>Destinatario</h3>
               <p class="parte-ragione">{{ f.destinatario?.ragioneSociale || 'N/D' }}</p>
-              <p class="parte-dettaglio">P.IVA {{ f.destinatario?.partitaIva || 'N/D' }}</p>
+              <p class="parte-dettaglio">{{ identificativi(f.destinatario) }}</p>
               @if (f.destinatario?.indirizzo) {
                 <p class="parte-dettaglio">{{ f.destinatario?.indirizzo }}</p>
               }
@@ -910,6 +911,11 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
   ],
 })
 export class FirDetailComponent implements OnInit {
+  /** "P.IVA X · C.F. Y", "C.F. Y" per un privato (snapshot della parte nel FIR). */
+  identificativi(parte: ParteFIR | null | undefined): string {
+    return etichettaIdentificativiCompleta(parte?.partitaIva, parte?.codiceFiscale)
+  }
+
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly firService = inject(FirService)

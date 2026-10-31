@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import request from 'supertest'
+import { partitaIvaValida } from '../../src/test-support/anagrafiche-di-test'
 import { Produttore, Trasportatore, Tenant, User } from '@prisma/client'
 
 /**
@@ -93,7 +94,41 @@ export class IntegrationTestSetup {
     await this.prisma.produttore.deleteMany()
     await this.prisma.trasportatore.deleteMany()
     await this.prisma.destinatario.deleteMany()
+    await this.prisma.sedeDitta.deleteMany()
+    await this.prisma.ditta.deleteMany()
     await this.prisma.tenant.deleteMany()
+  }
+
+  /**
+   * Ditta, sede principale e riga di ruolo (produttore o trasportatore) con l'id indicato
+   * (F2-10: l'identita' fiscale e l'indirizzo stanno su ditte e sedi_ditte).
+   */
+  private async creaRuolo(
+    tenantId: string,
+    ragioneSociale: string,
+    partitaIva: string,
+    ruolo: { produttoreId: string } | { trasportatoreId: string }
+  ) {
+    const ditta = await this.prisma.ditta.create({ data: { tenantId, ragioneSociale, partitaIva } })
+    const sede = await this.prisma.sedeDitta.create({
+      data: {
+        tenantId,
+        dittaId: ditta.id,
+        via: 'Via Test',
+        civico: '1',
+        cap: '20100',
+        comune: 'Milano',
+        provincia: 'MI',
+        principale: true,
+      },
+    })
+    const comuni = { tenantId, dittaId: ditta.id, sedeId: sede.id }
+    if ('produttoreId' in ruolo) {
+      return this.prisma.produttore.create({ data: { id: ruolo.produttoreId, ...comuni } })
+    }
+    return this.prisma.trasportatore.create({
+      data: { id: ruolo.trasportatoreId, ...comuni, numeroIscrizione: 'ISC-TEST-001' },
+    })
   }
 
   /**
@@ -110,34 +145,23 @@ export class IntegrationTestSetup {
     })
 
     // Anagrafiche controparti FIR (sostituiscono il vecchio modello Facility)
-    const produttore = await this.prisma.produttore.create({
-      data: {
-        id: 'test-produttore-1',
-        tenantId: tenant.id,
-        ragioneSociale: 'Test Producer Facility',
-        partitaIVA: '00000000002',
-        via: 'Via Test',
-        civico: '1',
-        cap: '20100',
-        comune: 'Milano',
-        provincia: 'MI',
-      },
-    })
+    const produttore = (await this.creaRuolo(
+      tenant.id,
+      'Test Producer Facility',
+      partitaIvaValida(2),
+      {
+        produttoreId: 'test-produttore-1',
+      }
+    )) as Produttore
 
-    const trasportatore = await this.prisma.trasportatore.create({
-      data: {
-        id: 'test-trasportatore-1',
-        tenantId: tenant.id,
-        ragioneSociale: 'Test Transporter',
-        partitaIVA: '00000000003',
-        numeroIscrizione: 'ISC-TEST-001',
-        via: 'Via Test',
-        civico: '2',
-        cap: '20100',
-        comune: 'Milano',
-        provincia: 'MI',
-      },
-    })
+    const trasportatore = (await this.creaRuolo(
+      tenant.id,
+      'Test Transporter',
+      partitaIvaValida(3),
+      {
+        trasportatoreId: 'test-trasportatore-1',
+      }
+    )) as Trasportatore
 
     // Utenti applicativi. L'autorizzazione RolesGuard/@Roles verifica
     // esclusivamente `User.role` (UserRole enum) — non il sistema

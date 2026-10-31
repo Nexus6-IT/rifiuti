@@ -186,6 +186,9 @@ describe('RLS Prisma Extension (applyTenantScope)', () => {
   describe('whitelist e wiring', () => {
     it('TENANT_SCOPED_MODELS contiene i model con tenantId e NON quelli globali', () => {
       expect(TENANT_SCOPED_MODELS.has('Produttore')).toBe(true)
+      // Fase 2 pezzo 10: ditte e sedi delle controparti.
+      expect(TENANT_SCOPED_MODELS.has('Ditta')).toBe(true)
+      expect(TENANT_SCOPED_MODELS.has('SedeDitta')).toBe(true)
       expect(TENANT_SCOPED_MODELS.has('FIR')).toBe(true)
       expect(TENANT_SCOPED_MODELS.has('User')).toBe(true)
       expect(TENANT_SCOPED_MODELS.has('Tenant')).toBe(false)

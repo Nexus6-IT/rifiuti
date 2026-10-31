@@ -10,6 +10,7 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { ToastService } from '../../core/services/toast.service'
 import { ContractsService, Contract, ContractStatus, ContractType } from './contracts.service'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
+import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
 import { SelectOption, STATUS_LABELS, TYPE_LABELS } from './contract-vocabulary'
 
 /** Transizioni di stato ammesse (mirror di ALLOWED_TRANSITIONS del backend). */
@@ -142,8 +143,11 @@ const STATUS_SEVERITY: Record<
                 <td>
                   <span class="controparte">
                     <span class="controparte__nome">{{ counterpartyLabel(c) }}</span>
-                    <span *ngIf="c.counterparty" class="controparte__piva">
-                      P.IVA {{ c.counterparty.partitaIVA }}
+                    <span
+                      *ngIf="c.counterparty && identificativo(c.counterparty)"
+                      class="controparte__piva"
+                    >
+                      {{ identificativo(c.counterparty) }}
                     </span>
                   </span>
                 </td>
@@ -268,6 +272,11 @@ const STATUS_SEVERITY: Record<
 export class ContractsListComponent implements OnInit {
   private readonly contractsService = inject(ContractsService)
   private readonly toast = inject(ToastService)
+
+  /** "P.IVA …" o "C.F. …" della controparte (un privato non ha la P.IVA). */
+  identificativo(p: { partitaIVA: string | null; codiceFiscale?: string | null }): string {
+    return etichettaIdentificativo(p.partitaIVA, p.codiceFiscale)
+  }
 
   readonly contracts = signal<Contract[]>([])
   readonly loading = signal(false)

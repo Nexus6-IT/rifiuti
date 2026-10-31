@@ -8,6 +8,7 @@
 import { PrismaClient } from '@prisma/client'
 import { randomUUID } from 'crypto'
 import { urlComeRuolo } from '../../../infrastructure/database/client-come-ruolo'
+import { eDatabaseDiTestLocale } from '../../../test-support/database-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -131,7 +132,7 @@ describe('MudAggregazioneService con il catalogo — Postgres reale, ruolo waste
     nelTenant(tenantId, () => service.aggrega(tenantId, anno))
 
   beforeAll(async () => {
-    expect(process.env.DATABASE_URL ?? '').toContain(':55432/')
+    expect(eDatabaseDiTestLocale(process.env.DATABASE_URL)).toBe(true)
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
     const [a] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`

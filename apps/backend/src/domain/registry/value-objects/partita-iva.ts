@@ -16,7 +16,7 @@ export class PartitaIVA {
     const normalized = partitaIVA.trim()
 
     if (!this.isValid(normalized)) {
-      throw new InvalidPartitaIVAError(partitaIVA)
+      throw new InvalidPartitaIVAError()
     }
 
     return new PartitaIVA(normalized)

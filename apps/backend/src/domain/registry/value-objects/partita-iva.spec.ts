@@ -28,6 +28,18 @@ describe('PartitaIVA Value Object', () => {
       expect(() => PartitaIVA.create('1234567890A')).toThrow(InvalidPartitaIVAError)
     })
 
+    it('il messaggio dell errore non riporta il valore ricevuto (M9)', () => {
+      const ricevuta = '98765X4321'
+      try {
+        PartitaIVA.create(ricevuta)
+        throw new Error('non ha lanciato')
+      } catch (e) {
+        expect(e).toBeInstanceOf(InvalidPartitaIVAError)
+        expect((e as Error).message).not.toContain(ricevuta)
+        expect((e as Error).message).toBe('Partita IVA non valida: servono 11 cifre.')
+      }
+    })
+
     it('should throw InvalidPartitaIVAError for empty string', () => {
       expect(() => PartitaIVA.create('')).toThrow(InvalidPartitaIVAError)
     })
