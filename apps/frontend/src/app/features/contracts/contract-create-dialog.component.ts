@@ -1,8 +1,15 @@
 /**
- * ContractCreateDialogComponent — creazione di un contratto.
+ * ContractCreateDialogComponent — creazione e modifica di un contratto.
  *
  * Estratto da `contracts-list.component.ts`, che faceva lista, creazione e
  * cambio stato in un solo file.
+ *
+ * Con `contratto` null il dialog crea; con un contratto in ingresso lo modifica (Fase 4 pezzo 0).
+ * In modifica quali campi si possono cambiare lo decide il backend (`modificabili` della vista,
+ * D10): il frontend non replica le regole per stato, disabilita i campi non elencati. Alla
+ * conferma manda solo i campi cambiati più la `versione` letta (lock ottimistico); `null` solo
+ * quando l'operatore svuota un campo facoltativo. Il confronto locale serve a non mandare un
+ * corpo inutile: la decisione resta del backend, di cui si mostrano i messaggi (400 e 409).
  *
  * Scelta portante: l'operatore non conosce gli id interni, quindi qui non se ne
  * digita nessuno. Il "Tipo controparte" non è più un campo: si deduce dal tipo
@@ -10,7 +17,17 @@
  * completo, accordo quadro) viene chiesto esplicitamente.
  */
 
-import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnChanges,
+  Output,
+  SimpleChanges,
+  inject,
+  signal,
+} from '@angular/core'
+import { HttpErrorResponse } from '@angular/common/http'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
@@ -24,7 +41,14 @@ import { CheckboxModule } from 'primeng/checkbox'
 import { ToastService } from '../../core/services/toast.service'
 import { AnagraficaSelectComponent } from '../registry/anagrafica-select.component'
 import { CerMultiSelectComponent } from '../cer/cer-multi-select.component'
-import { ContractsService, ContractType, CreateContractDto } from './contracts.service'
+import {
+  CampoContratto,
+  Contract,
+  ContractsService,
+  ContractType,
+  CreateContractDto,
+  ModificaContrattoDto,
+} from './contracts.service'
 import {
   BILLING_FREQUENCY_LABELS,
   PAYMENT_TERM_LABELS,
@@ -61,8 +85,16 @@ import {
       [modal]="true"
       [style]="{ width: '760px' }"
       [breakpoints]="{ '768px': '95vw' }"
-      header="Nuovo contratto"
+      [header]="contratto ? 'Modifica contratto' : 'Nuovo contratto'"
     >
+      <p
+        *ngIf="contratto && ciSonoBloccati()"
+        class="text-tertiary"
+        role="status"
+        data-testid="c-bloccati"
+      >
+        Alcuni campi non si possono cambiare nello stato attuale del contratto.
+      </p>
       <div class="grid formgrid">
         <div class="field col-12 md:col-6">
           <label for="c-number" class="block mb-2">Numero contratto *</label>
@@ -72,8 +104,12 @@ import {
             [(ngModel)]="form.contractNumber"
             placeholder="CTR-2026-001"
             class="w-full"
+            aria-required="true"
+            [disabled]="campoBloccato('contractNumber')"
           />
-          <small class="block mt-1 text-tertiary">Proposto in automatico, modificabile.</small>
+          <small *ngIf="!contratto" class="block mt-1 text-tertiary"
+            >Proposto in automatico, modificabile.</small
+          >
         </div>
         <div class="field col-12 md:col-6">
           <label for="c-type" class="block mb-2">Tipo contratto *</label>
@@ -82,6 +118,7 @@ import {
             [options]="contractTypeOptions"
             [ngModel]="form.contractType"
             (ngModelChange)="onTipoContrattoCambiato($event)"
+            [disabled]="campoBloccato('contractType')"
             optionLabel="label"
             optionValue="value"
             placeholder="Seleziona"
@@ -97,6 +134,7 @@ import {
             registro="produttori"
             ariaLabel="Produttore del contratto"
             [(ngModel)]="form.producerId"
+            [disabled]="campoBloccato('producerId')"
           ></app-anagrafica-select>
         </div>
 
@@ -108,6 +146,7 @@ import {
             [options]="registroOptions"
             [ngModel]="registroScelto()"
             (ngModelChange)="onRegistroScelto($event)"
+            [disabled]="campoBloccato('counterpartyType')"
             optionLabel="label"
             optionValue="value"
             placeholder="Seleziona"
@@ -126,6 +165,7 @@ import {
             [registro]="reg"
             ariaLabel="Controparte del contratto"
             [(ngModel)]="form.counterpartyId"
+            [disabled]="campoBloccato('counterpartyId')"
           ></app-anagrafica-select>
           <small *ngIf="!registroEffettivo()" class="block text-tertiary">
             Scegli prima il tipo di controparte.
@@ -138,6 +178,7 @@ import {
             inputId="c-pricing"
             [options]="pricingModelOptions"
             [(ngModel)]="form.pricingModel"
+            [disabled]="campoBloccato('pricingModel')"
             optionLabel="label"
             optionValue="value"
             placeholder="Seleziona"
@@ -148,7 +189,11 @@ import {
 
         <div class="field col-12">
           <label for="c-cer" class="block mb-2">Codici CER *</label>
-          <app-cer-multi-select inputId="c-cer" [(ngModel)]="form.cerCodes"></app-cer-multi-select>
+          <app-cer-multi-select
+            inputId="c-cer"
+            [(ngModel)]="form.cerCodes"
+            [disabled]="campoBloccato('cerCodes')"
+          ></app-cer-multi-select>
           <small class="block mt-1 text-tertiary">
             Cerca per codice o descrizione e scegli dal catalogo.
           </small>
@@ -159,6 +204,7 @@ import {
           <p-inputNumber
             inputId="c-price"
             [(ngModel)]="form.basePrice"
+            [disabled]="campoBloccato('basePrice')"
             mode="decimal"
             [minFractionDigits]="0"
             [maxFractionDigits]="2"
@@ -173,6 +219,7 @@ import {
             id="c-uom"
             pInputText
             [(ngModel)]="form.unitOfMeasure"
+            [disabled]="campoBloccato('unitOfMeasure')"
             placeholder="kg"
             class="w-full"
           />
@@ -182,6 +229,7 @@ import {
           <p-inputNumber
             inputId="c-duration"
             [(ngModel)]="form.durationMonths"
+            [disabled]="campoBloccato('durationMonths')"
             [min]="1"
             styleClass="w-full"
             inputStyleClass="w-full"
@@ -193,6 +241,7 @@ import {
           <p-calendar
             inputId="c-start"
             [(ngModel)]="startDate"
+            [disabled]="campoBloccato('startDate')"
             dateFormat="dd/mm/yy"
             [showIcon]="true"
             styleClass="w-full"
@@ -205,6 +254,7 @@ import {
           <p-calendar
             inputId="c-end"
             [(ngModel)]="endDate"
+            [disabled]="campoBloccato('endDate')"
             dateFormat="dd/mm/yy"
             [showIcon]="true"
             styleClass="w-full"
@@ -219,6 +269,7 @@ import {
             inputId="c-payment"
             [options]="paymentTermsOptions"
             [(ngModel)]="form.paymentTerms"
+            [disabled]="campoBloccato('paymentTerms')"
             optionLabel="label"
             optionValue="value"
             placeholder="Seleziona"
@@ -232,6 +283,7 @@ import {
             inputId="c-billing"
             [options]="billingFrequencyOptions"
             [(ngModel)]="form.billingFrequency"
+            [disabled]="campoBloccato('billingFrequency')"
             optionLabel="label"
             optionValue="value"
             placeholder="Seleziona"
@@ -241,7 +293,12 @@ import {
         </div>
 
         <div class="field col-12 flex align-items-center gap-2">
-          <p-checkbox [(ngModel)]="form.autoRenew" [binary]="true" inputId="autoRenew"></p-checkbox>
+          <p-checkbox
+            [(ngModel)]="form.autoRenew"
+            [binary]="true"
+            inputId="autoRenew"
+            [disabled]="campoBloccato('autoRenew')"
+          ></p-checkbox>
           <label for="autoRenew" class="mb-0">Rinnovo automatico</label>
         </div>
         <div class="field col-12 md:col-6" *ngIf="form.autoRenew">
@@ -249,6 +306,7 @@ import {
           <p-inputNumber
             inputId="c-notice"
             [(ngModel)]="form.renewalNoticeDays"
+            [disabled]="campoBloccato('renewalNoticeDays')"
             [min]="0"
             styleClass="w-full"
             inputStyleClass="w-full"
@@ -261,6 +319,7 @@ import {
             id="c-desc"
             pInputTextarea
             [(ngModel)]="form.description"
+            [disabled]="campoBloccato('description')"
             rows="2"
             class="w-full"
           ></textarea>
@@ -270,10 +329,10 @@ import {
       <ng-template pTemplate="footer">
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
         <p-button
-          label="Crea contratto"
+          [label]="contratto ? 'Salva modifiche' : 'Crea contratto'"
           icon="pi pi-check"
           [loading]="saving()"
-          (onClick)="crea()"
+          (onClick)="salva()"
         />
       </ng-template>
     </p-dialog>
@@ -298,14 +357,18 @@ import {
     `,
   ],
 })
-export class ContractCreateDialogComponent {
+export class ContractCreateDialogComponent implements OnChanges {
   private readonly contractsService = inject(ContractsService)
   private readonly toast = inject(ToastService)
 
   @Input() visible = false
+  /** Contratto da modificare; `null` = creazione. */
+  @Input() contratto: Contract | null = null
   @Output() visibleChange = new EventEmitter<boolean>()
   /** Emesso a creazione avvenuta, perché la lista si ricarichi. */
   @Output() creato = new EventEmitter<void>()
+  /** Emesso dopo una modifica (o un conflitto che rende vecchi i dati), perché la lista si ricarichi. */
+  @Output() modificato = new EventEmitter<void>()
 
   readonly saving = signal(false)
   /** Registro scelto a mano, quando il tipo di contratto non ne implica uno. */
@@ -330,6 +393,39 @@ export class ContractCreateDialogComponent {
   readonly pricingModelOptions = opzioni(PRICING_LABELS)
   readonly paymentTermsOptions = opzioni(PAYMENT_TERM_LABELS)
   readonly billingFrequencyOptions = opzioni(BILLING_FREQUENCY_LABELS)
+
+  /** In modifica: il campo non è fra quelli che il backend dichiara modificabili. */
+  campoBloccato(campo: CampoContratto): boolean {
+    return !!this.contratto && !this.contratto.modificabili.includes(campo)
+  }
+
+  ciSonoBloccati(): boolean {
+    const tutti: CampoContratto[] = [
+      'contractNumber',
+      'producerId',
+      'counterpartyId',
+      'counterpartyType',
+      'contractType',
+      'description',
+      'cerCodes',
+      'pricingModel',
+      'basePrice',
+      'unitOfMeasure',
+      'startDate',
+      'endDate',
+      'durationMonths',
+      'autoRenew',
+      'renewalNoticeDays',
+      'paymentTerms',
+      'billingFrequency',
+    ]
+    return tutti.some(c => this.campoBloccato(c))
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    // L'apertura la decide il padre con `visible`: PrimeNG non emette true.
+    if (this.visible && (changes['visible'] || changes['contratto'])) this.reimposta()
+  }
 
   // ─── Derivazione del registro ─────────────────────────────────────────────
 
@@ -380,8 +476,14 @@ export class ContractCreateDialogComponent {
   }
 
   private reimposta(): void {
-    this.form = this.emptyForm()
     this.registroScelto.set(null)
+
+    if (this.contratto) {
+      this.precompila(this.contratto)
+      return
+    }
+
+    this.form = this.emptyForm()
     this.startDate = null
     this.endDate = null
 
@@ -395,7 +497,53 @@ export class ContractCreateDialogComponent {
     })
   }
 
-  // ─── Creazione ────────────────────────────────────────────────────────────
+  /** Riempie il form dal contratto; il registro della controparte si deduce dal suo tipo. */
+  private precompila(c: Contract): void {
+    this.form = {
+      contractNumber: c.contractNumber,
+      producerId: c.producerId,
+      counterpartyId: c.counterpartyId,
+      counterpartyType: c.counterpartyType,
+      contractType: c.contractType,
+      description: c.description ?? '',
+      cerCodes: [...c.cerCodes],
+      pricingModel: c.pricingModel,
+      basePrice:
+        c.basePrice === null || c.basePrice === undefined ? undefined : Number(c.basePrice),
+      unitOfMeasure: c.unitOfMeasure,
+      startDate: '',
+      endDate: undefined,
+      durationMonths: c.durationMonths ?? undefined,
+      autoRenew: c.autoRenew,
+      renewalNoticeDays: c.renewalNoticeDays,
+      paymentTerms: c.paymentTerms,
+      billingFrequency: c.billingFrequency,
+    }
+    this.startDate = this.daIso(c.startDate)
+    this.endDate = c.endDate ? this.daIso(c.endDate) : null
+    if (!registroDaTipoContratto(c.contractType)) {
+      this.registroScelto.set(
+        c.counterpartyType === 'TRANSPORTER'
+          ? 'trasportatori'
+          : c.counterpartyType === 'DISPOSER'
+            ? 'destinatari'
+            : null
+      )
+    }
+  }
+
+  /** Il giorno (AAAA-MM-GG) di una data ISO, come `Date` locale a mezzanotte. */
+  private daIso(iso: string): Date {
+    const [a, m, g] = iso.slice(0, 10).split('-').map(Number)
+    return new Date(a, m - 1, g)
+  }
+
+  // ─── Salvataggio ──────────────────────────────────────────────────────────
+
+  salva(): void {
+    if (this.contratto) this.modifica()
+    else this.crea()
+  }
 
   crea(): void {
     const registro = this.registroEffettivo()
@@ -419,11 +567,101 @@ export class ContractCreateDialogComponent {
         this.creato.emit()
         this.chiudi()
       },
-      error: () => {
+      error: (err: unknown) => {
         this.saving.set(false)
-        this.toast.error('Errore nella creazione del contratto')
+        this.toast.error(this.messaggioErrore(err, 'Errore nella creazione del contratto'))
       },
     })
+  }
+
+  modifica(): void {
+    const originale = this.contratto
+    if (!originale) return
+    const registro = this.registroEffettivo()
+    if (!this.validate(registro)) {
+      this.toast.warn('Compila tutti i campi obbligatori')
+      return
+    }
+
+    const cambi = this.campiCambiati(originale, registro as RegistroControparte)
+    if (Object.keys(cambi).length === 0) {
+      this.toast.info('Nessuna modifica da salvare')
+      this.chiudi()
+      return
+    }
+
+    const dto: ModificaContrattoDto = { ...cambi, versione: originale.versione }
+    this.saving.set(true)
+    this.contractsService.update(originale.id, dto).subscribe({
+      next: () => {
+        this.saving.set(false)
+        this.toast.success('Contratto aggiornato')
+        this.modificato.emit()
+        this.chiudi()
+      },
+      error: (err: unknown) => {
+        this.saving.set(false)
+        this.toast.error(this.messaggioErrore(err, 'Errore nel salvataggio del contratto'))
+        const stato = err instanceof HttpErrorResponse ? err.status : 0
+        // Conflitto o contratto sparito: i dati mostrati sono vecchi, la lista si ricarica e il
+        // dialog si chiude. Un 400 lascia il dialog aperto per correggere.
+        if (stato === 409 || stato === 404) {
+          this.modificato.emit()
+          this.chiudi()
+        }
+      },
+    })
+  }
+
+  /**
+   * Solo i campi diversi dal contratto ricevuto (date per giorno, CER come insieme, stringhe
+   * con trim). È un risparmio di corpo, non una regola: il backend decide cosa è ammesso.
+   */
+  private campiCambiati(
+    o: Contract,
+    registro: RegistroControparte
+  ): Omit<ModificaContrattoDto, 'versione'> {
+    const f = this.form
+    const cambi: Record<string, unknown> = {}
+    const se = (campo: keyof CreateContractDto, nuovo: unknown, vecchio: unknown) => {
+      if (nuovo !== vecchio) cambi[campo] = nuovo
+    }
+    const testoOpz = (v: string | null | undefined) => (v?.trim() ? v.trim() : null)
+    const numOpz = (v: number | string | null | undefined) =>
+      v === null || v === undefined || v === '' ? null : Number(v)
+
+    se('contractNumber', f.contractNumber.trim(), o.contractNumber.trim())
+    se('producerId', f.producerId, o.producerId)
+    se('counterpartyId', f.counterpartyId, o.counterpartyId)
+    se('counterpartyType', tipoControparteDaRegistro(registro), o.counterpartyType)
+    se('contractType', f.contractType, o.contractType)
+    se('description', testoOpz(f.description), testoOpz(o.description))
+    const nuoviCer = [...new Set(f.cerCodes)].sort()
+    const vecchiCer = [...new Set(o.cerCodes)].sort()
+    if (nuoviCer.join('|') !== vecchiCer.join('|')) cambi['cerCodes'] = nuoviCer
+    se('pricingModel', f.pricingModel, o.pricingModel)
+    se('basePrice', numOpz(f.basePrice), numOpz(o.basePrice))
+    se('unitOfMeasure', (f.unitOfMeasure ?? '').trim(), o.unitOfMeasure.trim())
+    se('startDate', this.toIsoDate(this.startDate as Date), o.startDate.slice(0, 10))
+    se(
+      'endDate',
+      this.endDate ? this.toIsoDate(this.endDate) : null,
+      o.endDate ? o.endDate.slice(0, 10) : null
+    )
+    se('durationMonths', numOpz(f.durationMonths), numOpz(o.durationMonths))
+    se('autoRenew', !!f.autoRenew, o.autoRenew)
+    se('renewalNoticeDays', f.renewalNoticeDays ?? 0, o.renewalNoticeDays)
+    se('paymentTerms', f.paymentTerms, o.paymentTerms)
+    se('billingFrequency', f.billingFrequency, o.billingFrequency)
+    return cambi as Omit<ModificaContrattoDto, 'versione'>
+  }
+
+  /** Messaggio del backend (stringa o elenco), mai id; altrimenti il testo di ripiego. */
+  private messaggioErrore(err: unknown, ripiego: string): string {
+    const m = err instanceof HttpErrorResponse ? err.error?.message : undefined
+    if (Array.isArray(m) && m.length > 0) return m.join(' ')
+    if (typeof m === 'string' && m.trim()) return m
+    return ripiego
   }
 
   private validate(registro: RegistroControparte | null): boolean {

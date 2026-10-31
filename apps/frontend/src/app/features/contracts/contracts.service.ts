@@ -29,6 +29,26 @@ export type PricingModel =
   | 'MINIMUM_GUARANTEE'
   | 'HYBRID'
 
+/** Campi che la modifica di un contratto può toccare. Allineato al backend (`regole-contratto.ts`). */
+export type CampoContratto =
+  | 'contractNumber'
+  | 'producerId'
+  | 'counterpartyId'
+  | 'counterpartyType'
+  | 'contractType'
+  | 'description'
+  | 'cerCodes'
+  | 'pricingModel'
+  | 'basePrice'
+  | 'unitOfMeasure'
+  | 'startDate'
+  | 'endDate'
+  | 'durationMonths'
+  | 'autoRenew'
+  | 'renewalNoticeDays'
+  | 'paymentTerms'
+  | 'billingFrequency'
+
 /**
  * Parte del contratto risolta verso il registro anagrafico.
  * `null` sul contratto quando l'id non corrisponde più a un'anagrafica.
@@ -66,6 +86,12 @@ export interface Contract {
   paymentTerms: string
   billingFrequency: string
   status: ContractStatus
+  /** Lock ottimistico: va rimandata nella modifica e nella cancellazione. */
+  versione: number
+  /** Campi modificabili nello stato attuale (decide il backend, il frontend non replica le regole). */
+  modificabili: CampoContratto[]
+  /** Vero se il contratto, nello stato attuale, si può eliminare. */
+  eliminabile: boolean
   /** Produttore risolto dal registro; null se l'anagrafica non esiste più. */
   producer?: ContractParty | null
   /** Controparte risolta dal registro; null se l'anagrafica non esiste più. */
@@ -93,6 +119,14 @@ export interface CreateContractDto {
   paymentTerms?: string
   billingFrequency?: string
 }
+
+/**
+ * Corpo della modifica (`PATCH /contracts/:id`): solo i campi da cambiare. Assente = invariato,
+ * `null` = svuota (consentito dal backend solo sui facoltativi). `versione` è obbligatoria.
+ */
+export type ModificaContrattoDto = Partial<{
+  [K in keyof Omit<CreateContractDto, 'pricingConfig'>]: CreateContractDto[K] | null
+}> & { versione: number }
 
 /** Suggerimento di auto-compilazione FIR da contratto attivo. */
 export interface FirAutoFill {
@@ -139,6 +173,17 @@ export class ContractsService {
   /** Crea un contratto (stato iniziale DRAFT). */
   create(dto: CreateContractDto): Observable<Contract> {
     return this.http.post<Contract>(this.API_URL, dto)
+  }
+
+  /** Modifica parziale con lock ottimistico (409 se la versione non è più quella letta). */
+  update(id: string, dto: ModificaContrattoDto): Observable<Contract> {
+    return this.http.patch<Contract>(`${this.API_URL}/${id}`, dto)
+  }
+
+  /** Eliminazione logica di un contratto in bozza o in approvazione. */
+  elimina(id: string, versione: number): Observable<void> {
+    const params = new HttpParams().set('versione', String(versione))
+    return this.http.delete<void>(`${this.API_URL}/${id}`, { params })
   }
 
   /** Cambia stato del contratto (workflow di approvazione). */

@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
+import { HttpErrorResponse } from '@angular/common/http'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
-import { ContractsService } from './contracts.service'
+import { CampoContratto, Contract, ContractsService } from './contracts.service'
 import { ToastService } from '../../core/services/toast.service'
 import { RegistryService } from '../registry/registry.service'
 import { CerService } from '../cer/cer.service'
@@ -15,11 +17,16 @@ describe('ContractCreateDialogComponent', () => {
   const vuoto = of({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 } as any)
 
   beforeEach(() => {
-    contracts = jasmine.createSpyObj<ContractsService>('ContractsService', ['create', 'nextNumber'])
+    contracts = jasmine.createSpyObj<ContractsService>('ContractsService', [
+      'create',
+      'nextNumber',
+      'update',
+    ])
     contracts.nextNumber.and.returnValue(of({ contractNumber: 'CTR-2026-004' }))
     contracts.create.and.returnValue(of({} as any))
+    contracts.update.and.returnValue(of({} as any))
 
-    toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'warn'])
+    toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'warn', 'info'])
 
     const registry = jasmine.createSpyObj<RegistryService>('RegistryService', [
       'getProduttori',
@@ -36,6 +43,7 @@ describe('ContractCreateDialogComponent', () => {
     TestBed.configureTestingModule({
       imports: [ContractCreateDialogComponent],
       providers: [
+        provideNoopAnimations(),
         { provide: ContractsService, useValue: contracts },
         { provide: ToastService, useValue: toast },
         { provide: RegistryService, useValue: registry },
@@ -190,6 +198,221 @@ describe('ContractCreateDialogComponent', () => {
       component.crea()
 
       expect(contracts.create).not.toHaveBeenCalled()
+    })
+  })
+
+  // ─── Modifica (Fase 4 pezzo 0) ────────────────────────────────────────────
+  describe('modifica', () => {
+    const TUTTI: CampoContratto[] = [
+      'contractNumber',
+      'producerId',
+      'counterpartyId',
+      'counterpartyType',
+      'contractType',
+      'description',
+      'cerCodes',
+      'pricingModel',
+      'basePrice',
+      'unitOfMeasure',
+      'startDate',
+      'endDate',
+      'durationMonths',
+      'autoRenew',
+      'renewalNoticeDays',
+      'paymentTerms',
+      'billingFrequency',
+    ]
+    const TERMINI: CampoContratto[] = [
+      'description',
+      'cerCodes',
+      'pricingModel',
+      'basePrice',
+      'unitOfMeasure',
+      'endDate',
+      'durationMonths',
+      'autoRenew',
+      'renewalNoticeDays',
+      'paymentTerms',
+      'billingFrequency',
+    ]
+    const contratto = (over: Partial<Contract> = {}): Contract =>
+      ({
+        id: 'k1',
+        tenantId: 't1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        contractNumber: 'CTR-2026-001',
+        producerId: 'prod-1',
+        counterpartyId: 'trasp-1',
+        counterpartyType: 'TRANSPORTER',
+        contractType: 'WASTE_TRANSPORT',
+        description: null,
+        cerCodes: ['150101', '150102'],
+        pricingModel: 'FLAT_RATE',
+        basePrice: '120',
+        unitOfMeasure: 'kg',
+        startDate: '2026-01-15T00:00:00.000Z',
+        endDate: '2026-12-31T00:00:00.000Z',
+        durationMonths: null,
+        autoRenew: false,
+        renewalNoticeDays: 60,
+        paymentTerms: 'net_30',
+        billingFrequency: 'monthly',
+        status: 'DRAFT',
+        versione: 4,
+        modificabili: TUTTI,
+        eliminabile: true,
+        ...over,
+      }) as Contract
+
+    const apri = (c: Contract) => {
+      component.contratto = c
+      component.onVisibleChange(true)
+      fixture.detectChanges()
+    }
+    const errore = (status: number, body: unknown) =>
+      throwError(() => new HttpErrorResponse({ status, error: body }))
+
+    it('con un contratto in ingresso il titolo è "Modifica contratto" e il form è precompilato', () => {
+      apri(contratto())
+      expect(component.contratto).not.toBeNull()
+      expect(component.form.contractNumber).toBe('CTR-2026-001')
+      expect(component.form.contractType).toBe('WASTE_TRANSPORT')
+      expect(component.form.producerId).toBe('prod-1')
+      expect(component.form.counterpartyId).toBe('trasp-1')
+      expect(component.form.cerCodes).toEqual(['150101', '150102'])
+      expect(component.form.basePrice).toBe(120)
+      expect(component.startDate).toEqual(new Date(2026, 0, 15))
+      expect(component.endDate).toEqual(new Date(2026, 11, 31))
+      expect(component.registroEffettivo()).toBe('trasportatori')
+      const intestazione = document.body.querySelector('.p-dialog-title')
+      expect(intestazione?.textContent).toContain('Modifica contratto')
+    })
+
+    it('registro dedotto da counterpartyType anche per un tipo senza registro implicito', () => {
+      apri(contratto({ contractType: 'FRAMEWORK', counterpartyType: 'DISPOSER' }))
+      expect(component.registroEffettivo()).toBe('destinatari')
+    })
+
+    it('in modifica non chiede il prossimo numero', () => {
+      contracts.nextNumber.calls.reset()
+      apri(contratto())
+      expect(contracts.nextNumber).not.toHaveBeenCalled()
+    })
+
+    it('si apre anche con visible impostato dal padre', () => {
+      contracts.nextNumber.calls.reset()
+      component.contratto = contratto({ contractNumber: 'CTR-X' })
+      fixture.componentRef.setInput('visible', true)
+      fixture.detectChanges()
+      expect(component.form.contractNumber).toBe('CTR-X')
+      expect(contracts.nextNumber).not.toHaveBeenCalled()
+    })
+
+    it('contratto attivo: produttore, controparte, tipo, numero e data di inizio disabilitati', async () => {
+      apri(contratto({ status: 'ACTIVE', modificabili: TERMINI, eliminabile: false }))
+      for (const c of [
+        'contractNumber',
+        'producerId',
+        'counterpartyId',
+        'counterpartyType',
+        'contractType',
+        'startDate',
+      ] as CampoContratto[]) {
+        expect(component.campoBloccato(c)).withContext(c).toBeTrue()
+      }
+      for (const c of TERMINI) expect(component.campoBloccato(c)).withContext(c).toBeFalse()
+      // NgModel applica `disabled` in un microtask
+      await fixture.whenStable()
+      fixture.detectChanges()
+      const numero = document.body.querySelector('#c-number') as HTMLInputElement
+      expect(numero.disabled).toBeTrue()
+      const prezzo = document.body.querySelector('#c-uom') as HTMLInputElement
+      expect(prezzo.disabled).toBeFalse()
+      expect(document.body.querySelector('[data-testid="c-bloccati"]')).not.toBeNull()
+    })
+
+    it('in creazione nessun campo è bloccato', () => {
+      expect(component.campoBloccato('contractNumber')).toBeFalse()
+    })
+
+    it('salva in modifica manda solo i campi cambiati più la versione', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      component.salva()
+      expect(contracts.create).not.toHaveBeenCalled()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 130, versione: 4 })
+      expect(toast.success).toHaveBeenCalled()
+    })
+
+    it('togliere la data di fine manda endDate null', () => {
+      apri(contratto())
+      component.endDate = null
+      component.salva()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', { endDate: null, versione: 4 })
+    })
+
+    it('CER in altro ordine o descrizione vuota contro null non sono cambiamenti', () => {
+      apri(contratto())
+      component.form.cerCodes = ['150102', '150101']
+      component.form.description = '  '
+      component.form.contractNumber = ' CTR-2026-001 '
+      component.salva()
+      expect(contracts.update).not.toHaveBeenCalled()
+    })
+
+    it('nessun cambiamento: non chiama update e chiude con un avviso', () => {
+      apri(contratto())
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(contracts.update).not.toHaveBeenCalled()
+      expect(toast.info).toHaveBeenCalledWith('Nessuna modifica da salvare')
+      expect(chiuso).toHaveBeenCalledWith(false)
+    })
+
+    it('409 CONTRATTO_MODIFICATO_NEL_FRATTEMPO: toast col messaggio del backend ed emette modificato', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      contracts.update.and.returnValue(
+        errore(409, {
+          message: 'Il contratto è stato modificato nel frattempo.',
+          error: 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO',
+        })
+      )
+      const emesso = spyOn(component.modificato, 'emit')
+      component.salva()
+      expect(toast.error).toHaveBeenCalledWith('Il contratto è stato modificato nel frattempo.')
+      expect(emesso).toHaveBeenCalled()
+    })
+
+    it('400 CONTRATTO_NON_VALIDO: toast coi messaggi del backend, dialog resta aperto', () => {
+      apri(contratto())
+      component.form.basePrice = 130
+      contracts.update.and.returnValue(
+        errore(400, {
+          message: ['Indica almeno un codice CER.', 'Il prezzo base non può essere negativo.'],
+          error: 'CONTRATTO_NON_VALIDO',
+        })
+      )
+      const emesso = spyOn(component.modificato, 'emit')
+      const chiuso = spyOn(component.visibleChange, 'emit')
+      component.salva()
+      expect(toast.error).toHaveBeenCalledWith(
+        'Indica almeno un codice CER. Il prezzo base non può essere negativo.'
+      )
+      expect(emesso).not.toHaveBeenCalled()
+      expect(chiuso).not.toHaveBeenCalled()
+      expect(component.saving()).toBeFalse()
+    })
+
+    it('il pulsante reale "Salva modifiche" salva (click DOM)', () => {
+      apri(contratto())
+      component.form.basePrice = 140
+      const bottoni = Array.from(document.body.querySelectorAll('.p-dialog-footer button'))
+      const salva = bottoni.find(b => b.textContent?.includes('Salva modifiche')) as HTMLElement
+      expect(salva).toBeTruthy()
+      salva.click()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 140, versione: 4 })
     })
   })
 })
