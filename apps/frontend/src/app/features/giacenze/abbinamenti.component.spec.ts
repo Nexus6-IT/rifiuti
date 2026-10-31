@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { Subject, of, throwError } from 'rxjs'
+import { of, throwError } from 'rxjs'
 import { HttpErrorResponse } from '@angular/common/http'
 import { AbbinamentiComponent } from './abbinamenti.component'
-import { AbbinamentiService, PropostaScarico } from './abbinamenti.service'
+import { AbbinamentiService } from './abbinamenti.service'
 import { RegistroService } from '../registro/registro.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ambito, carico, proposta, scarico, sede, vista } from './abbinamenti.fixture.spec'
@@ -170,124 +170,38 @@ describe('AbbinamentiComponent', () => {
     )
   })
 
-  describe('modifica di uno scarico', () => {
+  describe('apertura del dialog di uno scarico', () => {
     const s = scarico({ stato: 'NON_ABBINATO', abbinato: 0, righe: [] })
 
-    it('apre l editor con la proposta e salva solo le quantita maggiori di zero', () => {
+    it('apriModifica apre il dialog con lo scarico e l unita', () => {
       setup()
-      comp.apriModifica(s)
-      expect(servizio.proposta).toHaveBeenCalledWith('s1')
-      expect(comp.modifica()?.candidati.length).toBe(2)
-      comp.usaProposta()
-      expect(comp.quantitaDi(comp.modifica()!.candidati[0])).toBe(400)
-      expect(comp.totaleModifica()).toBe(400)
-      servizio.salva.and.returnValue(
-        of({ scarico: s, avvisi: ['Abbinamento parziale: restano 0 da abbinare.'] })
-      )
-      comp.salvaModifica()
-      expect(servizio.salva).toHaveBeenCalledWith('s1', [{ caricoId: 'c1', quantita: 400 }])
-      expect(comp.modifica()).toBeNull()
-      expect(comp.avvisi()).toEqual(['Abbinamento parziale: restano 0 da abbinare.'])
+      comp.apriModifica(s, 'kg')
+      expect(comp.dialogAperto()).toBe(true)
+      expect(comp.scaricoInModifica()).toBe(s)
+      expect(comp.unitaInModifica()).toBe('kg')
     })
 
-    it('una giacenza iniziale viaggia come giacenzaInizialeId', () => {
+    it('senza unita la ricava dalla vista', () => {
       setup()
-      servizio.proposta.and.returnValue(
-        of(proposta({ candidati: [carico({ tipo: 'APERTURA', id: 'g1', numero: null })] }))
-      )
-      comp.apriModifica(s)
-      comp.impostaQuantita(comp.modifica()!.candidati[0], 50.5)
-      servizio.salva.and.returnValue(of({ scarico: s, avvisi: [] }))
-      comp.salvaModifica()
-      expect(servizio.salva).toHaveBeenCalledWith('s1', [
-        { giacenzaInizialeId: 'g1', quantita: 50.5 },
-      ])
+      comp.apriModifica(vista().ambiti[0].scarichi[0])
+      expect(comp.unitaInModifica()).toBe('kg')
     })
 
-    it('totale oltre lo scarico: il salvataggio e bloccato', () => {
+    it('dopo il salvataggio mostra gli avvisi e ricarica la vista', () => {
       setup()
-      comp.apriModifica(s)
-      comp.impostaQuantita(comp.modifica()!.candidati[0], 500)
-      expect(comp.superaScarico()).toBe(true)
-      comp.salvaModifica()
-      expect(servizio.salva).not.toHaveBeenCalled()
+      comp.apriModifica(s, 'kg')
+      servizio.vista.calls.reset()
+      comp.dopoSalvataggio({ scarico: s, avvisi: ['Abbinamento parziale.'] })
+      expect(comp.avvisi()).toEqual(['Abbinamento parziale.'])
+      expect(servizio.vista).toHaveBeenCalledTimes(1)
+      expect(comp.dialogAperto()).toBe(false)
     })
 
-    it('scoperto della proposta e righe esistenti fuori dai candidati', () => {
+    it('Aggiorna chiude il dialog aperto', () => {
       setup()
-      servizio.proposta.and.returnValue(
-        of(
-          proposta({
-            scoperto: 25,
-            scarico: scarico({
-              righe: [
-                {
-                  carico: { tipo: 'MOVIMENTO', id: 'zz', numero: '9/2026', giorno: '2026-05-01' },
-                  quantita: 10,
-                  origine: 'MANUALE',
-                },
-              ],
-            }),
-          })
-        )
-      )
-      comp.apriModifica(s)
-      expect(comp.modifica()?.scoperto).toBe(25)
-      expect(comp.modifica()?.righeFuori.length).toBe(1)
-      expect(comp.testoRigheFuori(comp.modifica()!)).toContain('9/2026')
-      expect(comp.testoRigheFuori(comp.modifica()!)).toContain('vengono tolti')
-    })
-
-    it('una seconda Modifica annulla la proposta precedente', () => {
-      setup()
-      const primo = new Subject<PropostaScarico>()
-      servizio.proposta.and.returnValues(primo, of(proposta()))
-      comp.apriModifica(s)
-      comp.apriModifica(s)
-      primo.next(proposta({ scoperto: 999 }))
-      expect(comp.modifica()?.scoperto).toBe(0)
-    })
-
-    it('Aggiorna chiude l editor aperto', () => {
-      setup()
-      comp.apriModifica(s)
-      expect(comp.modifica()).not.toBeNull()
+      comp.apriModifica(s, 'kg')
       comp.reload()
-      expect(comp.modifica()).toBeNull()
-    })
-
-    it('scollega: elenco vuoto e l avviso del server (il ricalcolo riabbina) resta visibile', () => {
-      setup()
-      comp.apriModifica(s)
-      const avviso =
-        'Lo scarico è senza abbinamento: il prossimo ricalcolo lo riabbinerà con il FIFO.'
-      servizio.salva.and.returnValue(of({ scarico: s, avvisi: [avviso] }))
-      comp.chiediScollega()
-      expect(comp.confermaScollega()).toBe(true)
-      expect(servizio.salva).not.toHaveBeenCalled()
-      comp.scollega()
-      expect(servizio.salva).toHaveBeenCalledWith('s1', [])
-      expect(comp.avvisi()).toEqual([avviso])
-    })
-
-    it('errore del server: resta aperto e mostra il messaggio', () => {
-      setup()
-      comp.apriModifica(s)
-      servizio.salva.and.returnValue(
-        throwError(
-          () =>
-            new HttpErrorResponse({
-              status: 400,
-              error: { message: 'Il carico n. 1/2026 ha un residuo di 100: non basta per 400.' },
-            })
-        )
-      )
-      comp.impostaQuantita(comp.modifica()!.candidati[0], 400)
-      comp.salvaModifica()
-      expect(comp.modifica()).not.toBeNull()
-      expect(comp.erroreModifica()).toBe(
-        'Il carico n. 1/2026 ha un residuo di 100: non basta per 400.'
-      )
+      expect(comp.dialogAperto()).toBe(false)
     })
   })
 })

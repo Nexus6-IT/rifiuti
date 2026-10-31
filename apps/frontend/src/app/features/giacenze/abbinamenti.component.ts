@@ -7,7 +7,6 @@ import { Subscription, forkJoin, of } from 'rxjs'
 import { catchError } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
-import { InputNumberModule } from 'primeng/inputnumber'
 import { MessageModule } from 'primeng/message'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { TableModule } from 'primeng/table'
@@ -21,22 +20,22 @@ import {
   AmbitoVista,
   CaricoVista,
   DifferenzaVista,
-  PropostaScarico,
-  RigaVista,
-  RigaDaSalvare,
+  EsitoSalvataggio,
   ScaricoVista,
   StatoCarico,
   StatoScarico,
   VistaAbbinamenti,
 } from './abbinamenti.service'
 import { formattaGiorno } from './giorno'
+import {
+  AbbinamentoScaricoDialogComponent,
+  messaggioErrore,
+} from './abbinamento-scarico-dialog.component'
 
 export const MSG_NESSUN_AMBITO =
   'Nessun rifiuto in stoccaggio R13/D15 in questo registro. Compaiono qui i carichi con operazione R13 o D15.'
 export const MSG_NESSUN_REGISTRO = 'Nessun registro disponibile per questa azienda.'
 export const MSG_DIFFERENZE_NON_DISPONIBILI = 'Differenze non disponibili, riprova'
-export const MSG_CONFERMA_SCOLLEGA =
-  'Lo scarico resta senza abbinamento; il prossimo ricalcolo lo riabbina con il FIFO.'
 export const MSG_CONFERMA_RICALCOLO =
   'Le righe automatiche di questo registro vengono ricalcolate con FIFO; quelle inserite a mano restano.'
 
@@ -59,22 +58,9 @@ const GRAVITA: Record<StatoScarico | StatoCarico, Gravita> = {
   ESAURITO: 'success',
 }
 
-/** Editor dell'abbinamento di uno scarico (candidati dalla proposta del backend). */
-export interface ModificaScarico {
-  scarico: ScaricoVista
-  unita: string
-  candidati: CaricoVista[]
-  proposta: PropostaScarico['proposta']
-  scoperto: number
-  /** Abbinamenti esistenti su carichi che non sono fra i candidati: un salvataggio li toglie. */
-  righeFuori: RigaVista[]
-}
-
 /** Chiave dell'ambito (CER + famiglia): serve a trackBy e agli id, senza spazi. */
 export const chiaveAmbito = (a: { cerCode: string; famiglia: string }): string =>
   `${a.cerCode.replace(/\s+/g, '')}-${a.famiglia}`
-
-const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c.id}`
 
 /**
  * Pagina Abbinamenti R13/D15: per ogni rifiuto in stoccaggio, carichi e scarichi con lo stato
@@ -89,11 +75,11 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
     FormsModule,
     ButtonModule,
     DropdownModule,
-    InputNumberModule,
     MessageModule,
     ProgressSpinnerModule,
     TableModule,
     TagModule,
+    AbbinamentoScaricoDialogComponent,
   ],
   template: `
     <div class="page">
@@ -434,124 +420,13 @@ const chiaveCarico = (c: { tipo: string; id: string }): string => `${c.tipo}:${c
         </section>
       </ng-container>
 
-      <section
-        *ngIf="modifica() as m"
-        class="surface-card mb-4"
-        role="region"
-        aria-labelledby="ab-ed-titolo"
-        data-testid="editor"
-      >
-        <h2 class="ab-titolo" id="ab-ed-titolo" tabindex="-1">
-          Abbinamenti dello scarico n. {{ m.scarico.numero }}
-        </h2>
-        <p id="ab-ed-aiuto" class="ab-nota">
-          Scarico di {{ formattaQuantita(m.scarico.quantita) }} {{ m.unita }}. Indica quanto
-          prendere da ogni carico: il totale non può superare lo scarico. Se togli tutti gli
-          abbinamenti, il prossimo ricalcolo riabbina lo scarico con il FIFO.
-        </p>
-        <p-message
-          *ngIf="m.righeFuori.length > 0"
-          severity="warn"
-          styleClass="w-full mb-2"
-          data-testid="righe-fuori"
-          [text]="testoRigheFuori(m)"
-        ></p-message>
-        <p *ngIf="m.scoperto > 0" class="ab-nota" data-testid="scoperto">
-          I carichi disponibili non coprono tutto lo scarico: con il FIFO restano scoperti
-          {{ formattaQuantita(m.scoperto) }} {{ m.unita }}.
-        </p>
-        <div *ngFor="let c of m.candidati; let i = index" class="field ab-riga">
-          <label [for]="'ab-q-' + i" [id]="'ab-q-lbl-' + i">
-            {{ c.numero ? 'Carico n. ' + c.numero : 'Giacenza iniziale' }} del
-            {{ formattaGiorno(c.giorno) }}, residuo {{ formattaQuantita(c.residuo) }} {{ m.unita }}
-          </label>
-          <p-inputNumber
-            [inputId]="'ab-q-' + i"
-            mode="decimal"
-            locale="it-IT"
-            [minFractionDigits]="0"
-            [maxFractionDigits]="3"
-            [min]="0"
-            [max]="c.residuo"
-            [ngModel]="quantitaDi(c)"
-            (ngModelChange)="impostaQuantita(c, $event)"
-            [ariaLabelledBy]="'ab-q-lbl-' + i + ' ab-ed-aiuto'"
-            [attr.data-testid]="'quantita-' + i"
-          ></p-inputNumber>
-        </div>
-        <p *ngIf="m.candidati.length === 0" class="ab-nota">
-          Nessun carico disponibile per questo scarico.
-        </p>
-        <p class="ab-nota" aria-live="polite" data-testid="totale">
-          Totale abbinato: {{ formattaQuantita(totaleModifica()) }} di
-          {{ formattaQuantita(m.scarico.quantita) }} {{ m.unita }}
-        </p>
-        <p *ngIf="superaScarico()" class="field-error" role="alert" data-testid="supera-scarico">
-          Il totale abbinato supera la quantità dello scarico.
-        </p>
-        <p *ngIf="erroreModifica()" class="field-error" role="alert" data-testid="errore-modifica">
-          {{ erroreModifica() }}
-        </p>
-        <p-button
-          label="Usa la proposta FIFO"
-          [outlined]="true"
-          size="small"
-          [disabled]="inElaborazione()"
-          (onClick)="usaProposta()"
-          data-testid="usa-proposta"
-        ></p-button>
-        <p-button
-          label="Salva"
-          size="small"
-          [loading]="inElaborazione()"
-          [disabled]="superaScarico()"
-          (onClick)="salvaModifica()"
-          data-testid="salva-modifica"
-        ></p-button>
-        <p-button
-          label="Scollega lo scarico"
-          severity="danger"
-          [text]="true"
-          size="small"
-          [disabled]="inElaborazione()"
-          (onClick)="chiediScollega()"
-          data-testid="scollega"
-        ></p-button>
-        <div
-          *ngIf="confermaScollega()"
-          role="alertdialog"
-          aria-labelledby="ab-scollega-testo"
-          data-testid="conferma-scollega"
-          (keydown.escape)="annullaScollega()"
-        >
-          <p id="ab-scollega-testo" class="ab-nota">{{ msgConfermaScollega }}</p>
-          <p-button
-            label="Sì, scollega"
-            severity="danger"
-            size="small"
-            [loading]="inElaborazione()"
-            (onClick)="scollega()"
-            data-testid="scollega-conferma"
-            ariaLabel="Conferma lo scollegamento dello scarico"
-          ></p-button>
-          <p-button
-            label="No"
-            [text]="true"
-            size="small"
-            (onClick)="annullaScollega()"
-            data-testid="scollega-annulla"
-            ariaLabel="Annulla lo scollegamento"
-          ></p-button>
-        </div>
-        <p-button
-          label="Annulla"
-          [text]="true"
-          size="small"
-          [disabled]="inElaborazione()"
-          (onClick)="chiudiModifica()"
-          data-testid="annulla-modifica"
-        ></p-button>
-      </section>
+      <app-abbinamento-scarico-dialog
+        [visible]="dialogAperto()"
+        [scarico]="scaricoInModifica()"
+        [unita]="unitaInModifica()"
+        (visibleChange)="cambiaDialog($event)"
+        (salvato)="dopoSalvataggio($event)"
+      ></app-abbinamento-scarico-dialog>
     </div>
   `,
   styles: [
@@ -619,39 +494,24 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
   readonly confermaRicalcolo = signal(false)
   /** Avvisi dell'ultima operazione (ricalcolo o salvataggio), mostrati finché non si cambia. */
   readonly avvisi = signal<string[]>([])
-  readonly modifica = signal<ModificaScarico | null>(null)
-  readonly erroreModifica = signal<string | null>(null)
-  private readonly quantite = signal<Record<string, number | null>>({})
+  /** Scarico di cui il dialog sta modificando gli abbinamenti. */
+  readonly scaricoInModifica = signal<ScaricoVista | null>(null)
+  readonly unitaInModifica = signal('')
+  readonly dialogAperto = signal(false)
   private caricamento?: Subscription
-  private propostaSub?: Subscription
   private readonly destroyRef = inject(DestroyRef)
   private readonly route = inject(ActivatedRoute, { optional: true })
   readonly nessunRegistro = signal(false)
   readonly differenzeNonDisponibili = signal(false)
-  readonly confermaScollega = signal(false)
 
   readonly piuRegistri = computed(() => this.registri().length > 1)
   readonly opzioniRegistro = computed(() =>
     this.registri().map(r => ({ label: etichettaRegistro(r), value: r.id }))
   )
   readonly scarichiDiversi = computed(() => new Set(this.differenze().map(d => d.scarico.id)).size)
-  readonly superaScarico = computed(() => {
-    const m = this.modifica()
-    return !!m && Math.round(this.totaleModifica() * 1000) > Math.round(m.scarico.quantita * 1000)
-  })
-  readonly totaleModifica = computed(() => {
-    const m = this.modifica()
-    if (!m) return 0
-    const mill = m.candidati.reduce(
-      (t, c) => t + Math.round((this.quantite()[chiaveCarico(c)] ?? 0) * 1000),
-      0
-    )
-    return mill / 1000
-  })
 
   readonly msgNessunRegistro = MSG_NESSUN_REGISTRO
   readonly msgDifferenzeNonDisponibili = MSG_DIFFERENZE_NON_DISPONIBILI
-  readonly msgConfermaScollega = MSG_CONFERMA_SCOLLEGA
   readonly msgConfermaRicalcolo = MSG_CONFERMA_RICALCOLO
   readonly msgNessunAmbito = MSG_NESSUN_AMBITO
   readonly formattaQuantita = formattaQuantita
@@ -687,7 +547,6 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.caricamento?.unsubscribe()
-    this.propostaSub?.unsubscribe()
   }
 
   cambiaRegistro(valore: string | null): void {
@@ -723,7 +582,7 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
           this.loading.set(false)
         },
         error: e => {
-          this.error.set(this.messaggio(e, 'Impossibile caricare gli abbinamenti.'))
+          this.error.set(messaggioErrore(e, 'Impossibile caricare gli abbinamenti.'))
           this.loading.set(false)
         },
       })
@@ -750,14 +609,6 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
 
   gravita(stato: StatoScarico | StatoCarico): Gravita {
     return GRAVITA[stato]
-  }
-
-  /** Messaggio del server (già in italiano e senza id), altrimenti quello di ripiego. */
-  private messaggio(e: unknown, ripiego: string): string {
-    const m = (e as { error?: { message?: unknown } })?.error?.message
-    if (typeof m === 'string' && m) return m
-    if (Array.isArray(m) && m.length > 0) return m.join(' ')
-    return ripiego
   }
 
   // --- ricalcolo ---
@@ -805,136 +656,39 @@ export class AbbinamentiComponent implements OnInit, OnDestroy {
         },
         error: e => {
           this.inElaborazione.set(false)
-          this.toast.error(this.messaggio(e, 'Impossibile ricalcolare gli abbinamenti.'))
+          this.toast.error(messaggioErrore(e, 'Impossibile ricalcolare gli abbinamenti.'))
         },
       })
   }
 
-  // --- modifica a mano ---
+  // --- modifica a mano (dialog) ---
 
   apriModifica(s: ScaricoVista, unita = ''): void {
-    this.erroreModifica.set(null)
-    this.propostaSub?.unsubscribe()
-    this.propostaSub = this.servizio
-      .proposta(s.id)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: p => {
-          const iniziali: Record<string, number | null> = {}
-          for (const r of p.scarico.righe) iniziali[chiaveCarico(r.carico)] = r.quantita
-          this.quantite.set(iniziali)
-          this.modifica.set({
-            scarico: p.scarico,
-            unita: unita || this.unitaDi(s.id),
-            candidati: p.candidati,
-            proposta: p.proposta,
-            scoperto: p.scoperto,
-            righeFuori: p.scarico.righe.filter(
-              r => !p.candidati.some(c => chiaveCarico(c) === chiaveCarico(r.carico))
-            ),
-          })
-          setTimeout(() => document.getElementById('ab-ed-titolo')?.focus())
-        },
-        error: e => this.toast.error(this.messaggio(e, 'Impossibile caricare la proposta.')),
-      })
+    this.scaricoInModifica.set(s)
+    this.unitaInModifica.set(unita || this.unitaDi(s.id))
+    this.dialogAperto.set(true)
   }
 
   private unitaDi(scaricoId: string): string {
     return this.vista()?.ambiti.find(a => a.scarichi.some(s => s.id === scaricoId))?.unita ?? ''
   }
 
-  quantitaDi(c: CaricoVista): number | null {
-    return this.quantite()[chiaveCarico(c)] ?? null
+  cambiaDialog(aperto: boolean): void {
+    if (aperto) this.dialogAperto.set(true)
+    else this.chiudiModifica()
   }
 
-  impostaQuantita(c: CaricoVista, q: number | null): void {
-    this.quantite.update(m => ({ ...m, [chiaveCarico(c)]: q }))
-  }
-
-  usaProposta(): void {
-    const m = this.modifica()
-    if (!m) return
-    const nuove: Record<string, number | null> = {}
-    for (const r of m.proposta) nuove[chiaveCarico(r.carico)] = r.quantita
-    this.quantite.set(nuove)
-  }
-
-  salvaModifica(): void {
-    const m = this.modifica()
-    if (!m || this.superaScarico()) return
-    const righe: RigaDaSalvare[] = []
-    for (const c of m.candidati) {
-      const q = this.quantite()[chiaveCarico(c)]
-      if (q && q > 0) {
-        righe.push(
-          c.tipo === 'MOVIMENTO'
-            ? { caricoId: c.id, quantita: q }
-            : { giacenzaInizialeId: c.id, quantita: q }
-        )
-      }
-    }
-    this.invia(m.scarico.id, righe)
-  }
-
-  chiediScollega(): void {
-    this.confermaScollega.set(true)
-    setTimeout(() =>
-      document.querySelector<HTMLElement>('[data-testid="scollega-conferma"] button')?.focus()
-    )
-  }
-
-  annullaScollega(): void {
-    this.confermaScollega.set(false)
-    setTimeout(() =>
-      document.querySelector<HTMLElement>('[data-testid="scollega"] button')?.focus()
-    )
-  }
-
-  scollega(): void {
-    const m = this.modifica()
-    this.confermaScollega.set(false)
-    if (m) this.invia(m.scarico.id, [])
-  }
-
-  testoRigheFuori(m: ModificaScarico): string {
-    const elenco = m.righeFuori
-      .map(r => `${r.carico.numero ?? 'giacenza iniziale'} (${formattaQuantita(r.quantita)})`)
-      .join(', ')
-    return `Questi abbinamenti esistenti non sono fra i carichi disponibili e non si possono modificare qui: ${elenco}. Se salvi, vengono tolti.`
-  }
-
-  private invia(scaricoId: string, righe: RigaDaSalvare[]): void {
-    this.inElaborazione.set(true)
-    this.erroreModifica.set(null)
-    this.servizio
-      .salva(scaricoId, righe)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: esito => {
-          this.inElaborazione.set(false)
-          this.avvisi.set(esito.avvisi)
-          this.toast.success('Abbinamenti dello scarico salvati.')
-          this.chiudiModifica()
-          this.reload()
-        },
-        error: e => {
-          this.inElaborazione.set(false)
-          this.erroreModifica.set(this.messaggio(e, 'Impossibile salvare gli abbinamenti.'))
-        },
-      })
+  dopoSalvataggio(esito: EsitoSalvataggio): void {
+    this.avvisi.set(esito.avvisi)
+    this.reload()
   }
 
   chiudiModifica(rendiFocus = true): void {
-    this.propostaSub?.unsubscribe()
-    this.confermaScollega.set(false)
-    const m = this.modifica()
-    this.modifica.set(null)
-    this.erroreModifica.set(null)
-    if (m && rendiFocus) {
+    const s = this.scaricoInModifica()
+    this.dialogAperto.set(false)
+    if (s && rendiFocus) {
       setTimeout(() =>
-        document
-          .querySelector<HTMLElement>(`[data-testid="modifica-${m.scarico.numero}"] button`)
-          ?.focus()
+        document.querySelector<HTMLElement>(`[data-testid="modifica-${s.numero}"] button`)?.focus()
       )
     }
   }

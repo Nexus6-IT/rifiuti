@@ -168,25 +168,15 @@ describe('AbbinamentiComponent (DOM)', () => {
     )
   })
 
-  it('editor: etichette collegate, focus sul titolo, input italiano, salvataggio e avviso di riabbinamento', async () => {
+  it('Modifica apre il dialog dello scarico; salvando mostra l avviso, ricarica e riporta il focus', async () => {
     await setup()
     await clic('modifica-3/2026')
-    await new Promise(r => setTimeout(r))
+    await new Promise(r => setTimeout(r, 20))
     fixture.detectChanges()
     expect(servizio.proposta).toHaveBeenCalledWith('s1')
-    const titolo = q<HTMLElement>('#ab-ed-titolo')!
-    expect(document.activeElement).toBe(titolo)
-    expect(q('[data-testid="editor"]')?.getAttribute('aria-labelledby')).toBe('ab-ed-titolo')
-    const input = q<HTMLInputElement>('#ab-q-0')!
-    expect(q('label[for="ab-q-0"]')?.textContent).toContain('residuo 1.000')
-    expect(input.getAttribute('aria-labelledby')).toBe('ab-q-lbl-0 ab-ed-aiuto')
-    // digitazione reale con la virgola italiana
-    input.focus()
-    input.value = '12,5'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new Event('blur'))
-    fixture.detectChanges()
-    expect(q('[data-testid="totale"]')?.textContent).toContain('12,5')
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Abbinamenti dello scarico n. 3/2026'
+    )
     servizio.salva.and.returnValue(
       of({
         scarico: scarico(),
@@ -195,38 +185,30 @@ describe('AbbinamentiComponent (DOM)', () => {
         ],
       })
     )
-    await clic('salva-modifica')
-    expect(servizio.salva).toHaveBeenCalledWith('s1', [{ caricoId: 'c1', quantita: 12.5 }])
-    expect(q('[data-testid="avviso"]')?.textContent).toContain('lo riabbinerà con il FIFO')
-    expect(q('[data-testid="editor"]')).toBeNull()
-  })
-
-  it('Scollega manda l elenco vuoto', async () => {
-    await setup()
-    servizio.salva.and.returnValue(of({ scarico: scarico(), avvisi: [] }))
-    await clic('modifica-3/2026')
-    await clic('scollega')
-    expect(servizio.salva).not.toHaveBeenCalled()
-    expect(q('[data-testid="conferma-scollega"]')?.textContent).toContain('lo riabbina con il FIFO')
-    await clic('scollega-conferma')
-    expect(servizio.salva).toHaveBeenCalledWith('s1', [])
-  })
-
-  it('Scollega: No riporta il focus sul pulsante, Esc annulla', async () => {
-    await setup()
-    await clic('modifica-3/2026')
-    await clic('scollega')
-    await clic('scollega-annulla')
-    await new Promise(r => setTimeout(r))
-    expect(q('[data-testid="conferma-scollega"]')).toBeNull()
-    expect(document.activeElement).toBe(q('[data-testid="scollega"] button'))
-    await clic('scollega')
-    q('[data-testid="conferma-scollega"]')!.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
-    )
+    servizio.vista.calls.reset()
+    document.querySelector<HTMLElement>('[data-testid="scollega"] button')!.click()
     fixture.detectChanges()
-    expect(q('[data-testid="conferma-scollega"]')).toBeNull()
-    expect(servizio.salva).not.toHaveBeenCalled()
+    document.querySelector<HTMLElement>('[data-testid="scollega-conferma"] button')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(servizio.salva).toHaveBeenCalledWith('s1', [])
+    expect(servizio.vista).toHaveBeenCalledTimes(1)
+    expect(q('[data-testid="avviso"]')?.textContent).toContain('lo riabbinerà con il FIFO')
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('chiudere il dialog con Esc riporta il focus sul pulsante Modifica', async () => {
+    await setup()
+    await clic('modifica-3/2026')
+    await new Promise(r => setTimeout(r, 20))
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    fixture.detectChanges()
+    await fixture.whenStable()
+    await new Promise(r => setTimeout(r, 20))
+    fixture.detectChanges()
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.activeElement).toBe(q('[data-testid="modifica-3/2026"] button'))
   })
 
   it('Ricalcola: No e Esc annullano e riportano il focus sul pulsante', async () => {
@@ -242,19 +224,6 @@ describe('AbbinamentiComponent (DOM)', () => {
     fixture.detectChanges()
     expect(q('[data-testid="conferma-ricalcolo"]')).toBeNull()
     expect(servizio.ricalcola).not.toHaveBeenCalled()
-  })
-
-  it('Salva e disabilitato se il totale supera lo scarico, con messaggio', async () => {
-    await setup()
-    await clic('modifica-3/2026')
-    const input = q<HTMLInputElement>('#ab-q-0')!
-    input.focus()
-    input.value = '500'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new Event('blur'))
-    fixture.detectChanges()
-    expect(q('[data-testid="supera-scarico"]')?.textContent).toContain('supera la quantità')
-    expect(q<HTMLButtonElement>('[data-testid="salva-modifica"] button')?.disabled).toBeTrue()
   })
 
   it('differenze non disponibili: testo onesto, non "nessuna differenza"', async () => {
