@@ -40,3 +40,14 @@ export function ibanValido(iban: string): boolean {
   }
   return resto === 1
 }
+
+/**
+ * IBAN per gli elenchi: `IT60 **** **** 3456` (paese e controllo, due gruppi nascosti, ultime
+ * quattro cifre). Un valore troppo corto per mostrare qualcosa senza svelarlo diventa `****`.
+ */
+export function mascheraIban(iban: string): string {
+  const n = normalizzaIban(iban)
+  if (n === '') return ''
+  if (n.length <= 8) return '****'
+  return `${n.slice(0, 4)} **** **** ${n.slice(-4)}`
+}
