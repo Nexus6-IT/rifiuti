@@ -124,6 +124,32 @@ e `test-postgres`) e nel gate del deploy (`deploy.yml`, job `quality`).
 
 ---
 
+## Codici MUD delle unità locali
+
+Ogni unità locale RENTRI (`rentri_unita_locali`) ha un `progressivo_mud`: è il codice che il file MUD
+scrive nella chiave di ogni record della sua dichiarazione. Lo assegnano la migration
+`20261031130000_unita_locali_mud` (backfill: la principale di allora ha 1, le altre seguono per
+data di creazione) e un trigger `BEFORE INSERT` (massimo dell'azienda + 1). **I codici non vanno
+rinumerati a mano**: un MUD già presentato li contiene, e cambiarli farebbe sembrare un'altra sede.
+
+Ripristino a mano della migration (in quest'ordine; il commento in testa al file ha lo stesso elenco):
+
+```sql
+DROP TRIGGER rentri_unita_locali_progressivo_mud ON rentri_unita_locali;
+DROP FUNCTION rentri_unita_locali_assegna_progressivo_mud();
+DROP INDEX rentri_unita_locali_tenant_progressivo_mud_key;
+ALTER TABLE rentri_unita_locali
+  DROP CONSTRAINT rentri_unita_locali_cap_check,
+  DROP CONSTRAINT rentri_unita_locali_provincia_check,
+  DROP CONSTRAINT rentri_unita_locali_numero_addetti_check,
+  DROP CONSTRAINT rentri_unita_locali_progressivo_mud_check,
+  DROP COLUMN indirizzo, DROP COLUMN civico, DROP COLUMN cap, DROP COLUMN comune,
+  DROP COLUMN provincia, DROP COLUMN numero_addetti, DROP COLUMN progressivo_mud;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261031130000_unita_locali_mud';
+```
+
+---
+
 ## Ripristino (Disaster Recovery)
 
 ### Script: `restore.sh`
@@ -481,6 +507,20 @@ personalizzate dalle aziende tornano quelle fisse. **Prima del rollback** contro
 interessate. La tabella resta nel database (migration additiva) e riprende a contare al
 ripristino del codice; il ripristino a mano dello schema e' nel commento iniziale della
 migration `20261031100000_soglie_deposito_temporaneo`.
+
+Stesso discorso per **modifica e cancellazione dei contratti** (Fase 4 pezzo 0, colonne
+`versione`, `eliminato_il`, `eliminato_da` di `contracts`): il codice vecchio ignora le colonne,
+quindi **dopo un rollback i contratti eliminati ricompaiono** nella lista (e un contratto
+eliminato in `DRAFT` potrebbe essere attivato). Prima del rollback, **come owner** (con RLS
+FORCE il ruolo applicativo vedrebbe 0 righe e il controllo darebbe un falso "vuoto"):
+`SELECT tenant_id, count(*) FROM contracts WHERE eliminato_il IS NOT NULL GROUP BY 1`; se non
+e' vuoto, avvisare le aziende o portare quei contratti a `TERMINATED` con una query concordata.
+Caso inverso: un contratto eliminato e poi riattivato (o portato a `TERMINATED`) durante il
+rollback **sparisce di nuovo** al roll-forward, perche' `eliminato_il` e' ancora valorizzato:
+rifare il controllo di sopra prima di tornare al codice nuovo e, se serve, azzerare
+`eliminato_il`/`eliminato_da` di quei contratti. La FK `contracts_tenant_id_fkey` resta e il
+codice vecchio non ne risente. Il ripristino a mano
+dello schema e' nel commento della migration `20261101200000_contratti_modifica_eliminazione`.
 
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa

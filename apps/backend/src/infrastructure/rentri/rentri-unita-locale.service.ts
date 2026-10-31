@@ -19,6 +19,16 @@ export interface RentriUnitaLocale {
   codiceBloccoPredefinito: string | null
   /** Soglia di scorta di numeri vidimati da mantenere pronti per questa sede (R6). Null = job disattivato per questa sede. */
   dimensioneScortaDesiderata: number | null
+  /** Anagrafica della sede per la sua dichiarazione MUD (F2-8). Null = non indicato. */
+  indirizzo: string | null
+  civico: string | null
+  cap: string | null
+  comune: string | null
+  /** Sigla, 2 lettere maiuscole. */
+  provincia: string | null
+  numeroAddetti: number | null
+  /** Codice dell'unità locale nel file MUD: assegnato dal database, non modificabile. */
+  progressivoMud: number | null
 }
 
 /** Dati per creare una nuova unità locale. */
@@ -39,6 +49,16 @@ export interface UpdateRentriUnitaLocaleInput {
   attiva?: boolean
   /** Soglia di scorta (R6). `null` esplicito disattiva il rifornimento automatico per questa sede. */
   dimensioneScortaDesiderata?: number | null
+  /** Anagrafica della sede (F2-8): stringa vuota o `null` cancella il dato. */
+  indirizzo?: string | null
+  civico?: string | null
+  /** 5 cifre. */
+  cap?: string | null
+  comune?: string | null
+  /** 2 lettere, salvata maiuscola. */
+  provincia?: string | null
+  /** Intero >= 0. */
+  numeroAddetti?: number | null
 }
 
 /**
@@ -140,6 +160,24 @@ export class RentriUnitaLocaleService {
       }
     }
 
+    const indirizzo = this.testoOpzionale(input.indirizzo)
+    const civico = this.testoOpzionale(input.civico)
+    const cap = this.testoOpzionale(input.cap)
+    const comune = this.testoOpzionale(input.comune)
+    const provincia = this.testoOpzionale(input.provincia)
+    if (cap != null && !/^[0-9]{5}$/.test(cap)) {
+      throw new BadRequestException('Il CAP deve essere di 5 cifre')
+    }
+    if (provincia != null && !/^[A-Za-z]{2}$/.test(provincia)) {
+      throw new BadRequestException('La provincia deve essere la sigla di 2 lettere')
+    }
+    if (
+      input.numeroAddetti != null &&
+      (!Number.isInteger(input.numeroAddetti) || input.numeroAddetti < 0)
+    ) {
+      throw new BadRequestException('Il numero di addetti deve essere un intero non negativo')
+    }
+
     const row = await this.prisma.db.rentriUnitaLocale.update({
       where: { id },
       data: {
@@ -148,6 +186,12 @@ export class RentriUnitaLocaleService {
         ...(input.dimensioneScortaDesiderata !== undefined
           ? { dimensioneScortaDesiderata: input.dimensioneScortaDesiderata }
           : {}),
+        ...(indirizzo !== undefined ? { indirizzo } : {}),
+        ...(civico !== undefined ? { civico } : {}),
+        ...(cap !== undefined ? { cap } : {}),
+        ...(comune !== undefined ? { comune } : {}),
+        ...(provincia !== undefined ? { provincia: provincia?.toUpperCase() ?? null } : {}),
+        ...(input.numeroAddetti !== undefined ? { numeroAddetti: input.numeroAddetti } : {}),
       },
     })
     return this.toPlain(row)
@@ -328,6 +372,14 @@ export class RentriUnitaLocaleService {
     return risultato
   }
 
+  /** `undefined` = campo non inviato; stringa vuota o solo spazi = `null`. */
+  private testoOpzionale(v: string | null | undefined): string | null | undefined {
+    if (v === undefined) return undefined
+    if (v === null) return null
+    const t = v.trim()
+    return t === '' ? null : t
+  }
+
   private validatePattern(numIscrSito: string): void {
     if (!NUM_ISCR_SITO_PATTERN.test(numIscrSito)) {
       throw new BadRequestException(
@@ -353,6 +405,13 @@ export class RentriUnitaLocaleService {
     updatedAt: Date
     codiceBloccoPredefinito?: string | null
     dimensioneScortaDesiderata?: number | null
+    indirizzo?: string | null
+    civico?: string | null
+    cap?: string | null
+    comune?: string | null
+    provincia?: string | null
+    numeroAddetti?: number | null
+    progressivoMud?: number | null
   }): RentriUnitaLocale {
     return {
       id: row.id,
@@ -364,6 +423,13 @@ export class RentriUnitaLocaleService {
       updatedAt: row.updatedAt,
       codiceBloccoPredefinito: row.codiceBloccoPredefinito ?? null,
       dimensioneScortaDesiderata: row.dimensioneScortaDesiderata ?? null,
+      indirizzo: row.indirizzo ?? null,
+      civico: row.civico ?? null,
+      cap: row.cap ?? null,
+      comune: row.comune ?? null,
+      provincia: row.provincia ?? null,
+      numeroAddetti: row.numeroAddetti ?? null,
+      progressivoMud: row.progressivoMud ?? null,
     }
   }
 }

@@ -27,6 +27,7 @@ describe('MudController integrazioni del MUD', () => {
       leggi: jest.fn().mockResolvedValue(INTEGRAZIONI_VUOTE),
       codiciAzienda: jest.fn().mockResolvedValue(['01234567897']),
       etichetteRegistri: jest.fn().mockResolvedValue({ r1: 'Sede A', r2: 'Sede B' }),
+      etichetteUnitaLocali: jest.fn().mockResolvedValue({}),
     }
     const controller = new MudController(
       {} as any,
@@ -51,12 +52,29 @@ describe('MudController integrazioni del MUD', () => {
       ...INTEGRAZIONI_VUOTE,
       codiciAzienda: ['01234567897'],
       registri: { r1: 'Sede A', r2: 'Sede B' },
+      unitaLocali: {},
     })
     expect(integrazioni.leggi).toHaveBeenCalledWith('t1', 2025)
     expect(integrazioni.codiciAzienda).toHaveBeenCalledWith('t1')
     expect(
       Reflect.getMetadata(ROLES_KEY, MudController.prototype.salvaIntegrazioni)
     ).toBeUndefined()
+  })
+
+  it('il GET restituisce le unità locali', async () => {
+    const integrazioni = {
+      leggi: jest.fn().mockResolvedValue(INTEGRAZIONI_VUOTE),
+      codiciAzienda: jest.fn().mockResolvedValue([]),
+      etichetteRegistri: jest.fn().mockResolvedValue({}),
+      etichetteUnitaLocali: jest.fn().mockResolvedValue({ 'ul-1': 'Sede di Milano' }),
+    }
+    const controller = controllerCon('VIEWER', integrazioni)
+    const r = await controller.leggiIntegrazioni(
+      { user: { id: 'u1', tenantId: 't1' } } as any,
+      2025
+    )
+    expect(r.unitaLocali).toEqual({ 'ul-1': 'Sede di Milano' })
+    expect(integrazioni.etichetteUnitaLocali).toHaveBeenCalledWith('t1')
   })
 
   it('un VIEWER nell azienda selezionata non salva le integrazioni (403)', async () => {

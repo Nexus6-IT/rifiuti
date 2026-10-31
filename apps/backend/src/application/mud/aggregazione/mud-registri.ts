@@ -17,3 +17,18 @@ export async function etichetteRegistri(
   if (registri.length <= 1) return new Map()
   return new Map(registri.map(r => [r.id, r.unitaLocale?.denominazione ?? r.descrizione]))
 }
+
+/**
+ * Sede di ogni registro dell'azienda (registro -> `unitaLocaleId`, null se senza sede): una
+ * sola query, non legge i movimenti. Alimenta `dichiarazioneDelRegistro` (D2).
+ */
+export async function sediDeiRegistri(
+  prisma: Pick<PrismaService, 'registroRifiuti'>,
+  tenantId: string
+): Promise<Map<string, string | null>> {
+  const registri = await prisma.registroRifiuti.findMany({
+    where: { tenantId },
+    select: { id: true, unitaLocaleId: true },
+  })
+  return new Map(registri.map(r => [r.id, r.unitaLocaleId]))
+}
