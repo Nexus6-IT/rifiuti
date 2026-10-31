@@ -255,7 +255,9 @@ jobs:
             -e POSTGRES_DB=wasteflow_ci \
             -e POSTGRES_INITDB_ARGS="--auth-host=scram-sha-256" \
             postgres:16-alpine \
-            -c port=55432
+            -c port=55432 \
+            -c log_lock_waits=on -c deadlock_timeout=1s \
+            -c log_min_duration_statement=3000
 
       # Verifica esplicita e attiva che la porta sia raggiungibile: usiamo il
       # redirector /dev/tcp di bash (built-in, nessun tool esterno da
@@ -330,7 +332,7 @@ jobs:
       - name: Log di PostgreSQL e memoria del runner (solo se fallito)
         if: failure()
         run: |
-          docker logs --tail 300 "$POSTGRES_CI_CONTAINER" 2>&1 || true
+          docker logs "$POSTGRES_CI_CONTAINER" 2>&1 | grep -v -E "ERROR:|DETAIL:|STATEMENT:|CONTEXT:" | tail -400 || true
           free -m || true
           docker stats --no-stream 2>/dev/null | head -20 || true
 
