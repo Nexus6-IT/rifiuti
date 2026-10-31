@@ -75,7 +75,8 @@ import { AccessoVista, PesataVista, PeseService } from './pese.service'
           styleClass="w-full"
         ></p-inputNumber>
         <small id="rt-peso-aiuto" class="field-hint"
-          >Con la virgola per i decimali (al massimo due). Il punto separa solo le migliaia.</small
+          >Con la virgola per i decimali (al massimo due). Il separatore delle migliaia lo inserisce
+          il campo.</small
         >
         <small
           *ngIf="errorePeso() as e"

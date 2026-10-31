@@ -5,6 +5,8 @@ import { of, throwError } from 'rxjs'
 import { ToastService } from '../../core/services/toast.service'
 import { AccessoDettaglioComponent } from './accesso-dettaglio.component'
 import { AccessoVista, CollegamentoVista, PeseService } from './pese.service'
+import { By } from '@angular/platform-browser'
+import { SecondaPesataDialogComponent } from './seconda-pesata-dialog.component'
 import { accesso, incolla, pesata, q, qb, scrivi } from './pese-test-utils'
 
 const allegato = {
@@ -293,5 +295,25 @@ describe('AccessoDettaglioComponent (DOM)', () => {
     fixture.componentRef.setInput('accessoId', 'x')
     fixture.detectChanges()
     expect(q('ad-errore-caricamento')?.textContent).toContain('Accesso non trovato.')
+  })
+
+  it('seconda pesata già registrata in precedenza: avviso e non "registrata"', () => {
+    apri(accesso({ stato: 'APERTO', pesate: [accesso().pesate[0]] }))
+    qb('ad-seconda')!.click()
+    fixture.detectChanges()
+    const d = fixture.debugElement.query(By.directive(SecondaPesataDialogComponent))
+    ;(d.componentInstance as SecondaPesataDialogComponent).fatto.emit(
+      accesso({ giaRegistrata: true })
+    )
+    expect(toast.info).toHaveBeenCalledWith(
+      'Pesata già registrata in precedenza: controllare i dati mostrati'
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('al primo caricamento il fuoco va sul titolo', async () => {
+    apri(accesso())
+    await new Promise(r => setTimeout(r, 50))
+    expect(document.activeElement?.id).toBe('ad-titolo')
   })
 })

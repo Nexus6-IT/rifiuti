@@ -5,6 +5,7 @@ import { Subject, of, throwError } from 'rxjs'
 import { RegistroVista } from '../registro/registro.service'
 import { NuovoAccessoDialogComponent } from './nuovo-accesso-dialog.component'
 import { AccessoVista, Automezzo, PeseService } from './pese.service'
+import { By } from '@angular/platform-browser'
 import { accesso, incolla, q, qb, scegli, scrivi } from './pese-test-utils'
 
 const reg = (id: string, p: Partial<RegistroVista> = {}): RegistroVista => ({
@@ -91,6 +92,23 @@ describe('NuovoAccessoDialogComponent (DOM)', () => {
     const [a, b] = pese.apriAccesso.calls.allArgs()
     expect(b[0].chiaveIdempotenza).toBe(a[0].chiaveIdempotenza)
     expect(creati.length).toBe(1)
+  })
+
+  it('doppio onClick sincrono (che aggira il pulsante disabilitato) invia una sola richiesta', () => {
+    pese.apriAccesso.and.returnValue(new Subject<AccessoVista>())
+    apri()
+    compila()
+    const pulsante = fixture.debugElement.query(By.css('[data-testid="na-salva"]'))
+    pulsante.triggerEventHandler('onClick', {})
+    pulsante.triggerEventHandler('onClick', {})
+    expect(pese.apriAccesso).toHaveBeenCalledTimes(1)
+  })
+
+  it('l aiuto del peso parla del separatore delle migliaia inserito dal campo', () => {
+    apri()
+    expect(document.body.textContent?.replace(/\s+/g, ' ')).toContain(
+      'separatore delle migliaia lo inserisce il campo'
+    )
   })
 
   it('invia verso, modo, targa e pesata', () => {

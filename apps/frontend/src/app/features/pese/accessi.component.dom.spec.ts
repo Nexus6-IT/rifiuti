@@ -7,7 +7,9 @@ import { RegistroService, RegistroVista } from '../registro/registro.service'
 import { AccessiComponent } from './accessi.component'
 import { AccessoRiepilogo, AccessoVista, ElencoAccessi, PeseService } from './pese.service'
 import { PeseComponent } from './pese.component'
-import { q, qb, scegli, scrivi } from './pese-test-utils'
+import { By } from '@angular/platform-browser'
+import { NuovoAccessoDialogComponent } from './nuovo-accesso-dialog.component'
+import { accesso, q, qb, scegli, scrivi } from './pese-test-utils'
 
 const riga = (id: string, p: Partial<AccessoRiepilogo> = {}): AccessoRiepilogo => ({
   id,
@@ -123,10 +125,11 @@ describe('AccessiComponent (DOM)', () => {
     fixture.detectChanges()
     pese.elencaAccessi.calls.reset()
     qb('ac-cerca')!.click()
-    const f = pese.elencaAccessi.calls
-      .allArgs()
-      .map(a => a[0])
-      .find(x => x?.stato === 'ANNULLATO')!
+    const chiamate = pese.elencaAccessi.calls.allArgs().map(a => a[0])
+    // una sola ricerca per lo storico (non due: invio del form + clic) e una per i mezzi in impianto
+    expect(chiamate.filter(x => x?.stato === 'ANNULLATO').length).toBe(1)
+    expect(chiamate.filter(x => x?.stato === 'APERTO').length).toBe(1)
+    const f = chiamate.find(x => x?.stato === 'ANNULLATO')!
     expect(f).toEqual(
       jasmine.objectContaining({
         stato: 'ANNULLATO',
@@ -170,6 +173,98 @@ describe('AccessiComponent (DOM)', () => {
     fixture.detectChanges()
     expect(pese.dettaglioAccesso).toHaveBeenCalledWith('a1')
     expect(q('ad-indietro')).not.toBeNull()
+  })
+
+  it('un accesso già registrato in precedenza avvisa invece di dire "registrato"', async () => {
+    await apri([reg('r1', true)])
+    qb('ac-nuovo')!.click()
+    fixture.detectChanges()
+    const toast = TestBed.inject(ToastService) as jasmine.SpyObj<ToastService>
+    pese.dettaglioAccesso.and.returnValue(of(accesso()))
+    const dialogo = fixture.debugElement.query(By.directive(NuovoAccessoDialogComponent))
+    ;(dialogo.componentInstance as NuovoAccessoDialogComponent).creato.emit(
+      accesso({ giaRegistrata: true })
+    )
+    fixture.detectChanges()
+    expect(toast.info).toHaveBeenCalledWith(
+      'Pesata già registrata in precedenza: controllare i dati mostrati'
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('un accesso nuovo dice "registrato"', async () => {
+    await apri([reg('r1', true)])
+    qb('ac-nuovo')!.click()
+    fixture.detectChanges()
+    const toast = TestBed.inject(ToastService) as jasmine.SpyObj<ToastService>
+    pese.dettaglioAccesso.and.returnValue(of(accesso()))
+    const dialogo = fixture.debugElement.query(By.directive(NuovoAccessoDialogComponent))
+    ;(dialogo.componentInstance as NuovoAccessoDialogComponent).creato.emit(accesso())
+    expect(toast.success).toHaveBeenCalledWith('Accesso ACC-2026-0001 registrato.')
+  })
+
+  it('con più mezzi in impianto di quelli mostrati dice "e altri N"', async () => {
+    registri.listRegistri.and.returnValue(of([reg('r1', true)]))
+    pese.elencaAccessi.and.callFake(f =>
+      of(
+        f?.stato === 'APERTO'
+          ? {
+              ...elenco([riga('x1', { stato: 'APERTO' }), riga('x2', { stato: 'APERTO' })]),
+              totale: 27,
+            }
+          : elenco([])
+      )
+    )
+    fixture = TestBed.createComponent(AccessiComponent)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('ac-aperti-altri')?.textContent).toContain('e altri 25')
+  })
+
+  it('senza troncamento non dice "altri"', async () => {
+    await apri([reg('r1', true)])
+    expect(q('ac-aperti-altri')).toBeNull()
+  })
+
+  it('le pagine si calcolano sulla dimensione di pagina del backend, non su 20', async () => {
+    registri.listRegistri.and.returnValue(of([reg('r1', true)]))
+    pese.elencaAccessi.and.callFake(f =>
+      of(
+        f?.stato === 'APERTO'
+          ? elenco([])
+          : {
+              ...elenco([riga('a1'), riga('a2'), riga('a3'), riga('a4'), riga('a5')]),
+              totale: 12,
+            }
+      )
+    )
+    fixture = TestBed.createComponent(AccessiComponent)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(document.body.textContent).toContain('Pagina 1 di 3')
+  })
+
+  it('chiudendo il dettaglio il fuoco torna sul pulsante Apri della riga', async () => {
+    pese.dettaglioAccesso.and.returnValue(of(accesso({ id: 'a1' })))
+    await apri([reg('r1', true)])
+    qb('ac-apri-a1')!.focus()
+    qb('ac-apri-a1')!.click()
+    fixture.detectChanges()
+    qb('ad-indietro')!.click()
+    fixture.detectChanges()
+    await new Promise(r => setTimeout(r, 50))
+    expect(document.activeElement).toBe(qb('ac-apri-a1')!)
+  })
+
+  it('aperto il dettaglio il fuoco va sul titolo', async () => {
+    pese.dettaglioAccesso.and.returnValue(of(accesso({ id: 'a1' })))
+    await apri([reg('r1', true)])
+    qb('ac-apri-a1')!.click()
+    fixture.detectChanges()
+    await new Promise(r => setTimeout(r, 50))
+    expect(document.activeElement?.id).toBe('ad-titolo')
   })
 })
 

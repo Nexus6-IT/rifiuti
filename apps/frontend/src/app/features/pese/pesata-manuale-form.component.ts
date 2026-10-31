@@ -54,8 +54,8 @@ export interface PesataManualeRaccolta {
           styleClass="w-full"
         ></p-inputNumber>
         <small [id]="id('peso-aiuto')" class="field-hint"
-          >Con la virgola per i decimali (al massimo due, esempio 12,5). Il punto separa solo le
-          migliaia: 1.250 = milleduecentocinquanta.</small
+          >Con la virgola per i decimali (al massimo due, esempio 12,5). Il separatore delle
+          migliaia lo inserisce il campo.</small
         >
         <small
           *ngIf="errorePeso() as e"

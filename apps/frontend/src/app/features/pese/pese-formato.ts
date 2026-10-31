@@ -210,3 +210,7 @@ export function messaggioErrorePese(err: any, generico = 'Operazione non riuscit
   if (Array.isArray(m)) return m.join(' · ')
   return typeof m === 'string' && m ? m : generico
 }
+
+/** Il backend ha riconosciuto la chiave di idempotenza: la pesata era gia' stata registrata. */
+export const MESSAGGIO_GIA_REGISTRATA =
+  'Pesata già registrata in precedenza: controllare i dati mostrati'

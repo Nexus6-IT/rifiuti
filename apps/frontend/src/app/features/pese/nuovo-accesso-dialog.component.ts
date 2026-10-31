@@ -7,6 +7,7 @@
 import { CommonModule } from '@angular/common'
 import {
   Component,
+  DestroyRef,
   EventEmitter,
   Input,
   OnInit,
@@ -15,6 +16,7 @@ import {
   inject,
   signal,
 } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
@@ -229,6 +231,7 @@ const ALTRO_MEZZO = ''
 })
 export class NuovoAccessoDialogComponent implements OnInit {
   private readonly pese = inject(PeseService)
+  private readonly distrutto = inject(DestroyRef)
 
   @Input() registri: RegistroVista[] = []
   @Input() strumenti: StrumentoPesa[] = []
@@ -259,9 +262,9 @@ export class NuovoAccessoDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.form.controls.registroId.setValue(registroPredefinito(this.registri) ?? '')
-    this.form.valueChanges.subscribe(v =>
-      this.valori.set({ registroId: v.registroId ?? '', modo: v.modo ?? 'DOPPIA' })
-    )
+    this.form.valueChanges
+      .pipe(takeUntilDestroyed(this.distrutto))
+      .subscribe(v => this.valori.set({ registroId: v.registroId ?? '', modo: v.modo ?? 'DOPPIA' }))
     this.valori.set({ registroId: this.form.controls.registroId.value, modo: 'DOPPIA' })
   }
 

@@ -120,4 +120,36 @@ describe('CollegaDocumentoDialogComponent (DOM)', () => {
     expect(q('cd-errore')?.textContent).toContain('Il CER del FIR è diverso')
     expect(qb('cd-salva')!.disabled).toBeFalse()
   })
+
+  it('pagina piena e nessun FIR corrispondente: lo dice con il limite', () => {
+    const piena = Array.from({ length: 100 }, (_, i) => fir('p' + i, 'FIR-' + i))
+    firs.getFIRList.and.returnValue(
+      of({ items: piena, total: 300, page: 1, limit: 100, totalPages: 3 })
+    )
+    fixture.destroy()
+    fixture = TestBed.createComponent(CollegaDocumentoDialogComponent)
+    fixture.componentRef.setInput('accesso', accesso())
+    fixture.detectChanges()
+    scrivi(q<HTMLInputElement>('cd-ricerca')!, 'zzz')
+    fixture.detectChanges()
+    expect(q('cd-fir-vuoti')?.textContent).toContain(
+      'nessun FIR tra i 100 più recenti di ciascuno stato'
+    )
+  })
+
+  it('pagina non piena: messaggio semplice', () => {
+    scrivi(q<HTMLInputElement>('cd-ricerca')!, 'zzz')
+    fixture.detectChanges()
+    expect(q('cd-fir-vuoti')?.textContent).not.toContain('più recenti')
+  })
+
+  it('annotazioni: pagina piena senza vigenti lo dice con il limite', () => {
+    const piene = Array.from({ length: 100 }, (_, i) => mov('x' + i, i, { stato: 'ANNULLATO' }))
+    registro.lista.and.returnValue(
+      of({ items: piene, total: 300, page: 1, limit: 100, totalPages: 3 })
+    )
+    q('cd-tipo-movimento')!.click()
+    fixture.detectChanges()
+    expect(q('cd-mov-vuoti')?.textContent).toContain('nessuna annotazione tra le ultime 100')
+  })
 })

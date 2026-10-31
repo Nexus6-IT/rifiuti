@@ -14,10 +14,17 @@ import { RegistroService, RegistroVista } from '../registro/registro.service'
 import { AccessoDettaglioComponent } from './accesso-dettaglio.component'
 import { ricordaFuoco } from './fuoco'
 import { NuovoAccessoDialogComponent } from './nuovo-accesso-dialog.component'
-import { dataItalianaDa, etichettaQualita, formattaKg, messaggioErrorePese } from './pese-formato'
+import {
+  dataItalianaDa,
+  etichettaQualita,
+  formattaKg,
+  MESSAGGIO_GIA_REGISTRATA,
+  messaggioErrorePese,
+} from './pese-formato'
 import { STILI_PESE } from './pese-stili'
 import {
   AccessoRiepilogo,
+  AccessoVista,
   Automezzo,
   FiltriAccessi,
   PeseService,
@@ -60,7 +67,7 @@ import {
       </div>
 
       <section aria-labelledby="ac-aperti-titolo" class="blocco">
-        <h2 id="ac-aperti-titolo" class="sezione">Mezzi in impianto</h2>
+        <h2 id="ac-aperti-titolo" class="sezione" tabindex="-1">Mezzi in impianto</h2>
         <p
           class="nota"
           *ngIf="!aperti().length && !caricamentoAperti()"
@@ -85,6 +92,9 @@ import {
             ></p-button>
           </li>
         </ul>
+        <p class="nota" *ngIf="apertiAltri() > 0" data-testid="ac-aperti-altri">
+          … e altri {{ apertiAltri() }}: filtrare lo storico per stato «Aperti» per vederli tutti.
+        </p>
       </section>
 
       <section aria-labelledby="ac-storico-titolo" class="blocco">
@@ -157,7 +167,6 @@ import {
               label="Cerca"
               icon="pi pi-search"
               type="submit"
-              (onClick)="cerca()"
               data-testid="ac-cerca"
             ></p-button>
           </div>
@@ -248,7 +257,7 @@ import {
       [registri]="registri()"
       [strumenti]="strumenti()"
       [automezzi]="automezzi()"
-      (creato)="creato($event.id, $event.numero)"
+      (creato)="creato($event)"
       (chiuso)="chiudiNuovo()"
     ></app-nuovo-accesso-dialog>
   `,
@@ -339,6 +348,10 @@ export class AccessiComponent implements OnInit {
   readonly pagine = signal(1)
   readonly selezionato = signal<string | null>(null)
   readonly nuovoAperto = signal(false)
+  readonly apertiAltri = signal(0)
+  /** Dimensione di pagina del backend, letta dalla prima pagina (non e' scritta qui). */
+  private perPagina = 1
+  private fuocoSu: string | null = null
 
   filtri = { registroId: '', stato: '', dal: '', al: '', targa: '' }
   daRicaricare = false
@@ -394,6 +407,7 @@ export class AccessiComponent implements OnInit {
       .subscribe({
         next: e => {
           this.aperti.set(e.righe)
+          this.apertiAltri.set(Math.max(0, e.totale - e.righe.length))
           this.puoOperare.set(e.puoOperare)
           this.caricamentoAperti.set(false)
         },
@@ -412,8 +426,10 @@ export class AccessiComponent implements OnInit {
         this.righe.set(e.righe)
         this.puoOperare.set(e.puoOperare)
         this.pagina.set(e.pagina ?? pagina)
-        this.pagine.set(Math.max(1, Math.ceil(e.totale / 20)))
+        if ((e.pagina ?? pagina) === 1) this.perPagina = Math.max(1, e.righe.length)
+        this.pagine.set(Math.max(1, Math.ceil(e.totale / this.perPagina)))
         this.caricamento.set(false)
+        if (this.fuocoSu) setTimeout(() => this.tentaFuoco())
       },
       error: err => {
         this.caricamento.set(false)
@@ -423,11 +439,32 @@ export class AccessiComponent implements OnInit {
   }
 
   apri(id: string): void {
+    // l'elenco sparisce mentre il dettaglio e' aperto: il pulsante si ritrova per id
+    this.fuocoSu = id
     this.selezionato.set(id)
+  }
+
+  /** Rimette il fuoco sul pulsante «Apri» della riga; se non c'e' (ancora), sul titolo. */
+  private tentaFuoco(): void {
+    const id = this.fuocoSu
+    if (!id || this.selezionato()) return
+    const bottone = (nome: string) =>
+      document.querySelector<HTMLElement>(
+        `[data-testid="${nome}-${id}"] button, button[data-testid="${nome}-${id}"]`
+      )
+    const el = bottone('ac-apri') ?? bottone('ac-aperto')
+    if (el) {
+      el.focus()
+      this.fuocoSu = null
+    } else if (!this.caricamento()) {
+      document.getElementById('ac-aperti-titolo')?.focus()
+      this.fuocoSu = null
+    }
   }
 
   chiudiDettaglio(): void {
     this.selezionato.set(null)
+    setTimeout(() => this.tentaFuoco())
     if (this.daRicaricare) {
       this.daRicaricare = false
       this.cerca()
@@ -445,11 +482,13 @@ export class AccessiComponent implements OnInit {
     this.ripristinaFuoco = null
   }
 
-  creato(id: string, numero: string): void {
+  creato(a: AccessoVista): void {
     this.nuovoAperto.set(false)
     this.ripristinaFuoco = null
-    this.toast.success(`Accesso ${numero} registrato.`)
-    this.selezionato.set(id)
+    if (a.giaRegistrata) this.toast.info(MESSAGGIO_GIA_REGISTRATA)
+    else this.toast.success(`Accesso ${a.numero} registrato.`)
+    this.fuocoSu = null
+    this.selezionato.set(a.id)
     this.daRicaricare = true
   }
 }

@@ -85,7 +85,7 @@ export class SecondaPesataDialogComponent implements OnInit {
   }
 
   mettiAFuoco(): void {
-    setTimeout(() => document.getElementById('sp-peso')?.querySelector('input')?.focus())
+    setTimeout(() => document.getElementById('sp-peso')?.focus())
   }
 
   salva(): void {

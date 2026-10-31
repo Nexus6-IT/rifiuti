@@ -19,6 +19,7 @@ import {
   etichettaFonte,
   etichettaQualita,
   formattaKg,
+  MESSAGGIO_GIA_REGISTRATA,
   messaggioErrorePese,
 } from './pese-formato'
 import { STILI_PESE } from './pese-stili'
@@ -523,6 +524,7 @@ export class AccessoDettaglioComponent implements OnInit {
   readonly fonte = etichettaFonte
   readonly qualita = etichettaQualita
   private ripristinaFuoco: (() => void) | null = null
+  private fuocoMesso = false
 
   ngOnInit(): void {
     this.carica()
@@ -535,6 +537,10 @@ export class AccessoDettaglioComponent implements OnInit {
       next: a => {
         this.accesso.set(a)
         this.caricamento.set(false)
+        if (!this.fuocoMesso) {
+          this.fuocoMesso = true
+          setTimeout(() => document.getElementById('ad-titolo')?.focus())
+        }
       },
       error: err => {
         this.caricamento.set(false)
@@ -606,7 +612,8 @@ export class AccessoDettaglioComponent implements OnInit {
     this.accesso.set(a)
     this.modificato.emit()
     this.chiudiDialogo()
-    this.toast.success(messaggio)
+    if (a.giaRegistrata) this.toast.info(MESSAGGIO_GIA_REGISTRATA)
+    else this.toast.success(messaggio)
   }
 
   annullaAccesso(motivo: string): void {

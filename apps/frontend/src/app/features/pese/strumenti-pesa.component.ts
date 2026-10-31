@@ -226,8 +226,8 @@ const decimaliMax =
               styleClass="w-full"
             ></p-inputNumber>
             <small id="str-portata-aiuto" class="field-hint"
-              >Con la virgola per i decimali (al massimo due). Il punto separa solo le migliaia:
-              1.250 = milleduecentocinquanta. Facoltativa.</small
+              >Con la virgola per i decimali (al massimo due). Il separatore delle migliaia lo
+              inserisce il campo. Facoltativa.</small
             >
             <small
               *ngIf="erroreNumero('portataMaxKg', rifiutoPortata()) as e"
@@ -259,8 +259,8 @@ const decimaliMax =
               styleClass="w-full"
             ></p-inputNumber>
             <small id="str-divisione-aiuto" class="field-hint"
-              >Esempio 0,5, al massimo tre decimali. Il punto separa solo le migliaia: 1.250 =
-              milleduecentocinquanta. Un peso non multiplo della divisione genera un avviso.</small
+              >Esempio 0,5, al massimo tre decimali. Il separatore delle migliaia lo inserisce il
+              campo. Un peso non multiplo della divisione genera un avviso.</small
             >
             <small
               *ngIf="erroreNumero('divisioneKg', rifiutoDivisione()) as e"

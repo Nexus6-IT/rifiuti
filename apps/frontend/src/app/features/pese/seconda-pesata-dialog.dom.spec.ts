@@ -5,6 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
 import { SecondaPesataDialogComponent } from './seconda-pesata-dialog.component'
 import { AccessoVista, PeseService, StrumentoPesa } from './pese.service'
+import { By } from '@angular/platform-browser'
 import { accesso, incolla, q, qb, scegli, scrivi, tasto } from './pese-test-utils'
 
 const strumento: StrumentoPesa = {
@@ -96,6 +97,20 @@ describe('SecondaPesataDialogComponent (DOM)', () => {
     risposta.next(accesso())
     risposta.complete()
     expect(fixture.componentInstance.fatti.length).toBe(1)
+  })
+
+  it('doppio onClick sincrono (che aggira il pulsante disabilitato) invia una sola richiesta', () => {
+    pese.secondaPesata.and.returnValue(new Subject<AccessoVista>())
+    compila()
+    const pulsante = fixture.debugElement.query(By.css('[data-testid="sp-salva"]'))
+    pulsante.triggerEventHandler('onClick', {})
+    pulsante.triggerEventHandler('onClick', {})
+    expect(pese.secondaPesata).toHaveBeenCalledTimes(1)
+  })
+
+  it('all apertura il fuoco va sul campo del peso', async () => {
+    await new Promise(r => setTimeout(r, 100))
+    expect(document.activeElement).toBe(campo('sp-peso'))
   })
 
   it('un nuovo invio dopo un errore di rete riusa la stessa chiave di idempotenza', () => {

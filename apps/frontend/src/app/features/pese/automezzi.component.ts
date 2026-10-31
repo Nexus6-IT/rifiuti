@@ -323,7 +323,7 @@ type Modo = 'dichiarata' | 'pesata'
           ></p-inputNumber>
           <small id="tara-valore-aiuto" class="field-hint"
             >Peso a vuoto del mezzo, con la virgola per i decimali (esempio 12500,5), al massimo due
-            decimali. Il punto separa solo le migliaia: 1.250 = milleduecentocinquanta.</small
+            decimali. Il separatore delle migliaia lo inserisce il campo.</small
           >
           <small
             *ngIf="erroreTaraPeso() as e"

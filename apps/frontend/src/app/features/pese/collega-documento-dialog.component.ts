@@ -99,7 +99,11 @@ const LIMITE = 100
           >
         </label>
         <p class="nota" *ngIf="!caricamento() && !firFiltrati().length" data-testid="cd-fir-vuoti">
-          Nessun FIR emesso corrisponde.
+          {{
+            firPieno()
+              ? 'Nessun risultato: nessun FIR tra i ' + limite + ' più recenti di ciascuno stato.'
+              : 'Nessun FIR emesso corrisponde.'
+          }}
         </p>
       </fieldset>
 
@@ -123,7 +127,11 @@ const LIMITE = 100
           >
         </label>
         <p class="nota" *ngIf="!caricamento() && !movimenti().length" data-testid="cd-mov-vuoti">
-          Nessuna annotazione vigente disponibile.
+          {{
+            movimentiPieni()
+              ? 'Nessun risultato: nessuna annotazione tra le ultime ' + limite + '.'
+              : 'Nessuna annotazione vigente disponibile.'
+          }}
         </p>
       </fieldset>
 
@@ -180,6 +188,8 @@ export class CollegaDocumentoDialogComponent implements OnInit {
   readonly fir = signal<FIR[]>([])
   readonly movimenti = signal<Movimento[]>([])
   readonly caricamento = signal(false)
+  readonly firPieno = signal(false)
+  readonly movimentiPieni = signal(false)
   readonly erroreElenco = signal<string | null>(null)
   readonly salvataggio = signal(false)
   readonly errore = signal<string | null>(null)
@@ -210,6 +220,7 @@ export class CollegaDocumentoDialogComponent implements OnInit {
     this.caricamento.set(true)
     forkJoin(STATI_COLLEGABILI.map(s => this.firService.getFIRList(1, LIMITE, s))).subscribe({
       next: pagine => {
+        this.firPieno.set(pagine.some(p => p.items.length >= LIMITE))
         this.fir.set(pagine.flatMap(p => p.items).filter(f => !!f.numeroProgressivo))
         this.caricamento.set(false)
       },
@@ -226,6 +237,7 @@ export class CollegaDocumentoDialogComponent implements OnInit {
       .lista({ registroId: this.accesso.registro.id, type: this.accesso.verso, limit: LIMITE })
       .subscribe({
         next: p => {
+          this.movimentiPieni.set(p.items.length >= LIMITE)
           this.movimenti.set(
             p.items.filter(
               m => (m.stato ?? 'VIGENTE') === 'VIGENTE' && m.tipoAnnotazione !== 'ANNULLAMENTO'
