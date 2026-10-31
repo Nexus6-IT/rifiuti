@@ -200,6 +200,7 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
     await inizio
     return { rilascia, finita }
   }
+  let cerCreato = false
   const attesa = (ms: number) => new Promise(r => setTimeout(r, ms))
 
   beforeAll(async () => {
@@ -223,10 +224,18 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
     collegamenti = new CollegamentiAccessoService(app)
     const [r] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
     expect(r.u).toBe('wasteflow_app')
+    // il catalogo CER non e' nelle migration: su un database appena creato il codice del test manca
+    cerCreato = (await owner.cERCode.count({ where: { code: '20 01 01' } })) === 0
+    await owner.cERCode.upsert({
+      where: { code: '20 01 01' },
+      create: { code: '20 01 01', description: 'CER di test', category: '20', subcategory: '' },
+      update: {},
+    })
   })
 
   afterAll(async () => {
     if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    if (cerCreato) await owner.cERCode.deleteMany({ where: { code: '20 01 01' } })
     await app.$disconnect()
     await owner.$disconnect()
   })

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Pese: accessi, pesate e consegna FIR dal netto (Fase 4 pezzo 8a)
+
+Nuova area Pese per la pesa a ponte con inserimento manuale: strumenti e automezzi (con tara
+dichiarata), accessi con pesata SINGOLA o DOPPIA (lordo e tara, tara da anagrafica o da pesata),
+netto calcolato con avvisi, foto e allegati delle pesate, rettifica del peso riservata all'ADMIN
+(la pesata originale non si modifica mai), chiusura e annullamento dell'accesso. Un accesso si
+collega a un FIR in transito: la consegna del FIR si conferma col netto dell'accesso (peso
+verificato) e il carico del registro puo' essere ricopiato dal FIR e collegato all'accesso. Le
+pesate sono immutabili e non cancellabili (trigger, privilegi, impronta); 7 tabelle nuove sotto RLS
+(44 in totale). Pesatura da strumento (agente locale), fonti STRUMENTO e FILE, movimento del
+registro automatico dalla chiusura e fatturazione a peso restano al pezzo 4.8b e successivi.
+
 ### Added — Abbinamento carichi-scarichi R13/D15 (Fase 4 pezzo 6)
 
 Per i rifiuti in stoccaggio (carichi con operazione R13 o D15) ogni scarico è ora abbinato ai

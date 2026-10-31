@@ -422,6 +422,34 @@ stato_accesso_pesa, modo_pesatura, fonte_pesata;` e `DELETE FROM _prisma_migrati
 migration_name = '20261101600000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
 allegati) sono documentazione del registro e del FIR: esportarle prima di un `DROP`.
 
+#### Pese 4.8a: privilegi, trigger, rilascio e rollback
+
+La migration `20261101600100_pese_cancellazione_e_indici` completa la precedente (entrambe mai applicate
+fuori dai database di test; sono state rinumerate da `20261101400000/400100` a `600000/600100` perche'
+F2-9, gia' in produzione, ha `20261101500000`).
+
+- **Privilegi (`ops/db-ruoli.sh`, `prisma/sql/ruoli-db.sql`):** `pesate`, `rettifiche_peso`,
+  `allegati_pesa` ricevono a `wasteflow_app` e `wasteflow_sistema` solo SELECT e INSERT (REVOKE
+  esplicita di UPDATE/DELETE/TRUNCATE). Dopo ogni `migrate deploy` rilanciare `ops/db-ruoli.sh`.
+- **Trigger:** le tre tabelle sono immutabili (UPDATE rifiutato) e senza DELETE/TRUNCATE a qualunque
+  ruolo, proprietario compreso; passa solo la cascata da `tenants`. `accessi_pesa` e
+  `collegamenti_accesso` hanno trigger di coerenza (stato, registro, verso, FOR SHARE sull'accesso).
+  Per correggere un peso si registra una rettifica (ADMIN), mai un UPDATE.
+- **RLS:** 44 tabelle con `tenant_id` dopo questo pezzo (37 + le 7 delle pese);
+  `rls-catalogo.postgres.spec.ts` lo verifica.
+- **Dopo il deploy:** `SELECT count(*) FROM accessi_pesa` risponde (0 all'inizio); la feature `pese`
+  e' applicata solo nell'interfaccia (menu), non nel backend.
+- **nginx:** il frontend (`apps/frontend/nginx.conf`) ha gia' `client_max_body_size 6m` su `/api/`
+  (allegati delle pesate, 5 MB); il vhost del VPS e' gia' a 25m: nulla da fare sul VPS.
+- **Rollback del codice:** il codice vecchio ignora le tabelle. Le consegne FIR fatte col netto di un
+  accesso restano valide (il peso e' scritto nel FIR). **Controllare prima** quanto e' stato
+  registrato: `SELECT tenant_id, count(*) FROM accessi_pesa GROUP BY 1;` e avvisare che le pesate
+  non saranno piu' visibili nel programma.
+- **Rollback dei dati:** le pesate sono documentazione e per costruzione non si cancellano. La strada
+  e' il restore del backup; il ripristino a mano sopra (DROP) vale solo su un database SENZA accessi.
+  Se la migration fallisce con P3009: `npx prisma migrate resolve --rolled-back
+  20261101600000_pese_modello_dati` (o `...600100_pese_cancellazione_e_indici`) e rilanciare.
+
 ---
 
 ## F2-9 trasmissione del registro a RENTRI
