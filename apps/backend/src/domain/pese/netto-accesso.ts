@@ -107,6 +107,7 @@ export function calcolaNetto(
         ...base,
         stato: 'NON_VALIDO',
         errore: 'Il peso netto deve essere maggiore di zero.',
+        avvisi,
       })
     }
     avvisi.push(AVVISO_SINGOLA)

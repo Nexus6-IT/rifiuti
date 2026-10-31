@@ -249,4 +249,22 @@ describe('calcolaNetto', () => {
     )
     expect(inc.avvisi).toEqual([AVVISO_MANUALE])
   })
+
+  it('SINGOLA con netto zero → NON_VALIDO e porta gli avvisi manuale e rettificato', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'SINGOLA',
+      [
+        pesata({
+          ordine: 1,
+          pesoKg: 8120,
+          fonte: 'MANUALE',
+          rettifiche: [{ numero: 1, pesoNuovoKg: 0 }],
+        }),
+      ],
+      OGGI
+    )
+    expect(e.stato).toBe('NON_VALIDO')
+    expect(e.avvisi).toEqual([AVVISO_MANUALE, AVVISO_RETTIFICATO])
+  })
 })
