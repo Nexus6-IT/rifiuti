@@ -777,7 +777,56 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
         expect(dopo?.stato).toBe('INCERTA')
         expect(dopo?.bloccatoInvio).toBe(true)
         expect(dopo?.motivoBlocco).toContain("occupato su RENTRI da un'altra registrazione")
-        expect(dopo?.transazioneId).toBe(orfana)
+        // L'id della transazione altrui NON resta sulla riga.
+        expect(dopo?.transazioneId).toBeNull()
+        expect(orfana).toBeTruthy()
+      })
+
+      it('dopo DIVERSA una seconda verifica non la rende mai TRASMESSA (nessun id altrui sulla riga)', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.ultima = randomUUID()
+        finto.esito = () => confermaNumero(m)
+        finto.dettaglio = (anno, prog) => ({
+          ...uguale(anno, prog),
+          rifiuto: { codice_eer: '200101', quantita: { valore: 5, unita_misura: 'kg' } },
+        })
+        expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('DIVERSA')
+        // Seconda verifica: la riga e' INCERTA, l'esito di quella transazione confermerebbe il numero.
+        finto.ultima = null
+        const r2 = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r2.esito).not.toBe('TRASMESSA')
+        const dopo = await rigaDi(m.id)
+        expect(dopo?.stato).toBe('INCERTA')
+        expect(dopo?.transazioneId).toBeNull()
+      })
+
+      it('primo passo non definitivo (dettaglio 503 / invio recente): transazioneId resta null e la seconda verifica non e` TRASMESSA senza confronto', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.ultima = randomUUID()
+        finto.esito = () => confermaNumero(m)
+        finto.dettaglio = () => new RentriApiError(503, 'x', undefined, true)
+        expect((await verifica.verifica(a.tenantId, utenteId, m.id)).esito).toBe('NON_VERIFICABILE')
+        expect((await rigaDi(m.id))?.transazioneId).toBeNull()
+
+        const recente = await incerta(a, { prenotatoIl: oreFa(1) })
+        finto.esito = () => confermaNumero(recente)
+        finto.dettaglio = () => non404()
+        expect((await verifica.verifica(a.tenantId, utenteId, recente.id)).esito).toBe(
+          'NON_VERIFICABILE'
+        )
+        expect((await rigaDi(recente.id))?.transazioneId).toBeNull()
+
+        // Seconda verifica senza piu' ultima transazione e con dettaglio diverso: mai TRASMESSA.
+        finto.ultima = null
+        finto.dettaglio = (anno, prog) => ({
+          ...uguale(anno, prog),
+          rifiuto: { codice_eer: '200101', quantita: { valore: 5, unita_misura: 'kg' } },
+        })
+        const r2 = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r2.esito).toBe('DIVERSA')
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
       })
 
       it('ancora in elaborazione: NON_VERIFICABILE, nessuna ricerca per numero, riga invariata', async () => {
