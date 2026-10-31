@@ -388,7 +388,11 @@ export async function radiceScarico(
   }
 }
 
-/** Righe e scarichi (numero, giorno) che usano la radice di un carico. */
+/**
+ * Righe e scarichi (numero, giorno) che usano la radice di un carico. Si contano solo le righe il
+ * cui scarico ha una testa vigente: una riga orfana (scarico annullato in deroga, dato storico
+ * incoerente) e' un limite noto e non blocca la correzione del carico.
+ */
 export async function righeDelCarico(
   client: ClientAbbinamenti,
   tenantId: string,
@@ -424,6 +428,7 @@ export async function righeDelCarico(
       ON COALESCE(h.movimento_originale_id, h.id) = a.scarico_id
      AND h.tenant_id = a.tenant_id AND h.registro_id = r.registro_id AND ${sqlVigente('h')}
     WHERE a.tenant_id = ${tenantId}::uuid AND a.carico_id = ${caricoRadiceId}::uuid
+      AND h.id IS NOT NULL
     ORDER BY COALESCE(h.movement_date, r.movement_date), a.scarico_id`
   return righe.map(r => ({
     scaricoRadiceId: r.scarico_id,

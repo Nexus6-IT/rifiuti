@@ -120,7 +120,10 @@ export async function verificaCorrezioneCarico(
 // Scarico
 // ---------------------------------------------------------------------------------------------
 
-/** Dati dell'annotazione che contano per l'abbinamento, da leggere PRIMA dell'insert della correzione. */
+/**
+ * Dati dell'annotazione che contano per l'abbinamento, da leggere PRIMA dell'insert della
+ * correzione. `null` se lo scarico non ha righe (il riallineamento non serve).
+ */
 export async function fotografiaScarico(
   tx: Prisma.TransactionClient,
   tenantId: string,
@@ -133,8 +136,14 @@ export async function fotografiaScarico(
     causale: string
     causaleAziendaId: string | null
   },
-  tipo: TipoCorrezioneAbbinamenti
-): Promise<StatoScarico> {
+  tipo: TipoCorrezioneAbbinamenti,
+  scaricoRadiceId: string
+): Promise<StatoScarico | null> {
+  // senza righe non c'e nulla da riallineare: niente lettura del catalogo
+  const nRighe = await tx.abbinamentoCaricoScarico.count({
+    where: { tenantId, scaricoId: scaricoRadiceId },
+  })
+  if (nRighe === 0) return null
   const giorno = giornoItaliano(m.movementDate)
   // l'annullamento non confronta nulla: niente lettura del catalogo nella transazione
   const catalogo = tipo === 'RETTIFICA' ? await caricaCatalogoCausali(tx, tenantId) : null

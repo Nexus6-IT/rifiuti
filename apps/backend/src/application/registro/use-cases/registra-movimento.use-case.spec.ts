@@ -1288,6 +1288,7 @@ describe('RegistraMovimentoUseCase', () => {
 
     expect(r.isFailure).toBe(true)
     expect(r.error).toMatch(/^Errore durante la registrazione/)
+    expect(r.error).not.toContain('connessione persa')
   })
 })
 

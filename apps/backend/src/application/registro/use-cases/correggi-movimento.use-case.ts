@@ -215,7 +215,7 @@ export class CorreggiMovimentoUseCase {
         }
         const scaricoPrima =
           originale.type === 'SCARICO'
-            ? await fotografiaScarico(tx, tenantId, originale, tipo)
+            ? await fotografiaScarico(tx, tenantId, originale, tipo, radice.id)
             : null
 
         // 5. MUD gia presentato (R10). Una corsa con la presentazione (lock `mud-report|tenant|anno`

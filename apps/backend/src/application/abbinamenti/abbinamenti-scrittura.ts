@@ -19,6 +19,7 @@ import {
   type RigaAbbinamento,
   type ScaricoAbbinabile,
 } from '../../domain/waste-movement/abbinamento-carichi'
+import { cerSoloCifre } from '../../domain/waste-movement/cer-registro'
 import { millesimiFifo } from '../../domain/waste-movement/fifo-deposito'
 import { chiaveLockGiacenza } from '../registro/chiave-lock-giacenza'
 import {
@@ -96,6 +97,34 @@ async function cancellaRighe(tx: Prisma.TransactionClient, ids: string[]): Promi
   await tx.abbinamentoCaricoScarico.deleteMany({ where: { id: { in: ids } } })
 }
 
+/** Stessa normalizzazione del lettore: cifre del CER e codice operazione senza spazi/punti, maiuscolo. */
+async function haStoccaggioOAbbinamenti(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  registroId: string,
+  cerCode: string
+): Promise<boolean> {
+  const cifre = cerSoloCifre(cerCode)
+  const r = await tx.$queryRaw<Array<{ si: boolean }>>`
+    SELECT (
+      EXISTS (
+        SELECT 1 FROM waste_movements wm
+        WHERE wm.tenant_id = ${tenantId}::uuid AND wm.registro_id = ${registroId}::uuid
+          AND wm.type = 'CARICO'
+          AND regexp_replace(wm.cer_code, '[^0-9]', '', 'g') = ${cifre}
+          AND upper(regexp_replace(COALESCE(wm.operation_code, ''), '[[:space:].]', '', 'g'))
+              IN ('R13', 'D15')
+      )
+      OR EXISTS (
+        SELECT 1 FROM abbinamenti_carico_scarico a
+        JOIN waste_movements s ON s.id = a.scarico_id AND s.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ${tenantId}::uuid AND a.registro_id = ${registroId}::uuid
+          AND regexp_replace(s.cer_code, '[^0-9]', '', 'g') = ${cifre}
+      )
+    ) AS si`
+  return r[0]?.si === true
+}
+
 /**
  * Subito dopo l'insert di uno scarico: proposta FIFO sui residui attuali dei carichi della sua
  * partizione (con giorno <= al suo: lo garantisce l'ordine del FIFO). Restituisce gli avvisi.
@@ -109,6 +138,10 @@ export async function abbinaNuovoScarico(
     select: { cerCode: true, movimentoOriginaleId: true },
   })
   if (!m) return []
+  // Pre-controllo leggero (hot path della registrazione): un registro ordinario, senza carichi
+  // R13/D15 ne righe di abbinamento per quel CER, non paga ne lock ne letture dell'ambito.
+  // E' un sovrainsieme di `diStoccaggio` (carico anche non vigente): nel dubbio si prosegue.
+  if (!(await haStoccaggioOAbbinamenti(tx, p.tenantId, p.registroId, m.cerCode))) return []
   await bloccaAmbiti(tx, p.registroId, [m.cerCode])
   const radiceId = m.movimentoOriginaleId ?? p.scaricoId
   const ambiti = await leggiAmbitiAbbinamento(tx, p.tenantId, {

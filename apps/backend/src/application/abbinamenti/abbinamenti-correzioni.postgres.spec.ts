@@ -209,6 +209,7 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       tipo: 'CARICO' | 'SCARICO'
       op?: string
       cer?: string
+      unita?: string
       note?: string
     }
   ) =>
@@ -223,7 +224,7 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
           causale: d.tipo === 'CARICO' ? 'PRODUZIONE_INTERNA' : 'AVVIO_RECUPERO',
           cerCode: d.cer ?? CER,
           quantity: d.quantita,
-          unit: 'KG',
+          unit: d.unita ?? 'KG',
           operationCode: d.op,
           notes: d.note,
         },
@@ -250,6 +251,34 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
         [c1, 100, 'AUTOMATICO'],
         [c2, 50, 'AUTOMATICO'],
       ])
+    })
+
+    it('registro ordinario: nessuna riga, nessun avviso e il lettore non viene chiamato', async () => {
+      const az = await azienda()
+      await carico(az, '2026-03-01', 100, 'R1')
+      const spia = jest.spyOn(lettore, 'leggiAmbitiAbbinamento')
+      try {
+        const s = await scarico(az, '2026-03-10', 10)
+        expect(spia).not.toHaveBeenCalled()
+        expect(await righeScarico(az, s)).toHaveLength(0)
+      } finally {
+        spia.mockRestore()
+      }
+    })
+
+    it('il primo scarico R13 dopo un carico R13 si abbina (il pre-controllo non lo esclude)', async () => {
+      const az = await azienda()
+      const c1 = await carico(az, '2026-03-01', 100)
+      const spia = jest.spyOn(lettore, 'leggiAmbitiAbbinamento')
+      try {
+        const s = await scarico(az, '2026-03-10', 30)
+        expect(spia).toHaveBeenCalled()
+        expect((await righeScarico(az, s)).map(r => [r.caricoId, Number(r.quantita)])).toEqual([
+          [c1, 30],
+        ])
+      } finally {
+        spia.mockRestore()
+      }
     })
 
     it('un carico non scrive righe', async () => {
@@ -336,6 +365,20 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       expect(esito.avvisi.filter(a => /bbinamento/.test(a))).toEqual([])
       expect((await righeScarico(az, s)).map(r => r.id)).toEqual(prima.map(r => r.id))
       expect((await righeScarico(az, s)).map(r => r.origine)).toEqual(['MANUALE'])
+      expect(await audit(az, 'ABBINAMENTO_SCARICO_RICALCOLATO')).toHaveLength(0)
+    })
+
+    it('rettifica con manuale ancora valido e quantità cambiata: le righe restano', async () => {
+      const az = await azienda()
+      await carico(az, '2026-03-01', 100)
+      const c2 = await carico(az, '2026-03-02', 100)
+      const s = await scarico(az, '2026-03-10', 80)
+      await manuale(az, s, [{ caricoId: c2, quantita: 80 }])
+      const prima = await righeScarico(az, s)
+      await rettifica(az, s, { tipo: 'SCARICO', giorno: '2026-03-10', quantita: 90 })
+      const dopo = await righeScarico(az, s)
+      expect(dopo.map(r => r.id)).toEqual(prima.map(r => r.id))
+      expect(dopo.map(r => r.origine)).toEqual(['MANUALE'])
       expect(await audit(az, 'ABBINAMENTO_SCARICO_RICALCOLATO')).toHaveLength(0)
     })
 
@@ -460,6 +503,33 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
         status: 409,
         message: expect.stringContaining("cambia il rifiuto, l'unità o l'operazione di stoccaggio"),
       })
+      expect(await nMovimenti(az)).toBe(prima)
+    })
+
+    it('cambio di CER o di unità di un carico abbinato: 409', async () => {
+      const az = await azienda()
+      const c1 = await carico(az, '2026-03-01', 100)
+      await scarico(az, '2026-03-10', 60)
+      const prima = await nMovimenti(az)
+      const motivo = "cambia il rifiuto, l'unità o l'operazione di stoccaggio"
+      await expect(
+        rettifica(az, c1, {
+          tipo: 'CARICO',
+          op: 'R13',
+          giorno: '2026-03-01',
+          quantita: 100,
+          cer: CER2,
+        })
+      ).rejects.toMatchObject({ status: 409, message: expect.stringContaining(motivo) })
+      await expect(
+        rettifica(az, c1, {
+          tipo: 'CARICO',
+          op: 'R13',
+          giorno: '2026-03-01',
+          quantita: 100,
+          unita: 'L',
+        })
+      ).rejects.toMatchObject({ status: 409, message: expect.stringContaining(motivo) })
       expect(await nMovimenti(az)).toBe(prima)
     })
 

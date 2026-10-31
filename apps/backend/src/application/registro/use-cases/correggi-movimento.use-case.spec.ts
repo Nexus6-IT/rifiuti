@@ -174,6 +174,13 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
       )
     })
 
+    it('scarico senza righe (fotografia null): nessun riallineamento', async () => {
+      fotoMock.mockResolvedValueOnce(null)
+      const tx = creaTx({ letti: [riga({ type: 'SCARICO' }), riga({ type: 'SCARICO' })] })
+      await creaUseCase(tx).annulla(base)
+      expect(riallineaMock).not.toHaveBeenCalled()
+    })
+
     it('carico: la verifica che rifiuta (409) interrompe la correzione senza insert', async () => {
       verificaMock.mockRejectedValueOnce(new ConflictException('carico abbinato'))
       const tx = creaTx({})
@@ -194,6 +201,7 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
       })
       expect(verificaMock).not.toHaveBeenCalled()
       expect(fotoMock.mock.calls[0][3]).toBe('RETTIFICA')
+      expect(fotoMock.mock.calls[0][4]).toBe('o-1')
       expect(riallineaMock.mock.calls[0][1]).toMatchObject({
         tenantId: TENANT,
         registroId: REG,
