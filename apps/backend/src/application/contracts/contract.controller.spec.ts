@@ -83,6 +83,11 @@ describe('ContractController — azienda selezionata', () => {
     expect(senza.endDate).toBeUndefined()
   })
 
+  it('update: startDate null resta null (non diventa 1970)', async () => {
+    await controller.update('c1', { versione: 1, startDate: null } as any, req)
+    expect(service.update.mock.calls[0][3].startDate).toBeNull()
+  })
+
   it("elimina: usa l'azienda selezionata e passa la versione numerica", async () => {
     await controller.elimina('c1', 4, req)
     expect(service.elimina).toHaveBeenCalledWith('B', 'u1', 'c1', 4)

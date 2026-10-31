@@ -491,6 +491,16 @@ describe('ContractService', () => {
         error: 'CONTRATTO_NON_MODIFICABILE',
       })
     })
+    it('startDate null: 400 CONTRATTO_NON_VALIDO "Data di inizio è obbligatoria."', async () => {
+      prisma.contract.findFirst.mockResolvedValue(contratto())
+      const e = await rifiuta(service.update('t1', 'u1', 'k1', { versione: 3, startDate: null }))
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse()).toEqual({
+        message: ['Data di inizio è obbligatoria.'],
+        error: 'CONTRATTO_NON_VALIDO',
+      })
+      expect(prisma.contract.updateMany).not.toHaveBeenCalled()
+    })
     it('dati non validi: 400 con message array', async () => {
       prisma.contract.findFirst.mockResolvedValue(contratto())
       const e = await rifiuta(service.update('t1', 'u1', 'k1', { versione: 3, cerCodes: [] }))

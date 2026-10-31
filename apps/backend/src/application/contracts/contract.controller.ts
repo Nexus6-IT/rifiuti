@@ -117,8 +117,8 @@ export class ContractController {
     const tenantId = requireRequestTenantId(req)
     return this.contractService.update(tenantId, req.user?.id, id, {
       ...dto,
-      startDate: dto.startDate === undefined ? undefined : new Date(dto.startDate),
-      endDate: comeData(dto.endDate as string | null | undefined),
+      startDate: comeData(dto.startDate),
+      endDate: comeData(dto.endDate),
     })
   }
 

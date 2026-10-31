@@ -25,10 +25,12 @@ const ID = '3b3b3b3b-0000-4000-8000-000000000006'
 describe('ContractController — catena HTTP (modifica e cancellazione)', () => {
   let app: INestApplication
   let ruolo: string
+  let ruoloInAzienda: string | null
   let servizio: Record<string, jest.Mock>
 
   beforeEach(async () => {
     ruolo = 'ADMIN'
+    ruoloInAzienda = null
     servizio = {
       update: jest.fn().mockResolvedValue({ id: ID }),
       elimina: jest.fn().mockResolvedValue(undefined),
@@ -46,7 +48,11 @@ describe('ContractController — catena HTTP (modifica e cancellazione)', () => 
         { provide: ContractService, useValue: servizio },
         {
           provide: RuoloEffettivoService,
-          useValue: { ruoloEffettivo: jest.fn(async () => ruolo) },
+          useValue: {
+            ruoloEffettivo: jest.fn(async () => ruolo),
+            // Con header X-Tenant-ID il guard chiama `accesso`: ruolo nell'azienda selezionata
+            accesso: jest.fn(async () => ruoloInAzienda),
+          },
         },
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
       ],
@@ -134,5 +140,20 @@ describe('ContractController — catena HTTP (modifica e cancellazione)', () => 
     expect((await http().delete(`/contracts/${ID}?versione=1`)).status).toBe(403)
     expect(servizio.update).not.toHaveBeenCalled()
     expect(servizio.elimina).not.toHaveBeenCalled()
+  })
+
+  it('token ADMIN ma VIEWER nell’azienda selezionata (X-Tenant-ID): 403 sulle rotte nuove', async () => {
+    ruoloInAzienda = 'VIEWER'
+    const altra = '7c7c7c7c-0000-4000-8000-000000000009'
+    const p = await http().patch(`/contracts/${ID}`).set('X-Tenant-ID', altra).send({ versione: 1 })
+    const d = await http().delete(`/contracts/${ID}?versione=1`).set('X-Tenant-ID', altra)
+    expect([p.status, d.status]).toEqual([403, 403])
+    expect(servizio.update).not.toHaveBeenCalled()
+    expect(servizio.elimina).not.toHaveBeenCalled()
+  })
+
+  it('startDate null nel corpo arriva al servizio come null (non 1970)', async () => {
+    await http().patch(`/contracts/${ID}`).send({ versione: 1, startDate: null })
+    expect(servizio.update.mock.calls[0][3].startDate).toBeNull()
   })
 })
