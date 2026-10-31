@@ -19,7 +19,7 @@
 --     DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
 --     DROP CONSTRAINT registri_rifiuti_identificativo_rentri_check,
 --     DROP COLUMN invio_rentri_automatico_dal;
---   DELETE FROM _prisma_migrations WHERE migration_name = '20261101100000_trasmissione_registro_rentri';
+--   DELETE FROM _prisma_migrations WHERE migration_name = '20261101500000_trasmissione_registro_rentri';
 
 -- 1. Enum.
 CREATE TYPE "stato_trasmissione_rentri" AS ENUM (

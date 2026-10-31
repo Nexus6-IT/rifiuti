@@ -496,7 +496,7 @@ FIR, CF, targhe) copiati a un servizio del fornitore e il registro in chiaro a Z
   `apps/backend` (0 errori), le suite Postgres toccate più `rls-catalogo.postgres.spec.ts` e
   `lettori-vigenti.postgres.spec.ts`. Durante il lavoro lint solo dei file toccati, mai `--fix`.
   Karma **una volta** a fine task frontend. Un solo processo pesante alla volta.
-- **Migration:** cartella `20261101100000_trasmissione_registro_rentri` (prefisso `202611011000`,
+- **Migration:** cartella `20261101500000_trasmissione_registro_rentri` (prefisso `202611011000`,
   assegnato per non collidere con i pezzi in parallelo); additiva; `SET LOCAL lock_timeout = '5s'`
   prima di toccare `registri_rifiuti`; nomi di vincoli e indici ≤ 63 caratteri **uguali in schema e
   SQL** (`map:` espliciti); RLS ENABLE + FORCE + `isolamento_azienda` + `sola_lettura`; modello in
@@ -561,7 +561,7 @@ indicato.
 ## Task 1: schema, migration, RLS e trigger
 
 **Dipende da 0.** **File:** `prisma/schema.prisma`;
-`prisma/migrations/20261101100000_trasmissione_registro_rentri/migration.sql` (nuovo);
+`prisma/migrations/20261101500000_trasmissione_registro_rentri/migration.sql` (nuovo);
 `src/infrastructure/persistence/prisma-rls.extension.ts` (`TENANT_SCOPED_MODELS` + commento);
 `src/infrastructure/persistence/rls-catalogo.postgres.spec.ts` (35 → 36);
 `src/infrastructure/persistence/README-tenant-transazione.md` ("(35)" → 36 e la tabella nell'elenco);

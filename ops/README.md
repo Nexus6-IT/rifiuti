@@ -406,12 +406,22 @@ nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP CO
 
 ## F2-9 trasmissione del registro a RENTRI
 
-Migration `20261101100000_trasmissione_registro_rentri`: tabella `movimenti_trasmissione_rentri`
+Migration `20261101500000_trasmissione_registro_rentri`: tabella `movimenti_trasmissione_rentri`
 (una riga per movimento trasmesso o in via di trasmissione; nessuna riga = non trasmesso), colonna
 `registri_rifiuti.invio_rentri_automatico_dal`, CHECK di formato e unico per azienda
 dell'`identificativo_rentri` del registro. Additiva: nasce vuota, nessun invio retroattivo, nessun
 GRANT (default privileges di `ops/db-ruoli.sh`).
 
+- **Dopo il deploy non parte nessun invio.** La tabella nasce vuota e nessun registro ha un
+  identificativo: per attivare la trasmissione un amministratore deve inserire l'identificativo
+  RENTRI del registro (`R` + 10 caratteri, dal portale) e, se vuole l'invio automatico, scegliere la
+  modalita' "da oggi". Fino ad allora il job non trova nulla da fare.
+- **Chi arriva da WinWaste** deve prima usare "Dichiara gia' su RENTRI" per le annotazioni gia'
+  inviate dall'altro programma (altrimenti vengono ritrasmesse come doppie registrazioni), poi
+  confrontare con "Verifica allineamento".
+- **Controllo post-deploy:** `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1`
+  (atteso: nessuna riga) e, nei log del backend, il job di trasmissione che gira senza errori e
+  senza invii.
 - **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
   rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
   che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
@@ -430,7 +440,7 @@ GRANT (default privileges di `ops/db-ruoli.sh`).
     DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
     DROP CONSTRAINT registri_rifiuti_identificativo_rentri_check,
     DROP COLUMN invio_rentri_automatico_dal;
-  DELETE FROM _prisma_migrations WHERE migration_name = '20261101100000_trasmissione_registro_rentri';
+  DELETE FROM _prisma_migrations WHERE migration_name = '20261101500000_trasmissione_registro_rentri';
   ```
 
 ---
