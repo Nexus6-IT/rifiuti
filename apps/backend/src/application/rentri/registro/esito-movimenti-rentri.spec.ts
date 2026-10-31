@@ -1,4 +1,5 @@
-import { applicaEsito, applicaEsitoDettagliato } from './esito-movimenti-rentri'
+import { BASE_INDICE_RENTRI, applicaEsito, applicaEsitoDettagliato } from './esito-movimenti-rentri'
+import { NumeroDuplicatoNelLottoError } from './selezione-lotto-rentri'
 import type { EsitoMovimentiRentri } from '../../../infrastructure/rentri/rentri-registri.client'
 
 const ID = (n: number) => `M${String(n).padStart(19, 'A')}`
@@ -77,13 +78,62 @@ describe('applicaEsito', () => {
     expect(applicaEsito(lotto, e)).toEqual(righe)
   })
 
-  it('numero duplicato nel lotto: mai TRASMESSA (ambiguo)', () => {
+  it('numero duplicato nel lotto: errore, mai un RIFIUTATA reinviabile', () => {
     const doppio = [lotto[0], { movimentoId: 'a2', numero: { ...lotto[0].numero } }]
-    const r = applicaEsito(
-      doppio,
-      esito({ numeroRegistrazioni: [{ anno: 2026, progressivo: 1, identificativo: ID(1) }] })
+    expect(() => applicaEsito(doppio, esito())).toThrow(NumeroDuplicatoNelLottoError)
+    expect(() => applicaEsitoDettagliato(doppio, esito())).toThrow(NumeroDuplicatoNelLottoError)
+  })
+
+  it("base dell'indice: costante nominata, 0", () => {
+    expect(BASE_INDICE_RENTRI).toBe(0)
+  })
+
+  it('indice fuori intervallo: a tutte le righe e fra le anomalie', () => {
+    const fuori = { indice: 7, campo: 'x', tipo: 'Errore' as const, codice: 'E7' }
+    const negativo = { indice: -1, campo: null, tipo: 'Errore' as const, codice: null }
+    const { righe, anomalie } = applicaEsitoDettagliato(
+      lotto,
+      esito({ errore: true, validazione: [fuori, negativo] })
     )
-    expect(r.map(x => x.stato)).toEqual(['RIFIUTATA', 'RIFIUTATA'])
+    for (const r of righe) expect(r.messaggi).toEqual([fuori, negativo])
+    expect(anomalie).toEqual([
+      { tipo: 'INDICE_FUORI_INTERVALLO', indice: 7 },
+      { tipo: 'INDICE_FUORI_INTERVALLO', indice: -1 },
+    ])
+  })
+
+  it('stesso numero confermato due volte con identificativi diversi: identificativo null e anomalia', () => {
+    const { righe, anomalie } = applicaEsitoDettagliato(
+      lotto,
+      esito({
+        numeroRegistrazioni: [
+          { anno: 2026, progressivo: 1, identificativo: ID(1) },
+          { anno: 2026, progressivo: 1, identificativo: ID(2) },
+        ],
+      })
+    )
+    expect(righe[0].stato).toBe('TRASMESSA')
+    expect(righe[0].identificativo).toBeNull()
+    expect(anomalie).toEqual([
+      { tipo: 'IDENTIFICATIVI_DISCORDANTI', numero: { anno: 2026, progressivo: 1 } },
+    ])
+  })
+
+  it('stesso numero confermato due volte con lo stesso identificativo (o uno solo noto): nessuna anomalia', () => {
+    const { righe, anomalie } = applicaEsitoDettagliato(
+      lotto,
+      esito({
+        numeroRegistrazioni: [
+          { anno: 2026, progressivo: 1, identificativo: ID(1) },
+          { anno: 2026, progressivo: 1, identificativo: null },
+          { anno: 2026, progressivo: 2, identificativo: ID(2) },
+          { anno: 2026, progressivo: 2, identificativo: ID(2) },
+        ],
+      })
+    )
+    expect(righe[0].identificativo).toBe(ID(1))
+    expect(righe[1].identificativo).toBe(ID(2))
+    expect(anomalie).toEqual([])
   })
 
   it('lotto vuoto: nessuna riga', () => {

@@ -18,6 +18,7 @@ import type {
   MessaggioRentri,
 } from '../../../infrastructure/rentri/rentri-registri.client'
 import type { NumeroRegistrazione } from './mappa-registrazione-rentri'
+import { NumeroDuplicatoNelLottoError } from './selezione-lotto-rentri'
 
 export interface EsitoPerRiga {
   movimentoId: string
@@ -30,45 +31,93 @@ export interface EsitoPerRiga {
   motivo: string | null
 }
 
+/**
+ * Base dell'`indice` dei messaggi di validazione (`EsitoMessaggioModel.indice`, "Indice
+ * dell'elemento di input relativo al messaggio di validazione"): il contratto
+ * (`docs/contracts/rentri/dati-registri.yaml`) NON specifica se parta da 0 o da 1. Assunta 0,
+ * DA VERIFICARE sull'ambiente demo RENTRI (follow-up). Il lotto passato a `applicaEsito` deve
+ * avere lo STESSO ordine del payload inviato, altrimenti gli indici puntano alla riga sbagliata.
+ */
+export const BASE_INDICE_RENTRI = 0
+
+/** Cose strane nell'esito di RENTRI: non cambiano lo stato delle righe, ma vanno viste. */
+export type AnomaliaEsito =
+  | { tipo: 'INDICE_FUORI_INTERVALLO'; indice: number }
+  | { tipo: 'IDENTIFICATIVI_DISCORDANTI'; numero: NumeroRegistrazione }
+
 const MOTIVO_INSIEME = 'Rifiutata da RENTRI insieme alle altre annotazioni dello stesso invio'
 const MOTIVO_NON_CONFERMATA = "RENTRI non ha confermato l'annotazione"
-const MOTIVO_DUPLICATO = 'Numero di registrazione duplicato nel lotto: esito non attribuibile'
 const MOTIVO_CON_MESSAGGI = 'Rifiutata da RENTRI: vedere i messaggi di validazione'
 
 const chiave = (n: NumeroRegistrazione) => `${n.anno}/${n.progressivo}`
 
-/** Come {@link applicaEsito}, con in piu' i numeri confermati da RENTRI che non sono nel lotto. */
+/** Come {@link applicaEsito}, con in piu' i numeri confermati da RENTRI che non sono nel lotto e le anomalie.
+ * @throws NumeroDuplicatoNelLottoError se il lotto ha due volte lo stesso (anno, progressivo): errore
+ *   di programmazione, il chiamante tratta il lotto come incerto (mai RIFIUTATA).
+ */
 export function applicaEsitoDettagliato(
   lotto: ReadonlyArray<{ movimentoId: string; numero: NumeroRegistrazione }>,
   esito: EsitoMovimentiRentri
-): { righe: EsitoPerRiga[]; fuoriLotto: NumeroRegistrazione[] } {
-  const conteggio = new Map<string, number>()
-  for (const l of lotto) conteggio.set(chiave(l.numero), (conteggio.get(chiave(l.numero)) ?? 0) + 1)
+): { righe: EsitoPerRiga[]; fuoriLotto: NumeroRegistrazione[]; anomalie: AnomaliaEsito[] } {
+  const visti = new Set<string>()
+  for (const l of lotto) {
+    const k = chiave(l.numero)
+    if (visti.has(k)) throw new NumeroDuplicatoNelLottoError(l.numero)
+    visti.add(k)
+  }
 
+  const anomalie: AnomaliaEsito[] = []
+  // Stesso numero confermato piu' volte: due identificativi diversi non si scelgono (null + anomalia).
   const confermati = new Map<string, string | null>()
+  const discordanti = new Set<string>()
   for (const r of esito.numeroRegistrazioni) {
-    confermati.set(chiave(r), r.identificativo)
+    const k = chiave(r)
+    if (!confermati.has(k)) {
+      confermati.set(k, r.identificativo)
+      continue
+    }
+    const attuale = confermati.get(k) ?? null
+    if (attuale === null) confermati.set(k, r.identificativo)
+    else if (r.identificativo !== null && r.identificativo !== attuale) {
+      discordanti.add(k)
+      anomalie.push({
+        tipo: 'IDENTIFICATIVI_DISCORDANTI',
+        numero: { anno: r.anno, progressivo: r.progressivo },
+      })
+    }
   }
   const fuoriLotto = esito.numeroRegistrazioni
-    .filter(r => !conteggio.has(chiave(r)))
+    .filter(r => !visti.has(chiave(r)))
     .map(r => ({ anno: r.anno, progressivo: r.progressivo }))
+
+  const fuoriIntervallo = esito.validazione.filter(
+    m =>
+      m.indice !== null &&
+      (m.indice < BASE_INDICE_RENTRI || m.indice >= BASE_INDICE_RENTRI + lotto.length)
+  )
+  for (const m of fuoriIntervallo) {
+    anomalie.push({ tipo: 'INDICE_FUORI_INTERVALLO', indice: m.indice as number })
+  }
 
   const righe = lotto.map((l, posizione): EsitoPerRiga => {
     const k = chiave(l.numero)
-    const messaggi = esito.validazione.filter(m => m.indice === null || m.indice === posizione)
-    const duplicato = (conteggio.get(k) ?? 0) > 1
-    if (!duplicato && confermati.has(k)) {
+    const messaggi = esito.validazione.filter(
+      m =>
+        m.indice === null ||
+        fuoriIntervallo.includes(m) ||
+        m.indice === BASE_INDICE_RENTRI + posizione
+    )
+    if (confermati.has(k)) {
       return {
         movimentoId: l.movimentoId,
         stato: 'TRASMESSA',
-        identificativo: confermati.get(k) ?? null,
+        identificativo: discordanti.has(k) ? null : (confermati.get(k) ?? null),
         messaggi,
         motivo: null,
       }
     }
     let motivo: string
-    if (duplicato) motivo = MOTIVO_DUPLICATO
-    else if (!esito.errore) motivo = MOTIVO_NON_CONFERMATA
+    if (!esito.errore) motivo = MOTIVO_NON_CONFERMATA
     else if (messaggi.length > 0) motivo = MOTIVO_CON_MESSAGGI
     else motivo = MOTIVO_INSIEME
     return {
@@ -79,7 +128,7 @@ export function applicaEsitoDettagliato(
       motivo,
     }
   })
-  return { righe, fuoriLotto }
+  return { righe, fuoriLotto, anomalie }
 }
 
 /** Esito per annotazione del lotto, nello stesso ordine del lotto. Vedi il commento di testa. */

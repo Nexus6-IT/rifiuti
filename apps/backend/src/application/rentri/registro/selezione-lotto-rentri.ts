@@ -16,6 +16,28 @@ export interface CandidataLotto {
   statoPredecessore: StatoTrasmissioneRentri | 'NON_TRASMESSA' | null
 }
 
+/**
+ * Due annotazioni con lo stesso (anno, progressivo) nello stesso lotto: errore di programmazione,
+ * non un esito di RENTRI. Si solleva PRIMA della POST (selezione) o, se arriva comunque all'esito,
+ * il chiamante tratta il lotto come incerto (INCERTA, verifica D11), mai come RIFIUTATA reinviabile.
+ */
+export class NumeroDuplicatoNelLottoError extends Error {
+  constructor(readonly numero: NumeroRegistrazione) {
+    super(`Numero di registrazione duplicato nel lotto: ${numero.anno}/${numero.progressivo}`)
+    this.name = 'NumeroDuplicatoNelLottoError'
+  }
+}
+
+/** Perche' una correzione resta in attesa: il predecessore arrivera' da solo o richiede un intervento. */
+export type MotivoAttesaCorrezione = 'PREDECESSORE_IN_CORSO' | 'PREDECESSORE_BLOCCATO'
+
+const PREDECESSORE_IN_CORSO: ReadonlyArray<CandidataLotto['statoPredecessore']> = [
+  'DA_TRASMETTERE',
+  'IN_INVIO',
+  'ATTESA_ESITO',
+  'INCERTA',
+]
+
 const PREDECESSORE_SU_RENTRI: ReadonlyArray<CandidataLotto['statoPredecessore']> = [
   'TRASMESSA',
   'GIA_SU_RENTRI',
@@ -29,25 +51,48 @@ const PREDECESSORE_SU_RENTRI: ReadonlyArray<CandidataLotto['statoPredecessore']>
  * anche a lotto pieno; le annotazioni che non entrano per il limite non compaiono ne' in
  * `lotto` ne' in `inAttesa`: restano `DA_TRASMETTERE` e partono al giro dopo. Le righe
  * `NON_TRASMISSIBILE` non sono candidate e non bloccano le successive (nessuna contiguita').
+ * `rimanenti` conta le annotazioni escluse dal solo limite. `motivoAttesa` distingue il
+ * predecessore in volo o da trasmettere (`IN_CORSO`, include INCERTA: si risolve con la verifica)
+ * dal predecessore bloccato (`BLOCCATO`: RIFIUTATA, NON_TRASMISSIBILE, mai trasmesso).
+ * @throws NumeroDuplicatoNelLottoError se due candidate hanno lo stesso (anno, progressivo)
  */
 export function selezionaLotto(
   candidate: readonly CandidataLotto[],
   massimo: number
-): { lotto: string[]; inAttesa: string[] } {
+): {
+  lotto: string[]
+  inAttesa: string[]
+  rimanenti: number
+  motivoAttesa: Record<string, MotivoAttesaCorrezione>
+} {
   if (!Number.isInteger(massimo) || massimo < 1) {
     throw new RangeError('Il massimo del lotto deve essere un intero maggiore di zero')
   }
   const ordinate = [...candidate].sort(
     (a, b) => a.numero.anno - b.numero.anno || a.numero.progressivo - b.numero.progressivo
   )
+  for (let i = 1; i < ordinate.length; i++) {
+    const a = ordinate[i - 1].numero
+    const b = ordinate[i].numero
+    if (a.anno === b.anno && a.progressivo === b.progressivo) {
+      throw new NumeroDuplicatoNelLottoError(b)
+    }
+  }
   const lotto: string[] = []
   const inAttesa: string[] = []
+  const motivoAttesa: Record<string, MotivoAttesaCorrezione> = {}
+  let rimanenti = 0
   for (const c of ordinate) {
     if (c.predecessoreId !== null && !PREDECESSORE_SU_RENTRI.includes(c.statoPredecessore)) {
       inAttesa.push(c.movimentoId)
+      motivoAttesa[c.movimentoId] = PREDECESSORE_IN_CORSO.includes(c.statoPredecessore)
+        ? 'PREDECESSORE_IN_CORSO'
+        : 'PREDECESSORE_BLOCCATO'
     } else if (lotto.length < massimo) {
       lotto.push(c.movimentoId)
+    } else {
+      rimanenti++
     }
   }
-  return { lotto, inAttesa }
+  return { lotto, inAttesa, rimanenti, motivoAttesa }
 }

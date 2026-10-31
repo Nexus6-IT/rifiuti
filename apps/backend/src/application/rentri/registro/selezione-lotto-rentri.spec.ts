@@ -1,4 +1,9 @@
-import { LOTTO_MASSIMO_RENTRI, selezionaLotto, type CandidataLotto } from './selezione-lotto-rentri'
+import {
+  LOTTO_MASSIMO_RENTRI,
+  NumeroDuplicatoNelLottoError,
+  selezionaLotto,
+  type CandidataLotto,
+} from './selezione-lotto-rentri'
 
 function c(
   id: string,
@@ -70,7 +75,8 @@ describe('selezionaLotto', () => {
       ],
       1
     )
-    expect(r).toEqual({ lotto: ['a'], inAttesa: ['r'] })
+    expect(r.lotto).toEqual(['a'])
+    expect(r.inAttesa).toEqual(['r'])
   })
 
   it('massimo non valido: errore', () => {
@@ -82,5 +88,51 @@ describe('selezionaLotto', () => {
     const input = [c('b', 2026, 2), c('a', 2026, 1)]
     selezionaLotto(input, 100)
     expect(input.map(x => x.movimentoId)).toEqual(['b', 'a'])
+  })
+
+  it('due candidate con lo stesso (anno, progressivo): errore prima della POST', () => {
+    expect(() => selezionaLotto([c('a', 2026, 1), c('b', 2026, 1)], 100)).toThrow(
+      NumeroDuplicatoNelLottoError
+    )
+    // stesso progressivo in anni diversi: lecito
+    expect(() => selezionaLotto([c('a', 2025, 1), c('b', 2026, 1)], 100)).not.toThrow()
+  })
+
+  it('rimanenti: le annotazioni escluse dal solo limite', () => {
+    const r = selezionaLotto([c('a', 2026, 1), c('b', 2026, 2), c('d', 2026, 3)], 2)
+    expect(r.lotto).toEqual(['a', 'b'])
+    expect(r.rimanenti).toBe(1)
+    const s2 = selezionaLotto(
+      [
+        c('a', 2026, 1),
+        c('r', 2026, 2, { predecessoreId: 'a', statoPredecessore: 'DA_TRASMETTERE' }),
+      ],
+      1
+    )
+    expect(s2.rimanenti).toBe(0)
+  })
+
+  it("motivo dell'attesa: predecessore in corso oppure bloccato", () => {
+    const r = selezionaLotto(
+      [
+        c('r1', 2026, 1, { predecessoreId: 'x', statoPredecessore: 'DA_TRASMETTERE' }),
+        c('r2', 2026, 2, { predecessoreId: 'x', statoPredecessore: 'IN_INVIO' }),
+        c('r3', 2026, 3, { predecessoreId: 'x', statoPredecessore: 'ATTESA_ESITO' }),
+        c('r4', 2026, 4, { predecessoreId: 'x', statoPredecessore: 'INCERTA' }),
+        c('r5', 2026, 5, { predecessoreId: 'x', statoPredecessore: 'RIFIUTATA' }),
+        c('r6', 2026, 6, { predecessoreId: 'x', statoPredecessore: 'NON_TRASMISSIBILE' }),
+        c('r7', 2026, 7, { predecessoreId: 'x', statoPredecessore: 'NON_TRASMESSA' }),
+      ],
+      100
+    )
+    expect(r.motivoAttesa).toEqual({
+      r1: 'PREDECESSORE_IN_CORSO',
+      r2: 'PREDECESSORE_IN_CORSO',
+      r3: 'PREDECESSORE_IN_CORSO',
+      r4: 'PREDECESSORE_IN_CORSO',
+      r5: 'PREDECESSORE_BLOCCATO',
+      r6: 'PREDECESSORE_BLOCCATO',
+      r7: 'PREDECESSORE_BLOCCATO',
+    })
   })
 })
