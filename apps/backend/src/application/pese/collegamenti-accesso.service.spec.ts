@@ -4,6 +4,7 @@ import {
   CollegamentoNonTrovatoError,
   CollegamentoNonValidoError,
   DatiPesaNonValidiError,
+  FirNonTrovatoError,
   RuoloPesaInsufficienteError,
   StatoAccessoNonValidoError,
 } from './errori-pese'
@@ -134,7 +135,7 @@ describe('CollegamentiAccessoService (Prisma finto)', () => {
 
     it('FIR di un`altra azienda o inesistente → 422', async () => {
       tx.fIR.findFirst.mockResolvedValue(null)
-      await expect(service.collegaFir(T, operatore, ACC, FIR)).rejects.toThrow('FIR non trovato.')
+      await expect(service.collegaFir(T, operatore, ACC, FIR)).rejects.toThrow(FirNonTrovatoError)
     })
 
     it('accesso non chiuso → 409', async () => {
@@ -276,6 +277,26 @@ describe('CollegamentiAccessoService (Prisma finto)', () => {
   })
 
   describe('pesoPerConsegnaFir (D12)', () => {
+    beforeEach(() => {
+      tx.fIR.findFirst.mockResolvedValue(fir({ status: 'AWAITING_RECEIVER' }))
+    })
+
+    it('FIR non in transito (emesso) → 422 prima di collegare e di scrivere l`audit', async () => {
+      tx.fIR.findFirst.mockResolvedValue(fir({ status: 'AWAITING_CARRIER' }))
+      await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).rejects.toThrow(
+        CollegamentoNonValidoError
+      )
+      expect(tx.collegamentoAccesso.create).not.toHaveBeenCalled()
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('FIR in stato sconosciuto → messaggio neutro, non "bozza"', async () => {
+      tx.fIR.findFirst.mockResolvedValue(fir({ status: 'BOH' }))
+      await expect(service.collegaFir(T, operatore, ACC, FIR)).rejects.toThrow(
+        'Il FIR non è in uno stato a cui si possa collegare un accesso.'
+      )
+    })
+
     it('FIR in kg: netto invariato; crea il collegamento e scrive FIR_PESO_DA_ACCESSO', async () => {
       await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).resolves.toBe(12345)
 
@@ -291,7 +312,7 @@ describe('CollegamentiAccessoService (Prisma finto)', () => {
     })
 
     it('FIR in M3 → 422 con l`unità nel messaggio', async () => {
-      tx.fIR.findFirst.mockResolvedValue(fir({ unit: 'M3' }))
+      tx.fIR.findFirst.mockResolvedValue(fir({ unit: 'M3', status: 'AWAITING_RECEIVER' }))
       await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).rejects.toThrow(
         'Il FIR è in M3: il peso della pesa (kg) non si converte.'
       )
@@ -304,7 +325,9 @@ describe('CollegamentiAccessoService (Prisma finto)', () => {
         CollegamentoNonValidoError
       )
       tx.accessoPesa.findFirst.mockResolvedValue(accesso())
-      tx.fIR.findFirst.mockResolvedValue(fir({ rentriNumeroFir: 'RENTRI-1' }))
+      tx.fIR.findFirst.mockResolvedValue(
+        fir({ status: 'AWAITING_RECEIVER', rentriNumeroFir: 'RENTRI-1' })
+      )
       await expect(service.pesoPerConsegnaFir(T, U, FIR, ACC)).rejects.toThrow(
         CollegamentoNonValidoError
       )

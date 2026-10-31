@@ -117,3 +117,11 @@ export class CollegamentoNonTrovatoError extends DomainError {
     this.name = 'CollegamentoNonTrovatoError'
   }
 }
+
+/** Il FIR non esiste nell'azienda selezionata (anche se esiste in un'altra): 404. */
+export class FirNonTrovatoError extends DomainError {
+  constructor() {
+    super('FIR non trovato.')
+    this.name = 'FirNonTrovatoError'
+  }
+}

@@ -8,7 +8,7 @@
 // rete per le corse fra accessi diversi sullo stesso documento (P2002 -> 409).
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { firAnnullato, STATI_FIR_EMESSI } from '../../domain/fir/stati-fir'
+import { firAnnullato, STATI_FIR_EMESSI, STATI_FIR_IN_BOZZA } from '../../domain/fir/stati-fir'
 import { nettoNellUnitaFir } from '../../domain/pese/confronto-documento'
 import { chiaveConfrontoCer } from '../../domain/waste-movement/cer-registro'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -21,6 +21,7 @@ import {
   CollegamentoNonTrovatoError,
   CollegamentoNonValidoError,
   DatiPesaNonValidiError,
+  FirNonTrovatoError,
   RuoloPesaInsufficienteError,
   StatoAccessoNonValidoError,
 } from './errori-pese'
@@ -190,6 +191,11 @@ export class CollegamentiAccessoService {
         )
       }
       const fir = await this.leggiFirCollegabile(tx, tenantId, firId)
+      if (fir.status !== 'AWAITING_RECEIVER') {
+        throw new CollegamentoNonValidoError(
+          'Il peso della pesa si usa per la consegna solo con un FIR in transito.'
+        )
+      }
       if (fir.rentriNumeroFir?.trim()) {
         throw new CollegamentoNonValidoError(
           'Il FIR è legato a RENTRI: il peso della pesa non si usa per la consegna.'
@@ -205,7 +211,7 @@ export class CollegamentiAccessoService {
           `Il FIR è in ${fir.unit}: il peso della pesa (kg) non si converte.`
         )
       }
-      await this.collegaFirSottoLock(tx, tenantId, utenteId, accesso, firId, fir)
+      await this.collegaFirSottoLock(tx, tenantId, utenteId, accesso, firId, true)
       await scriviAuditPese(
         tx,
         tenantId,
@@ -242,11 +248,13 @@ export class CollegamentiAccessoService {
         unit: true,
       },
     })
-    if (!fir) throw new CollegamentoNonValidoError('FIR non trovato.')
+    if (!fir) throw new FirNonTrovatoError()
     if (firAnnullato(fir)) throw new CollegamentoNonValidoError('Il FIR è annullato.')
     if (!(STATI_FIR_EMESSI as readonly string[]).includes(fir.status)) {
       throw new CollegamentoNonValidoError(
-        "Il FIR è ancora una bozza: si collega dopo l'emissione."
+        (STATI_FIR_IN_BOZZA as readonly string[]).includes(fir.status)
+          ? "Il FIR è ancora una bozza: si collega dopo l'emissione."
+          : 'Il FIR non è in uno stato a cui si possa collegare un accesso.'
       )
     }
     return fir
@@ -259,10 +267,11 @@ export class CollegamentiAccessoService {
     utenteId: string,
     accesso: Accesso,
     firId: string,
-    firGiaLetto?: unknown
+    /** true: gia' collegato allo stesso FIR e' un successo e il FIR e' gia' stato verificato */
+    idempotente = false
   ): Promise<void> {
     this.richiediChiuso(accesso)
-    if (!firGiaLetto) await this.leggiFirCollegabile(tx, tenantId, firId)
+    if (!idempotente) await this.leggiFirCollegabile(tx, tenantId, firId)
     const esistente = await tx.collegamentoAccesso.findFirst({
       where: {
         tenantId,
@@ -272,7 +281,7 @@ export class CollegamentiAccessoService {
       select: { id: true, accessoId: true, firId: true },
     })
     if (esistente) {
-      if (firGiaLetto && esistente.accessoId === accesso.id && esistente.firId === firId) return
+      if (idempotente && esistente.accessoId === accesso.id && esistente.firId === firId) return
       throw new StatoAccessoNonValidoError(MSG_GIA_COLLEGATO)
     }
     const c = await tx.collegamentoAccesso.create({

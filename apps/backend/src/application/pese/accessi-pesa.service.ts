@@ -596,11 +596,20 @@ export class AccessiPesaService {
     pesate: PesataScritta[],
     adesso: Date
   ): Promise<void> {
+    // Una pesata gia' rettificata mentre l'accesso era APERTO conta col peso in vigore.
+    const rettifiche = pesate.length
+      ? await tx.rettificaPeso.findMany({
+          where: { tenantId, pesataId: { in: pesate.map(p => p.id) } },
+          select: { pesataId: true, numero: true, pesoNuovoKg: true },
+        })
+      : []
     const perNetto: PesataPerNetto[] = pesate.map(p => ({
       ordine: p.ordine,
       fonte: p.fonte,
       pesoKg: p.pesoKg,
-      rettifiche: [],
+      rettifiche: rettifiche
+        .filter(r => r.pesataId === p.id)
+        .map(r => ({ numero: r.numero, pesoNuovoKg: Number(r.pesoNuovoKg) })),
       stabile: p.stabile,
       taraAggiornataIl: p.taraAggiornataIl ? p.taraAggiornataIl.toISOString() : null,
     }))

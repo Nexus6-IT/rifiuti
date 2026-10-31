@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client'
 import { improntaRettifica } from '../../domain/pese/impronta-pesata'
-import { AVVISO_DOCUMENTI_COLLEGATI, RettifichePesoService } from './rettifiche-peso.service'
+import {
+  AVVISO_DOCUMENTI_COLLEGATI,
+  avvisoTaraNonAggiornata,
+  RettifichePesoService,
+} from './rettifiche-peso.service'
 import {
   DatiPesaNonValidiError,
   PesataNonTrovataError,
@@ -25,6 +29,16 @@ const admin = { id: U, ruolo: 'ADMIN' as const }
 const operatore = { id: U, ruolo: 'OPERATOR' as const }
 const ADESSO = new Date('2026-10-31T10:00:00Z')
 
+const pesataBase = (ordine: number, kg: number) => ({
+  id: `p${ordine}`,
+  ordine,
+  fonte: 'MANUALE',
+  pesoKg: new Prisma.Decimal(kg),
+  stabile: true,
+  taraAggiornataIl: null,
+  rettifiche: [],
+})
+
 describe('RettifichePesoService (Prisma finto)', () => {
   let tx: any
   let service: RettifichePesoService
@@ -43,9 +57,20 @@ describe('RettifichePesoService (Prisma finto)', () => {
         return [{ id: ACC }]
       }),
       accessoPesa: {
-        findFirst: jest.fn().mockResolvedValue({ id: ACC, tenantId: T, stato: 'CHIUSO' }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: ACC,
+          tenantId: T,
+          stato: 'CHIUSO',
+          verso: 'CARICO',
+          modo: 'DOPPIA',
+          chiusoIl: new Date('2026-10-30T10:00:00Z'),
+        }),
       },
+      automezzo: { findMany: jest.fn().mockResolvedValue([]) },
       pesata: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ ...pesataBase(1, 24000), id: PES }, pesataBase(2, 7000)]),
         findFirst: jest.fn().mockResolvedValue({
           id: PES,
           accessoId: ACC,
@@ -149,6 +174,24 @@ describe('RettifichePesoService (Prisma finto)', () => {
     await expect(
       service.rettifica(T, admin, PES, dati({ motivo: 'x'.repeat(501) }))
     ).rejects.toThrow(DatiPesaNonValidiError)
+  })
+
+  it('accesso CHIUSO: una rettifica che rende il netto non valido → 422, nessuna riga', async () => {
+    // la tara (7000) diventerebbe maggiore del lordo rettificato (6000)
+    const p = service.rettifica(T, admin, PES, dati({ pesoNuovoKg: 6000 }))
+
+    await expect(p).rejects.toThrow(RegolaPesataError)
+    expect(tx.rettificaPeso.create).not.toHaveBeenCalled()
+  })
+
+  it('pesata che e` la tara di un automezzo: avviso con la targa, senza id', async () => {
+    tx.automezzo.findMany.mockResolvedValue([{ targa: 'AB123CD' }])
+
+    const v: any = await service.rettifica(T, admin, PES, dati())
+
+    expect(v.avvisi).toContain(avvisoTaraNonAggiornata('AB123CD'))
+    expect(avvisoTaraNonAggiornata('AB123CD')).toContain('AB123CD')
+    expect(avvisoTaraNonAggiornata('AB123CD')).not.toMatch(/[0-9a-f]{8}-/)
   })
 
   it('serve il ruolo di responsabile', async () => {

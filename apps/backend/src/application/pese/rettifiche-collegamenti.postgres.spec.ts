@@ -33,11 +33,16 @@ import { AutomezziService } from './automezzi.service'
 import { CollegamentiAccessoService } from './collegamenti-accesso.service'
 import {
   CollegamentoNonValidoError,
+  FirNonTrovatoError,
   RegolaPesataError,
   RuoloPesaInsufficienteError,
   StatoAccessoNonValidoError,
 } from './errori-pese'
-import { RettifichePesoService, AVVISO_DOCUMENTI_COLLEGATI } from './rettifiche-peso.service'
+import {
+  AVVISO_DOCUMENTI_COLLEGATI,
+  avvisoTaraNonAggiornata,
+  RettifichePesoService,
+} from './rettifiche-peso.service'
 import { StrumentiPesaService } from './strumenti-pesa.service'
 
 type Azienda = Awaited<ReturnType<typeof creaAzienda>>
@@ -319,6 +324,78 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
       expect(await owner.rettificaPeso.count({ where: { pesataId: chiuso.pesate[0].id } })).toBe(0)
     })
 
+    it('accesso CHIUSO: una rettifica che rende il netto non valido → 422 e nessuna riga', async () => {
+      const a = await azienda()
+      const chiuso = await accessoChiuso(a) // lordo 24000, tara 7000
+      const [lordo, tara] = chiuso.pesate
+
+      // lordo sotto la tara, oppure tara sopra il lordo
+      await expect(rettifica(a, lordo.id, 6000)).rejects.toThrow(RegolaPesataError)
+      await expect(rettifica(a, tara.id, 25000)).rejects.toThrow(RegolaPesataError)
+      expect(await owner.rettificaPeso.count({ where: { tenantId: a.tenantId } })).toBe(0)
+
+      const v = await rettifica(a, tara.id, 9000)
+      expect(v.netto).toMatchObject({ stato: 'CALCOLATO', nettoKg: 15000 })
+    })
+
+    it('rettifica di un accesso APERTO: la chiusura usa il peso in vigore (rifiuta o chiude col netto giusto)', async () => {
+      const a = await azienda()
+      // 24000 rettificato a 5000, poi tara 8000: lordo < tara → la chiusura e' rifiutata
+      const x = await nelTenant(a.tenantId, () =>
+        accessi.apri(a.tenantId, operatore(a), dati(24000))
+      )
+      await rettifica(a, x.pesate[0].id, 5000)
+      await expect(
+        nelTenant(a.tenantId, () =>
+          accessi.secondaPesata(a.tenantId, operatore(a), x.id, {
+            chiaveIdempotenza: randomUUID(),
+            pesata: pesata(8000),
+          })
+        )
+      ).rejects.toThrow(RegolaPesataError)
+      const dopoX = await owner.accessoPesa.findUniqueOrThrow({ where: { id: x.id } })
+      expect(dopoX.stato).toBe('APERTO')
+      expect(await owner.pesata.count({ where: { accessoId: x.id } })).toBe(1)
+
+      // caso opposto: 24000 rettificato a 30000, tara 8000 → netto 22000 (non 16000)
+      const y = await nelTenant(a.tenantId, () =>
+        accessi.apri(a.tenantId, operatore(a), dati(24000))
+      )
+      await rettifica(a, y.pesate[0].id, 30000)
+      const chiuso = await nelTenant(a.tenantId, () =>
+        accessi.secondaPesata(a.tenantId, operatore(a), y.id, {
+          chiaveIdempotenza: randomUUID(),
+          pesata: pesata(8000),
+        })
+      )
+      expect(chiuso.stato).toBe('CHIUSO')
+      expect(chiuso.netto).toMatchObject({ stato: 'CALCOLATO', nettoKg: 22000 })
+      const audit = await owner.activityLog.findMany({
+        where: { tenantId: a.tenantId, action: 'PESA_ACCESSO_CHIUSO' },
+      })
+      expect(audit).toHaveLength(1)
+      expect((audit[0].metadata as any).nettoKg).toBe(22000)
+    })
+
+    it('pesata usata come tara di un automezzo: la rettifica avvisa con la targa e non aggiorna il mezzo', async () => {
+      const a = await azienda()
+      const automezzi = new AutomezziService(app)
+      const mezzo = await nelTenant(a.tenantId, () =>
+        automezzi.crea(a.tenantId, a.utenteId, { targa: 'AB123CD' })
+      )
+      const chiuso = await accessoChiuso(a, 24000, 7000, { targa: 'AB123CD' })
+      const tara = chiuso.pesate[1]
+      await nelTenant(a.tenantId, () =>
+        automezzi.impostaTara(a.tenantId, a.utenteId, mezzo.id, { pesataId: tara.id })
+      )
+
+      const v = await rettifica(a, tara.id, 7100)
+
+      expect(v.avvisi).toContain(avvisoTaraNonAggiornata('AB123CD'))
+      const dopo = await owner.automezzo.findUniqueOrThrow({ where: { id: mezzo.id } })
+      expect(Number(dopo.taraKg)).toBe(7000)
+    })
+
     it('rettifica di un accesso annullato → 409', async () => {
       const a = await azienda()
       const chiuso = await accessoChiuso(a)
@@ -450,6 +527,19 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
       }
     })
 
+    it('il confronto del FIR usa il peso gia` scritto alla consegna, se c`e`', async () => {
+      const a = await azienda()
+      const chiuso = await accessoChiuso(a) // netto 17000
+      const f = await fir(a, 'COMPLETED', 'KG', 17000)
+      await owner.fIR.update({ where: { id: f.id }, data: { effectiveWeight: 16900 } })
+
+      const v = await nelTenant(a.tenantId, () =>
+        collegamenti.collegaFir(a.tenantId, operatore(a), chiuso.id, f.id)
+      )
+
+      expect(v.collegamenti[0].confronto).toMatchObject({ quantitaKg: 16900, differenzaKg: 100 })
+    })
+
     it('accesso aperto o annullato non si collega; FIR di un`altra azienda non trovato', async () => {
       const a = await azienda()
       const b = await azienda()
@@ -469,7 +559,7 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
         nelTenant(a.tenantId, () =>
           collegamenti.collegaFir(a.tenantId, operatore(a), chiuso.id, fb.id)
         )
-      ).rejects.toThrow('FIR non trovato.')
+      ).rejects.toThrow(FirNonTrovatoError)
     })
 
     it('doppio collegamento: stesso accesso o stesso documento → 409; due richieste in parallelo → 1 ok', async () => {
@@ -701,6 +791,21 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
       await expect(peso(a, f.id, chiuso.id)).resolves.toBe(16000)
     })
 
+    it('FIR solo emesso (non in transito) → 422, nessun collegamento e nessun audit', async () => {
+      const a = await azienda()
+      const chiuso = await accessoChiuso(a)
+      const f = await fir(a, 'AWAITING_CARRIER')
+
+      await expect(peso(a, f.id, chiuso.id)).rejects.toThrow(CollegamentoNonValidoError)
+
+      expect(await owner.collegamentoAccesso.count({ where: { tenantId: a.tenantId } })).toBe(0)
+      expect(
+        await owner.activityLog.count({
+          where: { tenantId: a.tenantId, action: 'FIR_PESO_DA_ACCESSO' },
+        })
+      ).toBe(0)
+    })
+
     it('pesoPerConsegnaFir su FIR in M3 → 422', async () => {
       const a = await azienda()
       const chiuso = await accessoChiuso(a)
@@ -737,7 +842,7 @@ describe('Rettifiche e collegamenti — Postgres reale, ruolo wasteflow_app', ()
       const chiuso = await accessoChiuso(a)
       const fb = await fir(b, 'AWAITING_RECEIVER')
       await expect(peso(b, fb.id, chiuso.id)).rejects.toThrow('Accesso non trovato.')
-      await expect(peso(a, fb.id, chiuso.id)).rejects.toThrow('FIR non trovato.')
+      await expect(peso(a, fb.id, chiuso.id)).rejects.toThrow(FirNonTrovatoError)
     })
   })
 })

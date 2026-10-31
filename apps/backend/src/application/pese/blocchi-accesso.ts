@@ -4,7 +4,9 @@
 //      annulla, collega);
 //   2. `SELECT ... FOR UPDATE` sulla riga dell'accesso    (chi chiude o annulla la tiene fino al
 //      commit; i trigger `pesate_controlli`/`collegamenti_accesso_controlli` leggono la stessa
-//      riga con `FOR SHARE`, quindi un inserimento che sfuggisse al punto 1 aspetterebbe qui).
+//      riga con `FOR SHARE`, quindi un inserimento che sfuggisse al punto 1 aspetterebbe qui);
+//   3. advisory `rettifica-peso|<pesataId>` (solo le rettifiche, DOPO i punti 1 e 2: il trigger
+//      `rettifiche_peso_controlli` non ha FOR SHARE, e' il punto 1 a serializzare rettifica e annullo).
 // Aperture con tara dichiarata, in questo ordine: chiave di idempotenza -> automezzo
 // `FOR NO KEY UPDATE` (PRIMA di creare l'accesso) -> advisory della numerazione -> insert
 // dell'accesso -> insert delle pesate. `FOR NO KEY UPDATE` non confligge con il `KEY SHARE` che

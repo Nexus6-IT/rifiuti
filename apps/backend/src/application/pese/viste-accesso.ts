@@ -436,7 +436,12 @@ async function vistaCollegamenti(
           unita: f.unit,
           pesoEffettivo: f.effectiveWeight === null ? null : Number(f.effectiveWeight),
         },
-        confronto: confrontaConDocumento(nettoKg, quantita, f.unit),
+        // Il peso gia' scritto alla consegna (se c'e') e' il dato del documento.
+        confronto: confrontaConDocumento(
+          nettoKg,
+          f.effectiveWeight === null ? quantita : Number(f.effectiveWeight),
+          f.unit
+        ),
       }
     }
     const m = c.movimentoId ? movimenti.get(c.movimentoId) : undefined

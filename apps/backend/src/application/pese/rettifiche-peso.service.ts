@@ -10,6 +10,8 @@
 // servizio sotto lock (il trigger li controlla, non li imposta).
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { calcolaNetto } from '../../domain/pese/netto-accesso'
+import { giornoItaliano } from '../../core/time/anno-italiano'
 import { improntaRettifica } from '../../domain/pese/impronta-pesata'
 import { validaPesataManuale } from '../../domain/pese/regole-pesata'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -37,6 +39,9 @@ export interface RettificaDati {
   pesoNuovoKg: number
   motivo: string
 }
+
+export const avvisoTaraNonAggiornata = (targa: string): string =>
+  `La tara dell'automezzo ${targa} non è stata aggiornata: usa ancora il peso originale.`
 
 const centesimi = (kg: number | Prisma.Decimal): number => Math.round(Number(kg) * 100)
 
@@ -109,6 +114,17 @@ export class RettifichePesoService {
             if (centesimi(dati.pesoNuovoKg) === centesimi(precedente)) {
               throw new RegolaPesataError([MSG_PESO_UGUALE])
             }
+            const nuovoKg = centesimi(dati.pesoNuovoKg) / 100
+            if (accesso.stato === 'CHIUSO') {
+              await this.verificaNettoDopoRettifica(
+                tx,
+                tenantId,
+                accesso,
+                pesataId,
+                numero,
+                nuovoKg
+              )
+            }
             const precedenteTesto = new Prisma.Decimal(precedente).toFixed(2)
             const nuovoTesto = new Prisma.Decimal(centesimi(dati.pesoNuovoKg)).div(100).toFixed(2)
 
@@ -154,11 +170,18 @@ export class RettifichePesoService {
                 conAllegato: salvato !== null,
               }
             )
+            const mezzi = await tx.automezzo.findMany({
+              where: { tenantId, taraPesataId: pesataId },
+              select: { targa: true },
+            })
             const vista = await leggiVistaAccesso(tx, tenantId, pesata.accessoId, adesso)
             const collegati = await tx.collegamentoAccesso.count({
               where: { tenantId, accessoId: pesata.accessoId, revocatoIl: null },
             })
             if (collegati > 0) vista.avvisi = [...vista.avvisi, AVVISO_DOCUMENTI_COLLEGATI]
+            for (const m of mezzi) {
+              vista.avvisi = [...vista.avvisi, avvisoTaraNonAggiornata(m.targa)]
+            }
             return vista
           },
           { timeout: 15_000, maxWait: 5_000 }
@@ -167,5 +190,48 @@ export class RettifichePesoService {
         throw await traduciErroreDatabase(err)
       }
     })
+  }
+
+  /**
+   * Un accesso CHIUSO resta con netto CALCOLATO: si rifa il calcolo col peso nuovo (le pesate
+   * dell'accesso piu' la rettifica simulata, al giorno della chiusura) e, se non torna, 422 con
+   * il messaggio di D6. Va chiamato sotto lock, prima dell'insert.
+   */
+  private async verificaNettoDopoRettifica(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    accesso: {
+      id: string
+      verso: 'CARICO' | 'SCARICO'
+      modo: 'DOPPIA' | 'TARA_ANAGRAFICA' | 'SINGOLA'
+      chiusoIl: Date | null
+    },
+    pesataId: string,
+    numero: number,
+    nuovoKg: number
+  ): Promise<void> {
+    const pesate = await tx.pesata.findMany({
+      where: { tenantId, accessoId: accesso.id },
+      include: { rettifiche: true },
+    })
+    const netto = calcolaNetto(
+      accesso.verso,
+      accesso.modo,
+      pesate.map(p => ({
+        ordine: p.ordine === 1 ? (1 as const) : (2 as const),
+        fonte: p.fonte,
+        pesoKg: Number(p.pesoKg),
+        rettifiche: [
+          ...p.rettifiche.map(r => ({ numero: r.numero, pesoNuovoKg: Number(r.pesoNuovoKg) })),
+          ...(p.id === pesataId ? [{ numero, pesoNuovoKg: nuovoKg }] : []),
+        ],
+        stabile: p.stabile,
+        taraAggiornataIl: p.taraAggiornataIl ? p.taraAggiornataIl.toISOString() : null,
+      })),
+      giornoItaliano(accesso.chiusoIl ?? this.adesso())
+    )
+    if (netto.stato !== 'CALCOLATO') {
+      throw new RegolaPesataError([netto.errore ?? 'Il netto non si può calcolare.'])
+    }
   }
 }

@@ -74,6 +74,7 @@ describe('AccessiPesaService (Prisma finto)', () => {
       },
       cERCode: { findMany: jest.fn().mockResolvedValue([{ code: '20 01 01' }]) },
       collegamentoAccesso: { count: jest.fn().mockResolvedValue(0) },
+      rettificaPeso: { findMany: jest.fn().mockResolvedValue([]) },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
     }
     registri = { risolviInLettura: jest.fn().mockResolvedValue({ id: R, attivo: true }) }
