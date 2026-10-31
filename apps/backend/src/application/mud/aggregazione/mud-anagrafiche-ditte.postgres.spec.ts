@@ -286,11 +286,21 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
       trasportatore: app.trasportatore,
       tenant: { findUnique: async () => ({ city: 'Roma', province: 'RM', atecoCode: '38.11.00' }) },
       rentriUnitaLocale: {
-        findMany: async () => [{ denominazione: 'Sede', numIscrSito: 'OP1', principale: true }],
+        findMany: async () => [
+          {
+            id: 'sede-finta',
+            denominazione: 'Sede',
+            numIscrSito: 'OP1',
+            principale: true,
+            createdAt: new Date('2020-01-01T00:00:00Z'),
+            progressivoMud: null,
+          },
+        ],
       },
       mUDReport: { findUnique: async () => null },
       registroRifiuti: { findMany: async () => [] },
       giacenzaIniziale: { findMany: async () => [] },
+      autorizzazioneImpianto: { count: async () => 0 },
     }
 
     const r = await nelTenant(() =>

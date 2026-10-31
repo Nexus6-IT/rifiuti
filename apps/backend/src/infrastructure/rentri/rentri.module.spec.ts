@@ -10,6 +10,7 @@ import { RentriCredentialResolver } from './rentri-credential.resolver'
 import { RentriModalitaLegameService } from './rentri-modalita-legame.service'
 import { RentriUnitaLocaleService } from './rentri-unita-locale.service'
 import { RentriAnagraficheClient } from './rentri-anagrafiche.client'
+import { RentriRegistriClient } from './rentri-registri.client'
 import { RentriVidimazioneClient } from './rentri-vidimazione.client'
 import { RentriRateLimiterService } from './rentri-rate-limiter.service'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
@@ -50,6 +51,7 @@ describe('RentriModule (DI wiring)', () => {
     expect(moduleRef.get(RentriUnitaLocaleController)).toBeDefined()
     expect(moduleRef.get(RentriAnagraficheClient)).toBeDefined()
     expect(moduleRef.get(RentriVidimazioneClient)).toBeDefined()
+    expect(moduleRef.get(RentriRegistriClient)).toBeDefined()
     expect(moduleRef.get(SincronizzaSitiUseCase)).toBeDefined()
     expect(moduleRef.get(RentriSitiController)).toBeDefined()
     expect(moduleRef.get(RentriRateLimiterService)).toBeDefined()

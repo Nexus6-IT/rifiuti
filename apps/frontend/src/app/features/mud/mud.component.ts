@@ -12,11 +12,13 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { InputSwitchModule } from 'primeng/inputswitch'
 import { InputTextModule } from 'primeng/inputtext'
 import { RadioButtonModule } from 'primeng/radiobutton'
+import { SelectButtonModule } from 'primeng/selectbutton'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ToastService } from '../../core/services/toast.service'
 import { formattaQuantita } from '../../shared/format/formatta-quantita'
 import {
+  DichiarazioneRiepilogo,
   EsportazioneMud,
   MotivoAnnullamento,
   MudControllo,
@@ -38,6 +40,17 @@ import {
   righeIntegrazioni,
   testoConferma,
 } from './mud.service'
+
+/** Riga della tabella per CER, comune al file e alle sue dichiarazioni. */
+interface RigaCerTabella {
+  cerCode: string
+  quantita: number
+  recupero: number
+  smaltimento: number
+  giacenzaRecupero: number
+  giacenzaSmaltimento: number
+  movimenti: number
+}
 
 type Dialogo = 'download' | 'segnatura' | 'annullamento'
 
@@ -95,6 +108,7 @@ function oggiIso(): string {
     InputSwitchModule,
     InputTextModule,
     RadioButtonModule,
+    SelectButtonModule,
     TableModule,
     TagModule,
   ],
@@ -233,6 +247,12 @@ function oggiIso(): string {
       <ng-container *ngIf="report() as r">
         <h2 class="mud-section-title">Riepilogo {{ r.year }}</h2>
 
+        <p *ngIf="r.versionePresentata" class="mud-nota-versione mb-3">
+          Il MUD presentato è stato calcolato con le regole precedenti (tutte le sedi in una sola
+          dichiarazione, giacenze non dichiarate): i numeri qui sotto e un nuovo file seguono le
+          regole attuali.
+        </p>
+
         <div *ngIf="r.mudNonDovuto" class="mb-3">
           <p-tag severity="info" value="Azienda segnata come non tenuta al MUD"></p-tag>
         </div>
@@ -270,6 +290,7 @@ function oggiIso(): string {
           <ul *ngIf="bloccanti().length" class="mud-bloccanti">
             <li *ngFor="let c of bloccanti()">
               <p-tag severity="danger" value="Da correggere"></p-tag>
+              <p-tag *ngIf="c.sede" class="mud-sede" severity="secondary" [value]="c.sede"></p-tag>
               <span>{{ c.messaggio }}</span>
               <p-button
                 *ngIf="c.integrazione"
@@ -291,8 +312,21 @@ function oggiIso(): string {
             Questi dati completano il MUD dell'anno senza modificare il registro, che resta com'è.
           </p>
           <div *ngFor="let riga of righe; let i = index" class="mud-integrazione">
-            <strong class="mud-integrazione__etichetta">{{ riga.etichetta }}</strong>
+            <strong class="mud-integrazione__etichetta" [id]="'mud-int-etichetta-' + i">{{
+              riga.etichetta
+            }}</strong>
             <small *ngIf="riga.avviso" class="block text-tertiary">{{ riga.avviso }}</small>
+
+            <!-- Giacenza al 31/12: recupero o smaltimento -->
+            <p-selectButton
+              *ngIf="riga.tipo === 'DESTINAZIONE_GIACENZA'"
+              [options]="opzioniDestinazione"
+              [(ngModel)]="riga.destinazione"
+              optionLabel="label"
+              optionValue="value"
+              [ariaLabelledBy]="'mud-int-etichetta-' + i"
+              [disabled]="!amministratore()"
+            ></p-selectButton>
 
             <!-- Peso specifico: kg per unità, conversione e intervallo consueto -->
             <ng-container *ngIf="riga.tipo === 'PESO_SPECIFICO'; else soggetto">
@@ -326,58 +360,60 @@ function oggiIso(): string {
 
             <!-- Soggetti: destinatario, destinatario del movimento, trasportatore -->
             <ng-template #soggetto>
-              <div *ngIf="riga.tipo === 'DESTINATARIO_MOVIMENTO'" class="mud-integrazione__campo">
-                <label [for]="'mud-int-rs-' + i">Destinatario</label>
-                <input
-                  [id]="'mud-int-rs-' + i"
-                  pInputText
-                  maxlength="255"
-                  [(ngModel)]="riga.ragioneSociale"
-                  [disabled]="!amministratore()"
-                />
-              </div>
-              <div *ngIf="riga.tipo === 'CF_DESTINATARIO'" class="mud-conferma">
-                <p-checkbox
-                  [inputId]="'mud-int-estero-' + i"
-                  [binary]="true"
-                  [(ngModel)]="riga.estero"
-                  [disabled]="!amministratore()"
-                ></p-checkbox>
-                <label [for]="'mud-int-estero-' + i">Destinatario estero</label>
-              </div>
-              <div *ngIf="riga.estero; else campoCf" class="mud-integrazione__campo">
-                <label [for]="'mud-int-nazione-' + i">Nazione</label>
-                <input
-                  [id]="'mud-int-nazione-' + i"
-                  pInputText
-                  maxlength="20"
-                  [(ngModel)]="riga.nazione"
-                  [disabled]="!amministratore()"
-                />
-              </div>
-              <ng-template #campoCf>
-                <div class="mud-integrazione__campo">
-                  <label [for]="'mud-int-cf-' + i">Codice fiscale o partita IVA</label>
+              <ng-container *ngIf="riga.tipo !== 'DESTINAZIONE_GIACENZA'">
+                <div *ngIf="riga.tipo === 'DESTINATARIO_MOVIMENTO'" class="mud-integrazione__campo">
+                  <label [for]="'mud-int-rs-' + i">Destinatario</label>
                   <input
-                    [id]="'mud-int-cf-' + i"
+                    [id]="'mud-int-rs-' + i"
                     pInputText
-                    maxlength="18"
-                    [(ngModel)]="riga.codiceFiscale"
+                    maxlength="255"
+                    [(ngModel)]="riga.ragioneSociale"
                     [disabled]="!amministratore()"
                   />
                 </div>
-                <div *ngIf="chiedeConfermaPropriaAzienda(riga)" class="mud-conferma">
+                <div *ngIf="riga.tipo === 'CF_DESTINATARIO'" class="mud-conferma">
                   <p-checkbox
-                    [inputId]="'mud-int-propria-' + i"
+                    [inputId]="'mud-int-estero-' + i"
                     [binary]="true"
-                    [(ngModel)]="riga.confermaPropriaAzienda"
+                    [(ngModel)]="riga.estero"
                     [disabled]="!amministratore()"
                   ></p-checkbox>
-                  <label [for]="'mud-int-propria-' + i"
-                    >Confermo: il destinatario è un impianto della nostra azienda</label
-                  >
+                  <label [for]="'mud-int-estero-' + i">Destinatario estero</label>
                 </div>
-              </ng-template>
+                <div *ngIf="riga.estero; else campoCf" class="mud-integrazione__campo">
+                  <label [for]="'mud-int-nazione-' + i">Nazione</label>
+                  <input
+                    [id]="'mud-int-nazione-' + i"
+                    pInputText
+                    maxlength="20"
+                    [(ngModel)]="riga.nazione"
+                    [disabled]="!amministratore()"
+                  />
+                </div>
+                <ng-template #campoCf>
+                  <div class="mud-integrazione__campo">
+                    <label [for]="'mud-int-cf-' + i">Codice fiscale o partita IVA</label>
+                    <input
+                      [id]="'mud-int-cf-' + i"
+                      pInputText
+                      maxlength="18"
+                      [(ngModel)]="riga.codiceFiscale"
+                      [disabled]="!amministratore()"
+                    />
+                  </div>
+                  <div *ngIf="chiedeConfermaPropriaAzienda(riga)" class="mud-conferma">
+                    <p-checkbox
+                      [inputId]="'mud-int-propria-' + i"
+                      [binary]="true"
+                      [(ngModel)]="riga.confermaPropriaAzienda"
+                      [disabled]="!amministratore()"
+                    ></p-checkbox>
+                    <label [for]="'mud-int-propria-' + i"
+                      >Confermo: il destinatario è un impianto della nostra azienda</label
+                    >
+                  </div>
+                </ng-template>
+              </ng-container>
             </ng-template>
           </div>
           <p-button
@@ -389,40 +425,52 @@ function oggiIso(): string {
           ></p-button>
         </section>
 
-        <section class="surface-card">
+        <section class="surface-card mb-4">
           <h3 class="mud-section-title mb-3">Rifiuti prodotti per codice CER</h3>
-          <div class="table-responsive">
-            <p-table [value]="r.wasteProduced || []" styleClass="p-datatable-sm" [rowHover]="true">
-              <ng-template pTemplate="header">
-                <tr>
-                  <th scope="col">CER</th>
-                  <th scope="col" class="text-right">Quantità (kg)</th>
-                  <th scope="col" class="text-right">N. movimenti</th>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="body" let-w>
-                <tr>
-                  <td>
-                    <strong>{{ w.cerCode }}</strong>
-                  </td>
-                  <td class="text-right">{{ kg(w.totalQuantity) }}</td>
-                  <td class="text-right">{{ w.count }}</td>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="emptymessage">
-                <tr>
-                  <td colspan="3">
-                    <div class="empty-state">
-                      <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
-                      <span class="empty-state__title">Nessun rifiuto registrato</span>
-                      <p>Non risultano rifiuti per l'anno selezionato.</p>
-                    </div>
-                  </td>
-                </tr>
-              </ng-template>
-            </p-table>
-          </div>
+          <ng-container
+            *ngTemplateOutlet="tabellaCer; context: { $implicit: righeCer(r) }"
+          ></ng-container>
         </section>
+
+        <!-- Più dichiarazioni nel file: una sezione per unità locale -->
+        <ng-container *ngIf="piuDichiarazioni(r)">
+          <p class="mud-diritto-segreteria mb-3">
+            Il file contiene {{ r.dichiarazioni.length }} dichiarazioni, una per unità locale:
+            ognuna paga il proprio diritto di segreteria.
+          </p>
+          <section
+            *ngFor="let d of r.dichiarazioni"
+            class="surface-card mb-4 mud-dichiarazione"
+            [attr.aria-label]="titoloDichiarazione(d)"
+          >
+            <h3 class="mud-section-title mb-2">{{ titoloDichiarazione(d) }}</h3>
+            <dl class="mud-totali-sede">
+              <div>
+                <dt>Prodotto (kg)</dt>
+                <dd>{{ kg(d.totali.prodottoKg) }}</dd>
+              </div>
+              <div>
+                <dt>Recupero (kg)</dt>
+                <dd>{{ kg(d.totali.recuperoKg) }}</dd>
+              </div>
+              <div>
+                <dt>Smaltimento (kg)</dt>
+                <dd>{{ kg(d.totali.smaltimentoKg) }}</dd>
+              </div>
+              <div>
+                <dt>Giacenza a recupero (kg)</dt>
+                <dd>{{ kg(d.totali.giacenzaRecuperoKg) }}</dd>
+              </div>
+              <div>
+                <dt>Giacenza a smaltimento (kg)</dt>
+                <dd>{{ kg(d.totali.giacenzaSmaltimentoKg) }}</dd>
+              </div>
+            </dl>
+            <ng-container
+              *ngTemplateOutlet="tabellaCer; context: { $implicit: righeDichiarazione(d) }"
+            ></ng-container>
+          </section>
+        </ng-container>
       </ng-container>
 
       <!-- Stato iniziale: nessun report ancora generato -->
@@ -434,6 +482,49 @@ function oggiIso(): string {
         </div>
       </section>
     </div>
+
+    <!-- Tabella per CER, quella del file e quelle di ogni dichiarazione -->
+    <ng-template #tabellaCer let-righeCer>
+      <div class="table-responsive">
+        <p-table [value]="righeCer" styleClass="p-datatable-sm" [rowHover]="true">
+          <ng-template pTemplate="header">
+            <tr>
+              <th scope="col">CER</th>
+              <th scope="col" class="text-right">Quantità (kg)</th>
+              <th scope="col" class="text-right">Recupero (kg)</th>
+              <th scope="col" class="text-right">Smaltimento (kg)</th>
+              <th scope="col" class="text-right">Giacenza a recupero (kg)</th>
+              <th scope="col" class="text-right">Giacenza a smaltimento (kg)</th>
+              <th scope="col" class="text-right">N. movimenti</th>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="body" let-w>
+            <tr>
+              <td>
+                <strong>{{ w.cerCode }}</strong>
+              </td>
+              <td class="text-right">{{ kg(w.quantita) }}</td>
+              <td class="text-right">{{ kg(w.recupero) }}</td>
+              <td class="text-right">{{ kg(w.smaltimento) }}</td>
+              <td class="text-right">{{ kg(w.giacenzaRecupero) }}</td>
+              <td class="text-right">{{ kg(w.giacenzaSmaltimento) }}</td>
+              <td class="text-right">{{ w.movimenti }}</td>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="emptymessage">
+            <tr>
+              <td colspan="7">
+                <div class="empty-state">
+                  <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
+                  <span class="empty-state__title">Nessun rifiuto registrato</span>
+                  <p>Non risultano rifiuti per l'anno selezionato.</p>
+                </div>
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      </div>
+    </ng-template>
 
     <!-- Avvisi raggruppati per codice, nell'ordine del riepilogo; aperti se cambiano i kg -->
     <ng-template #vociAvvisi let-r>
@@ -448,6 +539,7 @@ function oggiIso(): string {
             <p-tag [severity]="cambiaKg(v) ? 'warning' : 'info'" [value]="intestazione(v)"></p-tag>
           </ng-template>
           <div *ngFor="let c of avvisiDelCodice(r, v.codice)" class="mud-avviso">
+            <p-tag *ngIf="c.sede" class="mud-sede" severity="secondary" [value]="c.sede"></p-tag>
             <p class="mb-2">{{ c.messaggio }}</p>
             <ul *ngIf="c.movimenti?.length" class="mud-movimenti">
               <li *ngFor="let m of c.movimenti">{{ movimento(m) }}</li>
@@ -653,6 +745,29 @@ function oggiIso(): string {
         flex-direction: column;
         gap: var(--spacing-xs);
         max-width: 320px;
+      }
+      .mud-nota-versione {
+        color: var(--color-warning);
+        background: var(--color-warning-bg);
+        padding: var(--spacing-sm) var(--spacing-md);
+        border-radius: var(--radius-md, 6px);
+      }
+      .mud-diritto-segreteria {
+        font-weight: var(--font-weight-medium);
+      }
+      .mud-totali-sede {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-base);
+        margin: 0 0 var(--spacing-base);
+      }
+      .mud-totali-sede dt {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+      }
+      .mud-totali-sede dd {
+        margin: 0;
+        font-weight: var(--font-weight-medium);
       }
       .mud-movimenti {
         margin: 0 0 var(--spacing-base);
@@ -993,6 +1108,45 @@ export class MudComponent implements OnInit {
     )
   }
 
+  /** Scelta della destinazione di una giacenza (tracciato MUD: R = recupero, D = smaltimento). */
+  readonly opzioniDestinazione = [
+    { label: 'Recupero', value: 'R' },
+    { label: 'Smaltimento', value: 'D' },
+  ]
+
+  /** Righe della tabella per CER del file, con i nomi comuni a quelle delle dichiarazioni. */
+  righeCer(r: MudRiepilogo): RigaCerTabella[] {
+    return (r.wasteProduced ?? []).map(w => ({
+      cerCode: w.cerCode,
+      quantita: w.totalQuantity,
+      recupero: w.recoveryKg,
+      smaltimento: w.disposalKg,
+      giacenzaRecupero: w.giacenzaRecuperoKg,
+      giacenzaSmaltimento: w.giacenzaSmaltimentoKg,
+      movimenti: w.count,
+    }))
+  }
+
+  righeDichiarazione(d: DichiarazioneRiepilogo): RigaCerTabella[] {
+    return d.perCer.map(v => ({
+      cerCode: v.cerCode,
+      quantita: v.prodottoKg,
+      recupero: v.recuperoKg,
+      smaltimento: v.smaltimentoKg,
+      giacenzaRecupero: v.giacenzaRecuperoKg,
+      giacenzaSmaltimento: v.giacenzaSmaltimentoKg,
+      movimenti: v.movimenti,
+    }))
+  }
+
+  piuDichiarazioni(r: MudRiepilogo): boolean {
+    return (r.dichiarazioni?.length ?? 0) > 1
+  }
+
+  titoloDichiarazione(d: DichiarazioneRiepilogo): string {
+    return `${d.unitaLocale.denominazione} (codice MUD ${d.codice})`
+  }
+
   // Formattazione: numeri sempre con formattaQuantita (nessun locale `it` registrato)
 
   /** Al grammo (fino a 3 decimali), come il PDF e il file: 0,4 kg non si legge «0». */
@@ -1062,7 +1216,7 @@ export class MudComponent implements OnInit {
         // una risposta arrivata dopo un cambio d'anno o un altro riepilogo non vale più
         if (this.report() !== r) return
         this.codiciAzienda = i.codiciAzienda ?? []
-        this.righe = righeIntegrazioni(r.controlli, i)
+        this.righe = righeIntegrazioni(r.controlli, i, r.dichiarazioni)
       },
       error: () => this.toast.error('Impossibile caricare le integrazioni del MUD'),
     })

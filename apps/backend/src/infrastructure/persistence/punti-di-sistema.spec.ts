@@ -45,6 +45,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     'scansione di tutte le aziende attive e delle loro credenziali RENTRI',
   'infrastructure/jobs/rentri-riconciliazione.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
+  'infrastructure/jobs/rentri-registro-trasmissione.job.ts':
+    'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-rifornimento-scorta.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/persistence/consultant-tenant-association.repository.ts':

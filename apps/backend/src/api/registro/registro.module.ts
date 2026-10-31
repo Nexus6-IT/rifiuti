@@ -14,6 +14,7 @@ import { GiacenzeInizialiService } from '../../application/registro/giacenze-ini
 import { CorreggiMovimentoUseCase } from '../../application/registro/use-cases/correggi-movimento.use-case'
 import { RegistriService } from '../../application/registro/registri.service'
 import { VerificaCatenaRegistroService } from '../../application/registro/verifica-catena-registro.service'
+import { AvvisoRentriCorrezioneService } from '../../application/rentri/registro/avviso-rentri-correzione.service'
 
 /**
  * RegistroModule — registro cronologico di carico/scarico rifiuti.
@@ -51,6 +52,7 @@ import { VerificaCatenaRegistroService } from '../../application/registro/verifi
     VerificaCatenaRegistroService,
     CausaliRegistroService,
     CatalogoCausaliAvvioService,
+    AvvisoRentriCorrezioneService,
   ],
   exports: [
     RegistraMovimentoUseCase,

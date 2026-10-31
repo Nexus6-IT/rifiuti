@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
+import { giacenzaInizialeAbbinata } from '../abbinamenti/abbinamenti-correzioni'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { DomainError } from '../../core/domain/errors'
@@ -75,6 +76,8 @@ const ANNO_ORIGINE_MINIMO = 1990
 const ORIGINI_MASSIME = 200
 const AVVISO_ALTRO_CARICO_ESEMPI = 5
 
+const MSG_ABBINATA =
+  "Questa giacenza iniziale è abbinata a uno o più scarichi: togli prima l'abbinamento (Giacenze → Abbinamenti)."
 const MSG_USATA =
   'Esiste uno scarico dello stesso CER registrato dopo questa giacenza iniziale: non si può ' +
   'più modificare né cancellare. Per correggerla serve una rettifica del registro ' +
@@ -290,6 +293,8 @@ export class GiacenzeInizialiService {
 
       // (4) G4
       await this.controllaNonUsata(tx, tenantId, attuale)
+      if (await giacenzaInizialeAbbinata(tx, tenantId, id))
+        throw new ConflictException(MSG_ABBINATA)
       // (5) di nuovo G3 sui valori nuovi (unità e stato fisico possono cambiare famiglia o collidere).
       await this.controllaUnicita(tx, tenantId, attuale.registroId, attuale.cerCode, valori, id)
 
@@ -336,6 +341,8 @@ export class GiacenzeInizialiService {
       if (!attuale) throw new NotFoundException('Giacenza iniziale non trovata.')
 
       await this.controllaNonUsata(tx, tenantId, attuale)
+      if (await giacenzaInizialeAbbinata(tx, tenantId, id))
+        throw new ConflictException(MSG_ABBINATA)
 
       await tx.giacenzaIniziale.delete({ where: { id_tenantId: { id, tenantId } } })
       await this.audit(

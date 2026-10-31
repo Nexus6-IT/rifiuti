@@ -251,20 +251,28 @@ export class MudController {
    * IVA e CF dell'azienda) serve alla pagina per chiedere la conferma quando un destinatario ha
    * il codice dell'azienda stessa (A-W-13), con la stessa regola del PUT. `registri` (id -> sede,
    * vuoto con un registro solo) serve a etichettare i movimenti omonimi di sedi diverse.
+   * `unitaLocali` (id -> denominazione) etichetta le destinazioni delle giacenze (D9).
    */
   @Get(':year/integrazioni')
   @ApiOperation({ summary: 'Integrazioni del MUD (anno dei dati)' })
   async leggiIntegrazioni(
     @Req() req: any,
     @Param('year', ParseIntPipe) year: number
-  ): Promise<IntegrazioniMud & { codiciAzienda: string[]; registri: Record<string, string> }> {
+  ): Promise<
+    IntegrazioniMud & {
+      codiciAzienda: string[]
+      registri: Record<string, string>
+      unitaLocali: Record<string, string>
+    }
+  > {
     const tenantId = requireRequestTenantId(req)
-    const [integrazioni, codiciAzienda, registri] = await Promise.all([
+    const [integrazioni, codiciAzienda, registri, unitaLocali] = await Promise.all([
       this.integrazioni.leggi(tenantId, year),
       this.integrazioni.codiciAzienda(tenantId),
       this.integrazioni.etichetteRegistri(tenantId),
+      this.integrazioni.etichetteUnitaLocali(tenantId),
     ])
-    return { ...integrazioni, codiciAzienda, registri }
+    return { ...integrazioni, codiciAzienda, registri, unitaLocali }
   }
 
   /**

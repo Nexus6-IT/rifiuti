@@ -69,6 +69,28 @@ async function completaTransazione(
   })
 }
 
+describe('Canale di controllo: ultima transazione', () => {
+  it('restituisce l\'id dell\'ultima transazione Movimenti, 404 se non ce ne sono', async () => {
+    const app = creaApp()
+    await registraRegistro(app)
+    const url = `/__controllo/dati-registri/ultima-transazione/${REGISTRO}`
+
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(404)
+
+    const invio = await app.inject({
+      method: 'POST',
+      url: `/dati-registri/v1.0/operatore/${REGISTRO}/movimenti`,
+      headers: await intestazioni(),
+      payload: [movimentoValido(2026, 1)],
+    })
+    const risposta = await app.inject({ method: 'GET', url })
+    expect(risposta.statusCode).toBe(200)
+    expect(risposta.json().transazione_id).toBe(invio.json().transazione_id)
+
+    await app.close()
+  })
+})
+
 describe('Servizio dati-registri (dati-registri.yaml)', () => {
   describe('POST /operatore/{identificativo_registro}/movimenti', () => {
     it('accetta la richiesta: 202, TransazioneModel, header Location verso lo status', async () => {

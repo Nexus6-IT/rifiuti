@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Abbinamento carichi-scarichi R13/D15 (Fase 4 pezzo 6)
+
+Per i rifiuti in stoccaggio (carichi con operazione R13 o D15) ogni scarico è ora abbinato ai
+carichi da cui esce, in ordine FIFO, già al momento della registrazione. Nella pagina Giacenze →
+Abbinamenti si vedono per ogni carico il residuo e l'età, per ogni scarico se è abbinato del
+tutto, in parte o per niente; l'abbinamento si può correggere a mano. Gli scarichi registrati
+prima di questa versione non sono abbinati: si abbinano con il pulsante "Abbina con FIFO i non
+abbinati". Un carico già abbinato non si può più ridurre sotto la quantità abbinata né annullare
+finché i suoi scarichi non sono riabbinati.
+
 ### Changed — Deposito temporaneo (Fase 2 pezzo 6)
 
 L'età del deposito temporaneo ora si calcola dal rifiuto più vecchio **ancora in

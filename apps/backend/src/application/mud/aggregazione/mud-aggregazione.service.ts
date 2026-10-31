@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { ReferenceDataService, normalizeAteco } from '../../reference-data/reference-data.service'
+import { giornoItaliano } from '../../../core/time/anno-italiano'
 import { cerCanonico, chiaveConfrontoCer } from '../../../domain/waste-movement/cer-registro'
 import {
   convertiInKg,
@@ -16,15 +17,32 @@ import type { MudAllegatoDR, MudAllegatoTE, MudRifiutoLine } from '../export/mud
 import {
   classificaMovimento,
   limitiAnnoMud,
-  operazioneDaCatalogo,
-  operazioneDaCodice,
+  operazioneDelMovimento,
   statoFisicoMud,
   type StatoFisicoRegistro,
 } from './mud-regole'
 import { caricaCatalogoCausali } from '../../registro/causali/catalogo-causali.repository'
 import type { CatalogoCausali } from '../../../domain/waste-movement/catalogo-causali'
-import { etichetteRegistri } from './mud-registri'
+import { etichetteRegistri, sediDeiRegistri } from './mud-registri'
 import { controlliMud, type MudEsitoControllo, type RifMovimento } from './mud-controlli'
+import {
+  giacenzeDelleDichiarazioni,
+  type EsitoGiacenze,
+  type RicevutoDaTerzi,
+  type SaldoRegistro,
+} from './mud-giacenze'
+import {
+  CHIAVE_AZIENDA,
+  anagraficaDichiarazione,
+  attribuisciSedi,
+  codiceUnitaLocale,
+  creaContestoSedi,
+  dichiarazionePerAllegati,
+  provinceDiverse,
+  type ContestoSedi,
+  type MudDichiarazione,
+  type MudUnitaLocaleAnagrafica,
+} from './mud-dichiarazioni'
 import {
   chiaveDestinatario,
   destinatarioDelMovimento,
@@ -53,6 +71,18 @@ export interface MudAggregato {
   mudNonDovuto: boolean
   /** integrazioni dell'anno lette per questa aggregazione: la traccia dell'export registra queste */
   integrazioni: IntegrazioniMud
+  /** 1 = calcolo storico (un solo gruppo), 2 = una dichiarazione per unità locale (D10) */
+  versioneCalcolo: 1 | 2
+  /**
+   * Dichiarazioni in ordine di codice (D15). Versione 1: una sola voce "fusa" (codice 1,
+   * anagrafica null). `righe`, `movimentiPerCer` e `pericolosiPerCer` ne sono la somma.
+   */
+  dichiarazioni: MudDichiarazione[]
+}
+
+export interface OpzioniAggregazione {
+  /** predefinita 2; la 1 resta per lo storico delle presentazioni (D10) */
+  versioneCalcolo?: 1 | 2
 }
 
 interface Movimento {
@@ -146,6 +176,64 @@ interface GruppoUnita {
   movimenti: RifMovimento[]
 }
 
+/** Tutto ciò che `caricaContesto` legge una volta per aggregazione. */
+interface ContestoAggregazione {
+  tenantId: string
+  anno: number
+  inizio: Date
+  fine: Date
+  catalogo: CatalogoCausali
+  movimenti: Movimento[]
+  precedenti: Movimento[]
+  firCollegati: FirCollegato[]
+  firPerId: Map<string, FirCollegato>
+  firAnno: Array<{ id: string; firNumber: string | null; rentriNumeroFir: string | null }>
+  scarichiDeiFirAnno: Array<{ firId: string | null }>
+  tenant: {
+    city: string | null
+    province: string | null
+    numeroAddetti: number | null
+    atecoCode: string | null
+    mudNonDovuto: boolean
+    mudNonDovutoMotivo: string | null
+  } | null
+  comuneCode: string | null
+  atecoNormalizzato: string | null
+  /** versione 1: unità locali attive (PIU_UNITA_LOCALI); versione 2: vuoto */
+  unitaLocali: Array<{ denominazione: string; numIscrSito: string; principale: boolean }>
+  /** versione 2: tutte le unità locali dell'azienda (anche cessate, D3) e i loro registri */
+  sedi: ContestoSedi | null
+  /** versione 2: autorizzazioni dell'impianto registrate (D7) */
+  autorizzazioni: number
+  integrazioni: IntegrazioniMud
+  fonti: FontiSoggetti
+  rif: (m: Movimento) => RifMovimento
+  etichettaPerId: (firId: string) => string
+}
+
+/** Esito del passo 0: i doppi identici, calcolati su tutti i movimenti. */
+interface EsitoDoppi {
+  doppi: Set<Movimento>
+  doppiDi: Map<Movimento, Movimento[]>
+  doppiAnnoPrecedente: Map<Movimento, Movimento>
+  scaricatiAnchePrima: Map<Movimento, Movimento[]>
+}
+
+/** Strutture condivise fra i gruppi (D14), lette dalla coda globale dei controlli. */
+interface Condivisi {
+  segnalati: Set<string>
+  trasportatoriSegnalati: Set<string>
+  inclusi: Set<Movimento>
+  avviatiPerFir: Map<string, Movimento[]>
+}
+
+interface EsitoGruppo {
+  righeFinali: MudRifiutoLine[]
+  movimentiPerCer: Record<string, number>
+  pericolosiPerCer: Record<string, true>
+  ricevuti: RifMovimento[]
+}
+
 const SELECT_MOVIMENTO = {
   registroId: true,
   progressiveNumber: true,
@@ -164,6 +252,14 @@ const SELECT_MOVIMENTO = {
   wastePhysicalState: true,
   movementDate: true,
 } as const
+
+/** Controlli sui soggetti, deduplicati su tutto il file: la correzione vale per tutte le sedi (D14) */
+const CODICI_SOGGETTI = new Set<string>([
+  'DESTINATARIO_SENZA_CF',
+  'DESTINATARIO_SENZA_ISTAT',
+  'DESTINATARIO_ESTERO',
+  'TRASPORTATORE_SENZA_CF',
+])
 
 // Confronto dei doppi storici senza la data (Decisione 20).
 const EPOCA = new Date(0)
@@ -191,7 +287,351 @@ export class MudAggregazioneService {
     this.logger.setContext(MudAggregazioneService.name)
   }
 
-  async aggrega(tenantId: string, anno: number): Promise<MudAggregato> {
+  async aggrega(
+    tenantId: string,
+    anno: number,
+    opzioni: OpzioniAggregazione = {}
+  ): Promise<MudAggregato> {
+    const versioneCalcolo = opzioni.versioneCalcolo ?? 2
+    const contesto = await this.caricaContesto(tenantId, anno, versioneCalcolo)
+    const {
+      fine,
+      movimenti,
+      firAnno,
+      scarichiDeiFirAnno,
+      tenant,
+      comuneCode,
+      atecoNormalizzato,
+      unitaLocali,
+      integrazioni,
+      rif,
+      etichettaPerId,
+    } = contesto
+
+    const controlli: MudEsitoControllo[] = []
+    const doppi = this.individuaDoppi(contesto)
+
+    // Strutture condivise fra i gruppi (D14): riempite da ogni gruppo, lette nella coda globale.
+    const condivisi: Condivisi = {
+      segnalati: new Set(),
+      trasportatoriSegnalati: new Set(),
+      inclusi: new Set(),
+      avviatiPerFir: new Map(),
+    }
+    const ricevuti: RifMovimento[] = []
+    let dichiarazioni: MudDichiarazione[]
+    if (versioneCalcolo === 1) {
+      // Calcolo storico: un solo gruppo con tutti i movimenti, una dichiarazione "fusa".
+      const gruppo = this.aggregaGruppo(movimenti, contesto, doppi, condivisi, controlli)
+      ricevuti.push(...gruppo.ricevuti)
+      dichiarazioni = [
+        {
+          codice: codiceUnitaLocale(1),
+          progressivo: 1,
+          unitaLocale: { id: null, denominazione: 'Azienda', numIscrSito: null, principale: false },
+          anagrafica: null,
+          numeroAddetti: contesto.tenant?.numeroAddetti ?? 0,
+          comuneCode: contesto.comuneCode,
+          conAutorizzazioni: true,
+          conAllegatiAzienda: true,
+          righe: gruppo.righeFinali,
+          movimentiPerCer: gruppo.movimentiPerCer,
+          pericolosiPerCer: gruppo.pericolosiPerCer,
+        },
+      ]
+    } else {
+      dichiarazioni = await this.dichiarazioniPerSede(
+        contesto,
+        doppi,
+        condivisi,
+        controlli,
+        ricevuti
+      )
+    }
+    // Versione 2: le giacenze al 31/12 entrano nelle righe delle dichiarazioni (D8). Nuove righe,
+    // mai quelle dell'aggregato modificate; le righe senza giacenza restano identiche.
+    const saldiPerRegistro = await this.saldiAl31DicembrePerRegistro(tenantId, fine, anno)
+    let giacenze: EsitoGiacenze | null = null
+    if (versioneCalcolo === 2) {
+      const ricevutiDaTerzi = saldiPerRegistro.some(s => s.kg > 0)
+        ? await this.caricoRicevutoDaTerzi(tenantId, fine, contesto.catalogo)
+        : []
+      giacenze = giacenzeDelleDichiarazioni(
+        saldiPerRegistro,
+        contesto.sedi as ContestoSedi,
+        dichiarazioni,
+        ricevutiDaTerzi,
+        integrazioni
+      )
+      for (const d of dichiarazioni) {
+        d.righe = giacenze.righe.get(d.unitaLocale.id ?? CHIAVE_AZIENDA) ?? d.righe
+      }
+    }
+    const righeFinali = dichiarazioni.flatMap(d => d.righe)
+    const movimentiPerCer: Record<string, number> = {}
+    const pericolosiPerCer: Record<string, true> = {}
+    for (const d of dichiarazioni) {
+      for (const [cer, n] of Object.entries(d.movimentiPerCer)) {
+        movimentiPerCer[cer] = (movimentiPerCer[cer] ?? 0) + n
+      }
+      Object.assign(pericolosiPerCer, d.pericolosiPerCer)
+    }
+    const { inclusi, avviatiPerFir } = condivisi
+    const { doppiDi, doppiAnnoPrecedente, scaricatiAnchePrima } = doppi
+
+    // Un avviso per ogni originale, con i soli suoi doppi (preflight A11).
+    for (const [originale, suoiDoppi] of doppiDi) {
+      const esito = controlliMud.firDoppioIdentico(etichettaPerId(originale.firId as string), [
+        rif(originale),
+        ...suoiDoppi.map(rif),
+      ])
+      // L'originale è incluso solo se l'aggregazione l'ha davvero contato.
+      if (!inclusi.has(originale) && esito.movimenti) {
+        esito.movimenti[0] = { ...esito.movimenti[0], incluso: false }
+      }
+      controlli.push(esito)
+    }
+
+    for (const [m, precedente] of doppiAnnoPrecedente) {
+      controlli.push(
+        controlliMud.firDoppioAnnoPrecedente(
+          etichettaPerId(m.firId as string),
+          rif(precedente),
+          rif(m)
+        )
+      )
+    }
+    for (const [m, giaContati] of scaricatiAnchePrima) {
+      // Solo se il movimento è davvero nel MUD: escluso per altri motivi, non è dichiarato due volte.
+      if (!inclusi.has(m)) continue
+      controlli.push(
+        controlliMud.firScaricatoAncheAnnoPrecedente(
+          etichettaPerId(m.firId as string),
+          giaContati.map(rif),
+          rif(m)
+        )
+      )
+    }
+
+    for (const [firId, ms] of avviatiPerFir) {
+      if (ms.length > 1) {
+        controlli.push(controlliMud.firScaricatoPiuVolte(etichettaPerId(firId), ms.map(rif)))
+      }
+    }
+
+    if (giacenze) {
+      controlli.push(...this.controlliGiacenze(anno, giacenze, dichiarazioni.length > 1))
+    } else {
+      // Versione 1: le giacenze non si scrivono, restano solo nell'avviso di oggi
+      const saldi = this.sommaSaldiPerCer(saldiPerRegistro)
+      if (saldi.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno, saldi))
+    }
+
+    if (movimenti.length === 0) {
+      controlli.push(
+        firAnno.length > 0
+          ? controlliMud.registroVuotoConFir(anno, firAnno.map(etichettaFir))
+          : controlliMud.nessunMovimento(anno)
+      )
+    } else {
+      if (righeFinali.length === 0) {
+        controlli.push(controlliMud.nessunRifiutoDichiarabile(anno, movimenti.length))
+      }
+      const scaricati = new Set(scarichiDeiFirAnno.map(s => s.firId))
+      const nonRegistrati = firAnno.filter(f => !scaricati.has(f.id))
+      if (nonRegistrati.length > 0) {
+        controlli.push(controlliMud.firNonRegistrato(anno, nonRegistrati.map(etichettaFir)))
+      }
+    }
+
+    if (ricevuti.length > 0) controlli.push(controlliMud.profiloNonSupportato(anno, ricevuti))
+    if (versioneCalcolo === 1 && unitaLocali.length > 1) {
+      controlli.push(controlliMud.piuUnitaLocali(unitaLocali))
+    }
+
+    if (!comuneCode) {
+      controlli.push(controlliMud.dichiaranteSenzaComuneIstat(tenant?.city, tenant?.province))
+    }
+    if (!atecoNormalizzato) {
+      controlli.push(controlliMud.dichiaranteSenzaAteco())
+    } else if (!/^\d{6}$/.test(atecoNormalizzato)) {
+      controlli.push(controlliMud.dichiaranteAtecoNonValido(tenant?.atecoCode ?? ''))
+    }
+
+    const mudNonDovuto = tenant?.mudNonDovuto === true
+    if (mudNonDovuto) controlli.push(controlliMud.mudNonDovuto(tenant?.mudNonDovutoMotivo ?? '-'))
+
+    this.logger.info(
+      `MUD aggregato: tenant ${tenantId}, anno ${anno}, ${movimenti.length} movimenti, ${righeFinali.length} righe, ${controlli.length} controlli`
+    )
+    return {
+      anno,
+      righe: righeFinali,
+      movimentiPerCer,
+      pericolosiPerCer,
+      controlli,
+      dichiarante: { atecoNormalizzato, comuneCode },
+      mudNonDovuto,
+      integrazioni,
+      versioneCalcolo,
+      dichiarazioni,
+    }
+  }
+
+  /**
+   * Versione 2 (D1-D7): un gruppo per dichiarazione, in ordine di codice, con le strutture
+   * condivise (D14). Aggiunge ai controlli quelli delle sedi e restituisce le dichiarazioni
+   * con almeno una riga (D3).
+   */
+  private async dichiarazioniPerSede(
+    contesto: ContestoAggregazione,
+    doppi: EsitoDoppi,
+    condivisi: Condivisi,
+    controlli: MudEsitoControllo[],
+    ricevuti: RifMovimento[]
+  ): Promise<MudDichiarazione[]> {
+    const { anno, catalogo, movimenti, tenant, autorizzazioni, rif } = contesto
+    const sedi = contesto.sedi as ContestoSedi
+    if ([...sedi.progressivi.values()].some(p => p.ripiego)) {
+      this.logger.warn(
+        'MUD: unità locale senza progressivo MUD, codice di ripiego assegnato in ordine di creazione'
+      )
+    }
+
+    const attribuzione = attribuisciSedi(movimenti, sedi)
+    const esiti = attribuzione.gruppi.map(g => {
+      const locali: MudEsitoControllo[] = []
+      const esito = this.aggregaGruppo(g.movimenti, contesto, doppi, condivisi, locali)
+      ricevuti.push(...esito.ricevuti)
+      return { g, esito, locali }
+    })
+    const pacchetti = esiti.filter(e => e.esito.righeFinali.length > 0)
+    const piuDichiarazioni = pacchetti.length > 1
+
+    // Controlli nati dentro un gruppo: con la sede solo se le dichiarazioni sono più d'una e mai
+    // quelli sui soggetti, deduplicati su tutto il file (D14).
+    for (const { g, locali } of esiti) {
+      const sede = g.unitaLocale?.denominazione ?? 'Azienda'
+      for (const c of locali) {
+        controlli.push(piuDichiarazioni && !CODICI_SOGGETTI.has(c.codice) ? { ...c, sede } : c)
+      }
+    }
+
+    // D2: registri senza sede
+    const principale = sedi.unitaLocali.find(u => u.principale)
+    const senzaSede = attribuzione.senzaSede.filter(m => condivisi.inclusi.has(m))
+    if (principale && senzaSede.length > 0) {
+      controlli.push(controlliMud.movimentiSenzaSede(anno, senzaSede.map(rif), principale))
+    }
+    const senzaPrincipale = attribuzione.senzaPrincipale.filter(m => {
+      if (doppi.doppi.has(m)) return false
+      const ruolo = classificaMovimento(catalogo, m)
+      return ruolo === 'PRODOTTO' || ruolo === 'AVVIATO'
+    })
+    if (senzaPrincipale.length > 0) {
+      controlli.push(
+        controlliMud.sedePrincipaleMancante(anno, senzaPrincipale.length, sedi.unitaLocali.length)
+      )
+    }
+
+    // D5: anagrafica e comune ISTAT di ogni dichiarazione (un lookup per coppia distinta)
+    const comuni = new Map<string, string | null>()
+    const comuneDellaSede = async (comune: string, provincia: string): Promise<string | null> => {
+      const chiave = `${comune}|${provincia}`
+      if (!comuni.has(chiave)) {
+        const trovato = await this.referenceData.findComuneByName(comune, provincia)
+        comuni.set(chiave, /^\d{6}$/.test(trovato?.code ?? '') ? (trovato?.code ?? null) : null)
+      }
+      return comuni.get(chiave) ?? null
+    }
+
+    const dichiarazioni: MudDichiarazione[] = []
+    const perProvincia: Array<{
+      denominazione: string
+      comuneCode: string | null
+      sigla: string | null
+    }> = []
+    for (const { g, esito } of pacchetti) {
+      const ul = g.unitaLocale
+      const nome = ul?.denominazione ?? 'Azienda'
+      const ana = anagraficaDichiarazione(ul, !piuDichiarazioni, tenant ?? {})
+      let comuneCode = contesto.comuneCode
+      if (ul && ana.anagrafica) {
+        comuneCode = await comuneDellaSede(ul.comune?.trim() ?? '', ul.provincia?.trim() ?? '')
+        if (!comuneCode) {
+          controlli.push(controlliMud.unitaLocaleSenzaComuneIstat(ul, ul.comune, ul.provincia))
+        }
+      }
+      if (ul && ana.campiMancanti.length > 0) {
+        controlli.push(controlliMud.unitaLocaleSenzaIndirizzo(ul, ana.campiMancanti))
+      }
+      if (ul && ana.principaleConIndirizzoAzienda) {
+        controlli.push(controlliMud.principaleConIndirizzoAzienda(ul))
+      }
+      if (ul && ana.addettiMancanti) controlli.push(controlliMud.unitaLocaleSenzaAddetti(ul))
+      perProvincia.push({
+        denominazione: nome,
+        comuneCode,
+        sigla: ul && ana.anagrafica ? ul.provincia : (tenant?.province ?? null),
+      })
+      dichiarazioni.push({
+        codice: g.codice,
+        progressivo: g.progressivo,
+        unitaLocale: ul
+          ? {
+              id: ul.id,
+              denominazione: ul.denominazione,
+              numIscrSito: ul.numIscrSito,
+              principale: ul.principale,
+            }
+          : { id: null, denominazione: nome, numIscrSito: null, principale: false },
+        // con l'addetto risolto: 0 quando manca e le dichiarazioni sono più d'una (D5)
+        anagrafica: ana.anagrafica ? { ...ana.anagrafica, numeroAddetti: ana.numeroAddetti } : null,
+        numeroAddetti: ana.numeroAddetti,
+        comuneCode,
+        conAutorizzazioni: false,
+        conAllegatiAzienda: false,
+        righe: esito.righeFinali,
+        movimentiPerCer: esito.movimentiPerCer,
+        pericolosiPerCer: esito.pericolosiPerCer,
+      })
+    }
+
+    // D6: province diverse (le dichiarazioni sono già in ordine di codice)
+    const voci = provinceDiverse(perProvincia)
+    if (voci.length > 0) controlli.push(controlliMud.unitaLocaliProvinceDiverse(voci))
+
+    // D7: AU alla principale (o alla prima per codice), AR e INT nel primo pacchetto
+    if (dichiarazioni.length > 0) {
+      const { au, arEInt } = dichiarazionePerAllegati(
+        dichiarazioni.map(d => ({
+          codice: d.codice,
+          principale: d.unitaLocale.principale,
+          dichiarazione: d,
+        }))
+      )
+      if (au) au.dichiarazione.conAutorizzazioni = true
+      if (arEInt) arEInt.dichiarazione.conAllegatiAzienda = true
+      if (au && dichiarazioni.length > 1 && autorizzazioni > 0) {
+        controlli.push(
+          controlliMud.autorizzazioniSullaPrincipale(
+            dichiarazioni.length,
+            autorizzazioni,
+            au.dichiarazione.unitaLocale,
+            au.dichiarazione.unitaLocale.principale
+          )
+        )
+      }
+    }
+    return dichiarazioni
+  }
+
+  /** Tutte le letture dell'aggregazione, nell'ordine di sempre (D17: nessuna logica di calcolo). */
+  private async caricaContesto(
+    tenantId: string,
+    anno: number,
+    versione: 1 | 2
+  ): Promise<ContestoAggregazione> {
     const { inizio, fine } = limitiAnnoMud(anno)
     // Una lettura sola del catalogo per aggregazione; ogni movimento conta con la versione
     // della causale che porta (`causaleAziendaId`), non con quella di oggi.
@@ -275,6 +715,7 @@ export class MudAggregazioneService {
       select: {
         city: true,
         province: true,
+        numeroAddetti: true,
         atecoCode: true,
         mudNonDovuto: true,
         mudNonDovutoMotivo: true,
@@ -290,11 +731,41 @@ export class MudAggregazioneService {
     const comuneCode = /^\d{6}$/.test(codiceComune) ? codiceComune : null
     const atecoNormalizzato = tenant?.atecoCode?.trim() ? normalizeAteco(tenant.atecoCode) : null
 
-    const unitaLocali = await this.prisma.rentriUnitaLocale.findMany({
-      where: { tenantId, attiva: true },
-      select: { denominazione: true, numIscrSito: true, principale: true },
-      orderBy: [{ principale: 'desc' }, { denominazione: 'asc' }],
-    })
+    // Versione 1: le unità locali attive, solo per PIU_UNITA_LOCALI. Versione 2: tutte, anche
+    // le cessate (D3: un registro legato a una sede cessata resta sulla sua dichiarazione),
+    // con i campi dell'anagrafica (D5) e il progressivo (D4); query separata dalla 1.
+    const unitaLocali =
+      versione === 1
+        ? await this.prisma.rentriUnitaLocale.findMany({
+            where: { tenantId, attiva: true },
+            select: { denominazione: true, numIscrSito: true, principale: true },
+            orderBy: [{ principale: 'desc' }, { denominazione: 'asc' }],
+          })
+        : []
+    let sedi: ContestoSedi | null = null
+    let autorizzazioni = 0
+    if (versione === 2) {
+      const tutte: MudUnitaLocaleAnagrafica[] = await this.prisma.rentriUnitaLocale.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          denominazione: true,
+          numIscrSito: true,
+          principale: true,
+          createdAt: true,
+          indirizzo: true,
+          civico: true,
+          cap: true,
+          comune: true,
+          provincia: true,
+          numeroAddetti: true,
+          progressivoMud: true,
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      })
+      sedi = creaContestoSedi(tutte, await sediDeiRegistri(this.prisma, tenantId))
+      autorizzazioni = await this.prisma.autorizzazioneImpianto.count({ where: { tenantId } })
+    }
 
     const record = await this.prisma.mUDReport.findUnique({
       where: { tenantId_year: { tenantId, year: anno } },
@@ -313,7 +784,17 @@ export class MudAggregazioneService {
       unSoloRegistro: registri.size === 0,
     }
 
-    const controlli: MudEsitoControllo[] = []
+    // Descrizione della causale (D13): solo se il catalogo ne ha una diversa dal codice.
+    const descrizioneCausale = (m: Movimento): string | undefined => {
+      if (m.type !== 'CARICO' && m.type !== 'SCARICO') return undefined
+      const d = catalogo.descrizione(
+        m.type,
+        m.causale,
+        giornoItaliano(m.movementDate),
+        m.causaleAziendaId
+      )
+      return d !== m.causale ? d : undefined
+    }
     const rif = (m: Movimento): RifMovimento => ({
       registroId: m.registroId,
       registro: registri.get(m.registroId),
@@ -321,12 +802,45 @@ export class MudAggregazioneService {
       progressiveYear: m.progressiveYear,
       cerCode: cerCanonico(m.cerCode),
       causale: m.causale,
+      causaleDescrizione: descrizioneCausale(m),
       quantity: Number(m.quantity),
       unit: m.unit ?? '',
       movementDate: m.movementDate,
     })
     const etichettaPerId = (firId: string): string =>
       etichettaFir(firPerId.get(firId) ?? { id: firId, firNumber: null })
+
+    return {
+      tenantId,
+      anno,
+      inizio,
+      fine,
+      catalogo,
+      movimenti,
+      precedenti,
+      firCollegati,
+      firPerId,
+      firAnno,
+      scarichiDeiFirAnno,
+      tenant,
+      comuneCode,
+      atecoNormalizzato,
+      unitaLocali,
+      sedi,
+      autorizzazioni,
+      integrazioni,
+      fonti,
+      rif,
+      etichettaPerId,
+    }
+  }
+
+  /**
+   * Passo 0: i doppi identici (Decisione 20, C-W-03, A-C-03). Calcolato su tutti i movimenti,
+   * prima dei gruppi, così un doppio si riconosce anche fra sedi diverse.
+   */
+  private individuaDoppi(contesto: ContestoAggregazione): EsitoDoppi {
+    const { catalogo, movimenti, precedenti } = contesto
 
     // Passo 0: doppi identici dello stesso FIR, tipo, chiave di ricopia e ruolo (Decisione 20,
     // C-W-03, A-C-03): due quote con chiavi diverse sono movimenti distinti anche se uguali, e
@@ -379,6 +893,23 @@ export class MudAggregazioneService {
       }
     }
 
+    return { doppi, doppiDi, doppiAnnoPrecedente, scaricatiAnchePrima }
+  }
+
+  /**
+   * Passi 1-6 su un gruppo di movimenti e righe finali. Riempie le strutture condivise e i
+   * controlli; restituisce righe, conteggi e i movimenti ricevuti da terzi del gruppo.
+   */
+  private aggregaGruppo(
+    movimenti: Movimento[],
+    contesto: ContestoAggregazione,
+    { doppi }: EsitoDoppi,
+    condivisi: Condivisi,
+    controlli: MudEsitoControllo[]
+  ): EsitoGruppo {
+    const { anno, catalogo, firPerId, integrazioni, fonti, rif } = contesto
+    const { inclusi, avviatiPerFir } = condivisi
+
     const righe = new Map<string, RigaInCorso>()
     const riga = (cer6: string): RigaInCorso => {
       let r = righe.get(cer6)
@@ -398,8 +929,6 @@ export class MudAggregazioneService {
     }
     const movimentiPerCer: Record<string, number> = {}
     const pericolosiPerCer: Record<string, true> = {}
-    const inclusi = new Set<Movimento>()
-    const avviatiPerFir = new Map<string, Movimento[]>()
     const ricevuti: RifMovimento[] = []
     const nonConvertiti = new Map<string, GruppoUnita>()
     const convertiti = new Map<string, GruppoUnita>()
@@ -510,129 +1039,54 @@ export class MudAggregazioneService {
       )
     }
 
-    // Un avviso per ogni originale, con i soli suoi doppi (preflight A11).
-    for (const [originale, suoiDoppi] of doppiDi) {
-      const esito = controlliMud.firDoppioIdentico(etichettaPerId(originale.firId as string), [
-        rif(originale),
-        ...suoiDoppi.map(rif),
-      ])
-      // L'originale è incluso solo se l'aggregazione l'ha davvero contato.
-      if (!inclusi.has(originale) && esito.movimenti) {
-        esito.movimenti[0] = { ...esito.movimenti[0], incluso: false }
-      }
-      controlli.push(esito)
-    }
-
-    for (const [m, precedente] of doppiAnnoPrecedente) {
-      controlli.push(
-        controlliMud.firDoppioAnnoPrecedente(
-          etichettaPerId(m.firId as string),
-          rif(precedente),
-          rif(m)
-        )
-      )
-    }
-    for (const [m, giaContati] of scaricatiAnchePrima) {
-      // Solo se il movimento è davvero nel MUD: escluso per altri motivi, non è dichiarato due volte.
-      if (!inclusi.has(m)) continue
-      controlli.push(
-        controlliMud.firScaricatoAncheAnnoPrecedente(
-          etichettaPerId(m.firId as string),
-          giaContati.map(rif),
-          rif(m)
-        )
-      )
-    }
-
-    for (const [firId, ms] of avviatiPerFir) {
-      if (ms.length > 1) {
-        controlli.push(controlliMud.firScaricatoPiuVolte(etichettaPerId(firId), ms.map(rif)))
-      }
-    }
-
-    const righeFinali = this.completaRighe(righe, integrazioni, anno, controlli)
-
-    const saldi = await this.saldiAl31Dicembre(tenantId, fine, anno)
-    if (saldi.length > 0) controlli.push(controlliMud.giacenzeNonCalcolate(anno, saldi))
-
-    if (movimenti.length === 0) {
-      controlli.push(
-        firAnno.length > 0
-          ? controlliMud.registroVuotoConFir(anno, firAnno.map(etichettaFir))
-          : controlliMud.nessunMovimento(anno)
-      )
-    } else {
-      if (righeFinali.length === 0) {
-        controlli.push(controlliMud.nessunRifiutoDichiarabile(anno, movimenti.length))
-      }
-      const scaricati = new Set(scarichiDeiFirAnno.map(s => s.firId))
-      const nonRegistrati = firAnno.filter(f => !scaricati.has(f.id))
-      if (nonRegistrati.length > 0) {
-        controlli.push(controlliMud.firNonRegistrato(anno, nonRegistrati.map(etichettaFir)))
-      }
-    }
-
-    if (ricevuti.length > 0) controlli.push(controlliMud.profiloNonSupportato(anno, ricevuti))
-    if (unitaLocali.length > 1) controlli.push(controlliMud.piuUnitaLocali(unitaLocali))
-
-    if (!comuneCode) {
-      controlli.push(controlliMud.dichiaranteSenzaComuneIstat(tenant?.city, tenant?.province))
-    }
-    if (!atecoNormalizzato) {
-      controlli.push(controlliMud.dichiaranteSenzaAteco())
-    } else if (!/^\d{6}$/.test(atecoNormalizzato)) {
-      controlli.push(controlliMud.dichiaranteAtecoNonValido(tenant?.atecoCode ?? ''))
-    }
-
-    const mudNonDovuto = tenant?.mudNonDovuto === true
-    if (mudNonDovuto) controlli.push(controlliMud.mudNonDovuto(tenant?.mudNonDovutoMotivo ?? '-'))
-
-    this.logger.info(
-      `MUD aggregato: tenant ${tenantId}, anno ${anno}, ${movimenti.length} movimenti, ${righeFinali.length} righe, ${controlli.length} controlli`
-    )
-    return {
-      anno,
-      righe: righeFinali,
-      movimentiPerCer,
-      pericolosiPerCer,
-      controlli,
-      dichiarante: { atecoNormalizzato, comuneCode },
-      mudNonDovuto,
-      integrazioni,
-    }
+    const righeFinali = this.completaRighe(righe, integrazioni, anno, controlli, condivisi)
+    return { righeFinali, movimentiPerCer, pericolosiPerCer, ricevuti }
   }
 
   /**
-   * Saldo del registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12
+   * Saldo di ogni registro a fine anno (carichi meno scarichi di tutti gli anni fino al 31/12
    * italiano), per CER, in kg. Le giacenze iniziali del registro con `data_riferimento` fino al
    * 31/12 contano come carichi (non sono movimenti: non entrano in nessuna riga
    * prodotto/ricevuto). Solo le unità di massa: i movimenti in litri, mc o altro non hanno un
    * peso senza peso specifico e non entrano nel saldo (le unità vuote valgono kg, come nel resto
-   * del MUD). Restano solo i CER con saldo positivo, ordinati per CER (A-W-06).
+   * del MUD). Nessun filtro di positività: lo applica il chiamante dopo aver sommato i registri
+   * (versione 1: tutti, A-W-06; versione 2: quelli della stessa dichiarazione, D8).
    */
-  private async saldiAl31Dicembre(
+  private async saldiAl31DicembrePerRegistro(
     tenantId: string,
     fine: Date,
     anno: number
-  ): Promise<Array<{ cerCode6: string; kg: number }>> {
+  ): Promise<SaldoRegistro[]> {
     const gruppi = await this.prisma.wasteMovement.groupBy({
-      by: ['cerCode', 'type', 'unit'],
+      by: ['registroId', 'cerCode', 'type', 'unit'],
       where: { tenantId, movementDate: { lt: fine }, ...WHERE_VIGENTE },
       _sum: { quantity: true },
     })
-    // chiave = cifre del CER; l'asterisco dei pericolosi vince su qualunque formato del gruppo
-    const perCer = new Map<string, { kg: number; pericoloso: boolean; codice: string }>()
+    // chiave = registro e cifre del CER; l'asterisco dei pericolosi vince su qualunque formato
+    const perRegistroECer = new Map<
+      string,
+      { registroId: string; cer6: string; kg: number; pericoloso: boolean; codice: string }
+    >()
+    const somma = (registroId: string, codice: string, kg: number): void => {
+      const cer6 = chiaveConfrontoCer(codice)
+      const chiave = `${registroId}|${cer6}`
+      const prec = perRegistroECer.get(chiave) ?? {
+        registroId,
+        cer6,
+        kg: 0,
+        pericoloso: false,
+        codice,
+      }
+      perRegistroECer.set(chiave, {
+        ...prec,
+        kg: prec.kg + kg,
+        pericoloso: prec.pericoloso || codice.includes('*'),
+      })
+    }
     for (const g of gruppi) {
       const kg = convertiInKg(Number(g._sum.quantity ?? 0), g.unit)
       if (kg === null) continue
-      const cer6 = chiaveConfrontoCer(g.cerCode)
-      const segno = g.type === 'CARICO' ? 1 : -1
-      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: g.cerCode }
-      perCer.set(cer6, {
-        kg: prec.kg + segno * kg,
-        pericoloso: prec.pericoloso || g.cerCode.includes('*'),
-        codice: prec.codice,
-      })
+      somma(g.registroId, g.cerCode, (g.type === 'CARICO' ? 1 : -1) * kg)
     }
     // `data_riferimento` è già il giorno italiano: si confronta col 31/12 come giorno, non con `fine`.
     const aperture = await leggiApertureRegistro(this.prisma, tenantId, {
@@ -641,11 +1095,40 @@ export class MudAggregazioneService {
     for (const ap of aperture) {
       const kg = apertureInKg(ap)
       if (kg === null) continue
-      const cer6 = chiaveConfrontoCer(ap.cerCode)
-      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: ap.cerCode }
+      somma(ap.registroId, ap.cerCode, kg)
+    }
+    return [...perRegistroECer.values()]
+      .sort((a, b) =>
+        a.registroId !== b.registroId
+          ? a.registroId < b.registroId
+            ? -1
+            : 1
+          : a.cer6 < b.cer6
+            ? -1
+            : a.cer6 > b.cer6
+              ? 1
+              : 0
+      )
+      .map(v => ({
+        registroId: v.registroId,
+        cerCode6: cerCanonico(v.pericoloso && !v.codice.includes('*') ? `${v.cer6}*` : v.codice),
+        kg: v.kg,
+        pericoloso: v.pericoloso,
+      }))
+  }
+
+  /**
+   * Versione 1: i saldi di tutti i registri sommati per CER, solo quelli sopra mezzo grammo,
+   * ordinati per CER e arrotondati al grammo (A-W-06): l'elenco di sempre.
+   */
+  private sommaSaldiPerCer(saldi: SaldoRegistro[]): Array<{ cerCode6: string; kg: number }> {
+    const perCer = new Map<string, { kg: number; pericoloso: boolean; codice: string }>()
+    for (const s of saldi) {
+      const cer6 = chiaveConfrontoCer(s.cerCode6)
+      const prec = perCer.get(cer6) ?? { kg: 0, pericoloso: false, codice: s.cerCode6 }
       perCer.set(cer6, {
-        kg: prec.kg + kg,
-        pericoloso: prec.pericoloso || ap.cerCode.includes('*'),
+        kg: prec.kg + s.kg,
+        pericoloso: prec.pericoloso || s.pericoloso,
         codice: prec.codice,
       })
     }
@@ -658,6 +1141,94 @@ export class MudAggregazioneService {
       }))
   }
 
+  /**
+   * CER che ogni registro ha ricevuto da terzi fino al 31/12 (D8): una giacenza che include un
+   * rifiuto ricevuto da terzi non si attribuisce al solo produttore. Un gruppo per
+   * (registro, CER, causale, versione aziendale) con la prima e l'ultima data, classificato alle
+   * due date: basta una a dare RICEVUTO_DA_TERZI.
+   * Limite dichiarato: una versione aziendale della causale valida solo fra `_min` e `_max` con un
+   * ruolo diverso non viene vista. È un caso raro: la versione si sceglie con `causaleAziendaId`,
+   * che fa parte del `by`, quindi la data conta solo per le causali di sistema, che non hanno
+   * versioni.
+   */
+  private async caricoRicevutoDaTerzi(
+    tenantId: string,
+    fine: Date,
+    catalogo: CatalogoCausali
+  ): Promise<RicevutoDaTerzi[]> {
+    const gruppi = await this.prisma.wasteMovement.groupBy({
+      by: ['registroId', 'cerCode', 'causale', 'causaleAziendaId'],
+      where: { tenantId, type: 'CARICO', movementDate: { lt: fine }, ...WHERE_VIGENTE },
+      _min: { movementDate: true },
+      _max: { movementDate: true },
+    })
+    const trovati = new Map<string, RicevutoDaTerzi>()
+    for (const g of gruppi) {
+      const date = [g._min?.movementDate, g._max?.movementDate].filter(
+        (d): d is Date => d instanceof Date
+      )
+      const ricevuto = date.some(
+        d =>
+          classificaMovimento(catalogo, {
+            type: 'CARICO',
+            causale: g.causale,
+            causaleAziendaId: g.causaleAziendaId,
+            movementDate: d,
+          }) === 'RICEVUTO_DA_TERZI'
+      )
+      if (ricevuto) {
+        trovati.set(`${g.registroId}|${chiaveConfrontoCer(g.cerCode)}`, {
+          registroId: g.registroId,
+          cerCode: g.cerCode,
+        })
+      }
+    }
+    return [...trovati.values()]
+  }
+
+  /** Avvisi delle giacenze (D8, D9, D16): uno per dichiarazione con voci non scritte, uno per ripartizione. */
+  private controlliGiacenze(
+    anno: number,
+    giacenze: EsitoGiacenze,
+    conSede: boolean
+  ): MudEsitoControllo[] {
+    const esiti: MudEsitoControllo[] = []
+    const nomeSede = (u: { denominazione: string } | null): string => u?.denominazione ?? 'Azienda'
+    // la sede compare con più dichiarazioni nel file o con giacenze di più sedi (D14, F3)
+    const sediCoinvolte = new Set<string | null>([
+      ...giacenze.nonDichiarate.map(n => n.unitaLocale?.id ?? null),
+      ...giacenze.ripartizioni.map(r => r.unitaLocale?.id ?? null),
+    ])
+    conSede = conSede || sediCoinvolte.size > 1
+    const conLaSede = (c: MudEsitoControllo, u: { denominazione: string } | null) =>
+      conSede ? { ...c, sede: nomeSede(u) } : c
+    for (const n of giacenze.nonDichiarate) {
+      esiti.push(conLaSede(controlliMud.giacenzeNonDichiarate(anno, n.voci), n.unitaLocale))
+    }
+    for (const r of giacenze.ripartizioni) {
+      const dati = {
+        cerCode: r.cerCode,
+        cer6: r.cer6,
+        unitaLocaleId: r.unitaLocale?.id ?? null,
+        sede: nomeSede(r.unitaLocale),
+        kg: r.kg,
+      }
+      esiti.push(
+        conLaSede(
+          r.tipo === 'RIPARTITA'
+            ? controlliMud.giacenzaRipartita(anno, {
+                ...dati,
+                recuperoKg: r.recuperoKg,
+                smaltimentoKg: r.smaltimentoKg,
+              })
+            : controlliMud.giacenzaDestinazioneNonIndicata(anno, dati),
+          r.unitaLocale
+        )
+      )
+    }
+    return esiti
+  }
+
   /** Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5. */
   private recuperoOSmaltimento(
     catalogo: CatalogoCausali,
@@ -666,25 +1237,13 @@ export class MudAggregazioneService {
     fir: FirCollegato | undefined,
     controlli: MudEsitoControllo[]
   ): 'R' | 'D' {
-    const indicata =
-      operazioneDaCodice(m.operationCode) ??
-      operazioneDaCatalogo(catalogo, m) ??
-      (fir ? operazioneDaCodice(fir.wasteOperationCode) : undefined)
-    if (indicata) return indicata
-
-    // `wasteOperationType` ha default DISPOSAL: la deduzione va verificata.
-    const dedotta =
-      fir?.wasteOperationType === 'RECOVERY'
-        ? 'R'
-        : fir?.wasteOperationType === 'DISPOSAL'
-          ? 'D'
-          : undefined
-    if (fir && dedotta) {
-      controlli.push(controlliMud.operazioneDedottaDalFir(r, etichettaFir(fir), dedotta))
-      return dedotta
+    const { operazione, origine } = operazioneDelMovimento(catalogo, m, fir)
+    if (origine === 'TIPO_FIR' && fir) {
+      controlli.push(controlliMud.operazioneDedottaDalFir(r, etichettaFir(fir), operazione))
+    } else if (origine === 'NON_INDICATA') {
+      controlli.push(controlliMud.operazioneNonIndicata(r))
     }
-    controlli.push(controlliMud.operazioneNonIndicata(r))
-    return 'D'
+    return operazione
   }
 
   /** DR e TE di uno scarico conteggiato: dal FIR collegabile, altrimenti dal registro. */
@@ -802,10 +1361,11 @@ export class MudAggregazioneService {
     righe: Map<string, RigaInCorso>,
     integrazioni: IntegrazioniMud,
     anno: number,
-    controlli: MudEsitoControllo[]
+    controlli: MudEsitoControllo[],
+    condivisi: Condivisi
   ): MudRifiutoLine[] {
     // Lo stesso destinatario sotto più CER dà un solo controllo.
-    const segnalati = new Set<string>()
+    const { segnalati } = condivisi
     const segnalaUnaVolta = (esito: MudEsitoControllo) => {
       if (segnalati.has(esito.messaggio)) return
       segnalati.add(esito.messaggio)
@@ -813,7 +1373,6 @@ export class MudAggregazioneService {
     }
     // Il messaggio del TE cita il FIR, quindi non basta deduplicarlo per testo (preflight F24):
     // un solo controllo per ragione sociale normalizzata, come la riga delle integrazioni.
-    const trasportatoriSegnalati = new Set<string>()
 
     return [...righe.keys()].sort().map(cer6 => {
       const acc = righe.get(cer6) as RigaInCorso
@@ -878,7 +1437,7 @@ export class MudAggregazioneService {
         recuperoKg: arrotonda3(acc.recuperoKg),
         smaltimentoKg: arrotonda3(acc.smaltimentoKg),
         dr,
-        te: this.completaTe(acc, integrazioni, anno, trasportatoriSegnalati, controlli),
+        te: this.completaTe(acc, integrazioni, anno, condivisi, controlli),
       }
     })
   }
@@ -888,7 +1447,7 @@ export class MudAggregazioneService {
     acc: RigaInCorso,
     integrazioni: IntegrazioniMud,
     anno: number,
-    segnalati: Set<string>,
+    { trasportatoriSegnalati: segnalati }: Condivisi,
     controlli: MudEsitoControllo[]
   ): MudAllegatoTE[] {
     const te: MudAllegatoTE[] = []

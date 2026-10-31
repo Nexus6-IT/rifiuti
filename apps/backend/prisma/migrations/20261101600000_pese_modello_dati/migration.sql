@@ -35,7 +35,7 @@
 -- stato_accesso_pesa, modo_pesatura, fonte_pesata.
 -- Ripristino da migration fallita (P3009): la migration e' transazionale, quindi si controlla che
 -- `SELECT to_regclass('public.pesate')` sia NULL e si lancia
--- `npx prisma migrate resolve --rolled-back 20261101400000_pese_modello_dati`, poi si rilancia
+-- `npx prisma migrate resolve --rolled-back 20261101600000_pese_modello_dati`, poi si rilancia
 -- il deploy (vedi `ops/README.md`).
 
 SET LOCAL lock_timeout = '5s';

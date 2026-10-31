@@ -3,6 +3,7 @@ import {
   avvisiCambianoQuantita,
   codiciAvvisoDaConfermare,
   controlliMud,
+  etichettaGiacenza,
   haBloccanti,
   riepilogaAvvisi,
   type RifMovimento,
@@ -19,6 +20,25 @@ const m: RifMovimento = {
 }
 
 describe('controlliMud', () => {
+  it('CAUSALE_ESCLUSA mostra la descrizione della causale', () => {
+    const c = controlliMud.causaleEsclusa({
+      ...m,
+      causale: 'AZ_ALTRO',
+      causaleDescrizione: 'Altro carico',
+      unit: 'KG',
+    })
+    expect(c.messaggio).toBe(
+      'Movimento n. 4/2025 (CER 17 04 05, causale "Altro carico", 30 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.'
+    )
+  })
+
+  it('CAUSALE_ESCLUSA senza descrizione mostra il codice', () => {
+    const c = controlliMud.causaleEsclusa({ ...m, causale: 'AZ_ALTRO', unit: 'KG' })
+    expect(c.messaggio).toBe(
+      'Movimento n. 4/2025 (CER 17 04 05, causale AZ_ALTRO, 30 KG): escluso dal MUD, la causale non corrisponde né a una produzione né a un conferimento.'
+    )
+  })
+
   it('unitaNonDiMassa è un bloccante per CER e unità, che dice dove inserire il peso specifico', () => {
     expect(controlliMud.unitaNonDiMassa(2025, '170405', 'LITRI', [m])).toEqual({
       codice: 'UNITA_NON_DI_MASSA',
@@ -306,6 +326,18 @@ describe('controlliMud', () => {
     expect(r.messaggio).toContain('La ripartizione per sede non è ancora supportata.')
     expect(r.messaggio).not.toContain('il registro non indica la sede')
     expect(r.messaggio).not.toContain('mancano le dichiarazioni separate')
+  })
+
+  it('SOSTITUTIVA_PIU_DICHIARAZIONI: avviso con il testo concordato (G2)', () => {
+    const r = controlliMud.sostitutivaPiuDichiarazioni([1, 2])
+    expect(r.codice).toBe('SOSTITUTIVA_PIU_DICHIARAZIONI')
+    expect(r.gravita).toBe('AVVISO')
+    expect(r.messaggio).toBe(
+      "Il file sostituisce una dichiarazione presentata in precedenza ma le unità locali non coincidono: risultano sostitutive solo quelle già presentate (1, 2), le altre sono nuove dichiarazioni. Prima dell'invio verificare il file con l'applicazione ufficiale del MUD."
+    )
+    expect(controlliMud.sostitutivaPiuDichiarazioni([1]).messaggio).toContain('presentate (1),')
+    // non cambia le quantità: la conferma non è riservata agli amministratori
+    expect(riepilogaAvvisi([r]).cambianoQuantita).toBe(false)
   })
 
   it('MUD: il testo contiene "tutti i registri" e "ripartizione per sede non è ancora supportata"', () => {
@@ -631,5 +663,240 @@ describe('controlliMud', () => {
     expect(controlliMud.statoFisicoNonUnivoco('160601*', ['NON_RICONOSCIUTO']).messaggio).toMatch(
       /^Il rifiuto CER 16 06 01\* è registrato/
     )
+  })
+})
+
+describe('controlli per unità locale (D16)', () => {
+  const sede = { denominazione: 'Sede di Milano', numIscrSito: 'OP1234ABC000001-MI0001' }
+  const mov = (n: number): RifMovimento => ({
+    ...m,
+    progressiveNumber: n,
+    causale: 'PRODUZIONE_INTERNA',
+  })
+
+  it('etichettaGiacenza', () => {
+    expect(etichettaGiacenza('170405')).toBe('Giacenza CER 170405')
+  })
+
+  it('MOVIMENTI_SENZA_SEDE con più movimenti', () => {
+    const c = controlliMud.movimentiSenzaSede(2025, [mov(4), mov(5)], sede)
+    expect(c.codice).toBe('MOVIMENTI_SENZA_SEDE')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 2 movimenti nel MUD (n. 4/2025, 5/2025): il file li attribuisce all'unità locale principale Sede di Milano (OP1234ABC000001-MI0001). Verificare che siano stati prodotti o gestiti in quella sede."
+    )
+    expect(c.movimenti).toHaveLength(2)
+  })
+
+  it('MOVIMENTI_SENZA_SEDE con un movimento', () => {
+    const c = controlliMud.movimentiSenzaSede(2025, [mov(4)], sede)
+    expect(c.messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 1 movimento nel MUD (n. 4/2025): il file lo attribuisce all'unità locale principale Sede di Milano (OP1234ABC000001-MI0001). Verificare che sia stato prodotto o gestito in quella sede."
+    )
+  })
+
+  it('SEDE_PRINCIPALE_MANCANTE', () => {
+    const c = controlliMud.sedePrincipaleMancante(2025, 3, 2)
+    expect(c.codice).toBe('SEDE_PRINCIPALE_MANCANTE')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 3 movimenti, ma nessuna delle 2 unità locali dell'azienda è indicata come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD li attribuisce a quella sede."
+    )
+    expect(controlliMud.sedePrincipaleMancante(2025, 1, 1).messaggio).toBe(
+      "Nel 2025 il registro senza sede ha 1 movimento, ma l'unica unità locale dell'azienda non è indicata come principale: indicare la sede principale nella pagina delle unità locali RENTRI, così il MUD lo attribuisce a quella sede."
+    )
+  })
+
+  it('UNITA_LOCALE_SENZA_INDIRIZZO', () => {
+    const c = controlliMud.unitaLocaleSenzaIndirizzo(sede, ['indirizzo', 'CAP', 'comune'])
+    expect(c.codice).toBe('UNITA_LOCALE_SENZA_INDIRIZZO')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Unità locale Sede di Milano (OP1234ABC000001-MI0001): mancano indirizzo, CAP e comune nell'anagrafica della sede, obbligatori nella scheda anagrafica della sua dichiarazione MUD. Inserirli nella pagina delle unità locali RENTRI."
+    )
+    expect(controlliMud.unitaLocaleSenzaIndirizzo(sede, ['CAP', 'provincia']).messaggio).toContain(
+      'mancano CAP e provincia nell'
+    )
+    expect(controlliMud.unitaLocaleSenzaIndirizzo(sede, ['provincia']).messaggio).toBe(
+      "Unità locale Sede di Milano (OP1234ABC000001-MI0001): manca la provincia nell'anagrafica della sede, obbligatoria nella scheda anagrafica della sua dichiarazione MUD. Inserirla nella pagina delle unità locali RENTRI."
+    )
+    expect(controlliMud.unitaLocaleSenzaIndirizzo(sede, ['CAP']).messaggio).toContain(
+      'manca il CAP nell'
+    )
+  })
+
+  it('UNITA_LOCALE_SENZA_COMUNE_ISTAT', () => {
+    const c = controlliMud.unitaLocaleSenzaComuneIstat(sede, 'Milan', 'MI')
+    expect(c.codice).toBe('UNITA_LOCALE_SENZA_COMUNE_ISTAT')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Comune dell'unità locale Sede di Milano (OP1234ABC000001-MI0001) non trovato nelle tabelle ISTAT (Milan MI): correggerlo nella pagina delle unità locali RENTRI."
+    )
+  })
+
+  it('PRINCIPALE_CON_INDIRIZZO_AZIENDA', () => {
+    const c = controlliMud.principaleConIndirizzoAzienda(sede)
+    expect(c.codice).toBe('PRINCIPALE_CON_INDIRIZZO_AZIENDA')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      "L'unità locale principale Sede di Milano (OP1234ABC000001-MI0001) non ha un indirizzo proprio: nella sua dichiarazione MUD compare l'indirizzo dell'azienda. Se la sede è altrove, inserirne l'indirizzo nella pagina delle unità locali RENTRI."
+    )
+  })
+
+  it('UNITA_LOCALE_SENZA_ADDETTI', () => {
+    const c = controlliMud.unitaLocaleSenzaAddetti(sede)
+    expect(c.codice).toBe('UNITA_LOCALE_SENZA_ADDETTI')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      'Unità locale Sede di Milano (OP1234ABC000001-MI0001): il numero di addetti della sede non è indicato e nella sua dichiarazione MUD risulta 0. Inserirlo nella pagina delle unità locali RENTRI.'
+    )
+  })
+
+  it('UNITA_LOCALI_PROVINCE_DIVERSE', () => {
+    const c = controlliMud.unitaLocaliProvinceDiverse([
+      { denominazione: 'Torino', etichetta: 'TO' },
+      { denominazione: 'Milano', etichetta: '015' },
+    ])
+    expect(c.codice).toBe('UNITA_LOCALI_PROVINCE_DIVERSE')
+    expect(c.gravita).toBe('BLOCCANTE')
+    expect(c.messaggio).toBe(
+      "Le unità locali da dichiarare sono in province diverse (Torino: TO; Milano: 015): un file MUD può contenere solo dichiarazioni della stessa provincia, altrimenti viene rifiutato. La generazione di un file per provincia non è ancora supportata (contattare l'assistenza)."
+    )
+  })
+
+  it('AUTORIZZAZIONI_SULLA_PRINCIPALE', () => {
+    const sullaPrincipale = controlliMud.autorizzazioniSullaPrincipale(2, 3, sede, true)
+    expect(sullaPrincipale.codice).toBe('AUTORIZZAZIONI_SULLA_PRINCIPALE')
+    expect(sullaPrincipale.gravita).toBe('AVVISO')
+    expect(sullaPrincipale.messaggio).toBe(
+      "Il file contiene 2 dichiarazioni e l'azienda ha 3 autorizzazioni registrate: le schede delle autorizzazioni sono nella dichiarazione dell'unità locale Sede di Milano (OP1234ABC000001-MI0001), perché le autorizzazioni non indicano la sede. Verificare che siano dell'impianto di quella sede."
+    )
+    expect(controlliMud.autorizzazioniSullaPrincipale(3, 1, sede, false).messaggio).toBe(
+      "Il file contiene 3 dichiarazioni e l'azienda ha 1 autorizzazione registrata: la scheda dell'autorizzazione è nella dichiarazione dell'unità locale Sede di Milano (OP1234ABC000001-MI0001) (la principale non ha rifiuti da dichiarare nell'anno), perché le autorizzazioni non indicano la sede. Verificare che sia dell'impianto di quella sede."
+    )
+    expect(controlliMud.autorizzazioniSullaPrincipale(2, 3, sede, false).messaggio).toContain(
+      "(OP1234ABC000001-MI0001) (la principale non ha rifiuti da dichiarare nell'anno), perché"
+    )
+  })
+
+  it('il campo sede è facoltativo e non altera i controlli esistenti', () => {
+    const c = { ...controlliMud.sedePrincipaleMancante(2025, 1, 2), sede: 'Azienda' }
+    expect(c.sede).toBe('Azienda')
+  })
+})
+
+describe('controlli delle giacenze al 31/12 (D8, D9, D16)', () => {
+  const ripartita = {
+    cerCode: '17 04 05',
+    cer6: '170405',
+    unitaLocaleId: 'ul-1',
+    sede: 'Sede',
+    kg: 100.001,
+    recuperoKg: 33.334,
+    smaltimentoKg: 66.667,
+  }
+
+  it('GIACENZE_NON_DICHIARATE: testo esatto, kg in meno ma nessun cambio di quantità', () => {
+    const c = controlliMud.giacenzeNonDichiarate(2025, [
+      { cerCode: '15 01 10*', kg: 12.5, motivo: 'NESSUN_MOVIMENTO' },
+      { cerCode: '17 04 05', kg: 1200, motivo: 'RICEVUTO_DA_TERZI' },
+    ])
+    expect(c.codice).toBe('GIACENZE_NON_DICHIARATE')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.kgNonDichiarati).toBe(1212.5)
+    expect(c.messaggio).toBe(
+      "Secondo il registro, al 31/12/2025 risultano in deposito 1.212,5 kg che il file non dichiara (CER 15 01 10*: 12,5 kg, nessun movimento nel MUD; CER 17 04 05: 1.200 kg, ricevuto anche da terzi): un rifiuto senza movimenti nel MUD dell'anno non ha una scheda RIF in cui scrivere la giacenza, e per un rifiuto ricevuto anche da terzi la giacenza non si può attribuire al solo produttore."
+    )
+  })
+
+  it('GIACENZE_NON_DICHIARATE conta in kgInMeno ma non cambia le quantità', () => {
+    const r = riepilogaAvvisi([
+      controlliMud.giacenzeNonDichiarate(2025, [
+        { cerCode: '17 04 05', kg: 120, motivo: 'NESSUN_MOVIMENTO' },
+      ]),
+      controlliMud.giacenzeNonDichiarate(2025, [
+        { cerCode: '20 03 01', kg: 30, motivo: 'RICEVUTO_DA_TERZI' },
+      ]),
+    ])
+    expect(r.kgInMeno).toBe(150)
+    expect(r.cambianoQuantita).toBe(false)
+    expect(r.voci).toEqual([
+      expect.objectContaining({ codice: 'GIACENZE_NON_DICHIARATE', casi: 2 }),
+    ])
+  })
+
+  it('GIACENZA_RIPARTITA: testo esatto e integrazione richiesta', () => {
+    const c = controlliMud.giacenzaRipartita(2025, ripartita)
+    expect(c.codice).toBe('GIACENZA_RIPARTITA')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      'Il rifiuto CER 17 04 05 ha 100,001 kg in deposito al 31/12/2025: nell\'anno è stato avviato sia a recupero sia a smaltimento, quindi la giacenza è ripartita in proporzione (33,334 kg a recupero, 66,667 kg a smaltimento). Se la destinazione è un\'altra, indicarla in MUD > Integrazioni 2025, riga "Giacenza CER 170405".'
+    )
+    expect(c.integrazione).toEqual({
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: 'ul-1|170405',
+      cerCode: '170405',
+      unitaLocaleId: 'ul-1',
+      sede: 'Sede',
+    })
+    expect(c.kgNonDichiarati).toBeUndefined()
+  })
+
+  it('GIACENZA_DESTINAZIONE_NON_INDICATA: testo esatto, sede azienda senza id', () => {
+    const c = controlliMud.giacenzaDestinazioneNonIndicata(2025, {
+      cerCode: '15 01 10*',
+      cer6: '150110',
+      unitaLocaleId: null,
+      sede: 'Azienda',
+      kg: 1,
+    })
+    expect(c.codice).toBe('GIACENZA_DESTINAZIONE_NON_INDICATA')
+    expect(c.gravita).toBe('AVVISO')
+    expect(c.messaggio).toBe(
+      'Il rifiuto CER 15 01 10* ha 1 kg in deposito al 31/12/2025, ma nell\'anno non è stato avviato né a recupero né a smaltimento: la giacenza è considerata da avviare a smaltimento. Se è destinata a recupero, indicarlo in MUD > Integrazioni 2025, riga "Giacenza CER 150110".'
+    )
+    expect(c.integrazione).toEqual({
+      tipo: 'DESTINAZIONE_GIACENZA',
+      chiave: 'AZIENDA|150110',
+      cerCode: '150110',
+      unitaLocaleId: null,
+      sede: 'Azienda',
+    })
+  })
+
+  it('con i soli avvisi di giacenza cambianoQuantita è false', () => {
+    const c = [
+      controlliMud.giacenzaRipartita(2025, ripartita),
+      controlliMud.giacenzaDestinazioneNonIndicata(2025, { ...ripartita, kg: 80 }),
+      controlliMud.giacenzeNonDichiarate(2025, [
+        { cerCode: '20 03 01', kg: 30, motivo: 'NESSUN_MOVIMENTO' },
+      ]),
+    ]
+    expect(riepilogaAvvisi(c).cambianoQuantita).toBe(false)
+    expect(avvisiCambianoQuantita(c)).toBe(false)
+  })
+
+  it('testo del riepilogo con la sola GIACENZA_RIPARTITA', () => {
+    const r = riepilogaAvvisi([controlliMud.giacenzaRipartita(2025, ripartita)])
+    expect(r.kgInMeno).toBe(0)
+    expect(r.testo).toBe(
+      'Il file dichiara le stesse quantità del registro: gli avvisi sono informativi. Per alcune giacenze al 31/12 la destinazione (recupero o smaltimento) è stimata: verificarla negli avvisi sotto.'
+    )
+    // anche con GIACENZA_DESTINAZIONE_NON_INDICATA, una volta sola
+    const due = riepilogaAvvisi([
+      controlliMud.giacenzaRipartita(2025, ripartita),
+      controlliMud.giacenzaDestinazioneNonIndicata(2025, ripartita),
+    ])
+    expect(due.testo).toBe(r.testo)
+    // senza avvisi di giacenza il testo non lo dice
+    expect(riepilogaAvvisi([controlliMud.scaricoSenzaFir(m)]).testo).not.toContain('stimata')
+  })
+
+  it('GIACENZA_DESTINAZIONE_NON_INDICATA non riserva la conferma agli amministratori', () => {
+    const c = [controlliMud.giacenzaDestinazioneNonIndicata(2025, ripartita)]
+    expect(avvisiCambianoQuantita(c)).toBe(false)
+    // è comunque un avviso da confermare
+    expect(codiciAvvisoDaConfermare(c)).toEqual(['GIACENZA_DESTINAZIONE_NON_INDICATA'])
+    expect(haBloccanti(c)).toBe(false)
   })
 })

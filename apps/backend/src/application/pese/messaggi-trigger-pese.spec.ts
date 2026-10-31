@@ -3,7 +3,7 @@ import { join } from 'path'
 import { MSG_TRIGGER } from './messaggi-trigger-pese'
 
 const MIGRATIONS = join(__dirname, '../../../prisma/migrations')
-const sql = ['20261101400000_pese_modello_dati', '20261101400100_pese_cancellazione_e_indici']
+const sql = ['20261101600000_pese_modello_dati', '20261101600100_pese_cancellazione_e_indici']
   .map(m => readFileSync(join(MIGRATIONS, m, 'migration.sql'), 'utf8'))
   .join('\n')
 

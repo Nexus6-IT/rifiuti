@@ -124,6 +124,32 @@ e `test-postgres`) e nel gate del deploy (`deploy.yml`, job `quality`).
 
 ---
 
+## Codici MUD delle unità locali
+
+Ogni unità locale RENTRI (`rentri_unita_locali`) ha un `progressivo_mud`: è il codice che il file MUD
+scrive nella chiave di ogni record della sua dichiarazione. Lo assegnano la migration
+`20261031130000_unita_locali_mud` (backfill: la principale di allora ha 1, le altre seguono per
+data di creazione) e un trigger `BEFORE INSERT` (massimo dell'azienda + 1). **I codici non vanno
+rinumerati a mano**: un MUD già presentato li contiene, e cambiarli farebbe sembrare un'altra sede.
+
+Ripristino a mano della migration (in quest'ordine; il commento in testa al file ha lo stesso elenco):
+
+```sql
+DROP TRIGGER rentri_unita_locali_progressivo_mud ON rentri_unita_locali;
+DROP FUNCTION rentri_unita_locali_assegna_progressivo_mud();
+DROP INDEX rentri_unita_locali_tenant_progressivo_mud_key;
+ALTER TABLE rentri_unita_locali
+  DROP CONSTRAINT rentri_unita_locali_cap_check,
+  DROP CONSTRAINT rentri_unita_locali_provincia_check,
+  DROP CONSTRAINT rentri_unita_locali_numero_addetti_check,
+  DROP CONSTRAINT rentri_unita_locali_progressivo_mud_check,
+  DROP COLUMN indirizzo, DROP COLUMN civico, DROP COLUMN cap, DROP COLUMN comune,
+  DROP COLUMN provincia, DROP COLUMN numero_addetti, DROP COLUMN progressivo_mud;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261031130000_unita_locali_mud';
+```
+
+---
+
 ## Ripristino (Disaster Recovery)
 
 ### Script: `restore.sh`
@@ -376,7 +402,7 @@ DROP COLUMN receiver_codice_fiscale;` e `DELETE FROM _prisma_migrations WHERE mi
 '20261031110200_fir_parti_sede_cf';`. Il codice vecchio ignora le colonne; i FIR con il codice fiscale
 nel documento firmato (privati) non sarebbero più verificabili dopo un `DROP COLUMN`.
 
-### Pese: modello dati (`20261101400000_pese_modello_dati`, Fase 4 pezzo 8a, Task 2a)
+### Pese: modello dati (`20261101600000_pese_modello_dati`, Fase 4 pezzo 8a, Task 2a)
 
 Additiva: 5 tipi enum e 7 tabelle nuove (`strumenti_pesa`, `automezzi`, `accessi_pesa`, `pesate`,
 `rettifiche_peso`, `allegati_pesa`, `collegamenti_accesso`) con trigger di immutabilità e RLS
@@ -384,7 +410,7 @@ Additiva: 5 tipi enum e 7 tabelle nuove (`strumenti_pesa`, `automezzi`, `accessi
 colonne esistenti; le FK verso `waste_movements`, `firs`, `registri_rifiuti`, `trasportatori` sono
 create con `SET LOCAL lock_timeout = '5s'`: se il lock non arriva la migration fallisce senza
 modificare nulla ma resta segnata come fallita (P3009), quindi prima di rilanciare il deploy
-`npx prisma migrate resolve --rolled-back 20261101400000_pese_modello_dati`. La migration esegue i
+`npx prisma migrate resolve --rolled-back 20261101600000_pese_modello_dati`. La migration esegue i
 REVOKE dei privilegi (D4) per `wasteflow_app` e `wasteflow_sistema` solo se i ruoli esistono.
 
 Ripristino (le tabelle sono nuove, nessun dato esistente le usa): `DROP TABLE collegamenti_accesso,
@@ -393,8 +419,49 @@ CASCADE;` poi `DROP FUNCTION pesate_immutabile(), pesate_controlli(), rettifiche
 rettifiche_peso_controlli(), allegati_pesa_immutabile(), accessi_pesa_controlli(),
 collegamenti_accesso_controlli();` poi `DROP TYPE tipo_collegamento_accesso, origine_tara,
 stato_accesso_pesa, modo_pesatura, fonte_pesata;` e `DELETE FROM _prisma_migrations WHERE
-migration_name = '20261101400000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
+migration_name = '20261101600000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
 allegati) sono documentazione del registro e del FIR: esportarle prima di un `DROP`.
+
+---
+
+## F2-9 trasmissione del registro a RENTRI
+
+Migration `20261101500000_trasmissione_registro_rentri`: tabella `movimenti_trasmissione_rentri`
+(una riga per movimento trasmesso o in via di trasmissione; nessuna riga = non trasmesso), colonna
+`registri_rifiuti.invio_rentri_automatico_dal`, CHECK di formato e unico per azienda
+dell'`identificativo_rentri` del registro. Additiva: nasce vuota, nessun invio retroattivo, nessun
+GRANT (default privileges di `ops/db-ruoli.sh`).
+
+- **Dopo il deploy non parte nessun invio.** La tabella nasce vuota e nessun registro ha un
+  identificativo: per attivare la trasmissione un amministratore deve inserire l'identificativo
+  RENTRI del registro (`R` + 10 caratteri, dal portale) e, se vuole l'invio automatico, scegliere la
+  modalita' "da oggi". Fino ad allora il job non trova nulla da fare.
+- **Chi arriva da WinWaste** deve prima usare "Dichiara gia' su RENTRI" per le annotazioni gia'
+  inviate dall'altro programma (altrimenti vengono ritrasmesse come doppie registrazioni), poi
+  confrontare con "Verifica allineamento".
+- **Controllo post-deploy:** `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1`
+  (atteso: nessuna riga) e, nei log del backend, il job di trasmissione che gira senza errori e
+  senza invii.
+- **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
+  rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
+  che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
+- **Mai cancellare righe `TRASMESSA` per "ripartire"**: l'annotazione verrebbe ritrasmessa a RENTRI
+  (doppia registrazione). I trigger rifiutano il DELETE diretto di una riga `TRASMESSA`,
+  `GIA_SU_RENTRI`, `INCERTA`, `IN_INVIO` e `ATTESA_ESITO`; la cancellazione a cascata di un'azienda
+  passa.
+- **Ripristino a mano della migration: solo per un database SENZA trasmissioni** (i dati
+  andrebbero persi):
+
+  ```sql
+  DROP TABLE movimenti_trasmissione_rentri;
+  DROP FUNCTION movimenti_trasmissione_rentri_immutabile(), movimenti_trasmissione_rentri_no_delete();
+  DROP TYPE stato_trasmissione_rentri, origine_trasmissione_rentri;
+  ALTER TABLE registri_rifiuti
+    DROP CONSTRAINT registri_rifiuti_tenant_identificativo_rentri_key,
+    DROP CONSTRAINT registri_rifiuti_identificativo_rentri_check,
+    DROP COLUMN invio_rentri_automatico_dal;
+  DELETE FROM _prisma_migrations WHERE migration_name = '20261101500000_trasmissione_registro_rentri';
+  ```
 
 ---
 
@@ -471,6 +538,20 @@ interessate. La tabella resta nel database (migration additiva) e riprende a con
 ripristino del codice; il ripristino a mano dello schema e' nel commento iniziale della
 migration `20261031100000_soglie_deposito_temporaneo`.
 
+Stesso discorso per **modifica e cancellazione dei contratti** (Fase 4 pezzo 0, colonne
+`versione`, `eliminato_il`, `eliminato_da` di `contracts`): il codice vecchio ignora le colonne,
+quindi **dopo un rollback i contratti eliminati ricompaiono** nella lista (e un contratto
+eliminato in `DRAFT` potrebbe essere attivato). Prima del rollback, **come owner** (con RLS
+FORCE il ruolo applicativo vedrebbe 0 righe e il controllo darebbe un falso "vuoto"):
+`SELECT tenant_id, count(*) FROM contracts WHERE eliminato_il IS NOT NULL GROUP BY 1`; se non
+e' vuoto, avvisare le aziende o portare quei contratti a `TERMINATED` con una query concordata.
+Caso inverso: un contratto eliminato e poi riattivato (o portato a `TERMINATED`) durante il
+rollback **sparisce di nuovo** al roll-forward, perche' `eliminato_il` e' ancora valorizzato:
+rifare il controllo di sopra prima di tornare al codice nuovo e, se serve, azzerare
+`eliminato_il`/`eliminato_da` di quei contratti. La FK `contracts_tenant_id_fkey` resta e il
+codice vecchio non ne risente. Il ripristino a mano
+dello schema e' nel commento della migration `20261101200000_contratti_modifica_eliminazione`.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del
@@ -491,6 +572,46 @@ aperta (Decisioni aperte, 9).
   vecchio le ignora.
 
 ---
+
+## 4.6 abbinamenti carico-scarico
+
+Tabella `abbinamenti_carico_scarico` (migration `20261101300000_abbinamenti_carico_scarico`,
+additiva): quale carico, o giacenza iniziale, ha coperto quale scarico del registro. Il codice
+vecchio la ignora; dopo un rollback del codice la tabella resta e riprende a contare al
+ripristino. **Prima del rollback** controllare
+`SELECT tenant_id, count(*) FROM abbinamenti_carico_scarico GROUP BY 1` e avvisare le aziende
+che hanno abbinamenti manuali (si perdono nella vista, non nel database).
+
+Ripristino a mano dello schema (solo se serve): `DROP TABLE abbinamenti_carico_scarico;
+DROP TYPE origine_abbinamento; DROP INDEX giacenze_iniziali_id_registro_tenant_key;` e
+`DELETE FROM _prisma_migrations WHERE migration_name = '20261101300000_abbinamenti_carico_scarico';`.
+
+Con il codice vecchio e la tabella ancora presente: cancellare una giacenza iniziale gia'
+abbinata fallisce con un errore di chiave esterna non gestito (500); **modificare una giacenza
+iniziale gia abbinata** (quantita, CER, data) e **rettificare un carico gia abbinato** (ridurlo
+sotto la quantita abbinata, cambiarne CER, unita o data) non vengono controllati: le righe
+restano e al ripristino del codice risultano `INCOERENTE`. Gli annullamenti di
+movimenti lasciano righe che al ripristino del codice risultano `INCOERENTE` (e si correggono
+dalla pagina). Prima di cancellare giacenze iniziali o movimenti col codice vecchio,
+controllare `SELECT count(*) FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`; se
+le righe non servono piu', `DELETE FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`.
+
+Le migration gia' applicate in produzione non si modificano: il commento iniziale resta com'e'.
+
+**Ricalcolo lungo e lock.** Il ricalcolo (`POST /abbinamenti/ricalcolo`) gira in una transazione
+con timeout di 60 s (`maxWait` 10 s); l'override a mano di 15 s (`maxWait` 5 s). Finche il
+ricalcolo e in corso tiene i lock sui CER dell'ambito: le registrazioni di scarichi
+concorrenti sugli stessi CER non lo aspettano a lungo, ma falliscono dopo circa 5 s (timeout
+predefinito di Prisma) con un errore e vanno ripetute. Se un ricalcolo supera il timeout viene
+annullato per intero; rilanciarlo per CER (`cerCode`) o fuori orario.
+
+**Dopo il deploy, cosa controllare:**
+- `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi
+  di stoccaggio R13/D15; poi cresce con le registrazioni).
+- RLS: la tabella ha `ENABLE` e `FORCE ROW LEVEL SECURITY` e la policy `isolamento_azienda`;
+  in CI `rls-catalogo.postgres.spec.ts` conta 44 tabelle con RLS.
+- Gli scarichi registrati prima del deploy non sono abbinati: l'amministratore li abbina dalla
+  pagina Giacenze -> Abbinamenti con "Abbina con FIFO i non abbinati".
 
 ## Metriche Prometheus (`/metrics`)
 

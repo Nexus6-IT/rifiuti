@@ -1,4 +1,4 @@
-// Messaggi ESATTI sollevati dai trigger delle pese (migration 20261101400000 e 20261101400100).
+// Messaggi ESATTI sollevati dai trigger delle pese (migration 20261101600000 e 20261101600100).
 // Il servizio li riconosce per uguaglianza del testo, non per parole chiave: se una migration li
 // cambia, `messaggi-trigger-pese.spec.ts` (che legge i file SQL) fallisce.
 export const MSG_TRIGGER = {

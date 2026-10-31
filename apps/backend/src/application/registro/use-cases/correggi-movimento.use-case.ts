@@ -18,6 +18,14 @@ import {
   hashAnnotazioneV2,
 } from '../../../domain/waste-movement/waste-movement.entity'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
+import {
+  fotografiaScarico,
+  riallineaDopoCorrezioneScarico,
+  verificaCorrezioneCarico,
+} from '../../abbinamenti/abbinamenti-correzioni'
+import { chiaveConfrontoCer } from '../../../domain/waste-movement/cer-registro'
+import { classeStoccaggio } from '../../../domain/waste-movement/abbinamento-carichi'
+import { famigliaFifo, quantitaFifo } from '../../../domain/waste-movement/fifo-deposito'
 import { saldiRegistroCer, SaldiRegistroCer } from '../giacenza-disponibile'
 import {
   bloccaProgressivo,
@@ -185,6 +193,31 @@ export class CorreggiMovimentoUseCase {
         }
         const radice = await this.radiceDellaCatena(tx, tenantId, originale)
 
+        // 4b. Abbinamenti carico-scarico (4.6, D11/D13). Carico: la correzione non deve violare
+        // I-ABB (409, rollback). Scarico: si fotografano i dati prima dell'insert.
+        if (originale.type === 'CARICO') {
+          await verificaCorrezioneCarico(tx, {
+            tenantId,
+            caricoRadiceId: radice.id,
+            numeroCarico: numeroDi(originale),
+            tipo,
+            nuovo:
+              tipo === 'RETTIFICA'
+                ? {
+                    giorno: giornoItaliano(dati.movementDate),
+                    chiaveCer: chiaveConfrontoCer(dati.cerCode),
+                    famiglia: famigliaFifo(dati.unit),
+                    quantita: quantitaFifo(Number(dati.quantity), dati.unit),
+                    classe: classeStoccaggio(dati.operationCode),
+                  }
+                : undefined,
+          })
+        }
+        const scaricoPrima =
+          originale.type === 'SCARICO'
+            ? await fotografiaScarico(tx, tenantId, originale, tipo, radice.id)
+            : null
+
         // 5. MUD gia presentato (R10). Una corsa con la presentazione (lock `mud-report|tenant|anno`
         // non preso) e' accettata: il file presentato non si tocca comunque.
         const avvisi: string[] = []
@@ -260,6 +293,20 @@ export class CorreggiMovimentoUseCase {
           movimentoOriginaleId: radice.id,
           motivoAnnotazione: motivo,
         })
+
+        // 8b. Scarico: le righe di abbinamento seguono la nuova testa (D11).
+        if (scaricoPrima) {
+          avvisi.push(
+            ...(await riallineaDopoCorrezioneScarico(tx, {
+              tenantId,
+              registroId: originale.registroId,
+              scaricoRadiceId: radice.id,
+              tipo,
+              prima: scaricoPrima,
+              userId: input.userId ?? null,
+            }))
+          )
+        }
 
         // 9. Saldi DOPO: blocco (rollback) o avvisi.
         const dopo = await this.saldi(tx, tenantId, originale.registroId, cerToccati)

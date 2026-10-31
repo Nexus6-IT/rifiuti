@@ -92,6 +92,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RettificaPeso',
   'AllegatoPesa',
   'CollegamentoAccesso',
+  // Stato di trasmissione del registro a RENTRI (Fase 2 pezzo 9): dato dell'azienda.
+  'MovimentoTrasmissioneRentri',
+  // Abbinamenti carico-scarico (4.6): dato dell'azienda.
+  'AbbinamentoCaricoScarico',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

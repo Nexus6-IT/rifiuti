@@ -50,6 +50,7 @@ import {
   RegistroNonTrovatoError,
   RegistroVista,
 } from '../../application/registro/registri.service'
+import { AvvisoRentriCorrezioneService } from '../../application/rentri/registro/avviso-rentri-correzione.service'
 import { DomainError } from '../../core/domain/errors'
 import {
   ProgressivoInizialeService,
@@ -70,7 +71,7 @@ import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.s
  * impostare il progressivo iniziale (C-W-02). La decisione e' presa nel
  * controller sul ruolo effettivo, non con `@Roles`.
  */
-const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
+export const RUOLI_REGISTRAZIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
 export const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
 
 @ApiTags('registro')
@@ -86,7 +87,8 @@ export class RegistroController {
     private readonly registri: RegistriService,
     private readonly giacenzeIniziali: GiacenzeInizialiService,
     private readonly correggiMovimento: CorreggiMovimentoUseCase,
-    private readonly verificaCatena: VerificaCatenaRegistroService
+    private readonly verificaCatena: VerificaCatenaRegistroService,
+    private readonly avvisoRentri: AvvisoRentriCorrezioneService
   ) {}
 
   /**
@@ -226,7 +228,7 @@ export class RegistroController {
       'segnato come rettificato. Se la correzione tocca anni con MUD già presentato serve ' +
       'confermaAnnoPresentato=true.',
   })
-  @ApiResponse({ status: 201, description: '{ movimento, avvisi[] }' })
+  @ApiResponse({ status: 201, description: '{ movimento, avvisi[], avvisoRentri }' })
   @ApiResponse({ status: 400, description: 'Dati non validi o motivo non valido' })
   @ApiResponse({
     status: 403,
@@ -243,11 +245,11 @@ export class RegistroController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RettificaMovimentoDto,
     @Req() req: any
-  ): Promise<EsitoCorrezione> {
+  ): Promise<EsitoCorrezione & { avvisoRentri: string | null }> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediRuoloRegistrazione(req, tenantId)
     const { motivo, confermaAnnoPresentato, movementDate, unit, ...resto } = dto
-    return this.correggiMovimento.rettifica({
+    const esito = await this.correggiMovimento.rettifica({
       tenantId,
       userId: req.user.id,
       movimentoId: id,
@@ -255,6 +257,10 @@ export class RegistroController {
       confermaAnnoPresentato,
       dati: { ...resto, movementDate: new Date(movementDate), unit: unit ?? 'KG' },
     })
+    return {
+      ...esito,
+      avvisoRentri: await this.avvisoRentri.calcola(tenantId, id, 'RETTIFICA'),
+    }
   }
 
   /** Annulla un'annotazione con una nuova annotazione di ANNULLAMENTO (copia dei dati, mai DELETE). */
@@ -266,7 +272,7 @@ export class RegistroController {
       "Scrive un'annotazione di ANNULLAMENTO che copia i dati dell'originale e ne toglie gli " +
       'effetti sulla giacenza. Il movimento resta nel registro, segnato come annullato.',
   })
-  @ApiResponse({ status: 201, description: '{ movimento, avvisi[] }' })
+  @ApiResponse({ status: 201, description: '{ movimento, avvisi[], avvisoRentri }' })
   @ApiResponse({
     status: 400,
     description: 'Motivo non valido',
@@ -285,16 +291,20 @@ export class RegistroController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AnnullaMovimentoDto,
     @Req() req: any
-  ): Promise<EsitoCorrezione> {
+  ): Promise<EsitoCorrezione & { avvisoRentri: string | null }> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediRuoloRegistrazione(req, tenantId)
-    return this.correggiMovimento.annulla({
+    const esito = await this.correggiMovimento.annulla({
       tenantId,
       userId: req.user.id,
       movimentoId: id,
       motivo: dto.motivo,
       confermaAnnoPresentato: dto.confermaAnnoPresentato,
     })
+    return {
+      ...esito,
+      avvisoRentri: await this.avvisoRentri.calcola(tenantId, id, 'ANNULLAMENTO'),
+    }
   }
 
   /**

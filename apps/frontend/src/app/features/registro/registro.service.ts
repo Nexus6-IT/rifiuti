@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core'
 import { HttpClient, HttpParams } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
+import { StatoRentri } from './stato-rentri'
 
 // ─── Modelli ────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,12 @@ export interface Movimento {
   giaRegistrato?: boolean
   /** Solo nella risposta di `registra`: avvisi non bloccanti per l'operatore. */
   avvisi?: string[]
+  /** Solo nell'elenco: stato di trasmissione a RENTRI; null se l'annotazione non ha una riga. */
+  trasmissioneRentri?: {
+    stato: StatoRentri
+    identificativo: string | null
+    motivo: string | null
+  } | null
 }
 
 export interface PaginatedMovimenti {
@@ -124,6 +131,8 @@ export interface AnnullamentoMovimentoRequest {
 export interface EsitoCorrezioneMovimento {
   movimento: Movimento
   avvisi: string[]
+  /** Frase per l'utente se l'annotazione corretta era già su RENTRI; null altrimenti. */
+  avvisoRentri?: string | null
 }
 
 export interface EsitoVerificaCatena {

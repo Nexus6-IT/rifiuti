@@ -1,4 +1,9 @@
-import { aggiornaReportData } from './mud-report-data'
+import {
+  aggiornaReportData,
+  comunicazioneSostituita,
+  dataComunicazioneSostituita,
+  sostituzioneNonCoincide,
+} from './mud-report-data'
 
 describe('aggiornaReportData', () => {
   let tx: any
@@ -97,5 +102,84 @@ describe('aggiornaReportData', () => {
     })
     const r = await aggiornaReportData(tx, 't1', 2025, () => null)
     expect(r.precedente).toEqual({})
+  })
+})
+
+describe('comunicazioneSostituita (G2: progressivi presentati da conservare)', () => {
+  const data = new Date('2026-06-30T10:00:00Z')
+  const sub = (reportData: unknown) => ({
+    status: 'SUBMITTED' as const,
+    submittedAt: data,
+    reportData,
+  })
+
+  it('presentazione v2 con i pacchetti 1 e 2: sostituiti {1, 2}', () => {
+    expect(comunicazioneSostituita(sub({ progressiviUnitaLocale: [1, 2] }))).toEqual({
+      data,
+      progressivi: [1, 2],
+    })
+  })
+
+  it('pacchetto unico con progressivo 2: sostituito {2}', () => {
+    expect(comunicazioneSostituita(sub({ progressiviUnitaLocale: [2] }))?.progressivi).toEqual([2])
+  })
+
+  it.each([
+    ['presentazione senza la chiave (v1 o registrata senza file)', {}],
+    ['progressivi vuoti', { progressiviUnitaLocale: [] }],
+    ['progressivi di forma inattesa', { progressiviUnitaLocale: ['a', 0, 1.5] }],
+    ['reportData non oggetto', null],
+  ])('ripiego {1}: %s', (_n, reportData) => {
+    expect(comunicazioneSostituita(sub(reportData))?.progressivi).toEqual([1])
+  })
+
+  it('annullata per sostituirla: i progressivi vengono dalla voce di annullamento', () => {
+    const r = comunicazioneSostituita({
+      status: 'DRAFT',
+      submittedAt: null,
+      reportData: {
+        annullamenti: [
+          {
+            motivo: 'DICHIARAZIONE_DA_SOSTITUIRE',
+            submittedAt: data.toISOString(),
+            progressiviUnitaLocale: [2, 3],
+          },
+        ],
+      },
+    })
+    expect(r).toEqual({ data, progressivi: [2, 3] })
+  })
+
+  it('annullamento senza progressivi (storico precedente): {1}', () => {
+    const r = comunicazioneSostituita({
+      status: 'DRAFT',
+      submittedAt: null,
+      reportData: {
+        annullamenti: [{ motivo: 'DICHIARAZIONE_DA_SOSTITUIRE', submittedAt: data.toISOString() }],
+      },
+    })
+    expect(r?.progressivi).toEqual([1])
+  })
+
+  it('nessuna presentazione: null, e dataComunicazioneSostituita ne segue la data', () => {
+    expect(comunicazioneSostituita(null)).toBeNull()
+    expect(
+      comunicazioneSostituita({ status: 'DRAFT', submittedAt: null, reportData: {} })
+    ).toBeNull()
+    expect(dataComunicazioneSostituita(sub({ progressiviUnitaLocale: [2] }))).toEqual(data)
+  })
+})
+
+describe('sostituzioneNonCoincide', () => {
+  it.each([
+    [[1, 2], [1, 2], false],
+    [[1], [1], false],
+    [[2], [2], false],
+    [[1], [1, 2], true],
+    [[2], [1], true],
+    [[1, 2], [1], true],
+    [[1, 2], [2, 3], true],
+  ])('sostituiti %j, file %j → %s', (sostituiti, file, atteso) => {
+    expect(sostituzioneNonCoincide(sostituiti, file)).toBe(atteso)
   })
 })

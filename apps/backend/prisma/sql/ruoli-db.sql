@@ -34,7 +34,7 @@
 -- `collegamenti_accesso`, `automezzi`, `strumenti_pesa`) ricevono SELECT, INSERT, UPDATE e una REVOKE
 -- esplicita di DELETE/TRUNCATE. Valgono per ENTRAMBI i ruoli. La cancellazione a cascata da
 -- `tenants` resta possibile: le azioni referenziali girano coi privilegi del proprietario.
--- La migration `20261101400000_pese_modello_dati` fa le stesse REVOKE se i ruoli esistono gia'.
+-- La migration `20261101600000_pese_modello_dati` fa le stesse REVOKE se i ruoli esistono gia'.
 
 SELECT set_config('ruoli.app_password', :'app_password', false);
 SELECT set_config('ruoli.sistema_password', :'sistema_password', false);

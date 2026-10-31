@@ -4,6 +4,11 @@ import type {
   CatalogoCausali,
   DefinizioneCausale,
 } from '../../../domain/waste-movement/catalogo-causali'
+import {
+  codiceUnitaLocale,
+  pacchettiPerExport,
+  type DichiarazionePerExport,
+} from './mud-dichiarazioni'
 import type {
   MudAutorizzazione,
   MudAzienda,
@@ -76,6 +81,36 @@ export function operazioneDaCatalogo(
   m: MovimentoClassificabile
 ): 'R' | 'D' | undefined {
   return comportamentoDelMovimento(catalogo, m)?.operazione ?? undefined
+}
+
+/** Da dove viene l'operazione R/D di uno scarico (Decisione 5). */
+export type OrigineOperazione =
+  | 'CODICE_MOVIMENTO'
+  | 'CATALOGO'
+  | 'CODICE_FIR'
+  | 'TIPO_FIR'
+  | 'NON_INDICATA'
+
+/**
+ * Recupero o smaltimento di uno scarico, nell'ordine della Decisione 5: codice operazione del
+ * movimento, causale del catalogo, codice operazione del FIR, tipo operazione del FIR (dedotta:
+ * il default del campo è DISPOSAL, quindi chi chiama avvisa), altrimenti smaltimento «non
+ * indicata» (chi chiama avvisa). Pura: la usano l'aggregazione MUD e la vista Bilancio.
+ */
+export function operazioneDelMovimento(
+  catalogo: CatalogoCausali,
+  m: MovimentoClassificabile & { operationCode: string | null },
+  fir?: { wasteOperationCode: string | null; wasteOperationType: string | null }
+): { operazione: 'R' | 'D'; origine: OrigineOperazione } {
+  const dalCodice = operazioneDaCodice(m.operationCode)
+  if (dalCodice) return { operazione: dalCodice, origine: 'CODICE_MOVIMENTO' }
+  const dalCatalogo = operazioneDaCatalogo(catalogo, m)
+  if (dalCatalogo) return { operazione: dalCatalogo, origine: 'CATALOGO' }
+  const dalCodiceFir = fir ? operazioneDaCodice(fir.wasteOperationCode) : undefined
+  if (dalCodiceFir) return { operazione: dalCodiceFir, origine: 'CODICE_FIR' }
+  if (fir?.wasteOperationType === 'RECOVERY') return { operazione: 'R', origine: 'TIPO_FIR' }
+  if (fir?.wasteOperationType === 'DISPOSAL') return { operazione: 'D', origine: 'TIPO_FIR' }
+  return { operazione: 'D', origine: 'NON_INDICATA' }
 }
 
 /** Valore del registro non vuoto che non corrisponde a nessun flag del tracciato. */
@@ -159,14 +194,10 @@ function ordina<T>(elementi: T[] | undefined, chiave: (e: T) => string): T[] | u
 const perSoggetto = (s: { codiceFiscale: string; ragioneSociale: string }): string =>
   `${s.codiceFiscale}\u0000${s.ragioneSociale}`
 
-/**
- * SHA-256 esadecimale dei dati aggregati. Tutto è portato in forma canonica (numeri a 3
- * decimali, chiavi in ordine) e poi ordinato: righe per `cerCode`; `dr`, `te` e `rt` per codice
- * fiscale e ragione sociale; `re` e `mg` solo per contenuto; a parità di chiave decide il
- * JSON dell'elemento. Non dipende dall'ordine di lettura.
- */
-export function hashAggregato(righe: MudRifiutoLine[]): string {
-  const normalizzate = ordina(
+// Righe in forma canonica e ordinata, condivisa da hashAggregato e hashDichiarazioni: il valore
+// di hashAggregato non deve cambiare, quindi la normalizzazione è quella di sempre.
+function normalizzaRighe(righe: MudRifiutoLine[]): unknown[] {
+  return ordina(
     righe.map(riga => canonico(riga) as MudRifiutoLine),
     riga => riga.cerCode
   )!.map(riga => ({
@@ -177,9 +208,57 @@ export function hashAggregato(righe: MudRifiutoLine[]): string {
     re: ordina(riga.re, () => ''),
     mg: ordina(riga.mg, () => ''),
   }))
+}
+
+/**
+ * SHA-256 esadecimale dei dati aggregati. Tutto è portato in forma canonica (numeri a 3
+ * decimali, chiavi in ordine) e poi ordinato: righe per `cerCode`; `dr`, `te` e `rt` per codice
+ * fiscale e ragione sociale; `re` e `mg` solo per contenuto; a parità di chiave decide il
+ * JSON dell'elemento. Non dipende dall'ordine di lettura.
+ */
+export function hashAggregato(righe: MudRifiutoLine[]): string {
+  return createHash('sha256')
+    .update(json(canonico(normalizzaRighe(righe))))
+    .digest('hex')
+}
+
+/**
+ * SHA-256 esadecimale di più dichiarazioni (D10): JSON canonico di `[{ codice, righe }]` con le
+ * righe normalizzate come in `hashAggregato`, ordinato per codice. Il codice entra nell'hash:
+ * le stesse righe in un'altra sede danno un valore diverso.
+ */
+export function hashDichiarazioni(
+  dichiarazioni: Array<{ codice: string; righe: MudRifiutoLine[] }>
+): string {
+  const normalizzate = [...dichiarazioni]
+    .sort((a, b) => confronta(a.codice, b.codice))
+    .map(d => ({ codice: d.codice, righe: normalizzaRighe(d.righe) }))
   return createHash('sha256')
     .update(json(canonico(normalizzate)))
     .digest('hex')
+}
+
+/** Quanto serve dell'aggregato per gli hash (sottoinsieme di `MudAggregato`). */
+export interface AggregatoPerHash {
+  versioneCalcolo?: 1 | 2
+  righe: MudRifiutoLine[]
+  dichiarazioni?: Array<{ codice: string; righe: MudRifiutoLine[] }>
+}
+
+/**
+ * D10: hash dei dati calcolati. Versione 1, o nessuna dichiarazione → `hashAggregato(righe)`
+ * (valore di oggi); versione 2 con UNA dichiarazione di codice 1 → `hashAggregato` delle sue
+ * righe (uguale alla versione 1 se non ci sono giacenze); altrimenti `hashDichiarazioni`.
+ */
+export function hashCalcoloMud(aggregato: AggregatoPerHash): string {
+  const dichiarazioni = aggregato.dichiarazioni ?? []
+  if (aggregato.versioneCalcolo === 1 || dichiarazioni.length === 0) {
+    return hashAggregato(aggregato.righe)
+  }
+  if (dichiarazioni.length === 1 && dichiarazioni[0].codice === codiceUnitaLocale(1)) {
+    return hashAggregato(dichiarazioni[0].righe)
+  }
+  return hashDichiarazioni(dichiarazioni)
 }
 
 /**
@@ -192,8 +271,31 @@ export function hashAggregato(righe: MudRifiutoLine[]): string {
 export function hashDichiarante(dichiarante: {
   azienda: MudAzienda
   autorizzazioni: MudAutorizzazione[]
+  /** pacchetti del file con la loro anagrafica (D10): solo se non sono la sola azienda */
+  unitaLocali?: Array<{ progressivo: number; unitaLocale: unknown }>
 }): string {
   return createHash('sha256')
     .update(json(canonico(JSON.parse(json(dichiarante)))))
     .digest('hex')
+}
+
+/**
+ * D10: `hashDichiarante` con le anagrafiche dei pacchetti (D5) solo se le dichiarazioni sono più
+ * di una o almeno una non usa l'anagrafica dell'azienda; altrimenti il valore resta quello di oggi.
+ */
+export function hashDichiaranteMud(
+  dichiarante: { azienda: MudAzienda; autorizzazioni: MudAutorizzazione[] },
+  aggregato: { dichiarazioni?: DichiarazionePerExport[] }
+): string {
+  const dichiarazioni = aggregato.dichiarazioni ?? []
+  const pacchetti = pacchettiPerExport(dichiarazioni, dichiarante.azienda)
+  const conSedi = pacchetti.length > 1 || pacchetti.some(p => p.unitaLocale !== null)
+  if (!conSedi) return hashDichiarante(dichiarante)
+  return hashDichiarante({
+    ...dichiarante,
+    unitaLocali: pacchetti.map(p => ({
+      progressivo: p.progressivoUnitaLocale,
+      unitaLocale: p.unitaLocale,
+    })),
+  })
 }

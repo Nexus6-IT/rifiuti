@@ -12,7 +12,7 @@ Crea (o riallinea, se esistono) i due ruoli applicativi e i loro GRANT minimi:
   `allegati_pesa`) solo `SELECT` e `INSERT`; `v_senza_cancellazione` (`accessi_pesa`,
   `collegamenti_accesso`, `automezzi`, `strumenti_pesa`) `SELECT`, `INSERT`, `UPDATE`, mai
   `DELETE` né `TRUNCATE`. Le `REVOKE` sono ripetute a ogni esecuzione, per entrambi i ruoli, e la
-  migration `20261101400000_pese_modello_dati` le fa se i ruoli esistono già. Una nuova tabella
+  migration `20261101600000_pese_modello_dati` le fa se i ruoli esistono già. Una nuova tabella
   di questo tipo va aggiunta all'elenco giusto.
 - `wasteflow_sistema`: job di sistema, `BYPASSRLS`; stessi diritti.
 

@@ -217,6 +217,122 @@ describe('RentriUnitaLocaleService', () => {
     })
   })
 
+  describe('update — anagrafica della sede (F2-8)', () => {
+    beforeEach(() => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow())
+      db.rentriUnitaLocale.update.mockResolvedValue(makeRow())
+    })
+
+    it('update: salva indirizzo, civico, CAP, comune, provincia maiuscola e addetti', async () => {
+      db.rentriUnitaLocale.update.mockResolvedValue(
+        makeRow({
+          indirizzo: 'Via Roma',
+          civico: '12/A',
+          cap: '20121',
+          comune: 'Milano',
+          provincia: 'MI',
+          numeroAddetti: 7,
+          progressivoMud: 1,
+        })
+      )
+
+      const result = await service.update('tenant-1', 'ul-1', {
+        indirizzo: '  Via Roma ',
+        civico: ' 12/A ',
+        cap: '20121',
+        comune: ' Milano ',
+        provincia: 'mi',
+        numeroAddetti: 7,
+      })
+
+      expect(db.rentriUnitaLocale.update).toHaveBeenCalledWith({
+        where: { id: 'ul-1' },
+        data: {
+          indirizzo: 'Via Roma',
+          civico: '12/A',
+          cap: '20121',
+          comune: 'Milano',
+          provincia: 'MI',
+          numeroAddetti: 7,
+        },
+      })
+      expect(result).toMatchObject({
+        indirizzo: 'Via Roma',
+        civico: '12/A',
+        cap: '20121',
+        comune: 'Milano',
+        provincia: 'MI',
+        numeroAddetti: 7,
+        progressivoMud: 1,
+      })
+    })
+
+    it('update: stringa vuota diventa null', async () => {
+      await service.update('tenant-1', 'ul-1', {
+        indirizzo: '   ',
+        civico: '',
+        cap: '',
+        comune: ' ',
+        provincia: '',
+        numeroAddetti: null,
+      })
+
+      expect(db.rentriUnitaLocale.update).toHaveBeenCalledWith({
+        where: { id: 'ul-1' },
+        data: {
+          indirizzo: null,
+          civico: null,
+          cap: null,
+          comune: null,
+          provincia: null,
+          numeroAddetti: null,
+        },
+      })
+    })
+
+    it('update: CAP non di 5 cifre → 400', async () => {
+      await expect(service.update('tenant-1', 'ul-1', { cap: '2012' })).rejects.toBeInstanceOf(
+        BadRequestException
+      )
+      await expect(service.update('tenant-1', 'ul-1', { cap: '2012A' })).rejects.toBeInstanceOf(
+        BadRequestException
+      )
+      expect(db.rentriUnitaLocale.update).not.toHaveBeenCalled()
+    })
+
+    it('update: provincia non di 2 lettere → 400', async () => {
+      await expect(service.update('tenant-1', 'ul-1', { provincia: 'MIL' })).rejects.toBeInstanceOf(
+        BadRequestException
+      )
+      await expect(service.update('tenant-1', 'ul-1', { provincia: 'M1' })).rejects.toBeInstanceOf(
+        BadRequestException
+      )
+      expect(db.rentriUnitaLocale.update).not.toHaveBeenCalled()
+    })
+
+    it('update: addetti negativi → 400', async () => {
+      await expect(
+        service.update('tenant-1', 'ul-1', { numeroAddetti: -1 })
+      ).rejects.toBeInstanceOf(BadRequestException)
+      await expect(
+        service.update('tenant-1', 'ul-1', { numeroAddetti: 1.5 })
+      ).rejects.toBeInstanceOf(BadRequestException)
+      expect(db.rentriUnitaLocale.update).not.toHaveBeenCalled()
+    })
+
+    it('update: progressivoMud non è fra i campi aggiornabili', async () => {
+      await service.update('tenant-1', 'ul-1', {
+        denominazione: 'Nuovo nome',
+        progressivoMud: 9,
+      } as never)
+
+      expect(db.rentriUnitaLocale.update).toHaveBeenCalledWith({
+        where: { id: 'ul-1' },
+        data: { denominazione: 'Nuovo nome' },
+      })
+    })
+  })
+
   describe('setPrincipale', () => {
     it('404 se la sede non esiste o appartiene a un altro tenant', async () => {
       db.rentriUnitaLocale.findFirst.mockResolvedValue(null)

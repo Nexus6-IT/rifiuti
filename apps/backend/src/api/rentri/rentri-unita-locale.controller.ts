@@ -76,7 +76,11 @@ export class RentriUnitaLocaleController {
   @Put(':id')
   @Roles('SUPER_ADMIN', 'ADMIN')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Aggiorna denominazione/stato di attività di una unità locale' })
+  @ApiOperation({
+    summary: 'Aggiorna denominazione, stato di attività e anagrafica di una unità locale',
+    description:
+      "L'anagrafica (indirizzo, civico, CAP, comune, provincia, addetti) serve alla dichiarazione MUD della sede. Il codice MUD (progressivoMud) è assegnato dal database e non è modificabile.",
+  })
   @ApiResponse({ status: 200, description: 'Unità locale aggiornata' })
   @ApiResponse({ status: 404, description: 'Unità locale non trovata' })
   async update(

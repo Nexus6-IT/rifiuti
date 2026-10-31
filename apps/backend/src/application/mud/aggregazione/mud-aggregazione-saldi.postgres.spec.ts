@@ -8,7 +8,7 @@ import { limitiAnnoMud } from './mud-regole'
  * il confine dell'anno italiano e le somme Decimal stanno nella query, quindi solo il
  * database vero li prova.
  */
-describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
+describe('MudAggregazioneService.saldiAl31DicembrePerRegistro — Postgres reale', () => {
   let prisma: PrismaClient
   let service: any
   let tenantId: string
@@ -92,7 +92,11 @@ describe('MudAggregazioneService.saldiAl31Dicembre — Postgres reale', () => {
     })
   }
 
-  const saldi = () => service.saldiAl31Dicembre(tenantId, limitiAnnoMud(2025).fine, 2025)
+  // il saldo per registro (D8) sommato fra i registri è l'elenco di sempre (versione 1)
+  const saldi = async () =>
+    service.sommaSaldiPerCer(
+      await service.saldiAl31DicembrePerRegistro(tenantId, limitiAnnoMud(2025).fine, 2025)
+    )
   const apertura = (
     data: string,
     quantita: number,

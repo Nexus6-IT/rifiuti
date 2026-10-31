@@ -1,5 +1,5 @@
 -- Fase 4 pezzo 8a, Task 2b: cancellazione bloccata dai trigger, FOR SHARE sugli accessi, indici di
--- supporto alle chiavi esterne (continua `20261101400000_pese_modello_dati`, mai applicata in
+-- supporto alle chiavi esterne (continua `20261101600000_pese_modello_dati`, mai applicata in
 -- produzione).
 --
 -- Cosa fa:
@@ -21,8 +21,8 @@
 -- collegamenti_accesso_id_tenant_id_key, collegamenti_accesso_fir_id_tenant_id_idx,
 -- collegamenti_accesso_movimento_idx, accessi_pesa_automezzo_id_idx, pesate_allegato_id_idx,
 -- pesate_automezzo_id_idx; le due funzioni `*_controlli` tornano alla versione di
--- `20261101400000_pese_modello_dati` (senza FOR SHARE). Da migration fallita (P3009):
--- `npx prisma migrate resolve --rolled-back 20261101400100_pese_cancellazione_e_indici`.
+-- `20261101600000_pese_modello_dati` (senza FOR SHARE). Da migration fallita (P3009):
+-- `npx prisma migrate resolve --rolled-back 20261101600100_pese_cancellazione_e_indici`.
 
 SET LOCAL lock_timeout = '5s';
 

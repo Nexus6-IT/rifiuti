@@ -130,11 +130,15 @@ model Tenant {
   rettifichePeso        RettificaPeso[]
   allegatiPesa          AllegatoPesa[]
   collegamentiAccesso   CollegamentoAccesso[]
+  abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
   madre                 Tenant?                  @relation("GruppoAziende", fields: [parentTenantId], references: [id], onDelete: Restrict)
   figlie                 Tenant[]                 @relation("GruppoAziende")
   // Fase 2 pezzo 10
   ditte                  Ditta[]
   sediDitte              SedeDitta[]
+  trasmissioniRentri     MovimentoTrasmissioneRentri[]
+  // Fase 4 pezzo 0
+  contracts              Contract[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -886,8 +890,10 @@ model GiacenzaIniziale {
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registro RegistroRifiuti @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  abbinamenti AbbinamentoCaricoScarico[]
 
   @@unique([id, tenantId])
+  @@unique([id, registroId, tenantId], map: "giacenze_iniziali_id_registro_tenant_key")
   @@unique([registroId, cerCode, statoFisico, unita], map: "giacenze_iniziali_registro_cer_stato_unita_key")
   @@index([tenantId])
   @@index([registroId])
@@ -1789,6 +1795,16 @@ model Contract {
 
   status ContractStatus @default(DRAFT)
 
+  /// Lock ottimistico (Fase 4 pezzo 0), come `FIR.versione`: ogni modifica la incrementa.
+  versione Int @default(1)
+
+  /// Cancellazione logica (Fase 4 pezzo 0, D3): il contratto eliminato resta in tabella ma non
+  /// compare nelle liste. Nessuna FK all'utente: lo storico sopravvive alla sua rimozione.
+  eliminatoIl DateTime? @map("eliminato_il")
+  eliminatoDa String?   @map("eliminato_da") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, contractNumber])
   @@index([tenantId, status])
   @@index([tenantId, producerId])
@@ -1937,11 +1953,15 @@ model WasteMovement {
   /// Radice della catena, con gli stessi vincoli di registro, azienda e tipo.
   originale   WasteMovement?  @relation("Radice", fields: [movimentoOriginaleId, registroId, tenantId, type], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_originale_fkey")
   catena      WasteMovement[] @relation("Radice")
+  /// F2-9: stato di trasmissione a RENTRI (nessuna riga = non trasmesso).
+  trasmissioneRentri MovimentoTrasmissioneRentri?
   /// Versione della causale aziendale usata. NoAction: la cancellazione a cascata di un'azienda
   /// toglie movimenti e causali nello stesso statement.
   causaleAzienda CausaleRegistroAzienda? @relation("MovimentiCausale", fields: [causaleAziendaId, tenantId, causale, type], references: [id, tenantId, codice, verso], onDelete: NoAction, onUpdate: NoAction, map: "waste_movements_causale_azienda_fkey")
 
   collegamentiAccesso CollegamentoAccesso[]
+  abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
+  abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
 
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
@@ -2097,10 +2117,32 @@ model RentriUnitaLocale {
   /// mai un valore di ripiego inventato.
   dimensioneScortaDesiderata Int? @map("dimensione_scorta_desiderata")
 
+  // Fase 2 pezzo 8: anagrafica della sede per la sua dichiarazione MUD (record AA, blocco unita'
+  // locale). Inserita a mano dalla pagina delle unita' locali: la sincronizzazione da RENTRI non
+  // la scrive. CHECK nella migration (CAP 5 cifre, provincia 2 lettere maiuscole, addetti >= 0).
+  /// Indirizzo (via/piazza) della sede.
+  indirizzo      String? @db.VarChar(255)
+  /// Numero civico.
+  civico         String? @db.VarChar(20)
+  /// CAP, 5 cifre.
+  cap            String? @db.VarChar(5)
+  /// Comune della sede (risolto sul codice ISTAT con le tabelle di riferimento).
+  comune         String? @db.VarChar(100)
+  /// Sigla della provincia, 2 lettere maiuscole.
+  provincia      String? @db.VarChar(2)
+  /// Numero di addetti della sede.
+  numeroAddetti  Int?    @map("numero_addetti")
+  /// Codice dell'unita' locale nel file MUD (progressivo per azienda, > 0). Assegnato da un
+  /// trigger BEFORE INSERT (massimo dell'azienda + 1) e dal backfill della migration: la
+  /// principale di allora ha 1, il codice che il file usa da sempre. Non modificabile dall'API
+  /// e non cambia se cambia la principale.
+  progressivoMud Int?    @map("progressivo_mud")
+
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registri RegistroRifiuti[]
 
   @@unique([tenantId, numIscrSito])
+  @@unique([tenantId, progressivoMud], map: "rentri_unita_locali_tenant_progressivo_mud_key")
   @@index([tenantId])
   @@map("rentri_unita_locali")
 }
@@ -2118,9 +2160,12 @@ model RegistroRifiuti {
   unitaLocaleId        String? @map("unita_locale_id") @db.Uuid
   codice               String  @default("CARICO_SCARICO") @db.VarChar(30)
   descrizione          String  @db.VarChar(255)
-  /// Identificativo del registro assegnato dal RENTRI (non ancora valorizzato: F2-9).
+  /// Identificativo del registro assegnato dal RENTRI (formato R + 10 alfanumerici maiuscoli).
   identificativoRentri String? @map("identificativo_rentri") @db.VarChar(100)
   attivo               Boolean @default(true)
+  /// F2-9: data da cui i movimenti nuovi del registro si trasmettono da soli a RENTRI (NULL = solo
+  /// invio manuale). Mai nel passato: attivarlo la imposta a ora (nessun invio retroattivo).
+  invioRentriAutomaticoDal DateTime? @map("invio_rentri_automatico_dal") @db.Timestamptz(3)
 
   tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unitaLocale         RentriUnitaLocale?            @relation(fields: [unitaLocaleId], references: [id], onDelete: Restrict)
@@ -2130,9 +2175,13 @@ model RegistroRifiuti {
   progressiviIniziali RegistroProgressivoIniziale[]
   giacenzeIniziali    GiacenzaIniziale[]
   soglieDeposito      SogliaDepositoTemporaneo[]
+  abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, unitaLocaleId, codice])
+  /// F2-9: per azienda, non globale. Il CHECK `registri_rifiuti_identificativo_rentri_check` (solo in
+  /// migration) impone il formato `^R[0-9A-Z]{10}$`.
+  @@unique([tenantId, identificativoRentri], map: "registri_rifiuti_tenant_identificativo_rentri_key")
   @@index([tenantId])
   @@map("registri_rifiuti")
 }
@@ -2495,7 +2544,7 @@ model SogliaDepositoTemporaneo {
 
 // ---------------------------------------------------------------------------------------------
 // Pese (Fase 4 pezzo 8a): strumenti, automezzi, accessi, pesate, rettifiche, allegati, collegamenti.
-// Le regole di immutabilita' stanno nei trigger della migration `20261101400000_pese_modello_dati`
+// Le regole di immutabilita' stanno nei trigger della migration `20261101600000_pese_modello_dati`
 // e nei privilegi di `prisma/sql/ruoli-db.sql`; i CHECK e gli indici unici parziali (solo SQL)
 // non sono dichiarati qui: Prisma non li conosce, quindi `migrate diff` resta pulito.
 // ---------------------------------------------------------------------------------------------
@@ -2762,4 +2811,119 @@ model CollegamentoAccesso {
   @@index([firId, tenantId], map: "collegamenti_accesso_fir_id_tenant_id_idx")
   @@index([movimentoId, registroId, tenantId, verso], map: "collegamenti_accesso_movimento_idx")
   @@map("collegamenti_accesso")
+}
+
+/// F2-9: stato di trasmissione a RENTRI di un'annotazione del registro.
+enum StatoTrasmissioneRentri {
+  /// In coda, non ancora prenotata.
+  DA_TRASMETTERE
+  /// Prenotata, POST in corso.
+  IN_INVIO
+  /// Transazione salvata, esito da leggere.
+  ATTESA_ESITO
+  TRASMESSA
+  /// Esito letto, riga non registrata da RENTRI.
+  RIFIUTATA
+  /// Traduzione fail-closed fallita: il programma non sa tradurre l'annotazione.
+  NON_TRASMISSIBILE
+  /// Esito della POST sconosciuto: bloccata finche' non si verifica.
+  INCERTA
+  /// Dichiarata presente da altro programma o dal portale.
+  GIA_SU_RENTRI
+
+  @@map("stato_trasmissione_rentri")
+}
+
+/// F2-9: come una riga di trasmissione e' nata.
+enum OrigineTrasmissioneRentri {
+  MANUALE
+  AUTOMATICA
+  CORREZIONE
+  DICHIARATA
+
+  @@map("origine_trasmissione_rentri")
+}
+
+/// F2-9: una riga per movimento trasmesso (o in via di trasmissione) a RENTRI. Nessuna riga = non
+/// trasmesso: la migration non crea righe e nulla parte da solo sullo storico. Il corpo inviato non
+/// si salva (solo i messaggi di validazione di RENTRI della riga). Registro, tipo e azienda sono
+/// copie immutabili del movimento, per la FK composta. I trigger `movimenti_trasmissione_rentri_immutabile`
+/// (una TRASMESSA/GIA_SU_RENTRI non torna indietro) e `..._no_delete` (non si cancella una riga che
+/// ha trasmesso, salvo la cascata di un'azienda) e i CHECK stanno solo nella migration: Prisma non
+/// li conosce, quindi `migrate diff` resta pulito.
+model MovimentoTrasmissioneRentri {
+  id                   String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                    @map("tenant_id") @db.Uuid
+  movimentoId          String                    @map("movimento_id") @db.Uuid
+  registroId           String                    @map("registro_id") @db.Uuid
+  tipo                 WasteMovementType
+  stato                StatoTrasmissioneRentri   @default(DA_TRASMETTERE)
+  origine              OrigineTrasmissioneRentri
+  bloccatoInvio        Boolean                   @default(false) @map("bloccato_invio")
+  motivoBlocco         String?                   @map("motivo_blocco") @db.VarChar(500)
+  identificativoRentri String?                   @map("identificativo_rentri") @db.VarChar(20)
+  transazioneId        String?                   @map("transazione_id") @db.Uuid
+  lottoId              String?                   @map("lotto_id") @db.Uuid
+  prenotatoIl          DateTime?                 @map("prenotato_il") @db.Timestamptz(3)
+  trasmessoIl          DateTime?                 @map("trasmesso_il") @db.Timestamptz(3)
+  tentativi            Int                       @default(0)
+  ultimoErrore         String?                   @map("ultimo_errore") @db.VarChar(1000)
+  /// Solo i messaggi di validazione di RENTRI della riga: `{ campo, codice, tipo }`.
+  messaggi             Json                      @default("[]")
+  accodatoDa           String?                   @map("accodato_da") @db.Uuid
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "movimenti_trasmissione_rentri_tenant_fkey")
+  movimento WasteMovement @relation(fields: [movimentoId, registroId, tenantId, tipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "movimenti_trasmissione_rentri_movimento_fkey")
+
+  @@unique([movimentoId], map: "movimenti_trasmissione_rentri_movimento_id_key")
+  @@unique([id, tenantId], map: "movimenti_trasmissione_rentri_id_tenant_id_key")
+  /// Prisma vuole l'unico sui campi esatti della FK composta per accettare la relazione 1:1
+  /// (`trasmissioneRentri?`); l'1:1 vero e' garantito dall'unico su `movimento_id`.
+  @@unique([movimentoId, registroId, tenantId, tipo], map: "movimenti_trasmissione_rentri_movimento_chiave_key")
+  @@index([tenantId], map: "movimenti_trasmissione_rentri_tenant_id_idx")
+  @@index([registroId, stato], map: "movimenti_trasmissione_rentri_registro_stato_idx")
+  @@index([transazioneId], map: "movimenti_trasmissione_rentri_transazione_id_idx")
+  @@map("movimenti_trasmissione_rentri")
+}
+
+enum OrigineAbbinamento {
+  AUTOMATICO
+  MANUALE
+
+  @@map("origine_abbinamento")
+}
+
+/// 4.6: quale carico (o giacenza iniziale) ha coperto quale scarico, e per quanto. Gli id sono
+/// quelli delle radici delle catene di correzione; quantita, data e classe si leggono dalla testa
+/// vigente. I CHECK (un solo carico, quantita > 0, tipo) stanno solo nella migration.
+model AbbinamentoCaricoScarico {
+  id                 String             @id(map: "abbinamenti_cs_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String             @map("tenant_id") @db.Uuid
+  registroId         String             @map("registro_id") @db.Uuid
+  scaricoId          String             @map("scarico_id") @db.Uuid
+  scaricoTipo        WasteMovementType  @default(SCARICO) @map("scarico_tipo")
+  caricoId           String?            @map("carico_id") @db.Uuid
+  caricoTipo         WasteMovementType  @default(CARICO) @map("carico_tipo")
+  giacenzaInizialeId String?            @map("giacenza_iniziale_id") @db.Uuid
+  famiglia           String             @db.VarChar(10)
+  quantita           Decimal            @db.Decimal(12, 3)
+  origine            OrigineAbbinamento
+  creatoDa           String?            @map("creato_da") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "abbinamenti_cs_tenant_id_fkey")
+  registro RegistroRifiuti  @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_registro_fkey")
+  scarico  WasteMovement    @relation("AbbinamentiScarico", fields: [scaricoId, registroId, tenantId, scaricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_scarico_fkey")
+  carico   WasteMovement?   @relation("AbbinamentiCarico", fields: [caricoId, registroId, tenantId, caricoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_carico_fkey")
+  giacenza GiacenzaIniziale? @relation(fields: [giacenzaInizialeId, registroId, tenantId], references: [id, registroId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "abbinamenti_cs_giacenza_fkey")
+
+  @@unique([scaricoId, caricoId], map: "abbinamenti_cs_scarico_carico_key")
+  @@unique([scaricoId, giacenzaInizialeId], map: "abbinamenti_cs_scarico_giacenza_key")
+  @@index([tenantId], map: "abbinamenti_cs_tenant_id_idx")
+  @@index([registroId], map: "abbinamenti_cs_registro_id_idx")
+  @@index([caricoId], map: "abbinamenti_cs_carico_id_idx")
+  @@index([giacenzaInizialeId], map: "abbinamenti_cs_giacenza_iniziale_id_idx")
+  @@map("abbinamenti_carico_scarico")
 }

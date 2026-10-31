@@ -180,6 +180,17 @@ export function registraRotteDatiRegistri(app: FastifyInstance): void {
     return { completata: true }
   })
 
+  // Per i test end-to-end: l'id dell'ultima transazione `Movimenti` inviata a un registro,
+  // senza dover firmare un JWT per la rotta pubblica `last-transazione-id`.
+  app.get<{ Params: { identificativo: string } }>(
+    '/__controllo/dati-registri/ultima-transazione/:identificativo',
+    async (richiesta, risposta) => {
+      const id = registri.ultimaTransazioneMovimentiDi(richiesta.params.identificativo)
+      if (!id) return inviaProblemDetails(risposta, 404, { title: 'Nessuna transazione' })
+      return { transazione_id: id }
+    }
+  )
+
   app.post('/__controllo/dati-registri/azzera', async () => {
     registri.azzera()
     return { azzerato: true }
