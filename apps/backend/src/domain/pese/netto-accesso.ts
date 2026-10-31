@@ -1,4 +1,5 @@
 import { formattaQuantita } from '../../core/format/formatta-quantita'
+import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
 import type { FontePesataDominio, ModoPesaturaDominio, VersoPesata } from './tipi'
 
 export type QualitaNetto = 'DUE_PESATE' | 'TARA_DICHIARATA' | 'PESATA_SINGOLA'
@@ -53,10 +54,6 @@ function giorniTra(daIso: string, aIso: string): number {
   return Math.round((b - a) / MS_GIORNO)
 }
 
-function dataItaliana(iso: string): string {
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
-}
-
 function esito(parziale: Partial<EsitoNetto> & Pick<EsitoNetto, 'stato'>): EsitoNetto {
   return {
     lordoKg: null,
@@ -84,22 +81,26 @@ export function calcolaNetto(
 ): EsitoNetto {
   const manuale = pesate.some(p => p.fonte === 'MANUALE')
   const rettificato = pesate.some(p => p.rettifiche.length > 0)
+  const avvisi: string[] = []
+  if (manuale) avvisi.push(AVVISO_MANUALE)
+  if (rettificato) avvisi.push(AVVISO_RETTIFICATO)
   const base = { manuale, rettificato }
 
   if (pesate.some(p => !p.stabile)) {
-    return esito({ ...base, stato: 'NON_VALIDO', errore: 'Una pesata instabile non è un peso.' })
+    return esito({
+      ...base,
+      stato: 'NON_VALIDO',
+      errore: 'Una pesata instabile non è un peso.',
+      avvisi,
+    })
   }
 
   const per = (ordine: 1 | 2) => pesate.find(p => p.ordine === ordine)
   const prima = per(1)
   const seconda = per(2)
 
-  const avvisi: string[] = []
-  if (manuale) avvisi.push(AVVISO_MANUALE)
-  if (rettificato) avvisi.push(AVVISO_RETTIFICATO)
-
   if (modo === 'SINGOLA') {
-    if (!prima) return esito({ ...base, stato: 'INCOMPLETO' })
+    if (!prima) return esito({ ...base, stato: 'INCOMPLETO', avvisi })
     const nettoC = aCentesimi(pesoEffettivo(prima))
     if (nettoC <= 0) {
       return esito({
@@ -118,7 +119,7 @@ export function calcolaNetto(
     })
   }
 
-  if (!prima || !seconda) return esito({ ...base, stato: 'INCOMPLETO' })
+  if (!prima || !seconda) return esito({ ...base, stato: 'INCOMPLETO', avvisi })
 
   const c1 = aCentesimi(pesoEffettivo(prima))
   const c2 = aCentesimi(pesoEffettivo(seconda))
@@ -136,9 +137,10 @@ export function calcolaNetto(
   if (modo === 'TARA_ANAGRAFICA') {
     avvisi.push(AVVISO_TARA_DICHIARATA)
     const agg = seconda.taraAggiornataIl
-    if (agg && giorniTra(agg.slice(0, 10), oggi) > GIORNI_TARA_VECCHIA) {
+    const istanteAgg = agg ? new Date(agg) : null
+    if (istanteAgg && giorniTra(giornoItaliano(istanteAgg), oggi) > GIORNI_TARA_VECCHIA) {
       avvisi.push(
-        `Tara dichiarata aggiornata il ${dataItaliana(agg.slice(0, 10))}, più di ${GIORNI_TARA_VECCHIA} giorni fa.`
+        `Tara dichiarata aggiornata il ${formattaDataItaliana(istanteAgg)}, più di ${GIORNI_TARA_VECCHIA} giorni fa.`
       )
     }
   }
@@ -151,6 +153,7 @@ export function calcolaNetto(
       stato: 'NON_VALIDO',
       lordoKg,
       taraKg,
+      avvisi,
       errore: `Il lordo (${formattaQuantita(lordoKg)} kg) non supera la tara (${formattaQuantita(taraKg)} kg): il netto non si può calcolare.`,
     })
   }

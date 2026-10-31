@@ -25,11 +25,15 @@ describe('validaPesataManuale', () => {
   })
 
   it('strumento non attivo → errore', () => {
-    expect(valida({ strumento: { ...strumento, attivo: false } }).errori.length).toBe(1)
+    expect(valida({ strumento: { ...strumento, attivo: false } }).errori).toEqual([
+      'Lo strumento non è attivo.',
+    ])
   })
 
   it('ora strumento adesso + 6 min → errore, + 4 min → ok', () => {
-    expect(valida({ oraStrumento: new Date(ADESSO.getTime() + 6 * 60000) }).errori.length).toBe(1)
+    expect(valida({ oraStrumento: new Date(ADESSO.getTime() + 6 * 60000) }).errori).toEqual([
+      "L'ora dello strumento è nel futuro: controlla data e ora.",
+    ])
     expect(valida({ oraStrumento: new Date(ADESSO.getTime() + 4 * 60000) }).errori).toEqual([])
   })
 
@@ -38,7 +42,7 @@ describe('validaPesataManuale', () => {
       oraStrumento: new Date('2026-10-31T08:00:00Z'),
       oraPrimaPesata: new Date('2026-10-31T09:00:00Z'),
     })
-    expect(r.errori.length).toBe(1)
+    expect(r.errori).toEqual(['La seconda pesata non può essere precedente alla prima.'])
   })
 
   it('divisione 20 e peso 12.345 → avviso, 12.340 → nessuno', () => {
@@ -71,5 +75,18 @@ describe('validaPesataManuale', () => {
 
   it('strumento esterno (null): nessun errore dagli strumenti', () => {
     expect(valida({ strumento: null })).toEqual({ errori: [], avvisi: [] })
+  })
+
+  it('la scadenza della verificazione segue il giorno di Roma (23:30 UTC = 00:30 del giorno dopo)', () => {
+    const r = valida({
+      adesso: new Date('2026-10-30T23:30:00Z'),
+      strumento: { ...strumento, dataUltimaVerificazione: '2023-10-30' },
+    })
+    expect(r.avvisi.some(a => a.includes('scaduta (ultima il 30/10/2023)'))).toBe(true)
+  })
+
+  it('divisione sotto il millesimo: nessun avviso di multiplo spurio', () => {
+    const r = valida({ pesoKg: 12, strumento: { ...strumento, divisioneKg: 0.0001 } })
+    expect(r.avvisi).toEqual([])
   })
 })

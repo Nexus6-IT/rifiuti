@@ -180,4 +180,73 @@ describe('calcolaNetto', () => {
     )
     expect(e.nettoKg).toBe(0.1)
   })
+
+  it('la tara vecchia segue il giorno di Roma: 2025-10-30T23:30Z è il 31/10, quindi 365 giorni → nessun avviso', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'TARA_ANAGRAFICA',
+      [
+        pesata({ ordine: 1, pesoKg: 24880 }),
+        pesata({
+          ordine: 2,
+          pesoKg: 12540,
+          fonte: 'TARA_ANAGRAFICA',
+          taraAggiornataIl: '2025-10-30T23:30:00Z',
+        }),
+      ],
+      OGGI
+    )
+    expect(e.avvisi).toEqual([AVVISO_TARA_DICHIARATA])
+  })
+
+  it("la data nell'avviso è quella di Roma: 2025-10-29T23:30Z → 30/10/2025", () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'TARA_ANAGRAFICA',
+      [
+        pesata({ ordine: 1, pesoKg: 24880 }),
+        pesata({
+          ordine: 2,
+          pesoKg: 12540,
+          fonte: 'TARA_ANAGRAFICA',
+          taraAggiornataIl: '2025-10-29T23:30:00Z',
+        }),
+      ],
+      OGGI
+    )
+    expect(e.avvisi).toContain('Tara dichiarata aggiornata il 30/10/2025, più di 365 giorni fa.')
+  })
+
+  it('i rami NON_VALIDO portano gli avvisi manuale e rettificato', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [
+        pesata({
+          ordine: 1,
+          pesoKg: 20000,
+          fonte: 'MANUALE',
+          rettifiche: [{ numero: 1, pesoNuovoKg: 24000 }],
+        }),
+        pesata({ ordine: 2, pesoKg: 25000 }),
+      ],
+      OGGI
+    )
+    expect(e.stato).toBe('NON_VALIDO')
+    expect(e.avvisi).toEqual([AVVISO_MANUALE, AVVISO_RETTIFICATO])
+    const i = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [pesata({ ordine: 1, pesoKg: 24880, fonte: 'MANUALE', stabile: false })],
+      OGGI
+    )
+    expect(i.avvisi).toEqual([AVVISO_MANUALE])
+    const inc = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [pesata({ ordine: 1, pesoKg: 24880, fonte: 'MANUALE' })],
+      OGGI
+    )
+    expect(inc.avvisi).toEqual([AVVISO_MANUALE])
+  })
 })

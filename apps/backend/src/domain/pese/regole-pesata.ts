@@ -1,4 +1,5 @@
 import { formattaQuantita } from '../../core/format/formatta-quantita'
+import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
 
 export const ANNI_VERIFICAZIONE = 3
 export const PESO_MASSIMO_KG = 99_999_999.99
@@ -20,10 +21,6 @@ export interface InputPesataManuale {
   adesso: Date
   strumento: StrumentoPerRegole | null
   oraPrimaPesata?: Date | null
-}
-
-function dataItaliana(iso: string): string {
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 }
 
 /** Verificazione scaduta se l'ultima è più vecchia di 3 anni (`data` e `oggi` YYYY-MM-DD). */
@@ -76,7 +73,7 @@ export function validaPesataManuale(input: InputPesataManuale): {
     if (div !== null && div > 0) {
       const pesoMilli = Math.round(pesoKg * 1000)
       const divMilli = Math.round(div * 1000)
-      if (pesoMilli % divMilli !== 0) {
+      if (divMilli > 0 && pesoMilli % divMilli !== 0) {
         avvisi.push(
           `Il peso non è un multiplo della divisione dello strumento (${formattaQuantita(div)} kg): controlla di averlo trascritto bene.`
         )
@@ -93,10 +90,10 @@ export function validaPesataManuale(input: InputPesataManuale): {
     if (!strumento.dataUltimaVerificazione) {
       avvisi.push('Nessuna verificazione registrata per lo strumento.')
     } else {
-      const oggi = input.adesso.toISOString().slice(0, 10)
+      const oggi = giornoItaliano(input.adesso)
       if (verificazioneScaduta(strumento.dataUltimaVerificazione, oggi)) {
         avvisi.push(
-          `La verificazione periodica dello strumento è scaduta (ultima il ${dataItaliana(strumento.dataUltimaVerificazione)}).`
+          `La verificazione periodica dello strumento è scaduta (ultima il ${formattaDataItaliana(new Date(`${strumento.dataUltimaVerificazione}T12:00:00Z`))}).`
         )
       }
     }

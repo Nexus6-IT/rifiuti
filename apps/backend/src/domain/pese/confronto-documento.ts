@@ -1,4 +1,4 @@
-import { normalizzaUnitaRegistro } from '../waste-movement/unita-misura-registro'
+import { convertiInKg, normalizzaUnitaRegistro } from '../waste-movement/unita-misura-registro'
 
 export interface ConfrontoDocumento {
   confrontabile: boolean
@@ -16,11 +16,10 @@ export function confrontaConDocumento(
   quantita: number,
   unita: string
 ): ConfrontoDocumento {
-  const u = normalizzaUnitaRegistro(unita)
-  if (nettoKg === null || u.fattoreKg === null || !Number.isFinite(quantita)) {
+  const quantitaKg = Number.isFinite(quantita) ? convertiInKg(quantita, unita) : null
+  if (nettoKg === null || quantitaKg === null) {
     return { confrontabile: false, quantitaKg: null, differenzaKg: null }
   }
-  const quantitaKg = Math.round(quantita * u.fattoreKg * 1000) / 1000
   const differenzaKg = Math.round((nettoKg - quantitaKg) * 1000) / 1000
   return { confrontabile: true, quantitaKg, differenzaKg }
 }
