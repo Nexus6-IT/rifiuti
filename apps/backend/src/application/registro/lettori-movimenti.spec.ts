@@ -40,6 +40,10 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: "movimenti dell'anno, anni precedenti, scarichi dei FIR, saldi al 31 dicembre",
   },
+  'application/rentri/registro/lettore-annotazioni-rentri.ts': {
+    scelta: 'tutte',
+    motivo: 'ogni annotazione e una registrazione RENTRI; i riferimenti di carico usano le vigenti',
+  },
   'application/registro/causali/causali-registro.service.ts': {
     scelta: 'tutte',
     motivo:
