@@ -14,11 +14,16 @@
 import { Component, Input, OnInit, forwardRef, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule, ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms'
-import { Observable } from 'rxjs'
+import { Observable, Subscription } from 'rxjs'
 import { AutoCompleteModule, AutoCompleteCompleteEvent } from 'primeng/autocomplete'
 import { RegistryService } from './registry.service'
 import { etichettaIdentificativo } from './identificativo-fiscale'
-import { PaginatedResponse } from '../../shared/models/registry.model'
+import {
+  Destinatario,
+  PaginatedResponse,
+  Produttore,
+  Trasportatore,
+} from '../../shared/models/registry.model'
 
 /** Registro anagrafico interrogabile da questo selettore. */
 export type Registro = 'produttori' | 'trasportatori' | 'destinatari'
@@ -190,6 +195,9 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
   /** Id ricevuto da writeValue prima che la lista fosse pronta. */
   private idInAttesa: string | null = null
 
+  /** Record completi dell'ultimo caricamento (servono a chi apre la modifica dell'anagrafica). */
+  private grezzi: AnagraficaBase[] = []
+
   private onChange: (value: string) => void = () => {}
   onTouched: () => void = () => {}
 
@@ -219,13 +227,38 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
     }
   }
 
+  /**
+   * Rilegge il registro (dopo un censimento o una modifica fatti altrove) e, se
+   * indicato, seleziona la voce `selezionaId` appena la lista è pronta.
+   */
+  ricarica(selezionaId?: string): void {
+    if (selezionaId) this.idInAttesa = selezionaId
+    this.caricaVoci()
+  }
+
+  /** Il record completo di un'anagrafica già caricata, o null. */
+  trovaEntita(id: string): Produttore | Trasportatore | Destinatario | null {
+    return (
+      (this.grezzi.find(v => v.id === id) as
+        | Produttore
+        | Trasportatore
+        | Destinatario
+        | undefined) ?? null
+    )
+  }
+
+  /** Richiesta in corso: una nuova la sostituisce, così non vince una risposta vecchia. */
+  private richiestaInCorso?: Subscription
+
   private caricaVoci(): void {
+    this.richiestaInCorso?.unsubscribe()
     this.caricato.set(false)
     this.voci.set([])
     this.suggestions.set([])
 
-    this.richiestaRegistro().subscribe({
+    this.richiestaInCorso = this.richiestaRegistro().subscribe({
       next: risposta => {
+        this.grezzi = risposta?.items ?? []
         const opzioni = (risposta?.items ?? []).map(v => this.toOption(v))
         this.voci.set(opzioni)
         // Copia, non lo stesso riferimento: i due segnali non devono
@@ -250,10 +283,9 @@ export class AnagraficaSelectComponent implements OnInit, ControlValueAccessor {
     if (this.idInAttesa) {
       const trovata = this.voci().find(v => v.id === this.idInAttesa)
       this.idInAttesa = null
-      if (trovata) {
-        this.selected = trovata
-        return
-      }
+      // Se l'id non c'è più nella lista non si mostra la vecchia voce.
+      this.selected = trovata ?? null
+      if (trovata) return
     }
 
     if (this.preselezionaSeUnica && !this.selected && this.voci().length === 1) {

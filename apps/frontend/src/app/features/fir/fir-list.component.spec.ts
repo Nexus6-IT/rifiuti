@@ -1362,3 +1362,66 @@ describe('FirListComponent — sede delle parti e codice fiscale (F2-10)', () =>
     expect(testo).not.toContain('null')
   })
 })
+
+describe('FirListComponent — Esc nel sub-dialog anagrafica', () => {
+  let fixture: ComponentFixture<FirListComponent>
+  let component: FirListComponent
+
+  beforeEach(() => {
+    const firService = jasmine.createSpyObj('FirService', ['getFIRList'])
+    firService.getFIRList.and.returnValue(of({ items: [], total: 0 }))
+    const registryService = jasmine.createSpyObj('RegistryService', [
+      'getProduttori',
+      'getTrasportatori',
+      'getDestinatari',
+    ])
+    registryService.getProduttori.and.returnValue(of({ items: [], total: 0 }))
+    registryService.getTrasportatori.and.returnValue(of({ items: [], total: 0 }))
+    registryService.getDestinatari.and.returnValue(of({ items: [], total: 0 }))
+    TestBed.configureTestingModule({
+      imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
+      providers: [
+        { provide: FirService, useValue: firService },
+        { provide: RegistryService, useValue: registryService },
+        {
+          provide: AuthService,
+          useValue: { currentUser: () => ({ id: 'u1', email: 'u@e.it', role: 'ADMIN' }) },
+        },
+        {
+          provide: RentriBlocchiService,
+          useValue: jasmine.createSpyObj('RentriBlocchiService', ['emissionePossibile']),
+        },
+        {
+          provide: RENTRISyncService,
+          useValue: jasmine.createSpyObj('RENTRISyncService', ['syncFIR', 'confermaLegame']),
+        },
+        provideRouter([]),
+        MessageService,
+        ConfirmationService,
+        ExportService,
+      ],
+    })
+    fixture = TestBed.createComponent(FirListComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  })
+
+  afterEach(() => {
+    fixture.destroy()
+    document.body.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
+  })
+
+  it('Esc chiude solo il sub-dialog: il dialog "Nuovo FIR" resta aperto', async () => {
+    component.showCreateDialog()
+    fixture.detectChanges()
+    component.openAnagraficaDialog('produttore', 'create')
+    fixture.detectChanges()
+    await fixture.whenStable()
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    fixture.detectChanges()
+
+    expect(component.showAnagraficaDialog).toBeFalse()
+    expect(component.displayCreateDialog).toBeTrue()
+  })
+})

@@ -1,3 +1,5 @@
+import { MessageService } from 'primeng/api'
+import { computed, signal } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
@@ -7,12 +9,16 @@ import { CAMPI_CONTRATTO, CampoContratto, Contract, ContractsService } from './c
 import { ToastService } from '../../core/services/toast.service'
 import { RegistryService } from '../registry/registry.service'
 import { CerService } from '../cer/cer.service'
+import { AuthService } from '../../core/services/auth.service'
+import { AnagraficaFormDialogComponent } from '../registry/anagrafica-form-dialog.component'
 
 describe('ContractCreateDialogComponent', () => {
   let fixture: ComponentFixture<ContractCreateDialogComponent>
   let component: ContractCreateDialogComponent
   let contracts: jasmine.SpyObj<ContractsService>
   let toast: jasmine.SpyObj<ToastService>
+  let ruolo: ReturnType<typeof signal<string | null>>
+  let registry: jasmine.SpyObj<RegistryService>
 
   const vuoto = of({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 } as any)
 
@@ -28,7 +34,8 @@ describe('ContractCreateDialogComponent', () => {
 
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'warn', 'info'])
 
-    const registry = jasmine.createSpyObj<RegistryService>('RegistryService', [
+    ruolo = signal<string | null>('OPERATOR')
+    registry = jasmine.createSpyObj<RegistryService>('RegistryService', [
       'getProduttori',
       'getTrasportatori',
       'getDestinatari',
@@ -44,10 +51,15 @@ describe('ContractCreateDialogComponent', () => {
       imports: [ContractCreateDialogComponent],
       providers: [
         provideNoopAnimations(),
+        MessageService,
         { provide: ContractsService, useValue: contracts },
         { provide: ToastService, useValue: toast },
         { provide: RegistryService, useValue: registry },
         { provide: CerService, useValue: cer },
+        {
+          provide: AuthService,
+          useValue: { currentUser: computed(() => (ruolo() ? { role: ruolo() } : null)) },
+        },
       ],
     })
 
@@ -589,6 +601,180 @@ describe('ContractCreateDialogComponent', () => {
       expect(salva).toBeTruthy()
       salva.click()
       expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 140, versione: 4 })
+    })
+  })
+
+  // ─── Anagrafiche inline: Nuovo / Modifica dal form, come nei FIR ──────────
+  describe('anagrafiche inline', () => {
+    // I dialog sono appesi al body: si chiudono e si distrugge il fixture, per non sporcare altri spec.
+    afterEach(() => {
+      component.onAnagraficaVisibleChange(false)
+      component.onVisibleChange(false)
+      fixture.destroy()
+      document.body.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
+    })
+    const bottone = (testid: string): HTMLButtonElement | null =>
+      document.body.querySelector(`[data-testid="${testid}"] button`)
+    const apriNuovo = () => {
+      component.onVisibleChange(true)
+      fixture.detectChanges()
+    }
+    const dialogAnagrafica = () =>
+      fixture.debugElement.query(e => e.componentInstance instanceof AnagraficaFormDialogComponent)
+        .componentInstance as AnagraficaFormDialogComponent
+    const items = (...ids: string[]) =>
+      of({
+        items: ids.map(id => ({ id, ragioneSociale: `Rag ${id}`, partitaIVA: '12345678901' })),
+        total: ids.length,
+        page: 1,
+        limit: 500,
+        totalPages: 1,
+      } as any)
+
+    it('"Nuovo produttore" ha aria-label e apre il dialog anagrafica con un click vero', () => {
+      apriNuovo()
+      const b = bottone('c-nuovo-produttore')
+      expect(b).not.toBeNull()
+      expect(b!.getAttribute('aria-label')).toBe('Nuovo produttore')
+      b!.click()
+      fixture.detectChanges()
+      expect(component.showAnagraficaDialog).toBeTrue()
+      const titoli = Array.from(document.body.querySelectorAll('.p-dialog-title')).map(
+        t => t.textContent
+      )
+      expect(titoli.some(t => t?.includes('Nuovo produttore'))).toBeTrue()
+    })
+
+    it('per un contratto di trasporto il pulsante accanto alla controparte è "Nuovo trasportatore"', () => {
+      apriNuovo()
+      const b = bottone('c-nuova-controparte')
+      expect(b!.getAttribute('aria-label')).toBe('Nuovo trasportatore')
+      b!.click()
+      fixture.detectChanges()
+      expect(component.anagraficaTipo).toBe('trasportatore')
+      expect(component.anagraficaModalita).toBe('create')
+    })
+
+    it('per uno smaltimento il pulsante è "Nuovo destinatario"', () => {
+      apriNuovo()
+      component.onTipoContrattoCambiato('WASTE_DISPOSAL')
+      fixture.detectChanges()
+      const b = bottone('c-nuova-controparte')
+      expect(b!.getAttribute('aria-label')).toBe('Nuovo destinatario')
+    })
+
+    it('dopo il salvataggio il nuovo produttore è selezionato e la lista si ricarica', async () => {
+      apriNuovo()
+      registry.getProduttori.and.returnValue(items('nuovo-1'))
+      bottone('c-nuovo-produttore')!.click()
+      fixture.detectChanges()
+
+      dialogAnagrafica().saved.emit({
+        tipo: 'produttore',
+        entity: { id: 'nuovo-1', ragioneSociale: 'Rag nuovo-1' } as any,
+      })
+      fixture.detectChanges()
+      await fixture.whenStable()
+      fixture.detectChanges()
+
+      expect(component.form.producerId).toBe('nuovo-1')
+      expect(registry.getProduttori).toHaveBeenCalledTimes(2)
+      const campi = document.body.querySelectorAll('#c-producer')
+      const input = campi[campi.length - 1] as HTMLInputElement
+      expect(input.value).toContain('Rag nuovo-1')
+    })
+
+    it('dopo il salvataggio la nuova controparte è selezionata', () => {
+      apriNuovo()
+      registry.getTrasportatori.and.returnValue(items('t-9'))
+      bottone('c-nuova-controparte')!.click()
+      fixture.detectChanges()
+      dialogAnagrafica().saved.emit({
+        tipo: 'trasportatore',
+        entity: { id: 't-9', ragioneSociale: 'Rag t-9' } as any,
+      })
+      expect(component.form.counterpartyId).toBe('t-9')
+    })
+
+    it('"Modifica" è disabilitato finché il campo è vuoto e poi apre l\'anagrafica scelta', () => {
+      apriNuovo()
+      expect(bottone('c-modifica-produttore')!.disabled).toBeTrue()
+      registry.getProduttori.and.returnValue(items('p-1'))
+      ;(component as any).selProduttore.ricarica('p-1')
+      component.form.producerId = 'p-1'
+      fixture.detectChanges()
+      bottone('c-modifica-produttore')!.click()
+      fixture.detectChanges()
+      expect(component.anagraficaModalita).toBe('edit')
+      expect((component.anagraficaEntityData as any)?.id).toBe('p-1')
+    })
+
+    it('Esc chiude solo il sub-dialog anagrafica: il contratto resta aperto con i valori', async () => {
+      apriNuovo()
+      component.form.description = 'da non perdere'
+      bottone('c-nuovo-produttore')!.click()
+      fixture.detectChanges()
+      await fixture.whenStable()
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      fixture.detectChanges()
+
+      expect(component.showAnagraficaDialog).toBeFalse()
+      expect(component.visible).toBeTrue()
+      expect(component.form.description).toBe('da non perdere')
+    })
+
+    it('alla chiusura il focus torna al pulsante che aveva aperto il dialog', async () => {
+      apriNuovo()
+      const b = bottone('c-nuovo-produttore')!
+      b.click()
+      fixture.detectChanges()
+      component.onAnagraficaVisibleChange(false)
+      await new Promise(r => setTimeout(r))
+      expect(document.activeElement).toBe(b)
+    })
+
+    it('senza il permesso sulle anagrafiche i pulsanti non ci sono (VIEWER)', () => {
+      ruolo.set('VIEWER')
+      apriNuovo()
+      expect(bottone('c-nuovo-produttore')).toBeNull()
+      expect(bottone('c-modifica-produttore')).toBeNull()
+      expect(bottone('c-nuova-controparte')).toBeNull()
+    })
+
+    it('contratto ACTIVE: niente "Nuovo" sui campi bloccati, e il salvataggio non cambia la selezione', () => {
+      component.contratto = {
+        id: 'k1',
+        contractNumber: 'CTR-1',
+        producerId: 'prod-1',
+        counterpartyId: 'trasp-1',
+        counterpartyType: 'TRANSPORTER',
+        contractType: 'WASTE_TRANSPORT',
+        cerCodes: ['150101'],
+        pricingModel: 'FLAT_RATE',
+        unitOfMeasure: 'kg',
+        startDate: '2026-01-15T00:00:00.000Z',
+        autoRenew: false,
+        renewalNoticeDays: 60,
+        paymentTerms: 'net_30',
+        billingFrequency: 'monthly',
+        status: 'ACTIVE',
+        versione: 1,
+        modificabili: ['description'],
+        eliminabile: false,
+      } as unknown as Contract
+      apriNuovo()
+      expect(bottone('c-nuovo-produttore')).toBeNull()
+      expect(bottone('c-nuova-controparte')).toBeNull()
+
+      component.apriAnagrafica('produttore', 'create')
+      expect(component.showAnagraficaDialog).toBeFalse()
+
+      component.onAnagraficaSaved({
+        tipo: 'produttore',
+        entity: { id: 'altro', ragioneSociale: 'X' } as any,
+      })
+      expect(component.form.producerId).toBe('prod-1')
     })
   })
 })

@@ -24,6 +24,8 @@ import {
   OnChanges,
   Output,
   SimpleChanges,
+  ViewChild,
+  computed,
   inject,
   signal,
 } from '@angular/core'
@@ -39,7 +41,16 @@ import { InputTextareaModule } from 'primeng/inputtextarea'
 import { CalendarModule } from 'primeng/calendar'
 import { CheckboxModule } from 'primeng/checkbox'
 import { ToastService } from '../../core/services/toast.service'
+import { TooltipModule } from 'primeng/tooltip'
+import { AuthService } from '../../core/services/auth.service'
 import { AnagraficaSelectComponent } from '../registry/anagrafica-select.component'
+import {
+  AnagraficaFormDialogComponent,
+  AnagraficaSavedEvent,
+  ModalitaAnagrafica,
+  TipoAnagrafica,
+} from '../registry/anagrafica-form-dialog.component'
+import { puoGestireAnagrafiche } from '../registry/registry-permissions'
 import { CerMultiSelectComponent } from '../cer/cer-multi-select.component'
 import {
   CAMPI_CONTRATTO,
@@ -77,7 +88,9 @@ import {
     InputTextareaModule,
     CalendarModule,
     CheckboxModule,
+    TooltipModule,
     AnagraficaSelectComponent,
+    AnagraficaFormDialogComponent,
     CerMultiSelectComponent,
   ],
   template: `
@@ -139,13 +152,38 @@ import {
 
         <div class="field col-12 md:col-6">
           <label for="c-producer" class="block mb-2">Produttore *</label>
-          <app-anagrafica-select
-            inputId="c-producer"
-            registro="produttori"
-            ariaLabel="Produttore del contratto"
-            [(ngModel)]="form.producerId"
-            [disabled]="campoBloccato('producerId')"
-          ></app-anagrafica-select>
+          <div class="anagrafica-riga">
+            <app-anagrafica-select
+              #selProduttore
+              inputId="c-producer"
+              registro="produttori"
+              ariaLabel="Produttore del contratto"
+              [(ngModel)]="form.producerId"
+              [disabled]="campoBloccato('producerId')"
+            ></app-anagrafica-select>
+            <ng-container *ngIf="puoGestire()">
+              <p-button
+                *ngIf="!campoBloccato('producerId')"
+                icon="pi pi-plus"
+                [outlined]="true"
+                pTooltip="Nuovo produttore"
+                tooltipPosition="top"
+                ariaLabel="Nuovo produttore"
+                data-testid="c-nuovo-produttore"
+                (onClick)="apriAnagrafica('produttore', 'create', $event)"
+              />
+              <p-button
+                icon="pi pi-pencil"
+                [outlined]="true"
+                pTooltip="Modifica produttore selezionato"
+                tooltipPosition="top"
+                ariaLabel="Modifica produttore selezionato"
+                data-testid="c-modifica-produttore"
+                [disabled]="!form.producerId"
+                (onClick)="apriAnagrafica('produttore', 'edit', $event)"
+              />
+            </ng-container>
+          </div>
         </div>
 
         <!-- Solo per i tipi che non implicano un registro univoco. -->
@@ -169,14 +207,38 @@ import {
           <label for="c-counterparty" class="block mb-2">
             Controparte * <span class="text-tertiary">({{ etichettaControparte() }})</span>
           </label>
-          <app-anagrafica-select
-            *ngIf="registroEffettivo() as reg"
-            inputId="c-counterparty"
-            [registro]="reg"
-            ariaLabel="Controparte del contratto"
-            [(ngModel)]="form.counterpartyId"
-            [disabled]="campoBloccato('counterpartyId')"
-          ></app-anagrafica-select>
+          <div class="anagrafica-riga" *ngIf="registroEffettivo() as reg">
+            <app-anagrafica-select
+              #selControparte
+              inputId="c-counterparty"
+              [registro]="reg"
+              ariaLabel="Controparte del contratto"
+              [(ngModel)]="form.counterpartyId"
+              [disabled]="campoBloccato('counterpartyId')"
+            ></app-anagrafica-select>
+            <ng-container *ngIf="puoGestire()">
+              <p-button
+                *ngIf="!campoBloccato('counterpartyId')"
+                icon="pi pi-plus"
+                [outlined]="true"
+                [pTooltip]="'Nuovo ' + tipoControparte(reg)"
+                tooltipPosition="top"
+                [ariaLabel]="'Nuovo ' + tipoControparte(reg)"
+                data-testid="c-nuova-controparte"
+                (onClick)="apriAnagrafica(tipoControparte(reg), 'create', $event)"
+              />
+              <p-button
+                icon="pi pi-pencil"
+                [outlined]="true"
+                [pTooltip]="'Modifica ' + tipoControparte(reg) + ' selezionato'"
+                tooltipPosition="top"
+                [ariaLabel]="'Modifica ' + tipoControparte(reg) + ' selezionato'"
+                data-testid="c-modifica-controparte"
+                [disabled]="!form.counterpartyId"
+                (onClick)="apriAnagrafica(tipoControparte(reg), 'edit', $event)"
+              />
+            </ng-container>
+          </div>
           <small *ngIf="!registroEffettivo()" class="block text-tertiary">
             Scegli prima il tipo di controparte.
           </small>
@@ -346,9 +408,31 @@ import {
         />
       </ng-template>
     </p-dialog>
+
+    <!-- Sub-dialog crea/modifica anagrafica (stesso componente della form FIR). -->
+    <app-anagrafica-form-dialog
+      [visible]="showAnagraficaDialog"
+      (visibleChange)="onAnagraficaVisibleChange($event)"
+      [tipo]="anagraficaTipo"
+      [modalita]="anagraficaModalita"
+      [entityData]="anagraficaEntityData"
+      (saved)="onAnagraficaSaved($event)"
+    />
   `,
   styles: [
     `
+      .anagrafica-riga {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+      }
+      .anagrafica-riga > app-anagrafica-select {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .anagrafica-riga > p-button {
+        flex: 0 0 auto;
+      }
       .text-tertiary {
         color: var(--text-tertiary);
       }
@@ -370,6 +454,21 @@ import {
 export class ContractCreateDialogComponent implements OnChanges {
   private readonly contractsService = inject(ContractsService)
   private readonly toast = inject(ToastService)
+  private readonly authService = inject(AuthService)
+
+  /** Come per le liste anagrafiche: solo chi può scrivere nel registro vede «Nuovo»/«Modifica». */
+  readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
+
+  @ViewChild('selProduttore') private selProduttore?: AnagraficaSelectComponent
+  @ViewChild('selControparte') private selControparte?: AnagraficaSelectComponent
+
+  // Sub-dialog anagrafica
+  showAnagraficaDialog = false
+  anagraficaTipo: TipoAnagrafica = 'produttore'
+  anagraficaModalita: ModalitaAnagrafica = 'create'
+  anagraficaEntityData: AnagraficaFormDialogComponent['entityData'] = null
+  /** Il pulsante che ha aperto il sub-dialog: il focus gli torna alla chiusura. */
+  private triggerAnagrafica: HTMLElement | null = null
 
   @Input() visible = false
   /** Contratto da modificare; `null` = creazione. */
@@ -461,9 +560,63 @@ export class ContractCreateDialogComponent implements OnChanges {
     this.form.counterpartyId = ''
   }
 
+  // ─── Anagrafiche inline (Nuovo / Modifica dal form) ──────────────────────
+
+  tipoControparte(registro: RegistroControparte): TipoAnagrafica {
+    return registro === 'trasportatori' ? 'trasportatore' : 'destinatario'
+  }
+
+  private selettoreDi(tipo: TipoAnagrafica): AnagraficaSelectComponent | undefined {
+    return tipo === 'produttore' ? this.selProduttore : this.selControparte
+  }
+
+  apriAnagrafica(tipo: TipoAnagrafica, modalita: ModalitaAnagrafica, ev?: unknown): void {
+    if (modalita === 'create' && this.campoBloccato(this.campoDi(tipo))) return
+    const target = (ev as MouseEvent | undefined)?.currentTarget ?? (ev as Event)?.target
+    const el = target instanceof HTMLElement ? target : null
+    this.triggerAnagrafica = el?.closest('button') ?? el
+    const id = tipo === 'produttore' ? this.form.producerId : this.form.counterpartyId
+    this.anagraficaTipo = tipo
+    this.anagraficaModalita = modalita
+    this.anagraficaEntityData =
+      modalita === 'edit' && id ? (this.selettoreDi(tipo)?.trovaEntita(id) ?? null) : null
+    this.showAnagraficaDialog = true
+  }
+
+  private campoDi(tipo: TipoAnagrafica): CampoContratto {
+    return tipo === 'produttore' ? 'producerId' : 'counterpartyId'
+  }
+
+  onAnagraficaVisibleChange(v: boolean): void {
+    this.showAnagraficaDialog = v
+    if (!v) {
+      const t = this.triggerAnagrafica
+      this.triggerAnagrafica = null
+      // Dopo che PrimeNG ha rimosso il sub-dialog dal DOM.
+      setTimeout(() => t?.isConnected && t.focus())
+    }
+  }
+
+  /** Ricarica il registro interessato e, in creazione, seleziona il record appena salvato. */
+  onAnagraficaSaved(event: AnagraficaSavedEvent): void {
+    const { tipo, entity } = event
+    const campo = this.campoDi(tipo)
+    // Campo bloccato: si aggiorna l'elenco ma la selezione del contratto non cambia.
+    const seleziona = !this.campoBloccato(campo)
+    if (seleziona) {
+      if (tipo === 'produttore') this.form.producerId = entity.id
+      else this.form.counterpartyId = entity.id
+    }
+    const idCampo = tipo === 'produttore' ? this.form.producerId : this.form.counterpartyId
+    this.selettoreDi(tipo)?.ricarica(seleziona ? entity.id : idCampo || undefined)
+  }
+
   // ─── Apertura / chiusura ──────────────────────────────────────────────────
 
   onVisibleChange(v: boolean): void {
+    // Esc nel sub-dialog anagrafica fa chiudere anche questo (PrimeNG chiude ogni dialog
+    // aperto con closeOnEscape): si ignora, o si perde il form compilato.
+    if (!v && this.showAnagraficaDialog) return
     this.visible = v
     this.visibleChange.emit(v)
     if (v) this.reimposta()
