@@ -349,6 +349,18 @@ export class TrasmissioniRegistroRepository {
             messaggi,
           },
         })
+      } else if (e.stato === 'INCERTA') {
+        const motivo = tronca(e.motivo ?? MOTIVO_INVIO_INCERTO, 500)
+        await tx.movimentoTrasmissioneRentri.updateMany({
+          where: base,
+          data: {
+            stato: 'INCERTA',
+            bloccatoInvio: true,
+            motivoBlocco: motivo,
+            ultimoErrore: motivo,
+            messaggi,
+          },
+        })
       } else {
         await tx.movimentoTrasmissioneRentri.updateMany({
           where: base,

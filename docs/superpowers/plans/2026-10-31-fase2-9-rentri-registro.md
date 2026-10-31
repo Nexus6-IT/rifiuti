@@ -362,13 +362,22 @@ FIR, CF, targhe) copiati a un servizio del fornitore e il registro in chiaro a Z
   successive (nessuna regola di contiguità: Q5/Q7 dicono di no).
 - **D9. Esito** (puro, `esito-movimenti-rentri.ts`): `applicaEsito(lotto: Array<{ movimentoId;
   numero }>, esito: EsitoMovimentiRentri): EsitoPerRiga[]` con `EsitoPerRiga = { movimentoId;
-  stato: 'TRASMESSA' | 'RIFIUTATA'; identificativo: string | null; messaggi: MessaggioRentri[] }`.
+  stato: 'TRASMESSA' | 'RIFIUTATA' | 'INCERTA'; identificativo: string | null; messaggi: MessaggioRentri[] }`.
   Una riga è `TRASMESSA` se il suo (anno, progressivo) è in `esito.numero_registrazioni` (anche con
   `errore = true`, Q3); altrimenti `RIFIUTATA` con i messaggi il cui `indice` è la sua posizione nel
   lotto, più quelli senza `indice` (validi per tutto il lotto); senza messaggi suoi: "Rifiutata da
-  RENTRI insieme alle altre annotazioni dello stesso invio". `errore = false` senza
-  `numero_registrazioni` per una riga → `RIFIUTATA` con "RENTRI non ha confermato l'annotazione": mai
-  `TRASMESSA` senza conferma (difetto WinWaste 2).
+  RENTRI insieme alle altre annotazioni dello stesso invio". **Correzione (fix finali):** `RIFIUTATA`
+  (riaccodabile) SOLO con `errore = true`, riga non confermata e nessuna registrazione ignota
+  nell'esito. `EsitoPerRiga.stato` ha anche `INCERTA` (bloccata, mai selezionabile): `errore = false`
+  con una riga non confermata (il contratto rende opzionali `errore` e nullabili `esito`,
+  `numero_registrazioni`, `anno`, `progressivo`: un esito incompleto non prova che RENTRI non abbia
+  registrato) e registrazioni con `identificativo` ma `anno`/`progressivo` nulli
+  (`registrazioniSenzaNumero > 0`) → `INCERTA` per le righe non confermate. Il client tratta
+  `errore` non booleano o corpo non oggetto come errore tecnico (`EsitoRentriMalformatoError`, la riga
+  resta `ATTESA_ESITO`, si riprova); polling esaurito = `EsitoRentriNonDisponibileError`. La verifica
+  D11 applica lo stesso esito; per una `INCERTA` senza `transazione_id` rilegge prima l'ultima
+  transazione del registro (POST orfana) e solo dopo cerca per numero. Mai `TRASMESSA` senza conferma
+  (difetto WinWaste 2).
 - **D10. Ciclo d'invio** (`TrasmettiLottoRegistroUseCase`, Task 8), stesso schema del FIR (piano B):
   1. **Prenotazione** in transazione nel contesto dell'azienda, sotto
      `pg_advisory_xact_lock(hashtext('rentri-registro|' || registro_id))`: se il registro ha righe

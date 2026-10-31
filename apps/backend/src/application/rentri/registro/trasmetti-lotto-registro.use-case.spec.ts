@@ -1,6 +1,10 @@
 import { TenantSenzaCertificatoRentriError } from '../../../infrastructure/rentri/rentri-credential.resolver'
 import { RentriApiError } from '../../../infrastructure/rentri/rentri-http-resilienza'
 import {
+  EsitoRentriMalformatoError,
+  EsitoRentriNonDisponibileError,
+} from '../../../infrastructure/rentri/rentri-registri.client'
+import {
   TransazioneRentriNonTrovataError,
   TrasmissioneRentriIncertaError,
 } from '../../../infrastructure/rentri/rentri-api.client'
@@ -324,6 +328,51 @@ describe('TrasmettiLottoRegistroUseCase', () => {
     const r = await x.uc.trasmettiRegistro(T, R)
     expect(r).toMatchObject({ esito: 'RIFIUTATO', trasmesse: 0, rifiutate: 1 })
     expect(x.repo.applicaEsiti.mock.calls[0][2][0].stato).toBe('RIFIUTATA')
+  })
+
+  it('errore=false senza conferma: INCERTA (applicaEsiti con stato INCERTA), mai RIFIUTATA', async () => {
+    const x = prepara([cand(1), cand(2)])
+    x.client.attendiEsitoMovimenti.mockResolvedValue({
+      errore: false,
+      validazione: [],
+      numeroRegistrazioni: [{ anno: 2026, progressivo: 1, identificativo: null }],
+    })
+    const r = await x.uc.trasmettiRegistro(T, R)
+    expect(r).toMatchObject({ esito: 'INVIATO', trasmesse: 1, rifiutate: 0 })
+    expect(x.repo.applicaEsiti.mock.calls[0][2].map((e: any) => e.stato)).toEqual([
+      'TRASMESSA',
+      'INCERTA',
+    ])
+  })
+
+  it('errore=false senza nessuna conferma: esito INCERTO', async () => {
+    const x = prepara([cand(1)])
+    x.client.attendiEsitoMovimenti.mockResolvedValue({
+      errore: false,
+      validazione: [],
+      numeroRegistrazioni: [],
+    })
+    const r = await x.uc.trasmettiRegistro(T, R)
+    expect(r.esito).toBe('INCERTO')
+    expect(x.repo.applicaEsiti.mock.calls[0][2][0].stato).toBe('INCERTA')
+  })
+
+  it('polling esaurito: nota neutra, non "Lettura dell\'esito non riuscita"', async () => {
+    const x = prepara([cand(1)])
+    x.client.attendiEsitoMovimenti.mockRejectedValue(new EsitoRentriNonDisponibileError(TRANS, 3))
+    await x.uc.trasmettiRegistro(T, R)
+    const testo = x.repo.annotaErrorePolling.mock.calls[0][2]
+    expect(testo).toMatch(/non ancora disponibile/)
+    expect(testo).not.toMatch(/non riuscita/)
+  })
+
+  it('esito non decodificabile: errore tecnico, la riga resta in attesa', async () => {
+    const x = prepara([cand(1)])
+    x.client.attendiEsitoMovimenti.mockRejectedValue(new EsitoRentriMalformatoError('x'))
+    const r = await x.uc.trasmettiRegistro(T, R)
+    expect(r.attesaEsito).toBe(1)
+    expect(x.repo.applicaEsiti).not.toHaveBeenCalled()
+    expect(x.repo.segnaIncerte).not.toHaveBeenCalled()
   })
 
   it('nessun log contiene il corpo (POST, polling, salvaTransazione)', async () => {

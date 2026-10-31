@@ -3,7 +3,10 @@
  *
  * REGOLA CHIAVE: una riga e' `TRASMESSA` SOLO se il suo (anno, progressivo) compare, una volta,
  * fra le registrazioni confermate da RENTRI (anche con `errore = true`, Q3). Nessun'altra via
- * porta a `TRASMESSA`: senza conferma esplicita la riga e' `RIFIUTATA` (difetto WinWaste 2).
+ * porta a `TRASMESSA`. `RIFIUTATA` (riaccodabile) SOLO con `errore = true`, riga non confermata e
+ * nessuna registrazione ignota nell'esito (Q3). Ogni altro caso di riga non confermata e'
+ * `INCERTA`: `errore = false` senza conferma (esito incompleto ma valido per il contratto) o
+ * registrazioni che RENTRI riporta senza (anno, progressivo): RENTRI potrebbe averla registrata.
  *
  * ATTENZIONE per il chiamante (Task 7-10): questa funzione riceve un esito GIA' DECODIFICATO,
  * cioe' RENTRI ha elaborato la transazione e risposto. NON va chiamata quando l'esito non e'
@@ -22,12 +25,12 @@ import { NumeroDuplicatoNelLottoError } from './selezione-lotto-rentri'
 
 export interface EsitoPerRiga {
   movimentoId: string
-  stato: 'TRASMESSA' | 'RIFIUTATA'
+  stato: 'TRASMESSA' | 'RIFIUTATA' | 'INCERTA'
   /** Identificativo assegnato da RENTRI, se confermato e noto. */
   identificativo: string | null
   /** Messaggi di validazione della riga: quelli con il suo indice piu' quelli generali. */
   messaggi: MessaggioRentri[]
-  /** Spiegazione per le righe `RIFIUTATA` (italiano); null se `TRASMESSA`. */
+  /** Spiegazione per le righe `RIFIUTATA`/`INCERTA` (italiano); null se `TRASMESSA`. */
   motivo: string | null
 }
 
@@ -46,7 +49,10 @@ export type AnomaliaEsito =
   | { tipo: 'IDENTIFICATIVI_DISCORDANTI'; numero: NumeroRegistrazione }
 
 const MOTIVO_INSIEME = 'Rifiutata da RENTRI insieme alle altre annotazioni dello stesso invio'
-const MOTIVO_NON_CONFERMATA = "RENTRI non ha confermato l'annotazione"
+export const MOTIVO_NON_CONFERMATA =
+  "RENTRI non ha confermato l'annotazione: verificare prima di ritrasmettere"
+export const MOTIVO_REGISTRAZIONI_IGNOTE =
+  'RENTRI ha registrato elementi non attribuibili alle annotazioni: verificare prima di ritrasmettere'
 const MOTIVO_CON_MESSAGGI = 'Rifiutata da RENTRI: vedere i messaggi di validazione'
 
 const chiave = (n: NumeroRegistrazione) => `${n.anno}/${n.progressivo}`
@@ -116,9 +122,17 @@ export function applicaEsitoDettagliato(
         motivo: null,
       }
     }
+    if (!esito.errore || (esito.registrazioniSenzaNumero ?? 0) > 0) {
+      return {
+        movimentoId: l.movimentoId,
+        stato: 'INCERTA',
+        identificativo: null,
+        messaggi,
+        motivo: esito.errore ? MOTIVO_REGISTRAZIONI_IGNOTE : MOTIVO_NON_CONFERMATA,
+      }
+    }
     let motivo: string
-    if (!esito.errore) motivo = MOTIVO_NON_CONFERMATA
-    else if (messaggi.length > 0) motivo = MOTIVO_CON_MESSAGGI
+    if (messaggi.length > 0) motivo = MOTIVO_CON_MESSAGGI
     else motivo = MOTIVO_INSIEME
     return {
       movimentoId: l.movimentoId,

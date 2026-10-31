@@ -30,6 +30,8 @@ class RentriFinto {
   transazioni = new Map<string, Array<{ anno: number; progressivo: number }>>()
   ultimaTransazioneId: string | null = null
   completaConErrore = false
+  /** errore=false ma nessuna registrazione confermata (valido per il contratto). */
+  senzaConferma = false
   erroreSuPost: Error | null = null
   erroreSuEsito: Error | null = null
 
@@ -47,6 +49,9 @@ class RentriFinto {
   async attendiEsitoMovimenti(id: string) {
     if (this.erroreSuEsito) throw this.erroreSuEsito
     const numeri = this.transazioni.get(id) ?? []
+    if (this.senzaConferma) {
+      return { errore: false, validazione: [], numeroRegistrazioni: [] }
+    }
     return {
       errore: this.completaConErrore,
       validazione: [],
@@ -178,6 +183,18 @@ describe('TrasmettiLottoRegistroUseCase — Postgres reale + RENTRI finto', () =
     expect(r).toMatchObject({ esito: 'RIFIUTATO', trasmesse: 0, rifiutate: 2 })
     const rr = await righe(s.tenantId)
     expect(rr.every(x => x.stato === 'RIFIUTATA' && !x.bloccatoInvio)).toBe(true)
+  })
+
+  it('errore=false senza conferma: INCERTA e bloccata, mai riaccodabile ne selezionabile', async () => {
+    const s = await scenario(2)
+    s.finto.senzaConferma = true
+    const r = await s.uc.trasmettiRegistro(s.tenantId, s.registroId)
+    expect(r).toMatchObject({ esito: 'INCERTO', trasmesse: 0, rifiutate: 0 })
+    const rr = await righe(s.tenantId)
+    expect(rr.every(x => x.stato === 'INCERTA' && x.bloccatoInvio)).toBe(true)
+    // nessun nuovo giro le rimanda
+    expect((await s.uc.trasmettiRegistro(s.tenantId, s.registroId)).esito).toBe('NIENTE')
+    expect(s.finto.transazioni.size).toBe(1)
   })
 
   it('POST incerta: INCERTA e nessun giro successivo la rimanda', async () => {

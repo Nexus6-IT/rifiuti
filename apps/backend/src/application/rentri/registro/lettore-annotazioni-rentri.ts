@@ -14,6 +14,7 @@ import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { giornoItaliano } from '../../../core/time/anno-italiano'
+import { chiaveConfrontoCer } from '../../../domain/waste-movement/cer-registro'
 import { WHERE_VIGENTE } from '../../../domain/waste-movement/vigenza'
 import { millesimiFifo } from '../../../domain/waste-movement/fifo-deposito'
 import { caricaCatalogoCausali } from '../../registro/causali/catalogo-causali.repository'
@@ -258,13 +259,27 @@ export class LettoreAnnotazioniRentri {
     tx: Tx,
     tenantId: string,
     registroId: string,
-    richieste: Array<{ id: string; type: string }>
+    richieste: Array<{ id: string; type: string; cerCode: string }>
   ): Promise<Map<string, NumeroRegistrazione[]>> {
-    if (!richieste.some(r => r.type === 'SCARICO')) return new Map()
+    const scarichi = richieste.filter(r => r.type === 'SCARICO')
+    if (scarichi.length === 0) return new Map()
 
-    const [vigenti, aperture] = await Promise.all([
+    // Il FIFO raggruppa per CER (senza asterisco) e famiglia: gli altri CER del registro non
+    // contano. Si leggono quindi solo le registrazioni dei CER degli scarichi del lotto (il
+    // risultato non cambia), cosi' la prenotazione non legge l'intero registro di tutti gli anni.
+    const chiaviCer = new Set(scarichi.map(r => chiaveConfrontoCer(r.cerCode)))
+    const cerDelRegistro = await tx.wasteMovement.findMany({
+      where: { tenantId, registroId, ...WHERE_VIGENTE },
+      distinct: ['cerCode'],
+      select: { cerCode: true },
+    })
+    const cerRilevanti = cerDelRegistro
+      .map(c => c.cerCode)
+      .filter(c => chiaviCer.has(chiaveConfrontoCer(c)))
+
+    const [vigenti, tutteAperture] = await Promise.all([
       tx.wasteMovement.findMany({
-        where: { tenantId, registroId, ...WHERE_VIGENTE },
+        where: { tenantId, registroId, ...WHERE_VIGENTE, cerCode: { in: cerRilevanti } },
         select: {
           id: true,
           type: true,
@@ -278,6 +293,7 @@ export class LettoreAnnotazioniRentri {
       }),
       leggiApertureRegistro(tx, tenantId, { registroId }),
     ])
+    const aperture = tutteAperture.filter(a => chiaviCer.has(chiaveConfrontoCer(a.cerCode)))
     const idsAperture = unici(aperture.map(a => a.id))
     const conOrigini = idsAperture.length
       ? await tx.giacenzaIniziale.findMany({

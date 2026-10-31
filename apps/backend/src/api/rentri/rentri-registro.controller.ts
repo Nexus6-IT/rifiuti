@@ -286,6 +286,8 @@ export class RentriRegistroController {
     @Req() req: any
   ): Promise<Allineamento> {
     const tenantId = requireRequestTenantId(req)
+    // Chiama RENTRI (quota condivisa dell'azienda): stesso ruolo di chi trasmette.
+    await this.richiediScrittura(req, tenantId)
     return this.conErrori(() => this.impostazioni.allineamento(tenantId, registroId, query.anno))
   }
 

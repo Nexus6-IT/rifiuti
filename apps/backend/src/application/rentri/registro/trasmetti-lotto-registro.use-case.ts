@@ -21,7 +21,10 @@ import {
   TransazioneRentriNonTrovataError,
   TrasmissioneRentriIncertaError,
 } from '../../../infrastructure/rentri/rentri-api.client'
-import { RentriRegistriClient } from '../../../infrastructure/rentri/rentri-registri.client'
+import {
+  EsitoRentriNonDisponibileError,
+  RentriRegistriClient,
+} from '../../../infrastructure/rentri/rentri-registri.client'
 import { applicaEsitoDettagliato, type EsitoPerRiga } from './esito-movimenti-rentri'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import {
@@ -190,7 +193,9 @@ export class TrasmettiLottoRegistroUseCase {
         risultato.esito === 'APPLICATO'
           ? risultato.trasmesse > 0
             ? 'INVIATO'
-            : 'RIFIUTATO'
+            : risultato.incerte > 0
+              ? 'INCERTO'
+              : 'RIFIUTATO'
           : risultato.esito === 'INCERTO'
             ? 'INCERTO'
             : 'INVIATO',
@@ -221,8 +226,10 @@ export class TrasmettiLottoRegistroUseCase {
           righe,
           scaduta ? 1 : TENTATIVI_POLLING_RIPRESA
         )
-        if (r.esito === 'APPLICATO') riletti++
-        else if (r.esito === 'INCERTO') incerte += r.incerte
+        if (r.esito === 'APPLICATO') {
+          riletti++
+          incerte += r.incerte
+        } else if (r.esito === 'INCERTO') incerte += r.incerte
         else if (scaduta) {
           incerte += await this.repo.segnaIncerte(
             tenantId,
@@ -311,9 +318,11 @@ export class TrasmettiLottoRegistroUseCase {
       }
       // Errore tecnico (rete, 5xx, 429/423 esauriti, certificato, tentativi finiti): la riga resta in attesa.
       const descrizione =
-        errore instanceof RentriApiError
-          ? `Lettura dell'esito non riuscita (HTTP ${errore.status}): riprovare`
-          : "Lettura dell'esito non riuscita: riprovare"
+        errore instanceof EsitoRentriNonDisponibileError
+          ? 'Esito non ancora disponibile: RENTRI sta ancora elaborando'
+          : errore instanceof RentriApiError
+            ? `Lettura dell'esito non riuscita (HTTP ${errore.status}): riprovare`
+            : "Lettura dell'esito non riuscita: riprovare"
       this.logger.warn("Lettura dell'esito RENTRI non riuscita: le righe restano in attesa", {
         tipo: errore instanceof Error ? errore.name : 'sconosciuto',
       })
@@ -344,6 +353,12 @@ export class TrasmettiLottoRegistroUseCase {
     }
     await this.repo.applicaEsiti(tenantId, transazioneId, righe)
     const trasmesse = righe.filter(r => r.stato === 'TRASMESSA').length
-    return { esito: 'APPLICATO', trasmesse, rifiutate: righe.length - trasmesse, incerte: 0 }
+    const incerte = righe.filter(r => r.stato === 'INCERTA').length
+    return {
+      esito: 'APPLICATO',
+      trasmesse,
+      rifiutate: righe.length - trasmesse - incerte,
+      incerte,
+    }
   }
 }

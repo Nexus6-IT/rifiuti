@@ -454,8 +454,17 @@ describe('RentriRegistroController — catena HTTP', () => {
       expect(verifica.verifica).toHaveBeenCalledWith(CLIENTE, CONSULENTE, MOVIMENTO)
     })
 
-    it('dettaglio: lettura per ogni ruolo; allineamento con anno validato', async () => {
+    it('allineamento (chiama RENTRI): VIEWER 403 senza use case', async () => {
       await avvia('VIEWER')
+      const a = await cliente(
+        http().get(`/rentri/registro/registri/${REGISTRO}/allineamento?anno=2026`)
+      )
+      expect(a.status).toBe(403)
+      expect(impostazioni.allineamento).not.toHaveBeenCalled()
+    })
+
+    it('dettaglio: lettura per ogni ruolo; allineamento (ruolo di scrittura) con anno validato', async () => {
+      await avvia('OPERATOR')
       const d = await cliente(http().get(`/rentri/registro/movimenti/${MOVIMENTO}`))
       expect(d.status).toBe(200)
       expect(dettaglio.dettaglio).toHaveBeenCalledWith(CLIENTE, MOVIMENTO)

@@ -1,5 +1,9 @@
 import { of, throwError } from 'rxjs'
-import { RentriRegistriClient } from './rentri-registri.client'
+import {
+  EsitoRentriMalformatoError,
+  EsitoRentriNonDisponibileError,
+  RentriRegistriClient,
+} from './rentri-registri.client'
 import { RentriApiError } from './rentri-http-resilienza'
 import {
   TrasmissioneRentriIncertaError,
@@ -153,18 +157,59 @@ describe('RentriRegistriClient (HttpService finto)', () => {
       errore: false,
       validazione: [],
       numeroRegistrazioni: [{ anno: 2026, progressivo: 1, identificativo: null }],
+      registrazioniSenzaNumero: 0,
     })
   })
 
-  it('esito senza campi: errore prudente true, liste vuote', async () => {
+  function rispondi(corpo: unknown) {
     http.get
       .mockReturnValueOnce(of({ status: 303, data: {}, headers: { location: '/r' } }))
-      .mockReturnValueOnce(of({ status: 200, data: {}, headers: {} }))
+      .mockReturnValueOnce(of({ status: 200, data: corpo, headers: {} }))
+  }
+
+  it('esito con errore booleano e senza altri campi: liste vuote (valido per il contratto)', async () => {
+    rispondi({ errore: false })
     await expect(client.attendiEsitoMovimenti(TRANSAZIONE, TENANT)).resolves.toEqual({
-      errore: true,
+      errore: false,
       validazione: [],
       numeroRegistrazioni: [],
+      registrazioniSenzaNumero: 0,
     })
+  })
+
+  it.each([
+    ['errore assente', {}],
+    ['errore non booleano', { errore: 'true' }],
+    ['errore null', { errore: null }],
+    ['corpo non oggetto (stringa)', 'ok'],
+    ['corpo non oggetto (array)', []],
+  ])('%s: errore tecnico, mai un esito', async (_nome, corpo) => {
+    rispondi(corpo)
+    await expect(client.attendiEsitoMovimenti(TRANSAZIONE, TENANT)).rejects.toBeInstanceOf(
+      EsitoRentriMalformatoError
+    )
+  })
+
+  it('registrazione con identificativo ma anno/progressivo nulli: contata, non scartata in silenzio', async () => {
+    rispondi({
+      errore: true,
+      esito: {
+        numero_registrazioni: [
+          { anno: 2026, progressivo: 1, identificativo: 'X' },
+          { anno: null, progressivo: null, identificativo: 'Y' },
+        ],
+      },
+    })
+    const e = await client.attendiEsitoMovimenti(TRANSAZIONE, TENANT)
+    expect(e.numeroRegistrazioni).toHaveLength(1)
+    expect(e.registrazioniSenzaNumero).toBe(1)
+  })
+
+  it('polling esaurito: errore dedicato (non un esito)', async () => {
+    http.get.mockReturnValue(of({ status: 200, data: {}, headers: {} }))
+    await expect(
+      client.attendiEsitoMovimenti(TRANSAZIONE, TENANT, { intervalloMs: 1, maxTentativi: 2 })
+    ).rejects.toBeInstanceOf(EsitoRentriNonDisponibileError)
   })
 
   it('303 senza /result leggibile non è un successo', async () => {

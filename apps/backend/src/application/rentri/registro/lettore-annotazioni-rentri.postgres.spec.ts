@@ -215,6 +215,39 @@ describe('LettoreAnnotazioniRentri — Postgres reale, ruolo wasteflow_app', () 
     expect(rettifica.fir?.produttore?.indirizzo?.citta.comune_id).toBe('058091')
   })
 
+  it('registrazioni di altri CER nel registro non cambiano i riferimenti di carico', async () => {
+    const s = await scenario()
+    const ids = [s.carico.id, s.scarico.id, s.rettifica.id]
+    const senza = await leggi(s.tenantId, s.registroId, ids)
+    for (const [cer, tipo, quantita, giorno] of [
+      ['17 09 04', 'CARICO', 500, '2026-02-01'],
+      ['17 09 04', 'SCARICO', 200, '2026-02-10'],
+      ['20 01 01', 'CARICO', 30, '2026-03-02'],
+    ] as const) {
+      await owner.wasteMovement.create({
+        data: {
+          tenantId: s.tenantId,
+          registroId: s.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: ++progressivo,
+          cerCode: cer,
+          unit: 'KG',
+          wastePhysicalState: 'Solido',
+          type: tipo,
+          movementDate: new Date(`${giorno}T10:00:00Z`),
+          registrationDate: new Date(`${giorno}T10:00:00Z`),
+          causale: tipo === 'CARICO' ? 'PRODUZIONE_INTERNA' : 'CONFERIMENTO_TRASPORTATORE',
+          quantity: quantita,
+        } as never,
+      })
+    }
+    const con = await leggi(s.tenantId, s.registroId, ids)
+    expect(con.map(a => a.riferimentiCarico)).toEqual(senza.map(a => a.riferimentiCarico))
+    expect(con[2].riferimentiCarico).toEqual(
+      [s.carico.progressiveNumber].map(p => ({ anno: 2026, progressivo: p }))
+    )
+  })
+
   it('con il contesto di B e i parametri di A la RLS nasconde tutto: errore, non dati', async () => {
     const a = await scenario()
     const b = await scenario()

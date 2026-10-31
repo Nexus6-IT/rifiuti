@@ -32,6 +32,33 @@ export interface EsitoMovimentiRentri {
   errore: boolean
   validazione: MessaggioRentri[]
   numeroRegistrazioni: Array<{ anno: number; progressivo: number; identificativo: string | null }>
+  /**
+   * Registrazioni che RENTRI riporta SENZA un (anno, progressivo) utilizzabile (nulli o fuori
+   * formato): RENTRI ha registrato qualcosa che non si sa attribuire, quindi le righe non
+   * confermate del lotto sono incerte (mai rifiutate).
+   */
+  registrazioniSenzaNumero?: number
+}
+
+/** Polling esaurito con la transazione ancora in elaborazione: non e' un errore di RENTRI, si riprova. */
+export class EsitoRentriNonDisponibileError extends Error {
+  constructor(transazioneId: string, maxTentativi: number) {
+    super(
+      `Superato il numero massimo di tentativi (${maxTentativi}) in attesa dell'esito della transazione RENTRI ${transazioneId}.`
+    )
+    this.name = 'EsitoRentriNonDisponibileError'
+  }
+}
+
+/**
+ * Esito di una transazione `movimenti` non decodificabile (corpo non oggetto, `errore` assente o
+ * non booleano): errore TECNICO, non un esito. Le righe restano `ATTESA_ESITO` e si riprova.
+ */
+export class EsitoRentriMalformatoError extends Error {
+  constructor(motivo: string) {
+    super(`Esito RENTRI non decodificabile: ${motivo}`)
+    this.name = 'EsitoRentriMalformatoError'
+  }
 }
 
 /**
@@ -322,15 +349,15 @@ export class RentriRegistriClient {
       }
     }
 
-    throw new Error(
-      `Superato il numero massimo di tentativi (${maxTentativi}) in attesa dell'esito della transazione RENTRI ${transazioneId}.`
-    )
+    throw new EsitoRentriNonDisponibileError(transazioneId, maxTentativi)
   }
 
   /**
    * Come {@link attendiEsito} per una transazione di {@link inviaMovimenti}, con
-   * l'esito tipato. Campi assenti: `[]`/`null`; `errore` assente vale `true`
-   * (prudente: senza una conferma esplicita non si considera registrato nulla).
+   * l'esito tipato. Campi assenti (`validazione`, `numero_registrazioni`): `[]`.
+   * `errore` e' opzionale nel contratto, ma senza un booleano esplicito l'esito non e' decodificabile:
+   * {@link EsitoRentriMalformatoError} (errore tecnico, si riprova; mai un rifiuto). Le registrazioni
+   * senza (anno, progressivo) si contano in `registrazioniSenzaNumero`.
    * Una transazione sconosciuta a RENTRI solleva {@link TransazioneRentriNonTrovataError}.
    */
   async attendiEsitoMovimenti(
@@ -339,6 +366,12 @@ export class RentriRegistriClient {
     opzioni?: { intervalloMs?: number; maxTentativi?: number }
   ): Promise<EsitoMovimentiRentri> {
     const grezzo = (await this.attendiEsito(transazioneId, opzioni, tenantId)) as any
+    if (grezzo === null || typeof grezzo !== 'object' || Array.isArray(grezzo)) {
+      throw new EsitoRentriMalformatoError('corpo della risposta non valido')
+    }
+    if (typeof grezzo.errore !== 'boolean') {
+      throw new EsitoRentriMalformatoError('campo errore assente o non booleano')
+    }
     const validazione: MessaggioRentri[] = (
       Array.isArray(grezzo?.validazione) ? grezzo.validazione : []
     ).map((m: any) => ({
@@ -347,19 +380,25 @@ export class RentriRegistriClient {
       tipo: m?.tipo === 'Avvertimento' ? 'Avvertimento' : 'Errore',
       codice: typeof m?.codice_messaggio === 'string' ? m.codice_messaggio : null,
     }))
-    const registrazioni: any[] = Array.isArray(grezzo?.esito?.numero_registrazioni)
-      ? grezzo.esito.numero_registrazioni
-      : []
+    const grezzeReg = grezzo?.esito?.numero_registrazioni
+    const registrazioni: any[] = Array.isArray(grezzeReg) ? grezzeReg : []
+    const conNumero = registrazioni.filter(
+      r => Number.isInteger(r?.anno) && Number.isInteger(r?.progressivo)
+    )
+    // Un valore presente ma non elenco e' un esito che non si sa leggere: conta come registrazione ignota.
+    const senzaNumero =
+      registrazioni.length -
+      conNumero.length +
+      (grezzeReg !== undefined && grezzeReg !== null && !Array.isArray(grezzeReg) ? 1 : 0)
     return {
-      errore: typeof grezzo?.errore === 'boolean' ? grezzo.errore : true,
+      errore: grezzo.errore,
       validazione,
-      numeroRegistrazioni: registrazioni
-        .filter(r => Number.isInteger(r?.anno) && Number.isInteger(r?.progressivo))
-        .map(r => ({
-          anno: r.anno,
-          progressivo: r.progressivo,
-          identificativo: typeof r.identificativo === 'string' ? r.identificativo : null,
-        })),
+      registrazioniSenzaNumero: senzaNumero,
+      numeroRegistrazioni: conNumero.map(r => ({
+        anno: r.anno,
+        progressivo: r.progressivo,
+        identificativo: typeof r.identificativo === 'string' ? r.identificativo : null,
+      })),
     }
   }
 

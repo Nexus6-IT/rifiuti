@@ -54,15 +54,32 @@ describe('applicaEsito', () => {
     expect(r[1].motivo).not.toMatch(/insieme alle altre/)
   })
 
-  it('errore false senza conferma di una riga: RIFIUTATA, mai TRASMESSA', () => {
+  it('errore false senza conferma di una riga: INCERTA, mai RIFIUTATA', () => {
     const r = applicaEsito(
       lotto,
       esito({ numeroRegistrazioni: [{ anno: 2026, progressivo: 1, identificativo: ID(1) }] })
     )
-    expect(r.map(x => x.stato)).toEqual(['TRASMESSA', 'RIFIUTATA', 'RIFIUTATA'])
-    expect(r[1].motivo).toBe("RENTRI non ha confermato l'annotazione")
-    // nessuna conferma e nessun messaggio: nessuna riga TRASMESSA
-    expect(applicaEsito(lotto, esito()).every(x => x.stato === 'RIFIUTATA')).toBe(true)
+    expect(r.map(x => x.stato)).toEqual(['TRASMESSA', 'INCERTA', 'INCERTA'])
+    expect(r[1].motivo).toMatch(/non ha confermato/)
+    // nessuna conferma e nessun messaggio: tutte incerte, nessuna TRASMESSA ne' RIFIUTATA
+    expect(applicaEsito(lotto, esito()).every(x => x.stato === 'INCERTA')).toBe(true)
+  })
+
+  it('errore true con registrazioni senza numero: le righe non confermate sono INCERTA', () => {
+    const r = applicaEsito(
+      lotto,
+      esito({
+        errore: true,
+        numeroRegistrazioni: [{ anno: 2026, progressivo: 1, identificativo: ID(1) }],
+        registrazioniSenzaNumero: 1,
+      })
+    )
+    expect(r.map(x => x.stato)).toEqual(['TRASMESSA', 'INCERTA', 'INCERTA'])
+  })
+
+  it('RIFIUTATA solo con errore true e nessuna registrazione ignota', () => {
+    const r = applicaEsito(lotto, esito({ errore: true, registrazioniSenzaNumero: 0 }))
+    expect(r.every(x => x.stato === 'RIFIUTATA')).toBe(true)
   })
 
   it('numero confermato che non è nel lotto: ignorato e segnalato', () => {
@@ -73,7 +90,7 @@ describe('applicaEsito', () => {
       ],
     })
     const { righe, fuoriLotto } = applicaEsitoDettagliato(lotto, e)
-    expect(righe.map(x => x.stato)).toEqual(['TRASMESSA', 'RIFIUTATA', 'RIFIUTATA'])
+    expect(righe.map(x => x.stato)).toEqual(['TRASMESSA', 'INCERTA', 'INCERTA'])
     expect(fuoriLotto).toEqual([{ anno: 2026, progressivo: 99 }])
     expect(applicaEsito(lotto, e)).toEqual(righe)
   })

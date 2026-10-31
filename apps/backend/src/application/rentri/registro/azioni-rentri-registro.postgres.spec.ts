@@ -18,6 +18,7 @@ process.env.DATABASE_URL = urlComeRuolo(
 )
 
 import { randomUUID } from 'crypto'
+import { EsitoRentriNonDisponibileError } from '../../../infrastructure/rentri/rentri-registri.client'
 import { RentriApiError } from '../../../infrastructure/rentri/rentri-http-resilienza'
 import {
   TransazioneRentriNonTrovataError,
@@ -68,6 +69,13 @@ class RentriFinto {
     const r = this.esito()
     if (r instanceof Error) throw r
     return r
+  }
+  ultima: string | null | Error = null
+  chiamateUltima = 0
+  async ultimaTransazioneId() {
+    this.chiamateUltima++
+    if (this.ultima instanceof Error) throw this.ultima
+    return this.ultima
   }
   contaFn: (() => unknown) | null = null
   ultimiFiltriConta: unknown = null
@@ -251,6 +259,8 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
     finto.conta = 0
     finto.dettaglio = null
     finto.esito = null
+    finto.ultima = null
+    finto.chiamateUltima = 0
   })
 
   afterAll(async () => {
@@ -666,6 +676,95 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
       const r = await verifica.verifica(a.tenantId, utenteId, m.id)
       expect(r.esito).toBe('RIFIUTATA')
       expect(await rigaDi(m.id)).toMatchObject({ stato: 'RIFIUTATA', bloccatoInvio: false })
+    })
+
+    it('con transazione: errore=false ma riga non confermata -> resta INCERTA (mai RIFIUTATA)', async () => {
+      const a = await azienda()
+      const transazioneId = randomUUID()
+      const m = await incerta(a, { transazioneId })
+      finto.esito = () => ({ errore: false, validazione: [], numeroRegistrazioni: [] })
+      const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+      expect(r.esito).toBe('NON_VERIFICABILE')
+      expect(r.stato).toBe('INCERTA')
+      expect(await rigaDi(m.id)).toMatchObject({ stato: 'INCERTA', bloccatoInvio: true })
+    })
+
+    describe('POST orfana (INCERTA senza transazione_id)', () => {
+      it("rilegge l'ultima transazione del registro prima del numero: confermata -> TRASMESSA e transazione annotata", async () => {
+        const a = await azienda()
+        const orfana = randomUUID()
+        const m = await incerta(a)
+        finto.ultima = orfana
+        finto.esito = () => ({
+          errore: false,
+          validazione: [],
+          numeroRegistrazioni: [
+            {
+              anno: 2026,
+              progressivo: m.progressiveNumber,
+              identificativo: ID_MOV(m.progressiveNumber),
+            },
+          ],
+        })
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('TRASMESSA')
+        expect(finto.chiamateDettaglio).toBe(0)
+        expect(await rigaDi(m.id)).toMatchObject({
+          stato: 'TRASMESSA',
+          transazioneId: orfana,
+          identificativoRentri: ID_MOV(m.progressiveNumber),
+        })
+      })
+
+      it('ancora in elaborazione: NON_VERIFICABILE, nessuna ricerca per numero, riga invariata', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.ultima = randomUUID()
+        finto.esito = () => new EsitoRentriNonDisponibileError('x', 1)
+        finto.dettaglio = () => non404()
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect(r.messaggio).toMatch(/riprovare/)
+        expect(finto.chiamateDettaglio).toBe(0)
+        expect((await rigaDi(m.id))?.stato).toBe('INCERTA')
+      })
+
+      it('lettura di ultima-transazione in errore tecnico: NON_VERIFICABILE, nessun numero', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.ultima = new RentriApiError(503, 'x', undefined, true)
+        finto.dettaglio = () => non404()
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(r.esito).toBe('NON_VERIFICABILE')
+        expect(finto.chiamateDettaglio).toBe(0)
+      })
+
+      it('esito definitivo che non cita il numero: non rifiuta, prosegue per numero', async () => {
+        const a = await azienda()
+        const m = await incerta(a)
+        finto.ultima = randomUUID()
+        finto.esito = () => ({ errore: true, validazione: [], numeroRegistrazioni: [] })
+        finto.dettaglio = () => non404()
+        finto.conta = 0
+        const r = await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(finto.chiamateDettaglio).toBe(1)
+        expect(r.esito).toBe('DA_TRASMETTERE') // invio vecchio (10 h), conteggio zero
+      })
+
+      it("transazione gia' nota ad altre righe: non e' orfana, si va per numero", async () => {
+        const a = await azienda()
+        const nota = randomUUID()
+        const altra = await incerta(a, { transazioneId: nota })
+        const m = await incerta(a)
+        finto.ultima = nota
+        finto.esito = () => {
+          throw new Error('non deve rileggere')
+        }
+        finto.dettaglio = () => non404()
+        await verifica.verifica(a.tenantId, utenteId, m.id)
+        expect(finto.chiamateEsito).toBe(0)
+        expect((await rigaDi(altra.id))?.stato).toBe('INCERTA')
+      })
     })
 
     it("con transazione: errore tecnico nella lettura -> resta com'e', nessuna ricerca per numero", async () => {

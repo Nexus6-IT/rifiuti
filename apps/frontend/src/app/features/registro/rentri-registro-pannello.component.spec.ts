@@ -236,6 +236,11 @@ describe('RentriRegistroPannelloComponent', () => {
     )
   })
 
+  it('allineamento: chi non può trasmettere non vede il pulsante (il backend lo nega)', () => {
+    apri(elenco({}, { puoTrasmettere: false }))
+    expect(q('rentri-allineamento')).toBeNull()
+  })
+
   it('storico: con 0 annotazioni da trasmettere la conferma è disabilitata', () => {
     apri(elenco({ nonTrasmessi: 0 }))
     clic('rentri-storico')

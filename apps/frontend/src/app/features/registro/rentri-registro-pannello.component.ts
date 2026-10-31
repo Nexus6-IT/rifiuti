@@ -352,7 +352,7 @@ type TipoConferma = 'selezionati' | 'storico'
           ariaLabel="Trasmetti a RENTRI lo storico di un anno"
         ></p-button>
         <p-button
-          *ngIf="r.identificativoRentri"
+          *ngIf="r.identificativoRentri && puoTrasmettere()"
           label="Verifica allineamento"
           icon="pi pi-sync"
           [outlined]="true"
