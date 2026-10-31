@@ -534,6 +534,14 @@ le righe non servono piu', `DELETE FROM abbinamenti_carico_scarico WHERE tenant_
 
 Le migration gia' applicate in produzione non si modificano: il commento iniziale resta com'e'.
 
+**Dopo il deploy, cosa controllare:**
+- `SELECT count(*) FROM abbinamenti_carico_scarico` risponde (0 finche nessuno registra scarichi
+  di stoccaggio R13/D15; poi cresce con le registrazioni).
+- RLS: la tabella ha `ENABLE` e `FORCE ROW LEVEL SECURITY` e la policy `isolamento_azienda`;
+  in CI `rls-catalogo.postgres.spec.ts` conta 36 tabelle con RLS.
+- Gli scarichi registrati prima del deploy non sono abbinati: l'amministratore li abbina dalla
+  pagina Giacenze -> Abbinamenti con "Abbina con FIFO i non abbinati".
+
 ## Metriche Prometheus (`/metrics`)
 
 Il backend espone l'endpoint standard Prometheus a:
