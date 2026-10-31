@@ -187,9 +187,23 @@ describe('Abbinamenti carico-scarico, schema (Postgres reale)', () => {
     const altro = await owner.registroRifiuti.create({
       data: { tenantId: s.tenantId, descrizione: 'Altro registro', codice: 'ALTRO' },
     })
-    expect(await errore(s, { registroId: altro.id })).toMatch(
-      /abbinamenti_cs_(scarico|carico)_fkey/
-    )
+    const caricoAltro = await owner.wasteMovement.create({
+      data: {
+        tenantId: s.tenantId,
+        registroId: altro.id,
+        progressiveYear: 2026,
+        progressiveNumber: 1,
+        type: 'CARICO',
+        movementDate: new Date('2026-03-01T10:00:00Z'),
+        registrationDate: new Date('2026-03-01T10:00:00Z'),
+        causale: 'PRODUZIONE_INTERNA',
+        cerCode: CER,
+        quantity: 100,
+        unit: 'KG',
+        tipoAnnotazione: 'ORDINARIA',
+      },
+    })
+    expect(await errore(s, { caricoId: caricoAltro.id })).toContain('abbinamenti_cs_carico_fkey')
   })
 
   it('rifiuta la stessa coppia scarico-carico due volte', async () => {
@@ -219,7 +233,12 @@ describe('Abbinamenti carico-scarico, schema (Postgres reale)', () => {
   it('non cancella una giacenza iniziale abbinata', async () => {
     const s = await azienda()
     await comeApp(s.tenantId, tx => inserisci(tx, s, { caricoId: null, giacenzaId: s.giacenzaId }))
-    await expect(owner.giacenzaIniziale.delete({ where: { id: s.giacenzaId } })).rejects.toThrow()
+    const esito = await owner.giacenzaIniziale
+      .delete({ where: { id: s.giacenzaId } })
+      .then(() => null)
+      .catch((e: unknown) => e as { code?: string; message: string })
+    expect(esito).not.toBeNull()
+    expect(`${esito?.code ?? ''} ${esito?.message}`).toMatch(/P2003|abbinamenti_cs_giacenza_fkey/)
   })
 
   it('RLS: B non vede ne inserisce righe di A; senza contesto 0 righe', async () => {
@@ -235,7 +254,7 @@ describe('Abbinamenti carico-scarico, schema (Postgres reale)', () => {
     })
     await expect(
       comeApp(b.tenantId, tx => inserisci(tx, { ...a, tenantId: a.tenantId }, {}))
-    ).rejects.toThrow()
+    ).rejects.toThrow(/row-level security/)
     const senza = await app.$queryRawUnsafe<{ n: number }[]>(
       `SELECT count(*)::int AS n FROM abbinamenti_carico_scarico`
     )

@@ -484,6 +484,14 @@ che hanno abbinamenti manuali (si perdono nella vista, non nel database).
 Ripristino a mano dello schema (solo se serve): `DROP TABLE abbinamenti_carico_scarico;
 DROP TYPE origine_abbinamento; DROP INDEX giacenze_iniziali_id_registro_tenant_key;` e
 `DELETE FROM _prisma_migrations WHERE migration_name = '20261101300000_abbinamenti_carico_scarico';`.
+
+Con il codice vecchio e la tabella ancora presente: cancellare una giacenza iniziale gia'
+abbinata fallisce con un errore di chiave esterna non gestito (500), e gli annullamenti di
+movimenti lasciano righe che al ripristino del codice risultano `INCOERENTE` (e si correggono
+dalla pagina). Prima di cancellare giacenze iniziali o movimenti col codice vecchio,
+controllare `SELECT count(*) FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`; se
+le righe non servono piu', `DELETE FROM abbinamenti_carico_scarico WHERE tenant_id = '<azienda>'`.
+
 Le migration gia' applicate in produzione non si modificano: il commento iniziale resta com'e'.
 
 ## Metriche Prometheus (`/metrics`)
