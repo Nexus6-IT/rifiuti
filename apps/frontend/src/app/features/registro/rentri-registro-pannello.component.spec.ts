@@ -23,6 +23,7 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     invioAutomaticoDal: null,
     perStato: {},
     nonTrasmessi: 7,
+    escluse: 0,
     haCertificato: true,
     ...p,
   }
@@ -117,6 +118,16 @@ describe('RentriRegistroPannelloComponent', () => {
     expect(q('rentri-conteggio-ATTESA_ESITO')?.textContent).toContain("In attesa dell'esito")
     expect(q('rentri-conteggio-INCERTA')?.textContent).toContain('Esito incerto')
     expect(q('rentri-nota-obbligo')?.textContent).toContain('portale')
+  })
+
+  it("conteggio delle annotazioni escluse dall'invio automatico: solo se ce ne sono", () => {
+    apri(elenco({ perStato: { DA_TRASMETTERE: 3 }, escluse: 2 }))
+    const t = q('rentri-conteggio-escluse')!.textContent!
+    expect(t).toContain("Escluse dall'invio automatico")
+    expect(t).toContain('2')
+    fixture.destroy()
+    apri(elenco({ perStato: { DA_TRASMETTERE: 3 }, escluse: 0 }))
+    expect(q('rentri-conteggio-escluse')).toBeNull()
   })
 
   it('manca il certificato: lo dice, e le annotazioni restano in coda', () => {
@@ -276,7 +287,7 @@ describe('RentriRegistroPannelloComponent', () => {
     expect(q('rentri-allineamento-esito')!.textContent).toContain('non ha risposto')
   })
 
-  it('emette i permessi per la pagina (collegato, puoTrasmettere)', () => {
+  it('emette i permessi per la pagina (collegato, puoTrasmettere, puoConfigurare)', () => {
     servizio.registri.and.returnValue(of(elenco({}, { puoTrasmettere: false })))
     fixture = TestBed.createComponent(RentriRegistroPannelloComponent)
     let ricevuto: unknown
@@ -285,7 +296,7 @@ describe('RentriRegistroPannelloComponent', () => {
     fixture.componentRef.setInput('selezionati', [])
     fixture.componentRef.setInput('annoCorrente', 2026)
     fixture.detectChanges()
-    expect(ricevuto).toEqual({ collegato: true, puoTrasmettere: false })
+    expect(ricevuto).toEqual({ collegato: true, puoTrasmettere: false, puoConfigurare: true })
   })
 })
 
@@ -294,16 +305,30 @@ describe('RentriRigaAzioniComponent', () => {
   let toast: jasmine.SpyObj<ToastService>
   let fixture: ComponentFixture<RentriRigaAzioniComponent>
 
-  function riga(stato: StatoRentri | null, motivo: string | null = null, puo = true) {
+  function riga(
+    stato: StatoRentri | null,
+    motivo: string | null = null,
+    puo = true,
+    extra: { origine?: string; escluso?: boolean; puoConfigurare?: boolean } = {}
+  ) {
     fixture = TestBed.createComponent(RentriRigaAzioniComponent)
     fixture.componentRef.setInput('movimentoId', 'm1')
     fixture.componentRef.setInput('registroId', 'r1')
     fixture.componentRef.setInput('numero', '2026/12')
     fixture.componentRef.setInput(
       'trasmissione',
-      stato ? { stato, identificativo: null, motivo } : null
+      stato
+        ? {
+            stato,
+            identificativo: null,
+            motivo,
+            origine: extra.origine ?? 'MANUALE',
+            escluso: extra.escluso ?? false,
+          }
+        : null
     )
     fixture.componentRef.setInput('puoTrasmettere', puo)
+    fixture.componentRef.setInput('puoConfigurare', extra.puoConfigurare ?? false)
     fixture.detectChanges()
   }
 
@@ -312,6 +337,8 @@ describe('RentriRigaAzioniComponent', () => {
       'verifica',
       'togliDallaCoda',
       'trasmetti',
+      'escludiInvioAutomatico',
+      'includiInvioAutomatico',
     ])
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['error', 'success', 'info', 'warn'])
     TestBed.configureTestingModule({
@@ -402,6 +429,97 @@ describe('RentriRigaAzioniComponent', () => {
     fixture.componentInstance.cambiato.subscribe(() => cambiato++)
     clic('rentri-togli-m1')
     expect(cambiato).toBe(1)
+  })
+
+  describe("esclusione dall'invio automatico", () => {
+    const MOTIVO = 'Da correggere prima di inviarla'
+    const automatica = { origine: 'AUTOMATICA', puoConfigurare: true }
+
+    it('ADMIN su riga automatica in coda: «Escludi» al posto di «Togli dalla coda»', () => {
+      riga('DA_TRASMETTERE', null, true, automatica)
+      expect(q('rentri-escludi-m1')).not.toBeNull()
+      expect(q('rentri-togli-m1')).toBeNull()
+    })
+
+    it('non ADMIN o riga manuale: nessun «Escludi»; la manuale ha «Togli dalla coda»', () => {
+      riga('DA_TRASMETTERE', null, true, { origine: 'AUTOMATICA', puoConfigurare: false })
+      expect(q('rentri-escludi-m1')).toBeNull()
+      expect(q('rentri-togli-m1')).not.toBeNull()
+      fixture.destroy()
+      riga('DA_TRASMETTERE', null, true, { origine: 'MANUALE', puoConfigurare: true })
+      expect(q('rentri-escludi-m1')).toBeNull()
+      expect(q('rentri-togli-m1')).not.toBeNull()
+      fixture.destroy()
+      riga('TRASMESSA', null, true, automatica)
+      expect(q('rentri-escludi-m1')).toBeNull()
+    })
+
+    it('chiede conferma e motivo: senza motivo non parte; con motivo chiama il servizio e notifica la pagina', () => {
+      servizio.escludiInvioAutomatico.and.returnValue(of(undefined))
+      riga('DA_TRASMETTERE', null, true, automatica)
+      clic('rentri-escludi-m1')
+      fixture.detectChanges()
+      const conferma = q('rentri-escludi-conferma-m1')
+      expect(conferma).not.toBeNull()
+      expect(conferma!.textContent).toContain('2026/12')
+      clic('rentri-escludi-si-m1')
+      expect(servizio.escludiInvioAutomatico).not.toHaveBeenCalled()
+      const campo = q<HTMLTextAreaElement>('rentri-escludi-motivo-m1')!
+      campo.value = `  ${MOTIVO} `
+      campo.dispatchEvent(new Event('input'))
+      fixture.detectChanges()
+      let cambiato = 0
+      fixture.componentInstance.cambiato.subscribe(() => cambiato++)
+      clic('rentri-escludi-si-m1')
+      expect(servizio.escludiInvioAutomatico).toHaveBeenCalledWith('m1', MOTIVO)
+      expect(toast.success).toHaveBeenCalled()
+      expect(cambiato).toBe(1)
+    })
+
+    it('«No» chiude la conferma senza chiamare il servizio; errore del backend mostrato verbatim', () => {
+      riga('DA_TRASMETTERE', null, true, automatica)
+      clic('rentri-escludi-m1')
+      fixture.detectChanges()
+      clic('rentri-escludi-no-m1')
+      fixture.detectChanges()
+      expect(q('rentri-escludi-conferma-m1')).toBeNull()
+      expect(servizio.escludiInvioAutomatico).not.toHaveBeenCalled()
+      const msg = "L'annotazione non è più in coda: l'esclusione vale solo prima dell'invio."
+      servizio.escludiInvioAutomatico.and.returnValue(
+        throwError(() => ({ status: 409, error: { message: msg } }))
+      )
+      clic('rentri-escludi-m1')
+      fixture.detectChanges()
+      const campo = q<HTMLTextAreaElement>('rentri-escludi-motivo-m1')!
+      campo.value = MOTIVO
+      campo.dispatchEvent(new Event('input'))
+      fixture.detectChanges()
+      clic('rentri-escludi-si-m1')
+      expect(toast.error).toHaveBeenCalledWith(msg)
+    })
+
+    it("riga esclusa: etichetta «Escluso dall'invio automatico», motivo nel tooltip, «Includi di nuovo» solo per ADMIN", () => {
+      riga('DA_TRASMETTERE', MOTIVO, true, { ...automatica, escluso: true })
+      expect(q('rentri-stato-m1')!.textContent).toContain("Escluso dall'invio automatico")
+      expect(q('rentri-motivo-m1')!.textContent).toContain(MOTIVO)
+      expect(q('rentri-includi-m1')).not.toBeNull()
+      expect(q('rentri-escludi-m1')).toBeNull()
+      expect(q('rentri-togli-m1')).toBeNull()
+      fixture.destroy()
+      riga('DA_TRASMETTERE', MOTIVO, true, { ...automatica, escluso: true, puoConfigurare: false })
+      expect(q('rentri-stato-m1')!.textContent).toContain("Escluso dall'invio automatico")
+      expect(q('rentri-includi-m1')).toBeNull()
+    })
+
+    it('Includi di nuovo: chiama il servizio e notifica la pagina', () => {
+      servizio.includiInvioAutomatico.and.returnValue(of(undefined))
+      riga('DA_TRASMETTERE', MOTIVO, true, { ...automatica, escluso: true })
+      let cambiato = 0
+      fixture.componentInstance.cambiato.subscribe(() => cambiato++)
+      clic('rentri-includi-m1')
+      expect(servizio.includiInvioAutomatico).toHaveBeenCalledWith('m1')
+      expect(cambiato).toBe(1)
+    })
   })
 
   it('Verifica: mostra il messaggio del backend', () => {

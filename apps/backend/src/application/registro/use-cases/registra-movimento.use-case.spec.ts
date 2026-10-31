@@ -12,10 +12,16 @@ import { RegistriService, RegistroNonCoerenteConFirError } from '../registri.ser
 import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { hashAnnotazioneV2 } from '../../../domain/waste-movement/waste-movement.entity'
 
-import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
+import {
+  abbinaNuovoScarico,
+  haStoccaggioOAbbinamenti,
+} from '../../abbinamenti/abbinamenti-scrittura'
 
 jest.mock('../../abbinamenti/abbinamenti-scrittura')
 const abbinaMock = abbinaNuovoScarico as jest.MockedFunction<typeof abbinaNuovoScarico>
+const stoccaggioMock = haStoccaggioOAbbinamenti as jest.MockedFunction<
+  typeof haStoccaggioOAbbinamenti
+>
 
 const REGISTRO = 'registro-uuid-001'
 const registroVista = {
@@ -177,6 +183,7 @@ describe('RegistraMovimentoUseCase', () => {
   function _mockTransazione(record: object) {
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(0), // advisory lock no-op nel test
+      $executeRawUnsafe: jest.fn().mockResolvedValue(0), // SAVEPOINT dell'abbinamento (4.6)
       $queryRaw: jest.fn().mockResolvedValue([{ max_num: null }]),
       registroProgressivoIniziale: { findUnique: jest.fn().mockResolvedValue(null) },
       registroRifiuti: { findMany: jest.fn().mockResolvedValue([]) },
@@ -199,6 +206,7 @@ describe('RegistraMovimentoUseCase', () => {
 
   beforeEach(async () => {
     abbinaMock.mockResolvedValue([])
+    stoccaggioMock.mockResolvedValue(true)
     giacenzaMock.mockResolvedValue({
       saldoComplessivoKg: 1_000_000,
       disponibileAllaDataKg: 1_000_000,
@@ -703,6 +711,26 @@ describe('RegistraMovimentoUseCase', () => {
       movimentoOriginaleId: null,
     })
     expect(r.value.avvisi).toContain('avviso di abbinamento')
+  })
+
+  it('abbinamenti: un registro ordinario (pre-controllo negativo) non apre nessun SAVEPOINT', async () => {
+    giacenzaMock.mockResolvedValue(g(150))
+    const tx = _mockTransazione(recordScarico)
+    stoccaggioMock.mockResolvedValue(false)
+    const r = await useCase.execute(scaricoCmd({ quantity: 100 }))
+    expect(r.isSuccess).toBe(true)
+    expect(tx.$executeRawUnsafe).not.toHaveBeenCalled()
+    expect(abbinaMock).not.toHaveBeenCalled()
+  })
+
+  it('abbinamenti: un registro di stoccaggio apre e rilascia il SAVEPOINT', async () => {
+    giacenzaMock.mockResolvedValue(g(150))
+    const tx = _mockTransazione(recordScarico)
+    await useCase.execute(scaricoCmd({ quantity: 100 }))
+    expect(tx.$executeRawUnsafe.mock.calls.map((c: any[]) => c[0])).toEqual([
+      'SAVEPOINT abbinamento',
+      'RELEASE SAVEPOINT abbinamento',
+    ])
   })
 
   it('abbinamenti: un CARICO non chiama la proposta', async () => {

@@ -25,6 +25,7 @@ import {
   EsitoRentriNonDisponibileError,
   RentriRegistriClient,
 } from '../../../infrastructure/rentri/rentri-registri.client'
+import { inviiRegistroAttivi } from './invii-registro-attivi'
 import { applicaEsitoDettagliato, type EsitoPerRiga } from './esito-movimenti-rentri'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import {
@@ -66,6 +67,8 @@ export interface EsitoGiroRegistro {
     | 'INVIATO'
     | 'INCERTO'
     | 'RIFIUTATO'
+    /** Interruttore di emergenza spento (`RENTRI_REGISTRO_INVII_ATTIVI=false`): nessuna POST. */
+    | 'SOSPESO'
   trasmesse: number
   rifiutate: number
   /** Righe del lotto rimaste `INCERTA` dopo un esito senza conferma ne' rifiuto (da verificare). */
@@ -113,6 +116,17 @@ export class TrasmettiLottoRegistroUseCase {
   }
 
   async trasmettiRegistro(tenantId: string, registroId: string): Promise<EsitoGiroRegistro> {
+    // Interruttore di emergenza: PRIMA di ogni prenotazione, quindi nessuna riga cambia stato.
+    if (!inviiRegistroAttivi()) {
+      return {
+        esito: 'SOSPESO',
+        trasmesse: 0,
+        rifiutate: 0,
+        nonTrasmissibili: 0,
+        inAttesa: 0,
+        attesaEsito: 0,
+      }
+    }
     let identificativo = ''
     let preparate: Preparata[] = []
     let nonTrasmissibili = 0

@@ -14,6 +14,11 @@ export interface CandidataLotto {
   predecessoreId: string | null
   /** Stato di trasmissione del predecessore; `NON_TRASMESSA` = nessuna riga, null = non e' una correzione. */
   statoPredecessore: StatoTrasmissioneRentri | 'NON_TRASMESSA' | null
+  /**
+   * Il predecessore e' escluso dall'invio automatico (ADMIN): non partira' da solo, quindi la
+   * correzione e' bloccata e non "in corso".
+   */
+  predecessoreEscluso?: boolean
 }
 
 /**
@@ -85,9 +90,10 @@ export function selezionaLotto(
   for (const c of ordinate) {
     if (c.predecessoreId !== null && !PREDECESSORE_SU_RENTRI.includes(c.statoPredecessore)) {
       inAttesa.push(c.movimentoId)
-      motivoAttesa[c.movimentoId] = PREDECESSORE_IN_CORSO.includes(c.statoPredecessore)
-        ? 'PREDECESSORE_IN_CORSO'
-        : 'PREDECESSORE_BLOCCATO'
+      motivoAttesa[c.movimentoId] =
+        PREDECESSORE_IN_CORSO.includes(c.statoPredecessore) && !c.predecessoreEscluso
+          ? 'PREDECESSORE_IN_CORSO'
+          : 'PREDECESSORE_BLOCCATO'
     } else if (lotto.length < massimo) {
       lotto.push(c.movimentoId)
     } else {

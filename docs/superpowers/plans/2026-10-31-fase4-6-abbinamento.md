@@ -294,6 +294,7 @@ righe) **non si tocca**.
     l'insert, proposta FIFO sui **residui attuali** dei carichi della partizione con giorno ≤
     giorno dello scarico; righe `AUTOMATICO`. Se resta una parte scoperta e l'ambito è di
     stoccaggio: avviso. Una ricopia già registrata (`giaRegistrato`) non fa nulla.
+    **Decisione di Graziano del 31/10/2026 (sostituisce "un errore annulla la registrazione"):** se la proposta FIFO fallisce, la registrazione RIESCE: il matching gira in un `SAVEPOINT`, lo scarico resta `NON_ABBINATO`, con avviso "Scarico registrato ma non abbinato: usare 'Abbina con FIFO i non abbinati' nella pagina Abbinamenti.", audit `ABBINAMENTO_NON_RIUSCITO` e log senza dati personali. Vale solo alla registrazione; le correzioni (D11) restano atomiche.
   - **Registrazione di un carico**: nessuna scrittura (gli scarichi non abbinati si completano
     dalla pagina).
   - **Override manuale** di uno scarico: sostituisce tutte le sue righe con righe `MANUALE`

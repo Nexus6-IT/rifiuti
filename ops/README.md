@@ -473,6 +473,30 @@ GRANT (default privileges di `ops/db-ruoli.sh`).
 - **Rollback del codice: innocuo.** Il codice vecchio ignora la tabella e le colonne. Prima del
   rollback eseguire `SELECT stato, count(*) FROM movimenti_trasmissione_rentri GROUP BY 1` e avvisare
   che, dopo il rollback, lo stato delle trasmissioni non sara' piu' visibile nel programma.
+- **Interruttore di emergenza degli invii del registro** (seguito del 31/10/2026): variabile
+  `RENTRI_REGISTRO_INVII_ATTIVI`, **attiva di default**; solo il testo esatto `false` sospende gli
+  invii (`FALSE`, `0`, `no`, spazi: restano attivi, di proposito). Per spegnere: aggiungere
+  `RENTRI_REGISTRO_INVII_ATTIVI=false` a `/opt/rifiuti/.env` e riavviare il backend
+  (`docker compose --env-file /opt/rifiuti/.env -f docker-compose.prod.yml up -d backend`); per
+  riaccendere: togliere la riga (o metterla a `true`) e riavviare. Da spenti: nessuna prenotazione e
+  nessuna POST verso RENTRI (il job lo scrive una volta per giro: «Invii RENTRI sospesi»); le
+  annotazioni continuano ad accodarsi e a essere adottate, "Trasmetti" risponde 202 con
+  `avvio: 'SOSPESO'` e la pagina dice «Invii verso RENTRI sospesi dall'amministratore del sistema».
+  La ripresa degli esiti (solo GET) continua, quindi le transazioni gia' aperte si chiudono. Alla
+  riaccensione parte tutto quello che si e' accumulato in coda: controllare prima il numero di
+  righe `DA_TRASMETTERE` (`SELECT count(*) FROM movimenti_trasmissione_rentri WHERE stato =
+  'DA_TRASMETTERE' AND escluso_il IS NULL`).
+- **Esclusione di una singola annotazione dall'invio automatico** (seguito del 31/10/2026, migration
+  `20261102100000_rentri_esclusione_invio_automatico`: tre colonne nullable `escluso_il`,
+  `escluso_da`, `motivo_esclusione` su `movimenti_trasmissione_rentri` e un CHECK che le ammette solo
+  con `stato = 'DA_TRASMETTERE'`; RLS invariata, nessuna tabella nuova). Solo ADMIN, con motivo e
+  audit (`RENTRI_REGISTRO_ESCLUSO_INVIO_AUTOMATICO` / `..._RIINCLUSO_INVIO_AUTOMATICO`, senza testo
+  libero). Una riga esclusa resta `DA_TRASMETTERE` ma `prenota` non la sceglie e l'adozione non la
+  ricrea; l'inclusione di nuovo la cancella (non e' mai partita) e il job la riadotta se spetta.
+  Righe in volo, incerte o trasmesse non si possono escludere (409 e CHECK del database).
+  Controllo: `SELECT count(*) FROM movimenti_trasmissione_rentri WHERE escluso_il IS NOT NULL`.
+  Rollback del codice: innocuo (il codice vecchio ignora le colonne, ma una riga esclusa verrebbe
+  allora inviata dal job: prima di tornare indietro reincludere o accettare l'invio).
 - **Mai cancellare righe `TRASMESSA` per "ripartire"**: l'annotazione verrebbe ritrasmessa a RENTRI
   (doppia registrazione). I trigger rifiutano il DELETE diretto di una riga `TRASMESSA`,
   `GIA_SU_RENTRI`, `INCERTA`, `IN_INVIO` e `ATTESA_ESITO`; la cancellazione a cascata di un'azienda

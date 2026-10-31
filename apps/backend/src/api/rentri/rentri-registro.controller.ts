@@ -33,6 +33,7 @@ import {
   AccodaTrasmissioneRentriUseCase,
   EsitoDichiarazione,
 } from '../../application/rentri/registro/accoda-trasmissione-rentri.use-case'
+import { inviiRegistroAttivi } from '../../application/rentri/registro/invii-registro-attivi'
 import { TrasmettiLottoRegistroUseCase } from '../../application/rentri/registro/trasmetti-lotto-registro.use-case'
 import {
   EsitoVerifica,
@@ -60,6 +61,7 @@ import {
 import {
   AllineamentoQueryDto,
   DichiaraGiaTrasmessiDto,
+  EscludiInvioAutomaticoDto,
   ImpostaRegistroRentriDto,
   TrasmettiRentriDto,
   TrasmettiStoricoRentriDto,
@@ -79,6 +81,8 @@ const MOTIVO_SALTATA: Partial<Record<StatoTrasmissioneRentri, string>> = {
   GIA_SU_RENTRI: 'Già su RENTRI',
 }
 
+const MOTIVO_SALTATA_ESCLUSA = "Esclusa dall'invio automatico: reincludila prima di trasmetterla"
+
 /**
  * Stato dell'avvio dell'invio dopo l'accodamento. L'invio gira dopo la risposta: l'esito vero si
  * legge dallo stato di ogni annotazione (`fase`), mai da questa risposta.
@@ -86,8 +90,15 @@ const MOTIVO_SALTATA: Partial<Record<StatoTrasmissioneRentri, string>> = {
  * - `SENZA_CERTIFICATO`: accodato ma non avviato, manca il certificato RENTRI dell'azienda.
  * - `NIENTE_DA_INVIARE`: nulla di nuovo da accodare e nessuna riga gia' in coda.
  * - `NON_AVVIATO`: accodato ma non si e' potuto verificare il certificato; l'invio parte al giro periodico.
+ * - `SOSPESO`: accodato ma gli invii sono sospesi dall'amministratore del sistema
+ *   (`RENTRI_REGISTRO_INVII_ATTIVI=false`); ripartono quando vengono riattivati.
  */
-export type AvvioInvio = 'AVVIATO' | 'SENZA_CERTIFICATO' | 'NIENTE_DA_INVIARE' | 'NON_AVVIATO'
+export type AvvioInvio =
+  | 'AVVIATO'
+  | 'SENZA_CERTIFICATO'
+  | 'NIENTE_DA_INVIARE'
+  | 'NON_AVVIATO'
+  | 'SOSPESO'
 
 export interface RispostaAccodamento {
   accodate: number
@@ -172,6 +183,7 @@ export class RentriRegistroController {
    * Un giro gia' in corso (`GIA_IN_CORSO`) e' normale, non un errore.
    */
   private async avviaInvio(tenantId: string, registroId: string): Promise<AvvioInvio> {
+    if (!inviiRegistroAttivi()) return 'SOSPESO'
     let haCertificato: boolean
     try {
       haCertificato = await TenantContext.run(
@@ -227,14 +239,14 @@ export class RentriRegistroController {
   }
 
   private rispostaAccodamento(esito: EsitoAccodamento): Omit<RispostaAccodamento, 'avvio'> {
-    return {
-      accodate: esito.accodate + esito.riaccodate,
-      saltate: Object.entries(esito.saltatePerStato).map(([stato, numero]) => ({
-        motivo:
-          MOTIVO_SALTATA[stato as StatoTrasmissioneRentri] ?? 'Non accodabile in questo stato',
-        numero: numero as number,
-      })),
+    const saltate = Object.entries(esito.saltatePerStato).map(([stato, numero]) => ({
+      motivo: MOTIVO_SALTATA[stato as StatoTrasmissioneRentri] ?? 'Non accodabile in questo stato',
+      numero: numero as number,
+    }))
+    if ((esito.saltateEscluse ?? 0) > 0) {
+      saltate.push({ motivo: MOTIVO_SALTATA_ESCLUSA, numero: esito.saltateEscluse })
     }
+    return { accodate: esito.accodate + esito.riaccodate, saltate }
   }
 
   // --- Rotte ---
@@ -335,7 +347,12 @@ export class RentriRegistroController {
 
   @Delete('movimenti/:movimentoId/coda')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Toglie dalla coda un'annotazione accodata a mano" })
+  @ApiOperation({
+    summary: "Toglie dalla coda un'annotazione accodata a mano",
+    description:
+      "Un'annotazione dell'invio automatico non si toglie: un amministratore la esclude con " +
+      '`POST .../escludi-invio-automatico`; qui riceve 409.',
+  })
   @ApiResponse({ status: 204, description: 'Tolta dalla coda' })
   @ApiResponse({ status: 409, description: "Non più in coda, o accodata dall'invio automatico" })
   async togliDallaCoda(
@@ -345,6 +362,43 @@ export class RentriRegistroController {
     const tenantId = requireRequestTenantId(req)
     await this.richiediScrittura(req, tenantId)
     await this.conErrori(() => this.accoda.togliDallaCoda(tenantId, req.user.id, movimentoId))
+  }
+
+  @Post('movimenti/:movimentoId/escludi-invio-automatico')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: "Esclude un'annotazione dall'invio automatico (amministratori, con motivo)",
+  })
+  @ApiResponse({ status: 204, description: 'Esclusa: resta in coda ma non parte da sola' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 409, description: 'Già partita, già esclusa o accodata a mano' })
+  async escludiInvioAutomatico(
+    @Param('movimentoId', uuidAnnotazione) movimentoId: string,
+    @Body() dto: EscludiInvioAutomaticoDto,
+    @Req() req: any
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    await this.conErrori(() =>
+      this.accoda.escludiDaInvioAutomatico(tenantId, req.user.id, ruolo, movimentoId, dto.motivo)
+    )
+  }
+
+  @Post('movimenti/:movimentoId/includi-invio-automatico')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Annulla l'esclusione dall'invio automatico (amministratori)" })
+  @ApiResponse({ status: 204, description: 'Reinclusa: il prossimo giro la riadotta se spetta' })
+  @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
+  @ApiResponse({ status: 409, description: "L'annotazione non è esclusa" })
+  async includiInvioAutomatico(
+    @Param('movimentoId', uuidAnnotazione) movimentoId: string,
+    @Req() req: any
+  ): Promise<void> {
+    const tenantId = requireRequestTenantId(req)
+    const ruolo = await this.richiediAdmin(req, tenantId)
+    await this.conErrori(() =>
+      this.accoda.reincludiNellInvioAutomatico(tenantId, req.user.id, ruolo, movimentoId)
+    )
   }
 
   @Post('movimenti/:movimentoId/verifica')

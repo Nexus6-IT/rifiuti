@@ -487,6 +487,7 @@ interface FirOption {
                     [numero]="numeroMovimento(m)"
                     [trasmissione]="m.trasmissioneRentri ?? null"
                     [puoTrasmettere]="rentriStato().puoTrasmettere"
+                    [puoConfigurare]="rentriStato().puoConfigurare === true"
                     (cambiato)="onRentriAggiornato()"
                   ></app-rentri-riga-azioni>
                 </td>

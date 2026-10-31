@@ -71,7 +71,7 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
     return { tenantId: t.id, registroId: registro.id }
   }
 
-  async function movimento(
+  async function movimentoCompleto(
     az: Az,
     o: {
       type: 'CARICO' | 'SCARICO'
@@ -81,10 +81,12 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       causale?: string
       cer?: string
       unita?: string
+      /** Use case alternativo (per osservare il logger). */
+      uc?: RegistraMovimentoUseCase
     }
-  ): Promise<string> {
+  ): Promise<{ id: string; avvisi: string[] }> {
     const r = await nelTenant(az.tenantId, () =>
-      registra.execute(
+      (o.uc ?? registra).execute(
         new RegistraMovimentoCommand(
           az.tenantId,
           undefined as unknown as string,
@@ -108,8 +110,11 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       )
     )
     if (!r.isSuccess) throw new Error(`registrazione fallita: ${r.error}`)
-    return r.value.id
+    return { id: r.value.id, avvisi: r.value.avvisi }
   }
+
+  const movimento = async (az: Az, o: Parameters<typeof movimentoCompleto>[1]): Promise<string> =>
+    (await movimentoCompleto(az, o)).id
 
   const carico = (az: Az, giorno: string, q: number, op = 'R13') =>
     movimento(az, { type: 'CARICO', giorno, quantita: q, op })
@@ -308,20 +313,107 @@ describe('Abbinamenti con registrazione e correzioni - Postgres reale, ruolo was
       expect(righe[0].famiglia).not.toBe('KG')
     })
 
-    it('un errore del lettore fa fallire la registrazione: rollback, nessun movimento', async () => {
-      const az = await azienda()
-      await carico(az, '2026-03-01', 100)
-      const prima = await nMovimenti(az)
-      const spia = jest
-        .spyOn(lettore, 'leggiAmbitiAbbinamento')
-        .mockRejectedValueOnce(new Error('lettore guasto'))
-      try {
-        await expect(scarico(az, '2026-03-10', 10)).rejects.toThrow()
-      } finally {
-        spia.mockRestore()
-      }
-      expect(await nMovimenti(az)).toBe(prima)
-      expect(await righeDi(az)).toHaveLength(0)
+    describe("un errore dell'abbinamento non fa fallire la registrazione (decisione di Graziano, 31/10/2026)", () => {
+      const AVVISO =
+        "Scarico registrato ma non abbinato: usare 'Abbina con FIFO i non abbinati' nella pagina Abbinamenti."
+
+      it('errore del lettore: lo scarico esiste, nessuna riga, avviso, audit e log senza dati personali', async () => {
+        const az = await azienda()
+        await carico(az, '2026-03-01', 100)
+        const prima = await nMovimenti(az)
+        const logger = { ...loggerStub, error: jest.fn() }
+        const uc = new RegistraMovimentoUseCase(app, logger as never, registri)
+        const spia = jest
+          .spyOn(lettore, 'leggiAmbitiAbbinamento')
+          .mockRejectedValueOnce(new Error('lettore guasto per Mario Rossi RSSMRA80A01H501U'))
+        let r: { id: string; avvisi: string[] }
+        try {
+          r = await movimentoCompleto(az, {
+            type: 'SCARICO',
+            giorno: '2026-03-10',
+            quantita: 10,
+            uc,
+          })
+        } finally {
+          spia.mockRestore()
+        }
+        expect(await nMovimenti(az)).toBe(prima + 1)
+        expect(await owner.wasteMovement.count({ where: { id: r.id } })).toBe(1)
+        expect(await righeDi(az)).toHaveLength(0)
+        expect(r.avvisi).toContain(AVVISO)
+        const a = await audit(az, 'ABBINAMENTO_NON_RIUSCITO')
+        expect(a).toHaveLength(1)
+        const testo = JSON.stringify([a[0].description, a[0].metadata]) // niente dati personali ne' messaggio dell'errore
+        expect(testo).not.toMatch(/Mario|RSSMRA|lettore guasto|[0-9a-f]{8}-[0-9a-f]{4}-/)
+        expect(logger.error).toHaveBeenCalledTimes(1)
+        expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(/Mario|RSSMRA|lettore guasto/)
+      })
+
+      it('errore SQL che manda in abort la transazione: il SAVEPOINT la salva, lo scarico resta registrato', async () => {
+        const az = await azienda()
+        await carico(az, '2026-03-01', 100)
+        const spia = jest
+          .spyOn(lettore, 'leggiAmbitiAbbinamento')
+          .mockImplementationOnce(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT 1/0`
+            return []
+          })
+        let r: { id: string; avvisi: string[] }
+        try {
+          r = await movimentoCompleto(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 10 })
+        } finally {
+          spia.mockRestore()
+        }
+        expect(await owner.wasteMovement.count({ where: { id: r.id } })).toBe(1)
+        expect(r.avvisi).toContain(AVVISO)
+        expect(await righeDi(az)).toHaveLength(0)
+        expect(await audit(az, 'ABBINAMENTO_NON_RIUSCITO')).toHaveLength(1)
+      })
+
+      it("lo scarico appare non abbinato e 'Abbina con FIFO i non abbinati' lo completa; il successivo si abbina da solo", async () => {
+        const az = await azienda()
+        const c1 = await carico(az, '2026-03-01', 100)
+        const spia = jest
+          .spyOn(lettore, 'leggiAmbitiAbbinamento')
+          .mockRejectedValueOnce(new Error('guasto'))
+        let guasto: string
+        try {
+          guasto = (
+            await movimentoCompleto(az, { type: 'SCARICO', giorno: '2026-03-10', quantita: 30 })
+          ).id
+        } finally {
+          spia.mockRestore()
+        }
+        expect(await righeScarico(az, guasto)).toHaveLength(0)
+        const prossimo = await scarico(az, '2026-03-11', 20)
+        expect(
+          (await righeScarico(az, prossimo)).map(r => [r.caricoId, Number(r.quantita)])
+        ).toEqual([[c1, 20]])
+        await inTx(az, tx =>
+          ricalcolaAbbinamenti(tx, {
+            tenantId: az.tenantId,
+            registroId: az.registroId,
+            cer: CER,
+            modalita: 'NON_ABBINATI',
+            userId,
+          })
+        )
+        expect((await righeScarico(az, guasto)).map(r => [r.caricoId, Number(r.quantita)])).toEqual(
+          [[c1, 30]]
+        )
+      })
+
+      it('registrazione riuscita e senza errori: nessun audit di fallimento e nessun avviso in piu', async () => {
+        const az = await azienda()
+        await carico(az, '2026-03-01', 100)
+        const r = await movimentoCompleto(az, {
+          type: 'SCARICO',
+          giorno: '2026-03-10',
+          quantita: 10,
+        })
+        expect(r.avvisi).not.toContain(AVVISO)
+        expect(await audit(az, 'ABBINAMENTO_NON_RIUSCITO')).toHaveLength(0)
+      })
     })
   })
 

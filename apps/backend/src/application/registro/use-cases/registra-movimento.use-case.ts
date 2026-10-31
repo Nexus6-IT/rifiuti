@@ -35,8 +35,16 @@ import {
 } from '../numerazione-annotazione'
 import { chiaveLockGiacenza } from '../chiave-lock-giacenza'
 import { stessiDatiRicopia } from '../ricopia-fir'
-import { abbinaNuovoScarico } from '../../abbinamenti/abbinamenti-scrittura'
+import {
+  abbinaNuovoScarico,
+  haStoccaggioOAbbinamenti,
+} from '../../abbinamenti/abbinamenti-scrittura'
+import { segnalaErroreJob } from '../../../core/monitoring/segnala-errore-job'
 import { RegistriService, RegistroVista } from '../registri.service'
+
+/** Avviso all'operatore quando l'abbinamento FIFO di uno scarico appena registrato e' fallito. */
+export const AVVISO_ABBINAMENTO_NON_RIUSCITO =
+  "Scarico registrato ma non abbinato: usare 'Abbina con FIFO i non abbinati' nella pagina Abbinamenti."
 
 const MSG_ERRORE_REGISTRAZIONE =
   "Errore durante la registrazione del movimento. Riprova; se il problema persiste contatta l'assistenza."
@@ -147,6 +155,19 @@ export function movimentoDaRecord(
  * restituisce il movimento esistente (`giaRegistrato: true`), una ricopia con dati
  * diversi è rifiutata (FirGiaRegistratoError).
  */
+/**
+ * Codice Prisma (`P2xxx`) o SQLSTATE (5 caratteri) di un errore, se c'e': sono identificativi
+ * fissi, senza valori dell'utente. Altrimenti stringa vuota.
+ */
+function codiceErroreSicuro(err: unknown): string {
+  const e = err as { code?: unknown; meta?: { code?: unknown } } | null
+  const forma = /^[0-9A-Z]{5}$/
+  for (const c of [e?.code, e?.meta?.code]) {
+    if (typeof c === 'string' && forma.test(c)) return c
+  }
+  return ''
+}
+
 @Injectable()
 export class RegistraMovimentoUseCase {
   constructor(
@@ -349,14 +370,14 @@ export class RegistraMovimentoUseCase {
         })
 
         // 4.6: proposta FIFO degli abbinamenti carico-scarico, nella stessa transazione (D10).
-        // Un errore qui annulla la registrazione: le righe non possono restare indietro.
+        // Decisione di Graziano del 31/10/2026: un errore qui NON annulla la registrazione. Il
+        // matching gira dentro un SAVEPOINT: se fallisce (anche con un errore SQL che manderebbe in
+        // abort la transazione) si torna al savepoint, lo scarico resta registrato e risulta
+        // NON_ABBINATO, con avviso, audit e log. Si completa da Abbinamenti.
         if (command.type === 'SCARICO') {
           avvisi.push(
-            ...(await abbinaNuovoScarico(tx, {
-              tenantId: command.tenantId,
-              registroId: registroMovimento.id,
+            ...(await this.abbinaSenzaFallire(tx, command, registroMovimento.id, {
               scaricoId: record.id,
-              userId: command.userId ?? null,
               cerCode: record.cerCode,
               movimentoOriginaleId: record.movimentoOriginaleId ?? null,
             }))
@@ -473,6 +494,67 @@ export class RegistraMovimentoUseCase {
    * restituito come "gia registrato" non e' quello che conta (rettificato: si indica quale; annullato:
    * il FIR non si ricopia piu).
    */
+  /**
+   * Abbinamento FIFO di uno scarico appena scritto, protetto da un SAVEPOINT. Restituisce gli
+   * avvisi: quelli dell'abbinamento, oppure l'avviso di "non abbinato" se e' fallito.
+   * Il log e l'audit non riportano dati personali ne' il messaggio dell'errore (che potrebbe
+   * contenere valori), solo il tipo.
+   */
+  private async abbinaSenzaFallire(
+    tx: Prisma.TransactionClient,
+    command: RegistraMovimentoCommand,
+    registroId: string,
+    scarico: { scaricoId: string; cerCode: string; movimentoOriginaleId: string | null }
+  ): Promise<string[]> {
+    // Pre-controllo leggero: un registro ordinario (senza carichi R13/D15 ne' abbinamenti per quel
+    // CER) non apre il SAVEPOINT e non paga round-trip in piu'. E' lo stesso controllo che
+    // `abbinaNuovoScarico` fa all'ingresso: sui registri di stoccaggio si ripete, e' una lettura.
+    if (!(await haStoccaggioOAbbinamenti(tx, command.tenantId, registroId, scarico.cerCode))) {
+      return []
+    }
+    // Testo costante (nessun dato dell'utente): `$executeRawUnsafe` evita di contare come advisory lock.
+    await tx.$executeRawUnsafe('SAVEPOINT abbinamento')
+    try {
+      const avvisi = await abbinaNuovoScarico(tx, {
+        tenantId: command.tenantId,
+        registroId,
+        scaricoId: scarico.scaricoId,
+        userId: command.userId ?? null,
+        cerCode: scarico.cerCode,
+        movimentoOriginaleId: scarico.movimentoOriginaleId,
+      })
+      await tx.$executeRawUnsafe('RELEASE SAVEPOINT abbinamento')
+      return avvisi
+    } catch (err) {
+      await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT abbinamento')
+      const tipo = err instanceof Error ? err.name : 'sconosciuto'
+      const codice = codiceErroreSicuro(err)
+      // Un errore "pulito": il messaggio dell'originale potrebbe riportare valori (dati personali).
+      const sicuro = new Error(
+        `Abbinamento FIFO non riuscito (${tipo}${codice ? ` ${codice}` : ''})`
+      )
+      this.logger.error(
+        'Abbinamento FIFO dello scarico non riuscito: lo scarico resta registrato e non abbinato',
+        sicuro,
+        { tenantId: command.tenantId, registroId, tipoErrore: tipo, codice }
+      )
+      // Il segnale a Bugsink parte subito, prima del commit: se la transazione fallisce piu' avanti
+      // (e la registrazione non resta) puo' risultare spurio.
+      segnalaErroreJob('abbinamentoNuovoScarico', sicuro, { tenantId: command.tenantId })
+      await tx.activityLog.create({
+        data: {
+          tenantId: command.tenantId,
+          userId: command.userId ?? null,
+          action: 'ABBINAMENTO_NON_RIUSCITO',
+          description:
+            'Abbinamento automatico dello scarico non riuscito: scarico registrato non abbinato',
+          metadata: { tipoErrore: tipo, codice },
+        },
+      })
+      return [AVVISO_ABBINAMENTO_NON_RIUSCITO]
+    }
+  }
+
   private async avvisiDopoRicopia(
     tx: Prisma.TransactionClient,
     tenantId: string,

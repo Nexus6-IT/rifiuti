@@ -15,6 +15,7 @@ function registro(p: Partial<ImpostazioniRegistroRentri> = {}): ImpostazioniRegi
     invioAutomaticoDal: null,
     perStato: {},
     nonTrasmessi: 0,
+    escluse: 0,
     haCertificato: true,
     ...p,
   }

@@ -8,6 +8,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { TrasmissioniRegistroRepository } from '../../application/rentri/registro/trasmissioni-registro.repository'
+import { inviiRegistroAttivi } from '../../application/rentri/registro/invii-registro-attivi'
 import { TrasmettiLottoRegistroUseCase } from '../../application/rentri/registro/trasmetti-lotto-registro.use-case'
 import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-rentri.use-case'
 
@@ -20,7 +21,7 @@ const LIMITE_ADOZIONE = 1000
  * Per ogni azienda ACTIVE/TRIAL con certificato RENTRI, nel suo contesto:
  * (1) stalli `IN_INVIO` -> `INCERTA`; (2) ripresa delle attese di esito;
  * (3) adozione dei movimenti (automatici e correzioni); (4) un lotto per
- * ogni registro con identificativo RENTRI.
+ * ogni registro con identificativo RENTRI (saltato se `RENTRI_REGISTRO_INVII_ATTIVI=false`).
  *
  * Il job chiama solo use case e repository esistenti: nessuna ritrasmissione
  * propria. Un errore su una fase, un registro o un'azienda non ferma gli altri.
@@ -52,13 +53,21 @@ export class RentriRegistroTrasmissioneJob {
     }
     this.inEsecuzione = true
     try {
+      // Interruttore di emergenza: gli invii si saltano, la ripresa degli esiti (GET) prosegue.
+      // Un solo avviso per giro, non uno per azienda o registro.
+      const invii = inviiRegistroAttivi()
+      if (!invii) {
+        this.logger.warn(
+          'Invii RENTRI sospesi (RENTRI_REGISTRO_INVII_ATTIVI=false): si leggono solo gli esiti'
+        )
+      }
       const tenants = await this.sistema.tenant.findMany({
         where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
         select: { id: true },
       })
       let aziendeInErrore = 0
       for (const tenant of tenants) {
-        const ok = await this.giroAzienda(tenant.id)
+        const ok = await this.giroAzienda(tenant.id, invii)
         if (!ok) aziendeInErrore++
       }
       this.logger.info('Giro di trasmissione del registro RENTRI completato', {
@@ -77,7 +86,7 @@ export class RentriRegistroTrasmissioneJob {
   }
 
   /** @returns false se almeno una fase o un registro dell'azienda ha avuto un errore. */
-  private async giroAzienda(tenantId: string): Promise<boolean> {
+  private async giroAzienda(tenantId: string, invii: boolean): Promise<boolean> {
     let pulito = true
     const errore = (fase: string, error: unknown) => {
       pulito = false
@@ -119,6 +128,8 @@ export class RentriRegistroTrasmissioneJob {
         errore(nome, error)
       }
     }
+
+    if (!invii) return pulito
 
     let registri: Array<{ id: string }>
     try {

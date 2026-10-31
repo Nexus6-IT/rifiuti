@@ -99,6 +99,47 @@ function prepara(candidate: CandidataLotto[], traducibile = (_n: number) => true
 }
 
 describe('TrasmettiLottoRegistroUseCase', () => {
+  describe('interruttore di emergenza RENTRI_REGISTRO_INVII_ATTIVI', () => {
+    const originale = process.env.RENTRI_REGISTRO_INVII_ATTIVI
+    afterEach(() => {
+      if (originale === undefined) delete process.env.RENTRI_REGISTRO_INVII_ATTIVI
+      else process.env.RENTRI_REGISTRO_INVII_ATTIVI = originale
+    })
+
+    it('spento: SOSPESO, nessuna prenotazione e nessuna POST', async () => {
+      process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+      const x = prepara([cand(1), cand(2)])
+      const r = await x.uc.trasmettiRegistro(T, R)
+      expect(r).toMatchObject({ esito: 'SOSPESO', trasmesse: 0, rifiutate: 0, attesaEsito: 0 })
+      expect(x.repo.prenota).not.toHaveBeenCalled()
+      expect(x.client.inviaMovimenti).not.toHaveBeenCalled()
+      expect(x.lettore.leggi).not.toHaveBeenCalled()
+    })
+
+    it('spento: riprendiAttese (solo GET) continua a chiudere le transazioni aperte', async () => {
+      process.env.RENTRI_REGISTRO_INVII_ATTIVI = 'false'
+      const x = prepara([cand(1)])
+      x.repo.transazioniInAttesa.mockResolvedValue([
+        { transazioneId: TRANS, registroId: R, dal: new Date() },
+      ])
+      x.repo.righeDellaTransazione.mockResolvedValue([
+        { movimentoId: 'm1', numero: { anno: 2026, progressivo: 1 } },
+      ])
+      const r = await x.uc.riprendiAttese(T)
+      expect(r.riletti).toBe(1)
+      expect(x.client.attendiEsitoMovimenti).toHaveBeenCalled()
+      expect(x.client.inviaMovimenti).not.toHaveBeenCalled()
+    })
+
+    it('assente o acceso: invia come sempre', async () => {
+      delete process.env.RENTRI_REGISTRO_INVII_ATTIVI
+      const x = prepara([cand(1)])
+      const r = await x.uc.trasmettiRegistro(T, R)
+      expect(r.esito).toBe('INVIATO')
+      expect(x.client.inviaMovimenti).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('salvaTransazione PRIMA del polling; esito applicato alle righe del lotto', async () => {
     const x = prepara([cand(2), cand(1)])
     const r = await x.uc.trasmettiRegistro(T, R)

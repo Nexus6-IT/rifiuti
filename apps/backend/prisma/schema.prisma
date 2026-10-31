@@ -2871,6 +2871,11 @@ model MovimentoTrasmissioneRentri {
   /// Solo i messaggi di validazione di RENTRI della riga: `{ campo, codice, tipo }`.
   messaggi             Json                      @default("[]")
   accodatoDa           String?                   @map("accodato_da") @db.Uuid
+  /// Esclusa dall'invio automatico (ADMIN, con motivo): resta `DA_TRASMETTERE` ma `prenota` non la
+  /// sceglie. Il CHECK nella migration vale solo con stato `DA_TRASMETTERE`.
+  esclusoIl            DateTime?                 @map("escluso_il") @db.Timestamptz(3)
+  esclusoDa            String?                   @map("escluso_da") @db.Uuid
+  motivoEsclusione     String?                   @map("motivo_esclusione") @db.VarChar(500)
   createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 

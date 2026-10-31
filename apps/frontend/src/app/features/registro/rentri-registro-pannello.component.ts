@@ -27,6 +27,7 @@ import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { InputNumberModule } from 'primeng/inputnumber'
+import { InputTextareaModule } from 'primeng/inputtextarea'
 import { TagModule } from 'primeng/tag'
 import { TooltipModule } from 'primeng/tooltip'
 import { ToastService } from '../../core/services/toast.service'
@@ -44,9 +45,11 @@ import {
   StatoRentri,
   descrizioneAvvio,
   descrizioneEsitoVerifica,
+  ETICHETTA_ESCLUSA,
   eVerificabile,
   etichettaStatoRentri,
   severitaStatoRentri,
+  tooltipEsclusione,
   tooltipStatoRentri,
 } from './stato-rentri'
 
@@ -54,12 +57,16 @@ export interface TrasmissioneRentriRiga {
   stato: StatoRentri
   identificativo: string | null
   motivo: string | null
+  origine?: string
+  /** Esclusa dall'invio automatico (ADMIN): `motivo` è il motivo dell'esclusione. */
+  escluso?: boolean
 }
 
 /** Cosa la pagina deve sapere dal pannello: se il registro è collegato e se si può trasmettere. */
 export interface StatoPannelloRentri {
   collegato: boolean
   puoTrasmettere: boolean
+  puoConfigurare?: boolean
 }
 
 const annotazioni = (n: number): string => (n === 1 ? '1 annotazione' : `${n} annotazioni`)
@@ -78,7 +85,7 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
 @Component({
   selector: 'app-rentri-riga-azioni',
   standalone: true,
-  imports: [CommonModule, ButtonModule, TagModule, TooltipModule],
+  imports: [CommonModule, FormsModule, ButtonModule, InputTextareaModule, TagModule, TooltipModule],
   template: `
     <p-tag
       [value]="etichetta()"
@@ -108,7 +115,66 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
         [ariaLabel]="'Verifica su RENTRI l\\'annotazione ' + numero"
       ></p-button>
       <p-button
-        *ngIf="trasmissione?.stato === 'DA_TRASMETTERE'"
+        *ngIf="escludibile() && !inEsclusione()"
+        label="Escludi dall'invio automatico"
+        icon="pi pi-ban"
+        [text]="true"
+        size="small"
+        (onClick)="apriEsclusione()"
+        [attr.data-testid]="'rentri-escludi-' + movimentoId"
+        [ariaLabel]="'Escludi dall\\'invio automatico l\\'annotazione ' + numero"
+      ></p-button>
+      <span
+        *ngIf="inEsclusione()"
+        class="rentri-escludi-conferma"
+        role="group"
+        (keydown.escape)="chiudiEsclusione()"
+        [attr.aria-label]="'Conferma dell\\'esclusione dell\\'annotazione ' + numero"
+        [attr.data-testid]="'rentri-escludi-conferma-' + movimentoId"
+      >
+        Escludere la {{ numero }} dall'invio automatico? Resta in coda ma non parte da sola.
+        <textarea
+          pInputTextarea
+          rows="2"
+          maxlength="500"
+          class="rentri-escludi-motivo"
+          placeholder="Motivo (obbligatorio)"
+          aria-label="Motivo dell'esclusione"
+          [ngModel]="motivoEsclusione()"
+          (ngModelChange)="motivoEsclusione.set($event)"
+          [attr.data-testid]="'rentri-escludi-motivo-' + movimentoId"
+        ></textarea>
+        <p-button
+          label="Escludi"
+          size="small"
+          [loading]="occupato()"
+          [disabled]="motivoEsclusione().trim() === ''"
+          (onClick)="escludi()"
+          [attr.data-testid]="'rentri-escludi-si-' + movimentoId"
+          ariaLabel="Conferma l'esclusione dall'invio automatico"
+        ></p-button>
+        <p-button
+          label="No"
+          [text]="true"
+          size="small"
+          (onClick)="chiudiEsclusione()"
+          [attr.data-testid]="'rentri-escludi-no-' + movimentoId"
+          ariaLabel="Annulla l'esclusione"
+        ></p-button>
+      </span>
+      <p-button
+        *ngIf="inclusibile()"
+        label="Includi di nuovo"
+        icon="pi pi-undo"
+        [text]="true"
+        size="small"
+        [loading]="occupato()"
+        (onClick)="includi()"
+        [attr.data-testid]="'rentri-includi-' + movimentoId"
+        [ariaLabel]="'Includi di nuovo nell\\'invio automatico l\\'annotazione ' + numero"
+      ></p-button>
+      <p-button
+        *ngIf="toglibile()"
         label="Togli dalla coda"
         icon="pi pi-times"
         [text]="true"
@@ -164,6 +230,11 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
         gap: 0.25rem;
         align-items: center;
       }
+      .rentri-escludi-motivo {
+        display: block;
+        width: 100%;
+        margin: 0.25rem 0;
+      }
       .rentri-riga-nota {
         display: block;
         color: var(--orange-700, #b45309);
@@ -182,15 +253,36 @@ export class RentriRigaAzioniComponent {
   @Input() numero = ''
   @Input() trasmissione: TrasmissioneRentriRiga | null = null
   @Input() puoTrasmettere = false
+  /** Amministratore dell'azienda (dal backend): può escludere dall'invio automatico. */
+  @Input() puoConfigurare = false
   /** L'elenco va riletto (la riga è cambiata). */
   @Output() cambiato = new EventEmitter<void>()
 
   readonly occupato = signal(false)
   readonly inConferma = signal(false)
+  readonly inEsclusione = signal(false)
+  readonly motivoEsclusione = signal('')
 
-  etichetta = (): string => etichettaStatoRentri(this.trasmissione?.stato)
-  severita = () => severitaStatoRentri(this.trasmissione?.stato)
-  tooltip = (): string => tooltipStatoRentri(this.trasmissione?.stato, this.trasmissione?.motivo)
+  private escluso = (): boolean =>
+    this.trasmissione?.stato === 'DA_TRASMETTERE' && this.trasmissione.escluso === true
+  etichetta = (): string =>
+    this.escluso() ? ETICHETTA_ESCLUSA : etichettaStatoRentri(this.trasmissione?.stato)
+  severita = () => (this.escluso() ? 'secondary' : severitaStatoRentri(this.trasmissione?.stato))
+  tooltip = (): string =>
+    this.escluso()
+      ? tooltipEsclusione(this.trasmissione?.motivo)
+      : tooltipStatoRentri(this.trasmissione?.stato, this.trasmissione?.motivo)
+  /** In coda per l'invio automatico (non manuale), non ancora esclusa: l'ADMIN può escluderla. */
+  escludibile = (): boolean =>
+    this.puoConfigurare &&
+    this.trasmissione?.stato === 'DA_TRASMETTERE' &&
+    !this.escluso() &&
+    this.trasmissione.origine !== undefined &&
+    this.trasmissione.origine !== 'MANUALE'
+  inclusibile = (): boolean => this.puoConfigurare && this.escluso()
+  /** «Togli dalla coda»: la manuale sempre; l'automatica a chi non può escluderla (409 spiegato). */
+  toglibile = (): boolean =>
+    this.trasmissione?.stato === 'DA_TRASMETTERE' && !this.escluso() && !this.escludibile()
   verificabile = (): boolean => eVerificabile(this.trasmissione?.stato)
   riprovabile = (): boolean =>
     this.trasmissione?.stato === 'RIFIUTATA' || this.trasmissione?.stato === 'NON_TRASMISSIBILE'
@@ -222,6 +314,48 @@ export class RentriRigaAzioniComponent {
         const testo = descrizioneEsitoVerifica(esito)
         if (esito.stato === 'TRASMESSA' || esito.stato === 'GIA_SU_RENTRI') this.toast.info(testo)
         else this.toast.warn(testo)
+        this.cambiato.emit()
+      },
+      error: err => {
+        this.occupato.set(false)
+        this.toast.error(messaggioErroreRentri(err))
+      },
+    })
+  }
+
+  apriEsclusione(): void {
+    this.motivoEsclusione.set('')
+    this.inEsclusione.set(true)
+  }
+
+  chiudiEsclusione(): void {
+    this.inEsclusione.set(false)
+  }
+
+  escludi(): void {
+    const motivo = this.motivoEsclusione().trim()
+    if (motivo === '') return
+    this.occupato.set(true)
+    this.servizio.escludiInvioAutomatico(this.movimentoId, motivo).subscribe({
+      next: () => {
+        this.occupato.set(false)
+        this.inEsclusione.set(false)
+        this.toast.success("L'annotazione è esclusa dall'invio automatico: resta in coda.")
+        this.cambiato.emit()
+      },
+      error: err => {
+        this.occupato.set(false)
+        this.toast.error(messaggioErroreRentri(err))
+      },
+    })
+  }
+
+  includi(): void {
+    this.occupato.set(true)
+    this.servizio.includiInvioAutomatico(this.movimentoId).subscribe({
+      next: () => {
+        this.occupato.set(false)
+        this.toast.success("L'annotazione è di nuovo nell'invio automatico.")
         this.cambiato.emit()
       },
       error: err => {
@@ -324,6 +458,9 @@ type TipoConferma = 'selezionati' | 'storico'
         <ul class="rentri-conteggi" aria-label="Annotazioni per stato di trasmissione">
           <li *ngFor="let c of conteggi()" [attr.data-testid]="'rentri-conteggio-' + c.stato">
             {{ c.etichetta }}: <strong>{{ c.numero }}</strong>
+          </li>
+          <li *ngIf="r.escluse > 0" data-testid="rentri-conteggio-escluse">
+            Escluse dall'invio automatico: <strong>{{ r.escluse }}</strong>
           </li>
           <li data-testid="rentri-conteggio-mai">
             Non trasmesse: <strong>{{ r.nonTrasmessi }}</strong>
@@ -553,6 +690,7 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
         this.statoChange.emit({
           collegato: !!r?.identificativoRentri,
           puoTrasmettere: e.puoTrasmettere,
+          puoConfigurare: e.puoConfigurare,
         })
       },
       error: err => {

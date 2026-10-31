@@ -204,7 +204,7 @@ jobs:
       # Costruito qui, non preso dal codice applicativo: credenziali e porta
       # sono quelle del container Postgres effimero di questo job, non quelle
       # attese in sviluppo/produzione.
-      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public"
+      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public&connect_timeout=30&pool_timeout=30"
       POSTGRES_CI_CONTAINER: "postgres-ci-${{ github.run_id }}"
       # Password dei ruoli DB creati da ops/db-ruoli.sh: valgono solo per il
       # container effimero di questo job. Le legge anche lo spec

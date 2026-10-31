@@ -46,6 +46,8 @@ export interface ImpostazioniRegistro {
   perStato: Partial<Record<StatoTrasmissioneRentri, number>>
   /** Movimenti del registro senza riga di trasmissione (mai trasmessi ne' accodati). */
   nonTrasmessi: number
+  /** Righe `DA_TRASMETTERE` escluse dall'invio automatico (comprese in `perStato.DA_TRASMETTERE`). */
+  escluse: number
   /** L'azienda ha una credenziale RENTRI configurata. */
   haCertificato: boolean
 }
@@ -89,6 +91,11 @@ export class ImpostazioniRentriRegistroService {
         where: { tenantId },
         _count: { _all: true },
       })
+      const escluse = await tx.movimentoTrasmissioneRentri.groupBy({
+        by: ['registroId'],
+        where: { tenantId, esclusoIl: { not: null } },
+        _count: { _all: true },
+      })
       const nonTrasmessi = await tx.wasteMovement.groupBy({
         by: ['registroId'],
         where: { tenantId, trasmissioneRentri: null },
@@ -109,6 +116,7 @@ export class ImpostazioniRentriRegistroService {
           invioAutomaticoDal: r.invioRentriAutomaticoDal,
           perStato,
           nonTrasmessi: nonTrasmessi.find(x => x.registroId === r.id)?._count._all ?? 0,
+          escluse: escluse.find(x => x.registroId === r.id)?._count._all ?? 0,
           haCertificato: credenziale !== null,
         }
       })
