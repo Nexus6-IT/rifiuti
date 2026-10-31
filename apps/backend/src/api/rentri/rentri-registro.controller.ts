@@ -353,7 +353,7 @@ export class RentriRegistroController {
       "Un'annotazione dell'invio automatico non si toglie: un amministratore la esclude con " +
       '`POST .../escludi-invio-automatico`; qui riceve 409.',
   })
-  @ApiResponse({ status: 204, description: 'Tolta dalla coda (o esclusa dall’invio automatico)' })
+  @ApiResponse({ status: 204, description: 'Tolta dalla coda' })
   @ApiResponse({ status: 409, description: "Non più in coda, o accodata dall'invio automatico" })
   async togliDallaCoda(
     @Param('movimentoId', uuidAnnotazione) movimentoId: string,
