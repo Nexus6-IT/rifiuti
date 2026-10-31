@@ -37,7 +37,7 @@ export class AvvisoRentriCorrezioneService {
         tipo === 'RETTIFICA' ? 'rettifica' : 'annullamento'
       }.`
     } catch {
-      this.logger.warn('Avviso RENTRI della correzione non calcolabile: la risposta ne e privata')
+      this.logger.warn('Avviso RENTRI della correzione non calcolabile: la risposta ne è priva')
       return null
     }
   }

@@ -23,6 +23,7 @@ import {
 } from '../../application/rentri/registro/errori-azioni-rentri-registro'
 import { RegistroNonTrovatoError } from '../../application/registro/registri.service'
 import { RentriCredentialResolver } from '../../infrastructure/rentri/rentri-credential.resolver'
+import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { LoggerService } from '../../core/logger/logger.service'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MembershipService } from '../me/membership.service'
@@ -54,6 +55,8 @@ function prismaFinto(ruoloNelCliente: string) {
     },
   } as any
 }
+
+jest.mock('../../core/monitoring/segnala-errore-job', () => ({ segnalaErroreJob: jest.fn() }))
 
 describe('RentriRegistroController — catena HTTP', () => {
   let app: INestApplication
@@ -161,6 +164,7 @@ describe('RentriRegistroController — catena HTTP', () => {
   const cliente = (r: request.Test) => r.set('X-Tenant-ID', CLIENTE)
 
   afterEach(async () => {
+    jest.clearAllMocks()
     await app?.close()
   })
 
@@ -323,6 +327,34 @@ describe('RentriRegistroController — catena HTTP', () => {
       expect(r.status).toBe(202)
       await new Promise(resolve => setImmediate(resolve))
       expect(logger.error).toHaveBeenCalled()
+      expect(segnalaErroreJob).toHaveBeenCalledWith('trasmettiOra', expect.any(Error), {
+        tenantId: CLIENTE,
+      })
+    })
+
+    it('certificato non verificabile: 202 NON_AVVIATO, errore loggato e segnalato, nessun invio', async () => {
+      await avvia('ADMIN')
+      credenziali.haCredenziale.mockRejectedValue(new Error('db'))
+      const r = await cliente(http().post('/rentri/registro/trasmetti').send(corpo))
+      expect(r.status).toBe(202)
+      expect(r.body.avvio).toBe('NON_AVVIATO')
+      expect(logger.error).toHaveBeenCalled()
+      expect(segnalaErroreJob).toHaveBeenCalled()
+      expect(trasmetti.trasmettiRegistro).not.toHaveBeenCalled()
+    })
+
+    it("niente di nuovo ma righe gia in coda: l'invio parte comunque", async () => {
+      await avvia('ADMIN')
+      accoda.accoda.mockResolvedValue({
+        accodate: 0,
+        riaccodate: 0,
+        predecessori: 0,
+        saltate: 2,
+        saltatePerStato: { DA_TRASMETTERE: 2 },
+      })
+      const r = await cliente(http().post('/rentri/registro/trasmetti').send(corpo))
+      expect(r.body).toMatchObject({ accodate: 0, avvio: 'AVVIATO' })
+      expect(trasmetti.trasmettiRegistro).toHaveBeenCalledTimes(1)
     })
 
     it('validazione in italiano: UUID, lista vuota, oltre 1000, campi extra', async () => {
@@ -447,7 +479,7 @@ describe('RentriRegistroController — catena HTTP', () => {
       [
         'formato identificativo (regola)',
         new IdentificativoRegistroNonValidoError('Identificativo non valido.'),
-        422,
+        400,
       ],
       [
         'stato non modificabile',

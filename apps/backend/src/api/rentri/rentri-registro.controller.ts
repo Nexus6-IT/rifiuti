@@ -15,7 +15,6 @@ import {
   Put,
   Query,
   Req,
-  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
@@ -53,6 +52,7 @@ import {
   IdentificativoRegistroNonValidoError,
   MovimentoNonTrovatoError,
   richiediAmministratore,
+  RUOLI_AMMINISTRATORE_RENTRI,
   RichiestaTrasmissioneNonValidaError,
   RuoloNonAutorizzatoRentriError,
   TrasmissioneNonModificabileError,
@@ -84,9 +84,10 @@ const MOTIVO_SALTATA: Partial<Record<StatoTrasmissioneRentri, string>> = {
  * legge dallo stato di ogni annotazione (`fase`), mai da questa risposta.
  * - `AVVIATO`: l'invio e' partito in background (puo' ancora trovare un altro giro in corso).
  * - `SENZA_CERTIFICATO`: accodato ma non avviato, manca il certificato RENTRI dell'azienda.
- * - `NIENTE_DA_INVIARE`: nulla di nuovo da accodare.
+ * - `NIENTE_DA_INVIARE`: nulla di nuovo da accodare e nessuna riga gia' in coda.
+ * - `NON_AVVIATO`: accodato ma non si e' potuto verificare il certificato; l'invio parte al giro periodico.
  */
-export type AvvioInvio = 'AVVIATO' | 'SENZA_CERTIFICATO' | 'NIENTE_DA_INVIARE'
+export type AvvioInvio = 'AVVIATO' | 'SENZA_CERTIFICATO' | 'NIENTE_DA_INVIARE' | 'NON_AVVIATO'
 
 export interface RispostaAccodamento {
   accodate: number
@@ -150,7 +151,7 @@ export class RentriRegistroController {
       return new ConflictException(err.message)
     }
     if (err instanceof IdentificativoRegistroNonValidoError) {
-      return new UnprocessableEntityException(err.message)
+      return new BadRequestException(err.message)
     }
     if (err instanceof RichiestaTrasmissioneNonValidaError) {
       return new BadRequestException(err.message)
@@ -171,10 +172,21 @@ export class RentriRegistroController {
    * Un giro gia' in corso (`GIA_IN_CORSO`) e' normale, non un errore.
    */
   private async avviaInvio(tenantId: string, registroId: string): Promise<AvvioInvio> {
-    const haCertificato = await TenantContext.run(
-      { tenantId },
-      async () => await this.credenziali.haCredenziale(tenantId)
-    )
+    let haCertificato: boolean
+    try {
+      haCertificato = await TenantContext.run(
+        { tenantId },
+        async () => await this.credenziali.haCredenziale(tenantId)
+      )
+    } catch (error: unknown) {
+      this.logger.error(
+        "Invio del registro a RENTRI: certificato non verificabile, l'invio resta al giro periodico",
+        error instanceof Error ? error : new Error(String(error)),
+        { tenantId, registroId }
+      )
+      segnalaErroreJob('trasmettiOra', error, { tenantId })
+      return 'NON_AVVIATO'
+    }
     if (!haCertificato) return 'SENZA_CERTIFICATO'
     void TenantContext.run(
       { tenantId },
@@ -197,6 +209,20 @@ export class RentriRegistroController {
         segnalaErroreJob('trasmettiOra', error, { tenantId })
       })
     return 'AVVIATO'
+  }
+
+  /**
+   * Parte anche se non c'e' nulla di nuovo ma ci sono righe gia' in coda (per esempio dopo aver
+   * caricato il certificato): "Trasmetti" deve avviarle adesso.
+   */
+  private async avvioDopoAccodamento(
+    tenantId: string,
+    registroId: string,
+    esito: EsitoAccodamento
+  ): Promise<AvvioInvio> {
+    const giaInCoda = esito.saltatePerStato.DA_TRASMETTERE ?? 0
+    if (esito.accodate + esito.riaccodate === 0 && giaInCoda === 0) return 'NIENTE_DA_INVIARE'
+    return await this.avviaInvio(tenantId, registroId)
   }
 
   private rispostaAccodamento(esito: EsitoAccodamento): Omit<RispostaAccodamento, 'avvio'> {
@@ -224,7 +250,7 @@ export class RentriRegistroController {
     const ruolo = await this.ruolo(req, tenantId)
     return {
       registri: await this.impostazioni.leggi(tenantId),
-      puoConfigurare: ['SUPER_ADMIN', 'ADMIN'].includes(ruolo),
+      puoConfigurare: RUOLI_AMMINISTRATORE_RENTRI.includes(ruolo),
       puoTrasmettere: (RUOLI_SCRITTURA_RENTRI as readonly string[]).includes(ruolo),
     }
   }
@@ -235,7 +261,7 @@ export class RentriRegistroController {
   @ApiResponse({ status: 403, description: "Non amministratore nell'azienda selezionata" })
   @ApiResponse({ status: 404, description: 'Registro non trovato' })
   @ApiResponse({ status: 409, description: 'Annotazioni già partite o identificativo già usato' })
-  @ApiResponse({ status: 422, description: 'Identificativo in un formato non valido' })
+  @ApiResponse({ status: 400, description: 'Identificativo in un formato non valido' })
   async imposta(
     @Param('registroId', uuidRegistro) registroId: string,
     @Body() dto: ImpostaRegistroRentriDto,
@@ -282,11 +308,7 @@ export class RentriRegistroController {
       this.accoda.accoda(tenantId, req.user.id, dto.registroId, dto.movimentoIds)
     )
     const risposta = this.rispostaAccodamento(esito)
-    const avvio: AvvioInvio =
-      risposta.accodate === 0
-        ? 'NIENTE_DA_INVIARE'
-        : await this.avviaInvio(tenantId, dto.registroId)
-    return { ...risposta, avvio }
+    return { ...risposta, avvio: await this.avvioDopoAccodamento(tenantId, dto.registroId, esito) }
   }
 
   @Post('trasmetti-storico')
@@ -305,11 +327,7 @@ export class RentriRegistroController {
       this.accoda.accodaStorico(tenantId, req.user.id, dto.registroId, dto.anno, dto.conferma)
     )
     const risposta = this.rispostaAccodamento(esito)
-    const avvio: AvvioInvio =
-      risposta.accodate === 0
-        ? 'NIENTE_DA_INVIARE'
-        : await this.avviaInvio(tenantId, dto.registroId)
-    return { ...risposta, avvio }
+    return { ...risposta, avvio: await this.avvioDopoAccodamento(tenantId, dto.registroId, esito) }
   }
 
   @Delete('movimenti/:movimentoId/coda')
