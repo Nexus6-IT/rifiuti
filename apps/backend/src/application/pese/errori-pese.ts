@@ -95,3 +95,18 @@ export class StrumentoDuplicatoError extends DomainError {
     this.name = 'StrumentoDuplicatoError'
   }
 }
+
+/** Il ruolo effettivo non basta per l'operazione (403). */
+export class RuoloPesaInsufficienteError extends DomainError {
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'RuoloPesaInsufficienteError'
+  }
+}
+
+export class AllegatoNonTrovatoError extends DomainError {
+  constructor() {
+    super('Allegato non trovato.')
+    this.name = 'AllegatoNonTrovatoError'
+  }
+}
