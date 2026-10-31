@@ -9,9 +9,12 @@ describe('normalizzaTarga', () => {
     expect(normalizzaTarga(ingresso)).toBe(atteso)
   })
 
-  it.each(['A', '', '   ', 'AB 123 €', 'ABCDEFGHIJKLMNOP', 'àb123'])('%p → null', ingresso => {
-    expect(normalizzaTarga(ingresso)).toBeNull()
-  })
+  it.each(['A', '', '   ', 'AB 123 €', 'ABCDEFGHIJKLMNOP', 'àb123', 'aß1', 'ﬀ12', 'ı1'])(
+    '%p → null',
+    ingresso => {
+      expect(normalizzaTarga(ingresso)).toBeNull()
+    }
+  )
 
   it('15 caratteri sì, 16 no', () => {
     expect(normalizzaTarga('A'.repeat(15))).toBe('A'.repeat(15))

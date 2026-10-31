@@ -35,25 +35,33 @@ export interface CampiImprontaRettifica {
   createdAt: Date
 }
 
-/** Peso a 2 decimali con il punto, via centesimi interi (mai `toString()` di un float). */
+/**
+ * Peso a 2 decimali con il punto, via centesimi interi (mai `toString()` di un float).
+ * Più di 2 decimali sono un errore: non si arrotonda in silenzio.
+ */
 export function formattaDecimaleCanonico(n: number | string): string {
   const v = typeof n === 'string' ? (/^-?\d+(\.\d+)?$/.test(n.trim()) ? Number(n) : NaN) : n
   if (!Number.isFinite(v)) throw new Error('Valore decimale non valido per l’impronta.')
-  const c = Math.round(Math.abs(v) * 100)
+  const centesimi = Math.abs(v) * 100
+  if (Math.abs(centesimi - Math.round(centesimi)) > 1e-6) {
+    throw new Error('Valore con più di 2 decimali non ammesso nell’impronta.')
+  }
+  const c = Math.round(centesimi)
   const intero = Math.floor(c / 100)
   const dec = String(c % 100).padStart(2, '0')
   return `${v < 0 && c > 0 ? '-' : ''}${intero}.${dec}`
 }
 
-const iso = (d: Opzionale<Date>): string => (d ? d.toISOString() : '')
-const txt = (s: Opzionale<string>): string => s ?? ''
+const iso = (d: Opzionale<Date>): string | null => (d ? d.toISOString() : null)
+/** `null` resta `null` (JSON): `''` e assente sono distinti. */
+const txt = (s: Opzionale<string>): string | null => s ?? null
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex')
 
 /** Impronta di una pesata (nessuna catena fra righe). */
 export function improntaPesata(c: CampiImprontaPesata): string {
   return sha256(
     'p1|' +
-      [
+      JSON.stringify([
         c.tenantId,
         c.accessoId,
         String(c.ordine),
@@ -70,7 +78,7 @@ export function improntaPesata(c: CampiImprontaPesata): string {
         txt(c.automezzoId),
         iso(c.taraAggiornataIl),
         c.chiaveIdempotenza,
-      ].join('|')
+      ])
   )
 }
 
@@ -78,7 +86,7 @@ export function improntaPesata(c: CampiImprontaPesata): string {
 export function improntaRettifica(c: CampiImprontaRettifica): string {
   return sha256(
     'r1|' +
-      [
+      JSON.stringify([
         c.tenantId,
         c.pesataId,
         String(c.numero),
@@ -88,6 +96,6 @@ export function improntaRettifica(c: CampiImprontaRettifica): string {
         c.autoreId,
         txt(c.allegatoSha256),
         c.createdAt.toISOString(),
-      ].join('|')
+      ])
   )
 }

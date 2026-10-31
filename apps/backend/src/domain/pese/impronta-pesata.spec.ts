@@ -85,6 +85,21 @@ describe('improntaPesata', () => {
     expect(improntaPesata(a)).toBe(improntaPesata(b))
   })
 
+  it('la codifica non è ambigua: separatore dentro un campo di testo libero', () => {
+    expect(improntaPesata({ ...base, strumentoEsterno: 'Bil|', alibiId: 'X' })).not.toBe(
+      improntaPesata({ ...base, strumentoEsterno: 'Bil', alibiId: '|X' })
+    )
+  })
+
+  it('stringa vuota e null sono distinti (ma null e undefined no)', () => {
+    expect(improntaPesata({ ...base, alibiId: '' })).not.toBe(
+      improntaPesata({ ...base, alibiId: null })
+    )
+    expect(improntaPesata({ ...base, alibiId: null })).toBe(
+      improntaPesata({ ...base, alibiId: undefined })
+    )
+  })
+
   it('un campo vuoto non si confonde con uno spostato (separatore)', () => {
     expect(improntaPesata({ ...base, strumentoId: null, strumentoEsterno: 'x' })).not.toBe(
       improntaPesata({ ...base, strumentoId: 'x', strumentoEsterno: null })
@@ -120,6 +135,18 @@ describe('improntaRettifica', () => {
     expect(improntaRettifica({ ...r, ...diff })).not.toBe(improntaRettifica(r))
   })
 
+  it('la codifica non è ambigua: motivo e autore con il separatore', () => {
+    expect(improntaRettifica({ ...r, motivo: 'M|a', autoreId: 'b' })).not.toBe(
+      improntaRettifica({ ...r, motivo: 'M', autoreId: 'a|b' })
+    )
+  })
+
+  it('allegato null e stringa vuota sono distinti', () => {
+    expect(improntaRettifica({ ...r, allegatoSha256: '' })).not.toBe(
+      improntaRettifica({ ...r, allegatoSha256: null })
+    )
+  })
+
   it('pesata e rettifica con gli stessi valori non collidono (prefissi p1| e r1|)', () => {
     const p = improntaPesata({
       ...base,
@@ -153,6 +180,11 @@ describe('formattaDecimaleCanonico', () => {
     [1000.05, '1000.05'],
   ])('%p → %p', (n, atteso) => {
     expect(formattaDecimaleCanonico(n)).toBe(atteso)
+  })
+  it('più di 2 decimali → errore esplicito, non arrotondamento', () => {
+    expect(() => formattaDecimaleCanonico(12.345)).toThrow(/decimali/)
+    expect(() => formattaDecimaleCanonico('12.345')).toThrow(/decimali/)
+    expect(formattaDecimaleCanonico('12340.000')).toBe('12340.00')
   })
   it('non numerico → errore', () => {
     expect(() => formattaDecimaleCanonico(NaN)).toThrow()
