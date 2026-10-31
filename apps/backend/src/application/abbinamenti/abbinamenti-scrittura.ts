@@ -293,7 +293,8 @@ export async function ricalcolaAbbinamenti(
       continue
     }
     const idsScarichi = a.scarichi.map(s => s.radiceId)
-    const conRighe = new Set(a.righe.map(r => r.scaricoRadiceId))
+    // solo le righe valide contano: uno scarico con sole righe morte e da riabbinare
+    const conRighe = new Set(a.righeValide.map(r => r.scaricoRadiceId))
     // Scarichi lasciati come sono: con righe MANUALE (la scelta dell'operatore non si completa
     // in silenzio) o con classe indeterminata (nessuna partizione automatica li riguarda).
     const intoccabili = new Set<string>()
@@ -318,7 +319,11 @@ export async function ricalcolaAbbinamenti(
         },
         select: { id: true, scaricoId: true },
       })
-      daCancellare = auto.filter(r => !intoccabili.has(r.scaricoId)).map(r => r.id)
+      // le AUTOMATICO morte si cancellano anche per gli scarichi intoccabili (le MANUALE mai)
+      const morte = new Set(a.righeMorteIds)
+      daCancellare = auto
+        .filter(r => !intoccabili.has(r.scaricoId) || morte.has(r.id))
+        .map(r => r.id)
     } else {
       // NON_ABBINATI: le righe morte restano dove sono, ma non contano nei residui
       tenute = a.righeValide

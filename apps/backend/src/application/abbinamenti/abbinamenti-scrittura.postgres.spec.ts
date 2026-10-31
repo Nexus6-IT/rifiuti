@@ -496,6 +496,117 @@ describe('Scritture abbinamenti - Postgres reale, ruolo wasteflow_app', () => {
     expect((await righeDi(az)).map(r => Number(r.quantita))).toEqual([60])
   })
 
+  it('NON_ABBINATI: uno scarico vigente con sole righe morte viene riabbinato (la morta resta)', async () => {
+    const az = await azienda()
+    const c0 = await carico(az, '2026-03-01', 50)
+    await annullaScarico(az, c0)
+    const c1 = await carico(az, '2026-03-02', 100)
+    const s = await scarico(az, '2026-03-10', 30)
+    const morta = await owner.abbinamentoCaricoScarico.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        scaricoId: s,
+        caricoId: c0,
+        famiglia: 'KG',
+        quantita: 30,
+        origine: 'AUTOMATICO',
+      },
+    })
+    const esito = await ricalcola(az, 'NON_ABBINATI')
+    expect(esito.righeScritte).toBe(1)
+    const righe = await righeDi(az)
+    expect(
+      righe.filter(r => r.id !== morta.id).map(r => [r.scaricoId, r.caricoId, Number(r.quantita)])
+    ).toEqual([[s, c1, 30]])
+    expect(await owner.abbinamentoCaricoScarico.count({ where: { id: morta.id } })).toBe(1)
+  })
+
+  it('AUTOMATICI: la riga AUTOMATICO morta di uno scarico intoccabile si cancella, la MANUALE resta', async () => {
+    const az = await azienda()
+    const c0 = await carico(az, '2026-03-01', 50)
+    await annullaScarico(az, c0)
+    const c1 = await carico(az, '2026-03-02', 100)
+    const s = await scarico(az, '2026-03-10', 30)
+    await inTx(az, tx =>
+      salvaAbbinamentoManuale(tx, {
+        tenantId: az.tenantId,
+        scaricoRadiceId: s,
+        userId,
+        righe: [{ caricoId: c1, quantita: 10 }],
+      })
+    )
+    const manuale = (await righeDi(az)).filter(r => r.scaricoId === s)
+    const morta = await owner.abbinamentoCaricoScarico.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        scaricoId: s,
+        caricoId: c0,
+        famiglia: 'KG',
+        quantita: 5,
+        origine: 'AUTOMATICO',
+      },
+    })
+    await ricalcola(az, 'AUTOMATICI')
+    expect(await owner.abbinamentoCaricoScarico.count({ where: { id: morta.id } })).toBe(0)
+    const dopo = (await righeDi(az)).filter(r => r.scaricoId === s)
+    expect(dopo.map(r => r.id)).toEqual(manuale.map(r => r.id))
+    expect(dopo.map(r => r.origine)).toEqual(['MANUALE'])
+  })
+
+  it('AUTOMATICI: uno scarico a classe indeterminata e intoccabile, le sue righe restano', async () => {
+    const az = await azienda()
+    const c1 = await carico(az, '2026-03-01', 100, 'R13')
+    await carico(az, '2026-03-02', 100, 'D15')
+    const s = await scarico(az, '2026-03-10', 10, { causale: 'ALTRO_SCARICO' })
+    const riga = await owner.abbinamentoCaricoScarico.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        scaricoId: s,
+        caricoId: c1,
+        famiglia: 'KG',
+        quantita: 10,
+        origine: 'AUTOMATICO',
+      },
+    })
+    const esito = await ricalcola(az, 'AUTOMATICI')
+    expect(esito.righeCancellate).toBe(0)
+    expect(esito.righeScritte).toBe(0)
+    expect((await righeDi(az)).map(r => r.id)).toEqual([riga.id])
+  })
+
+  it('override: una riga morta nell ambito non blocca il residuo', async () => {
+    const az = await azienda()
+    const c1 = await carico(az, '2026-03-01', 100)
+    const sMorto = await scarico(az, '2026-03-10', 100)
+    await owner.abbinamentoCaricoScarico.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: az.registroId,
+        scaricoId: sMorto,
+        caricoId: c1,
+        famiglia: 'KG',
+        quantita: 100,
+        origine: 'AUTOMATICO',
+      },
+    })
+    await annullaScarico(az, sMorto)
+    const s2 = await scarico(az, '2026-03-12', 80)
+    await inTx(az, tx =>
+      salvaAbbinamentoManuale(tx, {
+        tenantId: az.tenantId,
+        scaricoRadiceId: s2,
+        userId,
+        righe: [{ caricoId: c1, quantita: 80 }],
+      })
+    )
+    expect(
+      (await righeDi(az)).filter(r => r.scaricoId === s2).map(r => [Number(r.quantita), r.origine])
+    ).toEqual([[80, 'MANUALE']])
+  })
+
   it('idempotenza: due ricalcoli di fila', async () => {
     const az = await azienda()
     await carico(az, '2026-03-01', 100)
