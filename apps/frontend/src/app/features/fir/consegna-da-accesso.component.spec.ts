@@ -177,6 +177,73 @@ describe('ConsegnaDaAccessoComponent (DOM)', () => {
     expect(q('cda-accesso-c2')).not.toBeNull()
   })
 
+  it('i dettagli dei collegati si leggono solo quando l interruttore si accende', () => {
+    pese.dettaglioAccesso.and.returnValue(of(accesso({ id: 'c1' })))
+    apri(firIn('T'), [riga('c1', { collegato: true })])
+    expect(pese.dettaglioAccesso).not.toHaveBeenCalled()
+    attiva()
+    expect(pese.dettaglioAccesso).toHaveBeenCalledTimes(1)
+  })
+
+  it('un collegamento alla sola annotazione del registro non esclude l accesso', () => {
+    pese.dettaglioAccesso.and.returnValue(
+      of(
+        accesso({
+          id: 'c1',
+          collegamenti: [
+            {
+              id: 'l1',
+              tipo: 'MOVIMENTO',
+              confronto: null,
+              creatoIl: '2026-10-30T10:00:00.000Z',
+              revocatoIl: null,
+              motivoRevoca: null,
+            },
+          ],
+        })
+      )
+    )
+    apri(firIn('T'), [riga('c1', { collegato: true })])
+    attiva()
+    expect(q('cda-accesso-c1')).not.toBeNull()
+  })
+
+  it('elenco troncato: lo dice e invita a cercare per targa; vuoto coerente', () => {
+    pese.elencaAccessi.and.returnValue(
+      of({ ...elenco([riga('s1', { verso: 'SCARICO' })]), totale: 40 })
+    )
+    fixture = TestBed.createComponent(ConsegnaDaAccessoComponent)
+    fixture.componentRef.setInput('fir', firIn('T'))
+    fixture.detectChanges()
+    attiva()
+    expect(q('cda-troncato')!.textContent).toContain(
+      'Mostrati solo gli ultimi 1 accessi chiusi: cercare per targa.'
+    )
+    expect(q('cda-vuoto')!.textContent).toContain('cercare per targa')
+  })
+
+  it('sotto l anteprima: il valore registrato lo calcola il server', () => {
+    apri(firIn('T'))
+    attiva()
+    q<HTMLInputElement>('cda-radio-a1')!.click()
+    fixture.detectChanges()
+    expect(q('cda-nota-server')!.textContent).toContain(
+      'Il valore registrato lo calcola il server con la stessa regola.'
+    )
+  })
+
+  it('ricarica rilegge l elenco (seconda chiamata) e azzera la scelta', () => {
+    apri(firIn('T'))
+    attiva()
+    q<HTMLInputElement>('cda-radio-a1')!.click()
+    fixture.detectChanges()
+    const prima = pese.elencaAccessi.calls.count()
+    fixture.componentInstance.ricarica()
+    fixture.detectChanges()
+    expect(pese.elencaAccessi.calls.count()).toBeGreaterThan(prima)
+    expect(emessi.at(-1)).toEqual({ attivo: true, accessoId: null, convertito: null })
+  })
+
   it('nessun accesso disponibile: lo dice', () => {
     apri(firIn('T'), [])
     attiva()

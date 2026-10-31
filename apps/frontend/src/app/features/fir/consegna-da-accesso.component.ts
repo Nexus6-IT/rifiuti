@@ -11,7 +11,7 @@
  */
 import { CommonModule } from '@angular/common'
 import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core'
-import { catchError, forkJoin, of } from 'rxjs'
+import { Subscription, catchError, forkJoin, of } from 'rxjs'
 import { FIR } from '../../shared/models/fir.model'
 import {
   dataItalianaDa,
@@ -101,8 +101,17 @@ interface Candidato {
               }}<ng-container *ngIf="c.stessaTarga"> — stessa targa del FIR</ng-container></span
             >
           </label>
+          <p class="cda__nota" *ngIf="omessi() > 0" data-testid="cda-troncato">
+            Mostrati solo gli ultimi {{ letti() }} accessi chiusi: cercare per targa.
+          </p>
           <p class="cda__nota" *ngIf="!candidati().length" data-testid="cda-vuoto">
-            Nessun accesso chiuso in carico disponibile per questa consegna.
+            {{
+              omessi() > 0
+                ? 'Nessun accesso in carico tra gli ultimi ' +
+                  letti() +
+                  ' accessi chiusi: cercare per targa.'
+                : 'Nessun accesso chiuso in carico disponibile per questa consegna.'
+            }}
           </p>
         </fieldset>
 
@@ -113,6 +122,9 @@ interface Candidato {
               = <strong>{{ numero(a.valore!) }} {{ unita }}</strong> nel FIR (dichiarata:
               {{ numero(fir.rifiuto.quantita) }} {{ unita }})
             </ng-container>
+          </p>
+          <p class="cda__nota" *ngIf="a.valore !== null" data-testid="cda-nota-server">
+            Il valore registrato lo calcola il server con la stessa regola.
           </p>
           <p
             *ngIf="a.errore as errore"
@@ -180,6 +192,12 @@ export class ConsegnaDaAccessoComponent implements OnInit {
   readonly candidati = signal<Candidato[]>([])
   readonly scelto = signal<string | null>(null)
   readonly puoOperare = signal(true)
+  /** Quanti accessi chiusi il backend ha oltre la pagina letta (0 = elenco completo). */
+  readonly omessi = signal(0)
+  readonly letti = signal(0)
+  private elenco: Candidato[] = []
+  private lettura: Subscription | null = null
+  private dettagliLetti = false
 
   readonly kg = formattaKg
   readonly data = dataItalianaDa
@@ -228,6 +246,7 @@ export class ConsegnaDaAccessoComponent implements OnInit {
   alCambioInterruttore(acceso: boolean): void {
     this.attivo.set(acceso)
     this.scelto.set(null)
+    if (acceso && !this.dettagliLetti && !this.caricamento()) this.filtraCollegati()
     this.emetti()
   }
 
@@ -249,20 +268,24 @@ export class ConsegnaDaAccessoComponent implements OnInit {
   /** Rilegge l'elenco (dopo un rifiuto del backend, ad esempio un 409). */
   ricarica(): void {
     this.scelto.set(null)
+    this.dettagliLetti = false
     this.carica()
     this.emetti()
   }
 
   private carica(): void {
     const targa = normalizzaTarga(this.fir.trasportatore?.targaVeicolo ?? '')
+    this.lettura?.unsubscribe()
     this.caricamento.set(true)
     this.erroreElenco.set(null)
-    forkJoin([
+    this.lettura = forkJoin([
       this.pese.elencaAccessi({ stato: 'CHIUSO' }),
       targa ? this.pese.elencaAccessi({ stato: 'CHIUSO', targa }) : of(null),
     ]).subscribe({
       next: ([generale, conTarga]) => {
         this.puoOperare.set(generale.puoOperare)
+        this.letti.set(generale.righe.length)
+        this.omessi.set(Math.max(0, generale.totale - generale.righe.length))
         const righe = [...(conTarga?.righe ?? []), ...generale.righe]
         const viste = new Set<string>()
         const candidati: Candidato[] = []
@@ -273,7 +296,10 @@ export class ConsegnaDaAccessoComponent implements OnInit {
           candidati.push({ riga, stessaTarga: !!targa && riga.targa === targa })
         }
         candidati.sort((a, b) => Number(b.stessaTarga) - Number(a.stessaTarga))
-        this.filtraCollegati(candidati)
+        this.elenco = candidati
+        this.candidati.set(candidati.filter(c => !c.riga.collegato))
+        this.caricamento.set(false)
+        if (this.attivo()) this.filtraCollegati()
       },
       error: err => {
         this.caricamento.set(false)
@@ -282,25 +308,33 @@ export class ConsegnaDaAccessoComponent implements OnInit {
     })
   }
 
-  /** Un accesso gia' collegato resta solo se il legame attivo e' proprio con questo FIR. */
-  private filtraCollegati(candidati: Candidato[]): void {
-    const collegati = candidati.filter(c => c.riga.collegato)
+  /**
+   * Un accesso con un legame attivo con ALTRO FIR si esclude (come il backend); un legame con
+   * questo FIR o con una sola annotazione del registro va bene. Si legge il dettaglio solo
+   * quando l'interruttore e' acceso.
+   */
+  private filtraCollegati(): void {
+    const collegati = this.elenco.filter(c => c.riga.collegato)
     if (!collegati.length) {
-      this.candidati.set(candidati)
-      this.caricamento.set(false)
+      this.candidati.set(this.elenco)
+      this.dettagliLetti = true
       return
     }
-    forkJoin(
+    this.caricamento.set(true)
+    this.lettura?.unsubscribe()
+    this.lettura = forkJoin(
       collegati.map(c => this.pese.dettaglioAccesso(c.riga.id).pipe(catchError(() => of(null))))
     ).subscribe(dettagli => {
-      const daTenere = new Set<string>()
+      const esclusi = new Set<string>()
       dettagli.forEach((d, i) => {
-        const legato = d?.collegamenti.some(
-          l => !l.revocatoIl && l.tipo === 'FIR' && l.fir?.id === this.fir.id
-        )
-        if (legato) daTenere.add(collegati[i].riga.id)
+        // dettaglio illeggibile: per prudenza non si offre
+        const altroFir =
+          !d ||
+          d.collegamenti.some(l => !l.revocatoIl && l.tipo === 'FIR' && l.fir?.id !== this.fir.id)
+        if (altroFir) esclusi.add(collegati[i].riga.id)
       })
-      this.candidati.set(candidati.filter(c => !c.riga.collegato || daTenere.has(c.riga.id)))
+      this.candidati.set(this.elenco.filter(c => !esclusi.has(c.riga.id)))
+      this.dettagliLetti = true
       this.caricamento.set(false)
     })
   }

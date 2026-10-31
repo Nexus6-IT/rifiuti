@@ -564,10 +564,12 @@ describe('FirListComponent — consegna dal netto di un accesso di pesa', () => 
     qd('cda-radio-a1')!.click()
     fixture.detectChanges()
   }
-  const conferma = () =>
-    Array.from(document.body.querySelectorAll<HTMLButtonElement>('p-dialog button')).find(b =>
-      b.textContent?.includes('Conferma')
-    )!
+  const conferma = () => {
+    const tutti = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('p-dialog button')
+    ).filter(b => b.textContent?.includes('Conferma'))
+    return tutti[tutti.length - 1]
+  }
 
   beforeEach(() => {
     featurePese = true
@@ -657,6 +659,64 @@ describe('FirListComponent — consegna dal netto di un accesso di pesa', () => 
     apri({ ...firInTransito, rifiuto: { ...firInTransito.rifiuto, unitaMisura: 'M3' } })
     expect((qd('cda-interruttore') as HTMLInputElement).disabled).toBeTrue()
     expect(qd('cda-spiegazione')!.textContent).toContain('Il FIR è in M3')
+  })
+
+  const annulla = () =>
+    Array.from(document.body.querySelectorAll<HTMLButtonElement>('p-dialog button')).find(b =>
+      b.textContent?.includes('Annulla')
+    )!
+  const firM3 = () => ({
+    ...firInTransito,
+    id: 'fir-2',
+    rifiuto: { ...firInTransito.rifiuto, unitaMisura: 'M3' },
+  })
+
+  it('riaperture consecutive (T, M3, T dopo Annulla): il figlio riparte vuoto e si invia ciò che si vede', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    scegliAccesso()
+    annulla().click()
+    fixture.detectChanges()
+    expect(qd('cda-interruttore')).toBeNull()
+
+    apri(firM3())
+    expect((qd('cda-interruttore') as HTMLInputElement).checked).toBeFalse()
+    expect((qd('cda-interruttore') as HTMLInputElement).disabled).toBeTrue()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).not.toBeNull()
+    annulla().click()
+    fixture.detectChanges()
+
+    apri({ ...firInTransito, id: 'fir-3' })
+    expect((qd('cda-interruttore') as HTMLInputElement).checked).toBeFalse()
+    expect(document.body.querySelector('label[for="peso-effettivo"]')).not.toBeNull()
+    conferma().click()
+    expect(firService.confermaConsegna).toHaveBeenCalledOnceWith('fir-3', { pesoEffettivo: 15 })
+  })
+
+  it('dopo una consegna riuscita con accesso, la riapertura su un altro FIR parte da zero', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    scegliAccesso()
+    conferma().click()
+    fixture.detectChanges()
+    expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', { accessoId: 'a1' })
+
+    apri({ ...firInTransito, id: 'fir-4' })
+    expect((qd('cda-interruttore') as HTMLInputElement).checked).toBeFalse()
+    conferma().click()
+    expect(firService.confermaConsegna.calls.mostRecent().args).toEqual([
+      'fir-4',
+      { pesoEffettivo: 15 },
+    ])
+  })
+
+  it('campo manuale svuotato, interruttore acceso e accesso scelto: invia comunque l accessoId', () => {
+    firService.confermaConsegna.and.returnValue(of({ ...firInTransito, scostamentoPeso: null }))
+    apri()
+    component.pesoEffettivo = 0
+    scegliAccesso()
+    conferma().click()
+    expect(firService.confermaConsegna).toHaveBeenCalledOnceWith('fir-1', { accessoId: 'a1' })
   })
 
   it('un rifiuto del backend si mostra testuale e non chiude il dialog', () => {

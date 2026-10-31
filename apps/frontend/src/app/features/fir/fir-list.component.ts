@@ -938,14 +938,14 @@ interface OpzioneSede {
       <p-dialog
         [(visible)]="displayConsegnaDialog"
         [modal]="true"
-        styleClass="w-full max-w-20rem"
+        [styleClass]="ff.has('pese') ? 'w-full max-w-30rem' : 'w-full max-w-20rem'"
         header="Conferma Consegna"
+        (onHide)="chiudiConsegna()"
       >
-        @if (ff.has('pese') && selectedFIR) {
-          <app-consegna-da-accesso
-            [fir]="selectedFIR"
-            (cambio)="scelta = $event"
-          ></app-consegna-da-accesso>
+        @if (displayConsegnaDialog && ff.has('pese') && selectedFIR) {
+          @for (f of [selectedFIR]; track f.id) {
+            <app-consegna-da-accesso [fir]="f" (cambio)="scelta = $event"></app-consegna-da-accesso>
+          }
         }
         @if (!scelta.attivo) {
           <div class="dialog-form__field">
@@ -966,7 +966,7 @@ interface OpzioneSede {
           </div>
         }
         <ng-template pTemplate="footer">
-          <p-button label="Annulla" [text]="true" (onClick)="displayConsegnaDialog = false" />
+          <p-button label="Annulla" [text]="true" (onClick)="chiudiConsegna()" />
           <p-button
             label="Conferma"
             (onClick)="consegnaFIR()"
@@ -2182,13 +2182,19 @@ export class FirListComponent implements OnInit {
     this.displayConsegnaDialog = true
   }
 
+  /** Chiude il dialog di consegna e azzera la scelta: la prossima apertura parte da zero. */
+  chiudiConsegna(): void {
+    this.displayConsegnaDialog = false
+    this.scelta = { attivo: false, accessoId: null, convertito: null }
+  }
+
   /** Conferma consegna (IN_TRANSITO → CONSEGNATO) con il peso effettivo rilevato. */
   consegnaFIR(): void {
     if (!this.selectedFIR) return
     const daAccesso = this.scelta.attivo
     if (daAccesso && !this.scelta.accessoId) return
 
-    if ((!daAccesso && !this.pesoEffettivo) || this.pesoEffettivo <= 0) {
+    if (!daAccesso && (!this.pesoEffettivo || this.pesoEffettivo <= 0)) {
       this.messageService.add({
         severity: 'warn',
         summary: 'Peso non valido',
@@ -2219,7 +2225,7 @@ export class FirListComponent implements OnInit {
             detail: 'Consegna FIR confermata con successo',
           })
         }
-        this.displayConsegnaDialog = false
+        this.chiudiConsegna()
         this.saving = false
         this.loadFIRList({ first: (this.currentPage - 1) * this.pageSize, rows: this.pageSize })
       },
