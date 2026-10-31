@@ -179,8 +179,8 @@ const STATUS_SEVERITY: Record<
                       [rounded]="true"
                       [text]="true"
                       (onClick)="apriModifica(c)"
-                      [disabled]="!c.modificabili?.length"
-                      [ariaLabel]="'Modifica il contratto ' + c.contractNumber"
+                      [disabled]="modificaDisabilitata(c)"
+                      [ariaLabel]="etichettaModifica(c)"
                     />
                   </span>
                   <span pTooltip="Cambia stato" tooltipPosition="top">
@@ -200,6 +200,7 @@ const STATUS_SEVERITY: Record<
                       [rounded]="true"
                       [text]="true"
                       (onClick)="chiediEliminazione(c)"
+                      [disabled]="eliminando() === c.id"
                       [ariaLabel]="'Elimina il contratto ' + c.contractNumber"
                     />
                   </span>
@@ -325,6 +326,10 @@ export class ContractsListComponent implements OnInit {
   readonly error = signal(false)
   readonly changingStatus = signal(false)
   readonly selectedContract = signal<Contract | null>(null)
+  /** Id del contratto di cui si sta rileggendo il dettaglio per la modifica (niente doppio click). */
+  readonly apriInCorso = signal<string | null>(null)
+  /** Id del contratto in eliminazione (il cestino resta disabilitato durante la chiamata). */
+  readonly eliminando = signal<string | null>(null)
 
   statusFilter: ContractStatus | null = null
 
@@ -405,13 +410,33 @@ export class ContractsListComponent implements OnInit {
   tooltipModifica(c: Contract): string {
     if (c.modificabili?.length) return 'Modifica'
     if (c.status === 'PENDING_APPROVAL') return 'Riporta il contratto in bozza per modificarlo'
-    return 'Un contratto scaduto o cessato non si modifica'
+    if (c.status === 'EXPIRED' || c.status === 'TERMINATED') {
+      return 'Un contratto scaduto o cessato non si modifica'
+    }
+    return 'Questo contratto non si può modificare'
+  }
+
+  /** Disabilitato se il backend non indica campi modificabili o se la lettura e' in corso. */
+  modificaDisabilitata(c: Contract): boolean {
+    return !c.modificabili?.length || this.apriInCorso() === c.id
+  }
+
+  /**
+   * Etichetta accessibile: se il pulsante e' disabilitato per lo stato, il motivo e' nell'etichetta
+   * (tastiera e screen reader non vedono il tooltip di un pulsante disabilitato).
+   */
+  etichettaModifica(c: Contract): string {
+    const base = `Modifica il contratto ${c.contractNumber}`
+    return c.modificabili?.length ? base : `${base}: ${this.tooltipModifica(c)}`
   }
 
   /** Rilegge il contratto (versione e campi modificabili aggiornati) prima di aprire il dialog. */
   apriModifica(c: Contract): void {
+    if (this.apriInCorso() !== null) return
+    this.apriInCorso.set(c.id)
     this.contractsService.getById(c.id).subscribe({
       next: fresco => {
+        this.apriInCorso.set(null)
         if (!fresco.modificabili?.length) {
           this.toast.warn('Il contratto non è più modificabile')
           this.loadContracts()
@@ -421,6 +446,7 @@ export class ContractsListComponent implements OnInit {
         this.displayCreate = true
       },
       error: err => {
+        this.apriInCorso.set(null)
         this.toast.error(messaggioDaErrore(err, 'Errore nel caricamento del contratto'))
         if (err instanceof HttpErrorResponse && err.status === 404) this.loadContracts()
       },
@@ -435,17 +461,22 @@ export class ContractsListComponent implements OnInit {
       acceptLabel: 'Elimina',
       rejectLabel: 'Annulla',
       acceptButtonStyleClass: 'p-button-danger',
+      defaultFocus: 'reject',
       accept: () => this.elimina(c),
     })
   }
 
   private elimina(c: Contract): void {
+    if (this.eliminando() !== null) return
+    this.eliminando.set(c.id)
     this.contractsService.elimina(c.id, c.versione).subscribe({
       next: () => {
+        this.eliminando.set(null)
         this.toast.success('Contratto eliminato')
         this.loadContracts()
       },
       error: err => {
+        this.eliminando.set(null)
         this.toast.error(messaggioDaErrore(err, "Errore nell'eliminazione del contratto"))
         // Versione vecchia (409) o contratto gia' sparito (404): i dati in lista sono vecchi
         const stato = err instanceof HttpErrorResponse ? err.status : 0

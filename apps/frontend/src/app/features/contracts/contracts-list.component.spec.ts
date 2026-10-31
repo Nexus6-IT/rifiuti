@@ -1,14 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
+import { ConfirmationService } from 'primeng/api'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { HttpErrorResponse } from '@angular/common/http'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { ContractsListComponent } from './contracts-list.component'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
 import { CAMPI_CONTRATTO, Contract, ContractsService } from './contracts.service'
 import { ToastService } from '../../core/services/toast.service'
 import { RegistryService } from '../registry/registry.service'
 import { CerService } from '../cer/cer.service'
+import { PaginatedResponse } from '../../shared/models/registry.model'
 
 describe('ContractsListComponent — modifica ed eliminazione', () => {
   let fixture: ComponentFixture<ContractsListComponent>
@@ -70,7 +72,8 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
     eliminabile: false,
   })
 
-  const vuoto = of({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 } as any)
+  const vuoto = <T>() =>
+    of<PaginatedResponse<T>>({ items: [], total: 0, page: 1, limit: 10, totalPages: 0 })
   const errore = (status: number, body: unknown) =>
     throwError(() => new HttpErrorResponse({ status, error: body }))
 
@@ -100,9 +103,9 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       'getTrasportatori',
       'getDestinatari',
     ])
-    registry.getProduttori.and.returnValue(vuoto)
-    registry.getTrasportatori.and.returnValue(vuoto)
-    registry.getDestinatari.and.returnValue(vuoto)
+    registry.getProduttori.and.returnValue(vuoto())
+    registry.getTrasportatori.and.returnValue(vuoto())
+    registry.getDestinatari.and.returnValue(vuoto())
     const cer = jasmine.createSpyObj<CerService>('CerService', ['searchCER'])
     cer.searchCER.and.returnValue(of([]))
 
@@ -125,8 +128,16 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
     it('Modifica disabilitato se modificabili è vuoto, col tooltip del motivo', () => {
       expect(pulsante('Modifica il contratto CTR-2026-001')?.disabled).toBeFalse()
       expect(pulsante('Modifica il contratto CTR-2026-003')?.disabled).toBeFalse()
-      expect(pulsante('Modifica il contratto CTR-2026-002')?.disabled).toBeTrue()
-      expect(pulsante('Modifica il contratto CTR-2026-004')?.disabled).toBeTrue()
+      expect(
+        pulsante(
+          'Modifica il contratto CTR-2026-002: Riporta il contratto in bozza per modificarlo'
+        )?.disabled
+      ).toBeTrue()
+      expect(
+        pulsante(
+          'Modifica il contratto CTR-2026-004: Un contratto scaduto o cessato non si modifica'
+        )?.disabled
+      ).toBeTrue()
       expect(component.tooltipModifica(inApprovazione)).toBe(
         'Riporta il contratto in bozza per modificarlo'
       )
@@ -137,6 +148,30 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
         'Un contratto scaduto o cessato non si modifica'
       )
       expect(component.tooltipModifica(bozza)).toBe('Modifica')
+      expect(component.tooltipModifica(contratto({ status: 'SUSPENDED', modificabili: [] }))).toBe(
+        'Questo contratto non si può modificare'
+      )
+    })
+
+    it("il motivo di Modifica disabilitato è nell'etichetta accessibile (letto dal DOM)", () => {
+      const dis = pulsante(
+        'Modifica il contratto CTR-2026-002: Riporta il contratto in bozza per modificarlo'
+      )
+      expect(dis?.disabled).toBeTrue()
+      const cessatoBtn = pulsante(
+        'Modifica il contratto CTR-2026-004: Un contratto scaduto o cessato non si modifica'
+      )
+      expect(cessatoBtn?.disabled).toBeTrue()
+      // abilitato: etichetta senza motivo
+      expect(pulsante('Modifica il contratto CTR-2026-001')?.disabled).toBeFalse()
+    })
+
+    it('un click su Modifica disabilitato non chiama getById', () => {
+      pulsante(
+        'Modifica il contratto CTR-2026-002: Riporta il contratto in bozza per modificarlo'
+      )!.click()
+      fixture.detectChanges()
+      expect(contracts.getById).not.toHaveBeenCalled()
     })
 
     it('Elimina compare solo se eliminabile', () => {
@@ -165,6 +200,39 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       expect(component.displayCreate).toBeFalse()
       expect(toast.warn).toHaveBeenCalledWith('Il contratto non è più modificabile')
       expect(caricate()).toBe(prima + 1)
+    })
+
+    it('durante la rilettura il pulsante è disabilitato e un secondo click non rilegge', () => {
+      const risposta = new Subject<Contract>()
+      contracts.getById.and.returnValue(risposta)
+      pulsante('Modifica il contratto CTR-2026-001')!.click()
+      fixture.detectChanges()
+      expect(pulsante('Modifica il contratto CTR-2026-001')?.disabled).toBeTrue()
+      component.apriModifica(bozza)
+      expect(contracts.getById).toHaveBeenCalledTimes(1)
+      risposta.next(bozza)
+      risposta.complete()
+      fixture.detectChanges()
+      expect(component.apriInCorso()).toBeNull()
+      expect(component.displayCreate).toBeTrue()
+    })
+
+    it('getById 404: toast del backend e lista ricaricata', () => {
+      contracts.getById.and.returnValue(errore(404, { message: 'Contratto non trovato' }))
+      const prima = caricate()
+      component.apriModifica(bozza)
+      expect(toast.error).toHaveBeenCalledWith('Contratto non trovato')
+      expect(caricate()).toBe(prima + 1)
+      expect(component.apriInCorso()).toBeNull()
+      expect(component.displayCreate).toBeFalse()
+    })
+
+    it('getById con altro errore: solo toast, nessun ricaricamento', () => {
+      contracts.getById.and.returnValue(errore(500, {}))
+      const prima = caricate()
+      component.apriModifica(bozza)
+      expect(toast.error).toHaveBeenCalledWith('Errore nel caricamento del contratto')
+      expect(caricate()).toBe(prima)
     })
 
     it('Nuovo contratto apre il dialog in creazione (contratto null)', () => {
@@ -215,6 +283,29 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       expect(contracts.elimina).toHaveBeenCalledOnceWith('id-1', 3)
       expect(toast.success).toHaveBeenCalledWith('Contratto eliminato')
       expect(caricate()).toBe(prima + 1)
+    })
+
+    it('il focus iniziale della conferma è su Annulla', () => {
+      const confirm = spyOn(
+        fixture.debugElement.injector.get(ConfirmationService),
+        'confirm'
+      ).and.callThrough()
+      apriConferma()
+      expect(confirm.calls.mostRecent().args[0].defaultFocus).toBe('reject')
+    })
+
+    it('durante la chiamata il cestino è disabilitato', () => {
+      const risposta = new Subject<void>()
+      contracts.elimina.and.returnValue(risposta)
+      apriConferma()
+      bottoneConferma('.p-confirm-dialog-accept')!.click()
+      fixture.detectChanges()
+      expect(component.eliminando()).toBe('id-1')
+      expect(pulsante('Elimina il contratto CTR-2026-001')?.disabled).toBeTrue()
+      risposta.next()
+      risposta.complete()
+      fixture.detectChanges()
+      expect(component.eliminando()).toBeNull()
     })
 
     it('se annullata non chiama elimina', () => {
