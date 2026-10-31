@@ -27,6 +27,7 @@ describe('calcolaFifo: casi a mano', () => {
       scoperto: 0,
       giornoPiuVecchio: null,
       abbinamenti: [],
+      debiti: [],
     })
   })
 
@@ -326,6 +327,82 @@ describe('calcolaFifo: proprieta su 500 sequenze casuali', () => {
 
       // invarianza alla permutazione dell'input, abbinamenti compresi
       expect(calcolaFifo(mescola(eventi, rnd))).toEqual(esito)
+    }
+  })
+})
+
+describe('saldaDebiti: false', () => {
+  const senzaSaldo = { saldaDebiti: false }
+
+  it('scarico senza lotti, poi un carico: nessun abbinamento, il debito resta', () => {
+    const esito = calcolaFifo(
+      [scarico('S', '2026-01-05', 100, ANNO + 1), carico('C1', '2026-01-10', 60, ANNO + 2)],
+      senzaSaldo
+    )
+    expect(esito.abbinamenti).toEqual([])
+    expect(esito.debiti).toEqual([{ scarico: { id: 'S' }, quantita: 100 }])
+    expect(esito.scoperto).toBe(100)
+    expect(esito.lotti).toHaveLength(1)
+    expect(esito.lotti[0].riferimento.id).toBe('C1')
+    expect(esito.lotti[0].residuo).toBe(60)
+  })
+
+  it('carico 50, scarico 80, carico 40: un abbinamento, debito 30, lotto C2 intero', () => {
+    const esito = calcolaFifo(
+      [
+        carico('C1', '2026-03-01', 50, ANNO + 1),
+        scarico('S', '2026-03-02', 80, ANNO + 2),
+        carico('C2', '2026-03-03', 40, ANNO + 3),
+      ],
+      senzaSaldo
+    )
+    expect(esito.abbinamenti).toEqual([
+      { scarico: { id: 'S' }, carico: { id: 'C1' }, quantita: 50 },
+    ])
+    expect(esito.debiti).toEqual([{ scarico: { id: 'S' }, quantita: 30 }])
+    expect(esito.lotti.map(l => [l.riferimento.id, l.residuo])).toEqual([['C2', 40]])
+  })
+
+  it('stesso giorno: il carico precede lo scarico anche senza saldo dei debiti', () => {
+    const esito = calcolaFifo(
+      [scarico('S', '2026-03-02', 30, ANNO + 1), carico('C', '2026-03-02', 50, ANNO + 2)],
+      senzaSaldo
+    )
+    expect(esito.abbinamenti).toEqual([{ scarico: { id: 'S' }, carico: { id: 'C' }, quantita: 30 }])
+    expect(esito.debiti).toEqual([])
+  })
+
+  it('debiti esposti anche col predefinito, con la stessa somma di scoperto', () => {
+    const esito = calcolaFifo([
+      carico('C1', '2026-01-10', 30, ANNO + 1),
+      scarico('S', '2026-01-20', 100, ANNO + 2),
+    ])
+    expect(esito.debiti).toEqual([{ scarico: { id: 'S' }, quantita: 70 }])
+    expect(esito.debiti.reduce((s, d) => s + mill(d.quantita), 0)).toBe(mill(esito.scoperto))
+  })
+
+  it('proprieta su 300 sequenze casuali', () => {
+    const rnd = lcg(20261031)
+    for (let k = 0; k < 300; k++) {
+      const eventi = generaSequenza(rnd)
+      const perId = new Map(eventi.map(e => [e.riferimento.id, e]))
+      const esito = calcolaFifo(eventi, senzaSaldo)
+
+      for (const a of esito.abbinamenti) {
+        const c = perId.get(a.carico.id) as EventoFifo
+        const s = perId.get(a.scarico.id) as EventoFifo
+        expect(confrontaEventiFifo(c, s)).toBeLessThan(0)
+      }
+      expect(esito.debiti.reduce((x, d) => x + mill(d.quantita), 0)).toBe(mill(esito.scoperto))
+      for (const s of eventi.filter(e => e.tipo === 'SCARICO')) {
+        const abb = esito.abbinamenti
+          .filter(a => a.scarico.id === s.riferimento.id)
+          .reduce((x, a) => x + mill(a.quantita), 0)
+        const deb = esito.debiti
+          .filter(d => d.scarico.id === s.riferimento.id)
+          .reduce((x, d) => x + mill(d.quantita), 0)
+        expect(abb + deb).toBe(mill(s.quantita))
+      }
     }
   })
 })
