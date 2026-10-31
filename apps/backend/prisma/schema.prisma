@@ -128,6 +128,8 @@ model Tenant {
   // Fase 2 pezzo 10
   ditte                  Ditta[]
   sediDitte              SedeDitta[]
+  // Fase 4 pezzo 0
+  contracts              Contract[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -1776,6 +1778,16 @@ model Contract {
   billingFrequency String @default("monthly") @map("billing_frequency") @db.VarChar(20)
 
   status ContractStatus @default(DRAFT)
+
+  /// Lock ottimistico (Fase 4 pezzo 0), come `FIR.versione`: ogni modifica la incrementa.
+  versione Int @default(1)
+
+  /// Cancellazione logica (Fase 4 pezzo 0, D3): il contratto eliminato resta in tabella ma non
+  /// compare nelle liste. Nessuna FK all'utente: lo storico sopravvive alla sua rimozione.
+  eliminatoIl DateTime? @map("eliminato_il")
+  eliminatoDa String?   @map("eliminato_da") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, contractNumber])
   @@index([tenantId, status])

@@ -477,6 +477,20 @@ interessate. La tabella resta nel database (migration additiva) e riprende a con
 ripristino del codice; il ripristino a mano dello schema e' nel commento iniziale della
 migration `20261031100000_soglie_deposito_temporaneo`.
 
+Stesso discorso per **modifica e cancellazione dei contratti** (Fase 4 pezzo 0, colonne
+`versione`, `eliminato_il`, `eliminato_da` di `contracts`): il codice vecchio ignora le colonne,
+quindi **dopo un rollback i contratti eliminati ricompaiono** nella lista (e un contratto
+eliminato in `DRAFT` potrebbe essere attivato). Prima del rollback, **come owner** (con RLS
+FORCE il ruolo applicativo vedrebbe 0 righe e il controllo darebbe un falso "vuoto"):
+`SELECT tenant_id, count(*) FROM contracts WHERE eliminato_il IS NOT NULL GROUP BY 1`; se non
+e' vuoto, avvisare le aziende o portare quei contratti a `TERMINATED` con una query concordata.
+Caso inverso: un contratto eliminato e poi riattivato (o portato a `TERMINATED`) durante il
+rollback **sparisce di nuovo** al roll-forward, perche' `eliminato_il` e' ancora valorizzato:
+rifare il controllo di sopra prima di tornare al codice nuovo e, se serve, azzerare
+`eliminato_il`/`eliminato_da` di quei contratti. La FK `contracts_tenant_id_fkey` resta e il
+codice vecchio non ne risente. Il ripristino a mano
+dello schema e' nel commento della migration `20261101200000_contratti_modifica_eliminazione`.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del
