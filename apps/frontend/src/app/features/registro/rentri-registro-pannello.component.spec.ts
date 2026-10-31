@@ -1,7 +1,7 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import {
   RentriRegistroPannelloComponent,
   RentriRigaAzioniComponent,
@@ -165,10 +165,75 @@ describe('RentriRegistroPannelloComponent', () => {
     clic('rentri-storico')
     fixture.detectChanges()
     const c = q('rentri-conferma')!.textContent!
-    expect(c).toContain('7 annotazioni')
+    expect(c).toContain('7 annotazioni mai trasmesse, in tutti gli anni')
+    expect(c).toContain('Partiranno quelle del 2026')
+    expect(c).toContain('il numero esatto comparirà dopo l')
+    expect(c).toContain("L'invio parte subito")
     expect(c).toContain('non si possono ritirare')
     clic('rentri-conferma-si')
     expect(servizio.trasmettiStorico).toHaveBeenCalledWith('r1', 2026)
+  })
+
+  it("storico senza certificato: non dice che l'invio parte subito", () => {
+    apri(elenco({ nonTrasmessi: 3, haCertificato: false }))
+    clic('rentri-storico')
+    fixture.detectChanges()
+    expect(q('rentri-conferma')!.textContent).not.toContain("L'invio parte subito")
+  })
+
+  it('storico: anno vuoto o fuori da 2000-2100 disabilita la conferma', () => {
+    apri(elenco({ nonTrasmessi: 3 }))
+    clic('rentri-storico')
+    fixture.detectChanges()
+    const si = () =>
+      document.body.querySelector<HTMLButtonElement>('[data-testid="rentri-conferma-si"] button')!
+    expect(si().disabled).toBeFalse()
+    for (const anno of [null, 1999, 2101]) {
+      ;(fixture.componentInstance as any).annoStorico = anno
+      fixture.detectChanges()
+      expect(si().disabled).withContext(String(anno)).toBeTrue()
+    }
+  })
+
+  it('al cambio di registro i dati del precedente spariscono e il pannello si rilegge', () => {
+    apri(elenco())
+    expect(q('rentri-pannello')).not.toBeNull()
+    servizio.registri.and.returnValue(new Subject<ElencoRegistriRentri>())
+    fixture.componentRef.setInput('registroId', 'r2')
+    fixture.detectChanges()
+    expect(q('rentri-pannello')).toBeNull()
+    expect(servizio.registri).toHaveBeenCalledTimes(2)
+  })
+
+  it("l'aggiornamento della pagina rilegge i conteggi", () => {
+    apri(elenco())
+    fixture.componentRef.setInput('aggiornamento', 1)
+    fixture.detectChanges()
+    expect(servizio.registri).toHaveBeenCalledTimes(2)
+  })
+
+  it('202 con 0 accodate e avvio: testo proprio, non "0 annotazioni in coda"', () => {
+    servizio.trasmetti.and.returnValue(
+      of({ accodate: 0, saltate: [{ motivo: 'Già in coda', numero: 2 }], avvio: 'AVVIATO' })
+    )
+    apri(elenco(), ['m1'])
+    clic('rentri-trasmetti')
+    fixture.detectChanges()
+    clic('rentri-conferma-si')
+    const t = toast.info.calls.mostRecent().args[0]
+    expect(t).toContain('già in coda')
+    expect(t).not.toContain('0 annotazioni')
+    expect(t).toContain('Già in coda: 2')
+  })
+
+  it('allineamento: parla di confermate o dichiarate già su RENTRI', () => {
+    servizio.allineamento.and.returnValue(of({ locali: 10, trasmessi: 8, suRentri: 8 }))
+    apri(elenco())
+    clic('rentri-allineamento')
+    fixture.detectChanges()
+    expect(q('rentri-allineamento-esito')!.textContent).toContain(
+      'confermate o dichiarate già su RENTRI'
+    )
   })
 
   it('storico: con 0 annotazioni da trasmettere la conferma è disabilitata', () => {
@@ -342,6 +407,39 @@ describe('RentriRigaAzioniComponent', () => {
     clic('rentri-verifica-m1')
     expect(toast.info).toHaveBeenCalledWith('RENTRI conferma la registrazione.')
   })
+
+  it('Verifica NON_VERIFICABILE: avviso con il messaggio, non info', () => {
+    servizio.verifica.and.returnValue(
+      of({
+        esito: 'NON_VERIFICABILE',
+        stato: 'INCERTA',
+        messaggio: 'RENTRI non risponde: riprova.',
+      })
+    )
+    riga('INCERTA')
+    clic('rentri-verifica-m1')
+    expect(toast.warn).toHaveBeenCalledWith('RENTRI non risponde: riprova.')
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+
+  it('conferma di Trasmetti di nuovo: focus su Sì, e Esc/No riportano il focus al pulsante', fakeAsync(() => {
+    riga('RIFIUTATA')
+    clic('rentri-riprova-m1')
+    fixture.detectChanges()
+    tick()
+    expect(document.activeElement).toBe(
+      document.body.querySelector('[data-testid="rentri-riprova-si-m1"] button')
+    )
+    q('rentri-riprova-conferma-m1')!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+    )
+    fixture.detectChanges()
+    tick()
+    expect(q('rentri-riprova-conferma-m1')).toBeNull()
+    expect(document.activeElement).toBe(
+      document.body.querySelector('[data-testid="rentri-riprova-m1"] button')
+    )
+  }))
 
   it('Trasmetti di nuovo: chiede conferma prima di inviare', () => {
     servizio.trasmetti.and.returnValue(of({ accodate: 1, saltate: [], avvio: 'AVVIATO' }))

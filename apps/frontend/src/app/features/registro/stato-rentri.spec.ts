@@ -60,7 +60,7 @@ describe('stato-rentri', () => {
       'Codice CER non ammesso'
     )
     expect(tooltipStatoRentri('INCERTA', null)).toContain('verificare')
-    expect(tooltipStatoRentri('ATTESA_ESITO', null)).toContain('non ancora confermato')
+    expect(tooltipStatoRentri('ATTESA_ESITO', null)).toContain('non ancora confermata')
     expect(tooltipStatoRentri(null, null)).toContain('Non ancora trasmessa')
   })
 
@@ -72,7 +72,8 @@ describe('stato-rentri', () => {
     expect(descrizioneAvvio('AVVIATO', 3)).toContain('3 annotazioni')
     expect(descrizioneAvvio('AVVIATO', 1)).toContain('1 annotazione')
     expect(descrizioneAvvio('SENZA_CERTIFICATO', 2)).toContain('certificato')
-    expect(descrizioneAvvio('NIENTE_DA_INVIARE', 0)).toContain('Nessuna')
+    expect(descrizioneAvvio('NIENTE_DA_INVIARE', 0)).toBe('Nessuna nuova annotazione da inviare.')
+    expect(descrizioneAvvio('AVVIATO', 0)).toContain('già in coda')
   })
 
   it('esito della verifica: usa il messaggio del backend', () => {

@@ -11,6 +11,7 @@
 
 import {
   Component,
+  ElementRef,
   EventEmitter,
   Input,
   OnChanges,
@@ -124,13 +125,14 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
           icon="pi pi-refresh"
           [text]="true"
           size="small"
-          (onClick)="inConferma.set(true)"
+          (onClick)="apriConferma()"
           [attr.data-testid]="'rentri-riprova-' + movimentoId"
           [ariaLabel]="'Trasmetti di nuovo a RENTRI l\\'annotazione ' + numero"
         ></p-button>
         <span
           *ngIf="inConferma()"
           role="group"
+          (keydown.escape)="chiudiConferma()"
           [attr.aria-label]="'Conferma del nuovo invio dell\\'annotazione ' + numero"
           [attr.data-testid]="'rentri-riprova-conferma-' + movimentoId"
         >
@@ -147,7 +149,7 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
             label="No"
             [text]="true"
             size="small"
-            (onClick)="inConferma.set(false)"
+            (onClick)="chiudiConferma()"
             ariaLabel="Annulla il nuovo invio"
           ></p-button>
         </span>
@@ -172,6 +174,7 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
 export class RentriRigaAzioniComponent {
   private readonly servizio = inject(RentriRegistroService)
   private readonly toast = inject(ToastService)
+  private readonly host = inject(ElementRef<HTMLElement>)
 
   @Input({ required: true }) movimentoId!: string
   @Input() registroId: string | null = null
@@ -191,6 +194,25 @@ export class RentriRigaAzioniComponent {
   verificabile = (): boolean => eVerificabile(this.trasmissione?.stato)
   riprovabile = (): boolean =>
     this.trasmissione?.stato === 'RIFIUTATA' || this.trasmissione?.stato === 'NON_TRASMISSIBILE'
+
+  private focalizza(testid: string): void {
+    setTimeout(() =>
+      this.host.nativeElement
+        .querySelector(`[data-testid="${testid}"] button, button[data-testid="${testid}"]`)
+        ?.focus()
+    )
+  }
+
+  apriConferma(): void {
+    this.inConferma.set(true)
+    this.focalizza('rentri-riprova-si-' + this.movimentoId)
+  }
+
+  /** Il focus torna sul pulsante che ha aperto la conferma. */
+  chiudiConferma(): void {
+    this.inConferma.set(false)
+    this.focalizza('rentri-riprova-' + this.movimentoId)
+  }
 
   verifica(): void {
     this.occupato.set(true)
@@ -353,8 +375,8 @@ type TipoConferma = 'selezionati' | 'storico'
       <p *ngIf="allineamento() as a" role="status" data-testid="rentri-allineamento-esito">
         <ng-container *ngIf="a.suRentri !== null; else senzaRisposta">
           Anno {{ annoCorrente }}: nel registro {{ a.locali }}
-          {{ a.locali === 1 ? 'annotazione' : 'annotazioni' }}, {{ a.trasmessi }} confermate da
-          RENTRI; su RENTRI ne risultano {{ a.suRentri }}.
+          {{ a.locali === 1 ? 'annotazione' : 'annotazioni' }}, {{ a.trasmessi }} confermate o
+          dichiarate già su RENTRI; su RENTRI ne risultano {{ a.suRentri }}.
           <strong *ngIf="a.suRentri !== a.trasmessi"
             >I numeri non coincidono: controlla sul portale.</strong
           >
@@ -421,7 +443,7 @@ type TipoConferma = 'selezionati' | 'storico'
           label="Trasmetti"
           icon="pi pi-send"
           [loading]="occupato()"
-          [disabled]="numeroConferma() === 0"
+          [disabled]="numeroConferma() === 0 || !annoValido()"
           (onClick)="conferma_()"
           data-testid="rentri-conferma-si"
           ariaLabel="Conferma la trasmissione a RENTRI"
@@ -476,6 +498,8 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
   /** Annotazioni scelte nella tabella per "Trasmetti". */
   @Input() selezionati: string[] = []
   @Input() annoCorrente = new Date().getFullYear()
+  /** Cambia quando la pagina ha modificato qualcosa (azione di riga): il pannello si rilegge. */
+  @Input() aggiornamento = 0
   /** Qualcosa è cambiato sul backend: la pagina rilegge l'elenco e svuota la selezione. */
   @Output() aggiornato = new EventEmitter<void>()
   @Output() statoChange = new EventEmitter<StatoPannelloRentri>()
@@ -510,7 +534,12 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['registroId'] && !changes['registroId'].firstChange) {
+      // Nessun dato del registro precedente resta visibile mentre arriva quello nuovo.
+      this.elenco.set(null)
       this.allineamento.set(null)
+      this.statoChange.emit({ collegato: false, puoTrasmettere: false })
+      this.carica()
+    } else if (changes['aggiornamento'] && !changes['aggiornamento'].firstChange) {
       this.carica()
     }
   }
@@ -536,7 +565,6 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
 
   /** Le impostazioni o una dichiarazione sono cambiate: pannello ed elenco si rileggono. */
   dopoImpostazioni(): void {
-    this.carica()
     this.aggiornato.emit()
   }
 
@@ -550,6 +578,12 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
   }
 
   /** Quante annotazioni partiranno: le scelte, o (storico) al più quelle mai trasmesse. */
+  annoValido(): boolean {
+    if (this.conferma() !== 'storico') return true
+    const a = this.annoStorico as number | null
+    return a != null && Number.isInteger(a) && a >= 2000 && a <= 2100
+  }
+
   numeroConferma(): number {
     return this.conferma() === 'storico'
       ? (this.registro()?.nonTrasmessi ?? 0)
@@ -561,10 +595,13 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
     if (this.conferma() === 'storico') {
       if (n === 0)
         return 'Non ci sono annotazioni da trasmettere: tutte sono già state trasmesse o messe in coda.'
+      const parte = this.registro()?.haCertificato ? " L'invio parte subito." : ''
       return (
-        `Stai per mettere in coda lo storico del ${this.annoStorico}: ` +
-        `al più ${annotazioni(n)} mai trasmesse del registro, e l'invio parte subito. ` +
-        'Una volta accettate da RENTRI non si possono ritirare.'
+        `Il registro ha ${annotazioni(n)} mai trasmesse, in tutti gli anni. ` +
+        `Partiranno quelle del ${this.annoStorico} (più eventuali annotazioni di anni precedenti ` +
+        "corrette da queste); il numero esatto comparirà dopo l'avvio." +
+        parte +
+        ' Una volta accettate da RENTRI non si possono ritirare.'
       )
     }
     return (
@@ -587,7 +624,6 @@ export class RentriRegistroPannelloComponent implements OnInit, OnChanges {
         this.occupato.set(false)
         this.conferma.set(null)
         notificaAccodamento(this.toast, risposta)
-        this.carica()
         this.aggiornato.emit()
       },
       error: err => {

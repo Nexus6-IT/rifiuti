@@ -38,7 +38,13 @@ export interface RispostaAccodamento {
 }
 
 export interface EsitoVerificaRentri {
-  esito: string
+  esito:
+    | 'TRASMESSA'
+    | 'RIFIUTATA'
+    | 'DA_TRASMETTERE'
+    | 'DIVERSA'
+    | 'IDENTIFICATIVO_RECUPERATO'
+    | 'NON_VERIFICABILE'
   stato: StatoRentri
   messaggio: string
 }

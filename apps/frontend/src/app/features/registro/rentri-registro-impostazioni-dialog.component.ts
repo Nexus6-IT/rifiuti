@@ -223,6 +223,7 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
             <div
               class="rentri-imp-conferma"
               role="alertdialog"
+              (keydown.escape)="annullaConferma(); $event.stopPropagation()"
               aria-labelledby="rentri-dic-conferma-testo"
               data-testid="rentri-dic-conferma"
             >
@@ -246,7 +247,7 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
                 label="No"
                 [text]="true"
                 size="small"
-                (onClick)="inConferma.set(false)"
+                (onClick)="annullaConferma()"
                 data-testid="rentri-dic-conferma-no"
                 ariaLabel="Annulla la dichiarazione"
               ></p-button>
@@ -400,6 +401,18 @@ export class RentriRegistroImpostazioniDialogComponent implements OnChanges {
       return
     }
     this.inConferma.set(true)
+    setTimeout(() =>
+      document.body
+        .querySelector<HTMLElement>('[data-testid="rentri-dic-conferma-si"] button')
+        ?.focus()
+    )
+  }
+
+  annullaConferma(): void {
+    this.inConferma.set(false)
+    setTimeout(() =>
+      document.body.querySelector<HTMLElement>('[data-testid="rentri-dic-avvia"] button')?.focus()
+    )
   }
 
   dichiara(): void {

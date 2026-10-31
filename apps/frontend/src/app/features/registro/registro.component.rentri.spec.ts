@@ -178,6 +178,71 @@ describe('RegistroComponent — trasmissione a RENTRI', () => {
     expect(fixture.componentInstance.rentriSelezionati()).toEqual([])
   })
 
+  describe('più sedi', () => {
+    function montaDueSedi(): void {
+      servizio.listRegistri.and.returnValue(
+        of(
+          ['r1', 'r2'].map((id, i) => ({
+            id,
+            unitaLocaleId: null,
+            numIscrSito: null,
+            denominazione: 'Sede ' + id,
+            codice: 'CARICO_SCARICO',
+            attivo: true,
+            principale: i === 0,
+          }))
+        )
+      )
+      servizio.lista.and.returnValue(
+        of({
+          items: [mov('m-a', 1, null), { ...mov('m-b', 2, null), registroId: 'r2' }],
+          total: 2,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+        })
+      )
+      rentri.registri.and.returnValue(
+        of({
+          registri: [
+            {
+              registroId: 'r1',
+              descrizione: 'Sede',
+              identificativoRentri: 'RABCDE12345',
+              invioAutomatico: false,
+              invioAutomaticoDal: null,
+              perStato: {},
+              nonTrasmessi: 1,
+              haCertificato: true,
+            },
+          ],
+          puoConfigurare: false,
+          puoTrasmettere: true,
+        })
+      )
+      fixture = TestBed.createComponent(RegistroComponent)
+      fixture.detectChanges()
+    }
+
+    it('senza filtro di sede: né colonna RENTRI né checkbox', () => {
+      montaDueSedi()
+      expect(el('rentri-pannello')).not.toBeNull()
+      expect(el('registro-col-rentri')).toBeNull()
+      expect(el('registro-rentri-sel-m-a')).toBeNull()
+      expect(el('registro-rentri-sel-m-b')).toBeNull()
+    })
+
+    it('con la sede filtrata: colonna e checkbox, ma le righe di altri registri restano bloccate', () => {
+      montaDueSedi()
+      fixture.componentInstance.filtroRegistro = 'r1'
+      fixture.componentInstance.onFiltroRegistroChange()
+      fixture.detectChanges()
+      expect(el('registro-col-rentri')).not.toBeNull()
+      expect(el('registro-rentri-sel-m-a')!.disabled).toBeFalse()
+      expect(el('registro-rentri-sel-m-b')!.disabled).toBeTrue()
+    })
+  })
+
   it('avvisoRentri dopo una correzione compare come avviso', () => {
     monta()
     const c = fixture.componentInstance

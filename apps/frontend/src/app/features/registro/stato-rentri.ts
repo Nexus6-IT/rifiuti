@@ -3,7 +3,7 @@
  *
  * Regola di prodotto: un'annotazione è "confermata" SOLO quando RENTRI l'ha confermata
  * (`TRASMESSA`) o è stata dichiarata già presente (`GIA_SU_RENTRI`). Un invio accettato ma non
- * ancora confermato, o di esito ignoto, non si presenta mai come confermato.
+ * ancora confermata, o di esito ignoto, non si presenta mai come confermata.
  */
 
 export type StatoRentri =
@@ -89,7 +89,7 @@ export function tooltipStatoRentri(
     case 'IN_INVIO':
       return "Invio a RENTRI in corso: l'esito non è ancora noto."
     case 'ATTESA_ESITO':
-      return "Inviata a RENTRI, non ancora confermato: in attesa dell'esito. Puoi verificarla."
+      return "Inviata a RENTRI, non ancora confermata: in attesa dell'esito. Puoi verificarla."
     case 'INCERTA':
       return `Esito incerto: verificare su RENTRI prima di trasmettere di nuovo.${m ? ' ' + m : ''}`
     case 'TRASMESSA':
@@ -114,13 +114,15 @@ const annotazioni = (n: number): string => (n === 1 ? '1 annotazione' : `${n} an
 export function descrizioneAvvio(avvio: AvvioInvio, accodate: number): string {
   switch (avvio) {
     case 'AVVIATO':
+      if (accodate === 0)
+        return "Nessuna nuova annotazione accodata: riprende l'invio di quelle già in coda. L'esito comparirà nella colonna RENTRI quando RENTRI avrà risposto."
       return `${annotazioni(accodate)} in coda, invio avviato. L'esito comparirà nella colonna RENTRI quando RENTRI avrà risposto.`
     case 'SENZA_CERTIFICATO':
       return `${annotazioni(accodate)} in coda, ma l'invio non è partito: manca il certificato RENTRI dell'azienda.`
     case 'NON_AVVIATO':
       return `${annotazioni(accodate)} in coda. L'invio non è stato avviato adesso e partirà al prossimo giro automatico.`
     case 'NIENTE_DA_INVIARE':
-      return 'Nessuna annotazione da inviare: quelle scelte sono già in coda, in invio o confermate.'
+      return 'Nessuna nuova annotazione da inviare.'
   }
 }
 

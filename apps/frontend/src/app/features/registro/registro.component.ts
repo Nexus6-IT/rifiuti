@@ -309,6 +309,7 @@ interface FirOption {
         [registroId]="registroId"
         [selezionati]="rentriSelezionati()"
         [annoCorrente]="annoCorrente"
+        [aggiornamento]="rentriVersione()"
         (statoChange)="rentriStato.set($event)"
         (aggiornato)="onRentriAggiornato()"
       ></app-rentri-registro-pannello>
@@ -2085,11 +2086,19 @@ export class RegistroComponent implements OnInit {
   registroRentri(): string | undefined {
     return this.registroGiacenzeIniziali()
   }
-  readonly rentriColonna = () => !!this.registroRentri() && this.rentriStato().collegato
+  /**
+   * Con più sedi la colonna e la selezione valgono solo con la sede filtrata: senza filtro
+   * l'elenco mescola registri diversi e un invio con id di altri registri fallirebbe per intero.
+   */
+  readonly rentriColonna = () =>
+    !!this.registroRentri() &&
+    this.rentriStato().collegato &&
+    (!this.piuRegistri() || !!this.filtroRegistro)
+  readonly rentriVersione = signal(0)
   readonly rentriSelezionabile = () => this.rentriColonna() && this.rentriStato().puoTrasmettere
 
   rentriSelezionabileRiga(m: Movimento): boolean {
-    return eSelezionabile(m.trasmissioneRentri?.stato)
+    return eSelezionabile(m.trasmissioneRentri?.stato) && m.registroId === this.registroRentri()
   }
 
   rentriSeleziona(m: Movimento, scelta: boolean): void {
@@ -2102,6 +2111,7 @@ export class RegistroComponent implements OnInit {
   /** Dopo un invio o un'azione di riga: selezione svuotata ed elenco riletto. */
   onRentriAggiornato(): void {
     this.rentriSelezionati.set([])
+    this.rentriVersione.update(v => v + 1)
     this.ricarica(this.paginazione().page)
   }
 
@@ -2277,6 +2287,9 @@ export class RegistroComponent implements OnInit {
   }
 
   onFiltroRegistroChange(): void {
+    this.rentriStato.set({ collegato: false, puoTrasmettere: false })
+    this.rentriSelezionati.set([])
+    this.rentriVersione.update(v => v + 1)
     this.esitoVerifica.set(null)
     this.ricarica(1)
     this.caricaProgressivo()
@@ -2401,7 +2414,12 @@ export class RegistroComponent implements OnInit {
     this.filtroCer = ''
     const cambiaSede = this.filtroRegistro !== null
     this.filtroRegistro = null
-    if (cambiaSede) this.esitoVerifica.set(null)
+    if (cambiaSede) {
+      this.esitoVerifica.set(null)
+      this.rentriStato.set({ collegato: false, puoTrasmettere: false })
+      this.rentriSelezionati.set([])
+      this.rentriVersione.update(v => v + 1)
+    }
     this.ricarica(1)
     if (cambiaSede) this.caricaProgressivo()
   }
