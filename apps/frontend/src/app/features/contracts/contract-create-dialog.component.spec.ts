@@ -354,6 +354,34 @@ describe('ContractCreateDialogComponent', () => {
       expect(contracts.update).not.toHaveBeenCalled()
     })
 
+    it('CER nel formato del multi-select ("15 01 01", "16 06 01*") finiscono nel corpo così come sono', () => {
+      apri(contratto())
+      component.form.cerCodes = ['16 06 01*', '15 01 01']
+      component.salva()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', {
+        cerCodes: ['15 01 01', '16 06 01*'],
+        versione: 4,
+      })
+    })
+
+    it('preavviso svuotato con il rinnovo automatico: errore di validazione, nessun invio', () => {
+      apri(contratto({ autoRenew: true, renewalNoticeDays: 30 }))
+      component.form.renewalNoticeDays = null as unknown as number
+      component.salva()
+      expect(contracts.update).not.toHaveBeenCalled()
+      expect(toast.warn).toHaveBeenCalledWith('Compila tutti i campi obbligatori')
+    })
+
+    it('preavviso 0 esplicito è valido e viene inviato', () => {
+      apri(contratto({ autoRenew: true, renewalNoticeDays: 30 }))
+      component.form.renewalNoticeDays = 0
+      component.salva()
+      expect(contracts.update).toHaveBeenCalledOnceWith('k1', {
+        renewalNoticeDays: 0,
+        versione: 4,
+      })
+    })
+
     it('nessun cambiamento: non chiama update e chiude con un avviso', () => {
       apri(contratto())
       const chiuso = spyOn(component.visibleChange, 'emit')

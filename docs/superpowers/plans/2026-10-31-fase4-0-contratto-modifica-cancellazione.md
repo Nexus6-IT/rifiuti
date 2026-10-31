@@ -216,7 +216,7 @@ l'elenco ordinato e senza duplicati); stringhe dopo `trim()` (`contractNumber`, 
 `unitOfMeasure`), con `description` vuota dopo il trim = `null`.
 
 **D6. Validazione condivisa da creazione e modifica** (`validaDatiContratto`): numero non vuoto
-e ≤ 50 caratteri; almeno un CER; ogni CER di 6 cifre (`/^\d{6}$/`, come li salva il selettore);
+e ≤ 50 caratteri; almeno un CER; ogni CER in forma di catalogo, "NN NN NN" con "*" finale se pericoloso (`/^\d{2} \d{2} \d{2}\*?$/`), dopo averlo portato alla forma canonica con `cerCanonico` ("150101" e "15 01 01" sono lo stesso codice; si salva la forma del catalogo, come per FIR e auto-fill);
 `endDate` non precedente a `startDate`; `basePrice` ≥ 0; `durationMonths` intero ≥ 1;
 `renewalNoticeDays` intero ≥ 0; `unitOfMeasure` non vuota e ≤ 10 caratteri. Si applica anche a
 `create` (oggi accetta fine prima dell'inizio e zero CER): è una correzione, e il frontend già

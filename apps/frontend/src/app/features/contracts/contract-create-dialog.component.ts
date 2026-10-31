@@ -651,7 +651,7 @@ export class ContractCreateDialogComponent implements OnChanges {
     )
     se('durationMonths', numOpz(f.durationMonths), numOpz(o.durationMonths))
     se('autoRenew', !!f.autoRenew, o.autoRenew)
-    se('renewalNoticeDays', f.renewalNoticeDays ?? 0, o.renewalNoticeDays)
+    se('renewalNoticeDays', f.renewalNoticeDays ?? o.renewalNoticeDays, o.renewalNoticeDays)
     se('paymentTerms', f.paymentTerms, o.paymentTerms)
     se('billingFrequency', f.billingFrequency, o.billingFrequency)
     return cambi as Omit<ModificaContrattoDto, 'versione'>
@@ -685,6 +685,10 @@ export class ContractCreateDialogComponent implements OnChanges {
       ok('counterpartyId', f.counterpartyId?.trim()) &&
       ok('pricingModel', f.pricingModel) &&
       ok('cerCodes', f.cerCodes?.length) &&
+      // Preavviso svuotato con il rinnovo automatico attivo: errore, non un 0 spedito in silenzio.
+      (!f.autoRenew ||
+        this.campoBloccato('renewalNoticeDays') ||
+        (f.renewalNoticeDays !== null && f.renewalNoticeDays !== undefined)) &&
       ok('startDate', this.startDate)
     )
   }

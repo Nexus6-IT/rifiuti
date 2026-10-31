@@ -18,7 +18,7 @@ const bozza = (extra: Partial<DatiContratto> = {}): DatiContratto => ({
   counterpartyType: 'TRANSPORTER',
   contractType: 'WASTE_TRANSPORT',
   description: 'Descrizione',
-  cerCodes: ['150101', '150102'],
+  cerCodes: ['15 01 01', '15 01 02'],
   pricingModel: 'FLAT_RATE',
   basePrice: 120.5,
   unitOfMeasure: 'kg',
@@ -95,9 +95,11 @@ describe('regole del contratto', () => {
       })
     })
     it('cerCodes con duplicato: ordinato e senza duplicati', () => {
-      const r = pianificaModifica('DRAFT', bozza(), { cerCodes: ['150103', '150101', '150103'] })
+      const r = pianificaModifica('DRAFT', bozza(), {
+        cerCodes: ['15 01 03', '15 01 01', '15 01 03'],
+      })
       expect(r).toMatchObject({ esito: 'OK', cambiati: ['cerCodes'] })
-      if (r.esito === 'OK') expect(r.dopo.cerCodes).toEqual(['150101', '150103'])
+      if (r.esito === 'OK') expect(r.dopo.cerCodes).toEqual(['15 01 01', '15 01 03'])
     })
     it('null su endDate svuota, assente non cambia', () => {
       const r = pianificaModifica('DRAFT', bozza(), { endDate: null })
@@ -159,7 +161,7 @@ describe('regole del contratto', () => {
         counterpartyType: 'DISPOSER',
         contractType: 'FULL_SERVICE',
         description: 'Altro',
-        cerCodes: ['200101'],
+        cerCodes: ['20 01 01'],
         pricingModel: 'HYBRID',
         basePrice: 1,
         unitOfMeasure: 't',
@@ -197,6 +199,14 @@ describe('regole del contratto', () => {
     })
     it('zero CER', () => {
       expect(validaDatiContratto(bozza({ cerCodes: [] }))).toEqual(['Indica almeno un codice CER.'])
+    })
+    it('CER nel formato del catalogo: "15 01 01" e "16 06 01*" validi', () => {
+      expect(validaDatiContratto(bozza({ cerCodes: ['15 01 01', '16 06 01*'] }))).toEqual([])
+    })
+    it('CER senza spazi e con spazi sono lo stesso codice (nessun campo cambiato)', () => {
+      expect(pianificaModifica('DRAFT', bozza(), { cerCodes: ['150102', '150101'] })).toEqual({
+        esito: 'NESSUNA_MODIFICA',
+      })
     })
     it('CER non valido', () => {
       expect(validaDatiContratto(bozza({ cerCodes: ['15010'] }))).toEqual([

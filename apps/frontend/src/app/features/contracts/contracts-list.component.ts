@@ -509,9 +509,14 @@ export class ContractsListComponent implements OnInit {
         this.toast.success('Stato del contratto aggiornato')
         this.loadContracts()
       },
-      error: () => {
+      error: err => {
         this.changingStatus.set(false)
-        this.toast.error('Transizione di stato non ammessa o errore di aggiornamento')
+        this.toast.error(
+          messaggioDaErrore(err, 'Transizione di stato non ammessa o errore di aggiornamento')
+        )
+        // Contratto cambiato nel frattempo (409) o sparito (404): i dati in lista sono vecchi
+        const stato = err instanceof HttpErrorResponse ? err.status : 0
+        if (stato === 409 || stato === 404) this.loadContracts()
       },
     })
   }

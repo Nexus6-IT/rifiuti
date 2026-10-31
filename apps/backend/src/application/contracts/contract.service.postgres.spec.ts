@@ -115,6 +115,31 @@ describe('ContractService — Postgres reale, ruolo wasteflow_app', () => {
     return null
   }
 
+  it('codici CER nel formato del catalogo ("15 01 01", "16 06 01*"): create e update li accettano', async () => {
+    const a = await azienda()
+    const c = await nel(a.tenantId, () =>
+      service.create(a.tenantId, {
+        contractNumber: 'CER-1',
+        producerId: a.produttoreId,
+        counterpartyId: a.trasportatoreId,
+        counterpartyType: 'TRANSPORTER',
+        contractType: 'WASTE_TRANSPORT',
+        cerCodes: ['16 06 01*', '15 01 01'],
+        pricingModel: 'FLAT_RATE',
+        basePrice: 100,
+        startDate: new Date('2026-01-01T00:00:00Z'),
+      })
+    )
+    expect(c.cerCodes).toEqual(['15 01 01', '16 06 01*'])
+    const vista = await nel(a.tenantId, () =>
+      service.update(a.tenantId, a.utenteId, c.id, {
+        versione: 1,
+        cerCodes: ['15 01 01', '20 01 01'],
+      })
+    )
+    expect(vista.cerCodes).toEqual(['15 01 01', '20 01 01'])
+  })
+
   it('modifica di una bozza: versione 2, campi aggiornati, updatedAt cambiato, un audit', async () => {
     const a = await azienda()
     const c = await nuovo(a, 'M-1')

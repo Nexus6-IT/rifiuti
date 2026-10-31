@@ -339,5 +339,37 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       expect(toast.error).toHaveBeenCalledWith('Contratto non trovato')
       expect(caricate()).toBe(prima + 1)
     })
+
+    describe('cambio stato', () => {
+      const conferma = (err: unknown) => {
+        contracts.updateStatus.and.returnValue(err as never)
+        component.openStatusDialog(bozza)
+        component.targetStatus = 'PENDING_APPROVAL'
+        const prima = caricate()
+        component.confirmStatusChange()
+        return prima
+      }
+
+      it('409: mostra il messaggio del backend e ricarica la lista', () => {
+        const prima = conferma(
+          errore(409, { message: 'Transizione non ammessa.', error: 'CONTRATTO_TRANSIZIONE' })
+        )
+        expect(toast.error).toHaveBeenCalledWith('Transizione non ammessa.')
+        expect(caricate()).toBe(prima + 1)
+        expect(component.changingStatus()).toBeFalse()
+      })
+
+      it('404: ricarica la lista', () => {
+        const prima = conferma(errore(404, { message: 'Contratto non trovato' }))
+        expect(toast.error).toHaveBeenCalledWith('Contratto non trovato')
+        expect(caricate()).toBe(prima + 1)
+      })
+
+      it('altro errore: solo toast, nessun ricaricamento', () => {
+        const prima = conferma(errore(500, { message: 'Errore interno' }))
+        expect(toast.error).toHaveBeenCalled()
+        expect(caricate()).toBe(prima)
+      })
+    })
   })
 })

@@ -17,6 +17,8 @@
  * da questo file.
  */
 
+import { cerCanonico } from '../waste-movement/cer-registro'
+
 export type ContractStatus =
   | 'DRAFT'
   | 'PENDING_APPROVAL'
@@ -183,7 +185,7 @@ export interface ContrattoGrezzo {
 }
 
 function normalizzaCer(cer: readonly string[]): string[] {
-  return [...new Set(cer.map(c => c.trim()))].sort()
+  return [...new Set(cer.map(c => cerCanonico(c)))].sort()
 }
 
 export function normalizzaDati(g: ContrattoGrezzo): DatiContratto {
@@ -219,7 +221,8 @@ export function validaDatiContratto(d: DatiContratto): string[] {
   if (d.contractNumber.trim() === '') m.push(MESSAGGI_OBBLIGATORIO.contractNumber)
   else if (d.contractNumber.length > 50) m.push('Il numero non può superare 50 caratteri.')
   if (d.cerCodes.length === 0) m.push('Indica almeno un codice CER.')
-  for (const cer of d.cerCodes) if (!/^\d{6}$/.test(cer)) m.push(`Codice CER non valido: ${cer}.`)
+  for (const cer of d.cerCodes)
+    if (!/^\d{2} \d{2} \d{2}\*?$/.test(cer)) m.push(`Codice CER non valido: ${cer}.`)
   if (d.basePrice !== null && !(d.basePrice >= 0)) m.push('Il prezzo base non può essere negativo.')
   if (d.unitOfMeasure === '') m.push(MESSAGGI_OBBLIGATORIO.unitOfMeasure)
   else if (d.unitOfMeasure.length > 10) m.push("L'unità di misura non può superare 10 caratteri.")
