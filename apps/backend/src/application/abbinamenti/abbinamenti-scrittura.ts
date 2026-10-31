@@ -44,12 +44,18 @@ export async function bloccaAmbiti(
 }
 
 /** Classe con cui uno scarico entra nella partizione automatica (D7 e domanda 3). */
-function classeEffettiva(a: AmbitoAbbinamento, s: ScaricoAbbinabile): ClasseStoccaggio | null {
+export function classeEffettiva(
+  a: AmbitoAbbinamento,
+  s: ScaricoAbbinabile
+): ClasseStoccaggio | null {
   return s.classeAttesa ?? (a.classi.length === 1 ? a.classi[0] : null)
 }
 
 /** Carichi della partizione: la classe e, se l'ambito ha una sola classe, le giacenze iniziali. */
-function carichiDellaClasse(a: AmbitoAbbinamento, classe: ClasseStoccaggio): CaricoAbbinabile[] {
+export function carichiDellaClasse(
+  a: AmbitoAbbinamento,
+  classe: ClasseStoccaggio
+): CaricoAbbinabile[] {
   return a.carichi.filter(
     c =>
       c.classe === classe || (c.classe === null && a.classi.length === 1 && a.classi[0] === classe)
