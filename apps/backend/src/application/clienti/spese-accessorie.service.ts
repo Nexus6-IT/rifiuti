@@ -1,7 +1,12 @@
 // Spese accessorie: spese di incasso e bollo (4.1a, D23). Anagrafica per azienda con lock
 // ottimistico (D14), disattivazione al posto della cancellazione quando la spesa e' in uso (D13)
 // e audit (D16). Le regole sui dati stanno in `domain/clienti/spesa-accessoria`.
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
   normalizzaSpesa,
@@ -18,6 +23,7 @@ import {
   type DescrizioneEntita,
   type VincoliNoti,
 } from './anagrafica-versionata'
+import { COLONNE_SPESA, contaUsi, type ClientUsi } from './uso-tabelle-fatturazione'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'SPESA_ACCESSORIA',
@@ -60,15 +66,6 @@ type RigaSpesa = {
 const CAMPI = ['tipo', 'codice', 'descrizione', 'importo', 'attiva'] as const
 type Campo = (typeof CAMPI)[number]
 
-/**
- * Quante righe (clienti e contratti) citano la spesa.
- * In 4.1a le tabelle referenti non esistono ancora: nessuno la cita, quindi 0. Il conteggio reale
- * arriva con la 4.1b, insieme al blocco del cambio di tipo per le spese in uso.
- */
-async function contaUsi(_tenantId: string, _id: string): Promise<number> {
-  return 0
-}
-
 const datiDi = (r: RigaSpesa): DatiSpesaAccessoria & { attiva: boolean } => ({
   tipo: r.tipo as TipoSpesa,
   codice: r.codice,
@@ -77,12 +74,18 @@ const datiDi = (r: RigaSpesa): DatiSpesaAccessoria & { attiva: boolean } => ({
   attiva: r.attiva,
 })
 
-async function comeVista(r: RigaSpesa, tenantId: string): Promise<SpesaVista> {
+async function comeVista(
+  r: RigaSpesa,
+  tenantId: string,
+  client: ClientUsi,
+  usiNoti?: number
+): Promise<SpesaVista> {
+  const usi = usiNoti ?? (await contaUsi(client, tenantId, [r.id], COLONNE_SPESA)).get(r.id) ?? 0
   return {
     id: r.id,
     ...datiDi(r),
     versione: r.versione,
-    eliminabile: (await contaUsi(tenantId, r.id)) === 0,
+    eliminabile: usi === 0,
   }
 }
 
@@ -118,7 +121,13 @@ export class SpeseAccessorieService {
         },
         orderBy: [{ attiva: 'desc' }, { tipo: 'asc' }, { codice: 'asc' }],
       })
-      return Promise.all(righe.map(r => comeVista(r, tenantId)))
+      const usi = await contaUsi(
+        this.prisma,
+        tenantId,
+        righe.map(r => r.id),
+        COLONNE_SPESA
+      )
+      return Promise.all(righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0)))
     })
   }
 
@@ -126,7 +135,7 @@ export class SpeseAccessorieService {
     return nelContestoTenant(tenantId, async () => {
       const riga = await this.prisma.spesaAccessoria.findFirst({ where: { id, tenantId } })
       if (!riga) throw nonTrovata()
-      return comeVista(riga, tenantId)
+      return comeVista(riga, tenantId, this.prisma)
     })
   }
 
@@ -142,7 +151,7 @@ export class SpeseAccessorieService {
             tipo: riga.tipo,
             codice: riga.codice,
           })
-          return comeVista(riga, tenantId)
+          return comeVista(riga, tenantId, tx)
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
@@ -157,6 +166,12 @@ export class SpeseAccessorieService {
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
+          // R24: se si tocca il tipo, la riga si blocca FOR UPDATE prima di leggerla e contare gli
+          // usi: un cliente che la sceglie in parallelo (FOR SHARE) aspetta o fa fallire il cambio.
+          if (m.tipo !== undefined) {
+            await tx.$queryRaw`SELECT id FROM "spese_accessorie"
+              WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid FOR UPDATE`
+          }
           const prima = await tx.spesaAccessoria.findFirst({ where: { id, tenantId } })
           if (!prima) throw nonTrovata()
           confrontaVersione(prima.versione, m.versione, ENTITA)
@@ -170,7 +185,16 @@ export class SpeseAccessorieService {
           const nuovi: Record<Campo, unknown> = { ...unione, attiva: m.attiva ?? attuali.attiva }
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
-          if (campi.length === 0) return comeVista(prima, tenantId)
+          if (campi.length === 0) return comeVista(prima, tenantId, tx)
+          if (campi.includes('tipo')) {
+            const usi = (await contaUsi(tx, tenantId, [id], COLONNE_SPESA)).get(id) ?? 0
+            if (usi > 0) {
+              throw new ConflictException({
+                error: 'SPESA_ACCESSORIA_IN_USO',
+                message: 'La spesa è usata da clienti o contratti: non se ne cambia il tipo.',
+              })
+            }
+          }
 
           await scriviCondizionato(
             () =>
@@ -191,7 +215,7 @@ export class SpeseAccessorieService {
             codice: dopo.codice,
             campi,
           })
-          return comeVista(dopo, tenantId)
+          return comeVista(dopo, tenantId, tx)
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )

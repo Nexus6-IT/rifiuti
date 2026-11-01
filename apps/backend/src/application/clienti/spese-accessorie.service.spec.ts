@@ -53,12 +53,33 @@ describe('SpeseAccessorieService (Prisma finto)', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      cliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     }
     const prisma: any = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new SpeseAccessorieService(prisma)
   })
 
   describe('list / getById', () => {
+    it('uso reale (R23): un groupBy per colonna referente e una sola chiamata per list; eliminabile segue il conteggio', async () => {
+      const base = await tx.spesaAccessoria.findFirst()
+      const id = base.id
+      tx.spesaAccessoria.findMany.mockResolvedValue([base, { ...base, id: 'altro-id' }])
+      tx.contrattoCliente.groupBy.mockImplementation(async (a: any) =>
+        a.by[0] === 'speseIncassoId' ? [{ [a.by[0]]: id, _count: { _all: 2 } }] : []
+      )
+      const v = await service.list(T, { incluseDisattivate: false })
+      expect(tx.cliente.groupBy).toHaveBeenCalledTimes(2)
+      expect(tx.contrattoCliente.groupBy).toHaveBeenCalledTimes(2)
+      expect(tx.contrattoCliente.groupBy.mock.calls.map((c: any) => c[0].by[0])).toEqual([
+        'speseIncassoId',
+        'bolloId',
+      ])
+      expect(tx.contrattoCliente.groupBy.mock.calls[0][0].where.tenantId).toBe(T)
+      expect(v.map((x: any) => x.eliminabile)).toEqual([false, true])
+    })
+
     it('filtra su tipo e attiva solo se richiesto', async () => {
       await service.list(T, { incluseDisattivate: false })
       expect(tx.spesaAccessoria.findMany.mock.calls[0][0].where).toEqual({
@@ -152,12 +173,36 @@ describe('SpeseAccessorieService (Prisma finto)', () => {
       expect(tx.activityLog.create.mock.calls[0][0].data.metadata.campi).toEqual(['importo'])
     })
 
-    it('si può cambiare il tipo (il blocco per le spese in uso è di 4.1b)', async () => {
+    it('spesa non usata: il tipo si cambia, con la riga letta FOR UPDATE prima del conteggio (R24)', async () => {
       tx.spesaAccessoria.findFirst
         .mockResolvedValueOnce(riga())
         .mockResolvedValueOnce(riga({ tipo: 'BOLLO', versione: 2 }))
       await service.modifica(T, U, S, { tipo: 'BOLLO', versione: 1 })
       expect(tx.spesaAccessoria.updateMany.mock.calls[0][0].data.tipo).toBe('BOLLO')
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+      expect(String(tx.$queryRaw.mock.calls[0][0].join(' '))).toContain('FOR UPDATE')
+      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.contrattoCliente.groupBy.mock.invocationCallOrder[0]
+      )
+    })
+
+    it("spesa usata da un cliente o da un contratto: cambiare il tipo e' 409 SPESA_ACCESSORIA_IN_USO", async () => {
+      tx.cliente.groupBy.mockImplementation(async (a: any) =>
+        a.by[0] === 'bolloId' ? [{ bolloId: S, _count: { _all: 1 } }] : []
+      )
+      const e = await errore(service.modifica(T, U, S, { tipo: 'BOLLO', versione: 1 }))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({
+        error: 'SPESA_ACCESSORIA_IN_USO',
+        message: 'La spesa è usata da clienti o contratti: non se ne cambia il tipo.',
+      })
+      expect(tx.spesaAccessoria.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('spesa usata: le altre modifiche (descrizione, importo) restano ammesse, senza il lock', async () => {
+      await service.modifica(T, U, S, { descrizione: 'Nuova', versione: 1 })
+      expect(tx.spesaAccessoria.updateMany).toHaveBeenCalled()
+      expect(tx.$queryRaw).not.toHaveBeenCalled()
     })
 
     it('valida il risultato della fusione', async () => {

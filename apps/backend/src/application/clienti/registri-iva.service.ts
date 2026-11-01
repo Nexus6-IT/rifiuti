@@ -1,7 +1,12 @@
 // Registri IVA sezionali delle vendite (4.1a, D24): anagrafica per azienda con lock ottimistico
 // (D14), disattivazione al posto della cancellazione quando il registro e' in uso (D13) e audit
 // (D16). Le regole sui dati stanno in `domain/clienti/registro-iva`.
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
   normalizzaRegistro,
@@ -17,6 +22,7 @@ import {
   type DescrizioneEntita,
   type VincoliNoti,
 } from './anagrafica-versionata'
+import { COLONNE_REGISTRO, contaUsi, type ClientUsi } from './uso-tabelle-fatturazione'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'REGISTRO_IVA',
@@ -58,15 +64,6 @@ type RigaRegistro = {
 const CAMPI = ['codice', 'descrizione', 'ricevuteSplit', 'attivo'] as const
 type Campo = (typeof CAMPI)[number]
 
-/**
- * Quante righe (clienti e contratti) citano il registro.
- * In 4.1a le tabelle referenti non esistono ancora: nessuno lo cita, quindi 0. Il conteggio reale
- * arriva con la 4.1b, quando esistono `clienti` e `contratti_cliente`.
- */
-async function contaUsi(_tenantId: string, _id: string): Promise<number> {
-  return 0
-}
-
 const datiDi = (r: RigaRegistro): DatiRegistroIva & { attivo: boolean } => ({
   codice: r.codice,
   descrizione: r.descrizione,
@@ -74,7 +71,13 @@ const datiDi = (r: RigaRegistro): DatiRegistroIva & { attivo: boolean } => ({
   attivo: r.attivo,
 })
 
-async function comeVista(r: RigaRegistro, tenantId: string): Promise<RegistroIvaVista> {
+async function comeVista(
+  r: RigaRegistro,
+  tenantId: string,
+  client: ClientUsi,
+  usiNoti?: number
+): Promise<RegistroIvaVista> {
+  const usi = usiNoti ?? (await contaUsi(client, tenantId, [r.id], COLONNE_REGISTRO)).get(r.id) ?? 0
   return {
     id: r.id,
     codice: r.codice,
@@ -82,7 +85,7 @@ async function comeVista(r: RigaRegistro, tenantId: string): Promise<RegistroIva
     ricevuteSplit: r.ricevuteSplit,
     attivo: r.attivo,
     versione: r.versione,
-    eliminabile: (await contaUsi(tenantId, r.id)) === 0,
+    eliminabile: usi === 0,
   }
 }
 
@@ -111,7 +114,13 @@ export class RegistriIvaService {
         where: incluseDisattivate ? { tenantId } : { tenantId, attivo: true },
         orderBy: [{ attivo: 'desc' }, { codice: 'asc' }],
       })
-      return Promise.all(righe.map(r => comeVista(r, tenantId)))
+      const usi = await contaUsi(
+        this.prisma,
+        tenantId,
+        righe.map(r => r.id),
+        COLONNE_REGISTRO
+      )
+      return Promise.all(righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0)))
     })
   }
 
@@ -119,7 +128,7 @@ export class RegistriIvaService {
     return nelContestoTenant(tenantId, async () => {
       const riga = await this.prisma.registroIva.findFirst({ where: { id, tenantId } })
       if (!riga) throw nonTrovato()
-      return comeVista(riga, tenantId)
+      return comeVista(riga, tenantId, this.prisma)
     })
   }
 
@@ -134,7 +143,7 @@ export class RegistriIvaService {
             registroId: riga.id,
             codice: riga.codice,
           })
-          return comeVista(riga, tenantId)
+          return comeVista(riga, tenantId, tx)
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
@@ -149,6 +158,12 @@ export class RegistriIvaService {
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
+          // R24: vedi la spesa accessoria. Il blocco serve solo se il registro puo' diventare
+          // quello delle ricevute split.
+          if (m.ricevuteSplit === true) {
+            await tx.$queryRaw`SELECT id FROM "registri_iva"
+              WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid FOR UPDATE`
+          }
           const prima = await tx.registroIva.findFirst({ where: { id, tenantId } })
           if (!prima) throw nonTrovato()
           confrontaVersione(prima.versione, m.versione, ENTITA)
@@ -162,7 +177,17 @@ export class RegistriIvaService {
           const nuovi: Record<Campo, unknown> = { ...unione, attivo: m.attivo ?? attuali.attivo }
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
-          if (campi.length === 0) return comeVista(prima, tenantId)
+          if (campi.length === 0) return comeVista(prima, tenantId, tx)
+          if (campi.includes('ricevuteSplit') && nuovi.ricevuteSplit === true) {
+            const usi = (await contaUsi(tx, tenantId, [id], COLONNE_REGISTRO)).get(id) ?? 0
+            if (usi > 0) {
+              throw new ConflictException({
+                error: 'REGISTRO_IVA_IN_USO',
+                message:
+                  'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+              })
+            }
+          }
 
           await scriviCondizionato(
             () =>
@@ -182,7 +207,7 @@ export class RegistriIvaService {
             codice: dopo.codice,
             campi,
           })
-          return comeVista(dopo, tenantId)
+          return comeVista(dopo, tenantId, tx)
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )

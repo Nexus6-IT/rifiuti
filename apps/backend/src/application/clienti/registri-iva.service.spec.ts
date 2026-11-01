@@ -45,12 +45,32 @@ describe('RegistriIvaService (Prisma finto)', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      cliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     }
     const prisma: any = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new RegistriIvaService(prisma)
   })
 
   describe('list / getById', () => {
+    it('uso reale (R23): un groupBy per colonna referente e una sola chiamata per list; eliminabile segue il conteggio', async () => {
+      const base = await tx.registroIva.findFirst()
+      const id = base.id
+      tx.registroIva.findMany.mockResolvedValue([base, { ...base, id: 'altro-id' }])
+      tx.contrattoCliente.groupBy.mockImplementation(async (a: any) =>
+        a.by[0] === 'registroIvaId' ? [{ [a.by[0]]: id, _count: { _all: 2 } }] : []
+      )
+      const v = await service.list(T, false)
+      expect(tx.cliente.groupBy).toHaveBeenCalledTimes(1)
+      expect(tx.contrattoCliente.groupBy).toHaveBeenCalledTimes(1)
+      expect(tx.contrattoCliente.groupBy.mock.calls.map((c: any) => c[0].by[0])).toEqual([
+        'registroIvaId',
+      ])
+      expect(tx.contrattoCliente.groupBy.mock.calls[0][0].where.tenantId).toBe(T)
+      expect(v.map((x: any) => x.eliminabile)).toEqual([false, true])
+    })
+
     it('di default non include i disattivati', async () => {
       await service.list(T, false)
       expect(tx.registroIva.findMany.mock.calls[0][0].where).toEqual({ tenantId: T, attivo: true })
@@ -169,6 +189,26 @@ describe('RegistriIvaService (Prisma finto)', () => {
       expect(audit.action).toBe('REGISTRO_IVA_MODIFICATO')
       expect(audit.metadata.campi).toEqual(['descrizione', 'ricevuteSplit'])
       expect(JSON.stringify(audit.metadata)).not.toContain('Nuovo')
+    })
+
+    it('registro usato che diventa delle ricevute split: 409 REGISTRO_IVA_IN_USO, riga letta FOR UPDATE prima (R24)', async () => {
+      tx.contrattoCliente.groupBy.mockResolvedValue([{ registroIvaId: R, _count: { _all: 1 } }])
+      const e = await errore(service.modifica(T, U, R, { ricevuteSplit: true, versione: 1 }))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({
+        error: 'REGISTRO_IVA_IN_USO',
+        message:
+          'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+      })
+      expect(String(tx.$queryRaw.mock.calls[0][0].join(' '))).toContain('FOR UPDATE')
+      expect(tx.registroIva.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('registro usato: le altre modifiche restano ammesse, senza il lock', async () => {
+      tx.contrattoCliente.groupBy.mockResolvedValue([{ registroIvaId: R, _count: { _all: 1 } }])
+      await service.modifica(T, U, R, { descrizione: 'Altro', versione: 1 })
+      expect(tx.registroIva.updateMany).toHaveBeenCalled()
+      expect(tx.$queryRaw).not.toHaveBeenCalled()
     })
 
     it('disattivazione: campi [attivo]', async () => {

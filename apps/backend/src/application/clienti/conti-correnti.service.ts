@@ -21,6 +21,7 @@ import {
   type DescrizioneEntita,
   type VincoliNoti,
 } from './anagrafica-versionata'
+import { COLONNE_CONTO, contaUsi, type ClientUsi } from './uso-tabelle-fatturazione'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'CONTO_CORRENTE',
@@ -79,15 +80,6 @@ type RigaConto = {
 const CAMPI = ['codice', 'descrizione', 'banca', 'iban', 'bic', 'attivo'] as const
 type Campo = (typeof CAMPI)[number]
 
-/**
- * Quante righe (clienti e contratti) citano il conto.
- * In 4.1a le tabelle referenti non esistono ancora: nessuno lo cita, quindi 0. Il conteggio reale
- * arriva con la 4.1b, quando esistono `clienti` e `contratti_cliente`.
- */
-async function contaUsi(_tenantId: string, _id: string): Promise<number> {
-  return 0
-}
-
 const datiDi = (r: RigaConto): DatiContoCorrente & { attivo: boolean } => ({
   codice: r.codice,
   descrizione: r.descrizione,
@@ -97,7 +89,13 @@ const datiDi = (r: RigaConto): DatiContoCorrente & { attivo: boolean } => ({
   attivo: r.attivo,
 })
 
-async function comeVista(r: RigaConto, tenantId: string): Promise<ContoCorrenteVista> {
+async function comeVista(
+  r: RigaConto,
+  tenantId: string,
+  client: ClientUsi,
+  usiNoti?: number
+): Promise<ContoCorrenteVista> {
+  const usi = usiNoti ?? (await contaUsi(client, tenantId, [r.id], COLONNE_CONTO)).get(r.id) ?? 0
   return {
     id: r.id,
     codice: r.codice,
@@ -108,7 +106,7 @@ async function comeVista(r: RigaConto, tenantId: string): Promise<ContoCorrenteV
     attivo: r.attivo,
     versione: r.versione,
     ibanMascherato: mascheraIban(r.iban),
-    eliminabile: (await contaUsi(tenantId, r.id)) === 0,
+    eliminabile: usi === 0,
   }
 }
 
@@ -138,9 +136,20 @@ export class ContiCorrentiService {
         where: incluseDisattivate ? { tenantId } : { tenantId, attivo: true },
         orderBy: [{ attivo: 'desc' }, { codice: 'asc' }],
       })
+      const usi = await contaUsi(
+        this.prisma,
+        tenantId,
+        righe.map(r => r.id),
+        COLONNE_CONTO
+      )
       return Promise.all(
         righe.map(async r => {
-          const { iban: _iban, ...senzaIban } = await comeVista(r, tenantId)
+          const { iban: _iban, ...senzaIban } = await comeVista(
+            r,
+            tenantId,
+            this.prisma,
+            usi.get(r.id) ?? 0
+          )
           return senzaIban
         })
       )
@@ -151,7 +160,7 @@ export class ContiCorrentiService {
     return nelContestoTenant(tenantId, async () => {
       const riga = await this.prisma.contoCorrente.findFirst({ where: { id, tenantId } })
       if (!riga) throw nonTrovato()
-      return comeVista(riga, tenantId)
+      return comeVista(riga, tenantId, this.prisma)
     })
   }
 
@@ -170,7 +179,7 @@ export class ContiCorrentiService {
             contoId: riga.id,
             codice: riga.codice,
           })
-          return comeVista(riga, tenantId)
+          return comeVista(riga, tenantId, tx)
         })
         .catch(err =>
           traduciErrorePrisma(err, ENTITA, VINCOLI, () =>
@@ -204,7 +213,7 @@ export class ContiCorrentiService {
           const nuovi: Record<Campo, unknown> = { ...unione, attivo: m.attivo ?? attuali.attivo }
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
-          if (campi.length === 0) return comeVista(prima, tenantId)
+          if (campi.length === 0) return comeVista(prima, tenantId, tx)
 
           ibanInScrittura = unione.iban
           await scriviCondizionato(
@@ -226,7 +235,7 @@ export class ContiCorrentiService {
             codice: dopo.codice,
             campi,
           })
-          return comeVista(dopo, tenantId)
+          return comeVista(dopo, tenantId, tx)
         })
         .catch(err =>
           traduciErrorePrisma(err, ENTITA, VINCOLI, () =>

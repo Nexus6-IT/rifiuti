@@ -18,6 +18,7 @@ import {
   type DescrizioneEntita,
   type VincoliNoti,
 } from './anagrafica-versionata'
+import { COLONNE_CONDIZIONE, contaUsi, type ClientUsi } from './uso-tabelle-fatturazione'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'CONDIZIONE_PAGAMENTO',
@@ -62,15 +63,6 @@ type RigaCondizione = {
 const CAMPI = ['codice', 'descrizione', 'modalita', 'giorniRate', 'fineMese', 'attiva'] as const
 type Campo = (typeof CAMPI)[number]
 
-/**
- * Quante righe (clienti e contratti) citano la condizione.
- * In 4.1a le tabelle referenti non esistono ancora: nessuno la cita, quindi 0. Il conteggio reale
- * arriva con la 4.1b, quando esistono `clienti` e `contratti_cliente`.
- */
-async function contaUsi(_tenantId: string, _id: string): Promise<number> {
-  return 0
-}
-
 const datiDi = (r: RigaCondizione): DatiCondizionePagamento & { attiva: boolean } => ({
   codice: r.codice,
   descrizione: r.descrizione,
@@ -80,7 +72,14 @@ const datiDi = (r: RigaCondizione): DatiCondizionePagamento & { attiva: boolean 
   attiva: r.attiva,
 })
 
-async function comeVista(r: RigaCondizione, tenantId: string): Promise<CondizioneVista> {
+async function comeVista(
+  r: RigaCondizione,
+  tenantId: string,
+  client: ClientUsi,
+  usiNoti?: number
+): Promise<CondizioneVista> {
+  const usi =
+    usiNoti ?? (await contaUsi(client, tenantId, [r.id], COLONNE_CONDIZIONE)).get(r.id) ?? 0
   const dati = datiDi(r)
   return {
     id: r.id,
@@ -92,7 +91,7 @@ async function comeVista(r: RigaCondizione, tenantId: string): Promise<Condizion
     attiva: dati.attiva,
     versione: r.versione,
     descrizioneRate: descriviRate(dati),
-    eliminabile: (await contaUsi(tenantId, r.id)) === 0,
+    eliminabile: usi === 0,
   }
 }
 
@@ -121,7 +120,13 @@ export class CondizioniPagamentoService {
         where: incluseDisattivate ? { tenantId } : { tenantId, attiva: true },
         orderBy: [{ attiva: 'desc' }, { codice: 'asc' }],
       })
-      return Promise.all(righe.map(r => comeVista(r, tenantId)))
+      const usi = await contaUsi(
+        this.prisma,
+        tenantId,
+        righe.map(r => r.id),
+        COLONNE_CONDIZIONE
+      )
+      return Promise.all(righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0)))
     })
   }
 
@@ -129,7 +134,7 @@ export class CondizioniPagamentoService {
     return nelContestoTenant(tenantId, async () => {
       const riga = await this.prisma.condizionePagamento.findFirst({ where: { id, tenantId } })
       if (!riga) throw nonTrovata()
-      return comeVista(riga, tenantId)
+      return comeVista(riga, tenantId, this.prisma)
     })
   }
 
@@ -148,7 +153,7 @@ export class CondizioniPagamentoService {
             condizioneId: riga.id,
             codice: riga.codice,
           })
-          return comeVista(riga, tenantId)
+          return comeVista(riga, tenantId, tx)
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
@@ -176,7 +181,7 @@ export class CondizioniPagamentoService {
           const nuovi: Record<Campo, unknown> = { ...unione, attiva: m.attiva ?? attuali.attiva }
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
-          if (campi.length === 0) return comeVista(prima, tenantId)
+          if (campi.length === 0) return comeVista(prima, tenantId, tx)
 
           await scriviCondizionato(
             () =>
@@ -203,7 +208,7 @@ export class CondizioniPagamentoService {
               campi,
             }
           )
-          return comeVista(dopo, tenantId)
+          return comeVista(dopo, tenantId, tx)
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )

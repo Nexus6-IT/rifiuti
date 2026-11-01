@@ -55,12 +55,32 @@ describe('ContiCorrentiService (Prisma finto)', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      cliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     }
     const prisma: any = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new ContiCorrentiService(prisma)
   })
 
   describe('list / getById', () => {
+    it('uso reale (R23): un groupBy per colonna referente e una sola chiamata per list; eliminabile segue il conteggio', async () => {
+      const base = await tx.contoCorrente.findFirst()
+      const id = base.id
+      tx.contoCorrente.findMany.mockResolvedValue([base, { ...base, id: 'altro-id' }])
+      tx.contrattoCliente.groupBy.mockImplementation(async (a: any) =>
+        a.by[0] === 'contoCorrenteId' ? [{ [a.by[0]]: id, _count: { _all: 2 } }] : []
+      )
+      const v = await service.list(T, false)
+      expect(tx.cliente.groupBy).toHaveBeenCalledTimes(1)
+      expect(tx.contrattoCliente.groupBy).toHaveBeenCalledTimes(1)
+      expect(tx.contrattoCliente.groupBy.mock.calls.map((c: any) => c[0].by[0])).toEqual([
+        'contoCorrenteId',
+      ])
+      expect(tx.contrattoCliente.groupBy.mock.calls[0][0].where.tenantId).toBe(T)
+      expect(v.map((x: any) => x.eliminabile)).toEqual([false, true])
+    })
+
     it('di default non include i disattivati; con incluseDisattivate non filtra', async () => {
       await service.list(T, false)
       expect(tx.contoCorrente.findMany.mock.calls[0][0].where).toEqual({

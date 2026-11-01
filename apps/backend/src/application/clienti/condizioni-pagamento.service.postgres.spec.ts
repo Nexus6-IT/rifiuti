@@ -4,7 +4,7 @@
  * id esatti creati (FK a cascata su `tenants`). Include il test della fixture
  * `creaTabelleFatturazione`.
  */
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
@@ -22,7 +22,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { CondizioniPagamentoService } from './condizioni-pagamento.service'
 
@@ -32,6 +32,7 @@ describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', (
   let service: CondizioniPagamentoService
   const tenantCreati: string[] = []
   let n = 0
+  let contratti = 0
 
   const nel = <R>(tenantId: string, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId }, async () => await fn())
@@ -44,6 +45,11 @@ describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', (
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
+      const in_ = { in: tenantCreati }
+      await owner.allegatoContrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.periodoFatturazioneCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
@@ -74,6 +80,34 @@ describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', (
       },
     })
     return { tenantId: t.id, utenteId: utente.id }
+  }
+
+  /** Cliente (ditta con ruolo CLIENTE, col proprietario) che cita le righe indicate. */
+  async function clienteConRiferimento(
+    tenantId: string,
+    campo: Partial<Prisma.ClienteUncheckedCreateInput>
+  ) {
+    const c = await creaDittaConRuolo(owner, tenantId, 'CLIENTE')
+    // `creaDittaConRuolo(…, 'CLIENTE')` crea gia' la riga del cliente: la si aggiorna.
+    return owner.cliente.update({ where: { id: c.ruoloId }, data: campo })
+  }
+
+  /** Contratto (su un cliente nuovo) che cita le righe indicate. */
+  async function contrattoConRiferimento(
+    tenantId: string,
+    campo: Partial<Prisma.ContrattoClienteUncheckedCreateInput>
+  ) {
+    const cliente = await clienteConRiferimento(tenantId, {})
+    return owner.contrattoCliente.create({
+      data: {
+        tenantId,
+        clienteId: cliente.id,
+        numero: `CC-2026-${++contratti}`,
+        descrizione: 'Contratto di prova',
+        dataInizio: new Date('2026-01-01'),
+        ...campo,
+      },
+    })
   }
 
   const dati = {
@@ -212,5 +246,47 @@ describe('CondizioniPagamentoService — Postgres reale, ruolo wasteflow_app', (
     expect(await nel(b.tenantId, () => service.list(b.tenantId, true))).toHaveLength(0)
     const riga = await owner.condizionePagamento.findUnique({ where: { id: creata.id } })
     expect(riga?.versione).toBe(1)
+  })
+
+  it('in uso da un cliente: elimina 409, la riga resta, eliminabile false', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const ids = await creaTabelleFatturazione(owner, tenantId)
+    await clienteConRiferimento(tenantId, { condizionePagamentoId: ids.condizioneId })
+    const v = await nel(tenantId, () => service.getById(tenantId, ids.condizioneId))
+    expect(v.eliminabile).toBe(false)
+    const elenco = await nel(tenantId, () => service.list(tenantId, true))
+    expect(elenco.find(x => x.id === ids.condizioneId)?.eliminabile).toBe(false)
+    await expect(
+      nel(tenantId, () => service.elimina(tenantId, utenteId, ids.condizioneId, 1))
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        error: 'CONDIZIONE_PAGAMENTO_IN_USO',
+        message:
+          'La condizione di pagamento è usata da clienti o contratti: disattivala invece di eliminarla.',
+      },
+    })
+    expect(await owner.condizionePagamento.count({ where: { id: ids.condizioneId } })).toBe(1)
+  })
+
+  it('il messaggio di una femminile dice "disattivala"', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const ids = await creaTabelleFatturazione(owner, tenantId)
+    await contrattoConRiferimento(tenantId, { condizionePagamentoId: ids.condizioneId })
+    const e = await nel(tenantId, () =>
+      service.elimina(tenantId, utenteId, ids.condizioneId, 1)
+    ).catch(x => x)
+    expect(e.getResponse().message).toContain('disattivala invece di eliminarla')
+  })
+
+  it('citata solo da un contratto eliminato: eliminabile false, la FK lo vede (R23)', async () => {
+    const { tenantId } = await azienda()
+    const ids = await creaTabelleFatturazione(owner, tenantId)
+    await contrattoConRiferimento(tenantId, {
+      condizionePagamentoId: ids.condizioneId,
+      eliminatoIl: new Date(),
+    })
+    const v = await nel(tenantId, () => service.getById(tenantId, ids.condizioneId))
+    expect(v.eliminabile).toBe(false)
   })
 })
