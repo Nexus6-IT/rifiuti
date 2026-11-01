@@ -92,6 +92,19 @@ describe('ElencoPaginato', () => {
     expect(elenco.righe()).toEqual(['p2'])
   })
 
+  it('pagina vuota ma il nuovo primo non è minore: nessun ritorno indietro, nessun ciclo', () => {
+    elenco.avvia()
+    elenco.cambiaPagina({ first: 25, rows: 25 })
+    fonte.calls.reset()
+    // il server dice 100 righe ma la pagina 2 è vuota: l'ultima sarebbe la 4, più avanti
+    fonte.and.returnValue(of({ elementi: [], totale: 100 }))
+    elenco.carica()
+    expect(fonte).toHaveBeenCalledTimes(1)
+    expect(elenco.primo).toBe(25)
+    expect(elenco.righe()).toEqual([])
+    expect(elenco.caricamento()).toBeFalse()
+  })
+
   it('elenco davvero vuoto: nessun ciclo', () => {
     fonte.and.returnValue(of({ elementi: [], totale: 0 }))
     elenco.avvia()
@@ -110,4 +123,41 @@ describe('ElencoPaginato', () => {
     expect(elenco.righe()).toEqual(['a'])
     expect(fonte).toHaveBeenCalledTimes(2)
   }))
+
+  describe('filtri', () => {
+    it('impostaFiltri: li manda alla fonte, torna a pagina 1 e toglie i vuoti', () => {
+      const conFiltri = new ElencoPaginato<string, { stato?: string; clienteId?: string }>(
+        fonte,
+        'Impossibile caricare.'
+      )
+      conFiltri.avvia()
+      conFiltri.cambiaPagina({ first: 50, rows: 25 })
+      fonte.calls.reset()
+      conFiltri.impostaFiltri({ stato: 'ATTIVO', clienteId: undefined })
+      expect(fonte).toHaveBeenCalledOnceWith({ pagina: 1, dimensione: 25, stato: 'ATTIVO' })
+      conFiltri.ferma()
+    })
+
+    it('i filtri restano con la ricerca e il cambio di pagina', fakeAsync(() => {
+      const conFiltri = new ElencoPaginato<string, { stato?: string }>(fonte, 'Impossibile.')
+      conFiltri.avvia()
+      conFiltri.impostaFiltri({ stato: 'SOSPESO' })
+      conFiltri.cerca('rossi')
+      tick(400)
+      expect(fonte.calls.mostRecent().args[0]).toEqual({
+        pagina: 1,
+        dimensione: 25,
+        stato: 'SOSPESO',
+        testo: 'rossi',
+      })
+      conFiltri.cambiaPagina({ first: 25, rows: 25 })
+      expect(fonte.calls.mostRecent().args[0]).toEqual({
+        pagina: 2,
+        dimensione: 25,
+        stato: 'SOSPESO',
+        testo: 'rossi',
+      })
+      conFiltri.ferma()
+    }))
+  })
 })

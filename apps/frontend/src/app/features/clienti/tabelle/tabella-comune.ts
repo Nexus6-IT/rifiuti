@@ -2,7 +2,6 @@
 // errore del backend, permessi di scrittura, conferma di eliminazione.
 import { Signal, WritableSignal, computed, inject } from '@angular/core'
 import { Observable } from 'rxjs'
-import { Pagina } from '../clienti.model'
 import { ConfirmationService } from 'primeng/api'
 import { AuthService } from '../../../core/services/auth.service'
 import { puoGestireAnagrafiche } from '../../registry/registry-permissions'
@@ -41,8 +40,8 @@ export function chiediConferma(
 
 /**
  * Elenco di una scheda: `righe` con la risposta, `errore` col messaggio del backend (o il
- * ripiego) e vuoto a caricamento riuscito. Per le liste paginate (agenti, clienti) c'è
- * `caricaPagina`, che tiene anche `totale`: non scartarlo con `map(p => p.elementi)`.
+ * ripiego) e vuoto a caricamento riuscito. Le liste paginate (agenti, clienti, contratti) non la
+ * usano: hanno `ElencoPaginato`, che tiene anche `totale` e annulla le risposte vecchie.
  */
 export function caricaElenco<T>(
   fonte: Observable<T[]>,
@@ -53,24 +52,6 @@ export function caricaElenco<T>(
   fonte.subscribe({
     next: r => {
       righe.set(r)
-      errore.set(null)
-    },
-    error: err => errore.set(messaggioErrore(err, ripiego)),
-  })
-}
-
-/** Come `caricaElenco` per `Pagina<T>`: `totale` serve a `totalRecords` della tabella lazy. */
-export function caricaPagina<T>(
-  fonte: Observable<Pagina<T>>,
-  righe: WritableSignal<T[]>,
-  totale: WritableSignal<number>,
-  errore: WritableSignal<string | null>,
-  ripiego: string
-): void {
-  fonte.subscribe({
-    next: p => {
-      righe.set(p.elementi)
-      totale.set(p.totale)
       errore.set(null)
     },
     error: err => errore.set(messaggioErrore(err, ripiego)),

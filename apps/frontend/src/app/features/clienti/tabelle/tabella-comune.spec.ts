@@ -1,14 +1,7 @@
 import { signal } from '@angular/core'
 import { Subject, of, throwError } from 'rxjs'
-import { Pagina } from '../clienti.model'
 import { ConfirmationService } from 'primeng/api'
-import {
-  caricaElenco,
-  caricaPagina,
-  chiediConferma,
-  eseguiERicarica,
-  messaggioErrore,
-} from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, messaggioErrore } from './tabella-comune'
 
 describe('tabella-comune', () => {
   describe('chiediConferma', () => {
@@ -76,33 +69,6 @@ describe('tabella-comune', () => {
         'ripiego'
       )
       expect(errore()).toBe('ripiego')
-    })
-  })
-
-  describe('caricaPagina', () => {
-    it('riuscita: righe e totale (non solo la pagina) e errore azzerato', () => {
-      const righe = signal<string[]>([])
-      const totale = signal(0)
-      const errore = signal<string | null>('vecchio')
-      const pagina: Pagina<string> = { elementi: ['a', 'b'], totale: 57 }
-      caricaPagina(of(pagina), righe, totale, errore, 'ripiego')
-      expect(righe()).toEqual(['a', 'b'])
-      expect(totale()).toBe(57)
-      expect(errore()).toBeNull()
-    })
-
-    it('errore: messaggio e totale invariato', () => {
-      const totale = signal(5)
-      const errore = signal<string | null>(null)
-      caricaPagina(
-        throwError(() => errore409),
-        signal<string[]>([]),
-        totale,
-        errore,
-        'ripiego'
-      )
-      expect(errore()).toBe('La riga è stata modificata da un altro utente.')
-      expect(totale()).toBe(5)
     })
   })
 

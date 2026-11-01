@@ -62,4 +62,21 @@ describe('LayoutComponent: voce di menu Clienti', () => {
     )
     expect(layout.navMain.find(v => v.label === 'Tabelle di fatturazione')).toBeUndefined()
   })
+
+  it('"Contratti clienti" segue "Clienti" e porta a /contratti-clienti (D20)', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const nav = TestBed.createComponent(LayoutComponent).componentInstance.navMain
+    const i = nav.findIndex(v => v.route === '/clienti')
+    expect(nav[i + 1]).toEqual(
+      jasmine.objectContaining({
+        label: 'Contratti clienti',
+        route: '/contratti-clienti',
+        icon: 'pi pi-file-edit',
+        feature: 'contratti',
+      })
+    )
+  })
 })

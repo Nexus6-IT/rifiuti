@@ -1285,6 +1285,12 @@ export class LayoutComponent implements OnInit {
     { label: 'Pese', route: '/pese', icon: 'pi pi-calculator', feature: 'pese' },
     { label: 'Contratti', route: '/contratti', icon: 'pi pi-briefcase', feature: 'contratti' },
     { label: 'Clienti', route: '/clienti', icon: 'pi pi-users', feature: 'contratti' },
+    {
+      label: 'Contratti clienti',
+      route: '/contratti-clienti',
+      icon: 'pi pi-file-edit',
+      feature: 'contratti',
+    },
     { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
     {
       label: 'Anomalie',
