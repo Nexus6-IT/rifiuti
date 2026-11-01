@@ -295,7 +295,7 @@ export class CodificheAddebitoService {
     )
   }
 
-  /** Un tentativo di creazione: codice esplicito, oppure primo libero letto con `FOR UPDATE`. */
+  /** Un tentativo di creazione: codice esplicito, oppure primo libero letto sotto lock consultivo. */
   private creaInTransazione(
     tenantId: string,
     utenteId: string,
@@ -305,12 +305,16 @@ export class CodificheAddebitoService {
     return this.prisma.$transaction(async tx => {
       let codice = valori.codice
       if (codice === null) {
+        // Lock consultivo per azienda e genere (nessun lock di riga): serializza le creazioni senza
+        // codice senza aspettare le altre scritture. Si rilascia da solo a fine transazione.
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${'codifiche-addebito-codice:' + genere}), hashtext(${tenantId}))`
         const usati = await tx.$queryRaw<Array<{ codice: string }>>`
           SELECT codice
           FROM codifiche_addebito
           WHERE tenant_id = ${tenantId}::uuid
-            AND genere = ${genere}::genere_codifica_addebito
-          FOR UPDATE`
+            AND genere = ${genere}::genere_codifica_addebito`
         codice = this.assegnaCodice(usati)
       }
       const riga = await tx.codificaAddebito.create({

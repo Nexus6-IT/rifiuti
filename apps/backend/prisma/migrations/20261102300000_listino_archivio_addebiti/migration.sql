@@ -89,7 +89,7 @@ CREATE TABLE "codifiche_addebito" (
 
     CONSTRAINT "codifiche_addebito_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "codifiche_addebito_versione_positiva" CHECK ("versione" >= 1),
-    CONSTRAINT "codifiche_addebito_codice_ammesso" CHECK ("codice" ~ '^[0-9]{3}$')
+    CONSTRAINT "codifiche_addebito_codice_ammesso" CHECK ("codice" ~ '^[0-9]{3}$' AND "codice" <> '000')
 );
 
 CREATE TABLE "addebiti" (

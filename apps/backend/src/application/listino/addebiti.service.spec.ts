@@ -105,6 +105,10 @@ describe('AddebitiService (Prisma finto)', () => {
         if (s.includes('codici_iva')) return sql.iva
         return sql.codifiche
       }),
+      $executeRaw: jest.fn(async (strings: TemplateStringsArray) => {
+        sql.testi.push(strings.join('?'))
+        return 0
+      }),
       activityLog: { create: jest.fn().mockResolvedValue({}) },
     }
     prisma = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
@@ -234,14 +238,15 @@ describe('AddebitiService (Prisma finto)', () => {
       expect(json).not.toContain('Trasporto')
     })
 
-    it('senza codice: primo libero letto con FOR UPDATE; attivo omesso = true', async () => {
+    it('senza codice: primo libero letto sotto lock consultivo (nessun FOR UPDATE); attivo omesso = true', async () => {
       sql.codici = [{ codice: '00001' }]
       await service.crea(T, U, nuovo())
       expect(tx.addebito.create.mock.calls[0][0].data).toMatchObject({
         codice: '00002',
         attivo: true,
       })
-      expect(sql.testi.find(s => s.includes('FROM addebiti'))).toContain('FOR UPDATE')
+      expect(sql.testi.find(s => s.includes('FROM addebiti'))).not.toContain('FOR UPDATE')
+      expect(sql.testi.find(s => s.includes('pg_advisory_xact_lock'))).toContain('addebiti-codice')
     })
 
     it('senza codice, P2002: nuovo tentativo in una transazione nuova che prende il successivo', async () => {

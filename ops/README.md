@@ -623,7 +623,9 @@ Prima di un ripristino dello schema controllare, **come owner** (con RLS FORCE i
 applicativo vedrebbe 0 righe): `SELECT tenant_id, count(*) FROM clienti GROUP BY 1` e lo stesso
 per `agenti`, `contratti_cliente` e `allegati_contratto_cliente`; se non sono vuote i dati si
 perdono, quindi esportarli prima (gli allegati sono file PDF nel database: `COPY ... TO` con
-`encode(contenuto, 'base64')`). Si ripristina questa PRIMA della `20261102200000_...`. Il
+`encode(contenuto, 'base64')`). Si ripristina questa PRIMA della `20261102200000_...`. Se e'
+applicata la `20261102300000_listino_archivio_addebiti`, ripristinare prima quella: aggiunge colonne
+a `clienti`, quindi il suo `DROP COLUMN` fallirebbe dopo il `DROP TABLE clienti`. Il
 ripristino a mano dello schema e' nel commento della migration.
 
 **Archivio addebiti e codici IVA** (Fase 4 pezzo 2a, prima migration

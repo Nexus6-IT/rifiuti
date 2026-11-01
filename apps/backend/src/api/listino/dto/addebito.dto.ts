@@ -12,6 +12,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -21,13 +22,28 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateBy,
   ValidateIf,
   ValidateNested,
 } from 'class-validator'
 
+/** Ogni numero di listino compare al massimo una volta (altrimenti il dominio ne scarterebbe uno). */
+const ListiniSenzaDuplicati = () =>
+  ValidateBy({
+    name: 'listiniSenzaDuplicati',
+    validator: {
+      validate: (v: unknown) =>
+        !Array.isArray(v) ||
+        new Set(v.map(l => (l as { numero?: unknown } | null)?.numero)).size === v.length,
+      defaultMessage: () => 'Ogni listino può comparire una sola volta.',
+    },
+  })
+
 export class PrezzoListinoDto {
   @ApiProperty({ minimum: 1, maximum: 6 })
-  @IsInt()
+  @IsInt({ message: 'Il numero del listino deve essere un intero.' })
+  @Min(1, { message: 'Il numero del listino deve essere compreso fra 1 e 6.' })
+  @Max(6, { message: 'Il numero del listino deve essere compreso fra 1 e 6.' })
   numero: number
 
   @ApiPropertyOptional({ nullable: true, example: '10.50', description: 'Stringa decimale' })
@@ -116,6 +132,8 @@ export class CreaAddebitoDto {
   @ApiPropertyOptional({ type: [PrezzoListinoDto], description: 'I mancanti sono vuoti' })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(6, { message: 'I listini non possono essere più di sei.' })
+  @ListiniSenzaDuplicati()
   @ValidateNested({ each: true })
   @Type(() => PrezzoListinoDto)
   listini?: PrezzoListinoDto[]
@@ -198,6 +216,8 @@ export class ModificaAddebitoDto {
   })
   @ValidateIf((_, v) => v !== undefined)
   @IsArray()
+  @ArrayMaxSize(6, { message: 'I listini non possono essere più di sei.' })
+  @ListiniSenzaDuplicati()
   @ValidateNested({ each: true })
   @Type(() => PrezzoListinoDto)
   listini?: PrezzoListinoDto[]

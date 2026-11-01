@@ -25,6 +25,7 @@ import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
 import { creaAddebito, creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
 
 import { AddebitiService } from './addebiti.service'
+import { VariazioniArchivioService } from './variazioni-archivio.service'
 import { controllaRiferimentiListino } from './riferimenti-listino'
 
 describe('AddebitiService — Postgres reale, ruolo wasteflow_app', () => {
@@ -160,6 +161,58 @@ describe('AddebitiService — Postgres reale, ruolo wasteflow_app', () => {
     ])
     expect([a.codice, b.codice].sort()).toEqual(['00001', '00002'])
   })
+
+  it('creazione senza codice con un addebito bloccato da un’altra transazione (come una variazione in corso): non aspetta e non è un 500', async () => {
+    const { tenantId, utenteId, rif } = await azienda()
+    const prima = await nel(tenantId, () => service.crea(tenantId, utenteId, base(rif)))
+    let rilascia!: () => void
+    let presa!: () => void
+    const cancello = new Promise<void>(r => (rilascia = r))
+    const lockPreso = new Promise<void>(r => (presa = r))
+    const tenuta = owner.$transaction(
+      async tx => {
+        await tx.$queryRaw`SELECT id FROM addebiti WHERE id = ${prima.id}::uuid FOR NO KEY UPDATE`
+        presa()
+        await cancello
+      },
+      { timeout: 30000 }
+    )
+    await lockPreso
+    try {
+      const nuovo = await nel(tenantId, () =>
+        service.crea(tenantId, utenteId, base(rif, { descrizione: 'Seconda' }))
+      )
+      expect(nuovo.codice).toBe('00002')
+    } finally {
+      rilascia()
+      await tenuta
+    }
+  }, 20000)
+
+  it('creazioni senza codice concorrenti a un’applica di variazione: ogni esito è un successo o un 409, mai un 500', async () => {
+    const { tenantId, utenteId, rif } = await azienda()
+    const variazioni = new VariazioniArchivioService(app)
+    for (let i = 0; i < 12; i++) {
+      await creaAddebito(owner, tenantId, {
+        descrizione: `Voce ${i}`,
+        prezzo1: '10',
+        codiceIvaId: rif.iva22Id,
+      })
+    }
+    const c = { tipo: 'AUMENTO_PERCENTUALE', valore: '10', filtri: {} } as any
+    const { impronta } = await nel(tenantId, () => variazioni.anteprima(tenantId, c))
+    const esiti = await Promise.allSettled([
+      nel(tenantId, () => variazioni.applica(tenantId, utenteId, { ...c, impronta })),
+      ...[1, 2, 3, 4].map(i =>
+        nel(tenantId, () => service.crea(tenantId, utenteId, base(rif, { descrizione: `N${i}` })))
+      ),
+    ])
+    for (const e of esiti) {
+      if (e.status === 'rejected') expect(e.reason).toMatchObject({ status: 409 })
+    }
+    const codici = (await owner.addebito.findMany({ where: { tenantId } })).map(a => a.codice)
+    expect(new Set(codici).size).toBe(codici.length)
+  }, 30000)
 
   it('codice duplicato: 409 in creazione e in modifica', async () => {
     const { tenantId, utenteId, rif } = await azienda()

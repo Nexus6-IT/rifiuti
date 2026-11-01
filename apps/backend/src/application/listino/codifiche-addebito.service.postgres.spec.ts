@@ -155,6 +155,35 @@ describe('CodificheAddebitoService — Postgres reale, ruolo wasteflow_app', () 
     expect([x.codice, y.codice].sort()).toEqual(['001', '002'])
   })
 
+  it('creazione senza codice con una riga del genere bloccata da un’altra transazione: non aspetta e non è un 500', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const prima = await nel(tenantId, () =>
+      service.crea(tenantId, utenteId, { genere: 'GRUPPO', descrizione: 'Uno' })
+    )
+    let rilascia!: () => void
+    let presa!: () => void
+    const cancello = new Promise<void>(r => (rilascia = r))
+    const lockPreso = new Promise<void>(r => (presa = r))
+    const tenuta = owner.$transaction(
+      async tx => {
+        await tx.$queryRaw`SELECT id FROM codifiche_addebito WHERE id = ${prima.id}::uuid FOR NO KEY UPDATE`
+        presa()
+        await cancello
+      },
+      { timeout: 30000 }
+    )
+    await lockPreso
+    try {
+      const nuova = await nel(tenantId, () =>
+        service.crea(tenantId, utenteId, { genere: 'GRUPPO', descrizione: 'Due' })
+      )
+      expect(nuova.codice).toBe('002')
+    } finally {
+      rilascia()
+      await tenuta
+    }
+  }, 20000)
+
   it('due modifiche concorrenti sulla stessa versione: una passa, l’altra 409', async () => {
     const { tenantId, utenteId } = await azienda()
     const creata = await nel(tenantId, () =>

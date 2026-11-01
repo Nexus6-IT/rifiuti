@@ -393,7 +393,7 @@ export class AddebitiService {
     )
   }
 
-  /** Un tentativo di creazione: codice esplicito, oppure primo libero letto con `FOR UPDATE`. */
+  /** Un tentativo di creazione: codice esplicito, oppure primo libero letto sotto lock consultivo. */
   private creaInTransazione(
     tenantId: string,
     utenteId: string,
@@ -402,8 +402,13 @@ export class AddebitiService {
     return this.prisma.$transaction(async tx => {
       let codice = valori.codice
       if (codice === '') {
+        // Lock consultivo per azienda (nessun lock di riga): le creazioni senza codice si
+        // serializzano fra loro, ma non aspettano ne' si incrociano con la variazione dei prezzi,
+        // che blocca le righe in ordine di id. Si rilascia da solo a fine transazione.
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext('addebiti-codice'), hashtext(${tenantId}))`
         const usati = await tx.$queryRaw<Array<{ codice: string }>>`
-          SELECT codice FROM addebiti WHERE tenant_id = ${tenantId}::uuid FOR UPDATE`
+          SELECT codice FROM addebiti WHERE tenant_id = ${tenantId}::uuid`
         codice = this.assegnaCodice(usati)
       }
       const erroriRif = await controllaRiferimentiListino(tx, tenantId, valori)

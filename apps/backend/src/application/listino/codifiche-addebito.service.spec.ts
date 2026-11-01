@@ -44,6 +44,7 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       addebito: { groupBy: jest.fn().mockResolvedValue([]) },
     }
@@ -115,9 +116,10 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
   })
 
   describe('crea', () => {
-    it('senza codice (rapida): legge i codici con FOR UPDATE e assegna 001', async () => {
+    it('senza codice (rapida): prende il lock consultivo, legge i codici senza FOR UPDATE e assegna 001', async () => {
       const v = await service.crea(T, U, { genere: 'GRUPPO', descrizione: 'Urbani' })
-      expect(tx.$queryRaw.mock.calls[0][0].join('?')).toContain('FOR UPDATE')
+      expect(tx.$executeRaw.mock.calls[0][0].join('?')).toContain('pg_advisory_xact_lock')
+      expect(tx.$queryRaw.mock.calls[0][0].join('?')).not.toContain('FOR UPDATE')
       expect(tx.codificaAddebito.create.mock.calls[0][0].data).toMatchObject({
         tenantId: T,
         genere: 'GRUPPO',

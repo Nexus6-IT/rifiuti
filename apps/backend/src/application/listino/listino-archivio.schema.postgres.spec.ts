@@ -183,6 +183,13 @@ describe('Listino, archivio addebiti: schema (Postgres reale, ruolo wasteflow_ap
       const t = await azienda()
       await expect(codifica(t, 'GRUPPO', '1')).rejects.toThrow(/codifiche_addebito_codice_ammesso/)
     })
+
+    it('codice 000 respinto (come negli addebiti, il dominio lo rifiuta)', async () => {
+      const t = await azienda()
+      await expect(codifica(t, 'GRUPPO', '000')).rejects.toThrow(
+        /codifiche_addebito_codice_ammesso/
+      )
+    })
   })
 
   describe('addebiti', () => {
