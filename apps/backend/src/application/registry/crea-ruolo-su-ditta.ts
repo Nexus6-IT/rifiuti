@@ -30,7 +30,7 @@ export interface EsitoCreazioneRuolo<E> {
   avvisi: string[]
 }
 
-export type NomeRuolo = 'produttore' | 'trasportatore' | 'destinatario'
+export type NomeRuolo = 'produttore' | 'trasportatore' | 'destinatario' | 'cliente' | 'agente'
 
 export function messaggioRuoloPresente(nome: NomeRuolo): string {
   return `Esiste già un ${nome} per questa ditta`

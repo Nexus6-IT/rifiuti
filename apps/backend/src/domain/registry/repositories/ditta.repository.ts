@@ -9,7 +9,7 @@
 import { Ditta } from '../entities/ditta'
 import { RuoloControparte, SedeDitta } from '../entities/sede-ditta'
 
-/** Una riga di ruolo (produttore, trasportatore, destinatario) della ditta. */
+/** Una riga di ruolo (produttore, trasportatore, destinatario, cliente, agente) della ditta. */
 export interface RuoloDitta {
   ruolo: RuoloControparte
   id: string

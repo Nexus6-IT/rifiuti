@@ -14,6 +14,7 @@ import {
   normalizzaCodiceFiscaleSoggetto,
 } from '../../shared/codice-fiscale-soggetto'
 import { DatiControparteNonValidiError } from '../../../core/domain/errors'
+import type { RuoloControparte } from '../entities/sede-ditta'
 
 export interface IdentificativoFiscaleInput {
   partitaIva?: string | null
@@ -27,7 +28,12 @@ export const MESSAGGIO_CODICE_FISCALE_NON_VALIDO = 'Codice fiscale non valido.'
 export const MESSAGGIO_CODICE_FISCALE_TROPPO_LUNGO =
   'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite.'
 export const MESSAGGIO_PRIVATO_SOLO_PRODUTTORE =
-  'Un privato senza partita IVA può essere solo produttore.'
+  'Un privato senza partita IVA può essere solo produttore o cliente.'
+
+/** D2.5, D18: il privato e' ammesso solo come produttore o cliente (l'agente e' un fornitore). */
+export function ammessoPrivato(ruolo: RuoloControparte): boolean {
+  return ruolo === 'PRODUTTORE' || ruolo === 'CLIENTE'
+}
 
 function pulito(valore: string | null | undefined): string {
   return (valore ?? '').trim()

@@ -336,8 +336,10 @@ export class SedeNonTrovataError extends DomainError {
  * validi: il messaggio dice di che ruolo si tratta, mai quale sede o quale ditta.
  */
 export class SedeNonValidaPerRuoloError extends DatiControparteNonValidiError {
-  constructor(ruolo: 'produttore' | 'trasportatore' | 'destinatario') {
-    super(`La sede indicata non è una sede attiva del ${ruolo} scelto`)
+  constructor(ruolo: 'produttore' | 'trasportatore' | 'destinatario' | 'cliente' | 'agente') {
+    // R20: l'articolo giusto ("dell'agente", non "del agente")
+    const del = ruolo === 'agente' ? "dell'" : 'del '
+    super(`La sede indicata non è una sede attiva ${del}${ruolo} scelto`)
     this.name = 'SedeNonValidaPerRuoloError'
   }
 }

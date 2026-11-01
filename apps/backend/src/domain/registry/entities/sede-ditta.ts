@@ -7,13 +7,29 @@ import { randomUUID } from 'crypto'
 import { SedeNonModificabileError } from '../../../core/domain/errors'
 import { Indirizzo } from '../value-objects/indirizzo'
 
-export type RuoloControparte = 'PRODUTTORE' | 'TRASPORTATORE' | 'DESTINATARIO'
+export type RuoloControparte =
+  | 'PRODUTTORE'
+  | 'TRASPORTATORE'
+  | 'DESTINATARIO'
+  | 'CLIENTE'
+  | 'AGENTE'
 
-const NOME_RUOLO: Record<RuoloControparte, string> = {
+export const NOME_RUOLO = {
   PRODUTTORE: 'produttore',
   TRASPORTATORE: 'trasportatore',
   DESTINATARIO: 'destinatario',
-}
+  CLIENTE: 'cliente',
+  AGENTE: 'agente',
+} as const satisfies Record<RuoloControparte, string>
+
+/** Nome del ruolo con la preposizione articolata (R20): "del agente" non e' italiano. */
+export const DEL_RUOLO = {
+  PRODUTTORE: 'del produttore',
+  TRASPORTATORE: 'del trasportatore',
+  DESTINATARIO: 'del destinatario',
+  CLIENTE: 'del cliente',
+  AGENTE: "dell'agente",
+} as const satisfies Record<RuoloControparte, string>
 
 export const MESSAGGIO_SEDE_PRINCIPALE_NON_DISATTIVABILE =
   "È la sede principale: impostane un'altra come principale prima."
@@ -177,7 +193,7 @@ export class SedeDitta {
     }
     if (ruoliPredefinita.length > 0) {
       throw new SedeNonModificabileError(
-        `È la sede predefinita del ${NOME_RUOLO[ruoliPredefinita[0]]}: scegline un'altra prima`
+        `È la sede predefinita ${DEL_RUOLO[ruoliPredefinita[0]]}: scegline un'altra prima`
       )
     }
     this._attiva = false
