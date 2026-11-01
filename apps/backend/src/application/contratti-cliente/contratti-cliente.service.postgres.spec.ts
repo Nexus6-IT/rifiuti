@@ -365,4 +365,365 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
     })
     expect((await lista({ inScadenzaEntroGiorni: 30 })).elementi.map(e => e.id)).toEqual([a.id])
   })
+
+  // ---------------------------------------------------------------------------------------------
+  // Task 17: modifica, stato, eliminazione
+  // ---------------------------------------------------------------------------------------------
+  describe('modifica, stato ed eliminazione', () => {
+    const trim = [
+      { giornoInizio: 1, meseInizio: 1, giornoFine: 31, meseFine: 3 },
+      { giornoInizio: 1, meseInizio: 4, giornoFine: 30, meseFine: 6 },
+    ]
+    const sem = [{ giornoInizio: 1, meseInizio: 1, giornoFine: 30, meseFine: 6 }]
+
+    /** Contratto in BOZZA pronto per l'attivazione (condizione e registro presenti). */
+    async function pronto(extra: Record<string, unknown> = {}) {
+      const a = await azienda()
+      const t = await creaTabelleFatturazione(owner, a.tenantId)
+      const c = await cliente(a.tenantId)
+      const v = await nel(a.tenantId, () =>
+        service.crea(
+          a.tenantId,
+          a.utenteId,
+          dati(c.ruoloId, {
+            condizionePagamentoId: t.condizioneId,
+            registroIvaId: t.registroId,
+            ...extra,
+          })
+        )
+      )
+      return { ...a, t, c, v }
+    }
+
+    it('due modifiche con la stessa versione: una riesce, l’altra 409 e i periodi sono quelli della prima', async () => {
+      const { tenantId, utenteId, v } = await pronto()
+      const esiti = await Promise.allSettled([
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, { periodi: trim, versione: 1 })
+        ),
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, { periodi: sem, versione: 1 })
+        ),
+      ])
+      const riusciti = esiti.filter(e => e.status === 'fulfilled')
+      const falliti = esiti.filter(e => e.status === 'rejected') as PromiseRejectedResult[]
+      expect(riusciti).toHaveLength(1)
+      expect(falliti).toHaveLength(1)
+      expect(falliti[0].reason).toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO' },
+      })
+      const vincente = (riusciti[0] as PromiseFulfilledResult<{ periodi: unknown[] }>).value
+      const righe = await owner.periodoFatturazioneCliente.findMany({
+        where: { contrattoId: v.id },
+        orderBy: { ordine: 'asc' },
+      })
+      expect(righe).toHaveLength(vincente.periodi.length)
+      expect(righe.map(r => r.ordine)).toEqual(righe.map((_, i) => i + 1))
+      expect((await owner.contrattoCliente.findUnique({ where: { id: v.id } }))?.versione).toBe(2)
+    })
+
+    it('modifica letta prima di una sospensione riceve 409', async () => {
+      const { tenantId, utenteId, v } = await pronto()
+      const att = await nel(tenantId, () =>
+        service.cambiaStato(tenantId, utenteId, v.id, 'ATTIVO', 1)
+      )
+      await nel(tenantId, () =>
+        service.cambiaStato(tenantId, utenteId, v.id, 'SOSPESO', att.versione)
+      )
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, {
+            descrizione: 'Tardiva',
+            versione: att.versione,
+          })
+        )
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO' },
+      })
+    })
+
+    it('modifica: scrive, versione + 1, audit senza testo libero; null svuota', async () => {
+      const { tenantId, utenteId, v } = await pronto({ dataFine: '2026-12-31' })
+      const m = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, v.id, {
+          descrizione: 'Riservata XYZ',
+          dataFine: null,
+          periodi: trim,
+          versione: 1,
+        })
+      )
+      expect(m.versione).toBe(2)
+      expect(m.dataFine).toBeNull()
+      expect(m.descrizione).toBe('Riservata XYZ')
+      expect(m.periodi).toHaveLength(2)
+      const log = await owner.activityLog.findFirst({
+        where: { tenantId, action: 'CONTRATTO_CLIENTE_MODIFICATO' },
+      })
+      expect(JSON.stringify(log?.metadata)).not.toContain('Riservata')
+      expect((log?.metadata as { campi: string[] }).campi).toEqual([
+        'descrizione',
+        'dataFine',
+        'periodi',
+      ])
+      // nessuna differenza: nessuna scrittura
+      const n = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, v.id, { descrizione: 'Riservata XYZ', versione: 2 })
+      )
+      expect(n.versione).toBe(2)
+    })
+
+    it('bollo verso una spesa di incasso: 400; cliente di fatturazione disattivato: 400', async () => {
+      const { tenantId, utenteId, v, t } = await pronto()
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, { bolloId: t.speseId, versione: 1 })
+        )
+      ).rejects.toMatchObject({ status: 400 })
+      const f = await cliente(tenantId, { attivo: false })
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, {
+            clienteFatturazioneId: f.ruoloId,
+            versione: 1,
+          })
+        )
+      ).rejects.toMatchObject({
+        status: 400,
+        response: { message: ['Il cliente di fatturazione scelto non esiste o è disattivato.'] },
+      })
+      expect((await owner.contrattoCliente.findUnique({ where: { id: v.id } }))?.versione).toBe(1)
+    })
+
+    it('ATTIVO → SOSPESO_MOVIMENTI → ATTIVO → ANNULLATO: versione 5, motivo salvato', async () => {
+      const { tenantId, utenteId, v } = await pronto()
+      const passo = (
+        a: 'ATTIVO' | 'SOSPESO_MOVIMENTI' | 'ANNULLATO',
+        ver: number,
+        annullo?: object
+      ) => nel(tenantId, () => service.cambiaStato(tenantId, utenteId, v.id, a, ver, annullo))
+      const a1 = await passo('ATTIVO', 1)
+      const a2 = await passo('SOSPESO_MOVIMENTI', a1.versione)
+      const a3 = await passo('ATTIVO', a2.versione)
+      const a4 = await passo('ANNULLATO', a3.versione, { motivo: 'Disdetta del cliente' })
+      expect(a4.versione).toBe(5)
+      expect(a4.stato).toBe('ANNULLATO')
+      expect(a4.motivoAnnullo).toBe('Disdetta del cliente')
+      expect(a4.annullatoIl).not.toBeNull()
+      expect(a4.transizioni).toEqual([])
+      const log = await owner.activityLog.findMany({
+        where: { tenantId, action: 'CONTRATTO_CLIENTE_STATO' },
+      })
+      expect(log).toHaveLength(4)
+      expect(JSON.stringify(log.map(l => l.metadata))).not.toContain('Disdetta')
+    })
+
+    it('BOZZA → ATTIVO senza condizione o registro: 400, resta in bozza', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const v = await nel(a.tenantId, () => service.crea(a.tenantId, a.utenteId, dati(c.ruoloId)))
+      await expect(
+        nel(a.tenantId, () => service.cambiaStato(a.tenantId, a.utenteId, v.id, 'ATTIVO', 1))
+      ).rejects.toMatchObject({ status: 400 })
+      expect((await owner.contrattoCliente.findUnique({ where: { id: v.id } }))?.stato).toBe(
+        'BOZZA'
+      )
+    })
+
+    it('annullo col solo codice: testo dalla codifica; codice disattivato: 400', async () => {
+      const { tenantId, utenteId, v, t } = await pronto()
+      const att = await nel(tenantId, () =>
+        service.cambiaStato(tenantId, utenteId, v.id, 'ATTIVO', 1)
+      )
+      await owner.codificaContratto.update({ where: { id: t.motivoId }, data: { attiva: false } })
+      await expect(
+        nel(tenantId, () =>
+          service.cambiaStato(tenantId, utenteId, v.id, 'ANNULLATO', att.versione, {
+            motivoAnnulloId: t.motivoId,
+          })
+        )
+      ).rejects.toMatchObject({
+        status: 400,
+        response: { message: ['Il motivo di annullo scelto non esiste o è disattivato.'] },
+      })
+      await owner.codificaContratto.update({ where: { id: t.motivoId }, data: { attiva: true } })
+      const descrizione = (await owner.codificaContratto.findUnique({ where: { id: t.motivoId } }))!
+        .descrizione
+      const an = await nel(tenantId, () =>
+        service.cambiaStato(tenantId, utenteId, v.id, 'ANNULLATO', att.versione, {
+          motivoAnnulloId: t.motivoId,
+        })
+      )
+      expect(an.motivoAnnullo).toBe(descrizione)
+      expect(an.motivoAnnulloCodifica?.id).toBe(t.motivoId)
+      const log = await owner.activityLog.findFirst({
+        where: {
+          tenantId,
+          action: 'CONTRATTO_CLIENTE_STATO',
+          description: { contains: 'Annullato' },
+        },
+      })
+      expect(log?.metadata).toEqual({
+        contrattoId: v.id,
+        da: 'ATTIVO',
+        a: 'ANNULLATO',
+        motivoAnnulloId: t.motivoId,
+      })
+    })
+
+    it('annullato non si modifica (409) e non cambia stato', async () => {
+      const { tenantId, utenteId, v } = await pronto()
+      const att = await nel(tenantId, () =>
+        service.cambiaStato(tenantId, utenteId, v.id, 'ATTIVO', 1)
+      )
+      const an = await nel(tenantId, () =>
+        service.cambiaStato(tenantId, utenteId, v.id, 'ANNULLATO', att.versione, { motivo: 'Fine' })
+      )
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, { descrizione: 'Altro', versione: 1 })
+        )
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_NON_MODIFICABILE' },
+      })
+      await expect(
+        nel(tenantId, () => service.cambiaStato(tenantId, utenteId, v.id, 'ATTIVO', an.versione))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_TRANSIZIONE_NON_AMMESSA' },
+      })
+      const riga = await owner.contrattoCliente.findUnique({ where: { id: v.id } })
+      expect(riga?.stato).toBe('ANNULLATO')
+      expect(riga?.versione).toBe(an.versione)
+    })
+
+    it('allegamenti concorrenti: nessuna catena (A→B e B→C in parallelo)', async () => {
+      for (let giro = 0; giro < 3; giro++) {
+        const { tenantId, utenteId } = await azienda()
+        const c = await cliente(tenantId)
+        const crea = () => nel(tenantId, () => service.crea(tenantId, utenteId, dati(c.ruoloId)))
+        const [A, B, C] = [await crea(), await crea(), await crea()]
+        const esiti = await Promise.allSettled([
+          nel(tenantId, () =>
+            service.modifica(tenantId, utenteId, A.id, { contrattoPrincipaleId: B.id, versione: 1 })
+          ),
+          nel(tenantId, () =>
+            service.modifica(tenantId, utenteId, B.id, { contrattoPrincipaleId: C.id, versione: 1 })
+          ),
+        ])
+        const falliti = esiti.filter(e => e.status === 'rejected') as PromiseRejectedResult[]
+        expect(falliti).toHaveLength(1)
+        expect(falliti[0].reason).toMatchObject({ status: 400 })
+        const righe = await owner.contrattoCliente.findMany({ where: { tenantId } })
+        const principali = new Set(righe.map(r => r.contrattoPrincipaleId).filter(Boolean))
+        const allegati = righe.filter(r => r.contrattoPrincipaleId !== null).map(r => r.id)
+        expect(allegati.filter(id => principali.has(id))).toEqual([])
+      }
+    })
+
+    it('principale di un altro cliente o annullato: 400; allegato staccato con null', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const c = await cliente(tenantId)
+      const altro = await cliente(tenantId)
+      const crea = (cl: string) => nel(tenantId, () => service.crea(tenantId, utenteId, dati(cl)))
+      const A = await crea(c.ruoloId)
+      const B = await crea(c.ruoloId)
+      const X = await crea(altro.ruoloId)
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, A.id, { contrattoPrincipaleId: X.id, versione: 1 })
+        )
+      ).rejects.toMatchObject({ status: 400 })
+      const m = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, A.id, { contrattoPrincipaleId: B.id, versione: 1 })
+      )
+      expect(m.contrattoPrincipale?.id).toBe(B.id)
+      // B ha un allegato: non si allega a un altro
+      const C = await crea(c.ruoloId)
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, B.id, { contrattoPrincipaleId: C.id, versione: 1 })
+        )
+      ).rejects.toMatchObject({ status: 400 })
+      const s = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, A.id, { contrattoPrincipaleId: null, versione: 2 })
+      )
+      expect(s.contrattoPrincipale).toBeNull()
+    })
+
+    it('numero duplicato in modifica: 409 CONTRATTO_CLIENTE_NUMERO_DUPLICATO', async () => {
+      const { tenantId, utenteId, c, v } = await pronto()
+      const altro = await nel(tenantId, () => service.crea(tenantId, utenteId, dati(c.ruoloId)))
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, v.id, { numero: altro.numero, versione: 1 })
+        )
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_NUMERO_DUPLICATO' },
+      })
+    })
+
+    it('eliminato: sparisce da list, getById 404, modifica 404, cambiaStato 404; la riga resta', async () => {
+      const { tenantId, utenteId, v } = await pronto()
+      await nel(tenantId, () => service.elimina(tenantId, utenteId, v.id, 1))
+      expect(
+        (await nel(tenantId, () => service.list(tenantId, { pagina: 1, dimensione: 20 }))).totale
+      ).toBe(0)
+      for (const op of <Array<() => Promise<unknown>>>[
+        () => service.getById(tenantId, v.id),
+        () => service.modifica(tenantId, utenteId, v.id, { descrizione: 'X', versione: 2 }),
+        () => service.cambiaStato(tenantId, utenteId, v.id, 'ATTIVO', 2),
+        () => service.elimina(tenantId, utenteId, v.id, 2),
+      ]) {
+        await expect(nel(tenantId, op)).rejects.toMatchObject({ status: 404 })
+      }
+      const riga = await owner.contrattoCliente.findUnique({ where: { id: v.id } })
+      expect(riga?.eliminatoIl).not.toBeNull()
+      expect(riga?.eliminatoDa).toBe(utenteId)
+      expect(riga?.versione).toBe(2)
+    })
+
+    it('elimina fuori da BOZZA: 409; con allegati: 409 e la riga resta; versione vecchia: 409', async () => {
+      const { tenantId, utenteId, c, v } = await pronto()
+      const figlio = await nel(tenantId, () =>
+        service.crea(tenantId, utenteId, dati(c.ruoloId, { contrattoPrincipaleId: v.id }))
+      )
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, v.id, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_CON_ALLEGATI' },
+      })
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, v.id, 9))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO' },
+      })
+      await nel(tenantId, () => service.elimina(tenantId, utenteId, figlio.id, 1))
+      await nel(tenantId, () => service.cambiaStato(tenantId, utenteId, v.id, 'ATTIVO', 1))
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, v.id, 2))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_NON_ELIMINABILE' },
+      })
+    })
+
+    it('nel contesto di B: 404 su tutto', async () => {
+      const { v } = await pronto()
+      const b = await azienda()
+      for (const op of <Array<() => Promise<unknown>>>[
+        () => service.getById(b.tenantId, v.id),
+        () => service.modifica(b.tenantId, b.utenteId, v.id, { descrizione: 'X', versione: 1 }),
+        () => service.cambiaStato(b.tenantId, b.utenteId, v.id, 'ATTIVO', 1),
+        () => service.elimina(b.tenantId, b.utenteId, v.id, 1),
+      ]) {
+        await expect(nel(b.tenantId, op)).rejects.toMatchObject({ status: 404 })
+      }
+    })
+  })
 })

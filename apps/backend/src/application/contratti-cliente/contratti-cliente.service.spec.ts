@@ -86,6 +86,7 @@ const riga = (extra: Record<string, unknown> = {}) => ({
   versione: 1,
   cliente: {
     id: CL,
+    dittaId: D,
     attivo: true,
     contoCorrenteId: R(1),
     contoCorrente: rif(R(1), 'Conto del cliente'),
@@ -148,8 +149,15 @@ describe('ContrattiClienteService (Prisma finto)', () => {
         findFirst: jest.fn().mockResolvedValue(riga()),
         findMany: jest.fn().mockResolvedValue([riga()]),
         count: jest.fn().mockResolvedValue(1),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      periodoFatturazioneCliente: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      codificaContratto: {
+        findFirst: jest.fn().mockResolvedValue({ descrizione: 'Cessata attività' }),
+      },
+      periodoFatturazioneCliente: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn(async (strings: readonly string[]) => {
         const testo = strings.join('?')
@@ -747,6 +755,500 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       const r = await service.list(T, { pagina: 1, dimensione: 20 })
       expect(r.elementi.map(e => e.numero)).toEqual(['CC-2026-001', 'CC-2026-002'])
       expect(tx.contrattoCliente.findMany).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('modifica (Task 17)', () => {
+    const MOD = 'Contratto modificato'
+
+    it('annullato con versione sbagliata: "non modificabile", non "modificato nel frattempo" (D14)', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ stato: 'ANNULLATO', versione: 4 }))
+      const e = await errore(service.modifica(T, U, K, { descrizione: MOD, versione: 1 }))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_MODIFICABILE')
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('contratto inesistente, eliminato o con id non valido: 404', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(null)
+      expect(
+        await errore(service.modifica(T, U, K, { descrizione: MOD, versione: 1 }))
+      ).toBeInstanceOf(NotFoundException)
+      expect(
+        await errore(service.modifica(T, U, 'x', { descrizione: MOD, versione: 1 }))
+      ).toBeInstanceOf(NotFoundException)
+    })
+
+    it('la riga si legge solo se non eliminata e dopo il lock FOR UPDATE', async () => {
+      await service.modifica(T, U, K, { descrizione: MOD, versione: 1 })
+      expect(tx.contrattoCliente.findFirst.mock.calls[0][0].where).toEqual({
+        id: K,
+        tenantId: T,
+        eliminatoIl: null,
+      })
+      const lock = tx.$queryRaw.mock.calls.find((c: any[]) => c[0].join('?').includes('FOR UPDATE'))
+      expect(lock).toBeDefined()
+    })
+
+    it('versione diversa: 409 MODIFICATO_NEL_FRATTEMPO e nessuna scrittura', async () => {
+      const e = await errore(service.modifica(T, U, K, { descrizione: MOD, versione: 7 }))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('campi non ammessi in ATTIVO: 409 CONTRATTO_CLIENTE_CAMPI_NON_AMMESSI', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ stato: 'ATTIVO' }))
+      const e = await errore(service.modifica(T, U, K, { numero: 'CC-9', versione: 1 }))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_CAMPI_NON_AMMESSI')
+      expect(e.getResponse().message).toContain('Numero')
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('nessuna modifica: niente scritture, niente audit, ma la versione si controlla', async () => {
+      const v = await service.modifica(T, U, K, { descrizione: 'Contratto di prova', versione: 1 })
+      expect(v.id).toBe(K)
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+      const e = await errore(
+        service.modifica(T, U, K, { descrizione: 'Contratto di prova', versione: 3 })
+      )
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+    })
+
+    it('validazione pura: 400 con i messaggi, nessuna scrittura', async () => {
+      const e = await errore(service.modifica(T, U, K, { descrizione: null, versione: 1 }))
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_VALIDO')
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('scrive condizionato a id, azienda, versione, stato e non eliminato; versione + 1', async () => {
+      await service.modifica(T, U, K, { descrizione: MOD, dataFine: null, versione: 1 })
+      const arg = tx.contrattoCliente.updateMany.mock.calls[0][0]
+      expect(arg.where).toEqual({
+        id: K,
+        tenantId: T,
+        versione: 1,
+        stato: 'BOZZA',
+        eliminatoIl: null,
+      })
+      expect(arg.data).toEqual({ descrizione: MOD, dataFine: null, versione: { increment: 1 } })
+      expect(tx.periodoFatturazioneCliente.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('periodi cambiati: deleteMany + createMany dopo l’updateMany riuscito', async () => {
+      const periodi = [{ giornoInizio: 1, meseInizio: 1, giornoFine: 30, meseFine: 6 }]
+      await service.modifica(T, U, K, { periodi, versione: 1 })
+      const um = tx.contrattoCliente.updateMany.mock.invocationCallOrder[0]
+      const del = tx.periodoFatturazioneCliente.deleteMany.mock.invocationCallOrder[0]
+      const cre = tx.periodoFatturazioneCliente.createMany.mock.invocationCallOrder[0]
+      expect(um).toBeLessThan(del)
+      expect(del).toBeLessThan(cre)
+      expect(tx.periodoFatturazioneCliente.deleteMany.mock.calls[0][0].where).toEqual({
+        contrattoId: K,
+        tenantId: T,
+      })
+      expect(tx.periodoFatturazioneCliente.createMany.mock.calls[0][0].data).toEqual([
+        {
+          tenantId: T,
+          contrattoId: K,
+          ordine: 1,
+          giornoInizio: 1,
+          meseInizio: 1,
+          giornoFine: 30,
+          meseFine: 6,
+        },
+      ])
+      expect(tx.contrattoCliente.updateMany.mock.calls[0][0].data).toEqual({
+        versione: { increment: 1 },
+      })
+    })
+
+    it('periodi svuotati con null: si cancellano, nessun createMany', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(
+        riga({
+          periodi: [{ ordine: 1, giornoInizio: 1, meseInizio: 1, giornoFine: 30, meseFine: 6 }],
+        })
+      )
+      await service.modifica(T, U, K, { periodi: null, versione: 1 })
+      expect(tx.periodoFatturazioneCliente.deleteMany).toHaveBeenCalledTimes(1)
+      expect(tx.periodoFatturazioneCliente.createMany).not.toHaveBeenCalled()
+    })
+
+    it('updateMany con count 0: 409 e i periodi non si toccano', async () => {
+      tx.contrattoCliente.updateMany.mockResolvedValue({ count: 0 })
+      const periodi = [{ giornoInizio: 1, meseInizio: 1, giornoFine: 30, meseFine: 6 }]
+      const e = await errore(service.modifica(T, U, K, { periodi, versione: 1 }))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+      expect(tx.periodoFatturazioneCliente.deleteMany).not.toHaveBeenCalled()
+      expect(tx.periodoFatturazioneCliente.createMany).not.toHaveBeenCalled()
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('cliente di fatturazione disattivato: 400', async () => {
+      clienti.attiviPerId.mockResolvedValue(
+        new Map([[CF, clienteEreditabile({ id: CF, attivo: false })]])
+      )
+      const e = await errore(service.modifica(T, U, K, { clienteFatturazioneId: CF, versione: 1 }))
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse().message).toEqual([
+        'Il cliente di fatturazione scelto non esiste o è disattivato.',
+      ])
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('bollo verso una spesa di incasso: 400 col messaggio del controllo', async () => {
+      controlla.mockResolvedValue([
+        'La spesa di bollo scelta non esiste, è disattivata o non è una spesa di bollo.',
+      ])
+      const e = await errore(service.modifica(T, U, K, { bolloId: R(6), versione: 1 }))
+      expect(e.getResponse().message).toEqual([
+        'La spesa di bollo scelta non esiste, è disattivata o non è una spesa di bollo.',
+      ])
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('si controllano solo i riferimenti cambiati', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(
+        riga({ condizionePagamentoId: R(2), registroIvaId: R(4) })
+      )
+      await service.modifica(T, U, K, {
+        condizionePagamentoId: R(2),
+        registroIvaId: R(7),
+        descrizione: MOD,
+        versione: 1,
+      })
+      expect(controlla).toHaveBeenCalledTimes(1)
+      expect(controlla.mock.calls[0][2]).toEqual({ registroIvaId: R(7) })
+      expect(clienti.attiviPerId).not.toHaveBeenCalled()
+    })
+
+    it('solo descrizione cambiata: nessun controllo sui riferimenti', async () => {
+      await service.modifica(T, U, K, { descrizione: MOD, versione: 1 })
+      expect(controlla).not.toHaveBeenCalled()
+      expect(clienti.attiviPerId).not.toHaveBeenCalled()
+    })
+
+    it('sede non della ditta del cliente: 400', async () => {
+      sedi = []
+      const e = await errore(service.modifica(T, U, K, { sedeId: S, versione: 1 }))
+      expect(e.getResponse().message).toEqual(['La sede scelta non è una sede attiva del cliente.'])
+    })
+
+    describe('contratto principale (D28)', () => {
+      const principale = (extra: Record<string, unknown> = {}) => ({
+        id: P,
+        clienteId: CL,
+        stato: 'ATTIVO',
+        eliminato: false,
+        contrattoPrincipaleId: null,
+        ...extra,
+      })
+      const MSG =
+        'Il contratto principale deve essere un contratto dello stesso cliente, non annullato e non allegato a sua volta.'
+
+      it('principale valido: bloccato con FOR UPDATE e scritto', async () => {
+        principali = [principale()]
+        await service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 })
+        const lock = tx.$queryRaw.mock.calls.filter((c: any[]) =>
+          c[0].join('?').includes('FOR UPDATE')
+        )
+        expect(lock.length).toBeGreaterThanOrEqual(2)
+        expect(tx.contrattoCliente.updateMany.mock.calls[0][0].data.contrattoPrincipaleId).toBe(P)
+      })
+
+      it('principale che ha questo contratto come principale (o già allegato): 400', async () => {
+        principali = [principale({ contrattoPrincipaleId: K })]
+        const e = await errore(service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 }))
+        expect(e.getResponse().message).toEqual([MSG])
+        expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        ['di un altro cliente', { clienteId: CF }],
+        ['annullato', { stato: 'ANNULLATO' }],
+        ['eliminato', { eliminato: true }],
+      ])('principale %s: 400', async (_n, extra) => {
+        principali = [principale(extra)]
+        const e = await errore(service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 }))
+        expect(e.getResponse().message).toEqual([MSG])
+      })
+
+      it('principale inesistente: 400', async () => {
+        principali = []
+        const e = await errore(service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 }))
+        expect(e.getResponse().message).toEqual([MSG])
+      })
+
+      it('un contratto che ha allegati non si allega: 400', async () => {
+        principali = [principale()]
+        tx.contrattoCliente.findFirst.mockResolvedValue(riga({ _count: { contrattiAllegati: 1 } }))
+        const e = await errore(service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 }))
+        expect(e.getResponse().message).toEqual([
+          'Questo contratto ha dei contratti allegati: non può essere allegato a un altro.',
+        ])
+      })
+
+      it('allegato a se stesso: 400 della regola pura, senza leggere il database', async () => {
+        const e = await errore(service.modifica(T, U, K, { contrattoPrincipaleId: K, versione: 1 }))
+        expect(e.getResponse().message).toEqual([
+          'Un contratto non può essere allegato a sé stesso.',
+        ])
+      })
+
+      it('principale svuotato con null: nessun controllo', async () => {
+        tx.contrattoCliente.findFirst.mockResolvedValue(riga({ contrattoPrincipaleId: P }))
+        await service.modifica(T, U, K, { contrattoPrincipaleId: null, versione: 1 })
+        expect(
+          tx.contrattoCliente.updateMany.mock.calls[0][0].data.contrattoPrincipaleId
+        ).toBeNull()
+      })
+
+      it('cliente cambiato in bozza con allegati: 400', async () => {
+        tx.contrattoCliente.findFirst.mockResolvedValue(riga({ _count: { contrattiAllegati: 2 } }))
+        const e = await errore(service.modifica(T, U, K, { clienteId: CF, versione: 1 }))
+        expect(e.getResponse().message).toContain(
+          'Questo contratto ha dei contratti allegati: non se ne cambia il cliente.'
+        )
+      })
+    })
+
+    it('audit: nomi dei campi e valori ammessi, mai testo libero', async () => {
+      await service.modifica(T, U, K, {
+        descrizione: 'Dati riservati del contratto',
+        dataFine: '2027-06-30',
+        commessa: 'COMM-1',
+        versione: 1,
+      })
+      const log = tx.activityLog.create.mock.calls[0][0].data
+      expect(log.action).toBe('CONTRATTO_CLIENTE_MODIFICATO')
+      expect(log.description).toBe('Contratto CC-2026-001 modificato')
+      expect(log.metadata.campi).toEqual(['descrizione', 'dataFine', 'commessa'])
+      expect(log.metadata.prima).toEqual({ dataFine: '2026-12-31' })
+      expect(log.metadata.dopo).toEqual({ dataFine: '2027-06-30' })
+      expect(JSON.stringify(log)).not.toContain('Dati riservati')
+      expect(JSON.stringify(log)).not.toContain('COMM-1')
+    })
+
+    it('P2002 sul numero: 409 CONTRATTO_CLIENTE_NUMERO_DUPLICATO', async () => {
+      tx.contrattoCliente.updateMany.mockRejectedValue(errP('P2002'))
+      const e = await errore(service.modifica(T, U, K, { numero: 'CC-2026-009', versione: 1 }))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NUMERO_DUPLICATO')
+    })
+
+    it('deadlock fra due allegamenti incrociati: 409 MODIFICATO_NEL_FRATTEMPO', async () => {
+      tx.contrattoCliente.updateMany.mockRejectedValue(errP('P2034'))
+      const e = await errore(service.modifica(T, U, K, { descrizione: MOD, versione: 1 }))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+    })
+
+    it('risponde con la vista riletta', async () => {
+      tx.contrattoCliente.findFirst
+        .mockResolvedValueOnce(riga())
+        .mockResolvedValueOnce(riga({ descrizione: MOD, versione: 2 }))
+      const v = await service.modifica(T, U, K, { descrizione: MOD, versione: 1 })
+      expect(v.descrizione).toBe(MOD)
+      expect(v.versione).toBe(2)
+    })
+  })
+
+  describe('cambiaStato (Task 17)', () => {
+    const attivo = (extra: Record<string, unknown> = {}) =>
+      riga({ stato: 'ATTIVO', condizionePagamentoId: R(2), registroIvaId: R(4), ...extra })
+
+    it('transizione non ammessa: 409, anche con la versione sbagliata (D14)', async () => {
+      const e = await errore(service.cambiaStato(T, U, K, 'SOSPESO', 9))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_TRANSIZIONE_NON_AMMESSA')
+      expect(e.getResponse().message).toBe('Dallo stato Bozza non si passa a Sospeso.')
+    })
+
+    it('da annullato non si passa a nessuno stato: 409', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ stato: 'ANNULLATO' }))
+      const e = await errore(service.cambiaStato(T, U, K, 'ATTIVO', 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_TRANSIZIONE_NON_AMMESSA')
+    })
+
+    it('contratto inesistente: 404', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(null)
+      expect(await errore(service.cambiaStato(T, U, K, 'ATTIVO', 1))).toBeInstanceOf(
+        NotFoundException
+      )
+    })
+
+    it('versione diversa: 409 MODIFICATO_NEL_FRATTEMPO', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      const e = await errore(service.cambiaStato(T, U, K, 'SOSPESO', 5))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+    })
+
+    it('BOZZA → ATTIVO senza condizione di pagamento: 400', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ registroIvaId: R(4) }))
+      const e = await errore(service.cambiaStato(T, U, K, 'ATTIVO', 1))
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse().message).toEqual([
+        'Per attivare il contratto indica la condizione di pagamento.',
+      ])
+    })
+
+    it('BOZZA → ATTIVO senza registro IVA: 400', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ condizionePagamentoId: R(2) }))
+      const e = await errore(service.cambiaStato(T, U, K, 'ATTIVO', 1))
+      expect(e.getResponse().message).toEqual(['Per attivare il contratto indica il registro IVA.'])
+    })
+
+    it('BOZZA → ATTIVO: scrittura condizionata allo stato di partenza, audit senza dati', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(
+        riga({ condizionePagamentoId: R(2), registroIvaId: R(4) })
+      )
+      await service.cambiaStato(T, U, K, 'ATTIVO', 1)
+      const arg = tx.contrattoCliente.updateMany.mock.calls[0][0]
+      expect(arg.where).toEqual({
+        id: K,
+        tenantId: T,
+        versione: 1,
+        stato: 'BOZZA',
+        eliminatoIl: null,
+      })
+      expect(arg.data).toEqual({ stato: 'ATTIVO', versione: { increment: 1 } })
+      expect(tx.activityLog.create.mock.calls[0][0].data).toMatchObject({
+        action: 'CONTRATTO_CLIENTE_STATO',
+        metadata: { contrattoId: K, da: 'BOZZA', a: 'ATTIVO' },
+      })
+    })
+
+    it('updateMany con count 0: 409', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      tx.contrattoCliente.updateMany.mockResolvedValue({ count: 0 })
+      const e = await errore(service.cambiaStato(T, U, K, 'SOSPESO', 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('annullo senza motivo né codice: 400', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      const e = await errore(service.cambiaStato(T, U, K, 'ANNULLATO', 1, { motivo: '  ' }))
+      expect(e.getResponse().message).toEqual(["Indica il motivo dell'annullo."])
+    })
+
+    it('annullo col solo codice: motivo_annullo = descrizione della codifica', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      await service.cambiaStato(T, U, K, 'ANNULLATO', 1, { motivoAnnulloId: R(8) })
+      expect(controlla.mock.calls[0][2]).toEqual({ motivoAnnulloId: R(8) })
+      const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+      expect(data).toMatchObject({
+        stato: 'ANNULLATO',
+        motivoAnnulloId: R(8),
+        motivoAnnullo: 'Cessata attività',
+        versione: { increment: 1 },
+      })
+      expect(data.annullatoIl).toEqual(OGGI)
+    })
+
+    it('annullo col solo testo: nessun codice, nessuna lettura della codifica', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      await service.cambiaStato(T, U, K, 'ANNULLATO', 1, { motivo: '  Disdetta del cliente ' })
+      const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+      expect(data.motivoAnnullo).toBe('Disdetta del cliente')
+      expect(data.motivoAnnulloId).toBeNull()
+      expect(controlla).not.toHaveBeenCalled()
+      expect(tx.codificaContratto.findFirst).not.toHaveBeenCalled()
+    })
+
+    it('annullo con codice e testo: vince il testo; audit senza il testo', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      await service.cambiaStato(T, U, K, 'ANNULLATO', 1, {
+        motivoAnnulloId: R(8),
+        motivo: 'Dettaglio riservato',
+      })
+      expect(tx.contrattoCliente.updateMany.mock.calls[0][0].data.motivoAnnullo).toBe(
+        'Dettaglio riservato'
+      )
+      const log = tx.activityLog.create.mock.calls[0][0].data
+      expect(log.metadata).toEqual({
+        contrattoId: K,
+        da: 'ATTIVO',
+        a: 'ANNULLATO',
+        motivoAnnulloId: R(8),
+      })
+      expect(JSON.stringify(log)).not.toContain('Dettaglio riservato')
+    })
+
+    it('annullo con codice disattivato o di altro genere: 400', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      controlla.mockResolvedValue(['Il motivo di annullo scelto non esiste o è disattivato.'])
+      const e = await errore(
+        service.cambiaStato(T, U, K, 'ANNULLATO', 1, { motivoAnnulloId: R(8) })
+      )
+      expect(e.getResponse().message).toEqual([
+        'Il motivo di annullo scelto non esiste o è disattivato.',
+      ])
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('le transizioni senza annullo non scrivono motivo né data di annullo', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      await service.cambiaStato(T, U, K, 'SOSPESO_MOVIMENTI', 1, { motivo: 'ignorato' })
+      expect(tx.contrattoCliente.updateMany.mock.calls[0][0].data).toEqual({
+        stato: 'SOSPESO_MOVIMENTI',
+        versione: { increment: 1 },
+      })
+    })
+  })
+
+  describe('elimina (Task 17)', () => {
+    it('fuori da BOZZA: 409 NON_ELIMINABILE, anche con la versione sbagliata', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ stato: 'ATTIVO' }))
+      const e = await errore(service.elimina(T, U, K, 9))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_ELIMINABILE')
+      expect(e.getResponse().message).toBe(
+        'Si eliminano solo i contratti in bozza: per chiudere questo contratto annullalo.'
+      )
+    })
+
+    it('bozza con contratti allegati: 409 CONTRATTO_CLIENTE_CON_ALLEGATI', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ _count: { contrattiAllegati: 1 } }))
+      const e = await errore(service.elimina(T, U, K, 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_CON_ALLEGATI')
+      expect(e.getResponse().message).toBe(
+        'Il contratto ha dei contratti allegati: staccali prima di eliminarlo.'
+      )
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('inesistente: 404; versione diversa: 409', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(null)
+      expect(await errore(service.elimina(T, U, K, 1))).toBeInstanceOf(NotFoundException)
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga())
+      const e = await errore(service.elimina(T, U, K, 2))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+    })
+
+    it('eliminazione logica con condizione sullo stato BOZZA e audit', async () => {
+      await service.elimina(T, U, K, 1)
+      const arg = tx.contrattoCliente.updateMany.mock.calls[0][0]
+      expect(arg.where).toEqual({
+        id: K,
+        tenantId: T,
+        versione: 1,
+        stato: 'BOZZA',
+        eliminatoIl: null,
+      })
+      expect(arg.data.eliminatoIl).toEqual(OGGI)
+      expect(arg.data.eliminatoDa).toBe(U)
+      expect(arg.data.versione).toEqual({ increment: 1 })
+      expect(tx.activityLog.create.mock.calls[0][0].data).toMatchObject({
+        action: 'CONTRATTO_CLIENTE_ELIMINATO',
+        metadata: { contrattoId: K, numero: 'CC-2026-001' },
+      })
+    })
+
+    it('updateMany con count 0: 409 e niente audit', async () => {
+      tx.contrattoCliente.updateMany.mockResolvedValue({ count: 0 })
+      const e = await errore(service.elimina(T, U, K, 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
     })
   })
 })

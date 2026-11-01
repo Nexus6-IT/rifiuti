@@ -658,7 +658,7 @@ export function pianificaModifica(
   stato: StatoContrattoCliente,
   attuale: DatiContrattoCliente,
   modifica: ModificaContrattoCliente,
-  contesto: { id?: string | null } = {}
+  contesto: { id: string }
 ): PianoModifica {
   const prima = normalizzaContratto(attuale)
   const unione: Record<string, unknown> = { ...prima }

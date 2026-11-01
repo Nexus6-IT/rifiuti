@@ -1,6 +1,14 @@
 // Contratti cliente (4.1b, Task 16): creazione con i predefiniti del cliente (D4, R35), contratto
-// allegato (D28) e letture (vista, elenco, numero proposto). Modifica, stato, rinnovo ed
-// eliminazione sono del Task 17.
+// allegato (D28) e letture (vista, elenco, numero proposto); Task 17: modifica con lock ottimistico,
+// cambio di stato ed eliminazione logica. Rinnovo e proroga sono di un altro task.
+//
+// Modifica, stato ed eliminazione partono dallo stesso passo: `SELECT ... FOR UPDATE` della riga del
+// contratto, poi la lettura. Due scritture sullo stesso contratto si mettono in fila e la seconda
+// vede la versione della prima (409), quindi i periodi restano quelli della prima. Un allegamento
+// blocca anche il principale (D28): A->B e B->C in parallelo non fanno una catena, perche' chi
+// arriva dopo rilegge la riga bloccata e la trova gia' cambiata. Ordine dei controlli (D14): 404,
+// stato che non ammette l'operazione, versione, campi non ammessi, validazione pura, database,
+// scrittura condizionata con audit.
 //
 // Ordine della creazione (D14): validazione pura, poi la transazione che legge i riferimenti
 // (clienti, sede, tabelle, contratto principale) con i lock di R24, scrive contratto e periodi e
@@ -14,6 +22,7 @@
 // e la legge chi fattura. Il conto corrente NON si copia: l'effettivo e' calcolato nella vista.
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -26,20 +35,30 @@ import {
   CAMPI_MODIFICABILI,
   TRANSIZIONI,
   contoCorrenteEffettivo,
+  ETICHETTE_STATO,
   motivoNonEliminabile,
+  motivoNonModificabile,
   normalizzaContratto,
+  pianificaModifica,
   rinnovabile,
   scaduto,
   validaContrattoCliente,
+  verificaTransizione,
   type CampoContrattoCliente,
   type CodiceRinnovo,
   type DatiContrattoCliente,
+  type ModificaContrattoCliente,
   type StatoContrattoCliente,
   type UnitaValidita,
 } from '../../domain/contratti-cliente/regole-contratto-cliente'
 import { prossimaFinePeriodo } from '../../domain/contratti-cliente/periodi-fatturazione'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
-import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
+import {
+  confrontaVersione,
+  scriviCondizionato,
+  traduciErrorePrisma,
+  type DescrizioneEntita,
+} from '../clienti/anagrafica-versionata'
 import { ClientiService, type ClienteEreditabile } from '../clienti/clienti.service'
 import {
   controllaRiferimenti,
@@ -124,6 +143,10 @@ const MSG_FATTURAZIONE = 'Il cliente di fatturazione scelto non esiste o è disa
 const MSG_SEDE = 'La sede scelta non è una sede attiva del cliente.'
 const MSG_PRINCIPALE =
   'Il contratto principale deve essere un contratto dello stesso cliente, non annullato e non allegato a sua volta.'
+const MSG_HA_ALLEGATI =
+  'Questo contratto ha dei contratti allegati: non può essere allegato a un altro.'
+const MSG_CLIENTE_CON_ALLEGATI =
+  'Questo contratto ha dei contratti allegati: non se ne cambia il cliente.'
 
 type ChiaveRiferimento =
   | 'condizionePagamentoId'
@@ -216,6 +239,131 @@ function rif(r: { id: string; codice: string | null; descrizione: string } | nul
   return r ? { id: r.id, codice: r.codice, descrizione: r.descrizione } : null
 }
 
+const modificatoNelFrattempo = () =>
+  new ConflictException({
+    error: 'CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO',
+    message:
+      "Il contratto è stato modificato nel frattempo da un'altra operazione: ricarica per vedere i dati aggiornati e ripeti l'operazione.",
+  })
+
+const CAMPI_DATA: readonly CampoContrattoCliente[] = [
+  'dataInizio',
+  'dataFine',
+  'dataStipula',
+  'sogliaDal',
+]
+
+/** Gli id che arrivano dal client si confrontano e si bloccano in minuscolo, come nella creazione. */
+function minuscoleGliId(m: ModificaContrattoCliente): ModificaContrattoCliente {
+  const r: Record<string, unknown> = { ...m }
+  for (const [k, v] of Object.entries(r)) {
+    if (k.endsWith('Id') && typeof v === 'string' && UUID.test(v)) r[k] = v.toLowerCase()
+  }
+  return r as ModificaContrattoCliente
+}
+
+/**
+ * Campi dell'audit di cui si riportano i valori prima/dopo (D16): date, flag, esigibilita',
+ * percentuali, durata, codice di rinnovo e id dei riferimenti. Mai testo libero, codici fiscali,
+ * recapiti, CIG/CUP, commessa, annotazioni o importi.
+ */
+const CAMPI_AUDIT_CON_VALORE: readonly CampoContrattoCliente[] = [
+  'clienteId',
+  'clienteFatturazioneId',
+  'sedeId',
+  'categoriaId',
+  'tipoId',
+  'dataInizio',
+  'dataFine',
+  'dataStipula',
+  'validitaQuantita',
+  'validitaUnita',
+  'contrattoPrincipaleId',
+  'condizionePagamentoId',
+  'contoCorrenteId',
+  'speseIncassoId',
+  'bolloId',
+  'registroIvaId',
+  'esigibilitaIva',
+  'ritenutaPercentuale',
+  'agenteId',
+  'testoFatturazioneId',
+  'escludiDichiarazioneIntento',
+  'sogliaDal',
+  'sogliaIvaEsclusa',
+  'rinnovoAutomatico',
+  'codiceRinnovo',
+  'incrementoIstat',
+]
+
+function metadataModifica(
+  contrattoId: string,
+  numero: string,
+  prima: DatiContrattoCliente,
+  dopo: DatiContrattoCliente,
+  cambiati: CampoContrattoCliente[]
+): Prisma.InputJsonValue {
+  const valori = cambiati.filter(c => CAMPI_AUDIT_CON_VALORE.includes(c))
+  const estrai = (d: DatiContrattoCliente) =>
+    Object.fromEntries(valori.map(c => [c, d[c] ?? null])) as Prisma.InputJsonObject
+  return {
+    contrattoId,
+    numero,
+    campi: cambiati,
+    prima: estrai(normalizzaContratto(prima)),
+    dopo: estrai(dopo),
+  }
+}
+
+function datiDaRiga(
+  r: Prisma.ContrattoClienteGetPayload<{ include: typeof INCLUDE }>
+): DatiContrattoCliente {
+  return {
+    numero: r.numero,
+    descrizione: r.descrizione,
+    clienteId: r.clienteId,
+    clienteFatturazioneId: r.clienteFatturazioneId,
+    sedeId: r.sedeId,
+    categoriaId: r.categoriaId,
+    tipoId: r.tipoId,
+    dataInizio: comeGiorno(r.dataInizio),
+    dataFine: comeGiorno(r.dataFine),
+    dataStipula: comeGiorno(r.dataStipula),
+    validitaQuantita: r.validitaQuantita,
+    validitaUnita: r.validitaUnita as UnitaValidita | null,
+    contrattoPrincipaleId: r.contrattoPrincipaleId,
+    condizionePagamentoId: r.condizionePagamentoId,
+    contoCorrenteId: r.contoCorrenteId,
+    speseIncassoId: r.speseIncassoId,
+    bolloId: r.bolloId,
+    registroIvaId: r.registroIvaId,
+    esigibilitaIva: r.esigibilitaIva,
+    ritenutaPercentuale: comeDecimale(r.ritenutaPercentuale),
+    agenteId: r.agenteId,
+    testoFatturazioneId: r.testoFatturazioneId,
+    codiceDestinatario: r.codiceDestinatario,
+    riferimentoAmministrazione: r.riferimentoAmministrazione,
+    codiceCig: r.codiceCig,
+    codiceCup: r.codiceCup,
+    idDocumentoPa: r.idDocumentoPa,
+    escludiDichiarazioneIntento: r.escludiDichiarazioneIntento,
+    sogliaDal: comeGiorno(r.sogliaDal),
+    sogliaImporto: comeDecimale(r.sogliaImporto),
+    sogliaIvaEsclusa: r.sogliaIvaEsclusa,
+    rinnovoAutomatico: r.rinnovoAutomatico,
+    codiceRinnovo: r.codiceRinnovo as CodiceRinnovo | null,
+    incrementoIstat: r.incrementoIstat,
+    commessa: r.commessa,
+    annotazioni: [...r.annotazioni],
+    periodi: r.periodi.map(p => ({
+      giornoInizio: p.giornoInizio,
+      meseInizio: p.meseInizio,
+      giornoFine: p.giornoFine,
+      meseFine: p.meseFine,
+    })),
+  }
+}
+
 function piuGiorni(giorno: string, n: number): Date {
   const [a, m, g] = giorno.split('-').map(Number)
   return new Date(Date.UTC(a, m - 1, g + n))
@@ -303,14 +451,9 @@ export class ContrattiClienteService {
 
     // 4. Sede attiva della ditta del cliente, bloccata.
     if (dati.sedeId !== null && cliente?.attivo) {
-      const ok =
-        UUID.test(dati.sedeId) &&
-        (
-          await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "sedi_ditte"
-            WHERE tenant_id = ${tenantId}::uuid AND id = ${dati.sedeId}::uuid
-              AND ditta_id = ${cliente.dittaId}::uuid AND attiva = true FOR SHARE`
-        ).length > 0
-      if (!ok) messaggi.push(MSG_SEDE)
+      if (!(await this.sedeDelCliente(tx, tenantId, dati.sedeId, cliente.dittaId))) {
+        messaggi.push(MSG_SEDE)
+      }
     }
 
     // 5. Tabelle, agente, testo e codifiche. Quelle scelte dall'operatore hanno il messaggio
@@ -328,30 +471,9 @@ export class ContrattiClienteService {
 
     // 6. Contratto principale (D28), con FOR UPDATE.
     if (dati.contrattoPrincipaleId !== null) {
-      const idPrincipale = dati.contrattoPrincipaleId
-      const righe = UUID.test(idPrincipale)
-        ? await tx.$queryRaw<
-            Array<{
-              id: string
-              clienteId: string
-              stato: string
-              eliminato: boolean
-              contrattoPrincipaleId: string | null
-            }>
-          >`SELECT id::text AS id, cliente_id::text AS "clienteId", stato::text AS stato,
-              (eliminato_il IS NOT NULL) AS eliminato,
-              contratto_principale_id::text AS "contrattoPrincipaleId"
-            FROM "contratti_cliente"
-            WHERE tenant_id = ${tenantId}::uuid AND id = ${idPrincipale}::uuid FOR UPDATE`
-        : []
-      const p = righe[0]
-      const valido =
-        p !== undefined &&
-        p.clienteId.toLowerCase() === idCliente &&
-        !p.eliminato &&
-        p.stato !== 'ANNULLATO' &&
-        p.contrattoPrincipaleId === null
-      if (!valido) messaggi.push(MSG_PRINCIPALE)
+      if (!(await this.principaleValido(tx, tenantId, dati.contrattoPrincipaleId, idCliente))) {
+        messaggi.push(MSG_PRINCIPALE)
+      }
     }
 
     if (messaggi.length > 0) throw nonValido(messaggi)
@@ -476,12 +598,385 @@ export class ContrattiClienteService {
     return this.comeVista(riga, giornoItaliano(this.orologio()))
   }
 
-  /** Solo il P2002 del numero; ogni altro errore (anche un P2003) passa com'e'. */
+  /**
+   * Il P2002 del numero; un deadlock (due allegamenti incrociati, P2034 o 40P01 dal raw) vale
+   * "modificato nel frattempo"; ogni altro errore (anche un P2003) passa com'e'.
+   */
   private async traduci(err: unknown): Promise<never> {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return traduciErrorePrisma(err, ENTITA, VINCOLI)
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === 'P2002') return traduciErrorePrisma(err, ENTITA, VINCOLI)
+      if (err.code === 'P2034' || err.meta?.code === '40P01') throw modificatoNelFrattempo()
     }
     throw err
+  }
+
+  /** Sede attiva della ditta del cliente, bloccata con FOR SHARE fino al commit. */
+  private async sedeDelCliente(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    sedeId: string,
+    dittaId: string
+  ): Promise<boolean> {
+    if (!UUID.test(sedeId)) return false
+    const righe = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "sedi_ditte"
+      WHERE tenant_id = ${tenantId}::uuid AND id = ${sedeId}::uuid
+        AND ditta_id = ${dittaId}::uuid AND attiva = true FOR SHARE`
+    return righe.length > 0
+  }
+
+  /**
+   * Principale dello stesso cliente, non eliminato, non annullato e non allegato a sua volta (D28).
+   * `FOR UPDATE`: chi lo allega aspetta chi lo sta modificando e rilegge la riga cambiata.
+   */
+  private async principaleValido(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    idPrincipale: string,
+    idCliente: string
+  ): Promise<boolean> {
+    if (!UUID.test(idPrincipale)) return false
+    const righe = await tx.$queryRaw<
+      Array<{
+        id: string
+        clienteId: string
+        stato: string
+        eliminato: boolean
+        contrattoPrincipaleId: string | null
+      }>
+    >`SELECT id::text AS id, cliente_id::text AS "clienteId", stato::text AS stato,
+        (eliminato_il IS NOT NULL) AS eliminato,
+        contratto_principale_id::text AS "contrattoPrincipaleId"
+      FROM "contratti_cliente"
+      WHERE tenant_id = ${tenantId}::uuid AND id = ${idPrincipale}::uuid FOR UPDATE`
+    const p = righe[0]
+    return (
+      p !== undefined &&
+      p.clienteId.toLowerCase() === idCliente &&
+      !p.eliminato &&
+      p.stato !== 'ANNULLATO' &&
+      p.contrattoPrincipaleId === null
+    )
+  }
+
+  /**
+   * Blocca la riga del contratto (non eliminato) e la legge con le relazioni della vista: da qui
+   * alla fine della transazione nessun'altra modifica, stato o eliminazione le passa davanti.
+   */
+  private async bloccaELeggi(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<RigaContratto> {
+    if (!UUID.test(id)) throw nonTrovato()
+    await tx.$queryRaw`SELECT id FROM "contratti_cliente"
+      WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid AND eliminato_il IS NULL FOR UPDATE`
+    const riga = await tx.contrattoCliente.findFirst({
+      where: { id, tenantId, eliminatoIl: null },
+      include: INCLUDE,
+    })
+    if (!riga) throw nonTrovato()
+    return riga
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Task 17: modifica, stato, eliminazione
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Modifica parziale (D9, R37): campo assente = invariato, `null` = svuota. Restituisce la vista
+   * aggiornata. Un corpo senza differenze non scrive e non lascia audit, ma controlla la versione.
+   */
+  async modifica(
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    m: ModificaContrattoCliente & { versione: number }
+  ): Promise<ContrattoClienteVista> {
+    const { versione, ...grezzo } = m
+    const patch = minuscoleGliId(grezzo)
+    return nelContestoTenant(tenantId, async () => {
+      await this.prisma
+        .$transaction(tx => this.scriviModifica(tx, tenantId, utenteId, id, versione, patch))
+        .catch(err => this.traduci(err))
+      return this.leggi(tenantId, id)
+    })
+  }
+
+  private async scriviModifica(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    versione: number,
+    patch: ModificaContrattoCliente
+  ): Promise<void> {
+    // 1-2. Riga bloccata (404) e stato che non ammette la modifica: prima della versione (D14).
+    const prima = await this.bloccaELeggi(tx, tenantId, id)
+    const stato = prima.stato as StatoContrattoCliente
+    const nonModificabile = motivoNonModificabile(stato)
+    if (nonModificabile) {
+      throw new ConflictException({
+        error: 'CONTRATTO_CLIENTE_NON_MODIFICABILE',
+        message: nonModificabile,
+      })
+    }
+    // 3. Versione.
+    confrontaVersione(prima.versione, versione, ENTITA)
+
+    // 4-5. Campi non ammessi e validazione pura (R36: sempre con l'id del contratto).
+    const attuale = datiDaRiga(prima)
+    const piano = pianificaModifica(stato, attuale, patch, { id })
+    if (piano.esito === 'NESSUNA_MODIFICA') return
+    if (piano.esito === 'CAMPI_NON_AMMESSI') {
+      throw new ConflictException({
+        error: 'CONTRATTO_CLIENTE_CAMPI_NON_AMMESSI',
+        message: piano.messaggio,
+      })
+    }
+    if (piano.esito === 'NON_VALIDA') throw nonValido(piano.messaggi)
+    const { dopo, cambiati } = piano
+
+    // 6. Database: solo i riferimenti cambiati (e quelli che dipendono dal cliente, se cambia).
+    const messaggi = await this.controllaCambiamenti(tx, tenantId, prima, dopo, cambiati)
+    if (messaggi.length > 0) throw nonValido(messaggi)
+
+    // 7. Scrittura condizionata; i periodi si sostituiscono solo dopo che la scrittura e' riuscita.
+    const data: Record<string, unknown> = {}
+    for (const c of cambiati) {
+      if (c === 'periodi') continue
+      data[c] = CAMPI_DATA.includes(c) ? comeData(dopo[c] as string | null) : dopo[c]
+    }
+    await scriviCondizionato(
+      () =>
+        tx.contrattoCliente.updateMany({
+          where: { id, tenantId, versione, stato: prima.stato, eliminatoIl: null },
+          data: {
+            ...data,
+            versione: { increment: 1 },
+          } as Prisma.ContrattoClienteUncheckedUpdateManyInput,
+        }),
+      ENTITA
+    )
+    if (cambiati.includes('periodi')) {
+      await tx.periodoFatturazioneCliente.deleteMany({ where: { contrattoId: id, tenantId } })
+      if (dopo.periodi.length > 0) {
+        await tx.periodoFatturazioneCliente.createMany({
+          data: dopo.periodi.map((p, i) => ({
+            tenantId,
+            contrattoId: id,
+            ordine: i + 1,
+            giornoInizio: p.giornoInizio,
+            meseInizio: p.meseInizio,
+            giornoFine: p.giornoFine,
+            meseFine: p.meseFine,
+          })),
+        })
+      }
+    }
+    await tx.activityLog.create({
+      data: {
+        tenantId,
+        userId: utenteId,
+        action: 'CONTRATTO_CLIENTE_MODIFICATO',
+        description: `Contratto ${prima.numero} modificato`,
+        metadata: metadataModifica(id, prima.numero, attuale, dopo, cambiati),
+      },
+    })
+  }
+
+  private async controllaCambiamenti(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    prima: RigaContratto,
+    dopo: DatiContrattoCliente,
+    cambiati: CampoContrattoCliente[]
+  ): Promise<string[]> {
+    const messaggi: string[] = []
+    const cambia = (c: CampoContrattoCliente) => cambiati.includes(c)
+    const idCliente = dopo.clienteId.toLowerCase()
+    const clienteCambiato = cambia('clienteId')
+
+    // Cliente e cliente di fatturazione: esistenti e attivi, bloccati con FOR SHARE (R24, R40).
+    const daLeggere: string[] = []
+    if (clienteCambiato) daLeggere.push(idCliente)
+    const idFatturazione =
+      cambia('clienteFatturazioneId') && dopo.clienteFatturazioneId !== null
+        ? dopo.clienteFatturazioneId.toLowerCase()
+        : null
+    if (idFatturazione) daLeggere.push(idFatturazione)
+    const trovati = daLeggere.length > 0 ? await this.clienti.attiviPerId(tx, daLeggere) : new Map()
+    if (clienteCambiato && !trovati.get(idCliente)?.attivo) messaggi.push(MSG_CLIENTE)
+    if (idFatturazione && !trovati.get(idFatturazione)?.attivo) messaggi.push(MSG_FATTURAZIONE)
+
+    // Sede: se cambia lei o il cliente (la sede e' della ditta del cliente). Con un cliente nuovo
+    // inesistente non si sa a quale ditta riferirla: resta il solo messaggio del cliente.
+    if (dopo.sedeId !== null && (cambia('sedeId') || clienteCambiato)) {
+      const dittaId = clienteCambiato ? trovati.get(idCliente)?.dittaId : prima.cliente.dittaId
+      if (dittaId && !(await this.sedeDelCliente(tx, tenantId, dopo.sedeId, dittaId))) {
+        messaggi.push(MSG_SEDE)
+      }
+    }
+
+    // Tabelle, agente, testo, categoria e tipo: solo quelli cambiati e non svuotati.
+    const scelti: RiferimentiDaControllare = {}
+    for (const k of CHIAVI_RIFERIMENTO) {
+      if (cambia(k) && dopo[k] !== null) scelti[k] = dopo[k]
+    }
+    if (Object.keys(scelti).length > 0) {
+      messaggi.push(...(await controllaRiferimenti(tx, tenantId, scelti)))
+    }
+
+    // Allegati di questo contratto: non cambia cliente e non diventa a sua volta un allegato (D28).
+    const allegati = prima._count.contrattiAllegati
+    if (clienteCambiato && allegati > 0) messaggi.push(MSG_CLIENTE_CON_ALLEGATI)
+    if (
+      dopo.contrattoPrincipaleId !== null &&
+      (cambia('contrattoPrincipaleId') || clienteCambiato)
+    ) {
+      if (allegati > 0 && cambia('contrattoPrincipaleId')) {
+        messaggi.push(MSG_HA_ALLEGATI)
+      } else if (
+        !(await this.principaleValido(tx, tenantId, dopo.contrattoPrincipaleId, idCliente))
+      ) {
+        messaggi.push(MSG_PRINCIPALE)
+      }
+    }
+    return messaggi
+  }
+
+  /**
+   * Cambio di stato (D8). Con `ANNULLATO` serve un motivo: il codice, il testo o entrambi; con il
+   * solo codice il testo e' la descrizione della codifica. L'audit non porta il testo (D16).
+   */
+  async cambiaStato(
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    a: StatoContrattoCliente,
+    versione: number,
+    annullo: { motivoAnnulloId?: string | null; motivo?: string | null } = {}
+  ): Promise<ContrattoClienteVista> {
+    return nelContestoTenant(tenantId, async () => {
+      await this.prisma
+        .$transaction(async tx => {
+          const prima = await this.bloccaELeggi(tx, tenantId, id)
+          const da = prima.stato as StatoContrattoCliente
+          // Transizione non ammessa: prima della versione (D14).
+          const dati = {
+            condizionePagamentoId: prima.condizionePagamentoId,
+            registroIvaId: prima.registroIvaId,
+            motivo: annullo.motivo,
+            motivoAnnulloId: annullo.motivoAnnulloId,
+          }
+          if (!TRANSIZIONI[da].includes(a)) {
+            throw new ConflictException({
+              error: 'CONTRATTO_CLIENTE_TRANSIZIONE_NON_AMMESSA',
+              message: `Dallo stato ${ETICHETTE_STATO[da]} non si passa a ${ETICHETTE_STATO[a]}.`,
+            })
+          }
+          confrontaVersione(prima.versione, versione, ENTITA)
+          const problema = verificaTransizione(da, a, dati)
+          if (problema) throw nonValido([problema])
+
+          const data: Prisma.ContrattoClienteUncheckedUpdateManyInput = {
+            stato: a,
+            versione: { increment: 1 },
+          }
+          const testo = (annullo.motivo ?? '').trim()
+          const codice = (annullo.motivoAnnulloId ?? '').trim().toLowerCase()
+          if (a === 'ANNULLATO') {
+            let motivo = testo
+            if (codice !== '') {
+              const errori = await controllaRiferimenti(tx, tenantId, { motivoAnnulloId: codice })
+              if (errori.length > 0) throw nonValido(errori)
+              if (motivo === '') {
+                const codifica = await tx.codificaContratto.findFirst({
+                  where: { id: codice, tenantId },
+                  select: { descrizione: true },
+                })
+                motivo = codifica?.descrizione ?? ''
+              }
+            }
+            if (motivo.length > 255)
+              throw nonValido(['Il motivo dell’annullo non può superare 255 caratteri.'])
+            data.motivoAnnullo = motivo
+            data.motivoAnnulloId = codice === '' ? null : codice
+            data.annullatoIl = this.orologio()
+          }
+          await scriviCondizionato(
+            () =>
+              tx.contrattoCliente.updateMany({
+                where: { id, tenantId, versione, stato: prima.stato, eliminatoIl: null },
+                data,
+              }),
+            ENTITA
+          )
+          // Mai il testo del motivo (testo libero): solo gli stati e il codice scelto.
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'CONTRATTO_CLIENTE_STATO',
+              description: `Contratto ${prima.numero}: stato ${ETICHETTE_STATO[da]} → ${ETICHETTE_STATO[a]}`,
+              metadata: {
+                contrattoId: id,
+                da,
+                a,
+                ...(a === 'ANNULLATO' && codice !== '' ? { motivoAnnulloId: codice } : {}),
+              } as Prisma.InputJsonValue,
+            },
+          })
+        })
+        .catch(err => this.traduci(err))
+      return this.leggi(tenantId, id)
+    })
+  }
+
+  /** Eliminazione logica, solo in BOZZA e senza contratti allegati (D13). */
+  async elimina(tenantId: string, utenteId: string, id: string, versione: number): Promise<void> {
+    return nelContestoTenant(tenantId, async () => {
+      await this.prisma
+        .$transaction(async tx => {
+          const prima = await this.bloccaELeggi(tx, tenantId, id)
+          const stato = prima.stato as StatoContrattoCliente
+          const nonEliminabile = motivoNonEliminabile(stato)
+          if (nonEliminabile) {
+            throw new ConflictException({
+              error: 'CONTRATTO_CLIENTE_NON_ELIMINABILE',
+              message: nonEliminabile,
+            })
+          }
+          confrontaVersione(prima.versione, versione, ENTITA)
+          if (prima._count.contrattiAllegati > 0) {
+            throw new ConflictException({
+              error: 'CONTRATTO_CLIENTE_CON_ALLEGATI',
+              message: 'Il contratto ha dei contratti allegati: staccali prima di eliminarlo.',
+            })
+          }
+          await scriviCondizionato(
+            () =>
+              tx.contrattoCliente.updateMany({
+                where: { id, tenantId, versione, stato: 'BOZZA', eliminatoIl: null },
+                data: {
+                  eliminatoIl: this.orologio(),
+                  eliminatoDa: utenteId,
+                  versione: { increment: 1 },
+                },
+              }),
+            ENTITA
+          )
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'CONTRATTO_CLIENTE_ELIMINATO',
+              description: `Contratto ${prima.numero} eliminato`,
+              metadata: { contrattoId: id, numero: prima.numero } as Prisma.InputJsonValue,
+            },
+          })
+        })
+        .catch(err => this.traduci(err))
+    })
   }
 
   private comeVista(r: RigaContratto, oggi: string): ContrattoClienteVista {

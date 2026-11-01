@@ -22,6 +22,14 @@ import {
   type StatoContrattoCliente,
 } from './regole-contratto-cliente'
 
+/** R36: la modifica conosce sempre l'id del contratto (serve alla regola del principale). */
+const pianifica = (
+  stato: StatoContrattoCliente,
+  attuale: DatiContrattoCliente,
+  modifica: Parameters<typeof pianificaModifica>[2],
+  contesto: { id: string } = { id: 'cc-0' }
+) => pianificaModifica(stato, attuale, modifica, contesto)
+
 const TUTTI_I_CAMPI: CampoContrattoCliente[] = [
   'numero',
   'descrizione',
@@ -452,22 +460,22 @@ describe('pianificaModifica', () => {
   })
 
   it('modifica vuota -> NESSUNA_MODIFICA', () => {
-    expect(pianificaModifica('ATTIVO', attuale, {})).toEqual({ esito: 'NESSUNA_MODIFICA' })
+    expect(pianifica('ATTIVO', attuale, {})).toEqual({ esito: 'NESSUNA_MODIFICA' })
   })
   it('stessi valori in altra forma -> NESSUNA_MODIFICA', () => {
     expect(
-      pianificaModifica('ATTIVO', attuale, {
+      pianifica('ATTIVO', attuale, {
         dataInizio: new Date('2026-01-01T00:00:00Z') as unknown as string,
         periodi: [p(1, 4, 30, 6), p(1, 1, 31, 3)],
         ritenutaPercentuale: '4.00',
       })
     ).toEqual({ esito: 'NESSUNA_MODIFICA' })
-    expect(pianificaModifica('ATTIVO', attuale, { ritenutaPercentuale: '4' })).toEqual({
+    expect(pianifica('ATTIVO', attuale, { ritenutaPercentuale: '4' })).toEqual({
       esito: 'NESSUNA_MODIFICA',
     })
   })
   it('ATTIVO cambia data di inizio e cliente -> CAMPI_NON_AMMESSI', () => {
-    const r = pianificaModifica('ATTIVO', attuale, { dataInizio: '2026-02-01', clienteId: 'cli-9' })
+    const r = pianifica('ATTIVO', attuale, { dataInizio: '2026-02-01', clienteId: 'cli-9' })
     expect(r).toEqual({
       esito: 'CAMPI_NON_AMMESSI',
       campi: ['clienteId', 'dataInizio'],
@@ -476,7 +484,7 @@ describe('pianificaModifica', () => {
     })
   })
   it('ATTIVO cambia periodi, condizione e conto -> OK', () => {
-    const r = pianificaModifica('ATTIVO', attuale, {
+    const r = pianifica('ATTIVO', attuale, {
       periodi: [p(1, 1, 30, 6)],
       condizionePagamentoId: 'c2',
       contoCorrenteId: 'cc1',
@@ -490,13 +498,13 @@ describe('pianificaModifica', () => {
     }
   })
   it('BOZZA cambia anche numero e cliente', () => {
-    const r = pianificaModifica('BOZZA', attuale, { numero: 'CC-2026-002', clienteId: 'cli-9' })
+    const r = pianifica('BOZZA', attuale, { numero: 'CC-2026-002', clienteId: 'cli-9' })
     expect(r.esito).toBe('OK')
     if (r.esito === 'OK') expect(r.cambiati).toEqual(['numero', 'clienteId'])
   })
   it('null su dataFine svuota', () => {
     const conFine = valido({ dataFine: '2026-12-31' })
-    const r = pianificaModifica('ATTIVO', conFine, { dataFine: null })
+    const r = pianifica('ATTIVO', conFine, { dataFine: null })
     expect(r.esito).toBe('OK')
     if (r.esito === 'OK') {
       expect(r.dopo.dataFine).toBeNull()
@@ -504,25 +512,25 @@ describe('pianificaModifica', () => {
     }
   })
   it('null sui periodi li svuota', () => {
-    const r = pianificaModifica('ATTIVO', attuale, { periodi: null })
+    const r = pianifica('ATTIVO', attuale, { periodi: null })
     expect(r.esito).toBe('OK')
     if (r.esito === 'OK') expect(r.dopo.periodi).toEqual([])
   })
   it('null su descrizione -> NON_VALIDA', () => {
-    expect(pianificaModifica('ATTIVO', attuale, { descrizione: null })).toEqual({
+    expect(pianifica('ATTIVO', attuale, { descrizione: null })).toEqual({
       esito: 'NON_VALIDA',
       messaggi: ['Descrizione è obbligatoria.'],
     })
   })
   it('valore non valido -> NON_VALIDA con i messaggi della validazione', () => {
-    expect(pianificaModifica('ATTIVO', attuale, { ritenutaPercentuale: '31' })).toEqual({
+    expect(pianifica('ATTIVO', attuale, { ritenutaPercentuale: '31' })).toEqual({
       esito: 'NON_VALIDA',
       messaggi: ['La percentuale di ritenuta deve essere maggiore di 0 e non superiore a 30.'],
     })
   })
   it('il codice di rinnovo decide il rinnovo automatico', () => {
     const conFine = valido({ dataFine: '2026-12-31' })
-    const r = pianificaModifica('ATTIVO', conFine, { codiceRinnovo: 'S' })
+    const r = pianifica('ATTIVO', conFine, { codiceRinnovo: 'S' })
     expect(r.esito).toBe('OK')
     if (r.esito === 'OK') {
       expect(r.dopo.rinnovoAutomatico).toBe(true)
@@ -531,7 +539,7 @@ describe('pianificaModifica', () => {
   })
   it('rinnovo automatico cambiato da solo resta coerente col codice', () => {
     const conCodice = valido({ dataFine: '2026-12-31', codiceRinnovo: 'N' })
-    const r = pianificaModifica('ATTIVO', conCodice, { rinnovoAutomatico: true })
+    const r = pianifica('ATTIVO', conCodice, { rinnovoAutomatico: true })
     expect(r.esito).toBe('OK')
     if (r.esito === 'OK') {
       expect(r.dopo.rinnovoAutomatico).toBe(true)
@@ -539,19 +547,14 @@ describe('pianificaModifica', () => {
     }
   })
   it('contratto annullato: il messaggio e quello dello stato', () => {
-    expect(pianificaModifica('ANNULLATO', attuale, { descrizione: 'Altro' })).toEqual({
+    expect(pianifica('ANNULLATO', attuale, { descrizione: 'Altro' })).toEqual({
       esito: 'CAMPI_NON_AMMESSI',
       campi: ['descrizione'],
       messaggio: 'Un contratto annullato non si modifica.',
     })
   })
   it('il contesto passa alla validazione (principale = se stesso)', () => {
-    const r = pianificaModifica(
-      'ATTIVO',
-      attuale,
-      { contrattoPrincipaleId: 'cc-1' },
-      { id: 'cc-1' }
-    )
+    const r = pianifica('ATTIVO', attuale, { contrattoPrincipaleId: 'cc-1' }, { id: 'cc-1' })
     expect(r).toEqual({
       esito: 'NON_VALIDA',
       messaggi: ['Un contratto non può essere allegato a sé stesso.'],
