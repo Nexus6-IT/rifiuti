@@ -93,8 +93,19 @@ function elencoApi(tabella: Tabella, token: string, query = ''): Promise<RigaApi
 
 async function apriTabelle(page: Page, scheda: string): Promise<void> {
   await page.goto('/clienti/tabelle')
-  await expect(page.getByRole('heading', { name: 'Tabelle di fatturazione' })).toBeVisible()
-  await page.getByRole('tab', { name: scheda }).click()
+  await expect(
+    contenuto(page).getByRole('heading', { level: 1, name: 'Tabelle di fatturazione' })
+  ).toBeVisible()
+  await contenuto(page).getByRole('tab', { name: scheda }).click()
+}
+
+/**
+ * Il titolo della pagina compare due volte (topbar + `<h1>` del contenuto) e il menu ha una
+ * voce omonima: tutto cio' che non e' un dialog o un'opzione di dropdown (appese al body)
+ * si cerca dentro `#main-content`.
+ */
+function contenuto(page: Page) {
+  return page.locator('#main-content')
 }
 
 function dialogo(page: Page) {
@@ -127,7 +138,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
 
   test('condizione di pagamento 30-60 fine mese', async ({ page }) => {
     await apriTabelle(page, 'Condizioni di pagamento')
-    await page.getByRole('button', { name: 'Nuova condizione' }).click()
+    await contenuto(page).getByRole('button', { name: 'Nuova condizione' }).click()
     const dlg = dialogo(page)
     await dlg.getByLabel('Codice').fill(codici.condizione)
     creati.push({ tabella: 'condizioni-pagamento', codice: codici.condizione })
@@ -141,7 +152,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
-    const riga = page.getByRole('row', { name: new RegExp(codici.condizione) })
+    const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.condizione) })
     await expect(riga).toContainText(descrizioni.condizione)
     await expect(riga).toContainText('30-60 gg fine mese')
     await expect(riga).toContainText('Attiva')
@@ -149,7 +160,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
 
   test('disattiva e riattiva la condizione', async ({ page }) => {
     await apriTabelle(page, 'Condizioni di pagamento')
-    const riga = page.getByRole('row', { name: new RegExp(codici.condizione) })
+    const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.condizione) })
     await riga.getByRole('button', { name: 'Disattiva' }).click()
     await expect(riga).toContainText('Disattivata')
     await riga.getByRole('button', { name: 'Riattiva' }).click()
@@ -159,7 +170,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
 
   test('conto corrente con IBAN mascherato in elenco', async ({ page }) => {
     await apriTabelle(page, 'Conti correnti')
-    await page.getByRole('button', { name: 'Nuovo conto' }).click()
+    await contenuto(page).getByRole('button', { name: 'Nuovo conto' }).click()
     const dlg = dialogo(page)
     await dlg.getByLabel('Codice').fill(codici.conto)
     creati.push({ tabella: 'conti-correnti', codice: codici.conto })
@@ -169,7 +180,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
-    const riga = page.getByRole('row', { name: new RegExp(codici.conto) })
+    const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.conto) })
     await expect(riga).toContainText(`${iban.slice(0, 4)} **** **** ${iban.slice(-4)}`)
     // L'IBAN completo non compare mai nell'elenco.
     await expect(riga).not.toContainText(iban)
@@ -178,9 +189,9 @@ test.describe('Tabelle di fatturazione — operatore', () => {
 
   test('spesa di bollo', async ({ page }) => {
     await apriTabelle(page, 'Spese e bollo')
-    await page.getByTestId('spesa-filtro').click()
-    await page.getByRole('option', { name: 'Bollo' }).click()
-    await page.getByRole('button', { name: 'Nuova spesa' }).click()
+    await contenuto(page).getByTestId('spesa-filtro').click()
+    await page.getByRole('option', { name: 'Bollo', exact: true }).click()
+    await contenuto(page).getByRole('button', { name: 'Nuova spesa' }).click()
     const dlg = dialogo(page)
     await expect(dlg.getByTestId('spesa-dlg-tipo-fisso')).toHaveText('Bollo')
     await dlg.getByLabel('Codice').fill(codici.spesa)
@@ -190,7 +201,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
-    const riga = page.getByRole('row', { name: new RegExp(codici.spesa) })
+    const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.spesa) })
     await expect(riga).toContainText('Bollo')
     await expect(riga).toContainText(descrizioni.spesa)
     await expect(riga).toContainText('2.00')
@@ -207,7 +218,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     codiceRegistro = `0${libero}`
 
     await apriTabelle(page, 'Registri IVA')
-    await page.getByRole('button', { name: 'Nuovo registro' }).click()
+    await contenuto(page).getByRole('button', { name: 'Nuovo registro' }).click()
     const dlg = dialogo(page)
     await dlg.getByLabel('Codice').fill(libero!)
     creati.push({ tabella: 'registri-iva', codice: codiceRegistro })
@@ -215,8 +226,8 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
-    await expect(page.getByTestId(`registro-riga-${codiceRegistro}`)).toBeVisible()
-    await expect(page.getByTestId(`registro-riga-${codiceRegistro}`)).toContainText(
+    await expect(contenuto(page).getByTestId(`registro-riga-${codiceRegistro}`)).toBeVisible()
+    await expect(contenuto(page).getByTestId(`registro-riga-${codiceRegistro}`)).toContainText(
       conPrefisso('Registro di prova')
     )
   })
@@ -227,21 +238,23 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     while (occupati.has(codici.testo)) codici.testo = codiceCasuale(3)
 
     await apriTabelle(page, 'Testi di fatturazione')
-    await page.getByRole('button', { name: 'Nuovo testo' }).click()
+    await contenuto(page).getByRole('button', { name: 'Nuovo testo' }).click()
     const dlg = dialogo(page)
     await dlg.getByLabel('Codice').fill(codici.testo)
     creati.push({ tabella: 'testi-fatturazione', codice: codici.testo })
     await dlg.getByLabel('Titolo').fill(descrizioni.testo)
-    await dlg.getByLabel('Riga 1').fill('Pagamento tramite bonifico bancario.')
+    await dlg.getByLabel('Riga 1', { exact: true }).fill('Pagamento tramite bonifico bancario.')
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
-    await expect(page.getByRole('row', { name: new RegExp(descrizioni.testo) })).toBeVisible()
+    await expect(
+      contenuto(page).getByRole('row', { name: new RegExp(descrizioni.testo) })
+    ).toBeVisible()
   })
 
   test('categoria con codice assegnato dal server', async ({ page }) => {
     await apriTabelle(page, 'Categorie e tipi')
-    await page.getByTestId('codifica-nuova-CATEGORIA').click()
+    await contenuto(page).getByTestId('codifica-nuova-CATEGORIA').click()
     const dlg = dialogo(page)
     // Il codice e' proposto: lo si svuota, cosi' lo assegna il server (come nella modalita' rapida).
     await dlg.getByLabel('Codice').fill('')
@@ -249,7 +262,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
-    const riga = page.getByRole('row', { name: new RegExp(descrizioni.categoria) })
+    const riga = contenuto(page).getByRole('row', { name: new RegExp(descrizioni.categoria) })
     await expect(riga).toBeVisible()
     const token = await apiLogin('operator')
     const lista = await apiGet<(RigaApi & { descrizione: string })[]>(
@@ -275,7 +288,9 @@ test.describe('Tabelle di fatturazione — VIEWER', () => {
   test('vede le schede senza pulsanti di scrittura', async ({ page, context }) => {
     await loginAndSaveState(page, context, 'viewer')
     await page.goto('/clienti/tabelle')
-    await expect(page.getByRole('heading', { name: 'Tabelle di fatturazione' })).toBeVisible()
+    await expect(
+      contenuto(page).getByRole('heading', { level: 1, name: 'Tabelle di fatturazione' })
+    ).toBeVisible()
 
     const schede: { scheda: string; nuovo: string }[] = [
       { scheda: 'Condizioni di pagamento', nuovo: 'Nuova condizione' },
@@ -285,16 +300,18 @@ test.describe('Tabelle di fatturazione — VIEWER', () => {
       { scheda: 'Testi di fatturazione', nuovo: 'Nuovo testo' },
     ]
     for (const { scheda, nuovo } of schede) {
-      await page.getByRole('tab', { name: scheda }).click()
-      await expect(page.getByRole('tabpanel').getByRole('table')).toBeVisible()
-      await expect(page.getByRole('button', { name: nuovo })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Modifica' })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: /^(Disattiva|Riattiva)$/ })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Elimina' })).toHaveCount(0)
+      await contenuto(page).getByRole('tab', { name: scheda }).click()
+      await expect(contenuto(page).getByRole('tabpanel').getByRole('table')).toBeVisible()
+      await expect(contenuto(page).getByRole('button', { name: nuovo })).toHaveCount(0)
+      await expect(contenuto(page).getByRole('button', { name: 'Modifica' })).toHaveCount(0)
+      await expect(
+        contenuto(page).getByRole('button', { name: /^(Disattiva|Riattiva)$/ })
+      ).toHaveCount(0)
+      await expect(contenuto(page).getByRole('button', { name: 'Elimina' })).toHaveCount(0)
     }
-    await page.getByRole('tab', { name: 'Categorie e tipi' }).click()
-    await expect(page.getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)
-    await page.getByRole('tab', { name: 'Motivi di annullo' }).click()
-    await expect(page.getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)
+    await contenuto(page).getByRole('tab', { name: 'Categorie e tipi' }).click()
+    await expect(contenuto(page).getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)
+    await contenuto(page).getByRole('tab', { name: 'Motivi di annullo' }).click()
+    await expect(contenuto(page).getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)
   })
 })
