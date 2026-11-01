@@ -96,6 +96,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'MovimentoTrasmissioneRentri',
   // Abbinamenti carico-scarico (4.6): dato dell'azienda.
   'AbbinamentoCaricoScarico',
+  // Tabelle di fatturazione (Fase 4 pezzo 1): dato dell'azienda.
+  'CondizionePagamento',
+  'ContoCorrente',
+  'SpesaAccessoria',
+  'RegistroIva',
+  'TestoFatturazione',
+  'CodificaContratto',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

@@ -50,6 +50,7 @@ import { SignaturesModule } from './application/signatures/signatures.module'
 // Registro cronologico carico/scarico (WS-C) — art. 190 D.Lgs 152/2006
 import { RegistroModule } from './api/registro/registro.module'
 import { PeseModule } from './api/pese/pese.module'
+import { ClientiModule } from './api/clienti/clienti.module'
 // Billing SaaS (WS-F): Stripe + enforcement limiti di piano
 import { BillingModule } from './application/billing/billing.module'
 // Richiesta di accesso (lead capture): il form pubblico NON crea più un tenant.
@@ -160,6 +161,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     // Registro cronologico carico/scarico (WS-C) — art. 190 D.Lgs 152/2006
     RegistroModule,
     PeseModule,
+    ClientiModule,
 
     // Billing SaaS (WS-F): Stripe checkout/webhook/portal + enforcement limiti piano
     BillingModule,
