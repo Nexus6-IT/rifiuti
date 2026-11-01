@@ -28,7 +28,7 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
 
 /**
  * Sezione "Pagamento e fatturazione": condizione, conto, spese, bollo, registro, esigibilità,
- * ritenuta, agente, testo di fatturazione, codice destinatario e riferimento amministrazione.
+ * ritenuta, agente e testo di fatturazione (codice destinatario e riferimento stanno nella sezione PA).
  * Condizione, conto, spese, bollo, registro e agente stanno in `OpzioniFatturazione` (stessa
  * logica del dialog del cliente); il testo di fatturazione ha la sua aggiunta in linea qui.
  */
@@ -151,26 +151,6 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
       >
         <li *ngFor="let r of righeTesto()">{{ r }}</li>
       </ul>
-
-      <label for="contratto-dlg-codice-dest">Codice destinatario SDI</label>
-      <input
-        pInputText
-        id="contratto-dlg-codice-dest"
-        formControlName="codiceDestinatario"
-        maxlength="7"
-        data-testid="contratto-dlg-codice-dest"
-      />
-      <label for="contratto-dlg-rif-amm">Riferimento amministrazione</label>
-      <input
-        pInputText
-        id="contratto-dlg-rif-amm"
-        formControlName="riferimentoAmministrazione"
-        maxlength="20"
-        data-testid="contratto-dlg-rif-amm"
-      />
-      <small class="field-hint"
-        >Se li lasci vuoti valgono quelli del cliente di fatturazione (o del cliente).</small
-      >
     </div>
 
     <app-sotto-dialog-fatturazione [opzioni]="opzioni" />

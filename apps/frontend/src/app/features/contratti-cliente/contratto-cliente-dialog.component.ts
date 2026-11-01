@@ -33,11 +33,15 @@ import {
   differenze,
   valoriDaContratto,
 } from './contratto-cliente-form'
+import { AllegatiContrattoComponent } from './allegati-contratto.component'
 import { PeriodiFatturazioneComponent } from './periodi-fatturazione.component'
 import { etichettaCliente } from './scelta-cliente.component'
 import { CorrentiGenerali, SezioneDatiGeneraliComponent } from './sezione-dati-generali.component'
 import { SEZIONE_CONTRATTO, SezioneContratto } from './sezione-contratto'
+import { SezioneAltroComponent } from './sezione-altro.component'
 import { SezionePagamentoComponent } from './sezione-pagamento.component'
+import { SezionePaComponent } from './sezione-pa.component'
+import { SezioneRinnovoSogliaComponent } from './sezione-rinnovo-soglia.component'
 
 const NESSUNA_VOCE = '—'
 
@@ -46,7 +50,8 @@ const NESSUNA_VOCE = '—'
  * contratto già attivo `modificabili` (dal backend) toglie numero, cliente e data di inizio, e un
  * contratto annullato non si modifica. Il frontend non replica le regole di dominio (D20): il
  * backend valida e il suo messaggio si mostra com'è. Sezioni in `p-accordion`: dati generali,
- * pagamento e fatturazione, periodi (le altre le aggiunge il Task 26).
+ * pagamento e fatturazione, pubblica amministrazione, rinnovo e soglia, periodi, altro (contratto
+ * principale, commessa, annotazioni) e allegati PDF (solo per un contratto già salvato).
  */
 @Component({
   selector: 'app-contratto-cliente-dialog',
@@ -59,6 +64,10 @@ const NESSUNA_VOCE = '—'
     AccordionModule,
     SezioneDatiGeneraliComponent,
     SezionePagamentoComponent,
+    SezionePaComponent,
+    SezioneRinnovoSogliaComponent,
+    SezioneAltroComponent,
+    AllegatiContrattoComponent,
     PeriodiFatturazioneComponent,
   ],
   template: `
@@ -75,7 +84,7 @@ const NESSUNA_VOCE = '—'
         Stato: <strong>{{ etichettaStato() }}</strong>
       </p>
       <form (ngSubmit)="salva()">
-        <p-accordion [multiple]="true" [activeIndex]="[0, 1, 2]">
+        <p-accordion [multiple]="true" [activeIndex]="[0, 1, 2, 3, 4, 5, 6]">
           <p-accordionTab header="Dati generali">
             <app-sezione-dati-generali
               [form]="form"
@@ -103,11 +112,31 @@ const NESSUNA_VOCE = '—'
               [segnalaErrore]="segnalaErrore"
             />
           </p-accordionTab>
+          <p-accordionTab header="Pubblica amministrazione">
+            <app-sezione-pa [form]="form" />
+          </p-accordionTab>
+          <p-accordionTab header="Rinnovo e soglia">
+            <app-sezione-rinnovo-soglia [form]="form" />
+          </p-accordionTab>
           <p-accordionTab header="Periodi di fatturazione">
             <app-periodi-fatturazione
               [periodi]="form.controls.periodi.value"
               [disabled]="form.controls.periodi.disabled"
               (periodiChange)="cambiaPeriodi($event)"
+            />
+          </p-accordionTab>
+          <p-accordionTab header="Altro">
+            <app-sezione-altro
+              [form]="form"
+              [contrattoId]="contratto?.id ?? null"
+              [contrattiAllegati]="letto()?.allegati ?? 0"
+              [principaleCorrente]="letto()?.contrattoPrincipale ?? null"
+            />
+          </p-accordionTab>
+          <p-accordionTab header="Allegati PDF">
+            <app-allegati-contratto
+              [contrattoId]="contratto?.id ?? null"
+              [soloLettura]="!puoScrivere()"
             />
           </p-accordionTab>
         </p-accordion>
@@ -318,6 +347,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     this.form.controls.clienteId.markAsDirty()
     // La sede era di un'altra ditta.
     this.form.controls.sedeId.setValue('')
+    // Il contratto principale era di un altro cliente (D28).
+    this.form.controls.contrattoPrincipaleId.setValue('')
     this.precompila()
   }
 

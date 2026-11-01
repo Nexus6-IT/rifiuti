@@ -180,6 +180,19 @@ const TUTTI = [
   'codiceDestinatario',
   'riferimentoAmministrazione',
   'periodi',
+  'contrattoPrincipaleId',
+  'codiceCig',
+  'codiceCup',
+  'idDocumentoPa',
+  'escludiDichiarazioneIntento',
+  'sogliaDal',
+  'sogliaImporto',
+  'sogliaIvaEsclusa',
+  'rinnovoAutomatico',
+  'codiceRinnovo',
+  'incrementoIstat',
+  'commessa',
+  'annotazioni',
 ] as const
 
 const contratto = (over: Partial<ContrattoCliente> = {}): ContrattoCliente =>
@@ -212,6 +225,21 @@ const contratto = (over: Partial<ContrattoCliente> = {}): ContrattoCliente =>
     codiceDestinatario: 'ABCDEFG',
     riferimentoAmministrazione: null,
     periodi: PERIODI,
+    codiceCig: null,
+    codiceCup: null,
+    idDocumentoPa: null,
+    escludiDichiarazioneIntento: false,
+    sogliaDal: null,
+    sogliaImporto: null,
+    sogliaIvaEsclusa: false,
+    rinnovoAutomatico: false,
+    codiceRinnovo: null,
+    incrementoIstat: false,
+    commessa: null,
+    annotazioni: [],
+    contrattoPrincipale: null,
+    allegati: 0,
+    allegatiPdf: [],
     cliente: {
       id: 'cl1',
       ragioneSociale: 'Verdi Servizi S.r.l.',
@@ -239,7 +267,8 @@ const contratto = (over: Partial<ContrattoCliente> = {}): ContrattoCliente =>
 
 describe('ContrattoClienteDialogComponent', () => {
   let fixture: ComponentFixture<ContrattoClienteDialogComponent>
-  let contratti: Record<'get' | 'crea' | 'modifica' | 'prossimoNumero', jasmine.Spy>
+  let contratti: Record<'get' | 'crea' | 'modifica' | 'prossimoNumero' | 'list', jasmine.Spy>
+  let allegatiRotta: Record<'elenco', jasmine.Spy>
   let clientiRuolo: { list: jasmine.Spy; get: jasmine.Spy }
   let agenti: { list: jasmine.Spy }
   let codifiche: { list: jasmine.Spy }
@@ -295,7 +324,9 @@ describe('ContrattoClienteDialogComponent', () => {
       crea: jasmine.createSpy('crea'),
       modifica: jasmine.createSpy('modifica'),
       prossimoNumero: jasmine.createSpy('prossimoNumero').and.returnValue(of('CC-2026-007')),
+      list: jasmine.createSpy('listContratti').and.returnValue(of({ elementi: [], totale: 0 })),
     }
+    allegatiRotta = { elenco: jasmine.createSpy('elenco').and.returnValue(of([])) }
     clientiRuolo = {
       list: jasmine
         .createSpy('listClienti')
@@ -337,7 +368,7 @@ describe('ContrattoClienteDialogComponent', () => {
         MessageService,
         {
           provide: ClientiService,
-          useValue: { contratti, clienti: clientiRuolo, agenti },
+          useValue: { contratti, clienti: clientiRuolo, agenti, allegati: allegatiRotta },
         },
         { provide: TabelleFatturazioneService, useValue: tab },
         { provide: RegistryService, useValue: registry },
@@ -1112,6 +1143,350 @@ describe('ContrattoClienteDialogComponent', () => {
       fixture.componentInstance.chiudi()
       expect(form().controls.descrizione.value).toBe('')
       expect(form().controls.periodi.value).toEqual([])
+    })
+  })
+
+  describe('pubblica amministrazione', () => {
+    const modificato = () => contratti.modifica.calls.mostRecent().args[1]
+    async function salvaModifica() {
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+    }
+
+    it('CIG o CUP valorizzati: il documento PA diventa obbligatorio (indicatore), la regola resta al backend', async () => {
+      await apri(contratto())
+      expect(q('contratto-dlg-doc-pa-obbligatorio')).toBeNull()
+      scrivi('contratto-dlg-cig', 'abcde12345')
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-doc-pa-obbligatorio')).not.toBeNull()
+      scrivi('contratto-dlg-doc-pa', 'ORD-7')
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-doc-pa-obbligatorio')).toBeNull()
+      // il frontend non blocca il salvataggio: la regola è del backend
+      scrivi('contratto-dlg-doc-pa', '')
+      await stabilizza(fixture)
+      expect(fixture.componentInstance.puoSalvare()).toBeTrue()
+    })
+
+    it("anche il solo CUP fa comparire l'indicatore", async () => {
+      await apri(contratto())
+      scrivi('contratto-dlg-cup', 'ABCDEFGHIJKLMNO')
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-doc-pa-obbligatorio')).not.toBeNull()
+    })
+
+    it('in modifica manda CIG maiuscolo e svuotato come null', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apriCon(contratto({ codiceCup: 'ABCDEFGHIJKLMNO', idDocumentoPa: 'X' }))
+      scrivi('contratto-dlg-cig', ' abcde12345 ')
+      scrivi('contratto-dlg-cup', '')
+      await stabilizza(fixture)
+      await salvaModifica()
+      expect(modificato()).toEqual({ codiceCig: 'ABCDE12345', codiceCup: null, versione: 3 })
+    })
+
+    it('"Escludi dichiarazione d\'intento" si spunta e parte come booleano', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apri(contratto())
+      q<HTMLInputElement>('contratto-dlg-escludi-intento')!.click()
+      await stabilizza(fixture)
+      await salvaModifica()
+      expect(modificato()).toEqual({ escludiDichiarazioneIntento: true, versione: 3 })
+    })
+
+    it('codice destinatario e riferimento amministrazione stanno in questa sezione', async () => {
+      await apri(contratto())
+      const sezione = fixture.debugElement.query(e => e.name === 'app-sezione-pa').nativeElement
+      expect(sezione.querySelector('[data-testid="contratto-dlg-codice-dest"]')).not.toBeNull()
+      expect(sezione.querySelector('[data-testid="contratto-dlg-rif-amm"]')).not.toBeNull()
+    })
+
+    it('R41: senza un codice vero il riferimento si mostra vuoto ("non usato") e non parte', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apriCon(
+        contratto({ codiceDestinatario: 'ABCDEFG', riferimentoAmministrazione: 'RIF1' })
+      )
+      expect(valore('contratto-dlg-rif-amm')).toBe('RIF1')
+      scrivi('contratto-dlg-codice-dest', '0000000')
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-rif-amm')).toBeNull()
+      expect(q('contratto-dlg-rif-amm-non-usato')).not.toBeNull()
+      await salvaModifica()
+      expect(modificato()).toEqual({
+        codiceDestinatario: '0000000',
+        riferimentoAmministrazione: null,
+        versione: 3,
+      })
+    })
+  })
+
+  describe('rinnovo e soglia', () => {
+    const modificato = () => contratti.modifica.calls.mostRecent().args[1]
+    const casella = (id: string) => q<HTMLInputElement>(id)!
+    const seleziona = (id: string, v: string) => scegli(id, v)
+
+    it('codice rinnovo S spunta il rinnovo automatico, N lo toglie (Q8: O non esiste)', async () => {
+      await apri(contratto())
+      expect(
+        Array.from(q<HTMLSelectElement>('contratto-dlg-codice-rinnovo')!.options).map(o => o.value)
+      ).toEqual(['', 'S', 'N'])
+      seleziona('contratto-dlg-codice-rinnovo', 'S')
+      await stabilizza(fixture)
+      expect(casella('contratto-dlg-rinnovo-auto').checked).toBeTrue()
+      seleziona('contratto-dlg-codice-rinnovo', 'N')
+      await stabilizza(fixture)
+      expect(casella('contratto-dlg-rinnovo-auto').checked).toBeFalse()
+    })
+
+    it('vuoto non tocca il rinnovo automatico', async () => {
+      await apriCon(
+        contratto({ rinnovoAutomatico: true, codiceRinnovo: 'S', dataFine: '2026-12-31' })
+      )
+      seleziona('contratto-dlg-codice-rinnovo', '')
+      await stabilizza(fixture)
+      expect(casella('contratto-dlg-rinnovo-auto').checked).toBeTrue()
+    })
+
+    it('rinnovo automatico senza data di fine: indicatore', async () => {
+      await apriCon(contratto({ dataFine: null }))
+      expect(q('contratto-dlg-rinnovo-senza-fine')).toBeNull()
+      casella('contratto-dlg-rinnovo-auto').click()
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-rinnovo-senza-fine')).not.toBeNull()
+      scrivi('contratto-dlg-data-fine', '2026-12-31')
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-rinnovo-senza-fine')).toBeNull()
+    })
+
+    it('IVA esclusa è disabilitata senza soglia', async () => {
+      await apri(contratto())
+      expect(casella('contratto-dlg-soglia-iva').disabled).toBeTrue()
+      scrivi('contratto-dlg-soglia', '1000')
+      await stabilizza(fixture)
+      expect(casella('contratto-dlg-soglia-iva').disabled).toBeFalse()
+      scrivi('contratto-dlg-soglia', '')
+      await stabilizza(fixture)
+      expect(casella('contratto-dlg-soglia-iva').disabled).toBeTrue()
+    })
+
+    it('la soglia parte come stringa (virgola -> punto), mai come numero', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apri(contratto())
+      scrivi('contratto-dlg-soglia', '1500,50')
+      scrivi('contratto-dlg-soglia-dal', '2026-02-01')
+      casella('contratto-dlg-istat').click()
+      await stabilizza(fixture)
+      casella('contratto-dlg-soglia-iva').click()
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(modificato()).toEqual({
+        sogliaImporto: '1500.50',
+        sogliaDal: '2026-02-01',
+        sogliaIvaEsclusa: true,
+        incrementoIstat: true,
+        versione: 3,
+      })
+      expect(typeof modificato().sogliaImporto).toBe('string')
+    })
+
+    it('una soglia svuotata parte come null e porta con sé la casella IVA esclusa', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apriCon(
+        contratto({ sogliaImporto: '900.00', sogliaIvaEsclusa: true, sogliaDal: '2026-01-01' })
+      )
+      scrivi('contratto-dlg-soglia', '')
+      scrivi('contratto-dlg-soglia-dal', '')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(modificato()).toEqual({
+        sogliaImporto: null,
+        sogliaDal: null,
+        sogliaIvaEsclusa: false,
+        versione: 3,
+      })
+    })
+
+    it('un valore uguale con altri zeri non è una modifica (900 = 900.00)', async () => {
+      await apriCon(contratto({ sogliaImporto: '900.00' }))
+      scrivi('contratto-dlg-soglia', '900')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(contratti.modifica).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('altro: contratto principale, commessa, annotazioni', () => {
+    it('annotazioni: tre campi da 45 caratteri', async () => {
+      await apri(contratto())
+      for (const n of [1, 2, 3])
+        expect(q<HTMLInputElement>(`contratto-dlg-annotazione-${n}`)!.maxLength).toBe(45)
+      expect(q('contratto-dlg-annotazione-4')).toBeNull()
+    })
+
+    it('commessa: al massimo 12 caratteri', async () => {
+      await apri(contratto())
+      expect(q<HTMLInputElement>('contratto-dlg-commessa')!.maxLength).toBe(12)
+    })
+
+    it('le annotazioni partono tagliate e senza quelle vuote; svuotarle manda un elenco vuoto', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apriCon(contratto({ annotazioni: ['uno', 'due'], commessa: 'C-1' }))
+      expect(valore('contratto-dlg-annotazione-1')).toBe('uno')
+      expect(valore('contratto-dlg-annotazione-2')).toBe('due')
+      scrivi('contratto-dlg-annotazione-1', '  nuova  ')
+      scrivi('contratto-dlg-annotazione-3', 'terza')
+      scrivi('contratto-dlg-commessa', '')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(contratti.modifica.calls.mostRecent().args[1]).toEqual({
+        annotazioni: ['nuova', 'due', 'terza'],
+        commessa: null,
+        versione: 3,
+      })
+    })
+
+    it('contratto principale: elenca solo i contratti ammessi del cliente; svuotabile', async () => {
+      contratti.list.and.returnValue(
+        of({
+          elementi: [
+            {
+              id: 'ct1',
+              numero: 'CC-1',
+              descrizione: 'sé',
+              stato: 'ATTIVO',
+              contrattoPrincipale: null,
+            },
+            {
+              id: 'ct2',
+              numero: 'CC-2',
+              descrizione: 'ok',
+              stato: 'ATTIVO',
+              contrattoPrincipale: null,
+            },
+            {
+              id: 'ct3',
+              numero: 'CC-3',
+              descrizione: 'ann',
+              stato: 'ANNULLATO',
+              contrattoPrincipale: null,
+            },
+            {
+              id: 'ct4',
+              numero: 'CC-4',
+              descrizione: 'all',
+              stato: 'ATTIVO',
+              contrattoPrincipale: { id: 'ct2', numero: 'CC-2' },
+            },
+          ],
+          totale: 4,
+        })
+      )
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apriCon(
+        contratto({
+          contrattoPrincipaleId: 'ct2',
+          contrattoPrincipale: { id: 'ct2', numero: 'CC-2' },
+        })
+      )
+      expect(contratti.list).toHaveBeenCalledWith({ clienteId: 'cl1', dimensione: 100 })
+      const sel = q<HTMLSelectElement>('contratto-dlg-principale')!
+      expect(Array.from(sel.options).map(o => o.value)).toEqual(['', 'ct2'])
+      expect(sel.value).toBe('ct2')
+      scegli('contratto-dlg-principale', '')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(contratti.modifica.calls.mostRecent().args[1]).toEqual({
+        contrattoPrincipaleId: null,
+        versione: 3,
+      })
+    })
+
+    it('il contratto con allegati non mostra il campo: badge "Ha N contratti allegati"', async () => {
+      await apriCon(contratto({ allegati: 2 }))
+      expect(q('contratto-dlg-principale')).toBeNull()
+      expect(q('contratto-dlg-allegati-badge')!.textContent).toContain('Ha 2 contratti allegati')
+    })
+
+    it('con un solo contratto allegato il badge è al singolare', async () => {
+      await apriCon(contratto({ allegati: 1 }))
+      expect(q('contratto-dlg-allegati-badge')!.textContent).toContain('Ha 1 contratto allegato')
+    })
+
+    it('cambiando cliente il principale scelto (di un altro cliente) si toglie', async () => {
+      await apri()
+      form().controls.contrattoPrincipaleId.setValue('ct2')
+      await scegliCliente('contratto-dlg-cliente', BIANCHI)
+      expect(form().controls.contrattoPrincipaleId.value).toBe('')
+    })
+
+    it('nuovo contratto: i campi nuovi partono solo se valorizzati (niente falsi né elenchi vuoti)', async () => {
+      contratti.crea.and.returnValue(of(contratto()))
+      await apri()
+      await scegliCliente('contratto-dlg-cliente', VERDI)
+      scrivi('contratto-dlg-descrizione', 'Servizio')
+      scrivi('contratto-dlg-data-inizio', '2026-03-01')
+      scrivi('contratto-dlg-commessa', 'C-9')
+      scrivi('contratto-dlg-annotazione-2', 'nota')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(contratti.crea).toHaveBeenCalledOnceWith({
+        numero: 'CC-2026-007',
+        descrizione: 'Servizio',
+        clienteId: 'cl1',
+        dataInizio: '2026-03-01',
+        commessa: 'C-9',
+        annotazioni: ['nota'],
+      })
+    })
+  })
+
+  describe('allegati PDF', () => {
+    it('nuovo contratto: la sezione dice di salvare prima', async () => {
+      await apri()
+      expect(q('allegati-salva-prima')!.textContent).toContain(
+        'Salva il contratto per allegare i PDF'
+      )
+    })
+
+    it('contratto salvato: la sezione riceve il suo id (mai mostrato)', async () => {
+      await apri(contratto())
+      const comp = fixture.debugElement.query(
+        e => e.name === 'app-allegati-contratto'
+      ).componentInstance
+      expect(comp.contrattoId).toBe('ct1')
+      expect(comp.soloLettura).toBeFalse()
+      expect(allegatiRotta.elenco).toHaveBeenCalledWith('ct1')
+    })
+
+    it('VIEWER: sezione in sola lettura', async () => {
+      ruolo('VIEWER')
+      await apri(contratto())
+      const comp = fixture.debugElement.query(
+        e => e.name === 'app-allegati-contratto'
+      ).componentInstance
+      expect(comp.soloLettura).toBeTrue()
+      expect(q('contratto-dlg-principale')!.hasAttribute('disabled')).toBeTrue()
+      expect(q<HTMLInputElement>('contratto-dlg-commessa')!.disabled).toBeTrue()
+      expect(q<HTMLInputElement>('contratto-dlg-cig')!.disabled).toBeTrue()
+      expect(q<HTMLInputElement>('contratto-dlg-soglia')!.disabled).toBeTrue()
+      expect(q<HTMLInputElement>('contratto-dlg-rinnovo-auto')!.disabled).toBeTrue()
+    })
+
+    it('Esc con la conferma di rimozione aperta non chiude il dialog del contratto', async () => {
+      allegatiRotta.elenco.and.returnValue(
+        of([{ id: 'al1', posizione: 1, nomeFile: 'a.pdf', dimensioneByte: 10, caricatoIl: 'x' }])
+      )
+      await apri(contratto())
+      bottone('allegato-rimuovi-1')!.click()
+      await stabilizza(fixture)
+      fixture.componentInstance.alCambioVisibilita(false)
+      expect(visibilita).not.toContain(false)
     })
   })
 

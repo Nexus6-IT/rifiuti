@@ -3,14 +3,17 @@ import {
   ContrattoCliente,
   EsigibilitaIva,
   ModificaContrattoCliente,
+  CodiceRinnovo,
   NuovoContrattoCliente,
   PeriodoFatturazione,
 } from '../clienti/clienti.model'
 
+/** Le tre annotazioni libere del contratto (E32), ciascuna fino a 45 caratteri. */
+export const NUMERO_ANNOTAZIONI = 3
+
 /**
- * Form del contratto cliente. Il Task 26 aggiunge qui i controlli delle altre sezioni (CIG e
- * CUP, soglia, rinnovo, annotazioni…) e le loro righe in `valoriDaContratto`, `differenze` e
- * `datiNuovo`.
+ * Form del contratto cliente. Chi aggiunge un controllo deve aggiungerlo anche in `nuovi`,
+ * `vecchi` e `valoriDaContratto` (altrimenti non compila).
  */
 export function creaFormContratto() {
   const testo = () => new FormControl('', { nonNullable: true })
@@ -39,7 +42,28 @@ export function creaFormContratto() {
     codiceDestinatario: testo(),
     riferimentoAmministrazione: testo(),
     periodi: new FormControl<PeriodoFatturazione[]>([], { nonNullable: true }),
+    contrattoPrincipaleId: testo(),
+    codiceCig: testo(),
+    codiceCup: testo(),
+    idDocumentoPa: testo(),
+    escludiDichiarazioneIntento: new FormControl(false, { nonNullable: true }),
+    sogliaDal: testo(),
+    sogliaImporto: testo(),
+    sogliaIvaEsclusa: new FormControl(false, { nonNullable: true }),
+    rinnovoAutomatico: new FormControl(false, { nonNullable: true }),
+    codiceRinnovo: new FormControl<CodiceRinnovo | ''>('', { nonNullable: true }),
+    incrementoIstat: new FormControl(false, { nonNullable: true }),
+    commessa: testo(),
+    annotazioni: new FormControl<string[]>(annotazioniVuote(), { nonNullable: true }),
   })
+}
+
+const annotazioniVuote = (): string[] => Array.from({ length: NUMERO_ANNOTAZIONI }, () => '')
+
+/** Vero se il codice destinatario è un codice vero (non vuoto e non `0000000`, D3). */
+export const codiceDestinatarioVero = (codice: string | null): boolean => {
+  const c = (codice ?? '').trim().toUpperCase()
+  return c !== '' && c !== '0000000'
 }
 
 export type FormContratto = ReturnType<typeof creaFormContratto>
@@ -91,6 +115,18 @@ const stessiPeriodi = (a: PeriodoFatturazione[], b: PeriodoFatturazione[]): bool
       p.meseFine === b[i].meseFine
   )
 
+const importo = (v: string | null): string | null => {
+  const t = (v ?? '').trim().replace(',', '.')
+  return t === '' ? null : t
+}
+
+/** Annotazioni come le vede il backend: tagliate e senza quelle vuote. */
+const annotazioniDi = (v: readonly string[] | null | undefined): string[] =>
+  (v ?? []).map(a => a.trim()).filter(a => a !== '')
+
+const stessiTesti = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((x, i) => x === b[i])
+
 /** Valori del form per un contratto letto dal server (null = campo vuoto). */
 export function valoriDaContratto(c: ContrattoCliente): ValoriContratto {
   return {
@@ -118,6 +154,19 @@ export function valoriDaContratto(c: ContrattoCliente): ValoriContratto {
     codiceDestinatario: c.codiceDestinatario ?? '',
     riferimentoAmministrazione: c.riferimentoAmministrazione ?? '',
     periodi: c.periodi,
+    contrattoPrincipaleId: c.contrattoPrincipaleId ?? '',
+    codiceCig: c.codiceCig ?? '',
+    codiceCup: c.codiceCup ?? '',
+    idDocumentoPa: c.idDocumentoPa ?? '',
+    escludiDichiarazioneIntento: !!c.escludiDichiarazioneIntento,
+    sogliaDal: giorno(c.sogliaDal ?? null),
+    sogliaImporto: c.sogliaImporto ?? '',
+    sogliaIvaEsclusa: !!c.sogliaIvaEsclusa,
+    rinnovoAutomatico: !!c.rinnovoAutomatico,
+    codiceRinnovo: c.codiceRinnovo ?? '',
+    incrementoIstat: !!c.incrementoIstat,
+    commessa: c.commessa ?? '',
+    annotazioni: [...(c.annotazioni ?? []), ...annotazioniVuote()].slice(0, NUMERO_ANNOTAZIONI),
   }
 }
 
@@ -155,8 +204,25 @@ function nuovi(v: ValoriContratto): Record<CampoForm, unknown> {
     agenteId: id(v.agenteId),
     testoFatturazioneId: id(v.testoFatturazioneId),
     codiceDestinatario: testo(v.codiceDestinatario)?.toUpperCase() ?? null,
-    riferimentoAmministrazione: testo(v.riferimentoAmministrazione),
+    // Il riferimento si indica solo con un codice vero (R41): altrimenti non parte.
+    riferimentoAmministrazione: codiceDestinatarioVero(v.codiceDestinatario)
+      ? testo(v.riferimentoAmministrazione)
+      : null,
     periodi: v.periodi,
+    contrattoPrincipaleId: id(v.contrattoPrincipaleId),
+    codiceCig: testo(v.codiceCig)?.toUpperCase() ?? null,
+    codiceCup: testo(v.codiceCup)?.toUpperCase() ?? null,
+    idDocumentoPa: testo(v.idDocumentoPa),
+    escludiDichiarazioneIntento: v.escludiDichiarazioneIntento,
+    sogliaDal: data(v.sogliaDal),
+    sogliaImporto: importo(v.sogliaImporto),
+    // Senza soglia la casella non ha senso (D27): il backend la normalizza a false.
+    sogliaIvaEsclusa: importo(v.sogliaImporto) !== null && v.sogliaIvaEsclusa,
+    rinnovoAutomatico: v.rinnovoAutomatico,
+    codiceRinnovo: v.codiceRinnovo || null,
+    incrementoIstat: v.incrementoIstat,
+    commessa: testo(v.commessa),
+    annotazioni: annotazioniDi(v.annotazioni),
   }
 }
 
@@ -187,6 +253,19 @@ function vecchi(b: ContrattoCliente): Record<CampoForm, unknown> {
     codiceDestinatario: testo(b.codiceDestinatario),
     riferimentoAmministrazione: testo(b.riferimentoAmministrazione),
     periodi: b.periodi ?? [],
+    contrattoPrincipaleId: b.contrattoPrincipaleId ?? null,
+    codiceCig: testo(b.codiceCig ?? null)?.toUpperCase() ?? null,
+    codiceCup: testo(b.codiceCup ?? null)?.toUpperCase() ?? null,
+    idDocumentoPa: testo(b.idDocumentoPa ?? null),
+    escludiDichiarazioneIntento: !!b.escludiDichiarazioneIntento,
+    sogliaDal: data(b.sogliaDal ?? null),
+    sogliaImporto: importo(b.sogliaImporto ?? null),
+    sogliaIvaEsclusa: !!b.sogliaIvaEsclusa,
+    rinnovoAutomatico: !!b.rinnovoAutomatico,
+    codiceRinnovo: b.codiceRinnovo ?? null,
+    incrementoIstat: !!b.incrementoIstat,
+    commessa: testo(b.commessa ?? null),
+    annotazioni: annotazioniDi(b.annotazioni),
   }
 }
 
@@ -199,7 +278,8 @@ function confronti(v: ValoriContratto, b: ContrattoCliente): Confronto[] {
 function uguali(campo: CampoForm, nuovo: unknown, vecchio: unknown): boolean {
   if (campo === 'periodi')
     return stessiPeriodi(nuovo as PeriodoFatturazione[], vecchio as PeriodoFatturazione[])
-  if (campo === 'ritenutaPercentuale')
+  if (campo === 'annotazioni') return stessiTesti(nuovo as string[], vecchio as string[])
+  if (campo === 'ritenutaPercentuale' || campo === 'sogliaImporto')
     return stessoNumero(nuovo as string | null, vecchio as string | null)
   return nuovo === vecchio
 }
@@ -239,7 +319,9 @@ export function datiNuovo(
     if (campo in dati || campo === 'periodi') continue
     const nuovo = n[campo]
     const dalCliente = CAMPI_DAL_CLIENTE.includes(campo)
-    const valorizzato = nuovo !== null && nuovo !== ''
+    // Alla creazione un falso o un elenco vuoto è il valore di partenza: non si invia.
+    const valorizzato =
+      nuovo !== null && nuovo !== '' && nuovo !== false && !(Array.isArray(nuovo) && !nuovo.length)
     if (dalCliente ? toccati.has(campo) : valorizzato) dati[campo] = nuovo
   }
   if (v.periodi.length > 0) dati['periodi'] = v.periodi
