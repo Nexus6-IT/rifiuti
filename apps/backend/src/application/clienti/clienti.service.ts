@@ -466,7 +466,8 @@ export class ClientiService {
   }
 
   /**
-   * Per il Task 16: stato e predefiniti dei clienti scelti, nella transazione del chiamante.
+   * Per il Task 16: stato e predefiniti dei clienti scelti, nella transazione del chiamante, con
+   * `FOR SHARE` (R24, R40).
    * Un id assente dalla mappa non esiste (o e' di un'altra azienda).
    */
   async attiviPerId(
@@ -483,11 +484,29 @@ export class ClientiService {
     }
     // i predefiniti di D4 hanno gli stessi nomi delle colonne del cliente
     for (const c of CAMPI_EREDITATI_DAL_CLIENTE) select[c] = true
+    // R24: i clienti scelti restano bloccati fino al commit del chiamante, cosi' una disattivazione
+    // concorrente aspetta invece di lasciare un contratto nuovo su un cliente disattivato. Ordinati
+    // per id: due contratti che scelgono gli stessi clienti non si bloccano a vicenda.
+    const uuid = [...new Set(ids)].filter(id =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    )
+    if (uuid.length === 0) return new Map()
+    await tx.$queryRaw`SELECT id FROM "clienti"
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${uuid}::uuid[]) ORDER BY id FOR SHARE`
     const righe = await tx.cliente.findMany({
-      where: { tenantId, id: { in: ids } },
+      where: { tenantId, id: { in: uuid } },
       select: select as Prisma.ClienteSelect,
     })
-    return new Map((righe as unknown as ClienteEreditabile[]).map(r => [r.id, r]))
+    return new Map(
+      (righe as unknown as RigaEreditabile[]).map(r => [
+        r.id,
+        {
+          ...r,
+          ritenutaPercentuale:
+            r.ritenutaPercentuale == null ? null : r.ritenutaPercentuale.toFixed(2),
+        },
+      ])
+    )
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -655,7 +674,12 @@ export interface ClienteEreditabile {
   speseIncassoId: string | null
   bolloId: string | null
   esigibilitaIva: 'IMMEDIATA' | 'DIFFERITA' | 'SCISSIONE'
-  ritenutaPercentuale: Prisma.Decimal | null
+  /** Stringa decimale con due cifre (R40), mai un `Decimal`. */
+  ritenutaPercentuale: string | null
   codiceDestinatario: string | null
   riferimentoAmministrazione: string | null
+}
+
+type RigaEreditabile = Omit<ClienteEreditabile, 'ritenutaPercentuale'> & {
+  ritenutaPercentuale: Prisma.Decimal | null
 }

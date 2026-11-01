@@ -607,7 +607,11 @@ export function destinatarioEffettivo(
     riferimentoAmministrazione: string | null
   }
 ): { codiceDestinatario: string; riferimentoAmministrazione: string | null } {
-  if (contratto.codiceDestinatario !== null) {
+  // `0000000` vuol dire "nessun codice" (R35): come l'assenza, ripiega sul cliente di fatturazione
+  if (
+    contratto.codiceDestinatario !== null &&
+    contratto.codiceDestinatario !== CODICE_NESSUN_DESTINATARIO
+  ) {
     return {
       codiceDestinatario: contratto.codiceDestinatario,
       riferimentoAmministrazione: contratto.riferimentoAmministrazione,

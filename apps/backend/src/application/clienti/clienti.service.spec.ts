@@ -118,6 +118,7 @@ describe('ClientiService (Prisma finto)', () => {
       },
       sedeDitta: { findFirst: jest.fn().mockResolvedValue({ id: S2 }) },
       contrattoCliente: { groupBy: gruppo() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       activityLog: { create: jest.fn().mockResolvedValue({}) },
     }
     prisma = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
@@ -632,6 +633,33 @@ describe('ClientiService (Prisma finto)', () => {
         riferimentoAmministrazione: true,
       })
       expect(m.get(C)).toMatchObject({ attivo: false, agenteId: R2 })
+    })
+
+    it('blocca le righe con SELECT ... FOR SHARE prima di leggerle (R24, R40)', async () => {
+      const ordine: string[] = []
+      tx.$queryRaw.mockImplementation(async (strings: readonly string[]) => {
+        ordine.push('lock')
+        const testo = strings.join('?')
+        expect(testo).toContain('FOR SHARE')
+        expect(testo).toContain('"clienti"')
+        return []
+      })
+      tx.cliente.findMany.mockImplementation(async () => {
+        ordine.push('lettura')
+        return []
+      })
+      await TenantContext.run({ tenantId: T }, () => service.attiviPerId(tx, [C]))
+      expect(ordine).toEqual(['lock', 'lettura'])
+    })
+
+    it('la ritenuta torna come stringa con due decimali (R40)', async () => {
+      tx.cliente.findMany.mockResolvedValue([
+        { id: C, dittaId: D, attivo: true, ritenutaPercentuale: new Prisma.Decimal('4.5') },
+        { id: R1, dittaId: D, attivo: true, ritenutaPercentuale: null },
+      ])
+      const m = await TenantContext.run({ tenantId: T }, () => service.attiviPerId(tx, [C, R1]))
+      expect(m.get(C)?.ritenutaPercentuale).toBe('4.50')
+      expect(m.get(R1)?.ritenutaPercentuale).toBeNull()
     })
   })
 })

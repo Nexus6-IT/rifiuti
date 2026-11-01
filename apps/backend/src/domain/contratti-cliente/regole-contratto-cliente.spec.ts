@@ -603,6 +603,20 @@ describe('valori effettivi (D4)', () => {
       destinatarioEffettivo(vuoto, { codiceDestinatario: null, riferimentoAmministrazione: 'R2' })
     ).toEqual({ codiceDestinatario: '0000000', riferimentoAmministrazione: 'R2' })
   })
+  it('destinatarioEffettivo: 0000000 sul contratto vale "nessun codice" e ripiega sul cliente di fatturazione (R35)', () => {
+    expect(
+      destinatarioEffettivo(
+        { codiceDestinatario: '0000000', riferimentoAmministrazione: null },
+        { codiceDestinatario: 'ZZZZZZZ', riferimentoAmministrazione: 'R2' }
+      )
+    ).toEqual({ codiceDestinatario: 'ZZZZZZZ', riferimentoAmministrazione: 'R2' })
+    expect(
+      destinatarioEffettivo(
+        { codiceDestinatario: '0000000', riferimentoAmministrazione: null },
+        { codiceDestinatario: '0000000', riferimentoAmministrazione: null }
+      )
+    ).toEqual({ codiceDestinatario: '0000000', riferimentoAmministrazione: null })
+  })
   it('contoCorrenteEffettivo', () => {
     expect(contoCorrenteEffettivo({ contoCorrenteId: 'a' }, { contoCorrenteId: 'b' })).toBe('a')
     expect(contoCorrenteEffettivo({ contoCorrenteId: null }, { contoCorrenteId: 'b' })).toBe('b')
