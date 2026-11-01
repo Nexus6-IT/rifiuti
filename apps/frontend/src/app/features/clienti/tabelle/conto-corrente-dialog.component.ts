@@ -13,6 +13,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
+import { Subscription } from 'rxjs'
 import { ContoCorrente, ContoCorrenteInElenco } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { messaggioErrore } from './tabella-comune'
@@ -115,6 +116,7 @@ export class ContoCorrenteDialogComponent implements OnChanges {
   readonly caricamento = signal(false)
   /** Versione del record caricato (in modifica). */
   private versione = 0
+  private lettura?: Subscription
 
   readonly form = new FormGroup({
     codice: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -129,6 +131,7 @@ export class ContoCorrenteDialogComponent implements OnChanges {
   }
 
   private inizializza(): void {
+    this.lettura?.unsubscribe()
     this.form.reset()
     this.errore.set(null)
     this.inCorso.set(false)
@@ -136,7 +139,7 @@ export class ContoCorrenteDialogComponent implements OnChanges {
     this.versione = e?.versione ?? 0
     if (!e) return
     this.caricamento.set(true)
-    this.servizio.conti.get(e.id).subscribe({
+    this.lettura = this.servizio.conti.get(e.id).subscribe({
       next: d => {
         this.versione = d.versione
         this.form.reset({
@@ -184,6 +187,10 @@ export class ContoCorrenteDialogComponent implements OnChanges {
   }
 
   chiudi(): void {
+    // Niente IBAN intero nel componente nascosto, e nessuna lettura in volo.
+    this.lettura?.unsubscribe()
+    this.caricamento.set(false)
+    this.form.reset()
     this.visibleChange.emit(false)
   }
 }

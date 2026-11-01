@@ -145,7 +145,11 @@ export class CondizioniPagamentoComponent implements OnInit {
   cambiaStato(c: CondizionePagamento): void {
     this.servizio.condizioni.modifica(c.id, { attiva: !c.attiva, versione: c.versione }).subscribe({
       next: () => this.carica(),
-      error: err => this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.')),
+      error: err => {
+        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
+        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
+        this.carica()
+      },
     })
   }
 
@@ -158,7 +162,11 @@ export class CondizioniPagamentoComponent implements OnInit {
   eliminaConfermata(c: CondizionePagamento): void {
     this.servizio.condizioni.elimina(c.id, c.versione).subscribe({
       next: () => this.carica(),
-      error: err => this.toast.error(messaggioErrore(err, 'Impossibile eliminare la condizione.')),
+      error: err => {
+        this.toast.error(messaggioErrore(err, 'Impossibile eliminare la condizione.'))
+        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
+        this.carica()
+      },
     })
   }
 }

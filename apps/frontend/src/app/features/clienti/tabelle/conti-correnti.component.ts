@@ -138,7 +138,11 @@ export class ContiCorrentiComponent implements OnInit {
   cambiaStato(c: ContoCorrenteInElenco): void {
     this.servizio.conti.modifica(c.id, { attivo: !c.attivo, versione: c.versione }).subscribe({
       next: () => this.carica(),
-      error: err => this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.')),
+      error: err => {
+        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
+        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
+        this.carica()
+      },
     })
   }
 
@@ -151,7 +155,11 @@ export class ContiCorrentiComponent implements OnInit {
   eliminaConfermata(c: ContoCorrenteInElenco): void {
     this.servizio.conti.elimina(c.id, c.versione).subscribe({
       next: () => this.carica(),
-      error: err => this.toast.error(messaggioErrore(err, 'Impossibile eliminare il conto.')),
+      error: err => {
+        this.toast.error(messaggioErrore(err, 'Impossibile eliminare il conto.'))
+        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
+        this.carica()
+      },
     })
   }
 }

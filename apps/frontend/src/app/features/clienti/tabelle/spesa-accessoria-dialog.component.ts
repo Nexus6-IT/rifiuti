@@ -156,7 +156,7 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
     if (this.form.invalid || this.inCorso()) return
     const v = this.form.getRawValue()
     const dati = {
-      tipo: this.elemento?.tipo ?? this.tipo ?? v.tipo,
+      tipo: this.tipo ?? v.tipo,
       codice: v.codice.trim(),
       descrizione: v.descrizione.trim(),
       // Il backend vuole il punto; il resto della normalizzazione è suo.

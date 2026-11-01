@@ -28,3 +28,8 @@ export async function stabilizza(fixture: ComponentFixture<unknown>): Promise<vo
 }
 
 export const risposta = <T>(v: T) => of(v)
+
+/** Accetta la conferma di p-confirmDialog. */
+export function accettaConferma(): void {
+  document.body.querySelector<HTMLButtonElement>('.p-confirm-dialog-accept')!.click()
+}

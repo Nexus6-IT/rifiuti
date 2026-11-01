@@ -58,4 +58,29 @@ describe('SpesaAccessoriaDialogComponent', () => {
       importo: '2.50',
     })
   })
+
+  it('modifica senza tipo fissato: il tipo scelto viene mandato', async () => {
+    tabella.modifica.and.returnValue(of({ id: 's1' }))
+    fixture = TestBed.createComponent(SpesaAccessoriaDialogComponent)
+    fixture.componentRef.setInput('elemento', {
+      id: 's1',
+      versione: 2,
+      eliminabile: true,
+      tipo: 'INCASSO',
+      codice: 'I1',
+      descrizione: 'Incasso',
+      importo: '2.00',
+      attiva: true,
+    })
+    fixture.componentRef.setInput('visible', true)
+    await stabilizza(fixture)
+    fixture.componentInstance.form.controls.tipo.setValue('BOLLO')
+    await stabilizza(fixture)
+    bottone('spesa-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(tabella.modifica).toHaveBeenCalledWith(
+      's1',
+      jasmine.objectContaining({ tipo: 'BOLLO', versione: 2 })
+    )
+  })
 })

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { ContoCorrenteDialogComponent } from './conto-corrente-dialog.component'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ContoCorrente, ContoCorrenteInElenco } from '../clienti.model'
@@ -66,5 +66,29 @@ describe('ContoCorrenteDialogComponent', () => {
     await stabilizza(fixture)
     expect(q('conto-dlg-errore')!.textContent).toContain('Esiste già un conto')
     expect(tabella.crea).toHaveBeenCalledWith(jasmine.objectContaining({ iban: IBAN, bic: null }))
+  })
+
+  it('una lettura in ritardo del conto precedente non riempie il form', async () => {
+    const prima = new Subject<ContoCorrente>()
+    const seconda = new Subject<ContoCorrente>()
+    tabella.get.and.returnValues(prima, seconda)
+    await apri(inElenco)
+    fixture.componentRef.setInput('visible', false)
+    await stabilizza(fixture)
+    fixture.componentRef.setInput('elemento', { ...inElenco, id: 'k2', codice: 'XX' })
+    fixture.componentRef.setInput('visible', true)
+    await stabilizza(fixture)
+    prima.next({ ...inElenco, iban: IBAN })
+    seconda.next({ ...inElenco, id: 'k2', codice: 'XX', iban: 'IT00ALTRO' })
+    await stabilizza(fixture)
+    expect(q<HTMLInputElement>('conto-dlg-codice')!.value).toBe('XX')
+    expect(q<HTMLInputElement>('conto-dlg-iban')!.value).toBe('IT00ALTRO')
+  })
+
+  it('alla chiusura il form si svuota', async () => {
+    tabella.get.and.returnValue(of({ ...inElenco, iban: IBAN }))
+    await apri(inElenco)
+    fixture.componentInstance.chiudi()
+    expect(fixture.componentInstance.form.controls.iban.value).toBe('')
   })
 })

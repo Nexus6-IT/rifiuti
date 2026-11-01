@@ -6,7 +6,7 @@ import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { SpesaAccessoria } from '../clienti.model'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
-import { q, stabilizza, tabellaFinta } from './tabelle-test-utils'
+import { accettaConferma, q, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
 const spesa: SpesaAccessoria = {
   id: 's1',
@@ -67,5 +67,15 @@ describe('SpeseAccessorieComponent', () => {
     expect(q('spesa-modifica-B1')).toBeNull()
     expect(q('spesa-attiva-B1')).toBeNull()
     expect(q('spesa-elimina-B1')).toBeNull()
+  })
+
+  it('elimina: conferma e poi manda id e versione', async () => {
+    await apri()
+    tabella.elimina.and.returnValue(of(undefined))
+    fixture.componentInstance.elimina(spesa)
+    await stabilizza(fixture)
+    accettaConferma()
+    await stabilizza(fixture)
+    expect(tabella.elimina).toHaveBeenCalledWith('s1', 1)
   })
 })

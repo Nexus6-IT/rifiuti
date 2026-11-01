@@ -6,7 +6,7 @@ import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { CondizionePagamento } from '../clienti.model'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
-import { bottone, q, stabilizza, tabellaFinta } from './tabelle-test-utils'
+import { accettaConferma, bottone, q, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
 const condizione = (p: Partial<CondizionePagamento> = {}): CondizionePagamento => ({
   id: 'c1',
@@ -100,5 +100,23 @@ describe('CondizioniPagamentoComponent', () => {
     expect(q('cond-modifica-3060')).toBeNull()
     expect(q('cond-attiva-3060')).toBeNull()
     expect(q('cond-elimina-3060')).toBeNull()
+  })
+
+  it('elimina: conferma e poi manda id e versione', async () => {
+    await apri([condizione()])
+    tabella.elimina.and.returnValue(of(undefined))
+    fixture.componentInstance.elimina(condizione())
+    await stabilizza(fixture)
+    accettaConferma()
+    await stabilizza(fixture)
+    expect(tabella.elimina).toHaveBeenCalledWith('c1', 3)
+  })
+
+  it("dopo un errore in eliminazione ricarica l'elenco", async () => {
+    await apri([condizione()])
+    tabella.elimina.and.returnValue(throwError(() => ({ error: { message: 'Versione vecchia.' } })))
+    tabella.list.calls.reset()
+    fixture.componentInstance.eliminaConfermata(condizione())
+    expect(tabella.list).toHaveBeenCalledTimes(1)
   })
 })

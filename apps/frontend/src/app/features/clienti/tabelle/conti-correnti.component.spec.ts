@@ -6,7 +6,7 @@ import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ContoCorrenteInElenco } from '../clienti.model'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
-import { q, stabilizza, tabellaFinta } from './tabelle-test-utils'
+import { accettaConferma, q, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
 const conto: ContoCorrenteInElenco = {
   id: 'k1',
@@ -61,5 +61,15 @@ describe('ContiCorrentiComponent', () => {
     expect(q('conto-modifica-BP')).toBeNull()
     expect(q('conto-attiva-BP')).toBeNull()
     expect(q('conto-elimina-BP')).toBeNull()
+  })
+
+  it('elimina: conferma e poi manda id e versione', async () => {
+    await apri()
+    tabella.elimina.and.returnValue(of(undefined))
+    fixture.componentInstance.elimina(conto)
+    await stabilizza(fixture)
+    accettaConferma()
+    await stabilizza(fixture)
+    expect(tabella.elimina).toHaveBeenCalledWith('k1', 2)
   })
 })

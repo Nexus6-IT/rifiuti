@@ -168,7 +168,11 @@ export class SpeseAccessorieComponent implements OnInit {
   cambiaStato(s: SpesaAccessoria): void {
     this.servizio.spese.modifica(s.id, { attiva: !s.attiva, versione: s.versione }).subscribe({
       next: () => this.carica(),
-      error: err => this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.')),
+      error: err => {
+        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
+        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
+        this.carica()
+      },
     })
   }
 
@@ -181,7 +185,11 @@ export class SpeseAccessorieComponent implements OnInit {
   eliminaConfermata(s: SpesaAccessoria): void {
     this.servizio.spese.elimina(s.id, s.versione).subscribe({
       next: () => this.carica(),
-      error: err => this.toast.error(messaggioErrore(err, 'Impossibile eliminare la spesa.')),
+      error: err => {
+        this.toast.error(messaggioErrore(err, 'Impossibile eliminare la spesa.'))
+        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
+        this.carica()
+      },
     })
   }
 }
