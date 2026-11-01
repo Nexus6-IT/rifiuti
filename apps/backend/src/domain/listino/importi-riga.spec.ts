@@ -78,6 +78,13 @@ describe('scontoCascata (E9)', () => {
     expect(scontoCascata('100.00', null)).toBe('0.00')
   })
 
+  it('una formula non valida da un errore in italiano', () => {
+    const msg = 'Le percentuali a cascata sono al massimo tre (es. 10+5), ciascuna fino a 99,99.'
+    expect(() => scontoCascata('100.00', '10++5')).toThrow(msg)
+    expect(() => scontoCascata('100.00', '10,5')).toThrow(msg)
+    expect(() => provvigioneRiga({ lordo: '1.00', netto: '1.00' }, '100', 'LORDO')).toThrow(msg)
+  })
+
   it('senza errori da virgola mobile', () => {
     expect(scontoCascata('0.30', '10')).toBe('0.03')
   })
@@ -117,9 +124,11 @@ describe('provvigioneRiga (E9)', () => {
 })
 
 describe('quantitaDaMovimento (xqta)', () => {
-  it('peso netto: TON divide per 1000, KG resta', () => {
+  it('peso: TON divide per 1000, ogni altra unita lascia il peso com e (GR non convertito)', () => {
     expect(quantitaDaMovimento('PESO_NETTO', 'TON', { netto: '1500' })).toBe('1.5')
     expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '1500' })).toBe('1500')
+    expect(quantitaDaMovimento('PESO_NETTO', 'GR', { netto: '1500' })).toBe('1500')
+    expect(quantitaDaMovimento('PESO_NETTO', 'LT', { netto: '10' })).toBe('10')
   })
   it('peso lordo', () => {
     expect(quantitaDaMovimento('PESO_LORDO', 'TON', { lordo: '2000' })).toBe('2')
@@ -128,25 +137,37 @@ describe('quantitaDaMovimento (xqta)', () => {
     expect(quantitaDaMovimento('VOLUME', 'MC', { volume: '2500', umVolume: 'L' })).toBe('2.5')
     expect(quantitaDaMovimento('VOLUME', 'LT', { volume: '2.5', umVolume: 'M' })).toBe('2500')
     expect(quantitaDaMovimento('VOLUME', 'LT', { volume: '40', umVolume: 'L' })).toBe('40')
+    expect(quantitaDaMovimento('VOLUME', 'MC', { volume: '3', umVolume: 'M' })).toBe('3')
+  })
+  it('volume con unita diversa da LT/MC o senza unita del movimento: invariato', () => {
+    expect(quantitaDaMovimento('VOLUME', 'KG', { volume: '12', umVolume: 'L' })).toBe('12')
+    expect(quantitaDaMovimento('VOLUME', 'MC', { volume: '10' })).toBe('10')
   })
   it('UNO vale 1, ALTRO non ha quantita', () => {
     expect(quantitaDaMovimento('UNO', 'NR', {})).toBe('1')
     expect(quantitaDaMovimento('ALTRO', 'NR', {})).toBeNull()
   })
-  it('dato mancante o unita non supportata: null', () => {
+  it('dato mancante o non numerico: null', () => {
     expect(quantitaDaMovimento('PESO_NETTO', 'KG', {})).toBeNull()
-    expect(quantitaDaMovimento('PESO_NETTO', 'LT', { netto: '10' })).toBeNull()
-    expect(quantitaDaMovimento('VOLUME', 'MC', { volume: '10' })).toBeNull()
+    expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '' })).toBeNull()
+    expect(quantitaDaMovimento('VOLUME', 'MC', { volume: 'abc', umVolume: 'L' })).toBeNull()
   })
 })
 
 describe('oreDecimali (cvore)', () => {
-  it('converte h,mm in ore decimali', () => {
-    expect(oreDecimali('1,30')).toBe('1.5')
+  it('converte h,mm in ore decimali con almeno due decimali', () => {
+    expect(oreDecimali('1,30')).toBe('1.50')
     expect(oreDecimali('2,45')).toBe('2.75')
-    expect(oreDecimali('3')).toBe('3')
+    expect(oreDecimali('2')).toBe('2.00')
   })
-  it('rifiuta minuti oltre 59', () => {
-    expect(() => oreDecimali('1,75')).toThrow('I minuti vanno da 00 a 59.')
+  it('i minuti sono l intero dopo la virgola, senza riempimento e senza limite', () => {
+    expect(oreDecimali('1,5')).toBe('1.083333')
+    expect(oreDecimali('1,75')).toBe('2.25')
+  })
+  it('il punto vale come la virgola', () => {
+    expect(oreDecimali('1.30')).toBe('1.50')
+  })
+  it.each(['', 'abc', '1,', ',30', '1,2,3', '-1,30', '1;30'])('rifiuta %j', v => {
+    expect(() => oreDecimali(v)).toThrow('Le ore si scrivono come ore,minuti (es. 1,30).')
   })
 })

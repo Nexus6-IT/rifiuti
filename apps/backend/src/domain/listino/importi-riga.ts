@@ -35,6 +35,9 @@ export function prezzoCalcolato(v: string): string {
   return `${intero}.${senzaZeri.padEnd(2, '0')}`
 }
 
+export const MESSAGGIO_CASCATA =
+  'Le percentuali a cascata sono al massimo tre (es. 10+5), ciascuna fino a 99,99.'
+
 const TERMINE_CASCATA = /^\d{1,2}(\.\d{1,2})?$/
 
 /**
@@ -63,10 +66,12 @@ export function cascataValida(f: string | null): boolean {
 
 /**
  * Sconto a cascata: ogni percentuale si applica al residuo (non arrotondato) e solo la somma
- * finale e' arrotondata. Senza formula lo sconto e' zero.
+ * finale e' arrotondata. Senza formula lo sconto e' zero. La formula deve essere normalizzata
+ * (`normalizzaCascata`): se non e' valida (`cascataValida`) lancia un errore in italiano.
  */
 export function scontoCascata(importo: string, formula: string | null): string {
   if (formula === null || formula === '') return '0.00'
+  if (!cascataValida(formula)) throw new Error(MESSAGGIO_CASCATA)
   const base = D(importo)
   let residuo = base
   for (const termine of formula.split('+')) {
@@ -96,10 +101,24 @@ export function provvigioneRiga(
 
 const MILLE = new Prisma.Decimal(1000)
 
+/** Numero decimale non negativo valido, normalizzato; altrimenti `null` (dato mancante o illeggibile). */
+function leggiQuantita(v: string | undefined): Decimale | null {
+  if (v === undefined || !/^\d+(\.\d+)?$/.test(v.trim())) return null
+  return D(v.trim())
+}
+
 /**
- * Quantita' proposta da un movimento (porta di `xqta`). I pesi del movimento sono in kg e i
- * volumi in litri (`umVolume: 'L'`) o metri cubi (`'M'`). `null` se il dato manca, se l'unita'
- * non e' compatibile con la quantita' o se la quantita' e' `ALTRO`.
+ * Quantita' proposta da un movimento: porta fedele di `xqta` (FATAUTOMATICA.cs:16989). I pesi
+ * del movimento sono in kg, il volume in litri (`umVolume: 'L'`) o metri cubi (`'M'`).
+ * Come in WinWaste la conversione c'e' solo nei casi previsti e negli altri la quantita' passa
+ * invariata:
+ * - peso: diviso 1000 solo con `TON`; con `KG`, `GR` o qualsiasi altra unita' resta com'e'
+ *   (`GR` non e' convertito: ne' il peso in grammi ne' il caso `PESO_LORDO` + `GR` sono validati
+ *   qui, lo fa `validaRiga`, D10);
+ * - volume: diviso 1000 solo da litri a `MC`, moltiplicato per 1000 solo da m3 a `LT`; ogni altra
+ *   combinazione, anche senza `umVolume`, restituisce il volume invariato;
+ * - `UNO` vale "1"; `ALTRO` non ha quantita' (`null`).
+ * Unica differenza: un dato mancante o non numerico da' `null` invece di una stringa vuota.
  */
 export function quantitaDaMovimento(
   tipo: 'PESO_NETTO' | 'PESO_LORDO' | 'VOLUME' | 'UNO' | 'ALTRO',
@@ -113,34 +132,33 @@ export function quantitaDaMovimento(
       return null
     case 'PESO_NETTO':
     case 'PESO_LORDO': {
-      const kg = tipo === 'PESO_NETTO' ? m.netto : m.lordo
-      if (kg === undefined || kg === '') return null
-      if (um === 'KG') return D(kg).toFixed()
-      if (um === 'TON') return D(kg).div(MILLE).toFixed()
-      if (um === 'GR') return D(kg).times(MILLE).toFixed()
-      return null
+      const peso = leggiQuantita(tipo === 'PESO_NETTO' ? m.netto : m.lordo)
+      if (peso === null) return null
+      return (um === 'TON' ? peso.div(MILLE) : peso).toFixed()
     }
     case 'VOLUME': {
-      if (m.volume === undefined || m.volume === '' || m.umVolume === undefined) return null
-      const v = D(m.volume)
-      if (um === 'LT') return (m.umVolume === 'L' ? v : v.times(MILLE)).toFixed()
-      if (um === 'MC') return (m.umVolume === 'M' ? v : v.div(MILLE)).toFixed()
-      return null
+      const volume = leggiQuantita(m.volume)
+      if (volume === null) return null
+      if (m.umVolume === 'L' && um === 'MC') return volume.div(MILLE).toFixed()
+      if (m.umVolume === 'M' && um === 'LT') return volume.times(MILLE).toFixed()
+      return volume.toFixed()
     }
   }
 }
 
 /**
- * Ore "h,mm" -> ore decimali (`cvore`): "1,30" -> "1.5", "2,45" -> "2.75". I minuti sono due
- * cifre ("1,5" vale 1 ora e 50 minuti).
+ * Ore "h,mm" -> ore decimali: porta fedele di `cvore` (FATAUTOMATICA.cs:16965). Ore = intero
+ * prima della virgola, minuti = intero dopo la virgola, senza riempimento e senza limite
+ * ("1,5" = 1 ora e 5 minuti = 1.083333, "1,75" = 135 minuti = 2.25); risultato con almeno due
+ * e al piu' sei decimali (`####0.00####`). Unica differenza voluta: il punto vale come la
+ * virgola (il frontend manda il punto). Formato non valido -> errore.
  */
 export function oreDecimali(hmm: string): string {
-  const m = /^(\d+)(?:[,.](\d{1,2}))?$/.exec(hmm.trim())
+  const m = /^(\d+)(?:[,.](\d+))?$/.exec(hmm.trim())
   if (!m) throw new Error('Le ore si scrivono come ore,minuti (es. 1,30).')
-  const minuti = Number((m[2] ?? '0').padEnd(2, '0'))
-  if (minuti > 59) throw new Error('I minuti vanno da 00 a 59.')
-  return D(m[1])
-    .plus(D(String(minuti)).div(60))
-    .toDecimalPlaces(6, Prisma.Decimal.ROUND_HALF_UP)
-    .toFixed()
+  const minutiTotali = D(m[1])
+    .times(60)
+    .plus(D(m[2] ?? '0'))
+  const ore = minutiTotali.div(60).toDecimalPlaces(6, Prisma.Decimal.ROUND_HALF_UP)
+  return prezzoCalcolato(ore.toFixed())
 }
