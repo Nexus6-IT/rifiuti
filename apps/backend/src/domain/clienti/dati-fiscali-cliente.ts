@@ -11,7 +11,13 @@
  *
  * Nessun messaggio riporta il valore ricevuto (codice fiscale, IBAN, PEC sono dati personali).
  * Importi e percentuali sono stringhe decimali, mai `number`.
+ *
+ * Dalla 4.2a (D7, Q3) il cliente ha anche listino (1-6), provvigione predefinita a cascata e il
+ * suo tipo: predefiniti della riga, non del contratto (non sono in `CAMPI_EREDITATI_DAL_CLIENTE`).
+ * Le regole di cascata sono quelle di `domain/listino`, non duplicate.
  */
+import { TipoProvvigione } from '../listino/addebito'
+import { cascataValida, normalizzaCascata } from '../listino/importi-riga'
 import { validaCodiceTabella } from './codice-tabella'
 import { confrontaDecimali, decimaleValido, normalizzaDecimale } from './decimali'
 import { ibanValido, MESSAGGIO_IBAN_NON_VALIDO, normalizzaIban } from './iban'
@@ -33,6 +39,11 @@ export interface DatiFiscaliCliente {
   bolloId: string | null
   agenteId: string | null
   ritenutaPercentuale: string | null
+  /** Listino 1-6 del cliente (D7). */
+  listino: number | null
+  /** Provvigione a cascata (forma normalizzata, punto); va insieme al tipo. */
+  provvigionePredefinita: string | null
+  tipoProvvigionePredefinita: TipoProvvigione | null
   nome: string | null
   cognome: string | null
   note: string | null
@@ -54,6 +65,9 @@ export const ETICHETTE_CAMPI_CLIENTE: Readonly<Record<CampoCliente, string>> = {
   bolloId: 'Bollo',
   agenteId: 'Agente',
   ritenutaPercentuale: 'Ritenuta (%)',
+  listino: 'Listino',
+  provvigionePredefinita: 'Provvigione predefinita',
+  tipoProvvigionePredefinita: 'Tipo di provvigione predefinita',
   nome: 'Nome',
   cognome: 'Cognome',
   note: 'Note',
@@ -74,6 +88,12 @@ const MSG_RITENUTA = 'La percentuale di ritenuta deve essere maggiore di 0 e non
 const MSG_NOME_PRIVATO = 'Per un cliente persona fisica indica nome e cognome.'
 const MSG_NOME_NON_PRIVATO = 'Nome e cognome si indicano solo per un cliente persona fisica.'
 const MSG_NOME_LUNGO = 'Nome e cognome possono avere al massimo 60 caratteri.'
+const MSG_LISTINO = 'Il listino del cliente va da 1 a 6.'
+const MSG_PROVVIGIONE_SENZA_TIPO = 'Indica su cosa si calcola la provvigione del cliente.'
+const MSG_TIPO_SENZA_PROVVIGIONE = 'Il tipo di provvigione si indica solo con la provvigione.'
+const MSG_TIPO_NON_AMMESSO = 'Il tipo di provvigione del cliente non è ammesso (scontato o lordo).'
+const MSG_PROVVIGIONE_FORMATO =
+  'La provvigione predefinita si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.'
 const MSG_ESIGIBILITA = "L'esigibilità IVA scelta non è ammessa."
 
 const CODICE_NESSUN_DESTINATARIO = '0000000'
@@ -82,6 +102,17 @@ function testo(v: unknown): string | null {
   if (typeof v !== 'string') return null
   const t = v.trim()
   return t === '' ? null : t
+}
+
+/**
+ * Listino: intero o stringa di cifre. Un valore che non e' un intero (1.5, "abc") diventa 0, cosi'
+ * la validazione lo rifiuta invece di scambiarlo per "non indicato".
+ */
+function normalizzaListino(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isInteger(v) ? v : 0
+  const t = testo(v)
+  if (t === null) return null
+  return /^-?\d+$/.test(t) ? Number(t) : 0
 }
 
 export function normalizzaDatiFiscali(
@@ -103,6 +134,10 @@ export function normalizzaDatiFiscali(
     bolloId: testo(grezzo.bolloId),
     agenteId: testo(grezzo.agenteId),
     ritenutaPercentuale: normalizzaDecimale(grezzo.ritenutaPercentuale),
+    listino: normalizzaListino(grezzo.listino),
+    provvigionePredefinita: normalizzaCascata(grezzo.provvigionePredefinita),
+    tipoProvvigionePredefinita: (testo(grezzo.tipoProvvigionePredefinita)?.toUpperCase() ??
+      null) as TipoProvvigione | null,
     nome: testo(grezzo.nome),
     cognome: testo(grezzo.cognome),
     note: testo(grezzo.note),
@@ -185,6 +220,22 @@ export function validaDatiFiscali(d: DatiFiscaliCliente, contesto: { privato: bo
 
   const mRitenuta = validaRitenuta(d.ritenutaPercentuale)
   if (mRitenuta) errori.push(mRitenuta)
+
+  if (d.listino !== null && (d.listino < 1 || d.listino > 6)) errori.push(MSG_LISTINO)
+
+  // R13: provvigione e tipo vanno insieme (il CHECK del database e' solo la rete di sicurezza).
+  if (d.provvigionePredefinita !== null && !cascataValida(d.provvigionePredefinita)) {
+    errori.push(MSG_PROVVIGIONE_FORMATO)
+  }
+  if (d.tipoProvvigionePredefinita !== null) {
+    if (d.tipoProvvigionePredefinita !== 'SCONTATO' && d.tipoProvvigionePredefinita !== 'LORDO') {
+      errori.push(MSG_TIPO_NON_AMMESSO)
+    } else if (d.provvigionePredefinita === null) {
+      errori.push(MSG_TIPO_SENZA_PROVVIGIONE)
+    }
+  } else if (d.provvigionePredefinita !== null) {
+    errori.push(MSG_PROVVIGIONE_SENZA_TIPO)
+  }
 
   if (contesto.privato) {
     if (d.nome === null || d.cognome === null) errori.push(MSG_NOME_PRIVATO)

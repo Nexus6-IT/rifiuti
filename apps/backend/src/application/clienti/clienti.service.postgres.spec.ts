@@ -523,6 +523,96 @@ describe('ClientiService — Postgres reale, ruolo wasteflow_app', () => {
       ).rejects.toMatchObject({ status: 400 })
     })
 
+    it('listino e provvigione predefinita (4.2a, D7): lettura null, crea, modifica, R26, mai 500', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const vuoto = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      expect(vuoto.cliente).toMatchObject({
+        listino: null,
+        provvigionePredefinita: null,
+        tipoProvvigionePredefinita: null,
+      })
+
+      const pieno = await nel(tenantId, () =>
+        service.crea(
+          tenantId,
+          utenteId,
+          nuovo({
+            listino: 3,
+            provvigionePredefinita: '10 + 5,5',
+            tipoProvvigionePredefinita: 'LORDO',
+          })
+        )
+      )
+      expect(pieno.cliente).toMatchObject({
+        listino: 3,
+        provvigionePredefinita: '10+5.5',
+        tipoProvvigionePredefinita: 'LORDO',
+      })
+      const riletto = await nel(tenantId, () => service.getById(tenantId, pieno.cliente.id))
+      expect(riletto).toMatchObject({ listino: 3, tipoProvvigionePredefinita: 'LORDO' })
+
+      // regole del dominio: 400, non il CHECK del database
+      for (const [corpo, testo] of [
+        [{ listino: 7 }, 'Il listino del cliente va da 1 a 6.'],
+        [{ provvigionePredefinita: '5' }, 'Indica su cosa si calcola la provvigione del cliente.'],
+        [
+          { tipoProvvigionePredefinita: 'SCONTATO' },
+          'Il tipo di provvigione si indica solo con la provvigione.',
+        ],
+      ] as const) {
+        await expect(
+          nel(tenantId, () => service.crea(tenantId, utenteId, nuovo(corpo)))
+        ).rejects.toMatchObject({ status: 400, response: { message: [testo] } })
+      }
+
+      // modifica del solo listino: audit col nome del campo
+      const m1 = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, vuoto.cliente.id, { versione: 1, listino: 5 })
+      )
+      expect(m1).toMatchObject({ versione: 2, listino: 5 })
+      const log = await owner.activityLog.findMany({
+        where: { tenantId, action: 'CLIENTE_MODIFICATO' },
+      })
+      expect(
+        log.some(l => JSON.stringify((l.metadata as { campi: string[] }).campi) === '["listino"]')
+      ).toBe(true)
+
+      // R26: provvigione null azzera anche il tipo (il CHECK e' bidirezionale)
+      const m2 = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, pieno.cliente.id, {
+          versione: 1,
+          provvigionePredefinita: null,
+          listino: null,
+        })
+      )
+      expect(m2).toMatchObject({
+        listino: null,
+        provvigionePredefinita: null,
+        tipoProvvigionePredefinita: null,
+      })
+      // R13: tipo da solo = 400 del servizio
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, pieno.cliente.id, {
+            versione: 2,
+            tipoProvvigionePredefinita: 'LORDO',
+          })
+        )
+      ).rejects.toMatchObject({ status: 400 })
+      // provvigione + tipo insieme su un cliente che non li aveva
+      const m3 = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, pieno.cliente.id, {
+          versione: 2,
+          provvigionePredefinita: '3',
+          tipoProvvigionePredefinita: 'SCONTATO',
+        })
+      )
+      expect(m3).toMatchObject({
+        provvigionePredefinita: '3',
+        tipoProvvigionePredefinita: 'SCONTATO',
+      })
+    })
+
     it('modifica concorrente: una riesce, l’altra 409', async () => {
       const { tenantId, utenteId } = await azienda()
       const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))

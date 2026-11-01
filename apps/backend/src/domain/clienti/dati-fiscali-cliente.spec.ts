@@ -7,6 +7,7 @@ import {
   validaRitenuta,
   type DatiFiscaliCliente,
 } from './dati-fiscali-cliente'
+import { CAMPI_EREDITATI_DAL_CLIENTE } from '../contratti-cliente/regole-contratto-cliente'
 
 const base = (extra: Partial<DatiFiscaliCliente> = {}): DatiFiscaliCliente => ({
   ...normalizzaDatiFiscali({}),
@@ -213,5 +214,101 @@ describe('validaDatiFiscali', () => {
       const valori = Object.values(c).filter((v): v is string => typeof v === 'string')
       for (const m of messaggi) for (const v of valori) expect(m).not.toContain(v)
     }
+  })
+})
+
+describe('listino e provvigione predefinita del cliente (4.2a, D7, R13)', () => {
+  const MSG_LISTINO = 'Il listino del cliente va da 1 a 6.'
+  const MSG_SENZA_TIPO = 'Indica su cosa si calcola la provvigione del cliente.'
+  const MSG_TIPO_SENZA = 'Il tipo di provvigione si indica solo con la provvigione.'
+  const MSG_FORMATO =
+    'La provvigione predefinita si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.'
+  const MSG_TIPO_NON_AMMESSO =
+    'Il tipo di provvigione del cliente non è ammesso (scontato o lordo).'
+
+  it('senza i tre campi: tutti null e dati validi', () => {
+    const d = normalizzaDatiFiscali({})
+    expect(d.listino).toBeNull()
+    expect(d.provvigionePredefinita).toBeNull()
+    expect(d.tipoProvvigionePredefinita).toBeNull()
+    expect(validaDatiFiscali(d, impresa)).toEqual([])
+  })
+
+  it('normalizza: listino da stringa, cascata con virgola e spazi, tipo maiuscolo', () => {
+    const d = normalizzaDatiFiscali({
+      listino: '3',
+      provvigionePredefinita: ' 10 + 5,5 ',
+      tipoProvvigionePredefinita: ' lordo ',
+    })
+    expect(d).toMatchObject({
+      listino: 3,
+      provvigionePredefinita: '10+5.5',
+      tipoProvvigionePredefinita: 'LORDO',
+    })
+    expect(validaDatiFiscali(d, impresa)).toEqual([])
+  })
+
+  it('vuoti -> null', () => {
+    const d = normalizzaDatiFiscali({
+      listino: '  ',
+      provvigionePredefinita: '',
+      tipoProvvigionePredefinita: '',
+    })
+    expect(d.listino).toBeNull()
+    expect(d.provvigionePredefinita).toBeNull()
+    expect(d.tipoProvvigionePredefinita).toBeNull()
+  })
+
+  it.each([0, 7, -1, 1.5, 'abc', '2.5'])('listino %p: messaggio di D7', v => {
+    const d = normalizzaDatiFiscali({ listino: v })
+    expect(validaDatiFiscali(d, impresa)).toEqual([MSG_LISTINO])
+  })
+
+  it.each([1, 6, '4'])('listino %p: valido', v => {
+    expect(validaDatiFiscali(normalizzaDatiFiscali({ listino: v }), impresa)).toEqual([])
+  })
+
+  it('provvigione senza tipo: messaggio sul tipo', () => {
+    const d = normalizzaDatiFiscali({ provvigionePredefinita: '5' })
+    expect(validaDatiFiscali(d, impresa)).toEqual([MSG_SENZA_TIPO])
+  })
+
+  it('tipo senza provvigione: messaggio R13', () => {
+    const d = normalizzaDatiFiscali({ tipoProvvigionePredefinita: 'SCONTATO' })
+    expect(validaDatiFiscali(d, impresa)).toEqual([MSG_TIPO_SENZA])
+  })
+
+  it('tipo non ammesso: messaggio sul tipo', () => {
+    const d = normalizzaDatiFiscali({
+      provvigionePredefinita: '5',
+      tipoProvvigionePredefinita: 'NETTO',
+    })
+    expect(validaDatiFiscali(d, impresa)).toEqual([MSG_TIPO_NON_AMMESSO])
+  })
+
+  it.each(['1,2,3,4', '100', '.5', '10++5', 'abc'])(
+    'provvigione %p: formato rifiutato (R23)',
+    v => {
+      const d = normalizzaDatiFiscali({
+        provvigionePredefinita: v,
+        tipoProvvigionePredefinita: 'LORDO',
+      })
+      expect(validaDatiFiscali(d, impresa)).toEqual([MSG_FORMATO])
+    }
+  )
+
+  it('il contratto non li eredita (D7)', () => {
+    for (const c of ['listino', 'provvigionePredefinita', 'tipoProvvigionePredefinita']) {
+      expect(CAMPI_EREDITATI_DAL_CLIENTE as readonly string[]).not.toContain(c)
+    }
+  })
+
+  it('i messaggi indicano il campo giusto per le parole chiave del frontend', () => {
+    expect(MSG_LISTINO).toMatch(/listino/i)
+    expect(MSG_LISTINO).not.toMatch(/tipo/i)
+    expect(MSG_FORMATO).toMatch(/provvigione/i)
+    expect(MSG_FORMATO).not.toMatch(/tipo|listino|su cosa/i)
+    expect(MSG_SENZA_TIPO).toMatch(/su cosa/)
+    expect(MSG_TIPO_SENZA).toMatch(/tipo/)
   })
 })
