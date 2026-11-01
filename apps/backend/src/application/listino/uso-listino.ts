@@ -25,6 +25,14 @@ export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
   ],
 }
 
+/**
+ * Un addebito e' citato dalle righe degli elenchi (Task 22: `rigaAddebito`); finche' il modello
+ * non esiste non ha sorgenti e `contaUsiListino` risponde 0 senza query.
+ */
+export const COLONNE_ADDEBITO: ColonneReferentiListino = {
+  addebiti: [],
+}
+
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
 type GroupBy = (args: {
   by: string[]

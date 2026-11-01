@@ -1,4 +1,9 @@
-import { COLONNE_CODICE_IVA, COLONNE_CODIFICA_ADDEBITO, contaUsiListino } from './uso-listino'
+import {
+  COLONNE_ADDEBITO,
+  COLONNE_CODICE_IVA,
+  COLONNE_CODIFICA_ADDEBITO,
+  contaUsiListino,
+} from './uso-listino'
 
 const T = 'aaaaaaaa-0000-4000-8000-000000000001'
 
@@ -49,5 +54,12 @@ describe('contaUsiListino', () => {
 
   it('il codice IVA e’ citato dalla sola colonna codiceIvaId', () => {
     expect(COLONNE_CODICE_IVA.addebiti).toEqual(['codiceIvaId'])
+  })
+
+  it('addebito: nessuna sorgente finche non esistono le righe (Task 22), zero senza query', async () => {
+    const client: any = { addebito: { groupBy: jest.fn() } }
+    const usi = await contaUsiListino(client, T, ['x'], COLONNE_ADDEBITO)
+    expect(usi.get('x')).toBe(0)
+    expect(client.addebito.groupBy).not.toHaveBeenCalled()
   })
 })
