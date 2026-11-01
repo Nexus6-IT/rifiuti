@@ -318,6 +318,37 @@ describe('AgenteDialogComponent', () => {
       expect(q('agente-dlg-errore')!.textContent).toContain('Modificato da un collega.')
     })
 
+    it('GET fallita: Salva disabilitato e nessun PATCH', async () => {
+      agenti.get.and.returnValue(throwError(() => ({ error: { message: 'Non disponibile.' } })))
+      await apri(agente)
+      expect(fixture.componentInstance.puoSalvare()).toBeFalse()
+      fixture.componentInstance.salva()
+      expect(agenti.modifica).not.toHaveBeenCalled()
+      expect(q('agente-dlg-errore')!.textContent).toContain('Non disponibile.')
+    })
+
+    it('Esc con il dialog delle sedi aperto non chiude né azzera', async () => {
+      await apri(agente)
+      scrivi('agente-dlg-note', 'in corso')
+      fixture.componentInstance.sediAperte = true
+      fixture.componentInstance.alCambioVisibilita(false)
+      expect(fixture.componentInstance.form.getRawValue().note).toBe('in corso')
+      fixture.componentInstance.sediAperte = false
+      fixture.componentInstance.alCambioVisibilita(false)
+      expect(fixture.componentInstance.form.getRawValue().note).toBe('')
+    })
+
+    it('VIEWER: Salva non è utilizzabile', async () => {
+      TestBed.overrideProvider(AuthService, {
+        useValue: { currentUser: () => ({ role: 'VIEWER' }) },
+      })
+      await apri(agente)
+      expect(fixture.componentInstance.puoSalvare()).toBeFalse()
+      scrivi('agente-dlg-note', 'x')
+      fixture.componentInstance.salva()
+      expect(agenti.modifica).not.toHaveBeenCalled()
+    })
+
     it('chiudendo il dialog il form si azzera', async () => {
       await apri(agente)
       fixture.componentInstance.chiudi()

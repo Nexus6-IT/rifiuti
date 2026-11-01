@@ -63,7 +63,7 @@ const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
   template: `
     <p-dialog
       [visible]="visible"
-      (visibleChange)="chiudi()"
+      (visibleChange)="alCambioVisibilita($event)"
       [header]="agente ? 'Modifica agente' : 'Nuovo agente'"
       [modal]="true"
       [style]="{ width: '40rem' }"
@@ -244,7 +244,7 @@ const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
         <p-button
           label="Salva"
           icon="pi pi-check"
-          [disabled]="inCorso() || caricamento()"
+          [disabled]="!puoSalvare()"
           (onClick)="salva()"
           data-testid="agente-dlg-salva"
         />
@@ -418,8 +418,20 @@ export class AgenteDialogComponent implements OnChanges {
     this.errori.set({})
   }
 
+  /** In modifica serve il record letto (altrimenti il form vuoto cancellerebbe codice e note). */
+  puoSalvare(): boolean {
+    if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return false
+    return !this.agente || this.originale !== null
+  }
+
+  /** Esc nel dialog delle sedi chiude anche questo (PrimeNG): si ignora, o si perdono le modifiche. */
+  alCambioVisibilita(visibile: boolean): void {
+    if (!visibile && this.sediAperte) return
+    if (!visibile) this.chiudi()
+  }
+
   salva(): void {
-    if (this.inCorso() || this.caricamento()) return
+    if (!this.puoSalvare()) return
     if (this.agente) this.salvaModifica(this.agente)
     else this.salvaNuovo()
   }
