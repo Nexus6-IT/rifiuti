@@ -151,6 +151,11 @@ model Tenant {
   contrattiCliente       ContrattoCliente[]
   periodiFatturazioneCliente PeriodoFatturazioneCliente[]
   allegatiContrattoCliente AllegatoContrattoCliente[]
+  // Fase 4 pezzo 2a
+  codiciIva                CodiceIva[]
+  codificheAddebito        CodificaAddebito[]
+  addebiti                 Addebito[]
+  prezziListinoAddebito    PrezzoListinoAddebito[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -3191,6 +3196,11 @@ model Cliente {
   ritenutaPercentuale        Decimal?       @map("ritenuta_percentuale") @db.Decimal(5, 2)
   note                       String?
   attivo                     Boolean        @default(true)
+  /// Listino 1-6 del cliente (4.2a, D7, Q3): predefinito della riga, non del contratto. Il CHECK `clienti_listino_ammesso` e' la rete di sicurezza, la regola e il messaggio stanno nel dominio.
+  listino                    Int?           @db.SmallInt
+  /// Provvigione predefinita a cascata (D10). Va insieme a `tipoProvvigionePredefinita`: o tutte e due valorizzate o tutte e due nulle (CHECK `clienti_provvigione_con_tipo`).
+  provvigionePredefinita     String?        @map("provvigione_predefinita") @db.VarChar(20)
+  tipoProvvigionePredefinita TipoProvvigione? @map("tipo_provvigione_predefinita")
 
   versione  Int      @default(1)
   createdAt DateTime @default(now()) @map("created_at")
@@ -3338,4 +3348,136 @@ model AllegatoContrattoCliente {
   @@unique([contrattoId, posizione], map: "allegati_contratto_cliente_contratto_id_posizione_key")
   @@index([tenantId], map: "allegati_contratto_cliente_tenant_id_idx")
   @@map("allegati_contratto_cliente")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Listino (Fase 4 pezzo 2a): archivio addebiti, codici IVA e codifiche. Migration
+// `20261102300000_listino_archivio_addebiti`. Le regole vere stanno in `domain/listino`; i CHECK
+// della migration sono la rete di sicurezza.
+// ---------------------------------------------------------------------------------------------
+
+/// Genere di una codifica di addebito (D4): gruppo, categoria, due categorie statistiche e centro di ricavo. Enum separato da `GenereCodificaContratto` perche' un `ALTER TYPE ... ADD VALUE` in produzione non e' additivo.
+enum GenereCodificaAddebito {
+  GRUPPO
+  CATEGORIA
+  CATEGORIA_STATISTICA_1
+  CATEGORIA_STATISTICA_2
+  CENTRO_RICAVO
+
+  @@map("genere_codifica_addebito")
+}
+
+/// Su cosa si calcola la provvigione (D6, D7): sul prezzo scontato o sul lordo.
+enum TipoProvvigione {
+  SCONTATO
+  LORDO
+
+  @@map("tipo_provvigione")
+}
+
+/// Codice IVA dell'azienda (4.2a, D3, Q6): solo vendite. Aliquota 0-100 con due decimali; la natura (N1-N7) e' obbligatoria con aliquota zero e vietata altrimenti. Regole e messaggi in `domain/listino/codice-iva.ts`. La 4.4 lo leggera' per `AliquotaIVA` e `Natura`.
+model CodiceIva {
+  id          String  @id(map: "codici_iva_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  codice      String  @db.VarChar(3)
+  descrizione String  @db.VarChar(60)
+  aliquota    Decimal @db.Decimal(5, 2)
+  natura      String? @db.VarChar(4)
+  attivo      Boolean @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codici_iva_tenant_id_fkey")
+  addebiti Addebito[]
+
+  @@unique([id, tenantId], map: "codici_iva_id_tenant_id_key")
+  @@unique([tenantId, codice], map: "codici_iva_tenant_id_codice_key")
+  @@index([tenantId], map: "codici_iva_tenant_id_idx")
+  @@map("codici_iva")
+}
+
+/// Codifica di addebito (4.2a, D4): gruppo, categoria, categorie statistiche e centro di ricavo, con codice di tre cifre unico per (azienda, genere). Il genere giusto per ciascuna relazione di `Addebito` non e' garantito dalle FK ma da `application/listino/riferimenti-listino.ts`. Regole in `domain/listino/codifica-addebito.ts`.
+model CodificaAddebito {
+  id          String                 @id(map: "codifiche_addebito_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String                 @map("tenant_id") @db.Uuid
+  genere      GenereCodificaAddebito
+  codice      String                 @db.VarChar(3)
+  descrizione String                 @db.VarChar(45)
+  attiva      Boolean                @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codifiche_addebito_tenant_id_fkey")
+
+  addebitiGruppo         Addebito[] @relation("GruppoAddebito")
+  addebitiCategoria      Addebito[] @relation("CategoriaAddebito")
+  addebitiCategoriaStat1 Addebito[] @relation("CategoriaStatistica1Addebito")
+  addebitiCategoriaStat2 Addebito[] @relation("CategoriaStatistica2Addebito")
+  addebitiCentroRicavo   Addebito[] @relation("CentroRicavoAddebito")
+
+  @@unique([id, tenantId], map: "codifiche_addebito_id_tenant_id_key")
+  @@unique([tenantId, genere, codice], map: "codifiche_addebito_tenant_id_genere_codice_key")
+  @@index([tenantId], map: "codifiche_addebito_tenant_id_idx")
+  @@map("codifiche_addebito")
+}
+
+/// Archivio degli addebiti (4.2a, D6, E8): codice a cinque cifre (00000 riservato) unico per azienda, gruppo obbligatorio e sei listini nella figlia `PrezzoListinoAddebito`. Le FK composite verso `CodificaAddebito` garantiscono solo l'azienda: il genere e lo stato della codifica li controlla `application/listino/riferimenti-listino.ts`, non il database. Regole e messaggi in `domain/listino/addebito.ts`.
+model Addebito {
+  id                     String          @id(map: "addebiti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String          @map("tenant_id") @db.Uuid
+  codice                 String          @db.VarChar(5)
+  descrizione            String          @db.VarChar(45)
+  gruppoId               String          @map("gruppo_id") @db.Uuid
+  unitaMisura            String          @map("unita_misura") @db.VarChar(3)
+  codiceIvaId            String?         @map("codice_iva_id") @db.Uuid
+  tipo                   String          @default("V") @db.VarChar(4)
+  categoriaId            String?         @map("categoria_id") @db.Uuid
+  tipoProvvigione        TipoProvvigione @default(SCONTATO) @map("tipo_provvigione")
+  centroRicavoId         String?         @map("centro_ricavo_id") @db.Uuid
+  categoriaStatistica1Id String?         @map("categoria_statistica_1_id") @db.Uuid
+  categoriaStatistica2Id String?         @map("categoria_statistica_2_id") @db.Uuid
+  notaUsoInterno         String?         @map("nota_uso_interno") @db.VarChar(45)
+  appunti                String?
+  attivo                 Boolean         @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant               Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "addebiti_tenant_id_fkey")
+  gruppo               CodificaAddebito  @relation("GruppoAddebito", fields: [gruppoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_gruppo_fkey")
+  codiceIva            CodiceIva?        @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_codice_iva_fkey")
+  categoria            CodificaAddebito? @relation("CategoriaAddebito", fields: [categoriaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_categoria_fkey")
+  centroRicavo         CodificaAddebito? @relation("CentroRicavoAddebito", fields: [centroRicavoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_centro_ricavo_fkey")
+  categoriaStatistica1 CodificaAddebito? @relation("CategoriaStatistica1Addebito", fields: [categoriaStatistica1Id, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_categoria_statistica_1_fkey")
+  categoriaStatistica2 CodificaAddebito? @relation("CategoriaStatistica2Addebito", fields: [categoriaStatistica2Id, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_categoria_statistica_2_fkey")
+
+  listini PrezzoListinoAddebito[]
+
+  @@unique([id, tenantId], map: "addebiti_id_tenant_id_key")
+  @@unique([tenantId, codice], map: "addebiti_tenant_id_codice_key")
+  @@index([tenantId], map: "addebiti_tenant_id_idx")
+  @@map("addebiti")
+}
+
+/// Uno dei sei listini di un addebito (4.2a, D6): prezzo Decimal(14,6) (otto cifre intere, sei decimali, come `domain/listino/addebito.ts`), sconto e provvigione a cascata (D10) fino a tre percentuali. Scritti in blocco con l'addebito; si cancellano con lui.
+model PrezzoListinoAddebito {
+  id          String   @id(map: "prezzi_listino_addebito_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  addebitoId  String   @map("addebito_id") @db.Uuid
+  numero      Int
+  prezzo      Decimal? @db.Decimal(14, 6)
+  sconto      String?  @db.VarChar(20)
+  provvigione String?  @db.VarChar(20)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "prezzi_listino_addebito_tenant_id_fkey")
+  addebito Addebito @relation(fields: [addebitoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "prezzi_listino_addebito_addebito_fkey")
+
+  @@unique([addebitoId, numero], map: "prezzi_listino_addebito_addebito_id_numero_key")
+  @@index([tenantId], map: "prezzi_listino_addebito_tenant_id_idx")
+  @@map("prezzi_listino_addebito")
 }

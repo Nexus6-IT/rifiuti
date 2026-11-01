@@ -117,7 +117,7 @@ non e' nota: scansione di tutte le aziende, oppure ricerca di un'entita' prima d
 ## Policy
 
 Migration `20261025130000_rls_policy_aziende`: su ogni tabella di `public` con colonna `tenant_id`
-(55) sono attive `ENABLE` e `FORCE ROW LEVEL SECURITY` e c'e' la policy `isolamento_azienda`, uguale
+(59) sono attive `ENABLE` e `FORCE ROW LEVEL SECURITY` e c'e' la policy `isolamento_azienda`, uguale
 per tutte e senza clausola `TO` (vale per ogni ruolo; `wasteflow` superuser e `wasteflow_sistema`
 BYPASSRLS la ignorano):
 
@@ -128,7 +128,7 @@ WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
 
 Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
 
-- **Coperte (55, con `agenti`, `clienti`, `contratti_cliente`, `periodi_fatturazione_cliente` e `allegati_contratto_cliente` di 4.1b, con `condizioni_pagamento`, `conti_correnti`, `spese_accessorie`, `registri_iva`, `testi_fatturazione` e `codifiche_contratto` di 4.1a, con `ditte` e `sedi_ditte` di F2-10, `abbinamenti_carico_scarico` di 4.6 e `movimenti_trasmissione_rentri` di F2-9, piu' le 7 tabelle delle pese (8a); l'elenco che segue e' anteriore ai pezzi 1 e 5 e a F2-10):** `abbinamenti_carico_scarico`, `activity_logs`, `autorizzazioni_impianto`, `autorizzazioni_impianto_discariche`,
+- **Coperte (59, con `codici_iva`, `codifiche_addebito`, `addebiti` e `prezzi_listino_addebito` del listino 4.2a, con `agenti`, `clienti`, `contratti_cliente`, `periodi_fatturazione_cliente` e `allegati_contratto_cliente` di 4.1b, con `condizioni_pagamento`, `conti_correnti`, `spese_accessorie`, `registri_iva`, `testi_fatturazione` e `codifiche_contratto` di 4.1a, con `ditte` e `sedi_ditte` di F2-10, `abbinamenti_carico_scarico` di 4.6 e `movimenti_trasmissione_rentri` di F2-9, piu' le 7 tabelle delle pese (8a); l'elenco che segue e' anteriore ai pezzi 1 e 5 e a F2-10):** `abbinamenti_carico_scarico`, `activity_logs`, `autorizzazioni_impianto`, `autorizzazioni_impianto_discariche`,
   `causali_registro_azienda`, `company_templates`, `consultant_tenant_associations`, `contracts`, `destinatari`, `ditte`, `sedi_ditte`,
   `fir_allegati_rentri`, `fir_signatures`, `fir_transporters`, `firs`, `giacenze_iniziali`, `movimenti_trasmissione_rentri`, `mud_reports`, `notifications`,
   `permission_audit_logs`, `permission_requests`, `produttori`, `registri_rifiuti`, `registro_progressivi_iniziali`,
@@ -138,13 +138,14 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `accessi_pesa`, `pesate`, `rettifiche_peso`, `allegati_pesa`, `collegamenti_accesso`;
   fatturazione (4.1a, 4.1b): `condizioni_pagamento`, `conti_correnti`, `spese_accessorie`, `registri_iva`,
   `testi_fatturazione`, `codifiche_contratto`, `agenti`, `clienti`, `contratti_cliente`,
-  `periodi_fatturazione_cliente`, `allegati_contratto_cliente`.
+  `periodi_fatturazione_cliente`, `allegati_contratto_cliente`; listino (4.2a): `codici_iva`,
+  `codifiche_addebito`, `addebiti`, `prezzi_listino_addebito`.
 - **`role_permissions` (pezzo 4, migration `20261026090000_rls_role_permissions`):** tabella ponte senza
   `tenant_id`, con `ENABLE` + `FORCE` e la policy `isolamento_via_ruolo` (`USING` e `WITH CHECK`:
   `EXISTS (SELECT 1 FROM roles r WHERE r.id = role_permissions.role_id)`). La subquery su `roles` e' filtrata
   dalla policy di `roles`, quindi col ruolo app si vedono e si scrivono solo righe di ruoli dell'azienda del
   contesto (senza contesto nessuna). Non ha `isolamento_azienda`: non ha la colonna.
-- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 55 tabelle e
+- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 59 tabelle e
   su `role_permissions` c'e' anche `CREATE POLICY sola_lettura ... FOR SELECT TO wasteflow_lettura USING (true)`.
   `wasteflow_lettura` e' un ruolo di gruppo NOLOGIN senza password e senza BYPASSRLS: chi ne e' membro legge
   le righe di tutte le aziende senza contesto, ma non scrive (nessuna policy per INSERT/UPDATE/DELETE).
