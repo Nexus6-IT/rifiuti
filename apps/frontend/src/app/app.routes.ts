@@ -141,6 +141,13 @@ export const routes: Routes = [
           import('./features/anomaly/anomaly.component').then(m => m.AnomalyComponent),
       },
       {
+        path: 'clienti/tabelle',
+        loadComponent: () =>
+          import('./features/clienti/tabelle/tabelle-fatturazione.component').then(
+            m => m.TabelleFatturazioneComponent
+          ),
+      },
+      {
         path: 'contratti',
         loadComponent: () =>
           import('./features/contracts/contracts-list.component').then(

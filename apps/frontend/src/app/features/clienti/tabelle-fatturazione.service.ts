@@ -35,7 +35,13 @@ export interface FiltroSpese extends FiltroTabella {
 }
 
 /** CRUD comune alle tabelle versionate (cancellazione e modifica con `versione`). */
-class Tabella<Elenco, Dettaglio, Nuovo, Modifica, Filtro extends FiltroTabella = FiltroTabella> {
+export class Tabella<
+  Elenco,
+  Dettaglio,
+  Nuovo,
+  Modifica,
+  Filtro extends FiltroTabella = FiltroTabella,
+> {
   constructor(
     protected readonly http: HttpClient,
     protected readonly url: string
@@ -83,7 +89,7 @@ class TabellaSpese extends Tabella<
   }
 }
 
-class TabellaCodifiche {
+export class TabellaCodifiche {
   constructor(
     private readonly http: HttpClient,
     private readonly url: string
