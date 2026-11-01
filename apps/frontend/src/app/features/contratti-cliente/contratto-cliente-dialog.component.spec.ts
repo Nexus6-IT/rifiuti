@@ -1446,6 +1446,44 @@ describe('ContrattoClienteDialogComponent', () => {
     })
   })
 
+  describe('predefiniti disattivati (R42)', () => {
+    it('un predefinito del cliente non fra le voci attive resta vuoto, con avviso, e parte come null', async () => {
+      const spento = cliente('cl3', 'Neri Srl', {
+        condizionePagamentoId: 'c-spenta',
+        registroIvaId: 'r-spento',
+      })
+      clientiRuolo.list.and.returnValue(of({ elementi: [VERDI, spento], totale: 2 }))
+      contratti.crea.and.returnValue(of(contratto()))
+      await apri()
+      await scegliCliente('contratto-dlg-cliente', spento)
+      expect(valore('contratto-dlg-condizione')).toBe('')
+      expect(valore('contratto-dlg-registro')).toBe('')
+      expect(q('contratto-dlg-condizione-disattivato')!.textContent).toContain(
+        'Il predefinito del cliente è disattivato'
+      )
+      expect(q('contratto-dlg-registro-disattivato')).not.toBeNull()
+      expect(q('contratto-dlg-spese-disattivato')).toBeNull()
+      scrivi('contratto-dlg-descrizione', 'Servizio')
+      scrivi('contratto-dlg-data-inizio', '2026-03-01')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = contratti.crea.calls.mostRecent().args[0]
+      expect(corpo.condizionePagamentoId).toBeNull()
+      expect(corpo.registroIvaId).toBeNull()
+    })
+
+    it('scegliendo poi un cliente con predefiniti attivi, avviso tolto e valori ripristinati', async () => {
+      const spento = cliente('cl3', 'Neri Srl', { condizionePagamentoId: 'c-spenta' })
+      clientiRuolo.list.and.returnValue(of({ elementi: [VERDI, spento], totale: 2 }))
+      await apri()
+      await scegliCliente('contratto-dlg-cliente', spento)
+      await scegliCliente('contratto-dlg-cliente', VERDI)
+      expect(q('contratto-dlg-condizione-disattivato')).toBeNull()
+      expect(valore('contratto-dlg-condizione')).toBe('c1')
+    })
+  })
+
   describe('allegati PDF', () => {
     it('nuovo contratto: la sezione dice di salvare prima', async () => {
       await apri()

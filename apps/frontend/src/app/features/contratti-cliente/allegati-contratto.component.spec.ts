@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { MessageService } from 'primeng/api'
+import { ConfirmationService, MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AllegatoContratto } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
@@ -173,6 +173,49 @@ describe('AllegatiContrattoComponent', () => {
     await stabilizza(fixture)
     expect(q('allegato-nome-1')!.textContent).toContain('Nessun file')
     expect(q('allegato-nome-2')!.textContent).toContain('altro.pdf')
+  })
+
+  it('cambiando contratto con la conferma aperta, la conferma si chiude e non rimuove nulla', async () => {
+    await apri('ct1')
+    bottone('allegato-rimuovi-1')!.click()
+    await stabilizza(fixture)
+    const conferma = fixture.debugElement.injector.get(ConfirmationService)
+    const chiude = spyOn(conferma, 'close').and.callThrough()
+    allegati.elenco.and.returnValue(of([allegato(1, 'altro.pdf')]))
+    fixture.componentRef.setInput('contrattoId', 'ct2')
+    await stabilizza(fixture)
+    expect(chiude).toHaveBeenCalled()
+    expect(fixture.componentInstance.confermaAperta()).toBeFalse()
+    expect(allegati.rimuovi).not.toHaveBeenCalled()
+  })
+
+  it('un upload in corso blocca ogni azione; la risposta tardiva non tocca il contratto nuovo', async () => {
+    const tardiva = new Subject<AllegatoContratto>()
+    allegati.carica.and.returnValue(tardiva)
+    await apri('ct1')
+    scegliFile(2, pdf())
+    await stabilizza(fixture)
+    expect(bottone('allegato-apri-1')!.disabled).toBeTrue()
+    expect(bottone('allegato-rimuovi-1')!.disabled).toBeTrue()
+    expect(bottone('allegato-carica-2')!.disabled).toBeTrue()
+    allegati.elenco.and.returnValue(of([allegato(1, 'altro.pdf')]))
+    fixture.componentRef.setInput('contrattoId', 'ct2')
+    await stabilizza(fixture)
+    tardiva.next(allegato(2, 'tardivo.pdf'))
+    await stabilizza(fixture)
+    expect(q('allegato-nome-2')!.textContent).toContain('Nessun file')
+    expect(fixture.componentInstance.occupata()).toBeNull()
+  })
+
+  it('la scheda del PDF perde il riferimento alla pagina (opener nullo)', async () => {
+    allegati.scarica.and.returnValue(of(new Blob(['%PDF'])))
+    const scheda = { location: { href: '' }, close: jasmine.createSpy('close'), opener: window }
+    spyOn(window, 'open').and.returnValue(scheda as unknown as Window)
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    await apri('ct1')
+    bottone('allegato-apri-1')!.click()
+    await stabilizza(fixture)
+    expect(scheda.opener).toBeNull()
   })
 
   it("errore di caricamento dell'elenco: messaggio del backend", async () => {
