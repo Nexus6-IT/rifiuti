@@ -184,7 +184,9 @@ describe('AllegatiContrattoClienteController', () => {
         })
       expect(r.status).toBe(200)
       expect(r.headers['content-type']).toMatch(/^application\/pdf/)
-      expect(r.headers['content-disposition']).toMatch(/^attachment; filename\*=UTF-8''/)
+      expect(r.headers['content-disposition']).toMatch(
+        /^attachment; filename="[\x20-\x7e]+"; filename\*=UTF-8''/
+      )
       expect(r.headers['content-disposition']).toContain(encodeURIComponent('città è.pdf'))
       expect((r.body as Buffer).equals(PDF)).toBe(true)
       expect(servizio.contenuto).toHaveBeenCalledWith(TENANT, K, A)

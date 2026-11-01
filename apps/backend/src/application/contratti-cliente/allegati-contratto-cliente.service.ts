@@ -38,7 +38,7 @@ export const MESSAGGIO_DIMENSIONE_ALLEGATO_CONTRATTO = "L'allegato supera i 4 MB
 const NON_TROVATO = 'Contratto o allegato non trovato.'
 
 /** Nome per la visualizzazione: senza percorso né caratteri di controllo, al massimo 255. */
-function nomePulito(nome: string): string {
+export function nomePulito(nome: string): string {
   const base = (nome ?? '').split(/[\\/]/).pop() ?? ''
   // eslint-disable-next-line no-control-regex
   const senzaControlli = base.replace(/[\u0000-\u001f\u007f]/g, '').trim()
@@ -173,6 +173,7 @@ export class AllegatiContrattoClienteService {
   ): Promise<{ nomeFile: string; contenuto: Buffer }> {
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
+        await this.contrattoEsistente(tx, tenantId, contrattoId)
         const riga = await tx.allegatoContrattoCliente.findFirst({
           where: { id: allegatoId, contrattoId, tenantId },
           select: { nomeFile: true, contenuto: true },
@@ -191,6 +192,7 @@ export class AllegatiContrattoClienteService {
   ): Promise<void> {
     await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
+        await this.contrattoEsistente(tx, tenantId, contrattoId)
         const riga = await tx.allegatoContrattoCliente.findFirst({
           where: { id: allegatoId, contrattoId, tenantId },
           select: { posizione: true },

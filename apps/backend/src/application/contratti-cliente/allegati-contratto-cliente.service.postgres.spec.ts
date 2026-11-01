@@ -155,19 +155,35 @@ describe('AllegatiContrattoClienteService — Postgres reale, ruolo wasteflow_ap
     expect(v.posizione).toBe(1)
   })
 
-  it('contratto eliminato o inesistente: 404 su tutte le operazioni', async () => {
+  it('contratto eliminato o inesistente: 404 su tutte e quattro le operazioni', async () => {
     const { tenantId, utenteId, clienteId } = await azienda()
-    const k = await contratto(tenantId, clienteId, { eliminatoIl: new Date() })
+    const k = await contratto(tenantId, clienteId)
+    const v = await nel(tenantId, () => service.carica(tenantId, utenteId, k.id, 1, file()))
+    await owner.contrattoCliente.update({ where: { id: k.id }, data: { eliminatoIl: new Date() } })
     const inesistente = '00000000-0000-4000-8000-000000000000'
-    for (const id of [k.id, inesistente]) {
-      await expect(
-        nel(tenantId, () => service.carica(tenantId, utenteId, id, 1, file()))
-      ).rejects.toBeInstanceOf(NotFoundException)
-      await expect(nel(tenantId, () => service.elenco(tenantId, id))).rejects.toBeInstanceOf(
-        NotFoundException
-      )
-    }
-    expect(await owner.allegatoContrattoCliente.count({ where: { tenantId } })).toBe(0)
+    const audit = () =>
+      owner.activityLog.count({
+        where: { tenantId, action: { startsWith: 'ALLEGATO_CONTRATTO_CLIENTE_' } },
+      })
+    const prima = await audit()
+    await expect(
+      nel(tenantId, () => service.carica(tenantId, utenteId, k.id, 2, file()))
+    ).rejects.toBeInstanceOf(NotFoundException)
+    await expect(nel(tenantId, () => service.elenco(tenantId, k.id))).rejects.toBeInstanceOf(
+      NotFoundException
+    )
+    await expect(
+      nel(tenantId, () => service.contenuto(tenantId, k.id, v.id))
+    ).rejects.toBeInstanceOf(NotFoundException)
+    await expect(
+      nel(tenantId, () => service.rimuovi(tenantId, utenteId, k.id, v.id))
+    ).rejects.toBeInstanceOf(NotFoundException)
+    // Nessuna scrittura: l'allegato resta e l'audit non cambia.
+    expect(await owner.allegatoContrattoCliente.count({ where: { contrattoId: k.id } })).toBe(1)
+    expect(await audit()).toBe(prima)
+    await expect(
+      nel(tenantId, () => service.carica(tenantId, utenteId, inesistente, 1, file()))
+    ).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it("nel contesto di B il contratto e l'allegato di A: 404", async () => {

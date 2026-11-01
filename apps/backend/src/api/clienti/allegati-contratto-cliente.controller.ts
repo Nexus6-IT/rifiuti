@@ -38,6 +38,7 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import {
   AllegatiContrattoClienteService,
   MESSAGGIO_POSIZIONE_ALLEGATO,
+  nomePulito,
 } from '../../application/contratti-cliente/allegati-contratto-cliente.service'
 import {
   AllegatoContrattoInterceptor,
@@ -46,16 +47,15 @@ import {
 } from './allegato-contratto-upload'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 
-/** `Content-Disposition` di un download: solo `filename*` (RFC 5987), nessun carattere grezzo. */
+/** `Content-Disposition` di un download: nome ASCII di ripiego + `filename*` UTF-8 (RFC 5987). */
 function contentDispositionAttachment(nome: string): string {
-  const base = (nome ?? '').split(/[\\/]/).pop() ?? ''
-  // eslint-disable-next-line no-control-regex
-  const pulito = base.replace(/[\u0000-\u001f\u007f]/g, '').trim() || 'allegato.pdf'
+  const pulito = nomePulito(nome)
+  const ascii = pulito.replace(/[^\x20-\x7e]/g, '_').replace(/["\\;%]/g, '_')
   const codificato = encodeURIComponent(pulito).replace(
     /['()*]/g,
     c => '%' + c.charCodeAt(0).toString(16).toUpperCase()
   )
-  return `attachment; filename*=UTF-8''${codificato}`
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${codificato}`
 }
 
 @ApiTags('clienti')
