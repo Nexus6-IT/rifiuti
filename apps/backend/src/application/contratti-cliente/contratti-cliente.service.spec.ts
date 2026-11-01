@@ -159,6 +159,7 @@ describe('ContrattiClienteService (Prisma finto)', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
+      $executeRaw: jest.fn().mockResolvedValue(0),
       $queryRaw: jest.fn(async (strings: readonly string[]) => {
         const testo = strings.join('?')
         if (testo.includes('"sedi_ditte"')) return sedi
@@ -1281,6 +1282,186 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       const e = await errore(service.elimina(T, U, K, 1))
       expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
       expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('rinnova (Task 18, D11)', () => {
+    const attivo = (extra: Record<string, unknown> = {}) =>
+      riga({ stato: 'ATTIVO', dataFine: new Date('2026-12-31T00:00:00.000Z'), ...extra })
+
+    it.each(['BOZZA', 'ANNULLATO'])('%s: 409 NON_RINNOVABILE col testo di D11', async stato => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ stato }))
+      const e = await errore(service.rinnova(T, U, K, 1))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_RINNOVABILE')
+      expect(e.getResponse().message).toBe(
+        'Si rinnovano solo i contratti attivi o sospesi con una data di fine.'
+      )
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('attivo senza data di fine: 409 NON_RINNOVABILE', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo({ dataFine: null }))
+      const e = await errore(service.rinnova(T, U, K, 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_RINNOVABILE')
+    })
+
+    it('inesistente: 404; versione diversa: 409 MODIFICATO_NEL_FRATTEMPO', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(null)
+      expect(await errore(service.rinnova(T, U, K, 1))).toBeInstanceOf(NotFoundException)
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      const e = await errore(service.rinnova(T, U, K, 7))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+    })
+
+    it('non rinnovabile prima della versione sbagliata (D14)', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(riga({ stato: 'BOZZA' }))
+      const e = await errore(service.rinnova(T, U, K, 9))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_RINNOVABILE')
+    })
+
+    it('sposta la fine di un anno con scrittura condizionata, versione + 1 e audit prima/dopo', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      await service.rinnova(T, U, K, 1)
+      const arg = tx.contrattoCliente.updateMany.mock.calls[0][0]
+      expect(arg.where).toEqual({
+        id: K,
+        tenantId: T,
+        versione: 1,
+        stato: 'ATTIVO',
+        eliminatoIl: null,
+      })
+      expect(arg.data).toEqual({
+        dataFine: new Date('2027-12-31T00:00:00.000Z'),
+        versione: { increment: 1 },
+      })
+      expect(tx.activityLog.create.mock.calls[0][0].data).toMatchObject({
+        action: 'CONTRATTO_CLIENTE_RINNOVATO',
+        metadata: { contrattoId: K, dataFinePrima: '2026-12-31', dataFineDopo: '2027-12-31' },
+      })
+    })
+
+    it('29/02/2024 diventa 28/02/2025', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(
+        attivo({ dataFine: new Date('2024-02-29T00:00:00.000Z') })
+      )
+      await service.rinnova(T, U, K, 1)
+      expect(tx.contrattoCliente.updateMany.mock.calls[0][0].data.dataFine).toEqual(
+        new Date('2025-02-28T00:00:00.000Z')
+      )
+    })
+
+    it('un contratto sospeso si rinnova', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo({ stato: 'SOSPESO' }))
+      await service.rinnova(T, U, K, 1)
+      expect(tx.contrattoCliente.updateMany.mock.calls[0][0].where.stato).toBe('SOSPESO')
+    })
+
+    it('updateMany con count 0: 409 e niente audit', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      tx.contrattoCliente.updateMany.mockResolvedValue({ count: 0 })
+      const e = await errore(service.rinnova(T, U, K, 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('prorogaScadenze (Task 18, D11)', () => {
+    const filtri = {
+      scadutiEntro: '2026-12-31',
+      soloRinnovoAutomatico: true,
+      ancheSospesi: false,
+    }
+    /** Il Prisma.Sql passato a `$executeRaw`: testo con i segnaposto e valori. */
+    const sqlEseguito = () => {
+      const q = tx.$executeRaw.mock.calls[0][0]
+      return { testo: (q.strings as string[]).join('?'), valori: q.values as unknown[] }
+    }
+
+    it('esegue un solo $executeRaw nella transazione, con tenant, non eliminati e data', async () => {
+      tx.$executeRaw.mockResolvedValue(3)
+      const r = await service.prorogaScadenze(T, U, filtri)
+      expect(r).toEqual({ prorogati: 3 })
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1)
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+      const { testo, valori } = sqlEseguito()
+      expect(testo).toContain("data_fine = (data_fine + interval '1 year')::date")
+      expect(testo).toContain('versione = versione + 1')
+      expect(testo).toContain('updated_at = now()')
+      expect(testo).toMatch(/tenant_id = \?::uuid/)
+      expect(testo).toContain('eliminato_il IS NULL')
+      expect(testo).toContain('data_fine IS NOT NULL')
+      expect(testo).toMatch(/data_fine <= \?::date/)
+      expect(testo).toContain('AND rinnovo_automatico')
+      expect(valori[0]).toBe(T)
+      expect(valori).toContain('2026-12-31')
+    })
+
+    it('stati: solo ATTIVO per default; con ancheSospesi anche i due sospesi; mai bozze o annullati', async () => {
+      await service.prorogaScadenze(T, U, filtri)
+      let { valori } = sqlEseguito()
+      expect(valori).toContain('ATTIVO')
+      expect(valori).not.toContain('SOSPESO')
+      expect(valori).not.toContain('SOSPESO_MOVIMENTI')
+      tx.$executeRaw.mockClear()
+      await service.prorogaScadenze(T, U, { ...filtri, ancheSospesi: true })
+      ;({ valori } = sqlEseguito())
+      expect(valori).toEqual(expect.arrayContaining(['ATTIVO', 'SOSPESO', 'SOSPESO_MOVIMENTI']))
+      expect(valori).not.toContain('BOZZA')
+      expect(valori).not.toContain('ANNULLATO')
+    })
+
+    it('senza soloRinnovoAutomatico la condizione sul flag manca', async () => {
+      await service.prorogaScadenze(T, U, { ...filtri, soloRinnovoAutomatico: false })
+      expect(sqlEseguito().testo).not.toContain('rinnovo_automatico')
+    })
+
+    it('cliente e categoria entrano nel WHERE solo se indicati, come parametri', async () => {
+      await service.prorogaScadenze(T, U, filtri)
+      expect(sqlEseguito().testo).not.toContain('cliente_id')
+      expect(sqlEseguito().testo).not.toContain('categoria_id')
+      tx.$executeRaw.mockClear()
+      await service.prorogaScadenze(T, U, { ...filtri, clienteId: CL, categoriaId: K })
+      const { testo, valori } = sqlEseguito()
+      expect(testo).toMatch(/cliente_id = \?::uuid/)
+      expect(testo).toMatch(/categoria_id = \?::uuid/)
+      expect(valori).toEqual(expect.arrayContaining([CL, K]))
+    })
+
+    it('audit unico CONTRATTO_CLIENTE_PROROGATI con conteggio e filtri', async () => {
+      tx.$executeRaw.mockResolvedValue(2)
+      await service.prorogaScadenze(T, U, { ...filtri, categoriaId: K })
+      expect(tx.activityLog.create).toHaveBeenCalledTimes(1)
+      expect(tx.activityLog.create.mock.calls[0][0].data).toMatchObject({
+        tenantId: T,
+        userId: U,
+        action: 'CONTRATTO_CLIENTE_PROROGATI',
+        metadata: {
+          prorogati: 2,
+          filtri: { ...filtri, categoriaId: K },
+        },
+      })
+    })
+
+    it('zero prorogati: nessun audit', async () => {
+      tx.$executeRaw.mockResolvedValue(0)
+      expect(await service.prorogaScadenze(T, U, filtri)).toEqual({ prorogati: 0 })
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it.each(['2026-02-30', '31/12/2026', '', '2026-13-01'])(
+      'data %p non valida: 400 senza toccare il database',
+      async scadutiEntro => {
+        const e = await errore(service.prorogaScadenze(T, U, { ...filtri, scadutiEntro }))
+        expect(e).toBeInstanceOf(BadRequestException)
+        expect(tx.$executeRaw).not.toHaveBeenCalled()
+      }
+    )
+
+    it('id non UUID: 400 senza toccare il database', async () => {
+      const e = await errore(service.prorogaScadenze(T, U, { ...filtri, clienteId: 'x' }))
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(tx.$executeRaw).not.toHaveBeenCalled()
     })
   })
 })

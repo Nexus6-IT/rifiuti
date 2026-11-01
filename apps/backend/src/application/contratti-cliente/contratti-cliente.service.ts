@@ -1,6 +1,7 @@
 // Contratti cliente (4.1b, Task 16): creazione con i predefiniti del cliente (D4, R35), contratto
 // allegato (D28) e letture (vista, elenco, numero proposto); Task 17: modifica con lock ottimistico,
-// cambio di stato ed eliminazione logica. Rinnovo e proroga sono di un altro task.
+// cambio di stato ed eliminazione logica; Task 18: rinnovo di un contratto e proroga massiva delle
+// scadenze (D11).
 //
 // Modifica, stato ed eliminazione partono dallo stesso passo: `SELECT ... FOR UPDATE` della riga del
 // contratto, poi la lettura. Due scritture sullo stesso contratto si mettono in fila e la seconda
@@ -34,6 +35,7 @@ import {
   CAMPI_EREDITATI_DAL_CLIENTE,
   CAMPI_MODIFICABILI,
   TRANSIZIONI,
+  dataPiuUnAnno,
   contoCorrenteEffettivo,
   ETICHETTE_STATO,
   motivoNonEliminabile,
@@ -112,6 +114,16 @@ export type DatiCreazioneContratto = Partial<DatiContrattoCliente> & {
   descrizione: string
   clienteId: string
   dataInizio: string
+}
+
+/** Filtri della proroga massiva (D11): il servizio li vuole sempre valorizzati. */
+export interface FiltroProroga {
+  /** Giorno `YYYY-MM-DD`: si prorogano i contratti con fine uguale o anteriore. */
+  scadutiEntro: string
+  soloRinnovoAutomatico: boolean
+  ancheSospesi: boolean
+  clienteId?: string
+  categoriaId?: string
 }
 
 export interface FiltroContratti {
@@ -356,6 +368,14 @@ function datiDaRiga(
       meseFine: p.meseFine,
     })),
   }
+}
+
+/** `YYYY-MM-DD` che esiste davvero nel calendario (2026-02-30 no). */
+function giornoValido(g: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(g)) return false
+  const [a, m, d] = g.split('-').map(Number)
+  const data = new Date(Date.UTC(a, m - 1, d))
+  return data.getUTCFullYear() === a && data.getUTCMonth() === m - 1 && data.getUTCDate() === d
 }
 
 function piuGiorni(giorno: string, n: number): Date {
@@ -971,6 +991,131 @@ export class ContrattiClienteService {
         })
         .catch(err => this.traduci(err))
     })
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Task 18: rinnovo e proroga delle scadenze (D11)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Sposta di un anno la data di fine (29/02 -> 28/02). Ammesso solo con una data di fine e in
+   * stato attivo o sospeso: il controllo viene prima della versione (D14).
+   */
+  async rinnova(
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    versione: number
+  ): Promise<ContrattoClienteVista> {
+    return nelContestoTenant(tenantId, async () => {
+      await this.prisma
+        .$transaction(async tx => {
+          const prima = await this.bloccaELeggi(tx, tenantId, id)
+          const stato = prima.stato as StatoContrattoCliente
+          const fine = comeGiorno(prima.dataFine)
+          if (fine === null || !rinnovabile(stato, fine)) {
+            throw new ConflictException({
+              error: 'CONTRATTO_CLIENTE_NON_RINNOVABILE',
+              message: 'Si rinnovano solo i contratti attivi o sospesi con una data di fine.',
+            })
+          }
+          confrontaVersione(prima.versione, versione, ENTITA)
+          const nuova = dataPiuUnAnno(fine)
+          await scriviCondizionato(
+            () =>
+              tx.contrattoCliente.updateMany({
+                where: { id, tenantId, versione, stato: prima.stato, eliminatoIl: null },
+                data: { dataFine: comeData(nuova), versione: { increment: 1 } },
+              }),
+            ENTITA
+          )
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'CONTRATTO_CLIENTE_RINNOVATO',
+              description: `Contratto ${prima.numero} rinnovato`,
+              metadata: {
+                contrattoId: id,
+                dataFinePrima: fine,
+                dataFineDopo: nuova,
+              } as Prisma.InputJsonValue,
+            },
+          })
+        })
+        .catch(err => this.traduci(err))
+      return this.leggi(tenantId, id)
+    })
+  }
+
+  /**
+   * Proroga massiva (D11, E9): fine + 1 anno e versione + 1 su tutti i contratti non eliminati
+   * dell'azienda, attivi (e sospesi se richiesto), con fine entro `scadutiEntro`. Un solo
+   * `UPDATE` nella transazione col contesto azienda (la RLS vale anche per il raw; il `WHERE`
+   * ripete comunque `tenant_id`), un solo audit col conteggio e i filtri; nessun audit se zero.
+   * Il 29/02 diventa 28/02 perche' lo fa `interval '1 year'` di Postgres (WinWaste sbagliava).
+   */
+  async prorogaScadenze(
+    tenantId: string,
+    utenteId: string,
+    f: FiltroProroga
+  ): Promise<{ prorogati: number }> {
+    const messaggi: string[] = []
+    if (!giornoValido(f.scadutiEntro)) messaggi.push('La data di scadenza non è valida.')
+    if (f.clienteId !== undefined && !UUID.test(f.clienteId))
+      messaggi.push('Il cliente scelto non è valido.')
+    if (f.categoriaId !== undefined && !UUID.test(f.categoriaId))
+      messaggi.push('La categoria scelta non è valida.')
+    if (messaggi.length > 0) throw nonValido(messaggi)
+
+    const stati: StatoContrattoCliente[] = f.ancheSospesi
+      ? ['ATTIVO', 'SOSPESO', 'SOSPESO_MOVIMENTI']
+      : ['ATTIVO']
+    // Il tipo enum di Postgres vuole il cast esplicito sui parametri.
+    const elencoStati = Prisma.join(stati.map(s => Prisma.sql`${s}::stato_contratto_cliente`))
+    const condizioni: Prisma.Sql[] = [
+      Prisma.sql`tenant_id = ${tenantId}::uuid`,
+      Prisma.sql`eliminato_il IS NULL`,
+      Prisma.sql`data_fine IS NOT NULL`,
+      Prisma.sql`data_fine <= ${f.scadutiEntro}::date`,
+      Prisma.sql`stato IN (${elencoStati})`,
+    ]
+    if (f.soloRinnovoAutomatico) condizioni.push(Prisma.sql`rinnovo_automatico`)
+    if (f.clienteId !== undefined)
+      condizioni.push(Prisma.sql`cliente_id = ${f.clienteId.toLowerCase()}::uuid`)
+    if (f.categoriaId !== undefined)
+      condizioni.push(Prisma.sql`categoria_id = ${f.categoriaId.toLowerCase()}::uuid`)
+    const filtri = {
+      scadutiEntro: f.scadutiEntro,
+      soloRinnovoAutomatico: f.soloRinnovoAutomatico,
+      ancheSospesi: f.ancheSospesi,
+      ...(f.clienteId !== undefined ? { clienteId: f.clienteId.toLowerCase() } : {}),
+      ...(f.categoriaId !== undefined ? { categoriaId: f.categoriaId.toLowerCase() } : {}),
+    }
+
+    return nelContestoTenant(tenantId, () =>
+      this.prisma.$transaction(async tx => {
+        const prorogati = await tx.$executeRaw(
+          Prisma.sql`UPDATE "contratti_cliente"
+            SET data_fine = (data_fine + interval '1 year')::date,
+                versione = versione + 1,
+                updated_at = now()
+            WHERE ${Prisma.join(condizioni, ' AND ')}`
+        )
+        if (prorogati > 0) {
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'CONTRATTO_CLIENTE_PROROGATI',
+              description: `Proroga delle scadenze: ${prorogati} contratti`,
+              metadata: { prorogati, filtri } as Prisma.InputJsonValue,
+            },
+          })
+        }
+        return { prorogati }
+      })
+    )
   }
 
   private comeVista(r: RigaContratto, oggi: string): ContrattoClienteVista {

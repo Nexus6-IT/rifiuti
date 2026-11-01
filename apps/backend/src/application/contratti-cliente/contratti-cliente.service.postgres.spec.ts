@@ -726,4 +726,239 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
       }
     })
   })
+
+  // ---------------------------------------------------------------------------------------------
+  // Task 18: rinnovo e proroga delle scadenze
+  // ---------------------------------------------------------------------------------------------
+  describe('rinnovo e proroga', () => {
+    const giorno = (d: Date | null) => d?.toISOString().slice(0, 10) ?? null
+
+    /** Contratto creato dal servizio e portato dal proprietario allo stato/data voluti. */
+    async function contratto(
+      a: { tenantId: string; utenteId: string },
+      clienteId: string,
+      db: Record<string, unknown> = {}
+    ) {
+      const v = await nel(a.tenantId, () =>
+        service.crea(a.tenantId, a.utenteId, dati(clienteId, { dataInizio: '2020-01-01' }))
+      )
+      const aggiornamento = {
+        stato: 'ATTIVO',
+        dataFine: new Date('2026-06-30T00:00:00.000Z'),
+        rinnovoAutomatico: true,
+        ...db,
+      }
+      await owner.contrattoCliente.update({ where: { id: v.id }, data: aggiornamento as never })
+      return v.id
+    }
+    const leggi = (id: string) => owner.contrattoCliente.findUniqueOrThrow({ where: { id } })
+    const proroga = (a: { tenantId: string; utenteId: string }, f: Record<string, unknown> = {}) =>
+      nel(a.tenantId, () =>
+        service.prorogaScadenze(a.tenantId, a.utenteId, {
+          scadutiEntro: '2026-12-31',
+          soloRinnovoAutomatico: true,
+          ancheSospesi: false,
+          ...f,
+        })
+      )
+
+    it('rinnova: 29/02/2024 diventa 28/02/2025, versione + 1, audit con prima e dopo', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const id = await contratto(a, c.ruoloId, { dataFine: new Date('2024-02-29T00:00:00.000Z') })
+      const prima = await leggi(id)
+      const v = await nel(a.tenantId, () =>
+        service.rinnova(a.tenantId, a.utenteId, id, prima.versione)
+      )
+      expect(v.dataFine).toBe('2025-02-28')
+      expect(v.versione).toBe(prima.versione + 1)
+      const log = await owner.activityLog.findFirst({
+        where: { tenantId: a.tenantId, action: 'CONTRATTO_CLIENTE_RINNOVATO' },
+      })
+      expect(log?.metadata).toMatchObject({
+        contrattoId: id,
+        dataFinePrima: '2024-02-29',
+        dataFineDopo: '2025-02-28',
+      })
+    })
+
+    it('rinnova una bozza o un annullato: 409 NON_RINNOVABILE, la data non cambia', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const bozza = await contratto(a, c.ruoloId, { stato: 'BOZZA' })
+      const annullato = await contratto(a, c.ruoloId, {
+        stato: 'ANNULLATO',
+        motivoAnnullo: 'Disdetta',
+        annullatoIl: new Date(),
+      })
+      for (const id of [bozza, annullato]) {
+        await expect(
+          nel(a.tenantId, () => service.rinnova(a.tenantId, a.utenteId, id, 1))
+        ).rejects.toMatchObject({
+          status: 409,
+          response: { error: 'CONTRATTO_CLIENTE_NON_RINNOVABILE' },
+        })
+        expect(giorno((await leggi(id)).dataFine)).toBe('2026-06-30')
+      }
+    })
+
+    it('rinnova concorrente con una modifica: una riesce, l’altra 409', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const id = await contratto(a, c.ruoloId)
+      const { versione } = await leggi(id)
+      const esiti = await Promise.allSettled([
+        nel(a.tenantId, () => service.rinnova(a.tenantId, a.utenteId, id, versione)),
+        nel(a.tenantId, () =>
+          service.modifica(a.tenantId, a.utenteId, id, { descrizione: 'Nuova', versione })
+        ),
+      ])
+      expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+      const rifiutata = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
+      expect(rifiutata.reason).toMatchObject({
+        status: 409,
+        response: { error: 'CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO' },
+      })
+      expect((await leggi(id)).versione).toBe(versione + 1)
+    })
+
+    it('proroga: 29/02/2024 diventa 28/02/2025, versione + 1, un solo audit', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const id = await contratto(a, c.ruoloId, { dataFine: new Date('2024-02-29T00:00:00.000Z') })
+      const prima = await leggi(id)
+      expect(await proroga(a)).toEqual({ prorogati: 1 })
+      const dopo = await leggi(id)
+      expect(giorno(dopo.dataFine)).toBe('2025-02-28')
+      expect(dopo.versione).toBe(prima.versione + 1)
+      expect(dopo.updatedAt.getTime()).toBeGreaterThan(prima.updatedAt.getTime())
+      const log = await owner.activityLog.findMany({
+        where: { tenantId: a.tenantId, action: 'CONTRATTO_CLIENTE_PROROGATI' },
+      })
+      expect(log).toHaveLength(1)
+      expect(log[0].metadata).toMatchObject({
+        prorogati: 1,
+        filtri: { scadutiEntro: '2026-12-31', soloRinnovoAutomatico: true, ancheSospesi: false },
+      })
+    })
+
+    it('proroga: solo i contratti con fine entro la data (inclusa) e con una data di fine', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const entro = await contratto(a, c.ruoloId, { dataFine: new Date('2026-12-31') })
+      const oltre = await contratto(a, c.ruoloId, { dataFine: new Date('2027-01-01') })
+      const senza = await contratto(a, c.ruoloId, { dataFine: null })
+      expect(await proroga(a)).toEqual({ prorogati: 1 })
+      expect(giorno((await leggi(entro)).dataFine)).toBe('2027-12-31')
+      expect(giorno((await leggi(oltre)).dataFine)).toBe('2027-01-01')
+      expect((await leggi(senza)).dataFine).toBeNull()
+    })
+
+    it('sospesi esclusi senza ancheSospesi, inclusi con', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const attivo = await contratto(a, c.ruoloId)
+      const sospeso = await contratto(a, c.ruoloId, { stato: 'SOSPESO' })
+      const soloMovimenti = await contratto(a, c.ruoloId, { stato: 'SOSPESO_MOVIMENTI' })
+      expect(await proroga(a)).toEqual({ prorogati: 1 })
+      expect(giorno((await leggi(attivo)).dataFine)).toBe('2027-06-30')
+      expect(giorno((await leggi(sospeso)).dataFine)).toBe('2026-06-30')
+      expect(giorno((await leggi(soloMovimenti)).dataFine)).toBe('2026-06-30')
+      expect(await proroga(a, { ancheSospesi: true })).toEqual({ prorogati: 2 })
+      expect(giorno((await leggi(sospeso)).dataFine)).toBe('2027-06-30')
+      expect(giorno((await leggi(soloMovimenti)).dataFine)).toBe('2027-06-30')
+      // l'attivo, ora al 2027-06-30, e' oltre la data: non si muove di nuovo
+      expect(giorno((await leggi(attivo)).dataFine)).toBe('2027-06-30')
+    })
+
+    it('solo rinnovo automatico per default; senza il filtro anche gli altri', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const auto = await contratto(a, c.ruoloId)
+      const manuale = await contratto(a, c.ruoloId, { rinnovoAutomatico: false })
+      expect(await proroga(a)).toEqual({ prorogati: 1 })
+      expect(giorno((await leggi(auto)).dataFine)).toBe('2027-06-30')
+      expect(giorno((await leggi(manuale)).dataFine)).toBe('2026-06-30')
+      expect(await proroga(a, { soloRinnovoAutomatico: false })).toEqual({ prorogati: 1 })
+      expect(giorno((await leggi(manuale)).dataFine)).toBe('2027-06-30')
+    })
+
+    it('solo la categoria indicata; solo il cliente indicato', async () => {
+      const a = await azienda()
+      const t = await creaTabelleFatturazione(owner, a.tenantId)
+      const c1 = await cliente(a.tenantId)
+      const c2 = await cliente(a.tenantId)
+      const conCategoria = await contratto(a, c1.ruoloId, { categoriaId: t.categoriaId })
+      const senzaCategoria = await contratto(a, c1.ruoloId)
+      const altroCliente = await contratto(a, c2.ruoloId, { categoriaId: t.categoriaId })
+      expect(await proroga(a, { categoriaId: t.categoriaId, clienteId: c1.ruoloId })).toEqual({
+        prorogati: 1,
+      })
+      expect(giorno((await leggi(conCategoria)).dataFine)).toBe('2027-06-30')
+      expect(giorno((await leggi(senzaCategoria)).dataFine)).toBe('2026-06-30')
+      expect(giorno((await leggi(altroCliente)).dataFine)).toBe('2026-06-30')
+      expect(await proroga(a, { categoriaId: t.categoriaId })).toEqual({ prorogati: 1 })
+      expect(giorno((await leggi(altroCliente)).dataFine)).toBe('2027-06-30')
+    })
+
+    it('bozze, annullati ed eliminati non si prorogano mai', async () => {
+      const a = await azienda()
+      const c = await cliente(a.tenantId)
+      const bozza = await contratto(a, c.ruoloId, { stato: 'BOZZA' })
+      const annullato = await contratto(a, c.ruoloId, {
+        stato: 'ANNULLATO',
+        motivoAnnullo: 'Disdetta',
+        annullatoIl: new Date(),
+      })
+      const eliminato = await contratto(a, c.ruoloId, {
+        eliminatoIl: new Date(),
+        eliminatoDa: a.utenteId,
+      })
+      const versioni = await Promise.all([bozza, annullato, eliminato].map(i => leggi(i)))
+      expect(await proroga(a, { ancheSospesi: true, soloRinnovoAutomatico: false })).toEqual({
+        prorogati: 0,
+      })
+      for (const [k, id] of [bozza, annullato, eliminato].entries()) {
+        const r = await leggi(id)
+        expect(giorno(r.dataFine)).toBe('2026-06-30')
+        expect(r.versione).toBe(versioni[k].versione)
+      }
+      // zero prorogati: nessun audit
+      expect(
+        await owner.activityLog.count({
+          where: { tenantId: a.tenantId, action: 'CONTRATTO_CLIENTE_PROROGATI' },
+        })
+      ).toBe(0)
+    })
+
+    it('i contratti di B non si toccano', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const ca = await cliente(a.tenantId)
+      const cb = await cliente(b.tenantId)
+      const ida = await contratto(a, ca.ruoloId)
+      const idb = await contratto(b, cb.ruoloId)
+      const versioneB = (await leggi(idb)).versione
+      expect(await proroga(a)).toEqual({ prorogati: 1 })
+      const rb = await leggi(idb)
+      expect(giorno(rb.dataFine)).toBe('2026-06-30')
+      expect(rb.versione).toBe(versioneB)
+      expect(giorno((await leggi(ida)).dataFine)).toBe('2027-06-30')
+      expect(
+        await owner.activityLog.count({
+          where: { tenantId: b.tenantId, action: 'CONTRATTO_CLIENTE_PROROGATI' },
+        })
+      ).toBe(0)
+    })
+
+    it('categoria di B nel filtro di A: nessun contratto toccato', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const tb = await creaTabelleFatturazione(owner, b.tenantId)
+      const ca = await cliente(a.tenantId)
+      const id = await contratto(a, ca.ruoloId)
+      expect(await proroga(a, { categoriaId: tb.categoriaId })).toEqual({ prorogati: 0 })
+      expect(giorno((await leggi(id)).dataFine)).toBe('2026-06-30')
+    })
+  })
 })
