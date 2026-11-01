@@ -4,6 +4,7 @@ import { hasRoleCredentials, getApiUrl } from '../../utils/env'
 import { apiLogin, apiGet, apiDelete, ApiClientError } from '../../utils/api-client'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
+import { ATTESA_SERVER, attendiRisposta, cliccaEAttendi, cliccaEChiudi } from '../../utils/attese'
 
 /**
  * E2E — Archivio addebiti (pezzo 4.2a, Task 15): dai codici IVA alla variazione dei prezzi.
@@ -109,14 +110,14 @@ function dialogo(page: Page, nome: string | RegExp): Locator {
 }
 
 /** Riempie i campi e verifica che `Salva` si abiliti: se il form viene azzerato si riparte. */
-async function compilaESalva(dlg: Locator, riempi: () => Promise<void>): Promise<void> {
+async function compilaESalva(page: Page, dlg: Locator, riempi: () => Promise<void>): Promise<void> {
   await expect(async () => {
     await riempi()
     await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
-  }).toPass({ timeout: 10_000 })
-  await dlg.getByRole('button', { name: 'Salva' }).click()
-  // Il salvataggio puo' essere lento con la macchina carica: piu' del timeout di default.
-  await expect(dlg).toBeHidden({ timeout: 15_000 })
+  }).toPass({ timeout: 20_000 })
+  // Risposta del salvataggio (attesa avviata prima del click), poi chiusura del dialog: con la
+  // macchina carica il salvataggio supera di molto il timeout di default.
+  await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 }
 
 /** Sceglie in un `<select>` nativo la voce il cui testo contiene `testo`. */
@@ -145,9 +146,26 @@ async function apriArchivio(page: Page): Promise<void> {
 
 /** Cerca l'addebito dello spec e ne restituisce la riga. */
 async function rigaAddebito(page: Page): Promise<Locator> {
+  // Precondizione del gruppo seriale: l'addebito lo crea il test "Trasporto". Se manca si
+  // fallisce subito con la causa vera.
+  const token = await apiLogin('admin')
+  expect(
+    (await elenco('addebiti', token)).some(r => r.descrizione === nomi.addebito),
+    `precondizione: l'addebito "${nomi.addebito}" non esiste (il test "Trasporto" non e' riuscito a crearlo)`
+  ).toBe(true)
+  // La ricerca ricarica l'elenco dal server: si attende quella risposta, non un tempo.
+  const ricerca = page.waitForResponse(
+    r =>
+      r.request().method() === 'GET' &&
+      new URL(r.url()).pathname.endsWith('/addebiti') &&
+      new URL(r.url()).searchParams.get('testo') === nomi.addebito,
+    { timeout: ATTESA_SERVER }
+  )
+  ricerca.catch(() => undefined)
   await contenuto(page).getByRole('searchbox', { name: 'Cerca un addebito' }).fill(nomi.addebito)
+  expect((await ricerca).ok(), 'ricerca dell addebito').toBe(true)
   const riga = contenuto(page).getByRole('row', { name: new RegExp(nomi.addebito) })
-  await expect(riga).toHaveCount(1)
+  await expect(riga).toHaveCount(1, { timeout: ATTESA_SERVER })
   return riga
 }
 
@@ -209,7 +227,7 @@ test.describe('Archivio addebiti — admin', () => {
     await contenuto(page).getByRole('button', { name: 'Nuovo codice IVA' }).click()
     const ord = dialogo(page, 'Nuovo codice IVA')
     await expect(ord).toBeVisible()
-    await compilaESalva(ord, async () => {
+    await compilaESalva(page, ord, async () => {
       await ord.getByLabel('Codice (da 1 a 3 lettere o cifre)').fill(dati.iva22)
       await ord.getByLabel('Descrizione', { exact: true }).fill(nomi.iva22)
       await ord.getByLabel('Aliquota (%)').fill('22')
@@ -222,32 +240,38 @@ test.describe('Archivio addebiti — admin', () => {
     await contenuto(page).getByRole('button', { name: 'Nuovo codice IVA' }).click()
     const inv = dialogo(page, 'Nuovo codice IVA')
     await expect(inv).toBeVisible()
-    await inv.getByLabel('Codice (da 1 a 3 lettere o cifre)').fill(dati.ivaN61)
-    await inv.getByLabel('Descrizione', { exact: true }).fill(nomi.ivaN61)
-    await inv.getByLabel('Aliquota (%)').fill('22')
-    // Dropdown di PrimeNG: l'apertura puo' andare persa durante l'animazione del dialog, quindi
-    // si riprova la sequenza finche' l'etichetta mostra la scelta.
+    // Riempimento e scelta della natura in un solo blocco ritentabile: se il form viene azzerato
+    // (dialog che si inizializza in ritardo su un runner lento) si riparte da capo, e si esce solo
+    // quando `Salva` e' abilitato. Il dropdown di PrimeNG puo' perdere l'apertura durante
+    // l'animazione del dialog: la sequenza di apertura e scelta e' parte del blocco.
     const etichettaNatura = inv.locator('p-dropdown .p-dropdown-label')
     await expect(async () => {
+      await inv.getByLabel('Codice (da 1 a 3 lettere o cifre)').fill(dati.ivaN61)
+      await inv.getByLabel('Descrizione', { exact: true }).fill(nomi.ivaN61)
+      await inv.getByLabel('Aliquota (%)').fill('22')
       await etichettaNatura.click()
       const opzione = page.getByRole('option', { name: /^N6\.1 - / })
       await expect(opzione).toBeVisible({ timeout: 3_000 })
       await opzione.click()
       await expect(etichettaNatura).toContainText('N6.1', { timeout: 2_000 })
-    }).toPass({ timeout: 15_000 })
-    await expect(page.getByRole('option', { name: /^N6\.1 - / })).toBeHidden()
-    await expect(inv.getByRole('button', { name: 'Salva' })).toBeEnabled()
-    await inv.getByRole('button', { name: 'Salva' }).click()
+      await expect(inv.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 2_000 })
+    }).toPass({ timeout: 30_000 })
+    await expect(page.getByRole('option', { name: /^N6\.1 - / })).toBeHidden({
+      timeout: ATTESA_SERVER,
+    })
+    await cliccaEAttendi(page, inv.getByRole('button', { name: 'Salva' }), {
+      stato: [400, 409, 422],
+    })
     await expect(inv.getByTestId('iva-dlg-errore')).toContainText(
-      'La natura si indica solo con aliquota zero.'
+      'La natura si indica solo con aliquota zero.',
+      { timeout: ATTESA_SERVER }
     )
     await expect(inv).toBeVisible()
 
     // Aliquota zero con la natura N6.1: accettato.
     await inv.getByLabel('Aliquota (%)').fill('0')
     await expect(inv.getByRole('button', { name: 'Salva' })).toBeEnabled()
-    await inv.getByRole('button', { name: 'Salva' }).click()
-    await expect(inv).toBeHidden()
+    await cliccaEChiudi(page, inv.getByRole('button', { name: 'Salva' }), inv)
     const rigaInv = contenuto(page).getByTestId(`iva-riga-${dati.ivaN61}`)
     await expect(rigaInv).toContainText(nomi.ivaN61)
     await expect(rigaInv).toContainText('N6.1')
@@ -265,20 +289,20 @@ test.describe('Archivio addebiti — admin', () => {
     await contenuto(page).getByRole('button', { name: 'Nuovo addebito' }).click()
     const dlg = dialogo(page, 'Nuovo addebito')
     await expect(dlg).toBeVisible()
-    await expect(dlg.getByText('Caricamento…')).toBeHidden()
+    await expect(dlg.getByText('Caricamento…')).toBeHidden({ timeout: ATTESA_SERVER })
 
     // Gruppo in linea, modalita' rapida: solo la descrizione, il codice lo da' il server.
     await dlg.getByRole('button', { name: 'Nuovo gruppo' }).click()
     const gruppo = dialogo(page, 'Nuovo gruppo')
     await expect(gruppo).toBeVisible()
     await expect(gruppo.getByLabel('Codice', { exact: false })).toHaveCount(0)
-    await compilaESalva(gruppo, async () => {
+    await compilaESalva(page, gruppo, async () => {
       await gruppo.getByLabel('Descrizione', { exact: true }).fill(nomi.gruppo)
     })
     await expect(dlg.getByLabel('Gruppo', { exact: true })).not.toHaveValue('')
 
     await scegliVoce(dlg.getByLabel('Codice IVA', { exact: true }), dati.iva22)
-    await compilaESalva(dlg, async () => {
+    await compilaESalva(page, dlg, async () => {
       await dlg.getByLabel('Descrizione', { exact: true }).fill(nomi.addebito)
       await dlg.getByLabel('Unità di misura').fill('NR')
       await dlg.getByLabel('Tipo di addebito').selectOption('V')
@@ -305,7 +329,7 @@ test.describe('Archivio addebiti — admin', () => {
     const dlg = dialogo(page, 'Nuovo cliente')
     await expect(dlg).toBeVisible()
 
-    await compilaESalva(dlg, async () => {
+    await compilaESalva(page, dlg, async () => {
       await dlg.getByLabel('Ragione sociale').fill(nomi.cliente)
       await dlg.getByLabel('Partita IVA').fill(dati.partitaIva)
       await dlg.getByLabel('Via', { exact: true }).fill('Via delle Prove')
@@ -344,10 +368,13 @@ test.describe('Archivio addebiti — admin', () => {
       await dlg.getByRole('checkbox', { name: `Listino ${n}`, exact: true }).uncheck()
     }
     await expect(dlg.getByRole('checkbox', { name: 'Listino 2', exact: true })).toBeChecked()
-    await dlg.getByRole('button', { name: 'Anteprima' }).click()
+    // L'anteprima e' un POST di calcolo: se ne attende la risposta prima di guardare la tabella.
+    await cliccaEAttendi(page, dlg.getByRole('button', { name: 'Anteprima' }))
 
     // Anteprima: un solo prezzo, 10.00 -> 11.00 sul listino 2.
-    await expect(dlg.getByRole('heading', { name: /Anteprima: 1 prezzi/ })).toBeVisible()
+    await expect(dlg.getByRole('heading', { name: /Anteprima: 1 prezzi/ })).toBeVisible({
+      timeout: ATTESA_SERVER,
+    })
     const righe = dlg.getByTestId('var-righe').locator('tbody tr')
     await expect(righe).toHaveCount(1)
     await expect(righe.first()).toContainText(nomi.addebito)
@@ -359,10 +386,12 @@ test.describe('Archivio addebiti — admin', () => {
     await expect(dlg.getByTestId('var-riepilogo')).toContainText('Listini: 2')
     await expect(dlg.getByTestId('var-riepilogo')).toContainText('Solo l’addebito scelto')
     await expect(dlg.getByRole('button', { name: 'Conferma la variazione' })).toBeEnabled()
-    await dlg.getByRole('button', { name: 'Conferma la variazione' }).click()
-    await expect(dlg.getByTestId('var-esito')).toContainText('Prezzi aggiornati: 1')
+    await cliccaEAttendi(page, dlg.getByRole('button', { name: 'Conferma la variazione' }))
+    await expect(dlg.getByTestId('var-esito')).toContainText('Prezzi aggiornati: 1', {
+      timeout: ATTESA_SERVER,
+    })
     await dlg.getByRole('button', { name: 'Chiudi' }).click()
-    await expect(dlg).toBeHidden()
+    await expect(dlg).toBeHidden({ timeout: ATTESA_SERVER })
 
     // Effetto sull'archivio: il listino 2 sale, il listino 1 resta.
     const token = await apiLogin('admin')
@@ -374,14 +403,21 @@ test.describe('Archivio addebiti — admin', () => {
     expect(prezzo(1)).toBe('5.00')
 
     // ...e la riga, riaperta in modifica, mostra gli stessi prezzi.
-    await riga.getByRole('button', { name: /^Modifica l.addebito/ }).click()
+    // Il dialog legge l'addebito dal server: si attende quella GET, poi la fine del caricamento.
+    await attendiRisposta(
+      page,
+      () => riga.getByRole('button', { name: /^Modifica l.addebito/ }).click(),
+      { metodo: 'GET', percorso: new RegExp(`/addebiti/${trovato!.id}$`) }
+    )
     const modifica = dialogo(page, 'Modifica addebito')
     await expect(modifica).toBeVisible()
-    await expect(modifica.getByText('Caricamento…')).toBeHidden()
-    await expect(modifica.getByLabel('Prezzo del listino 2')).toHaveValue('11.00')
+    await expect(modifica.getByText('Caricamento…')).toBeHidden({ timeout: ATTESA_SERVER })
+    await expect(modifica.getByLabel('Prezzo del listino 2')).toHaveValue('11.00', {
+      timeout: ATTESA_SERVER,
+    })
     await expect(modifica.getByLabel('Prezzo del listino 1')).toHaveValue('5.00')
     await modifica.getByRole('button', { name: 'Annulla', exact: true }).click()
-    await expect(modifica).toBeHidden()
+    await expect(modifica).toBeHidden({ timeout: ATTESA_SERVER })
   })
 })
 

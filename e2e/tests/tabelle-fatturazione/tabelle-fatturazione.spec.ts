@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { aggiungiRata, cliccaEChiudi } from '../../utils/attese'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiGet, apiDelete } from '../../utils/api-client'
@@ -140,17 +141,19 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await apriTabelle(page, 'Condizioni di pagamento')
     await contenuto(page).getByRole('button', { name: 'Nuova condizione' }).click()
     const dlg = dialogo(page)
-    await dlg.getByLabel('Codice').fill(codici.condizione)
     creati.push({ tabella: 'condizioni-pagamento', codice: codici.condizione })
-    await dlg.getByLabel('Descrizione').fill(descrizioni.condizione)
-    const giorno = dlg.getByLabel('Rate (giorni dalla fattura)')
-    await giorno.fill('30')
-    await dlg.getByRole('button', { name: 'Aggiungi rata' }).click()
-    await giorno.fill('60')
-    await dlg.getByRole('button', { name: 'Aggiungi rata' }).click()
+    // Campi compilati durante l'apertura del dialog possono andare persi su un runner lento
+    // (visto: `Salva` spento per 30 s con form vuoto): si ricompila finche' i valori restano.
+    await expect(async () => {
+      await dlg.getByLabel('Codice').fill(codici.condizione)
+      await dlg.getByLabel('Descrizione').fill(descrizioni.condizione)
+      await expect(dlg.getByLabel('Codice')).toHaveValue(codici.condizione, { timeout: 1_000 })
+      await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
+    }).toPass({ timeout: 20_000 })
+    await aggiungiRata(dlg, '30')
+    await aggiungiRata(dlg, '60')
     await dlg.getByText('Fine mese', { exact: true }).click()
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.condizione) })
     await expect(riga).toContainText(descrizioni.condizione)
@@ -177,8 +180,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByLabel('Descrizione').fill(descrizioni.conto)
     await dlg.getByLabel('Banca').fill('Banca di prova')
     await dlg.getByLabel('IBAN').fill(iban)
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.conto) })
     await expect(riga).toContainText(`${iban.slice(0, 4)} **** **** ${iban.slice(-4)}`)
@@ -210,8 +212,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
       await expect(dlg.getByLabel('Codice')).toHaveValue(codici.spesa, { timeout: 1_000 })
       await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
     }).toPass({ timeout: 10_000 })
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.spesa) })
     await expect(riga).toContainText('Bollo')
@@ -235,8 +236,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await dlg.getByLabel('Codice').fill(libero!)
     creati.push({ tabella: 'registri-iva', codice: codiceRegistro })
     await dlg.getByLabel('Descrizione').fill(conPrefisso('Registro di prova'))
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     await expect(contenuto(page).getByTestId(`registro-riga-${codiceRegistro}`)).toBeVisible()
     await expect(contenuto(page).getByTestId(`registro-riga-${codiceRegistro}`)).toContainText(
@@ -252,12 +252,17 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     await apriTabelle(page, 'Testi di fatturazione')
     await contenuto(page).getByRole('button', { name: 'Nuovo testo' }).click()
     const dlg = dialogo(page)
-    await dlg.getByLabel('Codice').fill(codici.testo)
     creati.push({ tabella: 'testi-fatturazione', codice: codici.testo })
-    await dlg.getByLabel('Titolo').fill(descrizioni.testo)
-    await dlg.getByLabel('Riga 1', { exact: true }).fill('Pagamento tramite bonifico bancario.')
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    // Se il dialog si inizializza in ritardo (runner lento) azzera i campi gia' compilati: si
+    // ricompila finche' i valori restano e `Salva` e' abilitato, prima di salvare.
+    await expect(async () => {
+      await dlg.getByLabel('Codice').fill(codici.testo)
+      await dlg.getByLabel('Titolo').fill(descrizioni.testo)
+      await dlg.getByLabel('Riga 1', { exact: true }).fill('Pagamento tramite bonifico bancario.')
+      await expect(dlg.getByLabel('Codice')).toHaveValue(codici.testo, { timeout: 1_000 })
+      await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
+    }).toPass({ timeout: 20_000 })
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     await expect(
       contenuto(page).getByRole('row', { name: new RegExp(descrizioni.testo) })
@@ -271,8 +276,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     // Il codice e' proposto: lo si svuota, cosi' lo assegna il server (come nella modalita' rapida).
     await dlg.getByLabel('Codice').fill('')
     await dlg.getByLabel('Descrizione').fill(descrizioni.categoria)
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = contenuto(page).getByRole('row', { name: new RegExp(descrizioni.categoria) })
     await expect(riga).toBeVisible()
