@@ -190,14 +190,26 @@ test.describe('Tabelle di fatturazione — operatore', () => {
   test('spesa di bollo', async ({ page }) => {
     await apriTabelle(page, 'Spese e bollo')
     await contenuto(page).getByTestId('spesa-filtro').click()
-    await page.getByRole('option', { name: 'Bollo', exact: true }).click()
+    const opzioneBollo = page.getByRole('option', { name: 'Bollo', exact: true })
+    await opzioneBollo.click()
+    // Il pannello del filtro si chiude con un'animazione e il dropdown rimette il fuoco su di
+    // se': si apre il dialog solo a pannello sparito, altrimenti su un runner lento i due si
+    // sovrappongono.
+    await expect(opzioneBollo).toBeHidden()
     await contenuto(page).getByRole('button', { name: 'Nuova spesa' }).click()
     const dlg = dialogo(page)
     await expect(dlg.getByTestId('spesa-dlg-tipo-fisso')).toHaveText('Bollo')
-    await dlg.getByLabel('Codice').fill(codici.spesa)
     creati.push({ tabella: 'spese-accessorie', codice: codici.spesa })
-    await dlg.getByLabel('Descrizione').fill(descrizioni.spesa)
-    await dlg.getByLabel('Importo (euro)').fill('2,00')
+    // Riempie e verifica che Salva si abiliti: se il form viene reinizializzato dopo il
+    // riempimento (apertura del dialog che completa dopo il primo fill) si riparte da capo,
+    // invece di attendere per sempre un pulsante disabilitato.
+    await expect(async () => {
+      await dlg.getByLabel('Codice').fill(codici.spesa)
+      await dlg.getByLabel('Descrizione').fill(descrizioni.spesa)
+      await dlg.getByLabel('Importo (euro)').fill('2,00')
+      await expect(dlg.getByLabel('Codice')).toHaveValue(codici.spesa, { timeout: 1_000 })
+      await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
+    }).toPass({ timeout: 10_000 })
     await dlg.getByRole('button', { name: 'Salva' }).click()
     await expect(dlg).toBeHidden()
 
