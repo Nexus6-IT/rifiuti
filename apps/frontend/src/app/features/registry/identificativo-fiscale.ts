@@ -16,7 +16,18 @@ export const MESSAGGIO_CODICE_FISCALE_NON_VALIDO = 'Codice fiscale non valido.'
 export const MESSAGGIO_CODICE_FISCALE_TROPPO_LUNGO =
   'Il codice fiscale ha al massimo 16 caratteri: le controparti estere non sono ancora gestite.'
 export const MESSAGGIO_PRIVATO_SOLO_PRODUTTORE =
-  'Un privato senza partita IVA può essere solo produttore.'
+  'Un privato senza partita IVA può essere solo produttore o cliente.'
+
+/**
+ * Ruoli di una ditta (4.1b, R21): i tre di `TipoAnagrafica` piu' cliente e agente. `TipoAnagrafica`
+ * resta com'e': lo usano contratti e FIR, e il dialog tratta ogni altro tipo come destinatario.
+ */
+export type TipoRuoloDitta = TipoAnagrafica | 'cliente' | 'agente'
+
+/** D2.5, D18: il privato e' ammesso solo come produttore o cliente (l'agente e' un fornitore). */
+export function ammessoPrivato(tipo: TipoRuoloDitta): boolean {
+  return tipo === 'produttore' || tipo === 'cliente'
+}
 
 /** Forma del CF di persona, omocodia compresa (lettere LMNPQRSTUV al posto delle cifre). */
 const FORMA_CF_PERSONA =
@@ -109,7 +120,7 @@ export interface EsitoIdentificativi {
  */
 export function validaIdentificativi(
   input: IdentificativiInput,
-  tipo: TipoAnagrafica,
+  tipo: TipoRuoloDitta,
   richiediAlmenoUno = true,
   /** In modifica: la ditta ha gia' una P.IVA, quindi un CF aggiunto non la rende un privato. */
   partitaIvaGiaPresente = false
@@ -140,7 +151,7 @@ export function validaIdentificativi(
 
   const privato =
     !grezzaPiva && !partitaIvaGiaPresente && codiceFiscale !== null && codiceFiscale.length === 16
-  if (privato && tipo !== 'produttore' && !errori.codiceFiscale) {
+  if (privato && !ammessoPrivato(tipo) && !errori.codiceFiscale) {
     errori.codiceFiscale = MESSAGGIO_PRIVATO_SOLO_PRODUTTORE
   }
   return { errori, partitaIva, codiceFiscale, privato }
@@ -179,7 +190,7 @@ export interface IdentificativiDaInviare {
  */
 export function identificativiPerSalvataggio(
   input: { partitaIVA: string; codiceFiscale: string },
-  tipo: TipoAnagrafica,
+  tipo: TipoRuoloDitta,
   impostati: IdentificativiImpostati | null
 ): IdentificativiDaInviare {
   if (!impostati) {

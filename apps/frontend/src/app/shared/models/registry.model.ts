@@ -125,7 +125,13 @@ export interface Ditta {
   partitaIvaDaVerificare: boolean
   privato: boolean
   sedi: SedeDitta[]
-  ruoli: { produttoreId?: string; trasportatoreId?: string; destinatarioId?: string }
+  ruoli: {
+    produttoreId?: string
+    trasportatoreId?: string
+    destinatarioId?: string
+    clienteId?: string
+    agenteId?: string
+  }
 }
 
 export interface CercaDittaRisposta {

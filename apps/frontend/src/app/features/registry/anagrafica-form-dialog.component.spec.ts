@@ -205,7 +205,7 @@ describe('AnagraficaFormDialogComponent — codice fiscale, ditta già presente,
     compilaIndirizzo('ana-trasportatore')
     salva()
     expect(q('#ana-trasportatore-cf-err')!.textContent).toContain(
-      'Un privato senza partita IVA può essere solo produttore.'
+      'Un privato senza partita IVA può essere solo produttore o cliente.'
     )
     expect(registry.createTrasportatore).not.toHaveBeenCalled()
   })

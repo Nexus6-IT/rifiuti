@@ -15,13 +15,19 @@ import { FormsModule } from '@angular/forms'
 import { InputTextModule } from 'primeng/inputtext'
 import { RegistryService } from './registry.service'
 import { Ditta, SedeDitta } from '../../shared/models/registry.model'
-import { ErroriIdentificativi, identificativoPerRicerca } from './identificativo-fiscale'
-import type { ModalitaAnagrafica, TipoAnagrafica } from './anagrafica-form-dialog.component'
+import {
+  ErroriIdentificativi,
+  TipoRuoloDitta,
+  identificativoPerRicerca,
+} from './identificativo-fiscale'
+import type { ModalitaAnagrafica } from './anagrafica-form-dialog.component'
 
-const ETICHETTA_RUOLO: Record<TipoAnagrafica, string> = {
+const ETICHETTA_RUOLO: Record<TipoRuoloDitta, string> = {
   produttore: 'produttore',
   trasportatore: 'trasportatore',
   destinatario: 'destinatario',
+  cliente: 'cliente',
+  agente: 'agente',
 }
 
 @Component({
@@ -244,7 +250,7 @@ export class DittaIdentificativiComponent {
   @Input() pfx = 'ident'
   /** Prefisso dei `data-testid` (default: `pfx`); le liste mantengono quelli degli E2E. */
   @Input() testidPrefix = ''
-  @Input() tipo: TipoAnagrafica = 'produttore'
+  @Input() tipo: TipoRuoloDitta = 'produttore'
   @Input() modalita: ModalitaAnagrafica = 'create'
   @Input() partitaIVA: string | null | undefined = ''
   @Input() codiceFiscale: string | null | undefined = ''
@@ -291,7 +297,9 @@ export class DittaIdentificativiComponent {
     return !!(
       (this.tipo === 'produttore' && r.produttoreId) ||
       (this.tipo === 'trasportatore' && r.trasportatoreId) ||
-      (this.tipo === 'destinatario' && r.destinatarioId)
+      (this.tipo === 'destinatario' && r.destinatarioId) ||
+      (this.tipo === 'cliente' && r.clienteId) ||
+      (this.tipo === 'agente' && r.agenteId)
     )
   }
 
