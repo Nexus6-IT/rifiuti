@@ -41,7 +41,7 @@ const SCHEDE = [
   ],
   template: `
     <h1>Tabelle di fatturazione</h1>
-    <p-tabView [activeIndex]="indiceAttivo()" (onChange)="scegli($event.index)">
+    <p-tabView [scrollable]="true" [activeIndex]="indiceAttivo()" (onChange)="scegli($event.index)">
       <p-tabPanel header="Condizioni di pagamento">
         <ng-template pTemplate="content"><app-condizioni-pagamento /></ng-template>
       </p-tabPanel>

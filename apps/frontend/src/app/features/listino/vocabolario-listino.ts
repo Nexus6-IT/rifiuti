@@ -142,7 +142,8 @@ export const ETICHETTE_NATURA_IVA: Readonly<Record<string, string>> = {
   N4: 'Esenti',
   N5: 'Regime del margine / IVA non esposta in fattura',
   'N6.1': 'Inversione contabile - cessione di rottami e altri materiali di recupero',
-  'N6.2': 'Inversione contabile - cessione di oro e argento puro',
+  'N6.2':
+    'Inversione contabile - cessione di oro e argento ai sensi della legge 7/2000 nonché di oreficeria usata ad OPO',
   'N6.3': 'Inversione contabile - subappalto nel settore edile',
   'N6.4': 'Inversione contabile - cessione di fabbricati',
   'N6.5': 'Inversione contabile - cessione di telefoni cellulari',
