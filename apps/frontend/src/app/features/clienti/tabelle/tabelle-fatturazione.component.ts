@@ -6,9 +6,12 @@ import { map } from 'rxjs'
 import { CondizioniPagamentoComponent } from './condizioni-pagamento.component'
 import { ContiCorrentiComponent } from './conti-correnti.component'
 import { SpeseAccessorieComponent } from './spese-accessorie.component'
+import { RegistriIvaComponent } from './registri-iva.component'
+import { TestiFatturazioneComponent } from './testi-fatturazione.component'
+import { CodificheContrattoComponent } from './codifiche-contratto.component'
 
-/** Schede nell'ordine di D20 (le altre arrivano con il Task 22). */
-const SCHEDE = ['condizioni', 'conti', 'spese'] as const
+/** Schede nell'ordine di D20. */
+const SCHEDE = ['condizioni', 'conti', 'spese', 'registri', 'testi', 'categorie', 'motivi'] as const
 
 @Component({
   selector: 'app-tabelle-fatturazione',
@@ -18,6 +21,9 @@ const SCHEDE = ['condizioni', 'conti', 'spese'] as const
     CondizioniPagamentoComponent,
     ContiCorrentiComponent,
     SpeseAccessorieComponent,
+    RegistriIvaComponent,
+    TestiFatturazioneComponent,
+    CodificheContrattoComponent,
   ],
   template: `
     <h1>Tabelle di fatturazione</h1>
@@ -30,6 +36,23 @@ const SCHEDE = ['condizioni', 'conti', 'spese'] as const
       </p-tabPanel>
       <p-tabPanel header="Spese e bollo">
         <ng-template pTemplate="content"><app-spese-accessorie /></ng-template>
+      </p-tabPanel>
+      <p-tabPanel header="Registri IVA">
+        <ng-template pTemplate="content"><app-registri-iva /></ng-template>
+      </p-tabPanel>
+      <p-tabPanel header="Testi di fatturazione">
+        <ng-template pTemplate="content"><app-testi-fatturazione /></ng-template>
+      </p-tabPanel>
+      <p-tabPanel header="Categorie e tipi">
+        <ng-template pTemplate="content">
+          <app-codifiche-contratto genere="CATEGORIA" />
+          <app-codifiche-contratto genere="TIPO" />
+        </ng-template>
+      </p-tabPanel>
+      <p-tabPanel header="Motivi di annullo">
+        <ng-template pTemplate="content"
+          ><app-codifiche-contratto genere="MOTIVO_ANNULLO"
+        /></ng-template>
       </p-tabPanel>
     </p-tabView>
   `,

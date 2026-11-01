@@ -22,7 +22,14 @@ describe('TabelleFatturazioneComponent', () => {
         provideRouter([{ path: 'clienti/tabelle', component: TabelleFatturazioneComponent }]),
         {
           provide: TabelleFatturazioneService,
-          useValue: { condizioni: t(), conti: t(), spese: t() },
+          useValue: {
+            condizioni: t(),
+            conti: t(),
+            spese: t(),
+            registri: t(),
+            testi: t(),
+            codifiche: t(),
+          },
         },
         {
           provide: ToastService,
@@ -33,12 +40,20 @@ describe('TabelleFatturazioneComponent', () => {
     })
   })
 
-  it('tre schede', async () => {
+  it("sette schede nell'ordine di D20", async () => {
     const h = await RouterTestingHarness.create('/clienti/tabelle')
     const intestazioni = Array.from(h.routeNativeElement!.querySelectorAll('.p-tabview-nav li'))
       .map(li => li.textContent!.trim())
       .filter(t => t !== '')
-    expect(intestazioni).toEqual(['Condizioni di pagamento', 'Conti correnti', 'Spese e bollo'])
+    expect(intestazioni).toEqual([
+      'Condizioni di pagamento',
+      'Conti correnti',
+      'Spese e bollo',
+      'Registri IVA',
+      'Testi di fatturazione',
+      'Categorie e tipi',
+      'Motivi di annullo',
+    ])
   })
 
   it("la scheda scelta resta nell'URL (?scheda=)", async () => {
@@ -50,5 +65,13 @@ describe('TabelleFatturazioneComponent', () => {
     h.detectChanges()
     await h.fixture.whenStable()
     expect(TestBed.inject(Router).url).toContain('scheda=spese')
+  })
+
+  it("'Categorie e tipi' mostra i due generi uno sopra l'altro", async () => {
+    const h = await RouterTestingHarness.create('/clienti/tabelle?scheda=categorie')
+    const titoli = Array.from(
+      h.routeNativeElement!.querySelectorAll('[data-testid^="codifiche-titolo-"]')
+    ).map(e => e.getAttribute('data-testid'))
+    expect(titoli).toEqual(['codifiche-titolo-CATEGORIA', 'codifiche-titolo-TIPO'])
   })
 })
