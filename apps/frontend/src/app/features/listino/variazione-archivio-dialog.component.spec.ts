@@ -293,6 +293,34 @@ describe('VariazioneArchivioDialogComponent', () => {
     expect(q('var-applica')).toBeNull()
   })
 
+  it('sostituzione IVA: listino 0 mostrato come "—" e esito "Addebiti aggiornati"', async () => {
+    addebiti.anteprimaVariazione.and.returnValue(
+      of({
+        totale: 1,
+        righe: [{ id: 'ad1', descrizione: 'Trasporto', listino: 0, prima: '22', dopo: '10' }],
+        errori: [],
+        impronta: 'iva1',
+      })
+    )
+    await apri()
+    sel('var-tipo', 'SOSTITUZIONE_IVA')
+    await stabilizza(fixture)
+    sel('var-da-iva', 'i1')
+    sel('var-a-iva', 'i2')
+    await stabilizza(fixture)
+    await anteprima()
+    const celle = Array.from(q('var-righe')!.querySelectorAll('tbody td')).map(c =>
+      c.textContent!.trim()
+    )
+    expect(celle[1]).toBe('—')
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    bottone('var-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('var-esito')!.textContent).toContain('Addebiti aggiornati: 2')
+    expect(q('var-esito')!.textContent).not.toContain('Prezzi aggiornati')
+  })
+
   it('sostituzione IVA: servono i due codici IVA e nessun valore', async () => {
     await apri()
     sel('var-tipo', 'SOSTITUZIONE_IVA')

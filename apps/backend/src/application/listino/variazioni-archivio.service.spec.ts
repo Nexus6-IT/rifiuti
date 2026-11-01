@@ -225,7 +225,7 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
 
     it('non scrive niente', async () => {
       await service.anteprima(T, corpo())
-      expect(tx.$executeRaw).not.toHaveBeenCalled()
+      expect(testiSql.filter(t => /^\s*UPDATE/.test(t))).toEqual([])
       expect(tx.activityLog.create).not.toHaveBeenCalled()
     })
   })
@@ -246,11 +246,11 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
       expect(r).toEqual({ aggiornati: 4 })
       expect(prisma.$transaction).toHaveBeenCalledTimes(1)
 
-      const lock = testiSql.filter(s => s.includes('FOR UPDATE'))
+      const lock = testiSql.filter(s => s.includes('FOR NO KEY UPDATE'))
       expect(lock).toHaveLength(2)
-      expect(lock[0]).toMatch(/FROM addebiti[\s\S]*ORDER BY id[\s\S]*FOR UPDATE/)
+      expect(lock[0]).toMatch(/FROM addebiti[\s\S]*ORDER BY id[\s\S]*FOR NO KEY UPDATE/)
       expect(lock[1]).toMatch(
-        /FROM prezzi_listino_addebito[\s\S]*ORDER BY addebito_id, numero[\s\S]*FOR UPDATE/
+        /FROM prezzi_listino_addebito[\s\S]*ORDER BY addebito_id, numero[\s\S]*FOR NO KEY UPDATE/
       )
       const indicePrezzi = testiSql.findIndex(s => /UPDATE prezzi_listino_addebito/.test(s))
       const indiceAddebiti = testiSql.findIndex(s => /UPDATE addebiti[\s\S]*versione \+ 1/.test(s))
@@ -283,7 +283,7 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
         error: 'VARIAZIONE_SUPERATA',
         message: 'I prezzi sono cambiati dopo l’anteprima: rifai l’anteprima.',
       })
-      expect(tx.$executeRaw).not.toHaveBeenCalled()
+      expect(testiSql.filter(t => /^\s*UPDATE/.test(t))).toEqual([])
       expect(tx.activityLog.create).not.toHaveBeenCalled()
     })
 
@@ -300,7 +300,7 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
       expect(e.getResponse().message).toContain(
         'Trasporto: Listino 2: Il nuovo prezzo sarebbe negativo.'
       )
-      expect(tx.$executeRaw).not.toHaveBeenCalled()
+      expect(testiSql.filter(t => /^\s*UPDATE/.test(t))).toEqual([])
     })
 
     it('sostituzione IVA: aggiorna codice IVA e versione degli addebiti, non i prezzi', async () => {
@@ -325,8 +325,45 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
       const c = await conImpronta()
       const r = await service.applica(T, U, c)
       expect(r).toEqual({ aggiornati: 0 })
-      expect(testiSql.some(s => s.includes('FOR UPDATE'))).toBe(false)
-      expect(tx.$executeRaw).not.toHaveBeenCalled()
+      expect(testiSql.some(s => s.includes('FOR NO KEY UPDATE'))).toBe(false)
+      expect(tx.activityLog.create.mock.calls[0][0].data.metadata).toMatchObject({
+        addebiti: 0,
+        prezzi: 0,
+      })
+      expect(testiSql.filter(t => /^\s*UPDATE/.test(t))).toEqual([])
+    })
+
+    it('imposta lock_timeout come prima istruzione della transazione', async () => {
+      const c = await conImpronta()
+      testiSql.length = 0
+      await service.applica(T, U, c)
+      expect(testiSql[0]).toMatch(/SET LOCAL lock_timeout/)
+    })
+
+    const errPrisma = (code: string, meta?: Record<string, unknown>) =>
+      new Prisma.PrismaClientKnownRequestError('x', { code, clientVersion: 'test', meta })
+
+    it.each([
+      ['P2034 (deadlock/serializzazione)', errPrisma('P2034')],
+      ['P2028 (timeout della transazione)', errPrisma('P2028')],
+      ['40P01 dal raw (deadlock)', errPrisma('P2010', { code: '40P01' })],
+      ['55P03 dal raw (lock timeout)', errPrisma('P2010', { code: '55P03' })],
+    ])('%s → 409 VARIAZIONE_SUPERATA in italiano', async (_n, err) => {
+      const c = await conImpronta()
+      prisma.$transaction.mockRejectedValueOnce(err)
+      const e = await errore(service.applica(T, U, c))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({
+        error: 'VARIAZIONE_SUPERATA',
+        message: 'I prezzi sono cambiati dopo l’anteprima: rifai l’anteprima.',
+      })
+    })
+
+    it('un errore non di lock passa com’è', async () => {
+      const c = await conImpronta()
+      const err = errPrisma('P2003')
+      prisma.$transaction.mockRejectedValueOnce(err)
+      expect(await errore(service.applica(T, U, c))).toBe(err)
     })
 
     it('l’audit non contiene descrizioni né note', async () => {

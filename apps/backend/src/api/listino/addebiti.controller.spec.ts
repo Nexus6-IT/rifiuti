@@ -369,7 +369,7 @@ describe('AddebitiController', () => {
           .post(`/${R}/variazioni-prezzi/anteprima`)
           .set('x-senza-azienda', '1')
           .send(corpoVar)
-        expect(r.status).toBeGreaterThanOrEqual(400)
+        expect(r.status).toBe(403)
         expect(variazioni.anteprima).not.toHaveBeenCalled()
       })
 

@@ -52,7 +52,7 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
       [breakpoints]="{ '960px': '95vw' }"
     >
       <div *ngIf="esito() !== null" class="dlg-form" data-testid="var-esito" role="status">
-        <p>Prezzi aggiornati: {{ esito() }}</p>
+        <p>{{ sostituzioneIva() ? 'Addebiti aggiornati' : 'Prezzi aggiornati' }}: {{ esito() }}</p>
       </div>
 
       <div *ngIf="esito() === null && inRiepilogo()" class="dlg-form" data-testid="var-riepilogo">
@@ -171,7 +171,7 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
           <tbody>
             <tr *ngFor="let r of a.righe">
               <td>{{ r.descrizione }}</td>
-              <td>{{ r.listino }}</td>
+              <td>{{ r.listino > 0 ? r.listino : '—' }}</td>
               <td>{{ r.prima }}</td>
               <td aria-hidden="true">→</td>
               <td>{{ r.dopo }}</td>

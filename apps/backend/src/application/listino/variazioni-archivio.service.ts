@@ -14,8 +14,10 @@ import { Prisma } from '@prisma/client'
 import { prezzoCalcolato } from '../../domain/listino/importi-riga'
 import { tipoAddebitoValido } from '../../domain/listino/tipi-addebito'
 import {
+  TIPI_VARIAZIONE,
   improntaVariazione,
   nuovoPrezzo,
+  validaValoreVariazione,
   type TipoVariazione,
 } from '../../domain/listino/variazione-prezzi'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -53,13 +55,6 @@ export interface EsitoVariazione {
 const MAX_RIGHE = 10_000
 const MSG_TROPPE = 'La variazione tocca troppe righe: restringi i filtri.'
 const MSG_SUPERATA = 'I prezzi sono cambiati dopo l’anteprima: rifai l’anteprima.'
-const TIPI_AMMESSI: readonly string[] = [
-  'AUMENTO_PERCENTUALE',
-  'AUMENTO_IMPORTO',
-  'DIMINUZIONE_PERCENTUALE',
-  'DIMINUZIONE_IMPORTO',
-  'SOSTITUZIONE_IVA',
-]
 const TUTTI_I_LISTINI = [1, 2, 3, 4, 5, 6]
 /** La variazione e' una sola transazione: piu' tempo del default di Prisma (5 s). */
 const OPZIONI_TRANSAZIONE = { timeout: 30_000, maxWait: 5_000 } as const
@@ -100,7 +95,7 @@ const nonValida = (messaggi: string[], error = 'VARIAZIONE_NON_VALIDA'): never =
 
 function normalizza(corpo: CorpoVariazione<FiltroVariazioneArchivio>): Normalizzata {
   const errori: string[] = []
-  if (!TIPI_AMMESSI.includes(corpo.tipo)) {
+  if (!(TIPI_VARIAZIONE as readonly string[]).includes(corpo.tipo)) {
     return nonValida(['Il tipo di variazione non è ammesso.'])
   }
   const f = corpo.filtri ?? {}
@@ -123,13 +118,8 @@ function normalizza(corpo: CorpoVariazione<FiltroVariazioneArchivio>): Normalizz
     valore = (corpo.valore ?? '').trim().replace(',', '.')
     if (valore === '') errori.push('Indica il valore della variazione.')
     else {
-      // Sonda sul valore: un prezzo di prova da' gli errori di forma (non quelli di una riga).
-      const sonda = nuovoPrezzo(
-        '1',
-        corpo.tipo.endsWith('PERCENTUALE') ? 'AUMENTO_PERCENTUALE' : 'AUMENTO_IMPORTO',
-        valore
-      )
-      if ('errore' in sonda && !sonda.errore.includes('troppo grande')) errori.push(sonda.errore)
+      const erroreValore = validaValoreVariazione(corpo.tipo, valore)
+      if (erroreValore !== null) errori.push(erroreValore)
     }
   }
   if (errori.length > 0) nonValida(errori)
@@ -146,6 +136,25 @@ function normalizza(corpo: CorpoVariazione<FiltroVariazioneArchivio>): Normalizz
     tipi: tipi.sort(),
     listini: listini.length > 0 ? listini : TUTTI_I_LISTINI,
   }
+}
+
+/**
+ * Deadlock (P2034 o 40P01 dal raw), lock timeout (55P03) e timeout della transazione (P2028)
+ * valgono "l'archivio e' cambiato": si rifa l'anteprima. Ogni altro errore passa com'e'.
+ */
+function traduciConflitto(err: unknown): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    const codiceDb = (err.meta as { code?: unknown } | undefined)?.code
+    if (
+      err.code === 'P2034' ||
+      err.code === 'P2028' ||
+      codiceDb === '40P01' ||
+      codiceDb === '55P03'
+    ) {
+      throw new ConflictException({ message: MSG_SUPERATA, error: 'VARIAZIONE_SUPERATA' })
+    }
+  }
+  throw err
 }
 
 @Injectable()
@@ -174,81 +183,86 @@ export class VariazioniArchivioService {
   ): Promise<EsitoVariazione> {
     const n = normalizza(corpo)
     return nelContestoTenant(tenantId, () =>
-      this.prisma.$transaction(async tx => {
-        const codici = await this.codiciIva(tx, tenantId, n)
+      this.prisma
+        .$transaction(async tx => {
+          // Chi aspetta un lock piu' di 10 s rinuncia (55P03 -> 409), invece di tenere la transazione.
+          await tx.$executeRaw`SET LOCAL lock_timeout = '10s'`
+          const codici = await this.codiciIva(tx, tenantId, n)
 
-        // Blocco in ordine stabile (id degli addebiti, poi addebito e numero dei prezzi): due
-        // applicazioni concorrenti non si incrociano. Chi arriva dopo aspetta il commit e poi
-        // trova un'impronta diversa (409).
-        const candidati = (await this.trova(tx, tenantId, n)).map(a => a.id).sort()
-        if (candidati.length > 0) {
-          await tx.$queryRaw`
+          // `FOR NO KEY UPDATE` (gli UPDATE non toccano colonne chiave): non confligge col FOR KEY SHARE
+          // delle FK da `righe_addebito`. Blocco in ordine stabile (id degli addebiti, poi addebito e numero dei prezzi): due
+          // applicazioni concorrenti non si incrociano. Chi arriva dopo aspetta il commit e poi
+          // trova un'impronta diversa (409).
+          const candidati = (await this.trova(tx, tenantId, n)).map(a => a.id).sort()
+          if (candidati.length > 0) {
+            await tx.$queryRaw`
             SELECT id::text AS id FROM addebiti
             WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${candidati}::uuid[])
-            ORDER BY id FOR UPDATE`
-          await tx.$queryRaw`
+            ORDER BY id FOR NO KEY UPDATE`
+            await tx.$queryRaw`
             SELECT id::text AS id FROM prezzi_listino_addebito
             WHERE tenant_id = ${tenantId}::uuid AND addebito_id = ANY(${candidati}::uuid[])
-            ORDER BY addebito_id, numero FOR UPDATE`
-        }
+            ORDER BY addebito_id, numero FOR NO KEY UPDATE`
+          }
 
-        // Rilettura dopo il blocco: e' questo lo stato che si confronta e si scrive.
-        const calcolo = this.calcola(await this.trova(tx, tenantId, n), n, codici)
-        if (calcolo.impronta !== corpo.impronta) {
-          throw new ConflictException({ message: MSG_SUPERATA, error: 'VARIAZIONE_SUPERATA' })
-        }
-        if (calcolo.errori.length > 0) {
-          nonValida(
-            calcolo.errori.map(e => `${e.descrizione}: ${e.messaggio}`),
-            'VARIAZIONE_CON_ERRORI'
-          )
-        }
+          // Rilettura dopo il blocco: e' questo lo stato che si confronta e si scrive.
+          const calcolo = this.calcola(await this.trova(tx, tenantId, n), n, codici)
+          if (calcolo.impronta !== corpo.impronta) {
+            throw new ConflictException({ message: MSG_SUPERATA, error: 'VARIAZIONE_SUPERATA' })
+          }
+          if (calcolo.errori.length > 0) {
+            nonValida(
+              calcolo.errori.map(e => `${e.descrizione}: ${e.messaggio}`),
+              'VARIAZIONE_CON_ERRORI'
+            )
+          }
 
-        const aggiornati =
-          n.tipo === 'SOSTITUZIONE_IVA' ? calcolo.addebitiIds.length : calcolo.prezzi.length
-        if (calcolo.addebitiIds.length > 0) {
-          if (n.tipo === 'SOSTITUZIONE_IVA') {
-            await tx.$executeRaw`
+          const aggiornati =
+            n.tipo === 'SOSTITUZIONE_IVA' ? calcolo.addebitiIds.length : calcolo.prezzi.length
+          if (calcolo.addebitiIds.length > 0) {
+            if (n.tipo === 'SOSTITUZIONE_IVA') {
+              await tx.$executeRaw`
               UPDATE addebiti SET codice_iva_id = ${n.a}::uuid, versione = versione + 1,
                 updated_at = now()
               WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${calcolo.addebitiIds}::uuid[])`
-          } else {
-            const ids = calcolo.prezzi.map(p => p.id)
-            const valori = calcolo.prezzi.map(p => p.prezzo)
-            await tx.$executeRaw`
+            } else {
+              const ids = calcolo.prezzi.map(p => p.id)
+              const valori = calcolo.prezzi.map(p => p.prezzo)
+              await tx.$executeRaw`
               UPDATE prezzi_listino_addebito p SET prezzo = v.prezzo
               FROM (SELECT unnest(${ids}::uuid[]) AS id, unnest(${valori}::numeric[]) AS prezzo) v
               WHERE p.tenant_id = ${tenantId}::uuid AND p.id = v.id`
-            await tx.$executeRaw`
+              await tx.$executeRaw`
               UPDATE addebiti SET versione = versione + 1, updated_at = now()
               WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${calcolo.addebitiIds}::uuid[])`
+            }
           }
-        }
 
-        await tx.activityLog.create({
-          data: {
-            tenantId,
-            userId: utenteId,
-            action: 'PREZZI_ARCHIVIO_VARIATI',
-            description: 'Prezzi dell’archivio variati',
-            // Solo parametri e conteggi (D25): niente descrizioni ne' dati liberi.
-            metadata: {
-              tipo: n.tipo,
-              ...(n.tipo === 'SOSTITUZIONE_IVA'
-                ? { daCodiceIvaId: n.da, aCodiceIvaId: n.a }
-                : { valore: n.valore, listini: n.listini }),
-              filtri: {
-                addebitiIds: n.addebitiIds,
-                categorieIds: n.categorieIds,
-                tipi: n.tipi,
-              },
-              addebiti: calcolo.addebitiIds.length,
-              prezzi: n.tipo === 'SOSTITUZIONE_IVA' ? 0 : calcolo.prezzi.length,
-            } as Prisma.InputJsonValue,
-          },
-        })
-        return { aggiornati }
-      }, OPZIONI_TRANSAZIONE)
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'PREZZI_ARCHIVIO_VARIATI',
+              description: 'Prezzi dell’archivio variati',
+              // Solo parametri e conteggi (D25): niente descrizioni ne' dati liberi.
+              metadata: {
+                tipo: n.tipo,
+                ...(n.tipo === 'SOSTITUZIONE_IVA'
+                  ? { daCodiceIvaId: n.da, aCodiceIvaId: n.a }
+                  : { valore: n.valore, listini: n.listini }),
+                filtri: {
+                  addebitiIds: n.addebitiIds,
+                  categorieIds: n.categorieIds,
+                  tipi: n.tipi,
+                },
+                addebiti: calcolo.addebitiIds.length,
+                prezzi: n.tipo === 'SOSTITUZIONE_IVA' ? 0 : calcolo.prezzi.length,
+              } as Prisma.InputJsonValue,
+            },
+          })
+          return { aggiornati }
+        }, OPZIONI_TRANSAZIONE)
+        .catch(traduciConflitto)
     )
   }
 

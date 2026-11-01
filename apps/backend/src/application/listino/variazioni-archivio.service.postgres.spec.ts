@@ -245,6 +245,16 @@ describe('VariazioniArchivioService — Postgres reale, ruolo wasteflow_app', ()
     expect(await prezziDi(a2.id)).toEqual(['2.50', '0.00', null, null, null, null])
   })
 
+  it('i contratti non cambiano: nessun contratto creato o modificato dalla variazione', async () => {
+    const { tenantId, utenteId } = await scenario()
+    const prima = await owner.contrattoCliente.findMany({ where: { tenantId } })
+    const c = corpo()
+    const { impronta } = await nel(tenantId, () => service.anteprima(tenantId, c))
+    await nel(tenantId, () => service.applica(tenantId, utenteId, { ...c, impronta }))
+    const dopo = await owner.contrattoCliente.findMany({ where: { tenantId } })
+    expect(dopo).toEqual(prima)
+  })
+
   it('isolamento: la variazione non tocca gli addebiti di un’altra azienda', async () => {
     const mia = await scenario()
     const altra = await scenario()

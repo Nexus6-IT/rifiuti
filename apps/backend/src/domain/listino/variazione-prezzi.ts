@@ -7,12 +7,16 @@ import { arrotonda, prezzoCalcolato } from './importi-riga'
  * stringhe decimali, aritmetica esatta, nessun `number`, nessun database.
  */
 
-export type TipoVariazione =
-  | 'AUMENTO_PERCENTUALE'
-  | 'AUMENTO_IMPORTO'
-  | 'DIMINUZIONE_PERCENTUALE'
-  | 'DIMINUZIONE_IMPORTO'
-  | 'SOSTITUZIONE_IVA'
+/** Unica fonte dei tipi di variazione (DTO e servizi la importano). */
+export const TIPI_VARIAZIONE = [
+  'AUMENTO_PERCENTUALE',
+  'AUMENTO_IMPORTO',
+  'DIMINUZIONE_PERCENTUALE',
+  'DIMINUZIONE_IMPORTO',
+  'SOSTITUZIONE_IVA',
+] as const
+
+export type TipoVariazione = (typeof TIPI_VARIAZIONE)[number]
 
 export type EsitoPrezzo = { prezzo: string } | { errore: string }
 
@@ -29,20 +33,33 @@ function precisione(v: Prisma.Decimal): number {
   return Math.max(2, v.decimalPlaces())
 }
 
+/**
+ * Controlli di forma del valore di una variazione (indipendenti dal prezzo): `null` se valido,
+ * altrimenti il messaggio. Non guarda il tetto del risultato, che dipende dal prezzo.
+ */
+export function validaValoreVariazione(
+  tipo: Exclude<TipoVariazione, 'SOSTITUZIONE_IVA'>,
+  valore: string
+): string | null {
+  if (!NUMERO_CON_SEGNO.test(valore.trim())) return 'Il valore non è un numero.'
+  const v = dec(valore)
+  if (v.lte(0)) return 'Il valore deve essere maggiore di 0.'
+  const importo = tipo === 'AUMENTO_IMPORTO' || tipo === 'DIMINUZIONE_IMPORTO'
+  if (importo && v.decimalPlaces() > 6) return "L'importo può avere al massimo 6 decimali."
+  return null
+}
+
 export function nuovoPrezzo(
   attuale: string,
   tipo: Exclude<TipoVariazione, 'SOSTITUZIONE_IVA'>,
   valore: string
 ): EsitoPrezzo {
   if (!NUMERO.test(attuale.trim())) return { errore: 'Il prezzo attuale non è un numero.' }
-  if (!NUMERO_CON_SEGNO.test(valore.trim())) return { errore: 'Il valore non è un numero.' }
+  const erroreValore = validaValoreVariazione(tipo, valore)
+  if (erroreValore !== null) return { errore: erroreValore }
   const v = dec(valore)
-  if (v.lte(0)) return { errore: 'Il valore deve essere maggiore di 0.' }
   const p = dec(attuale)
   const importo = tipo === 'AUMENTO_IMPORTO' || tipo === 'DIMINUZIONE_IMPORTO'
-  if (importo && v.decimalPlaces() > 6) {
-    return { errore: "L'importo può avere al massimo 6 decimali." }
-  }
 
   let risultato: Prisma.Decimal
   switch (tipo) {

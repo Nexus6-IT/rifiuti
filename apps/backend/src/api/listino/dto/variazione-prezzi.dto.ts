@@ -21,14 +21,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator'
-
-export const TIPI_VARIAZIONE = [
-  'AUMENTO_PERCENTUALE',
-  'AUMENTO_IMPORTO',
-  'DIMINUZIONE_PERCENTUALE',
-  'DIMINUZIONE_IMPORTO',
-  'SOSTITUZIONE_IVA',
-] as const
+import { TIPI_VARIAZIONE, type TipoVariazione } from '../../../domain/listino/variazione-prezzi'
 
 /** Massimo di elementi in un filtro per elenco: oltre non e' un filtro, e' un abuso. */
 export const MAX_ELEMENTI_FILTRO = 10_000
@@ -36,8 +29,8 @@ export const MAX_ELEMENTI_FILTRO = 10_000
 /** Parte comune ai corpi di variazione: tipo, valore, codici IVA. */
 export class CorpoVariazioneBaseDto {
   @ApiProperty({ enum: TIPI_VARIAZIONE })
-  @IsIn(TIPI_VARIAZIONE, { message: 'Il tipo di variazione non è ammesso.' })
-  tipo: (typeof TIPI_VARIAZIONE)[number]
+  @IsIn([...TIPI_VARIAZIONE], { message: 'Il tipo di variazione non è ammesso.' })
+  tipo: TipoVariazione
 
   @ApiPropertyOptional({ example: '10', description: 'Stringa decimale (virgola o punto)' })
   @IsOptional()

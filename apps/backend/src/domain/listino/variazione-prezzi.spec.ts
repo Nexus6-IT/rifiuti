@@ -1,4 +1,5 @@
 import {
+  validaValoreVariazione,
   aumentoIstat,
   improntaVariazione,
   nuoviScaglioni,
@@ -187,5 +188,22 @@ describe('improntaVariazione', () => {
     expect(improntaVariazione([{ id: 'a1', versione: 1 }])).not.toBe(
       improntaVariazione([{ id: 'a', versione: 11 }])
     )
+  })
+})
+
+describe('validaValoreVariazione', () => {
+  it.each([
+    ['AUMENTO_PERCENTUALE', '10', null],
+    ['AUMENTO_PERCENTUALE', '10,5', null],
+    ['AUMENTO_IMPORTO', '0.123456', null],
+    ['AUMENTO_PERCENTUALE', 'abc', 'Il valore non è un numero.'],
+    ['DIMINUZIONE_IMPORTO', '0', 'Il valore deve essere maggiore di 0.'],
+    ['AUMENTO_IMPORTO', '1.1234567', "L'importo può avere al massimo 6 decimali."],
+  ] as const)('%s %s', (tipo, valore, atteso) => {
+    expect(validaValoreVariazione(tipo, valore)).toBe(atteso)
+  })
+
+  it('un valore grande ma valido non è rifiutato (il tetto dipende dal prezzo)', () => {
+    expect(validaValoreVariazione('AUMENTO_IMPORTO', '99999999')).toBeNull()
   })
 })
