@@ -1611,3 +1611,7 @@ la prima opzione di ciascuna.
      obbligatoria come in WinWaste e 4.4 la trova pronta.
    - **Solo l'aliquota numerica sulla riga** (niente tabella; esenzioni e reverse charge rimandati a
      4.4 con una migration di trasformazione).
+
+## Risposte di Graziano (01/11/2026)
+
+Tutte le opzioni consigliate: Q1 regole della singola riga ora, somme in 4.4; Q2 tutte le famiglie di addebito di WinWaste per i clienti; Q3 sei listini, con listino e provvigione predefinita sul cliente (unico `ALTER` del pezzo); Q4 due PR, 4.2a (Task 0-15) e 4.2b (Task 16-30); Q5 ISTAT solo sui contratti con "Incr. ISTAT" acceso (scelta fatta dopo aver visto che WinWaste applica a tutti i contratti del mese e ignora il flag); Q6 tabella dei codici IVA per azienda con aliquota e natura.
