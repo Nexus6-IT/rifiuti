@@ -63,7 +63,6 @@ export const CAMPI_DAL_CLIENTE: readonly CampoForm[] = [
   'riferimentoAmministrazione',
 ]
 
-const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 const vuotoId = (v: string): string | null => (v === '' ? null : v)
 const giorno = (d: string | null): string => (d ? d.slice(0, 10) : '')
 
@@ -75,9 +74,11 @@ const ritenuta = (v: string | null): string | null => {
 const stessoNumero = (a: string | null, b: string | null): boolean =>
   a === b || (a !== null && b !== null && Number(a) === Number(b))
 
-const quantita = (v: string): number | null => {
+/** Vuoto = nessuna; un intero diventa numero; altro resta com'è (lo rifiuta il dialog, D20). */
+const quantita = (v: string): number | string | null => {
   const t = v.trim()
-  return t === '' ? null : Number.parseInt(t, 10)
+  if (t === '') return null
+  return /^\d+$/.test(t) ? Number(t) : t
 }
 
 const stessiPeriodi = (a: PeriodoFatturazione[], b: PeriodoFatturazione[]): boolean =>
@@ -122,57 +123,77 @@ export function valoriDaContratto(c: ContrattoCliente): ValoriContratto {
 
 type Confronto = [campo: CampoForm, nuovo: unknown, vecchio: unknown]
 
-/** Coppie [campo, valore del form, valore salvato], con le stesse normalizzazioni dei due lati. */
+const id = (v: string): string | null => vuotoId(v)
+const testo = (v: string | null): string | null => (v?.trim() ? v.trim() : null)
+const data = (v: string | null): string | null => (v ? giorno(v) : null)
+
+/**
+ * Valori del form come li vede il backend. `Record<CampoForm, …>`: chi aggiunge un controllo
+ * (Task 26) deve aggiungerlo anche qui, o non compila.
+ */
+function nuovi(v: ValoriContratto): Record<CampoForm, unknown> {
+  return {
+    numero: testo(v.numero),
+    descrizione: testo(v.descrizione),
+    clienteId: id(v.clienteId),
+    clienteFatturazioneId: id(v.clienteFatturazioneId),
+    sedeId: id(v.sedeId),
+    categoriaId: id(v.categoriaId),
+    tipoId: id(v.tipoId),
+    dataInizio: data(v.dataInizio),
+    dataFine: data(v.dataFine),
+    dataStipula: data(v.dataStipula),
+    validitaQuantita: quantita(v.validitaQuantita),
+    validitaUnita: v.validitaUnita || null,
+    condizionePagamentoId: id(v.condizionePagamentoId),
+    contoCorrenteId: id(v.contoCorrenteId),
+    speseIncassoId: id(v.speseIncassoId),
+    bolloId: id(v.bolloId),
+    registroIvaId: id(v.registroIvaId),
+    esigibilitaIva: v.esigibilitaIva,
+    ritenutaPercentuale: ritenuta(v.ritenutaPercentuale),
+    agenteId: id(v.agenteId),
+    testoFatturazioneId: id(v.testoFatturazioneId),
+    codiceDestinatario: testo(v.codiceDestinatario)?.toUpperCase() ?? null,
+    riferimentoAmministrazione: testo(v.riferimentoAmministrazione),
+    periodi: v.periodi,
+  }
+}
+
+/** Gli stessi campi dal contratto salvato, con le stesse normalizzazioni. */
+function vecchi(b: ContrattoCliente): Record<CampoForm, unknown> {
+  return {
+    numero: testo(b.numero),
+    descrizione: testo(b.descrizione),
+    clienteId: b.clienteId ?? null,
+    clienteFatturazioneId: b.clienteFatturazioneId ?? null,
+    sedeId: b.sedeId ?? null,
+    categoriaId: b.categoriaId ?? null,
+    tipoId: b.tipoId ?? null,
+    dataInizio: data(b.dataInizio),
+    dataFine: data(b.dataFine),
+    dataStipula: data(b.dataStipula),
+    validitaQuantita: b.validitaQuantita ?? null,
+    validitaUnita: b.validitaUnita ?? null,
+    condizionePagamentoId: b.condizionePagamentoId ?? null,
+    contoCorrenteId: b.contoCorrenteId ?? null,
+    speseIncassoId: b.speseIncassoId ?? null,
+    bolloId: b.bolloId ?? null,
+    registroIvaId: b.registroIvaId ?? null,
+    esigibilitaIva: b.esigibilitaIva,
+    ritenutaPercentuale: ritenuta(b.ritenutaPercentuale),
+    agenteId: b.agenteId ?? null,
+    testoFatturazioneId: b.testoFatturazioneId ?? null,
+    codiceDestinatario: testo(b.codiceDestinatario),
+    riferimentoAmministrazione: testo(b.riferimentoAmministrazione),
+    periodi: b.periodi ?? [],
+  }
+}
+
 function confronti(v: ValoriContratto, b: ContrattoCliente): Confronto[] {
-  const id = (campo: CampoForm, nuovo: string, vecchio: string | null): Confronto => [
-    campo,
-    vuotoId(nuovo),
-    vecchio ?? null,
-  ]
-  const testo = (campo: CampoForm, nuovo: string | null, vecchio: string | null): Confronto => [
-    campo,
-    nuovo,
-    vecchio?.trim() ? vecchio.trim() : null,
-  ]
-  const data = (campo: CampoForm, nuovo: string, vecchio: string | null): Confronto => [
-    campo,
-    nuovo || null,
-    vecchio ? giorno(vecchio) : null,
-  ]
-  return [
-    testo('numero', vuoto(v.numero), b.numero),
-    testo('descrizione', vuoto(v.descrizione), b.descrizione),
-    id('clienteId', v.clienteId, b.clienteId),
-    id('clienteFatturazioneId', v.clienteFatturazioneId, b.clienteFatturazioneId),
-    id('sedeId', v.sedeId, b.sedeId),
-    id('categoriaId', v.categoriaId, b.categoriaId),
-    id('tipoId', v.tipoId, b.tipoId),
-    data('dataInizio', v.dataInizio, b.dataInizio),
-    data('dataFine', v.dataFine, b.dataFine),
-    data('dataStipula', v.dataStipula, b.dataStipula),
-    ['validitaQuantita', quantita(v.validitaQuantita), b.validitaQuantita ?? null],
-    ['validitaUnita', v.validitaUnita || null, b.validitaUnita ?? null],
-    id('condizionePagamentoId', v.condizionePagamentoId, b.condizionePagamentoId),
-    id('contoCorrenteId', v.contoCorrenteId, b.contoCorrenteId),
-    id('speseIncassoId', v.speseIncassoId, b.speseIncassoId),
-    id('bolloId', v.bolloId, b.bolloId),
-    id('registroIvaId', v.registroIvaId, b.registroIvaId),
-    ['esigibilitaIva', v.esigibilitaIva, b.esigibilitaIva],
-    ['ritenutaPercentuale', ritenuta(v.ritenutaPercentuale), ritenuta(b.ritenutaPercentuale)],
-    id('agenteId', v.agenteId, b.agenteId),
-    id('testoFatturazioneId', v.testoFatturazioneId, b.testoFatturazioneId),
-    testo(
-      'codiceDestinatario',
-      vuoto(v.codiceDestinatario)?.toUpperCase() ?? null,
-      b.codiceDestinatario
-    ),
-    testo(
-      'riferimentoAmministrazione',
-      vuoto(v.riferimentoAmministrazione),
-      b.riferimentoAmministrazione
-    ),
-    ['periodi', v.periodi, b.periodi ?? []],
-  ]
+  const n = nuovi(v)
+  const o = vecchi(b)
+  return (Object.keys(n) as CampoForm[]).map(c => [c, n[c], o[c]])
 }
 
 function uguali(campo: CampoForm, nuovo: unknown, vecchio: unknown): boolean {
@@ -213,8 +234,10 @@ export function datiNuovo(
     clienteId: v.clienteId,
     dataInizio: v.dataInizio,
   }
-  for (const [campo, nuovo] of confronti(v, {} as ContrattoCliente)) {
+  const n = nuovi(v)
+  for (const campo of Object.keys(n) as CampoForm[]) {
     if (campo in dati || campo === 'periodi') continue
+    const nuovo = n[campo]
     const dalCliente = CAMPI_DAL_CLIENTE.includes(campo)
     const valorizzato = nuovo !== null && nuovo !== ''
     if (dalCliente ? toccati.has(campo) : valorizzato) dati[campo] = nuovo

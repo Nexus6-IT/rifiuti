@@ -694,6 +694,31 @@ describe('ContrattoClienteDialogComponent', () => {
     })
   })
 
+  describe('Nuovo cliente in linea', () => {
+    for (const [nome, bt, campo] of [
+      ['cliente', 'contratto-dlg-nuovo-cliente', 'clienteId'],
+      ['cliente di fatturazione', 'contratto-dlg-nuovo-fatturazione', 'clienteFatturazioneId'],
+    ] as const) {
+      it(`${nome}: Esc chiude solo il sub-dialog, poi il focus torna a "Nuovo cliente"`, async () => {
+        await apri()
+        scrivi('contratto-dlg-descrizione', 'in corso')
+        bottone(bt)!.click()
+        await stabilizza(fixture)
+        fixture.componentInstance.alCambioVisibilita(false)
+        expect(visibilita).toEqual([])
+        expect(form().controls.descrizione.value).toBe('in corso')
+        const dlg = sub('app-cliente-dialog', 'app-sezione-dati-generali')[0]
+        dlg.visibleChange.emit(false)
+        await stabilizza(fixture)
+        await new Promise(r => setTimeout(r))
+        expect(document.activeElement).toBe(bottone(bt))
+        expect(form().controls[campo].value).toBe('')
+        fixture.componentInstance.alCambioVisibilita(false)
+        expect(visibilita).toEqual([false])
+      })
+    }
+  })
+
   describe('periodi', () => {
     it('i periodi del contratto compaiono e una modifica finisce nel form', async () => {
       await apri(contratto())
@@ -702,6 +727,67 @@ describe('ContrattoClienteDialogComponent', () => {
       await stabilizza(fixture)
       expect(form().controls.periodi.value.length).toBe(3)
     })
+  })
+
+  describe('periodi digitati nel dialog', () => {
+    it('si digitano due cifre senza perdere il focus; il valore entra alla conferma', async () => {
+      await apri(contratto())
+      const campo = q<HTMLInputElement>('periodi-gf-0')!
+      campo.focus()
+      campo.value = '1'
+      campo.dispatchEvent(new Event('input', { bubbles: true }))
+      await stabilizza(fixture)
+      campo.value = '15'
+      campo.dispatchEvent(new Event('input', { bubbles: true }))
+      await stabilizza(fixture)
+      expect(form().controls.periodi.value[0].giornoFine).toBe(30)
+      expect(q('periodi-gf-0')).toBe(campo)
+      expect(document.activeElement).toBe(campo)
+      campo.dispatchEvent(new Event('change', { bubbles: true }))
+      await stabilizza(fixture)
+      expect(form().controls.periodi.value[0].giornoFine).toBe(15)
+      expect(q('periodi-gf-0')).toBe(campo)
+      expect(campo.value).toBe('15')
+    })
+
+    it('un campo svuotato resta vuoto finché non si conferma', async () => {
+      await apri(contratto())
+      const campo = q<HTMLInputElement>('periodi-gf-0')!
+      campo.value = ''
+      campo.dispatchEvent(new Event('input', { bubbles: true }))
+      await stabilizza(fixture)
+      expect(q<HTMLInputElement>('periodi-gf-0')!.value).toBe('')
+      expect(form().controls.periodi.value[0].giornoFine).toBe(30)
+    })
+  })
+
+  describe('letture del cliente e durata', () => {
+    it('la lettura in ritardo del cliente precedente non riporta la sua ditta', async () => {
+      const tardiva = new Subject<Cliente>()
+      clientiRuolo.get.and.returnValue(tardiva)
+      await apriCon(contratto())
+      await scegliCliente('contratto-dlg-cliente', BIANCHI)
+      expect(fixture.componentInstance.dittaId()).toBe('d-cl2')
+      tardiva.next(VERDI)
+      await stabilizza(fixture)
+      expect(fixture.componentInstance.dittaId()).toBe('d-cl2')
+      expect(registry.getDitta.calls.mostRecent().args[0]).toBe('d-cl2')
+    })
+
+    for (const durata of ['2x', 'abc', '1,5']) {
+      it(`durata non numerica "${durata}": non salva e lo dice`, async () => {
+        await apri()
+        await scegliCliente('contratto-dlg-cliente', VERDI)
+        scrivi('contratto-dlg-validita-quantita', durata)
+        await stabilizza(fixture)
+        fixture.componentInstance.salva()
+        await stabilizza(fixture)
+        expect(contratti.crea).not.toHaveBeenCalled()
+        expect(q('contratto-dlg-errore')!.textContent).toContain(
+          'La durata della validità deve essere un numero intero.'
+        )
+      })
+    }
   })
 
   describe('modifica', () => {

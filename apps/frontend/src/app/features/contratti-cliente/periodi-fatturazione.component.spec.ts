@@ -64,6 +64,7 @@ describe('PeriodiFatturazioneComponent', () => {
     await crea([{ giornoInizio: 1, meseInizio: 1, giornoFine: 30, meseFine: 6 }])
     expect(riga(0).gf.value).toBe('30')
     scrivi('periodi-gf-0', '15')
+    q('periodi-gf-0')!.dispatchEvent(new Event('change'))
     expect(emessi.at(-1)).toEqual([{ giornoInizio: 1, meseInizio: 1, giornoFine: 15, meseFine: 6 }])
   })
 
@@ -96,6 +97,7 @@ describe('PeriodiFatturazioneComponent', () => {
   it("un valore non numerico non entra nell'elenco come NaN", async () => {
     await crea([{ giornoInizio: 1, meseInizio: 1, giornoFine: 31, meseFine: 12 }])
     scrivi('periodi-gi-0', '')
+    q('periodi-gi-0')!.dispatchEvent(new Event('change'))
     expect(emessi.at(-1)![0].giornoInizio).toBe(0)
   })
 })

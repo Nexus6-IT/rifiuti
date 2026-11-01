@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
 import {
   Component,
+  forwardRef,
   EventEmitter,
   Input,
   OnChanges,
@@ -26,6 +27,7 @@ import { OPZIONI_UNITA_VALIDITA } from '../clienti/vocabolario-clienti'
 import { RegistryService } from '../registry/registry.service'
 import { SedeDitta } from '../../shared/models/registry.model'
 import { FormContratto } from './contratto-cliente-form'
+import { SEZIONE_CONTRATTO } from './sezione-contratto'
 import { SceltaClienteComponent } from './scelta-cliente.component'
 
 /** Le voci correnti di un contratto già salvato: possono non essere più fra quelle attive. */
@@ -56,6 +58,9 @@ const etichettaSede = (s: SedeDitta): string => `${s.via} ${s.civico}, ${s.citta
     SceltaConNuovoComponent,
     ClienteDialogComponent,
     CodificaDialogComponent,
+  ],
+  providers: [
+    { provide: SEZIONE_CONTRATTO, useExisting: forwardRef(() => SezioneDatiGeneraliComponent) },
   ],
   template: `
     <div class="sezione" [formGroup]="form">

@@ -72,7 +72,7 @@ type Campo = keyof PeriodoFatturazione
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let p of periodi; let i = index">
+        <tr *ngFor="let p of periodi; let i = index; trackBy: perIndice">
           <td *ngFor="let c of campi">
             <input
               type="number"
@@ -81,7 +81,7 @@ type Campo = keyof PeriodoFatturazione
               [max]="c.max"
               [value]="p[c.campo]"
               [disabled]="disabled"
-              (input)="cambia(i, c.campo, $any($event.target).value)"
+              (change)="cambia(i, c.campo, $any($event.target).value)"
               [attr.aria-label]="c.etichetta + ' del periodo ' + (i + 1)"
               [attr.data-testid]="'periodi-' + c.sigla + '-' + i"
             />
@@ -167,6 +167,9 @@ export class PeriodiFatturazioneComponent {
     { campo: 'meseFine', sigla: 'mf', etichetta: 'Mese di fine', max: 12 },
   ]
 
+  /** Le righe restano le stesse mentre si digita: il campo non perde il focus. */
+  perIndice = (i: number): number => i
+
   genera(f: FrequenzaPeriodi): void {
     if (this.disabled) return
     this.periodiChange.emit(periodiDaFrequenza(f))
@@ -185,7 +188,10 @@ export class PeriodiFatturazioneComponent {
     this.periodiChange.emit(this.periodi.filter((_, n) => n !== i))
   }
 
-  /** Un campo svuotato vale 0 (data non valida): lo dirà il backend, non diventa NaN. */
+  /**
+   * Si conferma all'uscita dal campo (`change`), non a ogni tasto. Un campo svuotato vale 0
+   * (data non valida): lo dirà il backend, non diventa NaN.
+   */
   cambia(i: number, campo: Campo, testo: string): void {
     if (this.disabled) return
     const n = Number.parseInt(testo, 10)

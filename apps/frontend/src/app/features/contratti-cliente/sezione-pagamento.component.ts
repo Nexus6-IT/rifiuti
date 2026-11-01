@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
 import {
   Component,
+  forwardRef,
   Input,
   OnChanges,
   OnDestroy,
@@ -23,6 +24,7 @@ import { TestoFatturazioneDialogComponent } from '../clienti/tabelle/testo-fattu
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { OPZIONI_ESIGIBILITA } from '../clienti/vocabolario-clienti'
 import { FormContratto } from './contratto-cliente-form'
+import { SEZIONE_CONTRATTO } from './sezione-contratto'
 
 /**
  * Sezione "Pagamento e fatturazione": condizione, conto, spese, bollo, registro, esigibilità,
@@ -41,6 +43,9 @@ import { FormContratto } from './contratto-cliente-form'
     SceltaAgenteComponent,
     SottoDialogFatturazioneComponent,
     TestoFatturazioneDialogComponent,
+  ],
+  providers: [
+    { provide: SEZIONE_CONTRATTO, useExisting: forwardRef(() => SezionePagamentoComponent) },
   ],
   template: `
     <div class="sezione" [formGroup]="form">

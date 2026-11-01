@@ -6,7 +6,8 @@ import {
   OnChanges,
   Output,
   SimpleChanges,
-  ViewChild,
+  QueryList,
+  ViewChildren,
   inject,
   signal,
 } from '@angular/core'
@@ -35,6 +36,7 @@ import {
 import { PeriodiFatturazioneComponent } from './periodi-fatturazione.component'
 import { etichettaCliente } from './scelta-cliente.component'
 import { CorrentiGenerali, SezioneDatiGeneraliComponent } from './sezione-dati-generali.component'
+import { SEZIONE_CONTRATTO, SezioneContratto } from './sezione-contratto'
 import { SezionePagamentoComponent } from './sezione-pagamento.component'
 
 const NESSUNA_VOCE = '—'
@@ -144,8 +146,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   @Output() salvato = new EventEmitter<ContrattoCliente>()
   @Output() visibleChange = new EventEmitter<boolean>()
 
-  @ViewChild(SezioneDatiGeneraliComponent) private generali?: SezioneDatiGeneraliComponent
-  @ViewChild(SezionePagamentoComponent) private pagamento?: SezionePagamentoComponent
+  /** Tutte le sezioni che si dichiarano con `SEZIONE_CONTRATTO`. */
+  @ViewChildren(SEZIONE_CONTRATTO) private sezioni?: QueryList<SezioneContratto>
 
   readonly form = creaFormContratto()
   readonly errore = signal<string | null>(null)
@@ -307,6 +309,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   // ─── Scelta del cliente: predefiniti (D4) ────────────────────────────────
 
   alClienteScelto(c: Cliente | null): void {
+    // La lettura del cliente precedente non deve più riportare la sua ditta e le sue sedi.
+    this.letturaCliente?.unsubscribe()
     this.clienteOpt.set(c ? { id: c.id, etichetta: etichettaCliente(c.ditta) } : null)
     this.clienteScelto.set(c)
     this.dittaId.set(c?.ditta.id ?? null)
@@ -373,17 +377,17 @@ export class ContrattoClienteDialogComponent implements OnChanges {
    * chiude ogni dialog aperto): si ignora, o si perde il form compilato.
    */
   alCambioVisibilita(visibile: boolean): void {
-    if (
-      !visibile &&
-      (this.generali?.bloccaChiusuraEsterna(visibile) ||
-        this.pagamento?.bloccaChiusuraEsterna(visibile))
-    )
-      return
+    if (!visibile && this.sezioni?.some(s => s.bloccaChiusuraEsterna(visibile))) return
     if (!visibile) this.chiudi()
   }
 
   salva(): void {
     if (!this.puoSalvare()) return
+    const durata = this.form.controls.validitaQuantita.value.trim()
+    if (durata !== '' && !/^\d+$/.test(durata)) {
+      this.errore.set('La durata della validità deve essere un numero intero.')
+      return
+    }
     if (this.contratto) this.salvaModifica(this.contratto)
     else this.salvaNuovo()
   }
