@@ -232,7 +232,21 @@ const quantitaTesto = (v: Prisma.Decimal): string => D(arrotonda(v.toFixed(), 3)
  * "da data": quantita' gia' passata in precedenti fatture) si valuta la tabella sul totale e si
  * fatturano solo gli incrementi, scalando la precedente fascia per fascia. Con `condizione` la
  * quantita' di riferimento e' `quantita` (`P`) o `quantitaCondizionati` (`C`), e sono ammesse le
- * varianti X/Y/Z/W/H, che rendono vera `condizioneVerificata`.
+ * varianti X/Y/Z/W/H, che rendono vera `condizioneVerificata`. `unita` e' l'unita' di misura
+ * delle righe: con le condizioni il chiamante passa quella degli addebiti condizionati (nel
+ * calcolo `C` e' la loro), altrimenti quella dell'addebito. `quantitaPrecedente` insieme a
+ * `condizione` e' un errore, come in WinWaste (umiscondiz non e' piu' "5 spazi").
+ *
+ * FATTURAZIONE DOPPIA EREDITATA (R20): la porta e' fedele a `speciale` di WinWaste
+ * (FATAUTOMATICA.cs decompilato, righe 17230-17290) e ne conserva due comportamenti che
+ * fatturano due volte la stessa quantita':
+ * - `E` (e `H`) non azzera le righe delle fasce precedenti, a differenza di `B`/`D`/`Y`/`W`
+ *   (riga 17230): una tabella mista `D` + `E` con 6.000 kg fattura 6.000 x prezzo della fascia 1
+ *   e anche 6.000 x prezzo della 7.
+ * - con `quantitaPrecedente`, il blocco che scala la quantita' gia' passata (righe 17239-17262)
+ *   vale per qualunque tipo, ma `B`, `C` e `D` poi riscrivono la quantita' (righe 17264-17282,
+ *   `1` oppure l'intera quantita'): la parte gia' fatturata si ripaga. Le tabelle sensate per il
+ *   prezzo "da data" sono quindi `A`.
  */
 export function applicaScaglioni(
   s: readonly Scaglione[],
@@ -247,10 +261,13 @@ export function applicaScaglioni(
   const errore = { errore: MSG_ERRORE_CALCOLO }
   try {
     const conCondizione = o.condizione !== undefined
+    if (conCondizione && o.quantitaPrecedente !== undefined) {
+      return { errore: 'Il prezzo speciale con le condizioni non ammette la quantità precedente.' }
+    }
     let q = D(quantita)
-    // Quantita' gia' passata ancora da scalare (solo senza condizione).
+    // Quantita' gia' passata ancora da scalare.
     let precedente = new Prisma.Decimal(0)
-    const daData = !conCondizione && o.quantitaPrecedente !== undefined
+    const daData = o.quantitaPrecedente !== undefined
     if (daData) {
       precedente = D(o.quantitaPrecedente as string)
       if (precedente.lt(0)) return errore
@@ -261,7 +278,7 @@ export function applicaScaglioni(
     } else if (daData) {
       q = q.plus(precedente)
     }
-    if (q.lt(0) || (!daData && !conCondizione && D(quantita).lt(0))) return errore
+    if (q.lt(0)) return errore
 
     if (validaScaglioni(s, { conCondizioni: conCondizione }).length > 0) return errore
     const f = new Map(s.map(x => [x.ordine, x]))

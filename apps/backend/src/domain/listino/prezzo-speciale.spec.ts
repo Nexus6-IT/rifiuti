@@ -115,13 +115,32 @@ describe('applicaScaglioni', () => {
     ])
   })
 
-  it('E: solo la riga 7, tutta la quantità', () => {
+  it('E: la riga 7 fattura tutta la quantità, dopo le fasce A', () => {
     const t = [sc(1, '1000', '0.10', 'A'), sc(7, null, '0.05', 'E')]
     const r = applicaScaglioni(t, '6000', 'KG')
     if ('errore' in r) throw new Error(r.errore)
     expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([
       ['1000', '0.10'],
       ['6000', '0.05'],
+    ])
+  })
+
+  it('D + E fattura due volte (comportamento ereditato da WinWaste, R20)', () => {
+    const t = [sc(1, '5000', '0.08', 'D'), sc(7, null, '0.05', 'E')]
+    const r = applicaScaglioni(t, '6000', 'KG')
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([
+      ['6000', '0.08'],
+      ['6000', '0.05'],
+    ])
+  })
+
+  it('D con quantità precedente ripaga la quantità già passata (ereditato, R20)', () => {
+    // 2.000 già passati, 1.000 nuovi: la fascia 2 (D) fattura tutte le 3.000
+    const r = applicaScaglioni(tabella('D'), '1000', 'KG', { quantitaPrecedente: '2000' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.descrizione, x.quantita, x.prezzo])).toEqual([
+      ['Per q.tà oltre KG 1000', '3000', '0.08'],
     ])
   })
 
@@ -176,6 +195,17 @@ describe('applicaScaglioni', () => {
       const r = applicaScaglioni(tabella('A'), '1000', 'KG', { quantitaPrecedente: '2000' })
       if ('errore' in r) throw new Error(r.errore)
       expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([['1000', '0.08']])
+    })
+
+    it('quantità precedente con condizione: errore', () => {
+      expect(
+        applicaScaglioni(tabella('D', 'W'), '10', 'KG', {
+          condizione: 'P',
+          quantitaPrecedente: '5',
+        })
+      ).toEqual({
+        errore: 'Il prezzo speciale con le condizioni non ammette la quantità precedente.',
+      })
     })
 
     it('quantità precedente negativa: errore', () => {
