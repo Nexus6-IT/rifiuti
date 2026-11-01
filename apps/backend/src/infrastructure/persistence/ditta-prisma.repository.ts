@@ -132,10 +132,12 @@ export class DittaPrismaRepository implements DittaRepository<ClientDitte> {
     const tenantId = TenantContext.requireTenantId()
     const where = { dittaId, tenantId }
     const select = { id: true, sedeId: true }
-    const [produttori, trasportatori, destinatari] = await Promise.all([
+    const [produttori, trasportatori, destinatari, clienti, agenti] = await Promise.all([
       client.produttore.findMany({ where, select }),
       client.trasportatore.findMany({ where, select }),
       client.destinatario.findMany({ where, select }),
+      client.cliente.findMany({ where, select }),
+      client.agente.findMany({ where, select }),
     ])
     const dei = (ruolo: RuoloControparte, righe: Array<{ id: string; sedeId: string | null }>) =>
       righe.map(r => ({ ruolo, id: r.id, sedeId: r.sedeId }))
@@ -143,6 +145,8 @@ export class DittaPrismaRepository implements DittaRepository<ClientDitte> {
       ...dei('PRODUTTORE', produttori),
       ...dei('TRASPORTATORE', trasportatori),
       ...dei('DESTINATARIO', destinatari),
+      ...dei('CLIENTE', clienti),
+      ...dei('AGENTE', agenti),
     ]
   }
 
