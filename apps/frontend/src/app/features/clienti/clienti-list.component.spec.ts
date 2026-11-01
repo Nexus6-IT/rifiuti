@@ -259,6 +259,15 @@ describe('ClientiListComponent', () => {
     }
     expect(q('clienti-agenti')).toBeTruthy()
     expect(q('clienti-tabelle')).toBeTruthy()
+    expect(q('clienti-addebiti')).toBeTruthy()
+  })
+
+  it('"Archivio addebiti" porta alla rotta piatta clienti/addebiti', async () => {
+    await apri()
+    const navigate = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true)
+    expect(bottone('clienti-addebiti')!.textContent).toContain('Archivio addebiti')
+    bottone('clienti-addebiti')!.click()
+    expect(navigate).toHaveBeenCalledWith('/clienti/addebiti')
   })
 
   it('i pulsanti "Agenti" e "Tabelle di fatturazione" portano alle rotte di D20', async () => {

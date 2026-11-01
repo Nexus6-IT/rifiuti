@@ -163,3 +163,8 @@ export interface AnteprimaVariazione {
   errori: { id: string; descrizione: string; messaggio: string }[]
   impronta: string
 }
+
+/** Risposta dell'applicazione della variazione (R24). */
+export interface EsitoVariazione {
+  aggiornati: number
+}

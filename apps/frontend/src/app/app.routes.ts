@@ -158,6 +158,11 @@ export const routes: Routes = [
           import('./features/clienti/agenti-list.component').then(m => m.AgentiListComponent),
       },
       {
+        path: 'clienti/addebiti',
+        loadComponent: () =>
+          import('./features/listino/addebiti-list.component').then(m => m.AddebitiListComponent),
+      },
+      {
         path: 'contratti-clienti',
         loadComponent: () =>
           import('./features/contratti-cliente/contratti-cliente-list.component').then(

@@ -146,10 +146,14 @@ describe('ListinoService', () => {
       expect(ant.request.method).toBe('POST')
       expect(ant.request.body.valore).toBe('3.5')
       ant.flush({ totale: 0, righe: [], errori: [], impronta: 'x' })
-      service.addebiti.applicaVariazione({ ...corpo, impronta: 'x' }).subscribe()
+      let aggiornati = -1
+      service.addebiti
+        .applicaVariazione({ ...corpo, impronta: 'x' })
+        .subscribe(esito => (aggiornati = esito.aggiornati))
       const app = http.expectOne(`${api}/addebiti/variazioni-prezzi`)
       expect(app.request.body.impronta).toBe('x')
-      app.flush({})
+      app.flush({ aggiornati: 7 })
+      expect(aggiornati).toBe(7)
     })
   })
 })

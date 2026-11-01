@@ -11,6 +11,7 @@ import {
   CodificaAddebito,
   CorpoVariazione,
   DatiAddebito,
+  EsitoVariazione,
   FiltroAddebiti,
   GenereCodificaAddebito,
   ModificaAddebito,
@@ -105,9 +106,9 @@ export class TabellaAddebiti {
     return this.http.post<AnteprimaVariazione>(`${this.url}/variazioni-prezzi/anteprima`, corpo)
   }
 
-  /** Applica con l'impronta dell'anteprima; esito non fissato dal piano (Task 10). */
-  applicaVariazione(corpo: CorpoVariazione & { impronta: string }): Observable<unknown> {
-    return this.http.post<unknown>(`${this.url}/variazioni-prezzi`, corpo)
+  /** Applica con l'impronta dell'anteprima (R24): risponde col numero dei prezzi aggiornati. */
+  applicaVariazione(corpo: CorpoVariazione & { impronta: string }): Observable<EsitoVariazione> {
+    return this.http.post<EsitoVariazione>(`${this.url}/variazioni-prezzi`, corpo)
   }
 }
 
