@@ -22,6 +22,23 @@ describe('nuovoPrezzo', () => {
   it('diminuzione percentuale: -20% su 1 -> 0.80', () => {
     expect(nuovoPrezzo('1', 'DIMINUZIONE_PERCENTUALE', '20')).toEqual({ prezzo: '0.80' })
   })
+  it('importi fino a 6 decimali, oltre errore', () => {
+    expect(nuovoPrezzo('10', 'AUMENTO_IMPORTO', '0.005')).toEqual({ prezzo: '10.005' })
+    expect(nuovoPrezzo('10', 'AUMENTO_IMPORTO', '0.0001')).toEqual({ prezzo: '10.0001' })
+    expect(nuovoPrezzo('10', 'DIMINUZIONE_IMPORTO', '0.000001')).toEqual({ prezzo: '9.999999' })
+    expect(nuovoPrezzo('10', 'AUMENTO_IMPORTO', '0.0000001')).toEqual({
+      errore: "L'importo può avere al massimo 6 decimali.",
+    })
+  })
+  it('tetto del prezzo: >= 1e8 -> errore', () => {
+    expect(nuovoPrezzo('99999999', 'AUMENTO_IMPORTO', '1')).toEqual({
+      errore: 'Il nuovo prezzo sarebbe troppo grande.',
+    })
+    expect(nuovoPrezzo('50000000', 'AUMENTO_PERCENTUALE', '100')).toEqual({
+      errore: 'Il nuovo prezzo sarebbe troppo grande.',
+    })
+    expect(nuovoPrezzo('99999998', 'AUMENTO_IMPORTO', '1')).toEqual({ prezzo: '99999999.00' })
+  })
   it('diminuzione importo che rende negativo -> errore', () => {
     expect(nuovoPrezzo('10', 'DIMINUZIONE_IMPORTO', '15')).toEqual({
       errore: 'Il nuovo prezzo sarebbe negativo.',
@@ -130,6 +147,11 @@ describe('validaPercentualiIstat', () => {
     ).toEqual(['Il mese è indicato più volte.'])
     expect(validaPercentualiIstat([{ anno: 2024, mese: 13, percentuale: '2' }])).toEqual([
       'Il mese indicato non è valido.',
+    ])
+  })
+  it('anno non valido: messaggio dedicato', () => {
+    expect(validaPercentualiIstat([{ anno: 1800, mese: 1, percentuale: '2' }])).toEqual([
+      "L'anno indicato non è valido.",
     ])
   })
   it('elenco vuoto rifiutato', () => {

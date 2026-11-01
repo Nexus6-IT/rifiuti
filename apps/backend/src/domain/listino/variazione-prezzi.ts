@@ -18,6 +18,8 @@ export type EsitoPrezzo = { prezzo: string } | { errore: string }
 
 const NUMERO = /^\d+([.,]\d+)?$/
 const NUMERO_CON_SEGNO = /^-?\d+([.,]\d+)?$/
+/** Decimal(14,6): il prezzo deve restare sotto 1e8. */
+const TETTO_PREZZO = new Prisma.Decimal(100000000)
 const CENTO = new Prisma.Decimal(100)
 
 const dec = (v: string): Prisma.Decimal => new Prisma.Decimal(v.trim().replace(',', '.'))
@@ -37,6 +39,10 @@ export function nuovoPrezzo(
   const v = dec(valore)
   if (v.lte(0)) return { errore: 'Il valore deve essere maggiore di 0.' }
   const p = dec(attuale)
+  const importo = tipo === 'AUMENTO_IMPORTO' || tipo === 'DIMINUZIONE_IMPORTO'
+  if (importo && v.decimalPlaces() > 6) {
+    return { errore: "L'importo può avere al massimo 6 decimali." }
+  }
 
   let risultato: Prisma.Decimal
   switch (tipo) {
@@ -55,7 +61,11 @@ export function nuovoPrezzo(
   }
   if (risultato.isNegative() && !risultato.isZero())
     return { errore: 'Il nuovo prezzo sarebbe negativo.' }
-  return { prezzo: prezzoCalcolato(arrotonda(risultato.toFixed(), precisione(p))) }
+  // Importi fino a 6 decimali (D20); le percentuali seguono la precisione del prezzo (R4).
+  const arrotondato = arrotonda(risultato.toFixed(), importo ? 6 : precisione(p))
+  if (dec(arrotondato).gte(TETTO_PREZZO))
+    return { errore: 'Il nuovo prezzo sarebbe troppo grande.' }
+  return { prezzo: prezzoCalcolato(arrotondato) }
 }
 
 function prezzoVuotoOZero(p: string): boolean {
@@ -103,7 +113,7 @@ export function validaPercentualiIstat(p: readonly PercentualeIstat[]): string[]
     const meseOk = Number.isInteger(r.mese) && r.mese >= 1 && r.mese <= 12
     const annoOk = Number.isInteger(r.anno) && r.anno >= 1900 && r.anno <= 9999
     if (!meseOk || !annoOk) {
-      errori.add('Il mese indicato non è valido.')
+      errori.add(meseOk ? "L'anno indicato non è valido." : 'Il mese indicato non è valido.')
       tutteValide = false
       continue
     }
