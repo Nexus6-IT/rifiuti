@@ -48,3 +48,18 @@ describe('LayoutComponent: voce di menu Pese', () => {
     expect(voce).toEqual(jasmine.objectContaining({ label: 'Pese', feature: 'pese' }))
   })
 })
+
+describe('LayoutComponent: voce di menu Clienti', () => {
+  it('la voce Clienti sostituisce quella temporanea delle tabelle di fatturazione', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const layout = TestBed.createComponent(LayoutComponent).componentInstance
+    const voce = layout.navMain.find(v => v.route === '/clienti')
+    expect(voce).toEqual(
+      jasmine.objectContaining({ label: 'Clienti', icon: 'pi pi-users', feature: 'contratti' })
+    )
+    expect(layout.navMain.find(v => v.label === 'Tabelle di fatturazione')).toBeUndefined()
+  })
+})
