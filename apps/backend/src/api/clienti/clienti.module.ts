@@ -10,6 +10,7 @@ import { TestiFatturazioneService } from '../../application/clienti/testi-fattur
 import { CodificheContrattoService } from '../../application/clienti/codifiche-contratto.service'
 import { AgentiService } from '../../application/clienti/agenti.service'
 import { ClientiService } from '../../application/clienti/clienti.service'
+import { AllegatiContrattoClienteService } from '../../application/contratti-cliente/allegati-contratto-cliente.service'
 import { SpeseAccessorieService } from '../../application/clienti/spese-accessorie.service'
 import { CondizioniPagamentoController } from './condizioni-pagamento.controller'
 import { ContiCorrentiController } from './conti-correnti.controller'
@@ -19,6 +20,7 @@ import { CodificheContrattoController } from './codifiche-contratto.controller'
 import { AgentiController } from './agenti.controller'
 import { ClientiController } from './clienti.controller'
 import { SpeseAccessorieController } from './spese-accessorie.controller'
+import { AllegatiContrattoClienteController } from './allegati-contratto-cliente.controller'
 
 /**
  * ClientiModule — clienti, contratti verso i clienti e relative tabelle di fatturazione (4.1).
@@ -35,6 +37,7 @@ import { SpeseAccessorieController } from './spese-accessorie.controller'
     CodificheContrattoController,
     AgentiController,
     ClientiController,
+    AllegatiContrattoClienteController,
   ],
   providers: [
     CondizioniPagamentoService,
@@ -45,6 +48,7 @@ import { SpeseAccessorieController } from './spese-accessorie.controller'
     CodificheContrattoService,
     AgentiService,
     ClientiService,
+    AllegatiContrattoClienteService,
   ],
   exports: [
     CondizioniPagamentoService,
