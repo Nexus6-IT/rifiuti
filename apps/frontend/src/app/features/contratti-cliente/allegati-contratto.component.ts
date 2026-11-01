@@ -59,7 +59,7 @@ const dimensioneLeggibile = (byte: number): string =>
           label="Apri"
           icon="pi pi-external-link"
           [text]="true"
-          [disabled]="occupata() === p"
+          [disabled]="occupata() !== null"
           (onClick)="apri(p)"
           [attr.data-testid]="'allegato-apri-' + p"
         />
@@ -69,7 +69,7 @@ const dimensioneLeggibile = (byte: number): string =>
           icon="pi pi-trash"
           severity="danger"
           [text]="true"
-          [disabled]="occupata() === p"
+          [disabled]="occupata() !== null"
           (onClick)="rimuovi(p)"
           [attr.data-testid]="'allegato-rimuovi-' + p"
         />
@@ -86,7 +86,7 @@ const dimensioneLeggibile = (byte: number): string =>
             label="Carica"
             icon="pi pi-upload"
             [text]="true"
-            [disabled]="occupata() === p"
+            [disabled]="occupata() !== null"
             (onClick)="file.click()"
             [attr.data-testid]="'allegato-carica-' + p"
           />
@@ -134,7 +134,7 @@ export class AllegatiContrattoComponent implements OnChanges, OnDestroy {
   readonly dimensione = dimensioneLeggibile
   readonly elenco = signal<AllegatoContratto[]>([])
   readonly errore = signal<string | null>(null)
-  /** Posizione con una richiesta in corso (evita il doppio click). */
+  /** Posizione con una richiesta in corso: finché c'è, tutte le azioni sono ferme (una sola operazione alla volta). */
   readonly occupata = signal<Posizione | null>(null)
   readonly confermaAperta = signal(false)
 
@@ -165,6 +165,8 @@ export class AllegatiContrattoComponent implements OnChanges, OnDestroy {
     this.elenco.set([])
     this.errore.set(null)
     this.occupata.set(null)
+    // Una conferma aperta era per un allegato del contratto precedente.
+    this.conferma.close()
     this.confermaAperta.set(false)
     if (!this.contrattoId) return
     this.lettura = this.servizio.allegati.elenco(this.contrattoId).subscribe({
@@ -176,7 +178,7 @@ export class AllegatiContrattoComponent implements OnChanges, OnDestroy {
   scelto(p: Posizione, input: HTMLInputElement): void {
     const file = input.files?.[0]
     input.value = ''
-    if (!file || !this.contrattoId) return
+    if (!file || !this.contrattoId || this.occupata() !== null) return
     this.errore.set(null)
     this.occupata.set(p)
     this.operazione = this.servizio.allegati.carica(this.contrattoId, p, file).subscribe({
@@ -198,8 +200,9 @@ export class AllegatiContrattoComponent implements OnChanges, OnDestroy {
    */
   apri(p: Posizione): void {
     const a = this.allegatoIn(p)
-    if (!a || !this.contrattoId) return
+    if (!a || !this.contrattoId || this.occupata() !== null) return
     const scheda = window.open('', '_blank')
+    if (scheda) scheda.opener = null
     this.errore.set(null)
     this.occupata.set(p)
     this.operazione = this.servizio.allegati.scarica(this.contrattoId, a.id).subscribe({
@@ -221,7 +224,7 @@ export class AllegatiContrattoComponent implements OnChanges, OnDestroy {
 
   rimuovi(p: Posizione): void {
     const a = this.allegatoIn(p)
-    if (!a || !this.contrattoId) return
+    if (!a || !this.contrattoId || this.occupata() !== null) return
     const contrattoId = this.contrattoId
     this.confermaAperta.set(true)
     chiediConferma(
@@ -229,6 +232,7 @@ export class AllegatiContrattoComponent implements OnChanges, OnDestroy {
       `Rimuovere il PDF "${a.nomeFile}"?`,
       () => {
         this.confermaAperta.set(false)
+        if (this.contrattoId !== contrattoId) return
         this.errore.set(null)
         this.occupata.set(p)
         this.operazione = this.servizio.allegati.rimuovi(contrattoId, a.id).subscribe({

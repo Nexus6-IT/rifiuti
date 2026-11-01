@@ -60,6 +60,12 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
         [puoCreare]="libero('condizionePagamentoId')"
         (nuovo)="opzioni.inLinea.apri('condizione', 'create', $any($event))"
       />
+      <small
+        *ngIf="predefinitiDisattivati.has('condizionePagamentoId')"
+        class="field-hint"
+        data-testid="contratto-dlg-condizione-disattivato"
+        >Il predefinito del cliente è disattivato.</small
+      >
       <app-scelta-con-nuovo
         inputId="contratto-dlg-conto"
         testid="contratto-dlg-conto"
@@ -83,6 +89,12 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
         [puoCreare]="libero('speseIncassoId')"
         (nuovo)="opzioni.inLinea.apri('spese', 'create', $any($event))"
       />
+      <small
+        *ngIf="predefinitiDisattivati.has('speseIncassoId')"
+        class="field-hint"
+        data-testid="contratto-dlg-spese-disattivato"
+        >Il predefinito del cliente è disattivato.</small
+      >
       <app-scelta-con-nuovo
         inputId="contratto-dlg-bollo"
         testid="contratto-dlg-bollo"
@@ -95,6 +107,12 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
         [puoCreare]="libero('bolloId')"
         (nuovo)="opzioni.inLinea.apri('bollo', 'create', $any($event))"
       />
+      <small
+        *ngIf="predefinitiDisattivati.has('bolloId')"
+        class="field-hint"
+        data-testid="contratto-dlg-bollo-disattivato"
+        >Il predefinito del cliente è disattivato.</small
+      >
       <app-scelta-con-nuovo
         inputId="contratto-dlg-registro"
         testid="contratto-dlg-registro"
@@ -106,6 +124,12 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
         [puoCreare]="libero('registroIvaId')"
         (nuovo)="opzioni.inLinea.apri('registro', 'create', $any($event))"
       />
+      <small
+        *ngIf="predefinitiDisattivati.has('registroIvaId')"
+        class="field-hint"
+        data-testid="contratto-dlg-registro-disattivato"
+        >Il predefinito del cliente è disattivato.</small
+      >
 
       <label for="contratto-dlg-esigibilita">Esigibilità IVA</label>
       <select
@@ -188,6 +212,8 @@ export class SezionePagamentoComponent implements OnChanges, OnDestroy {
   @Input() testoCorrente: Rif | null = null
   /** Testo dell'opzione vuota del conto: "dal cliente: <descrizione>" (D4) o "—". */
   @Input() contoVuoto = '—'
+  /** Campi il cui predefinito del cliente è disattivato e che restano vuoti (R42). */
+  @Input() predefinitiDisattivati: ReadonlySet<string> = new Set()
   /** Errore di caricamento dell'elenco dei testi. */
   @Input() segnalaErrore: (messaggio: string) => void = () => undefined
 

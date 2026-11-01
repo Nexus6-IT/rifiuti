@@ -99,6 +99,37 @@ describe('ContrattoPrincipaleSelectComponent', () => {
     expect(q('contratto-dlg-principale-errore')!.textContent).toContain('Non autorizzato.')
   })
 
+  it('elenco completo: nessun avviso né ricerca', async () => {
+    await apri()
+    expect(q('contratto-dlg-principale-parziale')).toBeNull()
+    expect(q('contratto-dlg-principale-cerca')).toBeNull()
+  })
+
+  it('oltre i 100 contratti: avviso "Elenco parziale" e ricerca sul server per testo', async () => {
+    list.and.returnValues(
+      of({ elementi: [c('ct2', 'CC-2')], totale: 150 }),
+      of({ elementi: [c('ct9', 'CC-9')], totale: 1 })
+    )
+    await apri()
+    expect(q('contratto-dlg-principale-parziale')!.textContent).toContain('Elenco parziale')
+    const cerca = q<HTMLInputElement>('contratto-dlg-principale-cerca')!
+    cerca.value = ' CC-9 '
+    cerca.dispatchEvent(new Event('change'))
+    await stabilizza(fixture)
+    expect(list).toHaveBeenCalledWith({ clienteId: 'cl1', dimensione: 100, testo: 'CC-9' })
+    expect(opzioni()).toEqual(['', 'ct9'])
+    // la casella di ricerca resta, per poter cambiare o togliere il testo
+    expect(q('contratto-dlg-principale-cerca')).not.toBeNull()
+  })
+
+  it('Invio nella ricerca non invia il form del dialog', async () => {
+    list.and.returnValue(of({ elementi: [c('ct2', 'CC-2')], totale: 150 }))
+    await apri()
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true })
+    q<HTMLInputElement>('contratto-dlg-principale-cerca')!.dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBeTrue()
+  })
+
   it('controllo disabilitato: il select è disabilitato', async () => {
     controllo.disable()
     await apri()

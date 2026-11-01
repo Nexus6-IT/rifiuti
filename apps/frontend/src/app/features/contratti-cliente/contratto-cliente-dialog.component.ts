@@ -109,6 +109,7 @@ const NESSUNA_VOCE = '—'
               [bloccati]="bloccati()"
               [testoCorrente]="letto()?.testoFatturazione ?? null"
               [contoVuoto]="contoVuoto()"
+              [predefinitiDisattivati]="predefinitiDisattivati()"
               [segnalaErrore]="segnalaErrore"
             />
           </p-accordionTab>
@@ -192,6 +193,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   readonly clienteOpt = signal<Opzione | null>(null)
   readonly fatturazioneOpt = signal<Opzione | null>(null)
   readonly dittaId = signal<string | null>(null)
+  /** Campi il cui predefinito del cliente è una voce disattivata (R42): lasciati vuoti. */
+  readonly predefinitiDisattivati = signal<ReadonlySet<CampoForm>>(new Set())
   readonly correntiGenerali = signal<CorrentiGenerali | null>(null)
   /** Cliente e cliente di fatturazione scelti: i loro predefiniti (D4) e il conto "dal cliente". */
   private readonly clienteScelto = signal<Cliente | null>(null)
@@ -270,6 +273,7 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     this.fatturazioneOpt.set(null)
     this.dittaId.set(null)
     this.correntiGenerali.set(null)
+    this.predefinitiDisattivati.set(new Set())
     this.clienteScelto.set(null)
     this.fatturazioneScelta = null
     if (!this.puoScrivere()) this.form.disable({ emitEvent: false })
@@ -370,19 +374,38 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     const c = this.clienteScelto()
     const sdi = this.fatturazioneScelta ?? c
     const f = this.form.controls
+    // Un predefinito lasciato vuoto perché disattivato (R42) torna ricalcolabile.
+    for (const campo of this.predefinitiDisattivati()) f[campo].markAsPristine()
+    const disattivati = new Set<CampoForm>()
     const imposta = (campo: CampoForm, valore: string): void => {
       const ctrl = f[campo]
       if (ctrl.pristine) this.senzaTocco(() => ctrl.setValue(valore as never))
     }
-    imposta('condizionePagamentoId', c?.condizionePagamentoId ?? '')
+    // R42: un id che non è fra le voci attive non si scrive (il backend lo rifiuterebbe): il campo
+    // resta vuoto e "toccato", così parte un null esplicito, e si avvisa l'operatore.
+    const impostaTabella = (campo: CampoForm, id: string, attive: Opzione[]): void => {
+      const disattivato = id !== '' && attive.length > 0 && !attive.some(o => o.id === id)
+      if (!disattivato) return imposta(campo, id)
+      if (f[campo].pristine) {
+        this.senzaTocco(() => f[campo].setValue('' as never))
+        f[campo].markAsDirty()
+        disattivati.add(campo)
+      }
+    }
+    impostaTabella(
+      'condizionePagamentoId',
+      c?.condizionePagamentoId ?? '',
+      this.opzioni.opzCondizioni()
+    )
     imposta('agenteId', c?.agenteId ?? '')
-    imposta('registroIvaId', c?.registroIvaId ?? '')
-    imposta('speseIncassoId', c?.speseIncassoId ?? '')
-    imposta('bolloId', c?.bolloId ?? '')
+    impostaTabella('registroIvaId', c?.registroIvaId ?? '', this.opzioni.opzRegistri())
+    impostaTabella('speseIncassoId', c?.speseIncassoId ?? '', this.opzioni.opzSpese())
+    impostaTabella('bolloId', c?.bolloId ?? '', this.opzioni.opzBolli())
     imposta('esigibilitaIva', c?.esigibilitaIva ?? 'IMMEDIATA')
     imposta('ritenutaPercentuale', c?.ritenutaPercentuale ?? '')
     imposta('codiceDestinatario', sdi?.codiceDestinatario ?? '')
     imposta('riferimentoAmministrazione', sdi?.riferimentoAmministrazione ?? '')
+    this.predefinitiDisattivati.set(disattivati)
     if (f.agenteId.pristine) {
       this.opzioni.agenteSelezionato = c?.agente
         ? { id: c.agente.id, etichetta: c.agente.descrizione }
