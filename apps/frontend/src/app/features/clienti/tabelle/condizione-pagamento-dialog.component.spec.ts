@@ -58,6 +58,17 @@ describe('CondizionePagamentoDialogComponent', () => {
     })
   })
 
+  it('senza rate manda [0] (a vista)', async () => {
+    tabella.crea.and.returnValue(of({ id: 'x' }))
+    await apri()
+    scrivi('cond-dlg-codice', 'RD')
+    scrivi('cond-dlg-descrizione', 'Rimessa diretta')
+    await stabilizza(fixture)
+    bottone('cond-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(tabella.crea.calls.mostRecent().args[0].giorniRate).toEqual([0])
+  })
+
   it('mostra il messaggio 400 del backend nel dialog', async () => {
     tabella.crea.and.returnValue(
       throwError(() => ({ error: { message: ['I giorni delle rate vanno in ordine crescente.'] } }))

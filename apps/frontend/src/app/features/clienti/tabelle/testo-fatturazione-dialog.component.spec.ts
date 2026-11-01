@@ -69,6 +69,17 @@ describe('TestoFatturazioneDialogComponent', () => {
     })
   })
 
+  it('tutte le righe vuote: non salva e mostra un messaggio in italiano', async () => {
+    await apri(null)
+    scrivi('testo-dlg-codice', 'AB')
+    scrivi('testo-dlg-titolo', 'Pagamento')
+    await stabilizza(fixture)
+    bottone('testo-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(tabella.crea).not.toHaveBeenCalled()
+    expect(q('testo-dlg-errore')!.textContent).toContain('almeno una riga')
+  })
+
   it('modifica: manda i valori del form, non quelli originali', async () => {
     await apri(testo)
     expect(q<HTMLInputElement>('testo-dlg-riga-1')!.value).toBe('Seconda')

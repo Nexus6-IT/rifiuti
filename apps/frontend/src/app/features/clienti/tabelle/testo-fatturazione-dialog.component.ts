@@ -154,10 +154,15 @@ export class TestoFatturazioneDialogComponent implements OnChanges {
   salva(): void {
     if (this.form.invalid || this.inCorso()) return
     const v = this.form.getRawValue()
+    const righe = this.righeDaMandare()
+    if (righe.every(r => r === '')) {
+      this.errore.set('Inserire almeno una riga di testo.')
+      return
+    }
     const dati = {
       codice: v.codice.trim(),
       titolo: v.titolo.trim(),
-      righe: this.righeDaMandare(),
+      righe,
     }
     this.inCorso.set(true)
     this.errore.set(null)

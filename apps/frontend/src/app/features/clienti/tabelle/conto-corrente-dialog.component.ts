@@ -65,7 +65,7 @@ import { messaggioErrore } from './tabella-comune'
           pInputText
           id="conto-iban"
           formControlName="iban"
-          maxlength="40"
+          maxlength="42"
           data-testid="conto-dlg-iban"
         />
         <label for="conto-bic">BIC (facoltativo)</label>

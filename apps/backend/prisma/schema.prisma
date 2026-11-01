@@ -2972,7 +2972,7 @@ model CondizionePagamento {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "condizioni_pagamento_tenant_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "condizioni_pagamento_tenant_id_fkey")
 
   @@unique([id, tenantId], map: "condizioni_pagamento_id_tenant_id_key")
   @@unique([tenantId, codice], map: "condizioni_pagamento_tenant_id_codice_key")
@@ -2995,7 +2995,7 @@ model ContoCorrente {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "conti_correnti_tenant_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "conti_correnti_tenant_id_fkey")
 
   @@unique([id, tenantId], map: "conti_correnti_id_tenant_id_key")
   @@unique([tenantId, codice], map: "conti_correnti_tenant_id_codice_key")
@@ -3018,7 +3018,7 @@ model SpesaAccessoria {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_id_fkey")
 
   @@unique([id, tenantId], map: "spese_accessorie_id_tenant_id_key")
   @@unique([tenantId, tipo, codice], map: "spese_accessorie_tenant_id_tipo_codice_key")
@@ -3039,7 +3039,7 @@ model RegistroIva {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "registri_iva_tenant_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "registri_iva_tenant_id_fkey")
 
   @@unique([id, tenantId], map: "registri_iva_id_tenant_id_key")
   @@unique([tenantId, codice], map: "registri_iva_tenant_id_codice_key")
@@ -3060,7 +3060,7 @@ model TestoFatturazione {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "testi_fatturazione_tenant_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "testi_fatturazione_tenant_id_fkey")
 
   @@unique([id, tenantId], map: "testi_fatturazione_id_tenant_id_key")
   @@unique([tenantId, codice], map: "testi_fatturazione_tenant_id_codice_key")
@@ -3081,7 +3081,7 @@ model CodificaContratto {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codifiche_contratto_tenant_fkey")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codifiche_contratto_tenant_id_fkey")
 
   @@unique([id, tenantId], map: "codifiche_contratto_id_tenant_id_key")
   @@unique([tenantId, genere, codice], map: "codifiche_contratto_tenant_id_genere_codice_key")

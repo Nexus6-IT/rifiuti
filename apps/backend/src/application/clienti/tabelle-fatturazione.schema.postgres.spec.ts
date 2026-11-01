@@ -233,7 +233,7 @@ describe('Tabelle di fatturazione — Postgres reale, ruolo wasteflow_app', () =
       )
     )
     expect(r).not.toBeNull()
-    expect(r?.msg).toMatch(/row-level security|Unique|violates/i)
+    expect(r?.msg).toMatch(/row-level security/i)
   })
 
   it('cancellare il tenant cancella le sei tabelle', async () => {

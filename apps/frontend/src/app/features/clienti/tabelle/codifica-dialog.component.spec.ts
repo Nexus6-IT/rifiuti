@@ -86,6 +86,33 @@ describe('CodificaDialogComponent', () => {
     expect(toast.success).toHaveBeenCalledWith(jasmine.stringContaining('004'))
   })
 
+  it('codice ancora quello proposto: manda null e lo assegna il server', async () => {
+    await apri()
+    scrivi('codifica-dlg-descrizione', 'Annuale')
+    await stabilizza(fixture)
+    bottone('codifica-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(tabella.crea).toHaveBeenCalledWith({
+      genere: 'TIPO',
+      descrizione: 'Annuale',
+      codice: null,
+    })
+  })
+
+  it("codice cambiato dall'utente: manda quello scritto", async () => {
+    await apri()
+    scrivi('codifica-dlg-codice', '009')
+    scrivi('codifica-dlg-descrizione', 'Annuale')
+    await stabilizza(fixture)
+    bottone('codifica-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(tabella.crea).toHaveBeenCalledWith({
+      genere: 'TIPO',
+      descrizione: 'Annuale',
+      codice: '009',
+    })
+  })
+
   it('modifica: manda i valori del form e la versione', async () => {
     await apri({ ...creata, versione: 5 })
     scrivi('codifica-dlg-descrizione', 'Biennale')

@@ -136,17 +136,17 @@ CREATE TABLE "codifiche_contratto" (
 
 -- 4. Chiavi esterne ---------------------------------------------------------------------------
 
-ALTER TABLE "condizioni_pagamento" ADD CONSTRAINT "condizioni_pagamento_tenant_fkey"
+ALTER TABLE "condizioni_pagamento" ADD CONSTRAINT "condizioni_pagamento_tenant_id_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "conti_correnti" ADD CONSTRAINT "conti_correnti_tenant_fkey"
+ALTER TABLE "conti_correnti" ADD CONSTRAINT "conti_correnti_tenant_id_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "spese_accessorie" ADD CONSTRAINT "spese_accessorie_tenant_fkey"
+ALTER TABLE "spese_accessorie" ADD CONSTRAINT "spese_accessorie_tenant_id_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "registri_iva" ADD CONSTRAINT "registri_iva_tenant_fkey"
+ALTER TABLE "registri_iva" ADD CONSTRAINT "registri_iva_tenant_id_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "testi_fatturazione" ADD CONSTRAINT "testi_fatturazione_tenant_fkey"
+ALTER TABLE "testi_fatturazione" ADD CONSTRAINT "testi_fatturazione_tenant_id_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "codifiche_contratto" ADD CONSTRAINT "codifiche_contratto_tenant_fkey"
+ALTER TABLE "codifiche_contratto" ADD CONSTRAINT "codifiche_contratto_tenant_id_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- 5. Indici -----------------------------------------------------------------------------------

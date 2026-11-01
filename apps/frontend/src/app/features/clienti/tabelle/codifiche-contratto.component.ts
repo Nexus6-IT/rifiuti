@@ -8,7 +8,7 @@ import { ToastService } from '../../../core/services/toast.service'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
 import { CodificaContratto, GenereCodifica } from '../clienti.model'
-import { ETICHETTE_GENERE } from '../vocabolario-clienti'
+import { CONCORDANZA_GENERE, ETICHETTE_GENERE } from '../vocabolario-clienti'
 import { CodificaDialogComponent } from './codifica-dialog.component'
 
 const TITOLI: Readonly<Record<GenereCodifica, string>> = {
@@ -28,7 +28,7 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
       <h2 [attr.data-testid]="'codifiche-titolo-' + genere">{{ titolo() }}</h2>
       <p-button
         *ngIf="puoScrivere()"
-        label="Nuovo"
+        [label]="concordanza().nuovo"
         icon="pi pi-plus"
         (onClick)="apri(null)"
         [attr.data-testid]="'codifica-nuova-' + genere"
@@ -122,6 +122,10 @@ export class CodificheContrattoComponent implements OnInit {
   readonly dialogoAperto = signal(false)
   readonly selezionata = signal<CodificaContratto | null>(null)
 
+  concordanza(): { nuovo: string; articolo: string } {
+    return CONCORDANZA_GENERE[this.genere]
+  }
+
   titolo(): string {
     return TITOLI[this.genere]
   }
@@ -158,8 +162,10 @@ export class CodificheContrattoComponent implements OnInit {
 
   elimina(c: CodificaContratto): void {
     const g = ETICHETTE_GENERE[c.genere].toLowerCase()
-    chiediConferma(this.conferma, `Eliminare ${g} "${c.codice} - ${c.descrizione}"?`, () =>
-      this.eliminaConfermata(c)
+    chiediConferma(
+      this.conferma,
+      `Eliminare ${CONCORDANZA_GENERE[c.genere].articolo} ${g} "${c.codice} - ${c.descrizione}"?`,
+      () => this.eliminaConfermata(c)
     )
   }
 

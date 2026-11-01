@@ -27,4 +27,13 @@ function opzioni<K extends string>(etichette: Readonly<Record<K, string>>) {
 
 export const OPZIONI_MODALITA = opzioni(ETICHETTE_MODALITA)
 export const OPZIONI_TIPO_SPESA = opzioni(ETICHETTE_TIPO_SPESA)
+/** Concordanza di articolo e aggettivo per genere (la categoria è femminile). */
+export const CONCORDANZA_GENERE: Readonly<
+  Record<GenereCodifica, { nuovo: string; articolo: string }>
+> = {
+  CATEGORIA: { nuovo: 'Nuova', articolo: 'la' },
+  TIPO: { nuovo: 'Nuovo', articolo: 'il' },
+  MOTIVO_ANNULLO: { nuovo: 'Nuovo', articolo: 'il' },
+}
+
 export const OPZIONI_GENERE = opzioni(ETICHETTE_GENERE)

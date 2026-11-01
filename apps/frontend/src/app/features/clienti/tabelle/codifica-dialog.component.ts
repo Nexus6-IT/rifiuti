@@ -17,7 +17,7 @@ import { Subscription } from 'rxjs'
 import { ToastService } from '../../../core/services/toast.service'
 import { CodificaContratto, GenereCodifica } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { ETICHETTE_GENERE } from '../vocabolario-clienti'
+import { CONCORDANZA_GENERE, ETICHETTE_GENERE } from '../vocabolario-clienti'
 import { messaggioErrore } from './tabella-comune'
 
 /**
@@ -34,7 +34,9 @@ import { messaggioErrore } from './tabella-comune'
     <p-dialog
       [visible]="visible"
       (visibleChange)="chiudi()"
-      [header]="(elemento ? 'Modifica ' : 'Nuovo ') + etichettaGenere().toLowerCase()"
+      [header]="
+        (elemento ? 'Modifica ' : concordanza().nuovo + ' ') + etichettaGenere().toLowerCase()
+      "
       [modal]="true"
       [style]="{ width: '28rem' }"
     >
@@ -106,6 +108,10 @@ export class CodificaDialogComponent implements OnChanges {
     descrizione: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   })
 
+  concordanza(): { nuovo: string; articolo: string } {
+    return CONCORDANZA_GENERE[this.genere]
+  }
+
   etichettaGenere(): string {
     return ETICHETTE_GENERE[this.genere]
   }
@@ -114,8 +120,12 @@ export class CodificaDialogComponent implements OnChanges {
     if (c['visible'] && this.visible) this.inizializza()
   }
 
+  /** Codice proposto da `prossimoCodice` e non ancora modificato dall'utente. */
+  private codiceProposto: string | null = null
+
   private inizializza(): void {
     this.proposta?.unsubscribe()
+    this.codiceProposto = null
     const e = this.elemento
     this.form.reset({ codice: e?.codice ?? '', descrizione: e?.descrizione ?? '' })
     this.errore.set(null)
@@ -123,7 +133,10 @@ export class CodificaDialogComponent implements OnChanges {
     if (e || this.rapida) return
     // Informativo: se nel frattempo qualcuno prende il codice, lo ricalcola il server.
     this.proposta = this.servizio.codifiche.prossimoCodice(this.genere).subscribe({
-      next: codice => this.form.controls.codice.setValue(codice),
+      next: codice => {
+        this.codiceProposto = codice
+        this.form.controls.codice.setValue(codice)
+      },
       error: () => undefined,
     })
   }
@@ -149,7 +162,9 @@ export class CodificaDialogComponent implements OnChanges {
       : this.servizio.codifiche.crea({
           genere: this.genere,
           descrizione,
-          ...(this.rapida ? {} : { codice: codice === '' ? null : codice }),
+          ...(this.rapida
+            ? {}
+            : { codice: codice === '' || codice === this.codiceProposto ? null : codice }),
         })
     chiamata.subscribe({
       next: salvata => {

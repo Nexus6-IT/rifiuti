@@ -225,7 +225,8 @@ export class CondizionePagamentoDialogComponent implements OnChanges {
       codice: v.codice.trim(),
       descrizione: v.descrizione.trim(),
       modalita: v.modalita,
-      giorniRate: this.giorni(),
+      // Senza rate il dominio intende "a vista": una sola rata a 0 giorni.
+      giorniRate: this.giorni().length === 0 ? [0] : this.giorni(),
       fineMese: v.fineMese,
     }
     this.inCorso.set(true)

@@ -293,8 +293,8 @@ test.describe('Tabelle di fatturazione — VIEWER', () => {
       await expect(page.getByRole('button', { name: 'Elimina' })).toHaveCount(0)
     }
     await page.getByRole('tab', { name: 'Categorie e tipi' }).click()
-    await expect(page.getByRole('button', { name: 'Nuovo', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)
     await page.getByRole('tab', { name: 'Motivi di annullo' }).click()
-    await expect(page.getByRole('button', { name: 'Nuovo', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)
   })
 })

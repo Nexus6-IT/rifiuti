@@ -29,8 +29,8 @@ export class CreaTestoFatturazioneDto {
 
   @ApiProperty({ type: [String], description: 'Da 1 a 16 righe di al massimo 60 caratteri' })
   @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(16)
+  @ArrayMinSize(1, { message: 'Il testo deve avere almeno una riga non vuota' })
+  @ArrayMaxSize(16, { message: 'Il testo può avere al massimo 16 righe' })
   @IsString({ each: true })
   @MaxLength(60, { each: true })
   righe: string[]
@@ -50,8 +50,8 @@ export class ModificaTestoFatturazioneDto {
   @ApiPropertyOptional({ type: [String] })
   @ValidateIf((_, v) => v !== undefined)
   @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(16)
+  @ArrayMinSize(1, { message: 'Il testo deve avere almeno una riga non vuota' })
+  @ArrayMaxSize(16, { message: 'Il testo può avere al massimo 16 righe' })
   @IsString({ each: true })
   @MaxLength(60, { each: true })
   righe?: string[]

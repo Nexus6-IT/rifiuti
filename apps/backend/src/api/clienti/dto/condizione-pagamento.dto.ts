@@ -36,8 +36,8 @@ export class CreaCondizionePagamentoDto {
     description: 'Giorni di ciascuna rata (1-8), crescenti; 0 = a vista (rata unica)',
   })
   @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(8)
+  @ArrayMinSize(1, { message: 'Indicare almeno una rata (0 giorni per il pagamento a vista)' })
+  @ArrayMaxSize(8, { message: 'Le rate possono essere al massimo 8' })
   @IsInt({ each: true })
   giorniRate: number[]
 
@@ -70,8 +70,8 @@ export class ModificaCondizionePagamentoDto {
   @ApiPropertyOptional({ type: [Number] })
   @ValidateIf((_, v) => v !== undefined)
   @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(8)
+  @ArrayMinSize(1, { message: 'Indicare almeno una rata (0 giorni per il pagamento a vista)' })
+  @ArrayMaxSize(8, { message: 'Le rate possono essere al massimo 8' })
   @IsInt({ each: true })
   giorniRate?: number[]
 
