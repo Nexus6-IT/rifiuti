@@ -1043,6 +1043,21 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
     })
 
+    it('id in maiuscolo dall’URL: "allegato a sé stesso" si riconosce (400, non CHECK del database)', async () => {
+      const e = await errore(
+        service.modifica(T, U, K.toUpperCase(), { contrattoPrincipaleId: K, versione: 1 })
+      )
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse().message).toEqual(['Un contratto non può essere allegato a sé stesso.'])
+    })
+
+    it('deadlock dal raw (P2010 con meta.code 40P01): 409 MODIFICATO_NEL_FRATTEMPO', async () => {
+      tx.contrattoCliente.updateMany.mockRejectedValue(errP('P2010', { code: '40P01' }))
+      const e = await errore(service.modifica(T, U, K, { descrizione: MOD, versione: 1 }))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+    })
+
     it('risponde con la vista riletta', async () => {
       tx.contrattoCliente.findFirst
         .mockResolvedValueOnce(riga())
@@ -1184,6 +1199,23 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       expect(e.getResponse().message).toEqual([
         'Il motivo di annullo scelto non esiste o è disattivato.',
       ])
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('motivo oltre 255 caratteri: 400 prima di leggere la codifica (D14)', async () => {
+      tx.contrattoCliente.findFirst.mockResolvedValue(attivo())
+      const e = await errore(
+        service.cambiaStato(T, U, K, 'ANNULLATO', 1, {
+          motivoAnnulloId: R(8),
+          motivo: 'x'.repeat(256),
+        })
+      )
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse().message).toEqual([
+        "Il motivo dell'annullo non può superare 255 caratteri.",
+      ])
+      expect(controlla).not.toHaveBeenCalled()
+      expect(tx.codificaContratto.findFirst).not.toHaveBeenCalled()
       expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
     })
 

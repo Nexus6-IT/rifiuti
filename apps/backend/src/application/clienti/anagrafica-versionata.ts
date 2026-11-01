@@ -41,7 +41,8 @@ export type VincoliNoti = Readonly<Record<string, { codice: string; messaggio: s
  */
 export type RileggiVincolo = () => Promise<string | null>
 
-function modificatoNelFrattempo(e: DescrizioneEntita): ConflictException {
+/** 409 "modificato nel frattempo" per l'entità (lo usano anche i servizi con lock proprio). */
+export function modificatoNelFrattempo(e: DescrizioneEntita): ConflictException {
   const [suffisso, participio] = e.femminile
     ? ['MODIFICATA', 'stata modificata']
     : ['MODIFICATO', 'stato modificato']

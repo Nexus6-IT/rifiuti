@@ -55,6 +55,7 @@ import { prossimaFinePeriodo } from '../../domain/contratti-cliente/periodi-fatt
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
   confrontaVersione,
+  modificatoNelFrattempo,
   scriviCondizionato,
   traduciErrorePrisma,
   type DescrizioneEntita,
@@ -238,13 +239,6 @@ const comeDecimale = (d: { toFixed(n: number): string } | null): string | null =
 function rif(r: { id: string; codice: string | null; descrizione: string } | null): Rif {
   return r ? { id: r.id, codice: r.codice, descrizione: r.descrizione } : null
 }
-
-const modificatoNelFrattempo = () =>
-  new ConflictException({
-    error: 'CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO',
-    message:
-      "Il contratto è stato modificato nel frattempo da un'altra operazione: ricarica per vedere i dati aggiornati e ripeti l'operazione.",
-  })
 
 const CAMPI_DATA: readonly CampoContrattoCliente[] = [
   'dataInizio',
@@ -605,7 +599,7 @@ export class ContrattiClienteService {
   private async traduci(err: unknown): Promise<never> {
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
       if (err.code === 'P2002') return traduciErrorePrisma(err, ENTITA, VINCOLI)
-      if (err.code === 'P2034' || err.meta?.code === '40P01') throw modificatoNelFrattempo()
+      if (err.code === 'P2034' || err.meta?.code === '40P01') throw modificatoNelFrattempo(ENTITA)
     }
     throw err
   }
@@ -725,7 +719,7 @@ export class ContrattiClienteService {
 
     // 4-5. Campi non ammessi e validazione pura (R36: sempre con l'id del contratto).
     const attuale = datiDaRiga(prima)
-    const piano = pianificaModifica(stato, attuale, patch, { id })
+    const piano = pianificaModifica(stato, attuale, patch, { id: id.toLowerCase() })
     if (piano.esito === 'NESSUNA_MODIFICA') return
     if (piano.esito === 'CAMPI_NON_AMMESSI') {
       throw new ConflictException({
@@ -885,6 +879,8 @@ export class ContrattiClienteService {
           const testo = (annullo.motivo ?? '').trim()
           const codice = (annullo.motivoAnnulloId ?? '').trim().toLowerCase()
           if (a === 'ANNULLATO') {
+            if (testo.length > 255)
+              throw nonValido(["Il motivo dell'annullo non può superare 255 caratteri."])
             let motivo = testo
             if (codice !== '') {
               const errori = await controllaRiferimenti(tx, tenantId, { motivoAnnulloId: codice })
@@ -897,8 +893,6 @@ export class ContrattiClienteService {
                 motivo = codifica?.descrizione ?? ''
               }
             }
-            if (motivo.length > 255)
-              throw nonValido(['Il motivo dell’annullo non può superare 255 caratteri.'])
             data.motivoAnnullo = motivo
             data.motivoAnnulloId = codice === '' ? null : codice
             data.annullatoIl = this.orologio()
@@ -1000,45 +994,10 @@ export class ContrattiClienteService {
           : r.cliente.contoCorrente
     const allegati = r._count.contrattiAllegati
     return {
+      ...datiDaRiga(r),
       id: r.id,
       stato,
       versione: r.versione,
-      numero: r.numero,
-      descrizione: r.descrizione,
-      clienteId: r.clienteId,
-      clienteFatturazioneId: r.clienteFatturazioneId,
-      sedeId: r.sedeId,
-      categoriaId: r.categoriaId,
-      tipoId: r.tipoId,
-      dataInizio: comeGiorno(r.dataInizio),
-      dataFine,
-      dataStipula: comeGiorno(r.dataStipula),
-      validitaQuantita: r.validitaQuantita,
-      validitaUnita: r.validitaUnita as UnitaValidita | null,
-      contrattoPrincipaleId: r.contrattoPrincipaleId,
-      condizionePagamentoId: r.condizionePagamentoId,
-      contoCorrenteId: r.contoCorrenteId,
-      speseIncassoId: r.speseIncassoId,
-      bolloId: r.bolloId,
-      registroIvaId: r.registroIvaId,
-      esigibilitaIva: r.esigibilitaIva,
-      ritenutaPercentuale: comeDecimale(r.ritenutaPercentuale),
-      agenteId: r.agenteId,
-      testoFatturazioneId: r.testoFatturazioneId,
-      codiceDestinatario: r.codiceDestinatario,
-      riferimentoAmministrazione: r.riferimentoAmministrazione,
-      codiceCig: r.codiceCig,
-      codiceCup: r.codiceCup,
-      idDocumentoPa: r.idDocumentoPa,
-      escludiDichiarazioneIntento: r.escludiDichiarazioneIntento,
-      sogliaDal: comeGiorno(r.sogliaDal),
-      sogliaImporto: comeDecimale(r.sogliaImporto),
-      sogliaIvaEsclusa: r.sogliaIvaEsclusa,
-      rinnovoAutomatico: r.rinnovoAutomatico,
-      codiceRinnovo: r.codiceRinnovo as CodiceRinnovo | null,
-      incrementoIstat: r.incrementoIstat,
-      commessa: r.commessa,
-      annotazioni: [...r.annotazioni],
       periodi,
       motivoAnnullo: r.motivoAnnullo,
       motivoAnnulloCodifica: rif(r.motivoAnnulloCodifica),
