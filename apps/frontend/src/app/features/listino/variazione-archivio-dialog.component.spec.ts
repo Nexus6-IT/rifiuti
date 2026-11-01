@@ -13,8 +13,13 @@ const ANTEPRIMA: AnteprimaVariazione = {
     { id: 'ad1', descrizione: 'Trasporto', listino: 1, prima: '10.00', dopo: '10.50' },
     { id: 'ad1', descrizione: 'Trasporto', listino: 2, prima: '8.00', dopo: '8.40' },
   ],
-  errori: [{ id: 'ad2', descrizione: 'Analisi', messaggio: 'Il prezzo supera il massimo.' }],
+  errori: [],
   impronta: 'abc123',
+}
+
+const ANTEPRIMA_CON_ERRORI: AnteprimaVariazione = {
+  ...ANTEPRIMA,
+  errori: [{ id: 'ad2', descrizione: 'Analisi', messaggio: 'Il prezzo supera il massimo.' }],
 }
 
 const iva = (id: string, codice: string): CodiceIva => ({
@@ -84,6 +89,12 @@ describe('VariazioneArchivioDialogComponent', () => {
                     descrizione: 'Standard',
                     genere: 'CATEGORIA',
                   } as CodificaAddebito,
+                  {
+                    id: 'c2',
+                    codice: '002',
+                    descrizione: 'Speciale',
+                    genere: 'CATEGORIA',
+                  } as CodificaAddebito,
                 ])
               ),
             },
@@ -109,14 +120,17 @@ describe('VariazioneArchivioDialogComponent', () => {
   it('l’anteprima manda il valore con il punto, come stringa, e i listini scelti', async () => {
     await apri()
     await preparaAumento('3,5')
-    sel('var-categoria', 'c1')
+    q<HTMLInputElement>('var-cat-c1')!.click()
+    q<HTMLInputElement>('var-cat-c2')!.click()
+    q<HTMLInputElement>('var-tipo-F')!.click()
+    q<HTMLInputElement>('var-tipo-TS')!.click()
     for (const n of [3, 4, 5, 6]) q<HTMLInputElement>(`var-listino-${n}`)!.click()
     await stabilizza(fixture)
     await anteprima()
     expect(addebiti.anteprimaVariazione).toHaveBeenCalledOnceWith({
       tipo: 'AUMENTO_PERCENTUALE',
       valore: '3.5',
-      filtri: { listini: [1, 2], categorieIds: ['c1'] },
+      filtri: { listini: [1, 2], categorieIds: ['c1', 'c2'], tipi: ['F', 'TS'] },
     })
   })
 
@@ -129,7 +143,7 @@ describe('VariazioneArchivioDialogComponent', () => {
     ])
   })
 
-  it('mostra la tabella vecchio → nuovo per addebito e listino, e gli errori per riga', async () => {
+  it('mostra la tabella vecchio → nuovo per addebito e listino', async () => {
     await apri()
     await preparaAumento()
     await anteprima()
@@ -139,8 +153,47 @@ describe('VariazioneArchivioDialogComponent', () => {
     expect(testo).toContain('10.50')
     expect(testo).toContain('8.40')
     expect(testo).not.toContain('ad1')
-    expect(q('var-errori')!.textContent).toContain('Analisi')
-    expect(q('var-errori')!.textContent).toContain('Il prezzo supera il massimo.')
+    expect(q('var-errori')).toBeNull()
+  })
+
+  it('errori nell’anteprima: sono bloccanti, la variazione non si applica (D20)', async () => {
+    addebiti.anteprimaVariazione.and.returnValue(of(ANTEPRIMA_CON_ERRORI))
+    await apri()
+    await preparaAumento()
+    await anteprima()
+    const errori = q('var-errori')!.textContent!
+    expect(errori).toContain('Analisi')
+    expect(errori).toContain('Il prezzo supera il massimo.')
+    expect(errori).toContain('non può essere applicata')
+    expect(errori).not.toContain('Non verranno modificati')
+    expect(bottone('var-applica')!.disabled).toBeTrue()
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    expect(q('var-riepilogo')).toBeNull()
+    expect(addebiti.applicaVariazione).not.toHaveBeenCalled()
+  })
+
+  it('cambiare un listino dopo l’anteprima la scarta', async () => {
+    await apri()
+    await preparaAumento()
+    await anteprima()
+    expect(q('var-applica')).toBeTruthy()
+    q<HTMLInputElement>('var-listino-6')!.click()
+    await stabilizza(fixture)
+    expect(q('var-applica')).toBeNull()
+    expect(q('var-righe')).toBeNull()
+  })
+
+  it('durante l’applicazione Annulla è disabilitato', async () => {
+    addebiti.applicaVariazione.and.returnValue(new Subject())
+    await apri()
+    await preparaAumento()
+    await anteprima()
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    bottone('var-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(bottone('var-chiudi')!.disabled).toBeTrue()
   })
 
   it('applica dopo il riepilogo di conferma, con l’impronta dell’anteprima', async () => {

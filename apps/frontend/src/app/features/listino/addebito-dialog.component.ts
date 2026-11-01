@@ -172,7 +172,7 @@ const gruppoListino = () =>
               pInputText
               id="add-dlg-um"
               formControlName="unitaMisura"
-              maxlength="10"
+              maxlength="3"
               data-testid="add-dlg-um"
             />
           </div>

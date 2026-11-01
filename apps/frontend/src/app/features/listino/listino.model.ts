@@ -159,7 +159,7 @@ export interface CorpoVariazione<F = FiltroVariazioneArchivio> {
 
 export interface AnteprimaVariazione {
   totale: number
-  righe: { id: string; descrizione: string; listino?: number; prima: string; dopo: string }[]
+  righe: { id: string; descrizione: string; listino: number; prima: string; dopo: string }[]
   errori: { id: string; descrizione: string; messaggio: string }[]
   impronta: string
 }

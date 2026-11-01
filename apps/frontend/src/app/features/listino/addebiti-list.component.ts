@@ -18,10 +18,8 @@ import {
 import { AddebitoDialogComponent } from './addebito-dialog.component'
 import { Addebito, FiltroAddebiti } from './listino.model'
 import { ListinoService } from './listino.service'
+import { puoVariarePrezzi } from './permessi-listino'
 import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.component'
-
-/** Le variazioni di massa toccano tutto l'archivio: solo SUPER_ADMIN e ADMIN (R11). */
-const RUOLI_VARIAZIONI: readonly string[] = ['SUPER_ADMIN', 'ADMIN']
 
 /**
  * Archivio degli addebiti: ricerca con debounce, "Solo attivi", paginazione lazy, disattiva ed
@@ -222,7 +220,7 @@ export class AddebitiListComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService)
 
   readonly puoScrivere = permessoScrittura()
-  readonly puoVariare = () => RUOLI_VARIAZIONI.includes(this.auth.currentUser()?.role ?? '')
+  readonly puoVariare = () => puoVariarePrezzi(this.auth.currentUser()?.role)
   readonly elenco = new ElencoPaginato<Addebito, Pick<FiltroAddebiti, 'soloAttivi'>>(
     filtro => this.servizio.addebiti.list(filtro),
     "Impossibile caricare l'archivio degli addebiti."

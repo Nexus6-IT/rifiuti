@@ -25,12 +25,12 @@ import {
   TipoVariazione,
 } from './listino.model'
 import { ListinoService } from './listino.service'
-import { ETICHETTE_TIPO_VARIAZIONE } from './vocabolario-listino'
+import { puoVariarePrezzi } from './permessi-listino'
+import { ETICHETTE_TIPO_VARIAZIONE, TIPI_ELENCABILI } from './vocabolario-listino'
 
 const TUTTI_I_LISTINI: readonly NumeroListino[] = [1, 2, 3, 4, 5, 6]
 const TIPI = Object.keys(ETICHETTE_TIPO_VARIAZIONE) as TipoVariazione[]
 const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’anteprima.'
-const RUOLI_VARIAZIONI: readonly string[] = ['SUPER_ADMIN', 'ADMIN']
 
 /**
  * Variazione dei prezzi dell'archivio (E22, D21): prima l'anteprima (vecchio → nuovo per addebito e
@@ -110,16 +110,31 @@ const RUOLI_VARIAZIONI: readonly string[] = ['SUPER_ADMIN', 'ADMIN']
           </select>
         </ng-container>
 
-        <label for="var-categoria">Categoria (facoltativa)</label>
-        <select
-          id="var-categoria"
-          formControlName="categoriaId"
-          class="p-inputtext"
-          data-testid="var-categoria"
-        >
-          <option value="">Tutte le categorie</option>
-          <option *ngFor="let o of categorie()" [value]="o.id">{{ o.etichetta }}</option>
-        </select>
+        <fieldset class="listini">
+          <legend>Categorie (nessuna = tutte)</legend>
+          <label *ngFor="let o of categorie()" class="spunta">
+            <input
+              type="checkbox"
+              [checked]="categorieScelte().includes(o.id)"
+              (change)="cambiaCategoria(o.id, $any($event.target).checked)"
+              [attr.data-testid]="'var-cat-' + o.id"
+            />
+            {{ o.etichetta }}
+          </label>
+        </fieldset>
+
+        <fieldset class="listini">
+          <legend>Tipi di addebito (nessuno = tutti)</legend>
+          <label *ngFor="let t of tipiProposti" class="spunta" [attr.title]="t.etichetta">
+            <input
+              type="checkbox"
+              [checked]="tipiScelti().includes(t.tipo)"
+              (change)="cambiaTipo(t.tipo, $any($event.target).checked)"
+              [attr.data-testid]="'var-tipo-' + t.tipo"
+            />
+            {{ t.tipo }}
+          </label>
+        </fieldset>
 
         <fieldset class="listini">
           <legend>Listini da variare</legend>
@@ -164,7 +179,11 @@ const RUOLI_VARIAZIONI: readonly string[] = ['SUPER_ADMIN', 'ADMIN']
           </tbody>
         </table>
         <div *ngIf="a.errori.length > 0" data-testid="var-errori">
-          <h4>Non verranno modificati</h4>
+          <h4>Errori nell'anteprima</h4>
+          <p role="alert" class="field-error">
+            Con questi errori la variazione non può essere applicata: correggi gli addebiti indicati
+            o restringi i criteri, poi rifai l'anteprima.
+          </p>
           <ul>
             <li *ngFor="let e of a.errori">{{ e.descrizione }}: {{ e.messaggio }}</li>
           </ul>
@@ -177,6 +196,7 @@ const RUOLI_VARIAZIONI: readonly string[] = ['SUPER_ADMIN', 'ADMIN']
         <p-button
           [label]="esito() !== null ? 'Chiudi' : 'Annulla'"
           [text]="true"
+          [disabled]="applicando()"
           (onClick)="chiudi()"
           data-testid="var-chiudi"
         />
@@ -267,6 +287,11 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
   readonly tipi = TIPI
   readonly etichette = ETICHETTE_TIPO_VARIAZIONE
   readonly numeri = TUTTI_I_LISTINI
+  /** `T???` e `M???` stanno per ogni categoria: come filtro non hanno una forma esatta. */
+  readonly tipiProposti = TIPI_ELENCABILI.filter(t => !t.tipo.includes('?'))
+  readonly categorieScelte = signal<string[]>([])
+  readonly tipiScelti = signal<string[]>([])
+  readonly applicando = signal(false)
   readonly categorie = signal<Opzione[]>([])
   readonly codiciIva = signal<Opzione[]>([])
   readonly listini = signal<NumeroListino[]>([...TUTTI_I_LISTINI])
@@ -283,13 +308,13 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     valore: new FormControl('', { nonNullable: true }),
     daCodiceIvaId: new FormControl('', { nonNullable: true }),
     aCodiceIvaId: new FormControl('', { nonNullable: true }),
-    categoriaId: new FormControl('', { nonNullable: true }),
   })
 
   /** Corpo con cui è stata chiesta l'anteprima: è quello che si applica, non il form di adesso. */
   private corpo: CorpoVariazione | null = null
   private letture?: Subscription
   private richiesta?: Subscription
+  private applicazione?: Subscription
   private modifiche?: Subscription
 
   constructor() {
@@ -303,13 +328,18 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
   ngOnDestroy(): void {
     this.letture?.unsubscribe()
     this.richiesta?.unsubscribe()
+    this.applicazione?.unsubscribe()
     this.modifiche?.unsubscribe()
   }
 
   private inizializza(): void {
     this.letture?.unsubscribe()
     this.richiesta?.unsubscribe()
+    this.applicazione?.unsubscribe()
+    this.applicando.set(false)
     this.form.reset({ tipo: 'AUMENTO_PERCENTUALE' })
+    this.categorieScelte.set([])
+    this.tipiScelti.set([])
     this.listini.set([...TUTTI_I_LISTINI])
     this.corpo = null
     this.anteprimaCorrente.set(null)
@@ -350,7 +380,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
   }
 
   puoVariare(): boolean {
-    return RUOLI_VARIAZIONI.includes(this.auth.currentUser()?.role ?? '')
+    return puoVariarePrezzi(this.auth.currentUser()?.role)
   }
 
   /** Cambiano i criteri: l'anteprima non vale più e l'impronta con lei. */
@@ -368,6 +398,20 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     this.scarta()
   }
 
+  cambiaCategoria(id: string, scelta: boolean): void {
+    this.categorieScelte.update(v =>
+      scelta ? [...v.filter(x => x !== id), id] : v.filter(x => x !== id)
+    )
+    this.scarta()
+  }
+
+  cambiaTipo(tipo: string, scelto: boolean): void {
+    this.tipiScelti.update(v =>
+      scelto ? [...v.filter(x => x !== tipo), tipo] : v.filter(x => x !== tipo)
+    )
+    this.scarta()
+  }
+
   private criteriCompleti(): boolean {
     const v = this.form.getRawValue()
     if (this.listini().length === 0) return false
@@ -382,7 +426,13 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
 
   puoApplicare(): boolean {
     const a = this.anteprimaCorrente()
-    return a !== null && a.righe.length > 0 && !this.inCorso() && this.puoVariare()
+    return (
+      a !== null &&
+      a.righe.length > 0 &&
+      a.errori.length === 0 &&
+      !this.inCorso() &&
+      this.puoVariare()
+    )
   }
 
   private costruisciCorpo(): CorpoVariazione {
@@ -395,7 +445,8 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
         : { valore: v.valore.trim().replace(/,/g, '.') }),
       filtri: {
         ...(ids && ids.length > 0 ? { addebitiIds: ids } : {}),
-        ...(v.categoriaId ? { categorieIds: [v.categoriaId] } : {}),
+        ...(this.categorieScelte().length > 0 ? { categorieIds: this.categorieScelte() } : {}),
+        ...(this.tipiScelti().length > 0 ? { tipi: this.tipiScelti() } : {}),
         listini: this.listini(),
       },
     }
@@ -434,11 +485,15 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
       righe.push(`Valore: ${v.valore.trim()}${v.tipo.endsWith('PERCENTUALE') ? ' %' : ' €'}`)
     }
     righe.push(`Listini: ${this.listini().join(', ')}`)
-    const categoria = this.categorie().find(o => o.id === v.categoriaId)?.etichetta
-    righe.push(`Categoria: ${v.categoriaId ? (categoria ?? 'scelta') : 'tutte'}`)
+    const nomi = this.categorieScelte().map(
+      id => this.categorie().find(o => o.id === id)?.etichetta ?? 'scelta'
+    )
+    righe.push(`Categorie: ${nomi.length > 0 ? nomi.join(', ') : 'tutte'}`)
+    righe.push(
+      `Tipi di addebito: ${this.tipiScelti().length > 0 ? this.tipiScelti().join(', ') : 'tutti'}`
+    )
     if (this.addebitiIds?.length) righe.push('Solo l’addebito scelto dall’elenco')
     righe.push(`Prezzi da modificare: ${a.totale}`)
-    if (a.errori.length > 0) righe.push(`Addebiti non modificabili: ${a.errori.length}`)
     this.riepilogo.set(righe)
     this.errore.set(null)
     this.inRiepilogo.set(true)
@@ -449,31 +504,37 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     const corpo = this.corpo
     if (!this.puoApplicare() || !this.inRiepilogo() || !a || !corpo) return
     this.inCorso.set(true)
+    this.applicando.set(true)
     this.errore.set(null)
-    this.servizio.addebiti.applicaVariazione({ ...corpo, impronta: a.impronta }).subscribe({
-      next: r => {
-        this.inCorso.set(false)
-        this.inRiepilogo.set(false)
-        this.anteprimaCorrente.set(null)
-        this.corpo = null
-        this.esito.set(r.aggiornati)
-        this.applicata.emit(r.aggiornati)
-      },
-      error: err => {
-        this.inCorso.set(false)
-        this.inRiepilogo.set(false)
-        this.anteprimaCorrente.set(null)
-        this.corpo = null
-        this.errore.set(
-          (err as { status?: number })?.status === 409
-            ? MESSAGGIO_409
-            : messaggioErrore(err, 'Impossibile applicare la variazione.')
-        )
-      },
-    })
+    this.applicazione = this.servizio.addebiti
+      .applicaVariazione({ ...corpo, impronta: a.impronta })
+      .subscribe({
+        next: r => {
+          this.inCorso.set(false)
+          this.applicando.set(false)
+          this.inRiepilogo.set(false)
+          this.anteprimaCorrente.set(null)
+          this.corpo = null
+          this.esito.set(r.aggiornati)
+          this.applicata.emit(r.aggiornati)
+        },
+        error: err => {
+          this.inCorso.set(false)
+          this.applicando.set(false)
+          this.inRiepilogo.set(false)
+          this.anteprimaCorrente.set(null)
+          this.corpo = null
+          this.errore.set(
+            (err as { status?: number })?.status === 409
+              ? MESSAGGIO_409
+              : messaggioErrore(err, 'Impossibile applicare la variazione.')
+          )
+        },
+      })
   }
 
   chiudi(): void {
+    if (this.applicando()) return
     this.richiesta?.unsubscribe()
     this.visibleChange.emit(false)
   }

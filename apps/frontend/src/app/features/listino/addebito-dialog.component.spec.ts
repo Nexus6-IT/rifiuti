@@ -165,6 +165,11 @@ describe('AddebitoDialogComponent', () => {
       expect(q('add-dlg-prezzo-7')).toBeNull()
     })
 
+    it('l’unità di misura accetta al massimo tre caratteri', async () => {
+      await apri()
+      expect(q('add-dlg-um')!.getAttribute('maxlength')).toBe('3')
+    })
+
     it('Salva è disabilitato finché mancano descrizione, gruppo, unità di misura e tipo', async () => {
       await apri()
       expect(disabilitato()).toBeTrue()
