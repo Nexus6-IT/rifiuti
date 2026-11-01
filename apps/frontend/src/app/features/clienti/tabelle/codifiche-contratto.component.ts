@@ -6,7 +6,7 @@ import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../../core/services/toast.service'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 import { CodificaContratto, GenereCodifica } from '../clienti.model'
 import { CONCORDANZA_GENERE, ETICHETTE_GENERE } from '../vocabolario-clienti'
 import { CodificaDialogComponent } from './codifica-dialog.component'
@@ -135,13 +135,12 @@ export class CodificheContrattoComponent implements OnInit {
   }
 
   carica(): void {
-    this.servizio.codifiche.list(this.genere, true).subscribe({
-      next: r => {
-        this.righe.set(r)
-        this.erroreElenco.set(null)
-      },
-      error: err => this.erroreElenco.set(messaggioErrore(err, "Impossibile caricare l'elenco.")),
-    })
+    caricaElenco(
+      this.servizio.codifiche.list(this.genere, true),
+      this.righe,
+      this.erroreElenco,
+      "Impossibile caricare l'elenco."
+    )
   }
 
   apri(c: CodificaContratto | null): void {
@@ -150,14 +149,12 @@ export class CodificheContrattoComponent implements OnInit {
   }
 
   cambiaStato(c: CodificaContratto): void {
-    this.servizio.codifiche.modifica(c.id, { attiva: !c.attiva, versione: c.versione }).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.codifiche.modifica(c.id, { attiva: !c.attiva, versione: c.versione }),
+      this.toast,
+      'Impossibile cambiare lo stato.',
+      () => this.carica()
+    )
   }
 
   elimina(c: CodificaContratto): void {
@@ -170,12 +167,11 @@ export class CodificheContrattoComponent implements OnInit {
   }
 
   eliminaConfermata(c: CodificaContratto): void {
-    this.servizio.codifiche.elimina(c.id, c.versione).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, "Impossibile eliminare l'elemento."))
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.codifiche.elimina(c.id, c.versione),
+      this.toast,
+      "Impossibile eliminare l'elemento.",
+      () => this.carica()
+    )
   }
 }

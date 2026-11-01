@@ -8,7 +8,7 @@ import { ToastService } from '../../../core/services/toast.service'
 import { ContoCorrenteInElenco } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ContoCorrenteDialogComponent } from './conto-corrente-dialog.component'
-import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 
 @Component({
   selector: 'app-conti-correnti',
@@ -120,14 +120,12 @@ export class ContiCorrentiComponent implements OnInit {
   }
 
   carica(): void {
-    this.servizio.conti.list({ incluseDisattivate: true }).subscribe({
-      next: r => {
-        this.righe.set(r)
-        this.erroreElenco.set(null)
-      },
-      error: err =>
-        this.erroreElenco.set(messaggioErrore(err, 'Impossibile caricare i conti correnti.')),
-    })
+    caricaElenco(
+      this.servizio.conti.list({ incluseDisattivate: true }),
+      this.righe,
+      this.erroreElenco,
+      'Impossibile caricare i conti correnti.'
+    )
   }
 
   apri(c: ContoCorrenteInElenco | null): void {
@@ -136,14 +134,12 @@ export class ContiCorrentiComponent implements OnInit {
   }
 
   cambiaStato(c: ContoCorrenteInElenco): void {
-    this.servizio.conti.modifica(c.id, { attivo: !c.attivo, versione: c.versione }).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.conti.modifica(c.id, { attivo: !c.attivo, versione: c.versione }),
+      this.toast,
+      'Impossibile cambiare lo stato.',
+      () => this.carica()
+    )
   }
 
   elimina(c: ContoCorrenteInElenco): void {
@@ -153,13 +149,11 @@ export class ContiCorrentiComponent implements OnInit {
   }
 
   eliminaConfermata(c: ContoCorrenteInElenco): void {
-    this.servizio.conti.elimina(c.id, c.versione).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile eliminare il conto.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.conti.elimina(c.id, c.versione),
+      this.toast,
+      'Impossibile eliminare il conto.',
+      () => this.carica()
+    )
   }
 }

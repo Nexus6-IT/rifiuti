@@ -43,4 +43,18 @@ describe('AggiuntaInLinea', () => {
     a.salvato({ id: 'a2' }, applica, true)
     expect(applica).not.toHaveBeenCalled()
   })
+
+  it('apri in create azzera elemento', () => {
+    a.apri('conto', 'edit', undefined, { id: 'x' })
+    a.apri('conto', 'create', undefined, { id: 'y' })
+    expect(a.modalita).toBe('create')
+    expect(a.elemento).toBeNull()
+  })
+
+  it('apri ripiega su ev.target quando currentTarget è null', async () => {
+    a.apri('condizione', 'create', { currentTarget: null, target: bottone })
+    a.chiudi()
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(bottone)
+  })
 })

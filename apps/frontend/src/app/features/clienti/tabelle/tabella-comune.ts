@@ -1,6 +1,7 @@
 // Funzioni condivise dalle schede delle tabelle di fatturazione: messaggi di
 // errore del backend, permessi di scrittura, conferma di eliminazione.
-import { Signal, computed, inject } from '@angular/core'
+import { Signal, WritableSignal, computed, inject } from '@angular/core'
+import { Observable } from 'rxjs'
 import { ConfirmationService } from 'primeng/api'
 import { AuthService } from '../../../core/services/auth.service'
 import { puoGestireAnagrafiche } from '../../registry/registry-permissions'
@@ -33,5 +34,45 @@ export function chiediConferma(
     acceptLabel: 'Elimina',
     rejectLabel: 'Annulla',
     accept: accetta,
+  })
+}
+
+/**
+ * Elenco di una scheda: `righe` con la risposta, `errore` col messaggio del backend (o il
+ * ripiego) e vuoto a caricamento riuscito. Adottabile dalle liste di agenti e clienti
+ * (che hanno `Pagina<T>`: si passa `fonte.pipe(map(p => p.elementi))`).
+ */
+export function caricaElenco<T>(
+  fonte: Observable<T[]>,
+  righe: WritableSignal<T[]>,
+  errore: WritableSignal<string | null>,
+  ripiego: string
+): void {
+  fonte.subscribe({
+    next: r => {
+      righe.set(r)
+      errore.set(null)
+    },
+    error: err => errore.set(messaggioErrore(err, ripiego)),
+  })
+}
+
+/**
+ * Modifica di stato o eliminazione: a riuscita si ricarica; a errore (409 compreso) si mostra il
+ * messaggio del backend e si ricarica comunque, perché dopo un conflitto di versione la riga è
+ * vecchia.
+ */
+export function eseguiERicarica(
+  operazione: Observable<unknown>,
+  toast: { error(messaggio: string): void },
+  ripiego: string,
+  ricarica: () => void
+): void {
+  operazione.subscribe({
+    next: () => ricarica(),
+    error: err => {
+      toast.error(messaggioErrore(err, ripiego))
+      ricarica()
+    },
   })
 }

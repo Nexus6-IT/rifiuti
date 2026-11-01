@@ -6,7 +6,7 @@ import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../../core/services/toast.service'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 import { RegistroIva } from '../clienti.model'
 import { RegistroIvaDialogComponent } from './registro-iva-dialog.component'
 
@@ -126,14 +126,12 @@ export class RegistriIvaComponent implements OnInit {
   }
 
   carica(): void {
-    this.servizio.registri.list({ incluseDisattivate: true }).subscribe({
-      next: r => {
-        this.righe.set(r)
-        this.erroreElenco.set(null)
-      },
-      error: err =>
-        this.erroreElenco.set(messaggioErrore(err, 'Impossibile caricare i registri IVA.')),
-    })
+    caricaElenco(
+      this.servizio.registri.list({ incluseDisattivate: true }),
+      this.righe,
+      this.erroreElenco,
+      'Impossibile caricare i registri IVA.'
+    )
   }
 
   apri(r: RegistroIva | null): void {
@@ -142,14 +140,12 @@ export class RegistriIvaComponent implements OnInit {
   }
 
   cambiaStato(r: RegistroIva): void {
-    this.servizio.registri.modifica(r.id, { attivo: !r.attivo, versione: r.versione }).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.registri.modifica(r.id, { attivo: !r.attivo, versione: r.versione }),
+      this.toast,
+      'Impossibile cambiare lo stato.',
+      () => this.carica()
+    )
   }
 
   elimina(r: RegistroIva): void {
@@ -159,12 +155,11 @@ export class RegistriIvaComponent implements OnInit {
   }
 
   eliminaConfermata(r: RegistroIva): void {
-    this.servizio.registri.elimina(r.id, r.versione).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile eliminare il registro.'))
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.registri.elimina(r.id, r.versione),
+      this.toast,
+      'Impossibile eliminare il registro.',
+      () => this.carica()
+    )
   }
 }

@@ -6,7 +6,7 @@ import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../../core/services/toast.service'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 import { TestoFatturazione } from '../clienti.model'
 import { TestoFatturazioneDialogComponent } from './testo-fatturazione-dialog.component'
 
@@ -123,16 +123,12 @@ export class TestiFatturazioneComponent implements OnInit {
   }
 
   carica(): void {
-    this.servizio.testi.list({ incluseDisattivate: true }).subscribe({
-      next: r => {
-        this.righe.set(r)
-        this.erroreElenco.set(null)
-      },
-      error: err =>
-        this.erroreElenco.set(
-          messaggioErrore(err, 'Impossibile caricare i testi di fatturazione.')
-        ),
-    })
+    caricaElenco(
+      this.servizio.testi.list({ incluseDisattivate: true }),
+      this.righe,
+      this.erroreElenco,
+      'Impossibile caricare i testi di fatturazione.'
+    )
   }
 
   apri(t: TestoFatturazione | null): void {
@@ -141,14 +137,12 @@ export class TestiFatturazioneComponent implements OnInit {
   }
 
   cambiaStato(t: TestoFatturazione): void {
-    this.servizio.testi.modifica(t.id, { attivo: !t.attivo, versione: t.versione }).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.testi.modifica(t.id, { attivo: !t.attivo, versione: t.versione }),
+      this.toast,
+      'Impossibile cambiare lo stato.',
+      () => this.carica()
+    )
   }
 
   elimina(t: TestoFatturazione): void {
@@ -158,12 +152,11 @@ export class TestiFatturazioneComponent implements OnInit {
   }
 
   eliminaConfermata(t: TestoFatturazione): void {
-    this.servizio.testi.elimina(t.id, t.versione).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile eliminare il testo.'))
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.testi.elimina(t.id, t.versione),
+      this.toast,
+      'Impossibile eliminare il testo.',
+      () => this.carica()
+    )
   }
 }

@@ -8,7 +8,11 @@ export class AggiuntaInLinea<T extends string> {
   elemento: unknown | null = null
   private origine: HTMLElement | null = null
 
-  /** Apre il sub-dialog `chiave` e ricorda il pulsante da cui è partito. */
+  /**
+   * Apre il sub-dialog `chiave` e ricorda il pulsante da cui è partito. Non blocca la creazione
+   * quando il campo del form è bloccato: lo decide il chiamante (il pulsante "Nuovo" va nascosto
+   * o disabilitato), qui conta solo `campoBloccato` di `salvato`. In `create` azzera `elemento`.
+   */
   apri(chiave: T, modalita: 'create' | 'edit', ev?: unknown, elemento?: unknown): void {
     const e = ev as Event | undefined
     const target = (e as MouseEvent | undefined)?.currentTarget ?? e?.target

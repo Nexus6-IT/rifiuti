@@ -9,7 +9,7 @@ import { CondizionePagamento } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ETICHETTE_MODALITA } from '../vocabolario-clienti'
 import { CondizionePagamentoDialogComponent } from './condizione-pagamento-dialog.component'
-import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 
 @Component({
   selector: 'app-condizioni-pagamento',
@@ -125,16 +125,12 @@ export class CondizioniPagamentoComponent implements OnInit {
   }
 
   carica(): void {
-    this.servizio.condizioni.list({ incluseDisattivate: true }).subscribe({
-      next: r => {
-        this.righe.set(r)
-        this.erroreElenco.set(null)
-      },
-      error: err =>
-        this.erroreElenco.set(
-          messaggioErrore(err, 'Impossibile caricare le condizioni di pagamento.')
-        ),
-    })
+    caricaElenco(
+      this.servizio.condizioni.list({ incluseDisattivate: true }),
+      this.righe,
+      this.erroreElenco,
+      'Impossibile caricare le condizioni di pagamento.'
+    )
   }
 
   apri(c: CondizionePagamento | null): void {
@@ -143,14 +139,12 @@ export class CondizioniPagamentoComponent implements OnInit {
   }
 
   cambiaStato(c: CondizionePagamento): void {
-    this.servizio.condizioni.modifica(c.id, { attiva: !c.attiva, versione: c.versione }).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.condizioni.modifica(c.id, { attiva: !c.attiva, versione: c.versione }),
+      this.toast,
+      'Impossibile cambiare lo stato.',
+      () => this.carica()
+    )
   }
 
   elimina(c: CondizionePagamento): void {
@@ -160,13 +154,11 @@ export class CondizioniPagamentoComponent implements OnInit {
   }
 
   eliminaConfermata(c: CondizionePagamento): void {
-    this.servizio.condizioni.elimina(c.id, c.versione).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile eliminare la condizione.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.condizioni.elimina(c.id, c.versione),
+      this.toast,
+      'Impossibile eliminare la condizione.',
+      () => this.carica()
+    )
   }
 }
