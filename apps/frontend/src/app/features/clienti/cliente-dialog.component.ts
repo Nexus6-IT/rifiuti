@@ -272,7 +272,12 @@ const senzaSpazi = (v: string | null): string | null =>
           data-testid="cliente-dlg-ritenuta"
         />
 
-        <app-scelta-agente prefisso="cliente-dlg" [opzioni]="opzioni" [puoCreare]="puoScrivere()" />
+        <app-scelta-agente
+          prefisso="cliente-dlg"
+          [opzioni]="opzioni"
+          [puoScegliere]="puoScrivere()"
+          [puoCreare]="puoScrivere()"
+        />
 
         <h3 class="sezione">Note</h3>
         <label for="cliente-dlg-note">Note</label>

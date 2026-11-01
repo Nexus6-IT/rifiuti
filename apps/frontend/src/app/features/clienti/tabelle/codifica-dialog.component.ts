@@ -177,7 +177,17 @@ export class CodificaDialogComponent implements OnChanges {
       },
       error: err => {
         this.inCorso.set(false)
-        this.errore.set(messaggioErrore(err, 'Impossibile salvare.'))
+        const e = err as { status?: number; error?: { error?: string } }
+        const terzoOperatore =
+          this.rapida &&
+          !this.elemento &&
+          e?.status === 409 &&
+          e.error?.error === 'CODIFICA_CONTRATTO_CODICE_DUPLICATO'
+        this.errore.set(
+          terzoOperatore
+            ? 'Un collega ha appena usato lo stesso codice: riprova.'
+            : messaggioErrore(err, 'Impossibile salvare.')
+        )
       },
     })
   }

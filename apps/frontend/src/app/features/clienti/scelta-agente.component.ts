@@ -27,7 +27,7 @@ import { OpzioniFatturazione } from './opzioni-fatturazione'
         [forceSelection]="true"
         [minLength]="0"
         [showClear]="true"
-        [disabled]="!puoCreare"
+        [disabled]="!puoScegliere"
         ariaLabel="Agente"
         styleClass="w-full"
         [attr.data-testid]="prefisso + '-agente'"
@@ -66,5 +66,8 @@ export class SceltaAgenteComponent {
   @Input({ required: true }) opzioni!: OpzioniFatturazione
   /** Prefisso di id e data-testid (es. `cliente-dlg`). */
   @Input({ required: true }) prefisso!: string
+  /** Si può scegliere un agente (false = campo disabilitato: VIEWER o campo bloccato). */
+  @Input() puoScegliere = true
+  /** Compare "Nuovo agente" (aggiunta in linea): separato da `puoScegliere`, R41. */
   @Input() puoCreare = false
 }
