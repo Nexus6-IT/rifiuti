@@ -3,6 +3,7 @@
 // interfacce `…Vista` del piano della 4.1 (R29: il backend è scritto in parallelo su quelle).
 // Importi e percentuali come stringhe, mai number; date `YYYY-MM-DD`.
 import { Indirizzo, SedeDitta } from '../../shared/models/registry.model'
+import { TipoProvvigione } from '../listino/listino.model'
 
 export type ModalitaPagamento = 'MP01' | 'MP02' | 'MP05' | 'MP08' | 'MP12' | 'MP19' | 'MP23'
 export type TipoSpesa = 'INCASSO' | 'BOLLO'
@@ -236,6 +237,10 @@ export interface DatiFiscaliCliente {
   nome: string | null
   cognome: string | null
   note: string | null
+  /** Facoltativi (R14): le fixture dei contratti cliente non li conoscono. */
+  listino?: number | null
+  provvigionePredefinita?: string | null
+  tipoProvvigionePredefinita?: TipoProvvigione | null
 }
 
 export interface Cliente extends DatiFiscaliCliente {
