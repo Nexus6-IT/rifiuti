@@ -119,6 +119,14 @@ describe('validaDatiFiscali', () => {
       'Il riferimento amministrazione si indica solo insieme al codice destinatario.',
     ])
   })
+  it('riferimento amministrazione con codice destinatario 0000000: rifiutato', () => {
+    expect(
+      validaDatiFiscali(
+        base({ riferimentoAmministrazione: 'RIF1', codiceDestinatario: '0000000' }),
+        impresa
+      )
+    ).toEqual(['Il riferimento amministrazione si indica solo insieme al codice destinatario.'])
+  })
   it('riferimento di 21 caratteri: messaggio', () => {
     expect(
       validaDatiFiscali(

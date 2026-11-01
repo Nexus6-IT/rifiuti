@@ -117,6 +117,23 @@ export function validaCodiceDestinatario(c: string | null): string | null {
   return null
 }
 
+/**
+ * Riferimento amministrazione: al massimo 20 caratteri e solo insieme a un codice destinatario
+ * vero. `0000000` vuol dire "nessun codice" (R26 b, decisione di Graziano): col riferimento si
+ * rifiuta. Riusata dal contratto cliente.
+ */
+export function validaRiferimentoAmministrazione(
+  riferimento: string | null,
+  codiceDestinatario: string | null
+): string | null {
+  if (riferimento === null) return null
+  if (riferimento.length > 20) return MSG_RIFERIMENTO_LUNGO
+  if (codiceDestinatario === null || codiceDestinatario === CODICE_NESSUN_DESTINATARIO) {
+    return MSG_RIFERIMENTO_SENZA_CODICE
+  }
+  return null
+}
+
 /** Ritenuta: maggiore di 0 e non oltre 30 (E23). Riusata dal contratto. */
 export function validaRitenuta(p: string | null): string | null {
   if (p === null) return null
@@ -156,10 +173,11 @@ export function validaDatiFiscali(d: DatiFiscaliCliente, contesto: { privato: bo
     }
   }
 
-  if (d.riferimentoAmministrazione !== null) {
-    if (d.riferimentoAmministrazione.length > 20) errori.push(MSG_RIFERIMENTO_LUNGO)
-    else if (d.codiceDestinatario === null) errori.push(MSG_RIFERIMENTO_SENZA_CODICE)
-  }
+  const mRiferimento = validaRiferimentoAmministrazione(
+    d.riferimentoAmministrazione,
+    d.codiceDestinatario
+  )
+  if (mRiferimento) errori.push(mRiferimento)
 
   if (d.iban !== null && !ibanValido(d.iban)) errori.push(MESSAGGIO_IBAN_NON_VALIDO)
 

@@ -85,6 +85,14 @@ describe('validaPeriodi', () => {
       'I periodi 1 e 2 si sovrappongono.',
     ])
   })
+  it('fine 28/02 vale 29/02 negli anni bisestili: 01/01-28/02 e 29/02-31/03 si sovrappongono', () => {
+    expect(validaPeriodi([p(1, 1, 28, 2), p(29, 2, 31, 3)])).toEqual([
+      'I periodi 1 e 2 si sovrappongono.',
+    ])
+  })
+  it('01/01-27/02 e 29/02-31/03 non si sovrappongono', () => {
+    expect(validaPeriodi([p(1, 1, 27, 2), p(29, 2, 31, 3)])).toEqual([])
+  })
   it('adiacenti validi', () => {
     expect(validaPeriodi([p(1, 1, 31, 3), p(1, 4, 30, 6)])).toEqual([])
   })
