@@ -64,7 +64,9 @@ describe('validaAddebito', () => {
   })
   it('codice 00000 riservato, 123456 rifiutato', () => {
     expect(validaAddebito({ ...base(), codice: '00000' })).toContain('Il codice 00000 è riservato.')
-    expect(validaAddebito({ ...base(), codice: '123456' })).toHaveLength(1)
+    expect(validaAddebito({ ...base(), codice: '123456' })).toEqual([
+      'Il codice ha da 1 a 5 cifre.',
+    ])
     expect(validaAddebito({ ...base(), codice: '' })).toEqual([])
   })
   it('descrizione e gruppo obbligatori', () => {
@@ -80,19 +82,24 @@ describe('validaAddebito', () => {
     )
   })
   it('CER non è un tipo d’archivio', () => {
-    expect(validaAddebito({ ...base(), tipo: 'CER' }).length).toBeGreaterThan(0)
-    expect(validaAddebito({ ...base(), tipo: 'XX' }).length).toBeGreaterThan(0)
+    const msg = ['Il tipo di addebito non è ammesso nell’archivio.']
+    expect(validaAddebito({ ...base(), tipo: 'CER' })).toEqual(msg)
+    expect(validaAddebito({ ...base(), tipo: 'XX' })).toEqual(msg)
   })
   it('unità di misura non valida o vuota', () => {
-    expect(validaAddebito({ ...base(), unitaMisura: '' }).length).toBeGreaterThan(0)
-    expect(validaAddebito({ ...base(), unitaMisura: 'ABCD' }).length).toBeGreaterThan(0)
+    expect(validaAddebito({ ...base(), unitaMisura: '' })).toEqual(["Indica l'unità di misura."])
+    expect(validaAddebito({ ...base(), unitaMisura: 'ABCD' })).toEqual([
+      "L'unità di misura ha da 1 a 3 caratteri (lettere maiuscole, cifre, / % #).",
+    ])
   })
   it('cascata non valida con il numero del listino', () => {
     const d = normalizzaAddebito({
       ...base(),
       listini: [{ numero: 3, prezzo: '1', sconto: '10+5+3+1', provvigione: null }],
     })
-    expect(validaAddebito(d)).toEqual([expect.stringMatching(/^Listino 3: /)])
+    expect(validaAddebito(d)).toEqual([
+      'Listino 3: lo sconto si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.',
+    ])
   })
   it('provvigione non valida e prezzo non valido', () => {
     const d = normalizzaAddebito({
@@ -103,8 +110,11 @@ describe('validaAddebito', () => {
       ],
     })
     const e = validaAddebito(d)
-    expect(e.filter(m => m.startsWith('Listino 2: '))).toHaveLength(2)
-    expect(e.filter(m => m.startsWith('Listino 5: '))).toHaveLength(1)
+    expect(e).toEqual([
+      'Listino 2: il prezzo deve essere un numero non negativo con al massimo sei decimali.',
+      'Listino 2: la provvigione si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.',
+      'Listino 5: il prezzo deve essere un numero non negativo con al massimo sei decimali.',
+    ])
   })
   it('sette decimali di prezzo rifiutati, sei accettati', () => {
     const ok = normalizzaAddebito({
@@ -116,10 +126,24 @@ describe('validaAddebito', () => {
       listini: [{ numero: 1, prezzo: '0.0123456', sconto: null, provvigione: null }],
     })
     expect(validaAddebito(ok)).toEqual([])
-    expect(validaAddebito(ko)).toHaveLength(1)
+    expect(validaAddebito(ko)).toEqual([
+      'Listino 1: il prezzo deve essere un numero non negativo con al massimo sei decimali.',
+    ])
   })
   it('rifiuta listini diversi da sei o numeri duplicati', () => {
-    expect(validaAddebito({ ...base(), listini: vuoti().slice(0, 5) }).length).toBeGreaterThan(0)
+    const msg = ['I listini devono essere sei, numerati da 1 a 6.']
+    expect(validaAddebito({ ...base(), listini: vuoti().slice(0, 5) })).toEqual(msg)
+    const duplicati = vuoti().map(l => (l.numero === 6 ? { ...l, numero: 5 as const } : l))
+    expect(duplicati).toHaveLength(6)
+    expect(validaAddebito({ ...base(), listini: duplicati })).toEqual(msg)
+  })
+  it('tipo di provvigione sconosciuto rifiutato, vuoto = SCONTATO', () => {
+    const d = normalizzaAddebito({ ...base(), tipoProvvigione: 'xyz' })
+    expect(validaAddebito(d)).toEqual(['Il tipo di provvigione non è ammesso (scontato o lordo).'])
+    expect(normalizzaAddebito({ ...base(), tipoProvvigione: ' lordo ' }).tipoProvvigione).toBe(
+      'LORDO'
+    )
+    expect(normalizzaAddebito({ ...base(), tipoProvvigione: '' }).tipoProvvigione).toBe('SCONTATO')
   })
 })
 

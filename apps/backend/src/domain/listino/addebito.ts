@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { cascataValida, normalizzaCascata } from './importi-riga'
 import { famigliaTipo, tipoAmmessoInArchivio } from './tipi-addebito'
 
@@ -83,7 +84,8 @@ export function normalizzaAddebito(g: Partial<Record<keyof DatiAddebito, unknown
     codiceIvaId: oNull(g.codiceIvaId),
     tipo: tipo === '' ? 'V' : tipo,
     categoriaId: oNull(g.categoriaId),
-    tipoProvvigione: testo(g.tipoProvvigione).toUpperCase() === 'LORDO' ? 'LORDO' : 'SCONTATO',
+    // Vuoto = predefinito SCONTATO; un valore sconosciuto passa invariato e lo rifiuta `validaAddebito`.
+    tipoProvvigione: (testo(g.tipoProvvigione).toUpperCase() || 'SCONTATO') as TipoProvvigione,
     centroRicavoId: oNull(g.centroRicavoId),
     categoriaStatistica1Id: oNull(g.categoriaStatistica1Id),
     categoriaStatistica2Id: oNull(g.categoriaStatistica2Id),
@@ -110,7 +112,9 @@ export function validaAddebito(d: DatiAddebito): string[] {
 
   if (d.gruppoId === null) errori.push("Indica il gruppo dell'addebito.")
 
-  if (!UNITA_MISURA.test(d.unitaMisura)) {
+  if (d.unitaMisura === '') {
+    errori.push("Indica l'unità di misura.")
+  } else if (!UNITA_MISURA.test(d.unitaMisura)) {
     errori.push("L'unità di misura ha da 1 a 3 caratteri (lettere maiuscole, cifre, / % #).")
   }
 
@@ -122,6 +126,10 @@ export function validaAddebito(d: DatiAddebito): string[] {
     d.unitaMisura !== 'TON'
   ) {
     errori.push("Per gli addebiti di tipo T l'unità di misura è KG o TON.")
+  }
+
+  if (d.tipoProvvigione !== 'SCONTATO' && d.tipoProvvigione !== 'LORDO') {
+    errori.push('Il tipo di provvigione non è ammesso (scontato o lordo).')
   }
 
   if (d.notaUsoInterno !== null && d.notaUsoInterno.length > NOTA_MAX) {
@@ -136,14 +144,16 @@ export function validaAddebito(d: DatiAddebito): string[] {
   for (const l of d.listini) {
     const p = `Listino ${l.numero}: `
     if (l.prezzo !== null && !PREZZO.test(l.prezzo)) {
-      errori.push(`${p}il prezzo deve essere un numero positivo con al massimo sei decimali.`)
+      errori.push(`${p}il prezzo deve essere un numero non negativo con al massimo sei decimali.`)
     }
     if (!cascataValida(l.sconto)) {
-      errori.push(`${p}lo sconto non è valido (fino a tre percentuali separate da +, es. 10+5).`)
+      errori.push(
+        `${p}lo sconto si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.`
+      )
     }
     if (!cascataValida(l.provvigione)) {
       errori.push(
-        `${p}la provvigione non è valida (fino a tre percentuali separate da +, es. 10+5).`
+        `${p}la provvigione si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.`
       )
     }
   }
@@ -169,7 +179,7 @@ export function prezzoProposto(
 /** Cascata con almeno un termine maggiore di zero (E7: "se > 0"). */
 function positiva(f: string | null): boolean {
   const n = normalizzaCascata(f)
-  return n !== null && n.split('+').some(t => Number(t) > 0)
+  return n !== null && n.split('+').some(t => new Prisma.Decimal(t).gt(0))
 }
 
 /** E7: la provvigione del cliente, se positiva, sostituisce quella del listino (con il suo tipo se indicato). */
