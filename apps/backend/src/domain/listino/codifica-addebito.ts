@@ -23,10 +23,13 @@ export const ETICHETTE_GENERE_ADDEBITO: Readonly<Record<GenereCodificaAddebito, 
   CENTRO_RICAVO: 'Centro di ricavo',
 }
 
+const GENERI = Object.keys(ETICHETTE_GENERE_ADDEBITO) as GenereCodificaAddebito[]
+
 const DESCRIZIONE_MAX = 45
 
 export interface DatiCodificaAddebito {
-  genere: GenereCodificaAddebito
+  /** Vuoto se il genere ricevuto non e' uno dei cinque (lo rifiuta `validaCodificaAddebito`). */
+  genere: GenereCodificaAddebito | ''
   codice: string | null
   descrizione: string
 }
@@ -36,8 +39,9 @@ export function normalizzaCodificaAddebito(
 ): DatiCodificaAddebito {
   const testo = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
   const codice = testo(g.codice)
+  const genere = testo(g.genere).toUpperCase()
   return {
-    genere: testo(g.genere).toUpperCase() as GenereCodificaAddebito,
+    genere: GENERI.find(x => x === genere) ?? '',
     // Un codice numerico si riempie a tre cifre; il resto passa invariato e lo rifiuta valida.
     codice: codice === '' ? null : /^\d{1,3}$/.test(codice) ? codice.padStart(3, '0') : codice,
     descrizione: testo(g.descrizione),

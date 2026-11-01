@@ -58,8 +58,26 @@ describe('tipi di addebito', () => {
   })
 
   it('sostituisce ??? con la categoria', () => {
-    expect(etichettaTipo('T005')).toBe('Peso netto di cat. 005 del presente elenco')
-    expect(etichettaTipo('M005')).toBe('Minimo di cat. 005 del presente elenco')
+    expect(etichettaTipo('T005')).toBe(
+      'Peso netto di tutti i rifiuti di cat. 005 del presente elenco'
+    )
+    expect(etichettaTipo('M005')).toBe(
+      "Se l'imponibile degli addebiti di tipo V di cat. 005 a prezzo normale è inferiore aggiunge la differenza"
+    )
+  })
+
+  it.each([
+    ['TS', 'rifiuti speciali'],
+    ['TP', 'rifiuti pericolosi'],
+    ['TR', 'rifiuti urbani del'],
+    ['TQ', 'rifiuti urbani pericolosi'],
+    ['TT', 'tutti i rifiuti'],
+    ['NP', 'peso netto non nullo'],
+    ['NR', 'giorni del periodo di riferimento della fattura'],
+    ['MF', 'Sostituisce le righe CER'],
+    ['MW', 'imponibile degli addebiti a prezzo normale è inferiore aggiunge la differenza'],
+  ])('etichetta di %s come WinWaste (contiene "%s")', (tipo, frammento) => {
+    expect(etichettaTipo(tipo)).toContain(frammento)
   })
 
   it('le etichette dei tipi fissi sono tutte diverse', () => {

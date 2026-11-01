@@ -24,23 +24,23 @@ const ERRORE_TIPO = 'Il tipo di addebito non è ammesso.'
 /** Etichette dei tipi a forma fissa. `???` e' sostituito con la categoria nei tipi `T…`/`M…`. */
 const ETICHETTE_FISSE: Readonly<Record<string, string>> = {
   CER: 'Riga CER',
-  V: 'Variabile (quantità indicata nel documento)',
-  F: 'Fisso periodico',
-  TS: 'Peso netto totale del presente elenco',
-  TP: 'Peso netto dei movimenti pesati del presente elenco',
-  TR: 'Peso netto dei movimenti ritirati del presente elenco',
-  TQ: 'Peso netto dei movimenti a quantità del presente elenco',
-  TT: 'Peso netto dei movimenti a tonnellate del presente elenco',
-  TF: 'Peso netto dei movimenti festivi del presente elenco',
-  NM: 'Conteggio dei movimenti del presente elenco',
-  NP: 'Conteggio dei movimenti pesati del presente elenco',
-  NG: 'Conteggio dei giorni di movimento del presente elenco',
-  NR: 'Conteggio dei ritiri del presente elenco',
-  MF: 'Minimo fisso',
-  MW: 'Minimo sul peso',
-  $A: 'Acconto',
-  $D: 'Detrazione',
-  $R: 'Anticipo',
+  V: 'La quantità va specificata in immissione documento',
+  F: 'Importo fisso periodico',
+  TS: 'Peso netto dei rifiuti speciali del presente elenco',
+  TP: 'Peso netto dei rifiuti pericolosi del presente elenco',
+  TR: 'Peso netto dei rifiuti urbani del presente elenco',
+  TQ: 'Peso netto dei rifiuti urbani pericolosi del presente elenco',
+  TT: 'Peso netto di tutti i rifiuti del presente elenco',
+  TF: 'Peso netto dei rifiuti conferiti in giorni festivi del presente elenco',
+  NM: 'Numero dei movimenti relativi al presente elenco addebiti',
+  NP: 'Numero dei movimenti con peso netto non nullo relativi al presente elenco addebiti',
+  NG: 'Numero dei giorni movimentati relativi al presente elenco addebiti',
+  NR: 'Numero dei giorni del periodo di riferimento della fattura',
+  MF: "Sostituisce le righe CER a prezzo normale in fattura se l'importo è inferiore",
+  MW: "Se l'imponibile degli addebiti a prezzo normale è inferiore aggiunge la differenza",
+  $A: 'Acconto da inserire nella prossima fattura e da detrarre dalla successiva',
+  $D: 'Detrazione da applicare alla prossima fattura',
+  $R: 'Anticipo da detrarre dal totale a pagare della prossima fattura',
 }
 
 export function tipoAddebitoValido(t: string): boolean {
@@ -71,8 +71,8 @@ export function etichettaTipo(t: string): string {
   if (fissa !== undefined) return fissa
   const categoria = t.slice(1)
   return t[0] === 'T'
-    ? `Peso netto di cat. ${categoria} del presente elenco`
-    : `Minimo di cat. ${categoria} del presente elenco`
+    ? `Peso netto di tutti i rifiuti di cat. ${categoria} del presente elenco`
+    : `Se l'imponibile degli addebiti di tipo V di cat. ${categoria} a prezzo normale è inferiore aggiunge la differenza`
 }
 
 /** Tipi proposti nei menu: i modelli `T???` e `M???` stanno per ogni categoria; `CER` e' escluso. */

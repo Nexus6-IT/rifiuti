@@ -53,6 +53,11 @@ describe('codifica di addebito', () => {
       expect(d.genere).toBe('GRUPPO')
       expect(d.descrizione).toBe('Rifiuti')
     })
+    it('un genere sconosciuto diventa vuoto, non un genere finto', () => {
+      expect(
+        normalizzaCodificaAddebito({ genere: 'tipo', codice: '1', descrizione: 'x' }).genere
+      ).toBe('')
+    })
     it('valori non stringa diventano vuoti', () => {
       const d = normalizzaCodificaAddebito({ genere: 5, codice: 7, descrizione: null })
       expect(d).toEqual({ genere: '', codice: null, descrizione: '' })
@@ -68,7 +73,7 @@ describe('codifica di addebito', () => {
     })
     it('rifiuta un genere sconosciuto', () => {
       const e = validaCodificaAddebito({
-        genere: 'TIPO' as GenereCodificaAddebito,
+        genere: '',
         codice: '001',
         descrizione: 'x',
       })
