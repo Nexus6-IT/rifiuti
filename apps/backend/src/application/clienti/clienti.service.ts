@@ -5,8 +5,8 @@
 //
 // Il cliente privato (senza partita IVA, solo codice fiscale di 16 caratteri) e' ammesso (D3) con
 // nome e cognome obbligatori. Il codice fiscale e' un dato personale: non entra in query string,
-// audit, log o messaggi. Questo file ha creazione e letture; modifica ed eliminazione sono del
-// Task 15.
+// audit, log o messaggi. Modifica (D13, D14) e eliminazione (R25): un cliente citato da un
+// contratto, anche eliminato, non si elimina ma si disattiva; la modifica non tocca i contratti (D4).
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { TenantContext } from '../../core/context/tenant-context'
@@ -27,6 +27,8 @@ import {
 } from '../registry/crea-ruolo-su-ditta'
 import { DatiRisoluzioneRuolo, DitteService, SedeDto } from '../registry/ditte/ditte.service'
 import {
+  confrontaVersione,
+  scriviCondizionato,
   traduciErrorePrisma,
   type DescrizioneEntita,
   type VincoliNoti,
@@ -37,6 +39,11 @@ const ENTITA: DescrizioneEntita = {
   prefisso: 'CLIENTE',
   soggetto: 'Il cliente',
   femminile: false,
+  inUso: {
+    codice: 'CLIENTE_CON_CONTRATTI',
+    messaggio:
+      'Il cliente ha dei contratti: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
+  },
 }
 
 const VINCOLO_CODICE = 'clienti_tenant_id_codice_key'
@@ -110,6 +117,11 @@ export interface DatiCreazioneCliente extends DatiRisoluzioneRuolo, Partial<Dati
   sedeId?: string
 }
 
+/** Modifica parziale: chiave assente = invariato, `null` = svuota (D14). */
+export type ModificaCliente = {
+  [K in keyof DatiFiscaliCliente]?: DatiFiscaliCliente[K] | null
+} & { sedeId?: string; attivo?: boolean; versione: number }
+
 export interface FiltroClienti {
   testo?: string
   soloAttivi?: boolean
@@ -129,6 +141,30 @@ const INCLUDE = {
 } satisfies Prisma.ClienteInclude
 
 type RigaCliente = Prisma.ClienteGetPayload<{ include: typeof INCLUDE }>
+
+const uguali = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+/** I dati fiscali come stanno sulla riga, nella forma testuale che usa la normalizzazione. */
+function fiscaliDaRiga(r: RigaCliente): DatiFiscaliCliente {
+  return {
+    codice: r.codice,
+    codiceDestinatario: r.codiceDestinatario,
+    pecFatturazione: r.pecFatturazione,
+    riferimentoAmministrazione: r.riferimentoAmministrazione,
+    iban: r.iban,
+    contoCorrenteId: r.contoCorrenteId,
+    condizionePagamentoId: r.condizionePagamentoId,
+    esigibilitaIva: r.esigibilitaIva,
+    registroIvaId: r.registroIvaId,
+    speseIncassoId: r.speseIncassoId,
+    bolloId: r.bolloId,
+    agenteId: r.agenteId,
+    ritenutaPercentuale: r.ritenutaPercentuale === null ? null : r.ritenutaPercentuale.toFixed(2),
+    nome: r.nome,
+    cognome: r.cognome,
+    note: r.note,
+  }
+}
 
 const nonTrovato = () =>
   new NotFoundException({ message: 'Cliente non trovato.', error: 'CLIENTE_NON_TROVATO' })
@@ -269,6 +305,126 @@ export class ClientiService {
       const cliente = await this.leggi(tenantId, esito.ruolo.id as string)
       return { cliente, dittaEsistente: esito.dittaEsistente, avvisi: esito.avvisi }
     })
+  }
+
+  async modifica(
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    m: ModificaCliente
+  ): Promise<ClienteVista> {
+    const { versione, sedeId: sedeRichiesta, attivo, ...patch } = m
+    const codiceNuovo = normalizzaDatiFiscali({ codice: patch.codice }).codice
+    return nelContestoTenant(tenantId, () =>
+      this.prisma
+        .$transaction(async tx => {
+          const prima = await tx.cliente.findFirst({ where: { id, tenantId }, include: INCLUDE })
+          if (!prima) throw nonTrovato()
+          confrontaVersione(prima.versione, versione, ENTITA)
+
+          // Chiave assente = invariato; null = svuota (esigibilita': torna al predefinito).
+          const originali = fiscaliDaRiga(prima)
+          const grezzo: Record<string, unknown> = { ...originali }
+          const richiesti = CAMPI_FISCALI.filter(
+            k => (patch as Record<string, unknown>)[k] !== undefined
+          )
+          for (const k of richiesti) grezzo[k] = (patch as Record<string, unknown>)[k]
+          const nuovi = normalizzaDatiFiscali(grezzo)
+          const cambiati = (Object.keys(patch) as Array<keyof DatiFiscaliCliente>).filter(
+            k => richiesti.includes(k) && !uguali(nuovi[k], originali[k])
+          )
+
+          // Dati gia' presenti e invariati non si rivalidano: non bloccano una disattivazione.
+          if (cambiati.length > 0) {
+            const errori = validaDatiFiscali(nuovi, {
+              privato: eUnPrivato(prima.ditta.partitaIva, prima.ditta.codiceFiscale),
+            })
+            if (errori.length > 0) throw nonValido(errori)
+            const nuoviRiferimenti: RiferimentiDaControllare = {}
+            const indicati = riferimentiIndicati(nuovi)
+            for (const k of Object.keys(indicati) as Array<keyof RiferimentiDaControllare>) {
+              if (cambiati.includes(k as keyof DatiFiscaliCliente))
+                nuoviRiferimenti[k] = indicati[k]
+            }
+            if (Object.keys(nuoviRiferimenti).length > 0) {
+              const messaggi = await controllaRiferimenti(tx, tenantId, nuoviRiferimenti)
+              if (messaggi.length > 0) throw nonValido(messaggi)
+            }
+          }
+
+          let sedeId = prima.sedeId
+          if (sedeRichiesta !== undefined && sedeRichiesta !== prima.sedeId) {
+            const sede = await tx.sedeDitta.findFirst({
+              where: { id: sedeRichiesta, dittaId: prima.dittaId, tenantId, attiva: true },
+              select: { id: true },
+            })
+            if (!sede) throw new SedeNonValidaPerRuoloError('cliente')
+            sedeId = sede.id
+          }
+          const attivoNuovo = attivo ?? prima.attivo
+
+          const data: Record<string, unknown> = {}
+          for (const k of cambiati) data[k] = nuovi[k]
+          if (sedeId !== prima.sedeId) data.sedeId = sedeId
+          if (attivoNuovo !== prima.attivo) data.attivo = attivoNuovo
+          if (Object.keys(data).length === 0)
+            return (await this.comeViste(tx, tenantId, [prima]))[0]
+
+          await scriviCondizionato(
+            () =>
+              tx.cliente.updateMany({
+                where: { id, tenantId, versione },
+                data: { ...data, versione: { increment: 1 } },
+              }),
+            ENTITA
+          )
+          const dopo = await tx.cliente.findFirst({ where: { id, tenantId }, include: INCLUDE })
+          if (!dopo) throw nonTrovato()
+
+          // Solo id e nomi dei campi: mai valori (CF, IBAN, PEC, nome, note).
+          const campi: string[] = [...cambiati]
+          if (sedeId !== prima.sedeId) campi.push('sedeId')
+          if (campi.length > 0) {
+            await this.audit(tx, tenantId, utenteId, 'CLIENTE_MODIFICATO', 'modificato', {
+              clienteId: id,
+              campi,
+            })
+          }
+          if (attivoNuovo !== prima.attivo) {
+            await this.audit(
+              tx,
+              tenantId,
+              utenteId,
+              attivoNuovo ? 'CLIENTE_RIATTIVATO' : 'CLIENTE_DISATTIVATO',
+              attivoNuovo ? 'riattivato' : 'disattivato',
+              { clienteId: id }
+            )
+          }
+          return (await this.comeViste(tx, tenantId, [dopo]))[0]
+        })
+        .catch(err => this.traduci(err, () => this.rileggiVincolo(tenantId, codiceNuovo, id)))
+    )
+  }
+
+  async elimina(tenantId: string, utenteId: string, id: string, versione: number): Promise<void> {
+    return nelContestoTenant(tenantId, () =>
+      this.prisma
+        .$transaction(async tx => {
+          const riga = await tx.cliente.findFirst({ where: { id, tenantId } })
+          if (!riga) throw nonTrovato()
+          confrontaVersione(riga.versione, versione, ENTITA)
+          // La FK verso i contratti (anche eliminati, R25) fa scattare P2003: CLIENTE_CON_CONTRATTI.
+          await scriviCondizionato(
+            () => tx.cliente.deleteMany({ where: { id, tenantId, versione } }),
+            ENTITA
+          )
+          await this.audit(tx, tenantId, utenteId, 'CLIENTE_ELIMINATO', 'eliminato', {
+            clienteId: id,
+            dittaId: riga.dittaId,
+          })
+        })
+        .catch(err => this.traduci(err))
+    )
   }
 
   async list(
@@ -451,15 +607,19 @@ export class ClientiService {
    * di un altro cliente? Se si', e' il vincolo del codice; altrimenti l'unica altra chiave unica e'
    * quella della ditta (ruolo gia' presente).
    */
-  private async rileggiVincolo(tenantId: string, codice: string | null): Promise<string | null> {
+  private async rileggiVincolo(
+    tenantId: string,
+    codice: string | null,
+    escludiId?: string
+  ): Promise<string | null> {
     if (codice !== null) {
       const altro = await this.prisma.cliente.findFirst({
-        where: { tenantId, codice },
+        where: { tenantId, codice, ...(escludiId ? { id: { not: escludiId } } : {}) },
         select: { id: true },
       })
       if (altro) return VINCOLO_CODICE
     }
-    return VINCOLO_DITTA
+    return escludiId ? VINCOLO_CODICE : VINCOLO_DITTA
   }
 
   /** Audit nella stessa transazione: solo id e flag, mai codice, nome, note o dati fiscali. */

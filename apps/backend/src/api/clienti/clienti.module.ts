@@ -9,6 +9,7 @@ import { RegistriIvaService } from '../../application/clienti/registri-iva.servi
 import { TestiFatturazioneService } from '../../application/clienti/testi-fatturazione.service'
 import { CodificheContrattoService } from '../../application/clienti/codifiche-contratto.service'
 import { AgentiService } from '../../application/clienti/agenti.service'
+import { ClientiService } from '../../application/clienti/clienti.service'
 import { SpeseAccessorieService } from '../../application/clienti/spese-accessorie.service'
 import { CondizioniPagamentoController } from './condizioni-pagamento.controller'
 import { ContiCorrentiController } from './conti-correnti.controller'
@@ -16,6 +17,7 @@ import { RegistriIvaController } from './registri-iva.controller'
 import { TestiFatturazioneController } from './testi-fatturazione.controller'
 import { CodificheContrattoController } from './codifiche-contratto.controller'
 import { AgentiController } from './agenti.controller'
+import { ClientiController } from './clienti.controller'
 import { SpeseAccessorieController } from './spese-accessorie.controller'
 
 /**
@@ -32,6 +34,7 @@ import { SpeseAccessorieController } from './spese-accessorie.controller'
     TestiFatturazioneController,
     CodificheContrattoController,
     AgentiController,
+    ClientiController,
   ],
   providers: [
     CondizioniPagamentoService,
@@ -41,6 +44,7 @@ import { SpeseAccessorieController } from './spese-accessorie.controller'
     TestiFatturazioneService,
     CodificheContrattoService,
     AgentiService,
+    ClientiService,
   ],
   exports: [
     CondizioniPagamentoService,
@@ -50,6 +54,7 @@ import { SpeseAccessorieController } from './spese-accessorie.controller'
     TestiFatturazioneService,
     CodificheContrattoService,
     AgentiService,
+    ClientiService,
   ],
 })
 export class ClientiModule {}

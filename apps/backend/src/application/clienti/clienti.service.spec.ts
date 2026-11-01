@@ -113,6 +113,8 @@ describe('ClientiService (Prisma finto)', () => {
         findMany: jest.fn().mockResolvedValue([riga()]),
         count: jest.fn().mockResolvedValue(1),
         create: jest.fn().mockResolvedValue({ id: C }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       sedeDitta: { findFirst: jest.fn().mockResolvedValue({ id: S2 }) },
       contrattoCliente: { groupBy: gruppo() },
@@ -401,6 +403,201 @@ describe('ClientiService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({
         message: 'Cliente non trovato.',
         error: 'CLIENTE_NON_TROVATO',
+      })
+    })
+  })
+
+  describe('modifica', () => {
+    const modifica = (m: Record<string, unknown>) =>
+      service.modifica(T, U, C, { versione: 1, ...m } as any)
+    const campiAudit = () =>
+      tx.activityLog.create.mock.calls.map((c: any) => [c[0].data.action, c[0].data.metadata])
+
+    it('versione diversa: 409 CLIENTE_MODIFICATO_NEL_FRATTEMPO, nessuna scrittura', async () => {
+      const e = await errore(modifica({ versione: 7, note: 'x' }))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({ error: 'CLIENTE_MODIFICATO_NEL_FRATTEMPO' })
+      expect(tx.cliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('cliente di un’altra azienda o assente: 404', async () => {
+      tx.cliente.findFirst.mockResolvedValue(null)
+      const e = await errore(modifica({ note: 'x' }))
+      expect(e).toBeInstanceOf(NotFoundException)
+    })
+
+    it('scrittura condizionata alla versione, increment, solo i campi cambiati', async () => {
+      await modifica({ note: 'Nuove', codice: 'CL1' })
+      const arg = tx.cliente.updateMany.mock.calls[0][0]
+      expect(arg.where).toEqual({ id: C, tenantId: T, versione: 1 })
+      expect(arg.data).toEqual({ note: 'Nuove', versione: { increment: 1 } })
+    })
+
+    it('updateMany a 0 righe: 409', async () => {
+      tx.cliente.updateMany.mockResolvedValue({ count: 0 })
+      const e = await errore(modifica({ note: 'x' }))
+      expect(e.getResponse()).toMatchObject({ error: 'CLIENTE_MODIFICATO_NEL_FRATTEMPO' })
+    })
+
+    it('nessun cambiamento: nessuna scrittura né audit', async () => {
+      await modifica({ codice: 'CL1', note: null })
+      expect(tx.cliente.updateMany).not.toHaveBeenCalled()
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('dati non validi: 400 CLIENTE_NON_VALIDO senza messaggi con i valori', async () => {
+      const e = await errore(modifica({ iban: 'IT00', codiceDestinatario: 'AB' }))
+      expect(e).toBeInstanceOf(BadRequestException)
+      expect(e.getResponse()).toMatchObject({ error: 'CLIENTE_NON_VALIDO' })
+      expect(JSON.stringify(e.getResponse())).not.toContain('IT00')
+      expect(tx.cliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('la validazione vede i dati attuali: PEC con un codice destinatario già presente', async () => {
+      tx.cliente.findFirst.mockResolvedValue(riga({ codiceDestinatario: 'ABCDEFG' }))
+      const e = await errore(modifica({ pecFatturazione: 'a@pec.it' }))
+      expect(e.getResponse().message).toHaveLength(1)
+    })
+
+    it('riferimento amministrazione con 0000000 attuale: rifiutato', async () => {
+      tx.cliente.findFirst.mockResolvedValue(riga({ codiceDestinatario: '0000000' }))
+      const e = await errore(modifica({ riferimentoAmministrazione: 'RIF' }))
+      expect(e).toBeInstanceOf(BadRequestException)
+    })
+
+    it('privato: nome e cognome non si possono togliere', async () => {
+      tx.cliente.findFirst.mockResolvedValue(
+        riga({
+          nome: 'Mario',
+          cognome: 'Rossi',
+          ditta: {
+            id: D,
+            ragioneSociale: 'Mario Rossi',
+            partitaIva: null,
+            codiceFiscale: 'RSSMRA80A01H501U',
+          },
+        })
+      )
+      const e = await errore(modifica({ nome: null }))
+      expect(e.getResponse().message).toEqual([
+        'Per un cliente persona fisica indica nome e cognome.',
+      ])
+    })
+
+    it('solo i riferimenti cambiati vengono controllati', async () => {
+      tx.cliente.findFirst.mockResolvedValue(riga({ contoCorrenteId: R1 }))
+      await modifica({ agenteId: R2, note: 'x' })
+      expect(controlla).toHaveBeenCalledTimes(1)
+      expect(controlla.mock.calls[0][1]).toBe(T)
+      expect(controlla.mock.calls[0][2]).toEqual({ agenteId: R2 })
+    })
+
+    it('riferimenti svuotati o invariati: nessun controllo', async () => {
+      tx.cliente.findFirst.mockResolvedValue(riga({ contoCorrenteId: R1 }))
+      await modifica({ contoCorrenteId: null, note: 'x' })
+      expect(controlla).not.toHaveBeenCalled()
+    })
+
+    it('riferimento cambiato non valido: 400 con i messaggi', async () => {
+      controlla.mockResolvedValue(["L'agente scelto non esiste o è disattivato."])
+      const e = await errore(modifica({ agenteId: R2 }))
+      expect(e.getResponse()).toMatchObject({
+        error: 'CLIENTE_NON_VALIDO',
+        message: ["L'agente scelto non esiste o è disattivato."],
+      })
+      expect(tx.cliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('cambio sede: ammessa solo una sede attiva della ditta, altrimenti 400', async () => {
+      await modifica({ sedeId: S2 })
+      expect(tx.sedeDitta.findFirst.mock.calls[0][0].where).toEqual({
+        id: S2,
+        dittaId: D,
+        tenantId: T,
+        attiva: true,
+      })
+      expect(tx.cliente.updateMany.mock.calls[0][0].data).toMatchObject({ sedeId: S2 })
+      tx.sedeDitta.findFirst.mockResolvedValue(null)
+      const e = await errore(modifica({ sedeId: S2 }))
+      expect(e).toBeInstanceOf(SedeNonValidaPerRuoloError)
+    })
+
+    it('disattivazione: audit CLIENTE_DISATTIVATO, riattivazione: CLIENTE_RIATTIVATO', async () => {
+      await modifica({ attivo: false })
+      expect(campiAudit()).toEqual([['CLIENTE_DISATTIVATO', { clienteId: C }]])
+      tx.activityLog.create.mockClear()
+      tx.cliente.findFirst.mockResolvedValue(riga({ attivo: false }))
+      await modifica({ attivo: true })
+      expect(campiAudit()).toEqual([['CLIENTE_RIATTIVATO', { clienteId: C }]])
+    })
+
+    it('IBAN, PEC e conto: audit CLIENTE_MODIFICATO con i nomi dei campi e senza valori', async () => {
+      await modifica({
+        iban: 'IT60X0542811101000000123456',
+        contoCorrenteId: R1,
+        pecFatturazione: 'segreta@pec.it',
+      })
+      expect(campiAudit()).toEqual([
+        [
+          'CLIENTE_MODIFICATO',
+          { clienteId: C, campi: ['iban', 'contoCorrenteId', 'pecFatturazione'] },
+        ],
+      ])
+      const tutto = JSON.stringify(tx.activityLog.create.mock.calls)
+      expect(tutto).not.toContain('IT60X')
+      expect(tutto).not.toContain('segreta')
+    })
+
+    it('non tocca i contratti (D4)', async () => {
+      tx.contrattoCliente.updateMany = jest.fn()
+      tx.contrattoCliente.update = jest.fn()
+      await modifica({ condizionePagamentoId: R1 })
+      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+      expect(tx.contrattoCliente.update).not.toHaveBeenCalled()
+    })
+
+    it('codice già di un altro cliente (P2002 senza target): 409 CLIENTE_CODICE_DUPLICATO', async () => {
+      tx.cliente.updateMany.mockRejectedValue(errP('P2002'))
+      // prisma e tx condividono `cliente`: la prima lettura e' la riga, la seconda la rilettura
+      tx.cliente.findFirst.mockResolvedValueOnce(riga()).mockResolvedValue({ id: 'altro' })
+      const e = await errore(modifica({ codice: 'NUOVO' }))
+      expect(e.getResponse()).toMatchObject({ error: 'CLIENTE_CODICE_DUPLICATO' })
+    })
+  })
+
+  describe('elimina', () => {
+    it('deleteMany condizionato alla versione, audit senza dati', async () => {
+      await service.elimina(T, U, C, 1)
+      expect(tx.cliente.deleteMany).toHaveBeenCalledWith({
+        where: { id: C, tenantId: T, versione: 1 },
+      })
+      expect(tx.activityLog.create.mock.calls[0][0].data).toMatchObject({
+        action: 'CLIENTE_ELIMINATO',
+        metadata: { clienteId: C, dittaId: D },
+      })
+    })
+
+    it('versione diversa o count 0: 409 CLIENTE_MODIFICATO_NEL_FRATTEMPO', async () => {
+      const a = await errore(service.elimina(T, U, C, 9))
+      expect(a.getResponse()).toMatchObject({ error: 'CLIENTE_MODIFICATO_NEL_FRATTEMPO' })
+      tx.cliente.deleteMany.mockResolvedValue({ count: 0 })
+      const b = await errore(service.elimina(T, U, C, 1))
+      expect(b).toBeInstanceOf(ConflictException)
+    })
+
+    it('assente: 404', async () => {
+      tx.cliente.findFirst.mockResolvedValue(null)
+      expect(await errore(service.elimina(T, U, C, 1))).toBeInstanceOf(NotFoundException)
+    })
+
+    it('con contratti (P2003): 409 CLIENTE_CON_CONTRATTI col testo di D13', async () => {
+      tx.cliente.deleteMany.mockRejectedValue(errP('P2003'))
+      const e = await errore(service.elimina(T, U, C, 1))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toEqual({
+        error: 'CLIENTE_CON_CONTRATTI',
+        message:
+          'Il cliente ha dei contratti: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
       })
     })
   })

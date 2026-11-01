@@ -466,4 +466,306 @@ describe('ClientiService — Postgres reale, ruolo wasteflow_app', () => {
       nel(b.tenantId, () => service.getById(b.tenantId, r.cliente.id))
     ).rejects.toMatchObject({ status: 404, response: { error: 'CLIENTE_NON_TROVATO' } })
   })
+  describe('modifica, disattivazione, eliminazione (Task 15)', () => {
+    const contratto = (
+      tenantId: string,
+      clienteId: string,
+      numero: string,
+      eliminatoIl: Date | null = null
+    ) =>
+      owner.contrattoCliente.create({
+        data: {
+          tenantId,
+          numero,
+          descrizione: 'Contratto di prova',
+          dataInizio: new Date('2026-01-01'),
+          clienteId,
+          eliminatoIl,
+        },
+      })
+
+    it('modifica i dati fiscali, incrementa la versione, i riferimenti cambiati si controllano', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const t = await creaTabelleFatturazione(owner, tenantId)
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo({ codice: 'M1' })))
+      const dopo = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, {
+          versione: 1,
+          condizionePagamentoId: t.condizioneId,
+          ritenutaPercentuale: '4.5',
+          note: 'Nuove',
+        })
+      )
+      expect(dopo).toMatchObject({
+        versione: 2,
+        codice: 'M1',
+        ritenutaPercentuale: '4.50',
+        condizionePagamento: { id: t.condizioneId },
+        note: 'Nuove',
+      })
+      const svuotato = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, {
+          versione: 2,
+          condizionePagamentoId: null,
+          ritenutaPercentuale: null,
+        })
+      )
+      expect(svuotato).toMatchObject({ versione: 3, condizionePagamento: null })
+      expect(svuotato.ritenutaPercentuale).toBeNull()
+      // una spesa di incasso come bollo non e' ammessa
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, r.cliente.id, {
+            versione: 3,
+            bolloId: t.speseId,
+          })
+        )
+      ).rejects.toMatchObject({ status: 400 })
+    })
+
+    it('modifica concorrente: una riesce, l’altra 409', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      const esiti = await Promise.allSettled([
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, r.cliente.id, { versione: 1, note: 'A' })
+        ),
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, r.cliente.id, { versione: 1, note: 'B' })
+        ),
+      ])
+      expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
+      const rifiutata = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
+      expect(rifiutata.reason).toMatchObject({
+        status: 409,
+        response: { error: 'CLIENTE_MODIFICATO_NEL_FRATTEMPO' },
+      })
+    })
+
+    it('cliente con un contratto: elimina 409, ditta e sedi intatte', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      await contratto(tenantId, r.cliente.id, '1/2026')
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, r.cliente.id, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CLIENTE_CON_CONTRATTI' },
+      })
+      expect(await owner.cliente.count({ where: { id: r.cliente.id } })).toBe(1)
+      expect(await owner.ditta.count({ where: { id: r.cliente.ditta.id } })).toBe(1)
+      expect(await owner.sedeDitta.count({ where: { dittaId: r.cliente.ditta.id } })).toBe(1)
+      expect(
+        await owner.activityLog.count({ where: { tenantId, action: 'CLIENTE_ELIMINATO' } })
+      ).toBe(0)
+    })
+
+    it('cliente con il solo contratto ELIMINATO: elimina 409 (R25), si disattiva', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      await contratto(tenantId, r.cliente.id, '1/2026', new Date())
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, r.cliente.id, 1))
+      ).rejects.toMatchObject({ status: 409, response: { error: 'CLIENTE_CON_CONTRATTI' } })
+      const disattivato = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { versione: 1, attivo: false })
+      )
+      expect(disattivato).toMatchObject({ attivo: false, contratti: 0, eliminabile: false })
+    })
+
+    it('cliente senza contratti: elimina, la ditta resta, audit CLIENTE_ELIMINATO', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      await nel(tenantId, () => service.elimina(tenantId, utenteId, r.cliente.id, 1))
+      expect(await owner.cliente.count({ where: { id: r.cliente.id } })).toBe(0)
+      expect(await owner.ditta.count({ where: { id: r.cliente.ditta.id } })).toBe(1)
+      expect(
+        await owner.activityLog.count({ where: { tenantId, action: 'CLIENTE_ELIMINATO' } })
+      ).toBe(1)
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, r.cliente.id, 1))
+      ).rejects.toMatchObject({ status: 404 })
+    })
+
+    it('elimina con versione vecchia: 409 e la riga resta', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { versione: 1, note: 'x' })
+      )
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, r.cliente.id, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'CLIENTE_MODIFICATO_NEL_FRATTEMPO' },
+      })
+      expect(await owner.cliente.count({ where: { id: r.cliente.id } })).toBe(1)
+    })
+
+    it('cliente disattivato resta nei contratti esistenti e nell’elenco senza filtro', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      const c = await contratto(tenantId, r.cliente.id, '1/2026')
+      const dopo = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { versione: 1, attivo: false })
+      )
+      expect(dopo).toMatchObject({ attivo: false, contratti: 1 })
+      expect(
+        await owner.contrattoCliente.count({ where: { id: c.id, clienteId: r.cliente.id } })
+      ).toBe(1)
+      const tutti = await nel(tenantId, () => service.list(tenantId, { pagina: 1, dimensione: 25 }))
+      const attivi = await nel(tenantId, () =>
+        service.list(tenantId, { soloAttivi: true, pagina: 1, dimensione: 25 })
+      )
+      expect(tutti.totale).toBe(1)
+      expect(attivi.totale).toBe(0)
+      const riattivato = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { versione: 2, attivo: true })
+      )
+      expect(riattivato.attivo).toBe(true)
+    })
+
+    it('la modifica del cliente non tocca i contratti (D4)', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const t = await creaTabelleFatturazione(owner, tenantId)
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      const c = await contratto(tenantId, r.cliente.id, '1/2026')
+      await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, {
+          versione: 1,
+          condizionePagamentoId: t.condizioneId,
+          iban: 'IT60X0542811101000000123456',
+        })
+      )
+      const dopo = await owner.contrattoCliente.findUniqueOrThrow({ where: { id: c.id } })
+      expect(dopo.condizionePagamentoId).toBeNull()
+      expect(dopo.versione).toBe(c.versione)
+    })
+
+    it('audit senza dati personali: CF, IBAN, PEC, nome e cognome non compaiono', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () =>
+        service.crea(tenantId, utenteId, {
+          ragioneSociale: 'Mario Rossi',
+          codiceFiscale: CF_PERSONA_VALIDO,
+          indirizzo,
+          nome: 'Mariolino',
+          cognome: 'Rossetti',
+        })
+      )
+      const iban = 'IT60X0542811101000000123456'
+      const pec = 'segreta.privata@pec.example.it'
+      await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, {
+          versione: 1,
+          iban,
+          pecFatturazione: pec,
+          nome: 'Maurizio',
+          cognome: 'Bianchetti',
+          note: 'nota riservata',
+        })
+      )
+      await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { versione: 2, attivo: false })
+      )
+      await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { versione: 3, attivo: true })
+      )
+      const log = await owner.activityLog.findMany({ where: { tenantId } })
+      expect(log.map(l => l.action).sort()).toEqual([
+        'CLIENTE_CREATO',
+        'CLIENTE_DISATTIVATO',
+        'CLIENTE_MODIFICATO',
+        'CLIENTE_RIATTIVATO',
+      ])
+      const modificato = log.find(l => l.action === 'CLIENTE_MODIFICATO')
+      expect((modificato?.metadata as { campi: string[] }).campi).toEqual([
+        'iban',
+        'pecFatturazione',
+        'nome',
+        'cognome',
+        'note',
+      ])
+      const testo = JSON.stringify(log.map(l => [l.metadata, l.description]))
+      for (const vietato of [
+        CF_PERSONA_VALIDO,
+        iban,
+        'IT60',
+        pec,
+        'segreta',
+        'Mariolino',
+        'Rossetti',
+        'Maurizio',
+        'Bianchetti',
+        'riservata',
+        'Mario Rossi',
+      ]) {
+        expect(testo).not.toContain(vietato)
+      }
+    })
+
+    it('la sede predefinita del cliente non si disattiva (via DitteService.aggiornaSede)', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo()))
+      const dittaId = r.cliente.ditta.id
+      const seconda = await nel(tenantId, () =>
+        ditte.aggiungiSede(dittaId, {
+          indirizzo: {
+            via: 'Via Milano',
+            civico: '2',
+            cap: '20100',
+            citta: 'Milano',
+            provincia: 'MI',
+          },
+        })
+      )
+      const cambiata = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, r.cliente.id, { sedeId: seconda.id, versione: 1 })
+      )
+      expect(cambiata.sedeFatturazione.id).toBe(seconda.id)
+      await expect(
+        nel(tenantId, () => ditte.aggiornaSede(dittaId, seconda.id, { attiva: false }))
+      ).rejects.toMatchObject({ message: expect.stringContaining('cliente') })
+      // una sede disattivata non si sceglie come sede del cliente
+      const altra = await nel(tenantId, () =>
+        ditte.aggiungiSede(dittaId, {
+          indirizzo: {
+            via: 'Via Napoli',
+            civico: '3',
+            cap: '80100',
+            citta: 'Napoli',
+            provincia: 'NA',
+          },
+        })
+      )
+      await nel(tenantId, () => ditte.aggiornaSede(dittaId, altra.id, { attiva: false }))
+      await expect(
+        nel(tenantId, () =>
+          service.modifica(tenantId, utenteId, r.cliente.id, { sedeId: altra.id, versione: 2 })
+        )
+      ).rejects.toMatchObject({ message: expect.stringContaining('cliente') })
+    })
+
+    it('codice già di un altro cliente: 409 CLIENTE_CODICE_DUPLICATO; di un’altra azienda: 404', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const r1 = await nel(a.tenantId, () =>
+        service.crea(a.tenantId, a.utenteId, nuovo({ codice: 'DUP' }))
+      )
+      const r2 = await nel(a.tenantId, () => service.crea(a.tenantId, a.utenteId, nuovo()))
+      await expect(
+        nel(a.tenantId, () =>
+          service.modifica(a.tenantId, a.utenteId, r2.cliente.id, { versione: 1, codice: 'DUP' })
+        )
+      ).rejects.toMatchObject({ status: 409, response: { error: 'CLIENTE_CODICE_DUPLICATO' } })
+      await expect(
+        nel(b.tenantId, () =>
+          service.modifica(b.tenantId, b.utenteId, r1.cliente.id, { versione: 1, note: 'x' })
+        )
+      ).rejects.toMatchObject({ status: 404 })
+      await expect(
+        nel(b.tenantId, () => service.elimina(b.tenantId, b.utenteId, r1.cliente.id, 1))
+      ).rejects.toMatchObject({ status: 404 })
+    })
+  })
 })
