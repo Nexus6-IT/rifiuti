@@ -6,6 +6,7 @@ import {
   OnChanges,
   Output,
   SimpleChanges,
+  ViewChild,
   inject,
   signal,
 } from '@angular/core'
@@ -16,29 +17,15 @@ import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { Subscription } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
-import { Ditta, SedeDitta } from '../../shared/models/registry.model'
-import { DittaIdentificativiComponent } from '../registry/ditta-identificativi.component'
-import {
-  ErroriIdentificativi,
-  etichettaIdentificativiCompleta,
-  identificativiPerSalvataggio,
-} from '../registry/identificativo-fiscale'
+import { SedeDitta } from '../../shared/models/registry.model'
+import { etichettaIdentificativiCompleta } from '../registry/identificativo-fiscale'
 import { puoGestireAnagrafiche } from '../registry/registry-permissions'
 import { RegistryService } from '../registry/registry.service'
 import { SediDittaDialogComponent } from '../registry/sedi-ditta-dialog.component'
 import { Agente, ModificaAgente, NuovoAgente } from './clienti.model'
 import { ClientiService } from './clienti.service'
+import { DittaRuoloFormComponent } from './ditta-ruolo-form.component'
 import { messaggioErrore } from './tabelle/tabella-comune'
-
-const OBBLIGATORI = {
-  ragioneSociale: 'La ragione sociale è obbligatoria.',
-  via: 'La via è obbligatoria.',
-  civico: 'Il civico è obbligatorio.',
-  cap: 'Il CAP è obbligatorio.',
-  comune: 'Il comune è obbligatorio.',
-  provincia: 'La provincia è obbligatoria.',
-} as const
-type CampoObbligatorio = keyof typeof OBBLIGATORI
 
 const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
@@ -57,7 +44,7 @@ const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
     ButtonModule,
     DialogModule,
     InputTextModule,
-    DittaIdentificativiComponent,
+    DittaRuoloFormComponent,
     SediDittaDialogComponent,
   ],
   template: `
@@ -71,124 +58,7 @@ const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
     >
       <p *ngIf="caricamento()" role="status">Caricamento…</p>
       <form [formGroup]="form" (ngSubmit)="salva()" class="dlg-form">
-        <ng-container *ngIf="!agente">
-          <label for="agente-dlg-ragione">Ragione sociale</label>
-          <input
-            pInputText
-            id="agente-dlg-ragione"
-            formControlName="ragioneSociale"
-            maxlength="200"
-            [attr.aria-invalid]="errori().ragioneSociale ? true : null"
-            data-testid="agente-dlg-ragione"
-          />
-          <small *ngIf="dittaTrovata" class="field-hint"
-            >Ragione sociale della ditta già registrata: non si modifica da qui.</small
-          >
-          <small *ngIf="errori().ragioneSociale as e" role="alert" class="field-error">{{
-            e
-          }}</small>
-
-          <app-ditta-identificativi
-            pfx="agente-dlg"
-            testidPrefix="agente-dlg"
-            tipo="agente"
-            modalita="create"
-            [partitaIVA]="partitaIVA"
-            (partitaIVAChange)="partitaIVA = $event; erroriId = {}"
-            [codiceFiscale]="codiceFiscale"
-            (codiceFiscaleChange)="codiceFiscale = $event; erroriId = {}"
-            [errori]="erroriId"
-            (dittaTrovata)="onDittaTrovata($event)"
-            (sedeScelta)="onSedeScelta($event)"
-          />
-
-          <div class="dlg-riga">
-            <div class="dlg-campo dlg-campo--grande">
-              <label for="agente-dlg-via">Via</label>
-              <input
-                pInputText
-                id="agente-dlg-via"
-                formControlName="via"
-                data-testid="agente-dlg-via"
-              />
-              <small *ngIf="errori().via as e" role="alert" class="field-error">{{ e }}</small>
-            </div>
-            <div class="dlg-campo">
-              <label for="agente-dlg-civico">Civico</label>
-              <input
-                pInputText
-                id="agente-dlg-civico"
-                formControlName="civico"
-                data-testid="agente-dlg-civico"
-              />
-              <small *ngIf="errori().civico as e" role="alert" class="field-error">{{ e }}</small>
-            </div>
-          </div>
-          <div class="dlg-riga">
-            <div class="dlg-campo">
-              <label for="agente-dlg-cap">CAP</label>
-              <input
-                pInputText
-                id="agente-dlg-cap"
-                formControlName="cap"
-                maxlength="5"
-                data-testid="agente-dlg-cap"
-              />
-              <small *ngIf="errori().cap as e" role="alert" class="field-error">{{ e }}</small>
-            </div>
-            <div class="dlg-campo dlg-campo--grande">
-              <label for="agente-dlg-comune">Comune</label>
-              <input
-                pInputText
-                id="agente-dlg-comune"
-                formControlName="comune"
-                data-testid="agente-dlg-comune"
-              />
-              <small *ngIf="errori().comune as e" role="alert" class="field-error">{{ e }}</small>
-            </div>
-            <div class="dlg-campo">
-              <label for="agente-dlg-provincia">Provincia</label>
-              <input
-                pInputText
-                id="agente-dlg-provincia"
-                formControlName="provincia"
-                maxlength="2"
-                data-testid="agente-dlg-provincia"
-              />
-              <small *ngIf="errori().provincia as e" role="alert" class="field-error">{{
-                e
-              }}</small>
-            </div>
-          </div>
-          <label for="agente-dlg-referente">Referente (facoltativo)</label>
-          <input
-            pInputText
-            id="agente-dlg-referente"
-            formControlName="referente"
-            data-testid="agente-dlg-referente"
-          />
-          <label for="agente-dlg-email">Email (facoltativa)</label>
-          <input
-            pInputText
-            id="agente-dlg-email"
-            formControlName="email"
-            data-testid="agente-dlg-email"
-          />
-          <label for="agente-dlg-telefono">Telefono (facoltativo)</label>
-          <input
-            pInputText
-            id="agente-dlg-telefono"
-            formControlName="telefono"
-            data-testid="agente-dlg-telefono"
-          />
-          <label for="agente-dlg-pec">PEC (facoltativa)</label>
-          <input
-            pInputText
-            id="agente-dlg-pec"
-            formControlName="pec"
-            data-testid="agente-dlg-pec"
-          />
-        </ng-container>
+        <app-ditta-ruolo-form *ngIf="!agente" pfx="agente-dlg" tipo="agente" />
 
         <ng-container *ngIf="agente">
           <p class="dlg-ditta" data-testid="agente-dlg-ditta">
@@ -266,20 +136,6 @@ const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
         flex-direction: column;
         gap: 0.5rem;
       }
-      .dlg-riga {
-        display: flex;
-        gap: 0.75rem;
-      }
-      .dlg-campo {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-        flex: 1 1 0;
-        min-width: 0;
-      }
-      .dlg-campo--grande {
-        flex: 2 1 0;
-      }
     `,
   ],
 })
@@ -296,17 +152,12 @@ export class AgenteDialogComponent implements OnChanges {
   @Output() visibleChange = new EventEmitter<boolean>()
 
   readonly errore = signal<string | null>(null)
-  readonly errori = signal<Partial<Record<CampoObbligatorio, string>>>({})
   readonly inCorso = signal(false)
   readonly caricamento = signal(false)
   readonly sedi = signal<SedeDitta[]>([])
   readonly puoScrivere = () => puoGestireAnagrafiche(this.auth.currentUser()?.role)
 
-  partitaIVA = ''
-  codiceFiscale = ''
-  erroriId: ErroriIdentificativi = {}
-  dittaTrovata: Ditta | null = null
-  sedeScelta: SedeDitta | null = null
+  @ViewChild(DittaRuoloFormComponent) private ditta?: DittaRuoloFormComponent
   sediAperte = false
   /** Versione del record caricato (in modifica). */
   private versione = 0
@@ -315,16 +166,6 @@ export class AgenteDialogComponent implements OnChanges {
   private lettureSedi?: Subscription
 
   readonly form = new FormGroup({
-    ragioneSociale: new FormControl('', { nonNullable: true }),
-    via: new FormControl('', { nonNullable: true }),
-    civico: new FormControl('', { nonNullable: true }),
-    cap: new FormControl('', { nonNullable: true }),
-    comune: new FormControl('', { nonNullable: true }),
-    provincia: new FormControl('', { nonNullable: true }),
-    referente: new FormControl('', { nonNullable: true }),
-    email: new FormControl('', { nonNullable: true }),
-    telefono: new FormControl('', { nonNullable: true }),
-    pec: new FormControl('', { nonNullable: true }),
     codice: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     sedeId: new FormControl('', { nonNullable: true }),
@@ -343,17 +184,11 @@ export class AgenteDialogComponent implements OnChanges {
     this.lettura?.unsubscribe()
     this.lettureSedi?.unsubscribe()
     this.form.reset()
-    this.form.controls.ragioneSociale.enable()
+    this.ditta?.azzera()
     this.errore.set(null)
-    this.errori.set({})
-    this.erroriId = {}
     this.inCorso.set(false)
     this.caricamento.set(false)
     this.sedi.set([])
-    this.partitaIVA = ''
-    this.codiceFiscale = ''
-    this.dittaTrovata = null
-    this.sedeScelta = null
     this.sediAperte = false
     this.originale = null
   }
@@ -391,33 +226,6 @@ export class AgenteDialogComponent implements OnChanges {
     })
   }
 
-  onDittaTrovata(ditta: Ditta | null): void {
-    this.dittaTrovata = ditta
-    if (ditta) {
-      this.form.controls.ragioneSociale.setValue(ditta.ragioneSociale)
-      this.form.controls.ragioneSociale.disable()
-    } else {
-      this.form.controls.ragioneSociale.enable()
-    }
-  }
-
-  /** Sede scelta fra quelle della ditta trovata: precompila l'indirizzo; "Nuova sede" lo svuota. */
-  onSedeScelta(sede: SedeDitta | null): void {
-    this.sedeScelta = sede
-    this.form.patchValue({
-      via: sede?.via ?? '',
-      civico: sede?.civico ?? '',
-      cap: sede?.cap ?? '',
-      comune: sede?.citta ?? '',
-      provincia: sede?.provincia ?? '',
-      email: sede?.email ?? '',
-      telefono: sede?.telefono ?? '',
-      pec: sede?.pec ?? '',
-      referente: sede?.referente ?? '',
-    })
-    this.errori.set({})
-  }
-
   /** In modifica serve il record letto (altrimenti il form vuoto cancellerebbe codice e note). */
   puoSalvare(): boolean {
     if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return false
@@ -437,41 +245,12 @@ export class AgenteDialogComponent implements OnChanges {
   }
 
   private salvaNuovo(): void {
+    const raccolti = this.ditta?.raccogli()
+    if (!raccolti) return
     const v = this.form.getRawValue()
-    const id = identificativiPerSalvataggio(
-      { partitaIVA: this.partitaIVA, codiceFiscale: this.codiceFiscale },
-      'agente',
-      null
-    )
-    this.erroriId = id.errori
-    const errori: Partial<Record<CampoObbligatorio, string>> = {}
-    for (const campo of Object.keys(OBBLIGATORI) as CampoObbligatorio[]) {
-      if (!v[campo].trim()) errori[campo] = OBBLIGATORI[campo]
-    }
-    this.errori.set(errori)
-    if (Object.keys(id.errori).length > 0 || Object.keys(errori).length > 0) return
-
-    const dati: NuovoAgente = {
-      ragioneSociale: v.ragioneSociale.trim(),
-      indirizzo: {
-        via: v.via.trim(),
-        civico: v.civico.trim(),
-        cap: v.cap.trim(),
-        comune: v.comune.trim(),
-        provincia: v.provincia.trim(),
-      },
-    }
-    if (id.partitaIVA) dati.partitaIva = id.partitaIVA
-    if (id.codiceFiscale) dati.codiceFiscale = id.codiceFiscale
-    if (this.sedeScelta) dati.sedeId = this.sedeScelta.id
-    const facoltativi = {
-      referente: vuoto(v.referente),
-      email: vuoto(v.email),
-      telefono: vuoto(v.telefono),
-      pec: vuoto(v.pec),
-      codice: vuoto(v.codice),
-      note: vuoto(v.note),
-    }
+    const dati: NuovoAgente = { ...raccolti.dati }
+    if (raccolti.sedeId) dati.sedeId = raccolti.sedeId
+    const facoltativi = { codice: vuoto(v.codice), note: vuoto(v.note) }
     for (const [k, valore] of Object.entries(facoltativi)) {
       if (valore !== null) (dati as unknown as Record<string, unknown>)[k] = valore
     }
