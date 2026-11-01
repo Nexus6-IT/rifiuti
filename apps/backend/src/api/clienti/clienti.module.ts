@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { AuthModule } from '../../auth/auth.module'
 import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
+import { RegistryModule } from '../registry/registry.module'
 import { CondizioniPagamentoService } from '../../application/clienti/condizioni-pagamento.service'
 import { ContiCorrentiService } from '../../application/clienti/conti-correnti.service'
 import { RegistriIvaService } from '../../application/clienti/registri-iva.service'
@@ -20,7 +21,7 @@ import { SpeseAccessorieController } from './spese-accessorie.controller'
  * Per ora condizioni di pagamento, conti correnti, spese accessorie, registri IVA, testi di fatturazione e codifiche del contratto (4.1a); i task successivi aggiungono provider e controller.
  */
 @Module({
-  imports: [PrismaModule, AuthModule, RuoloEffettivoModule],
+  imports: [PrismaModule, AuthModule, RuoloEffettivoModule, RegistryModule],
   controllers: [
     CondizioniPagamentoController,
     ContiCorrentiController,

@@ -45,6 +45,8 @@ import { DESTINATARIO_REPOSITORY } from '../../domain/registry/repositories/dest
 @Module({
   imports: [PrismaModule, ReferenceDataModule],
   controllers: [RegistryController, DitteController],
+  // DitteService serve a ClientiModule (agenti e clienti sono ruoli sulla ditta, 4.1b R19)
+  exports: [DitteService],
   providers: [
     // Produttori Use Cases
     CreateProduttoreUseCase,
