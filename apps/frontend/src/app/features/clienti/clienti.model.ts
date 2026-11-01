@@ -160,6 +160,8 @@ export interface DatiDittaRuolo {
   partitaIva?: string | null
   codiceFiscale?: string | null
   indirizzo: Indirizzo
+  /** Denominazione della sede (R37). */
+  denominazione?: string | null
   email?: string | null
   telefono?: string | null
   pec?: string | null

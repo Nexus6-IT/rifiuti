@@ -21,6 +21,9 @@ describe('ClientiService', () => {
   const ditta = {
     ragioneSociale: 'Rossi Srl',
     partitaIva: '01234567890',
+    codiceFiscale: '01234567890',
+    denominazione: 'Sede legale',
+    referente: 'Mario',
     indirizzo: { via: 'Via Roma', civico: '1', cap: '00100', comune: 'Roma', provincia: 'RM' },
   }
 
@@ -71,6 +74,17 @@ describe('ClientiService', () => {
         const req = http.expectOne(`${api}/${rotta}`)
         expect(req.request.method).toBe('POST')
         expect(req.request.body).toEqual(ditta)
+        expect(Object.keys(req.request.body as object).sort()).toEqual(
+          [
+            'codiceFiscale',
+            'denominazione',
+            'indirizzo',
+            'partitaIva',
+            'ragioneSociale',
+            'referente',
+          ].sort()
+        )
+        expect((req.request.body as typeof ditta).indirizzo.comune).toBe('Roma')
         req.flush({})
       })
 

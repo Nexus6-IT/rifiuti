@@ -107,8 +107,8 @@ export const OPZIONI_UNITA_VALIDITA = opzioni(ETICHETTE_UNITA_VALIDITA)
 
 /** Codici di rinnovo ammessi (D27, Q8): solo S e N. */
 export const ETICHETTE_CODICE_RINNOVO: Readonly<Record<CodiceRinnovo, string>> = {
-  S: 'S - Sì',
-  N: 'N - No',
+  S: 'Sì',
+  N: 'No',
 }
 
 export const OPZIONI_CODICE_RINNOVO = opzioni(ETICHETTE_CODICE_RINNOVO)
