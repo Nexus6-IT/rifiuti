@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { AddebitiController } from './addebiti.controller'
 import { AddebitiService } from '../../application/listino/addebiti.service'
+import { VariazioniArchivioService } from '../../application/listino/variazioni-archivio.service'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
@@ -33,11 +34,20 @@ describe('AddebitiController', () => {
       expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR'])
     })
 
+    it.each(['anteprimaVariazione', 'applicaVariazione'])(
+      '%s: solo SUPER_ADMIN e ADMIN (R11)',
+      nome => {
+        expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN'])
+      }
+    )
+
     it('ogni rotta pubblica ha @Roles esplicito', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
       expect(metodi.sort()).toEqual([
+        'anteprimaVariazione',
+        'applicaVariazione',
         'crea',
         'elimina',
         'getById',
@@ -52,6 +62,7 @@ describe('AddebitiController', () => {
   describe('HTTP', () => {
     let app: INestApplication
     let servizio: Record<string, jest.Mock>
+    let variazioni: Record<string, jest.Mock>
     let ruolo = 'OPERATOR'
 
     beforeEach(async () => {
@@ -64,6 +75,10 @@ describe('AddebitiController', () => {
         elimina: jest.fn().mockResolvedValue(undefined),
         prossimoCodice: jest.fn().mockResolvedValue('00001'),
       }
+      variazioni = {
+        anteprima: jest.fn().mockResolvedValue({ totale: 0, righe: [], errori: [], impronta: 'x' }),
+        applica: jest.fn().mockResolvedValue({ aggiornati: 3 }),
+      }
       const logger: any = {
         setContext: jest.fn(),
         info: jest.fn(),
@@ -74,6 +89,7 @@ describe('AddebitiController', () => {
         controllers: [AddebitiController],
         providers: [
           { provide: AddebitiService, useValue: servizio },
+          { provide: VariazioniArchivioService, useValue: variazioni },
           { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
           { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
         ],
@@ -262,6 +278,105 @@ describe('AddebitiController', () => {
       ).toBe(403)
       expect(servizio.list).not.toHaveBeenCalled()
       expect(servizio.crea).not.toHaveBeenCalled()
+    })
+
+    describe('variazioni-prezzi', () => {
+      const IMPRONTA = 'a'.repeat(64)
+      const filtri = {
+        addebitiIds: [ID],
+        categorieIds: [GRUPPO, ID],
+        tipi: ['V', 'F'],
+        listini: [1, 6],
+      }
+      const corpoVar = { tipo: 'AUMENTO_PERCENTUALE', valore: '10', filtri }
+
+      it('anteprima: 200, azienda selezionata, corpo del frontend passato al servizio', async () => {
+        ruolo = 'ADMIN'
+        const r = await http().post(`/${R}/variazioni-prezzi/anteprima`).send(corpoVar)
+        expect(r.status).toBe(200)
+        expect(variazioni.anteprima).toHaveBeenCalledWith(TENANT, corpoVar)
+      })
+
+      it('applica: 200 { aggiornati } con impronta, utente dalla sessione', async () => {
+        ruolo = 'SUPER_ADMIN'
+        const r = await http()
+          .post(`/${R}/variazioni-prezzi`)
+          .send({ ...corpoVar, impronta: IMPRONTA })
+        expect(r.status).toBe(200)
+        expect(r.body).toEqual({ aggiornati: 3 })
+        expect(variazioni.applica).toHaveBeenCalledWith(
+          TENANT,
+          'utente-1',
+          expect.objectContaining({ impronta: IMPRONTA, valore: '10' })
+        )
+      })
+
+      it('sostituzione IVA e filtri vuoti: ammessi', async () => {
+        ruolo = 'ADMIN'
+        const r = await http()
+          .post(`/${R}/variazioni-prezzi/anteprima`)
+          .send({ tipo: 'SOSTITUZIONE_IVA', daCodiceIvaId: ID, aCodiceIvaId: GRUPPO, filtri: {} })
+        expect(r.status).toBe(200)
+      })
+
+      it.each(['OPERATOR', 'VIEWER'])('%s: 403 su entrambe', async r => {
+        ruolo = r
+        expect((await http().post(`/${R}/variazioni-prezzi/anteprima`).send(corpoVar)).status).toBe(
+          403
+        )
+        expect(
+          (
+            await http()
+              .post(`/${R}/variazioni-prezzi`)
+              .send({ ...corpoVar, impronta: IMPRONTA })
+          ).status
+        ).toBe(403)
+        expect(variazioni.anteprima).not.toHaveBeenCalled()
+        expect(variazioni.applica).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        ['valore numerico (R12)', { ...corpoVar, valore: 10 }],
+        ['campo sconosciuto', { ...corpoVar, extra: 1 }],
+        ['filtro sconosciuto', { ...corpoVar, filtri: { ...filtri, cliente: 'x' } }],
+        ['tipo fuori elenco', { ...corpoVar, tipo: 'BOH' }],
+        ['id non UUID', { ...corpoVar, filtri: { addebitiIds: ['1'] } }],
+        ['listino 7', { ...corpoVar, filtri: { listini: [7] } }],
+        ['filtri mancanti', { tipo: 'AUMENTO_PERCENTUALE', valore: '10' }],
+      ])('anteprima: 400 con %s', async (_n, corpo) => {
+        ruolo = 'ADMIN'
+        expect((await http().post(`/${R}/variazioni-prezzi/anteprima`).send(corpo)).status).toBe(
+          400
+        )
+        expect(variazioni.anteprima).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        ['assente', undefined],
+        ['corta', 'abc'],
+      ])('applica: 400 con impronta %s', async (_n, impronta) => {
+        ruolo = 'ADMIN'
+        const r = await http()
+          .post(`/${R}/variazioni-prezzi`)
+          .send({ ...corpoVar, impronta })
+        expect(r.status).toBe(400)
+        expect(variazioni.applica).not.toHaveBeenCalled()
+      })
+
+      it('senza azienda selezionata: nessuna chiamata al servizio', async () => {
+        ruolo = 'ADMIN'
+        const r = await http()
+          .post(`/${R}/variazioni-prezzi/anteprima`)
+          .set('x-senza-azienda', '1')
+          .send(corpoVar)
+        expect(r.status).toBeGreaterThanOrEqual(400)
+        expect(variazioni.anteprima).not.toHaveBeenCalled()
+      })
+
+      it('"variazioni-prezzi" non è letto come un id (GET → 400 per UUID, non 404 del servizio)', async () => {
+        const r = await http().get(`/${R}/variazioni-prezzi`)
+        expect(r.status).toBe(400)
+      })
     })
   })
 })

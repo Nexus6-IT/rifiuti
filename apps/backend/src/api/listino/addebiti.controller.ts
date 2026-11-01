@@ -26,15 +26,23 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { AddebitiService } from '../../application/listino/addebiti.service'
+import { VariazioniArchivioService } from '../../application/listino/variazioni-archivio.service'
 import { CreaAddebitoDto, ElencoAddebitiQueryDto, ModificaAddebitoDto } from './dto/addebito.dto'
-import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import {
+  ApplicaVariazioneArchivioDto,
+  CorpoVariazioneArchivioDto,
+} from './dto/variazione-prezzi.dto'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA, RUOLI_VARIAZIONI } from './ruoli'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('addebiti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AddebitiController {
-  constructor(private readonly addebiti: AddebitiService) {}
+  constructor(
+    private readonly addebiti: AddebitiService,
+    private readonly variazioni: VariazioniArchivioService
+  ) {}
 
   @Get()
   @Roles(...RUOLI_LETTURA)
@@ -58,6 +66,28 @@ export class AddebitiController {
   async prossimoCodice(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
     return { codice: await this.addebiti.prossimoCodice(tenantId) }
+  }
+
+  // Le variazioni stanno PRIMA di `:id`: "variazioni-prezzi" non deve essere letto come un id.
+  @Post('variazioni-prezzi/anteprima')
+  @Roles(...RUOLI_VARIAZIONI)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Anteprima della variazione dei prezzi: righe, errori e impronta' })
+  @ApiResponse({ status: 400, description: 'Criteri non validi o troppe righe' })
+  anteprimaVariazione(@Req() req: any, @Body() dto: CorpoVariazioneArchivioDto) {
+    const tenantId = requireRequestTenantId(req)
+    return this.variazioni.anteprima(tenantId, dto)
+  }
+
+  @Post('variazioni-prezzi')
+  @Roles(...RUOLI_VARIAZIONI)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Applica la variazione con l'impronta dell'anteprima: { aggiornati }" })
+  @ApiResponse({ status: 400, description: "Errori nell'anteprima: nulla è scritto" })
+  @ApiResponse({ status: 409, description: "L'archivio è cambiato dopo l'anteprima" })
+  applicaVariazione(@Req() req: any, @Body() dto: ApplicaVariazioneArchivioDto) {
+    const tenantId = requireRequestTenantId(req)
+    return this.variazioni.applica(tenantId, req.user.id, dto)
   }
 
   @Get(':id')
