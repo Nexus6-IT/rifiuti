@@ -12,7 +12,7 @@
  * fattura attiva non esiste una quota indetraibile da esporre.
  */
 import { validaCodiceTabella } from '../clienti/codice-tabella'
-import { decimaleValido, normalizzaDecimale } from '../clienti/decimali'
+import { confrontaDecimali, decimaleValido, normalizzaDecimale } from '../clienti/decimali'
 
 export const NATURE_IVA: readonly string[] = [
   'N1',
@@ -55,7 +55,7 @@ export function normalizzaCodiceIva(
   const testo = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
   const natura = testo(g.natura).toUpperCase()
   return {
-    codice: testo(g.codice),
+    codice: testo(g.codice).toUpperCase(),
     descrizione: testo(g.descrizione),
     aliquota: normalizzaDecimale(g.aliquota) ?? '',
     natura: natura === '' ? null : natura,
@@ -76,7 +76,8 @@ export function validaCodiceIva(d: DatiCodiceIva): string[] {
     errori.push(`La descrizione può avere al massimo ${MAX_DESCRIZIONE} caratteri.`)
   }
 
-  const aliquotaValida = decimaleValido(d.aliquota, 3) && Number(d.aliquota) <= 100
+  const aliquotaValida =
+    decimaleValido(d.aliquota, 3) && confrontaDecimali(d.aliquota, '100.00') <= 0
   if (!aliquotaValida) {
     errori.push("L'aliquota deve essere un numero da 0 a 100 con al massimo due decimali.")
   }
@@ -86,7 +87,7 @@ export function validaCodiceIva(d: DatiCodiceIva): string[] {
       'La natura indicata non è ammessa nella fattura elettronica (usa N1, N2.1-N2.2, N3.1-N3.6, N4, N5, N6.1-N6.9 o N7).'
     )
   } else if (aliquotaValida) {
-    const zero = Number(d.aliquota) === 0
+    const zero = confrontaDecimali(d.aliquota, '0.00') === 0
     if (zero && d.natura === null) {
       errori.push("Con aliquota zero indica la natura dell'operazione (N1-N7).")
     } else if (!zero && d.natura !== null) {

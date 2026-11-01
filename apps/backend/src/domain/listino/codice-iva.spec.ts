@@ -115,8 +115,18 @@ describe('normalizzaCodiceIva', () => {
   })
   it('codice e descrizione senza spazi ai bordi', () => {
     const n = normalizzaCodiceIva({ codice: ' n61 ', descrizione: '  Esente ' })
-    expect(n.codice).toBe('n61')
+    expect(n.codice).toBe('N61')
     expect(n.descrizione).toBe('Esente')
+  })
+  it('un codice minuscolo e uno maiuscolo non possono coesistere', () => {
+    expect(normalizzaCodiceIva({ codice: 'n61' }).codice).toBe(
+      normalizzaCodiceIva({ codice: 'N61' }).codice
+    )
+  })
+  it('aliquote con zeri iniziali o finali: confronto senza number', () => {
+    expect(validaCodiceIva({ ...base, aliquota: '022.00' })).toEqual([])
+    expect(validaCodiceIva({ ...base, aliquota: '000.00', natura: 'N1' })).toEqual([])
+    expect(validaCodiceIva({ ...base, aliquota: '100.10' })).toHaveLength(1)
   })
   it('natura: maiuscola, vuota o assente → null', () => {
     expect(normalizzaCodiceIva({ natura: ' n6.1 ' }).natura).toBe('N6.1')
