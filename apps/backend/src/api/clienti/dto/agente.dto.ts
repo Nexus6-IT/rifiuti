@@ -94,7 +94,7 @@ export class CreaAgenteDto {
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(2000, { message: 'Le note non possono superare 2000 caratteri.' })
   note?: string | null
 
   @ApiPropertyOptional({ description: 'Sede predefinita: una sede attiva della ditta' })
@@ -112,7 +112,7 @@ export class ModificaAgenteDto {
   @ApiPropertyOptional({ nullable: true, description: 'null toglie le note' })
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(2000, { message: 'Le note non possono superare 2000 caratteri.' })
   note?: string | null
 
   @ApiPropertyOptional({ description: 'Nuova sede predefinita (attiva e della stessa ditta)' })

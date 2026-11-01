@@ -28,6 +28,7 @@ import { puoGestireAnagrafiche } from '../registry/registry-permissions'
 import {
   CAMPI_DAL_CLIENTE,
   CampoForm,
+  codiceDestinatarioVero,
   creaFormContratto,
   datiNuovo,
   differenze,
@@ -361,7 +362,30 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     this.fatturazioneScelta = c
     this.form.controls.clienteFatturazioneId.setValue(c?.id ?? '')
     this.form.controls.clienteFatturazioneId.markAsDirty()
-    this.precompila()
+    if (this.contratto) this.riallineaRecapitoSdi(c)
+    else this.precompila()
+  }
+
+  /**
+   * In modifica (R44): cambiando il cliente di fatturazione il recapito SDI segue il nuovo
+   * intestatario, come fa il backend (che resta l'autorità). Si mostrano i valori nuovi così
+   * l'operatore li vede; quelli che ha già toccato non si sovrascrivono.
+   */
+  private riallineaRecapitoSdi(c: Cliente | null): void {
+    const sorgente = c ?? this.clienteScelto()
+    if (!sorgente || this.bloccati().has('codiceDestinatario')) return
+    const f = this.form.controls
+    this.senzaTocco(() => {
+      if (f.codiceDestinatario.pristine)
+        f.codiceDestinatario.setValue(sorgente.codiceDestinatario ?? '')
+      if (f.riferimentoAmministrazione.pristine) {
+        f.riferimentoAmministrazione.setValue(
+          codiceDestinatarioVero(f.codiceDestinatario.value)
+            ? (sorgente.riferimentoAmministrazione ?? '')
+            : ''
+        )
+      }
+    })
   }
 
   /**
@@ -375,7 +399,10 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     const sdi = this.fatturazioneScelta ?? c
     const f = this.form.controls
     // Un predefinito lasciato vuoto perché disattivato (R42) torna ricalcolabile.
-    for (const campo of this.predefinitiDisattivati()) f[campo].markAsPristine()
+    // Solo se e' ancora vuoto: un valore scelto a mano dopo non si deve perdere.
+    for (const campo of this.predefinitiDisattivati()) {
+      if (f[campo].value === '') f[campo].markAsPristine()
+    }
     const disattivati = new Set<CampoForm>()
     const imposta = (campo: CampoForm, valore: string): void => {
       const ctrl = f[campo]

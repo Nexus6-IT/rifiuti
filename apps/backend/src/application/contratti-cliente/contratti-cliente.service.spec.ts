@@ -899,6 +899,67 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
     })
 
+    describe('recapito SDI al cambio del cliente di fatturazione (R44)', () => {
+      it('nuovo cliente di fatturazione senza valori nel corpo: codice e riferimento dal nuovo', async () => {
+        await service.modifica(T, U, K, { clienteFatturazioneId: CF, versione: 1 })
+        const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+        expect(data.clienteFatturazioneId).toBe(CF)
+        expect(data.codiceDestinatario).toBe('UFE1AB')
+        expect(data.riferimentoAmministrazione).toBe('RIF-PA')
+      })
+
+      it('i valori scritti nel corpo vincono', async () => {
+        await service.modifica(T, U, K, {
+          clienteFatturazioneId: CF,
+          codiceDestinatario: 'ZZZZZZZ',
+          riferimentoAmministrazione: 'MIO-RIF',
+          versione: 1,
+        })
+        const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+        expect(data.codiceDestinatario).toBe('ZZZZZZZ')
+        expect(data.riferimentoAmministrazione).toBe('MIO-RIF')
+      })
+
+      it('corpo col solo codice 0000000: il riferimento del nuovo intestatario non si porta dietro', async () => {
+        await service.modifica(T, U, K, {
+          clienteFatturazioneId: CF,
+          codiceDestinatario: '0000000',
+          versione: 1,
+        })
+        const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+        expect(data.codiceDestinatario).toBe('0000000')
+        expect(data.riferimentoAmministrazione ?? null).toBeNull()
+      })
+
+      it('fatturazione tolta (null): il recapito torna quello del cliente', async () => {
+        tx.contrattoCliente.findFirst.mockResolvedValue(
+          riga({
+            clienteFatturazioneId: CF,
+            codiceDestinatario: 'UFE1AB',
+            riferimentoAmministrazione: 'RIF-PA',
+          })
+        )
+        await service.modifica(T, U, K, { clienteFatturazioneId: null, versione: 1 })
+        const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+        expect(data.clienteFatturazioneId).toBeNull()
+        expect(data.codiceDestinatario).toBe('ABCDEFG')
+        expect(data.riferimentoAmministrazione).toBeNull()
+      })
+
+      it('fatturazione invariata: il recapito del contratto non si tocca', async () => {
+        tx.contrattoCliente.findFirst.mockResolvedValue(
+          riga({ clienteFatturazioneId: CF, codiceDestinatario: 'MANUALE' })
+        )
+        await service.modifica(T, U, K, {
+          clienteFatturazioneId: CF,
+          descrizione: MOD,
+          versione: 1,
+        })
+        const data = tx.contrattoCliente.updateMany.mock.calls[0][0].data
+        expect(data.codiceDestinatario).toBeUndefined()
+      })
+    })
+
     it('bollo verso una spesa di incasso: 400 col messaggio del controllo', async () => {
       controlla.mockResolvedValue([
         'La spesa di bollo scelta non esiste, è disattivata o non è una spesa di bollo.',
@@ -1441,6 +1502,16 @@ describe('ContrattiClienteService (Prisma finto)', () => {
           filtri: { ...filtri, categoriaId: K },
         },
       })
+    })
+
+    it('deadlock o lock timeout durante la proroga: 409 MODIFICATO_NEL_FRATTEMPO, non 500', async () => {
+      tx.$executeRaw.mockRejectedValue(errP('P2010', { code: '40P01' }))
+      const e = await errore(service.prorogaScadenze(T, U, filtri))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_MODIFICATO_NEL_FRATTEMPO')
+      tx.$executeRaw.mockRejectedValue(errP('P2034'))
+      const e2 = await errore(service.prorogaScadenze(T, U, filtri))
+      expect(e2).toBeInstanceOf(ConflictException)
     })
 
     it('zero prorogati: nessun audit', async () => {

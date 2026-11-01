@@ -130,7 +130,7 @@ class DatiFiscaliClienteDto {
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(2000, { message: 'Le note non possono superare 2000 caratteri.' })
   note?: string | null
 }
 

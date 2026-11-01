@@ -722,7 +722,7 @@ export class ContrattiClienteService {
     utenteId: string,
     id: string,
     versione: number,
-    patch: ModificaContrattoCliente
+    patchRicevuta: ModificaContrattoCliente
   ): Promise<void> {
     // 1-2. Riga bloccata (404) e stato che non ammette la modifica: prima della versione (D14).
     const prima = await this.bloccaELeggi(tx, tenantId, id)
@@ -736,6 +736,10 @@ export class ContrattiClienteService {
     }
     // 3. Versione.
     confrontaVersione(prima.versione, versione, ENTITA)
+
+    // R44: se cambia il cliente di fatturazione, il recapito SDI segue il nuovo intestatario
+    // (salvo i valori scritti nel corpo).
+    const patch = await this.conRecapitoDelNuovoIntestatario(tx, prima, patchRicevuta)
 
     // 4-5. Campi non ammessi e validazione pura (R36: sempre con l'id del contratto).
     const attuale = datiDaRiga(prima)
@@ -796,6 +800,42 @@ export class ContrattiClienteService {
         metadata: metadataModifica(id, prima.numero, attuale, dopo, cambiati),
       },
     })
+  }
+
+  /**
+   * R44 (stessa regola di R35 alla creazione): quando il corpo cambia il cliente di fatturazione e
+   * non porta codice destinatario o riferimento amministrazione, li riprende dal nuovo cliente di
+   * fatturazione; se questo coincide col cliente o viene tolto, dal cliente. Con codice assente o
+   * 0000000 il riferimento non ha senso e si svuota. Se il cliente sorgente non esiste lascia il
+   * corpo com'e': ci pensa `controllaCambiamenti` a segnalarlo.
+   */
+  private async conRecapitoDelNuovoIntestatario(
+    tx: Prisma.TransactionClient,
+    prima: RigaContratto,
+    patch: ModificaContrattoCliente
+  ): Promise<ModificaContrattoCliente> {
+    if (patch.clienteFatturazioneId === undefined) return patch
+    const nuovo = patch.clienteFatturazioneId?.toLowerCase() ?? null
+    if (nuovo === (prima.clienteFatturazioneId?.toLowerCase() ?? null)) return patch
+    if (patch.codiceDestinatario !== undefined && patch.riferimentoAmministrazione !== undefined) {
+      return patch
+    }
+    const idCliente = (patch.clienteId ?? prima.clienteId).toLowerCase()
+    const idSorgente = nuovo ?? idCliente
+    const sorgente = (await this.clienti.attiviPerId(tx, [idSorgente])).get(idSorgente)
+    if (!sorgente) return patch
+    const completa: ModificaContrattoCliente = { ...patch }
+    if (completa.codiceDestinatario === undefined) {
+      completa.codiceDestinatario = sorgente.codiceDestinatario
+    }
+    if (completa.riferimentoAmministrazione === undefined) {
+      const codice = normalizzaContratto({
+        codiceDestinatario: completa.codiceDestinatario,
+      }).codiceDestinatario
+      completa.riferimentoAmministrazione =
+        codice === null || codice === '0000000' ? null : sorgente.riferimentoAmministrazione
+    }
+    return completa
   }
 
   private async controllaCambiamenti(
@@ -1094,27 +1134,29 @@ export class ContrattiClienteService {
     }
 
     return nelContestoTenant(tenantId, () =>
-      this.prisma.$transaction(async tx => {
-        const prorogati = await tx.$executeRaw(
-          Prisma.sql`UPDATE "contratti_cliente"
+      this.prisma
+        .$transaction(async tx => {
+          const prorogati = await tx.$executeRaw(
+            Prisma.sql`UPDATE "contratti_cliente"
             SET data_fine = (data_fine + interval '1 year')::date,
                 versione = versione + 1,
                 updated_at = now()
             WHERE ${Prisma.join(condizioni, ' AND ')}`
-        )
-        if (prorogati > 0) {
-          await tx.activityLog.create({
-            data: {
-              tenantId,
-              userId: utenteId,
-              action: 'CONTRATTO_CLIENTE_PROROGATI',
-              description: `Proroga delle scadenze: ${prorogati} contratti`,
-              metadata: { prorogati, filtri } as Prisma.InputJsonValue,
-            },
-          })
-        }
-        return { prorogati }
-      })
+          )
+          if (prorogati > 0) {
+            await tx.activityLog.create({
+              data: {
+                tenantId,
+                userId: utenteId,
+                action: 'CONTRATTO_CLIENTE_PROROGATI',
+                description: `Proroga delle scadenze: ${prorogati} contratti`,
+                metadata: { prorogati, filtri } as Prisma.InputJsonValue,
+              },
+            })
+          }
+          return { prorogati }
+        })
+        .catch(err => this.traduci(err))
     )
   }
 

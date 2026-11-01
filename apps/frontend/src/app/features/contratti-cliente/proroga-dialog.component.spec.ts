@@ -86,11 +86,37 @@ describe('ProrogaDialogComponent', () => {
     scrivi('proroga-data', '2026-12-31')
     await stabilizza(fixture)
     bottone('proroga-conferma')!.click()
+    await stabilizza(fixture)
+    bottone('proroga-conferma-finale')!.click()
     expect(proroga).toHaveBeenCalledOnceWith({
       scadutiEntro: '2026-12-31',
       soloRinnovoAutomatico: true,
       ancheSospesi: false,
     })
+  })
+
+  it('prima dell’invio chiede conferma con il riepilogo dei filtri; Indietro non invia nulla', async () => {
+    await apri()
+    scrivi('proroga-data', '2026-06-30')
+    fixture.componentInstance.clienteScelto({
+      id: 'cl1',
+      ditta: { ragioneSociale: 'Rossi SRL' },
+    } as Cliente)
+    fixture.componentInstance.form.patchValue({ categoriaId: 'cat1', ancheSospesi: true })
+    await stabilizza(fixture)
+    bottone('proroga-conferma')!.click()
+    await stabilizza(fixture)
+    expect(proroga).not.toHaveBeenCalled()
+    const testo = q('proroga-riepilogo')!.textContent!
+    expect(testo).toContain('30/06/2026')
+    expect(testo).toContain('Categoria: Smaltimento')
+    expect(testo).toContain('Cliente: Rossi SRL')
+    expect(testo).toContain('Solo contratti con rinnovo automatico')
+    expect(testo).toContain('Compresi i contratti sospesi')
+    bottone('proroga-indietro')!.click()
+    await stabilizza(fixture)
+    expect(q('proroga-riepilogo')).toBeNull()
+    expect(proroga).not.toHaveBeenCalled()
   })
 
   it('con cliente, categoria e flag cambiati', async () => {
@@ -104,6 +130,8 @@ describe('ProrogaDialogComponent', () => {
     })
     await stabilizza(fixture)
     bottone('proroga-conferma')!.click()
+    await stabilizza(fixture)
+    bottone('proroga-conferma-finale')!.click()
     expect(proroga).toHaveBeenCalledOnceWith({
       scadutiEntro: '2026-06-30',
       soloRinnovoAutomatico: false,
@@ -118,6 +146,8 @@ describe('ProrogaDialogComponent', () => {
     scrivi('proroga-data', '2026-12-31')
     await stabilizza(fixture)
     bottone('proroga-conferma')!.click()
+    await stabilizza(fixture)
+    bottone('proroga-conferma-finale')!.click()
     expect(toast.success).toHaveBeenCalledWith('Contratti prorogati: 3')
     expect(prorogati).toEqual([3])
     expect(visibilita).toEqual([false])
@@ -129,6 +159,8 @@ describe('ProrogaDialogComponent', () => {
     scrivi('proroga-data', '2026-12-31')
     await stabilizza(fixture)
     bottone('proroga-conferma')!.click()
+    await stabilizza(fixture)
+    bottone('proroga-conferma-finale')!.click()
     expect(toast.success).toHaveBeenCalledWith('Contratti prorogati: 0')
   })
 
@@ -138,6 +170,8 @@ describe('ProrogaDialogComponent', () => {
     scrivi('proroga-data', '2026-12-31')
     await stabilizza(fixture)
     bottone('proroga-conferma')!.click()
+    await stabilizza(fixture)
+    bottone('proroga-conferma-finale')!.click()
     await stabilizza(fixture)
     expect(q('proroga-errore')!.textContent).toContain('La data non è valida.')
     expect(prorogati).toEqual([])

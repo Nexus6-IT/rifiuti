@@ -51,7 +51,16 @@ import { SceltaClienteComponent } from './scelta-cliente.component'
       [modal]="true"
       [style]="{ width: '34rem' }"
     >
-      <form [formGroup]="form" (ngSubmit)="conferma()" class="dlg-form">
+      <div *ngIf="inRiepilogo()" class="dlg-form" data-testid="proroga-riepilogo">
+        <p>
+          Stai per spostare di un anno la data di fine dei contratti con questi filtri. L'operazione
+          non si annulla.
+        </p>
+        <ul>
+          <li *ngFor="let r of riepilogo()">{{ r }}</li>
+        </ul>
+      </div>
+      <form [formGroup]="form" (ngSubmit)="avanti()" class="dlg-form" [hidden]="inRiepilogo()">
         <p>Sposta di un anno la data di fine dei contratti che scadono entro la data indicata.</p>
         <label for="proroga-data">Contratti con fine entro il</label>
         <input
@@ -106,11 +115,28 @@ import { SceltaClienteComponent } from './scelta-cliente.component'
       <ng-template pTemplate="footer">
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
         <p-button
+          *ngIf="inRiepilogo()"
+          label="Indietro"
+          [text]="true"
+          [disabled]="inCorso()"
+          (onClick)="inRiepilogo.set(false)"
+          data-testid="proroga-indietro"
+        />
+        <p-button
+          *ngIf="!inRiepilogo()"
           label="Proroga"
           icon="pi pi-calendar-plus"
           [disabled]="form.invalid || inCorso()"
-          (onClick)="conferma()"
+          (onClick)="avanti()"
           data-testid="proroga-conferma"
+        />
+        <p-button
+          *ngIf="inRiepilogo()"
+          label="Conferma la proroga"
+          icon="pi pi-check"
+          [disabled]="form.invalid || inCorso()"
+          (onClick)="conferma()"
+          data-testid="proroga-conferma-finale"
         />
       </ng-template>
     </p-dialog>
@@ -143,6 +169,10 @@ export class ProrogaDialogComponent implements OnChanges, OnDestroy {
   readonly categorie = signal<Opzione[]>([])
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
+  /** Passo di conferma: riepilogo dei filtri prima dell'invio. */
+  readonly inRiepilogo = signal(false)
+  readonly riepilogo = signal<string[]>([])
+  private clienteNome: string | null = null
   /** Cliente scelto (solo per il filtro: non serve altro che l'id). */
   readonly clienteOpzione = signal<Opzione | null>(null)
   private clienteId: string | null = null
@@ -172,7 +202,10 @@ export class ProrogaDialogComponent implements OnChanges, OnDestroy {
       categoriaId: '',
     })
     this.clienteId = null
+    this.clienteNome = null
     this.clienteOpzione.set(null)
+    this.inRiepilogo.set(false)
+    this.riepilogo.set([])
     this.errore.set(null)
     this.inCorso.set(false)
     this.lettura?.unsubscribe()
@@ -184,10 +217,30 @@ export class ProrogaDialogComponent implements OnChanges, OnDestroy {
 
   clienteScelto(cliente: Cliente | null): void {
     this.clienteId = cliente?.id ?? null
+    this.clienteNome = cliente ? (cliente.ditta?.ragioneSociale ?? 'Cliente scelto') : null
+  }
+
+  /** Primo passo: riepiloga i filtri e chiede la conferma (la proroga non si annulla). */
+  avanti(): void {
+    if (this.form.invalid || this.inCorso()) return
+    const v = this.form.getRawValue()
+    const [anno, mese, giorno] = v.scadutiEntro.split('-')
+    const categoria = this.categorie().find(c => c.id === v.categoriaId)?.etichetta
+    this.riepilogo.set([
+      `Contratti con fine entro il ${giorno}/${mese}/${anno}`,
+      `Categoria: ${v.categoriaId ? (categoria ?? 'scelta') : 'tutte'}`,
+      `Cliente: ${this.clienteId ? (this.clienteNome ?? 'scelto') : 'tutti'}`,
+      v.soloRinnovoAutomatico
+        ? 'Solo contratti con rinnovo automatico'
+        : 'Anche senza rinnovo automatico',
+      v.ancheSospesi ? 'Compresi i contratti sospesi' : 'Esclusi i contratti sospesi',
+    ])
+    this.errore.set(null)
+    this.inRiepilogo.set(true)
   }
 
   conferma(): void {
-    if (this.form.invalid || this.inCorso()) return
+    if (this.form.invalid || this.inCorso() || !this.inRiepilogo()) return
     const v = this.form.getRawValue()
     const dati: ProrogaScadenze = {
       scadutiEntro: v.scadutiEntro,
@@ -207,6 +260,7 @@ export class ProrogaDialogComponent implements OnChanges, OnDestroy {
       },
       error: err => {
         this.inCorso.set(false)
+        this.inRiepilogo.set(false)
         this.errore.set(messaggioErrore(err, 'Impossibile prorogare i contratti.'))
       },
     })

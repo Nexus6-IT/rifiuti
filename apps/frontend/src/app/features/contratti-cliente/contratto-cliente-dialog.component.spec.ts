@@ -883,6 +883,27 @@ describe('ContrattoClienteDialogComponent', () => {
       expect(visibilita).toContain(false)
     })
 
+    it('R44: cambiando il cliente di fatturazione il recapito SDI mostrato segue il nuovo', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apri(contratto())
+      await scegliCliente('contratto-dlg-fatturazione', BIANCHI)
+      expect(valore('contratto-dlg-codice-dest')).toBe('ZZZZZZZ')
+      expect(valore('contratto-dlg-rif-amm')).toBe('RIF-B')
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = contratti.modifica.calls.mostRecent().args[1]
+      expect(corpo.clienteFatturazioneId).toBe('cl2')
+      expect(corpo.codiceDestinatario).toBe('ZZZZZZZ')
+      expect(corpo.riferimentoAmministrazione).toBe('RIF-B')
+    })
+
+    it("R44: un codice digitato dall'operatore non si sovrascrive", async () => {
+      await apri(contratto())
+      scrivi('contratto-dlg-codice-dest', 'mio1234')
+      await scegliCliente('contratto-dlg-fatturazione', BIANCHI)
+      expect(valore('contratto-dlg-codice-dest')).toBe('mio1234')
+    })
+
     it('un campo svuotato parte come null', async () => {
       contratti.modifica.and.returnValue(of(contratto()))
       await apri(contratto())
@@ -1471,6 +1492,17 @@ describe('ContrattoClienteDialogComponent', () => {
       const corpo = contratti.crea.calls.mostRecent().args[0]
       expect(corpo.condizionePagamentoId).toBeNull()
       expect(corpo.registroIvaId).toBeNull()
+    })
+
+    it('un predefinito scelto a mano dopo l’avviso non si perde cambiando cliente', async () => {
+      const spento = cliente('cl3', 'Neri Srl', { condizionePagamentoId: 'c-spenta' })
+      clientiRuolo.list.and.returnValue(of({ elementi: [VERDI, BIANCHI, spento], totale: 3 }))
+      await apri()
+      await scegliCliente('contratto-dlg-cliente', spento)
+      expect(valore('contratto-dlg-condizione')).toBe('')
+      scegli('contratto-dlg-condizione', 'c1')
+      await scegliCliente('contratto-dlg-fatturazione', BIANCHI)
+      expect(valore('contratto-dlg-condizione')).toBe('c1')
     })
 
     it('scegliendo poi un cliente con predefiniti attivi, avviso tolto e valori ripristinati', async () => {

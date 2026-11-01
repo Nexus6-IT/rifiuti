@@ -285,8 +285,12 @@ const senzaSpazi = (v: string | null): string | null =>
           pInputText
           id="cliente-dlg-note"
           formControlName="note"
+          maxlength="2000"
           data-testid="cliente-dlg-note"
         />
+        <small class="contatore" data-testid="cliente-dlg-note-contatore">
+          {{ form.controls.note.value.length }}/2000 caratteri
+        </small>
         <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="cliente-dlg-errore">
           {{ e }}
         </p>

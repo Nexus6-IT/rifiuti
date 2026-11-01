@@ -205,6 +205,15 @@ describe('ClienteDialogComponent', () => {
       expect(f.tipo).toBe('cliente')
     })
 
+    it('note: massimo 2000 caratteri, con contatore', async () => {
+      await apri()
+      expect(q<HTMLInputElement>('cliente-dlg-note')!.getAttribute('maxlength')).toBe('2000')
+      expect(q('cliente-dlg-note-contatore')!.textContent).toContain('0/2000')
+      scrivi('cliente-dlg-note', 'abc')
+      await stabilizza(fixture)
+      expect(q('cliente-dlg-note-contatore')!.textContent).toContain('3/2000')
+    })
+
     it('ditta trovata: ragione sociale bloccata e scelta della sede', async () => {
       registry.cercaDitta.and.returnValue(of({ ditta: DITTA }))
       await apri()

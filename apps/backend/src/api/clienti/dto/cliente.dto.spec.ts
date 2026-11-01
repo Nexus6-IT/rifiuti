@@ -17,6 +17,17 @@ const base = {
   indirizzo: { via: 'Via Roma', civico: '1', cap: '00100', comune: 'Roma', provincia: 'RM' },
 }
 
+describe('note del cliente: limite di 2000 caratteri con messaggio in italiano', () => {
+  it('creazione e modifica rifiutano 2001 caratteri col testo italiano', async () => {
+    const atteso = ['Le note non possono superare 2000 caratteri.']
+    expect(await messaggi(CreaClienteDto, { ...base, note: 'x'.repeat(2001) })).toEqual(atteso)
+    expect(await messaggi(ModificaClienteDto, { note: 'x'.repeat(2001), versione: 1 })).toEqual(
+      atteso
+    )
+    expect(await messaggi(ModificaClienteDto, { note: 'x'.repeat(2000), versione: 1 })).toEqual([])
+  })
+})
+
 describe('ModificaClienteDto', () => {
   it('la versione è obbligatoria', async () => {
     expect((await messaggi(ModificaClienteDto, { note: 'x' })).length).toBeGreaterThan(0)

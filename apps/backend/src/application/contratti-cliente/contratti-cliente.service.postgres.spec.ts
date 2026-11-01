@@ -474,6 +474,43 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
       expect(n.versione).toBe(2)
     })
 
+    it('cambio del cliente di fatturazione: il recapito SDI segue il nuovo intestatario; i valori del corpo vincono (R44)', async () => {
+      const { tenantId, utenteId, v } = await pronto()
+      const f = await cliente(tenantId, {
+        codiceDestinatario: 'UFE1AB',
+        riferimentoAmministrazione: 'RIF-PA',
+      })
+      const g = await cliente(tenantId, { codiceDestinatario: 'GGGGGGG' })
+      const m = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, v.id, {
+          clienteFatturazioneId: f.ruoloId,
+          versione: 1,
+        })
+      )
+      expect(m.codiceDestinatario).toBe('UFE1AB')
+      expect(m.riferimentoAmministrazione).toBe('RIF-PA')
+      // secondo cambio, ora su un contratto con un solo valore nel corpo: il codice scritto vince
+      // e il riferimento del vecchio intestatario non resta (il nuovo non ne ha)
+      const m2 = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, v.id, {
+          clienteFatturazioneId: g.ruoloId,
+          codiceDestinatario: 'MANUALE',
+          versione: 2,
+        })
+      )
+      expect(m2.codiceDestinatario).toBe('MANUALE')
+      expect(m2.riferimentoAmministrazione).toBeNull()
+      // fatturazione tolta: torna il recapito del cliente
+      const m3 = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, v.id, {
+          clienteFatturazioneId: null,
+          versione: 3,
+        })
+      )
+      expect(m3.clienteFatturazione).toBeNull()
+      expect(m3.codiceDestinatario).toBe(v.codiceDestinatario)
+    })
+
     it('bollo verso una spesa di incasso: 400; cliente di fatturazione disattivato: 400', async () => {
       const { tenantId, utenteId, v, t } = await pronto()
       await expect(
