@@ -3,7 +3,7 @@ import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials, getApiUrl } from '../../utils/env'
 import { apiLogin, apiGet, apiDelete, ApiClientError } from '../../utils/api-client'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
-import { conPrefisso } from '../../utils/run-id'
+import { conPrefissoUnico } from '../../utils/run-id'
 
 /**
  * E2E — Contratto cliente (pezzo 4.1b, Task 28): dalle tabelle di fatturazione all'annullo.
@@ -80,21 +80,27 @@ const dati = {
   condizione: codiceCasuale(8, 'E'),
   conto: codiceCasuale(8, 'E'),
   bollo: codiceCasuale(8, 'E'),
-  registro: String(10 + Math.floor(Math.random() * 90)),
+  /** Assegnato dal test delle tabelle fra i codici liberi (01-99): vedi `scegliRegistroLibero`. */
+  registro: '',
   iban: ibanCasualeValido(),
   partitaIva: partitaIvaCasualeValida(),
   numero: `E2E-${codiceCasuale(8)}`,
   nomeFile: `${codiceCasuale(6)}.pdf`,
 }
+/**
+ * Nomi con suffisso casuale: il modulo si rivaluta a ogni tentativo (un nuovo worker dopo un
+ * fallimento), cosi' un retry non trova le righe disattivate del tentativo precedente (l'elenco
+ * dei clienti mostra anche i disattivati) e non va in strict mode violation.
+ */
 const nomi = {
-  condizione: conPrefisso('Condizione del cliente'),
-  conto: conPrefisso('Conto cliente'),
-  bollo: conPrefisso('Bollo cliente'),
-  registro: conPrefisso('Registro contratti'),
-  cliente: conPrefisso('Cliente contratto'),
-  contratto: conPrefisso('Contratto trimestrale'),
-  categoria: conPrefisso('Categoria del contratto'),
-  motivo: conPrefisso('Motivo rapido'),
+  condizione: conPrefissoUnico('Condizione del cliente'),
+  conto: conPrefissoUnico('Conto cliente'),
+  bollo: conPrefissoUnico('Bollo cliente'),
+  registro: conPrefissoUnico('Registro contratti'),
+  cliente: conPrefissoUnico('Cliente contratto'),
+  contratto: conPrefissoUnico('Contratto trimestrale'),
+  categoria: conPrefissoUnico('Categoria del contratto'),
+  motivo: conPrefissoUnico('Motivo rapido'),
 }
 
 /** Cio' che il test ha creato, nell'ordine in cui va ripulito (cliente prima delle tabelle). */
@@ -171,6 +177,23 @@ async function apriModificaContratto(page: Page): Promise<Locator> {
 test.describe('Contratto cliente — operatore', () => {
   test.describe.configure({ mode: 'serial' })
   test.skip(!hasRoleCredentials('operator'), skipReason('operator'))
+
+  test.beforeAll(async () => {
+    if (!hasRoleCredentials('operator')) return
+    // Codice del registro: uno dei due cifre ancora liberi (anche fra i disattivati, che non si
+    // eliminano e restano nell'elenco). Se non ce n'e' nessuno il percorso non si puo' provare.
+    const occupati = new Set(
+      (await elencoApi('registri-iva', await apiLogin('operator'))).map(r => r.codice)
+    )
+    const liberi = Array.from({ length: 90 }, (_, i) => String(10 + i)).filter(
+      c => !occupati.has(c)
+    )
+    test.skip(
+      liberi.length === 0,
+      'registri IVA 10-99 tutti occupati nell azienda di prova: impossibile creare il registro del contratto'
+    )
+    dati.registro = liberi[Math.floor(Math.random() * liberi.length)]
+  })
 
   test.beforeEach(async ({ page, context }) => {
     await loginAndSaveState(page, context, 'operator')
