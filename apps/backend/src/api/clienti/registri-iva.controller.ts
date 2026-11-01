@@ -26,7 +26,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RegistriIvaService } from '../../application/clienti/registri-iva.service'
 import { CreaRegistroIvaDto, ModificaRegistroIvaDto } from './dto/registro-iva.dto'
-import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './condizioni-pagamento.controller'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 
 @ApiTags('clienti')
 @ApiBearerAuth()

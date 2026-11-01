@@ -31,7 +31,7 @@ import {
   ElencoCodificheQueryDto,
   ProssimoCodiceQueryDto,
 } from './dto/codifica-contratto.dto'
-import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './condizioni-pagamento.controller'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 
 @ApiTags('clienti')
 @ApiBearerAuth()

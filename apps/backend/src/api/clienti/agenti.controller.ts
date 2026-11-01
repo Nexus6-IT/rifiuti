@@ -25,7 +25,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { AgentiService } from '../../application/clienti/agenti.service'
-import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './condizioni-pagamento.controller'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 import { CreaAgenteDto, ElencoAgentiQueryDto, ModificaAgenteDto } from './dto/agente.dto'
 
 @ApiTags('clienti')

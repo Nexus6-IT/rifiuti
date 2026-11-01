@@ -46,8 +46,12 @@ describe('AgentiService — Postgres reale, ruolo wasteflow_app', () => {
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
-      // Le FK composite fra agenti/clienti e ditte sono NoAction: prima i ruoli, poi le ditte.
+      // Le FK composite fra agenti/clienti/contratti e ditte sono NoAction: prima le righe che
+      // citano, poi quelle citate (allegati, periodi, contratti, clienti, agenti), sempre per id.
       const in_ = { in: tenantCreati }
+      await owner.allegatoContrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.periodoFatturazioneCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.agente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })

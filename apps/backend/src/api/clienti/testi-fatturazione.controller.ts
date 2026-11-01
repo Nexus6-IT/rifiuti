@@ -29,7 +29,7 @@ import {
   CreaTestoFatturazioneDto,
   ModificaTestoFatturazioneDto,
 } from './dto/testo-fatturazione.dto'
-import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './condizioni-pagamento.controller'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
