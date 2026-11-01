@@ -74,6 +74,228 @@ Seconda tornata (31/10, dopo la revisione del piano):
 | Q7 | Consegna | **Due PR.** **4.1a** tabelle di fatturazione: Task 0-5, 8, 10-12, la parte "tabelle" del Task 20 (modelli, vocabolari e `TabelleFatturazioneService` delle sei tabelle, `AggiuntaInLinea`), 21-22, e2e e chiusura ridotti del Task 28. **4.1b** agenti, clienti, contratti: Task 6, 7, 9, 13-19, il resto del 20, 23-27, 28. Migration `20261102200000_` nella 4.1a (RLS 44 → 50), `20261102200100_` nella 4.1b (50 → 55). La 4.1b parte da master dopo il merge della 4.1a | Ordine, Task 20, 28 |
 | Q8 | Codice rinnovo `O` | **Non portato**: solo `S`/`N`; i contratti importati con `O` diventano `S` (3.8) | D27, Task 6, 9, 18 |
 
+### Addendum 4.1b (01/11)
+
+Base: master `dba59f5` (PR #40, 4.1a in produzione), branch `feat/fase4-1b-clienti-contratti`,
+worktree `rifiuti-wt-rentri-registro`. I ruling R1-R17 della 4.1a restano validi; i ruling R18-R34
+stanno in `.superpowers/sdd/2026-11-01-fase4-1-contratto-cliente/preflight-4.1b.md` e, dove
+divergono, **prevalgono sul testo dei task**. Questo addendum prevale sulla sezione "Ordine".
+
+**Task della 4.1b (18):** 6, 7 (con la parte `features/registry` del Task 20), 9, 13, 14, **12b**
+(nuovo: il resto di R5), 15, 16, 17, 18, 19, 20 (resto), 23, 24, 25, 26, 27, 28 (completo).
+
+**Il codice della 4.1a da cui si parte (nomi reali, non quelli immaginati dal piano).**
+- Helper `application/clienti/anagrafica-versionata.ts`: `DescrizioneEntita { prefisso, soggetto,
+  femminile }`, `VincoliNoti`, `RileggiVincolo`, `confrontaVersione`, `scriviCondizionato`,
+  `traduciErrorePrisma(err, entita, vincoli, rileggi?)` **async**, da chiamare nella `.catch` FUORI
+  dalla `$transaction` (R13). Con la RLS un P2002 arriva con `meta.target` null.
+- Sei servizi (`condizioni-pagamento`, `conti-correnti`, `spese-accessorie`, `registri-iva`,
+  `testi-fatturazione`, `codifiche-contratto`): ognuno ha una `async function contaUsi(_tenantId,
+  _id)` di modulo che restituisce 0, chiamata **per riga** da `comeVista` (`eliminabile`). Campi
+  `attiva` su condizioni, spese, codifiche; `attivo` su conti, registri, testi.
+- `nelContestoTenant` si importa da `application/pese/nel-contesto-tenant` (area esclusa: non si
+  sposta, R27).
+- `api/clienti/clienti.module.ts`: `imports: [PrismaModule, AuthModule, RuoloEffettivoModule]`, sei
+  controller e sei servizi; già registrato in `app.module.ts` (non si tocca).
+- `RegistryModule` (`api/registry/registry.module.ts`) **non esporta** `DitteService` (R19).
+- Fixture `test-support/fatturazione-di-test.ts`: `creaTabelleFatturazione(owner, tenantId)` →
+  `{ condizioneId, contoId, speseId, bolloId, registroId, registroSplitId, testoId, categoriaId,
+  tipoId, motivoId }`. `creaDittaConRuolo(client, tenantId, ruolo, dati)` in
+  `anagrafiche-di-test.ts` accetta solo `PRODUTTORE | TRASPORTATORE | DESTINATARIO`.
+- Dominio: `domain/clienti/{codice-tabella, decimali, iban, dati-fiscali-cliente, condizione-pagamento,
+  conto-corrente, spesa-accessoria, registro-iva, testo-fatturazione, codifica-contratto}.ts`;
+  `domain/contratti-cliente/periodi-fatturazione.ts`. `normalizzaDecimale`/`decimaleValido` stanno in
+  `decimali.ts` (R1), non nel Task 3; `validaCodiceDestinatario`, `validaRitenuta`,
+  `tipoDestinatario`, `ESIGIBILITA_IVA` in `dati-fiscali-cliente.ts`.
+- Migration `20261102200000_anagrafiche_fatturazione_cliente`: FK verso `tenants` chiamate
+  **`<tabella>_tenant_id_fkey`** (R17). Le FK composite esistenti di F2-10 si chiamano
+  `<tabella>_<riferimento>_fkey` (`produttori_ditta_fkey`, `produttori_sede_fkey`): la 4.1b segue
+  entrambe le convenzioni.
+- Frontend: tutto sotto `features/clienti/`: `clienti.model.ts`, `vocabolario-clienti.ts`
+  (`ETICHETTE_*`, `OPZIONI_*`, `CONCORDANZA_GENERE`), `tabelle-fatturazione.service.ts` (`Tabella`,
+  `TabellaCodifiche` esportati, R15), `aggiunta-in-linea.ts` (nessun consumatore finora); i dialog
+  delle tabelle stanno in **`features/clienti/tabelle/`** con `@Input() visible`, `elemento`,
+  `@Output() salvato`, `visibleChange`; `spesa-accessoria-dialog` ha `@Input() tipo?: TipoSpesa`,
+  `codifica-dialog` ha `@Input() genere` e `@Input() rapida`; `tabelle/tabella-comune.ts` ha
+  `messaggioErrore`, `permessoScrittura`, `chiediConferma`. Rotta piatta `clienti/tabelle`; voce di
+  menu temporanea "Tabelle di fatturazione" in `layout.component.ts:1287-1293` (R8).
+- e2e: `e2e/tests/tabelle-fatturazione/tabelle-fatturazione.spec.ts` (va con `page.goto`, non dal
+  menu; cerca l'heading di livello 1 "Tabelle di fatturazione").
+
+**Correzioni per task** (rispetto al testo originale; il resto del task vale com'è).
+
+- **Task 6.** Riusa `normalizzaDecimale` da `domain/clienti/decimali.ts` (non "Task 3"),
+  `validaCodiceDestinatario` e `validaRitenuta` da `dati-fiscali-cliente.ts`, `validaPeriodi` da
+  `domain/contratti-cliente/periodi-fatturazione.ts`. Chiude i due minor di dominio rinviati dalla
+  4.1a (R26): in `periodi-fatturazione.ts` la sovrapposizione si verifica nell'anno bisestile (fine
+  28/02 vale 29/02, quindi 01/01-28/02 + 29/02-31/03 → "I periodi 1 e 2 si sovrappongono."); in
+  `dati-fiscali-cliente.ts` il riferimento amministrazione con codice `0000000` è rifiutato col
+  messaggio di D3. File in più: quei due moduli e i loro spec; commit con i sei file.
+- **Task 7.** Prende anche la parte `features/registry` del Task 20 (R7): due commit, prima backend
+  poi frontend (jest e Karma mai insieme). Backend: `NOME_RUOLO` di `sede-ditta.ts` e
+  `SedeNonValidaPerRuoloError` con l'articolo giusto ("dell'agente", "del cliente": oggi il modello
+  è `del ${nome}`, R20). Frontend: **non** si allarga `TipoAnagrafica` (lo importano
+  `features/contracts` e `features/fir`, aree escluse, e `anagrafica-form-dialog` tratta ogni tipo
+  diverso da produttore/trasportatore come destinatario): si aggiunge `TipoRuoloDitta =
+  TipoAnagrafica | 'cliente' | 'agente'` in `identificativo-fiscale.ts`, usato da
+  `ditta-identificativi.component.ts` (`ETICHETTA_RUOLO`) e dalla regola del privato (R21);
+  `anagrafica-form-dialog.component.ts` non si tocca. `registry.model.ts`: `ruoli.clienteId?`,
+  `ruoli.agenteId?`. Il messaggio del privato sta solo in `identificativo-fiscale.ts` (BE e FE):
+  il `grep` del piano non trova spec da aggiornare. Usa Postgres (`registry-ditte.postgres.spec.ts`,
+  `rls-catalogo` a 50).
+- **Task 9.** Timestamp `20261102200100` > `20261102200000`, l'ultima migration di master
+  (verificato su tutti i branch il 01/11: nessuna successiva); ricontrollare al rebase finale e, se
+  master ne riceve una successiva, rinominare **solo** la nostra (la `…200000_` è in produzione).
+  FK verso `tenants` `<tabella>_tenant_id_fkey` `ON DELETE CASCADE`; composite `NoAction` (mai
+  `RESTRICT`: con `NoAction` la cancellazione a cascata del tenant passa perché il controllo è a
+  fine statement) coi nomi del piano (`clienti_condizione_pagamento_fkey`, …). `rls-catalogo`
+  50 → **55**, `README-tenant-transazione.md` ai tre punti che oggi dicono 50 (righe 120, 131, 144
+  della 4.1a), `TENANT_SCOPED_MODELS` +5. Il commento di ripristino della migration rimanda al
+  paragrafo T8 già in `ops/README.md`. La spec dello schema crea le righe minime col proprietario e
+  può usare `creaTabelleFatturazione` (esiste già: il testo "fixture non ancora disponibile" è
+  superato).
+- **Task 13.** Primo passo, prima degli agenti (R18, R19):
+  `DescrizioneEntita` riceve `inUso?: { codice: string; messaggio: string }` (sovrascrive il 409 del
+  P2003; servono `AGENTE_IN_USO` e `CLIENTE_CON_CONTRATTI` coi testi esatti di D13) e il messaggio
+  di ripiego si accorda al genere ("disattivala invece di eliminarla" per le femminili, minor M1 della
+  4.1a); test unitari dei due rami. `RegistryModule` aggiunge `exports: [DitteService]` e
+  `ClientiModule` importa `RegistryModule` (`registry.module.ts` entra nell'elenco dei file mirati di
+  D18). Il P2002 sotto RLS (R22): `VINCOLI` con `agenti_tenant_id_codice_key` e
+  `agenti_tenant_id_ditta_id_key` più un `rileggi` fuori transazione; se il vincolo è quello della
+  ditta si lancia `RuoloGiaPresenteError('agente')` (400), perché `eViolazioneRuoloPerDitta` con
+  `target` null restituisce false. Test Postgres in più: `due crea concorrenti sulla stessa ditta:
+  una 400 col messaggio del ruolo presente`.
+- **Task 14.** File in più: `src/test-support/anagrafiche-di-test.ts` (`creaDittaConRuolo` accetta
+  `CLIENTE` e `AGENTE`; per questi due ruoli niente `ragioneSocialeStorica` né numero di documento,
+  campi come il modello Prisma del Task 9) e un test della fixture. `controllaRiferimenti` legge
+  agenti, spese, registri, conti e condizioni con **una query raw per tabella `… WHERE tenant_id = …
+  AND id = ANY(…) FOR SHARE`** (R24): blocca la disattivazione o il cambio di tipo concorrenti fino al
+  commit, così il cliente non nasce con una spesa diventata del tipo sbagliato. Non dipende dal
+  Task 13: legge `agenti` direttamente (il Postgres crea l'agente con `creaDittaConRuolo`). P2002 come
+  R22 (`clienti_tenant_id_codice_key` → 409 `CLIENTE_CODICE_DUPLICATO`, ditta → 400).
+  `ClienteVista.contratti` conta i contratti **non eliminati**; `eliminabile` conta **tutte** le
+  righe che lo citano, eliminate comprese (R25).
+- **Task 12b (nuovo, dopo il 14): uso reale delle tabelle di fatturazione** (resto di R5).
+  File: i sei `*.service.ts` della 4.1a, i loro `*.service.spec.ts`, i tre `*.postgres.spec.ts`
+  esistenti (condizioni, conti, spese) più `tabelle-fatturazione.service.postgres.spec.ts` per
+  registri, testi e codifiche. `contaUsi` diventa **batch**: `contaUsi(client, tenantId, ids:
+  string[]): Promise<Map<string, number>>`, un `groupBy` per colonna referente, **una** chiamata per
+  `list` e una per `getById`, eliminati compresi (la FK li vede). Colonne: condizioni →
+  `clienti.condizione_pagamento_id` + `contratti_cliente.condizione_pagamento_id`; conti →
+  `conto_corrente_id` (due tabelle); spese → `spese_incasso_id` e `bollo_id` (due tabelle); registri
+  → `registro_iva_id` (due tabelle); testi → `contratti_cliente.testo_fatturazione_id`; codifiche →
+  `contratti_cliente.categoria_id`, `tipo_id`, `motivo_annullo_id`. Blocchi nel servizio, nella
+  transazione, **dopo** `SELECT … FOR UPDATE` della riga e prima della scrittura (R24): cambio di
+  `tipo` di una spesa usata → 409 `SPESA_ACCESSORIA_IN_USO` "La spesa è usata da clienti o
+  contratti: non se ne cambia il tipo."; registro usato che diventa `ricevuteSplit` → 409 col testo
+  del Task 12. Test unitari (una sola query di conteggio per `list`, i due blocchi) e Postgres
+  `in uso da un cliente: elimina 409, la riga resta, eliminabile false` per condizioni, conti, spese,
+  registri (cliente col proprietario via `creaDittaConRuolo(…,'CLIENTE')`), `in uso da un
+  contratto` per testi e codifiche (contratto inserito col proprietario), `il messaggio di una
+  femminile dice "disattivala"`, `cambio di tipo della spesa usata: 409`, `registro usato che
+  diventa ricevute split: 409`. Commit `feat(clienti): uso reale delle tabelle di fatturazione da
+  clienti e contratti`.
+- **Task 15.** `elimina` passa `inUso` di R18 (`CLIENTE_CON_CONTRATTI`, testo di D13). DTO
+  `ritenutaPercentuale` stringa col punto `^\d{1,2}(\.\d{1,2})?$` (come R2). Il Postgres `cliente con
+  un contratto` comprende il caso del contratto **eliminato** (409 anche così, R25). Modifica di un
+  riferimento: `controllaRiferimenti` di R24.
+- **Task 16.** Controlli sui riferimenti con `controllaRiferimenti` (R24) e lettura del cliente con
+  `FOR SHARE` (un cliente disattivato in parallelo non riceve un contratto nuovo). La vista implementa
+  **esattamente** l'interfaccia del piano: il frontend è scritto in parallelo su quella (R29); ogni
+  scostamento va nel rapporto del task.
+- **Task 17.** Come il 16 per i riferimenti cambiati. Nessun'altra correzione.
+- **Task 18.** Rotte con prefisso `contratti-clienti` (D11). Il controller non contiene le rotte
+  degli allegati (R28).
+- **Task 19.** Controller **proprio** `api/clienti/allegati-contratto-cliente.controller.ts` (+ spec)
+  con le quattro rotte `contratti-clienti/:id/allegati…`, invece di modificare quello del Task 18
+  (R28): dipende dal Task 14 (fixture del cliente) e non dal 18. Il servizio verifica il contratto
+  (non eliminato, dell'azienda) con una lettura sua, senza `ContrattiClienteService`.
+- **Task 20 (resto).** File: `clienti.model.ts` (aggiunge `Cliente`, `Agente`, `ContrattoCliente`,
+  `AllegatoContratto`, `PeriodoFatturazione`, `StatoContrattoCliente`, `EsigibilitaIva`, `Pagina<T>`,
+  copiati dalle interfacce `…Vista` dei Task 13-19 **del piano**, R29), `vocabolario-clienti.ts`
+  (esigibilità, stati, frequenze, unità, codici di rinnovo), `clienti.service.ts` + spec (`agenti`,
+  `clienti`, `contratti`, `allegati`), `aggiunta-in-linea.ts` + spec (JSDoc "non blocca la creazione
+  con campo bloccato", test `apri create azzera elemento` e `ripiego su ev.target`: minor T20a), e
+  l'helper di elenco in `tabelle/tabella-comune.ts` con i sei componenti di scheda che lo adottano
+  (minor T22, R34). Le modifiche a `features/registry` e `registry.model.ts` sono nel Task 7.
+- **Task 23.** Rotta piatta `clienti/agenti` (come `clienti/tabelle`). Lista con l'helper di R34.
+- **Task 24.** Sostituisce la voce temporanea "Tabelle di fatturazione" con "Clienti" (D20) e toglie
+  il commento "Voce temporanea"; la pagina delle tabelle resta raggiungibile dal pulsante della lista
+  e dall'URL, con lo stesso heading (lo usa l'e2e della 4.1a). Dialog in linea: i dialog di
+  `features/clienti/tabelle/` (spese con `[tipo]="'INCASSO'"` e `[tipo]="'BOLLO'"`) e
+  `AgenteDialogComponent`, tutti con `AggiuntaInLinea` (R33). Test in più per ogni sub-dialog: `Esc
+  chiude solo il sub-dialog` (`bloccaChiusuraEsterna`) e `il focus torna al pulsante "Nuovo …"`.
+- **Task 25.** Categoria e tipo con `app-codifica-dialog [genere] [rapida]="true"`; un 409
+  `CODIFICA_CONTRATTO_CODICE_DUPLICATO` in modalità rapida (terzo operatore simultaneo, minor T12)
+  mostra "Un collega ha appena usato lo stesso codice: riprova." e lascia il sub-dialog aperto (R33).
+  Stessi test di focus ed Esc del Task 24 per ogni sub-dialog.
+- **Task 26.** Riga del codice di rinnovo corretta nel testo del task (R12: "S spunta, N toglie").
+- **Task 27.** Rotta `contratti-clienti` e voce "Contratti clienti" dopo "Clienti". Annullo: il
+  "Nuovo motivo" rapido è `app-codifica-dialog [genere]="'MOTIVO_ANNULLO'" [rapida]="true"`.
+- **Task 28 (completo).** La parte e2e delle tabelle è già fatta (4.1a,
+  `tabelle-fatturazione.spec.ts`, che non si tocca): lo spec nuovo
+  `contratti-cliente/contratto-cliente.spec.ts` fa lo scenario dello Step 1 com'è scritto (condizione e
+  registro dalla pagina delle tabelle, il resto in linea), con codici casuali e pulizia propria come R10. Step 2: `git diff --stat dba59f5..HEAD` (non `dafa30b`). Step 5:
+  `rls-catalogo` a 55. In più (I1 della 4.1a, R31): prima della PR `ci.yml` via `workflow_dispatch`
+  sul branch, e merge solo con `test-postgres` ed `e2e` (passata 2) verdi; contratto d'interfaccia
+  frontend/backend controllato (R29). Rapporto: rollback della **sola** seconda migration.
+
+### Parallelismo 4.1b
+
+**Chi usa Postgres** (suite `*.postgres.spec.ts` o `rls-catalogo` a fine task): 7, 9 (migration),
+12b, 13, 14, 15, 16, 17, 18, 19, 28. **Non lo usano:** 6 (dominio puro) e i frontend 20, 23-27.
+Con un solo database (55438) e la regola della RAM (un solo processo pesante, mai jest e Karma
+insieme) la catena backend resta **sequenziale**; il guadagno è far correre la catena frontend
+accanto, un task frontend per ondata, sempre con **al massimo un task Postgres per ondata**.
+
+**File condivisi e chi li tocca:** `schema.prisma`, `prisma-rls.extension.ts`,
+`rls-catalogo.postgres.spec.ts`, `README-tenant-transazione.md`, `ditta-prisma.repository.ts` → solo
+9; `ops/README.md` → solo 9; `anagrafica-versionata.ts`, `registry.module.ts` → solo 13;
+`anagrafiche-di-test.ts` → solo 14; `clienti.module.ts` → 13, 15, 18, 19 (tutti backend, in
+sequenza); i sei servizi della 4.1a → solo 12b; `ditte.service.ts`, `sede-ditta.ts`, `errors.ts`,
+`features/registry/*`, `registry.model.ts` → solo 7; `clienti.model.ts`, `vocabolario-clienti.ts`,
+`tabella-comune.ts` → solo 20 (i task frontend successivi li **leggono**; se uno deve cambiarli, il
+cambio si fa nel suo worktree e il task successivo parte dopo l'integrazione); `app.routes.ts` → 23,
+24, 27; `layout.component.ts` → 24, 27; `contratto-cliente-dialog.component.ts` → 25, 26;
+`app.module.ts`: nessuno. Backend e frontend non condividono file.
+
+| Ondata | Task in parallelo | Perché insieme | Rischio |
+|---|---|---|---|
+| 1 | **6** ∥ **7** (PG) | dominio nuovo contro registry: nessun file in comune; 6 non usa il database | basso: 7 cambia `RuoloControparte` e 6 non lo importa |
+| 2 | **9** (PG, migration) ∥ **20** | 9 dipende da 7 (tipi); 20 dipende da 6 (stati e campi da copiare nei tipi FE) | medio: i tipi FE sono scritti sulle interfacce del piano, non sul codice (R29) |
+| 3 | **13** (PG) ∥ **23** | 13 dopo 9; 23 dopo 20 (servizio `agenti`) | basso |
+| 4 | **14** (PG) ∥ **24** | 14 dopo 9 (non serve il 13); 24 dopo 23 (dialog agente in linea) | medio: 24 è il task frontend più grande |
+| 5 | **15** (PG) ∥ **25** | 15 dopo 13 (R18) e 14; 25 dopo 24 (dialog cliente in linea) | medio: 25 implementa un'interfaccia di contratto non ancora scritta (16) |
+| 6 | **12b** (PG) ∥ **26** | 12b dopo 13 (messaggio accordato) e 14 (fixture CLIENTE); 26 dopo 25 | basso |
+| 7 | **16** (PG) ∥ **27** | 16 dopo 6 e 14; 27 dopo 25 (non tocca i file del 26) | medio: come l'ondata 5 |
+| 8 | **17** (PG) | dopo 16 (stesso servizio) | — |
+| 9 | **18** (PG) | dopo 17 (stesso servizio, controller nuovo, modulo) | — |
+| 10 | **19** (PG) | dopo 14 (con R28 non serve il 18); messo qui perché è l'unico Postgres libero | — |
+| 11 | **28** | tutto integrato; controllo del contratto d'interfaccia (R29) | — |
+
+**Regole operative** (R30):
+- Ogni task parallelo in un worktree suo (`git worktree add ../rifiuti-wt-41b-<task> -b
+  wt/41b-<task> <HEAD del branch dopo l'ondata precedente>`), con i `node_modules` copiati per
+  reflink (`cp -a --reflink=auto` dei tre `node_modules`): mai un `node_modules` condiviso, perché
+  `prisma generate` scrive il client dentro `node_modules`. Il worktree frontend non lancia
+  `prisma generate`.
+- Ogni processo pesante (jest, `test:cov`, suite Postgres, Karma, `ng build`, `migrate deploy`) passa
+  da un lock: `flock /home/graziano/Progetti/rifiuti-wt-rentri-registro/.superpowers/sdd/2026-11-01-fase4-1-contratto-cliente/pesante.lock <comando>`.
+  Così il task frontend non lancia Karma mentre il backend fa girare jest.
+- Il database 55438 è uno solo: la migration del Task 9 si applica **una volta** (ondata 2) e da lì
+  tutti i worktree lavorano sullo schema a 55 tabelle; mai `migrate reset`. I test isolano i dati per
+  `tenantId` creato e ripulito per id (Vincoli globali), quindi un worktree frontend che non ha il
+  Task 9 non è disturbato.
+- Integrazione a fine ondata, nel worktree principale: `git cherry-pick` dei commit di ogni worktree
+  nell'ordine backend → frontend, poi revisione opus dell'ondata, poi l'ondata successiva parte dal
+  nuovo HEAD. Conflitti attesi: nessuno (le coppie non condividono file); `clienti.module.ts` è
+  toccato solo da task backend di ondate diverse.
+- **Variante più veloce (non consigliata ora):** un secondo database nello stesso container
+  (`CREATE DATABASE wasteflow_ci_b`, `migrate deploy`, `db-ruoli.sh`; la guardia `:55438/` resta
+  vera) permetterebbe 13 ∥ 14 e 15 ∥ 16, con le esecuzioni comunque in fila sul lock della RAM.
+  Guadagno piccolo (la scrittura del codice si sovrappone, i test no) contro due schemi da tenere
+  allineati.
+
 ---
 
 ## Stato di partenza (branch `feat/fase4-1-contratto-cliente` = `dafa30b` + questo piano, verificato)
@@ -1209,7 +1431,7 @@ Ogni modello: `id` uuid, `tenantId`, colonne di D6/D21-D26, `attiva`/`attivo` Bo
 `versione Int @default(1)`, `createdAt`/`updatedAt` come le altre tabelle. Nomi dei vincoli con il
 prefisso della tabella (`…_versione_positiva`, `condizioni_pagamento_rate_ammesse`,
 `spese_accessorie_importo_non_negativo`, `registri_iva_codice_due_cifre`,
-`testi_fatturazione_righe_ammesse`), FK `…_tenant_fkey` `ON DELETE CASCADE`. Il collegamento a
+`testi_fatturazione_righe_ammesse`), FK `<tabella>_tenant_id_fkey` `ON DELETE CASCADE` (R17). Il collegamento a
 clienti e contratti arriva dal Task 9.
 
 - [ ] **Step 1: test che falliscono** (ruolo app nel contesto, proprietario per preparare):
@@ -1998,7 +2220,7 @@ cliente, non annullati e non allegati, escluso sé stesso).
 - [ ] **Step 1: test che falliscono.**
   - `CIG o CUP valorizzati: il documento PA diventa obbligatorio (indicatore), la regola resta al
     backend`;
-  - `codice rinnovo S o O spunta il rinnovo automatico, N lo toglie` (D27, come WinWaste);
+  - `codice rinnovo S spunta il rinnovo automatico, N lo toglie` (D27, Q8: `O` non esiste);
     `rinnovo senza data di fine: indicatore`;
   - `IVA esclusa disabilitata senza soglia`; `soglia mandata come stringa`;
   - `annotazioni: tre campi da 45`; `commessa: al massimo 12 caratteri`;
