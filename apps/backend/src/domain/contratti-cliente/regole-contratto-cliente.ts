@@ -360,8 +360,9 @@ function periodi(v: unknown): PeriodoFatturazione[] {
 export function normalizzaContratto(
   g: Partial<Record<CampoContrattoCliente, unknown>>
 ): DatiContrattoCliente {
-  const clienteId = testo(g.clienteId) ?? ''
-  const clienteFatturazioneId = testo(g.clienteFatturazioneId)
+  // minuscoli: un id UUID uguale a meno delle maiuscole e' lo stesso cliente (M8)
+  const clienteId = testo(g.clienteId)?.toLowerCase() ?? ''
+  const clienteFatturazioneId = testo(g.clienteFatturazioneId)?.toLowerCase() ?? null
   const sogliaImporto = decimale(g.sogliaImporto)
   const codiceRinnovo = testo(g.codiceRinnovo)?.toUpperCase() ?? null
   const unita = testo(g.validitaUnita)?.toUpperCase() ?? null

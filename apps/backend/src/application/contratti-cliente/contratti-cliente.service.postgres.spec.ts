@@ -169,6 +169,31 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
     expect(v.clienteFatturazione?.id).toBe(f.ruoloId)
   })
 
+  it('predefinito del cliente disattivato: 400 dedicato; con null esplicito il contratto nasce (R42)', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const t = await creaTabelleFatturazione(owner, tenantId)
+    const c = await cliente(tenantId, { condizionePagamentoId: t.condizioneId })
+    await owner.condizionePagamento.update({
+      where: { id: t.condizioneId },
+      data: { attiva: false },
+    })
+    await expect(
+      nel(tenantId, () => service.crea(tenantId, utenteId, dati(c.ruoloId)))
+    ).rejects.toMatchObject({
+      status: 400,
+      response: {
+        message: [
+          "La condizione di pagamento predefinita del cliente è disattivata: scegline un'altra o lascia il campo vuoto.",
+        ],
+      },
+    })
+    expect(await owner.contrattoCliente.count({ where: { tenantId } })).toBe(0)
+    const v = await nel(tenantId, () =>
+      service.crea(tenantId, utenteId, dati(c.ruoloId, { condizionePagamentoId: null }))
+    )
+    expect(v.condizionePagamento).toBeNull()
+  })
+
   it('riferimenti di B nel contesto di A: 400 e nessuna riga scritta', async () => {
     const a = await azienda()
     const b = await azienda()

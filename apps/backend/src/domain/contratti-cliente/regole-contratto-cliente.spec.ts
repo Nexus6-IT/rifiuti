@@ -623,3 +623,14 @@ describe('valori effettivi (D4)', () => {
     expect(contoCorrenteEffettivo({ contoCorrenteId: null }, { contoCorrenteId: null })).toBeNull()
   })
 })
+
+describe('normalizzaContratto: id dei clienti (M8)', () => {
+  it('cliente e cliente di fatturazione uguali a meno delle maiuscole: fatturazione nulla', () => {
+    const d = normalizzaContratto({
+      clienteId: 'AAAAAAAA-0000-4000-8000-000000000001',
+      clienteFatturazioneId: 'aaaaaaaa-0000-4000-8000-000000000001',
+    })
+    expect(d.clienteFatturazioneId).toBeNull()
+    expect(d.clienteId).toBe('aaaaaaaa-0000-4000-8000-000000000001')
+  })
+})

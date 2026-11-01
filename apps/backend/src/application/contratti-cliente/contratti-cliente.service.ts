@@ -125,6 +125,51 @@ const MSG_SEDE = 'La sede scelta non è una sede attiva del cliente.'
 const MSG_PRINCIPALE =
   'Il contratto principale deve essere un contratto dello stesso cliente, non annullato e non allegato a sua volta.'
 
+type ChiaveRiferimento =
+  | 'condizionePagamentoId'
+  | 'contoCorrenteId'
+  | 'speseIncassoId'
+  | 'bolloId'
+  | 'registroIvaId'
+  | 'agenteId'
+  | 'testoFatturazioneId'
+  | 'categoriaId'
+  | 'tipoId'
+
+const CHIAVI_RIFERIMENTO: readonly ChiaveRiferimento[] = [
+  'condizionePagamentoId',
+  'contoCorrenteId',
+  'speseIncassoId',
+  'bolloId',
+  'registroIvaId',
+  'agenteId',
+  'testoFatturazioneId',
+  'categoriaId',
+  'tipoId',
+]
+
+/** Predefiniti del cliente che sono riferimenti a tabelle (il conto non si eredita). */
+const CHIAVI_EREDITATE: readonly ChiaveRiferimento[] = [
+  'condizionePagamentoId',
+  'speseIncassoId',
+  'bolloId',
+  'registroIvaId',
+  'agenteId',
+]
+
+const CODA_PREDEFINITO = "scegline un'altra o lascia il campo vuoto."
+const MSG_PREDEFINITO: Readonly<Record<ChiaveRiferimento, string>> = {
+  condizionePagamentoId: `La condizione di pagamento predefinita del cliente è disattivata: ${CODA_PREDEFINITO}`,
+  speseIncassoId: `Le spese di incasso predefinite del cliente non sono più utilizzabili: ${CODA_PREDEFINITO}`,
+  bolloId: `Il bollo predefinito del cliente non è più utilizzabile: ${CODA_PREDEFINITO}`,
+  registroIvaId: `Il registro IVA predefinito del cliente non è più utilizzabile: ${CODA_PREDEFINITO}`,
+  agenteId: `L'agente predefinito del cliente è disattivato: ${CODA_PREDEFINITO}`,
+  contoCorrenteId: '',
+  testoFatturazioneId: '',
+  categoriaId: '',
+  tipoId: '',
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const INCLUDE = {
@@ -190,7 +235,11 @@ export class ContrattiClienteService {
     d: DatiCreazioneContratto
   ): Promise<ContrattoClienteVista> {
     // 1. Validazione pura sul corpo, prima di ogni lettura del database (D9, D14).
-    const errori = validaContrattoCliente(normalizzaContratto({ ...d }))
+    // Un riferimento senza codice nel corpo non e' ancora un errore: il codice puo' arrivare dal
+    // cliente (D4). Il controllo della coppia lo rifa `scrivi` dopo l'ereditarieta'.
+    const corpo: Record<string, unknown> = { ...d }
+    if (corpo.codiceDestinatario === undefined) delete corpo.riferimentoAmministrazione
+    const errori = validaContrattoCliente(normalizzaContratto(corpo))
     if (errori.length > 0) throw nonValido(errori)
 
     return nelContestoTenant(tenantId, async () => {
@@ -222,29 +271,38 @@ export class ContrattiClienteService {
     const fatturazione = idFatturazione ? trovati.get(idFatturazione) : undefined
     if (idFatturazione && !fatturazione?.attivo) messaggi.push(MSG_FATTURAZIONE)
 
-    // 3. Predefiniti (D4): solo i campi assenti dal corpo; un `null` esplicito vince.
+    // 3. Predefiniti (D4): solo i campi assenti dal corpo; un `null` esplicito vince. Con il cliente
+    //    disattivato si segnala solo quello (M3).
     const completo: Record<string, unknown> = { ...d }
-    if (cliente) {
+    const ereditati: ChiaveRiferimento[] = []
+    if (cliente?.attivo) {
       for (const campo of CAMPI_EREDITATI_DAL_CLIENTE) {
         if (campo === 'codiceDestinatario' || campo === 'riferimentoAmministrazione') continue
-        if (completo[campo] === undefined)
-          completo[campo] = cliente[campo as keyof ClienteEreditabile]
+        if (completo[campo] !== undefined) continue
+        completo[campo] = cliente[campo as keyof ClienteEreditabile]
+        if (completo[campo] !== null && (CHIAVI_EREDITATE as readonly string[]).includes(campo)) {
+          ereditati.push(campo as ChiaveRiferimento)
+        }
       }
-      // R35: il recapito SDI viene dal cliente di fatturazione, se diverso; codice e riferimento
-      // viaggiano in coppia (un riferimento senza il suo codice non avrebbe senso).
+      // R35: il recapito SDI viene dal cliente di fatturazione, se diverso (la PEC, che non e' una
+      // colonna del contratto, la legge chi fattura dalla stessa sorgente di `destinatarioEffettivo`).
       const sorgente = fatturazione?.attivo ? fatturazione : cliente
       if (completo.codiceDestinatario === undefined) {
         completo.codiceDestinatario = sorgente.codiceDestinatario
-        if (completo.riferimentoAmministrazione === undefined) {
-          completo.riferimentoAmministrazione = sorgente.riferimentoAmministrazione
-        }
+      }
+      // Il riferimento si eredita anche se il corpo cambia il codice (il form lo mostra), salvo che il
+      // codice effettivo manchi o sia 0000000: li' non avrebbe senso (I2).
+      if (completo.riferimentoAmministrazione === undefined) {
+        const codice = normalizzaContratto(completo).codiceDestinatario
+        completo.riferimentoAmministrazione =
+          codice === null || codice === '0000000' ? null : sorgente.riferimentoAmministrazione
       }
     }
     const dati = normalizzaContratto(completo)
-    if (cliente) messaggi.push(...validaContrattoCliente(dati))
+    if (cliente?.attivo) messaggi.push(...validaContrattoCliente(dati))
 
     // 4. Sede attiva della ditta del cliente, bloccata.
-    if (dati.sedeId !== null && cliente) {
+    if (dati.sedeId !== null && cliente?.attivo) {
       const ok =
         UUID.test(dati.sedeId) &&
         (
@@ -255,23 +313,18 @@ export class ContrattiClienteService {
       if (!ok) messaggi.push(MSG_SEDE)
     }
 
-    // 5. Tabelle, agente, testo e codifiche (anche quelle ereditate: un predefinito disattivato nel
-    //    frattempo non entra in un contratto nuovo).
-    const riferimenti: RiferimentiDaControllare = {}
-    for (const k of [
-      'condizionePagamentoId',
-      'contoCorrenteId',
-      'speseIncassoId',
-      'bolloId',
-      'registroIvaId',
-      'agenteId',
-      'testoFatturazioneId',
-      'categoriaId',
-      'tipoId',
-    ] as const) {
-      if (dati[k] !== null) riferimenti[k] = dati[k]
+    // 5. Tabelle, agente, testo e codifiche. Quelle scelte dall'operatore hanno il messaggio
+    //    generico; i predefiniti ereditati si controllano a parte, un campo per volta, con un
+    //    messaggio dedicato (R42): mai null in silenzio.
+    const scelti: RiferimentiDaControllare = {}
+    for (const k of CHIAVI_RIFERIMENTO) {
+      if (dati[k] !== null && !ereditati.includes(k)) scelti[k] = dati[k]
     }
-    messaggi.push(...(await controllaRiferimenti(tx, tenantId, riferimenti)))
+    if (cliente?.attivo) messaggi.push(...(await controllaRiferimenti(tx, tenantId, scelti)))
+    for (const k of ereditati) {
+      const esito = await controllaRiferimenti(tx, tenantId, { [k]: dati[k] })
+      if (esito.length > 0) messaggi.push(MSG_PREDEFINITO[k])
+    }
 
     // 6. Contratto principale (D28), con FOR UPDATE.
     if (dati.contrattoPrincipaleId !== null) {
@@ -374,7 +427,8 @@ export class ContrattiClienteService {
         const righe = await tx.contrattoCliente.findMany({
           where,
           include: INCLUDE,
-          orderBy: [{ numero: 'desc' }, { id: 'asc' }],
+          // per creazione: `numero` e' testo e CC-2026-1000 starebbe prima di CC-2026-999 (M6)
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
           skip: (f.pagina - 1) * f.dimensione,
           take: f.dimensione,
         })

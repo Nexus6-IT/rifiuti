@@ -259,7 +259,7 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       expect(data.bolloId).toBe(R(6))
     })
 
-    it('se il corpo indica il codice destinatario, il riferimento del cliente non si eredita', async () => {
+    it('se il corpo cambia solo il codice, il riferimento del cliente si eredita comunque (D4, I2)', async () => {
       clienti.attiviPerId.mockResolvedValue(
         new Map([
           [
@@ -271,7 +271,95 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       await service.crea(T, U, { ...base, codiceDestinatario: 'ABCDEFG' })
       const data = tx.contrattoCliente.create.mock.calls[0][0].data
       expect(data.codiceDestinatario).toBe('ABCDEFG')
-      expect(data.riferimentoAmministrazione ?? null).toBeNull()
+      expect(data.riferimentoAmministrazione).toBe('RIF')
+    })
+
+    it.each([[null], ['0000000']])(
+      'codice effettivo %s: il riferimento del cliente non si eredita (I2)',
+      async codice => {
+        clienti.attiviPerId.mockResolvedValue(
+          new Map([
+            [
+              CL,
+              clienteEreditabile({
+                codiceDestinatario: 'UFE1AB',
+                riferimentoAmministrazione: 'RIF',
+              }),
+            ],
+          ])
+        )
+        await service.crea(T, U, { ...base, codiceDestinatario: codice })
+        const data = tx.contrattoCliente.create.mock.calls[0][0].data
+        expect(data.riferimentoAmministrazione ?? null).toBeNull()
+      }
+    )
+
+    it('corpo con solo il riferimento: il codice si eredita e la validazione pura non lo rifiuta (I1)', async () => {
+      clienti.attiviPerId.mockResolvedValue(
+        new Map([[CL, clienteEreditabile({ codiceDestinatario: 'UFE1AB' })]])
+      )
+      await service.crea(T, U, { ...base, riferimentoAmministrazione: 'RIF-NUOVO' })
+      const data = tx.contrattoCliente.create.mock.calls[0][0].data
+      expect(data.codiceDestinatario).toBe('UFE1AB')
+      expect(data.riferimentoAmministrazione).toBe('RIF-NUOVO')
+    })
+
+    it('corpo con solo il riferimento e cliente senza codice: 400 dopo l’ereditarieta’ (I1)', async () => {
+      clienti.attiviPerId.mockResolvedValue(
+        new Map([[CL, clienteEreditabile({ codiceDestinatario: null })]])
+      )
+      const e = await errore(service.crea(T, U, { ...base, riferimentoAmministrazione: 'RIF' }))
+      expect(e.getResponse().message).toContain(
+        'Il riferimento amministrazione si indica solo insieme al codice destinatario.'
+      )
+    })
+
+    describe('predefiniti disattivati (R42)', () => {
+      const soloChiavi = (r: Record<string, unknown>, ...k: string[]) =>
+        Object.keys(r).length === k.length && k.every(x => x in r)
+
+      it('predefinito ereditato disattivato: 400 con il messaggio dedicato, mai null in silenzio', async () => {
+        controlla.mockImplementation(
+          async (_tx: unknown, _t: string, r: Record<string, unknown>) =>
+            soloChiavi(r, 'condizionePagamentoId')
+              ? ['La condizione di pagamento scelta non esiste o è disattivata.']
+              : []
+        )
+        const e = await errore(service.crea(T, U, base))
+        expect(e.getResponse().message).toEqual([
+          "La condizione di pagamento predefinita del cliente è disattivata: scegline un'altra o lascia il campo vuoto.",
+        ])
+        expect(tx.contrattoCliente.create).not.toHaveBeenCalled()
+      })
+
+      it('scelto dall’operatore e disattivato: resta il messaggio generico', async () => {
+        controlla.mockImplementation(
+          async (_tx: unknown, _t: string, r: Record<string, unknown>) =>
+            r.condizionePagamentoId === R(7)
+              ? ['La condizione di pagamento scelta non esiste o è disattivata.']
+              : []
+        )
+        const e = await errore(service.crea(T, U, { ...base, condizionePagamentoId: R(7) }))
+        expect(e.getResponse().message).toEqual([
+          'La condizione di pagamento scelta non esiste o è disattivata.',
+        ])
+      })
+
+      it('null esplicito sul predefinito disattivato: la creazione riesce', async () => {
+        controlla.mockImplementation(
+          async (_tx: unknown, _t: string, r: Record<string, unknown>) =>
+            r.condizionePagamentoId ? ['x'] : []
+        )
+        await service.crea(T, U, { ...base, condizionePagamentoId: null })
+        expect(tx.contrattoCliente.create).toHaveBeenCalled()
+      })
+    })
+
+    it('cliente disattivato: solo l’errore del cliente, nessun controllo sui predefiniti (M3)', async () => {
+      clienti.attiviPerId.mockResolvedValue(new Map([[CL, clienteEreditabile({ attivo: false })]]))
+      controlla.mockResolvedValue(['Messaggio dei predefiniti'])
+      const e = await errore(service.crea(T, U, base))
+      expect(e.getResponse().message).toEqual(['Il cliente scelto non esiste o è disattivato.'])
     })
 
     describe('recapito SDI (R35)', () => {
@@ -362,14 +450,18 @@ describe('ContrattiClienteService (Prisma finto)', () => {
     })
 
     it('riferimenti non validi: 400 con i messaggi di controllaRiferimenti, sulla riga ereditata e scelta', async () => {
-      controlla.mockResolvedValue(['La condizione di pagamento scelta non esiste o è disattivata.'])
+      controlla.mockImplementation(async (_tx: unknown, _t: string, r: Record<string, unknown>) =>
+        r.categoriaId ? ['La condizione di pagamento scelta non esiste o è disattivata.'] : []
+      )
       const e = await errore(service.crea(T, U, { ...base, categoriaId: R(8) }))
       expect(e.getResponse().message).toEqual([
         'La condizione di pagamento scelta non esiste o è disattivata.',
       ])
       const passati = controlla.mock.calls[0][2]
       expect(passati.categoriaId).toBe(R(8))
-      expect(passati.condizionePagamentoId).toBe(R(2))
+      // gli ereditati si controllano a parte, un campo per volta (R42)
+      expect(passati.condizionePagamentoId).toBeUndefined()
+      expect(controlla.mock.calls.some(c => c[2].condizionePagamentoId === R(2))).toBe(true)
       expect(controlla.mock.calls[0][0]).toBe(tx)
       expect(tx.contrattoCliente.create).not.toHaveBeenCalled()
     })
@@ -601,6 +693,14 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       expect(arg.take).toBe(20)
       expect(r.totale).toBe(41)
       expect(r.elementi).toHaveLength(1)
+    })
+
+    it('ordina per creazione, non per numero testuale (M6)', async () => {
+      await service.list(T, { pagina: 1, dimensione: 20 })
+      expect(tx.contrattoCliente.findMany.mock.calls[0][0].orderBy).toEqual([
+        { createdAt: 'desc' },
+        { id: 'asc' },
+      ])
     })
 
     it('filtri per stato, cliente, categoria e tipo', async () => {
