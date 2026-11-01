@@ -26,13 +26,14 @@ export function permessoScrittura(): Signal<boolean> {
 export function chiediConferma(
   conferma: ConfirmationService,
   messaggio: string,
-  accetta: () => void
+  accetta: () => void,
+  testi: { header?: string; acceptLabel?: string } = {}
 ): void {
   conferma.confirm({
-    header: 'Conferma eliminazione',
+    header: testi.header ?? 'Conferma eliminazione',
     message: messaggio,
     icon: 'pi pi-exclamation-triangle',
-    acceptLabel: 'Elimina',
+    acceptLabel: testi.acceptLabel ?? 'Elimina',
     rejectLabel: 'Annulla',
     accept: accetta,
   })

@@ -1,9 +1,33 @@
 import { signal } from '@angular/core'
 import { Subject, of, throwError } from 'rxjs'
 import { Pagina } from '../clienti.model'
-import { caricaElenco, caricaPagina, eseguiERicarica, messaggioErrore } from './tabella-comune'
+import { ConfirmationService } from 'primeng/api'
+import {
+  caricaElenco,
+  caricaPagina,
+  chiediConferma,
+  eseguiERicarica,
+  messaggioErrore,
+} from './tabella-comune'
 
 describe('tabella-comune', () => {
+  describe('chiediConferma', () => {
+    it('di default parla di eliminazione; i testi si possono cambiare', () => {
+      const conferma = jasmine.createSpyObj<ConfirmationService>('ConfirmationService', ['confirm'])
+      chiediConferma(conferma, 'Eliminare?', () => undefined)
+      expect(conferma.confirm).toHaveBeenCalledWith(
+        jasmine.objectContaining({ header: 'Conferma eliminazione', acceptLabel: 'Elimina' })
+      )
+      chiediConferma(conferma, 'Disattivare?', () => undefined, {
+        header: 'Conferma disattivazione',
+        acceptLabel: 'Disattiva',
+      })
+      expect(conferma.confirm.calls.mostRecent().args[0]).toEqual(
+        jasmine.objectContaining({ header: 'Conferma disattivazione', acceptLabel: 'Disattiva' })
+      )
+    })
+  })
+
   const errore409 = { error: { message: 'La riga è stata modificata da un altro utente.' } }
 
   describe('messaggioErrore', () => {
