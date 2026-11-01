@@ -5,20 +5,14 @@ import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { TableModule } from 'primeng/table'
-import { Subject, debounceTime, takeUntil } from 'rxjs'
+
 import { ToastService } from '../../core/services/toast.service'
 import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
 import { AgenteDialogComponent } from './agente-dialog.component'
 import { Agente } from './clienti.model'
 import { ClientiService } from './clienti.service'
-import {
-  caricaPagina,
-  chiediConferma,
-  eseguiERicarica,
-  permessoScrittura,
-} from './tabelle/tabella-comune'
-
-const DIMENSIONE_PREDEFINITA = 25
+import { ElencoPaginato } from './tabelle/elenco-paginato'
+import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/tabella-comune'
 
 /** Elenco degli agenti: ricerca con debounce, paginazione lazy, disattiva ed elimina. */
 @Component({
@@ -44,7 +38,7 @@ const DIMENSIONE_PREDEFINITA = 25
             type="search"
             placeholder="Cerca per ragione sociale, partita IVA o codice"
             aria-label="Cerca un agente"
-            (input)="cerca($any($event.target).value)"
+            (input)="elenco.cerca($any($event.target).value)"
             data-testid="agenti-cerca"
           />
         </span>
@@ -62,11 +56,12 @@ const DIMENSIONE_PREDEFINITA = 25
         [lazy]="true"
         [lazyLoadOnInit]="false"
         [paginator]="true"
-        [rows]="dimensione"
-        [first]="primo"
+        [rows]="elenco.dimensione"
+        [first]="elenco.primo"
         [totalRecords]="totale()"
+        [loading]="elenco.caricamento()"
         [rowsPerPageOptions]="[10, 25, 50]"
-        (onLazyLoad)="cambiaPagina($event)"
+        (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
         styleClass="p-datatable-sm"
@@ -155,59 +150,34 @@ export class AgentiListComponent implements OnInit, OnDestroy {
   private readonly conferma = inject(ConfirmationService)
 
   readonly puoScrivere = permessoScrittura()
-  readonly righe = signal<Agente[]>([])
-  readonly totale = signal(0)
-  readonly erroreElenco = signal<string | null>(null)
+  readonly elenco = new ElencoPaginato<Agente>(
+    filtro => this.servizio.agenti.list(filtro),
+    'Impossibile caricare gli agenti.'
+  )
+  readonly righe = this.elenco.righe
+  readonly totale = this.elenco.totale
+  readonly erroreElenco = this.elenco.errore
   readonly dialogoAperto = signal(false)
   readonly selezionato = signal<Agente | null>(null)
 
-  dimensione = DIMENSIONE_PREDEFINITA
-  primo = 0
-  private testo = ''
-  private readonly ricerca = new Subject<string>()
-  /** Ogni nuovo caricamento annulla il precedente: una risposta in ritardo non vale più. */
-  private readonly annulla = new Subject<void>()
-  private readonly distrutto = new Subject<void>()
-
   ngOnInit(): void {
-    this.ricerca.pipe(debounceTime(300), takeUntil(this.distrutto)).subscribe(t => {
-      this.testo = t.trim()
-      this.primo = 0
-      this.carica()
-    })
-    this.carica()
+    this.elenco.avvia()
   }
 
   ngOnDestroy(): void {
-    this.annulla.next()
-    this.distrutto.next()
-  }
-
-  cerca(valore: string): void {
-    this.ricerca.next(valore)
-  }
-
-  cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
-    this.dimensione = ev.rows || this.dimensione
-    this.primo = ev.first ?? 0
-    this.carica()
+    this.elenco.ferma()
   }
 
   carica(): void {
-    this.annulla.next()
-    caricaPagina(
-      this.servizio.agenti
-        .list({
-          pagina: Math.floor(this.primo / this.dimensione) + 1,
-          dimensione: this.dimensione,
-          ...(this.testo ? { testo: this.testo } : {}),
-        })
-        .pipe(takeUntil(this.annulla)),
-      this.righe,
-      this.totale,
-      this.erroreElenco,
-      'Impossibile caricare gli agenti.'
-    )
+    this.elenco.carica()
+  }
+
+  cerca(valore: string): void {
+    this.elenco.cerca(valore)
+  }
+
+  cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
+    this.elenco.cambiaPagina(ev)
   }
 
   identificativo(a: Agente): string {

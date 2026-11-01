@@ -7,12 +7,10 @@ import {
   Output,
   SimpleChanges,
   ViewChild,
-  computed,
   inject,
   signal,
 } from '@angular/core'
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms'
-import { AutoCompleteModule } from 'primeng/autocomplete'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
@@ -24,38 +22,22 @@ import { etichettaIdentificativiCompleta } from '../registry/identificativo-fisc
 import { puoGestireAnagrafiche } from '../registry/registry-permissions'
 import { RegistryService } from '../registry/registry.service'
 import { SediDittaDialogComponent } from '../registry/sedi-ditta-dialog.component'
-import { AgenteDialogComponent } from './agente-dialog.component'
-import { AggiuntaInLinea } from './aggiunta-in-linea'
 import {
-  Agente,
   Cliente,
-  CondizionePagamento,
-  ContoCorrente,
   DatiFiscaliCliente,
   EsigibilitaIva,
   ModificaCliente,
   NuovoCliente,
-  RegistroIva,
-  Rif,
-  SpesaAccessoria,
 } from './clienti.model'
 import { ClientiService } from './clienti.service'
 import { DittaRuoloFormComponent } from './ditta-ruolo-form.component'
+import { OpzioniFatturazione } from './opzioni-fatturazione'
+import { SceltaAgenteComponent } from './scelta-agente.component'
+import { SceltaConNuovoComponent } from './scelta-con-nuovo.component'
+import { SottoDialogFatturazioneComponent } from './sotto-dialog-fatturazione.component'
 import { TabelleFatturazioneService } from './tabelle-fatturazione.service'
-import { CondizionePagamentoDialogComponent } from './tabelle/condizione-pagamento-dialog.component'
-import { ContoCorrenteDialogComponent } from './tabelle/conto-corrente-dialog.component'
-import { RegistroIvaDialogComponent } from './tabelle/registro-iva-dialog.component'
-import { SpesaAccessoriaDialogComponent } from './tabelle/spesa-accessoria-dialog.component'
 import { messaggioErrore } from './tabelle/tabella-comune'
 import { OPZIONI_ESIGIBILITA } from './vocabolario-clienti'
-
-/** Voce di un select: mai l'id a video. */
-interface Opzione {
-  id: string
-  etichetta: string
-}
-
-type SubDialog = 'condizione' | 'conto' | 'spese' | 'bollo' | 'registro' | 'agente'
 
 const MESSAGGIO_PRIVATO = 'Per un cliente persona fisica indica nome e cognome.'
 const CODICE_NESSUNO = '0000000'
@@ -64,18 +46,6 @@ const vuoto = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 const vuotoId = (v: string): string | null => (v === '' ? null : v)
 const senzaSpazi = (v: string | null): string | null =>
   v === null ? null : v.replace(/\s+/g, '').toUpperCase()
-
-const etichettaCodice = (codice: string | null, descrizione: string): string =>
-  codice ? `${codice} - ${descrizione}` : descrizione
-
-/** Aggiunge la voce corrente se non è fra quelle attive (disattivata dopo la scelta). */
-function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
-  if (!r || lista.some(o => o.id === r.id)) return lista
-  return [
-    ...lista,
-    { id: r.id, etichetta: `${etichettaCodice(r.codice, r.descrizione)} (non più disponibile)` },
-  ]
-}
 
 /**
  * Nuovo cliente o modifica. Il ruolo vive su una ditta (D18): in creazione si cerca la ditta per
@@ -90,17 +60,14 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
-    AutoCompleteModule,
     ButtonModule,
     DialogModule,
     InputTextModule,
     DittaRuoloFormComponent,
     SediDittaDialogComponent,
-    AgenteDialogComponent,
-    CondizionePagamentoDialogComponent,
-    ContoCorrenteDialogComponent,
-    RegistroIvaDialogComponent,
-    SpesaAccessoriaDialogComponent,
+    SceltaConNuovoComponent,
+    SceltaAgenteComponent,
+    SottoDialogFatturazioneComponent,
   ],
   template: `
     <p-dialog
@@ -216,49 +183,28 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
         >
 
         <h3 class="sezione">Pagamento</h3>
-        <label for="cliente-dlg-condizione">Condizione di pagamento</label>
-        <div class="dlg-scelta">
-          <select
-            id="cliente-dlg-condizione"
-            formControlName="condizionePagamentoId"
-            class="p-inputtext"
-            data-testid="cliente-dlg-condizione"
-          >
-            <option value="">—</option>
-            <option *ngFor="let o of opzCondizioni()" [value]="o.id">{{ o.etichetta }}</option>
-          </select>
-          <p-button
-            *ngIf="puoScrivere()"
-            label="Nuova condizione"
-            icon="pi pi-plus"
-            [text]="true"
-            size="small"
-            (onClick)="inLinea.apri('condizione', 'create', $event)"
-            data-testid="cliente-dlg-nuova-condizione"
-          />
-        </div>
-
-        <label for="cliente-dlg-conto">Ns. coordinate bancarie (conto del gestore)</label>
-        <div class="dlg-scelta">
-          <select
-            id="cliente-dlg-conto"
-            formControlName="contoCorrenteId"
-            class="p-inputtext"
-            data-testid="cliente-dlg-conto"
-          >
-            <option value="">—</option>
-            <option *ngFor="let o of opzConti()" [value]="o.id">{{ o.etichetta }}</option>
-          </select>
-          <p-button
-            *ngIf="puoScrivere()"
-            label="Nuovo conto"
-            icon="pi pi-plus"
-            [text]="true"
-            size="small"
-            (onClick)="inLinea.apri('conto', 'create', $event)"
-            data-testid="cliente-dlg-nuovo-conto"
-          />
-        </div>
+        <app-scelta-con-nuovo
+          inputId="cliente-dlg-condizione"
+          testid="cliente-dlg-condizione"
+          etichetta="Condizione di pagamento"
+          [controllo]="form.controls.condizionePagamentoId"
+          [opzioni]="opzioni.opzCondizioni()"
+          nuovoEtichetta="Nuova condizione"
+          nuovoTestid="cliente-dlg-nuova-condizione"
+          [puoCreare]="puoScrivere()"
+          (nuovo)="opzioni.inLinea.apri('condizione', 'create', $any($event))"
+        />
+        <app-scelta-con-nuovo
+          inputId="cliente-dlg-conto"
+          testid="cliente-dlg-conto"
+          etichetta="Ns. coordinate bancarie (conto del gestore)"
+          [controllo]="form.controls.contoCorrenteId"
+          [opzioni]="opzioni.opzConti()"
+          nuovoEtichetta="Nuovo conto"
+          nuovoTestid="cliente-dlg-nuovo-conto"
+          [puoCreare]="puoScrivere()"
+          (nuovo)="opzioni.inLinea.apri('conto', 'create', $any($event))"
+        />
 
         <label for="cliente-dlg-iban">IBAN del cliente (facoltativo)</label>
         <input
@@ -270,49 +216,29 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
           data-testid="cliente-dlg-iban"
         />
 
-        <label for="cliente-dlg-spese">Spese di incasso</label>
-        <div class="dlg-scelta">
-          <select
-            id="cliente-dlg-spese"
-            formControlName="speseIncassoId"
-            class="p-inputtext"
-            data-testid="cliente-dlg-spese"
-          >
-            <option value="">—</option>
-            <option *ngFor="let o of opzSpese()" [value]="o.id">{{ o.etichetta }}</option>
-          </select>
-          <p-button
-            *ngIf="puoScrivere()"
-            label="Nuova spesa di incasso"
-            icon="pi pi-plus"
-            [text]="true"
-            size="small"
-            (onClick)="inLinea.apri('spese', 'create', $event)"
-            data-testid="cliente-dlg-nuove-spese"
-          />
-        </div>
-
-        <label for="cliente-dlg-bollo">Bollo</label>
-        <div class="dlg-scelta">
-          <select
-            id="cliente-dlg-bollo"
-            formControlName="bolloId"
-            class="p-inputtext"
-            data-testid="cliente-dlg-bollo"
-          >
-            <option value="">Bollo non addebitato</option>
-            <option *ngFor="let o of opzBolli()" [value]="o.id">{{ o.etichetta }}</option>
-          </select>
-          <p-button
-            *ngIf="puoScrivere()"
-            label="Nuovo bollo"
-            icon="pi pi-plus"
-            [text]="true"
-            size="small"
-            (onClick)="inLinea.apri('bollo', 'create', $event)"
-            data-testid="cliente-dlg-nuovo-bollo"
-          />
-        </div>
+        <app-scelta-con-nuovo
+          inputId="cliente-dlg-spese"
+          testid="cliente-dlg-spese"
+          etichetta="Spese di incasso"
+          [controllo]="form.controls.speseIncassoId"
+          [opzioni]="opzioni.opzSpese()"
+          nuovoEtichetta="Nuova spesa di incasso"
+          nuovoTestid="cliente-dlg-nuove-spese"
+          [puoCreare]="puoScrivere()"
+          (nuovo)="opzioni.inLinea.apri('spese', 'create', $any($event))"
+        />
+        <app-scelta-con-nuovo
+          inputId="cliente-dlg-bollo"
+          testid="cliente-dlg-bollo"
+          etichetta="Bollo"
+          [controllo]="form.controls.bolloId"
+          [opzioni]="opzioni.opzBolli()"
+          vuoto="Bollo non addebitato"
+          nuovoEtichetta="Nuovo bollo"
+          nuovoTestid="cliente-dlg-nuovo-bollo"
+          [puoCreare]="puoScrivere()"
+          (nuovo)="opzioni.inLinea.apri('bollo', 'create', $any($event))"
+        />
 
         <h3 class="sezione">Fiscale</h3>
         <label for="cliente-dlg-esigibilita">Esigibilità IVA</label>
@@ -325,27 +251,17 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
           <option *ngFor="let o of esigibilita" [value]="o.value">{{ o.label }}</option>
         </select>
 
-        <label for="cliente-dlg-registro">Registro IVA</label>
-        <div class="dlg-scelta">
-          <select
-            id="cliente-dlg-registro"
-            formControlName="registroIvaId"
-            class="p-inputtext"
-            data-testid="cliente-dlg-registro"
-          >
-            <option value="">—</option>
-            <option *ngFor="let o of opzRegistri()" [value]="o.id">{{ o.etichetta }}</option>
-          </select>
-          <p-button
-            *ngIf="puoScrivere()"
-            label="Nuovo registro"
-            icon="pi pi-plus"
-            [text]="true"
-            size="small"
-            (onClick)="inLinea.apri('registro', 'create', $event)"
-            data-testid="cliente-dlg-nuovo-registro"
-          />
-        </div>
+        <app-scelta-con-nuovo
+          inputId="cliente-dlg-registro"
+          testid="cliente-dlg-registro"
+          etichetta="Registro IVA"
+          [controllo]="form.controls.registroIvaId"
+          [opzioni]="opzioni.opzRegistri()"
+          nuovoEtichetta="Nuovo registro"
+          nuovoTestid="cliente-dlg-nuovo-registro"
+          [puoCreare]="puoScrivere()"
+          (nuovo)="opzioni.inLinea.apri('registro', 'create', $any($event))"
+        />
 
         <label for="cliente-dlg-ritenuta">Ritenuta d'acconto (%)</label>
         <input
@@ -356,37 +272,7 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
           data-testid="cliente-dlg-ritenuta"
         />
 
-        <label for="cliente-dlg-agente">Agente</label>
-        <div class="dlg-scelta">
-          <p-autoComplete
-            inputId="cliente-dlg-agente"
-            [ngModel]="agenteSelezionato"
-            (ngModelChange)="agenteSelezionato = $event"
-            [ngModelOptions]="{ standalone: true }"
-            [suggestions]="suggerimentiAgenti()"
-            (completeMethod)="cercaAgenti($event)"
-            (onSelect)="scegliAgente($event.value)"
-            (onClear)="scegliAgente(null)"
-            field="etichetta"
-            [dropdown]="true"
-            [forceSelection]="true"
-            [minLength]="0"
-            [showClear]="true"
-            [disabled]="!puoScrivere()"
-            ariaLabel="Agente"
-            styleClass="w-full"
-            data-testid="cliente-dlg-agente"
-          />
-          <p-button
-            *ngIf="puoScrivere()"
-            label="Nuovo agente"
-            icon="pi pi-plus"
-            [text]="true"
-            size="small"
-            (onClick)="inLinea.apri('agente', 'create', $event)"
-            data-testid="cliente-dlg-nuovo-agente"
-          />
-        </div>
+        <app-scelta-agente prefisso="cliente-dlg" [opzioni]="opzioni" [puoCreare]="puoScrivere()" />
 
         <h3 class="sezione">Note</h3>
         <label for="cliente-dlg-note">Note</label>
@@ -412,38 +298,7 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
       </ng-template>
     </p-dialog>
 
-    <app-condizione-pagamento-dialog
-      [visible]="inLinea.aperto === 'condizione'"
-      (visibleChange)="chiudiSub($event)"
-      (salvato)="dopoCondizione($event)"
-    />
-    <app-conto-corrente-dialog
-      [visible]="inLinea.aperto === 'conto'"
-      (visibleChange)="chiudiSub($event)"
-      (salvato)="dopoConto($event)"
-    />
-    <app-spesa-accessoria-dialog
-      [visible]="inLinea.aperto === 'spese'"
-      tipo="INCASSO"
-      (visibleChange)="chiudiSub($event)"
-      (salvato)="dopoSpese($event)"
-    />
-    <app-spesa-accessoria-dialog
-      [visible]="inLinea.aperto === 'bollo'"
-      tipo="BOLLO"
-      (visibleChange)="chiudiSub($event)"
-      (salvato)="dopoBollo($event)"
-    />
-    <app-registro-iva-dialog
-      [visible]="inLinea.aperto === 'registro'"
-      (visibleChange)="chiudiSub($event)"
-      (salvato)="dopoRegistro($event)"
-    />
-    <app-agente-dialog
-      [visible]="inLinea.aperto === 'agente'"
-      (visibleChange)="chiudiSub($event)"
-      (salvato)="dopoAgente($event)"
-    />
+    <app-sotto-dialog-fatturazione [opzioni]="opzioni" />
     <app-sedi-ditta-dialog
       *ngIf="cliente"
       [(visible)]="sediAperte"
@@ -475,16 +330,6 @@ function conCorrente(lista: Opzione[], r: Rif | null | undefined): Opzione[] {
         flex: 1 1 0;
         min-width: 0;
       }
-      .dlg-scelta {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-      }
-      .dlg-scelta select,
-      .dlg-scelta p-autocomplete {
-        flex: 1 1 auto;
-        min-width: 0;
-      }
     `,
   ],
 })
@@ -504,7 +349,6 @@ export class ClienteDialogComponent implements OnChanges {
   @ViewChild(DittaRuoloFormComponent) private ditta?: DittaRuoloFormComponent
 
   readonly esigibilita = OPZIONI_ESIGIBILITA
-  readonly inLinea = new AggiuntaInLinea<SubDialog>()
 
   readonly errore = signal<string | null>(null)
   readonly erroreNome = signal<string | null>(null)
@@ -512,32 +356,15 @@ export class ClienteDialogComponent implements OnChanges {
   readonly caricamento = signal(false)
   readonly sedi = signal<SedeDitta[]>([])
   readonly puoScrivere = () => puoGestireAnagrafiche(this.auth.currentUser()?.role)
-
-  /** Il cliente letto dal server (in modifica): base dei confronti e voci correnti dei select. */
+  /** Il cliente letto dal server (in modifica): base dei confronti. */
   private readonly letto = signal<Cliente | null>(null)
-  private readonly condizioni = signal<Opzione[]>([])
-  private readonly conti = signal<Opzione[]>([])
-  private readonly spese = signal<Opzione[]>([])
-  private readonly bolli = signal<Opzione[]>([])
-  private readonly registri = signal<Opzione[]>([])
-  readonly opzCondizioni = computed(() =>
-    conCorrente(this.condizioni(), this.letto()?.condizionePagamento)
-  )
-  readonly opzConti = computed(() => conCorrente(this.conti(), this.letto()?.contoCorrente))
-  readonly opzSpese = computed(() => conCorrente(this.spese(), this.letto()?.speseIncasso))
-  readonly opzBolli = computed(() => conCorrente(this.bolli(), this.letto()?.bollo))
-  readonly opzRegistri = computed(() => conCorrente(this.registri(), this.letto()?.registroIva))
 
-  readonly suggerimentiAgenti = signal<Opzione[]>([])
-  agenteSelezionato: Opzione | null = null
   /** Ditta del nuovo cliente senza partita IVA: servono nome e cognome. */
   privato = false
   sediAperte = false
   private versione = 0
   private lettura?: Subscription
   private lettureSedi?: Subscription
-  private lettureOpzioni?: Subscription
-  private ricercaAgenti?: Subscription
 
   readonly form = new FormGroup({
     nome: new FormControl('', { nonNullable: true }),
@@ -558,6 +385,22 @@ export class ClienteDialogComponent implements OnChanges {
     note: new FormControl('', { nonNullable: true }),
     sedeId: new FormControl('', { nonNullable: true }),
   })
+
+  /** Condizione, conto, spese, bollo, registro e agente con le loro aggiunte in linea. */
+  readonly opzioni = new OpzioniFatturazione(
+    this.tabelle,
+    this.servizio,
+    {
+      condizione: this.form.controls.condizionePagamentoId,
+      conto: this.form.controls.contoCorrenteId,
+      spese: this.form.controls.speseIncassoId,
+      bollo: this.form.controls.bolloId,
+      registro: this.form.controls.registroIvaId,
+      agente: this.form.controls.agenteId,
+    },
+    messaggio => this.toast.warn(messaggio, 'Registro IVA'),
+    messaggio => this.errore.set(messaggio)
+  )
 
   constructor() {
     this.form.controls.codiceDestinatario.valueChanges.subscribe(() => this.aggiornaCampiSdi())
@@ -585,20 +428,33 @@ export class ClienteDialogComponent implements OnChanges {
     this.abilita(this.form.controls.riferimentoAmministrazione, codice !== '' && !nessuno)
   }
 
+  /** Solo disabilita: il valore resta, così digitare il codice carattere per carattere non lo perde. */
   private abilita(c: FormControl<string>, abilitato: boolean): void {
-    if (abilitato) {
-      if (c.disabled) c.enable({ emitEvent: false })
-    } else if (c.enabled) {
-      c.setValue('', { emitEvent: false })
-      c.disable({ emitEvent: false })
+    if (abilitato && c.disabled) c.enable({ emitEvent: false })
+    else if (!abilitato && c.enabled) c.disable({ emitEvent: false })
+  }
+
+  /** Cosa inviare di PEC e riferimento: quello che il codice destinatario attuale ammette. */
+  private recapitiSdi(v: {
+    codiceDestinatario: string
+    pecFatturazione: string
+    riferimentoAmministrazione: string
+  }): {
+    pec: string | null
+    riferimento: string | null
+  } {
+    const codice = v.codiceDestinatario.trim().toUpperCase()
+    const nessuno = codice === '' || codice === CODICE_NESSUNO
+    return {
+      pec: nessuno ? vuoto(v.pecFatturazione) : null,
+      riferimento: !nessuno ? vuoto(v.riferimentoAmministrazione) : null,
     }
   }
 
   private azzera(): void {
     this.lettura?.unsubscribe()
     this.lettureSedi?.unsubscribe()
-    this.lettureOpzioni?.unsubscribe()
-    this.ricercaAgenti?.unsubscribe()
+    this.opzioni.azzera()
     this.form.enable({ emitEvent: false })
     this.form.reset({ esigibilitaIva: 'IMMEDIATA' })
     this.ditta?.azzera()
@@ -608,18 +464,15 @@ export class ClienteDialogComponent implements OnChanges {
     this.caricamento.set(false)
     this.sedi.set([])
     this.letto.set(null)
-    this.suggerimentiAgenti.set([])
-    this.agenteSelezionato = null
     this.privato = false
     this.sediAperte = false
-    this.inLinea.aperto = null
     this.aggiornaCampiSdi()
     if (!this.puoScrivere()) this.form.disable({ emitEvent: false })
   }
 
   private inizializza(): void {
     this.azzera()
-    this.caricaOpzioni()
+    this.opzioni.carica()
     const c = this.cliente
     this.versione = c?.versione ?? 0
     if (!c) return
@@ -648,9 +501,7 @@ export class ClienteDialogComponent implements OnChanges {
           note: d.note ?? '',
           sedeId: d.sedeFatturazione.id,
         })
-        this.agenteSelezionato = d.agente
-          ? { id: d.agente.id, etichetta: etichettaCodice(null, d.agente.descrizione) }
-          : null
+        this.opzioni.impostaCorrenti(d)
         this.caricamento.set(false)
         this.aggiornaCampiSdi()
         if (!this.puoScrivere()) this.form.disable({ emitEvent: false })
@@ -661,60 +512,6 @@ export class ClienteDialogComponent implements OnChanges {
         this.errore.set(messaggioErrore(err, 'Impossibile caricare il cliente.'))
       },
     })
-  }
-
-  /** Solo le voci attive (D3): le spese per tipo, i registri senza le ricevute split. */
-  private caricaOpzioni(): void {
-    this.lettureOpzioni?.unsubscribe()
-    const s = new Subscription()
-    this.lettureOpzioni = s
-    const errore = (err: unknown) =>
-      this.errore.set(messaggioErrore(err, 'Impossibile caricare le tabelle di fatturazione.'))
-    s.add(
-      this.tabelle.condizioni.list().subscribe({
-        next: l =>
-          this.condizioni.set(
-            l.map(c => ({ id: c.id, etichetta: etichettaCodice(c.codice, c.descrizione) }))
-          ),
-        error: errore,
-      })
-    )
-    s.add(
-      this.tabelle.conti.list().subscribe({
-        next: l =>
-          this.conti.set(
-            l.map(c => ({ id: c.id, etichetta: etichettaCodice(c.codice, c.descrizione) }))
-          ),
-        error: errore,
-      })
-    )
-    s.add(
-      this.tabelle.spese.list({ tipo: 'INCASSO' }).subscribe({
-        next: l => this.spese.set(l.map(x => this.opzioneSpesa(x))),
-        error: errore,
-      })
-    )
-    s.add(
-      this.tabelle.spese.list({ tipo: 'BOLLO' }).subscribe({
-        next: l => this.bolli.set(l.map(x => this.opzioneSpesa(x))),
-        error: errore,
-      })
-    )
-    s.add(
-      this.tabelle.registri.list().subscribe({
-        next: l =>
-          this.registri.set(
-            l
-              .filter(r => !r.ricevuteSplit)
-              .map(r => ({ id: r.id, etichetta: etichettaCodice(r.codice, r.descrizione) }))
-          ),
-        error: errore,
-      })
-    )
-  }
-
-  private opzioneSpesa(s: SpesaAccessoria): Opzione {
-    return { id: s.id, etichetta: `${etichettaCodice(s.codice, s.descrizione)} (€ ${s.importo})` }
   }
 
   /** Le sedi attive della ditta, per cambiare la sede di fatturazione. */
@@ -730,89 +527,6 @@ export class ClienteDialogComponent implements OnChanges {
     })
   }
 
-  // ─── Agente (autocomplete) ───────────────────────────────────────────────
-
-  cercaAgenti(ev: { query: string }): void {
-    this.ricercaAgenti?.unsubscribe()
-    const testo = ev.query.trim()
-    this.ricercaAgenti = this.servizio.agenti
-      .list({ pagina: 1, dimensione: 20, soloAttivi: true, ...(testo ? { testo } : {}) })
-      .subscribe({
-        next: p =>
-          this.suggerimentiAgenti.set(
-            p.elementi.map(a => ({
-              id: a.id,
-              etichetta: a.codice
-                ? `${a.ditta.ragioneSociale} (${a.codice})`
-                : a.ditta.ragioneSociale,
-            }))
-          ),
-        error: () => this.suggerimentiAgenti.set([]),
-      })
-  }
-
-  scegliAgente(voce: Opzione | null): void {
-    this.agenteSelezionato = voce
-    this.form.controls.agenteId.setValue(voce?.id ?? '')
-  }
-
-  // ─── Aggiunta in linea ───────────────────────────────────────────────────
-
-  chiudiSub(visibile: boolean): void {
-    if (!visibile) this.inLinea.chiudi()
-  }
-
-  private aggiungi(
-    lista: { update(f: (v: Opzione[]) => Opzione[]): void },
-    campo: FormControl<string>,
-    voce: Opzione
-  ): void {
-    lista.update(v => [...v.filter(o => o.id !== voce.id), voce])
-    this.inLinea.salvato(voce, id => campo.setValue(id), false)
-  }
-
-  dopoCondizione(c: CondizionePagamento): void {
-    this.aggiungi(this.condizioni, this.form.controls.condizionePagamentoId, {
-      id: c.id,
-      etichetta: etichettaCodice(c.codice, c.descrizione),
-    })
-  }
-
-  dopoConto(c: ContoCorrente): void {
-    this.aggiungi(this.conti, this.form.controls.contoCorrenteId, {
-      id: c.id,
-      etichetta: etichettaCodice(c.codice, c.descrizione),
-    })
-  }
-
-  dopoSpese(s: SpesaAccessoria): void {
-    this.aggiungi(this.spese, this.form.controls.speseIncassoId, this.opzioneSpesa(s))
-  }
-
-  dopoBollo(s: SpesaAccessoria): void {
-    this.aggiungi(this.bolli, this.form.controls.bolloId, this.opzioneSpesa(s))
-  }
-
-  dopoRegistro(r: RegistroIva): void {
-    if (r.ricevuteSplit) return
-    this.aggiungi(this.registri, this.form.controls.registroIvaId, {
-      id: r.id,
-      etichetta: etichettaCodice(r.codice, r.descrizione),
-    })
-  }
-
-  dopoAgente(a: Agente): void {
-    this.inLinea.salvato(
-      a,
-      () =>
-        this.scegliAgente({
-          id: a.id,
-          etichetta: a.codice ? `${a.ditta.ragioneSociale} (${a.codice})` : a.ditta.ragioneSociale,
-        }),
-      false
-    )
-  }
-
   // ─── Salvataggio ─────────────────────────────────────────────────────────
 
   /** In modifica serve il record letto (altrimenti il form vuoto cancellerebbe i dati). */
@@ -826,7 +540,8 @@ export class ClienteDialogComponent implements OnChanges {
    * dialog aperto): si ignora, o si perde il form compilato.
    */
   alCambioVisibilita(visibile: boolean): void {
-    if (!visibile && (this.sediAperte || this.inLinea.bloccaChiusuraEsterna(visibile))) return
+    if (!visibile && (this.sediAperte || this.opzioni.inLinea.bloccaChiusuraEsterna(visibile)))
+      return
     if (!visibile) this.chiudi()
   }
 
@@ -851,11 +566,12 @@ export class ClienteDialogComponent implements OnChanges {
 
     const dati: NuovoCliente = { ...raccolti.dati, esigibilitaIva: v.esigibilitaIva }
     if (raccolti.sedeId) dati.sedeId = raccolti.sedeId
+    const sdi = this.recapitiSdi(v)
     const facoltativi: Record<string, string | null> = {
       codice: vuoto(v.codice),
       codiceDestinatario: vuoto(v.codiceDestinatario)?.toUpperCase() ?? null,
-      pecFatturazione: vuoto(v.pecFatturazione),
-      riferimentoAmministrazione: vuoto(v.riferimentoAmministrazione),
+      pecFatturazione: sdi.pec,
+      riferimentoAmministrazione: sdi.riferimento,
       iban: vuoto(v.iban),
       contoCorrenteId: vuotoId(v.contoCorrenteId),
       condizionePagamentoId: vuotoId(v.condizionePagamentoId),
@@ -890,6 +606,7 @@ export class ClienteDialogComponent implements OnChanges {
   /** Solo i campi cambiati rispetto al record letto, più la versione. */
   private differenze(base: Cliente): ModificaCliente {
     const v = this.form.getRawValue()
+    const sdi = this.recapitiSdi(v)
     const dati: ModificaCliente = { versione: this.versione }
     const testo: Array<[keyof DatiFiscaliCliente, string | null, string | null]> = [
       ['codice', vuoto(v.codice), base.codice],
@@ -898,12 +615,8 @@ export class ClienteDialogComponent implements OnChanges {
         vuoto(v.codiceDestinatario)?.toUpperCase() ?? null,
         base.codiceDestinatario,
       ],
-      ['pecFatturazione', vuoto(v.pecFatturazione), base.pecFatturazione],
-      [
-        'riferimentoAmministrazione',
-        vuoto(v.riferimentoAmministrazione),
-        base.riferimentoAmministrazione,
-      ],
+      ['pecFatturazione', sdi.pec, base.pecFatturazione],
+      ['riferimentoAmministrazione', sdi.riferimento, base.riferimentoAmministrazione],
       ['ritenutaPercentuale', this.ritenuta(v.ritenutaPercentuale), base.ritenutaPercentuale],
       ['note', vuoto(v.note), base.note],
       ['contoCorrenteId', vuotoId(v.contoCorrenteId), base.contoCorrenteId],

@@ -349,11 +349,11 @@ describe('ClienteDialogComponent', () => {
       agenti.list.and.returnValue(of({ elementi: [agenteNuovo], totale: 1 }))
       clienti.crea.and.returnValue(of({ cliente, dittaEsistente: false, avvisi: [] }))
       await apri()
-      fixture.componentInstance.cercaAgenti({ query: 'nuo' })
+      fixture.componentInstance.opzioni.cercaAgenti({ query: 'nuo' })
       expect(agenti.list).toHaveBeenCalledWith(
         jasmine.objectContaining({ testo: 'nuo', soloAttivi: true })
       )
-      fixture.componentInstance.scegliAgente({ id: 'a9', etichetta: 'Nuovo Agente' })
+      fixture.componentInstance.opzioni.scegliAgente({ id: 'a9', etichetta: 'Nuovo Agente' })
       await compilaDitta()
       scrivi('cliente-dlg-piva-input', PIVA)
       await stabilizza(fixture)
@@ -526,7 +526,7 @@ describe('ClienteDialogComponent', () => {
       dlg.visibleChange.emit(false)
       await stabilizza(fixture)
       expect(fixture.componentInstance.form.getRawValue().agenteId).toBe('a9')
-      expect(fixture.componentInstance.agenteSelezionato?.etichetta).toBe('Nuovo Agente')
+      expect(fixture.componentInstance.opzioni.agenteSelezionato?.etichetta).toBe('Nuovo Agente')
       await new Promise(r => setTimeout(r))
       expect(document.activeElement).toBe(bottone('cliente-dlg-nuovo-agente'))
     })
@@ -537,6 +537,35 @@ describe('ClienteDialogComponent', () => {
       await stabilizza(fixture)
       fixture.componentInstance.alCambioVisibilita(false)
       expect(visibilita).toEqual([])
+    })
+
+    it('agente: modello svuotato senza onClear (blur con forceSelection) toglie anche agenteId', async () => {
+      await apri()
+      fixture.componentInstance.opzioni.scegliAgente({ id: 'a9', etichetta: 'Nuovo Agente' })
+      expect(fixture.componentInstance.form.getRawValue().agenteId).toBe('a9')
+      fixture.componentInstance.opzioni.cambiaModelloAgente(null)
+      expect(fixture.componentInstance.form.getRawValue().agenteId).toBe('')
+      fixture.componentInstance.opzioni.cambiaModelloAgente('testo digitato')
+      expect(fixture.componentInstance.form.getRawValue().agenteId).toBe('')
+      fixture.componentInstance.opzioni.cambiaModelloAgente({ id: 'a9', etichetta: 'Nuovo Agente' })
+      expect(fixture.componentInstance.form.getRawValue().agenteId).toBe('a9')
+    })
+
+    it('registro delle ricevute split creato in linea: messaggio chiaro e nessuna selezione', async () => {
+      const spia = spyOn(TestBed.inject(MessageService), 'add')
+      await apri()
+      bottone('cliente-dlg-nuovo-registro')!.click()
+      await stabilizza(fixture)
+      const dlg = sub('app-registro-iva-dialog')[0]
+      dlg.salvato.emit({ ...REG_SPLIT, id: 'rS' })
+      dlg.visibleChange.emit(false)
+      await stabilizza(fixture)
+      expect(valore('cliente-dlg-registro')).toBe('')
+      expect(spia).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          detail: jasmine.stringMatching(/ricevute split: non utilizzabile qui/),
+        })
+      )
     })
 
     it('VIEWER: nessun pulsante "Nuovo …" e Salva non utilizzabile', async () => {
@@ -572,7 +601,9 @@ describe('ClienteDialogComponent', () => {
       expect(q<HTMLInputElement>('cliente-dlg-codice')!.value).toBe('CL1')
       expect(q<HTMLInputElement>('cliente-dlg-ritenuta')!.value).toBe('10.00')
       expect(q<HTMLInputElement>('cliente-dlg-rif-amm')!.value).toBe('RIF1')
-      expect(fixture.componentInstance.agenteSelezionato?.etichetta).toBe('Rossi Provvigioni')
+      expect(fixture.componentInstance.opzioni.agenteSelezionato?.etichetta).toBe(
+        'Rossi Provvigioni'
+      )
     })
 
     it('rilegge il cliente con GET (risposta in ritardo scartata)', async () => {
@@ -691,6 +722,56 @@ describe('ClienteDialogComponent', () => {
       )
       expect(salvati.length).toBe(1)
       expect(visibilita).toContain(false)
+    })
+
+    it('PEC esistente: digitando 0000000 carattere per carattere la PEC resta e non viene inviata a null', async () => {
+      clienti.get.and.returnValue(
+        of({ ...cliente, codiceDestinatario: null, pecFatturazione: 'fatture@verdi.it' })
+      )
+      clienti.modifica.and.returnValue(of(cliente))
+      await apri(cliente)
+      const pec = () => q<HTMLInputElement>('cliente-dlg-pec-fatt')!
+      expect(pec().value).toBe('fatture@verdi.it')
+      for (const parziale of ['0', '00', '000', '0000', '00000', '000000']) {
+        scrivi('cliente-dlg-codice-dest', parziale)
+        await stabilizza(fixture)
+        // con un codice parziale il campo è disabilitato ma conserva il valore
+        expect(pec().disabled).toBeTrue()
+        expect(pec().value).toBe('fatture@verdi.it')
+      }
+      scrivi('cliente-dlg-codice-dest', '0000000')
+      await stabilizza(fixture)
+      expect(pec().disabled).toBeFalse()
+      expect(pec().value).toBe('fatture@verdi.it')
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = clienti.modifica.calls.mostRecent().args[1]
+      expect(corpo.codiceDestinatario).toBe('0000000')
+      expect(corpo.pecFatturazione).toBeUndefined()
+    })
+
+    it('codice destinatario vero: PEC e riferimento non ammessi non partono, quello ammesso sì', async () => {
+      clienti.get.and.returnValue(
+        of({
+          ...cliente,
+          codiceDestinatario: null,
+          pecFatturazione: 'fatture@verdi.it',
+          riferimentoAmministrazione: null,
+        })
+      )
+      clienti.modifica.and.returnValue(of(cliente))
+      await apri(cliente)
+      scrivi('cliente-dlg-codice-dest', 'UFABC1')
+      scrivi('cliente-dlg-rif-amm', 'RIF9')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(clienti.modifica).toHaveBeenCalledOnceWith('cl1', {
+        codiceDestinatario: 'UFABC1',
+        pecFatturazione: null,
+        riferimentoAmministrazione: 'RIF9',
+        versione: 4,
+      })
     })
 
     it('VIEWER: Salva non è utilizzabile e niente link "Sedi"', async () => {

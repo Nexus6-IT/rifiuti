@@ -6,21 +6,19 @@ import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { TableModule } from 'primeng/table'
-import { Subject, debounceTime, takeUntil } from 'rxjs'
+import { Subject, takeUntil } from 'rxjs'
 import { ToastService } from '../../core/services/toast.service'
 import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
 import { ClienteDialogComponent } from './cliente-dialog.component'
 import { Cliente } from './clienti.model'
 import { ClientiService } from './clienti.service'
+import { ElencoPaginato } from './tabelle/elenco-paginato'
 import {
-  caricaPagina,
   chiediConferma,
   eseguiERicarica,
   messaggioErrore,
   permessoScrittura,
 } from './tabelle/tabella-comune'
-
-const DIMENSIONE_PREDEFINITA = 25
 
 /**
  * Elenco dei clienti: ricerca con debounce, paginazione lazy, disattiva ed elimina. Da qui si
@@ -49,7 +47,7 @@ const DIMENSIONE_PREDEFINITA = 25
             type="search"
             placeholder="Cerca per ragione sociale, partita IVA o codice"
             aria-label="Cerca un cliente"
-            (input)="cerca($any($event.target).value)"
+            (input)="elenco.cerca($any($event.target).value)"
             data-testid="clienti-cerca"
           />
         </span>
@@ -83,11 +81,12 @@ const DIMENSIONE_PREDEFINITA = 25
         [lazy]="true"
         [lazyLoadOnInit]="false"
         [paginator]="true"
-        [rows]="dimensione"
-        [first]="primo"
+        [rows]="elenco.dimensione"
+        [first]="elenco.primo"
         [totalRecords]="totale()"
+        [loading]="elenco.caricamento()"
         [rowsPerPageOptions]="[10, 25, 50]"
-        (onLazyLoad)="cambiaPagina($event)"
+        (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
         styleClass="p-datatable-sm"
@@ -192,62 +191,38 @@ export class ClientiListComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router)
 
   readonly puoScrivere = permessoScrittura()
-  readonly righe = signal<Cliente[]>([])
-  readonly totale = signal(0)
-  readonly erroreElenco = signal<string | null>(null)
+  readonly elenco = new ElencoPaginato<Cliente>(
+    filtro => this.servizio.clienti.list(filtro),
+    'Impossibile caricare i clienti.'
+  )
+  readonly righe = this.elenco.righe
+  readonly totale = this.elenco.totale
+  readonly erroreElenco = this.elenco.errore
   readonly dialogoAperto = signal(false)
   readonly selezionato = signal<Cliente | null>(null)
 
-  dimensione = DIMENSIONE_PREDEFINITA
-  primo = 0
-  private testo = ''
-  private readonly ricerca = new Subject<string>()
-  /** Ogni nuovo caricamento annulla il precedente: una risposta in ritardo non vale più. */
-  private readonly annulla = new Subject<void>()
-  private readonly distrutto = new Subject<void>()
   /** Ogni apertura annulla la lettura precedente. */
   private readonly annullaLettura = new Subject<void>()
 
   ngOnInit(): void {
-    this.ricerca.pipe(debounceTime(300), takeUntil(this.distrutto)).subscribe(t => {
-      this.testo = t.trim()
-      this.primo = 0
-      this.carica()
-    })
-    this.carica()
+    this.elenco.avvia()
   }
 
   ngOnDestroy(): void {
-    this.annulla.next()
     this.annullaLettura.next()
-    this.distrutto.next()
-  }
-
-  cerca(valore: string): void {
-    this.ricerca.next(valore)
-  }
-
-  cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
-    this.dimensione = ev.rows || this.dimensione
-    this.primo = ev.first ?? 0
-    this.carica()
+    this.elenco.ferma()
   }
 
   carica(): void {
-    this.annulla.next()
-    caricaPagina(
-      this.servizio.clienti
-        .list({
-          pagina: Math.floor(this.primo / this.dimensione) + 1,
-          dimensione: this.dimensione,
-          ...(this.testo ? { testo: this.testo } : {}),
-        })
-        .pipe(takeUntil(this.annulla)),
-      this.righe,
-      this.totale,
-      this.erroreElenco,
-      'Impossibile caricare i clienti.'
-    )
+    this.elenco.carica()
+  }
+
+  cerca(valore: string): void {
+    this.elenco.cerca(valore)
+  }
+
+  cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
+    this.elenco.cambiaPagina(ev)
   }
 
   identificativo(c: Cliente): string {
