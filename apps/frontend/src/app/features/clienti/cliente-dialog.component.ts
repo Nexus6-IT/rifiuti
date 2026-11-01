@@ -286,6 +286,8 @@ const senzaSpazi = (v: string | null): string | null =>
           id="cliente-dlg-listino"
           formControlName="listino"
           class="p-inputtext"
+          [attr.aria-invalid]="erroreListino() ? 'true' : null"
+          aria-describedby="cliente-dlg-listino-errore"
           data-testid="cliente-dlg-listino"
         >
           <option value="">Nessuno</option>
@@ -295,6 +297,7 @@ const senzaSpazi = (v: string | null): string | null =>
           *ngIf="erroreListino() as e"
           role="alert"
           class="field-error"
+          id="cliente-dlg-listino-errore"
           data-testid="cliente-dlg-listino-errore"
           >{{ e }}</small
         >
@@ -305,23 +308,37 @@ const senzaSpazi = (v: string | null): string | null =>
           id="cliente-dlg-provvigione"
           formControlName="provvigionePredefinita"
           inputmode="decimal"
+          maxlength="20"
+          [attr.aria-invalid]="erroreProvvigione() ? 'true' : null"
+          aria-describedby="cliente-dlg-provvigione-errore"
           data-testid="cliente-dlg-provvigione"
         />
+        <small
+          *ngIf="erroreProvvigione() as e"
+          role="alert"
+          class="field-error"
+          id="cliente-dlg-provvigione-errore"
+          data-testid="cliente-dlg-provvigione-errore"
+          >{{ e }}</small
+        >
         <label for="cliente-dlg-tipo-provvigione">Provvigione calcolata</label>
         <select
           id="cliente-dlg-tipo-provvigione"
           formControlName="tipoProvvigionePredefinita"
           class="p-inputtext"
+          [attr.aria-invalid]="erroreTipo() ? 'true' : null"
+          aria-describedby="cliente-dlg-tipo-provvigione-errore"
           data-testid="cliente-dlg-tipo-provvigione"
         >
           <option value="">Da indicare</option>
           <option *ngFor="let o of tipiProvvigione" [value]="o.value">{{ o.label }}</option>
         </select>
         <small
-          *ngIf="erroreProvvigione() as e"
+          *ngIf="erroreTipo() as e"
           role="alert"
           class="field-error"
-          data-testid="cliente-dlg-provvigione-errore"
+          id="cliente-dlg-tipo-provvigione-errore"
+          data-testid="cliente-dlg-tipo-provvigione-errore"
           >{{ e }}</small
         >
 
@@ -411,6 +428,7 @@ export class ClienteDialogComponent implements OnChanges {
   readonly erroreNome = signal<string | null>(null)
   readonly erroreListino = signal<string | null>(null)
   readonly erroreProvvigione = signal<string | null>(null)
+  readonly erroreTipo = signal<string | null>(null)
   readonly inCorso = signal(false)
   readonly caricamento = signal(false)
   readonly sedi = signal<SedeDitta[]>([])
@@ -466,8 +484,13 @@ export class ClienteDialogComponent implements OnChanges {
 
   constructor() {
     this.form.controls.codiceDestinatario.valueChanges.subscribe(() => this.aggiornaCampiSdi())
-    this.form.controls.provvigionePredefinita.valueChanges.subscribe(() =>
-      this.aggiornaTipoProvvigione()
+    this.form.controls.provvigionePredefinita.valueChanges.subscribe(() => {
+      this.erroreProvvigione.set(null)
+      this.aggiornaTipoProvvigione(true)
+    })
+    this.form.controls.listino.valueChanges.subscribe(() => this.erroreListino.set(null))
+    this.form.controls.tipoProvvigionePredefinita.valueChanges.subscribe(() =>
+      this.erroreTipo.set(null)
     )
   }
 
@@ -494,12 +517,15 @@ export class ClienteDialogComponent implements OnChanges {
   }
 
   /** Il tipo della provvigione ha senso solo con una provvigione (R26: senza, parte null). */
-  private aggiornaTipoProvvigione(): void {
+  private aggiornaTipoProvvigione(preimposta = false): void {
     if (!this.puoScrivere()) return
     const c = this.form.controls.tipoProvvigionePredefinita
-    const conProvvigione = this.ritenuta(this.form.controls.provvigionePredefinita.value) !== null
-    if (conProvvigione && c.disabled) c.enable({ emitEvent: false })
-    else if (!conProvvigione && c.enabled) c.disable({ emitEvent: false })
+    const conProvvigione = this.cascata(this.form.controls.provvigionePredefinita.value) !== null
+    if (conProvvigione && c.disabled) {
+      c.enable({ emitEvent: false })
+      // Come il WinWaste ("S"): con una provvigione nuova il tipo parte da "sul prezzo scontato".
+      if (preimposta && c.value === '') c.setValue('SCONTATO', { emitEvent: false })
+    } else if (!conProvvigione && c.enabled) c.disable({ emitEvent: false })
   }
 
   /** Solo disabilita: il valore resta, così digitare il codice carattere per carattere non lo perde. */
@@ -536,6 +562,7 @@ export class ClienteDialogComponent implements OnChanges {
     this.erroreNome.set(null)
     this.erroreListino.set(null)
     this.erroreProvvigione.set(null)
+    this.erroreTipo.set(null)
     this.inCorso.set(false)
     this.caricamento.set(false)
     this.sedi.set([])
@@ -632,6 +659,12 @@ export class ClienteDialogComponent implements OnChanges {
     else this.salvaNuovo()
   }
 
+  /** Come `normalizzaCascata` del backend: niente spazi, virgole in punti ("10 + 5,5" -> "10+5.5"). */
+  private cascata(v: string): string | null {
+    const t = v.replace(/\s+/g, '').replace(/,/g, '.')
+    return t === '' ? null : t
+  }
+
   private ritenuta(v: string): string | null {
     const t = v.trim().replace(',', '.')
     return t === '' ? null : t
@@ -647,7 +680,7 @@ export class ClienteDialogComponent implements OnChanges {
     provvigionePredefinita: string
     tipoProvvigionePredefinita: TipoProvvigione | ''
   }): { provvigione: string | null; tipo: TipoProvvigione | null } {
-    const provvigione = this.ritenuta(v.provvigionePredefinita)
+    const provvigione = this.cascata(v.provvigionePredefinita)
     return {
       provvigione,
       tipo:
@@ -668,14 +701,17 @@ export class ClienteDialogComponent implements OnChanges {
     )
     const listino: string[] = []
     const provvigione: string[] = []
+    const tipo: string[] = []
     const altri: string[] = []
     for (const x of messaggi) {
       if (/listino/i.test(x)) listino.push(x)
+      else if (/su cosa|tipo/i.test(x)) tipo.push(x)
       else if (/provvigione/i.test(x)) provvigione.push(x)
       else altri.push(x)
     }
     this.erroreListino.set(listino.join(' ') || null)
     this.erroreProvvigione.set(provvigione.join(' ') || null)
+    this.erroreTipo.set(tipo.join(' ') || null)
     this.errore.set(messaggi.length === 0 ? ripiego : altri.length > 0 ? altri.join(' ') : null)
   }
 
@@ -718,6 +754,7 @@ export class ClienteDialogComponent implements OnChanges {
     this.errore.set(null)
     this.erroreListino.set(null)
     this.erroreProvvigione.set(null)
+    this.erroreTipo.set(null)
     this.servizio.clienti.crea(dati).subscribe({
       next: esito => {
         this.inCorso.set(false)
@@ -789,6 +826,7 @@ export class ClienteDialogComponent implements OnChanges {
     this.errore.set(null)
     this.erroreListino.set(null)
     this.erroreProvvigione.set(null)
+    this.erroreTipo.set(null)
     this.servizio.clienti.modifica(c.id, dati).subscribe({
       next: salvato => {
         this.inCorso.set(false)
