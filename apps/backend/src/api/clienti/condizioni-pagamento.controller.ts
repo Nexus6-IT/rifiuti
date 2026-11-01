@@ -22,6 +22,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { CondizioniPagamentoService } from '../../application/clienti/condizioni-pagamento.service'
@@ -29,9 +30,6 @@ import {
   CreaCondizionePagamentoDto,
   ModificaCondizionePagamentoDto,
 } from './dto/condizione-pagamento.dto'
-
-export const RUOLI_LETTURA = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'] as const
-export const RUOLI_SCRITTURA = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR'] as const
 
 @ApiTags('clienti')
 @ApiBearerAuth()

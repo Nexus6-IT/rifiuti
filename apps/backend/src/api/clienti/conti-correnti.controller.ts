@@ -25,7 +25,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ContiCorrentiService } from '../../application/clienti/conti-correnti.service'
-import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './condizioni-pagamento.controller'
+import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 import { CreaContoCorrenteDto, ModificaContoCorrenteDto } from './dto/conto-corrente.dto'
 
 @ApiTags('clienti')

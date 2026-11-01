@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { Subject, of } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { CodificaDialogComponent } from './codifica-dialog.component'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { CodificaContratto } from '../clienti.model'
@@ -69,6 +69,37 @@ describe('CodificaDialogComponent', () => {
     )
     await stabilizza(fixture)
     expect(tabella.crea).toHaveBeenCalledOnceWith({ genere: 'TIPO', descrizione: 'Annuale' })
+  })
+
+  const duplicato = () =>
+    throwError(() => ({
+      status: 409,
+      error: { error: 'CODIFICA_CONTRATTO_CODICE_DUPLICATO', message: 'Codice già in uso.' },
+    }))
+
+  it('modalità rapida: 409 sul codice duplicato chiede di riprovare e lascia aperto', async () => {
+    tabella.crea.and.callFake(duplicato)
+    await apri(null, { rapida: true })
+    const chiusure: boolean[] = []
+    fixture.componentInstance.visibleChange.subscribe(v => chiusure.push(v))
+    scrivi('codifica-dlg-descrizione', 'Annuale')
+    await stabilizza(fixture)
+    bottone('codifica-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(q('codifica-dlg-errore')!.textContent).toContain(
+      'Un collega ha appena usato lo stesso codice: riprova.'
+    )
+    expect(chiusure).toEqual([])
+  })
+
+  it('modalità normale: il 409 mostra il messaggio del backend', async () => {
+    tabella.crea.and.callFake(duplicato)
+    await apri()
+    scrivi('codifica-dlg-descrizione', 'Annuale')
+    await stabilizza(fixture)
+    bottone('codifica-dlg-salva')!.click()
+    await stabilizza(fixture)
+    expect(q('codifica-dlg-errore')!.textContent).toContain('Codice già in uso.')
   })
 
   it('codice lasciato vuoto: assegnato dal server e mostrato nel toast', async () => {

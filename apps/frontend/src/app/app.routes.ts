@@ -141,10 +141,27 @@ export const routes: Routes = [
           import('./features/anomaly/anomaly.component').then(m => m.AnomalyComponent),
       },
       {
+        path: 'clienti',
+        loadComponent: () =>
+          import('./features/clienti/clienti-list.component').then(m => m.ClientiListComponent),
+      },
+      {
         path: 'clienti/tabelle',
         loadComponent: () =>
           import('./features/clienti/tabelle/tabelle-fatturazione.component').then(
             m => m.TabelleFatturazioneComponent
+          ),
+      },
+      {
+        path: 'clienti/agenti',
+        loadComponent: () =>
+          import('./features/clienti/agenti-list.component').then(m => m.AgentiListComponent),
+      },
+      {
+        path: 'contratti-clienti',
+        loadComponent: () =>
+          import('./features/contratti-cliente/contratti-cliente-list.component').then(
+            m => m.ContrattiClienteListComponent
           ),
       },
       {

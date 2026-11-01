@@ -614,6 +614,18 @@ tabelle; se non sono vuote i dati si perdono, quindi esportarli prima. Se e' app
 `20261102200100_…` (4.1b), ripristinare prima quella, poi questa. Il ripristino a mano dello
 schema e' nel commento della migration.
 
+**Clienti, agenti e contratti cliente** (Fase 4 pezzo 1, seconda migration
+`20261102200100_clienti_agenti_contratti_cliente`: `agenti`, `clienti`, `contratti_cliente`,
+`periodi_fatturazione_cliente`, `allegati_contratto_cliente`). Rollback del codice: innocuo, il
+codice vecchio ignora le tabelle; la sede predefinita di un cliente o di un agente torna
+disattivabile finche' il codice nuovo non rientra (il codice vecchio non conosce quei due ruoli).
+Prima di un ripristino dello schema controllare, **come owner** (con RLS FORCE il ruolo
+applicativo vedrebbe 0 righe): `SELECT tenant_id, count(*) FROM clienti GROUP BY 1` e lo stesso
+per `agenti`, `contratti_cliente` e `allegati_contratto_cliente`; se non sono vuote i dati si
+perdono, quindi esportarli prima (gli allegati sono file PDF nel database: `COPY ... TO` con
+`encode(contenuto, 'base64')`). Si ripristina questa PRIMA della `20261102200000_...`. Il
+ripristino a mano dello schema e' nel commento della migration.
+
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa
 **dopo** il `git revert` e la pipeline, con `RIPRISTINO_TAG` uguale al tag del

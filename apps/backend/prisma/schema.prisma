@@ -146,6 +146,11 @@ model Tenant {
   registriIva            RegistroIva[]
   testiFatturazione      TestoFatturazione[]
   codificheContratto     CodificaContratto[]
+  agenti                 Agente[]
+  clienti                Cliente[]
+  contrattiCliente       ContrattoCliente[]
+  periodiFatturazioneCliente PeriodoFatturazioneCliente[]
+  allegatiContrattoCliente AllegatoContrattoCliente[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -2463,6 +2468,8 @@ model Ditta {
   produttori    Produttore[]
   trasportatori Trasportatore[]
   destinatari   Destinatario[]
+  clienti       Cliente[]
+  agenti        Agente[]
 
   @@unique([id, tenantId], map: "ditte_id_tenant_id_key")
   @@unique([tenantId, partitaIva], map: "ditte_tenant_id_partita_iva_key")
@@ -2498,6 +2505,9 @@ model SedeDitta {
   produttori    Produttore[]
   trasportatori Trasportatore[]
   destinatari   Destinatario[]
+  clienti       Cliente[]
+  agenti        Agente[]
+  contrattiCliente ContrattoCliente[]
 
   @@unique([id, tenantId], map: "sedi_ditte_id_tenant_id_key")
   @@unique([id, dittaId, tenantId], map: "sedi_ditte_id_ditta_id_tenant_id_key")
@@ -2974,6 +2984,9 @@ model CondizionePagamento {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "condizioni_pagamento_tenant_id_fkey")
 
+  clienti          Cliente[]
+  contrattiCliente ContrattoCliente[]
+
   @@unique([id, tenantId], map: "condizioni_pagamento_id_tenant_id_key")
   @@unique([tenantId, codice], map: "condizioni_pagamento_tenant_id_codice_key")
   @@index([tenantId], map: "condizioni_pagamento_tenant_id_idx")
@@ -2996,6 +3009,9 @@ model ContoCorrente {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "conti_correnti_tenant_id_fkey")
+
+  clienti          Cliente[]
+  contrattiCliente ContrattoCliente[]
 
   @@unique([id, tenantId], map: "conti_correnti_id_tenant_id_key")
   @@unique([tenantId, codice], map: "conti_correnti_tenant_id_codice_key")
@@ -3020,6 +3036,11 @@ model SpesaAccessoria {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_id_fkey")
 
+  clientiIncasso    Cliente[]          @relation("SpeseIncassoCliente")
+  clientiBollo      Cliente[]          @relation("BolloCliente")
+  contrattiIncasso  ContrattoCliente[] @relation("SpeseIncassoContratto")
+  contrattiBollo    ContrattoCliente[] @relation("BolloContratto")
+
   @@unique([id, tenantId], map: "spese_accessorie_id_tenant_id_key")
   @@unique([tenantId, tipo, codice], map: "spese_accessorie_tenant_id_tipo_codice_key")
   @@index([tenantId], map: "spese_accessorie_tenant_id_idx")
@@ -3040,6 +3061,9 @@ model RegistroIva {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "registri_iva_tenant_id_fkey")
+
+  clienti          Cliente[]
+  contrattiCliente ContrattoCliente[]
 
   @@unique([id, tenantId], map: "registri_iva_id_tenant_id_key")
   @@unique([tenantId, codice], map: "registri_iva_tenant_id_codice_key")
@@ -3062,6 +3086,8 @@ model TestoFatturazione {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "testi_fatturazione_tenant_id_fkey")
 
+  contrattiCliente ContrattoCliente[]
+
   @@unique([id, tenantId], map: "testi_fatturazione_id_tenant_id_key")
   @@unique([tenantId, codice], map: "testi_fatturazione_tenant_id_codice_key")
   @@index([tenantId], map: "testi_fatturazione_tenant_id_idx")
@@ -3083,8 +3109,233 @@ model CodificaContratto {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codifiche_contratto_tenant_id_fkey")
 
+  contrattiCategoria     ContrattoCliente[] @relation("CategoriaContratto")
+  contrattiTipo          ContrattoCliente[] @relation("TipoContratto")
+  contrattiMotivoAnnullo ContrattoCliente[] @relation("MotivoAnnulloContratto")
+
   @@unique([id, tenantId], map: "codifiche_contratto_id_tenant_id_key")
   @@unique([tenantId, genere, codice], map: "codifiche_contratto_tenant_id_genere_codice_key")
   @@index([tenantId], map: "codifiche_contratto_tenant_id_idx")
   @@map("codifiche_contratto")
+}
+
+/// Esigibilita' dell'IVA (D7): immediata, differita (IVA sospesa) o scissione dei pagamenti (split payment). Un campo solo perche' sospensione e split si escludono.
+enum EsigibilitaIva {
+  IMMEDIATA
+  DIFFERITA
+  SCISSIONE
+
+  @@map("esigibilita_iva")
+}
+
+/// Stato di un contratto cliente (D8): nasce in BOZZA; ANNULLATO e' definitivo.
+enum StatoContrattoCliente {
+  BOZZA
+  ATTIVO
+  SOSPESO
+  SOSPESO_MOVIMENTI
+  ANNULLATO
+
+  @@map("stato_contratto_cliente")
+}
+
+/// Agente (4.1, D22): ruolo su una ditta di F2-10 con la sua sede predefinita. Ragione sociale, partita IVA e indirizzi stanno sulla ditta, non qui. Si disattiva; si cancella solo se nessuno lo cita.
+model Agente {
+  id       String  @id(map: "agenti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  dittaId  String  @map("ditta_id") @db.Uuid
+  sedeId   String  @map("sede_id") @db.Uuid
+  codice   String? @db.VarChar(20)
+  note     String?
+  attivo   Boolean @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "agenti_tenant_id_fkey")
+  ditta  Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "agenti_ditta_fkey")
+  sede   SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "agenti_sede_fkey")
+
+  clienti          Cliente[]
+  contrattiCliente ContrattoCliente[]
+
+  @@unique([id, tenantId], map: "agenti_id_tenant_id_key")
+  @@unique([tenantId, dittaId], map: "agenti_tenant_id_ditta_id_key")
+  @@unique([tenantId, codice], map: "agenti_tenant_id_codice_key")
+  @@index([tenantId], map: "agenti_tenant_id_idx")
+  @@index([sedeId], map: "agenti_sede_id_idx")
+  @@map("agenti")
+}
+
+/// Cliente (4.1, D2, D3): ruolo su una ditta di F2-10; i suoi campi fiscali sono anche i predefiniti dei contratti (D4). Una riga per ditta. Si disattiva; si cancella solo se nessun contratto lo cita, eliminati compresi.
+model Cliente {
+  id                         String         @id(map: "clienti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String         @map("tenant_id") @db.Uuid
+  dittaId                    String         @map("ditta_id") @db.Uuid
+  sedeId                     String         @map("sede_id") @db.Uuid
+  codice                     String?        @db.VarChar(20)
+  nome                       String?        @db.VarChar(60)
+  cognome                    String?        @db.VarChar(60)
+  codiceDestinatario         String?        @map("codice_destinatario") @db.VarChar(7)
+  pecFatturazione            String?        @map("pec_fatturazione") @db.VarChar(255)
+  riferimentoAmministrazione String?        @map("riferimento_amministrazione") @db.VarChar(20)
+  iban                       String?        @db.VarChar(34)
+  contoCorrenteId            String?        @map("conto_corrente_id") @db.Uuid
+  condizionePagamentoId      String?        @map("condizione_pagamento_id") @db.Uuid
+  esigibilitaIva             EsigibilitaIva @default(IMMEDIATA) @map("esigibilita_iva")
+  registroIvaId              String?        @map("registro_iva_id") @db.Uuid
+  speseIncassoId             String?        @map("spese_incasso_id") @db.Uuid
+  bolloId                    String?        @map("bollo_id") @db.Uuid
+  agenteId                   String?        @map("agente_id") @db.Uuid
+  ritenutaPercentuale        Decimal?       @map("ritenuta_percentuale") @db.Decimal(5, 2)
+  note                       String?
+  attivo                     Boolean        @default(true)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "clienti_tenant_id_fkey")
+  ditta               Ditta                @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_ditta_fkey")
+  sede                SedeDitta            @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_sede_fkey")
+  contoCorrente       ContoCorrente?       @relation(fields: [contoCorrenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_conto_corrente_fkey")
+  condizionePagamento CondizionePagamento? @relation(fields: [condizionePagamentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_condizione_pagamento_fkey")
+  registroIva         RegistroIva?         @relation(fields: [registroIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_registro_iva_fkey")
+  speseIncasso        SpesaAccessoria?     @relation("SpeseIncassoCliente", fields: [speseIncassoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_spese_incasso_fkey")
+  bollo               SpesaAccessoria?     @relation("BolloCliente", fields: [bolloId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_bollo_fkey")
+  agente              Agente?              @relation(fields: [agenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_agente_fkey")
+
+  contrattiDelCliente     ContrattoCliente[] @relation("ClienteDelContratto")
+  contrattiDiFatturazione ContrattoCliente[] @relation("ClienteDiFatturazione")
+
+  @@unique([id, tenantId], map: "clienti_id_tenant_id_key")
+  @@unique([tenantId, dittaId], map: "clienti_tenant_id_ditta_id_key")
+  @@unique([tenantId, codice], map: "clienti_tenant_id_codice_key")
+  @@index([tenantId], map: "clienti_tenant_id_idx")
+  @@index([sedeId], map: "clienti_sede_id_idx")
+  @@map("clienti")
+}
+
+/// Contratto cliente (4.1, D5, D8): contratto di fornitura del servizio al cliente, con valori effettivi (D4), stati (D8), lock ottimistico (D14), cancellazione logica solo in bozza (D13). Date come `DATE`. Le regole vere stanno in `domain/contratti-cliente`; i CHECK della migration sono la rete di sicurezza.
+model ContrattoCliente {
+  id                          String                @id(map: "contratti_cliente_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                    String                @map("tenant_id") @db.Uuid
+  numero                      String                @db.VarChar(50)
+  descrizione                 String                @db.VarChar(255)
+  stato                       StatoContrattoCliente @default(BOZZA)
+  dataInizio                  DateTime              @map("data_inizio") @db.Date
+  dataFine                    DateTime?             @map("data_fine") @db.Date
+  clienteId                   String                @map("cliente_id") @db.Uuid
+  clienteFatturazioneId       String?               @map("cliente_fatturazione_id") @db.Uuid
+  sedeId                      String?               @map("sede_id") @db.Uuid
+  categoriaId                 String?               @map("categoria_id") @db.Uuid
+  tipoId                      String?               @map("tipo_id") @db.Uuid
+  condizionePagamentoId       String?               @map("condizione_pagamento_id") @db.Uuid
+  contoCorrenteId             String?               @map("conto_corrente_id") @db.Uuid
+  agenteId                    String?               @map("agente_id") @db.Uuid
+  speseIncassoId              String?               @map("spese_incasso_id") @db.Uuid
+  bolloId                     String?               @map("bollo_id") @db.Uuid
+  registroIvaId               String?               @map("registro_iva_id") @db.Uuid
+  testoFatturazioneId         String?               @map("testo_fatturazione_id") @db.Uuid
+  annotazioni                 String[]              @default(dbgenerated("(ARRAY[]::character varying[])::character varying(45)[]")) @db.VarChar(45)
+  esigibilitaIva              EsigibilitaIva        @default(IMMEDIATA) @map("esigibilita_iva")
+  ritenutaPercentuale         Decimal?              @map("ritenuta_percentuale") @db.Decimal(5, 2)
+  rinnovoAutomatico           Boolean               @default(false) @map("rinnovo_automatico")
+  codiceRinnovo               String?               @map("codice_rinnovo") @db.VarChar(1)
+  codiceDestinatario          String?               @map("codice_destinatario") @db.VarChar(7)
+  riferimentoAmministrazione  String?               @map("riferimento_amministrazione") @db.VarChar(20)
+  sogliaDal                   DateTime?             @map("soglia_dal") @db.Date
+  sogliaImporto               Decimal?              @map("soglia_importo") @db.Decimal(12, 2)
+  sogliaIvaEsclusa            Boolean               @default(false) @map("soglia_iva_esclusa")
+  dataStipula                 DateTime?             @map("data_stipula") @db.Date
+  commessa                    String?               @db.VarChar(12)
+  validitaQuantita            Int?                  @map("validita_quantita")
+  validitaUnita               String?               @map("validita_unita") @db.VarChar(1)
+  motivoAnnulloId             String?               @map("motivo_annullo_id") @db.Uuid
+  motivoAnnullo               String?               @map("motivo_annullo") @db.VarChar(255)
+  annullatoIl                 DateTime?             @map("annullato_il")
+  incrementoIstat             Boolean               @default(false) @map("incremento_istat")
+  escludiDichiarazioneIntento Boolean               @default(false) @map("escludi_dichiarazione_intento")
+  codiceCig                   String?               @map("codice_cig") @db.VarChar(15)
+  codiceCup                   String?               @map("codice_cup") @db.VarChar(15)
+  idDocumentoPa               String?               @map("id_documento_pa") @db.VarChar(20)
+  contrattoPrincipaleId       String?               @map("contratto_principale_id") @db.Uuid
+  eliminatoIl                 DateTime?             @map("eliminato_il")
+  eliminatoDa                 String?               @map("eliminato_da") @db.Uuid
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "contratti_cliente_tenant_id_fkey")
+  cliente               Cliente              @relation("ClienteDelContratto", fields: [clienteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_cliente_fkey")
+  clienteFatturazione   Cliente?             @relation("ClienteDiFatturazione", fields: [clienteFatturazioneId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_cliente_fatturazione_fkey")
+  sede                  SedeDitta?           @relation(fields: [sedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_sede_fkey")
+  categoria             CodificaContratto?   @relation("CategoriaContratto", fields: [categoriaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_categoria_fkey")
+  tipo                  CodificaContratto?   @relation("TipoContratto", fields: [tipoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_tipo_fkey")
+  motivoAnnulloCodifica CodificaContratto?   @relation("MotivoAnnulloContratto", fields: [motivoAnnulloId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_motivo_annullo_fkey")
+  condizionePagamento   CondizionePagamento? @relation(fields: [condizionePagamentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_condizione_pagamento_fkey")
+  contoCorrente         ContoCorrente?       @relation(fields: [contoCorrenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_conto_corrente_fkey")
+  agente                Agente?              @relation(fields: [agenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_agente_fkey")
+  speseIncasso          SpesaAccessoria?     @relation("SpeseIncassoContratto", fields: [speseIncassoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_spese_incasso_fkey")
+  bollo                 SpesaAccessoria?     @relation("BolloContratto", fields: [bolloId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_bollo_fkey")
+  registroIva           RegistroIva?         @relation(fields: [registroIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_registro_iva_fkey")
+  testoFatturazione     TestoFatturazione?   @relation(fields: [testoFatturazioneId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_testo_fatturazione_fkey")
+  contrattoPrincipale   ContrattoCliente?    @relation("ContrattoPrincipale", fields: [contrattoPrincipaleId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "contratti_cliente_contratto_principale_fkey")
+
+  contrattiAllegati ContrattoCliente[]           @relation("ContrattoPrincipale")
+  periodi           PeriodoFatturazioneCliente[]
+  allegatiPdf       AllegatoContrattoCliente[]
+
+  @@unique([id, tenantId], map: "contratti_cliente_id_tenant_id_key")
+  @@unique([tenantId, numero], map: "contratti_cliente_tenant_id_numero_key")
+  @@index([tenantId, stato], map: "contratti_cliente_tenant_id_stato_idx")
+  @@index([tenantId, clienteId], map: "contratti_cliente_tenant_id_cliente_id_idx")
+  @@index([tenantId, clienteFatturazioneId], map: "contratti_cliente_tenant_id_cliente_fatturazione_id_idx")
+  @@index([tenantId, categoriaId], map: "contratti_cliente_tenant_id_categoria_id_idx")
+  @@index([contrattoPrincipaleId], map: "contratti_cliente_contratto_principale_id_idx")
+  @@map("contratti_cliente")
+}
+
+/// Periodo di fatturazione di un contratto cliente (D10): fino a 12, giorno e mese di inizio e di fine (senza anno), sostituiti in blocco a ogni scrittura. Si cancella a cascata con il contratto.
+model PeriodoFatturazioneCliente {
+  id           String @id(map: "periodi_fatturazione_cliente_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  contrattoId  String @map("contratto_id") @db.Uuid
+  ordine       Int
+  giornoInizio Int    @map("giorno_inizio")
+  meseInizio   Int    @map("mese_inizio")
+  giornoFine   Int    @map("giorno_fine")
+  meseFine     Int    @map("mese_fine")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "periodi_fatturazione_cliente_tenant_id_fkey")
+  contratto ContrattoCliente @relation(fields: [contrattoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "periodi_fatturazione_cliente_contratto_fkey")
+
+  @@unique([contrattoId, ordine], map: "periodi_fatturazione_cliente_contratto_id_ordine_key")
+  @@index([tenantId], map: "periodi_fatturazione_cliente_tenant_id_idx")
+  @@map("periodi_fatturazione_cliente")
+}
+
+/// Allegato PDF di un contratto cliente (D29): al massimo due (posizione 1 e 2), conservati nel database come le pese (max 4 MiB, magic bytes verificati dall'applicazione). Si sostituisce rimuovendo e ricaricando; si cancella a cascata con il contratto.
+model AllegatoContrattoCliente {
+  id             String   @id(map: "allegati_contratto_cliente_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  contrattoId    String   @map("contratto_id") @db.Uuid
+  posizione      Int
+  nomeFile       String   @map("nome_file") @db.VarChar(255)
+  mimeType       String   @map("mime_type") @db.VarChar(50)
+  dimensioneByte Int      @map("dimensione_byte")
+  sha256         String   @db.VarChar(64)
+  contenuto      Bytes
+  caricatoDa     String   @map("caricato_da") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "allegati_contratto_cliente_tenant_id_fkey")
+  contratto ContrattoCliente @relation(fields: [contrattoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "allegati_contratto_cliente_contratto_fkey")
+
+  @@unique([id, tenantId], map: "allegati_contratto_cliente_id_tenant_id_key")
+  @@unique([contrattoId, posizione], map: "allegati_contratto_cliente_contratto_id_posizione_key")
+  @@index([tenantId], map: "allegati_contratto_cliente_tenant_id_idx")
+  @@map("allegati_contratto_cliente")
 }

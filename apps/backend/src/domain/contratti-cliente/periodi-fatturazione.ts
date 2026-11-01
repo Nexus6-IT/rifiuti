@@ -71,6 +71,9 @@ function dataValida(giorno: number, mese: number): boolean {
 const ordinale = (mese: number, giorno: number): number => mese * 100 + giorno
 const inizioOrd = (p: PeriodoFatturazione): number => ordinale(p.meseInizio, p.giornoInizio)
 const fineOrd = (p: PeriodoFatturazione): number => ordinale(p.meseFine, p.giornoFine)
+/** Fine per il confronto fra periodi: 28/02 vale 29/02 (negli anni bisestili e' cosi', R26). */
+const fineOrdBisestile = (p: PeriodoFatturazione): number =>
+  p.meseFine === 2 && p.giornoFine === 28 ? ordinale(2, 29) : fineOrd(p)
 
 function formatta(anno: number, mese: number, giorno: number): string {
   // il 29/02 negli anni non bisestili scivola al 28/02, il 28/02 non cambia mai verso il basso
@@ -133,7 +136,7 @@ export function validaPeriodi(p: PeriodoFatturazione[]): string[] {
     for (let b = a + 1; b < validi.length; b++) {
       const x = p[validi[a]]
       const y = p[validi[b]]
-      if (inizioOrd(x) <= fineOrd(y) && inizioOrd(y) <= fineOrd(x)) {
+      if (inizioOrd(x) <= fineOrdBisestile(y) && inizioOrd(y) <= fineOrdBisestile(x)) {
         errori.push(`I periodi ${validi[a] + 1} e ${validi[b] + 1} si sovrappongono.`)
       }
     }

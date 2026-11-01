@@ -21,6 +21,11 @@ export interface DescrizioneEntita {
   soggetto: string
   /** Per l'accordo del participio ("modificata", "usata") e del suffisso del codice. */
   femminile: boolean
+  /**
+   * Codice e testo del 409 per un P2003 (eliminazione di una riga citata), quando non sono quelli
+   * di ripiego `<PREFISSO>_IN_USO` (D13): es. `AGENTE_IN_USO`, `CLIENTE_CON_CONTRATTI`.
+   */
+  inUso?: { codice: string; messaggio: string }
 }
 
 /**
@@ -36,7 +41,8 @@ export type VincoliNoti = Readonly<Record<string, { codice: string; messaggio: s
  */
 export type RileggiVincolo = () => Promise<string | null>
 
-function modificatoNelFrattempo(e: DescrizioneEntita): ConflictException {
+/** 409 "modificato nel frattempo" per l'entità (lo usano anche i servizi con lock proprio). */
+export function modificatoNelFrattempo(e: DescrizioneEntita): ConflictException {
   const [suffisso, participio] = e.femminile
     ? ['MODIFICATA', 'stata modificata']
     : ['MODIFICATO', 'stato modificato']
@@ -98,9 +104,15 @@ export async function traduciErrorePrisma(
       }
     }
     if (err.code === 'P2003') {
+      if (e.inUso) {
+        throw new ConflictException({ error: e.inUso.codice, message: e.inUso.messaggio })
+      }
+      const [usato, disattiva] = e.femminile
+        ? ['usata', 'disattivala invece di eliminarla']
+        : ['usato', 'disattivalo invece di eliminarlo']
       throw new ConflictException({
         error: `${e.prefisso}_IN_USO`,
-        message: `${e.soggetto} è ${e.femminile ? 'usata' : 'usato'} da clienti o contratti: disattivalo invece di eliminarlo.`,
+        message: `${e.soggetto} è ${usato} da clienti o contratti: ${disattiva}.`,
       })
     }
   }

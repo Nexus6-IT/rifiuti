@@ -28,6 +28,7 @@ import {
 import {
   IdentificativoFiscale,
   MESSAGGIO_PRIVATO_SOLO_PRODUTTORE,
+  ammessoPrivato,
 } from '../../../domain/registry/value-objects/identificativo-fiscale'
 import { Indirizzo, IndirizzoProps } from '../../../domain/registry/value-objects/indirizzo'
 import { normalizzaCodiceFiscaleSoggetto } from '../../../domain/shared/codice-fiscale-soggetto'
@@ -88,7 +89,13 @@ export interface DittaDto {
   partitaIvaDaVerificare: boolean
   privato: boolean
   sedi: SedeDto[]
-  ruoli: { produttoreId?: string; trasportatoreId?: string; destinatarioId?: string }
+  ruoli: {
+    produttoreId?: string
+    trasportatoreId?: string
+    destinatarioId?: string
+    clienteId?: string
+    agenteId?: string
+  }
 }
 
 export interface AggiornaDittaDati {
@@ -140,7 +147,7 @@ export class DitteService {
       codiceFiscale: dati.codiceFiscale,
     })
     // D2.5: il privato e' ammesso solo come produttore
-    if (identificativo.privato && ruolo !== 'PRODUTTORE') {
+    if (identificativo.privato && !ammessoPrivato(ruolo)) {
       throw new DatiControparteNonValidiError(MESSAGGIO_PRIVATO_SOLO_PRODUTTORE)
     }
     const indirizzo = Indirizzo.create(dati.indirizzo)
@@ -171,7 +178,7 @@ export class DitteService {
         )
       }
     }
-    if (ditta.privato && ruolo !== 'PRODUTTORE') {
+    if (ditta.privato && !ammessoPrivato(ruolo)) {
       throw new DatiControparteNonValidiError(MESSAGGIO_PRIVATO_SOLO_PRODUTTORE)
     }
 
@@ -475,6 +482,8 @@ export class DitteService {
         ...(idDi('PRODUTTORE') && { produttoreId: idDi('PRODUTTORE') }),
         ...(idDi('TRASPORTATORE') && { trasportatoreId: idDi('TRASPORTATORE') }),
         ...(idDi('DESTINATARIO') && { destinatarioId: idDi('DESTINATARIO') }),
+        ...(idDi('CLIENTE') && { clienteId: idDi('CLIENTE') }),
+        ...(idDi('AGENTE') && { agenteId: idDi('AGENTE') }),
       },
     }
   }

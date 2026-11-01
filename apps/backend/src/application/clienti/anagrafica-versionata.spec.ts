@@ -173,6 +173,34 @@ describe('anagrafica-versionata', () => {
       expect((f.getResponse() as any).error).toBe('CONDIZIONE_PAGAMENTO_IN_USO')
     })
 
+    it('P2003 di un\'entità femminile: "disattivala invece di eliminarla" (accordo di genere)', async () => {
+      const f = await eccezione(() =>
+        traduciErrorePrisma(errorePrisma('P2003'), CONDIZIONE, vincoli)
+      )
+      expect((f.getResponse() as any).message).toBe(
+        'La condizione di pagamento è usata da clienti o contratti: disattivala invece di eliminarla.'
+      )
+    })
+
+    it("P2003 con `inUso`: codice e messaggio dell'entità sostituiscono quelli di ripiego", async () => {
+      const agente = {
+        prefisso: 'AGENTE',
+        soggetto: "L'agente",
+        femminile: false,
+        inUso: {
+          codice: 'AGENTE_IN_USO',
+          messaggio:
+            "L'agente è indicato su clienti o contratti: disattivalo invece di eliminarlo.",
+        },
+      }
+      const m = await eccezione(() => traduciErrorePrisma(errorePrisma('P2003'), agente, vincoli))
+      expect(m).toBeInstanceOf(ConflictException)
+      expect(m.getResponse()).toMatchObject({
+        error: 'AGENTE_IN_USO',
+        message: "L'agente è indicato su clienti o contratti: disattivalo invece di eliminarlo.",
+      })
+    })
+
     it('un errore qualunque viene rilanciato così com’è', async () => {
       const originale = new Error('boom')
       const e = await eccezione(() => traduciErrorePrisma(originale, CONTO, vincoli))

@@ -1284,11 +1284,11 @@ export class LayoutComponent implements OnInit {
     { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box', feature: 'giacenze' },
     { label: 'Pese', route: '/pese', icon: 'pi pi-calculator', feature: 'pese' },
     { label: 'Contratti', route: '/contratti', icon: 'pi pi-briefcase', feature: 'contratti' },
-    // Voce temporanea: sostituita in 4.1b (Task 24) dal menu Clienti.
+    { label: 'Clienti', route: '/clienti', icon: 'pi pi-users', feature: 'contratti' },
     {
-      label: 'Tabelle di fatturazione',
-      route: '/clienti/tabelle',
-      icon: 'pi pi-table',
+      label: 'Contratti clienti',
+      route: '/contratti-clienti',
+      icon: 'pi pi-file-edit',
       feature: 'contratti',
     },
     { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },

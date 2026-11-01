@@ -3,7 +3,7 @@
  * collegato COME `wasteflow_app`, dentro il `TenantContext`. Il proprietario prepara le aziende e
  * legge lo stato finale. Pulizia solo per id esatti creati (FK a cascata su `tenants`).
  */
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
@@ -21,7 +21,8 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { CodificheContrattoService } from './codifiche-contratto.service'
 import { RegistriIvaService } from './registri-iva.service'
 import { TestiFatturazioneService } from './testi-fatturazione.service'
@@ -34,6 +35,7 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
   let codifiche: CodificheContrattoService
   const tenantCreati: string[] = []
   let n = 0
+  let contratti = 0
 
   const nel = <R>(tenantId: string, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId }, async () => await fn())
@@ -48,6 +50,11 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
+      const in_ = { in: tenantCreati }
+      await owner.allegatoContrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.periodoFatturazioneCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
       await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
@@ -78,6 +85,34 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
       },
     })
     return { tenantId: t.id, utenteId: utente.id }
+  }
+
+  /** Cliente (ditta con ruolo CLIENTE, col proprietario) che cita le righe indicate. */
+  async function clienteConRiferimento(
+    tenantId: string,
+    campo: Partial<Prisma.ClienteUncheckedCreateInput>
+  ) {
+    const c = await creaDittaConRuolo(owner, tenantId, 'CLIENTE')
+    // `creaDittaConRuolo(…, 'CLIENTE')` crea gia' la riga del cliente: la si aggiorna.
+    return owner.cliente.update({ where: { id: c.ruoloId }, data: campo })
+  }
+
+  /** Contratto (su un cliente nuovo) che cita le righe indicate. */
+  async function contrattoConRiferimento(
+    tenantId: string,
+    campo: Partial<Prisma.ContrattoClienteUncheckedCreateInput>
+  ) {
+    const cliente = await clienteConRiferimento(tenantId, {})
+    return owner.contrattoCliente.create({
+      data: {
+        tenantId,
+        clienteId: cliente.id,
+        numero: `CC-2026-${++contratti}`,
+        descrizione: 'Contratto di prova',
+        dataInizio: new Date('2026-01-01'),
+        ...campo,
+      },
+    })
   }
 
   describe('registri IVA', () => {
@@ -353,6 +388,120 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
       ).rejects.toMatchObject({ status: 404 })
       // B parte da 001 anche se A ha gia' usato 001
       expect(await nel(b.tenantId, () => codifiche.prossimoCodice(b.tenantId, 'TIPO'))).toBe('001')
+    })
+  })
+
+  describe('uso reale da clienti e contratti (12b)', () => {
+    it('in uso da un cliente: elimina 409, la riga resta, eliminabile false', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const ids = await creaTabelleFatturazione(owner, tenantId)
+      await clienteConRiferimento(tenantId, { registroIvaId: ids.registroId })
+      const v = await nel(tenantId, () => registri.getById(tenantId, ids.registroId))
+      expect(v.eliminabile).toBe(false)
+      const elenco = await nel(tenantId, () => registri.list(tenantId, true))
+      expect(elenco.find(x => x.id === ids.registroId)?.eliminabile).toBe(false)
+      await expect(
+        nel(tenantId, () => registri.elimina(tenantId, utenteId, ids.registroId, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          error: 'REGISTRO_IVA_IN_USO',
+          message:
+            'Il registro IVA è usato da clienti o contratti: disattivalo invece di eliminarlo.',
+        },
+      })
+      expect(await owner.registroIva.count({ where: { id: ids.registroId } })).toBe(1)
+    })
+
+    it("registro usato che diventa ricevute split: 409 REGISTRO_IVA_IN_USO; se non usato si puo'", async () => {
+      const { tenantId, utenteId } = await azienda()
+      const ids = await creaTabelleFatturazione(owner, tenantId)
+      await contrattoConRiferimento(tenantId, { registroIvaId: ids.registroId })
+      await expect(
+        nel(tenantId, () =>
+          registri.modifica(tenantId, utenteId, ids.registroId, {
+            ricevuteSplit: true,
+            versione: 1,
+          })
+        )
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          error: 'REGISTRO_IVA_IN_USO',
+          message:
+            'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+        },
+      })
+      expect(
+        (await owner.registroIva.findUnique({ where: { id: ids.registroId } }))?.ricevuteSplit
+      ).toBe(false)
+      const libero = await nel(tenantId, () =>
+        registri.crea(tenantId, utenteId, {
+          codice: '77',
+          descrizione: 'Libero',
+          ricevuteSplit: false,
+        })
+      )
+      const v = await nel(tenantId, () =>
+        registri.modifica(tenantId, utenteId, libero.id, { ricevuteSplit: true, versione: 1 })
+      )
+      expect(v.ricevuteSplit).toBe(true)
+    })
+
+    it('in uso da un contratto: elimina 409, la riga resta, eliminabile false', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const ids = await creaTabelleFatturazione(owner, tenantId)
+      await contrattoConRiferimento(tenantId, { testoFatturazioneId: ids.testoId })
+      const v = await nel(tenantId, () => testi.getById(tenantId, ids.testoId))
+      expect(v.eliminabile).toBe(false)
+      const elenco = await nel(tenantId, () => testi.list(tenantId, true))
+      expect(elenco.find(x => x.id === ids.testoId)?.eliminabile).toBe(false)
+      await expect(
+        nel(tenantId, () => testi.elimina(tenantId, utenteId, ids.testoId, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          error: 'TESTO_FATTURAZIONE_IN_USO',
+          message:
+            'Il testo di fatturazione è usato da clienti o contratti: disattivalo invece di eliminarlo.',
+        },
+      })
+      expect(await owner.testoFatturazione.count({ where: { id: ids.testoId } })).toBe(1)
+    })
+
+    it('in uso da un contratto: elimina 409, la riga resta, eliminabile false', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const ids = await creaTabelleFatturazione(owner, tenantId)
+      await contrattoConRiferimento(tenantId, { tipoId: ids.tipoId })
+      const v = await nel(tenantId, () => codifiche.getById(tenantId, ids.tipoId))
+      expect(v.eliminabile).toBe(false)
+      const elenco = await nel(tenantId, () =>
+        codifiche.list(tenantId, { genere: 'TIPO', incluseDisattivate: true })
+      )
+      expect(elenco.find(x => x.id === ids.tipoId)?.eliminabile).toBe(false)
+      await expect(
+        nel(tenantId, () => codifiche.elimina(tenantId, utenteId, ids.tipoId, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          error: 'CODIFICA_CONTRATTO_IN_USO',
+          message:
+            'La codifica del contratto è usata da clienti o contratti: disattivala invece di eliminarla.',
+        },
+      })
+      expect(await owner.codificaContratto.count({ where: { id: ids.tipoId } })).toBe(1)
+    })
+
+    it('codifiche: categoria e motivo di annullo citati da un contratto contano come usi', async () => {
+      const { tenantId } = await azienda()
+      const ids = await creaTabelleFatturazione(owner, tenantId)
+      await contrattoConRiferimento(tenantId, {
+        categoriaId: ids.categoriaId,
+        motivoAnnulloId: ids.motivoId,
+      })
+      const cat = await nel(tenantId, () => codifiche.getById(tenantId, ids.categoriaId))
+      const mot = await nel(tenantId, () => codifiche.getById(tenantId, ids.motivoId))
+      expect([cat.eliminabile, mot.eliminabile]).toEqual([false, false])
     })
   })
 })

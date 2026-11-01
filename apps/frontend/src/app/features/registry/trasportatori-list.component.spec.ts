@@ -475,7 +475,7 @@ describe('TrasportatoriListComponent — ditte, codice fiscale e sedi', () => {
 
     expect(registryService.createTrasportatore).not.toHaveBeenCalled()
     expect(component.erroriId.codiceFiscale).toBe(
-      'Un privato senza partita IVA può essere solo produttore.'
+      'Un privato senza partita IVA può essere solo produttore o cliente.'
     )
   })
 

@@ -11,7 +11,7 @@ import { SpesaAccessoria, TipoSpesa } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ETICHETTE_TIPO_SPESA, OPZIONI_TIPO_SPESA } from '../vocabolario-clienti'
 import { SpesaAccessoriaDialogComponent } from './spesa-accessoria-dialog.component'
-import { chiediConferma, messaggioErrore, permessoScrittura } from './tabella-comune'
+import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 
 @Component({
   selector: 'app-spese-accessorie',
@@ -150,14 +150,12 @@ export class SpeseAccessorieComponent implements OnInit {
 
   carica(): void {
     const tipo = this.filtro()
-    this.servizio.spese.list({ incluseDisattivate: true, ...(tipo ? { tipo } : {}) }).subscribe({
-      next: r => {
-        this.righe.set(r)
-        this.erroreElenco.set(null)
-      },
-      error: err =>
-        this.erroreElenco.set(messaggioErrore(err, 'Impossibile caricare le spese accessorie.')),
-    })
+    caricaElenco(
+      this.servizio.spese.list({ incluseDisattivate: true, ...(tipo ? { tipo } : {}) }),
+      this.righe,
+      this.erroreElenco,
+      'Impossibile caricare le spese accessorie.'
+    )
   }
 
   apri(s: SpesaAccessoria | null): void {
@@ -166,14 +164,12 @@ export class SpeseAccessorieComponent implements OnInit {
   }
 
   cambiaStato(s: SpesaAccessoria): void {
-    this.servizio.spese.modifica(s.id, { attiva: !s.attiva, versione: s.versione }).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile cambiare lo stato.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.spese.modifica(s.id, { attiva: !s.attiva, versione: s.versione }),
+      this.toast,
+      'Impossibile cambiare lo stato.',
+      () => this.carica()
+    )
   }
 
   elimina(s: SpesaAccessoria): void {
@@ -183,13 +179,11 @@ export class SpeseAccessorieComponent implements OnInit {
   }
 
   eliminaConfermata(s: SpesaAccessoria): void {
-    this.servizio.spese.elimina(s.id, s.versione).subscribe({
-      next: () => this.carica(),
-      error: err => {
-        this.toast.error(messaggioErrore(err, 'Impossibile eliminare la spesa.'))
-        // Dopo un conflitto di versione la riga è vecchia: si rilegge.
-        this.carica()
-      },
-    })
+    eseguiERicarica(
+      this.servizio.spese.elimina(s.id, s.versione),
+      this.toast,
+      'Impossibile eliminare la spesa.',
+      () => this.carica()
+    )
   }
 }

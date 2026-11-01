@@ -16,7 +16,11 @@ import {
   SedeNonTrovataError,
   SedeNonValidaPerRuoloError,
 } from '../../core/domain/errors'
-import { RuoloControparte, chiaveIndirizzo } from '../../domain/registry/entities/sede-ditta'
+import {
+  NOME_RUOLO,
+  RuoloControparte,
+  chiaveIndirizzo,
+} from '../../domain/registry/entities/sede-ditta'
 import { Indirizzo } from '../../domain/registry/value-objects/indirizzo'
 import { OpzioniLetturaRuolo } from '../../domain/registry/repositories/ditta.repository'
 import { ClientDitte, DittaPrismaRepository } from './ditta-prisma.repository'
@@ -57,12 +61,6 @@ export interface ContestoDittaLetto {
   numeroSedi: number
   ruoliDitta?: RuoloControparte[]
 }
-
-const NOME_RUOLO = {
-  PRODUTTORE: 'produttore',
-  TRASPORTATORE: 'trasportatore',
-  DESTINATARIO: 'destinatario',
-} as const
 
 export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
   private readonly ditte = new DittaPrismaRepository()

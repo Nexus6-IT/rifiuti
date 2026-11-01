@@ -140,6 +140,13 @@ describe('identificativo-fiscale (gemella del VO del backend)', () => {
           validaIdentificativi({ codiceFiscale: CF_PERSONA_VALIDO }, tipo).errori.codiceFiscale
         ).toBe(MESSAGGIO_PRIVATO_SOLO_PRODUTTORE)
       }
+      // R21: ammesso anche come cliente, non come agente
+      expect(validaIdentificativi({ codiceFiscale: CF_PERSONA_VALIDO }, 'cliente').errori).toEqual(
+        {}
+      )
+      expect(
+        validaIdentificativi({ codiceFiscale: CF_PERSONA_VALIDO }, 'agente').errori.codiceFiscale
+      ).toBe('Un privato senza partita IVA può essere solo produttore o cliente.')
       // con la P.IVA lo stesso CF non è un privato
       expect(
         validaIdentificativi(

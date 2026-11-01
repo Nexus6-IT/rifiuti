@@ -81,7 +81,7 @@ let contatore = 0
 export async function creaDittaConRuolo(
   client: PrismaClient | Prisma.TransactionClient,
   tenantId: string,
-  ruolo: 'PRODUTTORE' | 'TRASPORTATORE' | 'DESTINATARIO',
+  ruolo: 'PRODUTTORE' | 'TRASPORTATORE' | 'DESTINATARIO' | 'CLIENTE' | 'AGENTE',
   dati: DatiDittaDiTest = {}
 ): Promise<RisultatoDittaConRuolo> {
   const n = ++contatore
@@ -122,6 +122,13 @@ export async function creaDittaConRuolo(
         data: { ...comuni, numeroIscrizione: dati.numeroDocumento ?? `ALBO-${n}` },
       })
     ).id
+  } else if (ruolo === 'CLIENTE' || ruolo === 'AGENTE') {
+    // Niente `ragioneSocialeStorica` ne' numero di documento: i due modelli non li hanno (D6).
+    const { ragioneSocialeStorica: _storica, ...base } = comuni
+    ruoloId =
+      ruolo === 'CLIENTE'
+        ? (await client.cliente.create({ data: base })).id
+        : (await client.agente.create({ data: base })).id
   } else {
     ruoloId = (
       await client.destinatario.create({

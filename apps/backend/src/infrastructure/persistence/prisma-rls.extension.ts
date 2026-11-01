@@ -103,6 +103,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RegistroIva',
   'TestoFatturazione',
   'CodificaContratto',
+  // Agenti, clienti e contratti cliente (Fase 4 pezzo 1, seconda migration): dato dell'azienda.
+  'Agente',
+  'Cliente',
+  'ContrattoCliente',
+  'PeriodoFatturazioneCliente',
+  'AllegatoContrattoCliente',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',
