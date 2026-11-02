@@ -16,9 +16,16 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// Le barriere su pg_stat_activity guardano solo le connessioni di questo processo (M6).
+const NOME_APPLICAZIONE = `variazioni-prezzi-t24-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import { TenantContext } from '../../core/context/tenant-context'
-import { annoSolareItaliano } from '../../core/time/anno-italiano'
+import {
+  annoSolareItaliano,
+  formattaDataItaliana,
+  giornoItaliano,
+} from '../../core/time/anno-italiano'
 import { prezzoCalcolato } from '../../domain/listino/importi-riga'
 import {
   PrismaService,
@@ -342,6 +349,7 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         voce: expect.stringMatching(/^\d{5}$/),
         prima: '10.00',
         dopo: '11.00',
+        invariata: false,
       })
       expect(a.righe.find(r => r.id === m.id.aCer)).toMatchObject({
         voce: '20 03 01',
@@ -495,6 +503,51 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
       expect(await prezzoDi(m.id.aV)).toBe('10.00')
       expect(r.versione).toBe(2)
       expect(await versioneDi(m.id.aCer)).toBe(1)
+    })
+
+    it('I1: prezzo zero con anchePrezziZero e percentuale: riga invariata, non scritta', async () => {
+      const m = await mondo()
+      const c = corpo({ filtri: { anchePrezziZero: true, clienteId: m.cb.clienteId } })
+      const a = await nel(m.tenantId, () => service.anteprima(m.tenantId, c))
+      expect(a.totale).toBe(1)
+      expect(a.invariate).toBe(1)
+      expect(a.righe.find(r => r.id === m.id.bZero)).toMatchObject({
+        invariata: true,
+        dopo: '0.00',
+      })
+      expect(await variaTutto(m, c)).toEqual({ aggiornati: 1 })
+      expect(await versioneDi(m.id.bZero)).toBe(1)
+      expect(await versioneDi(m.id.bV)).toBe(2)
+    })
+
+    it('I1: soloMinimi con un importo sotto il centesimo: invariata, non scritta', async () => {
+      const m = await mondo()
+      await owner.rigaAddebito.update({
+        where: { id: m.id.aV },
+        data: { minimoFatturabile: '50.00' },
+      })
+      const c = corpo({ tipo: 'AUMENTO_IMPORTO', valore: '0,004', soloMinimi: true })
+      const a = await nel(m.tenantId, () => service.anteprima(m.tenantId, c))
+      expect(a).toMatchObject({ totale: 0, invariate: 1 })
+      expect(await variaTutto(m, c)).toEqual({ aggiornati: 0 })
+      expect(await versioneDi(m.id.aV)).toBe(1)
+      expect(await audit(m.tenantId, 'PREZZI_VARIATI')).toHaveLength(1)
+    })
+
+    it('I1: una riga speciale con alcune fasce invariate scrive solo le fasce che cambiano', async () => {
+      const m = await mondo()
+      await owner.scaglioneRigaAddebito.updateMany({
+        where: { rigaId: m.id.aSp, ordine: 2 },
+        data: { prezzo: '5' },
+      })
+      const c = corpo({ valore: '3', filtri: { addebitoId: m.x } })
+      expect(await variaTutto(m, c)).toEqual({ aggiornati: 3 })
+      // 0.10 + 3% = 0.103 -> 0.10 (invariata); 5 + 3% = 5.15.
+      expect(await fasceDi(m.id.aSp)).toEqual(['0.10', '5.15', '0.00'])
+      expect(await versioneDi(m.id.aSp)).toBe(2)
+      const [log] = await audit(m.tenantId, 'PREZZI_VARIATI')
+      expect(log.metadata).toMatchObject({ righe: 3, fasce: 1, invariate: 0 })
+      expect((log.metadata as { impronta: string }).impronta).toMatch(/^[0-9a-f]{64}$/)
     })
 
     it('aumento d’importo: fino a 6 decimali; diminuzione che porta a zero ammessa', async () => {
@@ -674,7 +727,7 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         })),
       })
       // Dopo una scrittura in massa le statistiche del planner sono quelle della tabella vuota
-      // finche' l'autovacuum non passa: le si aggiorna, come in esercizio, per non misurare il caso.
+      // finche' l'autovacuum non passa: le si aggiorna per non misurare il caso (in esercizio ci pensa l'autovacuum, con ritardo).
       await owner.$executeRawUnsafe('ANALYZE righe_addebito')
       return a
     }
@@ -734,7 +787,8 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
     const inAttesa = async (frammento: string) => {
       const r = await owner.$queryRaw<{ n: number }[]>`
         SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE ${frammento}`
+        WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+          AND wait_event_type = 'Lock' AND query LIKE ${frammento}`
       return r[0].n
     }
 
@@ -907,8 +961,8 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         const m = await mondoIstat()
         const mesi = await nel(m.tenantId, () => service.mesiIstat(m.tenantId, false))
         expect(mesi).toEqual([
-          { anno: 2010, mese: 3, contratti: 1 },
-          { anno: 2011, mese: 5, contratti: 1 },
+          { anno: 2010, mese: 3, contratti: 1, ultimaApplicazione: null },
+          { anno: 2011, mese: 5, contratti: 1, ultimaApplicazione: null },
         ])
       })
 
@@ -916,10 +970,40 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         const m = await mondoIstat()
         const mesi = await nel(m.tenantId, () => service.mesiIstat(m.tenantId, true))
         expect(mesi).toEqual([
-          { anno: 2010, mese: 3, contratti: 1 },
-          { anno: 2011, mese: 5, contratti: 1 },
-          { anno: annoCorrente - 1, mese: 2, contratti: 1 },
+          { anno: 2010, mese: 3, contratti: 1, ultimaApplicazione: null },
+          { anno: 2011, mese: 5, contratti: 1, ultimaApplicazione: null },
+          { anno: annoCorrente - 1, mese: 2, contratti: 1, ultimaApplicazione: null },
         ])
+      })
+
+      it('M3: ultimaApplicazione è null finché l’ISTAT non è applicato, poi la data italiana', async () => {
+        const m = await mondoIstat()
+        const prima = await nel(m.tenantId, () => service.mesiIstat(m.tenantId, false))
+        expect(prima.map(x => x.ultimaApplicazione)).toEqual([null, null])
+        const c = istat({ percentuali: [{ anno: 2010, mese: 3, percentuale: '3' }] })
+        const { impronta } = await nel(m.tenantId, () => service.anteprimaIstat(m.tenantId, c))
+        await nel(m.tenantId, () =>
+          service.applicaIstat(m.tenantId, m.utenteId, { ...c, impronta })
+        )
+        const oggi = giornoItaliano(new Date())
+        const dopo = await nel(m.tenantId, () => service.mesiIstat(m.tenantId, false))
+        expect(dopo).toEqual([
+          { anno: 2010, mese: 3, contratti: 1, ultimaApplicazione: oggi },
+          { anno: 2011, mese: 5, contratti: 1, ultimaApplicazione: null },
+        ])
+      })
+
+      it('M3: l’ultima applicazione è per azienda', async () => {
+        const mia = await mondoIstat()
+        const altra = await mondoIstat()
+        const { impronta } = await nel(mia.tenantId, () =>
+          service.anteprimaIstat(mia.tenantId, istat())
+        )
+        await nel(mia.tenantId, () =>
+          service.applicaIstat(mia.tenantId, mia.utenteId, { ...istat(), impronta })
+        )
+        const mesi = await nel(altra.tenantId, () => service.mesiIstat(altra.tenantId, false))
+        expect(mesi.every(x => x.ultimaApplicazione === null)).toBe(true)
       })
 
       it('un’altra azienda non compare; un contratto eliminato nemmeno', async () => {
@@ -933,7 +1017,7 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         })
         expect(eliminato.contrattoId).toBeTruthy()
         const mesi = await nel(altra.tenantId, () => service.mesiIstat(altra.tenantId, false))
-        expect(mesi[0]).toEqual({ anno: 2010, mese: 3, contratti: 1 })
+        expect(mesi[0]).toEqual({ anno: 2010, mese: 3, contratti: 1, ultimaApplicazione: null })
         expect(await nel(m.tenantId, () => service.mesiIstat(m.tenantId, false))).toHaveLength(2)
       })
     })
@@ -947,7 +1031,25 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
       expect(per(m.id.i3V)).toMatchObject({ prima: '100.00', dopo: '102.50' })
       // Riga speciale al +3%: 0.103 e 0.0824 a due decimali restano 0.10 e 0.08.
       expect(per(m.id.i1Sp)?.dopo).toBe('0.10 / 0.08 / 0.00')
-      expect(a.totale).toBe(3)
+      // Le righe che non cambiano restano visibili, ma non sono "da modificare" (I1).
+      expect(per(m.id.i1Sp)?.invariata).toBe(true)
+      expect(per(m.id.i1V)?.invariata).toBe(false)
+      expect(a.totale).toBe(2)
+      expect(a.invariate).toBe(1)
+    })
+
+    it('I1: una riga che non cambia non si scrive: versione, aggiornati e audit la ignorano', async () => {
+      const m = await mondoIstat()
+      const { impronta } = await nel(m.tenantId, () => service.anteprimaIstat(m.tenantId, istat()))
+      const esito = await nel(m.tenantId, () =>
+        service.applicaIstat(m.tenantId, m.utenteId, { ...istat(), impronta })
+      )
+      expect(esito).toEqual({ aggiornati: 2 })
+      expect(await versioneDi(m.id.i1Sp)).toBe(1)
+      expect(await fasceDi(m.id.i1Sp)).toEqual(['0.10', '0.08', '0.00'])
+      expect(await versioneDi(m.id.i1V)).toBe(2)
+      const [log] = await audit(m.tenantId, 'PREZZI_ISTAT')
+      expect(log.metadata).toMatchObject({ righe: 2, contratti: 2, fasce: 0, invariate: 1 })
     })
 
     it('un contratto senza incremento ISTAT: invariato (e anche annullato, anno corrente, precedente)', async () => {
@@ -998,6 +1100,13 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         dopo: '10.61',
       })
       expect(seconda.impronta).not.toBe(prima.impronta)
+      // M3: la seconda anteprima avvisa che il mese è già stato adeguato, senza impedirlo.
+      expect(prima.avvisi).toEqual([])
+      const d = formattaDataItaliana(new Date())
+      expect(seconda.avvisi).toEqual([
+        `ISTAT di marzo 2010 già applicato il ${d} a 1 contratto`,
+        `ISTAT di maggio 2011 già applicato il ${d} a 1 contratto`,
+      ])
       await nel(m.tenantId, () =>
         service.applicaIstat(m.tenantId, m.utenteId, { ...istat(), impronta: seconda.impronta })
       )
@@ -1013,9 +1122,11 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
           { anno: 2011, mese: 5, percentuale: '2.5' },
         ],
         tipi: ['V'],
-        righe: 3,
+        righe: 2,
         contratti: 2,
+        impronta: prima.impronta,
       })
+      expect((log[1].metadata as { impronta: string }).impronta).toBe(seconda.impronta)
       expect(log[1].createdAt.getTime()).toBeGreaterThanOrEqual(log[0].createdAt.getTime())
     })
 

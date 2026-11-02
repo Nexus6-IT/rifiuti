@@ -14,11 +14,16 @@
 // (Q5), scelti per mese di inizio; il flag e' la differenza voluta da WinWaste.
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { annoSolareItaliano } from '../../core/time/anno-italiano'
+import {
+  annoSolareItaliano,
+  formattaDataItaliana,
+  giornoItaliano,
+} from '../../core/time/anno-italiano'
 import { arrotonda, prezzoCalcolato } from '../../domain/listino/importi-riga'
 import { tipoAddebitoValido } from '../../domain/listino/tipi-addebito'
 import {
   TIPI_VARIAZIONE,
+  aumentoIstat,
   improntaVariazione,
   nuoviScaglioni,
   nuovoPrezzo,
@@ -81,6 +86,8 @@ export interface CorpoIstat {
  */
 export interface AnteprimaVariazioneContratti {
   totale: number
+  /** Righe del perimetro il cui prezzo non cambia: restano in `righe`, non si scrivono (I1). */
+  invariate: number
   righe: {
     id: string
     cliente: string | null
@@ -90,16 +97,27 @@ export interface AnteprimaVariazioneContratti {
     voce: string
     prima: string
     dopo: string
+    /** Il prezzo nuovo e' uguale al vecchio (arrotondamento): la riga non si scrive (I1). */
+    invariata: boolean
   }[]
   errori: { id: string; voce: string; messaggio: string }[]
+  /** Righe che l'applicazione scrive davvero (quelle con `invariata = false`). */
   /** `improntaVariazione` su `{ id: rigaId, versione }` piu' i parametri. */
   impronta: string
+}
+
+/** Anteprima ISTAT: come quella dei contratti, piu' gli avvisi di mesi gia' adeguati (M3). */
+export interface AnteprimaIstat extends AnteprimaVariazioneContratti {
+  /** Es. "ISTAT di marzo 2010 già applicato il 15/04/2026 a 12 contratti". Non blocca. */
+  avvisi: string[]
 }
 
 export interface MeseIstat {
   anno: number
   mese: number
   contratti: number
+  /** 'AAAA-MM-GG' (data italiana) dell'ultima applicazione ISTAT che ha cambiato prezzi in questo mese. */
+  ultimaApplicazione: string | null
 }
 
 export interface EsitoVariazioneContratti {
@@ -112,6 +130,20 @@ const MAX_RIGHE = 10_000
 const RIGHE_ANTEPRIMA = 200
 const MSG_TROPPE = 'La variazione tocca troppe righe: restringi i filtri.'
 /** La variazione e' una sola transazione: piu' tempo del default di Prisma (5 s). */
+const MESI = [
+  'gennaio',
+  'febbraio',
+  'marzo',
+  'aprile',
+  'maggio',
+  'giugno',
+  'luglio',
+  'agosto',
+  'settembre',
+  'ottobre',
+  'novembre',
+  'dicembre',
+] as const
 const OPZIONI_TRANSAZIONE = { timeout: 30_000, maxWait: 5_000 } as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -181,9 +213,12 @@ interface Calcolo {
   prezzi: { id: string; prezzo: string }[]
   minimi: { id: string; prezzo: string }[]
   fasce: { id: string; prezzo: string }[]
-  /** Righe da scrivere (versione + 1), in ordine di id. */
+  /** Righe da scrivere (versione + 1), in ordine di id: solo quelle che cambiano davvero. */
   righeIds: string[]
   contratti: number
+  invariate: number
+  /** Per mese di inizio (chiave `anno*12+mese-1`), i contratti con almeno una riga cambiata. */
+  perMese: Map<number, Set<string>>
   impronta: string
 }
 
@@ -250,6 +285,8 @@ function normalizzaFiltri(f: FiltroVariazioneContratti | undefined, errori: stri
     addebitoId: uuid(g.addebitoId),
     cerCode: cer === null ? null : cerCanonico(cer.toUpperCase()),
     clienteId: uuid(g.clienteId),
+    // Il riferimento si confronta senza spazi iniziali e finali; uno vuoto o fatto di soli
+    // spazi vale "nessun filtro": non si possono scegliere le sole righe senza riferimento (M7).
     riferimento: g.riferimento === undefined ? null : testo(g.riferimento?.trimEnd()),
     prezzoAttuale,
     anchePrezziZero: g.anchePrezziZero === true,
@@ -400,13 +437,23 @@ export class VariazioniPrezziService {
             AND EXTRACT(YEAR FROM data_inizio) <= ${ultimoAnno}
           GROUP BY 1, 2
           ORDER BY 1, 2`
-        return righe.map(r => ({ anno: r.anno, mese: r.mese, contratti: r.contratti }))
+        const ultime = await this.ultimeApplicazioniIstat(tx, tenantId)
+        return righe.map(r => ({
+          anno: r.anno,
+          mese: r.mese,
+          contratti: r.contratti,
+          ultimaApplicazione: ultime.get(chiaveMese(r.anno, r.mese))?.giorno ?? null,
+        }))
       }, OPZIONI_TRANSAZIONE)
     )
   }
 
-  async anteprimaIstat(tenantId: string, corpo: CorpoIstat): Promise<AnteprimaVariazioneContratti> {
-    return this.anteprimaCriteri(tenantId, normalizzaIstat(corpo, annoSolareItaliano(new Date())))
+  async anteprimaIstat(tenantId: string, corpo: CorpoIstat): Promise<AnteprimaIstat> {
+    const a = await this.anteprimaCriteri(
+      tenantId,
+      normalizzaIstat(corpo, annoSolareItaliano(new Date()))
+    )
+    return { ...a, avvisi: a.avvisi ?? [] }
   }
 
   async applicaIstat(
@@ -426,19 +473,68 @@ export class VariazioniPrezziService {
   // Comune
   // -----------------------------------------------------------------------------------------
 
+  /**
+   * Per mese di inizio, l'ultima applicazione ISTAT dell'azienda che ha cambiato almeno un
+   * contratto di quel mese, letta dall'audit `PREZZI_ISTAT` (campo `mesi` della metadata).
+   */
+  private async ultimeApplicazioniIstat(
+    tx: Prisma.TransactionClient,
+    tenantId: string
+  ): Promise<Map<number, { giorno: string; data: Date; contratti: number }>> {
+    const log = await tx.activityLog.findMany({
+      where: { tenantId, action: 'PREZZI_ISTAT' },
+      select: { createdAt: true, metadata: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    const ultime = new Map<number, { giorno: string; data: Date; contratti: number }>()
+    for (const l of log) {
+      const mesi = (l.metadata as { mesi?: unknown } | null)?.mesi
+      if (!Array.isArray(mesi)) continue
+      for (const m of mesi as { anno?: unknown; mese?: unknown; contratti?: unknown }[]) {
+        if (
+          typeof m.anno === 'number' &&
+          typeof m.mese === 'number' &&
+          typeof m.contratti === 'number' &&
+          m.contratti > 0
+        ) {
+          ultime.set(chiaveMese(m.anno, m.mese), {
+            giorno: giornoItaliano(l.createdAt),
+            data: l.createdAt,
+            contratti: m.contratti,
+          })
+        }
+      }
+    }
+    return ultime
+  }
+
   private async anteprimaCriteri(
     tenantId: string,
     c: Criteri
-  ): Promise<AnteprimaVariazioneContratti> {
+  ): Promise<AnteprimaVariazioneContratti & { avvisi?: string[] }> {
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
         const codici = await this.codiciIva(tx, tenantId, c)
         const calcolo = this.calcola(await this.trova(tx, tenantId, c), c, codici)
+        const avvisi: string[] = []
+        if (c.modalita === 'ISTAT') {
+          // Doppia applicazione: si avvisa, non si impedisce (M3).
+          const ultime = await this.ultimeApplicazioniIstat(tx, tenantId)
+          for (const m of c.mesi) {
+            const u = ultime.get(chiaveMese(m.anno, m.mese))
+            if (!u) continue
+            avvisi.push(
+              `ISTAT di ${MESI[m.mese - 1]} ${m.anno} già applicato il ${formattaDataItaliana(u.data)} a ${u.contratti} ${u.contratti === 1 ? 'contratto' : 'contratti'}`
+            )
+          }
+        }
         return {
-          totale: calcolo.righe.length,
+          totale: calcolo.righe.length - calcolo.invariate,
+          invariate: calcolo.invariate,
           righe: calcolo.righe.slice(0, RIGHE_ANTEPRIMA),
           errori: calcolo.errori,
           impronta: calcolo.impronta,
+          ...(c.modalita === 'ISTAT' ? { avvisi } : {}),
         }
       }, OPZIONI_TRANSAZIONE)
     )
@@ -473,7 +569,16 @@ export class VariazioniPrezziService {
           }
 
           // Rilettura dopo il blocco: e' questo lo stato che si confronta e si scrive.
-          const calcolo = this.calcola(await this.trova(tx, tenantId, c), c, codici)
+          const riletta = await this.trova(tx, tenantId, c)
+          // Una riga entrata nel filtro dopo la prima lettura non e' bloccata: non si scrive (M1).
+          const bloccate = new Set(candidate)
+          if (riletta.some(r => !bloccate.has(r.id))) {
+            throw new ConflictException({
+              message: MSG_VARIAZIONE_SUPERATA,
+              error: 'VARIAZIONE_SUPERATA',
+            })
+          }
+          const calcolo = this.calcola(riletta, c, codici)
           if (calcolo.impronta !== impronta) {
             throw new ConflictException({
               message: MSG_VARIAZIONE_SUPERATA,
@@ -499,7 +604,7 @@ export class VariazioniPrezziService {
                   ? 'Adeguamento ISTAT dei prezzi dei contratti'
                   : 'Prezzi dei contratti variati',
               // Solo parametri e conteggi (D25): niente ragioni sociali, note o descrizioni libere.
-              metadata: this.metadataAudit(c, calcolo) as Prisma.InputJsonValue,
+              metadata: this.metadataAudit(c, calcolo, impronta) as Prisma.InputJsonValue,
             },
           })
           return { aggiornati: calcolo.righeIds.length }
@@ -514,7 +619,9 @@ export class VariazioniPrezziService {
    * controllo delle FK (la versione precedente e' stata creata dalla transazione stessa) e prende
    * `FOR KEY SHARE` sull'elenco, che confligge col `FOR UPDATE` di chi salva una riga dello stesso
    * elenco: deadlock con il collega (visto in prova). Le righe che cambiano solo nelle fasce hanno
-   * un UPDATE di sola versione.
+   * un UPDATE di sola versione. Nella sostituzione IVA cambia `codice_iva_id`, una colonna FK: il
+   * controllo scatta comunque, una volta per riga, e prende `FOR KEY SHARE` sul codice IVA nuovo
+   * (non sull'elenco): nessun deadlock col collega, solo la coda dietro un PATCH di quel codice.
    */
   private async scrivi(
     tx: Prisma.TransactionClient,
@@ -562,14 +669,24 @@ export class VariazioniPrezziService {
     }
   }
 
-  private metadataAudit(c: Criteri, calcolo: Calcolo): Record<string, unknown> {
+  private metadataAudit(c: Criteri, calcolo: Calcolo, impronta: string): Record<string, unknown> {
     const conteggi = {
       righe: calcolo.righeIds.length,
       contratti: calcolo.contratti,
       fasce: calcolo.fasce.length,
+      invariate: calcolo.invariate,
+      // Collega l'audit alla sua anteprima: due applicazioni uguali si distinguono (M3).
+      impronta,
     }
     if (c.modalita === 'ISTAT') {
-      return { percentuali: c.mesi, tipi: c.filtri.tipi, ...conteggi }
+      return {
+        percentuali: c.mesi,
+        tipi: c.filtri.tipi,
+        mesi: [...calcolo.perMese.entries()]
+          .map(([k, v]) => ({ anno: Math.floor(k / 12), mese: (k % 12) + 1, contratti: v.size }))
+          .sort((x, y) => x.anno * 12 + x.mese - (y.anno * 12 + y.mese)),
+        ...conteggi,
+      }
     }
     return {
       tipo: c.tipo,
@@ -806,6 +923,8 @@ export class VariazioniPrezziService {
     const fasce: Calcolo['fasce'] = []
     const righeIds: string[] = []
     const contratti = new Set<string>()
+    const perMese = new Map<number, Set<string>>()
+    let invariate = 0
     const percentuali = new Map(c.mesi.map(m => [chiaveMese(m.anno, m.mese), m.percentuale]))
 
     for (const r of trovate) {
@@ -818,7 +937,12 @@ export class VariazioniPrezziService {
       }
 
       if (c.tipo === 'SOSTITUZIONE_IVA') {
-        righe.push({ ...base, prima: codici.get(c.da) ?? '', dopo: codici.get(c.a) ?? '' })
+        righe.push({
+          ...base,
+          prima: codici.get(c.da) ?? '',
+          dopo: codici.get(c.a) ?? '',
+          invariata: false,
+        })
         righeIds.push(r.id)
         contratti.add(r.contrattoId)
         continue
@@ -837,50 +961,66 @@ export class VariazioniPrezziService {
           messaggio: `Contratto ${base.contratto}, elenco ${base.elenco}: ${messaggio}`,
         })
       const tipo = c.tipo as Exclude<TipoVariazione, 'SOSTITUZIONE_IVA'>
+      // L'ISTAT passa dal dominio `aumentoIstat` (oggi coincide con un aumento percentuale).
+      const nuovo = (prezzo: string) =>
+        c.modalita === 'ISTAT' ? aumentoIstat(prezzo, valore) : nuovoPrezzo(prezzo, tipo, valore)
+      const uguali = (a: string, b: string) => new Prisma.Decimal(a).equals(new Prisma.Decimal(b))
+      let cambiata = true
 
       if (c.soloMinimi) {
         if (r.minimo === null) continue
         const prima = prezzoCalcolato(r.minimo)
-        const esito = nuovoPrezzo(prima, tipo, valore)
+        const esito = nuovo(prima)
         if ('errore' in esito) {
           segnala(esito.errore)
           continue
         }
         // Il minimo e' un importo a due decimali (Decimal(12,2)): il valore mostrato e' quello scritto.
         const dopo = arrotonda(esito.prezzo, 2)
-        righe.push({ ...base, prima, dopo })
-        minimi.push({ id: r.id, prezzo: dopo })
+        cambiata = !uguali(prima, dopo)
+        righe.push({ ...base, prima, dopo, invariata: !cambiata })
+        if (cambiata) minimi.push({ id: r.id, prezzo: dopo })
       } else if (r.prezzoSpeciale) {
         const origine = r.fasce
-        const nuovi = nuoviScaglioni(origine, p => nuovoPrezzo(p, tipo, valore))
+        const nuovi = nuoviScaglioni(origine, nuovo)
         if ('errore' in nuovi) {
           segnala(nuovi.errore)
           continue
         }
+        const cambiate = origine.flatMap((s, i) =>
+          // Zero e vuoti restano; si scrivono solo le fasce il cui prezzo cambia davvero.
+          !new Prisma.Decimal(s.prezzo).isZero() && !uguali(s.prezzo, nuovi.scaglioni[i].prezzo)
+            ? [{ id: s.id, prezzo: nuovi.scaglioni[i].prezzo }]
+            : []
+        )
+        cambiata = cambiate.length > 0
         righe.push({
           ...base,
           prima: origine.map(s => prezzoCalcolato(s.prezzo)).join(' / '),
           dopo: nuovi.scaglioni.map(s => prezzoCalcolato(s.prezzo)).join(' / '),
+          invariata: !cambiata,
         })
-        origine.forEach((s, i) => {
-          // Zero e vuoti restano come sono: solo le fasce con un prezzo si scrivono.
-          if (!new Prisma.Decimal(s.prezzo).isZero()) {
-            fasce.push({ id: s.id, prezzo: nuovi.scaglioni[i].prezzo })
-          }
-        })
+        fasce.push(...cambiate)
       } else {
         if (r.prezzo === null) continue
         const prima = prezzoCalcolato(r.prezzo)
-        const esito = nuovoPrezzo(prima, tipo, valore)
+        const esito = nuovo(prima)
         if ('errore' in esito) {
           segnala(esito.errore)
           continue
         }
-        righe.push({ ...base, prima, dopo: esito.prezzo })
-        prezzi.push({ id: r.id, prezzo: esito.prezzo })
+        cambiata = !uguali(prima, esito.prezzo)
+        righe.push({ ...base, prima, dopo: esito.prezzo, invariata: !cambiata })
+        if (cambiata) prezzi.push({ id: r.id, prezzo: esito.prezzo })
+      }
+      if (!cambiata) {
+        invariate++
+        continue
       }
       righeIds.push(r.id)
       contratti.add(r.contrattoId)
+      const km = chiaveMese(Number(r.inizio.slice(0, 4)), Number(r.inizio.slice(5, 7)))
+      perMese.set(km, (perMese.get(km) ?? new Set<string>()).add(r.contrattoId))
     }
     if (righe.length + errori.length > MAX_RIGHE) nonValida([MSG_TROPPE], 'VARIAZIONE_TROPPE_RIGHE')
 
@@ -900,6 +1040,17 @@ export class VariazioniPrezziService {
       ...trovate.map(r => ({ id: r.id, versione: r.versione })),
       { id: `parametri:${parametri}`, versione: 0 },
     ])
-    return { righe, errori, prezzi, minimi, fasce, righeIds, contratti: contratti.size, impronta }
+    return {
+      righe,
+      errori,
+      prezzi,
+      minimi,
+      fasce,
+      righeIds,
+      contratti: contratti.size,
+      invariate,
+      perMese,
+      impronta,
+    }
   }
 }

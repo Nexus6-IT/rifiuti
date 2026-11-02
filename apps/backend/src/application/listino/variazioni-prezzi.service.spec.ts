@@ -6,6 +6,7 @@ const T = 'aaaaaaaa-0000-4000-8000-000000000001'
 const U = 'bbbbbbbb-0000-4000-8000-000000000002'
 const R1 = 'c1c1c1c1-0000-4000-8000-000000000001'
 const R2 = 'c2c2c2c2-0000-4000-8000-000000000002'
+const R3 = 'c3c3c3c3-0000-4000-8000-000000000003'
 const F1 = 'f1f1f1f1-0000-4000-8000-000000000001'
 
 const riga = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -89,7 +90,10 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
         valori.push(v)
         return 1
       }),
-      activityLog: { create: jest.fn().mockResolvedValue({}) },
+      activityLog: {
+        create: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     }
     prisma = { $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new VariazioniPrezziService(prisma)
@@ -114,6 +118,7 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
           voce: '90001',
           prima: '10.00',
           dopo: '11.00',
+          invariata: false,
         },
         {
           id: R2,
@@ -123,9 +128,12 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
           voce: '90001',
           prima: '0.10',
           dopo: '0.11',
+          invariata: false,
         },
       ])
       expect(a.totale).toBe(2)
+      expect(a.invariate).toBe(0)
+      expect(a.righe.every(r => r.invariata === false)).toBe(true)
       expect(a.impronta).toMatch(/^[0-9a-f]{64}$/)
     })
 
@@ -220,6 +228,35 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({ error: 'VARIAZIONE_SUPERATA' })
       expect(testi.filter(t => /^\s*UPDATE/.test(t))).toEqual([])
       expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('M1: una riga entrata nel filtro dopo i lock (non bloccata): 409 VARIAZIONE_SUPERATA, nulla scritto', async () => {
+      const c = await conImpronta()
+      let letture = 0
+      tx.rigaAddebito.findMany.mockImplementation(async () => {
+        letture++
+        if (letture === 2) righe.push(riga(R3, { contrattoId: 'k3' }))
+        return righe.map(r => ({ id: r.id }))
+      })
+      testi.length = 0
+      const e = await errore(service.applica(T, U, c))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({ error: 'VARIAZIONE_SUPERATA' })
+      expect(testi.filter(t => /^\s*UPDATE/.test(t))).toEqual([])
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
+    })
+
+    it('I1: una riga che non cambia non entra negli UPDATE e non conta', async () => {
+      righe = [riga(R1, { prezzo: '0.100000' }), riga(R2)]
+      const c = await conImpronta(corpo({ valore: '3' }))
+      testi.length = 0
+      valori.length = 0
+      const esito = await service.applica(T, U, c)
+      expect(esito).toEqual({ aggiornati: 1 })
+      const upd = valori[testi.findIndex(t => /UPDATE righe_addebito r/.test(t))]
+      expect(upd[0]).toEqual([R2])
+      const { data } = tx.activityLog.create.mock.calls[0][0]
+      expect(data.metadata).toMatchObject({ righe: 1, invariate: 1, impronta: c.impronta })
     })
 
     it('errori nell’anteprima: 400 VARIAZIONE_CON_ERRORI, nulla scritto', async () => {
@@ -337,13 +374,24 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
           { anno: 2010, mese: 3, percentuale: '3' },
           { anno: 2011, mese: 5, percentuale: '2.5' },
         ],
+        impronta,
       })
+    })
+
+    it('M2: l’ISTAT passa dal dominio aumentoIstat', async () => {
+      const dominio = jest.requireActual('../../domain/listino/variazione-prezzi')
+      const spia = jest.spyOn(dominio, 'aumentoIstat')
+      await service.anteprimaIstat(T, istat())
+      expect(spia).toHaveBeenCalled()
+      spia.mockRestore()
     })
 
     it('mesi: esclude l’anno corrente e, senza parametro, il precedente', async () => {
       tx.$queryRaw.mockResolvedValueOnce([{ anno: 2010, mese: 3, contratti: 2 }])
       const anno = new Date().getUTCFullYear()
-      expect(await service.mesiIstat(T, false)).toEqual([{ anno: 2010, mese: 3, contratti: 2 }])
+      expect(await service.mesiIstat(T, false)).toEqual([
+        { anno: 2010, mese: 3, contratti: 2, ultimaApplicazione: null },
+      ])
       expect(tx.$queryRaw.mock.calls[0].slice(1)).toContain(anno - 2)
       tx.$queryRaw.mockResolvedValueOnce([])
       await service.mesiIstat(T, true)
