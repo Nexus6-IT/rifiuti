@@ -22,7 +22,7 @@ import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.serv
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { SceltaClienteComponent } from '../contratti-cliente/scelta-cliente.component'
 import { AnteprimaContrattiComponent } from './anteprima-contratti.component'
-import { leggiErroriAzione } from './errori-azione'
+import { MESSAGGIO_CONCORRENTE, eConcorrente, leggiErroriAzione } from './errori-azione'
 import {
   AnteprimaVariazioneContratti,
   CorpoVariazioneContratti,
@@ -170,6 +170,15 @@ const SCELTE_VUOTE = (): Scelte => ({
             data-testid="vp-contratti-scelti"
           />
           Solo i {{ contrattiIds?.length }} contratti scelti
+        </label>
+        <label class="spunta" *ngIf="addebitiIds?.length">
+          <input
+            type="checkbox"
+            formControlName="soloAddebitiScelti"
+            data-testid="vp-addebiti-scelti"
+          />
+          Solo i {{ addebitiIds?.length }}
+          {{ addebitiIds?.length === 1 ? 'addebito scelto' : 'addebiti scelti' }}
         </label>
         <app-scelta-cliente
           prefisso="vp-cliente"
@@ -423,6 +432,8 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
   @Input() visible = false
   /** Contratti scelti nella lista (R51); vuoto = nessun filtro per contratto. */
   @Input() contrattiIds: string[] | null = null
+  /** Solo questi addebiti (azione dall'archivio); vuoto = nessun filtro per addebiti scelti. */
+  @Input() addebitiIds: string[] | null = null
   @Output() visibleChange = new EventEmitter<boolean>()
   /** Numero dei prezzi aggiornati. */
   @Output() applicata = new EventEmitter<number>()
@@ -469,6 +480,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     daCodiceIvaId: new FormControl('', { nonNullable: true }),
     aCodiceIvaId: new FormControl('', { nonNullable: true }),
     soloContrattiScelti: new FormControl(true, { nonNullable: true }),
+    soloAddebitiScelti: new FormControl(true, { nonNullable: true }),
     addebitoTesto: new FormControl('', { nonNullable: true }),
     addebitoId: new FormControl('', { nonNullable: true }),
     cerCode: new FormControl('', { nonNullable: true }),
@@ -515,7 +527,11 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     this.ricercaAddebiti?.unsubscribe()
     this.richiesta?.unsubscribe()
     this.applicazione?.unsubscribe()
-    this.form.reset({ tipo: 'AUMENTO_PERCENTUALE', soloContrattiScelti: true })
+    this.form.reset({
+      tipo: 'AUMENTO_PERCENTUALE',
+      soloContrattiScelti: true,
+      soloAddebitiScelti: true,
+    })
     this.scelte.set(SCELTE_VUOTE())
     this.clienteId = null
     this.addebiti.set([])
@@ -684,6 +700,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
       fineAl: testo(v.fineAl),
       contrattiIds:
         v.soloContrattiScelti && this.contrattiIds?.length ? this.contrattiIds : undefined,
+      addebitiIds: v.soloAddebitiScelti && this.addebitiIds?.length ? this.addebitiIds : undefined,
       primaScadenzaFissi: testo(v.primaScadenzaFissi),
     }
     return Object.fromEntries(
@@ -744,6 +761,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     const f = this.filtri()
     righe.push(`Criteri impostati: ${Object.keys(f).length}`)
     if (f.contrattiIds) righe.push(`Contratti scelti: ${f.contrattiIds.length}`)
+    if (f.addebitiIds) righe.push(`Addebiti scelti: ${f.addebitiIds.length}`)
     righe.push(`Prezzi da modificare: ${a.totale}`)
     this.riepilogo.set(righe)
     this.erroriApplica.set([])
@@ -774,6 +792,11 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
           this.inCorso.set(false)
           this.applicando.set(false)
           this.inRiepilogo.set(false)
+          if (eConcorrente(e)) {
+            // Un'altra operazione teneva le righe: l'anteprima resta valida, si riprova con Applica.
+            this.erroriApplica.set([MESSAGGIO_CONCORRENTE])
+            return
+          }
           this.anteprimaCorrente.set(null)
           this.corpo = null
           this.erroriApplica.set(e.conflitto ? [MESSAGGIO_VARIAZIONE_SUPERATA] : e.messaggi)

@@ -22,6 +22,9 @@ import { ListinoService } from './listino.service'
 import { leggiCascata } from './numero-modificabile'
 import { OPZIONI_TIPO_PROVVIGIONE } from './vocabolario-listino'
 
+/** Regola di WinWaste: il backend la rifiuta con questo testo (anche senza campo). */
+const MESSAGGIO_ENTRAMBI_SCONTI = 'Specificare entrambi gli sconti.'
+
 type Azione = 'PROVVIGIONE' | 'SCONTO'
 
 /**
@@ -98,7 +101,7 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             pInputText
             id="ps-provvigione"
             [ngModel]="provvigione()"
-            (ngModelChange)="provvigione.set($event)"
+            (ngModelChange)="cambiaProvvigione($event)"
             inputmode="decimal"
             data-testid="ps-provvigione"
           />
@@ -107,6 +110,13 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             role="alert"
             class="field-error"
             data-testid="ps-errore-provvigione"
+            >{{ e }}</small
+          >
+          <small
+            *ngIf="!erroreProvvigione() && backendProvvigione() as e"
+            role="alert"
+            class="field-error"
+            data-testid="ps-errore-provvigione-backend"
             >{{ e }}</small
           >
           <ng-container *ngIf="provvigioneVuota(); else conTipo">
@@ -134,7 +144,7 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             pInputText
             id="ps-attuale"
             [ngModel]="scontoAttuale()"
-            (ngModelChange)="scontoAttuale.set($event)"
+            (ngModelChange)="cambiaAttuale($event)"
             data-testid="ps-sconto-attuale"
           />
           <small
@@ -144,12 +154,19 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             data-testid="ps-errore-attuale"
             >{{ e }}</small
           >
+          <small
+            *ngIf="!erroreAttuale() && backendAttuale() as e"
+            role="alert"
+            class="field-error"
+            data-testid="ps-errore-attuale-backend"
+            >{{ e }}</small
+          >
           <label for="ps-nuovo">Sconto nuovo</label>
           <input
             pInputText
             id="ps-nuovo"
             [ngModel]="scontoNuovo()"
-            (ngModelChange)="scontoNuovo.set($event)"
+            (ngModelChange)="cambiaNuovo($event)"
             data-testid="ps-sconto-nuovo"
           />
           <small
@@ -157,6 +174,13 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             role="alert"
             class="field-error"
             data-testid="ps-errore-nuovo"
+            >{{ e }}</small
+          >
+          <small
+            *ngIf="!erroreNuovo() && backendNuovo() as e"
+            role="alert"
+            class="field-error"
+            data-testid="ps-errore-nuovo-backend"
             >{{ e }}</small
           >
           <p class="field-hint">Si scrivono come sulla riga, per esempio 10 oppure 10+5,5.</p>
@@ -251,6 +275,10 @@ export class ProvvigioniScontiDialogComponent implements OnChanges, OnDestroy {
   readonly inCorso = signal(false)
   readonly esito = signal<EsitoImpostazione | null>(null)
   readonly errori = signal<string[]>([])
+  /** Errori del backend sul campo (400 con `campo`), mostrati sotto il campo e tolti alla modifica. */
+  readonly backendProvvigione = signal<string | null>(null)
+  readonly backendAttuale = signal<string | null>(null)
+  readonly backendNuovo = signal<string | null>(null)
   readonly conflitto = signal(false)
 
   private readonly letturaProvvigione = computed(() => leggiCascata(this.provvigione()))
@@ -297,12 +325,30 @@ export class ProvvigioniScontiDialogComponent implements OnChanges, OnDestroy {
       this.inCorso.set(false)
       this.esito.set(null)
       this.errori.set([])
+      this.backendProvvigione.set(null)
+      this.backendAttuale.set(null)
+      this.backendNuovo.set(null)
       this.conflitto.set(false)
     }
   }
 
   ngOnDestroy(): void {
     this.richiesta?.unsubscribe()
+  }
+
+  cambiaProvvigione(v: string): void {
+    this.provvigione.set(v)
+    this.backendProvvigione.set(null)
+  }
+
+  cambiaAttuale(v: string): void {
+    this.scontoAttuale.set(v)
+    this.backendAttuale.set(null)
+  }
+
+  cambiaNuovo(v: string): void {
+    this.scontoNuovo.set(v)
+    this.backendNuovo.set(null)
   }
 
   cambiaAzione(a: Azione): void {
@@ -338,7 +384,19 @@ export class ProvvigioniScontiDialogComponent implements OnChanges, OnDestroy {
         const e = leggiErroriAzione(err, "Impossibile applicare l'operazione.")
         this.inCorso.set(false)
         this.inConferma.set(false)
-        this.errori.set(e.messaggi)
+        this.backendProvvigione.set(null)
+        this.backendAttuale.set(null)
+        this.backendNuovo.set(null)
+        const generali: string[] = []
+        for (const c of e.campi) {
+          if (c.campo === 'provvigione' || c.campo === 'tipoProvvigione') {
+            this.backendProvvigione.set(c.messaggio)
+          } else if (c.campo === 'scontoAttuale') this.backendAttuale.set(c.messaggio)
+          else if (c.campo === 'scontoNuovo' || c.messaggio === MESSAGGIO_ENTRAMBI_SCONTI) {
+            this.backendNuovo.set(c.messaggio)
+          } else generali.push(c.messaggio)
+        }
+        this.errori.set(generali)
         this.conflitto.set(e.conflitto)
       },
     })

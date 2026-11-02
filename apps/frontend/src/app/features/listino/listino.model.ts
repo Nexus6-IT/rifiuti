@@ -416,7 +416,7 @@ export interface CorpoVariazioneContratti extends CorpoVariazione<FiltroVariazio
 }
 
 /** R46: forma propria, diversa dall'anteprima dell'archivio. */
-export interface AnteprimaVariazioneContratti {
+export interface AnteprimaVariazioneContratti extends InfoAnteprimaContratti {
   totale: number
   righe: {
     id: string
@@ -431,7 +431,7 @@ export interface AnteprimaVariazioneContratti {
   impronta: string
 }
 
-export interface MeseIstat {
+export interface MeseIstat extends InfoMeseIstat {
   anno: number
   mese: number
   contratti: number
@@ -446,4 +446,19 @@ export interface PercentualeIstat {
 export interface CorpoIstat {
   percentuali: PercentualeIstat[]
   tipi: string[]
+}
+
+// --- Task 29, giro di correzioni: righe invariate, ISTAT già applicato ------------------------
+
+/** Anteprima di una variazione dei contratti con i campi aggiunti dal Task 24 (tutti facoltativi). */
+export interface InfoAnteprimaContratti {
+  /** Righe il cui prezzo arrotondato non cambia: non si scrivono (come WinWaste). */
+  invariate?: number
+  /** Avvisi che non bloccano (ISTAT già applicato a un mese). */
+  avvisi?: string[]
+}
+
+/** Aggiunta ai mesi dell'ISTAT: data (AAAA-MM-GG) dell'ultima applicazione. */
+export interface InfoMeseIstat {
+  ultimaApplicazione?: string | null
 }

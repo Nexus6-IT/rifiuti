@@ -103,7 +103,46 @@ describe('AnteprimaContrattiComponent', () => {
       })
     )
     expect(csv.startsWith('﻿"Cliente";"Contratto"')).toBeTrue()
-    expect(csv).toContain('"";"CC ""1""";"001";"X";"1";"2"')
+    expect(csv).toContain('"";"CC ""1""";"001";"X";1;2')
     expect(csv.split('\r\n').length).toBe(4)
+  })
+
+  it('CSV all’italiana: decimali con la virgola, nessun punto, separatore ";"', () => {
+    const csv = anteprimaInCsv(
+      anteprima(1, {
+        righe: [
+          {
+            id: 'a',
+            cliente: 'Verdi',
+            contratto: '2026001',
+            elenco: '001',
+            voce: '200301',
+            prima: '10.50',
+            dopo: '1234.567891',
+          },
+        ],
+      })
+    )
+    expect(csv).toContain('"Verdi";"2026001";"001";"200301";10,50;1234,567891')
+    expect(csv.split('\r\n')[1]).not.toMatch(/\d\.\d/)
+    expect(csv.split('\r\n')[1].split(';').length).toBe(6)
+  })
+
+  it('righe invariate (singolare e plurale) solo se ce ne sono', async () => {
+    await mostra(anteprima(2, { invariate: 3 }))
+    expect(q('anteprima-invariate')!.textContent).toContain('3 righe invariate')
+    expect(q('anteprima-invariate')!.textContent).toContain('il prezzo arrotondato non cambia')
+    fixture.componentRef.setInput('anteprima', anteprima(2, { invariate: 1 }))
+    await stabilizza(fixture)
+    expect(q('anteprima-invariate')!.textContent).toContain('1 riga invariata')
+    fixture.componentRef.setInput('anteprima', anteprima(2))
+    await stabilizza(fixture)
+    expect(q('anteprima-invariate')).toBeNull()
+  })
+
+  it('gli avvisi si vedono e dicono che non bloccano', async () => {
+    await mostra(anteprima(2, { avvisi: ['Marzo 2024: già applicato il 15/04/2026.'] }))
+    expect(q('anteprima-avvisi')!.textContent).toContain('già applicato il 15/04/2026')
+    expect(q('anteprima-avvisi')!.textContent).toContain('non bloccano')
   })
 })

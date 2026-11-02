@@ -19,7 +19,7 @@ import { Subscription } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { AnteprimaContrattiComponent } from './anteprima-contratti.component'
-import { leggiErroriAzione } from './errori-azione'
+import { MESSAGGIO_CONCORRENTE, eConcorrente, leggiErroriAzione } from './errori-azione'
 import { AnteprimaVariazioneContratti, CorpoIstat, MeseIstat } from './listino.model'
 import { ListinoService } from './listino.service'
 import { leggiNumero } from './numero-modificabile'
@@ -121,7 +121,16 @@ const chiave = (m: { anno: number; mese: number }): string => `${m.anno}-${m.mes
           </thead>
           <tbody>
             <tr *ngFor="let m of mesi()">
-              <td>{{ etichetta(m) }}</td>
+              <td>
+                {{ etichetta(m) }}
+                <small
+                  *ngIf="m.ultimaApplicazione"
+                  class="field-hint"
+                  [attr.data-testid]="'istat-applicato-' + chiave(m)"
+                >
+                  (applicato il {{ m.ultimaApplicazione | date: 'dd/MM/yyyy' }})
+                </small>
+              </td>
               <td>{{ m.contratti }}</td>
               <td>
                 <input
@@ -468,6 +477,11 @@ export class IstatDialogComponent implements OnChanges, OnDestroy {
           this.inCorso.set(false)
           this.applicando.set(false)
           this.inRiepilogo.set(false)
+          if (eConcorrente(e)) {
+            // Un'altra operazione teneva le righe: l'anteprima resta valida, si riprova con Applica.
+            this.erroriApplica.set([MESSAGGIO_CONCORRENTE])
+            return
+          }
           this.anteprimaCorrente.set(null)
           this.corpo = null
           this.erroriApplica.set(e.conflitto ? [MESSAGGIO_ISTAT_SUPERATA] : e.messaggi)

@@ -19,6 +19,7 @@ import { Subscription } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { Opzione, etichettaCodice } from '../clienti/opzioni-fatturazione'
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
+import { MESSAGGIO_CONCORRENTE, eConcorrente, leggiErroriAzione } from './errori-azione'
 import {
   AnteprimaVariazione,
   CorpoVariazione,
@@ -52,6 +53,15 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
       [style]="{ width: '52rem' }"
       [breakpoints]="{ '960px': '95vw' }"
     >
+      <p
+        *ngIf="erroreCaricamento() as e"
+        role="alert"
+        class="field-error"
+        data-testid="var-errore-caricamento"
+      >
+        {{ e }}
+      </p>
+
       <div *ngIf="esito() !== null" class="dlg-form" data-testid="var-esito" role="status">
         <p>{{ sostituzioneIva() ? 'Addebiti aggiornati' : 'Prezzi aggiornati' }}: {{ esito() }}</p>
       </div>
@@ -198,7 +208,22 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
         </div>
       </ng-container>
 
-      <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="var-errore">{{ e }}</p>
+      <p
+        *ngIf="erroreAnteprima() as e"
+        role="alert"
+        class="field-error"
+        data-testid="var-errore-anteprima"
+      >
+        {{ e }}
+      </p>
+      <p
+        *ngIf="erroreApplica() as e"
+        role="alert"
+        class="field-error"
+        data-testid="var-errore-applica"
+      >
+        {{ e }}
+      </p>
 
       <ng-template pTemplate="footer">
         <p-button
@@ -303,7 +328,9 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
   readonly categorie = signal<Opzione[]>([])
   readonly codiciIva = signal<Opzione[]>([])
   readonly listini = signal<NumeroListino[]>([...TUTTI_I_LISTINI])
-  readonly errore = signal<string | null>(null)
+  readonly erroreCaricamento = signal<string | null>(null)
+  readonly erroreAnteprima = signal<string | null>(null)
+  readonly erroreApplica = signal<string | null>(null)
   readonly inCorso = signal(false)
   readonly inRiepilogo = signal(false)
   readonly riepilogo = signal<string[]>([])
@@ -354,7 +381,9 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     this.inRiepilogo.set(false)
     this.riepilogo.set([])
     this.esito.set(null)
-    this.errore.set(null)
+    this.erroreCaricamento.set(null)
+    this.erroreAnteprima.set(null)
+    this.erroreApplica.set(null)
     this.inCorso.set(false)
     const s = new Subscription()
     this.letture = s
@@ -364,7 +393,10 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
           this.categorie.set(
             l.map(c => ({ id: c.id, etichetta: etichettaCodice(c.codice, c.descrizione) }))
           ),
-        error: () => this.categorie.set([]),
+        error: () => {
+          this.categorie.set([])
+          this.erroreCaricamento.set('Impossibile caricare le categorie.')
+        },
       })
     )
     s.add(
@@ -373,7 +405,10 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
           this.codiciIva.set(
             l.map(c => ({ id: c.id, etichetta: etichettaCodice(c.codice, c.descrizione) }))
           ),
-        error: () => this.codiciIva.set([]),
+        error: () => {
+          this.codiciIva.set([])
+          this.erroreCaricamento.set('Impossibile caricare i codici IVA.')
+        },
       })
     )
   }
@@ -398,6 +433,8 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     this.anteprimaCorrente.set(null)
     this.inRiepilogo.set(false)
     this.inCorso.set(false)
+    this.erroreAnteprima.set(null)
+    this.erroreApplica.set(null)
   }
 
   cambiaListino(n: NumeroListino, scelto: boolean): void {
@@ -469,7 +506,8 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     const corpo = this.costruisciCorpo()
     this.richiesta?.unsubscribe()
     this.anteprimaCorrente.set(null)
-    this.errore.set(null)
+    this.erroreAnteprima.set(null)
+    this.erroreApplica.set(null)
     this.inCorso.set(true)
     this.richiesta = this.servizio.addebiti.anteprimaVariazione(corpo).subscribe({
       next: a => {
@@ -479,7 +517,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
       },
       error: err => {
         this.inCorso.set(false)
-        this.errore.set(messaggioErrore(err, "Impossibile calcolare l'anteprima."))
+        this.erroreAnteprima.set(messaggioErrore(err, "Impossibile calcolare l'anteprima."))
       },
     })
   }
@@ -507,7 +545,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     if (this.addebitiIds?.length) righe.push('Solo l’addebito scelto dall’elenco')
     righe.push(`Prezzi da modificare: ${a.totale}`)
     this.riepilogo.set(righe)
-    this.errore.set(null)
+    this.erroreApplica.set(null)
     this.inRiepilogo.set(true)
   }
 
@@ -517,7 +555,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     if (!this.puoApplicare() || !this.inRiepilogo() || !a || !corpo) return
     this.inCorso.set(true)
     this.applicando.set(true)
-    this.errore.set(null)
+    this.erroreApplica.set(null)
     this.applicazione = this.servizio.addebiti
       .applicaVariazione({ ...corpo, impronta: a.impronta })
       .subscribe({
@@ -531,16 +569,18 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
           this.applicata.emit(r.aggiornati)
         },
         error: err => {
+          const e = leggiErroriAzione(err, 'Impossibile applicare la variazione.')
           this.inCorso.set(false)
           this.applicando.set(false)
           this.inRiepilogo.set(false)
+          if (eConcorrente(e)) {
+            // L'archivio era occupato da un'altra operazione: l'anteprima vale ancora, si riprova.
+            this.erroreApplica.set(MESSAGGIO_CONCORRENTE)
+            return
+          }
           this.anteprimaCorrente.set(null)
           this.corpo = null
-          this.errore.set(
-            (err as { status?: number })?.status === 409
-              ? MESSAGGIO_409
-              : messaggioErrore(err, 'Impossibile applicare la variazione.')
-          )
+          this.erroreApplica.set(e.conflitto ? MESSAGGIO_409 : e.messaggi.join(' '))
         },
       })
   }

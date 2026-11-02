@@ -5,17 +5,34 @@ import { AnteprimaVariazioneContratti } from './listino.model'
 
 const PER_PAGINA = 20
 
-const cella = (v: string | null): string => `"${(v ?? '').replace(/"/g, '""')}"`
+const DECIMALE_CON_PUNTO = /^-?\d+\.\d+$/
+const NUMERO = /^-?\d+(,\d+)?$/
 
-/** CSV dell'anteprima (R46): separatore `;` e BOM, per aprirlo in Excel in italiano. */
+/**
+ * Celle del CSV: i prezzi con la virgola (come li legge Excel in italiano) e senza virgolette,
+ * il testo fra virgolette con quelle interne raddoppiate.
+ */
+const testo = (v: string | null): string => `"${(v ?? '').replace(/"/g, '""')}"`
+/** Prezzo: virgola decimale e niente virgolette; ciò che non è un numero resta testo. */
+const prezzo = (v: string): string => {
+  const t = v.trim()
+  const n = DECIMALE_CON_PUNTO.test(t) ? t.replace('.', ',') : t
+  return NUMERO.test(n) ? n : testo(v)
+}
+
+/** CSV dell'anteprima (R46): separatore `;`, decimali con la virgola e BOM per Excel in italiano. */
 export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
   const righe = [
-    ['Cliente', 'Contratto', 'Elenco', 'Voce', 'Prima', 'Dopo'].map(cella).join(';'),
+    ['Cliente', 'Contratto', 'Elenco', 'Voce', 'Prima', 'Dopo'].map(t => `"${t}"`).join(';'),
     ...a.righe.map(r =>
-      [r.cliente, r.contratto, r.elenco, r.voce, r.prima, r.dopo].map(cella).join(';')
+      [
+        ...[r.cliente, r.contratto, r.elenco, r.voce].map(testo),
+        prezzo(r.prima),
+        prezzo(r.dopo),
+      ].join(';')
     ),
   ]
-  return '﻿' + righe.join('\r\n') + '\r\n'
+  return '\uFEFF' + righe.join('\r\n') + '\r\n'
 }
 
 /**
@@ -31,6 +48,15 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
     <h3 class="sezione">Anteprima: {{ anteprima.totale }} prezzi da modificare</h3>
     <p *ngIf="anteprima.righe.length === 0" data-testid="anteprima-nessuna-riga">
       Nessun prezzo corrisponde ai criteri.
+    </p>
+    <p
+      *ngIf="anteprima.invariate && anteprima.invariate > 0"
+      class="field-hint"
+      data-testid="anteprima-invariate"
+    >
+      {{ anteprima.invariate }}
+      {{ anteprima.invariate === 1 ? 'riga invariata' : 'righe invariate' }}: il prezzo arrotondato
+      non cambia, quindi non viene scritto.
     </p>
     <ng-container *ngIf="anteprima.righe.length > 0">
       <p
@@ -95,6 +121,17 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
         />
       </div>
     </ng-container>
+    <div
+      *ngIf="anteprima.avvisi?.length"
+      class="avvisi"
+      role="status"
+      data-testid="anteprima-avvisi"
+    >
+      <p *ngFor="let a of anteprima.avvisi">
+        <i class="pi pi-exclamation-triangle" aria-hidden="true"></i> {{ a }}
+      </p>
+      <p class="field-hint">Gli avvisi non bloccano l'applicazione.</p>
+    </div>
     <div *ngIf="anteprima.errori.length > 0" data-testid="anteprima-errori">
       <h4>Errori nell'anteprima</h4>
       <p role="alert" class="field-error">
@@ -116,6 +153,11 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
       .anteprima td {
         padding: 0.25rem 0.5rem;
         text-align: left;
+      }
+      .avvisi {
+        border-left: 3px solid var(--yellow-500, #f59e0b);
+        padding: 0.25rem 0.75rem;
+        margin: 0.5rem 0;
       }
       .navigazione {
         display: flex;

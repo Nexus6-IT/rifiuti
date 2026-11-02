@@ -148,7 +148,7 @@ describe('ProvvigioniScontiDialogComponent', () => {
     )
     await avanti()
     await applica()
-    expect(q('ps-errore')!.textContent).toContain('Formula errata.')
+    expect(q('ps-errore-provvigione-backend')!.textContent).toContain('Formula errata.')
     expect(q('ps-ricarica')).toBeNull()
   })
 
@@ -165,5 +165,42 @@ describe('ProvvigioniScontiDialogComponent', () => {
     fixture.componentInstance.applica()
     expect(eventi.filter(e => e.startsWith('visibile'))).toEqual([])
     expect(provvigioni).toHaveBeenCalledTimes(1)
+  })
+
+  it('400 su scontoNuovo: l’errore sta sotto quel campo e sparisce modificandolo', async () => {
+    sconti.and.returnValue(
+      throwError(() => ({
+        status: 400,
+        error: {
+          errori: [{ campo: 'scontoNuovo', messaggio: 'Specificare entrambi gli sconti.' }],
+        },
+      }))
+    )
+    await apri()
+    await tipoSconto()
+    scrivi('ps-sconto-attuale', '10')
+    scrivi('ps-sconto-nuovo', '12')
+    await stabilizza(fixture)
+    await avanti()
+    await applica()
+    expect(q('ps-errore-nuovo-backend')!.textContent).toContain('Specificare entrambi gli sconti.')
+    expect(q('ps-errore')).toBeNull()
+    scrivi('ps-sconto-nuovo', '11')
+    await stabilizza(fixture)
+    expect(q('ps-errore-nuovo-backend')).toBeNull()
+  })
+
+  it('il testo "Specificare entrambi gli sconti." anche senza campo va sotto lo sconto nuovo', async () => {
+    sconti.and.returnValue(
+      throwError(() => ({ status: 400, error: { message: 'Specificare entrambi gli sconti.' } }))
+    )
+    await apri()
+    await tipoSconto()
+    scrivi('ps-sconto-attuale', '10')
+    scrivi('ps-sconto-nuovo', '12')
+    await stabilizza(fixture)
+    await avanti()
+    await applica()
+    expect(q('ps-errore-nuovo-backend')).not.toBeNull()
   })
 })

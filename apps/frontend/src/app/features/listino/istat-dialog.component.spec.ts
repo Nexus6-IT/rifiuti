@@ -227,4 +227,53 @@ describe('IstatDialogComponent', () => {
     await compila()
     expect(bottone('istat-anteprima')!.disabled).toBeTrue()
   })
+
+  it('accanto al mese l’ultima applicazione, se c’è', async () => {
+    mesiIstat.and.returnValue(
+      of([{ anno: 2024, mese: 3, contratti: 4, ultimaApplicazione: '2026-04-15' }, MESI[1]])
+    )
+    await apri()
+    expect(q('istat-applicato-2024-3')!.textContent).toContain('applicato il 15/04/2026')
+    expect(q('istat-applicato-2023-11')).toBeNull()
+  })
+
+  it('avvisi e righe invariate dell’anteprima: si vedono e non bloccano Applica', async () => {
+    anteprimaIstat.and.returnValue(
+      of({ ...ANTEPRIMA, invariate: 2, avvisi: ['Marzo 2024: già applicato il 15/04/2026.'] })
+    )
+    await apri()
+    await compila()
+    await anteprima()
+    expect(q('anteprima-avvisi')!.textContent).toContain('già applicato')
+    expect(q('anteprima-invariate')!.textContent).toContain('2 righe invariate')
+    expect(bottone('istat-applica')!.disabled).toBeFalse()
+  })
+
+  it('VARIAZIONE_SUPERATA scarta l’anteprima; OPERAZIONE_CONCORRENTE la mantiene', async () => {
+    applicaIstat.and.returnValue(
+      throwError(() => ({ status: 409, error: { error: 'VARIAZIONE_SUPERATA' } }))
+    )
+    await apri()
+    await finoAConferma()
+    bottone('istat-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('istat-errore-applica')!.textContent).toContain('rifai l’anteprima')
+    expect(q('istat-applica')).toBeNull()
+
+    applicaIstat.and.returnValues(
+      throwError(() => ({ status: 409, error: { error: 'OPERAZIONE_CONCORRENTE' } })),
+      of({ aggiornati: 3 })
+    )
+    await anteprima()
+    bottone('istat-applica')!.click()
+    await stabilizza(fixture)
+    bottone('istat-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('istat-errore-applica')!.textContent).toContain('riprova')
+    bottone('istat-applica')!.click()
+    await stabilizza(fixture)
+    bottone('istat-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(applicati).toEqual([3])
+  })
 })
