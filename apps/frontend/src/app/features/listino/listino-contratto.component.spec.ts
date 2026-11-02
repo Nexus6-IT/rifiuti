@@ -5,6 +5,7 @@ import { MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
+import { CerService } from '../cer/cer.service'
 import { ClientiService } from '../clienti/clienti.service'
 import { accettaConferma, bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { ElencoAddebiti, ElenchiContratto, RigaAddebito, StatoContratto } from './listino.model'
@@ -97,6 +98,8 @@ describe('ListinoContrattoComponent', () => {
   let modifica: jasmine.Spy
   let eliminaElenco: jasmine.Spy
   let righeList: jasmine.Spy
+  let righeCrea: jasmine.Spy
+  let righeModifica: jasmine.Spy
   let contrattoGet: jasmine.Spy
   let toast: jasmine.SpyObj<ToastService>
 
@@ -125,6 +128,8 @@ describe('ListinoContrattoComponent', () => {
     modifica = jasmine.createSpy('modifica').and.returnValue(of(elenco('e1')))
     eliminaElenco = jasmine.createSpy('elimina').and.returnValue(of(undefined))
     righeList = jasmine.createSpy('list').and.returnValue(of([riga('r1')]))
+    righeCrea = jasmine.createSpy('crea').and.returnValue(of(riga('r2')))
+    righeModifica = jasmine.createSpy('modifica').and.returnValue(of(riga('r1')))
     contrattoGet = jasmine
       .createSpy('get')
       .and.returnValue(of({ cliente: { ragioneSociale: 'Verdi Servizi S.r.l.' } }))
@@ -146,9 +151,19 @@ describe('ListinoContrattoComponent', () => {
           provide: ListinoService,
           useValue: {
             elenchi: { delContratto, prossimoCodice, crea, modifica, elimina: eliminaElenco },
-            righe: { list: righeList },
+            righe: {
+              list: righeList,
+              crea: righeCrea,
+              modifica: righeModifica,
+              proposta: () => of({}),
+              codificheRentri: () => of([]),
+            },
+            codifiche: { list: () => of([]) },
+            codiciIva: { list: () => of([]) },
+            addebiti: { list: () => of({ elementi: [], totale: 0 }) },
           },
         },
+        { provide: CerService, useValue: { searchCER: () => of([]) } },
       ],
     })
   })
@@ -620,6 +635,82 @@ describe('ListinoContrattoComponent', () => {
     })
   })
 
+  describe('dialog della riga', () => {
+    it('il doppio clic sulla riga apre il dialog in modifica; prima non esiste', async () => {
+      const c = await apri()
+      await scegli('e1')
+      expect(q('riga-tipo')).toBeNull()
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      expect(c.rigaAperta()?.id).toBe('r1')
+      expect(q('riga-tipo')).toBeTruthy()
+      expect(testo('riga-scelta')).toBe('20 03 01')
+    })
+
+    it('"Nuova riga" apre il dialog vuoto sull’elenco scelto', async () => {
+      await apri()
+      expect(q('listino-nuova-riga')).toBeNull()
+      await scegli('e1')
+      bottone('listino-nuova-riga')!.click()
+      await stabilizza(fixture)
+      expect(q('riga-tipo')).toBeTruthy()
+      expect(testo('riga-scelta')).toBe('Nessuna scelta')
+    })
+
+    it('salvata la riga il dialog si chiude e la pagina rilegge elenchi e righe', async () => {
+      await apri()
+      await scegli('e1')
+      righeList.calls.reset()
+      delContratto.calls.reset()
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(righeModifica).toHaveBeenCalledTimes(1)
+      expect(righeModifica.calls.mostRecent().args[0]).toBe('r1')
+      expect(delContratto).toHaveBeenCalledTimes(1)
+      expect(righeList).toHaveBeenCalledTimes(1)
+    })
+
+    it('VIEWER: la riga si apre in sola lettura, senza "Nuova riga" né Salva', async () => {
+      await apri('VIEWER')
+      await scegli('e1')
+      expect(q('listino-nuova-riga')).toBeNull()
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      expect(q('riga-tipo')).toBeTruthy()
+      expect(q('riga-salva')).toBeNull()
+    })
+
+    it('contratto annullato: nessuna "Nuova riga", riga in sola lettura', async () => {
+      await apri('ADMIN', risposta('ANNULLATO'))
+      await scegli('e1')
+      expect(q('listino-nuova-riga')).toBeNull()
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      expect(q('riga-salva')).toBeNull()
+    })
+
+    it('elenco non modificabile: la riga si apre in sola lettura', async () => {
+      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
+      await scegli('e1')
+      expect(q('listino-nuova-riga')).toBeNull()
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      expect(q('riga-salva')).toBeNull()
+    })
+
+    it('sconto e provvigione della tavola hanno la virgola decimale', async () => {
+      righeList.and.returnValue(of([riga('r1', { sconto: '12.5+5', provvigione: '3.5' })]))
+      await apri()
+      await scegli('e1')
+      const celle = q('listino-riga-r1')!.textContent!
+      expect(celle).toContain('12,5+5')
+      expect(celle).toContain('3,5')
+      expect(celle).not.toContain('12.5+5')
+    })
+  })
+
   describe('sola lettura', () => {
     const SCRITTURE = [
       'listino-nuovo-elenco',
@@ -646,7 +737,7 @@ describe('ListinoContrattoComponent', () => {
       expect(testo('listino-stato')).toContain('Annullato')
     })
 
-    it('apriElenco e salvaElenco non scrivono in sola lettura', async () => {
+    it('apriElenco ed eliminaElenco non scrivono in sola lettura', async () => {
       const c = await apri('VIEWER')
       c.apriElenco(null)
       expect(c.dialogoAperto()).toBeFalse()

@@ -109,6 +109,7 @@ export class CodificaAddebitoDialogComponent implements OnChanges {
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
   private proposta?: Subscription
+  private salvataggio?: Subscription
   /** Codice proposto da `prossimoCodice` e non ancora modificato dall'utente. */
   private codiceProposto: string | null = null
 
@@ -136,6 +137,11 @@ export class CodificaAddebitoDialogComponent implements OnChanges {
     this.proposta?.unsubscribe()
     this.codiceProposto = null
     const e = this.elemento
+    this.salvataggio?.unsubscribe()
+    // In modifica il codice non può essere vuoto (T12): il form lo rifiuta prima del backend.
+    this.form.controls.codice.setValidators(
+      e ? [Validators.required, Validators.pattern(/^\d{1,3}$/)] : [Validators.pattern(/^\d{0,3}$/)]
+    )
     this.form.reset({ codice: e?.codice ?? '', descrizione: e?.descrizione ?? '' })
     this.errore.set(null)
     this.inCorso.set(false)
@@ -175,7 +181,7 @@ export class CodificaAddebitoDialogComponent implements OnChanges {
             ? {}
             : { codice: codice === '' || codice === this.codiceProposto ? null : codice }),
         })
-    chiamata.subscribe({
+    this.salvataggio = chiamata.subscribe({
       next: salvata => {
         this.inCorso.set(false)
         if (!this.elemento) this.toast.success(`Codice assegnato: ${salvata.codice}.`)
@@ -202,6 +208,8 @@ export class CodificaAddebitoDialogComponent implements OnChanges {
   chiudi(): void {
     // Nessuna proposta di codice in volo dopo la chiusura.
     this.proposta?.unsubscribe()
+    this.salvataggio?.unsubscribe()
+    this.inCorso.set(false)
     this.form.reset()
     this.errore.set(null)
     this.visibleChange.emit(false)

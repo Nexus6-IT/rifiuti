@@ -56,9 +56,11 @@ export class OpzioniListino {
 
   constructor(
     private readonly servizio: ListinoService,
-    private readonly controlli: Record<ChiaveOpzione, FormControl<string>>,
+    private readonly controlli: Partial<Record<ChiaveOpzione, FormControl<string>>>,
     /** Errore di caricamento delle liste. */
-    private readonly errore: (messaggio: string) => void
+    private readonly errore: (messaggio: string) => void,
+    /** Le liste da caricare: il dialog della riga ne usa tre (IVA, categoria, centro di ricavo). */
+    private readonly chiavi: readonly ChiaveOpzione[] = CHIAVI_OPZIONE
   ) {}
 
   carica(): void {
@@ -67,7 +69,7 @@ export class OpzioniListino {
     this.letture = s
     const fallito = (err: unknown) =>
       this.errore(messaggioErrore(err, 'Impossibile caricare le tabelle del listino.'))
-    for (const genere of GENERI) {
+    for (const genere of GENERI.filter(g => this.chiavi.includes(g))) {
       s.add(
         this.servizio.codifiche.list(genere).subscribe({
           next: l => this.basi[genere].set(l.map(etichetta)),
@@ -75,12 +77,14 @@ export class OpzioniListino {
         })
       )
     }
-    s.add(
-      this.servizio.codiciIva.list().subscribe({
-        next: l => this.basi.IVA.set(l.map(etichetta)),
-        error: fallito,
-      })
-    )
+    if (this.chiavi.includes('IVA')) {
+      s.add(
+        this.servizio.codiciIva.list().subscribe({
+          next: l => this.basi.IVA.set(l.map(etichetta)),
+          error: fallito,
+        })
+      )
+    }
   }
 
   /** Dopo la lettura di un addebito salvato: le sue voci restano scelte anche se disattivate. */
@@ -100,7 +104,7 @@ export class OpzioniListino {
 
   private aggiungi(chiave: ChiaveOpzione, voce: Opzione): void {
     this.basi[chiave].update(v => [...v.filter(o => o.id !== voce.id), voce])
-    this.inLinea.salvato(voce, id => this.controlli[chiave].setValue(id), false)
+    this.inLinea.salvato(voce, id => this.controlli[chiave]?.setValue(id), false)
   }
 
   dopoCodifica(c: CodificaAddebito): void {

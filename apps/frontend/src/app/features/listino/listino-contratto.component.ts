@@ -19,6 +19,7 @@ import { ElenchiPannelloComponent } from './elenchi-pannello.component'
 import { elenchiValidiAl, oggiIso, righeInTesto } from './listino-calcoli'
 import { ContestoListino, ElencoAddebiti, RigaAddebito } from './listino.model'
 import { ListinoService } from './listino.service'
+import { RigaAddebitoDialogComponent } from './riga-addebito-dialog.component'
 import { RigheTavolaComponent } from './righe-tavola.component'
 
 /**
@@ -26,7 +27,8 @@ import { RigheTavolaComponent } from './righe-tavola.component'
  * a destra. In sola lettura (VIEWER o contratto annullato) niente pulsanti di scrittura. Il
  * backend è l'arbitro delle regole: i suoi messaggi si mostrano com'è, il 409 con "Ricarica".
  * La pagina orchestra la lettura (`carica`) e l'eliminazione; elenchi, dialog e tavola sono
- * componenti a parte. Il dialog della riga arriva con il Task 27: `apriRiga` memorizza la scelta.
+ * componenti a parte. Il dialog della riga (Task 27) si apre dalla riga o da "Nuova riga" e si
+ * monta solo quando serve.
  */
 @Component({
   selector: 'app-listino-contratto',
@@ -40,6 +42,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
     ElenchiPannelloComponent,
     ElencoDialogComponent,
     RigheTavolaComponent,
+    RigaAddebitoDialogComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -106,6 +109,13 @@ import { RigheTavolaComponent } from './righe-tavola.component'
           </p>
           <ng-container *ngIf="elencoMostrato() as el">
             <h2>Elenco {{ el.codice }} - {{ el.descrizione }}</h2>
+            <p-button
+              *ngIf="!soloLettura() && el.modificabile"
+              label="Nuova riga"
+              icon="pi pi-plus"
+              (onClick)="nuovaRiga()"
+              data-testid="listino-nuova-riga"
+            />
             <app-righe-tavola
               [elementi]="righe()"
               [caricamento]="caricamentoRighe()"
@@ -120,9 +130,21 @@ import { RigheTavolaComponent } from './righe-tavola.component'
         [visible]="dialogoAperto()"
         [contrattoId]="contrattoId"
         [elenco]="elencoInModifica()"
+        [soloLettura]="soloLettura()"
         (visibleChange)="dialogoAperto.set($event)"
         (salvato)="dopoSalvataggio($event)"
         (ricarica)="dopoRicarica()"
+      />
+      <app-riga-addebito-dialog
+        *ngIf="rigaDialogMontato()"
+        [visible]="rigaDialogAperto()"
+        [contrattoId]="contrattoId"
+        [elencoId]="elencoMostrato()?.id ?? ''"
+        [riga]="rigaAperta()"
+        [soloLettura]="soloLettura() || !elencoMostrato()?.modificabile"
+        (visibleChange)="chiudiRiga($event)"
+        (salvato)="dopoSalvataggioRiga()"
+        (ricarica)="dopoRicaricaRiga()"
       />
       <p-confirmDialog />
     </section>
@@ -178,8 +200,11 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
   readonly erroreCaricamento = signal<string | null>(null)
   readonly erroreRighe = signal<string | null>(null)
 
-  /** La riga aperta (doppio clic o "Apri"): il dialog arriva con il Task 27. */
+  /** La riga aperta (doppio clic o "Apri"); null = nuova riga. */
   readonly rigaAperta = signal<RigaAddebito | null>(null)
+  readonly rigaDialogAperto = signal(false)
+  /** Il dialog si crea alla prima apertura: prima non serve né il catalogo né le codifiche. */
+  readonly rigaDialogMontato = signal(false)
 
   readonly dialogoAperto = signal(false)
   readonly elencoInModifica = signal<ElencoAddebiti | null>(null)
@@ -272,6 +297,31 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
 
   apriRiga(r: RigaAddebito): void {
     this.rigaAperta.set(r)
+    this.rigaDialogMontato.set(true)
+    this.rigaDialogAperto.set(true)
+  }
+
+  nuovaRiga(): void {
+    if (this.soloLettura()) return
+    this.rigaAperta.set(null)
+    this.rigaDialogMontato.set(true)
+    this.rigaDialogAperto.set(true)
+  }
+
+  chiudiRiga(visibile: boolean): void {
+    this.rigaDialogAperto.set(visibile)
+  }
+
+  /** Salvata la riga si rilegge tutto: cambiano anche i conteggi degli elenchi. */
+  dopoSalvataggioRiga(): void {
+    this.rigaDialogAperto.set(false)
+    this.carica()
+  }
+
+  /** "Ricarica" dopo un 409 nel dialog: si rilegge e si chiude. */
+  dopoRicaricaRiga(): void {
+    this.rigaDialogAperto.set(false)
+    this.carica()
   }
 
   // --- elenchi ------------------------------------------------------------------------------

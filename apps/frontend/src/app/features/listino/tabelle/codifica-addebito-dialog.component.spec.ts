@@ -193,4 +193,38 @@ describe('CodificaAddebitoDialogComponent', () => {
     fixture.componentInstance.chiudi()
     expect(fixture.componentInstance.form.controls.descrizione.value).toBe('')
   })
+
+  it('modifica: il codice vuoto è rifiutato dal form, senza arrivare al backend', async () => {
+    await apri({ ...creata })
+    scrivi('codifica-add-dlg-codice', '')
+    await stabilizza(fixture)
+    expect(fixture.componentInstance.form.controls.codice.valid).toBeFalse()
+    expect(bottone('codifica-add-dlg-salva')!.disabled).toBeTrue()
+    fixture.componentInstance.salva()
+    expect(tabella.modifica).not.toHaveBeenCalled()
+  })
+
+  it('nuova: il codice vuoto resta ammesso (lo assegna il server)', async () => {
+    await apri()
+    scrivi('codifica-add-dlg-codice', '')
+    scrivi('codifica-add-dlg-descrizione', 'Nuova voce')
+    await stabilizza(fixture)
+    expect(fixture.componentInstance.form.valid).toBeTrue()
+  })
+
+  it('chiudere durante il salvataggio non emette `salvato` a dialog chiuso', async () => {
+    const risposta$ = new Subject<CodificaAddebito>()
+    tabella.crea.and.returnValue(risposta$)
+    await apri(null, { rapida: true })
+    const salvati: CodificaAddebito[] = []
+    fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+    scrivi('codifica-add-dlg-descrizione', 'Nuova voce')
+    await stabilizza(fixture)
+    fixture.componentInstance.salva()
+    expect(fixture.componentInstance.inCorso()).toBeTrue()
+    fixture.componentInstance.chiudi()
+    expect(fixture.componentInstance.inCorso()).toBeFalse()
+    risposta$.next(creata)
+    expect(salvati.length).toBe(0)
+  })
 })

@@ -39,6 +39,7 @@ import { CodificaAddebitoDialogComponent } from './codifica-addebito-dialog.comp
   providers: [ConfirmationService],
   template: `
     <div class="barra">
+      <span id="codifiche-add-genere" class="visually-hidden">Genere della codifica</span>
       <p-selectButton
         [options]="generi"
         optionLabel="label"
@@ -119,6 +120,13 @@ import { CodificaAddebitoDialogComponent } from './codifica-addebito-dialog.comp
   `,
   styles: [
     `
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
       .barra {
         display: flex;
         justify-content: space-between;

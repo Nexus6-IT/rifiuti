@@ -76,6 +76,11 @@ export function decimaleItaliano(v: string | null | undefined, minimoDecimali = 
   return `${m[1]}${intero}${dec ? ',' + dec : ''}`
 }
 
+/** Sconto o provvigione in cascata (`12.5+5`): virgola decimale, come gli altri numeri. */
+export function cascataItaliana(v: string | null | undefined): string {
+  return v?.replace(/\./g, ',') ?? ''
+}
+
 /** Importo con due decimali: `1234.5` come `1.234,50`. */
 export function importoItaliano(v: string): string {
   return decimaleItaliano(v, 2)

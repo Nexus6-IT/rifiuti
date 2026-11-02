@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
 import {
   Component,
+  DestroyRef,
   EventEmitter,
   Input,
   OnChanges,
@@ -13,6 +14,7 @@ import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Subscription } from 'rxjs'
 import { messaggiErrore } from './listino-calcoli'
 import { ElencoAddebiti, NuovoElenco } from './listino.model'
@@ -160,8 +162,11 @@ const vuotoNull = (v: string): string | null => (v.trim() === '' ? null : v.trim
 })
 export class ElencoDialogComponent implements OnChanges {
   private readonly servizio = inject(ListinoService)
+  private readonly distrutto = inject(DestroyRef)
 
   @Input() visible = false
+  /** VIEWER o contratto annullato (D16): `salva` non scrive, il backend resta l'arbitro. */
+  @Input() soloLettura = false
   @Input({ required: true }) contrattoId = ''
   /** null = nuovo. */
   @Input() elenco: ElencoAddebiti | null = null
@@ -211,13 +216,16 @@ export class ElencoDialogComponent implements OnChanges {
     if (!e) {
       // Il codice proposto è informativo; se i codici sono esauriti lo si dice subito.
       this.proposta?.unsubscribe()
-      this.proposta = this.servizio.elenchi.prossimoCodice(this.contrattoId).subscribe({
-        next: codice => {
-          if (this.modulo.codice === '' && this.visible) this.modulo.codice = codice
-        },
-        error: err =>
-          this.avviso.set(messaggiErrore(err, 'Impossibile proporre il codice.').join(' ')),
-      })
+      this.proposta = this.servizio.elenchi
+        .prossimoCodice(this.contrattoId)
+        .pipe(takeUntilDestroyed(this.distrutto))
+        .subscribe({
+          next: codice => {
+            if (this.modulo.codice === '' && this.visible) this.modulo.codice = codice
+          },
+          error: err =>
+            this.avviso.set(messaggiErrore(err, 'Impossibile proporre il codice.').join(' ')),
+        })
     }
   }
 
@@ -227,7 +235,7 @@ export class ElencoDialogComponent implements OnChanges {
   }
 
   salva(): void {
-    if (this.inCorso() || this.modulo.descrizione.trim() === '') return
+    if (this.soloLettura || this.inCorso() || this.modulo.descrizione.trim() === '') return
     const m = this.modulo
     const dati: NuovoElenco = {
       codice: m.codice.trim(),
@@ -249,7 +257,7 @@ export class ElencoDialogComponent implements OnChanges {
     const richiesta = esistente
       ? this.servizio.elenchi.modifica(esistente.id, { ...dati, versione: esistente.versione })
       : this.servizio.elenchi.crea(this.contrattoId, dati)
-    this.salvataggio = richiesta.subscribe({
+    this.salvataggio = richiesta.pipe(takeUntilDestroyed(this.distrutto)).subscribe({
       next: salvato => {
         this.inCorso.set(false)
         this.salvato.emit(salvato)

@@ -14,6 +14,7 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
+import { Subscription } from 'rxjs'
 import { messaggioErrore } from '../../clienti/tabelle/tabella-comune'
 import { ListinoService } from '../listino.service'
 import { CodiceIva } from '../listino.model'
@@ -119,6 +120,7 @@ export class CodiceIvaDialogComponent implements OnChanges {
   readonly nature = OPZIONI_NATURA_IVA
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
+  private salvataggio?: Subscription
 
   readonly form = new FormGroup({
     codice: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -132,6 +134,7 @@ export class CodiceIvaDialogComponent implements OnChanges {
   }
 
   private inizializza(): void {
+    this.salvataggio?.unsubscribe()
     const e = this.elemento
     this.form.reset({
       codice: e?.codice ?? '',
@@ -160,7 +163,7 @@ export class CodiceIvaDialogComponent implements OnChanges {
           versione: this.elemento.versione,
         })
       : this.servizio.codiciIva.crea(dati)
-    chiamata.subscribe({
+    this.salvataggio = chiamata.subscribe({
       next: salvato => {
         this.inCorso.set(false)
         this.salvato.emit(salvato)
@@ -174,6 +177,9 @@ export class CodiceIvaDialogComponent implements OnChanges {
   }
 
   chiudi(): void {
+    // Un salvataggio ancora in corso non deve emettere `salvato` a dialog chiuso.
+    this.salvataggio?.unsubscribe()
+    this.inCorso.set(false)
     this.form.reset()
     this.errore.set(null)
     this.visibleChange.emit(false)

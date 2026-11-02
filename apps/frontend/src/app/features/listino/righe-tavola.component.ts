@@ -2,7 +2,12 @@ import { CommonModule } from '@angular/common'
 import { Component, EventEmitter, Input, Output, computed, signal } from '@angular/core'
 import { ButtonModule } from 'primeng/button'
 import { TableModule } from 'primeng/table'
-import { decimaleItaliano, importoItaliano, totaleFissiAnnuo } from './listino-calcoli'
+import {
+  cascataItaliana,
+  decimaleItaliano,
+  importoItaliano,
+  totaleFissiAnnuo,
+} from './listino-calcoli'
 import { RigaAddebito } from './listino.model'
 import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
 
@@ -53,9 +58,9 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
           <td>{{ r.unitaMisura }}</td>
           <td>{{ quantita(r) }}</td>
           <td>{{ r.prezzoSpeciale ? 'speciale' : prezzo(r.prezzo) }}</td>
-          <td>{{ r.sconto }}</td>
+          <td>{{ cascata(r.sconto) }}</td>
           <td>{{ r.codiceIva.codice }}</td>
-          <td>{{ r.provvigione }}</td>
+          <td>{{ cascata(r.provvigione) }}</td>
           <td>{{ r.condizione }}</td>
           <td>{{ prezzo(r.minimoFatturabile) }}</td>
           <td>{{ r.categoria?.descrizione }}</td>
@@ -111,6 +116,10 @@ export class RigheTavolaComponent {
   quantita(r: RigaAddebito): string {
     if (r.tipo === 'F') return decimaleItaliano(r.quantitaFissa ?? '1')
     return r.tipoQuantita ? ETICHETTE_TIPO_QUANTITA[r.tipoQuantita] : ''
+  }
+
+  cascata(v: string | null): string {
+    return cascataItaliana(v)
   }
 
   prezzo(v: string | null): string {

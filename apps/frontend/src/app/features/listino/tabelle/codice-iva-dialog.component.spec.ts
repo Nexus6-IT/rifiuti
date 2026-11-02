@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of } from 'rxjs'
+import { Subject, of } from 'rxjs'
 import { CodiceIvaDialogComponent } from './codice-iva-dialog.component'
 import { ListinoService } from '../listino.service'
 import { CodiceIva } from '../listino.model'
@@ -66,5 +66,20 @@ describe('CodiceIvaDialogComponent', () => {
     await stabilizza(fixture)
     expect(fixture.componentInstance.form.controls.codice.value).toBe('')
     expect(fixture.componentInstance.errore()).toBeNull()
+  })
+
+  it('chiudere durante il salvataggio non emette `salvato` a dialog chiuso', async () => {
+    const risposta$ = new Subject<CodiceIva>()
+    tabella.modifica.and.returnValue(risposta$)
+    await stabilizza(fixture)
+    const salvati: CodiceIva[] = []
+    fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+    fixture.componentInstance.form.patchValue(iva)
+    fixture.componentInstance.salva()
+    expect(fixture.componentInstance.inCorso()).toBeTrue()
+    fixture.componentInstance.chiudi()
+    expect(fixture.componentInstance.inCorso()).toBeFalse()
+    risposta$.next(iva)
+    expect(salvati.length).toBe(0)
   })
 })

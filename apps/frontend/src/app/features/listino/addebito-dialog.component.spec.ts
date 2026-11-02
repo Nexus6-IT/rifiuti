@@ -499,4 +499,74 @@ describe('AddebitoDialogComponent', () => {
       ).toBeTrue()
     })
   })
+
+  describe('rapida (aggiunta in linea dalla riga)', () => {
+    async function apriRapida() {
+      TestBed.overrideProvider(AuthService, {
+        useValue: { currentUser: () => ({ role: 'ADMIN' }) },
+      })
+      fixture = TestBed.createComponent(AddebitoDialogComponent)
+      salvati = []
+      visibilita = []
+      fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+      fixture.componentInstance.visibleChange.subscribe(v => visibilita.push(v))
+      fixture.componentRef.setInput('rapida', true)
+      fixture.componentRef.setInput('visible', true)
+      await stabilizza(fixture)
+    }
+
+    it('mostra solo i campi obbligatori: descrizione, unità, tipo e gruppo', async () => {
+      await apriRapida()
+      for (const id of ['add-dlg-descrizione', 'add-dlg-um', 'add-dlg-tipo', 'add-dlg-gruppo']) {
+        expect(q(id)).withContext(id).toBeTruthy()
+      }
+      for (const id of [
+        'add-dlg-codice',
+        'add-dlg-tipo-provv',
+        'add-dlg-categoria',
+        'add-dlg-centro',
+        'add-dlg-stat1',
+        'add-dlg-stat2',
+        'add-dlg-iva',
+        'add-dlg-listini',
+        'add-dlg-nota',
+        'add-dlg-appunti',
+      ]) {
+        expect(q(id)).withContext(id).toBeNull()
+      }
+    })
+
+    it('crea con i soli campi compilati e restituisce l’addebito', async () => {
+      await apriRapida()
+      await compilaMinimo()
+      bottone('add-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = addebiti.crea.calls.mostRecent().args[0]
+      expect(corpo.descrizione).toBe('Servizio')
+      expect(corpo.gruppoId).toBe('g1')
+      expect(corpo.tipo).toBe('V')
+      expect(corpo.codice).toBeUndefined()
+      expect(salvati.length).toBe(1)
+      expect(visibilita).toEqual([false])
+    })
+
+    it('"Nuovo gruppo" resta, e Esc nel suo sub-dialog non chiude il dialog rapido', async () => {
+      await apriRapida()
+      bottone('add-dlg-nuovo-gruppo')!.click()
+      await stabilizza(fixture)
+      fixture.componentInstance.alCambioVisibilita(false)
+      expect(visibilita).toEqual([])
+    })
+
+    it('un salvataggio ancora in corso non emette dopo la chiusura', async () => {
+      const risposta$ = new Subject<Addebito>()
+      addebiti.crea.and.returnValue(risposta$)
+      await apriRapida()
+      await compilaMinimo()
+      bottone('add-dlg-salva')!.click()
+      fixture.componentInstance.chiudi()
+      risposta$.next(esistente())
+      expect(salvati.length).toBe(0)
+    })
+  })
 })

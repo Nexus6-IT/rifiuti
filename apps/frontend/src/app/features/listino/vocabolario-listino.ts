@@ -8,6 +8,7 @@ import {
   GenereCodificaAddebito,
   PeriodoScadenze,
   TipoCalcoloScaglione,
+  TipologiaRifiuto,
   TipoProvvigione,
   TipoQuantita,
   TipoVariazione,
@@ -383,3 +384,15 @@ export const OPZIONI_PERIODO_SCADENZE = (
 
 /** Periodi extra: richiedono il periodo "dal ... al ..." scritto a parte. */
 export const PERIODI_EXTRA: readonly PeriodoScadenze[] = ['XA', 'XD', 'YC']
+
+/** Tipologia del rifiuto delle righe `CER` (D6). */
+export const ETICHETTE_TIPOLOGIA_RIFIUTO: Readonly<Record<TipologiaRifiuto, string>> = {
+  URBANO: 'Urbano',
+  URBANO_PERICOLOSO: 'Urbano pericoloso',
+  SPECIALE: 'Speciale',
+  SPECIALE_PERICOLOSO: 'Speciale pericoloso',
+}
+
+export const OPZIONI_TIPOLOGIA_RIFIUTO = (
+  Object.keys(ETICHETTE_TIPOLOGIA_RIFIUTO) as TipologiaRifiuto[]
+).map(value => ({ value, label: ETICHETTE_TIPOLOGIA_RIFIUTO[value] }))

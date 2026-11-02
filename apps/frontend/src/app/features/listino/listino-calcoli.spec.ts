@@ -1,4 +1,5 @@
 import {
+  cascataItaliana,
   decimaleItaliano,
   elenchiValidiAl,
   importoItaliano,
@@ -110,5 +111,19 @@ describe('listino-calcoli', () => {
     expect(messaggiErrore({ error: { message: ['a', ' ', 'b'] } }, 'x')).toEqual(['a', 'b'])
     expect(messaggiErrore({ error: { message: 'solo' } }, 'x')).toEqual(['solo'])
     expect(messaggiErrore({}, 'x')).toEqual(['x'])
+  })
+})
+
+describe('cascataItaliana', () => {
+  it('sconti e provvigioni con la virgola decimale', () => {
+    expect(cascataItaliana('12.5+5')).toBe('12,5+5')
+    expect(cascataItaliana('10')).toBe('10')
+    expect(cascataItaliana('0.5+0.25+10')).toBe('0,5+0,25+10')
+  })
+
+  it('vuoto e null restano vuoti', () => {
+    expect(cascataItaliana(null)).toBe('')
+    expect(cascataItaliana(undefined)).toBe('')
+    expect(cascataItaliana('')).toBe('')
   })
 })
