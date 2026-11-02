@@ -148,6 +148,35 @@ describe('vocabolario listino', () => {
     const solo = (f: keyof typeof CAMPI_PER_FAMIGLIA, ...altre: CampoRiga[]) =>
       altre.every(c => !CAMPI_PER_FAMIGLIA[f].includes(c))
 
+    it('tabella attesa di D9, famiglia per famiglia (copiata dal dominio del Task 17)', () => {
+      const comuni =
+        'tipo riferimento descrizione unitaMisura prezzo codiceIvaId provvigione tipoProvvigione categoriaId centroRicavoId appunti notaUsoInterno'
+      const speciale =
+        'prezzoSpeciale applicaA condizioniRiferite scaglioni riferimentoGiorno riferimentoMese'
+      const minimo = 'minimoFatturabile minimoPerCategoria'
+      const attesa: Record<string, string> = {
+        CER: `${comuni} cerCode sconto tipoQuantita tipologiaRifiuto statoFisico operazione addebitiProposti stimaAnnuaKg condizione ${speciale} ${minimo}`,
+        VARIABILE: `${comuni} addebitoId sconto tipoQuantita cerProposta stimaAnnuaKg condizione ${speciale} ${minimo}`,
+        FISSO: `${comuni} addebitoId sconto quantitaFissa condizione periodoScadenze periodoExtraDal periodoExtraAl scadenze`,
+        QUANTITA_MOVIMENTI: `${comuni} addebitoId sconto condizione ${speciale}`,
+        CONTEGGIO: `${comuni} addebitoId sconto condizione ${speciale}`,
+        MINIMO: `${comuni} addebitoId`,
+        ACCONTO: `${comuni} addebitoId`,
+      }
+      for (const f of Object.keys(attesa) as (keyof typeof CAMPI_PER_FAMIGLIA)[]) {
+        expect([...CAMPI_PER_FAMIGLIA[f]].sort())
+          .withContext(f)
+          .toEqual((attesa[f].split(' ') as CampoRiga[]).sort())
+      }
+    })
+
+    it('prezzo speciale solo per CER, V, T e N; sconto non per M e $', () => {
+      expect(CAMPI_PER_FAMIGLIA.FISSO).not.toContain('prezzoSpeciale')
+      expect(CAMPI_PER_FAMIGLIA.MINIMO).not.toContain('prezzoSpeciale')
+      expect(CAMPI_PER_FAMIGLIA.MINIMO).not.toContain('sconto')
+      expect(CAMPI_PER_FAMIGLIA.ACCONTO).not.toContain('sconto')
+    })
+
     it('ogni famiglia ha i campi comuni e nessun doppione', () => {
       for (const f of Object.keys(CAMPI_PER_FAMIGLIA) as (keyof typeof CAMPI_PER_FAMIGLIA)[]) {
         const campi = CAMPI_PER_FAMIGLIA[f]

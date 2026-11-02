@@ -9,13 +9,7 @@ import { ClientiService } from '../clienti/clienti.service'
 import { accettaConferma, bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { ElencoAddebiti, ElenchiContratto, RigaAddebito, StatoContratto } from './listino.model'
 import { ListinoService } from './listino.service'
-import {
-  ListinoContrattoComponent,
-  elencoValidoIl,
-  importoItaliano,
-  oggiIso,
-  totaleFissiAnnuo,
-} from './listino-contratto.component'
+import { ListinoContrattoComponent } from './listino-contratto.component'
 
 const CONTRATTO = 'cc1'
 
@@ -93,53 +87,6 @@ const risposta = (
     },
   },
   elenchi,
-})
-
-describe('funzioni pure della pagina del listino', () => {
-  it('elenco valido: senza date sempre, con le date estremi compresi', () => {
-    const e = { validoDal: '2026-03-01', validoAl: '2026-03-31' }
-    expect(elencoValidoIl({ validoDal: null, validoAl: null }, '2030-01-01')).toBeTrue()
-    expect(elencoValidoIl(e, '2026-03-01')).toBeTrue()
-    expect(elencoValidoIl(e, '2026-03-31')).toBeTrue()
-    expect(elencoValidoIl(e, '2026-04-01')).toBeFalse()
-    expect(elencoValidoIl(e, '2026-02-28')).toBeFalse()
-  })
-
-  it('oggiIso è la data locale', () => {
-    expect(oggiIso(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05')
-  })
-
-  it('importo italiano con il separatore delle migliaia', () => {
-    expect(importoItaliano('0.00')).toBe('0,00')
-    expect(importoItaliano('999.99')).toBe('999,99')
-    expect(importoItaliano('1234.50')).toBe('1.234,50')
-    expect(importoItaliano('1234567.05')).toBe('1.234.567,05')
-  })
-
-  it('totale fissi: solo scadenze ogni anno, quantità vuota = 1, zero = non fatturare', () => {
-    const ogni = { ordine: 1, giorno: 1, mese: 1, anno: null }
-    const una = { ordine: 2, giorno: 1, mese: 7, anno: 2026 }
-    const f = (quantitaFissa: string | null, prezzo: string | null, scadenze = [ogni, una]) => ({
-      tipo: 'F',
-      quantitaFissa,
-      prezzo,
-      scadenze,
-    })
-    expect(totaleFissiAnnuo([])).toBe('0.00')
-    expect(totaleFissiAnnuo([f(null, '100.50')])).toBe('100.50')
-    expect(totaleFissiAnnuo([f('2', '10.005')])).toBe('20.01')
-    expect(totaleFissiAnnuo([f('0', '100')])).toBe('0.00')
-    expect(totaleFissiAnnuo([f(null, '10', [ogni, { ...ogni, ordine: 3, mese: 6 }])])).toBe('20.00')
-    expect(totaleFissiAnnuo([f(null, '10', [una])])).toBe('0.00')
-    expect(
-      totaleFissiAnnuo([
-        f(null, '10'),
-        f(null, '5.25'),
-        { ...f(null, '99'), tipo: 'V' },
-        f(null, null),
-      ])
-    ).toBe('15.25')
-  })
 })
 
 describe('ListinoContrattoComponent', () => {
@@ -264,7 +211,7 @@ describe('ListinoContrattoComponent', () => {
       expect(testo('listino-elenco-e1')).toContain('dal 01/03/2026 al 31/03/2026')
     })
 
-    it('"Solo validi oggi" nasconde gli elenchi fuori validità', async () => {
+    it('"Solo validi oggi" tiene i non scaduti (anche futuri) e nasconde gli scaduti', async () => {
       const oggi = new Date()
       const anno = oggi.getFullYear()
       await apri(
@@ -273,6 +220,7 @@ describe('ListinoContrattoComponent', () => {
           elenco('e1'),
           elenco('e2', { validoDal: `${anno - 2}-01-01`, validoAl: `${anno - 2}-12-31` }),
           elenco('e3', { validoDal: `${anno - 1}-01-01`, validoAl: `${anno + 1}-12-31` }),
+          elenco('e4', { validoDal: `${anno + 1}-01-01`, validoAl: `${anno + 1}-12-31` }),
         ])
       )
       expect(q('listino-elenco-e2')).toBeTruthy()
@@ -281,7 +229,25 @@ describe('ListinoContrattoComponent', () => {
       await stabilizza(fixture)
       expect(q('listino-elenco-e1')).toBeTruthy()
       expect(q('listino-elenco-e3')).toBeTruthy()
+      expect(q('listino-elenco-e4')).toBeTruthy()
       expect(q('listino-elenco-e2')).toBeNull()
+    })
+
+    it("se l'elenco scelto esce dal filtro la tavola si svuota", async () => {
+      const anno = new Date().getFullYear()
+      await apri(
+        'ADMIN',
+        risposta('ATTIVO', [
+          elenco('e1', { validoDal: `${anno - 2}-01-01`, validoAl: `${anno - 2}-12-31` }),
+          elenco('e2'),
+        ])
+      )
+      await scegli('e1')
+      expect(q('listino-riga-r1')).toBeTruthy()
+      q('listino-solo-validi')!.querySelector<HTMLElement>('.p-checkbox-box')!.click()
+      await stabilizza(fixture)
+      expect(q('listino-riga-r1')).toBeNull()
+      expect(q('listino-scegli-un-elenco')).toBeTruthy()
     })
 
     it('nessun elenco: messaggio', async () => {
@@ -324,7 +290,7 @@ describe('ListinoContrattoComponent', () => {
         expect(dati.validoDal).toBeNull()
         expect(dati.predefinito).toBeFalse()
         expect(delContratto).toHaveBeenCalledTimes(1)
-        expect(c.elencoDialogAperto()).toBeFalse()
+        expect(c.dialogoAperto()).toBeFalse()
       })
 
       it('senza descrizione il salvataggio è disabilitato', async () => {
@@ -351,22 +317,92 @@ describe('ListinoContrattoComponent', () => {
         expect(dati.predefinito).toBeTrue()
       })
 
-      it('errore del backend nel dialog (409 codice duplicato): messaggio e dialog aperto', async () => {
-        crea.and.returnValue(
-          throwError(() => ({ status: 409, error: { message: 'Il codice è già usato.' } }))
-        )
-        const c = await apri()
-        bottone('listino-nuovo-elenco')!.click()
-        await stabilizza(fixture)
+      const compilaESalva = async () => {
         const descr = document.body.querySelector<HTMLInputElement>('#el-descrizione')!
         descr.value = 'X'
         descr.dispatchEvent(new Event('input'))
         await stabilizza(fixture)
         bottone('listino-elenco-salva')!.click()
         await stabilizza(fixture)
-        expect(testo('listino-elenco-errore')).toBe('Il codice è già usato.')
-        expect(c.elencoDialogAperto()).toBeTrue()
-        expect(c.inCorso()).toBeFalse()
+      }
+
+      it('errore 400 con due messaggi: un elemento per messaggio, dialog aperto', async () => {
+        crea.and.returnValue(
+          throwError(() => ({
+            status: 400,
+            error: { message: ['La descrizione è troppo lunga.', 'Le date non sono valide.'] },
+          }))
+        )
+        const c = await apri()
+        bottone('listino-nuovo-elenco')!.click()
+        await stabilizza(fixture)
+        await compilaESalva()
+        const voci = q('listino-elenco-errore')!.querySelectorAll('li')
+        expect(Array.from(voci).map(v => v.textContent!.trim())).toEqual([
+          'La descrizione è troppo lunga.',
+          'Le date non sono valide.',
+        ])
+        expect(q('listino-elenco-ricarica')).toBeNull()
+        expect(c.dialogoAperto()).toBeTrue()
+      })
+
+      it('409 in modifica: messaggio con "Ricarica", che rilegge e chiude il dialog', async () => {
+        modifica.and.returnValue(
+          throwError(() => ({ status: 409, error: { message: "L'elenco è stato modificato." } }))
+        )
+        const c = await apri()
+        bottone('listino-modifica-e1')!.click()
+        await stabilizza(fixture)
+        await compilaESalva()
+        expect(testo('listino-elenco-errore')).toBe("L'elenco è stato modificato.")
+        delContratto.calls.reset()
+        delContratto.and.returnValue(of(risposta('ATTIVO', [elenco('e1', { versione: 4 })])))
+        bottone('listino-elenco-ricarica')!.click()
+        await stabilizza(fixture)
+        expect(delContratto).toHaveBeenCalledTimes(1)
+        expect(c.dialogoAperto()).toBeFalse()
+        // riaperto, il dialog riparte dalla versione nuova
+        bottone('listino-modifica-e1')!.click()
+        await stabilizza(fixture)
+        modifica.and.returnValue(of(elenco('e1')))
+        bottone('listino-elenco-salva')!.click()
+        await stabilizza(fixture)
+        expect(modifica.calls.mostRecent().args[1].versione).toBe(4)
+      })
+
+      it('409 in creazione (contratto annullato nel frattempo): Ricarica rilegge e rende la pagina di sola lettura', async () => {
+        crea.and.returnValue(
+          throwError(() => ({
+            status: 409,
+            error: { message: 'Il listino di un contratto annullato non si modifica.' },
+          }))
+        )
+        const c = await apri()
+        bottone('listino-nuovo-elenco')!.click()
+        await stabilizza(fixture)
+        await compilaESalva()
+        expect(bottone('listino-elenco-ricarica')).toBeTruthy()
+        delContratto.and.returnValue(of(risposta('ANNULLATO')))
+        bottone('listino-elenco-ricarica')!.click()
+        await stabilizza(fixture)
+        expect(c.dialogoAperto()).toBeFalse()
+        expect(c.soloLettura()).toBeTrue()
+        expect(q('listino-nuovo-elenco')).toBeNull()
+      })
+
+      it("codici esauriti: avviso subito all'apertura del nuovo elenco", async () => {
+        prossimoCodice.and.returnValue(
+          throwError(() => ({
+            status: 400,
+            error: { message: 'I codici degli elenchi di questo contratto sono esauriti.' },
+          }))
+        )
+        await apri()
+        bottone('listino-nuovo-elenco')!.click()
+        await stabilizza(fixture)
+        expect(testo('listino-elenco-avviso')).toBe(
+          'I codici degli elenchi di questo contratto sono esauriti.'
+        )
       })
 
       it('elimina: chiede conferma, poi DELETE con la versione e rilegge', async () => {
@@ -374,11 +410,26 @@ describe('ListinoContrattoComponent', () => {
         bottone('listino-elimina-e2')!.click()
         await stabilizza(fixture)
         expect(eliminaElenco).not.toHaveBeenCalled()
-        expect(document.body.textContent).toContain('Eliminare l’elenco E2')
+        expect(document.body.textContent).toContain('Eliminare l’elenco E2 con le sue 2 righe?')
         accettaConferma()
         await stabilizza(fixture)
         expect(eliminaElenco).toHaveBeenCalledOnceWith('e2', 3)
         expect(delContratto).toHaveBeenCalledTimes(2)
+      })
+
+      it('testo di conferma con 0 e con 1 riga', async () => {
+        await apri(
+          'ADMIN',
+          risposta('ATTIVO', [elenco('e1', { righe: 0 }), elenco('e2', { righe: 1 })])
+        )
+        bottone('listino-elimina-e1')!.click()
+        await stabilizza(fixture)
+        expect(document.body.textContent).toContain('Eliminare l’elenco E1 senza righe?')
+        document.body.querySelector<HTMLButtonElement>('.p-confirm-dialog-reject')!.click()
+        await stabilizza(fixture)
+        bottone('listino-elimina-e2')!.click()
+        await stabilizza(fixture)
+        expect(document.body.textContent).toContain('Eliminare l’elenco E2 con la sua riga?')
       })
 
       it('elimina con 409: messaggio con "Ricarica" e nessuna rilettura nascosta', async () => {
@@ -458,6 +509,7 @@ describe('ListinoContrattoComponent', () => {
         'Minimo',
         'Categoria',
         'Appunti',
+        'Apri',
       ])
     })
 
@@ -471,18 +523,20 @@ describe('ListinoContrattoComponent', () => {
         'R1',
         'Rifiuti urbani misti',
         'KG',
-        'PESO_NETTO',
-        '0.120000',
+        'Peso netto',
+        '0,12',
         '10',
         '22',
         '5',
         '2',
-        '15.00',
+        '15,00',
         'Urbani',
         'ritiro il lunedì',
       ])
         expect(t).withContext(atteso).toContain(atteso)
       for (const id of ['i1', 'cat', 'e1']) expect(t.split(' ')).not.toContain(id)
+      expect(t).not.toContain('PESO_NETTO')
+      expect(t).not.toContain('0.120000')
     })
 
     it("riga con addebito d'archivio e prezzo speciale", async () => {
@@ -550,6 +604,14 @@ describe('ListinoContrattoComponent', () => {
       expect(q('listino-elenco-e1')).toBeTruthy()
     })
 
+    it('il pulsante Apri apre la riga, con un nome accessibile', async () => {
+      const c = await apri()
+      await scegli('e1')
+      expect(bottone('listino-apri-r1')!.getAttribute('aria-label')).toBe('Apri la riga 20 03 01')
+      bottone('listino-apri-r1')!.click()
+      expect(c.rigaAperta()?.id).toBe('r1')
+    })
+
     it('doppio clic apre la riga (il dialog arriva con il Task 27)', async () => {
       const c = await apri()
       await scegli('e1')
@@ -587,16 +649,24 @@ describe('ListinoContrattoComponent', () => {
     it('apriElenco e salvaElenco non scrivono in sola lettura', async () => {
       const c = await apri('VIEWER')
       c.apriElenco(null)
-      expect(c.elencoDialogAperto()).toBeFalse()
-      c.modulo.descrizione = 'X'
-      c.salvaElenco()
+      expect(c.dialogoAperto()).toBeFalse()
+      c.eliminaElenco(elenco('e1'))
+      expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
       expect(crea).not.toHaveBeenCalled()
     })
 
-    it('un elenco non modificabile non mostra modifica ed elimina', async () => {
-      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
+    it('modifica dipende da modificabile, elimina da eliminabile', async () => {
+      await apri(
+        'ADMIN',
+        risposta('ATTIVO', [
+          elenco('e1', { modificabile: false, eliminabile: false }),
+          elenco('e2', { eliminabile: false }),
+        ])
+      )
       expect(q('listino-modifica-e1')).toBeNull()
       expect(q('listino-elimina-e1')).toBeNull()
+      expect(q('listino-modifica-e2')).toBeTruthy()
+      expect(q('listino-elimina-e2')).toBeNull()
     })
   })
 })

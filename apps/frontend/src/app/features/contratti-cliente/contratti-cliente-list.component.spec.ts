@@ -583,7 +583,18 @@ describe('ContrattiClienteListComponent', () => {
       expect(intest).not.toContain('Azioni')
     })
 
-    it('azione Listino anche per chi scrive, e il colspan del vuoto segue le colonne', async () => {
+    it('colspan del vuoto per chi scrive: 10 colonne', async () => {
+      await apri('ADMIN', pagina())
+      expect(q('contratti-listino-cc1')).toBeNull()
+      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('10')
+    })
+
+    it('colspan del vuoto per il VIEWER: 9 colonne', async () => {
+      await apri('VIEWER', pagina())
+      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('9')
+    })
+
+    it('azione Listino anche per chi scrive', async () => {
       await apri('ADMIN')
       expect(q('contratti-listino-cc1')).toBeTruthy()
     })

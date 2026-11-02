@@ -15,7 +15,13 @@ import {
 } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
-import { bottone, q, scrivi, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import {
+  accettaConferma,
+  bottone,
+  q,
+  scrivi,
+  stabilizza,
+} from '../clienti/tabelle/tabelle-test-utils'
 import { RegistryService } from '../registry/registry.service'
 import { ContrattoClienteDialogComponent } from './contratto-cliente-dialog.component'
 import { SezionePagamentoComponent } from './sezione-pagamento.component'
@@ -1607,6 +1613,21 @@ describe('ContrattoClienteDialogComponent', () => {
       await stabilizza(fixture)
       expect(navigate).toHaveBeenCalledOnceWith(['/contratti-clienti', contratto().id, 'listino'])
       expect(visibilita).toContain(false)
+    })
+
+    it('con modifiche non salvate chiede conferma prima di lasciare il contratto', async () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true)
+      await apriCon(contratto())
+      scrivi('contratto-dlg-descrizione', 'Descrizione cambiata')
+      fixture.componentInstance.form.controls.descrizione.markAsDirty()
+      await stabilizza(fixture)
+      bottone('contratto-dlg-listino')!.click()
+      await stabilizza(fixture)
+      expect(navigate).not.toHaveBeenCalled()
+      expect(document.body.textContent).toContain('modifiche non salvate')
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(navigate).toHaveBeenCalledOnceWith(['/contratti-clienti', contratto().id, 'listino'])
     })
   })
 })

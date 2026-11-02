@@ -6,6 +6,7 @@
 import {
   ApplicaPrezzoSpeciale,
   GenereCodificaAddebito,
+  PeriodoScadenze,
   TipoCalcoloScaglione,
   TipoProvvigione,
   TipoQuantita,
@@ -227,14 +228,14 @@ export type CampoRiga =
   | 'scaglioni'
   | 'scadenze'
 
-const COMUNI_CER: readonly CampoRiga[] = [
+// Copia di `CAMPI_PER_FAMIGLIA` del Task 17 (`domain/listino/riga-addebito.ts`, D9): non si importa
+// fra app, quindi va tenuta allineata a mano (la spec ha la tabella attesa famiglia per famiglia).
+const COMUNI: readonly CampoRiga[] = [
   'tipo',
   'riferimento',
   'descrizione',
   'unitaMisura',
   'prezzo',
-  'prezzoSpeciale',
-  'sconto',
   'codiceIvaId',
   'provvigione',
   'tipoProvvigione',
@@ -243,48 +244,51 @@ const COMUNI_CER: readonly CampoRiga[] = [
   'appunti',
   'notaUsoInterno',
 ]
-
-const COMUNI_ARCHIVIO: readonly CampoRiga[] = [...COMUNI_CER, 'addebitoId']
-
-const FASCE: readonly CampoRiga[] = ['scaglioni', 'applicaA', 'condizioniRiferite']
-const DATA_RIFERIMENTO: readonly CampoRiga[] = ['riferimentoGiorno', 'riferimentoMese']
-
-const T_N: readonly CampoRiga[] = [...COMUNI_ARCHIVIO, ...FASCE, 'condizione', ...DATA_RIFERIMENTO]
+const PREZZO_SPECIALE: readonly CampoRiga[] = [
+  'prezzoSpeciale',
+  'applicaA',
+  'condizioniRiferite',
+  'scaglioni',
+  'riferimentoGiorno',
+  'riferimentoMese',
+]
+const MINIMO: readonly CampoRiga[] = ['minimoFatturabile', 'minimoPerCategoria']
 
 /**
- * Campi che valgono per ogni famiglia (tabella di D9, copia di `CAMPI_PER_FAMIGLIA` del Task 17).
- * Serve solo ad abilitare i campi del form: un campo fuori famiglia si svuota e sparisce, ma se
- * arriva comunque al backend questo risponde 400 con il campo (R36).
+ * Campi che valgono per ogni famiglia (D9). Lo sconto manca nei minimi e negli acconti; la
+ * provvigione si limita ai soli `$D`/`$R` nella validazione del backend (la famiglia `ACCONTO`
+ * comprende anche `$A`). Serve ad abilitare i campi del form: il backend resta l'arbitro (R36).
  */
 export const CAMPI_PER_FAMIGLIA: Readonly<Record<FamigliaAddebito, readonly CampoRiga[]>> = {
   CER: [
-    ...COMUNI_CER,
+    ...COMUNI,
     'cerCode',
+    'sconto',
     'tipoQuantita',
     'tipologiaRifiuto',
     'statoFisico',
     'operazione',
     'addebitiProposti',
     'stimaAnnuaKg',
-    ...FASCE,
     'condizione',
-    'minimoFatturabile',
-    'minimoPerCategoria',
-    ...DATA_RIFERIMENTO,
+    ...PREZZO_SPECIALE,
+    ...MINIMO,
   ],
   VARIABILE: [
-    ...COMUNI_ARCHIVIO,
+    ...COMUNI,
+    'addebitoId',
+    'sconto',
     'tipoQuantita',
     'cerProposta',
     'stimaAnnuaKg',
-    ...FASCE,
     'condizione',
-    'minimoFatturabile',
-    'minimoPerCategoria',
-    ...DATA_RIFERIMENTO,
+    ...PREZZO_SPECIALE,
+    ...MINIMO,
   ],
   FISSO: [
-    ...COMUNI_ARCHIVIO,
+    ...COMUNI,
+    'addebitoId',
+    'sconto',
     'quantitaFissa',
     'condizione',
     'periodoScadenze',
@@ -292,10 +296,10 @@ export const CAMPI_PER_FAMIGLIA: Readonly<Record<FamigliaAddebito, readonly Camp
     'periodoExtraAl',
     'scadenze',
   ],
-  QUANTITA_MOVIMENTI: T_N,
-  CONTEGGIO: T_N,
-  MINIMO: COMUNI_ARCHIVIO,
-  ACCONTO: COMUNI_ARCHIVIO,
+  QUANTITA_MOVIMENTI: [...COMUNI, 'addebitoId', 'sconto', 'condizione', ...PREZZO_SPECIALE],
+  CONTEGGIO: [...COMUNI, 'addebitoId', 'sconto', 'condizione', ...PREZZO_SPECIALE],
+  MINIMO: [...COMUNI, 'addebitoId'],
+  ACCONTO: [...COMUNI, 'addebitoId'],
 }
 
 export function campoAbilitato(famiglia: FamigliaAddebito, campo: CampoRiga): boolean {
@@ -351,7 +355,7 @@ export const OPZIONI_TIPO_CALCOLO = (
 ).map(value => ({ value, label: ETICHETTE_TIPO_CALCOLO[value] }))
 
 /** Periodo cui si riferisce ogni scadenza di un addebito fisso (D14); `X…` e `YC` sono extra. */
-export const ETICHETTE_PERIODO_SCADENZE: Readonly<Record<string, string>> = {
+export const ETICHETTE_PERIODO_SCADENZE: Readonly<Record<PeriodoScadenze, string>> = {
   MP: '1 mese posticipato',
   BA: '2 mesi anticipato',
   BP: '2 mesi posticipato',
@@ -370,10 +374,12 @@ export const ETICHETTE_PERIODO_SCADENZE: Readonly<Record<string, string>> = {
   YC: 'Scadenza extra, nota di credito',
 }
 
-export const OPZIONI_PERIODO_SCADENZE = Object.keys(ETICHETTE_PERIODO_SCADENZE).map(value => ({
+export const OPZIONI_PERIODO_SCADENZE = (
+  Object.keys(ETICHETTE_PERIODO_SCADENZE) as PeriodoScadenze[]
+).map(value => ({
   value,
   label: `${value} - ${ETICHETTE_PERIODO_SCADENZE[value]}`,
 }))
 
 /** Periodi extra: richiedono il periodo "dal ... al ..." scritto a parte. */
-export const PERIODI_EXTRA: readonly string[] = ['XA', 'XD', 'YC']
+export const PERIODI_EXTRA: readonly PeriodoScadenze[] = ['XA', 'XD', 'YC']

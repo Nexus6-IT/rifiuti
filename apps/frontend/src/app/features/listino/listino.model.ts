@@ -3,6 +3,8 @@
 // corrette dall'addendum (R36 errori per campo, R45 esito della copia, R46 anteprima propria).
 // Prezzi, sconti, provvigioni e aliquote viaggiano come stringhe decimali, mai `number` (R12).
 
+import { StatoContrattoCliente } from '../clienti/clienti.model'
+
 interface Versionata {
   id: string
   versione: number
@@ -172,7 +174,11 @@ export interface EsitoVariazione {
 
 // === 4.2b: elenchi e righe del contratto =====================================================
 
-export type StatoContratto = 'BOZZA' | 'ATTIVO' | 'SOSPESO' | 'SOSPESO_MOVIMENTI' | 'ANNULLATO'
+export type StatoContratto = StatoContrattoCliente
+
+/** Periodo cui si riferisce ogni scadenza di un fisso (D14); `XA`, `XD` e `YC` sono extra. */
+export type PeriodoScadenze =
+  | 'MP' | 'BA' | 'BP' | 'TA' | 'TP' | 'QA' | 'QP' | 'SA' | 'SP' | 'AA' | 'AP' | 'DA' | 'DP' | 'XA' | 'XD' | 'YC' // prettier-ignore
 
 /** Contesto dell'intestazione: `GET /contratti-clienti/:id/elenchi` (Task 20). */
 export interface ContestoListino {
@@ -295,7 +301,7 @@ export interface RigaAddebito {
   minimoPerCategoria: boolean
   riferimentoGiorno: number | null
   riferimentoMese: number | null
-  periodoScadenze: string | null
+  periodoScadenze: PeriodoScadenze | null
   periodoExtraDal: string | null
   periodoExtraAl: string | null
   scadenze: (Scadenza & { fatturabileNelContratto: boolean })[]
@@ -356,7 +362,8 @@ export interface PropostaRiga {
 export type TabellaCodificheRentri = 'stati-fisici' | 'attivita-rs'
 
 export interface CodificaRentri {
-  externalId: string
+  /** Codice della codifica RENTRI (R42), da scrivere in `statoFisico` / `operazione`. */
+  codice: string
   descrizione: string
 }
 

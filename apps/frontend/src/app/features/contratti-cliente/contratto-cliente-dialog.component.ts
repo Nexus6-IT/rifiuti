@@ -13,7 +13,9 @@ import {
 } from '@angular/core'
 import { AbstractControl, ReactiveFormsModule } from '@angular/forms'
 import { Router } from '@angular/router'
+import { ConfirmationService } from 'primeng/api'
 import { AccordionModule } from 'primeng/accordion'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { Subscription } from 'rxjs'
@@ -23,7 +25,7 @@ import { Cliente, ContrattoCliente, PeriodoFatturazione } from '../clienti/clien
 import { ClientiService } from '../clienti/clienti.service'
 import { Opzione, OpzioniFatturazione } from '../clienti/opzioni-fatturazione'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
-import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
+import { chiediConferma, messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { ETICHETTE_STATO_CONTRATTO } from '../clienti/vocabolario-clienti'
 import { puoGestireAnagrafiche } from '../registry/registry-permissions'
 import {
@@ -64,6 +66,7 @@ const NESSUNA_VOCE = '—'
     ButtonModule,
     DialogModule,
     AccordionModule,
+    ConfirmDialogModule,
     SezioneDatiGeneraliComponent,
     SezionePagamentoComponent,
     SezionePaComponent,
@@ -72,6 +75,7 @@ const NESSUNA_VOCE = '—'
     AllegatiContrattoComponent,
     PeriodiFatturazioneComponent,
   ],
+  providers: [ConfirmationService],
   template: `
     <p-dialog
       [visible]="visible"
@@ -172,6 +176,7 @@ const NESSUNA_VOCE = '—'
         />
       </ng-template>
     </p-dialog>
+    <p-confirmDialog />
   `,
 })
 export class ContrattoClienteDialogComponent implements OnChanges {
@@ -180,6 +185,7 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   private readonly toast = inject(ToastService)
   private readonly auth = inject(AuthService)
   private readonly router = inject(Router)
+  private readonly conferma = inject(ConfirmationService)
 
   @Input() visible = false
   /** null = nuovo. */
@@ -268,6 +274,20 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   apriListino(): void {
     const id = this.contratto?.id
     if (!id) return
+    // Andare al listino chiude il dialog e scarta le modifiche non salvate: prima si chiede.
+    if (this.form.dirty && this.puoScrivere()) {
+      chiediConferma(
+        this.conferma,
+        'Ci sono modifiche non salvate al contratto: andando al listino andranno perse. Continuare?',
+        () => this.vaiAlListino(id),
+        { header: 'Modifiche non salvate', acceptLabel: 'Vai al listino' }
+      )
+      return
+    }
+    this.vaiAlListino(id)
+  }
+
+  private vaiAlListino(id: string): void {
     this.chiudi()
     void this.router.navigate(['/contratti-clienti', id, 'listino'])
   }
