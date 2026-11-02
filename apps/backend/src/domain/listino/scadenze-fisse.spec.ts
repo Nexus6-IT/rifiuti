@@ -38,8 +38,24 @@ describe('validaScadenze', () => {
     expect(validaScadenze([sc(1, 15, 3), sc(2, 15, 3)], null, NESSUN_EXTRA)).toEqual([
       'Scadenza 2: data ripetuta (uguale alla scadenza 1).',
     ])
-    expect(validaScadenze([sc(1, 15, 3), sc(2, 15, 3, 2026)], null, NESSUN_EXTRA)).toHaveLength(1)
+    expect(validaScadenze([sc(1, 15, 3), sc(2, 15, 3, 2026)], null, NESSUN_EXTRA)).toEqual([
+      'Scadenza 2: data ripetuta (uguale alla scadenza 1).',
+    ])
     expect(validaScadenze([sc(1, 15, 3, 2026), sc(2, 15, 3, 2027)], null, NESSUN_EXTRA)).toEqual([])
+  })
+
+  it('28/02 e 29/02 senza anno (o 28/02 in anno non bisestile) sono lo stesso giorno', () => {
+    const dup = ['Scadenza 2: data ripetuta (uguale alla scadenza 1).']
+    expect(validaScadenze([sc(1, 28, 2), sc(2, 29, 2)], null, NESSUN_EXTRA)).toEqual(dup)
+    expect(validaScadenze([sc(1, 29, 2), sc(2, 28, 2)], null, NESSUN_EXTRA)).toEqual(dup)
+    expect(validaScadenze([sc(1, 29, 2), sc(2, 28, 2, 2025)], null, NESSUN_EXTRA)).toEqual(dup)
+    expect(validaScadenze([sc(1, 29, 2), sc(2, 28, 2, 2024)], null, NESSUN_EXTRA)).toEqual([])
+  })
+
+  it("l'ordine non si aggira mescolando anno vuoto ed esplicito", () => {
+    expect(
+      validaScadenze([sc(1, 15, 6), sc(2, 1, 1, 2026), sc(3, 1, 3)], null, NESSUN_EXTRA)
+    ).toEqual(['Scadenza 3: le scadenze vanno in ordine di data.'])
   })
 
   it('al massimo 12 scadenze, ordine 1-12 non ripetuto, date in ordine', () => {
@@ -156,6 +172,49 @@ describe('calendarioAutomatico', () => {
     ]).toEqual([12, 6, 4, 3, 2])
   })
 
+  it('limiti ammessi con anno vuoto: 15/03 trimestrale, 30/04 quadrimestrale, 30/06 semestrale', () => {
+    expect(
+      'scadenze' in calendarioAutomatico({ giorno: 15, mese: 3, anno: null }, 'TRIMESTRALE')
+    ).toBe(true)
+    expect(
+      'scadenze' in calendarioAutomatico({ giorno: 30, mese: 4, anno: null }, 'QUADRIMESTRALE')
+    ).toBe(true)
+    expect(
+      'scadenze' in calendarioAutomatico({ giorno: 30, mese: 6, anno: null }, 'SEMESTRALE')
+    ).toBe(true)
+    expect(
+      'errore' in calendarioAutomatico({ giorno: 1, mese: 4, anno: null }, 'TRIMESTRALE')
+    ).toBe(true)
+  })
+
+  it('il calendario generato supera validaScadenze (tutte le frequenze, mesi, anni)', () => {
+    const frequenze = [
+      'MENSILE',
+      'BIMESTRALE',
+      'TRIMESTRALE',
+      'QUADRIMESTRALE',
+      'SEMESTRALE',
+    ] as const
+    for (const f of frequenze) {
+      for (const anno of [null, 2026, 2028]) {
+        for (let mese = 1; mese <= 12; mese++) {
+          for (const giorno of [1, 15, 28, 29, 30, 31]) {
+            const r = calendarioAutomatico({ giorno, mese, anno }, f)
+            if ('scadenze' in r) {
+              expect({
+                f,
+                anno,
+                mese,
+                giorno,
+                e: validaScadenze(r.scadenze, null, NESSUN_EXTRA),
+              }).toEqual({ f, anno, mese, giorno, e: [] })
+            }
+          }
+        }
+      }
+    }
+  })
+
   it('prima data non valida', () => {
     expect(calendarioAutomatico({ giorno: 31, mese: 4, anno: null }, 'MENSILE')).toEqual({
       errore: 'La prima scadenza non è una data valida.',
@@ -261,6 +320,21 @@ describe('scadenzeNelPeriodo', () => {
   it('contratto che finisce prima; intervallo invertito', () => {
     expect(scadenzeNelPeriodo([sc(1, 15, 5)], '2028-01-01', '2028-12-31', contratto)).toEqual([])
     expect(scadenzeNelPeriodo([sc(1, 15, 5)], '2026-12-31', '2026-01-01', contratto)).toEqual([])
+  })
+
+  it('limiti inclusivi: dal, al, inizio e fine contratto', () => {
+    const c = { dataInizio: '2026-05-10', dataFine: '2026-09-20' }
+    const s = [sc(1, 10, 5), sc(2, 20, 9), sc(3, 9, 5), sc(4, 21, 9)]
+    expect(dati(scadenzeNelPeriodo(s, '2026-01-01', '2026-12-31', c))).toEqual([
+      '1:2026-05-10',
+      '2:2026-09-20',
+    ])
+    const l = { dataInizio: '2026-01-01', dataFine: null }
+    expect(
+      dati(scadenzeNelPeriodo([sc(1, 10, 5), sc(2, 20, 9)], '2026-05-10', '2026-09-20', l))
+    ).toEqual(['1:2026-05-10', '2:2026-09-20'])
+    expect(dati(scadenzeNelPeriodo([sc(1, 10, 5)], '2026-05-11', '2026-09-20', l))).toEqual([])
+    expect(dati(scadenzeNelPeriodo([sc(1, 20, 9)], '2026-05-10', '2026-09-19', l))).toEqual([])
   })
 
   it('ordina per data poi per ordine', () => {

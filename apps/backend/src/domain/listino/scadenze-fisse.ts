@@ -106,6 +106,31 @@ function isoValida(d: string): boolean {
 /** Chiave di confronto fra due scadenze con lo stesso tipo di anno (entrambe con o senza). */
 const chiave = (s: Scadenza): number => (s.anno ?? 0) * 10000 + s.mese * 100 + s.giorno
 
+/**
+ * Due scadenze (valide) che fatturerebbero lo stesso giorno: stessa data, con anno vuoto o
+ * uguale; oppure il 29/02 senza anno e un 28/02 senza anno o in un anno non bisestile (il 29/02
+ * scivola al 28/02, vedi `scadenzeNelPeriodo`).
+ */
+function stessaFatturazione(a: Scadenza, b: Scadenza): boolean {
+  if (a.giorno === b.giorno && a.mese === b.mese) {
+    return a.anno === b.anno || a.anno === null || b.anno === null
+  }
+  const [x, y] = a.giorno === 29 ? [a, b] : [b, a]
+  return (
+    x.mese === 2 &&
+    x.giorno === 29 &&
+    x.anno === null &&
+    y.mese === 2 &&
+    y.giorno === 28 &&
+    (y.anno === null || giorniDelMese(2, y.anno) === 28)
+  )
+}
+
+/**
+ * Valida le scadenze di una riga. I messaggi "Scadenza n" e il controllo d'ordine usano la
+ * POSIZIONE nell'array (n = indice + 1), non `ordine`: il chiamante passa le scadenze gia'
+ * ordinate per `ordine`.
+ */
 export function validaScadenze(
   s: readonly Scadenza[],
   periodo: PeriodoScadenze | null,
@@ -130,22 +155,20 @@ export function validaScadenze(
   const valida = s.map(x => dataValida(x.giorno, x.mese, x.anno))
   for (let b = 1; b < s.length; b++) {
     if (!valida[b]) continue
-    // doppione: stessa data, o una senza anno e l'altra con anno (fatturerebbero due volte)
-    const uguale = s.findIndex(
-      (a, i) =>
-        i < b &&
-        valida[i] &&
-        a.giorno === s[b].giorno &&
-        a.mese === s[b].mese &&
-        (a.anno === s[b].anno || a.anno === null || s[b].anno === null)
-    )
+    const uguale = s.findIndex((a, i) => i < b && valida[i] && stessaFatturazione(a, s[b]))
     if (uguale >= 0) {
       errori.push(`Scadenza ${b + 1}: data ripetuta (uguale alla scadenza ${uguale + 1}).`)
-    } else if (
-      valida[b - 1] &&
-      (s[b - 1].anno === null) === (s[b].anno === null) &&
-      chiave(s[b]) < chiave(s[b - 1])
-    ) {
+      continue
+    }
+    // ordine: si confronta con l'ultima scadenza valida dello STESSO tipo di anno (vuoto/esplicito)
+    let precedente = -1
+    for (let i = b - 1; i >= 0; i--) {
+      if (valida[i] && (s[i].anno === null) === (s[b].anno === null)) {
+        precedente = i
+        break
+      }
+    }
+    if (precedente >= 0 && chiave(s[b]) < chiave(s[precedente])) {
       errori.push(`Scadenza ${b + 1}: le scadenze vanno in ordine di data.`)
     }
   }
