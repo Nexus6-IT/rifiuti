@@ -15,6 +15,7 @@ import {
   PropostaRiga,
   RigaAddebito,
 } from './listino.model'
+import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { ListinoService } from './listino.service'
 import { RigaAddebitoDialogComponent } from './riga-addebito-dialog.component'
 import { CodiceIvaDialogComponent } from './tabelle/codice-iva-dialog.component'
@@ -690,6 +691,48 @@ describe('RigaAddebitoDialogComponent', () => {
       expect(testo('riga-errori-generali')).toBe('La riga è stata modificata.')
       bottone('riga-ricarica')!.click()
       expect(ricariche).toBe(1)
+    })
+
+    it('409 di dato scritto (riga duplicata): messaggio in testa, niente "Ricarica", form intatto', async () => {
+      righe.modifica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: { error: 'RIGA_ADDEBITO_DUPLICATA', message: 'Esiste già una riga uguale.' },
+        }))
+      )
+      await apri({ riga: riga() })
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(testo('riga-errori-generali')).toBe('Esiste già una riga uguale.')
+      expect(q('riga-ricarica')).toBeNull()
+      expect(q('riga-salva')).not.toBeNull()
+    })
+
+    it('409 di versione: "Ricarica"', async () => {
+      righe.modifica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: { error: 'RIGA_ADDEBITO_MODIFICATA_NEL_FRATTEMPO', message: 'Modificata.' },
+        }))
+      )
+      await apri({ riga: riga() })
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('riga-ricarica')).not.toBeNull()
+    })
+
+    it('operazione concorrente: testo unico, niente "Ricarica"', async () => {
+      righe.modifica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: { error: 'OPERAZIONE_CONCORRENTE', message: 'altro testo' },
+        }))
+      )
+      await apri({ riga: riga() })
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(testo('riga-errori-generali')).toBe(MESSAGGIO_CONCORRENTE)
+      expect(q('riga-ricarica')).toBeNull()
     })
 
     it('un 400 senza `errori` mostra il messaggio in testa', async () => {

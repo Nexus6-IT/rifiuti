@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
 import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { CopiaElencoDialogComponent, righeEscluse } from './copia-elenco-dialog.component'
 import { ElencoAddebiti, EsitoCopia } from './listino.model'
 import { ListinoService } from './listino.service'
@@ -170,5 +171,81 @@ describe('CopiaElencoDialogComponent', () => {
     await stabilizza(fixture)
     expect(q('copia-errore')).toBeNull()
     expect(fixture.componentInstance.origine()).toBeNull()
+  })
+
+  describe('409 e focus (M1, M11)', () => {
+    const copiaConErrore = async (err: object) => {
+      sostituisciDa.and.returnValue(throwError(() => err))
+      await apri()
+      await scegliOrigine()
+      bottone('copia-avanti')!.click()
+      await stabilizza(fixture)
+      bottone('copia-conferma-finale')!.click()
+      await stabilizza(fixture)
+    }
+
+    it('409 di dato scritto: messaggio, niente "Ricarica"', async () => {
+      await copiaConErrore({
+        status: 409,
+        error: { error: 'RIGA_ADDEBITO_DUPLICATA', message: 'Riga già presente.' },
+      })
+      expect(q('copia-errore')!.textContent).toContain('Riga già presente.')
+      expect(q('copia-ricarica')).toBeNull()
+    })
+
+    it('operazione concorrente: testo unico, niente "Ricarica"', async () => {
+      await copiaConErrore({
+        status: 409,
+        error: { error: 'OPERAZIONE_CONCORRENTE', message: 'altro testo' },
+      })
+      expect(q('copia-errore')!.textContent).toContain(MESSAGGIO_CONCORRENTE)
+      expect(q('copia-ricarica')).toBeNull()
+    })
+
+    it('versione superata: "Ricarica"', async () => {
+      await copiaConErrore({
+        status: 409,
+        error: { error: 'ELENCO_ADDEBITI_MODIFICATO_NEL_FRATTEMPO', message: 'Modificato.' },
+      })
+      expect(q('copia-ricarica')).not.toBeNull()
+    })
+
+    it('al passo di conferma il focus va al riepilogo', async () => {
+      await apri()
+      await scegliOrigine()
+      bottone('copia-avanti')!.click()
+      await stabilizza(fixture)
+      await new Promise(r => setTimeout(r))
+      expect(document.activeElement).toBe(q('copia-conferma'))
+      expect(q('copia-conferma')!.getAttribute('tabindex')).toBe('-1')
+    })
+  })
+
+  it('gli avvisi dell’esito (voci disattivate) compaiono come elenco non bloccante', async () => {
+    sostituisciDa.and.returnValue(
+      of({
+        copiate: 3,
+        escluse: { minimi: 0, acconti: 0, conguagli: 0, duplicate: 0, condizioni: 0 },
+        avvisi: ['La riga R1 usa un addebito disattivato.'],
+      })
+    )
+    await apri()
+    await scegliOrigine()
+    bottone('copia-avanti')!.click()
+    await stabilizza(fixture)
+    bottone('copia-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('copia-esito')!.textContent).toContain('Righe copiate: 3')
+    expect(q('copia-avvisi')!.textContent).toContain('La riga R1 usa un addebito disattivato.')
+  })
+
+  it('senza avvisi nessun elenco', async () => {
+    await apri()
+    await scegliOrigine()
+    bottone('copia-avanti')!.click()
+    await stabilizza(fixture)
+    bottone('copia-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('copia-avvisi')).toBeNull()
   })
 })

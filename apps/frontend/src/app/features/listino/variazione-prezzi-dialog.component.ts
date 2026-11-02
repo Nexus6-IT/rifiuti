@@ -22,6 +22,7 @@ import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.serv
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { SceltaClienteComponent } from '../contratti-cliente/scelta-cliente.component'
 import { AnteprimaContrattiComponent } from './anteprima-contratti.component'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { MESSAGGIO_CONCORRENTE, eConcorrente, leggiErroriAzione } from './errori-azione'
 import {
   AnteprimaVariazioneContratti,
@@ -30,7 +31,11 @@ import {
   TipoVariazione,
 } from './listino.model'
 import { ListinoService } from './listino.service'
-import { leggiNumero, messaggioNumero, validatoreNumero } from './numero-modificabile'
+import {
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from '../../shared/utils/numero-modificabile'
 import { puoVariarePrezzi } from './permessi-listino'
 import { ETICHETTE_TIPO_VARIAZIONE, TIPI_ELENCABILI } from './vocabolario-listino'
 
@@ -99,7 +104,12 @@ const SCELTE_VUOTE = (): Scelte => ({
         <p>Prezzi aggiornati: {{ esito() }}</p>
       </div>
 
-      <div *ngIf="esito() === null && inRiepilogo()" class="dlg-form" data-testid="vp-riepilogo">
+      <div
+        *ngIf="esito() === null && inRiepilogo()"
+        class="dlg-form"
+        tabindex="-1"
+        data-testid="vp-riepilogo"
+      >
         <p>Stai per modificare i prezzi dei contratti. L'operazione non si annulla.</p>
         <ul>
           <li *ngFor="let r of riepilogo()">{{ r }}</li>
@@ -125,12 +135,15 @@ const SCELTE_VUOTE = (): Scelte => ({
             id="vp-valore"
             formControlName="valore"
             inputmode="decimal"
+            [attr.aria-invalid]="erroreCampo('valore') ? 'true' : null"
+            [attr.aria-describedby]="erroreCampo('valore') ? 'vp-errore-valore' : null"
             data-testid="vp-valore"
           />
           <small
             *ngIf="erroreCampo('valore') as e"
             role="alert"
             class="field-error"
+            id="vp-errore-valore"
             data-testid="vp-errore-valore"
             >{{ e }}</small
           >
@@ -256,12 +269,15 @@ const SCELTE_VUOTE = (): Scelte => ({
           id="vp-prezzo"
           formControlName="prezzoAttuale"
           inputmode="decimal"
+          [attr.aria-invalid]="erroreCampo('prezzoAttuale') ? 'true' : null"
+          [attr.aria-describedby]="erroreCampo('prezzoAttuale') ? 'vp-errore-prezzo' : null"
           data-testid="vp-prezzo-attuale"
         />
         <small
           *ngIf="erroreCampo('prezzoAttuale') as e"
           role="alert"
           class="field-error"
+          id="vp-errore-prezzo"
           data-testid="vp-errore-prezzo"
           >{{ e }}</small
         >
@@ -852,6 +868,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     this.riepilogo.set(righe)
     this.erroriApplica.set([])
     this.inRiepilogo.set(true)
+    focalizzaPasso('vp-riepilogo')
   }
 
   applica(): void {

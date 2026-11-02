@@ -14,7 +14,7 @@ import {
   leggiNumero,
   messaggioNumero,
   validatoreNumero,
-} from '../numero-modificabile'
+} from '../../../shared/utils/numero-modificabile'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'

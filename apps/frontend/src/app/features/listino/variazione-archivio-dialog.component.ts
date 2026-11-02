@@ -1,4 +1,8 @@
-import { leggiNumero, messaggioNumero, validatoreNumero } from './numero-modificabile'
+import {
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from '../../shared/utils/numero-modificabile'
 import { CommonModule } from '@angular/common'
 import {
   Component,
@@ -19,6 +23,7 @@ import { Subscription } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { Opzione, etichettaCodice } from '../clienti/opzioni-fatturazione'
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { MESSAGGIO_CONCORRENTE, eConcorrente, leggiErroriAzione } from './errori-azione'
 import {
   AnteprimaVariazione,
@@ -66,7 +71,12 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
         <p>{{ sostituzioneIva() ? 'Addebiti aggiornati' : 'Prezzi aggiornati' }}: {{ esito() }}</p>
       </div>
 
-      <div *ngIf="esito() === null && inRiepilogo()" class="dlg-form" data-testid="var-riepilogo">
+      <div
+        *ngIf="esito() === null && inRiepilogo()"
+        class="dlg-form"
+        tabindex="-1"
+        data-testid="var-riepilogo"
+      >
         <p>
           Stai per modificare i prezzi dell'archivio. L'operazione non si annulla e non tocca i
           contratti.
@@ -95,12 +105,15 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
             id="var-valore"
             formControlName="valore"
             inputmode="decimal"
+            [attr.aria-invalid]="erroreValore() ? 'true' : null"
+            [attr.aria-describedby]="erroreValore() ? 'var-errore-valore' : null"
             data-testid="var-valore"
           />
           <small
             *ngIf="erroreValore() as e"
             role="alert"
             class="field-error"
+            id="var-errore-valore"
             data-testid="var-errore-valore"
             >{{ e }}</small
           >
@@ -177,6 +190,9 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
           Nessun prezzo corrisponde ai criteri.
         </p>
         <table *ngIf="a.righe.length > 0" class="anteprima" data-testid="var-righe">
+          <caption class="sr-only">
+            Anteprima dei prezzi che cambiano
+          </caption>
           <thead>
             <tr>
               <th scope="col">Addebito</th>
@@ -547,6 +563,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     this.riepilogo.set(righe)
     this.erroreApplica.set(null)
     this.inRiepilogo.set(true)
+    focalizzaPasso('var-riepilogo')
   }
 
   applica(): void {

@@ -336,7 +336,8 @@ export const OPZIONI_APPLICA_A = (Object.keys(ETICHETTE_APPLICA_A) as ApplicaPre
 /**
  * Tipi di calcolo delle fasce. `E` e `H` fatturano tutta la quantità al prezzo dell'ultima fascia,
  * come `D`, e non lasciano le righe delle fasce precedenti (R29, R50): nessuna quantità si
- * fattura due volte. Le descrizioni complete con i casi arrivano con il Task 28.
+ * fattura due volte. Le descrizioni complete con i casi stanno in `fasce-scadenze-regole.ts`
+ * (`descrizioneFascia`).
  */
 export const ETICHETTE_TIPO_CALCOLO: Readonly<Record<TipoCalcoloScaglione, string>> = {
   A: 'A - quantità di ogni fascia al prezzo della fascia, in progressione',

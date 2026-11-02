@@ -5,7 +5,12 @@ import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
 import { MAX_FASCE, descrizioneFascia, tipiAmmessi, validaFasce } from './fasce-scadenze-regole'
 import { Scaglione, TipoCalcoloScaglione } from './listino.model'
-import { formatCascata, formatNumero, leggiCascata, leggiNumero } from './numero-modificabile'
+import {
+  formatCascata,
+  formatNumero,
+  leggiCascata,
+  leggiNumero,
+} from '../../shared/utils/numero-modificabile'
 import { RigaCampoComponent } from './riga-campo.component'
 import { RigaForm } from './riga-modulo'
 import { ETICHETTE_TIPO_CALCOLO, OPZIONI_APPLICA_A } from './vocabolario-listino'

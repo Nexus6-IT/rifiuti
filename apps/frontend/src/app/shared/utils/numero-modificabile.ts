@@ -15,8 +15,17 @@ export interface EsitoNumero<T> {
   errore: string | null
 }
 
-const DECIMALE = /^-?\d+(,\d+)?$/
+// Accetta anche `,5` e `5,`: mentre si scrive `1,5` il campo non deve segnalare l'errore appena
+// dopo la virgola.
+const DECIMALE = /^-?(\d+(,\d*)?|,\d+)$/
 const INTERO = /^\d+$/
+/** `12,5` → `12.5`, `,5` → `0.5`, `5,` → `5`. Il testo è già stato validato con `DECIMALE`. */
+const conPunto = (t: string): string =>
+  t
+    .replace(',', '.')
+    .replace(/^(-?)\./, '$10.')
+    .replace(/\.$/, '')
+
 const senzaSpazi = (t: string): string => t.replace(/\s+/g, '')
 
 /** Decimale scritto con la virgola → decimale con il punto, per il backend. */
@@ -25,7 +34,7 @@ export function leggiNumero(testo: string): EsitoNumero<string> {
   if (t === '') return { valore: null, errore: null }
   if (t.includes('.')) return { valore: null, errore: MSG_VIRGOLA }
   if (!DECIMALE.test(t)) return { valore: null, errore: MSG_NUMERO }
-  return { valore: t.replace(',', '.'), errore: null }
+  return { valore: conPunto(t), errore: null }
 }
 
 /** Cascata di percentuali (`10+5,5`): ogni termine come `leggiNumero`. */
@@ -35,7 +44,7 @@ export function leggiCascata(testo: string): EsitoNumero<string> {
   if (t.includes('.')) return { valore: null, errore: MSG_VIRGOLA }
   const termini = t.split('+')
   if (!termini.every(x => DECIMALE.test(x))) return { valore: null, errore: MSG_NUMERO }
-  return { valore: termini.map(x => x.replace(',', '.')).join('+'), errore: null }
+  return { valore: termini.map(conPunto).join('+'), errore: null }
 }
 
 /** Intero senza segno: `1a` e `2026x` sono errori, non 1 e 2026. */
@@ -81,7 +90,7 @@ export function validatoreNumero(tipo: 'decimale' | 'cascata' | 'intero'): Valid
   }
 }
 
-/** Messaggio del validatore, se il campo è stato toccato o ha già un valore. */
+/** Messaggio dell'errore `numero` del controllo (nessuna condizione su `touched`), o null. */
 export function messaggioNumero(c: AbstractControl | null | undefined): string | null {
   const e = c?.errors?.['numero']
   return typeof e === 'string' ? e : null

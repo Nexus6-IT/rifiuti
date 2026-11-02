@@ -13,6 +13,7 @@ import { ElencoAddebiti, ElenchiContratto, RigaAddebito, StatoContratto } from '
 import { ListinoService } from './listino.service'
 import { CopiaElencoDialogComponent } from './copia-elenco-dialog.component'
 import { ProvvigioniScontiDialogComponent } from './provvigioni-sconti-dialog.component'
+import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { ListinoContrattoComponent } from './listino-contratto.component'
 
 const CONTRATTO = 'cc1'
@@ -103,6 +104,7 @@ describe('ListinoContrattoComponent', () => {
   let righeList: jasmine.Spy
   let righeCrea: jasmine.Spy
   let righeModifica: jasmine.Spy
+  let righeElimina: jasmine.Spy
   let contrattoGet: jasmine.Spy
   let allegatiElenco: jasmine.Spy
   let toast: jasmine.SpyObj<ToastService>
@@ -134,6 +136,7 @@ describe('ListinoContrattoComponent', () => {
     righeList = jasmine.createSpy('list').and.returnValue(of([riga('r1')]))
     righeCrea = jasmine.createSpy('crea').and.returnValue(of(riga('r2')))
     righeModifica = jasmine.createSpy('modifica').and.returnValue(of(riga('r1')))
+    righeElimina = jasmine.createSpy('elimina').and.returnValue(of(undefined))
     allegatiElenco = jasmine
       .createSpy('allegatiElenco')
       .and.returnValue(
@@ -164,6 +167,7 @@ describe('ListinoContrattoComponent', () => {
               list: righeList,
               crea: righeCrea,
               modifica: righeModifica,
+              elimina: righeElimina,
               proposta: () => of({}),
               codificheRentri: () => of([]),
             },
@@ -540,7 +544,7 @@ describe('ListinoContrattoComponent', () => {
         'Minimo',
         'Categoria',
         'Appunti',
-        'Apri',
+        'Azioni',
       ])
     })
 
@@ -741,6 +745,115 @@ describe('ListinoContrattoComponent', () => {
       expect(celle).toContain('12,5+5')
       expect(celle).toContain('3,5')
       expect(celle).not.toContain('12.5+5')
+    })
+  })
+
+  describe('eliminazione della riga (I1)', () => {
+    const elimina = async () => {
+      bottone('listino-elimina-riga-r1')!.click()
+      await stabilizza(fixture)
+    }
+
+    it('chiede conferma, poi DELETE con la versione della riga e rilegge', async () => {
+      await apri()
+      await scegli('e1')
+      await elimina()
+      expect(righeElimina).not.toHaveBeenCalled()
+      expect(document.body.textContent).toContain('Eliminare la riga 20 03 01?')
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(righeElimina).toHaveBeenCalledOnceWith('r1', 1)
+      expect(delContratto).toHaveBeenCalledTimes(2)
+    })
+
+    it('Annulla nella conferma non cancella nulla', async () => {
+      await apri()
+      await scegli('e1')
+      await elimina()
+      document.body.querySelector<HTMLButtonElement>('.p-confirm-dialog-reject')!.click()
+      await stabilizza(fixture)
+      expect(righeElimina).not.toHaveBeenCalled()
+    })
+
+    it('il pulsante ha un nome accessibile', async () => {
+      await apri()
+      await scegli('e1')
+      expect(bottone('listino-elimina-riga-r1')!.getAttribute('aria-label')).toBe(
+        'Elimina la riga 20 03 01'
+      )
+    })
+
+    it('VIEWER: nessun pulsante, e il metodo non scrive', async () => {
+      const c = await apri('VIEWER')
+      await scegli('e1')
+      expect(q('listino-elimina-riga-r1')).toBeNull()
+      c.eliminaRiga(riga('r1'))
+      expect(righeElimina).not.toHaveBeenCalled()
+    })
+
+    it('contratto annullato: nessun pulsante', async () => {
+      await apri('ADMIN', risposta('ANNULLATO'))
+      await scegli('e1')
+      expect(q('listino-elimina-riga-r1')).toBeNull()
+    })
+
+    it('elenco non modificabile: nessun pulsante', async () => {
+      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
+      await scegli('e1')
+      expect(q('listino-elimina-riga-r1')).toBeNull()
+    })
+
+    it('409 di versione: messaggio con "Ricarica", senza rileggere di nascosto', async () => {
+      righeElimina.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            error: 'RIGA_ADDEBITO_MODIFICATA_NEL_FRATTEMPO',
+            message: 'La riga è stata modificata da un altro utente.',
+          },
+        }))
+      )
+      await apri()
+      await scegli('e1')
+      await elimina()
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(testo('listino-errore')).toContain('modificata da un altro utente')
+      expect(bottone('listino-ricarica')).toBeTruthy()
+      expect(delContratto).toHaveBeenCalledTimes(1)
+      bottone('listino-ricarica')!.click()
+      await stabilizza(fixture)
+      expect(delContratto).toHaveBeenCalledTimes(2)
+    })
+
+    it('409 di operazione concorrente: avviso, nessun "Ricarica", nessuna rilettura', async () => {
+      righeElimina.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: { error: 'OPERAZIONE_CONCORRENTE', message: 'testo del backend' },
+        }))
+      )
+      await apri()
+      await scegli('e1')
+      await elimina()
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(toast.error).toHaveBeenCalledWith(MESSAGGIO_CONCORRENTE)
+      expect(q('listino-errore')).toBeNull()
+      expect(delContratto).toHaveBeenCalledTimes(1)
+    })
+
+    it('404 (già eliminata): avviso e rilettura', async () => {
+      righeElimina.and.returnValue(
+        throwError(() => ({ status: 404, error: { message: 'Riga non trovata.' } }))
+      )
+      await apri()
+      await scegli('e1')
+      await elimina()
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(toast.error).toHaveBeenCalledWith('Riga non trovata.')
+      expect(delContratto).toHaveBeenCalledTimes(2)
     })
   })
 

@@ -189,7 +189,7 @@ describe('ListinoService', () => {
   })
 
   describe('righe (Task 21)', () => {
-    it("list e crea sull'elenco; modifica, get ed elimina sulla riga", () => {
+    it("list e crea sull'elenco; modifica ed elimina sulla riga", () => {
       service.righe.list(ID).subscribe()
       http.expectOne(`${api}/elenchi-addebiti/${ID}/righe`).flush([])
       service.righe.crea(ID, { tipo: 'V', prezzo: '1.5' }).subscribe()
@@ -197,8 +197,6 @@ describe('ListinoService', () => {
       expect(post.request.method).toBe('POST')
       expect(post.request.body.prezzo).toBe('1.5')
       post.flush({})
-      service.righe.get(ID).subscribe()
-      http.expectOne(`${api}/righe-addebito/${ID}`).flush({})
       service.righe.modifica(ID, { prezzo: '2', versione: 4 }).subscribe()
       const patch = http.expectOne(`${api}/righe-addebito/${ID}`)
       expect(patch.request.method).toBe('PATCH')

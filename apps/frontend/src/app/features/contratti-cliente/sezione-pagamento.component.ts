@@ -23,6 +23,7 @@ import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.serv
 import { TestoFatturazioneDialogComponent } from '../clienti/tabelle/testo-fatturazione-dialog.component'
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { OPZIONI_ESIGIBILITA } from '../clienti/vocabolario-clienti'
+import { messaggioNumero } from '../../shared/utils/numero-modificabile'
 import { FormContratto } from './contratto-cliente-form'
 import { SEZIONE_CONTRATTO } from './sezione-contratto'
 
@@ -147,8 +148,20 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
         id="contratto-dlg-ritenuta"
         formControlName="ritenutaPercentuale"
         inputmode="decimal"
+        [attr.aria-invalid]="errore('ritenutaPercentuale') ? 'true' : null"
+        [attr.aria-describedby]="
+          errore('ritenutaPercentuale') ? 'contratto-dlg-ritenuta-errore' : null
+        "
         data-testid="contratto-dlg-ritenuta"
       />
+      <small
+        *ngIf="errore('ritenutaPercentuale') as e"
+        id="contratto-dlg-ritenuta-errore"
+        role="alert"
+        class="field-error"
+        data-testid="contratto-dlg-ritenuta-errore"
+        >{{ e }}</small
+      >
 
       <app-scelta-agente
         prefisso="contratto-dlg"
@@ -204,6 +217,11 @@ export class SezionePagamentoComponent implements OnChanges, OnDestroy {
   private readonly tabelle = inject(TabelleFatturazioneService)
 
   @Input({ required: true }) form!: FormContratto
+
+  /** Errore di numero (punto o testo) del campo, o null. */
+  errore(campo: 'ritenutaPercentuale' | 'sogliaImporto'): string | null {
+    return messaggioNumero(this.form.controls[campo])
+  }
   @Input({ required: true }) opzioni!: OpzioniFatturazione
   /** Dialog aperto: a ogni apertura si rilegge l'elenco dei testi. */
   @Input() visible = false

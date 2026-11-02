@@ -18,6 +18,12 @@ describe('numero-modificabile', () => {
       expect(leggiNumero(' 0,08 ')).toEqual({ valore: '0.08', errore: null })
       expect(leggiNumero('1000')).toEqual({ valore: '1000', errore: null })
     })
+    it('`,5` e `5,` sono accettati mentre si scrive', () => {
+      expect(leggiNumero(',5')).toEqual({ valore: '0.5', errore: null })
+      expect(leggiNumero('5,')).toEqual({ valore: '5', errore: null })
+      expect(leggiNumero('-,5')).toEqual({ valore: '-0.5', errore: null })
+      expect(leggiCascata('10+,5').valore).toBe('10+0.5')
+    })
     it('vuoto = nessun valore, nessun errore', () => {
       expect(leggiNumero('  ')).toEqual({ valore: null, errore: null })
     })
@@ -29,7 +35,7 @@ describe('numero-modificabile', () => {
     it('testo che non è un numero', () => {
       expect(leggiNumero('1a').errore).toBe(MSG_NUMERO)
       expect(leggiNumero('1,2,3').errore).toBe(MSG_NUMERO)
-      expect(leggiNumero(',5').errore).toBe(MSG_NUMERO)
+      expect(leggiNumero(',').errore).toBe(MSG_NUMERO)
     })
   })
 

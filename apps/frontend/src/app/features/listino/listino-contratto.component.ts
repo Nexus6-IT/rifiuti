@@ -27,6 +27,7 @@ import { AllegatiElencoComponent } from './allegati-elenco.component'
 import { CopiaElencoDialogComponent } from './copia-elenco-dialog.component'
 import { ElencoDialogComponent } from './elenco-dialog.component'
 import { ElenchiPannelloComponent } from './elenchi-pannello.component'
+import { MESSAGGIO_CONCORRENTE, naturaConflitto } from './errori-azione'
 import { elenchiValidiAl, oggiIso, righeInTesto } from './listino-calcoli'
 import { ContestoListino, ElencoAddebiti, RigaAddebito } from './listino.model'
 import { ListinoService } from './listino.service'
@@ -160,7 +161,9 @@ import { RigheTavolaComponent } from './righe-tavola.component'
               [elementi]="righe()"
               [caricamento]="caricamentoRighe()"
               [errore]="erroreRighe()"
+              [puoEliminare]="!soloLettura() && el.modificabile"
               (apri)="apriRiga($event)"
+              (elimina)="eliminaRiga($event)"
             />
             <!-- Gli allegati si gestiscono anche con il contratto annullato (R47): conta solo il permesso. -->
             <h3>Allegati dell'elenco</h3>
@@ -404,6 +407,43 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
     this.carica()
   }
 
+  // --- eliminazione della riga --------------------------------------------------------------
+
+  eliminaRiga(r: RigaAddebito): void {
+    if (this.soloLettura() || !this.elencoMostrato()?.modificabile) return
+    const nome = r.cerCode ?? r.addebito?.codice ?? r.tipo
+    chiediConferma(this.conferma, `Eliminare la riga ${nome}?`, () => this.eliminaRigaConfermata(r))
+  }
+
+  eliminaRigaConfermata(r: RigaAddebito): void {
+    this.servizio.righe
+      .elimina(r.id, r.versione)
+      .pipe(takeUntil(this.distrutto))
+      .subscribe({
+        next: () => this.carica(),
+        error: err => this.dopoErroreEliminazione(err, 'Impossibile eliminare la riga.'),
+      })
+  }
+
+  /**
+   * 404: già eliminata da altri, si rilegge. 409 di versione o di listino non più modificabile:
+   * messaggio con "Ricarica", senza rileggere di nascosto. 409 di operazione concorrente: si
+   * avvisa e si può riprovare. Altro: avviso e si rilegge.
+   */
+  private dopoErroreEliminazione(err: { status?: number }, ripiego: string): void {
+    const natura = naturaConflitto(err)
+    if (natura === 'rilettura') {
+      this.erroreCaricamento.set(messaggioErrore(err, ripiego))
+      return
+    }
+    if (natura === 'concorrente') {
+      this.toast.error(MESSAGGIO_CONCORRENTE)
+      return
+    }
+    this.toast.error(messaggioErrore(err, ripiego))
+    this.carica()
+  }
+
   // --- elenchi ------------------------------------------------------------------------------
 
   apriElenco(e: ElencoAddebiti | null): void {
@@ -440,16 +480,7 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
           if (this.elencoScelto()?.id === e.id) this.elencoScelto.set(null)
           this.carica()
         },
-        error: err => {
-          const messaggio = messaggioErrore(err, "Impossibile eliminare l'elenco.")
-          if (err?.status === 409) {
-            // Versione vecchia: messaggio con "Ricarica", senza rileggere di nascosto.
-            this.erroreCaricamento.set(messaggio)
-            return
-          }
-          this.toast.error(messaggio)
-          this.carica()
-        },
+        error: err => this.dopoErroreEliminazione(err, "Impossibile eliminare l'elenco."),
       })
   }
 }

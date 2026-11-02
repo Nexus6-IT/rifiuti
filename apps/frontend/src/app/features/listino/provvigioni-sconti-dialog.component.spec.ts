@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
 import { bottone, q, scrivi, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { EsitoImpostazione } from './listino.model'
 import { ListinoService } from './listino.service'
 import { ProvvigioniScontiDialogComponent } from './provvigioni-sconti-dialog.component'
@@ -202,5 +203,53 @@ describe('ProvvigioniScontiDialogComponent', () => {
     await avanti()
     await applica()
     expect(q('ps-errore-nuovo-backend')).not.toBeNull()
+  })
+
+  describe('409, focus e campi (M1, M3, M11)', () => {
+    const conErrore = async (err: object) => {
+      provvigioni.and.returnValue(throwError(() => err))
+      await apri()
+      scrivi('ps-provvigione', '3')
+      await stabilizza(fixture)
+      await avanti()
+      await applica()
+    }
+
+    it('409 di dato scritto: messaggio, niente "Ricarica"', async () => {
+      await conErrore({
+        status: 409,
+        error: { error: 'DETRAZIONE_GIA_PRESENTE', message: 'Detrazione già presente.' },
+      })
+      expect(q('ps-errore')!.textContent).toContain('Detrazione già presente.')
+      expect(q('ps-ricarica')).toBeNull()
+    })
+
+    it('operazione concorrente: testo unico, niente "Ricarica"', async () => {
+      await conErrore({
+        status: 409,
+        error: { error: 'OPERAZIONE_CONCORRENTE', message: 'altro testo' },
+      })
+      expect(q('ps-errore')!.textContent).toContain(MESSAGGIO_CONCORRENTE)
+      expect(q('ps-ricarica')).toBeNull()
+    })
+
+    it('al passo di conferma il focus va al riepilogo', async () => {
+      await apri()
+      scrivi('ps-provvigione', '3')
+      await stabilizza(fixture)
+      await avanti()
+      await new Promise(r => setTimeout(r))
+      expect(document.activeElement).toBe(q('ps-conferma'))
+    })
+
+    it('il campo con l’errore è legato al suo messaggio (aria-describedby)', async () => {
+      await apri()
+      scrivi('ps-provvigione', '3.5')
+      await stabilizza(fixture)
+      const campo = q('ps-provvigione')!
+      expect(campo.getAttribute('aria-invalid')).toBe('true')
+      expect(campo.getAttribute('aria-describedby')).toBe('ps-errore-provvigione')
+      expect(document.getElementById('ps-errore-provvigione')).not.toBeNull()
+    })
   })
 })

@@ -25,7 +25,7 @@ import {
 } from './fasce-scadenze-regole'
 import { importoItaliano, totaleFissiAnnuo } from './listino-calcoli'
 import { PeriodoScadenze, Scadenza } from './listino.model'
-import { leggiIntero, leggiNumero } from './numero-modificabile'
+import { leggiIntero, leggiNumero } from '../../shared/utils/numero-modificabile'
 import { RigaCampoComponent } from './riga-campo.component'
 import { RigaForm } from './riga-modulo'
 import { OPZIONI_PERIODO_SCADENZE, PERIODI_EXTRA } from './vocabolario-listino'

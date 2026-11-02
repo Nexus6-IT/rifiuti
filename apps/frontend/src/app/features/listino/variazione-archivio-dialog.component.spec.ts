@@ -155,6 +155,7 @@ describe('VariazioneArchivioDialogComponent', () => {
     await apri()
     await preparaAumento()
     await anteprima()
+    expect(q('var-righe')!.querySelector('caption')?.textContent).toContain('Anteprima')
     const testo = q('var-righe')!.textContent!
     expect(testo).toContain('Trasporto')
     expect(testo).toContain('10.00')
@@ -212,6 +213,9 @@ describe('VariazioneArchivioDialogComponent', () => {
     await stabilizza(fixture)
     expect(addebiti.applicaVariazione).not.toHaveBeenCalled()
     expect(q('var-riepilogo')!.textContent).toContain('3,5')
+    // M11: al passo di riepilogo il focus passa al riepilogo
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('var-riepilogo'))
     bottone('var-conferma-finale')!.click()
     await stabilizza(fixture)
     expect(addebiti.applicaVariazione).toHaveBeenCalledOnceWith({

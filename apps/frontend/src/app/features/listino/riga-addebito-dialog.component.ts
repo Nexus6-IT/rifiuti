@@ -26,6 +26,7 @@ import { RigaDatiSezioneComponent, RichiestaNuovo } from './riga-dati-sezione.co
 import { RigaFasceSezioneComponent } from './riga-fasce-sezione.component'
 import { RigaForm, tipoPerMenu } from './riga-modulo'
 import { RigaPropostaSezioneComponent } from './riga-proposta-sezione.component'
+import { MESSAGGIO_CONCORRENTE, naturaConflitto } from './errori-azione'
 import { RigaScadenzeSezioneComponent } from './riga-scadenze-sezione.component'
 import { VoceRicerca } from './riga-ricerca.component'
 import { CodiceIvaDialogComponent } from './tabelle/codice-iva-dialog.component'
@@ -425,8 +426,12 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
       },
       error: err => {
         this.inCorso.set(false)
-        this.stato.impostaErrori(err, 'Impossibile salvare la riga.')
-        this.conflitto.set(err?.status === 409)
+        const natura = naturaConflitto(err)
+        if (natura === 'concorrente') this.stato.impostaMessaggio(MESSAGGIO_CONCORRENTE)
+        else this.stato.impostaErrori(err, 'Impossibile salvare la riga.')
+        // "Ricarica" solo se i dati sono cambiati: un duplicato o un minimo già presente si
+        // correggono nel form, che resta com'è.
+        this.conflitto.set(natura === 'rilettura')
       },
     })
   }

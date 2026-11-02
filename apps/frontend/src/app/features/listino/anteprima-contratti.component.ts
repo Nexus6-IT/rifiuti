@@ -106,6 +106,9 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
         riguarda tutti i prezzi che cambiano.
       </p>
       <table class="anteprima" data-testid="anteprima-righe">
+        <caption class="sr-only">
+          Anteprima delle righe che cambiano
+        </caption>
         <thead>
           <tr>
             <th scope="col">Cliente</th>

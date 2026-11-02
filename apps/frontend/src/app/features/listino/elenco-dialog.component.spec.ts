@@ -1,7 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { Subject, of } from 'rxjs'
-import { bottone, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import { Subject, of, throwError } from 'rxjs'
+import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { ElencoDialogComponent } from './elenco-dialog.component'
 import { ElencoAddebiti } from './listino.model'
 import { ListinoService } from './listino.service'
@@ -85,5 +86,41 @@ describe('ElencoDialogComponent', () => {
     await apri(false, null)
     fixture.destroy()
     expect(() => codice$.next('009')).not.toThrow()
+  })
+
+  describe('409 (M1)', () => {
+    const salvaConErrore = async (err: object) => {
+      elenchi.modifica.and.returnValue(throwError(() => err))
+      await apri(false)
+      bottone('listino-elenco-salva')!.click()
+      await stabilizza(fixture)
+    }
+
+    it('codice già usato (dato scritto): messaggio nel dialog, niente "Ricarica", form intatto', async () => {
+      await salvaConErrore({
+        status: 409,
+        error: { error: 'ELENCO_ADDEBITI_CODICE_DUPLICATO', message: 'Codice già usato.' },
+      })
+      expect(q('listino-elenco-errore')!.textContent).toContain('Codice già usato.')
+      expect(q('listino-elenco-ricarica')).toBeNull()
+      expect(fixture.componentInstance.modulo.descrizione).toBe('Elenco')
+    })
+
+    it('versione superata: "Ricarica"', async () => {
+      await salvaConErrore({
+        status: 409,
+        error: { error: 'ELENCO_ADDEBITI_MODIFICATO_NEL_FRATTEMPO', message: 'Modificato.' },
+      })
+      expect(q('listino-elenco-ricarica')).not.toBeNull()
+    })
+
+    it('operazione concorrente: testo unico, niente "Ricarica"', async () => {
+      await salvaConErrore({
+        status: 409,
+        error: { error: 'OPERAZIONE_CONCORRENTE', message: 'altro testo' },
+      })
+      expect(q('listino-elenco-errore')!.textContent).toContain(MESSAGGIO_CONCORRENTE)
+      expect(q('listino-elenco-ricarica')).toBeNull()
+    })
   })
 })

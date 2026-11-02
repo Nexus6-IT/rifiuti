@@ -20,7 +20,7 @@ import {
   leggiCascata,
   leggiIntero,
   leggiNumero,
-} from './numero-modificabile'
+} from '../../shared/utils/numero-modificabile'
 import {
   CampoRiga,
   FamigliaAddebito,
@@ -481,6 +481,12 @@ export class RigaForm {
   pulisciErrori(): void {
     this.errori.set({})
     this.generali.set([])
+  }
+
+  /** Un solo messaggio generale (nessun errore per campo). */
+  impostaMessaggio(messaggio: string): void {
+    this.errori.set({})
+    this.generali.set([messaggio])
   }
 
   /**

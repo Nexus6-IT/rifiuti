@@ -14,6 +14,12 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
+import {
+  formatNumero,
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from '../../../shared/utils/numero-modificabile'
 import { SpesaAccessoria, TipoSpesa } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ETICHETTE_TIPO_SPESA, OPZIONI_TIPO_SPESA } from '../vocabolario-clienti'
@@ -21,7 +27,8 @@ import { messaggioErrore } from './tabella-comune'
 
 /**
  * Nuova spesa o modifica. Con `tipo` fissato (dialog aperto dal campo bollo o
- * incasso) il tipo non si sceglie. L'importo è una stringa decimale col punto.
+ * incasso) il tipo non si sceglie. L'importo si scrive con la virgola (il punto è vietato, niente migliaia) e parte come stringa
+ * decimale col punto.
  */
 @Component({
   selector: 'app-spesa-accessoria-dialog',
@@ -82,8 +89,18 @@ import { messaggioErrore } from './tabella-comune'
           formControlName="importo"
           inputmode="decimal"
           placeholder="0,00"
+          [attr.aria-invalid]="erroreImporto() ? 'true' : null"
+          [attr.aria-describedby]="erroreImporto() ? 'spesa-importo-errore' : null"
           data-testid="spesa-dlg-importo"
         />
+        <small
+          *ngIf="erroreImporto() as ei"
+          id="spesa-importo-errore"
+          role="alert"
+          class="field-error"
+          data-testid="spesa-dlg-importo-errore"
+          >{{ ei }}</small
+        >
         <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="spesa-dlg-errore">
           {{ e }}
         </p>
@@ -129,8 +146,15 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
     tipo: new FormControl<TipoSpesa>('INCASSO', { nonNullable: true }),
     codice: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     descrizione: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    importo: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    importo: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, validatoreNumero('decimale')],
+    }),
   })
+
+  erroreImporto(): string | null {
+    return messaggioNumero(this.form.controls.importo)
+  }
 
   etichettaTipo(t: TipoSpesa): string {
     return ETICHETTE_TIPO_SPESA[t]
@@ -146,7 +170,7 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
       tipo: e?.tipo ?? this.tipo ?? 'INCASSO',
       codice: e?.codice ?? '',
       descrizione: e?.descrizione ?? '',
-      importo: e?.importo ?? '',
+      importo: formatNumero(e?.importo),
     })
     this.errore.set(null)
     this.inCorso.set(false)
@@ -160,7 +184,7 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
       codice: v.codice.trim(),
       descrizione: v.descrizione.trim(),
       // Il backend vuole il punto; il resto della normalizzazione è suo.
-      importo: v.importo.trim().replace(',', '.'),
+      importo: leggiNumero(v.importo).valore ?? '',
     }
     this.inCorso.set(true)
     this.errore.set(null)

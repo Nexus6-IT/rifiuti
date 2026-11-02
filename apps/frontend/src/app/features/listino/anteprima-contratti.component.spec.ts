@@ -45,6 +45,13 @@ describe('AnteprimaContrattiComponent', () => {
   })
   afterEach(() => fixture?.destroy())
 
+  it('la tabella ha una caption per i lettori di schermo (M11)', async () => {
+    await mostra(anteprima(3))
+    expect(q('anteprima-righe')!.querySelector('caption')?.textContent?.trim()).toBe(
+      'Anteprima delle righe che cambiano'
+    )
+  })
+
   it('pagina da 20 righe con precedente e successiva', async () => {
     await mostra(anteprima(45))
     expect(q('anteprima-righe')!.querySelectorAll('tbody tr').length).toBe(20)

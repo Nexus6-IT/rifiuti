@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
 import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { AggiungiRigheDialogComponent } from './aggiungi-righe-dialog.component'
 import { ElencoAddebiti, EsitoCopia, RigaAddebito } from './listino.model'
 import { ListinoService } from './listino.service'
@@ -170,5 +171,50 @@ describe('AggiungiRigheDialogComponent', () => {
     await stabilizza(fixture)
     expect([...fixture.componentInstance.scelte()]).toEqual(['r1'])
     expect(q<HTMLInputElement>('aggiungi-tutte')!.checked).toBeTrue()
+  })
+
+  describe('409 (M1, M3)', () => {
+    const conErrore = async (err: object) => {
+      aggiungiRighe.and.returnValue(throwError(() => err))
+      await apri()
+      await scegliOrigine()
+      await spunta('r1')
+      bottone('aggiungi-conferma')!.click()
+      await stabilizza(fixture)
+    }
+
+    it('409 di dato scritto: messaggio, niente "Ricarica"', async () => {
+      await conErrore({
+        status: 409,
+        error: { error: 'MINIMO_GIA_PRESENTE', message: 'Minimo già presente.' },
+      })
+      expect(q('aggiungi-errore')!.textContent).toContain('Minimo già presente.')
+      expect(q('aggiungi-ricarica')).toBeNull()
+    })
+
+    it('operazione concorrente: testo unico, niente "Ricarica"', async () => {
+      await conErrore({
+        status: 409,
+        error: { error: 'OPERAZIONE_CONCORRENTE', message: 'altro testo' },
+      })
+      expect(q('aggiungi-errore')!.textContent).toContain(MESSAGGIO_CONCORRENTE)
+      expect(q('aggiungi-ricarica')).toBeNull()
+    })
+  })
+
+  it('gli avvisi dell’esito (voci disattivate) compaiono come elenco non bloccante', async () => {
+    aggiungiRighe.and.returnValue(
+      of({
+        copiate: 1,
+        escluse: { minimi: 0, acconti: 0, conguagli: 0, duplicate: 0, condizioni: 0 },
+        avvisi: ['La riga R1 usa un codice IVA disattivato.'],
+      })
+    )
+    await apri()
+    await scegliOrigine()
+    await spunta('r1')
+    bottone('aggiungi-conferma')!.click()
+    await stabilizza(fixture)
+    expect(q('aggiungi-avvisi')!.textContent).toContain('codice IVA disattivato')
   })
 })

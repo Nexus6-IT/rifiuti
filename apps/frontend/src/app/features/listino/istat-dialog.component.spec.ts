@@ -96,6 +96,7 @@ describe('IstatDialogComponent', () => {
   it('griglia dei mesi con il numero dei contratti, dal più vecchio; anno precedente escluso di default', async () => {
     await apri()
     expect(mesiIstat).toHaveBeenCalledOnceWith(false)
+    expect(q('istat-mesi')!.querySelector('caption')?.textContent).toContain('Percentuale ISTAT')
     expect(q('istat-mesi')!.textContent).toContain('marzo 2024')
     expect(q('istat-mesi')!.textContent).toContain('novembre 2023')
     q<HTMLInputElement>('istat-anno-precedente')!.click()
@@ -186,6 +187,9 @@ describe('IstatDialogComponent', () => {
     await apri()
     await finoAConferma()
     expect(q('istat-riepilogo')!.textContent).toContain('novembre 2023: 3,5 %')
+    // M11: focus sul riepilogo; tabella dei mesi con la sua caption
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('istat-riepilogo'))
     expect(applicaIstat).not.toHaveBeenCalled()
     bottone('istat-conferma-finale')!.click()
     await stabilizza(fixture)

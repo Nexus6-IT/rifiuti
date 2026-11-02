@@ -34,7 +34,7 @@ import {
   leggiNumero,
   messaggioNumero,
   validatoreNumero,
-} from './numero-modificabile'
+} from '../../shared/utils/numero-modificabile'
 import { CodiceIvaDialogComponent } from './tabelle/codice-iva-dialog.component'
 import { CodificaAddebitoDialogComponent } from './tabelle/codifica-addebito-dialog.component'
 import {

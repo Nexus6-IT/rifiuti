@@ -182,10 +182,6 @@ export class RotteRighe {
     return this.http.get<RigaAddebito[]>(`${this.base}/elenchi-addebiti/${elencoId}/righe`)
   }
 
-  get(id: string): Observable<RigaAddebito> {
-    return this.http.get<RigaAddebito>(`${this.base}/righe-addebito/${id}`)
-  }
-
   crea(elencoId: string, dati: DatiRiga): Observable<RigaAddebito> {
     return this.http.post<RigaAddebito>(`${this.base}/elenchi-addebiti/${elencoId}/righe`, dati)
   }

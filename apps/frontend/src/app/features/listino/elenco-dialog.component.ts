@@ -16,6 +16,7 @@ import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Subscription } from 'rxjs'
+import { MESSAGGIO_CONCORRENTE, naturaConflitto } from './errori-azione'
 import { messaggiErrore } from './listino-calcoli'
 import { ElencoAddebiti, NuovoElenco } from './listino.model'
 import { ListinoService } from './listino.service'
@@ -264,8 +265,15 @@ export class ElencoDialogComponent implements OnChanges {
       },
       error: err => {
         this.inCorso.set(false)
-        this.errori.set(messaggiErrore(err, "Impossibile salvare l'elenco."))
-        this.conflitto.set(err?.status === 409)
+        const natura = naturaConflitto(err)
+        this.errori.set(
+          natura === 'concorrente'
+            ? [MESSAGGIO_CONCORRENTE]
+            : messaggiErrore(err, "Impossibile salvare l'elenco.")
+        )
+        // "Ricarica" solo se i dati sono cambiati: un 409 causato da quanto scritto (codice già
+        // usato nell'elenco) si corregge nel campo, senza perdere il form.
+        this.conflitto.set(natura === 'rilettura')
       },
     })
   }

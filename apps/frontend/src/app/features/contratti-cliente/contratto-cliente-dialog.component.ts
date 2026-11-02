@@ -38,6 +38,7 @@ import {
   valoriDaContratto,
 } from './contratto-cliente-form'
 import { AllegatiContrattoComponent } from './allegati-contratto.component'
+import { formatNumero } from '../../shared/utils/numero-modificabile'
 import { PeriodiFatturazioneComponent } from './periodi-fatturazione.component'
 import { etichettaCliente } from './scelta-cliente.component'
 import { CorrentiGenerali, SezioneDatiGeneraliComponent } from './sezione-dati-generali.component'
@@ -467,7 +468,7 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     impostaTabella('speseIncassoId', c?.speseIncassoId ?? '', this.opzioni.opzSpese())
     impostaTabella('bolloId', c?.bolloId ?? '', this.opzioni.opzBolli())
     imposta('esigibilitaIva', c?.esigibilitaIva ?? 'IMMEDIATA')
-    imposta('ritenutaPercentuale', c?.ritenutaPercentuale ?? '')
+    imposta('ritenutaPercentuale', formatNumero(c?.ritenutaPercentuale))
     imposta('codiceDestinatario', sdi?.codiceDestinatario ?? '')
     imposta('riferimentoAmministrazione', sdi?.riferimentoAmministrazione ?? '')
     this.predefinitiDisattivati.set(disattivati)
@@ -488,6 +489,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   /** In modifica serve il record letto (altrimenti il form vuoto cancellerebbe i dati). */
   puoSalvare(): boolean {
     if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return false
+    // Ritenuta e soglia con il punto o con testo errato: il form non si salva.
+    if (this.form.invalid) return false
     return !this.contratto || this.letto() !== null
   }
 

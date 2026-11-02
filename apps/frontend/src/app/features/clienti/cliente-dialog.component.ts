@@ -38,6 +38,14 @@ import { SceltaConNuovoComponent } from './scelta-con-nuovo.component'
 import { SottoDialogFatturazioneComponent } from './sotto-dialog-fatturazione.component'
 import { TabelleFatturazioneService } from './tabelle-fatturazione.service'
 import { messaggioErrore } from './tabelle/tabella-comune'
+import {
+  formatCascata,
+  formatNumero,
+  leggiCascata,
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from '../../shared/utils/numero-modificabile'
 import { OPZIONI_TIPO_PROVVIGIONE } from '../listino/vocabolario-listino'
 import { OPZIONI_ESIGIBILITA } from './vocabolario-clienti'
 
@@ -271,8 +279,18 @@ const senzaSpazi = (v: string | null): string | null =>
           id="cliente-dlg-ritenuta"
           formControlName="ritenutaPercentuale"
           inputmode="decimal"
+          [attr.aria-invalid]="erroreRitenuta() ? 'true' : null"
+          aria-describedby="cliente-dlg-ritenuta-errore"
           data-testid="cliente-dlg-ritenuta"
         />
+        <small
+          *ngIf="erroreRitenuta() as e"
+          role="alert"
+          class="field-error"
+          id="cliente-dlg-ritenuta-errore"
+          data-testid="cliente-dlg-ritenuta-errore"
+          >{{ e }}</small
+        >
 
         <app-scelta-agente
           prefisso="cliente-dlg"
@@ -309,12 +327,12 @@ const senzaSpazi = (v: string | null): string | null =>
           formControlName="provvigionePredefinita"
           inputmode="decimal"
           maxlength="20"
-          [attr.aria-invalid]="erroreProvvigione() ? 'true' : null"
+          [attr.aria-invalid]="messaggioProvvigione() ? 'true' : null"
           aria-describedby="cliente-dlg-provvigione-errore"
           data-testid="cliente-dlg-provvigione"
         />
         <small
-          *ngIf="erroreProvvigione() as e"
+          *ngIf="messaggioProvvigione() as e"
           role="alert"
           class="field-error"
           id="cliente-dlg-provvigione-errore"
@@ -457,10 +475,16 @@ export class ClienteDialogComponent implements OnChanges {
     bolloId: new FormControl('', { nonNullable: true }),
     esigibilitaIva: new FormControl<EsigibilitaIva>('IMMEDIATA', { nonNullable: true }),
     registroIvaId: new FormControl('', { nonNullable: true }),
-    ritenutaPercentuale: new FormControl('', { nonNullable: true }),
+    ritenutaPercentuale: new FormControl('', {
+      nonNullable: true,
+      validators: [validatoreNumero('decimale')],
+    }),
     agenteId: new FormControl('', { nonNullable: true }),
     listino: new FormControl('', { nonNullable: true }),
-    provvigionePredefinita: new FormControl('', { nonNullable: true }),
+    provvigionePredefinita: new FormControl('', {
+      nonNullable: true,
+      validators: [validatoreNumero('cascata')],
+    }),
     tipoProvvigionePredefinita: new FormControl<TipoProvvigione | ''>('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     sedeId: new FormControl('', { nonNullable: true }),
@@ -600,10 +624,10 @@ export class ClienteDialogComponent implements OnChanges {
           bolloId: d.bolloId ?? '',
           esigibilitaIva: d.esigibilitaIva,
           registroIvaId: d.registroIvaId ?? '',
-          ritenutaPercentuale: d.ritenutaPercentuale ?? '',
+          ritenutaPercentuale: formatNumero(d.ritenutaPercentuale),
           agenteId: d.agenteId ?? '',
           listino: d.listino == null ? '' : String(d.listino),
-          provvigionePredefinita: d.provvigionePredefinita ?? '',
+          provvigionePredefinita: formatCascata(d.provvigionePredefinita),
           tipoProvvigionePredefinita: d.tipoProvvigionePredefinita ?? '',
           note: d.note ?? '',
           sedeId: d.sedeFatturazione.id,
@@ -640,6 +664,9 @@ export class ClienteDialogComponent implements OnChanges {
   /** In modifica serve il record letto (altrimenti il form vuoto cancellerebbe i dati). */
   puoSalvare(): boolean {
     if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return false
+    // Ritenuta o provvigione col punto o con testo errato: il form non si salva.
+    if (this.erroreRitenuta() || messaggioNumero(this.form.controls.provvigionePredefinita))
+      return false
     return !this.cliente || this.letto() !== null
   }
 
@@ -659,15 +686,23 @@ export class ClienteDialogComponent implements OnChanges {
     else this.salvaNuovo()
   }
 
-  /** Come `normalizzaCascata` del backend: niente spazi, virgole in punti ("10 + 5,5" -> "10+5.5"). */
+  /** Come `normalizzaCascata` del backend ("10 + 5,5" -> "10+5.5"); il punto nel form è già un errore. */
   private cascata(v: string): string | null {
-    const t = v.replace(/\s+/g, '').replace(/,/g, '.')
-    return t === '' ? null : t
+    return leggiCascata(v).valore
   }
 
   private ritenuta(v: string): string | null {
-    const t = v.trim().replace(',', '.')
-    return t === '' ? null : t
+    return leggiNumero(v).valore
+  }
+
+  /** Errore di numero della ritenuta (punto o testo), o null. */
+  erroreRitenuta(): string | null {
+    return messaggioNumero(this.form.controls.ritenutaPercentuale)
+  }
+
+  /** Errore del backend sulla provvigione, altrimenti quello del numero scritto. */
+  messaggioProvvigione(): string | null {
+    return this.erroreProvvigione() ?? messaggioNumero(this.form.controls.provvigionePredefinita)
   }
 
   /** Listino scelto: intero 1-6, null se "Nessuno". */
@@ -783,7 +818,6 @@ export class ClienteDialogComponent implements OnChanges {
       ],
       ['pecFatturazione', sdi.pec, base.pecFatturazione],
       ['riferimentoAmministrazione', sdi.riferimento, base.riferimentoAmministrazione],
-      ['ritenutaPercentuale', this.ritenuta(v.ritenutaPercentuale), base.ritenutaPercentuale],
       ['note', vuoto(v.note), base.note],
       ['contoCorrenteId', vuotoId(v.contoCorrenteId), base.contoCorrenteId],
       ['condizionePagamentoId', vuotoId(v.condizionePagamentoId), base.condizionePagamentoId],
@@ -795,6 +829,14 @@ export class ClienteDialogComponent implements OnChanges {
     if (base.ditta.privato) {
       testo.push(['nome', vuoto(v.nome), base.nome], ['cognome', vuoto(v.cognome), base.cognome])
     }
+    // Ritenuta: confronto numerico ("10" e "10.00" sono lo stesso valore).
+    const ritenuta = this.ritenuta(v.ritenutaPercentuale)
+    const ritenutaBase = base.ritenutaPercentuale ?? null
+    if (
+      ritenuta !== ritenutaBase &&
+      (ritenuta === null || ritenutaBase === null || Number(ritenuta) !== Number(ritenutaBase))
+    )
+      dati.ritenutaPercentuale = ritenuta
     for (const [campo, nuovo, vecchio] of testo) {
       if (nuovo !== vecchio) (dati as Record<string, unknown>)[campo] = nuovo
     }

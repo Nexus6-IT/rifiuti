@@ -19,10 +19,11 @@ import { Subscription } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { AnteprimaContrattiComponent } from './anteprima-contratti.component'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { MESSAGGIO_CONCORRENTE, eConcorrente, leggiErroriAzione } from './errori-azione'
 import { AnteprimaVariazioneContratti, CorpoIstat, MeseIstat } from './listino.model'
 import { ListinoService } from './listino.service'
-import { leggiNumero } from './numero-modificabile'
+import { leggiNumero } from '../../shared/utils/numero-modificabile'
 import { puoVariarePrezzi } from './permessi-listino'
 import { TIPI_ELENCABILI } from './vocabolario-listino'
 
@@ -87,7 +88,12 @@ const chiave = (m: { anno: number; mese: number }): string => `${m.anno}-${m.mes
         <p>Prezzi aggiornati: {{ esito() }}</p>
       </div>
 
-      <div *ngIf="esito() === null && inRiepilogo()" class="dlg-form" data-testid="istat-riepilogo">
+      <div
+        *ngIf="esito() === null && inRiepilogo()"
+        class="dlg-form"
+        tabindex="-1"
+        data-testid="istat-riepilogo"
+      >
         <p>Stai per adeguare i prezzi dei contratti. L'operazione non si annulla.</p>
         <ul>
           <li *ngFor="let r of riepilogo()">{{ r }}</li>
@@ -112,6 +118,9 @@ const chiave = (m: { anno: number; mese: number }): string => `${m.anno}-${m.mes
           Nessun contratto con l'incremento ISTAT da adeguare.
         </p>
         <table *ngIf="mesi()?.length" class="mesi" data-testid="istat-mesi">
+          <caption class="sr-only">
+            Percentuale ISTAT per mese di inizio dei contratti
+          </caption>
           <thead>
             <tr>
               <th scope="col">Mese di inizio</th>
@@ -137,6 +146,10 @@ const chiave = (m: { anno: number; mese: number }): string => `${m.anno}-${m.mes
                   pInputText
                   inputmode="decimal"
                   [attr.aria-label]="'Percentuale per ' + etichetta(m)"
+                  [attr.aria-invalid]="errorePercentuale(m) ? 'true' : null"
+                  [attr.aria-describedby]="
+                    errorePercentuale(m) ? 'istat-errore-' + chiave(m) : null
+                  "
                   [ngModel]="percentuali()[chiave(m)] ?? ''"
                   (ngModelChange)="cambiaPercentuale(m, $event)"
                   [attr.data-testid]="'istat-perc-' + chiave(m)"
@@ -145,6 +158,7 @@ const chiave = (m: { anno: number; mese: number }): string => `${m.anno}-${m.mes
                   *ngIf="errorePercentuale(m) as e"
                   role="alert"
                   class="field-error"
+                  [id]="'istat-errore-' + chiave(m)"
                   [attr.data-testid]="'istat-errore-' + chiave(m)"
                   >{{ e }}</small
                 >
@@ -453,6 +467,7 @@ export class IstatDialogComponent implements OnChanges, OnDestroy {
     this.riepilogo.set(righe)
     this.erroriApplica.set([])
     this.inRiepilogo.set(true)
+    focalizzaPasso('istat-riepilogo')
   }
 
   applica(): void {

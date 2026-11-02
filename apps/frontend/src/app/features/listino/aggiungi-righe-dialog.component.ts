@@ -45,6 +45,9 @@ import { SceltaElencoOrigineComponent } from './scelta-elenco-origine.component'
         <p *ngIf="escluse().length > 0" data-testid="aggiungi-escluse">
           Non aggiunte: {{ escluse().join(', ') }}.
         </p>
+        <ul *ngIf="e.avvisi?.length" class="field-hint" data-testid="aggiungi-avvisi">
+          <li *ngFor="let a of e.avvisi">{{ a }}</li>
+        </ul>
       </div>
 
       <div *ngIf="!esito()" class="dlg-form">
@@ -268,7 +271,7 @@ export class AggiungiRigheDialogComponent implements OnChanges, OnDestroy {
           const e = leggiErroriAzione(err, 'Impossibile aggiungere le righe.')
           this.inCorso.set(false)
           this.errori.set(e.messaggi)
-          this.conflitto.set(e.conflitto)
+          this.conflitto.set(e.rilettura)
         },
       })
   }

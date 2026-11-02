@@ -16,10 +16,11 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { Subscription } from 'rxjs'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { leggiErroriAzione } from './errori-azione'
 import { EsitoImpostazione, TipoProvvigione } from './listino.model'
 import { ListinoService } from './listino.service'
-import { leggiCascata } from './numero-modificabile'
+import { leggiCascata } from '../../shared/utils/numero-modificabile'
 import { OPZIONI_TIPO_PROVVIGIONE } from './vocabolario-listino'
 
 /** Regola di WinWaste: il backend la rifiuta con questo testo (anche senza campo). */
@@ -59,7 +60,12 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
         </p>
       </div>
 
-      <div *ngIf="!esito() && inConferma()" class="dlg-form" data-testid="ps-conferma">
+      <div
+        *ngIf="!esito() && inConferma()"
+        class="dlg-form"
+        tabindex="-1"
+        data-testid="ps-conferma"
+      >
         <p>{{ riepilogo() }}</p>
         <p>L'operazione tocca tutte le righe interessate del contratto e non si annulla.</p>
       </div>
@@ -103,12 +109,21 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             [ngModel]="provvigione()"
             (ngModelChange)="cambiaProvvigione($event)"
             inputmode="decimal"
+            [attr.aria-invalid]="erroreProvvigione() || backendProvvigione() ? 'true' : null"
+            [attr.aria-describedby]="
+              erroreProvvigione()
+                ? 'ps-errore-provvigione'
+                : backendProvvigione()
+                  ? 'ps-errore-provvigione-backend'
+                  : null
+            "
             data-testid="ps-provvigione"
           />
           <small
             *ngIf="erroreProvvigione() as e"
             role="alert"
             class="field-error"
+            id="ps-errore-provvigione"
             data-testid="ps-errore-provvigione"
             >{{ e }}</small
           >
@@ -116,6 +131,7 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             *ngIf="!erroreProvvigione() && backendProvvigione() as e"
             role="alert"
             class="field-error"
+            id="ps-errore-provvigione-backend"
             data-testid="ps-errore-provvigione-backend"
             >{{ e }}</small
           >
@@ -145,12 +161,21 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             id="ps-attuale"
             [ngModel]="scontoAttuale()"
             (ngModelChange)="cambiaAttuale($event)"
+            [attr.aria-invalid]="erroreAttuale() || backendAttuale() ? 'true' : null"
+            [attr.aria-describedby]="
+              erroreAttuale()
+                ? 'ps-errore-attuale'
+                : backendAttuale()
+                  ? 'ps-errore-attuale-backend'
+                  : null
+            "
             data-testid="ps-sconto-attuale"
           />
           <small
             *ngIf="erroreAttuale() as e"
             role="alert"
             class="field-error"
+            id="ps-errore-attuale"
             data-testid="ps-errore-attuale"
             >{{ e }}</small
           >
@@ -158,6 +183,7 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             *ngIf="!erroreAttuale() && backendAttuale() as e"
             role="alert"
             class="field-error"
+            id="ps-errore-attuale-backend"
             data-testid="ps-errore-attuale-backend"
             >{{ e }}</small
           >
@@ -167,12 +193,17 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             id="ps-nuovo"
             [ngModel]="scontoNuovo()"
             (ngModelChange)="cambiaNuovo($event)"
+            [attr.aria-invalid]="erroreNuovo() || backendNuovo() ? 'true' : null"
+            [attr.aria-describedby]="
+              erroreNuovo() ? 'ps-errore-nuovo' : backendNuovo() ? 'ps-errore-nuovo-backend' : null
+            "
             data-testid="ps-sconto-nuovo"
           />
           <small
             *ngIf="erroreNuovo() as e"
             role="alert"
             class="field-error"
+            id="ps-errore-nuovo"
             data-testid="ps-errore-nuovo"
             >{{ e }}</small
           >
@@ -180,6 +211,7 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             *ngIf="!erroreNuovo() && backendNuovo() as e"
             role="alert"
             class="field-error"
+            id="ps-errore-nuovo-backend"
             data-testid="ps-errore-nuovo-backend"
             >{{ e }}</small
           >
@@ -212,7 +244,7 @@ type Azione = 'PROVVIGIONE' | 'SCONTO'
             *ngIf="!inConferma()"
             label="Avanti"
             [disabled]="!puoProseguire()"
-            (onClick)="inConferma.set(true)"
+            (onClick)="vaiAConferma()"
             data-testid="ps-avanti"
           />
           <ng-container *ngIf="inConferma()">
@@ -397,9 +429,15 @@ export class ProvvigioniScontiDialogComponent implements OnChanges, OnDestroy {
           } else generali.push(c.messaggio)
         }
         this.errori.set(generali)
-        this.conflitto.set(e.conflitto)
+        this.conflitto.set(e.rilettura)
       },
     })
+  }
+
+  /** Passo di conferma: il focus passa al riepilogo, che il lettore di schermo annuncia. */
+  vaiAConferma(): void {
+    this.inConferma.set(true)
+    focalizzaPasso('ps-conferma')
   }
 
   chiudi(): void {

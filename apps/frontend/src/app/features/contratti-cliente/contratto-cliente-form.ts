@@ -7,6 +7,7 @@ import {
   NuovoContrattoCliente,
   PeriodoFatturazione,
 } from '../clienti/clienti.model'
+import { formatNumero, leggiNumero, validatoreNumero } from '../../shared/utils/numero-modificabile'
 
 /** Le tre annotazioni libere del contratto (E32), ciascuna fino a 45 caratteri. */
 export const NUMERO_ANNOTAZIONI = 3
@@ -17,6 +18,9 @@ export const NUMERO_ANNOTAZIONI = 3
  */
 export function creaFormContratto() {
   const testo = () => new FormControl('', { nonNullable: true })
+  // Ritenuta e soglia: virgola decimale obbligatoria, il punto blocca il salvataggio.
+  const decimaleItalia = () =>
+    new FormControl('', { nonNullable: true, validators: [validatoreNumero('decimale')] })
   return new FormGroup({
     numero: testo(),
     descrizione: testo(),
@@ -36,7 +40,7 @@ export function creaFormContratto() {
     bolloId: testo(),
     registroIvaId: testo(),
     esigibilitaIva: new FormControl<EsigibilitaIva>('IMMEDIATA', { nonNullable: true }),
-    ritenutaPercentuale: testo(),
+    ritenutaPercentuale: decimaleItalia(),
     agenteId: testo(),
     testoFatturazioneId: testo(),
     codiceDestinatario: testo(),
@@ -48,7 +52,7 @@ export function creaFormContratto() {
     idDocumentoPa: testo(),
     escludiDichiarazioneIntento: new FormControl(false, { nonNullable: true }),
     sogliaDal: testo(),
-    sogliaImporto: testo(),
+    sogliaImporto: decimaleItalia(),
     sogliaIvaEsclusa: new FormControl(false, { nonNullable: true }),
     rinnovoAutomatico: new FormControl(false, { nonNullable: true }),
     codiceRinnovo: new FormControl<CodiceRinnovo | ''>('', { nonNullable: true }),
@@ -90,11 +94,14 @@ export const CAMPI_DAL_CLIENTE: readonly CampoForm[] = [
 const vuotoId = (v: string): string | null => (v === '' ? null : v)
 const giorno = (d: string | null): string => (d ? d.slice(0, 10) : '')
 
-/** Decimale come stringa: tagliato, virgole in punti, vuoto = null. Serve a ritenuta e soglia. */
-const decimale = (v: string | null): string | null => {
-  const t = (v ?? '').trim().replace(/,/g, '.')
+/** Decimale del backend (punto): tagliato, vuoto = null. */
+const decimaleBackend = (v: string | null): string | null => {
+  const t = (v ?? '').trim()
   return t === '' ? null : t
 }
+
+/** Decimale scritto nel form (virgola): come lo vuole il backend; vuoto o errato = null. */
+const decimaleForm = (v: string | null): string | null => leggiNumero(v ?? '').valore
 
 const stessoNumero = (a: string | null, b: string | null): boolean =>
   a === b || (a !== null && b !== null && Number(a) === Number(b))
@@ -144,7 +151,7 @@ export function valoriDaContratto(c: ContrattoCliente): ValoriContratto {
     bolloId: c.bolloId ?? '',
     registroIvaId: c.registroIvaId ?? '',
     esigibilitaIva: c.esigibilitaIva,
-    ritenutaPercentuale: c.ritenutaPercentuale ?? '',
+    ritenutaPercentuale: formatNumero(c.ritenutaPercentuale),
     agenteId: c.agenteId ?? '',
     testoFatturazioneId: c.testoFatturazioneId ?? '',
     codiceDestinatario: c.codiceDestinatario ?? '',
@@ -156,7 +163,7 @@ export function valoriDaContratto(c: ContrattoCliente): ValoriContratto {
     idDocumentoPa: c.idDocumentoPa ?? '',
     escludiDichiarazioneIntento: !!c.escludiDichiarazioneIntento,
     sogliaDal: giorno(c.sogliaDal ?? null),
-    sogliaImporto: c.sogliaImporto ?? '',
+    sogliaImporto: formatNumero(c.sogliaImporto),
     sogliaIvaEsclusa: !!c.sogliaIvaEsclusa,
     rinnovoAutomatico: !!c.rinnovoAutomatico,
     codiceRinnovo: c.codiceRinnovo ?? '',
@@ -196,7 +203,7 @@ function nuovi(v: ValoriContratto): Record<CampoForm, unknown> {
     bolloId: id(v.bolloId),
     registroIvaId: id(v.registroIvaId),
     esigibilitaIva: v.esigibilitaIva,
-    ritenutaPercentuale: decimale(v.ritenutaPercentuale),
+    ritenutaPercentuale: decimaleForm(v.ritenutaPercentuale),
     agenteId: id(v.agenteId),
     testoFatturazioneId: id(v.testoFatturazioneId),
     codiceDestinatario: testo(v.codiceDestinatario)?.toUpperCase() ?? null,
@@ -211,9 +218,9 @@ function nuovi(v: ValoriContratto): Record<CampoForm, unknown> {
     idDocumentoPa: testo(v.idDocumentoPa),
     escludiDichiarazioneIntento: v.escludiDichiarazioneIntento,
     sogliaDal: data(v.sogliaDal),
-    sogliaImporto: decimale(v.sogliaImporto),
+    sogliaImporto: decimaleForm(v.sogliaImporto),
     // Senza soglia la casella non ha senso (D27): il backend la normalizza a false.
-    sogliaIvaEsclusa: decimale(v.sogliaImporto) !== null && v.sogliaIvaEsclusa,
+    sogliaIvaEsclusa: decimaleForm(v.sogliaImporto) !== null && v.sogliaIvaEsclusa,
     rinnovoAutomatico: v.rinnovoAutomatico,
     codiceRinnovo: v.codiceRinnovo || null,
     incrementoIstat: v.incrementoIstat,
@@ -243,7 +250,7 @@ function vecchi(b: ContrattoCliente): Record<CampoForm, unknown> {
     bolloId: b.bolloId ?? null,
     registroIvaId: b.registroIvaId ?? null,
     esigibilitaIva: b.esigibilitaIva,
-    ritenutaPercentuale: decimale(b.ritenutaPercentuale),
+    ritenutaPercentuale: decimaleBackend(b.ritenutaPercentuale),
     agenteId: b.agenteId ?? null,
     testoFatturazioneId: b.testoFatturazioneId ?? null,
     codiceDestinatario: testo(b.codiceDestinatario),
@@ -255,7 +262,7 @@ function vecchi(b: ContrattoCliente): Record<CampoForm, unknown> {
     idDocumentoPa: testo(b.idDocumentoPa ?? null),
     escludiDichiarazioneIntento: !!b.escludiDichiarazioneIntento,
     sogliaDal: data(b.sogliaDal ?? null),
-    sogliaImporto: decimale(b.sogliaImporto ?? null),
+    sogliaImporto: decimaleBackend(b.sogliaImporto ?? null),
     sogliaIvaEsclusa: !!b.sogliaIvaEsclusa,
     rinnovoAutomatico: !!b.rinnovoAutomatico,
     codiceRinnovo: b.codiceRinnovo ?? null,

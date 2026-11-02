@@ -13,6 +13,7 @@ import {
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { Subscription } from 'rxjs'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { leggiErroriAzione } from './errori-azione'
 import { ElencoAddebiti, EsitoCopia } from './listino.model'
 import { ListinoService } from './listino.service'
@@ -55,9 +56,17 @@ export function righeEscluse(e: EsitoCopia['escluse']): string[] {
         <p *ngIf="escluse().length > 0" data-testid="copia-escluse">
           Non copiate: {{ escluse().join(', ') }}.
         </p>
+        <ul *ngIf="e.avvisi?.length" class="field-hint" data-testid="copia-avvisi">
+          <li *ngFor="let a of e.avvisi">{{ a }}</li>
+        </ul>
       </div>
 
-      <div *ngIf="!esito() && inConferma()" class="dlg-form" data-testid="copia-conferma">
+      <div
+        *ngIf="!esito() && inConferma()"
+        class="dlg-form"
+        tabindex="-1"
+        data-testid="copia-conferma"
+      >
         <p>
           Le righe dell'elenco <strong>{{ elenco?.codice }}</strong> ({{ elenco?.righe }}) saranno
           <strong>sostituite</strong> con quelle dell'elenco
@@ -102,7 +111,7 @@ export function righeEscluse(e: EsitoCopia['escluse']): string[] {
             *ngIf="!inConferma()"
             label="Avanti"
             [disabled]="!origine()"
-            (onClick)="inConferma.set(true)"
+            (onClick)="vaiAConferma()"
             data-testid="copia-avanti"
           />
           <ng-container *ngIf="inConferma()">
@@ -188,9 +197,15 @@ export class CopiaElencoDialogComponent implements OnChanges, OnDestroy {
           this.inCorso.set(false)
           this.inConferma.set(false)
           this.errori.set(e.messaggi)
-          this.conflitto.set(e.conflitto)
+          this.conflitto.set(e.rilettura)
         },
       })
+  }
+
+  /** Passo di conferma: il focus passa al riepilogo, che il lettore di schermo annuncia. */
+  vaiAConferma(): void {
+    this.inConferma.set(true)
+    focalizzaPasso('copia-conferma')
   }
 
   chiudi(): void {

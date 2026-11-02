@@ -465,3 +465,12 @@ export interface InfoAnteprimaContratti {
 export interface InfoMeseIstat {
   ultimaApplicazione?: string | null
 }
+
+/**
+ * Avvisi non bloccanti di una copia: righe copiate anche se il loro addebito, codice IVA o
+ * codifica è disattivato. Si aggiunge a `EsitoCopia` (campo facoltativo: il backend più vecchio
+ * non lo manda).
+ */
+export interface EsitoCopia {
+  avvisi?: string[]
+}

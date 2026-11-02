@@ -13,8 +13,8 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
 
 /**
  * Tavola delle righe di un elenco (D28, `riempitavola`): colonne, numeri in formato italiano,
- * "Totale fissi" e apertura della riga (doppio clic, Invio o pulsante "Apri"). Il dialog della
- * riga è del Task 27: qui si emette `apri`.
+ * "Totale fissi", apertura della riga (doppio clic, Invio o pulsante "Apri") ed eliminazione.
+ * Qui si emettono `apri` ed `elimina`: dialog e conferma sono della pagina.
  */
 @Component({
   selector: 'app-righe-tavola',
@@ -30,6 +30,9 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
       styleClass="p-datatable-sm"
       [scrollable]="true"
     >
+      <ng-template pTemplate="caption">
+        <span class="sr-only">Righe dell'elenco</span>
+      </ng-template>
       <ng-template pTemplate="header">
         <tr>
           <th scope="col">Tipo</th>
@@ -46,7 +49,7 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
           <th scope="col">Minimo</th>
           <th scope="col">Categoria</th>
           <th scope="col">Appunti</th>
-          <th scope="col"><span class="visually-hidden">Apri</span></th>
+          <th scope="col"><span class="visually-hidden">Azioni</span></th>
         </tr>
       </ng-template>
       <ng-template pTemplate="body" let-r>
@@ -73,6 +76,16 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
               [ariaLabel]="'Apri la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
               (onClick)="apri.emit(r)"
               [attr.data-testid]="'listino-apri-' + r.id"
+            />
+            <p-button
+              *ngIf="puoEliminare"
+              icon="pi pi-trash"
+              severity="danger"
+              [text]="true"
+              size="small"
+              [ariaLabel]="'Elimina la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
+              (onClick)="elimina.emit(r)"
+              [attr.data-testid]="'listino-elimina-riga-' + r.id"
             />
           </td>
         </tr>
@@ -110,7 +123,10 @@ export class RigheTavolaComponent {
   }
   @Input() caricamento = false
   @Input() errore: string | null = null
+  /** Mostra "Elimina" su ogni riga: solo a chi scrive, con elenco modificabile e contratto attivo. */
+  @Input() puoEliminare = false
   @Output() apri = new EventEmitter<RigaAddebito>()
+  @Output() elimina = new EventEmitter<RigaAddebito>()
 
   /** Fisso: quantità fissa (vuota = 1); `CER`/`V`: etichetta del tipo di quantità (E15). */
   quantita(r: RigaAddebito): string {
