@@ -143,7 +143,8 @@ textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); pa
   background: var(--surface-section);
   transition: border-color var(--transition-fast);
 }
-.p-chips .p-chips-multiple-container { height: auto; }
+.p-chips .p-chips-multiple-container,
+.p-autocomplete .p-autocomplete-multiple-container { height: auto; min-height: var(--control-md); }
 .p-dropdown .p-dropdown-label, .p-multiselect .p-multiselect-label {
   display: flex; align-items: center;
   height: auto;
@@ -176,8 +177,9 @@ textarea.p-inputtext::placeholder,
 label { font-weight: var(--font-weight-medium); color: var(--text-secondary); font-size: var(--font-size-sm); }
 .p-inputtext:disabled, .p-disabled { opacity: 0.6; }
 
-/* Campo con icona dentro (p-input-icon-left/right): il tema Aura 17 non riserva
-   lo spazio, e il padding di base qui sopra farebbe finire il testo sotto l'icona. */
+/* Campo con icona dentro (p-input-icon-left/right): Aura riserva gia' lo spazio
+   (2,5rem), ma il padding di base qui sopra ha la stessa specificita' e lo
+   annullerebbe: queste regole lo ripristinano (2,25rem). */
 .p-input-icon-left > i:first-of-type, .p-input-icon-right > i:last-of-type { color: var(--text-tertiary); }
 .p-input-icon-left > i:first-of-type { left: var(--spacing-md); }
 .p-input-icon-right > i:last-of-type { right: var(--spacing-md); }
@@ -241,11 +243,11 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 
 /* ===== Tag / Badge: sfondo tenue + inchiostro scuro + (nei template) icona e parola =====
    Mai il solo colore. Mappa severita' → stato della proposta:
-   success = normale (grigio "Nei termini"), warning = attenzione (ambra),
+   success = fatto/attivo (teal tenue, 8:1), warning = attenzione (ambra),
    danger = errore (rosso), info = informativo (grigio-azzurro),
    nessuna severita'/secondary = bozza (grigio), contrast = da fare (contorno). */
 .p-tag { border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs); padding: 2px var(--spacing-sm); border: 1px solid transparent; background: var(--stato-none-bg); color: var(--stato-none-ink); }
-.p-tag.p-tag-success { background: var(--stato-ok-bg); color: var(--stato-ok-ink); }
+.p-tag.p-tag-success { background: var(--stato-sent-bg); color: var(--stato-sent-ink); }
 .p-tag.p-tag-warning { background: var(--stato-warn-bg); color: var(--stato-warn-ink); border-color: var(--stato-warn-edge); }
 .p-tag.p-tag-danger { background: var(--stato-err-bg); color: var(--stato-err-ink); border-color: var(--stato-err-edge); }
 .p-tag.p-tag-info { background: var(--stato-info-bg); color: var(--stato-info-ink); }
@@ -274,6 +276,9 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 .p-dropdown-panel .p-dropdown-header, .p-multiselect-panel .p-multiselect-header { background: var(--surface-overlay); border-bottom: 1px solid var(--surface-border); color: var(--text-primary); }
 .p-menu .p-menuitem .p-menuitem-link .p-menuitem-text,
 .p-menu .p-menuitem .p-menuitem-link .p-menuitem-icon { color: var(--text-primary); }
+
+/* Aura disegna anche una barra d'inchiostro nera di 1px: sopra la nostra linea teal farebbe un doppio segno. */
+.p-tabview .p-tabview-ink-bar, .p-tabmenu .p-tabmenu-ink-bar { display: none; }
 
 /* ===== Schede: la scheda attiva e' sottolineata di 2px in teal ===== */
 .p-tabview .p-tabview-nav { border-bottom: 1px solid var(--surface-border); background: transparent; }

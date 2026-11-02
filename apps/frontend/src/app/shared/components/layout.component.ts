@@ -706,7 +706,7 @@ export function ordinaAziendePerGruppo(
         width: calc(100% - (var(--spacing-md) * 2));
         margin: var(--spacing-md) var(--spacing-md) 0;
         padding: var(--spacing-sm) var(--spacing-md);
-        border: 1px solid var(--sidebar-border);
+        border: 1px solid var(--frame-control-border);
         border-radius: var(--radius-md);
         background: var(--sidebar-bg-2);
         color: var(--sidebar-ink);
@@ -761,7 +761,7 @@ export function ordinaAziendePerGruppo(
         flex-shrink: 0;
       }
 
-      /* ===== Tenant switcher (SUPER_ADMIN) — coerente con sidebar scura ===== */
+      /* ===== Tenant switcher (SUPER_ADMIN) — coerente con la cornice salvia ===== */
       .tenant-switcher {
         display: flex;
         flex-direction: column;
@@ -773,11 +773,11 @@ export function ordinaAziendePerGruppo(
         font-weight: var(--font-weight-medium);
         color: var(--sidebar-ink-muted);
       }
-      /* Override PrimeNG dropdown per renderlo leggibile sul fondo scuro */
+      /* Override PrimeNG dropdown per renderlo leggibile sulla cornice (bordo a 3:1) */
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown {
         width: 100%;
         background: var(--sidebar-bg-2);
-        border: 1px solid var(--sidebar-border);
+        border: 1px solid var(--frame-control-border);
         border-radius: var(--radius-md);
       }
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown:not(.p-disabled):hover {
@@ -881,7 +881,18 @@ export function ordinaAziendePerGruppo(
       .nav-item--active:hover {
         background: var(--sidebar-active-bg);
         color: var(--sidebar-ink-strong);
-        font-weight: var(--font-weight-medium);
+        font-weight: var(--font-weight-semibold);
+      }
+      /* Segnale non affidato alla tinta: barra teal di 2px a sinistra (5,6:1 sulla cornice). */
+      .nav-item--active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0.4rem;
+        bottom: 0.4rem;
+        width: 2px;
+        border-radius: var(--radius-full);
+        background: var(--sidebar-active);
       }
       .nav-item--active .nav-item__icon,
       .nav-item--active:hover .nav-item__icon {
@@ -1157,7 +1168,7 @@ export function ordinaAziendePerGruppo(
         }
       }
 
-      /* ===== Drawer mobile (p-sidebar) — scuro ===== */
+      /* ===== Drawer mobile (p-sidebar) — stessa cornice salvia ===== */
       :host ::ng-deep .mobile-drawer {
         background: var(--sidebar-bg);
         color: var(--sidebar-ink);
@@ -1175,7 +1186,7 @@ export function ordinaAziendePerGruppo(
         padding: var(--spacing-sm) var(--spacing-xs);
         overflow: visible;
       }
-      /* Pulsante di chiusura del drawer leggibile su sfondo scuro */
+      /* Pulsante di chiusura del drawer leggibile sulla cornice */
       :host ::ng-deep .mobile-drawer .p-sidebar-close {
         color: var(--sidebar-ink);
       }

@@ -95,6 +95,8 @@
   --sidebar-border: #d5dcd8;
   --sidebar-hover-bg: #f3f6f4;
   --sidebar-hover-border: #c4cdc8;
+  /* Bordo dei controlli sulla cornice: 3,2:1 su #eef2ef. */
+  --frame-control-border: #7f8984;
   --sidebar-danger: #8a1c1e;
   --sidebar-danger-strong: #6f1517;
   --sidebar-danger-bg: rgba(138, 28, 30, 0.09);
@@ -210,6 +212,8 @@
   --primary-color: var(--accent-fill);
   --primary-color-text: var(--on-accent);
   --p-primary-color: var(--accent-fill);
+  /* Anello di focus di Aura (checkbox, radio, switch, schede): lo stesso teal a 2px degli altri controlli. */
+  --p-focus-ring-color: var(--focus-ring-color);
   --highlight-bg: var(--selected);
   --highlight-text-color: var(--brand-primary-dark);
   --text-color: var(--text-primary);
@@ -303,6 +307,7 @@
   --sidebar-border: #252b28;
   --sidebar-hover-bg: #191d1b;
   --sidebar-hover-border: #33403a;
+  --frame-control-border: #6b766f;
   --sidebar-danger: #f4978e;
   --sidebar-danger-strong: #ffc2bc;
   --sidebar-danger-bg: rgba(244, 151, 142, 0.12);
