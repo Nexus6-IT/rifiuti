@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { importoRiga } from './importi-riga'
 import {
   applicaScaglioni,
@@ -165,6 +166,107 @@ describe('applicaScaglioni', () => {
     const gia = applicaScaglioni(tabella('B'), '100', 'KG', { quantitaPrecedente: '1200' })
     if ('errore' in gia) throw new Error(gia.errore)
     expect(gia.righe).toEqual([])
+  })
+
+  it('C + A con quantità precedente: i kg nuovi della fascia A si fatturano', () => {
+    const t = [sc(1, '1000', '50', 'C'), sc(7, null, '0.08', 'A')]
+    const r = applicaScaglioni(t, '1000', 'KG', { quantitaPrecedente: '800' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.descrizione, x.quantita, x.prezzo])).toEqual([
+      ['Per q.tà oltre KG 1000', '800', '0.08'],
+    ])
+  })
+
+  it('B + A con quantità precedente: 3.000 kg nuovi oltre la soglia', () => {
+    const t = [sc(1, '1000', '50', 'B'), sc(7, null, '0.08', 'A')]
+    const r = applicaScaglioni(t, '3000', 'KG', { quantitaPrecedente: '2000' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([['3000', '0.08']])
+  })
+
+  it('C + A + A con quantità precedente: ogni kg nuovo una volta', () => {
+    const t = [sc(1, '1000', '50', 'C'), sc(2, '5000', '0.08', 'A'), sc(7, null, '0.05', 'A')]
+    const r = applicaScaglioni(t, '4000', 'KG', { quantitaPrecedente: '800' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([['3800', '0.08']])
+  })
+
+  it('C + A con la quantità precedente esattamente sulla soglia', () => {
+    const t = [sc(1, '1000', '50', 'C'), sc(7, null, '0.08', 'A')]
+    const r = applicaScaglioni(t, '500', 'KG', { quantitaPrecedente: '1000' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([['500', '0.08']])
+  })
+
+  it('quantità nuova zero da data: nessun fisso', () => {
+    for (const tipo of ['B', 'C'] as const) {
+      const r = applicaScaglioni(tabella(tipo), '0', 'KG', { quantitaPrecedente: '0' })
+      if ('errore' in r) throw new Error(r.errore)
+      expect(r.righe).toEqual([])
+    }
+  })
+
+  it('quantità nuova negativa da data: errore', () => {
+    expect(applicaScaglioni(tabella('D'), '-100', 'KG', { quantitaPrecedente: '2000' })).toEqual(
+      ESITO_ERRORE
+    )
+  })
+
+  describe('invariante: una fattura sul totale = somma di più fatture', () => {
+    const tabelle: Record<string, Scaglione[]> = {
+      A: tabella('A'),
+      C: tabella('C'),
+      'C+A': [sc(1, '1000', '50', 'C'), sc(7, null, '0.08', 'A')],
+      'B+A': [sc(1, '1000', '50', 'B'), sc(7, null, '0.08', 'A')],
+      'C+A+A': [sc(1, '1000', '50', 'C'), sc(2, '5000', '0.08', 'A'), sc(7, null, '0.05', 'A')],
+      'A+C': [sc(1, '1000', '0.10', 'A'), sc(7, null, '50', 'C')],
+    }
+    const divisioni = [
+      [800, 1000],
+      [1000, 4000],
+      [1200, 100, 3000],
+      [500, 500, 500, 2000],
+      [3000, 3000],
+      [6000],
+    ]
+    const importo = (t: Scaglione[], q: string, prec: string): Prisma.Decimal => {
+      const r = applicaScaglioni(t, q, 'KG', { quantitaPrecedente: prec })
+      if ('errore' in r) throw new Error(r.errore)
+      return r.righe.reduce(
+        (m, x) => m.plus(new Prisma.Decimal(x.quantita).times(x.prezzo)),
+        new Prisma.Decimal(0)
+      )
+    }
+    for (const [nome, t] of Object.entries(tabelle)) {
+      it(`${nome}: stesso importo comunque si divida la quantità`, () => {
+        for (const parti of divisioni) {
+          const totale = parti.reduce((m, x) => m + x, 0)
+          let cum = 0
+          let somma = new Prisma.Decimal(0)
+          for (const p of parti) {
+            somma = somma.plus(importo(t, String(p), String(cum)))
+            cum += p
+          }
+          expect(somma.toFixed(4)).toBe(importo(t, String(totale), '0').toFixed(4))
+        }
+      })
+    }
+
+    it('D ed E: ogni kg si fattura una volta sola', () => {
+      for (const t of [tabella('D'), [sc(1, '1000', '0.10', 'A'), sc(7, null, '0.05', 'E')]]) {
+        for (const parti of divisioni) {
+          let cum = 0
+          let kg = new Prisma.Decimal(0)
+          for (const p of parti) {
+            const r = applicaScaglioni(t, String(p), 'KG', { quantitaPrecedente: String(cum) })
+            if ('errore' in r) throw new Error(r.errore)
+            kg = r.righe.reduce((m, x) => m.plus(x.quantita), kg)
+            cum += p
+          }
+          expect(kg.toFixed()).toBe(String(cum))
+        }
+      }
+    })
   })
 
   it('quantità nuova zero con D: nessuna riga', () => {
@@ -402,18 +504,19 @@ describe('validaScaglioni', () => {
   })
 
   it('dopo una fascia D o W non possono seguire fasce A o X (Q7)', () => {
-    const msg =
-      'Dopo una fascia di tipo D o W le fasce successive non possono essere progressive (A o X).'
+    const msg = (n: number): string =>
+      `Fascia ${n}: dopo una fascia «tutta la quantità» (D/W) non può seguire una fascia a prezzo per quantità (A/X), altrimenti la stessa quantità si pagherebbe due volte.`
+    const msg1 = msg(7)
     expect(
       validaScaglioni([sc(1, '5000', '0.08', 'D'), sc(7, null, '0.05', 'A')], {
         conCondizioni: false,
       })
-    ).toEqual([msg])
+    ).toEqual([msg1])
     expect(
       validaScaglioni([sc(1, '10', '1', 'W'), sc(2, '20', '1', 'X'), sc(7, null, '1', 'B')], {
         conCondizioni: true,
       })
-    ).toEqual([msg])
+    ).toEqual([msg(2)])
     expect(
       validaScaglioni([sc(1, '5000', '0.08', 'D'), sc(7, null, '0.05', 'E')], {
         conCondizioni: false,

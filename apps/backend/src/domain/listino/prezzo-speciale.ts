@@ -47,8 +47,8 @@ const MSG_ORDINE =
   'Le fasce del prezzo speciale sono al massimo sette, ciascuna con il proprio numero.'
 const MSG_PRIMA = 'La prima fascia del prezzo speciale deve avere una soglia maggiore di zero.'
 const MSG_ULTIMA = 'L’ultima fascia del prezzo speciale è «oltre»: non ha soglia.'
-const MSG_DOPO_DW =
-  'Dopo una fascia di tipo D o W le fasce successive non possono essere progressive (A o X).'
+const msgDopoDW = (n: number): string =>
+  `Fascia ${n}: dopo una fascia «tutta la quantità» (D/W) non può seguire una fascia a prezzo per quantità (A/X), altrimenti la stessa quantità si pagherebbe due volte.`
 const MSG_ERRORE_CALCOLO = 'Errore nel calcolo del prezzo speciale.'
 
 const TIPI_BASE = 'ABCD'
@@ -116,7 +116,7 @@ export function validaScaglioni(
   // fatturerebbe di nuovo in parte.
   let dopoDW = false
   for (const [n, f] of [...perOrdine.entries()].sort((a, b) => a[0] - b[0])) {
-    if (dopoDW && 'AX'.includes(f.tipoCalcolo) && f.tipoCalcolo.length === 1) aggiungi(MSG_DOPO_DW)
+    if (dopoDW && 'AX'.includes(f.tipoCalcolo) && f.tipoCalcolo.length === 1) aggiungi(msgDopoDW(n))
     if (f.tipoCalcolo === 'D' || f.tipoCalcolo === 'W') dopoDW = true
     if (f.finoA !== null && f.finoA !== '' && n < 7 && !SOGLIA_RE.test(f.finoA)) {
       aggiungi(`Fascia ${n}: la soglia deve essere un numero positivo con al massimo tre decimali.`)
@@ -293,7 +293,7 @@ export function applicaScaglioni(
     } else if (daData) {
       q = q.plus(precedente)
     }
-    if (q.lt(0)) return errore
+    if (q.lt(0) || D(quantita).lt(0)) return errore
 
     if (validaScaglioni(s, { conCondizioni: conCondizione }).length > 0) return errore
     const f = new Map(s.map(x => [x.ordine, x]))
@@ -339,6 +339,12 @@ export function applicaScaglioni(
         for (let k = 1; k < n; k++) descr[k] = ''
         verificata = false
       }
+      if (daData && !'AX'.includes(tipo)) {
+        // Le fasce a importo fisso (o tutta-quantita') occupano comunque la propria ampiezza:
+        // la quantita' precedente va scalata anche da loro, non scaricata sulla A seguente.
+        const ampiezza = (q.lt(sup[n]) ? q : sup[n]).minus(inf[n])
+        if (ampiezza.gt(0)) daScalare = daScalare.gt(ampiezza) ? daScalare.minus(ampiezza) : zero
+      }
       if ('AX'.includes(tipo)) {
         qta[n] = sup[n].minus(inf[n])
         if (q.lt(sup[n])) qta[n] = q.minus(inf[n])
@@ -356,7 +362,7 @@ export function applicaScaglioni(
       if ('BCYZ'.includes(tipo)) {
         qta[n] = new Prisma.Decimal(1)
         // Quantita' precedente: il fisso e' gia' stato fatturato se la fascia era gia' raggiunta.
-        if (daData && precedente.gt(inf[n])) descr[n] = ''
+        if (daData && (precedente.gt(inf[n]) || D(quantita).isZero())) descr[n] = ''
         if (descr[n] !== '') descr[n] += ': imp.fisso'
         if (tipo === 'Y' || tipo === 'Z') verificata = true
       }
