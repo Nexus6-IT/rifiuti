@@ -27,6 +27,7 @@ const ANTEPRIMA: AnteprimaVariazioneContratti = {
       voce: 'X',
       prima: '10',
       dopo: '11',
+      invariata: false,
     },
   ],
   errori: [],
@@ -275,5 +276,30 @@ describe('IstatDialogComponent', () => {
     bottone('istat-conferma-finale')!.click()
     await stabilizza(fixture)
     expect(applicati).toEqual([3])
+  })
+
+  it('solo righe invariate (totale 0): Applica spento e messaggio "Nessun prezzo cambia"', async () => {
+    anteprimaIstat.and.returnValue(
+      of({
+        ...ANTEPRIMA,
+        totale: 0,
+        invariate: 1,
+        righe: [{ ...ANTEPRIMA.righe[0], invariata: true }],
+      })
+    )
+    await apri()
+    await compila()
+    await anteprima()
+    expect(q('anteprima-nessun-cambio')).not.toBeNull()
+    expect(bottone('istat-applica')!.disabled).toBeTrue()
+  })
+
+  it('gli avvisi si ripetono nel riepilogo della conferma (M1)', async () => {
+    anteprimaIstat.and.returnValue(
+      of({ ...ANTEPRIMA, avvisi: ['Marzo 2024: già applicato il 15/04/2026.'] })
+    )
+    await apri()
+    await finoAConferma()
+    expect(q('istat-riepilogo')!.textContent).toContain('Attenzione: Marzo 2024: già applicato')
   })
 })

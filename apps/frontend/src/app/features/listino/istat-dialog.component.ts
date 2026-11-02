@@ -280,7 +280,7 @@ export class IstatDialogComponent implements OnChanges, OnDestroy {
   readonly tipiProposti = TIPI_ELENCABILI.filter(t => !t.tipo.includes('?'))
   readonly mesi = signal<MeseIstat[] | null>(null)
   readonly annoPrecedente = signal(false)
-  readonly percentuali = signal<Record<string, string>>({})
+  readonly percentuali = signal<Partial<Record<string, string>>>({})
   readonly tipiScelti = signal<string[]>([])
   readonly erroreCaricamento = signal<string | null>(null)
   readonly erroreAnteprima = signal<string | null>(null)
@@ -400,7 +400,7 @@ export class IstatDialogComponent implements OnChanges, OnDestroy {
     const a = this.anteprimaCorrente()
     return (
       a !== null &&
-      a.righe.length > 0 &&
+      a.totale > 0 &&
       a.errori.length === 0 &&
       !this.inCorso() &&
       !this.applicando() &&
@@ -448,6 +448,8 @@ export class IstatDialogComponent implements OnChanges, OnDestroy {
     const righe = this.compilate().map(x => `${etichettaMese(x.m)}: ${x.testo.trim()} %`)
     righe.push(`Tipi di addebito: ${this.tipiScelti().join(', ')}`)
     righe.push(`Prezzi da modificare: ${a.totale}`)
+    if (a.invariate) righe.push(`Righe invariate (non scritte): ${a.invariate}`)
+    for (const avviso of a.avvisi ?? []) righe.push(`Attenzione: ${avviso}`)
     this.riepilogo.set(righe)
     this.erroriApplica.set([])
     this.inRiepilogo.set(true)

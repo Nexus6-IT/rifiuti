@@ -417,6 +417,7 @@ export interface CorpoVariazioneContratti extends CorpoVariazione<FiltroVariazio
 
 /** R46: forma propria, diversa dall'anteprima dell'archivio. */
 export interface AnteprimaVariazioneContratti extends InfoAnteprimaContratti {
+  /** Prezzi che cambiano davvero (le righe invariate non contano). */
   totale: number
   righe: {
     id: string
@@ -426,6 +427,8 @@ export interface AnteprimaVariazioneContratti extends InfoAnteprimaContratti {
     voce: string
     prima: string
     dopo: string
+    /** Il prezzo arrotondato non cambia: la riga non viene scritta. */
+    invariata: boolean
   }[]
   errori: { id: string; voce: string; messaggio: string }[]
   impronta: string

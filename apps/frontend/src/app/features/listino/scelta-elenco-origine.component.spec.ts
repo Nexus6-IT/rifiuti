@@ -123,4 +123,18 @@ describe('SceltaElencoOrigineComponent', () => {
     await stabilizza(fixture)
     expect(q('origine-elenco')!.textContent).not.toContain('E9')
   })
+
+  it('azzera ricrea anche il campo del cliente e svuota la catena (M5)', async () => {
+    fixture.componentInstance.sceltoCliente(cliente)
+    await stabilizza(fixture)
+    const prima = fixture.nativeElement.querySelector('app-scelta-cliente')
+    fixture.componentRef.setInput('azzera', 1)
+    await stabilizza(fixture)
+    await Promise.resolve()
+    await stabilizza(fixture)
+    const dopo = fixture.nativeElement.querySelector('app-scelta-cliente')
+    expect(dopo).not.toBeNull()
+    expect(dopo).not.toBe(prima)
+    expect(q('origine-contratto')).toBeNull()
+  })
 })

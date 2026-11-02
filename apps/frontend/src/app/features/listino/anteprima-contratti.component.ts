@@ -7,28 +7,56 @@ const PER_PAGINA = 20
 
 const DECIMALE_CON_PUNTO = /^-?\d+\.\d+$/
 const NUMERO = /^-?\d+(,\d+)?$/
+/** Prefissi che un foglio di calcolo valuta come formula (OWASP, CSV injection). */
+const INIZIO_FORMULA = /^[=+\-@\t\r]/
+const SOLO_CIFRE = /^\d+$/
 
 /**
- * Celle del CSV: i prezzi con la virgola (come li legge Excel in italiano) e senza virgolette,
- * il testo fra virgolette con quelle interne raddoppiate.
+ * Prezzo per l'italiano: virgola decimale. Le righe speciali arrivano come «10.00 / 12.00»: ogni
+ * pezzo si converte da solo. Vale per la tabella e per il CSV (M2).
  */
-const testo = (v: string | null): string => `"${(v ?? '').replace(/"/g, '""')}"`
-/** Prezzo: virgola decimale e niente virgolette; ciò che non è un numero resta testo. */
-const prezzo = (v: string): string => {
-  const t = v.trim()
-  const n = DECIMALE_CON_PUNTO.test(t) ? t.replace('.', ',') : t
-  return NUMERO.test(n) ? n : testo(v)
+export function prezzoItaliano(v: string): string {
+  return v
+    .split(' / ')
+    .map(p => (DECIMALE_CON_PUNTO.test(p.trim()) ? p.trim().replace('.', ',') : p))
+    .join(' / ')
 }
 
-/** CSV dell'anteprima (R46): separatore `;`, decimali con la virgola e BOM per Excel in italiano. */
+/**
+ * Cella di TESTO del CSV, un solo helper per I3 e I4:
+ *  - una cella che comincia con `=`, `+`, `-`, `@`, TAB o CR è una formula per Excel e LibreOffice
+ *    anche fra virgolette: si antepone l'apostrofo `'` (resta visibile, ma neutralizza);
+ *  - una cella di sole cifre («001», numero di contratto «0042») perderebbe gli zeri iniziali
+ *    aprendo il file con un doppio clic: si scrive `="001"`, che Excel mostra come testo. La forma
+ *    `=` non confligge con la neutralizzazione perché si applica solo a cifre pure, quindi mai a
+ *    ciò che scrive un utente con un `=` in testa (quello passa dall'apostrofo);
+ *  - il resto sta fra virgolette con quelle interne raddoppiate.
+ */
+export function cellaTesto(v: string | null): string {
+  const t = v ?? ''
+  if (SOLO_CIFRE.test(t)) return `="${t}"`
+  const sicuro = INIZIO_FORMULA.test(t) ? `'${t}` : t
+  return `"${sicuro.replace(/"/g, '""')}"`
+}
+
+/** Prezzo nel CSV: virgola decimale e niente virgolette; ciò che non è un numero resta testo. */
+const prezzo = (v: string): string => {
+  const n = prezzoItaliano(v).trim()
+  return NUMERO.test(n) ? n : cellaTesto(prezzoItaliano(v))
+}
+
+/** CSV dell'anteprima (R46): separatore `;`, decimali con la virgola, BOM per Excel in italiano. */
 export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
   const righe = [
-    ['Cliente', 'Contratto', 'Elenco', 'Voce', 'Prima', 'Dopo'].map(t => `"${t}"`).join(';'),
+    ['Cliente', 'Contratto', 'Elenco', 'Voce', 'Prima', 'Dopo', 'Invariata']
+      .map(t => `"${t}"`)
+      .join(';'),
     ...a.righe.map(r =>
       [
-        ...[r.cliente, r.contratto, r.elenco, r.voce].map(testo),
+        ...[r.cliente, r.contratto, r.elenco, r.voce].map(cellaTesto),
         prezzo(r.prima),
         prezzo(r.dopo),
+        r.invariata ? '"sì"' : '"no"',
       ].join(';')
     ),
   ]
@@ -46,8 +74,18 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
   imports: [CommonModule, ButtonModule],
   template: `
     <h3 class="sezione">Anteprima: {{ anteprima.totale }} prezzi da modificare</h3>
-    <p *ngIf="anteprima.righe.length === 0" data-testid="anteprima-nessuna-riga">
+    <p
+      *ngIf="anteprima.righe.length === 0 && !anteprima.invariate"
+      data-testid="anteprima-nessuna-riga"
+    >
       Nessun prezzo corrisponde ai criteri.
+    </p>
+    <p
+      *ngIf="anteprima.totale === 0 && anteprima.righe.length > 0"
+      role="status"
+      data-testid="anteprima-nessun-cambio"
+    >
+      Nessun prezzo cambia: non c'è niente da applicare.
     </p>
     <p
       *ngIf="anteprima.invariate && anteprima.invariate > 0"
@@ -60,12 +98,12 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
     </p>
     <ng-container *ngIf="anteprima.righe.length > 0">
       <p
-        *ngIf="anteprima.righe.length < anteprima.totale"
+        *ngIf="anteprima.righe.length < perimetro()"
         class="field-hint"
         data-testid="anteprima-parziale"
       >
-        Si vedono le prime {{ anteprima.righe.length }} righe su {{ anteprima.totale }}; la
-        variazione le riguarda tutte.
+        Si vedono le prime {{ anteprima.righe.length }} righe su {{ perimetro() }}; l'applicazione
+        riguarda tutti i prezzi che cambiano.
       </p>
       <table class="anteprima" data-testid="anteprima-righe">
         <thead>
@@ -77,17 +115,23 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
             <th scope="col">Prima</th>
             <th scope="col" aria-label="diventa"></th>
             <th scope="col">Dopo</th>
+            <th scope="col">Esito</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let r of pagina()">
+          <tr
+            *ngFor="let r of pagina()"
+            [class.invariata]="r.invariata"
+            [attr.data-testid]="r.invariata ? 'anteprima-riga-invariata' : null"
+          >
             <td>{{ r.cliente ?? '—' }}</td>
             <td>{{ r.contratto }}</td>
             <td>{{ r.elenco }}</td>
             <td>{{ r.voce }}</td>
-            <td>{{ r.prima }}</td>
+            <td>{{ italiano(r.prima) }}</td>
             <td aria-hidden="true">→</td>
-            <td>{{ r.dopo }}</td>
+            <td>{{ italiano(r.dopo) }}</td>
+            <td>{{ r.invariata ? 'invariata' : 'cambia' }}</td>
           </tr>
         </tbody>
       </table>
@@ -159,6 +203,10 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
         padding: 0.25rem 0.75rem;
         margin: 0.5rem 0;
       }
+      .invariata {
+        color: var(--text-color-secondary, #6b7280);
+        opacity: 0.7;
+      }
       .navigazione {
         display: flex;
         align-items: center;
@@ -175,9 +223,15 @@ export class AnteprimaContrattiComponent implements OnChanges {
   @Input() nomeFile = 'anteprima-variazione.csv'
 
   readonly indice = signal(0)
+  readonly italiano = prezzoItaliano
 
   ngOnChanges(c: SimpleChanges): void {
     if (c['anteprima']) this.indice.set(0)
+  }
+
+  /** Righe nel perimetro: quelle che cambiano più quelle invariate (`totale` non conta le seconde). */
+  perimetro(): number {
+    return this.anteprima.totale + (this.anteprima.invariate ?? 0)
   }
 
   pagine(): number {

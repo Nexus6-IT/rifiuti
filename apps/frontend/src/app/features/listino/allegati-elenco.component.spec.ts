@@ -143,14 +143,6 @@ describe('AllegatiElencoComponent', () => {
     expect(q('elenco-allegato-nome-1')!.textContent).toContain('Nessun file')
   })
 
-  it('con la conferma aperta blocca la chiusura del dialog (Esc)', async () => {
-    await apri('el1')
-    expect(fixture.componentInstance.bloccaChiusuraEsterna(false)).toBeFalse()
-    bottone('elenco-allegato-rimuovi-1')!.click()
-    await stabilizza(fixture)
-    expect(fixture.componentInstance.bloccaChiusuraEsterna(false)).toBeTrue()
-  })
-
   it('VIEWER (sola lettura): solo Apri', async () => {
     await apri('el1', true)
     expect(bottone('elenco-allegato-apri-1')).not.toBeNull()

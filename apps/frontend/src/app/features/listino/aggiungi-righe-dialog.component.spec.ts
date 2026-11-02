@@ -151,4 +151,24 @@ describe('AggiungiRigheDialogComponent', () => {
     expect(q('aggiungi-errore')!.textContent).toContain('Troppe righe.')
     expect(q('aggiungi-ricarica')).toBeNull()
   })
+
+  it('minimi (M…) e detrazioni/anticipi ($…) non si possono spuntare, con il perché (M6)', async () => {
+    list.and.returnValue(
+      of([
+        riga('r1', '20 03 01'),
+        { ...riga('r2', ''), tipo: 'MW' },
+        { ...riga('r3', ''), tipo: '$D' },
+      ])
+    )
+    await apri()
+    await scegliOrigine()
+    expect(q<HTMLInputElement>('aggiungi-riga-r1')!.disabled).toBeFalse()
+    expect(q<HTMLInputElement>('aggiungi-riga-r2')!.disabled).toBeTrue()
+    expect(q<HTMLInputElement>('aggiungi-riga-r3')!.disabled).toBeTrue()
+    expect(q('aggiungi-riga-r2')!.closest('label')!.getAttribute('title')).toContain('Non si copia')
+    q<HTMLInputElement>('aggiungi-tutte')!.click()
+    await stabilizza(fixture)
+    expect([...fixture.componentInstance.scelte()]).toEqual(['r1'])
+    expect(q<HTMLInputElement>('aggiungi-tutte')!.checked).toBeTrue()
+  })
 })

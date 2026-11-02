@@ -155,11 +155,6 @@ export class AllegatiElencoComponent implements OnChanges, OnDestroy {
     return this.elenco().find(a => a.posizione === p)
   }
 
-  /** Esc con la conferma aperta chiuderebbe anche il dialog che contiene il componente: si ignora. */
-  bloccaChiusuraEsterna(visibile: boolean): boolean {
-    return !visibile && this.confermaAperta()
-  }
-
   private carica(): void {
     this.lettura?.unsubscribe()
     this.operazione?.unsubscribe()

@@ -22,7 +22,7 @@ import { SceltaElencoOrigineComponent } from './scelta-elenco-origine.component'
 export function righeEscluse(e: EsitoCopia['escluse']): string[] {
   const voci: [number, string][] = [
     [e.minimi, 'minimi'],
-    [e.acconti, 'acconti'],
+    [e.acconti, 'detrazioni e anticipi'],
     [e.conguagli, 'conguagli'],
     [e.duplicate, 'già presenti'],
     [e.condizioni, 'per le regole di condizione'],
@@ -62,7 +62,9 @@ export function righeEscluse(e: EsitoCopia['escluse']): string[] {
           Le righe dell'elenco <strong>{{ elenco?.codice }}</strong> ({{ elenco?.righe }}) saranno
           <strong>sostituite</strong> con quelle dell'elenco
           <strong>{{ origine()?.codice }}</strong> ({{ origine()?.righe }}). L'operazione non si
-          annulla. Minimi, acconti e conguagli non si copiano.
+          annulla. Non si copiano i minimi (M…), le detrazioni e gli anticipi ($…), le righe di
+          conguaglio (N… da data, conguaglio 365 o giorno), i duplicati e le righe che violano le
+          regole delle condizioni.
         </p>
       </div>
 

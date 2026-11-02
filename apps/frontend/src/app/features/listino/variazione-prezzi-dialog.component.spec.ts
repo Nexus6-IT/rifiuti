@@ -34,6 +34,7 @@ const ANTEPRIMA: AnteprimaVariazioneContratti = {
       voce: '20 03 01',
       prima: '10',
       dopo: '10,5',
+      invariata: false,
     },
     {
       id: 'r2',
@@ -43,6 +44,7 @@ const ANTEPRIMA: AnteprimaVariazioneContratti = {
       voce: '15 01 01',
       prima: '8',
       dopo: '8,4',
+      invariata: false,
     },
   ],
   errori: [],
@@ -439,5 +441,94 @@ describe('VariazionePrezziDialogComponent', () => {
     await aumento()
     await anteprima()
     expect(q('anteprima-invariate')!.textContent).toContain('4 righe invariate')
+  })
+
+  it('solo righe invariate (totale 0): Applica spento', async () => {
+    anteprimaSpy.and.returnValue(
+      of({
+        ...ANTEPRIMA,
+        totale: 0,
+        invariate: 2,
+        righe: ANTEPRIMA.righe.map(r => ({ ...r, invariata: true })),
+      })
+    )
+    await apri()
+    await aumento()
+    await anteprima()
+    expect(q('anteprima-nessun-cambio')).not.toBeNull()
+    expect(bottone('vp-applica')!.disabled).toBeTrue()
+  })
+
+  async function cercaEAggiungi(id: string, testo: string) {
+    scrivi('vp-addebito-cerca', testo)
+    bottone('vp-addebito-cerca-vai')!.click()
+    await stabilizza(fixture)
+    sel('vp-addebito', id)
+    await stabilizza(fixture)
+    bottone('vp-addebito-aggiungi')!.click()
+    await stabilizza(fixture)
+  }
+
+  it('addebiti scelti (I2): più addebiti in lista con chip rimovibili, in filtri.addebitiIds', async () => {
+    addebitiList.and.callFake((f: { testo: string }) =>
+      of({
+        elementi:
+          f.testo === 'tras'
+            ? [{ id: 'ad1', codice: '00001', descrizione: 'Trasporto' }]
+            : [{ id: 'ad2', codice: '00002', descrizione: 'Analisi' }],
+        totale: 1,
+      })
+    )
+    await apri()
+    await aumento()
+    await cercaEAggiungi('ad1', 'tras')
+    await cercaEAggiungi('ad2', 'anal')
+    expect(q('vp-addebito-chip-ad1')!.textContent).toContain('Trasporto')
+    expect(q('vp-addebito-chip-ad2')!.textContent).toContain('Analisi')
+    await anteprima()
+    expect(anteprimaSpy.calls.mostRecent().args[0].filtri).toEqual({ addebitiIds: ['ad1', 'ad2'] })
+    q<HTMLButtonElement>('vp-addebito-togli-ad1')!.click()
+    await stabilizza(fixture)
+    expect(q('vp-addebito-chip-ad1')).toBeNull()
+    expect(q('anteprima-righe')).toBeNull()
+    await anteprima()
+    expect(anteprimaSpy.calls.mostRecent().args[0].filtri).toEqual({ addebitiIds: ['ad2'] })
+  })
+
+  it('lo stesso addebito aggiunto due volte resta uno; il riepilogo conta gli addebiti scelti', async () => {
+    await apri()
+    await aumento()
+    await cercaEAggiungi('ad1', 'tras')
+    await cercaEAggiungi('ad1', 'tras')
+    expect(document.body.querySelectorAll('[data-testid^="vp-addebito-chip-"]').length).toBe(1)
+    await anteprima()
+    bottone('vp-applica')!.click()
+    await stabilizza(fixture)
+    expect(q('vp-riepilogo')!.textContent).toContain('Addebiti scelti: 1')
+  })
+
+  it('la ricerca parte anche dal pulsante "Cerca" e da Invio, che non lancia l’anteprima (M10)', async () => {
+    await apri()
+    await aumento()
+    scrivi('vp-addebito-cerca', 'tras')
+    q<HTMLInputElement>('vp-addebito-cerca')!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+    )
+    await stabilizza(fixture)
+    expect(addebitiList).toHaveBeenCalledWith({ testo: 'tras', pagina: 1, dimensione: 50 })
+    expect(anteprimaSpy).not.toHaveBeenCalled()
+  })
+
+  it('il riferimento accetta al massimo 8 caratteri (M9)', async () => {
+    await apri()
+    expect(q('vp-riferimento')!.getAttribute('maxlength')).toBe('8')
+  })
+
+  it('il riepilogo ricorda le righe invariate', async () => {
+    anteprimaSpy.and.returnValue(of({ ...ANTEPRIMA, invariate: 3 }))
+    await apri()
+    await aumento()
+    await fino_a_conferma()
+    expect(q('vp-riepilogo')!.textContent).toContain('Righe invariate (non scritte): 3')
   })
 })

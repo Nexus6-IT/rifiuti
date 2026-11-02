@@ -74,6 +74,8 @@ describe('CopiaElencoDialogComponent', () => {
     bottone('copia-avanti')!.click()
     await stabilizza(fixture)
     expect(q('copia-conferma')!.textContent).toContain('sostituite')
+    expect(q('copia-conferma')!.textContent).toContain('detrazioni e gli anticipi')
+    expect(q('copia-conferma')!.textContent).toContain('N… da data')
     expect(sostituisciDa).not.toHaveBeenCalled()
     bottone('copia-conferma-finale')!.click()
     await stabilizza(fixture)
@@ -97,7 +99,7 @@ describe('CopiaElencoDialogComponent', () => {
   it('righeEscluse: solo le voci diverse da zero', () => {
     expect(
       righeEscluse({ minimi: 0, acconti: 2, conguagli: 0, duplicate: 3, condizioni: 0 })
-    ).toEqual(['2 acconti', '3 già presenti'])
+    ).toEqual(['2 detrazioni e anticipi', '3 già presenti'])
   })
 
   it('400: i messaggi del backend, uno per riga, senza "Ricarica"', async () => {

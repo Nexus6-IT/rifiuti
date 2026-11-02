@@ -31,6 +31,7 @@ import { ListinoService } from './listino.service'
   imports: [CommonModule, SceltaClienteComponent],
   template: `
     <app-scelta-cliente
+      *ngIf="visibile"
       [prefisso]="prefisso + '-cliente'"
       [prefissoNuovo]="prefisso + '-cliente-nuovo'"
       etichetta="Cliente di origine"
@@ -115,8 +116,15 @@ export class SceltaElencoOrigineComponent implements OnChanges, OnDestroy {
   private letturaElenchi?: Subscription
   private tutti: ElencoAddebiti[] = []
 
+  /** Il cliente si ricrea a ogni azzeramento: il suo campo di testo non ha un reset proprio (M5). */
+  visibile = true
+
   ngOnChanges(c: SimpleChanges): void {
-    if (c['azzera'] && !c['azzera'].firstChange) this.svuota()
+    if (c['azzera'] && !c['azzera'].firstChange) {
+      this.svuota()
+      this.visibile = false
+      queueMicrotask(() => (this.visibile = true))
+    }
   }
 
   ngOnDestroy(): void {

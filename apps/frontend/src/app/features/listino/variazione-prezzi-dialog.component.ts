@@ -186,24 +186,60 @@ const SCELTE_VUOTE = (): Scelte => ({
           etichetta="Cliente"
           (scelto)="sceltoCliente($event)"
         />
-        <label for="vp-addebito-cerca">Addebito (cerca per codice o descrizione)</label>
-        <input
-          pInputText
-          id="vp-addebito-cerca"
-          formControlName="addebitoTesto"
-          (change)="cercaAddebiti()"
-          data-testid="vp-addebito-cerca"
-        />
-        <select
-          *ngIf="addebiti().length > 0"
-          class="p-inputtext"
-          aria-label="Addebito"
-          formControlName="addebitoId"
-          data-testid="vp-addebito"
+        <label for="vp-addebito-cerca"
+          >Addebito (cerca per codice o descrizione, poi premi «Cerca»)</label
         >
-          <option value="">Tutti</option>
-          <option *ngFor="let o of addebiti()" [value]="o.id">{{ o.etichetta }}</option>
-        </select>
+        <div class="ricerca">
+          <input
+            pInputText
+            id="vp-addebito-cerca"
+            formControlName="addebitoTesto"
+            (change)="cercaAddebiti()"
+            (keydown.enter)="$event.preventDefault(); cercaAddebiti()"
+            data-testid="vp-addebito-cerca"
+          />
+          <p-button
+            label="Cerca"
+            icon="pi pi-search"
+            [outlined]="true"
+            size="small"
+            (onClick)="cercaAddebiti()"
+            data-testid="vp-addebito-cerca-vai"
+          />
+        </div>
+        <div class="ricerca" *ngIf="addebiti().length > 0">
+          <select
+            class="p-inputtext"
+            aria-label="Addebito trovato"
+            formControlName="addebitoId"
+            data-testid="vp-addebito"
+          >
+            <option value="">—</option>
+            <option *ngFor="let o of addebiti()" [value]="o.id">{{ o.etichetta }}</option>
+          </select>
+          <p-button
+            label="Aggiungi alla lista"
+            icon="pi pi-plus"
+            [outlined]="true"
+            size="small"
+            [disabled]="form.controls.addebitoId.value === ''"
+            (onClick)="aggiungiAddebito()"
+            data-testid="vp-addebito-aggiungi"
+          />
+        </div>
+        <ul class="chip" *ngIf="addebitiScelti().length > 0" aria-label="Addebiti scelti">
+          <li *ngFor="let a of addebitiScelti()" [attr.data-testid]="'vp-addebito-chip-' + a.id">
+            {{ a.etichetta }}
+            <button
+              type="button"
+              [attr.aria-label]="'Togli ' + a.etichetta"
+              (click)="togliAddebito(a.id)"
+              [attr.data-testid]="'vp-addebito-togli-' + a.id"
+            >
+              ×
+            </button>
+          </li>
+        </ul>
         <label for="vp-cer">CER</label>
         <input pInputText id="vp-cer" formControlName="cerCode" data-testid="vp-cer" />
         <label for="vp-riferimento">Riferimento</label>
@@ -211,6 +247,7 @@ const SCELTE_VUOTE = (): Scelte => ({
           pInputText
           id="vp-riferimento"
           formControlName="riferimento"
+          maxlength="8"
           data-testid="vp-riferimento"
         />
         <label for="vp-prezzo">Prezzo attuale</label>
@@ -412,6 +449,29 @@ const SCELTE_VUOTE = (): Scelte => ({
         align-items: center;
         gap: 0.35rem;
       }
+      .ricerca {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .chip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .chip li {
+        border: 1px solid var(--surface-border, #ccc);
+        border-radius: 1rem;
+        padding: 0.1rem 0.6rem;
+      }
+      .chip button {
+        border: 0;
+        background: none;
+        cursor: pointer;
+      }
       .date {
         display: flex;
         flex-wrap: wrap;
@@ -448,6 +508,8 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
   readonly categorieContratto = signal<Opzione[]>([])
   readonly codiciIva = signal<Opzione[]>([])
   readonly addebiti = signal<Opzione[]>([])
+  /** Addebiti messi in lista dall'operatore: filtro «addebiti scelti» (D20). */
+  readonly addebitiScelti = signal<Opzione[]>([])
   readonly gruppiOpzioni: { chiave: Gruppo; titolo: string; opzioni: () => Opzione[] }[] = [
     {
       chiave: 'categorieAddebito',
@@ -535,6 +597,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     this.scelte.set(SCELTE_VUOTE())
     this.clienteId = null
     this.addebiti.set([])
+    this.addebitiScelti.set([])
     this.corpo = null
     this.anteprimaCorrente.set(null)
     this.inRiepilogo.set(false)
@@ -647,6 +710,22 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
       })
   }
 
+  aggiungiAddebito(): void {
+    const id = this.form.controls.addebitoId.value
+    const scelto = this.addebiti().find(o => o.id === id)
+    if (!scelto) return
+    if (!this.addebitiScelti().some(o => o.id === id)) {
+      this.addebitiScelti.update(l => [...l, scelto])
+    }
+    this.form.controls.addebitoId.setValue('')
+    this.scarta()
+  }
+
+  togliAddebito(id: string): void {
+    this.addebitiScelti.update(l => l.filter(o => o.id !== id))
+    this.scarta()
+  }
+
   private erroriLocali(): boolean {
     const c = this.form.controls
     return (!this.sostituzioneIva() && c.valore.invalid) || c.prezzoAttuale.invalid
@@ -668,12 +747,18 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     const a = this.anteprimaCorrente()
     return (
       a !== null &&
-      a.righe.length > 0 &&
+      a.totale > 0 &&
       a.errori.length === 0 &&
       !this.inCorso() &&
       !this.applicando() &&
       this.puoVariare()
     )
+  }
+
+  /** Addebiti dall'esterno (se la spunta è accesa) e quelli messi in lista, senza doppioni. */
+  private idsAddebitiScelti(daFuori: boolean): string[] {
+    const esterni = daFuori ? (this.addebitiIds ?? []) : []
+    return [...new Set([...esterni, ...this.addebitiScelti().map(o => o.id)])]
   }
 
   private filtri(): FiltroVariazioneContratti {
@@ -700,7 +785,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
       fineAl: testo(v.fineAl),
       contrattiIds:
         v.soloContrattiScelti && this.contrattiIds?.length ? this.contrattiIds : undefined,
-      addebitiIds: v.soloAddebitiScelti && this.addebitiIds?.length ? this.addebitiIds : undefined,
+      addebitiIds: lista(this.idsAddebitiScelti(v.soloAddebitiScelti)),
       primaScadenzaFissi: testo(v.primaScadenzaFissi),
     }
     return Object.fromEntries(
@@ -763,6 +848,7 @@ export class VariazionePrezziDialogComponent implements OnChanges, OnDestroy {
     if (f.contrattiIds) righe.push(`Contratti scelti: ${f.contrattiIds.length}`)
     if (f.addebitiIds) righe.push(`Addebiti scelti: ${f.addebitiIds.length}`)
     righe.push(`Prezzi da modificare: ${a.totale}`)
+    if (a.invariate) righe.push(`Righe invariate (non scritte): ${a.invariate}`)
     this.riepilogo.set(righe)
     this.erroriApplica.set([])
     this.inRiepilogo.set(true)

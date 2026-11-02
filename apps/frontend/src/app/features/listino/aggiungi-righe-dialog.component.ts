@@ -82,9 +82,18 @@ import { SceltaElencoOrigineComponent } from './scelta-elenco-origine.component'
             </label>
             <ul class="righe" data-testid="aggiungi-righe">
               <li *ngFor="let r of elencoRighe">
-                <label class="spunta">
+                <label
+                  class="spunta"
+                  [class.non-copiabile]="nonCopiabile(r)"
+                  [attr.title]="
+                    nonCopiabile(r)
+                      ? 'Non si copia: i minimi (M…), le detrazioni e gli anticipi ($…) restano fuori.'
+                      : null
+                  "
+                >
                   <input
                     type="checkbox"
+                    [disabled]="nonCopiabile(r)"
                     [checked]="scelte().has(r.id)"
                     (change)="scegli(r.id, $any($event.target).checked)"
                     [attr.data-testid]="'aggiungi-riga-' + r.id"
@@ -147,6 +156,9 @@ import { SceltaElencoOrigineComponent } from './scelta-elenco-origine.component'
         padding: 0;
         max-height: 16rem;
         overflow: auto;
+      }
+      .non-copiabile {
+        opacity: 0.55;
       }
       .spunta {
         display: flex;
@@ -212,13 +224,22 @@ export class AggiungiRigheDialogComponent implements OnChanges, OnDestroy {
     })
   }
 
+  /** Minimi (`M…`) e detrazioni/anticipi (`$…`): il backend li scarta sempre (D18, R45). */
+  nonCopiabile(r: RigaAddebito): boolean {
+    return /^[M$]/.test(r.tipo)
+  }
+
+  private copiabili(): RigaAddebito[] {
+    return (this.righe() ?? []).filter(r => !this.nonCopiabile(r))
+  }
+
   tutteScelte(): boolean {
-    const r = this.righe()
-    return !!r && r.length > 0 && this.scelte().size === r.length
+    const c = this.copiabili()
+    return c.length > 0 && this.scelte().size === c.length
   }
 
   sceltaTutte(si: boolean): void {
-    this.scelte.set(new Set(si ? (this.righe() ?? []).map(r => r.id) : []))
+    this.scelte.set(new Set(si ? this.copiabili().map(r => r.id) : []))
   }
 
   scegli(id: string, si: boolean): void {
