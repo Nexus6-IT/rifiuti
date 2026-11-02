@@ -1,5 +1,4 @@
 import { expect, type Locator, type Page, type Response } from '@playwright/test'
-import { getApiUrl } from './env'
 
 /**
  * Attese deterministiche sulle risposte del server (non sul tempo).
@@ -23,12 +22,23 @@ export interface OpzioniRisposta {
   timeout?: number
 }
 
+/**
+ * Percorso di una chiamata API senza host, porta e prefisso (`/api/v1` o `/api`), oppure `null`
+ * se l'URL non e' una chiamata API. Indipendente dall'indirizzo: in locale il frontend chiama
+ * `http://localhost:3000/api/v1/...`, in CI passa dal proxy nginx su `http://localhost/api/v1/...`.
+ */
+export function percorsoApi(url: string): string | null {
+  const { pathname, search } = new URL(url)
+  const m = /^\/api(?:\/v\d+)?(\/.*)?$/.exec(pathname)
+  return m ? (m[1] ?? '/') + search : null
+}
+
 function corrisponde(r: Response, o: OpzioniRisposta): boolean {
   const req = r.request()
-  if (!r.url().startsWith(getApiUrl())) return false
+  const percorso = percorsoApi(r.url())
+  if (percorso === null) return false
   if (o.metodo ? req.method() !== o.metodo : !MUTAZIONI.has(req.method())) return false
   if (!o.percorso) return true
-  const percorso = new URL(r.url()).pathname + new URL(r.url()).search
   return typeof o.percorso === 'string' ? percorso.includes(o.percorso) : o.percorso.test(percorso)
 }
 
@@ -95,9 +105,7 @@ export function attendiElenco(
   const attesa = page
     .waitForResponse(
       r =>
-        r.request().method() === 'GET' &&
-        r.url().startsWith(getApiUrl()) &&
-        percorso.test(new URL(r.url()).pathname),
+        r.request().method() === 'GET' && percorso.test(percorsoApi(r.url())?.split('?')[0] ?? ''),
       { timeout }
     )
     .then(r => {
