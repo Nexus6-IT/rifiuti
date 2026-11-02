@@ -45,6 +45,12 @@ import { grezzoDaRiga } from './righe-addebito.service'
 export interface EsitoCopia {
   copiate: number
   escluse: EscluseCopia
+  /**
+   * Una riga per riga copiata che punta a un addebito, un codice IVA o una codifica (categoria,
+   * centro di ricavo) disattivati nell'archivio (M11, decisione di Graziano): la copia le include
+   * lo stesso e le segnala. Vuoto se non ce ne sono.
+   */
+  avvisi: string[]
 }
 
 export interface EsitoImpostazione {
@@ -192,7 +198,11 @@ export class AzioniListinoService {
           await tx.rigaAddebito.deleteMany({ where: { tenantId, elencoId } })
           await this.scrivi(tx, tenantId, elencoId, scelte)
           await this.alzaVersione(tx, tenantId, elencoId, corpo.versione)
-          const esito: EsitoCopia = { copiate: scelte.length, escluse }
+          const esito: EsitoCopia = {
+            copiate: scelte.length,
+            escluse,
+            avvisi: await this.avvisiRiferimenti(tx, tenantId, scelte),
+          }
           await this.audit(tx, tenantId, utenteId, 'RIGHE_ADDEBITO_ELENCO_SOSTITUITE', {
             modo: 'sostituisci',
             elencoId,
@@ -202,6 +212,7 @@ export class AzioniListinoService {
             numeroContratto: contratto.numero,
             ...esito.escluse,
             copiate: esito.copiate,
+            conRiferimentiDisattivati: esito.avvisi.length,
           })
           return esito
         }, OPZIONI_TRANSAZIONE)
@@ -263,7 +274,11 @@ export class AzioniListinoService {
 
           await this.scrivi(tx, tenantId, elencoId, scelte)
           await this.alzaVersione(tx, tenantId, elencoId, corpo.versione)
-          const esito: EsitoCopia = { copiate: scelte.length, escluse }
+          const esito: EsitoCopia = {
+            copiate: scelte.length,
+            escluse,
+            avvisi: await this.avvisiRiferimenti(tx, tenantId, scelte),
+          }
           await this.audit(tx, tenantId, utenteId, 'RIGHE_ADDEBITO_COPIATE', {
             modo: 'aggiungi',
             elencoId,
@@ -273,6 +288,7 @@ export class AzioniListinoService {
             richieste: ids.length,
             ...esito.escluse,
             copiate: esito.copiate,
+            conRiferimentiDisattivati: esito.avvisi.length,
           })
           return esito
         }, OPZIONI_TRANSAZIONE)
@@ -517,6 +533,64 @@ export class AzioniListinoService {
         })
       }
     }
+  }
+
+  /**
+   * M11: le righe copiate i cui riferimenti sono stati disattivati nell'archivio si copiano comunque
+   * (le FK reggono); qui si costruisce un avviso per riga, nell'ordine di copia. Una sola lettura
+   * per tabella.
+   */
+  private async avvisiRiferimenti(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    scelte: readonly RigaConFigli[]
+  ): Promise<string[]> {
+    if (scelte.length === 0) return []
+    const unici = (valori: (string | null)[]) => [
+      ...new Set(valori.filter((v): v is string => v !== null)),
+    ]
+    const [addebiti, codiciIva, codifiche] = await Promise.all([
+      tx.addebito.findMany({
+        where: { tenantId, attivo: false, id: { in: unici(scelte.map(r => r.addebitoId)) } },
+        select: { id: true, codice: true },
+      }),
+      tx.codiceIva.findMany({
+        where: { tenantId, attivo: false, id: { in: unici(scelte.map(r => r.codiceIvaId)) } },
+        select: { id: true, codice: true },
+      }),
+      tx.codificaAddebito.findMany({
+        where: {
+          tenantId,
+          attiva: false,
+          id: { in: unici(scelte.flatMap(r => [r.categoriaId, r.centroRicavoId])) },
+        },
+        select: { id: true, codice: true },
+      }),
+    ])
+    const addebitoDi = new Map(addebiti.map(a => [a.id, a.codice]))
+    const ivaDi = new Map(codiciIva.map(c => [c.id, c.codice]))
+    const codificaDi = new Map(codifiche.map(c => [c.id, c]))
+    const avvisi: string[] = []
+    for (const r of scelte) {
+      const motivi: string[] = []
+      if (r.addebitoId && addebitoDi.has(r.addebitoId)) {
+        motivi.push(`l'addebito ${addebitoDi.get(r.addebitoId)} è disattivato nell'archivio`)
+      }
+      if (ivaDi.has(r.codiceIvaId)) {
+        motivi.push(`il codice IVA ${ivaDi.get(r.codiceIvaId)} è disattivato nell'archivio`)
+      }
+      const categoria = r.categoriaId ? codificaDi.get(r.categoriaId) : undefined
+      if (categoria) motivi.push(`la categoria ${categoria.codice} è disattivata nell'archivio`)
+      const centro = r.centroRicavoId ? codificaDi.get(r.centroRicavoId) : undefined
+      if (centro) motivi.push(`il centro di ricavo ${centro.codice} è disattivato nell'archivio`)
+      if (motivi.length === 0) continue
+      const nome =
+        r.tipo === 'CER'
+          ? `Riga CER ${r.cerCode ?? ''}`.trimEnd()
+          : `Riga ${r.tipo}${r.addebito?.codice ? ` ${r.addebito.codice}` : ''}`
+      avvisi.push(`${nome}: ${motivi.join('; ')}.`)
+    }
+    return avvisi
   }
 
   /** L'elenco di arrivo e' cambiato: chi lo teneva aperto con la versione vecchia avra' un 409. */

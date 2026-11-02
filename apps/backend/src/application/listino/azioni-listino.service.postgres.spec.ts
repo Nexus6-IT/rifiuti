@@ -191,6 +191,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(esito).toEqual({
         copiate: 3,
         escluse: { minimi: 1, acconti: 1, conguagli: 1, duplicate: 0, condizioni: 0 },
+        avvisi: [],
       })
       const arrivo = await righeDi(s.elencoId)
       expect(arrivo.map(r => r.tipo).sort()).toEqual(['F', 'V', 'V'])
@@ -510,6 +511,59 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       })
     })
 
+    it('M11: righe con addebito, codice IVA o categoria disattivati si copiano e la copia avvisa', async () => {
+      const s = await scenario()
+      const altro = await altroContratto(s)
+      const v = await riga(s, altro.elencoId, 'V')
+      await righe.crea(s.tenantId, s.utenteId, altro.elencoId, {
+        codiceIvaId: s.listino.iva22Id,
+        tipo: 'CER',
+        cerCode: '200121',
+        tipoQuantita: 'PESO_NETTO',
+        unitaMisura: 'KG',
+        prezzo: '1',
+      })
+      const ok = await riga(s, altro.elencoId, 'F', {}, 'NR')
+      // Si disattivano nell'archivio l'addebito della V e il codice IVA della CER (stesso della F).
+      await owner.addebito.update({ where: { id: v.addebito!.id }, data: { attivo: false } })
+      const ivaAltra = await owner.codiceIva.create({
+        data: {
+          tenantId: s.tenantId,
+          codice: '77',
+          descrizione: 'Prova',
+          aliquota: '10',
+          attivo: true,
+        },
+      })
+      const cer = (await righeDi(altro.elencoId)).find(r => r.tipo === 'CER')!
+      await owner.rigaAddebito.update({ where: { id: cer.id }, data: { codiceIvaId: ivaAltra.id } })
+      await owner.codiceIva.update({ where: { id: ivaAltra.id }, data: { attivo: false } })
+
+      const esito = await azioni.sostituisciDa(s.tenantId, s.utenteId, s.elencoId, {
+        daElencoId: altro.elencoId,
+        versione: 1,
+      })
+      expect(esito.copiate).toBe(3)
+      expect(esito.avvisi).toHaveLength(2)
+      expect(esito.avvisi).toEqual(
+        expect.arrayContaining([
+          `Riga V ${v.addebito!.codice}: l'addebito ${v.addebito!.codice} è disattivato nell'archivio.`,
+          "Riga CER 20 01 21*: il codice IVA 77 è disattivato nell'archivio.",
+        ])
+      )
+      expect(await righeDi(s.elencoId)).toHaveLength(3)
+      expect(ok.id).toBeDefined()
+
+      // Stesso comportamento nell'altra via: aggiungi-righe.
+      const s2 = await altroContratto(s)
+      const via = await azioni.aggiungiRighe(s.tenantId, s.utenteId, s2.elencoId, {
+        righeIds: [v.id],
+        versione: 1,
+      })
+      expect(via.copiate).toBe(1)
+      expect(via.avvisi).toHaveLength(1)
+    })
+
     it('D17: più di 20 errori → 20 messaggi più "E altri N errori."', async () => {
       const principale = await scenario()
       const allegato = await altroContratto(principale, {
@@ -558,6 +612,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(esito).toEqual({
         copiate: 1,
         escluse: { minimi: 1, acconti: 1, conguagli: 0, duplicate: 1, condizioni: 0 },
+        avvisi: [],
       })
       const arrivo = await righeDi(s.elencoId)
       expect(arrivo.map(r => r.tipo).sort()).toEqual(['F', 'V'])
@@ -654,6 +709,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(esito).toEqual({
         copiate: 0,
         escluse: { minimi: 0, acconti: 0, conguagli: 0, duplicate: 2, condizioni: 0 },
+        avvisi: [],
       })
       expect(await righeDi(s.elencoId)).toHaveLength(2)
     })
