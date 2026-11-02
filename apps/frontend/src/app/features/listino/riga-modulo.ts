@@ -129,6 +129,13 @@ const DECIMALI: readonly CampoRiga[] = [
   'stimaAnnuaKg',
 ]
 const INTERI: readonly CampoRiga[] = ['condizione', 'riferimentoGiorno', 'riferimentoMese']
+const DATI_PREZZO_SPECIALE: readonly CampoRiga[] = [
+  'scaglioni',
+  'applicaA',
+  'condizioniRiferite',
+  'riferimentoGiorno',
+  'riferimentoMese',
+]
 const LISTE: readonly CampoRiga[] = ['cerProposta', 'addebitiProposti', 'scaglioni', 'scadenze']
 const BOOLEANI: readonly CampoRiga[] = ['prezzoSpeciale', 'minimoPerCategoria']
 
@@ -211,7 +218,17 @@ export class RigaForm {
     if (f === null) return false
     if (!campoAbilitato(f, campo)) return false
     const t = this.tipoEffettivo()
-    if (campo === 'provvigione' && (t === '$D' || t === '$R')) return false
+    if ((campo === 'provvigione' || campo === 'tipoProvvigione') && (t === '$D' || t === '$R')) {
+      return false
+    }
+    // Con il prezzo speciale sconto, provvigione e condizione non si usano (`validaPrezzoSpeciale`).
+    if (
+      (campo === 'sconto' || campo === 'provvigione' || campo === 'condizione') &&
+      campoAbilitato(f, 'prezzoSpeciale') &&
+      this.form.controls.prezzoSpeciale.value
+    ) {
+      return false
+    }
     return true
   }
 
@@ -297,7 +314,15 @@ export class RigaForm {
         addebitiProposti: [...r.addebitiProposti],
         appunti: r.appunti ?? '',
         notaUsoInterno: r.notaUsoInterno ?? '',
-        scaglioni: r.scaglioni.map(s => ({ ...s })),
+        // Solo i campi del DTO: la vista potrebbe averne altri (m5).
+        scaglioni: r.scaglioni.map(s => ({
+          ordine: s.ordine,
+          finoA: s.finoA,
+          prezzo: s.prezzo,
+          sconto: s.sconto,
+          provvigione: s.provvigione,
+          tipoCalcolo: s.tipoCalcolo,
+        })),
         scadenze: r.scadenze.map(s => ({
           ordine: s.ordine,
           giorno: s.giorno,
@@ -363,6 +388,15 @@ export class RigaForm {
   }
 
   private valoreInviato(campo: CampoRiga, valore: unknown): unknown {
+    // Prezzo speciale spento: fasce e dati collegati partono vuoti (R37) ma restano nel modulo,
+    // così rimettendo la spunta tornano.
+    if (
+      DATI_PREZZO_SPECIALE.includes(campo) &&
+      this.abilitato('prezzoSpeciale') &&
+      !this.form.controls.prezzoSpeciale.value
+    ) {
+      return campo === 'scaglioni' ? [] : null
+    }
     if (!this.abilitato(campo))
       return LISTE.includes(campo) ? [] : BOOLEANI.includes(campo) ? false : null
     if (LISTE.includes(campo)) return Array.isArray(valore) ? [...valore] : []
@@ -387,7 +421,11 @@ export class RigaForm {
    * 404, 500) vale il messaggio del backend.
    */
   impostaErrori(err: unknown, ripiego: string): void {
-    const lista = (err as { error?: { errori?: unknown } } | null)?.error?.errori
+    // R60: il filtro globale del backend inoltra solo error/message/details, quindi gli errori
+    // per campo arrivano o in `errori` o in `details.errori`.
+    const corpo = (err as { error?: { errori?: unknown; details?: { errori?: unknown } } } | null)
+      ?.error
+    const lista = corpo?.errori ?? corpo?.details?.errori
     if (!Array.isArray(lista) || lista.length === 0) {
       this.errori.set({})
       this.generali.set(messaggiErrore(err, ripiego))

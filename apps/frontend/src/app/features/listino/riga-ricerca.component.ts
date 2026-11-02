@@ -37,7 +37,8 @@ export interface VoceRicerca<T = unknown> {
       [id]="inputId"
       [name]="inputId"
       [placeholder]="segnaposto"
-      [attr.aria-controls]="inputId + '-risultati'"
+      [attr.aria-label]="ariaLabel || null"
+      [attr.aria-controls]="voci().length > 0 ? inputId + '-risultati' : null"
       [ngModel]="testo()"
       (ngModelChange)="digita($event)"
       (keydown.escape)="chiudiElenco($event)"
@@ -48,11 +49,10 @@ export interface VoceRicerca<T = unknown> {
     <ul
       *ngIf="voci().length > 0"
       class="risultati"
-      role="listbox"
       [id]="inputId + '-risultati'"
       [attr.data-testid]="testid + '-risultati'"
     >
-      <li *ngFor="let v of voci()" role="option">
+      <li *ngFor="let v of voci()">
         <button type="button" (click)="scegli(v)" [attr.data-testid]="testid + '-voce-' + v.chiave">
           {{ v.etichetta }}
         </button>
@@ -100,6 +100,7 @@ export class RigaRicercaComponent implements OnInit {
   @Input({ required: true }) testid!: string
   @Input({ required: true }) cerca!: (testo: string) => Observable<VoceRicerca[]>
   @Input() segnaposto = 'Scrivi almeno due caratteri'
+  @Input() ariaLabel = ''
   @Input() disabilitato = false
   @Output() scelta = new EventEmitter<VoceRicerca>()
 

@@ -323,6 +323,8 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
     f.tipo.setValue('CER')
     f.tipoCifre.setValue('')
     f.addebitoId.setValue('')
+    // La tipologia dipende dal CER: cambiato il codice la proposta (o il backend) la ricalcola.
+    if (f.cerCode.value !== c.code) f.tipologiaRifiuto.setValue('')
     f.cerCode.setValue(c.code)
     this.stato.etichettaCer = `${c.code} - ${c.description}`
     this.stato.adatta()

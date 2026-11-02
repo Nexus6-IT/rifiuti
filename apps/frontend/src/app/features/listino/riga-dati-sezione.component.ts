@@ -58,6 +58,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
               <app-riga-ricerca
                 inputId="riga-ricerca"
                 testid="riga-ricerca"
+                ariaLabel="CER o addebito"
                 segnaposto="Cerca un codice CER o un addebito"
                 [cerca]="cerca"
                 [disabilitato]="soloLettura"
@@ -91,6 +92,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
               id="riga-tipo"
               formControlName="tipo"
               class="p-inputtext"
+              [attr.disabled]="tipoBloccato() ? '' : null"
               data-testid="riga-tipo"
             >
               <option value="">—</option>
@@ -110,6 +112,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
               pInputText
               id="riga-tipo-cifre"
               formControlName="tipoCifre"
+              [attr.disabled]="tipoBloccato() ? '' : null"
               maxlength="3"
               inputmode="numeric"
               data-testid="riga-tipo-cifre"
@@ -420,7 +423,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
                   *ngFor="let o of conCorrente(statiFisici, 'statoFisico'); trackBy: perCodice"
                   [value]="o.codice"
                 >
-                  {{ o.codice }} - {{ o.descrizione }}
+                  {{ o.descrizione ? o.codice + ' - ' + o.descrizione : o.codice }}
                 </option>
               </select>
             </app-riga-campo>
@@ -441,7 +444,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
                   *ngFor="let o of conCorrente(operazioni, 'operazione'); trackBy: perCodice"
                   [value]="o.codice"
                 >
-                  {{ o.codice }} - {{ o.descrizione }}
+                  {{ o.descrizione ? o.codice + ' - ' + o.descrizione : o.codice }}
                 </option>
               </select>
             </app-riga-campo>
@@ -508,7 +511,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
                 pInputText
                 id="riga-appunti"
                 formControlName="appunti"
-                maxlength="500"
+                maxlength="135"
                 data-testid="riga-appunti"
               />
             </app-riga-campo>
@@ -523,7 +526,7 @@ const CONDIZIONI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
                 pInputText
                 id="riga-nota"
                 formControlName="notaUsoInterno"
-                maxlength="200"
+                maxlength="45"
                 data-testid="riga-nota"
               />
             </app-riga-campo>
@@ -611,6 +614,12 @@ export class RigaDatiSezioneComponent {
 
   ab(campo: CampoRiga): boolean {
     return this.stato.abilitato(campo)
+  }
+
+  /** Scelto un addebito, il tipo è il suo (m7): per cambiarlo si sceglie un altro addebito o un CER. */
+  tipoBloccato(): boolean {
+    const v = this.stato.form.getRawValue()
+    return v.addebitoId !== '' && !this.soloLettura
   }
 
   chiedeCifre(): boolean {

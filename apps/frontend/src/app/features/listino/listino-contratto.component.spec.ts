@@ -672,6 +672,23 @@ describe('ListinoContrattoComponent', () => {
       expect(righeList).toHaveBeenCalledTimes(1)
     })
 
+    it('409 nel dialog della riga: Ricarica chiude e rilegge elenchi e righe', async () => {
+      righeModifica.and.returnValue(
+        throwError(() => ({ status: 409, error: { message: 'Riga modificata.' } }))
+      )
+      const c = await apri()
+      await scegli('e1')
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      delContratto.calls.reset()
+      bottone('riga-ricarica')!.click()
+      await stabilizza(fixture)
+      expect(c.rigaDialogAperto()).toBeFalse()
+      expect(delContratto).toHaveBeenCalledTimes(1)
+    })
+
     it('VIEWER: la riga si apre in sola lettura, senza "Nuova riga" né Salva', async () => {
       await apri('VIEWER')
       await scegli('e1')

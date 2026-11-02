@@ -421,6 +421,49 @@ describe('RigaAddebitoDialogComponent', () => {
       expect(valore('riga-prezzo')).toBe('0,5')
     })
 
+    it('cambiando CER la tipologia del CER precedente non resta (I2)', async () => {
+      cer.searchCER.and.callFake((t: string) =>
+        of([
+          t === 'a'.repeat(3)
+            ? { code: '15 01 10*', description: 'Imballaggi pericolosi', isPericoloso: true }
+            : { code: '20 03 01', description: 'Urbani', isPericoloso: false },
+        ])
+      )
+      righe.proposta.and.callFake((_c: string, s: { cerCode?: string }) =>
+        of(
+          proposta({
+            tipologiaRifiuto: s.cerCode === '20 03 01' ? 'URBANO' : 'SPECIALE_PERICOLOSO',
+          })
+        )
+      )
+      await apri()
+      await cerca('riga-ricerca', 'urb')
+      q('riga-ricerca-voce-cer-20 03 01')!.click()
+      await stabilizza(fixture)
+      expect(valore('riga-tipologia')).toBe('URBANO')
+      righe.proposta.and.returnValue(throwError(() => ({ status: 500 })))
+      await cerca('riga-ricerca', 'aaa')
+      q('riga-ricerca-voce-cer-15 01 10*')!.click()
+      await stabilizza(fixture)
+      expect(valore('riga-tipologia')).toBe('')
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(righe.crea.calls.mostRecent().args[1].tipologiaRifiuto).toBeNull()
+    })
+
+    it('scelto un addebito il menu del tipo è bloccato (m7); un CER lo sblocca', async () => {
+      await apri()
+      await cerca('riga-ricerca', 'tras')
+      q('riga-ricerca-voce-add-00012')!.click()
+      await stabilizza(fixture)
+      expect(q<HTMLSelectElement>('riga-tipo')!.disabled).toBeTrue()
+      await cerca('riga-ricerca', '20 03')
+      q('riga-ricerca-voce-cer-20 03 01')!.click()
+      await stabilizza(fixture)
+      expect(q<HTMLSelectElement>('riga-tipo')!.disabled).toBeFalse()
+      expect(valore('riga-tipo')).toBe('CER')
+    })
+
     it('scegliere un addebito imposta il suo tipo e chiama la proposta con l’id', async () => {
       await apri()
       await cerca('riga-ricerca', 'tras')
@@ -657,6 +700,66 @@ describe('RigaAddebitoDialogComponent', () => {
       bottone('riga-salva')!.click()
       await stabilizza(fixture)
       expect(testo('riga-errore-cerProposta')).toBe('CER non nel catalogo.')
+    })
+  })
+
+  describe('accessibilità e Esc', () => {
+    it('la ricerca ha un nome e i campi con errore sono marcati', async () => {
+      righe.modifica.and.returnValue(
+        throwError(() => ({
+          status: 400,
+          error: { details: { errori: [{ campo: 'prezzo', messaggio: 'Errore.' }] } },
+        }))
+      )
+      await apri({ riga: riga() })
+      expect(q('riga-ricerca')!.getAttribute('aria-label')).toBe('CER o addebito')
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      const prezzo = q('riga-prezzo')!
+      expect(prezzo.getAttribute('aria-invalid')).toBe('true')
+      expect(prezzo.getAttribute('aria-describedby')).toBe('riga-prezzo-errore')
+      expect(document.getElementById('riga-prezzo-errore')).toBeTruthy()
+    })
+
+    it('Esc a elenco aperto chiude l’elenco e non arriva al dialog', async () => {
+      await apri()
+      await cerca('riga-ricerca', '20 03')
+      let arrivato = false
+      const ascolta = () => (arrivato = true)
+      document.addEventListener('keydown', ascolta)
+      q('riga-ricerca')!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+      )
+      document.removeEventListener('keydown', ascolta)
+      await stabilizza(fixture)
+      expect(arrivato).toBeFalse()
+      expect(q('riga-ricerca-risultati')).toBeNull()
+    })
+
+    it('a elenco chiuso Esc passa al dialog', async () => {
+      await apri()
+      let arrivato = false
+      const ascolta = () => (arrivato = true)
+      document.addEventListener('keydown', ascolta)
+      q('riga-ricerca')!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+      )
+      document.removeEventListener('keydown', ascolta)
+      expect(arrivato).toBeTrue()
+    })
+
+    it('un valore salvato fuori elenco compare col solo codice (m9)', async () => {
+      await apri({ riga: riga({ operazione: 'X99' }) })
+      const o = Array.from(q<HTMLSelectElement>('riga-operazione')!.options).find(
+        x => x.value === 'X99'
+      )!
+      expect(o.text.trim()).toBe('X99')
+    })
+
+    it('appunti e nota hanno i limiti del backend (m3)', async () => {
+      await apri({ riga: riga() })
+      expect(q('riga-appunti')!.getAttribute('maxlength')).toBe('135')
+      expect(q('riga-nota')!.getAttribute('maxlength')).toBe('45')
     })
   })
 

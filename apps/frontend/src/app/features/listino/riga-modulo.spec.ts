@@ -130,6 +130,78 @@ describe('RigaForm', () => {
     })
   })
 
+  describe('prezzo speciale spento (I1)', () => {
+    const fasce = [
+      {
+        ordine: 1,
+        finoA: '100',
+        prezzo: '0.10',
+        sconto: null,
+        provvigione: null,
+        tipoCalcolo: 'A' as const,
+      },
+    ]
+    it('il corpo manda fasce vuote e dati collegati a null, il modulo li conserva', () => {
+      rf.riempi(
+        riga({
+          prezzoSpeciale: true,
+          prezzo: null,
+          sconto: null,
+          provvigione: null,
+          minimoFatturabile: null,
+          scaglioni: fasce,
+          applicaA: 'DOCUMENTO',
+          condizioniRiferite: '1',
+          riferimentoGiorno: 5,
+          riferimentoMese: 3,
+        })
+      )
+      expect(rf.dati().scaglioni?.length).toBe(1)
+      expect(rf.dati().applicaA).toBe('DOCUMENTO')
+      rf.form.controls.prezzoSpeciale.setValue(false)
+      rf.adatta()
+      const d = rf.dati()
+      expect(d.scaglioni).toEqual([])
+      expect(d.applicaA).toBeNull()
+      expect(d.condizioniRiferite).toBeNull()
+      expect(d.riferimentoGiorno).toBeNull()
+      expect(d.riferimentoMese).toBeNull()
+      rf.form.controls.prezzoSpeciale.setValue(true)
+      rf.adatta()
+      expect(rf.dati().scaglioni?.length).toBe(1)
+      expect(rf.dati().riferimentoMese).toBe(3)
+    })
+
+    it('con il prezzo speciale acceso sconto, provvigione e condizione non valgono (m1)', () => {
+      rf.riempi(riga())
+      rf.form.controls.prezzoSpeciale.setValue(true)
+      rf.adatta()
+      for (const c of ['sconto', 'provvigione', 'condizione'] as const) {
+        expect(rf.abilitato(c)).withContext(c).toBeFalse()
+        expect(rf.dati()[c]).withContext(c).toBeNull()
+      }
+    })
+
+    it('le fasce letto dalla vista sono copiate solo con i campi del DTO (m5)', () => {
+      rf.riempi(riga({ prezzoSpeciale: true, scaglioni: [{ ...fasce[0], id: 'x' } as never] }))
+      expect(Object.keys(rf.form.controls.scaglioni.value[0]).sort()).toEqual([
+        'finoA',
+        'ordine',
+        'prezzo',
+        'provvigione',
+        'sconto',
+        'tipoCalcolo',
+      ])
+    })
+
+    it('$D e $R non hanno nemmeno il tipo provvigione (m2)', () => {
+      imposta('$D')
+      expect(rf.abilitato('tipoProvvigione')).toBeFalse()
+      imposta('$A')
+      expect(rf.abilitato('tipoProvvigione')).toBeTrue()
+    })
+  })
+
   describe('adatta', () => {
     it('cambiando tipo i campi fuori famiglia si svuotano', () => {
       rf.riempi(riga())
@@ -294,6 +366,21 @@ describe('RigaForm', () => {
       rf.impostaErrori(errore([{ campo: 'scaglioni', messaggio: 'Servono le fasce.' }]), 'ripiego')
       expect(rf.erroriDi('scaglioni')).toEqual(['Servono le fasce.'])
       expect(rf.generali()).toEqual([])
+    })
+
+    it('R60: gli errori per campo possono stare in `details.errori`', () => {
+      rf.impostaErrori(
+        {
+          status: 400,
+          error: {
+            error: 'X',
+            message: 'm',
+            details: { errori: [{ campo: 'prezzo', messaggio: 'Da details.' }] },
+          },
+        },
+        'ripiego'
+      )
+      expect(rf.erroriDi('prezzo')).toEqual(['Da details.'])
     })
 
     it('senza `errori` vale il messaggio del backend, poi il ripiego', () => {
