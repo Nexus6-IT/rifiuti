@@ -26,6 +26,7 @@ import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-pr
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import {
+  assicuraCatalogoCer,
   creaAddebito,
   creaCodiciIvaEcodifiche,
   creaContrattoConElenco,
@@ -43,6 +44,7 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
   let righe: RigheAddebitoService
   const tenantCreati: string[] = []
   let n = 0
+  const cerCreati: string[] = []
 
   const nel = <R>(tenantId: string, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId }, async () => await fn())
@@ -53,6 +55,7 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
     const ditte = new DitteService(app, new DittaPrismaRepository())
     service = new ContrattiClienteService(app, new ClientiService(app, ditte))
     righe = new RigheAddebitoService(app)
+    cerCreati.push(...(await assicuraCatalogoCer(owner, ['20 03 01'])))
   })
 
   afterAll(async () => {
@@ -76,6 +79,8 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
       await owner.user.deleteMany({ where: { tenantId: in_ } })
       await owner.tenant.deleteMany({ where: { id: in_ } })
     }
+    // solo i codici che questo spec ha creato (catalogo globale: mai toccare gli altri)
+    if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await owner.$disconnect()
     await app?.$disconnect()
   })

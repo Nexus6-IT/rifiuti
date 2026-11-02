@@ -262,3 +262,24 @@ export async function assicuraCodificheRentri(owner: PrismaClient): Promise<{
     creati,
   }
 }
+
+/**
+ * Il catalogo CER e' globale e in CI il database NON e' popolato: ogni spec che passa da
+ * `cerNelCatalogo` deve garantirsi i codici che usa, nella forma esatta del catalogo
+ * (spazi e asterisco). Crea (col client PROPRIETARIO) solo quelli assenti e restituisce i
+ * codici creati: a fine test si cancellano quelli, per codice esatto, mai gli altri.
+ */
+export async function assicuraCatalogoCer(
+  owner: PrismaClient,
+  codici: readonly string[]
+): Promise<string[]> {
+  const creati: string[] = []
+  for (const code of codici) {
+    if ((await owner.cERCode.count({ where: { code } })) > 0) continue
+    await owner.cERCode.create({
+      data: { code, description: 'CER di test', category: '99', subcategory: '' },
+    })
+    creati.push(code)
+  }
+  return creati
+}

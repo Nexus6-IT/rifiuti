@@ -22,6 +22,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
+  assicuraCatalogoCer,
   creaAddebito,
   creaCodiciIvaEcodifiche,
   creaContrattoConElenco,
@@ -45,9 +46,11 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
   let azioni: AzioniListinoService
   const tenantCreati: string[] = []
   let n = 0
+  const cerCreati: string[] = []
 
   beforeAll(async () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
+    cerCreati.push(...(await assicuraCatalogoCer(owner, ['20 03 01', '20 01 21*'])))
     app = creaPrismaServiceApplicativo()
     righe = new RigheAddebitoService(app)
     azioni = new AzioniListinoService(app)
@@ -68,6 +71,8 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.user.deleteMany({ where: { tenantId: in_ } })
       await owner.tenant.deleteMany({ where: { id: in_ } })
     }
+    // solo i codici che questo spec ha creato (catalogo globale: mai toccare gli altri)
+    if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await owner.$disconnect()
     await app?.$disconnect()
   })

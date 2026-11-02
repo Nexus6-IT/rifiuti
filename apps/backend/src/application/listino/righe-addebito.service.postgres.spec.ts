@@ -25,6 +25,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
+  assicuraCatalogoCer,
   assicuraCodificheRentri,
   creaAddebito,
   creaCodiciIvaEcodifiche,
@@ -59,9 +60,11 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
   const rentriCreati: string[] = []
   let rentri: { statoFisico: string; operazione: string }
   let n = 0
+  const cerCreati: string[] = []
 
   beforeAll(async () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
+    cerCreati.push(...(await assicuraCatalogoCer(owner, ['20 03 01', '20 01 21*', '15 01 01'])))
     app = creaPrismaServiceApplicativo()
     service = new RigheAddebitoService(app)
     const r = await assicuraCodificheRentri(owner)
@@ -89,6 +92,8 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
     if (rentriCreati.length > 0) {
       await owner.rentriCodificaSemplice.deleteMany({ where: { id: { in: rentriCreati } } })
     }
+    // solo i codici che questo spec ha creato (catalogo globale: mai toccare gli altri)
+    if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await owner.$disconnect()
     await app?.$disconnect()
   })
