@@ -1,7 +1,7 @@
 // Codifiche di addebito: gruppo, categoria, categorie statistiche e centro di ricavo (4.2a, D4).
 // Una tabella per cinque elenchi, distinti dal `genere`, con codice unico per (azienda, genere).
 // Stesso schema delle codifiche del contratto della 4.1: lock ottimistico (D14), disattivazione
-// al posto della cancellazione quando la codifica e' citata da un addebito (D13), audit (D16).
+// al posto della cancellazione quando la codifica e' citata da un addebito o da una riga di un listino (D13, R44), audit (D16).
 // Le regole sui dati stanno in `domain/listino/codifica-addebito`; il primo codice libero e'
 // `primoCodiceLibero` della 4.1 (non si duplica).
 //

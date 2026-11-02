@@ -54,6 +54,10 @@ describe('AddebitiService — Postgres reale, ruolo wasteflow_app', () => {
       const in_ = { in: tenantCreati }
       // Righe ed elenchi vanno a cascata col contratto; le FK NoAction verso addebiti, codifiche e
       // codici IVA chiedono di cancellare prima i contratti.
+      await owner.contrattoCliente.updateMany({
+        where: { tenantId: in_ },
+        data: { contrattoPrincipaleId: null },
+      })
       await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.addebito.deleteMany({ where: { tenantId: in_ } })

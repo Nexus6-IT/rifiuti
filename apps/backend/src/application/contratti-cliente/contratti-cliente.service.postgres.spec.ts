@@ -33,12 +33,14 @@ import {
 } from '../../test-support/listino-di-test'
 import { DitteService } from '../registry/ditte/ditte.service'
 import { ClientiService } from '../clienti/clienti.service'
+import { RigheAddebitoService } from '../listino/righe-addebito.service'
 import { ContrattiClienteService } from './contratti-cliente.service'
 
 describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
   let service: ContrattiClienteService
+  let righe: RigheAddebitoService
   const tenantCreati: string[] = []
   let n = 0
 
@@ -50,6 +52,7 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
     app = creaPrismaServiceApplicativo()
     const ditte = new DitteService(app, new DittaPrismaRepository())
     service = new ContrattiClienteService(app, new ClientiService(app, ditte))
+    righe = new RigheAddebitoService(app)
   })
 
   afterAll(async () => {
@@ -734,6 +737,27 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
         return { ...a, principale, figlio, listino }
       }
 
+      const righes_crea = async (s: {
+        tenantId: string
+        utenteId: string
+        figlio: { elencoId: string }
+        listino: { iva22Id: string }
+      }) => {
+        try {
+          await righe.crea(s.tenantId, s.utenteId, s.figlio.elencoId, {
+            tipo: 'CER',
+            cerCode: '20 03 01',
+            tipoQuantita: 'PESO_NETTO',
+            unitaMisura: 'KG',
+            prezzo: '1',
+            codiceIvaId: s.listino.iva22Id,
+          } as any)
+        } catch (e) {
+          return e
+        }
+        throw new Error('attesa un’eccezione')
+      }
+
       const allega = (s: {
         tenantId: string
         utenteId: string
@@ -774,7 +798,7 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
         expect(v.contrattoPrincipale?.id).toBe(s.principale.contrattoId)
       })
 
-      it('senza righe: si allega; con una riga V si stacca comunque (null)', async () => {
+      it('senza righe: si allega; e si stacca con null', async () => {
         const s = await scenario(null)
         await allega(s)
         const v = await nel(s.tenantId, () =>
@@ -786,14 +810,49 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
         expect(v.contrattoPrincipale).toBeNull()
       })
 
+      it('ordine inverso: contratto allegato per primo, poi una riga CER con il servizio vero: 400', async () => {
+        const s = await scenario(null)
+        await allega(s)
+        const e = await righes_crea(s)
+        expect(e).toMatchObject({ status: 400 })
+        expect(
+          await owner.rigaAddebito.count({
+            where: { tenantId: s.tenantId, elencoId: s.figlio.elencoId },
+          })
+        ).toBe(0)
+      })
+
+      it('riga TT su un contratto allegato portata a V con PATCH: 400', async () => {
+        const s = await scenario({ tipo: 'TT', addebitoTipo: 'TT' })
+        await allega(s)
+        const riga = await owner.rigaAddebito.findFirstOrThrow({
+          where: { tenantId: s.tenantId, elencoId: s.figlio.elencoId },
+        })
+        const v = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
+        await expect(
+          righe.modifica(s.tenantId, s.utenteId, riga.id, {
+            versione: riga.versione,
+            tipo: 'V',
+            addebitoId: v.id,
+          } as any)
+        ).rejects.toMatchObject({ status: 400 })
+        const dopo = await owner.rigaAddebito.findUniqueOrThrow({ where: { id: riga.id } })
+        expect(dopo.tipo).toBe('TT')
+      })
+
       it('allegamento e riga CER concorrenti: mai un allegato con righe CER', async () => {
         const s = await scenario(null)
         // Il "scrittore di righe" legge il contratto FOR SHARE (come RigheAddebitoService), aspetta
         // e inserisce una riga CER: l'allegamento chiede FOR UPDATE e deve mettersi in fila.
+        // Barriera: l'allegamento parte solo dopo che lo scrittore tiene il FOR SHARE, senza attese
+        // a tempo (su un runner lento una pausa fissa potrebbe far partire l'allegamento prima).
+        let lockPreso!: () => void
+        const preso = new Promise<void>(r => (lockPreso = r))
         const scrittore = owner.$transaction(
           async tx => {
             await tx.$queryRaw`SELECT id FROM contratti_cliente
               WHERE id = ${s.figlio.contrattoId}::uuid FOR SHARE`
+            lockPreso()
             await tx.$executeRaw`SELECT pg_sleep(1.2)`
             await tx.rigaAddebito.create({
               data: {
@@ -810,13 +869,10 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
           },
           { timeout: 15000 }
         )
-        await new Promise(r => setTimeout(r, 300))
-        const avvio = Date.now()
+        await preso
         const esiti = await Promise.allSettled([scrittore, allega(s)])
         expect(esiti[0].status).toBe('fulfilled')
         expect(esiti[1]).toMatchObject({ status: 'rejected', reason: { status: 400 } })
-        // L'allegamento ha aspettato lo scrittore (non e' passato prima del suo commit).
-        expect(Date.now() - avvio).toBeGreaterThan(600)
         const dopo = await owner.contrattoCliente.findUniqueOrThrow({
           where: { id: s.figlio.contrattoId },
         })
