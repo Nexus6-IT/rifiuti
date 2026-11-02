@@ -1,0 +1,333 @@
+/* ============================================================================
+   Override componenti PrimeNG 17.18 — tema "Foglio salvia"
+
+   Base: aura-light-noir / aura-dark-noir (angular.json). Perche' "noir":
+   il suo colore primario e' gia' quasi nero (chiaro) o quasi bianco (scuro),
+   quindi bottoni, checkbox, radio, switch e paginatore nascono come li vuole
+   la proposta e NON servono piu' le correzioni !important che li riportavano
+   dal teal al grigio. Il teal torna solo dove lo decidiamo noi: scheda attiva,
+   selezione, barre, stato "Trasmesso".
+   Il tema Aura scrive i colori in esadecimale dentro i selettori (non usa
+   variabili), quindi qui le regole hanno la stessa specificita' di Aura e
+   vincono per ordine: lo styles.scss e' caricato dopo il tema.
+   Gli !important rimasti sono solo dove c'e' un motivo (vedi i commenti).
+   ============================================================================ */
+
+.p-component { font-family: var(--font-family); }
+
+/* ===== Card: bordo di 1px, nessuna ombra ===== */
+.p-card { border-radius: var(--radius-lg); box-shadow: none; border: 1px solid var(--surface-border); background: var(--surface-card); color: var(--text-primary); }
+.p-card .p-card-body { padding: var(--spacing-lg); }
+.p-card .p-card-title { font-family: var(--font-display); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); margin-bottom: var(--spacing-xs); }
+.p-card .p-card-subtitle { color: var(--text-secondary); font-size: var(--font-size-sm); margin-bottom: var(--spacing-md); }
+
+/* ===== Bottoni — altezza unica --control-md (32px, 44px su telefono) ===== */
+.p-button {
+  height: var(--control-md);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+  padding: 0 var(--spacing-base);
+  /* Primario: quasi nero + bianco (18:1); in scuro si inverte. */
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+/* Spazio coerente icona↔testo. */
+.p-button .p-button-icon-left { margin-right: var(--spacing-sm); }
+.p-button .p-button-icon-right { margin-left: var(--spacing-sm); }
+.p-button-icon-only .p-button-icon { margin: 0; }
+.p-button:not(:disabled):hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); color: var(--on-accent); }
+/* Secondari: contorno grigio e nessun colore (il teal non e' un'azione). */
+.p-button.p-button-outlined { background: transparent; color: var(--text-primary); border-color: var(--control-border); }
+.p-button.p-button-outlined:not(:disabled):hover { background: var(--surface-hover); border-color: var(--control-border-hover); color: var(--text-primary); }
+.p-button.p-button-text { background: transparent; color: var(--text-secondary); border-color: transparent; }
+.p-button.p-button-text:not(:disabled):hover { background: var(--color-gray-100); border-color: transparent; color: var(--text-primary); }
+.p-button.p-button-secondary { background: var(--neutral-fill); border-color: var(--neutral-fill); color: var(--on-neutral); }
+.p-button.p-button-secondary:not(:disabled):hover { background: var(--neutral-fill-hover); border-color: var(--neutral-fill-hover); color: var(--on-neutral); }
+/* Varianti piene: il testo e' --text-inverse, che si inverte insieme al fondo. */
+.p-button.p-button-success, .p-button.p-button-danger, .p-button.p-button-warning,
+.p-button.p-button-info, .p-button.p-button-help { color: var(--text-inverse); }
+.p-button.p-button-success { background: var(--color-success); border-color: var(--color-success); }
+.p-button.p-button-danger { background: var(--color-danger); border-color: var(--color-danger); }
+.p-button.p-button-warning { background: var(--color-warning); border-color: var(--color-warning); }
+.p-button.p-button-info, .p-button.p-button-help { background: var(--color-info); border-color: var(--color-info); }
+.p-button.p-button-success:not(:disabled):hover,
+.p-button.p-button-danger:not(:disabled):hover,
+.p-button.p-button-warning:not(:disabled):hover,
+.p-button.p-button-info:not(:disabled):hover,
+.p-button.p-button-help:not(:disabled):hover { color: var(--text-inverse); filter: brightness(0.92); }
+/* Varianti outlined/text colorate: solo il testo cambia. */
+.p-button.p-button-outlined.p-button-danger, .p-button.p-button-text.p-button-danger { background: transparent; color: var(--color-danger); }
+.p-button.p-button-outlined.p-button-danger { border-color: var(--color-danger); }
+.p-button.p-button-text.p-button-danger { border-color: transparent; }
+.p-button.p-button-outlined.p-button-danger:not(:disabled):hover,
+.p-button.p-button-text.p-button-danger:not(:disabled):hover { background: var(--color-danger-bg); color: var(--color-danger); filter: none; }
+.p-button:disabled, .p-button.p-disabled { opacity: 0.5; cursor: not-allowed; }
+.p-button.p-button-icon-only { width: var(--control-md); height: var(--control-md); padding: 0; }
+.p-button.p-button-rounded { border-radius: var(--radius-full); }
+.p-button.p-button-sm { height: var(--control-sm); padding: 0 var(--spacing-md); font-size: var(--font-size-xs); }
+.p-button.p-button-sm.p-button-icon-only { width: var(--control-sm); padding: 0; }
+.p-button.p-button-lg { height: var(--control-lg); }
+.p-button:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: none; }
+/* Il bottone "link" e' un link, non un bottone: testo teal scuro. */
+.p-button.p-button-link { background: transparent; border-color: transparent; color: var(--brand-primary-dark); }
+.p-button.p-button-link:not(:disabled):hover { background: transparent; color: var(--brand-primary); text-decoration: underline; }
+
+/* SelectButton — l'opzione SELEZIONATA appariva bianca su bianco.
+   Due cause sovrapposte, entrambe da correggere (il fix resta, verificato
+   ancora necessario con Aura noir):
+   1) PrimeNG rende ogni opzione come `.p-button`, che qui sopra riceve il
+      colore del bottone primario;
+   2) il tema disegna sull'opzione selezionata un riquadro `::before` BIANCO
+      (inset di 4px) che copre lo sfondo e sotto cui l'etichetta sparisce.
+   Qui il riempimento e' del bottone, quindi il riquadro non serve.
+   Selezionata = tinta salvia + bordo e testo teal scuro (selezione = teal). */
+.p-selectbutton .p-button::before { display: none; }
+.p-selectbutton .p-button {
+  background: var(--surface-card);
+  border-color: var(--control-border);
+  color: var(--text-secondary);
+}
+.p-selectbutton .p-button .p-button-icon-left,
+.p-selectbutton .p-button .p-button-icon-right { color: inherit; }
+.p-selectbutton .p-button:not(.p-disabled):not(.p-highlight):hover {
+  background: var(--surface-hover);
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
+}
+.p-selectbutton .p-button.p-highlight,
+.p-selectbutton .p-button.p-highlight:hover {
+  background: var(--selected);
+  border-color: var(--selected-line);
+  color: var(--brand-primary-dark);
+}
+.p-selectbutton .p-button.p-highlight .p-button-icon-left,
+.p-selectbutton .p-button.p-highlight .p-button-icon-right,
+.p-selectbutton .p-button.p-highlight:hover .p-button-icon-left,
+.p-selectbutton .p-button.p-highlight:hover .p-button-icon-right { color: inherit; }
+.p-selectbutton .p-button.p-highlight { font-weight: var(--font-weight-semibold); }
+
+/* ===== Campi input — altezza unica --control-md ===== */
+.p-inputtext, .p-inputnumber-input {
+  height: var(--control-md);
+  border-radius: var(--radius-md);
+  border-color: var(--control-border);
+  padding: 0 var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--surface-section);
+  transition: border-color var(--transition-fast);
+}
+textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); padding: 0.5rem var(--spacing-md); }
+
+/* p-inputnumber deve riempire il contenitore: l'input interno ha una larghezza
+   di default che sfora nelle griglie responsive (es. "N° colli" a 375px). */
+.p-inputnumber { width: 100%; }
+.p-inputnumber .p-inputnumber-input { width: 100%; }
+
+/* Wrapper (dropdown/multiselect/chips): il bordo e l'altezza stanno sul wrapper,
+   l'etichetta interna NON deve avere bordo/sfondo propri (bug "bordo al centro":
+   l'etichetta e' anch'essa un `.p-inputtext` e ne eredita bordo e sfondo). */
+.p-dropdown, .p-multiselect, .p-chips .p-chips-multiple-container {
+  min-height: var(--control-md);
+  height: var(--control-md);
+  display: inline-flex;
+  align-items: stretch;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border-color: var(--control-border);
+  background: var(--surface-section);
+  transition: border-color var(--transition-fast);
+}
+.p-chips .p-chips-multiple-container,
+.p-autocomplete .p-autocomplete-multiple-container { height: auto; min-height: var(--control-md); }
+.p-dropdown .p-dropdown-label, .p-multiselect .p-multiselect-label {
+  display: flex; align-items: center;
+  height: auto;
+  padding: 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  /* Questi due restano !important di proposito: sono il fix del bug "bordo al
+     centro" e devono vincere anche contro `.p-inputtext:enabled:focus/hover`. */
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none;
+}
+.p-dropdown .p-dropdown-trigger, .p-multiselect .p-multiselect-trigger { width: 2.5rem; background: transparent; color: var(--text-tertiary); }
+/* Placeholder leggibili (AA, 5,1:1), esteso a tutti i controlli. */
+.p-inputtext::placeholder,
+.p-inputnumber-input::placeholder,
+textarea.p-inputtext::placeholder,
+.p-password input::placeholder { color: var(--text-placeholder); opacity: 1; }
+.p-dropdown .p-dropdown-label.p-placeholder,
+.p-multiselect .p-multiselect-label.p-placeholder { color: var(--text-placeholder); }
+.p-inputtext:enabled:hover, .p-dropdown:not(.p-disabled):hover, .p-multiselect:not(.p-disabled):hover { border-color: var(--control-border-hover); }
+.p-inputtext:enabled:focus,
+.p-dropdown:not(.p-disabled).p-focus,
+.p-multiselect:not(.p-disabled).p-focus {
+  border-color: var(--focus-ring-color);
+  box-shadow: none;
+  outline: 1px solid var(--focus-ring-color);
+  outline-offset: 0;
+}
+label { font-weight: var(--font-weight-medium); color: var(--text-secondary); font-size: var(--font-size-sm); }
+.p-inputtext:disabled, .p-disabled { opacity: 0.6; }
+
+/* Campo con icona dentro (p-input-icon-left/right): Aura riserva gia' lo spazio
+   (2,5rem), ma il padding di base qui sopra ha la stessa specificita' e lo
+   annullerebbe: queste regole lo ripristinano (2,25rem). */
+.p-input-icon-left > i:first-of-type, .p-input-icon-right > i:last-of-type { color: var(--text-tertiary); }
+.p-input-icon-left > i:first-of-type { left: var(--spacing-md); }
+.p-input-icon-right > i:last-of-type { right: var(--spacing-md); }
+.p-input-icon-left > .p-inputtext { padding-left: 2.25rem; }
+.p-input-icon-right > .p-inputtext { padding-right: 2.25rem; }
+
+/* Calendar / password: l'input interno eredita le regole sopra. */
+.p-calendar, .p-password { display: inline-flex; }
+.p-calendar .p-datepicker-trigger { height: var(--control-md); }
+
+/* ===== Checkbox / Radio / Switch =====
+   Colore pieno (quasi nero) gia' dato dal tema noir: niente piu' override teal.
+   Qui solo il bordo a riposo, portato a 3:1 (WCAG 1.4.11). */
+.p-checkbox .p-checkbox-box, .p-radiobutton .p-radiobutton-box { border-color: var(--control-border); background: var(--surface-section); }
+.p-inputswitch .p-inputswitch-slider { background: var(--control-border); }
+
+/* ===== DataTable — densa, senza riquadro =====
+   Intestazioni grigie da 12px in minuscolo, righe separate da filetti,
+   riga selezionata con tinta salvia e barra teal di 2px. */
+.p-datatable { border: 0; border-radius: 0; color: var(--text-primary); }
+.p-datatable .p-datatable-header { background: transparent; border: 0; padding: var(--spacing-md) 0; }
+.p-datatable .p-datatable-thead > tr > th {
+  background: transparent; color: var(--text-tertiary);
+  font-weight: var(--font-weight-medium); border: 0; border-bottom: 1px solid var(--surface-border);
+  padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-xs);
+}
+.p-datatable .p-datatable-tbody > tr { background: transparent; color: var(--text-primary); transition: background-color var(--transition-fast); }
+.p-datatable .p-datatable-tbody > tr > td { padding: var(--spacing-sm) var(--spacing-md); border: 0; border-bottom: 1px solid var(--rule); font-size: var(--font-size-sm); color: inherit; }
+.p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: var(--spacing-xs) var(--spacing-md); }
+.p-datatable.p-datatable-hoverable-rows .p-datatable-tbody > tr:not(.p-highlight):hover { background: var(--surface-hover); color: var(--text-primary); }
+.p-datatable .p-datatable-tbody > tr.p-highlight { background: var(--selected); color: var(--text-primary); box-shadow: inset 2px 0 0 var(--selected-line); }
+.p-datatable .p-datatable-tfoot > tr > td { border-color: var(--surface-border); background: transparent; color: var(--text-primary); }
+.p-datatable .p-sortable-column { transition: color var(--transition-fast); }
+.p-datatable .p-sortable-column:not(.p-highlight):hover { background: var(--surface-hover); color: var(--text-primary); }
+.p-datatable .p-sortable-column.p-highlight, .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon { background: transparent; color: var(--text-primary); }
+.p-paginator { background: transparent; color: var(--text-secondary); border: 0; padding: var(--spacing-md) 0; }
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--accent-fill); color: var(--on-accent); border-radius: var(--radius-base); }
+.p-paginator .p-paginator-first, .p-paginator .p-paginator-prev, .p-paginator .p-paginator-next, .p-paginator .p-paginator-last,
+.p-paginator .p-paginator-pages .p-paginator-page { color: var(--text-secondary); }
+
+/* ===== Dialog: galleggia, quindi e' l'unica cosa con ombra ===== */
+.p-dialog { border-radius: var(--radius-xl); box-shadow: var(--shadow-xl); border: 1px solid var(--surface-border); overflow: hidden; background: var(--surface-overlay); color: var(--text-primary); }
+.p-dialog .p-dialog-header { background: var(--surface-section); color: var(--text-primary); padding: var(--spacing-base) var(--spacing-lg); border-bottom: 1px solid var(--surface-border); }
+.p-dialog .p-dialog-header .p-dialog-title { font-family: var(--font-display); font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); }
+/* X di chiusura: icona ghost neutra, hover tenue. */
+.p-dialog .p-dialog-header .p-dialog-header-icon {
+  width: 2.25rem; height: 2.25rem;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.p-dialog .p-dialog-header .p-dialog-header-icon:enabled:hover { background: var(--color-gray-100); color: var(--text-primary); }
+.p-dialog .p-dialog-content { padding: var(--spacing-lg); }
+/* Footer simmetrico (24px) + azioni a destra con gap coerente. */
+.p-dialog .p-dialog-footer { padding: var(--spacing-base) var(--spacing-lg); border-top: 1px solid var(--surface-border); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
+.p-dialog .p-dialog-content, .p-dialog .p-dialog-footer { background: var(--surface-section); color: var(--text-primary); }
+.p-overlay-mask { background: var(--overlay-mask); }
+.p-component-overlay { background: var(--overlay-mask); }
+
+/* ===== Tag / Badge: sfondo tenue + inchiostro scuro + (nei template) icona e parola =====
+   Mai il solo colore. Mappa severita' → stato della proposta:
+   success = fatto/attivo (teal tenue, 8:1), warning = attenzione (ambra),
+   danger = errore (rosso), info = informativo (grigio-azzurro),
+   nessuna severita'/secondary = bozza (grigio), contrast = da fare (contorno). */
+.p-tag { border-radius: var(--radius-sm); font-weight: var(--font-weight-medium); font-size: var(--font-size-xs); padding: 2px var(--spacing-sm); border: 1px solid transparent; background: var(--stato-none-bg); color: var(--stato-none-ink); }
+.p-tag.p-tag-success { background: var(--stato-sent-bg); color: var(--stato-sent-ink); }
+.p-tag.p-tag-warning { background: var(--stato-warn-bg); color: var(--stato-warn-ink); border-color: var(--stato-warn-edge); }
+.p-tag.p-tag-danger { background: var(--stato-err-bg); color: var(--stato-err-ink); border-color: var(--stato-err-edge); }
+.p-tag.p-tag-info { background: var(--stato-info-bg); color: var(--stato-info-ink); }
+.p-tag.p-tag-secondary { background: var(--stato-none-bg); color: var(--stato-none-ink); }
+.p-tag.p-tag-contrast { background: var(--stato-todo-bg); color: var(--stato-todo-ink); border-color: var(--stato-todo-edge); }
+.p-tag .p-tag-icon { font-size: var(--font-size-xs); }
+.p-badge { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); background: var(--accent-fill); color: var(--on-accent); }
+.p-badge.p-badge-success { background: var(--stato-sent-bg); color: var(--stato-sent-ink); }
+.p-badge.p-badge-warning { background: var(--stato-warn-bg); color: var(--stato-warn-ink); }
+.p-badge.p-badge-danger { background: var(--color-danger); color: var(--text-inverse); }
+.p-badge.p-badge-info { background: var(--stato-info-bg); color: var(--stato-info-ink); }
+.p-badge.p-badge-secondary { background: var(--stato-none-bg); color: var(--stato-none-ink); }
+
+/* ===== Pannelli a comparsa: galleggiano, hanno ombra ===== */
+.p-dropdown-panel, .p-multiselect-panel, .p-menu, .p-overlaypanel, .p-tieredmenu, .p-contextmenu, .p-autocomplete-panel, .p-datepicker {
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md); border: 1px solid var(--surface-border);
+  background: var(--surface-overlay); color: var(--text-primary);
+}
+.p-datepicker:not(.p-datepicker-inline) { background: var(--surface-overlay); }
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight,
+.p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight { background: var(--selected); color: var(--brand-primary-dark); }
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item,
+.p-multiselect-panel .p-multiselect-items .p-multiselect-item { color: var(--text-primary); }
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover,
+.p-multiselect-panel .p-multiselect-items .p-multiselect-item:not(.p-highlight):not(.p-disabled):hover { background: var(--surface-hover); color: var(--text-primary); }
+.p-dropdown-panel .p-dropdown-header, .p-multiselect-panel .p-multiselect-header { background: var(--surface-overlay); border-bottom: 1px solid var(--surface-border); color: var(--text-primary); }
+.p-menu .p-menuitem .p-menuitem-link .p-menuitem-text,
+.p-menu .p-menuitem .p-menuitem-link .p-menuitem-icon { color: var(--text-primary); }
+
+/* Aura disegna anche una barra d'inchiostro nera di 1px: sopra la nostra linea teal farebbe un doppio segno. */
+.p-tabview .p-tabview-ink-bar, .p-tabmenu .p-tabmenu-ink-bar { display: none; }
+
+/* ===== Schede: la scheda attiva e' sottolineata di 2px in teal ===== */
+.p-tabview .p-tabview-nav { border-bottom: 1px solid var(--surface-border); background: transparent; }
+.p-tabview .p-tabview-nav li .p-tabview-nav-link { color: var(--text-secondary); font-weight: var(--font-weight-medium); background: transparent; border: 0; border-bottom: 2px solid transparent; }
+.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link { color: var(--text-primary); border-bottom-color: var(--tab-line); background: transparent; }
+.p-tabview .p-tabview-panels { background: transparent; color: var(--text-primary); }
+.p-tabmenu .p-tabmenu-nav { background: transparent; border-bottom: 1px solid var(--surface-border); }
+.p-tabmenu .p-tabmenu-nav .p-tabmenuitem .p-menuitem-link { background: transparent; color: var(--text-secondary); font-weight: var(--font-weight-medium); border: 0; border-bottom: 2px solid transparent; }
+.p-tabmenu .p-tabmenu-nav .p-tabmenuitem.p-highlight .p-menuitem-link { color: var(--text-primary); border-bottom-color: var(--tab-line); background: transparent; }
+
+/* ===== Toolbar: piatta, solo un filetto sotto ===== */
+.p-toolbar { background: var(--surface-card); border: 0; border-bottom: 1px solid var(--surface-border); border-radius: 0; padding: var(--spacing-md) var(--spacing-xl); }
+
+/* ===== Toast / Message: stesse coppie dei tag, il significato sta anche nell'icona ===== */
+.p-toast .p-toast-message { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+.p-toast .p-toast-message.p-toast-message-success { background: var(--stato-sent-bg); border-color: var(--stato-sent-ink); color: var(--stato-sent-ink); }
+.p-toast .p-toast-message.p-toast-message-info { background: var(--stato-info-bg); border-color: var(--stato-info-ink); color: var(--stato-info-ink); }
+.p-toast .p-toast-message.p-toast-message-warn { background: var(--stato-warn-bg); border-color: var(--stato-warn-ink); color: var(--stato-warn-ink); }
+.p-toast .p-toast-message.p-toast-message-error { background: var(--stato-err-bg); border-color: var(--stato-err-ink); color: var(--stato-err-ink); }
+.p-toast .p-toast-message .p-toast-message-content .p-toast-message-icon,
+.p-toast .p-toast-message .p-toast-icon-close { color: inherit; }
+.p-message { border-radius: var(--radius-md); }
+.p-message.p-message-success { background: var(--stato-sent-bg); border-color: var(--stato-sent-ink); color: var(--stato-sent-ink); }
+.p-message.p-message-info { background: var(--stato-info-bg); border-color: var(--stato-info-ink); color: var(--stato-info-ink); }
+.p-message.p-message-warn { background: var(--stato-warn-bg); border-color: var(--stato-warn-ink); color: var(--stato-warn-ink); }
+.p-message.p-message-error { background: var(--stato-err-bg); border-color: var(--stato-err-ink); color: var(--stato-err-ink); }
+.p-message .p-message-wrapper .p-message-icon, .p-message .p-message-close { color: inherit; }
+.p-inline-message { border-radius: var(--radius-base); }
+.p-inline-message.p-inline-message-success { background: var(--stato-sent-bg); color: var(--stato-sent-ink); }
+.p-inline-message.p-inline-message-info { background: var(--stato-info-bg); color: var(--stato-info-ink); }
+.p-inline-message.p-inline-message-warn { background: var(--stato-warn-bg); color: var(--stato-warn-ink); }
+.p-inline-message.p-inline-message-error { background: var(--stato-err-bg); color: var(--stato-err-ink); }
+
+/* ===== Progress: barre teal su binario grigio ===== */
+/* !important voluto: lo spinner anima `stroke` con una keyframe (rosso/blu/verde/giallo) che batte qualunque specificita'. */
+.p-progress-spinner-circle { stroke: var(--brand-primary) !important; }
+.p-progressbar { background: var(--color-gray-200); height: 0.5rem; border-radius: var(--radius-full); }
+.p-progressbar .p-progressbar-value { background: var(--brand-primary); }
+
+/* ===== Drawer (p-sidebar) e skeleton ===== */
+.p-sidebar { background: var(--surface-overlay); color: var(--text-primary); box-shadow: var(--shadow-xl); }
+.p-skeleton { background: var(--color-gray-100); }
+
+/* ===== Telefono: dialog quasi a tutto schermo ===== */
+@media (max-width: 576px) {
+  /* !important voluto: la larghezza del dialog arriva da [style] inline del componente. */
+  .p-dialog { width: 96vw !important; max-height: 92vh; margin: 0; }
+}
+@media (max-width: 768px) {
+  .p-toolbar { padding: var(--spacing-sm) var(--spacing-base); }
+  .p-card .p-card-body { padding: var(--spacing-base); }
+}

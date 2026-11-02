@@ -245,7 +245,7 @@ export function ordinaAziendePerGruppo(
           position="left"
           [modal]="true"
           [showCloseIcon]="true"
-          [style]="{ width: '17rem' }"
+          [style]="{ width: '18rem' }"
           styleClass="mobile-drawer"
           ariaCloseLabel="Chiudi il menu di navigazione"
         >
@@ -621,9 +621,11 @@ export function ordinaAziendePerGruppo(
        Mobile-first: di default singola colonna, la sidebar è il
        drawer p-sidebar; da ≥992px la sidebar diventa fissa.
        ============================================================ */
+      /* Cornice a L: sidebar e barra in alto condividono lo stesso fondo salvia
+         (--frame), senza riga fra loro; il lavoro sta sul foglio (.main). */
       .app-shell {
         min-height: 100vh;
-        background: var(--surface-ground);
+        background: var(--frame);
       }
 
       /* ===== Sidebar desktop (nascosta < 992px) ===== */
@@ -634,7 +636,7 @@ export function ordinaAziendePerGruppo(
       @media (min-width: 992px) {
         .app-shell {
           display: grid;
-          grid-template-columns: 17rem 1fr;
+          grid-template-columns: var(--sidebar-w) 1fr;
         }
         .sidebar {
           display: flex;
@@ -643,7 +645,6 @@ export function ordinaAziendePerGruppo(
           top: 0;
           height: 100vh;
           background: var(--sidebar-bg);
-          border-right: 1px solid var(--sidebar-border);
         }
       }
 
@@ -652,13 +653,12 @@ export function ordinaAziendePerGruppo(
         display: flex;
         align-items: center;
         gap: var(--spacing-md);
-        padding: var(--spacing-lg) var(--spacing-base);
+        height: var(--topbar-h);
+        padding: 0 var(--spacing-base);
+        margin-top: var(--spacing-sm);
         text-decoration: none;
-        border-bottom: 1px solid var(--sidebar-border);
-        transition: background var(--transition-fast);
       }
       .sidebar__brand:hover {
-        background: var(--sidebar-bg-2);
         text-decoration: none;
       }
       .sidebar__brand--drawer {
@@ -669,16 +669,15 @@ export function ordinaAziendePerGruppo(
       .sidebar__brand-mark {
         display: grid;
         place-items: center;
-        width: 2.5rem;
-        height: 2.5rem;
+        width: 2rem;
+        height: 2rem;
         flex-shrink: 0;
         border-radius: var(--radius-md);
-        background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-light));
+        background: var(--brand-primary);
         color: var(--text-inverse);
-        box-shadow: var(--shadow-sm);
       }
       .sidebar__brand-mark i {
-        font-size: 1.35rem;
+        font-size: 1.1rem;
       }
 
       .sidebar__brand-text {
@@ -689,10 +688,9 @@ export function ordinaAziendePerGruppo(
       }
       .sidebar__brand-name {
         font-family: var(--font-display);
-        font-size: var(--font-size-xl);
-        font-weight: var(--font-weight-bold);
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-semibold);
         color: var(--sidebar-ink-strong);
-        letter-spacing: -0.01em;
       }
       .sidebar__brand-tagline {
         font-size: var(--font-size-xs);
@@ -708,11 +706,12 @@ export function ordinaAziendePerGruppo(
         width: calc(100% - (var(--spacing-md) * 2));
         margin: var(--spacing-md) var(--spacing-md) 0;
         padding: var(--spacing-sm) var(--spacing-md);
-        border: 1px solid var(--sidebar-border);
+        border: 1px solid var(--frame-control-border);
         border-radius: var(--radius-md);
         background: var(--sidebar-bg-2);
         color: var(--sidebar-ink);
         text-align: left;
+        min-height: var(--control-lg);
         cursor: pointer;
         transition:
           background var(--transition-fast),
@@ -762,7 +761,7 @@ export function ordinaAziendePerGruppo(
         flex-shrink: 0;
       }
 
-      /* ===== Tenant switcher (SUPER_ADMIN) — coerente con sidebar scura ===== */
+      /* ===== Tenant switcher (SUPER_ADMIN) — coerente con la cornice salvia ===== */
       .tenant-switcher {
         display: flex;
         flex-direction: column;
@@ -771,16 +770,14 @@ export function ordinaAziendePerGruppo(
       }
       .tenant-switcher__label {
         font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
+        font-weight: var(--font-weight-medium);
         color: var(--sidebar-ink-muted);
       }
-      /* Override PrimeNG dropdown per renderlo leggibile sul fondo scuro */
+      /* Override PrimeNG dropdown per renderlo leggibile sulla cornice (bordo a 3:1) */
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown {
         width: 100%;
         background: var(--sidebar-bg-2);
-        border: 1px solid var(--sidebar-border);
+        border: 1px solid var(--frame-control-border);
         border-radius: var(--radius-md);
       }
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown:not(.p-disabled):hover {
@@ -830,13 +827,12 @@ export function ordinaAziendePerGruppo(
         padding: 0;
       }
 
+      /* Titolo di gruppo: grigio da 12px in minuscolo, come nella proposta. */
       .nav-group__title {
         font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
+        font-weight: var(--font-weight-medium);
         color: var(--sidebar-ink-muted);
-        margin: var(--spacing-lg) var(--spacing-md) var(--spacing-xs);
+        margin: var(--spacing-base) var(--spacing-md) var(--spacing-xs);
       }
 
       .nav-item {
@@ -844,8 +840,8 @@ export function ordinaAziendePerGruppo(
         display: flex;
         align-items: center;
         gap: var(--spacing-md);
-        padding: 0.625rem var(--spacing-md);
-        min-height: var(--touch-target-min);
+        padding: 0 var(--spacing-md);
+        min-height: 2rem;
         border-radius: var(--radius-md);
         color: var(--sidebar-ink);
         text-decoration: none;
@@ -856,65 +852,63 @@ export function ordinaAziendePerGruppo(
           color var(--transition-fast);
       }
       .nav-item:hover {
-        background: var(--sidebar-bg-2);
+        background: var(--sidebar-hover-bg);
         color: var(--sidebar-ink-strong);
         text-decoration: none;
       }
+      /* Su telefono (drawer) i target touch salgono a 44px. */
+      @media (max-width: 991.98px) {
+        .nav-item {
+          min-height: var(--touch-target-min);
+        }
+      }
 
       .nav-item__icon {
-        font-size: 1.15rem;
-        width: 1.35rem;
+        font-size: 1rem;
+        width: 1.25rem;
         text-align: center;
         flex-shrink: 0;
         color: var(--sidebar-ink-muted);
         transition: color var(--transition-fast);
-      }
-      .nav-item:hover .nav-item__icon {
-        color: var(--sidebar-active);
       }
       .nav-item__label {
         flex: 1;
         min-width: 0;
       }
 
-      /* Stato attivo: superficie teal tenue + barra teal + testo/icona teal */
-      .nav-item--active {
-        background: var(--sidebar-active-bg);
-        color: var(--sidebar-active);
-        font-weight: var(--font-weight-semibold);
-      }
+      /* Voce attiva: pillola grigio-salvia, testo scuro, solo l'icona e' teal. */
+      .nav-item--active,
       .nav-item--active:hover {
         background: var(--sidebar-active-bg);
-        color: var(--sidebar-active);
+        color: var(--sidebar-ink-strong);
+        font-weight: var(--font-weight-semibold);
+      }
+      /* Segnale non affidato alla tinta: barra teal di 2px a sinistra (5,6:1 sulla cornice). */
+      .nav-item--active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0.4rem;
+        bottom: 0.4rem;
+        width: 2px;
+        border-radius: var(--radius-full);
+        background: var(--sidebar-active);
       }
       .nav-item--active .nav-item__icon,
       .nav-item--active:hover .nav-item__icon {
         color: var(--sidebar-active);
       }
-      .nav-item--active::before {
-        content: '';
-        position: absolute;
-        left: -2px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 4px;
-        height: 1.4rem;
-        border-radius: var(--radius-full);
-        background: var(--sidebar-active);
-      }
 
       /* ===== Footer sidebar: utente + logout ===== */
       .sidebar__footer {
         padding: var(--spacing-md);
-        border-top: 1px solid var(--sidebar-border);
       }
       .user-card {
         display: flex;
         align-items: center;
         gap: var(--spacing-sm);
-        padding: var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-sm);
         border-radius: var(--radius-md);
-        background: var(--sidebar-bg-2);
       }
       .user-card__info {
         display: flex;
@@ -961,10 +955,10 @@ export function ordinaAziendePerGruppo(
         color: var(--sidebar-danger);
       }
 
-      /* L'avatar usa il brand (override styleClass PrimeNG); teal-700 per 5.47:1 con le iniziali bianche (AA). */
+      /* Avatar: teal di marca con le iniziali sopra (la specificita' di :host ::ng-deep batte quella di p-avatar). */
       :host ::ng-deep .user-card__avatar {
-        background: var(--brand-primary-dark) !important;
-        color: var(--text-inverse) !important;
+        background: var(--brand-primary);
+        color: var(--text-inverse);
         font-weight: var(--font-weight-semibold);
         font-family: var(--font-display);
       }
@@ -988,10 +982,9 @@ export function ordinaAziendePerGruppo(
         align-items: center;
         justify-content: space-between;
         gap: var(--spacing-base);
-        height: 4rem;
-        padding: 0 clamp(1rem, 2vw, var(--spacing-xl));
-        background: var(--surface-card);
-        border-bottom: 1px solid var(--surface-border);
+        height: var(--topbar-h);
+        padding: 0 var(--spacing-base);
+        background: var(--frame);
       }
       .topbar__start {
         display: flex;
@@ -1023,7 +1016,7 @@ export function ordinaAziendePerGruppo(
         font-size: 1.35rem;
       }
       .topbar__hamburger:hover {
-        background: var(--surface-hover);
+        background: var(--sidebar-hover-bg);
         color: var(--text-primary);
       }
 
@@ -1032,18 +1025,18 @@ export function ordinaAziendePerGruppo(
         align-items: center;
         gap: var(--spacing-sm);
         font-family: var(--font-display);
-        font-size: var(--font-size-lg);
-        font-weight: var(--font-weight-bold);
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-semibold);
         color: var(--text-primary);
       }
       .topbar__brand i {
         color: var(--brand-primary);
-        font-size: 1.35rem;
+        font-size: 1.15rem;
       }
 
       .topbar__title {
         font-family: var(--font-display);
-        font-size: var(--font-size-lg);
+        font-size: var(--font-size-base);
         font-weight: var(--font-weight-semibold);
         color: var(--text-primary);
         margin: 0;
@@ -1063,10 +1056,11 @@ export function ordinaAziendePerGruppo(
         gap: var(--spacing-sm);
         max-width: 18rem;
         padding: 0.25rem 0.75rem 0.25rem 0.25rem;
-        border: 1px solid var(--surface-border);
+        border: 1px solid var(--sidebar-border);
         border-radius: var(--radius-full);
+        background: var(--sidebar-bg-2);
         font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-semibold);
+        font-weight: var(--font-weight-medium);
         color: var(--text-primary);
         min-width: 0;
       }
@@ -1109,7 +1103,7 @@ export function ordinaAziendePerGruppo(
         font-size: 1.15rem;
       }
       .topbar__tema:hover {
-        background: var(--surface-hover);
+        background: var(--sidebar-hover-bg);
         color: var(--text-primary);
       }
 
@@ -1131,9 +1125,17 @@ export function ordinaAziendePerGruppo(
       }
 
       /* ===== Main ===== */
+      /* Il foglio: bianco, rientrato di 8px, bordo di 1px, raggio 16px, nessuna ombra.
+         Sotto i 992px la sidebar sparisce e il foglio occupa tutta la larghezza;
+         su telefono (<= 768px) diventa lo schermo intero. */
       .main {
         flex: 1;
+        min-width: 0;
         overflow-x: hidden;
+        margin: 0 var(--sheet-inset) var(--sheet-inset);
+        background: var(--sheet);
+        border: 1px solid var(--sheet-border);
+        border-radius: var(--radius-sheet);
       }
       .main:focus {
         outline: none;
@@ -1141,10 +1143,32 @@ export function ordinaAziendePerGruppo(
       .main__inner {
         max-width: 1600px;
         margin: 0 auto;
-        padding: clamp(1rem, 2.5vw, var(--spacing-xl));
+        padding: clamp(0.5rem, 1.5vw, var(--spacing-base));
+      }
+      @media (min-width: 992px) {
+        .main {
+          margin: 0 var(--sheet-inset) var(--sheet-inset) 0;
+        }
+      }
+      @media (max-width: 768px) {
+        .main {
+          margin: 0;
+          border-width: 1px 0 0;
+          border-radius: 0;
+        }
+        .main__inner {
+          padding: 0;
+        }
+      }
+      @media print {
+        .main {
+          margin: 0;
+          border: 0;
+          border-radius: 0;
+        }
       }
 
-      /* ===== Drawer mobile (p-sidebar) — scuro ===== */
+      /* ===== Drawer mobile (p-sidebar) — stessa cornice salvia ===== */
       :host ::ng-deep .mobile-drawer {
         background: var(--sidebar-bg);
         color: var(--sidebar-ink);
@@ -1157,13 +1181,12 @@ export function ordinaAziendePerGruppo(
       }
       :host ::ng-deep .mobile-drawer .p-sidebar-footer {
         padding: var(--spacing-sm) var(--spacing-base) var(--spacing-base);
-        border-top: 1px solid var(--sidebar-border);
       }
       :host ::ng-deep .mobile-drawer .sidebar__nav {
         padding: var(--spacing-sm) var(--spacing-xs);
         overflow: visible;
       }
-      /* Pulsante di chiusura del drawer leggibile su sfondo scuro */
+      /* Pulsante di chiusura del drawer leggibile sulla cornice */
       :host ::ng-deep .mobile-drawer .p-sidebar-close {
         color: var(--sidebar-ink);
       }
@@ -1191,7 +1214,7 @@ export function ordinaAziendePerGruppo(
         background: transparent;
         border-radius: var(--radius-md);
         color: var(--sidebar-danger);
-        font-weight: var(--font-weight-semibold);
+        font-weight: var(--font-weight-medium);
         font-size: var(--font-size-sm);
         cursor: pointer;
         transition:
