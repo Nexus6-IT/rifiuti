@@ -145,7 +145,7 @@ Senza `app.tenant_id` non si vede e non si scrive nulla (fail-closed).
   `EXISTS (SELECT 1 FROM roles r WHERE r.id = role_permissions.role_id)`). La subquery su `roles` e' filtrata
   dalla policy di `roles`, quindi col ruolo app si vedono e si scrivono solo righe di ruoli dell'azienda del
   contesto (senza contesto nessuna). Non ha `isolamento_azienda`: non ha la colonna.
-- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 64 tabelle (le piu recenti con la propria migration) e
+- **`sola_lettura` (pezzo 4, migration `20261026100000_rls_sola_lettura_controlli`):** su tutte le 64 tabelle (le piu' recenti con la propria migration) e
   su `role_permissions` c'e' anche `CREATE POLICY sola_lettura ... FOR SELECT TO wasteflow_lettura USING (true)`.
   `wasteflow_lettura` e' un ruolo di gruppo NOLOGIN senza password e senza BYPASSRLS: chi ne e' membro legge
   le righe di tutte le aziende senza contesto, ma non scrive (nessuna policy per INSERT/UPDATE/DELETE).

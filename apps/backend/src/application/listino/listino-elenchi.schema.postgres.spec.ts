@@ -582,6 +582,154 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
     })
   })
 
+  describe('CHECK strutturali della riga (ciascuno respinge il valore errato e accetta quello giusto)', () => {
+    let t: string
+    let e: string
+    let iva: string
+    let ad: string
+
+    beforeAll(async () => {
+      t = await azienda()
+      e = (await elenco(t)).id
+      iva = await codiceIva(t)
+      ad = await addebito(t)
+    })
+
+    /**
+     * Inserisce una riga con SQL esplicito. `cols` sovrascrive o aggiunge colonne con un'espressione
+     * SQL (solo valori scritti nei test). Il riferimento e' unico per chiamata, quindi l'unico della
+     * riga non scatta mai per caso.
+     */
+    function riga(tipo: string, cols: Record<string, string> = {}) {
+      const base: Record<string, string> = {
+        tenant_id: `'${t}'::uuid`,
+        elenco_id: `'${e}'::uuid`,
+        tipo: `'${tipo}'`,
+        cer_code: tipo === 'CER' ? `'20 03 01'` : 'NULL',
+        addebito_id: tipo === 'CER' ? 'NULL' : `'${ad}'::uuid`,
+        riferimento: `'R${++n}'`,
+        tipo_quantita: tipo === 'CER' || tipo === 'V' ? `'PESO_NETTO'` : 'NULL',
+        unita_misura: `'KG'`,
+        prezzo: '1',
+        codice_iva_id: `'${iva}'::uuid`,
+        updated_at: 'now()',
+        ...cols,
+      }
+      return comeApp(t, tx =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO righe_addebito (${Object.keys(base).join(', ')})
+           VALUES (${Object.values(base).join(', ')})`
+        )
+      )
+    }
+
+    const elementi = (quanti: number) =>
+      `ARRAY(SELECT 'x' FROM generate_series(1, ${quanti}))::varchar(20)[]`
+
+    it('riferimento vuoto o con spazio iniziale respinto (aggirerebbe l unico); NULL e "A" ammessi', async () => {
+      await expect(riga('CER', { riferimento: `''` })).rejects.toThrow(
+        /righe_addebito_riferimento_ammesso/
+      )
+      await expect(riga('CER', { riferimento: `' A'` })).rejects.toThrow(
+        /righe_addebito_riferimento_ammesso/
+      )
+      await expect(riga('CER', { riferimento: 'NULL', cer_code: `'20 01 01'` })).resolves.toBe(1)
+      await expect(riga('CER', { riferimento: `'A'` })).resolves.toBe(1)
+    })
+
+    it('unita di misura in minuscolo o con carattere non ammesso respinta; K/M ammessa', async () => {
+      await expect(riga('CER', { unita_misura: `'kg'` })).rejects.toThrow(
+        /righe_addebito_unita_misura_ammessa/
+      )
+      await expect(riga('CER', { unita_misura: `'K-G'` })).rejects.toThrow(
+        /righe_addebito_unita_misura_ammessa/
+      )
+      await expect(riga('CER', { unita_misura: `'K/M'` })).resolves.toBe(1)
+    })
+
+    it('tipo di quantita: presente su un tipo che non e CER o V respinto, assente su CER respinto, presente su V ammesso', async () => {
+      await expect(riga('F', { tipo_quantita: `'UNO'` })).rejects.toThrow(
+        /righe_addebito_tipo_quantita_coerente/
+      )
+      await expect(riga('CER', { tipo_quantita: 'NULL' })).rejects.toThrow(
+        /righe_addebito_tipo_quantita_coerente/
+      )
+      await expect(riga('V', { tipo_quantita: `'VOLUME'`, unita_misura: `'LT'` })).resolves.toBe(1)
+      await expect(riga('F')).resolves.toBe(1)
+    })
+
+    it('quantita fissa: su un tipo diverso da F respinta, negativa respinta, zero su F ammessa', async () => {
+      await expect(riga('CER', { quantita_fissa: '1' })).rejects.toThrow(
+        /righe_addebito_quantita_fissa_ammessa/
+      )
+      await expect(riga('F', { quantita_fissa: '-1' })).rejects.toThrow(
+        /righe_addebito_quantita_fissa_ammessa/
+      )
+      await expect(riga('F', { quantita_fissa: '0' })).resolves.toBe(1)
+    })
+
+    it('minimo fatturabile negativo respinto, zero ammesso', async () => {
+      await expect(riga('CER', { minimo_fatturabile: '-0.01' })).rejects.toThrow(
+        /righe_addebito_minimo_ammesso/
+      )
+      await expect(riga('CER', { minimo_fatturabile: '0' })).resolves.toBe(1)
+    })
+
+    it('stima annua negativa respinta, zero ammessa', async () => {
+      await expect(riga('CER', { stima_annua_kg: '-1' })).rejects.toThrow(
+        /righe_addebito_stima_annua_ammessa/
+      )
+      await expect(riga('CER', { stima_annua_kg: '0' })).resolves.toBe(1)
+    })
+
+    it('condizioni riferite: cifra 0, lettera sbagliata, senza lettera respinte; 12C ammessa', async () => {
+      for (const v of ['0C', '12X', '12']) {
+        await expect(riga('CER', { condizioni_riferite: `'${v}'` })).rejects.toThrow(
+          /righe_addebito_condizioni_riferite_ammesse/
+        )
+      }
+      await expect(riga('CER', { condizioni_riferite: `'12C'` })).resolves.toBe(1)
+    })
+
+    it('periodo delle scadenze inesistente respinto, MP ammesso', async () => {
+      await expect(riga('F', { periodo_scadenze: `'ZZ'` })).rejects.toThrow(
+        /righe_addebito_periodo_scadenze_ammesso/
+      )
+      await expect(riga('F', { periodo_scadenze: `'MP'` })).resolves.toBe(1)
+    })
+
+    it('periodo extra: una sola data respinta, fine prima dell inizio respinta, stesso giorno ammesso', async () => {
+      await expect(riga('F', { periodo_extra_dal: `'2026-01-01'` })).rejects.toThrow(
+        /righe_addebito_periodo_extra_coerente/
+      )
+      await expect(
+        riga('F', { periodo_extra_dal: `'2026-02-01'`, periodo_extra_al: `'2026-01-01'` })
+      ).rejects.toThrow(/righe_addebito_periodo_extra_coerente/)
+      await expect(
+        riga('F', { periodo_extra_dal: `'2026-01-01'`, periodo_extra_al: `'2026-01-01'` })
+      ).resolves.toBe(1)
+    })
+
+    it('proposte: 51 elementi o NULL respinti, 50 ammessi (CER proposti e addebiti proposti)', async () => {
+      await expect(riga('V', { cer_proposta: elementi(51) })).rejects.toThrow(
+        /righe_addebito_proposte_ammesse/
+      )
+      await expect(riga('CER', { addebiti_proposti: elementi(51) })).rejects.toThrow(
+        /righe_addebito_proposte_ammesse/
+      )
+      await expect(riga('V', { cer_proposta: 'NULL' })).rejects.toThrow(
+        /righe_addebito_proposte_ammesse/
+      )
+      await expect(riga('CER', { addebiti_proposti: 'NULL' })).rejects.toThrow(
+        /righe_addebito_proposte_ammesse/
+      )
+      await expect(
+        riga('V', { cer_proposta: elementi(50), tipo_quantita: `'UNO'`, unita_misura: `'NR'` })
+      ).resolves.toBe(1)
+      await expect(riga('CER', { addebiti_proposti: elementi(50) })).resolves.toBe(1)
+    })
+  })
+
   describe('scaglioni_riga_addebito', () => {
     it('fascia 8 e fascia 0 respinte, fascia 7 ammessa', async () => {
       const t = await azienda()
@@ -733,6 +881,16 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
         )
         expect({ tabella, n: viste[0].n }).toEqual({ tabella, n: 0 })
       }
+      // Senza contesto nemmeno una scrittura con il tenant giusto passa.
+      const k = await contratto(a)
+      await expect(
+        app.$executeRawUnsafe(
+          `INSERT INTO elenchi_addebiti (tenant_id, contratto_id, codice, descrizione, updated_at)
+           VALUES ($1::uuid, $2::uuid, '001', 'x', now())`,
+          a,
+          k
+        )
+      ).rejects.toThrow(/row-level security/)
     })
 
     it('cancellare il tenant cancella le cinque tabelle', async () => {
@@ -753,72 +911,127 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
   })
 
   describe('nomi di vincoli e indici (R38)', () => {
-    // Elenchi attesi, scritti a mano: un nome diverso (o troncato dai 63 caratteri di Postgres, che
-    // non lo segnala) fa fallire il confronto. Includono quelli della 4.2a.
+    // Insiemi COMPLETI, scritti a mano, delle tabelle del listino (4.2a e 4.2b): un nome in piu',
+    // mancante o diverso fa fallire il confronto. Il controllo sulla lunghezza dei nomi non serve:
+    // Postgres tronca a 63 caratteri senza errore, quindi un nome troppo lungo si vede solo qui,
+    // perche' diverso da quello atteso.
+    const TABELLE_LISTINO = [
+      'codici_iva',
+      'codifiche_addebito',
+      'addebiti',
+      'prezzi_listino_addebito',
+      ...CINQUE_TABELLE,
+    ]
     const indiciAttesi = [
-      // 4.2a
-      'codici_iva_tenant_id_codice_key',
-      'codifiche_addebito_tenant_id_genere_codice_key',
+      'addebiti_id_tenant_id_key',
+      'addebiti_pkey',
       'addebiti_tenant_id_codice_key',
-      'prezzi_listino_addebito_addebito_id_numero_key',
-      // 4.2b
-      'elenchi_addebiti_id_tenant_id_key',
-      'elenchi_addebiti_contratto_id_codice_key',
-      'elenchi_addebiti_tenant_id_contratto_id_idx',
-      'allegati_elenco_addebiti_id_tenant_id_key',
+      'addebiti_tenant_id_idx',
       'allegati_elenco_addebiti_elenco_id_posizione_key',
+      'allegati_elenco_addebiti_id_tenant_id_key',
+      'allegati_elenco_addebiti_pkey',
       'allegati_elenco_addebiti_tenant_id_idx',
-      'righe_addebito_id_tenant_id_key',
+      'codici_iva_id_tenant_id_key',
+      'codici_iva_pkey',
+      'codici_iva_tenant_id_codice_key',
+      'codici_iva_tenant_id_idx',
+      'codifiche_addebito_id_tenant_id_key',
+      'codifiche_addebito_pkey',
+      'codifiche_addebito_tenant_id_genere_codice_key',
+      'codifiche_addebito_tenant_id_idx',
+      'elenchi_addebiti_contratto_id_codice_key',
+      'elenchi_addebiti_id_tenant_id_key',
+      'elenchi_addebiti_pkey',
+      'elenchi_addebiti_tenant_id_contratto_id_idx',
+      'prezzi_listino_addebito_addebito_id_numero_key',
+      'prezzi_listino_addebito_pkey',
+      'prezzi_listino_addebito_tenant_id_idx',
       'righe_addebito_elenco_tipo_cer_addebito_rif_key',
+      'righe_addebito_id_tenant_id_key',
+      'righe_addebito_pkey',
       'righe_addebito_tenant_id_addebito_id_idx',
-      'righe_addebito_tenant_id_codice_iva_id_idx',
       'righe_addebito_tenant_id_categoria_id_idx',
       'righe_addebito_tenant_id_centro_ricavo_id_idx',
-      'scaglioni_riga_addebito_riga_id_ordine_key',
-      'scaglioni_riga_addebito_tenant_id_idx',
+      'righe_addebito_tenant_id_codice_iva_id_idx',
+      'scadenze_riga_addebito_pkey',
       'scadenze_riga_addebito_riga_id_ordine_key',
       'scadenze_riga_addebito_tenant_id_idx',
+      'scaglioni_riga_addebito_pkey',
+      'scaglioni_riga_addebito_riga_id_ordine_key',
+      'scaglioni_riga_addebito_tenant_id_idx',
     ]
     const fkAttese = [
-      // 4.2a
-      'addebiti_tenant_id_fkey',
-      'addebiti_gruppo_fkey',
-      'addebiti_codice_iva_fkey',
       'addebiti_categoria_fkey',
-      'addebiti_centro_ricavo_fkey',
       'addebiti_categoria_statistica_1_fkey',
       'addebiti_categoria_statistica_2_fkey',
-      'prezzi_listino_addebito_tenant_id_fkey',
-      'prezzi_listino_addebito_addebito_fkey',
-      // 4.2b
-      'elenchi_addebiti_tenant_id_fkey',
-      'elenchi_addebiti_contratto_fkey',
-      'allegati_elenco_addebiti_tenant_id_fkey',
+      'addebiti_centro_ricavo_fkey',
+      'addebiti_codice_iva_fkey',
+      'addebiti_gruppo_fkey',
+      'addebiti_tenant_id_fkey',
       'allegati_elenco_addebiti_elenco_fkey',
-      'righe_addebito_tenant_id_fkey',
-      'righe_addebito_elenco_fkey',
+      'allegati_elenco_addebiti_tenant_id_fkey',
+      'codici_iva_tenant_id_fkey',
+      'codifiche_addebito_tenant_id_fkey',
+      'elenchi_addebiti_contratto_fkey',
+      'elenchi_addebiti_tenant_id_fkey',
+      'prezzi_listino_addebito_addebito_fkey',
+      'prezzi_listino_addebito_tenant_id_fkey',
       'righe_addebito_addebito_fkey',
-      'righe_addebito_codice_iva_fkey',
       'righe_addebito_categoria_fkey',
       'righe_addebito_centro_ricavo_fkey',
-      'scaglioni_riga_addebito_tenant_id_fkey',
-      'scaglioni_riga_addebito_riga_fkey',
-      'scadenze_riga_addebito_tenant_id_fkey',
+      'righe_addebito_codice_iva_fkey',
+      'righe_addebito_elenco_fkey',
+      'righe_addebito_tenant_id_fkey',
       'scadenze_riga_addebito_riga_fkey',
+      'scadenze_riga_addebito_tenant_id_fkey',
+      'scaglioni_riga_addebito_riga_fkey',
+      'scaglioni_riga_addebito_tenant_id_fkey',
+    ]
+    const checkAttesi = [
+      'allegati_elenco_addebiti_valori',
+      'elenchi_addebiti_codice_ammesso',
+      'elenchi_addebiti_documento_pa_coerente',
+      'elenchi_addebiti_validita_coerente',
+      'elenchi_addebiti_versione_positiva',
+      'righe_addebito_addebito_coerente',
+      'righe_addebito_cer_coerente',
+      'righe_addebito_condizione_ammessa',
+      'righe_addebito_condizioni_riferite_ammesse',
+      'righe_addebito_minimo_ammesso',
+      'righe_addebito_periodo_extra_coerente',
+      'righe_addebito_periodo_scadenze_ammesso',
+      'righe_addebito_prezzo_ammesso',
+      'righe_addebito_prezzo_presente',
+      'righe_addebito_proposte_ammesse',
+      'righe_addebito_quantita_fissa_ammessa',
+      'righe_addebito_riferimento_ammesso',
+      'righe_addebito_riferimento_giorno_ammesso',
+      'righe_addebito_riferimento_mese_ammesso',
+      'righe_addebito_speciale_senza_minimo',
+      'righe_addebito_stima_annua_ammessa',
+      'righe_addebito_tipo_ammesso',
+      'righe_addebito_tipo_quantita_coerente',
+      'righe_addebito_unita_misura_ammessa',
+      'righe_addebito_versione_positiva',
+      'scadenze_riga_addebito_valori',
+      'scaglioni_riga_addebito_fino_a_ammesso',
+      'scaglioni_riga_addebito_ordine_ammesso',
+      'scaglioni_riga_addebito_prezzo_ammesso',
+      'scaglioni_riga_addebito_tipo_calcolo_ammesso',
     ]
 
-    it('gli indici e gli unici attesi esistono con il nome dello schema', async () => {
+    it('gli indici delle tabelle del listino sono esattamente quelli attesi', async () => {
       const r = await owner.$queryRawUnsafe<{ indexname: string }[]>(
-        `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = ANY($1::text[])`,
-        indiciAttesi
+        `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = ANY($1::text[])
+         ORDER BY 1`,
+        TABELLE_LISTINO
       )
-      expect(r.map(x => x.indexname).sort()).toEqual([...indiciAttesi].sort())
+      expect(r.map(x => x.indexname)).toEqual([...indiciAttesi].sort())
       // Nessun indice parziale sulle tabelle del listino.
       const parziali = await owner.$queryRawUnsafe<{ indexname: string }[]>(
         `SELECT indexname FROM pg_indexes
-         WHERE schemaname = 'public' AND indexdef LIKE '% WHERE %'
-           AND tablename = ANY($1::text[])`,
-        CINQUE_TABELLE
+         WHERE schemaname = 'public' AND indexdef LIKE '% WHERE %' AND tablename = ANY($1::text[])`,
+        TABELLE_LISTINO
       )
       expect(parziali).toEqual([])
     })
@@ -831,16 +1044,22 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
       expect(r[0].indexdef).toContain('NULLS NOT DISTINCT')
     })
 
-    it('le chiavi esterne attese esistono con il nome dello schema', async () => {
-      const r = await owner.$queryRawUnsafe<{ conname: string }[]>(
-        `SELECT conname FROM pg_constraint WHERE contype = 'f' AND conname = ANY($1::text[])`,
-        fkAttese
-      )
-      expect(r.map(x => x.conname).sort()).toEqual([...fkAttese].sort())
-      const lunghi = await owner.$queryRawUnsafe<{ conname: string }[]>(
-        `SELECT conname FROM pg_constraint WHERE length(conname) > 63`
-      )
-      expect(lunghi).toEqual([])
+    const vincoliDi = (tipo: 'f' | 'c', tabelle: string[]) =>
+      owner
+        .$queryRawUnsafe<{ conname: string }[]>(
+          `SELECT c.conname FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid
+           WHERE c.contype = $1 AND r.relname = ANY($2::text[]) ORDER BY 1`,
+          tipo,
+          tabelle
+        )
+        .then(r => r.map(x => x.conname))
+
+    it('le chiavi esterne delle tabelle del listino sono esattamente quelle attese', async () => {
+      expect(await vincoliDi('f', TABELLE_LISTINO)).toEqual([...fkAttese].sort())
+    })
+
+    it('i CHECK delle cinque tabelle nuove sono esattamente quelli attesi', async () => {
+      expect(await vincoliDi('c', CINQUE_TABELLE)).toEqual([...checkAttesi].sort())
     })
   })
 })

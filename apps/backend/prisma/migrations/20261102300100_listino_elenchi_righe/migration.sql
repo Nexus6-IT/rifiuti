@@ -14,6 +14,9 @@
 -- allegati -> elenco, fasce e scadenze -> riga); 6. RLS ENABLE + FORCE con le policy
 -- `isolamento_azienda` e `sola_lettura`, stessa forma della migration precedente.
 --
+-- Il riferimento vuoto si scrive NULL, mai '' (CHECK `righe_addebito_riferimento_ammesso`, che vieta
+-- anche lo spazio iniziale): Postgres tratta NULL e '' come valori diversi anche con NULLS NOT
+-- DISTINCT, quindi '' aggirerebbe l'unico.
 -- L'unico della riga (`righe_addebito_elenco_tipo_cer_addebito_rif_key`) e' `NULLS NOT DISTINCT`
 -- (PostgreSQL 15+, come `giacenze_iniziali`): due righe con lo stesso CER e lo stesso riferimento
 -- nullo sono un duplicato. Prisma non rappresenta la clausola e non la confronta: il `@@unique`
@@ -142,6 +145,7 @@ CREATE TABLE "righe_addebito" (
     CONSTRAINT "righe_addebito_tipo_ammesso" CHECK ("tipo" ~ '^(CER|V|F|T[SPRQTF]|T[0-9]{3}|N[MPGR]|M[FW]|M[0-9]{3}|[$][ADR])$'),
     CONSTRAINT "righe_addebito_cer_coerente" CHECK (("tipo" = 'CER') = ("cer_code" IS NOT NULL)),
     CONSTRAINT "righe_addebito_addebito_coerente" CHECK (("tipo" = 'CER') = ("addebito_id" IS NULL)),
+    CONSTRAINT "righe_addebito_riferimento_ammesso" CHECK ("riferimento" IS NULL OR "riferimento" ~ '^[^ ]'),
     CONSTRAINT "righe_addebito_unita_misura_ammessa" CHECK ("unita_misura" ~ '^[A-Z0-9/%#]{1,3}$'),
     CONSTRAINT "righe_addebito_tipo_quantita_coerente" CHECK (("tipo" IN ('CER', 'V')) = ("tipo_quantita" IS NOT NULL)),
     CONSTRAINT "righe_addebito_quantita_fissa_ammessa" CHECK ("quantita_fissa" IS NULL OR ("tipo" = 'F' AND "quantita_fissa" >= 0)),

@@ -3640,6 +3640,7 @@ model RigaAddebito {
   scadenze  ScadenzaRigaAddebito[]
 
   @@unique([id, tenantId], map: "righe_addebito_id_tenant_id_key")
+  // ATTENZIONE: il client genera `elencoId_tipo_cerCode_addebitoId_riferimento` con tutti i campi obbligatori, ma ogni riga ha `cerCode` oppure `addebitoId` nullo: `findUnique` e `upsert` su questa chiave NON si possono usare. Il duplicato si cerca con `findFirst` e si gestisce con P2002 (con la RLS `meta.target` e' nullo, D23).
   @@unique([elencoId, tipo, cerCode, addebitoId, riferimento], map: "righe_addebito_elenco_tipo_cer_addebito_rif_key")
   @@index([tenantId, addebitoId], map: "righe_addebito_tenant_id_addebito_id_idx")
   @@index([tenantId, codiceIvaId], map: "righe_addebito_tenant_id_codice_iva_id_idx")
