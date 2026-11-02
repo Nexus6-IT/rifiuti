@@ -1,4 +1,15 @@
 import {
+  CAMPI_PER_FAMIGLIA,
+  CampoRiga,
+  ETICHETTE_APPLICA_A,
+  ETICHETTE_PERIODO_SCADENZE,
+  ETICHETTE_TIPO_CALCOLO,
+  ETICHETTE_TIPO_QUANTITA,
+  OPZIONI_APPLICA_A,
+  OPZIONI_TIPO_CALCOLO,
+  OPZIONI_TIPO_QUANTITA,
+  PERIODI_EXTRA,
+  campoAbilitato,
   CONCORDANZA_GENERE_ADDEBITO,
   ETICHETTE_FAMIGLIA,
   ETICHETTE_GENERE_ADDEBITO,
@@ -131,5 +142,129 @@ describe('vocabolario listino', () => {
   it('tipi di provvigione e di variazione', () => {
     expect(Object.keys(ETICHETTE_TIPO_PROVVIGIONE)).toEqual(['SCONTATO', 'LORDO'])
     expect(Object.keys(ETICHETTE_TIPO_VARIAZIONE).length).toBe(5)
+  })
+
+  describe('campi per famiglia (D9)', () => {
+    const solo = (f: keyof typeof CAMPI_PER_FAMIGLIA, ...altre: CampoRiga[]) =>
+      altre.every(c => !CAMPI_PER_FAMIGLIA[f].includes(c))
+
+    it('ogni famiglia ha i campi comuni e nessun doppione', () => {
+      for (const f of Object.keys(CAMPI_PER_FAMIGLIA) as (keyof typeof CAMPI_PER_FAMIGLIA)[]) {
+        const campi = CAMPI_PER_FAMIGLIA[f]
+        expect(new Set(campi).size).withContext(f).toBe(campi.length)
+        for (const c of ['tipo', 'unitaMisura', 'prezzo', 'codiceIvaId', 'appunti'] as CampoRiga[])
+          expect(campi).withContext(`${f} ${c}`).toContain(c)
+      }
+    })
+
+    it("CER: il CER e non l'addebito; V, F, T, N, M e $: l'addebito e non il CER", () => {
+      expect(CAMPI_PER_FAMIGLIA.CER).toContain('cerCode')
+      expect(CAMPI_PER_FAMIGLIA.CER).not.toContain('addebitoId')
+      for (const f of [
+        'VARIABILE',
+        'FISSO',
+        'QUANTITA_MOVIMENTI',
+        'CONTEGGIO',
+        'MINIMO',
+        'ACCONTO',
+      ] as const) {
+        expect(CAMPI_PER_FAMIGLIA[f]).toContain('addebitoId')
+        expect(CAMPI_PER_FAMIGLIA[f]).not.toContain('cerCode')
+      }
+    })
+
+    it('tipo di quantità solo per CER e V; quantità fissa e scadenze solo per F', () => {
+      expect(CAMPI_PER_FAMIGLIA.CER).toContain('tipoQuantita')
+      expect(CAMPI_PER_FAMIGLIA.VARIABILE).toContain('tipoQuantita')
+      expect(CAMPI_PER_FAMIGLIA.FISSO).toContain('quantitaFissa')
+      expect(CAMPI_PER_FAMIGLIA.FISSO).toContain('scadenze')
+      for (const f of ['QUANTITA_MOVIMENTI', 'CONTEGGIO', 'MINIMO', 'ACCONTO'] as const)
+        expect(solo(f, 'tipoQuantita', 'quantitaFissa', 'scadenze'))
+          .withContext(f)
+          .toBeTrue()
+    })
+
+    it('stato fisico, operazione, tipologia e CER proposti: CER; CER di proposta: V', () => {
+      for (const c of [
+        'statoFisico',
+        'operazione',
+        'tipologiaRifiuto',
+        'addebitiProposti',
+      ] as const)
+        expect(CAMPI_PER_FAMIGLIA.CER).toContain(c)
+      expect(CAMPI_PER_FAMIGLIA.VARIABILE).toContain('cerProposta')
+      expect(CAMPI_PER_FAMIGLIA.CER).not.toContain('cerProposta')
+      expect(solo('FISSO', 'statoFisico', 'operazione', 'tipologiaRifiuto')).toBeTrue()
+    })
+
+    it('fasce: CER, V, T e N; condizione anche in F; minimo solo CER e V', () => {
+      for (const f of ['CER', 'VARIABILE', 'QUANTITA_MOVIMENTI', 'CONTEGGIO'] as const) {
+        expect(CAMPI_PER_FAMIGLIA[f]).toContain('scaglioni')
+        expect(CAMPI_PER_FAMIGLIA[f]).toContain('applicaA')
+        expect(CAMPI_PER_FAMIGLIA[f]).toContain('condizioniRiferite')
+      }
+      expect(CAMPI_PER_FAMIGLIA.FISSO).toContain('condizione')
+      expect(CAMPI_PER_FAMIGLIA.FISSO).not.toContain('scaglioni')
+      expect(CAMPI_PER_FAMIGLIA.MINIMO).not.toContain('condizione')
+      expect(CAMPI_PER_FAMIGLIA.ACCONTO).not.toContain('scaglioni')
+      expect(CAMPI_PER_FAMIGLIA.CER).toContain('minimoFatturabile')
+      expect(CAMPI_PER_FAMIGLIA.VARIABILE).toContain('minimoPerCategoria')
+      expect(CAMPI_PER_FAMIGLIA.CONTEGGIO).not.toContain('minimoFatturabile')
+    })
+
+    it('periodo delle scadenze e periodo extra solo per F', () => {
+      for (const c of ['periodoScadenze', 'periodoExtraDal', 'periodoExtraAl'] as const) {
+        expect(CAMPI_PER_FAMIGLIA.FISSO).toContain(c)
+        expect(CAMPI_PER_FAMIGLIA.CER).not.toContain(c)
+      }
+    })
+
+    it('campoAbilitato e la famiglia di un tipo', () => {
+      expect(campoAbilitato(famigliaTipo('F'), 'quantitaFissa')).toBeTrue()
+      expect(campoAbilitato(famigliaTipo('V'), 'quantitaFissa')).toBeFalse()
+      expect(campoAbilitato(famigliaTipo('M020'), 'prezzo')).toBeTrue()
+    })
+  })
+
+  describe('liste dei menu (E13, E15, R50, D14)', () => {
+    it('tipi di quantità (E15)', () => {
+      expect(OPZIONI_TIPO_QUANTITA.map(o => o.value)).toEqual([
+        'PESO_NETTO',
+        'PESO_LORDO',
+        'VOLUME',
+        'UNO',
+        'ALTRO',
+      ])
+      expect(ETICHETTE_TIPO_QUANTITA.PESO_NETTO).toBe('Peso netto')
+    })
+
+    it('"applica a" con le cinque voci di E13', () => {
+      expect(OPZIONI_APPLICA_A.length).toBe(5)
+      expect(ETICHETTE_APPLICA_A.CONGUAGLIO_365).toContain('365')
+    })
+
+    it('tipi di calcolo: dieci, E e H dicono "tutta la quantità" senza fasce precedenti (R50)', () => {
+      expect(OPZIONI_TIPO_CALCOLO.map(o => o.value)).toEqual([
+        'A',
+        'B',
+        'C',
+        'D',
+        'E',
+        'X',
+        'Y',
+        'Z',
+        'W',
+        'H',
+      ])
+      expect(ETICHETTE_TIPO_CALCOLO.E).toContain('tutta la quantità')
+      expect(ETICHETTE_TIPO_CALCOLO.E).toContain('come D')
+      expect(ETICHETTE_TIPO_CALCOLO.H).toContain('come E')
+    })
+
+    it('periodi delle scadenze: 13 ordinari e 3 extra', () => {
+      expect(Object.keys(ETICHETTE_PERIODO_SCADENZE).length).toBe(16)
+      expect(PERIODI_EXTRA).toEqual(['XA', 'XD', 'YC'])
+      for (const p of PERIODI_EXTRA) expect(ETICHETTE_PERIODO_SCADENZE[p]).toBeTruthy()
+    })
   })
 })

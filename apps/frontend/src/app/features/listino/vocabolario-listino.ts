@@ -1,8 +1,16 @@
-// Vocabolario del listino (4.2a, Task 12). Le etichette dei tipi di addebito, le famiglie e le
-// nature IVA sono copiate da `apps/backend/src/domain/listino/{tipi-addebito,codice-iva}.ts`:
-// quelle sono la fonte di verità, qui non si inventa niente. La tabella campo x famiglia (D9)
-// arriva con il Task 26 (R16).
-import { GenereCodificaAddebito, TipoProvvigione, TipoVariazione } from './listino.model'
+// Vocabolario del listino (4.2a Task 12, 4.2b Task 26). Il dominio (`apps/backend/src/domain/
+// listino/{tipi-addebito,codice-iva}.ts`) è la fonte di verità per le forme dei tipi e le regole;
+// le etichette (famiglie, nature IVA, tipi di quantità, "applica a", tipi di calcolo, periodi)
+// sono scritte qui perché il dominio non le ha. Dal Task 26 ci sono anche la tabella campo x
+// famiglia (D9, R16, R48) e le liste per i menu: il backend resta l'arbitro delle regole.
+import {
+  ApplicaPrezzoSpeciale,
+  GenereCodificaAddebito,
+  TipoCalcoloScaglione,
+  TipoProvvigione,
+  TipoQuantita,
+  TipoVariazione,
+} from './listino.model'
 
 export type FamigliaAddebito =
   | 'CER'
@@ -177,3 +185,195 @@ export const ETICHETTE_TIPO_VARIAZIONE: Readonly<Record<TipoVariazione, string>>
   DIMINUZIONE_IMPORTO: 'Diminuzione di un importo',
   SOSTITUZIONE_IVA: 'Sostituzione del codice IVA',
 }
+
+// --- Riga di addebito (4.2b, Task 26) ----------------------------------------------------------
+
+/** Chiavi dei campi di una riga, nell'ordine di D9 (Task 17 del backend, `CampoRiga`). */
+export type CampoRiga =
+  | 'tipo'
+  | 'cerCode'
+  | 'addebitoId'
+  | 'riferimento'
+  | 'descrizione'
+  | 'tipoQuantita'
+  | 'quantitaFissa'
+  | 'unitaMisura'
+  | 'prezzo'
+  | 'prezzoSpeciale'
+  | 'sconto'
+  | 'codiceIvaId'
+  | 'provvigione'
+  | 'tipoProvvigione'
+  | 'tipologiaRifiuto'
+  | 'statoFisico'
+  | 'operazione'
+  | 'categoriaId'
+  | 'centroRicavoId'
+  | 'applicaA'
+  | 'condizione'
+  | 'condizioniRiferite'
+  | 'minimoFatturabile'
+  | 'minimoPerCategoria'
+  | 'riferimentoGiorno'
+  | 'riferimentoMese'
+  | 'periodoScadenze'
+  | 'periodoExtraDal'
+  | 'periodoExtraAl'
+  | 'stimaAnnuaKg'
+  | 'cerProposta'
+  | 'addebitiProposti'
+  | 'appunti'
+  | 'notaUsoInterno'
+  | 'scaglioni'
+  | 'scadenze'
+
+const COMUNI_CER: readonly CampoRiga[] = [
+  'tipo',
+  'riferimento',
+  'descrizione',
+  'unitaMisura',
+  'prezzo',
+  'prezzoSpeciale',
+  'sconto',
+  'codiceIvaId',
+  'provvigione',
+  'tipoProvvigione',
+  'categoriaId',
+  'centroRicavoId',
+  'appunti',
+  'notaUsoInterno',
+]
+
+const COMUNI_ARCHIVIO: readonly CampoRiga[] = [...COMUNI_CER, 'addebitoId']
+
+const FASCE: readonly CampoRiga[] = ['scaglioni', 'applicaA', 'condizioniRiferite']
+const DATA_RIFERIMENTO: readonly CampoRiga[] = ['riferimentoGiorno', 'riferimentoMese']
+
+const T_N: readonly CampoRiga[] = [...COMUNI_ARCHIVIO, ...FASCE, 'condizione', ...DATA_RIFERIMENTO]
+
+/**
+ * Campi che valgono per ogni famiglia (tabella di D9, copia di `CAMPI_PER_FAMIGLIA` del Task 17).
+ * Serve solo ad abilitare i campi del form: un campo fuori famiglia si svuota e sparisce, ma se
+ * arriva comunque al backend questo risponde 400 con il campo (R36).
+ */
+export const CAMPI_PER_FAMIGLIA: Readonly<Record<FamigliaAddebito, readonly CampoRiga[]>> = {
+  CER: [
+    ...COMUNI_CER,
+    'cerCode',
+    'tipoQuantita',
+    'tipologiaRifiuto',
+    'statoFisico',
+    'operazione',
+    'addebitiProposti',
+    'stimaAnnuaKg',
+    ...FASCE,
+    'condizione',
+    'minimoFatturabile',
+    'minimoPerCategoria',
+    ...DATA_RIFERIMENTO,
+  ],
+  VARIABILE: [
+    ...COMUNI_ARCHIVIO,
+    'tipoQuantita',
+    'cerProposta',
+    'stimaAnnuaKg',
+    ...FASCE,
+    'condizione',
+    'minimoFatturabile',
+    'minimoPerCategoria',
+    ...DATA_RIFERIMENTO,
+  ],
+  FISSO: [
+    ...COMUNI_ARCHIVIO,
+    'quantitaFissa',
+    'condizione',
+    'periodoScadenze',
+    'periodoExtraDal',
+    'periodoExtraAl',
+    'scadenze',
+  ],
+  QUANTITA_MOVIMENTI: T_N,
+  CONTEGGIO: T_N,
+  MINIMO: COMUNI_ARCHIVIO,
+  ACCONTO: COMUNI_ARCHIVIO,
+}
+
+export function campoAbilitato(famiglia: FamigliaAddebito, campo: CampoRiga): boolean {
+  return CAMPI_PER_FAMIGLIA[famiglia].includes(campo)
+}
+
+/** E15: tipo di quantità delle righe `CER` e `V`. */
+export const ETICHETTE_TIPO_QUANTITA: Readonly<Record<TipoQuantita, string>> = {
+  PESO_NETTO: 'Peso netto',
+  PESO_LORDO: 'Peso lordo',
+  VOLUME: 'Volume',
+  UNO: 'Sempre 1',
+  ALTRO: 'Altro (si indica nel documento)',
+}
+
+export const OPZIONI_TIPO_QUANTITA = (Object.keys(ETICHETTE_TIPO_QUANTITA) as TipoQuantita[]).map(
+  value => ({ value, label: ETICHETTE_TIPO_QUANTITA[value] })
+)
+
+/** E13: a cosa si applica il prezzo speciale. */
+export const ETICHETTE_APPLICA_A: Readonly<Record<ApplicaPrezzoSpeciale, string>> = {
+  DOCUMENTO: 'A ogni singolo documento',
+  PERIODO: 'Al totale del periodo di fatturazione',
+  PROGRESSIVO_DA_DATA: 'Al totale progressivo dalla data indicata',
+  CONGUAGLIO_365: '365 giorni prima della data di conguaglio',
+  GIORNO: 'Al totale di ogni singolo giorno movimentato',
+}
+
+export const OPZIONI_APPLICA_A = (Object.keys(ETICHETTE_APPLICA_A) as ApplicaPrezzoSpeciale[]).map(
+  value => ({ value, label: ETICHETTE_APPLICA_A[value] })
+)
+
+/**
+ * Tipi di calcolo delle fasce. `E` e `H` fatturano tutta la quantità al prezzo dell'ultima fascia,
+ * come `D`, e non lasciano le righe delle fasce precedenti (R29, R50): nessuna quantità si
+ * fattura due volte. Le descrizioni complete con i casi arrivano con il Task 28.
+ */
+export const ETICHETTE_TIPO_CALCOLO: Readonly<Record<TipoCalcoloScaglione, string>> = {
+  A: 'A - quantità di ogni fascia al prezzo della fascia, in progressione',
+  B: 'B - importo fisso della fascia più alta raggiunta',
+  C: 'C - importo fisso di ogni fascia raggiunta',
+  D: 'D - tutta la quantità al prezzo della fascia raggiunta',
+  E: "E - tutta la quantità al prezzo dell'ultima fascia (come D)",
+  X: 'X - come A, con condizione',
+  Y: 'Y - come B, con condizione',
+  Z: 'Z - come C, con condizione',
+  W: 'W - come D, con condizione',
+  H: 'H - come E, con condizione',
+}
+
+export const OPZIONI_TIPO_CALCOLO = (
+  Object.keys(ETICHETTE_TIPO_CALCOLO) as TipoCalcoloScaglione[]
+).map(value => ({ value, label: ETICHETTE_TIPO_CALCOLO[value] }))
+
+/** Periodo cui si riferisce ogni scadenza di un addebito fisso (D14); `X…` e `YC` sono extra. */
+export const ETICHETTE_PERIODO_SCADENZE: Readonly<Record<string, string>> = {
+  MP: '1 mese posticipato',
+  BA: '2 mesi anticipato',
+  BP: '2 mesi posticipato',
+  TA: '3 mesi anticipato',
+  TP: '3 mesi posticipato',
+  QA: '4 mesi anticipato',
+  QP: '4 mesi posticipato',
+  SA: '6 mesi anticipato',
+  SP: '6 mesi posticipato',
+  AA: '12 mesi anticipato',
+  AP: '12 mesi posticipato',
+  DA: '24 mesi anticipato',
+  DP: '24 mesi posticipato',
+  XA: 'Scadenza extra aggiuntiva',
+  XD: 'Scadenza extra, detrazione',
+  YC: 'Scadenza extra, nota di credito',
+}
+
+export const OPZIONI_PERIODO_SCADENZE = Object.keys(ETICHETTE_PERIODO_SCADENZE).map(value => ({
+  value,
+  label: `${value} - ${ETICHETTE_PERIODO_SCADENZE[value]}`,
+}))
+
+/** Periodi extra: richiedono il periodo "dal ... al ..." scritto a parte. */
+export const PERIODI_EXTRA: readonly string[] = ['XA', 'XD', 'YC']

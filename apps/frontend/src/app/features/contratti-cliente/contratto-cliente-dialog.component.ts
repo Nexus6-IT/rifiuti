@@ -12,6 +12,7 @@ import {
   signal,
 } from '@angular/core'
 import { AbstractControl, ReactiveFormsModule } from '@angular/forms'
+import { Router } from '@angular/router'
 import { AccordionModule } from 'primeng/accordion'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
@@ -152,6 +153,14 @@ const NESSUNA_VOCE = '—'
         </p>
       </form>
       <ng-template pTemplate="footer">
+        <p-button
+          *ngIf="contratto"
+          label="Listino"
+          icon="pi pi-list"
+          [outlined]="true"
+          (onClick)="apriListino()"
+          data-testid="contratto-dlg-listino"
+        />
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
         <p-button
           *ngIf="puoScrivere()"
@@ -170,6 +179,7 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   private readonly tabelle = inject(TabelleFatturazioneService)
   private readonly toast = inject(ToastService)
   private readonly auth = inject(AuthService)
+  private readonly router = inject(Router)
 
   @Input() visible = false
   /** null = nuovo. */
@@ -252,6 +262,14 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     } finally {
       this.applicando = false
     }
+  }
+
+  /** Pagina del listino del contratto (4.2b): visibile anche al VIEWER, che lo legge soltanto. */
+  apriListino(): void {
+    const id = this.contratto?.id
+    if (!id) return
+    this.chiudi()
+    void this.router.navigate(['/contratti-clienti', id, 'listino'])
   }
 
   ngOnChanges(c: SimpleChanges): void {

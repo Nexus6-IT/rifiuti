@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { Router } from '@angular/router'
 import { MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
@@ -1584,6 +1585,28 @@ describe('ContrattoClienteDialogComponent', () => {
       expect(q<HTMLInputElement>('contratto-dlg-descrizione')!.disabled).toBeTrue()
       expect(q<HTMLInputElement>('periodi-gi-0')!.disabled).toBeTrue()
       expect(fixture.componentInstance.puoSalvare()).toBeFalse()
+    })
+
+    it("il pulsante Listino c'è anche per il VIEWER (R48)", async () => {
+      ruolo('VIEWER')
+      await apri(contratto())
+      expect(bottone('contratto-dlg-listino')).toBeTruthy()
+    })
+  })
+
+  describe('Listino', () => {
+    it('contratto nuovo: nessun pulsante', async () => {
+      await apri(null)
+      expect(q('contratto-dlg-listino')).toBeNull()
+    })
+
+    it('apre la pagina del listino del contratto e chiude il dialog', async () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true)
+      await apriCon(contratto())
+      bottone('contratto-dlg-listino')!.click()
+      await stabilizza(fixture)
+      expect(navigate).toHaveBeenCalledOnceWith(['/contratti-clienti', contratto().id, 'listino'])
+      expect(visibilita).toContain(false)
     })
   })
 })

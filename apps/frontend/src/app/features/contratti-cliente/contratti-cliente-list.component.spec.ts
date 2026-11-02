@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core'
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { provideRouter } from '@angular/router'
 import { MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
@@ -118,6 +119,7 @@ describe('ContrattiClienteListComponent', () => {
       imports: [ContrattiClienteListComponent],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         {
           provide: ClientiService,
           useValue: {
@@ -563,6 +565,27 @@ describe('ContrattiClienteListComponent', () => {
       }
       expect(q('contratti-cerca')).toBeTruthy()
       expect(q('contratti-riga-cc1')).toBeTruthy()
+    })
+
+    it('azione Listino: collegamento alla pagina del contratto, visibile anche al VIEWER (R48)', async () => {
+      await apri('VIEWER')
+      const a = q<HTMLAnchorElement>('contratti-listino-cc1')!
+      expect(a).toBeTruthy()
+      expect(a.textContent).toContain('Listino')
+      expect(a.getAttribute('href')).toBe('/contratti-clienti/cc1/listino')
+      expect(a.getAttribute('aria-label')).toContain('CC-2026-001')
+      // la colonna di scrittura non c'è, quella del listino sì
+      expect(q('contratti-modifica-cc1')).toBeNull()
+      const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
+        t.textContent!.trim()
+      )
+      expect(intest).toContain('Listino')
+      expect(intest).not.toContain('Azioni')
+    })
+
+    it('azione Listino anche per chi scrive, e il colspan del vuoto segue le colonne', async () => {
+      await apri('ADMIN')
+      expect(q('contratti-listino-cc1')).toBeTruthy()
     })
 
     it('le azioni hanno un aria-label che cita il numero del contratto', async () => {

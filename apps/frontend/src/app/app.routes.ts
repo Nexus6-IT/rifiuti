@@ -170,6 +170,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'contratti-clienti/:id/listino',
+        loadComponent: () =>
+          import('./features/listino/listino-contratto.component').then(
+            m => m.ListinoContrattoComponent
+          ),
+      },
+      {
         path: 'contratti',
         loadComponent: () =>
           import('./features/contracts/contracts-list.component').then(

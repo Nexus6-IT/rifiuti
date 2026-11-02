@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { RouterLink } from '@angular/router'
 import { ConfirmationService } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { CheckboxModule } from 'primeng/checkbox'
@@ -58,6 +59,7 @@ const SEVERITA_STATO: Readonly<
   imports: [
     CommonModule,
     FormsModule,
+    RouterLink,
     ButtonModule,
     CheckboxModule,
     ConfirmDialogModule,
@@ -177,6 +179,7 @@ const SEVERITA_STATO: Readonly<
             <th scope="col">Inizio</th>
             <th scope="col">Fine</th>
             <th scope="col">Prossima fatturazione</th>
+            <th scope="col">Listino</th>
             <th scope="col" *ngIf="puoScrivere()">Azioni</th>
           </tr>
         </ng-template>
@@ -200,6 +203,17 @@ const SEVERITA_STATO: Readonly<
               />
             </td>
             <td>{{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}</td>
+            <td class="azioni">
+              <!-- Fuori dalla colonna di scrittura: il VIEWER legge il listino (R48). -->
+              <a
+                [routerLink]="['/contratti-clienti', c.id, 'listino']"
+                class="p-button p-button-text p-button-sm"
+                [attr.aria-label]="'Listino del contratto ' + c.numero"
+                [attr.data-testid]="'contratti-listino-' + c.id"
+              >
+                <i class="pi pi-list" aria-hidden="true"></i>&nbsp;Listino
+              </a>
+            </td>
             <td *ngIf="puoScrivere()" class="azioni">
               <p-button
                 label="Modifica"
@@ -246,7 +260,7 @@ const SEVERITA_STATO: Readonly<
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="puoScrivere() ? 9 : 8">Nessun contratto.</td>
+            <td [attr.colspan]="puoScrivere() ? 10 : 9">Nessun contratto.</td>
           </tr>
         </ng-template>
       </p-table>
