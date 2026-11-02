@@ -22,6 +22,7 @@ import {
 } from '../../domain/listino/variazione-prezzi'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { MSG_VARIAZIONE_SUPERATA, traduciConflitto } from './conflitti-variazione'
 import { controllaRiferimentiListino } from './riferimenti-listino'
 
 export interface FiltroVariazioneArchivio {
@@ -54,7 +55,7 @@ export interface EsitoVariazione {
 /** Tetto di righe per variazione (R12): oltre, si restringono i filtri. */
 const MAX_RIGHE = 10_000
 const MSG_TROPPE = 'La variazione tocca troppe righe: restringi i filtri.'
-const MSG_SUPERATA = 'I prezzi sono cambiati dopo l’anteprima: rifai l’anteprima.'
+const MSG_SUPERATA = MSG_VARIAZIONE_SUPERATA
 const TUTTI_I_LISTINI = [1, 2, 3, 4, 5, 6]
 /** La variazione e' una sola transazione: piu' tempo del default di Prisma (5 s). */
 const OPZIONI_TRANSAZIONE = { timeout: 30_000, maxWait: 5_000 } as const
@@ -136,25 +137,6 @@ function normalizza(corpo: CorpoVariazione<FiltroVariazioneArchivio>): Normalizz
     tipi: tipi.sort(),
     listini: listini.length > 0 ? listini : TUTTI_I_LISTINI,
   }
-}
-
-/**
- * Deadlock (P2034 o 40P01 dal raw), lock timeout (55P03) e timeout della transazione (P2028)
- * valgono "l'archivio e' cambiato": si rifa l'anteprima. Ogni altro errore passa com'e'.
- */
-function traduciConflitto(err: unknown): never {
-  if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    const codiceDb = (err.meta as { code?: unknown } | undefined)?.code
-    if (
-      err.code === 'P2034' ||
-      err.code === 'P2028' ||
-      codiceDb === '40P01' ||
-      codiceDb === '55P03'
-    ) {
-      throw new ConflictException({ message: MSG_SUPERATA, error: 'VARIAZIONE_SUPERATA' })
-    }
-  }
-  throw err
 }
 
 @Injectable()

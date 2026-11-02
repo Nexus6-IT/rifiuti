@@ -10,6 +10,7 @@ import { CodificheAddebitoService } from '../../application/listino/codifiche-ad
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
 import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { VariazioniArchivioService } from '../../application/listino/variazioni-archivio.service'
+import { VariazioniPrezziService } from '../../application/listino/variazioni-prezzi.service'
 import { AddebitiController } from './addebiti.controller'
 import { AllegatiElencoController } from './allegati-elenco.controller'
 import { CodiciIvaController } from './codici-iva.controller'
@@ -17,6 +18,7 @@ import { CodificheAddebitoController } from './codifiche-addebito.controller'
 import { ElenchiAddebitiController } from './elenchi-addebiti.controller'
 import { ElenchiContrattoController } from './elenchi-contratto.controller'
 import { RigheAddebitoController } from './righe-addebito.controller'
+import { VariazioniPrezziController } from './variazioni-prezzi.controller'
 
 /**
  * ListinoModule — archivio addebiti e listini (4.2a). Per ora: codici IVA e codifiche di
@@ -33,12 +35,14 @@ import { RigheAddebitoController } from './righe-addebito.controller'
     ElenchiAddebitiController,
     AllegatiElencoController,
     RigheAddebitoController,
+    VariazioniPrezziController,
   ],
   providers: [
     CodiciIvaService,
     CodificheAddebitoService,
     AddebitiService,
     VariazioniArchivioService,
+    VariazioniPrezziService,
     ElenchiAddebitiService,
     RigheAddebitoService,
     AllegatiElencoService,

@@ -8,7 +8,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -91,6 +93,204 @@ export class CorpoVariazioneArchivioDto extends CorpoVariazioneBaseDto {
 }
 
 export class ApplicaVariazioneArchivioDto extends CorpoVariazioneArchivioDto {
+  @ApiProperty({ description: "Impronta restituita dall'anteprima (SHA-256 esadecimale)" })
+  @IsString()
+  @Matches(/^[0-9a-f]{64}$/, {
+    message: "L'impronta dell'anteprima non è valida: rifai l'anteprima.",
+  })
+  impronta: string
+}
+
+// --- Variazione dei prezzi dei contratti (Task 24, D20, R46) e adeguamento ISTAT (D22) ----------
+
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/
+const MSG_DATA = 'La data deve essere nel formato AAAA-MM-GG.'
+
+export class FiltroVariazioneContrattiDto {
+  @ApiPropertyOptional({ description: 'Addebito dell’archivio della riga' })
+  @IsOptional()
+  @IsUUID()
+  addebitoId?: string
+
+  @ApiPropertyOptional({ example: '20 03 01' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  cerCode?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  riferimento?: string
+
+  @ApiPropertyOptional({
+    example: '10,00',
+    description: 'Stringa decimale, confrontata per valore',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  prezzoAttuale?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  anchePrezziZero?: boolean
+
+  @ApiPropertyOptional({ enum: ['NORMALE', 'SPECIALE'], isArray: true })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2)
+  @IsIn(['NORMALE', 'SPECIALE'], { each: true, message: 'Il tipo di prezzo non è ammesso.' })
+  tipiPrezzo?: ('NORMALE' | 'SPECIALE')[]
+
+  @ApiPropertyOptional({ type: [String], example: ['V', 'F', 'CER'] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(4, { each: true })
+  tipi?: string[]
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ELEMENTI_FILTRO)
+  @IsUUID('all', { each: true })
+  categorieAddebitoIds?: string[]
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ELEMENTI_FILTRO)
+  @IsUUID('all', { each: true })
+  centriRicavoIds?: string[]
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ELEMENTI_FILTRO)
+  @IsUUID('all', { each: true })
+  tipiContrattoIds?: string[]
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ELEMENTI_FILTRO)
+  @IsUUID('all', { each: true })
+  categorieContrattoIds?: string[]
+
+  @ApiPropertyOptional({ example: '2026-01-01' })
+  @IsOptional()
+  @Matches(DATA_ISO, { message: MSG_DATA })
+  inizioDal?: string
+
+  @ApiPropertyOptional({ example: '2026-12-31' })
+  @IsOptional()
+  @Matches(DATA_ISO, { message: MSG_DATA })
+  inizioAl?: string
+
+  @ApiPropertyOptional({ example: '2026-01-01' })
+  @IsOptional()
+  @Matches(DATA_ISO, { message: MSG_DATA })
+  fineDal?: string
+
+  @ApiPropertyOptional({ example: '2026-12-31' })
+  @IsOptional()
+  @Matches(DATA_ISO, { message: MSG_DATA })
+  fineAl?: string
+
+  @ApiPropertyOptional({ type: [String], description: 'Contratti scelti' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ELEMENTI_FILTRO)
+  @IsUUID('all', { each: true })
+  contrattiIds?: string[]
+
+  @ApiPropertyOptional({ type: [String], description: 'Addebiti dell’archivio scelti' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ELEMENTI_FILTRO)
+  @IsUUID('all', { each: true })
+  addebitiIds?: string[]
+
+  @ApiPropertyOptional({
+    example: '2026-03-31',
+    description: 'Fissi con la prima scadenza in questo giorno',
+  })
+  @IsOptional()
+  @Matches(DATA_ISO, { message: MSG_DATA })
+  primaScadenzaFissi?: string
+}
+
+export class CorpoVariazioneContrattiDto extends CorpoVariazioneBaseDto {
+  @ApiPropertyOptional({ description: 'Varia solo il minimo fatturabile, non il prezzo' })
+  @IsOptional()
+  @IsBoolean()
+  soloMinimi?: boolean
+
+  @ApiProperty({ type: FiltroVariazioneContrattiDto })
+  @IsObject()
+  @ValidateNested()
+  @Type(() => FiltroVariazioneContrattiDto)
+  filtri: FiltroVariazioneContrattiDto
+}
+
+export class ApplicaVariazioneContrattiDto extends CorpoVariazioneContrattiDto {
+  @ApiProperty({ description: "Impronta restituita dall'anteprima (SHA-256 esadecimale)" })
+  @IsString()
+  @Matches(/^[0-9a-f]{64}$/, {
+    message: "L'impronta dell'anteprima non è valida: rifai l'anteprima.",
+  })
+  impronta: string
+}
+
+export class MesiIstatQueryDto {
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @IsOptional()
+  @IsIn(['true', 'false'], { message: 'ancheAnnoPrecedente deve essere true o false.' })
+  ancheAnnoPrecedente?: string
+}
+
+export class PercentualeIstatDto {
+  @ApiProperty({ example: 2024 })
+  @IsInt()
+  anno: number
+
+  @ApiProperty({ example: 3 })
+  @IsInt()
+  mese: number
+
+  @ApiProperty({ example: '2,5', description: 'Stringa decimale, maggiore di 0 e minore di 100' })
+  @IsString()
+  @MaxLength(30)
+  percentuale: string
+}
+
+export class CorpoIstatDto {
+  @ApiProperty({ type: [PercentualeIstatDto] })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Indica almeno una percentuale.' })
+  @ArrayMaxSize(600)
+  @ValidateNested({ each: true })
+  @Type(() => PercentualeIstatDto)
+  percentuali: PercentualeIstatDto[]
+
+  @ApiProperty({ type: [String], example: ['V', 'F'] })
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(4, { each: true })
+  tipi: string[]
+}
+
+export class ApplicaIstatDto extends CorpoIstatDto {
   @ApiProperty({ description: "Impronta restituita dall'anteprima (SHA-256 esadecimale)" })
   @IsString()
   @Matches(/^[0-9a-f]{64}$/, {
