@@ -42,9 +42,15 @@ function dataReale(d: string): boolean {
   return t.getUTCFullYear() === anno && t.getUTCMonth() === mese - 1 && t.getUTCDate() === giorno
 }
 
+function codiceElenco(t: string | null): string {
+  if (t === null) return ''
+  return /^\d{1,3}$/.test(t) ? t.padStart(3, '0') : t.toUpperCase()
+}
+
 export function normalizzaElenco(g: Partial<Record<keyof DatiElenco, unknown>>): DatiElenco {
   return {
-    codice: testo(g.codice)?.toUpperCase() ?? '',
+    // Un codice numerico si riempie a tre cifre ('1' = '001'), come nelle codifiche addebito.
+    codice: codiceElenco(testo(g.codice)),
     descrizione: testo(g.descrizione) ?? '',
     nota1: testo(g.nota1),
     nota2: testo(g.nota2),

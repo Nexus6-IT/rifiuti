@@ -35,7 +35,27 @@ describe('normalizzaElenco', () => {
   })
 })
 
+describe('codice numerico', () => {
+  it("si riempie a tre cifre: '1' e '001' sono lo stesso codice", () => {
+    expect(normalizzaElenco({ codice: '1' }).codice).toBe('001')
+    expect(normalizzaElenco({ codice: ' 42 ' }).codice).toBe('042')
+    expect(normalizzaElenco({ codice: '001' }).codice).toBe('001')
+    expect(normalizzaElenco({ codice: 'a1' }).codice).toBe('A1')
+  })
+})
+
 describe('validaElenco', () => {
+  it('descrizione e note: 45 caratteri ammessi, 46 no', () => {
+    expect(
+      validaElenco(
+        base({ descrizione: 'x'.repeat(45), nota1: 'y'.repeat(45), nota2: 'z'.repeat(45) })
+      )
+    ).toEqual([])
+    expect(validaElenco(base({ descrizione: 'x'.repeat(46) }))).toHaveLength(1)
+    expect(validaElenco(base({ nota1: 'y'.repeat(46) }))).toHaveLength(1)
+    expect(validaElenco(base({ nota2: 'z'.repeat(46) }))).toHaveLength(1)
+  })
+
   it('dati validi: nessun messaggio', () => {
     expect(validaElenco(base())).toEqual([])
     expect(validaElenco(base({ validoDal: '2026-01-01', validoAl: '2026-12-31' }))).toEqual([])
@@ -176,6 +196,9 @@ describe('elencoProposto', () => {
     expect(
       elencoProposto([el('a', true, '2026-01-01'), el('b', false, '2026-02-01')], '2026-05-10')
     ).toBeNull()
+  })
+  it('predefinito scaduto con due elenchi validi senza predefinito: null', () => {
+    expect(elencoProposto([el('a', true, '2026-01-01'), el('b'), el('c')], '2026-05-10')).toBeNull()
   })
   it('nessun elenco: null', () => {
     expect(elencoProposto([], '2026-05-10')).toBeNull()
