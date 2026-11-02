@@ -47,6 +47,8 @@ const MSG_ORDINE =
   'Le fasce del prezzo speciale sono al massimo sette, ciascuna con il proprio numero.'
 const MSG_PRIMA = 'La prima fascia del prezzo speciale deve avere una soglia maggiore di zero.'
 const MSG_ULTIMA = 'L’ultima fascia del prezzo speciale è «oltre»: non ha soglia.'
+const MSG_DOPO_DW =
+  'Dopo una fascia di tipo D o W le fasce successive non possono essere progressive (A o X).'
 const MSG_ERRORE_CALCOLO = 'Errore nel calcolo del prezzo speciale.'
 
 const TIPI_BASE = 'ABCD'
@@ -110,7 +112,12 @@ export function validaScaglioni(
     }
   }
 
+  // Q7 (02/11): dopo una fascia D/W che fattura tutta la quantita', una fascia A/X la
+  // fatturerebbe di nuovo in parte.
+  let dopoDW = false
   for (const [n, f] of [...perOrdine.entries()].sort((a, b) => a[0] - b[0])) {
+    if (dopoDW && 'AX'.includes(f.tipoCalcolo) && f.tipoCalcolo.length === 1) aggiungi(MSG_DOPO_DW)
+    if (f.tipoCalcolo === 'D' || f.tipoCalcolo === 'W') dopoDW = true
     if (f.finoA !== null && f.finoA !== '' && n < 7 && !SOGLIA_RE.test(f.finoA)) {
       aggiungi(`Fascia ${n}: la soglia deve essere un numero positivo con al massimo tre decimali.`)
     }
@@ -237,16 +244,24 @@ const quantitaTesto = (v: Prisma.Decimal): string => D(arrotonda(v.toFixed(), 3)
  * calcolo `C` e' la loro), altrimenti quella dell'addebito. `quantitaPrecedente` insieme a
  * `condizione` e' un errore, come in WinWaste (umiscondiz non e' piu' "5 spazi").
  *
- * FATTURAZIONE DOPPIA EREDITATA (R20): la porta e' fedele a `speciale` di WinWaste
- * (FATAUTOMATICA.cs decompilato, righe 17230-17290) e ne conserva due comportamenti che
- * fatturano due volte la stessa quantita':
+ * DIFFERENZA VOLUTA DA WINWASTE (decisione di Graziano del 02/11): la porta non e' fedele a
+ * `speciale` (FATAUTOMATICA.cs decompilato, righe 17230-17290), che fattura due volte la stessa
+ * quantita' in due casi:
  * - `E` (e `H`) non azzera le righe delle fasce precedenti, a differenza di `B`/`D`/`Y`/`W`
- *   (riga 17230): una tabella mista `D` + `E` con 6.000 kg fattura 6.000 x prezzo della fascia 1
- *   e anche 6.000 x prezzo della 7.
+ *   (riga 17230): una tabella `D` + `E` con 6.000 kg fattura 6.000 x prezzo della fascia 1 e
+ *   anche 6.000 x prezzo della 7. Qui `E`/`H` azzerano le righe precedenti come `D`/`W`.
  * - con `quantitaPrecedente`, il blocco che scala la quantita' gia' passata (righe 17239-17262)
  *   vale per qualunque tipo, ma `B`, `C` e `D` poi riscrivono la quantita' (righe 17264-17282,
- *   `1` oppure l'intera quantita'): la parte gia' fatturata si ripaga. Le tabelle sensate per il
- *   prezzo "da data" sono quindi `A`.
+ *   `1` oppure l'intera quantita' del totale): la parte gia' fatturata si ripaga. Qui `D`/`E`
+ *   fatturano la sola quantita' nuova al prezzo della fascia piu' alta raggiunta dal totale;
+ *   `C` il fisso delle sole fasce raggiunte per la prima volta (precedente <= soglia inferiore
+ *   della fascia; la fascia 1 solo con precedente 0); `B` il fisso della fascia piu' alta solo
+ *   se raggiunta per la prima volta (Q8). `A` resta com'e'.
+ * Perche': la stessa quantita' non si fattura mai due volte. In piu', `validaScaglioni`
+ * rifiuta una fascia `D`/`W` seguita da `A`/`X` (Q7), che duplicherebbe la quantita' alta.
+ * Import 3.8: le tabelle WinWaste `...E` e quelle "da data" con `B`/`C`/`D` fatturano meno che in
+ * WinWaste, e quelle con `D`/`W` seguita da `A`/`X` non si importano: il rapporto d'import
+ * deve segnalarlo.
  */
 export function applicaScaglioni(
   s: readonly Scaglione[],
@@ -320,11 +335,11 @@ export function applicaScaglioni(
         descr[n] = `Per q.tà oltre ${unita} ${inf[n].toFixed()}`
         if (n !== 7 && q.gt(inf[n + 1])) descr[n] += ` e fino a ${sup[n].toFixed()}`
       }
-      if ('BDYW'.includes(tipo)) {
+      if ('BDEYWH'.includes(tipo)) {
         for (let k = 1; k < n; k++) descr[k] = ''
         verificata = false
       }
-      if ('AX'.includes(tipo) || daData) {
+      if ('AX'.includes(tipo)) {
         qta[n] = sup[n].minus(inf[n])
         if (q.lt(sup[n])) qta[n] = q.minus(inf[n])
         if (daData) {
@@ -340,11 +355,15 @@ export function applicaScaglioni(
       }
       if ('BCYZ'.includes(tipo)) {
         qta[n] = new Prisma.Decimal(1)
+        // Quantita' precedente: il fisso e' gia' stato fatturato se la fascia era gia' raggiunta.
+        if (daData && precedente.gt(inf[n])) descr[n] = ''
         if (descr[n] !== '') descr[n] += ': imp.fisso'
         if (tipo === 'Y' || tipo === 'Z') verificata = true
       }
       if ('DEWH'.includes(tipo)) {
-        qta[n] = q
+        // Da data: la quantita' precedente e' gia' stata fatturata, si fattura la sola nuova.
+        qta[n] = daData ? q.minus(precedente) : q
+        if (daData && qta[n].isZero()) descr[n] = ''
         if (tipo === 'W' || tipo === 'H') verificata = true
       }
     }

@@ -115,33 +115,62 @@ describe('applicaScaglioni', () => {
     ])
   })
 
-  it('E: la riga 7 fattura tutta la quantità, dopo le fasce A', () => {
+  it('E azzera le fasce precedenti come D (differenza voluta, 02/11)', () => {
     const t = [sc(1, '1000', '0.10', 'A'), sc(7, null, '0.05', 'E')]
     const r = applicaScaglioni(t, '6000', 'KG')
     if ('errore' in r) throw new Error(r.errore)
-    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([
-      ['1000', '0.10'],
-      ['6000', '0.05'],
-    ])
+    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([['6000', '0.05']])
   })
 
-  it('D + E fattura due volte (comportamento ereditato da WinWaste, R20)', () => {
+  it('D + E: una sola riga (differenza voluta, 02/11)', () => {
     const t = [sc(1, '5000', '0.08', 'D'), sc(7, null, '0.05', 'E')]
     const r = applicaScaglioni(t, '6000', 'KG')
     if ('errore' in r) throw new Error(r.errore)
-    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([
-      ['6000', '0.08'],
-      ['6000', '0.05'],
-    ])
+    expect(r.righe.map(x => [x.quantita, x.prezzo])).toEqual([['6000', '0.05']])
   })
 
-  it('D con quantità precedente ripaga la quantità già passata (ereditato, R20)', () => {
-    // 2.000 già passati, 1.000 nuovi: la fascia 2 (D) fattura tutte le 3.000
+  it('D con quantità precedente fattura solo la quantità nuova (differenza voluta, 02/11)', () => {
+    // 2.000 già passati, 1.000 nuovi: totale 3.000 in fascia 2, si fatturano le sole 1.000 nuove
     const r = applicaScaglioni(tabella('D'), '1000', 'KG', { quantitaPrecedente: '2000' })
     if ('errore' in r) throw new Error(r.errore)
     expect(r.righe.map(x => [x.descrizione, x.quantita, x.prezzo])).toEqual([
-      ['Per q.tà oltre KG 1000', '3000', '0.08'],
+      ['Per q.tà oltre KG 1000', '1000', '0.08'],
     ])
+  })
+
+  it('E con quantità precedente: solo la quantità nuova al prezzo della riga 7', () => {
+    const t = [sc(1, '1000', '0.10', 'A'), sc(7, null, '0.05', 'E')]
+    const r = applicaScaglioni(t, '500', 'KG', { quantitaPrecedente: '5800' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.descrizione, x.quantita, x.prezzo])).toEqual([
+      ['Per q.tà oltre KG 1000', '500', '0.05'],
+    ])
+  })
+
+  it('C con quantità precedente: solo le fasce raggiunte per la prima volta', () => {
+    // 800 già passati, 1.000 nuovi: totale 1.800; la fascia 1 era già raggiunta
+    const r = applicaScaglioni(tabella('C'), '1000', 'KG', { quantitaPrecedente: '800' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe.map(x => [x.descrizione, x.quantita, x.prezzo])).toEqual([
+      ['Per q.tà oltre KG 1000: imp.fisso', '1', '0.08'],
+    ])
+  })
+
+  it('B con quantità precedente: il fisso solo alla prima volta che la fascia è raggiunta (Q8)', () => {
+    const prima = applicaScaglioni(tabella('B'), '1000', 'KG', { quantitaPrecedente: '800' })
+    if ('errore' in prima) throw new Error(prima.errore)
+    expect(prima.righe.map(x => [x.descrizione, x.quantita, x.prezzo])).toEqual([
+      ['Per q.tà oltre KG 1000: imp.fisso', '1', '0.08'],
+    ])
+    const gia = applicaScaglioni(tabella('B'), '100', 'KG', { quantitaPrecedente: '1200' })
+    if ('errore' in gia) throw new Error(gia.errore)
+    expect(gia.righe).toEqual([])
+  })
+
+  it('quantità nuova zero con D: nessuna riga', () => {
+    const r = applicaScaglioni(tabella('D'), '0', 'KG', { quantitaPrecedente: '2000' })
+    if ('errore' in r) throw new Error(r.errore)
+    expect(r.righe).toEqual([])
   })
 
   it('quantità zero: prima fascia', () => {
@@ -252,12 +281,12 @@ describe('applicaScaglioni', () => {
       expect(r.righe).toHaveLength(3)
     })
 
-    it('H sulla riga 7', () => {
+    it('H azzera le fasce precedenti (differenza voluta, 02/11)', () => {
       const t = [sc(1, '1000', '0.10', 'A'), sc(7, null, '0.05', 'H')]
       const r = applicaScaglioni(t, '6000', 'KG', { condizione: 'P' })
       if ('errore' in r) throw new Error(r.errore)
       expect(r.condizioneVerificata).toBe(true)
-      expect(r.righe.map(x => x.quantita)).toEqual(['1000', '6000'])
+      expect(r.righe.map(x => x.quantita)).toEqual(['6000'])
     })
 
     it('fascia raggiunta di tipo normale: condizione non verificata', () => {
@@ -370,6 +399,26 @@ describe('validaScaglioni', () => {
       m
     )
     expect(validaScaglioni([...ok, sc(2, '6000', '1', 'A')], { conCondizioni: false })).toContain(m)
+  })
+
+  it('dopo una fascia D o W non possono seguire fasce A o X (Q7)', () => {
+    const msg =
+      'Dopo una fascia di tipo D o W le fasce successive non possono essere progressive (A o X).'
+    expect(
+      validaScaglioni([sc(1, '5000', '0.08', 'D'), sc(7, null, '0.05', 'A')], {
+        conCondizioni: false,
+      })
+    ).toEqual([msg])
+    expect(
+      validaScaglioni([sc(1, '10', '1', 'W'), sc(2, '20', '1', 'X'), sc(7, null, '1', 'B')], {
+        conCondizioni: true,
+      })
+    ).toEqual([msg])
+    expect(
+      validaScaglioni([sc(1, '5000', '0.08', 'D'), sc(7, null, '0.05', 'E')], {
+        conCondizioni: false,
+      })
+    ).toEqual([])
   })
 
   it('tipi di calcolo ammessi per fascia', () => {
