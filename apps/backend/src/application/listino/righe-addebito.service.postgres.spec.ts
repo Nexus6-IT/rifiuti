@@ -196,7 +196,7 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
         prezzo: null,
         prezzoSpeciale: true,
         applicaA: 'DOCUMENTO',
-        cerProposta: ['20 03 01/*', '20 01 21'],
+        cerProposta: ['20 03 01/*', '20 01 21*'],
         addebito: { id: a.id, codice: a.codice },
       })
       expect(r.scaglioni).toEqual([
@@ -518,25 +518,49 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(await crea(s, corpo, diverso.elencoId)).toMatchObject({ tipo: '$D' })
     })
 
-    it('una condizione definita da una sola riga; le condizioni riferite devono trovare i condizionati', async () => {
+    it('più righe con la stessa condizione sono normali; due righe che sommano la stessa cifra no (I1)', async () => {
       const s = await scenario()
-      const a1 = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
-      const a2 = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
-      const a3 = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
+      const v = async () => (await creaAddebito(owner, s.tenantId, { tipo: 'V' })).id
       const base = { tipo: 'V', tipoQuantita: 'PESO_NETTO', unitaMisura: 'KG', prezzo: '1' }
-      await crea(s, { ...base, addebitoId: a1.id, condizione: 1 })
-      const dup = await errore(crea(s, { ...base, addebitoId: a2.id, condizione: 1 }))
+      await crea(s, { ...base, addebitoId: await v(), condizione: 1 })
+      // stessa condizione su un'altra riga: ammessa
+      await crea(s, { ...base, addebitoId: await v(), condizione: 1 })
+      await crea(s, { ...base, addebitoId: await v(), condizione: 2 })
+      const somma = async (condizioniRiferite: string) =>
+        crea(s, {
+          ...base,
+          addebitoId: await v(),
+          prezzoSpeciale: true,
+          prezzo: null,
+          applicaA: 'DOCUMENTO',
+          condizioniRiferite,
+          scaglioni: [
+            { ordine: 1, finoA: '10', prezzo: '1', tipoCalcolo: 'X' },
+            { ordine: 7, finoA: null, prezzo: '1', tipoCalcolo: 'A' },
+          ],
+        })
+      await somma('1C')
+      const dup = await errore(somma('12P'))
+      expect(dup.getStatus()).toBe(409)
       expect(dup.getResponse()).toMatchObject({
         error: 'CONDIZIONE_GIA_DEFINITA',
         message: 'La condizione 1 è già definita da un altro addebito di questo elenco.',
       })
-      // riferita ma senza condizionato (la 2 non esiste, e la 1 ha un'altra unita' di misura)
+      // cifre diverse: ammessa
+      expect(await somma('2C')).toMatchObject({ condizioniRiferite: '2C' })
+    })
+
+    it('le condizioni riferite devono trovare i condizionati con la stessa unità di misura', async () => {
+      const s = await scenario()
+      const a3 = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
       const senza = await errore(
         crea(s, {
-          ...base,
+          tipo: 'V',
+          tipoQuantita: 'PESO_NETTO',
+          unitaMisura: 'KG',
+          prezzo: null,
           addebitoId: a3.id,
           prezzoSpeciale: true,
-          prezzo: null,
           applicaA: 'DOCUMENTO',
           condizioniRiferite: '2C',
           scaglioni: [
@@ -724,6 +748,159 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
         service.modifica(s.tenantId, s.utenteId, b.id, { versione: 1, riferimento: null })
       )
       expect(e.getResponse()).toMatchObject({ error: 'RIGA_ADDEBITO_DUPLICATA' })
+    })
+  })
+
+  describe('fix della revisione (I2, I3, m3, m4, m5, m8)', () => {
+    it('I2: la proposta da CER porta la provvigione del cliente solo se positiva', async () => {
+      const s = await scenario()
+      let p = await service.proposta(s.tenantId, s.contrattoId, { cerCode: '200301' })
+      expect(p).toMatchObject({ provvigione: null, tipoProvvigione: null })
+      await owner.cliente.update({
+        where: { id: s.clienteId },
+        data: { provvigionePredefinita: '0', tipoProvvigionePredefinita: 'LORDO' },
+      })
+      p = await service.proposta(s.tenantId, s.contrattoId, { cerCode: '200301' })
+      expect(p.provvigione).toBeNull()
+      await owner.cliente.update({
+        where: { id: s.clienteId },
+        data: { provvigionePredefinita: '6+2', tipoProvvigionePredefinita: 'LORDO' },
+      })
+      p = await service.proposta(s.tenantId, s.contrattoId, { cerCode: '200301' })
+      expect(p).toMatchObject({ provvigione: '6+2', tipoProvvigione: 'LORDO', tipo: 'CER' })
+    })
+
+    it('I3: campi obbligatori null danno errori per campo in italiano, non un errore della pipe', async () => {
+      const s = await scenario()
+      const e = await errore(
+        service.crea(s.tenantId, s.utenteId, s.elencoId, {
+          tipo: 'CER',
+          cerCode: '200301',
+          tipoQuantita: 'PESO_NETTO',
+          unitaMisura: null,
+          codiceIvaId: null,
+          prezzo: '1',
+          prezzoSpeciale: null,
+          cerProposta: null,
+          scaglioni: null,
+        })
+      )
+      expect(e.getStatus()).toBe(400)
+      expect(e.getResponse().errori).toEqual(
+        expect.arrayContaining([
+          { campo: 'unitaMisura', messaggio: 'Indica l’unità di misura.' },
+          { campo: 'codiceIvaId', messaggio: 'Indica il codice IVA.' },
+        ])
+      )
+    })
+
+    it('m8: il form intero del FE: PATCH invariato = versione invariata; solo la descrizione = campi [descrizione]', async () => {
+      const s = await scenario()
+      const r = await crea(s, {
+        tipo: 'CER',
+        cerCode: '200301',
+        tipoQuantita: 'PESO_NETTO',
+        unitaMisura: 'KG',
+        prezzo: '1',
+        tipologiaRifiuto: 'SPECIALE',
+      })
+      const {
+        id: _id,
+        elencoId: _e,
+        etichettaTipo: _et,
+        famiglia: _f,
+        addebito,
+        codiceIva,
+        categoria,
+        centroRicavo,
+        versione,
+        ...resto
+      } = r as any
+      const form = {
+        ...resto,
+        addebitoId: addebito?.id ?? null,
+        codiceIvaId: codiceIva.id,
+        categoriaId: categoria?.id ?? null,
+        centroRicavoId: centroRicavo?.id ?? null,
+        scadenze: [],
+      }
+      // il form del FE rimanda tutte le chiavi, i campi fuori famiglia vuoti
+      const invariato = await service.modifica(s.tenantId, s.utenteId, r.id, { ...form, versione })
+      expect(invariato.versione).toBe(1)
+      const cambiato = await service.modifica(s.tenantId, s.utenteId, r.id, {
+        ...form,
+        descrizione: 'Solo questa',
+        versione,
+      })
+      expect(cambiato).toMatchObject({
+        versione: 2,
+        descrizione: 'Solo questa',
+        tipologiaRifiuto: 'SPECIALE',
+      })
+      const log = await owner.activityLog.findFirst({
+        where: { tenantId: s.tenantId, action: 'RIGA_ADDEBITO_MODIFICATA' },
+      })
+      expect((log?.metadata as any).campi).toEqual(['descrizione'])
+    })
+
+    it('m3: la lista e` ordinata per tipo, poi codice CER o dell’addebito', async () => {
+      const s = await scenario()
+      const f = await creaAddebito(owner, s.tenantId, { tipo: 'F', unitaMisura: 'NR' })
+      const v2 = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
+      await creaRiga(owner, s.tenantId, s.elencoId, {
+        tipo: 'V',
+        addebitoId: v2.id,
+        codiceIvaId: s.listino.iva22Id,
+      })
+      await creaRiga(owner, s.tenantId, s.elencoId, {
+        tipo: 'F',
+        addebitoId: f.id,
+        codiceIvaId: s.listino.iva22Id,
+        unitaMisura: 'NR',
+        altro: { tipoQuantita: null },
+      })
+      await creaRiga(owner, s.tenantId, s.elencoId, {
+        tipo: 'CER',
+        cerCode: '20 03 01',
+        codiceIvaId: s.listino.iva22Id,
+      })
+      await creaRiga(owner, s.tenantId, s.elencoId, {
+        tipo: 'CER',
+        cerCode: '15 01 01',
+        codiceIvaId: s.listino.iva22Id,
+      })
+      const l = await service.list(s.tenantId, s.elencoId)
+      expect(l.map(x => x.cerCode ?? x.tipo)).toEqual(['15 01 01', '20 03 01', 'F', 'V'])
+    })
+
+    it('m4: la detrazione `%` non trova una `%` ma trova una `#`; la `#` trova una `%`', async () => {
+      const s = await scenario()
+      const altro = await creaContrattoConElenco(owner, s.tenantId, { clienteId: s.clienteId })
+      const d = async (um: string) =>
+        (await creaAddebito(owner, s.tenantId, { tipo: '$D', unitaMisura: um })).id
+      await crea(s, { tipo: '$D', addebitoId: await d('%'), unitaMisura: '%', prezzo: '1' })
+      const e = await errore(
+        crea(
+          s,
+          { tipo: '$D', addebitoId: await d('#'), unitaMisura: '#', prezzo: '1' },
+          altro.elencoId
+        )
+      )
+      expect(e.getResponse()).toMatchObject({ error: 'DETRAZIONE_GIA_PRESENTE' })
+    })
+
+    it('m5: cerProposta si salva nella forma del catalogo, con l’asterisco', async () => {
+      const s = await scenario()
+      const a = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
+      const r = await crea(s, {
+        tipo: 'V',
+        addebitoId: a.id,
+        tipoQuantita: 'UNO',
+        unitaMisura: 'NR',
+        prezzo: '1',
+        cerProposta: ['200121', '200301/R1', '20 01 21/*'],
+      })
+      expect(r.cerProposta).toEqual(['20 01 21*', '20 03 01/R1', '20 01 21*/*'])
     })
   })
 

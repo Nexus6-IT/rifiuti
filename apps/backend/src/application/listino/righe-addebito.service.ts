@@ -319,6 +319,10 @@ export class RigheAddebitoService {
           include: INCLUDE,
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         })
+        // Come WinWaste (`ORDER BY TIPO, addeb`): tipo, poi CER o codice dell'addebito, riferimento.
+        const chiave = (r: (typeof righe)[number]) =>
+          [r.tipo, r.cerCode ?? r.addebito?.codice ?? '', r.riferimento ?? ''].join('\u0000')
+        righe.sort((a, b) => (chiave(a) < chiave(b) ? -1 : chiave(a) > chiave(b) ? 1 : 0))
         return righe.map(r => this.vista(r))
       })
     )
@@ -378,7 +382,7 @@ export class RigheAddebitoService {
           where: { id: contratto.clienteId, tenantId },
           select: { listino: true, provvigionePredefinita: true, tipoProvvigionePredefinita: true },
         })
-        if (cerCode !== undefined) return this.propostaDaCer(tx, cerCode)
+        if (cerCode !== undefined) return this.propostaDaCer(tx, cerCode, cliente)
         return this.propostaDaAddebito(tx, tenantId, addebitoId as string, cliente)
       })
     )
@@ -386,7 +390,8 @@ export class RigheAddebitoService {
 
   private async propostaDaCer(
     tx: Prisma.TransactionClient,
-    cerCode: string
+    cerCode: string,
+    cliente: ClienteListino | null
   ): Promise<PropostaRiga> {
     const canonico = normalizzaCerCode(cerCode)
     const nelCatalogo = formaCerValida(canonico)
@@ -399,11 +404,18 @@ export class RigheAddebitoService {
       where: { code: nelCatalogo },
       select: { description: true },
     })
+    // D7, E7: anche sulle righe CER la provvigione del cliente, se positiva, e' proposta.
+    const provv = provvigioneProposta(
+      { provvigione: null, tipo: 'SCONTATO' },
+      provvigioneDelCliente(cliente)
+    )
     return {
       ...proposteVuote(),
       descrizione: voce ? voce.description.slice(0, 45) : null,
       tipo: 'CER',
       tipologiaRifiuto: tipologiaDaCer(nelCatalogo),
+      provvigione: provv.provvigione,
+      tipoProvvigione: provv.provvigione === null ? null : provv.tipo,
     }
   }
 
@@ -411,11 +423,7 @@ export class RigheAddebitoService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     addebitoId: string,
-    cliente: {
-      listino: number | null
-      provvigionePredefinita: string | null
-      tipoProvvigionePredefinita: TipoProvvigione | null
-    } | null
+    cliente: ClienteListino | null
   ): Promise<PropostaRiga> {
     const a = UUID.test(addebitoId)
       ? await tx.addebito.findFirst({
@@ -448,15 +456,9 @@ export class RigheAddebitoService {
     })
     const scelto = prezzoProposto(listini, cliente?.listino ?? null)
 
-    // R23: la cascata del cliente deve essere valida prima di giudicarla positiva.
-    const provvCliente = normalizzaCascata(cliente?.provvigionePredefinita ?? null)
-    const daCliente =
-      provvCliente !== null && cascataValida(provvCliente)
-        ? { provvigione: provvCliente, tipo: cliente?.tipoProvvigionePredefinita ?? null }
-        : { provvigione: null, tipo: null }
     const provv = provvigioneProposta(
       { provvigione: scelto?.provvigione ?? null, tipo: a.tipoProvvigione },
-      daCliente
+      provvigioneDelCliente(cliente)
     )
 
     return {
@@ -659,6 +661,7 @@ export class RigheAddebitoService {
 
     const { dati: nuovi, errori: eNorm } = normalizzaRiga(unione, inviati, { cerCatalogo })
     nuovi.addebitiProposti = nuovi.addebitiProposti.map(x => normalizzaCodiceAddebito(x) ?? x)
+    nuovi.cerProposta = await this.cerPropostaDelCatalogo(tx, nuovi.cerProposta)
 
     const errori: ErroreRiga[] = [...eNorm]
     if (tipoEffettivo === 'CER' && cerFormaValida && cerCatalogo === null) {
@@ -686,6 +689,37 @@ export class RigheAddebitoService {
       await this.controllaFraRighe(tx, tenantId, c.contratto, c.elencoId, c.rigaId, nuovi)
     }
     return { nuovi, precedenti, inviati }
+  }
+
+  /**
+   * m5/R35: del CER di ogni elemento (`CER`, `CER/RIF`, `CER/*`) si scrive la forma del catalogo, con
+   * l'asterisco dei pericolosi. Un CER non trovato resta com'e': lo segnala `controllaRiferimentiRiga`.
+   */
+  private async cerPropostaDelCatalogo(
+    tx: Prisma.TransactionClient,
+    elementi: readonly string[]
+  ): Promise<string[]> {
+    const parti = elementi.map(el => {
+      const barra = el.indexOf('/')
+      return { cer: barra < 0 ? el : el.slice(0, barra), coda: barra < 0 ? '' : el.slice(barra) }
+    })
+    const senza = (c: string) => c.replace(/\*$/, '')
+    const validi = parti.filter(p => formaCerValida(p.cer)).map(p => senza(p.cer))
+    if (validi.length === 0) return [...elementi]
+    const candidati = [...new Set(validi.flatMap(c => [c, `${c}*`]))]
+    const trovati = await tx.cERCode.findMany({
+      where: { code: { in: candidati } },
+      select: { code: true },
+    })
+    const delCatalogo = new Map<string, string>()
+    for (const t of trovati) {
+      const base = senza(t.code)
+      if (!delCatalogo.has(base) || t.code.endsWith('*')) delCatalogo.set(base, t.code)
+    }
+    return parti.map(p => {
+      const nelCatalogo = formaCerValida(p.cer) ? delCatalogo.get(senza(p.cer)) : undefined
+      return `${nelCatalogo ?? p.cer}${p.coda}`
+    })
   }
 
   /** D11, dentro i lock di R40: i 409 per riga, contratto e cliente e il 400 delle condizioni. */
@@ -731,13 +765,15 @@ export class RigheAddebitoService {
       })
       if (altra) throw conflitto('ACCONTO_GIA_PRESENTE', MSG_ACCONTO)
     }
-    if (d.tipo === '$D' && d.unitaMisura === '#') {
+    if (d.tipo === '$D' && (d.unitaMisura === '#' || d.unitaMisura === '%')) {
       // Contratti annullati esclusi: il loro listino e' in sola lettura e non si fattura piu'.
       const altra = await tx.rigaAddebito.findFirst({
         where: {
           tenantId,
           tipo: '$D',
-          unitaMisura: '#',
+          // WinWaste (ADDEBCON.cs:6735-6760) incrocia % e #: una # trova una % o una #, una %
+          // trova una #.
+          unitaMisura: { in: d.unitaMisura === '#' ? ['#', '%'] : ['#'] },
           elenco: {
             contratto: {
               clienteId: contratto.clienteId,
@@ -751,20 +787,24 @@ export class RigheAddebitoService {
       })
       if (altra) throw conflitto('DETRAZIONE_GIA_PRESENTE', MSG_DETRAZIONE)
     }
-    if (d.condizione !== null) {
-      const altra = await tx.rigaAddebito.findFirst({
-        where: { tenantId, elencoId, condizione: d.condizione, ...escludi },
-        select: { id: true },
-      })
-      if (altra) {
-        throw conflitto(
-          'CONDIZIONE_GIA_DEFINITA',
-          `La condizione ${d.condizione} è già definita da un altro addebito di questo elenco.`
-        )
-      }
-    }
     if (d.condizioniRiferite !== null) {
       const cifre = [...new Set(d.condizioniRiferite.slice(0, -1).split('').map(Number))]
+      // D11, WinWaste `giaesist` (ADDEBCON.cs:6625-6658): una cifra delle condizioni sommate da
+      // una sola riga dell'elenco. Piu' righe possono avere lo stesso `condizione` (i condizionati).
+      const altre = await tx.rigaAddebito.findMany({
+        where: { tenantId, elencoId, condizioniRiferite: { not: null }, ...escludi },
+        select: { condizioniRiferite: true },
+      })
+      const giaSommate = new Set(
+        altre.flatMap(a => (a.condizioniRiferite ?? '').slice(0, -1).split('').map(Number))
+      )
+      const doppia = cifre.find(n => giaSommate.has(n))
+      if (doppia !== undefined) {
+        throw conflitto(
+          'CONDIZIONE_GIA_DEFINITA',
+          `La condizione ${doppia} è già definita da un altro addebito di questo elenco.`
+        )
+      }
       const trovate = await tx.rigaAddebito.findMany({
         where: {
           tenantId,
@@ -826,7 +866,7 @@ export class RigheAddebitoService {
   ): Promise<void> {
     const t = typeof tipo === 'string' ? tipo.trim().toUpperCase() : ''
     const um = typeof unitaMisura === 'string' ? unitaMisura.trim().toUpperCase() : ''
-    if (t === '$D' && um === '#') {
+    if (t === '$D' && (um === '#' || um === '%')) {
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext('listino-cliente'), hashtext(${contratto.clienteId}))`
     }
@@ -841,8 +881,10 @@ export class RigheAddebitoService {
     tenantId: string,
     elencoId: string
   ): Promise<void> {
-    await tx.$queryRaw`SELECT id FROM "elenchi_addebiti"
+    const r = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "elenchi_addebiti"
       WHERE tenant_id = ${tenantId}::uuid AND id = ${elencoId}::uuid FOR UPDATE`
+    // Elenco eliminato da un'altra operazione fra la lettura e il lock.
+    if (r.length === 0) throw elencoNonTrovato()
   }
 
   /**
@@ -1054,6 +1096,23 @@ export class RigheAddebitoService {
       },
     })
   }
+}
+
+interface ClienteListino {
+  listino: number | null
+  provvigionePredefinita: string | null
+  tipoProvvigionePredefinita: TipoProvvigione | null
+}
+
+/** R23: la cascata del cliente deve essere valida prima di giudicarla positiva. */
+function provvigioneDelCliente(cliente: ClienteListino | null): {
+  provvigione: string | null
+  tipo: TipoProvvigione | null
+} {
+  const p = normalizzaCascata(cliente?.provvigionePredefinita ?? null)
+  return p !== null && cascataValida(p)
+    ? { provvigione: p, tipo: cliente?.tipoProvvigionePredefinita ?? null }
+    : { provvigione: null, tipo: null }
 }
 
 function proposteVuote(): PropostaRiga {

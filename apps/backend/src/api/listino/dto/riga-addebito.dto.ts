@@ -2,7 +2,8 @@
  * DTO delle righe di addebito (4.2b, D9, R36, R37). Il DTO controlla forma e tipi; i valori, le
  * famiglie e i campi obbligatori sono del dominio `riga-addebito` e rispondono con
  * `RIGA_ADDEBITO_NON_VALIDA` e l'elenco `errori` per campo. Per questo ogni campo e' facoltativo
- * qui: un campo mancante lo segnala il dominio, col suo campo, non la pipe.
+ * qui, e ogni campo ammette anche `null` (il FE lo manda per un campo lasciato vuoto): un campo
+ * mancante o vuoto lo segnala il dominio, col suo campo e in italiano, non la pipe.
  *
  * Booleani e UUID sono controllati davvero (`@IsBoolean`, `@IsUUID`): la pipe globale ha
  * `transform: true`, ma "false" come stringa NON diventa un booleano. `null` e' ammesso solo per i
@@ -19,7 +20,6 @@ import {
   IsString,
   IsUUID,
   Min,
-  ValidateIf,
   ValidateNested,
   registerDecorator,
   type ValidationOptions,
@@ -41,7 +41,7 @@ function IsTestoONumero(opzioni?: ValidationOptions) {
 }
 
 export class ScaglioneRigaDto {
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsInt()
   ordine?: number
 
@@ -49,7 +49,7 @@ export class ScaglioneRigaDto {
   @IsTestoONumero()
   finoA?: string | number | null
 
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsTestoONumero()
   prezzo?: string | number
 
@@ -61,21 +61,21 @@ export class ScaglioneRigaDto {
   @IsTestoONumero()
   provvigione?: string | number | null
 
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsString()
   tipoCalcolo?: string
 }
 
 export class ScadenzaRigaDto {
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsInt()
   ordine?: number
 
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsInt()
   giorno?: number
 
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsInt()
   mese?: number
 
@@ -84,14 +84,14 @@ export class ScadenzaRigaDto {
   anno?: number | null
 
   /** Campo di sola lettura della vista: se il FE rimanda la scadenza com'e', si ignora. */
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsBoolean()
   fatturabileNelContratto?: boolean
 }
 
 export class CampiRigaAddebitoDto {
   @ApiPropertyOptional({ example: 'V', description: 'CER, V, F, T…, N…, M…, $A/$D/$R' })
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsString()
   tipo?: string
 
@@ -126,7 +126,7 @@ export class CampiRigaAddebitoDto {
   quantitaFissa?: string | number | null
 
   @ApiPropertyOptional({ example: 'KG' })
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsString()
   unitaMisura?: string
 
@@ -136,7 +136,7 @@ export class CampiRigaAddebitoDto {
   prezzo?: string | number | null
 
   @ApiPropertyOptional()
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsBoolean()
   prezzoSpeciale?: boolean
 
@@ -146,7 +146,7 @@ export class CampiRigaAddebitoDto {
   sconto?: string | number | null
 
   @ApiPropertyOptional()
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsUUID()
   codiceIvaId?: string
 
@@ -206,7 +206,7 @@ export class CampiRigaAddebitoDto {
   minimoFatturabile?: string | number | null
 
   @ApiPropertyOptional()
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsBoolean()
   minimoPerCategoria?: boolean
 
@@ -241,14 +241,14 @@ export class CampiRigaAddebitoDto {
   stimaAnnuaKg?: string | number | null
 
   @ApiPropertyOptional({ type: [String], description: 'CER, CER/RIF, CER/* o CER/' })
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(50)
   @IsString({ each: true })
   cerProposta?: string[]
 
   @ApiPropertyOptional({ type: [String] })
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(50)
   @IsString({ each: true })
@@ -265,7 +265,7 @@ export class CampiRigaAddebitoDto {
   notaUsoInterno?: string | null
 
   @ApiPropertyOptional({ type: [ScaglioneRigaDto], description: 'Assenti = invariate' })
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(7)
   @ValidateNested({ each: true })
@@ -273,7 +273,7 @@ export class CampiRigaAddebitoDto {
   scaglioni?: ScaglioneRigaDto[]
 
   @ApiPropertyOptional({ type: [ScadenzaRigaDto], description: 'Assenti = invariate' })
-  @ValidateIf((_, v) => v !== undefined)
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(12)
   @ValidateNested({ each: true })

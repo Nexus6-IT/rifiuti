@@ -135,7 +135,6 @@ describe('RigheAddebitoController', () => {
 
     it.each([
       ['prezzoSpeciale testo', { prezzoSpeciale: 'true' }],
-      ['codiceIvaId null', { codiceIvaId: null }],
       ['codiceIvaId non UUID', { codiceIvaId: 'x' }],
       ['scadenze oltre 12', { scadenze: Array.from({ length: 13 }, () => ({})) }],
       ['condizione testo', { condizione: 'a' }],
@@ -146,6 +145,26 @@ describe('RigheAddebitoController', () => {
         .send({ ...corpo, versione: 1 })
       expect(r.status).toBe(400)
       expect(servizio.modifica).not.toHaveBeenCalled()
+    })
+
+    it('PATCH con il corpo intero del FE, campi vuoti a null: arriva al servizio (I3)', async () => {
+      const corpo = {
+        tipo: 'V',
+        unitaMisura: null,
+        codiceIvaId: null,
+        prezzoSpeciale: null,
+        minimoPerCategoria: null,
+        cerProposta: null,
+        addebitiProposti: null,
+        scaglioni: null,
+        scadenze: null,
+        prezzo: null,
+        applicaA: null,
+        condizione: null,
+        versione: 1,
+      }
+      expect((await http().patch(`/${R}/${ID}`).send(corpo)).status).toBe(200)
+      expect(servizio.modifica).toHaveBeenCalledTimes(1)
     })
 
     it('PATCH senza versione o con versione 0: 400', async () => {

@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client'
 import { RigheAddebitoService } from './righe-addebito.service'
 
+const errP2002 = () =>
+  new Prisma.PrismaClientKnownRequestError('x', { code: 'P2002', clientVersion: 'test' })
+
 const T = 'aaaaaaaa-0000-4000-8000-000000000001'
 const U = 'bbbbbbbb-0000-4000-8000-000000000002'
 const C = 'cccccccc-0000-4000-8000-000000000003'
@@ -84,10 +87,12 @@ describe('RigheAddebitoService (Prisma finto)', () => {
   let stato: string
   let catalogo: string[]
   let principale: string | null
+  let elencoBloccabile: boolean
 
   beforeEach(() => {
     stato = 'ATTIVO'
     principale = null
+    elencoBloccabile = true
     catalogo = ['20 03 01', '20 01 21*']
     tx = {
       $queryRaw: jest.fn(async (strings: TemplateStringsArray) => {
@@ -97,7 +102,7 @@ describe('RigheAddebitoService (Prisma finto)', () => {
             { id: C, numero: 'CC-1', stato, clienteId: CLI, contrattoPrincipaleId: principale },
           ]
         }
-        if (s.includes('elenchi_addebiti')) return [{ id: E }]
+        if (s.includes('elenchi_addebiti')) return elencoBloccabile ? [{ id: E }] : []
         if (s.includes('codici_iva')) return [{ id: I, attivo: true }]
         if (s.includes('"addebiti"')) return [{ attivo: true, tipo: 'V' }]
         return []
@@ -198,7 +203,9 @@ describe('RigheAddebitoService (Prisma finto)', () => {
       tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
         strings.join('?').includes('contratti_cliente')
           ? [{ id: C, numero: 'CC-1', stato, clienteId: CLI, contrattoPrincipaleId: null }]
-          : []
+          : strings.join('?').includes('elenchi_addebiti')
+            ? [{ id: E }]
+            : []
       )
       const e = await errore(service.crea(T, U, E, corpoCer({ prezzo: undefined })))
       const campi = e.getResponse().errori.map((x: any) => x.campo)
@@ -208,6 +215,49 @@ describe('RigheAddebitoService (Prisma finto)', () => {
     it("riferimento '' diventa null (il CHECK del database respinge '')", async () => {
       await service.crea(T, U, E, corpoCer({ riferimento: '' }))
       expect(tx.rigaAddebito.create.mock.calls[0][0].data.riferimento).toBeNull()
+    })
+
+    it('m2: elenco eliminato fra la lettura e il lock: 404 vero, non "riga usata da movimenti"', async () => {
+      elencoBloccabile = false
+      const e = await errore(service.crea(T, U, E, corpoCer()))
+      expect(e.getStatus()).toBe(404)
+      expect(e.getResponse()).toMatchObject({ error: 'ELENCO_ADDEBITI_NON_TROVATO' })
+      expect(tx.rigaAddebito.create).not.toHaveBeenCalled()
+    })
+
+    it('m10: P2002 dell’indice unico (target nullo con la RLS) diventa 409 RIGA_ADDEBITO_DUPLICATA', async () => {
+      tx.rigaAddebito.create.mockRejectedValue(errP2002())
+      const e = await errore(service.crea(T, U, E, corpoCer()))
+      expect(e.getStatus()).toBe(409)
+      expect(e.getResponse()).toMatchObject({ error: 'RIGA_ADDEBITO_DUPLICATA' })
+    })
+
+    it('I3: campi obbligatori null: errori per campo, mai un errore della pipe', async () => {
+      const e = await errore(
+        service.crea(T, U, E, corpoCer({ unitaMisura: null, codiceIvaId: null, cerProposta: null }))
+      )
+      expect(e.getResponse().errori).toEqual(
+        expect.arrayContaining([
+          { campo: 'unitaMisura', messaggio: 'Indica l’unità di misura.' },
+          { campo: 'codiceIvaId', messaggio: 'Indica il codice IVA.' },
+        ])
+      )
+    })
+
+    it('m5: cerProposta nella forma del catalogo', async () => {
+      await service.crea(T, U, E, {
+        tipo: 'V',
+        addebitoId: A,
+        tipoQuantita: 'UNO',
+        unitaMisura: 'NR',
+        prezzo: '1',
+        codiceIvaId: I,
+        cerProposta: ['200121', '200301/R1'],
+      })
+      expect(tx.rigaAddebito.create.mock.calls[0][0].data.cerProposta).toEqual([
+        '20 01 21*',
+        '20 03 01/R1',
+      ])
     })
 
     it('contratto annullato: 409 LISTINO_NON_MODIFICABILE, prima di tutto il resto', async () => {
