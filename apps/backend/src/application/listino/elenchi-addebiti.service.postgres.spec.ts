@@ -15,6 +15,9 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// Le barriere su pg_stat_activity guardano solo le connessioni del servizio di questo processo.
+const NOME_APPLICAZIONE = `elenchi-addebiti-t20-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import { TenantContext } from '../../core/context/tenant-context'
 import {
@@ -26,7 +29,9 @@ import {
   creaAddebito,
   creaCodiciIvaEcodifiche,
   creaContrattoConElenco,
+  creaRiga,
 } from '../../test-support/listino-di-test'
+import { AzioniListinoService } from './azioni-listino.service'
 import { ElenchiAddebitiService } from './elenchi-addebiti.service'
 
 async function errore(p: Promise<unknown>): Promise<any> {
@@ -42,6 +47,7 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
   let service: ElenchiAddebitiService
+  let azioni: AzioniListinoService
   const tenantCreati: string[] = []
   let n = 0
 
@@ -52,6 +58,7 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
     app = creaPrismaServiceApplicativo()
     service = new ElenchiAddebitiService(app)
+    azioni = new AzioniListinoService(app)
   })
 
   afterAll(async () => {
@@ -477,5 +484,169 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
     })
     const { contesto } = await nel(a.tenantId, () => service.list(a.tenantId, allegato.contrattoId))
     expect(contesto.contratto.contrattoPrincipale).toMatchObject({ id: a.contrattoId })
+  })
+  // ---------------------------------------------------------------------------------------
+  // Giro finale: audit del predefinito perso, stati ammessi, creazioni concorrenti, lock in ordine
+  // ---------------------------------------------------------------------------------------
+
+  it('chi perde il predefinito è nell’audit con l’elenco che l’ha preso (creazione e modifica)', async () => {
+    const { tenantId, utenteId, contrattoId, elencoId } = await conContratto({ predefinito: true })
+    const nuovo = await nel(tenantId, () =>
+      service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Nuovo', predefinito: true })
+    )
+    await nel(tenantId, () =>
+      service.modifica(tenantId, utenteId, elencoId, { predefinito: true, versione: 2 })
+    )
+    const audit = await owner.activityLog.findMany({
+      where: { tenantId, action: 'ELENCO_ADDEBITI_MODIFICATO' },
+      orderBy: { createdAt: 'asc' },
+    })
+    const perdite = audit
+      .map(a => a.metadata as any)
+      .filter(m => m.perdutoPer !== undefined)
+      .map(m => [m.elencoId, m.perdutoPer, m.campi])
+    expect(perdite).toEqual([
+      [elencoId, nuovo.id, ['predefinito']],
+      [nuovo.id, elencoId, ['predefinito']],
+    ])
+    // Nessun testo libero nell'audit (D16).
+    expect(JSON.stringify(audit.map(a => a.metadata))).not.toContain('Nuovo')
+  })
+
+  it.each(['BOZZA', 'SOSPESO', 'SOSPESO_MOVIMENTI'] as const)(
+    'contratto %s: le scritture sono ammesse (D16)',
+    async stato => {
+      const { tenantId, utenteId, contrattoId, elencoId } = await conContratto({ stato })
+      const creato = await nel(tenantId, () =>
+        service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Ammesso' })
+      )
+      expect(creato).toMatchObject({ modificabile: true, eliminabile: true })
+      const mod = await nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, elencoId, { descrizione: 'Cambiato', versione: 1 })
+      )
+      expect(mod).toMatchObject({ descrizione: 'Cambiato', versione: 2 })
+      await nel(tenantId, () => service.elimina(tenantId, utenteId, creato.id, 1))
+      expect(await owner.elencoAddebiti.count({ where: { contrattoId } })).toBe(1)
+    }
+  )
+
+  it('due creazioni concorrenti con predefinito: entrambe 201, alla fine uno solo', async () => {
+    const { tenantId, utenteId, contrattoId } = await conContratto({ predefinito: true })
+    const esiti = await Promise.allSettled([
+      nel(tenantId, () =>
+        service.crea(tenantId, utenteId, contrattoId, { descrizione: 'B', predefinito: true })
+      ),
+      nel(tenantId, () =>
+        service.crea(tenantId, utenteId, contrattoId, { descrizione: 'C', predefinito: true })
+      ),
+    ])
+    expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+    expect(await owner.elencoAddebiti.count({ where: { contrattoId, predefinito: true } })).toBe(1)
+  })
+
+  it('creazione con codice esplicito contro una senza codice: nessun 500, codici distinti', async () => {
+    const { tenantId, utenteId, contrattoId } = await conContratto()
+    const esiti = await Promise.allSettled([
+      nel(tenantId, () =>
+        service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Esplicito', codice: '002' })
+      ),
+      nel(tenantId, () => service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Auto' })),
+    ])
+    expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+    const codici = (await owner.elencoAddebiti.findMany({ where: { contrattoId } })).map(
+      e => e.codice
+    )
+    expect(new Set(codici).size).toBe(codici.length)
+    expect(codici).toHaveLength(3)
+  })
+
+  it('creazione: audit ELENCO_ADDEBITI_CREATO con id, numero del contratto e codice, senza testo libero', async () => {
+    const { tenantId, utenteId, contrattoId } = await conContratto()
+    const creato = await nel(tenantId, () =>
+      service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Descrizione riservata' })
+    )
+    const contratto = await owner.contrattoCliente.findUniqueOrThrow({ where: { id: contrattoId } })
+    const audit = await owner.activityLog.findMany({
+      where: { tenantId, action: 'ELENCO_ADDEBITI_CREATO' },
+    })
+    expect(audit).toHaveLength(1)
+    expect(audit[0].userId).toBe(utenteId)
+    expect(audit[0].metadata).toEqual({
+      elencoId: creato.id,
+      contrattoId,
+      numeroContratto: contratto.numero,
+      codice: '002',
+    })
+  })
+
+  it('copia da due elenchi dello stesso contratto contro il cambio del predefinito: nessun deadlock (I2)', async () => {
+    const a = await azienda()
+    const listino = await creaCodiciIvaEcodifiche(owner, a.tenantId)
+    const arrivo = await creaContrattoConElenco(owner, a.tenantId)
+    const b = await creaContrattoConElenco(owner, a.tenantId)
+    const secondo = await owner.elencoAddebiti.create({
+      data: { tenantId: a.tenantId, contrattoId: b.contrattoId, codice: '002', descrizione: 'B2' },
+    })
+    // `basso` ha l'id piu' piccolo ed e' il predefinito; il PATCH parte dall'altro (id piu' alto).
+    const [basso, alto] = [b.elencoId, secondo.id].sort()
+    await owner.elencoAddebiti.update({ where: { id: basso }, data: { predefinito: true } })
+    const r1 = await creaRiga(owner, a.tenantId, basso, { codiceIvaId: listino.iva22Id })
+    const r2 = await creaRiga(owner, a.tenantId, alto, { codiceIvaId: listino.iva22Id })
+
+    // Barriera: una transazione del proprietario tiene `basso`. Prima si mette in coda la copia
+    // (che chiede basso e poi alto), poi il cambio del predefinito di `alto`: rilasciata la
+    // barriera, se il cambio tenesse `alto` mentre aspetta `basso` le due sessioni si
+    // incrocerebbero (40P01). Con i lock in ordine di id passano entrambe.
+    let rilascia!: () => void
+    const barriera = new Promise<void>(r => (rilascia = r))
+    let tenuto!: () => void
+    const eTenuto = new Promise<void>(r => (tenuto = r))
+    const tenitore = owner.$transaction(
+      async tx => {
+        await tx.$queryRaw`SELECT id FROM "elenchi_addebiti" WHERE id = ${basso}::uuid FOR UPDATE`
+        tenuto()
+        await barriera
+      },
+      { timeout: 60_000 }
+    )
+    await eTenuto
+    const inAttesa = async () => {
+      const r = await owner.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+          AND wait_event_type = 'Lock'`
+      return r[0].n
+    }
+    const finche = async (attesi: number) => {
+      const scadenza = Date.now() + 30_000
+      while ((await inAttesa()) < attesi) {
+        if (Date.now() > scadenza) throw new Error(`sessioni in attesa di lock: attese ${attesi}`)
+        await new Promise(r => setTimeout(r, 25))
+      }
+    }
+    try {
+      const copia = nel(a.tenantId, () =>
+        azioni.aggiungiRighe(a.tenantId, a.utenteId, arrivo.elencoId, {
+          righeIds: [r1.id, r2.id],
+          versione: 1,
+        })
+      )
+      await finche(1)
+      const cambio = nel(a.tenantId, () =>
+        service.modifica(a.tenantId, a.utenteId, alto, { predefinito: true, versione: 1 })
+      )
+      await finche(2)
+      rilascia()
+      await tenitore
+      const esiti = await Promise.allSettled([copia, cambio])
+      expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+    } finally {
+      rilascia()
+      await tenitore.catch(() => undefined)
+    }
+    const predefiniti = await owner.elencoAddebiti.findMany({
+      where: { contrattoId: b.contrattoId, predefinito: true },
+    })
+    expect(predefiniti.map(e => e.id)).toEqual([alto])
   })
 })

@@ -32,7 +32,7 @@ function IsTestoONumero(opzioni?: ValidationOptions) {
       name: 'isTestoONumero',
       target: oggetto.constructor,
       propertyName: proprieta,
-      options: { message: `${proprieta} deve essere un testo o un numero`, ...opzioni },
+      options: { message: 'Il valore deve essere un testo o un numero', ...opzioni },
       validator: {
         validate: (v: unknown) =>
           typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)),

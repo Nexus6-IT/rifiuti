@@ -272,6 +272,13 @@ const quantitaTesto = (v: Prisma.Decimal): string => D(arrotonda(v.toFixed(), 3)
  *   `C` il fisso delle sole fasce raggiunte per la prima volta (precedente <= soglia inferiore
  *   della fascia; la fascia 1 solo con precedente 0); `B` il fisso della fascia piu' alta solo
  *   se raggiunta per la prima volta (Q8). `A` resta com'e'.
+ * Con `quantitaPrecedente` valgono due limiti da conoscere (3.8, 4.4):
+ * - `A` seguita da `B` NON e' invariante: gli importi `A` delle fatture precedenti restano
+ *   emessi, mentre `B` li sostituirebbe solo nella fattura unica sul totale (e' la lettera di Q8: il
+ *   fisso si fattura nella fattura in cui la fascia e' raggiunta);
+ * - con quantita' nuova zero non si fattura nessun fisso (`B`/`C`): non c'e' nulla di nuovo da
+ *   fatturare, anche se il totale precedente cade in una fascia con fisso. Una quantita' nuova
+ *   negativa e' un errore.
  * Perche': la stessa quantita' non si fattura mai due volte. In piu', `validaScaglioni`
  * rifiuta una fascia `D`/`W` seguita da `A`/`X` (Q7), che duplicherebbe la quantita' alta.
  * Import 3.8: le tabelle WinWaste `...E` e quelle "da data" con `B`/`C`/`D` fatturano meno che in

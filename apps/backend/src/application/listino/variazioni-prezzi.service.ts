@@ -101,7 +101,6 @@ export interface AnteprimaVariazioneContratti {
     invariata: boolean
   }[]
   errori: { id: string; voce: string; messaggio: string }[]
-  /** Righe che l'applicazione scrive davvero (quelle con `invariata = false`). */
   /** `improntaVariazione` su `{ id: rigaId, versione }` piu' i parametri. */
   impronta: string
 }

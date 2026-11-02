@@ -5,12 +5,10 @@
 // Ordine dei lock (R40): contratto FOR SHARE (stato e cancellazione, in fila con `bloccaELeggi`
 // della 4.1) -> lock consultivo per contratto (solo predefinito e creazione senza codice) ->
 // elenco FOR UPDATE. Le scritture del listino non cambiano la `versione` del contratto (D16).
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common'
+// Le transazioni di scrittura partono con `lock_timeout` (`lock-listino.ts`): oltre l'attesa 409
+// `OPERAZIONE_CONCORRENTE`. La `versione` dell'elenco protegge i dati dell'elenco e la sostituzione
+// del suo contenuto (copia, M9): la riga singola e gli allegati non la toccano.
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
   elenchiValidiAl,
@@ -28,6 +26,13 @@ import {
   type VincoliNoti,
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import {
+  bloccaContrattoListino,
+  impostaTimeoutLock,
+  lockConsultivoContratto,
+  OPZIONI_TRANSAZIONE_SCRITTURA,
+  type ContrattoBloccato,
+} from './lock-listino'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'ELENCO_ADDEBITI',
@@ -162,12 +167,6 @@ function lanciaNonValido(errori: string[]): never {
 const eP2002 = (err: unknown) =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 
-interface ContrattoBloccato {
-  id: string
-  numero: string
-  stato: string
-}
-
 @Injectable()
 export class ElenchiAddebitiService {
   constructor(private readonly prisma: PrismaService) {}
@@ -282,6 +281,7 @@ export class ElenchiAddebitiService {
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
+          await impostaTimeoutLock(tx)
           const { contratto, prima } = await this.bloccaElenco(
             tx,
             tenantId,
@@ -315,7 +315,7 @@ export class ElenchiAddebitiService {
             ENTITA
           )
           if (campi.includes('predefinito') && nuovi.predefinito) {
-            await this.togliPredefinitoAgliAltri(tx, tenantId, contratto.id, id)
+            await this.togliPredefinitoAgliAltri(tx, tenantId, utenteId, contratto.id, id)
           }
           const dopo = await tx.elencoAddebiti.findFirst({ where: { id, tenantId } })
           if (!dopo) throw elencoNonTrovato()
@@ -327,7 +327,7 @@ export class ElenchiAddebitiService {
             campi,
           })
           return (await this.viste(tx, tenantId, [dopo], true))[0]
-        })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
   }
@@ -337,6 +337,7 @@ export class ElenchiAddebitiService {
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
+          await impostaTimeoutLock(tx)
           const { contratto, prima } = await this.bloccaElenco(tx, tenantId, id, false)
           confrontaVersione(prima.versione, versione, ENTITA)
           const righe = await tx.rigaAddebito.count({ where: { tenantId, elencoId: id } })
@@ -352,7 +353,7 @@ export class ElenchiAddebitiService {
             codice: prima.codice,
             righe,
           })
-        })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
   }
@@ -367,8 +368,9 @@ export class ElenchiAddebitiService {
     valori: DatiElenco
   ): Promise<ElencoAddebitiVista> {
     return this.prisma.$transaction(async tx => {
-      const contratto = await this.bloccaContratto(tx, tenantId, contrattoId)
-      if (valori.codice === '' || valori.predefinito) await this.lockContratto(tx, contrattoId)
+      await impostaTimeoutLock(tx)
+      const contratto = await bloccaContrattoListino(tx, tenantId, contrattoId)
+      if (valori.codice === '' || valori.predefinito) await lockConsultivoContratto(tx, contrattoId)
       const codice =
         valori.codice === '' ? await this.assegnaCodice(tx, tenantId, contrattoId) : valori.codice
 
@@ -380,7 +382,7 @@ export class ElenchiAddebitiService {
         },
       })
       if (valori.predefinito) {
-        await this.togliPredefinitoAgliAltri(tx, tenantId, contrattoId, creato.id)
+        await this.togliPredefinitoAgliAltri(tx, tenantId, utenteId, contrattoId, creato.id)
       }
       await this.audit(tx, tenantId, utenteId, 'ELENCO_ADDEBITI_CREATO', 'creato', {
         elencoId: creato.id,
@@ -389,36 +391,7 @@ export class ElenchiAddebitiService {
         codice: creato.codice,
       })
       return (await this.viste(tx, tenantId, [creato], true))[0]
-    })
-  }
-
-  /**
-   * Contratto non eliminato, bloccato FOR SHARE: da qui alla fine nessuno lo annulla o lo elimina.
-   * 404 se non c'e'; 409 `LISTINO_NON_MODIFICABILE` se annullato (D16).
-   */
-  private async bloccaContratto(
-    tx: Prisma.TransactionClient,
-    tenantId: string,
-    contrattoId: string
-  ): Promise<ContrattoBloccato> {
-    const righe = await tx.$queryRaw<ContrattoBloccato[]>`
-      SELECT id, numero, stato::text AS stato FROM "contratti_cliente"
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${contrattoId}::uuid AND eliminato_il IS NULL
-      FOR SHARE`
-    if (righe.length === 0) throw contrattoNonTrovato()
-    if (righe[0].stato === 'ANNULLATO') {
-      throw new ConflictException({
-        error: 'LISTINO_NON_MODIFICABILE',
-        message: 'Il listino di un contratto annullato non si modifica.',
-      })
-    }
-    return righe[0]
-  }
-
-  /** Lock consultivo per contratto (R40): serializza predefinito e codici assegnati. */
-  private async lockContratto(tx: Prisma.TransactionClient, contrattoId: string): Promise<void> {
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(hashtext('listino-contratto'), hashtext(${contrattoId}))`
+    }, OPZIONI_TRANSAZIONE_SCRITTURA)
   }
 
   /**
@@ -436,10 +409,26 @@ export class ElenchiAddebitiService {
       select: { contrattoId: true },
     })
     if (!noto) throw elencoNonTrovato()
-    const contratto = await this.bloccaContratto(tx, tenantId, noto.contrattoId)
-    if (conLockContratto) await this.lockContratto(tx, noto.contrattoId)
-    await tx.$queryRaw`SELECT id FROM "elenchi_addebiti"
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid FOR UPDATE`
+    const contratto = await bloccaContrattoListino(tx, tenantId, noto.contrattoId)
+    if (conLockContratto) {
+      await lockConsultivoContratto(tx, noto.contrattoId)
+      // Cambio del predefinito: l'elenco e i predefiniti attuali del contratto si bloccano insieme
+      // `ORDER BY id`, come fa la copia (`bloccaElenchi`). Bloccare prima il proprio e poi, in
+      // `togliPredefinitoAgliAltri`, gli altri romperebbe l'ordine globale degli id: una copia che
+      // tiene l'elenco con l'id piu' basso e aspetta il nostro andrebbe in deadlock con noi. Il
+      // lock consultivo tiene fermo l'insieme dei predefiniti (solo chi lo tiene li cambia).
+      const bloccati = await tx.$queryRaw<
+        { id: string }[]
+      >`SELECT id::text AS id FROM "elenchi_addebiti"
+        WHERE tenant_id = ${tenantId}::uuid AND contratto_id = ${noto.contrattoId}::uuid
+          AND (id = ${id}::uuid OR predefinito)
+        ORDER BY id FOR UPDATE`
+      if (!bloccati.some(b => b.id === id.toLowerCase())) throw elencoNonTrovato()
+    } else {
+      const bloccati = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "elenchi_addebiti"
+        WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid FOR UPDATE`
+      if (bloccati.length === 0) throw elencoNonTrovato()
+    }
     const prima = await tx.elencoAddebiti.findFirst({ where: { id, tenantId } })
     if (!prima) throw elencoNonTrovato()
     return { contratto, prima }
@@ -464,17 +453,46 @@ export class ElenchiAddebitiService {
     return libero
   }
 
-  /** Uno solo predefinito per contratto: chi lo era lo perde (e la sua versione sale). */
+  /**
+   * Uno solo predefinito per contratto: chi lo era lo perde (e la sua versione sale). Gli altri
+   * predefiniti si bloccano prima `ORDER BY id FOR UPDATE`, nello stesso ordine di
+   * `AzioniListinoService.bloccaElenchi` (la copia blocca arrivo e sorgenti in ordine di id): un
+   * `updateMany` li bloccherebbe nell'ordine della scansione e potrebbe incrociarsi con la copia
+   * (deadlock). Ogni elenco che perde il flag e' scritto nell'audit (`ELENCO_ADDEBITI_MODIFICATO`
+   * con `campi: ['predefinito']` e `perdutoPer`: l'elenco che l'ha preso).
+   */
   private async togliPredefinitoAgliAltri(
     tx: Prisma.TransactionClient,
     tenantId: string,
+    utenteId: string,
     contrattoId: string,
     tranne: string
   ): Promise<void> {
+    const bloccati = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "elenchi_addebiti"
+      WHERE tenant_id = ${tenantId}::uuid AND contratto_id = ${contrattoId}::uuid
+        AND predefinito AND id <> ${tranne}::uuid
+      ORDER BY id FOR UPDATE`
+    if (bloccati.length === 0) return
+    const ids = bloccati.map(b => b.id)
     await tx.elencoAddebiti.updateMany({
-      where: { tenantId, contrattoId, predefinito: true, id: { not: tranne } },
+      where: { tenantId, contrattoId, id: { in: ids } },
       data: { predefinito: false, versione: { increment: 1 } },
     })
+    const perdenti = await tx.elencoAddebiti.findMany({
+      where: { tenantId, id: { in: ids } },
+      select: { id: true, codice: true },
+      orderBy: { id: 'asc' },
+    })
+    for (const p of perdenti) {
+      await this.audit(tx, tenantId, utenteId, 'ELENCO_ADDEBITI_MODIFICATO', 'modificato', {
+        elencoId: p.id,
+        contrattoId,
+        codice: p.codice,
+        campi: ['predefinito'],
+        perdutoPer: tranne,
+      })
+    }
   }
 
   /** Viste con conteggio delle righe e allegati letti in una passata per tutta la lista. */

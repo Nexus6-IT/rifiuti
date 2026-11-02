@@ -1,7 +1,7 @@
 // Variazione dei prezzi dell'archivio addebiti (4.2a, D21, E22): anteprima e applicazione.
 //
 // L'anteprima calcola vecchio -> nuovo per (addebito, listino) senza scrivere. L'applicazione e'
-// atomica (D20): una sola transazione che blocca gli addebiti e i loro prezzi `FOR UPDATE` in
+// atomica (D20): una sola transazione che blocca gli addebiti e i loro prezzi `FOR NO KEY UPDATE` in
 // ordine stabile, rilegge, ricalcola, confronta l'impronta dell'anteprima e solo allora scrive
 // (`versione + 1` sugli addebiti toccati) con un unico audit. Qualunque errore dell'anteprima
 // (prezzo negativo...) rifiuta tutta la variazione: niente applicazioni parziali.

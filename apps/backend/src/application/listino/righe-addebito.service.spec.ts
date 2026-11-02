@@ -108,6 +108,7 @@ describe('RigheAddebitoService (Prisma finto)', () => {
         return []
       }),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
       contrattoCliente: { findFirst: jest.fn().mockResolvedValue({ clienteId: CLI }) },
       cliente: {
         findFirst: jest.fn().mockResolvedValue({
@@ -380,6 +381,17 @@ describe('RigheAddebitoService (Prisma finto)', () => {
         where: { id: R, tenantId: T, versione: 1 },
       })
       expect(tx.activityLog.create.mock.calls[0][0].data.action).toBe('RIGA_ADDEBITO_ELIMINATA')
+    })
+
+    it('la transazione parte con lock_timeout e un tetto sopra l’attesa', async () => {
+      tx.rigaAddebito.findFirst.mockImplementation(async ({ select }: any) =>
+        select
+          ? { elencoId: E, tipo: 'CER', unitaMisura: 'KG', elenco: { contrattoId: C } }
+          : rigaDb()
+      )
+      await service.elimina(T, U, R, 1)
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(`SET LOCAL lock_timeout = '10s'`)
+      expect(prisma.$transaction.mock.calls[0][1].timeout).toBeGreaterThan(10_000)
     })
   })
 

@@ -16,7 +16,6 @@
 // a parte (la `versione` protegge solo la modifica dei dati dell'elenco).
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
@@ -33,7 +32,13 @@ import {
   type AllegatoContrattoVista,
   type FileAllegatoContratto,
 } from '../contratti-cliente/allegati-contratto-cliente.service'
+import {
+  traduciErrorePrisma,
+  type DescrizioneEntita,
+  type VincoliNoti,
+} from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from './lock-listino'
 
 export type AllegatoElencoVista = AllegatoContrattoVista
 export type FileAllegatoElenco = FileAllegatoContratto
@@ -62,6 +67,24 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const elencoNonTrovato = () =>
   new NotFoundException({ message: NON_TROVATO, error: 'ELENCO_ADDEBITI_NON_TROVATO' })
+
+/** L'elenco c'e' ma l'allegato no: codice proprio, cosi' l'interfaccia non confonde i due casi. */
+const allegatoNonTrovato = () =>
+  new NotFoundException({ message: NON_TROVATO, error: 'ALLEGATO_NON_TROVATO' })
+
+const ENTITA: DescrizioneEntita = {
+  prefisso: 'ALLEGATO_ELENCO',
+  soggetto: "L'allegato dell'elenco",
+  femminile: false,
+}
+
+/** Unica chiave unica di business della tabella: la posizione dentro l'elenco. */
+const VINCOLI: VincoliNoti = {
+  allegati_elenco_addebiti_elenco_id_posizione_key: {
+    codice: 'ALLEGATO_POSIZIONE_OCCUPATA',
+    messaggio: 'La posizione è già occupata: rimuovi prima l’allegato esistente.',
+  },
+}
 
 @Injectable()
 export class AllegatiElencoService {
@@ -149,6 +172,7 @@ export class AllegatiElencoService {
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
+          await impostaTimeoutLock(tx)
           await this.bloccaElenco(tx, tenantId, elencoId)
           const riga = await tx.allegatoElencoAddebiti.create({
             data: {
@@ -178,17 +202,9 @@ export class AllegatiElencoService {
             },
           })
           return comeVista(riga)
-        })
-        .catch(err => {
-          // L'unico vincolo univoco "di business" della tabella e' (elenco, posizione).
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            throw new ConflictException({
-              error: 'ALLEGATO_POSIZIONE_OCCUPATA',
-              message: 'La posizione è già occupata: rimuovi prima l’allegato esistente.',
-            })
-          }
-          throw err
-        })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
+        // P2002 (posizione occupata), deadlock, lock timeout e timeout della transazione -> 409.
+        .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
   }
 
@@ -197,7 +213,8 @@ export class AllegatiElencoService {
     elencoId: string,
     allegatoId: string
   ): Promise<{ nomeFile: string; contenuto: Buffer }> {
-    if (!UUID.test(elencoId) || !UUID.test(allegatoId)) throw elencoNonTrovato()
+    if (!UUID.test(elencoId)) throw elencoNonTrovato()
+    if (!UUID.test(allegatoId)) throw allegatoNonTrovato()
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
         await this.elencoEsistente(tx, tenantId, elencoId)
@@ -205,7 +222,7 @@ export class AllegatiElencoService {
           where: { id: allegatoId, elencoId, tenantId },
           select: { nomeFile: true, contenuto: true },
         })
-        if (!riga) throw elencoNonTrovato()
+        if (!riga) throw allegatoNonTrovato()
         return { nomeFile: riga.nomeFile, contenuto: Buffer.from(riga.contenuto) }
       })
     )
@@ -217,29 +234,33 @@ export class AllegatiElencoService {
     elencoId: string,
     allegatoId: string
   ): Promise<void> {
-    if (!UUID.test(elencoId) || !UUID.test(allegatoId)) throw elencoNonTrovato()
+    if (!UUID.test(elencoId)) throw elencoNonTrovato()
+    if (!UUID.test(allegatoId)) throw allegatoNonTrovato()
     await nelContestoTenant(tenantId, () =>
-      this.prisma.$transaction(async tx => {
-        await this.bloccaElenco(tx, tenantId, elencoId)
-        const riga = await tx.allegatoElencoAddebiti.findFirst({
-          where: { id: allegatoId, elencoId, tenantId },
-          select: { posizione: true },
-        })
-        if (!riga) throw elencoNonTrovato()
-        const { count } = await tx.allegatoElencoAddebiti.deleteMany({
-          where: { id: allegatoId, elencoId, tenantId },
-        })
-        if (count === 0) throw elencoNonTrovato()
-        await tx.activityLog.create({
-          data: {
-            tenantId,
-            userId: utenteId,
-            action: 'ALLEGATO_ELENCO_ADDEBITI_RIMOSSO',
-            description: "Allegato dell'elenco degli addebiti rimosso",
-            metadata: { elencoId, posizione: riga.posizione } as Prisma.InputJsonValue,
-          },
-        })
-      })
+      this.prisma
+        .$transaction(async tx => {
+          await impostaTimeoutLock(tx)
+          await this.bloccaElenco(tx, tenantId, elencoId)
+          const riga = await tx.allegatoElencoAddebiti.findFirst({
+            where: { id: allegatoId, elencoId, tenantId },
+            select: { posizione: true },
+          })
+          if (!riga) throw allegatoNonTrovato()
+          const { count } = await tx.allegatoElencoAddebiti.deleteMany({
+            where: { id: allegatoId, elencoId, tenantId },
+          })
+          if (count === 0) throw allegatoNonTrovato()
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'ALLEGATO_ELENCO_ADDEBITI_RIMOSSO',
+              description: "Allegato dell'elenco degli addebiti rimosso",
+              metadata: { elencoId, posizione: riga.posizione } as Prisma.InputJsonValue,
+            },
+          })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
+        .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
   }
 }

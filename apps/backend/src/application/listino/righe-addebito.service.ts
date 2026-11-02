@@ -52,6 +52,13 @@ import {
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import {
+  bloccaContrattoListino,
+  impostaTimeoutLock,
+  lockConsultivoContratto,
+  OPZIONI_TRANSAZIONE_SCRITTURA,
+  type ContrattoBloccato,
+} from './lock-listino'
+import {
   cerNelCatalogo,
   normalizzaCerCode,
   type LettoreCatalogoCer,
@@ -180,14 +187,6 @@ const INCLUDE = {
 } satisfies Prisma.RigaAddebitoInclude
 
 type RigaDb = Prisma.RigaAddebitoGetPayload<{ include: typeof INCLUDE }>
-
-interface ContrattoBloccato {
-  id: string
-  numero: string
-  stato: string
-  clienteId: string
-  contrattoPrincipaleId: string | null
-}
 
 const CAMPI = Object.keys(ETICHETTE_CAMPI_RIGA) as CampoRiga[]
 const CAMPI_FIGLI: readonly CampoRiga[] = ['scaglioni', 'scadenze']
@@ -526,13 +525,14 @@ export class RigheAddebitoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
+          await impostaTimeoutLock(tx)
           const noto = await tx.elencoAddebiti.findFirst({
             where: { id: elencoId, tenantId, contratto: { eliminatoIl: null } },
             select: { contrattoId: true, codice: true },
           })
           if (!noto) throw elencoNonTrovato()
           const dati = definiti(corpo)
-          const contratto = await this.bloccaContratto(tx, tenantId, noto.contrattoId)
+          const contratto = await bloccaContrattoListino(tx, tenantId, noto.contrattoId)
           await this.lockPerTipo(tx, contratto, dati.tipo, dati.unitaMisura)
           await this.bloccaElencoRighe(tx, tenantId, elencoId)
 
@@ -555,7 +555,7 @@ export class RigheAddebitoService {
           const dopo = await this.rileggi(tx, tenantId, creata.id)
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_CREATA', 'creata', dopo, [])
           return this.vista(dopo)
-        })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         return await traduciErrorePrisma(err, ENTITA, VINCOLI)
       }
@@ -572,6 +572,7 @@ export class RigheAddebitoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
+          await impostaTimeoutLock(tx)
           const { versione, ...corpo } = m
           const patch = definiti(corpo)
           const { contratto, riga: prima } = await this.bloccaRiga(tx, tenantId, id, patch)
@@ -619,7 +620,7 @@ export class RigheAddebitoService {
             ...campi,
           ])
           return this.vista(dopo)
-        })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         return await traduciErrorePrisma(err, ENTITA, VINCOLI)
       }
@@ -631,6 +632,7 @@ export class RigheAddebitoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         await this.prisma.$transaction(async tx => {
+          await impostaTimeoutLock(tx)
           const { riga } = await this.bloccaRiga(tx, tenantId, id, {})
           confrontaVersione(riga.versione, versione, ENTITA)
           // Fasce e scadenze vanno a cascata (FK ON DELETE CASCADE).
@@ -639,7 +641,7 @@ export class RigheAddebitoService {
             ENTITA
           )
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_ELIMINATA', 'eliminata', riga, [])
-        })
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         await traduciErrorePrisma(err, ENTITA, VINCOLI)
       }
@@ -865,31 +867,6 @@ export class RigheAddebitoService {
   // -------------------------------------------------------------------------------------------
 
   /**
-   * Contratto non eliminato, bloccato FOR SHARE: da qui alla fine nessuno lo annulla o lo elimina.
-   * 404 se non c'e'; 409 `LISTINO_NON_MODIFICABILE` se annullato (D16).
-   */
-  private async bloccaContratto(
-    tx: Prisma.TransactionClient,
-    tenantId: string,
-    contrattoId: string
-  ): Promise<ContrattoBloccato> {
-    const righe = await tx.$queryRaw<ContrattoBloccato[]>`
-      SELECT id::text AS id, numero, stato::text AS stato, cliente_id::text AS "clienteId",
-             contratto_principale_id::text AS "contrattoPrincipaleId"
-      FROM "contratti_cliente"
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${contrattoId}::uuid AND eliminato_il IS NULL
-      FOR SHARE`
-    if (righe.length === 0) throw contrattoNonTrovato()
-    if (righe[0].stato === 'ANNULLATO') {
-      throw new ConflictException({
-        error: 'LISTINO_NON_MODIFICABILE',
-        message: 'Il listino di un contratto annullato non si modifica.',
-      })
-    }
-    return righe[0]
-  }
-
-  /**
    * Lock consultivi di R40 sul tipo e l'unita' di misura effettivi: per cliente solo per `$D` con
    * UM `#`, per contratto per `M…` e `$…` (poi la riga e' serializzata con le altre dello stesso
    * tipo anche fra elenchi diversi, dove il `FOR UPDATE` dell'elenco non basta).
@@ -907,8 +884,7 @@ export class RigheAddebitoService {
         SELECT pg_advisory_xact_lock(hashtext('listino-cliente'), hashtext(${contratto.clienteId}))`
     }
     if (t.startsWith('M') || t.startsWith('$')) {
-      await tx.$executeRaw`
-        SELECT pg_advisory_xact_lock(hashtext('listino-contratto'), hashtext(${contratto.id}))`
+      await lockConsultivoContratto(tx, contratto.id)
     }
   }
 
@@ -944,7 +920,7 @@ export class RigheAddebitoService {
       },
     })
     if (!nota) throw rigaNonTrovata()
-    const contratto = await this.bloccaContratto(tx, tenantId, nota.elenco.contrattoId)
+    const contratto = await bloccaContrattoListino(tx, tenantId, nota.elenco.contrattoId)
     await this.lockPerTipo(
       tx,
       contratto,

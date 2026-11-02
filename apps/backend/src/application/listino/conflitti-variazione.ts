@@ -2,10 +2,10 @@
 // variazione dell'archivio (Task 10) e quella dei contratti (Task 24).
 import { ConflictException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { MSG_OPERAZIONE_CONCORRENTE } from '../clienti/anagrafica-versionata'
 
 export const MSG_VARIAZIONE_SUPERATA = 'I prezzi sono cambiati dopo l’anteprima: rifai l’anteprima.'
-export const MSG_OPERAZIONE_CONCORRENTE =
-  'L’operazione è stata interrotta da un’altra in corso: riprova.'
+export { MSG_OPERAZIONE_CONCORRENTE }
 
 /**
  * Deadlock (P2034 o 40P01 dal raw) e lock timeout (55P03) valgono "i dati sono cambiati": si rifa

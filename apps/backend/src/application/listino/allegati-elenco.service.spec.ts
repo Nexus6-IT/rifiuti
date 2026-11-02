@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { createHash } from 'crypto'
+import { MSG_OPERAZIONE_CONCORRENTE } from '../clienti/anagrafica-versionata'
 import { AllegatiElencoService } from './allegati-elenco.service'
 
 const T = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -35,6 +36,7 @@ describe('AllegatiElencoService', () => {
           .mockResolvedValue({ id: K, contrattoId: 'cccccccc-0000-4000-8000-00000000000c' }),
       },
       $queryRaw: jest.fn().mockResolvedValue([{ id: K }]),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
       allegatoElencoAddebiti: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
@@ -156,6 +158,73 @@ describe('AllegatiElencoService', () => {
     })
   })
 
+  describe('attese di lock e timeout: 409 OPERAZIONE_CONCORRENTE, mai 500', () => {
+    const errori: Array<[string, () => unknown]> = [
+      [
+        'P2028',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('timeout', {
+            code: 'P2028',
+            clientVersion: 'x',
+          }),
+      ],
+      [
+        'P2034',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('conflitto', {
+            code: 'P2034',
+            clientVersion: 'x',
+          }),
+      ],
+      [
+        '40P01',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('deadlock', {
+            code: 'P2010',
+            clientVersion: 'x',
+            meta: { code: '40P01' },
+          }),
+      ],
+      [
+        '55P03',
+        () =>
+          new Prisma.PrismaClientKnownRequestError('lock_timeout', {
+            code: 'P2010',
+            clientVersion: 'x',
+            meta: { code: '55P03' },
+          }),
+      ],
+    ]
+
+    it.each(errori)('carica: %s diventa 409 con il testo condiviso', async (_nome, crea) => {
+      tx.$queryRaw.mockRejectedValue(crea())
+      const e = await service.carica(T, U, K, 1, file()).catch(x => x)
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toEqual({
+        error: 'OPERAZIONE_CONCORRENTE',
+        message: MSG_OPERAZIONE_CONCORRENTE,
+      })
+    })
+
+    it.each(errori)('rimuovi: %s diventa 409 con il testo condiviso', async (_nome, crea) => {
+      tx.$queryRaw.mockRejectedValue(crea())
+      const e = await service.rimuovi(T, U, K, A).catch(x => x)
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({ error: 'OPERAZIONE_CONCORRENTE' })
+    })
+
+    it('carica e rimuovi partono con lock_timeout e tetto della transazione sopra', async () => {
+      tx.allegatoElencoAddebiti.findFirst.mockResolvedValue({ posizione: 1 })
+      await service.carica(T, U, K, 1, file())
+      await service.rimuovi(T, U, K, A)
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(2)
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(`SET LOCAL lock_timeout = '10s'`)
+      for (const [, opzioni] of prisma.$transaction.mock.calls) {
+        expect(opzioni.timeout).toBeGreaterThan(10_000)
+      }
+    })
+  })
+
   describe('lock e contratto annullato (R47, eccezione a D16)', () => {
     it('contratto ed elenco FOR SHARE prima di scrivere, senza filtro sullo stato del contratto', async () => {
       await service.carica(T, U, K, 1, file())
@@ -212,6 +281,20 @@ describe('AllegatiElencoService', () => {
   })
 
   describe('contenuto', () => {
+    it("404 ALLEGATO_NON_TROVATO se l'elenco c'è e manca solo l'allegato", async () => {
+      tx.allegatoElencoAddebiti.findFirst.mockResolvedValue(null)
+      await expect(service.contenuto(T, K, A)).rejects.toMatchObject({
+        response: { error: 'ALLEGATO_NON_TROVATO' },
+      })
+      await expect(service.contenuto(T, K, 'x')).rejects.toMatchObject({
+        response: { error: 'ALLEGATO_NON_TROVATO' },
+      })
+      tx.elencoAddebiti.findFirst.mockResolvedValue(null)
+      await expect(service.contenuto(T, K, A)).rejects.toMatchObject({
+        response: { error: 'ELENCO_ADDEBITI_NON_TROVATO' },
+      })
+    })
+
     it("404 se l'allegato non è di quel contratto/azienda", async () => {
       tx.allegatoElencoAddebiti.findFirst.mockResolvedValue(null)
       await expect(service.contenuto(T, K, A)).rejects.toBeInstanceOf(NotFoundException)
@@ -237,6 +320,9 @@ describe('AllegatiElencoService', () => {
   describe('rimuovi', () => {
     it("404 se non c'è; altrimenti cancella e lascia l'audit RIMOSSO", async () => {
       await expect(service.rimuovi(T, U, K, A)).rejects.toBeInstanceOf(NotFoundException)
+      await expect(service.rimuovi(T, U, K, A)).rejects.toMatchObject({
+        response: { error: 'ALLEGATO_NON_TROVATO' },
+      })
       expect(tx.allegatoElencoAddebiti.deleteMany).not.toHaveBeenCalled()
       expect(tx.activityLog.create).not.toHaveBeenCalled()
 

@@ -125,6 +125,18 @@ describe('AllegatiElencoController', () => {
       expect((await http().delete(`${url}/x`)).status).toBe(400)
     })
 
+    it('id non UUID su /contenuto (elenco o allegato) e sul POST: 400 e il servizio non è chiamato', async () => {
+      expect((await http().get(`${url}/x/contenuto`)).status).toBe(400)
+      expect((await http().get(`/elenchi-addebiti/x/allegati/${A}/contenuto`)).status).toBe(400)
+      const r = await http()
+        .post('/elenchi-addebiti/x/allegati')
+        .attach('allegato', PDF, { filename: 'c.pdf', contentType: 'application/pdf' })
+        .field('posizione', '1')
+      expect(r.status).toBe(400)
+      expect(servizio.contenuto).not.toHaveBeenCalled()
+      expect(servizio.carica).not.toHaveBeenCalled()
+    })
+
     it('POST: 201, posizione stringa -> intero, utente della sessione', async () => {
       const r = await invia('2')
       expect(r.status).toBe(201)

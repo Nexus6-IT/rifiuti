@@ -15,6 +15,9 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// Le barriere su pg_stat_activity guardano solo le connessioni del servizio di questo processo.
+const NOME_APPLICAZIONE = `righe-addebito-t21-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import {
   PrismaService,
@@ -39,7 +42,14 @@ async function errore(p: Promise<unknown>): Promise<any> {
   throw new Error('attesa un’eccezione')
 }
 
-const attendi = (ms: number) => new Promise(r => setTimeout(r, ms))
+/** Aspetta una condizione sul database con scadenza di 30 s (non un tempo fisso). */
+async function finche(condizione: () => Promise<boolean>, cosa: string): Promise<void> {
+  const scadenza = Date.now() + 30_000
+  while (!(await condizione())) {
+    if (Date.now() > scadenza) throw new Error(`non si è mai verificato: ${cosa}`)
+    await new Promise(r => setTimeout(r, 25))
+  }
+}
 
 describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -990,28 +1000,40 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
         unitaMisura: 'NR',
         prezzo: '1',
       }
-      // Una transazione del proprietario modifica l'addebito (FOR NO KEY UPDATE) e resta aperta.
+      // Una transazione del proprietario modifica l'addebito (FOR NO KEY UPDATE) e resta aperta:
+      // `preso` scatta solo dopo l'UPDATE, quindi la creazione parte con il lock gia' tenuto.
       let sblocca!: (commit: boolean) => void
       const decisione = new Promise<boolean>(r => (sblocca = r))
+      let preso!: () => void
+      const lockPreso = new Promise<void>(r => (preso = r))
       const aperta = owner.$transaction(
         async tx => {
           await tx.addebito.update({ where: { id: a.id }, data: { attivo: false } })
+          preso()
           if (!(await decisione)) throw new Error('rollback voluto')
         },
         { timeout: 30000 }
       )
-      await attendi(300)
-      let finita = false
-      const creazione = crea(s, corpo).finally(() => {
-        finita = true
-      })
-      const esito = creazione.then(
+      await lockPreso
+      const esito = crea(s, corpo).then(
         v => ({ v }),
         e => ({ e })
       )
-      await attendi(800)
-      // Una lettura senza FOR SHARE avrebbe risposto subito con l'addebito ancora attivo.
-      expect(finita).toBe(false)
+      // Una lettura senza FOR SHARE non si fermerebbe mai su questa query: la barriera e' una
+      // sessione del servizio in attesa di lock proprio sulla lettura dell'addebito.
+      try {
+        await finche(async () => {
+          const r = await owner.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+              AND wait_event_type = 'Lock' AND query LIKE '%FROM "addebiti"%FOR SHARE%'`
+          return r[0].n === 1
+        }, 'la creazione attende il lock FOR SHARE dell’addebito')
+      } catch (e) {
+        sblocca(false) // non lasciare la transazione del proprietario aperta
+        await aperta.catch(() => undefined)
+        throw e
+      }
       sblocca(true) // commit: l'addebito risulta disattivato
       await aperta
       const r = (await esito) as { e?: any }

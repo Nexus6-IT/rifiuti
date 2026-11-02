@@ -267,7 +267,10 @@ export class PercentualeIstatDto {
   @IsInt()
   mese: number
 
-  @ApiProperty({ example: '2,5', description: 'Stringa decimale, maggiore di 0 e minore di 100' })
+  @ApiProperty({
+    example: '2.5',
+    description: 'Stringa decimale col punto, maggiore di 0 e minore di 100',
+  })
   @IsString()
   @MaxLength(30)
   percentuale: string

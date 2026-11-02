@@ -221,33 +221,43 @@ describe('applicaScaglioni', () => {
       'C+A+A': [sc(1, '1000', '50', 'C'), sc(2, '5000', '0.08', 'A'), sc(7, null, '0.05', 'A')],
       'A+C': [sc(1, '1000', '0.10', 'A'), sc(7, null, '50', 'C')],
     }
-    const divisioni = [
-      [800, 1000],
-      [1000, 4000],
-      [1200, 100, 3000],
-      [500, 500, 500, 2000],
-      [3000, 3000],
-      [6000],
+    // Include parti a zero, un precedente esattamente a 5.000 e quantita' decimali a cavallo delle soglie.
+    const divisioni: string[][] = [
+      ['800', '1000'],
+      ['1000', '4000'],
+      ['1200', '100', '3000'],
+      ['500', '500', '500', '2000'],
+      ['3000', '3000'],
+      ['6000'],
+      ['0', '800', '1000'],
+      ['1000', '0', '500'],
+      ['5000', '500'],
+      ['4999.999', '0.002'],
+      ['999.5', '0.5', '4000.5', '1'],
     ]
-    const importo = (t: Scaglione[], q: string, prec: string): Prisma.Decimal => {
-      const r = applicaScaglioni(t, q, 'KG', { quantitaPrecedente: prec })
+    const importoDi = (r: ReturnType<typeof applicaScaglioni>): Prisma.Decimal => {
       if ('errore' in r) throw new Error(r.errore)
       return r.righe.reduce(
         (m, x) => m.plus(new Prisma.Decimal(x.quantita).times(x.prezzo)),
         new Prisma.Decimal(0)
       )
     }
+    const importo = (t: Scaglione[], q: string, prec: string): Prisma.Decimal =>
+      importoDi(applicaScaglioni(t, q, 'KG', { quantitaPrecedente: prec }))
+    // Riferimento: la fattura unica sul totale SENZA quantita' precedente (il percorso "porta" di
+    // WinWaste), cosi' la proprieta' lega i due percorsi e non il percorso a se' stesso.
+    const importoUnico = (t: Scaglione[], q: string): Prisma.Decimal =>
+      importoDi(applicaScaglioni(t, q, 'KG'))
     for (const [nome, t] of Object.entries(tabelle)) {
       it(`${nome}: stesso importo comunque si divida la quantità`, () => {
         for (const parti of divisioni) {
-          const totale = parti.reduce((m, x) => m + x, 0)
-          let cum = 0
+          let cum = new Prisma.Decimal(0)
           let somma = new Prisma.Decimal(0)
           for (const p of parti) {
-            somma = somma.plus(importo(t, String(p), String(cum)))
-            cum += p
+            somma = somma.plus(importo(t, p, cum.toFixed()))
+            cum = cum.plus(p)
           }
-          expect(somma.toFixed(4)).toBe(importo(t, String(totale), '0').toFixed(4))
+          expect(somma.toFixed(4)).toBe(importoUnico(t, cum.toFixed()).toFixed(4))
         }
       })
     }
@@ -255,15 +265,15 @@ describe('applicaScaglioni', () => {
     it('D ed E: ogni kg si fattura una volta sola', () => {
       for (const t of [tabella('D'), [sc(1, '1000', '0.10', 'A'), sc(7, null, '0.05', 'E')]]) {
         for (const parti of divisioni) {
-          let cum = 0
+          let cum = new Prisma.Decimal(0)
           let kg = new Prisma.Decimal(0)
           for (const p of parti) {
-            const r = applicaScaglioni(t, String(p), 'KG', { quantitaPrecedente: String(cum) })
+            const r = applicaScaglioni(t, p, 'KG', { quantitaPrecedente: cum.toFixed() })
             if ('errore' in r) throw new Error(r.errore)
             kg = r.righe.reduce((m, x) => m.plus(x.quantita), kg)
-            cum += p
+            cum = cum.plus(p)
           }
-          expect(kg.toFixed()).toBe(String(cum))
+          expect(kg.toFixed()).toBe(cum.toFixed())
         }
       }
     })

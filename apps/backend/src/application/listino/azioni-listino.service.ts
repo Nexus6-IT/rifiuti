@@ -15,12 +15,7 @@
 // riconvalidata con `normalizzaRiga` + `validaRiga` per il contratto di arrivo, perche' una regola
 // dipende dal contratto: D17 (un contratto allegato ammette solo i tipi `T…`). Se una riga non e'
 // valida, la copia intera risponde 400 con `details.errori` (R60): mai una copia a meta'.
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { scegliRigheDaCopiare, type EscluseCopia } from '../../domain/listino/copia-righe'
 import {
@@ -38,6 +33,12 @@ import {
   type VincoliNoti,
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import {
+  bloccaContrattoListino,
+  impostaTimeoutLock,
+  lockConsultivoContratto,
+  type ContrattoBloccato,
+} from './lock-listino'
 import { grezzoDaRiga } from './righe-addebito.service'
 
 /** R45. */
@@ -79,13 +80,6 @@ const CODICE_COPIA = 'COPIA_ELENCO_NON_VALIDA'
 const CODICE_IMPOSTAZIONE = 'IMPOSTAZIONE_CONTRATTO_NON_VALIDA'
 const MSG_SU_SE_STESSO = 'Un elenco non si copia su sé stesso.'
 const MSG_TIPO_PROVVIGIONE = 'Indica su cosa si calcola la provvigione.'
-
-interface ContrattoBloccato {
-  id: string
-  numero: string
-  stato: string
-  contrattoPrincipaleId: string | null
-}
 
 const contrattoNonTrovato = () =>
   new NotFoundException({
@@ -170,11 +164,11 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
-          await this.timeoutLock(tx)
+          await impostaTimeoutLock(tx)
           const arrivo = await this.elencoVisibile(tx, tenantId, elencoId)
           await this.elencoVisibile(tx, tenantId, daElencoId)
-          const contratto = await this.bloccaContratto(tx, tenantId, arrivo.contrattoId)
-          await this.lockContratto(tx, contratto.id)
+          const contratto = await bloccaContrattoListino(tx, tenantId, arrivo.contrattoId)
+          await lockConsultivoContratto(tx, contratto.id)
           await this.bloccaElenchi(tx, tenantId, [elencoId, daElencoId])
           const dopoLock = await tx.elencoAddebiti.findFirst({
             where: { id: elencoId, tenantId },
@@ -235,7 +229,7 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
-          await this.timeoutLock(tx)
+          await impostaTimeoutLock(tx)
           const arrivo = await this.elencoVisibile(tx, tenantId, elencoId)
           const note = await tx.rigaAddebito.findMany({
             where: { id: { in: ids }, tenantId, elenco: { contratto: { eliminatoIl: null } } },
@@ -243,8 +237,8 @@ export class AzioniListinoService {
           })
           // Una riga di un'altra azienda o di un contratto eliminato non esiste (404).
           if (note.length !== ids.length) throw rigaNonTrovata()
-          const contratto = await this.bloccaContratto(tx, tenantId, arrivo.contrattoId)
-          await this.lockContratto(tx, contratto.id)
+          const contratto = await bloccaContrattoListino(tx, tenantId, arrivo.contrattoId)
+          await lockConsultivoContratto(tx, contratto.id)
           await this.bloccaElenchi(tx, tenantId, [elencoId, ...note.map(n => n.elencoId)])
           const dopoLock = await tx.elencoAddebiti.findFirst({
             where: { id: elencoId, tenantId },
@@ -327,9 +321,9 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
-          await this.timeoutLock(tx)
-          const contratto = await this.bloccaContratto(tx, tenantId, contrattoId)
-          await this.lockContratto(tx, contratto.id)
+          await impostaTimeoutLock(tx)
+          const contratto = await bloccaContrattoListino(tx, tenantId, contrattoId)
+          await lockConsultivoContratto(tx, contratto.id)
           await this.bloccaElenchiDelContratto(tx, tenantId, contratto.id)
           const righe = await tx.rigaAddebito.findMany({
             where: { tenantId, elenco: { contrattoId: contratto.id } },
@@ -402,9 +396,9 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
-          await this.timeoutLock(tx)
-          const contratto = await this.bloccaContratto(tx, tenantId, contrattoId)
-          await this.lockContratto(tx, contratto.id)
+          await impostaTimeoutLock(tx)
+          const contratto = await bloccaContrattoListino(tx, tenantId, contrattoId)
+          await lockConsultivoContratto(tx, contratto.id)
           await this.bloccaElenchiDelContratto(tx, tenantId, contratto.id)
           const righe = await tx.rigaAddebito.findMany({
             where: {
@@ -582,11 +576,6 @@ export class AzioniListinoService {
     }
   }
 
-  /** Come la variazione dei prezzi: chi aspetta un lock oltre 10 s rinuncia (55P03 -> 409). */
-  private async timeoutLock(tx: Prisma.TransactionClient): Promise<void> {
-    await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '10s'`)
-  }
-
   // -------------------------------------------------------------------------------------------
   // Lock (R40)
   // -------------------------------------------------------------------------------------------
@@ -603,34 +592,6 @@ export class AzioniListinoService {
     })
     if (!e) throw elencoNonTrovato()
     return e
-  }
-
-  /** Contratto non eliminato FOR SHARE; 404 se non c'e', 409 se annullato (D16). */
-  private async bloccaContratto(
-    tx: Prisma.TransactionClient,
-    tenantId: string,
-    contrattoId: string
-  ): Promise<ContrattoBloccato> {
-    const righe = await tx.$queryRaw<ContrattoBloccato[]>`
-      SELECT id::text AS id, numero, stato::text AS stato,
-             contratto_principale_id::text AS "contrattoPrincipaleId"
-      FROM "contratti_cliente"
-      WHERE tenant_id = ${tenantId}::uuid AND id = ${contrattoId}::uuid AND eliminato_il IS NULL
-      FOR SHARE`
-    if (righe.length === 0) throw contrattoNonTrovato()
-    if (righe[0].stato === 'ANNULLATO') {
-      throw new ConflictException({
-        error: 'LISTINO_NON_MODIFICABILE',
-        message: 'Il listino di un contratto annullato non si modifica.',
-      })
-    }
-    return righe[0]
-  }
-
-  /** Lo stesso lock consultivo dei Task 20 e 21 (spazio di chiavi `listino-contratto`). */
-  private async lockContratto(tx: Prisma.TransactionClient, contrattoId: string): Promise<void> {
-    await tx.$executeRaw`
-      SELECT pg_advisory_xact_lock(hashtext('listino-contratto'), hashtext(${contrattoId}))`
   }
 
   /** Elenchi FOR UPDATE uno alla volta, in ordine di id: nessun deadlock fra copie incrociate. */

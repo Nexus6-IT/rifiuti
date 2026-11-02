@@ -52,6 +52,7 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
           : [{ id: E }]
       ),
       $executeRaw: jest.fn().mockResolvedValue(1),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(1),
       contrattoCliente: {
         findFirst: jest.fn().mockResolvedValue({
           id: C,
@@ -133,13 +134,57 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
       expect(codici).toEqual(['001', 'AB'])
     })
 
-    it('predefinito: lock consultivo e flag tolto agli altri', async () => {
+    it('predefinito: lock consultivo, altri predefiniti bloccati in ordine di id, flag tolto e audit', async () => {
+      const ALTRO = '99999999-0000-4000-8000-0000000000aa'
+      tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) => {
+        const sql = strings.join('?')
+        if (sql.includes('contratti_cliente')) return [{ id: C, numero: 'CC-1', stato }]
+        if (sql.includes('predefinito AND id <>')) return [{ id: ALTRO }]
+        return [{ id: E }]
+      })
+      tx.elencoAddebiti.findMany.mockResolvedValue([{ id: ALTRO, codice: '001' }])
       await service.crea(T, U, C, { codice: '2', descrizione: 'X', predefinito: true })
       expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+      const sql = tx.$queryRaw.mock.calls.map((c: any[]) => c[0].join('?')) as string[]
+      expect(sql.some(q => /ORDER BY id FOR UPDATE/.test(q) && q.includes('id <>'))).toBe(true)
       expect(tx.elencoAddebiti.updateMany).toHaveBeenCalledWith({
-        where: { tenantId: T, contrattoId: C, predefinito: true, id: { not: E } },
+        where: { tenantId: T, contrattoId: C, id: { in: [ALTRO] } },
         data: { predefinito: false, versione: { increment: 1 } },
       })
+      const audit = tx.activityLog.create.mock.calls.map((c: any[]) => c[0].data)
+      expect(audit.map((a: any) => a.action)).toEqual(
+        expect.arrayContaining(['ELENCO_ADDEBITI_MODIFICATO', 'ELENCO_ADDEBITI_CREATO'])
+      )
+      expect(
+        audit.find((a: any) => a.action === 'ELENCO_ADDEBITI_MODIFICATO').metadata
+      ).toMatchObject({
+        elencoId: ALTRO,
+        campi: ['predefinito'],
+        perdutoPer: E,
+      })
+    })
+
+    it('predefinito senza altri predefiniti: nessun UPDATE sugli altri', async () => {
+      tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray) =>
+        strings.join('?').includes('contratti_cliente')
+          ? [{ id: C, numero: 'CC-1', stato }]
+          : strings.join('?').includes('predefinito AND id <>')
+            ? []
+            : [{ id: E }]
+      )
+      await service.crea(T, U, C, { codice: '2', descrizione: 'X', predefinito: true })
+      expect(tx.elencoAddebiti.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('le transazioni di scrittura partono con lock_timeout e un tetto sopra', async () => {
+      await service.crea(T, U, C, { codice: '2', descrizione: 'X' })
+      await service.modifica(T, U, E, { descrizione: 'Y', versione: 1 })
+      await service.elimina(T, U, E, 1)
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(3)
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(`SET LOCAL lock_timeout = '10s'`)
+      for (const [, opzioni] of prisma.$transaction.mock.calls) {
+        expect(opzioni.timeout).toBeGreaterThan(10_000)
+      }
     })
 
     it('codici esauriti: 400', async () => {
