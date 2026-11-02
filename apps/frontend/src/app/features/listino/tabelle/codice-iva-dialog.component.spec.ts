@@ -1,10 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of } from 'rxjs'
+import { Subject, of } from 'rxjs'
 import { CodiceIvaDialogComponent } from './codice-iva-dialog.component'
 import { ListinoService } from '../listino.service'
 import { CodiceIva } from '../listino.model'
-import { stabilizza, tabellaFinta } from '../../clienti/tabelle/tabelle-test-utils'
+import { q, scrivi, stabilizza, tabellaFinta } from '../../clienti/tabelle/tabelle-test-utils'
 
 const iva: CodiceIva = {
   id: 'i1',
@@ -37,12 +37,23 @@ describe('CodiceIvaDialogComponent', () => {
   })
   afterEach(() => fixture?.destroy())
 
+  it('virgola obbligatoria: «22.5» è un errore e il form non è valido', async () => {
+    await stabilizza(fixture)
+    scrivi('iva-dlg-aliquota', '22.5')
+    await stabilizza(fixture)
+    expect(q('iva-dlg-errore-aliquota')!.textContent).toContain('Usa la virgola per i decimali')
+    expect(fixture.componentInstance.form.invalid).toBeTrue()
+    scrivi('iva-dlg-aliquota', '22,5')
+    await stabilizza(fixture)
+    expect(fixture.componentInstance.form.valid).toBeTrue()
+  })
+
   it("in modifica precompila il form dall'elemento", async () => {
     await stabilizza(fixture)
     expect(fixture.componentInstance.form.getRawValue()).toEqual({
       codice: 'N61',
       descrizione: 'Inversione',
-      aliquota: '0.00',
+      aliquota: '0,00',
       natura: 'N6.1',
     })
   })
@@ -66,5 +77,20 @@ describe('CodiceIvaDialogComponent', () => {
     await stabilizza(fixture)
     expect(fixture.componentInstance.form.controls.codice.value).toBe('')
     expect(fixture.componentInstance.errore()).toBeNull()
+  })
+
+  it('chiudere durante il salvataggio non emette `salvato` a dialog chiuso', async () => {
+    const risposta$ = new Subject<CodiceIva>()
+    tabella.modifica.and.returnValue(risposta$)
+    await stabilizza(fixture)
+    const salvati: CodiceIva[] = []
+    fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+    fixture.componentInstance.form.patchValue({ ...iva, aliquota: '0,00' })
+    fixture.componentInstance.salva()
+    expect(fixture.componentInstance.inCorso()).toBeTrue()
+    fixture.componentInstance.chiudi()
+    expect(fixture.componentInstance.inCorso()).toBeFalse()
+    risposta$.next(iva)
+    expect(salvati.length).toBe(0)
   })
 })

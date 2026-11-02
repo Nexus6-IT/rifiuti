@@ -1,5 +1,5 @@
 // Codici IVA delle vendite (4.2a, D3): anagrafica per azienda con lock ottimistico (D14),
-// disattivazione al posto della cancellazione quando il codice e' citato da un addebito (D13) e
+// disattivazione al posto della cancellazione quando il codice e' citato da un addebito o da una riga di un listino (D13, R44) e
 // audit (D16). Le regole sui dati stanno in `domain/listino/codice-iva`; per il resto il servizio
 // segue i registri IVA della 4.1.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
@@ -27,7 +27,8 @@ const ENTITA: DescrizioneEntita = {
   // R9: il testo di ripiego direbbe "clienti o contratti", che qui non c'entrano.
   inUso: {
     codice: 'CODICE_IVA_IN_USO',
-    messaggio: "Il codice IVA è usato da addebiti dell'archivio: disattivalo invece di eliminarlo.",
+    messaggio:
+      "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
   },
 }
 

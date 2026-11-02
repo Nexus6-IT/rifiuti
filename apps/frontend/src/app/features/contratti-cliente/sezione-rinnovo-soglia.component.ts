@@ -3,6 +3,7 @@ import { Component, Input } from '@angular/core'
 import { ReactiveFormsModule } from '@angular/forms'
 import { InputTextModule } from 'primeng/inputtext'
 import { CodiceRinnovo } from '../clienti/clienti.model'
+import { messaggioNumero } from '../../shared/utils/numero-modificabile'
 import { FormContratto } from './contratto-cliente-form'
 
 /**
@@ -66,8 +67,18 @@ import { FormContratto } from './contratto-cliente-form'
         id="contratto-dlg-soglia"
         formControlName="sogliaImporto"
         inputmode="decimal"
+        [attr.aria-invalid]="errore('sogliaImporto') ? 'true' : null"
+        [attr.aria-describedby]="errore('sogliaImporto') ? 'contratto-dlg-soglia-errore' : null"
         data-testid="contratto-dlg-soglia"
       />
+      <small
+        *ngIf="errore('sogliaImporto') as e"
+        id="contratto-dlg-soglia-errore"
+        role="alert"
+        class="field-error"
+        data-testid="contratto-dlg-soglia-errore"
+        >{{ e }}</small
+      >
       <label class="casella">
         <input
           type="checkbox"
@@ -97,6 +108,11 @@ import { FormContratto } from './contratto-cliente-form'
 })
 export class SezioneRinnovoSogliaComponent {
   @Input({ required: true }) form!: FormContratto
+
+  /** Errore di numero (punto o testo) del campo, o null. */
+  errore(campo: 'ritenutaPercentuale' | 'sogliaImporto'): string | null {
+    return messaggioNumero(this.form.controls[campo])
+  }
 
   conSoglia(): boolean {
     return this.form.controls.sogliaImporto.value.trim() !== ''

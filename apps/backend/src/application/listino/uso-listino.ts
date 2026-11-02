@@ -1,7 +1,7 @@
 // Quanti addebiti citano le righe di una tabella del listino (R8): stessa forma batch di
 // `contaUsi` della 4.1 (un `groupBy` per colonna referente, una chiamata per `list`/`getById`),
-// ma con le sorgenti del listino. Oggi la sola sorgente e' `addebiti`; le `righe_addebito`
-// (elenchi di addebito) si aggiungono nel Task 22 come seconda voce di `ColonneReferentiListino`.
+// ma con le sorgenti del listino: gli `addebiti` dell'archivio e le `righe_addebito` degli elenchi
+// dei contratti (R44).
 import { Prisma, PrismaClient } from '@prisma/client'
 
 export type ListinoUsi = PrismaClient | Prisma.TransactionClient
@@ -9,10 +9,13 @@ export type ListinoUsi = PrismaClient | Prisma.TransactionClient
 /** Colonne che citano la tabella, per ciascuna sorgente. */
 export interface ColonneReferentiListino {
   addebiti: readonly string[]
+  /** Colonne delle righe degli elenchi di addebito (`righe_addebito`). */
+  righe: readonly string[]
 }
 
 export const COLONNE_CODICE_IVA: ColonneReferentiListino = {
   addebiti: ['codiceIvaId'],
+  righe: ['codiceIvaId'],
 }
 
 export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
@@ -23,14 +26,14 @@ export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
     'categoriaStatistica1Id',
     'categoriaStatistica2Id',
   ],
+  // Le righe citano solo la categoria e il centro di ricavo (non gruppo e statistiche).
+  righe: ['categoriaId', 'centroRicavoId'],
 }
 
-/**
- * Un addebito e' citato dalle righe degli elenchi (Task 22: `rigaAddebito`); finche' il modello
- * non esiste non ha sorgenti e `contaUsiListino` risponde 0 senza query.
- */
+/** Un addebito dell'archivio e' citato solo dalle righe degli elenchi, con `addebitoId`. */
 export const COLONNE_ADDEBITO: ColonneReferentiListino = {
   addebiti: [],
+  righe: ['addebitoId'],
 }
 
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
@@ -54,6 +57,7 @@ export async function contaUsiListino(
   if (ids.length === 0) return usi
   const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[]]> = [
     [client.addebito as unknown as { groupBy: GroupBy }, colonne.addebiti],
+    [client.rigaAddebito as unknown as { groupBy: GroupBy }, colonne.righe],
   ]
   for (const [modello, elenco] of sorgenti) {
     for (const colonna of elenco) {

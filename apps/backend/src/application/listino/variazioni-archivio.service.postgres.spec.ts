@@ -23,7 +23,12 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
-import { creaAddebito, creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
+import {
+  creaAddebito,
+  creaCodiciIvaEcodifiche,
+  creaContrattoConElenco,
+  creaRiga,
+} from '../../test-support/listino-di-test'
 import { VariazioniArchivioService } from './variazioni-archivio.service'
 
 describe('VariazioniArchivioService — Postgres reale, ruolo wasteflow_app', () => {
@@ -45,6 +50,7 @@ describe('VariazioniArchivioService — Postgres reale, ruolo wasteflow_app', ()
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       const in_ = { in: tenantCreati }
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.addebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codificaAddebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
@@ -245,14 +251,60 @@ describe('VariazioniArchivioService — Postgres reale, ruolo wasteflow_app', ()
     expect(await prezziDi(a2.id)).toEqual(['2.50', '0.00', null, null, null, null])
   })
 
-  it('i contratti non cambiano: nessun contratto creato o modificato dalla variazione', async () => {
-    const { tenantId, utenteId } = await scenario()
-    const prima = await owner.contrattoCliente.findMany({ where: { tenantId } })
+  it('la variazione dell’archivio non cambia le righe dei contratti (R46): prezzi, fasce, versioni, contratti', async () => {
+    const { tenantId, utenteId, rif, a1 } = await scenario()
+    // Un contratto con una riga a prezzo normale e una a prezzo speciale sullo stesso addebito
+    // che la variazione tocca: se le righe leggessero l'archivio, cambierebbero.
+    const { contrattoId, elencoId } = await creaContrattoConElenco(owner, tenantId)
+    await creaRiga(owner, tenantId, elencoId, {
+      addebitoId: a1.id,
+      codiceIvaId: rif.iva22Id,
+      prezzo: '10',
+    })
+    const speciale = await creaRiga(owner, tenantId, elencoId, {
+      addebitoId: a1.id,
+      riferimento: 'S1',
+      codiceIvaId: rif.iva22Id,
+      prezzo: null,
+      altro: { prezzoSpeciale: true, applicaA: 'DOCUMENTO' },
+    })
+    await owner.scaglioneRigaAddebito.create({
+      data: {
+        tenantId,
+        rigaId: speciale.id,
+        ordine: 1,
+        finoA: null,
+        prezzo: '0.10',
+        tipoCalcolo: 'A',
+      },
+    })
+    const istantanea = async () => ({
+      contratti: await owner.contrattoCliente.findMany({
+        where: { tenantId },
+        orderBy: { id: 'asc' },
+      }),
+      elenchi: await owner.elencoAddebiti.findMany({
+        where: { contrattoId },
+        orderBy: { id: 'asc' },
+      }),
+      righe: await owner.rigaAddebito.findMany({ where: { tenantId }, orderBy: { id: 'asc' } }),
+      fasce: await owner.scaglioneRigaAddebito.findMany({
+        where: { tenantId },
+        orderBy: { id: 'asc' },
+      }),
+    })
+    const prima = await istantanea()
+    expect(prima.righe).toHaveLength(2)
+
     const c = corpo()
-    const { impronta } = await nel(tenantId, () => service.anteprima(tenantId, c))
+    const { impronta, totale } = await nel(tenantId, () => service.anteprima(tenantId, c))
+    expect(totale).toBeGreaterThan(0)
     await nel(tenantId, () => service.applica(tenantId, utenteId, { ...c, impronta }))
-    const dopo = await owner.contrattoCliente.findMany({ where: { tenantId } })
-    expect(dopo).toEqual(prima)
+
+    // L'archivio e' cambiato davvero...
+    expect(await prezziDi(a1.id)).toEqual(['11.00', '0.0138', null, '5.50', null, null])
+    // ...ma le righe, le fasce, gli elenchi e i contratti sono identici, versioni comprese.
+    expect(await istantanea()).toEqual(prima)
   })
 
   it('isolamento: la variazione non tocca gli addebiti di un’altra azienda', async () => {

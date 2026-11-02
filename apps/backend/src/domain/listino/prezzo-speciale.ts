@@ -47,6 +47,8 @@ const MSG_ORDINE =
   'Le fasce del prezzo speciale sono al massimo sette, ciascuna con il proprio numero.'
 const MSG_PRIMA = 'La prima fascia del prezzo speciale deve avere una soglia maggiore di zero.'
 const MSG_ULTIMA = 'L’ultima fascia del prezzo speciale è «oltre»: non ha soglia.'
+const msgDopoDW = (n: number): string =>
+  `Fascia ${n}: dopo una fascia «tutta la quantità» (D/W) non può seguire una fascia a prezzo per quantità (A/X), altrimenti la stessa quantità si pagherebbe due volte.`
 const MSG_ERRORE_CALCOLO = 'Errore nel calcolo del prezzo speciale.'
 
 const TIPI_BASE = 'ABCD'
@@ -110,7 +112,12 @@ export function validaScaglioni(
     }
   }
 
+  // Q7 (02/11): dopo una fascia D/W che fattura tutta la quantita', una fascia A/X la
+  // fatturerebbe di nuovo in parte.
+  let dopoDW = false
   for (const [n, f] of [...perOrdine.entries()].sort((a, b) => a[0] - b[0])) {
+    if (dopoDW && 'AX'.includes(f.tipoCalcolo) && f.tipoCalcolo.length === 1) aggiungi(msgDopoDW(n))
+    if (f.tipoCalcolo === 'D' || f.tipoCalcolo === 'W') dopoDW = true
     if (f.finoA !== null && f.finoA !== '' && n < 7 && !SOGLIA_RE.test(f.finoA)) {
       aggiungi(`Fascia ${n}: la soglia deve essere un numero positivo con al massimo tre decimali.`)
     }
@@ -136,6 +143,27 @@ export function validaScaglioni(
   return messaggi
 }
 
+/** Messaggi di `validaPrezzoSpeciale` (esportati perche' il Task 17 li attribuisce ai campi, R36). */
+export const MSG_PREZZO_SPECIALE = {
+  APPLICA_MANCANTE: 'Indica a cosa si applica il prezzo speciale.',
+  CONDIZIONATI: 'Il prezzo speciale non si usa negli addebiti condizionati.',
+  UNITA_HR: 'Il prezzo speciale non si usa con l’unità di misura HR.',
+  SCONTO_PROVVIGIONE_IN_FASCE:
+    'Con il prezzo speciale lo sconto e la provvigione si indicano nelle fasce.',
+  MINIMO: 'Con il prezzo speciale non si indica il minimo fatturabile.',
+  KM_SOLO_DOCUMENTO: 'Con l’unità K/M o K/L il prezzo speciale si applica al documento.',
+  CONDIZIONI_FORMA:
+    'Le condizioni si scrivono come cifre da 1 a 9 tutte diverse seguite da C o P (es. 12C).',
+  CONDIZIONI_DOCUMENTO_PERIODO:
+    'Con le condizioni il prezzo speciale si applica al documento o al periodo.',
+  CONGUAGLIO_DATA: 'Per il conguaglio indica la data (giorno e mese).',
+  DATA_SOLO_PROGRESSIVO:
+    'La data di riferimento vale solo per il progressivo da data e per il conguaglio.',
+  GIORNO_E_MESE: 'Il riferimento si indica con giorno e mese insieme.',
+  DATA_NON_VALIDA: 'Il riferimento non è una data valida.',
+  TIPO_PROVVIGIONE: 'Indica su cosa si calcola la provvigione.',
+} as const
+
 const GIORNI_PER_MESE = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 /**
@@ -160,23 +188,21 @@ export function validaPrezzoSpeciale(
   const messaggi: string[] = []
   const vuoto = (v: string | null): boolean => v === null || v === ''
 
-  if (r.applicaA === null) messaggi.push('Indica a cosa si applica il prezzo speciale.')
-  if (r.condizione !== null)
-    messaggi.push('Il prezzo speciale non si usa negli addebiti condizionati.')
-  if (r.unitaMisura === 'HR')
-    messaggi.push('Il prezzo speciale non si usa con l’unità di misura HR.')
+  if (r.applicaA === null) messaggi.push(MSG_PREZZO_SPECIALE.APPLICA_MANCANTE)
+  if (r.condizione !== null) messaggi.push(MSG_PREZZO_SPECIALE.CONDIZIONATI)
+  if (r.unitaMisura === 'HR') messaggi.push(MSG_PREZZO_SPECIALE.UNITA_HR)
   if (!vuoto(r.sconto) || !vuoto(r.provvigione)) {
-    messaggi.push('Con il prezzo speciale lo sconto e la provvigione si indicano nelle fasce.')
+    messaggi.push(MSG_PREZZO_SPECIALE.SCONTO_PROVVIGIONE_IN_FASCE)
   }
   if (!vuoto(r.minimoFatturabile)) {
-    messaggi.push('Con il prezzo speciale non si indica il minimo fatturabile.')
+    messaggi.push(MSG_PREZZO_SPECIALE.MINIMO)
   }
   if (
     (r.unitaMisura === 'K/M' || r.unitaMisura === 'K/L') &&
     r.applicaA !== null &&
     r.applicaA !== 'DOCUMENTO'
   ) {
-    messaggi.push('Con l’unità K/M o K/L il prezzo speciale si applica al documento.')
+    messaggi.push(MSG_PREZZO_SPECIALE.KM_SOLO_DOCUMENTO)
   }
 
   const conCondizioni = !vuoto(r.condizioniRiferite)
@@ -184,26 +210,22 @@ export function validaPrezzoSpeciale(
     const c = r.condizioniRiferite as string
     const cifre = c.slice(0, -1)
     if (!/^[1-9]{1,9}[CP]$/.test(c) || new Set(cifre).size !== cifre.length) {
-      messaggi.push(
-        'Le condizioni si scrivono come cifre da 1 a 9 tutte diverse seguite da C o P (es. 12C).'
-      )
+      messaggi.push(MSG_PREZZO_SPECIALE.CONDIZIONI_FORMA)
     }
     if (r.applicaA !== null && r.applicaA !== 'DOCUMENTO' && r.applicaA !== 'PERIODO') {
-      messaggi.push('Con le condizioni il prezzo speciale si applica al documento o al periodo.')
+      messaggi.push(MSG_PREZZO_SPECIALE.CONDIZIONI_DOCUMENTO_PERIODO)
     }
   }
 
   const conData = r.riferimentoGiorno !== null || r.riferimentoMese !== null
   const richiedeData = r.applicaA === 'PROGRESSIVO_DA_DATA' || r.applicaA === 'CONGUAGLIO_365'
   if (r.applicaA === 'CONGUAGLIO_365' && !conData) {
-    messaggi.push('Per il conguaglio indica la data (giorno e mese).')
+    messaggi.push(MSG_PREZZO_SPECIALE.CONGUAGLIO_DATA)
   } else if (conData && r.applicaA !== null && !richiedeData) {
-    messaggi.push(
-      'La data di riferimento vale solo per il progressivo da data e per il conguaglio.'
-    )
+    messaggi.push(MSG_PREZZO_SPECIALE.DATA_SOLO_PROGRESSIVO)
   } else if (conData) {
     if (r.riferimentoGiorno === null || r.riferimentoMese === null) {
-      messaggi.push('Il riferimento si indica con giorno e mese insieme.')
+      messaggi.push(MSG_PREZZO_SPECIALE.GIORNO_E_MESE)
     } else if (
       !Number.isInteger(r.riferimentoMese) ||
       r.riferimentoMese < 1 ||
@@ -212,13 +234,13 @@ export function validaPrezzoSpeciale(
       r.riferimentoGiorno < 1 ||
       r.riferimentoGiorno > GIORNI_PER_MESE[r.riferimentoMese - 1]
     ) {
-      messaggi.push('Il riferimento non è una data valida.')
+      messaggi.push(MSG_PREZZO_SPECIALE.DATA_NON_VALIDA)
     }
   }
 
   messaggi.push(...validaScaglioni(scaglioni, { conCondizioni }))
   if (scaglioni.some(f => !vuoto(f.provvigione)) && vuoto(r.tipoProvvigione)) {
-    messaggi.push('Indica su cosa si calcola la provvigione.')
+    messaggi.push(MSG_PREZZO_SPECIALE.TIPO_PROVVIGIONE)
   }
   return messaggi
 }
@@ -237,16 +259,31 @@ const quantitaTesto = (v: Prisma.Decimal): string => D(arrotonda(v.toFixed(), 3)
  * calcolo `C` e' la loro), altrimenti quella dell'addebito. `quantitaPrecedente` insieme a
  * `condizione` e' un errore, come in WinWaste (umiscondiz non e' piu' "5 spazi").
  *
- * FATTURAZIONE DOPPIA EREDITATA (R20): la porta e' fedele a `speciale` di WinWaste
- * (FATAUTOMATICA.cs decompilato, righe 17230-17290) e ne conserva due comportamenti che
- * fatturano due volte la stessa quantita':
+ * DIFFERENZA VOLUTA DA WINWASTE (decisione di Graziano del 02/11): la porta non e' fedele a
+ * `speciale` (FATAUTOMATICA.cs decompilato, righe 17230-17290), che fattura due volte la stessa
+ * quantita' in due casi:
  * - `E` (e `H`) non azzera le righe delle fasce precedenti, a differenza di `B`/`D`/`Y`/`W`
- *   (riga 17230): una tabella mista `D` + `E` con 6.000 kg fattura 6.000 x prezzo della fascia 1
- *   e anche 6.000 x prezzo della 7.
+ *   (riga 17230): una tabella `D` + `E` con 6.000 kg fattura 6.000 x prezzo della fascia 1 e
+ *   anche 6.000 x prezzo della 7. Qui `E`/`H` azzerano le righe precedenti come `D`/`W`.
  * - con `quantitaPrecedente`, il blocco che scala la quantita' gia' passata (righe 17239-17262)
  *   vale per qualunque tipo, ma `B`, `C` e `D` poi riscrivono la quantita' (righe 17264-17282,
- *   `1` oppure l'intera quantita'): la parte gia' fatturata si ripaga. Le tabelle sensate per il
- *   prezzo "da data" sono quindi `A`.
+ *   `1` oppure l'intera quantita' del totale): la parte gia' fatturata si ripaga. Qui `D`/`E`
+ *   fatturano la sola quantita' nuova al prezzo della fascia piu' alta raggiunta dal totale;
+ *   `C` il fisso delle sole fasce raggiunte per la prima volta (precedente <= soglia inferiore
+ *   della fascia; la fascia 1 solo con precedente 0); `B` il fisso della fascia piu' alta solo
+ *   se raggiunta per la prima volta (Q8). `A` resta com'e'.
+ * Con `quantitaPrecedente` valgono due limiti da conoscere (3.8, 4.4):
+ * - `A` seguita da `B` NON e' invariante: gli importi `A` delle fatture precedenti restano
+ *   emessi, mentre `B` li sostituirebbe solo nella fattura unica sul totale (e' la lettera di Q8: il
+ *   fisso si fattura nella fattura in cui la fascia e' raggiunta);
+ * - con quantita' nuova zero non si fattura nessun fisso (`B`/`C`): non c'e' nulla di nuovo da
+ *   fatturare, anche se il totale precedente cade in una fascia con fisso. Una quantita' nuova
+ *   negativa e' un errore.
+ * Perche': la stessa quantita' non si fattura mai due volte. In piu', `validaScaglioni`
+ * rifiuta una fascia `D`/`W` seguita da `A`/`X` (Q7), che duplicherebbe la quantita' alta.
+ * Import 3.8: le tabelle WinWaste `...E` e quelle "da data" con `B`/`C`/`D` fatturano meno che in
+ * WinWaste, e quelle con `D`/`W` seguita da `A`/`X` non si importano: il rapporto d'import
+ * deve segnalarlo.
  */
 export function applicaScaglioni(
   s: readonly Scaglione[],
@@ -278,7 +315,7 @@ export function applicaScaglioni(
     } else if (daData) {
       q = q.plus(precedente)
     }
-    if (q.lt(0)) return errore
+    if (q.lt(0) || D(quantita).lt(0)) return errore
 
     if (validaScaglioni(s, { conCondizioni: conCondizione }).length > 0) return errore
     const f = new Map(s.map(x => [x.ordine, x]))
@@ -320,11 +357,17 @@ export function applicaScaglioni(
         descr[n] = `Per q.tà oltre ${unita} ${inf[n].toFixed()}`
         if (n !== 7 && q.gt(inf[n + 1])) descr[n] += ` e fino a ${sup[n].toFixed()}`
       }
-      if ('BDYW'.includes(tipo)) {
+      if ('BDEYWH'.includes(tipo)) {
         for (let k = 1; k < n; k++) descr[k] = ''
         verificata = false
       }
-      if ('AX'.includes(tipo) || daData) {
+      if (daData && !'AX'.includes(tipo)) {
+        // Le fasce a importo fisso (o tutta-quantita') occupano comunque la propria ampiezza:
+        // la quantita' precedente va scalata anche da loro, non scaricata sulla A seguente.
+        const ampiezza = (q.lt(sup[n]) ? q : sup[n]).minus(inf[n])
+        if (ampiezza.gt(0)) daScalare = daScalare.gt(ampiezza) ? daScalare.minus(ampiezza) : zero
+      }
+      if ('AX'.includes(tipo)) {
         qta[n] = sup[n].minus(inf[n])
         if (q.lt(sup[n])) qta[n] = q.minus(inf[n])
         if (daData) {
@@ -340,11 +383,15 @@ export function applicaScaglioni(
       }
       if ('BCYZ'.includes(tipo)) {
         qta[n] = new Prisma.Decimal(1)
+        // Quantita' precedente: il fisso e' gia' stato fatturato se la fascia era gia' raggiunta.
+        if (daData && (precedente.gt(inf[n]) || D(quantita).isZero())) descr[n] = ''
         if (descr[n] !== '') descr[n] += ': imp.fisso'
         if (tipo === 'Y' || tipo === 'Z') verificata = true
       }
       if ('DEWH'.includes(tipo)) {
-        qta[n] = q
+        // Da data: la quantita' precedente e' gia' stata fatturata, si fattura la sola nuova.
+        qta[n] = daData ? q.minus(precedente) : q
+        if (daData && qta[n].isZero()) descr[n] = ''
         if (tipo === 'W' || tipo === 'H') verificata = true
       }
     }

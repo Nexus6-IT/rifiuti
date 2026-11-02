@@ -43,6 +43,13 @@ export type VincoliNoti = Readonly<Record<string, { codice: string; messaggio: s
  */
 export type RileggiVincolo = () => Promise<string | null>
 
+/**
+ * Testo unico del 409 `OPERAZIONE_CONCORRENTE` (deadlock, lock timeout, timeout della transazione):
+ * lo usano questo modulo e `listino/conflitti-variazione.ts`.
+ */
+export const MSG_OPERAZIONE_CONCORRENTE =
+  'L’operazione è stata interrotta da un’altra in corso: riprova.'
+
 /** 409 "modificato nel frattempo" per l'entità (lo usano anche i servizi con lock proprio). */
 export function modificatoNelFrattempo(e: DescrizioneEntita): ConflictException {
   const [suffisso, participio] = e.femminile
@@ -114,7 +121,7 @@ export async function traduciErrorePrisma(
     ) {
       throw new ConflictException({
         error: 'OPERAZIONE_CONCORRENTE',
-        message: "L'operazione è stata interrotta da un'altra in corso: riprova.",
+        message: MSG_OPERAZIONE_CONCORRENTE,
       })
     }
     if (err.code === 'P2003') {

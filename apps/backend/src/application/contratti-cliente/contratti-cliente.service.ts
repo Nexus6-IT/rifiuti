@@ -158,6 +158,8 @@ const MSG_PRINCIPALE =
   'Il contratto principale deve essere un contratto dello stesso cliente, non annullato e non allegato a sua volta.'
 const MSG_HA_ALLEGATI =
   'Questo contratto ha dei contratti allegati: non può essere allegato a un altro.'
+const MSG_RIGHE_NON_T =
+  'Questo contratto ha addebiti di tipo diverso da T: non può essere allegato a un altro.'
 const MSG_CLIENTE_CON_ALLEGATI =
   'Questo contratto ha dei contratti allegati: non se ne cambia il cliente.'
 
@@ -894,6 +896,21 @@ export class ContrattiClienteService {
       ) {
         messaggi.push(MSG_PRINCIPALE)
       }
+    }
+
+    // Un contratto con righe di tipo diverso da T non diventa un allegato (4.1 D28, 4.2b D17).
+    // Il contratto e' gia' bloccato FOR UPDATE da `bloccaELeggi`, e la riga lo legge FOR SHARE:
+    // le due operazioni si mettono in fila, quindi il conteggio non cambia fino al commit. Solo
+    // qui e non in `scrivi`: un contratto nuovo non ha righe.
+    if (cambia('contrattoPrincipaleId') && dopo.contrattoPrincipaleId !== null) {
+      const conteggio = await tx.$queryRaw<Array<{ n: number }>>`
+        SELECT count(*)::int AS n
+        FROM righe_addebito r
+        JOIN elenchi_addebiti e ON e.id = r.elenco_id AND e.tenant_id = r.tenant_id
+        WHERE e.tenant_id = ${tenantId}::uuid
+          AND e.contratto_id = ${prima.id}::uuid
+          AND r.tipo !~ '^T'`
+      if ((conteggio[0]?.n ?? 0) > 0) messaggi.push(MSG_RIGHE_NON_T)
     }
     return messaggi
   }

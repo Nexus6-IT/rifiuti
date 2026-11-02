@@ -48,11 +48,11 @@ const MESI_PER_FREQUENZA: Readonly<Record<FrequenzaPredefinita, number>> = {
 
 const MAX_PERIODI = 12
 
-function bisestile(anno: number): boolean {
+export function bisestile(anno: number): boolean {
   return (anno % 4 === 0 && anno % 100 !== 0) || anno % 400 === 0
 }
 
-function giorniDelMese(mese: number, anno: number): number {
+export function giorniDelMese(mese: number, anno: number): number {
   return new Date(Date.UTC(anno, mese, 0)).getUTCDate()
 }
 
@@ -75,7 +75,7 @@ const fineOrd = (p: PeriodoFatturazione): number => ordinale(p.meseFine, p.giorn
 const fineOrdBisestile = (p: PeriodoFatturazione): number =>
   p.meseFine === 2 && p.giornoFine === 28 ? ordinale(2, 29) : fineOrd(p)
 
-function formatta(anno: number, mese: number, giorno: number): string {
+export function formatta(anno: number, mese: number, giorno: number): string {
   // il 29/02 negli anni non bisestili scivola al 28/02, il 28/02 non cambia mai verso il basso
   const g = Math.min(giorno, giorniDelMese(mese, anno))
   return `${String(anno).padStart(4, '0')}-${String(mese).padStart(2, '0')}-${String(g).padStart(2, '0')}`

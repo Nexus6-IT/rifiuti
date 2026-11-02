@@ -36,10 +36,15 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
-import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { CalendarModule } from 'primeng/calendar'
 import { CheckboxModule } from 'primeng/checkbox'
+import {
+  MSG_NUMERO,
+  formatNumero,
+  leggiIntero,
+  leggiNumero,
+} from '../../shared/utils/numero-modificabile'
 import { ToastService } from '../../core/services/toast.service'
 import { TooltipModule } from 'primeng/tooltip'
 import { AuthService } from '../../core/services/auth.service'
@@ -74,6 +79,8 @@ import {
   tipoControparteDaRegistro,
 } from './contract-vocabulary'
 
+type CampoNumerico = 'basePrice' | 'durationMonths' | 'renewalNoticeDays'
+
 @Component({
   selector: 'app-contract-create-dialog',
   standalone: true,
@@ -84,7 +91,6 @@ import {
     DialogModule,
     DropdownModule,
     InputTextModule,
-    InputNumberModule,
     InputTextareaModule,
     CalendarModule,
     CheckboxModule,
@@ -273,17 +279,24 @@ import {
 
         <div class="field col-12 md:col-4">
           <label for="c-price" class="block mb-2">Prezzo base</label>
-          <p-inputNumber
-            inputId="c-price"
-            [(ngModel)]="form.basePrice"
+          <input
+            id="c-price"
+            pInputText
+            inputmode="decimal"
+            [ngModel]="testi.basePrice"
+            (ngModelChange)="scriviNumero('basePrice', $event)"
             [disabled]="campoBloccato('basePrice')"
-            mode="decimal"
-            [minFractionDigits]="0"
-            [maxFractionDigits]="2"
-            [min]="0"
-            styleClass="w-full"
-            inputStyleClass="w-full"
-          ></p-inputNumber>
+            [attr.aria-invalid]="erroriNumeri().basePrice ? 'true' : null"
+            [attr.aria-describedby]="erroriNumeri().basePrice ? 'c-price-errore' : null"
+            class="w-full"
+          />
+          <small
+            *ngIf="erroriNumeri().basePrice as e"
+            id="c-price-errore"
+            role="alert"
+            class="block mt-1 field-error"
+            >{{ e }}</small
+          >
         </div>
         <div class="field col-12 md:col-4">
           <label for="c-uom" class="block mb-2">Unità di misura</label>
@@ -298,14 +311,24 @@ import {
         </div>
         <div class="field col-12 md:col-4">
           <label for="c-duration" class="block mb-2">Durata (mesi)</label>
-          <p-inputNumber
-            inputId="c-duration"
-            [(ngModel)]="form.durationMonths"
+          <input
+            id="c-duration"
+            pInputText
+            inputmode="numeric"
+            [ngModel]="testi.durationMonths"
+            (ngModelChange)="scriviNumero('durationMonths', $event)"
             [disabled]="campoBloccato('durationMonths')"
-            [min]="1"
-            styleClass="w-full"
-            inputStyleClass="w-full"
-          ></p-inputNumber>
+            [attr.aria-invalid]="erroriNumeri().durationMonths ? 'true' : null"
+            [attr.aria-describedby]="erroriNumeri().durationMonths ? 'c-duration-errore' : null"
+            class="w-full"
+          />
+          <small
+            *ngIf="erroriNumeri().durationMonths as e"
+            id="c-duration-errore"
+            role="alert"
+            class="block mt-1 field-error"
+            >{{ e }}</small
+          >
         </div>
 
         <div class="field col-12 md:col-6">
@@ -375,14 +398,24 @@ import {
         </div>
         <div class="field col-12 md:col-6" *ngIf="form.autoRenew">
           <label for="c-notice" class="block mb-2">Preavviso rinnovo (giorni)</label>
-          <p-inputNumber
-            inputId="c-notice"
-            [(ngModel)]="form.renewalNoticeDays"
+          <input
+            id="c-notice"
+            pInputText
+            inputmode="numeric"
+            [ngModel]="testi.renewalNoticeDays"
+            (ngModelChange)="scriviNumero('renewalNoticeDays', $event)"
             [disabled]="campoBloccato('renewalNoticeDays')"
-            [min]="0"
-            styleClass="w-full"
-            inputStyleClass="w-full"
-          ></p-inputNumber>
+            [attr.aria-invalid]="erroriNumeri().renewalNoticeDays ? 'true' : null"
+            [attr.aria-describedby]="erroriNumeri().renewalNoticeDays ? 'c-notice-errore' : null"
+            class="w-full"
+          />
+          <small
+            *ngIf="erroriNumeri().renewalNoticeDays as e"
+            id="c-notice-errore"
+            role="alert"
+            class="block mt-1 field-error"
+            >{{ e }}</small
+          >
         </div>
 
         <div class="field col-12">
@@ -484,6 +517,13 @@ export class ContractCreateDialogComponent implements OnChanges {
   readonly registroScelto = signal<RegistroControparte | null>(null)
 
   form: CreateContractDto = this.emptyForm()
+  /**
+   * Testo dei tre campi numerici, come lo scrive l'operatore: virgola decimale, il punto è un
+   * errore e non compaiono le migliaia. `form` tiene il numero che parte per il backend.
+   */
+  testi: Record<CampoNumerico, string> = this.testiDa(this.form)
+  /** Errore di ciascun campo numerico (null se vuoto o valido). */
+  readonly erroriNumeri = signal<Partial<Record<CampoNumerico, string>>>({})
   startDate: Date | null = null
   endDate: Date | null = null
 
@@ -502,6 +542,56 @@ export class ContractCreateDialogComponent implements OnChanges {
   readonly pricingModelOptions = opzioni(PRICING_LABELS)
   readonly paymentTermsOptions = opzioni(PAYMENT_TERM_LABELS)
   readonly billingFrequencyOptions = opzioni(BILLING_FREQUENCY_LABELS)
+
+  /** Scrive il testo di un campo numerico e ne aggiorna valore ed errore. */
+  scriviNumero(campo: CampoNumerico, testo: string): void {
+    this.testi = { ...this.testi, [campo]: testo }
+    const errore = this.leggiCampoNumerico(campo, testo)
+    if (campo === 'basePrice') {
+      const e = leggiNumero(testo)
+      this.form.basePrice = e.valore === null || errore ? undefined : Number(e.valore)
+    } else {
+      const e = leggiIntero(testo)
+      const v = e.valore === null || errore ? null : e.valore
+      if (campo === 'durationMonths') this.form.durationMonths = v ?? undefined
+      else this.form.renewalNoticeDays = v as unknown as number
+    }
+    this.erroriNumeri.update(x => ({ ...x, [campo]: errore ?? undefined }))
+  }
+
+  private leggiCampoNumerico(campo: CampoNumerico, testo: string): string | null {
+    if (campo === 'basePrice') {
+      const e = leggiNumero(testo)
+      return e.errore ?? (e.valore !== null && Number(e.valore) < 0 ? MSG_NUMERO : null)
+    }
+    const e = leggiIntero(testo)
+    return e.errore ?? (campo === 'durationMonths' && e.valore === 0 ? MSG_NUMERO : null)
+  }
+
+  private testiDa(f: CreateContractDto): Record<CampoNumerico, string> {
+    return {
+      basePrice: formatNumero(f.basePrice == null ? null : String(f.basePrice)),
+      durationMonths: f.durationMonths == null ? '' : String(f.durationMonths),
+      renewalNoticeDays: f.renewalNoticeDays == null ? '' : String(f.renewalNoticeDays),
+    }
+  }
+
+  /** Allinea testi ed errori al form appena caricato o azzerato. */
+  private riallineaNumeri(): void {
+    this.testi = this.testiDa(this.form)
+    this.erroriNumeri.set({})
+  }
+
+  /** Vero (con avviso) se un campo numerico modificabile ha un errore: non si salva. */
+  private numeriErrati(): boolean {
+    const errori = this.erroriNumeri()
+    const campo = (Object.keys(errori) as CampoNumerico[]).find(
+      c => errori[c] && !this.campoBloccato(c)
+    )
+    if (!campo) return false
+    this.toast.warn(errori[campo] as string)
+    return true
+  }
 
   /** In modifica: il campo non è fra quelli che il backend dichiara modificabili. */
   campoBloccato(campo: CampoContratto): boolean {
@@ -631,10 +721,12 @@ export class ContractCreateDialogComponent implements OnChanges {
 
     if (this.contratto) {
       this.precompila(this.contratto)
+      this.riallineaNumeri()
       return
     }
 
     this.form = this.emptyForm()
+    this.riallineaNumeri()
     this.startDate = null
     this.endDate = null
 
@@ -697,6 +789,7 @@ export class ContractCreateDialogComponent implements OnChanges {
   }
 
   crea(): void {
+    if (this.numeriErrati()) return
     const registro = this.registroEffettivo()
     if (!this.validate(registro)) {
       this.toast.warn('Compila tutti i campi obbligatori')
@@ -728,6 +821,7 @@ export class ContractCreateDialogComponent implements OnChanges {
   modifica(): void {
     const originale = this.contratto
     if (!originale) return
+    if (this.numeriErrati()) return
     const registro = this.registroEffettivo()
     if (!this.validate(registro)) {
       this.toast.warn('Compila tutti i campi obbligatori')

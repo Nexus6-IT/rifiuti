@@ -643,7 +643,25 @@ al deploy: la migration fa `ALTER TABLE clienti ADD COLUMN` dentro la sua transa
 (ACCESS EXCLUSIVE) dura fino al commit, quindi per quei pochi istanti letture e scritture sui
 clienti aspettano; `NOT VALID` + `VALIDATE` dei due CHECK non cambia questo, perche' il lock
 dell'`ALTER TABLE` resta. `lock_timeout` di 5 secondi fa fallire la migration invece di accodare
-tutto dietro una transazione lunga su `clienti`: si rilancia il deploy.
+tutto dietro una transazione lunga su `clienti`: si rilancia il deploy. Se e' applicata anche la `20261102300100_listino_elenchi_righe` (elenchi e righe), ripristinare prima quella.
+
+**Elenchi e righe di addebito** (Fase 4 pezzo 2b, seconda migration
+`20261102300100_listino_elenchi_righe`: `elenchi_addebiti`, `allegati_elenco_addebiti`,
+`righe_addebito`, `scaglioni_riga_addebito`, `scadenze_riga_addebito`). Solo tabelle e tipi nuovi:
+nessun `ALTER` su tabelle esistenti, quindi nessun blocco in deploy. Rollback del codice: innocuo, il
+codice vecchio ignora le tabelle nuove. Prima di un ripristino dello schema controllare, **come
+owner** (con RLS FORCE il ruolo applicativo vedrebbe 0 righe): `SELECT tenant_id, count(*) FROM
+elenchi_addebiti GROUP BY 1` e lo stesso per `righe_addebito` (con fasce, scadenze e allegati
+dipendenti); se non sono vuote i dati si perdono, quindi esportarli prima (`COPY ... TO`). Ordine: se
+si ripristinano **entrambe** le migration del pezzo, questa va ripristinata **prima** della
+`20261102300000_listino_archivio_addebiti` (le sue FK citano addebiti, codici IVA e codifiche). Il
+ripristino a mano e' nel commento di testa della migration:
+`DROP TABLE scadenze_riga_addebito, scaglioni_riga_addebito, righe_addebito, allegati_elenco_addebiti,
+elenchi_addebiti; DROP TYPE applica_prezzo_speciale, tipologia_rifiuto_addebito,
+tipo_quantita_addebito;` e `DELETE FROM _prisma_migrations WHERE migration_name =
+'20261102300100_listino_elenchi_righe'`. Un'unica clausola non rappresentabile da Prisma,
+`NULLS NOT DISTINCT` sull'unico delle righe, e' solo nel SQL (come `giacenze_iniziali`): `migrate
+diff` resta vuoto.
 
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa

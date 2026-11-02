@@ -101,11 +101,17 @@ export function provvigioneRiga(
 
 const MILLE = new Prisma.Decimal(1000)
 
-/** Numero decimale non negativo valido, normalizzato; altrimenti `null` (dato mancante o illeggibile). */
+/**
+ * Numero decimale valido, anche negativo (uno storno: `xqta` lo passa com'e'), normalizzato;
+ * altrimenti `null` (dato mancante o illeggibile).
+ */
 function leggiQuantita(v: string | undefined): Decimale | null {
-  if (v === undefined || !/^\d+(\.\d+)?$/.test(v.trim())) return null
+  if (v === undefined || !/^-?\d+(\.\d+)?$/.test(v.trim())) return null
   return D(v.trim())
 }
+
+/** `toFixed` di una quantita' senza lo zero negativo ("-0" -> "0"). */
+const testoQuantita = (v: Decimale): string => (v.isZero() ? '0' : v.toFixed())
 
 /**
  * Quantita' proposta da un movimento: porta fedele di `xqta` (FATAUTOMATICA.cs:16989). I pesi
@@ -118,6 +124,8 @@ function leggiQuantita(v: string | undefined): Decimale | null {
  * - volume: diviso 1000 solo da litri a `MC`, moltiplicato per 1000 solo da m3 a `LT`; ogni altra
  *   combinazione, anche senza `umVolume`, restituisce il volume invariato;
  * - `UNO` vale "1"; `ALTRO` non ha quantita' (`null`).
+ * - una quantita' negativa (storno) passa come in `xqta`, con le stesse conversioni (R32);
+ * - con `UNO` e unita' `HR` la quantita' e' "1.00", la forma di `cvore` (R32).
  * Unica differenza: un dato mancante o non numerico da' `null` invece di una stringa vuota.
  */
 export function quantitaDaMovimento(
@@ -127,21 +135,22 @@ export function quantitaDaMovimento(
 ): string | null {
   switch (tipo) {
     case 'UNO':
-      return '1'
+      // Con le ore (HR) la quantita' "uno" ha la forma di `cvore` ("1.00", R32).
+      return um === 'HR' ? '1.00' : '1'
     case 'ALTRO':
       return null
     case 'PESO_NETTO':
     case 'PESO_LORDO': {
       const peso = leggiQuantita(tipo === 'PESO_NETTO' ? m.netto : m.lordo)
       if (peso === null) return null
-      return (um === 'TON' ? peso.div(MILLE) : peso).toFixed()
+      return testoQuantita(um === 'TON' ? peso.div(MILLE) : peso)
     }
     case 'VOLUME': {
       const volume = leggiQuantita(m.volume)
       if (volume === null) return null
-      if (m.umVolume === 'L' && um === 'MC') return volume.div(MILLE).toFixed()
-      if (m.umVolume === 'M' && um === 'LT') return volume.times(MILLE).toFixed()
-      return volume.toFixed()
+      if (m.umVolume === 'L' && um === 'MC') return testoQuantita(volume.div(MILLE))
+      if (m.umVolume === 'M' && um === 'LT') return testoQuantita(volume.times(MILLE))
+      return testoQuantita(volume)
     }
   }
 }
@@ -150,15 +159,18 @@ export function quantitaDaMovimento(
  * Ore "h,mm" -> ore decimali: porta fedele di `cvore` (FATAUTOMATICA.cs:16965). Ore = intero
  * prima della virgola, minuti = intero dopo la virgola, senza riempimento e senza limite
  * ("1,5" = 1 ora e 5 minuti = 1.083333, "1,75" = 135 minuti = 2.25); risultato con almeno due
- * e al piu' sei decimali (`####0.00####`). Unica differenza voluta: il punto vale come la
- * virgola (il frontend manda il punto). Formato non valido -> errore.
+ * e al piu' sei decimali (`####0.00####`). Come in `cvore` una parte mancante vale zero:
+ * "1," = 1.00 e ",30" = 0.50 (R32). Unica differenza voluta: il punto vale come la virgola (il
+ * frontend manda il punto). Formato non valido (anche solo "," o vuoto) -> errore.
  */
 export function oreDecimali(hmm: string): string {
-  const m = /^(\d+)(?:[,.](\d+))?$/.exec(hmm.trim())
-  if (!m) throw new Error('Le ore si scrivono come ore,minuti (es. 1,30).')
-  const minutiTotali = D(m[1])
+  const m = /^(\d*)(?:[,.](\d*))?$/.exec(hmm.trim())
+  if (!m || (m[1] === '' && (m[2] ?? '') === '')) {
+    throw new Error('Le ore si scrivono come ore,minuti (es. 1,30).')
+  }
+  const minutiTotali = D(m[1] || '0')
     .times(60)
-    .plus(D(m[2] ?? '0'))
+    .plus(D(m[2] || '0'))
   const ore = minutiTotali.div(60).toDecimalPlaces(6, Prisma.Decimal.ROUND_HALF_UP)
   return prezzoCalcolato(ore.toFixed())
 }

@@ -48,6 +48,7 @@ describe('CodiciIvaService (Prisma finto)', () => {
       },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       addebito: { groupBy: jest.fn().mockResolvedValue([]) },
+      rigaAddebito: { groupBy: jest.fn().mockResolvedValue([]) },
     }
     prisma = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new CodiciIvaService(prisma)
@@ -227,7 +228,7 @@ describe('CodiciIvaService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({
         error: 'CODICE_IVA_IN_USO',
         message:
-          "Il codice IVA è usato da addebiti dell'archivio: disattivalo invece di eliminarlo.",
+          "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
       })
     })
 

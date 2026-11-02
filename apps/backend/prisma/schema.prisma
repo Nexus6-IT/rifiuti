@@ -156,6 +156,11 @@ model Tenant {
   codificheAddebito        CodificaAddebito[]
   addebiti                 Addebito[]
   prezziListinoAddebito    PrezzoListinoAddebito[]
+  elenchiAddebiti          ElencoAddebiti[]
+  allegatiElencoAddebiti   AllegatoElencoAddebiti[]
+  righeAddebito            RigaAddebito[]
+  scaglioniRigaAddebito    ScaglioneRigaAddebito[]
+  scadenzeRigaAddebito     ScadenzaRigaAddebito[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -3297,6 +3302,7 @@ model ContrattoCliente {
   contrattiAllegati ContrattoCliente[]           @relation("ContrattoPrincipale")
   periodi           PeriodoFatturazioneCliente[]
   allegatiPdf       AllegatoContrattoCliente[]
+  elenchiAddebiti   ElencoAddebiti[]
 
   @@unique([id, tenantId], map: "contratti_cliente_id_tenant_id_key")
   @@unique([tenantId, numero], map: "contratti_cliente_tenant_id_numero_key")
@@ -3391,6 +3397,7 @@ model CodiceIva {
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codici_iva_tenant_id_fkey")
   addebiti Addebito[]
+  righe    RigaAddebito[]
 
   @@unique([id, tenantId], map: "codici_iva_id_tenant_id_key")
   @@unique([tenantId, codice], map: "codici_iva_tenant_id_codice_key")
@@ -3418,6 +3425,8 @@ model CodificaAddebito {
   addebitiCategoriaStat1 Addebito[] @relation("CategoriaStatistica1Addebito")
   addebitiCategoriaStat2 Addebito[] @relation("CategoriaStatistica2Addebito")
   addebitiCentroRicavo   Addebito[] @relation("CentroRicavoAddebito")
+  righeCategoria         RigaAddebito[] @relation("CategoriaRigaAddebito")
+  righeCentroRicavo      RigaAddebito[] @relation("CentroRicavoRigaAddebito")
 
   @@unique([id, tenantId], map: "codifiche_addebito_id_tenant_id_key")
   @@unique([tenantId, genere, codice], map: "codifiche_addebito_tenant_id_genere_codice_key")
@@ -3457,6 +3466,7 @@ model Addebito {
   categoriaStatistica2 CodificaAddebito? @relation("CategoriaStatistica2Addebito", fields: [categoriaStatistica2Id, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "addebiti_categoria_statistica_2_fkey")
 
   listini PrezzoListinoAddebito[]
+  righe   RigaAddebito[]
 
   @@unique([id, tenantId], map: "addebiti_id_tenant_id_key")
   @@unique([tenantId, codice], map: "addebiti_tenant_id_codice_key")
@@ -3480,4 +3490,199 @@ model PrezzoListinoAddebito {
   @@unique([addebitoId, numero], map: "prezzi_listino_addebito_addebito_id_numero_key")
   @@index([tenantId], map: "prezzi_listino_addebito_tenant_id_idx")
   @@map("prezzi_listino_addebito")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Listino (Fase 4 pezzo 2b): elenchi e righe di addebito. Migration
+// `20261102300100_listino_elenchi_righe`, dipende da `20261102300000_listino_archivio_addebiti`.
+// ---------------------------------------------------------------------------------------------
+
+/// Su cosa si misura la quantita' di una riga CER o V (D9, E15): peso netto, peso lordo, volume, uno o altro.
+enum TipoQuantitaAddebito {
+  PESO_NETTO
+  PESO_LORDO
+  VOLUME
+  UNO
+  ALTRO
+
+  @@map("tipo_quantita_addebito")
+}
+
+/// Tipologia del rifiuto di una riga CER (D9): proposta da `tipologiaDaCer`, modificabile.
+enum TipologiaRifiutoAddebito {
+  URBANO
+  URBANO_PERICOLOSO
+  SPECIALE
+  SPECIALE_PERICOLOSO
+
+  @@map("tipologia_rifiuto_addebito")
+}
+
+/// A cosa si applica il prezzo speciale (D12): documento, periodo, progressivo da una data, conguaglio sui 365 giorni, giorno.
+enum ApplicaPrezzoSpeciale {
+  DOCUMENTO
+  PERIODO
+  PROGRESSIVO_DA_DATA
+  CONGUAGLIO_365
+  GIORNO
+
+  @@map("applica_prezzo_speciale")
+}
+
+/// Elenco degli addebiti di un contratto (4.2b, D8): codice di 1-3 caratteri unico per contratto, validita dal/al (entrambe o nessuna), riferimento PA proprio e flag "predefinito" (uno per contratto: lo garantisce il servizio sotto `FOR UPDATE`, nessun indice parziale). Si cancella a cascata con il contratto; cancellarlo toglie righe, fasce, scadenze e allegati.
+model ElencoAddebiti {
+  id              String    @id(map: "elenchi_addebiti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  contrattoId     String    @map("contratto_id") @db.Uuid
+  codice          String    @db.VarChar(3)
+  descrizione     String    @db.VarChar(45)
+  nota1           String?   @db.VarChar(45)
+  nota2           String?   @db.VarChar(45)
+  validoDal       DateTime? @map("valido_dal") @db.Date
+  validoAl        DateTime? @map("valido_al") @db.Date
+  predefinito     Boolean   @default(false)
+  codiceCig       String?   @map("codice_cig") @db.VarChar(15)
+  codiceCup       String?   @map("codice_cup") @db.VarChar(15)
+  idDocumentoPa   String?   @map("id_documento_pa") @db.VarChar(20)
+  dataDocumentoPa DateTime? @map("data_documento_pa") @db.Date
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "elenchi_addebiti_tenant_id_fkey")
+  contratto ContrattoCliente @relation(fields: [contrattoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "elenchi_addebiti_contratto_fkey")
+
+  righe    RigaAddebito[]
+  allegati AllegatoElencoAddebiti[]
+
+  @@unique([id, tenantId], map: "elenchi_addebiti_id_tenant_id_key")
+  @@unique([contrattoId, codice], map: "elenchi_addebiti_contratto_id_codice_key")
+  @@index([tenantId, contrattoId], map: "elenchi_addebiti_tenant_id_contratto_id_idx")
+  @@map("elenchi_addebiti")
+}
+
+/// Allegato PDF di un elenco (4.2b, D8): al massimo due (posizione 1 e 2), stesse colonne e stesso modello di `AllegatoContrattoCliente`. Si cancella a cascata con l'elenco.
+model AllegatoElencoAddebiti {
+  id             String   @id(map: "allegati_elenco_addebiti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  elencoId       String   @map("elenco_id") @db.Uuid
+  posizione      Int
+  nomeFile       String   @map("nome_file") @db.VarChar(255)
+  mimeType       String   @map("mime_type") @db.VarChar(50)
+  dimensioneByte Int      @map("dimensione_byte")
+  sha256         String   @db.VarChar(64)
+  contenuto      Bytes
+  caricatoDa     String   @map("caricato_da") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "allegati_elenco_addebiti_tenant_id_fkey")
+  elenco ElencoAddebiti @relation(fields: [elencoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "allegati_elenco_addebiti_elenco_fkey")
+
+  @@unique([id, tenantId], map: "allegati_elenco_addebiti_id_tenant_id_key")
+  @@unique([elencoId, posizione], map: "allegati_elenco_addebiti_elenco_id_posizione_key")
+  @@index([tenantId], map: "allegati_elenco_addebiti_tenant_id_idx")
+  @@map("allegati_elenco_addebiti")
+}
+
+/// Riga di un elenco (4.2b, D9, M2): `CER` (con `cer_code`, nella forma del catalogo) oppure una riga d'archivio (con `addebito_id`). I campi che valgono solo per certe famiglie sono nulli per le altre: lo garantisce `domain/listino/riga-addebito.ts`, il database tiene solo i vincoli strutturali. L'unico (elenco, tipo, CER, addebito, riferimento) e' `NULLS NOT DISTINCT` (come `GiacenzaIniziale`): la clausola sta solo nella migration, Prisma non la confronta e `migrate diff` resta pulito. Le FK composite garantiscono solo l'azienda; genere e stato delle codifiche li controlla `application/listino/riferimenti-listino.ts`.
+model RigaAddebito {
+  id                 String                    @id(map: "righe_addebito_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                    @map("tenant_id") @db.Uuid
+  elencoId           String                    @map("elenco_id") @db.Uuid
+  tipo               String                    @db.VarChar(4)
+  cerCode            String?                   @map("cer_code") @db.VarChar(10)
+  addebitoId         String?                   @map("addebito_id") @db.Uuid
+  riferimento        String?                   @db.VarChar(8)
+  descrizione        String?                   @db.VarChar(45)
+  tipoQuantita       TipoQuantitaAddebito?     @map("tipo_quantita")
+  quantitaFissa      Decimal?                  @map("quantita_fissa") @db.Decimal(12, 3)
+  unitaMisura        String                    @map("unita_misura") @db.VarChar(3)
+  prezzo             Decimal?                  @db.Decimal(14, 6)
+  prezzoSpeciale     Boolean                   @default(false) @map("prezzo_speciale")
+  sconto             String?                   @db.VarChar(20)
+  provvigione        String?                   @db.VarChar(20)
+  tipoProvvigione    TipoProvvigione?          @map("tipo_provvigione")
+  codiceIvaId        String                    @map("codice_iva_id") @db.Uuid
+  tipologiaRifiuto   TipologiaRifiutoAddebito? @map("tipologia_rifiuto")
+  statoFisico        String?                   @map("stato_fisico") @db.VarChar(10)
+  operazione         String?                   @db.VarChar(10)
+  categoriaId        String?                   @map("categoria_id") @db.Uuid
+  centroRicavoId     String?                   @map("centro_ricavo_id") @db.Uuid
+  applicaA           ApplicaPrezzoSpeciale?    @map("applica_a")
+  condizioniRiferite String?                   @map("condizioni_riferite") @db.VarChar(10)
+  condizione         Int?
+  minimoFatturabile  Decimal?                  @map("minimo_fatturabile") @db.Decimal(12, 2)
+  minimoPerCategoria Boolean                   @default(false) @map("minimo_per_categoria")
+  riferimentoGiorno  Int?                      @map("riferimento_giorno")
+  riferimentoMese    Int?                      @map("riferimento_mese")
+  periodoScadenze    String?                   @map("periodo_scadenze") @db.VarChar(2)
+  periodoExtraDal    DateTime?                 @map("periodo_extra_dal") @db.Date
+  periodoExtraAl     DateTime?                 @map("periodo_extra_al") @db.Date
+  cerProposta        String[]                  @default(dbgenerated("(ARRAY[]::character varying[])::character varying(20)[]")) @map("cer_proposta") @db.VarChar(20)
+  addebitiProposti   String[]                  @default(dbgenerated("(ARRAY[]::character varying[])::character varying(5)[]")) @map("addebiti_proposti") @db.VarChar(5)
+  stimaAnnuaKg       Decimal?                  @map("stima_annua_kg") @db.Decimal(12, 2)
+  appunti            String?                   @db.VarChar(135)
+  notaUsoInterno     String?                   @map("nota_uso_interno") @db.VarChar(45)
+
+  versione  Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "righe_addebito_tenant_id_fkey")
+  elenco       ElencoAddebiti    @relation(fields: [elencoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "righe_addebito_elenco_fkey")
+  addebito     Addebito?         @relation(fields: [addebitoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_addebito_fkey")
+  codiceIva    CodiceIva         @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_codice_iva_fkey")
+  categoria    CodificaAddebito? @relation("CategoriaRigaAddebito", fields: [categoriaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_categoria_fkey")
+  centroRicavo CodificaAddebito? @relation("CentroRicavoRigaAddebito", fields: [centroRicavoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_centro_ricavo_fkey")
+
+  scaglioni ScaglioneRigaAddebito[]
+  scadenze  ScadenzaRigaAddebito[]
+
+  @@unique([id, tenantId], map: "righe_addebito_id_tenant_id_key")
+  // ATTENZIONE: il client genera `elencoId_tipo_cerCode_addebitoId_riferimento` con tutti i campi obbligatori, ma ogni riga ha `cerCode` oppure `addebitoId` nullo: `findUnique` e `upsert` su questa chiave NON si possono usare. Il duplicato si cerca con `findFirst` e si gestisce con P2002 (con la RLS `meta.target` e' nullo, D23).
+  @@unique([elencoId, tipo, cerCode, addebitoId, riferimento], map: "righe_addebito_elenco_tipo_cer_addebito_rif_key")
+  @@index([tenantId, addebitoId], map: "righe_addebito_tenant_id_addebito_id_idx")
+  @@index([tenantId, codiceIvaId], map: "righe_addebito_tenant_id_codice_iva_id_idx")
+  @@index([tenantId, categoriaId], map: "righe_addebito_tenant_id_categoria_id_idx")
+  @@index([tenantId, centroRicavoId], map: "righe_addebito_tenant_id_centro_ricavo_id_idx")
+  @@map("righe_addebito")
+}
+
+/// Fascia del prezzo speciale di una riga (4.2b, D12): da 1 a 7, soglia `fino_a` (vuota sulla 7 = "oltre"), prezzo, sconto e provvigione a cascata e tipo di calcolo `A B C D E X Y Z W H`. Sostituite in blocco con la riga; si cancellano con lei.
+model ScaglioneRigaAddebito {
+  id          String   @id(map: "scaglioni_riga_addebito_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  rigaId      String   @map("riga_id") @db.Uuid
+  ordine      Int
+  finoA       Decimal? @map("fino_a") @db.Decimal(14, 3)
+  prezzo      Decimal  @db.Decimal(14, 6)
+  sconto      String?  @db.VarChar(20)
+  provvigione String?  @db.VarChar(20)
+  tipoCalcolo String   @map("tipo_calcolo") @db.VarChar(1)
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "scaglioni_riga_addebito_tenant_id_fkey")
+  riga   RigaAddebito @relation(fields: [rigaId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "scaglioni_riga_addebito_riga_fkey")
+
+  @@unique([rigaId, ordine], map: "scaglioni_riga_addebito_riga_id_ordine_key")
+  @@index([tenantId], map: "scaglioni_riga_addebito_tenant_id_idx")
+  @@map("scaglioni_riga_addebito")
+}
+
+/// Scadenza di una riga a importo fisso (4.2b, D14): fino a 12, giorno e mese; anno vuoto = ogni anno. Sostituite in blocco con la riga; si cancellano con lei.
+model ScadenzaRigaAddebito {
+  id       String @id(map: "scadenze_riga_addebito_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  rigaId   String @map("riga_id") @db.Uuid
+  ordine   Int
+  giorno   Int
+  mese     Int
+  anno     Int?   @db.SmallInt
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "scadenze_riga_addebito_tenant_id_fkey")
+  riga   RigaAddebito @relation(fields: [rigaId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "scadenze_riga_addebito_riga_fkey")
+
+  @@unique([rigaId, ordine], map: "scadenze_riga_addebito_riga_id_ordine_key")
+  @@index([tenantId], map: "scadenze_riga_addebito_tenant_id_idx")
+  @@map("scadenze_riga_addebito")
 }

@@ -27,6 +27,14 @@ import {
 } from './listino.model'
 import { ListinoService } from './listino.service'
 import { CHIAVI_OPZIONE, ChiaveOpzione, OpzioniListino } from './opzioni-listino'
+import {
+  formatCascata,
+  formatNumero,
+  leggiCascata,
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from '../../shared/utils/numero-modificabile'
 import { CodiceIvaDialogComponent } from './tabelle/codice-iva-dialog.component'
 import { CodificaAddebitoDialogComponent } from './tabelle/codifica-addebito-dialog.component'
 import {
@@ -39,11 +47,6 @@ import {
 const NUMERI: readonly NumeroListino[] = [1, 2, 3, 4, 5, 6]
 const FORMA_CON_CATEGORIA = /^([TM])\d{3}$/
 
-/** Virgola → punto, spazi tolti, vuoto → null: il backend valida (D20), qui non si arrotonda. */
-const decimale = (v: string): string | null => {
-  const t = v.trim().replace(/,/g, '.')
-  return t === '' ? null : t
-}
 const testo = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
 interface CampoScelta {
@@ -107,9 +110,12 @@ const CAMPI: readonly CampoScelta[] = [
 
 const gruppoListino = () =>
   new FormGroup({
-    prezzo: new FormControl('', { nonNullable: true }),
-    sconto: new FormControl('', { nonNullable: true }),
-    provvigione: new FormControl('', { nonNullable: true }),
+    prezzo: new FormControl('', { nonNullable: true, validators: [validatoreNumero('decimale')] }),
+    sconto: new FormControl('', { nonNullable: true, validators: [validatoreNumero('cascata')] }),
+    provvigione: new FormControl('', {
+      nonNullable: true,
+      validators: [validatoreNumero('cascata')],
+    }),
   })
 
 /**
@@ -118,7 +124,9 @@ const gruppoListino = () =>
  * validazione è del backend. Il tipo si sceglie dal menu dei tipi d'archivio; `T???` e `M???`
  * chiedono le tre cifre della categoria. Gruppo, categoria, centro di ricavo, statistiche e codice
  * IVA si possono creare in linea (`AggiuntaInLinea`). In modifica Salva si abilita solo a lettura
- * riuscita: il form vuoto non deve poter cancellare i campi.
+ * riuscita: il form vuoto non deve poter cancellare i campi. Con `rapida` (aggiunta in linea dal
+ * dialog di una riga, R49) restano i soli campi obbligatori: descrizione, unità di misura, tipo e
+ * gruppo; `salvato` restituisce l'addebito creato e Esc chiude solo questo dialog.
  */
 @Component({
   selector: 'app-addebito-dialog',
@@ -145,7 +153,7 @@ const gruppoListino = () =>
       <p *ngIf="caricamento()" role="status">Caricamento…</p>
       <form [formGroup]="form" (ngSubmit)="salva()" class="dlg-form">
         <div class="riga">
-          <div class="campo">
+          <div class="campo" *ngIf="!rapida">
             <label for="add-dlg-codice">Codice (vuoto = automatico)</label>
             <input
               pInputText
@@ -204,7 +212,7 @@ const gruppoListino = () =>
               data-testid="add-dlg-tipo-cifre"
             />
           </div>
-          <div class="campo">
+          <div class="campo" *ngIf="!rapida">
             <label for="add-dlg-tipo-provv">Provvigione calcolata</label>
             <select
               id="add-dlg-tipo-provv"
@@ -219,7 +227,7 @@ const gruppoListino = () =>
 
         <div class="griglia-scelte">
           <app-scelta-con-nuovo
-            *ngFor="let c of campi"
+            *ngFor="let c of campiMostrati()"
             [inputId]="'add-dlg-' + c.id + '-sel'"
             [testid]="'add-dlg-' + c.id"
             [etichetta]="c.etichetta"
@@ -232,8 +240,13 @@ const gruppoListino = () =>
           />
         </div>
 
-        <h3 class="sezione">Listini</h3>
-        <table class="listini" formArrayName="listini" data-testid="add-dlg-listini">
+        <h3 class="sezione" *ngIf="!rapida">Listini</h3>
+        <table
+          class="listini"
+          *ngIf="!rapida"
+          formArrayName="listini"
+          data-testid="add-dlg-listini"
+        >
           <thead>
             <tr>
               <th scope="col">Listino</th>
@@ -253,6 +266,13 @@ const gruppoListino = () =>
                   [attr.aria-label]="'Prezzo del listino ' + n"
                   [attr.data-testid]="'add-dlg-prezzo-' + n"
                 />
+                <small
+                  *ngIf="erroreNumero(i, 'prezzo') as e"
+                  role="alert"
+                  class="field-error"
+                  [attr.data-testid]="'add-dlg-errore-prezzo-' + n"
+                  >{{ e }}</small
+                >
               </td>
               <td>
                 <input
@@ -261,6 +281,13 @@ const gruppoListino = () =>
                   [attr.aria-label]="'Sconto del listino ' + n"
                   [attr.data-testid]="'add-dlg-sconto-' + n"
                 />
+                <small
+                  *ngIf="erroreNumero(i, 'sconto') as e"
+                  role="alert"
+                  class="field-error"
+                  [attr.data-testid]="'add-dlg-errore-sconto-' + n"
+                  >{{ e }}</small
+                >
               </td>
               <td>
                 <input
@@ -270,27 +297,36 @@ const gruppoListino = () =>
                   [attr.aria-label]="'Provvigione del listino ' + n"
                   [attr.data-testid]="'add-dlg-provv-' + n"
                 />
+                <small
+                  *ngIf="erroreNumero(i, 'provvigione') as e"
+                  role="alert"
+                  class="field-error"
+                  [attr.data-testid]="'add-dlg-errore-provv-' + n"
+                  >{{ e }}</small
+                >
               </td>
             </tr>
           </tbody>
         </table>
 
-        <label for="add-dlg-nota">Nota d'uso interno</label>
-        <input
-          pInputText
-          id="add-dlg-nota"
-          formControlName="notaUsoInterno"
-          maxlength="200"
-          data-testid="add-dlg-nota"
-        />
-        <label for="add-dlg-appunti">Appunti</label>
-        <input
-          pInputText
-          id="add-dlg-appunti"
-          formControlName="appunti"
-          maxlength="500"
-          data-testid="add-dlg-appunti"
-        />
+        <ng-container *ngIf="!rapida">
+          <label for="add-dlg-nota">Nota d'uso interno</label>
+          <input
+            pInputText
+            id="add-dlg-nota"
+            formControlName="notaUsoInterno"
+            maxlength="200"
+            data-testid="add-dlg-nota"
+          />
+          <label for="add-dlg-appunti">Appunti</label>
+          <input
+            pInputText
+            id="add-dlg-appunti"
+            formControlName="appunti"
+            maxlength="500"
+            data-testid="add-dlg-appunti"
+          />
+        </ng-container>
         <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="add-dlg-errore">
           {{ e }}
         </p>
@@ -370,6 +406,8 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
   @Input() visible = false
   /** null = nuovo. */
   @Input() addebito: Addebito | null = null
+  /** Aggiunta in linea (R49): solo i campi obbligatori. */
+  @Input() rapida = false
   @Output() salvato = new EventEmitter<Addebito>()
   @Output() visibleChange = new EventEmitter<boolean>()
   /** Dopo un 409 la riga dell'elenco è vecchia: l'elenco si ricarica. */
@@ -423,6 +461,11 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
   private originale: Addebito | null = null
   private versione = 0
   private lettura?: Subscription
+  private salvataggio?: Subscription
+
+  campiMostrati(): readonly CampoScelta[] {
+    return this.rapida ? CAMPI.filter(c => c.chiave === 'GRUPPO') : CAMPI
+  }
 
   controllo(nome: CampoScelta['controllo']): FormControl<string> {
     return this.form.controls[nome]
@@ -434,11 +477,13 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.lettura?.unsubscribe()
+    this.salvataggio?.unsubscribe()
     this.opzioni.azzera()
   }
 
   private azzera(): void {
     this.lettura?.unsubscribe()
+    this.salvataggio?.unsubscribe()
     this.opzioni.azzera()
     this.form.reset({ tipoProvvigione: 'SCONTATO' })
     this.errore.set(null)
@@ -500,12 +545,17 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
       listini: NUMERI.map(n => {
         const l = d.listini.find(x => x.numero === n)
         return {
-          prezzo: l?.prezzo ?? '',
-          sconto: l?.sconto ?? '',
-          provvigione: l?.provvigione ?? '',
+          prezzo: formatNumero(l?.prezzo),
+          sconto: formatCascata(l?.sconto),
+          provvigione: formatCascata(l?.provvigione),
         }
       }),
     })
+  }
+
+  /** Messaggio sul numero scritto male nel listino `i` (punto decimale, lettere). */
+  erroreNumero(i: number, campo: 'prezzo' | 'sconto' | 'provvigione'): string | null {
+    return messaggioNumero(this.form.controls.listini.at(i).controls[campo])
   }
 
   chiedeCifre(): boolean {
@@ -540,9 +590,9 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
       const v = g.getRawValue()
       return {
         numero: NUMERI[i],
-        prezzo: decimale(v.prezzo),
-        sconto: decimale(v.sconto),
-        provvigione: decimale(v.provvigione),
+        prezzo: leggiNumero(v.prezzo).valore,
+        sconto: leggiCascata(v.sconto).valore,
+        provvigione: leggiCascata(v.provvigione).valore,
       }
     })
   }
@@ -578,7 +628,7 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
           ...comuni,
           ...(codice !== '' ? { codice } : {}),
         } satisfies DatiAddebito)
-    chiamata.subscribe({
+    this.salvataggio = chiamata.subscribe({
       next: salvato => {
         this.inCorso.set(false)
         this.salvato.emit(salvato)

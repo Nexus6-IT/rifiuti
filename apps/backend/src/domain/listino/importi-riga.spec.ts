@@ -147,6 +147,20 @@ describe('quantitaDaMovimento (xqta)', () => {
     expect(quantitaDaMovimento('UNO', 'NR', {})).toBe('1')
     expect(quantitaDaMovimento('ALTRO', 'NR', {})).toBeNull()
   })
+  it('UNO con le ore (HR) ha la forma di cvore: 1.00 e non 1 (R32)', () => {
+    expect(quantitaDaMovimento('UNO', 'HR', {})).toBe('1.00')
+  })
+  it('quantita negative passano come xqta (R32), con le stesse conversioni', () => {
+    expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '-1500' })).toBe('-1500')
+    expect(quantitaDaMovimento('PESO_NETTO', 'TON', { netto: '-1500' })).toBe('-1.5')
+    expect(quantitaDaMovimento('PESO_LORDO', 'KG', { lordo: '-2.5' })).toBe('-2.5')
+    expect(quantitaDaMovimento('VOLUME', 'MC', { volume: '-2500', umVolume: 'L' })).toBe('-2.5')
+    expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '-0' })).toBe('0')
+  })
+  it('un segno meno nel posto sbagliato resta un dato illeggibile', () => {
+    expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '--5' })).toBeNull()
+    expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '5-' })).toBeNull()
+  })
   it('dato mancante o non numerico: null', () => {
     expect(quantitaDaMovimento('PESO_NETTO', 'KG', {})).toBeNull()
     expect(quantitaDaMovimento('PESO_NETTO', 'KG', { netto: '' })).toBeNull()
@@ -167,7 +181,13 @@ describe('oreDecimali (cvore)', () => {
   it('il punto vale come la virgola', () => {
     expect(oreDecimali('1.30')).toBe('1.50')
   })
-  it.each(['', 'abc', '1,', ',30', '1,2,3', '-1,30', '1;30'])('rifiuta %j', v => {
+  it('i minuti o le ore mancanti valgono zero come in cvore (R32)', () => {
+    expect(oreDecimali('1,')).toBe('1.00')
+    expect(oreDecimali(',30')).toBe('0.50')
+    expect(oreDecimali('1.')).toBe('1.00')
+    expect(oreDecimali('.30')).toBe('0.50')
+  })
+  it.each(['', 'abc', ',', '.', '1,2,3', '-1,30', '1;30'])('rifiuta %j', v => {
     expect(() => oreDecimali(v)).toThrow('Le ore si scrivono come ore,minuti (es. 1,30).')
   })
 })

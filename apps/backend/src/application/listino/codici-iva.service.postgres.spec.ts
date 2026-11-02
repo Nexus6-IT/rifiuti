@@ -22,7 +22,11 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
-import { creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
+import {
+  creaCodiciIvaEcodifiche,
+  creaContrattoConElenco,
+  creaRiga,
+} from '../../test-support/listino-di-test'
 
 import { CodiciIvaService } from './codici-iva.service'
 
@@ -45,6 +49,14 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       const in_ = { in: tenantCreati }
+      // Righe ed elenchi vanno a cascata col contratto; le FK NoAction verso addebiti, codifiche e
+      // codici IVA chiedono di cancellare prima i contratti.
+      await owner.contrattoCliente.updateMany({
+        where: { tenantId: in_ },
+        data: { contrattoPrincipaleId: null },
+      })
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.addebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codificaAddebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
@@ -244,7 +256,7 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
       response: {
         error: 'CODICE_IVA_IN_USO',
         message:
-          "Il codice IVA è usato da addebiti dell'archivio: disattivalo invece di eliminarlo.",
+          "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
       },
     })
     expect(await owner.codiceIva.count({ where: { id: ids.iva22Id } })).toBe(1)
@@ -254,5 +266,30 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
         service.modifica(tenantId, utenteId, ids.iva22Id, { attivo: false, versione: 1 })
       )
     ).resolves.toMatchObject({ attivo: false })
+  })
+
+  it('in uso da una riga di un listino (R44): eliminabile false, elimina 409 col testo intero, la riga resta', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const ids = await creaCodiciIvaEcodifiche(owner, tenantId)
+    const c = await creaContrattoConElenco(owner, tenantId)
+    await creaRiga(owner, tenantId, c.elencoId, { codiceIvaId: ids.iva22Id })
+    expect(await owner.addebito.count({ where: { tenantId, codiceIvaId: ids.iva22Id } })).toBe(0)
+    const elenco = await nel(tenantId, () => service.list(tenantId, true))
+    expect(elenco.find(x => x.id === ids.iva22Id)?.eliminabile).toBe(false)
+    expect(elenco.find(x => x.id === ids.ivaN61Id)?.eliminabile).toBe(true)
+    expect((await nel(tenantId, () => service.getById(tenantId, ids.iva22Id))).eliminabile).toBe(
+      false
+    )
+    await expect(
+      nel(tenantId, () => service.elimina(tenantId, utenteId, ids.iva22Id, 1))
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        error: 'CODICE_IVA_IN_USO',
+        message:
+          "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
+      },
+    })
+    expect(await owner.codiceIva.count({ where: { id: ids.iva22Id } })).toBe(1)
   })
 })

@@ -172,7 +172,9 @@ export abstract class RuoloDittaPrismaBase<E extends ControparteComune> {
     // Scoping per tenant: la RLS-extension e' no-op su findUnique, quindi una findUnique per sola
     // PK esporrebbe anagrafiche di altri tenant.
     const tenantId = TenantContext.requireTenantId()
-    const lettore: any = client ?? this.prisma.db
+    // `as any` sul client esteso: con piu' di ~140 modelli la riduzione dell'unione con
+    // `ClientDitte` supera la profondita' di TypeScript (TS2321).
+    const lettore: any = client ?? (this.prisma.db as any)
     const riga = await lettore[this.modello].findFirst({
       where: { id, tenantId },
       include: this.includeDettaglio(),

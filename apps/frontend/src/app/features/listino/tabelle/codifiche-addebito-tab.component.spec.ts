@@ -60,6 +60,14 @@ describe('CodificheAddebitoTabComponent', () => {
     expect(document.body.textContent).toContain('Centro di ricavo')
   })
 
+  it('la scelta del genere ha un nome accessibile: ariaLabelledBy punta a un elemento che esiste', async () => {
+    await apri()
+    const sel = document.body.querySelector('p-selectButton')!
+    const id = sel.getAttribute('ariaLabelledBy') ?? sel.getAttribute('arialabelledby')
+    const etichetta = id ? document.getElementById(id) : null
+    expect(etichetta?.textContent).toContain('Genere della codifica')
+  })
+
   it("cambiando genere rilegge l'elenco di quel genere", async () => {
     await apri()
     tabella.list.and.returnValue(of([]))

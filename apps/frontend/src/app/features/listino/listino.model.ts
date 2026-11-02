@@ -1,6 +1,9 @@
-// Modelli del listino (4.2a, Task 12): copiano le `…Vista` dei Task 8-9 e 10 del piano. Prezzi,
-// sconti, provvigioni e aliquote viaggiano come stringhe decimali, mai `number` (R12). I modelli
-// delle righe e degli elenchi (4.2b) arrivano con il Task 26 (R16).
+// Modelli del listino. 4.2a (Task 12): copiano le `…Vista` dei Task 8-9 e 10 del piano. 4.2b
+// (Task 26): elenchi, righe, azioni, variazioni dei contratti, ISTAT, scritti dalle interfacce
+// corrette dall'addendum (R36 errori per campo, R45 esito della copia, R46 anteprima propria).
+// Prezzi, sconti, provvigioni e aliquote viaggiano come stringhe decimali, mai `number` (R12).
+
+import { StatoContrattoCliente } from '../clienti/clienti.model'
 
 interface Versionata {
   id: string
@@ -167,4 +170,307 @@ export interface AnteprimaVariazione {
 /** Risposta dell'applicazione della variazione (R24). */
 export interface EsitoVariazione {
   aggiornati: number
+}
+
+// === 4.2b: elenchi e righe del contratto =====================================================
+
+export type StatoContratto = StatoContrattoCliente
+
+/** Periodo cui si riferisce ogni scadenza di un fisso (D14); `XA`, `XD` e `YC` sono extra. */
+export type PeriodoScadenze =
+  | 'MP' | 'BA' | 'BP' | 'TA' | 'TP' | 'QA' | 'QP' | 'SA' | 'SP' | 'AA' | 'AP' | 'DA' | 'DP' | 'XA' | 'XD' | 'YC' // prettier-ignore
+
+/** Contesto dell'intestazione: `GET /contratti-clienti/:id/elenchi` (Task 20). */
+export interface ContestoListino {
+  contratto: {
+    id: string
+    numero: string
+    stato: StatoContratto
+    clienteId: string
+    /** Il contratto di cui questo è un allegato, se lo è. */
+    contrattoPrincipale: { id: string; numero: string } | null
+    dataInizio: string
+    dataFine: string | null
+  }
+}
+
+export interface DatiElenco {
+  /** Da 1 a 3 caratteri alfanumerici; vuoto in creazione = il primo libero. */
+  codice: string
+  descrizione: string
+  nota1: string | null
+  nota2: string | null
+  /** `YYYY-MM-DD`; entrambe o nessuna. */
+  validoDal: string | null
+  validoAl: string | null
+  predefinito: boolean
+  codiceCig: string | null
+  codiceCup: string | null
+  idDocumentoPa: string | null
+  dataDocumentoPa: string | null
+}
+
+export interface AllegatoElenco {
+  id: string
+  posizione: 1 | 2
+  nomeFile: string
+  dimensioneByte: number
+}
+
+export interface ElencoAddebiti extends DatiElenco {
+  id: string
+  contrattoId: string
+  /** Numero delle righe. */
+  righe: number
+  versione: number
+  /** D16: falso con il contratto annullato. */
+  modificabile: boolean
+  eliminabile: boolean
+  allegati: AllegatoElenco[]
+}
+
+export interface ElenchiContratto {
+  contesto: ContestoListino
+  elenchi: ElencoAddebiti[]
+}
+
+export type NuovoElenco = Partial<DatiElenco> & Pick<DatiElenco, 'descrizione'>
+
+export type ModificaElenco = Partial<DatiElenco> & { versione: number }
+
+export type TipoQuantita = 'PESO_NETTO' | 'PESO_LORDO' | 'VOLUME' | 'UNO' | 'ALTRO'
+
+export type TipologiaRifiuto = 'URBANO' | 'URBANO_PERICOLOSO' | 'SPECIALE' | 'SPECIALE_PERICOLOSO'
+
+export type ApplicaPrezzoSpeciale =
+  | 'DOCUMENTO'
+  | 'PERIODO'
+  | 'PROGRESSIVO_DA_DATA'
+  | 'CONGUAGLIO_365'
+  | 'GIORNO'
+
+export type TipoCalcoloScaglione = 'A' | 'B' | 'C' | 'D' | 'E' | 'X' | 'Y' | 'Z' | 'W' | 'H'
+
+export interface Scaglione {
+  /** 1-7: la 7 è "oltre", senza soglia. */
+  ordine: number
+  finoA: string | null
+  prezzo: string
+  sconto: string | null
+  provvigione: string | null
+  tipoCalcolo: TipoCalcoloScaglione
+}
+
+export interface Scadenza {
+  ordine: number
+  giorno: number
+  mese: number
+  /** Vuoto = ogni anno. */
+  anno: number | null
+}
+
+export interface RigaAddebito {
+  id: string
+  elencoId: string
+  tipo: string
+  etichettaTipo: string
+  famiglia: string
+  cerCode: string | null
+  addebito: { id: string; codice: string; descrizione: string } | null
+  riferimento: string | null
+  descrizione: string | null
+  tipoQuantita: TipoQuantita | null
+  quantitaFissa: string | null
+  unitaMisura: string
+  prezzo: string | null
+  prezzoSpeciale: boolean
+  sconto: string | null
+  codiceIva: { id: string; codice: string; descrizione: string }
+  provvigione: string | null
+  tipoProvvigione: TipoProvvigione | null
+  tipologiaRifiuto: TipologiaRifiuto | null
+  statoFisico: string | null
+  operazione: string | null
+  categoria: RiferimentoCodifica | null
+  centroRicavo: RiferimentoCodifica | null
+  applicaA: ApplicaPrezzoSpeciale | null
+  scaglioni: Scaglione[]
+  condizione: number | null
+  condizioniRiferite: string | null
+  minimoFatturabile: string | null
+  minimoPerCategoria: boolean
+  riferimentoGiorno: number | null
+  riferimentoMese: number | null
+  periodoScadenze: PeriodoScadenze | null
+  periodoExtraDal: string | null
+  periodoExtraAl: string | null
+  scadenze: (Scadenza & { fatturabileNelContratto: boolean })[]
+  stimaAnnuaKg: string | null
+  cerProposta: string[]
+  addebitiProposti: string[]
+  appunti: string | null
+  notaUsoInterno: string | null
+  versione: number
+}
+
+/** Corpo di creazione e modifica di una riga: le chiavi sono quelle di `CampoRiga` (Task 17). */
+export type DatiRiga = Partial<
+  Omit<
+    RigaAddebito,
+    | 'id'
+    | 'elencoId'
+    | 'etichettaTipo'
+    | 'famiglia'
+    | 'addebito'
+    | 'codiceIva'
+    | 'categoria'
+    | 'centroRicavo'
+    | 'scadenze'
+    | 'versione'
+  >
+> & {
+  addebitoId?: string | null
+  codiceIvaId?: string
+  categoriaId?: string | null
+  centroRicavoId?: string | null
+  scadenze?: Scadenza[]
+}
+
+export type ModificaRiga = DatiRiga & { versione: number }
+
+/** R36: ogni errore di validazione di una riga porta il campo (o null se riguarda più campi). */
+export interface ErroreRiga {
+  campo: string | null
+  messaggio: string
+}
+
+/** `GET /contratti-clienti/:id/righe-proposta` (D6, D7). */
+export interface PropostaRiga {
+  descrizione: string | null
+  unitaMisura: string | null
+  codiceIva: { id: string; codice: string; descrizione: string } | null
+  tipo: string | null
+  categoria: RiferimentoCodifica | null
+  centroRicavo: RiferimentoCodifica | null
+  prezzo: string | null
+  sconto: string | null
+  provvigione: string | null
+  tipoProvvigione: TipoProvvigione | null
+  tipologiaRifiuto: TipologiaRifiuto | null
+}
+
+export type TabellaCodificheRentri = 'stati-fisici' | 'attivita-rs'
+
+export interface CodificaRentri {
+  /** Codice della codifica RENTRI (R42), da scrivere in `statoFisico` / `operazione`. */
+  codice: string
+  descrizione: string
+}
+
+// --- Azioni sul listino (D18, D19, R45) ------------------------------------------------------
+
+/** R45: `condizioni` conta le righe saltate per le regole di condizione. */
+export interface EsitoCopia {
+  copiate: number
+  escluse: {
+    minimi: number
+    acconti: number
+    conguagli: number
+    duplicate: number
+    condizioni: number
+  }
+}
+
+export interface EsitoImpostazione {
+  aggiornate: number
+  speciali: number
+  escluse: number
+}
+
+// --- Variazione dei prezzi dei contratti e ISTAT (D20, D22, R46) -------------------------------
+
+export interface FiltroVariazioneContratti {
+  addebitoId?: string
+  cerCode?: string
+  clienteId?: string
+  riferimento?: string
+  prezzoAttuale?: string
+  anchePrezziZero?: boolean
+  tipiPrezzo?: ('NORMALE' | 'SPECIALE')[]
+  tipi?: string[]
+  categorieAddebitoIds?: string[]
+  centriRicavoIds?: string[]
+  tipiContrattoIds?: string[]
+  categorieContrattoIds?: string[]
+  inizioDal?: string
+  inizioAl?: string
+  fineDal?: string
+  fineAl?: string
+  contrattiIds?: string[]
+  addebitiIds?: string[]
+  primaScadenzaFissi?: string
+}
+
+export interface CorpoVariazioneContratti extends CorpoVariazione<FiltroVariazioneContratti> {
+  soloMinimi?: boolean
+}
+
+/** R46: forma propria, diversa dall'anteprima dell'archivio. */
+export interface AnteprimaVariazioneContratti extends InfoAnteprimaContratti {
+  /** Prezzi che cambiano davvero (le righe invariate non contano). */
+  totale: number
+  righe: {
+    id: string
+    cliente: string | null
+    contratto: string
+    elenco: string
+    voce: string
+    prima: string
+    dopo: string
+    /** Il prezzo arrotondato non cambia: la riga non viene scritta. */
+    invariata: boolean
+  }[]
+  errori: { id: string; voce: string; messaggio: string }[]
+  impronta: string
+}
+
+export interface MeseIstat extends InfoMeseIstat {
+  anno: number
+  mese: number
+  contratti: number
+}
+
+export interface PercentualeIstat {
+  anno: number
+  mese: number
+  percentuale: string
+}
+
+export interface CorpoIstat {
+  percentuali: PercentualeIstat[]
+  tipi: string[]
+}
+
+// --- Task 29, giro di correzioni: righe invariate, ISTAT già applicato ------------------------
+
+/** Anteprima di una variazione dei contratti con i campi aggiunti dal Task 24 (tutti facoltativi). */
+export interface InfoAnteprimaContratti {
+  /** Righe il cui prezzo arrotondato non cambia: non si scrivono (come WinWaste). */
+  invariate?: number
+  /** Avvisi che non bloccano (ISTAT già applicato a un mese). */
+  avvisi?: string[]
+}
+
+/** Aggiunta ai mesi dell'ISTAT: data (AAAA-MM-GG) dell'ultima applicazione. */
+export interface InfoMeseIstat {
+  ultimaApplicazione?: string | null
+}
+
+/**
+ * Avvisi non bloccanti di una copia: righe copiate anche se il loro addebito, codice IVA o
+ * codifica è disattivato. Si aggiunge a `EsitoCopia` (campo facoltativo: il backend più vecchio
+ * non lo manda).
+ */
+export interface EsitoCopia {
+  avvisi?: string[]
 }

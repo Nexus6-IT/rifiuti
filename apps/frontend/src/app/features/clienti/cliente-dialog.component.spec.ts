@@ -608,7 +608,7 @@ describe('ClienteDialogComponent', () => {
       expect(valore('cliente-dlg-condizione')).toBe('c1')
       expect(valore('cliente-dlg-registro')).toBe('r1')
       expect(q<HTMLInputElement>('cliente-dlg-codice')!.value).toBe('CL1')
-      expect(q<HTMLInputElement>('cliente-dlg-ritenuta')!.value).toBe('10.00')
+      expect(q<HTMLInputElement>('cliente-dlg-ritenuta')!.value).toBe('10')
       expect(q<HTMLInputElement>('cliente-dlg-rif-amm')!.value).toBe('RIF1')
       expect(fixture.componentInstance.opzioni.agenteSelezionato?.etichetta).toBe(
         'Rossi Provvigioni'
@@ -868,8 +868,46 @@ describe('ClienteDialogComponent', () => {
       clienti.get.and.returnValue(of(conProvvigione))
       await apri(conProvvigione)
       expect(valore('cliente-dlg-listino')).toBe('3')
-      expect(q<HTMLInputElement>('cliente-dlg-provvigione')!.value).toBe('5.00')
+      expect(q<HTMLInputElement>('cliente-dlg-provvigione')!.value).toBe('5,00')
       expect(valore('cliente-dlg-tipo-provvigione')).toBe('LORDO')
+    })
+
+    describe('ritenuta e provvigione: la virgola è obbligatoria (decisione di Graziano)', () => {
+      for (const [campo, testid, chiave] of [
+        ['ritenuta', 'cliente-dlg-ritenuta', 'ritenutaPercentuale'],
+        ['provvigione', 'cliente-dlg-provvigione', 'provvigionePredefinita'],
+      ] as const) {
+        it(`${campo}: "1.000" è rifiutato, errore sul campo e Salva bloccato`, async () => {
+          clienti.get.and.returnValue(of(conProvvigione))
+          clienti.modifica.and.returnValue(of(conProvvigione))
+          await apri(conProvvigione)
+          scrivi(testid, '1.000')
+          await stabilizza(fixture)
+          expect(q(`${testid}-errore`)!.textContent).toContain('Usa la virgola per i decimali')
+          expect(q(testid)!.getAttribute('aria-describedby')).toBe(`${testid}-errore`)
+          fixture.componentInstance.salva()
+          expect(clienti.modifica).not.toHaveBeenCalled()
+          expect(bottone('cliente-dlg-salva')!.disabled).toBeTrue()
+        })
+
+        it(`${campo}: "1000,5" parte come "1000.5"`, async () => {
+          clienti.get.and.returnValue(of(conProvvigione))
+          clienti.modifica.and.returnValue(of(conProvvigione))
+          await apri(conProvvigione)
+          scrivi(testid, '1000,5')
+          await stabilizza(fixture)
+          bottone('cliente-dlg-salva')!.click()
+          await stabilizza(fixture)
+          expect(clienti.modifica.calls.mostRecent().args[1][chiave]).toBe('1000.5')
+        })
+
+        it(`${campo}: alla riapertura 1000 si legge "1000", senza migliaia`, async () => {
+          const letto = { ...conProvvigione, [chiave]: '1000' }
+          clienti.get.and.returnValue(of(letto))
+          await apri(letto)
+          expect(q<HTMLInputElement>(testid)!.value).toBe('1000')
+        })
+      }
     })
 
     it('modifica: senza cambiare i tre campi non li manda', async () => {

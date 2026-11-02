@@ -36,6 +36,8 @@ export interface DatiAddebito {
 }
 
 const NUMERI_LISTINO = [1, 2, 3, 4, 5, 6] as const
+/** Messaggio del codice non valido (condiviso col servizio, che lo usa in modifica). */
+export const MSG_CODICE_ADDEBITO = 'Il codice ha da 1 a 5 cifre.'
 const DESCRIZIONE_MAX = 45
 const NOTA_MAX = 45
 const PREZZO = /^\d{1,8}(\.\d{1,6})?$/
@@ -101,7 +103,7 @@ export function validaAddebito(d: DatiAddebito): string[] {
   const errori: string[] = []
 
   if (d.codice !== '') {
-    if (!/^\d{5}$/.test(d.codice)) errori.push('Il codice ha da 1 a 5 cifre.')
+    if (!/^\d{5}$/.test(d.codice)) errori.push(MSG_CODICE_ADDEBITO)
     else if (d.codice === '00000') errori.push('Il codice 00000 è riservato.')
   }
 

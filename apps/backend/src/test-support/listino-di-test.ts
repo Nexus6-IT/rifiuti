@@ -1,11 +1,13 @@
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient, type GenereCodificaAddebito } from '@prisma/client'
+import { creaDittaConRuolo } from './anagrafiche-di-test'
 
 /**
  * Fixture del database per i test del listino 4.2a: due codici IVA e una codifica per ciascun
  * genere delle codifiche di addebito, nell'azienda indicata. Si usa col client PROPRIETARIO (che
  * aggira la RLS). Nessuna pulizia qui: le tabelle hanno FK a cascata su `tenants`, quindi basta
  * cancellare l'azienda di test per id (in caso di FK `NoAction` fra addebiti e codifiche, prima
- * gli addebiti, poi le codifiche, poi i codici IVA).
+ * gli addebiti, poi le codifiche, poi i codici IVA). Gli elenchi dei contratti (4.2b) vanno a
+ * cascata col contratto.
  */
 export interface ListinoDiTest {
   /** Codice "22", aliquota 22.00, senza natura. */
@@ -35,7 +37,7 @@ export async function creaCodiciIvaEcodifiche(
       natura: 'N6.1',
     },
   })
-  const codifica = (genere: any, descrizione: string) =>
+  const codifica = (genere: GenereCodificaAddebito, descrizione: string) =>
     owner.codificaAddebito.create({ data: { tenantId, genere, codice: '001', descrizione } })
   const gruppo = await codifica('GRUPPO', 'Gruppo di prova')
   const categoria = await codifica('CATEGORIA', 'Categoria di prova')
@@ -121,4 +123,163 @@ export async function creaAddebito(
     })),
   })
   return { id: riga.id, codice: riga.codice, gruppoId }
+}
+
+export interface OpzioniContrattoConElenco {
+  /** Stato del contratto; omesso = `ATTIVO`. */
+  stato?: 'BOZZA' | 'ATTIVO' | 'SOSPESO' | 'SOSPESO_MOVIMENTI' | 'ANNULLATO'
+  /** Cliente esistente; omesso = ne crea uno nuovo (P.IVA da `partitaIvaUnica`, R55). */
+  clienteId?: string
+  /** Codice dell'elenco; omesso = `001`. */
+  codiceElenco?: string
+  descrizioneElenco?: string
+  predefinito?: boolean
+  /** Contratto principale (contratto allegato, D17). */
+  contrattoPrincipaleId?: string
+}
+
+/**
+ * Crea (col client PROPRIETARIO) un cliente, un contratto in stato `ATTIVO` e un elenco degli
+ * addebiti con il suo `001`. Tutto sparisce con la cancellazione dell'azienda di test.
+ */
+export async function creaContrattoConElenco(
+  owner: PrismaClient,
+  tenantId: string,
+  opzioni: OpzioniContrattoConElenco = {}
+): Promise<{ clienteId: string; contrattoId: string; elencoId: string }> {
+  const clienteId =
+    opzioni.clienteId ?? (await creaDittaConRuolo(owner, tenantId, 'CLIENTE')).ruoloId
+  progressivo++
+  const contratto = await owner.contrattoCliente.create({
+    data: {
+      tenantId,
+      clienteId,
+      numero: `LST-2026-${String(progressivo).padStart(4, '0')}`,
+      descrizione: 'Contratto di prova per il listino',
+      stato: opzioni.stato ?? 'ATTIVO',
+      dataInizio: new Date('2026-01-01T00:00:00.000Z'),
+      contrattoPrincipaleId: opzioni.contrattoPrincipaleId ?? null,
+      // CHECK `annullo_coerente`: un contratto annullato porta motivo e data.
+      ...(opzioni.stato === 'ANNULLATO'
+        ? { motivoAnnullo: 'Annullato per il test', annullatoIl: new Date() }
+        : {}),
+    },
+  })
+  const elenco = await owner.elencoAddebiti.create({
+    data: {
+      tenantId,
+      contrattoId: contratto.id,
+      codice: opzioni.codiceElenco ?? '001',
+      descrizione: opzioni.descrizioneElenco ?? 'Elenco di prova',
+      predefinito: opzioni.predefinito ?? false,
+    },
+  })
+  return { clienteId, contrattoId: contratto.id, elencoId: elenco.id }
+}
+
+export interface DatiRigaDiTest {
+  /** Omesso: `V`. */
+  tipo?: string
+  /** Solo `CER`; omesso: `20 03 01`. */
+  cerCode?: string
+  /** Omesso e tipo non `CER`: ne crea uno nuovo (dello stesso tipo, se ammesso in archivio). */
+  addebitoId?: string
+  riferimento?: string | null
+  codiceIvaId: string
+  unitaMisura?: string
+  prezzo?: string | null
+  /** Altre colonne della riga (condizione, tipoQuantita, ...). */
+  altro?: Partial<Prisma.RigaAddebitoUncheckedCreateInput>
+}
+
+/**
+ * Crea (col client PROPRIETARIO) una riga di addebito in un elenco: `V` a peso netto in KG, a un
+ * euro, se non si dice altro. Per un tipo non `CER` senza `addebitoId` crea un addebito
+ * dell'archivio. Va a cascata con l'elenco.
+ */
+export async function creaRiga(
+  owner: PrismaClient,
+  tenantId: string,
+  elencoId: string,
+  dati: DatiRigaDiTest
+): Promise<{ id: string; addebitoId: string | null }> {
+  const tipo = dati.tipo ?? 'V'
+  const eCer = tipo === 'CER'
+  const addebitoId = eCer
+    ? null
+    : (dati.addebitoId ??
+      (await creaAddebito(owner, tenantId, { tipo: tipo === 'V' || tipo === 'F' ? tipo : 'V' })).id)
+  const riga = await owner.rigaAddebito.create({
+    data: {
+      tenantId,
+      elencoId,
+      tipo,
+      cerCode: eCer ? (dati.cerCode ?? '20 03 01') : null,
+      addebitoId,
+      riferimento: dati.riferimento ?? null,
+      tipoQuantita: eCer || tipo === 'V' ? 'PESO_NETTO' : null,
+      unitaMisura: dati.unitaMisura ?? 'KG',
+      prezzo: dati.prezzo === undefined ? '1' : dati.prezzo,
+      codiceIvaId: dati.codiceIvaId,
+      ...dati.altro,
+    },
+  })
+  return { id: riga.id, addebitoId }
+}
+
+/**
+ * Due voci per tabella RENTRI (`stati-fisici`, `attivita-rs`) con `externalId` noti: le crea
+ * (col client PROPRIETARIO) solo se la tabella e' vuota, e restituisce gli id creati da cancellare
+ * a fine test. Le voci sono le stesse del catalogo reale, se c'e'.
+ */
+export async function assicuraCodificheRentri(owner: PrismaClient): Promise<{
+  statoFisico: string
+  operazione: string
+  creati: string[]
+}> {
+  const creati: string[] = []
+  const voce = async (tabella: string, externalId: string) => {
+    const esistente = await owner.rentriCodificaSemplice.findFirst({
+      where: { tabella, presenteInRentri: true },
+      select: { externalId: true },
+    })
+    if (esistente) return esistente.externalId
+    const c = await owner.rentriCodificaSemplice.create({
+      data: {
+        tabella,
+        externalId,
+        code: `T${externalId}`,
+        name: `Voce di prova ${tabella}`,
+        fonte: 'test',
+      },
+    })
+    creati.push(c.id)
+    return c.externalId
+  }
+  return {
+    statoFisico: await voce('stati-fisici', '9901'),
+    operazione: await voce('attivita-rs', '9902'),
+    creati,
+  }
+}
+
+/**
+ * Il catalogo CER e' globale e in CI il database NON e' popolato: ogni spec che passa da
+ * `cerNelCatalogo` deve garantirsi i codici che usa, nella forma esatta del catalogo
+ * (spazi e asterisco). Crea (col client PROPRIETARIO) solo quelli assenti e restituisce i
+ * codici creati: a fine test si cancellano quelli, per codice esatto, mai gli altri.
+ */
+export async function assicuraCatalogoCer(
+  owner: PrismaClient,
+  codici: readonly string[]
+): Promise<string[]> {
+  const creati: string[] = []
+  for (const code of codici) {
+    if ((await owner.cERCode.count({ where: { code } })) > 0) continue
+    await owner.cERCode.create({
+      data: { code, description: 'CER di test', category: '99', subcategory: '' },
+    })
+    creati.push(code)
+  }
+  return creati
 }

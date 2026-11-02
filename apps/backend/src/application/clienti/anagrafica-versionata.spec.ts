@@ -211,7 +211,7 @@ describe('anagrafica-versionata', () => {
       expect(m).toBeInstanceOf(ConflictException)
       expect(m.getResponse()).toEqual({
         error: 'OPERAZIONE_CONCORRENTE',
-        message: "L'operazione è stata interrotta da un'altra in corso: riprova.",
+        message: 'L’operazione è stata interrotta da un’altra in corso: riprova.',
       })
     })
 

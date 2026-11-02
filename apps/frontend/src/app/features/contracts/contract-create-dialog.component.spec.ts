@@ -394,6 +394,62 @@ describe('ContractCreateDialogComponent', () => {
       })
     })
 
+    describe('numeri: la virgola è obbligatoria (decisione di Graziano)', () => {
+      it('"1.000" nel prezzo è rifiutato: errore sul campo, nessun invio', () => {
+        apri(contratto())
+        component.scriviNumero('basePrice', '1.000')
+        fixture.detectChanges()
+        expect(component.erroriNumeri().basePrice).toBe('Usa la virgola per i decimali')
+        expect(document.getElementById('c-price-errore')?.textContent).toContain(
+          'Usa la virgola per i decimali'
+        )
+        expect(document.getElementById('c-price')?.getAttribute('aria-describedby')).toBe(
+          'c-price-errore'
+        )
+        component.salva()
+        expect(contracts.update).not.toHaveBeenCalled()
+        expect(toast.warn).toHaveBeenCalledWith('Usa la virgola per i decimali')
+      })
+
+      it('"1000,5" nel prezzo parte come numero 1000.5', () => {
+        apri(contratto())
+        component.scriviNumero('basePrice', '1000,5')
+        component.salva()
+        expect(contracts.update).toHaveBeenCalledOnceWith('k1', { basePrice: 1000.5, versione: 4 })
+      })
+
+      it('alla riapertura 1000 si legge "1000", senza separatore delle migliaia', async () => {
+        apri(contratto({ basePrice: '1000.00' }))
+        await fixture.whenStable()
+        expect(component.testi.basePrice).toBe('1000')
+        expect((document.getElementById('c-price') as HTMLInputElement).value).toBe('1000')
+      })
+
+      it('durata e preavviso sono interi: "1a" e "1,5" sono rifiutati, "12" parte come 12', () => {
+        apri(contratto({ autoRenew: true }))
+        component.scriviNumero('durationMonths', '1a')
+        expect(component.erroriNumeri().durationMonths).toBe('Numero non valido')
+        component.scriviNumero('renewalNoticeDays', '1,5')
+        expect(component.erroriNumeri().renewalNoticeDays).toBe('Numero non valido')
+        component.salva()
+        expect(contracts.update).not.toHaveBeenCalled()
+        component.scriviNumero('durationMonths', '12')
+        component.scriviNumero('renewalNoticeDays', '30')
+        component.salva()
+        expect(contracts.update).toHaveBeenCalledOnceWith('k1', {
+          durationMonths: 12,
+          renewalNoticeDays: 30,
+          versione: 4,
+        })
+      })
+
+      it('prezzo svuotato: nessun errore (il campo è facoltativo)', () => {
+        apri(contratto())
+        component.scriviNumero('basePrice', '')
+        expect(component.erroriNumeri().basePrice).toBeUndefined()
+      })
+    })
+
     it('nessun cambiamento: non chiama update e chiude con un avviso', () => {
       apri(contratto())
       const chiuso = spyOn(component.visibleChange, 'emit')

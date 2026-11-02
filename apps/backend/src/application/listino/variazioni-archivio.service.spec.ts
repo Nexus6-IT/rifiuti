@@ -345,7 +345,6 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
 
     it.each([
       ['P2034 (deadlock/serializzazione)', errPrisma('P2034')],
-      ['P2028 (timeout della transazione)', errPrisma('P2028')],
       ['40P01 dal raw (deadlock)', errPrisma('P2010', { code: '40P01' })],
       ['55P03 dal raw (lock timeout)', errPrisma('P2010', { code: '55P03' })],
     ])('%s → 409 VARIAZIONE_SUPERATA in italiano', async (_n, err) => {
@@ -357,6 +356,14 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
         error: 'VARIAZIONE_SUPERATA',
         message: 'I prezzi sono cambiati dopo l’anteprima: rifai l’anteprima.',
       })
+    })
+
+    it('P2028 (timeout della transazione) → 409 OPERAZIONE_CONCORRENTE, non "prezzi cambiati" (R46)', async () => {
+      const c = await conImpronta()
+      prisma.$transaction.mockRejectedValueOnce(errPrisma('P2028'))
+      const e = await errore(service.applica(T, U, c))
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(e.getResponse()).toMatchObject({ error: 'OPERAZIONE_CONCORRENTE' })
     })
 
     it('un errore non di lock passa com’è', async () => {

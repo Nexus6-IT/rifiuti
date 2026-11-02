@@ -12,7 +12,10 @@ import {
   signal,
 } from '@angular/core'
 import { AbstractControl, ReactiveFormsModule } from '@angular/forms'
+import { Router } from '@angular/router'
+import { ConfirmationService } from 'primeng/api'
 import { AccordionModule } from 'primeng/accordion'
+import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { Subscription } from 'rxjs'
@@ -22,7 +25,7 @@ import { Cliente, ContrattoCliente, PeriodoFatturazione } from '../clienti/clien
 import { ClientiService } from '../clienti/clienti.service'
 import { Opzione, OpzioniFatturazione } from '../clienti/opzioni-fatturazione'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
-import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
+import { chiediConferma, messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { ETICHETTE_STATO_CONTRATTO } from '../clienti/vocabolario-clienti'
 import { puoGestireAnagrafiche } from '../registry/registry-permissions'
 import {
@@ -35,6 +38,7 @@ import {
   valoriDaContratto,
 } from './contratto-cliente-form'
 import { AllegatiContrattoComponent } from './allegati-contratto.component'
+import { formatNumero } from '../../shared/utils/numero-modificabile'
 import { PeriodiFatturazioneComponent } from './periodi-fatturazione.component'
 import { etichettaCliente } from './scelta-cliente.component'
 import { CorrentiGenerali, SezioneDatiGeneraliComponent } from './sezione-dati-generali.component'
@@ -63,6 +67,7 @@ const NESSUNA_VOCE = '—'
     ButtonModule,
     DialogModule,
     AccordionModule,
+    ConfirmDialogModule,
     SezioneDatiGeneraliComponent,
     SezionePagamentoComponent,
     SezionePaComponent,
@@ -71,6 +76,7 @@ const NESSUNA_VOCE = '—'
     AllegatiContrattoComponent,
     PeriodiFatturazioneComponent,
   ],
+  providers: [ConfirmationService],
   template: `
     <p-dialog
       [visible]="visible"
@@ -152,6 +158,14 @@ const NESSUNA_VOCE = '—'
         </p>
       </form>
       <ng-template pTemplate="footer">
+        <p-button
+          *ngIf="contratto"
+          label="Listino"
+          icon="pi pi-list"
+          [outlined]="true"
+          (onClick)="apriListino()"
+          data-testid="contratto-dlg-listino"
+        />
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
         <p-button
           *ngIf="puoScrivere()"
@@ -163,6 +177,7 @@ const NESSUNA_VOCE = '—'
         />
       </ng-template>
     </p-dialog>
+    <p-confirmDialog />
   `,
 })
 export class ContrattoClienteDialogComponent implements OnChanges {
@@ -170,6 +185,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   private readonly tabelle = inject(TabelleFatturazioneService)
   private readonly toast = inject(ToastService)
   private readonly auth = inject(AuthService)
+  private readonly router = inject(Router)
+  private readonly conferma = inject(ConfirmationService)
 
   @Input() visible = false
   /** null = nuovo. */
@@ -252,6 +269,28 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     } finally {
       this.applicando = false
     }
+  }
+
+  /** Pagina del listino del contratto (4.2b): visibile anche al VIEWER, che lo legge soltanto. */
+  apriListino(): void {
+    const id = this.contratto?.id
+    if (!id) return
+    // Andare al listino chiude il dialog e scarta le modifiche non salvate: prima si chiede.
+    if (this.form.dirty && this.puoScrivere()) {
+      chiediConferma(
+        this.conferma,
+        'Ci sono modifiche non salvate al contratto: andando al listino andranno perse. Continuare?',
+        () => this.vaiAlListino(id),
+        { header: 'Modifiche non salvate', acceptLabel: 'Vai al listino' }
+      )
+      return
+    }
+    this.vaiAlListino(id)
+  }
+
+  private vaiAlListino(id: string): void {
+    this.chiudi()
+    void this.router.navigate(['/contratti-clienti', id, 'listino'])
   }
 
   ngOnChanges(c: SimpleChanges): void {
@@ -429,7 +468,7 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     impostaTabella('speseIncassoId', c?.speseIncassoId ?? '', this.opzioni.opzSpese())
     impostaTabella('bolloId', c?.bolloId ?? '', this.opzioni.opzBolli())
     imposta('esigibilitaIva', c?.esigibilitaIva ?? 'IMMEDIATA')
-    imposta('ritenutaPercentuale', c?.ritenutaPercentuale ?? '')
+    imposta('ritenutaPercentuale', formatNumero(c?.ritenutaPercentuale))
     imposta('codiceDestinatario', sdi?.codiceDestinatario ?? '')
     imposta('riferimentoAmministrazione', sdi?.riferimentoAmministrazione ?? '')
     this.predefinitiDisattivati.set(disattivati)
@@ -450,6 +489,8 @@ export class ContrattoClienteDialogComponent implements OnChanges {
   /** In modifica serve il record letto (altrimenti il form vuoto cancellerebbe i dati). */
   puoSalvare(): boolean {
     if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return false
+    // Ritenuta e soglia con il punto o con testo errato: il form non si salva.
+    if (this.form.invalid) return false
     return !this.contratto || this.letto() !== null
   }
 

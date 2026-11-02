@@ -320,6 +320,23 @@ describe('AddebitoDialogComponent', () => {
       expect(disabilitato()).toBeFalse()
     })
 
+    it('virgola obbligatoria: «10.5» nel prezzo dà l’errore e spegne Salva; 1000 resta «1000»', async () => {
+      addebiti.get.and.returnValue(of(esistente()))
+      await apri(esistente())
+      scrivi('add-dlg-prezzo-1', '10.5')
+      await stabilizza(fixture)
+      expect(q('add-dlg-errore-prezzo-1')!.textContent).toContain('Usa la virgola per i decimali')
+      expect(disabilitato()).toBeTrue()
+      scrivi('add-dlg-prezzo-1', '1000')
+      scrivi('add-dlg-sconto-1', '10+5,5')
+      await stabilizza(fixture)
+      expect(disabilitato()).toBeFalse()
+      bottone('add-dlg-salva')!.click()
+      const l = addebiti.modifica.calls.mostRecent().args[1].listini[0]
+      expect(l.prezzo).toBe('1000')
+      expect(l.sconto).toBe('10+5.5')
+    })
+
     it('lettura fallita: messaggio e Salva disabilitato', async () => {
       addebiti.get.and.returnValue(
         throwError(() => ({ status: 404, error: { message: "L'addebito non esiste." } }))
@@ -336,7 +353,7 @@ describe('AddebitoDialogComponent', () => {
       expect(q<HTMLSelectElement>('add-dlg-tipo')!.value).toBe('T???')
       expect(q<HTMLInputElement>('add-dlg-tipo-cifre')!.value).toBe('123')
       expect(q<HTMLSelectElement>('add-dlg-gruppo')!.value).toBe('g1')
-      expect(q<HTMLInputElement>('add-dlg-prezzo-1')!.value).toBe('10.50')
+      expect(q<HTMLInputElement>('add-dlg-prezzo-1')!.value).toBe('10,5')
       expect(q<HTMLInputElement>('add-dlg-sconto-1')!.value).toBe('10+5')
       expect(q<HTMLSelectElement>('add-dlg-tipo-provv')!.value).toBe('LORDO')
     })
@@ -497,6 +514,76 @@ describe('AddebitoDialogComponent', () => {
       expect(
         sub('app-codifica-addebito-dialog')[0] instanceof CodificaAddebitoDialogComponent
       ).toBeTrue()
+    })
+  })
+
+  describe('rapida (aggiunta in linea dalla riga)', () => {
+    async function apriRapida() {
+      TestBed.overrideProvider(AuthService, {
+        useValue: { currentUser: () => ({ role: 'ADMIN' }) },
+      })
+      fixture = TestBed.createComponent(AddebitoDialogComponent)
+      salvati = []
+      visibilita = []
+      fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+      fixture.componentInstance.visibleChange.subscribe(v => visibilita.push(v))
+      fixture.componentRef.setInput('rapida', true)
+      fixture.componentRef.setInput('visible', true)
+      await stabilizza(fixture)
+    }
+
+    it('mostra solo i campi obbligatori: descrizione, unità, tipo e gruppo', async () => {
+      await apriRapida()
+      for (const id of ['add-dlg-descrizione', 'add-dlg-um', 'add-dlg-tipo', 'add-dlg-gruppo']) {
+        expect(q(id)).withContext(id).toBeTruthy()
+      }
+      for (const id of [
+        'add-dlg-codice',
+        'add-dlg-tipo-provv',
+        'add-dlg-categoria',
+        'add-dlg-centro',
+        'add-dlg-stat1',
+        'add-dlg-stat2',
+        'add-dlg-iva',
+        'add-dlg-listini',
+        'add-dlg-nota',
+        'add-dlg-appunti',
+      ]) {
+        expect(q(id)).withContext(id).toBeNull()
+      }
+    })
+
+    it('crea con i soli campi compilati e restituisce l’addebito', async () => {
+      await apriRapida()
+      await compilaMinimo()
+      bottone('add-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = addebiti.crea.calls.mostRecent().args[0]
+      expect(corpo.descrizione).toBe('Servizio')
+      expect(corpo.gruppoId).toBe('g1')
+      expect(corpo.tipo).toBe('V')
+      expect(corpo.codice).toBeUndefined()
+      expect(salvati.length).toBe(1)
+      expect(visibilita).toEqual([false])
+    })
+
+    it('"Nuovo gruppo" resta, e Esc nel suo sub-dialog non chiude il dialog rapido', async () => {
+      await apriRapida()
+      bottone('add-dlg-nuovo-gruppo')!.click()
+      await stabilizza(fixture)
+      fixture.componentInstance.alCambioVisibilita(false)
+      expect(visibilita).toEqual([])
+    })
+
+    it('un salvataggio ancora in corso non emette dopo la chiusura', async () => {
+      const risposta$ = new Subject<Addebito>()
+      addebiti.crea.and.returnValue(risposta$)
+      await apriRapida()
+      await compilaMinimo()
+      bottone('add-dlg-salva')!.click()
+      fixture.componentInstance.chiudi()
+      risposta$.next(esistente())
+      expect(salvati.length).toBe(0)
     })
   })
 })

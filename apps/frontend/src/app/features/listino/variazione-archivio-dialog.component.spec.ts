@@ -117,6 +117,14 @@ describe('VariazioneArchivioDialogComponent', () => {
     expect(bottone('var-anteprima')!.disabled).toBeTrue()
   })
 
+  it('virgola obbligatoria: «3.5» dà l’errore e l’anteprima resta spenta', async () => {
+    await apri()
+    await preparaAumento('3.5')
+    q<HTMLInputElement>('var-tipo-F')!.click()
+    expect(q('var-errore-valore')!.textContent).toContain('Usa la virgola per i decimali')
+    expect(bottone('var-anteprima')!.disabled).toBeTrue()
+  })
+
   it('l’anteprima manda il valore con il punto, come stringa, e i listini scelti', async () => {
     await apri()
     await preparaAumento('3,5')
@@ -147,6 +155,7 @@ describe('VariazioneArchivioDialogComponent', () => {
     await apri()
     await preparaAumento()
     await anteprima()
+    expect(q('var-righe')!.querySelector('caption')?.textContent).toContain('Anteprima')
     const testo = q('var-righe')!.textContent!
     expect(testo).toContain('Trasporto')
     expect(testo).toContain('10.00')
@@ -204,6 +213,9 @@ describe('VariazioneArchivioDialogComponent', () => {
     await stabilizza(fixture)
     expect(addebiti.applicaVariazione).not.toHaveBeenCalled()
     expect(q('var-riepilogo')!.textContent).toContain('3,5')
+    // M11: al passo di riepilogo il focus passa al riepilogo
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('var-riepilogo'))
     bottone('var-conferma-finale')!.click()
     await stabilizza(fixture)
     expect(addebiti.applicaVariazione).toHaveBeenCalledOnceWith({
@@ -260,7 +272,7 @@ describe('VariazioneArchivioDialogComponent', () => {
     await stabilizza(fixture)
     bottone('var-conferma-finale')!.click()
     await stabilizza(fixture)
-    expect(q('var-errore')!.textContent).toContain('rifai l’anteprima')
+    expect(q('var-errore-applica')!.textContent).toContain('rifai l’anteprima')
     expect(q('var-applica')).toBeNull()
     expect(q('var-esito')).toBeNull()
     expect(applicati).toEqual([])
@@ -279,7 +291,77 @@ describe('VariazioneArchivioDialogComponent', () => {
     await stabilizza(fixture)
     bottone('var-conferma-finale')!.click()
     await stabilizza(fixture)
-    expect(q('var-errore')!.textContent).toContain('Troppe righe.')
+    expect(q('var-errore-applica')!.textContent).toContain('Troppe righe.')
+  })
+
+  it('VARIAZIONE_SUPERATA: "rifai l’anteprima" e anteprima scartata', async () => {
+    addebiti.applicaVariazione.and.returnValue(
+      throwError(() => ({ status: 409, error: { error: 'VARIAZIONE_SUPERATA', message: 'x' } }))
+    )
+    await apri()
+    await preparaAumento()
+    await anteprima()
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    bottone('var-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('var-errore-applica')!.textContent).toContain('rifai l’anteprima')
+    expect(q('var-applica')).toBeNull()
+  })
+
+  it('OPERAZIONE_CONCORRENTE: "riprova" e l’anteprima resta, basta cliccare Applica', async () => {
+    addebiti.applicaVariazione.and.returnValues(
+      throwError(() => ({ status: 409, error: { error: 'OPERAZIONE_CONCORRENTE' } })),
+      of({ aggiornati: 2 })
+    )
+    await apri()
+    await preparaAumento()
+    await anteprima()
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    bottone('var-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(q('var-errore-applica')!.textContent).toContain('riprova')
+    expect(q('var-errore-applica')!.textContent).not.toContain('rifai')
+    expect(bottone('var-applica')!.disabled).toBeFalse()
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    bottone('var-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(addebiti.applicaVariazione.calls.count()).toBe(2)
+    expect(applicati).toEqual([2])
+  })
+
+  it('i vocabolari che non si caricano hanno una zona loro, distinta dall’anteprima', async () => {
+    TestBed.overrideProvider(ListinoService, {
+      useValue: {
+        addebiti,
+        codifiche: { list: () => throwError(() => ({ status: 500 })) },
+        codiciIva: { list: () => of([]) },
+      },
+    })
+    await apri()
+    expect(q('var-errore-caricamento')!.textContent).toContain('categorie')
+    expect(q('var-errore-anteprima')).toBeNull()
+  })
+
+  it('durante l’applicazione né Esc né Annulla chiudono', async () => {
+    const lenta = new Subject<{ aggiornati: number }>()
+    addebiti.applicaVariazione.and.returnValue(lenta)
+    await apri()
+    await preparaAumento()
+    await anteprima()
+    bottone('var-applica')!.click()
+    await stabilizza(fixture)
+    bottone('var-conferma-finale')!.click()
+    await stabilizza(fixture)
+    expect(bottone('var-chiudi')!.disabled).toBeTrue()
+    fixture.componentInstance.chiudi()
+    expect(visibilita).toEqual([])
+    lenta.next({ aggiornati: 2 })
+    await stabilizza(fixture)
+    fixture.componentInstance.chiudi()
+    expect(visibilita).toEqual([false])
   })
 
   it('errore dell’anteprima: messaggio del backend', async () => {
@@ -289,7 +371,8 @@ describe('VariazioneArchivioDialogComponent', () => {
     await apri()
     await preparaAumento()
     await anteprima()
-    expect(q('var-errore')!.textContent).toContain('Il valore non è valido.')
+    expect(q('var-errore-anteprima')!.textContent).toContain('Il valore non è valido.')
+    expect(q('var-errore-applica')).toBeNull()
     expect(q('var-applica')).toBeNull()
   })
 

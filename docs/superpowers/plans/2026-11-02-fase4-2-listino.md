@@ -47,7 +47,7 @@ addendum 4.1b con i ruling R1-R34, parallelismo). Le evidenze E1-E32 della 4.1 r
 "4.1 E…".
 
 **Stima.** 31 task (Task 0-30): 4.2a 16 task (6 di dominio puro, 1 di schema, 4 di servizi e rotte,
-3 frontend, e2e), 4.2b 15 task (3 di dominio puro, 1 di schema, 6 di servizi e rotte, 4 frontend,
+3 frontend, e2e), 4.2b 16 task (4 di dominio puro col Task 16a dell'addendum, 1 di schema, 6 di servizi e rotte, 4 frontend,
 e2e). 9 tabelle nuove, ~60 campi sulla riga di addebito, ~170 file nuovi o modificati. Taglia
 roadmap L, qui L+ per la parità completa: 12-16 giornate di esecuzione con revisione fra i task,
 meno con le ondate.
@@ -373,6 +373,9 @@ quantitaCondizionati? })` → `{ righe: { descrizione, quantita, prezzo, sconto,
 condizioneVerificata: boolean } | { errore }`, porta di `speciale` (E14) con le descrizioni "Per q.tà
 fino a …", "Per q.tà oltre … e fino a …", ": imp.fisso". Test con l'esempio di `fatturazione.md`
 §4.5 (6.000 kg: `A` → 470,00, `D` → 300,00) e un caso per tipo e variante.
+**Differenza voluta da WinWaste (decisione di Graziano del 02/11, Task 16a):** `E` e `H`
+azzerano le fasce precedenti come `D`, e con la quantità precedente `B`/`C`/`D` non ripagano la
+parte già fatturata: la stessa quantità non si fattura mai due volte (R29-R31 dell'addendum).
 
 **D13. Importi della riga** (E9, funzioni pure del Task 3): `arrotonda2(valore)` metà per eccesso in
 valore assoluto; `scontoCascata(importo, formula)` (ogni termine sul residuo, somma arrotondata);
@@ -806,7 +809,8 @@ Le situazioni più probabili in uso reale, ognuna col suo test:
    fasce e scadenze → Task 23.
 10. **Listino di un contratto annullato** → sola lettura in API (409) e in UI (niente pulsanti) →
     Task 20, 21, 29.
-11. **Scadenza 29/02 senza anno e calendario trimestrale da marzo con anno vuoto** → valida / 400 col
+11. **Scadenza 29/02 senza anno e calendario trimestrale con anno vuoto** → il 29/02 è valido; il
+    trimestrale da marzo è valido (come WinWaste), da aprile in poi (primo mese > 3) → 400 col
     messaggio di E19 → Task 18.
 
 ---
@@ -1164,13 +1168,15 @@ provvigione, tipi di quantità, "applica a", tipi di calcolo, periodi delle scad
 ## Task 16: dominio puro — elenco degli addebiti (4.2b, da master dopo la 4.2a)
 
 **File:** Create `apps/backend/src/domain/listino/elenco-addebiti.ts` + spec. Prima: Step 0 = linea di
-base come il Task 0 su master aggiornato (RLS 59), branch `feat/fase4-2b-elenchi-righe`.
+base come il Task 0 su master `869e98f` (RLS 59, ultima migration `20261102300000_…`, `migrate
+status` pulito; numeri di riferimento in R34 dell'addendum), branch `feat/fase4-2b-righe-listino`.
+Il primo task della 4.2b è il **Task 16a** dell'addendum.
 
 **Interfaces (Produces):**
 ```ts
 export interface DatiElenco { codice: string; descrizione: string; nota1: string | null; nota2: string | null; validoDal: string | null; validoAl: string | null; predefinito: boolean; codiceCig: string | null; codiceCup: string | null; idDocumentoPa: string | null; dataDocumentoPa: string | null }
 export function normalizzaElenco(g): DatiElenco
-export function validaElenco(d: DatiElenco): string[]      // D8; CIG/CUP con validaCig/validaCup della 4.1 (import da domain/contratti-cliente)
+export function validaElenco(d: DatiElenco): string[]      // D8; CIG/CUP/documento PA: stesse regole e stessi testi di validaContrattoCliente (regole-contratto-cliente.ts:490-502, non esportate: R33)
 export function prossimoCodiceElenco(usati: readonly string[]): string | null
 export function elenchiValidiAl<T extends { validoAl: string | null }>(e: readonly T[], data: string): T[]
 export function elencoProposto<T extends { id: string; validoAl: string | null; predefinito: boolean }>(e: readonly T[], data: string): T | null
@@ -1184,7 +1190,9 @@ export function elencoProposto<T extends { id: string; validoAl: string | null; 
 
 ## Task 17: dominio puro — riga di addebito
 
-**File:** Create `apps/backend/src/domain/listino/riga-addebito.ts` + spec. Usa Task 2-5.
+**File:** Create `apps/backend/src/domain/listino/riga-addebito.ts` + spec. Modify
+`apps/backend/src/domain/listino/importi-riga.ts` (+ spec) solo per i minor rinviati della 4.2a
+(R32). Usa Task 2-5, 16a e 18 (già integrati: niente stub).
 
 **Interfaces (Produces):**
 ```ts
@@ -1192,10 +1200,11 @@ export type CampoRiga = 'tipo'|'cerCode'|'addebitoId'|'riferimento'|'descrizione
 export const CAMPI_PER_FAMIGLIA: Readonly<Record<FamigliaAddebito, readonly CampoRiga[]>>   // D9
 export const ETICHETTE_CAMPI_RIGA: Readonly<Record<CampoRiga, string>>
 export interface DatiRiga { /* un campo per CampoRiga, scaglioni: Scaglione[], scadenze: Scadenza[] */ }
-export function normalizzaRiga(g, inviati: ReadonlySet<string>): { dati: DatiRiga; errori: string[] }   // fuori famiglia: null se non inviato, errore se inviato
-export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }): string[]      // D10, D12, D14, D17
-export function tipologiaDaCer(cer: string): 'URBANO'|'URBANO_PERICOLOSO'|'SPECIALE'|'SPECIALE_PERICOLOSO'
-export function formaCerValida(cer: string): boolean          // 6 cifre, non xx xx 00, asterisco ammesso
+export interface ErroreRiga { campo: CampoRiga | null; messaggio: string }   // R36: null = regola fra più campi
+export function normalizzaRiga(g, inviati: ReadonlySet<string>): { dati: DatiRiga; errori: ErroreRiga[] }   // fuori famiglia: null se non inviato o inviato vuoto (null, '', []), errore se inviato con un valore (R37)
+export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }): ErroreRiga[]      // D10, D12, D14, D17
+export function tipologiaDaCer(cer: string): 'URBANO'|'URBANO_PERICOLOSO'|'SPECIALE'|'SPECIALE_PERICOLOSO'   // forma del catalogo (R35)
+export function formaCerValida(cer: string): boolean          // forma del catalogo "NN NN NN" via cerCanonico, non xx xx 00, asterisco ammesso (R35)
 export function validaCerProposta(v: readonly string[]): string[]
 export function chiaveRiga(d: Pick<DatiRiga,'tipo'|'cerCode'|'addebitoId'|'riferimento'>): string   // D11
 export function totaleFissiAnnuo(righe: readonly { tipo: string; quantitaFissa: string | null; prezzo: string | null; scadenze: { anno: number | null }[] }[]): string   // TOTFISSI
@@ -1203,12 +1212,14 @@ export function totaleFissiAnnuo(righe: readonly { tipo: string; quantitaFissa: 
 
 - [ ] **Step 1: test** (uno per regola di D10, D12-via-Task 4, D14-via-Task 18 solo i rimandi, D17):
   per ogni famiglia un caso valido completo; ogni messaggio di D10 con un caso; campo fuori famiglia
-  inviato → messaggio "non vale per gli addebiti di tipo …", non inviato → null; `GR` con peso
+  inviato con un valore → messaggio "non vale per gli addebiti di tipo …", non inviato o inviato
+  `null`/`''`/`[]` → null (R37); ogni errore col suo `campo` (R36); `GR` con peso
   lordo rifiutato, con netto ammesso; `%` su `V` rifiutato, su `$D` ammesso; prezzo `"1.1234567"`
-  rifiutato; allegato con `CER` e con `V` rifiutati, con `TT` ammesso; `tipologiaDaCer("200301")`
-  urbano, `("200121*")` urbano pericoloso, `("170405")` speciale; `totaleFissiAnnuo` conta solo le
+  rifiutato; allegato con `CER` e con `V` rifiutati, con `TT` ammesso;
+  `tipologiaDaCer(cerCanonico("200301"))` (`"20 03 01"`) urbano, `"20 01 21*"` urbano pericoloso,
+  `"17 04 05"` speciale (R35); `totaleFissiAnnuo` conta solo le
   scadenze ogni anno (come `riempitavola`, `ELENCHIaddeb.cs:2290-2306`); nessun messaggio contiene
-  il valore ricevuto.
+  il valore ricevuto; minor rinviati di `importi-riga.ts` (R32).
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): regole pure della riga di addebito per famiglia (D9-D12, D17)`.
 
 ## Task 18: dominio puro — scadenze degli addebiti fissi
@@ -1253,20 +1264,22 @@ export function scadenzeNelPeriodo(s: readonly Scadenza[], dal: string, al: stri
   cinque; cascata del tenant.
 - [ ] **Step 2-7:** come il Task 7 (ripristino a mano: `DROP TABLE scadenze_riga_addebito,
   scaglioni_riga_addebito, righe_addebito, allegati_elenco_addebiti, elenchi_addebiti; DROP TYPE
-  applica_prezzo_speciale, tipologia_rifiuto_addebito, tipo_quantita_addebito;`). Se Prisma non
-  rappresenta l'unico `NULLS NOT DISTINCT`, l'indice resta solo nella migration e si annota nel
-  commento dello schema; il `migrate diff` deve restare vuoto, altrimenti si toglie l'indice e il
-  controllo resta nel servizio (D11) — decisione da annotare nel rapporto.
+  applica_prezzo_speciale, tipologia_rifiuto_addebito, tipo_quantita_addebito; DELETE FROM
+  _prisma_migrations WHERE migration_name = '20261102300100_listino_elenchi_righe';`). Unico
+  `NULLS NOT DISTINCT` come `GiacenzaIniziale` (R19 della 4.2a): `@@unique` nello schema, clausola
+  solo nel SQL, `migrate diff` vuoto. Indici delle FK delle righe e test reale dei nomi: R38.
 - [ ] **Step 8: commit** `feat(listino): elenchi, righe, fasce, scadenze e allegati dell'elenco con RLS`.
 
 ## Task 20: elenchi degli addebiti (servizio e API)
 
 **File:**
 - Create: `apps/backend/src/application/listino/elenchi-addebiti.service.ts` + spec + postgres spec
-- Create: `apps/backend/src/api/listino/elenchi-addebiti.controller.ts` + spec, `dto/elenco-addebiti.dto.ts`
+- Create: `apps/backend/src/api/listino/elenchi-contratto.controller.ts` (`@Controller('contratti-clienti')`)
+  ed `apps/backend/src/api/listino/elenchi-addebiti.controller.ts` (`@Controller('elenchi-addebiti')`)
+  + spec, `dto/elenco-addebiti.dto.ts` (R39)
 - Modify: `listino.module.ts`, `src/test-support/listino-di-test.ts` (`creaContrattoConElenco(owner,
   tenantId, opzioni?)` → `{ clienteId, contrattoId, elencoId }`, contratto inserito col proprietario
-  in `ATTIVO`)
+  in `ATTIVO`; P.IVA dal default `partitaIvaUnica` di `creaDittaConRuolo`, R55)
 
 **Interfaces (Produces):**
 ```ts
@@ -1281,9 +1294,11 @@ export interface ContestoListino { contratto: { id: string; numero: string; stat
 ```
 
 - [ ] **Step 1: test:** crea (codice proposto `001`), lista con `validiAl`, `prossimo-codice`;
-  predefinito che toglie il flag all'altro nella stessa transazione (Postgres: `due predefiniti
-  concorrenti: alla fine uno solo`); contratto annullato → 409 `LISTINO_NON_MODIFICABILE`; contratto
-  eliminato o di un altro tenant → 404; modifica con versione, 409; codice duplicato → 409;
+  predefinito che toglie il flag all'altro nella stessa transazione, sotto il lock consultivo per
+  contratto di R40 (Postgres: `due predefiniti concorrenti: entrambe 200, alla fine uno solo`);
+  contratto annullato → 409 `LISTINO_NON_MODIFICABILE`; contratto eliminato o di un altro tenant →
+  404 sia da `/contratti-clienti/:id/elenchi` sia da `/elenchi-addebiti/:id` (R39); modifica con
+  versione, 409; codice duplicato → 409;
   elimina fisica con righe a cascata; audit; la `versione` del contratto non cambia.
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): elenchi degli addebiti del contratto (servizio e API)`.
 
@@ -1292,8 +1307,10 @@ export interface ContestoListino { contratto: { id: string; numero: string; stat
 **File:**
 - Create: `apps/backend/src/application/listino/righe-addebito.service.ts` + spec + postgres spec
 - Create: `apps/backend/src/api/listino/righe-addebito.controller.ts` + spec, `dto/riga-addebito.dto.ts`
-- Modify: `listino.module.ts`, `elenchi-addebiti.controller.ts` (`GET|POST :id/righe`), fixture
-  (`creaRiga(owner, tenantId, elencoId, dati)`)
+- Modify: `listino.module.ts`, `elenchi-addebiti.controller.ts` (`GET|POST :id/righe`),
+  `elenchi-contratto.controller.ts` (`GET :id/righe-proposta`), `riferimenti-listino.ts`
+  (`controllaRiferimentiRiga`, R41), fixture (`creaRiga(owner, tenantId, elencoId, dati)`)
+- `righe-addebito.controller.ts` ha anche `GET codifiche-rentri?tabella=` prima di `:id` (R42)
 
 **Interfaces (Produces):**
 ```ts
@@ -1322,22 +1339,31 @@ export interface RigaAddebitoVista {
   definita) e il 400 delle condizioni senza condizionati; D17 in creazione (allegato con CER e con
   `V` → 400); fasce e scadenze sostituite in blocco in modifica (Postgres: `due modifiche con la
   stessa versione: una 409, le fasce sono quelle della prima`); elimina; contratto annullato →
-  409; riferimenti letti `FOR SHARE`; audit senza appunti né note.
+  409; riferimenti letti `FOR SHARE`; audit senza appunti né note; 400 con `errori` per campo
+  (R36); PATCH con fasce non inviate → invariate (R37); concorrenza "per contratto" e "per
+  cliente" sotto i lock consultivi (R40: due `MW` in due elenchi, due `$D #` in due contratti).
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): righe di addebito con fasce e scadenze (servizio e API)`.
 
 ## Task 22: uso reale delle tabelle e vincolo del contratto allegato
 
 **File:**
+- Modify: `apps/backend/src/application/listino/uso-listino.ts` (+ spec): sorgente `rigaAddebito`
+  in `ColonneReferentiListino` (`righe`), con `COLONNE_CODICE_IVA.righe = ['codiceIvaId']`,
+  `COLONNE_CODIFICA_ADDEBITO.righe = ['categoriaId', 'centroRicavoId']`, `COLONNE_ADDEBITO.righe =
+  ['addebitoId']` (R44)
 - Modify: `apps/backend/src/application/listino/{codici-iva,codifiche-addebito,addebiti}.service.ts`
-  (+ spec, + postgres spec): `contaUsi` con le colonne di `righe_addebito` (`codice_iva_id`,
-  `categoria_id`, `centro_ricavo_id`, `addebito_id`)
+  (+ spec, + postgres spec): testi `inUso` di codici IVA e codifiche ("… da addebiti dell'archivio
+  o da righe dei listini …", R44); commenti `FOR UPDATE` superati di `addebiti.service.ts:288-291`
+  e `codifiche-addebito.service.ts:199-202`; minor rinviati dei Task 8 e 9 (R44)
 - Modify: `apps/backend/src/application/contratti-cliente/contratti-cliente.service.ts` (+ spec, +
-  postgres spec) — **mirata**, D17: nel passo 6 di `scrivi` e in `controllaCambiamenti`, dopo
-  `bloccaELeggi`, `SELECT count(*) FROM righe_addebito r JOIN elenchi_addebiti e ON … WHERE
-  e.contratto_id = $1 AND r.tipo !~ '^T'` > 0 → 400 col messaggio di D17
+  postgres spec) — **mirata**, D17: solo in `controllaCambiamenti` (il passo 6 di `scrivi` serve
+  solo `crea`, e un contratto nuovo non ha righe), dopo `bloccaELeggi`, `SELECT count(*) FROM
+  righe_addebito r JOIN elenchi_addebiti e ON e.id = r.elenco_id AND e.tenant_id = r.tenant_id
+  WHERE e.tenant_id = $1 AND e.contratto_id = $2 AND r.tipo !~ '^T'` > 0 → 400 col messaggio di D17
 
-- [ ] **Step 1: test:** `codice IVA in uso da una riga: elimina 409, eliminabile false`; lo stesso
-  per gruppo/categoria/centro e per l'addebito; `allegare un contratto con una riga V: 400`; `con
+- [ ] **Step 1: test:** Postgres con una riga **reale**: `codice IVA in uso da una riga: DELETE →
+  409 CODICE_IVA_IN_USO col testo intero, eliminabile false`; lo stesso per categoria e centro
+  (`CODIFICA_ADDEBITO_IN_USO`) e per l'addebito (`ADDEBITO_IN_USO`); `allegare un contratto con una riga V: 400`; `con
   sole righe TT: ammesso`; Postgres `allegamento e riga CER concorrenti: mai un allegato con righe
   CER` (due transazioni con `pg_sleep` nel test, come 4.1 R24); spec esistenti dei contratti verdi.
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): uso reale delle tabelle dalle righe; contratto allegato solo con addebiti T (4.1 D28)`.
@@ -1346,13 +1372,13 @@ export interface RigaAddebitoVista {
 
 **File:**
 - Create: `apps/backend/src/application/listino/azioni-listino.service.ts` + spec + postgres spec
-- Modify: `elenchi-addebiti.controller.ts` (`sostituisci-da`, `aggiungi-righe`), nuovo
-  `apps/backend/src/api/listino/azioni-contratto-listino.controller.ts` (`/contratti-clienti/:id/provvigioni`,
-  `/contratti-clienti/:id/sconti`) + spec, dto, `listino.module.ts`
+- Modify: `elenchi-addebiti.controller.ts` (`sostituisci-da`, `aggiungi-righe`),
+  `elenchi-contratto.controller.ts` (`POST :id/provvigioni`, `POST :id/sconti`; nessun controller
+  nuovo, R39) + spec, dto, `listino.module.ts`
 
 **Interfaces (Produces):**
 ```ts
-export interface EsitoCopia { copiate: number; escluse: { minimi: number; acconti: number; conguagli: number; duplicate: number } }
+export interface EsitoCopia { copiate: number; escluse: { minimi: number; acconti: number; conguagli: number; duplicate: number; condizioni: number } }   // R45
 export interface EsitoImpostazione { aggiornate: number; speciali: number; escluse: number }
 ```
 
@@ -1370,6 +1396,9 @@ export interface EsitoImpostazione { aggiornate: number; speciali: number; esclu
 - Create: `apps/backend/src/application/listino/variazioni-prezzi.service.ts` + spec + postgres spec
 - Create: `apps/backend/src/api/listino/variazioni-prezzi.controller.ts` + spec; Modify
   `dto/variazione-prezzi.dto.ts` (filtri dei contratti, ISTAT), `listino.module.ts`
+- Create: `apps/backend/src/application/listino/conflitti-variazione.ts` (+ spec) con
+  `traduciConflitto` esportato; Modify `variazioni-archivio.service.ts` (+ spec) perché lo importi
+  invece della copia privata di `:145` (R46)
 
 **Interfaces (Produces):**
 ```ts
@@ -1379,7 +1408,13 @@ export interface FiltroVariazioneContratti {
   tipiContrattoIds?: string[]; categorieContrattoIds?: string[]; inizioDal?: string; inizioAl?: string; fineDal?: string; fineAl?: string
   contrattiIds?: string[]; addebitiIds?: string[]; primaScadenzaFissi?: string
 }
-// anteprima: AnteprimaVariazione (Task 10) con righe { id, cliente: codice|null, contratto: numero, elenco: codice, voce: CER o codice addebito, prima, dopo }
+// R46: NON l'AnteprimaVariazione del Task 10 ({ id, descrizione, listino, prima, dopo }), ma una propria:
+export interface AnteprimaVariazioneContratti {
+  totale: number
+  righe: { id: string; cliente: string | null; contratto: string; elenco: string; voce: string; prima: string; dopo: string }[]   // primi 200; voce = CER o codice addebito
+  errori: { id: string; voce: string; messaggio: string }[]
+  impronta: string   // improntaVariazione su { id: rigaId, versione }
+}
 export interface MeseIstat { anno: number; mese: number; contratti: number }
 ```
 
@@ -1387,7 +1422,8 @@ export interface MeseIstat { anno: number; mese: number; contratti: number }
   annullati ed eliminati mai toccati; `soloMinimi` aggiorna `minimo_fatturabile`; speciali: fasce
   aggiornate, zero invariati; sostituzione IVA; negativo → 400; impronta superata → 409 e nulla
   scritto; oltre 10.000 → 400; `riga modificata durante la variazione: 409 al salvataggio del
-  collega`; ISTAT: mesi solo dei contratti con `incrementoIstat`, anno corrente escluso, precedente
+  collega` con sovrapposizione dimostrata (R46); 55P03 vero; la variazione dell'archivio non cambia
+  le righe (R46); ISTAT: mesi solo dei contratti con `incrementoIstat`, anno corrente escluso, precedente
   escluso senza parametro; percentuali non decrescenti → 400; `contratto senza incremento ISTAT:
   invariato`; ruoli: OPERATOR → 403; un audit per applicazione.
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): modifica automatica dei prezzi dei contratti e adeguamento ISTAT (E21, E24)`.
@@ -1400,14 +1436,17 @@ spec; Create `apps/backend/src/api/listino/allegati-elenco.controller.ts` + spec
 
 - [ ] **Step 1: test:** come i Task 19 della 4.1 (PDF valido, non PDF rinominato → 415, 5 MB → 413,
   posizione occupata → 409, rimozione, contenuto con `Content-Disposition: attachment`, elenco di un
-  altro tenant → 404, contratto annullato: caricamento e rimozione ammessi come 4.1 D29).
+  altro tenant → 404, contratto annullato: caricamento e rimozione ammessi come 4.1 D29, eccezione
+  dichiarata a D16); messaggio "L'allegato dell'elenco deve essere un PDF." (R47).
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): allegati PDF dell'elenco addebiti (E4)`.
 
 ## Task 26: frontend — servizi 4.2b e pagina del listino del contratto
 
 **File:**
-- Modify: `fe/features/listino/{listino.model,listino.service}.ts` (+ spec: elenchi, righe, azioni,
-  variazioni, ISTAT, allegati, copiati dalle `…Vista` dei Task 20-25 **del piano**)
+- Modify: `fe/features/listino/{listino.model,listino.service,vocabolario-listino}.ts` (+ spec:
+  elenchi, righe, azioni, variazioni, ISTAT, allegati, copiati dalle `…Vista` dei Task 20-25 **del
+  piano, con le correzioni dell'addendum** R36, R45, R46; vocabolario con `CAMPI_PER_FAMIGLIA` e
+  le liste di R48)
 - Create: `fe/features/listino/{listino-contratto,elenchi-pannello,elenco-dialog,righe-tavola}.component.ts` + spec
 - Modify: `fe/app.routes.ts` (`contratti-clienti/:id/listino`),
   `fe/features/contratti-cliente/{contratti-cliente-list,contratto-cliente-dialog}.component.ts`
@@ -1416,19 +1455,23 @@ spec; Create `apps/backend/src/api/listino/allegati-elenco.controller.ts` + spec
 - [ ] **Step 1: test:** intestazione (numero, cliente, stato, "allegato a …"); elenchi con
   "Solo validi oggi" e predefinito evidenziato; nuovo/modifica/elimina elenco con conferma; tavola
   delle righe con le colonne di D28 e il totale dei fissi; doppio clic apre il dialog della riga
-  (stub fino al Task 27); contratto annullato o VIEWER: sola lettura; 409 mostrato con "ricarica".
+  (stub fino al Task 27); contratto annullato o VIEWER: sola lettura; 409 mostrato con "ricarica";
+  azione "Listino" visibile al VIEWER, fuori dalla colonna `*ngIf="puoScrivere()"` (R48).
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): pagina del listino del contratto con elenchi e tavola delle righe`.
 
 ## Task 27: frontend — dialog della riga (1): dati, quantità, prezzo, proposta
 
-**File:** Create `fe/features/listino/{riga-addebito-dialog,riga-dati-sezione,riga-proposta-sezione}.component.ts` + spec.
+**File:** Create `fe/features/listino/{riga-addebito-dialog,riga-dati-sezione,riga-proposta-sezione}.component.ts` + spec;
+Modify `fe/features/listino/addebito-dialog.component.ts` (+ spec: `@Input() rapida`, R49) e i
+dialog in linea di codici IVA e codifiche per i minor T12 (R49).
 
 - [ ] **Step 1: test:** scelta "CER o addebito" (autocomplete del catalogo CER e dell'archivio, "Nuovo
   addebito" in linea); tipo dal menu delle famiglie; campi abilitati da `CAMPI_PER_FAMIGLIA`
   (cambiando tipo i campi fuori famiglia si svuotano e spariscono); valori proposti chiamati alla
   scelta e applicati solo ai campi vuoti; tipo quantità con le etichette di E15; codice IVA,
   categoria e centro con "Nuovo …" in linea; sezione Proposta (CER di proposta per `V`, addebiti
-  proposti per `CER`); sezione Note; errori 400 sul campo; Esc del sub-dialog e focus come 4.1.
+  proposti per `CER`); sezione Note; errori 400 sul campo dal campo `errori[].campo` (R36), mai
+  per parole chiave; stato fisico e operazione dall'elenco di R42; Esc del sub-dialog e focus come 4.1.
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): dialog della riga di addebito, dati e proposta`.
 
 ## Task 28: frontend — dialog della riga (2): prezzo speciale e scadenze
@@ -1437,7 +1480,8 @@ spec; Create `apps/backend/src/api/listino/allegati-elenco.controller.ts` + spec
 `riga-addebito-dialog.component.ts` (+ spec).
 
 - [ ] **Step 1: test:** tabella delle 7 fasce (fino a, prezzo, sconto, provvigione, tipo di calcolo
-  con la descrizione dinamica di `vedilist1`, `ADDEBCON.cs:8569-8688`: "A = Prezzo × … fino a …");
+  con la descrizione dinamica di `vedilist1`, `ADDEBCON.cs:8569-8688`: "A = Prezzo × … fino a …",
+  ma per `E`/`H` e per la quantità precedente con la semantica del Task 16a, R50);
   "applica a" con le cinque voci di E13; condizioni riferite; data di riferimento; scadenze dei
   fissi: 12 righe giorno/mese/anno (vuoto = ogni anno), "Calendario automatico" calcolato nel
   frontend con una copia di `calendarioAutomatico` del Task 18 (il backend rivalida, come la
@@ -1453,10 +1497,11 @@ spec; Create `apps/backend/src/api/listino/allegati-elenco.controller.ts` + spec
 
 - [ ] **Step 1: test:** copia da un altro elenco (scelta cliente → contratto → elenco, conferma
   "sostituisce le righe", esito coi conteggi); aggiungi righe scelte; provvigioni e sconti con
-  l'avviso delle speciali; variazione: filtri di D20, anteprima paginata, errori, "Scarica CSV",
+  l'avviso delle speciali; variazione: filtri di D20 (compreso "contratti scelti", R51), anteprima
+  paginata, errori, "Scarica CSV",
   conferma con impronta, 409 → "rifai l'anteprima"; ISTAT: griglia dei mesi con percentuale, tipi,
-  anteprima, conferma; allegati dell'elenco (stesso componente della 4.1b come modello); OPERATOR
-  senza il menu variazioni.
+  anteprima, conferma; allegati dell'elenco (stesso componente della 4.1b come modello; pulsanti
+  anche con il contratto annullato, R47); OPERATOR senza il menu variazioni; minor T13 (R51).
 - [ ] **Step 2-4** e **Step 5: commit** `feat(listino): copia elenchi, provvigioni e sconti, modifica automatica prezzi e ISTAT`.
 
 ## Task 30: e2e 4.2b e chiusura
@@ -1470,8 +1515,10 @@ spec; Create `apps/backend/src/api/listino/allegati-elenco.controller.ts` + spec
   legge l'esito; imposta la provvigione 5 % su tutto il contratto; variazione +3 % sui CER con
   anteprima e conferma; ISTAT su un contratto col flag; allega il contratto a un altro (messaggio
   "tipo diverso da T"); annulla il contratto e verifica la sola lettura; VIEWER senza pulsanti.
-- [ ] **Step 2:** `git diff --stat <master della 4.2a>..HEAD`: solo i file dei Task 16-30 e le
-  mirate di D17/D28.
+  Ripetibile e non invasivo come R52: helper di `e2e/utils/attese.ts`, nomi casuali per
+  tentativo, variazione filtrata sul contratto del test, ISTAT su un mese casuale di un anno vecchio.
+- [ ] **Step 2:** `git diff --stat 869e98f..HEAD`: solo i file dei Task 16a-30 e le
+  mirate di D17/D28 (più i file della 4.2a che l'addendum dichiara).
 - [ ] **Step 3-5:** come il Task 15 (`rls-catalogo` 64); `ci.yml` via `workflow_dispatch`; merge
   solo con `test-postgres` ed `e2e` verdi.
 - [ ] **Step 6: commit** `test(e2e): listino del contratto dall'elenco all'adeguamento ISTAT`.
@@ -1486,9 +1533,10 @@ spec; Create `apps/backend/src/api/listino/allegati-elenco.controller.ts` + spec
 
 4.2a: Task 0 → 1-6 (puri) → 7 (schema) → 8 → 9 → 10, 11 (backend) e 12 → 13, 14 (frontend) → 15.
 1-3 indipendenti; 4 e 6 usano il 3; 5 usa 1-3. 7 prima di ogni servizio. 8 prima di 9 (fixture e
-modulo). 9 prima di 10. 11 dopo 7 (colonne di `clienti`). 12 prima di 13 e 14. 4.2b: 16-18 (puri;
-17 usa il 18 solo per i rimandi, scritto contro l'interfaccia del piano) → 19 → 20 → 21 → 22 → 23
-→ 24 → 25; frontend 26 → 27 → 28 → 29; 30 alla fine.
+modulo). 9 prima di 10. 11 dopo 7 (colonne di `clienti`). 12 prima di 13 e 14. 4.2b (corretto
+dall'addendum, R53): 16a, 16, 18 (puri) e 19 (schema, non dipende dai domini) → 17 (dopo 16a e 18)
+e 20 (dopo 16 e 19) → 21 (dopo 17, 18, 20) → 22 (dopo 21) e 25 (dopo 20) → 23 (dopo 21 e 22) e 24
+(dopo 21); frontend 26 → 27 → 28 (dopo 16a) e 26 → 29; 30 alla fine.
 
 ## Parallelismo
 
@@ -1522,19 +1570,8 @@ successivi li leggono); `app.routes.ts` → 13, 26; `tabelle-fatturazione.compon
 | 7 | **11** (PG) | dopo 7; messo qui per l'unico database | — |
 | 8 | **15** | tutto integrato | — |
 
-**4.2b** (dopo il merge della 4.2a; Task 16 Step 0 rifà la linea di base)
-
-| Ondata | Task in parallelo | Perché insieme | Rischio |
-|---|---|---|---|
-| 1 | **16** ∥ **17** ∥ **18** | domini con file propri; 17 importa il 18 solo per tipo (stub d'interfaccia se serve, integrato a fine ondata) | medio: 17 e 18 da integrare insieme |
-| 2 | **19** (PG, migration) ∥ **26** | 26 sui tipi del piano | medio |
-| 3 | **20** (PG) ∥ **27** | 20 dopo 19; 27 dopo 26 | basso |
-| 4 | **21** (PG) ∥ **28** | 21 dopo 20 (fixture, controller); 28 dopo 27 | basso |
-| 5 | **22** (PG) ∥ **29** | 22 dopo 21; 29 dopo 26 (non tocca i file di 27-28) | medio: 29 usa rotte dei Task 23-25 |
-| 6 | **23** (PG) | dopo 21 (elenchi e righe) e 22 (vincolo allegato) | — |
-| 7 | **24** (PG) | dopo 21 | — |
-| 8 | **25** (PG) | dopo 20; qui per l'unico database | — |
-| 9 | **30** | tutto integrato; controllo del contratto d'interfaccia FE/BE | — |
+**4.2b**: la tabella originale (16 ∥ 17 ∥ 18 → … → 30 in nove ondate) è **sostituita** dalla
+sezione "Parallelismo 4.2b" dell'addendum in fondo (R53).
 
 **Regole operative** (come R30 della 4.1b): un worktree per task (`git worktree add
 ../rifiuti-wt-42-<task> -b wt/42-<task> <HEAD dopo l'ondata precedente>`) coi tre `node_modules`
@@ -1615,3 +1652,249 @@ la prima opzione di ciascuna.
 ## Risposte di Graziano (01/11/2026)
 
 Tutte le opzioni consigliate: Q1 regole della singola riga ora, somme in 4.4; Q2 tutte le famiglie di addebito di WinWaste per i clienti; Q3 sei listini, con listino e provvigione predefinita sul cliente (unico `ALTER` del pezzo); Q4 due PR, 4.2a (Task 0-15) e 4.2b (Task 16-30); Q5 ISTAT solo sui contratti con "Incr. ISTAT" acceso (scelta fatta dopo aver visto che WinWaste applica a tutti i contratti del mese e ignora il flag); Q6 tabella dei codici IVA per azienda con aliquota e natura.
+
+## Addendum 4.2b (02/11/2026)
+
+Vale per la PR 4.2b (Task 16a, 16-30), branch `feat/fase4-2b-righe-listino` da master `869e98f`
+(4.2a fusa con la PR #42 e in produzione, migration `20261102300000_…` applicata). Fonti: il codice
+reale della 4.2a, i ruling R1-R28 della 4.2a (`rulings-4.2a.md` e righe "Ruling:" del ledger,
+archiviati in `rifiuti/.superpowers/archivio/rifiuti-wt-rentri-registro-4.2a/`), la revisione e la
+re-revisione finali della 4.2a, la decisione di Graziano del 02/11. Il preflight con i 29 difetti e
+il testo completo dei ruling **R29-R57** sta in
+`.superpowers/sdd/2026-11-02-fase4-2-listino/preflight-4.2b.md`; qui c'è la parte vincolante per
+task. Dove l'addendum e il testo dei Task 16-30 divergono, vale l'addendum (le righe sbagliate dei
+task sono già state corrette nel testo).
+
+### Decisione di Graziano (02/11)
+
+I due casi di `speciale` di WinWaste che fatturano due volte la stessa quantità si **correggono**,
+come differenza voluta e dichiarata:
+1. la `E` (e la sua variante `H`) azzera le fasce precedenti come la `D`;
+2. con la quantità precedente (prezzo "da data", `applicaA = PROGRESSIVO_DA_DATA`) `B`, `C` e `D`
+   non ripagano la parte già fatturata.
+
+Oggi `apps/backend/src/domain/listino/prezzo-speciale.ts` li porta fedeli (JSDoc "FATTURAZIONE
+DOPPIA EREDITATA (R20)", `:239-252`; azzeramento solo per `BDYW` a `:306`; quantità riscritta per
+`B C D` a `:325-332`) e i test li fissano (`prezzo-speciale.spec.ts:118`, `:128`, `:138`, `:255`).
+
+### Task 16a: dominio puro — prezzo speciale senza doppia fatturazione (primo task della 4.2b)
+
+**File:** Modify `apps/backend/src/domain/listino/prezzo-speciale.ts` +
+`prezzo-speciale.spec.ts`. Nessun altro file. Firma di `applicaScaglioni`, `validaScaglioni` e
+`validaPrezzoSpeciale` invariata (salvo il messaggio nuovo di R31 se Graziano lo conferma).
+
+**Interfaces:** nessuna nuova. Cambia la semantica (R29, R30):
+
+| Caso | WinWaste (oggi in WasteFlow) | WasteFlow dopo il 16a |
+|---|---|---|
+| `E`/`H` raggiunta | tutta la quantità al prezzo della 7, **più** le righe delle fasce precedenti | tutta la quantità al prezzo della 7, le fasce precedenti azzerate (come `D`/`W`) |
+| `D`/`E` con quantità precedente | la quantità **totale** (precedente + nuova) al prezzo della fascia più alta | la sola quantità **nuova** al prezzo della fascia più alta raggiunta dal totale |
+| `C` con quantità precedente | il fisso di ogni fascia raggiunta dal totale, anche se già fatturato | il fisso delle sole fasce raggiunte per la prima volta |
+| `B` con quantità precedente | il fisso della fascia più alta, anche se già fatturato | il fisso della fascia più alta solo se raggiunta per la prima volta (Q8) |
+| `A` (con o senza precedente) | invariato | invariato |
+
+- [ ] **Step 1: test ribaltati e nuovi** (tabella `[1-1000 a 0,10; 1000-5000 a 0,08; oltre a
+  0,05]` salvo indicazione):
+  - `E azzera le fasce precedenti come D (differenza voluta, 02/11)`: `[A 1-1000 a 0,10; E oltre a
+    0,05]` su 6.000 → `[['6000','0.05']]` (era `['1000','0.10'], ['6000','0.05']`);
+  - `D + E: una sola riga`: `[D 1-5000 a 0,08; E oltre a 0,05]` su 6.000 → `[['6000','0.05']]`;
+  - `H azzera le fasce precedenti`: `[A 1-1000; H oltre]` con condizione `P` su 6.000 → `['6000']`,
+    `condizioneVerificata = true`;
+  - `D con quantità precedente fattura solo la quantità nuova`: 1.000 nuovi + 2.000 precedenti →
+    `[['Per q.tà oltre KG 1000','1000','0.08']]` (era `3000`);
+  - `E con quantità precedente`: `[A 1-1000; E oltre]`, 500 nuovi + 5.800 precedenti → `[['Per
+    q.tà oltre KG 1000','500','0.05']]`;
+  - `C con quantità precedente: solo le fasce raggiunte per la prima volta`: 1.000 + 800 →
+    `[['Per q.tà oltre KG 1000: imp.fisso','1','0.08']]`;
+  - `B con quantità precedente`: 1.000 + 800 → la sola riga della fascia 2; 100 + 1.200 → `righe:
+    []` (fascia 2 già raggiunta);
+  - `quantità nuova zero con D`: 0 + 2.000 → `righe: []`;
+  - restano verdi senza modifiche: l'esempio §4.5 (A 470,00, D 300,00), B, C, quantità zero,
+    `A` con precedente (`spec:184`, `:194`), le varianti X/Y/Z/W, gli errori.
+- [ ] **Step 2:** FAIL dei test ribaltati.
+- [ ] **Step 3: codice.** `'BDEYWH'.includes(tipo)` per l'azzeramento; con `daData`, per `D`/`E` la
+  quantità è `q − precedente`, per `B`/`C` il fisso vale solo se `precedente ≤ soglia inferiore`
+  della fascia (fascia 1: `precedente = 0`). Il paragrafo JSDoc R20 diventa **"DIFFERENZA VOLUTA DA
+  WINWASTE (decisione del 02/11)"**: cosa fa WinWaste (con le righe di `FATAUTOMATICA.cs`
+  17230-17290 già citate), cosa fa WasteFlow, perché (la stessa quantità non si fattura mai due
+  volte), e che 3.8 deve segnalarlo nel rapporto d'import (le tabelle `…E` e quelle "da data" con
+  `B`/`C`/`D` fatturano meno che in WinWaste). Nessun riferimento a R20 come "fedele".
+- [ ] **Step 4:** `npx jest -w 2 src/domain/listino`, `tsc`, eslint del file (sotto `flock`).
+- [ ] **Step 5: commit** `fix(listino): prezzo speciale senza doppia fatturazione per E/H e quantità precedente (differenza voluta)`.
+- **R31 (Q7, in attesa di Graziano):** con l'opzione consigliata il 16a aggiunge a
+  `validaScaglioni` "Dopo una fascia di tipo D o W le fasce successive non possono essere
+  progressive (A o X)." con un test (`[D 1-5000; A oltre]` respinta). Senza risposta all'avvio
+  dell'ondata 1 il 16a scrive solo R29-R30 e la regola entra con il Task 17.
+
+### Correzioni per task (dal codice reale della 4.2a e dai ruling)
+
+**Task 16** — Branch e linea di base (R34): `migrate status` pulito con ultima
+`20261102300000_listino_archivio_addebiti` (la migration è stata corretta in locale dopo la prima
+applicazione per R28: se il checksum non torna, ripristino a mano e `migrate deploy`), RLS 59,
+`test:cov` (6527 verdi a fine 4.2a), Postgres (431; MUD e `unita-locali-mud` rosse solo in locale
+per la guardia di porta). CIG, CUP e documento PA: regole e testi copiati da
+`validaContrattoCliente`, con un test che confronta i testi (R33); `"La data del documento della PA
+si indica solo con il documento."` per `dataDocumentoPa`.
+
+**Task 17** — Dopo 16a e 18, niente stub (R53). Forma del CER del catalogo via `cerCanonico` (R35).
+`ErroreRiga` col campo (R36). "Inviato" = valore non vuoto; regole del PATCH (R37). Minor rinviati
+di `importi-riga.ts` secondo R20: `oreDecimali("1,") = "1.00"`, `oreDecimali(",30") = "0.50"`,
+quantità negative passate da `quantitaDaMovimento` come `xqta`, caso X/HR nella forma di `cvore`
+(R32). `validaPrezzoSpeciale` del 16a resta l'unica fonte delle regole del prezzo speciale.
+
+**Task 18** — Invariato.
+
+**Task 19** — Migration `20261102300100_listino_elenchi_righe` (dopo l'ultima di master,
+`20261102300000_…`); RLS **59 → 64** in `rls-catalogo.postgres.spec.ts:64`,
+`README-tenant-transazione.md` (le tre occorrenze "(59)") e cinque voci in coda a
+`TENANT_SCOPED_MODELS` dopo `PrezzoListinoAddebito` (`prisma-rls.extension.ts:116`), commento
+"Listino (Fase 4 pezzo 2b)". `NULLS NOT DISTINCT` come R19. Indici `(tenant_id, addebito_id)`,
+`(tenant_id, codice_iva_id)`, `(tenant_id, categoria_id)`, `(tenant_id, centro_ricavo_id)` su
+`righe_addebito` e `(tenant_id, contratto_id)` su `elenchi_addebiti`; **niente** indici sulle FK di
+`addebiti` (tabella esistente: resta un seguito). Test dei nomi di vincoli e indici contro l'elenco
+atteso (anche per quelli della 4.2a) al posto di `length(conname) > 63`. Allegati con le colonne di
+`allegati_contratto_cliente`. Ripristino con `DELETE FROM _prisma_migrations`. `ops/README.md`:
+paragrafo "**Elenchi e righe di addebito** (Fase 4 pezzo 2b)" e, nel paragrafo della 4.2a, "se è
+applicata la `20261102300100_…`, ripristinare prima quella" (R38, R54).
+
+**Task 20** — Controller `elenchi-contratto.controller.ts` ed `elenchi-addebiti.controller.ts`
+(R39); `prossimo-codice` prima di `:id`. Contratto letto con `eliminato_il IS NULL` anche dalle
+rotte `/elenchi-addebiti/:id`. Lock nell'ordine di R40: contratto `FOR SHARE` → lock consultivo per
+contratto (`pg_advisory_xact_lock(hashtext('listino-contratto'), hashtext(contrattoId))`, forma a
+due interi) per predefinito e creazione senza codice (con nuovo tentativo su P2002 come
+`addebiti.service.ts`) → elenco `FOR UPDATE`. Errori P2028/P2034/40P01/55P03 → 409
+`OPERAZIONE_CONCORRENTE` già da `traduciErrorePrisma` (`anagrafica-versionata.ts:107-118`). Fixture:
+`creaContrattoConElenco` senza P.IVA esplicita (`partitaIvaUnica`), più i minor T8 della fixture
+(`genere: any` → `GenereCodificaAddebito`, commento di pulizia) (R55).
+
+**Task 21** — `controllaRiferimentiRiga` in `riferimenti-listino.ts` (R41): addebito `FOR SHARE`
+attivo e non `CER`, codice IVA, categoria e centro con i messaggi già scritti, stati fisici e
+operazioni contro `rentri_codifiche_semplici` per `external_id`, `addebitiProposti` di tipo `V`,
+`cerProposta` nel catalogo. `GET /righe-addebito/codifiche-rentri?tabella=stati-fisici|attivita-rs`
+dal repository esistente (R42). 400 `{ error: 'RIGA_ADDEBITO_NON_VALIDA', message, errori }` (R36).
+Lock di R40: lock consultivo per cliente (`hashtext('listino-cliente')`) solo per `$D` con `#`, per
+contratto per `M…` e `$…`, poi elenco `FOR UPDATE`, poi riferimenti `FOR SHARE`. `RIGA_ADDEBITO_DUPLICATA`
+anche dall'indice unico (R43). `righe-proposta` con `prezzoProposto`/`provvigioneProposta` del Task
+5 (R6, R23, R57) in `elenchi-contratto.controller.ts`. CER scritto nella forma di `cerNelCatalogo`.
+
+**Task 22** — `uso-listino.ts` con la sorgente `rigaAddebito` in `COLONNE_ADDEBITO` (e in quelle di
+codici IVA e codifiche); test Postgres con una riga **reale**: `DELETE` → 409 `ADDEBITO_IN_USO`
+(`CODICE_IVA_IN_USO`, `CODIFICA_ADDEBITO_IN_USO`) col testo intero ed `eliminabile = false`; testi
+"addebiti dell'archivio" adeguati ("… da addebiti dell'archivio o da righe dei listini …"); commenti
+`FOR UPDATE` da aggiornare in `addebiti.service.ts:291` (blocco `:288-291`) e
+`codifiche-addebito.service.ts:201` (blocco `:199-202`): oggi c'è il lock consultivo, il nuovo
+tentativo su P2002 copre la creazione a codice esplicito; `contaUsiListino` resta batch (un
+`groupBy` per colonna, una chiamata per `list`/`getById`). D17 solo in `controllaCambiamenti`. Minor
+rinviati T8/T9 dei servizi d'archivio (R44).
+
+**Task 23** — Rotte in `elenchi-contratto.controller.ts` ed `elenchi-addebiti.controller.ts`, nessun
+controller nuovo (R39). `aggiungi-righe` con le esclusioni di `sostituisci-da` e le regole di
+condizione di D11, contate in `escluse.condizioni` (R45). Provvigione vuota svuota provvigione e
+tipo (R45). Copia: contratto di arrivo `FOR SHARE`, elenchi `FOR UPDATE` in ordine di id.
+
+**Task 24** — `AnteprimaVariazioneContratti` propria; `traduciConflitto` in
+`conflitti-variazione.ts` (P2028 → `OPERAZIONE_CONCORRENTE`, gli altri → `VARIAZIONE_SUPERATA`,
+anche per l'archivio); lock righe `ORDER BY id` poi fasce `ORDER BY riga_id, ordine`, `FOR NO KEY
+UPDATE`, `lock_timeout` 10 s, `OPZIONI_TRANSAZIONE` come l'archivio; anno corrente con
+`annoSolareItaliano` (`core/time/anno-italiano.ts:13`); percentuali con `validaPercentualiIstat`
+del Task 6; tetto di 10.000 righe (`MAX_ELEMENTI_FILTRO` del DTO e `MAX_RIGHE` del servizio); ruoli
+`RUOLI_VARIAZIONI` di `api/listino/ruoli.ts`. Test con sovrapposizione dimostrata, 55P03 vero, e
+"la variazione dell'archivio non cambia le righe" (chiude il test vacuo del T10) (R46).
+
+**Task 25** — Messaggio del tipo per l'elenco, import senza modifiche dei pezzi della 4.1b,
+eccezione dichiarata a D16 per gli allegati di un contratto annullato (R47). Controller
+`allegati-elenco.controller.ts` con prefisso `elenchi-addebiti` (R39).
+
+**Task 26** — Azione "Listino" visibile al VIEWER (R48); vocabolario con `CAMPI_PER_FAMIGLIA`,
+tipi di quantità (E15), "applica a" (E13), tipi di calcolo (R50), periodi delle scadenze; modelli
+dalle interfacce corrette (R36, R45, R46); minor T12 del vocabolario (R48).
+
+**Task 27** — `addebito-dialog.component.ts` con `@Input() rapida`; errori per campo; stati fisici e
+operazioni da R42; minor T12 dei dialog in linea (R49).
+
+**Task 28** — Descrizioni dei tipi di calcolo con la semantica del 16a (R50).
+
+**Task 29** — Filtro "contratti scelti"; allegati anche col contratto annullato; minor T13 (R47,
+R51).
+
+**Task 30** — e2e con gli helper di `e2e/utils/attese.ts` (`cliccaEChiudi`, `attendiRisposta`,
+`attendiElenco`, `ATTESA_SERVER`) e nomi casuali **per tentativo** (`conPrefissoUnico` nel corpo del
+test), cliente via API con `partitaIvaCasualeValida`, variazione filtrata sul contratto del test,
+ISTAT su un mese casuale di un anno 1995-2015, pulizia in `afterAll` (R52). `git diff --stat
+869e98f..HEAD`. Il rapporto elenca le differenze volute del 16a per 3.8.
+
+**Minor della 4.2a che restano fuori dalla 4.2b** (aree non toccate): provvigione `''` del cliente
+senza tipo (T11) e smistamento degli errori per parole chiave nel dialog del cliente (T14); messaggi
+inglesi di `@Min/@Max` (convenzione esistente); indici delle FK di `addebiti`; componente comune
+delle codifiche (R25); P.IVA da `Date.now()` in 5 spec di MUD, giacenze, FIR e RENTRI (R55).
+
+### Parallelismo 4.2b
+
+**Chi usa Postgres:** 19, 20, 21, 22, 23, 24, 25 (e 30 per la suite intera). **Non lo usano:**
+16a, 16, 17, 18 (dominio puro) e i frontend 26-29. Un solo database di test, **55438**
+(`wasteflow-pg-test-registro`): la migration la applica **una volta** il 19, nell'ondata 1, dal suo
+worktree; mai `migrate reset`. Ogni processo pesante (jest, `test:cov`, Karma, `ng build`, suite
+Postgres, `tsc` del backend) sotto
+`flock /home/graziano/Progetti/rifiuti-wt-rentri-registro/.superpowers/sdd/2026-11-02-fase4-2-listino/pesante.lock`;
+prima di ogni suite Postgres la guardia di porta dei Vincoli globali; prima dei processi pesanti
+`free -g` (sulla macchina girano anche jest e podman di altri progetti).
+
+**Worktree:** uno per task, `git worktree add ../rifiuti-wt-42b-<task> -b wt/42b-<task> <HEAD del
+principale dopo l'ondata precedente>`, i tre `node_modules` copiati per reflink (`cp -a
+--reflink=auto`), mai condivisi; il worktree del 19 lancia `prisma generate` nel proprio
+`node_modules`, quelli frontend mai. Integrazione a fine ondata nel worktree principale con `git
+cherry-pick` (backend in ordine di numero, poi frontend), poi `prisma generate` nel principale e
+revisione opus dell'ondata; i worktree fusi si rimuovono.
+
+| Ondata | Task in parallelo | Perché insieme | Rischio |
+|---|---|---|---|
+| 1 | **16a** ∥ **16** ∥ **18** ∥ **19** (PG, migration) | i tre domini hanno file propri; il 19 non dipende dai domini (schema, SQL, RLS) | medio: quattro task da rivedere, ma il 16a è piccolo |
+| 2 | **17** ∥ **20** (PG) ∥ **26** | 17 dopo 16a e 18 (niente stub); 20 dopo 16 e 19; 26 sulle interfacce del piano corrette dall'addendum | medio: 26 scrive i modelli prima delle rotte |
+| 3 | **21** (PG) ∥ **27** | 21 dopo 17, 18, 20; 27 dopo 26 | medio: 27 dipende dal formato `errori` di R36 |
+| 4 | **22** (PG) ∥ **25** (PG, eccezione) ∥ **28** | 22 dopo 21, 25 dopo 20; 28 dopo 27 e 16a | medio |
+| 5 | **23** (PG) ∥ **24** (PG, eccezione) ∥ **29** | 23 dopo 21 e 22; 24 dopo 21; 29 dopo 26 (non tocca i file di 27-28) | medio: 29 usa rotte di 23-24 ancora in scrittura |
+| 6 | **30** | tutto integrato; controllo del contratto d'interfaccia FE/BE; e2e e CI | — |
+
+**Eccezioni alla regola "al massimo un task Postgres per ondata"** (come T10 ∥ T11 della 4.2a):
+- **22 ∥ 25** — file disgiunti (22: `uso-listino.ts`, servizi d'archivio, `contratti-cliente.service.ts`;
+  25: servizio e controller degli allegati, `listino.module.ts`), dati isolati per `tenantId`,
+  esecuzioni Postgres serializzate dal `flock`, nessuna migration.
+- **23 ∥ 24** — file disgiunti salvo `listino.module.ts` (una riga ciascuno, conflitto banale al
+  cherry-pick); le variazioni e l'ISTAT filtrano sempre per azienda, quindi le righe create dai test
+  del 23 in altre aziende non entrano nelle anteprime del 24.
+- Costo se sbagliate: un test che fallisce per interferenza, da rilanciare; se succede due volte, il
+  24 passa a un'ondata 5b prima del 30.
+
+**File condivisi e chi li tocca** (ondate diverse salvo dove detto):
+- `prezzo-speciale.ts` (+ spec) → solo 16a. `importi-riga.ts` (+ spec) → solo 17.
+- `schema.prisma`, migration, `prisma-rls.extension.ts`, `rls-catalogo.postgres.spec.ts`,
+  `README-tenant-transazione.md`, `ops/README.md` → solo 19.
+- `listino.module.ts` → 20, 21, 23, 24, 25 (23 e 24 nella stessa ondata).
+- `listino-di-test.ts` → 20, 21.
+- `elenchi-contratto.controller.ts` → 20, 21, 23; `elenchi-addebiti.controller.ts` → 20, 21, 23.
+- `riferimenti-listino.ts` → 21. `uso-listino.ts` e i tre servizi d'archivio → 22.
+- `variazioni-archivio.service.ts`, `dto/variazione-prezzi.dto.ts`, `conflitti-variazione.ts` → 24.
+- `contratti-cliente.service.ts` (+ spec) → solo 22, mirata.
+- FE: `listino.model.ts`, `listino.service.ts`, `vocabolario-listino.ts` → 26 (i successivi li
+  leggono; se 27-29 hanno bisogno di un tipo nuovo lo aggiungono **in coda** e lo dichiarano nel
+  rapporto); `app.routes.ts` → 26; `contratti-cliente-list.component.ts` → 26, 29;
+  `contratto-cliente-dialog.component.ts` → 26; `addebito-dialog.component.ts` e i dialog in linea di
+  codici IVA e codifiche → 27; `riga-addebito-dialog.component.ts` → 27, 28;
+  `listino-contratto.component.ts` → 26, 29.
+- Backend e frontend non condividono file. `e2e/` → solo 30.
+
+### Domande aperte per Graziano
+
+Da porre con AskUserQuestion prima dell'ondata 1 (Q7 cambia il 16a, Q8 un test del 16a, Q9 il
+Task 21). Il piano procede con l'opzione consigliata.
+
+- **Q7** (R31) — Tabella con una fascia `D`/`W` seguita da una fascia `A`/`X` raggiunta (fattura due
+  volte la quantità della fascia alta): **rifiutarla in validazione, con le righe WinWaste così
+  segnalate da 3.8 (consigliata)** / tenerla come WinWaste, dichiarata.
+- **Q8** (R30) — `B` con quantità precedente: **fisso solo la prima volta che la fascia più alta è
+  raggiunta (consigliata)** / differenza fra il fisso della fascia raggiunta ora e quello già
+  fatturato (zero se negativa).
+- **Q9** (R56) — Proposta del prezzo dall'archivio (marcata "da riferire" nel ledger della 4.2a):
+  **solo se il listino ha un prezzo, differenza voluta di R6 (consigliata)** / come WinWaste (niente
+  proposta se il listino ha un qualunque campo; col listino del cliente sconto e provvigione anche
+  a prezzo vuoto). Se Graziano ha già risposto, vale la risposta.

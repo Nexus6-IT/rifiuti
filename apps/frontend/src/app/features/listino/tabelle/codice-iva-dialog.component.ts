@@ -9,11 +9,18 @@ import {
   inject,
   signal,
 } from '@angular/core'
+import {
+  formatNumero,
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from '../../../shared/utils/numero-modificabile'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
+import { Subscription } from 'rxjs'
 import { messaggioErrore } from '../../clienti/tabelle/tabella-comune'
 import { ListinoService } from '../listino.service'
 import { CodiceIva } from '../listino.model'
@@ -69,6 +76,13 @@ import { OPZIONI_NATURA_IVA } from '../vocabolario-listino'
           maxlength="6"
           data-testid="iva-dlg-aliquota"
         />
+        <small
+          *ngIf="erroreAliquota() as e"
+          role="alert"
+          class="field-error"
+          data-testid="iva-dlg-errore-aliquota"
+          >{{ e }}</small
+        >
         <label for="iva-natura">Natura dell'operazione (solo con aliquota zero)</label>
         <p-dropdown
           inputId="iva-natura"
@@ -119,11 +133,15 @@ export class CodiceIvaDialogComponent implements OnChanges {
   readonly nature = OPZIONI_NATURA_IVA
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
+  private salvataggio?: Subscription
 
   readonly form = new FormGroup({
     codice: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     descrizione: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    aliquota: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    aliquota: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, validatoreNumero('decimale')],
+    }),
     natura: new FormControl<string | null>(null),
   })
 
@@ -131,12 +149,17 @@ export class CodiceIvaDialogComponent implements OnChanges {
     if (c['visible'] && this.visible) this.inizializza()
   }
 
+  erroreAliquota(): string | null {
+    return messaggioNumero(this.form.controls.aliquota)
+  }
+
   private inizializza(): void {
+    this.salvataggio?.unsubscribe()
     const e = this.elemento
     this.form.reset({
       codice: e?.codice ?? '',
       descrizione: e?.descrizione ?? '',
-      aliquota: e?.aliquota ?? '',
+      aliquota: formatNumero(e?.aliquota, 2),
       natura: e?.natura ?? null,
     })
     this.errore.set(null)
@@ -149,7 +172,7 @@ export class CodiceIvaDialogComponent implements OnChanges {
     const dati = {
       codice: v.codice.trim(),
       descrizione: v.descrizione.trim(),
-      aliquota: v.aliquota.trim(),
+      aliquota: leggiNumero(v.aliquota).valore ?? '',
       natura: v.natura ?? null,
     }
     this.inCorso.set(true)
@@ -160,7 +183,7 @@ export class CodiceIvaDialogComponent implements OnChanges {
           versione: this.elemento.versione,
         })
       : this.servizio.codiciIva.crea(dati)
-    chiamata.subscribe({
+    this.salvataggio = chiamata.subscribe({
       next: salvato => {
         this.inCorso.set(false)
         this.salvato.emit(salvato)
@@ -174,6 +197,9 @@ export class CodiceIvaDialogComponent implements OnChanges {
   }
 
   chiudi(): void {
+    // Un salvataggio ancora in corso non deve emettere `salvato` a dialog chiuso.
+    this.salvataggio?.unsubscribe()
+    this.inCorso.set(false)
     this.form.reset()
     this.errore.set(null)
     this.visibleChange.emit(false)

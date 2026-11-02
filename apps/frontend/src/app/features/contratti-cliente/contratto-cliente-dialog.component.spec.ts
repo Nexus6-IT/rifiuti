@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { Router } from '@angular/router'
 import { MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
@@ -14,7 +15,13 @@ import {
 } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
-import { bottone, q, scrivi, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
+import {
+  accettaConferma,
+  bottone,
+  q,
+  scrivi,
+  stabilizza,
+} from '../clienti/tabelle/tabelle-test-utils'
 import { RegistryService } from '../registry/registry.service'
 import { ContrattoClienteDialogComponent } from './contratto-cliente-dialog.component'
 import { SezionePagamentoComponent } from './sezione-pagamento.component'
@@ -549,7 +556,7 @@ describe('ContrattoClienteDialogComponent', () => {
       expect(valore('contratto-dlg-bollo')).toBe('b1')
       expect(valore('contratto-dlg-registro')).toBe('r1')
       expect(valore('contratto-dlg-esigibilita')).toBe('SCISSIONE')
-      expect(valore('contratto-dlg-ritenuta')).toBe('10.00')
+      expect(valore('contratto-dlg-ritenuta')).toBe('10')
       expect(valore('contratto-dlg-codice-dest')).toBe('ABCDEFG')
       expect(valore('contratto-dlg-rif-amm')).toBe('RIF1')
       expect(form().controls.agenteId.value).toBe('a1')
@@ -1584,6 +1591,91 @@ describe('ContrattoClienteDialogComponent', () => {
       expect(q<HTMLInputElement>('contratto-dlg-descrizione')!.disabled).toBeTrue()
       expect(q<HTMLInputElement>('periodi-gi-0')!.disabled).toBeTrue()
       expect(fixture.componentInstance.puoSalvare()).toBeFalse()
+    })
+
+    it("il pulsante Listino c'è anche per il VIEWER (R48)", async () => {
+      ruolo('VIEWER')
+      await apri(contratto())
+      expect(bottone('contratto-dlg-listino')).toBeTruthy()
+    })
+  })
+
+  describe('Listino', () => {
+    it('contratto nuovo: nessun pulsante', async () => {
+      await apri(null)
+      expect(q('contratto-dlg-listino')).toBeNull()
+    })
+
+    it('apre la pagina del listino del contratto e chiude il dialog', async () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true)
+      await apriCon(contratto())
+      bottone('contratto-dlg-listino')!.click()
+      await stabilizza(fixture)
+      expect(navigate).toHaveBeenCalledOnceWith(['/contratti-clienti', contratto().id, 'listino'])
+      expect(visibilita).toContain(false)
+    })
+
+    it('con modifiche non salvate chiede conferma prima di lasciare il contratto', async () => {
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true)
+      await apriCon(contratto())
+      scrivi('contratto-dlg-descrizione', 'Descrizione cambiata')
+      fixture.componentInstance.form.controls.descrizione.markAsDirty()
+      await stabilizza(fixture)
+      bottone('contratto-dlg-listino')!.click()
+      await stabilizza(fixture)
+      expect(navigate).not.toHaveBeenCalled()
+      expect(document.body.textContent).toContain('modifiche non salvate')
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(navigate).toHaveBeenCalledOnceWith(['/contratti-clienti', contratto().id, 'listino'])
+    })
+  })
+
+  describe('ritenuta e soglia: la virgola è obbligatoria (decisione di Graziano)', () => {
+    const modificato = () => contratti.modifica.calls.mostRecent().args[1]
+
+    for (const [campo, testid] of [
+      ['ritenutaPercentuale', 'contratto-dlg-ritenuta'],
+      ['sogliaImporto', 'contratto-dlg-soglia'],
+    ] as const) {
+      describe(campo, () => {
+        it('"1.000" è rifiutato: errore sul campo e Salva bloccato', async () => {
+          contratti.modifica.and.returnValue(of(contratto()))
+          await apri(contratto())
+          scrivi(testid, '1.000')
+          await stabilizza(fixture)
+          expect(q(`${testid}-errore`)!.textContent).toContain('Usa la virgola per i decimali')
+          expect(q(testid)!.getAttribute('aria-describedby')).toBe(`${testid}-errore`)
+          expect(bottone('contratto-dlg-salva')!.disabled).toBeTrue()
+          fixture.componentInstance.salva()
+          expect(contratti.modifica).not.toHaveBeenCalled()
+        })
+
+        it('"1000,5" parte come "1000.5"', async () => {
+          contratti.modifica.and.returnValue(of(contratto()))
+          await apri(contratto())
+          scrivi(testid, '1000,5')
+          await stabilizza(fixture)
+          bottone('contratto-dlg-salva')!.click()
+          await stabilizza(fixture)
+          expect(modificato()[campo]).toBe('1000.5')
+        })
+
+        it('alla riapertura 1000.00 si legge "1000"', async () => {
+          await apriCon(contratto({ [campo]: '1000.00' }))
+          expect(valore(testid)).toBe('1000')
+        })
+      })
+    }
+
+    it('un valore già salvato e non toccato non finisce nel corpo ("10" e "10.00" coincidono)', async () => {
+      contratti.modifica.and.returnValue(of(contratto()))
+      await apri(contratto({ ritenutaPercentuale: '10.00' }))
+      scrivi('contratto-dlg-descrizione', 'Nuova descrizione')
+      await stabilizza(fixture)
+      bottone('contratto-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(modificato().ritenutaPercentuale).toBeUndefined()
     })
   })
 })

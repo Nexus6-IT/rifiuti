@@ -22,7 +22,11 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
-import { creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
+import {
+  creaCodiciIvaEcodifiche,
+  creaContrattoConElenco,
+  creaRiga,
+} from '../../test-support/listino-di-test'
 
 import { CodificheAddebitoService } from './codifiche-addebito.service'
 
@@ -45,6 +49,14 @@ describe('CodificheAddebitoService — Postgres reale, ruolo wasteflow_app', () 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       const in_ = { in: tenantCreati }
+      // Righe ed elenchi vanno a cascata col contratto; le FK NoAction verso addebiti, codifiche e
+      // codici IVA chiedono di cancellare prima i contratti.
+      await owner.contrattoCliente.updateMany({
+        where: { tenantId: in_ },
+        data: { contrattoPrincipaleId: null },
+      })
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.addebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codificaAddebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
@@ -310,9 +322,39 @@ describe('CodificheAddebitoService — Postgres reale, ruolo wasteflow_app', () 
       status: 409,
       response: {
         error: 'CODIFICA_ADDEBITO_IN_USO',
-        message: "La codifica è usata da addebiti dell'archivio: disattivala invece di eliminarla.",
+        message:
+          "La codifica è usata da addebiti dell'archivio o da righe dei listini: disattivala invece di eliminarla.",
       },
     })
     expect(await owner.codificaAddebito.count({ where: { id: ids.gruppoId } })).toBe(1)
+  })
+
+  it('categoria e centro citati da una riga di un listino (R44): non eliminabili, 409 col testo intero; gruppo e statistica liberi', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const ids = await creaCodiciIvaEcodifiche(owner, tenantId)
+    const c = await creaContrattoConElenco(owner, tenantId)
+    await creaRiga(owner, tenantId, c.elencoId, {
+      codiceIvaId: ids.iva22Id,
+      altro: { categoriaId: ids.categoriaId, centroRicavoId: ids.centroId },
+    })
+    const eliminabile = async (id: string) =>
+      (await nel(tenantId, () => service.getById(tenantId, id))).eliminabile
+    expect(await eliminabile(ids.categoriaId)).toBe(false)
+    expect(await eliminabile(ids.centroId)).toBe(false)
+    expect(await eliminabile(ids.gruppoId)).toBe(true)
+    expect(await eliminabile(ids.stat1Id)).toBe(true)
+    for (const id of [ids.categoriaId, ids.centroId]) {
+      await expect(
+        nel(tenantId, () => service.elimina(tenantId, utenteId, id, 1))
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          error: 'CODIFICA_ADDEBITO_IN_USO',
+          message:
+            "La codifica è usata da addebiti dell'archivio o da righe dei listini: disattivala invece di eliminarla.",
+        },
+      })
+      expect(await owner.codificaAddebito.count({ where: { id } })).toBe(1)
+    }
   })
 })
