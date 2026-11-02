@@ -1246,7 +1246,7 @@ describe('correzioni della review (I1-I3, M1-M3, M6, M10)', () => {
     expect(r).toHaveLength(1)
   })
 
-  it('M6: il minimo per categoria non vale con il prezzo speciale (ADDEBCON.cs:8723)', () => {
+  it('m1: il flag minimo per categoria resta ammesso con il prezzo speciale (WinWaste blocca solo l importo, ADDEBCON.cs:8723)', () => {
     const d = vuota('CER', {
       ...VALIDE.CER,
       prezzo: null,
@@ -1260,12 +1260,26 @@ describe('correzioni della review (I1-I3, M1-M3, M6, M10)', () => {
       applicaA: 'DOCUMENTO',
       scaglioni: fasce,
     })
-    expect(validaRiga(d, CTX)).toEqual([
-      {
-        campo: 'minimoPerCategoria',
-        messaggio: 'Con il prezzo speciale non si indica il minimo fatturabile.',
-      },
+    expect(validaRiga(d, CTX)).toEqual([])
+    // l'importo del minimo resta vietato
+    expect(validaRiga({ ...d, minimoFatturabile: '5' }, CTX).map(e => e.campo)).toEqual([
+      'minimoFatturabile',
     ])
+  })
+
+  it('m2: il CER del catalogo vale solo se ha le stesse cifre del CER scritto', () => {
+    const g = { tipo: 'CER', cerCode: '200121' }
+    const ok = normalizzaRiga(g, inviati(g), { cerCatalogo: '20 01 21*' }).dati
+    expect(ok.cerCode).toBe('20 01 21*')
+    expect(ok.tipologiaRifiuto).toBe('URBANO_PERICOLOSO')
+    const altro = normalizzaRiga(g, inviati(g), { cerCatalogo: '17 04 05' }).dati
+    expect(altro.cerCode).toBe('20 01 21')
+    expect(altro.tipologiaRifiuto).toBe('URBANO')
+  })
+
+  it('m4: applicaA fuori elenco senza prezzo speciale dà un solo errore', () => {
+    const r = validaRiga({ ...VALIDE.CER, applicaA: 'FOO' as never }, CTX)
+    expect(r.filter(e => e.campo === 'applicaA')).toHaveLength(1)
   })
 
   it('M10: CER proposto con riferimento che comincia con uno spazio', () => {

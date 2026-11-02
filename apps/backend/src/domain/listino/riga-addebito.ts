@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { cerCanonico } from '../waste-movement/cer-registro'
+import { cerCanonico, cerSoloCifre } from '../waste-movement/cer-registro'
 import { TipoProvvigione } from './addebito'
 import { arrotonda2, cascataValida, normalizzaCascata } from './importi-riga'
 import {
@@ -521,7 +521,18 @@ export function normalizzaRiga(
     // l'asterisco dei pericolosi), altrimenti da quello scritto. Si propone se l'utente non l'ha
     // indicata e il CER e' inviato (anche cambiato in un PATCH) o la tipologia manca.
     const esplicita = inviati.has('tipologiaRifiuto') && dati.tipologiaRifiuto !== null
-    const sorgente = opzioni.cerCatalogo ?? dati.cerCode
+    // Il CER del catalogo vale solo se ha le stesse cifre di quello scritto (m2); poi lo sostituisce.
+    const catalogo = opzioni.cerCatalogo ?? null
+    if (
+      dati.tipo === 'CER' &&
+      dati.cerCode !== null &&
+      catalogo !== null &&
+      cerSoloCifre(catalogo) === cerSoloCifre(dati.cerCode) &&
+      formaCerValida(catalogo)
+    ) {
+      dati.cerCode = cerCanonico(catalogo)
+    }
+    const sorgente = dati.cerCode
     if (
       dati.tipo === 'CER' &&
       !esplicita &&
@@ -550,13 +561,13 @@ const TIPOLOGIE: readonly string[] = [
   'SPECIALE',
   'SPECIALE_PERICOLOSO',
 ]
-const APPLICA: readonly string[] = [
+const APPLICA = [
   'DOCUMENTO',
   'PERIODO',
   'PROGRESSIVO_DA_DATA',
   'CONGUAGLIO_365',
   'GIORNO',
-]
+] as const satisfies readonly ApplicaPrezzoSpeciale[]
 const PERIODI: readonly string[] = [
   'MP', 'BA', 'BP', 'TA', 'TP', 'QA', 'QP', 'SA', 'SP', 'AA', 'AP', 'DA', 'DP', 'XA', 'XD', 'YC',
 ] // prettier-ignore
@@ -567,7 +578,9 @@ const MESSAGGIO_CASCATA_PROVVIGIONE =
 
 /** Campo a cui attribuire i messaggi di `validaPrezzoSpeciale` che non sono delle fasce (R36). */
 const M = MSG_PREZZO_SPECIALE
-const CAMPO_MESSAGGIO_PREZZO_SPECIALE: Readonly<Record<string, CampoRiga | null>> = {
+const CAMPO_MESSAGGIO_PREZZO_SPECIALE: Readonly<
+  Record<(typeof MSG_PREZZO_SPECIALE)[keyof typeof MSG_PREZZO_SPECIALE], CampoRiga | null>
+> = {
   [M.APPLICA_MANCANTE]: 'applicaA',
   [M.CONDIZIONATI]: 'condizione',
   [M.UNITA_HR]: 'unitaMisura',
@@ -762,13 +775,13 @@ export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }
   }
 
   // Prezzo speciale (D12): solo per le famiglie che lo ammettono
-  if (d.applicaA !== null && !APPLICA.includes(d.applicaA)) {
+  if (d.applicaA !== null && !(APPLICA as readonly string[]).includes(d.applicaA)) {
     e('applicaA', 'Il valore di «si applica a» non è ammesso.')
   }
   if (ammessi.has('prezzoSpeciale')) {
     if (d.prezzoSpeciale) {
-      // Come WinWaste (ADDEBCON.cs:8723): niente minimo con il prezzo speciale, nemmeno "per categoria"
-      if (d.minimoPerCategoria) e('minimoPerCategoria', MSG_PREZZO_SPECIALE.MINIMO)
+      // WinWaste (ADDEBCON.cs:8723) vieta solo l'importo del minimo con il prezzo speciale, non il
+      // flag "per categoria" (XX), che salva comunque (:9263, :10855): qui il flag resta ammesso.
       const delleFasce = new Set(
         validaScaglioni(d.scaglioni, { conCondizioni: !vuoto(d.condizioniRiferite) })
       )
@@ -776,11 +789,17 @@ export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }
       for (const m of validaPrezzoSpeciale(d, d.scaglioni)) {
         if (visti.has(m)) continue
         visti.add(m)
-        e(delleFasce.has(m) ? 'scaglioni' : (CAMPO_MESSAGGIO_PREZZO_SPECIALE[m] ?? null), m)
+        e(
+          delleFasce.has(m)
+            ? 'scaglioni'
+            : (CAMPO_MESSAGGIO_PREZZO_SPECIALE[m as keyof typeof CAMPO_MESSAGGIO_PREZZO_SPECIALE] ??
+                null),
+          m
+        )
       }
     } else {
       if (d.scaglioni.length > 0) e('scaglioni', MSG_SPECIALE_SOLO)
-      if (d.applicaA !== null) e('applicaA', MSG_SPECIALE_SOLO)
+      if (d.applicaA !== null && APPLICA.includes(d.applicaA)) e('applicaA', MSG_SPECIALE_SOLO)
       if (!vuoto(d.condizioniRiferite)) e('condizioniRiferite', MSG_SPECIALE_SOLO)
       if (d.riferimentoGiorno !== null || d.riferimentoMese !== null) {
         e('riferimentoGiorno', MSG_SPECIALE_SOLO)
