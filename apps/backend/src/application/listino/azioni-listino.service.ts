@@ -142,6 +142,11 @@ const COLONNE_REGOLE = {
   applicaA: true,
 } satisfies Prisma.RigaAddebitoSelect
 
+/**
+ * La `versione` dell'ELENCO sale con l'intestazione e con le copie (sostituisci-da, aggiungi-righe),
+ * non con provvigioni e sconti: lì ogni riga toccata alza la propria `versione`, e chi la teneva
+ * aperta riceve 409. Nemmeno le scritture di una singola riga (Task 21) cambiano quella dell'elenco.
+ */
 @Injectable()
 export class AzioniListinoService {
   constructor(private readonly prisma: PrismaService) {}
@@ -165,6 +170,7 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
+          await this.timeoutLock(tx)
           const arrivo = await this.elencoVisibile(tx, tenantId, elencoId)
           await this.elencoVisibile(tx, tenantId, daElencoId)
           const contratto = await this.bloccaContratto(tx, tenantId, arrivo.contrattoId)
@@ -185,6 +191,10 @@ export class AzioniListinoService {
           const { scelte, escluse } = scegliRigheDaCopiare(candidate, [])
           this.controllaDominio(scelte, contratto)
 
+          // Righe bloccate in ordine di id prima di cancellarle (m2): niente cicli con la variazione.
+          await this.bloccaRighe(tx, tenantId, {
+            elencoId,
+          })
           await tx.rigaAddebito.deleteMany({ where: { tenantId, elencoId } })
           await this.scrivi(tx, tenantId, elencoId, scelte)
           await this.alzaVersione(tx, tenantId, elencoId, corpo.versione)
@@ -225,6 +235,7 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
+          await this.timeoutLock(tx)
           const arrivo = await this.elencoVisibile(tx, tenantId, elencoId)
           const note = await tx.rigaAddebito.findMany({
             where: { id: { in: ids }, tenantId, elenco: { contratto: { eliminatoIl: null } } },
@@ -316,6 +327,7 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
+          await this.timeoutLock(tx)
           const contratto = await this.bloccaContratto(tx, tenantId, contrattoId)
           await this.lockContratto(tx, contratto.id)
           await this.bloccaElenchiDelContratto(tx, tenantId, contratto.id)
@@ -360,8 +372,8 @@ export class AzioniListinoService {
 
   /**
    * Sostituisce lo sconto nelle righe SENZA prezzo speciale che hanno esattamente `scontoAttuale`
-   * (formula normalizzata: "10 + 5" e "10+5" sono lo stesso sconto). `scontoNuovo` vuoto toglie lo
-   * sconto. Le righe speciali che portano lo sconto attuale (sulla riga o in una fascia) non si
+   * (formula normalizzata: "10 + 5" e "10+5" sono lo stesso sconto). `scontoNuovo` e' obbligatorio
+   * (WinWaste: "Specificare entrambi gli sconti"). Le righe speciali che portano lo sconto attuale (sulla riga o in una fascia) non si
    * toccano e si contano: vanno sistemate a mano.
    */
   async sostituisciSconto(
@@ -379,12 +391,10 @@ export class AzioniListinoService {
     } else if (!cascataValida(attuale) || attuale.length > 20) {
       errori.push({ campo: 'scontoAttuale', messaggio: MESSAGGIO_CASCATA })
     }
-    if (corpo.scontoNuovo === undefined) {
-      errori.push({
-        campo: 'scontoNuovo',
-        messaggio: 'Indica il nuovo sconto, o lascialo vuoto per toglierlo.',
-      })
-    } else if (nuovo !== null && (!cascataValida(nuovo) || nuovo.length > 20)) {
+    if (nuovo === null) {
+      // WinWaste (IMPOSTAP.cs:530-534): la sostituzione vuole entrambi gli sconti.
+      errori.push({ campo: 'scontoNuovo', messaggio: 'Specificare entrambi gli sconti.' })
+    } else if (!cascataValida(nuovo) || nuovo.length > 20) {
       errori.push({ campo: 'scontoNuovo', messaggio: MESSAGGIO_CASCATA })
     }
     if (errori.length > 0) nonValido(CODICE_IMPOSTAZIONE, errori)
@@ -392,6 +402,7 @@ export class AzioniListinoService {
     return nelContestoTenant(tenantId, async () => {
       try {
         return await this.prisma.$transaction(async tx => {
+          await this.timeoutLock(tx)
           const contratto = await this.bloccaContratto(tx, tenantId, contrattoId)
           await this.lockContratto(tx, contratto.id)
           await this.bloccaElenchiDelContratto(tx, tenantId, contratto.id)
@@ -531,18 +542,49 @@ export class AzioniListinoService {
     )
   }
 
+  /**
+   * Una sola UPDATE per riga (provvigione/sconto e `versione + 1` insieme): una seconda UPDATE
+   * della stessa riga nella transazione rifarebbe il controllo della FK e prenderebbe `FOR KEY
+   * SHARE` sull'elenco, in deadlock con `RigheAddebitoService.modifica`. Le righe si bloccano
+   * prima, in ordine di id (m2).
+   */
   private async aggiornaRighe(
     tx: Prisma.TransactionClient,
     tenantId: string,
     ids: readonly string[],
     dati: Prisma.RigaAddebitoUncheckedUpdateManyInput
   ): Promise<void> {
-    for (let i = 0; i < ids.length; i += BLOCCO_AGGIORNAMENTO) {
+    const ordinati = [...ids].sort()
+    for (let i = 0; i < ordinati.length; i += BLOCCO_AGGIORNAMENTO) {
+      const blocco = ordinati.slice(i, i + BLOCCO_AGGIORNAMENTO)
+      await this.bloccaRighe(tx, tenantId, { ids: blocco })
       await tx.rigaAddebito.updateMany({
-        where: { tenantId, id: { in: ids.slice(i, i + BLOCCO_AGGIORNAMENTO) } },
+        where: { tenantId, id: { in: blocco } },
         data: { ...dati, versione: { increment: 1 } },
       })
     }
+  }
+
+  /** `SELECT … ORDER BY id FOR UPDATE` sulle righe di un elenco o su quelle indicate. */
+  private async bloccaRighe(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    quali: { elencoId: string } | { ids: readonly string[] }
+  ): Promise<void> {
+    if ('elencoId' in quali) {
+      await tx.$queryRaw`SELECT id FROM "righe_addebito"
+        WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ${quali.elencoId}::uuid
+        ORDER BY id FOR UPDATE`
+    } else {
+      await tx.$queryRaw`SELECT id FROM "righe_addebito"
+        WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${quali.ids as string[]}::uuid[])
+        ORDER BY id FOR UPDATE`
+    }
+  }
+
+  /** Come la variazione dei prezzi: chi aspetta un lock oltre 10 s rinuncia (55P03 -> 409). */
+  private async timeoutLock(tx: Prisma.TransactionClient): Promise<void> {
+    await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '10s'`)
   }
 
   // -------------------------------------------------------------------------------------------

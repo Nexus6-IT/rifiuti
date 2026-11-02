@@ -77,12 +77,7 @@ export class ScontiContrattoDto {
   @IsTestoONumero()
   scontoAttuale: string | number
 
-  @ApiPropertyOptional({
-    nullable: true,
-    example: '12',
-    description: 'Vuoto o null: toglie lo sconto',
-  })
-  @IsOptional()
+  @ApiProperty({ example: '12', description: 'Obbligatorio: lo sconto nuovo' })
   @IsTestoONumero()
-  scontoNuovo?: string | number | null
+  scontoNuovo: string | number
 }

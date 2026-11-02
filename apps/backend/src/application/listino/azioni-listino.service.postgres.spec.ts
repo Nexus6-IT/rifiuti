@@ -169,13 +169,15 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
 
   // -----------------------------------------------------------------------------------------
   describe('sostituisci-da', () => {
-    it('da un elenco di un altro cliente: esclusi MW, $A e conguaglio, il resto con fasce e scadenze', async () => {
+    it('da un elenco di un altro cliente: esclusi MW, $A e N con conguaglio; il resto con fasce e scadenze', async () => {
       const s = await scenario()
       const altro = await altroContratto(s)
       await riga(s, altro.elencoId, 'V', SPECIALE)
       await riga(s, altro.elencoId, 'F', {}, 'NR')
       await riga(s, altro.elencoId, 'MW', {}, 'EUR')
       await riga(s, altro.elencoId, '$A', {}, 'EUR')
+      // WinWaste (nocop): solo una N con conguaglio si salta; una V con conguaglio si copia
+      await riga(s, altro.elencoId, 'NM', CONGUAGLIO, 'NR')
       await riga(s, altro.elencoId, 'V', CONGUAGLIO)
       // una riga che c'era nell'elenco di arrivo sparisce
       const vecchia = await riga(s, s.elencoId, 'V')
@@ -187,18 +189,53 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       })
 
       expect(esito).toEqual({
-        copiate: 2,
+        copiate: 3,
         escluse: { minimi: 1, acconti: 1, conguagli: 1, duplicate: 0, condizioni: 0 },
       })
       const arrivo = await righeDi(s.elencoId)
-      expect(arrivo.map(r => r.tipo).sort()).toEqual(['F', 'V'])
+      expect(arrivo.map(r => r.tipo).sort()).toEqual(['F', 'V', 'V'])
       expect(arrivo.some(r => r.id === vecchia.id)).toBe(false)
       // nuovi id, versione 1, fasce e scadenze copiate
       expect(arrivo.every(r => !sorgenteIdPrima.includes(r.id) && r.versione === 1)).toBe(true)
-      expect(arrivo.find(r => r.tipo === 'V')?.scaglioni.map(f => f.ordine)).toEqual(
-        expect.arrayContaining([1, 7])
+      const sorgenteRighe = await righeDi(altro.elencoId)
+      const speciale = arrivo.find(r => r.scaglioni.length > 0 && r.applicaA === 'DOCUMENTO')
+      const fasce = (speciale?.scaglioni ?? [])
+        .map(f => ({
+          ordine: f.ordine,
+          finoA: f.finoA?.toFixed() ?? null,
+          prezzo: f.prezzo.toFixed(),
+          tipoCalcolo: f.tipoCalcolo,
+          sconto: f.sconto,
+          provvigione: f.provvigione,
+        }))
+        .sort((a, b) => a.ordine - b.ordine)
+      expect(fasce).toEqual([
+        { ordine: 1, finoA: '100', prezzo: '1', tipoCalcolo: 'A', sconto: null, provvigione: null },
+        {
+          ordine: 7,
+          finoA: null,
+          prezzo: '0.5',
+          tipoCalcolo: 'A',
+          sconto: null,
+          provvigione: null,
+        },
+      ])
+      const fissa = arrivo.find(r => r.tipo === 'F')
+      expect(
+        (fissa?.scadenze ?? [])
+          .map(x => [x.ordine, x.giorno, x.mese, x.anno])
+          .sort((a, b) => (a[0] as number) - (b[0] as number))
+      ).toEqual([
+        [1, 1, 3, null],
+        [2, 1, 9, null],
+      ])
+      // i figli sono nuove righe del DB, quelli della sorgente restano dove sono
+      const idFigliSorgente = new Set(
+        sorgenteRighe.flatMap(r => [...r.scaglioni, ...r.scadenze].map(f => f.id))
       )
-      expect(arrivo.find(r => r.tipo === 'F')?.scadenze).toHaveLength(2)
+      const idFigliArrivo = arrivo.flatMap(r => [...r.scaglioni, ...r.scadenze].map(f => f.id))
+      expect(idFigliArrivo.every(i => !idFigliSorgente.has(i))).toBe(true)
+      expect(sorgenteRighe.find(r => r.id === sorgenteIdPrima[0])?.scaglioni).toHaveLength(2)
       // la sorgente non cambia, l'elenco di arrivo cambia versione, il contratto no
       expect((await righeDi(altro.elencoId)).map(r => r.id)).toEqual(sorgenteIdPrima)
       expect(await versioneElenco(s.elencoId)).toBe(2)
@@ -212,7 +249,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(log.metadata).toMatchObject({
         elencoId: s.elencoId,
         daElencoId: altro.elencoId,
-        copiate: 2,
+        copiate: 3,
         minimi: 1,
         acconti: 1,
         conguagli: 1,
@@ -422,15 +459,17 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
         daElencoId: basso,
         versione: 1,
       })
-      // Attesa di una condizione (non un tempo fisso): entrambe le copie sono ferme su un lock.
+      // Richiede un ruolo che veda pg_stat_activity delle altre sessioni (il proprietario e' superuser).
+      // Attesa di una condizione con scadenza di 30 s (non un tempo fisso): entrambe le copie sono ferme su un lock.
       const inAttesa = async () => {
-        for (let i = 0; i < 400; i++) {
+        const scadenza = Date.now() + 30_000
+        while (Date.now() < scadenza) {
           const [r] = await owner.$queryRaw<{ n: number }[]>`
             SELECT count(*)::int AS n FROM pg_stat_activity
             WHERE wait_event_type = 'Lock' AND query ILIKE '%elenchi_addebiti%'
               AND datname = current_database()`
           if (r.n >= 2) return true
-          await new Promise(res => setImmediate(res))
+          await new Promise(res => setTimeout(res, 25))
         }
         return false
       }
@@ -440,6 +479,55 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       const esiti = await Promise.allSettled([copia1, copia2])
       expect(fermeTutteDue).toBe(true)
       expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+    })
+
+    it('una riga CER si copia con forma del catalogo e tipologia; da un contratto annullato si può copiare', async () => {
+      const s = await scenario()
+      const altro = await altroContratto(s)
+      await righe.crea(s.tenantId, s.utenteId, altro.elencoId, {
+        codiceIvaId: s.listino.iva22Id,
+        tipo: 'CER',
+        cerCode: '200121',
+        tipoQuantita: 'PESO_NETTO',
+        unitaMisura: 'KG',
+        prezzo: '1',
+      })
+      await owner.contrattoCliente.update({
+        where: { id: altro.contrattoId },
+        data: { stato: 'ANNULLATO', motivoAnnullo: 'Prova', annullatoIl: new Date() },
+      })
+      const esito = await azioni.sostituisciDa(s.tenantId, s.utenteId, s.elencoId, {
+        daElencoId: altro.elencoId,
+        versione: 1,
+      })
+      expect(esito.copiate).toBe(1)
+      const [cer] = await righeDi(s.elencoId)
+      expect(cer).toMatchObject({
+        tipo: 'CER',
+        cerCode: '20 01 21*',
+        addebitoId: null,
+        tipologiaRifiuto: 'URBANO_PERICOLOSO',
+      })
+    })
+
+    it('D17: più di 20 errori → 20 messaggi più "E altri N errori."', async () => {
+      const principale = await scenario()
+      const allegato = await altroContratto(principale, {
+        contrattoPrincipaleId: principale.contrattoId,
+        clienteId: principale.clienteId,
+      })
+      const sorgente = await altroContratto(principale)
+      for (let i = 0; i < 22; i++) await riga(principale, sorgente.elencoId, 'V')
+      const e = await errore(
+        azioni.sostituisciDa(principale.tenantId, principale.utenteId, allegato.elencoId, {
+          daElencoId: sorgente.elencoId,
+          versione: 1,
+        })
+      )
+      const messaggi: string[] = e.getResponse().message
+      expect(messaggi).toHaveLength(21)
+      expect(messaggi[20]).toBe('E altri 2 errori.')
+      expect(await righeDi(allegato.elencoId)).toHaveLength(0)
     })
   })
 
@@ -555,6 +643,21 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       expect((await righeDi(allegato.elencoId)).map(r => r.tipo)).toEqual(['TS'])
     })
 
+    it('righe dell’elenco di arrivo stesso: tutte duplicate, nulla cambia', async () => {
+      const s = await scenario()
+      const a = await riga(s, s.elencoId, 'V')
+      const b = await riga(s, s.elencoId, 'F', {}, 'NR')
+      const esito = await azioni.aggiungiRighe(s.tenantId, s.utenteId, s.elencoId, {
+        righeIds: [a.id, b.id],
+        versione: 1,
+      })
+      expect(esito).toEqual({
+        copiate: 0,
+        escluse: { minimi: 0, acconti: 0, conguagli: 0, duplicate: 2, condizioni: 0 },
+      })
+      expect(await righeDi(s.elencoId)).toHaveLength(2)
+    })
+
     it('contratto annullato 409; versione vecchia 409', async () => {
       const s = await scenario()
       const altro = await altroContratto(s)
@@ -636,6 +739,31 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       ).toBe(1)
     })
 
+    it('le fasce della riga speciale non cambiano', async () => {
+      const s = await scenario()
+      const speciale = await riga(s, s.elencoId, 'V', {
+        ...SPECIALE,
+        tipoProvvigione: 'LORDO',
+        scaglioni: [
+          { ordine: 1, finoA: '100', prezzo: '1', provvigione: '3', tipoCalcolo: 'A' },
+          { ordine: 7, finoA: null, prezzo: '0.5', provvigione: '4', tipoCalcolo: 'A' },
+        ],
+      })
+      await riga(s, s.elencoId, 'V')
+      const esito = await azioni.impostaProvvigioni(s.tenantId, s.utenteId, s.contrattoId, {
+        provvigione: '9',
+        tipoProvvigione: 'SCONTATO',
+      })
+      expect(esito).toMatchObject({ aggiornate: 1, speciali: 1 })
+      const fasce = await owner.scaglioneRigaAddebito.findMany({
+        where: { rigaId: speciale.id },
+        orderBy: { ordine: 'asc' },
+      })
+      expect(fasce.map(f => f.provvigione)).toEqual(['3', '4'])
+      const r = await owner.rigaAddebito.findUniqueOrThrow({ where: { id: speciale.id } })
+      expect(r).toMatchObject({ tipoProvvigione: 'LORDO', versione: 1 })
+    })
+
     it('errori: formula non valida e tipo mancante 400 con details.errori; annullato 409; altra azienda 404', async () => {
       const s = await scenario()
       const formula = await errore(
@@ -715,13 +843,18 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
         speciali: 1,
       })
 
-      // sconto nuovo vuoto: lo toglie
-      const toglie = await azioni.sostituisciSconto(s.tenantId, s.utenteId, s.contrattoId, {
-        scontoAttuale: '12',
-        scontoNuovo: '',
-      })
-      expect(toglie.aggiornate).toBe(2)
-      expect((await get(a.id)).sconto).toBeNull()
+      // lo sconto nuovo e' obbligatorio (WinWaste IMPOSTAP.cs:530-534)
+      const vuoto = await errore(
+        azioni.sostituisciSconto(s.tenantId, s.utenteId, s.contrattoId, {
+          scontoAttuale: '12',
+          scontoNuovo: '',
+        })
+      )
+      expect(vuoto.getStatus()).toBe(400)
+      expect(vuoto.getResponse().details.errori).toEqual([
+        { campo: 'scontoNuovo', messaggio: 'Specificare entrambi gli sconti.' },
+      ])
+      expect((await get(a.id)).sconto).toBe('12')
     })
 
     it('errori: formule non valide 400; annullato 409; altra azienda 404', async () => {

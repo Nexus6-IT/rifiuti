@@ -5,7 +5,7 @@ import { chiaveRiga } from './riga-addebito'
  * `sostituisci-da` e `aggiungi-righe` passano di qui, cosi' le esclusioni sono le stesse.
  *
  * Una copia salta, nell'ordine: i minimi (`M…`), gli acconti, le detrazioni e gli anticipi (`$…`),
- * le righe che si applicano al conguaglio dei 365 giorni, i duplicati (stessa chiave di D11) e le
+ * le righe `N…` con conguaglio, progressivo da data o giorno (come `nocop` di WinWaste), i duplicati (stessa chiave di D11) e le
  * righe che nell'elenco di arrivo violerebbero le regole delle condizioni (D11): una cifra delle
  * condizioni riferite e' gia' sommata da un'altra riga (I1 della review 21), oppure manca un
  * addebito condizionato con quella cifra e la stessa unita' di misura. Ogni riga e' contata una
@@ -38,6 +38,21 @@ export function cifreCondizioni(condizioniRiferite: string | null): number[] {
   return [...new Set(condizioniRiferite.slice(0, -1).split('').map(Number))]
 }
 
+/**
+ * Come WinWaste (`nocop`, ELENCHIaddeb.cs:4338-4355, e `possibile`, :4309): si salta SOLO una riga
+ * di tipo `N…` con `INTEND > "2"`, cioe' "progressivo da data" (C), "conguaglio 365" (D) e "giorno"
+ * (E); C e D portano una data di riferimento propria del cliente. Le righe di altri tipi con un
+ * conguaglio si copiano. Le regole 6 e 7 di `INTEND` non esistono in `applicaA`.
+ */
+function eConguaglio(r: RigaCopiabile): boolean {
+  return (
+    r.tipo.startsWith('N') &&
+    (r.applicaA === 'PROGRESSIVO_DA_DATA' ||
+      r.applicaA === 'CONGUAGLIO_365' ||
+      r.applicaA === 'GIORNO')
+  )
+}
+
 export function scegliRigheDaCopiare<T extends RigaCopiabile>(
   candidate: readonly T[],
   esistenti: readonly RigaCopiabile[]
@@ -49,7 +64,7 @@ export function scegliRigheDaCopiare<T extends RigaCopiabile>(
   for (const r of candidate) {
     if (r.tipo.startsWith('M')) escluse.minimi++
     else if (r.tipo.startsWith('$')) escluse.acconti++
-    else if (r.applicaA === 'CONGUAGLIO_365') escluse.conguagli++
+    else if (eConguaglio(r)) escluse.conguagli++
     else if (chiavi.has(chiaveRiga(r))) escluse.duplicate++
     else {
       chiavi.add(chiaveRiga(r))

@@ -20,7 +20,7 @@ describe('scegliRigheDaCopiare (D18, R45)', () => {
         riga({ tipo: 'M001', addebitoId: 'm2' }),
         riga({ tipo: '$A', addebitoId: 'd1' }),
         riga({ tipo: '$D', addebitoId: 'd2' }),
-        riga({ tipo: 'V', addebitoId: 'v2', applicaA: 'CONGUAGLIO_365' }),
+        riga({ tipo: 'NM', addebitoId: 'n1', applicaA: 'CONGUAGLIO_365' }),
         // un minimo con il conguaglio conta solo come minimo
         riga({ tipo: 'MF', addebitoId: 'm3', applicaA: 'CONGUAGLIO_365' }),
       ],
@@ -109,6 +109,40 @@ describe('scegliRigheDaCopiare (D18, R45)', () => {
       [riga({ tipo: 'V', addebitoId: 'c4', condizione: 4 })]
     )
     expect(r.scelte).toHaveLength(1)
+  })
+})
+
+describe('conguagli come `nocop` di WinWaste (ELENCHIaddeb.cs:4338-4355)', () => {
+  it.each(['PROGRESSIVO_DA_DATA', 'CONGUAGLIO_365', 'GIORNO'])(
+    'una riga N con %s è esclusa e contata',
+    applicaA => {
+      const r = scegliRigheDaCopiare([riga({ tipo: 'NP', addebitoId: 'n', applicaA })], [])
+      expect(r.scelte).toHaveLength(0)
+      expect(r.escluse.conguagli).toBe(1)
+    }
+  )
+
+  it('una riga N con DOCUMENTO o PERIODO si copia', () => {
+    const r = scegliRigheDaCopiare(
+      [
+        riga({ tipo: 'NM', addebitoId: 'a', applicaA: 'DOCUMENTO' }),
+        riga({ tipo: 'NG', addebitoId: 'b', applicaA: 'PERIODO' }),
+      ],
+      []
+    )
+    expect(r.scelte).toHaveLength(2)
+  })
+
+  it.each(['V', 'F', 'CER', 'TS'])('una riga %s con un conguaglio si copia', tipo => {
+    const r = scegliRigheDaCopiare(
+      [
+        riga({ tipo, addebitoId: 'x', applicaA: 'CONGUAGLIO_365' }),
+        riga({ tipo, addebitoId: 'y', applicaA: 'GIORNO' }),
+      ],
+      []
+    )
+    expect(r.scelte).toHaveLength(2)
+    expect(r.escluse.conguagli).toBe(0)
   })
 })
 

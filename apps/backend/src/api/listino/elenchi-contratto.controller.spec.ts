@@ -278,6 +278,8 @@ describe('ElenchiContrattoController', () => {
         ['provvigioni', { tipoProvvigione: 5 }],
         ['provvigioni', { provvigione: '5', extra: 1 }],
         ['sconti', {}],
+        ['sconti', { scontoAttuale: '5' }],
+        ['sconti', { scontoAttuale: '5', scontoNuovo: null }],
         ['sconti', { scontoAttuale: null }],
         ['sconti', { scontoAttuale: '5', scontoNuovo: {} }],
       ])('POST %s con corpo non valido: 400 e nessun servizio', async (rotta, corpo) => {
@@ -289,14 +291,16 @@ describe('ElenchiContrattoController', () => {
       it('un VIEWER non scrive (403); senza azienda 403; id non UUID 400', async () => {
         ruolo = 'VIEWER'
         expect((await http().post(`${C}/provvigioni`).send({ provvigione: null })).status).toBe(403)
-        expect((await http().post(`${C}/sconti`).send({ scontoAttuale: '5' })).status).toBe(403)
+        expect(
+          (await http().post(`${C}/sconti`).send({ scontoAttuale: '5', scontoNuovo: '6' })).status
+        ).toBe(403)
         ruolo = 'OPERATOR'
         expect(
           (
             await http()
               .post(`${C}/sconti`)
               .set('x-senza-azienda', '1')
-              .send({ scontoAttuale: '5' })
+              .send({ scontoAttuale: '5', scontoNuovo: '6' })
           ).status
         ).toBe(403)
         expect((await http().post('/contratti-clienti/xx/provvigioni').send({})).status).toBe(400)

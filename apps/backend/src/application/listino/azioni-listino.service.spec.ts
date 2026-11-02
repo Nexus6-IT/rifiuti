@@ -47,6 +47,15 @@ describe('AzioniListinoService — controlli prima del database', () => {
     expect((await errore(service.sostituisciSconto(T, U, 'xx', {}))).getStatus()).toBe(404)
   })
 
+  it('sconto nuovo vuoto: messaggio di WinWaste', async () => {
+    const e = await errore(
+      service.sostituisciSconto(T, U, C, { scontoAttuale: '5', scontoNuovo: ' ' })
+    )
+    expect(e.getResponse().details.errori).toEqual([
+      { campo: 'scontoNuovo', messaggio: 'Specificare entrambi gli sconti.' },
+    ])
+  })
+
   it('aggiungi-righe senza righe: 400', async () => {
     const e = await errore(service.aggiungiRighe(T, U, E1, { righeIds: [], versione: 1 }))
     expect(e.getStatus()).toBe(400)
@@ -71,6 +80,8 @@ describe('AzioniListinoService — controlli prima del database', () => {
 
   it.each([
     ['attuale vuoto', { scontoAttuale: '', scontoNuovo: '5' }, ['scontoAttuale']],
+    ['nuovo vuoto', { scontoAttuale: '5', scontoNuovo: '' }, ['scontoNuovo']],
+    ['nuovo null', { scontoAttuale: '5', scontoNuovo: null }, ['scontoNuovo']],
     ['nuovo assente', { scontoAttuale: '5' }, ['scontoNuovo']],
     ['nuovo non valido', { scontoAttuale: '5', scontoNuovo: '1++2' }, ['scontoNuovo']],
     [
