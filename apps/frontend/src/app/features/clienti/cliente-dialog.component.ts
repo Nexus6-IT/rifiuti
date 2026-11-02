@@ -15,6 +15,7 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { Subscription } from 'rxjs'
+import { TipoProvvigione } from '../listino/listino.model'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { SedeDitta } from '../../shared/models/registry.model'
@@ -37,6 +38,7 @@ import { SceltaConNuovoComponent } from './scelta-con-nuovo.component'
 import { SottoDialogFatturazioneComponent } from './sotto-dialog-fatturazione.component'
 import { TabelleFatturazioneService } from './tabelle-fatturazione.service'
 import { messaggioErrore } from './tabelle/tabella-comune'
+import { OPZIONI_TIPO_PROVVIGIONE } from '../listino/vocabolario-listino'
 import { OPZIONI_ESIGIBILITA } from './vocabolario-clienti'
 
 const MESSAGGIO_PRIVATO = 'Per un cliente persona fisica indica nome e cognome.'
@@ -279,6 +281,67 @@ const senzaSpazi = (v: string | null): string | null =>
           [puoCreare]="puoScrivere()"
         />
 
+        <label for="cliente-dlg-listino">Listino</label>
+        <select
+          id="cliente-dlg-listino"
+          formControlName="listino"
+          class="p-inputtext"
+          [attr.aria-invalid]="erroreListino() ? 'true' : null"
+          aria-describedby="cliente-dlg-listino-errore"
+          data-testid="cliente-dlg-listino"
+        >
+          <option value="">Nessuno</option>
+          <option *ngFor="let n of listini" [value]="n">Listino {{ n }}</option>
+        </select>
+        <small
+          *ngIf="erroreListino() as e"
+          role="alert"
+          class="field-error"
+          id="cliente-dlg-listino-errore"
+          data-testid="cliente-dlg-listino-errore"
+          >{{ e }}</small
+        >
+
+        <label for="cliente-dlg-provvigione">Provvigione predefinita (%)</label>
+        <input
+          pInputText
+          id="cliente-dlg-provvigione"
+          formControlName="provvigionePredefinita"
+          inputmode="decimal"
+          maxlength="20"
+          [attr.aria-invalid]="erroreProvvigione() ? 'true' : null"
+          aria-describedby="cliente-dlg-provvigione-errore"
+          data-testid="cliente-dlg-provvigione"
+        />
+        <small
+          *ngIf="erroreProvvigione() as e"
+          role="alert"
+          class="field-error"
+          id="cliente-dlg-provvigione-errore"
+          data-testid="cliente-dlg-provvigione-errore"
+          >{{ e }}</small
+        >
+        <label for="cliente-dlg-tipo-provvigione">Provvigione calcolata</label>
+        <select
+          id="cliente-dlg-tipo-provvigione"
+          formControlName="tipoProvvigionePredefinita"
+          class="p-inputtext"
+          [attr.aria-invalid]="erroreTipo() ? 'true' : null"
+          aria-describedby="cliente-dlg-tipo-provvigione-errore"
+          data-testid="cliente-dlg-tipo-provvigione"
+        >
+          <option value="">Da indicare</option>
+          <option *ngFor="let o of tipiProvvigione" [value]="o.value">{{ o.label }}</option>
+        </select>
+        <small
+          *ngIf="erroreTipo() as e"
+          role="alert"
+          class="field-error"
+          id="cliente-dlg-tipo-provvigione-errore"
+          data-testid="cliente-dlg-tipo-provvigione-errore"
+          >{{ e }}</small
+        >
+
         <h3 class="sezione">Note</h3>
         <label for="cliente-dlg-note">Note</label>
         <input
@@ -358,9 +421,14 @@ export class ClienteDialogComponent implements OnChanges {
   @ViewChild(DittaRuoloFormComponent) private ditta?: DittaRuoloFormComponent
 
   readonly esigibilita = OPZIONI_ESIGIBILITA
+  readonly listini = [1, 2, 3, 4, 5, 6]
+  readonly tipiProvvigione = OPZIONI_TIPO_PROVVIGIONE
 
   readonly errore = signal<string | null>(null)
   readonly erroreNome = signal<string | null>(null)
+  readonly erroreListino = signal<string | null>(null)
+  readonly erroreProvvigione = signal<string | null>(null)
+  readonly erroreTipo = signal<string | null>(null)
   readonly inCorso = signal(false)
   readonly caricamento = signal(false)
   readonly sedi = signal<SedeDitta[]>([])
@@ -391,6 +459,9 @@ export class ClienteDialogComponent implements OnChanges {
     registroIvaId: new FormControl('', { nonNullable: true }),
     ritenutaPercentuale: new FormControl('', { nonNullable: true }),
     agenteId: new FormControl('', { nonNullable: true }),
+    listino: new FormControl('', { nonNullable: true }),
+    provvigionePredefinita: new FormControl('', { nonNullable: true }),
+    tipoProvvigionePredefinita: new FormControl<TipoProvvigione | ''>('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     sedeId: new FormControl('', { nonNullable: true }),
   })
@@ -413,6 +484,14 @@ export class ClienteDialogComponent implements OnChanges {
 
   constructor() {
     this.form.controls.codiceDestinatario.valueChanges.subscribe(() => this.aggiornaCampiSdi())
+    this.form.controls.provvigionePredefinita.valueChanges.subscribe(() => {
+      this.erroreProvvigione.set(null)
+      this.aggiornaTipoProvvigione(true)
+    })
+    this.form.controls.listino.valueChanges.subscribe(() => this.erroreListino.set(null))
+    this.form.controls.tipoProvvigionePredefinita.valueChanges.subscribe(() =>
+      this.erroreTipo.set(null)
+    )
   }
 
   get identificativi(): string {
@@ -435,6 +514,18 @@ export class ClienteDialogComponent implements OnChanges {
     const nessuno = codice === '' || codice === CODICE_NESSUNO
     this.abilita(this.form.controls.pecFatturazione, nessuno)
     this.abilita(this.form.controls.riferimentoAmministrazione, codice !== '' && !nessuno)
+  }
+
+  /** Il tipo della provvigione ha senso solo con una provvigione (R26: senza, parte null). */
+  private aggiornaTipoProvvigione(preimposta = false): void {
+    if (!this.puoScrivere()) return
+    const c = this.form.controls.tipoProvvigionePredefinita
+    const conProvvigione = this.cascata(this.form.controls.provvigionePredefinita.value) !== null
+    if (conProvvigione && c.disabled) {
+      c.enable({ emitEvent: false })
+      // Come il WinWaste ("S"): con una provvigione nuova il tipo parte da "sul prezzo scontato".
+      if (preimposta && c.value === '') c.setValue('SCONTATO', { emitEvent: false })
+    } else if (!conProvvigione && c.enabled) c.disable({ emitEvent: false })
   }
 
   /** Solo disabilita: il valore resta, così digitare il codice carattere per carattere non lo perde. */
@@ -469,6 +560,9 @@ export class ClienteDialogComponent implements OnChanges {
     this.ditta?.azzera()
     this.errore.set(null)
     this.erroreNome.set(null)
+    this.erroreListino.set(null)
+    this.erroreProvvigione.set(null)
+    this.erroreTipo.set(null)
     this.inCorso.set(false)
     this.caricamento.set(false)
     this.sedi.set([])
@@ -476,6 +570,7 @@ export class ClienteDialogComponent implements OnChanges {
     this.privato = false
     this.sediAperte = false
     this.aggiornaCampiSdi()
+    this.aggiornaTipoProvvigione()
     if (!this.puoScrivere()) this.form.disable({ emitEvent: false })
   }
 
@@ -507,12 +602,16 @@ export class ClienteDialogComponent implements OnChanges {
           registroIvaId: d.registroIvaId ?? '',
           ritenutaPercentuale: d.ritenutaPercentuale ?? '',
           agenteId: d.agenteId ?? '',
+          listino: d.listino == null ? '' : String(d.listino),
+          provvigionePredefinita: d.provvigionePredefinita ?? '',
+          tipoProvvigionePredefinita: d.tipoProvvigionePredefinita ?? '',
           note: d.note ?? '',
           sedeId: d.sedeFatturazione.id,
         })
         this.opzioni.impostaCorrenti(d)
         this.caricamento.set(false)
         this.aggiornaCampiSdi()
+        this.aggiornaTipoProvvigione()
         if (!this.puoScrivere()) this.form.disable({ emitEvent: false })
         this.caricaSedi()
       },
@@ -560,9 +659,60 @@ export class ClienteDialogComponent implements OnChanges {
     else this.salvaNuovo()
   }
 
+  /** Come `normalizzaCascata` del backend: niente spazi, virgole in punti ("10 + 5,5" -> "10+5.5"). */
+  private cascata(v: string): string | null {
+    const t = v.replace(/\s+/g, '').replace(/,/g, '.')
+    return t === '' ? null : t
+  }
+
   private ritenuta(v: string): string | null {
     const t = v.trim().replace(',', '.')
     return t === '' ? null : t
+  }
+
+  /** Listino scelto: intero 1-6, null se "Nessuno". */
+  private listinoScelto(v: string): number | null {
+    return v === '' ? null : Number(v)
+  }
+
+  /** Provvigione e tipo insieme: senza provvigione anche il tipo è null (R26). */
+  private provvigioneScelta(v: {
+    provvigionePredefinita: string
+    tipoProvvigionePredefinita: TipoProvvigione | ''
+  }): { provvigione: string | null; tipo: TipoProvvigione | null } {
+    const provvigione = this.cascata(v.provvigionePredefinita)
+    return {
+      provvigione,
+      tipo:
+        provvigione === null || v.tipoProvvigionePredefinita === ''
+          ? null
+          : v.tipoProvvigionePredefinita,
+    }
+  }
+
+  /**
+   * Gli errori 400 che parlano di listino o provvigione vanno sotto il loro campo, gli altri in
+   * fondo al form.
+   */
+  private mostraErrore(err: unknown, ripiego: string): void {
+    const m = (err as { error?: { message?: string | string[] } } | null)?.error?.message
+    const messaggi = (Array.isArray(m) ? m : typeof m === 'string' ? [m] : []).filter(
+      x => typeof x === 'string' && x.trim()
+    )
+    const listino: string[] = []
+    const provvigione: string[] = []
+    const tipo: string[] = []
+    const altri: string[] = []
+    for (const x of messaggi) {
+      if (/listino/i.test(x)) listino.push(x)
+      else if (/su cosa|tipo/i.test(x)) tipo.push(x)
+      else if (/provvigione/i.test(x)) provvigione.push(x)
+      else altri.push(x)
+    }
+    this.erroreListino.set(listino.join(' ') || null)
+    this.erroreProvvigione.set(provvigione.join(' ') || null)
+    this.erroreTipo.set(tipo.join(' ') || null)
+    this.errore.set(messaggi.length === 0 ? ripiego : altri.length > 0 ? altri.join(' ') : null)
   }
 
   private salvaNuovo(): void {
@@ -576,7 +726,11 @@ export class ClienteDialogComponent implements OnChanges {
     const dati: NuovoCliente = { ...raccolti.dati, esigibilitaIva: v.esigibilitaIva }
     if (raccolti.sedeId) dati.sedeId = raccolti.sedeId
     const sdi = this.recapitiSdi(v)
-    const facoltativi: Record<string, string | null> = {
+    const prov = this.provvigioneScelta(v)
+    const facoltativi: Record<string, string | number | null> = {
+      listino: this.listinoScelto(v.listino),
+      provvigionePredefinita: prov.provvigione,
+      tipoProvvigionePredefinita: prov.tipo,
       codice: vuoto(v.codice),
       codiceDestinatario: vuoto(v.codiceDestinatario)?.toUpperCase() ?? null,
       pecFatturazione: sdi.pec,
@@ -598,6 +752,9 @@ export class ClienteDialogComponent implements OnChanges {
 
     this.inCorso.set(true)
     this.errore.set(null)
+    this.erroreListino.set(null)
+    this.erroreProvvigione.set(null)
+    this.erroreTipo.set(null)
     this.servizio.clienti.crea(dati).subscribe({
       next: esito => {
         this.inCorso.set(false)
@@ -607,7 +764,7 @@ export class ClienteDialogComponent implements OnChanges {
       },
       error: err => {
         this.inCorso.set(false)
-        this.errore.set(messaggioErrore(err, 'Impossibile salvare il cliente.'))
+        this.mostraErrore(err, 'Impossibile salvare il cliente.')
       },
     })
   }
@@ -644,6 +801,15 @@ export class ClienteDialogComponent implements OnChanges {
     // L'IBAN si confronta senza spazi: "IT60 X…" e "IT60X…" sono lo stesso valore.
     const iban = vuoto(v.iban)
     if (senzaSpazi(iban) !== senzaSpazi(base.iban)) dati.iban = iban
+    const listino = this.listinoScelto(v.listino)
+    if (listino !== (base.listino ?? null)) dati.listino = listino
+    // R26: provvigione e tipo si azzerano insieme, o il CHECK del database dà 500.
+    const prov = this.provvigioneScelta(v)
+    const provBase = base.provvigionePredefinita ?? null
+    const tipoBase = base.tipoProvvigionePredefinita ?? null
+    if (prov.provvigione !== provBase) dati.provvigionePredefinita = prov.provvigione
+    if (prov.tipo !== tipoBase) dati.tipoProvvigionePredefinita = prov.tipo
+    if (prov.provvigione === null && provBase !== null) dati.tipoProvvigionePredefinita = null
     if (v.esigibilitaIva !== base.esigibilitaIva) dati.esigibilitaIva = v.esigibilitaIva
     if (v.sedeId && v.sedeId !== base.sedeFatturazione.id) dati.sedeId = v.sedeId
     return dati
@@ -658,6 +824,9 @@ export class ClienteDialogComponent implements OnChanges {
     }
     this.inCorso.set(true)
     this.errore.set(null)
+    this.erroreListino.set(null)
+    this.erroreProvvigione.set(null)
+    this.erroreTipo.set(null)
     this.servizio.clienti.modifica(c.id, dati).subscribe({
       next: salvato => {
         this.inCorso.set(false)
@@ -678,7 +847,7 @@ export class ClienteDialogComponent implements OnChanges {
           this.chiudi()
           return
         }
-        this.errore.set(messaggio)
+        this.mostraErrore(err, 'Impossibile salvare il cliente.')
       },
     })
   }

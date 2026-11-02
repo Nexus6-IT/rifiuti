@@ -56,6 +56,9 @@ const riga = (extra: Record<string, unknown> = {}) => ({
   bolloId: null,
   agenteId: null,
   ritenutaPercentuale: null,
+  listino: null,
+  provvigionePredefinita: null,
+  tipoProvvigionePredefinita: null,
   note: null,
   attivo: true,
   versione: 1,
@@ -313,6 +316,98 @@ describe('ClientiService (Prisma finto)', () => {
       const e = await errore(service.crea(T, U, dati))
       expect(e).toBeInstanceOf(BadRequestException)
       expect(e.message).toBe('Esiste già un cliente per questa ditta')
+    })
+  })
+
+  describe('listino e provvigione predefinita (4.2a, D7, R13, R26)', () => {
+    it('crea con listino 7: 400 col messaggio di D7, nessuna transazione', async () => {
+      const e = await errore(service.crea(T, U, { ...dati, listino: 7 }))
+      expect(e.getResponse()).toMatchObject({
+        error: 'CLIENTE_NON_VALIDO',
+        message: ['Il listino del cliente va da 1 a 6.'],
+      })
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('crea con provvigione senza tipo: 400 sul tipo, mai il CHECK del database', async () => {
+      const e = await errore(service.crea(T, U, { ...dati, provvigionePredefinita: '5' }))
+      expect(e.getResponse().message).toEqual([
+        'Indica su cosa si calcola la provvigione del cliente.',
+      ])
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('crea scrive i tre campi normalizzati', async () => {
+      tx.cliente.findFirst.mockResolvedValueOnce(null).mockResolvedValue(riga())
+      await service.crea(T, U, {
+        ...dati,
+        listino: 2,
+        provvigionePredefinita: '10 + 5,5',
+        tipoProvvigionePredefinita: 'LORDO',
+      })
+      expect(tx.cliente.create.mock.calls[0][0].data).toMatchObject({
+        listino: 2,
+        provvigionePredefinita: '10+5.5',
+        tipoProvvigionePredefinita: 'LORDO',
+      })
+    })
+
+    const modifica = (m: Record<string, unknown>) =>
+      service.modifica(T, U, C, { versione: 1, ...m } as any)
+
+    it('modifica del solo listino: scrive solo quello, audit col nome del campo', async () => {
+      await modifica({ listino: 4 })
+      const arg = tx.cliente.updateMany.mock.calls[0][0]
+      expect(arg.data).toEqual({ listino: 4, versione: { increment: 1 } })
+      expect(tx.activityLog.create.mock.calls[0][0].data.metadata).toEqual({
+        clienteId: C,
+        campi: ['listino'],
+      })
+    })
+
+    it('R26: provvigione null azzera anche il tipo', async () => {
+      tx.cliente.findFirst.mockResolvedValue(
+        riga({ provvigionePredefinita: '5', tipoProvvigionePredefinita: 'LORDO' })
+      )
+      await modifica({ provvigionePredefinita: null })
+      expect(tx.cliente.updateMany.mock.calls[0][0].data).toEqual({
+        provvigionePredefinita: null,
+        tipoProvvigionePredefinita: null,
+        versione: { increment: 1 },
+      })
+    })
+
+    it('provvigione null con un tipo esplicito: 400 R13', async () => {
+      tx.cliente.findFirst.mockResolvedValue(
+        riga({ provvigionePredefinita: '5', tipoProvvigionePredefinita: 'LORDO' })
+      )
+      const e = await errore(
+        modifica({ provvigionePredefinita: null, tipoProvvigionePredefinita: 'LORDO' })
+      )
+      expect(e.getResponse().message).toEqual([
+        'Il tipo di provvigione si indica solo con la provvigione.',
+      ])
+      expect(tx.cliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('solo il tipo su un cliente senza provvigione: 400 R13', async () => {
+      const e = await errore(modifica({ tipoProvvigionePredefinita: 'SCONTATO' }))
+      expect(e.getResponse().message).toEqual([
+        'Il tipo di provvigione si indica solo con la provvigione.',
+      ])
+    })
+
+    it('provvigione con formato errato: 400 sul formato', async () => {
+      const e = await errore(
+        modifica({ provvigionePredefinita: '1+2+3+4', tipoProvvigionePredefinita: 'LORDO' })
+      )
+      expect(e.getResponse().message).toHaveLength(1)
+      expect(e.getResponse().message[0]).toMatch(/provvigione predefinita/)
+    })
+
+    it('listino 0 in modifica: 400', async () => {
+      const e = await errore(modifica({ listino: 0 }))
+      expect(e.getResponse().message).toEqual(['Il listino del cliente va da 1 a 6.'])
     })
   })
 

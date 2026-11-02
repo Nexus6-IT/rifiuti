@@ -21,7 +21,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { TrasmettiLottoRegistroUseCase } from './trasmetti-lotto-registro.use-case'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
@@ -82,7 +82,7 @@ describe('TrasmettiLottoRegistroUseCase — Postgres reale + RENTRI finto', () =
   async function scenario(quanti = 3) {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Ciclo RENTRI SRL',
         country: 'IT',
       },

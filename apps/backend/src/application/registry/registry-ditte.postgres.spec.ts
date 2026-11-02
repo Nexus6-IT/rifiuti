@@ -36,7 +36,7 @@ import {
 import {
   CF_PERSONA_VALIDO,
   PIVA_VALIDA,
-  partitaIvaValida,
+  partitaIvaUnica,
 } from '../../test-support/anagrafiche-di-test'
 import { DitteService } from './ditte/ditte.service'
 import { CreateDestinatarioUseCase } from './use-cases/create-destinatario.use-case'
@@ -207,7 +207,7 @@ describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () 
 
   it('due creazioni concorrenti dello stesso produttore: una riesce, l altra 400, una sola ditta', async () => {
     const t = await azienda()
-    const piva = partitaIvaValida(Date.now() + 7)
+    const piva = partitaIvaUnica()
 
     const [a, b] = await Promise.all([
       nelTenant(t, () => r1.creaProduttore.execute(comandoProduttore({ partitaIVA: piva }))),
@@ -286,7 +286,7 @@ describe('Registry su ditte e sedi — Postgres reale, ruolo wasteflow_app', () 
     const p = await nelTenant(t, () => r1.creaProduttore.execute(comandoProduttore()))
     const altra = await nelTenant(t, () =>
       r1.creaDestinatario.execute(
-        comandoDestinatario({ partitaIVA: partitaIvaValida(Date.now() + 11), sede: SEDE_MILANO })
+        comandoDestinatario({ partitaIVA: partitaIvaUnica(), sede: SEDE_MILANO })
       )
     )
 

@@ -30,7 +30,7 @@ import {
   CF_PERSONA_OMOCODICO,
   CF_PERSONA_VALIDO,
   creaDittaConRuolo,
-  partitaIvaValida,
+  partitaIvaUnica,
 } from '../../../test-support/anagrafiche-di-test'
 import { righeCausaliSistema } from '../../registro/causali/catalogo-causali.fixture'
 import { ContractService } from '../../contracts/contract.service'
@@ -74,7 +74,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     contratti = new ContractService(app, logger as never)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now()),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'MUD ditte test SRL',
         country: 'IT',
       },
@@ -106,7 +106,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Storico SPA',
       ragioneSocialeStorica: 'Destinatario Storico SPA',
-      partitaIva: partitaIvaValida(Date.now() + 21),
+      partitaIva: partitaIvaUnica(),
       codiceFiscale: CF_PERSONA_VALIDO,
       via: 'Via Vecchia',
     })
@@ -124,7 +124,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
   })
 
   it('destinatario senza codice fiscale: il soggetto porta la P.IVA', async () => {
-    const piva = partitaIvaValida(Date.now() + 22)
+    const piva = partitaIvaUnica()
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', { partitaIva: piva })
 
     const info = await nelTenant(() => mud.caricaDestinatari(tenantId, [d.ruoloId]))
@@ -135,11 +135,11 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
   it('righe create dopo il deploy (colonne vecchie NULL): il MUD usa il nome attuale della ditta', async () => {
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Nuovo SPA',
-      partitaIva: partitaIvaValida(Date.now() + 41),
+      partitaIva: partitaIvaUnica(),
     })
     const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
       ragioneSociale: 'Trasporti Nuovi SRL',
-      partitaIva: partitaIvaValida(Date.now() + 42),
+      partitaIva: partitaIvaUnica(),
       numeroDocumento: 'MI/222222',
     })
     const [riga] = await owner.$queryRawUnsafe<Array<{ ragione_sociale: string | null }>>(
@@ -162,7 +162,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
       ragioneSociale: 'Trasporti Storici SRL',
       ragioneSocialeStorica: 'Trasporti Storici SRL',
-      partitaIva: partitaIvaValida(Date.now() + 23),
+      partitaIva: partitaIvaUnica(),
       codiceFiscale: CF_PERSONA_OMOCODICO,
       numeroDocumento: 'MI/123456',
     })
@@ -180,7 +180,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
   it('contratto: se la ditta cambia nome la lista mostra il nome nuovo', async () => {
     const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', {
       ragioneSociale: 'Produttore Prima',
-      partitaIva: partitaIvaValida(Date.now() + 24),
+      partitaIva: partitaIvaUnica(),
     })
     const t = await creaDittaConRuolo(owner, tenantId, 'TRASPORTATORE', {
       ragioneSociale: 'Trasporti Contratto',
@@ -223,7 +223,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
     // anagrafato il DR e' completo e le integrazioni non servono: restano per i soggetti senza
     // anagrafica. Qui si verifica che la chiave che il MUD userebbe (nome della riga di ruolo)
     // non cambi quando la ditta viene rinominata.
-    const piva = partitaIvaValida(Date.now() + 31)
+    const piva = partitaIvaUnica()
     const d = await creaDittaConRuolo(owner, tenantId, 'DESTINATARIO', {
       ragioneSociale: 'Destinatario Integrato SPA',
       ragioneSocialeStorica: 'Destinatario Integrato SPA',
@@ -263,7 +263,7 @@ describe('MUD e contratti su ditte e sedi — Postgres reale, ruolo wasteflow_ap
       receiverPartitaIva: null,
       carrierId: null,
       carrierName: 'Trasporti Srl',
-      carrierPartitaIva: partitaIvaValida(Date.now() + 32),
+      carrierPartitaIva: partitaIvaUnica(),
     }
     // Le query su movimenti, FIR e catalogo sono finte; destinatari e trasportatori sono quelli
     // veri del database (e' cio' che il task ha cambiato).

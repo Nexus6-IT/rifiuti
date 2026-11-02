@@ -21,7 +21,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { CodificheContrattoService } from './codifiche-contratto.service'
 import { RegistriIvaService } from './registri-iva.service'
@@ -67,7 +67,7 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Tabelle fatturazione SRL',
         country: 'IT',
       },

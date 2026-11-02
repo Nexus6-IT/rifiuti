@@ -23,7 +23,7 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-prisma.repository'
-import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { DitteService } from '../registry/ditte/ditte.service'
 import { ClientiService } from '../clienti/clienti.service'
@@ -67,7 +67,7 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Contratti SRL',
         country: 'IT',
       },

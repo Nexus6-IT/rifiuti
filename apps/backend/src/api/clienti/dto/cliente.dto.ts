@@ -32,6 +32,11 @@ import { IndirizzoDto } from '../../registry/dto/create-registry.dto'
 
 const ESIGIBILITA = ['IMMEDIATA', 'DIFFERITA', 'SCISSIONE']
 const MSG_SDI = 'Il codice destinatario SDI deve avere al massimo 7 caratteri.'
+const TIPI_PROVVIGIONE = ['SCONTATO', 'LORDO']
+const MSG_LISTINO = 'Il listino del cliente va da 1 a 6.'
+const MSG_PROVVIGIONE =
+  'La provvigione predefinita si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.'
+const MSG_TIPO_PROVVIGIONE = 'Il tipo di provvigione del cliente non è ammesso (scontato o lordo).'
 const MSG_RITENUTA =
   'La ritenuta è una stringa decimale col punto (es. "4.50"), con al massimo 2 cifre intere e 2 decimali.'
 
@@ -114,6 +119,33 @@ class DatiFiscaliClienteDto {
   @IsString({ message: MSG_RITENUTA })
   @Matches(/^\d{1,2}(\.\d{1,2})?$/, { message: MSG_RITENUTA })
   ritenutaPercentuale?: string | null
+
+  @ApiPropertyOptional({
+    nullable: true,
+    minimum: 1,
+    maximum: 6,
+    description: 'Listino del cliente (4.2a, D7); predefinito della riga, non del contratto',
+  })
+  @IsOptional()
+  @IsInt({ message: MSG_LISTINO })
+  @Min(1, { message: MSG_LISTINO })
+  @Max(6, { message: MSG_LISTINO })
+  listino?: number | null
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '10+5',
+    description: 'Provvigione predefinita a cascata (stringa, mai numero); va col tipo',
+  })
+  @IsOptional()
+  @IsString({ message: MSG_PROVVIGIONE })
+  @MaxLength(40, { message: MSG_PROVVIGIONE })
+  provvigionePredefinita?: string | null
+
+  @ApiPropertyOptional({ enum: TIPI_PROVVIGIONE, nullable: true })
+  @IsOptional()
+  @IsIn(TIPI_PROVVIGIONE, { message: MSG_TIPO_PROVVIGIONE })
+  tipoProvvigionePredefinita?: string | null
 
   @ApiPropertyOptional({ nullable: true, description: 'Solo per il cliente persona fisica' })
   @IsOptional()

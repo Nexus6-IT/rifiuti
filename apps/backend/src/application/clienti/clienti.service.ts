@@ -77,6 +77,9 @@ const CAMPI_FISCALI: ReadonlyArray<keyof DatiFiscaliCliente> = [
   'bolloId',
   'agenteId',
   'ritenutaPercentuale',
+  'listino',
+  'provvigionePredefinita',
+  'tipoProvvigionePredefinita',
   'nome',
   'cognome',
   'note',
@@ -160,6 +163,9 @@ function fiscaliDaRiga(r: RigaCliente): DatiFiscaliCliente {
     bolloId: r.bolloId,
     agenteId: r.agenteId,
     ritenutaPercentuale: r.ritenutaPercentuale === null ? null : r.ritenutaPercentuale.toFixed(2),
+    listino: r.listino,
+    provvigionePredefinita: r.provvigionePredefinita,
+    tipoProvvigionePredefinita: r.tipoProvvigionePredefinita,
     nome: r.nome,
     cognome: r.cognome,
     note: r.note,
@@ -329,8 +335,19 @@ export class ClientiService {
             k => (patch as Record<string, unknown>)[k] !== undefined
           )
           for (const k of richiesti) grezzo[k] = (patch as Record<string, unknown>)[k]
+          // R26: senza provvigione anche il tipo si azzera (il CHECK e' bidirezionale), salvo che
+          // il tipo sia indicato nella stessa richiesta: allora lo rifiuta la validazione (R13).
+          const chiaviPatch = Object.keys(patch) as Array<keyof DatiFiscaliCliente>
+          if (
+            patch.provvigionePredefinita === null &&
+            patch.tipoProvvigionePredefinita === undefined
+          ) {
+            grezzo.tipoProvvigionePredefinita = null
+            richiesti.push('tipoProvvigionePredefinita')
+            chiaviPatch.push('tipoProvvigionePredefinita')
+          }
           const nuovi = normalizzaDatiFiscali(grezzo)
-          const cambiati = (Object.keys(patch) as Array<keyof DatiFiscaliCliente>).filter(
+          const cambiati = chiaviPatch.filter(
             k => richiesti.includes(k) && !uguali(nuovi[k], originali[k])
           )
 
@@ -581,6 +598,9 @@ export class ClientiService {
       bolloId: r.bolloId,
       agenteId: r.agenteId,
       ritenutaPercentuale: r.ritenutaPercentuale === null ? null : r.ritenutaPercentuale.toFixed(2),
+      listino: r.listino,
+      provvigionePredefinita: r.provvigionePredefinita,
+      tipoProvvigionePredefinita: r.tipoProvvigionePredefinita,
       nome: r.nome,
       cognome: r.cognome,
       note: r.note,

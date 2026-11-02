@@ -808,4 +808,191 @@ describe('ClienteDialogComponent', () => {
       expect(fixture.componentInstance.form.getRawValue().codice).toBe('')
     })
   })
+
+  describe('listino e provvigione predefinita', () => {
+    const conProvvigione: Cliente = {
+      ...cliente,
+      listino: 3,
+      provvigionePredefinita: '5.00',
+      tipoProvvigionePredefinita: 'LORDO',
+    }
+
+    it('listino: nessuno più i listini da 1 a 6; tipo disabilitato senza provvigione', async () => {
+      await apri()
+      const opzioni = Array.from(q<HTMLSelectElement>('cliente-dlg-listino')!.options).map(
+        o => o.value
+      )
+      expect(opzioni).toEqual(['', '1', '2', '3', '4', '5', '6'])
+      expect(q<HTMLSelectElement>('cliente-dlg-tipo-provvigione')!.disabled).toBeTrue()
+      scrivi('cliente-dlg-provvigione', '4,5')
+      await stabilizza(fixture)
+      expect(q<HTMLSelectElement>('cliente-dlg-tipo-provvigione')!.disabled).toBeFalse()
+      scrivi('cliente-dlg-provvigione', '')
+      await stabilizza(fixture)
+      expect(q<HTMLSelectElement>('cliente-dlg-tipo-provvigione')!.disabled).toBeTrue()
+    })
+
+    it('nuovo: manda listino, provvigione con il punto e il tipo', async () => {
+      clienti.crea.and.returnValue(of({ cliente, dittaEsistente: false, avvisi: [] }))
+      await apri()
+      await compilaDitta()
+      scrivi('cliente-dlg-piva-input', PIVA)
+      scegli('cliente-dlg-listino', '2')
+      scrivi('cliente-dlg-provvigione', '4,5')
+      await stabilizza(fixture)
+      scegli('cliente-dlg-tipo-provvigione', 'SCONTATO')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = clienti.crea.calls.mostRecent().args[0]
+      expect(corpo.listino).toBe(2)
+      expect(corpo.provvigionePredefinita).toBe('4.5')
+      expect(corpo.tipoProvvigionePredefinita).toBe('SCONTATO')
+    })
+
+    it('nuovo senza i tre campi: non li manda', async () => {
+      clienti.crea.and.returnValue(of({ cliente, dittaEsistente: false, avvisi: [] }))
+      await apri()
+      await compilaDitta()
+      scrivi('cliente-dlg-piva-input', PIVA)
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = clienti.crea.calls.mostRecent().args[0]
+      expect('listino' in corpo).toBeFalse()
+      expect('provvigionePredefinita' in corpo).toBeFalse()
+      expect('tipoProvvigionePredefinita' in corpo).toBeFalse()
+    })
+
+    it('modifica: mostra i valori letti', async () => {
+      clienti.get.and.returnValue(of(conProvvigione))
+      await apri(conProvvigione)
+      expect(valore('cliente-dlg-listino')).toBe('3')
+      expect(q<HTMLInputElement>('cliente-dlg-provvigione')!.value).toBe('5.00')
+      expect(valore('cliente-dlg-tipo-provvigione')).toBe('LORDO')
+    })
+
+    it('modifica: senza cambiare i tre campi non li manda', async () => {
+      clienti.get.and.returnValue(of(conProvvigione))
+      clienti.modifica.and.returnValue(of(conProvvigione))
+      await apri(conProvvigione)
+      scrivi('cliente-dlg-note', 'nuova')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(clienti.modifica.calls.mostRecent().args[1]).toEqual({ note: 'nuova', versione: 4 })
+    })
+
+    it('modifica: azzerare la provvigione azzera anche il tipo (R26), il listino a nessuno è null', async () => {
+      clienti.get.and.returnValue(of(conProvvigione))
+      clienti.modifica.and.returnValue(of(conProvvigione))
+      await apri(conProvvigione)
+      scegli('cliente-dlg-listino', '')
+      scrivi('cliente-dlg-provvigione', '')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(clienti.modifica.calls.mostRecent().args[1]).toEqual({
+        listino: null,
+        provvigionePredefinita: null,
+        tipoProvvigionePredefinita: null,
+        versione: 4,
+      })
+    })
+
+    it('modifica: cambio del solo tipo', async () => {
+      clienti.get.and.returnValue(of(conProvvigione))
+      clienti.modifica.and.returnValue(of(conProvvigione))
+      await apri(conProvvigione)
+      scegli('cliente-dlg-tipo-provvigione', 'SCONTATO')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(clienti.modifica.calls.mostRecent().args[1]).toEqual({
+        tipoProvvigionePredefinita: 'SCONTATO',
+        versione: 4,
+      })
+    })
+
+    it('cascata: spazi tolti e tutte le virgole in punti, anche a due decimali', async () => {
+      clienti.crea.and.returnValue(of({ cliente, dittaEsistente: false, avvisi: [] }))
+      await apri()
+      await compilaDitta()
+      scrivi('cliente-dlg-piva-input', PIVA)
+      scrivi('cliente-dlg-provvigione', ' 10,5 + 2,25 ')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(clienti.crea.calls.mostRecent().args[0].provvigionePredefinita).toBe('10.5+2.25')
+    })
+
+    it('modifica: la cascata già salvata, riscritta con spazi o virgole, non è una modifica', async () => {
+      const salvata = { ...conProvvigione, provvigionePredefinita: '10.5+2.5' }
+      clienti.get.and.returnValue(of(salvata))
+      await apri(salvata)
+      scrivi('cliente-dlg-provvigione', '10,5 + 2,5')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(clienti.modifica).not.toHaveBeenCalled()
+    })
+
+    it('digitando una provvigione il tipo vuoto parte da "sul prezzo scontato"', async () => {
+      await apri()
+      expect(valore('cliente-dlg-tipo-provvigione')).toBe('')
+      scrivi('cliente-dlg-provvigione', '5')
+      await stabilizza(fixture)
+      expect(valore('cliente-dlg-tipo-provvigione')).toBe('SCONTATO')
+      scegli('cliente-dlg-tipo-provvigione', 'LORDO')
+      scrivi('cliente-dlg-provvigione', '55')
+      await stabilizza(fixture)
+      expect(valore('cliente-dlg-tipo-provvigione')).toBe('LORDO')
+    })
+
+    it('la provvigione accetta al massimo 20 caratteri', async () => {
+      await apri()
+      expect(q('cliente-dlg-provvigione')!.getAttribute('maxlength')).toBe('20')
+    })
+
+    it('VIEWER: i tre campi sono in sola lettura', async () => {
+      ruolo('VIEWER')
+      clienti.get.and.returnValue(of(conProvvigione))
+      await apri(conProvvigione)
+      expect(q<HTMLSelectElement>('cliente-dlg-listino')!.disabled).toBeTrue()
+      expect(q<HTMLInputElement>('cliente-dlg-provvigione')!.disabled).toBeTrue()
+      expect(q<HTMLSelectElement>('cliente-dlg-tipo-provvigione')!.disabled).toBeTrue()
+    })
+
+    it('400 sul listino e sulla provvigione: il messaggio sta sul campo, il resto in fondo', async () => {
+      clienti.get.and.returnValue(of(conProvvigione))
+      clienti.modifica.and.returnValue(
+        throwError(() => ({
+          status: 400,
+          error: {
+            error: 'CLIENTE_NON_VALIDO',
+            message: [
+              'Il listino del cliente va da 1 a 6.',
+              'Indica su cosa si calcola la provvigione del cliente.',
+              'La PEC non è valida.',
+            ],
+          },
+        }))
+      )
+      await apri(conProvvigione)
+      scrivi('cliente-dlg-note', 'x')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('cliente-dlg-listino-errore')!.textContent).toContain('va da 1 a 6')
+      expect(q('cliente-dlg-tipo-provvigione-errore')!.textContent).toContain('Indica su cosa')
+      expect(q('cliente-dlg-listino')!.getAttribute('aria-invalid')).toBe('true')
+      // Correggere il campo toglie il suo errore.
+      scegli('cliente-dlg-listino', '2')
+      await stabilizza(fixture)
+      expect(q('cliente-dlg-listino-errore')).toBeNull()
+      expect(q('cliente-dlg-errore')!.textContent).toContain('La PEC non è valida.')
+      expect(q('cliente-dlg-errore')!.textContent).not.toContain('listino')
+      expect(visibilita).not.toContain(false)
+    })
+  })
 })

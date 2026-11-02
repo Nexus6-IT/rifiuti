@@ -28,7 +28,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { AccodaTrasmissioneRentriUseCase } from './accoda-trasmissione-rentri.use-case'
 import {
   IdentificativoGiaUsatoError,
@@ -112,7 +112,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
   async function azienda(opzioni: { identificativo?: string | null } = {}) {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Azioni RENTRI SRL',
         country: 'IT',
       },
@@ -209,7 +209,7 @@ describe('Azioni manuali sul registro verso RENTRI — Postgres reale, ruolo was
     await app.onModuleInit()
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Utente azioni RENTRI SRL',
         country: 'IT',
       },

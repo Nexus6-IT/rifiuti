@@ -7,6 +7,7 @@ import { TabelleFatturazioneComponent } from './tabelle-fatturazione.component'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
+import { ListinoService } from '../../listino/listino.service'
 import { tabellaFinta } from './tabelle-test-utils'
 
 describe('TabelleFatturazioneComponent', () => {
@@ -32,6 +33,10 @@ describe('TabelleFatturazioneComponent', () => {
           },
         },
         {
+          provide: ListinoService,
+          useValue: { codiciIva: t(), codifiche: t(), addebiti: t() },
+        },
+        {
           provide: ToastService,
           useValue: jasmine.createSpyObj('ToastService', ['error', 'success']),
         },
@@ -40,7 +45,7 @@ describe('TabelleFatturazioneComponent', () => {
     })
   })
 
-  it("sette schede nell'ordine di D20", async () => {
+  it("nove schede nell'ordine di D20", async () => {
     const h = await RouterTestingHarness.create('/clienti/tabelle')
     const intestazioni = Array.from(h.routeNativeElement!.querySelectorAll('.p-tabview-nav li'))
       .map(li => li.textContent!.trim())
@@ -53,6 +58,8 @@ describe('TabelleFatturazioneComponent', () => {
       'Testi di fatturazione',
       'Categorie e tipi',
       'Motivi di annullo',
+      'Codici IVA',
+      'Gruppi e categorie di addebito',
     ])
   })
 
@@ -65,6 +72,21 @@ describe('TabelleFatturazioneComponent', () => {
     h.detectChanges()
     await h.fixture.whenStable()
     expect(TestBed.inject(Router).url).toContain('scheda=spese')
+  })
+
+  it('la scheda ?scheda=iva mostra i codici IVA', async () => {
+    const h = await RouterTestingHarness.create('/clienti/tabelle?scheda=iva')
+    expect(
+      h.routeNativeElement!.querySelector('.p-tabview-nav li.p-highlight')!.textContent
+    ).toContain('Codici IVA')
+    expect(h.routeNativeElement!.querySelector('[data-testid="iva-nuovo"]')).not.toBeNull()
+  })
+
+  it('la scheda ?scheda=addebiti mostra la scelta del genere', async () => {
+    const h = await RouterTestingHarness.create('/clienti/tabelle?scheda=addebiti')
+    expect(
+      h.routeNativeElement!.querySelector('[data-testid="codifiche-add-genere"]')
+    ).not.toBeNull()
   })
 
   it("'Categorie e tipi' mostra i due generi uno sopra l'altro", async () => {

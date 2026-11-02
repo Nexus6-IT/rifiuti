@@ -22,7 +22,7 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-prisma.repository'
-import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { DitteService } from '../registry/ditte/ditte.service'
 import { AgentiService } from './agenti.service'
 
@@ -66,7 +66,7 @@ describe('AgentiService — Postgres reale, ruolo wasteflow_app', () => {
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Agenti SRL',
         country: 'IT',
       },
@@ -89,7 +89,7 @@ describe('AgentiService — Postgres reale, ruolo wasteflow_app', () => {
   const indirizzo = { via: 'Via Roma', civico: '1', cap: '00100', citta: 'Roma', provincia: 'RM' }
   const nuovo = (extra: Record<string, unknown> = {}) => ({
     ragioneSociale: `Agenzia ${++n}`,
-    partitaIva: partitaIvaValida(Date.now() + ++n),
+    partitaIva: partitaIvaUnica(),
     indirizzo,
     ...extra,
   })
@@ -136,7 +136,7 @@ describe('AgentiService — Postgres reale, ruolo wasteflow_app', () => {
 
   it('agente su una ditta già produttore: stessa ditta, ruoli con produttoreId e agenteId', async () => {
     const { tenantId, utenteId } = await azienda()
-    const piva = partitaIvaValida(Date.now() + ++n)
+    const piva = partitaIvaUnica()
     const prod = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', {
       partitaIva: piva,
       ragioneSociale: 'Ditta mista',

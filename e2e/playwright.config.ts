@@ -23,20 +23,27 @@ if (targetingProduction && process.env.E2E_ALLOW_PROD_RUN !== '1') {
   )
 }
 
+// Su un runner CI lento (run 2 del 2026-11-01: vecchio nodo a 4 core, perfino `page.goto` di spec
+// non toccati superava i 15 s) i timeout di default sono troppo stretti per l'infrastruttura, non
+// per i test. In CI si alzano di poco; in locale restano quelli stretti, che fanno emergere presto
+// una regressione vera. Le attese che contano (salvataggi, ricerche) sono comunque agganciate alle
+// risposte del server (vedi utils/attese.ts), non al tempo.
+const inCi = !!process.env.CI
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  timeout: 30_000,
+  timeout: inCi ? 60_000 : 30_000,
   // Teardown globale: pulisce le risorse registrate durante la run (vedi
   // fixtures/risorse.ts) e fallisce l'intera run se ne resta un residuo
   // (vedi scripts/verifica-residuo.ts). Idempotente — vale anche dopo una
   // run interrotta a metà.
   globalTeardown: require.resolve('./scripts/verifica-residuo.ts'),
   expect: {
-    timeout: 5_000,
+    timeout: inCi ? 10_000 : 5_000,
   },
   reporter: [['html', { open: 'never', outputFolder: '../e2e-report' }], ['list']],
   outputDir: '../test-results',
@@ -45,8 +52,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    navigationTimeout: 15_000,
-    actionTimeout: 10_000,
+    navigationTimeout: inCi ? 30_000 : 15_000,
+    actionTimeout: inCi ? 15_000 : 10_000,
   },
   // Chromium è il progetto di default (script `npm run e2e`). Firefox/WebKit
   // sono definiti per uso opzionale/esplicito: `npx playwright test --project=firefox`

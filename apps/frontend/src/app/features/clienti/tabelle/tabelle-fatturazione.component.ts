@@ -9,9 +9,21 @@ import { SpeseAccessorieComponent } from './spese-accessorie.component'
 import { RegistriIvaComponent } from './registri-iva.component'
 import { TestiFatturazioneComponent } from './testi-fatturazione.component'
 import { CodificheContrattoComponent } from './codifiche-contratto.component'
+import { CodiciIvaTabComponent } from '../../listino/tabelle/codici-iva-tab.component'
+import { CodificheAddebitoTabComponent } from '../../listino/tabelle/codifiche-addebito-tab.component'
 
 /** Schede nell'ordine di D20. */
-const SCHEDE = ['condizioni', 'conti', 'spese', 'registri', 'testi', 'categorie', 'motivi'] as const
+const SCHEDE = [
+  'condizioni',
+  'conti',
+  'spese',
+  'registri',
+  'testi',
+  'categorie',
+  'motivi',
+  'iva',
+  'addebiti',
+] as const
 
 @Component({
   selector: 'app-tabelle-fatturazione',
@@ -24,10 +36,12 @@ const SCHEDE = ['condizioni', 'conti', 'spese', 'registri', 'testi', 'categorie'
     RegistriIvaComponent,
     TestiFatturazioneComponent,
     CodificheContrattoComponent,
+    CodiciIvaTabComponent,
+    CodificheAddebitoTabComponent,
   ],
   template: `
     <h1>Tabelle di fatturazione</h1>
-    <p-tabView [activeIndex]="indiceAttivo()" (onChange)="scegli($event.index)">
+    <p-tabView [scrollable]="true" [activeIndex]="indiceAttivo()" (onChange)="scegli($event.index)">
       <p-tabPanel header="Condizioni di pagamento">
         <ng-template pTemplate="content"><app-condizioni-pagamento /></ng-template>
       </p-tabPanel>
@@ -53,6 +67,12 @@ const SCHEDE = ['condizioni', 'conti', 'spese', 'registri', 'testi', 'categorie'
         <ng-template pTemplate="content"
           ><app-codifiche-contratto genere="MOTIVO_ANNULLO"
         /></ng-template>
+      </p-tabPanel>
+      <p-tabPanel header="Codici IVA">
+        <ng-template pTemplate="content"><app-codici-iva-tab /></ng-template>
+      </p-tabPanel>
+      <p-tabPanel header="Gruppi e categorie di addebito">
+        <ng-template pTemplate="content"><app-codifiche-addebito-tab /></ng-template>
       </p-tabPanel>
     </p-tabView>
   `,

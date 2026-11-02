@@ -623,8 +623,27 @@ Prima di un ripristino dello schema controllare, **come owner** (con RLS FORCE i
 applicativo vedrebbe 0 righe): `SELECT tenant_id, count(*) FROM clienti GROUP BY 1` e lo stesso
 per `agenti`, `contratti_cliente` e `allegati_contratto_cliente`; se non sono vuote i dati si
 perdono, quindi esportarli prima (gli allegati sono file PDF nel database: `COPY ... TO` con
-`encode(contenuto, 'base64')`). Si ripristina questa PRIMA della `20261102200000_...`. Il
+`encode(contenuto, 'base64')`). Si ripristina questa PRIMA della `20261102200000_...`. Se e'
+applicata la `20261102300000_listino_archivio_addebiti`, ripristinare prima quella: aggiunge colonne
+a `clienti`, quindi il suo `DROP COLUMN` fallirebbe dopo il `DROP TABLE clienti`. Il
 ripristino a mano dello schema e' nel commento della migration.
+
+**Archivio addebiti e codici IVA** (Fase 4 pezzo 2a, prima migration
+`20261102300000_listino_archivio_addebiti`: `codici_iva`, `codifiche_addebito`, `addebiti`,
+`prezzi_listino_addebito`, piu' le colonne `listino`, `provvigione_predefinita` e
+`tipo_provvigione_predefinita` su `clienti`). Rollback del codice: innocuo, il codice vecchio ignora
+tabelle e colonne nuove. Prima di un ripristino dello schema controllare, **come owner** (con RLS
+FORCE il ruolo applicativo vedrebbe 0 righe): `SELECT tenant_id, count(*) FROM addebiti GROUP BY 1` e
+lo stesso per `codici_iva`, `codifiche_addebito` e `prezzi_listino_addebito`, piu'
+`SELECT count(*) FROM clienti WHERE listino IS NOT NULL OR provvigione_predefinita IS NOT NULL`: se
+non sono vuote i dati si perdono, quindi esportarli prima (`COPY ... TO`). Ordine: si ripristina
+prima la seconda migration del pezzo (`20261102300100_listino_elenchi_righe`, che cita queste
+tabelle), poi questa. Il ripristino a mano dello schema e' nel commento della migration. Attenzione
+al deploy: la migration fa `ALTER TABLE clienti ADD COLUMN` dentro la sua transazione e il lock
+(ACCESS EXCLUSIVE) dura fino al commit, quindi per quei pochi istanti letture e scritture sui
+clienti aspettano; `NOT VALID` + `VALIDATE` dei due CHECK non cambia questo, perche' il lock
+dell'`ALTER TABLE` resta. `lock_timeout` di 5 secondi fa fallire la migration invece di accodare
+tutto dietro una transazione lunga su `clienti`: si rilancia il deploy.
 
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa

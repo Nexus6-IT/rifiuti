@@ -143,3 +143,40 @@ describe('ElencoClientiQueryDto', () => {
     expect((await messaggi(ElencoClientiQueryDto, { soloAttivi: 'si' })).length).toBeGreaterThan(0)
   })
 })
+
+describe('listino e provvigione predefinita nei DTO (4.2a, D7)', () => {
+  it('accetta i tre campi e null (svuota), in creazione e modifica', async () => {
+    const corpo = {
+      listino: 3,
+      provvigionePredefinita: '10+5',
+      tipoProvvigionePredefinita: 'LORDO',
+    }
+    expect(await messaggi(CreaClienteDto, { ...base, ...corpo })).toEqual([])
+    expect(await messaggi(ModificaClienteDto, { ...corpo, versione: 1 })).toEqual([])
+    expect(
+      await messaggi(ModificaClienteDto, {
+        listino: null,
+        provvigionePredefinita: null,
+        tipoProvvigionePredefinita: null,
+        versione: 1,
+      })
+    ).toEqual([])
+  })
+
+  it('listino fuori da 1-6 o non intero: messaggio di D7', async () => {
+    for (const listino of [0, 7, 1.5, '2']) {
+      expect(await messaggi(ModificaClienteDto, { listino, versione: 1 })).toContain(
+        'Il listino del cliente va da 1 a 6.'
+      )
+    }
+  })
+
+  it('provvigione numerica rifiutata (mai number), tipo non ammesso rifiutato', async () => {
+    const m = await messaggi(ModificaClienteDto, { provvigionePredefinita: 5, versione: 1 })
+    expect(m.length).toBeGreaterThan(0)
+    expect(m.join(' ')).not.toMatch(/tipo|listino/i)
+    expect(
+      await messaggi(ModificaClienteDto, { tipoProvvigionePredefinita: 'NETTO', versione: 1 })
+    ).toEqual(['Il tipo di provvigione del cliente non è ammesso (scontato o lordo).'])
+  })
+})

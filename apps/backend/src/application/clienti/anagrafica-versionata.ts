@@ -7,7 +7,9 @@
  * - `confrontaVersione`: controllo anticipato, prima di validare e scrivere.
  * - `traduciErrorePrisma` (async): P2002 su un vincolo noto -> 409 col codice del vincolo (con la RLS
  *   Postgres non da' il nome del vincolo: vedi il commento nel corpo); P2003 -> 409
- *   `<PREFISSO>_IN_USO`; tutto il resto viene rilanciato.
+ *   `<PREFISSO>_IN_USO`; P2028 (timeout della transazione), P2034 (conflitto di scrittura) e i raw
+ *   40P01 (deadlock) / 55P03 (lock timeout) -> 409 `OPERAZIONE_CONCORRENTE` "riprova";
+ *   tutto il resto viene rilanciato.
  *
  * Gli errori sono `ConflictException` con `error` = codice: il filtro globale lo riporta nel body.
  */
@@ -102,6 +104,18 @@ export async function traduciErrorePrisma(
           message: vincoli[nome].messaggio,
         })
       }
+    }
+    const codiceDb = (err.meta as { code?: unknown } | undefined)?.code
+    if (
+      err.code === 'P2028' ||
+      err.code === 'P2034' ||
+      codiceDb === '40P01' ||
+      codiceDb === '55P03'
+    ) {
+      throw new ConflictException({
+        error: 'OPERAZIONE_CONCORRENTE',
+        message: "L'operazione è stata interrotta da un'altra in corso: riprova.",
+      })
     }
     if (err.code === 'P2003') {
       if (e.inUso) {

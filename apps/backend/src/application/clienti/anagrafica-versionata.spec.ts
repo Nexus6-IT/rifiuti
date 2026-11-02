@@ -201,6 +201,26 @@ describe('anagrafica-versionata', () => {
       })
     })
 
+    it.each([
+      ['P2028', errorePrisma('P2028')],
+      ['P2034', errorePrisma('P2034')],
+      ['40P01 (deadlock dal raw)', errorePrisma('P2010', { code: '40P01' })],
+      ['55P03 (lock timeout dal raw)', errorePrisma('P2010', { code: '55P03' })],
+    ])('%s: 409 in italiano con "riprova", mai un 500', async (_nome, errore) => {
+      const m = await eccezione(() => traduciErrorePrisma(errore, CONTO, vincoli))
+      expect(m).toBeInstanceOf(ConflictException)
+      expect(m.getResponse()).toEqual({
+        error: 'OPERAZIONE_CONCORRENTE',
+        message: "L'operazione è stata interrotta da un'altra in corso: riprova.",
+      })
+    })
+
+    it('un P2010 con altro codice resta un errore da rilanciare', async () => {
+      const originale = errorePrisma('P2010', { code: '23514' })
+      const e = await eccezione(() => traduciErrorePrisma(originale, CONTO, vincoli))
+      expect(e).toBe(originale)
+    })
+
     it('un errore qualunque viene rilanciato così com’è', async () => {
       const originale = new Error('boom')
       const e = await eccezione(() => traduciErrorePrisma(originale, CONTO, vincoli))

@@ -22,7 +22,7 @@ import {
 
 /**
  * Elenco dei clienti: ricerca con debounce, paginazione lazy, disattiva ed elimina. Da qui si
- * raggiungono gli agenti e le tabelle di fatturazione (D20).
+ * raggiungono gli agenti, le tabelle di fatturazione (D20) e l'archivio degli addebiti (D28).
  */
 @Component({
   selector: 'app-clienti-list',
@@ -65,6 +65,13 @@ import {
             [outlined]="true"
             (onClick)="vai('/clienti/tabelle')"
             data-testid="clienti-tabelle"
+          />
+          <p-button
+            label="Archivio addebiti"
+            icon="pi pi-list"
+            [outlined]="true"
+            (onClick)="vai('/clienti/addebiti')"
+            data-testid="clienti-addebiti"
           />
           <p-button
             *ngIf="puoScrivere()"

@@ -15,7 +15,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { DettaglioTrasmissioneRentriService } from './dettaglio-trasmissione-rentri.service'
 import { MovimentoNonTrovatoError } from './errori-azioni-rentri-registro'
 
@@ -32,7 +32,7 @@ describe('DettaglioTrasmissioneRentriService — Postgres reale', () => {
   ) {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Dettaglio SRL',
         country: 'IT',
       },

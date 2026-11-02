@@ -4,6 +4,13 @@ import { hasRoleCredentials, getApiUrl } from '../../utils/env'
 import { apiLogin, apiGet, apiDelete, ApiClientError } from '../../utils/api-client'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
+import {
+  ATTESA_SERVER,
+  aggiungiRata,
+  attendiElenco,
+  attendiRisposta,
+  cliccaEChiudi,
+} from '../../utils/attese'
 
 /**
  * E2E — Contratto cliente (pezzo 4.1b, Task 28): dalle tabelle di fatturazione all'annullo.
@@ -138,13 +145,13 @@ function dialogo(page: Page, nome: string | RegExp): Locator {
 }
 
 /** Riempie `campo` e verifica che `Salva` si abiliti: se il form viene azzerato si riparte. */
-async function compilaESalva(dlg: Locator, riempi: () => Promise<void>): Promise<void> {
+async function compilaESalva(page: Page, dlg: Locator, riempi: () => Promise<void>): Promise<void> {
   await expect(async () => {
     await riempi()
     await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
-  }).toPass({ timeout: 10_000 })
-  await dlg.getByRole('button', { name: 'Salva' }).click()
-  await expect(dlg).toBeHidden()
+  }).toPass({ timeout: 20_000 })
+  // Risposta del salvataggio (attesa avviata prima del click), poi chiusura del dialog.
+  await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 }
 
 /** Sceglie in un `<select>` nativo la voce il cui testo contiene `testo`. */
@@ -163,6 +170,12 @@ async function apriContratti(page: Page): Promise<void> {
   await expect(
     contenuto(page).getByRole('heading', { level: 1, name: 'Contratti clienti' })
   ).toBeVisible()
+  // Precondizione del gruppo seriale: il contratto lo crea il test "contratto trimestrale". Se
+  // manca, si fallisce subito con la causa vera invece che con un timeout a valle.
+  await expect(
+    rigaContratto(page),
+    `precondizione: il contratto ${dati.numero} non esiste (il test "contratto trimestrale" non e' riuscito a crearlo)`
+  ).toHaveCount(1, { timeout: ATTESA_SERVER })
 }
 
 /** Apre "Modifica" sul contratto e attende che il dialog abbia letto il contratto. */
@@ -170,7 +183,7 @@ async function apriModificaContratto(page: Page): Promise<Locator> {
   await rigaContratto(page).getByRole('button', { name: 'Modifica' }).click()
   const dlg = dialogo(page, 'Modifica contratto')
   await expect(dlg).toBeVisible()
-  await expect(dlg.getByText('Caricamento…')).toBeHidden()
+  await expect(dlg.getByText('Caricamento…')).toBeHidden({ timeout: ATTESA_SERVER })
   return dlg
 }
 
@@ -234,24 +247,26 @@ test.describe('Contratto cliente — operatore', () => {
     await contenuto(page).getByRole('tab', { name: 'Condizioni di pagamento' }).click()
     await contenuto(page).getByRole('button', { name: 'Nuova condizione' }).click()
     const cond = dialogo(page, 'Nuova condizione di pagamento')
-    await cond.getByLabel('Codice').fill(dati.condizione)
-    await cond.getByLabel('Descrizione').fill(nomi.condizione)
-    const giorno = cond.getByLabel('Rate (giorni dalla fattura)')
-    await giorno.fill('30')
-    await cond.getByRole('button', { name: 'Aggiungi rata' }).click()
-    await giorno.fill('60')
-    await cond.getByRole('button', { name: 'Aggiungi rata' }).click()
+    // Campi compilati durante l'apertura del dialog possono andare persi su un runner lento:
+    // si ricompila finche' i valori restano e `Salva` e' abilitato.
+    await expect(async () => {
+      await cond.getByLabel('Codice').fill(dati.condizione)
+      await cond.getByLabel('Descrizione').fill(nomi.condizione)
+      await expect(cond.getByLabel('Codice')).toHaveValue(dati.condizione, { timeout: 1_000 })
+      await expect(cond.getByRole('button', { name: 'Salva' })).toBeEnabled({ timeout: 1_000 })
+    }).toPass({ timeout: 20_000 })
+    await aggiungiRata(cond, '30')
+    await aggiungiRata(cond, '60')
     await cond.getByText('Fine mese', { exact: true }).click()
-    await cond.getByRole('button', { name: 'Salva' }).click()
-    await expect(cond).toBeHidden()
+    await cliccaEChiudi(page, cond.getByRole('button', { name: 'Salva' }), cond)
     await expect(
       contenuto(page).getByRole('row', { name: new RegExp(dati.condizione) })
-    ).toContainText('30-60 gg fine mese')
+    ).toContainText('30-60 gg fine mese', { timeout: ATTESA_SERVER })
 
     await contenuto(page).getByRole('tab', { name: 'Registri IVA' }).click()
     await contenuto(page).getByRole('button', { name: 'Nuovo registro' }).click()
     const reg = dialogo(page, 'Nuovo registro IVA')
-    await compilaESalva(reg, async () => {
+    await compilaESalva(page, reg, async () => {
       await reg.getByLabel('Codice').fill(dati.registro)
       await reg.getByLabel('Descrizione').fill(nomi.registro)
     })
@@ -292,7 +307,7 @@ test.describe('Contratto cliente — operatore', () => {
     await dlg.getByRole('button', { name: 'Nuovo conto' }).click()
     const conto = dialogo(page, 'Nuovo conto corrente')
     await expect(conto).toBeVisible()
-    await compilaESalva(conto, async () => {
+    await compilaESalva(page, conto, async () => {
       await conto.getByLabel('Codice').fill(dati.conto)
       await conto.getByLabel('Descrizione').fill(nomi.conto)
       await conto.getByLabel('Banca').fill('Banca di prova')
@@ -304,7 +319,7 @@ test.describe('Contratto cliente — operatore', () => {
     await dlg.getByRole('button', { name: 'Nuovo bollo' }).click()
     const bollo = dialogo(page, 'Nuova spesa accessoria')
     await expect(bollo.getByTestId('spesa-dlg-tipo-fisso')).toHaveText('Bollo')
-    await compilaESalva(bollo, async () => {
+    await compilaESalva(page, bollo, async () => {
       await bollo.getByLabel('Codice').fill(dati.bollo)
       await bollo.getByLabel('Descrizione').fill(nomi.bollo)
       await bollo.getByLabel('Importo (euro)').fill('2,00')
@@ -312,11 +327,18 @@ test.describe('Contratto cliente — operatore', () => {
     await expect(dlg.getByLabel('Bollo', { exact: true })).toHaveValue(/.+/)
 
     await expect(dlg.getByRole('button', { name: 'Salva' })).toBeEnabled()
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    // Dopo il salvataggio l'elenco dei clienti si ricarica: si attende quella GET, non il tempo.
+    const elencoRicaricato = attendiElenco(page, /\/clienti$/)
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
+    await elencoRicaricato
 
+    // L'elenco e' paginato e conserva i clienti delle run precedenti (anche disattivati): la riga
+    // nuova puo' stare in un'altra pagina. Si cerca per nome e si attende la risposta filtrata.
+    const filtrato = attendiElenco(page, /\/clienti$/)
+    await contenuto(page).getByRole('searchbox', { name: 'Cerca un cliente' }).fill(nomi.cliente)
+    await filtrato
     const riga = contenuto(page).getByRole('row', { name: new RegExp(nomi.cliente) })
-    await expect(riga).toContainText(dati.partitaIva)
+    await expect(riga).toContainText(dati.partitaIva, { timeout: ATTESA_SERVER })
     await expect(riga).toContainText(nomi.condizione)
   })
 
@@ -329,6 +351,13 @@ test.describe('Contratto cliente — operatore', () => {
       query: 'genere=CATEGORIA',
     })
 
+    // Precondizione del gruppo seriale: il cliente lo crea il test precedente.
+    const token = await apiLogin('operator')
+    expect(
+      (await elencoApi('clienti', token)).some(r => r.ditta?.ragioneSociale === nomi.cliente),
+      `precondizione: il cliente "${nomi.cliente}" non esiste (il test "cliente su ditta nuova" non e' riuscito a crearlo)`
+    ).toBe(true)
+
     await page.goto('/')
     await page.getByRole('link', { name: 'Contratti clienti', exact: true }).click()
     await expect(
@@ -340,18 +369,37 @@ test.describe('Contratto cliente — operatore', () => {
     await expect(dlg).toBeVisible()
 
     // Il cliente si cerca per testo e si sceglie fra i suggerimenti: precompila la condizione.
+    // Su un runner lento il dialog impiega a diventare editabile e la ricerca a rispondere: si
+    // attende il campo abilitato, poi la risposta della ricerca (avviata prima del `fill`).
     const cliente = dlg.getByRole('combobox', { name: 'Cliente', exact: true })
+    await expect(cliente).toBeEnabled({ timeout: ATTESA_SERVER })
+    const ricerca = page.waitForResponse(
+      r =>
+        r.request().method() === 'GET' &&
+        new URL(r.url()).pathname.endsWith('/clienti') &&
+        new URL(r.url()).searchParams.get('testo') === nomi.cliente,
+      { timeout: ATTESA_SERVER }
+    )
+    ricerca.catch(() => undefined)
     await cliente.fill(nomi.cliente)
-    await page.getByRole('option', { name: new RegExp(nomi.cliente) }).click()
-    await expect(page.getByRole('option', { name: new RegExp(nomi.cliente) })).toBeHidden()
-    await expect(dlg.getByLabel('Condizione di pagamento')).not.toHaveValue('')
+    expect((await ricerca).ok(), 'ricerca del cliente per testo').toBe(true)
+    const opzione = page.getByRole('option', { name: new RegExp(nomi.cliente) })
+    await opzione.click({ timeout: ATTESA_SERVER })
+    // L'effetto della scelta si verifica sul campo e sulla condizione precompilata, non sul
+    // pannello dei suggerimenti (che si chiude con un'animazione e puo' riaprirsi per una
+    // ricerca tardiva).
+    await expect(cliente).toHaveValue(new RegExp(nomi.cliente), { timeout: ATTESA_SERVER })
+    await expect(dlg.getByLabel('Condizione di pagamento')).not.toHaveValue('', {
+      timeout: ATTESA_SERVER,
+    })
+    await expect(opzione).toBeHidden({ timeout: ATTESA_SERVER })
 
     // Categoria in linea, modalita' rapida: solo la descrizione, il codice lo da' il server.
     await dlg.getByRole('button', { name: 'Nuova categoria' }).click()
     const cat = dialogo(page, 'Nuova categoria')
     await expect(cat).toBeVisible()
     await expect(cat.getByLabel('Codice', { exact: false })).toHaveCount(0)
-    await compilaESalva(cat, async () => {
+    await compilaESalva(page, cat, async () => {
       await cat.getByLabel('Descrizione').fill(nomi.categoria)
     })
     await expect(dlg.getByLabel('Categoria', { exact: true })).not.toHaveValue('')
@@ -373,8 +421,7 @@ test.describe('Contratto cliente — operatore', () => {
       dlg.getByRole('table', { name: 'Periodi di fatturazione' }).getByRole('row')
     ).toHaveCount(5) // intestazione + 4 periodi
 
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = rigaContratto(page)
     await expect(riga).toContainText('Bozza')
@@ -386,8 +433,13 @@ test.describe('Contratto cliente — operatore', () => {
     )
 
     // Attivazione senza registro IVA: rifiutata col messaggio del backend, resta in bozza.
-    await riga.getByRole('button', { name: 'Attiva' }).click()
-    await expect(page.getByText('Per attivare il contratto indica il registro IVA.')).toBeVisible()
+    // Il rifiuto e' atteso (4xx): si aspetta la risposta, poi il messaggio.
+    await attendiRisposta(page, () => riga.getByRole('button', { name: 'Attiva' }).click(), {
+      stato: [400, 409, 422],
+    })
+    await expect(page.getByText('Per attivare il contratto indica il registro IVA.')).toBeVisible({
+      timeout: ATTESA_SERVER,
+    })
     await expect(riga).toContainText('Bozza')
   })
 
@@ -395,12 +447,11 @@ test.describe('Contratto cliente — operatore', () => {
     await apriContratti(page)
     const dlg = await apriModificaContratto(page)
     await scegliVoce(dlg.getByLabel('Registro IVA', { exact: true }), nomi.registro)
-    await dlg.getByRole('button', { name: 'Salva' }).click()
-    await expect(dlg).toBeHidden()
+    await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = rigaContratto(page)
-    await riga.getByRole('button', { name: 'Attiva' }).click()
-    await expect(riga).toContainText('Attivo')
+    await attendiRisposta(page, () => riga.getByRole('button', { name: 'Attiva' }).click())
+    await expect(riga).toContainText('Attivo', { timeout: ATTESA_SERVER })
     await expect(riga.getByRole('button', { name: 'Sospendi solo movimenti' })).toBeVisible()
   })
 
@@ -441,8 +492,11 @@ test.describe('Contratto cliente — operatore', () => {
       .or(page.getByRole('dialog', { name: /rinnovo/i }))
     await expect(conferma).toContainText('31/12/2027')
     await expect(conferma).toContainText('31/12/2028')
-    await conferma.getByRole('button', { name: 'Rinnova', exact: true }).click()
-    await expect(conferma).toBeHidden()
+    await cliccaEChiudi(
+      page,
+      conferma.getByRole('button', { name: 'Rinnova', exact: true }),
+      conferma
+    )
     await expect(riga).toContainText('31/12/2028')
     // Il rinnovo non cambia lo stato.
     await expect(riga).toContainText('Sospeso (solo movimenti)')
@@ -467,13 +521,16 @@ test.describe('Contratto cliente — operatore', () => {
     await annullo.getByRole('button', { name: 'Nuovo motivo' }).click()
     const motivo = dialogo(page, /^Nuovo motivo/)
     await expect(motivo).toBeVisible()
-    await compilaESalva(motivo, async () => {
+    await compilaESalva(page, motivo, async () => {
       await motivo.getByLabel('Descrizione').fill(nomi.motivo)
     })
 
     await expect(annullo.getByRole('button', { name: 'Annulla il contratto' })).toBeEnabled()
-    await annullo.getByRole('button', { name: 'Annulla il contratto' }).click()
-    await expect(annullo).toBeHidden()
+    await cliccaEChiudi(
+      page,
+      annullo.getByRole('button', { name: 'Annulla il contratto' }),
+      annullo
+    )
 
     await expect(riga).toContainText('Annullato')
     // Annullato = definitivo: nessuna transizione, nessun rinnovo, nessuna eliminazione.

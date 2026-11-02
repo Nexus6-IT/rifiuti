@@ -28,7 +28,7 @@ import {
 import {
   PIVA_CHECKSUM_ERRATO,
   creaDittaConRuolo,
-  partitaIvaValida,
+  partitaIvaUnica,
 } from '../../test-support/anagrafiche-di-test'
 import { DitteService, AZIONE_PARTITA_IVA_CORRETTA } from './ditte/ditte.service'
 import { UpdateProduttoreUseCase } from './use-cases/update-produttore.use-case'
@@ -99,7 +99,7 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
   it('controllo: la correzione riuscita aggiorna ditta, audit e colonna vecchia insieme', async () => {
     const t = await azienda()
     const ids = await produttoreDaCorreggere(t)
-    const nuova = partitaIvaValida(Date.now() + 1)
+    const nuova = partitaIvaUnica()
 
     const r = await nelTenant(t, () => useCase().execute({ id: ids.ruoloId, partitaIVA: nuova }))
 
@@ -117,7 +117,7 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
     const r = await nelTenant(t, () =>
       useCase(referenceData).execute({
         id: ids.ruoloId,
-        partitaIVA: partitaIvaValida(Date.now() + 2),
+        partitaIVA: partitaIvaUnica(),
         sedeLegale: SEDE_MILANO,
       })
     )
@@ -139,7 +139,7 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
       nelTenant(t, () =>
         useCase().execute({
           id: ids.ruoloId,
-          partitaIVA: partitaIvaValida(Date.now() + 3),
+          partitaIVA: partitaIvaUnica(),
           sedeId: altra.sedeId, // sede di un'altra ditta
         })
       )
@@ -172,7 +172,7 @@ describe('Modifica delle controparti tutta o niente — Postgres reale, ruolo wa
         useCase().execute({
           id: ids.ruoloId,
           ragioneSociale: 'Nuova ragione sociale',
-          partitaIVA: partitaIvaValida(Date.now() + 4),
+          partitaIVA: partitaIvaUnica(),
           sedeLegale: SEDE_MILANO,
         })
       )

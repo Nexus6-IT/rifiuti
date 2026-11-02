@@ -4,7 +4,7 @@
  */
 import { PrismaClient } from '@prisma/client'
 import { eDatabaseDiTestLocale } from './database-di-test'
-import { creaDittaConRuolo, partitaIvaValida } from './anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from './anagrafiche-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -28,7 +28,7 @@ describe('creaDittaConRuolo — CLIENTE e AGENTE (Postgres)', () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now()),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Fixture SRL',
         country: 'IT',
       },
