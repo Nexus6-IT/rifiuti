@@ -26,6 +26,8 @@ import {
 import { AnnulloDialogComponent } from './annullo-dialog.component'
 import { ContrattoClienteDialogComponent } from './contratto-cliente-dialog.component'
 import { ContrattiClienteListComponent } from './contratti-cliente-list.component'
+import { IstatDialogComponent } from '../listino/istat-dialog.component'
+import { VariazionePrezziDialogComponent } from '../listino/variazione-prezzi-dialog.component'
 import { ProrogaDialogComponent } from './proroga-dialog.component'
 
 /** Il dialog vero (di Task 26) carica le tabelle all'apertura: qui basta la sua interfaccia. */
@@ -34,6 +36,21 @@ class ContrattoDialogFinto {
   @Input() visible = false
   @Input() contratto: ContrattoCliente | null = null
   @Output() salvato = new EventEmitter<ContrattoCliente>()
+  @Output() visibleChange = new EventEmitter<boolean>()
+}
+
+@Component({ selector: 'app-variazione-prezzi-dialog', standalone: true, template: '' })
+class VariazioneDialogFinta {
+  @Input() visible = false
+  @Input() contrattiIds: string[] | null = null
+  @Output() applicata = new EventEmitter<number>()
+  @Output() visibleChange = new EventEmitter<boolean>()
+}
+
+@Component({ selector: 'app-istat-dialog', standalone: true, template: '' })
+class IstatDialogFinto {
+  @Input() visible = false
+  @Output() applicata = new EventEmitter<number>()
   @Output() visibleChange = new EventEmitter<boolean>()
 }
 
@@ -137,8 +154,14 @@ describe('ContrattiClienteListComponent', () => {
       TestBed.overrideComponent(c, { set: { template: '' } })
     }
     TestBed.overrideComponent(ContrattiClienteListComponent, {
-      remove: { imports: [ContrattoClienteDialogComponent] },
-      add: { imports: [ContrattoDialogFinto] },
+      remove: {
+        imports: [
+          ContrattoClienteDialogComponent,
+          VariazionePrezziDialogComponent,
+          IstatDialogComponent,
+        ],
+      },
+      add: { imports: [ContrattoDialogFinto, VariazioneDialogFinta, IstatDialogFinto] },
     })
   })
   afterEach(() => fixture?.destroy())
@@ -194,7 +217,8 @@ describe('ContrattiClienteListComponent', () => {
     })
 
     it('senza data di fine né prossima fatturazione le celle sono vuote', async () => {
-      await apri('ADMIN', pagina(contratto({ dataFine: null, prossimaFinePeriodo: null })))
+      // OPERATOR: senza la colonna di scelta dell'ADMIN gli indici delle celle restano questi.
+      await apri('OPERATOR', pagina(contratto({ dataFine: null, prossimaFinePeriodo: null })))
       const celle = q('contratti-riga-cc1')!.querySelectorAll('td')
       expect(celle[6].textContent!.trim()).toBe('')
       expect(celle[7].textContent!.trim()).toBe('')
@@ -583,9 +607,14 @@ describe('ContrattiClienteListComponent', () => {
       expect(intest).not.toContain('Azioni')
     })
 
-    it('colspan del vuoto per chi scrive: 10 colonne', async () => {
+    it('colspan del vuoto per l’ADMIN: 11 colonne (scelta e azioni)', async () => {
       await apri('ADMIN', pagina())
       expect(q('contratti-listino-cc1')).toBeNull()
+      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('11')
+    })
+
+    it('colspan del vuoto per chi scrive senza variare: 10 colonne', async () => {
+      await apri('OPERATOR', pagina())
       expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('10')
     })
 
@@ -609,6 +638,67 @@ describe('ContrattiClienteListComponent', () => {
       ]) {
         expect(bottone(id)!.getAttribute('aria-label')).toContain('CC-2026-001')
       }
+    })
+  })
+
+  describe('variazioni prezzi (solo ADMIN)', () => {
+    const due = () => pagina(contratto(), contratto({ id: 'cc2', numero: 'CC-2026-002' }))
+
+    it('OPERATOR e VIEWER non vedono né il menu né la colonna di scelta', async () => {
+      await apri('OPERATOR', due())
+      expect(q('contratti-variazioni')).toBeNull()
+      expect(q('contratti-scegli-cc1')).toBeNull()
+      expect(fixture.debugElement.query(By.directive(VariazioneDialogFinta))).toBeNull()
+    })
+
+    it('il VIEWER nemmeno', async () => {
+      await apri('VIEWER', due())
+      expect(q('contratti-variazioni')).toBeNull()
+      expect(q('contratti-scegli-cc1')).toBeNull()
+    })
+
+    it('l’ADMIN vede il menu "Variazioni prezzi" con le due voci', async () => {
+      await apri('ADMIN', due())
+      expect(bottone('contratti-variazioni')).not.toBeNull()
+      expect(fixture.componentInstance.voci.map(v => v.label)).toEqual([
+        'Modifica automatica dei prezzi',
+        'Adeguamento ISTAT',
+      ])
+    })
+
+    it('la voce apre il dialog della variazione senza contratti scelti', async () => {
+      await apri('ADMIN', due())
+      fixture.componentInstance.voci[0].command!({})
+      await stabilizza(fixture)
+      const d = figlio(VariazioneDialogFinta)
+      expect(d.visible).toBeTrue()
+      expect(d.contrattiIds).toEqual([])
+    })
+
+    it('i contratti spuntati vanno al dialog come "contratti scelti" (R51) e si possono togliere', async () => {
+      await apri('ADMIN', due())
+      q<HTMLInputElement>('contratti-scegli-cc2')!.click()
+      await stabilizza(fixture)
+      expect(q('contratti-scelti')!.textContent).toContain('1 contratto scelto')
+      fixture.componentInstance.voci[0].command!({})
+      await stabilizza(fixture)
+      expect(figlio(VariazioneDialogFinta).contrattiIds).toEqual(['cc2'])
+      bottone('contratti-deseleziona')!.click()
+      await stabilizza(fixture)
+      expect(q('contratti-scelti')).toBeNull()
+      expect(figlio(VariazioneDialogFinta).contrattiIds).toEqual([])
+    })
+
+    it('la voce ISTAT apre il suo dialog; a fine variazione la lista si ricarica', async () => {
+      await apri('ADMIN', due())
+      fixture.componentInstance.voci[1].command!({})
+      await stabilizza(fixture)
+      expect(figlio(IstatDialogFinto).visible).toBeTrue()
+      list.calls.reset()
+      figlio(IstatDialogFinto).applicata.emit(3)
+      expect(list).toHaveBeenCalledTimes(1)
+      figlio(VariazioneDialogFinta).applicata.emit(2)
+      expect(list).toHaveBeenCalledTimes(2)
     })
   })
 })

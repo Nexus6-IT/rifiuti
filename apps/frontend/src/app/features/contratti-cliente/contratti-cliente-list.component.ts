@@ -1,16 +1,18 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core'
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { RouterLink } from '@angular/router'
-import { ConfirmationService } from 'primeng/api'
+import { ConfirmationService, MenuItem } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { CheckboxModule } from 'primeng/checkbox'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
+import { MenuModule } from 'primeng/menu'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { Subject, takeUntil } from 'rxjs'
+import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import {
   Cliente,
@@ -29,6 +31,9 @@ import {
   permessoScrittura,
 } from '../clienti/tabelle/tabella-comune'
 import { OPZIONI_STATO_CONTRATTO } from '../clienti/vocabolario-clienti'
+import { IstatDialogComponent } from '../listino/istat-dialog.component'
+import { puoVariarePrezzi } from '../listino/permessi-listino'
+import { VariazionePrezziDialogComponent } from '../listino/variazione-prezzi-dialog.component'
 import { AnnulloDialogComponent } from './annullo-dialog.component'
 import { ContrattoClienteDialogComponent } from './contratto-cliente-dialog.component'
 import { ProrogaDialogComponent } from './proroga-dialog.component'
@@ -65,12 +70,15 @@ const SEVERITA_STATO: Readonly<
     ConfirmDialogModule,
     DropdownModule,
     InputTextModule,
+    MenuModule,
     TableModule,
     TagModule,
     AnnulloDialogComponent,
     ContrattoClienteDialogComponent,
     ProrogaDialogComponent,
     SceltaClienteComponent,
+    VariazionePrezziDialogComponent,
+    IstatDialogComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -88,20 +96,44 @@ const SEVERITA_STATO: Readonly<
             data-testid="contratti-cerca"
           />
         </span>
-        <div class="barra__azioni" *ngIf="puoScrivere()">
-          <p-button
-            label="Proroga scadenze"
-            icon="pi pi-calendar-plus"
-            [outlined]="true"
-            (onClick)="proroga()"
-            data-testid="contratti-proroga"
-          />
-          <p-button
-            label="Nuovo contratto"
-            icon="pi pi-plus"
-            (onClick)="apriNuovo()"
-            data-testid="contratti-nuovo"
-          />
+        <div class="barra__azioni" *ngIf="puoVariare() || puoScrivere()">
+          <ng-container *ngIf="puoVariare()">
+            <span *ngIf="scelti().size > 0" data-testid="contratti-scelti">
+              {{ scelti().size }}
+              {{ scelti().size === 1 ? 'contratto scelto' : 'contratti scelti' }}
+              <p-button
+                label="Deseleziona"
+                [text]="true"
+                size="small"
+                (onClick)="scelti.set(vuoto)"
+                data-testid="contratti-deseleziona"
+              />
+            </span>
+            <p-button
+              label="Variazioni prezzi"
+              icon="pi pi-percentage"
+              [outlined]="true"
+              (onClick)="menuVariazioni.toggle($event)"
+              aria-haspopup="true"
+              data-testid="contratti-variazioni"
+            />
+            <p-menu #menuVariazioni [model]="voci" [popup]="true" appendTo="body" />
+          </ng-container>
+          <ng-container *ngIf="puoScrivere()">
+            <p-button
+              label="Proroga scadenze"
+              icon="pi pi-calendar-plus"
+              [outlined]="true"
+              (onClick)="proroga()"
+              data-testid="contratti-proroga"
+            />
+            <p-button
+              label="Nuovo contratto"
+              icon="pi pi-plus"
+              (onClick)="apriNuovo()"
+              data-testid="contratti-nuovo"
+            />
+          </ng-container>
         </div>
       </div>
       <div class="filtri">
@@ -171,6 +203,7 @@ const SEVERITA_STATO: Readonly<
       >
         <ng-template pTemplate="header">
           <tr>
+            <th scope="col" *ngIf="puoVariare()">Scelta</th>
             <th scope="col">Numero</th>
             <th scope="col">Cliente</th>
             <th scope="col">Descrizione</th>
@@ -185,6 +218,15 @@ const SEVERITA_STATO: Readonly<
         </ng-template>
         <ng-template pTemplate="body" let-c>
           <tr [attr.data-testid]="'contratti-riga-' + c.id">
+            <td *ngIf="puoVariare()">
+              <input
+                type="checkbox"
+                [checked]="scelti().has(c.id)"
+                (change)="scegli(c.id, $any($event.target).checked)"
+                [attr.aria-label]="'Scegli il contratto ' + c.numero"
+                [attr.data-testid]="'contratti-scegli-' + c.id"
+              />
+            </td>
             <td>{{ c.numero }}</td>
             <td>{{ c.cliente.ragioneSociale }}</td>
             <td>{{ c.descrizione }}</td>
@@ -260,7 +302,9 @@ const SEVERITA_STATO: Readonly<
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="puoScrivere() ? 10 : 9">Nessun contratto.</td>
+            <td [attr.colspan]="9 + (puoScrivere() ? 1 : 0) + (puoVariare() ? 1 : 0)">
+              Nessun contratto.
+            </td>
           </tr>
         </ng-template>
       </p-table>
@@ -281,6 +325,19 @@ const SEVERITA_STATO: Readonly<
         [visible]="prorogaAperta()"
         (visibleChange)="prorogaAperta.set($event)"
         (prorogato)="carica()"
+      />
+      <app-variazione-prezzi-dialog
+        *ngIf="puoVariare()"
+        [visible]="variazioneAperta()"
+        [contrattiIds]="idsScelti()"
+        (visibleChange)="variazioneAperta.set($event)"
+        (applicata)="carica()"
+      />
+      <app-istat-dialog
+        *ngIf="puoVariare()"
+        [visible]="istatAperto()"
+        (visibleChange)="istatAperto.set($event)"
+        (applicata)="carica()"
       />
       <p-confirmDialog />
     </section>
@@ -323,8 +380,30 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   private readonly tabelle = inject(TabelleFatturazioneService)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
+  private readonly auth = inject(AuthService)
 
   readonly puoScrivere = permessoScrittura()
+  /** Le variazioni di massa toccano molti contratti: solo ADMIN (R11). */
+  readonly puoVariare = () => puoVariarePrezzi(this.auth.currentUser()?.role)
+
+  /** Contratti spuntati nella lista (anche fra più pagine): filtro "contratti scelti" (R51). */
+  readonly vuoto: ReadonlySet<string> = new Set<string>()
+  readonly scelti = signal<ReadonlySet<string>>(this.vuoto)
+  readonly idsScelti = computed(() => [...this.scelti()])
+  readonly variazioneAperta = signal(false)
+  readonly istatAperto = signal(false)
+  readonly voci: MenuItem[] = [
+    {
+      label: 'Modifica automatica dei prezzi',
+      icon: 'pi pi-percentage',
+      command: () => this.variazioneAperta.set(true),
+    },
+    {
+      label: 'Adeguamento ISTAT',
+      icon: 'pi pi-chart-line',
+      command: () => this.istatAperto.set(true),
+    },
+  ]
   readonly elenco = new ElencoPaginato<ContrattoCliente, FiltriContratti>(
     filtro => this.servizio.contratti.list(filtro),
     'Impossibile caricare i contratti.'
@@ -383,6 +462,13 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
     this.elenco.cambiaPagina(ev)
+  }
+
+  scegli(id: string, si: boolean): void {
+    const n = new Set(this.scelti())
+    if (si) n.add(id)
+    else n.delete(id)
+    this.scelti.set(n)
   }
 
   // --- filtri -------------------------------------------------------------------------------

@@ -1,5 +1,13 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  WritableSignal,
+  computed,
+  inject,
+  signal,
+} from '@angular/core'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { ConfirmationService } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
@@ -14,11 +22,15 @@ import {
   permessoScrittura,
 } from '../clienti/tabelle/tabella-comune'
 import { ETICHETTE_STATO_CONTRATTO } from '../clienti/vocabolario-clienti'
+import { AggiungiRigheDialogComponent } from './aggiungi-righe-dialog.component'
+import { AllegatiElencoComponent } from './allegati-elenco.component'
+import { CopiaElencoDialogComponent } from './copia-elenco-dialog.component'
 import { ElencoDialogComponent } from './elenco-dialog.component'
 import { ElenchiPannelloComponent } from './elenchi-pannello.component'
 import { elenchiValidiAl, oggiIso, righeInTesto } from './listino-calcoli'
 import { ContestoListino, ElencoAddebiti, RigaAddebito } from './listino.model'
 import { ListinoService } from './listino.service'
+import { ProvvigioniScontiDialogComponent } from './provvigioni-sconti-dialog.component'
 import { RigaAddebitoDialogComponent } from './riga-addebito-dialog.component'
 import { RigheTavolaComponent } from './righe-tavola.component'
 
@@ -43,6 +55,10 @@ import { RigheTavolaComponent } from './righe-tavola.component'
     ElencoDialogComponent,
     RigheTavolaComponent,
     RigaAddebitoDialogComponent,
+    CopiaElencoDialogComponent,
+    AggiungiRigheDialogComponent,
+    ProvvigioniScontiDialogComponent,
+    AllegatiElencoComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -80,6 +96,15 @@ import { RigheTavolaComponent } from './righe-tavola.component'
             Allegato al contratto {{ p.numero }}
           </span>
         </div>
+        <p-button
+          *ngIf="!soloLettura()"
+          label="Provvigioni e sconti"
+          icon="pi pi-percentage"
+          [outlined]="true"
+          size="small"
+          (onClick)="provvigioniAperte.set(true)"
+          data-testid="listino-provvigioni-sconti"
+        />
         <p *ngIf="soloLettura()" class="field-hint" data-testid="listino-sola-lettura">
           {{
             annullato()
@@ -109,19 +134,37 @@ import { RigheTavolaComponent } from './righe-tavola.component'
           </p>
           <ng-container *ngIf="elencoMostrato() as el">
             <h2>Elenco {{ el.codice }} - {{ el.descrizione }}</h2>
-            <p-button
-              *ngIf="!soloLettura() && el.modificabile"
-              label="Nuova riga"
-              icon="pi pi-plus"
-              (onClick)="nuovaRiga()"
-              data-testid="listino-nuova-riga"
-            />
+            <div class="azioni-elenco" *ngIf="!soloLettura() && el.modificabile">
+              <p-button
+                label="Nuova riga"
+                icon="pi pi-plus"
+                (onClick)="nuovaRiga()"
+                data-testid="listino-nuova-riga"
+              />
+              <p-button
+                label="Copia da un altro elenco"
+                icon="pi pi-copy"
+                [outlined]="true"
+                (onClick)="copiaAperta.set(true)"
+                data-testid="listino-copia"
+              />
+              <p-button
+                label="Aggiungi righe da un altro elenco"
+                icon="pi pi-clone"
+                [outlined]="true"
+                (onClick)="aggiungiAperto.set(true)"
+                data-testid="listino-aggiungi-righe"
+              />
+            </div>
             <app-righe-tavola
               [elementi]="righe()"
               [caricamento]="caricamentoRighe()"
               [errore]="erroreRighe()"
               (apri)="apriRiga($event)"
             />
+            <!-- Gli allegati si gestiscono anche con il contratto annullato (R47): conta solo il permesso. -->
+            <h3>Allegati dell'elenco</h3>
+            <app-allegati-elenco [elencoId]="el.id" [soloLettura]="!puoScrivere()" />
           </ng-container>
         </div>
       </div>
@@ -146,6 +189,27 @@ import { RigheTavolaComponent } from './righe-tavola.component'
         (salvato)="dopoSalvataggioRiga()"
         (ricarica)="dopoRicaricaRiga()"
       />
+      <app-copia-elenco-dialog
+        [visible]="copiaAperta()"
+        [elenco]="elencoMostrato()"
+        (visibleChange)="copiaAperta.set($event)"
+        (copiato)="carica()"
+        (ricarica)="chiudiERicarica(copiaAperta)"
+      />
+      <app-aggiungi-righe-dialog
+        [visible]="aggiungiAperto()"
+        [elenco]="elencoMostrato()"
+        (visibleChange)="aggiungiAperto.set($event)"
+        (aggiunte)="carica()"
+        (ricarica)="chiudiERicarica(aggiungiAperto)"
+      />
+      <app-provvigioni-sconti-dialog
+        [visible]="provvigioniAperte()"
+        [contrattoId]="contrattoId"
+        (visibleChange)="provvigioniAperte.set($event)"
+        (applicata)="carica()"
+        (ricarica)="chiudiERicarica(provvigioniAperte)"
+      />
       <p-confirmDialog />
     </section>
   `,
@@ -165,6 +229,12 @@ import { RigheTavolaComponent } from './righe-tavola.component'
         flex-wrap: wrap;
         gap: 0.75rem;
         align-items: center;
+      }
+      .azioni-elenco {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
       }
       .colonne {
         display: grid;
@@ -205,6 +275,10 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
   readonly rigaDialogAperto = signal(false)
   /** Il dialog si crea alla prima apertura: prima non serve né il catalogo né le codifiche. */
   readonly rigaDialogMontato = signal(false)
+
+  readonly copiaAperta = signal(false)
+  readonly aggiungiAperto = signal(false)
+  readonly provvigioniAperte = signal(false)
 
   readonly dialogoAperto = signal(false)
   readonly elencoInModifica = signal<ElencoAddebiti | null>(null)
@@ -321,6 +395,12 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
   /** "Ricarica" dopo un 409 nel dialog: si rilegge e si chiude. */
   dopoRicaricaRiga(): void {
     this.rigaDialogAperto.set(false)
+    this.carica()
+  }
+
+  /** "Ricarica" dopo un 409 in un dialog di azione: si chiude e si rilegge la vista. */
+  chiudiERicarica(aperto: WritableSignal<boolean>): void {
+    aperto.set(false)
     this.carica()
   }
 

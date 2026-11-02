@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router'
+import { By } from '@angular/platform-browser'
 import { MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
@@ -10,6 +11,8 @@ import { ClientiService } from '../clienti/clienti.service'
 import { accettaConferma, bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { ElencoAddebiti, ElenchiContratto, RigaAddebito, StatoContratto } from './listino.model'
 import { ListinoService } from './listino.service'
+import { CopiaElencoDialogComponent } from './copia-elenco-dialog.component'
+import { ProvvigioniScontiDialogComponent } from './provvigioni-sconti-dialog.component'
 import { ListinoContrattoComponent } from './listino-contratto.component'
 
 const CONTRATTO = 'cc1'
@@ -101,6 +104,7 @@ describe('ListinoContrattoComponent', () => {
   let righeCrea: jasmine.Spy
   let righeModifica: jasmine.Spy
   let contrattoGet: jasmine.Spy
+  let allegatiElenco: jasmine.Spy
   let toast: jasmine.SpyObj<ToastService>
 
   async function apri(
@@ -130,6 +134,11 @@ describe('ListinoContrattoComponent', () => {
     righeList = jasmine.createSpy('list').and.returnValue(of([riga('r1')]))
     righeCrea = jasmine.createSpy('crea').and.returnValue(of(riga('r2')))
     righeModifica = jasmine.createSpy('modifica').and.returnValue(of(riga('r1')))
+    allegatiElenco = jasmine
+      .createSpy('allegatiElenco')
+      .and.returnValue(
+        of([{ id: 'al1', posizione: 1, nomeFile: 'capitolato.pdf', dimensioneByte: 2048 }])
+      )
     contrattoGet = jasmine
       .createSpy('get')
       .and.returnValue(of({ cliente: { ragioneSociale: 'Verdi Servizi S.r.l.' } }))
@@ -158,6 +167,13 @@ describe('ListinoContrattoComponent', () => {
               proposta: () => of({}),
               codificheRentri: () => of([]),
             },
+            azioni: {
+              sostituisciDa: () => of({}),
+              aggiungiRighe: () => of({}),
+              provvigioni: () => of({}),
+              sconti: () => of({}),
+            },
+            allegatiElenco: { elenco: allegatiElenco },
             codifiche: { list: () => of([]) },
             codiciIva: { list: () => of([]) },
             addebiti: { list: () => of({ elementi: [], totale: 0 }) },
@@ -775,6 +791,92 @@ describe('ListinoContrattoComponent', () => {
       expect(q('listino-elimina-e1')).toBeNull()
       expect(q('listino-modifica-e2')).toBeTruthy()
       expect(q('listino-elimina-e2')).toBeNull()
+    })
+  })
+
+  describe('azioni del listino (Task 29)', () => {
+    it('ADMIN sull’elenco scelto: copia, aggiungi righe, provvigioni e sconti', async () => {
+      await apri()
+      expect(q('listino-copia')).toBeNull()
+      await scegli('e1')
+      expect(bottone('listino-copia')).not.toBeNull()
+      expect(bottone('listino-aggiungi-righe')).not.toBeNull()
+      expect(bottone('listino-provvigioni-sconti')).not.toBeNull()
+    })
+
+    it('i pulsanti aprono i dialog giusti, sull’elenco scelto e sul contratto', async () => {
+      const c = await apri()
+      await scegli('e1')
+      bottone('listino-copia')!.click()
+      bottone('listino-aggiungi-righe')!.click()
+      bottone('listino-provvigioni-sconti')!.click()
+      await stabilizza(fixture)
+      expect(c.copiaAperta()).toBeTrue()
+      expect(c.aggiungiAperto()).toBeTrue()
+      expect(c.provvigioniAperte()).toBeTrue()
+      const dialogCopia = fixture.debugElement.query(By.directive(CopiaElencoDialogComponent))
+      expect(dialogCopia.componentInstance.elenco.id).toBe('e1')
+      const dialogPs = fixture.debugElement.query(By.directive(ProvvigioniScontiDialogComponent))
+      expect(dialogPs.componentInstance.contrattoId).toBe(CONTRATTO)
+    })
+
+    it('copia riuscita: la pagina rilegge elenchi e righe', async () => {
+      await apri()
+      await scegli('e1')
+      delContratto.calls.reset()
+      righeList.calls.reset()
+      fixture.debugElement
+        .query(By.directive(CopiaElencoDialogComponent))
+        .componentInstance.copiato.emit({})
+      await stabilizza(fixture)
+      expect(delContratto).toHaveBeenCalledTimes(1)
+      expect(righeList).toHaveBeenCalledTimes(1)
+    })
+
+    it('"Ricarica" dopo un 409 chiude il dialog e rilegge', async () => {
+      const c = await apri()
+      await scegli('e1')
+      c.copiaAperta.set(true)
+      delContratto.calls.reset()
+      fixture.debugElement
+        .query(By.directive(CopiaElencoDialogComponent))
+        .componentInstance.ricarica.emit()
+      expect(c.copiaAperta()).toBeFalse()
+      expect(delContratto).toHaveBeenCalledTimes(1)
+    })
+
+    it('elenco non modificabile: niente copia né aggiungi righe', async () => {
+      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
+      await scegli('e1')
+      expect(q('listino-copia')).toBeNull()
+      expect(q('listino-aggiungi-righe')).toBeNull()
+    })
+
+    it('VIEWER: nessuna azione di scrittura, ma gli allegati si aprono', async () => {
+      await apri('VIEWER')
+      await scegli('e1')
+      for (const id of ['listino-copia', 'listino-aggiungi-righe', 'listino-provvigioni-sconti']) {
+        expect(q(id)).toBeNull()
+      }
+      expect(allegatiElenco).toHaveBeenCalledWith('e1')
+      expect(bottone('elenco-allegato-apri-1')).not.toBeNull()
+      expect(bottone('elenco-allegato-rimuovi-1')).toBeNull()
+      expect(bottone('elenco-allegato-carica-2')).toBeNull()
+    })
+
+    it('contratto annullato: azioni di scrittura nascoste, allegati ancora modificabili (R47)', async () => {
+      await apri('ADMIN', risposta('ANNULLATO'))
+      await scegli('e1')
+      for (const id of [
+        'listino-copia',
+        'listino-aggiungi-righe',
+        'listino-provvigioni-sconti',
+        'listino-nuova-riga',
+      ]) {
+        expect(q(id)).toBeNull()
+      }
+      expect(bottone('elenco-allegato-rimuovi-1')).not.toBeNull()
+      expect(bottone('elenco-allegato-carica-2')).not.toBeNull()
     })
   })
 })
