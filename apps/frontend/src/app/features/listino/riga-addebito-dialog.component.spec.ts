@@ -942,4 +942,78 @@ describe('RigaAddebitoDialogComponent', () => {
       expect(testo('riga-scelta')).toBe('Nessuna scelta')
     })
   })
+
+  describe('virgola decimale obbligatoria', () => {
+    it('1000 riaperto e risalvato parte come "1000"', async () => {
+      await apri({ riga: riga({ prezzo: '1000.00' }) })
+      expect(valore('riga-prezzo')).toBe('1000')
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(righe.modifica.calls.mostRecent().args[1].prezzo).toBe('1000')
+    })
+
+    it('«1.000» dà l’errore sul campo e Salva è spento', async () => {
+      await apri({ riga: riga() })
+      scrivi('riga-prezzo', '1.000')
+      await stabilizza(fixture)
+      expect(testo('riga-errore-prezzo')).toBe('Usa la virgola per i decimali')
+      expect(bottone('riga-salva')!.disabled).toBeTrue()
+      scrivi('riga-prezzo', '1000')
+      await stabilizza(fixture)
+      expect(bottone('riga-salva')!.disabled).toBeFalse()
+    })
+
+    it('«1234,5» parte come 1234.5', async () => {
+      await apri({ riga: riga() })
+      scrivi('riga-prezzo', '1234,5')
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(righe.modifica.calls.mostRecent().args[1].prezzo).toBe('1234.5')
+    })
+
+    it('una fascia con il punto spegne Salva', async () => {
+      await apri({ riga: riga({ prezzoSpeciale: true, applicaA: 'DOCUMENTO', prezzo: null }) })
+      scrivi('fascia-1-fino', '1.000')
+      await stabilizza(fixture)
+      expect(bottone('riga-salva')!.disabled).toBeTrue()
+    })
+
+    it('«si applica a» cambiato: giorno e mese di riferimento non partono (I3)', async () => {
+      await apri({
+        riga: riga({
+          prezzoSpeciale: true,
+          prezzo: null,
+          applicaA: 'PROGRESSIVO_DA_DATA',
+          riferimentoGiorno: 5,
+          riferimentoMese: 3,
+          scaglioni: [
+            {
+              ordine: 1,
+              finoA: '10',
+              prezzo: '1',
+              sconto: null,
+              provvigione: null,
+              tipoCalcolo: 'A',
+            },
+            {
+              ordine: 7,
+              finoA: null,
+              prezzo: '1',
+              sconto: null,
+              provvigione: null,
+              tipoCalcolo: 'A',
+            },
+          ],
+        }),
+      })
+      imposta('riga-applica-a', 'DOCUMENTO')
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = righe.modifica.calls.mostRecent().args[1]
+      expect(corpo.riferimentoGiorno).toBeNull()
+      expect(corpo.riferimentoMese).toBeNull()
+    })
+  })
 })

@@ -399,7 +399,12 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   // --- salvataggio -------------------------------------------------------------------------
 
   puoSalvare(): boolean {
-    return !this.inCorso() && !this.soloLettura && this.stato.famiglia() !== null
+    return (
+      !this.inCorso() &&
+      !this.soloLettura &&
+      this.stato.famiglia() !== null &&
+      !this.stato.haErroriLocali()
+    )
   }
 
   salva(): void {

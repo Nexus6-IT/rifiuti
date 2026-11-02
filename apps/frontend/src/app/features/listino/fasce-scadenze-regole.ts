@@ -133,7 +133,8 @@ const numeroIt = (v: string | null | undefined): string => {
 export function descrizioneFascia(
   fasce: readonly Scaglione[],
   indice: number,
-  unita: string
+  unita: string,
+  applicaA: string = ''
 ): string {
   const f = fasce[indice]
   const u = unita.trim() === '' ? '' : `${unita.trim()} `
@@ -145,24 +146,31 @@ export function descrizioneFascia(
       : f.ordine === 7
         ? `oltre ${u}${numeroIt(inf)}`
         : `oltre ${u}${numeroIt(inf)} e fino a ${numeroIt(f.finoA)}`
-  const cond = 'XYZWH'.includes(f.tipoCalcolo) ? ' Se la condizione è verificata.' : ''
-  switch (f.tipoCalcolo) {
+  // H dice già «con condizione»: il suffisso serve solo a X, Y, Z, W.
+  const cond = 'XYZW'.includes(f.tipoCalcolo) ? ' Se la condizione è verificata.' : ''
+  // Con una quantità precedente (R30, Task 16a: progressivo da data e conguaglio) la quantità già
+  // fatturata non si ripaga: D/E/W/H fatturano la sola quantità nuova, B/C il fisso solo la
+  // prima volta che la fascia è raggiunta (Q8), A scala la precedente fascia per fascia.
+  const daData = applicaA === 'PROGRESSIVO_DA_DATA' || applicaA === 'CONGUAGLIO_365'
+  const coda = (testo: string): string => (daData ? ` ${testo}` : '')
+  const tipo = f.tipoCalcolo
+  switch (tipo) {
     case 'A':
     case 'X':
-      return `${f.tipoCalcolo} = Prezzo × quantità ${campo}.${cond}`
+      return `${tipo} = Prezzo × quantità ${campo}.${cond}${coda('La quantità già fatturata dalla data si scala dalle fasce: si fattura solo la parte nuova.')}`
     case 'B':
     case 'Y':
-      return `${f.tipoCalcolo} = Importo fisso della fascia più alta raggiunta, ${campo}.${cond}`
+      return `${tipo} = Importo fisso della fascia più alta raggiunta, ${campo}.${cond}${coda('Il fisso si fattura solo nella fattura in cui la fascia viene raggiunta per la prima volta.')}`
     case 'C':
     case 'Z':
-      return `${f.tipoCalcolo} = Importo fisso di ogni fascia raggiunta, ${campo}.${cond}`
+      return `${tipo} = Importo fisso di ogni fascia raggiunta, ${campo}.${cond}${coda('Si fattura il fisso delle sole fasce raggiunte per la prima volta.')}`
     case 'D':
     case 'W':
-      return `${f.tipoCalcolo} = Prezzo della fascia raggiunta × tutta la quantità, ${campo}.${cond}`
+      return `${tipo} = Prezzo della fascia raggiunta × tutta la quantità, ${campo}.${cond}${coda('Si fattura la sola quantità nuova (la precedente è già fatturata) al prezzo della fascia più alta raggiunta dal totale.')}`
     case 'E':
-      return `E = tutta la quantità al prezzo dell'ultima fascia (come D), ${campo}.`
+      return `E = tutta la quantità al prezzo dell'ultima fascia (come D), ${campo}.${coda('Si fattura la sola quantità nuova: la precedente è già fatturata.')}`
     case 'H':
-      return `H = come E, con condizione: tutta la quantità al prezzo dell'ultima fascia, ${campo}.${cond}`
+      return `H = come E, con condizione: tutta la quantità al prezzo dell'ultima fascia, ${campo}.${coda('Si fattura la sola quantità nuova: la precedente è già fatturata.')}`
   }
 }
 
@@ -354,7 +362,6 @@ export function periodoCompetenza(
 ): { dal: string; al: string } | null {
   if (PERIODI_EXTRA.includes(periodo)) return null
   if (s.anno !== null && s.anno !== anno) return null
-  if (!dataValida(s.giorno, s.mese, s.anno)) return null
   const n = MESI_PERIODO[periodo[0]]
   const direzione = periodo[1]
   if (n === undefined || (direzione !== 'A' && direzione !== 'P')) return null

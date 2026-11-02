@@ -67,14 +67,14 @@ describe('RigaScadenzeSezioneComponent', () => {
     expect(scadenze()).toEqual([sc(1, 15, 3, 2027)])
   })
 
-  it('una riga vuota non parte; le scadenze si rinumerano di seguito', async () => {
+  it('le righe vuote in coda non partono, quelle in mezzo partono col loro numero', async () => {
     await monta()
     bottone('scadenze-aggiungi')!.click()
     await stabilizza(fixture)
     scrivi('scadenza-2-giorno', '1')
     scrivi('scadenza-2-mese', '6')
     await stabilizza(fixture)
-    expect(scadenze()).toEqual([sc(1, 1, 6, null)])
+    expect(scadenze()).toEqual([sc(1, 0, 0, null), sc(2, 1, 6, null)])
   })
 
   it('al massimo dodici scadenze', async () => {
@@ -291,10 +291,13 @@ describe('RigaScadenzeSezioneComponent', () => {
       expect(testo('scadenze-totale-importo')).toBe('5,00 €')
     })
 
-    it('legge anche il prezzo nel formato di lettura, con il punto delle migliaia', async () => {
+    it('prezzo di 1000 e 1234,5: il totale mostra le migliaia, il campo no', async () => {
       await monta()
-      stato.form.patchValue({ quantitaFissa: '', prezzo: '1.234,5' })
+      stato.form.patchValue({ quantitaFissa: '', prezzo: '1000' })
       stato.form.controls.scadenze.setValue([sc(1, 1, 1)])
+      await stabilizza(fixture)
+      expect(testo('scadenze-totale-importo')).toBe('1.000,00 €')
+      stato.form.patchValue({ prezzo: '1234,5' })
       await stabilizza(fixture)
       expect(testo('scadenze-totale-importo')).toBe('1.234,50 €')
     })
@@ -338,5 +341,39 @@ describe('RigaScadenzeSezioneComponent', () => {
     expect(q<HTMLInputElement>('scadenza-1-giorno')!.disabled).toBeTrue()
     expect(q('scadenze-aggiungi')).toBeNull()
     expect(q('scadenza-1-togli')).toBeNull()
+  })
+
+  describe('numeri scritti male', () => {
+    it('«1a» e i punti impediscono il salvataggio (niente parseInt permissivo)', async () => {
+      await monta()
+      scrivi('scadenza-1-giorno', '1a')
+      scrivi('scadenza-1-mese', '3')
+      scrivi('scadenza-1-anno', '2026x')
+      await stabilizza(fixture)
+      expect(testo('scadenze-errori-numeri')).toContain('Scadenza 1, giorno: Numero non valido')
+      expect(testo('scadenze-errori-numeri')).toContain('Scadenza 1, anno: Numero non valido')
+      expect(stato.haErroriLocali()).toBeTrue()
+      scrivi('scadenza-1-giorno', '15')
+      scrivi('scadenza-1-anno', '')
+      await stabilizza(fixture)
+      expect(stato.haErroriLocali()).toBeFalse()
+    })
+
+    it('il totale di un prezzo scritto con il punto non conta (e il campo è in errore)', async () => {
+      await monta()
+      stato.form.patchValue({ prezzo: '1.000' })
+      stato.form.controls.scadenze.setValue([sc(1, 1, 1)])
+      await stabilizza(fixture)
+      expect(stato.erroriDi('prezzo')).toEqual(['Usa la virgola per i decimali'])
+      expect(testo('scadenze-totale-importo')).toBe('0,00 €')
+    })
+  })
+
+  it('aggiungendo una scadenza il focus va sul suo giorno', async () => {
+    await monta()
+    bottone('scadenze-aggiungi')!.click()
+    await stabilizza(fixture)
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('scadenza-2-giorno'))
   })
 })

@@ -521,4 +521,54 @@ describe('Task 28: casi propri del frontend', () => {
     expect(dataItaliana('2026-01-31')).toBe('31/01/2026')
     expect(dataItaliana('boh')).toBe('boh')
   })
+
+  describe('Task 28 fix: descrizioni con la quantità precedente (R30, Q8)', () => {
+    const t = (tipo: TipoCalcoloScaglione) => [
+      sc(1, '1000', '0.10', 'A'),
+      sc(7, null, '0.05', tipo),
+    ]
+    const d = (tipo: TipoCalcoloScaglione, applica: string) =>
+      descrizioneFascia(t(tipo), 1, 'KG', applica)
+
+    it('senza «da data» le descrizioni non cambiano', () => {
+      for (const x of ['DOCUMENTO', 'PERIODO', 'GIORNO', '']) {
+        expect(d('D', x)).not.toContain('già fatturata')
+        expect(d('B', x)).not.toContain('prima volta')
+      }
+    })
+
+    it('progressivo da data e conguaglio: D ed E fatturano la sola quantità nuova', () => {
+      // Esempio: [A fino a 1000 a 0,10; D oltre a 0,05], 6.000 kg già fatturati e 1.000 nuovi:
+      // si fattura 1.000 x 0,05 (la parte nuova), non 7.000 x 0,05.
+      for (const x of ['PROGRESSIVO_DA_DATA', 'CONGUAGLIO_365']) {
+        expect(d('D', x)).toContain('sola quantità nuova')
+        expect(d('E', x)).toContain('sola quantità nuova')
+        expect(d('E', x)).toContain('(come D)')
+      }
+    })
+
+    it('B: il fisso solo nella fattura in cui la fascia è raggiunta per la prima volta', () => {
+      expect(d('B', 'PROGRESSIVO_DA_DATA')).toContain('per la prima volta')
+    })
+
+    it('C: il fisso delle sole fasce raggiunte per la prima volta', () => {
+      expect(d('C', 'PROGRESSIVO_DA_DATA')).toContain('sole fasce raggiunte per la prima volta')
+    })
+
+    it('A: la quantità già fatturata si scala dalle fasce', () => {
+      expect(descrizioneFascia(t('A'), 0, 'KG', 'PROGRESSIVO_DA_DATA')).toContain('si scala')
+    })
+
+    it('H dice «con condizione» una volta sola (m8)', () => {
+      const h = descrizioneFascia(t('H'), 1, 'KG', '')
+      expect(h.match(/condizione/g)?.length).toBe(1)
+    })
+
+    it('periodoCompetenza come il dominio: 31/02 non è scartato qui (m1)', () => {
+      expect(periodoCompetenza(sd(1, 31, 2), 'MP', 2026)).toEqual({
+        dal: '2026-02-01',
+        al: '2026-02-28',
+      })
+    })
+  })
 })

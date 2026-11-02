@@ -1,10 +1,11 @@
 import { CommonModule } from '@angular/common'
-import { Component, DoCheck, Input } from '@angular/core'
+import { Component, DoCheck, ElementRef, Input, OnDestroy, OnInit, inject } from '@angular/core'
 import { ReactiveFormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
 import { MAX_FASCE, descrizioneFascia, tipiAmmessi, validaFasce } from './fasce-scadenze-regole'
 import { Scaglione, TipoCalcoloScaglione } from './listino.model'
+import { formatCascata, formatNumero, leggiCascata, leggiNumero } from './numero-modificabile'
 import { RigaCampoComponent } from './riga-campo.component'
 import { RigaForm } from './riga-modulo'
 import { ETICHETTE_TIPO_CALCOLO, OPZIONI_APPLICA_A } from './vocabolario-listino'
@@ -31,15 +32,12 @@ const eVuota = (f: FasciaTesto): boolean =>
   f.sconto.trim() === '' &&
   f.provvigione.trim() === ''
 
-/** `0.080000` -> `0,08`: senza migliaia, così quel che si legge si riscrive uguale. */
-const inInput = (v: string | null): string => {
-  if (v === null) return ''
-  const t = /^\d+\.\d+$/.test(v) ? v.replace(/0+$/, '').replace(/\.$/, '') : v
-  return t.replace(/\./g, ',')
+const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione', string>> = {
+  finoA: 'fino a',
+  prezzo: 'prezzo',
+  sconto: 'sconto',
+  provvigione: 'provvigione',
 }
-/** Virgola → punto e spazi tolti: il backend valida, qui non si arrotonda. */
-const daInput = (t: string): string => t.replace(/\s+/g, '').replace(/,/g, '.')
-const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daInput(t))
 
 /**
  * Sezione "Prezzo speciale" del dialog della riga (4.2b, Task 28): a cosa si applica, condizioni
@@ -142,6 +140,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               [id]="'riga-fascia-' + (i + 1) + '-fino'"
               [attr.aria-label]="'Fascia ' + (i + 1) + ', fino a'"
               [value]="f.finoA"
+              [attr.aria-invalid]="invalido(f, 'finoA') ? 'true' : null"
               [disabled]="soloLettura"
               inputmode="decimal"
               (input)="cambia(f, 'finoA', $any($event.target).value)"
@@ -152,6 +151,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               [id]="'riga-fascia-' + (i + 1) + '-prezzo'"
               [attr.aria-label]="'Fascia ' + (i + 1) + ', prezzo'"
               [value]="f.prezzo"
+              [attr.aria-invalid]="invalido(f, 'prezzo') ? 'true' : null"
               [disabled]="soloLettura"
               inputmode="decimal"
               (input)="cambia(f, 'prezzo', $any($event.target).value)"
@@ -162,6 +162,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               [id]="'riga-fascia-' + (i + 1) + '-sconto'"
               [attr.aria-label]="'Fascia ' + (i + 1) + ', sconto'"
               [value]="f.sconto"
+              [attr.aria-invalid]="invalido(f, 'sconto') ? 'true' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(f, 'sconto', $any($event.target).value)"
@@ -172,6 +173,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               [id]="'riga-fascia-' + (i + 1) + '-provvigione'"
               [attr.aria-label]="'Fascia ' + (i + 1) + ', provvigione'"
               [value]="f.provvigione"
+              [attr.aria-invalid]="invalido(f, 'provvigione') ? 'true' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(f, 'provvigione', $any($event.target).value)"
@@ -218,6 +220,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               id="riga-fascia-oltre-prezzo"
               aria-label="Fascia oltre, prezzo"
               [value]="oltre.prezzo"
+              [attr.aria-invalid]="invalido(oltre, 'prezzo') ? 'true' : null"
               [disabled]="soloLettura"
               inputmode="decimal"
               (input)="cambia(oltre, 'prezzo', $any($event.target).value)"
@@ -228,6 +231,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               id="riga-fascia-oltre-sconto"
               aria-label="Fascia oltre, sconto"
               [value]="oltre.sconto"
+              [attr.aria-invalid]="invalido(oltre, 'sconto') ? 'true' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(oltre, 'sconto', $any($event.target).value)"
@@ -238,6 +242,7 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
               id="riga-fascia-oltre-provvigione"
               aria-label="Fascia oltre, provvigione"
               [value]="oltre.provvigione"
+              [attr.aria-invalid]="invalido(oltre, 'provvigione') ? 'true' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(oltre, 'provvigione', $any($event.target).value)"
@@ -276,9 +281,20 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
           data-testid="fasce-aggiungi"
         />
 
-        <ul class="avvisi" *ngIf="avvisi().length > 0" data-testid="fasce-avvisi" role="status">
+        <ul
+          class="errori-numeri"
+          *ngIf="erroriNumeri().length > 0"
+          aria-live="polite"
+          data-testid="fasce-errori-numeri"
+        >
+          <li *ngFor="let m of erroriNumeri()" class="field-error">{{ m }}</li>
+        </ul>
+        <ul class="avvisi" *ngIf="avvisi().length > 0" data-testid="fasce-avvisi">
           <li *ngFor="let m of avvisi()" class="field-hint">{{ m }}</li>
         </ul>
+        <span class="solo-lettori" aria-live="polite" data-testid="fasce-annuncio">{{
+          annuncio
+        }}</span>
         <small
           *ngFor="let e of stato.erroriDi('scaglioni')"
           role="alert"
@@ -334,6 +350,15 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
         font: inherit;
         color: inherit;
       }
+      .solo-lettori {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      .errori-numeri,
       .avvisi {
         margin: 0;
         padding-left: 1.1rem;
@@ -341,7 +366,8 @@ const opzionale = (t: string): string | null => (daInput(t) === '' ? null : daIn
     `,
   ],
 })
-export class RigaFasceSezioneComponent implements DoCheck {
+export class RigaFasceSezioneComponent implements OnInit, DoCheck, OnDestroy {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   @Input({ required: true }) stato!: RigaForm
   @Input() soloLettura = false
 
@@ -363,18 +389,38 @@ export class RigaFasceSezioneComponent implements DoCheck {
     return a === 'PROGRESSIVO_DA_DATA' || a === 'CONGUAGLIO_365'
   }
 
+  /** Testo per i lettori di schermo, aggiornato con calma (non a ogni tasto). */
+  annuncio = ''
+  private chiaveAvvisi = ''
+  private timer: ReturnType<typeof setTimeout> | undefined
+
+  ngOnInit(): void {
+    // Un numero scritto male (punto decimale, lettere) impedisce il salvataggio del dialog.
+    this.stato.registraBloccante('fasce', () => (this.attiva() ? this.erroriNumeri() : []))
+  }
+
+  ngOnDestroy(): void {
+    clearTimeout(this.timer)
+  }
+
   ngDoCheck(): void {
     const valore = this.stato.form.controls.scaglioni.value
     if (valore !== this.emesso) this.leggi(valore)
+    const chiave = this.avvisi().join(' ')
+    if (chiave !== this.chiaveAvvisi) {
+      this.chiaveAvvisi = chiave
+      clearTimeout(this.timer)
+      this.timer = setTimeout(() => (this.annuncio = chiave), 800)
+    }
   }
 
   private leggi(valore: Scaglione[]): void {
     const ordinate = [...valore].sort((a, b) => a.ordine - b.ordine)
     const testo = (s: Scaglione): FasciaTesto => ({
-      finoA: inInput(s.finoA),
-      prezzo: inInput(s.prezzo),
-      sconto: inInput(s.sconto),
-      provvigione: inInput(s.provvigione),
+      finoA: formatNumero(s.finoA),
+      prezzo: formatNumero(s.prezzo),
+      sconto: formatCascata(s.sconto),
+      provvigione: formatCascata(s.provvigione),
       tipoCalcolo: s.tipoCalcolo,
     })
     this.righe = ordinate.filter(s => s.ordine < 7).map(testo)
@@ -387,19 +433,57 @@ export class RigaFasceSezioneComponent implements DoCheck {
   private comeScaglione(f: FasciaTesto, ordine: number): Scaglione {
     return {
       ordine,
-      finoA: ordine === 7 ? null : opzionale(f.finoA),
-      prezzo: daInput(f.prezzo),
-      sconto: opzionale(f.sconto),
-      provvigione: opzionale(f.provvigione),
+      finoA: ordine === 7 ? null : leggiNumero(f.finoA).valore,
+      prezzo: leggiNumero(f.prezzo).valore ?? '',
+      sconto: leggiCascata(f.sconto).valore,
+      provvigione: leggiCascata(f.provvigione).valore,
       tipoCalcolo: f.tipoCalcolo,
     }
   }
 
-  /** Le fasce piene, rinumerate di seguito, più «oltre» se ha qualcosa. */
+  /**
+   * Le fasce fino all'ultima compilata, con il numero che hanno sullo schermo (una riga vuota in
+   * mezzo parte incompleta e il backend la segnala con quel numero), più «oltre» se ha qualcosa.
+   */
   private valore(): Scaglione[] {
-    const fuori = this.righe.filter(f => !eVuota(f)).map((f, i) => this.comeScaglione(f, i + 1))
+    let fine = 0
+    this.righe.forEach((f, i) => {
+      if (!eVuota(f)) fine = i + 1
+    })
+    const fuori = this.righe.slice(0, fine).map((f, i) => this.comeScaglione(f, i + 1))
     if (!eVuota(this.oltre)) fuori.push(this.comeScaglione(this.oltre, 7))
     return fuori
+  }
+
+  /** Numeri scritti male, con il numero della fascia come sullo schermo. */
+  erroriNumeri(): string[] {
+    const m: string[] = []
+    const controlla = (f: FasciaTesto, nome: string): void => {
+      for (const c of ['finoA', 'prezzo'] as const) {
+        const e = leggiNumero(f[c]).errore
+        if (e) m.push(`${nome}, ${NOMI_CAMPO[c]}: ${e}`)
+      }
+      for (const c of ['sconto', 'provvigione'] as const) {
+        const e = leggiCascata(f[c]).errore
+        if (e) m.push(`${nome}, ${NOMI_CAMPO[c]}: ${e}`)
+      }
+    }
+    this.righe.forEach((f, i) => controlla(f, `Fascia ${i + 1}`))
+    controlla(this.oltre, 'Fascia «oltre»')
+    return m
+  }
+
+  /** Un campo con testo non valido è segnato come tale (per i lettori di schermo). */
+  invalido(f: FasciaTesto, campo: 'finoA' | 'prezzo' | 'sconto' | 'provvigione'): boolean {
+    return (
+      (campo === 'sconto' || campo === 'provvigione'
+        ? leggiCascata(f[campo]).errore
+        : leggiNumero(f[campo]).errore) !== null
+    )
+  }
+
+  private focalizza(id: string): void {
+    setTimeout(() => this.host.nativeElement.querySelector<HTMLElement>(`[id="${id}"]`)?.focus())
   }
 
   private emetti(): void {
@@ -417,12 +501,14 @@ export class RigaFasceSezioneComponent implements DoCheck {
   aggiungi(): void {
     if (this.righe.length >= this.massimo - 1) return
     this.righe = [...this.righe, vuota()]
+    this.focalizza(`riga-fascia-${this.righe.length}-fino`)
   }
 
   togli(i: number): void {
     this.righe = this.righe.filter((_, k) => k !== i)
     if (this.righe.length === 0) this.righe = [vuota()]
     this.emetti()
+    this.focalizza(`riga-fascia-${Math.min(i + 1, this.righe.length)}-fino`)
   }
 
   /** Tipi scelti per la posizione; quello attuale resta in lista anche se non più ammesso. */
@@ -440,11 +526,16 @@ export class RigaFasceSezioneComponent implements DoCheck {
     const f = i < 0 ? this.oltre : this.righe[i]
     if (eVuota(f)) return ''
     const emesse = this.valore()
-    const ordine = i < 0 ? 7 : this.righe.slice(0, i).filter(r => !eVuota(r)).length + 1
+    const ordine = i < 0 ? 7 : i + 1
     const indice = emesse.findIndex(s => s.ordine === ordine)
     return indice < 0
       ? ''
-      : descrizioneFascia(emesse, indice, this.stato.form.controls.unitaMisura.value)
+      : descrizioneFascia(
+          emesse,
+          indice,
+          this.stato.form.controls.unitaMisura.value,
+          this.stato.form.controls.applicaA.value
+        )
   }
 
   avvisi(): string[] {

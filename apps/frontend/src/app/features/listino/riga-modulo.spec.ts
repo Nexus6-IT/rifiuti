@@ -1,6 +1,11 @@
 import { PropostaRiga, RigaAddebito } from './listino.model'
 import { CAMPI_PARTE_2, RigaForm, tipoPerMenu } from './riga-modulo'
 
+const errore = (errori: unknown, message: unknown = ['x']) => ({
+  status: 400,
+  error: { error: 'RIGA_ADDEBITO_NON_VALIDA', message, errori },
+})
+
 const riga = (over: Partial<RigaAddebito> = {}): RigaAddebito =>
   ({
     id: 'r1',
@@ -150,14 +155,14 @@ describe('RigaForm', () => {
           provvigione: null,
           minimoFatturabile: null,
           scaglioni: fasce,
-          applicaA: 'DOCUMENTO',
+          applicaA: 'CONGUAGLIO_365',
           condizioniRiferite: '1',
           riferimentoGiorno: 5,
           riferimentoMese: 3,
         })
       )
       expect(rf.dati().scaglioni?.length).toBe(1)
-      expect(rf.dati().applicaA).toBe('DOCUMENTO')
+      expect(rf.dati().applicaA).toBe('CONGUAGLIO_365')
       rf.form.controls.prezzoSpeciale.setValue(false)
       rf.adatta()
       const d = rf.dati()
@@ -335,11 +340,6 @@ describe('RigaForm', () => {
   })
 
   describe('errori del backend (R36)', () => {
-    const errore = (errori: unknown, message: unknown = ['x']) => ({
-      status: 400,
-      error: { error: 'RIGA_ADDEBITO_NON_VALIDA', message, errori },
-    })
-
     it('ogni messaggio va sotto il suo campo, quelli senza campo in testa', () => {
       rf.impostaErrori(
         errore([
@@ -364,6 +364,7 @@ describe('RigaForm', () => {
 
     it('i campi disegnati dal Task 28 (fasce e scadenze) hanno l’errore sotto il campo', () => {
       for (const c of CAMPI_PARTE_2) expect(rf.mostrati.has(c)).withContext(c).toBeTrue()
+      rf.form.patchValue({ tipo: 'CER', prezzoSpeciale: true })
       rf.impostaErrori(errore([{ campo: 'scaglioni', messaggio: 'Servono le fasce.' }]), 'ripiego')
       expect(rf.erroriDi('scaglioni')).toEqual(['Servono le fasce.'])
       expect(rf.generali()).toEqual([])
@@ -395,6 +396,123 @@ describe('RigaForm', () => {
       rf.impostaErrori(errore([{ campo: 'prezzo', messaggio: 'm' }]), 'r')
       rf.pulisciErrori()
       expect(rf.erroriDi('prezzo')).toEqual([])
+      expect(rf.generali()).toEqual([])
+    })
+  })
+
+  describe('virgola decimale obbligatoria (C1)', () => {
+    it('1000 riletto resta 1000 e parte come "1000", mai "1" né "1.000"', () => {
+      rf.riempi(riga({ prezzo: '1000.00', stimaAnnuaKg: '5000.00' }))
+      expect(rf.form.controls.prezzo.value).toBe('1000')
+      expect(rf.form.controls.stimaAnnuaKg.value).toBe('5000')
+      const d = rf.dati()
+      expect(d.prezzo).toBe('1000')
+      expect(rf.haErroriLocali()).toBeFalse()
+    })
+
+    it('il minimo fatturabile si legge con due decimali, senza migliaia, e riparte uguale', () => {
+      rf.riempi(riga({ minimoFatturabile: '1000.00' }))
+      expect(rf.form.controls.minimoFatturabile.value).toBe('1000,00')
+      expect(rf.dati().minimoFatturabile).toBe('1000.00')
+    })
+
+    it('1234,5 parte come 1234.5', () => {
+      rf.riempi(riga())
+      rf.form.controls.prezzo.setValue('1234,5')
+      expect(rf.dati().prezzo).toBe('1234.5')
+      expect(rf.erroriDi('prezzo')).toEqual([])
+    })
+
+    it('«1.000» è rifiutato col messaggio e il modulo non si può salvare', () => {
+      rf.riempi(riga())
+      rf.form.controls.prezzo.setValue('1.000')
+      expect(rf.erroriDi('prezzo')).toEqual(['Usa la virgola per i decimali'])
+      expect(rf.haErroriLocali()).toBeTrue()
+      expect(rf.dati().prezzo).toBeNull()
+    })
+
+    it('un punto è vietato anche nello sconto a cascata e nella quantità fissa', () => {
+      rf.riempi(riga())
+      rf.form.controls.sconto.setValue('10+5.5')
+      expect(rf.erroriDi('sconto')).toEqual(['Usa la virgola per i decimali'])
+      rf.form.controls.sconto.setValue('10+5,5')
+      expect(rf.dati().sconto).toBe('10+5.5')
+      expect(rf.erroriDi('sconto')).toEqual([])
+    })
+
+    it('«1a» è rifiutato (anche negli interi, niente parseInt permissivo)', () => {
+      rf.riempi(riga({ prezzoSpeciale: true, applicaA: 'CONGUAGLIO_365' }))
+      rf.form.controls.riferimentoGiorno.setValue('1a')
+      expect(rf.erroriDi('riferimentoGiorno')).toEqual(['Numero non valido'])
+      expect(rf.haErroriLocali()).toBeTrue()
+      rf.form.controls.prezzo.setValue('1a')
+      rf.form.controls.prezzoSpeciale.setValue(false)
+      rf.form.controls.riferimentoGiorno.setValue('15')
+      expect(rf.erroriDi('prezzo')).toEqual(['Numero non valido'])
+    })
+
+    it('un campo che non parte (prezzo speciale spento) non blocca il salvataggio', () => {
+      rf.riempi(riga({ prezzoSpeciale: true, applicaA: 'CONGUAGLIO_365' }))
+      rf.form.controls.riferimentoGiorno.setValue('1a')
+      rf.form.controls.prezzoSpeciale.setValue(false)
+      expect(rf.haErroriLocali()).toBeFalse()
+    })
+
+    it('il prezzo proposto dall’archivio non ha le migliaia', () => {
+      rf.form.controls.tipo.setValue('CER')
+      rf.applicaProposta({
+        descrizione: null,
+        unitaMisura: null,
+        codiceIva: null,
+        tipo: null,
+        categoria: null,
+        centroRicavo: null,
+        prezzo: '1000.000000',
+        sconto: null,
+        provvigione: null,
+        tipoProvvigione: null,
+        tipologiaRifiuto: null,
+      })
+      expect(rf.form.controls.prezzo.value).toBe('1000')
+    })
+  })
+
+  describe('riferimento svuotato e campi nascosti (I3)', () => {
+    it('cambiando «si applica a» giorno e mese non partono, ma restano nel modulo', () => {
+      rf.riempi(
+        riga({
+          prezzoSpeciale: true,
+          applicaA: 'PROGRESSIVO_DA_DATA',
+          riferimentoGiorno: 5,
+          riferimentoMese: 3,
+        })
+      )
+      expect(rf.dati().riferimentoGiorno).toBe(5)
+      rf.form.controls.applicaA.setValue('DOCUMENTO')
+      expect(rf.dati().riferimentoGiorno).toBeNull()
+      expect(rf.dati().riferimentoMese).toBeNull()
+      expect(rf.form.controls.riferimentoGiorno.value).toBe('5')
+      rf.form.controls.applicaA.setValue('CONGUAGLIO_365')
+      expect(rf.dati().riferimentoMese).toBe(3)
+    })
+
+    it('un errore del backend su un campo nascosto va in testa con la sua etichetta', () => {
+      rf.riempi(riga({ prezzoSpeciale: true, applicaA: 'DOCUMENTO' }))
+      rf.impostaErrori(
+        errore([{ campo: 'riferimentoGiorno', messaggio: 'La data non vale qui.' }]),
+        'ripiego'
+      )
+      expect(rf.erroriDi('riferimentoGiorno')).toEqual([])
+      expect(rf.generali()).toEqual(['Giorno di riferimento: La data non vale qui.'])
+    })
+
+    it('lo stesso errore, con il campo visibile, sta sotto il campo', () => {
+      rf.riempi(riga({ prezzoSpeciale: true, applicaA: 'CONGUAGLIO_365' }))
+      rf.impostaErrori(
+        errore([{ campo: 'riferimentoGiorno', messaggio: 'Data non valida.' }]),
+        'ripiego'
+      )
+      expect(rf.erroriDi('riferimentoGiorno')).toEqual(['Data non valida.'])
       expect(rf.generali()).toEqual([])
     })
   })

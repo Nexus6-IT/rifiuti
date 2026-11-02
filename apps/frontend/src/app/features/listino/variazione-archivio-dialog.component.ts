@@ -1,3 +1,4 @@
+import { leggiNumero, messaggioNumero, validatoreNumero } from './numero-modificabile'
 import { CommonModule } from '@angular/common'
 import {
   Component,
@@ -86,6 +87,13 @@ const MESSAGGIO_409 = 'I dati sono cambiati dopo l’anteprima: rifai l’antepr
             inputmode="decimal"
             data-testid="var-valore"
           />
+          <small
+            *ngIf="erroreValore() as e"
+            role="alert"
+            class="field-error"
+            data-testid="var-errore-valore"
+            >{{ e }}</small
+          >
         </ng-container>
         <ng-container *ngIf="sostituzioneIva()">
           <label for="var-da-iva">Dal codice IVA</label>
@@ -305,7 +313,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
 
   readonly form = new FormGroup({
     tipo: new FormControl<TipoVariazione>('AUMENTO_PERCENTUALE', { nonNullable: true }),
-    valore: new FormControl('', { nonNullable: true }),
+    valore: new FormControl('', { nonNullable: true, validators: [validatoreNumero('decimale')] }),
     daCodiceIvaId: new FormControl('', { nonNullable: true }),
     aCodiceIvaId: new FormControl('', { nonNullable: true }),
   })
@@ -417,7 +425,11 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
     if (this.listini().length === 0) return false
     return this.sostituzioneIva()
       ? v.daCodiceIvaId !== '' && v.aCodiceIvaId !== ''
-      : v.valore.trim() !== ''
+      : v.valore.trim() !== '' && this.form.controls.valore.valid
+  }
+
+  erroreValore(): string | null {
+    return messaggioNumero(this.form.controls.valore)
   }
 
   puoAnteprima(): boolean {
@@ -442,7 +454,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
       tipo: v.tipo,
       ...(this.sostituzioneIva()
         ? { daCodiceIvaId: v.daCodiceIvaId, aCodiceIvaId: v.aCodiceIvaId }
-        : { valore: v.valore.trim().replace(/,/g, '.') }),
+        : { valore: leggiNumero(v.valore).valore ?? '' }),
       filtri: {
         ...(ids && ids.length > 0 ? { addebitiIds: ids } : {}),
         ...(this.categorieScelte().length > 0 ? { categorieIds: this.categorieScelte() } : {}),

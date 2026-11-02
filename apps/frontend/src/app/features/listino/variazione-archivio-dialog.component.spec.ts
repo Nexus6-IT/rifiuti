@@ -117,6 +117,14 @@ describe('VariazioneArchivioDialogComponent', () => {
     expect(bottone('var-anteprima')!.disabled).toBeTrue()
   })
 
+  it('virgola obbligatoria: «3.5» dà l’errore e l’anteprima resta spenta', async () => {
+    await apri()
+    await preparaAumento('3.5')
+    q<HTMLInputElement>('var-tipo-F')!.click()
+    expect(q('var-errore-valore')!.textContent).toContain('Usa la virgola per i decimali')
+    expect(bottone('var-anteprima')!.disabled).toBeTrue()
+  })
+
   it('l’anteprima manda il valore con il punto, come stringa, e i listini scelti', async () => {
     await apri()
     await preparaAumento('3,5')

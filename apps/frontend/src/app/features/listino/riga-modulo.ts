@@ -13,11 +13,19 @@ import {
   Scadenza,
   Scaglione,
 } from './listino.model'
-import { cascataItaliana, decimaleItaliano, messaggiErrore } from './listino-calcoli'
+import { messaggiErrore } from './listino-calcoli'
+import {
+  formatCascata,
+  formatNumero,
+  leggiCascata,
+  leggiIntero,
+  leggiNumero,
+} from './numero-modificabile'
 import {
   CampoRiga,
   FamigliaAddebito,
   campoAbilitato,
+  PERIODI_EXTRA,
   famigliaTipo,
   tipoAddebitoValido,
 } from './vocabolario-listino'
@@ -122,25 +130,15 @@ export function tipoPerMenu(tipo: string): { tipo: string; cifre: string } {
     : { tipo, cifre: '' }
 }
 
-/** Virgola → punto, spazi tolti, vuoto → null: il backend valida, qui non si arrotonda. */
-const decimale = (v: string): string | null => {
-  const t = v.trim().replace(/,/g, '.')
-  return t === '' ? null : t
-}
 const testo = (v: string): string | null => (v.trim() === '' ? null : v.trim())
-const intero = (v: string): number | null => {
-  const n = Number.parseInt(v.trim(), 10)
-  return Number.isNaN(n) ? null : n
-}
 
 const DECIMALI: readonly CampoRiga[] = [
   'prezzo',
   'quantitaFissa',
   'minimoFatturabile',
-  'sconto',
-  'provvigione',
   'stimaAnnuaKg',
 ]
+const CASCATE: readonly CampoRiga[] = ['sconto', 'provvigione']
 const INTERI: readonly CampoRiga[] = ['condizione', 'riferimentoGiorno', 'riferimentoMese']
 const DATI_PREZZO_SPECIALE: readonly CampoRiga[] = [
   'scaglioni',
@@ -149,6 +147,7 @@ const DATI_PREZZO_SPECIALE: readonly CampoRiga[] = [
   'riferimentoGiorno',
   'riferimentoMese',
 ]
+const CON_DATA = ['PROGRESSIVO_DA_DATA', 'CONGUAGLIO_365']
 const LISTE: readonly CampoRiga[] = ['cerProposta', 'addebitiProposti', 'scaglioni', 'scadenze']
 const BOOLEANI: readonly CampoRiga[] = ['prezzoSpeciale', 'minimoPerCategoria']
 
@@ -299,13 +298,13 @@ export class RigaForm {
         riferimento: r.riferimento ?? '',
         descrizione: r.descrizione ?? '',
         tipoQuantita: r.tipoQuantita ?? '',
-        quantitaFissa: decimaleItaliano(r.quantitaFissa),
+        quantitaFissa: formatNumero(r.quantitaFissa),
         unitaMisura: r.unitaMisura,
-        prezzo: decimaleItaliano(r.prezzo),
+        prezzo: formatNumero(r.prezzo),
         prezzoSpeciale: r.prezzoSpeciale,
-        sconto: cascataItaliana(r.sconto),
+        sconto: formatCascata(r.sconto),
         codiceIvaId: r.codiceIva.id,
-        provvigione: cascataItaliana(r.provvigione),
+        provvigione: formatCascata(r.provvigione),
         tipoProvvigione: r.tipoProvvigione ?? '',
         tipologiaRifiuto: r.tipologiaRifiuto ?? '',
         statoFisico: r.statoFisico ?? '',
@@ -315,14 +314,14 @@ export class RigaForm {
         applicaA: r.applicaA ?? '',
         condizione: r.condizione === null ? '' : String(r.condizione),
         condizioniRiferite: r.condizioniRiferite ?? '',
-        minimoFatturabile: decimaleItaliano(r.minimoFatturabile, 2),
+        minimoFatturabile: formatNumero(r.minimoFatturabile, 2),
         minimoPerCategoria: r.minimoPerCategoria,
         riferimentoGiorno: r.riferimentoGiorno === null ? '' : String(r.riferimentoGiorno),
         riferimentoMese: r.riferimentoMese === null ? '' : String(r.riferimentoMese),
         periodoScadenze: r.periodoScadenze ?? '',
         periodoExtraDal: r.periodoExtraDal ?? '',
         periodoExtraAl: r.periodoExtraAl ?? '',
-        stimaAnnuaKg: decimaleItaliano(r.stimaAnnuaKg),
+        stimaAnnuaKg: formatNumero(r.stimaAnnuaKg),
         cerProposta: [...r.cerProposta],
         addebitiProposti: [...r.addebitiProposti],
         appunti: r.appunti ?? '',
@@ -377,9 +376,9 @@ export class RigaForm {
     metti('codiceIvaId', p.codiceIva?.id)
     metti('categoriaId', p.categoria?.id)
     metti('centroRicavoId', p.centroRicavo?.id)
-    metti('prezzo', decimaleItaliano(p.prezzo))
-    metti('sconto', cascataItaliana(p.sconto))
-    metti('provvigione', cascataItaliana(p.provvigione))
+    metti('prezzo', formatNumero(p.prezzo))
+    metti('sconto', formatCascata(p.sconto))
+    metti('provvigione', formatCascata(p.provvigione))
     metti('tipoProvvigione', p.tipoProvvigione)
     metti('tipologiaRifiuto', p.tipologiaRifiuto)
     return { IVA: p.codiceIva, CATEGORIA: p.categoria, CENTRO_RICAVO: p.centroRicavo }
@@ -403,22 +402,78 @@ export class RigaForm {
   private valoreInviato(campo: CampoRiga, valore: unknown): unknown {
     // Prezzo speciale spento: fasce e dati collegati partono vuoti (R37) ma restano nel modulo,
     // così rimettendo la spunta tornano.
-    if (
-      DATI_PREZZO_SPECIALE.includes(campo) &&
-      this.abilitato('prezzoSpeciale') &&
-      !this.form.controls.prezzoSpeciale.value
-    ) {
-      return campo === 'scaglioni' ? [] : null
-    }
+    if (this.spentoDalPrezzoSpeciale(campo)) return campo === 'scaglioni' ? [] : null
+    // Giorno e mese di riferimento valgono solo per progressivo da data e conguaglio: cambiato
+    // «si applica a» restano nel modulo ma non partono (altrimenti il backend li rifiuta).
+    if (this.senzaData(campo)) return null
     if (!this.abilitato(campo))
       return LISTE.includes(campo) ? [] : BOOLEANI.includes(campo) ? false : null
     if (LISTE.includes(campo)) return Array.isArray(valore) ? [...valore] : []
     if (BOOLEANI.includes(campo)) return valore === true
     const s = String(valore ?? '')
-    if (DECIMALI.includes(campo)) return decimale(s)
-    if (INTERI.includes(campo)) return intero(s)
+    if (DECIMALI.includes(campo)) return leggiNumero(s).valore
+    if (CASCATE.includes(campo)) return leggiCascata(s).valore
+    if (INTERI.includes(campo)) return leggiIntero(s).valore
     if (campo === 'unitaMisura') return testo(s)?.toUpperCase() ?? null
     return testo(s)
+  }
+
+  private spentoDalPrezzoSpeciale(campo: CampoRiga): boolean {
+    return (
+      DATI_PREZZO_SPECIALE.includes(campo) &&
+      this.abilitato('prezzoSpeciale') &&
+      !this.form.controls.prezzoSpeciale.value
+    )
+  }
+
+  private senzaData(campo: CampoRiga): boolean {
+    return (
+      (campo === 'riferimentoGiorno' || campo === 'riferimentoMese') &&
+      !CON_DATA.includes(this.form.controls.applicaA.value)
+    )
+  }
+
+  // --- numeri scritti male (virgola decimale obbligatoria) ---------------------------------
+
+  /** Errore di formato del numero scritto nel campo, solo se il campo parte davvero. */
+  private erroreLocale(campo: CampoRiga): string | null {
+    if (this.spentoDalPrezzoSpeciale(campo) || this.senzaData(campo) || !this.abilitato(campo)) {
+      return null
+    }
+    const t = String(this.controllo(campo).value ?? '')
+    if (DECIMALI.includes(campo)) return leggiNumero(t).errore
+    if (CASCATE.includes(campo)) return leggiCascata(t).errore
+    if (INTERI.includes(campo)) return leggiIntero(t).errore
+    return null
+  }
+
+  /** Controlli aggiunti dalle sezioni (fasce, scadenze): messaggi che impediscono il salvataggio. */
+  private readonly bloccanti = new Map<string, () => string[]>()
+
+  registraBloccante(chiave: string, messaggi: () => string[]): void {
+    this.bloccanti.set(chiave, messaggi)
+  }
+
+  /** C'è un numero scritto male (nei campi della riga o nelle sezioni): non si salva. */
+  haErroriLocali(): boolean {
+    return (
+      TUTTI_I_CAMPI.some(c => this.erroreLocale(c) !== null) ||
+      [...this.bloccanti.values()].some(f => f().length > 0)
+    )
+  }
+
+  /** Il campo è sullo schermo adesso (per quelli del Task 28, che compaiono e spariscono). */
+  private visibile(campo: string): boolean {
+    const c = campo as CampoRiga
+    if (!this.abilitato(c)) return false
+    if (DATI_PREZZO_SPECIALE.includes(c) || c === 'applicaA') {
+      if (!this.form.controls.prezzoSpeciale.value) return false
+    }
+    if (this.senzaData(c)) return false
+    if (c === 'periodoExtraDal' || c === 'periodoExtraAl') {
+      return PERIODI_EXTRA.includes(this.form.controls.periodoScadenze.value as never)
+    }
+    return true
   }
 
   // --- errori del backend (R36) ------------------------------------------------------------
@@ -450,8 +505,9 @@ export class RigaForm {
       const messaggio = e?.messaggio
       if (typeof messaggio !== 'string' || messaggio.trim() === '') continue
       const campo = e.campo ?? null
-      if (campo !== null && this.mostrati.has(campo)) (perCampo[campo] ??= []).push(messaggio)
-      else if (campo !== null) {
+      if (campo !== null && this.mostrati.has(campo) && this.disegnato(campo)) {
+        ;(perCampo[campo] ??= []).push(messaggio)
+      } else if (campo !== null) {
         const et = (ETICHETTE_CAMPI_RIGA as Record<string, string>)[campo]
         generali.push(et ? `${et}: ${messaggio}` : messaggio)
       } else generali.push(messaggio)
@@ -462,8 +518,15 @@ export class RigaForm {
     )
   }
 
+  /** I campi della parte 1 sono sempre sullo schermo; quelli del Task 28 solo quando visibili. */
+  private disegnato(campo: string): boolean {
+    return !CAMPI_PARTE_2.includes(campo as CampoRiga) || this.visibile(campo)
+  }
+
+  /** Errori del backend e, prima del salvataggio, quelli di formato del numero. */
   erroriDi(campo: string): string[] {
-    return this.errori()[campo] ?? []
+    const locale = this.erroreLocale(campo as CampoRiga)
+    return [...(locale === null ? [] : [locale]), ...(this.errori()[campo] ?? [])]
   }
 }
 

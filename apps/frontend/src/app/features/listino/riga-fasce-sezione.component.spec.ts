@@ -86,14 +86,15 @@ describe('RigaFasceSezioneComponent', () => {
     )
   })
 
-  it('le righe vuote non partono e le altre si rinumerano di seguito', async () => {
+  it('le righe vuote in coda non partono, quelle in mezzo partono col loro numero', async () => {
     await monta()
     bottone('fasce-aggiungi')!.click()
     await stabilizza(fixture)
     scrivi('fascia-2-fino', '500')
     scrivi('fascia-2-prezzo', '0,2')
     await stabilizza(fixture)
-    expect(scaglioni()).toEqual([fascia(1, '500', '0.2')])
+    // la riga vuota in mezzo parte incompleta, col numero che ha sullo schermo
+    expect(scaglioni()).toEqual([fascia(1, null, ''), fascia(2, '500', '0.2')])
   })
 
   it('al massimo sette fasce: sei più «oltre», poi il bottone si spegne', async () => {
@@ -290,5 +291,96 @@ describe('RigaFasceSezioneComponent', () => {
     expect(q<HTMLSelectElement>('fascia-oltre-tipo')!.disabled).toBeTrue()
     expect(q('fasce-aggiungi')).toBeNull()
     expect(q('fascia-1-togli')).toBeNull()
+  })
+
+  describe('virgola decimale obbligatoria', () => {
+    it('un punto nei campi numerici dà l’errore e impedisce il salvataggio', async () => {
+      await monta()
+      scrivi('fascia-1-fino', '1.000')
+      scrivi('fascia-1-prezzo', '0,10')
+      await stabilizza(fixture)
+      expect(testo('fasce-errori-numeri')).toBe('Fascia 1, fino a: Usa la virgola per i decimali')
+      expect(stato.haErroriLocali()).toBeTrue()
+      scrivi('fascia-1-fino', '1000')
+      await stabilizza(fixture)
+      expect(q('fasce-errori-numeri')).toBeNull()
+      expect(stato.haErroriLocali()).toBeFalse()
+    })
+
+    it('sconto a cascata con il punto e testo non numerico', async () => {
+      await monta()
+      scrivi('fascia-1-sconto', '10+5.5')
+      scrivi('fascia-oltre-provvigione', '1a')
+      await stabilizza(fixture)
+      expect(testo('fasce-errori-numeri')).toContain('Fascia 1, sconto: Usa la virgola')
+      expect(testo('fasce-errori-numeri')).toContain(
+        'Fascia «oltre», provvigione: Numero non valido'
+      )
+    })
+
+    it('con il prezzo speciale spento gli errori non bloccano', async () => {
+      await monta()
+      scrivi('fascia-1-fino', '1.000')
+      stato.form.controls.prezzoSpeciale.setValue(false)
+      await stabilizza(fixture)
+      expect(stato.haErroriLocali()).toBeFalse()
+    })
+
+    it('1000 si rilegge come «1000» e riparte «1000»', async () => {
+      await monta()
+      stato.form.controls.scaglioni.setValue([
+        fascia(1, '1000.000', '1000.00'),
+        fascia(7, null, '2.5'),
+      ])
+      await stabilizza(fixture)
+      expect(valore('fascia-1-fino')).toBe('1000')
+      expect(valore('fascia-1-prezzo')).toBe('1000')
+      expect(valore('fascia-oltre-prezzo')).toBe('2,5')
+      scrivi('fascia-1-prezzo', '1234,5')
+      expect(scaglioni()[0].prezzo).toBe('1234.5')
+    })
+  })
+
+  describe('descrizioni «da data» e numerazione', () => {
+    it('con progressivo da data la descrizione dice la sola quantità nuova', async () => {
+      await monta()
+      stato.form.controls.scaglioni.setValue([
+        fascia(1, '1000', '0.1'),
+        fascia(7, null, '0.05', 'E'),
+      ])
+      stato.form.controls.applicaA.setValue('PROGRESSIVO_DA_DATA')
+      await stabilizza(fixture)
+      expect(testo('fascia-oltre-descrizione')).toContain('sola quantità nuova')
+    })
+
+    it('un avviso su «Fascia 2» riguarda la riga che sullo schermo è la 2', async () => {
+      await monta()
+      bottone('fasce-aggiungi')!.click()
+      await stabilizza(fixture)
+      bottone('fasce-aggiungi')!.click()
+      await stabilizza(fixture)
+      scrivi('fascia-1-fino', '1000')
+      scrivi('fascia-1-prezzo', '0,1')
+      imposta('fascia-1-tipo', 'D')
+      scrivi('fascia-3-fino', '5000')
+      scrivi('fascia-3-prezzo', '0,08')
+      await stabilizza(fixture)
+      expect(scaglioni().map(f => f.ordine)).toEqual([1, 2, 3])
+      expect(testo('fasce-avvisi')).toContain('Fascia 3: dopo una fascia')
+    })
+  })
+
+  it('aggiungendo una fascia il focus va sul suo primo campo', async () => {
+    await monta()
+    bottone('fasce-aggiungi')!.click()
+    await stabilizza(fixture)
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('fascia-2-fino'))
+  })
+
+  it('l’annuncio per i lettori di schermo c’è ed è separato dall’elenco degli avvisi', async () => {
+    await monta()
+    expect(q('fasce-annuncio')?.getAttribute('aria-live')).toBe('polite')
+    expect(q('fasce-avvisi')).toBeNull()
   })
 })

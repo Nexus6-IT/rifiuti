@@ -27,6 +27,14 @@ import {
 } from './listino.model'
 import { ListinoService } from './listino.service'
 import { CHIAVI_OPZIONE, ChiaveOpzione, OpzioniListino } from './opzioni-listino'
+import {
+  formatCascata,
+  formatNumero,
+  leggiCascata,
+  leggiNumero,
+  messaggioNumero,
+  validatoreNumero,
+} from './numero-modificabile'
 import { CodiceIvaDialogComponent } from './tabelle/codice-iva-dialog.component'
 import { CodificaAddebitoDialogComponent } from './tabelle/codifica-addebito-dialog.component'
 import {
@@ -39,11 +47,6 @@ import {
 const NUMERI: readonly NumeroListino[] = [1, 2, 3, 4, 5, 6]
 const FORMA_CON_CATEGORIA = /^([TM])\d{3}$/
 
-/** Virgola → punto, spazi tolti, vuoto → null: il backend valida (D20), qui non si arrotonda. */
-const decimale = (v: string): string | null => {
-  const t = v.trim().replace(/,/g, '.')
-  return t === '' ? null : t
-}
 const testo = (v: string): string | null => (v.trim() === '' ? null : v.trim())
 
 interface CampoScelta {
@@ -107,9 +110,12 @@ const CAMPI: readonly CampoScelta[] = [
 
 const gruppoListino = () =>
   new FormGroup({
-    prezzo: new FormControl('', { nonNullable: true }),
-    sconto: new FormControl('', { nonNullable: true }),
-    provvigione: new FormControl('', { nonNullable: true }),
+    prezzo: new FormControl('', { nonNullable: true, validators: [validatoreNumero('decimale')] }),
+    sconto: new FormControl('', { nonNullable: true, validators: [validatoreNumero('cascata')] }),
+    provvigione: new FormControl('', {
+      nonNullable: true,
+      validators: [validatoreNumero('cascata')],
+    }),
   })
 
 /**
@@ -260,6 +266,13 @@ const gruppoListino = () =>
                   [attr.aria-label]="'Prezzo del listino ' + n"
                   [attr.data-testid]="'add-dlg-prezzo-' + n"
                 />
+                <small
+                  *ngIf="erroreNumero(i, 'prezzo') as e"
+                  role="alert"
+                  class="field-error"
+                  [attr.data-testid]="'add-dlg-errore-prezzo-' + n"
+                  >{{ e }}</small
+                >
               </td>
               <td>
                 <input
@@ -268,6 +281,13 @@ const gruppoListino = () =>
                   [attr.aria-label]="'Sconto del listino ' + n"
                   [attr.data-testid]="'add-dlg-sconto-' + n"
                 />
+                <small
+                  *ngIf="erroreNumero(i, 'sconto') as e"
+                  role="alert"
+                  class="field-error"
+                  [attr.data-testid]="'add-dlg-errore-sconto-' + n"
+                  >{{ e }}</small
+                >
               </td>
               <td>
                 <input
@@ -277,6 +297,13 @@ const gruppoListino = () =>
                   [attr.aria-label]="'Provvigione del listino ' + n"
                   [attr.data-testid]="'add-dlg-provv-' + n"
                 />
+                <small
+                  *ngIf="erroreNumero(i, 'provvigione') as e"
+                  role="alert"
+                  class="field-error"
+                  [attr.data-testid]="'add-dlg-errore-provv-' + n"
+                  >{{ e }}</small
+                >
               </td>
             </tr>
           </tbody>
@@ -518,12 +545,17 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
       listini: NUMERI.map(n => {
         const l = d.listini.find(x => x.numero === n)
         return {
-          prezzo: l?.prezzo ?? '',
-          sconto: l?.sconto ?? '',
-          provvigione: l?.provvigione ?? '',
+          prezzo: formatNumero(l?.prezzo),
+          sconto: formatCascata(l?.sconto),
+          provvigione: formatCascata(l?.provvigione),
         }
       }),
     })
+  }
+
+  /** Messaggio sul numero scritto male nel listino `i` (punto decimale, lettere). */
+  erroreNumero(i: number, campo: 'prezzo' | 'sconto' | 'provvigione'): string | null {
+    return messaggioNumero(this.form.controls.listini.at(i).controls[campo])
   }
 
   chiedeCifre(): boolean {
@@ -558,9 +590,9 @@ export class AddebitoDialogComponent implements OnChanges, OnDestroy {
       const v = g.getRawValue()
       return {
         numero: NUMERI[i],
-        prezzo: decimale(v.prezzo),
-        sconto: decimale(v.sconto),
-        provvigione: decimale(v.provvigione),
+        prezzo: leggiNumero(v.prezzo).valore,
+        sconto: leggiCascata(v.sconto).valore,
+        provvigione: leggiCascata(v.provvigione).valore,
       }
     })
   }
