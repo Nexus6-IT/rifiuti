@@ -143,6 +143,27 @@ export function validaScaglioni(
   return messaggi
 }
 
+/** Messaggi di `validaPrezzoSpeciale` (esportati perche' il Task 17 li attribuisce ai campi, R36). */
+export const MSG_PREZZO_SPECIALE = {
+  APPLICA_MANCANTE: 'Indica a cosa si applica il prezzo speciale.',
+  CONDIZIONATI: 'Il prezzo speciale non si usa negli addebiti condizionati.',
+  UNITA_HR: 'Il prezzo speciale non si usa con l’unità di misura HR.',
+  SCONTO_PROVVIGIONE_IN_FASCE:
+    'Con il prezzo speciale lo sconto e la provvigione si indicano nelle fasce.',
+  MINIMO: 'Con il prezzo speciale non si indica il minimo fatturabile.',
+  KM_SOLO_DOCUMENTO: 'Con l’unità K/M o K/L il prezzo speciale si applica al documento.',
+  CONDIZIONI_FORMA:
+    'Le condizioni si scrivono come cifre da 1 a 9 tutte diverse seguite da C o P (es. 12C).',
+  CONDIZIONI_DOCUMENTO_PERIODO:
+    'Con le condizioni il prezzo speciale si applica al documento o al periodo.',
+  CONGUAGLIO_DATA: 'Per il conguaglio indica la data (giorno e mese).',
+  DATA_SOLO_PROGRESSIVO:
+    'La data di riferimento vale solo per il progressivo da data e per il conguaglio.',
+  GIORNO_E_MESE: 'Il riferimento si indica con giorno e mese insieme.',
+  DATA_NON_VALIDA: 'Il riferimento non è una data valida.',
+  TIPO_PROVVIGIONE: 'Indica su cosa si calcola la provvigione.',
+} as const
+
 const GIORNI_PER_MESE = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 /**
@@ -167,23 +188,21 @@ export function validaPrezzoSpeciale(
   const messaggi: string[] = []
   const vuoto = (v: string | null): boolean => v === null || v === ''
 
-  if (r.applicaA === null) messaggi.push('Indica a cosa si applica il prezzo speciale.')
-  if (r.condizione !== null)
-    messaggi.push('Il prezzo speciale non si usa negli addebiti condizionati.')
-  if (r.unitaMisura === 'HR')
-    messaggi.push('Il prezzo speciale non si usa con l’unità di misura HR.')
+  if (r.applicaA === null) messaggi.push(MSG_PREZZO_SPECIALE.APPLICA_MANCANTE)
+  if (r.condizione !== null) messaggi.push(MSG_PREZZO_SPECIALE.CONDIZIONATI)
+  if (r.unitaMisura === 'HR') messaggi.push(MSG_PREZZO_SPECIALE.UNITA_HR)
   if (!vuoto(r.sconto) || !vuoto(r.provvigione)) {
-    messaggi.push('Con il prezzo speciale lo sconto e la provvigione si indicano nelle fasce.')
+    messaggi.push(MSG_PREZZO_SPECIALE.SCONTO_PROVVIGIONE_IN_FASCE)
   }
   if (!vuoto(r.minimoFatturabile)) {
-    messaggi.push('Con il prezzo speciale non si indica il minimo fatturabile.')
+    messaggi.push(MSG_PREZZO_SPECIALE.MINIMO)
   }
   if (
     (r.unitaMisura === 'K/M' || r.unitaMisura === 'K/L') &&
     r.applicaA !== null &&
     r.applicaA !== 'DOCUMENTO'
   ) {
-    messaggi.push('Con l’unità K/M o K/L il prezzo speciale si applica al documento.')
+    messaggi.push(MSG_PREZZO_SPECIALE.KM_SOLO_DOCUMENTO)
   }
 
   const conCondizioni = !vuoto(r.condizioniRiferite)
@@ -191,26 +210,22 @@ export function validaPrezzoSpeciale(
     const c = r.condizioniRiferite as string
     const cifre = c.slice(0, -1)
     if (!/^[1-9]{1,9}[CP]$/.test(c) || new Set(cifre).size !== cifre.length) {
-      messaggi.push(
-        'Le condizioni si scrivono come cifre da 1 a 9 tutte diverse seguite da C o P (es. 12C).'
-      )
+      messaggi.push(MSG_PREZZO_SPECIALE.CONDIZIONI_FORMA)
     }
     if (r.applicaA !== null && r.applicaA !== 'DOCUMENTO' && r.applicaA !== 'PERIODO') {
-      messaggi.push('Con le condizioni il prezzo speciale si applica al documento o al periodo.')
+      messaggi.push(MSG_PREZZO_SPECIALE.CONDIZIONI_DOCUMENTO_PERIODO)
     }
   }
 
   const conData = r.riferimentoGiorno !== null || r.riferimentoMese !== null
   const richiedeData = r.applicaA === 'PROGRESSIVO_DA_DATA' || r.applicaA === 'CONGUAGLIO_365'
   if (r.applicaA === 'CONGUAGLIO_365' && !conData) {
-    messaggi.push('Per il conguaglio indica la data (giorno e mese).')
+    messaggi.push(MSG_PREZZO_SPECIALE.CONGUAGLIO_DATA)
   } else if (conData && r.applicaA !== null && !richiedeData) {
-    messaggi.push(
-      'La data di riferimento vale solo per il progressivo da data e per il conguaglio.'
-    )
+    messaggi.push(MSG_PREZZO_SPECIALE.DATA_SOLO_PROGRESSIVO)
   } else if (conData) {
     if (r.riferimentoGiorno === null || r.riferimentoMese === null) {
-      messaggi.push('Il riferimento si indica con giorno e mese insieme.')
+      messaggi.push(MSG_PREZZO_SPECIALE.GIORNO_E_MESE)
     } else if (
       !Number.isInteger(r.riferimentoMese) ||
       r.riferimentoMese < 1 ||
@@ -219,13 +234,13 @@ export function validaPrezzoSpeciale(
       r.riferimentoGiorno < 1 ||
       r.riferimentoGiorno > GIORNI_PER_MESE[r.riferimentoMese - 1]
     ) {
-      messaggi.push('Il riferimento non è una data valida.')
+      messaggi.push(MSG_PREZZO_SPECIALE.DATA_NON_VALIDA)
     }
   }
 
   messaggi.push(...validaScaglioni(scaglioni, { conCondizioni }))
   if (scaglioni.some(f => !vuoto(f.provvigione)) && vuoto(r.tipoProvvigione)) {
-    messaggi.push('Indica su cosa si calcola la provvigione.')
+    messaggi.push(MSG_PREZZO_SPECIALE.TIPO_PROVVIGIONE)
   }
   return messaggi
 }

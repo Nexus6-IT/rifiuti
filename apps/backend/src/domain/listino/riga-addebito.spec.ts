@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { cerCanonico } from '../waste-movement/cer-registro'
 import {
   CAMPI_PER_FAMIGLIA,
@@ -12,6 +13,7 @@ import {
   validaCerProposta,
   validaRiga,
 } from './riga-addebito'
+import { MSG_PREZZO_SPECIALE } from './prezzo-speciale'
 import { famigliaTipo } from './tipi-addebito'
 
 const TUTTI_I_CAMPI = Object.keys(ETICHETTE_CAMPI_RIGA) as CampoRiga[]
@@ -337,7 +339,7 @@ describe('validaRiga: quantità e unità di misura (E11)', () => {
     })
   })
 
-  it('la quantità negativa è rifiutata prima del prezzo speciale con condizione C', () => {
+  it('quantità fissa e stima annua negative: un solo errore chiaro ciascuna', () => {
     const r = validaRiga({ ...VALIDE.F, quantitaFissa: '-5', stimaAnnuaKg: null }, CTX)
     expect(r).toEqual([
       { campo: 'quantitaFissa', messaggio: 'La quantità fissa non può essere negativa.' },
@@ -1060,10 +1062,12 @@ describe('totaleFissiAnnuo (TOTFISSI)', () => {
     expect(totaleFissiAnnuo([])).toBe('0.00')
   })
 
-  it('arrotonda ogni scadenza a due decimali come una riga di fattura, con aritmetica esatta', () => {
+  it('somma esatta e un solo arrotondamento finale, come riempitavola (I4)', () => {
     expect(
-      totaleFissiAnnuo([{ tipo: 'F', quantitaFissa: '3', prezzo: '0.335', scadenze: [ogni, ogni] }])
-    ).toBe('2.02') // 3 x 0,335 = 1,005 -> 1,01 per scadenza
+      totaleFissiAnnuo([
+        { tipo: 'F', quantitaFissa: '3', prezzo: '0.335', scadenze: [ogni, ogni, ogni] },
+      ])
+    ).toBe('3.02') // somma esatta 3,015 arrotondata una volta (non 3 x 1,01 = 3,03), come WinWaste
     expect(
       totaleFissiAnnuo([
         { tipo: 'F', quantitaFissa: '1', prezzo: '0.1', scadenze: [ogni, ogni, ogni] },
@@ -1077,5 +1081,196 @@ describe('coerenza con i tipi di addebito', () => {
     for (const t of ['CER', 'V', 'F', 'TS', 'T123', 'NM', 'MF', 'M123', '$A', '$D', '$R']) {
       expect(CAMPI_PER_FAMIGLIA[famigliaTipo(t)].length).toBeGreaterThan(5)
     }
+  })
+})
+
+describe('correzioni della review (I1-I3, M1-M3, M6, M10)', () => {
+  const inviati = (g: Record<string, unknown>): ReadonlySet<string> => new Set(Object.keys(g))
+  const fasce = [...SCAGLIONI]
+
+  it('I1: applicaA fuori enum è un errore sul campo, non un 500', () => {
+    const d = vuota('CER', {
+      ...VALIDE.CER,
+      prezzo: null,
+      sconto: null,
+      provvigione: null,
+      tipoProvvigione: null,
+      condizione: null,
+      minimoFatturabile: null,
+      minimoPerCategoria: false,
+      prezzoSpeciale: true,
+      applicaA: 'FOO' as never,
+      scaglioni: fasce,
+    })
+    expect(validaRiga(d, CTX)).toContainEqual({
+      campo: 'applicaA',
+      messaggio: 'Il valore di «si applica a» non è ammesso.',
+    })
+    expect(validaRiga({ ...VALIDE.T, applicaA: 'FOO' as never }, CTX).map(e => e.campo)).toContain(
+      'applicaA'
+    )
+  })
+
+  it('I2: la tipologia segue il CER del catalogo (con asterisco), non quello scritto', () => {
+    const g = { tipo: 'CER', cerCode: '200121' }
+    expect(normalizzaRiga(g, inviati(g)).dati.tipologiaRifiuto).toBe('URBANO')
+    const r = normalizzaRiga(g, inviati(g), { cerCatalogo: '20 01 21*' })
+    expect(r.dati.tipologiaRifiuto).toBe('URBANO_PERICOLOSO')
+  })
+
+  it('I2: nel PATCH che cambia il CER la tipologia si ricalcola, se non è indicata', () => {
+    const prima = {
+      tipo: 'CER',
+      cerCode: '17 04 05',
+      tipologiaRifiuto: 'SPECIALE',
+    }
+    // il patch cambia il CER, la tipologia di prima resta in g ma non e' tra gli inviati
+    const patch = { ...prima, cerCode: '17 06 01*' }
+    expect(normalizzaRiga(patch, new Set(['cerCode'])).dati.tipologiaRifiuto).toBe(
+      'SPECIALE_PERICOLOSO'
+    )
+    // il patch non tocca il CER: la tipologia di prima resta
+    expect(normalizzaRiga(prima, new Set(['descrizione'])).dati.tipologiaRifiuto).toBe('SPECIALE')
+    // il patch indica la tipologia: vale quella
+    expect(
+      normalizzaRiga(
+        { ...patch, tipologiaRifiuto: 'SPECIALE' },
+        new Set(['cerCode', 'tipologiaRifiuto'])
+      ).dati.tipologiaRifiuto
+    ).toBe('SPECIALE')
+  })
+
+  it('I3: i Decimal della riga letta dal database passano senza diventare NaN', () => {
+    const letta = {
+      ...VALIDE.CER,
+      prezzo: new Prisma.Decimal('0.12'),
+      stimaAnnuaKg: new Prisma.Decimal('1200.50'),
+      minimoFatturabile: new Prisma.Decimal('25'),
+      quantitaFissa: undefined,
+    }
+    const { dati, errori } = normalizzaRiga(letta, new Set(['descrizione']))
+    expect(errori).toEqual([])
+    expect(dati.prezzo).toBe('0.12')
+    expect(dati.stimaAnnuaKg).toBe('1200.5')
+    expect(dati.minimoFatturabile).toBe('25')
+    expect(validaRiga(dati, CTX)).toEqual([])
+  })
+
+  it('I3: anche nelle fasce e con un oggetto con toFixed', () => {
+    const g = {
+      tipo: 'TS',
+      prezzoSpeciale: true,
+      scaglioni: [
+        {
+          ordine: 1,
+          finoA: new Prisma.Decimal('1000'),
+          prezzo: { toFixed: () => '0.5' },
+          tipoCalcolo: 'A',
+        },
+      ],
+    }
+    const n = normalizzaRiga(g, inviati(g)).dati.scaglioni[0]
+    expect(n.finoA).toBe('1000')
+    expect(n.prezzo).toBe('0.5')
+  })
+
+  it('M1: gli spazi finali del riferimento si tolgono, quelli iniziali restano un errore', () => {
+    const g = { tipo: 'CER', cerCode: '20 03 01', riferimento: 'R1  ' }
+    expect(normalizzaRiga(g, inviati(g)).dati.riferimento).toBe('R1')
+    const v = { tipo: 'CER', cerCode: '20 03 01', riferimento: '   ' }
+    expect(normalizzaRiga(v, inviati(v)).dati.riferimento).toBeNull()
+    const l = { tipo: 'CER', cerCode: '20 03 01', riferimento: ' R1' }
+    expect(normalizzaRiga(l, inviati(l)).dati.riferimento).toBe(' R1')
+  })
+
+  it('M2: ogni messaggio di validaPrezzoSpeciale ha un campo, tranne sconto e provvigione', () => {
+    const speciale = (over: Partial<DatiRiga>): DatiRiga =>
+      vuota('CER', {
+        ...VALIDE.CER,
+        prezzo: null,
+        sconto: null,
+        provvigione: null,
+        tipoProvvigione: null,
+        condizione: null,
+        minimoFatturabile: null,
+        minimoPerCategoria: false,
+        prezzoSpeciale: true,
+        applicaA: 'DOCUMENTO',
+        scaglioni: fasce,
+        ...over,
+      })
+    const casi: Partial<DatiRiga>[] = [
+      { applicaA: null },
+      { condizione: 2 },
+      { unitaMisura: 'HR', tipoQuantita: 'ALTRO' },
+      { sconto: '5' },
+      { minimoFatturabile: '5' },
+      { unitaMisura: 'K/M', tipoQuantita: 'ALTRO', applicaA: 'PERIODO' },
+      { condizioniRiferite: '11C' },
+      { condizioniRiferite: '1C', applicaA: 'GIORNO' },
+      { applicaA: 'CONGUAGLIO_365' },
+      { riferimentoGiorno: 1, riferimentoMese: 1 },
+      { applicaA: 'PROGRESSIVO_DA_DATA', riferimentoGiorno: 1, riferimentoMese: null },
+      { applicaA: 'PROGRESSIVO_DA_DATA', riferimentoGiorno: 31, riferimentoMese: 2 },
+      { scaglioni: [{ ...fasce[0], provvigione: '5' }, fasce[1]] },
+    ]
+    const visti = new Set<string>()
+    for (const c of casi) {
+      for (const err of validaRiga(speciale(c), CTX)) {
+        visti.add(err.messaggio)
+        if (err.messaggio.includes('lo sconto e la provvigione si indicano nelle fasce')) {
+          expect(err.campo).toBeNull()
+        } else {
+          expect(err.campo).not.toBeNull()
+        }
+      }
+    }
+    for (const m of Object.values(MSG_PREZZO_SPECIALE)) expect(visti).toContain(m)
+  })
+
+  it('M3: lo stesso errore sullo stesso campo compare una volta sola', () => {
+    const d = vuota('CER', {
+      ...VALIDE.CER,
+      prezzo: null,
+      sconto: null,
+      condizione: null,
+      minimoFatturabile: null,
+      minimoPerCategoria: false,
+      prezzoSpeciale: true,
+      applicaA: 'DOCUMENTO',
+      provvigione: '5',
+      tipoProvvigione: null,
+      scaglioni: [{ ...fasce[0], provvigione: '5' }, fasce[1]],
+    })
+    const r = validaRiga(d, CTX).filter(e => e.campo === 'tipoProvvigione')
+    expect(r).toHaveLength(1)
+  })
+
+  it('M6: il minimo per categoria non vale con il prezzo speciale (ADDEBCON.cs:8723)', () => {
+    const d = vuota('CER', {
+      ...VALIDE.CER,
+      prezzo: null,
+      sconto: null,
+      provvigione: null,
+      tipoProvvigione: null,
+      condizione: null,
+      minimoFatturabile: null,
+      minimoPerCategoria: true,
+      prezzoSpeciale: true,
+      applicaA: 'DOCUMENTO',
+      scaglioni: fasce,
+    })
+    expect(validaRiga(d, CTX)).toEqual([
+      {
+        campo: 'minimoPerCategoria',
+        messaggio: 'Con il prezzo speciale non si indica il minimo fatturabile.',
+      },
+    ])
+  })
+
+  it('M10: CER proposto con riferimento che comincia con uno spazio', () => {
+    expect(validaCerProposta([`${CER}/ R1`])).toEqual([
+      'CER proposto 1: il riferimento non può iniziare con uno spazio.',
+    ])
   })
 })

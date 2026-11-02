@@ -1,9 +1,10 @@
 import { Prisma } from '@prisma/client'
 import { cerCanonico } from '../waste-movement/cer-registro'
 import { TipoProvvigione } from './addebito'
-import { cascataValida, importoRiga, normalizzaCascata } from './importi-riga'
+import { arrotonda2, cascataValida, normalizzaCascata } from './importi-riga'
 import {
   ApplicaPrezzoSpeciale,
+  MSG_PREZZO_SPECIALE,
   Scaglione,
   TipoCalcoloScaglione,
   validaPrezzoSpeciale,
@@ -340,6 +341,10 @@ function testo(v: unknown): string | null {
 function decimale(v: unknown): string | null {
   if (v === null || v === undefined) return null
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NaN'
+  // Prisma.Decimal (o un oggetto simile): il PATCH unisce la riga letta dal database al patch (R37)
+  if (typeof v === 'object' && typeof (v as { toFixed?: unknown }).toFixed === 'function') {
+    return (v as { toFixed: () => string }).toFixed()
+  }
   if (typeof v !== 'string') return 'NaN'
   const t = v.trim().replace(',', '.')
   return t === '' ? null : t
@@ -420,9 +425,6 @@ function vuotoDi(campo: CampoRiga): DatiRiga[CampoRiga] {
     case 'scaglioni':
     case 'scadenze':
       return []
-    case 'unitaMisura':
-    case 'tipo':
-      return ''
     default:
       return null
   }
@@ -436,17 +438,24 @@ function vuotoDi(campo: CampoRiga): DatiRiga[CampoRiga] {
  * vuoto (`null`, `''`, `[]`, `false`), diventa vuoto senza errore; se e' inviato con un valore e'
  * un errore sul campo e il dato e' scartato. Le stringhe vuote diventano `null` (anche il
  * riferimento e il periodo extra), il CER prende la forma del catalogo, la tipologia e' proposta
- * dal CER se manca. Con il prezzo speciale spento fasce, "si applica a" e riferimento non inviati
+ * dal CER se manca. `opzioni.cerCatalogo` e' il CER come sta nel catalogo (`cerNelCatalogo`,
+ * con l'asterisco): il servizio lo legge prima e lo passa, cosi' "200121" non diventa `URBANO`
+ * quando il catalogo dice "20 01 21*"; senza, la tipologia segue il CER scritto. Nel PATCH la
+ * tipologia si ripropone dal CER nuovo se il patch cambia il CER e non la indica. Con il prezzo speciale spento fasce, "si applica a" e riferimento non inviati
  * si svuotano; se inviati con un valore li rifiuta `validaRiga`.
  */
 export function normalizzaRiga(
   g: Readonly<Record<string, unknown>>,
-  inviati: ReadonlySet<string>
+  inviati: ReadonlySet<string>,
+  opzioni: { cerCatalogo?: string | null } = {}
 ): { dati: DatiRiga; errori: ErroreRiga[] } {
   const riferimento = ((): string | null => {
     const v = g.riferimento
     if (typeof v === 'number') return String(v)
-    return typeof v === 'string' && v !== '' ? v : null
+    // Gli spazi finali non contano (chiave e indice unico): si tolgono; quelli iniziali sono un errore.
+    if (typeof v !== 'string') return null
+    const senzaCoda = v.trimEnd()
+    return senzaCoda === '' ? null : senzaCoda
   })()
   const dati: DatiRiga = {
     tipo: maiuscolo(g.tipo) ?? '',
@@ -508,13 +517,19 @@ export function normalizzaRiga(
       if (!inviati.has('riferimentoGiorno')) dati.riferimentoGiorno = null
       if (!inviati.has('riferimentoMese')) dati.riferimentoMese = null
     }
+    // Tipologia proposta dal CER (I2): da quello del catalogo se il servizio lo passa (porta
+    // l'asterisco dei pericolosi), altrimenti da quello scritto. Si propone se l'utente non l'ha
+    // indicata e il CER e' inviato (anche cambiato in un PATCH) o la tipologia manca.
+    const esplicita = inviati.has('tipologiaRifiuto') && dati.tipologiaRifiuto !== null
+    const sorgente = opzioni.cerCatalogo ?? dati.cerCode
     if (
       dati.tipo === 'CER' &&
-      dati.tipologiaRifiuto === null &&
-      dati.cerCode !== null &&
-      formaCerValida(dati.cerCode)
+      !esplicita &&
+      (inviati.has('cerCode') || dati.tipologiaRifiuto === null) &&
+      sorgente !== null &&
+      formaCerValida(sorgente)
     ) {
-      dati.tipologiaRifiuto = tipologiaDaCer(dati.cerCode)
+      dati.tipologiaRifiuto = tipologiaDaCer(sorgente)
     }
   }
   return { dati, errori }
@@ -535,6 +550,13 @@ const TIPOLOGIE: readonly string[] = [
   'SPECIALE',
   'SPECIALE_PERICOLOSO',
 ]
+const APPLICA: readonly string[] = [
+  'DOCUMENTO',
+  'PERIODO',
+  'PROGRESSIVO_DA_DATA',
+  'CONGUAGLIO_365',
+  'GIORNO',
+]
 const PERIODI: readonly string[] = [
   'MP', 'BA', 'BP', 'TA', 'TP', 'QA', 'QP', 'SA', 'SP', 'AA', 'AP', 'DA', 'DP', 'XA', 'XD', 'YC',
 ] // prettier-ignore
@@ -544,22 +566,21 @@ const MESSAGGIO_CASCATA_PROVVIGIONE =
   'La provvigione si scrive come percentuali a cascata, al massimo tre (es. 10+5), ciascuna fino a 99,99.'
 
 /** Campo a cui attribuire i messaggi di `validaPrezzoSpeciale` che non sono delle fasce (R36). */
+const M = MSG_PREZZO_SPECIALE
 const CAMPO_MESSAGGIO_PREZZO_SPECIALE: Readonly<Record<string, CampoRiga | null>> = {
-  'Indica a cosa si applica il prezzo speciale.': 'applicaA',
-  'Il prezzo speciale non si usa negli addebiti condizionati.': 'condizione',
-  'Il prezzo speciale non si usa con l’unità di misura HR.': 'unitaMisura',
-  'Con il prezzo speciale lo sconto e la provvigione si indicano nelle fasce.': null,
-  'Con il prezzo speciale non si indica il minimo fatturabile.': 'minimoFatturabile',
-  'Con l’unità K/M o K/L il prezzo speciale si applica al documento.': 'applicaA',
-  'Con le condizioni il prezzo speciale si applica al documento o al periodo.': 'applicaA',
-  'Per il conguaglio indica la data (giorno e mese).': 'riferimentoGiorno',
-  'La data di riferimento vale solo per il progressivo da data e per il conguaglio.':
-    'riferimentoGiorno',
-  'Il riferimento si indica con giorno e mese insieme.': 'riferimentoGiorno',
-  'Il riferimento non è una data valida.': 'riferimentoGiorno',
-  'Indica su cosa si calcola la provvigione.': 'tipoProvvigione',
-  'Le condizioni si scrivono come cifre da 1 a 9 tutte diverse seguite da C o P (es. 12C).':
-    'condizioniRiferite',
+  [M.APPLICA_MANCANTE]: 'applicaA',
+  [M.CONDIZIONATI]: 'condizione',
+  [M.UNITA_HR]: 'unitaMisura',
+  [M.SCONTO_PROVVIGIONE_IN_FASCE]: null,
+  [M.MINIMO]: 'minimoFatturabile',
+  [M.KM_SOLO_DOCUMENTO]: 'applicaA',
+  [M.CONDIZIONI_DOCUMENTO_PERIODO]: 'applicaA',
+  [M.CONGUAGLIO_DATA]: 'riferimentoGiorno',
+  [M.DATA_SOLO_PROGRESSIVO]: 'riferimentoGiorno',
+  [M.GIORNO_E_MESE]: 'riferimentoGiorno',
+  [M.DATA_NON_VALIDA]: 'riferimentoGiorno',
+  [M.TIPO_PROVVIGIONE]: 'tipoProvvigione',
+  [M.CONDIZIONI_FORMA]: 'condizioniRiferite',
 }
 
 /**
@@ -569,12 +590,16 @@ const CAMPO_MESSAGGIO_PREZZO_SPECIALE: Readonly<Record<string, CampoRiga | null>
  *
  * Il prezzo speciale e le scadenze si validano solo per le famiglie che li ammettono. Una
  * quantita' negativa (quantita' fissa, stima annua) e' rifiutata qui con un messaggio chiaro,
- * cosi' `applicaScaglioni` non la incontra mai (con condizione `C` lancerebbe l'errore generico).
+ * come impone il CHECK `>= 0`. NON protegge `applicaScaglioni`: ne' la quantita' fissa ne' la
+ * stima ci arrivano mai. Le quantita' negative dei movimenti (R32) le deve gestire la 4.4.
  */
 export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }): ErroreRiga[] {
   const errori: ErroreRiga[] = []
   const e = (campo: CampoRiga | null, messaggio: string): void => {
-    errori.push({ campo, messaggio })
+    // Lo stesso errore sullo stesso campo si dice una volta sola (M3)
+    if (!errori.some(x => x.campo === campo && x.messaggio === messaggio)) {
+      errori.push({ campo, messaggio })
+    }
   }
 
   if (!tipoAddebitoValido(d.tipo)) {
@@ -737,8 +762,13 @@ export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }
   }
 
   // Prezzo speciale (D12): solo per le famiglie che lo ammettono
+  if (d.applicaA !== null && !APPLICA.includes(d.applicaA)) {
+    e('applicaA', 'Il valore di «si applica a» non è ammesso.')
+  }
   if (ammessi.has('prezzoSpeciale')) {
     if (d.prezzoSpeciale) {
+      // Come WinWaste (ADDEBCON.cs:8723): niente minimo con il prezzo speciale, nemmeno "per categoria"
+      if (d.minimoPerCategoria) e('minimoPerCategoria', MSG_PREZZO_SPECIALE.MINIMO)
       const delleFasce = new Set(
         validaScaglioni(d.scaglioni, { conCondizioni: !vuoto(d.condizioniRiferite) })
       )
@@ -770,8 +800,9 @@ export function validaRiga(d: DatiRiga, contesto: { contrattoAllegato: boolean }
     e('notaUsoInterno', 'La nota per uso interno non può superare 45 caratteri.')
   }
 
-  // Scadenze dei fissi (D14). Il periodo e' facoltativo (E19): senza periodo le scadenze restano
-  // valide ma non hanno una competenza (`periodoCompetenza` richiede il periodo).
+  // Scadenze dei fissi (D14). Il periodo e' facoltativo: in WinWaste "Periodo scadenze non
+  // specificato" scatta solo con la regola 11 (ADDEBCON.cs:10395-10413); senza periodo le
+  // scadenze restano valide ma non hanno una competenza (`periodoCompetenza` richiede il periodo).
   if (famiglia === 'FISSO') {
     let periodo: PeriodoScadenze | null = null
     if (d.periodoScadenze !== null) {
@@ -807,9 +838,10 @@ export function chiaveRiga(
 
 /**
  * `TOTFISSI`: totale annuo degli addebiti fissi. Solo le righe `F` e solo le scadenze "ogni anno"
- * (anno vuoto), come `riempitavola` (`ELENCHIaddeb.cs:2290-2306`). Ogni scadenza vale
- * `quantitaFissa` (vuota = 1) x `prezzo` (mancante = 0) arrotondato a due decimali, come una riga
- * di fattura (`importoRiga`); `quantitaFissa` 0 non fattura.
+ * (anno vuoto), come `riempitavola` (`ELENCHIaddeb.cs:2260-2306`): somma esatta di `quantitaFissa`
+ * (vuota = 1) x `prezzo` (mancante = 0) per ogni scadenza, arrotondata UNA volta sola a due
+ * decimali alla fine (`Format("#,##0.00")`, riga 2374), mai per scadenza. `quantitaFissa` 0 non
+ * fattura.
  */
 export function totaleFissiAnnuo(
   righe: readonly {
@@ -824,8 +856,9 @@ export function totaleFissiAnnuo(
     if (r.tipo !== 'F') continue
     const ogniAnno = r.scadenze.filter(s => s.anno === null).length
     if (ogniAnno === 0) continue
-    const importo = importoRiga(r.quantitaFissa ?? '1', r.prezzo ?? '0', null).lordo
-    totale = totale.plus(new Prisma.Decimal(importo).times(ogniAnno))
+    totale = totale.plus(
+      new Prisma.Decimal(r.quantitaFissa ?? '1').times(r.prezzo ?? '0').times(ogniAnno)
+    )
   }
-  return totale.toFixed(2)
+  return arrotonda2(totale.toFixed())
 }
