@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { ElenchiAddebitiController } from './elenchi-addebiti.controller'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { AzioniListinoService } from '../../application/listino/azioni-listino.service'
 import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -20,7 +21,8 @@ const ID = '7e7e7e7e-0000-4000-8000-000000000004'
 async function creaApp(
   servizio: Record<string, jest.Mock>,
   ruolo: () => string,
-  righe: Record<string, jest.Mock> = {}
+  righe: Record<string, jest.Mock> = {},
+  azioni: Record<string, jest.Mock> = {}
 ) {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const moduleRef = await Test.createTestingModule({
@@ -28,6 +30,7 @@ async function creaApp(
     providers: [
       { provide: ElenchiAddebitiService, useValue: servizio },
       { provide: RigheAddebitoService, useValue: righe },
+      { provide: AzioniListinoService, useValue: azioni },
       { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
@@ -65,9 +68,12 @@ describe('ElenchiAddebitiController', () => {
       expect(ruoli('getById')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     })
 
-    it.each(['modifica', 'elimina', 'creaRiga'])('%s: scrittura senza VIEWER', nome => {
-      expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR'])
-    })
+    it.each(['modifica', 'elimina', 'creaRiga', 'sostituisciDa', 'aggiungiRighe'])(
+      '%s: scrittura senza VIEWER',
+      nome => {
+        expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR'])
+      }
+    )
 
     it('listRighe: lettura a tutti i ruoli', () => {
       expect(ruoli('listRighe')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
@@ -77,7 +83,15 @@ describe('ElenchiAddebitiController', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
-      expect(metodi.sort()).toEqual(['creaRiga', 'elimina', 'getById', 'listRighe', 'modifica'])
+      expect(metodi.sort()).toEqual([
+        'aggiungiRighe',
+        'creaRiga',
+        'elimina',
+        'getById',
+        'listRighe',
+        'modifica',
+        'sostituisciDa',
+      ])
       for (const n of metodi) expect(ruoli(n)?.length).toBeGreaterThan(0)
     })
   })
@@ -86,6 +100,7 @@ describe('ElenchiAddebitiController', () => {
     let app: INestApplication
     let servizio: Record<string, jest.Mock>
     let righe: Record<string, jest.Mock>
+    let azioni: Record<string, jest.Mock>
     let ruolo = 'OPERATOR'
     const R = 'elenchi-addebiti'
 
@@ -100,7 +115,13 @@ describe('ElenchiAddebitiController', () => {
         list: jest.fn().mockResolvedValue([{ id: 'r1' }]),
         crea: jest.fn().mockResolvedValue({ id: 'r1' }),
       }
-      app = await creaApp(servizio, () => ruolo, righe)
+      azioni = {
+        sostituisciDa: jest.fn().mockResolvedValue({ copiate: 1 }),
+        aggiungiRighe: jest.fn().mockResolvedValue({ copiate: 1 }),
+        impostaProvvigioni: jest.fn().mockResolvedValue({ aggiornate: 1 }),
+        sostituisciSconto: jest.fn().mockResolvedValue({ aggiornate: 1 }),
+      }
+      app = await creaApp(servizio, () => ruolo, righe, azioni)
     })
 
     afterEach(async () => {
@@ -252,6 +273,68 @@ describe('ElenchiAddebitiController', () => {
         const dto = righe.crea.mock.calls[0][3]
         expect(dto.prezzoSpeciale).toBe(true)
         expect(dto.minimoPerCategoria).toBe(false)
+      })
+    })
+    describe('copia di righe (Task 23)', () => {
+      const DA = '8f8f8f8f-0000-4000-8000-000000000005'
+
+      it('POST :id/sostituisci-da: 200, il corpo arriva al servizio con utente e azienda', async () => {
+        const r = await http()
+          .post(`/${R}/${ID}/sostituisci-da`)
+          .send({ daElencoId: DA, versione: 2 })
+        expect(r.status).toBe(200)
+        expect(azioni.sostituisciDa).toHaveBeenCalledWith(TENANT, 'utente-1', ID, {
+          daElencoId: DA,
+          versione: 2,
+        })
+      })
+
+      it('POST :id/aggiungi-righe: 200 e gli id arrivano al servizio', async () => {
+        const r = await http()
+          .post(`/${R}/${ID}/aggiungi-righe`)
+          .send({ righeIds: [DA, ID], versione: 1 })
+        expect(r.status).toBe(200)
+        expect(azioni.aggiungiRighe).toHaveBeenCalledWith(TENANT, 'utente-1', ID, {
+          righeIds: [DA, ID],
+          versione: 1,
+        })
+      })
+
+      it.each([
+        ['sostituisci-da', { daElencoId: 'non-uuid', versione: 1 }],
+        ['sostituisci-da', { versione: 1 }],
+        ['sostituisci-da', { daElencoId: DA }],
+        ['sostituisci-da', { daElencoId: DA, versione: 0 }],
+        ['sostituisci-da', { daElencoId: DA, versione: 1, altro: 1 }],
+        ['aggiungi-righe', { righeIds: [], versione: 1 }],
+        ['aggiungi-righe', { righeIds: ['xx'], versione: 1 }],
+        ['aggiungi-righe', { righeIds: [DA] }],
+        ['aggiungi-righe', { righeIds: Array(1001).fill(DA), versione: 1 }],
+      ])('POST %s con corpo non valido: 400 e nessun servizio', async (rotta, corpo) => {
+        expect((await http().post(`/${R}/${ID}/${rotta}`).send(corpo)).status).toBe(400)
+        expect(azioni.sostituisciDa).not.toHaveBeenCalled()
+        expect(azioni.aggiungiRighe).not.toHaveBeenCalled()
+      })
+
+      it('un VIEWER non copia (403); senza azienda 403; id non UUID 400', async () => {
+        const corpo = { daElencoId: DA, versione: 1 }
+        ruolo = 'VIEWER'
+        expect((await http().post(`/${R}/${ID}/sostituisci-da`).send(corpo)).status).toBe(403)
+        expect(
+          (
+            await http()
+              .post(`/${R}/${ID}/aggiungi-righe`)
+              .send({ righeIds: [DA], versione: 1 })
+          ).status
+        ).toBe(403)
+        ruolo = 'OPERATOR'
+        expect(
+          (await http().post(`/${R}/${ID}/sostituisci-da`).set('x-senza-azienda', '1').send(corpo))
+            .status
+        ).toBe(403)
+        expect((await http().post(`/${R}/xx/sostituisci-da`).send(corpo)).status).toBe(400)
+        expect(azioni.sostituisciDa).not.toHaveBeenCalled()
+        expect(azioni.aggiungiRighe).not.toHaveBeenCalled()
       })
     })
   })

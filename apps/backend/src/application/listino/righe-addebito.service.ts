@@ -297,6 +297,42 @@ function scalariPerDatabase(d: DatiRiga): Record<string, unknown> {
   return r
 }
 
+/**
+ * La riga letta dal database nel formato grezzo del corpo (R37: base del PATCH). Serve anche alla
+ * copia delle righe (Task 23), che le riconvalida con le regole del dominio.
+ */
+export function grezzoDaRiga<
+  R extends {
+    scaglioni: {
+      ordine: number
+      finoA: unknown
+      prezzo: unknown
+      sconto: string | null
+      provvigione: string | null
+      tipoCalcolo: string
+    }[]
+    scadenze: { ordine: number; giorno: number; mese: number; anno: number | null }[]
+  },
+>(r: R): Record<string, unknown> {
+  return {
+    ...r,
+    scaglioni: r.scaglioni.map(s => ({
+      ordine: s.ordine,
+      finoA: s.finoA,
+      prezzo: s.prezzo,
+      sconto: s.sconto,
+      provvigione: s.provvigione,
+      tipoCalcolo: s.tipoCalcolo,
+    })),
+    scadenze: r.scadenze.map(s => ({
+      ordine: s.ordine,
+      giorno: s.giorno,
+      mese: s.mese,
+      anno: s.anno,
+    })),
+  }
+}
+
 @Injectable()
 export class RigheAddebitoService {
   constructor(private readonly prisma: PrismaService) {}
@@ -972,23 +1008,7 @@ export class RigheAddebitoService {
 
   /** La riga letta dal database nel formato grezzo del corpo (R37: base del PATCH). */
   private grezzoDa(r: RigaDb): Record<string, unknown> {
-    return {
-      ...r,
-      scaglioni: r.scaglioni.map(s => ({
-        ordine: s.ordine,
-        finoA: s.finoA,
-        prezzo: s.prezzo,
-        sconto: s.sconto,
-        provvigione: s.provvigione,
-        tipoCalcolo: s.tipoCalcolo,
-      })),
-      scadenze: r.scadenze.map(s => ({
-        ordine: s.ordine,
-        giorno: s.giorno,
-        mese: s.mese,
-        anno: s.anno,
-      })),
-    }
+    return grezzoDaRiga(r)
   }
 
   private vista(r: RigaDb): RigaAddebitoVista {

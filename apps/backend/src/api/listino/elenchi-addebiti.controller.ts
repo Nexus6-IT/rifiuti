@@ -21,11 +21,13 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { AzioniListinoService } from '../../application/listino/azioni-listino.service'
 import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { AggiungiRigheDto, SostituisciDaDto } from './dto/azioni-listino.dto'
 import { ModificaElencoAddebitiDto } from './dto/elenco-addebiti.dto'
 import { CreaRigaAddebitoDto } from './dto/riga-addebito.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
@@ -37,7 +39,8 @@ import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 export class ElenchiAddebitiController {
   constructor(
     private readonly elenchi: ElenchiAddebitiService,
-    private readonly righe: RigheAddebitoService
+    private readonly righe: RigheAddebitoService,
+    private readonly azioni: AzioniListinoService
   ) {}
 
   @Get(':id')
@@ -106,5 +109,41 @@ export class ElenchiAddebitiController {
   ) {
     const tenantId = requireRequestTenantId(req)
     return this.righe.crea(tenantId, req.user.id, id, dto)
+  }
+
+  // Copia di righe (Task 23, D18, R39): due segmenti statici dopo `:id`.
+  @Post(':id/sostituisci-da')
+  @Roles(...RUOLI_SCRITTURA)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sostituisce le righe con copie di quelle di un altro elenco (D18)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Su sé stesso, riga non valida (D17); `details.errori`',
+  })
+  @ApiResponse({ status: 404, description: 'Elenco di arrivo o di partenza non trovato' })
+  @ApiResponse({ status: 409, description: 'Modificato nel frattempo o contratto annullato' })
+  sostituisciDa(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SostituisciDaDto
+  ) {
+    const tenantId = requireRequestTenantId(req)
+    return this.azioni.sostituisciDa(tenantId, req.user.id, id, dto)
+  }
+
+  @Post(':id/aggiungi-righe')
+  @Roles(...RUOLI_SCRITTURA)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aggiunge copie delle righe scelte, saltando i duplicati (D18, R45)' })
+  @ApiResponse({ status: 400, description: 'Riga non valida (D17); `details.errori`' })
+  @ApiResponse({ status: 404, description: 'Elenco o riga non trovati' })
+  @ApiResponse({ status: 409, description: 'Modificato nel frattempo o contratto annullato' })
+  aggiungiRighe(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AggiungiRigheDto
+  ) {
+    const tenantId = requireRequestTenantId(req)
+    return this.azioni.aggiungiRighe(tenantId, req.user.id, id, dto)
   }
 }

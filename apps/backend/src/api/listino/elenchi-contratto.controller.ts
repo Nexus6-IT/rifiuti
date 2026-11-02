@@ -19,11 +19,13 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { AzioniListinoService } from '../../application/listino/azioni-listino.service'
 import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { ProvvigioniContrattoDto, ScontiContrattoDto } from './dto/azioni-listino.dto'
 import { CreaElencoAddebitiDto } from './dto/elenco-addebiti.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 
@@ -34,7 +36,8 @@ import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 export class ElenchiContrattoController {
   constructor(
     private readonly elenchi: ElenchiAddebitiService,
-    private readonly righe: RigheAddebitoService
+    private readonly righe: RigheAddebitoService,
+    private readonly azioni: AzioniListinoService
   ) {}
 
   @Get(':id/elenchi')
@@ -91,5 +94,35 @@ export class ElenchiContrattoController {
   ) {
     const tenantId = requireRequestTenantId(req)
     return this.righe.proposta(tenantId, id, { addebitoId, cerCode })
+  }
+
+  @Post(':id/provvigioni')
+  @Roles(...RUOLI_SCRITTURA)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Imposta provvigione e tipo su tutte le righe senza prezzo speciale (D19, R45)',
+  })
+  @ApiResponse({ status: 400, description: 'Formula non valida; `details.errori`' })
+  @ApiResponse({ status: 404, description: 'Contratto non trovato' })
+  @ApiResponse({ status: 409, description: 'Contratto annullato' })
+  provvigioni(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ProvvigioniContrattoDto
+  ) {
+    const tenantId = requireRequestTenantId(req)
+    return this.azioni.impostaProvvigioni(tenantId, req.user.id, id, dto)
+  }
+
+  @Post(':id/sconti')
+  @Roles(...RUOLI_SCRITTURA)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sostituisce uno sconto nelle righe senza prezzo speciale (D19)' })
+  @ApiResponse({ status: 400, description: 'Formula non valida; `details.errori`' })
+  @ApiResponse({ status: 404, description: 'Contratto non trovato' })
+  @ApiResponse({ status: 409, description: 'Contratto annullato' })
+  sconti(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScontiContrattoDto) {
+    const tenantId = requireRequestTenantId(req)
+    return this.azioni.sostituisciSconto(tenantId, req.user.id, id, dto)
   }
 }

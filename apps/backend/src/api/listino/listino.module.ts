@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { AuthModule } from '../../auth/auth.module'
 import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
+import { AzioniListinoService } from '../../application/listino/azioni-listino.service'
 import { AllegatiElencoService } from '../../application/listino/allegati-elenco.service'
 import { AddebitiService } from '../../application/listino/addebiti.service'
 import { CodiciIvaService } from '../../application/listino/codici-iva.service'
@@ -41,6 +42,7 @@ import { RigheAddebitoController } from './righe-addebito.controller'
     ElenchiAddebitiService,
     RigheAddebitoService,
     AllegatiElencoService,
+    AzioniListinoService,
   ],
   exports: [
     CodiciIvaService,

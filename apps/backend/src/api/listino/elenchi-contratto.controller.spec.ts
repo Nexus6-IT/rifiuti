@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { ElenchiContrattoController } from './elenchi-contratto.controller'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { AzioniListinoService } from '../../application/listino/azioni-listino.service'
 import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -20,7 +21,8 @@ const ID = '7e7e7e7e-0000-4000-8000-000000000004'
 async function creaApp(
   servizio: Record<string, jest.Mock>,
   ruolo: () => string,
-  righe: Record<string, jest.Mock> = {}
+  righe: Record<string, jest.Mock> = {},
+  azioni: Record<string, jest.Mock> = {}
 ) {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const moduleRef = await Test.createTestingModule({
@@ -28,6 +30,7 @@ async function creaApp(
     providers: [
       { provide: ElenchiAddebitiService, useValue: servizio },
       { provide: RigheAddebitoService, useValue: righe },
+      { provide: AzioniListinoService, useValue: azioni },
       { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
@@ -67,6 +70,10 @@ describe('ElenchiContrattoController', () => {
       expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     })
 
+    it.each(['provvigioni', 'sconti'])('%s: scrittura senza VIEWER', nome => {
+      expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR'])
+    })
+
     it('crea: scrittura senza VIEWER', () => {
       expect(ruoli('crea')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR'])
     })
@@ -75,7 +82,14 @@ describe('ElenchiContrattoController', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
-      expect(metodi.sort()).toEqual(['crea', 'list', 'proposta', 'prossimoCodice'])
+      expect(metodi.sort()).toEqual([
+        'crea',
+        'list',
+        'proposta',
+        'prossimoCodice',
+        'provvigioni',
+        'sconti',
+      ])
       for (const n of metodi) expect(ruoli(n)?.length).toBeGreaterThan(0)
     })
   })
@@ -84,6 +98,7 @@ describe('ElenchiContrattoController', () => {
     let app: INestApplication
     let servizio: Record<string, jest.Mock>
     let righe: Record<string, jest.Mock>
+    let azioni: Record<string, jest.Mock>
     let ruolo = 'OPERATOR'
     const R = `contratti-clienti/${ID}/elenchi`
 
@@ -95,7 +110,13 @@ describe('ElenchiContrattoController', () => {
         crea: jest.fn().mockResolvedValue({ id: ID }),
       }
       righe = { proposta: jest.fn().mockResolvedValue({ prezzo: '1.00' }) }
-      app = await creaApp(servizio, () => ruolo, righe)
+      azioni = {
+        sostituisciDa: jest.fn().mockResolvedValue({ copiate: 1 }),
+        aggiungiRighe: jest.fn().mockResolvedValue({ copiate: 1 }),
+        impostaProvvigioni: jest.fn().mockResolvedValue({ aggiornate: 1 }),
+        sostituisciSconto: jest.fn().mockResolvedValue({ aggiornate: 1 }),
+      }
+      app = await creaApp(servizio, () => ruolo, righe, azioni)
     })
 
     afterEach(async () => {
@@ -217,6 +238,70 @@ describe('ElenchiContrattoController', () => {
             .status
         ).toBe(403)
         expect(righe.proposta).not.toHaveBeenCalled()
+      })
+    })
+    describe('provvigioni e sconti su tutto il contratto (Task 23)', () => {
+      const C = `/contratti-clienti/${ID}`
+
+      it('POST provvigioni: 200; null e vuoto passano al servizio (svuotano)', async () => {
+        const r = await http()
+          .post(`${C}/provvigioni`)
+          .send({ provvigione: '5+2', tipoProvvigione: 'LORDO' })
+        expect(r.status).toBe(200)
+        expect(azioni.impostaProvvigioni).toHaveBeenLastCalledWith(TENANT, 'utente-1', ID, {
+          provvigione: '5+2',
+          tipoProvvigione: 'LORDO',
+        })
+        await http().post(`${C}/provvigioni`).send({ provvigione: null, tipoProvvigione: null })
+        expect(azioni.impostaProvvigioni.mock.calls[1][3]).toEqual({
+          provvigione: null,
+          tipoProvvigione: null,
+        })
+        await http().post(`${C}/provvigioni`).send({ provvigione: 5, tipoProvvigione: 'LORDO' })
+        expect(azioni.impostaProvvigioni.mock.calls[2][3].provvigione).toBe(5)
+      })
+
+      it('POST sconti: 200 e i valori arrivano al servizio', async () => {
+        const r = await http()
+          .post(`${C}/sconti`)
+          .send({ scontoAttuale: '10 + 5', scontoNuovo: '' })
+        expect(r.status).toBe(200)
+        expect(azioni.sostituisciSconto).toHaveBeenCalledWith(TENANT, 'utente-1', ID, {
+          scontoAttuale: '10 + 5',
+          scontoNuovo: '',
+        })
+      })
+
+      it.each([
+        ['provvigioni', { provvigione: true }],
+        ['provvigioni', { provvigione: [] }],
+        ['provvigioni', { tipoProvvigione: 5 }],
+        ['provvigioni', { provvigione: '5', extra: 1 }],
+        ['sconti', {}],
+        ['sconti', { scontoAttuale: null }],
+        ['sconti', { scontoAttuale: '5', scontoNuovo: {} }],
+      ])('POST %s con corpo non valido: 400 e nessun servizio', async (rotta, corpo) => {
+        expect((await http().post(`${C}/${rotta}`).send(corpo)).status).toBe(400)
+        expect(azioni.impostaProvvigioni).not.toHaveBeenCalled()
+        expect(azioni.sostituisciSconto).not.toHaveBeenCalled()
+      })
+
+      it('un VIEWER non scrive (403); senza azienda 403; id non UUID 400', async () => {
+        ruolo = 'VIEWER'
+        expect((await http().post(`${C}/provvigioni`).send({ provvigione: null })).status).toBe(403)
+        expect((await http().post(`${C}/sconti`).send({ scontoAttuale: '5' })).status).toBe(403)
+        ruolo = 'OPERATOR'
+        expect(
+          (
+            await http()
+              .post(`${C}/sconti`)
+              .set('x-senza-azienda', '1')
+              .send({ scontoAttuale: '5' })
+          ).status
+        ).toBe(403)
+        expect((await http().post('/contratti-clienti/xx/provvigioni').send({})).status).toBe(400)
+        expect(azioni.impostaProvvigioni).not.toHaveBeenCalled()
+        expect(azioni.sostituisciSconto).not.toHaveBeenCalled()
       })
     })
   })
