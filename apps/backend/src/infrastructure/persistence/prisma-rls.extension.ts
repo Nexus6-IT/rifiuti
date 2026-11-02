@@ -114,6 +114,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'CodificaAddebito',
   'Addebito',
   'PrezzoListinoAddebito',
+  // Listino (Fase 4 pezzo 2b): elenchi e righe di addebito.
+  'ElencoAddebiti',
+  'AllegatoElencoAddebiti',
+  'RigaAddebito',
+  'ScaglioneRigaAddebito',
+  'ScadenzaRigaAddebito',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',
