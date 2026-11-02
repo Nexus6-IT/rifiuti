@@ -809,7 +809,8 @@ Le situazioni più probabili in uso reale, ognuna col suo test:
    fasce e scadenze → Task 23.
 10. **Listino di un contratto annullato** → sola lettura in API (409) e in UI (niente pulsanti) →
     Task 20, 21, 29.
-11. **Scadenza 29/02 senza anno e calendario trimestrale da marzo con anno vuoto** → valida / 400 col
+11. **Scadenza 29/02 senza anno e calendario trimestrale con anno vuoto** → il 29/02 è valido; il
+    trimestrale da marzo è valido (come WinWaste), da aprile in poi (primo mese > 3) → 400 col
     messaggio di E19 → Task 18.
 
 ---
