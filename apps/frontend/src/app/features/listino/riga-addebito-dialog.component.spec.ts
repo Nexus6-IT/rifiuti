@@ -591,14 +591,79 @@ describe('RigaAddebitoDialogComponent', () => {
       expect(bottone('riga-salva')!.disabled).toBeFalse()
     })
 
-    it('un errore su un campo non disegnato compare in testa con l’etichetta', async () => {
+    it('un errore su un campo che il dialog non disegna compare in testa', async () => {
       righe.modifica.and.returnValue(
-        throwError(() => rifiuto([{ campo: 'scaglioni', messaggio: 'Indica le fasce.' }]))
+        throwError(() => rifiuto([{ campo: 'campoNonNoto', messaggio: 'Messaggio.' }]))
       )
       await apri({ riga: riga() })
       bottone('riga-salva')!.click()
       await stabilizza(fixture)
-      expect(testo('riga-errori-generali')).toBe('Fasce del prezzo speciale: Indica le fasce.')
+      expect(testo('riga-errori-generali')).toBe('Messaggio.')
+    })
+
+    it('Task 28: prezzo speciale acceso senza fasce, il 400 sul campo scaglioni sta sull’editor', async () => {
+      righe.modifica.and.returnValue(
+        throwError(() => rifiuto([{ campo: 'scaglioni', messaggio: 'Indica le fasce.' }]))
+      )
+      await apri({ riga: riga({ prezzoSpeciale: true, applicaA: 'DOCUMENTO', prezzo: null }) })
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(testo('riga-errore-scaglioni')).toBe('Indica le fasce.')
+      expect(q('riga-errori-generali')).toBeNull()
+    })
+
+    it('Task 28: le fasce scritte nel dialog partono nel corpo del salvataggio', async () => {
+      await apri({ riga: riga({ prezzoSpeciale: true, applicaA: 'DOCUMENTO', prezzo: null }) })
+      scrivi('fascia-1-fino', '1000')
+      scrivi('fascia-1-prezzo', '0,10')
+      scrivi('fascia-oltre-prezzo', '0,05')
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      const corpo = righe.modifica.calls.mostRecent().args[1]
+      expect(corpo.applicaA).toBe('DOCUMENTO')
+      expect(corpo.scaglioni).toEqual([
+        {
+          ordine: 1,
+          finoA: '1000',
+          prezzo: '0.10',
+          sconto: null,
+          provvigione: null,
+          tipoCalcolo: 'A',
+        },
+        {
+          ordine: 7,
+          finoA: null,
+          prezzo: '0.05',
+          sconto: null,
+          provvigione: null,
+          tipoCalcolo: 'A',
+        },
+      ])
+    })
+
+    it('Task 28: riga fissa con le scadenze e il periodo extra', async () => {
+      await apri({
+        riga: riga({
+          tipo: 'F',
+          famiglia: 'FISSO',
+          cerCode: null,
+          addebito: { id: 'ad9', codice: '00009', descrizione: 'Canone' },
+          prezzo: '10.000000',
+          quantitaFissa: '1',
+          scadenze: [{ ordine: 1, giorno: 15, mese: 1, anno: null, fatturabileNelContratto: true }],
+        }),
+      })
+      expect(q('riga-sezione-scadenze')).toBeTruthy()
+      expect(q('riga-sezione-fasce')).toBeNull()
+      expect(valore('scadenza-1-giorno')).toBe('15')
+      expect(testo('scadenze-totale-importo')).toBe('10,00 €')
+      bottone('scadenze-calendario')!.click()
+      await stabilizza(fixture)
+      expect(testo('scadenze-totale-importo')).toBe('120,00 €')
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(righe.modifica.calls.mostRecent().args[1].scadenze.length).toBe(12)
     })
 
     it('un nuovo salvataggio toglie gli errori precedenti', async () => {

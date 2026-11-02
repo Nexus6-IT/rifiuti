@@ -69,8 +69,8 @@ const TUTTI_I_CAMPI = Object.keys(ETICHETTE_CAMPI_RIGA) as CampoRiga[]
 
 /**
  * Campi che il dialog mostra con una sezione propria. Un errore su un altro campo compare in
- * testa con l'etichetta del campo, così non si perde. Task 28 aggiunge qui le sue chiavi
- * (`RigaForm.mostrati`) quando disegna prezzo speciale e scadenze.
+ * testa con l'etichetta del campo, così non si perde. Le chiavi del Task 28 sono in
+ * `CAMPI_PARTE_2`.
  */
 export const CAMPI_PARTE_1: readonly CampoRiga[] = [
   'tipo',
@@ -100,6 +100,19 @@ export const CAMPI_PARTE_1: readonly CampoRiga[] = [
   'addebitiProposti',
   'appunti',
   'notaUsoInterno',
+]
+
+/** Campi disegnati dalle sezioni del Task 28: prezzo speciale (fasce) e scadenze dei fissi. */
+export const CAMPI_PARTE_2: readonly CampoRiga[] = [
+  'applicaA',
+  'condizioniRiferite',
+  'riferimentoGiorno',
+  'riferimentoMese',
+  'scaglioni',
+  'periodoScadenze',
+  'periodoExtraDal',
+  'periodoExtraAl',
+  'scadenze',
 ]
 
 /** Il tipo del menu (`T???`, `M???`) e le tre cifre che lo completano. */
@@ -183,8 +196,8 @@ export class RigaForm {
   /** Errori del backend per campo (R36) e quelli senza campo (o con un campo non disegnato). */
   readonly errori = signal<Partial<Record<string, string[]>>>({})
   readonly generali = signal<string[]>([])
-  /** Campi che il dialog disegna: gli altri errori vanno in testa (Task 28 ne aggiunge). */
-  readonly mostrati = new Set<string>(CAMPI_PARTE_1)
+  /** Campi che il dialog disegna: gli altri errori vanno in testa. */
+  readonly mostrati = new Set<string>([...CAMPI_PARTE_1, ...CAMPI_PARTE_2])
   /** Descrizioni scelte, per il riepilogo "CER o addebito" (non viaggiano al backend). */
   etichettaCer = ''
   etichettaAddebito = ''

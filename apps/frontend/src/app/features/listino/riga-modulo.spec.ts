@@ -1,5 +1,5 @@
 import { PropostaRiga, RigaAddebito } from './listino.model'
-import { RigaForm, tipoPerMenu } from './riga-modulo'
+import { CAMPI_PARTE_2, RigaForm, tipoPerMenu } from './riga-modulo'
 
 const riga = (over: Partial<RigaAddebito> = {}): RigaAddebito =>
   ({
@@ -356,13 +356,14 @@ describe('RigaForm', () => {
     })
 
     it('un campo che il dialog non disegna va in testa con la sua etichetta', () => {
+      rf.mostrati.delete('scaglioni')
       rf.impostaErrori(errore([{ campo: 'scaglioni', messaggio: 'Servono le fasce.' }]), 'ripiego')
       expect(rf.erroriDi('scaglioni')).toEqual([])
       expect(rf.generali()).toEqual(['Fasce del prezzo speciale: Servono le fasce.'])
     })
 
-    it('Task 28 può dichiarare i suoi campi in `mostrati`', () => {
-      rf.mostrati.add('scaglioni')
+    it('i campi disegnati dal Task 28 (fasce e scadenze) hanno l’errore sotto il campo', () => {
+      for (const c of CAMPI_PARTE_2) expect(rf.mostrati.has(c)).withContext(c).toBeTrue()
       rf.impostaErrori(errore([{ campo: 'scaglioni', messaggio: 'Servono le fasce.' }]), 'ripiego')
       expect(rf.erroriDi('scaglioni')).toEqual(['Servono le fasce.'])
       expect(rf.generali()).toEqual([])

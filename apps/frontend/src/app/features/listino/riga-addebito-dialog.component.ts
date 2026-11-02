@@ -23,8 +23,10 @@ import { Addebito, CodificaRentri, RigaAddebito } from './listino.model'
 import { ListinoService } from './listino.service'
 import { ChiaveOpzione, OpzioniListino } from './opzioni-listino'
 import { RigaDatiSezioneComponent, RichiestaNuovo } from './riga-dati-sezione.component'
+import { RigaFasceSezioneComponent } from './riga-fasce-sezione.component'
 import { RigaForm, tipoPerMenu } from './riga-modulo'
 import { RigaPropostaSezioneComponent } from './riga-proposta-sezione.component'
+import { RigaScadenzeSezioneComponent } from './riga-scadenze-sezione.component'
 import { VoceRicerca } from './riga-ricerca.component'
 import { CodiceIvaDialogComponent } from './tabelle/codice-iva-dialog.component'
 import { CodificaAddebitoDialogComponent } from './tabelle/codifica-addebito-dialog.component'
@@ -44,9 +46,8 @@ const GENERI_IN_LINEA = ['CATEGORIA', 'CENTRO_RICAVO'] as const
  * l'arbitro delle regole: i suoi errori (R36) compaiono sotto il campo, quelli senza campo in
  * testa; un 409 mostra il messaggio con "Ricarica".
  *
- * Il Task 28 aggiunge prezzo speciale (fasce) e scadenze nel punto segnato nel template, con i
- * controlli già presenti in `RigaForm` (`scaglioni`, `scadenze`, `applicaA`, …) e le chiavi in
- * `RigaForm.mostrati`.
+ * Task 28: fra i dati e la proposta stanno le fasce del prezzo speciale e le scadenze dei fissi
+ * (sezioni proprie, sui controlli di `RigaForm`); i loro errori del backend compaiono sull'editor.
  */
 @Component({
   selector: 'app-riga-addebito-dialog',
@@ -56,6 +57,8 @@ const GENERI_IN_LINEA = ['CATEGORIA', 'CENTRO_RICAVO'] as const
     ButtonModule,
     DialogModule,
     RigaDatiSezioneComponent,
+    RigaFasceSezioneComponent,
+    RigaScadenzeSezioneComponent,
     RigaPropostaSezioneComponent,
     AddebitoDialogComponent,
     CodificaAddebitoDialogComponent,
@@ -96,7 +99,8 @@ const GENERI_IN_LINEA = ['CATEGORIA', 'CENTRO_RICAVO'] as const
         (nuovo)="apriNuovo($event)"
       />
 
-      <!-- Task 28: prezzo speciale (fasce) e scadenze dei fissi vanno qui, fra i dati e la proposta. -->
+      <app-riga-fasce-sezione [stato]="stato" [soloLettura]="soloLettura" />
+      <app-riga-scadenze-sezione [stato]="stato" [soloLettura]="soloLettura" />
 
       <app-riga-proposta-sezione
         [stato]="stato"
