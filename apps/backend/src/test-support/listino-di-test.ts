@@ -1,11 +1,13 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type GenereCodificaAddebito } from '@prisma/client'
+import { creaDittaConRuolo } from './anagrafiche-di-test'
 
 /**
  * Fixture del database per i test del listino 4.2a: due codici IVA e una codifica per ciascun
  * genere delle codifiche di addebito, nell'azienda indicata. Si usa col client PROPRIETARIO (che
  * aggira la RLS). Nessuna pulizia qui: le tabelle hanno FK a cascata su `tenants`, quindi basta
  * cancellare l'azienda di test per id (in caso di FK `NoAction` fra addebiti e codifiche, prima
- * gli addebiti, poi le codifiche, poi i codici IVA).
+ * gli addebiti, poi le codifiche, poi i codici IVA). Gli elenchi dei contratti (4.2b) vanno a
+ * cascata col contratto.
  */
 export interface ListinoDiTest {
   /** Codice "22", aliquota 22.00, senza natura. */
@@ -35,7 +37,7 @@ export async function creaCodiciIvaEcodifiche(
       natura: 'N6.1',
     },
   })
-  const codifica = (genere: any, descrizione: string) =>
+  const codifica = (genere: GenereCodificaAddebito, descrizione: string) =>
     owner.codificaAddebito.create({ data: { tenantId, genere, codice: '001', descrizione } })
   const gruppo = await codifica('GRUPPO', 'Gruppo di prova')
   const categoria = await codifica('CATEGORIA', 'Categoria di prova')
@@ -121,4 +123,56 @@ export async function creaAddebito(
     })),
   })
   return { id: riga.id, codice: riga.codice, gruppoId }
+}
+
+export interface OpzioniContrattoConElenco {
+  /** Stato del contratto; omesso = `ATTIVO`. */
+  stato?: 'BOZZA' | 'ATTIVO' | 'SOSPESO' | 'SOSPESO_MOVIMENTI' | 'ANNULLATO'
+  /** Cliente esistente; omesso = ne crea uno nuovo (P.IVA da `partitaIvaUnica`, R55). */
+  clienteId?: string
+  /** Codice dell'elenco; omesso = `001`. */
+  codiceElenco?: string
+  descrizioneElenco?: string
+  predefinito?: boolean
+  /** Contratto principale (contratto allegato, D17). */
+  contrattoPrincipaleId?: string
+}
+
+/**
+ * Crea (col client PROPRIETARIO) un cliente, un contratto in stato `ATTIVO` e un elenco degli
+ * addebiti con il suo `001`. Tutto sparisce con la cancellazione dell'azienda di test.
+ */
+export async function creaContrattoConElenco(
+  owner: PrismaClient,
+  tenantId: string,
+  opzioni: OpzioniContrattoConElenco = {}
+): Promise<{ clienteId: string; contrattoId: string; elencoId: string }> {
+  const clienteId =
+    opzioni.clienteId ?? (await creaDittaConRuolo(owner, tenantId, 'CLIENTE')).ruoloId
+  progressivo++
+  const contratto = await owner.contrattoCliente.create({
+    data: {
+      tenantId,
+      clienteId,
+      numero: `LST-2026-${String(progressivo).padStart(4, '0')}`,
+      descrizione: 'Contratto di prova per il listino',
+      stato: opzioni.stato ?? 'ATTIVO',
+      dataInizio: new Date('2026-01-01T00:00:00.000Z'),
+      contrattoPrincipaleId: opzioni.contrattoPrincipaleId ?? null,
+      // CHECK `annullo_coerente`: un contratto annullato porta motivo e data.
+      ...(opzioni.stato === 'ANNULLATO'
+        ? { motivoAnnullo: 'Annullato per il test', annullatoIl: new Date() }
+        : {}),
+    },
+  })
+  const elenco = await owner.elencoAddebiti.create({
+    data: {
+      tenantId,
+      contrattoId: contratto.id,
+      codice: opzioni.codiceElenco ?? '001',
+      descrizione: opzioni.descrizioneElenco ?? 'Elenco di prova',
+      predefinito: opzioni.predefinito ?? false,
+    },
+  })
+  return { clienteId, contrattoId: contratto.id, elencoId: elenco.id }
 }
