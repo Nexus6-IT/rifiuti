@@ -1,291 +1,23 @@
 /* ============================================================================
-   WasteFlow — Design System "Registro" (chiaro e scuro)
-   Teal + neutri freddi tinti di verde, IBM Plex, griglia 8pt, altezze controlli
-   uniche 32/40/48, tabelle dense, sidebar scura in entrambe le modalità.
-   WCAG 2.1 AA in entrambe le modalità, responsive.
-   I nomi dei token sono preservati per retro-compatibilità coi componenti.
+   WasteFlow — tema "Foglio salvia" (chiaro e scuro)
+   Cornice a L color salvia (sidebar + barra in alto) e foglio bianco rientrato.
+   Il teal e' marchio, scheda attiva, selezione e "Trasmesso"; il primario e'
+   quasi nero. Niente ombre sulle cose ferme, niente animazioni d'ingresso.
 
-   MODALITÀ SCURA: :root contiene i valori chiari; :root[data-theme='dark']
-   (più sotto) ridefinisce SOLO i colori. data-theme lo imposta TemaService
-   (src/app/core/services/tema.service.ts) e, prima che Angular parta,
-   src/assets/tema-iniziale.js. Regole per i componenti:
-   - usare sempre i token, mai colori letterali (un #fff è giusto solo in una
-     delle due modalità);
-   - su un fondo pieno colorato (--brand-primary-dark, --color-success, ...)
-     il testo è --text-inverse: in scuro i fondi pieni diventano chiari e
-     --text-inverse diventa scuro, quindi la coppia regge in entrambe;
-   - per i bottoni d'azione usare --accent-fill / --on-accent.
+   Struttura:
+   - styles/_tokens.scss   token chiari e scuri (nomi storici + nuovi)
+   - styles/_primeng.scss  override dei componenti PrimeNG (base: Aura "noir")
+   - questo file           reset, tipografia, utility, layout pagina
+
+   I nomi dei token sono preservati: i componenti usano i var(--...) e si
+   ridisegnano da soli. Regole per i componenti:
+   - usare sempre i token, mai colori letterali;
+   - su un fondo pieno colorato il testo e' --text-inverse / --on-accent;
+   - uno stato non e' mai solo colore: icona + parola + colore.
    ============================================================================ */
 
-:root {
-  /* ===== Brand (teal-600, AA su bianco) ===== */
-  --brand-primary: #0d9488;
-  --brand-primary-dark: #0f766e;
-  --brand-primary-light: #14b8a6;
-  --brand-primary-50: #ecf7f5;
-  --brand-primary-100: #cdede8;
-  --brand-secondary: #b45309;
-  --brand-secondary-dark: #92400e;
-  --brand-secondary-light: #d97706;
-  --brand-accent: #1d4ed8;
-  --brand-accent-dark: #1e3a8a;
-  --brand-accent-light: #3b82f6;
-
-  /* ===== Azione primaria (fondo pieno + testo sopra) ===== */
-  --accent-fill: #0f766e;
-  --accent-fill-hover: #0a5f57;
-  --on-accent: #fcfdfd;
-  /* Azione secondaria piena (p-button-secondary) */
-  --neutral-fill: #33474a;
-  --neutral-fill-hover: #1d2e30;
-  --on-neutral: #fcfdfd;
-
-  /* ===== Semantici (colore + soft bg, AA) ===== */
-  --color-success: #15803d;
-  --color-success-bg: #dcfce7;
-  --color-warning: #b45309;
-  --color-warning-bg: #fef3c7;
-  --color-danger: #b91c1c;
-  --color-danger-bg: #fee2e2;
-  --color-info: #1d4ed8;
-  --color-info-bg: #dbeafe;
-
-  /* ===== Neutrali (freddi, tinti verso il teal) ===== */
-  --color-gray-50: #f6f9f9;
-  --color-gray-100: #ebf1f1;
-  --color-gray-200: #dce5e5;
-  --color-gray-300: #c3d0d0;
-  --color-gray-400: #8fa1a1;
-  --color-gray-500: #5e7273;
-  --color-gray-600: #4a5d5e;
-  --color-gray-700: #33474a;
-  --color-gray-800: #1d2e30;
-  --color-gray-900: #0f1e1f;
-
-  /* ===== Superfici ===== */
-  --surface-ground: #f2f5f5;
-  --surface-section: #fcfdfd;
-  --surface-card: #fcfdfd;
-  --surface-overlay: #fcfdfd;
-  --surface-border: #d2dcdc;
-  --surface-border-strong: #b9c8c8;
-  /* Bordo dei controlli editabili (input/select): ~5:1 sulla card (WCAG 1.4.11 richiede ≥3:1). */
-  --control-border: #5e7273;
-  --surface-hover: #f6f9f9;
-  --overlay-mask: rgba(15, 30, 31, 0.5);
-
-  /* ===== Testo ===== */
-  --text-primary: #0f1e1f;
-  --text-secondary: #3d5052;
-  /* Testo terziario/muted: ~6.4:1 sul fondo pagina (AA). */
-  --text-tertiary: #4a5d5e;
-  --text-disabled: #8fa1a1;
-  --text-inverse: #fcfdfd;
-  /* Placeholder leggibili (AA, ~5.5:1 sulla card). */
-  --text-placeholder: #566a6b;
-
-  /* ===== Sidebar scura (usata dal layout, scura in entrambe le modalità) ===== */
-  --sidebar-bg: #0c1a1c;
-  --sidebar-bg-2: #142527;
-  --sidebar-ink: #c6d4d3;
-  --sidebar-ink-muted: #93a7a6;
-  --sidebar-ink-strong: #f2f7f6;
-  --sidebar-active: #2cc0ae;
-  --sidebar-active-bg: rgba(44, 192, 174, 0.14);
-  --sidebar-border: #1c2e30;
-  --sidebar-hover-bg: #1b2e30;
-  --sidebar-hover-border: #2a3f41;
-  /* Esci/logout sulla sidebar, che è scura in entrambe le modalità. */
-  --sidebar-danger: #fca5a5;
-  --sidebar-danger-strong: #fecaca;
-  --sidebar-danger-bg: rgba(239, 68, 68, 0.18);
-
-  /* Testo del contrassegno azienda (src/app/shared/utils/contrassegno-azienda.ts):
-     la tavolozza è scura in entrambe le modalità, quindi testo chiaro fisso. */
-  --on-contrassegno: #fcfdfd;
-
-  /* Pannello di marca di login e iscrizione: volutamente uguale nelle due
-     modalità (testo chiaro su teal profondo), quindi non ridefinito in scuro. */
-  --brand-panel-from: #0d9488;
-  --brand-panel-mid: #0f766e;
-  --brand-panel-to: #1e3a8a;
-  --on-brand-panel: #fcfdfd;
-
-  /* ===== Tipografia (IBM Plex) ===== */
-  --font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'IBM Plex Sans', var(--font-family);
-  --font-family-mono: 'IBM Plex Mono', 'Courier New', monospace;
-
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 1.875rem;
-  --font-size-4xl: 2.25rem;
-
-  --font-weight-light: 300;
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-
-  --line-height-tight: 1.25;
-  --line-height-normal: 1.5;
-  --line-height-relaxed: 1.7;
-
-  /* ===== Spaziatura (8pt) ===== */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 0.75rem;
-  --spacing-base: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-  --spacing-2xl: 2.5rem;
-  --spacing-3xl: 3rem;
-  --spacing-4xl: 4rem;
-
-  /* ===== Altezze controlli UNICHE (allineamento perfetto) ===== */
-  --control-sm: 32px;
-  --control-md: 40px;   /* default app-wide */
-  --control-lg: 48px;
-  --control-gap: 0.5rem;
-
-  /* ===== Raggi (tight, stile operativo) ===== */
-  --radius-sm: 4px;
-  --radius-base: 6px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
-  --radius-full: 9999px;
-
-  /* ===== Ombre (tinte col neutro, mai nero puro) ===== */
-  --shadow-xs: 0 1px 2px rgba(15, 30, 31, 0.05);
-  --shadow-sm: 0 1px 2px rgba(15, 30, 31, 0.06), 0 1px 3px rgba(15, 30, 31, 0.05);
-  --shadow-base: 0 4px 12px rgba(15, 30, 31, 0.08);
-  --shadow-md: 0 8px 20px -4px rgba(15, 30, 31, 0.12);
-  --shadow-lg: 0 16px 32px -8px rgba(15, 30, 31, 0.16);
-  --shadow-xl: 0 24px 48px -12px rgba(15, 30, 31, 0.22);
-
-  /* ===== Transizioni ===== */
-  --transition-fast: 130ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* ===== Z-index ===== */
-  --z-dropdown: 1000; --z-sticky: 1020; --z-fixed: 1030;
-  --z-modal-backdrop: 1040; --z-modal: 1050; --z-popover: 1060; --z-tooltip: 1070;
-
-  /* ===== Accessibilità ===== */
-  --touch-target-min: 44px;
-  --focus-ring-width: 3px;
-  /* teal-700 = 5.47:1 su bianco (l'indicatore di focus resta ben visibile). */
-  --focus-ring-color: #0f766e;
-  --focus-ring-offset: 2px;
-  --focus-glow: rgba(13, 148, 136, 0.18);
-
-  /* ===== Allineamento tema PrimeNG (Aura) ===== */
-  --primary-color: var(--brand-primary);
-  --primary-color-text: var(--on-accent);
-  --p-primary-color: var(--brand-primary);
-  --highlight-bg: var(--brand-primary-50);
-  --highlight-text-color: var(--brand-primary-dark);
-
-  color-scheme: light;
-}
-
-/* ============================================================================
-   Modalità scura — solo colori. Stessi nomi dei token chiari.
-   I fondi pieni (brand, semantici) diventano chiari e --text-inverse scuro,
-   così le coppie fondo/testo dei componenti restano leggibili.
-   In stampa si usa sempre la palette chiara (@media screen).
-   ============================================================================ */
-@media screen {
-:root[data-theme='dark'] {
-  --brand-primary: #3fc5b5;
-  --brand-primary-dark: #5ed0c2;
-  --brand-primary-light: #7fdccf;
-  --brand-primary-50: #0f2d2a;
-  --brand-primary-100: #15413c;
-  --brand-secondary: #f1b65a;
-  --brand-secondary-dark: #e0a54a;
-  --brand-secondary-light: #f5c87a;
-  --brand-accent: #8db4ff;
-  --brand-accent-dark: #b3ccff;
-  --brand-accent-light: #8db4ff;
-
-  --accent-fill: #3fc5b5;
-  --accent-fill-hover: #64d3c5;
-  --on-accent: #04201d;
-  --neutral-fill: #33494a;
-  --neutral-fill-hover: #3f5759;
-  --on-neutral: #e2ebea;
-
-  --color-success: #62c987;
-  --color-success-bg: #12301f;
-  --color-warning: #f1b65a;
-  --color-warning-bg: #33250c;
-  --color-danger: #f4867e;
-  --color-danger-bg: #3a1714;
-  --color-info: #8db4ff;
-  --color-info-bg: #14213d;
-
-  /* Scala invertita: 50 è il più vicino al fondo, 900 il più vicino al testo. */
-  --color-gray-50: #142224;
-  --color-gray-100: #182a2b;
-  --color-gray-200: #243736;
-  --color-gray-300: #33494a;
-  --color-gray-400: #5f7373;
-  --color-gray-500: #8a9e9d;
-  --color-gray-600: #a8bab9;
-  --color-gray-700: #c6d4d3;
-  --color-gray-800: #dde7e6;
-  --color-gray-900: #eef4f3;
-
-  --surface-ground: #0b1416;
-  --surface-section: #111e1f;
-  --surface-card: #111e1f;
-  --surface-overlay: #152425;
-  --surface-border: #243736;
-  --surface-border-strong: #33494a;
-  --control-border: #6e8586;
-  --surface-hover: #172728;
-  --overlay-mask: rgba(0, 0, 0, 0.6);
-
-  --text-primary: #e2ebea;
-  --text-secondary: #b4c4c3;
-  --text-tertiary: #93a7a6;
-  --text-disabled: #5f7373;
-  --text-inverse: #0b1416;
-  --text-placeholder: #8a9e9d;
-
-  --sidebar-bg: #081011;
-  --sidebar-bg-2: #0f1c1d;
-  --sidebar-ink: #b4c4c3;
-  --sidebar-ink-muted: #8a9e9d;
-  --sidebar-ink-strong: #eef4f3;
-  --sidebar-active: #3fc5b5;
-  --sidebar-active-bg: rgba(63, 197, 181, 0.14);
-  --sidebar-border: #1a2a2b;
-  --sidebar-hover-bg: #152526;
-  --sidebar-hover-border: #24393a;
-
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
-  --shadow-base: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 8px 20px -4px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 32px -8px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
-
-  --focus-ring-color: #5ed0c2;
-  --focus-glow: rgba(63, 197, 181, 0.25);
-
-  --highlight-text-color: var(--brand-primary-light);
-
-  color-scheme: dark;
-}
-}
+@use 'styles/tokens';
+@use 'styles/primeng';
 
 /* ===== Reset ===== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -296,7 +28,7 @@ body {
   font-size: var(--font-size-base);
   line-height: var(--line-height-normal);
   color: var(--text-primary);
-  background-color: var(--surface-ground);
+  background-color: var(--frame);
   overflow-x: hidden;
 }
 
@@ -306,37 +38,42 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-tight);
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 h1 { font-size: var(--font-size-2xl); margin-bottom: var(--spacing-lg); }
 h2 { font-size: var(--font-size-xl); margin-bottom: var(--spacing-base); }
 h3 { font-size: var(--font-size-lg); margin-bottom: var(--spacing-md); }
 h4 { font-size: var(--font-size-base); margin-bottom: var(--spacing-sm); }
 h5 { font-size: var(--font-size-sm); margin-bottom: var(--spacing-sm); }
-h6 { font-size: var(--font-size-xs); margin-bottom: var(--spacing-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); }
+/* h6 non e' piu' maiuscolo con tracking: era decorazione senza significato. */
+h6 { font-size: var(--font-size-xs); margin-bottom: var(--spacing-sm); font-weight: var(--font-weight-medium); color: var(--text-tertiary); }
 p { margin: 0 0 var(--spacing-base) 0; color: var(--text-secondary); }
 small, .text-muted { color: var(--text-tertiary); }
 a { color: var(--brand-primary-dark); text-decoration: none; font-weight: var(--font-weight-medium); transition: color var(--transition-fast); }
 a:hover { color: var(--brand-primary); text-decoration: underline; }
 code, kbd, pre, .mono { font-family: var(--font-family-mono); font-variant-numeric: tabular-nums; }
+/* Cifre tabellari ovunque ci siano numeri incolonnati. */
+table, .num, .num-col, .stat-card__value { font-variant-numeric: tabular-nums; }
 kbd {
   font-size: 0.75em; background: var(--color-gray-100); border: 1px solid var(--surface-border-strong);
   border-bottom-width: 2px; border-radius: var(--radius-sm); padding: 0.1em 0.4em; color: var(--text-secondary);
 }
 
-/* ===== Accessibilità: focus ===== */
+/* ===== Accessibilita': focus ===== */
 :focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); border-radius: var(--radius-sm); }
 :focus:not(:focus-visible) { outline: none; }
 .skip-to-main {
   position: absolute; top: -60px; left: var(--spacing-sm);
-  background: var(--brand-primary); color: var(--text-inverse);
+  background: var(--accent-fill); color: var(--on-accent);
   padding: var(--spacing-sm) var(--spacing-base); font-weight: var(--font-weight-semibold);
   text-decoration: none; z-index: var(--z-tooltip); border-radius: var(--radius-base); transition: top var(--transition-fast);
 }
-.skip-to-main:focus { top: var(--spacing-sm); color: var(--text-inverse); text-decoration: none; }
+.skip-to-main:focus { top: var(--spacing-sm); color: var(--on-accent); text-decoration: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
-/* ===== Utility ===== */
+/* ===== Utility =====
+   Gli !important qui sono voluti: PrimeFlex definisce le stesse classi
+   (.text-primary, .shadow-*, .rounded-*) con !important e vanno battute. */
 .text-primary { color: var(--text-primary) !important; }
 .text-secondary { color: var(--text-secondary) !important; }
 .text-tertiary, .text-muted { color: var(--text-tertiary) !important; }
@@ -357,37 +94,38 @@ kbd {
 .shadow-lg { box-shadow: var(--shadow-lg) !important; }
 
 /* ===== Contrassegno azienda (iniziali su colore fisso per azienda) =====
-   Globale perché compare anche nei pannelli dei dropdown, agganciati al <body>. */
+   Globale perche' compare anche nei pannelli dei dropdown, agganciati al <body>. */
 .contrassegno {
   display: inline-grid; place-items: center; flex-shrink: 0;
   width: 2rem; height: 2rem; border-radius: var(--radius-md);
   color: var(--on-contrassegno);
-  font-family: var(--font-display); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold);
+  font-family: var(--font-display); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em; line-height: 1;
 }
 .contrassegno--sm { width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); font-size: 0.65rem; }
 .azienda-opzione { display: flex; align-items: center; gap: var(--spacing-sm); min-width: 0; }
 .azienda-opzione__nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ===== Layout pagina riusabile ===== */
-.page { max-width: 1320px; margin: 0 auto; padding: clamp(1rem, 2vw, var(--spacing-xl)); animation: fadeInUp var(--transition-base); }
+/* ===== Layout pagina riusabile (dentro il foglio) ===== */
+.page { max-width: 1320px; margin: 0 auto; padding: clamp(0.5rem, 1.5vw, var(--spacing-lg)); }
 .page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--spacing-base); margin-bottom: var(--spacing-lg); }
 .page-header__titles { min-width: 0; }
-.page-title { font-family: var(--font-display); font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); letter-spacing: -0.02em; margin: 0; }
+.page-title { font-family: var(--font-display); font-size: var(--font-size-2xl); font-weight: var(--font-weight-semibold); letter-spacing: 0; margin: 0; }
 .page-subtitle { color: var(--text-secondary); margin: 0.25rem 0 0; font-size: var(--font-size-sm); }
 .page-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
 
-.surface-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--spacing-lg); }
+/* Riquadro: bordo di 1px, nessuna ombra. */
+.surface-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: var(--spacing-lg); }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--spacing-base); }
-.stat-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: var(--spacing-lg); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: var(--spacing-xs); transition: box-shadow var(--transition-base), transform var(--transition-base); }
-.stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+/* Niente sollevamento in hover: una cifra ferma non e' un pulsante. */
+.stat-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: var(--spacing-lg); display: flex; flex-direction: column; gap: var(--spacing-xs); }
 .stat-card__label { font-size: var(--font-size-sm); color: var(--text-tertiary); font-weight: var(--font-weight-medium); }
-.stat-card__value { font-family: var(--font-display); font-size: var(--font-size-3xl); font-weight: var(--font-weight-bold); color: var(--text-primary); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-card__value { font-family: var(--font-display); font-size: var(--font-size-3xl); font-weight: var(--font-weight-medium); color: var(--text-primary); line-height: 1.1; }
 .stat-card__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: var(--spacing-md); padding: var(--spacing-3xl) var(--spacing-base); color: var(--text-tertiary); }
-.empty-state__icon { font-size: 3rem; color: var(--surface-border-strong); }
+.empty-state__icon { font-size: 3rem; color: var(--control-border); }
 .empty-state__title { font-family: var(--font-display); font-weight: var(--font-weight-semibold); color: var(--text-secondary); font-size: var(--font-size-lg); }
 
 .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-lg); }
@@ -395,256 +133,31 @@ kbd {
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--surface-border-strong); border-radius: var(--radius-full); border: 2px solid var(--surface-ground); }
-::-webkit-scrollbar-thumb:hover { background: var(--color-gray-400); }
-
-/* ============================================================================
-   Override componenti PrimeNG — altezze controlli unificate
-   ============================================================================ */
-.p-component { font-family: var(--font-family); }
-
-.p-card { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-sm) !important; border: 1px solid var(--surface-border); background: var(--surface-card); }
-.p-card .p-card-body { padding: var(--spacing-lg); }
-.p-card .p-card-title { font-family: var(--font-display); font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); margin-bottom: var(--spacing-xs); }
-.p-card .p-card-subtitle { color: var(--text-secondary); font-size: var(--font-size-sm); margin-bottom: var(--spacing-md); }
-
-/* Bottoni — altezza unica --control-md (40px) */
-.p-button {
-  height: var(--control-md);
-  border-radius: var(--radius-md) !important;
-  font-family: var(--font-family) !important;
-  font-weight: var(--font-weight-semibold) !important;
-  font-size: var(--font-size-sm) !important;
-  letter-spacing: 0.01em;
-  padding: 0 1rem !important;
-  /* Primario: fondo pieno + testo sopra, 4.5:1 in entrambe le modalità (WCAG AA). */
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
-  color: var(--on-accent);
-  transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast) !important;
-}
-/* Testo e icona ereditano SEMPRE il colore del bottone */
-.p-button .p-button-label, .p-button .p-button-icon, .p-button .p-button-loading-icon { color: inherit !important; }
-/* Spazio coerente icona↔testo (PrimeNG non lo garantisce con i nostri override). */
-.p-button .p-button-icon-left { margin-right: var(--spacing-sm); }
-.p-button .p-button-icon-right { margin-left: var(--spacing-sm); }
-.p-button-icon-only .p-button-icon { margin: 0; }
-/* Varianti piene: il testo è --text-inverse, che si inverte insieme al fondo */
-.p-button.p-button-success, .p-button.p-button-danger, .p-button.p-button-warning,
-.p-button.p-button-info, .p-button.p-button-help { color: var(--text-inverse); }
-.p-button:not(:disabled):hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); box-shadow: var(--shadow-sm) !important; }
-.p-button:not(:disabled):active { transform: translateY(1px); }
-/* Secondari NEUTRI: il teal resta riservato all'azione primaria (gerarchia). */
-.p-button.p-button-outlined { background: transparent; color: var(--text-secondary); border-color: var(--surface-border-strong); }
-.p-button.p-button-outlined:not(:disabled):hover { background: var(--color-gray-100); border-color: var(--surface-border-strong); color: var(--text-primary); }
-.p-button.p-button-text { background: transparent; color: var(--text-secondary); border-color: transparent; }
-.p-button.p-button-text:not(:disabled):hover { background: var(--color-gray-100); color: var(--text-primary); }
-.p-button.p-button-secondary { background: var(--neutral-fill); border-color: var(--neutral-fill); color: var(--on-neutral); }
-.p-button.p-button-secondary:not(:disabled):hover { background: var(--neutral-fill-hover); border-color: var(--neutral-fill-hover); }
-.p-button.p-button-success { background: var(--color-success); border-color: var(--color-success); }
-.p-button.p-button-danger { background: var(--color-danger); border-color: var(--color-danger); }
-.p-button.p-button-warning { background: var(--color-warning); border-color: var(--color-warning); }
-/* Stato disabilitato coerente per tutte le varianti */
-.p-button:disabled, .p-button.p-disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none !important; }
-.p-button-icon-only { width: var(--control-md); height: var(--control-md); padding: 0 !important; }
-.p-button-rounded { border-radius: var(--radius-full) !important; }
-.p-button.p-button-sm { height: var(--control-sm); padding: 0 var(--spacing-md) !important; font-size: var(--font-size-xs) !important; }
-.p-button.p-button-lg { height: var(--control-lg); }
-
-/* SelectButton — l'opzione SELEZIONATA appariva bianca su bianco.
-   Due cause sovrapposte, entrambe necessarie da correggere:
-   1) PrimeNG rende ogni opzione come `.p-button`, e la regola generale qui
-      sopra impone `color: #ffffff`, ereditato dall'etichetta con `!important`;
-   2) il tema disegna sull'opzione selezionata un riquadro `::before` BIANCO
-      (inset di 4px) che copre lo sfondo del bottone e sotto cui l'etichetta
-      bianca sparisce. Colorare solo lo sfondo del bottone non bastava: la
-      pillola ci passava sopra.
-   Qui il riempimento e' del bottone, quindi il riquadro non serve. */
-.p-selectbutton .p-button::before {
-  display: none;
-}
-.p-selectbutton .p-button {
-  background: var(--surface-card);
-  border-color: var(--surface-border-strong);
-  color: var(--text-secondary);
-}
-.p-selectbutton .p-button:not(:disabled):hover {
-  background: var(--color-gray-100);
-  border-color: var(--surface-border-strong);
-  color: var(--text-primary);
-}
-/* Selezionata: stessi colori (e stesso 4.5:1) dell'azione primaria. */
-.p-selectbutton .p-button.p-highlight,
-.p-selectbutton .p-button.p-highlight:not(:disabled):hover {
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
-  color: var(--on-accent);
-}
-
-/* Campi input reali — altezza unica --control-md */
-.p-inputtext, .p-calendar .p-inputtext, .p-inputnumber-input, .p-password input {
-  height: var(--control-md);
-  border-radius: var(--radius-md) !important;
-  border-color: var(--control-border) !important;
-  padding: 0 0.75rem !important;
-  font-size: var(--font-size-sm) !important;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast) !important;
-  background: var(--surface-section);
-}
-textarea.p-inputtext { height: auto; min-height: calc(var(--control-md) * 2); padding: 0.5rem 0.75rem !important; }
-
-/* p-inputnumber deve riempire il contenitore: l'input interno ha una larghezza
-   di default che sfora nelle griglie responsive (es. "N° colli" a 375px). */
-.p-inputnumber { width: 100%; }
-.p-inputnumber .p-inputnumber-input { width: 100%; }
-
-/* Wrapper (dropdown/multiselect/chips): il bordo/altezza stanno sul wrapper,
-   l'etichetta interna NON deve avere bordo/sfondo propri (bug "bordo al centro"). */
-.p-dropdown, .p-multiselect, .p-chips .p-chips-multiple-container {
-  height: var(--control-md);
-  display: inline-flex;
-  align-items: stretch;
-  padding: 0 !important;
-  border-radius: var(--radius-md) !important;
-  border-color: var(--control-border) !important;
-  background: var(--surface-section);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast) !important;
-}
-.p-dropdown .p-dropdown-label, .p-multiselect .p-multiselect-label {
-  display: flex; align-items: center;
-  height: auto !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 0.75rem !important;
-  font-size: var(--font-size-sm) !important;
-}
-.p-dropdown .p-dropdown-trigger, .p-multiselect .p-multiselect-trigger { width: 2.5rem; }
-/* Placeholder leggibili (AA): ~5.4:1 su bianco; esteso a tutti i controlli. */
-.p-inputtext::placeholder,
-.p-inputnumber-input::placeholder,
-textarea.p-inputtext::placeholder,
-.p-password input::placeholder { color: var(--text-placeholder); opacity: 1; }
-.p-dropdown .p-dropdown-label.p-placeholder,
-.p-multiselect .p-multiselect-label.p-placeholder { color: var(--text-placeholder); }
-.p-inputtext:enabled:hover, .p-dropdown:not(.p-disabled):hover, .p-multiselect:not(.p-disabled):hover { border-color: var(--brand-primary-light) !important; }
-.p-inputtext:enabled:focus,
-.p-dropdown:not(.p-disabled).p-focus,
-.p-multiselect:not(.p-disabled).p-focus,
-.p-calendar:not(.p-disabled).p-focus .p-inputtext,
-.p-inputnumber:not(.p-disabled).p-focus .p-inputnumber-input,
-.p-password:not(.p-disabled).p-focus input,
-textarea.p-inputtext:enabled:focus {
-  border-color: var(--brand-primary) !important;
-  box-shadow: 0 0 0 3px var(--focus-glow) !important;
-  /* Focus visibile anche in forced-colors / oltre al glow (WCAG 2.4.7). */
-  outline: 2px solid var(--brand-primary-dark);
-  outline-offset: 2px;
-}
-/* Focus visibile sui bottoni (oltre allo stato hover). */
-.p-button:focus-visible {
-  outline: 2px solid var(--brand-primary-dark);
-  outline-offset: 2px;
-}
-.p-button.p-button-outlined:focus-visible,
-.p-button.p-button-text:focus-visible { outline-color: var(--brand-primary-dark); }
-label { font-weight: var(--font-weight-medium); color: var(--text-secondary); font-size: var(--font-size-sm); }
-
-/* Checkbox / Radio / Switch */
-.p-checkbox .p-checkbox-box.p-highlight, .p-radiobutton .p-radiobutton-box.p-highlight { background: var(--brand-primary) !important; border-color: var(--brand-primary) !important; }
-.p-inputswitch.p-inputswitch-checked .p-inputswitch-slider { background: var(--brand-primary) !important; }
-
-/* DataTable — densa (operativa) */
-.p-datatable { border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--surface-border); }
-.p-datatable .p-datatable-header { background: var(--surface-section); border: none; padding: var(--spacing-md); }
-.p-datatable .p-datatable-thead > tr > th {
-  background: var(--color-gray-50); color: var(--text-secondary);
-  font-weight: var(--font-weight-semibold); border-bottom: 1px solid var(--surface-border);
-  padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-xs);
-  text-transform: uppercase; letter-spacing: 0.06em;
-}
-.p-datatable .p-datatable-tbody > tr { transition: background-color var(--transition-fast); color: var(--text-primary); background: var(--surface-card); }
-.p-datatable .p-datatable-tbody > tr:hover { background: var(--brand-primary-50) !important; }
-.p-datatable .p-datatable-tbody > tr > td { padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--surface-border); font-size: var(--font-size-sm); }
-.p-datatable.p-datatable-sm .p-datatable-tbody > tr > td { padding: var(--spacing-xs) var(--spacing-md); }
-.p-datatable .p-sortable-column.p-highlight, .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon { color: var(--brand-primary-dark); }
-.p-paginator { background: var(--surface-section); border: none; padding: var(--spacing-md); }
-.p-paginator .p-paginator-pages .p-paginator-page.p-highlight { background: var(--accent-fill); color: var(--on-accent); border-radius: var(--radius-base); }
-
-/* Dialog */
-.p-dialog { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-xl) !important; overflow: hidden; }
-.p-dialog .p-dialog-header { background: var(--surface-section); padding: var(--spacing-base) var(--spacing-lg); border-bottom: 1px solid var(--surface-border); }
-/* Titolo dialog un gradino sotto il titolo pagina (gerarchia). */
-.p-dialog .p-dialog-header .p-dialog-title { font-family: var(--font-display); font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); }
-/* X di chiusura: icona ghost neutra (NON teal pieno), hover tenue. */
-.p-dialog .p-dialog-header-icon {
-  width: 2.25rem; height: 2.25rem;
-  color: var(--text-tertiary) !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: var(--radius-full) !important;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.p-dialog .p-dialog-header-icon:hover { background: var(--color-gray-100) !important; color: var(--text-primary) !important; }
-.p-dialog .p-dialog-content { padding: var(--spacing-lg); }
-/* Footer simmetrico (24px) + azioni allineate a destra con gap coerente. */
-.p-dialog .p-dialog-footer { padding: var(--spacing-base) var(--spacing-lg); border-top: 1px solid var(--surface-border); display: flex; justify-content: flex-end; gap: var(--spacing-md); }
-.p-dialog .p-dialog-content, .p-dialog .p-dialog-footer { background: var(--surface-section); color: var(--text-primary); }
-.p-overlay-mask { background: var(--overlay-mask); backdrop-filter: blur(2px); }
-
-/* Tag / Badge — colore + soft bg (mai solo colore: il testo è nel value) */
-.p-tag { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); font-size: var(--font-size-xs); padding: var(--spacing-xs) var(--spacing-sm); letter-spacing: 0.02em; }
-.p-tag.p-tag-success { background: var(--color-success-bg); color: var(--color-success); }
-.p-tag.p-tag-warning { background: var(--color-warning-bg); color: var(--color-warning); }
-.p-tag.p-tag-danger { background: var(--color-danger-bg); color: var(--color-danger); }
-.p-tag.p-tag-info { background: var(--color-info-bg); color: var(--color-info); }
-.p-badge { border-radius: var(--radius-full); font-weight: var(--font-weight-semibold); background: var(--accent-fill); color: var(--on-accent); }
-
-/* Overlay / dropdown panel */
-.p-dropdown-panel, .p-multiselect-panel, .p-menu, .p-overlaypanel { border-radius: var(--radius-md) !important; box-shadow: var(--shadow-md) !important; border: 1px solid var(--surface-border); background: var(--surface-overlay); color: var(--text-primary); }
-.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight,
-.p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight { background: var(--brand-primary-50); color: var(--brand-primary-dark); }
-
-/* Tabs */
-.p-tabview .p-tabview-nav { border-bottom: 1px solid var(--surface-border); }
-.p-tabview .p-tabview-nav li .p-tabview-nav-link { color: var(--text-secondary); font-weight: var(--font-weight-medium); border: none; }
-.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link { color: var(--brand-primary-dark); border-bottom: 2px solid var(--brand-primary); }
-
-/* Toolbar */
-.p-toolbar { background: var(--surface-card) !important; border: none !important; border-bottom: 1px solid var(--surface-border) !important; padding: var(--spacing-md) var(--spacing-xl) !important; }
-
-/* Toast / Message */
-.p-toast .p-toast-message { border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-lg) !important; }
-.p-message { border-radius: var(--radius-md); }
-.p-inline-message { border-radius: var(--radius-base); }
-
-/* Progress */
-.p-progress-spinner-circle { stroke: var(--brand-primary) !important; }
-.p-progressbar { background: var(--color-gray-200); }
-.p-progressbar .p-progressbar-value { background: var(--brand-primary-dark); }
+::-webkit-scrollbar-thumb { background: var(--surface-border-strong); border-radius: var(--radius-full); border: 2px solid var(--sheet); }
+::-webkit-scrollbar-thumb:hover { background: var(--control-border); }
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   h1 { font-size: var(--font-size-xl); }
-  .page { padding: var(--spacing-base); }
-  .p-card .p-card-body { padding: var(--spacing-base); }
-  .p-toolbar { padding: var(--spacing-sm) var(--spacing-base) !important; }
+  .page { padding: var(--spacing-sm); }
   .page-actions { width: 100%; }
   .page-actions .p-button { flex: 1 1 auto; }
 }
 @media (max-width: 576px) {
-  .p-dialog { width: 96vw !important; max-height: 92vh; margin: 0; }
-  .stat-card__value { font-size: var(--font-size-2xl); }
+  .stat-card__value { font-size: var(--font-size-xl); }
 }
 
-/* ===== Animazioni ===== */
+/* ===== Animazioni =====
+   Nessuna animazione d'ingresso sulle pagine (fadeInUp era decorazione).
+   Le utility restano per chi le chiede esplicitamente. */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fadeInUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fadeInUp { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 .fade-in { animation: fadeIn var(--transition-base); }
 .slide-in-up { animation: fadeInUp var(--transition-slow); }
 .pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
 
+/* Accessibilita': riduzione del movimento (gli !important sono lo scopo della regola). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
@@ -653,5 +166,5 @@ label { font-weight: var(--font-weight-medium); color: var(--text-secondary); fo
 @media print {
   body { background: #fff; }
   .no-print { display: none !important; }
-  .p-card { box-shadow: none !important; border: 1px solid #ddd !important; }
+  .p-card { border: 1px solid #ddd; }
 }

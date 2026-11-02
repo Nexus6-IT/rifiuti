@@ -33,12 +33,12 @@
             "styles": [
               "../../node_modules/primeicons/primeicons.css",
               {
-                "input": "../../node_modules/primeng/resources/themes/aura-light-teal/theme.css",
+                "input": "../../node_modules/primeng/resources/themes/aura-light-noir/theme.css",
                 "bundleName": "tema-primeng-chiaro",
                 "inject": false
               },
               {
-                "input": "../../node_modules/primeng/resources/themes/aura-dark-teal/theme.css",
+                "input": "../../node_modules/primeng/resources/themes/aura-dark-noir/theme.css",
                 "bundleName": "tema-primeng-scuro",
                 "inject": false
               },

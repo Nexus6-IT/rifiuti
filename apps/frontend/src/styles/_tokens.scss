@@ -1,0 +1,337 @@
+/* ============================================================================
+   WasteFlow — token del tema "Foglio salvia" (chiaro e scuro)
+   Fonte: docs/design/stile-1.html (progetto winwaste), sezione 4 della proposta.
+
+   Idea: una cornice a L color salvia (sidebar + barra in alto) e il lavoro su
+   un foglio bianco rientrato. Il teal e' ridotto a marchio, scheda attiva,
+   selezione e stato "Trasmesso"; l'azione primaria e' quasi nera.
+
+   I NOMI dei token sono quelli storici (circa 1.500 usi nei componenti): qui
+   cambiano solo i valori. I token nuovi (frame, sheet, stati) sono in fondo.
+
+   Modalita' scura: :root[data-theme='dark'] ridefinisce SOLO i colori
+   (data-theme lo imposta TemaService e src/assets/tema-iniziale.js).
+   Regole per i componenti: mai colori letterali, sempre token; su un fondo
+   pieno il testo e' --text-inverse / --on-accent.
+   ============================================================================ */
+
+:root {
+  /* ===== Brand: teal, ridotto a marchio / scheda attiva / selezione / Trasmesso ===== */
+  --brand-primary: #0f6b63;
+  --brand-primary-dark: #0a4f48;
+  --brand-primary-light: #1a8a7f;
+  --brand-primary-50: #eef4f1;
+  --brand-primary-100: #e3f1ed;
+  --brand-secondary: #b45309;
+  --brand-secondary-dark: #92400e;
+  --brand-secondary-light: #d97706;
+  /* Il blu non fa piu' parte della palette: l'accento "info" e' un grigio-azzurro spento. */
+  --brand-accent: #35566e;
+  --brand-accent-dark: #243b4c;
+  --brand-accent-light: #5a7d96;
+
+  /* ===== Azione primaria: quasi nera (fondo pieno + testo sopra) ===== */
+  --accent-fill: #17201b;
+  --accent-fill-hover: #2c3731;
+  --on-accent: #ffffff;
+  /* Azione secondaria piena (p-button-secondary) */
+  --neutral-fill: #4a524e;
+  --neutral-fill-hover: #39413c;
+  --on-neutral: #ffffff;
+
+  /* ===== Semantici (colore + sfondo tenue, AA) ===== */
+  --color-success: #0a4f48;
+  --color-success-bg: #e3f1ed;
+  --color-warning: #92400e;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #8a1c1e;
+  --color-danger-bg: #ffedea;
+  --color-info: #35566e;
+  --color-info-bg: #e8eef2;
+
+  /* ===== Neutrali (tinti di salvia) ===== */
+  --color-gray-50: #f3f6f4;
+  --color-gray-100: #edf1ee;
+  --color-gray-200: #e2e7e4;
+  --color-gray-300: #c9d1cc;
+  --color-gray-400: #848e88;
+  --color-gray-500: #59615c;
+  --color-gray-600: #4a524e;
+  --color-gray-700: #39413c;
+  --color-gray-800: #232a26;
+  --color-gray-900: #121614;
+
+  /* ===== Superfici: cornice salvia, foglio e superfici bianche ===== */
+  --surface-ground: #eef2ef;
+  --surface-section: #ffffff;
+  --surface-card: #ffffff;
+  --surface-overlay: #ffffff;
+  --surface-border: #e2e7e4;
+  --surface-border-strong: #c9d1cc;
+  /* Bordo dei controlli editabili: 3,4:1 sul foglio (WCAG 1.4.11 chiede >= 3:1). */
+  --control-border: #848e88;
+  --control-border-hover: #5f6964;
+  --surface-hover: #f6f8f7;
+  --overlay-mask: rgba(18, 22, 20, 0.4);
+
+  /* ===== Testo ===== */
+  --text-primary: #121614;
+  --text-secondary: #424b46;
+  /* Secondario/muted: 6,4:1 sul foglio, 5,6:1 sulla cornice. */
+  --text-tertiary: #59615c;
+  --text-disabled: #848e88;
+  --text-inverse: #ffffff;
+  /* Placeholder: 5,1:1 sul campo bianco. */
+  --text-placeholder: #66706a;
+
+  /* ===== Cornice (sidebar + barra in alto): stesso fondo, nessuna riga fra loro ===== */
+  --sidebar-bg: #eef2ef;
+  --sidebar-bg-2: #f3f6f4;
+  --sidebar-ink: #39413c;
+  --sidebar-ink-muted: #59615c;
+  --sidebar-ink-strong: #121614;
+  --sidebar-active: #0f6b63;
+  --sidebar-active-bg: #dfe7e2;
+  --sidebar-border: #d5dcd8;
+  --sidebar-hover-bg: #f3f6f4;
+  --sidebar-hover-border: #c4cdc8;
+  --sidebar-danger: #8a1c1e;
+  --sidebar-danger-strong: #6f1517;
+  --sidebar-danger-bg: rgba(138, 28, 30, 0.09);
+
+  /* Testo del contrassegno azienda: la tavolozza e' scura in entrambe le modalita'. */
+  --on-contrassegno: #ffffff;
+
+  /* Pannello di marca di login e iscrizione: uguale nelle due modalita'. */
+  --brand-panel-from: #0f6b63;
+  --brand-panel-mid: #0c5a53;
+  --brand-panel-to: #17201b;
+  --on-brand-panel: #ffffff;
+
+  /* ===== Tipografia (IBM Plex: Sans 400/500/600, Mono 400/500) ===== */
+  --font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'IBM Plex Sans', var(--font-family);
+  --font-family-mono: 'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.375rem; /* titolo pagina: 22px */
+  --font-size-3xl: 1.5rem; /* cifre di sintesi: 24px */
+  --font-size-4xl: 2.25rem;
+
+  --font-weight-light: 400;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  /* Il 700 non viene piu' caricato: il "grassetto" massimo e' 600. */
+  --font-weight-bold: 600;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.7;
+
+  /* ===== Spaziatura (base 4px) ===== */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 0.75rem;
+  --spacing-base: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 2.5rem;
+  --spacing-3xl: 3rem;
+  --spacing-4xl: 4rem;
+
+  /* ===== Altezze controlli UNICHE: 32px su desktop, 44px su telefono ===== */
+  --control-sm: 28px;
+  --control-md: 32px; /* default app-wide */
+  --control-lg: 40px;
+  --control-gap: 0.5rem;
+
+  /* ===== Raggi ===== */
+  --radius-sm: 4px;
+  --radius-base: 6px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-sheet: 16px;
+  --radius-full: 9999px;
+
+  /* ===== Ombre: niente sulle cose ferme, una sola per cio' che galleggia ===== */
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-base: none;
+  --shadow-md: 0 12px 32px rgba(18, 22, 20, 0.18);
+  --shadow-lg: 0 12px 32px rgba(18, 22, 20, 0.18);
+  --shadow-xl: 0 12px 32px rgba(18, 22, 20, 0.22);
+
+  /* ===== Transizioni ===== */
+  --transition-fast: 130ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ===== Z-index ===== */
+  --z-dropdown: 1000; --z-sticky: 1020; --z-fixed: 1030;
+  --z-modal-backdrop: 1040; --z-modal: 1050; --z-popover: 1060; --z-tooltip: 1070;
+
+  /* ===== Accessibilita' ===== */
+  --touch-target-min: 44px;
+  --focus-ring-width: 2px;
+  --focus-ring-color: #0f6b63;
+  --focus-ring-offset: 2px;
+  --focus-glow: rgba(15, 107, 99, 0.16);
+
+  /* ===== Nuovi: cornice e foglio ===== */
+  --frame: #eef2ef;
+  --sheet: #ffffff;
+  --sheet-border: #e2e7e4;
+  --sheet-inset: 8px;
+  --topbar-h: 48px;
+  --sidebar-w: 15rem;
+
+  /* ===== Nuovi: selezione e righe ===== */
+  --rule: #edf1ee;
+  --selected: #eef4f1;
+  --selected-line: #0f6b63;
+  --tab-line: #0f6b63;
+
+  /* ===== Nuovi: stati = icona + parola + colore (coppie sfondo/inchiostro/bordo) ===== */
+  --stato-ok-bg: #edf1ee;      --stato-ok-ink: #3b4440;
+  --stato-warn-bg: #fffbeb;    --stato-warn-ink: #92400e;  --stato-warn-edge: #fcd88a;
+  --stato-err-bg: #ffedea;     --stato-err-ink: #8a1c1e;   --stato-err-edge: #f5c2bb;
+  --stato-sent-bg: #e3f1ed;    --stato-sent-ink: #0a4f48;
+  --stato-todo-bg: #ffffff;    --stato-todo-ink: #121614;  --stato-todo-edge: #848e88;
+  --stato-none-bg: #edf1ee;    --stato-none-ink: #4a524e;
+  --stato-info-bg: #e8eef2;    --stato-info-ink: #35566e;
+
+  /* ===== Allineamento variabili PrimeNG ===== */
+  --primary-color: var(--accent-fill);
+  --primary-color-text: var(--on-accent);
+  --p-primary-color: var(--accent-fill);
+  --highlight-bg: var(--selected);
+  --highlight-text-color: var(--brand-primary-dark);
+  --text-color: var(--text-primary);
+  --text-color-secondary: var(--text-tertiary);
+  --maskbg: var(--overlay-mask);
+  --border-radius: 6px;
+
+  color-scheme: light;
+}
+
+/* Su telefono i controlli salgono a 44px (target touch). */
+@media (max-width: 768px) {
+  :root {
+    --control-sm: 36px;
+    --control-md: 44px;
+    --control-lg: 48px;
+  }
+}
+
+/* ============================================================================
+   Modalita' scura — solo colori. Token scuri della proposta (sezione 4).
+   In stampa si usa sempre la palette chiara (@media screen).
+   ============================================================================ */
+@media screen {
+:root[data-theme='dark'] {
+  --brand-primary: #5cc0b3;
+  --brand-primary-dark: #6fcabe;
+  --brand-primary-light: #7fdccf;
+  --brand-primary-50: #1a2421;
+  --brand-primary-100: #11302b;
+  --brand-secondary: #f0b44c;
+  --brand-secondary-dark: #e0a54a;
+  --brand-secondary-light: #f5c87a;
+  --brand-accent: #9db8cc;
+  --brand-accent-dark: #b9cfdf;
+  --brand-accent-light: #9db8cc;
+
+  --accent-fill: #edf1ee;
+  --accent-fill-hover: #ffffff;
+  --on-accent: #0d0f0e;
+  --neutral-fill: #2f3733;
+  --neutral-fill-hover: #3a443f;
+  --on-neutral: #edf1ee;
+
+  --color-success: #7fd6ca;
+  --color-success-bg: #11302b;
+  --color-warning: #f0b44c;
+  --color-warning-bg: #2b2414;
+  --color-danger: #f4978e;
+  --color-danger-bg: #2e1a1b;
+  --color-info: #9db8cc;
+  --color-info-bg: #1a232a;
+
+  /* Scala invertita: 50 e' il piu' vicino al fondo, 900 il piu' vicino al testo. */
+  --color-gray-50: #171a19;
+  --color-gray-100: #1e2321;
+  --color-gray-200: #252b28;
+  --color-gray-300: #33403a;
+  --color-gray-400: #5d6862;
+  --color-gray-500: #98a29c;
+  --color-gray-600: #a2aba6;
+  --color-gray-700: #c4ccc7;
+  --color-gray-800: #dde3df;
+  --color-gray-900: #edf1ee;
+
+  --surface-ground: #0d0f0e;
+  --surface-section: #141716;
+  --surface-card: #141716;
+  --surface-overlay: #1b1f1d;
+  --surface-border: #252b28;
+  --surface-border-strong: #33403a;
+  --control-border: #6b766f;
+  --control-border-hover: #98a29c;
+  --surface-hover: #191d1b;
+  --overlay-mask: rgba(0, 0, 0, 0.6);
+
+  --text-primary: #edf1ee;
+  --text-secondary: #c4ccc7;
+  --text-tertiary: #a2aba6;
+  --text-disabled: #6b766f;
+  --text-inverse: #0d0f0e;
+  --text-placeholder: #98a29c;
+
+  --sidebar-bg: #0d0f0e;
+  --sidebar-bg-2: #191d1b;
+  --sidebar-ink: #c4ccc7;
+  --sidebar-ink-muted: #a2aba6;
+  --sidebar-ink-strong: #ffffff;
+  --sidebar-active: #6fcabe;
+  --sidebar-active-bg: #232a26;
+  --sidebar-border: #252b28;
+  --sidebar-hover-bg: #191d1b;
+  --sidebar-hover-border: #33403a;
+  --sidebar-danger: #f4978e;
+  --sidebar-danger-strong: #ffc2bc;
+  --sidebar-danger-bg: rgba(244, 151, 142, 0.12);
+
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.7);
+
+  --focus-ring-color: #6fcabe;
+  --focus-glow: rgba(111, 202, 190, 0.22);
+
+  --frame: #0d0f0e;
+  --sheet: #141716;
+  --sheet-border: #252b28;
+  --rule: #1d2220;
+  --selected: #1a2421;
+  --selected-line: #6fcabe;
+  --tab-line: #6fcabe;
+
+  --stato-ok-bg: #1e2321;      --stato-ok-ink: #c4ccc7;
+  --stato-warn-bg: #2b2414;    --stato-warn-ink: #f0b44c;  --stato-warn-edge: #5c4613;
+  --stato-err-bg: #2e1a1b;     --stato-err-ink: #f4978e;   --stato-err-edge: #5e2b2b;
+  --stato-sent-bg: #11302b;    --stato-sent-ink: #7fd6ca;
+  --stato-todo-bg: transparent; --stato-todo-ink: #edf1ee; --stato-todo-edge: #5d6862;
+  --stato-none-bg: #1e2321;    --stato-none-ink: #a2aba6;
+  --stato-info-bg: #1a232a;    --stato-info-ink: #9db8cc;
+
+  --highlight-text-color: var(--brand-primary-dark);
+
+  color-scheme: dark;
+}
+}
