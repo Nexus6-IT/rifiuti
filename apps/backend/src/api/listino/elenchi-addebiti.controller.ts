@@ -14,17 +14,20 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ModificaElencoAddebitiDto } from './dto/elenco-addebiti.dto'
+import { CreaRigaAddebitoDto } from './dto/riga-addebito.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 
 @ApiTags('listino')
@@ -32,7 +35,10 @@ import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 @Controller('elenchi-addebiti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ElenchiAddebitiController {
-  constructor(private readonly elenchi: ElenchiAddebitiService) {}
+  constructor(
+    private readonly elenchi: ElenchiAddebitiService,
+    private readonly righe: RigheAddebitoService
+  ) {}
 
   @Get(':id')
   @Roles(...RUOLI_LETTURA)
@@ -72,5 +78,33 @@ export class ElenchiAddebitiController {
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
     await this.elenchi.elimina(tenantId, req.user.id, id, versione)
+  }
+
+  // Le righe dell'elenco (4.2b, Task 21): due segmenti statici dopo `:id`, nessun conflitto con `:id`.
+  @Get(':id/righe')
+  @Roles(...RUOLI_LETTURA)
+  @ApiOperation({ summary: 'Righe di un elenco, con fasce e scadenze' })
+  @ApiResponse({ status: 404, description: 'Elenco non trovato' })
+  listRighe(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    const tenantId = requireRequestTenantId(req)
+    return this.righe.list(tenantId, id)
+  }
+
+  @Post(':id/righe')
+  @Roles(...RUOLI_SCRITTURA)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Aggiunge una riga all’elenco' })
+  @ApiResponse({ status: 400, description: 'RIGA_ADDEBITO_NON_VALIDA con `errori` per campo' })
+  @ApiResponse({
+    status: 409,
+    description: 'Riga duplicata, regole fra righe, contratto annullato',
+  })
+  creaRiga(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreaRigaAddebitoDto
+  ) {
+    const tenantId = requireRequestTenantId(req)
+    return this.righe.crea(tenantId, req.user.id, id, dto)
   }
 }

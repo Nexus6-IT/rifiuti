@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { ElenchiContrattoController } from './elenchi-contratto.controller'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
@@ -16,12 +17,17 @@ import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 const TENANT = '5a5a5a5a-0000-4000-8000-000000000001'
 const ID = '7e7e7e7e-0000-4000-8000-000000000004'
 
-async function creaApp(servizio: Record<string, jest.Mock>, ruolo: () => string) {
+async function creaApp(
+  servizio: Record<string, jest.Mock>,
+  ruolo: () => string,
+  righe: Record<string, jest.Mock> = {}
+) {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const moduleRef = await Test.createTestingModule({
     controllers: [ElenchiContrattoController],
     providers: [
       { provide: ElenchiAddebitiService, useValue: servizio },
+      { provide: RigheAddebitoService, useValue: righe },
       { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
@@ -57,7 +63,7 @@ describe('ElenchiContrattoController', () => {
     const proto = ElenchiContrattoController.prototype as any
     const ruoli = (nome: string) => reflector.get<string[]>(ROLES_KEY, proto[nome])
 
-    it.each(['list', 'prossimoCodice'])('%s: lettura a tutti i ruoli', nome => {
+    it.each(['list', 'prossimoCodice', 'proposta'])('%s: lettura a tutti i ruoli', nome => {
       expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     })
 
@@ -69,7 +75,7 @@ describe('ElenchiContrattoController', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
-      expect(metodi.sort()).toEqual(['crea', 'list', 'prossimoCodice'])
+      expect(metodi.sort()).toEqual(['crea', 'list', 'proposta', 'prossimoCodice'])
       for (const n of metodi) expect(ruoli(n)?.length).toBeGreaterThan(0)
     })
   })
@@ -77,6 +83,7 @@ describe('ElenchiContrattoController', () => {
   describe('HTTP', () => {
     let app: INestApplication
     let servizio: Record<string, jest.Mock>
+    let righe: Record<string, jest.Mock>
     let ruolo = 'OPERATOR'
     const R = `contratti-clienti/${ID}/elenchi`
 
@@ -87,7 +94,8 @@ describe('ElenchiContrattoController', () => {
         prossimoCodice: jest.fn().mockResolvedValue('002'),
         crea: jest.fn().mockResolvedValue({ id: ID }),
       }
-      app = await creaApp(servizio, () => ruolo)
+      righe = { proposta: jest.fn().mockResolvedValue({ prezzo: '1.00' }) }
+      app = await creaApp(servizio, () => ruolo, righe)
     })
 
     afterEach(async () => {
@@ -184,6 +192,32 @@ describe('ElenchiContrattoController', () => {
         400
       )
       expect(servizio.list).not.toHaveBeenCalled()
+    })
+
+    describe('righe-proposta (Task 21)', () => {
+      it('GET :id/righe-proposta: addebitoId o cerCode passano al servizio; VIEWER ammesso', async () => {
+        ruolo = 'VIEWER'
+        const r = await http().get(`/contratti-clienti/${ID}/righe-proposta?addebitoId=${ID}`)
+        expect(r.status).toBe(200)
+        expect(righe.proposta).toHaveBeenLastCalledWith(TENANT, ID, {
+          addebitoId: ID,
+          cerCode: undefined,
+        })
+        await http().get(`/contratti-clienti/${ID}/righe-proposta?cerCode=20%2003%2001`)
+        expect(righe.proposta).toHaveBeenLastCalledWith(TENANT, ID, {
+          addebitoId: undefined,
+          cerCode: '20 03 01',
+        })
+      })
+
+      it('id non UUID 400; senza azienda 403', async () => {
+        expect((await http().get('/contratti-clienti/xx/righe-proposta')).status).toBe(400)
+        expect(
+          (await http().get(`/contratti-clienti/${ID}/righe-proposta`).set('x-senza-azienda', '1'))
+            .status
+        ).toBe(403)
+        expect(righe.proposta).not.toHaveBeenCalled()
+      })
     })
   })
 })

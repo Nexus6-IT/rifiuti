@@ -1,4 +1,4 @@
-import { PrismaClient, type GenereCodificaAddebito } from '@prisma/client'
+import { Prisma, PrismaClient, type GenereCodificaAddebito } from '@prisma/client'
 import { creaDittaConRuolo } from './anagrafiche-di-test'
 
 /**
@@ -175,4 +175,90 @@ export async function creaContrattoConElenco(
     },
   })
   return { clienteId, contrattoId: contratto.id, elencoId: elenco.id }
+}
+
+export interface DatiRigaDiTest {
+  /** Omesso: `V`. */
+  tipo?: string
+  /** Solo `CER`; omesso: `20 03 01`. */
+  cerCode?: string
+  /** Omesso e tipo non `CER`: ne crea uno nuovo (dello stesso tipo, se ammesso in archivio). */
+  addebitoId?: string
+  riferimento?: string | null
+  codiceIvaId: string
+  unitaMisura?: string
+  prezzo?: string | null
+  /** Altre colonne della riga (condizione, tipoQuantita, ...). */
+  altro?: Partial<Prisma.RigaAddebitoUncheckedCreateInput>
+}
+
+/**
+ * Crea (col client PROPRIETARIO) una riga di addebito in un elenco: `V` a peso netto in KG, a un
+ * euro, se non si dice altro. Per un tipo non `CER` senza `addebitoId` crea un addebito
+ * dell'archivio. Va a cascata con l'elenco.
+ */
+export async function creaRiga(
+  owner: PrismaClient,
+  tenantId: string,
+  elencoId: string,
+  dati: DatiRigaDiTest
+): Promise<{ id: string; addebitoId: string | null }> {
+  const tipo = dati.tipo ?? 'V'
+  const eCer = tipo === 'CER'
+  const addebitoId = eCer
+    ? null
+    : (dati.addebitoId ??
+      (await creaAddebito(owner, tenantId, { tipo: tipo === 'V' || tipo === 'F' ? tipo : 'V' })).id)
+  const riga = await owner.rigaAddebito.create({
+    data: {
+      tenantId,
+      elencoId,
+      tipo,
+      cerCode: eCer ? (dati.cerCode ?? '20 03 01') : null,
+      addebitoId,
+      riferimento: dati.riferimento ?? null,
+      tipoQuantita: eCer || tipo === 'V' ? 'PESO_NETTO' : null,
+      unitaMisura: dati.unitaMisura ?? 'KG',
+      prezzo: dati.prezzo === undefined ? '1' : dati.prezzo,
+      codiceIvaId: dati.codiceIvaId,
+      ...dati.altro,
+    },
+  })
+  return { id: riga.id, addebitoId }
+}
+
+/**
+ * Due voci per tabella RENTRI (`stati-fisici`, `attivita-rs`) con `externalId` noti: le crea
+ * (col client PROPRIETARIO) solo se la tabella e' vuota, e restituisce gli id creati da cancellare
+ * a fine test. Le voci sono le stesse del catalogo reale, se c'e'.
+ */
+export async function assicuraCodificheRentri(owner: PrismaClient): Promise<{
+  statoFisico: string
+  operazione: string
+  creati: string[]
+}> {
+  const creati: string[] = []
+  const voce = async (tabella: string, externalId: string) => {
+    const esistente = await owner.rentriCodificaSemplice.findFirst({
+      where: { tabella, presenteInRentri: true },
+      select: { externalId: true },
+    })
+    if (esistente) return esistente.externalId
+    const c = await owner.rentriCodificaSemplice.create({
+      data: {
+        tabella,
+        externalId,
+        code: `T${externalId}`,
+        name: `Voce di prova ${tabella}`,
+        fonte: 'test',
+      },
+    })
+    creati.push(c.id)
+    return c.externalId
+  }
+  return {
+    statoFisico: await voce('stati-fisici', '9901'),
+    operazione: await voce('attivita-rs', '9902'),
+    creati,
+  }
 }

@@ -1,4 +1,4 @@
-import { controllaRiferimentiListino } from './riferimenti-listino'
+import { controllaRiferimentiListino, controllaRiferimentiRiga } from './riferimenti-listino'
 
 const T = 'aaaaaaaa-0000-4000-8000-000000000001'
 const G = '11111111-0000-4000-8000-000000000001'
@@ -72,5 +72,124 @@ describe('controllaRiferimentiListino', () => {
       'Il gruppo scelto non esiste, è disattivato o non è un gruppo.',
     ])
     expect(tx.$queryRaw).not.toHaveBeenCalled()
+  })
+})
+
+describe('controllaRiferimentiRiga (R41)', () => {
+  const A = '44444444-0000-4000-8000-000000000004'
+
+  function txRiga(opzioni: {
+    addebito?: unknown[]
+    iva?: unknown[]
+    codifiche?: unknown[]
+    rentri?: number
+    addebiti?: string[]
+    cer?: string[]
+  }) {
+    const sql: string[] = []
+    const tx: any = {
+      $queryRaw: jest.fn(async (strings: TemplateStringsArray) => {
+        const s = strings.join('?')
+        sql.push(s)
+        if (s.includes('"addebiti"')) return opzioni.addebito ?? []
+        if (s.includes('codici_iva')) return opzioni.iva ?? []
+        return opzioni.codifiche ?? []
+      }),
+      rentriCodificaSemplice: { count: jest.fn().mockResolvedValue(opzioni.rentri ?? 1) },
+      addebito: {
+        findMany: jest.fn(async () => (opzioni.addebiti ?? []).map(codice => ({ codice }))),
+      },
+      cERCode: {
+        findMany: jest.fn(async () => (opzioni.cer ?? []).map(code => ({ code }))),
+      },
+    }
+    return { tx, sql }
+  }
+
+  it('nessun riferimento: nessuna query', async () => {
+    const { tx } = txRiga({})
+    expect(await controllaRiferimentiRiga(tx, T, {})).toEqual([])
+    expect(tx.$queryRaw).not.toHaveBeenCalled()
+    expect(tx.rentriCodificaSemplice.count).not.toHaveBeenCalled()
+  })
+
+  it('addebito attivo e non CER: valido, letto FOR SHARE', async () => {
+    const { tx, sql } = txRiga({ addebito: [{ attivo: true, tipo: 'V' }] })
+    expect(await controllaRiferimentiRiga(tx, T, { addebitoId: A })).toEqual([])
+    expect(sql[0]).toContain('FOR SHARE')
+  })
+
+  it.each([
+    ['inesistente', []],
+    ['disattivato', [{ attivo: false, tipo: 'V' }]],
+    ['di tipo CER', [{ attivo: true, tipo: 'CER' }]],
+  ])('addebito %s: errore sul campo addebitoId', async (_nome, righe) => {
+    const { tx } = txRiga({ addebito: righe as unknown[] })
+    expect(await controllaRiferimentiRiga(tx, T, { addebitoId: A })).toEqual([
+      { campo: 'addebitoId', messaggio: 'L’addebito scelto non esiste o è disattivato.' },
+    ])
+  })
+
+  it('addebito con id non UUID: non arriva al database', async () => {
+    const { tx } = txRiga({})
+    const e = await controllaRiferimentiRiga(tx, T, { addebitoId: 'x' })
+    expect(e).toHaveLength(1)
+    expect(tx.$queryRaw).not.toHaveBeenCalled()
+  })
+
+  it('codice IVA, categoria e centro: ogni messaggio sul suo campo', async () => {
+    const { tx } = txRiga({
+      iva: [{ id: I, attivo: false }],
+      codifiche: [{ id: C, attivo: true, genere: 'CATEGORIA' }],
+    })
+    const e = await controllaRiferimentiRiga(tx, T, {
+      codiceIvaId: I,
+      categoriaId: C,
+      centroRicavoId: G,
+    })
+    expect(e.map(x => x.campo)).toEqual(['codiceIvaId', 'centroRicavoId'])
+  })
+
+  it('stato fisico e operazione: per external_id nelle tabelle RENTRI giuste', async () => {
+    const { tx } = txRiga({ rentri: 0 })
+    const e = await controllaRiferimentiRiga(tx, T, { statoFisico: '9', operazione: '8' })
+    expect(e.map(x => x.campo)).toEqual(['statoFisico', 'operazione'])
+    expect(tx.rentriCodificaSemplice.count).toHaveBeenNthCalledWith(1, {
+      where: { tabella: 'stati-fisici', externalId: '9', presenteInRentri: true },
+    })
+    expect(tx.rentriCodificaSemplice.count).toHaveBeenNthCalledWith(2, {
+      where: { tabella: 'attivita-rs', externalId: '8', presenteInRentri: true },
+    })
+  })
+
+  it('addebiti proposti: solo codici esistenti di tipo V, anche scritti senza zeri', async () => {
+    const { tx } = txRiga({ addebiti: ['00012'] })
+    const e = await controllaRiferimentiRiga(tx, T, { addebitiProposti: ['12', '00013'] })
+    expect(e).toEqual([
+      {
+        campo: 'addebitiProposti',
+        messaggio: 'Addebito proposto 2: il codice non è un addebito di tipo V dell’archivio.',
+      },
+    ])
+    expect(tx.addebito.findMany.mock.calls[0][0].where).toMatchObject({
+      tipo: 'V',
+      codice: { in: ['00012', '00013'] },
+    })
+  })
+
+  it('CER proposti: ogni CER (prima della barra) deve stare nel catalogo, con o senza asterisco', async () => {
+    const { tx } = txRiga({ cer: ['20 03 01', '20 01 21*'] })
+    const e = await controllaRiferimentiRiga(tx, T, {
+      cerProposta: ['20 03 01/R1', '20 01 21', '20 03 99/*', '20 03 01/'],
+    })
+    expect(e).toEqual([
+      { campo: 'cerProposta', messaggio: 'CER proposto 3: il codice CER non è nel catalogo.' },
+    ])
+  })
+
+  it('CER proposto di forma sbagliata: non è compito di questo controllo', async () => {
+    const { tx } = txRiga({ cer: [] })
+    expect(await controllaRiferimentiRiga(tx, T, { cerProposta: ['abc'] })).toEqual([])
+    expect(tx.cERCode.findMany).not.toHaveBeenCalled()
   })
 })

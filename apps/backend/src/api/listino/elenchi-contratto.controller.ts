@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
@@ -31,7 +32,10 @@ import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 @Controller('contratti-clienti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ElenchiContrattoController {
-  constructor(private readonly elenchi: ElenchiAddebitiService) {}
+  constructor(
+    private readonly elenchi: ElenchiAddebitiService,
+    private readonly righe: RigheAddebitoService
+  ) {}
 
   @Get(':id/elenchi')
   @Roles(...RUOLI_LETTURA)
@@ -70,5 +74,22 @@ export class ElenchiContrattoController {
   ) {
     const tenantId = requireRequestTenantId(req)
     return this.elenchi.crea(tenantId, req.user.id, id, dto)
+  }
+
+  @Get(':id/righe-proposta')
+  @Roles(...RUOLI_LETTURA)
+  @ApiOperation({ summary: 'Valori proposti alla scelta di un addebito o di un CER (D6, D7)' })
+  @ApiQuery({ name: 'addebitoId', required: false })
+  @ApiQuery({ name: 'cerCode', required: false })
+  @ApiResponse({ status: 400, description: 'Né l’addebito né il CER, o entrambi; CER non valido' })
+  @ApiResponse({ status: 404, description: 'Contratto o addebito non trovato' })
+  proposta(
+    @Req() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('addebitoId') addebitoId?: string,
+    @Query('cerCode') cerCode?: string
+  ) {
+    const tenantId = requireRequestTenantId(req)
+    return this.righe.proposta(tenantId, id, { addebitoId, cerCode })
   }
 }

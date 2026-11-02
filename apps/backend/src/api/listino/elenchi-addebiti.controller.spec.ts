@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { ElenchiAddebitiController } from './elenchi-addebiti.controller'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
@@ -16,12 +17,17 @@ import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 const TENANT = '5a5a5a5a-0000-4000-8000-000000000001'
 const ID = '7e7e7e7e-0000-4000-8000-000000000004'
 
-async function creaApp(servizio: Record<string, jest.Mock>, ruolo: () => string) {
+async function creaApp(
+  servizio: Record<string, jest.Mock>,
+  ruolo: () => string,
+  righe: Record<string, jest.Mock> = {}
+) {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const moduleRef = await Test.createTestingModule({
     controllers: [ElenchiAddebitiController],
     providers: [
       { provide: ElenchiAddebitiService, useValue: servizio },
+      { provide: RigheAddebitoService, useValue: righe },
       { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
@@ -59,15 +65,19 @@ describe('ElenchiAddebitiController', () => {
       expect(ruoli('getById')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     })
 
-    it.each(['modifica', 'elimina'])('%s: scrittura senza VIEWER', nome => {
+    it.each(['modifica', 'elimina', 'creaRiga'])('%s: scrittura senza VIEWER', nome => {
       expect(ruoli(nome)).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR'])
+    })
+
+    it('listRighe: lettura a tutti i ruoli', () => {
+      expect(ruoli('listRighe')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     })
 
     it('ogni rotta pubblica ha @Roles esplicito', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
-      expect(metodi.sort()).toEqual(['elimina', 'getById', 'modifica'])
+      expect(metodi.sort()).toEqual(['creaRiga', 'elimina', 'getById', 'listRighe', 'modifica'])
       for (const n of metodi) expect(ruoli(n)?.length).toBeGreaterThan(0)
     })
   })
@@ -75,6 +85,7 @@ describe('ElenchiAddebitiController', () => {
   describe('HTTP', () => {
     let app: INestApplication
     let servizio: Record<string, jest.Mock>
+    let righe: Record<string, jest.Mock>
     let ruolo = 'OPERATOR'
     const R = 'elenchi-addebiti'
 
@@ -85,7 +96,11 @@ describe('ElenchiAddebitiController', () => {
         modifica: jest.fn().mockResolvedValue({ id: ID }),
         elimina: jest.fn().mockResolvedValue(undefined),
       }
-      app = await creaApp(servizio, () => ruolo)
+      righe = {
+        list: jest.fn().mockResolvedValue([{ id: 'r1' }]),
+        crea: jest.fn().mockResolvedValue({ id: 'r1' }),
+      }
+      app = await creaApp(servizio, () => ruolo, righe)
     })
 
     afterEach(async () => {
@@ -166,6 +181,80 @@ describe('ElenchiAddebitiController', () => {
       expect((await http().patch(`/${R}/xx`).send({ versione: 1 })).status).toBe(400)
       expect((await http().delete(`/${R}/xx?versione=1`)).status).toBe(400)
       expect(servizio.getById).not.toHaveBeenCalled()
+    })
+
+    describe('righe dell’elenco (Task 21)', () => {
+      it('GET :id/righe: azienda selezionata, un array; un VIEWER legge', async () => {
+        ruolo = 'VIEWER'
+        const r = await http().get(`/${R}/${ID}/righe`)
+        expect(r.status).toBe(200)
+        expect(r.body).toEqual([{ id: 'r1' }])
+        expect(righe.list).toHaveBeenCalledWith(TENANT, ID)
+      })
+
+      it('POST :id/righe: 201 e il corpo arriva al servizio con utente e azienda', async () => {
+        const corpo = {
+          tipo: 'V',
+          addebitoId: ID,
+          codiceIvaId: ID,
+          unitaMisura: 'KG',
+          prezzo: '1.5',
+          prezzoSpeciale: false,
+          scaglioni: [{ ordine: 1, finoA: 100, prezzo: '2', tipoCalcolo: 'A' }],
+          scadenze: [{ ordine: 1, giorno: 1, mese: 6, anno: null }],
+          cerProposta: ['20 03 01'],
+          riferimento: '',
+        }
+        const r = await http().post(`/${R}/${ID}/righe`).send(corpo)
+        expect(r.status).toBe(201)
+        expect(righe.crea).toHaveBeenCalledWith(
+          TENANT,
+          'utente-1',
+          ID,
+          expect.objectContaining(corpo)
+        )
+      })
+
+      it('POST: un VIEWER non scrive (403); senza azienda 403; id non UUID 400', async () => {
+        ruolo = 'VIEWER'
+        expect((await http().post(`/${R}/${ID}/righe`).send({ tipo: 'V' })).status).toBe(403)
+        ruolo = 'OPERATOR'
+        expect(
+          (await http().post(`/${R}/${ID}/righe`).set('x-senza-azienda', '1').send({})).status
+        ).toBe(403)
+        expect((await http().post(`/${R}/xx/righe`).send({})).status).toBe(400)
+        expect((await http().get(`/${R}/xx/righe`)).status).toBe(400)
+        expect(righe.crea).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        ['prezzoSpeciale come testo', { prezzoSpeciale: 'false' }],
+        ['minimoPerCategoria numerico', { minimoPerCategoria: 1 }],
+        ['addebitoId non UUID', { addebitoId: 'abc' }],
+        ['codiceIvaId null', { codiceIvaId: null }],
+        ['categoriaId non UUID', { categoriaId: 'abc' }],
+        ['cerProposta null', { cerProposta: null }],
+        ['cerProposta oltre 50', { cerProposta: Array.from({ length: 51 }, () => '20 03 01') }],
+        ['scaglioni oltre 7', { scaglioni: Array.from({ length: 8 }, () => ({})) }],
+        ['scaglione con campo extra', { scaglioni: [{ ordine: 1, x: 1 }] }],
+        ['prezzo booleano', { prezzo: true }],
+        ['campo extra', { elencoId: ID }],
+      ])('POST %s: 400 dalla pipe, nessun servizio', async (_nome, extra) => {
+        const r = await http()
+          .post(`/${R}/${ID}/righe`)
+          .send({ tipo: 'V', ...extra })
+        expect(r.status).toBe(400)
+        expect(righe.crea).not.toHaveBeenCalled()
+      })
+
+      it('POST: i booleani restano booleani veri (la pipe non converte le stringhe)', async () => {
+        await http()
+          .post(`/${R}/${ID}/righe`)
+          .send({ tipo: 'V', prezzoSpeciale: true, minimoPerCategoria: false })
+        const dto = righe.crea.mock.calls[0][3]
+        expect(dto.prezzoSpeciale).toBe(true)
+        expect(dto.minimoPerCategoria).toBe(false)
+      })
     })
   })
 })

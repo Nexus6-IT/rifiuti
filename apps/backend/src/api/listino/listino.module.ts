@@ -6,17 +6,19 @@ import { AddebitiService } from '../../application/listino/addebiti.service'
 import { CodiciIvaService } from '../../application/listino/codici-iva.service'
 import { CodificheAddebitoService } from '../../application/listino/codifiche-addebito.service'
 import { ElenchiAddebitiService } from '../../application/listino/elenchi-addebiti.service'
+import { RigheAddebitoService } from '../../application/listino/righe-addebito.service'
 import { VariazioniArchivioService } from '../../application/listino/variazioni-archivio.service'
 import { AddebitiController } from './addebiti.controller'
 import { CodiciIvaController } from './codici-iva.controller'
 import { CodificheAddebitoController } from './codifiche-addebito.controller'
 import { ElenchiAddebitiController } from './elenchi-addebiti.controller'
 import { ElenchiContrattoController } from './elenchi-contratto.controller'
+import { RigheAddebitoController } from './righe-addebito.controller'
 
 /**
  * ListinoModule — archivio addebiti e listini (4.2a). Per ora: codici IVA e codifiche di
  * addebito (Task 8), archivio degli addebiti (Task 9); le variazioni stanno su `addebiti/variazioni-prezzi` (Task 10);
- * elenchi degli addebiti dei contratti (4.2b, Task 20).
+ * elenchi degli addebiti dei contratti (4.2b, Task 20) e loro righe (Task 21).
  */
 @Module({
   imports: [PrismaModule, AuthModule, RuoloEffettivoModule],
@@ -26,6 +28,7 @@ import { ElenchiContrattoController } from './elenchi-contratto.controller'
     AddebitiController,
     ElenchiContrattoController,
     ElenchiAddebitiController,
+    RigheAddebitoController,
   ],
   providers: [
     CodiciIvaService,
@@ -33,7 +36,14 @@ import { ElenchiContrattoController } from './elenchi-contratto.controller'
     AddebitiService,
     VariazioniArchivioService,
     ElenchiAddebitiService,
+    RigheAddebitoService,
   ],
-  exports: [CodiciIvaService, CodificheAddebitoService, AddebitiService, ElenchiAddebitiService],
+  exports: [
+    CodiciIvaService,
+    CodificheAddebitoService,
+    AddebitiService,
+    ElenchiAddebitiService,
+    RigheAddebitoService,
+  ],
 })
 export class ListinoModule {}
