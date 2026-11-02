@@ -27,7 +27,8 @@ const ENTITA: DescrizioneEntita = {
   // R9: il testo di ripiego direbbe "clienti o contratti", che qui non c'entrano.
   inUso: {
     codice: 'CODICE_IVA_IN_USO',
-    messaggio: "Il codice IVA è usato da addebiti dell'archivio: disattivalo invece di eliminarlo.",
+    messaggio:
+      "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
   },
 }
 

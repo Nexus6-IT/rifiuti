@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client'
 import { primoCodiceLibero } from '../../domain/clienti/codifica-contratto'
 import {
   ETICHETTE_GENERE_ADDEBITO,
+  MSG_CODICE_CODIFICA,
   normalizzaCodificaAddebito,
   validaCodificaAddebito,
   type GenereCodificaAddebito,
@@ -34,7 +35,8 @@ const ENTITA: DescrizioneEntita = {
   // R9: il testo di ripiego direbbe "clienti o contratti", che qui non c'entrano.
   inUso: {
     codice: 'CODIFICA_ADDEBITO_IN_USO',
-    messaggio: "La codifica è usata da addebiti dell'archivio: disattivala invece di eliminarla.",
+    messaggio:
+      "La codifica è usata da addebiti dell'archivio o da righe dei listini: disattivala invece di eliminarla.",
   },
 }
 
@@ -47,7 +49,6 @@ const VINCOLI: VincoliNoti = {
 }
 
 const MSG_ESAURITI = 'Non si possono creare più di 999 codici per questo elenco.'
-const MSG_CODICE = 'Il codice ha da 1 a 3 cifre.'
 
 export interface CodificaAddebitoVista {
   id: string
@@ -197,9 +198,10 @@ export class CodificheAddebitoService {
 
     return nelContestoTenant(tenantId, async () => {
       // Il P2002 si cattura FUORI dalla transazione: una transazione interrotta (25P02) non si
-      // riprova. Senza codice esplicito si riprova UNA volta in una transazione nuova, che rilegge
-      // i codici e prende il successivo: il FOR UPDATE non blocca gli insert quando il genere non
-      // ha ancora righe, quindi due creazioni parallele possono calcolare entrambe `001`.
+      // riprova. Le creazioni senza codice si serializzano col lock consultivo per azienda e genere
+      // (vedi `creaInTransazione`); non copre pero' una creazione a codice esplicito, che non lo
+      // prende e puo' prendere il codice che l'altra sta per calcolare: su P2002 si riprova UNA
+      // volta in una transazione nuova, che rilegge i codici e prende il successivo.
       const tentativi = valori.codice === null ? 2 : 1
       for (let tentativo = 1; ; tentativo++) {
         try {
@@ -238,7 +240,7 @@ export class CodificheAddebitoService {
           })
           const errori = validaCodificaAddebito(unione)
           // Un codice inviato ma vuoto non e' "assente": in modifica il codice non si toglie (R24).
-          if (unione.codice === null) errori.push(MSG_CODICE)
+          if (unione.codice === null) errori.push(MSG_CODICE_CODIFICA)
           if (errori.length > 0) lanciaNonValida(errori)
           const nuovi: Record<Campo, unknown> = {
             codice: unione.codice,

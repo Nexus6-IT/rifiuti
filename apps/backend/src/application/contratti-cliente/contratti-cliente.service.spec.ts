@@ -138,11 +138,14 @@ describe('ContrattiClienteService (Prisma finto)', () => {
   /** Risposte del `$queryRaw`, per tabella citata nella query. */
   let sedi: Array<{ id: string }>
   let principali: Array<Record<string, unknown>>
+  /** Numero di righe non T del contratto (D17). */
+  let righeNonT: number
 
   beforeEach(() => {
     controlla.mockReset().mockResolvedValue([])
     sedi = [{ id: S }]
     principali = []
+    righeNonT = 0
     tx = {
       contrattoCliente: {
         create: jest.fn().mockResolvedValue({ id: K }),
@@ -162,6 +165,7 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
       $queryRaw: jest.fn(async (strings: readonly string[]) => {
         const testo = strings.join('?')
+        if (testo.includes('righe_addebito')) return [{ n: righeNonT }]
         if (testo.includes('"sedi_ditte"')) return sedi
         if (testo.includes('"contratti_cliente"')) return principali
         return []
@@ -1050,6 +1054,38 @@ describe('ContrattiClienteService (Prisma finto)', () => {
         expect(e.getResponse().message).toEqual([
           'Questo contratto ha dei contratti allegati: non può essere allegato a un altro.',
         ])
+      })
+
+      it('contratto con righe di tipo diverso da T: non si allega, 400 (D17)', async () => {
+        principali = [principale()]
+        righeNonT = 2
+        const e = await errore(service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 }))
+        expect(e.getResponse().message).toEqual([
+          'Questo contratto ha addebiti di tipo diverso da T: non può essere allegato a un altro.',
+        ])
+        expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+        const q = tx.$queryRaw.mock.calls.find((c: any[]) =>
+          c[0].join('?').includes('righe_addebito')
+        )
+        expect(q[0].join('?')).toContain('JOIN elenchi_addebiti')
+        expect(q[0].join('?')).toContain("r.tipo !~ '^T'")
+      })
+
+      it('contratto con sole righe T (o senza righe): si allega', async () => {
+        principali = [principale()]
+        righeNonT = 0
+        await service.modifica(T, U, K, { contrattoPrincipaleId: P, versione: 1 })
+        expect(tx.contrattoCliente.updateMany).toHaveBeenCalled()
+      })
+
+      it('il controllo delle righe non scatta se non cambia il principale o lo si stacca', async () => {
+        righeNonT = 3
+        tx.contrattoCliente.findFirst.mockResolvedValue(riga({ contrattoPrincipaleId: P }))
+        await service.modifica(T, U, K, { descrizione: 'Nuova', versione: 1 })
+        await service.modifica(T, U, K, { contrattoPrincipaleId: null, versione: 1 })
+        expect(
+          tx.$queryRaw.mock.calls.some((c: any[]) => c[0].join('?').includes('righe_addebito'))
+        ).toBe(false)
       })
 
       it('allegato a se stesso: 400 della regola pura, senza leggere il database', async () => {

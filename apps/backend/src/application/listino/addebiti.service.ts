@@ -9,6 +9,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
+  MSG_CODICE_ADDEBITO,
   normalizzaAddebito,
   prossimoCodiceAddebito,
   validaAddebito,
@@ -50,7 +51,6 @@ const VINCOLI: VincoliNoti = {
 }
 
 const MSG_ESAURITI = 'Non si possono creare più di 99999 addebiti.'
-const MSG_CODICE = 'Il codice ha da 1 a 5 cifre.'
 const TENTATIVI_SENZA_CODICE = 3
 
 const INCLUDE = {
@@ -287,9 +287,10 @@ export class AddebitiService {
 
     return nelContestoTenant(tenantId, async () => {
       // Il P2002 si cattura FUORI dalla transazione: una transazione interrotta (25P02) non si
-      // riprova. Senza codice esplicito si riprova in una transazione nuova, che rilegge i codici
-      // e prende il successivo: il FOR UPDATE non blocca gli insert quando non ci sono ancora
-      // righe, quindi due creazioni parallele possono calcolare entrambe `00001`.
+      // riprova. Le creazioni senza codice si serializzano col lock consultivo per azienda (vedi
+      // `creaInTransazione`); non copre pero' una creazione a codice esplicito, che non lo prende
+      // e puo' prendere il codice che l'altra sta per calcolare: su P2002 si riprova in una
+      // transazione nuova, che rilegge i codici e prende il successivo.
       const tentativi = valori.codice === '' ? TENTATIVI_SENZA_CODICE : 1
       for (let tentativo = 1; ; tentativo++) {
         try {
@@ -323,7 +324,7 @@ export class AddebitiService {
           const unione = normalizzaAddebito({ ...attuali, ...definiti })
           const errori = validaAddebito(unione)
           // Un codice inviato ma vuoto non e' "assente": in modifica il codice non si toglie.
-          if (unione.codice === '') errori.push(MSG_CODICE)
+          if (unione.codice === '') errori.push(MSG_CODICE_ADDEBITO)
           if (errori.length > 0) lanciaNonValido(errori)
 
           const campi: string[] = CAMPI.filter(c => !uguali(unione[c], attuali[c]))

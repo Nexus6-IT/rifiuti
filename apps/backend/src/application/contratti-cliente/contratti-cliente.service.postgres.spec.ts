@@ -25,6 +25,12 @@ import {
 import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-prisma.repository'
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
+import {
+  creaAddebito,
+  creaCodiciIvaEcodifiche,
+  creaContrattoConElenco,
+  creaRiga,
+} from '../../test-support/listino-di-test'
 import { DitteService } from '../registry/ditte/ditte.service'
 import { ClientiService } from '../clienti/clienti.service'
 import { ContrattiClienteService } from './contratti-cliente.service'
@@ -52,7 +58,15 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
       const in_ = { in: tenantCreati }
       await owner.allegatoContrattoCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.periodoFatturazioneCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.contrattoCliente.updateMany({
+        where: { tenantId: in_ },
+        data: { contrattoPrincipaleId: null },
+      })
       await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      // Righe ed elenchi sono andati a cascata col contratto: ora si possono togliere gli archivi.
+      await owner.addebito.deleteMany({ where: { tenantId: in_ } })
+      await owner.codificaAddebito.deleteMany({ where: { tenantId: in_ } })
+      await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
       await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.agente.deleteMany({ where: { tenantId: in_ } })
       await owner.activityLog.deleteMany({ where: { tenantId: in_ } })
@@ -688,6 +702,131 @@ describe('ContrattiClienteService — Postgres reale, ruolo wasteflow_app', () =
         service.modifica(tenantId, utenteId, A.id, { contrattoPrincipaleId: null, versione: 2 })
       )
       expect(s.contrattoPrincipale).toBeNull()
+    })
+
+    describe('contratto allegato e righe di listino (4.2b, D17)', () => {
+      const MSG_RIGHE_NON_T =
+        'Questo contratto ha addebiti di tipo diverso da T: non può essere allegato a un altro.'
+
+      /** Un principale e un contratto in BOZZA dello stesso cliente, con una riga del tipo dato. */
+      async function scenario(riga: { tipo: string; addebitoTipo?: string } | null) {
+        const a = await azienda()
+        const c = await cliente(a.tenantId)
+        const listino = await creaCodiciIvaEcodifiche(owner, a.tenantId)
+        const principale = await creaContrattoConElenco(owner, a.tenantId, {
+          clienteId: c.ruoloId,
+          stato: 'BOZZA',
+        })
+        const figlio = await creaContrattoConElenco(owner, a.tenantId, {
+          clienteId: c.ruoloId,
+          stato: 'BOZZA',
+        })
+        if (riga) {
+          const addebito = riga.addebitoTipo
+            ? await creaAddebito(owner, a.tenantId, { tipo: riga.addebitoTipo })
+            : undefined
+          await creaRiga(owner, a.tenantId, figlio.elencoId, {
+            tipo: riga.tipo,
+            addebitoId: addebito?.id,
+            codiceIvaId: listino.iva22Id,
+          })
+        }
+        return { ...a, principale, figlio, listino }
+      }
+
+      const allega = (s: {
+        tenantId: string
+        utenteId: string
+        principale: { contrattoId: string }
+        figlio: { contrattoId: string }
+      }) =>
+        nel(s.tenantId, () =>
+          service.modifica(s.tenantId, s.utenteId, s.figlio.contrattoId, {
+            contrattoPrincipaleId: s.principale.contrattoId,
+            versione: 1,
+          })
+        )
+
+      it('con una riga V: non si allega, 400, il contratto resta com’è', async () => {
+        const s = await scenario({ tipo: 'V' })
+        await expect(allega(s)).rejects.toMatchObject({
+          status: 400,
+          response: { message: [MSG_RIGHE_NON_T] },
+        })
+        const dopo = await owner.contrattoCliente.findUniqueOrThrow({
+          where: { id: s.figlio.contrattoId },
+        })
+        expect(dopo.contrattoPrincipaleId).toBeNull()
+        expect(dopo.versione).toBe(1)
+      })
+
+      it('con una riga CER: non si allega, 400', async () => {
+        const s = await scenario({ tipo: 'CER' })
+        await expect(allega(s)).rejects.toMatchObject({
+          status: 400,
+          response: { message: [MSG_RIGHE_NON_T] },
+        })
+      })
+
+      it('con sole righe TT: si allega', async () => {
+        const s = await scenario({ tipo: 'TT', addebitoTipo: 'TT' })
+        const v = await allega(s)
+        expect(v.contrattoPrincipale?.id).toBe(s.principale.contrattoId)
+      })
+
+      it('senza righe: si allega; con una riga V si stacca comunque (null)', async () => {
+        const s = await scenario(null)
+        await allega(s)
+        const v = await nel(s.tenantId, () =>
+          service.modifica(s.tenantId, s.utenteId, s.figlio.contrattoId, {
+            contrattoPrincipaleId: null,
+            versione: 2,
+          })
+        )
+        expect(v.contrattoPrincipale).toBeNull()
+      })
+
+      it('allegamento e riga CER concorrenti: mai un allegato con righe CER', async () => {
+        const s = await scenario(null)
+        // Il "scrittore di righe" legge il contratto FOR SHARE (come RigheAddebitoService), aspetta
+        // e inserisce una riga CER: l'allegamento chiede FOR UPDATE e deve mettersi in fila.
+        const scrittore = owner.$transaction(
+          async tx => {
+            await tx.$queryRaw`SELECT id FROM contratti_cliente
+              WHERE id = ${s.figlio.contrattoId}::uuid FOR SHARE`
+            await tx.$executeRaw`SELECT pg_sleep(1.2)`
+            await tx.rigaAddebito.create({
+              data: {
+                tenantId: s.tenantId,
+                elencoId: s.figlio.elencoId,
+                tipo: 'CER',
+                cerCode: '20 03 01',
+                tipoQuantita: 'PESO_NETTO',
+                unitaMisura: 'KG',
+                prezzo: '1',
+                codiceIvaId: s.listino.iva22Id,
+              },
+            })
+          },
+          { timeout: 15000 }
+        )
+        await new Promise(r => setTimeout(r, 300))
+        const avvio = Date.now()
+        const esiti = await Promise.allSettled([scrittore, allega(s)])
+        expect(esiti[0].status).toBe('fulfilled')
+        expect(esiti[1]).toMatchObject({ status: 'rejected', reason: { status: 400 } })
+        // L'allegamento ha aspettato lo scrittore (non e' passato prima del suo commit).
+        expect(Date.now() - avvio).toBeGreaterThan(600)
+        const dopo = await owner.contrattoCliente.findUniqueOrThrow({
+          where: { id: s.figlio.contrattoId },
+        })
+        expect(dopo.contrattoPrincipaleId).toBeNull()
+        expect(
+          await owner.rigaAddebito.count({
+            where: { tenantId: s.tenantId, elencoId: s.figlio.elencoId, tipo: 'CER' },
+          })
+        ).toBe(1)
+      })
     })
 
     it('numero duplicato in modifica: 409 CONTRATTO_CLIENTE_NUMERO_DUPLICATO', async () => {

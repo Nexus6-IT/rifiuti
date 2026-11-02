@@ -25,6 +25,8 @@ export const ETICHETTE_GENERE_ADDEBITO: Readonly<Record<GenereCodificaAddebito, 
 
 const GENERI = Object.keys(ETICHETTE_GENERE_ADDEBITO) as GenereCodificaAddebito[]
 
+/** Messaggio del codice non valido (condiviso col servizio, che lo usa in modifica). */
+export const MSG_CODICE_CODIFICA = 'Il codice ha da 1 a 3 cifre.'
 const DESCRIZIONE_MAX = 45
 
 export interface DatiCodificaAddebito {
@@ -56,7 +58,7 @@ export function validaCodificaAddebito(d: DatiCodificaAddebito): string[] {
   }
 
   if (d.codice !== null) {
-    if (!/^\d{3}$/.test(d.codice)) errori.push('Il codice ha da 1 a 3 cifre.')
+    if (!/^\d{3}$/.test(d.codice)) errori.push(MSG_CODICE_CODIFICA)
     else if (d.codice === '000') errori.push('Il codice deve essere compreso tra 001 e 999.')
   }
 

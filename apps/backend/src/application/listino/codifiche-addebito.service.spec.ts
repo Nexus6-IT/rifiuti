@@ -47,6 +47,7 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       addebito: { groupBy: jest.fn().mockResolvedValue([]) },
+      rigaAddebito: { groupBy: jest.fn().mockResolvedValue([]) },
     }
     prisma = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new CodificheAddebitoService(prisma)
@@ -60,6 +61,19 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
       )
       const v = await service.list(T, { genere: 'GRUPPO', incluseDisattivate: false })
       expect(tx.addebito.groupBy).toHaveBeenCalledTimes(5)
+      expect(v.map(x => x.eliminabile)).toEqual([false, true])
+    })
+
+    it('uso reale dalle righe dei listini: categoria e centro di ricavo, eliminabile false', async () => {
+      tx.codificaAddebito.findMany.mockResolvedValue([riga(), riga({ id: 'altro-id' })])
+      tx.rigaAddebito.groupBy.mockImplementation(async (a: any) =>
+        a.by[0] === 'centroRicavoId' ? [{ centroRicavoId: K, _count: { _all: 1 } }] : []
+      )
+      const v = await service.list(T, { genere: 'CENTRO_RICAVO', incluseDisattivate: false })
+      expect(tx.rigaAddebito.groupBy.mock.calls.map((c: any) => c[0].by[0])).toEqual([
+        'categoriaId',
+        'centroRicavoId',
+      ])
       expect(v.map(x => x.eliminabile)).toEqual([false, true])
     })
 
@@ -284,7 +298,8 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
       const e = await errore(service.elimina(T, U, K, 1))
       expect(e.getResponse()).toMatchObject({
         error: 'CODIFICA_ADDEBITO_IN_USO',
-        message: "La codifica è usata da addebiti dell'archivio: disattivala invece di eliminarla.",
+        message:
+          "La codifica è usata da addebiti dell'archivio o da righe dei listini: disattivala invece di eliminarla.",
       })
     })
   })

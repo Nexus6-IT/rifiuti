@@ -94,6 +94,7 @@ describe('AddebitiService (Prisma finto)', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         groupBy: jest.fn().mockResolvedValue([]),
       },
+      rigaAddebito: { groupBy: jest.fn().mockResolvedValue([]) },
       prezzoListinoAddebito: {
         deleteMany: jest.fn().mockResolvedValue({ count: 6 }),
         createMany: jest.fn().mockResolvedValue({ count: 6 }),

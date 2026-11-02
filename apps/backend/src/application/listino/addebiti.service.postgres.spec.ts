@@ -22,7 +22,12 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
-import { creaAddebito, creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
+import {
+  creaAddebito,
+  creaCodiciIvaEcodifiche,
+  creaContrattoConElenco,
+  creaRiga,
+} from '../../test-support/listino-di-test'
 
 import { AddebitiService } from './addebiti.service'
 import { VariazioniArchivioService } from './variazioni-archivio.service'
@@ -47,6 +52,10 @@ describe('AddebitiService — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       const in_ = { in: tenantCreati }
+      // Righe ed elenchi vanno a cascata col contratto; le FK NoAction verso addebiti, codifiche e
+      // codici IVA chiedono di cancellare prima i contratti.
+      await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
+      await owner.cliente.deleteMany({ where: { tenantId: in_ } })
       await owner.addebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codificaAddebito.deleteMany({ where: { tenantId: in_ } })
       await owner.codiceIva.deleteMany({ where: { tenantId: in_ } })
@@ -482,5 +491,30 @@ describe('AddebitiService — Postgres reale, ruolo wasteflow_app', () => {
     expect(
       (await nel(b.tenantId, () => service.list(b.tenantId, { pagina: 1, dimensione: 25 }))).totale
     ).toBe(0)
+  })
+
+  it('addebito citato da una riga di un listino (R44): eliminabile false, 409 ADDEBITO_IN_USO col testo intero, la riga resta', async () => {
+    const { tenantId, utenteId, rif: ids } = await azienda()
+    const usato = await creaAddebito(owner, tenantId, { tipo: 'V' })
+    const libero = await creaAddebito(owner, tenantId, { tipo: 'V' })
+    const c = await creaContrattoConElenco(owner, tenantId)
+    await creaRiga(owner, tenantId, c.elencoId, {
+      tipo: 'V',
+      addebitoId: usato.id,
+      codiceIvaId: ids.iva22Id,
+    })
+    expect((await nel(tenantId, () => service.getById(tenantId, usato.id))).eliminabile).toBe(false)
+    expect((await nel(tenantId, () => service.getById(tenantId, libero.id))).eliminabile).toBe(true)
+    await expect(
+      nel(tenantId, () => service.elimina(tenantId, utenteId, usato.id, 1))
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        error: 'ADDEBITO_IN_USO',
+        message: "L'addebito è usato da elenchi di addebito: disattivalo invece di eliminarlo.",
+      },
+    })
+    expect(await owner.addebito.count({ where: { id: usato.id } })).toBe(1)
+    expect(await owner.rigaAddebito.count({ where: { tenantId, addebitoId: usato.id } })).toBe(1)
   })
 })
