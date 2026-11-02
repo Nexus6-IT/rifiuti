@@ -37,7 +37,7 @@ import {
 import {
   PIVA_CHECKSUM_ERRATO,
   creaDittaConRuolo,
-  partitaIvaValida,
+  partitaIvaUnica,
 } from '../../test-support/anagrafiche-di-test'
 
 const SEDE = { via: 'Via Milano', civico: '5', cap: '20100', citta: 'Milano', provincia: 'MI' }
@@ -119,7 +119,7 @@ describe('DitteController — HTTP su Postgres reale, ruolo wasteflow_app', () =
 
   it('ciclo completo: cerca, ruolo, nuova sede, principale spostata, disattivazione', async () => {
     const t = await azienda()
-    const piva = partitaIvaValida(Date.now() + 11)
+    const piva = partitaIvaUnica()
 
     // nessuna ditta: { ditta: null }
     const vuota = await http()
@@ -195,7 +195,7 @@ describe('DitteController — HTTP su Postgres reale, ruolo wasteflow_app', () =
 
   it('sostituzione della P.IVA (D2.8): solo se quella attuale e sbagliata, con audit senza valori', async () => {
     const t = await azienda()
-    const nuovaPiva = partitaIvaValida(Date.now() + 22)
+    const nuovaPiva = partitaIvaUnica()
     const { dittaId } = await creaDittaConRuolo(owner, t, 'PRODUTTORE', {
       partitaIva: PIVA_CHECKSUM_ERRATO,
     })
@@ -223,7 +223,7 @@ describe('DitteController — HTTP su Postgres reale, ruolo wasteflow_app', () =
     const ancora = await http()
       .put(`/registry/ditte/${dittaId}`)
       .set(come(t))
-      .send({ partitaIva: partitaIvaValida(Date.now() + 33) })
+      .send({ partitaIva: partitaIvaUnica() })
     expect(ancora.status).toBe(400)
   })
 
@@ -240,7 +240,7 @@ describe('DitteController — HTTP su Postgres reale, ruolo wasteflow_app', () =
   it('ditta di un altra azienda: 404 su dettaglio, modifica e sedi; cerca la ignora', async () => {
     const a = await azienda()
     const b = await azienda()
-    const piva = partitaIvaValida(Date.now() + 44)
+    const piva = partitaIvaUnica()
     const { dittaId, sedeId } = await creaDittaConRuolo(owner, a, 'PRODUTTORE', {
       partitaIva: piva,
     })

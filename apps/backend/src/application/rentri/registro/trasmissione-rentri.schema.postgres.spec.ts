@@ -21,7 +21,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 
 describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo wasteflow_app', () => {
   const CER = '99 99 08'
@@ -39,7 +39,7 @@ describe('Trasmissione del registro a RENTRI, schema — Postgres reale, ruolo w
   async function azienda(): Promise<Az> {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Trasmissione RENTRI SRL',
         country: 'IT',
       },

@@ -23,7 +23,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import type { CandidataLotto } from './selezione-lotto-rentri'
 import { TrasmissioniRegistroRepository } from './trasmissioni-registro.repository'
 
@@ -41,7 +41,7 @@ describe('TrasmissioniRegistroRepository — Postgres reale, ruolo wasteflow_app
   async function azienda(opzioni: { identificativo?: string | null; dal?: Date | null } = {}) {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Trasmissioni RENTRI SRL',
         country: 'IT',
       },

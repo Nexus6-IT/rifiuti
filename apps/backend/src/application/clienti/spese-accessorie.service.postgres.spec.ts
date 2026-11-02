@@ -21,7 +21,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { SpeseAccessorieService } from './spese-accessorie.service'
 
@@ -61,7 +61,7 @@ describe('SpeseAccessorieService — Postgres reale, ruolo wasteflow_app', () =>
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Spese accessorie SRL',
         country: 'IT',
       },

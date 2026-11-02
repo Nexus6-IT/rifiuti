@@ -9,7 +9,7 @@
 import { randomUUID } from 'crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -23,14 +23,13 @@ describe('Contratti, schema (Postgres reale)', () => {
     urlProprietario
   )
   const tenantCreati: string[] = []
-  let n = 0
 
   type Tx = Pick<PrismaClient, '$executeRawUnsafe' | '$queryRawUnsafe' | '$queryRaw'>
 
   async function azienda() {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Contratti schema SRL',
         country: 'IT',
       },

@@ -22,7 +22,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaAddebito, creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
 import { VariazioniArchivioService } from './variazioni-archivio.service'
 
@@ -60,7 +60,7 @@ describe('VariazioniArchivioService — Postgres reale, ruolo wasteflow_app', ()
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Variazioni SRL',
         country: 'IT',
       },

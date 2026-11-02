@@ -21,7 +21,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaCodiciIvaEcodifiche } from '../../test-support/listino-di-test'
 
 import { CodificheAddebitoService } from './codifiche-addebito.service'
@@ -60,7 +60,7 @@ describe('CodificheAddebitoService — Postgres reale, ruolo wasteflow_app', () 
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Codifiche addebito SRL',
         country: 'IT',
       },

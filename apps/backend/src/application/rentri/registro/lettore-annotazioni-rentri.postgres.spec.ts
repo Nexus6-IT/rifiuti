@@ -20,7 +20,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../../infrastructure/persistence/prisma.service'
-import { creaDittaConRuolo, partitaIvaValida } from '../../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { LettoreAnnotazioniRentri } from './lettore-annotazioni-rentri'
 import { traduciAnnotazione } from './mappa-registrazione-rentri'
 
@@ -52,7 +52,7 @@ describe('LettoreAnnotazioniRentri — Postgres reale, ruolo wasteflow_app', () 
   async function scenario() {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Lettore RENTRI SRL',
         country: 'IT',
       },

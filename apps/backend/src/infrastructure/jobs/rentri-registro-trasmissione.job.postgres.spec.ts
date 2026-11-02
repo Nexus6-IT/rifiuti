@@ -17,7 +17,7 @@ process.env.DATABASE_URL = urlComeRuolo(
 
 import { randomUUID } from 'crypto'
 import { PrismaService, creaPrismaServiceApplicativo } from '../persistence/prisma.service'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { LettoreAnnotazioniRentri } from '../../application/rentri/registro/lettore-annotazioni-rentri'
 import { TrasmettiLottoRegistroUseCase } from '../../application/rentri/registro/trasmetti-lotto-registro.use-case'
 import { TrasmissioniRegistroRepository } from '../../application/rentri/registro/trasmissioni-registro.repository'
@@ -51,7 +51,7 @@ describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
   it('righe bloccate, INCERTA, TRASMESSA e movimenti senza riga di un registro manuale non producono POST', async () => {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now()),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Job RENTRI SRL',
         country: 'IT',
       },

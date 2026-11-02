@@ -9,7 +9,7 @@
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
-import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -30,7 +30,7 @@ describe('Listino, archivio addebiti: schema (Postgres reale, ruolo wasteflow_ap
   async function azienda(): Promise<string> {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Listino schema SRL',
         country: 'IT',
       },

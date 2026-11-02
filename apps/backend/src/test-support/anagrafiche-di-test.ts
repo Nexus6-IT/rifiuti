@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
 
 /**
@@ -35,6 +36,22 @@ export function partitaIvaValida(seme: number): string {
     somma += c
   }
   return nove + String((10 - (somma % 10)) % 10)
+}
+
+const SPAZIO_MATRICOLE = 10_000_000
+const baseCasuale = randomInt(SPAZIO_MATRICOLE)
+let passo = 0
+
+/**
+ * Partita IVA valida e DIVERSA da ogni altra generata da questo processo: per chi chiede "una
+ * P.IVA nuova" senza un seme. Un contatore sulle matricole, a partire da una base casuale per
+ * processo, non puo' ripetersi prima di 10 milioni di chiamate (a differenza di `Date.now() + n`,
+ * dove due chiamate ravvicinate collidevano: t1 + 21 == t2 + 0). Se serve la STESSA P.IVA piu'
+ * volte, usare `partitaIvaValida(seme)` con un seme esplicito.
+ */
+export function partitaIvaUnica(): string {
+  passo += 1
+  return partitaIvaValida(baseCasuale + passo)
 }
 
 /** Partita IVA di 11 cifre con checksum SBAGLIATO (per i dati "da verificare"). */
@@ -85,8 +102,7 @@ export async function creaDittaConRuolo(
   dati: DatiDittaDiTest = {}
 ): Promise<RisultatoDittaConRuolo> {
   const n = ++contatore
-  const partitaIva =
-    dati.partitaIva === undefined ? partitaIvaValida(Date.now() + n) : dati.partitaIva
+  const partitaIva = dati.partitaIva === undefined ? partitaIvaUnica() : dati.partitaIva
   const sede = {
     via: dati.via ?? 'Via Roma',
     civico: dati.civico ?? '1',

@@ -26,7 +26,7 @@ import {
   CF_PERSONA_ALTRO,
   CF_PERSONA_VALIDO,
   creaDittaConRuolo,
-  partitaIvaValida,
+  partitaIvaUnica,
 } from '../../../test-support/anagrafiche-di-test'
 import { CostruisciPayloadRentri } from './costruisci-payload-rentri'
 import { DatoMancantePerRentriError } from './mappa-parti'
@@ -68,7 +68,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
     servizio = new CostruisciPayloadRentri(app, unitaLocale as never, logger as never)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now()),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Payload RENTRI test SRL',
         country: 'IT',
       },
@@ -121,7 +121,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
   })
 
   it('denominazione, codice_fiscale e indirizzo vengono dalla ditta e dalla sede (colonne vecchie vuote)', async () => {
-    const piva = (seme: number) => partitaIvaValida(Date.now() + seme)
+    const piva = (_seme: number) => partitaIvaUnica()
     const [pivaP, pivaD, pivaT] = [piva(1), piva(2), piva(3)]
     const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', {
       ragioneSociale: 'Produttore Uno SRL',
@@ -162,7 +162,7 @@ describe('CostruisciPayloadRentri — Postgres reale, ruolo wasteflow_app', () =
   it('con un codice fiscale sulla ditta, codice_fiscale e quello e non la partita IVA', async () => {
     const p = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE', {
       ragioneSociale: 'Ditta Individuale',
-      partitaIva: partitaIvaValida(Date.now() + 11),
+      partitaIva: partitaIvaUnica(),
       codiceFiscale: CF_PERSONA_VALIDO,
       ...sede('Via Uno'),
     })

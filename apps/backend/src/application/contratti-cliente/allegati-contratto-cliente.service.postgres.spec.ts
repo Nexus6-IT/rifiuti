@@ -23,7 +23,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { creaDittaConRuolo, partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { AllegatiContrattoClienteService } from './allegati-contratto-cliente.service'
 
 const pdf = (testo: string) => Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.from(testo)])
@@ -68,7 +68,7 @@ describe('AllegatiContrattoClienteService — Postgres reale, ruolo wasteflow_ap
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Allegati SRL',
         country: 'IT',
       },

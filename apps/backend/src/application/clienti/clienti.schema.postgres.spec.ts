@@ -25,7 +25,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { partitaIvaValida } from '../../test-support/anagrafiche-di-test'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 
 describe('Clienti, agenti e contratti cliente — Postgres reale, ruolo wasteflow_app', () => {
@@ -53,7 +53,7 @@ describe('Clienti, agenti e contratti cliente — Postgres reale, ruolo wasteflo
   async function azienda(): Promise<string> {
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Clienti schema SRL',
         country: 'IT',
       },
@@ -77,7 +77,7 @@ describe('Clienti, agenti e contratti cliente — Postgres reale, ruolo wasteflo
       data: {
         tenantId,
         ragioneSociale: `Ditta ${++n}`,
-        partitaIva: partitaIvaValida(Date.now() + ++n),
+        partitaIva: partitaIvaUnica(),
       },
     })
     const s = await owner.sedeDitta.create({

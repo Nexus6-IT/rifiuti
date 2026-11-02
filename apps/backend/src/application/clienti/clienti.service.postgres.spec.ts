@@ -25,7 +25,7 @@ import { DittaPrismaRepository } from '../../infrastructure/persistence/ditta-pr
 import {
   CF_PERSONA_VALIDO,
   creaDittaConRuolo,
-  partitaIvaValida,
+  partitaIvaUnica,
 } from '../../test-support/anagrafiche-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { DitteService } from '../registry/ditte/ditte.service'
@@ -72,7 +72,7 @@ describe('ClientiService — Postgres reale, ruolo wasteflow_app', () => {
     const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
       data: {
-        partitaIva: partitaIvaValida(Date.now() + n),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Clienti SRL',
         country: 'IT',
       },
@@ -95,7 +95,7 @@ describe('ClientiService — Postgres reale, ruolo wasteflow_app', () => {
   const indirizzo = { via: 'Via Roma', civico: '1', cap: '00100', citta: 'Roma', provincia: 'RM' }
   const nuovo = (extra: Record<string, unknown> = {}) => ({
     ragioneSociale: `Cliente ${++n}`,
-    partitaIva: partitaIvaValida(Date.now() + ++n),
+    partitaIva: partitaIvaUnica(),
     indirizzo,
     ...extra,
   })
