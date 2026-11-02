@@ -399,6 +399,7 @@ test.describe('Listino del contratto — admin', () => {
     await expect(dlg.getByTestId('riga-tipo')).toHaveValue('V')
     // Il cliente ha il listino 2 (10,00); il listino 1 varrebbe 5,00.
     await expect(dlg.getByTestId('riga-prezzo')).toHaveValue(/^10$/, { timeout: ATTESA_SERVER })
+    await attendiProposta(dlg)
     await dlg.getByTestId('riga-tipo-quantita').selectOption('UNO')
 
     await salvaRiga(page, dlg)
@@ -414,6 +415,7 @@ test.describe('Listino del contratto — admin', () => {
     await cercaESeleziona(dlg, d.addebitoF, new RegExp(`${d.codiceF} - .*\\(F\\)$`))
     await expect(dlg.getByTestId('riga-tipo')).toHaveValue('F')
     await expect(dlg.getByTestId('riga-prezzo')).toHaveValue(/^100$/, { timeout: ATTESA_SERVER })
+    await attendiProposta(dlg)
     await dlg.getByTestId('riga-periodo-scadenze').selectOption('TP')
 
     // Prima scadenza 15/03 di ogni anno, frequenza trimestrale: 15/03, 15/06, 15/09 e 15/12.
@@ -440,6 +442,7 @@ test.describe('Listino del contratto — admin', () => {
     let dlg = await apriNuovaRiga(page)
     await cercaESeleziona(dlg, d.addebitoMw, new RegExp(`${d.codiceMw} - .*\\(MW\\)$`))
     await expect(dlg.getByTestId('riga-tipo')).toHaveValue('MW')
+    await attendiProposta(dlg)
     await salvaRiga(page, dlg)
     await expect(rigaDi(page, d.codiceMw)).toContainText('MW', { timeout: ATTESA_SERVER })
 
@@ -448,6 +451,7 @@ test.describe('Listino del contratto — admin', () => {
     dlg = await apriNuovaRiga(page)
     await cercaESeleziona(dlg, d.addebitoMw2, new RegExp(`${d.codiceMw2} - .*\\(MW\\)$`))
     await expect(dlg.getByTestId('riga-tipo')).toHaveValue('MW')
+    await attendiProposta(dlg)
     await expect(dlg.getByTestId('riga-salva')).toBeEnabled({ timeout: ATTESA_SERVER })
     await cliccaEAttendi(page, dlg.getByTestId('riga-salva'), { stato: [400, 409, 422] })
     await expect(dlg).toContainText('Nel contratto c’è già un addebito di minimo fatturabile.', {
@@ -814,6 +818,15 @@ async function apriContratti(page: Page, numero?: string): Promise<void> {
   await pagina(page).getByRole('searchbox', { name: 'Cerca un contratto' }).fill(numero)
   await filtrato
   await expect(pagina(page).getByRole('row', { name: new RegExp(numero) })).toHaveCount(1, {
+    timeout: ATTESA_SERVER,
+  })
+}
+
+/** Attende la proposta del backend (unita', prezzo e codice IVA) prima di salvare: su un runner lento arriva dopo la scelta. */
+async function attendiProposta(dlg: Locator): Promise<void> {
+  await expect(dlg.getByTestId('riga-unita')).not.toHaveValue('', { timeout: ATTESA_SERVER })
+  await expect(dlg.getByTestId('riga-prezzo')).not.toHaveValue('', { timeout: ATTESA_SERVER })
+  await expect(dlg.getByLabel('Codice IVA', { exact: true })).not.toHaveValue('', {
     timeout: ATTESA_SERVER,
   })
 }

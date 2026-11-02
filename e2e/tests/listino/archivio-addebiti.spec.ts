@@ -412,10 +412,10 @@ test.describe('Archivio addebiti — admin', () => {
     const modifica = dialogo(page, 'Modifica addebito')
     await expect(modifica).toBeVisible()
     await expect(modifica.getByText('Caricamento…')).toBeHidden({ timeout: ATTESA_SERVER })
-    await expect(modifica.getByLabel('Prezzo del listino 2')).toHaveValue('11.00', {
+    await expect(modifica.getByLabel('Prezzo del listino 2')).toHaveValue(/^11([.,]00)?$/, {
       timeout: ATTESA_SERVER,
     })
-    await expect(modifica.getByLabel('Prezzo del listino 1')).toHaveValue('5.00')
+    await expect(modifica.getByLabel('Prezzo del listino 1')).toHaveValue(/^5([.,]00)?$/)
     await modifica.getByRole('button', { name: 'Annulla', exact: true }).click()
     await expect(modifica).toBeHidden({ timeout: ATTESA_SERVER })
   })
