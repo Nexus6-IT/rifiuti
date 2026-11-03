@@ -44,6 +44,14 @@ const ENTITA: DescrizioneEntita = {
     messaggio:
       'Il cliente ha dei contratti: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
   },
+  // 4.3: un legame di un movimento puo' citare il cliente anche senza contratto.
+  inUsoPerVincolo: {
+    legami_movimento_cliente_fkey: {
+      codice: 'CLIENTE_USATO_DA_MOVIMENTI',
+      messaggio:
+        'Il cliente è usato da movimenti: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
+    },
+  },
 }
 
 const VINCOLO_CODICE = 'clienti_tenant_id_codice_key'

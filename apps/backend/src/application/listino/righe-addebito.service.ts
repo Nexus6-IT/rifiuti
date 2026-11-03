@@ -71,14 +71,16 @@ import {
   MSG_CER_NON_NEL_CATALOGO,
 } from './riferimenti-listino'
 
+const IN_USO = {
+  codice: 'RIGA_ADDEBITO_IN_USO',
+  messaggio: 'La riga è usata da movimenti: non si può eliminare.',
+}
+
 const ENTITA: DescrizioneEntita = {
   prefisso: 'RIGA_ADDEBITO',
   soggetto: 'La riga di addebito',
   femminile: true,
-  inUso: {
-    codice: 'RIGA_ADDEBITO_IN_USO',
-    messaggio: 'La riga è usata da movimenti: non si può eliminare.',
-  },
+  inUso: IN_USO,
 }
 
 const MSG_DUPLICATA = 'L’addebito è già nell’elenco con lo stesso riferimento.'
@@ -561,7 +563,7 @@ export class RigheAddebitoService {
           await this.scriviFigli(tx, tenantId, creata.id, nuovi)
           const dopo = await this.rileggi(tx, tenantId, creata.id)
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_CREATA', 'creata', dopo, [])
-          return this.vista(dopo)
+          return this.vista(dopo, true)
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         return await traduciErrorePrisma(err, ENTITA, VINCOLI)
@@ -662,10 +664,7 @@ export class RigheAddebitoService {
           // Decisione 8 (4.3): una riga citata da un legame non si elimina (la FK la difende comunque).
           const usi = (await contaUsiListino(tx, tenantId, [id], COLONNE_RIGA_LISTINO)).get(id) ?? 0
           if (usi > 0) {
-            throw new ConflictException({
-              error: ENTITA.inUso?.codice,
-              message: ENTITA.inUso?.messaggio,
-            })
+            throw new ConflictException({ error: IN_USO.codice, message: IN_USO.messaggio })
           }
           await scriviCondizionato(
             () => tx.rigaAddebito.deleteMany({ where: { id, tenantId, versione } }),
@@ -1087,7 +1086,7 @@ export class RigheAddebitoService {
     )
   }
 
-  private vista(r: RigaDb, eliminabile = true): RigaAddebitoVista {
+  private vista(r: RigaDb, eliminabile: boolean): RigaAddebitoVista {
     const dal = giorno(r.elenco.contratto.dataInizio) as string
     const fine = giorno(r.elenco.contratto.dataFine)
     // Contratto senza fine: basta guardare abbastanza anni avanti perche' ogni data "ogni anno" cada.

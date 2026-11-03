@@ -690,11 +690,39 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
       expect(e.getStatus()).toBe(409)
       expect(e.getResponse()).toEqual({
         error: 'ELENCO_ADDEBITI_IN_USO',
-        message: "L'elenco ha righe usate da movimenti: non si può eliminare.",
+        message: "L'elenco è usato da movimenti: non si può eliminare.",
       })
       expect(await owner.elencoAddebiti.count({ where: { id: s.elencoId } })).toBe(1)
       expect(await owner.rigaAddebito.count({ where: { id: s.rigaId } })).toBe(1)
       expect(await owner.rigaLegameMovimento.count({ where: { legameId: s.legameId } })).toBe(1)
+    })
+
+    it('legame SENZA righe che cita l’elenco: eliminabile false e DELETE 409 ELENCO_ADDEBITI_IN_USO', async () => {
+      const a = await azienda()
+      const c = await creaContrattoConElenco(owner, a.tenantId)
+      const m = await creaMovimentoDiTest(owner, a.tenantId)
+      await creaLegameDiTest(owner, a.tenantId, {
+        movimentoOriginaleId: m.movimentoId,
+        registroId: m.registroId,
+        verso: m.type,
+        stato: 'PROPOSTO',
+        clienteId: c.clienteId,
+        contrattoId: c.contrattoId,
+        elencoId: c.elencoId,
+      })
+      expect(await owner.rigaLegameMovimento.count({ where: { tenantId: a.tenantId } })).toBe(0)
+      expect(
+        (await nel(a.tenantId, () => service.getById(a.tenantId, c.elencoId))).eliminabile
+      ).toBe(false)
+      const e = await errore(
+        nel(a.tenantId, () => service.elimina(a.tenantId, a.utenteId, c.elencoId, 1))
+      )
+      expect(e.getStatus()).toBe(409)
+      expect(e.getResponse()).toEqual({
+        error: 'ELENCO_ADDEBITI_IN_USO',
+        message: "L'elenco è usato da movimenti: non si può eliminare.",
+      })
+      expect(await owner.elencoAddebiti.count({ where: { id: c.elencoId } })).toBe(1)
     })
 
     it('elimina elenco senza righe citate: 200 come prima', async () => {

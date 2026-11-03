@@ -27,6 +27,11 @@ import {
   creaDittaConRuolo,
   partitaIvaUnica,
 } from '../../test-support/anagrafiche-di-test'
+import {
+  creaLegameDiTest,
+  creaMovimentoDiTest,
+  pulisciLegamiDiTest,
+} from '../../test-support/legami-di-test'
 import { creaTabelleFatturazione } from '../../test-support/fatturazione-di-test'
 import { DitteService } from '../registry/ditte/ditte.service'
 import { ClientiService } from './clienti.service'
@@ -54,6 +59,7 @@ describe('ClientiService — Postgres reale, ruolo wasteflow_app', () => {
       // Le FK composite fra clienti/contratti/agenti e ditte sono NoAction: prima le righe che
       // citano, poi quelle citate (allegati, periodi, contratti, clienti, agenti), sempre per id.
       const in_ = { in: tenantCreati }
+      await pulisciLegamiDiTest(owner, tenantCreati)
       await owner.allegatoContrattoCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.periodoFatturazioneCliente.deleteMany({ where: { tenantId: in_ } })
       await owner.contrattoCliente.deleteMany({ where: { tenantId: in_ } })
@@ -857,5 +863,29 @@ describe('ClientiService — Postgres reale, ruolo wasteflow_app', () => {
         nel(b.tenantId, () => service.elimina(b.tenantId, b.utenteId, r1.cliente.id, 1))
       ).rejects.toMatchObject({ status: 404 })
     })
+  })
+
+  it('cliente citato da un legame di movimento senza contratto: elimina 409 CLIENTE_USATO_DA_MOVIMENTI, non CLIENTE_CON_CONTRATTI', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const r = await nel(tenantId, () => service.crea(tenantId, utenteId, nuovo({ codice: 'LG1' })))
+    const m = await creaMovimentoDiTest(owner, tenantId)
+    await creaLegameDiTest(owner, tenantId, {
+      movimentoOriginaleId: m.movimentoId,
+      registroId: m.registroId,
+      verso: m.type,
+      clienteId: r.cliente.id,
+    })
+    expect(await owner.contrattoCliente.count({ where: { tenantId } })).toBe(0)
+    await expect(
+      nel(tenantId, () => service.elimina(tenantId, utenteId, r.cliente.id, 1))
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        error: 'CLIENTE_USATO_DA_MOVIMENTI',
+        message:
+          'Il cliente è usato da movimenti: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
+      },
+    })
+    expect(await owner.cliente.count({ where: { id: r.cliente.id } })).toBe(1)
   })
 })

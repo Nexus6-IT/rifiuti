@@ -264,7 +264,7 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
       response: {
         error: 'CODICE_IVA_IN_USO',
         message:
-          "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
+          'Il codice IVA è usato da addebiti, righe dei listini o movimenti: disattivalo invece di eliminarlo.',
       },
     })
     expect(await owner.codiceIva.count({ where: { id: ids.iva22Id } })).toBe(1)
@@ -295,7 +295,7 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
       response: {
         error: 'CODICE_IVA_IN_USO',
         message:
-          "Il codice IVA è usato da addebiti dell'archivio o da righe dei listini: disattivalo invece di eliminarlo.",
+          'Il codice IVA è usato da addebiti, righe dei listini o movimenti: disattivalo invece di eliminarlo.',
       },
     })
     expect(await owner.codiceIva.count({ where: { id: ids.iva22Id } })).toBe(1)

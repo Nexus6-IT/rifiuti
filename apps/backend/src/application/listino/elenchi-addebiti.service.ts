@@ -41,15 +41,18 @@ import {
   type ContrattoBloccato,
 } from './lock-listino'
 
+/** Decisione 8 (4.3): un elenco citato da un legame di un movimento non si elimina. */
+const IN_USO = {
+  codice: 'ELENCO_ADDEBITI_IN_USO',
+  messaggio: "L'elenco è usato da movimenti: non si può eliminare.",
+}
+
 const ENTITA: DescrizioneEntita = {
   prefisso: 'ELENCO_ADDEBITI',
   soggetto: "L'elenco degli addebiti",
   femminile: false,
   // Decisione 8 (4.3): le righe citate da un legame non si cancellano, nemmeno a cascata.
-  inUso: {
-    codice: 'ELENCO_ADDEBITI_IN_USO',
-    messaggio: "L'elenco ha righe usate da movimenti: non si può eliminare.",
-  },
+  inUso: IN_USO,
 }
 
 /** Unica chiave unica di business della tabella: il codice dentro il contratto. */
@@ -372,10 +375,7 @@ export class ElenchiAddebitiService {
           const righe = await tx.rigaAddebito.count({ where: { tenantId, elencoId: id } })
           const usi = (await contaUsiListino(tx, tenantId, [id], COLONNE_ELENCO)).get(id) ?? 0
           if (usi > 0) {
-            throw new ConflictException({
-              error: ENTITA.inUso?.codice,
-              message: ENTITA.inUso?.messaggio,
-            })
+            throw new ConflictException({ error: IN_USO.codice, message: IN_USO.messaggio })
           }
           // Righe, fasce, scadenze e allegati vanno a cascata (FK ON DELETE CASCADE).
           await scriviCondizionato(

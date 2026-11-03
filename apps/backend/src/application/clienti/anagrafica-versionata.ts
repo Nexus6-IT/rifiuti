@@ -28,6 +28,12 @@ export interface DescrizioneEntita {
    * di ripiego `<PREFISSO>_IN_USO` (D13): es. `AGENTE_IN_USO`, `CLIENTE_CON_CONTRATTI`.
    */
   inUso?: { codice: string; messaggio: string }
+  /**
+   * Come `inUso`, ma per una FK precisa (nome del vincolo): ha la precedenza, perche' la stessa
+   * tabella puo' essere citata da piu' parti e il testo deve dire da chi (es. cliente citato da
+   * un legame di movimento e non da un contratto).
+   */
+  inUsoPerVincolo?: Readonly<Record<string, { codice: string; messaggio: string }>>
 }
 
 /**
@@ -125,6 +131,16 @@ export async function traduciErrorePrisma(
       })
     }
     if (err.code === 'P2003') {
+      const campo = String((err.meta as { field_name?: unknown } | undefined)?.field_name ?? '')
+      const perVincolo = Object.entries(e.inUsoPerVincolo ?? {}).find(([nome]) =>
+        campo.includes(nome)
+      )
+      if (perVincolo) {
+        throw new ConflictException({
+          error: perVincolo[1].codice,
+          message: perVincolo[1].messaggio,
+        })
+      }
       if (e.inUso) {
         throw new ConflictException({ error: e.inUso.codice, message: e.inUso.messaggio })
       }
