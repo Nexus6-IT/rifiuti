@@ -59,6 +59,7 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
           numero: 'CC-1',
           stato: 'ATTIVO',
           clienteId: 'cli',
+          cliente: { ditta: { ragioneSociale: 'Rossi Ambiente Srl' } },
           contrattoPrincipale: null,
           dataInizio: new Date('2026-01-01T00:00:00Z'),
           dataFine: null,
@@ -353,6 +354,7 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
       expect(tutti.contesto.contratto).toMatchObject({
         id: C,
         numero: 'CC-1',
+        clienteRagioneSociale: 'Rossi Ambiente Srl',
         dataInizio: '2026-01-01',
         dataFine: null,
       })
@@ -383,6 +385,7 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
         numero: 'CC-1',
         stato: 'ANNULLATO',
         clienteId: 'cli',
+        cliente: { ditta: { ragioneSociale: 'Rossi Ambiente Srl' } },
         contrattoPrincipale: { id: 'p', numero: 'CC-0' },
         dataInizio: new Date('2026-01-01T00:00:00Z'),
         dataFine: new Date('2026-12-31T00:00:00Z'),

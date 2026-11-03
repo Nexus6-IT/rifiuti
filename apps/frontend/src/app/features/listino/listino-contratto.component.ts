@@ -15,7 +15,6 @@ import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { TagModule } from 'primeng/tag'
 import { Subject, takeUntil } from 'rxjs'
 import { ToastService } from '../../core/services/toast.service'
-import { ClientiService } from '../clienti/clienti.service'
 import {
   chiediConferma,
   messaggioErrore,
@@ -87,7 +86,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
       <header *ngIf="contesto() as c" class="intestazione" data-testid="listino-intestazione">
         <h1>Listino del contratto {{ c.contratto.numero }}</h1>
         <div class="intestazione__dati">
-          <span data-testid="listino-cliente" *ngIf="cliente() as cl">{{ cl }}</span>
+          <span data-testid="listino-cliente" *ngIf="c.contratto.clienteRagioneSociale as cl">{{ cl }}</span>
           <p-tag
             [value]="etichettaStato(c.contratto.stato)"
             [severity]="c.contratto.stato === 'ANNULLATO' ? 'danger' : 'info'"
@@ -263,7 +262,6 @@ import { RigheTavolaComponent } from './righe-tavola.component'
 })
 export class ListinoContrattoComponent implements OnInit, OnDestroy {
   private readonly servizio = inject(ListinoService)
-  private readonly clienti = inject(ClientiService)
   private readonly rotta = inject(ActivatedRoute)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
@@ -272,7 +270,6 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
 
   readonly contrattoId = this.rotta.snapshot.paramMap.get('id') ?? ''
   readonly contesto = signal<ContestoListino | null>(null)
-  readonly cliente = signal<string | null>(null)
   readonly elenchi = signal<ElencoAddebiti[]>([])
   readonly soloValidi = signal(false)
   readonly elencoScelto = signal<ElencoAddebiti | null>(null)
@@ -314,13 +311,6 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.carica()
-    this.clienti.contratti
-      .get(this.contrattoId)
-      .pipe(takeUntil(this.distrutto))
-      .subscribe({
-        next: c => this.cliente.set(c.cliente.ragioneSociale),
-        error: () => this.cliente.set(null),
-      })
   }
 
   ngOnDestroy(): void {

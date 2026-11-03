@@ -110,7 +110,11 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
   }
 
   it('crea senza codice: propone 001, poi 002; lista ordinata, prossimo codice e contesto', async () => {
-    const { tenantId, utenteId, contrattoId, elencoId } = await conContratto()
+    const { tenantId, utenteId, contrattoId, elencoId, clienteId } = await conContratto()
+    const cliente = await owner.cliente.findFirstOrThrow({
+      where: { id: clienteId, tenantId },
+      include: { ditta: true },
+    })
     // La fixture ha gia' il 001: il primo libero e' 002.
     expect(await nel(tenantId, () => service.prossimoCodice(tenantId, contrattoId))).toBe('002')
     const creato = await nel(tenantId, () =>
@@ -133,6 +137,7 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
     expect(contesto.contratto).toMatchObject({
       id: contrattoId,
       stato: 'ATTIVO',
+      clienteRagioneSociale: cliente.ditta.ragioneSociale,
       contrattoPrincipale: null,
       dataInizio: '2026-01-01',
       dataFine: null,

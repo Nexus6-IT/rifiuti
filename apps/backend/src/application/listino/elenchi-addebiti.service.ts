@@ -71,6 +71,8 @@ export interface ContestoListino {
     numero: string
     stato: string
     clienteId: string
+    /** Ragione sociale del cliente del contratto, per l'intestazione della pagina del listino. */
+    clienteRagioneSociale: string
     contrattoPrincipale: { id: string; numero: string } | null
     dataInizio: string
     dataFine: string | null
@@ -203,7 +205,10 @@ export class ElenchiAddebitiService {
       this.prisma.$transaction(async tx => {
         const contratto = await tx.contrattoCliente.findFirst({
           where: { id: contrattoId, tenantId, eliminatoIl: null },
-          include: { contrattoPrincipale: { select: { id: true, numero: true } } },
+          include: {
+            contrattoPrincipale: { select: { id: true, numero: true } },
+            cliente: { select: { ditta: { select: { ragioneSociale: true } } } },
+          },
         })
         if (!contratto) throw contrattoNonTrovato()
         const righe = await tx.elencoAddebiti.findMany({
@@ -218,6 +223,7 @@ export class ElenchiAddebitiService {
               numero: contratto.numero,
               stato: contratto.stato,
               clienteId: contratto.clienteId,
+              clienteRagioneSociale: contratto.cliente.ditta.ragioneSociale,
               contrattoPrincipale: contratto.contrattoPrincipale,
               dataInizio: giorno(contratto.dataInizio) as string,
               dataFine: giorno(contratto.dataFine),

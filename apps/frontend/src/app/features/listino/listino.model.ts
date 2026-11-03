@@ -187,6 +187,8 @@ export interface ContestoListino {
     numero: string
     stato: StatoContratto
     clienteId: string
+    /** Ragione sociale del cliente del contratto (intestazione della pagina). */
+    clienteRagioneSociale: string
     /** Il contratto di cui questo è un allegato, se lo è. */
     contrattoPrincipale: { id: string; numero: string } | null
     dataInizio: string
