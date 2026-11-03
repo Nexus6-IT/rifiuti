@@ -82,7 +82,7 @@ export const chiaveAmbito = (a: { cerCode: string; famiglia: string }): string =
     AbbinamentoScaricoDialogComponent,
   ],
   template: `
-    <div class="page">
+    <div class="page pagina-lavoro">
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Abbinamenti carichi-scarichi R13/D15</h1>
@@ -436,16 +436,16 @@ export const chiaveAmbito = (a: { cerCode: string; famiglia: string }): string =
         margin-bottom: var(--spacing-sm);
       }
       .ab-titolo {
-        font-size: 1.15rem;
+        font-size: var(--font-size-lg);
         margin: 0 0 var(--spacing-sm);
       }
       .ab-sottotitolo {
-        font-size: 1rem;
+        font-size: var(--font-size-base);
         margin: var(--spacing-md) 0 var(--spacing-sm);
       }
       .ab-nota,
       .ab-vuoto {
-        color: var(--text-color-secondary);
+        color: var(--text-tertiary);
       }
       .ab-vuoto {
         padding: var(--spacing-md);

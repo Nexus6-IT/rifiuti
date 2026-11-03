@@ -48,7 +48,7 @@ const TUTTE_LE_SEDI = ''
     RouterLink,
   ],
   template: `
-    <div class="page">
+    <div class="page pagina-lavoro">
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Giacenze e deposito temporaneo</h1>
@@ -88,19 +88,21 @@ const TUTTE_LE_SEDI = ''
         </div>
       </header>
 
-      <section *ngIf="piuRegistri()" class="surface-card mb-4" aria-label="Sede">
-        <label class="giacenze-label" for="giacenze-sede">Sede</label>
-        <p-dropdown
-          inputId="giacenze-sede"
-          data-testid="giacenze-sede"
-          [options]="opzioniRegistro()"
-          [ngModel]="registroSel() ?? ''"
-          (onChange)="cambiaRegistro($event.value)"
-          optionLabel="label"
-          optionValue="value"
-          styleClass="w-full"
-          ariaLabel="Sede"
-        ></p-dropdown>
+      <section *ngIf="piuRegistri()" class="filters" aria-label="Sede">
+        <div class="filters__field">
+          <label class="filters__label" for="giacenze-sede">Sede</label>
+          <p-dropdown
+            inputId="giacenze-sede"
+            data-testid="giacenze-sede"
+            [options]="opzioniRegistro()"
+            [ngModel]="registroSel() ?? ''"
+            (onChange)="cambiaRegistro($event.value)"
+            optionLabel="label"
+            optionValue="value"
+            styleClass="w-full"
+            ariaLabel="Sede"
+          ></p-dropdown>
+        </div>
       </section>
 
       <!-- Stato di errore -->
@@ -146,14 +148,14 @@ const TUTTE_LE_SEDI = ''
           </div>
           <div
             class="stat-card"
-            [class.stat-card--alert]="superamenti()"
+            [class.stat-card--err]="superamenti()"
             data-testid="kpi-superamenti"
           >
             <span class="stat-card__label">Superamenti</span>
             <span class="stat-card__value">{{ superamenti() | number }}</span>
             <span class="stat-card__hint">limiti del deposito superati</span>
           </div>
-          <div class="stat-card" [class.stat-card--alert]="preavvisi()" data-testid="kpi-preavvisi">
+          <div class="stat-card" [class.stat-card--warn]="preavvisi()" data-testid="kpi-preavvisi">
             <span class="stat-card__label">Preavvisi</span>
             <span class="stat-card__value">{{ preavvisi() | number }}</span>
             <span class="stat-card__hint">limiti in avvicinamento</span>
@@ -239,8 +241,8 @@ const TUTTE_LE_SEDI = ''
                       ></i>
                     </button>
                   </td>
-                  <td>
-                    <strong>{{ c.cerCode }}</strong>
+                  <td class="cell-nowrap">
+                    <strong class="cell-mono">{{ c.cerCode }}</strong>
                     <p-tag
                       *ngIf="c.pericoloso"
                       class="ml-2"
@@ -260,8 +262,12 @@ const TUTTE_LE_SEDI = ''
                       </div>
                     </ng-container>
                   </td>
-                  <td data-testid="cer-dal">{{ formattaGiorno(c.giornoPiuVecchio) }}</td>
-                  <td data-testid="cer-entro">{{ formattaGiorno(c.scadenza) }}</td>
+                  <td class="cell-nowrap" data-testid="cer-dal">
+                    {{ formattaGiorno(c.giornoPiuVecchio) }}
+                  </td>
+                  <td class="cell-nowrap" data-testid="cer-entro">
+                    {{ formattaGiorno(c.scadenza) }}
+                  </td>
                   <td class="text-right">{{ c.etaGiorni ?? '-' }}</td>
                 </tr>
                 <tr *ngIf="espanso(reg, c)" data-testid="lotti">
@@ -337,17 +343,17 @@ const TUTTE_LE_SEDI = ''
               </ng-template>
               <ng-template pTemplate="body" let-g>
                 <tr>
-                  <td>
-                    <strong>{{ g.cerCode }}</strong>
+                  <td class="col-cer-giacenza">
+                    <strong class="cell-mono">{{ g.cerCode }}</strong>
                     <div *ngFor="let s of g.scarichiSuFirAnnullati" class="mt-1">
-                      <p-tag
-                        severity="warning"
-                        value="Scarico {{ s.numero }} ({{ formattaQuantita(s.quantita) }} {{
-                          s.unita
-                        }}) collegato al FIR {{
-                          s.fir
-                        }}, poi annullato: la giacenza lo conta ancora."
-                      ></p-tag>
+                      <div class="avviso-riquadro avviso-riquadro--warn">
+                        <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+                        <span
+                          >Scarico {{ s.numero }} ({{ formattaQuantita(s.quantita) }} {{ s.unita }})
+                          collegato al FIR {{ s.fir }}, poi annullato: la giacenza lo conta
+                          ancora.</span
+                        >
+                      </div>
                     </div>
                   </td>
                   <td class="text-right">
@@ -370,7 +376,7 @@ const TUTTE_LE_SEDI = ''
                       >
                     </div>
                   </td>
-                  <td data-testid="giacenza-dal">
+                  <td class="cell-nowrap" data-testid="giacenza-dal">
                     {{
                       g.oldestCaricoDate ? (g.oldestCaricoDate | date: 'dd/MM/yyyy' : 'UTC') : '-'
                     }}
@@ -410,9 +416,16 @@ const TUTTE_LE_SEDI = ''
         margin: 0;
       }
 
-      .stat-card--alert {
-        border-color: var(--color-warning);
-        background: var(--color-warning-bg);
+      .col-cer-giacenza {
+        min-width: 18rem;
+      }
+      .stat-card--warn {
+        border-color: var(--stato-warn-edge);
+        background: var(--stato-warn-bg);
+      }
+      .stat-card--err {
+        border-color: var(--stato-err-edge);
+        background: var(--stato-err-bg);
       }
 
       .empty-state--compact {
@@ -426,11 +439,11 @@ const TUTTE_LE_SEDI = ''
       }
 
       .alert-banner {
-        border: 1px solid var(--surface-border);
-        border-left: 4px solid var(--color-warning);
+        border: 1px solid var(--stato-warn-edge);
+        border-left: 3px solid var(--stato-warn-ink);
         border-radius: var(--radius-md);
-        padding: var(--spacing-md) var(--spacing-base);
-        background: var(--color-gray-50);
+        padding: var(--spacing-sm) var(--spacing-base);
+        background: var(--stato-warn-bg);
       }
 
       .alert-header {
@@ -467,7 +480,7 @@ const TUTTE_LE_SEDI = ''
         font-weight: 600;
       }
       .giacenze-nota {
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
         font-size: var(--font-size-sm);
       }
       .soglie-box {
@@ -477,7 +490,9 @@ const TUTTE_LE_SEDI = ''
         background: var(--color-gray-50);
       }
       .alert-banner--danger {
-        border-left-color: var(--color-danger);
+        border-color: var(--stato-err-edge);
+        border-left-color: var(--stato-err-ink);
+        background: var(--stato-err-bg);
       }
       .lotti-lista {
         margin: 0 0 var(--spacing-sm);
