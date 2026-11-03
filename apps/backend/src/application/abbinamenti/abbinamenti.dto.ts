@@ -5,7 +5,6 @@ import {
   ArrayMaxSize,
   IsArray,
   IsIn,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -13,6 +12,7 @@ import {
   Matches,
   ValidateNested,
 } from 'class-validator'
+import { MaxDecimali } from '../../core/validators/max-decimali'
 
 const MSG_REGISTRO = 'Indica il registro (identificativo mancante o non valido).'
 const MSG_CER = 'Il codice CER deve essere di sei cifre, ad esempio 15 01 01.'
@@ -49,10 +49,7 @@ export class RigaAbbinamentoDto {
   giacenzaInizialeId?: string
 
   @ApiProperty({ description: 'Quantità abbinata, maggiore di zero, nell’unità dell’ambito.' })
-  @IsNumber(
-    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 3 },
-    { message: 'La quantità deve essere un numero con al massimo 3 decimali.' }
-  )
+  @MaxDecimali(3, 'La quantità')
   @IsPositive({ message: 'La quantità deve essere maggiore di zero.' })
   @Max(999_999_999.999, { message: 'La quantità non può superare 999.999.999,999.' })
   quantita!: number

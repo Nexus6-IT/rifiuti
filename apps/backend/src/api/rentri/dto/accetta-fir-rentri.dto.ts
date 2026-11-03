@@ -3,12 +3,12 @@ import {
   IsIn,
   IsISO8601,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   ValidateIf,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 /**
  * Scelta esplicita dell'utente su come accettare/respingere un carico
@@ -46,13 +46,10 @@ export class AccettaFirRentriDto {
     description: "Quantità accettata in kg — obbligatoria per un'accettazione intera o parziale.",
   })
   @ValidateIf(dto => dto.tipoAccettazione === 'A' || dto.tipoAccettazione === 'P')
-  @IsNumber(
-    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 },
-    {
-      message:
-        'quantitaAccettataKg è obbligatoria (numero con al massimo 2 decimali) per un’accettazione intera o parziale',
-    }
-  )
+  @MaxDecimali(2, 'La quantità accettata', {
+    message:
+      'La quantità accettata è obbligatoria, con al massimo 2 decimali, per un’accettazione intera o parziale.',
+  })
   quantitaAccettataKg?: number
 
   @ApiPropertyOptional({
