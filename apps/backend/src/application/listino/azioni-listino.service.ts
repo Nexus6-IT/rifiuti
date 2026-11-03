@@ -17,6 +17,7 @@
 // valida, la copia intera risponde 400 con `details.errori` (R60): mai una copia a meta'.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { TIPI_PROVVIGIONE, type TipoProvvigione } from '../../domain/listino/addebito'
 import { scegliRigheDaCopiare, type EscluseCopia } from '../../domain/listino/copia-righe'
 import {
   cascataValida,
@@ -324,12 +325,13 @@ export class AzioniListinoService {
     const provvigione = normalizzaCascata(corpo.provvigione)
     const tipoScritto =
       typeof corpo.tipoProvvigione === 'string' ? corpo.tipoProvvigione.trim().toUpperCase() : ''
-    let tipo: 'SCONTATO' | 'LORDO' | null = null
+    let tipo: TipoProvvigione | null = null
     if (provvigione !== null) {
       if (!cascataValida(provvigione) || provvigione.length > 20) {
         errori.push({ campo: 'provvigione', messaggio: MESSAGGIO_CASCATA })
       }
-      if (tipoScritto === 'SCONTATO' || tipoScritto === 'LORDO') tipo = tipoScritto
+      if ((TIPI_PROVVIGIONE as readonly string[]).includes(tipoScritto))
+        tipo = tipoScritto as TipoProvvigione
       else errori.push({ campo: 'tipoProvvigione', messaggio: MSG_TIPO_PROVVIGIONE })
     }
     if (errori.length > 0) nonValido(CODICE_IMPOSTAZIONE, errori)

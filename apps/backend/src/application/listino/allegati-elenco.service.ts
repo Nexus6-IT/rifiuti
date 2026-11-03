@@ -76,6 +76,12 @@ const ENTITA: DescrizioneEntita = {
   prefisso: 'ALLEGATO_ELENCO',
   soggetto: "L'allegato dell'elenco",
   femminile: false,
+  // Un P2003 qui puo' venire solo dall'FK verso l'elenco (cancellato da un'altra operazione):
+  // il testo di ripiego direbbe "clienti o contratti".
+  inUso: {
+    codice: 'ELENCO_ADDEBITI_ELIMINATO',
+    messaggio: "L'elenco è stato eliminato da un'altra operazione: ricarica la pagina.",
+  },
 }
 
 /** Unica chiave unica di business della tabella: la posizione dentro l'elenco. */

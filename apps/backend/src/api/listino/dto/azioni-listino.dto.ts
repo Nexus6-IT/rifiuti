@@ -13,27 +13,13 @@ import {
   IsString,
   IsUUID,
   Min,
-  registerDecorator,
-  type ValidationOptions,
 } from 'class-validator'
+
+import { TIPI_PROVVIGIONE } from '../../../domain/listino/addebito'
+import { IsTestoONumero } from './testo-o-numero'
 
 /** Righe che si possono scegliere in una sola volta (un elenco ne ha al massimo qualche centinaio). */
 export const MAX_RIGHE_DA_COPIARE = 1000
-
-/** Stringa oppure numero finito: il servizio ne controlla il formato. */
-function IsTestoONumero(opzioni?: ValidationOptions) {
-  return (oggetto: object, proprieta: string) =>
-    registerDecorator({
-      name: 'isTestoONumero',
-      target: oggetto.constructor,
-      propertyName: proprieta,
-      options: { message: 'Il valore deve essere un testo o un numero', ...opzioni },
-      validator: {
-        validate: (v: unknown) =>
-          typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)),
-      },
-    })
-}
 
 export class SostituisciDaDto {
   @ApiProperty({ description: 'Elenco da cui copiare le righe (altra azienda: 404)' })
@@ -66,7 +52,7 @@ export class ProvvigioniContrattoDto {
   @IsTestoONumero()
   provvigione?: string | number | null
 
-  @ApiPropertyOptional({ nullable: true, enum: ['SCONTATO', 'LORDO'] })
+  @ApiPropertyOptional({ nullable: true, enum: TIPI_PROVVIGIONE })
   @IsOptional()
   @IsString()
   tipoProvvigione?: string | null

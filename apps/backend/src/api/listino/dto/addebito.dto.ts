@@ -27,6 +27,8 @@ import {
   ValidateNested,
 } from 'class-validator'
 
+import { TIPI_PROVVIGIONE } from '../../../domain/listino/addebito'
+
 /** Ogni numero di listino compare al massimo una volta (altrimenti il dominio ne scarterebbe uno). */
 const ListiniSenzaDuplicati = () =>
   ValidateBy({
@@ -99,7 +101,7 @@ export class CreaAddebitoDto {
   @IsString()
   categoriaId?: string | null
 
-  @ApiPropertyOptional({ enum: ['SCONTATO', 'LORDO'], description: 'Omesso = SCONTATO' })
+  @ApiPropertyOptional({ enum: TIPI_PROVVIGIONE, description: 'Omesso = SCONTATO' })
   @IsOptional()
   @IsString()
   tipoProvvigione?: string
@@ -180,7 +182,7 @@ export class ModificaAddebitoDto {
   @IsString()
   categoriaId?: string | null
 
-  @ApiPropertyOptional({ enum: ['SCONTATO', 'LORDO'] })
+  @ApiPropertyOptional({ enum: TIPI_PROVVIGIONE })
   @ValidateIf((_, v) => v !== undefined)
   @IsString()
   tipoProvvigione?: string

@@ -158,6 +158,22 @@ describe('AllegatiElencoService', () => {
     })
   })
 
+  describe('P2003 (elenco sparito fra il lock e la scrittura)', () => {
+    it('409 col testo dell’elenco, non quello generico di "clienti o contratti"', async () => {
+      tx.allegatoElencoAddebiti.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'x' })
+      )
+      const p = service.carica(T, U, K, 1, file())
+      await expect(p).rejects.toBeInstanceOf(ConflictException)
+      await expect(p).rejects.toMatchObject({
+        response: {
+          error: 'ELENCO_ADDEBITI_ELIMINATO',
+          message: expect.not.stringContaining('clienti'),
+        },
+      })
+    })
+  })
+
   describe('attese di lock e timeout: 409 OPERAZIONE_CONCORRENTE, mai 500', () => {
     const errori: Array<[string, () => unknown]> = [
       [

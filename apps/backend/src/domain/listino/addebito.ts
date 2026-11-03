@@ -8,7 +8,9 @@ import { famigliaTipo, tipoAmmessoInArchivio } from './tipi-addebito'
  * provvigione per la riga. I prezzi sono stringhe decimali, mai `number`.
  */
 
-export type TipoProvvigione = 'SCONTATO' | 'LORDO'
+/** Tipi di provvigione: sullo scontato o sul lordo. Unica definizione del listino. */
+export const TIPI_PROVVIGIONE = ['SCONTATO', 'LORDO'] as const
+export type TipoProvvigione = (typeof TIPI_PROVVIGIONE)[number]
 
 export interface PrezzoListino {
   numero: 1 | 2 | 3 | 4 | 5 | 6

@@ -15,6 +15,10 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// La barriera su pg_stat_activity guarda solo le connessioni del servizio di questo processo
+// (le altre suite Postgres in corso su questo database non la falsano).
+const NOME_APPLICAZIONE = `azioni-listino-t23-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import {
   PrismaService,
@@ -259,6 +263,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
         minimi: 1,
         acconti: 1,
         conguagli: 1,
+        conRiferimentiDisattivati: 0,
       })
     })
 
@@ -473,7 +478,7 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
           const [r] = await owner.$queryRaw<{ n: number }[]>`
             SELECT count(*)::int AS n FROM pg_stat_activity
             WHERE wait_event_type = 'Lock' AND query ILIKE '%elenchi_addebiti%'
-              AND datname = current_database()`
+              AND datname = current_database() AND application_name = ${NOME_APPLICAZIONE}`
           if (r.n >= 2) return true
           await new Promise(res => setTimeout(res, 25))
         }
@@ -567,6 +572,16 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       })
       expect(via.copiate).toBe(1)
       expect(via.avvisi).toHaveLength(1)
+
+      // L'audit di entrambe le vie riporta quante righe avevano un riferimento disattivato (m6).
+      const logSostituzione = await owner.activityLog.findFirstOrThrow({
+        where: { tenantId: s.tenantId, action: 'RIGHE_ADDEBITO_ELENCO_SOSTITUITE' },
+      })
+      expect(logSostituzione.metadata).toMatchObject({ copiate: 3, conRiferimentiDisattivati: 2 })
+      const logCopia = await owner.activityLog.findFirstOrThrow({
+        where: { tenantId: s.tenantId, action: 'RIGHE_ADDEBITO_COPIATE' },
+      })
+      expect(logCopia.metadata).toMatchObject({ copiate: 1, conRiferimentiDisattivati: 1 })
     })
 
     it('D17: più di 20 errori → 20 messaggi più "E altri N errori."', async () => {
@@ -628,7 +643,13 @@ describe('AzioniListinoService — Postgres reale, ruolo wasteflow_app', () => {
       const log = await owner.activityLog.findFirstOrThrow({
         where: { tenantId: s.tenantId, action: 'RIGHE_ADDEBITO_COPIATE' },
       })
-      expect(log.metadata).toMatchObject({ copiate: 1, duplicate: 1, minimi: 1, acconti: 1 })
+      expect(log.metadata).toMatchObject({
+        copiate: 1,
+        duplicate: 1,
+        minimi: 1,
+        acconti: 1,
+        conRiferimentiDisattivati: 0,
+      })
 
       // una riga di un'altra azienda: 404 e nulla è scritto
       const estranea = await scenario()

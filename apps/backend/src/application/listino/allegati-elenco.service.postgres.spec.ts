@@ -15,6 +15,9 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// Le barriere su pg_stat_activity guardano solo le connessioni del servizio di questo processo.
+const NOME_APPLICAZIONE = `allegati-elenco-t25-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import { createHash } from 'crypto'
 import { ConflictException, NotFoundException } from '@nestjs/common'
@@ -217,10 +220,40 @@ describe('AllegatiElencoService — Postgres reale, ruolo wasteflow_app', () => 
 
   it('due caricamenti nella stessa posizione in parallelo: uno solo riesce, l’altro 409', async () => {
     const { tenantId, utenteId, elencoId } = await conElenco()
-    const esiti = await Promise.allSettled([
+    // Barriera: una transazione del proprietario tiene l'elenco FOR UPDATE, quindi entrambi i
+    // caricamenti (che lo chiedono FOR SHARE) restano fermi su un lock. Si rilascia solo quando
+    // il database mostra DUE sessioni in attesa: la sovrapposizione e' provata, non supposta (M2).
+    let rilascia!: () => void
+    const barriera = new Promise<void>(r => (rilascia = r))
+    let tenuto!: () => void
+    const eTenuto = new Promise<void>(r => (tenuto = r))
+    const tenitore = owner.$transaction(
+      async tx => {
+        await tx.$queryRaw`SELECT id FROM "elenchi_addebiti" WHERE id = ${elencoId}::uuid FOR UPDATE`
+        tenuto()
+        await barriera
+      },
+      { timeout: 60_000 }
+    )
+    await eTenuto
+    const caricamenti = [
       nel(tenantId, () => service.carica(tenantId, utenteId, elencoId, 1, file('a'))),
       nel(tenantId, () => service.carica(tenantId, utenteId, elencoId, 1, file('b'))),
-    ])
+    ]
+    const scadenza = Date.now() + 30_000
+    let inAttesa = 0
+    while (inAttesa < 2 && Date.now() < scadenza) {
+      const [r] = await owner.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND datname = current_database()
+          AND application_name = ${NOME_APPLICAZIONE}`
+      inAttesa = r.n
+      if (inAttesa < 2) await new Promise(res => setTimeout(res, 25))
+    }
+    rilascia()
+    await tenitore
+    expect(inAttesa).toBe(2)
+    const esiti = await Promise.allSettled(caricamenti)
     expect(esiti.filter(e => e.status === 'fulfilled')).toHaveLength(1)
     const rifiuto = esiti.find(e => e.status === 'rejected') as PromiseRejectedResult
     expect(rifiuto.reason).toBeInstanceOf(ConflictException)
