@@ -49,6 +49,7 @@ describe('CodiciIvaService (Prisma finto)', () => {
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       addebito: { groupBy: jest.fn().mockResolvedValue([]) },
       rigaAddebito: { groupBy: jest.fn().mockResolvedValue([]) },
+      rigaLegameMovimento: { groupBy: jest.fn().mockResolvedValue([]) },
     }
     prisma = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new CodiciIvaService(prisma)

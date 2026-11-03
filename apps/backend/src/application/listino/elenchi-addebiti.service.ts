@@ -8,7 +8,12 @@
 // Le transazioni di scrittura partono con `lock_timeout` (`lock-listino.ts`): oltre l'attesa 409
 // `OPERAZIONE_CONCORRENTE`. La `versione` dell'elenco protegge i dati dell'elenco e la sostituzione
 // del suo contenuto (copia, M9): la riga singola e gli allegati non la toccano.
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
   elenchiValidiAl,
@@ -27,6 +32,7 @@ import {
   type VincoliNoti,
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { COLONNE_ELENCO, contaUsiListino } from './uso-listino'
 import {
   bloccaContrattoListino,
   impostaTimeoutLock,
@@ -39,6 +45,11 @@ const ENTITA: DescrizioneEntita = {
   prefisso: 'ELENCO_ADDEBITI',
   soggetto: "L'elenco degli addebiti",
   femminile: false,
+  // Decisione 8 (4.3): le righe citate da un legame non si cancellano, nemmeno a cascata.
+  inUso: {
+    codice: 'ELENCO_ADDEBITI_IN_USO',
+    messaggio: "L'elenco ha righe usate da movimenti: non si può eliminare.",
+  },
 }
 
 /** Unica chiave unica di business della tabella: il codice dentro il contratto. */
@@ -359,6 +370,13 @@ export class ElenchiAddebitiService {
           const { contratto, prima } = await this.bloccaElenco(tx, tenantId, id, false)
           confrontaVersione(prima.versione, versione, ENTITA)
           const righe = await tx.rigaAddebito.count({ where: { tenantId, elencoId: id } })
+          const usi = (await contaUsiListino(tx, tenantId, [id], COLONNE_ELENCO)).get(id) ?? 0
+          if (usi > 0) {
+            throw new ConflictException({
+              error: ENTITA.inUso?.codice,
+              message: ENTITA.inUso?.messaggio,
+            })
+          }
           // Righe, fasce, scadenze e allegati vanno a cascata (FK ON DELETE CASCADE).
           await scriviCondizionato(
             () => tx.elencoAddebiti.deleteMany({ where: { id, tenantId, versione } }),
@@ -533,6 +551,7 @@ export class ElenchiAddebitiService {
       orderBy: { posizione: 'asc' },
     })
     const righePer = new Map(conteggi.map(c => [c.elencoId, c._count._all]))
+    const usi = await contaUsiListino(tx, tenantId, ids, COLONNE_ELENCO)
     return righe.map(r => ({
       id: r.id,
       contrattoId: r.contrattoId,
@@ -540,7 +559,7 @@ export class ElenchiAddebitiService {
       righe: righePer.get(r.id) ?? 0,
       versione: r.versione,
       modificabile,
-      eliminabile: modificabile,
+      eliminabile: modificabile && (usi.get(r.id) ?? 0) === 0,
       allegati: allegati
         .filter(a => a.elencoId === r.id)
         .map(a => ({

@@ -165,3 +165,20 @@ export async function creaLegameDiTest(
   }
   return { legameId: legame.id, righeIds }
 }
+
+/**
+ * Pulizia per id esatti delle aziende di test (col client PROPRIETARIO): toglie prima le righe e i
+ * legami, perche' le FK `NoAction` verso listino, elenchi e codici IVA non lasciano cancellare
+ * contratti e codici a un'azienda che ha legami. Si chiama prima delle altre cancellazioni.
+ */
+export async function pulisciLegamiDiTest(
+  owner: PrismaClient,
+  tenantIds: readonly string[]
+): Promise<void> {
+  if (tenantIds.length === 0) return
+  const in_ = { in: [...tenantIds] }
+  await owner.rigaLegameMovimento.deleteMany({ where: { tenantId: in_ } })
+  await owner.legameMovimento.deleteMany({ where: { tenantId: in_ } })
+  // Le catene di correzione hanno FK NoAction fra loro: si cancellano in un solo statement.
+  await owner.wasteMovement.deleteMany({ where: { tenantId: in_ } })
+}

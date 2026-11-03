@@ -3,6 +3,7 @@
  * `TenantContext`. Il proprietario prepara le aziende e legge lo stato finale. Pulizia solo per
  * id esatti creati.
  */
+import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -23,12 +24,18 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
+  creaLegameDiTest,
+  creaMovimentoDiTest,
+  pulisciLegamiDiTest,
+} from '../../test-support/legami-di-test'
+import {
   creaCodiciIvaEcodifiche,
   creaContrattoConElenco,
   creaRiga,
 } from '../../test-support/listino-di-test'
 
 import { CodiciIvaService } from './codici-iva.service'
+import { COLONNE_CODICE_IVA, contaUsiListino } from './uso-listino'
 
 describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -49,6 +56,7 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       const in_ = { in: tenantCreati }
+      await pulisciLegamiDiTest(owner, tenantCreati)
       // Righe ed elenchi vanno a cascata col contratto; le FK NoAction verso addebiti, codifiche e
       // codici IVA chiedono di cancellare prima i contratti.
       await owner.contrattoCliente.updateMany({
@@ -291,5 +299,66 @@ describe('CodiciIvaService — Postgres reale, ruolo wasteflow_app', () => {
       },
     })
     expect(await owner.codiceIva.count({ where: { id: ids.iva22Id } })).toBe(1)
+  })
+
+  it('codice IVA citato da un legame: eliminabile false, elimina 409 CODICE_IVA_IN_USO; disattivarlo: 200', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const ids = await creaCodiciIvaEcodifiche(owner, tenantId)
+    const c = await creaContrattoConElenco(owner, tenantId)
+    const riga = await creaRiga(owner, tenantId, c.elencoId, { codiceIvaId: ids.iva22Id })
+    // Il codice del legame (N61) non e' quello della riga di listino: l'unico riferimento e' il legame.
+    const m = await creaMovimentoDiTest(owner, tenantId)
+    await creaLegameDiTest(owner, tenantId, {
+      movimentoOriginaleId: m.movimentoId,
+      registroId: m.registroId,
+      verso: m.type,
+      stato: 'CONFERMATO',
+      clienteId: c.clienteId,
+      contrattoId: c.contrattoId,
+      elencoId: c.elencoId,
+      righe: [{ rigaAddebitoId: riga.id, codiceIvaId: ids.ivaN61Id, quantita: '1' }],
+    })
+    expect(await owner.rigaAddebito.count({ where: { tenantId, codiceIvaId: ids.ivaN61Id } })).toBe(
+      0
+    )
+    expect((await nel(tenantId, () => service.getById(tenantId, ids.ivaN61Id))).eliminabile).toBe(
+      false
+    )
+    const elenco = await nel(tenantId, () => service.list(tenantId, true))
+    expect(elenco.find(x => x.id === ids.ivaN61Id)?.eliminabile).toBe(false)
+    await expect(
+      nel(tenantId, () => service.elimina(tenantId, utenteId, ids.ivaN61Id, 1))
+    ).rejects.toMatchObject({ status: 409, response: { error: 'CODICE_IVA_IN_USO' } })
+    expect(await owner.codiceIva.count({ where: { id: ids.ivaN61Id } })).toBe(1)
+    await expect(
+      nel(tenantId, () =>
+        service.modifica(tenantId, utenteId, ids.ivaN61Id, { attivo: false, versione: 1 })
+      )
+    ).resolves.toMatchObject({ attivo: false })
+  })
+
+  it('contaUsiListino su 1000 id con righeLegame: conta il codice citato e non si perde nella lista', async () => {
+    const { tenantId } = await azienda()
+    const ids = await creaCodiciIvaEcodifiche(owner, tenantId)
+    const c = await creaContrattoConElenco(owner, tenantId)
+    const riga = await creaRiga(owner, tenantId, c.elencoId, { codiceIvaId: ids.iva22Id })
+    const m = await creaMovimentoDiTest(owner, tenantId)
+    await creaLegameDiTest(owner, tenantId, {
+      movimentoOriginaleId: m.movimentoId,
+      registroId: m.registroId,
+      verso: m.type,
+      stato: 'CONFERMATO',
+      clienteId: c.clienteId,
+      contrattoId: c.contrattoId,
+      elencoId: c.elencoId,
+      righe: [{ rigaAddebitoId: riga.id, codiceIvaId: ids.ivaN61Id, quantita: '1' }],
+    })
+    const altri = Array.from({ length: 998 }, () => randomUUID())
+    const lista = [...altri, ids.ivaN61Id, ids.iva22Id]
+    const usi = await nel(tenantId, () => contaUsiListino(app, tenantId, lista, COLONNE_CODICE_IVA))
+    expect(usi.size).toBe(1000)
+    expect(usi.get(ids.ivaN61Id)).toBe(1)
+    expect(usi.get(ids.iva22Id)).toBe(1)
+    expect(altri.every(id => usi.get(id) === 0)).toBe(true)
   })
 })

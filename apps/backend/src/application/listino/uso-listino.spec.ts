@@ -2,10 +2,23 @@ import {
   COLONNE_ADDEBITO,
   COLONNE_CODICE_IVA,
   COLONNE_CODIFICA_ADDEBITO,
+  COLONNE_ELENCO,
+  COLONNE_RIGA_LISTINO,
   contaUsiListino,
 } from './uso-listino'
 
 const T = 'aaaaaaaa-0000-4000-8000-000000000001'
+
+/** Client finto con le sole primitive che servono alla sorgente dei legami (query raw con unnest). */
+function clientConLegami(righe: Array<Record<string, unknown>>) {
+  return {
+    addebito: { groupBy: jest.fn(async () => []) },
+    rigaAddebito: { groupBy: jest.fn(async () => []) },
+    rigaLegameMovimento: { groupBy: jest.fn(async () => []) },
+    $executeRaw: jest.fn(async () => 0),
+    $queryRaw: jest.fn(async () => righe),
+  } as any
+}
 
 describe('contaUsiListino', () => {
   it('ids vuoto: nessuna query', async () => {
@@ -107,5 +120,62 @@ describe('contaUsiListino', () => {
     expect(usi.get('y')).toBe(0)
     expect(client.addebito.groupBy).not.toHaveBeenCalled()
     expect(client.rigaAddebito.groupBy).toHaveBeenCalledTimes(1)
+  })
+
+  describe('righe dei legami dei movimenti (4.3)', () => {
+    it('i tre referenti sono colonne di righe_legame_movimento, con i nomi del modello', () => {
+      expect(COLONNE_CODICE_IVA.righeLegame).toEqual(['codiceIvaId'])
+      expect(COLONNE_RIGA_LISTINO.righeLegame).toEqual(['rigaAddebitoId'])
+      expect(COLONNE_ELENCO.righeLegame).toEqual(['elencoId'])
+      expect(COLONNE_CODIFICA_ADDEBITO.righeLegame).toEqual([])
+    })
+
+    it('lista di 1000 id: una sola query per colonna, con unnest e join lineari', async () => {
+      const ids = Array.from(
+        { length: 1000 },
+        (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`
+      )
+      const client = clientConLegami([{ id: ids[3], n: BigInt(2) }])
+      const usi = await contaUsiListino(client, T, ids, {
+        addebiti: [],
+        righe: [],
+        righeLegame: ['rigaAddebitoId', 'elencoId', 'codiceIvaId'],
+      })
+      expect(client.$queryRaw).toHaveBeenCalledTimes(3)
+      expect(client.$executeRaw).toHaveBeenCalledTimes(1) // joinLineari, una volta per transazione
+      const sql = client.$queryRaw.mock.calls
+        .map((c: any) => c[0].sql ?? c[0].strings?.join('?'))
+        .join(' ')
+      expect(sql).toContain('unnest')
+      expect(sql).not.toMatch(/ANY\s*\(/i)
+      // la lista intera e' un solo parametro, non mille
+      expect(client.$queryRaw.mock.calls[0][0].values).toContainEqual(ids)
+      expect(usi.get(ids[3])).toBe(6) // 2 per ciascuna delle tre colonne
+      expect(usi.get(ids[4])).toBe(0)
+      expect(client.addebito.groupBy).not.toHaveBeenCalled()
+    })
+
+    it('lista corta: un groupBy per colonna sul modello dei legami, nessuna query raw', async () => {
+      const client = clientConLegami([])
+      client.rigaLegameMovimento.groupBy.mockResolvedValue([
+        { codiceIvaId: 'x', _count: { _all: 3 } },
+      ])
+      const usi = await contaUsiListino(client, T, ['x', 'y'], COLONNE_CODICE_IVA)
+      expect(client.rigaLegameMovimento.groupBy).toHaveBeenCalledTimes(1)
+      expect(client.rigaLegameMovimento.groupBy.mock.calls[0][0].where).toEqual({
+        tenantId: T,
+        codiceIvaId: { in: ['x', 'y'] },
+      })
+      expect(client.$queryRaw).not.toHaveBeenCalled()
+      expect(usi.get('x')).toBe(3)
+      expect(usi.get('y')).toBe(0)
+    })
+
+    it('senza colonne dei legami non parte nessuna query raw', async () => {
+      const client = clientConLegami([])
+      await contaUsiListino(client, T, ['x'], COLONNE_CODIFICA_ADDEBITO)
+      expect(client.$queryRaw).not.toHaveBeenCalled()
+      expect(client.$executeRaw).not.toHaveBeenCalled()
+    })
   })
 })

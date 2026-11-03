@@ -131,6 +131,7 @@ describe('RigheAddebitoService (Prisma finto)', () => {
         findMany: jest.fn().mockResolvedValue([{ externalId: '2', name: 'Liquido' }]),
       },
       addebito: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn() },
+      rigaLegameMovimento: { groupBy: jest.fn().mockResolvedValue([]) },
       rigaAddebito: {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
