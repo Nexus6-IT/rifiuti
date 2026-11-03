@@ -42,6 +42,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
   },
+  'application/legami-movimento/impostazioni-fatturazione.service.ts': {
+    scelta: 'vigenti',
+    motivo:
+      'conta i movimenti vigenti con causale fatturabile toccati da un cambio di «fatturazione da»: le catene annullate non contano',
+  },
   'application/giacenze/eventi-deposito.ts': {
     scelta: 'vigenti',
     motivo:

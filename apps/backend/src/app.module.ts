@@ -52,6 +52,7 @@ import { RegistroModule } from './api/registro/registro.module'
 import { PeseModule } from './api/pese/pese.module'
 import { ClientiModule } from './api/clienti/clienti.module'
 import { ListinoModule } from './api/listino/listino.module'
+import { LegamiMovimentoModule } from './api/legami-movimento/legami-movimento.module'
 // Billing SaaS (WS-F): Stripe + enforcement limiti di piano
 import { BillingModule } from './application/billing/billing.module'
 // Richiesta di accesso (lead capture): il form pubblico NON crea più un tenant.
@@ -164,6 +165,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     PeseModule,
     ClientiModule,
     ListinoModule,
+    LegamiMovimentoModule,
 
     // Billing SaaS (WS-F): Stripe checkout/webhook/portal + enforcement limiti piano
     BillingModule,
