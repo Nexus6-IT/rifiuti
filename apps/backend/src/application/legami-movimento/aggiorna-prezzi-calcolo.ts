@@ -64,6 +64,7 @@ export interface RigaDaScrivere {
   prezzoDopo: string | null
   scontoPrima: string | null
   scontoDopo: string | null
+  codiceIvaIdPrima: string
   codiceIvaId: string
   aliquotaIva: string
   naturaIva: string | null
@@ -111,7 +112,10 @@ function sha256(testo: string): string {
 }
 
 /**
- * Che cosa diventa una riga a prezzo singolo, non manuale, copiando il listino. Una riga di listino
+ * Che cosa diventa una riga a prezzo singolo, non manuale, copiando il listino. Stessa regola di
+ * `copiaValoriDaRiga` (dominio) per il prezzo e lo sconto; qui l'IVA arriva gia' letta dal
+ * database e il prezzo speciale del listino (cambiato dopo la copia) vale «nessun prezzo».
+ * Una riga di listino
  * diventata a prezzo speciale non ha un prezzo da copiare: il legame lo segnala con `SENZA_PREZZO`.
  */
 function valoriDalListino(l: ListinoAttuale): {
@@ -135,6 +139,10 @@ function digestLegame(l: LegameLetto): string {
       l.id,
       l.versione,
       l.stato,
+      l.clienteId,
+      l.contrattoId,
+      l.elencoId,
+      l.movimentoVigenteId,
       l.motivi,
       l.avvisi,
       l.righe.map(r => [
@@ -221,12 +229,19 @@ export function calcolaAggiornamento(
         prezzoDopo: v.prezzo,
         scontoPrima: r.sconto,
         scontoDopo: v.sconto,
+        codiceIvaIdPrima: r.codiceIvaId,
         codiceIvaId: r.listino.codiceIvaId,
         aliquotaIva: r.listino.aliquota ?? r.aliquotaIva,
         naturaIva: r.listino.natura,
       })
     }
-    if (righeDaScrivere.length === 0 && !famigliaRotta) {
+    // La riga di listino e' tornata quella giusta: il motivo `SENZA_RIGA_CER` non ha piu' ragione
+    // di restare (serve almeno una riga CER, coerente, a prezzo singolo, come prova).
+    const riparata =
+      !famigliaRotta &&
+      l.motivi.includes('SENZA_RIGA_CER') &&
+      l.righe.some(r => r.tipo === 'CER' && !r.prezzoSpeciale)
+    if (righeDaScrivere.length === 0 && !famigliaRotta && !riparata) {
       out.invariati++
       continue
     }
@@ -248,7 +263,9 @@ export function calcolaAggiornamento(
       }))
     )
     const motivi = ordinaMotivi([
-      ...l.motivi.filter(m => !MOTIVI_DELLE_RIGHE.includes(m)),
+      ...l.motivi.filter(
+        m => !MOTIVI_DELLE_RIGHE.includes(m) && !(riparata && m === 'SENZA_RIGA_CER')
+      ),
       ...motiviRiga,
       ...(famigliaRotta ? (['SENZA_RIGA_CER'] as const) : []),
     ])

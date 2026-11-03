@@ -32,7 +32,7 @@ import {
   creaLegameDiTest,
   creaMovimentoDiTest,
   creaScenarioProposta,
-  pulisciLegamiDiTest,
+  pulisciTenantDiTest,
   type ScenarioProposta,
 } from '../../test-support/legami-di-test'
 import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
@@ -63,30 +63,10 @@ describe('LegamiService (conferma, modifica, escludi, riammetti) — Postgres re
   })
 
   afterAll(async () => {
-    if (tenantCreati.length > 0) {
-      await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await pulisciLegamiDiTest(owner, tenantCreati)
-      await owner.impostazioneFatturazione.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      for (const tabella of [
-        'righe_addebito',
-        'elenchi_addebiti',
-        'contratti_cliente',
-        'addebiti',
-        'codifiche_addebito',
-        'codici_iva',
-      ]) {
-        await owner.$executeRawUnsafe(
-          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
-          tenantCreati
-        )
-      }
-      await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
-    }
+    await pulisciTenantDiTest(owner, tenantCreati)
     await owner.$disconnect()
     await app?.$disconnect()
-  })
+  }, 180_000)
 
   /** Scenario con «fatturazione da» al 1 gennaio 2026: CER + `righeV` righe V, FIR dal cliente. */
   async function scenario(righeV = 1): Promise<ScenarioProposta> {

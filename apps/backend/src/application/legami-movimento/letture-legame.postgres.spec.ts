@@ -10,7 +10,7 @@ import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo
 import {
   creaFirDiTest,
   creaScenarioProposta,
-  pulisciLegamiDiTest,
+  pulisciTenantDiTest,
 } from '../../test-support/legami-di-test'
 import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
 import { creaAddebito, creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
@@ -40,33 +40,23 @@ describe('Letture del legame (Postgres reale, ruolo wasteflow_app)', () => {
     )
 
   async function scenario(opz: Parameters<typeof creaScenarioProposta>[1] = {}) {
-    const s = await creaScenarioProposta(owner, opz)
+    // L'id si registra appena l'azienda esiste, prima di ogni altro passo che puo' fallire.
+    const s = await creaScenarioProposta(owner, {
+      ...opz,
+      onTenantCreato: id => {
+        tenantCreati.push(id)
+        opz.onTenantCreato?.(id)
+      },
+    })
     if (!tenantCreati.includes(s.tenantId)) tenantCreati.push(s.tenantId)
     return s
   }
 
   afterAll(async () => {
-    if (tenantCreati.length > 0) {
-      await pulisciLegamiDiTest(owner, tenantCreati)
-      for (const tabella of [
-        'righe_addebito',
-        'elenchi_addebiti',
-        'contratti_cliente',
-        'addebiti',
-        'codifiche_addebito',
-        'codici_iva',
-      ]) {
-        await owner.$executeRawUnsafe(
-          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
-          tenantCreati
-        )
-      }
-      await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
-    }
+    await pulisciTenantDiTest(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
-  })
+  }, 180_000)
 
   describe('clienteDaFir', () => {
     it('FIR -> produttore -> ditta -> cliente attivo, con la sede del produttore', async () => {

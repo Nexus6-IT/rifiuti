@@ -231,3 +231,48 @@ describe('calcolaAggiornamento', () => {
     expect(c.daScrivere[0]).toMatchObject({ stato: 'DA_COLLEGARE', motivi: ['SENZA_ELENCO'] })
   })
 })
+
+describe('calcolaAggiornamento (giro di correzione)', () => {
+  it('la firma cambia se cambia cliente, contratto, elenco o movimento vigente del legame', () => {
+    const base = calcolaAggiornamento([legame()], 'p').firma
+    for (const o of [
+      { clienteId: 'altro' },
+      { contrattoId: 'altro' },
+      { elencoId: 'altro' },
+      { movimentoVigenteId: 'altro' },
+    ]) {
+      expect(calcolaAggiornamento([legame(o)], 'p').firma).not.toBe(base)
+    }
+  })
+
+  it('SENZA_RIGA_CER si toglie quando la riga CER torna coerente (e il legame torna PROPOSTO)', () => {
+    const c = calcolaAggiornamento(
+      [
+        legame({
+          stato: 'DA_COLLEGARE',
+          motivi: ['SENZA_RIGA_CER'],
+          righe: [riga({ prezzo: '12.000000' })],
+        }),
+      ],
+      'p'
+    )
+    expect(c.daScrivere[0]).toMatchObject({ stato: 'PROPOSTO', motivi: [] })
+    expect(c.daScrivere[0].righe).toEqual([])
+  })
+
+  it('SENZA_RIGA_CER resta se non c’e’ nessuna riga CER a provarne la coerenza', () => {
+    const c = calcolaAggiornamento(
+      [legame({ stato: 'DA_COLLEGARE', motivi: ['SENZA_RIGA_CER'], righe: [] })],
+      'p'
+    )
+    expect(c.invariati).toBe(1)
+  })
+
+  it('porta il codice IVA di prima per l’audit', () => {
+    const c = calcolaAggiornamento(
+      [legame({ righe: [riga({ listino: listino({ codiceIvaId: 'n61' }) })] })],
+      'p'
+    )
+    expect(c.daScrivere[0].righe[0].codiceIvaIdPrima).toBe('iva22')
+  })
+})

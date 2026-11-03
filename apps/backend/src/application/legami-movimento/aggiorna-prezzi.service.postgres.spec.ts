@@ -27,16 +27,18 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { creaRiga } from '../../test-support/listino-di-test'
+import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
 import {
   creaLegameDiTest,
   creaMovimentoDiTest,
   creaScenarioProposta,
-  pulisciLegamiDiTest,
+  pulisciTenantDiTest,
   type OpzioniLegameDiTest,
   type ScenarioProposta,
 } from '../../test-support/legami-di-test'
 import { AggiornaPrezziService } from './aggiorna-prezzi.service'
+import { LegamiService } from './conferma-legame.service'
+import { PropostaLegameService } from './proposta-legame.service'
 
 interface Eccezione {
   status: number
@@ -52,36 +54,29 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
   const nel = <R>(tenantId: string, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId }, async () => await fn())
 
-  beforeAll(() => {
+  /** Idempotente: toglie le impostazioni di ruolo che i test col piano generico mettono. */
+  const ripristinaRuolo = async () => {
+    await owner.$executeRaw`ALTER ROLE wasteflow_app RESET plan_cache_mode`
+    await owner.$executeRaw`ALTER ROLE wasteflow_app RESET statement_timeout`
+  }
+
+  beforeAll(async () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
+    // Se un giro precedente e' stato interrotto da jest, il ruolo potrebbe essere rimasto cosi'.
+    await ripristinaRuolo()
     app = creaPrismaServiceApplicativo()
     service = new AggiornaPrezziService(app)
   })
 
   afterAll(async () => {
-    if (tenantCreati.length > 0) {
-      await owner.activityLog.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await pulisciLegamiDiTest(owner, tenantCreati)
-      for (const tabella of [
-        'righe_addebito',
-        'elenchi_addebiti',
-        'contratti_cliente',
-        'addebiti',
-        'codifiche_addebito',
-        'codici_iva',
-      ]) {
-        await owner.$executeRawUnsafe(
-          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
-          tenantCreati
-        )
-      }
-      await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    await ripristinaRuolo()
+    await pulisciTenantDiTest(owner, tenantCreati)
+    for (const t of ['legami_movimento', 'righe_legame_movimento', 'waste_movements']) {
+      await owner.$executeRawUnsafe(`ANALYZE ${t}`)
     }
     await owner.$disconnect()
     await app?.$disconnect()
-  })
+  }, 180_000)
 
   async function scenario(righeV = 0): Promise<ScenarioProposta> {
     return creaScenarioProposta(owner, { righeV, onTenantCreato: id => tenantCreati.push(id) })
@@ -250,6 +245,24 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
       expect(audit).toHaveLength(1)
       expect(audit[0].userId).toBe(s.utenteId)
       expect(JSON.stringify(audit[0].metadata)).not.toMatch(/Proposta SRL|@example/)
+      expect(audit[0].metadata).toMatchObject({
+        contrattoId: s.contrattoId,
+        aggiornati: 1,
+        righeAggiornate: 1,
+        daCollegare: 0,
+        invariati: 0,
+        saltati: {},
+        usciti: 0,
+        righeConfermateTroncate: false,
+        righeConfermate: [
+          {
+            legameId: l.legameId,
+            prezzo: { prima: '10.000000', dopo: '12.000000' },
+            sconto: { prima: null, dopo: '10' },
+            codiceIvaId: { prima: s.ivaId, dopo: ivaN61 },
+          },
+        ],
+      })
     })
 
     it('righe invariate non scritte: prezzo gia’ allineato, nessun UPDATE e versione ferma', async () => {
@@ -303,13 +316,21 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
           },
         ],
       })
+      const prima = (await righeDb(l.legameId))[0]
+      const ivaN61 = (
+        await owner.codiceIva.findFirstOrThrow({ where: { tenantId: s.tenantId, codice: 'N61' } })
+      ).id
       await prezzoListino(s.rigaCerId, '12.000000')
+      await owner.$executeRaw`
+        UPDATE righe_addebito SET codice_iva_id = ${ivaN61}::uuid WHERE id = ${s.rigaCerId}::uuid`
       const a = await anteprima(s)
       expect(a.cambiano).toBe(0)
       expect(saltati(a, 'PREZZO_SPECIALE')).toBe(1)
       await applica(s, a.firma)
       const [r] = await righeDb(l.legameId)
-      expect(r.prezzo).toBeNull()
+      expect(r).toEqual(prima)
+      expect(r.ivaId).toBe(s.ivaId)
+      expect((await legameDb(l.legameId)).versione).toBe(1)
     })
 
     it('quantità MANUALE intatta', async () => {
@@ -528,6 +549,17 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
       const b = await anteprima(s)
       expect(b.cambiano).toBe(0)
       expect(b.invariati).toBe(1)
+
+      // Tornata la riga giusta, il motivo SENZA_RIGA_CER si toglie e il legame torna PROPOSTO.
+      await owner.$executeRaw`
+        UPDATE righe_addebito SET cer_code = '20 03 01' WHERE id = ${s.rigaCerId}::uuid`
+      const c = await anteprima(s)
+      expect(c.cambiano).toBe(1)
+      await applica(s, c.firma)
+      const dopo = await legameDb(l.legameId)
+      expect(dopo.motivi).toEqual([])
+      expect(dopo.stato).toBe('PROPOSTO')
+      expect((await righeDb(l.legameId))[0].prezzo).toBe('5.500000')
     })
 
     it('riga di listino cambiata di famiglia (CER diverso) su riga non manuale: DA_COLLEGARE col motivo, prezzo non riscritto', async () => {
@@ -633,12 +665,16 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
           UPDATE legami_movimento SET stato = 'FATTURATO', fatturato_il = now()
           WHERE id = ${l.legameId}::uuid`
       })
-      await t.pronta
-      const scrive = osserva(applica(s, a.firma))
-      await attendiLock(1, () => scrive.stato.finita)
-      expect(scrive.stato.finita).toBe(false)
-      t.rilascia()
-      await t.fine
+      let scrive!: ReturnType<typeof osserva<Awaited<ReturnType<typeof applica>>>>
+      try {
+        await t.pronta
+        scrive = osserva(applica(s, a.firma))
+        await attendiLock(1, () => scrive.stato.finita)
+        expect(scrive.stato.finita).toBe(false)
+      } finally {
+        t.rilascia()
+        await t.fine.catch(() => undefined)
+      }
       const esito = await scrive.esito
       expect(esito.aggiornati).toBe(1)
       expect(esito.saltati).toBeGreaterThanOrEqual(1)
@@ -656,12 +692,16 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
         await tx.$queryRaw`SELECT id FROM righe_addebito WHERE id = ${s.rigaCerId}::uuid FOR UPDATE`
         await tx.$executeRaw`UPDATE righe_addebito SET prezzo = 13 WHERE id = ${s.rigaCerId}::uuid`
       })
-      await t.pronta
-      const scrive = osserva(errore(applica(s, a.firma)))
-      await attendiLock(1, () => scrive.stato.finita)
-      expect(scrive.stato.finita).toBe(false)
-      t.rilascia()
-      await t.fine
+      let scrive!: ReturnType<typeof osserva<Eccezione>>
+      try {
+        await t.pronta
+        scrive = osserva(errore(applica(s, a.firma)))
+        await attendiLock(1, () => scrive.stato.finita)
+        expect(scrive.stato.finita).toBe(false)
+      } finally {
+        t.rilascia()
+        await t.fine.catch(() => undefined)
+      }
       const e = await scrive.esito
       expect(e.status).toBe(409)
       expect(e.body.error).toBe('ANTEPRIMA_SUPERATA')
@@ -680,6 +720,8 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
     /** Piano generico per il ruolo applicativo e statistiche che stimano una riga sola. */
     async function conPianoGenerico<R>(tabelle: string[], fn: () => Promise<R>): Promise<R> {
       await owner.$executeRaw`ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
+      // Una query che non torna fallisce entro il timeout del test: il `finally` gira sempre.
+      await owner.$executeRaw`ALTER ROLE wasteflow_app SET statement_timeout = '45s'`
       try {
         for (const t of tabelle) {
           await owner.$executeRawUnsafe(
@@ -693,7 +735,7 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
         await app.$connect()
         return await fn()
       } finally {
-        await owner.$executeRaw`ALTER ROLE wasteflow_app RESET plan_cache_mode`
+        await ripristinaRuolo()
         for (const t of tabelle) await owner.$executeRawUnsafe(`ANALYZE ${t}`)
         await app.$disconnect()
         await app.$connect()
@@ -802,5 +844,158 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
         WHERE tenant_id = ${s.tenantId}::uuid AND prezzo = 12`
       expect(n[0].n).toBe(N)
     }, 120_000)
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('giro di correzione 1', () => {
+    it('riga NON manuale invariata dentro un legame che cambia: non si tocca (IVA, congelata_il, prezzo)', async () => {
+      const s = await scenario(1)
+      const fisso = new Date('2026-01-15T10:00:00Z')
+      const l = await nuovoLegame(s, {
+        righe: [
+          {
+            rigaAddebitoId: s.rigaCerId,
+            codiceIvaId: s.ivaId,
+            quantita: '100',
+            prezzo: '10.000000',
+          },
+          {
+            rigaAddebitoId: s.righeVIds[0],
+            codiceIvaId: s.ivaId,
+            quantita: '1',
+            prezzo: '1.000000',
+          },
+        ],
+      })
+      await owner.$executeRaw`
+        UPDATE righe_legame_movimento SET congelata_il = ${fisso} WHERE legame_id = ${l.legameId}::uuid`
+      await prezzoListino(s.rigaCerId, '12.000000')
+      await prezzoListino(s.righeVIds[0], '1.000000')
+      const a = await anteprima(s)
+      expect(a.cambiano).toBe(1)
+      expect(a.differenze).toHaveLength(1)
+      await applica(s, a.firma)
+      const [cer, v] = await righeDb(l.legameId)
+      expect(cer.prezzo).toBe('12.000000')
+      expect(cer.congelataIl!.getTime()).toBeGreaterThan(fisso.getTime())
+      expect(v.prezzo).toBe('1.000000')
+      expect(v.congelataIl!.getTime()).toBe(fisso.getTime())
+    })
+
+    it('I1: PROPOSTO non si congela con «Aggiorna prezzi»: la conferma prende il listino del momento e congela allora', async () => {
+      const s = await scenario()
+      await owner.impostazioneFatturazione.create({
+        data: { tenantId: s.tenantId, fatturazioneDa: new Date('2026-01-01T00:00:00Z') },
+      })
+      const proposta = new PropostaLegameService(app)
+      const legami = new LegamiService(app, proposta)
+      const r = await nel(s.tenantId, () =>
+        app.$transaction(
+          tx =>
+            proposta.proponiEScrivi(tx, {
+              tenantId: s.tenantId,
+              userId: s.utenteId,
+              registroId: s.registroId,
+              verso: 'CARICO',
+              movimentoOriginaleId: s.movimentoId,
+              movimentoVigenteId: s.movimentoId,
+              input: {
+                causale: 'INGRESSO_ESTERNO',
+                type: 'CARICO',
+                cerCode: '20 03 01',
+                movementDate: '2026-03-01',
+                unit: 'KG',
+                quantity: '100',
+                firId: s.firId,
+              },
+            }),
+          { timeout: 60_000, maxWait: 30_000 }
+        )
+      )
+      const legameId = r.legameId!
+      expect((await legameDb(legameId)).stato).toBe('PROPOSTO')
+
+      await prezzoListino(s.rigaCerId, '12.000000')
+      const a = await anteprima(s)
+      expect(a.cambiano).toBe(1)
+      await applica(s, a.firma)
+      const dopoAggiorna = (await righeDb(legameId))[0]
+      expect(dopoAggiorna.prezzo).toBe('12.000000')
+      expect(dopoAggiorna.congelataIl).toBeNull()
+
+      await prezzoListino(s.rigaCerId, '13.000000')
+      const prima = new Date()
+      const v = (await legameDb(legameId)).versione
+      await nel(s.tenantId, () => legami.conferma(s.tenantId, s.utenteId, legameId, v))
+      const confermata = (await righeDb(legameId))[0]
+      expect(confermata.prezzo).toBe('13.000000')
+      expect(confermata.congelataIl!.getTime()).toBeGreaterThanOrEqual(prima.getTime() - 1000)
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('volume realistico (I2)', () => {
+    const MOVIMENTI = Number(process.env.T17_VOLUME ?? 200_000)
+
+    it('50 legami nel perimetro in un registro con molte righe: anteprima e applica non dipendono dal volume', async () => {
+      const s = await scenario()
+      for (let i = 0; i < 50; i++) await nuovoLegame(s)
+      const b = await creaContrattoConElenco(owner, s.tenantId, { clienteId: s.clienteId })
+      const rb = await creaRiga(owner, s.tenantId, b.elencoId, {
+        tipo: 'CER',
+        cerCode: '20 03 01',
+        codiceIvaId: s.ivaId,
+      })
+      const t0 = Date.now()
+      await owner.$executeRaw`
+        INSERT INTO waste_movements
+          (tenant_id, registro_id, progressive_year, progressive_number, type, movement_date,
+           registration_date, causale, cer_code, quantity, unit, tipo_annotazione, updated_at)
+        SELECT ${s.tenantId}::uuid, ${s.registroId}::uuid, 2028, g, 'CARICO', '2028-03-01T10:00:00Z',
+               '2028-03-01T10:00:00Z', 'INGRESSO_ESTERNO', '20 03 01', 10, 'KG', 'ORDINARIA', now()
+        FROM generate_series(1, ${MOVIMENTI}::int) g`
+      // Statistiche vere prima di ogni passo: con quelle vecchie (poche righe) il planner sceglie
+      // piani da tabella piccola e il caricamento di massa dura minuti.
+      await owner.$executeRawUnsafe('ANALYZE waste_movements')
+      await owner.$executeRaw`
+        INSERT INTO legami_movimento
+          (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
+           data_movimento, cliente_id, contratto_id, elenco_id, updated_at)
+        SELECT m.tenant_id, m.registro_id, m.type, m.id, m.id, 'CONFERMATO'::stato_legame_movimento,
+               '2028-03-01'::date, ${s.clienteId}::uuid, ${b.contrattoId}::uuid, ${b.elencoId}::uuid, now()
+        FROM waste_movements m
+        WHERE m.tenant_id = ${s.tenantId}::uuid AND m.progressive_year = 2028`
+      await owner.$executeRawUnsafe('ANALYZE legami_movimento')
+      await owner.$executeRaw`
+        INSERT INTO righe_legame_movimento
+          (tenant_id, legame_id, elenco_id, riga_addebito_id, ordine, origine, tipo, descrizione,
+           tipo_quantita, unita_misura, quantita, quantita_origine, prezzo_speciale, prezzo,
+           prezzo_manuale, codice_iva_id, aliquota_iva, natura_iva, updated_at)
+        SELECT l.tenant_id, l.id, ra.elenco_id, ra.id, 1, 'PRINCIPALE'::origine_riga_legame, ra.tipo,
+               ra.descrizione, ra.tipo_quantita, ra.unita_misura, 10, 'DA_MOVIMENTO'::origine_quantita_legame,
+               false, 10, false, ci.id, ci.aliquota, ci.natura, now()
+        FROM legami_movimento l, righe_addebito ra, codici_iva ci
+        WHERE l.tenant_id = ${s.tenantId}::uuid AND l.elenco_id = ${b.elencoId}::uuid
+          AND ra.id = ${rb.id}::uuid AND ci.id = ${s.ivaId}::uuid`
+      for (const t of ['waste_movements', 'legami_movimento', 'righe_legame_movimento']) {
+        await owner.$executeRawUnsafe(`ANALYZE ${t}`)
+      }
+      const msSetup = Date.now() - t0
+      await prezzoListino(s.rigaCerId, '12.000000')
+
+      const t1 = Date.now()
+      const a = await anteprima(s)
+      const msAnteprima = Date.now() - t1
+      expect(a.cambiano).toBe(50)
+      const t2 = Date.now()
+      const esito = await applica(s, a.firma)
+      const msApplica = Date.now() - t2
+      expect(esito.aggiornati).toBe(50)
+      console.info(
+        `[T17] volume ${MOVIMENTI} movimenti e righe di legame, 50 legami nel perimetro: setup ${msSetup} ms, anteprima ${msAnteprima} ms, applica ${msApplica} ms`
+      )
+      expect(msAnteprima).toBeLessThan(2_000)
+      expect(msApplica).toBeLessThan(3_000)
+    }, 600_000)
   })
 })

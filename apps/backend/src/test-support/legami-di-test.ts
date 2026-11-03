@@ -339,3 +339,69 @@ export async function creaScenarioProposta(
     registroId: m.registroId,
   }
 }
+
+/**
+ * Pulizia unica delle aziende create dagli spec dei legami (col client PROPRIETARIO), SOLO per id
+ * esatti e nell'ordine delle FK. Ogni passo ha il suo `lock_timeout` (una transazione appesa di
+ * un altro processo non blocca la pulizia per sempre) e un suo `try`: un passo che fallisce non
+ * ferma i successivi. Se alla fine restano aziende, i loro id esatti finiscono su `console.error`
+ * (per poterle togliere a mano, per id).
+ */
+export async function pulisciTenantDiTest(
+  owner: PrismaClient,
+  tenantIds: readonly string[]
+): Promise<void> {
+  if (tenantIds.length === 0) return
+  const ids = [...new Set(tenantIds)]
+  const errori: string[] = []
+  const passo = async (nome: string, tabella: string, colonna = 'tenant_id'): Promise<void> => {
+    try {
+      await owner.$transaction(
+        async tx => {
+          await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '20s'`)
+          if (tabella === 'waste_movements') {
+            // Le catene di correzione hanno FK NoAction fra loro: un solo statement.
+            await tx.$executeRawUnsafe(
+              `DELETE FROM waste_movements WHERE tenant_id = ANY($1::uuid[])`,
+              ids
+            )
+            return
+          }
+          await tx.$executeRawUnsafe(
+            `DELETE FROM ${tabella} WHERE ${colonna} = ANY($1::uuid[])`,
+            ids
+          )
+        },
+        { timeout: 120_000, maxWait: 30_000 }
+      )
+    } catch (e) {
+      errori.push(`${nome}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+    }
+  }
+  for (const [nome, tabella] of [
+    ['audit', 'activity_logs'],
+    ['righe legame', 'righe_legame_movimento'],
+    ['legami', 'legami_movimento'],
+    ['movimenti', 'waste_movements'],
+    ['impostazioni', 'impostazioni_fatturazione'],
+    ['righe listino', 'righe_addebito'],
+    ['elenchi', 'elenchi_addebiti'],
+    ['contratti', 'contratti_cliente'],
+    ['addebiti', 'addebiti'],
+    ['codifiche', 'codifiche_addebito'],
+    ['codici IVA', 'codici_iva'],
+    ['FIR', 'firs'],
+    ['utenti', 'users'],
+  ] as const) {
+    await passo(nome, tabella)
+  }
+  await passo('aziende', 'tenants', 'id')
+  const rimaste = await owner.tenant
+    .findMany({ where: { id: { in: ids } }, select: { id: true } })
+    .catch(() => [])
+  if (rimaste.length > 0 || errori.length > 0) {
+    console.error(
+      `pulisciTenantDiTest: aziende rimaste (id esatti) ${JSON.stringify(rimaste.map(t => t.id))}; errori ${JSON.stringify(errori)}`
+    )
+  }
+}

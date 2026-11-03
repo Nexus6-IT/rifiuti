@@ -31,7 +31,7 @@ import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
 import {
   creaFirDiTest,
   creaScenarioProposta,
-  pulisciLegamiDiTest,
+  pulisciTenantDiTest,
   type ScenarioProposta,
 } from '../../test-support/legami-di-test'
 import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
@@ -59,29 +59,10 @@ describe('PropostaLegameService — Postgres reale, ruolo wasteflow_app', () => 
   })
 
   afterAll(async () => {
-    if (tenantCreati.length > 0) {
-      await pulisciLegamiDiTest(owner, tenantCreati)
-      await owner.impostazioneFatturazione.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      for (const tabella of [
-        'righe_addebito',
-        'elenchi_addebiti',
-        'contratti_cliente',
-        'addebiti',
-        'codifiche_addebito',
-        'codici_iva',
-      ]) {
-        await owner.$executeRawUnsafe(
-          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
-          tenantCreati
-        )
-      }
-      await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
-    }
+    await pulisciTenantDiTest(owner, tenantCreati)
     await owner.$disconnect()
     await app?.$disconnect()
-  })
+  }, 180_000)
 
   /** Scenario con «fatturazione da» impostata al 1 gennaio 2026 (a meno di `da: null`). */
   async function scenario(righeV = 1, da: string | null = '2026-01-01'): Promise<ScenarioProposta> {

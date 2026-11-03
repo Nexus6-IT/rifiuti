@@ -21,7 +21,7 @@ import {
   creaLegameDiTest,
   creaMovimentoDiTest,
   creaScenarioProposta,
-  pulisciLegamiDiTest,
+  pulisciTenantDiTest,
   type ScenarioProposta,
 } from '../../test-support/legami-di-test'
 import {
@@ -57,8 +57,11 @@ describe('Lock del legame (Postgres reale, ruolo wasteflow_app)', () => {
     }, OPZ)
 
   async function scenario(righeV = 2): Promise<ScenarioProposta> {
-    const s = await creaScenarioProposta(owner, { righeV })
-    tenantCreati.push(s.tenantId)
+    // L'id si registra appena l'azienda esiste, prima di ogni altro passo che puo' fallire.
+    const s = await creaScenarioProposta(owner, {
+      righeV,
+      onTenantCreato: id => tenantCreati.push(id),
+    })
     return s
   }
 
@@ -126,27 +129,10 @@ describe('Lock del legame (Postgres reale, ruolo wasteflow_app)', () => {
     )[0].prezzo
 
   afterAll(async () => {
-    if (tenantCreati.length > 0) {
-      await pulisciLegamiDiTest(owner, tenantCreati)
-      for (const tabella of [
-        'righe_addebito',
-        'elenchi_addebiti',
-        'contratti_cliente',
-        'addebiti',
-        'codifiche_addebito',
-        'codici_iva',
-      ]) {
-        await owner.$executeRawUnsafe(
-          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
-          tenantCreati
-        )
-      }
-      await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
-      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
-    }
+    await pulisciTenantDiTest(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
-  })
+  }, 180_000)
 
   describe('bloccaListinoInCondivisione', () => {
     it('un FOR UPDATE del listino su una riga tiene in attesa il legame finche` non fa commit; poi procede e legge il valore nuovo', async () => {

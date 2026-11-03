@@ -19,6 +19,10 @@
 //   -> righe di listino FOR SHARE -> testate e righe dei legami FOR UPDATE (per id) -> rilettura
 //   -> scrittura set-based (una UPDATE per le righe, una per i testate) -> audit.
 //
+// Se la 4.4 fattura un legame fra l'anteprima e il clic di conferma, la firma non coincide piu'
+// (il legame esce dall'insieme scrivibile) e la risposta e' 409: si rifa l'anteprima. Il «salto»
+// silenzioso vale solo per cio' che succede MENTRE `applica` aspetta i lock.
+//
 // Sotto lock si rilegge tutto. Un legame diventato fatturato, escluso o annullato nel frattempo
 // (la 4.4 marca `FATTURATO` mentre noi aspettavamo) si salta senza errore; qualunque altra
 // differenza rispetto all'anteprima (prezzo di listino cambiato durante l'attesa, una riga resa
@@ -99,6 +103,8 @@ export interface EsitoAggiornamento {
 }
 
 export const MAX_DIFFERENZE = 200
+/** Tetto delle righe con i valori di prima nell'audit (il resto e' nel conteggio). */
+export const MAX_RIGHE_AUDIT = 2000
 export const MSG_ANTEPRIMA_SUPERATA = 'I dati sono cambiati dopo l’anteprima: rifai l’anteprima.'
 
 const ENTITA: DescrizioneEntita = {
@@ -183,7 +189,7 @@ interface RigaSql {
   lstIvaId: string | null
   lstAliquota: string | null
   lstNatura: string | null
-  cerCoerente: boolean | null
+  lstCer: string | null
 }
 
 /**
@@ -196,8 +202,10 @@ async function leggiLegami(
   tenantId: string,
   p: PerimetroNorm
 ): Promise<LegameLetto[]> {
-  // Perimetri di migliaia di legami: con le statistiche vuote e il piano generico il planner
-  // sceglierebbe un nested loop quadratico (stesso rimedio dei lock su liste grandi).
+  // Con le statistiche vuote (carico di massa appena fatto) e il piano generico il planner stima
+  // 1 riga per tabella e sceglie nested loop quadratici: misurato con 5000 legami, la lettura non
+  // tornava. Hash e merge join sono lineari qualunque sia la stima (a statistiche vere, 200k
+  // movimenti e 50 legami nel perimetro: 52 ms, stesso tempo con o senza).
   await joinLineari(tx)
   const righe = await tx.$queryRaw<RigaSql[]>`
     SELECT l.id::text AS "legameId", l.versione AS versione, l.stato::text AS stato,
@@ -211,16 +219,13 @@ async function leggiLegami(
            ra.tipo AS "lstTipo", ra.prezzo_speciale AS "lstSpeciale", ra.prezzo::text AS "lstPrezzo",
            ra.sconto AS "lstSconto", ra.codice_iva_id::text AS "lstIvaId",
            ci.aliquota::text AS "lstAliquota", ci.natura AS "lstNatura",
-           (regexp_replace(COALESCE(m.cer_code, ''), '[^0-9]', '', 'g') = ''
-            OR regexp_replace(COALESCE(ra.cer_code, ''), '[^0-9]', '', 'g')
-               = regexp_replace(m.cer_code, '[^0-9]', '', 'g')) AS "cerCoerente"
+           ra.cer_code AS "lstCer"
     FROM legami_movimento l
     LEFT JOIN righe_legame_movimento r
       ON r.legame_id = l.id AND r.tenant_id = l.tenant_id
          AND l.stato IN ('PROPOSTO', 'CONFERMATO', 'DA_COLLEGARE')
     LEFT JOIN righe_addebito ra ON ra.id = r.riga_addebito_id AND ra.tenant_id = r.tenant_id
     LEFT JOIN codici_iva ci ON ci.id = ra.codice_iva_id AND ci.tenant_id = ra.tenant_id
-    LEFT JOIN waste_movements m ON m.id = l.movimento_vigente_id AND m.tenant_id = l.tenant_id
     WHERE l.tenant_id = ${tenantId}::uuid
       AND (${p.contrattoId}::uuid IS NULL OR l.contratto_id = ${p.contrattoId}::uuid)
       AND (${p.elencoId}::uuid IS NULL OR l.elenco_id = ${p.elencoId}::uuid)
@@ -228,6 +233,7 @@ async function leggiLegami(
       AND (${p.al}::date IS NULL OR l.data_movimento <= ${p.al}::date)
     ORDER BY l.id, r.ordine, r.id`
   const perId = new Map<string, LegameLetto>()
+  const cerDelListino = new Map<string, string | null>() // rigaId -> cer_code della riga di listino
   for (const x of righe) {
     let l = perId.get(x.legameId)
     if (!l) {
@@ -269,12 +275,48 @@ async function leggiLegami(
               codiceIvaId: x.lstIvaId!,
               aliquota: x.lstAliquota,
               natura: x.lstNatura,
-              cerCoerente: x.cerCoerente === true,
+              cerCoerente: true,
             },
     }
+    cerDelListino.set(x.rigaId, x.lstCer)
     l.righe.push(riga)
   }
-  return [...perId.values()]
+  const legami = [...perId.values()]
+  await completaCoerenzaCer(tx, tenantId, legami, cerDelListino)
+  return legami
+}
+
+const soloCifre = (v: string | null | undefined): string => (v ?? '').replace(/\D/g, '')
+
+/**
+ * Secondo passo: il CER del movimento vigente, solo per i legami con almeno una riga `CER`, con
+ * una lettura per id (lista di id distinti su una sola tabella, lineare). Non si unisce
+ * `waste_movements` alla query principale: il registro cresce senza limite e il costo della
+ * lettura non deve dipenderne. Una riga `CER` e' coerente se il CER del movimento e' vuoto o
+ * uguale (solo cifre) a quello della riga di listino.
+ */
+async function completaCoerenzaCer(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  legami: readonly LegameLetto[],
+  cerDelListino: ReadonlyMap<string, string | null>
+): Promise<void> {
+  const conCer = legami.filter(l => l.righe.some(r => r.tipo === 'CER' && !r.prezzoSpeciale))
+  if (conCer.length === 0) return
+  const ids = [...new Set(conCer.map(l => l.movimentoVigenteId))].sort()
+  await joinLineari(tx)
+  const mov = await tx.$queryRaw<{ id: string; cer: string }[]>`
+    SELECT m.id::text AS id, m.cer_code AS cer FROM waste_movements m
+    JOIN unnest(${ids}::uuid[]) AS chiesti(chiesto) ON chiesto = m.id
+    WHERE m.tenant_id = ${tenantId}::uuid`
+  const cerMovimento = new Map(mov.map(m => [m.id, soloCifre(m.cer)]))
+  for (const l of conCer) {
+    const cm = cerMovimento.get(l.movimentoVigenteId) ?? ''
+    for (const r of l.righe) {
+      if (r.listino === null || r.tipo !== 'CER') continue
+      r.listino.cerCoerente = cm === '' || soloCifre(cerDelListino.get(r.id)) === cm
+    }
+  }
 }
 
 /** Contratto del perimetro (anche dedotto dall'elenco): esiste, non e' eliminato e non e' annullato. */
@@ -328,6 +370,7 @@ export class AggiornaPrezziService {
     const p = normalizzaPerimetro(perimetro)
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
+        await impostaTimeoutLock(tx)
         const contrattoId = await risolviContratto(tx, tenantId, p)
         await verificaContratto(tx, tenantId, contrattoId)
         const c = calcolaAggiornamento(await leggiLegami(tx, tenantId, p), chiave(p))
@@ -352,8 +395,8 @@ export class AggiornaPrezziService {
           daCollegare: c.daCollegare,
           righeEscluseManuali: c.righeManuali,
         }
-      })
-    )
+      }, OPZIONI_TRANSAZIONE_SCRITTURA)
+    ).catch(err => traduciErrorePrisma(err, ENTITA, {}))
   }
 
   /**
@@ -413,6 +456,16 @@ export class AggiornaPrezziService {
 
           await this.scrivi(tx, tenantId, sotto)
 
+          const righeConfermate = sotto.daScrivere
+            .filter(l => l.statoPrima === 'CONFERMATO')
+            .flatMap(l => l.righe)
+            .map(r => ({
+              legameId: r.legameId,
+              rigaId: r.rigaId,
+              prezzo: { prima: r.prezzoPrima, dopo: r.prezzoDopo },
+              sconto: { prima: r.scontoPrima, dopo: r.scontoDopo },
+              codiceIvaId: { prima: r.codiceIvaIdPrima, dopo: r.codiceIvaId },
+            }))
           const saltati = riepilogoSaltati(sotto).reduce((n, v) => n + v.numero, 0)
           await tx.activityLog.create({
             data: {
@@ -420,7 +473,9 @@ export class AggiornaPrezziService {
               userId: utenteId,
               action: 'LEGAMI_PREZZI_AGGIORNATI',
               description: 'Prezzi dei legami movimento aggiornati dal listino',
-              // Solo parametri e conteggi: niente ragioni sociali, note o descrizioni libere.
+              // Parametri, conteggi e, per i legami CONFERMATO (prezzo congelato: spec §5.10), i
+              // valori di prima e di dopo di ogni riga. Solo id e numeri: niente ragioni sociali,
+              // note o descrizioni libere.
               metadata: {
                 contrattoId: p.contrattoId,
                 elencoId: p.elencoId,
@@ -433,6 +488,8 @@ export class AggiornaPrezziService {
                 invariati: sotto.invariati,
                 saltati: Object.fromEntries(riepilogoSaltati(sotto).map(v => [v.motivo, v.numero])),
                 usciti,
+                righeConfermate: righeConfermate.slice(0, MAX_RIGHE_AUDIT),
+                righeConfermateTroncate: righeConfermate.length > MAX_RIGHE_AUDIT,
               } as Prisma.InputJsonValue,
             },
           })
@@ -463,7 +520,8 @@ export class AggiornaPrezziService {
         UPDATE righe_legame_movimento r
         SET prezzo = NULLIF(v.prezzo, '')::numeric, sconto = NULLIF(v.sconto, ''),
             codice_iva_id = v.iva::uuid, aliquota_iva = v.aliquota::numeric,
-            natura_iva = NULLIF(v.natura, ''), congelata_il = now(), updated_at = now()
+            natura_iva = NULLIF(v.natura, ''), congelata_il = CASE WHEN r.congelata_il IS NULL THEN NULL ELSE now() END,
+            updated_at = now()
         FROM (SELECT unnest(${righe.map(r => r.rigaId)}::uuid[]) AS id,
                      unnest(${righe.map(r => r.prezzoDopo ?? '')}::text[]) AS prezzo,
                      unnest(${righe.map(r => r.scontoDopo ?? '')}::text[]) AS sconto,
