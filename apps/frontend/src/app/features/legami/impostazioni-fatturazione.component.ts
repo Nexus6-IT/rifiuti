@@ -8,21 +8,22 @@ import { InputTextModule } from 'primeng/inputtext'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { leggiErroriAzione } from '../listino/errori-azione'
-import { puoVariarePrezzi } from '../listino/permessi-listino'
+import { puoImpostareFatturazione } from './permessi-legami'
 import { ImpostazioneFatturazione } from './legami.model'
 import { ImpostazioneFatturazioneService } from './impostazioni-fatturazione.service'
 
 const MESSAGGIO_VERSIONE =
   "L'impostazione è stata modificata da un altro utente: i dati sono stati ricaricati."
 
-/** Numero dei movimenti toccati dal 409 `CONFERMA_RICHIESTA` (anche dentro `details`). */
+/** Numero dei movimenti toccati dal 409 `CONFERMA_RICHIESTA`: il filtro inoltra `details`. */
 function movimentiToccati(err: unknown): number | null {
-  const corpo = (
-    err as { error?: { movimentiToccati?: unknown; details?: { movimentiToccati?: unknown } } }
-  )?.error
-  const n = corpo?.movimentiToccati ?? corpo?.details?.movimentiToccati
+  const n = (err as { error?: { details?: { movimentiToccati?: unknown } } })?.error?.details
+    ?.movimentiToccati
   return typeof n === 'number' ? n : null
 }
+
+const eVersioneSuperata = (codice: string | null): boolean =>
+  codice === 'VERSIONE_SUPERATA' || !!codice?.endsWith('_NEL_FRATTEMPO')
 
 /**
  * Schermata «Fatturazione da»: la data dalla quale i movimenti entrano nella fatturazione.
@@ -49,10 +50,31 @@ function movimentiToccati(err: unknown): number | null {
         {{ e }}
       </p>
 
-      <section class="surface-card" aria-label="Data di inizio della fatturazione">
+      <section
+        *ngIf="!impostazione() && !errore()"
+        class="surface-card"
+        data-testid="fatt-caricamento"
+      >
+        <p role="status">Caricamento in corso...</p>
+      </section>
+      <p-button
+        *ngIf="!impostazione() && errore()"
+        label="Riprova"
+        icon="pi pi-refresh"
+        [outlined]="true"
+        (onClick)="carica()"
+        data-testid="fatt-riprova"
+      />
+
+      <section
+        *ngIf="impostazione()"
+        class="surface-card"
+        aria-label="Data di inizio della fatturazione"
+      >
         <p
           *ngIf="!impostazione()?.fatturazioneDa"
           class="avviso-riquadro"
+          role="status"
           data-testid="fatt-spenta"
         >
           Fatturazione spenta
@@ -65,6 +87,7 @@ function movimentiToccati(err: unknown): number | null {
           type="date"
           [(ngModel)]="data"
           [disabled]="!puoModificare()"
+          aria-describedby="fatt-nota"
           data-testid="fatt-data"
         />
         <p-button
@@ -75,8 +98,21 @@ function movimentiToccati(err: unknown): number | null {
           (onClick)="salva()"
           data-testid="fatt-salva"
         />
-        <p *ngIf="!puoModificare()" class="nota-pagina">
-          Solo gli amministratori possono modificare questa impostazione.
+        <p-button
+          *ngIf="impostazione()?.fatturazioneDa"
+          label="Spegni la fatturazione"
+          icon="pi pi-power-off"
+          [outlined]="true"
+          [disabled]="!puoModificare() || inCorso()"
+          (onClick)="spegni()"
+          data-testid="fatt-spegni"
+        />
+        <p id="fatt-nota" class="nota-pagina">
+          {{
+            puoModificare()
+              ? 'Per spegnere la fatturazione usa il pulsante «Spegni la fatturazione».'
+              : 'Solo gli amministratori possono modificare questa impostazione.'
+          }}
         </p>
       </section>
       <p-confirmDialog />
@@ -94,7 +130,7 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
   readonly inCorso = signal(false)
   data = ''
 
-  readonly puoModificare = () => puoVariarePrezzi(this.auth.currentUser()?.role)
+  readonly puoModificare = () => puoImpostareFatturazione(this.auth.currentUser()?.role)
 
   ngOnInit(): void {
     this.carica()
@@ -115,14 +151,27 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
     })
   }
 
-  salva(confermaMovimenti?: number): void {
+  /** Spegne la fatturazione (data null): scelta esplicita, mai dedotta da un campo vuoto. */
+  spegni(): void {
+    this.invia(null)
+  }
+
+  salva(): void {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(this.data)) {
+      this.errore.set('Data non valida: inserisci una data completa o spegni la fatturazione.')
+      return
+    }
+    this.invia(this.data)
+  }
+
+  private invia(fatturazioneDa: string | null, confermaMovimenti?: number): void {
     const corrente = this.impostazione()
     if (!corrente || this.inCorso()) return
     this.inCorso.set(true)
     this.errore.set(null)
     this.servizio
       .salva({
-        fatturazioneDa: this.data || null,
+        fatturazioneDa,
         versione: corrente.versione,
         ...(confermaMovimenti === undefined ? {} : { confermaMovimenti }),
       })
@@ -135,12 +184,12 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
         },
         error: err => {
           this.inCorso.set(false)
-          this.gestisciErrore(err)
+          this.gestisciErrore(err, fatturazioneDa)
         },
       })
   }
 
-  private gestisciErrore(err: unknown): void {
+  private gestisciErrore(err: unknown, fatturazioneDa: string | null): void {
     const e = leggiErroriAzione(err, "Impossibile salvare l'impostazione.")
     if (e.conflitto && e.codice === 'CONFERMA_RICHIESTA') {
       const n = movimentiToccati(err)
@@ -151,12 +200,12 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
           icon: 'pi pi-exclamation-triangle',
           acceptLabel: 'Conferma',
           rejectLabel: 'Annulla',
-          accept: () => this.salva(n),
+          accept: () => this.invia(fatturazioneDa, n),
         })
         return
       }
     }
-    if (e.conflitto && e.codice === 'VERSIONE_SUPERATA') {
+    if (e.conflitto && eVersioneSuperata(e.codice)) {
       this.errore.set(MESSAGGIO_VERSIONE)
       this.carica(MESSAGGIO_VERSIONE)
       return

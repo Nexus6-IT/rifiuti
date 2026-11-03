@@ -62,7 +62,11 @@ describe('ImpostazioniFatturazioneComponent', () => {
     servizio.salva.and.returnValues(
       throwError(() => ({
         status: 409,
-        error: { error: 'CONFERMA_RICHIESTA', movimentiToccati: 3 },
+        error: {
+          error: 'CONFERMA_RICHIESTA',
+          message: 'Conferma richiesta',
+          details: { movimentiToccati: 3 },
+        },
       })),
       of({ fatturazioneDa: '2026-01-01', versione: 3, modificatoIl: null })
     )
@@ -104,5 +108,75 @@ describe('ImpostazioniFatturazioneComponent', () => {
     expect(servizio.leggi).toHaveBeenCalledTimes(2)
     expect(q('fatt-errore')?.textContent).toContain('modificata da un altro utente')
     expect(q<HTMLInputElement>('fatt-data')!.value).toBe('2026-03-01')
+  })
+
+  it('Annulla sulla conferma: nessun rinvio', async () => {
+    await crea('ADMIN', { fatturazioneDa: '2026-06-01', versione: 2, modificatoIl: null })
+    servizio.salva.and.returnValue(
+      throwError(() => ({
+        status: 409,
+        error: { error: 'CONFERMA_RICHIESTA', message: 'x', details: { movimentiToccati: 3 } },
+      }))
+    )
+    await scriviData('2026-01-01')
+    bottone('fatt-salva')!.click()
+    await stabilizza(fixture)
+    document.body.querySelector<HTMLButtonElement>('.p-confirm-dialog-reject')!.click()
+    await stabilizza(fixture)
+    expect(servizio.salva).toHaveBeenCalledTimes(1)
+  })
+
+  it('codice *_NEL_FRATTEMPO è trattato come versione superata', async () => {
+    await crea('ADMIN')
+    servizio.salva.and.returnValue(
+      throwError(() => ({ status: 409, error: { error: 'IMPOSTAZIONE_NEL_FRATTEMPO' } }))
+    )
+    await scriviData('2026-01-01')
+    bottone('fatt-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.leggi).toHaveBeenCalledTimes(2)
+  })
+
+  it('data incompleta: errore «Data non valida», nessuna PUT', async () => {
+    await crea('ADMIN', { fatturazioneDa: '2026-06-01', versione: 2, modificatoIl: null })
+    await scriviData('')
+    bottone('fatt-salva')!.click()
+    await stabilizza(fixture)
+    expect(q('fatt-errore')?.textContent).toContain('Data non valida')
+    expect(servizio.salva).not.toHaveBeenCalled()
+  })
+
+  it('«Spegni la fatturazione» invia data null', async () => {
+    await crea('ADMIN', { fatturazioneDa: '2026-06-01', versione: 2, modificatoIl: null })
+    servizio.salva.and.returnValue(of(spenta))
+    bottone('fatt-spegni')!.click()
+    await stabilizza(fixture)
+    expect(servizio.salva).toHaveBeenCalledOnceWith({ fatturazioneDa: null, versione: 2 })
+  })
+
+  it('GET fallito: niente «Fatturazione spenta», errore con Riprova, Salva assente', async () => {
+    servizio = jasmine.createSpyObj('ImpostazioneFatturazioneService', ['leggi', 'salva'])
+    servizio.leggi.and.returnValues(
+      throwError(() => ({ status: 500, error: {} })),
+      of(spenta)
+    )
+    await TestBed.configureTestingModule({
+      imports: [ImpostazioniFatturazioneComponent],
+      providers: [
+        provideNoopAnimations(),
+        MessageService,
+        { provide: ImpostazioneFatturazioneService, useValue: servizio },
+        { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
+      ],
+    }).compileComponents()
+    fixture = TestBed.createComponent(ImpostazioniFatturazioneComponent)
+    await stabilizza(fixture)
+    expect(q('fatt-spenta')).toBeNull()
+    expect(q('fatt-salva')).toBeNull()
+    expect(q('fatt-errore')).not.toBeNull()
+    bottone('fatt-riprova')!.click()
+    await stabilizza(fixture)
+    expect(q('fatt-spenta')).not.toBeNull()
+    expect(bottone('fatt-salva')!.disabled).toBeFalse()
   })
 })
