@@ -241,14 +241,16 @@ const TUTTE_LE_SEDI = ''
                       ></i>
                     </button>
                   </td>
-                  <td class="cell-nowrap">
-                    <strong class="cell-mono">{{ c.cerCode }}</strong>
-                    <p-tag
-                      *ngIf="c.pericoloso"
-                      class="ml-2"
-                      severity="danger"
-                      value="Pericoloso"
-                    ></p-tag>
+                  <td>
+                    <span class="cell-nowrap"
+                      ><strong class="cell-mono">{{ c.cerCode }}</strong>
+                      <p-tag
+                        *ngIf="c.pericoloso"
+                        class="ml-2"
+                        severity="danger"
+                        value="Pericoloso"
+                      ></p-tag
+                    ></span>
                     <div *ngIf="c.unitaMiste" class="giacenze-nota" data-testid="nota-unita-miste">
                       Scarichi in un'unità diversa dai carichi (es. litri contro kg): il conteggio
                       FIFO non li abbina, verifica l'unità del FIR.
@@ -474,11 +476,6 @@ const TUTTE_LE_SEDI = ''
         font-size: var(--font-size-sm);
       }
 
-      .giacenze-label {
-        display: block;
-        margin-bottom: var(--spacing-xs, 0.25rem);
-        font-weight: 600;
-      }
       .giacenze-nota {
         color: var(--text-tertiary);
         font-size: var(--font-size-sm);

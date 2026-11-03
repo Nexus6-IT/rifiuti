@@ -784,7 +784,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       }
 
       .detail-label {
-        font-size: var(--font-size-xs);
+        font-size: 0.8125rem;
         color: var(--text-tertiary);
         font-weight: var(--font-weight-medium);
       }

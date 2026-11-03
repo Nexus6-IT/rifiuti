@@ -371,9 +371,9 @@ interface FirOption {
                 <th scope="col">Tipo</th>
                 <th scope="col">Data op.</th>
                 <th scope="col">CER</th>
-                <th scope="col" style="min-width: 11rem">Causale</th>
+                <th scope="col" style="min-width: 8rem">Causale</th>
                 <th scope="col" class="num-col">Quantità</th>
-                <th scope="col" style="min-width: 9rem">Controparte</th>
+                <th scope="col" style="min-width: 7rem">Controparte</th>
                 <th scope="col">FIR</th>
                 <th scope="col">Stato</th>
                 <th *ngIf="rentriColonna()" scope="col" data-testid="registro-col-rentri">
@@ -501,7 +501,7 @@ interface FirOption {
                   ></app-rentri-riga-azioni>
                 </td>
                 <td *ngIf="offriCorrezioni()" class="azioni-col">
-                  <ng-container *ngIf="vigente(m)">
+                  <div *ngIf="vigente(m)" class="azioni-stack">
                     <p-button
                       label="Rettifica"
                       icon="pi pi-pencil"
@@ -521,7 +521,7 @@ interface FirOption {
                       (onClick)="apriCorrezione(m, 'annullamento')"
                       [ariaLabel]="'Annulla il movimento ' + numeroMovimento(m)"
                     ></p-button>
-                  </ng-container>
+                  </div>
                 </td>
               </tr>
             </ng-template>
@@ -1155,6 +1155,12 @@ interface FirOption {
       .azioni-col {
         white-space: nowrap;
         text-align: right;
+      }
+      /* Rettifica e Annulla impilati: la colonna dimezza la larghezza. */
+      .azioni-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
       }
       .esito-verifica {
         display: flex;

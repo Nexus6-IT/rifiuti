@@ -22,7 +22,7 @@
                  colonne numeriche: a destra, intestazione compresa
    .cell-sub     seconda riga piccola e secondaria dentro una cella
    .cell-nowrap  cella che non va a capo
-   .cell-ellipsis testo lungo troncato con i puntini (max 13rem; il testo completo va nel title)
+   .cell-ellipsis testo lungo troncato con i puntini (max 10rem; il testo completo va nel title)
    .stato-stack  piu' stati impilati nella stessa cella
    .empty-state  stato vuoto compatto
    .nota-pagina  nota esplicativa secondaria sotto un blocco
@@ -124,16 +124,36 @@
   }
   .table-card .table-responsive {
     border-radius: 0;
+    /* Indizio di scroll orizzontale: ombre ai bordi che compaiono solo dove c'e' altro da vedere
+       ("scroll shadows": i due strati 'local' coprono le ombre a fine corsa). */
+    background:
+      linear-gradient(to right, var(--surface-card) 30%, transparent) left center / 2.5rem 100%
+        no-repeat local,
+      linear-gradient(to left, var(--surface-card) 30%, transparent) right center / 2.5rem 100%
+        no-repeat local,
+      radial-gradient(
+          farthest-side at 0 50%,
+          color-mix(in srgb, var(--text-primary) 22%, transparent),
+          transparent
+        )
+        left center / 0.75rem 100% no-repeat scroll,
+      radial-gradient(
+          farthest-side at 100% 50%,
+          color-mix(in srgb, var(--text-primary) 22%, transparent),
+          transparent
+        )
+        right center / 0.75rem 100% no-repeat scroll;
   }
   .p-datatable .p-datatable-thead > tr > th {
     height: 2.25rem;
     white-space: nowrap;
     vertical-align: middle;
+    padding-left: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
   }
   .p-datatable .p-datatable-tbody > tr > td {
-    vertical-align: middle;
-    padding-top: var(--spacing-sm);
-    padding-bottom: var(--spacing-sm);
+    vertical-align: top;
+    padding: var(--spacing-sm);
   }
   .p-datatable .p-datatable-tbody > tr:last-child > td {
     border-bottom: 0;
@@ -145,7 +165,9 @@
     text-align: right;
   }
   /* Le quantita' non vanno a capo ("2.400,5 kg" spezzato era illeggibile su telefono): la tabella scorre. */
-  .p-datatable .p-datatable-tbody > tr > td.num-col, .p-datatable .p-datatable-tbody > tr > td.text-right { white-space: nowrap; }
+  .p-datatable .p-datatable-tbody > tr > td.num-col {
+    white-space: nowrap;
+  }
   .p-paginator {
     padding: var(--spacing-sm) var(--spacing-md);
     border-top: 1px solid var(--rule);
@@ -164,7 +186,7 @@
   }
   .cell-ellipsis {
     display: block;
-    max-width: 13rem;
+    max-width: 10rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
