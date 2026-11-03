@@ -27,6 +27,8 @@ export interface OpzioniMovimentoDiTest {
   firId?: string | null
   /** Omesso: `CARICO`. */
   type?: VersoMovimentoDiTest
+  /** Versione della causale aziendale (obbligatoria per una causale `AZ_...`). */
+  causaleAziendaId?: string | null
 }
 
 /**
@@ -67,6 +69,7 @@ export async function creaMovimentoDiTest(
       quantity: opz.quantity ?? '100',
       unit: opz.unit ?? 'KG',
       firId: opz.firId ?? null,
+      causaleAziendaId: opz.causaleAziendaId ?? null,
       tipoAnnotazione: 'ORDINARIA',
     },
   })

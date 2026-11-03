@@ -52,6 +52,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'legge solo il CER del movimento vigente di ogni legame (join per id) per controllare che la riga di listino sia ancora quella del CER; non conta nulla',
   },
+  'application/legami-movimento/lista-legami.service.ts': {
+    scelta: 'vigenti',
+    motivo:
+      'lista «da collegare»: una riga per catena, la testa vigente (`sqlVigente`), senza correzioni ne annullamenti',
+  },
   'application/legami-movimento/impostazioni-fatturazione.service.ts': {
     scelta: 'vigenti',
     motivo:
