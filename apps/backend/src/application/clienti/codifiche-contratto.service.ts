@@ -7,6 +7,7 @@
 // Creazione in linea: senza `codice` il servizio assegna il primo codice numerico libero del genere.
 import { Injectable } from '@nestjs/common'
 import {
+  MSG_CODICE_MANCANTE_CONTRATTO,
   normalizzaCodifica,
   validaCodifica,
   type DatiCodifica,
@@ -17,7 +18,6 @@ import type { DescrizioneEntita, VincoliNoti } from './anagrafica-versionata'
 import {
   CodificheTabella,
   type CodificaVistaBase,
-  type DelegatoCodifica,
   type FiltroCodificheBase,
   type ModificaCodificaBase,
   type NuovaCodificaBase,
@@ -52,15 +52,14 @@ export class CodificheContrattoService {
 
   constructor(prisma: PrismaService) {
     this.motore = new CodificheTabella<GenereCodifica>(prisma, {
-      prefisso: 'CODIFICA_CONTRATTO',
       entita: ENTITA,
       vincoli: VINCOLI,
       tabellaSql: 'codifiche_contratto',
       tipoGenereSql: 'genere_codifica_contratto',
       prefissoLock: 'codifiche-contratto-codice:',
       descrizioneAudit: 'Codifica del contratto',
-      messaggioCodiceMancante: 'Indica il codice.',
-      delegato: c => c.codificaContratto as unknown as DelegatoCodifica,
+      messaggioCodiceMancante: MSG_CODICE_MANCANTE_CONTRATTO,
+      delegato: c => c.codificaContratto,
       controllaGenere: g =>
         typeof g === 'string' && GENERI.includes(g) ? (g as GenereCodifica) : null,
       normalizza: normalizzaCodifica,

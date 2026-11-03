@@ -70,23 +70,29 @@ export interface DatiNormalizzati {
 }
 
 /** La parte del delegato Prisma che il motore usa (stessa forma per le due tabelle). */
-export interface DelegatoCodifica {
+export interface DelegatoCodifica<G extends string> {
   findFirst(args: { where: { id: string; tenantId: string } }): Promise<RigaCodifica | null>
   findMany(args: {
-    where: { tenantId: string; genere: string; attiva?: boolean }
-    orderBy: Array<Record<string, 'asc' | 'desc'>>
+    where: { tenantId: string; genere: G; attiva?: boolean }
+    orderBy: Array<{ attiva?: 'asc' | 'desc'; codice?: 'asc' | 'desc' }>
   }): Promise<RigaCodifica[]>
   create(args: {
-    data: { tenantId: string; genere: string; codice: string; descrizione: string }
+    data: { tenantId: string; genere: G; codice: string; descrizione: string }
   }): Promise<RigaCodifica>
-  updateMany(args: { where: object; data: object }): Promise<{ count: number }>
-  deleteMany(args: { where: object }): Promise<{ count: number }>
+  updateMany(args: {
+    where: { id: string; tenantId: string; versione: number }
+    data: Partial<Pick<RigaCodifica, 'codice' | 'descrizione' | 'attiva'>> & {
+      versione: { increment: number }
+    }
+  }): Promise<{ count: number }>
+  deleteMany(args: {
+    where: { id: string; tenantId: string; versione: number }
+  }): Promise<{ count: number }>
 }
 
 /** Cio' che cambia da una tabella all'altra. */
 export interface ConfigCodifiche<G extends string> {
-  /** Prefisso dei codici di errore e delle azioni di audit (`CODIFICA_CONTRATTO`). */
-  prefisso: string
+  /** Il suo `prefisso` e' anche quello dei codici di errore e delle azioni di audit. */
   entita: DescrizioneEntita
   vincoli: VincoliNoti
   /** Nome SQL della tabella e del tipo enum del genere, per le letture dei codici usati. */
@@ -98,7 +104,7 @@ export interface ConfigCodifiche<G extends string> {
   descrizioneAudit: string
   /** Messaggio quando in modifica il codice resta vuoto (R24). */
   messaggioCodiceMancante: string
-  delegato: (client: ClientUsi) => DelegatoCodifica
+  delegato: (client: ClientUsi) => DelegatoCodifica<G>
   controllaGenere: (genere: unknown) => G | null
   normalizza: (dati: Partial<Record<keyof DatiNormalizzati, unknown>>) => DatiNormalizzati
   valida: (dati: DatiNormalizzati) => string[]
@@ -128,13 +134,16 @@ export class CodificheTabella<G extends string> {
   ) {}
 
   private lanciaNonValida(errori: string[]): never {
-    throw new BadRequestException({ message: errori, error: `${this.cfg.prefisso}_NON_VALIDA` })
+    throw new BadRequestException({
+      message: errori,
+      error: `${this.cfg.entita.prefisso}_NON_VALIDA`,
+    })
   }
 
   private nonTrovata() {
     return new NotFoundException({
       message: 'Codifica non trovata.',
-      error: `${this.cfg.prefisso}_NON_TROVATA`,
+      error: `${this.cfg.entita.prefisso}_NON_TROVATA`,
     })
   }
 
@@ -269,7 +278,9 @@ export class CodificheTabella<G extends string> {
               tabella.updateMany({
                 where: { id, tenantId, versione: m.versione },
                 data: {
-                  ...Object.fromEntries(campi.map(c => [c, nuovi[c]])),
+                  ...(Object.fromEntries(campi.map(c => [c, nuovi[c]])) as Partial<
+                    Pick<RigaCodifica, Campo>
+                  >),
                   versione: { increment: 1 },
                 },
               }),
@@ -360,7 +371,7 @@ export class CodificheTabella<G extends string> {
     if (libero === null) {
       throw new BadRequestException({
         message: MSG_ESAURITI,
-        error: `${this.cfg.prefisso}_CODICI_ESAURITI`,
+        error: `${this.cfg.entita.prefisso}_CODICI_ESAURITI`,
       })
     }
     return libero
@@ -379,7 +390,7 @@ export class CodificheTabella<G extends string> {
       data: {
         tenantId,
         userId: utenteId,
-        action: `${this.cfg.prefisso}_${azione}`,
+        action: `${this.cfg.entita.prefisso}_${azione}`,
         description: `${this.cfg.descrizioneAudit} ${esito}`,
         metadata: metadata as Prisma.InputJsonValue,
       },

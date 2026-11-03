@@ -17,6 +17,9 @@ export const ETICHETTE_GENERE: Readonly<Record<GenereCodifica, string>> = {
   MOTIVO_ANNULLO: 'Motivo di annullo',
 }
 
+/** Codice vuoto in modifica: nel contratto il codice e' libero (alfanumerico), non serve dire altro. */
+export const MSG_CODICE_MANCANTE_CONTRATTO = 'Indica il codice.'
+
 export interface DatiCodifica {
   genere: GenereCodifica
   codice: string | null

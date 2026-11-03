@@ -306,10 +306,10 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
     })
 
     it('primo codice libero concorrente: due POST in parallelo ottengono 001 e 002', async () => {
-      // Il genere e' vuoto: il FOR UPDATE non blocca gli insert, quindi entrambe le transazioni
-      // calcolano 001 e una delle due va in P2002. Il test passa grazie al nuovo tentativo in una
-      // transazione nuova (senza, la perdente risponde 409). Cinque aziende di fila: sul primo
-      // giro le connessioni del pool si aprono in serie e la corsa puo' non verificarsi.
+      // Il lock consultivo per (azienda, genere) serializza le creazioni senza codice; il nuovo
+      // tentativo su P2002 e' solo la rete di sicurezza per quelle a codice esplicito. Che sia
+      // davvero il lock a fare il lavoro lo provano i due test che seguono. Cinque aziende di
+      // fila: sul primo giro le connessioni del pool si aprono in serie.
       for (let giro = 0; giro < 5; giro++) {
         const { tenantId, utenteId } = await azienda()
         const [x, y] = await Promise.all([
@@ -326,6 +326,80 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
         ).toBe(2)
       }
     })
+
+    it('tre creazioni senza codice in parallelo: 001, 002, 003 (due tentativi non bastano senza il lock)', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const crea = (descrizione: string) =>
+        nel(tenantId, () =>
+          codifiche.crea(tenantId, utenteId, { genere: 'MOTIVO_ANNULLO', descrizione })
+        )
+      const esiti = await Promise.all([crea('A'), crea('B'), crea('C')])
+      expect(esiti.map(e => e.codice).sort()).toEqual(['001', '002', '003'])
+    })
+
+    it('la creazione senza codice aspetta il lock consultivo di azienda e genere tenuto da un altro', async () => {
+      const { tenantId, utenteId } = await azienda()
+      let rilascia!: () => void
+      let presa!: () => void
+      const cancello = new Promise<void>(r => (rilascia = r))
+      const lockPreso = new Promise<void>(r => (presa = r))
+      const tenuta = owner.$transaction(
+        async tx => {
+          await tx.$executeRaw`
+            SELECT pg_advisory_xact_lock(
+              hashtext('codifiche-contratto-codice:MOTIVO_ANNULLO'), hashtext(${tenantId}))`
+          presa()
+          await cancello
+        },
+        { timeout: 30000 }
+      )
+      await lockPreso
+      let finita = false
+      const creazione = nel(tenantId, () =>
+        codifiche.crea(tenantId, utenteId, { genere: 'MOTIVO_ANNULLO', descrizione: 'Attesa' })
+      ).then(v => {
+        finita = true
+        return v
+      })
+      try {
+        await new Promise(r => setTimeout(r, 800))
+        // Senza il lock la creazione sarebbe gia' finita.
+        expect(finita).toBe(false)
+      } finally {
+        rilascia()
+        await tenuta
+      }
+      expect((await creazione).codice).toBe('001')
+    }, 20000)
+
+    it('creazione senza codice con una riga del genere bloccata da un’altra transazione: non aspetta e non è un 500', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const prima = await nel(tenantId, () =>
+        codifiche.crea(tenantId, utenteId, { genere: 'TIPO', descrizione: 'Uno' })
+      )
+      let rilascia!: () => void
+      let presa!: () => void
+      const cancello = new Promise<void>(r => (rilascia = r))
+      const lockPreso = new Promise<void>(r => (presa = r))
+      const tenuta = owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT id FROM codifiche_contratto WHERE id = ${prima.id}::uuid FOR NO KEY UPDATE`
+          presa()
+          await cancello
+        },
+        { timeout: 30000 }
+      )
+      await lockPreso
+      try {
+        const nuova = await nel(tenantId, () =>
+          codifiche.crea(tenantId, utenteId, { genere: 'TIPO', descrizione: 'Due' })
+        )
+        expect(nuova.codice).toBe('002')
+      } finally {
+        rilascia()
+        await tenuta
+      }
+    }, 20000)
 
     it('codice esplicito duplicato nello stesso genere: 409; in un altro genere va bene', async () => {
       const { tenantId, utenteId } = await azienda()

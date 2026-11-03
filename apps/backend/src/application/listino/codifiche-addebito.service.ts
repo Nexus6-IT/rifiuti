@@ -18,7 +18,6 @@ import type { DescrizioneEntita, VincoliNoti } from '../clienti/anagrafica-versi
 import {
   CodificheTabella,
   type CodificaVistaBase,
-  type DelegatoCodifica,
   type FiltroCodificheBase,
   type ModificaCodificaBase,
   type NuovaCodificaBase,
@@ -57,7 +56,6 @@ export class CodificheAddebitoService {
 
   constructor(prisma: PrismaService) {
     this.motore = new CodificheTabella<GenereCodificaAddebito>(prisma, {
-      prefisso: 'CODIFICA_ADDEBITO',
       entita: ENTITA,
       vincoli: VINCOLI,
       tabellaSql: 'codifiche_addebito',
@@ -65,7 +63,7 @@ export class CodificheAddebitoService {
       prefissoLock: 'codifiche-addebito-codice:',
       descrizioneAudit: 'Codifica di addebito',
       messaggioCodiceMancante: MSG_CODICE_CODIFICA,
-      delegato: c => c.codificaAddebito as unknown as DelegatoCodifica,
+      delegato: c => c.codificaAddebito,
       controllaGenere: g =>
         typeof g === 'string' && Object.prototype.hasOwnProperty.call(ETICHETTE_GENERE_ADDEBITO, g)
           ? (g as GenereCodificaAddebito)
