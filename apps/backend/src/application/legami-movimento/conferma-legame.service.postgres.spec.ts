@@ -512,7 +512,10 @@ describe('LegamiService (conferma, modifica, escludi, riammetti) — Postgres re
         })
         expect(
           await errore(modifica(s, id, 1, { contrattoId: annullato.contrattoId }))
-        ).toMatchObject({ status: 409, body: { error: 'CONTRATTO_NON_ATTIVO' } })
+        ).toMatchObject({
+          status: 409,
+          body: { error: 'LEGAME_INCOMPLETO', details: { motivi: ['CONTRATTO_NON_ATTIVO'] } },
+        })
         expect(
           await errore(modifica(s, id, 1, { contrattoId: altroCliente.contrattoId }))
         ).toMatchObject({ status: 400, body: { error: 'CONTRATTO_NON_DEL_CLIENTE' } })
@@ -845,7 +848,7 @@ describe('LegamiService (conferma, modifica, escludi, riammetti) — Postgres re
       expect(v.motivi).toEqual([])
     })
 
-    it('CONFERMATO: cambiare contratto torna a PROPOSTO con le righe non congelate; aggiungere una riga idem', async () => {
+    it('CONFERMATO: cambiare contratto torna a PROPOSTO con le righe non congelate', async () => {
       const s = await scenario(1)
       const id = await proponi(s)
       await conferma(s, id, 1)
@@ -855,6 +858,129 @@ describe('LegamiService (conferma, modifica, escludi, riammetti) — Postgres re
       const l = await legameDb(id)
       expect(l.confermatoIl).toBeNull()
       expect(l.righe.every(r => r.congelataIl === null)).toBe(true)
+    })
+
+    describe('decisione 20: righe aggiunte o tolte su un CONFERMATO', () => {
+      it('aggiungere una riga: resta CONFERMATO, la nuova si congela col prezzo di listino, le altre invariate', async () => {
+        const s = await scenario(2)
+        const [v1, v2] = s.righeVIds
+        const id = await proponi(s)
+        await modifica(s, id, 1, { righe: [{ rigaAddebitoId: v1, prezzo: '4' }] })
+        await modifica(s, id, 2, { righe: [{ rigaAddebitoId: v2, rimuovi: true }] })
+        await conferma(s, id, 3)
+        const prima = await legameDb(id)
+        expect(prima.righe).toHaveLength(2)
+        await owner.rigaAddebito.update({ where: { id: v2 }, data: { prezzo: '6' } })
+        const v = await modifica(s, id, 4, { righe: [{ rigaAddebitoId: v2 }] })
+        expect(v.stato).toBe('CONFERMATO')
+        const l = await legameDb(id)
+        expect(l.stato).toBe('CONFERMATO')
+        expect(l.confermatoIl).toEqual(prima.confermatoIl)
+        expect(l.righe).toHaveLength(3)
+        expect(l.righe.every(r => r.congelataIl !== null)).toBe(true)
+        const nuova = await rigaDb(id, v2)
+        expect(nuova.prezzo?.toFixed()).toBe('6')
+        for (const r of prima.righe) {
+          const dopo = l.righe.find(x => x.id === r.id)!
+          expect(dopo.congelataIl).toEqual(r.congelataIl)
+          expect(dopo.prezzo?.toFixed()).toBe(r.prezzo?.toFixed())
+          expect(dopo.quantita?.toFixed()).toBe(r.quantita?.toFixed())
+        }
+        expect((await rigaDb(id, v1)).prezzoManuale).toBe(true)
+      })
+
+      it('aggiungere una riga senza prezzo: 409 LEGAME_INCOMPLETO con SENZA_PREZZO, nulla scritto', async () => {
+        const s = await scenario(1)
+        const id = await proponi(s)
+        await owner.rigaAddebito.update({
+          where: { id: s.righeVIds[0] },
+          data: { prezzoSpeciale: false },
+        })
+        await conferma(s, id, 1)
+        await modifica(s, id, 2, { righe: [{ rigaAddebitoId: s.righeVIds[0], rimuovi: true }] })
+        const orig = proposta.calcolaEBloccaInTx.bind(proposta)
+        const spia = jest
+          .spyOn(proposta, 'calcolaEBloccaInTx')
+          .mockImplementationOnce(async (...a) => {
+            const p = await orig(...a)
+            return {
+              ...p,
+              righe: p.righe.map(r =>
+                r.rigaAddebitoId === s.righeVIds[0] ? { ...r, prezzo: null, importo: null } : r
+              ),
+            }
+          })
+        const e = await errore(modifica(s, id, 3, { righe: [{ rigaAddebitoId: s.righeVIds[0] }] }))
+        spia.mockRestore()
+        expect(e).toMatchObject({
+          status: 409,
+          body: { error: 'LEGAME_INCOMPLETO', details: { motivi: ['SENZA_PREZZO'] } },
+        })
+        const l = await legameDb(id)
+        expect(l).toMatchObject({ stato: 'CONFERMATO', versione: 3 })
+        expect(l.righe).toHaveLength(1)
+      })
+
+      it('togliere una riga: resta CONFERMATO; togliere l’ultima: 400 RIGHE_VUOTE', async () => {
+        const s = await scenario(1)
+        const id = await proponi(s)
+        await conferma(s, id, 1)
+        const v = await modifica(s, id, 2, {
+          righe: [{ rigaAddebitoId: s.righeVIds[0], rimuovi: true }],
+        })
+        expect(v.stato).toBe('CONFERMATO')
+        const l = await legameDb(id)
+        expect(l.righe.map(r => r.rigaAddebitoId)).toEqual([s.rigaCerId])
+        expect(l.righe[0].congelataIl).not.toBeNull()
+        const e = await errore(
+          modifica(s, id, 3, { righe: [{ rigaAddebitoId: s.rigaCerId, rimuovi: true }] })
+        )
+        expect(e).toMatchObject({ status: 400, body: { error: 'RIGHE_VUOTE' } })
+      })
+
+      it('m1: CONFERMATO con solo quantita null non ricontrolla la testata (cliente disattivato: resta CONFERMATO)', async () => {
+        const s = await scenario(0)
+        const id = await proponi(s)
+        await conferma(s, id, 1, { righe: [{ rigaAddebitoId: s.rigaCerId, quantita: '5' }] })
+        await owner.cliente.update({ where: { id: s.clienteId }, data: { attivo: false } })
+        const v = await modifica(s, id, 2, {
+          righe: [{ rigaAddebitoId: s.rigaCerId, quantita: null }],
+        })
+        expect(v.stato).toBe('CONFERMATO')
+        const r = await rigaDb(id, s.rigaCerId)
+        expect(r.quantita?.toFixed()).toBe('100')
+        expect(r.quantitaOrigine).toBe('DA_MOVIMENTO')
+        const log = await audit(s.tenantId, 'LEGAME_MOVIMENTO_MODIFICATO')
+        expect(log[0].metadata).toMatchObject({
+          righe: [{ rigaAddebitoId: s.rigaCerId, quantita: { prima: '5', dopo: '100' } }],
+        })
+      })
+    })
+
+    it('m2: cliente disattivato + modifica di un prezzo: DA_COLLEGARE con SENZA_CLIENTE, versione+1', async () => {
+      const s = await scenario(0)
+      const id = await proponi(s)
+      await owner.cliente.update({ where: { id: s.clienteId }, data: { attivo: false } })
+      const v = await modifica(s, id, 1, { righe: [{ rigaAddebitoId: s.rigaCerId, prezzo: '3' }] })
+      expect(v).toMatchObject({
+        stato: 'DA_COLLEGARE',
+        versione: 2,
+        motivi: ['SENZA_CLIENTE'],
+        dettaglioCliente: 'cliente disattivato',
+      })
+      expect((await rigaDb(id, s.rigaCerId)).prezzo?.toFixed()).toBe('3')
+    })
+
+    it('m5: il cambio di contratto registra nell’audit i prezzi manuali persi', async () => {
+      const s = await scenario(0)
+      const id = await proponi(s)
+      await modifica(s, id, 1, { righe: [{ rigaAddebitoId: s.rigaCerId, prezzo: '12.5' }] })
+      const c2 = await secondoContratto(s)
+      await modifica(s, id, 2, { contrattoId: c2.contrattoId })
+      const log = await audit(s.tenantId, 'LEGAME_MOVIMENTO_MODIFICATO')
+      expect(log[1].metadata).toMatchObject({
+        prezziManualiPersi: [{ rigaAddebitoId: s.rigaCerId, prezzo: '12.5', sconto: null }],
+      })
     })
 
     it('la conferma non scrive nulla sul registro', async () => {
@@ -970,6 +1096,25 @@ describe('LegamiService (conferma, modifica, escludi, riammetti) — Postgres re
       const id = await proponi(s)
       const e = await errore(service.riammetti(s.tenantId, s.utenteId, id, 1))
       expect(e).toMatchObject({ status: 409, body: { error: 'STATO_LEGAME_NON_AMMESSO' } })
+    })
+
+    it('I1: riammetti un legame escluso per data (movimento prima di «fatturazione da»): 409, legame invariato', async () => {
+      const s = await scenario(0)
+      const id = await proponi(s)
+      await service.escludi(s.tenantId, s.utenteId, id, 1, 'da rivedere')
+      await owner.impostazioneFatturazione.update({
+        where: { tenantId: s.tenantId },
+        data: { fatturazioneDa: new Date('2026-06-01T00:00:00Z') },
+      })
+      const e = await errore(service.riammetti(s.tenantId, s.utenteId, id, 2))
+      expect(e).toMatchObject({ status: 409, body: { error: 'MOVIMENTO_FUORI_FATTURAZIONE' } })
+      expect(await legameDb(id)).toMatchObject({ stato: 'ESCLUSO', versione: 2 })
+      // Fatturazione spenta (nessuna data): stesso risultato.
+      await owner.impostazioneFatturazione.update({
+        where: { tenantId: s.tenantId },
+        data: { fatturazioneDa: null },
+      })
+      expect((await errore(service.riammetti(s.tenantId, s.utenteId, id, 2))).status).toBe(409)
     })
 
     it('riammetti con la causale non piu fatturabile: 409 CAUSALE_NON_FATTURABILE', async () => {

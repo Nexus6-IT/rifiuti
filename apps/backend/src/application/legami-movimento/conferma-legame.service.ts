@@ -19,6 +19,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
@@ -32,6 +33,8 @@ import {
   type MotivoLegame,
   type StatoLegame,
 } from '../../domain/legami-movimento/codici'
+import { quantitaPerRiga } from '../../domain/legami-movimento/proposta-righe'
+import type { TipoQuantita } from '../../domain/listino/riga-addebito'
 import { statoDopoRicalcolo, transizioneEscludi } from '../../domain/legami-movimento/stato-legame'
 import { avvisiDaRighe, motiviRighe } from '../../domain/legami-movimento/valori-legame'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -54,6 +57,7 @@ import {
   type ModificheNorm,
   type RigaMem,
 } from './conferma-legame-righe'
+import { leggiFatturazioneDaInTx } from './impostazioni-fatturazione.service'
 import { eViolazioneFk } from './legame-scrittura'
 import {
   leggiCliente,
@@ -68,6 +72,7 @@ import {
   importoVista,
   PropostaLegameService,
   type InputProposta,
+  type PropostaVista,
   type ScelteProposta,
 } from './proposta-legame.service'
 
@@ -172,6 +177,8 @@ interface Esito {
   cambi: CambioRiga[]
   righeAggiunte: string[]
   righeRimosse: string[]
+  /** Prezzi scritti a mano che il ricalcolo ha buttato via (cambio di elenco/contratto/cliente). */
+  prezziManualiPersi?: { rigaAddebitoId: string; prezzo: string | null; sconto: string | null }[]
 }
 
 type DatiEsito = Omit<
@@ -373,16 +380,26 @@ export class LegamiService {
         const c = await leggiCliente(tx, tenantId, l.clienteId)
         if (c?.attivo) scelte = { clienteId: c.id }
       }
+      // Qui «fatturazione da» conta (decisione 11): riammettere non fa entrare in fatturazione un
+      // movimento precedente alla data. Riga delle impostazioni FOR SHARE, come `proponiEScrivi`.
+      const fatturazioneDa = await leggiFatturazioneDaInTx(tx, tenantId, { condividi: true })
       const p = await this.proposta.calcolaEBloccaInTx(
         tx,
         tenantId,
         inputDaMovimento(mov),
         scelte,
         {
-          fatturazioneDa: FATTURAZIONE_SEMPRE,
+          fatturazioneDa,
         }
       )
       if (!p.fatturabile) throw causaleNonFatturabile()
+      if (!p.attiva) {
+        throw new ConflictException({
+          error: 'MOVIMENTO_FUORI_FATTURAZIONE',
+          message:
+            'Il movimento è precedente alla data di «fatturazione da» (o la fatturazione è spenta): non si può riammettere.',
+        })
+      }
       await bloccaRigheLegame(tx, tenantId, [l.id])
       await controllaVersione(tx, tenantId, l)
       const righe = p.righe.map(righaDaProposta)
@@ -495,9 +512,45 @@ export class LegamiService {
     const capoCambiato = clienteCambia || contrattoCambia || elencoCambia
     const strutturaCambiata = capoCambiato || aggiunte.length > 0 || rimosse.length > 0
 
-    const base = { aggiunte, rimosse, strutturaCambiata }
-    if (l.stato === 'CONFERMATO' && !strutturaCambiata && riderivaQuantita.size === 0) {
-      const { righe, cambi } = applicaModificheRighe(righeL, mods, l.stato)
+    // Un CONFERMATO resta tale finche' le sue righe sono complete (spec §10: un elenco chiuso dopo
+    // il congelamento non lo invalida): per lui testata e scelte NON si ricontrollano, a meno che
+    // l'utente cambi cliente, contratto o elenco (allora torna PROPOSTO, decisione 2).
+    const confermatoStabile = l.stato === 'CONFERMATO' && !capoCambiato
+    const righeCambiate = aggiunte.length > 0 || rimosse.length > 0
+    let righeBase: RigaLetta[] = righeL
+    const cambiDerivati: CambioRiga[] = []
+    let movLetto: MovimentoPerLegame | null = null
+    if (confermatoStabile && riderivaQuantita.size > 0) {
+      // `quantita: null` = torna alla quantita' del movimento: si ricava dal movimento vigente
+      // con `quantitaPerRiga`, senza ricalcolare il resto. Se non e' ricavabile la riga resta
+      // senza quantita' (SENZA_QUANTITA) e il legame scende a DA_COLLEGARE: e' la regola piu'
+      // coerente, un legame confermato non puo' avere una riga senza quantita'.
+      movLetto = await leggiMovimentoPerLegame(tx, tenantId, l.movimentoVigenteId)
+      if (!movLetto) throw new Error('Legame: movimento vigente non trovato')
+      const m = movLetto
+      righeBase = righeL.map(r => {
+        if (!riderivaQuantita.has(r.rigaAddebitoId)) return r
+        const q = quantitaPerRiga(
+          {
+            tipoQuantita: r.tipoQuantita as TipoQuantita | null,
+            unitaMisura: r.unitaMisura,
+          },
+          {
+            quantity: new Prisma.Decimal(m.quantity).toFixed(),
+            unit: m.unit,
+          }
+        )
+        if (q !== r.quantita || r.quantitaOrigine !== 'DA_MOVIMENTO') {
+          cambiDerivati.push({
+            rigaAddebitoId: r.rigaAddebitoId,
+            quantita: { prima: r.quantita, dopo: q },
+          })
+        }
+        return { ...r, quantita: q, quantitaOrigine: q === null ? null : 'DA_MOVIMENTO' }
+      })
+    }
+    if (confermatoStabile && !righeCambiate) {
+      const { righe, cambi } = applicaModificheRighe(righeBase, mods, l.stato)
       return this.esito(l, conferma, {
         clienteId: l.clienteId,
         fonteCliente: l.fonteCliente,
@@ -507,15 +560,15 @@ export class LegamiService {
         motivi: ordinaMotivi(motiviRighe(righe)),
         avvisi: l.avvisi,
         dettaglioCliente: null,
-        cambi,
+        cambi: [...cambiDerivati, ...cambi],
         sostituisciRighe: false,
-        righeAggiunte: base.aggiunte,
-        righeRimosse: base.rimosse,
+        righeAggiunte: [],
+        righeRimosse: [],
         strutturaCambiata: false,
       })
     }
 
-    const mov = await leggiMovimentoPerLegame(tx, tenantId, l.movimentoVigenteId)
+    const mov = movLetto ?? (await leggiMovimentoPerLegame(tx, tenantId, l.movimentoVigenteId))
     if (!mov) throw new Error('Legame: movimento vigente non trovato')
 
     // --- Scelte: quelle dell'utente, altrimenti quelle gia' nel legame.
@@ -525,7 +578,7 @@ export class LegamiService {
       clienteCambia || contrattoCambia ? mods.elencoId : (mods.elencoId ?? l.elencoId)
     const selezione = capoCambiato
       ? nominate.filter(x => !mods.righe.get(x)!.rimuovi)
-      : [...new Set([...righeL.map(r => r.rigaAddebitoId), ...aggiunte])].filter(
+      : [...new Set([...righeBase.map(r => r.rigaAddebitoId), ...aggiunte])].filter(
           x => !rimosse.includes(x)
         )
     if (rimosse.length > 0 && selezione.length === 0) {
@@ -537,13 +590,15 @@ export class LegamiService {
 
     // --- Dati gia' scelti e non piu' utilizzabili (cliente disattivato, contratto eliminato o
     // annullato, elenco chiuso): non si sceglie in silenzio qualcos'altro, si dice cosa non va.
-    const deriva = await this.controllaScelteCorrenti(tx, tenantId, l, mov.giorno, {
-      clienteCambia,
-      contrattoCambia: contrattoCambia || clienteCambia,
-      elencoCambia: elencoCambia || contrattoCambia || clienteCambia,
-      contrattoScelto: contrattoScelto ?? undefined,
-      elencoScelto: elencoScelto ?? undefined,
-    })
+    const deriva = confermatoStabile
+      ? null
+      : await this.controllaScelteCorrenti(tx, tenantId, l, mov.giorno, {
+          clienteCambia,
+          contrattoCambia: contrattoCambia || clienteCambia,
+          elencoCambia: elencoCambia || contrattoCambia || clienteCambia,
+          contrattoScelto: contrattoScelto ?? undefined,
+          elencoScelto: elencoScelto ?? undefined,
+        })
     if (deriva) {
       if (strutturaCambiata) throw incompleto(deriva.motivi, deriva.dettaglioCliente)
       const { righe, cambi } = applicaModificheRighe(righeL, mods, l.stato)
@@ -571,15 +626,68 @@ export class LegamiService {
       ...(elencoScelto ? { elencoId: elencoScelto } : {}),
       ...(selezione.length > 0 ? { righeIds: selezione } : {}),
     }
-    const p = await this.proposta.calcolaEBloccaInTx(tx, tenantId, inputDaMovimento(mov), scelte, {
-      fatturazioneDa: FATTURAZIONE_SEMPRE,
-    })
+    let p: PropostaVista
+    try {
+      p = await this.proposta.calcolaEBloccaInTx(tx, tenantId, inputDaMovimento(mov), scelte, {
+        fatturazioneDa: FATTURAZIONE_SEMPRE,
+      })
+    } catch (err) {
+      // Il contratto GIA' nel legame e' stato annullato o eliminato fra la lettura e il lock:
+      // stesso 409 `LEGAME_INCOMPLETO` degli altri casi, non il messaggio del listino.
+      if (!contrattoCambia && !clienteCambia && err instanceof HttpException) {
+        const r = err.getResponse() as { error?: string }
+        if (r.error === 'LISTINO_NON_MODIFICABILE') throw incompleto(['CONTRATTO_NON_ATTIVO'], null)
+        if (r.error === 'CONTRATTO_CLIENTE_NON_TROVATO') throw incompleto(['SENZA_CONTRATTO'], null)
+      }
+      throw err
+    }
     if (!p.fatturabile) throw causaleNonFatturabile()
 
     const elencoNuovo = p.elenco?.id ?? null
     const stessoElenco = elencoNuovo === l.elencoId
-    const fuse = fondiRighe(righeL, p.righe, { stessoElenco, riderivaQuantita })
-    const { righe, cambi } = applicaModificheRighe(fuse, mods, l.stato)
+    let fuse = fondiRighe(righeBase, p.righe, { stessoElenco, riderivaQuantita })
+    if (confermatoStabile) {
+      // Riga aggiunta o tolta su un CONFERMATO (decisione 20): le altre righe non cambiano; la
+      // riga nuova prende il prezzo del listino e si congela subito (`congela`, stato CONFERMATO).
+      let ordine = Math.max(0, ...righeBase.map(r => r.ordine))
+      fuse = [
+        ...righeBase.filter(r => !rimosse.includes(r.rigaAddebitoId)),
+        ...fuse.filter(r => !presenti.has(r.rigaAddebitoId)).map(r => ({ ...r, ordine: ++ordine })),
+      ]
+    }
+    const { righe, cambi: cambiMods } = applicaModificheRighe(fuse, mods, l.stato)
+    const cambi = [...cambiDerivati, ...cambiMods]
+    if (confermatoStabile) {
+      const motiviRiga = ordinaMotivi(motiviRighe(righe))
+      if (motiviRiga.length > 0) throw incompleto(motiviRiga, null)
+      return this.esito(l, conferma, {
+        clienteId: l.clienteId,
+        fonteCliente: l.fonteCliente,
+        contrattoId: l.contrattoId,
+        elencoId: l.elencoId,
+        righe,
+        motivi: [],
+        avvisi: l.avvisi,
+        dettaglioCliente: null,
+        cambi,
+        sostituisciRighe: false,
+        righeAggiunte: aggiunte,
+        righeRimosse: rimosse,
+        strutturaCambiata: false,
+      })
+    }
+    // Quantita' derivata ritrovata e prezzi manuali che il ricalcolo butta via: vanno nell'audit.
+    for (const x of riderivaQuantita) {
+      const prima = righeL.find(r => r.rigaAddebitoId === x)
+      const dopo = righe.find(r => r.rigaAddebitoId === x)
+      if (prima && dopo && prima.quantita !== dopo.quantita) {
+        cambi.push({ rigaAddebitoId: x, quantita: { prima: prima.quantita, dopo: dopo.quantita } })
+      }
+    }
+    const prezziManualiPersi = righeL
+      .filter(r => r.prezzoManuale)
+      .filter(r => !righe.some(x => x.rigaAddebitoId === r.rigaAddebitoId && x.prezzoManuale))
+      .map(r => ({ rigaAddebitoId: r.rigaAddebitoId, prezzo: r.prezzo, sconto: r.sconto }))
     const avvisi = [...l.avvisi.filter(a => !AVVISI_DEL_RICALCOLO.includes(a)), ...p.avvisi].filter(
       (a, i, tutti) => tutti.indexOf(a) === i
     )
@@ -609,6 +717,7 @@ export class LegamiService {
       righeAggiunte: aggiunte,
       righeRimosse: rimosse,
       strutturaCambiata,
+      prezziManualiPersi,
     })
   }
 
@@ -643,10 +752,7 @@ export class LegamiService {
       // Un contratto annullato SCELTO ora non si puo' bloccare (listino non modificabile): e'
       // un contratto non attivo, non una proposta.
       if (k && c.contrattoCambia && k.stato === 'ANNULLATO' && !k.eliminato) {
-        throw new ConflictException({
-          error: 'CONTRATTO_NON_ATTIVO',
-          message: 'Il contratto scelto non è attivo.',
-        })
+        throw incompleto(['CONTRATTO_NON_ATTIVO'], null)
       }
     }
     if (c.elencoScelto && !c.elencoCambia) {
@@ -701,6 +807,7 @@ export class LegamiService {
       cambi: d.cambi,
       righeAggiunte: d.righeAggiunte,
       righeRimosse: d.righeRimosse,
+      prezziManualiPersi: d.prezziManualiPersi,
     }
   }
 
@@ -781,7 +888,8 @@ async function scriviRighe(
   const esistenti = sostituite ? [] : e.righe.filter(r => r.id !== null)
   const nuove = sostituite ? e.righe : e.righe.filter(r => r.id === null)
   if (!sostituite) {
-    // Righe tolte: quelle del legame che non sono piu' nell'insieme finale.
+    // Righe tolte: quelle del legame che non sono piu' nell'insieme finale. `= ANY` va bene: la
+    // lista e' quella delle righe di UN legame (poche), non una lista grande come nei vincoli globali.
     const finali = e.righe.map(r => r.rigaAddebitoId)
     await tx.$executeRaw`
       DELETE FROM righe_legame_movimento
@@ -996,7 +1104,8 @@ async function costruisciVista(
 
 /**
  * Audit di un'azione: solo id, stati, importi e valori precedente e nuovo di quantita', prezzo e
- * sconto. Nessun dato personale (niente nomi, ragioni sociali o indirizzi).
+ * sconto. Nessun dato personale (niente nomi, ragioni sociali o indirizzi); il testo libero del
+ * motivo di esclusione NON si registra (potrebbe contenerne).
  */
 function metadatiAudit(
   l: Testata,
@@ -1026,6 +1135,9 @@ function metadatiAudit(
     righe: e.cambi,
     righeAggiunte: e.righeAggiunte,
     righeRimosse: e.righeRimosse,
+    ...(e.prezziManualiPersi && e.prezziManualiPersi.length > 0
+      ? { prezziManualiPersi: e.prezziManualiPersi }
+      : {}),
     ...(Object.keys(struttura).length > 0 ? { struttura } : {}),
   }
 }
