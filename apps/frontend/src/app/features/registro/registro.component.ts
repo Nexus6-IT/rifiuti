@@ -151,7 +151,7 @@ interface FirOption {
   ],
   providers: [DatePipe],
   template: `
-    <div class="page">
+    <div class="page pagina-lavoro">
       <!-- Intestazione -------------------------------------------------------->
       <header class="page-header">
         <div class="page-header__titles">
@@ -218,7 +218,7 @@ interface FirOption {
       </header>
 
       <!-- Filtri rapidi -------------------------------------------------------->
-      <section class="surface-card filters" aria-label="Filtri registro">
+      <section class="filters" aria-label="Filtri registro">
         <div class="filters__field filters__field--tipo">
           <label class="filters__label" for="filtro-tipo">Tipo movimento</label>
           <p-dropdown
@@ -363,28 +363,23 @@ interface FirOption {
 
             <ng-template pTemplate="header">
               <tr>
-                <th *ngIf="rentriSelezionabile()" scope="col" style="width: 48px">
+                <th *ngIf="rentriSelezionabile()" scope="col" style="width: 40px">
                   <span class="sr-only">Seleziona per la trasmissione a RENTRI</span>
                 </th>
-                <th scope="col" style="width: 96px">N° prog.</th>
+                <th scope="col">N° prog.</th>
                 <th *ngIf="piuRegistri()" scope="col" data-testid="registro-col-sede">Sede</th>
-                <th scope="col" style="width: 104px">Tipo</th>
-                <th scope="col" style="width: 116px">Data op.</th>
-                <th scope="col" style="width: 96px">CER</th>
-                <th scope="col">Causale</th>
-                <th scope="col" class="num-col" style="width: 128px">Quantità</th>
-                <th scope="col">Controparte</th>
-                <th scope="col" style="width: 72px">FIR</th>
-                <th scope="col" style="width: 132px">Stato</th>
-                <th
-                  *ngIf="rentriColonna()"
-                  scope="col"
-                  style="width: 200px"
-                  data-testid="registro-col-rentri"
-                >
+                <th scope="col">Tipo</th>
+                <th scope="col">Data op.</th>
+                <th scope="col">CER</th>
+                <th scope="col" style="min-width: 11rem">Causale</th>
+                <th scope="col" class="num-col">Quantità</th>
+                <th scope="col" style="min-width: 9rem">Controparte</th>
+                <th scope="col">FIR</th>
+                <th scope="col">Stato</th>
+                <th *ngIf="rentriColonna()" scope="col" data-testid="registro-col-rentri">
                   RENTRI
                 </th>
-                <th *ngIf="offriCorrezioni()" scope="col" style="width: 168px">
+                <th *ngIf="offriCorrezioni()" scope="col">
                   <span class="sr-only">Correzioni</span>
                 </th>
               </tr>
@@ -409,7 +404,7 @@ interface FirOption {
                     "
                   />
                 </td>
-                <td>
+                <td class="cell-nowrap">
                   <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
                 </td>
                 <td *ngIf="piuRegistri()" data-testid="registro-col-sede">
@@ -422,22 +417,30 @@ interface FirOption {
                     [icon]="m.type === 'CARICO' ? 'pi pi-arrow-down' : 'pi pi-arrow-up'"
                   ></p-tag>
                 </td>
-                <td>{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
+                <td class="cell-nowrap">{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
                 <td>
                   <span class="cell-mono">{{ m.cerCode }}</span>
                 </td>
                 <td>
                   <span class="causale-label">{{ causaleLabel(m) }}</span>
-                  <span *ngIf="m.wasteDescription" class="waste-desc">{{
-                    m.wasteDescription
-                  }}</span>
+                  <span
+                    *ngIf="m.wasteDescription"
+                    class="waste-desc cell-ellipsis"
+                    [attr.title]="m.wasteDescription"
+                    >{{ m.wasteDescription }}</span
+                  >
                 </td>
                 <td class="num-col">
                   <span class="num">{{ m.quantity | number: '1.0-2' }}</span>
                   <span class="unit">{{ m.unit }}</span>
                 </td>
                 <td>
-                  <span *ngIf="m.counterpartName; else nessuno">{{ m.counterpartName }}</span>
+                  <span
+                    *ngIf="m.counterpartName; else nessuno"
+                    class="cell-ellipsis"
+                    [attr.title]="m.counterpartName"
+                    >{{ m.counterpartName }}</span
+                  >
                   <ng-template #nessuno><span class="text-muted">—</span></ng-template>
                 </td>
                 <td>
@@ -445,42 +448,46 @@ interface FirOption {
                   <span *ngIf="!m.firId" class="text-muted">—</span>
                 </td>
                 <td>
-                  <p-tag
-                    *ngIf="!m.fuoriTermine"
-                    value="Nei termini"
-                    severity="success"
-                    icon="pi pi-check"
-                    styleClass="stato-tag"
-                    pTooltip="Registrato entro il termine di legge"
-                  ></p-tag>
-                  <p-tag
-                    *ngIf="correzione(m) as c"
-                    [value]="c"
-                    severity="secondary"
-                    icon="pi pi-history"
-                    styleClass="stato-tag stato-tag--correzione"
-                    [pTooltip]="tooltipCorrezione(m)"
-                    [attr.data-testid]="'registro-correzione-' + m.id"
-                  ></p-tag>
-                  <p-tag
-                    *ngIf="annotazione(m) as a"
-                    [value]="a"
-                    severity="info"
-                    icon="pi pi-pencil"
-                    styleClass="stato-tag stato-tag--correzione"
-                    [pTooltip]="m.motivoAnnotazione ? 'Motivo: ' + m.motivoAnnotazione : a"
-                    [attr.data-testid]="'registro-annotazione-' + m.id"
-                  ></p-tag>
-                  <p-tag
-                    *ngIf="m.fuoriTermine"
-                    [value]="'Fuori termine' + (m.ritardoGg ? ' · +' + m.ritardoGg + ' gg' : '')"
-                    severity="warning"
-                    icon="pi pi-clock"
-                    styleClass="stato-tag"
-                    [pTooltip]="
-                      'Registrato con ' + (m.ritardoGg ?? 0) + ' gg di ritardo sul termine di legge'
-                    "
-                  ></p-tag>
+                  <div class="stato-stack">
+                    <p-tag
+                      *ngIf="!m.fuoriTermine"
+                      value="Nei termini"
+                      severity="success"
+                      icon="pi pi-check"
+                      styleClass="stato-tag"
+                      pTooltip="Registrato entro il termine di legge"
+                    ></p-tag>
+                    <p-tag
+                      *ngIf="correzione(m) as c"
+                      [value]="c"
+                      severity="secondary"
+                      icon="pi pi-history"
+                      styleClass="stato-tag stato-tag--correzione"
+                      [pTooltip]="tooltipCorrezione(m)"
+                      [attr.data-testid]="'registro-correzione-' + m.id"
+                    ></p-tag>
+                    <p-tag
+                      *ngIf="annotazione(m) as a"
+                      [value]="a"
+                      severity="info"
+                      icon="pi pi-pencil"
+                      styleClass="stato-tag stato-tag--correzione"
+                      [pTooltip]="m.motivoAnnotazione ? 'Motivo: ' + m.motivoAnnotazione : a"
+                      [attr.data-testid]="'registro-annotazione-' + m.id"
+                    ></p-tag>
+                    <p-tag
+                      *ngIf="m.fuoriTermine"
+                      [value]="'Fuori termine' + (m.ritardoGg ? ' · +' + m.ritardoGg + ' gg' : '')"
+                      severity="warning"
+                      icon="pi pi-clock"
+                      styleClass="stato-tag"
+                      [pTooltip]="
+                        'Registrato con ' +
+                        (m.ritardoGg ?? 0) +
+                        ' gg di ritardo sul termine di legge'
+                      "
+                    ></p-tag>
+                  </div>
                 </td>
                 <td *ngIf="rentriColonna()">
                   <app-rentri-riga-azioni
@@ -1085,45 +1092,6 @@ interface FirOption {
   `,
   styles: [
     `
-      /* ─── Filtri ──────────────────────────────────────────────────────────── */
-      .filters {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end;
-        gap: var(--spacing-base);
-        margin-bottom: var(--spacing-lg);
-      }
-      .filters__field {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-        min-width: 0;
-      }
-      .filters__field--tipo {
-        flex: 0 1 200px;
-      }
-      .filters__field--cer {
-        flex: 0 1 260px;
-      }
-      .filters__label {
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-medium);
-        color: var(--text-secondary);
-      }
-      .filters__search {
-        display: block;
-        width: 100%;
-      }
-      .filters__search .filtro-cer {
-        width: 100%;
-      }
-      .filters__actions {
-        display: flex;
-        gap: var(--spacing-sm);
-        align-items: flex-end;
-        margin-left: auto;
-      }
-
       /* Toggle Carico/Scarico nel form: due p-button (selezionato = teal pieno,
          non selezionato = outlined). Evita il SelectButton di PrimeNG, il cui
          pseudo-elemento ::before (tema Aura) copre lo sfondo del segmento
@@ -1137,27 +1105,14 @@ interface FirOption {
       }
 
       /* ─── Tabella ─────────────────────────────────────────────────────────── */
-      .table-card {
-        padding: 0;
-        overflow: hidden;
-      }
+      /* Numero progressivo: mono semplice, senza pillola (la pillola teal su ogni riga era rumore). */
       .prog-badge {
         font-family: var(--font-family-mono);
         font-variant-numeric: tabular-nums;
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-medium);
-        color: var(--brand-primary-dark);
-        background: var(--brand-primary-50);
-        border: 1px solid var(--brand-primary-100);
-        padding: 2px 8px;
-        border-radius: var(--radius-full);
-        white-space: nowrap;
-      }
-      .cell-mono {
-        font-family: var(--font-family-mono);
-        font-variant-numeric: tabular-nums;
+        font-size: var(--font-size-sm);
         font-weight: var(--font-weight-medium);
         color: var(--text-primary);
+        white-space: nowrap;
       }
       .causale-label {
         color: var(--text-primary);
@@ -1166,10 +1121,6 @@ interface FirOption {
         display: block;
         font-size: var(--font-size-xs);
         color: var(--text-tertiary);
-      }
-      /* Colonne numeriche: allineate a destra, cifre tabellari. */
-      .num-col {
-        text-align: right;
       }
       .num {
         font-variant-numeric: tabular-nums;
@@ -1399,19 +1350,6 @@ interface FirOption {
 
       .w-full {
         width: 100%;
-      }
-
-      @media (max-width: 576px) {
-        .filters__field,
-        .filters__field--tipo,
-        .filters__field--cer,
-        .filters__actions {
-          flex: 1 1 100%;
-          margin-left: 0;
-        }
-        .filters__actions .p-button {
-          flex: 1 1 auto;
-        }
       }
     `,
   ],
