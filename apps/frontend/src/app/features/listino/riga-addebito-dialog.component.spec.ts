@@ -389,7 +389,7 @@ describe('RigaAddebitoDialogComponent', () => {
       await cerca('riga-ricerca', '2')
       expect(cer.searchCER).not.toHaveBeenCalled()
       await cerca('riga-ricerca', '20 03')
-      expect(cer.searchCER).toHaveBeenCalledWith('20 03')
+      expect(cer.searchCER).toHaveBeenCalledWith('20 03', true)
       expect(addebiti.list).toHaveBeenCalledWith({
         testo: '20 03',
         soloAttivi: true,
@@ -397,6 +397,27 @@ describe('RigaAddebitoDialogComponent', () => {
       })
       expect(q('riga-ricerca-voce-cer-20 03 01')).toBeTruthy()
       expect(q('riga-ricerca-voce-add-00012')).toBeTruthy()
+    })
+
+    it('se l’archivio non risponde restano i CER, e viceversa (voce 24)', async () => {
+      addebiti.list.and.returnValue(throwError(() => ({ status: 500 })))
+      await apri()
+      await cerca('riga-ricerca', '20 03')
+      expect(q('riga-ricerca-voce-cer-20 03 01')).toBeTruthy()
+      expect(q('riga-ricerca-voce-add-00012')).toBeNull()
+      addebiti.list.and.returnValue(of({ elementi: [addebito()], totale: 1 }))
+      cer.searchCER.and.returnValue(throwError(() => ({ status: 500 })))
+      await cerca('riga-ricerca', '20 04')
+      expect(q('riga-ricerca-voce-cer-20 03 01')).toBeNull()
+      expect(q('riga-ricerca-voce-add-00012')).toBeTruthy()
+    })
+
+    it('se falliscono entrambe la ricerca risulta non riuscita (voce 24)', async () => {
+      addebiti.list.and.returnValue(throwError(() => ({ status: 500 })))
+      cer.searchCER.and.returnValue(throwError(() => ({ status: 500 })))
+      await apri()
+      await cerca('riga-ricerca', '20 03')
+      expect(fixture.nativeElement.textContent).toContain('Ricerca non riuscita')
     })
 
     it('scegliere un CER imposta il tipo, chiama la proposta e riempie i campi vuoti', async () => {
@@ -827,6 +848,28 @@ describe('RigaAddebitoDialogComponent', () => {
       expect(prezzo.getAttribute('aria-invalid')).toBe('true')
       expect(prezzo.getAttribute('aria-describedby')).toBe('riga-prezzo-errore')
       expect(document.getElementById('riga-prezzo-errore')).toBeTruthy()
+    })
+
+    it('il 400 sul tipo incoerente con l’addebito compare sotto il campo Tipo (decisione 4)', async () => {
+      righe.modifica.and.returnValue(
+        throwError(() => ({
+          status: 400,
+          error: {
+            details: {
+              errori: [
+                { campo: 'tipo', messaggio: 'Il tipo non corrisponde all’addebito scelto.' },
+              ],
+            },
+          },
+        }))
+      )
+      await apri({ riga: riga() })
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(document.getElementById('riga-tipo-errore')?.textContent).toContain(
+        'non corrisponde all’addebito'
+      )
+      expect(q('riga-errori-generali')).toBeNull()
     })
 
     it('Esc a elenco aperto chiude l’elenco e non arriva al dialog', async () => {

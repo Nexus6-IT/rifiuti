@@ -13,7 +13,17 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
-import { Observable, Subscription, forkJoin, map, merge } from 'rxjs'
+import {
+  Observable,
+  Subscription,
+  catchError,
+  forkJoin,
+  map,
+  merge,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs'
 import { CerService } from '../cer/cer.service'
 import { AggiuntaInLinea } from '../clienti/aggiunta-in-linea'
 import { messaggioErrore, permessoScrittura } from '../clienti/tabelle/tabella-comune'
@@ -214,30 +224,39 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   /** Catalogo CER e archivio degli addebiti insieme (la scelta "CER o addebito"). */
   readonly cercaCerOAddebito = (testo: string): Observable<VoceRicerca[]> =>
     forkJoin([
-      this.cer.searchCER(testo),
-      this.servizio.addebiti.list({ testo, soloAttivi: true, dimensione: 20 }),
+      // Solo i CER confermati dall'ultimo allineamento RENTRI: i capitoli e i codici storici il
+      // catalogo li rifiuterebbe con 400. Se una delle due ricerche fallisce si mostrano i
+      // risultati dell'altra; solo se falliscono entrambe la ricerca risulta non riuscita.
+      this.cer.searchCER(testo, true).pipe(catchError(() => of(null))),
+      this.servizio.addebiti
+        .list({ testo, soloAttivi: true, dimensione: 20 })
+        .pipe(catchError(() => of(null))),
     ]).pipe(
-      map(([cer, addebiti]) => [
-        ...cer.map(
-          (c): VoceRicerca<ScelteRicerca> => ({
-            chiave: `cer-${c.code}`,
-            etichetta: `CER ${c.code} - ${c.description}`,
-            dato: { tipo: 'CER', cer: c },
-          })
-        ),
-        ...addebiti.elementi.map(
-          (a): VoceRicerca<ScelteRicerca> => ({
-            chiave: `add-${a.codice}`,
-            etichetta: `${a.codice} - ${a.descrizione} (${a.tipo})`,
-            dato: { tipo: 'ADDEBITO', addebito: a },
-          })
-        ),
-      ])
+      switchMap(([cer, addebiti]) =>
+        cer === null && addebiti === null
+          ? throwError(() => new Error('Ricerca non riuscita'))
+          : of([
+              ...(cer ?? []).map(
+                (c): VoceRicerca<ScelteRicerca> => ({
+                  chiave: `cer-${c.code}`,
+                  etichetta: `CER ${c.code} - ${c.description}`,
+                  dato: { tipo: 'CER', cer: c },
+                })
+              ),
+              ...(addebiti?.elementi ?? []).map(
+                (a): VoceRicerca<ScelteRicerca> => ({
+                  chiave: `add-${a.codice}`,
+                  etichetta: `${a.codice} - ${a.descrizione} (${a.tipo})`,
+                  dato: { tipo: 'ADDEBITO', addebito: a },
+                })
+              ),
+            ])
+      )
     )
 
   readonly cercaCer = (testo: string): Observable<VoceRicerca[]> =>
     this.cer
-      .searchCER(testo)
+      .searchCER(testo, true)
       .pipe(
         map(l =>
           l.map(c => ({ chiave: c.code, etichetta: `${c.code} - ${c.description}`, dato: c }))
