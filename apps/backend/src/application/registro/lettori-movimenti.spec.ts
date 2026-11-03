@@ -47,6 +47,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'legge UNA riga per id: il movimento vigente di un legame, da cui ricalcolare la proposta (conferma, modifica, riammissione)',
   },
+  'application/legami-movimento/aggiorna-prezzi.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge solo il CER del movimento vigente di ogni legame (join per id) per controllare che la riga di listino sia ancora quella del CER; non conta nulla',
+  },
   'application/legami-movimento/impostazioni-fatturazione.service.ts': {
     scelta: 'vigenti',
     motivo:
