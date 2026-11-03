@@ -43,8 +43,9 @@ describe('CodificheContrattoService (Prisma finto)', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      // Lettura dei codici del genere con FOR UPDATE: nessun codice usato.
+      // Lettura dei codici del genere (nessun codice usato) dopo il lock consultivo (R25).
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       cliente: { groupBy: jest.fn().mockResolvedValue([]) },
       contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
@@ -145,11 +146,12 @@ describe('CodificheContrattoService (Prisma finto)', () => {
   })
 
   describe('crea', () => {
-    it('senza codice: legge i codici del genere con FOR UPDATE e assegna 001', async () => {
+    it('senza codice: prende il lock consultivo, legge i codici del genere e assegna 001', async () => {
       const v = await service.crea(T, U, { genere: 'CATEGORIA', descrizione: 'Urbani' })
       expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
-      // il template della query contiene il FOR UPDATE
-      expect(tx.$queryRaw.mock.calls[0][0].join('?')).toContain('FOR UPDATE')
+      // R25: stesso lock consultivo delle codifiche di addebito (il FOR UPDATE non copriva il genere vuoto)
+      expect(tx.$executeRaw.mock.calls[0][0].join('?')).toContain('pg_advisory_xact_lock')
+      expect(tx.$queryRaw.mock.calls[0][0].join('?')).not.toContain('FOR UPDATE')
       expect(tx.codificaContratto.create.mock.calls[0][0].data).toMatchObject({
         tenantId: T,
         genere: 'CATEGORIA',
