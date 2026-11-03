@@ -14,10 +14,11 @@ import {
 } from './codici'
 
 describe('codici del legame movimento', () => {
-  it('gli insiemi sono chiusi: 11 motivi, 4 avvisi (compreso PREZZO_MANUALE), 7 stati', () => {
+  it('gli insiemi sono chiusi: 11 motivi, 5 avvisi (compresi PREZZO_MANUALE e CONTRATTO_ALTRA_SEDE), 7 stati', () => {
     expect(MOTIVI_LEGAME).toHaveLength(11)
-    expect(AVVISI_LEGAME).toHaveLength(4)
+    expect(AVVISI_LEGAME).toHaveLength(5)
     expect(AVVISI_LEGAME).toContain('PREZZO_MANUALE')
+    expect(AVVISI_LEGAME).toContain('CONTRATTO_ALTRA_SEDE')
     expect(STATI_LEGAME).toHaveLength(7)
   })
 
@@ -32,6 +33,12 @@ describe('codici del legame movimento', () => {
     }
     expect(MESSAGGI_AVVISO.PREZZO_MANUALE).toBe(
       'Una o più righe hanno il prezzo modificato a mano: «Aggiorna prezzi» non le cambia.'
+    )
+  })
+
+  it('CONTRATTO_ALTRA_SEDE ha un messaggio in italiano', () => {
+    expect(MESSAGGI_AVVISO.CONTRATTO_ALTRA_SEDE).toBe(
+      'Il contratto scelto è di un’altra sede rispetto a quella del FIR.'
     )
   })
 

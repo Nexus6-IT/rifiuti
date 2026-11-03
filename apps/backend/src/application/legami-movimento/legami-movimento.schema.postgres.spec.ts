@@ -335,7 +335,7 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
         comeApp(s.t, tx =>
           inserisciLegame(tx, s, {
             motivi: ['SENZA_CLIENTE', 'SENZA_QUANTITA'],
-            avvisi: ['CLIENTE_NON_DA_FIR', 'PREZZO_MANUALE'],
+            avvisi: ['CLIENTE_NON_DA_FIR', 'PREZZO_MANUALE', 'CONTRATTO_ALTRA_SEDE'],
           })
         )
       ).resolves.toHaveLength(1)
