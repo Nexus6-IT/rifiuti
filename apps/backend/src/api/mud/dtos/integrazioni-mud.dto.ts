@@ -6,7 +6,6 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -19,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator'
 import { normalizzaCodiceFiscaleSoggetto } from '../../../domain/shared/codice-fiscale-soggetto'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 // Corpo di `PUT mud/:year/integrazioni` (Decisione 18): il PUT sostituisce le integrazioni
 // dell'anno. Qui si verifica solo la forma; carattere di controllo, codice della propria
@@ -138,7 +138,7 @@ export class VocePesoSpecificoDto {
   unita!: string
 
   @ApiProperty({ example: 1.1 })
-  @IsNumber({ maxDecimalPlaces: 3 })
+  @MaxDecimali(3, 'I kg per unità')
   @IsPositive()
   @Max(100000)
   kgPerUnita!: number

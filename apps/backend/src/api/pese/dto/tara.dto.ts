@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsNumber, IsOptional, IsUUID } from 'class-validator'
+import { IsOptional, IsUUID } from 'class-validator'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 /**
  * Corpo di `PUT /pese/automezzi/:id/tara`: esattamente uno fra `taraKg` (tara DICHIARATA) e
@@ -8,7 +9,7 @@ import { IsNumber, IsOptional, IsUUID } from 'class-validator'
 export class ImpostaTaraDto {
   @ApiPropertyOptional({ description: 'Tara dichiarata in kg (> 0, due decimali)' })
   @IsOptional()
-  @IsNumber({}, { message: 'La tara deve essere un numero.' })
+  @MaxDecimali(2, 'La tara')
   taraKg?: number
 
   @ApiPropertyOptional({ description: 'Pesata da cui prendere la tara' })

@@ -12,6 +12,7 @@ import {
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 /** Forma di un codice causale: di sistema (`CESSIONE`) o dell'azienda (`AZ_...`). */
 const FORMATO_CAUSALE = /^[A-Z][A-Z0-9_]*$/
 
@@ -78,7 +79,7 @@ export class RegistraMovimentoDto {
   wasteDescription?: string
 
   @ApiProperty({ description: 'Quantità (kg o unità specificata)', example: 100.5 })
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @MaxDecimali(2, 'La quantità')
   @IsPositive()
   @Type(() => Number)
   quantity: number

@@ -5,15 +5,16 @@ import {
   IsEnum,
   IsIn,
   IsOptional,
-  IsNumber,
   IsBoolean,
   IsInt,
   IsDateString,
   IsUUID,
+  Max,
   Min,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { PAYMENT_TERMS, BILLING_FREQUENCIES } from '../contract-vocabulary'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 export enum CounterpartyTypeDto {
   TRANSPORTER = 'TRANSPORTER',
@@ -78,9 +79,10 @@ export class CreateContractDto {
   pricingModel: PricingModelDto
 
   @ApiPropertyOptional({ example: 120.5 })
-  @IsNumber()
+  @MaxDecimali(2, 'Il prezzo base')
   @IsOptional()
-  @Min(0)
+  @Min(0, { message: 'Il prezzo base non può essere negativo.' })
+  @Max(99999999.99, { message: 'Il prezzo base non può superare 99.999.999,99.' })
   basePrice?: number
 
   @ApiPropertyOptional({ example: 'ton' })

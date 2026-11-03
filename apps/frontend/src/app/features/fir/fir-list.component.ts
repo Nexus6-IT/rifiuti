@@ -715,7 +715,7 @@ interface OpzioneSede {
                     locale="it-IT"
                     [useGrouping]="false"
                     mode="decimal"
-                    [maxFractionDigits]="3"
+                    [maxFractionDigits]="2"
                     inputId="new-qta"
                     [(ngModel)]="newFIR.rifiuto.quantita"
                     (ngModelChange)="clearFirError('quantita')"

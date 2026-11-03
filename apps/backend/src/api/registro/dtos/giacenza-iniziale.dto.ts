@@ -2,7 +2,6 @@ import {
   ArrayMaxSize,
   IsArray,
   IsInt,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -17,6 +16,7 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 const QUANTITA_MASSIMA = 99_999_999.99
 
@@ -53,7 +53,7 @@ export class OrigineGiacenzaInizialeDto {
     example: 120.5,
   })
   @IsOptional()
-  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @MaxDecimali(2, 'La quantità')
   @IsPositive()
   @Max(QUANTITA_MASSIMA)
   quantita?: number
@@ -70,7 +70,7 @@ export class CampiGiacenzaInizialeDto {
     minimum: 0.01,
     maximum: QUANTITA_MASSIMA,
   })
-  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @MaxDecimali(2, 'La quantità')
   @IsPositive()
   @Max(QUANTITA_MASSIMA)
   quantita: number

@@ -57,7 +57,7 @@ describe('SoglieDepositoDto', () => {
   it('criterio non valido, kg non positivi o con tre decimali, interi fuori scala: 400', async () => {
     expect(await messaggi({ ...valida, criterio: 'ALTRO' })).toContain('criterio')
     expect(await messaggi({ ...valida, kgMaxTotale: 0 })).toContain('kgMaxTotale')
-    expect(await messaggi({ ...valida, kgMaxTotale: 10.123 })).toContain('kgMaxTotale')
+    expect(await messaggi({ ...valida, kgMaxTotale: 10.123 })).toContain('Il limite totale in kg')
     expect(await messaggi({ ...valida, kgMaxPericolosi: -1 })).toContain('kgMaxPericolosi')
     expect(await messaggi({ ...valida, preavvisoGiorni: 89 })).toContain('preavvisoGiorni')
     expect(await messaggi({ ...valida, preavvisoPercentuale: 100 })).toContain(

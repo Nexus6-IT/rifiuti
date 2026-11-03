@@ -28,7 +28,7 @@ import {
   ApiParam,
   ApiPropertyOptional,
 } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsNumber, IsUUID, Max, Min, ValidateIf } from 'class-validator'
+import { IsString, IsNotEmpty, IsUUID, Max, Min, ValidateIf } from 'class-validator'
 import { CreateFIRDto } from './dtos/create-fir.dto'
 import { ModificaFIRDto } from './dtos/modifica-fir.dto'
 import { ListFIRsDto } from './dtos/list-firs.dto'
@@ -59,6 +59,7 @@ import { comeHttpPese } from '../pese/errori-http'
 import { RUOLI_OPERATORE_PESA } from '../pese/ruoli-pesa'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { MaxDecimali } from '../../core/validators/max-decimali'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono creare un FIR. Come nel
@@ -84,7 +85,7 @@ export class ConfermaConsegnaFIRDto {
   // Esattamente uno fra `pesoEffettivo` e `accessoId` (lo verifica il controller).
   @ApiPropertyOptional({ description: 'Peso verificato a destino, nell’unità del FIR' })
   @ValidateIf(o => o.pesoEffettivo !== undefined) // null non e' "assente": resta un errore
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @MaxDecimali(2, 'Il peso verificato')
   @Min(0.01)
   @Max(99999999.99)
   pesoEffettivo?: number

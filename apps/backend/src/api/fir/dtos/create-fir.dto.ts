@@ -5,7 +5,6 @@
 import {
   IsString,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   Min,
   IsEnum,
@@ -19,6 +18,7 @@ import { Type } from 'class-transformer'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { UnitaMisura } from '../../../domain/fir/value-objects/quantita'
 import { TipoTratta, ProvenienzaRifiuto } from '../../../domain/fir/aggregates/fir.aggregate'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 /**
  * Valori ammessi per lo stato fisico del rifiuto (norma tecnica, art. 193
@@ -43,8 +43,8 @@ export class RifiutoDto {
   cerCode: string
 
   @ApiProperty({ example: 120, description: 'Quantità dichiarata', minimum: 0.01 })
-  @IsNumber()
-  @Min(0.01)
+  @MaxDecimali(2, 'La quantità')
+  @Min(0.01, { message: 'La quantità deve essere almeno 0,01.' })
   quantita: number
 
   @ApiPropertyOptional({

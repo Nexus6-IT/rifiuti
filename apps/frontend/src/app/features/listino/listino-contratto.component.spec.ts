@@ -86,6 +86,7 @@ const risposta = (
       numero: 'CC-2026-001',
       stato,
       clienteId: 'cl1',
+      clienteRagioneSociale: 'Verdi Servizi S.r.l.',
       contrattoPrincipale: principale,
       dataInizio: '2026-01-01',
       dataFine: null,
@@ -105,7 +106,6 @@ describe('ListinoContrattoComponent', () => {
   let righeCrea: jasmine.Spy
   let righeModifica: jasmine.Spy
   let righeElimina: jasmine.Spy
-  let contrattoGet: jasmine.Spy
   let allegatiElenco: jasmine.Spy
   let toast: jasmine.SpyObj<ToastService>
 
@@ -142,9 +142,6 @@ describe('ListinoContrattoComponent', () => {
       .and.returnValue(
         of([{ id: 'al1', posizione: 1, nomeFile: 'capitolato.pdf', dimensioneByte: 2048 }])
       )
-    contrattoGet = jasmine
-      .createSpy('get')
-      .and.returnValue(of({ cliente: { ragioneSociale: 'Verdi Servizi S.r.l.' } }))
     toast = jasmine.createSpyObj('ToastService', ['error', 'success', 'info', 'warn'])
     TestBed.configureTestingModule({
       imports: [ListinoContrattoComponent],
@@ -158,7 +155,8 @@ describe('ListinoContrattoComponent', () => {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: CONTRATTO }) } },
         },
-        { provide: ClientiService, useValue: { contratti: { get: contrattoGet } } },
+        // Un componente figlio (dialog) inietta il servizio dei clienti: qui basta un finto.
+        { provide: ClientiService, useValue: {} },
         {
           provide: ListinoService,
           useValue: {
@@ -190,10 +188,9 @@ describe('ListinoContrattoComponent', () => {
   afterEach(() => fixture?.destroy())
 
   describe('intestazione', () => {
-    it('numero, cliente e stato; legge elenchi e cliente del contratto della rotta', async () => {
+    it('numero, cliente e stato; legge gli elenchi del contratto della rotta', async () => {
       await apri()
       expect(delContratto).toHaveBeenCalledOnceWith(CONTRATTO)
-      expect(contrattoGet).toHaveBeenCalledOnceWith(CONTRATTO)
       expect(testo('listino-intestazione')).toContain('CC-2026-001')
       expect(testo('listino-cliente')).toBe('Verdi Servizi S.r.l.')
       expect(testo('listino-stato')).toContain('Attivo')
@@ -206,9 +203,10 @@ describe('ListinoContrattoComponent', () => {
       expect(testo('listino-allegato-a')).toBe('Allegato al contratto CC-2025-100')
     })
 
-    it('il cliente che non si legge non blocca la pagina', async () => {
-      contrattoGet.and.returnValue(throwError(() => ({ status: 500 })))
-      await apri()
+    it('ragione sociale del cliente assente nella risposta: la pagina si apre senza', async () => {
+      const r = risposta()
+      r.contesto.contratto.clienteRagioneSociale = ''
+      await apri('ADMIN', r)
       expect(q('listino-cliente')).toBeNull()
       expect(q('listino-intestazione')).toBeTruthy()
     })

@@ -1,14 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
-import {
-  IsBoolean,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  MaxLength,
-} from 'class-validator'
+import { IsBoolean, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 const tagliaSpazi = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value
@@ -49,12 +42,12 @@ export class StrumentoPesaDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Portata massima in kg (> 0)' })
   @IsOptional()
-  @IsNumber({}, { message: 'La portata massima deve essere un numero.' })
+  @MaxDecimali(2, 'La portata massima')
   portataMaxKg?: number | null
 
   @ApiPropertyOptional({ nullable: true, description: 'Divisione in kg (> 0)' })
   @IsOptional()
-  @IsNumber({}, { message: 'La divisione deve essere un numero.' })
+  @MaxDecimali(3, 'La divisione')
   divisioneKg?: number | null
 
   @ApiPropertyOptional({ nullable: true, example: '2026-03-10' })

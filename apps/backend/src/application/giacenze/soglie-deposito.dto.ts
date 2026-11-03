@@ -4,7 +4,6 @@ import {
   IsDefined,
   IsEnum,
   IsInt,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -15,6 +14,7 @@ import {
 } from 'class-validator'
 import { LIMITI_LEGGE } from '../../domain/waste-movement/deposito-temporaneo'
 import { LUNGHEZZA_MAX_NOTA } from './soglie-deposito.service'
+import { MaxDecimali } from '../../core/validators/max-decimali'
 
 export enum CriterioDepositoDto {
   NON_SCELTO = 'NON_SCELTO',
@@ -59,7 +59,7 @@ export class SoglieDepositoDto {
     description:
       "Kg che, per questa azienda, corrispondono al limite di 30 m3 (conversione indicata dall'azienda).",
   })
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @MaxDecimali(2, 'Il limite totale in kg')
   @IsPositive()
   @Max(10_000_000)
   kgMaxTotale!: number
@@ -68,7 +68,7 @@ export class SoglieDepositoDto {
     description:
       "Kg che, per questa azienda, corrispondono al limite di 10 m3 di rifiuti pericolosi (conversione indicata dall'azienda).",
   })
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @MaxDecimali(2, 'Il limite dei rifiuti pericolosi in kg')
   @IsPositive()
   @Max(10_000_000)
   kgMaxPericolosi!: number

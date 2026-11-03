@@ -7,7 +7,6 @@ import {
   IsDefined,
   IsISO8601,
   IsObject,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -19,6 +18,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator'
+import { MaxDecimali } from '../../../core/validators/max-decimali'
 
 /** Motivo libero: trim e poi 1..500 caratteri. */
 const senzaSpazi = ({ value }: { value: unknown }) =>
@@ -30,7 +30,7 @@ const senzaSpazi = ({ value }: { value: unknown }) =>
  */
 export class PesataManualeDto {
   @ApiProperty({ description: 'Peso in kg, al massimo 2 decimali', minimum: 0.01 })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Il peso deve avere al massimo due decimali.' })
+  @MaxDecimali(2, 'Il peso', { message: 'Il peso deve avere al massimo due decimali.' })
   @Min(0.01, { message: 'Il peso deve essere positivo.' })
   @Max(99999999.99, { message: 'Il peso supera il massimo ammesso.' })
   pesoKg!: number
@@ -155,7 +155,7 @@ export class SecondaPesataDto {
 
 export class RettificaDto {
   @ApiProperty({ description: 'Nuovo peso in kg, al massimo 2 decimali' })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Il peso deve avere al massimo due decimali.' })
+  @MaxDecimali(2, 'Il peso', { message: 'Il peso deve avere al massimo due decimali.' })
   @Min(0.01, { message: 'Il peso deve essere positivo.' })
   @Max(99999999.99, { message: 'Il peso supera il massimo ammesso.' })
   pesoNuovoKg!: number
