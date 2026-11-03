@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
-import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
+import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
   creaCodiciIvaEcodifiche,
   creaContrattoConElenco,
@@ -83,6 +83,8 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
 
   interface DatiLegame {
     movimentoId?: string
+    /** Movimento vigente; omesso = lo stesso dell'originale. */
+    vigenteId?: string
     verso?: string
     stato?: string
     clienteId?: string | null
@@ -104,7 +106,7 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
          (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
           data_movimento, cliente_id, fonte_cliente, contratto_id, elenco_id, motivi, avvisi,
           motivo_esclusione, fatturato_il, scostamento_dopo_fattura, updated_at)
-       VALUES ($1::uuid, $2::uuid, $3::waste_movement_type, $4::uuid, $4::uuid,
+       VALUES ($1::uuid, $2::uuid, $3::waste_movement_type, $4::uuid, $15::uuid,
           $5::stato_legame_movimento, '2026-03-01'::date, $6::uuid, $7::fonte_cliente_legame,
           $8::uuid, $9::uuid, $10::text[], $11::text[], $12, $13::timestamp, $14::boolean, now())
        RETURNING id::text AS id`,
@@ -121,7 +123,8 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       over.avvisi ?? [],
       over.motivoEsclusione ?? null,
       over.fatturatoIl ?? null,
-      over.scostamento ?? false
+      over.scostamento ?? false,
+      over.vigenteId ?? m
     )
   }
 
@@ -252,9 +255,9 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       await comeApp(t, tx =>
         tx.$executeRawUnsafe(
           `INSERT INTO causali_registro_azienda
-             (tenant_id, natura, codice, verso, causale_sistema_codice, creato_da, updated_at)
+             (tenant_id, natura, codice, verso, causale_sistema_codice, creato_da, fatturabile, updated_at)
            VALUES ($1::uuid, 'DISATTIVAZIONE', 'RICLASSIFICAZIONE', 'CARICO', 'RICLASSIFICAZIONE',
-             $2::uuid, now())`,
+             $2::uuid, NULL, now())`,
           t,
           randomUUID()
         )
@@ -444,7 +447,18 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       ).rejects.toThrow(/`23503`/)
     })
 
-    it('un cliente, un contratto e un elenco citati non si eliminano (NoAction)', async () => {
+    it('un cliente senza contratti, citato da un legame, non si elimina: lo blocca legami_movimento_cliente_fkey', async () => {
+      const s = await scenario()
+      const solo = await creaDittaConRuolo(owner, s.t, 'CLIENTE', {
+        ragioneSociale: 'Solo cliente',
+      })
+      await comeApp(s.t, tx => inserisciLegame(tx, s, { clienteId: solo.ruoloId }))
+      await expect(
+        owner.$executeRawUnsafe(`DELETE FROM clienti WHERE id = $1::uuid`, solo.ruoloId)
+      ).rejects.toThrow(/legami_movimento_cliente_fkey/)
+    })
+
+    it('un contratto e un elenco citati da un legame non si eliminano (23503, FK del legame)', async () => {
       const s = await scenario()
       await creaLegameDiTest(owner, s.t, {
         movimentoOriginaleId: s.movimentoId,
@@ -460,10 +474,37 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       ).rejects.toThrow(/legami_movimento_elenco_fkey/)
       await expect(
         owner.$executeRawUnsafe(`DELETE FROM contratti_cliente WHERE id = $1::uuid`, s.contrattoId)
-      ).rejects.toThrow(/`23503`/)
+      ).rejects.toThrow(/legami_movimento_(contratto|elenco)_fkey/)
+    })
+
+    it('movimento vigente: diverso dall originale ammesso; di un altro verso o di un altro tenant respinto', async () => {
+      const s = await scenario()
+      const rettifica = await creaMovimentoDiTest(owner, s.t, { movementDate: '2026-03-02' })
       await expect(
-        owner.$executeRawUnsafe(`DELETE FROM clienti WHERE id = $1::uuid`, s.clienteId)
-      ).rejects.toThrow(/`23503`/)
+        comeApp(s.t, tx => inserisciLegame(tx, s, { vigenteId: rettifica.movimentoId }))
+      ).resolves.toHaveLength(1)
+      const s2 = await scenario()
+      const scarico = await creaMovimentoDiTest(owner, s2.t, { type: 'SCARICO' })
+      await expect(
+        comeApp(s2.t, tx => inserisciLegame(tx, s2, { vigenteId: scarico.movimentoId }))
+      ).rejects.toThrow(/legami_movimento_vigente_fkey/)
+      const altra = await scenario()
+      const s3 = await scenario()
+      await expect(
+        comeApp(s3.t, tx => inserisciLegame(tx, s3, { vigenteId: altra.movimentoId }))
+      ).rejects.toThrow(/legami_movimento_vigente_fkey/)
+    })
+
+    it('il movimento vigente citato da un legame non si elimina (legami_movimento_vigente_fkey)', async () => {
+      const s = await scenario()
+      const rettifica = await creaMovimentoDiTest(owner, s.t, { movementDate: '2026-03-02' })
+      await comeApp(s.t, tx => inserisciLegame(tx, s, { vigenteId: rettifica.movimentoId }))
+      await expect(
+        owner.$executeRawUnsafe(
+          `DELETE FROM waste_movements WHERE id = $1::uuid`,
+          rettifica.movimentoId
+        )
+      ).rejects.toThrow(/legami_movimento_vigente_fkey/)
     })
   })
 
@@ -542,6 +583,23 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       ).rejects.toThrow(/righe_legame_movimento_quantita_coerente/)
       await expect(
         comeApp(s.t, tx => inserisciRiga(tx, s, l, { quantita: null, quantitaOrigine: null }))
+      ).resolves.toHaveLength(1)
+    })
+
+    it('quantita manuale zero o negativa respinta; prezzo negativo respinto', async () => {
+      const s = await scenario()
+      const l = await legameConElenco(s)
+      for (const q of ['0', '-1'])
+        await expect(
+          comeApp(s.t, tx => inserisciRiga(tx, s, l, { quantita: q, quantitaOrigine: 'MANUALE' }))
+        ).rejects.toThrow(/righe_legame_movimento_quantita_manuale_positiva/)
+      await expect(comeApp(s.t, tx => inserisciRiga(tx, s, l, { prezzo: '-0.5' }))).rejects.toThrow(
+        /righe_legame_movimento_prezzo_non_negativo/
+      )
+      await expect(
+        comeApp(s.t, tx =>
+          inserisciRiga(tx, s, l, { quantita: '0.001', quantitaOrigine: 'MANUALE' })
+        )
       ).resolves.toHaveLength(1)
     })
 

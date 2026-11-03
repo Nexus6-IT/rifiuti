@@ -707,9 +707,11 @@ diff` resta vuoto.
 causali). Tabelle e tipi nuovi, piu' due `ADD COLUMN` su tabelle piccole e tre `CREATE UNIQUE INDEX`
 additivi sul listino: in deploy il lock dura pochi istanti e `lock_timeout` di 5 secondi fa fallire
 la migration invece di accodare tutto (si rilancia il deploy). Nessuna colonna su `waste_movements`.
-Rollback del codice: innocuo, il codice vecchio ignora tabelle e colonne nuove (tranne l'inserimento
-di una causale aziendale PROPRIA, che col codice vecchio e il CHECK
-`causali_registro_azienda_fatturabile_propria` fallirebbe: ripristinare codice e schema insieme).
+Rollback del codice: innocuo, il codice vecchio ignora tabelle e colonne nuove. Anche l'inserimento
+di una causale aziendale PROPRIA col codice vecchio funziona: `causali_registro_azienda.fatturabile` ha
+`DEFAULT false`, quindi il CHECK `causali_registro_azienda_fatturabile_propria` e' soddisfatto e la
+causale nasce non fatturabile. Se la migration fallisce per `lock_timeout` (55P03): `npx prisma migrate
+resolve --rolled-back 20261103200000_legami_movimento` e si rilancia il deploy.
 Prima di un ripristino dello schema controllare, **come owner**: `SELECT tenant_id, stato, count(*)
 FROM legami_movimento GROUP BY 1, 2`; se non e' vuota i dati si perdono, quindi esportarli prima
 (`COPY ... TO`). Il ripristino a mano e' nel commento di testa della migration e nella riga 0 della

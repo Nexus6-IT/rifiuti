@@ -62,8 +62,13 @@ CREATE TYPE "origine_quantita_legame" AS ENUM ('DA_MOVIMENTO', 'MANUALE');
 ALTER TABLE "causali_registro" ADD COLUMN "fatturabile" BOOLEAN NOT NULL DEFAULT false;
 UPDATE "causali_registro" SET "fatturabile" = true WHERE "codice" = 'INGRESSO_ESTERNO' AND "verso" = 'CARICO';
 
-ALTER TABLE "causali_registro_azienda" ADD COLUMN "fatturabile" BOOLEAN;
-UPDATE "causali_registro_azienda" SET "fatturabile" = false WHERE "natura" = 'PROPRIA';
+-- DEFAULT false: il backend vecchio (finestra di deploy, rollback del solo codice) inserisce una
+-- PROPRIA senza la colonna e nasce non fatturabile, come le causali storiche (spec §4.1). Le righe
+-- esistenti prendono false senza riscrittura e SENZA far scattare il trigger
+-- `causali_registro_azienda_controlli`; l'unico UPDATE e' sulle DISATTIVAZIONE (a NULL), per le quali
+-- il trigger salta il ramo PROPRIA (sovrapposizioni, immutabilita', versioni usate).
+ALTER TABLE "causali_registro_azienda" ADD COLUMN "fatturabile" BOOLEAN DEFAULT false;
+UPDATE "causali_registro_azienda" SET "fatturabile" = NULL WHERE "natura" = 'DISATTIVAZIONE';
 ALTER TABLE "causali_registro_azienda" ADD CONSTRAINT "causali_registro_azienda_fatturabile_propria" CHECK ("natura" <> 'PROPRIA' OR "fatturabile" IS NOT NULL) NOT VALID;
 ALTER TABLE "causali_registro_azienda" VALIDATE CONSTRAINT "causali_registro_azienda_fatturabile_propria";
 
@@ -143,7 +148,9 @@ CREATE TABLE "righe_legame_movimento" (
     CONSTRAINT "righe_legame_movimento_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "righe_legame_movimento_speciale_senza_prezzo" CHECK (NOT "prezzo_speciale" OR "prezzo" IS NULL),
     CONSTRAINT "righe_legame_movimento_quantita_coerente" CHECK (("quantita" IS NULL) = ("quantita_origine" IS NULL)),
-    CONSTRAINT "righe_legame_movimento_prezzo_manuale_ammesso" CHECK (NOT "prezzo_manuale" OR (NOT "prezzo_speciale" AND "prezzo" IS NOT NULL))
+    CONSTRAINT "righe_legame_movimento_prezzo_manuale_ammesso" CHECK (NOT "prezzo_manuale" OR (NOT "prezzo_speciale" AND "prezzo" IS NOT NULL)),
+    CONSTRAINT "righe_legame_movimento_quantita_manuale_positiva" CHECK ("quantita_origine" IS DISTINCT FROM 'MANUALE' OR "quantita" > 0),
+    CONSTRAINT "righe_legame_movimento_prezzo_non_negativo" CHECK ("prezzo" IS NULL OR "prezzo" >= 0)
 );
 
 CREATE TABLE "impostazioni_fatturazione" (

@@ -61,6 +61,9 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
       JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
       WHERE k.table_schema = 'public' AND k.column_name = 'tenant_id'
       ORDER BY 1`
+    // 67 dalla fase 4.3: le tre tabelle dei legami (`legami_movimento`, `righe_legame_movimento`,
+    // `impostazioni_fatturazione`) sono provate per nome in
+    // `application/legami-movimento/legami-movimento.schema.postgres.spec.ts`.
     expect(righe.length).toBe(67)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({

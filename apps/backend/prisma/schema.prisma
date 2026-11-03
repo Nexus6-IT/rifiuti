@@ -2454,8 +2454,8 @@ model CausaleRegistroAzienda {
   operazione           String?              @db.VarChar(1)
   ordine               Int                  @default(100) @db.SmallInt
   /// Fase 4.3: obbligatorio per natura PROPRIA (CHECK `causali_registro_azienda_fatturabile_propria`),
-  /// NULL per DISATTIVAZIONE.
-  fatturabile          Boolean?
+  /// NULL per DISATTIVAZIONE (il servizio lo scrive esplicito; il DEFAULT false serve al codice vecchio).
+  fatturabile          Boolean?             @default(false)
   validaDal            DateTime?            @map("valida_dal") @db.Date
   validaAl             DateTime?            @map("valida_al") @db.Date
   creatoDa             String               @map("creato_da") @db.Uuid

@@ -386,6 +386,8 @@ export class CausaliRegistroService {
           codice,
           verso,
           causaleSistemaCodice: codice,
+          // Il DEFAULT del database e' false: per una DISATTIVAZIONE il flag resta NULL (spec §4.1).
+          fatturabile: null,
           creatoDa: userId,
         },
       })

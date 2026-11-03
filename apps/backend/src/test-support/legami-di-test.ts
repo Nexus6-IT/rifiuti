@@ -157,6 +157,10 @@ export async function creaLegameDiTest(
       r.prezzoManuale ?? false,
       r.codiceIvaId
     )
+    if (!riga)
+      throw new Error(
+        'creaLegameDiTest: la riga di listino o il codice IVA non esistono nel tenant indicato'
+      )
     righeIds.push(riga.id)
   }
   return { legameId: legame.id, righeIds }
