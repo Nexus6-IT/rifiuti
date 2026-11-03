@@ -150,6 +150,35 @@ DELETE FROM _prisma_migrations WHERE migration_name = '20261031130000_unita_loca
 
 ---
 
+## Migration della fase 4 (contratto cliente e listino): ordine di ripristino
+
+Le migration della fase 4 dipendono l'una dall'altra tramite chiavi esterne, quindi a mano si
+ripristinano **dall'ultima alla prima**, tutte nella stessa sessione `psql` come proprietario
+(`wasteflow`), e prima di farlo si rimette in produzione il tag del backend precedente (il codice
+nuovo non regge tabelle mancanti). L'elenco `DROP` esatto sta nel commento in testa a ciascun
+`migration.sql`: questa tabella ne dà solo l'ordine e i rischi.
+
+| # | Migration | Pezzo | Cosa toglie | Attenzione |
+|---|-----------|-------|-------------|------------|
+| 1 | `20261103100000_*` | seguiti 4.2b | solo indici e un CHECK | si toglie con `DROP INDEX` / `ALTER TABLE ... DROP CONSTRAINT` (nomi nel file della migration); nessun dato perso, nessuna dipendenza da altre migration |
+| 2 | `20261102300100_listino_elenchi_righe` | 4.2b | 5 tabelle (`elenchi_addebiti`, `allegati_elenco_addebiti`, `righe_addebito`, `scaglioni_riga_addebito`, `scadenze_riga_addebito`) e 3 enum | contiene dati dei clienti: esportarli prima |
+| 3 | `20261102300000_listino_archivio_addebiti` | 4.2a | 4 tabelle (`prezzi_listino_addebito`, `addebiti`, `codifiche_addebito`, `codici_iva`), le 3 colonne di `clienti` (`listino`, `provvigione_predefinita`, `tipo_provvigione_predefinita`) e 2 enum | SOLO dopo il punto 2 (le sue FK citano queste tabelle); le colonne di `clienti` contengono dati: esportarli prima |
+| 4 | `20261102200100_clienti_agenti_contratti_cliente` | 4.1b | 5 tabelle (`allegati_contratto_cliente`, `periodi_fatturazione_cliente`, `contratti_cliente`, `clienti`, `agenti`) e 2 enum | SOLO dopo il punto 3 (la 4.2a aggiunge colonne a `clienti`); tabelle con dati |
+| 5 | `20261102200000_anagrafiche_fatturazione_cliente` | 4.1a | 6 tabelle di fatturazione (`codifiche_contratto`, `testi_fatturazione`, `registri_iva`, `spese_accessorie`, `conti_correnti`, `condizioni_pagamento`) e 2 enum | SOLO dopo il punto 4 (le FK composite della 4.1b le citano) |
+
+Per ogni migration ripristinata si cancella anche la sua riga da `_prisma_migrations`
+(`DELETE FROM _prisma_migrations WHERE migration_name = '<nome>';`), altrimenti il prossimo
+`migrate deploy` la considera già applicata.
+
+Se invece una di queste migration **fallisce** in deploy (P3009), la procedura è la stessa
+descritta in "Ripristino da migration fallita (P3009)": sono transazionali, quindi non resta
+nulla di metà; si controlla con `SELECT to_regclass('public.<prima tabella>')` che sia `NULL`, si
+corregge la causa e si lancia `npx prisma migrate resolve --rolled-back <nome>` prima di
+rilanciare il deploy. La `20261102300000` prende un lock su `clienti` per la durata della
+migration (`lock_timeout` di 5 secondi): se scade si rilancia il deploy.
+
+---
+
 ## Ripristino (Disaster Recovery)
 
 ### Script: `restore.sh`

@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { Observable } from 'rxjs'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { contentDisposition } from '../common/content-disposition'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { DIMENSIONE_MASSIMA_ALLEGATO, riconosciTipoFile } from '../../domain/pese/allegato-pesa'
 import type { FileCaricato } from '../../application/pese/accessi-pesa.tipi'
@@ -101,20 +102,9 @@ export function allegatoDaRichiesta(file?: FileMulter): FileCaricato | undefined
   }
 }
 
-/** Intestazione Content-Disposition sicura: nome ASCII ripulito + `filename*` UTF-8 (RFC 5987). */
+/** Intestazione Content-Disposition sicura (helper comune, RFC 5987). */
 export function contentDispositionInline(nome: string): string {
-  const base = (nome ?? '').split(/[\\/]/).pop() ?? ''
-  // eslint-disable-next-line no-control-regex
-  const pulito = (base.replace(/[\u0000-\u001f\u007f]/g, '').trim() || 'allegato').replace(
-    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
-    '\uFFFD'
-  )
-  const ascii = pulito.replace(/[^\x20-\x7e]/g, '_').replace(/["\\;%]/g, '_')
-  const codificato = encodeURIComponent(pulito).replace(
-    /['()*]/g,
-    c => '%' + c.charCodeAt(0).toString(16).toUpperCase()
-  )
-  return `inline; filename="${ascii}"; filename*=UTF-8''${codificato}`
+  return contentDisposition('inline', nome)
 }
 
 /** Guard dei ruoli: 403 prima che l'interceptor legga il multipart. */

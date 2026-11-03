@@ -15,6 +15,9 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// Le sessioni di questo processo si riconoscono in `pg_stat_activity` (barriera sul lock).
+const NOME_APPLICAZIONE = `conti-correnti-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import { TenantContext } from '../../core/context/tenant-context'
 import {
@@ -211,26 +214,74 @@ describe('ContiCorrentiService — Postgres reale, ruolo wasteflow_app', () => {
 
   it('in concorrenza ogni vincolo dà il proprio codice (IBAN uguale / codice uguale)', async () => {
     const { tenantId, utenteId } = await azienda()
-    const esiti = (v: PromiseSettledResult<unknown>[]) =>
-      v.map(r => (r.status === 'fulfilled' ? 'ok' : (r.reason as any).response?.error))
 
-    const stessoIban = await Promise.allSettled([
-      nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'X1' })),
-      nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'X2' })),
-    ])
-    expect(esiti(stessoIban).sort()).toEqual(['CONTO_CORRENTE_IBAN_DUPLICATO', 'ok'])
+    /**
+     * Barriera deterministica (niente corsa a tempo): una transazione del proprietario inserisce,
+     * senza committare, la riga "vincente"; la `crea` del servizio si ferma sul lock dell'indice
+     * univoco (visibile in `pg_stat_activity` come `wait_event_type = 'Lock'`); solo allora il
+     * proprietario committa e la perdente riceve la violazione di unicita'. Cosi' il
+     * `lock_timeout` del servizio non puo' scattare prima del rilascio.
+     */
+    const conVincente = async (
+      vincente: Prisma.ContoCorrenteUncheckedCreateInput,
+      perdente: () => Promise<unknown>
+    ) => {
+      let rilascia!: () => void
+      const barriera = new Promise<void>(r => (rilascia = r))
+      let inserita!: () => void
+      const eInserita = new Promise<void>(r => (inserita = r))
+      const tenitore = owner.$transaction(
+        async tx => {
+          await tx.contoCorrente.create({ data: vincente })
+          inserita()
+          await barriera
+        },
+        { timeout: 60_000 }
+      )
+      try {
+        await eInserita
+        const esito = perdente().then(
+          () => 'ok',
+          (e: { response?: { error?: string } }) => e.response?.error ?? 'errore'
+        )
+        const scadenza = Date.now() + 30_000
+        for (;;) {
+          const r = await owner.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+              AND wait_event_type = 'Lock'`
+          if (r[0].n >= 1) break
+          if (Date.now() > scadenza) throw new Error('la perdente non e` in attesa del lock')
+          await new Promise(r => setTimeout(r, 25))
+        }
+        rilascia()
+        await tenitore
+        return await esito
+      } finally {
+        rilascia()
+        await tenitore.catch(() => undefined)
+      }
+    }
 
-    const stessoCodice = await Promise.allSettled([
-      nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'Y', iban: IBAN2 })),
-      nel(tenantId, () =>
-        service.crea(tenantId, utenteId, {
-          ...dati,
-          codice: 'Y',
-          iban: 'FR1420041010050500013M02606',
-        })
-      ),
-    ])
-    expect(esiti(stessoCodice).sort()).toEqual(['CONTO_CORRENTE_CODICE_DUPLICATO', 'ok'])
+    // Stesso IBAN, codice diverso.
+    expect(
+      await conVincente({ tenantId, codice: 'X1', descrizione: 'V', banca: 'B', iban: IBAN }, () =>
+        nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'X2' }))
+      )
+    ).toBe('CONTO_CORRENTE_IBAN_DUPLICATO')
+
+    // Stesso codice, IBAN diverso.
+    expect(
+      await conVincente({ tenantId, codice: 'Y', descrizione: 'V', banca: 'B', iban: IBAN2 }, () =>
+        nel(tenantId, () =>
+          service.crea(tenantId, utenteId, {
+            ...dati,
+            codice: 'Y',
+            iban: 'FR1420041010050500013M02606',
+          })
+        )
+      )
+    ).toBe('CONTO_CORRENTE_CODICE_DUPLICATO')
   })
 
   it('due modifiche concorrenti sulla stessa versione: una passa, l’altra 409', async () => {

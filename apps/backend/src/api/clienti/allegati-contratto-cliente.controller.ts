@@ -38,25 +38,14 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import {
   AllegatiContrattoClienteService,
   MESSAGGIO_POSIZIONE_ALLEGATO,
-  nomePulito,
 } from '../../application/contratti-cliente/allegati-contratto-cliente.service'
 import {
   AllegatoContrattoInterceptor,
   nomeUtf8,
   type FileMulter,
 } from './allegato-contratto-upload'
+import { contentDisposition } from '../common/content-disposition'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
-
-/** `Content-Disposition` di un download: nome ASCII di ripiego + `filename*` UTF-8 (RFC 5987). */
-function contentDispositionAttachment(nome: string): string {
-  const pulito = nomePulito(nome)
-  const ascii = pulito.replace(/[^\x20-\x7e]/g, '_').replace(/["\\;%]/g, '_')
-  const codificato = encodeURIComponent(pulito).replace(
-    /['()*]/g,
-    c => '%' + c.charCodeAt(0).toString(16).toUpperCase()
-  )
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${codificato}`
-}
 
 @ApiTags('clienti')
 @ApiBearerAuth()
@@ -130,7 +119,7 @@ export class AllegatiContrattoClienteController {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     return new StreamableFile(contenuto, {
       type: 'application/pdf',
-      disposition: contentDispositionAttachment(nomeFile),
+      disposition: contentDisposition('attachment', nomeFile),
       length: contenuto.length,
     })
   }

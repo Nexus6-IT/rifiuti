@@ -30,6 +30,7 @@ import { GiacenzeInizialiService, DatiGiacenzaIniziale } from './giacenze-inizia
 import { RegistraMovimentoUseCase } from './use-cases/registra-movimento.use-case'
 import { RegistraMovimentoCommand } from './commands/registra-movimento.command'
 import { giornoItaliano } from '../../core/time/anno-italiano'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 
 const loggerStub = { setContext() {}, info() {}, warn() {}, error() {}, debug() {} }
 
@@ -46,15 +47,17 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
   let userId: string
   const cerCreati: string[] = []
   const tenantCreati: string[] = []
-  let n = 0
 
   const nelTenant = <R>(tenantId: string, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId }, async () => await fn())
 
   async function azienda() {
-    const suffisso = `${Date.now()}${++n}`.slice(-9)
     const t = await owner.tenant.create({
-      data: { partitaIva: `GI${suffisso}`, ragioneSociale: 'Giacenze iniziali SRL', country: 'IT' },
+      data: {
+        partitaIva: partitaIvaUnica(),
+        ragioneSociale: 'Giacenze iniziali SRL',
+        country: 'IT',
+      },
     })
     tenantCreati.push(t.id)
     const viste = await nelTenant(t.id, () => registri.assicuraRegistri(t.id))
@@ -148,7 +151,7 @@ describe('Giacenze iniziali — Postgres reale, ruolo wasteflow_app', () => {
     expect(a.u).toBe('wasteflow_app')
     const tenantUtente = await owner.tenant.create({
       data: {
-        partitaIva: `GU${Date.now()}`.slice(0, 11),
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Utente SRL',
         country: 'IT',
       },

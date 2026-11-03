@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { aggiornaReportData } from './mud-report-data'
 
 /**
@@ -29,7 +30,7 @@ describe('aggiornaReportData — concorrenza su Postgres reale', () => {
     await prisma.$connect()
     const tenant = await prisma.tenant.create({
       data: {
-        partitaIva: `MR${Date.now().toString().slice(-9)}`,
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Report MUD Concorrenza Test SRL',
         country: 'IT',
       },

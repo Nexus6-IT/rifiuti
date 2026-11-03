@@ -7,6 +7,7 @@ import { TenantSenzaCertificatoRentriError } from '../rentri/rentri-credential.r
 import { RentriCredentialService } from '../rentri/rentri-credential.service'
 import { CODICE_CERTIFICATO_MANCANTE } from '../rentri/rentri-certificato.costanti'
 import { FIR, FirmaDigitale } from '../../domain/fir/aggregates/fir.aggregate'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
   FirAnnullatoNelFrattempoError,
   FirNonPiuInBozzaError,
@@ -37,7 +38,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
 
     const tenant = await prisma.tenant.create({
       data: {
-        partitaIva: `UQ${Date.now().toString().slice(-9)}`,
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Vincolo Unicità Test SRL',
         country: 'IT',
       },
@@ -358,7 +359,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       )
       const tenant = await prisma.tenant.create({
         data: {
-          partitaIva: `NF${Date.now().toString().slice(-9)}`,
+          partitaIva: partitaIvaUnica(),
           ragioneSociale: 'Numerazione FIR Test SRL',
           country: 'IT',
         },
@@ -696,7 +697,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       ): Promise<string> {
         const t = await prisma.tenant.create({
           data: {
-            partitaIva: `PD${Math.random().toString().slice(2, 11)}`,
+            partitaIva: partitaIvaUnica(),
             ragioneSociale: `Pending ${modalita}`,
             country: 'IT',
             rentriModalitaLegame: modalita,
@@ -788,7 +789,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
           await prisma.tenant.create({
             data: {
               id: AZIENDA_PIATTAFORMA_ID,
-              partitaIva: `PF${Math.random().toString().slice(2, 11)}`,
+              partitaIva: partitaIvaUnica(),
               ragioneSociale: 'Piattaforma test',
               country: 'IT',
             },

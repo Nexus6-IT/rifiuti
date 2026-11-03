@@ -464,9 +464,10 @@ describe('Listino, archivio addebiti: schema (Postgres reale, ruolo wasteflow_ap
       attesi
     )
     expect(r.map(x => x.indexname).sort()).toEqual([...attesi].sort())
-    const lunghi = await owner.$queryRawUnsafe<{ conname: string }[]>(
-      `SELECT conname FROM pg_constraint WHERE length(conname) > 63`
-    )
-    expect(lunghi).toEqual([])
+    // Postgres TRONCA a 63 caratteri gli identificatori piu' lunghi, quindi `length(conname) > 63`
+    // non puo' mai trovare nulla: il controllo utile e' sul nome ATTESO (quello dello schema), che
+    // deve stare entro il limite, altrimenti il nome in catalogo sarebbe diverso da quello dichiarato.
+    const troppoLunghi = attesi.filter(nome => nome.length > 63)
+    expect(troppoLunghi).toEqual([])
   })
 })

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
+import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { RentriScortaRepository } from './rentri-scorta.repository'
 
 /**
@@ -35,7 +36,7 @@ describe('RentriScortaRepository — consumo concorrente su Postgres reale', () 
 
     const tenant = await prisma.tenant.create({
       data: {
-        partitaIva: `SC${Date.now().toString().slice(-9)}`,
+        partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Scorta Concorrenza Test SRL',
         country: 'IT',
       },
