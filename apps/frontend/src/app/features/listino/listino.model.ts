@@ -269,6 +269,14 @@ export interface Scadenza {
   anno: number | null
 }
 
+/** Risposta di PATCH e POST della riga: `avvisi` non bloccanti (es. condizione senza più addebiti). */
+export type RigaSalvata = RigaAddebito & { avvisi?: string[] }
+
+/** Risposta di DELETE della riga: avvisi non bloccanti, mai errori. */
+export interface EsitoEliminazioneRiga {
+  avvisi: string[]
+}
+
 export interface RigaAddebito {
   id: string
   elencoId: string

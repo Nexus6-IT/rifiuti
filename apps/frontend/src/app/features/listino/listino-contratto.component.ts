@@ -29,7 +29,7 @@ import { ElencoDialogComponent } from './elenco-dialog.component'
 import { ElenchiPannelloComponent } from './elenchi-pannello.component'
 import { MESSAGGIO_CONCORRENTE, naturaConflitto } from './errori-azione'
 import { elenchiValidiAl, oggiIso, righeInTesto } from './listino-calcoli'
-import { ContestoListino, ElencoAddebiti, RigaAddebito } from './listino.model'
+import { ContestoListino, ElencoAddebiti, RigaAddebito, RigaSalvata } from './listino.model'
 import { ListinoService } from './listino.service'
 import { ProvvigioniScontiDialogComponent } from './provvigioni-sconti-dialog.component'
 import { RigaAddebitoDialogComponent } from './riga-addebito-dialog.component'
@@ -157,6 +157,14 @@ import { RigheTavolaComponent } from './righe-tavola.component'
                 data-testid="listino-aggiungi-righe"
               />
             </div>
+            <ul
+              *ngIf="avvisiRiga().length > 0"
+              role="status"
+              class="field-hint"
+              data-testid="listino-avvisi-riga"
+            >
+              <li *ngFor="let a of avvisiRiga()">{{ a }}</li>
+            </ul>
             <app-righe-tavola
               [elementi]="righe()"
               [caricamento]="caricamentoRighe()"
@@ -189,7 +197,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
         [riga]="rigaAperta()"
         [soloLettura]="soloLettura() || !elencoMostrato()?.modificabile"
         (visibleChange)="chiudiRiga($event)"
-        (salvato)="dopoSalvataggioRiga()"
+        (salvato)="dopoSalvataggioRiga($event)"
         (ricarica)="dopoRicaricaRiga()"
       />
       <app-copia-elenco-dialog
@@ -269,6 +277,8 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
   readonly soloValidi = signal(false)
   readonly elencoScelto = signal<ElencoAddebiti | null>(null)
   readonly righe = signal<RigaAddebito[]>([])
+  /** Avvisi non bloccanti dell'ultima modifica o eliminazione di una riga (condizioni citate). */
+  readonly avvisiRiga = signal<string[]>([])
   readonly caricamentoRighe = signal(false)
   readonly erroreCaricamento = signal<string | null>(null)
   readonly erroreRighe = signal<string | null>(null)
@@ -390,8 +400,9 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
   }
 
   /** Salvata la riga si rilegge tutto: cambiano anche i conteggi degli elenchi. */
-  dopoSalvataggioRiga(): void {
+  dopoSalvataggioRiga(r?: RigaSalvata): void {
     this.rigaDialogAperto.set(false)
+    this.avvisiRiga.set(r?.avvisi ?? [])
     this.carica()
   }
 
@@ -420,7 +431,10 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
       .elimina(r.id, r.versione)
       .pipe(takeUntil(this.distrutto))
       .subscribe({
-        next: () => this.carica(),
+        next: esito => {
+          this.avvisiRiga.set(esito?.avvisi ?? [])
+          this.carica()
+        },
         error: err => this.dopoErroreEliminazione(err, 'Impossibile eliminare la riga.'),
       })
   }

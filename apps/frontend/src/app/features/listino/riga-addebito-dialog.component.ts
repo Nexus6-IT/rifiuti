@@ -30,7 +30,7 @@ import { AggiuntaInLinea } from '../clienti/aggiunta-in-linea'
 import { messaggioErrore, permessoScrittura } from '../clienti/tabelle/tabella-comune'
 import { CERSearchResult } from '../../shared/models/cer.model'
 import { AddebitoDialogComponent } from './addebito-dialog.component'
-import { Addebito, CodificaRentri, RigaAddebito } from './listino.model'
+import { Addebito, CodificaRentri, RigaAddebito, RigaSalvata } from './listino.model'
 import { ListinoService } from './listino.service'
 import { ChiaveOpzione, OpzioniListino } from './opzioni-listino'
 import { RigaDatiSezioneComponent, RichiestaNuovo } from './riga-dati-sezione.component'
@@ -190,7 +190,7 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   /** VIEWER o contratto annullato (D16): niente scrittura, il backend resta l'arbitro. */
   @Input() soloLettura = false
   @Output() visibleChange = new EventEmitter<boolean>()
-  @Output() salvato = new EventEmitter<RigaAddebito>()
+  @Output() salvato = new EventEmitter<RigaSalvata>()
   /** "Ricarica" dopo un 409: la pagina rilegge e chiude il dialog. */
   @Output() ricarica = new EventEmitter<void>()
 
