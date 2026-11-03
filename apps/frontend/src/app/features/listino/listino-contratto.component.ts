@@ -86,7 +86,9 @@ import { RigheTavolaComponent } from './righe-tavola.component'
       <header *ngIf="contesto() as c" class="intestazione" data-testid="listino-intestazione">
         <h1>Listino del contratto {{ c.contratto.numero }}</h1>
         <div class="intestazione__dati">
-          <span data-testid="listino-cliente" *ngIf="c.contratto.clienteRagioneSociale as cl">{{ cl }}</span>
+          <span data-testid="listino-cliente" *ngIf="c.contratto.clienteRagioneSociale as cl">{{
+            cl
+          }}</span>
           <p-tag
             [value]="etichettaStato(c.contratto.stato)"
             [severity]="c.contratto.stato === 'ANNULLATO' ? 'danger' : 'info'"
