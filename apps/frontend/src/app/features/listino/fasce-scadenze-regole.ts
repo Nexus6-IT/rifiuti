@@ -151,9 +151,12 @@ export function descrizioneFascia(
   // Con una quantità precedente (R30, Task 16a: progressivo da data e conguaglio) la quantità già
   // fatturata non si ripaga: D/E/W/H fatturano la sola quantità nuova, B/C il fisso solo la
   // prima volta che la fascia è raggiunta (Q8), A scala la precedente fascia per fascia.
-  const daData = applicaA === 'PROGRESSIVO_DA_DATA' || applicaA === 'CONGUAGLIO_365'
-  const coda = (testo: string): string => (daData ? ` ${testo}` : '')
+  // La combinazione con la quantità precedente vale solo per A-E: per X/Y/Z/W/H non è ammessa e
+  // la frase non va mostrata.
   const tipo = f.tipoCalcolo
+  const daData =
+    (applicaA === 'PROGRESSIVO_DA_DATA' || applicaA === 'CONGUAGLIO_365') && 'ABCDE'.includes(tipo)
+  const coda = (testo: string): string => (daData ? ` ${testo}` : '')
   switch (tipo) {
     case 'A':
     case 'X':
@@ -166,11 +169,17 @@ export function descrizioneFascia(
       return `${tipo} = Importo fisso di ogni fascia raggiunta, ${campo}.${cond}${coda('Si fattura il fisso delle sole fasce raggiunte per la prima volta.')}`
     case 'D':
     case 'W':
-      return `${tipo} = Prezzo della fascia raggiunta × tutta la quantità, ${campo}.${cond}${coda('Si fattura la sola quantità nuova (la precedente è già fatturata) al prezzo della fascia più alta raggiunta dal totale.')}`
+      // Con la quantità precedente «tutta la quantità» sarebbe contraddittorio: si fattura la
+      // sola quantità nuova, al prezzo della fascia raggiunta dal totale.
+      return daData
+        ? `${tipo} = Prezzo della fascia raggiunta dal totale × la sola quantità nuova (la precedente è già fatturata), ${campo}.${cond}`
+        : `${tipo} = Prezzo della fascia raggiunta × tutta la quantità, ${campo}.${cond}`
     case 'E':
-      return `E = tutta la quantità al prezzo dell'ultima fascia (come D), ${campo}.${coda('Si fattura la sola quantità nuova: la precedente è già fatturata.')}`
+      return daData
+        ? `E = la sola quantità nuova al prezzo dell'ultima fascia (come D), ${campo}. La precedente è già fatturata.`
+        : `E = tutta la quantità al prezzo dell'ultima fascia (come D), ${campo}.`
     case 'H':
-      return `H = come E, con condizione: tutta la quantità al prezzo dell'ultima fascia, ${campo}.${coda('Si fattura la sola quantità nuova: la precedente è già fatturata.')}`
+      return `H = come E, con condizione: tutta la quantità al prezzo dell'ultima fascia, ${campo}.`
   }
 }
 

@@ -146,6 +146,7 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               [attr.aria-label]="'Fascia ' + (i + 1) + ', fino a'"
               [value]="f.finoA"
               [attr.aria-invalid]="invalido(f, 'finoA') ? 'true' : null"
+              [attr.aria-describedby]="invalido(f, 'finoA') ? 'fasce-errori-numeri' : null"
               [disabled]="soloLettura"
               inputmode="decimal"
               (input)="cambia(f, 'finoA', $any($event.target).value)"
@@ -157,6 +158,7 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               [attr.aria-label]="'Fascia ' + (i + 1) + ', prezzo'"
               [value]="f.prezzo"
               [attr.aria-invalid]="invalido(f, 'prezzo') ? 'true' : null"
+              [attr.aria-describedby]="invalido(f, 'prezzo') ? 'fasce-errori-numeri' : null"
               [disabled]="soloLettura"
               inputmode="decimal"
               (input)="cambia(f, 'prezzo', $any($event.target).value)"
@@ -168,6 +170,7 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               [attr.aria-label]="'Fascia ' + (i + 1) + ', sconto'"
               [value]="f.sconto"
               [attr.aria-invalid]="invalido(f, 'sconto') ? 'true' : null"
+              [attr.aria-describedby]="invalido(f, 'sconto') ? 'fasce-errori-numeri' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(f, 'sconto', $any($event.target).value)"
@@ -179,6 +182,7 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               [attr.aria-label]="'Fascia ' + (i + 1) + ', provvigione'"
               [value]="f.provvigione"
               [attr.aria-invalid]="invalido(f, 'provvigione') ? 'true' : null"
+              [attr.aria-describedby]="invalido(f, 'provvigione') ? 'fasce-errori-numeri' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(f, 'provvigione', $any($event.target).value)"
@@ -226,6 +230,7 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               aria-label="Fascia oltre, prezzo"
               [value]="oltre.prezzo"
               [attr.aria-invalid]="invalido(oltre, 'prezzo') ? 'true' : null"
+              [attr.aria-describedby]="invalido(oltre, 'prezzo') ? 'fasce-errori-numeri' : null"
               [disabled]="soloLettura"
               inputmode="decimal"
               (input)="cambia(oltre, 'prezzo', $any($event.target).value)"
@@ -237,6 +242,7 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               aria-label="Fascia oltre, sconto"
               [value]="oltre.sconto"
               [attr.aria-invalid]="invalido(oltre, 'sconto') ? 'true' : null"
+              [attr.aria-describedby]="invalido(oltre, 'sconto') ? 'fasce-errori-numeri' : null"
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(oltre, 'sconto', $any($event.target).value)"
@@ -248,6 +254,9 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
               aria-label="Fascia oltre, provvigione"
               [value]="oltre.provvigione"
               [attr.aria-invalid]="invalido(oltre, 'provvigione') ? 'true' : null"
+              [attr.aria-describedby]="
+                invalido(oltre, 'provvigione') ? 'fasce-errori-numeri' : null
+              "
               [disabled]="soloLettura"
               placeholder="10+5"
               (input)="cambia(oltre, 'provvigione', $any($event.target).value)"
@@ -286,14 +295,15 @@ const NOMI_CAMPO: Readonly<Record<'finoA' | 'prezzo' | 'sconto' | 'provvigione',
           data-testid="fasce-aggiungi"
         />
 
-        <ul
-          class="errori-numeri"
-          *ngIf="erroriNumeri().length > 0"
-          aria-live="polite"
-          data-testid="fasce-errori-numeri"
-        >
-          <li *ngFor="let m of erroriNumeri()" class="field-error">{{ m }}</li>
-        </ul>
+        <div aria-live="polite" id="fasce-errori-numeri">
+          <ul
+            class="errori-numeri"
+            *ngIf="erroriNumeri().length > 0"
+            data-testid="fasce-errori-numeri"
+          >
+            <li *ngFor="let m of erroriNumeri()" class="field-error">{{ m }}</li>
+          </ul>
+        </div>
         <ul class="avvisi" *ngIf="avvisi().length > 0" data-testid="fasce-avvisi">
           <li *ngFor="let m of avvisi()" class="field-hint">{{ m }}</li>
         </ul>

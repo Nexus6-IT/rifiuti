@@ -376,4 +376,63 @@ describe('RigaScadenzeSezioneComponent', () => {
     await new Promise(r => setTimeout(r))
     expect(document.activeElement).toBe(q('scadenza-2-giorno'))
   })
+
+  describe('seguiti del giro 4.2b (voci 18-21)', () => {
+    it('una riga vuota in mezzo è «vuota», non «data non valida» (voce 18)', async () => {
+      await monta()
+      bottone('scadenze-aggiungi')!.click()
+      await stabilizza(fixture)
+      scrivi('scadenza-2-giorno', '1')
+      scrivi('scadenza-2-mese', '6')
+      await stabilizza(fixture)
+      const t = testo('scadenze-avvisi')
+      expect(t).toContain('Scadenza 1: è vuota, compilala o toglila.')
+      expect(t).not.toContain('Scadenza 1: data non valida')
+    })
+
+    it('un numero errato non nasconde la competenza delle altre righe (voce 19)', async () => {
+      await monta()
+      stato.form.controls.scadenze.setValue([sc(1, 1, 4, 2026), sc(2, 30, 6, 2026)])
+      imposta('riga-periodo-scadenze', 'TA')
+      await stabilizza(fixture)
+      scrivi('scadenza-2-giorno', '3x')
+      await stabilizza(fixture)
+      expect(testo('scadenza-1-periodo')).toContain('Competenza 2026')
+      expect(testo('scadenza-2-periodo')).toBe('')
+    })
+
+    it('la zona degli errori di numero esiste sempre con aria-live e i campi la citano (voce 20)', async () => {
+      await monta()
+      const zona = q('scadenza-1-giorno')!.ownerDocument.getElementById('scadenze-errori-numeri')
+      expect(zona?.getAttribute('aria-live')).toBe('polite')
+      expect(q('scadenza-1-giorno')!.getAttribute('aria-describedby')).toBeNull()
+      scrivi('scadenza-1-giorno', '1a')
+      await stabilizza(fixture)
+      expect(q('scadenza-1-giorno')!.getAttribute('aria-describedby')).toBe(
+        'scadenze-errori-numeri'
+      )
+      expect(zona!.textContent).toContain('Numero non valido')
+    })
+
+    it('l’annuncio per i lettori di schermo arriva dopo 800 ms (voce 21)', async () => {
+      await monta()
+      stato.form.controls.periodoScadenze.setValue('XA')
+      scrivi('scadenza-1-giorno', '1')
+      scrivi('scadenza-1-mese', '6')
+      await stabilizza(fixture)
+      await new Promise(r => setTimeout(r, 900))
+      await stabilizza(fixture)
+      expect(testo('scadenze-annuncio')).toContain('scadenza extra')
+    })
+
+    it('togliendo una scadenza il focus va su una riga ancora presente (voce 21)', async () => {
+      await monta()
+      stato.form.controls.scadenze.setValue([sc(1, 15, 1), sc(2, 15, 4)])
+      await stabilizza(fixture)
+      q<HTMLButtonElement>('scadenza-2-togli')!.click()
+      await stabilizza(fixture)
+      await new Promise(r => setTimeout(r))
+      expect(document.activeElement).toBe(q('scadenza-1-giorno'))
+    })
+  })
 })
