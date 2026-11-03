@@ -232,9 +232,9 @@ export async function creaCausaleAzienda(
 ): Promise<string> {
   const righe = await client.$queryRawUnsafe<{ id: string }[]>(
     `INSERT INTO causali_registro_azienda
-       (tenant_id, natura, codice, verso, descrizione, ruolo_mud, valida_dal, creato_da, updated_at)
+       (tenant_id, natura, codice, verso, descrizione, ruolo_mud, valida_dal, creato_da, fatturabile, updated_at)
      VALUES ($1::uuid, 'PROPRIA', $2, $3::waste_movement_type, 'Prova', $4::ruolo_mud_causale,
-             $5::date, $6::uuid, now())
+             $5::date, $6::uuid, false, now())
      RETURNING id::text AS id`,
     tenantId,
     o.codice,

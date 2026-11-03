@@ -120,6 +120,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RigaAddebito',
   'ScaglioneRigaAddebito',
   'ScadenzaRigaAddebito',
+  // Legami movimento-cliente-prezzo (Fase 4 pezzo 3): dato dell'azienda.
+  'LegameMovimento',
+  'RigaLegameMovimento',
+  'ImpostazioneFatturazione',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

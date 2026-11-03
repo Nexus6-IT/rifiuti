@@ -463,6 +463,8 @@ export class CausaliRegistroService {
           codiceRentri,
           operazione,
           ordine,
+          // Task 4 lo rende una scelta dell'utente; fino ad allora una causale nuova non e' fatturabile.
+          fatturabile: false,
           validaDal: comeData(validaDal),
           creatoDa: userId,
         },
@@ -656,6 +658,8 @@ export class CausaliRegistroService {
           codiceRentri,
           operazione,
           ordine,
+          // La nuova versione eredita il flag dell'ultima (Task 4 permettera' di cambiarlo).
+          fatturabile: ultima.fatturabile ?? false,
           validaDal: comeData(validaDal),
           creatoDa: userId,
         },

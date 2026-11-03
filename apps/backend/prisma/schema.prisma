@@ -161,6 +161,10 @@ model Tenant {
   righeAddebito            RigaAddebito[]
   scaglioniRigaAddebito    ScaglioneRigaAddebito[]
   scadenzeRigaAddebito     ScadenzaRigaAddebito[]
+  // Fase 4 pezzo 3
+  legamiMovimento          LegameMovimento[]
+  righeLegameMovimento     RigaLegameMovimento[]
+  impostazioniFatturazione ImpostazioneFatturazione[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -1985,6 +1989,9 @@ model WasteMovement {
   collegamentiAccesso CollegamentoAccesso[]
   abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
   abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
+  /// Solo relazioni inverse (fase 4.3): il legame commerciale non aggiunge colonne al movimento.
+  legamiComeOriginale LegameMovimento[] @relation("LegameOriginale")
+  legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
 
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
@@ -2420,6 +2427,10 @@ model CausaleRegistro {
   operazione   String?           @db.VarChar(1)
   ordine       Int               @db.SmallInt
   attiva       Boolean           @default(true)
+  /// Fase 4.3: i movimenti con questa causale entrano nel legame con cliente e prezzo. Solo
+  /// INGRESSO_ESTERNO/CARICO nasce vero (decisione 15); non cambia per azienda (decisione 14).
+  /// Non entra nell'entryHash.
+  fatturabile  Boolean           @default(false)
   createdAt    DateTime          @default(now()) @map("created_at")
 
   disattivazioni CausaleRegistroAzienda[] @relation("DisattivazioniSistema")
@@ -2442,6 +2453,9 @@ model CausaleRegistroAzienda {
   codiceRentri         String?              @map("codice_rentri") @db.VarChar(5)
   operazione           String?              @db.VarChar(1)
   ordine               Int                  @default(100) @db.SmallInt
+  /// Fase 4.3: obbligatorio per natura PROPRIA (CHECK `causali_registro_azienda_fatturabile_propria`),
+  /// NULL per DISATTIVAZIONE.
+  fatturabile          Boolean?
   validaDal            DateTime?            @map("valida_dal") @db.Date
   validaAl             DateTime?            @map("valida_al") @db.Date
   creatoDa             String               @map("creato_da") @db.Uuid
@@ -3223,6 +3237,7 @@ model Cliente {
   agente              Agente?              @relation(fields: [agenteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "clienti_agente_fkey")
 
   contrattiDelCliente     ContrattoCliente[] @relation("ClienteDelContratto")
+  legami                  LegameMovimento[]
   contrattiDiFatturazione ContrattoCliente[] @relation("ClienteDiFatturazione")
 
   @@unique([id, tenantId], map: "clienti_id_tenant_id_key")
@@ -3304,8 +3319,11 @@ model ContrattoCliente {
   periodi           PeriodoFatturazioneCliente[]
   allegatiPdf       AllegatoContrattoCliente[]
   elenchiAddebiti   ElencoAddebiti[]
+  legami            LegameMovimento[]
 
   @@unique([id, tenantId], map: "contratti_cliente_id_tenant_id_key")
+  /// Bersaglio della chiave composta dei legami (fase 4.3): il contratto appartiene al cliente scelto.
+  @@unique([id, clienteId, tenantId], map: "contratti_cliente_id_cliente_id_tenant_id_key")
   @@unique([tenantId, numero], map: "contratti_cliente_tenant_id_numero_key")
   @@index([tenantId, stato], map: "contratti_cliente_tenant_id_stato_idx")
   @@index([tenantId, clienteId], map: "contratti_cliente_tenant_id_cliente_id_idx")
@@ -3397,8 +3415,9 @@ model CodiceIva {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "codici_iva_tenant_id_fkey")
-  addebiti Addebito[]
-  righe    RigaAddebito[]
+  addebiti    Addebito[]
+  righe       RigaAddebito[]
+  righeLegame RigaLegameMovimento[]
 
   @@unique([id, tenantId], map: "codici_iva_id_tenant_id_key")
   @@unique([tenantId, codice], map: "codici_iva_tenant_id_codice_key")
@@ -3562,9 +3581,12 @@ model ElencoAddebiti {
 
   righe    RigaAddebito[]
   allegati AllegatoElencoAddebiti[]
+  legami   LegameMovimento[]
 
   @@unique([id, tenantId], map: "elenchi_addebiti_id_tenant_id_key")
   @@unique([contrattoId, codice], map: "elenchi_addebiti_contratto_id_codice_key")
+  /// Bersaglio della chiave composta dei legami (fase 4.3): l'elenco appartiene al contratto scelto.
+  @@unique([id, contrattoId, tenantId], map: "elenchi_addebiti_id_contratto_id_tenant_id_key")
   @@index([tenantId, contrattoId], map: "elenchi_addebiti_tenant_id_contratto_id_idx")
   @@map("elenchi_addebiti")
 }
@@ -3643,10 +3665,13 @@ model RigaAddebito {
   categoria    CodificaAddebito? @relation("CategoriaRigaAddebito", fields: [categoriaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_categoria_fkey")
   centroRicavo CodificaAddebito? @relation("CentroRicavoRigaAddebito", fields: [centroRicavoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_addebito_centro_ricavo_fkey")
 
-  scaglioni ScaglioneRigaAddebito[]
-  scadenze  ScadenzaRigaAddebito[]
+  scaglioni   ScaglioneRigaAddebito[]
+  scadenze    ScadenzaRigaAddebito[]
+  righeLegame RigaLegameMovimento[]
 
   @@unique([id, tenantId], map: "righe_addebito_id_tenant_id_key")
+  /// Bersaglio della chiave composta delle righe dei legami (fase 4.3): la riga appartiene all'elenco del legame.
+  @@unique([id, elencoId, tenantId], map: "righe_addebito_id_elenco_id_tenant_id_key")
   // ATTENZIONE: il client genera `elencoId_tipo_cerCode_addebitoId_riferimento` con tutti i campi obbligatori, ma ogni riga ha `cerCode` oppure `addebitoId` nullo: `findUnique` e `upsert` su questa chiave NON si possono usare. Il duplicato si cerca con `findFirst` e si gestisce con P2002 (con la RLS `meta.target` e' nullo, D23).
   @@unique([elencoId, tipo, cerCode, addebitoId, riferimento], map: "righe_addebito_elenco_tipo_cer_addebito_rif_key")
   @@index([tenantId, addebitoId], map: "righe_addebito_tenant_id_addebito_id_idx")
@@ -3692,4 +3717,150 @@ model ScadenzaRigaAddebito {
   @@unique([rigaId, ordine], map: "scadenze_riga_addebito_riga_id_ordine_key")
   @@index([tenantId], map: "scadenze_riga_addebito_tenant_id_idx")
   @@map("scadenze_riga_addebito")
+}
+
+/// Stato del legame fra un movimento del registro e il listino (4.3, §4.4). `FATTURATO` e `IMPORTATO_FATTURATO` sono definitivi per listino, "Aggiorna prezzi", rettifica e annullo.
+enum StatoLegameMovimento {
+  DA_COLLEGARE
+  PROPOSTO
+  CONFERMATO
+  ESCLUSO
+  ANNULLATO
+  FATTURATO
+  IMPORTATO_FATTURATO
+
+  @@map("stato_legame_movimento")
+}
+
+/// Da dove viene il cliente proposto: dal FIR (produttore, ditta, cliente) o scelto dall'utente.
+enum FonteClienteLegame {
+  FIR
+  UTENTE
+
+  @@map("fonte_cliente_legame")
+}
+
+/// Origine di una riga del legame: riga CER trovata, riga V proposta, riga V aggiunta a mano.
+enum OrigineRigaLegame {
+  PRINCIPALE
+  PROPOSTA
+  MANUALE
+
+  @@map("origine_riga_legame")
+}
+
+/// Da dove viene la quantita' di una riga del legame: derivata dal movimento o scritta a mano.
+enum OrigineQuantitaLegame {
+  DA_MOVIMENTO
+  MANUALE
+
+  @@map("origine_quantita_legame")
+}
+
+/// Testata del legame commerciale di una CATENA di annotazioni del registro (4.3, §4.2): una riga per radice, mai una colonna su `waste_movements`. Cliente, contratto ed elenco sono legati fra loro da chiavi composte `NoAction` (quelle che citano il listino rendono "in uso" elenchi e righe, decisione 8). I CHECK (solo in migration) fissano la coerenza fra stato e campi: `legami_movimento_completo_se_confermato`, `_completo_se_proposto`, `_gerarchia_coerente`, `_escluso_con_motivo`, `_motivo_esclusione_ammesso`, `_fatturato_coerente`, `_scostamento_solo_se_fatturato`, `_motivi_ammessi`, `_avvisi_ammessi`, `_versione_positiva`. Le regole vere stanno in `domain/legami-movimento`.
+model LegameMovimento {
+  id                     String               @id(map: "legami_movimento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String               @map("tenant_id") @db.Uuid
+  /// Copia di `registro_id` e `verso` del movimento: servono alle chiavi composte.
+  registroId             String               @map("registro_id") @db.Uuid
+  verso                  WasteMovementType
+  /// Radice della catena (la ORDINARIA).
+  movimentoOriginaleId   String               @map("movimento_originale_id") @db.Uuid
+  /// Annotazione vigente all'ultimo allineamento.
+  movimentoVigenteId     String               @map("movimento_vigente_id") @db.Uuid
+  stato                  StatoLegameMovimento @default(DA_COLLEGARE)
+  /// Data del movimento vigente, ricalcolata a ogni correzione fino a `FATTURATO` (decisione 7).
+  dataMovimento          DateTime             @map("data_movimento") @db.Date
+  clienteId              String?              @map("cliente_id") @db.Uuid
+  fonteCliente           FonteClienteLegame?  @map("fonte_cliente")
+  contrattoId            String?              @map("contratto_id") @db.Uuid
+  elencoId               String?              @map("elenco_id") @db.Uuid
+  /// Mancanze che impediscono la conferma (insieme chiuso, CHECK `legami_movimento_motivi_ammessi`).
+  motivi                 String[]             @default([])
+  /// Avvisi non bloccanti, conservati dopo la conferma (CHECK `legami_movimento_avvisi_ammessi`).
+  avvisi                 String[]             @default([])
+  motivoEsclusione       String?              @map("motivo_esclusione") @db.VarChar(200)
+  confermatoIl           DateTime?            @map("confermato_il")
+  confermatoDa           String?              @map("confermato_da") @db.Uuid
+  fatturatoIl            DateTime?            @map("fatturato_il")
+  riferimentoFattura     String?              @map("riferimento_fattura") @db.VarChar(50)
+  scostamentoDopoFattura Boolean              @default(false) @map("scostamento_dopo_fattura")
+  scostamentoIl          DateTime?            @map("scostamento_il")
+  versione               Int                  @default(1)
+  creatoDa               String?              @map("creato_da") @db.Uuid
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  tenant             Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "legami_movimento_tenant_id_fkey")
+  movimentoOriginale WasteMovement     @relation("LegameOriginale", fields: [movimentoOriginaleId, registroId, tenantId, verso], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_originale_fkey")
+  movimentoVigente   WasteMovement     @relation("LegameVigente", fields: [movimentoVigenteId, registroId, tenantId, verso], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_vigente_fkey")
+  cliente            Cliente?          @relation(fields: [clienteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_cliente_fkey")
+  contratto          ContrattoCliente? @relation(fields: [contrattoId, clienteId, tenantId], references: [id, clienteId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_contratto_fkey")
+  elenco             ElencoAddebiti?   @relation(fields: [elencoId, contrattoId, tenantId], references: [id, contrattoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_elenco_fkey")
+
+  righe RigaLegameMovimento[]
+
+  @@unique([tenantId, movimentoOriginaleId], map: "legami_movimento_tenant_id_movimento_originale_id_key")
+  /// Bersaglio della chiave composta delle righe (che cadono con la testata).
+  @@unique([id, elencoId, tenantId], map: "legami_movimento_id_elenco_id_tenant_id_key")
+  @@index([tenantId, stato, dataMovimento], map: "legami_movimento_tenant_id_stato_data_movimento_idx")
+  @@index([tenantId, clienteId], map: "legami_movimento_tenant_id_cliente_id_idx")
+  @@index([tenantId, contrattoId], map: "legami_movimento_tenant_id_contratto_id_idx")
+  @@index([tenantId, elencoId], map: "legami_movimento_tenant_id_elenco_id_idx")
+  @@index([tenantId, movimentoVigenteId], map: "legami_movimento_tenant_id_movimento_vigente_id_idx")
+  @@map("legami_movimento")
+}
+
+/// Riga del "foglio" di un legame (4.3, §4.3): copia dei valori del listino, congelati alla conferma. Nessun importo salvato (si calcola con `importoRiga`). La FK verso la riga di listino e' `NoAction`: una riga usata non si elimina (decisione 8). `prezzo_manuale` vale solo per una riga a prezzo singolo (CHECK `righe_legame_movimento_prezzo_manuale_ammesso`); gli altri CHECK sono `_speciale_senza_prezzo` e `_quantita_coerente`.
+model RigaLegameMovimento {
+  id              String                 @id(map: "righe_legame_movimento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                 @map("tenant_id") @db.Uuid
+  legameId        String                 @map("legame_id") @db.Uuid
+  /// Copia dell'elenco del legame, per le chiavi composte.
+  elencoId        String                 @map("elenco_id") @db.Uuid
+  rigaAddebitoId  String                 @map("riga_addebito_id") @db.Uuid
+  ordine          Int
+  origine         OrigineRigaLegame
+  tipo            String                 @db.VarChar(4)
+  descrizione     String?                @db.VarChar(45)
+  tipoQuantita    TipoQuantitaAddebito?  @map("tipo_quantita")
+  unitaMisura     String                 @map("unita_misura") @db.VarChar(3)
+  quantita        Decimal?               @db.Decimal(14, 3)
+  quantitaOrigine OrigineQuantitaLegame? @map("quantita_origine")
+  prezzoSpeciale  Boolean                @default(false) @map("prezzo_speciale")
+  prezzo          Decimal?               @db.Decimal(14, 6)
+  sconto          String?                @db.VarChar(20)
+  prezzoManuale   Boolean                @default(false) @map("prezzo_manuale")
+  codiceIvaId     String                 @map("codice_iva_id") @db.Uuid
+  aliquotaIva     Decimal                @map("aliquota_iva") @db.Decimal(5, 2)
+  naturaIva       String?                @map("natura_iva") @db.VarChar(4)
+  congelataIl     DateTime?              @map("congelata_il")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "righe_legame_movimento_tenant_id_fkey")
+  legame       LegameMovimento @relation(fields: [legameId, elencoId, tenantId], references: [id, elencoId, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "righe_legame_movimento_legame_fkey")
+  rigaAddebito RigaAddebito    @relation(fields: [rigaAddebitoId, elencoId, tenantId], references: [id, elencoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_legame_movimento_riga_addebito_fkey")
+  codiceIva    CodiceIva       @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_legame_movimento_codice_iva_fkey")
+
+  @@unique([legameId, rigaAddebitoId], map: "righe_legame_movimento_legame_id_riga_addebito_id_key")
+  @@index([tenantId, rigaAddebitoId], map: "righe_legame_movimento_tenant_id_riga_addebito_id_idx")
+  @@index([tenantId, codiceIvaId], map: "righe_legame_movimento_tenant_id_codice_iva_id_idx")
+  @@map("righe_legame_movimento")
+}
+
+/// Impostazione "fatturazione da" dell'azienda (4.3, decisione 11, §4.9): una riga per azienda. Senza riga o con data vuota la fatturazione e' spenta. Tabella propria perche' `tenants` non ha RLS ed e' scrivibile dal ruolo applicativo.
+model ImpostazioneFatturazione {
+  id             String    @id(map: "impostazioni_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  fatturazioneDa DateTime? @map("fatturazione_da") @db.Date
+  versione       Int       @default(1)
+  modificatoDa   String?   @map("modificato_da") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "impostazioni_fatturazione_tenant_id_fkey")
+
+  @@unique([tenantId], map: "impostazioni_fatturazione_tenant_id_key")
+  @@map("impostazioni_fatturazione")
 }

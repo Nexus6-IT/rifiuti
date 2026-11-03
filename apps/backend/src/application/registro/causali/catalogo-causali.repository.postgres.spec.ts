@@ -57,9 +57,9 @@ describe('Catalogo causali — Postgres reale, ruolo wasteflow_app', () => {
     const righe = await owner.$queryRawUnsafe<{ id: string }[]>(
       `INSERT INTO causali_registro_azienda
          (tenant_id, natura, codice, verso, descrizione, ruolo_mud, valida_dal, valida_al,
-          creato_da, updated_at)
+          creato_da, fatturabile, updated_at)
        VALUES ($1::uuid, 'PROPRIA', $2, $3::waste_movement_type, $4, 'ESCLUSO'::ruolo_mud_causale,
-               $5::date, $6::date, $7::uuid, now())
+               $5::date, $6::date, $7::uuid, false, now())
        RETURNING id::text AS id`,
       tenantId,
       codice,

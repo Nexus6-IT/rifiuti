@@ -125,6 +125,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'tutte',
     motivo: 'la catena degli hash comprende ogni riga, vigente o no',
   },
+  'test-support/legami-di-test.ts': {
+    scelta: 'tutte',
+    motivo:
+      'fixture degli spec Postgres dei legami (4.3): scrive un movimento di prova e ne cerca il primo progressivo libero, non calcola nulla',
+  },
   'infrastructure/rentri/rentri-unita-locale.service.ts': {
     scelta: 'tutte',
     motivo: 'una sede con qualunque riga nel registro non si elimina',

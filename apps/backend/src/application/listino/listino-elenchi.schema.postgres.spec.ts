@@ -958,6 +958,8 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
       'codifiche_addebito_tenant_id_idx',
       'elenchi_addebiti_contratto_id_codice_key',
       'elenchi_addebiti_id_tenant_id_key',
+      // Migration 20261103200000: bersaglio della chiave composta dei legami (4.3).
+      'elenchi_addebiti_id_contratto_id_tenant_id_key',
       'elenchi_addebiti_pkey',
       'elenchi_addebiti_tenant_id_contratto_id_idx',
       'prezzi_listino_addebito_addebito_id_numero_key',
@@ -965,6 +967,8 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
       'prezzi_listino_addebito_tenant_id_idx',
       'righe_addebito_elenco_tipo_cer_addebito_rif_key',
       'righe_addebito_id_tenant_id_key',
+      // Migration 20261103200000: bersaglio della chiave composta delle righe dei legami (4.3).
+      'righe_addebito_id_elenco_id_tenant_id_key',
       'righe_addebito_pkey',
       'righe_addebito_tenant_id_addebito_id_idx',
       'righe_addebito_tenant_id_categoria_id_idx',

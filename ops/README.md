@@ -169,6 +169,7 @@ Ogni blocco di ripristino va eseguito dentro `BEGIN; ... COMMIT;`: se un comando
 
 | # | Migration | Pezzo | Cosa toglie | Attenzione |
 |---|-----------|-------|-------------|------------|
+| 0 | `20261103200000_legami_movimento` | 4.3 | 3 tabelle (`righe_legame_movimento`, `legami_movimento`, `impostazioni_fatturazione`), 4 enum, i 3 indici unici additivi (`righe_addebito_id_elenco_id_tenant_id_key`, `elenchi_addebiti_id_contratto_id_tenant_id_key`, `contratti_cliente_id_cliente_id_tenant_id_key`), il CHECK `causali_registro_azienda_fatturabile_propria` e la colonna `fatturabile` di `causali_registro_azienda` e di `causali_registro` | l'ultima: va ripristinata per prima, prima di tutte le altre. Contiene scelte dell'utente e prezzi congelati: esportare prima `legami_movimento` e `righe_legame_movimento`. Comandi, in quest'ordine: `DROP TABLE righe_legame_movimento, legami_movimento, impostazioni_fatturazione;`<br>`DROP TYPE origine_quantita_legame, origine_riga_legame, fonte_cliente_legame, stato_legame_movimento;`<br>`DROP INDEX righe_addebito_id_elenco_id_tenant_id_key;`<br>`DROP INDEX elenchi_addebiti_id_contratto_id_tenant_id_key;`<br>`DROP INDEX contratti_cliente_id_cliente_id_tenant_id_key;`<br>`ALTER TABLE causali_registro_azienda DROP CONSTRAINT causali_registro_azienda_fatturabile_propria;`<br>`ALTER TABLE causali_registro_azienda DROP COLUMN fatturabile;`<br>`ALTER TABLE causali_registro DROP COLUMN fatturabile;`<br>`DELETE FROM _prisma_migrations WHERE migration_name = '20261103200000_legami_movimento';` |
 | 1 | `20261103100000_listino_indici_seguiti` | seguiti 4.2b | solo indici e un CHECK | nessun dato perso, nessuna dipendenza da altre migration. Comandi, in quest'ordine: `ALTER TABLE "elenchi_addebiti" DROP CONSTRAINT "elenchi_addebiti_codice_non_000";`<br>`DROP INDEX "addebiti_tenant_id_gruppo_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_codice_iva_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_categoria_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_centro_ricavo_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_categoria_statistica_1_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_categoria_statistica_2_id_idx";`<br>`DROP INDEX "activity_logs_tenant_id_action_idx";`<br>`DELETE FROM _prisma_migrations WHERE migration_name = '20261103100000_listino_indici_seguiti';` |
 | 2 | `20261102300100_listino_elenchi_righe` | 4.2b | 5 tabelle (`elenchi_addebiti`, `allegati_elenco_addebiti`, `righe_addebito`, `scaglioni_riga_addebito`, `scadenze_riga_addebito`) e 3 enum | contiene dati dei clienti: se servono, esportare prima i dati di queste tabelle |
 | 3 | `20261102300000_listino_archivio_addebiti` | 4.2a | 4 tabelle (`prezzi_listino_addebito`, `addebiti`, `codifiche_addebito`, `codici_iva`), le 3 colonne di `clienti` (`listino`, `provvigione_predefinita`, `tipo_provvigione_predefinita`) e 2 enum | SOLO dopo il punto 2 (le sue FK citano queste tabelle); le colonne di `clienti` contengono dati: se servono, esportare prima i dati di queste tabelle e di `clienti` |
@@ -700,6 +701,21 @@ tipo_quantita_addebito;` e `DELETE FROM _prisma_migrations WHERE migration_name 
 '20261102300100_listino_elenchi_righe'`. Un'unica clausola non rappresentabile da Prisma,
 `NULLS NOT DISTINCT` sull'unico delle righe, e' solo nel SQL (come `giacenze_iniziali`): `migrate
 diff` resta vuoto.
+
+**Legami movimento-cliente-prezzo** (Fase 4 pezzo 3, migration `20261103200000_legami_movimento`:
+`legami_movimento`, `righe_legame_movimento`, `impostazioni_fatturazione`, flag `fatturabile` delle
+causali). Tabelle e tipi nuovi, piu' due `ADD COLUMN` su tabelle piccole e tre `CREATE UNIQUE INDEX`
+additivi sul listino: in deploy il lock dura pochi istanti e `lock_timeout` di 5 secondi fa fallire
+la migration invece di accodare tutto (si rilancia il deploy). Nessuna colonna su `waste_movements`.
+Rollback del codice: innocuo, il codice vecchio ignora tabelle e colonne nuove (tranne l'inserimento
+di una causale aziendale PROPRIA, che col codice vecchio e il CHECK
+`causali_registro_azienda_fatturabile_propria` fallirebbe: ripristinare codice e schema insieme).
+Prima di un ripristino dello schema controllare, **come owner**: `SELECT tenant_id, stato, count(*)
+FROM legami_movimento GROUP BY 1, 2`; se non e' vuota i dati si perdono, quindi esportarli prima
+(`COPY ... TO`). Il ripristino a mano e' nel commento di testa della migration e nella riga 0 della
+tabella sopra. Le FK `NoAction` verso `righe_addebito`, `elenchi_addebiti`, `contratti_cliente`,
+`clienti` e `codici_iva` rendono non eliminabili gli oggetti del listino usati da un legame: dopo il
+ripristino tornano eliminabili.
 
 Il ripristino dal backup `wasteflow_predeploy_*` con `restore.sh` si fa solo se
 una migration ha alterato dati, e perde le scritture successive al backup. Si fa

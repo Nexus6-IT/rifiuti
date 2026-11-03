@@ -320,9 +320,9 @@ describe('ListMovimentiHandler — Postgres reale, ruolo wasteflow_app', () => {
       const [r] = await owner.$queryRawUnsafe<{ id: string }[]>(
         `INSERT INTO causali_registro_azienda
            (tenant_id, natura, codice, verso, descrizione, ruolo_mud, codice_rentri, valida_dal,
-            valida_al, creato_da, updated_at)
+            valida_al, creato_da, fatturabile, updated_at)
          VALUES ($1::uuid, 'PROPRIA', 'AZ_RESO', 'CARICO'::waste_movement_type, $2,
-                 'PRODOTTO'::ruolo_mud_causale, $3, $4::date, $5::date, $6::uuid, now())
+                 'PRODOTTO'::ruolo_mud_causale, $3, $4::date, $5::date, $6::uuid, false, now())
          RETURNING id::text AS id`,
         az.tenantId,
         descrizione,
