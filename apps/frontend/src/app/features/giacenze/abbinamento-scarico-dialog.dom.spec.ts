@@ -97,6 +97,26 @@ describe('AbbinamentoScaricoDialogComponent (DOM)', () => {
     expect(chiusure).toEqual([false])
   })
 
+  it('regola unica: il punto e rifiutato con il messaggio, "1000" vale 1000 e "0,125" tiene 3 decimali', async () => {
+    await apri()
+    const input = q<HTMLInputElement>('#ab-q-0')!
+    input.focus()
+    const punto = new KeyboardEvent('keydown', {
+      key: '.',
+      code: 'Period',
+      bubbles: true,
+      cancelable: true,
+    })
+    input.dispatchEvent(punto)
+    fixture.detectChanges()
+    expect(punto.defaultPrevented).toBeTrue()
+    expect(q('[data-testid="numero-errore"]')?.textContent).toBe('Usa la virgola per i decimali')
+    digita('ab-q-0', '0,125')
+    expect(q('[data-testid="totale"]')?.textContent).toContain('0,125')
+    digita('ab-q-0', '1000')
+    expect(q<HTMLInputElement>('#ab-q-0')!.value).toBe('1000')
+  })
+
   it('Usa la proposta FIFO ripristina le quantita', async () => {
     await apri()
     digita('ab-q-0', '7')

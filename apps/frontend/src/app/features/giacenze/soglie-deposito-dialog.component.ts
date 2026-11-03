@@ -35,6 +35,7 @@ import {
   GiacenzeService,
   SoglieDeposito,
 } from './giacenze.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 /** Stessi limiti di `LIMITI_LEGGE` e `validaSoglie` del backend. */
 export const LIMITI_SOGLIE = {
@@ -158,6 +159,7 @@ export function messaggiErroreSoglie(err: any): string[] {
     DialogModule,
     DropdownModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputTextareaModule,
     SelectButtonModule,
   ],
@@ -218,6 +220,10 @@ export function messaggiErroreSoglie(err: any): string[] {
           <ng-container *ngIf="form.get('usaGiorni')?.value">
             <label for="sd-giorni">Soglia in giorni (da 1 a 92)</label>
             <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              soloIntero
+              [maxFractionDigits]="0"
               formControlName="giorniMax"
               inputId="sd-giorni"
               [useGrouping]="false"
@@ -244,6 +250,8 @@ export function messaggiErroreSoglie(err: any): string[] {
               >Quanti kg corrispondono, per i vostri rifiuti, a 30 m³?</label
             >
             <p-inputNumber
+              appNumeroIt
+              [useGrouping]="false"
               formControlName="kgMaxTotale"
               inputId="sd-kg-totale"
               mode="decimal"
@@ -270,6 +278,8 @@ export function messaggiErroreSoglie(err: any): string[] {
               >Quanti kg corrispondono, per i vostri rifiuti, a 10 m³ di rifiuti pericolosi?</label
             >
             <p-inputNumber
+              appNumeroIt
+              [useGrouping]="false"
               formControlName="kgMaxPericolosi"
               inputId="sd-kg-pericolosi"
               mode="decimal"
@@ -298,6 +308,10 @@ export function messaggiErroreSoglie(err: any): string[] {
             <div class="field">
               <label for="sd-prev-giorni">Preavviso (giorni prima della scadenza)</label>
               <p-inputNumber
+                appNumeroIt
+                locale="it-IT"
+                soloIntero
+                [maxFractionDigits]="0"
                 formControlName="preavvisoGiorni"
                 inputId="sd-prev-giorni"
                 [useGrouping]="false"
@@ -321,6 +335,10 @@ export function messaggiErroreSoglie(err: any): string[] {
             <div class="field">
               <label for="sd-prev-perc">Preavviso (% del limite, 0 = nessuno)</label>
               <p-inputNumber
+                appNumeroIt
+                locale="it-IT"
+                soloIntero
+                [maxFractionDigits]="0"
                 formControlName="preavvisoPercentuale"
                 inputId="sd-prev-perc"
                 [useGrouping]="false"

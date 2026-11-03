@@ -32,6 +32,7 @@ import {
   ScaricoVista,
 } from './abbinamenti.service'
 import { formattaGiorno } from './giorno'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export const MSG_CONFERMA_SCOLLEGA =
   'Lo scarico resta senza abbinamento; il prossimo ricalcolo lo riabbina con il FIFO.'
@@ -72,6 +73,7 @@ export function messaggioErrore(e: unknown, ripiego: string): string {
     ButtonModule,
     DialogModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     MessageModule,
     SharedModule,
   ],
@@ -119,6 +121,8 @@ export function messaggioErrore(e: unknown, ripiego: string): string {
             >
           </label>
           <p-inputNumber
+            appNumeroIt
+            [useGrouping]="false"
             [inputId]="'ab-q-' + i"
             mode="decimal"
             locale="it-IT"
