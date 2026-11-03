@@ -497,6 +497,11 @@ describe('CausaliRegistroService: fatturabile', () => {
     expect(tx.causaleRegistroAzienda.update.mock.calls[0][0].data).toEqual({
       validaAl: giorno('2026-05-31'),
     })
+    // Audit: il valore nuovo e quello della versione precedente.
+    const audit = tx.activityLog.create.mock.calls[0][0].data
+    expect(audit.action).toBe('REGISTRO_CAUSALE_VERSIONATA')
+    expect(audit.metadata.fatturabile).toBe(true)
+    expect(audit.metadata.fatturabilePrecedente).toBe(false)
   })
 
   it('nuova versione senza fatturabile: eredita quello dell ultima', async () => {
@@ -518,6 +523,11 @@ describe('CausaliRegistroService: fatturabile', () => {
     const v = await libera.service.modifica(T, U, ID, { fatturabile: true })
     expect(v.fatturabile).toBe(true)
     expect(libera.tx.causaleRegistroAzienda.update.mock.calls[0][0].data.fatturabile).toBe(true)
+    // Audit di modifica: valore nuovo e precedente.
+    const audit = libera.tx.activityLog.create.mock.calls[0][0].data
+    expect(audit.action).toBe('REGISTRO_CAUSALE_MODIFICATA')
+    expect(audit.metadata.fatturabile).toBe(true)
+    expect(audit.metadata.fatturabilePrecedente).toBe(false)
 
     const usata = costruisci({
       riga: { ruolo_mud: 'ESCLUSO', codice_rentri: null, operazione: null },

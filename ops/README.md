@@ -187,6 +187,59 @@ corregge la causa e si lancia `npx prisma migrate resolve --rolled-back <nome>` 
 rilanciare il deploy. La `20261102300000` prende un lock su `clienti` per la durata della
 migration (`lock_timeout` di 5 secondi): se scade si rilancia il deploy.
 
+### 4.3a legame movimento: rilascio e rollback
+
+Migration `20261103200000_legami_movimento`, additiva: tre tabelle nuove e vuote
+(`legami_movimento`, `righe_legame_movimento`, `impostazioni_fatturazione`) con RLS `ENABLE` +
+`FORCE`, quattro enum, tre indici unici additivi sul listino e la colonna `fatturabile` su
+`causali_registro` (default `false`, `true` solo per `INGRESSO_ESTERNO` in carico) e
+`causali_registro_azienda`. Nessuna colonna su `waste_movements`: l'`entryHash` e RENTRI non
+cambiano. In 4.3a nessun legame si crea ancora; si imposta solo la data «Fatturazione da»
+(`GET`/`PUT /impostazioni-fatturazione`, schermata `clienti/fatturazione`) e il flag `fatturabile`
+delle causali aziendali.
+
+**Rilascio.** Prima del deploy un backup (vedi l'avvertenza sopra):
+
+```bash
+docker exec rifiuti-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > backup-pre-4-3a.dump
+```
+
+Il deploy lancia `npx prisma migrate deploy` col ruolo proprietario (`wasteflow`); `lock_timeout`
+di 5 secondi in testa: se scade (traffico sulle causali) si rilancia il deploy. Controlli dopo:
+
+```sql
+SELECT to_regclass('public.legami_movimento'), to_regclass('public.impostazioni_fatturazione');
+SELECT codice, verso FROM causali_registro WHERE fatturabile;   -- solo INGRESSO_ESTERNO / CARICO
+SELECT count(*) FROM legami_movimento;                           -- 0 in 4.3a
+```
+
+e `ops/db-ruoli.sh` (privilegi di `wasteflow_app` e `wasteflow_sistema` sulle tabelle nuove).
+
+**Rollback del codice** (tag precedente del backend): la migration puo' restare, il codice vecchio
+ignora le tabelle e la colonna; i movimenti registrati nel frattempo non cambiano.
+
+**Rollback dello schema** (solo se serve davvero, dopo il backup sopra e con il tag precedente gia'
+in produzione). Se qualcuno ha impostato «Fatturazione da» o creato causali fatturabili, esportare
+prima `impostazioni_fatturazione`. Un solo blocco, dentro `BEGIN; ... COMMIT;`, come proprietario:
+
+```sql
+BEGIN;
+DROP TABLE righe_legame_movimento, legami_movimento, impostazioni_fatturazione;
+DROP TYPE origine_quantita_legame, origine_riga_legame, fonte_cliente_legame, stato_legame_movimento;
+DROP INDEX righe_addebito_id_elenco_id_tenant_id_key;
+DROP INDEX elenchi_addebiti_id_contratto_id_tenant_id_key;
+DROP INDEX contratti_cliente_id_cliente_id_tenant_id_key;
+ALTER TABLE causali_registro_azienda DROP CONSTRAINT causali_registro_azienda_fatturabile_propria;
+ALTER TABLE causali_registro_azienda DROP COLUMN fatturabile;
+ALTER TABLE causali_registro DROP COLUMN fatturabile;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261103200000_legami_movimento';
+COMMIT;
+```
+
+Se la migration **fallisce** (P3009) e' transazionale: `SELECT to_regclass('public.legami_movimento')`
+deve dare `NULL`; si corregge la causa e si lancia
+`npx prisma migrate resolve --rolled-back 20261103200000_legami_movimento`, poi si rilancia il deploy.
+
 ---
 
 ## Ripristino (Disaster Recovery)
