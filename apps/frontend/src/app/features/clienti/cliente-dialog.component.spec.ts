@@ -987,6 +987,46 @@ describe('ClienteDialogComponent', () => {
       expect(valore('cliente-dlg-tipo-provvigione')).toBe('LORDO')
     })
 
+    it('i campi senza errore non puntano a un messaggio che non c’è (voce 30)', async () => {
+      await apri()
+      for (const id of [
+        'cliente-dlg-ritenuta',
+        'cliente-dlg-listino',
+        'cliente-dlg-provvigione',
+        'cliente-dlg-tipo-provvigione',
+      ]) {
+        expect(q(id)!.getAttribute('aria-describedby')).withContext(id).toBeNull()
+      }
+    })
+
+    it('il tipo preimpostato toglie l’errore rimasto sul tipo (voce 28)', async () => {
+      clienti.crea.and.returnValue(
+        throwError(() => ({
+          status: 400,
+          error: {
+            error: 'CLIENTE_NON_VALIDO',
+            message: ['Indica su cosa si calcola la provvigione del cliente.'],
+          },
+        }))
+      )
+      await apri()
+      await compilaDitta()
+      scrivi('cliente-dlg-piva-input', PIVA)
+      scrivi('cliente-dlg-provvigione', '5')
+      await stabilizza(fixture)
+      scegli('cliente-dlg-tipo-provvigione', '')
+      await stabilizza(fixture)
+      bottone('cliente-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('cliente-dlg-tipo-provvigione-errore')).not.toBeNull()
+      scrivi('cliente-dlg-provvigione', '')
+      await stabilizza(fixture)
+      scrivi('cliente-dlg-provvigione', '7')
+      await stabilizza(fixture)
+      expect(valore('cliente-dlg-tipo-provvigione')).toBe('SCONTATO')
+      expect(q('cliente-dlg-tipo-provvigione-errore')).toBeNull()
+    })
+
     it('la provvigione accetta al massimo 20 caratteri', async () => {
       await apri()
       expect(q('cliente-dlg-provvigione')!.getAttribute('maxlength')).toBe('20')

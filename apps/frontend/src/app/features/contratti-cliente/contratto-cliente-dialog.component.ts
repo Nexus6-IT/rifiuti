@@ -166,6 +166,13 @@ const NESSUNA_VOCE = '—'
           (onClick)="apriListino()"
           data-testid="contratto-dlg-listino"
         />
+        <small
+          *ngIf="motivoSalvaBloccato() as m"
+          role="status"
+          class="field-hint"
+          data-testid="contratto-dlg-salva-motivo"
+          >{{ m }}</small
+        >
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
         <p-button
           *ngIf="puoScrivere()"
@@ -492,6 +499,14 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     // Ritenuta e soglia con il punto o con testo errato: il form non si salva.
     if (this.form.invalid) return false
     return !this.contratto || this.letto() !== null
+  }
+
+  /** Perché «Salva» è spento quando la causa è nei campi (negli altri casi è ovvia). */
+  motivoSalvaBloccato(): string | null {
+    if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return null
+    return this.form.invalid
+      ? 'Salva è disattivato: correggi i campi con errore (ritenuta e soglia vogliono la virgola per i decimali).'
+      : null
   }
 
   /**

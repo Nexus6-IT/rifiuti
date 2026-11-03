@@ -1,6 +1,7 @@
 // Funzioni pure della pagina del listino del contratto. `elenchiValidiAl` e `totaleFissiAnnuo`
 // sono copie di quelle del dominio del backend (`elenco-addebiti.ts`, `riga-addebito.ts`, Task 17):
 // non si importano fra app, vanno tenute allineate a mano (la spec ha i casi del dominio).
+import { leggiErroriAzione } from './errori-azione'
 
 /** Data locale `YYYY-MM-DD`. */
 export function oggiIso(adesso: Date = new Date()): string {
@@ -92,12 +93,10 @@ export function righeInTesto(n: number): string {
   return n === 1 ? 'con la sua riga' : `con le sue ${n} righe`
 }
 
-/** Messaggi del backend: un 400 può avere un array in `message`, uno per riga. */
+/**
+ * Messaggi del backend: un 400 può avere un array in `message`, uno per riga. Un solo parser per
+ * tutto il listino: `leggiErroriAzione` (voce 28, il parsing non si duplica).
+ */
 export function messaggiErrore(err: unknown, ripiego: string): string[] {
-  const m = (err as { error?: { message?: string | string[] } } | null)?.error?.message
-  if (Array.isArray(m)) {
-    const testi = m.filter(x => typeof x === 'string' && x.trim())
-    return testi.length > 0 ? testi : [ripiego]
-  }
-  return typeof m === 'string' && m.trim() ? [m] : [ripiego]
+  return leggiErroriAzione(err, ripiego).messaggi
 }
