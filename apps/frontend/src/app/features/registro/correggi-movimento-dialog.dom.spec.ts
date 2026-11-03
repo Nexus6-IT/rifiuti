@@ -315,6 +315,35 @@ describe('Registro - rettifica e annullamento (template reale, click veri)', () 
     expect(servizio.lista.calls.count()).toBe(2)
   })
 
+  it('rettifica, quantita: punto rifiutato col messaggio, "12,5" vale 12.5 e "1000" vale 1000', () => {
+    servizio.rettifica.and.returnValue(of(esito({})))
+    apri([mov({ quantity: 120, unit: 'KG' })])
+    clic('registro-rettifica-m1')
+    fixture.detectChanges()
+
+    const input = document.body.querySelector<HTMLInputElement>('#corr-quantita')!
+    const incolla = (testo: string): ClipboardEvent => {
+      const dt = new DataTransfer()
+      dt.setData('text', testo)
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+      input.dispatchEvent(e)
+      return e
+    }
+    input.focus()
+    expect(incolla('12.5').defaultPrevented).toBeTrue()
+    fixture.detectChanges()
+    expect(q('numero-errore')?.textContent).toBe('Usa la virgola per i decimali')
+    expect(input.value).toBe('120')
+
+    input.value = ''
+    incolla('12,5')
+    input.dispatchEvent(new Event('blur'))
+    scrivi('#corr-motivo', 'Quantita')
+    clic('correzione-invia')
+    fixture.detectChanges()
+    expect(servizio.rettifica.calls.mostRecent().args[1].quantity).toBe(12.5)
+  })
+
   it('annullamento: azione -> riepilogo e motivo -> invio', () => {
     servizio.annulla.and.returnValue(
       of(esito({ tipoAnnotazione: 'ANNULLAMENTO', progressiveNumber: 13 }))

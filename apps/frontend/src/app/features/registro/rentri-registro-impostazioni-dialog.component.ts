@@ -35,6 +35,7 @@ import {
   RentriRegistroService,
   messaggioErroreRentri,
 } from './rentri-registro.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
 
@@ -47,6 +48,7 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
     ButtonModule,
     DialogModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputTextModule,
     InputTextareaModule,
   ],
@@ -142,6 +144,10 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
               <div class="field">
                 <label id="rentri-dic-anno-label" for="rentri-dic-anno">Anno</label>
                 <p-inputNumber
+                  appNumeroIt
+                  locale="it-IT"
+                  soloIntero
+                  [maxFractionDigits]="0"
                   formControlName="anno"
                   inputId="rentri-dic-anno"
                   [useGrouping]="false"
