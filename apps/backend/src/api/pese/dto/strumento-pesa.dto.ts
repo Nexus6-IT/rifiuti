@@ -49,12 +49,18 @@ export class StrumentoPesaDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Portata massima in kg (> 0)' })
   @IsOptional()
-  @IsNumber({}, { message: 'La portata massima deve essere un numero.' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'La portata massima deve essere un numero con al massimo due decimali.' }
+  )
   portataMaxKg?: number | null
 
   @ApiPropertyOptional({ nullable: true, description: 'Divisione in kg (> 0)' })
   @IsOptional()
-  @IsNumber({}, { message: 'La divisione deve essere un numero.' })
+  @IsNumber(
+    { maxDecimalPlaces: 3 },
+    { message: 'La divisione deve essere un numero con al massimo tre decimali.' }
+  )
   divisioneKg?: number | null
 
   @ApiPropertyOptional({ nullable: true, example: '2026-03-10' })

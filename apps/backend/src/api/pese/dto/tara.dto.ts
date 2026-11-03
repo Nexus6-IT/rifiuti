@@ -8,7 +8,10 @@ import { IsNumber, IsOptional, IsUUID } from 'class-validator'
 export class ImpostaTaraDto {
   @ApiPropertyOptional({ description: 'Tara dichiarata in kg (> 0, due decimali)' })
   @IsOptional()
-  @IsNumber({}, { message: 'La tara deve essere un numero.' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'La tara deve essere un numero con al massimo due decimali.' }
+  )
   taraKg?: number
 
   @ApiPropertyOptional({ description: 'Pesata da cui prendere la tara' })

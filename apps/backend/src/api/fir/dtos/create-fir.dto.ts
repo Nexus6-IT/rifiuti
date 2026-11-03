@@ -43,8 +43,11 @@ export class RifiutoDto {
   cerCode: string
 
   @ApiProperty({ example: 120, description: 'Quantità dichiarata', minimum: 0.01 })
-  @IsNumber()
-  @Min(0.01)
+  @IsNumber(
+    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 },
+    { message: 'quantita deve essere un numero con al massimo 2 decimali' }
+  )
+  @Min(0.01, { message: 'quantita deve essere almeno 0,01' })
   quantita: number
 
   @ApiPropertyOptional({

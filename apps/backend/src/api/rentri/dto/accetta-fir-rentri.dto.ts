@@ -47,8 +47,11 @@ export class AccettaFirRentriDto {
   })
   @ValidateIf(dto => dto.tipoAccettazione === 'A' || dto.tipoAccettazione === 'P')
   @IsNumber(
-    {},
-    { message: 'quantitaAccettataKg è obbligatoria per un’accettazione intera o parziale' }
+    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 },
+    {
+      message:
+        'quantitaAccettataKg è obbligatoria (numero con al massimo 2 decimali) per un’accettazione intera o parziale',
+    }
   )
   quantitaAccettataKg?: number
 

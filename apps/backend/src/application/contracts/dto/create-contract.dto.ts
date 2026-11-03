@@ -10,6 +10,7 @@ import {
   IsInt,
   IsDateString,
   IsUUID,
+  Max,
   Min,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
@@ -78,9 +79,13 @@ export class CreateContractDto {
   pricingModel: PricingModelDto
 
   @ApiPropertyOptional({ example: 120.5 })
-  @IsNumber()
+  @IsNumber(
+    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 },
+    { message: 'basePrice deve essere un numero con al massimo 2 decimali' }
+  )
   @IsOptional()
-  @Min(0)
+  @Min(0, { message: 'basePrice non può essere negativo' })
+  @Max(99999999.99, { message: 'basePrice non può superare 99.999.999,99' })
   basePrice?: number
 
   @ApiPropertyOptional({ example: 'ton' })
