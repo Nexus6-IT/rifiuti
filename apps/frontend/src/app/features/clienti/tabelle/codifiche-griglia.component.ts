@@ -69,7 +69,7 @@ export type AzioneCodifica = 'riga' | 'modifica' | 'attiva' | 'elimina'
   `,
 })
 export class CodificheGrigliaComponent {
-  @Input() righe: ReadonlyArray<CodificaBase<string>> = []
+  @Input() righe: CodificaBase<string>[] = []
   @Input() puoScrivere = false
   @Input({ required: true }) testid!: (
     azione: AzioneCodifica,
