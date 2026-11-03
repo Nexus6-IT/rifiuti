@@ -129,9 +129,9 @@ describe('SecondaPesataDialogComponent (DOM)', () => {
     expect(secondo[1].chiaveIdempotenza).toBe(primo[1].chiaveIdempotenza)
   })
 
-  it('"1.250" vale 1250 e "12,5" resta 12,5; "12.5" e rifiutato', () => {
+  it('"1250" vale 1250 e "12,5" resta 12,5; "12.5" e rifiutato', () => {
     pese.secondaPesata.and.returnValue(of(accesso()))
-    compila('1.250')
+    compila('1250')
     qb('sp-salva')!.click()
     expect(pese.secondaPesata.calls.mostRecent().args[1].pesata.pesoKg).toBe(1250)
 

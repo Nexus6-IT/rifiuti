@@ -59,6 +59,8 @@ import { AccessoVista, PesataVista, PeseService } from './pese.service'
           >Nuovo peso (kg) <span class="req" aria-hidden="true">*</span></label
         >
         <p-inputNumber
+          [messaggioInterno]="false"
+          [useGrouping]="false"
           appPesoIt
           (rifiutato)="rifiuto.set($event)"
           [formControl]="peso"
@@ -75,8 +77,7 @@ import { AccessoVista, PesataVista, PeseService } from './pese.service'
           styleClass="w-full"
         ></p-inputNumber>
         <small id="rt-peso-aiuto" class="field-hint"
-          >Con la virgola per i decimali (al massimo due). Il separatore delle migliaia lo inserisce
-          il campo.</small
+          >Con la virgola per i decimali (al massimo due). Niente separatore delle migliaia.</small
         >
         <small
           *ngIf="errorePeso() as e"

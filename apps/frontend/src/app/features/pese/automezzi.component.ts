@@ -305,6 +305,8 @@ type Modo = 'dichiarata' | 'pesata'
             >Tara dichiarata (kg) <span class="req" aria-hidden="true">*</span></label
           >
           <p-inputNumber
+            [messaggioInterno]="false"
+            [useGrouping]="false"
             appPesoIt
             (rifiutato)="rifiutoPunto.set($event)"
             [formControl]="taraCtrl"
@@ -323,7 +325,7 @@ type Modo = 'dichiarata' | 'pesata'
           ></p-inputNumber>
           <small id="tara-valore-aiuto" class="field-hint"
             >Peso a vuoto del mezzo, con la virgola per i decimali (esempio 12500,5), al massimo due
-            decimali. Il separatore delle migliaia lo inserisce il campo.</small
+            decimali. Niente separatore delle migliaia (12500,5, non 12.500,5).</small
           >
           <small
             *ngIf="erroreTaraPeso() as e"

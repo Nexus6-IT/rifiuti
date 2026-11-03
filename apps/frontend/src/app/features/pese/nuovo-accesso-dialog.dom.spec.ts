@@ -104,10 +104,10 @@ describe('NuovoAccessoDialogComponent (DOM)', () => {
     expect(pese.apriAccesso).toHaveBeenCalledTimes(1)
   })
 
-  it('l aiuto del peso parla del separatore delle migliaia inserito dal campo', () => {
+  it('l aiuto del peso dice che non ci sono separatori delle migliaia', () => {
     apri()
     expect(document.body.textContent?.replace(/\s+/g, ' ')).toContain(
-      'separatore delle migliaia lo inserisce il campo'
+      'Niente separatore delle migliaia'
     )
   })
 
