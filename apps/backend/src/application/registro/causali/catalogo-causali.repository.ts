@@ -99,6 +99,8 @@ export async function caricaCatalogoCausali(
     ordine: r.ordine,
     validaDal: dataColonnaComeGiorno(r.validaDal),
     validaAl: dataColonnaComeGiorno(r.validaAl),
+    // TODO Task 3: rendere obbligatori i campi `fatturabile?` delle interfacce DB e togliere i
+    // default tolleranti (qui `?? null`, sopra il default del catalogo di sistema).
     fatturabile: r.fatturabile ?? null,
   }))
   return new CatalogoCausali(righeSistema, righeAzienda)

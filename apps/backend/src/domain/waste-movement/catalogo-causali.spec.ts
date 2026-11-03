@@ -359,6 +359,10 @@ describe('CatalogoCausali', () => {
       ])
       expect(catalogo.comportamento('CARICO', 'INGRESSO_ESTERNO', GIORNO)!.fatturabile).toBe(true)
       expect(catalogo.comportamento('SCARICO', 'CESSIONE', GIORNO)!.fatturabile).toBe(false)
+      expect(catalogo.selezionabile('SCARICO', 'CESSIONE', GIORNO)).toEqual({
+        ok: false,
+        motivo: 'DISATTIVATA',
+      })
     })
   })
 })

@@ -72,7 +72,8 @@ describe('caricaCatalogoCausali', () => {
       motivo: 'DISATTIVATA',
     })
     expect(catalogo.opzioni('CARICO', '2026-06-01')).toHaveLength(5)
-    // fatturabile: colonna propria letta; riga di sistema senza colonna -> valore del catalogo
+    // fatturabile: la riga aziendale porta il valore letto; le righe di sistema vengono dal fixture,
+    // che lo valorizza già (il default tollerante del repository non è esercitato qui)
     expect(catalogo.comportamento('SCARICO', 'AZ_PROVA', '2026-03-01')!.fatturabile).toBe(true)
     expect(catalogo.comportamento('CARICO', 'INGRESSO_ESTERNO', '2026-06-01')!.fatturabile).toBe(
       true
