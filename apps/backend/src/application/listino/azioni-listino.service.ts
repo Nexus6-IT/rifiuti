@@ -646,9 +646,11 @@ export class AzioniListinoService {
         WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ${quali.elencoId}::uuid
         ORDER BY id FOR UPDATE`
     } else {
-      await tx.$queryRaw`SELECT id FROM "righe_addebito"
-        WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${quali.ids as string[]}::uuid[])
-        ORDER BY id FOR UPDATE`
+      // `JOIN unnest` e non `= ANY`: vedi il commento in VariazioniPrezziService.trova.
+      await tx.$queryRaw`SELECT r.id FROM "righe_addebito" r
+        JOIN unnest(${quali.ids as string[]}::uuid[]) AS chiesti(chiesto) ON chiesto = r.id
+        WHERE r.tenant_id = ${tenantId}::uuid
+        ORDER BY r.id FOR UPDATE OF r`
     }
   }
 
