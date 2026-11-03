@@ -11,7 +11,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ImpostaFatturazioneDto } from './dto/impostazione-fatturazione.dto'
-import { RUOLI_LETTURA, RUOLI_VARIAZIONI } from './ruoli'
+import { RUOLI_LETTURA, RUOLI_AMMINISTRATORI } from './ruoli'
 
 @ApiTags('legami-movimento')
 @ApiBearerAuth()
@@ -28,7 +28,7 @@ export class ImpostazioniFatturazioneController {
   }
 
   @Put()
-  @Roles(...RUOLI_VARIAZIONI)
+  @Roles(...RUOLI_AMMINISTRATORI)
   @ApiOperation({ summary: 'Imposta o spegne «fatturazione da»' })
   @ApiResponse({ status: 400, description: 'Data non valida (details.errori sul campo)' })
   @ApiResponse({

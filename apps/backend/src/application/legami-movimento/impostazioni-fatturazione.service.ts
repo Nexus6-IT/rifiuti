@@ -108,6 +108,10 @@ export class ImpostazioniFatturazioneService {
           if ((attuale?.versione ?? 0) !== dati.versione) throw versioneSuperata()
 
           const prima = attuale?.da ?? null
+          // Nessun cambio (o spenta senza riga): niente scrittura, niente audit, stato attuale.
+          if (!attuale && dati.fatturazioneDa === null) {
+            return { fatturazioneDa: null, versione: 0, modificatoIl: null }
+          }
           if (attuale && prima === dati.fatturazioneDa) {
             const letta = await tx.impostazioneFatturazione.findFirst({ where: { tenantId } })
             return vista(letta!)
@@ -204,6 +208,10 @@ async function contaToccati(
   const catalogo = await caricaCatalogoCausali(db as Prisma.TransactionClient, tenantId)
   let totale = 0
   for (const g of gruppi) {
+    // Il giorno passato (`intervallo.da`) conta solo per una causale `AZ_` SENZA id di versione,
+    // caso impossibile: il CHECK `waste_movements_causale_azienda_coerente` lega `AZ_%` a
+    // `causale_azienda_id` non nullo, quindi la versione si risolve per id (data ignorata) e le
+    // causali di sistema non hanno versioni. Se il CHECK cadesse, raggruppare anche per giorno.
     const def = catalogo.comportamento(
       g.tipo as VersoCausale,
       g.causale,

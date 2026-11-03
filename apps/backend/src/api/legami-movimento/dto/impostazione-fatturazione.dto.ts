@@ -10,7 +10,7 @@ export class ImpostaFatturazioneDto {
     type: String,
     nullable: true,
     example: '2026-01-01',
-    description: 'AAAA-MM-GG; null spegne la fatturazione. Il campo e` obbligatorio.',
+    description: 'AAAA-MM-GG; null spegne la fatturazione. Il campo è obbligatorio.',
   })
   @ValidateIf((_, v) => v !== null)
   @IsString()
@@ -21,7 +21,7 @@ export class ImpostaFatturazioneDto {
   @Min(0)
   versione: number
 
-  @ApiPropertyOptional({ description: 'Movimenti toccati gia` visti e accettati dall’utente' })
+  @ApiPropertyOptional({ description: 'Movimenti toccati già visti e accettati dall’utente' })
   @IsOptional()
   @IsInt()
   @Min(0)

@@ -261,8 +261,12 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
       orderBy: { createdAt: 'asc' },
     })
     expect(righe.map(r => r.metadata)).toEqual([
-      expect.objectContaining({ precedente: null, nuova: '2026-01-01' }),
-      expect.objectContaining({ precedente: '2026-01-01', nuova: '2026-06-01' }),
+      expect.objectContaining({ precedente: null, nuova: '2026-01-01', movimentiToccati: 0 }),
+      expect.objectContaining({
+        precedente: '2026-01-01',
+        nuova: '2026-06-01',
+        movimentiToccati: 0,
+      }),
     ])
     expect(righe[0].userId).toBe(utenteId)
   })
@@ -336,20 +340,176 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
     expect((await leggi(tenantId)).versione).toBe(2)
   })
 
-  it('due prime impostazioni insieme (versione 0): una sola riga, l’altra 409', async () => {
+  it('PUT null senza riga: nessuna riga, nessun audit, stato attuale', async () => {
     const { tenantId, utenteId } = await azienda()
-    const esiti = await Promise.all(
-      ['2026-01-01', '2026-02-01'].map(d =>
-        imposta(tenantId, utenteId, { fatturazioneDa: d, versione: 0 }).then(
-          r => ({ r }),
-          e => ({ e })
-        )
-      )
-    )
-    expect(esiti.filter(e => 'r' in e)).toHaveLength(1)
-    const falliti = esiti.filter(e => 'e' in e) as { e: any }[]
-    expect(falliti).toHaveLength(1)
-    expect(falliti[0].e.getStatus()).toBe(409)
-    expect(await owner.impostazioneFatturazione.count({ where: { tenantId } })).toBe(1)
+    const r = await imposta(tenantId, utenteId, { fatturazioneDa: null, versione: 0 })
+    expect(r).toEqual({ fatturazioneDa: null, versione: 0, modificatoIl: null })
+    expect(await owner.impostazioneFatturazione.count({ where: { tenantId } })).toBe(0)
+    expect(
+      await owner.activityLog.count({
+        where: { tenantId, action: 'IMPOSTAZIONE_FATTURAZIONE_MODIFICATA' },
+      })
+    ).toBe(0)
   })
+
+  /** Movimento fatturabile in un istante UTC preciso (il giorno italiano lo decide il servizio). */
+  async function movimentoAlle(tenantId: string, istanteUtc: string) {
+    const m = await creaMovimentoDiTest(owner, tenantId)
+    await owner.wasteMovement.update({
+      where: { id: m.movimentoId },
+      data: { movementDate: new Date(istanteUtc) },
+    })
+  }
+
+  it('estremi: inferiore incluso, superiore escluso, in avanti, all’indietro e verso spenta', async () => {
+    const { tenantId, utenteId } = await azienda()
+    // tre di febbraio, uno esattamente il 1° marzo (vecchia data), uno ad aprile
+    await movimenti(tenantId, [
+      '2026-02-10',
+      '2026-02-20',
+      '2026-02-28',
+      '2026-03-01',
+      '2026-04-01',
+    ])
+    // spenta -> 1° marzo: entrano il 1° marzo (estremo incluso) e aprile
+    const errConferma: any = await imposta(tenantId, utenteId, {
+      fatturazioneDa: '2026-03-01',
+      versione: 0,
+    }).catch(e => e)
+    expect(errConferma.getResponse().details.movimentiToccati).toBe(2)
+    await imposta(tenantId, utenteId, {
+      fatturazioneDa: '2026-03-01',
+      versione: 0,
+      confermaMovimenti: 2,
+    })
+
+    // indietro 1° marzo -> 1° febbraio: [1 feb, 1 mar) = 3, il movimento del 1° marzo NON conta
+    const indietro: any = await imposta(tenantId, utenteId, {
+      fatturazioneDa: '2026-02-01',
+      versione: 1,
+    }).catch(e => e)
+    expect(indietro.getResponse().details.movimentiToccati).toBe(3)
+    await imposta(tenantId, utenteId, {
+      fatturazioneDa: '2026-02-01',
+      versione: 1,
+      confermaMovimenti: 3,
+    })
+
+    // avanti 1° febbraio -> 1° marzo: stesso intervallo, stessi 3 (il 1° marzo resta fuori)
+    const avanti: any = await imposta(tenantId, utenteId, {
+      fatturazioneDa: '2026-03-01',
+      versione: 2,
+    }).catch(e => e)
+    expect(avanti.getResponse().details.movimentiToccati).toBe(3)
+    await imposta(tenantId, utenteId, {
+      fatturazioneDa: '2026-03-01',
+      versione: 2,
+      confermaMovimenti: 3,
+    })
+
+    // 1° marzo -> spenta: escono quelli da marzo in poi (1° marzo incluso + aprile = 2)
+    const spenta: any = await imposta(tenantId, utenteId, {
+      fatturazioneDa: null,
+      versione: 3,
+    }).catch(e => e)
+    expect(spenta.getResponse().details.movimentiToccati).toBe(2)
+    const r = await imposta(tenantId, utenteId, {
+      fatturazioneDa: null,
+      versione: 3,
+      confermaMovimenti: 2,
+    })
+    expect(r).toMatchObject({ fatturazioneDa: null, versione: 4 })
+  })
+
+  it.each([
+    // [descrizione, istanti UTC dei movimenti, nuova data, attesi]
+    [
+      'fine ora legale (25/10/2026): 23:30 italiane del 25 e 00:30 del 26',
+      ['2026-10-25T22:30:00Z', '2026-10-25T23:30:00Z'],
+      [
+        ['2026-10-25', 2],
+        ['2026-10-26', 1],
+      ],
+    ],
+    [
+      'inizio ora legale (29/03/2026): 23:30 del 28, 00:30 del 29, 23:30 del 29, 00:30 del 30',
+      [
+        '2026-03-28T22:30:00Z',
+        '2026-03-28T23:30:00Z',
+        '2026-03-29T21:30:00Z',
+        '2026-03-29T22:30:00Z',
+      ],
+      [
+        ['2026-03-29', 3],
+        ['2026-03-30', 1],
+      ],
+    ],
+  ] as const)('cambio dell’ora legale — %s', async (_d, istanti, attesi) => {
+    const { tenantId } = await azienda()
+    for (const i of istanti) await movimentoAlle(tenantId, i)
+    for (const [data, atteso] of attesi) {
+      expect(await nel(tenantId, () => service.contaMovimentiToccati(tenantId, data))).toBe(atteso)
+    }
+  })
+
+  describe.each(['ROLLBACK', 'COMMIT'] as const)(
+    'due prime impostazioni insieme con barriera (il proprietario chiude con %s)',
+    esito => {
+      it('il ramo P2002 dà 409 VERSIONE_SUPERATA', async () => {
+        const { tenantId, utenteId } = await azienda()
+        class Annulla extends Error {}
+        let tenuto!: () => void
+        const eTenuto = new Promise<void>(r => (tenuto = r))
+        let chiudi!: () => void
+        const chiusura = new Promise<void>(r => (chiudi = r))
+        // INSERT senza commit: le due sessioni del servizio non vedono la riga, arrivano alla
+        // create e aspettano il lock sull'indice unico del tenant.
+        const tenitore = owner
+          .$transaction(
+            async tx => {
+              await tx.$executeRaw`INSERT INTO "impostazioni_fatturazione" (tenant_id, updated_at)
+                VALUES (${tenantId}::uuid, now())`
+              tenuto()
+              await chiusura
+              if (esito === 'ROLLBACK') throw new Annulla()
+            },
+            { timeout: 60_000 }
+          )
+          .catch(e => {
+            if (!(e instanceof Annulla)) throw e
+          })
+        await eTenuto
+
+        const lancia = (d: string) =>
+          imposta(tenantId, utenteId, { fatturazioneDa: d, versione: 0 }).then(
+            r => ({ r }),
+            e => ({ e })
+          )
+        const a = lancia('2026-01-01')
+        const b = lancia('2026-02-01')
+        const scadenza = Date.now() + 30_000
+        for (;;) {
+          const r = await owner.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+              AND wait_event_type = 'Lock'`
+          if (r[0].n >= 2) break
+          if (Date.now() > scadenza) throw new Error('le due sessioni non aspettano il lock')
+          await new Promise(res => setTimeout(res, 25))
+        }
+        chiudi()
+        await tenitore
+        const esiti = await Promise.all([a, b])
+        const riusciti = esiti.filter(e => 'r' in e)
+        const falliti = esiti.filter(e => 'e' in e) as { e: any }[]
+        expect(riusciti).toHaveLength(esito === 'ROLLBACK' ? 1 : 0)
+        expect(falliti).toHaveLength(esito === 'ROLLBACK' ? 1 : 2)
+        for (const f of falliti) {
+          expect(f.e.getStatus()).toBe(409)
+          expect(f.e.getResponse().error).toBe('VERSIONE_SUPERATA')
+        }
+        expect(await owner.impostazioneFatturazione.count({ where: { tenantId } })).toBe(1)
+      })
+    }
+  )
 })
