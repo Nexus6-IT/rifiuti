@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core'
 import { HttpClient, HttpParams } from '@angular/common/http'
-import { Observable, map } from 'rxjs'
+import { Observable } from 'rxjs'
+import { TabellaCodificheGenerica } from './tabella-codifiche-generica'
 import { environment } from '../../../environments/environment'
 import {
   CodificaContratto,
@@ -89,45 +90,13 @@ class TabellaSpese extends Tabella<
   }
 }
 
-export class TabellaCodifiche {
-  constructor(
-    private readonly http: HttpClient,
-    private readonly url: string
-  ) {}
-
-  list(genere: GenereCodifica, incluseDisattivate = false): Observable<CodificaContratto[]> {
-    let params = new HttpParams().set('genere', genere)
-    if (incluseDisattivate) params = params.set('incluseDisattivate', 'true')
-    return this.http.get<CodificaContratto[]>(this.url, { params })
-  }
-
-  /** Informativo: non riserva nulla. */
-  prossimoCodice(genere: GenereCodifica): Observable<string> {
-    return this.http
-      .get<{ codice: string }>(`${this.url}/prossimo-codice`, {
-        params: new HttpParams().set('genere', genere),
-      })
-      .pipe(map(r => r.codice))
-  }
-
-  get(id: string): Observable<CodificaContratto> {
-    return this.http.get<CodificaContratto>(`${this.url}/${id}`)
-  }
-
-  crea(dati: NuovaCodifica): Observable<CodificaContratto> {
-    return this.http.post<CodificaContratto>(this.url, dati)
-  }
-
-  modifica(id: string, dati: ModificaCodifica): Observable<CodificaContratto> {
-    return this.http.patch<CodificaContratto>(`${this.url}/${id}`, dati)
-  }
-
-  elimina(id: string, versione: number): Observable<void> {
-    return this.http.delete<void>(`${this.url}/${id}`, {
-      params: new HttpParams().set('versione', String(versione)),
-    })
-  }
-}
+/** Rotte delle codifiche del contratto: la parte comune sta in `TabellaCodificheGenerica` (R25). */
+export class TabellaCodifiche extends TabellaCodificheGenerica<
+  GenereCodifica,
+  CodificaContratto,
+  NuovaCodifica,
+  ModificaCodifica
+> {}
 
 @Injectable({ providedIn: 'root' })
 export class TabelleFatturazioneService {

@@ -1,15 +1,15 @@
 import { CommonModule } from '@angular/common'
-import { Component, Input, OnInit, inject, signal } from '@angular/core'
+import { Component, Input, OnInit, inject } from '@angular/core'
 import { ConfirmationService } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
-import { TableModule } from 'primeng/table'
-import { ToastService } from '../../../core/services/toast.service'
-import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
 import { CodificaContratto, GenereCodifica } from '../clienti.model'
+import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { CONCORDANZA_GENERE, ETICHETTE_GENERE } from '../vocabolario-clienti'
 import { CodificaDialogComponent } from './codifica-dialog.component'
+import { VocabolarioCodifiche } from './codifica-comune'
+import { AzioneCodifica, CodificheGrigliaComponent } from './codifiche-griglia.component'
+import { CodificheTabellaBase } from './codifiche-tabella-base'
 
 const TITOLI: Readonly<Record<GenereCodifica, string>> = {
   CATEGORIA: 'Categorie',
@@ -21,7 +21,13 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
 @Component({
   selector: 'app-codifiche-contratto',
   standalone: true,
-  imports: [CommonModule, ButtonModule, ConfirmDialogModule, TableModule, CodificaDialogComponent],
+  imports: [
+    CommonModule,
+    ButtonModule,
+    ConfirmDialogModule,
+    CodificheGrigliaComponent,
+    CodificaDialogComponent,
+  ],
   providers: [ConfirmationService],
   template: `
     <div class="barra">
@@ -35,56 +41,14 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
       />
     </div>
     <p *ngIf="erroreElenco() as e" role="alert" class="field-error">{{ e }}</p>
-    <p-table [value]="righe()" styleClass="p-datatable-sm">
-      <ng-template pTemplate="header">
-        <tr>
-          <th scope="col">Codice</th>
-          <th scope="col">Descrizione</th>
-          <th scope="col">Stato</th>
-          <th scope="col" *ngIf="puoScrivere()">Azioni</th>
-        </tr>
-      </ng-template>
-      <ng-template pTemplate="body" let-c>
-        <tr [attr.data-testid]="'codifica-riga-' + genere + '-' + c.codice">
-          <td>{{ c.codice }}</td>
-          <td>{{ c.descrizione }}</td>
-          <td>{{ c.attiva ? 'Attiva' : 'Disattivata' }}</td>
-          <td *ngIf="puoScrivere()">
-            <p-button
-              label="Modifica"
-              icon="pi pi-pencil"
-              [text]="true"
-              size="small"
-              (onClick)="apri(c)"
-              [attr.data-testid]="'codifica-modifica-' + genere + '-' + c.codice"
-            />
-            <p-button
-              [label]="c.attiva ? 'Disattiva' : 'Riattiva'"
-              [icon]="c.attiva ? 'pi pi-ban' : 'pi pi-replay'"
-              [text]="true"
-              size="small"
-              (onClick)="cambiaStato(c)"
-              [attr.data-testid]="'codifica-attiva-' + genere + '-' + c.codice"
-            />
-            <p-button
-              *ngIf="c.eliminabile"
-              label="Elimina"
-              icon="pi pi-trash"
-              severity="danger"
-              [text]="true"
-              size="small"
-              (onClick)="elimina(c)"
-              [attr.data-testid]="'codifica-elimina-' + genere + '-' + c.codice"
-            />
-          </td>
-        </tr>
-      </ng-template>
-      <ng-template pTemplate="emptymessage">
-        <tr>
-          <td colspan="4">Nessun elemento.</td>
-        </tr>
-      </ng-template>
-    </p-table>
+    <app-codifiche-griglia
+      [righe]="righe()"
+      [puoScrivere]="puoScrivere()"
+      [testid]="testid"
+      (modifica)="apri($event)"
+      (cambiaStato)="cambiaStato($event)"
+      (elimina)="elimina($event)"
+    />
     <app-codifica-dialog
       [visible]="dialogoAperto()"
       [genere]="genere"
@@ -100,6 +64,8 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
         margin-bottom: 0.5rem;
       }
       h2 {
@@ -109,21 +75,24 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
     `,
   ],
 })
-export class CodificheContrattoComponent implements OnInit {
-  private readonly servizio = inject(TabelleFatturazioneService)
-  private readonly toast = inject(ToastService)
-  private readonly conferma = inject(ConfirmationService)
+export class CodificheContrattoComponent
+  extends CodificheTabellaBase<CodificaContratto, GenereCodifica>
+  implements OnInit
+{
+  protected readonly api = inject(TabelleFatturazioneService).codifiche
+  protected readonly vocabolario: VocabolarioCodifiche<GenereCodifica> = {
+    etichetta: g => ETICHETTE_GENERE[g],
+    concordanza: g => CONCORDANZA_GENERE[g],
+  }
 
   @Input() genere: GenereCodifica = 'CATEGORIA'
 
-  readonly puoScrivere = permessoScrittura()
-  readonly righe = signal<CodificaContratto[]>([])
-  readonly erroreElenco = signal<string | null>(null)
-  readonly dialogoAperto = signal(false)
-  readonly selezionata = signal<CodificaContratto | null>(null)
+  /** `data-testid` con il genere: nella stessa pagina ci sono tre schede. */
+  readonly testid = (azione: AzioneCodifica, c: { codice: string }): string =>
+    `codifica-${azione}-${this.genere}-${c.codice}`
 
-  concordanza(): { nuovo: string; articolo: string } {
-    return CONCORDANZA_GENERE[this.genere]
+  protected genereCorrente(): GenereCodifica {
+    return this.genere
   }
 
   titolo(): string {
@@ -132,46 +101,5 @@ export class CodificheContrattoComponent implements OnInit {
 
   ngOnInit(): void {
     this.carica()
-  }
-
-  carica(): void {
-    caricaElenco(
-      this.servizio.codifiche.list(this.genere, true),
-      this.righe,
-      this.erroreElenco,
-      "Impossibile caricare l'elenco."
-    )
-  }
-
-  apri(c: CodificaContratto | null): void {
-    this.selezionata.set(c)
-    this.dialogoAperto.set(true)
-  }
-
-  cambiaStato(c: CodificaContratto): void {
-    eseguiERicarica(
-      this.servizio.codifiche.modifica(c.id, { attiva: !c.attiva, versione: c.versione }),
-      this.toast,
-      'Impossibile cambiare lo stato.',
-      () => this.carica()
-    )
-  }
-
-  elimina(c: CodificaContratto): void {
-    const g = ETICHETTE_GENERE[c.genere].toLowerCase()
-    chiediConferma(
-      this.conferma,
-      `Eliminare ${CONCORDANZA_GENERE[c.genere].articolo} ${g} "${c.codice} - ${c.descrizione}"?`,
-      () => this.eliminaConfermata(c)
-    )
-  }
-
-  eliminaConfermata(c: CodificaContratto): void {
-    eseguiERicarica(
-      this.servizio.codifiche.elimina(c.id, c.versione),
-      this.toast,
-      "Impossibile eliminare l'elemento.",
-      () => this.carica()
-    )
   }
 }
