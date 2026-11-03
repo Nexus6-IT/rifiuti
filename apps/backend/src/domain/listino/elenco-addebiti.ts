@@ -3,6 +3,8 @@
  * Le date sono stringhe `YYYY-MM-DD`.
  */
 
+import { validaRiferimentiPa } from '../contratti-cliente/regole-contratto-cliente'
+
 export interface DatiElenco {
   codice: string
   descrizione: string
@@ -99,20 +101,8 @@ export function validaElenco(d: DatiElenco): string[] {
     }
   }
 
-  // Stesse regole e stessi testi di validaContrattoCliente (R33)
-  if (d.codiceCig !== null && !/^[A-Z0-9]{10}$/.test(d.codiceCig)) {
-    m.push('Il CIG deve avere 10 caratteri alfanumerici.')
-  }
-  if (d.codiceCup !== null && !/^[A-Z0-9]{15}$/.test(d.codiceCup)) {
-    m.push('Il CUP deve avere 15 caratteri alfanumerici.')
-  }
-  if (d.idDocumentoPa !== null && d.idDocumentoPa.length > 20) {
-    m.push('Il documento della PA non può superare 20 caratteri.')
-  } else if (d.idDocumentoPa === null && (d.codiceCig !== null || d.codiceCup !== null)) {
-    m.push(
-      'Con CIG o CUP indica anche il riferimento del documento della PA (contratto, convenzione o ordine).'
-    )
-  }
+  // Stesse regole e stessi testi del contratto cliente (R33, R58): una sola definizione.
+  m.push(...validaRiferimentiPa(d))
   if (d.dataDocumentoPa !== null) {
     if (d.idDocumentoPa === null) {
       m.push('La data del documento della PA si indica solo con il documento.')

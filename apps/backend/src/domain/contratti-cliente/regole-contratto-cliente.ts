@@ -421,6 +421,32 @@ export function normalizzaContratto(
  * Messaggi nell'ordine dei campi (D9, D27, D28); elenco vuoto = dati validi. `contesto.id` e' l'id
  * del contratto che si sta modificando (assente alla creazione).
  */
+/**
+ * CIG, CUP e riferimento del documento della PA: unica definizione, usata dal contratto cliente e
+ * dall'elenco degli addebiti (R33, R58). I valori sono gia' normalizzati (maiuscolo, vuoto = null).
+ */
+export function validaRiferimentiPa(d: {
+  codiceCig: string | null
+  codiceCup: string | null
+  idDocumentoPa: string | null
+}): string[] {
+  const m: string[] = []
+  if (d.codiceCig !== null && !/^[A-Z0-9]{10}$/.test(d.codiceCig)) {
+    m.push('Il CIG deve avere 10 caratteri alfanumerici.')
+  }
+  if (d.codiceCup !== null && !/^[A-Z0-9]{15}$/.test(d.codiceCup)) {
+    m.push('Il CUP deve avere 15 caratteri alfanumerici.')
+  }
+  if (d.idDocumentoPa !== null && d.idDocumentoPa.length > 20) {
+    m.push('Il documento della PA non può superare 20 caratteri.')
+  } else if (d.idDocumentoPa === null && (d.codiceCig !== null || d.codiceCup !== null)) {
+    m.push(
+      'Con CIG o CUP indica anche il riferimento del documento della PA (contratto, convenzione o ordine).'
+    )
+  }
+  return m
+}
+
 export function validaContrattoCliente(
   d: DatiContrattoCliente,
   contesto: { id?: string | null } = {}
@@ -487,19 +513,7 @@ export function validaContrattoCliente(
   )
   if (mRiferimento) m.push(mRiferimento)
 
-  if (d.codiceCig !== null && !/^[A-Z0-9]{10}$/.test(d.codiceCig)) {
-    m.push('Il CIG deve avere 10 caratteri alfanumerici.')
-  }
-  if (d.codiceCup !== null && !/^[A-Z0-9]{15}$/.test(d.codiceCup)) {
-    m.push('Il CUP deve avere 15 caratteri alfanumerici.')
-  }
-  if (d.idDocumentoPa !== null && d.idDocumentoPa.length > 20) {
-    m.push('Il documento della PA non può superare 20 caratteri.')
-  } else if (d.idDocumentoPa === null && (d.codiceCig !== null || d.codiceCup !== null)) {
-    m.push(
-      'Con CIG o CUP indica anche il riferimento del documento della PA (contratto, convenzione o ordine).'
-    )
-  }
+  m.push(...validaRiferimentiPa(d))
 
   if (d.sogliaDal !== null) {
     if (!dataReale(d.sogliaDal)) dataNonValida('sogliaDal')
