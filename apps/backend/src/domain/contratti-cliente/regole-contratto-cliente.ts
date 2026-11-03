@@ -324,7 +324,8 @@ function data(v: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t
 }
 
-function dataReale(d: string): boolean {
+/** `YYYY-MM-DD` di un giorno che esiste (`2026-02-30` no). Unica definizione del dominio. */
+export function dataReale(d: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
   if (!m) return false
   const [anno, mese, giorno] = [Number(m[1]), Number(m[2]), Number(m[3])]
@@ -418,10 +419,6 @@ export function normalizzaContratto(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Messaggi nell'ordine dei campi (D9, D27, D28); elenco vuoto = dati validi. `contesto.id` e' l'id
- * del contratto che si sta modificando (assente alla creazione).
- */
-/**
  * CIG, CUP e riferimento del documento della PA: unica definizione, usata dal contratto cliente e
  * dall'elenco degli addebiti (R33, R58). I valori sono gia' normalizzati (maiuscolo, vuoto = null).
  */
@@ -447,6 +444,10 @@ export function validaRiferimentiPa(d: {
   return m
 }
 
+/**
+ * Messaggi nell'ordine dei campi (D9, D27, D28); elenco vuoto = dati validi. `contesto.id` e' l'id
+ * del contratto che si sta modificando (assente alla creazione).
+ */
 export function validaContrattoCliente(
   d: DatiContrattoCliente,
   contesto: { id?: string | null } = {}

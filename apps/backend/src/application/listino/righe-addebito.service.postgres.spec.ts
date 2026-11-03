@@ -372,7 +372,7 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
         prezzo: '1',
       })
       const cambio = await errore(
-        service.modifica(s.tenantId, s.utenteId, riga.id, { versione: 1, tipo: 'N' + 'M' })
+        service.modifica(s.tenantId, s.utenteId, riga.id, { versione: 1, tipo: 'NM' })
       )
       expect(cambio.getStatus()).toBe(400)
       expect(cambio.getResponse().errori).toEqual(

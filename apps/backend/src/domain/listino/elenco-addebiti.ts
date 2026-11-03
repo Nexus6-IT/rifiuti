@@ -3,7 +3,7 @@
  * Le date sono stringhe `YYYY-MM-DD`.
  */
 
-import { validaRiferimentiPa } from '../contratti-cliente/regole-contratto-cliente'
+import { dataReale, validaRiferimentiPa } from '../contratti-cliente/regole-contratto-cliente'
 
 export interface DatiElenco {
   codice: string
@@ -34,15 +34,6 @@ function data(v: unknown): string | null {
   const t = testo(v)
   if (t === null) return null
   return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t
-}
-
-/** `YYYY-MM-DD` di un giorno che esiste (`2026-02-30` no). */
-export function dataReale(d: string): boolean {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
-  if (!m) return false
-  const [anno, mese, giorno] = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const t = new Date(Date.UTC(anno, mese - 1, giorno))
-  return t.getUTCFullYear() === anno && t.getUTCMonth() === mese - 1 && t.getUTCDate() === giorno
 }
 
 function codiceElenco(t: string | null): string {

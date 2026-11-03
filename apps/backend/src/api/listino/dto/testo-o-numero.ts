@@ -14,6 +14,8 @@ const ETICHETTE: Record<string, string> = {
   provvigione: 'La provvigione',
   riferimento: 'Il riferimento',
   quantitaFissa: 'La quantità fissa',
+  minimoFatturabile: 'Il minimo fatturabile',
+  stimaAnnuaKg: 'La stima annua in kg',
 }
 
 /** Stringa oppure numero finito: il servizio o il dominio ne controllano il formato. */

@@ -203,6 +203,9 @@ const listiniCanonici = (l: readonly PrezzoListino[]) =>
     ])
   )
 
+const MSG_TIPO_ADDEBITO_USATO = (n: number) =>
+  `Il tipo non si può cambiare: l'addebito è usato in ${n} ${n === 1 ? 'riga' : 'righe'} di listino.`
+
 function lanciaNonValido(errori: string[]): never {
   throw new BadRequestException({ message: errori, error: 'ADDEBITO_NON_VALIDO' })
 }
@@ -331,6 +334,27 @@ export class AddebitiService {
           const listiniCambiati =
             listiniCanonici(unione.listini) !== listiniCanonici(attuali.listini)
           if (campi.length === 0 && !listiniCambiati) return this.vista(tx, tenantId, prima)
+
+          // Decisione 4: la riga eredita il tipo dell'addebito e non puo' discostarsene. Se il tipo
+          // cambia mentre righe di listino usano l'addebito, resterebbero righe incoerenti: 400.
+          // L'addebito si blocca FOR UPDATE prima di contare (come l'UPDATE che segue, e in
+          // coda a chi sta scrivendo una riga con FOR SHARE): nessuna riga nuova sfugge al conto.
+          if (campi.includes('tipo')) {
+            await tx.$queryRaw`
+              SELECT id FROM "addebiti"
+              WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid FOR UPDATE`
+            const usi = await tx.rigaAddebito.count({ where: { tenantId, addebitoId: id } })
+            if (usi > 0) {
+              throw new BadRequestException({
+                message: [MSG_TIPO_ADDEBITO_USATO(usi)],
+                error: 'ADDEBITO_NON_VALIDO',
+                errori: [{ campo: 'tipo', messaggio: MSG_TIPO_ADDEBITO_USATO(usi) }],
+                details: {
+                  errori: [{ campo: 'tipo', messaggio: MSG_TIPO_ADDEBITO_USATO(usi) }],
+                },
+              })
+            }
+          }
 
           // Solo i riferimenti cambiati e non null si rileggono (e restano bloccati FOR SHARE).
           const daControllare: RiferimentiAddebito = {}

@@ -11,13 +11,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
-  dataReale,
   elenchiValidiAl,
   normalizzaElenco,
   prossimoCodiceElenco,
   validaElenco,
   type DatiElenco,
 } from '../../domain/listino/elenco-addebiti'
+import { dataReale } from '../../domain/contratti-cliente/regole-contratto-cliente'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
   confrontaVersione,

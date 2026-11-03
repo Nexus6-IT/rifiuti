@@ -10,13 +10,20 @@
 --    addebiti. Le altre FK della 4.2b sono gia' coperte da un indice o da un unico che parte dalla
 --    stessa colonna (righe, fasce, scadenze, allegati, prezzi di listino, elenchi).
 -- 3. `elenchi_addebiti_codice_non_000`: il codice `000` e' riservato come nelle codifiche (in
---    WinWaste l'elenco 0 vuol dire "prendi il predefinito"); `NOT VALID` poi `VALIDATE`, che
---    prende solo un lock leggero. PRIMA DEL DEPLOY: `SELECT count(*) FROM elenchi_addebiti WHERE
+--    WinWaste l'elenco 0 vuol dire "prendi il predefinito"); `NOT VALID` poi `VALIDATE`. Nella
+--    stessa transazione l'`ADD CONSTRAINT` tiene comunque il lock esclusivo fino al commit (il
+--    vantaggio del due tempi si avrebbe solo con due migration separate): va bene perche' la
+--    tabella e' piccola. PRIMA DEL DEPLOY: `SELECT count(*) FROM elenchi_addebiti WHERE
 --    codice = '000'` deve dare 0, altrimenti `VALIDATE` fallisce e la migration si ferma.
 --
 -- Rollback (a mano, in quest'ordine; nessun dato da recuperare):
 --   ALTER TABLE "elenchi_addebiti" DROP CONSTRAINT "elenchi_addebiti_codice_non_000";
---   DROP INDEX "addebiti_tenant_id_categoria_statistica_2_id_idx", ...(gli altri cinque)...;
+--   DROP INDEX "addebiti_tenant_id_gruppo_id_idx";
+--   DROP INDEX "addebiti_tenant_id_codice_iva_id_idx";
+--   DROP INDEX "addebiti_tenant_id_categoria_id_idx";
+--   DROP INDEX "addebiti_tenant_id_centro_ricavo_id_idx";
+--   DROP INDEX "addebiti_tenant_id_categoria_statistica_1_id_idx";
+--   DROP INDEX "addebiti_tenant_id_categoria_statistica_2_id_idx";
 --   DROP INDEX "activity_logs_tenant_id_action_idx";
 --   DELETE FROM _prisma_migrations WHERE migration_name = '20261103100000_listino_indici_seguiti';
 
