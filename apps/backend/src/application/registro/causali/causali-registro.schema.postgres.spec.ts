@@ -118,9 +118,9 @@ describe('Causali del registro, schema (Postgres reale)', () => {
     const righe = await tx.$queryRawUnsafe<{ id: string }[]>(
       `INSERT INTO causali_registro_azienda
          (tenant_id, natura, codice, verso, descrizione, ruolo_mud, codice_rentri, operazione,
-          valida_dal, valida_al, creato_da, updated_at)
+          valida_dal, valida_al, creato_da, fatturabile, updated_at)
        VALUES ($1::uuid, 'PROPRIA', $2, $3::waste_movement_type, $4, $5::ruolo_mud_causale, $6, $7,
-               $8::date, $9::date, $10::uuid, now())
+               $8::date, $9::date, $10::uuid, false, now())
        RETURNING id::text AS id`,
       tenantId,
       o.codice ?? 'AZ_PROVA',

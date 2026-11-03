@@ -11,11 +11,21 @@ export interface ColonneReferentiListino {
   addebiti: readonly string[]
   /** Colonne delle righe degli elenchi di addebito (`righe_addebito`). */
   righe: readonly string[]
+  /**
+   * Colonne delle righe dei legami dei movimenti (`righe_legame_movimento`, 4.3) che citano la
+   * tabella: riga di listino, elenco e codice IVA congelati alla conferma. Decisione 8: cio' che un
+   * legame cita non si elimina, si disattiva o se ne chiude la validita'.
+   */
+  righeLegame: readonly string[]
+  /** Colonne delle testate dei legami (`legami_movimento`, 4.3): citano elenco, cliente, ecc. */
+  legami: readonly string[]
 }
 
 export const COLONNE_CODICE_IVA: ColonneReferentiListino = {
   addebiti: ['codiceIvaId'],
   righe: ['codiceIvaId'],
+  righeLegame: ['codiceIvaId'],
+  legami: [],
 }
 
 export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
@@ -28,12 +38,36 @@ export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
   ],
   // Le righe citano solo la categoria e il centro di ricavo (non gruppo e statistiche).
   righe: ['categoriaId', 'centroRicavoId'],
+  righeLegame: [],
+  legami: [],
 }
 
 /** Un addebito dell'archivio e' citato solo dalle righe degli elenchi, con `addebitoId`. */
 export const COLONNE_ADDEBITO: ColonneReferentiListino = {
   addebiti: [],
   righe: ['addebitoId'],
+  righeLegame: [],
+  legami: [],
+}
+
+/** Una riga di listino e' citata solo dalle righe dei legami (`riga_addebito_id`). */
+export const COLONNE_RIGA_LISTINO: ColonneReferentiListino = {
+  addebiti: [],
+  righe: [],
+  righeLegame: ['rigaAddebitoId'],
+  legami: [],
+}
+
+/**
+ * Un elenco e' "usato" quando lo cita la testata di un legame (`legami_movimento.elenco_id`,
+ * indicizzata): comprende anche i legami senza righe, e quelli con righe perche' la FK composta
+ * obbliga ogni riga ad avere l'elenco della sua testata.
+ */
+export const COLONNE_ELENCO: ColonneReferentiListino = {
+  addebiti: [],
+  righe: [],
+  righeLegame: [],
+  legami: ['elencoId'],
 }
 
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
@@ -44,6 +78,10 @@ type GroupBy = (args: {
 }) => Promise<RigaConteggio[]>
 
 /**
+ * Una `groupBy` con `IN` per colonna referente, su UNA tabella e senza join: lineare anche con
+ * migliaia di id (il vincolo `JOIN unnest` + `joinLineari` serve contro i nested loop dei join e qui
+ * non ce ne sono).
+ *
  * Numero di citazioni per id (0 se nessuna). `ids` vuoto: nessuna query. Va chiamata nel contesto
  * dell'azienda (RLS) o dentro la transazione che poi scrive.
  */
@@ -58,6 +96,8 @@ export async function contaUsiListino(
   const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[]]> = [
     [client.addebito as unknown as { groupBy: GroupBy }, colonne.addebiti],
     [client.rigaAddebito as unknown as { groupBy: GroupBy }, colonne.righe],
+    [client.rigaLegameMovimento as unknown as { groupBy: GroupBy }, colonne.righeLegame],
+    [client.legameMovimento as unknown as { groupBy: GroupBy }, colonne.legami],
   ]
   for (const [modello, elenco] of sorgenti) {
     for (const colonna of elenco) {

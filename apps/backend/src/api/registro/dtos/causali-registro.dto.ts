@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
 import {
+  IsBoolean,
   IsEnum,
   IsIn,
   IsInt,
@@ -47,6 +48,8 @@ function GiornoReale(opzioni?: ValidationOptions): PropertyDecorator {
       validator: { validate: (valore: unknown) => eGiornoValido(valore) },
     })
 }
+
+const MESSAGGIO_FATTURABILE = 'fatturabile deve essere true o false'
 
 const tagliaSpazi = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value
@@ -110,6 +113,13 @@ export class CreaCausaleAziendaleDto {
   @Max(9999)
   ordine?: number
 
+  @ApiPropertyOptional({
+    description: 'Le registrazioni con questa causale sono candidate alla fatturazione',
+  })
+  @ValidateIf(o => o.fatturabile !== undefined)
+  @IsBoolean({ message: MESSAGGIO_FATTURABILE })
+  fatturabile?: boolean
+
   @ApiPropertyOptional({ example: '2026-10-28' })
   @IsOptional()
   @Matches(FORMATO_GIORNO, { message: `validaDal ${MESSAGGIO_GIORNO}` })
@@ -152,6 +162,13 @@ export class ModificaCausaleAziendaleDto {
   @IsIn(OPERAZIONI)
   operazione?: string | null
 
+  @ApiPropertyOptional({
+    description: 'Le registrazioni con questa causale sono candidate alla fatturazione',
+  })
+  @ValidateIf(o => o.fatturabile !== undefined)
+  @IsBoolean({ message: MESSAGGIO_FATTURABILE })
+  fatturabile?: boolean
+
   @ApiPropertyOptional({ example: '2026-10-28' })
   @ValidateIf(o => o.validaDal !== undefined)
   @Matches(FORMATO_GIORNO, { message: `validaDal ${MESSAGGIO_GIORNO}` })
@@ -192,6 +209,13 @@ export class NuovaVersioneCausaleDto {
   @Min(0)
   @Max(9999)
   ordine?: number
+
+  @ApiPropertyOptional({
+    description: 'Le registrazioni con questa causale sono candidate alla fatturazione',
+  })
+  @ValidateIf(o => o.fatturabile !== undefined)
+  @IsBoolean({ message: MESSAGGIO_FATTURABILE })
+  fatturabile?: boolean
 }
 
 export class ChiudiCausaleDto {

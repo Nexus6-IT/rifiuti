@@ -2,6 +2,8 @@ import {
   COLONNE_ADDEBITO,
   COLONNE_CODICE_IVA,
   COLONNE_CODIFICA_ADDEBITO,
+  COLONNE_ELENCO,
+  COLONNE_RIGA_LISTINO,
   contaUsiListino,
 } from './uso-listino'
 
@@ -107,5 +109,54 @@ describe('contaUsiListino', () => {
     expect(usi.get('y')).toBe(0)
     expect(client.addebito.groupBy).not.toHaveBeenCalled()
     expect(client.rigaAddebito.groupBy).toHaveBeenCalledTimes(1)
+  })
+
+  describe('legami dei movimenti (4.3)', () => {
+    const clienteFinto = (righe: Array<Record<string, unknown>> = []) =>
+      ({
+        addebito: { groupBy: jest.fn(async () => []) },
+        rigaAddebito: { groupBy: jest.fn(async () => []) },
+        rigaLegameMovimento: { groupBy: jest.fn(async () => righe) },
+        legameMovimento: { groupBy: jest.fn(async () => righe) },
+        $queryRaw: jest.fn(),
+        $executeRaw: jest.fn(),
+      }) as any
+
+    it('i referenti sono colonne di righe_legame_movimento (riga, codice IVA) e di legami_movimento (elenco)', () => {
+      expect(COLONNE_CODICE_IVA.righeLegame).toEqual(['codiceIvaId'])
+      expect(COLONNE_RIGA_LISTINO.righeLegame).toEqual(['rigaAddebitoId'])
+      expect(COLONNE_ELENCO.legami).toEqual(['elencoId'])
+      expect(COLONNE_ELENCO.righeLegame).toEqual([])
+      expect(COLONNE_CODIFICA_ADDEBITO.righeLegame).toEqual([])
+      expect(COLONNE_CODIFICA_ADDEBITO.legami).toEqual([])
+    })
+
+    it('lista di 1000 id: una sola query per colonna, un solo IN, nessun join né query raw', async () => {
+      const ids = Array.from(
+        { length: 1000 },
+        (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`
+      )
+      const client = clienteFinto([{ elencoId: ids[3], _count: { _all: 2 } }])
+      const usi = await contaUsiListino(client, T, ids, COLONNE_ELENCO)
+      expect(client.legameMovimento.groupBy).toHaveBeenCalledTimes(1)
+      expect(client.legameMovimento.groupBy.mock.calls[0][0].where).toEqual({
+        tenantId: T,
+        elencoId: { in: ids },
+      })
+      expect(client.rigaLegameMovimento.groupBy).not.toHaveBeenCalled()
+      expect(client.$queryRaw).not.toHaveBeenCalled()
+      expect(client.$executeRaw).not.toHaveBeenCalled()
+      expect(usi.get(ids[3])).toBe(2)
+      expect(usi.get(ids[4])).toBe(0)
+    })
+
+    it('righeLegame: un groupBy per colonna sul modello delle righe dei legami', async () => {
+      const client = clienteFinto([{ codiceIvaId: 'x', _count: { _all: 3 } }])
+      const usi = await contaUsiListino(client, T, ['x', 'y'], COLONNE_CODICE_IVA)
+      expect(client.rigaLegameMovimento.groupBy).toHaveBeenCalledTimes(1)
+      expect(client.legameMovimento.groupBy).not.toHaveBeenCalled()
+      expect(usi.get('x')).toBe(3)
+      expect(usi.get('y')).toBe(0)
+    })
   })
 })

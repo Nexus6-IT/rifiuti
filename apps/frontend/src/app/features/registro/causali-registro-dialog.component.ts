@@ -124,6 +124,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
               <th scope="col">Descrizione</th>
               <th scope="col">Ruolo nel MUD</th>
               <th scope="col">Codice RENTRI</th>
+              <th scope="col">Fatturabile</th>
               <th scope="col">Stato</th>
               <th scope="col" style="width: 140px">Azioni</th>
             </tr>
@@ -137,6 +138,9 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
               <td>{{ s.descrizione }}</td>
               <td>{{ etichettaRuoloMud(s.ruoloMud) }}</td>
               <td>{{ etichettaCodiceRentri(s.codiceRentri) }}</td>
+              <td [attr.data-testid]="'cg-sistema-fatt-' + s.verso + '-' + s.codice">
+                {{ s.fatturabile ? 'Sì' : 'No' }}
+              </td>
               <td>
                 {{
                   s.disattivataPerAzienda ? 'Disattivata' : s.attiva ? 'Attiva' : 'Non disponibile'
@@ -200,6 +204,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
               <td>
                 {{ etichettaCodiceRentri(a.codiceRentri) }}
                 <span *ngIf="a.operazione"> · {{ etichettaOperazione(a.operazione) }}</span>
+                <span *ngIf="a.fatturabile" class="cg-badge"> · Fatturabile</span>
               </td>
               <td>
                 dal {{ dataItaliana(a.validaDal) }}
@@ -486,6 +491,17 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                 >
               </div>
             </div>
+            <div class="col-12">
+              <div class="field cg-check">
+                <label for="cg-fatturabile">
+                  <input id="cg-fatturabile" type="checkbox" formControlName="fatturabile" />
+                  Fatturabile
+                </label>
+                <small class="field-hint"
+                  >Un movimento con questa causale può essere proposto per la fatturazione.</small
+                >
+              </div>
+            </div>
           </ng-container>
         </div>
         <p
@@ -528,6 +544,12 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
         margin: var(--spacing-base) 0 var(--spacing-sm);
         font-family: var(--font-display);
         font-size: var(--font-size-base);
+      }
+      .cg-check > label {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        cursor: pointer;
       }
       .cg-conferma {
         font-size: var(--font-size-sm);
@@ -622,6 +644,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
     codiceRentri: [null as string | null],
     operazione: [null as string | null],
     ordine: [null as number | null],
+    fatturabile: [false],
     validaDal: [''],
     validaAl: [''],
   })
@@ -748,6 +771,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       codiceRentri: null,
       operazione: null,
       ordine: null,
+      fatturabile: false,
       validaDal: '',
       validaAl: '',
     })
@@ -765,6 +789,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       codiceRentri: a.codiceRentri,
       operazione: a.operazione,
       ordine: a.ordine,
+      fatturabile: a.fatturabile,
       validaDal: a.validaDal,
       validaAl: '',
     })
@@ -782,6 +807,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       codiceRentri: a.codiceRentri,
       operazione: a.operazione,
       ordine: a.ordine,
+      fatturabile: a.fatturabile,
       validaDal: inizioProposto(oggiItaliano(), a.ultimoGiornoUso, a.validaDal),
       validaAl: '',
       ...preimpostati,
@@ -800,6 +826,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       codiceRentri: a.codiceRentri,
       operazione: a.operazione,
       ordine: a.ordine,
+      fatturabile: a.fatturabile,
       validaDal: a.validaDal,
       validaAl: chiusuraProposta(oggiItaliano(), a.validaDal, a.ultimoGiornoUso),
     })
@@ -823,6 +850,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
       codiceRentri: v.codiceRentri,
       operazione: v.operazione,
       ordine: v.ordine,
+      fatturabile: v.fatturabile,
     })
   }
 
@@ -904,6 +932,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
           ...(v.codiceRentri ? { codiceRentri: v.codiceRentri } : {}),
           ...(v.operazione && this.operazioneVisibile() ? { operazione: v.operazione } : {}),
           ...(ordine !== null ? { ordine } : {}),
+          fatturabile: !!v.fatturabile,
           ...(v.validaDal ? { validaDal: v.validaDal } : {}),
         }),
         'Causale creata',
@@ -919,6 +948,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
         ruoloMud: v.ruoloMud,
         codiceRentri: v.codiceRentri,
         operazione: this.operazioneVisibile() ? v.operazione : null,
+        fatturabile: !!v.fatturabile,
         validaDal: v.validaDal,
       })
       if (Object.keys(diff).length === 0) {
@@ -937,6 +967,7 @@ export class CausaliRegistroDialogComponent implements OnChanges, OnDestroy {
           ...(v.operazione && this.operazioneVisibile() ? { operazione: v.operazione } : {}),
           descrizione: String(v.descrizione).trim(),
           ...(ordine !== null ? { ordine } : {}),
+          fatturabile: !!v.fatturabile,
         }),
         'Nuova versione creata',
         true

@@ -33,6 +33,7 @@ function sistema(parziale: Partial<CausaleSistemaGestione> = {}): CausaleSistema
     codiceRentri: 'DT',
     operazione: null,
     ordine: 10,
+    fatturabile: false,
     attiva: true,
     disattivataPerAzienda: false,
     ...parziale,
@@ -49,6 +50,7 @@ function propria(parziale: Partial<CausaleAziendaleGestione> = {}): CausaleAzien
     codiceRentri: 'T*',
     operazione: null,
     ordine: 100,
+    fatturabile: false,
     validaDal: '2026-01-01',
     validaAl: null,
     usata: false,
@@ -148,6 +150,7 @@ describe('CausaliRegistroDialogComponent (click veri, HTTP simulato)', () => {
       verso: 'CARICO',
       descrizione: 'Nuova causale',
       ruoloMud: 'PRODOTTO',
+      fatturabile: false,
     })
     req.flush(propria({ id: 'n1', codice: 'AZ_NUOVA', descrizione: 'Nuova causale' }))
     rileggi({
@@ -288,6 +291,56 @@ describe('CausaliRegistroDialogComponent (click veri, HTTP simulato)', () => {
     expect(post.request.body.descrizione).toBe('Altra descrizione')
     post.flush(propria({ id: 'v3' }))
     rileggi({ sistema: [], aziendali: [v1, v2] })
+    flush()
+  }))
+
+  it('causale aziendale: checkbox «Fatturabile» modificabile, salvata nel corpo', fakeAsync(() => {
+    apri({ sistema: [], aziendali: [propria()] })
+    clic('cg-modifica-v1')
+    fixture.detectChanges()
+    const cb = document.body.querySelector<HTMLInputElement>('#cg-fatturabile')
+    expect(cb).withContext('checkbox Fatturabile').not.toBeNull()
+    expect(cb!.checked).toBeFalse()
+    cb!.click()
+    fixture.detectChanges()
+    clic('cg-invia')
+    const req = http.expectOne(`${URL}/aziendali/v1`)
+    expect(req.request.method).toBe('PATCH')
+    expect(req.request.body).toEqual({ fatturabile: true })
+    req.flush(propria({ fatturabile: true }))
+    rileggi({ sistema: [], aziendali: [propria({ fatturabile: true })] })
+    expect(testo('cg-az-v1')).toContain('Fatturabile')
+    flush()
+  }))
+
+  it('causale di sistema: «Fatturabile» mostrato in sola lettura (sì per INGRESSO_ESTERNO)', fakeAsync(() => {
+    apri({
+      sistema: [
+        sistema({ codice: 'INGRESSO_ESTERNO', fatturabile: true }),
+        sistema({ codice: 'PRODUZIONE_INTERNA', fatturabile: false }),
+      ],
+      aziendali: [],
+    })
+    expect(testo('cg-sistema-fatt-CARICO-INGRESSO_ESTERNO')).toBe('Sì')
+    expect(testo('cg-sistema-fatt-CARICO-PRODUZIONE_INTERNA')).toBe('No')
+    expect(
+      document.body.querySelector('[data-testid="cg-sistema-CARICO-INGRESSO_ESTERNO"] input')
+    ).toBeNull()
+    flush()
+  }))
+
+  it('nuova versione: parte dal valore della versione precedente', fakeAsync(() => {
+    apri({ sistema: [], aziendali: [propria({ fatturabile: true })] })
+    clic('cg-versione-v1')
+    fixture.detectChanges()
+    const cb = document.body.querySelector<HTMLInputElement>('#cg-fatturabile')
+    expect(cb).withContext('checkbox Fatturabile').not.toBeNull()
+    expect(cb!.checked).toBeTrue()
+    clic('cg-invia')
+    const post = http.expectOne(`${URL}/aziendali/v1/versioni`)
+    expect(post.request.body.fatturabile).toBeTrue()
+    post.flush(propria({ id: 'v2', fatturabile: true }))
+    rileggi({ sistema: [], aziendali: [propria({ fatturabile: true })] })
     flush()
   }))
 

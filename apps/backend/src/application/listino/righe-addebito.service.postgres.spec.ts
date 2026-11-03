@@ -25,6 +25,11 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import {
+  creaLegameDiTest,
+  creaMovimentoDiTest,
+  pulisciLegamiDiTest,
+} from '../../test-support/legami-di-test'
+import {
   assicuraCatalogoCer,
   assicuraCodificheRentri,
   creaAddebito,
@@ -75,6 +80,7 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
   afterAll(async () => {
     if (tenantCreati.length > 0) {
       const in_ = { in: tenantCreati }
+      await pulisciLegamiDiTest(owner, tenantCreati)
       // Righe, fasce, scadenze ed elenchi vanno a cascata col contratto; le FK NoAction verso
       // addebiti e codici IVA chiedono di cancellare prima i contratti.
       await owner.contrattoCliente.updateMany({
@@ -1243,6 +1249,61 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       const attivita = await service.codificheRentri('attivita-rs')
       expect(attivita.find(v => v.codice === rentri.operazione)).toBeDefined()
       for (const v of [...stati, ...attivita]) expect(v.descrizione).toBeTruthy()
+    })
+  })
+
+  describe('righe citate dai legami dei movimenti (4.3, decisione 8)', () => {
+    /** Azienda con listino, contratto, elenco, riga e un legame che cita la riga e l'elenco. */
+    async function conLegame() {
+      const a = await azienda()
+      const listino = a.listino
+      const c = await creaContrattoConElenco(owner, a.tenantId)
+      const riga = await creaRiga(owner, a.tenantId, c.elencoId, { codiceIvaId: listino.iva22Id })
+      const m = await creaMovimentoDiTest(owner, a.tenantId)
+      const l = await creaLegameDiTest(owner, a.tenantId, {
+        movimentoOriginaleId: m.movimentoId,
+        registroId: m.registroId,
+        verso: m.type,
+        stato: 'CONFERMATO',
+        clienteId: c.clienteId,
+        contrattoId: c.contrattoId,
+        elencoId: c.elencoId,
+        righe: [{ rigaAddebitoId: riga.id, codiceIvaId: listino.iva22Id, quantita: '100' }],
+      })
+      return { ...a, ...c, listino, rigaId: riga.id, legameId: l.legameId }
+    }
+
+    it('elimina riga citata da un legame: 409 RIGA_ADDEBITO_IN_USO, riga e legame intatti', async () => {
+      const s = await conLegame()
+      const e = await errore(service.elimina(s.tenantId, s.utenteId, s.rigaId, 1))
+      expect(e.getStatus()).toBe(409)
+      expect(e.getResponse()).toEqual({
+        error: 'RIGA_ADDEBITO_IN_USO',
+        message: 'La riga è usata da movimenti: non si può eliminare.',
+      })
+      expect(await owner.rigaAddebito.count({ where: { id: s.rigaId } })).toBe(1)
+      expect(await owner.rigaLegameMovimento.count({ where: { legameId: s.legameId } })).toBe(1)
+    })
+
+    it('elimina una riga non citata dello stesso elenco: 200', async () => {
+      const s = await conLegame()
+      const libera = await creaRiga(owner, s.tenantId, s.elencoId, {
+        codiceIvaId: s.listino.iva22Id,
+      })
+      await service.elimina(s.tenantId, s.utenteId, libera.id, 1)
+      expect(await owner.rigaAddebito.count({ where: { id: libera.id } })).toBe(0)
+    })
+
+    it('vista della riga: eliminabile false se citata, true altrimenti (getById e list)', async () => {
+      const s = await conLegame()
+      const libera = await creaRiga(owner, s.tenantId, s.elencoId, {
+        codiceIvaId: s.listino.iva22Id,
+      })
+      expect((await service.getById(s.tenantId, s.rigaId)).eliminabile).toBe(false)
+      expect((await service.getById(s.tenantId, libera.id)).eliminabile).toBe(true)
+      const elenco = await service.list(s.tenantId, s.elencoId)
+      expect(elenco.find(r => r.id === s.rigaId)?.eliminabile).toBe(false)
+      expect(elenco.find(r => r.id === libera.id)?.eliminabile).toBe(true)
     })
   })
 })

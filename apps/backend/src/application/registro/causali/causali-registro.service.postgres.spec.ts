@@ -508,6 +508,73 @@ describe('Gestione delle causali — Postgres reale, ruolo wasteflow_app', () =>
     expect((tradotto as BadRequestException).message).toBe('I dati della causale non sono validi.')
   })
 
+  it('fatturabile: default false, scelta dell utente, nuova versione, gestione e opzioni; la disattivazione resta NULL', async () => {
+    const a = await azienda()
+    const predefinita = await crea(a, { codice: 'AZ_FATT0' })
+    expect(predefinita.fatturabile).toBe(false)
+    const acceso = await crea(a, { codice: 'AZ_FATT1', fatturabile: true })
+    expect(acceso.fatturabile).toBe(true)
+
+    const nuova = await nelTenant(a.tenantId, () =>
+      service.nuovaVersione(a.tenantId, a.userId, acceso.id, {
+        validaDal: '2026-06-01',
+        ruoloMud: 'PRODOTTO',
+        fatturabile: false,
+      })
+    )
+    expect(nuova.fatturabile).toBe(false)
+    const righe = await owner.causaleRegistroAzienda.findMany({
+      where: { tenantId: a.tenantId, codice: 'AZ_FATT1' },
+      orderBy: { validaDal: 'asc' },
+    })
+    expect(righe.map(r => r.fatturabile)).toEqual([true, false])
+
+    const ereditata = await nelTenant(a.tenantId, () =>
+      service.nuovaVersione(a.tenantId, a.userId, nuova.id, {
+        validaDal: '2026-09-01',
+        ruoloMud: 'PRODOTTO',
+      })
+    )
+    expect(ereditata.fatturabile).toBe(false)
+
+    const gestione = await nelTenant(a.tenantId, () => service.gestione(a.tenantId))
+    expect(gestione.aziendali.find(x => x.id === acceso.id)?.fatturabile).toBe(true)
+    expect(gestione.sistema.find(x => x.codice === 'INGRESSO_ESTERNO')?.fatturabile).toBe(true)
+    expect(gestione.sistema.find(x => x.codice === 'CESSIONE')?.fatturabile).toBe(false)
+
+    const opzioni = await nelTenant(a.tenantId, () =>
+      service.opzioni(a.tenantId, 'CARICO', '2026-02-01')
+    )
+    expect(opzioni.find(o => o.codice === 'AZ_FATT1')?.fatturabile).toBe(true)
+    expect(opzioni.find(o => o.codice === 'AZ_FATT0')?.fatturabile).toBe(false)
+    expect(opzioni.find(o => o.codice === 'INGRESSO_ESTERNO')?.fatturabile).toBe(true)
+
+    await nelTenant(a.tenantId, () =>
+      service.disattiva(a.tenantId, a.userId, 'CARICO', 'ALTRO_CARICO')
+    )
+    const disattivazione = await owner.causaleRegistroAzienda.findFirstOrThrow({
+      where: { tenantId: a.tenantId, natura: 'DISATTIVAZIONE' },
+    })
+    expect(disattivazione.fatturabile).toBeNull()
+  })
+
+  it('fatturabile: PATCH su versione non usata cambia il flag, su una usata -> 409 e il flag non cambia', async () => {
+    const a = await azienda()
+    const v = await crea(a, { codice: 'AZ_FATT2', ruoloMud: 'ESCLUSO', codiceRentri: undefined })
+    const modificata = await nelTenant(a.tenantId, () =>
+      service.modifica(a.tenantId, a.userId, v.id, { fatturabile: true })
+    )
+    expect(modificata.fatturabile).toBe(true)
+    await registraOk(a, 'AZ_FATT2', '2026-02-01')
+    await expect(
+      nelTenant(a.tenantId, () =>
+        service.modifica(a.tenantId, a.userId, v.id, { fatturabile: false })
+      )
+    ).rejects.toMatchObject({ response: { error: 'CAUSALE_USATA_NUOVA_VERSIONE' } })
+    const riga = await owner.causaleRegistroAzienda.findUniqueOrThrow({ where: { id: v.id } })
+    expect(riga.fatturabile).toBe(true)
+  })
+
   describe('concorrenza', () => {
     it('registrazione in corso (KEY SHARE sulla versione): la modifica del ruolo attende e poi risponde 409', async () => {
       const a = await azienda()

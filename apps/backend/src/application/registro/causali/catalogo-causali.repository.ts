@@ -18,6 +18,8 @@ interface RigaSistemaDb {
   operazione: string | null
   ordine: number
   attiva: boolean
+  /** Colonna `fatturabile` (NOT NULL, migration `20261103200000_legami_movimento`). */
+  fatturabile: boolean
 }
 
 /** Riga di `causali_registro_azienda` come la restituisce Prisma (colonne DATE = mezzanotte UTC). */
@@ -33,6 +35,8 @@ interface RigaAziendaDb {
   ordine: number
   validaDal: Date | null
   validaAl: Date | null
+  /** Colonna `fatturabile`: obbligatoria per PROPRIA, NULL per DISATTIVAZIONE (CHECK del database). */
+  fatturabile: boolean | null
 }
 
 /**
@@ -79,6 +83,7 @@ export async function caricaCatalogoCausali(
     operazione: r.operazione,
     ordine: r.ordine,
     attiva: r.attiva,
+    fatturabile: r.fatturabile,
   }))
   const righeAzienda: RigaCausaleAzienda[] = azienda.map(r => ({
     id: r.id,
@@ -92,6 +97,7 @@ export async function caricaCatalogoCausali(
     ordine: r.ordine,
     validaDal: dataColonnaComeGiorno(r.validaDal),
     validaAl: dataColonnaComeGiorno(r.validaAl),
+    fatturabile: r.fatturabile,
   }))
   return new CatalogoCausali(righeSistema, righeAzienda)
 }

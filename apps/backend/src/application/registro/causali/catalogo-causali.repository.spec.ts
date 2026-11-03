@@ -39,6 +39,7 @@ describe('caricaCatalogoCausali', () => {
         ordine: 100,
         validaDal: new Date('2026-03-01T00:00:00.000Z'),
         validaAl: null,
+        fatturabile: true,
       },
       {
         id: 'd1',
@@ -71,6 +72,13 @@ describe('caricaCatalogoCausali', () => {
       motivo: 'DISATTIVATA',
     })
     expect(catalogo.opzioni('CARICO', '2026-06-01')).toHaveLength(5)
+    // fatturabile: la riga aziendale porta il valore letto; le righe di sistema vengono dal fixture,
+    // che lo valorizza già (il default tollerante del repository non è esercitato qui)
+    expect(catalogo.comportamento('SCARICO', 'AZ_PROVA', '2026-03-01')!.fatturabile).toBe(true)
+    expect(catalogo.comportamento('CARICO', 'INGRESSO_ESTERNO', '2026-06-01')!.fatturabile).toBe(
+      true
+    )
+    expect(catalogo.comportamento('SCARICO', 'CESSIONE', '2026-06-01')!.fatturabile).toBe(false)
   })
 })
 

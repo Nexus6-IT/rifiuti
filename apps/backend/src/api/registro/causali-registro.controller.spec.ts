@@ -9,6 +9,8 @@ describe('CausaliRegistroController (unit)', () => {
     opzioni: jest.fn().mockResolvedValue([]),
     gestione: jest.fn().mockResolvedValue({ sistema: [], aziendali: [] }),
     crea: jest.fn().mockResolvedValue({ id: 'x' }),
+    modifica: jest.fn().mockResolvedValue({ id: 'x' }),
+    nuovaVersione: jest.fn().mockResolvedValue({ id: 'x' }),
   }
   const ruoloEffettivo = jest.fn()
   const controller = new CausaliRegistroController(servizio as never, { ruoloEffettivo } as never)
@@ -48,5 +50,51 @@ describe('CausaliRegistroController (unit)', () => {
       'u1',
       expect.objectContaining({ codice: 'AZ_X' })
     )
+  })
+
+  it('il flag fatturabile arriva al servizio in creazione, modifica e nuova versione', async () => {
+    ruoloEffettivo.mockResolvedValue('ADMIN')
+    const ID = '9d9d9d9d-0000-4000-8000-000000000003'
+    await controller.crea(
+      {
+        codice: 'AZ_F',
+        verso: 'CARICO',
+        descrizione: 'x',
+        ruoloMud: 'ESCLUSO',
+        fatturabile: true,
+      } as never,
+      req
+    )
+    expect(servizio.crea).toHaveBeenCalledWith(
+      SELEZIONATA,
+      'u1',
+      expect.objectContaining({ fatturabile: true })
+    )
+    await controller.modifica(ID, { fatturabile: false } as never, req)
+    expect(servizio.modifica).toHaveBeenCalledWith(SELEZIONATA, 'u1', ID, { fatturabile: false })
+    await controller.nuovaVersione(
+      ID,
+      { validaDal: '2026-06-01', ruoloMud: 'ESCLUSO', fatturabile: true } as never,
+      req
+    )
+    expect(servizio.nuovaVersione).toHaveBeenCalledWith(
+      SELEZIONATA,
+      'u1',
+      ID,
+      expect.objectContaining({ fatturabile: true })
+    )
+  })
+
+  it('modifica e nuova versione con fatturabile: 403 per un operatore', async () => {
+    ruoloEffettivo.mockResolvedValue('OPERATOR')
+    const ID = '9d9d9d9d-0000-4000-8000-000000000003'
+    await expect(
+      controller.modifica(ID, { fatturabile: true } as never, req)
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    await expect(
+      controller.nuovaVersione(ID, { fatturabile: true } as never, req)
+    ).rejects.toBeInstanceOf(ForbiddenException)
+    expect(servizio.modifica).not.toHaveBeenCalled()
+    expect(servizio.nuovaVersione).not.toHaveBeenCalled()
   })
 })

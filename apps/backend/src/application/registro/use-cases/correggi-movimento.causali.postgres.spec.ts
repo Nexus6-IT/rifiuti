@@ -83,9 +83,9 @@ describe('Correzioni con le causali - Postgres reale, ruolo wasteflow_app', () =
     const r = await owner.$queryRawUnsafe<{ id: string }[]>(
       `INSERT INTO causali_registro_azienda
          (tenant_id, natura, codice, verso, descrizione, ruolo_mud, valida_dal, valida_al,
-          creato_da, updated_at)
+          creato_da, fatturabile, updated_at)
        VALUES ($1::uuid, 'PROPRIA', $2, 'CARICO'::waste_movement_type, $3,
-               'ESCLUSO'::ruolo_mud_causale, $4::date, $5::date, $6::uuid, now())
+               'ESCLUSO'::ruolo_mud_causale, $4::date, $5::date, $6::uuid, false, now())
        RETURNING id::text AS id`,
       az.tenantId,
       codice,

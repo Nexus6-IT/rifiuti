@@ -72,6 +72,7 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      legameMovimento: { groupBy: jest.fn().mockResolvedValue([]) },
       rigaAddebito: {
         groupBy: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),

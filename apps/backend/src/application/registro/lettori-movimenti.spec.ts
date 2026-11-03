@@ -42,6 +42,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
   },
+  'application/legami-movimento/impostazioni-fatturazione.service.ts': {
+    scelta: 'vigenti',
+    motivo:
+      'conta i movimenti vigenti con causale fatturabile toccati da un cambio di «fatturazione da»: le catene annullate non contano',
+  },
   'application/giacenze/eventi-deposito.ts': {
     scelta: 'vigenti',
     motivo:
@@ -124,6 +129,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
   'application/registro/verifica-catena-registro.service.ts': {
     scelta: 'tutte',
     motivo: 'la catena degli hash comprende ogni riga, vigente o no',
+  },
+  'test-support/legami-di-test.ts': {
+    scelta: 'tutte',
+    motivo:
+      'fixture degli spec Postgres dei legami (4.3): scrive un movimento di prova e ne cerca il primo progressivo libero, non calcola nulla',
   },
   'infrastructure/rentri/rentri-unita-locale.service.ts': {
     scelta: 'tutte',

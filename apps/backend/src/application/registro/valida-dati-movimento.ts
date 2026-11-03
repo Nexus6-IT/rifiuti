@@ -33,6 +33,8 @@ export type EsitoValidazioneDati =
       cerCode: string
       causaleAziendaId: string | null
       causaleDescrizione: string
+      /** Dalla definizione risolta: nessuna seconda lettura del catalogo. */
+      fatturabile: boolean
       errore?: undefined
     }
   | { errore: string }
@@ -107,6 +109,7 @@ export async function validaDatiMovimento(
     cerCode,
     causaleAziendaId: definizione.versioneId,
     causaleDescrizione: definizione.descrizione,
+    fatturabile: definizione.fatturabile,
   }
 }
 

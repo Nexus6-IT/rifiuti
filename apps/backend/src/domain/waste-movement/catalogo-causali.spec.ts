@@ -40,6 +40,7 @@ function propria(
     ordine: 100,
     validaDal,
     validaAl,
+    fatturabile: false,
     ...extra,
   }
 }
@@ -57,6 +58,7 @@ function disattivazione(codice: string, verso: 'CARICO' | 'SCARICO'): RigaCausal
     ordine: 100,
     validaDal: null,
     validaAl: null,
+    fatturabile: null,
   }
 }
 
@@ -312,6 +314,55 @@ describe('CatalogoCausali', () => {
     it('una causale disattivata conserva la descrizione (elenco dei movimenti storici)', () => {
       const c = new CatalogoCausali(sistema, [disattivazione('CESSIONE', 'SCARICO')])
       expect(c.descrizione('SCARICO', 'CESSIONE', GIORNO)).toBe('Cessione a terzi')
+    })
+  })
+
+  describe('fatturabile', () => {
+    it('causale di sistema INGRESSO_ESTERNO CARICO: fatturabile true', () => {
+      const catalogo = new CatalogoCausali(sistema, [])
+      expect(catalogo.comportamento('CARICO', 'INGRESSO_ESTERNO', GIORNO)!.fatturabile).toBe(true)
+    })
+
+    it('ogni altra causale di sistema del fixture: fatturabile false', () => {
+      const catalogo = new CatalogoCausali(sistema, [])
+      const altre = sistema.filter(r => !(r.codice === 'INGRESSO_ESTERNO' && r.verso === 'CARICO'))
+      expect(altre).toHaveLength(10)
+      for (const r of altre) {
+        expect(catalogo.comportamento(r.verso, r.codice, GIORNO)!.fatturabile).toBe(false)
+      }
+    })
+
+    it('causale PROPRIA con fatturabile true: la definizione lo riporta', () => {
+      const catalogo = new CatalogoCausali(sistema, [
+        propria('v1', 'AZ_FATT', 'CARICO', '2026-01-01', null, { fatturabile: true }),
+      ])
+      expect(catalogo.comportamento('CARICO', 'AZ_FATT', GIORNO)!.fatturabile).toBe(true)
+      expect(catalogo.selezionabile('CARICO', 'AZ_FATT', GIORNO)).toMatchObject({
+        ok: true,
+        definizione: { fatturabile: true },
+      })
+    })
+
+    it('due versioni della stessa causale PROPRIA con valori diversi: vince quella valida alla data', () => {
+      const catalogo = new CatalogoCausali(sistema, [
+        propria('v1', 'AZ_FATT', 'CARICO', '2026-01-01', '2026-05-31', { fatturabile: false }),
+        propria('v2', 'AZ_FATT', 'CARICO', '2026-06-01', null, { fatturabile: true }),
+      ])
+      expect(catalogo.comportamento('CARICO', 'AZ_FATT', '2026-03-01')!.fatturabile).toBe(false)
+      expect(catalogo.comportamento('CARICO', 'AZ_FATT', '2026-07-01')!.fatturabile).toBe(true)
+    })
+
+    it('DISATTIVAZIONE: la causale di sistema resta con il suo valore', () => {
+      const catalogo = new CatalogoCausali(sistema, [
+        disattivazione('INGRESSO_ESTERNO', 'CARICO'),
+        disattivazione('CESSIONE', 'SCARICO'),
+      ])
+      expect(catalogo.comportamento('CARICO', 'INGRESSO_ESTERNO', GIORNO)!.fatturabile).toBe(true)
+      expect(catalogo.comportamento('SCARICO', 'CESSIONE', GIORNO)!.fatturabile).toBe(false)
+      expect(catalogo.selezionabile('SCARICO', 'CESSIONE', GIORNO)).toEqual({
+        ok: false,
+        motivo: 'DISATTIVATA',
+      })
     })
   })
 })

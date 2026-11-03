@@ -5,6 +5,7 @@
  */
 
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -80,10 +81,12 @@ export class CausaliRegistroController {
   async disattiva(
     @Param('verso', new ParseEnumPipe(VersoCausaleDto)) verso: VersoCausaleDto,
     @Param('codice') codice: string,
+    @Body() corpo: Record<string, unknown> | undefined,
     @Req() req: any
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediAmministratore(req, tenantId)
+    this.rifiutaFlagSuSistema(corpo)
     await this.causali.disattiva(tenantId, req.user.id, verso as VersoCausale, codice)
   }
 
@@ -93,10 +96,12 @@ export class CausaliRegistroController {
   async riattiva(
     @Param('verso', new ParseEnumPipe(VersoCausaleDto)) verso: VersoCausaleDto,
     @Param('codice') codice: string,
+    @Body() corpo: Record<string, unknown> | undefined,
     @Req() req: any
   ): Promise<void> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediAmministratore(req, tenantId)
+    this.rifiutaFlagSuSistema(corpo)
     await this.causali.riattiva(tenantId, req.user.id, verso as VersoCausale, codice)
   }
 
@@ -157,6 +162,16 @@ export class CausaliRegistroController {
     const tenantId = requireRequestTenantId(req)
     await this.richiediAmministratore(req, tenantId)
     await this.causali.elimina(tenantId, req.user.id, id)
+  }
+
+  /** Decisione 14: il flag di una causale di sistema non si cambia per azienda. */
+  private rifiutaFlagSuSistema(corpo: Record<string, unknown> | undefined): void {
+    if (corpo && typeof corpo === 'object' && 'fatturabile' in corpo) {
+      throw new BadRequestException(
+        'Il flag fatturabile di una causale di sistema non si può cambiare: ' +
+          'crea una causale propria con il flag acceso.'
+      )
+    }
   }
 
   /** La gestione spetta all'amministratore EFFETTIVO dell'azienda selezionata. */

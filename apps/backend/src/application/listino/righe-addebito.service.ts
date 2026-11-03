@@ -59,6 +59,7 @@ import {
   OPZIONI_TRANSAZIONE_SCRITTURA,
   type ContrattoBloccato,
 } from './lock-listino'
+import { COLONNE_RIGA_LISTINO, contaUsiListino } from './uso-listino'
 import {
   cerNelCatalogo,
   normalizzaCerCode,
@@ -70,14 +71,16 @@ import {
   MSG_CER_NON_NEL_CATALOGO,
 } from './riferimenti-listino'
 
+const IN_USO = {
+  codice: 'RIGA_ADDEBITO_IN_USO',
+  messaggio: 'La riga è usata da movimenti: non si può eliminare.',
+}
+
 const ENTITA: DescrizioneEntita = {
   prefisso: 'RIGA_ADDEBITO',
   soggetto: 'La riga di addebito',
   femminile: true,
-  inUso: {
-    codice: 'RIGA_ADDEBITO_IN_USO',
-    messaggio: 'La riga è usata da movimenti: non si può eliminare.',
-  },
+  inUso: IN_USO,
 }
 
 const MSG_DUPLICATA = 'L’addebito è già nell’elenco con lo stesso riferimento.'
@@ -110,6 +113,8 @@ export interface RiferimentoCodifica {
 
 export interface RigaAddebitoVista {
   id: string
+  /** Falso se un legame di un movimento cita la riga (decisione 8, 4.3): si modifica, non si elimina. */
+  eliminabile: boolean
   elencoId: string
   tipo: string
   etichettaTipo: string
@@ -360,7 +365,13 @@ export class RigheAddebitoService {
           orderBy: { id: 'asc' },
         })
         // Come la tavola di WinWaste (`riempitavola`: ORDER BY TIPO, addeb): tipo, poi CER o addebito.
-        return ordinaRigheListino(righe).map(r => this.vista(r))
+        const usi = await contaUsiListino(
+          tx,
+          tenantId,
+          righe.map(r => r.id),
+          COLONNE_RIGA_LISTINO
+        )
+        return ordinaRigheListino(righe).map(r => this.vista(r, (usi.get(r.id) ?? 0) === 0))
       })
     )
   }
@@ -373,7 +384,8 @@ export class RigheAddebitoService {
         include: INCLUDE,
       })
       if (!riga) throw rigaNonTrovata()
-      return this.vista(riga)
+      const usi = (await contaUsiListino(this.prisma, tenantId, [id], COLONNE_RIGA_LISTINO)).get(id)
+      return this.vista(riga, (usi ?? 0) === 0)
     })
   }
 
@@ -551,7 +563,7 @@ export class RigheAddebitoService {
           await this.scriviFigli(tx, tenantId, creata.id, nuovi)
           const dopo = await this.rileggi(tx, tenantId, creata.id)
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_CREATA', 'creata', dopo, [])
-          return this.vista(dopo)
+          return this.vista(dopo, true)
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         return await traduciErrorePrisma(err, ENTITA, VINCOLI)
@@ -586,7 +598,9 @@ export class RigheAddebitoService {
           const fn = firma(nuovi)
           const fp = firma(precedenti)
           const campi = CAMPI.filter(c => fn[c] !== fp[c])
-          if (campi.length === 0) return { ...this.vista(prima), avvisi: [] }
+          if (campi.length === 0) {
+            return { ...this.vista(prima, await this.nonCitata(tx, tenantId, id)), avvisi: [] }
+          }
 
           const valori = scalariPerDatabase(nuovi)
           const scalari = campi.filter(c => !CAMPI_FIGLI.includes(c))
@@ -625,7 +639,7 @@ export class RigheAddebitoService {
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_MODIFICATA', 'modificata', dopo, [
             ...campi,
           ])
-          return { ...this.vista(dopo), avvisi }
+          return { ...this.vista(dopo, await this.nonCitata(tx, tenantId, id)), avvisi }
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         return await traduciErrorePrisma(err, ENTITA, VINCOLI)
@@ -647,6 +661,11 @@ export class RigheAddebitoService {
           const { riga } = await this.bloccaRiga(tx, tenantId, id, {})
           confrontaVersione(riga.versione, versione, ENTITA)
           // Fasce e scadenze vanno a cascata (FK ON DELETE CASCADE).
+          // Decisione 8 (4.3): una riga citata da un legame non si elimina (la FK la difende comunque).
+          const usi = (await contaUsiListino(tx, tenantId, [id], COLONNE_RIGA_LISTINO)).get(id) ?? 0
+          if (usi > 0) {
+            throw new ConflictException({ error: IN_USO.codice, message: IN_USO.messaggio })
+          }
           await scriviCondizionato(
             () => tx.rigaAddebito.deleteMany({ where: { id, tenantId, versione } }),
             ENTITA
@@ -1056,7 +1075,18 @@ export class RigheAddebitoService {
     return grezzoDaRiga(r)
   }
 
-  private vista(r: RigaDb): RigaAddebitoVista {
+  /** Vero se nessun legame di un movimento cita la riga (decisione 8, 4.3). */
+  private async nonCitata(
+    client: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<boolean> {
+    return (
+      ((await contaUsiListino(client, tenantId, [id], COLONNE_RIGA_LISTINO)).get(id) ?? 0) === 0
+    )
+  }
+
+  private vista(r: RigaDb, eliminabile: boolean): RigaAddebitoVista {
     const dal = giorno(r.elenco.contratto.dataInizio) as string
     const fine = giorno(r.elenco.contratto.dataFine)
     // Contratto senza fine: basta guardare abbastanza anni avanti perche' ogni data "ogni anno" cada.
@@ -1065,6 +1095,7 @@ export class RigheAddebitoService {
       x === null ? null : { id: x.id, codice: x.codice, descrizione: x.descrizione }
     return {
       id: r.id,
+      eliminabile,
       elencoId: r.elencoId,
       tipo: r.tipo,
       etichettaTipo: etichettaTipo(r.tipo),

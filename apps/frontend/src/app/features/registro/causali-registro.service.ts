@@ -36,6 +36,8 @@ export interface CausaleSistemaGestione {
   codiceRentri: string | null
   operazione: string | null
   ordine: number
+  /** Sola lettura: il flag delle causali di sistema non cambia per azienda. */
+  fatturabile: boolean
   attiva: boolean
   disattivataPerAzienda: boolean
 }
@@ -50,6 +52,7 @@ export interface CausaleAziendaleGestione {
   codiceRentri: string | null
   operazione: string | null
   ordine: number
+  fatturabile: boolean
   validaDal: string
   validaAl: string | null
   usata: boolean
@@ -69,6 +72,7 @@ export interface DatiNuovaCausale {
   codiceRentri?: string
   operazione?: string
   ordine?: number
+  fatturabile?: boolean
   validaDal?: string
 }
 
@@ -79,6 +83,7 @@ export interface DatiModificaCausale {
   ruoloMud?: RuoloMudCausale
   codiceRentri?: string | null
   operazione?: string | null
+  fatturabile?: boolean
   validaDal?: string
 }
 
@@ -89,6 +94,7 @@ export interface DatiNuovaVersione {
   operazione?: string
   descrizione?: string
   ordine?: number
+  fatturabile?: boolean
 }
 
 /**
