@@ -798,9 +798,20 @@ describe('ListinoContrattoComponent', () => {
     })
 
     it('elenco non modificabile: nessun pulsante', async () => {
-      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
+      await apri(
+        'ADMIN',
+        risposta('ATTIVO', [elenco('e1', { modificabile: false, eliminabile: false })])
+      )
       await scegli('e1')
       expect(q('listino-elimina-riga-r1')).toBeNull()
+    })
+
+    it('il cestino segue `eliminabile`, non `modificabile` (voce 26)', async () => {
+      const c = await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { eliminabile: false })]))
+      await scegli('e1')
+      expect(q('listino-elimina-riga-r1')).toBeNull()
+      c.eliminaRiga(riga('r1'))
+      expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
     })
 
     it('409 di versione: messaggio con "Ricarica", senza rileggere di nascosto', async () => {

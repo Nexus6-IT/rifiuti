@@ -161,7 +161,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
               [elementi]="righe()"
               [caricamento]="caricamentoRighe()"
               [errore]="erroreRighe()"
-              [puoEliminare]="!soloLettura() && el.modificabile"
+              [puoEliminare]="!soloLettura() && el.eliminabile"
               (apri)="apriRiga($event)"
               (elimina)="eliminaRiga($event)"
             />
@@ -410,7 +410,7 @@ export class ListinoContrattoComponent implements OnInit, OnDestroy {
   // --- eliminazione della riga --------------------------------------------------------------
 
   eliminaRiga(r: RigaAddebito): void {
-    if (this.soloLettura() || !this.elencoMostrato()?.modificabile) return
+    if (this.soloLettura() || !this.elencoMostrato()?.eliminabile) return
     const nome = r.cerCode ?? r.addebito?.codice ?? r.tipo
     chiediConferma(this.conferma, `Eliminare la riga ${nome}?`, () => this.eliminaRigaConfermata(r))
   }

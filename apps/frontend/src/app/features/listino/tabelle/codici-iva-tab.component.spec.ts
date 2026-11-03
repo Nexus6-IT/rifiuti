@@ -16,7 +16,7 @@ import {
 } from '../../clienti/tabelle/tabelle-test-utils'
 
 const iva22: CodiceIva = {
-  id: 'i1',
+  id: '7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b',
   versione: 1,
   eliminabile: true,
   codice: '22',
@@ -67,7 +67,7 @@ describe('CodiciIvaTabComponent', () => {
     expect(tabella.list).toHaveBeenCalledWith({ incluseDisattivate: true })
     expect(q('iva-riga-22')!.textContent).toContain('22.00%')
     expect(q('iva-riga-N61')!.textContent).toContain('N6.1')
-    expect(document.body.textContent).not.toContain('i1')
+    expect(document.body.textContent).not.toContain('7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b')
   })
 
   it('nuovo: crea con aliquota stringa e ricarica', async () => {
@@ -141,7 +141,7 @@ describe('CodiciIvaTabComponent', () => {
     await stabilizza(fixture)
     accettaConferma()
     await stabilizza(fixture)
-    expect(tabella.elimina).toHaveBeenCalledWith('i1', 1)
+    expect(tabella.elimina).toHaveBeenCalledWith('7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b', 1)
   })
 
   it("409 sull'eliminazione: toast col messaggio del backend e l'elenco viene riletto", async () => {
@@ -165,7 +165,10 @@ describe('CodiciIvaTabComponent', () => {
     await apri()
     tabella.modifica.and.returnValue(throwError(() => ({ error: { message: 'Conflitto.' } })))
     fixture.componentInstance.cambiaStato(iva22)
-    expect(tabella.modifica).toHaveBeenCalledWith('i1', { attivo: false, versione: 1 })
+    expect(tabella.modifica).toHaveBeenCalledWith('7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b', {
+      attivo: false,
+      versione: 1,
+    })
     expect(toast.error).toHaveBeenCalledWith('Conflitto.')
     expect(tabella.list).toHaveBeenCalledTimes(2)
   })
