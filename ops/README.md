@@ -152,19 +152,28 @@ DELETE FROM _prisma_migrations WHERE migration_name = '20261031130000_unita_loca
 
 ## Migration della fase 4 (contratto cliente e listino): ordine di ripristino
 
+**AVVERTENZA:** Esegui un backup con pg_dump prima di ogni ripristino. I comandi DROP TABLE cancellano i dati in modo definitivo.
+
+```bash
+docker exec rifiuti-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > backup-pre-rollback.dump
+```
+
 Le migration della fase 4 dipendono l'una dall'altra tramite chiavi esterne, quindi a mano si
 ripristinano **dall'ultima alla prima**, tutte nella stessa sessione `psql` come proprietario
 (`wasteflow`), e prima di farlo si rimette in produzione il tag del backend precedente (il codice
 nuovo non regge tabelle mancanti). L'elenco `DROP` esatto sta nel commento in testa a ciascun
 `migration.sql`: questa tabella ne dà solo l'ordine e i rischi.
 
+Ogni blocco di ripristino va eseguito dentro `BEGIN; ... COMMIT;`: se un comando fallisce, il
+`ROLLBACK` annulla tutto il blocco e lo schema non resta a metà.
+
 | # | Migration | Pezzo | Cosa toglie | Attenzione |
 |---|-----------|-------|-------------|------------|
-| 1 | `20261103100000_*` | seguiti 4.2b | solo indici e un CHECK | si toglie con `DROP INDEX` / `ALTER TABLE ... DROP CONSTRAINT` (nomi nel file della migration); nessun dato perso, nessuna dipendenza da altre migration |
-| 2 | `20261102300100_listino_elenchi_righe` | 4.2b | 5 tabelle (`elenchi_addebiti`, `allegati_elenco_addebiti`, `righe_addebito`, `scaglioni_riga_addebito`, `scadenze_riga_addebito`) e 3 enum | contiene dati dei clienti: esportarli prima |
-| 3 | `20261102300000_listino_archivio_addebiti` | 4.2a | 4 tabelle (`prezzi_listino_addebito`, `addebiti`, `codifiche_addebito`, `codici_iva`), le 3 colonne di `clienti` (`listino`, `provvigione_predefinita`, `tipo_provvigione_predefinita`) e 2 enum | SOLO dopo il punto 2 (le sue FK citano queste tabelle); le colonne di `clienti` contengono dati: esportarli prima |
-| 4 | `20261102200100_clienti_agenti_contratti_cliente` | 4.1b | 5 tabelle (`allegati_contratto_cliente`, `periodi_fatturazione_cliente`, `contratti_cliente`, `clienti`, `agenti`) e 2 enum | SOLO dopo il punto 3 (la 4.2a aggiunge colonne a `clienti`); tabelle con dati |
-| 5 | `20261102200000_anagrafiche_fatturazione_cliente` | 4.1a | 6 tabelle di fatturazione (`codifiche_contratto`, `testi_fatturazione`, `registri_iva`, `spese_accessorie`, `conti_correnti`, `condizioni_pagamento`) e 2 enum | SOLO dopo il punto 4 (le FK composite della 4.1b le citano) |
+| 1 | `20261103100000_listino_indici_seguiti` | seguiti 4.2b | solo indici e un CHECK | nessun dato perso, nessuna dipendenza da altre migration. Comandi, in quest'ordine: `ALTER TABLE "elenchi_addebiti" DROP CONSTRAINT "elenchi_addebiti_codice_non_000";`<br>`DROP INDEX "addebiti_tenant_id_gruppo_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_codice_iva_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_categoria_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_centro_ricavo_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_categoria_statistica_1_id_idx";`<br>`DROP INDEX "addebiti_tenant_id_categoria_statistica_2_id_idx";`<br>`DROP INDEX "activity_logs_tenant_id_action_idx";`<br>`DELETE FROM _prisma_migrations WHERE migration_name = '20261103100000_listino_indici_seguiti';` |
+| 2 | `20261102300100_listino_elenchi_righe` | 4.2b | 5 tabelle (`elenchi_addebiti`, `allegati_elenco_addebiti`, `righe_addebito`, `scaglioni_riga_addebito`, `scadenze_riga_addebito`) e 3 enum | contiene dati dei clienti: se servono, esportare prima i dati di queste tabelle |
+| 3 | `20261102300000_listino_archivio_addebiti` | 4.2a | 4 tabelle (`prezzi_listino_addebito`, `addebiti`, `codifiche_addebito`, `codici_iva`), le 3 colonne di `clienti` (`listino`, `provvigione_predefinita`, `tipo_provvigione_predefinita`) e 2 enum | SOLO dopo il punto 2 (le sue FK citano queste tabelle); le colonne di `clienti` contengono dati: se servono, esportare prima i dati di queste tabelle e di `clienti` |
+| 4 | `20261102200100_clienti_agenti_contratti_cliente` | 4.1b | 5 tabelle (`allegati_contratto_cliente`, `periodi_fatturazione_cliente`, `contratti_cliente`, `clienti`, `agenti`) e 2 enum | SOLO dopo il punto 3 (la 4.2a aggiunge colonne a `clienti`); tabelle con dati: se servono, esportare prima i dati di queste tabelle |
+| 5 | `20261102200000_anagrafiche_fatturazione_cliente` | 4.1a | 6 tabelle di fatturazione (`codifiche_contratto`, `testi_fatturazione`, `registri_iva`, `spese_accessorie`, `conti_correnti`, `condizioni_pagamento`) e 2 enum | SOLO dopo il punto 4 (le FK composite della 4.1b le citano); tabelle con dati: se servono, esportare prima i dati di queste tabelle |
 
 Per ogni migration ripristinata si cancella anche la sua riga da `_prisma_migrations`
 (`DELETE FROM _prisma_migrations WHERE migration_name = '<nome>';`), altrimenti il prossimo
