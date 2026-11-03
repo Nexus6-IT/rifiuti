@@ -457,6 +457,14 @@ describe('ContractCreateDialogComponent', () => {
         expect(component.erroriNumeri().basePrice).toBe('Usa la virgola per i decimali')
       })
 
+      it('il prezzo ha al massimo otto cifre intere (Decimal(10,2))', () => {
+        apri(contratto())
+        component.scriviNumero('basePrice', '123456789')
+        expect(component.erroriNumeri().basePrice).toBe('Al massimo otto cifre prima della virgola')
+        component.scriviNumero('basePrice', '12345678,99')
+        expect(component.erroriNumeri().basePrice).toBeUndefined()
+      })
+
       it('un preavviso errato a campo nascosto (rinnovo spento) non blocca il salvataggio', () => {
         apri(contratto({ autoRenew: true }))
         component.scriviNumero('renewalNoticeDays', '1,5')

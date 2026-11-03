@@ -405,11 +405,13 @@ describe('RigaAddebitoDialogComponent', () => {
       await cerca('riga-ricerca', '20 03')
       expect(q('riga-ricerca-voce-cer-20 03 01')).toBeTruthy()
       expect(q('riga-ricerca-voce-add-00012')).toBeNull()
+      expect(testo('riga-avviso-ricerca')).toContain('Ricerca degli addebiti non riuscita')
       addebiti.list.and.returnValue(of({ elementi: [addebito()], totale: 1 }))
       cer.searchCER.and.returnValue(throwError(() => ({ status: 500 })))
       await cerca('riga-ricerca', '20 04')
       expect(q('riga-ricerca-voce-cer-20 03 01')).toBeNull()
       expect(q('riga-ricerca-voce-add-00012')).toBeTruthy()
+      expect(testo('riga-avviso-ricerca')).toContain('Ricerca dei CER non riuscita')
     })
 
     it('se falliscono entrambe la ricerca risulta non riuscita (voce 24)', async () => {

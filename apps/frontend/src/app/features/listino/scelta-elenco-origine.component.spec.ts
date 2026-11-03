@@ -100,7 +100,8 @@ describe('SceltaElencoOrigineComponent', () => {
     contrattiList.and.returnValue(of({ elementi: [contratto('c1')], totale: 150 }))
     fixture.componentInstance.sceltoCliente(cliente)
     await stabilizza(fixture)
-    expect(q('origine-errore-contratti')!.textContent).toContain('150 contratti')
+    expect(q('origine-avviso-contratti')!.textContent).toContain('150 contratti')
+    expect(q('origine-errore-contratti')).toBeNull()
     expect(q('origine-contratto')).not.toBeNull()
   })
 

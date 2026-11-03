@@ -80,6 +80,7 @@ import {
 } from './contract-vocabulary'
 
 const MSG_DUE_DECIMALI = 'Al massimo due decimali'
+const MSG_CIFRE_INTERE = 'Al massimo otto cifre prima della virgola'
 
 type CampoNumerico = 'basePrice' | 'durationMonths' | 'renewalNoticeDays'
 
@@ -568,6 +569,10 @@ export class ContractCreateDialogComponent implements OnChanges {
       if (e.valore !== null && Number(e.valore) < 0) return MSG_NUMERO
       // Il campo è Decimal(10,2): oltre due decimali il database arrotonderebbe in silenzio.
       if (e.valore !== null && (e.valore.split('.')[1]?.length ?? 0) > 2) return MSG_DUE_DECIMALI
+      // Decimal(10,2): oltre otto cifre intere il database va in overflow.
+      if (e.valore !== null && e.valore.replace('-', '').split('.')[0].length > 8) {
+        return MSG_CIFRE_INTERE
+      }
       return null
     }
     const e = leggiIntero(testo)

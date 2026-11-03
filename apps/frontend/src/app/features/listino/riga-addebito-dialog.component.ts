@@ -22,6 +22,7 @@ import {
   merge,
   of,
   switchMap,
+  tap,
   throwError,
 } from 'rxjs'
 import { CerService } from '../cer/cer.service'
@@ -94,6 +95,15 @@ const GENERI_IN_LINEA = ['CATEGORIA', 'CENTRO_RICAVO'] as const
         <li *ngFor="let m of stato.generali()">{{ m }}</li>
       </ul>
       <p *ngIf="avviso() as a" role="status" class="field-hint" data-testid="riga-avviso">
+        {{ a }}
+      </p>
+
+      <p
+        *ngIf="avvisoRicerca() as a"
+        role="status"
+        class="field-hint"
+        data-testid="riga-avviso-ricerca"
+      >
         {{ a }}
       </p>
 
@@ -200,6 +210,8 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   )
 
   readonly avviso = signal<string | null>(null)
+  /** Guasto parziale della ricerca "CER o addebito": mancano i risultati di una delle due. */
+  readonly avvisoRicerca = signal<string | null>(null)
   readonly conflitto = signal(false)
   readonly inCorso = signal(false)
   readonly statiFisici = signal<CodificaRentri[]>([])
@@ -232,6 +244,15 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
         .list({ testo, soloAttivi: true, dimensione: 20 })
         .pipe(catchError(() => of(null))),
     ]).pipe(
+      tap(([cer, addebiti]) =>
+        this.avvisoRicerca.set(
+          cer === null && addebiti !== null
+            ? 'Ricerca dei CER non riuscita: sono mostrati solo gli addebiti.'
+            : addebiti === null && cer !== null
+              ? 'Ricerca degli addebiti non riuscita: sono mostrati solo i CER.'
+              : null
+        )
+      ),
       switchMap(([cer, addebiti]) =>
         cer === null && addebiti === null
           ? throwError(() => new Error('Ricerca non riuscita'))

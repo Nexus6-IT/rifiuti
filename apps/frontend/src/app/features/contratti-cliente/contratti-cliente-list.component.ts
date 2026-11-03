@@ -207,6 +207,7 @@ const SEVERITA_STATO: Readonly<
               <input
                 type="checkbox"
                 [checked]="tuttiScelti()"
+                [indeterminate]="alcuniScelti()"
                 (change)="scegliPagina($any($event.target).checked)"
                 aria-label="Scegli tutti i contratti della pagina"
                 data-testid="contratti-scegli-pagina"
@@ -476,6 +477,13 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   readonly tuttiScelti = computed(() => {
     const r = this.righe()
     return r.length > 0 && r.every(c => this.scelti().has(c.id))
+  })
+
+  /** Solo una parte della pagina è spuntata. */
+  readonly alcuniScelti = computed(() => {
+    const r = this.righe()
+    const n = r.filter(c => this.scelti().has(c.id)).length
+    return n > 0 && n < r.length
   })
 
   /** Spunta o toglie tutti i contratti della pagina, senza toccare quelli scelti in altre pagine. */

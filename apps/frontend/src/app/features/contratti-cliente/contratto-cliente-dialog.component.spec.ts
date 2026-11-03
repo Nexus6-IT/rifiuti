@@ -855,7 +855,10 @@ describe('ContrattoClienteDialogComponent', () => {
       scrivi('contratto-dlg-ritenuta', '1.5')
       await stabilizza(fixture)
       expect(bottone('contratto-dlg-salva')!.disabled).toBeTrue()
-      expect(q('contratto-dlg-salva-motivo')!.textContent).toContain('virgola')
+      expect(q('contratto-dlg-salva-motivo')!.textContent).toContain('la ritenuta')
+      expect(bottone('contratto-dlg-salva')!.getAttribute('aria-describedby')).toBe(
+        'contratto-dlg-salva-motivo'
+      )
       scrivi('contratto-dlg-ritenuta', '1,5')
       await stabilizza(fixture)
       expect(q('contratto-dlg-salva-motivo')).toBeNull()

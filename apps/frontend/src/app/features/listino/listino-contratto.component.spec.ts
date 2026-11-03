@@ -811,7 +811,9 @@ describe('ListinoContrattoComponent', () => {
       await scegli('e1')
       expect(q('listino-elimina-riga-r1')).toBeNull()
       c.eliminaRiga(riga('r1'))
+      await stabilizza(fixture)
       expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
+      expect(righeElimina).not.toHaveBeenCalled()
     })
 
     it('409 di versione: messaggio con "Ricarica", senza rileggere di nascosto', async () => {

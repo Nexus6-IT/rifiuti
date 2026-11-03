@@ -699,6 +699,14 @@ describe('ContrattiClienteListComponent', () => {
       expect(q('contratti-scelti')).toBeNull()
     })
 
+    it('la casella della pagina è indeterminata con una scelta parziale', async () => {
+      await apri('ADMIN', due())
+      q<HTMLInputElement>('contratti-scegli-cc1')!.click()
+      await stabilizza(fixture)
+      expect(q<HTMLInputElement>('contratti-scegli-pagina')!.indeterminate).toBeTrue()
+      expect(q<HTMLInputElement>('contratti-scegli-pagina')!.checked).toBeFalse()
+    })
+
     it('a variazione applicata la scelta dei contratti si svuota (voce 14)', async () => {
       await apri('ADMIN', due())
       q<HTMLInputElement>('contratti-scegli-cc1')!.click()

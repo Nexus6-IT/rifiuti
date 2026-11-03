@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { bottone, q, scrivi, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { importoItaliano, totaleFissiAnnuo } from './listino-calcoli'
@@ -414,16 +414,23 @@ describe('RigaScadenzeSezioneComponent', () => {
       expect(zona!.textContent).toContain('Numero non valido')
     })
 
-    it('l’annuncio per i lettori di schermo arriva dopo 800 ms (voce 21)', async () => {
-      await monta()
+    it('l’annuncio per i lettori di schermo manca prima degli 800 ms e arriva dopo (voce 21)', fakeAsync(() => {
+      stato = new RigaForm()
+      stato.form.patchValue({ tipo: 'F', unitaMisura: 'NR' })
+      fixture = TestBed.createComponent(RigaScadenzeSezioneComponent)
+      fixture.componentRef.setInput('stato', stato)
+      fixture.componentRef.setInput('soloLettura', false)
+      fixture.detectChanges()
       stato.form.controls.periodoScadenze.setValue('XA')
-      scrivi('scadenza-1-giorno', '1')
-      scrivi('scadenza-1-mese', '6')
-      await stabilizza(fixture)
-      await new Promise(r => setTimeout(r, 900))
-      await stabilizza(fixture)
+      stato.form.controls.scadenze.setValue([sc(1, 1, 6)])
+      fixture.detectChanges()
+      tick(700)
+      fixture.detectChanges()
+      expect(testo('scadenze-annuncio')).toBe('')
+      tick(100)
+      fixture.detectChanges()
       expect(testo('scadenze-annuncio')).toContain('scadenza extra')
-    })
+    }))
 
     it('togliendo una scadenza il focus va su una riga ancora presente (voce 21)', async () => {
       await monta()

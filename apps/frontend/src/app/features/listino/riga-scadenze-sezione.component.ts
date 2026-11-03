@@ -525,12 +525,6 @@ export class RigaScadenzeSezioneComponent implements OnInit, DoCheck, OnDestroy 
     // Senza scadenze nessun avviso: il backend risponde al salvataggio. Il periodo extra
     // mancante, invece, si segnala appena c'è una data.
     if (v.length === 0) return []
-    // Una riga lasciata vuota in mezzo non è una «data non valida»: va compilata o tolta.
-    return errori.map(m => {
-      const n = /^Scadenza (\d+): data non valida\.$/.exec(m)
-      return n && eVuota(this.righe[Number(n[1]) - 1] ?? vuota())
-        ? `Scadenza ${n[1]}: è vuota, compilala o toglila.`
-        : m
-    })
+    return errori
   }
 }

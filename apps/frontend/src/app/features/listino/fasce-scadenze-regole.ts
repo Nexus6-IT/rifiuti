@@ -123,6 +123,9 @@ const numeroIt = (v: string | null | undefined): string => {
   return `${m[1].replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${dec ? ',' + dec : ''}`
 }
 
+/** Tipi di calcolo per cui vale la quantità precedente (progressivo da data, conguaglio). */
+const TIPI_CON_QUANTITA_PRECEDENTE: ReadonlySet<string> = new Set(['A', 'B', 'C', 'D', 'E'])
+
 /**
  * Descrizione della fascia `indice` (porta di `vedilist1`, ADDEBCON.cs:8569-8688) con la
  * semantica di `applicaScaglioni` dopo il Task 16a (R50): `E`/`H` fatturano tutta la quantità al
@@ -149,13 +152,14 @@ export function descrizioneFascia(
   // H dice già «con condizione»: il suffisso serve solo a X, Y, Z, W.
   const cond = 'XYZW'.includes(f.tipoCalcolo) ? ' Se la condizione è verificata.' : ''
   // Con una quantità precedente (R30, Task 16a: progressivo da data e conguaglio) la quantità già
-  // fatturata non si ripaga: D/E/W/H fatturano la sola quantità nuova, B/C il fisso solo la
+  // fatturata non si ripaga: D/E fatturano la sola quantità nuova, B/C il fisso solo la
   // prima volta che la fascia è raggiunta (Q8), A scala la precedente fascia per fascia.
   // La combinazione con la quantità precedente vale solo per A-E: per X/Y/Z/W/H non è ammessa e
   // la frase non va mostrata.
   const tipo = f.tipoCalcolo
   const daData =
-    (applicaA === 'PROGRESSIVO_DA_DATA' || applicaA === 'CONGUAGLIO_365') && 'ABCDE'.includes(tipo)
+    (applicaA === 'PROGRESSIVO_DA_DATA' || applicaA === 'CONGUAGLIO_365') &&
+    TIPI_CON_QUANTITA_PRECEDENTE.has(tipo)
   const coda = (testo: string): string => (daData ? ` ${testo}` : '')
   switch (tipo) {
     case 'A':
@@ -278,6 +282,9 @@ function stessaFatturazione(a: Scadenza, b: Scadenza): boolean {
   )
 }
 
+/** Riga lasciata vuota in mezzo alle altre: nel modulo parte come 0/0 senza anno. */
+const eRigaVuota = (x: Scadenza): boolean => x.giorno === 0 && x.mese === 0 && x.anno === null
+
 /**
  * Copia di `validaScadenze` del dominio: stessi messaggi, "Scadenza n" per POSIZIONE (le
  * scadenze arrivano già in ordine).
@@ -299,7 +306,8 @@ export function validaScadenze(
     } else {
       ordiniVisti.add(x.ordine)
     }
-    if (!dataValida(x.giorno, x.mese, x.anno)) errori.push(`Scadenza ${n}: data non valida.`)
+    if (eRigaVuota(x)) errori.push(`Scadenza ${n}: è vuota, compilala o toglila.`)
+    else if (!dataValida(x.giorno, x.mese, x.anno)) errori.push(`Scadenza ${n}: data non valida.`)
   })
   const valida = s.map(x => dataValida(x.giorno, x.mese, x.anno))
   for (let b = 1; b < s.length; b++) {
