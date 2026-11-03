@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core'
+import { Component, inject } from '@angular/core'
 import { ReactiveFormsModule } from '@angular/forms'
 import { CodificaContratto, GenereCodifica } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
@@ -35,8 +35,6 @@ export class CodificaDialogComponent extends CodificaDialogBase<CodificaContratt
     etichetta: g => ETICHETTE_GENERE[g],
     concordanza: g => CONCORDANZA_GENERE[g],
   }
-  // Il dialog del contratto non verifica il ruolo: lo fa chi lo apre (differenza da confermare, R25).
-  readonly puoScrivere = computed(() => true)
 
   constructor() {
     super()

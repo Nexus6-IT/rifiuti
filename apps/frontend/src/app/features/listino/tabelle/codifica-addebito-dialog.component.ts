@@ -1,6 +1,5 @@
 import { Component, inject } from '@angular/core'
 import { ReactiveFormsModule } from '@angular/forms'
-import { permessoScrittura } from '../../clienti/tabelle/tabella-comune'
 import {
   CodificaDialogBase,
   ConfigCodificaDialog,
@@ -15,7 +14,7 @@ import { CONCORDANZA_GENERE_ADDEBITO, ETICHETTE_GENERE_ADDEBITO } from '../vocab
 /**
  * Dialog delle codifiche di addebito. Logica e template sono in `clienti/tabelle/codifica-comune`
  * (R25); qui solo le differenze: codice di sole cifre (da 1 a 3, completato a tre dal server),
- * descrizione fino a 45, rotte della 4.2a e verifica del ruolo di scrittura.
+ * descrizione fino a 45, rotte della 4.2a.
  */
 @Component({
   selector: 'app-codifica-addebito-dialog',
@@ -39,7 +38,6 @@ export class CodificaAddebitoDialogComponent extends CodificaDialogBase<
     etichetta: g => ETICHETTE_GENERE_ADDEBITO[g],
     concordanza: g => CONCORDANZA_GENERE_ADDEBITO[g],
   }
-  readonly puoScrivere = permessoScrittura()
 
   constructor() {
     super()

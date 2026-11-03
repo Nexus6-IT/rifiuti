@@ -4,6 +4,7 @@ import { Subject, of, throwError } from 'rxjs'
 import { CodificaDialogComponent } from './codifica-dialog.component'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { CodificaContratto } from '../clienti.model'
+import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
 import { bottone, q, scrivi, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
@@ -47,6 +48,7 @@ describe('CodificaDialogComponent', () => {
         provideNoopAnimations(),
         { provide: TabelleFatturazioneService, useValue: { codifiche: tabella } },
         { provide: ToastService, useValue: toast },
+        { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
       ],
     })
   })
@@ -186,5 +188,48 @@ describe('CodificaDialogComponent', () => {
     await apri(creata)
     fixture.componentInstance.chiudi()
     expect(fixture.componentInstance.form.controls.descrizione.value).toBe('')
+  })
+
+  it("chiudere durante il salvataggio non emette `salvato` ma `salvatoDopoChiusura` (la scheda rilegge l'elenco)", async () => {
+    const risposta$ = new Subject<CodificaContratto>()
+    tabella.crea.and.returnValue(risposta$)
+    await apri(null, { rapida: true })
+    const salvati: CodificaContratto[] = []
+    const dopoChiusura: CodificaContratto[] = []
+    fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+    fixture.componentInstance.salvatoDopoChiusura.subscribe(v => dopoChiusura.push(v))
+    scrivi('codifica-dlg-descrizione', 'Nuova voce')
+    await stabilizza(fixture)
+    fixture.componentInstance.salva()
+    expect(fixture.componentInstance.inCorso()).toBeTrue()
+    fixture.componentInstance.chiudi()
+    expect(fixture.componentInstance.inCorso()).toBeFalse()
+    risposta$.next(creata)
+    expect(salvati.length).toBe(0)
+    expect(dopoChiusura).toEqual([creata])
+  })
+
+  it('un errore dopo la chiusura non emette nulla', async () => {
+    const risposta$ = new Subject<CodificaContratto>()
+    tabella.crea.and.returnValue(risposta$)
+    await apri(null, { rapida: true })
+    const dopoChiusura: CodificaContratto[] = []
+    fixture.componentInstance.salvatoDopoChiusura.subscribe(v => dopoChiusura.push(v))
+    scrivi('codifica-dlg-descrizione', 'Nuova voce')
+    await stabilizza(fixture)
+    fixture.componentInstance.salva()
+    fixture.componentInstance.chiudi()
+    risposta$.error({ status: 500 })
+    expect(dopoChiusura.length).toBe(0)
+  })
+
+  it('senza ruolo di scrittura Salva è disattivato e salva() non chiama il servizio', async () => {
+    TestBed.overrideProvider(AuthService, { useValue: { currentUser: () => ({ role: 'VIEWER' }) } })
+    await apri(null, { rapida: true })
+    scrivi('codifica-dlg-descrizione', 'Nuova voce')
+    await stabilizza(fixture)
+    expect(bottone('codifica-dlg-salva')!.disabled).toBeTrue()
+    fixture.componentInstance.salva()
+    expect(tabella.crea).not.toHaveBeenCalled()
   })
 })

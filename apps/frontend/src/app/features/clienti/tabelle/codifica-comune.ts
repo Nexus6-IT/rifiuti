@@ -5,7 +5,6 @@ import {
   Input,
   OnChanges,
   Output,
-  Signal,
   SimpleChanges,
   inject,
   signal,
@@ -16,7 +15,7 @@ import { DialogModule } from 'primeng/dialog'
 import { InputTextModule } from 'primeng/inputtext'
 import { Observable, Subscription } from 'rxjs'
 import { ToastService } from '../../../core/services/toast.service'
-import { messaggioErrore } from './tabella-comune'
+import { messaggioErrore, permessoScrittura } from './tabella-comune'
 
 /**
  * Parte comune di dialog e scheda delle codifiche (R25): `codifiche-contratto` (4.1) e
@@ -142,10 +141,10 @@ export abstract class CodificaDialogBase<T extends CodificaBase<G>, G extends st
 {
   protected abstract readonly api: ApiCodifiche<T, G>
   abstract readonly cfg: ConfigCodificaDialog<G>
-  /** Chi non può scrivere vede Salva disattivato (le codifiche di addebito); il contratto non lo verifica. */
-  abstract readonly puoScrivere: Signal<boolean>
 
   private readonly toast = inject(ToastService)
+  /** Chi non può gestire le anagrafiche vede Salva disattivato (il backend risponderebbe 403). */
+  readonly puoScrivere = permessoScrittura()
 
   @Input() visible = false
   /** Il valore iniziale lo imposta il componente concreto. */
@@ -156,6 +155,12 @@ export abstract class CodificaDialogBase<T extends CodificaBase<G>, G extends st
   @Input() rapida = false
   @Output() salvato = new EventEmitter<T>()
   @Output() visibleChange = new EventEmitter<boolean>()
+  /**
+   * Il dialog è stato chiuso mentre il salvataggio era in corso e il server l'ha poi eseguito: la
+   * codifica esiste ma `salvato` non parte (nessuno la sta più aspettando). Serve alla scheda per
+   * rileggere l'elenco.
+   */
+  @Output() salvatoDopoChiusura = new EventEmitter<T>()
 
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
@@ -163,6 +168,7 @@ export abstract class CodificaDialogBase<T extends CodificaBase<G>, G extends st
   private salvataggio?: Subscription
   /** Codice proposto da `prossimoCodice` e non ancora modificato dall'utente. */
   private codiceProposto: string | null = null
+  private chiusoInVolo = false
 
   readonly form = new FormGroup({
     codice: new FormControl('', { nonNullable: true }),
@@ -184,6 +190,7 @@ export abstract class CodificaDialogBase<T extends CodificaBase<G>, G extends st
   private inizializza(): void {
     this.proposta?.unsubscribe()
     this.salvataggio?.unsubscribe()
+    this.chiusoInVolo = false
     this.codiceProposto = null
     const e = this.elemento
     if (this.cfg.codiceNumerico) {
@@ -237,11 +244,17 @@ export abstract class CodificaDialogBase<T extends CodificaBase<G>, G extends st
       next: salvata => {
         this.inCorso.set(false)
         if (!this.elemento) this.toast.success(`Codice assegnato: ${salvata.codice}.`)
+        if (this.chiusoInVolo) {
+          this.chiusoInVolo = false
+          this.salvatoDopoChiusura.emit(salvata)
+          return
+        }
         this.salvato.emit(salvata)
         this.chiudi()
       },
       error: err => {
         this.inCorso.set(false)
+        this.chiusoInVolo = false
         const e = err as { status?: number; error?: { error?: string } }
         const terzoOperatore =
           this.rapida &&
@@ -260,7 +273,8 @@ export abstract class CodificaDialogBase<T extends CodificaBase<G>, G extends st
   chiudi(): void {
     // Nessuna proposta di codice in volo dopo la chiusura.
     this.proposta?.unsubscribe()
-    this.salvataggio?.unsubscribe()
+    // La richiesta non si annulla: se il server la esegue, la scheda rilegge l'elenco.
+    this.chiusoInVolo = this.inCorso()
     this.inCorso.set(false)
     this.form.reset()
     this.errore.set(null)

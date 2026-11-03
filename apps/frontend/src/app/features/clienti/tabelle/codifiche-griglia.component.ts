@@ -68,14 +68,11 @@ export type AzioneCodifica = 'riga' | 'modifica' | 'attiva' | 'elimina'
     </p-table>
   `,
 })
-export class CodificheGrigliaComponent {
-  @Input() righe: CodificaBase<string>[] = []
+export class CodificheGrigliaComponent<T extends CodificaBase<string> = CodificaBase<string>> {
+  @Input() righe: T[] = []
   @Input() puoScrivere = false
-  @Input({ required: true }) testid!: (
-    azione: AzioneCodifica,
-    codifica: CodificaBase<string>
-  ) => string
-  @Output() modifica = new EventEmitter<any>()
-  @Output() cambiaStato = new EventEmitter<any>()
-  @Output() elimina = new EventEmitter<any>()
+  @Input({ required: true }) testid!: (azione: AzioneCodifica, codifica: T) => string
+  @Output() modifica = new EventEmitter<T>()
+  @Output() cambiaStato = new EventEmitter<T>()
+  @Output() elimina = new EventEmitter<T>()
 }

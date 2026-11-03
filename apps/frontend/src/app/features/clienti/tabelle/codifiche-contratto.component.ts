@@ -55,6 +55,7 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
       [elemento]="selezionata()"
       (visibleChange)="dialogoAperto.set($event)"
       (salvato)="carica()"
+      (salvatoDopoChiusura)="carica()"
     />
     <p-confirmDialog />
   `,

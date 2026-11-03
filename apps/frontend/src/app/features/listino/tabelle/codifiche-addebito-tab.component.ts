@@ -70,6 +70,7 @@ import { CodificaAddebitoDialogComponent } from './codifica-addebito-dialog.comp
       [elemento]="selezionata()"
       (visibleChange)="dialogoAperto.set($event)"
       (salvato)="carica()"
+      (salvatoDopoChiusura)="carica()"
     />
     <p-confirmDialog />
   `,
