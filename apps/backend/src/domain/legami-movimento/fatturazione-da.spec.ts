@@ -1,4 +1,8 @@
-import { dataFatturazioneValida, movimentiToccati } from './fatturazione-da'
+import {
+  dataFatturazioneValida,
+  movimentiToccati,
+  movimentoInFatturazione,
+} from './fatturazione-da'
 
 describe('fatturazione da — dominio', () => {
   describe('dataFatturazioneValida', () => {
@@ -39,6 +43,17 @@ describe('fatturazione da — dominio', () => {
         da: '2026-01-01',
         a: '2026-03-01',
       })
+    })
+  })
+
+  describe('movimentoInFatturazione', () => {
+    it('fatturazione spenta: nessun movimento entra', () => {
+      expect(movimentoInFatturazione('2026-03-01', null)).toBe(false)
+    })
+    it('il giorno di partenza compreso, il precedente escluso', () => {
+      expect(movimentoInFatturazione('2026-03-01', '2026-03-01')).toBe(true)
+      expect(movimentoInFatturazione('2026-03-02', '2026-03-01')).toBe(true)
+      expect(movimentoInFatturazione('2026-02-28', '2026-03-01')).toBe(false)
     })
   })
 })

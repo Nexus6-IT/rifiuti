@@ -1,0 +1,218 @@
+/**
+ * Scrittura della proposta (fase 4.3, Task 15) contro un Postgres reale, collegato COME
+ * `wasteflow_app`. `scriviProposta` è l'unico punto che scrive testata e righe; non tocca mai il
+ * registro (`waste_movements`): lo verifica anche la guardia statica.
+ */
+import { ConflictException } from '@nestjs/common'
+import { PrismaClient } from '@prisma/client'
+import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
+import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
+
+const urlProprietario =
+  process.env.DATABASE_URL ??
+  'postgresql://wasteflow:wasteflow_ci@127.0.0.1:55438/wasteflow_ci?schema=public'
+process.env.DATABASE_URL = urlComeRuolo(
+  'wasteflow_app',
+  process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
+  urlProprietario
+)
+
+import { TenantContext } from '../../core/context/tenant-context'
+import {
+  PrismaService,
+  creaPrismaServiceApplicativo,
+} from '../../infrastructure/persistence/prisma.service'
+import { creaDittaConRuolo } from '../../test-support/anagrafiche-di-test'
+import {
+  creaScenarioProposta,
+  pulisciLegamiDiTest,
+  type ScenarioProposta,
+} from '../../test-support/legami-di-test'
+import { scriviProposta } from './legame-scrittura'
+import {
+  PropostaLegameService,
+  type InputProposta,
+  type PropostaVista,
+  type ScelteProposta,
+} from './proposta-legame.service'
+
+describe('scriviProposta — Postgres reale, ruolo wasteflow_app', () => {
+  const owner = new PrismaClient({ datasourceUrl: urlProprietario })
+  let app: PrismaService
+  let service: PropostaLegameService
+  const tenantCreati: string[] = []
+
+  const nel = <R>(tenantId: string, fn: () => Promise<R>) =>
+    TenantContext.run({ tenantId }, async () => await fn())
+
+  beforeAll(() => {
+    expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
+    app = creaPrismaServiceApplicativo()
+    service = new PropostaLegameService(app)
+  })
+
+  afterAll(async () => {
+    if (tenantCreati.length > 0) {
+      await pulisciLegamiDiTest(owner, tenantCreati)
+      await owner.impostazioneFatturazione.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+      for (const tabella of [
+        'righe_addebito',
+        'elenchi_addebiti',
+        'contratti_cliente',
+        'addebiti',
+        'codifiche_addebito',
+        'codici_iva',
+      ]) {
+        await owner.$executeRawUnsafe(
+          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
+          tenantCreati
+        )
+      }
+      await owner.fIR.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+      await owner.user.deleteMany({ where: { tenantId: { in: tenantCreati } } })
+      await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
+    }
+    await owner.$disconnect()
+    await app?.$disconnect()
+  })
+
+  async function scenario(righeV = 1): Promise<ScenarioProposta> {
+    const s = await creaScenarioProposta(owner, { righeV })
+    tenantCreati.push(s.tenantId)
+    await owner.impostazioneFatturazione.create({
+      data: { tenantId: s.tenantId, fatturazioneDa: new Date('2026-01-01T00:00:00Z') },
+    })
+    return s
+  }
+
+  const input = (s: ScenarioProposta, o: Partial<InputProposta> = {}): InputProposta => ({
+    causale: 'INGRESSO_ESTERNO',
+    type: 'CARICO',
+    cerCode: '20 03 01',
+    movementDate: '2026-03-01',
+    unit: 'KG',
+    quantity: '100',
+    firId: s.firId,
+    ...o,
+  })
+
+  const proposta = (s: ScenarioProposta, o: Partial<InputProposta> = {}, sc?: ScelteProposta) =>
+    nel(s.tenantId, () => service.calcola(s.tenantId, input(s, o), sc))
+
+  const scrivi = (s: ScenarioProposta, p: PropostaVista, dataMovimento = '2026-03-01') =>
+    nel(s.tenantId, () =>
+      app.$transaction(tx =>
+        scriviProposta(tx, {
+          tenantId: s.tenantId,
+          userId: s.utenteId,
+          registroId: s.registroId,
+          verso: 'CARICO',
+          movimentoOriginaleId: s.movimentoId,
+          movimentoVigenteId: s.movimentoId,
+          dataMovimento,
+          proposta: p,
+        })
+      )
+    )
+
+  it('crea la testata con movimento_originale_id = radice e righe con i valori calcolati e congelata_il NULL', async () => {
+    const s = await scenario(1)
+    const p = await proposta(s)
+    const { legameId } = await scrivi(s, p)
+    const l = await owner.legameMovimento.findUniqueOrThrow({
+      where: { id: legameId },
+      include: { righe: { orderBy: { ordine: 'asc' } } },
+    })
+    expect(l).toMatchObject({
+      tenantId: s.tenantId,
+      registroId: s.registroId,
+      verso: 'CARICO',
+      movimentoOriginaleId: s.movimentoId,
+      movimentoVigenteId: s.movimentoId,
+      stato: 'PROPOSTO',
+      clienteId: s.clienteId,
+      fonteCliente: 'FIR',
+      contrattoId: s.contrattoId,
+      elencoId: s.elencoId,
+      motivi: [],
+      avvisi: [],
+      versione: 1,
+      creatoDa: s.utenteId,
+      confermatoIl: null,
+    })
+    expect(l.dataMovimento.toISOString().slice(0, 10)).toBe('2026-03-01')
+    expect(l.righe).toHaveLength(2)
+    expect(l.righe[0]).toMatchObject({
+      rigaAddebitoId: s.rigaCerId,
+      elencoId: s.elencoId,
+      ordine: 1,
+      origine: 'PRINCIPALE',
+      tipo: 'CER',
+      unitaMisura: 'KG',
+      quantitaOrigine: 'DA_MOVIMENTO',
+      prezzoSpeciale: false,
+      prezzoManuale: false,
+      sconto: null,
+      codiceIvaId: s.ivaId,
+      congelataIl: null,
+    })
+    expect(l.righe[0].quantita?.toFixed()).toBe('100')
+    expect(l.righe[0].prezzo?.toFixed()).toBe('1')
+    expect(l.righe[0].aliquotaIva.toFixed()).toBe('22')
+    expect(l.righe[1]).toMatchObject({ origine: 'PROPOSTA', congelataIl: null })
+  })
+
+  it('scrive anche una proposta incompleta (DA_COLLEGARE con i motivi e gli avvisi)', async () => {
+    const s = await scenario(1)
+    const fir = await owner.fIR.findUniqueOrThrow({ where: { id: s.firId } })
+    void fir
+    const p = await proposta(s, { cerCode: '15 01 01' })
+    const { legameId } = await scrivi(s, p)
+    const l = await owner.legameMovimento.findUniqueOrThrow({ where: { id: legameId } })
+    expect(l.stato).toBe('DA_COLLEGARE')
+    expect(l.motivi).toContain('SENZA_RIGA_CER')
+    expect(l.clienteId).toBe(s.clienteId)
+  })
+
+  it('due volte per la stessa radice: la seconda restituisce il legame esistente (nessun errore sull’unico)', async () => {
+    const s = await scenario(1)
+    const p = await proposta(s)
+    const a = await scrivi(s, p)
+    const b = await scrivi(s, p)
+    expect(b.legameId).toBe(a.legameId)
+    expect(await owner.legameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(1)
+    expect(await owner.rigaLegameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(2)
+  })
+
+  it('la proposta virtuale ESCLUSO (fatturazione spenta o causale non fatturabile) non si scrive', async () => {
+    const s = await scenario(1)
+    const p = await proposta(s, { causale: 'PRODUZIONE_INTERNA' })
+    expect(p.stato).toBe('ESCLUSO')
+    await expect(scrivi(s, p)).rejects.toThrow(/non si scrive/)
+    expect(await owner.legameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(0)
+  })
+
+  it('cliente eliminato fra la proposta e la scrittura (23503): 409, non un 500', async () => {
+    const s = await scenario(0)
+    const nudo = await creaDittaConRuolo(owner, s.tenantId, 'CLIENTE')
+    // `creaDittaConRuolo(.., 'CLIENTE')` crea il cliente senza contratti: DA_COLLEGARE con cliente.
+    const p = await proposta(s, { firId: null }, { clienteId: nudo.ruoloId })
+    expect(p).toMatchObject({ stato: 'DA_COLLEGARE', motivi: ['SENZA_CONTRATTO'] })
+    await owner.cliente.delete({ where: { id: nudo.ruoloId } })
+    const esito = scrivi(s, p)
+    await expect(esito).rejects.toBeInstanceOf(ConflictException)
+    await expect(esito).rejects.toMatchObject({
+      response: { error: 'OPERAZIONE_CONCORRENTE' },
+    })
+    expect(await owner.legameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(0)
+  })
+
+  it('nessuna scrittura sul registro: il movimento resta identico', async () => {
+    const s = await scenario(1)
+    const prima = await owner.wasteMovement.findUniqueOrThrow({ where: { id: s.movimentoId } })
+    await scrivi(s, await proposta(s))
+    expect(await owner.wasteMovement.findUniqueOrThrow({ where: { id: s.movimentoId } })).toEqual(
+      prima
+    )
+  })
+})

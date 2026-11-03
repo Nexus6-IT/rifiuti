@@ -10,6 +10,7 @@ import type {
   ElencoCandidato,
 } from '../../domain/legami-movimento/proposta-contratto'
 import type { RigaCandidata } from '../../domain/legami-movimento/proposta-righe'
+import { joinLineari } from '../listino/lock-listino'
 
 export interface ElencoLetto extends ElencoCandidato {
   contrattoId: string
@@ -167,4 +168,107 @@ export async function clienteDaFir(
     cliente: clienteId === null ? null : { id: clienteId, attivo: attivo === true },
     sedeId,
   }
+}
+
+/** Cliente con l'etichetta da mostrare (ragione sociale della ditta). */
+export interface ClienteLetto {
+  id: string
+  attivo: boolean
+  etichetta: string
+}
+
+/** Cliente dell'azienda per id (anche disattivato: lo giudica il chiamante); `null` se non c'e'. */
+export async function leggiCliente(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  clienteId: string
+): Promise<ClienteLetto | null> {
+  const r = await tx.$queryRaw<ClienteLetto[]>`
+    SELECT c.id::text AS id, c.attivo AS attivo, dt.ragione_sociale AS etichetta
+    FROM clienti c
+    JOIN ditte dt ON dt.id = c.ditta_id AND dt.tenant_id = c.tenant_id
+    WHERE c.tenant_id = ${tenantId}::uuid AND c.id = ${clienteId}::uuid`
+  return r[0] ?? null
+}
+
+/** Numero e descrizione dei contratti, codice e descrizione degli elenchi: per le etichette dei menu. */
+export interface EtichetteListino {
+  contratti: Map<string, string>
+  elenchi: Map<string, string>
+}
+
+/**
+ * Etichette dei contratti NON eliminati del cliente e dei loro elenchi: due query, una per
+ * lista. Servono solo alla vista della proposta (`<numero> - <descrizione>`, `<codice> -
+ * <descrizione>`), non alle regole.
+ */
+export async function leggiEtichetteListino(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  clienteId: string
+): Promise<EtichetteListino> {
+  const contratti = await tx.$queryRaw<{ id: string; numero: string; descrizione: string }[]>`
+    SELECT c.id::text AS id, c.numero AS numero, c.descrizione AS descrizione
+    FROM contratti_cliente c
+    WHERE c.tenant_id = ${tenantId}::uuid AND c.cliente_id = ${clienteId}::uuid
+      AND c.eliminato_il IS NULL`
+  const elenchi = await tx.$queryRaw<{ id: string; codice: string; descrizione: string }[]>`
+    SELECT e.id::text AS id, e.codice AS codice, e.descrizione AS descrizione
+    FROM elenchi_addebiti e
+    JOIN contratti_cliente c ON c.id = e.contratto_id AND c.tenant_id = e.tenant_id
+    WHERE e.tenant_id = ${tenantId}::uuid AND c.cliente_id = ${clienteId}::uuid
+      AND c.eliminato_il IS NULL`
+  return {
+    contratti: new Map(contratti.map(c => [c.id, `${c.numero} - ${c.descrizione}`])),
+    elenchi: new Map(elenchi.map(e => [e.id, `${e.codice} - ${e.descrizione}`])),
+  }
+}
+
+/** Esito del controllo delle scelte dell'utente: cio' che esiste davvero nell'azienda. */
+export interface ScelteLette {
+  contratto: { id: string; clienteId: string } | null
+  elenco: { id: string; contrattoId: string; clienteId: string } | null
+  righe: { id: string; elencoId: string }[]
+}
+
+/**
+ * Cerca nell'azienda i contratto, elenco e righe scelti dall'utente, per distinguere «non c'e'»
+ * (404) da «c'e' ma non e' di chi dice» (400): il confronto lo fa il servizio. Un contratto
+ * eliminato non si trova. Liste di id con `JOIN unnest` (query lineare), mai `= ANY`.
+ */
+export async function leggiScelteProposta(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  s: { contrattoId?: string; elencoId?: string; righeIds?: readonly string[] }
+): Promise<ScelteLette> {
+  const contratto = s.contrattoId
+    ? ((
+        await tx.$queryRaw<{ id: string; clienteId: string }[]>`
+          SELECT c.id::text AS id, c.cliente_id::text AS "clienteId" FROM contratti_cliente c
+          WHERE c.tenant_id = ${tenantId}::uuid AND c.id = ${s.contrattoId}::uuid
+            AND c.eliminato_il IS NULL`
+      )[0] ?? null)
+    : null
+  const elenco = s.elencoId
+    ? ((
+        await tx.$queryRaw<{ id: string; contrattoId: string; clienteId: string }[]>`
+          SELECT e.id::text AS id, e.contratto_id::text AS "contrattoId",
+                 c.cliente_id::text AS "clienteId"
+          FROM elenchi_addebiti e
+          JOIN contratti_cliente c ON c.id = e.contratto_id AND c.tenant_id = e.tenant_id
+          WHERE e.tenant_id = ${tenantId}::uuid AND e.id = ${s.elencoId}::uuid
+            AND c.eliminato_il IS NULL`
+      )[0] ?? null)
+    : null
+  const ids = [...new Set(s.righeIds ?? [])].sort()
+  let righe: { id: string; elencoId: string }[] = []
+  if (ids.length > 0) {
+    await joinLineari(tx)
+    righe = await tx.$queryRaw<{ id: string; elencoId: string }[]>`
+      SELECT r.id::text AS id, r.elenco_id::text AS "elencoId" FROM righe_addebito r
+      JOIN unnest(${ids}::uuid[]) AS chiesti(chiesto) ON chiesto = r.id
+      WHERE r.tenant_id = ${tenantId}::uuid
+      ORDER BY r.id`
+  }
+  return { contratto, elenco, righe }
 }
