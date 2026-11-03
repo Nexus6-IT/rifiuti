@@ -1,6 +1,6 @@
 // Lock del legame movimento-cliente-prezzo (fase 4.3, spec §5). L'ordine, mai invertito:
 //
-//   1. lock del registro (progressivo, giacenza) e righe del movimento (`bloccaMovimentiPerLegame`)
+//   1. lock del registro (advisory di progressivo e giacenza)
 //   2. lock consultivo del legame per radice (`bloccaLegamePerRadice`)
 //   3. contratto FOR SHARE            \
 //   4. elenchi FOR SHARE per id        > `bloccaListinoInCondivisione`
@@ -15,13 +15,19 @@
 // serializzano (la conferma non copia mai un valore a meta' modifica). Due legami fra loro NON si
 // bloccano: FOR SHARE non confligge con FOR SHARE.
 //
-// Effetto dell'INSERT di un legame (Task 3): le FK composite verso `waste_movements` prendono
-// FOR KEY SHARE sul movimento (originale e vigente). Confligge solo con FOR UPDATE / cancellazione /
-// cambio di chiave del movimento, che il registro fa PRIMA di prendere il lock consultivo. Una
-// transazione che inserisce un legame senza avere gia' il lock del registro (lista «da collegare»,
-// azioni di massa) deve quindi prendere i movimenti con `bloccaMovimentiPerLegame` PRIMA del lock
-// consultivo, altrimenti tiene il lock consultivo e aspetta il movimento che il registro tiene
-// mentre aspetta il lock consultivo: deadlock. Prese in quest'ordine non si incrociano.
+// Registro: e' append-only e non prende mai lock di riga sui movimenti (solo advisory e, per le
+// FK dell'annotazione, FOR KEY SHARE sul predecessore e sulla radice). L'INSERT di un legame
+// prende a sua volta FOR KEY SHARE sul movimento (originale e vigente): KEY SHARE non confligge con
+// KEY SHARE, quindi non esiste un ordine di lock fra registro e legame che possa dare un ciclo.
+//
+// Rischi residui accettati (409 `OPERAZIONE_CONCORRENTE`, nessun dato incoerente):
+// - `codici_iva`: l'INSERT di una riga del legame prende KEY SHARE sul codice IVA (FK) senza
+//   bloccarlo. Va bene perche' l'IVA del legame si copia sempre dalla riga di listino (decisione
+//   16), che qui e' bloccata FOR SHARE e cita lo stesso codice: un DELETE concorrente non riesce.
+//   Se un giorno l'IVA di una riga potesse differire da quella del listino, aggiungere
+//   `codici_iva FOR SHARE` al passo 5.
+// - cliente: un legame con `cliente_id` e' protetto solo dalla FK; un DELETE concorrente del
+//   cliente puo' far uscire 23503 sull'INSERT/UPDATE del legame (da tradurre in 409 nei servizi).
 import { NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
@@ -44,26 +50,6 @@ export async function impostaTimeoutAggancio(tx: Prisma.TransactionClient): Prom
 /** Id distinti e in ordine: le liste dei chiamanti possono avere doppioni e ordine qualunque. */
 function ordinati(ids: readonly string[]): string[] {
   return [...new Set(ids)].sort()
-}
-
-/**
- * Movimenti FOR KEY SHARE, in ordine di id: lo stesso lock che l'INSERT del legame prende per le FK.
- * Da chiamare prima di `bloccaLegamePerRadice` se la transazione non ha gia' il lock del registro.
- * Non scrive nulla sul registro (e' solo un lock).
- */
-export async function bloccaMovimentiPerLegame(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
-  movimentoIds: readonly string[]
-): Promise<void> {
-  const ids = ordinati(movimentoIds)
-  if (ids.length === 0) return
-  await joinLineari(tx)
-  await tx.$queryRaw`
-    SELECT m.id::text AS id FROM waste_movements m
-    JOIN unnest(${ids}::uuid[]) AS chiesti(chiesto) ON chiesto = m.id
-    WHERE m.tenant_id = ${tenantId}::uuid
-    ORDER BY m.id FOR KEY SHARE OF m`
 }
 
 /** Lock consultivo per radice della catena (spazio di chiavi `legame-movimento`), fino a fine transazione. */
@@ -108,12 +94,16 @@ export async function bloccaListinoInCondivisione(
     }
   }
   if (righe.length > 0) {
-    const bloccate = await tx.$queryRaw<{ id: string }[]>`
-      SELECT r.id::text AS id FROM righe_addebito r
+    const bloccate = await tx.$queryRaw<{ id: string; elencoId: string }[]>`
+      SELECT r.id::text AS id, r.elenco_id::text AS "elencoId" FROM righe_addebito r
       JOIN unnest(${righe}::uuid[]) AS chiesti(chiesto) ON chiesto = r.id
       WHERE r.tenant_id = ${tenantId}::uuid
       ORDER BY r.id FOR SHARE OF r`
-    if (bloccate.length !== righe.length) {
+    // Una riga di un elenco non bloccato (altro contratto o elenco non indicato) vale come
+    // «non trovata»: altrimenti la fermerebbe solo piu' tardi una FK (23503 invece del 404).
+    const elenchiAttesi = new Set(elenchi)
+    const fuoriElenco = elenchi.length > 0 && bloccate.some(r => !elenchiAttesi.has(r.elencoId))
+    if (bloccate.length !== righe.length || fuoriElenco) {
       throw new NotFoundException({
         message: 'Riga di listino non trovata.',
         error: 'RIGA_ADDEBITO_NON_TROVATA',

@@ -100,8 +100,8 @@ export async function leggiDatiPerProposta(
   >`
     SELECT r.id::text AS id, r.elenco_id::text AS "elencoId", r.tipo AS tipo,
            r.cer_code AS "cerCode", r.riferimento AS riferimento,
-           a.codice AS "addebitoCodice", r.cer_proposta::text[] AS "cerProposta",
-           r.addebiti_proposti::text[] AS "addebitiProposti",
+           a.codice AS "addebitoCodice", COALESCE(r.cer_proposta, '{}')::text[] AS "cerProposta",
+           COALESCE(r.addebiti_proposti, '{}')::text[] AS "addebitiProposti",
            r.tipo_quantita::text AS "tipoQuantita", r.unita_misura AS "unitaMisura",
            r.descrizione AS descrizione, r.prezzo::text AS prezzo,
            r.prezzo_speciale AS "prezzoSpeciale", r.sconto AS sconto,

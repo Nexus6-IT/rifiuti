@@ -266,6 +266,9 @@ describe('Letture del legame (Postgres reale, ruolo wasteflow_app)', () => {
   })
 
   describe('liste grandi e piano generico', () => {
+    /** Con `joinLineari` ~0,2 s; senza, il nested loop 10.000 x 10.000 impiega 7,5 s (misurato). */
+    const SOGLIA_MS = 1_000
+
     /** Piano generico per il ruolo applicativo e statistiche che stimano una riga sola. */
     async function conPianoGenerico<R>(tabelle: string[], fn: () => Promise<R>): Promise<R> {
       await owner.$executeRaw`ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
@@ -289,11 +292,11 @@ describe('Letture del legame (Postgres reale, ruolo wasteflow_app)', () => {
       }
     }
 
-    it('JOIN unnest con 5000 id di righe e piano generico forzato: lock in meno di 5 s', async () => {
+    it('JOIN unnest con 10.000 id di righe e piano generico forzato: lock in meno di 1 s', async () => {
       const s = await scenario()
       const x = await creaAddebito(owner, s.tenantId, { tipo: 'V', codiceIvaId: s.ivaId })
       await owner.rigaAddebito.createMany({
-        data: Array.from({ length: 5000 }, (_, i) => ({
+        data: Array.from({ length: 10_000 }, (_, i) => ({
           tenantId: s.tenantId,
           elencoId: s.elencoId,
           tipo: 'V',
@@ -311,19 +314,21 @@ describe('Letture del legame (Postgres reale, ruolo wasteflow_app)', () => {
           select: { id: true },
         })
       ).map(r => r.id)
-      expect(ids.length).toBeGreaterThanOrEqual(5000)
-      const t0 = Date.now()
-      await conPianoGenerico(['righe_addebito', 'elenchi_addebiti'], () =>
-        nel(s.tenantId, tx =>
+      expect(ids.length).toBeGreaterThanOrEqual(10_000)
+      let ms = -1
+      await conPianoGenerico(['righe_addebito', 'elenchi_addebiti'], async () => {
+        // Si misura solo la chiamata (non ALTER ROLE, reconnect e ANALYZE).
+        const t0 = Date.now()
+        await nel(s.tenantId, tx =>
           bloccaListinoInCondivisione(tx, s.tenantId, s.contrattoId, [s.elencoId], ids)
         )
-      )
-      const ms = Date.now() - t0
-      console.info(`[T14] bloccaListinoInCondivisione 5000 righe, piano generico: ${ms} ms`)
-      expect(ms).toBeLessThan(5_000)
+        ms = Date.now() - t0
+      })
+      console.info(`[T14] bloccaListinoInCondivisione 10000 righe, piano generico: ${ms} ms`)
+      expect(ms).toBeLessThan(SOGLIA_MS)
     }, 90_000)
 
-    it('JOIN unnest con 5000 id di legami (500 veri) e piano generico forzato: lock in meno di 5 s', async () => {
+    it('JOIN unnest con 5000 id di legami (500 veri) e piano generico forzato: lock in meno di 1 s', async () => {
       const s = await scenario()
       const registro = s.registroId
       await owner.wasteMovement.createMany({
@@ -357,13 +362,14 @@ describe('Letture del legame (Postgres reale, ruolo wasteflow_app)', () => {
       ).map(l => l.id)
       expect(veri).toHaveLength(500)
       const ids = [...veri, ...Array.from({ length: 4500 }, () => randomUUID())]
-      const t0 = Date.now()
-      await conPianoGenerico(['legami_movimento', 'righe_legame_movimento'], () =>
-        nel(s.tenantId, tx => bloccaRigheLegame(tx, s.tenantId, ids))
-      )
-      const ms = Date.now() - t0
+      let ms = -1
+      await conPianoGenerico(['legami_movimento', 'righe_legame_movimento'], async () => {
+        const t0 = Date.now()
+        await nel(s.tenantId, tx => bloccaRigheLegame(tx, s.tenantId, ids))
+        ms = Date.now() - t0
+      })
       console.info(`[T14] bloccaRigheLegame 5000 id (500 veri), piano generico: ${ms} ms`)
-      expect(ms).toBeLessThan(5_000)
+      expect(ms).toBeLessThan(SOGLIA_MS)
     }, 90_000)
   })
 })

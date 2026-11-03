@@ -14,8 +14,12 @@ import { ConflictException, NotFoundException } from '@nestjs/common'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { bloccaContrattoListino } from '../listino/lock-listino'
+import { bloccaProgressivo } from '../registro/numerazione-annotazione'
+import { chiaveLockGiacenza } from '../registro/chiave-lock-giacenza'
+import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
 import {
   creaLegameDiTest,
+  creaMovimentoDiTest,
   creaScenarioProposta,
   pulisciLegamiDiTest,
   type ScenarioProposta,
@@ -24,7 +28,6 @@ import {
   LOCK_TIMEOUT_AGGANCIO,
   bloccaLegamePerRadice,
   bloccaListinoInCondivisione,
-  bloccaMovimentiPerLegame,
   bloccaRigheLegame,
   impostaTimeoutAggancio,
 } from './lock-legame'
@@ -287,6 +290,22 @@ describe('Lock del legame (Postgres reale, ruolo wasteflow_app)', () => {
       expect(e3).toBeInstanceOf(ConflictException)
     })
 
+    it("riga di listino di un altro elenco/contratto: 404 RIGA_ADDEBITO_NON_TROVATA, non una FK piu' tardi", async () => {
+      const s = await scenario(0)
+      const altro = await creaContrattoConElenco(owner, s.tenantId, { clienteId: s.clienteId })
+      const rigaAltrui = await creaRiga(owner, s.tenantId, altro.elencoId, { codiceIvaId: s.ivaId })
+      const e = await nel(s.tenantId, tx =>
+        bloccaListinoInCondivisione(tx, s.tenantId, s.contrattoId, [s.elencoId], [rigaAltrui.id])
+      ).then(
+        () => null,
+        (x: unknown) => x
+      )
+      expect(e).toBeInstanceOf(NotFoundException)
+      expect((e as NotFoundException).getResponse()).toMatchObject({
+        error: 'RIGA_ADDEBITO_NON_TROVATA',
+      })
+    })
+
     it('liste vuote o con doppioni: restituisce il contratto e non fallisce', async () => {
       const s = await scenario()
       const c = await nel(s.tenantId, tx =>
@@ -334,7 +353,6 @@ describe('Lock del legame (Postgres reale, ruolo wasteflow_app)', () => {
         lavori.push(
           nel(s.tenantId, tx => scritturaListino(tx, s, ordine)),
           nel(s.tenantId, async tx => {
-            await bloccaMovimentiPerLegame(tx, s.tenantId, [s.movimentoId])
             await bloccaLegamePerRadice(tx, s.movimentoId)
             await bloccaListinoInCondivisione(tx, s.tenantId, s.contrattoId, [s.elencoId], ordine)
             await bloccaRigheLegame(tx, s.tenantId, [legame.legameId])
@@ -347,27 +365,69 @@ describe('Lock del legame (Postgres reale, ruolo wasteflow_app)', () => {
       expect(esiti).toHaveLength(40)
     }, 120_000)
 
-    it('registro e legame: 20 coppie (correzione che blocca il movimento FOR UPDATE poi il legame, conferma che blocca il movimento FOR KEY SHARE poi il legame) senza deadlock', async () => {
+    it('registro e legame: 20 coppie con la sequenza REALE di correggi-movimento (advisory progressivo e giacenza, INSERT della correzione con FK KEY SHARE) contro un legame sullo stesso movimento: nessun 40P01', async () => {
+      // Il registro e' append-only: non prende mai lock di riga sui movimenti. Nessun ordine puo'
+      // dare un ciclo, perche' le FK dell'annotazione e l'INSERT del legame prendono entrambe
+      // FOR KEY SHARE sul movimento. Il test lo verifica nei due ordini di arrivo (alterna).
       const s = await scenario(0)
-      const lavori: Promise<unknown>[] = []
-      for (let i = 0; i < 20; i++) {
-        lavori.push(
-          nel(s.tenantId, async tx => {
-            await tx.$queryRaw`SELECT id FROM waste_movements WHERE id = ${s.movimentoId}::uuid FOR UPDATE`
-            await bloccaLegamePerRadice(tx, s.movimentoId)
-          }),
-          nel(s.tenantId, async tx => {
-            await bloccaMovimentiPerLegame(tx, s.tenantId, [s.movimentoId])
-            await bloccaLegamePerRadice(tx, s.movimentoId)
-          })
-        )
+      const movimenti = [s.movimentoId]
+      for (let i = 1; i < 20; i++) {
+        movimenti.push((await creaMovimentoDiTest(owner, s.tenantId)).movimentoId)
       }
+      const correggi = (m: string) =>
+        nel(s.tenantId, async tx => {
+          // correggi-movimento.use-case.ts, passo 3: progressivo, poi giacenza del CER toccato.
+          await bloccaProgressivo(tx, s.registroId, 2026)
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiaveLockGiacenza(s.registroId, '20 03 01')}))`
+          const ultimo = await tx.wasteMovement.aggregate({
+            where: { registroId: s.registroId, progressiveYear: 2026 },
+            _max: { progressiveNumber: true },
+          })
+          // Passo 5: INSERT della rettifica (FK rettificato/originale -> FOR KEY SHARE su m).
+          await tx.wasteMovement.create({
+            data: {
+              tenantId: s.tenantId,
+              registroId: s.registroId,
+              progressiveYear: 2026,
+              progressiveNumber: (ultimo._max.progressiveNumber ?? 0) + 1,
+              type: 'CARICO',
+              movementDate: new Date('2026-03-01T10:00:00Z'),
+              registrationDate: new Date('2026-03-01T10:00:00Z'),
+              causale: 'INGRESSO_ESTERNO',
+              cerCode: '20 03 01',
+              quantity: '90',
+              unit: 'KG',
+              tipoAnnotazione: 'RETTIFICA',
+              motivoAnnotazione: 'correzione di prova',
+              movimentoRettificatoId: m,
+              movimentoOriginaleId: m,
+            },
+          })
+          // Task 21: poi il legame della catena.
+          await bloccaLegamePerRadice(tx, m)
+        })
+      const lega = (m: string) =>
+        nel(s.tenantId, async tx => {
+          await bloccaLegamePerRadice(tx, m)
+          await tx.$executeRaw`
+            INSERT INTO legami_movimento
+              (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
+               data_movimento, updated_at)
+            VALUES (${s.tenantId}::uuid, ${s.registroId}::uuid, 'CARICO', ${m}::uuid, ${m}::uuid,
+                    'DA_COLLEGARE', '2026-03-01'::date, now())`
+        })
+      const lavori = movimenti.flatMap((m, i) =>
+        i % 2 === 0 ? [correggi(m), lega(m)] : [lega(m), correggi(m)]
+      )
       const esiti = await Promise.allSettled(lavori)
       expect(
         esiti
           .filter(e => e.status === 'rejected')
           .map(e => String((e as PromiseRejectedResult).reason))
       ).toEqual([])
+      const [{ n }] = await owner.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM legami_movimento WHERE tenant_id = ${s.tenantId}::uuid`
+      expect(n).toBe(20)
     }, 120_000)
   })
 
@@ -414,23 +474,7 @@ describe('Lock del legame (Postgres reale, ruolo wasteflow_app)', () => {
     }, 30_000)
   })
 
-  describe('bloccaMovimentiPerLegame e KEY SHARE dell INSERT del legame', () => {
-    it('un FOR UPDATE sul movimento (registro) tiene in attesa chi vuole bloccarlo per un legame', async () => {
-      const s = await scenario(0)
-      const t = tenitore('owner', s.tenantId, async tx => {
-        await tx.$queryRaw`SELECT id FROM waste_movements WHERE id = ${s.movimentoId}::uuid FOR UPDATE`
-      })
-      await t.pronta
-      const lega = osserva(
-        nel(s.tenantId, tx => bloccaMovimentiPerLegame(tx, s.tenantId, [s.movimentoId]))
-      )
-      await attendiLock(1, () => lega.stato.finita)
-      expect(lega.stato.finita).toBe(false)
-      t.rilascia()
-      await t.fine
-      await lega.esito
-    })
-
+  describe('KEY SHARE dell INSERT del legame sul movimento', () => {
     it('l INSERT di un legame tiene FOR KEY SHARE sul movimento: un FOR UPDATE del movimento aspetta, un FOR NO KEY UPDATE no', async () => {
       const s = await scenario(0)
       const t = tenitore('owner', s.tenantId, async tx => {
