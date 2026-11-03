@@ -1,33 +1,28 @@
 // Codifiche di addebito: gruppo, categoria, categorie statistiche e centro di ricavo (4.2a, D4).
 // Una tabella per cinque elenchi, distinti dal `genere`, con codice unico per (azienda, genere).
-// Stesso schema delle codifiche del contratto della 4.1: lock ottimistico (D14), disattivazione
-// al posto della cancellazione quando la codifica e' citata da un addebito o da una riga di un
-// listino (D13, R44), audit (D16).
-// Le regole sui dati stanno in `domain/listino/codifica-addebito`; il primo codice libero e'
-// `primoCodiceLibero` della 4.1 (non si duplica).
-//
-// Creazione in linea: senza `codice` (assente o null, R24) il servizio assegna il primo codice
-// libero del genere, con un nuovo tentativo in una transazione nuova su P2002.
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
-import { primoCodiceLibero } from '../../domain/clienti/codifica-contratto'
+// Il comportamento comune con le codifiche del contratto della 4.1 (lock ottimistico D14,
+// disattivazione al posto della cancellazione D13/R44, audit D16, creazione in linea R24) sta in
+// `clienti/codifiche-tabella` (R25); qui solo le differenze: generi, codice numerico di tre cifre
+// (`domain/listino/codifica-addebito`) e referenti (addebiti e righe dei listini).
+import { Injectable } from '@nestjs/common'
 import {
   ETICHETTE_GENERE_ADDEBITO,
   MSG_CODICE_CODIFICA,
   normalizzaCodificaAddebito,
   validaCodificaAddebito,
+  type DatiCodificaAddebito,
   type GenereCodificaAddebito,
 } from '../../domain/listino/codifica-addebito'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import type { DescrizioneEntita, VincoliNoti } from '../clienti/anagrafica-versionata'
 import {
-  confrontaVersione,
-  scriviCondizionato,
-  traduciErrorePrisma,
-  type DescrizioneEntita,
-  type VincoliNoti,
-} from '../clienti/anagrafica-versionata'
-import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { COLONNE_CODIFICA_ADDEBITO, contaUsiListino, type ListinoUsi } from './uso-listino'
+  CodificheTabella,
+  type CodificaVistaBase,
+  type FiltroCodificheBase,
+  type ModificaCodificaBase,
+  type NuovaCodificaBase,
+} from '../clienti/codifiche-tabella'
+import { COLONNE_CODIFICA_ADDEBITO, contaUsiListino } from './uso-listino'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'CODIFICA_ADDEBITO',
@@ -49,319 +44,68 @@ const VINCOLI: VincoliNoti = {
   },
 }
 
-const MSG_ESAURITI = 'Non si possono creare più di 999 codici per questo elenco.'
-
-export interface CodificaAddebitoVista {
-  id: string
-  genere: GenereCodificaAddebito
-  codice: string
-  descrizione: string
-  attiva: boolean
-  versione: number
-  /** Nessun addebito la cita: si puo' cancellare invece di disattivare. */
-  eliminabile: boolean
-}
-
-/** Il `genere` si sceglie alla creazione e non cambia piu'. */
-export interface NuovaCodificaAddebito {
-  genere: GenereCodificaAddebito
-  descrizione: string
-  /** Assente o null = primo codice libero del genere. */
-  codice?: string | null
-}
-
-export type ModificaCodificaAddebito = {
-  codice?: string
-  descrizione?: string
-  attiva?: boolean
-  versione: number
-}
-
-export interface FiltroCodificheAddebito {
-  genere: GenereCodificaAddebito
-  incluseDisattivate: boolean
-}
-
-type RigaCodifica = {
-  id: string
-  genere: string
-  codice: string
-  descrizione: string
-  attiva: boolean
-  versione: number
-}
-
-/** Campi modificabili, nell'ordine in cui compaiono in scrittura e nell'audit. */
-const CAMPI = ['codice', 'descrizione', 'attiva'] as const
-type Campo = (typeof CAMPI)[number]
-
-/** Vista con gli usi gia' noti (la lista li conta in blocco, una volta per tutte le codifiche). */
-function vistaConUsi(r: RigaCodifica, usi: number): CodificaAddebitoVista {
-  return {
-    id: r.id,
-    genere: r.genere as GenereCodificaAddebito,
-    codice: r.codice,
-    descrizione: r.descrizione,
-    attiva: r.attiva,
-    versione: r.versione,
-    eliminabile: usi === 0,
-  }
-}
-
-async function comeVista(
-  r: RigaCodifica,
-  tenantId: string,
-  client: ListinoUsi
-): Promise<CodificaAddebitoVista> {
-  const usi =
-    (await contaUsiListino(client, tenantId, [r.id], COLONNE_CODIFICA_ADDEBITO)).get(r.id) ?? 0
-  return vistaConUsi(r, usi)
-}
-
-function lanciaNonValida(errori: string[]): never {
-  throw new BadRequestException({ message: errori, error: 'CODIFICA_ADDEBITO_NON_VALIDA' })
-}
-
-const nonTrovata = () =>
-  new NotFoundException({
-    message: 'Codifica non trovata.',
-    error: 'CODIFICA_ADDEBITO_NON_TROVATA',
-  })
-
-function controllaGenere(genere: unknown): GenereCodificaAddebito {
-  if (
-    typeof genere !== 'string' ||
-    !Object.prototype.hasOwnProperty.call(ETICHETTE_GENERE_ADDEBITO, genere)
-  ) {
-    lanciaNonValida(['Il genere della codifica non è ammesso.'])
-  }
-  return genere as GenereCodificaAddebito
-}
-
-const eP2002 = (err: unknown) =>
-  err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
-
-const uguali = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+export type CodificaAddebitoVista = CodificaVistaBase<GenereCodificaAddebito>
+/** Il `genere` si sceglie alla creazione e non cambia piu'. Codice assente o null = primo libero. */
+export type NuovaCodificaAddebito = NuovaCodificaBase<GenereCodificaAddebito>
+export type ModificaCodificaAddebito = ModificaCodificaBase
+export type FiltroCodificheAddebito = FiltroCodificheBase<GenereCodificaAddebito>
 
 @Injectable()
 export class CodificheAddebitoService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly motore: CodificheTabella<GenereCodificaAddebito>
 
-  async list(tenantId: string, filtro: FiltroCodificheAddebito): Promise<CodificaAddebitoVista[]> {
-    const genere = controllaGenere(filtro.genere)
-    return nelContestoTenant(tenantId, async () => {
-      const righe = await this.prisma.codificaAddebito.findMany({
-        where: filtro.incluseDisattivate
-          ? { tenantId, genere }
-          : { tenantId, genere, attiva: true },
-        orderBy: [{ attiva: 'desc' }, { codice: 'asc' }],
-      })
-      const usi = await contaUsiListino(
-        this.prisma,
-        tenantId,
-        righe.map(r => r.id),
-        COLONNE_CODIFICA_ADDEBITO
-      )
-      return righe.map(r => vistaConUsi(r, usi.get(r.id) ?? 0))
+  constructor(prisma: PrismaService) {
+    this.motore = new CodificheTabella<GenereCodificaAddebito>(prisma, {
+      entita: ENTITA,
+      vincoli: VINCOLI,
+      tabellaSql: 'codifiche_addebito',
+      tipoGenereSql: 'genere_codifica_addebito',
+      prefissoLock: 'codifiche-addebito-codice:',
+      descrizioneAudit: 'Codifica di addebito',
+      messaggioCodiceMancante: MSG_CODICE_CODIFICA,
+      delegato: c => c.codificaAddebito,
+      controllaGenere: g =>
+        typeof g === 'string' && Object.prototype.hasOwnProperty.call(ETICHETTE_GENERE_ADDEBITO, g)
+          ? (g as GenereCodificaAddebito)
+          : null,
+      normalizza: normalizzaCodificaAddebito,
+      valida: d => validaCodificaAddebito(d as DatiCodificaAddebito),
+      contaUsi: (client, tenantId, ids) =>
+        contaUsiListino(client, tenantId, ids, COLONNE_CODIFICA_ADDEBITO),
     })
   }
 
-  async getById(tenantId: string, id: string): Promise<CodificaAddebitoVista> {
-    return nelContestoTenant(tenantId, async () => {
-      const riga = await this.prisma.codificaAddebito.findFirst({ where: { id, tenantId } })
-      if (!riga) throw nonTrovata()
-      return comeVista(riga, tenantId, this.prisma)
-    })
+  list(tenantId: string, filtro: FiltroCodificheAddebito): Promise<CodificaAddebitoVista[]> {
+    return this.motore.list(tenantId, filtro)
+  }
+
+  getById(tenantId: string, id: string): Promise<CodificaAddebitoVista> {
+    return this.motore.getById(tenantId, id)
   }
 
   /** Il codice che la creazione in linea assegnerebbe adesso (solo informativo: non riserva nulla). */
-  async prossimoCodice(tenantId: string, genere: GenereCodificaAddebito): Promise<string> {
-    const g = controllaGenere(genere)
-    return nelContestoTenant(tenantId, () =>
-      this.prisma.$transaction(async tx => {
-        const usati = await tx.$queryRaw<Array<{ codice: string }>>`
-          SELECT codice
-          FROM codifiche_addebito
-          WHERE tenant_id = ${tenantId}::uuid
-            AND genere = ${g}::genere_codifica_addebito`
-        return this.assegnaCodice(usati)
-      })
-    )
+  prossimoCodice(tenantId: string, genere: GenereCodificaAddebito): Promise<string> {
+    return this.motore.prossimoCodice(tenantId, genere)
   }
 
-  async crea(
+  crea(
     tenantId: string,
     utenteId: string,
     dati: NuovaCodificaAddebito
   ): Promise<CodificaAddebitoVista> {
-    const valori = normalizzaCodificaAddebito(dati)
-    const errori = validaCodificaAddebito(valori)
-    if (errori.length > 0) lanciaNonValida(errori)
-    const genere = valori.genere as GenereCodificaAddebito
-
-    return nelContestoTenant(tenantId, async () => {
-      // Il P2002 si cattura FUORI dalla transazione: una transazione interrotta (25P02) non si
-      // riprova. Le creazioni senza codice si serializzano col lock consultivo per azienda e genere
-      // (vedi `creaInTransazione`); non copre pero' una creazione a codice esplicito, che non lo
-      // prende e puo' prendere il codice che l'altra sta per calcolare: su P2002 si riprova UNA
-      // volta in una transazione nuova, che rilegge i codici e prende il successivo.
-      const tentativi = valori.codice === null ? 2 : 1
-      for (let tentativo = 1; ; tentativo++) {
-        try {
-          return await this.creaInTransazione(tenantId, utenteId, genere, valori)
-        } catch (err) {
-          if (eP2002(err) && tentativo < tentativi) continue
-          return await traduciErrorePrisma(err, ENTITA, VINCOLI)
-        }
-      }
-    })
+    return this.motore.crea(tenantId, utenteId, dati)
   }
 
-  async modifica(
+  modifica(
     tenantId: string,
     utenteId: string,
     id: string,
     m: ModificaCodificaAddebito
   ): Promise<CodificaAddebitoVista> {
-    return nelContestoTenant(tenantId, () =>
-      this.prisma
-        .$transaction(async tx => {
-          const prima = await tx.codificaAddebito.findFirst({ where: { id, tenantId } })
-          if (!prima) throw nonTrovata()
-          confrontaVersione(prima.versione, m.versione, ENTITA)
-
-          const attuali = {
-            codice: prima.codice,
-            descrizione: prima.descrizione,
-            attiva: prima.attiva,
-          }
-          // Il genere resta quello della riga: la modifica non lo conosce.
-          const unione = normalizzaCodificaAddebito({
-            genere: prima.genere,
-            codice: m.codice !== undefined ? m.codice : attuali.codice,
-            descrizione: m.descrizione ?? attuali.descrizione,
-          })
-          const errori = validaCodificaAddebito(unione)
-          // Un codice inviato ma vuoto non e' "assente": in modifica il codice non si toglie (R24).
-          if (unione.codice === null) errori.push(MSG_CODICE_CODIFICA)
-          if (errori.length > 0) lanciaNonValida(errori)
-          const nuovi: Record<Campo, unknown> = {
-            codice: unione.codice,
-            descrizione: unione.descrizione,
-            attiva: m.attiva ?? attuali.attiva,
-          }
-
-          const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
-          if (campi.length === 0) return comeVista(prima, tenantId, tx)
-
-          await scriviCondizionato(
-            () =>
-              tx.codificaAddebito.updateMany({
-                where: { id, tenantId, versione: m.versione },
-                data: {
-                  ...Object.fromEntries(campi.map(c => [c, nuovi[c]])),
-                  versione: { increment: 1 },
-                } as Prisma.CodificaAddebitoUpdateManyMutationInput,
-              }),
-            ENTITA
-          )
-          const dopo = await tx.codificaAddebito.findFirst({ where: { id, tenantId } })
-          if (!dopo) throw nonTrovata()
-          await this.audit(tx, tenantId, utenteId, 'CODIFICA_ADDEBITO_MODIFICATA', 'modificata', {
-            codificaId: id,
-            genere: dopo.genere,
-            codice: dopo.codice,
-            campi,
-          })
-          return comeVista(dopo, tenantId, tx)
-        })
-        .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
-    )
+    return this.motore.modifica(tenantId, utenteId, id, m)
   }
 
-  async elimina(tenantId: string, utenteId: string, id: string, versione: number): Promise<void> {
-    return nelContestoTenant(tenantId, () =>
-      this.prisma
-        .$transaction(async tx => {
-          const riga = await tx.codificaAddebito.findFirst({ where: { id, tenantId } })
-          if (!riga) throw nonTrovata()
-          confrontaVersione(riga.versione, versione, ENTITA)
-          await scriviCondizionato(
-            () => tx.codificaAddebito.deleteMany({ where: { id, tenantId, versione } }),
-            ENTITA
-          )
-          await this.audit(tx, tenantId, utenteId, 'CODIFICA_ADDEBITO_ELIMINATA', 'eliminata', {
-            codificaId: id,
-            genere: riga.genere,
-            codice: riga.codice,
-          })
-        })
-        .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
-    )
-  }
-
-  /** Un tentativo di creazione: codice esplicito, oppure primo libero letto sotto lock consultivo. */
-  private creaInTransazione(
-    tenantId: string,
-    utenteId: string,
-    genere: GenereCodificaAddebito,
-    valori: ReturnType<typeof normalizzaCodificaAddebito>
-  ): Promise<CodificaAddebitoVista> {
-    return this.prisma.$transaction(async tx => {
-      let codice = valori.codice
-      if (codice === null) {
-        // Lock consultivo per azienda e genere (nessun lock di riga): serializza le creazioni senza
-        // codice senza aspettare le altre scritture. Si rilascia da solo a fine transazione.
-        await tx.$executeRaw`
-          SELECT pg_advisory_xact_lock(
-            hashtext(${'codifiche-addebito-codice:' + genere}), hashtext(${tenantId}))`
-        const usati = await tx.$queryRaw<Array<{ codice: string }>>`
-          SELECT codice
-          FROM codifiche_addebito
-          WHERE tenant_id = ${tenantId}::uuid
-            AND genere = ${genere}::genere_codifica_addebito`
-        codice = this.assegnaCodice(usati)
-      }
-      const riga = await tx.codificaAddebito.create({
-        data: { tenantId, genere, codice, descrizione: valori.descrizione },
-      })
-      await this.audit(tx, tenantId, utenteId, 'CODIFICA_ADDEBITO_CREATA', 'creata', {
-        codificaId: riga.id,
-        genere: riga.genere,
-        codice: riga.codice,
-      })
-      return comeVista(riga, tenantId, tx)
-    })
-  }
-
-  private assegnaCodice(usati: Array<{ codice: string }>): string {
-    const libero = primoCodiceLibero(usati.map(r => r.codice))
-    if (libero === null) {
-      throw new BadRequestException({
-        message: MSG_ESAURITI,
-        error: 'CODIFICA_ADDEBITO_CODICI_ESAURITI',
-      })
-    }
-    return libero
-  }
-
-  /** Audit nella stessa transazione: solo id, genere, codice e nomi dei campi (D16). */
-  private async audit(
-    tx: Prisma.TransactionClient,
-    tenantId: string,
-    utenteId: string,
-    action: string,
-    esito: string,
-    metadata: Record<string, unknown>
-  ): Promise<void> {
-    await tx.activityLog.create({
-      data: {
-        tenantId,
-        userId: utenteId,
-        action,
-        description: `Codifica di addebito ${esito}`,
-        metadata: metadata as Prisma.InputJsonValue,
-      },
-    })
+  elimina(tenantId: string, utenteId: string, id: string, versione: number): Promise<void> {
+    return this.motore.elimina(tenantId, utenteId, id, versione)
   }
 }

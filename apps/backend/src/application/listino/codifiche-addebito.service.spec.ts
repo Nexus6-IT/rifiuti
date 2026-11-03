@@ -204,6 +204,8 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
       const audit = tx.activityLog.create.mock.calls[0][0].data
       expect(audit).toMatchObject({ userId: U, action: 'CODIFICA_ADDEBITO_CREATA' })
       expect(audit.metadata).toMatchObject({ genere: 'CENTRO_RICAVO', codice: '001' })
+      expect(audit.description).toBe('Codifica di addebito creata')
+      expect(tx.$executeRaw.mock.calls[0][1]).toBe('codifiche-addebito-codice:CENTRO_RICAVO')
       expect(JSON.stringify(audit.metadata)).not.toContain('riservato')
     })
   })
@@ -263,9 +265,17 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
       await service.modifica(T, U, K, { descrizione: 'Nuova', attiva: false, versione: 1 })
       const audit = tx.activityLog.create.mock.calls[0][0].data
       expect(audit.action).toBe('CODIFICA_ADDEBITO_MODIFICATA')
+      expect(audit.description).toBe('Codifica di addebito modificata')
       expect(audit.metadata.campi).toEqual(['descrizione', 'attiva'])
       expect(audit.metadata.genere).toBe('GRUPPO')
       expect(JSON.stringify(audit.metadata)).not.toContain('Nuova')
+    })
+
+    it('codice inviato vuoto: 400 con il messaggio del codice mancante', async () => {
+      const e = await errore(service.modifica(T, U, K, { codice: '', versione: 1 }))
+      expect(e.getResponse().error).toBe('CODIFICA_ADDEBITO_NON_VALIDA')
+      expect(e.getResponse().message).toContain('Il codice ha da 1 a 3 cifre.')
+      expect(tx.codificaAddebito.updateMany).not.toHaveBeenCalled()
     })
 
     it('P2002 sul cambio codice: 409 duplicato', async () => {
@@ -283,7 +293,9 @@ describe('CodificheAddebitoService (Prisma finto)', () => {
       expect(tx.codificaAddebito.deleteMany).toHaveBeenCalledWith({
         where: { id: K, tenantId: T, versione: 1 },
       })
-      expect(tx.activityLog.create.mock.calls[0][0].data.action).toBe('CODIFICA_ADDEBITO_ELIMINATA')
+      const audit = tx.activityLog.create.mock.calls[0][0].data
+      expect(audit.action).toBe('CODIFICA_ADDEBITO_ELIMINATA')
+      expect(audit.description).toBe('Codifica di addebito eliminata')
     })
 
     it('versione diversa: 409 senza deleteMany; non trovata: 404', async () => {

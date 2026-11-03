@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
+import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { CodificaContratto, ContrattoCliente } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
@@ -66,6 +67,8 @@ describe('AnnulloDialogComponent', () => {
         { provide: TabelleFatturazioneService, useValue: { codifiche: { list: listCodifiche } } },
         { provide: ClientiService, useValue: { contratti: { cambiaStato } } },
         { provide: ToastService, useValue: toast },
+        // Chi annulla un contratto ha sempre un ruolo di scrittura (la lista nasconde l'azione agli altri).
+        { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
       ],
     })
   })

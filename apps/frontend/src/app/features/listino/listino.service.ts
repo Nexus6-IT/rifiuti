@@ -4,6 +4,7 @@ import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import { Pagina } from '../clienti/clienti.model'
 import { RottaAllegati } from '../clienti/clienti.service'
+import { TabellaCodificheGenerica } from '../clienti/tabella-codifiche-generica'
 import { Tabella } from '../clienti/tabelle-fatturazione.service'
 import {
   Addebito,
@@ -42,45 +43,12 @@ import {
 } from './listino.model'
 
 /** Codifiche di addebito: come `TabellaCodifiche` della 4.1, con i cinque generi del listino. */
-export class TabellaCodificheAddebito {
-  constructor(
-    private readonly http: HttpClient,
-    private readonly url: string
-  ) {}
-
-  list(genere: GenereCodificaAddebito, incluseDisattivate = false): Observable<CodificaAddebito[]> {
-    let params = new HttpParams().set('genere', genere)
-    if (incluseDisattivate) params = params.set('incluseDisattivate', 'true')
-    return this.http.get<CodificaAddebito[]>(this.url, { params })
-  }
-
-  /** Informativo: non riserva nulla. */
-  prossimoCodice(genere: GenereCodificaAddebito): Observable<string> {
-    return this.http
-      .get<{ codice: string }>(`${this.url}/prossimo-codice`, {
-        params: new HttpParams().set('genere', genere),
-      })
-      .pipe(map(r => r.codice))
-  }
-
-  get(id: string): Observable<CodificaAddebito> {
-    return this.http.get<CodificaAddebito>(`${this.url}/${id}`)
-  }
-
-  crea(dati: NuovaCodificaAddebito): Observable<CodificaAddebito> {
-    return this.http.post<CodificaAddebito>(this.url, dati)
-  }
-
-  modifica(id: string, dati: ModificaCodificaAddebito): Observable<CodificaAddebito> {
-    return this.http.patch<CodificaAddebito>(`${this.url}/${id}`, dati)
-  }
-
-  elimina(id: string, versione: number): Observable<void> {
-    return this.http.delete<void>(`${this.url}/${id}`, {
-      params: new HttpParams().set('versione', String(versione)),
-    })
-  }
-}
+export class TabellaCodificheAddebito extends TabellaCodificheGenerica<
+  GenereCodificaAddebito,
+  CodificaAddebito,
+  NuovaCodificaAddebito,
+  ModificaCodificaAddebito
+> {}
 
 /** Archivio degli addebiti: elenco paginato `{ elementi, totale }` (R12). */
 export class TabellaAddebiti {

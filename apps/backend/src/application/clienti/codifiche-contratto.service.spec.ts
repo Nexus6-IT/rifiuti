@@ -43,8 +43,9 @@ describe('CodificheContrattoService (Prisma finto)', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      // Lettura dei codici del genere con FOR UPDATE: nessun codice usato.
+      // Lettura dei codici del genere (nessun codice usato) dopo il lock consultivo (R25).
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       cliente: { groupBy: jest.fn().mockResolvedValue([]) },
       contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
@@ -145,11 +146,12 @@ describe('CodificheContrattoService (Prisma finto)', () => {
   })
 
   describe('crea', () => {
-    it('senza codice: legge i codici del genere con FOR UPDATE e assegna 001', async () => {
+    it('senza codice: prende il lock consultivo, legge i codici del genere e assegna 001', async () => {
       const v = await service.crea(T, U, { genere: 'CATEGORIA', descrizione: 'Urbani' })
       expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
-      // il template della query contiene il FOR UPDATE
-      expect(tx.$queryRaw.mock.calls[0][0].join('?')).toContain('FOR UPDATE')
+      // R25: stesso lock consultivo delle codifiche di addebito (il FOR UPDATE non copriva il genere vuoto)
+      expect(tx.$executeRaw.mock.calls[0][0].join('?')).toContain('pg_advisory_xact_lock')
+      expect(tx.$queryRaw.mock.calls[0][0].join('?')).not.toContain('FOR UPDATE')
       expect(tx.codificaContratto.create.mock.calls[0][0].data).toMatchObject({
         tenantId: T,
         genere: 'CATEGORIA',
@@ -224,6 +226,8 @@ describe('CodificheContrattoService (Prisma finto)', () => {
       const audit = tx.activityLog.create.mock.calls[0][0].data
       expect(audit).toMatchObject({ userId: U, action: 'CODIFICA_CONTRATTO_CREATA' })
       expect(audit.metadata).toMatchObject({ genere: 'MOTIVO_ANNULLO', codice: '001' })
+      expect(audit.description).toBe('Codifica del contratto creata')
+      expect(tx.$executeRaw.mock.calls[0][1]).toBe('codifiche-contratto-codice:MOTIVO_ANNULLO')
       expect(JSON.stringify(audit.metadata)).not.toContain('Disdetta')
     })
   })
@@ -274,9 +278,17 @@ describe('CodificheContrattoService (Prisma finto)', () => {
       await service.modifica(T, U, K, { descrizione: 'Nuova', attiva: false, versione: 1 })
       const audit = tx.activityLog.create.mock.calls[0][0].data
       expect(audit.action).toBe('CODIFICA_CONTRATTO_MODIFICATA')
+      expect(audit.description).toBe('Codifica del contratto modificata')
       expect(audit.metadata.campi).toEqual(['descrizione', 'attiva'])
       expect(audit.metadata.genere).toBe('CATEGORIA')
       expect(JSON.stringify(audit.metadata)).not.toContain('Nuova')
+    })
+
+    it('codice inviato vuoto: 400 con il messaggio del codice mancante', async () => {
+      const e = await errore(service.modifica(T, U, K, { codice: '', versione: 1 }))
+      expect(e.getResponse().error).toBe('CODIFICA_CONTRATTO_NON_VALIDA')
+      expect(e.getResponse().message).toContain('Indica il codice.')
+      expect(tx.codificaContratto.updateMany).not.toHaveBeenCalled()
     })
 
     it('P2002 sul cambio codice: 409 codice duplicato', async () => {
@@ -294,9 +306,9 @@ describe('CodificheContrattoService (Prisma finto)', () => {
       expect(tx.codificaContratto.deleteMany).toHaveBeenCalledWith({
         where: { id: K, tenantId: T, versione: 1 },
       })
-      expect(tx.activityLog.create.mock.calls[0][0].data.action).toBe(
-        'CODIFICA_CONTRATTO_ELIMINATA'
-      )
+      const audit = tx.activityLog.create.mock.calls[0][0].data
+      expect(audit.action).toBe('CODIFICA_CONTRATTO_ELIMINATA')
+      expect(audit.description).toBe('Codifica del contratto eliminata')
     })
 
     it('versione diversa: 409 senza deleteMany', async () => {

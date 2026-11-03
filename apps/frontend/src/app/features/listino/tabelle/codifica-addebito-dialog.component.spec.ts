@@ -212,12 +212,14 @@ describe('CodificaAddebitoDialogComponent', () => {
     expect(fixture.componentInstance.form.valid).toBeTrue()
   })
 
-  it('chiudere durante il salvataggio non emette `salvato` a dialog chiuso', async () => {
+  it("chiudere durante il salvataggio non emette `salvato` ma `salvatoDopoChiusura` (la scheda rilegge l'elenco)", async () => {
     const risposta$ = new Subject<CodificaAddebito>()
     tabella.crea.and.returnValue(risposta$)
     await apri(null, { rapida: true })
     const salvati: CodificaAddebito[] = []
+    const dopoChiusura: CodificaAddebito[] = []
     fixture.componentInstance.salvato.subscribe(v => salvati.push(v))
+    fixture.componentInstance.salvatoDopoChiusura.subscribe(v => dopoChiusura.push(v))
     scrivi('codifica-add-dlg-descrizione', 'Nuova voce')
     await stabilizza(fixture)
     fixture.componentInstance.salva()
@@ -226,5 +228,20 @@ describe('CodificaAddebitoDialogComponent', () => {
     expect(fixture.componentInstance.inCorso()).toBeFalse()
     risposta$.next(creata)
     expect(salvati.length).toBe(0)
+    expect(dopoChiusura).toEqual([creata])
+  })
+
+  it('un errore dopo la chiusura non emette nulla', async () => {
+    const risposta$ = new Subject<CodificaAddebito>()
+    tabella.crea.and.returnValue(risposta$)
+    await apri(null, { rapida: true })
+    const dopoChiusura: CodificaAddebito[] = []
+    fixture.componentInstance.salvatoDopoChiusura.subscribe(v => dopoChiusura.push(v))
+    scrivi('codifica-add-dlg-descrizione', 'Nuova voce')
+    await stabilizza(fixture)
+    fixture.componentInstance.salva()
+    fixture.componentInstance.chiudi()
+    risposta$.error({ status: 500 })
+    expect(dopoChiusura.length).toBe(0)
   })
 })
