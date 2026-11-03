@@ -1314,6 +1314,12 @@ export class LayoutComponent implements OnInit {
       icon: 'pi pi-file-edit',
       feature: 'contratti',
     },
+    {
+      label: 'Fatturazione da',
+      route: '/clienti/fatturazione',
+      icon: 'pi pi-calendar',
+      feature: 'contratti',
+    },
     { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
     {
       label: 'Anomalie',

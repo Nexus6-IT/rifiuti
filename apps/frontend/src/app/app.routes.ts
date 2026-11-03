@@ -163,6 +163,13 @@ export const routes: Routes = [
           import('./features/listino/addebiti-list.component').then(m => m.AddebitiListComponent),
       },
       {
+        path: 'clienti/fatturazione',
+        loadComponent: () =>
+          import('./features/legami/impostazioni-fatturazione.component').then(
+            m => m.ImpostazioniFatturazioneComponent
+          ),
+      },
+      {
         path: 'contratti-clienti',
         loadComponent: () =>
           import('./features/contratti-cliente/contratti-cliente-list.component').then(
