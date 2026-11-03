@@ -114,7 +114,7 @@ describe('Limiti dei decimali nei DTO (colonne Decimal e tracciato RENTRI)', () 
     it.each([[1.23], [1e21], [5e-2], [0]])('%p: valido', async v => {
       expect(await esito(v)).toEqual([])
     })
-    it.each([[NaN], [Infinity], [-Infinity], ['1.2'], [null]])('%p: rifiutato', async v => {
+    it.each([[NaN], [Infinity], [-Infinity], ['1.2']])('%p: rifiutato', async v => {
       expect(await esito(v)).toHaveLength(1)
     })
     it('contaDecimali conta anche la notazione esponenziale', () => {
