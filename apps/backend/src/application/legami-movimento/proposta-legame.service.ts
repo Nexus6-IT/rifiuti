@@ -10,7 +10,12 @@
 //
 // I nomi dei campi della vista sono quelli di `legami/legami.model.ts` del frontend
 // (`PropostaLegame`): il backend li segue.
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import {
@@ -32,7 +37,7 @@ import {
   type ElencoCandidato,
 } from '../../domain/legami-movimento/proposta-contratto'
 import { quantitaPerRiga, scegliRighe } from '../../domain/legami-movimento/proposta-righe'
-import { statoDaProposta } from '../../domain/legami-movimento/stato-legame'
+import { statoDopoRicalcolo } from '../../domain/legami-movimento/stato-legame'
 import {
   copiaValoriDaRiga,
   motiviRighe,
@@ -40,10 +45,12 @@ import {
 } from '../../domain/legami-movimento/valori-legame'
 import { importoRiga } from '../../domain/listino/importi-riga'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { MSG_OPERAZIONE_CONCORRENTE } from '../clienti/anagrafica-versionata'
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
 import { leggiFatturazioneDaInTx } from './impostazioni-fatturazione.service'
 import {
   clienteDaFir,
+  firEsiste,
   leggiCliente,
   leggiDatiPerProposta,
   leggiEtichetteListino,
@@ -266,6 +273,10 @@ export class PropostaLegameService {
     let daFir = null as Awaited<ReturnType<typeof clienteDaFir>>['cliente']
     if (i.firId) {
       const r = await clienteDaFir(tx, tenantId, i.firId)
+      if (r.cliente === null && r.sedeId === null && !(await firEsiste(tx, tenantId, i.firId))) {
+        // Stesso 404 per un FIR inesistente e per quello di un'altra azienda.
+        throw new NotFoundException({ error: 'FIR_NON_TROVATO', message: 'FIR non trovato.' })
+      }
       daFir = r.cliente
       sedeFir = r.sedeId
       if (sedeFir !== null && i.producerSedeId && i.producerSedeId !== sedeFir) {
@@ -275,7 +286,9 @@ export class PropostaLegameService {
         })
       }
     }
-    const sedeId = sedeFir ?? i.producerSedeId ?? null
+    // La sede guida la scelta del contratto SOLO con il FIR (§6.3): `WasteMovement` non la
+    // conserva, quindi senza FIR ogni percorso (registrazione, lista, rettifica) la ignora.
+    const sedeId = i.firId ? sedeFir : null
     const daProposta = proponiCliente({ firPresente: !!i.firId, clienteDaFir: daFir })
     avvisi.push(...daProposta.avvisi)
 
@@ -394,7 +407,7 @@ export class PropostaLegameService {
           message: 'Contratto non trovato.',
         })
       }
-      const v = verificaContrattoScelto(contratto, giorno, sedeFir)
+      const v = verificaContrattoScelto(contratto, giorno, sedeId)
       if (v.errore) motivi.add(v.errore)
       if (v.avvisoAltraSede) aggiungiAvviso('CONTRATTO_ALTRA_SEDE')
     } else {
@@ -404,10 +417,11 @@ export class PropostaLegameService {
     }
     // Menu: i contratti validi alla data (di qualsiasi sede, la scelta a mano e' lecita) piu' quello scelto.
     const contrattiMenu = dati.contratti.filter(
-      k => k.id === contratto?.id || verificaContrattoScelto(k, giorno, sedeFir).errore === null
+      k => k.id === contratto?.id || verificaContrattoScelto(k, giorno, sedeId).errore === null
     )
     const candidatiContratti = contrattiMenu.map(voceContratto)
     if (!contratto) {
+      if (righeIdsScelte.length > 0) throw rigaNonSelezionabile()
       return this.componi({
         cliente,
         dettaglioCliente,
@@ -434,7 +448,10 @@ export class PropostaLegameService {
         })
       }
       if (!elencoValidoAl(elenco, giorno)) {
-        motivi.add('ELENCO_SCADUTO')
+        // Non ancora iniziato: l'elenco non c'e' ancora (l'insieme dei motivi e' chiuso).
+        motivi.add(
+          elenco.validoDal !== null && elenco.validoDal > giorno ? 'SENZA_ELENCO' : 'ELENCO_SCADUTO'
+        )
         elencoNonValido = true
       }
     } else {
@@ -600,7 +617,7 @@ export class PropostaLegameService {
     return {
       fatturabile: true,
       attiva: true,
-      stato: statoDaProposta({ motivi, confermaRichiesta: false, completo }),
+      stato: statoDopoRicalcolo('NESSUN_LEGAME', { motivi, completo }) as StatoLegame,
       ...p,
       motivi,
     }
@@ -634,11 +651,25 @@ export class PropostaLegameService {
 
     const fatturazioneDa = await leggiFatturazioneDaInTx(tx, c.tenantId, { condividi: true })
     const opz = { fatturazioneDa }
+    // Fino a due giri di lock: se dopo il lock la proposta ricalcolata usa un insieme diverso
+    // (elenco diventato valido, riga aggiunta mentre si aspettava) si bloccano gli id nuovi e si
+    // ricalcola; se cambia ancora, 409 (nel registro il SAVEPOINT lascia il movimento «mancante»).
     let proposta = await this.calcolaInTx(tx, c.tenantId, c.input, c.scelte, opz)
-    if (!proposta.fatturabile || !proposta.attiva) {
-      return { legameId: null, creato: false, proposta }
-    }
-    if (proposta.contratto) {
+    let bloccata: string | null = null
+    for (let giro = 0; ; giro++) {
+      if (!proposta.fatturabile || !proposta.attiva) {
+        return { legameId: null, creato: false, proposta }
+      }
+      // Senza contratto non si copia nulla dal listino: niente da proteggere.
+      if (!proposta.contratto) break
+      const chiave = chiaveInsieme(proposta)
+      if (chiave === bloccata) break
+      if (giro === 2) {
+        throw new ConflictException({
+          error: 'OPERAZIONE_CONCORRENTE',
+          message: MSG_OPERAZIONE_CONCORRENTE,
+        })
+      }
       await bloccaListinoInCondivisione(
         tx,
         c.tenantId,
@@ -646,6 +677,7 @@ export class PropostaLegameService {
         proposta.elenco ? [proposta.elenco.id] : [],
         proposta.righe.map(r => r.rigaAddebitoId)
       )
+      bloccata = chiave
       // Il listino puo' essere cambiato fra la lettura e il lock: i valori si prendono da qui.
       proposta = await this.calcolaInTx(tx, c.tenantId, c.input, c.scelte, opz)
     }
@@ -670,4 +702,13 @@ function normalizzaQuantitaMovimento(q: string): string {
   } catch {
     return q
   }
+}
+
+/** Insieme di contratto, elenco e righe su cui si copiano i valori: serve a sapere cosa e' bloccato. */
+function chiaveInsieme(p: PropostaVista): string {
+  return [
+    p.contratto?.id ?? '',
+    p.elenco?.id ?? '',
+    ...p.righe.map(r => r.rigaAddebitoId).sort(),
+  ].join('|')
 }

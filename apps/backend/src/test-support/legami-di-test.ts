@@ -236,6 +236,11 @@ export interface OpzioniScenarioProposta {
   righeV?: number
   /** Omesso: `2026-03-01`. */
   movementDate?: string
+  /**
+   * Chiamata SUBITO dopo la creazione dell'azienda, prima di ogni altra operazione che puo'
+   * fallire: il test vi registra l'id per la pulizia (per id esatti).
+   */
+  onTenantCreato?: (tenantId: string) => void
 }
 
 export interface ScenarioProposta {
@@ -267,13 +272,15 @@ export async function creaScenarioProposta(
   opz: OpzioniScenarioProposta = {}
 ): Promise<ScenarioProposta> {
   const cerCode = opz.cerCode ?? '20 03 01'
-  const tenantId =
-    opz.tenantId ??
-    (
+  let tenantId = opz.tenantId
+  if (!tenantId) {
+    tenantId = (
       await owner.tenant.create({
         data: { partitaIva: partitaIvaUnica(), ragioneSociale: 'Proposta SRL', country: 'IT' },
       })
     ).id
+    opz.onTenantCreato?.(tenantId)
+  }
   const n = partitaIvaUnica()
   const utente = await owner.user.create({
     data: {

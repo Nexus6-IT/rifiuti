@@ -62,7 +62,7 @@ salvo `fe/` = `apps/frontend/src/app/` e `e2e/` alla radice.
 - Ordine dei lock (mai invertito): lock del registro (progressivo, giacenza) → lock consultivo del
   legame (`pg_advisory_xact_lock(hashtext('legame-movimento'), hashtext(<radice>))`) → contratto
   `FOR SHARE` (`bloccaContrattoListino`) → elenchi `FOR SHARE` per `id` → righe di listino
-  `FOR SHARE` per `id` → righe del legame `FOR UPDATE` per `id`. Il lock `listino-contratto` non si
+  `FOR SHARE` per `id` → righe del legame `FOR UPDATE` per `id`. Chi scrive il legame (`proponiEScrivi`, Task 15) prende fra il lock consultivo e il contratto anche la riga di `impostazioni_fatturazione` `FOR SHARE` (la tiene `FOR UPDATE` solo `imposta`, senza altri lock: nessun ciclo). Il lock `listino-contratto` non si
   prende. I servizi del listino non prendono mai lock di registro o legame.
 - Barriere nei test di concorrenza: `pg_stat_activity` con `application_name` del processo e
   `wait_event_type = 'Lock'` (modello: `elenchi-addebiti.service.postgres.spec.ts:18-20,613-626`),

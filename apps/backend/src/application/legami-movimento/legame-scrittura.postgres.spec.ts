@@ -16,6 +16,8 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+const NOME_APPLICAZIONE = `legami-t15s-${process.pid}`
+process.env.DATABASE_URL += `&application_name=${NOME_APPLICAZIONE}`
 
 import { TenantContext } from '../../core/context/tenant-context'
 import {
@@ -77,8 +79,10 @@ describe('scriviProposta — Postgres reale, ruolo wasteflow_app', () => {
   })
 
   async function scenario(righeV = 1): Promise<ScenarioProposta> {
-    const s = await creaScenarioProposta(owner, { righeV })
-    tenantCreati.push(s.tenantId)
+    const s = await creaScenarioProposta(owner, {
+      righeV,
+      onTenantCreato: id => tenantCreati.push(id),
+    })
     await owner.impostazioneFatturazione.create({
       data: { tenantId: s.tenantId, fatturazioneDa: new Date('2026-01-01T00:00:00Z') },
     })
@@ -214,5 +218,79 @@ describe('scriviProposta — Postgres reale, ruolo wasteflow_app', () => {
     expect(await owner.wasteMovement.findUniqueOrThrow({ where: { id: s.movimentoId } })).toEqual(
       prima
     )
+  })
+
+  describe('concorrenza sull’unico della catena (senza lock consultivo)', () => {
+    const OPZ = { timeout: 60_000, maxWait: 30_000 }
+    async function inAttesaDiLock(): Promise<number> {
+      const r = await owner.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+          AND wait_event_type = 'Lock'`
+      return r[0].n
+    }
+    async function attendiLock(finita: () => boolean): Promise<void> {
+      const scadenza = Date.now() + 30_000
+      for (;;) {
+        if ((await inAttesaDiLock()) >= 1) return
+        if (finita()) throw new Error('la transazione è finita senza attendere il lock')
+        if (Date.now() > scadenza) throw new Error('nessuna sessione in attesa di lock')
+        await new Promise(r => setTimeout(r, 20))
+      }
+    }
+
+    /** A (proprietario) inserisce il legame e tiene la transazione aperta; B (servizio) scrive lo stesso. */
+    async function provaConcorrenza(finaleDiA: 'commit' | 'rollback') {
+      const s = await scenario(1)
+      const p = await proposta(s)
+      let rilascia!: () => void
+      const gate = new Promise<void>(r => (rilascia = r))
+      let tenuto!: () => void
+      const preso = new Promise<void>(r => (tenuto = r))
+      let idA = ''
+      const a = owner
+        .$transaction(async tx => {
+          idA = (
+            await scriviProposta(tx, {
+              tenantId: s.tenantId,
+              userId: s.utenteId,
+              registroId: s.registroId,
+              verso: 'CARICO',
+              movimentoOriginaleId: s.movimentoId,
+              movimentoVigenteId: s.movimentoId,
+              dataMovimento: '2026-03-01',
+              proposta: p,
+            })
+          ).legameId
+          tenuto()
+          await gate
+          if (finaleDiA === 'rollback') throw new Error('rollback voluto')
+        }, OPZ)
+        .catch(e => {
+          if (!(e instanceof Error) || e.message !== 'rollback voluto') throw e
+        })
+      await preso
+      let finita = false
+      const b = scrivi(s, p).finally(() => (finita = true))
+      await attendiLock(() => finita)
+      rilascia()
+      await a
+      const rb = await b
+      return { s, idA, rb }
+    }
+
+    it('A non ha ancora fatto commit: B aspetta, poi restituisce il legame di A, senza errore e con una sola testata', async () => {
+      const { s, idA, rb } = await provaConcorrenza('commit')
+      expect(rb.legameId).toBe(idA)
+      expect(await owner.legameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(1)
+      expect(await owner.rigaLegameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(2)
+    })
+
+    it('A fa rollback: B inserisce la sua testata (id diverso), una sola', async () => {
+      const { s, idA, rb } = await provaConcorrenza('rollback')
+      expect(rb.legameId).not.toBe(idA)
+      expect(await owner.legameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(1)
+      expect(await owner.rigaLegameMovimento.count({ where: { tenantId: s.tenantId } })).toBe(2)
+    })
   })
 })

@@ -272,3 +272,14 @@ export async function leggiScelteProposta(
   }
   return { contratto, elenco, righe }
 }
+
+/** Il FIR esiste nell'azienda (serve a distinguere «FIR senza cliente» da «FIR non trovato»). */
+export async function firEsiste(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  firId: string
+): Promise<boolean> {
+  const r = await tx.$queryRaw<{ n: number }[]>`
+    SELECT 1 AS n FROM firs WHERE tenant_id = ${tenantId}::uuid AND id = ${firId}::uuid`
+  return r.length > 0
+}

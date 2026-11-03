@@ -36,6 +36,7 @@ import {
 } from '../../test-support/legami-di-test'
 import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
 import { leggiFatturazioneDaInTx } from './impostazioni-fatturazione.service'
+import { bloccaLegamePerRadice } from './lock-legame'
 import {
   PropostaLegameService,
   type InputProposta,
@@ -84,8 +85,11 @@ describe('PropostaLegameService — Postgres reale, ruolo wasteflow_app', () => 
 
   /** Scenario con «fatturazione da» impostata al 1 gennaio 2026 (a meno di `da: null`). */
   async function scenario(righeV = 1, da: string | null = '2026-01-01'): Promise<ScenarioProposta> {
-    const s = await creaScenarioProposta(owner, { righeV })
-    tenantCreati.push(s.tenantId)
+    // L'id si registra appena l'azienda esiste: un test rosso non lascia aziende.
+    const s = await creaScenarioProposta(owner, {
+      righeV,
+      onTenantCreato: id => tenantCreati.push(id),
+    })
     if (da !== null) {
       await owner.impostazioneFatturazione.create({
         data: { tenantId: s.tenantId, fatturazioneDa: new Date(`${da}T00:00:00Z`) },
@@ -392,6 +396,27 @@ describe('PropostaLegameService — Postgres reale, ruolo wasteflow_app', () => 
       )
     })
 
+    it('righeIds con contratto ambiguo: 400, non scartate in silenzio', async () => {
+      const s = await scenario()
+      await creaContrattoConElenco(owner, s.tenantId, { clienteId: s.clienteId })
+      await expect(calcola(s, {}, { righeIds: [s.rigaCerId] })).rejects.toMatchObject({
+        response: { error: 'RIGA_NON_SELEZIONABILE' },
+      })
+    })
+
+    it('elenco scelto non ancora iniziato: SENZA_ELENCO', async () => {
+      const s = await scenario()
+      await owner.elencoAddebiti.update({
+        where: { id: s.elencoId },
+        data: {
+          validoDal: new Date('2026-06-01T00:00:00Z'),
+          validoAl: new Date('2026-12-01T00:00:00Z'),
+        },
+      })
+      const p = await calcola(s, {}, { elencoId: s.elencoId })
+      expect(p.motivi).toEqual(['SENZA_ELENCO'])
+    })
+
     it('righe di un altro elenco: 400; riga inesistente: 404', async () => {
       const s = await scenario()
       const altroElenco = await creaContrattoConElenco(owner, s.tenantId, {
@@ -538,12 +563,26 @@ describe('PropostaLegameService — Postgres reale, ruolo wasteflow_app', () => 
       expect(await calcola(s, { producerSedeId: s.sedeId })).toMatchObject({ stato: 'PROPOSTO' })
     })
 
-    it('senza FIR la sede del corpo vale per la scelta del contratto', async () => {
+    it('senza FIR la sede del corpo si ignora (§6.3): contratti solo con sede = CONTRATTO_AMBIGUO con la lista', async () => {
       const s = await scenario()
       const sede = (await creaDittaConRuolo(owner, s.tenantId, 'PRODUTTORE')).sedeId
       await owner.contrattoCliente.update({ where: { id: s.contrattoId }, data: { sedeId: sede } })
       const p = await calcola(s, { firId: null, producerSedeId: sede }, { clienteId: s.clienteId })
-      expect(p).toMatchObject({ stato: 'PROPOSTO', contratto: { id: s.contrattoId } })
+      expect(p).toMatchObject({
+        stato: 'DA_COLLEGARE',
+        motivi: ['CONTRATTO_AMBIGUO'],
+        contratto: null,
+      })
+      expect(p.candidati.contratti.map(c => c.id)).toEqual([s.contrattoId])
+    })
+
+    it('FIR senza sede: la sede del corpo non conta', async () => {
+      const s = await scenario()
+      const sede = (await creaDittaConRuolo(owner, s.tenantId, 'PRODUTTORE')).sedeId
+      await owner.contrattoCliente.update({ where: { id: s.contrattoId }, data: { sedeId: sede } })
+      await owner.fIR.update({ where: { id: s.firId }, data: { producerSedeId: null } })
+      const p = await calcola(s, { producerSedeId: sede })
+      expect(p.motivi).toEqual(['CONTRATTO_AMBIGUO'])
     })
   })
 
@@ -760,15 +799,112 @@ describe('PropostaLegameService — Postgres reale, ruolo wasteflow_app', () => 
     })
   })
 
+  describe('proponiEScrivi: insieme bloccato e unico della catena', () => {
+    const scriviTx = (
+      tx: Prisma.TransactionClient,
+      s: ScenarioProposta,
+      o: Partial<InputProposta> = {}
+    ) =>
+      service.proponiEScrivi(tx, {
+        tenantId: s.tenantId,
+        userId: s.utenteId,
+        registroId: s.registroId,
+        verso: 'CARICO',
+        movimentoOriginaleId: s.movimentoId,
+        movimentoVigenteId: s.movimentoId,
+        input: input(s, o),
+      })
+    const OPZ = { timeout: 60_000, maxWait: 30_000 }
+
+    it('una riga V diventa proposta mentre si aspetta il lock: secondo giro di lock, scritte solo righe bloccate', async () => {
+      const s = await scenario(0)
+      const v = await creaRiga(owner, s.tenantId, s.elencoId, {
+        codiceIvaId: s.ivaId,
+        altro: { cerProposta: ['150101'] },
+      })
+      let rilascia!: () => void
+      const gate = new Promise<void>(r => (rilascia = r))
+      let tenuto!: () => void
+      const preso = new Promise<void>(r => (tenuto = r))
+      const modifica = owner.$transaction(async tx => {
+        await tx.$queryRaw`SELECT 1 FROM elenchi_addebiti WHERE id = ${s.elencoId}::uuid FOR UPDATE`
+        await tx.$executeRaw`UPDATE righe_addebito SET cer_proposta = ARRAY['200301'] WHERE id = ${v.id}::uuid`
+        tenuto()
+        await gate
+      }, OPZ)
+      await preso
+      let finita = false
+      const proposta = nel(s.tenantId, () => app.$transaction(tx => scriviTx(tx, s), OPZ)).finally(
+        () => (finita = true)
+      )
+      await attendiLock(1, () => finita)
+      rilascia()
+      await modifica
+      const r = await proposta
+      expect(r.creato).toBe(true)
+      const righe = await owner.rigaLegameMovimento.findMany({
+        where: { legameId: r.legameId! },
+        orderBy: { ordine: 'asc' },
+      })
+      expect(righe.map(x => x.rigaAddebitoId)).toEqual([s.rigaCerId, v.id])
+    })
+
+    it('se l’insieme cambia ancora dopo il secondo giro: 409 OPERAZIONE_CONCORRENTE e niente scritto', async () => {
+      const s = await scenario(3)
+      const vera = await nel(s.tenantId, () => service.calcola(s.tenantId, input(s)))
+      let n = 0
+      const spia = jest.spyOn(service, 'calcolaInTx').mockImplementation(async () => ({
+        ...vera,
+        righe: vera.righe.slice(0, 1 + n++),
+      }))
+      try {
+        await expect(
+          nel(s.tenantId, () => app.$transaction(tx => scriviTx(tx, s), OPZ))
+        ).rejects.toMatchObject({ response: { error: 'OPERAZIONE_CONCORRENTE' } })
+      } finally {
+        spia.mockRestore()
+      }
+      expect(await legamiDi(s.tenantId)).toBe(0)
+    })
+
+    it('B aspetta il lock della radice tenuto da A; dopo il commit di A restituisce lo stesso legame (creato false)', async () => {
+      const s = await scenario(1)
+      let rilascia!: () => void
+      const gate = new Promise<void>(r => (rilascia = r))
+      let tenuto!: () => void
+      const preso = new Promise<void>(r => (tenuto = r))
+      const a = nel(s.tenantId, () =>
+        app.$transaction(async tx => {
+          await bloccaLegamePerRadice(tx, s.movimentoId)
+          tenuto()
+          await gate
+          return scriviTx(tx, s) // il lock è rientrante nella stessa sessione
+        }, OPZ)
+      )
+      await preso
+      let finita = false
+      const b = nel(s.tenantId, () => app.$transaction(tx => scriviTx(tx, s), OPZ)).finally(
+        () => (finita = true)
+      )
+      await attendiLock(1, () => finita)
+      rilascia()
+      const ra = await a
+      const rb = await b
+      expect(ra.creato).toBe(true)
+      expect(rb).toMatchObject({ creato: false, legameId: ra.legameId })
+      expect(await legamiDi(s.tenantId)).toBe(1)
+    })
+  })
+
   describe('tenant e RLS', () => {
     it('la proposta di un’azienda non vede il listino di un’altra', async () => {
       const a = await scenario()
       const b = await scenario()
-      // FIR di B con il contesto di A: nessun cliente.
-      const p = await nel(a.tenantId, () =>
-        service.calcola(a.tenantId, input(a, { firId: b.firId }))
-      )
-      expect(p.cliente).toBeNull()
+      // FIR di B con il contesto di A: 404, uguale a un FIR inesistente.
+      await expect(calcola(a, { firId: b.firId })).rejects.toMatchObject({
+        response: { error: 'FIR_NON_TROVATO' },
+      })
+      await expect(calcola(a, { firId: randomUUID() })).rejects.toBeInstanceOf(NotFoundException)
     })
   })
 })

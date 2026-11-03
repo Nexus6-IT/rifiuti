@@ -38,6 +38,17 @@ describe('giorno del movimento: SQL e codice coincidono', () => {
     expect(r[0].giorno).toBe(giornoItaliano(new Date(istante)))
   })
 
+  it('non dipende dal fuso della sessione (America/New_York)', async () => {
+    const istante = '2026-03-28T23:00:00.000Z' // il 29 a Roma
+    const r = await owner.$transaction(async tx => {
+      await tx.$executeRaw`SET LOCAL TIME ZONE 'America/New_York'`
+      return tx.$queryRaw<{ giorno: string }[]>`
+        SELECT to_char(${sqlGiornoMovimento('m')}, 'YYYY-MM-DD') AS giorno
+        FROM (SELECT ${istante}::timestamp AS movement_date) m`
+    })
+    expect(r[0].giorno).toBe('2026-03-29')
+  })
+
   it('l’alias è obbligatorio e solo un identificatore semplice (nessuna iniezione)', () => {
     expect(() => sqlGiornoMovimento('m; DROP TABLE x')).toThrow(/alias/i)
     expect(sqlGiornoMovimento('wm').sql).toContain('wm.movement_date')

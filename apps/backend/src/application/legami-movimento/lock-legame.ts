@@ -2,6 +2,8 @@
 //
 //   1. lock del registro (advisory di progressivo e giacenza)
 //   2. lock consultivo del legame per radice (`bloccaLegamePerRadice`)
+//   2b. (solo chi scrive il legame: `proponiEScrivi`) riga di `impostazioni_fatturazione` FOR SHARE;
+//       chi la tiene FOR UPDATE (`imposta`) non prende altri lock, quindi nessun ciclo
 //   3. contratto FOR SHARE            \
 //   4. elenchi FOR SHARE per id        > `bloccaListinoInCondivisione`
 //   5. righe di listino FOR SHARE per id /
