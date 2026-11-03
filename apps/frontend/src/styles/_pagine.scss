@@ -1,0 +1,289 @@
+/* ============================================================================
+   WasteFlow — stili di pagina del tema "Foglio salvia" (fase 2)
+   Fonte: docs/design/stile-1.html (progetto winwaste), base.css: riga del
+   titolo, barra filtri (toolbar), tabella densa (.tbl), stati vuoti.
+
+   Come si usa: aggiungere la classe `pagina-lavoro` al contenitore `.page` della
+   pagina. TUTTE le regole stanno sotto `.pagina-lavoro`, quindi le pagine che
+   non la usano (listino, clienti, contratti...) non cambiano d'un pixel.
+   Solo token del tema: nessun colore scritto qui. Gli stili locali dei
+   componenti hanno la stessa specificita' e vengono dopo: per questo i
+   duplicati vanno tolti dal componente, non sovrascritti.
+
+   Classi:
+   .page-header / .page-title / .page-subtitle / .page-actions
+                 intestazione: titolo da 22px, sottotitolo secondario, azioni a destra
+   .filters      barra filtri piatta (niente riquadro), con
+     .filters__field (+ --tipo / --cer / --stretto), .filters__label,
+     .filters__search (campo con lente), .filters__actions (a destra)
+   .table-card   contenitore della tabella: bordo 1px, angoli 8px, scorre da solo
+   .cell-mono    codici (CER, numeri FIR): mono, cifre tabellari, mai a capo
+   .num-col / .text-right
+                 colonne numeriche: a destra, intestazione compresa
+   .cell-sub     seconda riga piccola e secondaria dentro una cella
+   .cell-nowrap  cella che non va a capo
+   .cell-ellipsis testo lungo troncato con i puntini (max 13rem; il testo completo va nel title)
+   .stato-stack  piu' stati impilati nella stessa cella
+   .empty-state  stato vuoto compatto
+   .nota-pagina  nota esplicativa secondaria sotto un blocco
+   .avviso-riquadro (+ --warn / --err / --ok)
+                 riquadro di avviso: coppie stato-*-bg / ink / edge del tema
+   Righe: filetto --rule, hover --surface-hover, selezione --selected + barra
+   teal di 2px (gia' in _primeng.scss). Niente zebra: il mockup separa le righe
+   con i filetti e la zebra con l'hover si legge peggio sulle tabelle larghe.
+   ============================================================================ */
+
+.pagina-lavoro {
+  /* ===== Intestazione ===== */
+  .page-header {
+    margin-bottom: var(--spacing-base);
+    gap: var(--spacing-md) var(--spacing-base);
+    align-items: flex-start;
+  }
+  .page-title {
+    font-size: var(--font-size-2xl);
+    line-height: 1.2;
+    font-weight: var(--font-weight-semibold);
+  }
+  .page-subtitle {
+    margin-top: var(--spacing-xs);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+    max-width: 68ch;
+  }
+  .page-actions {
+    gap: var(--spacing-sm);
+    align-items: center;
+  }
+  .page-actions .p-button,
+  .page-actions .p-splitbutton {
+    white-space: nowrap;
+  }
+
+  /* ===== Barra filtri: piatta, senza riquadro, filetto sotto ===== */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-base);
+    padding: 0 0 var(--spacing-md);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--surface-border);
+    border-radius: 0;
+  }
+  .filters__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    flex: 1 1 14rem;
+    min-width: 0;
+    max-width: 24rem;
+  }
+  .filters__field--tipo {
+    flex: 0 1 13rem;
+  }
+  .filters__field--cer {
+    flex: 0 1 15rem;
+  }
+  .filters__label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-tertiary);
+  }
+  .filters__search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  .filters__search > i {
+    position: absolute;
+    left: var(--spacing-md);
+    top: 50%;
+    margin: 0;
+    transform: translateY(-50%);
+  }
+  .filters__search > input {
+    width: 100%;
+  }
+  .filters__actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+    margin-left: auto;
+  }
+
+  /* ===== Contenitore tabella ===== */
+  .table-card {
+    padding: 0;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+  }
+  .table-card .table-responsive {
+    border-radius: 0;
+  }
+  .p-datatable .p-datatable-thead > tr > th {
+    height: 2.25rem;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .p-datatable .p-datatable-tbody > tr > td {
+    vertical-align: middle;
+    padding-top: var(--spacing-sm);
+    padding-bottom: var(--spacing-sm);
+  }
+  .p-datatable .p-datatable-tbody > tr:last-child > td {
+    border-bottom: 0;
+  }
+  .p-datatable .p-datatable-thead > tr > th.num-col,
+  .p-datatable .p-datatable-thead > tr > th.text-right,
+  .p-datatable .p-datatable-tbody > tr > td.num-col,
+  .p-datatable .p-datatable-tbody > tr > td.text-right {
+    text-align: right;
+  }
+  /* Le quantita' non vanno a capo ("2.400,5 kg" spezzato era illeggibile su telefono): la tabella scorre. */
+  .p-datatable .p-datatable-tbody > tr > td.num-col, .p-datatable .p-datatable-tbody > tr > td.text-right { white-space: nowrap; }
+  .p-paginator {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-top: 1px solid var(--rule);
+  }
+
+  .cell-mono {
+    font-family: var(--font-family-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    white-space: nowrap;
+    font-size: var(--font-size-sm);
+  }
+  .cell-nowrap {
+    white-space: nowrap;
+  }
+  .cell-ellipsis {
+    display: block;
+    max-width: 13rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cell-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--font-size-xs);
+    line-height: 1.3;
+    color: var(--text-tertiary);
+  }
+  .num-col,
+  .text-right {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .stato-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+
+  /* ===== Riquadri di avviso (coppie stato del tema) ===== */
+  .avviso-riquadro {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: flex-start;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-md);
+    background: var(--stato-ok-bg);
+    color: var(--stato-ok-ink);
+    border: 1px solid var(--surface-border);
+    font-size: var(--font-size-sm);
+  }
+  .avviso-riquadro--warn {
+    background: var(--stato-warn-bg);
+    color: var(--stato-warn-ink);
+    border-color: var(--stato-warn-edge);
+  }
+  .avviso-riquadro--err {
+    background: var(--stato-err-bg);
+    color: var(--stato-err-ink);
+    border-color: var(--stato-err-edge);
+  }
+  .avviso-riquadro--ok {
+    background: var(--stato-sent-bg);
+    color: var(--stato-sent-ink);
+    border-color: transparent;
+  }
+
+  .nota-pagina {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    line-height: 1.45;
+  }
+
+  /* ===== Stato vuoto: compatto, icona piccola ===== */
+  .empty-state {
+    padding: var(--spacing-xl) var(--spacing-base);
+    gap: var(--spacing-sm);
+  }
+  .empty-state__icon {
+    font-size: 2rem;
+    color: var(--text-disabled);
+  }
+  .empty-state__title {
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
+    margin: 0;
+  }
+  .empty-state p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+  }
+
+  /* ===== Riquadri e cifre di sintesi ===== */
+  .surface-card {
+    padding: var(--spacing-base) var(--spacing-lg);
+  }
+  .surface-card.table-card {
+    padding: 0;
+  }
+  .stat-grid {
+    gap: var(--spacing-md);
+  }
+  .stat-card {
+    padding: var(--spacing-md) var(--spacing-base);
+  }
+  .stat-card__label {
+    font-size: var(--font-size-xs);
+  }
+  .stat-card__value {
+    font-size: var(--font-size-3xl);
+  }
+}
+
+/* ===== Telefono: filtri a tutta larghezza, tabelle scorrono nel proprio contenitore ===== */
+@media (max-width: 768px) {
+  .pagina-lavoro {
+    .page-title {
+      font-size: var(--font-size-xl);
+    }
+    .filters__field,
+    .filters__field--tipo,
+    .filters__field--cer {
+      flex: 1 1 100%;
+      max-width: none;
+    }
+    .filters__actions {
+      flex: 1 1 100%;
+      margin-left: 0;
+    }
+    .filters__actions .p-button {
+      flex: 1 1 auto;
+    }
+    .surface-card {
+      padding: var(--spacing-md);
+    }
+  }
+}

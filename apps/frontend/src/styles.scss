@@ -7,6 +7,7 @@
    Struttura:
    - styles/_tokens.scss   token chiari e scuri (nomi storici + nuovi)
    - styles/_primeng.scss  override dei componenti PrimeNG (base: Aura "noir")
+   - styles/_pagine.scss   stili di pagina (classe `pagina-lavoro`): intestazione, filtri, tabelle
    - questo file           reset, tipografia, utility, layout pagina
 
    I nomi dei token sono preservati: i componenti usano i var(--...) e si
@@ -18,6 +19,7 @@
 
 @use 'styles/tokens';
 @use 'styles/primeng';
+@use 'styles/pagine';
 
 /* ===== Reset ===== */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
