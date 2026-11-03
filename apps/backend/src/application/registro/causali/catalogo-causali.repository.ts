@@ -18,6 +18,8 @@ interface RigaSistemaDb {
   operazione: string | null
   ordine: number
   attiva: boolean
+  /** Colonna aggiunta dalla migration del Task 3: finche' manca, lettura tollerante. */
+  fatturabile?: boolean
 }
 
 /** Riga di `causali_registro_azienda` come la restituisce Prisma (colonne DATE = mezzanotte UTC). */
@@ -33,6 +35,8 @@ interface RigaAziendaDb {
   ordine: number
   validaDal: Date | null
   validaAl: Date | null
+  /** Colonna aggiunta dalla migration del Task 3: finche' manca, lettura tollerante. */
+  fatturabile?: boolean | null
 }
 
 /**
@@ -79,6 +83,9 @@ export async function caricaCatalogoCausali(
     operazione: r.operazione,
     ordine: r.ordine,
     attiva: r.attiva,
+    // TODO Task 3: leggere solo la colonna. Fino ad allora il default e' il valore del catalogo
+    // (decisione 15: solo INGRESSO_ESTERNO/CARICO).
+    fatturabile: r.fatturabile ?? (r.codice === 'INGRESSO_ESTERNO' && r.verso === 'CARICO'),
   }))
   const righeAzienda: RigaCausaleAzienda[] = azienda.map(r => ({
     id: r.id,
@@ -92,6 +99,7 @@ export async function caricaCatalogoCausali(
     ordine: r.ordine,
     validaDal: dataColonnaComeGiorno(r.validaDal),
     validaAl: dataColonnaComeGiorno(r.validaAl),
+    fatturabile: r.fatturabile ?? null,
   }))
   return new CatalogoCausali(righeSistema, righeAzienda)
 }

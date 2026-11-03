@@ -45,5 +45,7 @@ export function righeCausaliSistema(): RigaCausaleSistema[] {
     operazione,
     ordine,
     attiva: true,
+    // Decisione 15: fatturabile solo l'ingresso da esterno.
+    fatturabile: codice === 'INGRESSO_ESTERNO' && verso === 'CARICO',
   }))
 }

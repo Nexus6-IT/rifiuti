@@ -67,6 +67,7 @@ const versione = (p: Partial<RigaCausaleAzienda>): RigaCausaleAzienda => ({
   ordine: 100,
   validaDal: '2025-01-01',
   validaAl: null,
+  fatturabile: false,
   ...p,
 })
 

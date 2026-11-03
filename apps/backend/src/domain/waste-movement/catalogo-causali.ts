@@ -18,6 +18,8 @@ export interface RigaCausaleSistema {
   operazione: string | null
   ordine: number
   attiva: boolean
+  /** Le registrazioni con questa causale entrano nella fatturazione (decisione 15). */
+  fatturabile: boolean
 }
 
 /**
@@ -39,6 +41,8 @@ export interface RigaCausaleAzienda {
   validaDal: string | null
   /** `AAAA-MM-GG`; null = aperta. */
   validaAl: string | null
+  /** null solo per natura DISATTIVAZIONE (la causale di sistema resta col suo valore). */
+  fatturabile: boolean | null
 }
 
 export interface DefinizioneCausale {
@@ -55,6 +59,7 @@ export interface DefinizioneCausale {
   validaDal: string | null
   validaAl: string | null
   attiva: boolean
+  fatturabile: boolean
 }
 
 export type MotivoNonSelezionabile = 'SCONOSCIUTA' | 'VERSO' | 'DISATTIVATA' | 'FUORI_VALIDITA'
@@ -93,6 +98,7 @@ function daSistema(riga: RigaCausaleSistema): DefinizioneCausale {
     validaDal: null,
     validaAl: null,
     attiva: riga.attiva,
+    fatturabile: riga.fatturabile,
   }
 }
 
@@ -110,6 +116,7 @@ function daAzienda(riga: RigaCausaleAzienda): DefinizioneCausale {
     validaDal: riga.validaDal,
     validaAl: riga.validaAl,
     attiva: true,
+    fatturabile: riga.fatturabile ?? false,
   }
 }
 

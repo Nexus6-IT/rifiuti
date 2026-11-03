@@ -62,6 +62,7 @@ describe('validaDatiMovimento', () => {
       cerCode: '20 03 01',
       causaleAziendaId: null,
       causaleDescrizione: 'Produzione interna',
+      fatturabile: false,
     })
   })
   it('legge il catalogo dell azienda indicata', async () => {
@@ -113,7 +114,17 @@ describe('validaDatiMovimento', () => {
       cerCode: '20 03 01',
       causaleAziendaId: VERSIONE_1,
       causaleDescrizione: 'Prova aziendale',
+      fatturabile: false,
     })
+  })
+  it('esito ok porta fatturabile dalla definizione risolta', async () => {
+    const r = await validaDatiMovimento(db(), {
+      ...ok,
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+    })
+    expect(r.errore).toBeUndefined()
+    expect(r).toMatchObject({ fatturabile: true })
   })
   it('causale propria con due versioni: sceglie quella valida alla data dell operazione', async () => {
     const azienda = [
