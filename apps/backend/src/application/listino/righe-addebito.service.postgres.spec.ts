@@ -341,6 +341,46 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(capitolo.getResponse().errori[0].campo).toBe('cerCode')
     })
 
+    it('tipo della riga diverso da quello dell’addebito scelto: 400 sul campo tipo, in creazione e in modifica', async () => {
+      const s = await scenario()
+      const f = await creaAddebito(owner, s.tenantId, { tipo: 'F' })
+      const incoerente = await errore(
+        crea(s, {
+          tipo: 'V',
+          addebitoId: f.id,
+          tipoQuantita: 'UNO',
+          unitaMisura: 'NR',
+          prezzo: '1',
+        })
+      )
+      expect(incoerente.getStatus()).toBe(400)
+      expect(incoerente.getResponse().errori).toEqual([
+        {
+          campo: 'tipo',
+          messaggio: 'Il tipo della riga non corrisponde al tipo dell’addebito scelto (F).',
+        },
+      ])
+      expect(await owner.rigaAddebito.count({ where: { tenantId: s.tenantId } })).toBe(0)
+
+      // Coerente: la riga nasce. Poi cambiare solo il tipo la rende incoerente: 400, riga invariata.
+      const v = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
+      const riga = await crea(s, {
+        tipo: 'V',
+        addebitoId: v.id,
+        tipoQuantita: 'PESO_NETTO',
+        unitaMisura: 'KG',
+        prezzo: '1',
+      })
+      const cambio = await errore(
+        service.modifica(s.tenantId, s.utenteId, riga.id, { versione: 1, tipo: 'N' + 'M' })
+      )
+      expect(cambio.getStatus()).toBe(400)
+      expect(cambio.getResponse().errori).toEqual(
+        expect.arrayContaining([expect.objectContaining({ campo: 'tipo' })])
+      )
+      expect((await service.getById(s.tenantId, riga.id)).versione).toBe(1)
+    })
+
     it('addebito disattivato e codice IVA di un’altra azienda', async () => {
       const s = await scenario()
       const altra = await azienda()
@@ -967,7 +1007,8 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       const s = await scenario()
       const altra = await azienda()
       const riga = await creaRiga(owner, s.tenantId, s.elencoId, { codiceIvaId: s.listino.iva22Id })
-      for (const t of [altra.tenantId]) {
+      {
+        const t = altra.tenantId
         expect((await errore(service.getById(t, riga.id))).getStatus()).toBe(404)
         expect((await errore(service.list(t, s.elencoId))).getStatus()).toBe(404)
         expect(
@@ -991,6 +1032,16 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
           await errore(service.modifica(s.tenantId, s.utenteId, riga.id, { versione: 1 }))
         ).getStatus()
       ).toBe(404)
+      expect((await errore(service.elimina(s.tenantId, s.utenteId, riga.id, 1))).getStatus()).toBe(
+        404
+      )
+      expect(
+        (
+          await errore(service.crea(s.tenantId, s.utenteId, s.elencoId, { tipo: 'CER' }))
+        ).getStatus()
+      ).toBe(404)
+      // La riga c'e' ancora: nessuna delle rotte ha scritto.
+      expect(await owner.rigaAddebito.count({ where: { id: riga.id, versione: 1 } })).toBe(1)
     })
   })
 

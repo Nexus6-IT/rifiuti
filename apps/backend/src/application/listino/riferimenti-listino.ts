@@ -110,8 +110,27 @@ export async function controllaRiferimentiListino(
 // Riferimenti di una riga di addebito (4.2b, R41)
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Voci ancora presenti in RENTRI di una tabella di codifiche semplici (stati fisici, operazioni):
+ * `codice` e' l'`external_id`, quello che la riga salva (R42). Sola lettura del catalogo globale:
+ * la stessa condizione (`presenteInRentri`) usata da `controllaRiferimentiRiga` per validare.
+ */
+export async function codificheRentriPresenti(
+  client: Pick<Prisma.TransactionClient, 'rentriCodificaSemplice'>,
+  tabella: string
+): Promise<{ codice: string; descrizione: string }[]> {
+  const voci = await client.rentriCodificaSemplice.findMany({
+    where: { tabella, presenteInRentri: true },
+    select: { externalId: true, name: true },
+    orderBy: [{ name: 'asc' }, { externalId: 'asc' }],
+  })
+  return voci.map(v => ({ codice: v.externalId, descrizione: v.name }))
+}
+
 export interface RiferimentiRiga {
   addebitoId?: string | null
+  /** Tipo della riga: se c'e' un addebito da controllare, deve essere quello dell'addebito. */
+  tipoRiga?: string | null
   codiceIvaId?: string | null
   categoriaId?: string | null
   centroRicavoId?: string | null
@@ -166,6 +185,12 @@ export async function controllaRiferimentiRiga(
       : []
     if (trovati.length === 0 || !trovati[0].attivo || trovati[0].tipo === 'CER') {
       e('addebitoId', MSG_ADDEBITO)
+    } else if (presente(r.tipoRiga) && trovati[0].tipo !== r.tipoRiga) {
+      // La riga nasce dall'addebito e ne eredita il tipo (D6, D7): un tipo diverso e' incoerente.
+      e(
+        'tipo',
+        `Il tipo della riga non corrisponde al tipo dell’addebito scelto (${trovati[0].tipo}).`
+      )
     }
   }
 

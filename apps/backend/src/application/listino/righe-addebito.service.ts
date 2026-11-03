@@ -25,6 +25,7 @@ import {
   normalizzaCascata,
   prezzoCalcolato,
 } from '../../domain/listino/importi-riga'
+import { ordinaRigheListino } from '../../domain/listino/ordine-righe'
 import type { Scaglione } from '../../domain/listino/prezzo-speciale'
 import {
   ETICHETTE_CAMPI_RIGA,
@@ -63,7 +64,11 @@ import {
   normalizzaCerCode,
   type LettoreCatalogoCer,
 } from '../registro/cer-catalogo'
-import { controllaRiferimentiRiga, MSG_CER_NON_NEL_CATALOGO } from './riferimenti-listino'
+import {
+  codificheRentriPresenti,
+  controllaRiferimentiRiga,
+  MSG_CER_NON_NEL_CATALOGO,
+} from './riferimenti-listino'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'RIGA_ADDEBITO',
@@ -352,13 +357,10 @@ export class RigheAddebitoService {
         const righe = await tx.rigaAddebito.findMany({
           where: { tenantId, elencoId },
           include: INCLUDE,
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          orderBy: { id: 'asc' },
         })
-        // Come WinWaste (`ORDER BY TIPO, addeb`): tipo, poi CER o codice dell'addebito, riferimento.
-        const chiave = (r: (typeof righe)[number]) =>
-          [r.tipo, r.cerCode ?? r.addebito?.codice ?? '', r.riferimento ?? ''].join('\u0000')
-        righe.sort((a, b) => (chiave(a) < chiave(b) ? -1 : chiave(a) > chiave(b) ? 1 : 0))
-        return righe.map(r => this.vista(r))
+        // Come la tavola di WinWaste (`riempitavola`: ORDER BY TIPO, addeb): tipo, poi CER o addebito.
+        return ordinaRigheListino(righe).map(r => this.vista(r))
       })
     )
   }
@@ -379,12 +381,7 @@ export class RigheAddebitoService {
   async codificheRentri(
     tabella: TabellaCodificheRentri
   ): Promise<{ codice: string; descrizione: string }[]> {
-    const voci = await this.prisma.rentriCodificaSemplice.findMany({
-      where: { tabella, presenteInRentri: true },
-      select: { externalId: true, name: true },
-      orderBy: [{ name: 'asc' }, { externalId: 'asc' }],
-    })
-    return voci.map(v => ({ codice: v.externalId, descrizione: v.name }))
+    return codificheRentriPresenti(this.prisma, tabella)
   }
 
   /**
@@ -710,7 +707,10 @@ export class RigheAddebitoService {
     )
     errori.push(
       ...(await controllaRiferimentiRiga(tx, tenantId, {
-        addebitoId: inviati.has('addebitoId') ? nuovi.addebitoId : null,
+        // L'addebito si ricontrolla anche quando cambia solo il tipo della riga (decisione 4: il
+        // tipo deve restare quello dell'addebito scelto).
+        addebitoId: inviati.has('addebitoId') || inviati.has('tipo') ? nuovi.addebitoId : null,
+        tipoRiga: nuovi.tipo,
         codiceIvaId: inviati.has('codiceIvaId') ? nuovi.codiceIvaId : null,
         categoriaId: inviati.has('categoriaId') ? nuovi.categoriaId : null,
         centroRicavoId: inviati.has('centroRicavoId') ? nuovi.centroRicavoId : null,
