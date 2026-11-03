@@ -46,6 +46,7 @@ import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ConsegnaDaAccessoComponent, SceltaConsegna } from './consegna-da-accesso.component'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 /** Ruoli autorizzati a trasmettere/confermare verso RENTRI (v. RENTRISyncController backend). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
@@ -71,6 +72,7 @@ interface OpzioneSede {
     TagModule,
     DialogModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     MessageModule,
     ConfirmDialogModule,
     SplitButtonModule,
@@ -707,6 +709,11 @@ interface OpzioneSede {
                     >Quantità dichiarata <span class="req" aria-hidden="true">*</span></label
                   >
                   <p-inputNumber
+                    appNumeroIt
+                    locale="it-IT"
+                    [useGrouping]="false"
+                    mode="decimal"
+                    [maxFractionDigits]="3"
                     inputId="new-qta"
                     [(ngModel)]="newFIR.rifiuto.quantita"
                     (ngModelChange)="clearFirError('quantita')"
@@ -823,6 +830,10 @@ interface OpzioneSede {
                 <div class="field">
                   <label for="new-colli">N° colli</label>
                   <p-inputNumber
+                    appNumeroIt
+                    locale="it-IT"
+                    soloIntero
+                    [maxFractionDigits]="0"
                     inputId="new-colli"
                     [(ngModel)]="newFIR.rifiuto.numeroColli"
                     [min]="1"
@@ -952,6 +963,10 @@ interface OpzioneSede {
           <div class="dialog-form__field">
             <label for="peso-effettivo">Quantità verificata a destino ({{ unitaConsegna }})</label>
             <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              [useGrouping]="false"
+              mode="decimal"
               inputId="peso-effettivo"
               [(ngModel)]="pesoEffettivo"
               [minFractionDigits]="2"

@@ -40,6 +40,7 @@ import {
   righeIntegrazioni,
   testoConferma,
 } from './mud.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 /** Riga della tabella per CER, comune al file e alle sue dichiarazioni. */
 interface RigaCerTabella {
@@ -105,6 +106,7 @@ function oggiIso(): string {
     DialogModule,
     DropdownModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputSwitchModule,
     InputTextModule,
     RadioButtonModule,
@@ -333,6 +335,8 @@ function oggiIso(): string {
               <div class="mud-integrazione__campo">
                 <label [for]="'mud-int-kg-' + i">kg per {{ riga.unita }}</label>
                 <p-inputNumber
+                  appNumeroIt
+                  [useGrouping]="false"
                   [inputId]="'mud-int-kg-' + i"
                   [(ngModel)]="riga.kgPerUnita"
                   mode="decimal"

@@ -34,6 +34,7 @@ import {
   AllegatoFirRentri,
   AzioneRentri,
 } from '../rentri/rentri-fir-lifecycle.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 /** Limite di dimensione dell'allegato (byte), replica lato UI del vincolo del
  * contratto (`DatiAllegatoModel.contenuto`, 1 MB) — difesa aggiuntiva,
@@ -93,6 +94,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     DropdownModule,
     InputTextareaModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     RENTRISyncBadgeComponent,
     RENTRISyncLogsComponent,
   ],
@@ -629,6 +631,10 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           <div class="form-field">
             <label for="accettazione-quantita">Quantità accettata (kg) *</label>
             <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              [useGrouping]="false"
+              mode="decimal"
               inputId="accettazione-quantita"
               [(ngModel)]="accettazioneQuantitaKg"
               [min]="0"
