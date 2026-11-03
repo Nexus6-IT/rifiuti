@@ -107,6 +107,7 @@ import {
   testoCorrezione,
   testoEsitoVerifica,
 } from './registro-correzioni'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 interface DropdownOption<T> {
   label: string
@@ -134,6 +135,7 @@ interface FirOption {
     DialogModule,
     CalendarModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputTextModule,
     InputTextareaModule,
     DropdownModule,
@@ -767,6 +769,8 @@ interface FirOption {
                     <span class="req" aria-hidden="true">*</span></label
                   >
                   <p-inputNumber
+                    appNumeroIt
+                    [useGrouping]="false"
                     formControlName="quantity"
                     inputId="quantity"
                     [minFractionDigits]="0"
@@ -988,6 +992,10 @@ interface FirOption {
               >Primo numero <span class="req" aria-hidden="true">*</span></label
             >
             <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              soloIntero
+              [maxFractionDigits]="0"
               formControlName="primoProgressivo"
               inputId="primoProgressivo"
               [min]="1"

@@ -68,3 +68,14 @@ export async function lockConsultivoContratto(
   await tx.$executeRaw`
     SELECT pg_advisory_xact_lock(hashtext('listino-contratto'), hashtext(${contrattoId}))`
 }
+
+/**
+ * Per le letture e i lock su liste grandi di id (`JOIN unnest(uuid[])`): vieta il nested loop per
+ * il resto della transazione. Con le statistiche vuote (copia in massa appena fatta, database
+ * nuovo) e piano generico il planner stima 1 riga da entrambe le parti e sceglie un nested loop
+ * che rilegge la lista a ogni riga (10.000 x 10.000, misurato 9-30 s); hash e merge join sono
+ * lineari qualunque sia la stima. Sono query su liste di migliaia di id: il nested loop non serve.
+ */
+export async function joinLineari(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRaw`SET LOCAL enable_nestloop = off`
+}

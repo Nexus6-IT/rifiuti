@@ -84,6 +84,15 @@ describe('validaElenco', () => {
     expect(validaElenco({ ...base(), codice: 'ABCD' })).toEqual([msg])
   })
 
+  it('il codice 000 è vietato (come per le codifiche), anche scritto 0 o 00', () => {
+    const msg = 'Il codice 000 non è ammesso: usa un codice da 001 a 999 o con lettere.'
+    expect(validaElenco(base({ codice: '000' }))).toEqual([msg])
+    expect(validaElenco(base({ codice: '0' }))).toEqual([msg])
+    expect(validaElenco(base({ codice: '00' }))).toEqual([msg])
+    expect(validaElenco(base({ codice: '001' }))).toEqual([])
+    expect(validaElenco(base({ codice: 'A00' }))).toEqual([])
+  })
+
   it('una sola data', () => {
     const msg =
       "Indica sia la data di inizio sia quella di fine dell'elenco, oppure nessuna delle due."

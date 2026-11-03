@@ -849,6 +849,21 @@ describe('ContrattoClienteDialogComponent', () => {
       expect(bottone('contratto-dlg-salva')!.disabled).toBeFalse()
     })
 
+    it('Salva disattivato per un numero errato: il motivo è scritto (voce 30)', async () => {
+      await apri(contratto())
+      expect(q('contratto-dlg-salva-motivo')).toBeNull()
+      scrivi('contratto-dlg-ritenuta', '1.5')
+      await stabilizza(fixture)
+      expect(bottone('contratto-dlg-salva')!.disabled).toBeTrue()
+      expect(q('contratto-dlg-salva-motivo')!.textContent).toContain('la ritenuta')
+      expect(bottone('contratto-dlg-salva')!.getAttribute('aria-describedby')).toBe(
+        'contratto-dlg-salva-motivo'
+      )
+      scrivi('contratto-dlg-ritenuta', '1,5')
+      await stabilizza(fixture)
+      expect(q('contratto-dlg-salva-motivo')).toBeNull()
+    })
+
     it('lettura fallita: messaggio del backend e nessun salvataggio', async () => {
       contratti.get.and.returnValue(
         throwError(() => ({ status: 404, error: { message: 'Contratto non trovato.' } }))

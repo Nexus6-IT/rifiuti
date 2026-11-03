@@ -136,7 +136,7 @@ describe('ListinoContrattoComponent', () => {
     righeList = jasmine.createSpy('list').and.returnValue(of([riga('r1')]))
     righeCrea = jasmine.createSpy('crea').and.returnValue(of(riga('r2')))
     righeModifica = jasmine.createSpy('modifica').and.returnValue(of(riga('r1')))
-    righeElimina = jasmine.createSpy('elimina').and.returnValue(of(undefined))
+    righeElimina = jasmine.createSpy('elimina').and.returnValue(of({ avvisi: [] }))
     allegatiElenco = jasmine
       .createSpy('allegatiElenco')
       .and.returnValue(
@@ -692,6 +692,26 @@ describe('ListinoContrattoComponent', () => {
       expect(righeList).toHaveBeenCalledTimes(1)
     })
 
+    it('salvando una riga con avvisi compaiono come stato; senza avvisi niente (m9)', async () => {
+      righeModifica.and.returnValue(
+        of({ ...riga('r1'), avvisi: ['La riga TS 00007 cita la condizione 1.'] })
+      )
+      await apri()
+      await scegli('e1')
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('listino-avvisi-riga')!.getAttribute('role')).toBe('status')
+      expect(q('listino-avvisi-riga')!.textContent).toContain('cita la condizione 1')
+      righeModifica.and.returnValue(of({ ...riga('r1'), avvisi: [] }))
+      bottone('listino-apri-r1')!.click()
+      await stabilizza(fixture)
+      bottone('riga-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('listino-avvisi-riga')).toBeNull()
+    })
+
     it('409 nel dialog della riga: Ricarica chiude e rilegge elenchi e righe', async () => {
       righeModifica.and.returnValue(
         throwError(() => ({ status: 409, error: { message: 'Riga modificata.' } }))
@@ -766,6 +786,32 @@ describe('ListinoContrattoComponent', () => {
       expect(delContratto).toHaveBeenCalledTimes(2)
     })
 
+    it('eliminando una riga citata come condizione gli avvisi compaiono come stato (m9)', async () => {
+      righeElimina.and.returnValue(
+        of({
+          avvisi: ['La riga TS 00007 cita la condizione 1, che non ha più addebiti condizionati.'],
+        })
+      )
+      await apri()
+      await scegli('e1')
+      expect(q('listino-avvisi-riga')).toBeNull()
+      await elimina()
+      accettaConferma()
+      await stabilizza(fixture)
+      const a = q('listino-avvisi-riga')!
+      expect(a.getAttribute('role')).toBe('status')
+      expect(a.textContent).toContain('cita la condizione 1')
+    })
+
+    it('eliminando senza avvisi non compare nessun avviso (m9)', async () => {
+      await apri()
+      await scegli('e1')
+      await elimina()
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(q('listino-avvisi-riga')).toBeNull()
+    })
+
     it('Annulla nella conferma non cancella nulla', async () => {
       await apri()
       await scegli('e1')
@@ -798,9 +844,22 @@ describe('ListinoContrattoComponent', () => {
     })
 
     it('elenco non modificabile: nessun pulsante', async () => {
-      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
+      await apri(
+        'ADMIN',
+        risposta('ATTIVO', [elenco('e1', { modificabile: false, eliminabile: false })])
+      )
       await scegli('e1')
       expect(q('listino-elimina-riga-r1')).toBeNull()
+    })
+
+    it('il cestino segue `eliminabile`, non `modificabile` (voce 26)', async () => {
+      const c = await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { eliminabile: false })]))
+      await scegli('e1')
+      expect(q('listino-elimina-riga-r1')).toBeNull()
+      c.eliminaRiga(riga('r1'))
+      await stabilizza(fixture)
+      expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
+      expect(righeElimina).not.toHaveBeenCalled()
     })
 
     it('409 di versione: messaggio con "Ricarica", senza rileggere di nascosto', async () => {

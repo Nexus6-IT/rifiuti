@@ -689,6 +689,33 @@ describe('ContrattiClienteListComponent', () => {
       expect(figlio(VariazioneDialogFinta).contrattiIds).toEqual([])
     })
 
+    it('"scegli tutti della pagina" spunta e toglie i contratti visibili', async () => {
+      await apri('ADMIN', due())
+      q<HTMLInputElement>('contratti-scegli-pagina')!.click()
+      await stabilizza(fixture)
+      expect(q('contratti-scelti')!.textContent).toContain('2 contratti scelti')
+      q<HTMLInputElement>('contratti-scegli-pagina')!.click()
+      await stabilizza(fixture)
+      expect(q('contratti-scelti')).toBeNull()
+    })
+
+    it('la casella della pagina è indeterminata con una scelta parziale', async () => {
+      await apri('ADMIN', due())
+      q<HTMLInputElement>('contratti-scegli-cc1')!.click()
+      await stabilizza(fixture)
+      expect(q<HTMLInputElement>('contratti-scegli-pagina')!.indeterminate).toBeTrue()
+      expect(q<HTMLInputElement>('contratti-scegli-pagina')!.checked).toBeFalse()
+    })
+
+    it('a variazione applicata la scelta dei contratti si svuota (voce 14)', async () => {
+      await apri('ADMIN', due())
+      q<HTMLInputElement>('contratti-scegli-cc1')!.click()
+      await stabilizza(fixture)
+      figlio(VariazioneDialogFinta).applicata.emit(2)
+      await stabilizza(fixture)
+      expect(q('contratti-scelti')).toBeNull()
+    })
+
     it('la voce ISTAT apre il suo dialog; a fine variazione la lista si ricarica', async () => {
       await apri('ADMIN', due())
       fixture.componentInstance.voci[1].command!({})

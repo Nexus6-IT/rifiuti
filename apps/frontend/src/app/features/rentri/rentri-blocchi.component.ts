@@ -9,6 +9,7 @@ import { MessageModule } from 'primeng/message'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { RentriBlocchiService, RentriBlocco, RentriScorta } from './rentri-blocchi.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 /** Ruoli con visibilità sulla pagina (stessi di diagnostica/formulari RENTRI). */
 const RENTRI_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR']
@@ -37,6 +38,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
     TagModule,
     DialogModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     MessageModule,
   ],
   template: `
@@ -229,6 +231,11 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
         <div class="field mb-3">
           <label for="vidima-quantita" class="block mb-2">Quantità di numeri da vidimare *</label>
           <p-inputNumber
+            appNumeroIt
+            locale="it-IT"
+            [useGrouping]="false"
+            soloIntero
+            [maxFractionDigits]="0"
             inputId="vidima-quantita"
             [(ngModel)]="quantitaVidimazione"
             [min]="1"

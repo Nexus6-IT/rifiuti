@@ -208,6 +208,8 @@ const decimaliMax =
           <div class="field">
             <label id="str-portata-etichetta" for="str-portata">Portata massima (kg)</label>
             <p-inputNumber
+              [messaggioInterno]="false"
+              [useGrouping]="false"
               appPesoIt
               (rifiutato)="rifiutoPortata.set($event)"
               formControlName="portataMaxKg"
@@ -226,8 +228,8 @@ const decimaliMax =
               styleClass="w-full"
             ></p-inputNumber>
             <small id="str-portata-aiuto" class="field-hint"
-              >Con la virgola per i decimali (al massimo due). Il separatore delle migliaia lo
-              inserisce il campo. Facoltativa.</small
+              >Con la virgola per i decimali (al massimo due). Niente separatore delle migliaia.
+              Facoltativa.</small
             >
             <small
               *ngIf="erroreNumero('portataMaxKg', rifiutoPortata()) as e"
@@ -241,6 +243,8 @@ const decimaliMax =
           <div class="field">
             <label id="str-divisione-etichetta" for="str-divisione">Divisione (kg)</label>
             <p-inputNumber
+              [messaggioInterno]="false"
+              [useGrouping]="false"
               appPesoIt
               (rifiutato)="rifiutoDivisione.set($event)"
               formControlName="divisioneKg"
@@ -259,8 +263,8 @@ const decimaliMax =
               styleClass="w-full"
             ></p-inputNumber>
             <small id="str-divisione-aiuto" class="field-hint"
-              >Esempio 0,5, al massimo tre decimali. Il separatore delle migliaia lo inserisce il
-              campo. Un peso non multiplo della divisione genera un avviso.</small
+              >Esempio 0,5, al massimo tre decimali. Niente separatore delle migliaia. Un peso non
+              multiplo della divisione genera un avviso.</small
             >
             <small
               *ngIf="erroreNumero('divisioneKg', rifiutoDivisione()) as e"

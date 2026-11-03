@@ -23,6 +23,7 @@ import {
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { MSG_VARIAZIONE_SUPERATA, traduciConflitto } from './conflitti-variazione'
+import { joinLineari } from './lock-listino'
 import { controllaRiferimentiListino } from './riferimenti-listino'
 
 export interface FiltroVariazioneArchivio {
@@ -178,13 +179,15 @@ export class VariazioniArchivioService {
           const candidati = (await this.trova(tx, tenantId, n)).map(a => a.id).sort()
           if (candidati.length > 0) {
             await tx.$queryRaw`
-            SELECT id::text AS id FROM addebiti
-            WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${candidati}::uuid[])
-            ORDER BY id FOR NO KEY UPDATE`
+            SELECT a.id::text AS id FROM addebiti a
+            JOIN unnest(${candidati}::uuid[]) AS chiesti(chiesto) ON chiesto = a.id
+            WHERE a.tenant_id = ${tenantId}::uuid
+            ORDER BY a.id FOR NO KEY UPDATE OF a`
             await tx.$queryRaw`
-            SELECT id::text AS id FROM prezzi_listino_addebito
-            WHERE tenant_id = ${tenantId}::uuid AND addebito_id = ANY(${candidati}::uuid[])
-            ORDER BY addebito_id, numero FOR NO KEY UPDATE`
+            SELECT p.id::text AS id FROM prezzi_listino_addebito p
+            JOIN unnest(${candidati}::uuid[]) AS chiesti(chiesto) ON chiesto = p.addebito_id
+            WHERE p.tenant_id = ${tenantId}::uuid
+            ORDER BY p.addebito_id, p.numero FOR NO KEY UPDATE OF p`
           }
 
           // Rilettura dopo il blocco: e' questo lo stato che si confronta e si scrive.
@@ -204,9 +207,10 @@ export class VariazioniArchivioService {
           if (calcolo.addebitiIds.length > 0) {
             if (n.tipo === 'SOSTITUZIONE_IVA') {
               await tx.$executeRaw`
-              UPDATE addebiti SET codice_iva_id = ${n.a}::uuid, versione = versione + 1,
+              UPDATE addebiti a SET codice_iva_id = ${n.a}::uuid, versione = a.versione + 1,
                 updated_at = now()
-              WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${calcolo.addebitiIds}::uuid[])`
+              FROM unnest(${calcolo.addebitiIds}::uuid[]) AS chiesti(chiesto)
+              WHERE a.tenant_id = ${tenantId}::uuid AND a.id = chiesto`
             } else {
               const ids = calcolo.prezzi.map(p => p.id)
               const valori = calcolo.prezzi.map(p => p.prezzo)
@@ -215,8 +219,9 @@ export class VariazioniArchivioService {
               FROM (SELECT unnest(${ids}::uuid[]) AS id, unnest(${valori}::numeric[]) AS prezzo) v
               WHERE p.tenant_id = ${tenantId}::uuid AND p.id = v.id`
               await tx.$executeRaw`
-              UPDATE addebiti SET versione = versione + 1, updated_at = now()
-              WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${calcolo.addebitiIds}::uuid[])`
+              UPDATE addebiti a SET versione = a.versione + 1, updated_at = now()
+              FROM unnest(${calcolo.addebitiIds}::uuid[]) AS chiesti(chiesto)
+              WHERE a.tenant_id = ${tenantId}::uuid AND a.id = chiesto`
             }
           }
 
@@ -270,6 +275,7 @@ export class VariazioniArchivioService {
     tenantId: string,
     n: Normalizzata
   ): Promise<AddebitoLetto[]> {
+    await joinLineari(tx)
     const where: Prisma.AddebitoWhereInput = {
       tenantId,
       ...(n.addebitiIds.length > 0 ? { id: { in: n.addebitiIds } } : {}),

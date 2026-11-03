@@ -20,6 +20,8 @@ import {
   ElencoAddebiti,
   ElenchiContratto,
   EsitoCopia,
+  EsitoEliminazioneRiga,
+  RigaSalvata,
   EsitoImpostazione,
   EsitoVariazione,
   FiltroAddebiti,
@@ -186,12 +188,12 @@ export class RotteRighe {
     return this.http.post<RigaAddebito>(`${this.base}/elenchi-addebiti/${elencoId}/righe`, dati)
   }
 
-  modifica(id: string, dati: ModificaRiga): Observable<RigaAddebito> {
-    return this.http.patch<RigaAddebito>(`${this.base}/righe-addebito/${id}`, dati)
+  modifica(id: string, dati: ModificaRiga): Observable<RigaSalvata> {
+    return this.http.patch<RigaSalvata>(`${this.base}/righe-addebito/${id}`, dati)
   }
 
-  elimina(id: string, versione: number): Observable<void> {
-    return this.http.delete<void>(`${this.base}/righe-addebito/${id}`, {
+  elimina(id: string, versione: number): Observable<EsitoEliminazioneRiga> {
+    return this.http.delete<EsitoEliminazioneRiga>(`${this.base}/righe-addebito/${id}`, {
       params: new HttpParams().set('versione', String(versione)),
     })
   }

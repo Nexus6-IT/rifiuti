@@ -51,6 +51,7 @@ import {
   STATI_FISICI,
   annoItaliano,
 } from './registro.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 const formatoGiornoRoma = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
@@ -145,6 +146,7 @@ const dataNonFutura = (): ValidatorFn => control => {
     DialogModule,
     DropdownModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputTextModule,
     InputTextareaModule,
     TableModule,
@@ -340,6 +342,8 @@ const dataNonFutura = (): ValidatorFn => control => {
                     >Quantità <span class="req" aria-hidden="true">*</span></label
                   >
                   <p-inputNumber
+                    appNumeroIt
+                    [useGrouping]="false"
                     formControlName="quantita"
                     inputId="gi-quantita"
                     mode="decimal"
@@ -408,6 +412,10 @@ const dataNonFutura = (): ValidatorFn => control => {
                       data-testid="gi-origine"
                     >
                       <p-inputNumber
+                        appNumeroIt
+                        locale="it-IT"
+                        soloIntero
+                        [maxFractionDigits]="0"
                         formControlName="anno"
                         [useGrouping]="false"
                         [min]="1990"
@@ -417,6 +425,10 @@ const dataNonFutura = (): ValidatorFn => control => {
                         [ariaLabel]="'Anno del carico ' + (i + 1)"
                       ></p-inputNumber>
                       <p-inputNumber
+                        appNumeroIt
+                        locale="it-IT"
+                        soloIntero
+                        [maxFractionDigits]="0"
                         formControlName="protocollo"
                         [useGrouping]="false"
                         [min]="1"
@@ -425,6 +437,8 @@ const dataNonFutura = (): ValidatorFn => control => {
                         [ariaLabel]="'Protocollo del carico ' + (i + 1)"
                       ></p-inputNumber>
                       <p-inputNumber
+                        appNumeroIt
+                        [useGrouping]="false"
                         formControlName="quantita"
                         mode="decimal"
                         locale="it-IT"

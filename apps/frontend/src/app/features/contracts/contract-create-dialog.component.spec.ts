@@ -443,6 +443,38 @@ describe('ContractCreateDialogComponent', () => {
         })
       })
 
+      it('il prezzo ha al massimo due decimali: "1,505" è rifiutato, "1,5" e "1,55" no (voce 29)', () => {
+        apri(contratto())
+        component.scriviNumero('basePrice', '1,505')
+        expect(component.erroriNumeri().basePrice).toBe('Al massimo due decimali')
+        component.salva()
+        expect(contracts.update).not.toHaveBeenCalled()
+        component.scriviNumero('basePrice', '1,55')
+        expect(component.erroriNumeri().basePrice).toBeUndefined()
+        component.scriviNumero('basePrice', '1,5')
+        expect(component.erroriNumeri().basePrice).toBeUndefined()
+        component.scriviNumero('basePrice', '1.5')
+        expect(component.erroriNumeri().basePrice).toBe('Usa la virgola per i decimali')
+      })
+
+      it('il prezzo ha al massimo otto cifre intere (Decimal(10,2))', () => {
+        apri(contratto())
+        component.scriviNumero('basePrice', '123456789')
+        expect(component.erroriNumeri().basePrice).toBe('Al massimo otto cifre prima della virgola')
+        component.scriviNumero('basePrice', '12345678,99')
+        expect(component.erroriNumeri().basePrice).toBeUndefined()
+      })
+
+      it('un preavviso errato a campo nascosto (rinnovo spento) non blocca il salvataggio', () => {
+        apri(contratto({ autoRenew: true }))
+        component.scriviNumero('renewalNoticeDays', '1,5')
+        component.form.autoRenew = false
+        component.scriviNumero('basePrice', '130')
+        component.salva()
+        expect(toast.warn).not.toHaveBeenCalled()
+        expect(contracts.update).toHaveBeenCalled()
+      })
+
       it('prezzo svuotato: nessun errore (il campo è facoltativo)', () => {
         apri(contratto())
         component.scriviNumero('basePrice', '')

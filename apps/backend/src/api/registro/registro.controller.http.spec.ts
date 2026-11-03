@@ -86,6 +86,12 @@ const movimento = {
   quantity: 100,
 }
 
+// Timeout piu' largo SOLO per questa spec: ogni test crea e compila un modulo Nest
+// (`Test.createTestingModule(...).compile()`, risoluzione delle dipendenze) in `avvia()`. In
+// `test:cov` sotto carico (runner con memoria satura, swap) il passo, che da solo dura pochi ms,
+// ha superato i 30 s globali di `jest.config.js`. Misurato: ogni test al massimo ~120 ms.
+jest.setTimeout(90_000)
+
 describe('RegistroController — catena HTTP con azienda selezionata', () => {
   let app: INestApplication
   let registra: { execute: jest.Mock }

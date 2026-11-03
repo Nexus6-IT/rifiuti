@@ -203,7 +203,16 @@ const SEVERITA_STATO: Readonly<
       >
         <ng-template pTemplate="header">
           <tr>
-            <th scope="col" *ngIf="puoVariare()">Scelta</th>
+            <th scope="col" *ngIf="puoVariare()">
+              <input
+                type="checkbox"
+                [checked]="tuttiScelti()"
+                [indeterminate]="alcuniScelti()"
+                (change)="scegliPagina($any($event.target).checked)"
+                aria-label="Scegli tutti i contratti della pagina"
+                data-testid="contratti-scegli-pagina"
+              />
+            </th>
             <th scope="col">Numero</th>
             <th scope="col">Cliente</th>
             <th scope="col">Descrizione</th>
@@ -331,13 +340,13 @@ const SEVERITA_STATO: Readonly<
         [visible]="variazioneAperta()"
         [contrattiIds]="idsScelti()"
         (visibleChange)="variazioneAperta.set($event)"
-        (applicata)="carica()"
+        (applicata)="dopoVariazione()"
       />
       <app-istat-dialog
         *ngIf="puoVariare()"
         [visible]="istatAperto()"
         (visibleChange)="istatAperto.set($event)"
-        (applicata)="carica()"
+        (applicata)="dopoVariazione()"
       />
       <p-confirmDialog />
     </section>
@@ -462,6 +471,35 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
     this.elenco.cambiaPagina(ev)
+  }
+
+  /** Tutti i contratti della pagina visibile sono spuntati. */
+  readonly tuttiScelti = computed(() => {
+    const r = this.righe()
+    return r.length > 0 && r.every(c => this.scelti().has(c.id))
+  })
+
+  /** Solo una parte della pagina è spuntata. */
+  readonly alcuniScelti = computed(() => {
+    const r = this.righe()
+    const n = r.filter(c => this.scelti().has(c.id)).length
+    return n > 0 && n < r.length
+  })
+
+  /** Spunta o toglie tutti i contratti della pagina, senza toccare quelli scelti in altre pagine. */
+  scegliPagina(si: boolean): void {
+    const n = new Set(this.scelti())
+    for (const c of this.righe()) {
+      if (si) n.add(c.id)
+      else n.delete(c.id)
+    }
+    this.scelti.set(n)
+  }
+
+  /** A variazione applicata i prezzi sono cambiati: la scelta non vale più e la lista si ricarica. */
+  dopoVariazione(): void {
+    this.scelti.set(this.vuoto)
+    this.carica()
   }
 
   scegli(id: string, si: boolean): void {

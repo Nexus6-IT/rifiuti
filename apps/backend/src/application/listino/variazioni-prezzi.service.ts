@@ -35,6 +35,7 @@ import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { MSG_VARIAZIONE_SUPERATA, traduciConflitto } from './conflitti-variazione'
+import { joinLineari } from './lock-listino'
 import { controllaRiferimentiListino } from './riferimenti-listino'
 
 export interface FiltroVariazioneContratti {
@@ -558,13 +559,15 @@ export class VariazioniPrezziService {
           const candidate = (await this.trova(tx, tenantId, c)).map(r => r.id).sort()
           if (candidate.length > 0) {
             await tx.$queryRaw`
-              SELECT id::text AS id FROM righe_addebito
-              WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${candidate}::uuid[])
-              ORDER BY id FOR NO KEY UPDATE`
+              SELECT r.id::text AS id FROM righe_addebito r
+              JOIN unnest(${candidate}::uuid[]) AS chiesti(chiesto) ON chiesto = r.id
+              WHERE r.tenant_id = ${tenantId}::uuid
+              ORDER BY r.id FOR NO KEY UPDATE OF r`
             await tx.$queryRaw`
-              SELECT id::text AS id FROM scaglioni_riga_addebito
-              WHERE tenant_id = ${tenantId}::uuid AND riga_id = ANY(${candidate}::uuid[])
-              ORDER BY riga_id, ordine FOR NO KEY UPDATE`
+              SELECT s.id::text AS id FROM scaglioni_riga_addebito s
+              JOIN unnest(${candidate}::uuid[]) AS chiesti(chiesto) ON chiesto = s.riga_id
+              WHERE s.tenant_id = ${tenantId}::uuid
+              ORDER BY s.riga_id, s.ordine FOR NO KEY UPDATE OF s`
           }
 
           // Rilettura dopo il blocco: e' questo lo stato che si confronta e si scrive.
@@ -631,9 +634,10 @@ export class VariazioniPrezziService {
     if (calcolo.righeIds.length === 0) return
     if (c.tipo === 'SOSTITUZIONE_IVA') {
       await tx.$executeRaw`
-        UPDATE righe_addebito
-        SET codice_iva_id = ${c.a}::uuid, versione = versione + 1, updated_at = now()
-        WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${calcolo.righeIds}::uuid[])`
+        UPDATE righe_addebito r
+        SET codice_iva_id = ${c.a}::uuid, versione = r.versione + 1, updated_at = now()
+        FROM unnest(${calcolo.righeIds}::uuid[]) AS chiesti(chiesto)
+        WHERE r.tenant_id = ${tenantId}::uuid AND r.id = chiesto`
       return
     }
     if (calcolo.prezzi.length > 0) {
@@ -663,8 +667,9 @@ export class VariazioniPrezziService {
     const soloFasce = calcolo.righeIds.filter(id => !gia.has(id))
     if (soloFasce.length > 0) {
       await tx.$executeRaw`
-        UPDATE righe_addebito SET versione = versione + 1, updated_at = now()
-        WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${soloFasce}::uuid[])`
+        UPDATE righe_addebito r SET versione = r.versione + 1, updated_at = now()
+        FROM unnest(${soloFasce}::uuid[]) AS chiesti(chiesto)
+        WHERE r.tenant_id = ${tenantId}::uuid AND r.id = chiesto`
     }
   }
 
@@ -720,7 +725,11 @@ export class VariazioniPrezziService {
 
     const contratto: Prisma.ContrattoClienteWhereInput = {
       tenantId,
-      // Annullati ed eliminati non si toccano mai (D20).
+      // Annullati ed eliminati non si toccano mai (D20). Lo stato del contratto si legge SENZA lock
+      // (T24 M10, deciso di non bloccarlo): l'applicazione blocca solo le righe. Se un contratto
+      // viene annullato fra la lettura e la scrittura, la variazione arriva comunque a un listino
+      // che e' in sola lettura e non si fattura piu': nessun danno, e un lock sul contratto
+      // metterebbe in coda ogni modifica del listino dietro una variazione di massa.
       eliminatoIl: null,
       stato: { not: 'ANNULLATO' },
     }
@@ -811,7 +820,7 @@ export class VariazioniPrezziService {
   /**
    * Righe che corrispondono ai criteri, in ordine di id; oltre il tetto → 400. Prima si scelgono
    * gli id con una lettura piatta (con la sola `where` di Prisma), poi il dettaglio si legge con
-   * due query SQL a `= ANY(uuid[])`: le relazioni annidate di Prisma su 10.000 righe generano
+   * query SQL con `JOIN unnest(uuid[])` (non `= ANY`, vedi il commento nel corpo): le relazioni annidate di Prisma su 10.000 righe generano
    * liste `IN` che superano lo stack di PostgreSQL (54001).
    */
   private async trova(
@@ -819,6 +828,7 @@ export class VariazioniPrezziService {
     tenantId: string,
     c: Criteri
   ): Promise<RigaLetta[]> {
+    await joinLineari(tx)
     const scelte = await tx.rigaAddebito.findMany({
       where: this.dove(tenantId, c),
       select: { id: true },
@@ -829,9 +839,12 @@ export class VariazioniPrezziService {
     if (scelte.length === 0) return []
     const ids = scelte.map(r => r.id)
 
-    // Sempre `WHERE id = ANY(uuid[])` su una tabella alla volta e unione in memoria: un join
-    // con liste da 10.000 id, con le statistiche non ancora aggiornate dopo una copia in massa,
-    // e' stato misurato a 36 s; cosi' ogni lettura e' lineare qualunque piano scelga il planner.
+    // Una tabella alla volta, con `JOIN unnest(uuid[])` e non con `id = ANY(uuid[])`, e unione in
+    // memoria. Col parametro `$n` (piano generico, che Prisma/PostgreSQL adottano dopo ~5
+    // esecuzioni dello stesso testo) `= ANY` non diventa mai un hash: con le statistiche della
+    // tabella vuota (copia in massa appena fatta) il planner sceglie la scansione per tenant con
+    // `ANY` come filtro, cioe' 10.000 x 10.000 confronti (misurato: 32 s). Col join il planner
+    // dispone di hash join e ricerche per chiave primaria: lineare.
     const righe = await tx.$queryRaw<
       {
         id: string
@@ -849,32 +862,38 @@ export class VariazioniPrezziService {
              prezzo_speciale AS "prezzoSpeciale", minimo_fatturabile::text AS minimo,
              elenco_id::text AS "elencoId", addebito_id::text AS "addebitoId"
       FROM righe_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])
+      JOIN unnest(${ids}::uuid[]) AS chiesti(chiesto) ON chiesto = righe_addebito.id
+      WHERE tenant_id = ${tenantId}::uuid
       ORDER BY id`
     const elencoIds = [...new Set(righe.map(r => r.elencoId))]
     const addebitoIds = [...new Set(righe.flatMap(r => (r.addebitoId ? [r.addebitoId] : [])))]
     const elenchi = await tx.$queryRaw<{ id: string; codice: string; contrattoId: string }[]>`
       SELECT id::text AS id, codice, contratto_id::text AS "contrattoId"
       FROM elenchi_addebiti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${elencoIds}::uuid[])`
+      JOIN unnest(${elencoIds}::uuid[]) AS chiesti(chiesto) ON chiesto = elenchi_addebiti.id
+      WHERE tenant_id = ${tenantId}::uuid`
     const contrattoIds = [...new Set(elenchi.map(e => e.contrattoId))]
     const contratti = await tx.$queryRaw<
       { id: string; numero: string; inizio: string; clienteId: string }[]
     >`
       SELECT id::text AS id, numero, data_inizio::text AS inizio, cliente_id::text AS "clienteId"
       FROM contratti_cliente
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${contrattoIds}::uuid[])`
+      JOIN unnest(${contrattoIds}::uuid[]) AS chiesti(chiesto) ON chiesto = contratti_cliente.id
+      WHERE tenant_id = ${tenantId}::uuid`
     const clienteIds = [...new Set(contratti.map(k => k.clienteId))]
     const clienti = await tx.$queryRaw<{ id: string; codice: string | null }[]>`
       SELECT id::text AS id, codice FROM clienti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${clienteIds}::uuid[])`
+      JOIN unnest(${clienteIds}::uuid[]) AS chiesti(chiesto) ON chiesto = clienti.id
+      WHERE tenant_id = ${tenantId}::uuid`
     const addebiti = await tx.$queryRaw<{ id: string; codice: string }[]>`
       SELECT id::text AS id, codice FROM addebiti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${addebitoIds}::uuid[])`
+      JOIN unnest(${addebitoIds}::uuid[]) AS chiesti(chiesto) ON chiesto = addebiti.id
+      WHERE tenant_id = ${tenantId}::uuid`
     const fasce = await tx.$queryRaw<{ id: string; rigaId: string; prezzo: string }[]>`
       SELECT id::text AS id, riga_id::text AS "rigaId", prezzo::text AS prezzo
       FROM scaglioni_riga_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND riga_id = ANY(${ids}::uuid[])
+      JOIN unnest(${ids}::uuid[]) AS chiesti(chiesto) ON chiesto = scaglioni_riga_addebito.riga_id
+      WHERE tenant_id = ${tenantId}::uuid
       ORDER BY riga_id, ordine`
 
     const perRiga = new Map<string, { id: string; prezzo: string }[]>()

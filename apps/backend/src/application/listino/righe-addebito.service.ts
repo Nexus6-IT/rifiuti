@@ -25,6 +25,7 @@ import {
   normalizzaCascata,
   prezzoCalcolato,
 } from '../../domain/listino/importi-riga'
+import { ordinaRigheListino } from '../../domain/listino/ordine-righe'
 import type { Scaglione } from '../../domain/listino/prezzo-speciale'
 import {
   ETICHETTE_CAMPI_RIGA,
@@ -63,7 +64,11 @@ import {
   normalizzaCerCode,
   type LettoreCatalogoCer,
 } from '../registro/cer-catalogo'
-import { controllaRiferimentiRiga, MSG_CER_NON_NEL_CATALOGO } from './riferimenti-listino'
+import {
+  codificheRentriPresenti,
+  controllaRiferimentiRiga,
+  MSG_CER_NON_NEL_CATALOGO,
+} from './riferimenti-listino'
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'RIGA_ADDEBITO',
@@ -352,13 +357,10 @@ export class RigheAddebitoService {
         const righe = await tx.rigaAddebito.findMany({
           where: { tenantId, elencoId },
           include: INCLUDE,
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          orderBy: { id: 'asc' },
         })
-        // Come WinWaste (`ORDER BY TIPO, addeb`): tipo, poi CER o codice dell'addebito, riferimento.
-        const chiave = (r: (typeof righe)[number]) =>
-          [r.tipo, r.cerCode ?? r.addebito?.codice ?? '', r.riferimento ?? ''].join('\u0000')
-        righe.sort((a, b) => (chiave(a) < chiave(b) ? -1 : chiave(a) > chiave(b) ? 1 : 0))
-        return righe.map(r => this.vista(r))
+        // Come la tavola di WinWaste (`riempitavola`: ORDER BY TIPO, addeb): tipo, poi CER o addebito.
+        return ordinaRigheListino(righe).map(r => this.vista(r))
       })
     )
   }
@@ -379,12 +381,7 @@ export class RigheAddebitoService {
   async codificheRentri(
     tabella: TabellaCodificheRentri
   ): Promise<{ codice: string; descrizione: string }[]> {
-    const voci = await this.prisma.rentriCodificaSemplice.findMany({
-      where: { tabella, presenteInRentri: true },
-      select: { externalId: true, name: true },
-      orderBy: [{ name: 'asc' }, { externalId: 'asc' }],
-    })
-    return voci.map(v => ({ codice: v.externalId, descrizione: v.name }))
+    return codificheRentriPresenti(this.prisma, tabella)
   }
 
   /**
@@ -567,7 +564,7 @@ export class RigheAddebitoService {
     utenteId: string,
     id: string,
     m: M
-  ): Promise<RigaAddebitoVista> {
+  ): Promise<RigaAddebitoVista & { avvisi: string[] }> {
     if (!UUID.test(id)) throw rigaNonTrovata()
     return nelContestoTenant(tenantId, async () => {
       try {
@@ -589,7 +586,7 @@ export class RigheAddebitoService {
           const fn = firma(nuovi)
           const fp = firma(precedenti)
           const campi = CAMPI.filter(c => fn[c] !== fp[c])
-          if (campi.length === 0) return this.vista(prima)
+          if (campi.length === 0) return { ...this.vista(prima), avvisi: [] }
 
           const valori = scalariPerDatabase(nuovi)
           const scalari = campi.filter(c => !CAMPI_FIGLI.includes(c))
@@ -616,10 +613,19 @@ export class RigheAddebitoService {
             scadenze: campi.includes('scadenze'),
           })
           const dopo = await this.rileggi(tx, tenantId, id)
+          // Avviso, non blocco (come WinWaste): se la riga era la condizione di altre righe e ora
+          // non lo e' piu', le righe che la citano restano con un riferimento orfano.
+          const avvisi =
+            campi.includes('condizione') || campi.includes('unitaMisura')
+              ? await this.avvisiCondizioniOrfane(tx, tenantId, prima, {
+                  condizione: dopo.condizione,
+                  unitaMisura: dopo.unitaMisura,
+                })
+              : []
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_MODIFICATA', 'modificata', dopo, [
             ...campi,
           ])
-          return this.vista(dopo)
+          return { ...this.vista(dopo), avvisi }
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
         return await traduciErrorePrisma(err, ENTITA, VINCOLI)
@@ -627,11 +633,16 @@ export class RigheAddebitoService {
     })
   }
 
-  async elimina(tenantId: string, utenteId: string, id: string, versione: number): Promise<void> {
+  async elimina(
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    versione: number
+  ): Promise<{ avvisi: string[] }> {
     if (!UUID.test(id)) throw rigaNonTrovata()
     return nelContestoTenant(tenantId, async () => {
       try {
-        await this.prisma.$transaction(async tx => {
+        return await this.prisma.$transaction(async tx => {
           await impostaTimeoutLock(tx)
           const { riga } = await this.bloccaRiga(tx, tenantId, id, {})
           confrontaVersione(riga.versione, versione, ENTITA)
@@ -640,10 +651,14 @@ export class RigheAddebitoService {
             () => tx.rigaAddebito.deleteMany({ where: { id, tenantId, versione } }),
             ENTITA
           )
+          // Avviso, non blocco (come WinWaste): le righe che citavano questa come condizione
+          // restano con un riferimento orfano e lo si dice.
+          const avvisi = await this.avvisiCondizioniOrfane(tx, tenantId, riga, null)
           await this.audit(tx, tenantId, utenteId, 'RIGA_ADDEBITO_ELIMINATA', 'eliminata', riga, [])
+          return { avvisi }
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
       } catch (err) {
-        await traduciErrorePrisma(err, ENTITA, VINCOLI)
+        return await traduciErrorePrisma(err, ENTITA, VINCOLI)
       }
     })
   }
@@ -710,7 +725,10 @@ export class RigheAddebitoService {
     )
     errori.push(
       ...(await controllaRiferimentiRiga(tx, tenantId, {
-        addebitoId: inviati.has('addebitoId') ? nuovi.addebitoId : null,
+        // L'addebito si ricontrolla anche quando cambia solo il tipo della riga (decisione 4: il
+        // tipo deve restare quello dell'addebito scelto).
+        addebitoId: inviati.has('addebitoId') || inviati.has('tipo') ? nuovi.addebitoId : null,
+        tipoRiga: nuovi.tipo,
         codiceIvaId: inviati.has('codiceIvaId') ? nuovi.codiceIvaId : null,
         categoriaId: inviati.has('categoriaId') ? nuovi.categoriaId : null,
         centroRicavoId: inviati.has('centroRicavoId') ? nuovi.centroRicavoId : null,
@@ -860,6 +878,57 @@ export class RigheAddebitoService {
         ])
       }
     }
+  }
+
+  /**
+   * Avvisi per le righe che citano la `condizione` di `prima` (cifra in `condizioniRiferite`, con la
+   * stessa unita' di misura) e che, dopo l'eliminazione (`dopo` = null) o la modifica, non trovano
+   * piu' nessuna riga con quella condizione. Si legge nella transazione che ha gia' l'elenco
+   * `FOR UPDATE` (ordine R40 invariato). Nessun id nel testo.
+   */
+  private async avvisiCondizioniOrfane(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    prima: { id: string; elencoId: string; condizione: number | null; unitaMisura: string },
+    dopo: { condizione: number | null; unitaMisura: string } | null
+  ): Promise<string[]> {
+    const c = prima.condizione
+    if (c === null) return []
+    if (dopo !== null && dopo.condizione === c && dopo.unitaMisura === prima.unitaMisura) return []
+    const citanti = (
+      await tx.rigaAddebito.findMany({
+        where: {
+          tenantId,
+          elencoId: prima.elencoId,
+          id: { not: prima.id },
+          unitaMisura: prima.unitaMisura,
+          condizioniRiferite: { not: null },
+        },
+        select: {
+          tipo: true,
+          cerCode: true,
+          condizioniRiferite: true,
+          addebito: { select: { codice: true } },
+        },
+        orderBy: { id: 'asc' },
+      })
+    ).filter(r => (r.condizioniRiferite ?? '').slice(0, -1).split('').includes(String(c)))
+    if (citanti.length === 0) return []
+    const rimaste = await tx.rigaAddebito.count({
+      where: {
+        tenantId,
+        elencoId: prima.elencoId,
+        id: { not: prima.id },
+        condizione: c,
+        unitaMisura: prima.unitaMisura,
+      },
+    })
+    if (rimaste > 0) return []
+    return citanti.map(
+      r =>
+        `La riga ${r.tipo} ${r.cerCode ?? r.addebito?.codice ?? ''}`.trimEnd() +
+        ` cita la condizione ${c}, che non ha più addebiti condizionati.`
+    )
   }
 
   // -------------------------------------------------------------------------------------------

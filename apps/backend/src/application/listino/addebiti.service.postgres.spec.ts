@@ -521,4 +521,32 @@ describe('AddebitiService — Postgres reale, ruolo wasteflow_app', () => {
     expect(await owner.addebito.count({ where: { id: usato.id } })).toBe(1)
     expect(await owner.rigaAddebito.count({ where: { tenantId, addebitoId: usato.id } })).toBe(1)
   })
+
+  it('decisione 4: il tipo non si cambia se righe di listino usano l’addebito (400 sul campo tipo); se non e’ usato si cambia', async () => {
+    const { tenantId, utenteId, rif: ids } = await azienda()
+    const usato = await creaAddebito(owner, tenantId, { tipo: 'V' })
+    const libero = await creaAddebito(owner, tenantId, { tipo: 'V' })
+    const c = await creaContrattoConElenco(owner, tenantId)
+    await creaRiga(owner, tenantId, c.elencoId, {
+      tipo: 'V',
+      addebitoId: usato.id,
+      codiceIvaId: ids.iva22Id,
+    })
+    const e = await nel(tenantId, () =>
+      service.modifica(tenantId, utenteId, usato.id, { versione: 1, tipo: 'F' })
+    ).catch(x => x)
+    expect(e.getStatus()).toBe(400)
+    const msg = "Il tipo non si può cambiare: l'addebito è usato in 1 riga di listino."
+    expect(e.getResponse()).toMatchObject({
+      error: 'ADDEBITO_NON_VALIDO',
+      message: [msg],
+      details: { errori: [{ campo: 'tipo', messaggio: msg }] },
+    })
+    expect((await owner.addebito.findUniqueOrThrow({ where: { id: usato.id } })).tipo).toBe('V')
+
+    const cambiato = await nel(tenantId, () =>
+      service.modifica(tenantId, utenteId, libero.id, { versione: 1, tipo: 'F' })
+    )
+    expect(cambiato.tipo).toBe('F')
+  })
 })

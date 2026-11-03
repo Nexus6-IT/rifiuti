@@ -3,6 +3,8 @@
  * Le date sono stringhe `YYYY-MM-DD`.
  */
 
+import { dataReale, validaRiferimentiPa } from '../contratti-cliente/regole-contratto-cliente'
+
 export interface DatiElenco {
   codice: string
   descrizione: string
@@ -34,14 +36,6 @@ function data(v: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t
 }
 
-function dataReale(d: string): boolean {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
-  if (!m) return false
-  const [anno, mese, giorno] = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const t = new Date(Date.UTC(anno, mese - 1, giorno))
-  return t.getUTCFullYear() === anno && t.getUTCMonth() === mese - 1 && t.getUTCDate() === giorno
-}
-
 function codiceElenco(t: string | null): string {
   if (t === null) return ''
   return /^\d{1,3}$/.test(t) ? t.padStart(3, '0') : t.toUpperCase()
@@ -69,6 +63,11 @@ export function validaElenco(d: DatiElenco): string[] {
   const m: string[] = []
 
   if (!CODICE.test(d.codice)) m.push('Il codice ha da 1 a 3 caratteri alfanumerici.')
+  // `000` e' riservato (come nelle codifiche addebito): in WinWaste l'elenco 0 vuol dire
+  // "prendi il predefinito".
+  else if (d.codice === '000') {
+    m.push('Il codice 000 non è ammesso: usa un codice da 001 a 999 o con lettere.')
+  }
 
   if (d.descrizione === '') m.push('Inserisci una descrizione per questo elenco.')
   else if (d.descrizione.length > DESCRIZIONE_MAX) {
@@ -93,20 +92,8 @@ export function validaElenco(d: DatiElenco): string[] {
     }
   }
 
-  // Stesse regole e stessi testi di validaContrattoCliente (R33)
-  if (d.codiceCig !== null && !/^[A-Z0-9]{10}$/.test(d.codiceCig)) {
-    m.push('Il CIG deve avere 10 caratteri alfanumerici.')
-  }
-  if (d.codiceCup !== null && !/^[A-Z0-9]{15}$/.test(d.codiceCup)) {
-    m.push('Il CUP deve avere 15 caratteri alfanumerici.')
-  }
-  if (d.idDocumentoPa !== null && d.idDocumentoPa.length > 20) {
-    m.push('Il documento della PA non può superare 20 caratteri.')
-  } else if (d.idDocumentoPa === null && (d.codiceCig !== null || d.codiceCup !== null)) {
-    m.push(
-      'Con CIG o CUP indica anche il riferimento del documento della PA (contratto, convenzione o ordine).'
-    )
-  }
+  // Stesse regole e stessi testi del contratto cliente (R33, R58): una sola definizione.
+  m.push(...validaRiferimentiPa(d))
   if (d.dataDocumentoPa !== null) {
     if (d.idDocumentoPa === null) {
       m.push('La data del documento della PA si indica solo con il documento.')

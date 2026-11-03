@@ -547,6 +547,20 @@ describe('Task 28: casi propri del frontend', () => {
       }
     })
 
+    it('D ed E con la quantità precedente non dicono «tutta la quantità» (voce 17)', () => {
+      expect(d('D', 'PROGRESSIVO_DA_DATA')).not.toContain('tutta la quantità')
+      expect(d('E', 'PROGRESSIVO_DA_DATA')).not.toContain('tutta la quantità')
+      expect(d('D', '')).toContain('tutta la quantità')
+    })
+
+    it('X, Y, Z, W e H non hanno mai la frase «da data» (voce 16)', () => {
+      for (const x of ['X', 'Y', 'Z', 'W', 'H'] as TipoCalcoloScaglione[]) {
+        const senza = d(x, '')
+        expect(d(x, 'PROGRESSIVO_DA_DATA')).toBe(senza)
+        expect(d(x, 'CONGUAGLIO_365')).toBe(senza)
+      }
+    })
+
     it('B: il fisso solo nella fattura in cui la fascia è raggiunta per la prima volta', () => {
       expect(d('B', 'PROGRESSIVO_DA_DATA')).toContain('per la prima volta')
     })

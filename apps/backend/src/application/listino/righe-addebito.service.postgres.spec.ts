@@ -341,6 +341,46 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(capitolo.getResponse().errori[0].campo).toBe('cerCode')
     })
 
+    it('tipo della riga diverso da quello dell’addebito scelto: 400 sul campo tipo, in creazione e in modifica', async () => {
+      const s = await scenario()
+      const f = await creaAddebito(owner, s.tenantId, { tipo: 'F' })
+      const incoerente = await errore(
+        crea(s, {
+          tipo: 'V',
+          addebitoId: f.id,
+          tipoQuantita: 'UNO',
+          unitaMisura: 'NR',
+          prezzo: '1',
+        })
+      )
+      expect(incoerente.getStatus()).toBe(400)
+      expect(incoerente.getResponse().errori).toEqual([
+        {
+          campo: 'tipo',
+          messaggio: 'Il tipo della riga non corrisponde al tipo dell’addebito scelto (F).',
+        },
+      ])
+      expect(await owner.rigaAddebito.count({ where: { tenantId: s.tenantId } })).toBe(0)
+
+      // Coerente: la riga nasce. Poi cambiare solo il tipo la rende incoerente: 400, riga invariata.
+      const v = await creaAddebito(owner, s.tenantId, { tipo: 'V' })
+      const riga = await crea(s, {
+        tipo: 'V',
+        addebitoId: v.id,
+        tipoQuantita: 'PESO_NETTO',
+        unitaMisura: 'KG',
+        prezzo: '1',
+      })
+      const cambio = await errore(
+        service.modifica(s.tenantId, s.utenteId, riga.id, { versione: 1, tipo: 'NM' })
+      )
+      expect(cambio.getStatus()).toBe(400)
+      expect(cambio.getResponse().errori).toEqual(
+        expect.arrayContaining([expect.objectContaining({ campo: 'tipo' })])
+      )
+      expect((await service.getById(s.tenantId, riga.id)).versione).toBe(1)
+    })
+
     it('addebito disattivato e codice IVA di un’altra azienda', async () => {
       const s = await scenario()
       const altra = await azienda()
@@ -531,6 +571,56 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       // un altro cliente non e' toccato
       const diverso = await creaContrattoConElenco(owner, s.tenantId)
       expect(await crea(s, corpo, diverso.elencoId)).toMatchObject({ tipo: '$D' })
+    })
+
+    it('m9: eliminare o cambiare la condizione di una riga citata riesce con un avviso; non citata, nessun avviso', async () => {
+      const s = await scenario()
+      const v = async () => (await creaAddebito(owner, s.tenantId, { tipo: 'V' })).id
+      const base = { tipo: 'V', tipoQuantita: 'PESO_NETTO', unitaMisura: 'KG', prezzo: '1' }
+      const condizionata = async (condizione: number) =>
+        crea(s, { ...base, addebitoId: await v(), condizione })
+      const citata = await condizionata(1)
+      const nonCitata = await condizionata(2)
+      await crea(s, {
+        ...base,
+        addebitoId: await v(),
+        prezzoSpeciale: true,
+        prezzo: null,
+        applicaA: 'DOCUMENTO',
+        condizioniRiferite: '1C',
+        scaglioni: [
+          { ordine: 1, finoA: '10', prezzo: '1', tipoCalcolo: 'X' },
+          { ordine: 7, finoA: null, prezzo: '1', tipoCalcolo: 'A' },
+        ],
+      })
+      // Non citata: nessun avviso.
+      expect(await service.elimina(s.tenantId, s.utenteId, nonCitata.id, 1)).toEqual({ avvisi: [] })
+      // Cambio di condizione della citata (unica con la condizione 1): riesce, con l'avviso.
+      const modificata = await service.modifica(s.tenantId, s.utenteId, citata.id, {
+        versione: 1,
+        condizione: 3,
+      })
+      expect(modificata.condizione).toBe(3)
+      expect(modificata.avvisi).toEqual([
+        expect.stringMatching(
+          /^La riga V \d{5} cita la condizione 1, che non ha più addebiti condizionati\.$/
+        ),
+      ])
+      // Una modifica che non tocca condizione e unita' di misura non avvisa.
+      const senza = await service.modifica(s.tenantId, s.utenteId, citata.id, {
+        versione: 2,
+        descrizione: 'x',
+      })
+      expect(senza.avvisi).toEqual([])
+      // Eliminazione di una riga che era la condizione 1 (ripristinata): avviso, riga cancellata.
+      const di = await service.modifica(s.tenantId, s.utenteId, citata.id, {
+        versione: 3,
+        condizione: 1,
+      })
+      expect(di.avvisi).toEqual([])
+      const esito = await service.elimina(s.tenantId, s.utenteId, citata.id, di.versione)
+      expect(esito.avvisi).toHaveLength(1)
+      expect(await owner.rigaAddebito.count({ where: { id: citata.id } })).toBe(0)
     })
 
     it('più righe con la stessa condizione sono normali; due righe che sommano la stessa cifra no (I1)', async () => {
@@ -967,7 +1057,8 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       const s = await scenario()
       const altra = await azienda()
       const riga = await creaRiga(owner, s.tenantId, s.elencoId, { codiceIvaId: s.listino.iva22Id })
-      for (const t of [altra.tenantId]) {
+      {
+        const t = altra.tenantId
         expect((await errore(service.getById(t, riga.id))).getStatus()).toBe(404)
         expect((await errore(service.list(t, s.elencoId))).getStatus()).toBe(404)
         expect(
@@ -991,6 +1082,16 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
           await errore(service.modifica(s.tenantId, s.utenteId, riga.id, { versione: 1 }))
         ).getStatus()
       ).toBe(404)
+      expect((await errore(service.elimina(s.tenantId, s.utenteId, riga.id, 1))).getStatus()).toBe(
+        404
+      )
+      expect(
+        (
+          await errore(service.crea(s.tenantId, s.utenteId, s.elencoId, { tipo: 'CER' }))
+        ).getStatus()
+      ).toBe(404)
+      // La riga c'e' ancora: nessuna delle rotte ha scritto.
+      expect(await owner.rigaAddebito.count({ where: { id: riga.id, versione: 1 } })).toBe(1)
     })
   })
 

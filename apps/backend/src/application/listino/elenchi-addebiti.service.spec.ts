@@ -369,6 +369,9 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
 
     it('list: data non valida 400, contratto assente 404, id non UUID 404', async () => {
       expect((await errore(service.list(T, C, '01/06/2026'))).getStatus()).toBe(400)
+      // Forma giusta ma giorno inesistente: 400, non un confronto fra stringhe (T20 M3).
+      expect((await errore(service.list(T, C, '2026-02-30'))).getStatus()).toBe(400)
+      expect((await errore(service.list(T, C, '2026-13-01'))).getStatus()).toBe(400)
       tx.contrattoCliente.findFirst.mockResolvedValue(null)
       expect((await errore(service.list(T, C))).getStatus()).toBe(404)
       expect((await errore(service.list(T, 'x'))).getStatus()).toBe(404)

@@ -119,6 +119,22 @@ describe('controllaRiferimentiRiga (R41)', () => {
     expect(sql[0]).toContain('FOR SHARE')
   })
 
+  it('tipo della riga uguale a quello dell’addebito: valido; diverso: errore sul campo tipo', async () => {
+    const { tx } = txRiga({ addebito: [{ attivo: true, tipo: 'F' }] })
+    expect(await controllaRiferimentiRiga(tx, T, { addebitoId: A, tipoRiga: 'F' })).toEqual([])
+    expect(await controllaRiferimentiRiga(tx, T, { addebitoId: A, tipoRiga: 'V' })).toEqual([
+      {
+        campo: 'tipo',
+        messaggio: 'Il tipo della riga non corrisponde al tipo dell’addebito scelto (F).',
+      },
+    ])
+  })
+
+  it('senza tipoRiga il tipo dell’addebito non si confronta', async () => {
+    const { tx } = txRiga({ addebito: [{ attivo: true, tipo: 'F' }] })
+    expect(await controllaRiferimentiRiga(tx, T, { addebitoId: A })).toEqual([])
+  })
+
   it.each([
     ['inesistente', []],
     ['disattivato', [{ attivo: false, tipo: 'V' }]],

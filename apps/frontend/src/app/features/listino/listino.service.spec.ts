@@ -46,7 +46,7 @@ describe('ListinoService', () => {
       const del = http.expectOne(r => r.url === `${api}/codici-iva/${ID}`)
       expect(del.request.method).toBe('DELETE')
       expect(del.request.params.get('versione')).toBe('3')
-      del.flush(null)
+      del.flush({ avvisi: [] })
     })
   })
 
@@ -78,7 +78,7 @@ describe('ListinoService', () => {
       service.codifiche.elimina(ID, 2).subscribe()
       const del = http.expectOne(r => r.url === `${api}/codifiche-addebito/${ID}`)
       expect(del.request.params.get('versione')).toBe('2')
-      del.flush(null)
+      del.flush({ avvisi: [] })
     })
   })
 
@@ -132,7 +132,7 @@ describe('ListinoService', () => {
       service.addebiti.elimina(ID, 4).subscribe()
       const del = http.expectOne(r => r.url === `${api}/addebiti/${ID}`)
       expect(del.request.params.get('versione')).toBe('4')
-      del.flush(null)
+      del.flush({ avvisi: [] })
     })
 
     it('variazione dei prezzi: anteprima e applicazione con impronta', () => {
@@ -184,7 +184,7 @@ describe('ListinoService', () => {
       const del = http.expectOne(r => r.url === `${api}/elenchi-addebiti/${ID}`)
       expect(del.request.method).toBe('DELETE')
       expect(del.request.params.get('versione')).toBe('2')
-      del.flush(null)
+      del.flush({ avvisi: [] })
     })
   })
 
@@ -205,7 +205,7 @@ describe('ListinoService', () => {
       service.righe.elimina(ID, 4).subscribe()
       const del = http.expectOne(r => r.url === `${api}/righe-addebito/${ID}`)
       expect(del.request.params.get('versione')).toBe('4')
-      del.flush(null)
+      del.flush({ avvisi: [] })
     })
 
     it('proposta: ?addebitoId= oppure ?cerCode=, mai i parametri vuoti', () => {
@@ -300,7 +300,7 @@ describe('ListinoService', () => {
       service.allegatiElenco.rimuovi(ID, 'a1').subscribe()
       const del = http.expectOne(`${api}/elenchi-addebiti/${ID}/allegati/a1`)
       expect(del.request.method).toBe('DELETE')
-      del.flush(null)
+      del.flush({ avvisi: [] })
       service.allegatiElenco.carica(ID, 2, new File(['%PDF'], 'a.pdf')).subscribe()
       const post = http.expectOne(`${api}/elenchi-addebiti/${ID}/allegati`)
       expect((post.request.body as FormData).get('posizione')).toBe('2')

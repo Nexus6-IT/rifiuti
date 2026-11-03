@@ -17,6 +17,7 @@
 // valida, la copia intera risponde 400 con `details.errori` (R60): mai una copia a meta'.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { TIPI_PROVVIGIONE, type TipoProvvigione } from '../../domain/listino/addebito'
 import { scegliRigheDaCopiare, type EscluseCopia } from '../../domain/listino/copia-righe'
 import {
   cascataValida,
@@ -36,6 +37,7 @@ import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import {
   bloccaContrattoListino,
   impostaTimeoutLock,
+  joinLineari,
   lockConsultivoContratto,
   type ContrattoBloccato,
 } from './lock-listino'
@@ -324,12 +326,13 @@ export class AzioniListinoService {
     const provvigione = normalizzaCascata(corpo.provvigione)
     const tipoScritto =
       typeof corpo.tipoProvvigione === 'string' ? corpo.tipoProvvigione.trim().toUpperCase() : ''
-    let tipo: 'SCONTATO' | 'LORDO' | null = null
+    let tipo: TipoProvvigione | null = null
     if (provvigione !== null) {
       if (!cascataValida(provvigione) || provvigione.length > 20) {
         errori.push({ campo: 'provvigione', messaggio: MESSAGGIO_CASCATA })
       }
-      if (tipoScritto === 'SCONTATO' || tipoScritto === 'LORDO') tipo = tipoScritto
+      if ((TIPI_PROVVIGIONE as readonly string[]).includes(tipoScritto))
+        tipo = tipoScritto as TipoProvvigione
       else errori.push({ campo: 'tipoProvvigione', messaggio: MSG_TIPO_PROVVIGIONE })
     }
     if (errori.length > 0) nonValido(CODICE_IMPOSTAZIONE, errori)
@@ -620,16 +623,33 @@ export class AzioniListinoService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     ids: readonly string[],
-    dati: Prisma.RigaAddebitoUncheckedUpdateManyInput
+    dati:
+      | { provvigione: string | null; tipoProvvigione: TipoProvvigione | null }
+      | { sconto: string | null }
   ): Promise<void> {
     const ordinati = [...ids].sort()
+    await joinLineari(tx)
     for (let i = 0; i < ordinati.length; i += BLOCCO_AGGIORNAMENTO) {
       const blocco = ordinati.slice(i, i + BLOCCO_AGGIORNAMENTO)
       await this.bloccaRighe(tx, tenantId, { ids: blocco })
-      await tx.rigaAddebito.updateMany({
-        where: { tenantId, id: { in: blocco } },
-        data: { ...dati, versione: { increment: 1 } },
-      })
+      // `UPDATE ... FROM unnest` e non `id IN (...)`: vedi il commento in
+      // VariazioniPrezziService.trova (piano generico quadratico con liste grandi).
+      // `updated_at` come farebbe `@updatedAt` di Prisma.
+      if ('sconto' in dati) {
+        await tx.$executeRaw`
+          UPDATE righe_addebito r
+          SET sconto = ${dati.sconto}, versione = r.versione + 1, updated_at = now()
+          FROM unnest(${blocco}::uuid[]) AS chiesti(chiesto)
+          WHERE r.tenant_id = ${tenantId}::uuid AND r.id = chiesto`
+      } else {
+        await tx.$executeRaw`
+          UPDATE righe_addebito r
+          SET provvigione = ${dati.provvigione},
+              tipo_provvigione = ${dati.tipoProvvigione}::tipo_provvigione,
+              versione = r.versione + 1, updated_at = now()
+          FROM unnest(${blocco}::uuid[]) AS chiesti(chiesto)
+          WHERE r.tenant_id = ${tenantId}::uuid AND r.id = chiesto`
+      }
     }
   }
 
@@ -644,9 +664,12 @@ export class AzioniListinoService {
         WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ${quali.elencoId}::uuid
         ORDER BY id FOR UPDATE`
     } else {
-      await tx.$queryRaw`SELECT id FROM "righe_addebito"
-        WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${quali.ids as string[]}::uuid[])
-        ORDER BY id FOR UPDATE`
+      // `JOIN unnest` e non `= ANY`: vedi il commento in VariazioniPrezziService.trova.
+      await joinLineari(tx)
+      await tx.$queryRaw`SELECT r.id FROM "righe_addebito" r
+        JOIN unnest(${quali.ids as string[]}::uuid[]) AS chiesti(chiesto) ON chiesto = r.id
+        WHERE r.tenant_id = ${tenantId}::uuid
+        ORDER BY r.id FOR UPDATE OF r`
     }
   }
 

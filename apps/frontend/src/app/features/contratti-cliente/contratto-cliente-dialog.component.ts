@@ -166,15 +166,26 @@ const NESSUNA_VOCE = '—'
           (onClick)="apriListino()"
           data-testid="contratto-dlg-listino"
         />
+        <small
+          *ngIf="motivoSalvaBloccato() as m"
+          role="status"
+          class="field-hint"
+          id="contratto-dlg-salva-motivo"
+          data-testid="contratto-dlg-salva-motivo"
+          >{{ m }}</small
+        >
         <p-button label="Annulla" [text]="true" (onClick)="chiudi()" />
-        <p-button
+        <button
           *ngIf="puoScrivere()"
+          pButton
+          type="button"
           label="Salva"
           icon="pi pi-check"
           [disabled]="!puoSalvare()"
-          (onClick)="salva()"
+          [attr.aria-describedby]="motivoSalvaBloccato() ? 'contratto-dlg-salva-motivo' : null"
+          (click)="salva()"
           data-testid="contratto-dlg-salva"
-        />
+        ></button>
       </ng-template>
     </p-dialog>
     <p-confirmDialog />
@@ -492,6 +503,22 @@ export class ContrattoClienteDialogComponent implements OnChanges {
     // Ritenuta e soglia con il punto o con testo errato: il form non si salva.
     if (this.form.invalid) return false
     return !this.contratto || this.letto() !== null
+  }
+
+  /** Perché «Salva» è spento quando la causa è nei campi (negli altri casi è ovvia). */
+  motivoSalvaBloccato(): string | null {
+    if (this.inCorso() || this.caricamento() || !this.puoScrivere()) return null
+    // Solo i campi davvero errati, nominati dal form (ritenuta, soglia...).
+    const nomi: Partial<Record<string, string>> = {
+      ritenutaPercentuale: 'la ritenuta',
+      sogliaImporto: 'l’importo della soglia',
+    }
+    const errati = Object.entries(this.form.controls)
+      .filter(([, c]) => c.invalid)
+      .map(([k]) => nomi[k] ?? k)
+    return errati.length > 0
+      ? `Salva è disattivato: correggi ${errati.join(', ')} (i decimali vogliono la virgola).`
+      : null
   }
 
   /**

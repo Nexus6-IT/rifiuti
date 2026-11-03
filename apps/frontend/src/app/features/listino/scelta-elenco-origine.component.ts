@@ -45,6 +45,14 @@ import { ListinoService } from './listino.service'
     >
       {{ e }}
     </p>
+    <p
+      *ngIf="avvisoContratti() as a"
+      role="status"
+      class="field-hint"
+      [attr.data-testid]="prefisso + '-avviso-contratti'"
+    >
+      {{ a }}
+    </p>
     <ng-container *ngIf="contratti() !== null">
       <label [for]="prefisso + '-contratto'">Contratto</label>
       <select
@@ -111,6 +119,8 @@ export class SceltaElencoOrigineComponent implements OnChanges, OnDestroy {
   readonly contratti = signal<ContrattoCliente[] | null>(null)
   readonly elenchi = signal<ElencoAddebiti[] | null>(null)
   readonly erroreContratti = signal<string | null>(null)
+  /** Informazione, non errore: i contratti oltre il limite di lettura non sono nell'elenco. */
+  readonly avvisoContratti = signal<string | null>(null)
   readonly erroreElenchi = signal<string | null>(null)
   private letturaContratti?: Subscription
   private letturaElenchi?: Subscription
@@ -138,6 +148,7 @@ export class SceltaElencoOrigineComponent implements OnChanges, OnDestroy {
     this.contratti.set(null)
     this.elenchi.set(null)
     this.erroreContratti.set(null)
+    this.avvisoContratti.set(null)
     this.erroreElenchi.set(null)
     this.tutti = []
   }
@@ -149,7 +160,14 @@ export class SceltaElencoOrigineComponent implements OnChanges, OnDestroy {
     this.letturaContratti = this.clienti.contratti
       .list({ clienteId: cliente.id, pagina: 1, dimensione: 100 })
       .subscribe({
-        next: p => this.contratti.set(p.elementi),
+        next: p => {
+          this.contratti.set(p.elementi)
+          if (p.totale > p.elementi.length) {
+            this.avvisoContratti.set(
+              `Il cliente ha ${p.totale} contratti: ne sono mostrati solo i primi ${p.elementi.length}.`
+            )
+          }
+        },
         error: err =>
           this.erroreContratti.set(
             messaggioErrore(err, 'Impossibile caricare i contratti del cliente.')

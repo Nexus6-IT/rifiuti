@@ -25,6 +25,7 @@ import {
   SubscriptionTier,
   FeatureFlag,
 } from './tenant-admin.service'
+import { NumeroItalianoDirective } from '../../../shared/directives/numero-it.directive'
 
 interface SelectOption<T> {
   label: string
@@ -122,6 +123,7 @@ interface TenantFormData {
     DropdownModule,
     InputTextModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     CheckboxModule,
     TooltipModule,
     ProgressSpinnerModule,
@@ -566,6 +568,11 @@ interface TenantFormData {
                 <div class="field col-12 md:col-6">
                   <label for="t-user-limit">Numero massimo utenze</label>
                   <p-inputNumber
+                    appNumeroIt
+                    locale="it-IT"
+                    [useGrouping]="false"
+                    soloIntero
+                    [maxFractionDigits]="0"
                     inputId="t-user-limit"
                     [(ngModel)]="form.userLimitTotal"
                     name="userLimitTotal"
@@ -581,6 +588,11 @@ interface TenantFormData {
                 <div class="field col-12 md:col-6">
                   <label for="t-fir-limit">Limite FIR / mese</label>
                   <p-inputNumber
+                    appNumeroIt
+                    locale="it-IT"
+                    [useGrouping]="false"
+                    soloIntero
+                    [maxFractionDigits]="0"
                     inputId="t-fir-limit"
                     [(ngModel)]="form.firLimitPerMonth"
                     name="firLimitPerMonth"

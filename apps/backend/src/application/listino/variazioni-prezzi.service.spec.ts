@@ -56,7 +56,7 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
         const s = strings.join('?')
         testi.push(s)
         valori.push(v)
-        if (s.includes('FROM righe_addebito\n      WHERE')) {
+        if (s.includes('FROM righe_addebito\n      JOIN unnest')) {
           return righe.map(r => ({
             ...r,
             elencoId: `e-${r.contrattoId}`,
@@ -202,9 +202,9 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
       expect(testi[0]).toMatch(/SET LOCAL lock_timeout/)
       const lock = testi.filter(t => /FOR NO KEY UPDATE/.test(t))
       expect(lock).toHaveLength(2)
-      expect(lock[0]).toMatch(/FROM righe_addebito[\s\S]*ORDER BY id FOR NO KEY UPDATE/)
+      expect(lock[0]).toMatch(/FROM righe_addebito r[\s\S]*ORDER BY r\.id FOR NO KEY UPDATE OF r/)
       expect(lock[1]).toMatch(
-        /FROM scaglioni_riga_addebito[\s\S]*ORDER BY riga_id, ordine FOR NO KEY UPDATE/
+        /FROM scaglioni_riga_addebito s[\s\S]*ORDER BY s\.riga_id, s\.ordine FOR NO KEY UPDATE OF s/
       )
       expect(testi.some(t => /FOR UPDATE/.test(t.replace(/NO KEY UPDATE/g, '')))).toBe(false)
     })
@@ -217,7 +217,7 @@ describe('VariazioniPrezziService (Prisma finto)', () => {
       // Prezzi (con versione) + sola versione per la riga che cambia solo nelle fasce.
       expect(aggiornaRighe).toHaveLength(2)
       expect(aggiornaRighe[0]).toMatch(/SET prezzo = v\.prezzo, versione = r\.versione \+ 1/)
-      expect(aggiornaRighe[1]).toMatch(/SET versione = versione \+ 1/)
+      expect(aggiornaRighe[1]).toMatch(/SET versione = r\.versione \+ 1/)
     })
 
     it('impronta diversa: 409 VARIAZIONE_SUPERATA e nessun UPDATE né audit', async () => {

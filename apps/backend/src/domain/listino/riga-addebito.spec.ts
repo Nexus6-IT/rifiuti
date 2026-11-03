@@ -720,6 +720,18 @@ describe('normalizzaRiga (R36, R37)', () => {
     expect(validaRiga(dati, CTX)).toEqual([])
   })
 
+  it('cambio di tipo F -> V: il campo della famiglia precedente, non inviato, si svuota senza errore (T21 m1)', () => {
+    // Nel PATCH `inviati` contiene solo le chiavi cambiate: la quantita' fissa e' rimasta uguale
+    // ma non vale piu' per il tipo V, quindi e' un valore ereditato dalla riga di prima e non una
+    // scelta dell'utente. Se invece la manda con un valore e la cambia, e' un errore sul campo.
+    const g = { tipo: 'V', quantitaFissa: '2', tipoQuantita: 'PESO_NETTO', unitaMisura: 'KG' }
+    const { dati, errori } = normalizzaRiga(g, new Set(['tipo']))
+    expect(errori).toEqual([])
+    expect(dati.quantitaFissa).toBeNull()
+    const inviata = normalizzaRiga(g, new Set(['tipo', 'quantitaFissa']))
+    expect(inviata.errori).toEqual([expect.objectContaining({ campo: 'quantitaFissa' })])
+  })
+
   it('il CER con asterisco e le cifre sparse passano da cerCanonico', () => {
     const g = { tipo: 'CER', cerCode: '200121*' }
     expect(normalizzaRiga(g, inviati(g)).dati.cerCode).toBe('20 01 21*')

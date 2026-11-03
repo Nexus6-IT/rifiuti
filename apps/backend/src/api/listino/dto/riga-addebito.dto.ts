@@ -21,24 +21,9 @@ import {
   IsUUID,
   Min,
   ValidateNested,
-  registerDecorator,
-  type ValidationOptions,
 } from 'class-validator'
 
-/** Stringa oppure numero finito (importi e percentuali: il dominio ne controlla il formato). */
-function IsTestoONumero(opzioni?: ValidationOptions) {
-  return (oggetto: object, proprieta: string) =>
-    registerDecorator({
-      name: 'isTestoONumero',
-      target: oggetto.constructor,
-      propertyName: proprieta,
-      options: { message: 'Il valore deve essere un testo o un numero', ...opzioni },
-      validator: {
-        validate: (v: unknown) =>
-          typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)),
-      },
-    })
-}
+import { IsTestoONumero } from './testo-o-numero'
 
 export class ScaglioneRigaDto {
   @IsOptional()

@@ -13,13 +13,24 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
-import { Observable, Subscription, forkJoin, map, merge } from 'rxjs'
+import {
+  Observable,
+  Subscription,
+  catchError,
+  forkJoin,
+  map,
+  merge,
+  of,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs'
 import { CerService } from '../cer/cer.service'
 import { AggiuntaInLinea } from '../clienti/aggiunta-in-linea'
 import { messaggioErrore, permessoScrittura } from '../clienti/tabelle/tabella-comune'
 import { CERSearchResult } from '../../shared/models/cer.model'
 import { AddebitoDialogComponent } from './addebito-dialog.component'
-import { Addebito, CodificaRentri, RigaAddebito } from './listino.model'
+import { Addebito, CodificaRentri, RigaAddebito, RigaSalvata } from './listino.model'
 import { ListinoService } from './listino.service'
 import { ChiaveOpzione, OpzioniListino } from './opzioni-listino'
 import { RigaDatiSezioneComponent, RichiestaNuovo } from './riga-dati-sezione.component'
@@ -84,6 +95,15 @@ const GENERI_IN_LINEA = ['CATEGORIA', 'CENTRO_RICAVO'] as const
         <li *ngFor="let m of stato.generali()">{{ m }}</li>
       </ul>
       <p *ngIf="avviso() as a" role="status" class="field-hint" data-testid="riga-avviso">
+        {{ a }}
+      </p>
+
+      <p
+        *ngIf="avvisoRicerca() as a"
+        role="status"
+        class="field-hint"
+        data-testid="riga-avviso-ricerca"
+      >
         {{ a }}
       </p>
 
@@ -170,7 +190,7 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   /** VIEWER o contratto annullato (D16): niente scrittura, il backend resta l'arbitro. */
   @Input() soloLettura = false
   @Output() visibleChange = new EventEmitter<boolean>()
-  @Output() salvato = new EventEmitter<RigaAddebito>()
+  @Output() salvato = new EventEmitter<RigaSalvata>()
   /** "Ricarica" dopo un 409: la pagina rilegge e chiude il dialog. */
   @Output() ricarica = new EventEmitter<void>()
 
@@ -190,6 +210,8 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   )
 
   readonly avviso = signal<string | null>(null)
+  /** Guasto parziale della ricerca "CER o addebito": mancano i risultati di una delle due. */
+  readonly avvisoRicerca = signal<string | null>(null)
   readonly conflitto = signal(false)
   readonly inCorso = signal(false)
   readonly statiFisici = signal<CodificaRentri[]>([])
@@ -214,30 +236,48 @@ export class RigaAddebitoDialogComponent implements OnChanges, OnDestroy {
   /** Catalogo CER e archivio degli addebiti insieme (la scelta "CER o addebito"). */
   readonly cercaCerOAddebito = (testo: string): Observable<VoceRicerca[]> =>
     forkJoin([
-      this.cer.searchCER(testo),
-      this.servizio.addebiti.list({ testo, soloAttivi: true, dimensione: 20 }),
+      // Solo i CER confermati dall'ultimo allineamento RENTRI: i capitoli e i codici storici il
+      // catalogo li rifiuterebbe con 400. Se una delle due ricerche fallisce si mostrano i
+      // risultati dell'altra; solo se falliscono entrambe la ricerca risulta non riuscita.
+      this.cer.searchCER(testo, true).pipe(catchError(() => of(null))),
+      this.servizio.addebiti
+        .list({ testo, soloAttivi: true, dimensione: 20 })
+        .pipe(catchError(() => of(null))),
     ]).pipe(
-      map(([cer, addebiti]) => [
-        ...cer.map(
-          (c): VoceRicerca<ScelteRicerca> => ({
-            chiave: `cer-${c.code}`,
-            etichetta: `CER ${c.code} - ${c.description}`,
-            dato: { tipo: 'CER', cer: c },
-          })
-        ),
-        ...addebiti.elementi.map(
-          (a): VoceRicerca<ScelteRicerca> => ({
-            chiave: `add-${a.codice}`,
-            etichetta: `${a.codice} - ${a.descrizione} (${a.tipo})`,
-            dato: { tipo: 'ADDEBITO', addebito: a },
-          })
-        ),
-      ])
+      tap(([cer, addebiti]) =>
+        this.avvisoRicerca.set(
+          cer === null && addebiti !== null
+            ? 'Ricerca dei CER non riuscita: sono mostrati solo gli addebiti.'
+            : addebiti === null && cer !== null
+              ? 'Ricerca degli addebiti non riuscita: sono mostrati solo i CER.'
+              : null
+        )
+      ),
+      switchMap(([cer, addebiti]) =>
+        cer === null && addebiti === null
+          ? throwError(() => new Error('Ricerca non riuscita'))
+          : of([
+              ...(cer ?? []).map(
+                (c): VoceRicerca<ScelteRicerca> => ({
+                  chiave: `cer-${c.code}`,
+                  etichetta: `CER ${c.code} - ${c.description}`,
+                  dato: { tipo: 'CER', cer: c },
+                })
+              ),
+              ...(addebiti?.elementi ?? []).map(
+                (a): VoceRicerca<ScelteRicerca> => ({
+                  chiave: `add-${a.codice}`,
+                  etichetta: `${a.codice} - ${a.descrizione} (${a.tipo})`,
+                  dato: { tipo: 'ADDEBITO', addebito: a },
+                })
+              ),
+            ])
+      )
     )
 
   readonly cercaCer = (testo: string): Observable<VoceRicerca[]> =>
     this.cer
-      .searchCER(testo)
+      .searchCER(testo, true)
       .pipe(
         map(l =>
           l.map(c => ({ chiave: c.code, etichetta: `${c.code} - ${c.description}`, dato: c }))

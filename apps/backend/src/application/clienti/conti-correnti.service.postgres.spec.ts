@@ -15,6 +15,13 @@ process.env.DATABASE_URL = urlComeRuolo(
   process.env.DB_APP_PASSWORD ?? 'wasteflow_app_dev',
   urlProprietario
 )
+// Le sessioni di questo processo si riconoscono in `pg_stat_activity` (barriera sul lock).
+const NOME_APPLICAZIONE = `conti-correnti-${process.pid}`
+{
+  const u = new URL(process.env.DATABASE_URL)
+  u.searchParams.set('application_name', NOME_APPLICAZIONE)
+  process.env.DATABASE_URL = u.toString()
+}
 
 import { TenantContext } from '../../core/context/tenant-context'
 import {
@@ -209,41 +216,110 @@ describe('ContiCorrentiService — Postgres reale, ruolo wasteflow_app', () => {
     ).resolves.toMatchObject({ banca: 'Nuova', versione: 2 })
   })
 
+  /**
+   * Barriera deterministica (niente corsa a tempo): una transazione del proprietario esegue `tieni`
+   * (un INSERT o un UPDATE) senza committare; la `perdente` del servizio si ferma sul lock
+   * (visibile in `pg_stat_activity` come `wait_event_type = 'Lock'`); solo allora il proprietario
+   * committa e la perdente vede l'esito. Cosi' il timeout della transazione del servizio
+   * (P2028 / 55P03, tradotto in OPERAZIONE_CONCORRENTE) non puo' scattare prima del rilascio.
+   * Restituisce il codice d'errore della perdente (`ok` se riesce).
+   */
+  const conTenitore = async (
+    tieni: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    perdente: () => Promise<unknown>
+  ): Promise<string> => {
+    let rilascia!: () => void
+    const barriera = new Promise<void>(r => (rilascia = r))
+    let tenuta!: () => void
+    const eTenuta = new Promise<void>(r => (tenuta = r))
+    const tenitore = owner.$transaction(
+      async tx => {
+        await tieni(tx)
+        tenuta()
+        await barriera
+      },
+      { timeout: 60_000 }
+    )
+    try {
+      // Se `tieni` fallisce il tenitore si rifiuta: l'errore vero emerge subito, senza attese appese.
+      await Promise.race([eTenuta, tenitore])
+      let finita = false
+      const esito = perdente()
+        .then(
+          () => 'ok',
+          (e: { response?: { error?: string } }) => e.response?.error ?? 'errore'
+        )
+        .finally(() => (finita = true))
+      const scadenza = Date.now() + 30_000
+      while (!finita) {
+        const r = await owner.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+            AND wait_event_type = 'Lock'`
+        if (r[0].n >= 1) break
+        if (Date.now() > scadenza) throw new Error('la perdente non e` in attesa del lock')
+        await new Promise(r => setTimeout(r, 25))
+      }
+      // Se la perdente e' gia' finita senza attendere, l'`expect` mostra il suo esito reale.
+      rilascia()
+      await tenitore
+      return await esito
+    } finally {
+      rilascia()
+      await tenitore.catch(() => undefined)
+    }
+  }
+
   it('in concorrenza ogni vincolo dà il proprio codice (IBAN uguale / codice uguale)', async () => {
     const { tenantId, utenteId } = await azienda()
-    const esiti = (v: PromiseSettledResult<unknown>[]) =>
-      v.map(r => (r.status === 'fulfilled' ? 'ok' : (r.reason as any).response?.error))
 
-    const stessoIban = await Promise.allSettled([
-      nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'X1' })),
-      nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'X2' })),
-    ])
-    expect(esiti(stessoIban).sort()).toEqual(['CONTO_CORRENTE_IBAN_DUPLICATO', 'ok'])
+    // Stesso IBAN, codice diverso.
+    expect(
+      await conTenitore(
+        tx =>
+          tx.contoCorrente.create({
+            data: { tenantId, codice: 'X1', descrizione: 'V', banca: 'B', iban: IBAN },
+          }),
+        () => nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'X2' }))
+      )
+    ).toBe('CONTO_CORRENTE_IBAN_DUPLICATO')
 
-    const stessoCodice = await Promise.allSettled([
-      nel(tenantId, () => service.crea(tenantId, utenteId, { ...dati, codice: 'Y', iban: IBAN2 })),
-      nel(tenantId, () =>
-        service.crea(tenantId, utenteId, {
-          ...dati,
-          codice: 'Y',
-          iban: 'FR1420041010050500013M02606',
-        })
-      ),
-    ])
-    expect(esiti(stessoCodice).sort()).toEqual(['CONTO_CORRENTE_CODICE_DUPLICATO', 'ok'])
+    // Stesso codice, IBAN diverso.
+    expect(
+      await conTenitore(
+        tx =>
+          tx.contoCorrente.create({
+            data: { tenantId, codice: 'Y', descrizione: 'V', banca: 'B', iban: IBAN2 },
+          }),
+        () =>
+          nel(tenantId, () =>
+            service.crea(tenantId, utenteId, {
+              ...dati,
+              codice: 'Y',
+              iban: 'FR1420041010050500013M02606',
+            })
+          )
+      )
+    ).toBe('CONTO_CORRENTE_CODICE_DUPLICATO')
   })
 
   it('due modifiche concorrenti sulla stessa versione: una passa, l’altra 409', async () => {
     const { tenantId, utenteId } = await azienda()
     const c = await nel(tenantId, () => service.crea(tenantId, utenteId, dati))
-    const r = await Promise.allSettled([
-      nel(tenantId, () => service.modifica(tenantId, utenteId, c.id, { banca: 'A', versione: 1 })),
-      nel(tenantId, () => service.modifica(tenantId, utenteId, c.id, { banca: 'B', versione: 1 })),
-    ])
-    expect(r.filter(x => x.status === 'fulfilled')).toHaveLength(1)
-    const persa = r.find(x => x.status === 'rejected') as PromiseRejectedResult
-    expect(persa.reason.response.error).toBe('CONTO_CORRENTE_MODIFICATO_NEL_FRATTEMPO')
-    expect((await owner.contoCorrente.findUnique({ where: { id: c.id } }))?.versione).toBe(2)
+    // Il proprietario e' la "vincente": aggiorna la riga (versione 2) e non committa.
+    const esito = await conTenitore(
+      tx =>
+        tx.contoCorrente.update({
+          where: { id: c.id },
+          data: { banca: 'A', versione: { increment: 1 } },
+        }),
+      () =>
+        nel(tenantId, () => service.modifica(tenantId, utenteId, c.id, { banca: 'B', versione: 1 }))
+    )
+    expect(esito).toBe('CONTO_CORRENTE_MODIFICATO_NEL_FRATTEMPO')
+    const riga = await owner.contoCorrente.findUnique({ where: { id: c.id } })
+    expect(riga?.versione).toBe(2)
+    expect(riga?.banca).toBe('A')
   })
 
   it('audit di un conto: il JSON non contiene IBAN né BIC', async () => {

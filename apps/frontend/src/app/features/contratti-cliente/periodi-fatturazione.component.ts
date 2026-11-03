@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
-import { Component, EventEmitter, Input, Output } from '@angular/core'
+import { Component, EventEmitter, Input, Output, signal } from '@angular/core'
 import { ButtonModule } from 'primeng/button'
+import { leggiIntero } from '../../shared/utils/numero-modificabile'
 import { PeriodoFatturazione } from '../clienti/clienti.model'
 import { ETICHETTE_FREQUENZA, FrequenzaPeriodi } from '../clienti/vocabolario-clienti'
 
@@ -75,11 +76,12 @@ type Campo = keyof PeriodoFatturazione
         <tr *ngFor="let p of periodi; let i = index; trackBy: perIndice">
           <td *ngFor="let c of campi">
             <input
-              type="number"
+              type="text"
+              inputmode="numeric"
               class="p-inputtext"
-              min="1"
-              [max]="c.max"
               [value]="p[c.campo]"
+              [attr.aria-invalid]="errori()[i + '-' + c.campo] ? 'true' : null"
+              [attr.aria-describedby]="errori()[i + '-' + c.campo] ? 'periodi-errori' : null"
               [disabled]="disabled"
               (change)="cambia(i, c.campo, $any($event.target).value)"
               [attr.aria-label]="c.etichetta + ' del periodo ' + (i + 1)"
@@ -101,6 +103,9 @@ type Campo = keyof PeriodoFatturazione
         </tr>
       </tbody>
     </table>
+    <div id="periodi-errori" aria-live="polite" data-testid="periodi-errori">
+      <small *ngFor="let e of elencoErrori()" class="field-error">{{ e }}</small>
+    </div>
     <p-button
       *ngIf="!disabled"
       label="Aggiungi periodo"
@@ -167,6 +172,17 @@ export class PeriodiFatturazioneComponent {
     { campo: 'meseFine', sigla: 'mf', etichetta: 'Mese di fine', max: 12 },
   ]
 
+  /** Errori di formato per cella (`indice-campo`): un valore errato non entra nell'elenco. */
+  readonly errori = signal<Record<string, string>>({})
+
+  elencoErrori(): string[] {
+    return Object.entries(this.errori()).map(([k, m]) => {
+      const [i, campo] = k.split('-')
+      const c = this.campi.find(x => x.campo === campo)
+      return `Periodo ${Number(i) + 1}, ${c?.etichetta.toLowerCase() ?? campo}: ${m}`
+    })
+  }
+
   /** Le righe restano le stesse mentre si digita: il campo non perde il focus. */
   perIndice = (i: number): number => i
 
@@ -194,9 +210,16 @@ export class PeriodiFatturazioneComponent {
    */
   cambia(i: number, campo: Campo, testo: string): void {
     if (this.disabled) return
-    const n = Number.parseInt(testo, 10)
-    this.periodiChange.emit(
-      this.periodi.map((p, k) => (k === i ? { ...p, [campo]: Number.isNaN(n) ? 0 : n } : p))
-    )
+    // Stessa regola degli altri interi: «1.000» o «1a» sono un errore, non 1.
+    const esito = leggiIntero(testo)
+    const chiave = `${i}-${campo}`
+    const { [chiave]: _tolto, ...resto } = this.errori()
+    if (esito.errore) {
+      this.errori.set({ ...resto, [chiave]: esito.errore })
+      return
+    }
+    this.errori.set(resto)
+    const n = esito.valore ?? 0
+    this.periodiChange.emit(this.periodi.map((p, k) => (k === i ? { ...p, [campo]: n } : p)))
   }
 }

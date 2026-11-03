@@ -269,6 +269,14 @@ export interface Scadenza {
   anno: number | null
 }
 
+/** Risposta di PATCH e POST della riga: `avvisi` non bloccanti (es. condizione senza più addebiti). */
+export type RigaSalvata = RigaAddebito & { avvisi?: string[] }
+
+/** Risposta di DELETE della riga: avvisi non bloccanti, mai errori. */
+export interface EsitoEliminazioneRiga {
+  avvisi: string[]
+}
+
 export interface RigaAddebito {
   id: string
   elencoId: string
@@ -379,6 +387,11 @@ export interface EsitoCopia {
     duplicate: number
     condizioni: number
   }
+  /**
+   * Avvisi non bloccanti di una copia: righe copiate anche se il loro addebito, codice IVA o
+   * codifica è disattivato. Facoltativo: il backend più vecchio non lo manda.
+   */
+  avvisi?: string[]
 }
 
 export interface EsitoImpostazione {
@@ -464,13 +477,4 @@ export interface InfoAnteprimaContratti {
 /** Aggiunta ai mesi dell'ISTAT: data (AAAA-MM-GG) dell'ultima applicazione. */
 export interface InfoMeseIstat {
   ultimaApplicazione?: string | null
-}
-
-/**
- * Avvisi non bloccanti di una copia: righe copiate anche se il loro addebito, codice IVA o
- * codifica è disattivato. Si aggiunge a `EsitoCopia` (campo facoltativo: il backend più vecchio
- * non lo manda).
- */
-export interface EsitoCopia {
-  avvisi?: string[]
 }

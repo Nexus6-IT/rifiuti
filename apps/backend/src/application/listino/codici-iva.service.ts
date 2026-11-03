@@ -1,6 +1,6 @@
 // Codici IVA delle vendite (4.2a, D3): anagrafica per azienda con lock ottimistico (D14),
-// disattivazione al posto della cancellazione quando il codice e' citato da un addebito o da una riga di un listino (D13, R44) e
-// audit (D16). Le regole sui dati stanno in `domain/listino/codice-iva`; per il resto il servizio
+// disattivazione al posto della cancellazione quando il codice e' citato da un addebito o da una
+// riga di un listino (D13, R44) e audit (D16). Le regole sui dati stanno in `domain/listino/codice-iva`; per il resto il servizio
 // segue i registri IVA della 4.1.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
@@ -80,15 +80,18 @@ const datiDi = (r: RigaCodiceIva): DatiCodiceIva => ({
   attivo: r.attivo,
 })
 
+/** Vista con gli usi gia' noti (la lista li conta in blocco, una volta per tutti i codici). */
+function vistaConUsi(r: RigaCodiceIva, usi: number): CodiceIvaVista {
+  return { id: r.id, ...datiDi(r), versione: r.versione, eliminabile: usi === 0 }
+}
+
 async function comeVista(
   r: RigaCodiceIva,
   tenantId: string,
-  client: ListinoUsi,
-  usiNoti?: number
+  client: ListinoUsi
 ): Promise<CodiceIvaVista> {
-  const usi =
-    usiNoti ?? (await contaUsiListino(client, tenantId, [r.id], COLONNE_CODICE_IVA)).get(r.id) ?? 0
-  return { id: r.id, ...datiDi(r), versione: r.versione, eliminabile: usi === 0 }
+  const usi = (await contaUsiListino(client, tenantId, [r.id], COLONNE_CODICE_IVA)).get(r.id) ?? 0
+  return vistaConUsi(r, usi)
 }
 
 function validaOLancia(dati: DatiCodiceIva): void {
@@ -119,7 +122,7 @@ export class CodiciIvaService {
         righe.map(r => r.id),
         COLONNE_CODICE_IVA
       )
-      return Promise.all(righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0)))
+      return righe.map(r => vistaConUsi(r, usi.get(r.id) ?? 0))
     })
   }
 

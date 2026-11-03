@@ -87,16 +87,19 @@ export class RigheAddebitoController {
 
   @Delete(':id')
   @Roles(...RUOLI_SCRITTURA)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Elimina la riga con le sue fasce e scadenze' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Elimina la riga con le sue fasce e scadenze; 200 { avvisi } (vuoto se nessuna riga la citava come condizione)',
+  })
   @ApiQuery({ name: 'versione', required: true, type: Number })
   @ApiResponse({ status: 409, description: 'Modificata nel frattempo o contratto annullato' })
   async elimina(
     @Req() req: any,
     @Param('id', ParseUUIDPipe) id: string,
     @Query('versione', ParseIntPipe) versione: number
-  ): Promise<void> {
+  ): Promise<{ avvisi: string[] }> {
     const tenantId = requireRequestTenantId(req)
-    await this.righe.elimina(tenantId, req.user.id, id, versione)
+    return this.righe.elimina(tenantId, req.user.id, id, versione)
   }
 }

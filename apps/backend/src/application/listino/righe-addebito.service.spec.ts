@@ -383,6 +383,40 @@ describe('RigheAddebitoService (Prisma finto)', () => {
       expect(tx.activityLog.create.mock.calls[0][0].data.action).toBe('RIGA_ADDEBITO_ELIMINATA')
     })
 
+    describe('m9: righe che citano la condizione (avviso, non blocco)', () => {
+      const citante = {
+        tipo: 'TS',
+        cerCode: null,
+        condizioniRiferite: '1C',
+        addebito: { codice: '00007' },
+      }
+      beforeEach(() => {
+        tx.rigaAddebito.findFirst.mockImplementation(async ({ select }: any) =>
+          select
+            ? { elencoId: E, tipo: 'V', unitaMisura: 'KG', elenco: { contrattoId: C } }
+            : rigaDb({ tipo: 'V', condizione: 1 })
+        )
+      })
+
+      it('citata e senza altri condizionati: riesce e riporta l’avviso, senza id', async () => {
+        tx.rigaAddebito.findMany.mockResolvedValue([citante])
+        tx.rigaAddebito.count = jest.fn().mockResolvedValue(0)
+        const esito = await service.elimina(T, U, R, 1)
+        expect(tx.rigaAddebito.deleteMany).toHaveBeenCalled()
+        expect(esito.avvisi).toEqual([
+          'La riga TS 00007 cita la condizione 1, che non ha più addebiti condizionati.',
+        ])
+      })
+
+      it('altri condizionati rimasti, o nessun citante: nessun avviso', async () => {
+        tx.rigaAddebito.findMany.mockResolvedValue([citante])
+        tx.rigaAddebito.count = jest.fn().mockResolvedValue(1)
+        expect((await service.elimina(T, U, R, 1)).avvisi).toEqual([])
+        tx.rigaAddebito.findMany.mockResolvedValue([])
+        expect((await service.elimina(T, U, R, 1)).avvisi).toEqual([])
+      })
+    })
+
     it('la transazione parte con lock_timeout e un tetto sopra l’attesa', async () => {
       tx.rigaAddebito.findFirst.mockImplementation(async ({ select }: any) =>
         select

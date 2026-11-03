@@ -17,6 +17,7 @@ import {
   validaElenco,
   type DatiElenco,
 } from '../../domain/listino/elenco-addebiti'
+import { dataReale } from '../../domain/contratti-cliente/regole-contratto-cliente'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
   confrontaVersione,
@@ -138,13 +139,27 @@ const datiDi = (r: RigaElenco): DatiElenco => ({
   dataDocumentoPa: giorno(r.dataDocumentoPa),
 })
 
+/** Valori nel formato delle colonne: le date sono `Date` (UTC, mezzanotte). */
+type ValoriDatabase = Omit<DatiElenco, 'validoDal' | 'validoAl' | 'dataDocumentoPa'> & {
+  validoDal: Date | null
+  validoAl: Date | null
+  dataDocumentoPa: Date | null
+}
+
 /** Valori nel formato delle colonne: le date diventano `Date` (UTC, mezzanotte). */
-const perDatabase = (d: DatiElenco): Record<keyof DatiElenco, unknown> => ({
+const perDatabase = (d: DatiElenco): ValoriDatabase => ({
   ...d,
   validoDal: comeData(d.validoDal),
   validoAl: comeData(d.validoAl),
   dataDocumentoPa: comeData(d.dataDocumentoPa),
 })
+
+/** Solo i campi indicati, con il tipo delle colonne (per l'`UPDATE` parziale). */
+const soloCampi = (v: ValoriDatabase, campi: readonly (keyof ValoriDatabase)[]) => {
+  const r: Partial<ValoriDatabase> = {}
+  for (const c of campi) Object.assign(r, { [c]: v[c] })
+  return r
+}
 
 const uguali = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
@@ -177,7 +192,7 @@ export class ElenchiAddebitiService {
     contrattoId: string,
     validiAl?: string
   ): Promise<{ contesto: ContestoListino; elenchi: ElencoAddebitiVista[] }> {
-    if (validiAl !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(validiAl)) {
+    if (validiAl !== undefined && !dataReale(validiAl)) {
       throw new BadRequestException({
         message: ['La data non è valida.'],
         error: 'ELENCO_ADDEBITI_NON_VALIDO',
@@ -307,10 +322,7 @@ export class ElenchiAddebitiService {
             () =>
               tx.elencoAddebiti.updateMany({
                 where: { id, tenantId, versione: m.versione },
-                data: {
-                  ...Object.fromEntries(campi.map(c => [c, valori[c]])),
-                  versione: { increment: 1 },
-                } as Prisma.ElencoAddebitiUpdateManyMutationInput,
+                data: { ...soloCampi(valori, campi), versione: { increment: 1 } },
               }),
             ENTITA
           )
@@ -376,7 +388,7 @@ export class ElenchiAddebitiService {
 
       const creato = await tx.elencoAddebiti.create({
         data: {
-          ...(perDatabase({ ...valori, codice }) as Prisma.ElencoAddebitiUncheckedCreateInput),
+          ...perDatabase({ ...valori, codice }),
           tenantId,
           contrattoId,
         },

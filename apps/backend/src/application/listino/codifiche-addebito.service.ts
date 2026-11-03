@@ -1,7 +1,8 @@
 // Codifiche di addebito: gruppo, categoria, categorie statistiche e centro di ricavo (4.2a, D4).
 // Una tabella per cinque elenchi, distinti dal `genere`, con codice unico per (azienda, genere).
 // Stesso schema delle codifiche del contratto della 4.1: lock ottimistico (D14), disattivazione
-// al posto della cancellazione quando la codifica e' citata da un addebito o da una riga di un listino (D13, R44), audit (D16).
+// al posto della cancellazione quando la codifica e' citata da un addebito o da una riga di un
+// listino (D13, R44), audit (D16).
 // Le regole sui dati stanno in `domain/listino/codifica-addebito`; il primo codice libero e'
 // `primoCodiceLibero` della 4.1 (non si duplica).
 //
@@ -94,16 +95,8 @@ type RigaCodifica = {
 const CAMPI = ['codice', 'descrizione', 'attiva'] as const
 type Campo = (typeof CAMPI)[number]
 
-async function comeVista(
-  r: RigaCodifica,
-  tenantId: string,
-  client: ListinoUsi,
-  usiNoti?: number
-): Promise<CodificaAddebitoVista> {
-  const usi =
-    usiNoti ??
-    (await contaUsiListino(client, tenantId, [r.id], COLONNE_CODIFICA_ADDEBITO)).get(r.id) ??
-    0
+/** Vista con gli usi gia' noti (la lista li conta in blocco, una volta per tutte le codifiche). */
+function vistaConUsi(r: RigaCodifica, usi: number): CodificaAddebitoVista {
   return {
     id: r.id,
     genere: r.genere as GenereCodificaAddebito,
@@ -113,6 +106,16 @@ async function comeVista(
     versione: r.versione,
     eliminabile: usi === 0,
   }
+}
+
+async function comeVista(
+  r: RigaCodifica,
+  tenantId: string,
+  client: ListinoUsi
+): Promise<CodificaAddebitoVista> {
+  const usi =
+    (await contaUsiListino(client, tenantId, [r.id], COLONNE_CODIFICA_ADDEBITO)).get(r.id) ?? 0
+  return vistaConUsi(r, usi)
 }
 
 function lanciaNonValida(errori: string[]): never {
@@ -159,7 +162,7 @@ export class CodificheAddebitoService {
         righe.map(r => r.id),
         COLONNE_CODIFICA_ADDEBITO
       )
-      return Promise.all(righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0)))
+      return righe.map(r => vistaConUsi(r, usi.get(r.id) ?? 0))
     })
   }
 

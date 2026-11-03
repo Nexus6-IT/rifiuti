@@ -35,6 +35,7 @@ import {
   RentriRegistroService,
   messaggioErroreRentri,
 } from './rentri-registro.service'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
 
@@ -47,6 +48,7 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
     ButtonModule,
     DialogModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputTextModule,
     InputTextareaModule,
   ],
@@ -142,6 +144,10 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
               <div class="field">
                 <label id="rentri-dic-anno-label" for="rentri-dic-anno">Anno</label>
                 <p-inputNumber
+                  appNumeroIt
+                  locale="it-IT"
+                  soloIntero
+                  [maxFractionDigits]="0"
                   formControlName="anno"
                   inputId="rentri-dic-anno"
                   [useGrouping]="false"
@@ -155,31 +161,39 @@ export const FORMATO_IDENTIFICATIVO = /^R[0-9A-Z]{10}$/
             <div class="col-12 sm:col-4">
               <div class="field">
                 <label for="rentri-dic-da">Dal numero</label>
-                <input
-                  id="rentri-dic-da"
-                  type="number"
-                  min="1"
-                  pInputText
-                  class="w-full"
+                <p-inputNumber
+                  appNumeroIt
+                  soloIntero
+                  locale="it-IT"
+                  [useGrouping]="false"
+                  [maxFractionDigits]="0"
+                  inputId="rentri-dic-da"
+                  [min]="1"
+                  styleClass="w-full"
+                  inputStyleClass="w-full"
                   formControlName="da"
                   data-testid="rentri-dic-da"
                   aria-describedby="rentri-dic-nota"
-                />
+                ></p-inputNumber>
               </div>
             </div>
             <div class="col-12 sm:col-4">
               <div class="field">
                 <label for="rentri-dic-a">Al numero</label>
-                <input
-                  id="rentri-dic-a"
-                  type="number"
-                  min="1"
-                  pInputText
-                  class="w-full"
+                <p-inputNumber
+                  appNumeroIt
+                  soloIntero
+                  locale="it-IT"
+                  [useGrouping]="false"
+                  [maxFractionDigits]="0"
+                  inputId="rentri-dic-a"
+                  [min]="1"
+                  styleClass="w-full"
+                  inputStyleClass="w-full"
                   formControlName="a"
                   data-testid="rentri-dic-a"
                   aria-describedby="rentri-dic-nota"
-                />
+                ></p-inputNumber>
               </div>
             </div>
           </div>

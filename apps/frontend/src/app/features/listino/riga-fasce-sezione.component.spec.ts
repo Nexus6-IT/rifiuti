@@ -383,4 +383,25 @@ describe('RigaFasceSezioneComponent', () => {
     expect(q('fasce-annuncio')?.getAttribute('aria-live')).toBe('polite')
     expect(q('fasce-avvisi')).toBeNull()
   })
+
+  it('togliendo una fascia il focus va su una fascia ancora presente (voce 21)', async () => {
+    await monta()
+    bottone('fasce-aggiungi')!.click()
+    await stabilizza(fixture)
+    q<HTMLButtonElement>('fascia-2-togli')!.click()
+    await stabilizza(fixture)
+    await new Promise(r => setTimeout(r))
+    expect(document.activeElement).toBe(q('fascia-1-fino'))
+  })
+
+  it('la zona degli errori di numero esiste sempre con aria-live (voce 20)', async () => {
+    await monta()
+    const zona = q('fascia-1-fino')!.ownerDocument.getElementById('fasce-errori-numeri')
+    expect(zona?.getAttribute('aria-live')).toBe('polite')
+    expect(q('fascia-1-fino')!.getAttribute('aria-describedby')).toBeNull()
+    scrivi('fascia-1-fino', '1.5')
+    await stabilizza(fixture)
+    expect(q('fascia-1-fino')!.getAttribute('aria-describedby')).toBe('fasce-errori-numeri')
+    expect(zona!.textContent).toContain('Usa la virgola')
+  })
 })

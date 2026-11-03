@@ -44,6 +44,8 @@ export interface PesataManualeRaccolta {
           >{{ etichettaPeso }} <span class="req" aria-hidden="true">*</span></label
         >
         <p-inputNumber
+          [messaggioInterno]="false"
+          [useGrouping]="false"
           appPesoIt
           (rifiutato)="rifiutoPeso.set($event)"
           formControlName="pesoKg"
@@ -60,8 +62,8 @@ export interface PesataManualeRaccolta {
           styleClass="w-full"
         ></p-inputNumber>
         <small [id]="id('peso-aiuto')" class="field-hint"
-          >Con la virgola per i decimali (al massimo due, esempio 12,5). Il separatore delle
-          migliaia lo inserisce il campo.</small
+          >Con la virgola per i decimali (al massimo due, esempio 12,5). Niente separatore delle
+          migliaia.</small
         >
         <small
           *ngIf="errorePeso() as e"

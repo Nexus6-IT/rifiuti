@@ -51,6 +51,7 @@ import {
   opzioniUnita,
 } from './registro-opzioni'
 import { numeroAnnotazione } from './registro-correzioni'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export type ModoCorrezione = 'rettifica' | 'annullamento'
 
@@ -88,6 +89,7 @@ export function messaggioErroreCorrezione(err: any): string {
     DialogModule,
     DropdownModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     InputTextModule,
     InputTextareaModule,
     CerSelectComponent,
@@ -218,6 +220,8 @@ export function messaggioErroreCorrezione(err: any): string {
                     >Quantità <span class="req" aria-hidden="true">*</span></label
                   >
                   <p-inputNumber
+                    appNumeroIt
+                    [useGrouping]="false"
                     formControlName="quantity"
                     inputId="corr-quantita"
                     [minFractionDigits]="0"

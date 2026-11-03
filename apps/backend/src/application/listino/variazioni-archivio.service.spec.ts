@@ -248,9 +248,9 @@ describe('VariazioniArchivioService (Prisma finto)', () => {
 
       const lock = testiSql.filter(s => s.includes('FOR NO KEY UPDATE'))
       expect(lock).toHaveLength(2)
-      expect(lock[0]).toMatch(/FROM addebiti[\s\S]*ORDER BY id[\s\S]*FOR NO KEY UPDATE/)
+      expect(lock[0]).toMatch(/FROM addebiti a[\s\S]*ORDER BY a\.id[\s\S]*FOR NO KEY UPDATE/)
       expect(lock[1]).toMatch(
-        /FROM prezzi_listino_addebito[\s\S]*ORDER BY addebito_id, numero[\s\S]*FOR NO KEY UPDATE/
+        /FROM prezzi_listino_addebito p[\s\S]*ORDER BY p\.addebito_id, p\.numero[\s\S]*FOR NO KEY UPDATE/
       )
       const indicePrezzi = testiSql.findIndex(s => /UPDATE prezzi_listino_addebito/.test(s))
       const indiceAddebiti = testiSql.findIndex(s => /UPDATE addebiti[\s\S]*versione \+ 1/.test(s))

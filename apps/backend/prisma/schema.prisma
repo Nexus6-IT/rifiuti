@@ -945,6 +945,7 @@ model ActivityLog {
   @@index([firId])
   @@index([createdAt])
   @@index([correlationId])
+  @@index([tenantId, action])
   @@map("activity_logs")
 }
 
@@ -3471,6 +3472,12 @@ model Addebito {
   @@unique([id, tenantId], map: "addebiti_id_tenant_id_key")
   @@unique([tenantId, codice], map: "addebiti_tenant_id_codice_key")
   @@index([tenantId], map: "addebiti_tenant_id_idx")
+  @@index([tenantId, gruppoId], map: "addebiti_tenant_id_gruppo_id_idx")
+  @@index([tenantId, codiceIvaId], map: "addebiti_tenant_id_codice_iva_id_idx")
+  @@index([tenantId, categoriaId], map: "addebiti_tenant_id_categoria_id_idx")
+  @@index([tenantId, centroRicavoId], map: "addebiti_tenant_id_centro_ricavo_id_idx")
+  @@index([tenantId, categoriaStatistica1Id], map: "addebiti_tenant_id_categoria_statistica_1_id_idx")
+  @@index([tenantId, categoriaStatistica2Id], map: "addebiti_tenant_id_categoria_statistica_2_id_idx")
   @@map("addebiti")
 }
 

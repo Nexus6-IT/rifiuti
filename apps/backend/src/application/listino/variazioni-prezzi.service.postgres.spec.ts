@@ -726,9 +726,10 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
           codiceIvaId: a.rif.iva22Id,
         })),
       })
-      // Dopo una scrittura in massa le statistiche del planner sono quelle della tabella vuota
-      // finche' l'autovacuum non passa: le si aggiorna per non misurare il caso (in esercizio ci pensa l'autovacuum, con ritardo).
-      await owner.$executeRawUnsafe('ANALYZE righe_addebito')
+      // Niente `ANALYZE`: dopo una scrittura in massa le statistiche del planner sono quelle della
+      // tabella vuota finche' l'autovacuum non passa, ed e' il caso reale di una copia appena fatta
+      // (M12). Il servizio legge con `id = ANY(uuid[])` una tabella alla volta proprio per non
+      // dipendere dal piano scelto: i tempi di questi test lo dimostrano.
       return a
     }
 
@@ -757,6 +758,31 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
 
     it('esattamente 10.000 righe: l’anteprima e l’applicazione passano', async () => {
       const a = await conMolteRighe(10_000)
+      // Regressione `= ANY(uuid[])` (M12): in produzione Prisma passa al piano generico dopo ~5
+      // esecuzioni e, con le statistiche della tabella vuota, il planner scansiona 10.000 righe
+      // x 10.000 elementi (32 s). Qui lo si forza su qualunque database, anche uno gia' usato:
+      // piano generico per il ruolo applicativo (connessioni nuove) e statistiche che stimano una
+      // riga sola (verificato: col vecchio `= ANY` questo test fallisce, 36 s).
+      await owner.$executeRaw`ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
+      try {
+        await owner.$executeRaw`DELETE FROM pg_statistic
+          WHERE starelid IN ('righe_addebito'::regclass, 'scaglioni_riga_addebito'::regclass)`
+        await owner.$executeRaw`UPDATE pg_class SET reltuples = 1, relpages = 100000
+          WHERE oid IN ('righe_addebito'::regclass, 'scaglioni_riga_addebito'::regclass)`
+        await app.$disconnect()
+        await app.$connect()
+        const t0 = Date.now()
+        await eseguiVariazioneCompleta(a)
+        expect(Date.now() - t0).toBeLessThan(8_000)
+      } finally {
+        await owner.$executeRaw`ALTER ROLE wasteflow_app RESET plan_cache_mode`
+        // Statistiche vere per le suite che seguono sullo stesso database.
+        await owner.$executeRaw`ANALYZE righe_addebito`
+        await owner.$executeRaw`ANALYZE scaglioni_riga_addebito`
+      }
+    }, 90_000)
+
+    async function eseguiVariazioneCompleta(a: Awaited<ReturnType<typeof conMolteRighe>>) {
       const r = await nel(a.tenantId, () => service.anteprima(a.tenantId, corpo()))
       expect(r.totale).toBe(10_000)
       const esito = await nel(a.tenantId, () =>
@@ -767,7 +793,7 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
         where: { tenantId: a.tenantId, prezzo: '1.1', versione: 2 },
       })
       expect(nuove).toBe(10_000)
-    }, 90_000)
+    }
   })
 
   // ---------------------------------------------------------------------------------------

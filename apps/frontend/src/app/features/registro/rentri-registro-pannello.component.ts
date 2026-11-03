@@ -52,6 +52,7 @@ import {
   tooltipEsclusione,
   tooltipStatoRentri,
 } from './stato-rentri'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 
 export interface TrasmissioneRentriRiga {
   stato: StatoRentri
@@ -413,6 +414,7 @@ type TipoConferma = 'selezionati' | 'storico'
     ButtonModule,
     DialogModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     TagModule,
     RentriRegistroImpostazioniDialogComponent,
   ],
@@ -553,6 +555,10 @@ type TipoConferma = 'selezionati' | 'storico'
           <div class="field">
             <label id="rentri-storico-anno-label" for="rentri-storico-anno">Anno</label>
             <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              soloIntero
+              [maxFractionDigits]="0"
               [(ngModel)]="annoStorico"
               inputId="rentri-storico-anno"
               [useGrouping]="false"

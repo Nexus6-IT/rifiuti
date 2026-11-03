@@ -125,6 +125,7 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
             inputmode="numeric"
             [value]="s.giorno"
             [attr.aria-invalid]="invalido(s, 'giorno') ? 'true' : null"
+            [attr.aria-describedby]="invalido(s, 'giorno') ? 'scadenze-errori-numeri' : null"
             [disabled]="soloLettura"
             (input)="cambia(s, 'giorno', $any($event.target).value)"
             [attr.data-testid]="'scadenza-' + (i + 1) + '-giorno'"
@@ -138,6 +139,7 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
             inputmode="numeric"
             [value]="s.mese"
             [attr.aria-invalid]="invalido(s, 'mese') ? 'true' : null"
+            [attr.aria-describedby]="invalido(s, 'mese') ? 'scadenze-errori-numeri' : null"
             [disabled]="soloLettura"
             (input)="cambia(s, 'mese', $any($event.target).value)"
             [attr.data-testid]="'scadenza-' + (i + 1) + '-mese'"
@@ -151,6 +153,7 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
             inputmode="numeric"
             [value]="s.anno"
             [attr.aria-invalid]="invalido(s, 'anno') ? 'true' : null"
+            [attr.aria-describedby]="invalido(s, 'anno') ? 'scadenze-errori-numeri' : null"
             [disabled]="soloLettura"
             (input)="cambia(s, 'anno', $any($event.target).value)"
             [attr.data-testid]="'scadenza-' + (i + 1) + '-anno'"
@@ -222,14 +225,15 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
           <strong data-testid="scadenze-totale-importo">{{ totale() }} €</strong>
         </p>
 
-        <ul
-          class="errori-numeri"
-          *ngIf="erroriNumeri().length > 0"
-          aria-live="polite"
-          data-testid="scadenze-errori-numeri"
-        >
-          <li *ngFor="let m of erroriNumeri()" class="field-error">{{ m }}</li>
-        </ul>
+        <div aria-live="polite" id="scadenze-errori-numeri">
+          <ul
+            class="errori-numeri"
+            *ngIf="erroriNumeri().length > 0"
+            data-testid="scadenze-errori-numeri"
+          >
+            <li *ngFor="let m of erroriNumeri()" class="field-error">{{ m }}</li>
+          </ul>
+        </div>
         <ul class="avvisi" *ngIf="avvisi().length > 0" data-testid="scadenze-avvisi">
           <li *ngFor="let m of avvisi()" class="field-hint">{{ m }}</li>
         </ul>
@@ -479,7 +483,8 @@ export class RigaScadenzeSezioneComponent implements OnInit, DoCheck, OnDestroy 
     const periodo = this.stato.form.controls.periodoScadenze.value as PeriodoScadenze | ''
     const s = this.righe[i]
     if (periodo === '' || eVuota(s) || this.eExtra()) return ''
-    if (this.erroriNumeri().length > 0) return ''
+    // Solo i numeri di QUESTA riga contano: un errore altrove non nasconde le altre competenze.
+    if (['giorno', 'mese', 'anno'].some(c => this.invalido(s, c as keyof ScadenzaTesto))) return ''
     const sc: Scadenza = {
       ordine: i + 1,
       giorno: intero(s.giorno),
@@ -519,6 +524,7 @@ export class RigaScadenzeSezioneComponent implements OnInit, DoCheck, OnDestroy 
     })
     // Senza scadenze nessun avviso: il backend risponde al salvataggio. Il periodo extra
     // mancante, invece, si segnala appena c'è una data.
-    return v.length === 0 ? [] : errori
+    if (v.length === 0) return []
+    return errori
   }
 }

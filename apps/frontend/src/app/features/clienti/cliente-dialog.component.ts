@@ -280,7 +280,7 @@ const senzaSpazi = (v: string | null): string | null =>
           formControlName="ritenutaPercentuale"
           inputmode="decimal"
           [attr.aria-invalid]="erroreRitenuta() ? 'true' : null"
-          aria-describedby="cliente-dlg-ritenuta-errore"
+          [attr.aria-describedby]="erroreRitenuta() ? 'cliente-dlg-ritenuta-errore' : null"
           data-testid="cliente-dlg-ritenuta"
         />
         <small
@@ -305,7 +305,7 @@ const senzaSpazi = (v: string | null): string | null =>
           formControlName="listino"
           class="p-inputtext"
           [attr.aria-invalid]="erroreListino() ? 'true' : null"
-          aria-describedby="cliente-dlg-listino-errore"
+          [attr.aria-describedby]="erroreListino() ? 'cliente-dlg-listino-errore' : null"
           data-testid="cliente-dlg-listino"
         >
           <option value="">Nessuno</option>
@@ -328,7 +328,7 @@ const senzaSpazi = (v: string | null): string | null =>
           inputmode="decimal"
           maxlength="20"
           [attr.aria-invalid]="messaggioProvvigione() ? 'true' : null"
-          aria-describedby="cliente-dlg-provvigione-errore"
+          [attr.aria-describedby]="messaggioProvvigione() ? 'cliente-dlg-provvigione-errore' : null"
           data-testid="cliente-dlg-provvigione"
         />
         <small
@@ -345,7 +345,7 @@ const senzaSpazi = (v: string | null): string | null =>
           formControlName="tipoProvvigionePredefinita"
           class="p-inputtext"
           [attr.aria-invalid]="erroreTipo() ? 'true' : null"
-          aria-describedby="cliente-dlg-tipo-provvigione-errore"
+          [attr.aria-describedby]="erroreTipo() ? 'cliente-dlg-tipo-provvigione-errore' : null"
           data-testid="cliente-dlg-tipo-provvigione"
         >
           <option value="">Da indicare</option>
@@ -548,7 +548,11 @@ export class ClienteDialogComponent implements OnChanges {
     if (conProvvigione && c.disabled) {
       c.enable({ emitEvent: false })
       // Come il WinWaste ("S"): con una provvigione nuova il tipo parte da "sul prezzo scontato".
-      if (preimposta && c.value === '') c.setValue('SCONTATO', { emitEvent: false })
+      if (preimposta && c.value === '') {
+        c.setValue('SCONTATO', { emitEvent: false })
+        // Un errore sul tipo non riguarda più il valore preimpostato (voce 28).
+        this.erroreTipo.set(null)
+      }
     } else if (!conProvvigione && c.enabled) c.disable({ emitEvent: false })
   }
 
