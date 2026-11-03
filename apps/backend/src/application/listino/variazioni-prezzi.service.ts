@@ -819,7 +819,7 @@ export class VariazioniPrezziService {
   /**
    * Righe che corrispondono ai criteri, in ordine di id; oltre il tetto → 400. Prima si scelgono
    * gli id con una lettura piatta (con la sola `where` di Prisma), poi il dettaglio si legge con
-   * due query SQL a `= ANY(uuid[])`: le relazioni annidate di Prisma su 10.000 righe generano
+   * query SQL con `JOIN unnest(uuid[])` (non `= ANY`, vedi il commento nel corpo): le relazioni annidate di Prisma su 10.000 righe generano
    * liste `IN` che superano lo stack di PostgreSQL (54001).
    */
   private async trova(

@@ -622,16 +622,32 @@ export class AzioniListinoService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     ids: readonly string[],
-    dati: Prisma.RigaAddebitoUncheckedUpdateManyInput
+    dati:
+      | { provvigione: string | null; tipoProvvigione: TipoProvvigione | null }
+      | { sconto: string | null }
   ): Promise<void> {
     const ordinati = [...ids].sort()
     for (let i = 0; i < ordinati.length; i += BLOCCO_AGGIORNAMENTO) {
       const blocco = ordinati.slice(i, i + BLOCCO_AGGIORNAMENTO)
       await this.bloccaRighe(tx, tenantId, { ids: blocco })
-      await tx.rigaAddebito.updateMany({
-        where: { tenantId, id: { in: blocco } },
-        data: { ...dati, versione: { increment: 1 } },
-      })
+      // `UPDATE ... FROM unnest` e non `id IN (...)`: vedi il commento in
+      // VariazioniPrezziService.trova (piano generico quadratico con liste grandi).
+      // `updated_at` come farebbe `@updatedAt` di Prisma.
+      if ('sconto' in dati) {
+        await tx.$executeRaw`
+          UPDATE righe_addebito r
+          SET sconto = ${dati.sconto}, versione = r.versione + 1, updated_at = now()
+          FROM unnest(${blocco}::uuid[]) AS chiesti(chiesto)
+          WHERE r.tenant_id = ${tenantId}::uuid AND r.id = chiesto`
+      } else {
+        await tx.$executeRaw`
+          UPDATE righe_addebito r
+          SET provvigione = ${dati.provvigione},
+              tipo_provvigione = ${dati.tipoProvvigione}::tipo_provvigione,
+              versione = r.versione + 1, updated_at = now()
+          FROM unnest(${blocco}::uuid[]) AS chiesti(chiesto)
+          WHERE r.tenant_id = ${tenantId}::uuid AND r.id = chiesto`
+      }
     }
   }
 
