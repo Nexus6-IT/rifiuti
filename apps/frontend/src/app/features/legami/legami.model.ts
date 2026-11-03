@@ -11,3 +11,255 @@ export interface DatiImpostazioneFatturazione {
   /** Numero di movimenti toccati già visto e accettato dall'utente. */
   confermaMovimenti?: number
 }
+
+// ---------------------------------------------------------------------------------------------
+// Legame movimento <-> listino (fase 4.3, spec §4.4, §4.5, §8.1).
+// Numeri sempre come stringhe col punto, importi compresi.
+// ---------------------------------------------------------------------------------------------
+
+export const STATI_LEGAME = [
+  'DA_COLLEGARE',
+  'PROPOSTO',
+  'CONFERMATO',
+  'ESCLUSO',
+  'ANNULLATO',
+  'FATTURATO',
+  'IMPORTATO_FATTURATO',
+] as const
+export type StatoLegame = (typeof STATI_LEGAME)[number]
+
+/** Stati virtuali della lista «Da collegare» (spec §7.3): non esistono nel database. */
+export const STATI_VIRTUALI = ['MANCANTE', 'DA_RIALLINEARE'] as const
+export type StatoVirtuale = (typeof STATI_VIRTUALI)[number]
+export type StatoLista = StatoLegame | StatoVirtuale
+
+export const MOTIVI_LEGAME = [
+  'SENZA_CLIENTE',
+  'SENZA_CONTRATTO',
+  'SEDE_SENZA_CONTRATTO',
+  'CONTRATTO_AMBIGUO',
+  'CONTRATTO_NON_ATTIVO',
+  'SENZA_ELENCO',
+  'ELENCO_SCADUTO',
+  'SENZA_RIGA_CER',
+  'RIGA_AMBIGUA',
+  'SENZA_PREZZO',
+  'SENZA_QUANTITA',
+] as const
+export type MotivoLegame = (typeof MOTIVI_LEGAME)[number]
+
+export const AVVISI_LEGAME = [
+  'CLIENTE_NON_DA_FIR',
+  'QUANTITA_MANUALE_NON_DERIVATA',
+  'CAMBIO_CER_DA_CONFERMARE',
+  'PREZZO_MANUALE',
+  'CONTRATTO_ALTRA_SEDE',
+] as const
+export type AvvisoLegame = (typeof AVVISI_LEGAME)[number]
+
+export type FonteCliente = 'FIR' | 'UTENTE'
+export type OrigineRiga = 'PRINCIPALE' | 'PROPOSTA' | 'MANUALE'
+export type OrigineQuantita = 'DA_MOVIMENTO' | 'MANUALE'
+
+/** Riferimento a un'entità scelta dal legame (cliente, contratto, elenco) con l'etichetta da mostrare. */
+export interface VoceScelta {
+  id: string
+  etichetta: string
+}
+
+export interface RigaLegame {
+  /** Id della riga del legame (assente nella proposta, non ancora salvata). */
+  id?: string
+  rigaAddebitoId: string
+  ordine: number
+  origine: OrigineRiga
+  tipo: string
+  descrizione: string | null
+  tipoQuantita: string
+  unitaMisura: string
+  quantita: string | null
+  quantitaOrigine: OrigineQuantita | null
+  prezzoSpeciale: boolean
+  prezzo: string | null
+  sconto: string | null
+  prezzoManuale: boolean
+  aliquotaIva: string | null
+  naturaIva: string | null
+  congelataIl: string | null
+  /** Importo calcolato dal server con `importoRiga`; mai ricalcolato qui. Null se non calcolabile. */
+  importo: string | null
+}
+
+/** Alternative per i menu di scelta (spec §8.1: la proposta restituisce anche i candidati). */
+export interface CandidatiLegame {
+  contratti: VoceScelta[]
+  elenchi: VoceScelta[]
+  righe: (VoceScelta & { origine: OrigineRiga })[]
+}
+
+export interface PropostaLegame {
+  stato: StatoLegame
+  cliente: (VoceScelta & { fonte: FonteCliente }) | null
+  /** Perché manca il cliente (es. «cliente disattivato»); accompagna il motivo SENZA_CLIENTE. */
+  dettaglioCliente: string | null
+  contratto: VoceScelta | null
+  elenco: VoceScelta | null
+  righe: RigaLegame[]
+  motivi: MotivoLegame[]
+  avvisi: AvvisoLegame[]
+  candidati: CandidatiLegame
+}
+
+export interface LegameVista {
+  id: string
+  movimentoOriginaleId: string
+  movimentoVigenteId: string
+  stato: StatoLegame
+  dataMovimento: string
+  cliente: (VoceScelta & { fonte: FonteCliente | null }) | null
+  dettaglioCliente: string | null
+  contratto: VoceScelta | null
+  elenco: VoceScelta | null
+  righe: RigaLegame[]
+  motivi: MotivoLegame[]
+  avvisi: AvvisoLegame[]
+  motivoEsclusione: string | null
+  confermatoIl: string | null
+  fatturatoIl: string | null
+  riferimentoFattura: string | null
+  scostamentoDopoFattura: boolean
+  scostamentoIl: string | null
+  versione: number
+  candidati?: CandidatiLegame
+}
+
+export interface RigaLista {
+  /** Assente per gli stati virtuali MANCANTE e DA_RIALLINEARE (nessun legame, o legame vecchio). */
+  legameId: string | null
+  movimentoId: string
+  stato: StatoLista
+  dataMovimento: string
+  cerCode: string
+  descrizioneMovimento: string | null
+  cliente: VoceScelta | null
+  motivi: MotivoLegame[]
+  avvisi: AvvisoLegame[]
+  versione: number | null
+  /** Vera se la proposta è completa e si può confermare in massa. */
+  confermabile: boolean
+}
+
+export interface FiltriLista {
+  stato?: StatoLista
+  clienteId?: string
+  registroId?: string
+  motivo?: MotivoLegame
+  dal?: string
+  al?: string
+  /** Include gli ESCLUSO (per riammetterli). */
+  esclusi?: boolean
+  pagina?: number
+  dimensione?: number
+}
+
+export interface ContatoriLegami {
+  daCollegare: number
+  proposti: number
+  mancanti: number
+  daRiallineare: number
+}
+
+/** Dati del movimento non ancora registrato (POST /proposta, sola lettura). */
+export interface DatiProposta {
+  causaleId: string
+  cerCode: string
+  dataMovimento: string
+  unitaMisura: string
+  /** Stringa col punto. */
+  quantita: string
+  firId?: string | null
+  producerSedeId?: string | null
+}
+
+/** Modifica di una riga: quantità > 0 (max 3 decimali), prezzo >= 0 (max 6), sconto formula o null. */
+export interface ModificaRigaLegame {
+  rigaAddebitoId: string
+  quantita?: string
+  prezzo?: string
+  sconto?: string | null
+}
+
+export interface ModificheLegame {
+  clienteId?: string
+  contrattoId?: string
+  elencoId?: string
+  righe?: ModificaRigaLegame[]
+}
+
+export interface CorpoModificaLegame extends ModificheLegame {
+  versione: number
+}
+
+export interface CorpoConferma {
+  versione: number
+  modifiche?: ModificheLegame
+}
+
+export interface CorpoEscludi {
+  versione: number
+  motivo: string
+}
+
+/** Blocco `legame` facoltativo del corpo della registrazione e della rettifica (spec §7.1). */
+export interface DatiLegameRegistrazione extends ModificheLegame {
+  azione: 'CONFERMA' | 'PROPOSTA'
+}
+
+export interface CorpoAzioneMassa {
+  azione: 'CONFERMA' | 'ESCLUDI'
+  /** Massimo 500. */
+  elementi: { legameId: string; versione: number }[]
+  /** Obbligatorio con ESCLUDI. */
+  motivo?: string
+}
+
+export interface EsitoAzioneMassa {
+  riusciti: number
+  falliti: { legameId: string; codice: string; messaggio: string }[]
+}
+
+export interface PerimetroAggiornamento {
+  contrattoId?: string
+  elencoId?: string
+  dal?: string
+  al?: string
+}
+
+export interface CorpoAggiornaPrezzi {
+  perimetro: PerimetroAggiornamento
+  /** Assente = anteprima; presente = applica (409 ANTEPRIMA_SUPERATA se i dati sono cambiati). */
+  firma?: string
+}
+
+export interface DifferenzaAggiornamento {
+  legameId: string
+  movimentoId: string
+  prezzoPrima: string | null
+  prezzoDopo: string | null
+  scontoPrima: string | null
+  scontoDopo: string | null
+}
+
+export interface AnteprimaAggiornamento {
+  firma: string
+  cambiano: number
+  differenze: DifferenzaAggiornamento[]
+  saltati: { motivo: string; numero: number }[]
+  /** Righe con prezzo manuale: «escluse, prezzo modificato a mano» (decisione 16). */
+  righeEscluseManuali: number
+}
+
+export interface EsitoAggiornamento {
+  aggiornati: number
+  saltati: number
+}
