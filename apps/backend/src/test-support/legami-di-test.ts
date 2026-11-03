@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { StatoLegame } from '../domain/legami-movimento/codici'
+import { creaDittaConRuolo, partitaIvaUnica } from './anagrafiche-di-test'
+import { creaCodiciIvaEcodifiche, creaContrattoConElenco, creaRiga } from './listino-di-test'
 
 /**
  * Fixture del database per i test dei legami movimento-cliente-prezzo (fase 4.3). Si usano col
@@ -181,4 +183,152 @@ export async function pulisciLegamiDiTest(
   await owner.legameMovimento.deleteMany({ where: { tenantId: in_ } })
   // Le catene di correzione hanno FK NoAction fra loro: si cancellano in un solo statement.
   await owner.wasteMovement.deleteMany({ where: { tenantId: in_ } })
+}
+
+export interface OpzioniFirDiTest {
+  /** Riga di ruolo `Produttore` (non la ditta); omessa: il FIR non porta a nessun cliente. */
+  producerId?: string | null
+  producerSedeId?: string | null
+  /** Omesso: `20 03 01`. */
+  cerCode?: string
+}
+
+/** Crea (col client PROPRIETARIO) un FIR in bozza con i soli campi obbligatori. */
+export async function creaFirDiTest(
+  owner: PrismaClient,
+  tenantId: string,
+  utenteId: string,
+  opz: OpzioniFirDiTest = {}
+): Promise<{ id: string }> {
+  return owner.fIR.create({
+    data: {
+      tenantId,
+      producerUserId: utenteId,
+      producerId: opz.producerId ?? null,
+      producerSedeId: opz.producerSedeId ?? null,
+      producerPartitaIva: partitaIvaUnica(),
+      producerName: 'Produttore di prova',
+      producerAddress: 'Via Prova 1, 20100 Milano MI',
+      carrierPartitaIva: partitaIvaUnica(),
+      carrierName: 'Trasportatore',
+      carrierVehiclePlate: 'AB123CD',
+      receiverPartitaIva: partitaIvaUnica(),
+      receiverName: 'Destinatario',
+      receiverAddress: 'Via Destinazione 1, 20100 Milano MI',
+      cerCode: opz.cerCode ?? '20 03 01',
+      wasteDescription: 'Rifiuto di prova',
+      wasteCategory: 'Non pericoloso',
+      quantity: 100,
+      unit: 'KG',
+      status: 'DRAFT',
+      transportDate: new Date(),
+    },
+    select: { id: true },
+  })
+}
+
+export interface OpzioniScenarioProposta {
+  /** Azienda esistente; omessa: ne crea una (da cancellare a fine test per id). */
+  tenantId?: string
+  /** Omesso: `20 03 01`. */
+  cerCode?: string
+  /** Quante righe `V` (proposte dal CER) aggiungere all'elenco; omesso: 0. */
+  righeV?: number
+  /** Omesso: `2026-03-01`. */
+  movementDate?: string
+}
+
+export interface ScenarioProposta {
+  tenantId: string
+  utenteId: string
+  ivaId: string
+  /** Ditta del produttore del FIR e cliente censito sulla stessa ditta. */
+  dittaId: string
+  clienteId: string
+  /** Sede della ditta, indicata sul FIR come sede del produttore. */
+  sedeId: string
+  contrattoId: string
+  elencoId: string
+  rigaCerId: string
+  righeVIds: string[]
+  firId: string
+  movimentoId: string
+  registroId: string
+}
+
+/**
+ * Crea (col client PROPRIETARIO) lo scenario minimo per leggere i dati di una proposta: azienda,
+ * utente, codice IVA, una ditta produttrice che e' anche cliente (con la sua sede), un contratto
+ * attivo con un elenco e una riga `CER` per il CER dato, `righeV` righe `V` proposte dal CER, un
+ * FIR dal produttore (con la sede) e un movimento ordinario legato al FIR.
+ */
+export async function creaScenarioProposta(
+  owner: PrismaClient,
+  opz: OpzioniScenarioProposta = {}
+): Promise<ScenarioProposta> {
+  const cerCode = opz.cerCode ?? '20 03 01'
+  const tenantId =
+    opz.tenantId ??
+    (
+      await owner.tenant.create({
+        data: { partitaIva: partitaIvaUnica(), ragioneSociale: 'Proposta SRL', country: 'IT' },
+      })
+    ).id
+  const n = partitaIvaUnica()
+  const utente = await owner.user.create({
+    data: {
+      tenantId,
+      keycloakId: `kc-prop-${n}`,
+      fiscalCode: `PRP${n}`.slice(0, 16),
+      firstName: 'Prova',
+      lastName: 'Proposta',
+      email: `prop-${n}@example.test`,
+      role: 'ADMIN',
+    },
+  })
+  const listino = await creaCodiciIvaEcodifiche(owner, tenantId)
+  const produttore = await creaDittaConRuolo(owner, tenantId, 'PRODUTTORE')
+  const cliente = await owner.cliente.create({
+    data: { tenantId, dittaId: produttore.dittaId, sedeId: produttore.sedeId },
+  })
+  const c = await creaContrattoConElenco(owner, tenantId, { clienteId: cliente.id })
+  const rigaCer = await creaRiga(owner, tenantId, c.elencoId, {
+    tipo: 'CER',
+    cerCode,
+    codiceIvaId: listino.iva22Id,
+  })
+  const righeVIds: string[] = []
+  for (let i = 0; i < (opz.righeV ?? 0); i++) {
+    const v = await creaRiga(owner, tenantId, c.elencoId, {
+      tipo: 'V',
+      codiceIvaId: listino.iva22Id,
+      altro: { cerProposta: [cerCode.replace(/ /g, '')] },
+    })
+    righeVIds.push(v.id)
+  }
+  const fir = await creaFirDiTest(owner, tenantId, utente.id, {
+    producerId: produttore.ruoloId,
+    producerSedeId: produttore.sedeId,
+    cerCode,
+  })
+  const m = await creaMovimentoDiTest(owner, tenantId, {
+    cerCode,
+    firId: fir.id,
+    movementDate: opz.movementDate,
+  })
+  return {
+    tenantId,
+    utenteId: utente.id,
+    ivaId: listino.iva22Id,
+    dittaId: produttore.dittaId,
+    clienteId: cliente.id,
+    sedeId: produttore.sedeId,
+    contrattoId: c.contrattoId,
+    elencoId: c.elencoId,
+    rigaCerId: rigaCer.id,
+    righeVIds,
+    firId: fir.id,
+    movimentoId: m.movimentoId,
+    registroId: m.registroId,
+  }
 }

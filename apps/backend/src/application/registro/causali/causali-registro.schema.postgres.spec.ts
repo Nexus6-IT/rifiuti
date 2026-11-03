@@ -486,7 +486,10 @@ describe('Causali del registro, schema (Postgres reale)', () => {
     it('fatturabile: su una versione usata nel registro non si cambia, su una non usata si', async () => {
       const a = await azienda()
       const usata = await propria(owner, a.tenantId, { codice: 'AZ_FATT_USATA', dal: '2026-01-01' })
-      const libera = await propria(owner, a.tenantId, { codice: 'AZ_FATT_LIBERA', dal: '2026-01-01' })
+      const libera = await propria(owner, a.tenantId, {
+        codice: 'AZ_FATT_LIBERA',
+        dal: '2026-01-01',
+      })
       await movimento(owner, a, {
         type: 'SCARICO',
         causale: 'AZ_FATT_USATA',

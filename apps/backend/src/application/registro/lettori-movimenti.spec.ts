@@ -42,6 +42,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
   },
+  'application/legami-movimento/lock-legame.ts': {
+    scelta: 'tutte',
+    motivo:
+      'solo un lock FOR KEY SHARE sulle righe dei movimenti indicati per id (stesso lock delle FK del legame), prima del lock consultivo: non legge ne scrive dati, non calcola nulla',
+  },
   'application/legami-movimento/impostazioni-fatturazione.service.ts': {
     scelta: 'vigenti',
     motivo:

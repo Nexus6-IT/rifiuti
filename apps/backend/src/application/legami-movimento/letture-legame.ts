@@ -1,0 +1,170 @@
+// Letture del legame (fase 4.3, Task 14): i dati che il servizio passa alle funzioni di dominio
+// della proposta. Solo SELECT, sempre con il tenant nella where (anche con la RLS accesa), una
+// query per lista e mai una per riga. Nessun lock: chi conferma blocca poi con `lock-legame.ts` e
+// rilegge.
+import { Prisma } from '@prisma/client'
+import type { TipoQuantita } from '../../domain/listino/riga-addebito'
+import type {
+  ClienteDaFir,
+  ContrattoCandidato,
+  ElencoCandidato,
+} from '../../domain/legami-movimento/proposta-contratto'
+import type { RigaCandidata } from '../../domain/legami-movimento/proposta-righe'
+
+export interface ElencoLetto extends ElencoCandidato {
+  contrattoId: string
+}
+
+/** Riga di listino con i campi per la proposta (`RigaCandidata`) e quelli da copiare nel legame. */
+export interface RigaListinoLetta extends RigaCandidata {
+  elencoId: string
+  descrizione: string | null
+  /** Decimale come stringa con la scala della colonna (`1.000000`); `null` = prezzo assente. */
+  prezzo: string | null
+  prezzoSpeciale: boolean
+  sconto: string | null
+  codiceIvaId: string
+}
+
+export interface CodiceIvaLetto {
+  id: string
+  codice: string
+  /** Decimale come stringa con la scala della colonna (`22.00`). */
+  aliquota: string
+  natura: string | null
+  attivo: boolean
+}
+
+export interface DatiPerProposta {
+  /** Contratti del cliente NON eliminati (M4), di ogni stato: lo stato lo giudica il dominio. */
+  contratti: ContrattoCandidato[]
+  /** Elenchi di quei contratti, di ogni validita': la scelta la fa `proponiElenco`. */
+  elenchi: ElencoLetto[]
+  /** Righe `CER` del CER del movimento e righe `V`, solo degli elenchi validi alla data. */
+  righe: RigaListinoLetta[]
+  codiciIva: CodiceIvaLetto[]
+}
+
+export interface InputDatiPerProposta {
+  cerCode: string
+  /** `AAAA-MM-GG`. */
+  movementDate: string
+  clienteId: string | null
+  /** Sede del produttore sul FIR: non serve alle query (la scelta del contratto e' del dominio). */
+  sedeId: string | null
+  /** Contratto scelto a mano: restringe la lettura a quel contratto. */
+  contrattoId?: string
+  /** Elenco scelto a mano: restringe gli elenchi letti a quello. */
+  elencoId?: string
+}
+
+/**
+ * Contratti, elenchi, righe e codici IVA per calcolare una proposta: quattro query, una per lista,
+ * qualunque sia il numero di righe. Elenchi e righe si ricavano dal cliente con join (nessun
+ * elenco di id da rimandare al database). Senza cliente non c'e' nulla da leggere.
+ */
+export async function leggiDatiPerProposta(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  i: InputDatiPerProposta
+): Promise<DatiPerProposta> {
+  if (i.clienteId === null) return { contratti: [], elenchi: [], righe: [], codiciIva: [] }
+  const contrattoId = i.contrattoId ?? null
+  const elencoId = i.elencoId ?? null
+  const cifre = i.cerCode.replace(/\D/g, '')
+
+  const contratti = await tx.$queryRaw<ContrattoCandidato[]>`
+    SELECT c.id::text AS id, c.cliente_id::text AS "clienteId", c.stato::text AS stato,
+           to_char(c.data_inizio, 'YYYY-MM-DD') AS "dataInizio",
+           to_char(c.data_fine, 'YYYY-MM-DD') AS "dataFine", c.sede_id::text AS "sedeId"
+    FROM contratti_cliente c
+    WHERE c.tenant_id = ${tenantId}::uuid AND c.cliente_id = ${i.clienteId}::uuid
+      AND c.eliminato_il IS NULL
+      AND (${contrattoId}::uuid IS NULL OR c.id = ${contrattoId}::uuid)
+    ORDER BY c.data_inizio, c.id`
+
+  const elenchi = await tx.$queryRaw<ElencoLetto[]>`
+    SELECT e.id::text AS id, e.contratto_id::text AS "contrattoId",
+           to_char(e.valido_dal, 'YYYY-MM-DD') AS "validoDal",
+           to_char(e.valido_al, 'YYYY-MM-DD') AS "validoAl", e.predefinito AS predefinito
+    FROM elenchi_addebiti e
+    JOIN contratti_cliente c ON c.id = e.contratto_id AND c.tenant_id = e.tenant_id
+    WHERE e.tenant_id = ${tenantId}::uuid AND c.cliente_id = ${i.clienteId}::uuid
+      AND c.eliminato_il IS NULL
+      AND (${contrattoId}::uuid IS NULL OR c.id = ${contrattoId}::uuid)
+      AND (${elencoId}::uuid IS NULL OR e.id = ${elencoId}::uuid)
+    ORDER BY e.codice, e.id`
+
+  const righe = await tx.$queryRaw<
+    (Omit<RigaListinoLetta, 'tipoQuantita'> & { tipoQuantita: string | null })[]
+  >`
+    SELECT r.id::text AS id, r.elenco_id::text AS "elencoId", r.tipo AS tipo,
+           r.cer_code AS "cerCode", r.riferimento AS riferimento,
+           a.codice AS "addebitoCodice", r.cer_proposta::text[] AS "cerProposta",
+           r.addebiti_proposti::text[] AS "addebitiProposti",
+           r.tipo_quantita::text AS "tipoQuantita", r.unita_misura AS "unitaMisura",
+           r.descrizione AS descrizione, r.prezzo::text AS prezzo,
+           r.prezzo_speciale AS "prezzoSpeciale", r.sconto AS sconto,
+           r.codice_iva_id::text AS "codiceIvaId"
+    FROM righe_addebito r
+    JOIN elenchi_addebiti e ON e.id = r.elenco_id AND e.tenant_id = r.tenant_id
+    JOIN contratti_cliente c ON c.id = e.contratto_id AND c.tenant_id = e.tenant_id
+    LEFT JOIN addebiti a ON a.id = r.addebito_id AND a.tenant_id = r.tenant_id
+    WHERE r.tenant_id = ${tenantId}::uuid AND c.cliente_id = ${i.clienteId}::uuid
+      AND c.eliminato_il IS NULL
+      AND (${contrattoId}::uuid IS NULL OR c.id = ${contrattoId}::uuid)
+      AND (${elencoId}::uuid IS NULL OR e.id = ${elencoId}::uuid)
+      AND (e.valido_dal IS NULL OR e.valido_dal <= ${i.movementDate}::date)
+      AND (e.valido_al IS NULL OR e.valido_al >= ${i.movementDate}::date)
+      AND r.tipo IN ('CER', 'V')
+      AND (r.tipo <> 'CER' OR ${cifre} = ''
+           OR regexp_replace(COALESCE(r.cer_code, ''), '[^0-9]', '', 'g') = ${cifre})
+    ORDER BY r.elenco_id, r.id`
+
+  // Pochi id distinti (i codici IVA dell'azienda): `IN` su una sola tabella, lineare.
+  const ivaIds = [...new Set(righe.map(r => r.codiceIvaId))]
+  const codiciIva =
+    ivaIds.length === 0
+      ? []
+      : await tx.$queryRaw<CodiceIvaLetto[]>`
+          SELECT v.id::text AS id, v.codice AS codice, v.aliquota::text AS aliquota,
+                 v.natura AS natura, v.attivo AS attivo
+          FROM codici_iva v
+          WHERE v.tenant_id = ${tenantId}::uuid
+            AND v.id IN (${Prisma.join(ivaIds.map(id => Prisma.sql`${id}::uuid`))})
+          ORDER BY v.id`
+
+  return {
+    contratti,
+    elenchi,
+    righe: righe.map(r => ({ ...r, tipoQuantita: r.tipoQuantita as TipoQuantita | null })),
+    codiciIva,
+  }
+}
+
+/**
+ * Cliente proposto dal FIR (spec §6.2): `FIR.producerId` -> `Produttore.dittaId` -> `Cliente`
+ * (azienda, ditta). Il cliente si restituisce anche se disattivato (`attivo=false`): lo giudica
+ * `proponiCliente`. La sede e' quella del produttore sul FIR (`producerSedeId`), anche se il FIR
+ * non porta a un cliente. FIR inesistente o di un'altra azienda: nessun cliente, nessuna sede.
+ */
+export async function clienteDaFir(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  firId: string
+): Promise<{ cliente: ClienteDaFir | null; sedeId: string | null }> {
+  const r = await tx.$queryRaw<
+    { clienteId: string | null; attivo: boolean | null; sedeId: string | null }[]
+  >`
+    SELECT c.id::text AS "clienteId", c.attivo AS attivo, f.producer_sede_id::text AS "sedeId"
+    FROM firs f
+    LEFT JOIN produttori p ON p.id = f.producer_id AND p.tenant_id = f.tenant_id
+    LEFT JOIN clienti c ON c.ditta_id = p.ditta_id AND c.tenant_id = f.tenant_id
+    WHERE f.tenant_id = ${tenantId}::uuid AND f.id = ${firId}::uuid`
+  if (r.length === 0) return { cliente: null, sedeId: null }
+  const { clienteId, attivo, sedeId } = r[0]
+  return {
+    cliente: clienteId === null ? null : { id: clienteId, attivo: attivo === true },
+    sedeId,
+  }
+}
