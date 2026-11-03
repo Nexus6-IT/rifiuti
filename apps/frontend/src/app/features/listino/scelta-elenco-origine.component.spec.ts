@@ -96,6 +96,14 @@ describe('SceltaElencoOrigineComponent', () => {
     expect(q('origine-nessun-contratto')).not.toBeNull()
   })
 
+  it('cliente con più contratti di quelli letti: avviso con il totale (voce 13)', async () => {
+    contrattiList.and.returnValue(of({ elementi: [contratto('c1')], totale: 150 }))
+    fixture.componentInstance.sceltoCliente(cliente)
+    await stabilizza(fixture)
+    expect(q('origine-errore-contratti')!.textContent).toContain('150 contratti')
+    expect(q('origine-contratto')).not.toBeNull()
+  })
+
   it('errori di contratti ed elenchi in zone separate', async () => {
     contrattiList.and.returnValue(throwError(() => ({ error: { message: 'Contratti KO.' } })))
     fixture.componentInstance.sceltoCliente(cliente)

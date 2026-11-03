@@ -345,6 +345,20 @@ describe('VariazioneArchivioDialogComponent', () => {
     expect(q('var-errore-anteprima')).toBeNull()
   })
 
+  it('se falliscono entrambi i vocabolari, l’avviso li nomina tutti e due (voce 15)', async () => {
+    TestBed.overrideProvider(ListinoService, {
+      useValue: {
+        addebiti,
+        codifiche: { list: () => throwError(() => ({ status: 500 })) },
+        codiciIva: { list: () => throwError(() => ({ status: 500 })) },
+      },
+    })
+    await apri()
+    const t = q('var-errore-caricamento')!.textContent!
+    expect(t).toContain('categorie')
+    expect(t).toContain('codici IVA')
+  })
+
   it('durante l’applicazione né Esc né Annulla chiudono', async () => {
     const lenta = new Subject<{ aggiornati: number }>()
     addebiti.applicaVariazione.and.returnValue(lenta)

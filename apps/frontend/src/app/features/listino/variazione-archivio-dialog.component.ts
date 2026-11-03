@@ -411,7 +411,7 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
           ),
         error: () => {
           this.categorie.set([])
-          this.erroreCaricamento.set('Impossibile caricare le categorie.')
+          this.aggiungiErroreCaricamento('Impossibile caricare le categorie.')
         },
       })
     )
@@ -423,10 +423,16 @@ export class VariazioneArchivioDialogComponent implements OnChanges, OnDestroy {
           ),
         error: () => {
           this.codiciIva.set([])
-          this.erroreCaricamento.set('Impossibile caricare i codici IVA.')
+          this.aggiungiErroreCaricamento('Impossibile caricare i codici IVA.')
         },
       })
     )
+  }
+
+  /** Due letture in parallelo possono fallire insieme: gli errori si sommano, non si sovrascrivono. */
+  private aggiungiErroreCaricamento(testo: string): void {
+    const prima = this.erroreCaricamento()
+    this.erroreCaricamento.set(prima ? `${prima} ${testo}` : testo)
   }
 
   sostituzioneIva(): boolean {

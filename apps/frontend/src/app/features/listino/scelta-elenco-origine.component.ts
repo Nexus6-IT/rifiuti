@@ -149,7 +149,14 @@ export class SceltaElencoOrigineComponent implements OnChanges, OnDestroy {
     this.letturaContratti = this.clienti.contratti
       .list({ clienteId: cliente.id, pagina: 1, dimensione: 100 })
       .subscribe({
-        next: p => this.contratti.set(p.elementi),
+        next: p => {
+          this.contratti.set(p.elementi)
+          if (p.totale > p.elementi.length) {
+            this.erroreContratti.set(
+              `Il cliente ha ${p.totale} contratti: ne sono mostrati solo i primi ${p.elementi.length}.`
+            )
+          }
+        },
         error: err =>
           this.erroreContratti.set(
             messaggioErrore(err, 'Impossibile caricare i contratti del cliente.')
