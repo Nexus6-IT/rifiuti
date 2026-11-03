@@ -21,6 +21,7 @@ const base: CausaleAziendaleGestione = {
   codiceRentri: 'aT',
   operazione: 'R',
   ordine: 100,
+  fatturabile: false,
   validaDal: '2026-01-01',
   validaAl: null,
   usata: false,
@@ -33,6 +34,7 @@ const valori = {
   ruoloMud: 'AVVIATO' as const,
   codiceRentri: 'aT' as string | null,
   operazione: 'R' as string | null,
+  fatturabile: false,
   validaDal: '2026-01-01',
 }
 
@@ -75,6 +77,12 @@ describe('causali-gestione', () => {
         validaDal: '2026-02-01',
       })
     ).toEqual({ ordine: 5, ruoloMud: 'ESCLUSO', validaDal: '2026-02-01' })
+  })
+
+  it('il PATCH include fatturabile solo se cambiato', () => {
+    expect(differenzeModifica(base, { ...valori, fatturabile: true })).toEqual({
+      fatturabile: true,
+    })
   })
 
   it('i giorni si calcolano senza fuso, anche a cavallo di mese e anno', () => {

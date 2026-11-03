@@ -89,6 +89,7 @@ export interface ValoriModifica {
   ruoloMud: RuoloMudCausale
   codiceRentri: string | null
   operazione: string | null
+  fatturabile: boolean
   validaDal: string
 }
 
@@ -107,6 +108,7 @@ export function differenzeModifica(
   if (v.ruoloMud !== originale.ruoloMud) out.ruoloMud = v.ruoloMud
   if ((v.codiceRentri || null) !== originale.codiceRentri) out.codiceRentri = v.codiceRentri || null
   if ((v.operazione || null) !== originale.operazione) out.operazione = v.operazione || null
+  if (v.fatturabile !== originale.fatturabile) out.fatturabile = v.fatturabile
   if (v.validaDal && v.validaDal !== originale.validaDal) out.validaDal = v.validaDal
   return out
 }
