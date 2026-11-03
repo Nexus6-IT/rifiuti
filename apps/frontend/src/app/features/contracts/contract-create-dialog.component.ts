@@ -79,6 +79,8 @@ import {
   tipoControparteDaRegistro,
 } from './contract-vocabulary'
 
+const MSG_DUE_DECIMALI = 'Al massimo due decimali'
+
 type CampoNumerico = 'basePrice' | 'durationMonths' | 'renewalNoticeDays'
 
 @Component({
@@ -554,7 +556,7 @@ export class ContractCreateDialogComponent implements OnChanges {
       const e = leggiIntero(testo)
       const v = e.valore === null || errore ? null : e.valore
       if (campo === 'durationMonths') this.form.durationMonths = v ?? undefined
-      else this.form.renewalNoticeDays = v as unknown as number
+      else this.form.renewalNoticeDays = v ?? undefined
     }
     this.erroriNumeri.update(x => ({ ...x, [campo]: errore ?? undefined }))
   }
@@ -562,7 +564,11 @@ export class ContractCreateDialogComponent implements OnChanges {
   private leggiCampoNumerico(campo: CampoNumerico, testo: string): string | null {
     if (campo === 'basePrice') {
       const e = leggiNumero(testo)
-      return e.errore ?? (e.valore !== null && Number(e.valore) < 0 ? MSG_NUMERO : null)
+      if (e.errore) return e.errore
+      if (e.valore !== null && Number(e.valore) < 0) return MSG_NUMERO
+      // Il campo è Decimal(10,2): oltre due decimali il database arrotonderebbe in silenzio.
+      if (e.valore !== null && (e.valore.split('.')[1]?.length ?? 0) > 2) return MSG_DUE_DECIMALI
+      return null
     }
     const e = leggiIntero(testo)
     return e.errore ?? (campo === 'durationMonths' && e.valore === 0 ? MSG_NUMERO : null)
@@ -585,8 +591,10 @@ export class ContractCreateDialogComponent implements OnChanges {
   /** Vero (con avviso) se un campo numerico modificabile ha un errore: non si salva. */
   private numeriErrati(): boolean {
     const errori = this.erroriNumeri()
+    // Il preavviso compare solo con il rinnovo automatico: un suo errore rimasto a campo
+    // nascosto non deve bloccare il salvataggio.
     const campo = (Object.keys(errori) as CampoNumerico[]).find(
-      c => errori[c] && !this.campoBloccato(c)
+      c => errori[c] && !this.campoBloccato(c) && (c !== 'renewalNoticeDays' || this.form.autoRenew)
     )
     if (!campo) return false
     this.toast.warn(errori[campo] as string)
