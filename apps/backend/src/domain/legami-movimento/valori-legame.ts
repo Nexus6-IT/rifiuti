@@ -56,11 +56,14 @@ function leggiDecimaleConPunto(
   }
   const m = /^(\d+)(?:\.(\d+))?$/.exec(v)
   if (!m) return { ok: false, errore: `${etichetta}: indica un numero non negativo.` }
-  if (m[1].length > interi) return { ok: false, errore: `${etichetta}: il numero è troppo grande.` }
+  // Gli zeri iniziali non sono cifre intere: si tolgono prima del controllo e dal valore salvato.
+  const intero = m[1].replace(/^0+(?=\d)/, '')
+  if (intero.length > interi)
+    return { ok: false, errore: `${etichetta}: il numero è troppo grande.` }
   if ((m[2] ?? '').length > decimali) {
     return { ok: false, errore: `${etichetta}: al massimo ${decimali} decimali.` }
   }
-  return { ok: true, valore: v }
+  return { ok: true, valore: m[2] === undefined ? intero : `${intero}.${m[2]}` }
 }
 
 /** Quantità scritta a mano (decisione 17): stringa col punto, maggiore di zero, al massimo 3 decimali. */

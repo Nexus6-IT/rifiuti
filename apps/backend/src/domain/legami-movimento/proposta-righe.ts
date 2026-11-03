@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { quantitaDaMovimento } from '../listino/importi-riga'
 import type { TipoQuantita } from '../listino/riga-addebito'
 import { chiaveConfrontoCer } from '../waste-movement/cer-registro'
@@ -90,10 +91,30 @@ function proposte(
 }
 
 /**
+ * La colonna `quantita` e DECIMAL(14,3): oltre 3 decimali si arrotonda mezzo per eccesso
+ * (decisione 18); se il risultato e zero non c'e quantita (`null` = `SENZA_QUANTITA`).
+ */
+function arrotondaQuantita(q: string | null): string | null {
+  if (q === null) return null
+  const d = new Prisma.Decimal(q)
+  const r = d.toDecimalPlaces(3, Prisma.Decimal.ROUND_HALF_UP)
+  if (r.isZero()) return null
+  return d.decimalPlaces() > 3 ? r.toFixed() : q
+}
+
+/**
  * Quantita proposta per una riga dal movimento. Il peso e sempre netto in kg (`quantity` +
  * `unit` del registro); il lordo non e disponibile; il volume solo con unit `L`/`MC`.
  */
 export function quantitaPerRiga(
+  riga: Pick<RigaCandidata, 'tipoQuantita' | 'unitaMisura'>,
+  m: MovimentoPerQuantita
+): string | null {
+  return arrotondaQuantita(quantitaGrezza(riga, m))
+}
+
+/** `m.quantity` va passato con `Decimal.toFixed()`: la notazione esponenziale ("1e-7") da `null`. */
+function quantitaGrezza(
   riga: Pick<RigaCandidata, 'tipoQuantita' | 'unitaMisura'>,
   m: MovimentoPerQuantita
 ): string | null {

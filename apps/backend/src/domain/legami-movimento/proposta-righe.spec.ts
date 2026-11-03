@@ -97,7 +97,14 @@ describe('quantitaPerRiga', () => {
     expect(q('PESO_NETTO', 'KG', '6000', 'KG')).toBe('6000'))
   it('6000 KG con riga TON', () => expect(q('PESO_NETTO', 'TON', '6000', 'KG')).toBe('6'))
   it('6 T con riga KG', () => expect(q('PESO_NETTO', 'KG', '6', 'T')).toBe('6000'))
-  it('quantity 0.50 con TON', () => expect(q('PESO_NETTO', 'TON', '0.50', 'KG')).toBe('0.0005'))
+  it('0.50 kg con TON: 0.0005 si arrotonda a 0.001 (mezzo per eccesso)', () =>
+    expect(q('PESO_NETTO', 'TON', '0.50', 'KG')).toBe('0.001'))
+  it('0.4 kg con TON: 0.0004 arrotonda a zero, quindi nessuna quantita', () =>
+    expect(q('PESO_NETTO', 'TON', '0.40', 'KG')).toBeNull())
+  it('1234.5 kg con TON: 1.2345 arrotonda a 1.235', () =>
+    expect(q('PESO_NETTO', 'TON', '1234.5', 'KG')).toBe('1.235'))
+  it('volume 0.3 L con MC: 0.0003 arrotonda a zero, nessuna quantita', () =>
+    expect(q('VOLUME', 'MC', '0.3', 'L')).toBeNull())
   it.each(['NR', 'L'])('PESO_NETTO su unita %s: null', u =>
     expect(q('PESO_NETTO', 'KG', '5', u)).toBeNull()
   )

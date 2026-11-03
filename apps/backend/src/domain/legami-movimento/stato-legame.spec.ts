@@ -8,6 +8,7 @@ import {
   esitoCorrezione,
   puoAggiornarePrezzi,
   statoDaProposta,
+  statoDopoRicalcolo,
   transizioneEscludi,
   type InputCorrezione,
 } from './stato-legame'
@@ -20,6 +21,9 @@ const base = (o: Partial<InputCorrezione> = {}): InputCorrezione => ({
   dataDopo: '2026-11-10',
   dataPrima: '2026-11-10',
   fatturazioneDa: '2026-01-01',
+  motivoEsclusionePrima: null,
+  haQuantitaManuali: false,
+  quantitaCambiata: false,
   ...o,
 })
 
@@ -51,18 +55,20 @@ describe('esitoCorrezione (tabella 7.5)', () => {
       expect(e).toEqual({
         statoDopo: statoPrima,
         ricalcolaProposta: false,
+        ricontrollaValidita: false,
         ricalcolaQuantitaDaMovimento: true,
         aggiornaVigenteEData: true,
         scostamento: false,
-        avvisi: [],
+        avvisiDaAggiungere: [],
         motivoEsclusione: null,
       })
     }
   })
-  it('rettifica della sola data: si riverifica il contratto (ricalcolaProposta)', () => {
+  it('rettifica della sola data: si ricontrolla la validita, senza rifare la proposta', () => {
     const e = esitoCorrezione(base({ dataDopo: '2026-12-01' }))
     expect(e.statoDopo).toBe('PROPOSTO')
-    expect(e.ricalcolaProposta).toBe(true)
+    expect(e.ricontrollaValidita).toBe(true)
+    expect(e.ricalcolaProposta).toBe(false)
     expect(e.aggiornaVigenteEData).toBe(true)
   })
   it('rettifica che cambia il CER: CONFERMATO torna PROPOSTO, ricalcolo e avviso', () => {
@@ -70,7 +76,7 @@ describe('esitoCorrezione (tabella 7.5)', () => {
     expect(e.statoDopo).toBe('PROPOSTO')
     expect(e.ricalcolaProposta).toBe(true)
     expect(e.ricalcolaQuantitaDaMovimento).toBe(true)
-    expect(e.avvisi).toEqual(['CAMBIO_CER_DA_CONFERMARE'])
+    expect(e.avvisiDaAggiungere).toEqual(['CAMBIO_CER_DA_CONFERMARE'])
     expect(e.motivoEsclusione).toBeNull()
   })
   it('CER cambiato su PROPOSTO e DA_COLLEGARE: restano tali, ricalcolo e avviso', () => {
@@ -78,7 +84,7 @@ describe('esitoCorrezione (tabella 7.5)', () => {
       const e = esitoCorrezione(base({ statoPrima, cerCambiato: true }))
       expect(e.statoDopo).toBe(statoPrima)
       expect(e.ricalcolaProposta).toBe(true)
-      expect(e.avvisi).toEqual(['CAMBIO_CER_DA_CONFERMARE'])
+      expect(e.avvisiDaAggiungere).toEqual(['CAMBIO_CER_DA_CONFERMARE'])
     }
   })
   it('causale diventa non fatturabile: ESCLUSO con MOTIVO_ESCLUSIONE_CAUSALE', () => {
@@ -99,8 +105,71 @@ describe('esitoCorrezione (tabella 7.5)', () => {
     expect(e.ricalcolaProposta).toBe(true)
     expect(e.motivoEsclusione).toBeNull()
   })
-  it('ESCLUSO senza il motivo della prima: DA_COLLEGARE (il chiamante non ha detto altro)', () => {
-    expect(esitoCorrezione(base({ statoPrima: 'ESCLUSO' })).statoDopo).toBe('DA_COLLEGARE')
+  it('ESCLUSO con motivo null/assente: mai riammesso (I2)', () => {
+    expect(esitoCorrezione(base({ statoPrima: 'ESCLUSO' })).statoDopo).toBe('ESCLUSO')
+    const senzaCampo = { ...base({ statoPrima: 'ESCLUSO' }) } as Partial<InputCorrezione>
+    delete senzaCampo.motivoEsclusionePrima
+    expect(esitoCorrezione(senzaCampo as InputCorrezione).statoDopo).toBe('ESCLUSO')
+  })
+  it('annullamento non fatturato: aggiorna il vigente (I1)', () => {
+    for (const statoPrima of ['DA_COLLEGARE', 'PROPOSTO', 'CONFERMATO', 'ESCLUSO'] as const) {
+      const e = esitoCorrezione(base({ statoPrima, tipo: 'ANNULLAMENTO' }))
+      expect(e.aggiornaVigenteEData).toBe(true)
+    }
+    expect(
+      esitoCorrezione(base({ statoPrima: 'NESSUN_LEGAME', tipo: 'ANNULLAMENTO' }))
+        .aggiornaVigenteEData
+    ).toBe(false)
+  })
+  it('ESCLUSO automatico che cambia causa: il motivo si aggiorna (M1)', () => {
+    const e = esitoCorrezione(
+      base({
+        statoPrima: 'ESCLUSO',
+        motivoEsclusionePrima: MOTIVO_ESCLUSIONE_DATA,
+        causaleFatturabileDopo: false,
+      })
+    )
+    expect(e.statoDopo).toBe('ESCLUSO')
+    expect(e.motivoEsclusione).toBe(MOTIVO_ESCLUSIONE_CAUSALE)
+  })
+  it('ESCLUSO a mano che diventa anche non fatturabile: il motivo dell utente resta (M1)', () => {
+    const e = esitoCorrezione(
+      base({
+        statoPrima: 'ESCLUSO',
+        motivoEsclusionePrima: 'Omaggio',
+        causaleFatturabileDopo: false,
+      })
+    )
+    expect(e.statoDopo).toBe('ESCLUSO')
+    expect(e.motivoEsclusione).toBeNull()
+  })
+  it('quantita manuale + quantita cambiata: avviso QUANTITA_MANUALE_NON_DERIVATA (I6)', () => {
+    const e = esitoCorrezione(base({ haQuantitaManuali: true, quantitaCambiata: true }))
+    expect(e.avvisiDaAggiungere).toEqual(['QUANTITA_MANUALE_NON_DERIVATA'])
+    expect(e.statoDopo).toBe('PROPOSTO')
+  })
+  it('quantita manuale ma quantita invariata, o cambiata senza manuali: nessun avviso (I6)', () => {
+    expect(
+      esitoCorrezione(base({ haQuantitaManuali: true, quantitaCambiata: false })).avvisiDaAggiungere
+    ).toEqual([])
+    expect(
+      esitoCorrezione(base({ haQuantitaManuali: false, quantitaCambiata: true })).avvisiDaAggiungere
+    ).toEqual([])
+  })
+  it('quantita manuale + CER cambiato: i due avvisi insieme (I6)', () => {
+    const e = esitoCorrezione(
+      base({ cerCambiato: true, haQuantitaManuali: true, quantitaCambiata: true })
+    )
+    expect(e.avvisiDaAggiungere).toEqual([
+      'CAMBIO_CER_DA_CONFERMARE',
+      'QUANTITA_MANUALE_NON_DERIVATA',
+    ])
+  })
+  it('legame fatturato: nessun avviso di quantita, solo scostamento (I6)', () => {
+    const e = esitoCorrezione(
+      base({ statoPrima: 'FATTURATO', haQuantitaManuali: true, quantitaCambiata: true })
+    )
+    expect(e.avvisiDaAggiungere).toEqual([])
   })
   it('ESCLUSO per scelta dell utente: resta ESCLUSO anche dopo una rettifica', () => {
     const e = esitoCorrezione(
@@ -183,10 +252,11 @@ describe('esitoCorrezione (tabella 7.5)', () => {
         expect(e).toEqual({
           statoDopo: statoPrima,
           ricalcolaProposta: false,
+          ricontrollaValidita: false,
           ricalcolaQuantitaDaMovimento: false,
           aggiornaVigenteEData: true,
           scostamento: true,
-          avvisi: [],
+          avvisiDaAggiungere: [],
           motivoEsclusione: null,
         })
       }
@@ -203,6 +273,33 @@ describe('esitoCorrezione (tabella 7.5)', () => {
       const e = esitoCorrezione(base({ statoPrima, cerCambiato: true }))
       expect(e.statoDopo === 'CONFERMATO' && statoPrima !== 'CONFERMATO').toBe(false)
       if (statoPrima === 'CONFERMATO') expect(e.statoDopo).toBe('PROPOSTO')
+    }
+  })
+})
+
+describe('statoDopoRicalcolo (I3)', () => {
+  const ok = { motivi: [], completo: true }
+  it('CONFERMATO ancora valido: resta CONFERMATO', () => {
+    expect(statoDopoRicalcolo('CONFERMATO', ok)).toBe('CONFERMATO')
+  })
+  it('CONFERMATO con motivi (es. CONTRATTO_NON_ATTIVO) o incompleto: DA_COLLEGARE, mai CONFERMATO', () => {
+    expect(
+      statoDopoRicalcolo('CONFERMATO', { motivi: ['CONTRATTO_NON_ATTIVO'], completo: true })
+    ).toBe('DA_COLLEGARE')
+    expect(statoDopoRicalcolo('CONFERMATO', { motivi: [], completo: false })).toBe('DA_COLLEGARE')
+  })
+  it('PROPOSTO, DA_COLLEGARE e legame nuovo seguono statoDaProposta (mai CONFERMATO)', () => {
+    for (const p of ['PROPOSTO', 'DA_COLLEGARE', 'NESSUN_LEGAME'] as const) {
+      expect(statoDopoRicalcolo(p, ok)).toBe('PROPOSTO')
+      expect(statoDopoRicalcolo(p, { motivi: ['SENZA_PREZZO'], completo: true })).toBe(
+        'DA_COLLEGARE'
+      )
+      expect(statoDopoRicalcolo(p, { motivi: [], completo: false })).toBe('DA_COLLEGARE')
+    }
+  })
+  it('altri stati: invariati', () => {
+    for (const p of ['ESCLUSO', 'ANNULLATO', 'FATTURATO', 'IMPORTATO_FATTURATO'] as const) {
+      expect(statoDopoRicalcolo(p, { motivi: ['SENZA_PREZZO'], completo: false })).toBe(p)
     }
   })
 })

@@ -1,5 +1,6 @@
 import {
   proponiCliente,
+  verificaContrattoScelto,
   proponiContratto,
   proponiElenco,
   type ContrattoCandidato,
@@ -35,7 +36,8 @@ describe('proponiCliente', () => {
     const r = proponiCliente({ firPresente: true, clienteDaFir: { id: 'c1', attivo: false } })
     expect(r.clienteId).toBeNull()
     expect(r.motivi).toEqual(['SENZA_CLIENTE'])
-    expect(r.avvisi).toEqual(['CLIENTE_NON_DA_FIR'])
+    expect(r.avvisi).toEqual([])
+    expect(r.dettaglioCliente).toBe('cliente disattivato')
   })
   it('nessun FIR: SENZA_CLIENTE senza avviso', () => {
     expect(proponiCliente({ firPresente: false, clienteDaFir: null })).toEqual({
@@ -180,5 +182,82 @@ describe('proponiElenco', () => {
   })
   it('nessun elenco: SENZA_ELENCO', () => {
     expect(proponiElenco([], D)).toEqual({ elenco: null, validi: [], motivo: 'SENZA_ELENCO' })
+  })
+})
+
+describe('verificaContrattoScelto (I4)', () => {
+  const k = (o: Partial<ContrattoCandidato> = {}): ContrattoCandidato => ({
+    id: 'k1',
+    clienteId: 'cl',
+    stato: 'ATTIVO',
+    dataInizio: '2026-01-01',
+    dataFine: null,
+    sedeId: null,
+    ...o,
+  })
+  it('ATTIVO alla data: nessun errore, nessun avviso', () => {
+    expect(verificaContrattoScelto(k(), '2026-11-10', null)).toEqual({
+      errore: null,
+      avvisoAltraSede: false,
+    })
+  })
+  it.each(['BOZZA', 'ANNULLATO', 'SOSPESO', 'SOSPESO_MOVIMENTI'] as const)(
+    '%s: CONTRATTO_NON_ATTIVO',
+    stato => {
+      expect(verificaContrattoScelto(k({ stato }), '2026-11-10', null).errore).toBe(
+        'CONTRATTO_NON_ATTIVO'
+      )
+    }
+  )
+  it('data fuori dalle date: CONTRATTO_NON_ATTIVO (prima dell inizio e dopo la fine)', () => {
+    expect(verificaContrattoScelto(k(), '2025-12-31', null).errore).toBe('CONTRATTO_NON_ATTIVO')
+    expect(verificaContrattoScelto(k({ dataFine: '2026-06-30' }), '2026-07-01', null).errore).toBe(
+      'CONTRATTO_NON_ATTIVO'
+    )
+    expect(
+      verificaContrattoScelto(k({ dataFine: '2026-06-30' }), '2026-06-30', null).errore
+    ).toBeNull()
+  })
+  it('contratto di un altra sede scelto a mano: solo avviso, non errore', () => {
+    expect(verificaContrattoScelto(k({ sedeId: 's2' }), '2026-11-10', 's1')).toEqual({
+      errore: null,
+      avvisoAltraSede: true,
+    })
+  })
+  it('stessa sede, contratto senza sede o sede del FIR ignota: nessun avviso', () => {
+    expect(verificaContrattoScelto(k({ sedeId: 's1' }), '2026-11-10', 's1').avvisoAltraSede).toBe(
+      false
+    )
+    expect(verificaContrattoScelto(k({ sedeId: null }), '2026-11-10', 's1').avvisoAltraSede).toBe(
+      false
+    )
+    expect(verificaContrattoScelto(k({ sedeId: 's2' }), '2026-11-10', null).avvisoAltraSede).toBe(
+      false
+    )
+  })
+})
+
+describe('proponiContratto: casi limite fissati (M5)', () => {
+  const k = (o: Partial<ContrattoCandidato>): ContrattoCandidato => ({
+    id: 'k',
+    clienteId: 'cl',
+    stato: 'ATTIVO',
+    dataInizio: '2026-01-01',
+    dataFine: null,
+    sedeId: null,
+    ...o,
+  })
+  it('SOSPESO della sede giusta + ATTIVO di un altra sede: SEDE_SENZA_CONTRATTO', () => {
+    const r = proponiContratto(
+      [k({ id: 'a', stato: 'SOSPESO', sedeId: 's1' }), k({ id: 'b', sedeId: 's2' })],
+      '2026-11-10',
+      's1'
+    )
+    expect(r.contratto).toBeNull()
+    expect(r.motivo).toBe('SEDE_SENZA_CONTRATTO')
+  })
+  it('solo contratti di altre sedi non attivi: CONTRATTO_NON_ATTIVO', () => {
+    const r = proponiContratto([k({ stato: 'SOSPESO', sedeId: 's2' })], '2026-11-10', 's1')
+    expect(r.motivo).toBe('CONTRATTO_NON_ATTIVO')
   })
 })

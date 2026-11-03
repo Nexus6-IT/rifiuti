@@ -8,6 +8,8 @@ import {
   eStatoFatturato,
   sonoAvvisiValidi,
   sonoMotiviValidi,
+  MOTIVO_ESCLUSIONE_CAUSALE,
+  MOTIVO_ESCLUSIONE_DATA,
   validaMotivoEsclusione,
 } from './codici'
 
@@ -42,6 +44,10 @@ describe('codici del legame movimento', () => {
     expect(validaMotivoEsclusione('a'.repeat(200)).ok).toBe(true)
     expect(validaMotivoEsclusione('a'.repeat(201)).ok).toBe(false)
     expect(validaMotivoEsclusione(` ${'a'.repeat(200)} `).ok).toBe(true)
+  })
+  it('validaMotivoEsclusione: rifiuta i testi dei motivi automatici (M8)', () => {
+    expect(validaMotivoEsclusione(MOTIVO_ESCLUSIONE_CAUSALE).ok).toBe(false)
+    expect(validaMotivoEsclusione(` ${MOTIVO_ESCLUSIONE_DATA} `).ok).toBe(false)
   })
 
   it('eStatoFatturato è vero solo per i due stati fatturati', () => {

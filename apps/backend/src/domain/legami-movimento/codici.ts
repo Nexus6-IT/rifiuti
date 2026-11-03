@@ -91,5 +91,10 @@ export function validaMotivoEsclusione(
   if (valore.length > LUNGHEZZA_MAX_MOTIVO_ESCLUSIONE) {
     return { ok: false, errore: 'Il motivo può avere al massimo 200 caratteri.' }
   }
+  // Il testo dei motivi automatici identifica le esclusioni automatiche: un motivo scritto
+  // dall'utente uguale a uno di essi sarebbe scambiato per automatico e riammesso.
+  if (valore === MOTIVO_ESCLUSIONE_CAUSALE || valore === MOTIVO_ESCLUSIONE_DATA) {
+    return { ok: false, errore: 'Scrivi un motivo diverso da quelli automatici.' }
+  }
   return { ok: true, valore }
 }

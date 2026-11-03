@@ -6,15 +6,30 @@ export interface ClienteDaFir {
   attivo: boolean
 }
 
-/** Il cliente si propone solo dal FIR e solo se attivo; altrimenti sceglie l'utente. */
+/**
+ * Il cliente si propone solo dal FIR e solo se attivo; altrimenti sceglie l'utente. Un cliente del
+ * FIR censito ma disattivato (decisione 19) dà `SENZA_CLIENTE` con `dettaglioCliente` e senza
+ * l'avviso `CLIENTE_NON_DA_FIR` (che direbbe il falso: la ditta è censita).
+ */
 export function proponiCliente(i: { firPresente: boolean; clienteDaFir: ClienteDaFir | null }): {
   clienteId: string | null
   fonte: 'FIR' | null
   motivi: MotivoLegame[]
   avvisi: AvvisoLegame[]
+  /** Presente solo se il cliente del FIR esiste ma è disattivato. */
+  dettaglioCliente?: string
 } {
   const c = i.clienteDaFir
   if (c?.attivo) return { clienteId: c.id, fonte: 'FIR', motivi: [], avvisi: [] }
+  if (c) {
+    return {
+      clienteId: null,
+      fonte: null,
+      motivi: ['SENZA_CLIENTE'],
+      avvisi: [],
+      dettaglioCliente: 'cliente disattivato',
+    }
+  }
   return {
     clienteId: null,
     fonte: null,
@@ -23,6 +38,10 @@ export function proponiCliente(i: { firPresente: boolean; clienteDaFir: ClienteD
   }
 }
 
+/**
+ * Il servizio passa solo contratti NON eliminati (`eliminatoIl IS NULL`, §6.3): un contratto
+ * eliminato equivale a «non c'è» (`SENZA_CONTRATTO`) e qui non si vede.
+ */
 export interface ContrattoCandidato {
   id: string
   clienteId: string
@@ -54,9 +73,7 @@ export function proponiContratto(
   data: string,
   sedeId: string | null
 ): EsitoContratto {
-  const validi = contratti.filter(
-    k => k.stato === 'ATTIVO' && k.dataInizio <= data && (k.dataFine === null || data <= k.dataFine)
-  )
+  const validi = contratti.filter(k => valeAllaData(k, data))
   if (validi.length === 0) {
     const nonAttivo = contratti.some(
       k => k.stato === 'ATTIVO' || k.stato === 'SOSPESO' || k.stato === 'SOSPESO_MOVIMENTI'
@@ -80,6 +97,28 @@ export function proponiContratto(
   if (senzaSede.length > 0) return scegli(senzaSede)
   if (sedeId !== null) return { contratto: null, candidati: [], motivo: 'SEDE_SENZA_CONTRATTO' }
   return { contratto: null, candidati: validi, motivo: 'CONTRATTO_AMBIGUO' }
+}
+
+function valeAllaData(k: ContrattoCandidato, data: string): boolean {
+  return k.stato === 'ATTIVO' && k.dataInizio <= data && (k.dataFine === null || data <= k.dataFine)
+}
+
+/**
+ * Controllo del contratto GIÀ SCELTO del legame (conferma, Task 16). `errore` = `CONTRATTO_NON_ATTIVO`
+ * (il servizio risponde 409) se non è `ATTIVO` o la data cade fuori dalle sue date: BOZZA e
+ * ANNULLATO compresi. Un contratto di un'altra sede scelto a mano (§6.3) è lecito: solo
+ * `avvisoAltraSede`. NB: `AVVISI_LEGAME` non ha un codice per questo avviso (e il CHECK del
+ * database non si tocca nella 4.3a): il codice nuovo richiede una migration nella 4.3b.
+ */
+export function verificaContrattoScelto(
+  contratto: ContrattoCandidato,
+  data: string,
+  sedeFir: string | null
+): { errore: 'CONTRATTO_NON_ATTIVO' | null; avvisoAltraSede: boolean } {
+  return {
+    errore: valeAllaData(contratto, data) ? null : 'CONTRATTO_NON_ATTIVO',
+    avvisoAltraSede: sedeFir !== null && contratto.sedeId !== null && contratto.sedeId !== sedeFir,
+  }
 }
 
 export interface ElencoCandidato {

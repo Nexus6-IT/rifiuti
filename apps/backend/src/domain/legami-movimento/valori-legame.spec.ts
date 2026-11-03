@@ -197,3 +197,16 @@ describe('copiaValoriDaRiga', () => {
     })
   })
 })
+
+describe('zeri iniziali (M6)', () => {
+  it('quantita: gli zeri iniziali non contano come cifre e si normalizzano', () => {
+    expect(validaQuantitaManuale('000000000001')).toEqual({ ok: true, valore: '1' })
+    expect(validaQuantitaManuale('007.50')).toEqual({ ok: true, valore: '7.50' })
+    expect(validaQuantitaManuale('0.5')).toEqual({ ok: true, valore: '0.5' })
+    expect(validaQuantitaManuale('000.000').ok).toBe(false)
+  })
+  it('prezzo: zero resta zero, zeri iniziali tolti', () => {
+    expect(validaPrezzoManuale('000')).toEqual({ ok: true, valore: '0' })
+    expect(validaPrezzoManuale('0012.5')).toEqual({ ok: true, valore: '12.5' })
+  })
+})
