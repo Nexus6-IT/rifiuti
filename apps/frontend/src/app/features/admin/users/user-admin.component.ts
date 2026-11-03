@@ -22,6 +22,7 @@ import {
   TenantOption,
   ImpersonateResult,
 } from './user-admin.service'
+import { NumeroItalianoDirective } from '../../../shared/directives/numero-it.directive'
 
 interface SelectOption<T> {
   label: string
@@ -59,6 +60,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
     DropdownModule,
     InputTextModule,
     InputNumberModule,
+    NumeroItalianoDirective,
     PasswordModule,
     ConfirmDialogModule,
     TooltipModule,
@@ -367,6 +369,11 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
           <div class="field col-12 md:col-6" *ngIf="isSuperAdmin() && selectedRoleIsAdmin()">
             <label for="u-company-limit" class="block mb-2">Quota aziende *</label>
             <p-inputNumber
+              appNumeroIt
+              locale="it-IT"
+              [useGrouping]="false"
+              soloIntero
+              [maxFractionDigits]="0"
               inputId="u-company-limit"
               formControlName="companyLimit"
               [min]="1"
@@ -465,6 +472,11 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
           </p>
           <label for="u-company-limit-edit" class="block mb-2">Quota aziende</label>
           <p-inputNumber
+            appNumeroIt
+            locale="it-IT"
+            [useGrouping]="false"
+            soloIntero
+            [maxFractionDigits]="0"
             inputId="u-company-limit-edit"
             [(ngModel)]="targetCompanyLimit"
             [min]="1"
