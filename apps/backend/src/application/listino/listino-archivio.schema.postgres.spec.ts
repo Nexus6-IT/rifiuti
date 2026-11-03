@@ -471,7 +471,7 @@ describe('Listino, archivio addebiti: schema (Postgres reale, ruolo wasteflow_ap
     // della 4.1 e della 4.2 (quelli che il catalogo avrebbe troncato).
     const cartella = join(__dirname, '../../../prisma/migrations')
     const nomi: string[] = []
-    for (const m of readdirSync(cartella).filter(d => /^202611022|^202611023/.test(d))) {
+    for (const m of readdirSync(cartella).filter(d => /^202611022|^202611023|^20261103/.test(d))) {
       const f = join(cartella, m, 'migration.sql')
       if (!existsSync(f)) continue
       const sql = readFileSync(f, 'utf8')
