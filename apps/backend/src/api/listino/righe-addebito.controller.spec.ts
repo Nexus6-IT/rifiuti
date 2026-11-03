@@ -89,7 +89,7 @@ describe('RigheAddebitoController', () => {
       servizio = {
         getById: jest.fn().mockResolvedValue({ id: ID }),
         modifica: jest.fn().mockResolvedValue({ id: ID }),
-        elimina: jest.fn().mockResolvedValue(undefined),
+        elimina: jest.fn().mockResolvedValue({ avvisi: [] }),
         codificheRentri: jest.fn().mockResolvedValue([{ codice: '1', descrizione: 'Solido' }]),
       }
       app = await creaApp(servizio, () => ruolo)
@@ -192,9 +192,10 @@ describe('RigheAddebitoController', () => {
       })
     })
 
-    it('DELETE: 204 con ?versione; senza versione o non numerica 400', async () => {
+    it('DELETE: 200 { avvisi } con ?versione; senza versione o non numerica 400', async () => {
       const r = await http().delete(`/${R}/${ID}?versione=3`)
-      expect(r.status).toBe(204)
+      expect(r.status).toBe(200)
+      expect(r.body).toEqual({ avvisi: [] })
       expect(servizio.elimina).toHaveBeenCalledWith(TENANT, 'utente-1', ID, 3)
       expect((await http().delete(`/${R}/${ID}`)).status).toBe(400)
       expect((await http().delete(`/${R}/${ID}?versione=abc`)).status).toBe(400)

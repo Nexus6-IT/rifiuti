@@ -573,6 +573,56 @@ describe('RigheAddebitoService — Postgres reale, ruolo wasteflow_app', () => {
       expect(await crea(s, corpo, diverso.elencoId)).toMatchObject({ tipo: '$D' })
     })
 
+    it('m9: eliminare o cambiare la condizione di una riga citata riesce con un avviso; non citata, nessun avviso', async () => {
+      const s = await scenario()
+      const v = async () => (await creaAddebito(owner, s.tenantId, { tipo: 'V' })).id
+      const base = { tipo: 'V', tipoQuantita: 'PESO_NETTO', unitaMisura: 'KG', prezzo: '1' }
+      const condizionata = async (condizione: number) =>
+        crea(s, { ...base, addebitoId: await v(), condizione })
+      const citata = await condizionata(1)
+      const nonCitata = await condizionata(2)
+      await crea(s, {
+        ...base,
+        addebitoId: await v(),
+        prezzoSpeciale: true,
+        prezzo: null,
+        applicaA: 'DOCUMENTO',
+        condizioniRiferite: '1C',
+        scaglioni: [
+          { ordine: 1, finoA: '10', prezzo: '1', tipoCalcolo: 'X' },
+          { ordine: 7, finoA: null, prezzo: '1', tipoCalcolo: 'A' },
+        ],
+      })
+      // Non citata: nessun avviso.
+      expect(await service.elimina(s.tenantId, s.utenteId, nonCitata.id, 1)).toEqual({ avvisi: [] })
+      // Cambio di condizione della citata (unica con la condizione 1): riesce, con l'avviso.
+      const modificata = await service.modifica(s.tenantId, s.utenteId, citata.id, {
+        versione: 1,
+        condizione: 3,
+      })
+      expect(modificata.condizione).toBe(3)
+      expect(modificata.avvisi).toEqual([
+        expect.stringMatching(
+          /^La riga V \d{5} cita la condizione 1, che non ha più addebiti condizionati\.$/
+        ),
+      ])
+      // Una modifica che non tocca condizione e unita' di misura non avvisa.
+      const senza = await service.modifica(s.tenantId, s.utenteId, citata.id, {
+        versione: 2,
+        descrizione: 'x',
+      })
+      expect(senza.avvisi).toEqual([])
+      // Eliminazione di una riga che era la condizione 1 (ripristinata): avviso, riga cancellata.
+      const di = await service.modifica(s.tenantId, s.utenteId, citata.id, {
+        versione: 3,
+        condizione: 1,
+      })
+      expect(di.avvisi).toEqual([])
+      const esito = await service.elimina(s.tenantId, s.utenteId, citata.id, di.versione)
+      expect(esito.avvisi).toHaveLength(1)
+      expect(await owner.rigaAddebito.count({ where: { id: citata.id } })).toBe(0)
+    })
+
     it('più righe con la stessa condizione sono normali; due righe che sommano la stessa cifra no (I1)', async () => {
       const s = await scenario()
       const v = async () => (await creaAddebito(owner, s.tenantId, { tipo: 'V' })).id
