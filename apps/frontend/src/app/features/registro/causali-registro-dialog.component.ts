@@ -25,6 +25,8 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
+import { InputNumberModule } from 'primeng/inputnumber'
+import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../core/services/toast.service'
 import {
@@ -68,6 +70,8 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
     DialogModule,
     DropdownModule,
     InputTextModule,
+    InputNumberModule,
+    NumeroItalianoDirective,
     TableModule,
   ],
   template: `
@@ -443,17 +447,20 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
             <div class="col-12 sm:col-3">
               <div class="field">
                 <label for="cg-ordine">Ordine</label>
-                <input
-                  id="cg-ordine"
-                  type="number"
-                  pInputText
+                <p-inputNumber
+                  appNumeroIt
+                  soloIntero
+                  locale="it-IT"
+                  [useGrouping]="false"
+                  [maxFractionDigits]="0"
+                  inputId="cg-ordine"
                   formControlName="ordine"
-                  class="w-full"
-                  min="0"
-                  max="9999"
-                  [attr.aria-invalid]="errore('ordine') ? true : null"
-                  [attr.aria-describedby]="errore('ordine') ? 'cg-ordine-err' : null"
-                />
+                  styleClass="w-full"
+                  inputStyleClass="w-full"
+                  [min]="0"
+                  [max]="9999"
+                  [numeroErroreId]="errore('ordine') ? 'cg-ordine-err' : null"
+                ></p-inputNumber>
                 <small *ngIf="errore('ordine')" id="cg-ordine-err" class="field-error" role="alert"
                   >Un numero intero da 0 a 9999.</small
                 >

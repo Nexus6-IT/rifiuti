@@ -25,9 +25,12 @@ const q = <T extends HTMLElement = HTMLElement>(testid: string): T | null =>
   document.body.querySelector<T>(`[data-testid="${testid}"]`)
 
 function scrivi(testid: string, valore: string): void {
-  const el = q<HTMLInputElement>(testid)!
+  const host = q<HTMLElement>(testid)!
+  const el = host.querySelector('input') ?? (host as HTMLInputElement)
   el.value = valore
   el.dispatchEvent(new Event('input', { bubbles: true }))
+  // p-inputNumber aggiorna il modello all'uscita dal campo
+  el.dispatchEvent(new Event('blur'))
 }
 
 describe('RentriRegistroImpostazioniDialogComponent', () => {
@@ -101,6 +104,29 @@ describe('RentriRegistroImpostazioniDialogComponent', () => {
     const e = q('rentri-imp-errore')
     expect(e?.textContent).toContain(msg)
     expect(e?.getAttribute('role')).toBe('alert')
+  })
+
+  it('Dal numero / Al numero: "1.000" rifiutato (non diventa 1), aria-describedby sull\'input vero', () => {
+    apri(registro({ identificativoRentri: 'RABCDE12345' }))
+    for (const id of ['rentri-dic-da', 'rentri-dic-a']) {
+      const input = q(id)!.querySelector('input')!
+      expect(input.getAttribute('aria-describedby')).toContain('rentri-dic-nota')
+      input.focus()
+      const dt = new DataTransfer()
+      dt.setData('text', '1.000')
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+      input.dispatchEvent(e)
+      fixture.detectChanges()
+      expect(e.defaultPrevented).toBeTrue()
+      expect(input.value).toBe('')
+      const err = document.body.querySelector('[data-testid="numero-errore"]')!
+      expect(err.textContent).toBe('Numero non valido')
+      expect(input.getAttribute('aria-describedby')).toBe(`rentri-dic-nota ${err.id}`)
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+      fixture.detectChanges()
+      expect(document.body.querySelector('[data-testid="numero-errore"]')).toBeNull()
+      expect(input.getAttribute('aria-describedby')).toBe('rentri-dic-nota')
+    }
   })
 
   it('dichiara già su RENTRI solo dopo conferma che dice quante annotazioni', () => {

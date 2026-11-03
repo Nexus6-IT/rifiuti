@@ -159,6 +159,35 @@ describe('CausaliRegistroDialogComponent (click veri, HTTP simulato)', () => {
     flush()
   }))
 
+  it('Ordine: "1.000" e rifiutato con il messaggio collegato al campo, "1000" non cambia valore', fakeAsync(() => {
+    apri({ sistema: [], aziendali: [] })
+    clic('cg-nuova')
+    fixture.detectChanges()
+    tick()
+    const input = document.body.querySelector<HTMLInputElement>('#cg-ordine')!
+    expect(input.type).toBe('text')
+    const incolla = (testo: string): ClipboardEvent => {
+      const dt = new DataTransfer()
+      dt.setData('text', testo)
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+      input.dispatchEvent(e)
+      return e
+    }
+    input.focus()
+    expect(incolla('1.000').defaultPrevented).toBeTrue()
+    fixture.detectChanges()
+    const err = q('numero-errore')!
+    expect(err.textContent).toBe('Numero non valido')
+    expect(input.getAttribute('aria-describedby')).toContain(err.id)
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.value).toBe('')
+    incolla('1000')
+    input.dispatchEvent(new Event('blur'))
+    fixture.detectChanges()
+    expect(input.value).toBe('1000')
+    flush()
+  }))
+
   it("un codice senza prefisso AZ_ non parte e segnala l'errore accessibile", fakeAsync(() => {
     apri({ sistema: [], aziendali: [] })
     clic('cg-nuova')
