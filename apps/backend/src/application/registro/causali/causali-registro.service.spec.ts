@@ -24,6 +24,7 @@ interface Scenario {
     validaAl: string | null
     descrizione?: string
     ordine?: number
+    fatturabile?: boolean
   }>
 }
 
@@ -42,6 +43,7 @@ function costruisci(s: Scenario = {}) {
           ordine: 100,
           valida_dal: giorno('2026-01-01'),
           valida_al: null,
+          fatturabile: false,
           ...(s.riga ?? {}),
         }
   const tx: any = {
@@ -71,6 +73,7 @@ function costruisci(s: Scenario = {}) {
           id: v.id,
           descrizione: v.descrizione ?? 'Prova',
           ordine: v.ordine ?? 100,
+          fatturabile: v.fatturabile ?? false,
           validaDal: giorno(v.validaDal),
           validaAl: v.validaAl ? giorno(v.validaAl) : null,
         }))
@@ -444,5 +447,85 @@ describe('CausaliRegistroService: disattivazione', () => {
     c.tx.causaleRegistro.findFirst.mockResolvedValue({ codice: 'CESSIONE' })
     await c.service.riattiva(T, U, 'SCARICO', 'CESSIONE')
     expect(c.tx.activityLog.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('CausaliRegistroService: fatturabile', () => {
+  it('crea senza fatturabile: salvata false; con true: salvata e riportata nella vista e nell audit', async () => {
+    const a = costruisci()
+    const v1 = await a.service.crea(T, U, { ...base, ruoloMud: 'ESCLUSO' })
+    expect(a.tx.causaleRegistroAzienda.create.mock.calls[0][0].data.fatturabile).toBe(false)
+    expect(v1.fatturabile).toBe(false)
+    const b = costruisci()
+    const v2 = await b.service.crea(T, U, { ...base, ruoloMud: 'ESCLUSO', fatturabile: true })
+    expect(b.tx.causaleRegistroAzienda.create.mock.calls[0][0].data.fatturabile).toBe(true)
+    expect(v2.fatturabile).toBe(true)
+    expect(b.tx.activityLog.create.mock.calls[0][0].data.metadata.fatturabile).toBe(true)
+  })
+
+  it('fatturabile non booleano -> 400 senza toccare il database', async () => {
+    const { service, tx } = costruisci()
+    const e = await esito(service.crea(T, U, { ...base, fatturabile: 'si' as never }))
+    expect(e).toBeInstanceOf(BadRequestException)
+    expect(e.message).toBe('Il flag fatturabile deve essere true o false.')
+    expect(tx.causaleRegistroAzienda.create).not.toHaveBeenCalled()
+    expect(await esito(service.modifica(T, U, ID, { fatturabile: null as never }))).toBeInstanceOf(
+      BadRequestException
+    )
+    expect(
+      await esito(
+        service.nuovaVersione(T, U, ID, {
+          validaDal: '2026-06-01',
+          ruoloMud: 'ESCLUSO',
+          fatturabile: 1 as never,
+        })
+      )
+    ).toBeInstanceOf(BadRequestException)
+  })
+
+  it('nuova versione con fatturabile cambiato: la nuova lo porta, la precedente si chiude senza toccare il flag', async () => {
+    const { service, tx } = costruisci({
+      versioni: [{ id: ID, validaDal: '2026-01-01', validaAl: null, fatturabile: false }],
+    })
+    const v = await service.nuovaVersione(T, U, ID, {
+      validaDal: '2026-06-01',
+      ruoloMud: 'ESCLUSO',
+      fatturabile: true,
+    })
+    expect(v.fatturabile).toBe(true)
+    expect(tx.causaleRegistroAzienda.create.mock.calls[0][0].data.fatturabile).toBe(true)
+    expect(tx.causaleRegistroAzienda.update.mock.calls[0][0].data).toEqual({
+      validaAl: giorno('2026-05-31'),
+    })
+  })
+
+  it('nuova versione senza fatturabile: eredita quello dell ultima', async () => {
+    const { service, tx } = costruisci({
+      versioni: [{ id: ID, validaDal: '2026-01-01', validaAl: null, fatturabile: true }],
+    })
+    const v = await service.nuovaVersione(T, U, ID, {
+      validaDal: '2026-06-01',
+      ruoloMud: 'ESCLUSO',
+    })
+    expect(v.fatturabile).toBe(true)
+    expect(tx.causaleRegistroAzienda.create.mock.calls[0][0].data.fatturabile).toBe(true)
+  })
+
+  it('modifica: cambia il flag di una versione non usata; su una usata -> 409 CAUSALE_USATA_NUOVA_VERSIONE', async () => {
+    const libera = costruisci({
+      riga: { ruolo_mud: 'ESCLUSO', codice_rentri: null, operazione: null },
+    })
+    const v = await libera.service.modifica(T, U, ID, { fatturabile: true })
+    expect(v.fatturabile).toBe(true)
+    expect(libera.tx.causaleRegistroAzienda.update.mock.calls[0][0].data.fatturabile).toBe(true)
+
+    const usata = costruisci({
+      riga: { ruolo_mud: 'ESCLUSO', codice_rentri: null, operazione: null },
+      uso: { movimenti: 2, ultimo: '2026-03-01' },
+    })
+    const e = await esito(usata.service.modifica(T, U, ID, { fatturabile: true }))
+    expect(e.getResponse().error).toBe('CAUSALE_USATA_NUOVA_VERSIONE')
+    // Stesso valore di prima: nessun cambiamento di comportamento.
+    await expect(usata.service.modifica(T, U, ID, { fatturabile: false })).resolves.toBeDefined()
   })
 })

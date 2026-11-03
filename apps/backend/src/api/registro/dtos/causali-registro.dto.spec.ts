@@ -177,3 +177,52 @@ describe('NuovaVersioneCausaleDto, ChiudiCausaleDto, ListaCausaliQueryDto', () =
     ).toMatch(/data/)
   })
 })
+
+describe('fatturabile nei DTO delle causali', () => {
+  const baseVersione = { validaDal: '2026-11-01', ruoloMud: 'ESCLUSO' }
+
+  it('creazione: booleano facoltativo, assente resta assente (il servizio applica false)', async () => {
+    const r = await passa(CreaCausaleAziendaleDto, valida)
+    expect('fatturabile' in r).toBe(false)
+    await expect(
+      passa(CreaCausaleAziendaleDto, { ...valida, fatturabile: true })
+    ).resolves.toMatchObject({ fatturabile: true })
+    await expect(
+      passa(CreaCausaleAziendaleDto, { ...valida, fatturabile: false })
+    ).resolves.toMatchObject({ fatturabile: false })
+  })
+
+  it.each(['true', 'si', 1, 0, null, {}])(
+    'creazione: %p non e un booleano -> 400 con messaggio in italiano',
+    async valore => {
+      const m = await messaggi(CreaCausaleAziendaleDto, { ...valida, fatturabile: valore })
+      expect(m).toMatch(/fatturabile deve essere true o false/)
+    }
+  )
+
+  it('modifica: booleano ammesso, assente invariato, null o stringa -> 400', async () => {
+    await expect(passa(ModificaCausaleAziendaleDto, { fatturabile: true })).resolves.toMatchObject({
+      fatturabile: true,
+    })
+    expect('fatturabile' in (await passa(ModificaCausaleAziendaleDto, { ordine: 1 }))).toBe(false)
+    expect(await messaggi(ModificaCausaleAziendaleDto, { fatturabile: null })).toMatch(
+      /fatturabile deve essere true o false/
+    )
+    expect(await messaggi(ModificaCausaleAziendaleDto, { fatturabile: 'true' })).toMatch(
+      /fatturabile deve essere true o false/
+    )
+  })
+
+  it('nuova versione: booleano facoltativo, null o numero -> 400', async () => {
+    await expect(
+      passa(NuovaVersioneCausaleDto, { ...baseVersione, fatturabile: false })
+    ).resolves.toMatchObject({ fatturabile: false })
+    expect('fatturabile' in (await passa(NuovaVersioneCausaleDto, baseVersione))).toBe(false)
+    expect(await messaggi(NuovaVersioneCausaleDto, { ...baseVersione, fatturabile: null })).toMatch(
+      /fatturabile deve essere true o false/
+    )
+    expect(await messaggi(NuovaVersioneCausaleDto, { ...baseVersione, fatturabile: 1 })).toMatch(
+      /fatturabile deve essere true o false/
+    )
+  })
+})

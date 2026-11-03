@@ -218,6 +218,48 @@ describe('CausaliRegistroController — catena HTTP', () => {
     })
   })
 
+  describe('fatturabile', () => {
+    it('creazione e nuova versione passano il booleano al servizio', async () => {
+      await http()
+        .post(`${BASE}/aziendali`)
+        .send({ ...valida, fatturabile: true })
+      expect(servizio.crea.mock.calls[0][2]).toMatchObject({ fatturabile: true })
+      await http()
+        .post(`${BASE}/aziendali/${ID}/versioni`)
+        .send({ ...versione, fatturabile: false })
+      expect(servizio.nuovaVersione.mock.calls[0][3]).toMatchObject({ fatturabile: false })
+      await http().patch(`${BASE}/aziendali/${ID}`).send({ fatturabile: true })
+      expect(servizio.modifica.mock.calls[0][3]).toEqual({ fatturabile: true })
+    })
+
+    it('non booleano: 400 in italiano senza arrivare al servizio', async () => {
+      const res = await http()
+        .post(`${BASE}/aziendali`)
+        .send({ ...valida, fatturabile: 'si' })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(res.body.message)).toMatch(/fatturabile deve essere true o false/)
+      expect(
+        (await http().patch(`${BASE}/aziendali/${ID}`).send({ fatturabile: null })).status
+      ).toBe(400)
+      expect(servizio.crea).not.toHaveBeenCalled()
+      expect(servizio.modifica).not.toHaveBeenCalled()
+    })
+
+    it('causale di sistema con fatturabile nel corpo: 400 chiaro, flag invariato', async () => {
+      const p = `${BASE}/sistema/CARICO/INGRESSO_ESTERNO/disattivazione`
+      for (const metodo of ['put', 'delete'] as const) {
+        const res = await (http() as any)[metodo](p).send({ fatturabile: true })
+        expect(res.status).toBe(400)
+        expect(res.body.message).toBe(
+          'Il flag fatturabile di una causale di sistema non si può cambiare: ' +
+            'crea una causale propria con il flag acceso.'
+        )
+      }
+      expect(servizio.disattiva).not.toHaveBeenCalled()
+      expect(servizio.riattiva).not.toHaveBeenCalled()
+    })
+  })
+
   describe('errori del servizio', () => {
     it('409 con il loro codice e il loro messaggio, invariati', async () => {
       servizio.modifica.mockRejectedValue(

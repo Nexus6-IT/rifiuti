@@ -31,6 +31,8 @@ export interface CausalePropriaVista {
   ordine: number
   validaDal: string
   validaAl: string | null
+  /** Le registrazioni con questa causale diventano candidate alla fatturazione (4.3). */
+  fatturabile: boolean
 }
 
 export interface CausalePropriaInGestione extends CausalePropriaVista {
@@ -50,6 +52,8 @@ export interface CausaleSistemaInGestione {
   ordine: number
   attiva: boolean
   disattivataPerAzienda: boolean
+  /** Sola lettura: il flag di una causale di sistema non si cambia per azienda (decisione 14). */
+  fatturabile: boolean
 }
 
 export interface GestioneCausali {
@@ -65,6 +69,7 @@ export interface OpzioneCausale {
   codiceRentri: string | null
   operazione: string | null
   versioneId: string | null
+  fatturabile: boolean
 }
 
 export interface DatiNuovaCausale {
@@ -75,6 +80,8 @@ export interface DatiNuovaCausale {
   codiceRentri?: string | null
   operazione?: string | null
   ordine?: number
+  /** Assente = `false`. */
+  fatturabile?: boolean
   /** `AAAA-MM-GG`; assente = oggi (giorno italiano). */
   validaDal?: string
 }
@@ -87,6 +94,8 @@ export interface DatiModificaCausale {
   codiceRentri?: string | null
   operazione?: string | null
   validaDal?: string | null
+  /** Su una versione gia usata cambiarlo e un cambio di comportamento: serve una nuova versione. */
+  fatturabile?: boolean
 }
 
 export interface DatiNuovaVersione {
@@ -98,6 +107,8 @@ export interface DatiNuovaVersione {
   /** Assenti = copiati dalla versione precedente. */
   descrizione?: string
   ordine?: number
+  /** Assente = ereditato dall'ultima versione. */
+  fatturabile?: boolean
 }
 
 type Client = Prisma.TransactionClient
@@ -114,6 +125,7 @@ interface RigaVersione {
   ordine: number
   validaDal: string
   validaAl: string | null
+  fatturabile: boolean
 }
 
 interface RigaVersioneSql {
@@ -127,6 +139,7 @@ interface RigaVersioneSql {
   ordine: number
   valida_dal: Date | null
   valida_al: Date | null
+  fatturabile: boolean | null
 }
 
 interface RigaUso {
@@ -255,6 +268,13 @@ function ordineValido(valore: unknown): number {
   return valore
 }
 
+const ERR_FATTURABILE = 'Il flag fatturabile deve essere true o false.'
+
+function fatturabileValido(valore: unknown): boolean {
+  if (typeof valore !== 'boolean') throw new BadRequestException(ERR_FATTURABILE)
+  return valore
+}
+
 function ruoloValido(valore: unknown): RuoloMudCausale {
   if (!eRuolo(valore)) throw new BadRequestException('Il ruolo nel MUD non è valido.')
   return valore
@@ -312,6 +332,7 @@ export class CausaliRegistroService {
       codiceRentri: o.codiceRentri,
       operazione: o.operazione,
       versioneId: o.versioneId,
+      fatturabile: o.fatturabile,
     }))
   }
 
@@ -342,6 +363,7 @@ export class CausaliRegistroService {
           ordine: s.ordine,
           attiva: s.attiva,
           disattivataPerAzienda: disattivate.has(`${s.verso}|${s.codice}`),
+          fatturabile: s.fatturabile,
         })),
         aziendali: versioni.map(v => {
           const u = uso.get(v.id)
@@ -356,6 +378,7 @@ export class CausaliRegistroService {
             ordine: v.ordine,
             validaDal: dataColonnaComeGiorno(v.validaDal as Date),
             validaAl: dataColonnaComeGiorno(v.validaAl),
+            fatturabile: v.fatturabile ?? false,
             usata: (u?.movimenti ?? 0) > 0,
             ultimoGiornoUso: u?.ultimoGiornoUso ?? null,
           }
@@ -438,6 +461,7 @@ export class CausaliRegistroService {
     const codiceRentri = testoONull(dati.codiceRentri, 'Il codice RENTRI')
     const operazione = testoONull(dati.operazione, "L'operazione")
     const ordine = dati.ordine === undefined ? ORDINE_PREDEFINITO : ordineValido(dati.ordine)
+    const fatturabile = dati.fatturabile === undefined ? false : fatturabileValido(dati.fatturabile)
     const validaDal = dati.validaDal === undefined ? oggi : dataIniziale(dati.validaDal, oggi)
     validaCoerenza({ verso: dati.verso, ruoloMud, codiceRentri, operazione })
 
@@ -465,15 +489,14 @@ export class CausaliRegistroService {
           codiceRentri,
           operazione,
           ordine,
-          // Task 4 lo rende una scelta dell'utente; fino ad allora una causale nuova non e' fatturabile.
-          fatturabile: false,
+          fatturabile,
           validaDal: comeData(validaDal),
           creatoDa: userId,
         },
       })
       await this.audit(tx, tenantId, userId, 'REGISTRO_CAUSALE_CREATA', {
         description: `Causale ${dati.codice} (${dati.verso}) creata, valida dal ${inItaliano(validaDal)}`,
-        metadata: { codice: dati.codice, verso: dati.verso, id: riga.id, validaDal },
+        metadata: { codice: dati.codice, verso: dati.verso, id: riga.id, validaDal, fatturabile },
       })
       return this.comeVista({
         id: riga.id,
@@ -486,6 +509,7 @@ export class CausaliRegistroService {
         ordine,
         validaDal,
         validaAl: null,
+        fatturabile,
       })
     })
   }
@@ -508,6 +532,7 @@ export class CausaliRegistroService {
     if (patch.descrizione !== undefined) descrizioneValida(patch.descrizione)
     if (patch.ordine !== undefined) ordineValido(patch.ordine)
     if (patch.ruoloMud !== undefined) ruoloValido(patch.ruoloMud)
+    if (patch.fatturabile !== undefined) fatturabileValido(patch.fatturabile)
     if (patch.validaDal !== undefined && patch.validaDal !== null) {
       dataIniziale(patch.validaDal, oggi)
     }
@@ -537,13 +562,15 @@ export class CausaliRegistroService {
           patch.validaDal === undefined || patch.validaDal === null
             ? attuale.validaDal
             : patch.validaDal,
+        fatturabile: patch.fatturabile === undefined ? attuale.fatturabile : patch.fatturabile,
       }
 
       const cambiaComportamento =
         risultante.ruoloMud !== attuale.ruoloMud ||
         risultante.codiceRentri !== attuale.codiceRentri ||
         risultante.operazione !== attuale.operazione ||
-        risultante.validaDal !== attuale.validaDal
+        risultante.validaDal !== attuale.validaDal ||
+        risultante.fatturabile !== attuale.fatturabile
       if (usata && cambiaComportamento) {
         throw new ConflictException({
           message:
@@ -572,6 +599,7 @@ export class CausaliRegistroService {
           codiceRentri: risultante.codiceRentri,
           operazione: risultante.operazione,
           validaDal: comeData(risultante.validaDal),
+          fatturabile: risultante.fatturabile,
         },
       })
       await this.audit(tx, tenantId, userId, 'REGISTRO_CAUSALE_MODIFICATA', {
@@ -582,6 +610,8 @@ export class CausaliRegistroService {
           id,
           validaDal: risultante.validaDal,
           validaAl: risultante.validaAl,
+          fatturabile: risultante.fatturabile,
+          fatturabilePrecedente: attuale.fatturabile,
         },
       })
       return this.comeVista(risultante)
@@ -603,6 +633,8 @@ export class CausaliRegistroService {
     const descrizioneIndicata =
       dati.descrizione === undefined ? undefined : descrizioneValida(dati.descrizione)
     const ordineIndicato = dati.ordine === undefined ? undefined : ordineValido(dati.ordine)
+    const fatturabileIndicato =
+      dati.fatturabile === undefined ? undefined : fatturabileValido(dati.fatturabile)
 
     return this.esegui(async tx => {
       const base = await this.bloccaVersione(tx, tenantId, id)
@@ -649,6 +681,7 @@ export class CausaliRegistroService {
 
       const descrizione = descrizioneIndicata ?? ultima.descrizione ?? ''
       const ordine = ordineIndicato ?? ultima.ordine
+      const fatturabile = fatturabileIndicato ?? ultima.fatturabile ?? false
       const nuova = await tx.causaleRegistroAzienda.create({
         data: {
           tenantId,
@@ -660,8 +693,7 @@ export class CausaliRegistroService {
           codiceRentri,
           operazione,
           ordine,
-          // La nuova versione eredita il flag dell'ultima (Task 4 permettera' di cambiarlo).
-          fatturabile: ultima.fatturabile ?? false,
+          fatturabile,
           validaDal: comeData(validaDal),
           creatoDa: userId,
         },
@@ -675,6 +707,8 @@ export class CausaliRegistroService {
           versioneNuovaId: nuova.id,
           precedenteChiusaAl: chiusa ?? ultimaAl,
           validaDal,
+          fatturabile,
+          fatturabilePrecedente: ultima.fatturabile ?? false,
         },
       })
       return this.comeVista({
@@ -688,6 +722,7 @@ export class CausaliRegistroService {
         ordine,
         validaDal,
         validaAl: null,
+        fatturabile,
       })
     })
   }
@@ -855,7 +890,7 @@ export class CausaliRegistroService {
     const righe = await tx.$queryRaw<RigaVersioneSql[]>`
       SELECT id::text AS id, codice, verso::text AS verso, descrizione,
              ruolo_mud::text AS ruolo_mud, codice_rentri, operazione,
-             ordine::int AS ordine, valida_dal, valida_al
+             ordine::int AS ordine, valida_dal, valida_al, fatturabile
       FROM causali_registro_azienda
       WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid AND natura = 'PROPRIA'
       FOR UPDATE`
@@ -872,6 +907,7 @@ export class CausaliRegistroService {
       ordine: r.ordine,
       validaDal: dataColonnaComeGiorno(r.valida_dal as Date),
       validaAl: dataColonnaComeGiorno(r.valida_al),
+      fatturabile: r.fatturabile ?? false,
     }
   }
 
@@ -944,6 +980,7 @@ export class CausaliRegistroService {
       ordine: r.ordine,
       validaDal: r.validaDal,
       validaAl: r.validaAl,
+      fatturabile: r.fatturabile,
     }
   }
 
