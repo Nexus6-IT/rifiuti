@@ -89,7 +89,7 @@ salvo `fe/` = `apps/frontend/src/app/` e `e2e/` alla radice.
   CONTRATTO_NON_ATTIVO, SENZA_ELENCO, ELENCO_SCADUTO, SENZA_RIGA_CER, RIGA_AMBIGUA, SENZA_PREZZO,
   SENZA_QUANTITA`; avvisi `CLIENTE_NON_DA_FIR, QUANTITA_MANUALE_NON_DERIVATA, CAMBIO_CER_DA_CONFERMARE, PREZZO_MANUALE`;
   stati `DA_COLLEGARE, PROPOSTO, CONFERMATO, ESCLUSO, ANNULLATO, FATTURATO, IMPORTATO_FATTURATO`;
-  `motivo_esclusione` 1-200 caratteri dopo trim; tetto azioni di massa 500. Decisioni 16-17: prezzo e sconto di una riga a prezzo singolo si modificano a mano finché il legame non è fatturato (colonna `prezzo_manuale`, avviso `PREZZO_MANUALE` sul legame, audit); «Aggiorna prezzi» salta le righe manuali; quantità manuale solo > 0 con al massimo 3 decimali. Validazione backend con `decimaleValido` (`src/domain/clienti/decimali.ts`) e `cascataValida`: `MaxDecimali` non esiste su master.
+  `motivo_esclusione` 1-200 caratteri dopo trim; tetto azioni di massa 500. Decisioni 16-17: prezzo e sconto di una riga a prezzo singolo si modificano a mano finché il legame non è fatturato (colonna `prezzo_manuale`, avviso `PREZZO_MANUALE` sul legame, audit); «Aggiorna prezzi» salta le righe manuali; quantità manuale solo > 0 con al massimo 3 decimali. Validazione backend: nei DTO il decoratore `MaxDecimali(n, etichetta)` di `src/core/validators/max-decimali.ts` (su master dalla PR #48); nel dominio `decimaleValido` (`src/domain/clienti/decimali.ts`) e `cascataValida`.
 
 ## Review Focus
 
@@ -377,7 +377,7 @@ export function quantitaPerRiga(riga: Pick<RigaCandidata, 'tipoQuantita' | 'unit
 - Create: `src/domain/legami-movimento/valori-legame.ts`, `stato-legame.ts` + spec
 
 **Interfaces:**
-- Consumes: Task 2, `importoRiga`, `cascataValida` (`importi-riga.ts:83,61`), `decimaleValido`/`normalizzaDecimale` (`src/domain/clienti/decimali.ts`; `MaxDecimali` non esiste su master).
+- Consumes: Task 2, `importoRiga`, `cascataValida` (`importi-riga.ts:83,61`), `decimaleValido`/`normalizzaDecimale` (`src/domain/clienti/decimali.ts`; nei DTO `MaxDecimali` di `src/core/validators/max-decimali.ts`).
 - Produces:
 ```ts
 export interface RigaLegameValori { rigaAddebitoId: string; origine: 'PRINCIPALE'|'PROPOSTA'|'MANUALE'; prezzoSpeciale: boolean; prezzo: string | null; sconto: string | null; quantita: string | null; quantitaOrigine: 'DA_MOVIMENTO'|'MANUALE' | null; prezzoManuale: boolean; codiceIvaId: string | null }
