@@ -1,9 +1,10 @@
-// Numeri nei campi MODIFICABILI del listino (decisione di Graziano, 02/11): la virgola è l'unico
+// Numeri nei campi MODIFICABILI di tutta l'app (decisione di Graziano, 02/11 per il listino,
+// estesa il 03/11 a registro, giacenze, MUD, FIR, pese, admin, RENTRI): la virgola è l'unico
 // separatore decimale, il punto è VIETATO (un punto dà l'errore «Usa la virgola per i decimali» e
-// il form non si salva) e nei campi non compare mai il separatore delle migliaia (1000 si legge
-// «1000», non «1.000»). Un solo parser e un solo formattatore per tutto il listino: riga, fasce,
-// archivio degli addebiti, variazioni, codici IVA. I totali di sola visualizzazione possono
-// invece usare i punti delle migliaia (`decimaleItaliano`).
+// il form non si salva, oppure la direttiva `appNumeroIt` lo respinge sui `p-inputNumber`) e nei
+// campi non compare mai il separatore delle migliaia (1000 si legge «1000», non «1.000»). Un solo
+// parser e un solo formattatore. I totali di sola visualizzazione possono invece usare i punti
+// delle migliaia (`decimaleItaliano`).
 import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms'
 
 export const MSG_VIRGOLA = 'Usa la virgola per i decimali'
@@ -23,7 +24,7 @@ const INTERO = /^\d+$/
 const conPunto = (t: string): string =>
   t
     .replace(',', '.')
-    .replace(/^(-?)\./, '$10.')
+    .replace(/^(-?)\./, (_m, segno: string) => `${segno}0.`)
     .replace(/\.$/, '')
 
 const senzaSpazi = (t: string): string => t.replace(/\s+/g, '')

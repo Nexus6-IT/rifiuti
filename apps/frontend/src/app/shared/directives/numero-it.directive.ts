@@ -1,5 +1,6 @@
 import {
   AfterViewInit,
+  AfterViewChecked,
   booleanAttribute,
   Directive,
   ElementRef,
@@ -31,6 +32,17 @@ export function controllaTestoNumero(testo: string, soloIntero = false): string 
   return leggiNumero(t).errore
 }
 
+/**
+ * Testo incollato o trascinato nel campo: come nel listino, oltre al punto e' errore anche il
+ * testo non numerico («abc», «12 kg»). Non vale per la digitazione, dove «-» e «,» sono
+ * passaggi intermedi leciti.
+ */
+export function controllaTestoIncollato(testo: string, soloIntero = false): string | null {
+  const t = testo.trim()
+  if (t === '') return null
+  return soloIntero ? leggiIntero(t).errore : leggiNumero(t).errore
+}
+
 /** Alias storico dei pesi. */
 export const controllaTestoPeso = controllaTestoNumero
 
@@ -42,8 +54,9 @@ export const controllaTestoPeso = controllaTestoNumero
  * diventa 125) e lo toglie dal testo incollato. Qui il punto non e' mai accettato, da
  * qualunque strada arrivi (nei campi interi nemmeno la virgola):
  * - `keydown` del tasto punto (tranne il tastierino numerico, che PrimeNG converte in virgola);
- * - `paste`, e `beforeinput` (tastiere Android, trascinamento `insertFromDrop`), dove si valuta
- *   il testo risultante: un punto fuori dal raggruppamento delle migliaia viene scartato;
+ * - `paste` e trascinamento (`insertFromDrop`): il testo inserito e' rifiutato se contiene un
+ *   punto (anche come migliaia) o non e' un numero; `beforeinput` di una tastiera Android: si
+ *   valuta il testo risultante e ogni punto e' rifiutato;
  * - composizione (non annullabile): su `input` se il valore nativo ha un punto fuori posto si
  *   ripristina l'ultimo valore valido.
  * `rifiutato` emette il messaggio da mostrare e `null` quando il campo torna valido. Imposta
@@ -54,12 +67,28 @@ export const controllaTestoPeso = controllaTestoNumero
   selector: 'p-inputNumber[appNumeroIt], p-inputNumber[appPesoIt]',
   standalone: true,
 })
-export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges, OnDestroy {
+export class NumeroItalianoDirective
+  implements OnInit, AfterViewInit, AfterViewChecked, OnChanges, OnDestroy
+{
   @Output() rifiutato = new EventEmitter<string | null>()
   /** Id del testo di aiuto, collegato con aria-describedby. */
-  @Input() pesoAiutoId: string | null = null
+  @Input() set numeroAiutoId(v: string | null) {
+    this.aiutoId = v
+  }
+  /** Nome storico dei pesi. */
+  @Input() set pesoAiutoId(v: string | null) {
+    this.aiutoId = v
+  }
   /** Id del messaggio d'errore visibile, o null se il campo non e' in errore. */
-  @Input() pesoErroreId: string | null = null
+  @Input() set numeroErroreId(v: string | null) {
+    this.erroreId = v
+  }
+  /** Nome storico dei pesi. */
+  @Input() set pesoErroreId(v: string | null) {
+    this.erroreId = v
+  }
+  private aiutoId: string | null = null
+  private erroreId: string | null = null
   /** Campo intero: nemmeno la virgola e' accettata. */
   @Input({ transform: booleanAttribute }) soloIntero = false
   /**
@@ -91,14 +120,17 @@ export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges
       k.preventDefault()
       k.stopPropagation()
       this.segnala(MSG_PUNTO_DECIMALE)
-    } else if (/^\d$/.test(k.key) || k.key === ',' || k.key === 'Backspace' || k.key === 'Delete') {
+    } else if (
+      /^\d$/.test(k.key) ||
+      [',', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown'].includes(k.key)
+    ) {
       this.segnala(null)
     }
   }
 
   private readonly alIncolla = (e: Event): void => {
     const testo = (e as ClipboardEvent).clipboardData?.getData('Text') ?? ''
-    const errore = controllaTestoNumero(testo, this.soloIntero)
+    const errore = controllaTestoIncollato(testo, this.soloIntero)
     if (errore) {
       e.preventDefault()
       e.stopPropagation()
@@ -113,13 +145,18 @@ export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges
     const ie = e as InputEvent
     if (ie.inputType !== 'insertText' && ie.inputType !== 'insertFromDrop') return
     const testo = ie.data ?? ie.dataTransfer?.getData('text') ?? ''
-    if (!/[.,]/.test(testo) || (!this.soloIntero && !testo.includes('.'))) return
-    const campo = this.interno()
-    const valore = campo?.value ?? ''
-    const da = campo?.selectionStart ?? valore.length
-    const a = campo?.selectionEnd ?? valore.length
-    const risultante = valore.slice(0, da) + testo + valore.slice(a)
-    const errore = controllaTestoNumero(risultante, this.soloIntero)
+    let errore: string | null
+    if (ie.inputType === 'insertFromDrop') {
+      errore = controllaTestoIncollato(testo, this.soloIntero)
+    } else {
+      if (!/[.,]/.test(testo) || (!this.soloIntero && !testo.includes('.'))) return
+      const campo = this.interno()
+      const valore = campo?.value ?? ''
+      const da = campo?.selectionStart ?? valore.length
+      const a = campo?.selectionEnd ?? valore.length
+      const risultante = valore.slice(0, da) + testo + valore.slice(a)
+      errore = controllaTestoNumero(risultante, this.soloIntero)
+    }
     if (errore && ie.cancelable) {
       e.preventDefault()
       e.stopPropagation()
@@ -155,26 +192,31 @@ export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges
     })
   }
 
-  /** Scrive (o toglie) il messaggio sotto il campo, con `aria-describedby`/`aria-invalid`. */
+  /** Uscendo dal campo o con frecce/pulsanti il punto non e' mai entrato nel valore: via il messaggio. */
+  private readonly alleUscita = (): void => this.segnala(null)
+
+  private readonly alClic = (e: Event): void => {
+    if ((e.target as HTMLElement | null)?.closest('button')) this.segnala(null)
+  }
+
+  /** Scrive (o toglie) il messaggio sotto il campo, collegato all'input con `aria-describedby`. */
   private mostra(m: string | null): void {
     if (!this.messaggioInterno) return
     const host = this.host.nativeElement
-    if (m === null) {
-      this.elMessaggio?.remove()
-      this.elMessaggio = null
-      if (this.pesoErroreId === null) this.interno()?.removeAttribute('aria-invalid')
-      return
-    }
-    if (!this.elMessaggio) {
+    // Ogni segnalazione ricrea l'elemento: la live region annuncia anche il secondo punto.
+    this.elMessaggio?.remove()
+    this.elMessaggio = null
+    if (m !== null) {
       const el = this.renderer.createElement('small') as HTMLElement
       el.className = 'field-error p-error block mt-1'
+      el.id = `${this.interno()?.id || 'campo'}-numero-errore`
       el.setAttribute('role', 'alert')
       el.setAttribute('data-testid', 'numero-errore')
+      el.textContent = m
       host.parentNode?.insertBefore(el, host.nextSibling)
       this.elMessaggio = el
     }
-    this.elMessaggio.textContent = m
-    this.interno()?.setAttribute('aria-invalid', 'true')
+    this.applicaAria()
   }
 
   ngOnInit(): void {
@@ -186,6 +228,8 @@ export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges
       el.addEventListener('paste', this.alIncolla, true)
       el.addEventListener('beforeinput', this.primaDellInput, true)
       el.addEventListener('input', this.alInput, true)
+      el.addEventListener('focusout', this.alleUscita, true)
+      el.addEventListener('click', this.alClic, true)
     })
   }
 
@@ -197,13 +241,27 @@ export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges
     this.applicaAria()
   }
 
+  ngAfterViewChecked(): void {
+    // Gli `aria-describedby` che i template mettono sull'host (non focalizzabile) seguono i cambi.
+    this.applicaAria()
+  }
+
+  /**
+   * `aria-describedby` dell'input interno = id sull'host del template + aiuto + errore + messaggio
+   * interno; `aria-invalid` se c'e' un errore (esterno o interno).
+   */
   private applicaAria(): void {
     const campo = this.interno()
     if (!campo) return
-    const ids = [this.pesoAiutoId, this.pesoErroreId].filter(Boolean).join(' ')
-    if (ids) campo.setAttribute('aria-describedby', ids)
-    else campo.removeAttribute('aria-describedby')
-    if (this.pesoErroreId) campo.setAttribute('aria-invalid', 'true')
+    const sulHost = this.host.nativeElement.getAttribute('aria-describedby')
+    const ids = [sulHost, this.aiutoId, this.erroreId, this.elMessaggio?.id]
+      .filter(Boolean)
+      .join(' ')
+    if (ids) {
+      if (campo.getAttribute('aria-describedby') !== ids)
+        campo.setAttribute('aria-describedby', ids)
+    } else campo.removeAttribute('aria-describedby')
+    if (this.erroreId || this.elMessaggio) campo.setAttribute('aria-invalid', 'true')
     else campo.removeAttribute('aria-invalid')
   }
 
@@ -215,5 +273,7 @@ export class NumeroItalianoDirective implements OnInit, AfterViewInit, OnChanges
     el.removeEventListener('paste', this.alIncolla, true)
     el.removeEventListener('beforeinput', this.primaDellInput, true)
     el.removeEventListener('input', this.alInput, true)
+    el.removeEventListener('focusout', this.alleUscita, true)
+    el.removeEventListener('click', this.alClic, true)
   }
 }

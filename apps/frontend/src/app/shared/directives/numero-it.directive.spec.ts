@@ -298,3 +298,81 @@ describe('NumeroItalianoDirective (messaggio interno e campi interi)', () => {
     expect(intero.value).toBe('1000')
   })
 })
+
+describe('NumeroItalianoDirective (accessibilita, testo non numerico, ripetizione)', () => {
+  @Component({
+    standalone: true,
+    imports: [FormsModule, InputNumberModule, NumeroItalianoDirective],
+    template: `
+      <p-inputNumber
+        appNumeroIt
+        [(ngModel)]="valore"
+        inputId="x"
+        locale="it-IT"
+        [useGrouping]="false"
+        [maxFractionDigits]="2"
+        aria-describedby="aiuto-x"
+        numeroAiutoId="aiuto-2"
+      ></p-inputNumber>
+    `,
+  })
+  class OspiteAriaComponent {
+    valore: number | null = null
+  }
+
+  let fixture: ComponentFixture<OspiteAriaComponent>
+  let input: HTMLInputElement
+  beforeEach(() => {
+    TestBed.configureTestingModule({ imports: [OspiteAriaComponent] })
+    fixture = TestBed.createComponent(OspiteAriaComponent)
+    fixture.detectChanges()
+    input = fixture.nativeElement.querySelector('input')
+  })
+  const punto = (): void => {
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '.', code: 'Period', bubbles: true, cancelable: true })
+    )
+    fixture.detectChanges()
+  }
+  const incolla = (testo: string): ClipboardEvent => {
+    const dt = new DataTransfer()
+    dt.setData('text', testo)
+    const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+    input.dispatchEvent(e)
+    fixture.detectChanges()
+    return e
+  }
+
+  it("sull'input vero: id dell'host + aiuto + messaggio con id stabile; poi si toglie il messaggio", () => {
+    expect(input.getAttribute('aria-describedby')).toBe('aiuto-x aiuto-2')
+    punto()
+    const err = fixture.nativeElement.querySelector('[data-testid="numero-errore"]') as HTMLElement
+    expect(err.id).toBe('x-numero-errore')
+    expect(input.getAttribute('aria-describedby')).toBe('aiuto-x aiuto-2 x-numero-errore')
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    fixture.detectChanges()
+    expect(fixture.nativeElement.querySelector('[data-testid="numero-errore"]')).toBeNull()
+    expect(input.getAttribute('aria-describedby')).toBe('aiuto-x aiuto-2')
+    expect(input.hasAttribute('aria-invalid')).toBeFalse()
+  })
+
+  it('un secondo punto ricrea il messaggio (la live region lo riannuncia)', () => {
+    punto()
+    const primo = fixture.nativeElement.querySelector('[data-testid="numero-errore"]')
+    punto()
+    const secondo = fixture.nativeElement.querySelector('[data-testid="numero-errore"]')
+    expect(secondo).not.toBe(primo)
+    expect(fixture.nativeElement.querySelectorAll('[data-testid="numero-errore"]').length).toBe(1)
+  })
+
+  it('testo non numerico incollato: "Numero non valido" e valore invariato', () => {
+    expect(incolla('abc').defaultPrevented).toBeTrue()
+    expect(fixture.nativeElement.querySelector('[data-testid="numero-errore"]').textContent).toBe(
+      'Numero non valido'
+    )
+    expect(incolla('12 kg').defaultPrevented).toBeTrue()
+    expect(fixture.componentInstance.valore).toBeNull()
+    incolla('12,5')
+    expect(fixture.componentInstance.valore).toBe(12.5)
+  })
+})
