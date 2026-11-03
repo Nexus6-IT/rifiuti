@@ -30,7 +30,7 @@ function aliquotaObbligatoria(a: string | null): string {
 }
 
 /** Violazione di chiave esterna (23503) vista da Prisma su una query grezza o tipizzata. */
-function eViolazioneFk(err: unknown): boolean {
+export function eViolazioneFk(err: unknown): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false
   const codiceDb = (err.meta as { code?: unknown } | undefined)?.code
   return err.code === 'P2003' || codiceDb === '23503'

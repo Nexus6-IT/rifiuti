@@ -624,6 +624,50 @@ export class PropostaLegameService {
   }
 
   /**
+   * Come `calcolaInTx`, ma bloccando FOR SHARE contratto, elenco e righe di listino su cui si
+   * copiano i valori e ricalcolando sui valori bloccati (il listino puo' essere cambiato fra la
+   * lettura e il lock). Chi chiama ha gia' il lock consultivo della radice (e quello del
+   * registro, se scrive il registro): l'ordine di spec §5 e' suo. Fino a due giri di lock: se
+   * dopo il lock la proposta ricalcolata usa un insieme diverso (elenco diventato valido, riga
+   * aggiunta mentre si aspettava) si bloccano gli id nuovi e si ricalcola; se cambia ancora, 409.
+   * Una proposta non applicabile (non fatturabile, non attiva) o senza contratto non blocca nulla.
+   */
+  async calcolaEBloccaInTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    i: InputProposta,
+    scelte: ScelteProposta | undefined,
+    opz: { fatturazioneDa?: string | null }
+  ): Promise<PropostaVista> {
+    let proposta = await this.calcolaInTx(tx, tenantId, i, scelte, opz)
+    let bloccata: string | null = null
+    for (let giro = 0; ; giro++) {
+      if (!proposta.fatturabile || !proposta.attiva) break
+      // Senza contratto non si copia nulla dal listino: niente da proteggere.
+      if (!proposta.contratto) break
+      const chiave = chiaveInsieme(proposta)
+      if (chiave === bloccata) break
+      if (giro === 2) {
+        throw new ConflictException({
+          error: 'OPERAZIONE_CONCORRENTE',
+          message: MSG_OPERAZIONE_CONCORRENTE,
+        })
+      }
+      await bloccaListinoInCondivisione(
+        tx,
+        tenantId,
+        proposta.contratto.id,
+        proposta.elenco ? [proposta.elenco.id] : [],
+        proposta.righe.map(r => r.rigaAddebitoId)
+      )
+      bloccata = chiave
+      // Il listino puo' essere cambiato fra la lettura e il lock: i valori si prendono da qui.
+      proposta = await this.calcolaInTx(tx, tenantId, i, scelte, opz)
+    }
+    return proposta
+  }
+
+  /**
    * Percorso di scrittura (registrazione senza conferma, lista «da collegare»). Il CHIAMANTE ha
    * gia' il lock del registro; qui, nell'ordine di spec §5: lock consultivo della radice ->
    * «fatturazione da» FOR SHARE -> contratto, elenco e righe di listino FOR SHARE (poi la
@@ -650,36 +694,11 @@ export class PropostaLegameService {
     if (esistente.length > 0) return { legameId: esistente[0].id, creato: false, proposta: null }
 
     const fatturazioneDa = await leggiFatturazioneDaInTx(tx, c.tenantId, { condividi: true })
-    const opz = { fatturazioneDa }
-    // Fino a due giri di lock: se dopo il lock la proposta ricalcolata usa un insieme diverso
-    // (elenco diventato valido, riga aggiunta mentre si aspettava) si bloccano gli id nuovi e si
-    // ricalcola; se cambia ancora, 409 (nel registro il SAVEPOINT lascia il movimento «mancante»).
-    let proposta = await this.calcolaInTx(tx, c.tenantId, c.input, c.scelte, opz)
-    let bloccata: string | null = null
-    for (let giro = 0; ; giro++) {
-      if (!proposta.fatturabile || !proposta.attiva) {
-        return { legameId: null, creato: false, proposta }
-      }
-      // Senza contratto non si copia nulla dal listino: niente da proteggere.
-      if (!proposta.contratto) break
-      const chiave = chiaveInsieme(proposta)
-      if (chiave === bloccata) break
-      if (giro === 2) {
-        throw new ConflictException({
-          error: 'OPERAZIONE_CONCORRENTE',
-          message: MSG_OPERAZIONE_CONCORRENTE,
-        })
-      }
-      await bloccaListinoInCondivisione(
-        tx,
-        c.tenantId,
-        proposta.contratto.id,
-        proposta.elenco ? [proposta.elenco.id] : [],
-        proposta.righe.map(r => r.rigaAddebitoId)
-      )
-      bloccata = chiave
-      // Il listino puo' essere cambiato fra la lettura e il lock: i valori si prendono da qui.
-      proposta = await this.calcolaInTx(tx, c.tenantId, c.input, c.scelte, opz)
+    const proposta = await this.calcolaEBloccaInTx(tx, c.tenantId, c.input, c.scelte, {
+      fatturazioneDa,
+    })
+    if (!proposta.fatturabile || !proposta.attiva) {
+      return { legameId: null, creato: false, proposta }
     }
     const { legameId } = await scriviProposta(tx, {
       tenantId: c.tenantId,

@@ -42,6 +42,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
   },
+  'application/legami-movimento/letture-legame.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge UNA riga per id: il movimento vigente di un legame, da cui ricalcolare la proposta (conferma, modifica, riammissione)',
+  },
   'application/legami-movimento/impostazioni-fatturazione.service.ts': {
     scelta: 'vigenti',
     motivo:

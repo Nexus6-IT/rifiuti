@@ -11,6 +11,7 @@ import type {
 } from '../../domain/legami-movimento/proposta-contratto'
 import type { RigaCandidata } from '../../domain/legami-movimento/proposta-righe'
 import { joinLineari } from '../listino/lock-listino'
+import { sqlGiornoMovimento } from './giorno-movimento'
 
 export interface ElencoLetto extends ElencoCandidato {
   contrattoId: string
@@ -282,4 +283,61 @@ export async function firEsiste(
   const r = await tx.$queryRaw<{ n: number }[]>`
     SELECT 1 AS n FROM firs WHERE tenant_id = ${tenantId}::uuid AND id = ${firId}::uuid`
   return r.length > 0
+}
+
+/** Dati del movimento VIGENTE di un legame, quelli che servono a ricalcolare la proposta. */
+export interface MovimentoPerLegame {
+  type: 'CARICO' | 'SCARICO'
+  causale: string
+  causaleAziendaId: string | null
+  cerCode: string
+  /** Giorno italiano `AAAA-MM-GG` (`sqlGiornoMovimento`). */
+  giorno: string
+  unit: string
+  /** Decimale come stringa (`100.00`). */
+  quantity: string
+  firId: string | null
+}
+
+/** Il movimento (una sola riga, per id) da cui si ricalcola il legame; `null` se non c'e'. */
+export async function leggiMovimentoPerLegame(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  movimentoId: string
+): Promise<MovimentoPerLegame | null> {
+  const r = await tx.$queryRaw<MovimentoPerLegame[]>`
+    SELECT m.type::text AS type, m.causale AS causale,
+           m.causale_azienda_id::text AS "causaleAziendaId", m.cer_code AS "cerCode",
+           to_char(${sqlGiornoMovimento('m')}, 'YYYY-MM-DD') AS giorno, m.unit AS unit,
+           m.quantity::text AS quantity, m.fir_id::text AS "firId"
+    FROM waste_movements m
+    WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ${movimentoId}::uuid`
+  return r[0] ?? null
+}
+
+/** Stato di un contratto dell'azienda, anche eliminato (il controllo lo fa il chiamante). */
+export async function leggiStatoContratto(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  contrattoId: string
+): Promise<{ stato: string; eliminato: boolean } | null> {
+  const r = await tx.$queryRaw<{ stato: string; eliminato: boolean }[]>`
+    SELECT c.stato::text AS stato, (c.eliminato_il IS NOT NULL) AS eliminato
+    FROM contratti_cliente c
+    WHERE c.tenant_id = ${tenantId}::uuid AND c.id = ${contrattoId}::uuid`
+  return r[0] ?? null
+}
+
+/** Validita' di un elenco di addebiti (`AAAA-MM-GG`, `null` = senza limite). */
+export async function leggiValiditaElenco(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  elencoId: string
+): Promise<{ validoDal: string | null; validoAl: string | null } | null> {
+  const r = await tx.$queryRaw<{ validoDal: string | null; validoAl: string | null }[]>`
+    SELECT to_char(e.valido_dal, 'YYYY-MM-DD') AS "validoDal",
+           to_char(e.valido_al, 'YYYY-MM-DD') AS "validoAl"
+    FROM elenchi_addebiti e
+    WHERE e.tenant_id = ${tenantId}::uuid AND e.id = ${elencoId}::uuid`
+  return r[0] ?? null
 }
