@@ -23,6 +23,7 @@ import {
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { MSG_VARIAZIONE_SUPERATA, traduciConflitto } from './conflitti-variazione'
+import { joinLineari } from './lock-listino'
 import { controllaRiferimentiListino } from './riferimenti-listino'
 
 export interface FiltroVariazioneArchivio {
@@ -274,6 +275,7 @@ export class VariazioniArchivioService {
     tenantId: string,
     n: Normalizzata
   ): Promise<AddebitoLetto[]> {
+    await joinLineari(tx)
     const where: Prisma.AddebitoWhereInput = {
       tenantId,
       ...(n.addebitiIds.length > 0 ? { id: { in: n.addebitiIds } } : {}),

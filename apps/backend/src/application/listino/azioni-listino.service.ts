@@ -37,6 +37,7 @@ import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import {
   bloccaContrattoListino,
   impostaTimeoutLock,
+  joinLineari,
   lockConsultivoContratto,
   type ContrattoBloccato,
 } from './lock-listino'
@@ -627,6 +628,7 @@ export class AzioniListinoService {
       | { sconto: string | null }
   ): Promise<void> {
     const ordinati = [...ids].sort()
+    await joinLineari(tx)
     for (let i = 0; i < ordinati.length; i += BLOCCO_AGGIORNAMENTO) {
       const blocco = ordinati.slice(i, i + BLOCCO_AGGIORNAMENTO)
       await this.bloccaRighe(tx, tenantId, { ids: blocco })
@@ -663,6 +665,7 @@ export class AzioniListinoService {
         ORDER BY id FOR UPDATE`
     } else {
       // `JOIN unnest` e non `= ANY`: vedi il commento in VariazioniPrezziService.trova.
+      await joinLineari(tx)
       await tx.$queryRaw`SELECT r.id FROM "righe_addebito" r
         JOIN unnest(${quali.ids as string[]}::uuid[]) AS chiesti(chiesto) ON chiesto = r.id
         WHERE r.tenant_id = ${tenantId}::uuid

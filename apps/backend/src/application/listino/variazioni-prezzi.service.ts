@@ -35,6 +35,7 @@ import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { MSG_VARIAZIONE_SUPERATA, traduciConflitto } from './conflitti-variazione'
+import { joinLineari } from './lock-listino'
 import { controllaRiferimentiListino } from './riferimenti-listino'
 
 export interface FiltroVariazioneContratti {
@@ -827,6 +828,7 @@ export class VariazioniPrezziService {
     tenantId: string,
     c: Criteri
   ): Promise<RigaLetta[]> {
+    await joinLineari(tx)
     const scelte = await tx.rigaAddebito.findMany({
       where: this.dove(tenantId, c),
       select: { id: true },
