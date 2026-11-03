@@ -100,7 +100,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
   ],
   providers: [ConfirmationService, MessageService],
   template: `
-    <div class="page fir-detail" data-testid="fir-detail-page">
+    <div class="page pagina-lavoro fir-detail" data-testid="fir-detail-page">
       <header class="page-header">
         <div class="page-header__titles header-with-back">
           <button
@@ -759,13 +759,13 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       }
 
       .fir-detail .detail-section {
-        margin-bottom: var(--spacing-lg);
+        margin-bottom: var(--spacing-base);
       }
 
       .section-title {
         font-family: var(--font-display);
-        font-size: var(--font-size-xl);
-        margin: 0 0 var(--spacing-base);
+        font-size: var(--font-size-lg);
+        margin: 0 0 var(--spacing-md);
       }
 
       .detail-grid {
@@ -784,23 +784,23 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       }
 
       .detail-label {
-        font-size: var(--font-size-sm);
-        color: var(--text-secondary);
+        font-size: 0.8125rem;
+        color: var(--text-tertiary);
         font-weight: var(--font-weight-medium);
       }
 
       .detail-value {
-        font-size: var(--font-size-base);
+        font-size: var(--font-size-sm);
       }
 
       .detail-hint {
         display: block;
         margin-top: 0.25rem;
-        color: var(--text-secondary);
+        color: var(--text-tertiary);
       }
 
       .detail-scostamento--oltre {
-        color: var(--color-warning);
+        color: var(--stato-warn-ink);
         font-weight: var(--font-weight-medium);
       }
 
@@ -815,15 +815,15 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       }
 
       .parte-card {
-        border: 1px solid var(--color-gray-200);
-        border-radius: var(--radius-base);
-        padding: var(--spacing-base);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md) var(--spacing-base);
       }
       .parte-card h3 {
         margin: 0 0 var(--spacing-xs);
-        font-size: var(--font-size-sm);
-        text-transform: uppercase;
-        color: var(--text-secondary);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-tertiary);
       }
       .parte-ragione {
         font-weight: var(--font-weight-semibold);

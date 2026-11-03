@@ -85,7 +85,7 @@ interface OpzioneSede {
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="page fir-list">
+    <div class="page pagina-lavoro fir-list">
       <!-- Intestazione pagina -->
       <header class="page-header">
         <div class="page-header__titles">
@@ -109,7 +109,7 @@ interface OpzioneSede {
       </header>
 
       <!-- Barra filtri / ricerca -->
-      <section class="surface-card filters" aria-label="Filtri di ricerca FIR">
+      <section class="filters" aria-label="Filtri di ricerca FIR">
         <div class="filters__field">
           <label for="fir-search" class="filters__label">Cerca</label>
           <span class="p-input-icon-left filters__search">
@@ -176,7 +176,7 @@ interface OpzioneSede {
               <tr>
                 <th scope="col">Numero</th>
                 <th scope="col">CER</th>
-                <th scope="col">Quantità</th>
+                <th scope="col" class="num-col">Quantità</th>
                 <th scope="col">Stato</th>
                 <th scope="col">RENTRI</th>
                 <th scope="col">Data creazione</th>
@@ -191,7 +191,9 @@ interface OpzioneSede {
                 <td>
                   <span class="cell-mono">{{ fir.rifiuto.cerCode }}</span>
                 </td>
-                <td>{{ fir.rifiuto.quantita }} {{ fir.rifiuto.unitaMisura }}</td>
+                <td class="num-col cell-nowrap">
+                  {{ fir.rifiuto.quantita }} {{ fir.rifiuto.unitaMisura }}
+                </td>
                 <td>
                   <p-tag
                     [value]="getStatoLabel(fir.stato)"
@@ -214,7 +216,7 @@ interface OpzioneSede {
                   />
                   <span *ngIf="!mostraStatoRentri(fir)" class="row-actions__none">—</span>
                 </td>
-                <td>{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+                <td class="cell-nowrap">{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
                 <td>
                   <div class="row-actions">
                     <p-button
@@ -997,40 +999,8 @@ interface OpzioneSede {
   `,
   styles: [
     `
-      .filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--spacing-base);
-        align-items: flex-end;
-        margin-bottom: var(--spacing-lg);
-      }
-      .filters__field {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-        flex: 1 1 240px;
-        min-width: 0;
-      }
-      .filters__label {
-        font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-medium);
-        color: var(--text-secondary);
-      }
-      .filters__search {
-        display: block;
-        width: 100%;
-      }
-      .filters__search input {
-        width: 100%;
-      }
-
-      .table-card {
-        padding: 0;
-        overflow: hidden;
-      }
-
       .col-actions {
-        width: 22rem;
+        width: 20rem;
       }
       .row-actions {
         display: flex;
@@ -1045,12 +1015,6 @@ interface OpzioneSede {
       .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-label,
       .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-icon {
         color: var(--on-accent);
-      }
-
-      .cell-mono {
-        font-family: var(--font-family-mono);
-        font-weight: var(--font-weight-medium);
-        color: var(--text-primary);
       }
 
       /* ===== Form FIR — sezioni logiche (griglia 8pt, densità operativa) ===== */
