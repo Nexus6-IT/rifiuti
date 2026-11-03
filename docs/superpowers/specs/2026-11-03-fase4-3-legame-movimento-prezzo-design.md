@@ -25,9 +25,9 @@ Perché ora: la 4.1 (cliente e contratto) e la 4.2 (listino con elenchi e righe)
 
 1. Ogni movimento con causale fatturabile può avere un legame con un cliente, un contratto, un elenco e una o più righe di listino.
 2. Il legame è **proposto** dal sistema alla registrazione e **confermato** dall'utente.
-3. Alla conferma il legame **congela** quantità, prezzo, sconto e IVA delle righe a prezzo singolo.
+3. Alla conferma il legame **congela** quantità, prezzo, sconto e IVA delle righe a prezzo singolo. L'utente può correggere a mano prezzo e sconto di una riga finché il legame non è fatturato (decisione 16).
 4. Una lista «da collegare» raccoglie i movimenti senza legame confermato.
-5. Un'azione esplicita «Aggiorna prezzi» riscrive i prezzi sui movimenti non ancora fatturati.
+5. Un'azione esplicita «Aggiorna prezzi» riscrive i prezzi sui movimenti non ancora fatturati, tranne le righe con prezzo modificato a mano.
 6. Elenchi e righe del listino usati da un legame non si eliminano (vincolo nel database).
 7. Il legame segue la catena di annotazioni e rettifiche del movimento.
 8. La 4.4 trova tutto ciò che le serve in tabelle sue, senza ricalcolare dal listino vigente.
@@ -78,6 +78,13 @@ Risposte di Graziano del 03/11/2026 (dopo la prima stesura, vincolanti):
 | 13 | **«Escludi dalla fatturazione»** in PRIMA uscita: motivo obbligatorio, reversibile. Toglie il movimento dalla lista e dalla 4.4 (come `CLIE = 0` di WinWaste). |
 | 14 | **Flag `fatturabile` delle causali di SISTEMA**: non si cambia per azienda. Chi vuole fatturare un altro caso crea una causale aziendale. |
 | 15 | **Valori iniziali del flag**: solo `INGRESSO_ESTERNO` nasce fatturabile. Tutte le altre causali di sistema sono spente. |
+
+Decisioni di Graziano del 03/11/2026 (dopo la revisione del piano, vincolanti):
+
+| # | Decisione |
+|---|---|
+| 16 | **Prezzo e sconto modificabili a mano nel «foglio».** Nella riga del legame l'utente PUÒ modificare prezzo e sconto, oltre alla quantità, finché il legame non è fatturato. La modifica lascia traccia: audit, avviso `PREZZO_MANUALE` e la colonna `prezzo_manuale` sulla riga. «Aggiorna prezzi» NON sovrascrive le righe con prezzo manuale: le mostra nell'anteprima come «escluse, prezzo modificato a mano». Le regole dei campi numerici valgono (virgola, punto vietato, direttiva `appNumeroIt`). Permessi: come la modifica della quantità. |
+| 17 | **Quantità inserita a mano**: solo maggiore di 0, con al massimo 3 decimali. |
 
 ### 3.2 Scelta dell'orchestratore: opzione A del dossier
 
@@ -179,6 +186,7 @@ Indici: `(tenant_id, stato, data_movimento)` per la lista e per la 4.4; `(tenant
 | `prezzo_speciale` | boolean | copia: se vero, `prezzo` resta nullo |
 | `prezzo` | numeric(14,6) null | congelato; nullo solo se `prezzo_speciale` |
 | `sconto` | varchar(20) null | formula a cascata congelata |
+| `prezzo_manuale` | boolean not null default false | vero se l'utente ha scritto a mano prezzo o sconto (decisione 16). «Aggiorna prezzi» salta la riga. Si azzera solo se la riga viene tolta e riaggiunta dal listino |
 | `codice_iva_id` | uuid | congelato |
 | `aliquota_iva` | numeric(5,2) | copia di `codici_iva.aliquota` al momento del congelamento |
 | `natura_iva` | varchar(4) null | copia di `codici_iva.natura` |
@@ -191,7 +199,7 @@ Vincoli:
 - **FK composta** `(legame_id, elenco_id, tenant_id)` → `legami_movimento`, `CASCADE` (le righe nascono e muoiono con la testata; la testata non si cancella mai in pratica). Richiede un unico su `(id, elenco_id, tenant_id)`. Se il legame cambia elenco, le righe si rigenerano nella stessa transazione.
 - **FK** `(codice_iva_id, tenant_id)` → `codici_iva`, `NoAction`: un codice IVA usato non si elimina (si disattiva).
 - **Unico** `(legame_id, riga_addebito_id)`: la stessa riga non compare due volte.
-- **CHECK**: `prezzo_speciale` ⇒ `prezzo IS NULL`; `quantita IS NULL` ⇔ `quantita_origine IS NULL`. La regola «riga non a prezzo speciale in un legame confermato ⇒ prezzo presente (anche zero)» sta nel **dominio** (O7), verificata alla conferma e in «Aggiorna prezzi»: lo stato sta sulla testata e un CHECK di riga non lo vede. Nessun trigger.
+- **CHECK**: `prezzo_speciale` ⇒ `prezzo IS NULL`; `quantita IS NULL` ⇔ `quantita_origine IS NULL`; `prezzo_manuale` ⇒ (`NOT prezzo_speciale` e `prezzo IS NOT NULL`): il prezzo manuale esiste solo su una riga a prezzo singolo. La regola «riga non a prezzo speciale in un legame confermato ⇒ prezzo presente (anche zero)» sta nel **dominio** (O7), verificata alla conferma e in «Aggiorna prezzi»: lo stato sta sulla testata e un CHECK di riga non lo vede. Nessun trigger.
 - Niente `importo` salvato. L'importo di riga si calcola con `importoRiga` (`src/domain/listino/importi-riga.ts:83`) e `scontoCascata` (`:72`) dai valori congelati. Salvarlo duplicherebbe un dato derivato.
 
 ### 4.4 Stati e macchina a stati
@@ -240,7 +248,7 @@ Regole di transizione:
 
 **Motivi** (campo `motivi`, impediscono la conferma): `SENZA_CLIENTE`, `SENZA_CONTRATTO`, `SEDE_SENZA_CONTRATTO`, `CONTRATTO_AMBIGUO`, `CONTRATTO_NON_ATTIVO`, `SENZA_ELENCO`, `ELENCO_SCADUTO`, `SENZA_RIGA_CER`, `RIGA_AMBIGUA`, `SENZA_PREZZO`, `SENZA_QUANTITA`.
 
-**Avvisi** (campo `avvisi`, non bloccano): `CLIENTE_NON_DA_FIR` (il FIR c'è ma non porta a un cliente: la ditta non è censita come cliente), `QUANTITA_MANUALE_NON_DERIVATA` (rettifica del movimento dopo una quantità scritta a mano), `CAMBIO_CER_DA_CONFERMARE`.
+**Avvisi** (campo `avvisi`, non bloccano): `CLIENTE_NON_DA_FIR` (il FIR c'è ma non porta a un cliente: la ditta non è censita come cliente), `QUANTITA_MANUALE_NON_DERIVATA` (rettifica del movimento dopo una quantità scritta a mano), `CAMBIO_CER_DA_CONFERMARE`, `PREZZO_MANUALE` (almeno una riga del legame ha prezzo o sconto scritto a mano, decisione 16). `PREZZO_MANUALE` sta sul **legame**, perché `avvisi` esiste solo lì e si conserva dopo la conferma; la riga che lo causa si riconosce dalla colonna `prezzo_manuale` (§4.3). Il servizio lo tiene allineato: presente se almeno una riga ha `prezzo_manuale`, assente altrimenti.
 
 Ogni codice ha un messaggio breve per l'utente. Gli insiemi sono chiusi, validati nel dominio e dal CHECK `motivi <@ ARRAY[...]` (e lo stesso per `avvisi`).
 
@@ -298,10 +306,10 @@ Tabella `impostazioni_fatturazione`: una riga per azienda.
 
 5. **Liste grandi**: per «Aggiorna prezzi» e per le azioni di massa, `UPDATE ... FROM unnest(...)` e `joinLineari(tx)` (`lock-listino.ts`, ultima funzione), con il test di regressione sul piano generico che la 4.2b ha già (commit `68946c4b`, `0cd3be99`). Un ciclo di UPDATE singoli è vietato.
 6. **Tetto di attesa** dei lock: `impostaTimeoutLock` e `OPZIONI_TRANSAZIONE_SCRITTURA` del listino (`lock-listino.ts`) per le scritture dei legami; 55P03 → 409 `OPERAZIONE_CONCORRENTE`.
-7. **Numeri con la virgola** (decisione di Graziano del 02/11, regola nei campi modificabili): in ogni campo numerico modificabile della UI (quantità e prezzo di una riga) la virgola è il separatore decimale; il punto è vietato e dà «Usa la virgola per i decimali»; i campi modificabili non mostrano mai il separatore delle migliaia. Parser e formatter unici e condivisi. Nell'API i numeri viaggiano come stringhe con il punto (come fa il listino); la conversione sta nel frontend.
+7. **Numeri con la virgola** (decisione di Graziano del 02/11, regola nei campi modificabili): in ogni campo numerico modificabile della UI (quantità, prezzo e sconto di una riga) la virgola è il separatore decimale; il punto è vietato e dà «Usa la virgola per i decimali»; i campi modificabili non mostrano mai il separatore delle migliaia. Parser e formatter unici e condivisi. Nell'API i numeri viaggiano come stringhe con il punto (come fa il listino); la conversione sta nel frontend. Nel backend la validazione usa i validatori del dominio già esistenti (`decimaleValido` in `src/domain/clienti/decimali.ts`, `cascataValida` in `src/domain/listino/importi-riga.ts`): `MaxDecimali` (`src/core/validators/max-decimali.ts`) non esiste su master.
 8. **Sessione unica**: nessun impatto nuovo. Le rotte nuove usano la guardia di sessione esistente; nessuna rotta senza utente.
 9. **Importi con `Decimal`**, mai `number`, nei calcoli (`importi-riga.ts` lo fa già con `Prisma.Decimal`).
-10. **Audit**: ogni conferma, modifica, esclusione e «Aggiorna prezzi» scrive una riga di `activity_log` con utente, legame, valore precedente e nuovo (solo id e importi, nessun dato personale nei messaggi).
+10. **Audit**: ogni conferma, modifica (anche di quantità, prezzo e sconto di una riga), esclusione e «Aggiorna prezzi» scrive una riga di `activity_log` con utente, legame, valore precedente e nuovo (solo id e importi, nessun dato personale nei messaggi).
 
 ## 6. Regole della proposta
 
@@ -362,7 +370,7 @@ Per ogni riga, `quantitaDaMovimento(tipoQuantita, unitaMisura, { netto, lordo, v
 - `volume`: se l'unità del movimento è litri o metri cubi, si passa il volume con `umVolume` `L` o `M`; altrimenti nullo.
 - `UNO` → 1; `ALTRO` → nulla.
 
-Quantità nulla → la riga resta senza valore e il legame ha il motivo `SENZA_QUANTITA` (stato `DA_COLLEGARE`). L'utente la scrive a mano (`quantita_origine = MANUALE`). Una quantità `MANUALE` non si sovrascrive da sola: né dalle rettifiche, né da «Aggiorna prezzi».
+Quantità nulla → la riga resta senza valore e il legame ha il motivo `SENZA_QUANTITA` (stato `DA_COLLEGARE`). L'utente la scrive a mano (`quantita_origine = MANUALE`). La quantità manuale è maggiore di 0 e ha al massimo 3 decimali (decisione 17): zero, negativi e quattro decimali danno 400. Una quantità `MANUALE` non si sovrascrive da sola: né dalle rettifiche, né da «Aggiorna prezzi».
 
 Il lordo diventerà automatico con le pese (4.8a, `AccessoPesa`/`Pesata`): fuori ambito qui.
 
@@ -375,6 +383,8 @@ Per ogni riga scelta:
 - il **listino 1-6** del cliente (`schema:3207`) e l'archivio addebiti non intervengono sulle righe: il prezzo della riga è già quello del contratto.
 
 Prima della conferma (stato `PROPOSTO`) i valori sono calcolati e visibili; si possono ricalcolare. Alla conferma si scrive `congelata_il`. Da quel momento non cambiano da soli.
+
+**Prezzo e sconto a mano (decisione 16).** Su una riga a prezzo singolo di un legame non fatturato (`DA_COLLEGARE`, `PROPOSTO`, `CONFERMATO`) l'utente può scrivere prezzo e sconto. Il prezzo è un numero non negativo con al massimo sei decimali (zero ammesso, scritto in modo esplicito). Lo sconto è una formula a cascata valida (`cascataValida`). La modifica imposta `prezzo_manuale = true`, aggiunge l'avviso `PREZZO_MANUALE` al legame e scrive l'audit con valore precedente e nuovo. Una riga a prezzo speciale non ha prezzo manuale (lo calcola la 4.4): la modifica dà 400. Il prezzo manuale non cambia lo stato del legame. Rettifiche e ricalcolo della proposta non lo toccano. L'IVA non si modifica a mano.
 
 ## 7. Flussi
 
@@ -413,7 +423,7 @@ Rotta `POST /legami-movimento/:id/conferma` con `versione` (lock ottimistico). S
 4. se tutto è completo: stato `CONFERMATO`, valori e `congelata_il` scritti, `confermato_il/da` valorizzati;
 5. se manca qualcosa: la conferma è rifiutata con 409 e l'elenco dei `motivi` (l'utente può comunque salvare la bozza come `DA_COLLEGARE`).
 
-La conferma accetta modifiche dell'utente (cambia cliente, contratto, elenco, righe, quantità manuali) in un'unica richiesta. Cambiare contratto o elenco rigenera le righe.
+La conferma accetta modifiche dell'utente (cambia cliente, contratto, elenco, righe, quantità manuali, prezzo e sconto manuali) in un'unica richiesta. Cambiare contratto o elenco rigenera le righe e azzera i prezzi manuali (con avviso all'utente prima di cambiare).
 
 ### 7.3 Lista «da collegare» (decisione 3)
 
@@ -434,7 +444,7 @@ Azione esplicita, per contratto o per elenco (e opzionalmente per periodo di `da
 1. anteprima: quanti legami cambiano, di quanto (differenza di prezzo e di sconto), quanti si saltano e perché;
 2. conferma esplicita dell'utente;
 3. riscrive prezzo, sconto e IVA sulle righe a prezzo singolo dei legami **non fatturati** (`PROPOSTO`, `CONFERMATO`, `DA_COLLEGARE`) copiando i valori correnti della riga di listino; aggiorna `congelata_il`;
-4. **salta** `FATTURATO`, `IMPORTATO_FATTURATO`, `ESCLUSO`, `ANNULLATO`, e le righe a prezzo speciale;
+4. **salta** `FATTURATO`, `IMPORTATO_FATTURATO`, `ESCLUSO`, `ANNULLATO`, le righe a prezzo speciale e le righe con **prezzo manuale** (`prezzo_manuale = true`, decisione 16). L'anteprima le elenca come «escluse, prezzo modificato a mano», con il loro numero;
 5. se una riga di listino è sparita o ha cambiato famiglia, il legame passa a `DA_COLLEGARE` con il motivo;
 6. rilegge lo stato di ogni legame **sotto lock** subito prima di scrivere: se la 4.4 ha nel frattempo marcato `FATTURATO`, il legame si salta. Il lock sulle righe del legame in ordine di `id` è lo stesso della 4.4.
 
@@ -482,7 +492,7 @@ Tutte le rotte sono per il tenant attivo (RLS), sotto la guardia di sessione e d
 | `GET /legami-movimento` | Lista, con filtri e stati virtuali (§7.3) | lettura |
 | `GET /legami-movimento/:id` | Dettaglio con righe e valori congelati; importi calcolati | lettura |
 | `GET /registro/movimenti/:id/legame` | Il legame della catena del movimento | lettura |
-| `PUT /legami-movimento/:id` | Cambia cliente, contratto, elenco, righe, quantità manuali (con `versione`) | scrittura |
+| `PUT /legami-movimento/:id` | Cambia cliente, contratto, elenco, righe, quantità, **prezzo e sconto** manuali di una riga (con `versione`). Quantità: numero > 0, max 3 decimali. Prezzo: non negativo, max 6 decimali. Sconto: formula a cascata valida o `null` per toglierlo. Numeri come stringhe con il punto | scrittura |
 | `POST /legami-movimento/:id/conferma` | §7.2 | scrittura |
 | `POST /legami-movimento/:id/escludi` (corpo: `motivo`, obbligatorio) e `.../riammetti` | O4 | scrittura |
 | `POST /legami-movimento/azioni` | Conferma o escludi in massa (tetto 500) | scrittura |
@@ -495,10 +505,10 @@ La proposta restituisce, per ogni campo scelto, anche l'alternativa (lista dei c
 
 ### 8.2 UI
 
-- **Registrazione/rettifica**: un blocco «Fatturazione» sotto i dati del movimento, visibile solo con causale fatturabile. Mostra cliente (con la fonte «da FIR»), contratto, elenco, righe con quantità e prezzo, avvisi. Pulsanti «Conferma legame» e «Registra senza collegare».
+- **Registrazione/rettifica**: un blocco «Fatturazione» sotto i dati del movimento, visibile solo con causale fatturabile. Mostra cliente (con la fonte «da FIR»), contratto, elenco, righe con quantità, prezzo e sconto, avvisi. Quantità, prezzo e sconto delle righe a prezzo singolo sono campi modificabili (virgola, `appNumeroIt`); una riga con prezzo manuale mostra il badge «prezzo manuale». Pulsanti «Conferma legame» e «Registra senza collegare».
 - **Lista «Da collegare»**: tabella con filtri, badge per stato e motivo, azioni di massa. Nella sezione clienti/contratti un contatore dei movimenti da collegare.
 - **Dettaglio del movimento** (registro): un riquadro con lo stato del legame, i valori congelati e un avviso se `scostamento_dopo_fattura`.
-- **Aggiorna prezzi**: finestra con l'anteprima delle differenze e conferma esplicita.
+- **Aggiorna prezzi**: finestra con l'anteprima delle differenze e conferma esplicita; le righe con prezzo manuale compaiono come «escluse, prezzo modificato a mano».
 - **Listino**: su una riga o un elenco usato, il pulsante «Elimina» è disattivato con il messaggio «in uso»; restano «Disattiva» / «Chiudi validità».
 - Campi numerici con la virgola (§5.7), in italiano, componenti del design system esistente (tema Foglio salvia).
 
@@ -509,7 +519,7 @@ Si riusano i ruoli del pezzo clienti/listino (`src/api/clienti/ruoli.ts:3-4`, `s
 | Azione | VIEWER | OPERATOR | ADMIN / SUPER_ADMIN |
 |---|---|---|---|
 | Vedere legami, proposta, lista | sì | sì | sì |
-| Confermare, modificare, escludere un legame | no | sì | sì |
+| Confermare, modificare, escludere un legame (anche quantità, prezzo e sconto di una riga) | no | sì | sì |
 | Azioni di massa | no | sì | sì |
 | «Aggiorna prezzi» | no | no | sì |
 | Impostare `fatturabile` su una causale aziendale | no | no | come per le altre causali (stesso controller) |
@@ -529,6 +539,11 @@ Le rotte del registro mantengono il controllo sul ruolo effettivo già in uso (`
 - **Cliente con contratti solo per altre sedi**: `SEDE_SENZA_CONTRATTO`; l'utente può crearne uno senza sede o per la sede giusta (4.1) e tornare.
 - **Fatturazione spenta o movimento prima di «fatturazione da»**: nessun legame, nessuna riga in lista, nessun errore.
 - **Movimento con unità non di massa e riga a peso netto**: quantità da scrivere a mano.
+- **Prezzo manuale e poi «Aggiorna prezzi» o cambio del listino**: la riga non cambia. L'anteprima la conta fra le escluse. Per tornare al prezzo di listino si toglie la riga e la si riaggiunge.
+- **Prezzo manuale su riga a prezzo speciale**: rifiutato (400).
+- **Prezzo manuale e poi cambio di contratto o elenco**: le righe si rigenerano dal listino e i prezzi manuali si perdono; la UI lo dice prima di procedere.
+- **Prezzo manuale e rettifica del movimento**: il prezzo manuale resta; cambia solo la quantità `DA_MOVIMENTO`.
+- **Quantità manuale 0, negativa o con più di 3 decimali**: 400.
 - **Quantità manuale e poi rettifica della quantità del movimento**: la manuale resta; l'avviso `QUANTITA_MANUALE_NON_DERIVATA` dice che la quantità del legame non è più derivata.
 - **Pesata rettificata dopo il legame** (4.8a): la quantità del legame non cambia da sola. La differenza si mostra come avviso (domanda da riprendere in 4.4).
 - **Movimento importato (3.4)**: l'import usa `INSERT ... ON CONFLICT` e non passa dai casi d'uso di registrazione, quindi non crea proposte. Restano fuori dalla lista finché la 3.8 non li marca (decisione 11). Se il pregresso era già fatturato in WinWaste, la 3.8 deve scrivere `IMPORTATO_FATTURATO` prima che l'azienda imposti «fatturazione da» a una data che li includa, altrimenti il pregresso si rifattura. Va ricordato alla 3.8: dipendenza di ordine.
@@ -559,7 +574,7 @@ Tre pezzi, ognuno rilasciabile da solo. Dimensione complessiva M-L (la roadmap s
 **4.3c — Interfaccia (M).**
 - Blocco «Fatturazione» nel form del movimento, dettaglio, lista «Da collegare» con azioni di massa, finestra «Aggiorna prezzi», disattivazione dei pulsanti in listino.
 - Parser e formatter condivisi per i numeri con la virgola.
-- Test e2e: registrazione con proposta e conferma, registrazione senza collegare, rettifica che cambia CER, annullo, «Aggiorna prezzi».
+- Test e2e: registrazione con proposta e conferma, registrazione senza collegare, rettifica che cambia CER, annullo, «Aggiorna prezzi», prezzo modificato a mano non sovrascritto da «Aggiorna prezzi».
 
 Motivo della divisione: 4.3a si rilascia senza cambiare il comportamento (nessun legame si crea ancora). 4.3b si prova dall'API prima della UI. 4.3c è lavoro di interfaccia isolato. L'alternativa a due pezzi (4.3a modello + proposta, 4.3b UI) mette troppo in un pezzo: la proposta, l'aggancio al registro e le azioni di massa richiedono revisioni separate.
 
@@ -583,6 +598,6 @@ Il documento fissa le regole, non i dettagli. Resta da decidere in costruzione, 
 
 ## 13. Domande aperte residue
 
-Nessuna. Le risposte di Graziano del 03/11/2026 (decisioni 9-15) hanno chiuso le quattro domande della prima stesura: rettifica dopo la fattura (non si blocca), azione «Escludi» (in prima uscita), flag sulle causali di sistema (non si cambia per azienda), valori iniziali del flag (solo `INGRESSO_ESTERNO`). La D7 della roadmap è risolta per la parte registro: resta alla 4.4 la forma della nota di credito o dell'integrazione, che è un tema della 4.4 e non della 4.3.
+Nessuna. Le risposte di Graziano del 03/11/2026 (decisioni 9-17) hanno chiuso le quattro domande della prima stesura: rettifica dopo la fattura (non si blocca), azione «Escludi» (in prima uscita), flag sulle causali di sistema (non si cambia per azienda), valori iniziali del flag (solo `INGRESSO_ESTERNO`). La D7 della roadmap è risolta per la parte registro: resta alla 4.4 la forma della nota di credito o dell'integrazione, che è un tema della 4.4 e non della 4.3.
 
 I punti di dettaglio (nomi, messaggi, piani degli indici) stanno in §12.
