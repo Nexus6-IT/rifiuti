@@ -9,6 +9,7 @@ import { ToastService } from '../../core/services/toast.service'
 import { CerService } from '../cer/cer.service'
 import { accettaConferma, bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { ElencoAddebiti, ElenchiContratto, RigaAddebito, StatoContratto } from './listino.model'
+import { ClientiService } from '../clienti/clienti.service'
 import { ListinoService } from './listino.service'
 import { CopiaElencoDialogComponent } from './copia-elenco-dialog.component'
 import { ProvvigioniScontiDialogComponent } from './provvigioni-sconti-dialog.component'
@@ -154,6 +155,8 @@ describe('ListinoContrattoComponent', () => {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap({ id: CONTRATTO }) } },
         },
+        // Un componente figlio (dialog) inietta il servizio dei clienti: qui basta un finto.
+        { provide: ClientiService, useValue: {} },
         {
           provide: ListinoService,
           useValue: {
