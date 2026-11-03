@@ -726,9 +726,10 @@ describe('VariazioniPrezziService — Postgres reale, ruolo wasteflow_app', () =
           codiceIvaId: a.rif.iva22Id,
         })),
       })
-      // Dopo una scrittura in massa le statistiche del planner sono quelle della tabella vuota
-      // finche' l'autovacuum non passa: le si aggiorna per non misurare il caso (in esercizio ci pensa l'autovacuum, con ritardo).
-      await owner.$executeRawUnsafe('ANALYZE righe_addebito')
+      // Niente `ANALYZE`: dopo una scrittura in massa le statistiche del planner sono quelle della
+      // tabella vuota finche' l'autovacuum non passa, ed e' il caso reale di una copia appena fatta
+      // (M12). Il servizio legge con `id = ANY(uuid[])` una tabella alla volta proprio per non
+      // dipendere dal piano scelto: i tempi di questi test lo dimostrano.
       return a
     }
 

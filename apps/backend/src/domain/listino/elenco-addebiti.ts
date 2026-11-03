@@ -34,7 +34,8 @@ function data(v: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t
 }
 
-function dataReale(d: string): boolean {
+/** `YYYY-MM-DD` di un giorno che esiste (`2026-02-30` no). */
+export function dataReale(d: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
   if (!m) return false
   const [anno, mese, giorno] = [Number(m[1]), Number(m[2]), Number(m[3])]
@@ -69,6 +70,11 @@ export function validaElenco(d: DatiElenco): string[] {
   const m: string[] = []
 
   if (!CODICE.test(d.codice)) m.push('Il codice ha da 1 a 3 caratteri alfanumerici.')
+  // `000` e' riservato (come nelle codifiche addebito): in WinWaste l'elenco 0 vuol dire
+  // "prendi il predefinito".
+  else if (d.codice === '000') {
+    m.push('Il codice 000 non è ammesso: usa un codice da 001 a 999 o con lettere.')
+  }
 
   if (d.descrizione === '') m.push('Inserisci una descrizione per questo elenco.')
   else if (d.descrizione.length > DESCRIZIONE_MAX) {

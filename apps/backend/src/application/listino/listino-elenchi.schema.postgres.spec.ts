@@ -270,6 +270,16 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
       )
     })
 
+    it('codice 000 respinto dal database (decisione del 3 novembre 2026); 001 e 00A passano', async () => {
+      const t = await azienda()
+      const k = await contratto(t)
+      await expect(comeApp(t, tx => inserisciElenco(tx, t, k, '000'))).rejects.toThrow(
+        /elenchi_addebiti_codice_non_000/
+      )
+      await comeApp(t, tx => inserisciElenco(tx, t, k, '001'))
+      await comeApp(t, tx => inserisciElenco(tx, t, k, '00A'))
+    })
+
     it('validita con una sola data respinta, fine prima dell inizio respinta', async () => {
       const t = await azienda()
       const k = await contratto(t)
@@ -925,7 +935,14 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
     const indiciAttesi = [
       'addebiti_id_tenant_id_key',
       'addebiti_pkey',
+      // Migration 20261103100000: indici sulle colonne delle FK composite verso le codifiche.
+      'addebiti_tenant_id_categoria_id_idx',
+      'addebiti_tenant_id_categoria_statistica_1_id_idx',
+      'addebiti_tenant_id_categoria_statistica_2_id_idx',
+      'addebiti_tenant_id_centro_ricavo_id_idx',
+      'addebiti_tenant_id_codice_iva_id_idx',
       'addebiti_tenant_id_codice_key',
+      'addebiti_tenant_id_gruppo_id_idx',
       'addebiti_tenant_id_idx',
       'allegati_elenco_addebiti_elenco_id_posizione_key',
       'allegati_elenco_addebiti_id_tenant_id_key',
@@ -990,6 +1007,7 @@ describe('Listino, elenchi e righe: schema (Postgres reale, ruolo wasteflow_app)
     const checkAttesi = [
       'allegati_elenco_addebiti_valori',
       'elenchi_addebiti_codice_ammesso',
+      'elenchi_addebiti_codice_non_000',
       'elenchi_addebiti_documento_pa_coerente',
       'elenchi_addebiti_validita_coerente',
       'elenchi_addebiti_versione_positiva',

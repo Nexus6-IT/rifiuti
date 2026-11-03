@@ -720,7 +720,11 @@ export class VariazioniPrezziService {
 
     const contratto: Prisma.ContrattoClienteWhereInput = {
       tenantId,
-      // Annullati ed eliminati non si toccano mai (D20).
+      // Annullati ed eliminati non si toccano mai (D20). Lo stato del contratto si legge SENZA lock
+      // (T24 M10, deciso di non bloccarlo): l'applicazione blocca solo le righe. Se un contratto
+      // viene annullato fra la lettura e la scrittura, la variazione arriva comunque a un listino
+      // che e' in sola lettura e non si fattura piu': nessun danno, e un lock sul contratto
+      // metterebbe in coda ogni modifica del listino dietro una variazione di massa.
       eliminatoIl: null,
       stato: { not: 'ANNULLATO' },
     }
