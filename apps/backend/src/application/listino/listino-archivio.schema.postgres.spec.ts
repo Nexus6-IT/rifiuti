@@ -6,6 +6,8 @@
  * privilegi) con SQL esplicito: la spec prova i vincoli del database, non il client generato. Il
  * proprietario prepara le aziende, i clienti e legge lo stato finale. Pulizia solo per id esatti.
  */
+import { existsSync, readdirSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -464,10 +466,18 @@ describe('Listino, archivio addebiti: schema (Postgres reale, ruolo wasteflow_ap
       attesi
     )
     expect(r.map(x => x.indexname).sort()).toEqual([...attesi].sort())
-    // Postgres TRONCA a 63 caratteri gli identificatori piu' lunghi, quindi `length(conname) > 63`
-    // non puo' mai trovare nulla: il controllo utile e' sul nome ATTESO (quello dello schema), che
-    // deve stare entro il limite, altrimenti il nome in catalogo sarebbe diverso da quello dichiarato.
-    const troppoLunghi = attesi.filter(nome => nome.length > 63)
-    expect(troppoLunghi).toEqual([])
+    // Postgres TRONCA a 63 caratteri gli identificatori piu' lunghi: una query sul catalogo non
+    // puo' quindi trovare nulla. Il controllo vero e' statico, sui nomi scritti nelle migration
+    // della 4.1 e della 4.2 (quelli che il catalogo avrebbe troncato).
+    const cartella = join(__dirname, '../../../prisma/migrations')
+    const nomi: string[] = []
+    for (const m of readdirSync(cartella).filter(d => /^202611022|^202611023/.test(d))) {
+      const f = join(cartella, m, 'migration.sql')
+      if (!existsSync(f)) continue
+      const sql = readFileSync(f, 'utf8')
+      for (const x of sql.matchAll(/(?:CONSTRAINT|INDEX)\s+"([^"]+)"/g)) nomi.push(x[1])
+    }
+    expect(nomi.length).toBeGreaterThan(50)
+    expect(nomi.filter(n => n.length > 63)).toEqual([])
   })
 })

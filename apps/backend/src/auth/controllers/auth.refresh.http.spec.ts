@@ -25,10 +25,10 @@ const CLIENTE = 'c1c1c1c1-0000-4000-8000-000000000002'
 const CONSULENTE = 'e1e1e1e1-0000-4000-8000-000000000003'
 const IERI = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
-// Timeout piu' largo SOLO per questa spec: ogni test compila un modulo Nest in `avvia()` e in
+// Timeout piu' largo SOLO per questa spec: ogni test crea e compila un modulo Nest
+// (`Test.createTestingModule(...).compile()`, risoluzione delle dipendenze) in `avvia()`. In
 // `test:cov` sotto carico (runner con memoria satura, swap) il passo, che da solo dura pochi ms,
-// ha superato i 30 s globali di `jest.config.js`. Misurato: 33 test in ~6 s a freddo, <= 120 ms
-// il piu' lento. Il timeout non nasconde nulla: i test restano deterministici e sincroni.
+// ha superato i 30 s globali di `jest.config.js`. Misurato: ogni test al massimo ~120 ms.
 jest.setTimeout(90_000)
 
 describe('POST /auth/refresh — azienda scelta con lo switch', () => {
