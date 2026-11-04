@@ -63,7 +63,7 @@ export function numeroComeStringa(n: number): string {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="tabella-scroll">
+    <div class="tabella-scroll" *ngIf="righe.length > 0">
       <table class="righe-legame" data-testid="righe-legame">
         <caption class="sr-only">
           Righe del legame con quantità, prezzo e sconto

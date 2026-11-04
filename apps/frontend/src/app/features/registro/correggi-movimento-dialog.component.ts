@@ -497,16 +497,6 @@ export function messaggioErroreCorrezione(err: any): string {
             (onClick)="chiudi()"
           ></p-button>
           <p-button
-            *ngIf="modo === 'rettifica' && offriConfermaLegame()"
-            label="Rettifica e conferma legame"
-            icon="pi pi-check"
-            [loading]="invio()"
-            [disabled]="!bloccoStato.confermabile"
-            data-testid="correzione-invia-conferma"
-            ariaLabel="Rettifica il movimento e conferma il legame col listino"
-            (onClick)="invia('CONFERMA')"
-          ></p-button>
-          <p-button
             [outlined]="modo === 'rettifica' && bloccoStato.visibile"
             [disabled]="modo === 'rettifica' && bloccoInAttesa"
             [label]="modo === 'rettifica' ? 'Rettifica' : 'Annulla il movimento'"
@@ -515,6 +505,15 @@ export function messaggioErroreCorrezione(err: any): string {
             [loading]="invio()"
             data-testid="correzione-invia"
             (onClick)="invia('PROPOSTA')"
+          ></p-button>
+          <p-button
+            *ngIf="modo === 'rettifica' && offriConfermaLegame()"
+            label="Rettifica e conferma legame"
+            icon="pi pi-check"
+            [loading]="invio()"
+            [disabled]="!bloccoStato.confermabile"
+            data-testid="correzione-invia-conferma"
+            (onClick)="invia('CONFERMA')"
           ></p-button>
         </ng-template>
       </ng-template>
@@ -1035,8 +1034,12 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     if (!e) return { legame: { ...b, azione } }
     const out: DatiLegameRegistrazione = { azione }
     if (b.clienteId && b.clienteId !== e.cliente?.id) out.clienteId = b.clienteId
-    if (b.contrattoId && b.contrattoId !== e.contratto?.id) out.contrattoId = b.contrattoId
-    if (b.elencoId && b.elencoId !== e.elenco?.id) out.elencoId = b.elencoId
+    // Con il CER cambiato il server rifà la proposta da zero e tiene solo le scelte inviate:
+    // contratto ed elenco mostrati dal blocco vanno mandati anche se uguali a quelli del legame.
+    const daZero = this.cerCambiato()
+    if (b.contrattoId && (daZero || b.contrattoId !== e.contratto?.id))
+      out.contrattoId = b.contrattoId
+    if (b.elencoId && (daZero || b.elencoId !== e.elenco?.id)) out.elencoId = b.elencoId
     const cambiato = !!(out.clienteId || out.contrattoId || out.elencoId)
     return azione === 'PROPOSTA' && !cambiato ? {} : { legame: out }
   }

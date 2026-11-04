@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
+import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { HttpErrorResponse } from '@angular/common/http'
 import { DatePipe } from '@angular/common'
@@ -79,7 +79,9 @@ describe('Registro - dettaglio del movimento con il legame', () => {
     legami.perMovimento.and.returnValue(risposta)
     fixture = TestBed.createComponent(RegistroComponent)
     fixture.detectChanges()
-    ;(q('registro-dettaglio-m1')!.querySelector('button') as HTMLButtonElement).click()
+    const occhio = q('registro-dettaglio-m1')!.querySelector('button') as HTMLButtonElement
+    occhio.focus()
+    occhio.click()
     fixture.detectChanges()
     tick()
     fixture.detectChanges()
@@ -170,11 +172,20 @@ describe('Registro - dettaglio del movimento con il legame', () => {
     expect(legami.conferma).not.toHaveBeenCalled()
   }))
 
+  it('all’apertura il focus entra nella finestra del dettaglio', fakeAsync(() => {
+    apri(of(legame()))
+    flush()
+    fixture.detectChanges()
+    const dialog = q('registro-dettaglio')?.closest('.p-dialog')
+    expect(dialog).not.toBeNull()
+    expect(dialog!.contains(document.activeElement)).toBeTrue()
+  }))
+
   it('alla chiusura il focus torna al pulsante «Dettaglio»', fakeAsync(() => {
     apri(of(legame()))
     fixture.componentInstance.chiudiDettaglio()
     fixture.detectChanges()
-    tick()
+    tick(100)
     expect(document.activeElement).toBe(
       q('registro-dettaglio-m1')!.querySelector('button') as HTMLButtonElement
     )

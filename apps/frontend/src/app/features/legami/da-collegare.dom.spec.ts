@@ -137,6 +137,13 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(q('legami-vuota')?.textContent).toContain('Nessun movimento da collegare')
   })
 
+  it('quantità con la virgola italiana, mai col punto', async () => {
+    await crea('OPERATOR', [riga(1, { quantita: '12.5' })])
+    const t = document.body.querySelector('[data-testid="riga-m1"]')!.textContent!
+    expect(t).toContain('12,5 kg')
+    expect(t).not.toContain('12.5')
+  })
+
   it('badge e motivi per riga', async () => {
     await crea('ADMIN', [
       riga(1, { stato: 'MANCANTE', legameId: null, versione: null, motivi: ['SENZA_CONTRATTO'] }),

@@ -144,6 +144,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
   it('«Registra senza collegare»: parte subito con legame PROPOSTA e tutte le righe', fakeAsync(() => {
     apri()
     pulsante('registra-senza-collegare')!.click()
+    tick(100)
     const corpo = servizio.registra.calls.mostRecent().args[0]
     expect(corpo.legame?.azione).toBe('PROPOSTA')
     expect(corpo.legame?.righe?.length).toBe(2)
@@ -153,6 +154,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     apri()
     expect(pulsante('registra-e-conferma')!.disabled).toBeFalse()
     pulsante('registra-e-conferma')!.click()
+    tick(100)
     expect(servizio.registra.calls.mostRecent().args[0].legame?.azione).toBe('CONFERMA')
   }))
 
@@ -170,6 +172,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     expect(pulsante('registra-senza-collegare')).toBeNull()
     expect(pulsante('registra-e-conferma')).toBeNull()
     pulsante('registra')!.click()
+    tick(100)
     expect(Object.keys(servizio.registra.calls.mostRecent().args[0])).not.toContain('legame')
   }))
 
@@ -193,6 +196,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     expect(c.bloccoFatturazioneValido).toBeTrue()
 
     c.salva()
+    tick(100)
     expect(servizio.registra).toHaveBeenCalledTimes(1)
     expect(Object.keys(servizio.registra.calls.mostRecent().args[0])).not.toContain('legame')
   }))
@@ -216,6 +220,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     fixture.detectChanges()
     expect(pulsante('registra-e-conferma')!.disabled).toBeFalse()
     pulsante('registra-e-conferma')!.click()
+    tick(100)
     expect(servizio.registra.calls.mostRecent().args[0].legame?.azione).toBe('CONFERMA')
   }))
 })

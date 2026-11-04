@@ -462,6 +462,22 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
       expect(document.body.querySelectorAll('[data-testid="importo-ra-1"]').length).toBe(2)
     }))
 
+    it('CER cambiato: contratto ed elenco del blocco si mandano anche se uguali al legame', fakeAsync(() => {
+      registro.rettifica.and.returnValue(of(esito()))
+      apri('rettifica', of(legame()))
+      fixture.componentInstance.form.patchValue({ cerCode: '17 04 02' })
+      aggiorna()
+      tick(ATTESA_PROPOSTA_MS)
+      aggiorna()
+      motivo()
+      bottone('correzione-invia')!.click()
+      aggiorna()
+      const inviato = registro.rettifica.calls.mostRecent().args[1].legame
+      expect(inviato?.azione).toBe('PROPOSTA')
+      expect(typeof inviato?.contrattoId).toBe('string')
+      expect(typeof inviato?.elencoId).toBe('string')
+    }))
+
     it('CER cambiato con causale non fatturabile: nessun avviso «nuova conferma» (il legame viene escluso)', fakeAsync(() => {
       causali.opzioni.and.returnValue(of([opzione('SCARICO_A_TERZI', false)]))
       apri('rettifica', of(legame()))

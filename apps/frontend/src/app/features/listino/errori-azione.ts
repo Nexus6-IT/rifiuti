@@ -25,6 +25,8 @@ export interface ErroriAzione {
 
 export const VARIAZIONE_SUPERATA = 'VARIAZIONE_SUPERATA'
 export const OPERAZIONE_CONCORRENTE = 'OPERAZIONE_CONCORRENTE'
+/** Legami: la versione inviata non è più quella del server, si rilegge (come `*_NEL_FRATTEMPO`). */
+export const VERSIONE_SUPERATA = 'VERSIONE_SUPERATA'
 
 /** L'unico testo di `OPERAZIONE_CONCORRENTE` per tutti i dialog del listino (e delle azioni). */
 export const MESSAGGIO_CONCORRENTE =
@@ -49,6 +51,7 @@ export function naturaConflitto(err: unknown): NaturaConflitto | null {
   if (
     codice === null ||
     codice === VARIAZIONE_SUPERATA ||
+    codice === VERSIONE_SUPERATA ||
     codice.endsWith('_NEL_FRATTEMPO') ||
     codice.endsWith('_NON_MODIFICABILE')
   )

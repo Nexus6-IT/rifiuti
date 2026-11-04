@@ -182,7 +182,9 @@ describe('ContrattiClienteListComponent', () => {
       expect(listaLegami).toHaveBeenCalledWith(['cc1', 'cc2'])
       expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('3')
       expect(q('contratti-da-collegare-cc2')).toBeNull()
-      expect(q('contratti-da-collegare-cc1')!.getAttribute('href')).toBe('/legami/da-collegare')
+      expect(q('contratti-da-collegare-cc1')!.getAttribute('href')).toBe(
+        '/legami/da-collegare?clienteId=cl1'
+      )
     })
 
     it('pagina vuota: nessuna chiamata', async () => {

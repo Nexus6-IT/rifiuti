@@ -31,6 +31,9 @@ import {
   RigaLista,
   StatoLista,
 } from './legami.model'
+import { formatNumero } from '../../shared/utils/numero-modificabile'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
+import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import { permessiLegami } from './permessi-legami'
 import { etichettaAvviso, etichettaMotivo, etichettaStato, severitaTag } from './vocabolario-legami'
 
@@ -98,7 +101,7 @@ interface OpzioneId {
             label="Aggiorna prezzi"
             icon="pi pi-refresh"
             [outlined]="true"
-            (onClick)="aggiornaPrezziAperta.set(true)"
+            (onClick)="apriAggiornaPrezzi()"
             data-testid="aggiorna-prezzi-apri"
           />
         </div>
@@ -138,6 +141,8 @@ interface OpzioneId {
             (ngModelChange)="clienteId = $event; applica()"
             [showClear]="true"
             [filter]="true"
+            filterBy="label"
+            filterPlaceholder="Cerca per nome, codice o partita IVA"
             (onFilter)="cercaClienti($event.filter ?? '')"
             placeholder="Tutti"
             data-testid="filtro-cliente"
@@ -243,9 +248,9 @@ interface OpzioneId {
       >
         <span data-testid="selezione-conteggio">{{ selezionate() }} selezionate</span>
         <p-button
-          label="Conferma"
+          [label]="'Conferma ' + selezionate() + (selezionate() === 1 ? ' legame' : ' legami')"
           icon="pi pi-check"
-          [disabled]="oltreTetto() || inCorso()"
+          [disabled]="oltreTetto() || inCorso() || escludiAperto()"
           (onClick)="conferma()"
           data-testid="massa-conferma"
         />
@@ -326,7 +331,16 @@ interface OpzioneId {
               <td *ngIf="permessi().scrive && !esclusi">
                 <input
                   type="checkbox"
-                  [attr.aria-label]="'Seleziona il movimento del ' + giorno(r.dataMovimento)"
+                  [attr.aria-label]="
+                    'Seleziona il movimento del ' +
+                    giorno(r.dataMovimento) +
+                    ', CER ' +
+                    r.cerCode +
+                    ', ' +
+                    numero(r.quantita) +
+                    ' ' +
+                    r.unita
+                  "
                   [checked]="eSelezionata(r)"
                   (change)="seleziona(r, $any($event.target).checked)"
                   [attr.data-testid]="'sel-' + r.movimentoId"
@@ -339,8 +353,8 @@ interface OpzioneId {
                   r.descrizioneMovimento
                 }}</small>
               </td>
-              <td class="num-col">{{ r.quantita }} {{ r.unita }}</td>
-              <td>{{ r.cliente?.etichetta ?? '-' }}</td>
+              <td class="num-col">{{ numero(r.quantita) }} {{ r.unita }}</td>
+              <td>{{ r.cliente?.etichetta ?? '—' }}</td>
               <td>
                 <div class="stato-stack">
                   <p-tag
@@ -408,13 +422,14 @@ interface OpzioneId {
         *ngIf="aggiornaPrezziAperta() && permessi().aggiornaPrezzi"
         [visible]="true"
         (applicato)="dopoAggiornaPrezzi($event)"
-        (chiuso)="aggiornaPrezziAperta.set(false)"
+        (chiuso)="chiudiAggiornaPrezzi()"
       />
 
       <app-legame-dialog
         [legame]="aperto()"
         [puoScrivere]="permessi().scrive"
         [clienti]="opzioniClienti()"
+        [riepilogo]="riepilogoAperto()"
         (cercaCliente)="cercaClienti($event)"
         (aggiornato)="dopoAggiornamento($event)"
         (chiuso)="chiudiLegame()"
@@ -506,6 +521,16 @@ export class DaCollegareComponent implements OnInit {
   readonly motivoEt = etichettaMotivo
   readonly avvisoEt = etichettaAvviso
   readonly giorno = formattaGiorno
+  readonly numero = (v: string): string => formatNumero(v)
+  /** Il movimento di cui si apre il legame: la finestra lo riepiloga nel titolo. */
+  readonly rigaAperta = signal<RigaLista | null>(null)
+  readonly riepilogoAperto = computed(() => {
+    const r = this.rigaAperta()
+    return r
+      ? `${formattaGiorno(r.dataMovimento)} · CER ${r.cerCode} · ${formatNumero(r.quantita)} ${r.unita}`
+      : null
+  })
+  private ripristinaFocus: (() => void) | null = null
 
   ngOnInit(): void {
     // Collegamento da altre pagine (es. clienti): `?clienteId=<uuid>` applica il filtro cliente.
@@ -542,7 +567,12 @@ export class DaCollegareComponent implements OnInit {
       .list({ ...(t ? { testo: t } : {}), soloAttivi: true, dimensione: 25 })
       .pipe(
         switchMap(p =>
-          of(p.elementi.map(c => ({ label: c.ditta.ragioneSociale, value: c.id })) as OpzioneId[])
+          of(
+            p.elementi.map(c => ({
+              label: c.codice ? `${c.codice} · ${c.ditta.ragioneSociale}` : c.ditta.ragioneSociale,
+              value: c.id,
+            })) as OpzioneId[]
+          )
         ),
         catchError(() => {
           this.erroreClienti.set('Impossibile caricare i clienti: riprova a cercare.')
@@ -557,8 +587,19 @@ export class DaCollegareComponent implements OnInit {
   }
 
   /** «Aggiorna prezzi» applicato: si chiude la finestra, si rilegge la lista e il contatore del menu. */
-  dopoAggiornaPrezzi(e: EsitoAggiornamento): void {
+  apriAggiornaPrezzi(): void {
+    this.ripristinaFocus = catturaFocus('aggiorna-prezzi-apri')
+    this.aggiornaPrezziAperta.set(true)
+  }
+
+  chiudiAggiornaPrezzi(): void {
     this.aggiornaPrezziAperta.set(false)
+    this.ripristinaFocus?.()
+    this.ripristinaFocus = null
+  }
+
+  dopoAggiornaPrezzi(e: EsitoAggiornamento): void {
+    this.chiudiAggiornaPrezzi()
     const n = (v: number): string => v.toLocaleString('it-IT')
     // `saltati` dell'esito somma legami (fatturati, esclusi...) e righe (speciali, manuali): non
     // si ripete l'etichetta «saltati» dell'anteprima, che li teneva separati.
@@ -700,6 +741,7 @@ export class DaCollegareComponent implements OnInit {
   apriEscludi(): void {
     this.motivoEsclusione = ''
     this.escludiAperto.set(true)
+    focalizzaPasso('massa-motivo')
   }
 
   motivoValido(): boolean {
@@ -764,6 +806,7 @@ export class DaCollegareComponent implements OnInit {
    * `dettaglio`, un MANCANTE non ha ancora un legame da mostrare.
    */
   apriLegame(r: RigaLista): void {
+    this.ripristinaFocus = catturaFocus(`apri-${r.movimentoId}`)
     const scrive = this.permessi().scrive
     const daCreare = r.stato === 'MANCANTE' || r.stato === 'DA_RIALLINEARE' || r.legameId === null
     if (!scrive && r.legameId === null) return
@@ -780,6 +823,7 @@ export class DaCollegareComponent implements OnInit {
       next: l => {
         this.inCorso.set(false)
         if (scrive && daCreare) this.ricaricaAllaChiusura = true
+        this.rigaAperta.set(r)
         this.aperto.set(l)
       },
       error: err => {
@@ -793,6 +837,9 @@ export class DaCollegareComponent implements OnInit {
 
   chiudiLegame(): void {
     this.aperto.set(null)
+    this.rigaAperta.set(null)
+    this.ripristinaFocus?.()
+    this.ripristinaFocus = null
     if (this.ricaricaAllaChiusura) {
       this.ricaricaAllaChiusura = false
       this.carica()
@@ -802,6 +849,9 @@ export class DaCollegareComponent implements OnInit {
 
   dopoAggiornamento(e: { legame: LegameVista; confermato: boolean }): void {
     this.aperto.set(null)
+    this.rigaAperta.set(null)
+    this.ripristinaFocus?.()
+    this.ripristinaFocus = null
     this.ricaricaAllaChiusura = false
     this.toast.success(e.confermato ? 'Legame confermato.' : 'Legame salvato.')
     this.carica()

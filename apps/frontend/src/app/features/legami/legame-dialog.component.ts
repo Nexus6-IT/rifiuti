@@ -17,7 +17,7 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { TagModule } from 'primeng/tag'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
-import { formatCascata, leggiCascata } from '../../shared/utils/numero-modificabile'
+import { formatCascata, formatNumero, leggiCascata } from '../../shared/utils/numero-modificabile'
 import { leggiErroriAzione } from '../listino/errori-azione'
 import { LegamiService } from './legami.service'
 import {
@@ -145,11 +145,14 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
       [draggable]="false"
       [closable]="true"
       [style]="{ width: '56rem', maxWidth: '96vw' }"
-      header="Legame del movimento"
+      [header]="titolo()"
       (visibleChange)="$event ? null : chiudi()"
       data-testid="legame-dialog"
     >
       <ng-container *ngIf="corrente() as l">
+        <p *ngIf="riepilogo" class="legame-riepilogo" data-testid="legame-riepilogo">
+          {{ riepilogo }}
+        </p>
         <div class="legame-testa">
           <p-tag
             [value]="statoEtichetta(l.stato)"
@@ -165,6 +168,14 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
           </span>
         </div>
 
+        <p
+          *ngIf="modificabile() && confermaBloccata()"
+          class="field-error"
+          data-testid="legame-conferma-bloccata"
+          id="legame-conferma-bloccata"
+        >
+          Per confermare serve prima sistemare:
+        </p>
         <ul *ngIf="l.motivi.length" class="legame-elenco" data-testid="legame-motivi">
           <li *ngFor="let m of l.motivi">{{ motivo(m) }}</li>
         </ul>
@@ -191,6 +202,8 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
               [ngModel]="clienteId"
               (ngModelChange)="scegliCliente($event)"
               [filter]="true"
+              filterBy="label"
+              filterPlaceholder="Cerca per nome, codice o partita IVA"
               (onFilter)="cercaCliente.emit($event.filter ?? '')"
               placeholder="Scegli il cliente"
               styleClass="w-full"
@@ -198,9 +211,9 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
             />
           </div>
           <div class="legame-campo">
-            <label for="legame-contratto">Contratto</label>
+            <label [attr.for]="menuContratto() ? 'legame-contratto' : null">Contratto</label>
             <p-dropdown
-              *ngIf="modificabile() && opzioniContratti().length > 1; else contrattoTesto"
+              *ngIf="menuContratto(); else contrattoTesto"
               inputId="legame-contratto"
               [options]="opzioniContratti()"
               optionLabel="etichetta"
@@ -212,13 +225,13 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
               data-testid="legame-contratto"
             />
             <ng-template #contrattoTesto>
-              <span data-testid="legame-contratto-testo">{{ l.contratto?.etichetta ?? '-' }}</span>
+              <span data-testid="legame-contratto-testo">{{ l.contratto?.etichetta ?? '—' }}</span>
             </ng-template>
           </div>
           <div class="legame-campo">
-            <label for="legame-elenco">Elenco di addebiti</label>
+            <label [attr.for]="menuElenco() ? 'legame-elenco' : null">Elenco di addebiti</label>
             <p-dropdown
-              *ngIf="modificabile() && opzioniElenchi().length > 1; else elencoTesto"
+              *ngIf="menuElenco(); else elencoTesto"
               inputId="legame-elenco"
               [options]="opzioniElenchi()"
               optionLabel="etichetta"
@@ -230,7 +243,7 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
               data-testid="legame-elenco"
             />
             <ng-template #elencoTesto>
-              <span data-testid="legame-elenco-testo">{{ l.elenco?.etichetta ?? '-' }}</span>
+              <span data-testid="legame-elenco-testo">{{ l.elenco?.etichetta ?? '—' }}</span>
             </ng-template>
           </div>
         </div>
@@ -247,10 +260,10 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
         <table class="legame-righe" *ngIf="forms.length" aria-label="Righe del legame">
           <thead>
             <tr>
-              <th scope="col">Riga</th>
+              <th scope="col">Voce</th>
               <th scope="col" class="num-col">Quantità</th>
               <th scope="col" class="num-col">Prezzo</th>
-              <th scope="col">Sconto</th>
+              <th scope="col">Sconto %</th>
               <th scope="col" class="num-col">Importo</th>
             </tr>
           </thead>
@@ -291,10 +304,10 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
                   [maxFractionDigits]="3"
                   [(ngModel)]="f.quantita"
                   [inputId]="'legame-qta-' + i"
-                  [ariaLabel]="'Quantità riga ' + (i + 1)"
+                  [ariaLabel]="'Quantità di ' + (f.riga.descrizione || f.riga.tipo)"
                   [attr.data-testid]="'legame-qta-' + i"
                 />
-                <ng-template #qtaTesto>{{ f.riga.quantita ?? '-' }}</ng-template>
+                <ng-template #qtaTesto>{{ testoNumero(f.riga.quantita) }}</ng-template>
                 <small class="cell-sub">{{ f.riga.unitaMisura }}</small>
                 <small
                   *ngIf="righeModificabili() && erroreQuantita(f) as e"
@@ -315,12 +328,12 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
                   [maxFractionDigits]="6"
                   [(ngModel)]="f.prezzo"
                   [inputId]="'legame-prezzo-' + i"
-                  [ariaLabel]="'Prezzo riga ' + (i + 1)"
+                  [ariaLabel]="'Prezzo di ' + (f.riga.descrizione || f.riga.tipo)"
                   [attr.data-testid]="'legame-prezzo-' + i"
                 />
                 <ng-template #prezzoTesto>
                   <span [attr.data-testid]="'legame-prezzo-testo-' + i">{{
-                    f.riga.prezzo ?? '-'
+                    testoNumero(f.riga.prezzo)
                   }}</span>
                 </ng-template>
                 <small
@@ -340,12 +353,12 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
                   autocomplete="off"
                   [(ngModel)]="f.sconto"
                   [attr.id]="'legame-sconto-' + i"
-                  [attr.aria-label]="'Sconto riga ' + (i + 1)"
+                  [attr.aria-label]="'Sconto di ' + (f.riga.descrizione || f.riga.tipo)"
                   [attr.aria-invalid]="erroreSconto(f.sconto) ? true : null"
                   [attr.data-testid]="'legame-sconto-' + i"
                 />
                 <ng-template #scontoTesto>
-                  <span [attr.data-testid]="'legame-sconto-testo-' + i">{{ f.sconto || '-' }}</span>
+                  <span [attr.data-testid]="'legame-sconto-testo-' + i">{{ f.sconto || '—' }}</span>
                 </ng-template>
                 <small
                   *ngIf="righeModificabili() && erroreSconto(f.sconto) as e"
@@ -355,7 +368,9 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
                   >{{ e }}</small
                 >
               </td>
-              <td class="num-col">{{ f.riga.importo ?? '-' }}</td>
+              <td class="num-col" [attr.data-testid]="'legame-importo-' + i">
+                {{ f.riga.importo !== null ? testoNumero(f.riga.importo, 2) + ' €' : '—' }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -430,12 +445,7 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
       </ng-container>
 
       <ng-template pTemplate="footer">
-        <p-button
-          label="Chiudi"
-          [outlined]="true"
-          (onClick)="chiudi()"
-          data-testid="legame-chiudi"
-        />
+        <p-button label="Chiudi" [text]="true" (onClick)="chiudi()" data-testid="legame-chiudi" />
         <p-button
           *ngIf="modificabile()"
           label="Salva"
@@ -449,7 +459,7 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
           *ngIf="modificabile()"
           label="Conferma"
           icon="pi pi-check"
-          [disabled]="inCorso() || !valido()"
+          [disabled]="inCorso() || !valido() || confermaBloccata()"
           [loading]="inCorso()"
           (onClick)="conferma()"
           data-testid="legame-conferma"
@@ -459,6 +469,10 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
   `,
   styles: [
     `
+      .legame-riepilogo {
+        margin: 0 0 var(--spacing-sm);
+        color: var(--text-secondary);
+      }
       .legame-testa {
         display: flex;
         flex-wrap: wrap;
@@ -507,6 +521,8 @@ export class LegameDialogComponent implements OnChanges {
   /** Il legame da mostrare; `null` = finestra chiusa. Dopo «Ricarica» vale `corrente`. */
   @Input() legame: LegameVista | null = null
   @Input() puoScrivere = false
+  /** Riga di riepilogo del movimento (data, CER, quantità), la compone la pagina che apre la finestra. */
+  @Input() riepilogo: string | null = null
   /** Clienti scelti: li carica la pagina, con una ricerca sul server (`cercaCliente`). */
   @Input() clienti: { label: string; value: string }[] = []
   /** Testo digitato nel filtro del menu cliente: la pagina rilegge i clienti attivi che lo contengono. */
@@ -563,6 +579,36 @@ export class LegameDialogComponent implements OnChanges {
       prezzo: comeNumero(riga.prezzo),
       sconto: formatCascata(riga.sconto),
     }))
+  }
+
+  titolo(): string {
+    return this.riepilogo
+      ? `Legame del movimento del ${this.riepilogo.split(' · ')[0]}`
+      : 'Legame del movimento'
+  }
+
+  /** Numeri del backend (col punto) in sola lettura: virgola italiana; importi con due decimali. */
+  testoNumero(v: string | null, decimaliMinimi = 0): string {
+    return v === null ? '—' : formatNumero(v, decimaliMinimi)
+  }
+
+  menuContratto(): boolean {
+    return this.modificabile() && this.opzioniContratti().length > 1
+  }
+
+  menuElenco(): boolean {
+    return this.modificabile() && this.opzioniElenchi().length > 1
+  }
+
+  /**
+   * Il server rifiuta la conferma finché ci sono motivi di incompletezza: se l'utente non ha
+   * toccato nulla (nessuna scelta cambiata, nessuna riga ritoccata, aggiunta o tolta) il pulsante
+   * resta spento invece di lasciar scoprire l'errore al clic. Appena cambia qualcosa i motivi
+   * possono non valere più e il server decide.
+   */
+  confermaBloccata(): boolean {
+    const l = this.corrente()
+    return !!l && l.motivi.length > 0 && this.modifiche() === undefined
   }
 
   modificabile(): boolean {
@@ -797,6 +843,6 @@ export class LegameDialogComponent implements OnChanges {
     } else {
       this.errori.set(e.messaggi)
     }
-    this.serveRicarica.set(e.rilettura || e.codice === 'VERSIONE_SUPERATA')
+    this.serveRicarica.set(e.rilettura)
   }
 }

@@ -108,6 +108,8 @@ import {
   testoEsitoVerifica,
 } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
+import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import {
   BloccoFatturazioneComponent,
   DatiMovimentoLegame,
@@ -222,6 +224,7 @@ interface FirOption {
             label="Registra movimento"
             icon="pi pi-plus"
             (onClick)="apriForm()"
+            data-testid="registro-nuovo"
             ariaLabel="Registra un nuovo movimento di carico o scarico"
           ></p-button>
         </div>
@@ -999,7 +1002,6 @@ interface FirOption {
               [disabled]="bloccoInAttesa"
               (onClick)="salva('PROPOSTA')"
               data-testid="registra-senza-collegare"
-              ariaLabel="Registra il movimento senza collegarlo al listino"
             ></p-button>
             <p-button
               label="Registra e conferma legame"
@@ -1008,7 +1010,6 @@ interface FirOption {
               [disabled]="!bloccoStato.confermabile"
               (onClick)="salva('CONFERMA')"
               data-testid="registra-e-conferma"
-              ariaLabel="Registra il movimento e conferma il legame col listino"
             ></p-button>
           </ng-container>
           <ng-template #registraSingolo>
@@ -1122,39 +1123,42 @@ interface FirOption {
 
       <!-- Dettaglio del movimento con il riquadro del legame ------------------>
       <p-dialog
-        *ngIf="dettaglioMovimento as d"
-        [visible]="true"
-        (visibleChange)="chiudiDettaglio()"
+        [visible]="!!dettaglioMovimento"
+        (visibleChange)="$event ? null : chiudiDettaglio()"
+        (onShow)="focalizzaDettaglio()"
         [modal]="true"
-        [header]="'Movimento ' + numeroMovimento(d)"
+        [header]="dettaglioMovimento ? 'Movimento ' + numeroMovimento(dettaglioMovimento) : ''"
         [style]="{ width: '720px', maxWidth: '95vw' }"
         closeAriaLabel="Chiudi il dettaglio del movimento"
       >
-        <section class="dettaglio-mov" data-testid="registro-dettaglio">
-          <strong>{{ d.type === 'CARICO' ? 'Carico' : 'Scarico' }}</strong>
-          · {{ d.movementDate | date: 'dd/MM/yyyy' }} ·
-          <span class="cell-mono">{{ d.cerCode }}</span> · {{ d.quantity | number: '1.0-3' }}
-          {{ d.unit }} · {{ causaleLabel(d) }}
-          <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
-        </section>
-        <app-riquadro-legame
-          [movimentoId]="d.id"
-          [eTesta]="vigente(d)"
-          (esitoChange)="dettaglioEsito = $event"
-        ></app-riquadro-legame>
-        <p
-          *ngIf="dettaglioEsito === 'assente'"
-          class="text-muted"
-          data-testid="registro-dettaglio-senza-legame"
-        >
-          Questo movimento non è collegato alla fatturazione.
-        </p>
+        <ng-container *ngIf="dettaglioMovimento as d">
+          <section class="dettaglio-mov" tabindex="-1" data-testid="registro-dettaglio">
+            <strong>{{ d.type === 'CARICO' ? 'Carico' : 'Scarico' }}</strong>
+            · {{ d.movementDate | date: 'dd/MM/yyyy' }} ·
+            <span class="cell-mono">{{ d.cerCode }}</span> · {{ d.quantity | number: '1.0-3' }}
+            {{ d.unit }} · {{ causaleLabel(d) }}
+            <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
+          </section>
+          <app-riquadro-legame
+            [movimentoId]="d.id"
+            [eTesta]="vigente(d)"
+            (esitoChange)="dettaglioEsito = $event"
+          ></app-riquadro-legame>
+          <p
+            *ngIf="dettaglioEsito === 'assente'"
+            class="text-muted"
+            data-testid="registro-dettaglio-senza-legame"
+          >
+            Questo movimento non è collegato alla fatturazione.
+          </p>
+        </ng-container>
       </p-dialog>
 
       <!-- Dialog rettifica / annullamento ------------------------------------->
       <app-correggi-movimento-dialog
         *ngIf="correzioneVisibile"
         [(visible)]="correzioneVisibile"
+        (visibleChange)="$event ? null : chiudiCorrezione()"
         [modo]="correzioneModo"
         [movimento]="correzioneMovimento"
         (corretto)="onCorretto($event)"
@@ -1722,7 +1726,10 @@ export class RegistroComponent implements OnInit {
       })
   }
 
+  private ripristinaForm: (() => void) | null = null
+
   apriForm(): void {
+    this.ripristinaForm = catturaFocus('registro-nuovo')
     // opzioni fresche a ogni apertura: il catalogo può essere cambiato nel frattempo
     this.causali.invalida()
     this.messaggioCausale.set(null)
@@ -1778,6 +1785,8 @@ export class RegistroComponent implements OnInit {
 
   chiudiForm(): void {
     this.formVisible = false
+    this.ripristinaForm?.()
+    this.ripristinaForm = null
   }
 
   /** Imposta il tipo movimento dal toggle Carico/Scarico e aggiorna lo stato. */
@@ -2182,23 +2191,28 @@ export class RegistroComponent implements OnInit {
   dettaglioMovimento: Movimento | null = null
   dettaglioEsito: EsitoRiquadro | null = null
 
+  private ripristinaDettaglio: (() => void) | null = null
+
   apriDettaglio(m: Movimento): void {
+    this.ripristinaDettaglio = catturaFocus(`registro-dettaglio-${m.id}`)
     this.dettaglioEsito = null
     this.dettaglioMovimento = m
   }
 
+  /**
+   * PrimeNG sposta il focus solo su un elemento focalizzabile del contenuto: se non ce n'è (riquadro
+   * in sola lettura, caricamento) resterebbe sul pulsante fuori dalla finestra. Il riepilogo
+   * (`tabindex="-1"`) lo riceve comunque e il lettore di schermo annuncia il movimento.
+   */
+  focalizzaDettaglio(): void {
+    focalizzaPasso('registro-dettaglio')
+  }
+
   chiudiDettaglio(): void {
-    const id = this.dettaglioMovimento?.id
     this.dettaglioMovimento = null
     this.dettaglioEsito = null
-    // PrimeNG non riporta il focus da solo: torna al pulsante da cui si era aperto il dettaglio.
-    if (id) {
-      setTimeout(() =>
-        document
-          .querySelector<HTMLElement>(`[data-testid="registro-dettaglio-${id}"] button`)
-          ?.focus()
-      )
-    }
+    this.ripristinaDettaglio?.()
+    this.ripristinaDettaglio = null
   }
 
   readonly esitoVerifica = signal<EsitoVerificaCatena | null>(null)
@@ -2289,10 +2303,20 @@ export class RegistroComponent implements OnInit {
       (!this.piuRegistri() || !!this.registroVerifica())
   )
 
+  private ripristinaCorrezione: (() => void) | null = null
+
   apriCorrezione(m: Movimento, modo: ModoCorrezione): void {
+    this.ripristinaCorrezione = catturaFocus(
+      `registro-${modo === 'rettifica' ? 'rettifica' : 'annulla'}-${m.id}`
+    )
     this.correzioneMovimento = m
     this.correzioneModo = modo
     this.correzioneVisibile = true
+  }
+
+  chiudiCorrezione(): void {
+    this.ripristinaCorrezione?.()
+    this.ripristinaCorrezione = null
   }
 
   /** Dopo una correzione riuscita: elenco e stato del progressivo si rileggono. */

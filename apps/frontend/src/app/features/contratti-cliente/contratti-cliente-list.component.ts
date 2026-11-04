@@ -269,6 +269,7 @@ const SEVERITA_STATO: Readonly<
               <a
                 *ngIf="daCollegarePer(c.id) as n"
                 routerLink="/legami/da-collegare"
+                [queryParams]="{ clienteId: c.cliente.id }"
                 class="da-collegare"
                 [attr.aria-label]="'Movimenti da collegare del contratto ' + c.numero + ': ' + n"
                 [attr.data-testid]="'contratti-da-collegare-' + c.id"

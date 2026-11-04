@@ -136,6 +136,7 @@ interface Opzione {
             [disabled]="inCorso()"
             placeholder="Cerca per numero o cliente"
             ariaLabel="Contratto"
+            styleClass="w-full"
             data-testid="ap-contratto"
           />
         </div>
@@ -152,6 +153,7 @@ interface Opzione {
             [disabled]="inCorso() || !contrattoId"
             placeholder="Tutti gli elenchi del contratto"
             ariaLabel="Elenco di addebiti"
+            styleClass="w-full"
             data-testid="ap-elenco"
           />
         </div>
@@ -285,7 +287,7 @@ interface Opzione {
           data-testid="ap-chiudi"
         />
         <p-button
-          label="Applica"
+          [label]="etichettaApplica()"
           icon="pi pi-check"
           [disabled]="!puoApplicare()"
           [loading]="inCorso() && !!anteprimaCorrente()"
@@ -309,6 +311,7 @@ interface Opzione {
         display: flex;
         flex-direction: column;
         gap: var(--spacing-xs);
+        min-width: 0;
       }
       .ap-azione {
         margin: var(--spacing-md) 0;
@@ -414,6 +417,12 @@ export class AggiornaPrezziDialogComponent implements OnInit, OnChanges, OnDestr
           )
         )
     )
+  }
+
+  /** «Applica» dice quanti legami cambiano, quando c'è un'anteprima. */
+  etichettaApplica(): string {
+    const n = this.anteprimaCorrente()?.cambiano ?? 0
+    return n > 0 ? `Aggiorna ${num(n)} ${n === 1 ? 'legame' : 'legami'}` : 'Applica'
   }
 
   ngOnChanges(c: SimpleChanges): void {

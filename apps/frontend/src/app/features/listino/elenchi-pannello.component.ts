@@ -78,10 +78,13 @@ import { ElencoAddebiti } from './listino.model'
               [text]="true"
               size="small"
               [disabled]="!e.eliminabile"
-              [ariaLabel]="'Elimina l’elenco ' + e.codice"
+              [ariaLabel]="
+                'Elimina l’elenco ' + e.codice + (e.eliminabile ? '' : ' (' + MOTIVO_IN_USO + ')')
+              "
               (onClick)="elimina.emit(e)"
               [attr.data-testid]="'listino-elimina-' + e.id"
             />
+            <small *ngIf="!e.eliminabile" class="cell-sub" aria-hidden="true">In uso</small>
           </span>
         </span>
       </li>

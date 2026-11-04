@@ -168,7 +168,7 @@ describe('LegameDialogComponent', () => {
     expect(q('legame-stato')?.textContent).toContain('Proposto')
     expect(q('legame-cliente')?.textContent).toContain('Rossi Srl')
     expect(q('legame-cliente')?.textContent).toContain('da FIR')
-    expect(q('legame-riga-0')?.textContent).toContain('125.00')
+    expect(q('legame-riga-0')?.textContent).toContain('125,00 €')
   })
 
   it('quantità "1,5" digitata: la conferma parte con "1.5" nelle modifiche', async () => {
@@ -349,7 +349,11 @@ describe('LegameDialogComponent', () => {
     await stabilizza(fixture)
     expect(q('legame-cliente-scelta')).not.toBeNull()
     fixture.componentInstance.clienteId = 'c9'
+    expect(bottone('legame-conferma')!.disabled).toBeTrue()
+    expect(q('legame-conferma-bloccata')).not.toBeNull()
     fixture.componentInstance.alCambioCliente()
+    await stabilizza(fixture)
+    expect(bottone('legame-conferma')!.disabled).toBeFalse()
     servizio.conferma.and.returnValue(of(legame({ stato: 'CONFERMATO' })))
     bottone('legame-conferma')!.click()
     await stabilizza(fixture)
@@ -357,6 +361,21 @@ describe('LegameDialogComponent', () => {
       versione: 3,
       modifiche: { clienteId: 'c9' },
     })
+  })
+
+  it('numeri in sola lettura con la virgola, importi con euro', async () => {
+    await apri(
+      legame({
+        stato: 'ANNULLATO',
+        righe: [rigaLegame({ quantita: '12.5', prezzo: '1.5', importo: '123.45' })],
+      })
+    )
+    const t = q('legame-riga-0')?.textContent ?? ''
+    expect(t).toContain('12,5')
+    expect(t).toContain('1,5')
+    expect(t).toContain('123,45 €')
+    expect(t).not.toContain('12.5')
+    expect(t).not.toContain('123.45')
   })
 
   it('RIGA_AMBIGUA: si sceglie una riga fra i candidati e parte come aggiunta', async () => {

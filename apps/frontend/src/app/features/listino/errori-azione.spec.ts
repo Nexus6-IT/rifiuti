@@ -65,6 +65,7 @@ describe('leggiErroriAzione', () => {
         'LISTINO_NON_MODIFICABILE',
         'CONTRATTO_CLIENTE_NON_MODIFICABILE',
         'VARIAZIONE_SUPERATA',
+        'VERSIONE_SUPERATA',
       ]) {
         expect(naturaConflitto(e409(c)))
           .withContext(c)
@@ -73,6 +74,11 @@ describe('leggiErroriAzione', () => {
           .withContext(c)
           .toBeTrue()
       }
+    })
+
+    it('LEGAME_DA_RIALLINEARE non è una rilettura: «Ricarica» non riallinea', () => {
+      expect(naturaConflitto(e409('LEGAME_DA_RIALLINEARE'))).toBe('dato')
+      expect(leggiErroriAzione(e409('LEGAME_DA_RIALLINEARE'), 'x').rilettura).toBeFalse()
     })
 
     it('senza codice non si sa: rilettura, la scelta prudente', () => {

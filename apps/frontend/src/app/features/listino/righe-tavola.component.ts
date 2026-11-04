@@ -89,10 +89,15 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
                 [text]="true"
                 size="small"
                 [disabled]="!r.eliminabile"
-                [ariaLabel]="'Elimina la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
+                [ariaLabel]="
+                  'Elimina la riga ' +
+                  (r.cerCode ?? r.addebito?.codice ?? r.tipo) +
+                  (r.eliminabile ? '' : ' (' + MOTIVO_IN_USO + ')')
+                "
                 (onClick)="elimina.emit(r)"
                 [attr.data-testid]="'listino-elimina-riga-' + r.id"
               />
+              <small *ngIf="!r.eliminabile" class="cell-sub" aria-hidden="true">In uso</small>
             </span>
           </td>
         </tr>

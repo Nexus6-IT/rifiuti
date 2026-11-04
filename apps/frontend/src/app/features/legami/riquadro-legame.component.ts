@@ -70,7 +70,7 @@ export function messaggiErroreLegame(err: unknown): {
   }
   return {
     messaggi: e.messaggi,
-    rilettura: e.rilettura || e.codice === 'VERSIONE_SUPERATA',
+    rilettura: e.rilettura,
   }
 }
 
