@@ -44,6 +44,7 @@ import {
   OPZIONI_TRANSAZIONE_SCRITTURA,
 } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { sqlGiornoMovimento } from './giorno-movimento'
 import {
   calcolaAggiornamento,
   type CalcoloAggiornamento,
@@ -75,6 +76,14 @@ export interface DifferenzaAggiornamento {
   prezzoDopo: string | null
   scontoPrima: string | null
   scontoDopo: string | null
+  /** Numero del movimento nel registro, `progressivo/anno` (come nel registro). */
+  numeroMovimento: string
+  /** Giorno del movimento, `AAAA-MM-GG`. */
+  dataMovimento: string
+  /** Voce di listino della riga: la sua descrizione, oppure `CER xx xx xx` / il tipo. */
+  voce: string
+  /** Ragione sociale del cliente del legame (vuota se il legame non ha cliente). */
+  cliente: string
 }
 
 export interface AnteprimaAggiornamento {
@@ -319,6 +328,65 @@ async function completaCoerenzaCer(
   }
 }
 
+interface DescrizioneDifferenza {
+  numeroMovimento: string
+  dataMovimento: string
+  voce: string
+  cliente: string
+}
+
+/**
+ * I campi leggibili degli esempi dell'anteprima, in UNA query per tutte le righe (al massimo
+ * `MAX_DIFFERENZE`): lista di id distinti con JOIN `unnest`, tutti gli altri join su chiavi
+ * primarie. Si legge a parte e non nella lettura principale per non unire `waste_movements`
+ * (che cresce senza limite) a tutto il perimetro: qui servono solo le righe mostrate.
+ */
+async function leggiDescrizioniDifferenze(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  righeIds: readonly string[]
+): Promise<Map<string, DescrizioneDifferenza>> {
+  const risultato = new Map<string, DescrizioneDifferenza>()
+  if (righeIds.length === 0) return risultato
+  const ids = [...new Set(righeIds)].sort()
+  await joinLineari(tx)
+  const r = await tx.$queryRaw<
+    {
+      rigaId: string
+      progressivo: number
+      anno: number
+      giorno: string
+      descrizione: string | null
+      descrizioneListino: string | null
+      tipo: string
+      cer: string | null
+      cliente: string | null
+    }[]
+  >`
+    SELECT r.id::text AS "rigaId", m.progressive_number AS progressivo,
+           m.progressive_year AS anno,
+           to_char(${sqlGiornoMovimento('m')}, 'YYYY-MM-DD') AS giorno,
+           r.descrizione AS descrizione, ra.descrizione AS "descrizioneListino", r.tipo AS tipo,
+           ra.cer_code AS cer, dt.ragione_sociale AS cliente
+    FROM unnest(${ids}::uuid[]) AS chiesti(chiesto)
+    JOIN righe_legame_movimento r ON r.id = chiesto AND r.tenant_id = ${tenantId}::uuid
+    JOIN legami_movimento l ON l.id = r.legame_id AND l.tenant_id = r.tenant_id
+    JOIN waste_movements m ON m.id = l.movimento_vigente_id AND m.tenant_id = l.tenant_id
+    LEFT JOIN righe_addebito ra ON ra.id = r.riga_addebito_id AND ra.tenant_id = r.tenant_id
+    LEFT JOIN clienti cl ON cl.id = l.cliente_id AND cl.tenant_id = l.tenant_id
+    LEFT JOIN ditte dt ON dt.id = cl.ditta_id AND dt.tenant_id = cl.tenant_id`
+  for (const x of r) {
+    const cer = (x.cer ?? '').trim()
+    risultato.set(x.rigaId, {
+      numeroMovimento: `${x.progressivo}/${x.anno}`,
+      dataMovimento: x.giorno,
+      voce: x.descrizione ?? x.descrizioneListino ?? (cer !== '' ? `CER ${cer}` : x.tipo),
+      cliente: x.cliente ?? '',
+    })
+  }
+  return risultato
+}
+
 /** Contratto del perimetro (anche dedotto dall'elenco): esiste, non e' eliminato e non e' annullato. */
 async function risolviContratto(
   tx: Prisma.TransactionClient,
@@ -375,22 +443,34 @@ export class AggiornaPrezziService {
         await verificaContratto(tx, tenantId, contrattoId)
         const c = calcolaAggiornamento(await leggiLegami(tx, tenantId, p), chiave(p))
         const saltati = riepilogoSaltati(c)
+        const righeCambiate = c.daScrivere
+          .flatMap(l => l.righe)
+          .filter(r => r.prezzoPrima !== r.prezzoDopo || r.scontoPrima !== r.scontoDopo)
+          .slice(0, MAX_DIFFERENZE)
+        const leggibili = await leggiDescrizioniDifferenze(
+          tx,
+          tenantId,
+          righeCambiate.map(r => r.rigaId)
+        )
         return {
           firma: c.firma,
           cambiano: c.daScrivere.length,
           invariati: c.invariati,
-          differenze: c.daScrivere
-            .flatMap(l => l.righe)
-            .filter(r => r.prezzoPrima !== r.prezzoDopo || r.scontoPrima !== r.scontoDopo)
-            .slice(0, MAX_DIFFERENZE)
-            .map(r => ({
+          differenze: righeCambiate.map(r => {
+            const d = leggibili.get(r.rigaId)
+            return {
               legameId: r.legameId,
               movimentoId: r.movimentoId,
               prezzoPrima: r.prezzoPrima,
               prezzoDopo: r.prezzoDopo,
               scontoPrima: r.scontoPrima,
               scontoDopo: r.scontoDopo,
-            })),
+              numeroMovimento: d?.numeroMovimento ?? '',
+              dataMovimento: d?.dataMovimento ?? '',
+              voce: d?.voce ?? '',
+              cliente: d?.cliente ?? '',
+            }
+          }),
           saltati,
           daCollegare: c.daCollegare,
           righeEscluseManuali: c.righeManuali,

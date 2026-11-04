@@ -24,6 +24,11 @@ export class ListaLegamiQueryDto {
   @IsString({ message: 'Il cliente non è valido.' })
   clienteId?: string
 
+  @ApiPropertyOptional({ description: 'Contratto del legame (UUID)' })
+  @IsOptional()
+  @IsString({ message: 'Il contratto non è valido.' })
+  contrattoId?: string
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString({ message: 'Il registro non è valido.' })

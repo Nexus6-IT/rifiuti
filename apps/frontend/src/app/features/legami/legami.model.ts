@@ -338,6 +338,14 @@ export interface DifferenzaAggiornamento {
   prezzoDopo: string | null
   scontoPrima: string | null
   scontoDopo: string | null
+  /** `progressivo/anno` del movimento nel registro. */
+  numeroMovimento: string
+  /** `AAAA-MM-GG`. */
+  dataMovimento: string
+  /** Descrizione della voce di listino (o `CER xx xx xx` / il tipo). */
+  voce: string
+  /** Ragione sociale del cliente del legame (vuota se non c'e'). */
+  cliente: string
 }
 
 export type MotivoSaltoAggiornamento =

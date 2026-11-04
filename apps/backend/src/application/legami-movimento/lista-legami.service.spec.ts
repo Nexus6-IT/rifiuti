@@ -11,14 +11,25 @@ describe('contatoriPerContratto: validazione degli id', () => {
   const service = new ListaLegamiService({} as never)
   const T = '11111111-1111-4111-8111-111111111111'
 
-  it('id non UUID o piu’ del tetto: 400 prima di toccare il database', () => {
-    expect(() => service.contatoriPerContratto(T, ['x'])).toThrow(BadRequestException)
+  it('id non UUID o piu’ del tetto: 400 prima di toccare il database', async () => {
+    await expect(service.contatoriPerContratto(T, ['x'])).rejects.toBeInstanceOf(
+      BadRequestException
+    )
     const troppi = Array.from({ length: MAX_CONTRATTI_CONTATORI + 1 }, () => T)
-    expect(() => service.contatoriPerContratto(T, troppi)).toThrow(BadRequestException)
+    await expect(service.contatoriPerContratto(T, troppi)).rejects.toBeInstanceOf(
+      BadRequestException
+    )
   })
 })
 
 describe('normalizzaFiltri (lista «da collegare»)', () => {
+  it('contrattoId: UUID facoltativo, null se assente o vuoto', () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    expect(normalizzaFiltri({ contrattoId: id }).contrattoId).toBe(id)
+    expect(normalizzaFiltri({}).contrattoId).toBeNull()
+    expect(normalizzaFiltri({ contrattoId: '' }).contrattoId).toBeNull()
+  })
+
   it('predefiniti: pagina 1, 50 righe, stati visibili senza ESCLUSO', () => {
     const f = normalizzaFiltri(undefined)
     expect(f.pagina).toBe(1)
@@ -52,6 +63,7 @@ describe('normalizzaFiltri (lista «da collegare»)', () => {
       { pagina: 0 },
       { dimensione: 0 },
       { clienteId: 'x' },
+      { contrattoId: 'x' },
       { dal: '2026-02-30' },
       { dal: '2026-02-02', al: '2026-02-01' },
       { motivo: 'BOH' as never },

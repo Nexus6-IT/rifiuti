@@ -25,6 +25,10 @@ function anteprima(extra: Partial<AnteprimaAggiornamento> = {}): AnteprimaAggior
         prezzoDopo: '12',
         scontoPrima: null,
         scontoDopo: '10+5',
+        numeroMovimento: '37/2026',
+        dataMovimento: '2026-03-09',
+        voce: 'Ritiro CER 20 03 01',
+        cliente: 'Verdi Servizi S.r.l.',
       },
     ],
     saltati: [
@@ -202,6 +206,16 @@ describe('AggiornaPrezziDialogComponent', () => {
     expect(t).toContain('10,50')
     expect(t).toContain('12,00')
     expect(t).toContain('10+5')
+    // movimento, cliente e voce leggibili al posto della numerazione
+    expect(q('ap-esempio-movimento')!.textContent).toContain('37/2026')
+    expect(q('ap-esempio-movimento')!.textContent).toContain('09/03/2026')
+    expect(q('ap-esempio-cliente')!.textContent).toContain('Verdi Servizi S.r.l.')
+    expect(q('ap-esempio-voce')!.textContent).toContain('Ritiro CER 20 03 01')
+    const intest = Array.from(document.body.querySelectorAll('[data-testid="ap-esempi"] th')).map(
+      h => h.textContent!.trim()
+    )
+    expect(intest.slice(0, 3)).toEqual(['Movimento', 'Cliente', 'Voce'])
+    expect(intest).not.toContain('#')
     // niente identificativi interni
     expect(q('ap-esempi')!.textContent).not.toContain('m1')
     expect(q('ap-esempi')!.textContent).not.toContain('l1')
@@ -225,6 +239,10 @@ describe('AggiornaPrezziDialogComponent', () => {
       prezzoDopo: '2',
       scontoPrima: null,
       scontoDopo: null,
+      numeroMovimento: `${i}/2026`,
+      dataMovimento: '2026-03-09',
+      voce: 'CER 20 03 01',
+      cliente: 'Verdi',
     }))
     servizio.anteprimaAggiornamento.and.returnValue(of(anteprima({ cambiano: 150, differenze: d })))
     await faiAnteprima()

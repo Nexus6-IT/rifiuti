@@ -149,6 +149,34 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
              codice_iva_id::text AS "ivaId", aliquota_iva::text AS aliquota,
              natura_iva AS natura, congelata_il AS "congelataIl", prezzo_manuale AS manuale
       FROM righe_legame_movimento WHERE legame_id = ${legameId}::uuid ORDER BY ordine`
+  /** I campi leggibili attesi, letti dal database con una query indipendente dal servizio. */
+  async function leggibili(movimentoId: string, rigaLegameId: string) {
+    const [x] = await owner.$queryRaw<
+      {
+        numero: string
+        giorno: string
+        voce: string | null
+        cliente: string | null
+        cer: string | null
+      }[]
+    >`
+      SELECT m.progressive_number || '/' || m.progressive_year AS numero,
+             to_char(((m.movement_date AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Rome')::date, 'YYYY-MM-DD') AS giorno,
+             coalesce(r.descrizione, ra.descrizione) AS voce, ra.cer_code AS cer,
+             dt.ragione_sociale AS cliente
+      FROM waste_movements m, righe_legame_movimento r
+      JOIN legami_movimento l ON l.id = r.legame_id
+      JOIN righe_addebito ra ON ra.id = r.riga_addebito_id
+      LEFT JOIN clienti cl ON cl.id = l.cliente_id
+      LEFT JOIN ditte dt ON dt.id = cl.ditta_id
+      WHERE m.id = ${movimentoId}::uuid AND r.id = ${rigaLegameId}::uuid`
+    return {
+      numeroMovimento: x.numero,
+      dataMovimento: x.giorno,
+      voce: x.voce ?? `CER ${x.cer}`,
+      cliente: x.cliente ?? '',
+    }
+  }
   const legameDb = (id: string) => owner.legameMovimento.findUniqueOrThrow({ where: { id } })
   const saltati = (a: { saltati: { motivo: string; numero: number }[] }, motivo: string) =>
     a.saltati.find(x => x.motivo === motivo)?.numero ?? 0
@@ -195,6 +223,25 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
 
   // -------------------------------------------------------------------------------------------
   describe('aggiornamento dei prezzi', () => {
+    it("esempi leggibili: numero e data del movimento, voce e cliente, uno per riga, anche con piu' legami", async () => {
+      const s = await scenario()
+      const l1 = await nuovoLegame(s, { dataMovimento: '2026-03-01' })
+      const l2 = await nuovoLegame(s, { dataMovimento: '2026-03-05' })
+      const l3 = await nuovoLegame(s, { dataMovimento: '2026-03-09' })
+      await prezzoListino(s.rigaCerId, '12.000000')
+      const a = await anteprima(s)
+      expect(a.differenze).toHaveLength(3)
+      for (const l of [l1, l2, l3]) {
+        const d = a.differenze.find(x => x.legameId === l.legameId)!
+        expect(d).toMatchObject(await leggibili(l.movimentoId, l.righeIds[0]))
+        expect(d.numeroMovimento).toMatch(/^\d+\/\d{4}$/)
+        expect(d.dataMovimento).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(d.voce).not.toBe('')
+        expect(d.cliente).not.toBe('')
+      }
+      expect(new Set(a.differenze.map(d => d.numeroMovimento)).size).toBe(3)
+    })
+
     it('prezzo di listino da 10 a 12: anteprima cambiano 1, applica riscrive prezzo, sconto e IVA e aggiorna congelata_il', async () => {
       const s = await scenario()
       const l = await nuovoLegame(s)
@@ -221,6 +268,7 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
           prezzoDopo: '12.000000',
           scontoPrima: null,
           scontoDopo: '10',
+          ...(await leggibili(l.movimentoId, l.righeIds[0])),
         },
       ])
       // L'anteprima non scrive.

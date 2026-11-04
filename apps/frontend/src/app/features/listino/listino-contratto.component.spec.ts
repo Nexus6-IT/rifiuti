@@ -879,6 +879,18 @@ describe('ListinoContrattoComponent', () => {
       expect(q('listino-elimina-riga-r1')).toBeNull()
     })
 
+    it('elenco non modificabile: la guardia di eliminaRiga blocca anche una chiamata diretta (riga eliminabile)', async () => {
+      const c = await apri(
+        'ADMIN',
+        risposta('ATTIVO', [elenco('e1', { modificabile: false, eliminabile: false })])
+      )
+      await scegli('e1')
+      c.eliminaRiga(riga('r1', { eliminabile: true }))
+      await stabilizza(fixture)
+      expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
+      expect(righeElimina).not.toHaveBeenCalled()
+    })
+
     it('riga con eliminabile false: Elimina disabilitato con tooltip «in uso», Apri resta (chiusura di validità)', async () => {
       righeList.and.returnValue(of([riga('r1', { eliminabile: false }), riga('r2')]))
       const c = await apri()

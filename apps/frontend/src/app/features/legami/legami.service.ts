@@ -47,9 +47,16 @@ export class LegamiService {
     return this.http.get<ContatoriLegami>(`${this.url}/contatori`)
   }
 
-  /** Una chiamata per pagina: i contratti indicati (al massimo 200) con i loro movimenti da collegare. */
-  contatoriPerContratto(contrattiIds: readonly string[]): Observable<ContatoriPerContratto> {
-    const params = new HttpParams().set('contratti', contrattiIds.join(','))
+  /**
+   * Una chiamata per pagina: i contratti indicati (al massimo 200) con i loro movimenti da
+   * collegare. Senza elenco di contratti restituisce tutti, piu' i legami con cliente e senza
+   * contratto (`senzaContratto`), che con un elenco restano vuoti.
+   */
+  contatoriPerContratto(contrattiIds?: readonly string[]): Observable<ContatoriPerContratto> {
+    const params =
+      contrattiIds === undefined
+        ? new HttpParams()
+        : new HttpParams().set('contratti', contrattiIds.join(','))
     return this.http.get<ContatoriPerContratto>(`${this.url}/contatori/per-contratto`, { params })
   }
 

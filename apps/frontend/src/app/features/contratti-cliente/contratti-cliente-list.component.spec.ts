@@ -178,18 +178,61 @@ describe('ContrattiClienteListComponent', () => {
         of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 3 }], senzaContratto: [] })
       )
       await apri('ADMIN', pagina(contratto(), contratto({ id: 'cc2' })))
-      expect(listaLegami).toHaveBeenCalledTimes(1)
+      // Una per la pagina (con gli id) e una, all'apertura, per il riepilogo senza contratto.
+      expect(listaLegami).toHaveBeenCalledTimes(2)
       expect(listaLegami).toHaveBeenCalledWith(['cc1', 'cc2'])
+      expect(listaLegami).toHaveBeenCalledWith()
       expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('3')
       expect(q('contratti-da-collegare-cc2')).toBeNull()
       expect(q('contratti-da-collegare-cc1')!.getAttribute('href')).toBe(
-        '/legami/da-collegare?clienteId=cl1'
+        '/legami/da-collegare?clienteId=cl1&contrattoId=cc1'
       )
     })
 
-    it('pagina vuota: nessuna chiamata', async () => {
+    it('pagina vuota: nessuna chiamata per i contratti', async () => {
       await apri('ADMIN', pagina())
-      expect(listaLegami).not.toHaveBeenCalled()
+      expect(listaLegami).not.toHaveBeenCalledWith(jasmine.any(Array))
+    })
+
+    it('legami senza contratto: riepilogo sopra la lista, con link filtrato se il cliente e uno', async () => {
+      listaLegami.and.callFake((ids?: string[]) =>
+        of({
+          perContratto: [],
+          senzaContratto: ids ? [] : [{ clienteId: 'cl9', daCollegare: 4 }],
+        })
+      )
+      await apri()
+      const riepilogo = q('contratti-senza-contratto')!
+      expect(riepilogo.textContent!.replace(/\s+/g, ' ')).toContain(
+        '4 movimenti da collegare senza contratto'
+      )
+      expect(q('contratti-senza-contratto-link')!.getAttribute('href')).toBe(
+        '/legami/da-collegare?clienteId=cl9'
+      )
+    })
+
+    it('legami senza contratto di piu clienti: totale, numero di clienti e link senza filtro', async () => {
+      listaLegami.and.callFake((ids?: string[]) =>
+        of({
+          perContratto: [],
+          senzaContratto: ids
+            ? []
+            : [
+                { clienteId: 'cl1', daCollegare: 1 },
+                { clienteId: 'cl2', daCollegare: 2 },
+              ],
+        })
+      )
+      await apri()
+      expect(q('contratti-senza-contratto')!.textContent!.replace(/\s+/g, ' ')).toContain(
+        '3 movimenti da collegare senza contratto (in 2 clienti)'
+      )
+      expect(q('contratti-senza-contratto-link')!.getAttribute('href')).toBe('/legami/da-collegare')
+    })
+
+    it('nessun legame senza contratto: il riepilogo non c e', async () => {
+      await apri()
+      expect(q('contratti-senza-contratto')).toBeNull()
     })
 
     it('errore: la colonna resta vuota e la pagina funziona', async () => {

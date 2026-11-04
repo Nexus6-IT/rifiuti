@@ -54,6 +54,8 @@ export interface FiltriLista {
   dal?: string
   al?: string
   clienteId?: string
+  /** Contratto del legame (UUID): i movimenti senza contratto non compaiono. */
+  contrattoId?: string
   registroId?: string
   motivo?: MotivoLegame
   /** Restringe agli stati indicati (fra quelli che la lista puo' mostrare). */
@@ -127,6 +129,7 @@ export interface FiltriNormalizzati {
   dal: string | null
   al: string | null
   clienteId: string | null
+  contrattoId: string | null
   registroId: string | null
   motivo: MotivoLegame | null
   /** Gli stati che la lista mostra, gia' intersecati con quelli visibili. */
@@ -157,6 +160,9 @@ export function normalizzaFiltri(f: FiltriLista | undefined): FiltriNormalizzati
     if (!vuoto(id) && !(typeof id === 'string' && UUID.test(id))) {
       throw nonValido('Cliente o registro non valido.')
     }
+  }
+  if (!vuoto(x.contrattoId) && !(typeof x.contrattoId === 'string' && UUID.test(x.contrattoId))) {
+    throw nonValido('Contratto non valido.')
   }
   for (const d of [x.dal, x.al]) {
     if (!vuoto(d) && !dataValida(d)) throw nonValido('Le date vanno scritte AAAA-MM-GG.')
@@ -191,6 +197,7 @@ export function normalizzaFiltri(f: FiltriLista | undefined): FiltriNormalizzati
     dal,
     al,
     clienteId: vuoto(x.clienteId) ? null : x.clienteId!,
+    contrattoId: vuoto(x.contrattoId) ? null : x.contrattoId!,
     registroId: vuoto(x.registroId) ? null : x.registroId!,
     motivo: vuoto(x.motivo) ? null : (x.motivo as MotivoLegame),
     stati,
@@ -217,7 +224,7 @@ END`
 export function sqlCandidati(
   tenantId: string,
   fatturazioneDa: string,
-  f: Pick<FiltriNormalizzati, 'dal' | 'al' | 'clienteId' | 'registroId' | 'motivo'>
+  f: Pick<FiltriNormalizzati, 'dal' | 'al' | 'clienteId' | 'contrattoId' | 'registroId' | 'motivo'>
 ): Prisma.Sql {
   const giorno = sqlGiornoMovimento('m')
   const dal =
@@ -234,6 +241,8 @@ export function sqlCandidati(
     f.registroId === null ? Prisma.empty : Prisma.sql`AND m.registro_id = ${f.registroId}::uuid`
   const cliente =
     f.clienteId === null ? Prisma.empty : Prisma.sql`AND l.cliente_id = ${f.clienteId}::uuid`
+  const contratto =
+    f.contrattoId === null ? Prisma.empty : Prisma.sql`AND l.contratto_id = ${f.contrattoId}::uuid`
   const motivo = f.motivo === null ? Prisma.empty : Prisma.sql`AND ${f.motivo} = ANY(l.motivi)`
   return Prisma.sql`
     SELECT m.id AS movimento_id, m.movement_date, ${giorno} AS giorno, m.registro_id,
@@ -259,7 +268,7 @@ export function sqlCandidati(
           AND ${giorno} >= ${fatturazioneDa}::date)
         OR (l.id IS NOT NULL AND l.stato <> 'ANNULLATO' AND l.movimento_vigente_id <> m.id)
       )
-      ${dal} ${al} ${registro} ${cliente} ${motivo}`
+      ${dal} ${al} ${registro} ${cliente} ${contratto} ${motivo}`
 }
 
 /** La pagina: ordina e taglia PRIMA di leggere il nome del cliente. */
@@ -377,6 +386,7 @@ export class ListaLegamiService {
             dal: null,
             al: null,
             clienteId: null,
+            contrattoId: null,
             registroId: null,
             motivo: null,
           })
@@ -407,7 +417,7 @@ export class ListaLegamiService {
    * i legami con cliente ma senza contratto, per cliente. I movimenti MANCANTI non hanno
    * cliente ne' contratto e non compaiono qui.
    */
-  contatoriPerContratto(
+  async contatoriPerContratto(
     tenantId: string,
     contrattiIds?: readonly string[]
   ): Promise<ContatoriPerContratto> {
@@ -432,6 +442,7 @@ export class ListaLegamiService {
             dal: null,
             al: null,
             clienteId: null,
+            contrattoId: null,
             registroId: null,
             motivo: null,
           })
