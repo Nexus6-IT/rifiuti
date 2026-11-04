@@ -198,7 +198,10 @@ export function numeroComeStringa(n: number): string {
   `,
   styles: [
     `
+      /* position: relative tiene la didascalia sr-only (position: absolute) dentro il
+         contenitore: senza, il dialog che ospita la tabella si allunga e scorre (revisione UX C3). */
       .tabella-scroll {
+        position: relative;
         overflow-x: auto;
       }
       .righe-legame {
