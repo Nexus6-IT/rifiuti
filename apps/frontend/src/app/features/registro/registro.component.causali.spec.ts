@@ -345,13 +345,46 @@ describe('RegistroComponent — causali dall’API', () => {
       expect(Object.keys(servizio.registra.calls.mostRecent().args[0])).not.toContain('legame')
     })
 
-    itFa('campo del blocco in errore: la registrazione non parte', () => {
+    itFa('campo del blocco in errore con un legame da mandare: la registrazione non parte', () => {
       const c = crea()
       compila(c)
+      c.legame = { azione: 'PROPOSTA', righe: [] }
       c.bloccoFatturazioneValido = false
       c.salva()
       expect(servizio.registra).not.toHaveBeenCalled()
       expect(toast.error).toHaveBeenCalled()
+    })
+
+    itFa(
+      'stato di errore rimasto indietro ma nessun legame (blocco nascosto): la registrazione parte',
+      () => {
+        const c = crea()
+        compila(c)
+        servizio.registra.and.returnValue(
+          of({ progressiveNumber: 1, progressiveYear: 2026 } as unknown as Movimento)
+        )
+        c.legame = null
+        c.bloccoFatturazioneValido = false
+        c.salva()
+        expect(servizio.registra).toHaveBeenCalled()
+      }
+    )
+
+    itFa('proposta in aggiornamento: la registrazione aspetta', () => {
+      const c = crea()
+      compila(c)
+      c.bloccoInAttesa = true
+      c.salva()
+      expect(servizio.registra).not.toHaveBeenCalled()
+      expect(toast.info).toHaveBeenCalled()
+    })
+
+    itFa('un altro FIR azzera la scelta di contratto ed elenco', () => {
+      const c = crea()
+      compila(c)
+      c.sceltaLegame = { contrattoId: 'co-1' }
+      c.form.patchValue({ firId: 'fir-9' })
+      expect(c.sceltaLegame).toBeNull()
     })
 
     itFa('avvisi di collegamento non riuscito (HTTP 201): avvisi, non errore', () => {

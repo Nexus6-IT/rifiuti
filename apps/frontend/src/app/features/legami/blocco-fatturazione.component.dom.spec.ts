@@ -6,11 +6,17 @@ import { ATTESA_PROPOSTA_MS, BloccoFatturazioneComponent } from './blocco-fattur
 import { DATI, proposta } from './blocco-fatturazione.test-util'
 import { DatiLegameRegistrazione, PropostaLegame } from './legami.model'
 import { LegamiService } from './legami.service'
+import { ClientiService } from '../clienti/clienti.service'
 
 /**
  * Campi numerici del blocco «Fatturazione» nel DOM: virgola decimale, punto rifiutato, nessun
  * separatore delle migliaia, quantità > 0 con al massimo 3 decimali.
  */
+const CLIENTI = [
+  { id: 'cl-7', ditta: { ragioneSociale: 'Bianchi Srl' } },
+  { id: 'cl-8', ditta: { ragioneSociale: 'Neri Spa' } },
+] as never[]
+
 describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
   let fixture: ComponentFixture<BloccoFatturazioneComponent>
   let legami: (DatiLegameRegistrazione | null)[]
@@ -42,12 +48,19 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     fixture.detectChanges()
   }
 
+  let rispostaCorrente: PropostaLegame
+
   function crea(p: PropostaLegame = proposta()): void {
+    rispostaCorrente = p
     TestBed.configureTestingModule({
       imports: [BloccoFatturazioneComponent],
       providers: [
         provideNoopAnimations(),
-        { provide: LegamiService, useValue: { proposta: () => of(p) } },
+        { provide: LegamiService, useValue: { proposta: () => of(rispostaCorrente) } },
+        {
+          provide: ClientiService,
+          useValue: { clienti: { list: () => of({ elementi: CLIENTI, totale: CLIENTI.length }) } },
+        },
         { provide: AuthService, useValue: { currentUser: () => ({ role: 'OPERATOR' }) } },
       ],
     })
@@ -162,5 +175,53 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     )
     expect(campo('qta-ra-1').value).toBe('12345,5')
     expect(campo('prezzo-ra-1').value).toBe('1234,5')
+  }))
+
+  for (const [testoSconto, nome] of [
+    ['-5', 'negativo'],
+    ['100', 'oltre 99,99'],
+    ['10,555', 'tre decimali'],
+    ['5+5+5+5', 'quattro termini'],
+  ] as const) {
+    it(`sconto ${nome} («${testoSconto}»): errore e pulsante bloccato, come il backend`, fakeAsync(() => {
+      crea()
+      const s = campo('sconto-ra-1')
+      s.value = testoSconto
+      s.dispatchEvent(new Event('input'))
+      fixture.detectChanges()
+      expect(q('errore-sconto-ra-1')).not.toBeNull()
+      expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+      expect(rigaRegistrata('ra-1')?.sconto).toBeUndefined()
+    }))
+  }
+
+  it('sconto «99,99+0,5+10» è ammesso (tre termini, fino a 99,99)', fakeAsync(() => {
+    crea()
+    const s = campo('sconto-ra-1')
+    s.value = '99,99+0,5+10'
+    s.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    expect(q('errore-sconto-ra-1')).toBeNull()
+    expect(rigaRegistrata('ra-1')?.sconto).toBe('99.99+0.5+10')
+  }))
+
+  it('prezzo con più di 8 cifre intere: errore', fakeAsync(() => {
+    crea()
+    scrivi('prezzo-ra-1', '123456789')
+    expect(q('errore-prezzo-ra-1')?.textContent).toContain('troppo grande')
+  }))
+
+  it('errore su una riga, poi la riga sparisce con la nuova proposta: nessun blocco residuo', fakeAsync(() => {
+    crea()
+    scrivi('qta-ra-2', '0')
+    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    rispostaCorrente = proposta({ righe: [proposta().righe[0]] })
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, cerCode: '17 04 02' })
+    fixture.detectChanges()
+    tick(ATTESA_PROPOSTA_MS)
+    fixture.detectChanges()
+    tick()
+    fixture.detectChanges()
+    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
   }))
 })

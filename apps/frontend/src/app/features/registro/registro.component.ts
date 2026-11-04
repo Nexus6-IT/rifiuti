@@ -966,6 +966,7 @@ interface FirOption {
             [(scelta)]="sceltaLegame"
             (legameChange)="legame = $event"
             (validoChange)="bloccoFatturazioneValido = $event"
+            (inAttesaChange)="bloccoInAttesa = $event"
           ></app-blocco-fatturazione>
         </form>
 
@@ -980,6 +981,7 @@ interface FirOption {
             label="Registra"
             icon="pi pi-check"
             [loading]="saving()"
+            [disabled]="bloccoInAttesa"
             (onClick)="salva()"
             ariaLabel="Registra il movimento"
           ></p-button>
@@ -1406,6 +1408,9 @@ export class RegistroComponent implements OnInit {
   legame: DatiLegameRegistrazione | null = null
   /** Falso se un campo del blocco è in errore: la registrazione aspetta. */
   bloccoFatturazioneValido = true
+  /** Vero mentre il blocco aggiorna la proposta: il `legame` emesso sarebbe superato. */
+  bloccoInAttesa = false
+  private firIdLegame: string | null = null
   private sottoscrizioneDatiLegame: Subscription | null = null
   readonly exporting = signal(false)
   readonly error = signal<string | null>(null)
@@ -1544,7 +1549,14 @@ export class RegistroComponent implements OnInit {
     this.sottoscrizioneDatiLegame?.unsubscribe()
     this.sottoscrizioneDatiLegame = this.form.valueChanges
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.datiLegame.set(this.costruisciDatiLegame()))
+      .subscribe(() => {
+        const dati = this.costruisciDatiLegame()
+        // Un altro FIR può avere un altro cliente: la scelta di contratto ed elenco non vale più.
+        const firId = dati?.firId ?? null
+        if (firId !== this.firIdLegame && dati) this.sceltaLegame = null
+        this.firIdLegame = dati ? firId : this.firIdLegame
+        this.datiLegame.set(dati)
+      })
     this.datiLegame.set(this.costruisciDatiLegame())
   }
 
@@ -1649,6 +1661,8 @@ export class RegistroComponent implements OnInit {
     this.sceltaLegame = null
     this.legame = null
     this.bloccoFatturazioneValido = true
+    this.bloccoInAttesa = false
+    this.firIdLegame = null
     this.sedeBloccataDaFir.set(false)
     this.form.get('registroId')?.enable({ emitEvent: false })
     this.applicaRegistroAlForm(true)
@@ -2000,8 +2014,13 @@ export class RegistroComponent implements OnInit {
       this.toast.error('Controlla i campi evidenziati e riprova.')
       return
     }
-    if (!this.bloccoFatturazioneValido) {
+    // Il blocco pesa solo se c'è un `legame` da mandare: un blocco nascosto non deve mai impedire di registrare.
+    if (this.legame && !this.bloccoFatturazioneValido) {
       this.toast.error('Correggi i campi evidenziati nel blocco «Fatturazione» e riprova.')
+      return
+    }
+    if (this.bloccoInAttesa) {
+      this.toast.info('Sto calcolando la fatturazione: riprova fra un istante.')
       return
     }
 

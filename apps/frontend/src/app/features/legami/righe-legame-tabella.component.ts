@@ -4,7 +4,9 @@ import {
   Component,
   EventEmitter,
   Input,
+  OnChanges,
   Output,
+  SimpleChanges,
   signal,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
@@ -12,7 +14,11 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { TagModule } from 'primeng/tag'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
-import { formatCascata, formatNumero, leggiCascata } from '../../shared/utils/numero-modificabile'
+import {
+  formatCascata,
+  formatNumero,
+  leggiScontoCascata,
+} from '../../shared/utils/numero-modificabile'
 import { RigaLegame } from './legami.model'
 
 export type CampoRiga = 'quantita' | 'prezzo' | 'sconto'
@@ -229,10 +235,12 @@ export function numeroComeStringa(n: number): string {
     `,
   ],
 })
-export class RigheLegameTabellaComponent {
+export class RigheLegameTabellaComponent implements OnChanges {
   @Input() righe: RigaLegame[] = []
   /** Falso: solo lettura (VIEWER, legame fatturato). */
   @Input() modificabile = true
+  /** Cambia quando gli errori e i testi in corso vanno scordati (nuova scelta a monte). */
+  @Input() generazione = 0
   @Output() modifica = new EventEmitter<ModificaCampoRiga>()
   /** Vero se almeno un campo è in errore. */
   @Output() erroriChange = new EventEmitter<boolean>()
@@ -246,6 +254,27 @@ export class RigheLegameTabellaComponent {
   private readonly rifiutiCampi = signal<ReadonlyMap<string, string>>(new Map())
   /** Testo dello sconto mentre si scrive (la cascata «10,5+» è un passaggio lecito). */
   private readonly testiSconto = signal<ReadonlyMap<string, string>>(new Map())
+
+  private ultimoStato = false
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (!changes['righe'] && !changes['generazione']) return
+    if (changes['generazione'] && !changes['generazione'].firstChange) {
+      this.erroriCampi.set(new Map())
+      this.rifiutiCampi.set(new Map())
+      this.testiSconto.set(new Map())
+    } else {
+      // Le righe sono cambiate: errori e testi di righe sparite non devono restare, invisibili e bloccanti.
+      const ids = new Set(this.righe.map(r => r.rigaAddebitoId))
+      const tieni = (m: ReadonlyMap<string, string>, perRiga: boolean): Map<string, string> =>
+        new Map([...m].filter(([k]) => ids.has(perRiga ? k : k.split('|')[0])))
+      this.erroriCampi.set(tieni(this.erroriCampi(), false))
+      this.rifiutiCampi.set(tieni(this.rifiutiCampi(), false))
+      this.testiSconto.set(tieni(this.testiSconto(), true))
+    }
+    // Siamo nel change detection del genitore: l'uscita parte in un microtask.
+    void Promise.resolve().then(() => this.segnalaErrori())
+  }
 
   perId = (_: number, r: RigaLegame): string => r.rigaAddebitoId
 
@@ -294,7 +323,7 @@ export class RigheLegameTabellaComponent {
     const nuovi = new Map(this.testiSconto())
     nuovi.set(r.rigaAddebitoId, testo)
     this.testiSconto.set(nuovi)
-    const lettura = leggiCascata(testo)
+    const lettura = leggiScontoCascata(testo)
     this.impostaErrore(r, 'sconto', lettura.errore)
     if (lettura.errore === null) {
       this.modifica.emit({
@@ -313,10 +342,12 @@ export class RigheLegameTabellaComponent {
       if (n === null || !(n > 0))
         return { valore: null, errore: 'Indica una quantità maggiore di zero.' }
       if (decimali(n) > 3) return { valore: null, errore: 'Al massimo 3 decimali.' }
+      if (n >= 1e11) return { valore: null, errore: 'Quantità troppo grande.' }
     } else {
       if (n === null) return { valore: null, errore: 'Indica il prezzo.' }
       if (n < 0) return { valore: null, errore: 'Il prezzo non può essere negativo.' }
       if (decimali(n) > 6) return { valore: null, errore: 'Al massimo 6 decimali.' }
+      if (n >= 1e8) return { valore: null, errore: 'Prezzo troppo grande.' }
     }
     return { valore: numeroComeStringa(n), errore: null }
   }
@@ -331,6 +362,9 @@ export class RigheLegameTabellaComponent {
   }
 
   private segnalaErrori(): void {
-    this.erroriChange.emit(this.erroriCampi().size > 0 || this.rifiutiCampi().size > 0)
+    const stato = this.erroriCampi().size > 0 || this.rifiutiCampi().size > 0
+    if (stato === this.ultimoStato) return
+    this.ultimoStato = stato
+    this.erroriChange.emit(stato)
   }
 }

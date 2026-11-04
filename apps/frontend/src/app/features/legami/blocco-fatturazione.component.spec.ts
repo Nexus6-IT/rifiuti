@@ -11,8 +11,14 @@ import {
 import { DATI, proposta, riga } from './blocco-fatturazione.test-util'
 import { DatiLegameRegistrazione, PropostaLegame } from './legami.model'
 import { LegamiService } from './legami.service'
+import { ClientiService } from '../clienti/clienti.service'
 
 /** Logica del blocco «Fatturazione»: visibilità, proposta, debounce, scelte e blocco `legame`. */
+const CLIENTI = [
+  { id: 'cl-7', ditta: { ragioneSociale: 'Bianchi Srl' } },
+  { id: 'cl-8', ditta: { ragioneSociale: 'Neri Spa' } },
+] as never[]
+
 describe('BloccoFatturazioneComponent — logica', () => {
   let servizio: { proposta: jasmine.Spy }
   let ruolo: string
@@ -33,6 +39,10 @@ describe('BloccoFatturazioneComponent — logica', () => {
       providers: [
         provideNoopAnimations(),
         { provide: LegamiService, useValue: servizio },
+        {
+          provide: ClientiService,
+          useValue: { clienti: { list: () => of({ elementi: CLIENTI, totale: CLIENTI.length }) } },
+        },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
       ],
     })
@@ -284,16 +294,172 @@ describe('BloccoFatturazioneComponent — logica', () => {
     expect(ultimo()?.righe).toEqual([{ rigaAddebitoId: 'ra-1' }])
   }))
 
-  it('un altro FIR azzera le scelte su contratto ed elenco', fakeAsync(() => {
+  it('un altro FIR azzera scelta e ritocchi e riporta l’azione a PROPOSTA', fakeAsync(() => {
     crea()
-    fixture.componentRef.setInput('scelta', { contrattoId: 'co-9' })
     fixture.componentRef.setInput('datiMovimento', { ...DATI, firId: 'fir-1' })
     fixture.detectChanges()
     tick(ATTESA_PROPOSTA_MS)
+    fixture.detectChanges()
+    fixture.componentRef.setInput('scelta', { contrattoId: 'co-9' })
+    ;(q('fatt-conferma') as HTMLButtonElement).click()
+    fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'prezzo', valore: '9' })
+    expect(ultimo()?.azione).toBe('CONFERMA')
+
     fixture.componentRef.setInput('datiMovimento', { ...DATI, firId: 'fir-2' })
     fixture.detectChanges()
     tick(ATTESA_PROPOSTA_MS)
-    expect(scelte[scelte.length - 1]).toBeNull()
+    fixture.detectChanges()
+    expect(fixture.componentInstance.scelta).toBeNull()
+    expect(ultimo()).toEqual({
+      azione: 'PROPOSTA',
+      righe: [{ rigaAddebitoId: 'ra-1' }, { rigaAddebitoId: 'ra-2' }],
+    })
+  }))
+
+  it('durante il debounce il legame emesso è null e il blocco segnala l’attesa', fakeAsync(() => {
+    crea()
+    const attese: boolean[] = []
+    fixture.componentInstance.inAttesaChange.subscribe(a => attese.push(a))
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '130' })
+    fixture.detectChanges()
+    tick(100)
+    expect(ultimo()).toBeNull()
+    expect(attese).toEqual([true])
+    tick(ATTESA_PROPOSTA_MS)
+    expect(ultimo()).not.toBeNull()
+    expect(attese).toEqual([true, false])
+  }))
+
+  it('cambia il cliente fra una proposta e l’altra: l’azione torna PROPOSTA', fakeAsync(() => {
+    crea()
+    ;(q('fatt-conferma') as HTMLButtonElement).click()
+    expect(ultimo()?.azione).toBe('CONFERMA')
+    servizio.proposta.and.returnValue(
+      of(proposta({ cliente: { id: 'cl-2', etichetta: 'Verdi Spa', fonte: 'FIR' } }))
+    )
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '5' })
+    fixture.detectChanges()
+    tick(ATTESA_PROPOSTA_MS)
+    expect(ultimo()?.azione).toBe('PROPOSTA')
+  }))
+
+  it('stesso cliente, contratto ed elenco: la conferma resta', fakeAsync(() => {
+    crea()
+    ;(q('fatt-conferma') as HTMLButtonElement).click()
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '5' })
+    fixture.detectChanges()
+    tick(ATTESA_PROPOSTA_MS)
+    expect(ultimo()?.azione).toBe('CONFERMA')
+  }))
+
+  it('SENZA_QUANTITA: scritta la quantità si può confermare e la quantità viaggia', fakeAsync(() => {
+    crea(
+      of(
+        proposta({
+          motivi: ['SENZA_QUANTITA'],
+          righe: [riga({ quantita: null, importo: null })],
+        })
+      )
+    )
+    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(testo('fatt-motivi')).toContain('Manca la quantità')
+    fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'quantita', valore: '4' })
+    fixture.detectChanges()
+    expect(q('fatt-motivi')).toBeNull()
+    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
+    ;(q('fatt-conferma') as HTMLButtonElement).click()
+    expect(ultimo()).toEqual({
+      azione: 'CONFERMA',
+      righe: [{ rigaAddebitoId: 'ra-1', quantita: '4' }],
+    })
+  }))
+
+  it('SENZA_PREZZO: scritto il prezzo il motivo sparisce, ma un altro motivo resta', fakeAsync(() => {
+    crea(
+      of(
+        proposta({
+          motivi: ['SENZA_PREZZO', 'ELENCO_SCADUTO'],
+          righe: [riga({ prezzo: null })],
+        })
+      )
+    )
+    fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'prezzo', valore: '3' })
+    fixture.detectChanges()
+    expect(testo('fatt-motivi')).not.toContain('Manca il prezzo')
+    expect(testo('fatt-motivi')).toContain('non è valido')
+    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+  }))
+
+  it('un ritocco riportato al valore della proposta non è più un ritocco', fakeAsync(() => {
+    crea(of(proposta({ righe: [riga({ sconto: null })] })))
+    fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'sconto', valore: '5' })
+    expect(ultimo()?.righe).toEqual([{ rigaAddebitoId: 'ra-1', sconto: '5' }])
+    fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'sconto', valore: null })
+    fixture.detectChanges()
+    expect(ultimo()?.righe).toEqual([{ rigaAddebitoId: 'ra-1' }])
+    expect(q('badge-prezzo-manuale-ra-1')).toBeNull()
+    fixture.componentInstance.alModifica({
+      rigaAddebitoId: 'ra-1',
+      campo: 'prezzo',
+      valore: '0.50',
+    })
+    expect(ultimo()?.righe).toEqual([{ rigaAddebitoId: 'ra-1' }])
+  }))
+
+  it('campo in errore, poi proposta non fatturabile: il blocco torna valido', fakeAsync(() => {
+    crea()
+    const validi: boolean[] = []
+    fixture.componentInstance.validoChange.subscribe(v => validi.push(v))
+    fixture.componentInstance.alErrori(true)
+    expect(validi).toEqual([false])
+    servizio.proposta.and.returnValue(of(proposta({ fatturabile: false })))
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, causale: 'ALTRA' })
+    fixture.detectChanges()
+    tick(ATTESA_PROPOSTA_MS)
+    fixture.detectChanges()
+    expect(validi).toEqual([false, true])
+    expect(q('blocco-fatturazione')).toBeNull()
+  }))
+
+  it('campo in errore, poi proposta 500: il blocco torna valido e non manda legame', fakeAsync(() => {
+    crea()
+    const validi: boolean[] = []
+    fixture.componentInstance.validoChange.subscribe(v => validi.push(v))
+    fixture.componentInstance.alErrori(true)
+    servizio.proposta.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })))
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '9' })
+    fixture.detectChanges()
+    tick(ATTESA_PROPOSTA_MS)
+    expect(validi[validi.length - 1]).toBeTrue()
+    expect(ultimo()).toBeNull()
+  }))
+
+  it('proposta senza cliente: menu dei clienti, la scelta va nelle scelte della richiesta', fakeAsync(() => {
+    crea(
+      of(
+        proposta({
+          cliente: null,
+          dettaglioCliente: 'cliente disattivato',
+          contratto: null,
+          elenco: null,
+          righe: [],
+          motivi: ['SENZA_CLIENTE'],
+        })
+      )
+    )
+    const menu = q('fatt-cliente-menu') as HTMLSelectElement
+    expect(menu.options.length).toBe(3)
+    expect(testo('fatt-cliente')).toContain('cliente disattivato')
+    servizio.proposta.and.returnValue(
+      of(proposta({ cliente: { id: 'cl-7', etichetta: 'Bianchi Srl', fonte: 'UTENTE' } }))
+    )
+    menu.value = 'cl-7'
+    menu.dispatchEvent(new Event('change'))
+    tick()
+    fixture.detectChanges()
+    expect(servizio.proposta.calls.mostRecent().args[0].scelte).toEqual({ clienteId: 'cl-7' })
+    expect(ultimo()?.clienteId).toBe('cl-7')
+    expect(q('fatt-da-fir')).toBeNull()
   }))
 
   it('risposta che arriva dopo una modifica: vale solo l’ultima richiesta', fakeAsync(() => {
