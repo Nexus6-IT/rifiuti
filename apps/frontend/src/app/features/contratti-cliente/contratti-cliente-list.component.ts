@@ -31,6 +31,7 @@ import {
   permessoScrittura,
 } from '../clienti/tabelle/tabella-comune'
 import { OPZIONI_STATO_CONTRATTO } from '../clienti/vocabolario-clienti'
+import { LegamiService } from '../legami/legami.service'
 import { IstatDialogComponent } from '../listino/istat-dialog.component'
 import { puoVariarePrezzi } from '../listino/permessi-listino'
 import { VariazionePrezziDialogComponent } from '../listino/variazione-prezzi-dialog.component'
@@ -42,6 +43,8 @@ import { SceltaClienteComponent } from './scelta-cliente.component'
 type FiltriContratti = Omit<FiltroContratti, 'pagina' | 'dimensione' | 'testo'>
 
 const GIORNI_IN_SCADENZA = 30
+/** Massimo della pagina del backend (`MAX_DIMENSIONE` di lista-legami). */
+const PAGINA_DA_COLLEGARE = 200
 
 const SEVERITA_STATO: Readonly<
   Record<StatoContrattoCliente, 'success' | 'info' | 'warning' | 'danger' | 'secondary'>
@@ -221,6 +224,7 @@ const SEVERITA_STATO: Readonly<
             <th scope="col">Inizio</th>
             <th scope="col">Fine</th>
             <th scope="col">Prossima fatturazione</th>
+            <th scope="col">Da collegare</th>
             <th scope="col">Listino</th>
             <th scope="col" *ngIf="puoScrivere()">Azioni</th>
           </tr>
@@ -254,6 +258,20 @@ const SEVERITA_STATO: Readonly<
               />
             </td>
             <td>{{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}</td>
+            <td>
+              <!-- Per cliente: la lista dei legami non conosce il contratto (vedi daCollegarePer). -->
+              <a
+                *ngIf="daCollegarePer(c.cliente.id) as n"
+                routerLink="/legami/da-collegare"
+                class="da-collegare"
+                [attr.aria-label]="
+                  'Movimenti da collegare del cliente ' + c.cliente.ragioneSociale + ': ' + n.testo
+                "
+                [attr.data-testid]="'contratti-da-collegare-' + c.id"
+              >
+                <p-tag [value]="n.testo" severity="warning" />
+              </a>
+            </td>
             <td class="azioni">
               <!-- Fuori dalla colonna di scrittura: il VIEWER legge il listino (R48). -->
               <a
@@ -311,7 +329,7 @@ const SEVERITA_STATO: Readonly<
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="9 + (puoScrivere() ? 1 : 0) + (puoVariare() ? 1 : 0)">
+            <td [attr.colspan]="10 + (puoScrivere() ? 1 : 0) + (puoVariare() ? 1 : 0)">
               Nessun contratto.
             </td>
           </tr>
@@ -390,6 +408,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
   private readonly auth = inject(AuthService)
+  private readonly legami = inject(LegamiService)
 
   readonly puoScrivere = permessoScrittura()
   /** Le variazioni di massa toccano molti contratti: solo ADMIN (R11). */
@@ -443,6 +462,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.elenco.avvia()
+    this.caricaDaCollegare()
     this.tabelle.codifiche
       .list('CATEGORIA')
       .pipe(takeUntil(this.distrutto))
@@ -461,12 +481,51 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.annullaLettura.next()
+    this.annullaDaCollegare.next()
     this.distrutto.next()
     this.elenco.ferma()
   }
 
   carica(): void {
     this.elenco.carica()
+    this.caricaDaCollegare()
+  }
+
+  /** Movimenti da collegare per cliente (id del cliente → numero) e se il conteggio è parziale. */
+  private readonly perCliente = signal<{
+    conteggi: ReadonlyMap<string, number>
+    parziale: boolean
+  }>({ conteggi: new Map(), parziale: false })
+  private readonly annullaDaCollegare = new Subject<void>()
+
+  /**
+   * Una sola chiamata alla lista dei legami (non una per cliente): la prima pagina più ampia, poi
+   * il raggruppamento per cliente. Se i movimenti sono più di una pagina il conteggio è parziale e
+   * si scrive «N+». Lacuna del backend: manca un contatore per cliente/contratto. Se la chiamata
+   * fallisce la colonna resta vuota.
+   */
+  private caricaDaCollegare(): void {
+    this.annullaDaCollegare.next()
+    this.legami
+      .lista({ dimensione: PAGINA_DA_COLLEGARE })
+      .pipe(takeUntil(this.annullaDaCollegare), takeUntil(this.distrutto))
+      .subscribe({
+        next: p => {
+          const conteggi = new Map<string, number>()
+          for (const r of p.elementi) {
+            if (r.cliente) conteggi.set(r.cliente.id, (conteggi.get(r.cliente.id) ?? 0) + 1)
+          }
+          this.perCliente.set({ conteggi, parziale: p.totale > p.elementi.length })
+        },
+        error: () => this.perCliente.set({ conteggi: new Map(), parziale: false }),
+      })
+  }
+
+  /** Testo del contatore del cliente, o null se non ha movimenti da collegare. */
+  daCollegarePer(clienteId: string): { testo: string } | null {
+    const { conteggi, parziale } = this.perCliente()
+    const n = conteggi.get(clienteId) ?? 0
+    return n === 0 ? null : { testo: parziale ? `${n}+` : String(n) }
   }
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {

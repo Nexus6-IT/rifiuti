@@ -15,6 +15,8 @@ import {
   StatoContrattoCliente,
 } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
+import { LegamiService } from '../legami/legami.service'
+import { RigaLista } from '../legami/legami.model'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
 import {
   accettaConferma,
@@ -100,6 +102,7 @@ const codifica = (
 describe('ContrattiClienteListComponent', () => {
   let fixture: ComponentFixture<ContrattiClienteListComponent>
   let list: jasmine.Spy
+  let listaLegami: jasmine.Spy
   let get: jasmine.Spy
   let cambiaStato: jasmine.Spy
   let rinnova: jasmine.Spy
@@ -118,6 +121,7 @@ describe('ContrattiClienteListComponent', () => {
 
   beforeEach(() => {
     list = jasmine.createSpy('list')
+    listaLegami = jasmine.createSpy('lista').and.returnValue(of({ elementi: [], totale: 0 }))
     get = jasmine.createSpy('get')
     cambiaStato = jasmine.createSpy('cambiaStato').and.returnValue(of(contratto()))
     rinnova = jasmine.createSpy('rinnova').and.returnValue(of(contratto()))
@@ -144,6 +148,7 @@ describe('ContrattiClienteListComponent', () => {
             clienti: { list: () => of({ elementi: [], totale: 0 }) },
           },
         },
+        { provide: LegamiService, useValue: { lista: listaLegami } },
         { provide: TabelleFatturazioneService, useValue: { codifiche: { list: codifiche } } },
         { provide: ToastService, useValue: toast },
         MessageService,
@@ -165,6 +170,49 @@ describe('ContrattiClienteListComponent', () => {
     })
   })
   afterEach(() => fixture?.destroy())
+
+  describe('contatore «da collegare»', () => {
+    const rigaLegame = (cliente: string | null): RigaLista =>
+      ({
+        movimentoId: 'm',
+        stato: 'MANCANTE',
+        cliente: cliente && { id: cliente, etichetta: 'X' },
+      }) as RigaLista
+
+    it('una sola chiamata alla lista dei legami e il contatore per cliente', async () => {
+      listaLegami.and.returnValue(
+        of({
+          elementi: [rigaLegame('cl1'), rigaLegame('cl1'), rigaLegame('cl9'), rigaLegame(null)],
+          totale: 4,
+        })
+      )
+      await apri('ADMIN', pagina(contratto(), contratto({ id: 'cc2' })))
+      expect(listaLegami).toHaveBeenCalledTimes(1)
+      expect(listaLegami.calls.mostRecent().args[0]).toEqual({ dimensione: 200 })
+      expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('2')
+      expect(q('contratti-da-collegare-cc2')!.textContent!.trim()).toBe('2')
+      expect(q('contratti-da-collegare-cc1')!.getAttribute('href')).toBe('/legami/da-collegare')
+    })
+
+    it('cliente senza movimenti: nessun contatore', async () => {
+      listaLegami.and.returnValue(of({ elementi: [rigaLegame('cl9')], totale: 1 }))
+      await apri()
+      expect(q('contratti-da-collegare-cc1')).toBeNull()
+    })
+
+    it('più movimenti della pagina: conteggio parziale «N+»', async () => {
+      listaLegami.and.returnValue(of({ elementi: [rigaLegame('cl1')], totale: 500 }))
+      await apri()
+      expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('1+')
+    })
+
+    it('errore della lista: la colonna resta vuota e la pagina funziona', async () => {
+      listaLegami.and.returnValue(throwError(() => ({ status: 500 })))
+      await apri()
+      expect(q('contratti-da-collegare-cc1')).toBeNull()
+      expect(q('contratti-riga-cc1')).toBeTruthy()
+    })
+  })
 
   describe('elenco', () => {
     it('titolo e colonne: numero, cliente, descrizione, categoria, stato, inizio, fine, prossima fatturazione', async () => {
@@ -607,20 +655,20 @@ describe('ContrattiClienteListComponent', () => {
       expect(intest).not.toContain('Azioni')
     })
 
-    it('colspan del vuoto per l’ADMIN: 11 colonne (scelta e azioni)', async () => {
+    it('colspan del vuoto per l’ADMIN: 12 colonne (scelta e azioni)', async () => {
       await apri('ADMIN', pagina())
       expect(q('contratti-listino-cc1')).toBeNull()
+      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('12')
+    })
+
+    it('colspan del vuoto per chi scrive senza variare: 11 colonne', async () => {
+      await apri('OPERATOR', pagina())
       expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('11')
     })
 
-    it('colspan del vuoto per chi scrive senza variare: 10 colonne', async () => {
-      await apri('OPERATOR', pagina())
-      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('10')
-    })
-
-    it('colspan del vuoto per il VIEWER: 9 colonne', async () => {
+    it('colspan del vuoto per il VIEWER: 10 colonne', async () => {
       await apri('VIEWER', pagina())
-      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('9')
+      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('10')
     })
 
     it('azione Listino anche per chi scrive', async () => {

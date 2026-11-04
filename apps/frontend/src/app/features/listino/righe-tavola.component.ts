@@ -77,16 +77,23 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
               (onClick)="apri.emit(r)"
               [attr.data-testid]="'listino-apri-' + r.id"
             />
-            <p-button
+            <!-- Disabilitato, non nascosto: una riga usata dai legami resta chiusa/disattivata da "Apri". -->
+            <span
               *ngIf="puoEliminare"
-              icon="pi pi-trash"
-              severity="danger"
-              [text]="true"
-              size="small"
-              [ariaLabel]="'Elimina la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
-              (onClick)="elimina.emit(r)"
-              [attr.data-testid]="'listino-elimina-riga-' + r.id"
-            />
+              [attr.title]="r.eliminabile ? null : MOTIVO_IN_USO"
+              [attr.data-testid]="'listino-elimina-riga-tip-' + r.id"
+            >
+              <p-button
+                icon="pi pi-trash"
+                severity="danger"
+                [text]="true"
+                size="small"
+                [disabled]="!r.eliminabile"
+                [ariaLabel]="'Elimina la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
+                (onClick)="elimina.emit(r)"
+                [attr.data-testid]="'listino-elimina-riga-' + r.id"
+              />
+            </span>
           </td>
         </tr>
       </ng-template>
@@ -127,6 +134,8 @@ export class RigheTavolaComponent {
   @Input() puoEliminare = false
   @Output() apri = new EventEmitter<RigaAddebito>()
   @Output() elimina = new EventEmitter<RigaAddebito>()
+
+  readonly MOTIVO_IN_USO = 'In uso: la riga è citata da movimenti'
 
   /** Fisso: quantità fissa (vuota = 1); `CER`/`V`: etichetta del tipo di quantità (E15). */
   quantita(r: RigaAddebito): string {
