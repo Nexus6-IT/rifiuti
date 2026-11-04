@@ -108,6 +108,7 @@ import {
   testoEsitoVerifica,
 } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { AriaInternoDirective } from '../../shared/directives/aria-interno.directive'
 import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import {
@@ -153,6 +154,7 @@ function fineGiornata(d: Date): Date {
     CalendarModule,
     InputNumberModule,
     NumeroItalianoDirective,
+    AriaInternoDirective,
     InputTextModule,
     InputTextareaModule,
     DropdownModule,
@@ -817,8 +819,8 @@ function fineGiornata(d: Date): Date {
                     locale="it-IT"
                     ariaRequired="true"
                     [styleClass]="hasError('quantity') ? 'w-full p-invalid' : 'w-full'"
-                    [attr.aria-invalid]="hasError('quantity') ? true : null"
-                    [attr.aria-describedby]="hasError('quantity') ? 'qta-err' : null"
+                    [appAriaInterno]="hasError('quantity')"
+                    [ariaDescrittoDa]="hasError('quantity') ? 'qta-err' : null"
                   ></p-inputNumber>
                   <small *ngIf="hasError('quantity')" id="qta-err" class="field-error" role="alert"
                     >Indica una quantità maggiore di zero.</small
@@ -995,6 +997,15 @@ function fineGiornata(d: Date): Date {
         </form>
 
         <ng-template pTemplate="footer">
+          <p
+            id="registra-senza-collegare-motivo"
+            class="footer-motivo"
+            role="status"
+            *ngIf="senzaCollegareBloccato"
+          >
+            «Registra senza collegare» è disattivato: correggi prima i campi in errore nella tabella
+            delle righe del blocco «Fatturazione».
+          </p>
           <p-button
             label="Annulla"
             [text]="true"
@@ -1006,7 +1017,9 @@ function fineGiornata(d: Date): Date {
               label="Registra senza collegare"
               [outlined]="true"
               [loading]="saving()"
-              [disabled]="bloccoInAttesa"
+              [disabled]="bloccoInAttesa || senzaCollegareBloccato"
+              [appAriaInterno]="false"
+              [ariaDescrittoDa]="senzaCollegareBloccato ? 'registra-senza-collegare-motivo' : null"
               (onClick)="salva('PROPOSTA')"
               data-testid="registra-senza-collegare"
             ></p-button>
@@ -1498,6 +1511,14 @@ export class RegistroComponent implements OnInit {
   legame: DatiLegameRegistrazione | null = null
   /** Falso se un campo del blocco è in errore: la registrazione aspetta. */
   bloccoFatturazioneValido = true
+
+  /**
+   * Un campo della tabella delle righe e' in errore: anche «Registra senza collegare» manderebbe
+   * valori diversi da quelli che l'utente vede. Il pulsante si disattiva e dice perche'.
+   */
+  get senzaCollegareBloccato(): boolean {
+    return this.bloccoStato.visibile && !!this.legame && !this.bloccoFatturazioneValido
+  }
   /** Vero mentre il blocco aggiorna la proposta: il `legame` emesso sarebbe superato. */
   bloccoInAttesa = false
   /** Blocco visibile e conferma possibile: decidono i pulsanti del footer. */

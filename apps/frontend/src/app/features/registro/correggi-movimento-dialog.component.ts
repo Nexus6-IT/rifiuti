@@ -71,6 +71,7 @@ import {
 } from './registro-opzioni'
 import { numeroAnnotazione } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { AriaInternoDirective } from '../../shared/directives/aria-interno.directive'
 
 const ERRORE_LETTURA = Symbol('errore-lettura-legame')
 
@@ -111,6 +112,7 @@ export function messaggioErroreCorrezione(err: any): string {
     DropdownModule,
     InputNumberModule,
     NumeroItalianoDirective,
+    AriaInternoDirective,
     InputTextModule,
     InputTextareaModule,
     CerSelectComponent,
@@ -309,6 +311,14 @@ export function messaggioErroreCorrezione(err: any): string {
                   <small *ngIf="errore('cerCode')" class="field-error" role="alert"
                     >Il codice CER è obbligatorio.</small
                   >
+                  <!-- Promemoria vicino al campo: l'avviso completo e' in cima alla finestra. -->
+                  <small
+                    *ngIf="modo === 'rettifica' && cerCambiato()"
+                    class="field-hint field-hint--cer"
+                    data-testid="correzione-cer-cambiato-campo"
+                    ><i class="pi pi-exclamation-triangle" aria-hidden="true"></i> Cambiando il CER
+                    il legame torna «Proposto» e va riconfermato.</small
+                  >
                 </div>
               </div>
 
@@ -489,6 +499,14 @@ export function messaggioErroreCorrezione(err: any): string {
           ></p-button>
         </ng-container>
         <ng-template #azioni>
+          <p
+            id="correzione-invia-motivo"
+            class="footer-motivo"
+            role="status"
+            *ngIf="modo === 'rettifica' && campiInErrore"
+          >
+            «Rettifica» è disattivato: correggi prima i campi in errore nella tabella delle righe.
+          </p>
           <p-button
             label="Chiudi"
             [text]="true"
@@ -498,7 +516,11 @@ export function messaggioErroreCorrezione(err: any): string {
           ></p-button>
           <p-button
             [outlined]="modo === 'rettifica' && bloccoStato.visibile"
-            [disabled]="modo === 'rettifica' && bloccoInAttesa"
+            [disabled]="modo === 'rettifica' && (bloccoInAttesa || campiInErrore)"
+            [appAriaInterno]="false"
+            [ariaDescrittoDa]="
+              modo === 'rettifica' && campiInErrore ? 'correzione-invia-motivo' : null
+            "
             [label]="modo === 'rettifica' ? 'Rettifica' : 'Annulla il movimento'"
             icon="pi pi-check"
             [severity]="modo === 'annullamento' ? 'danger' : 'primary'"
@@ -607,6 +629,19 @@ export function messaggioErroreCorrezione(err: any): string {
       .legame-attuale {
         margin: 0 0 var(--spacing-base);
       }
+      .field-hint--cer {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
+      .field-hint--cer i {
+        color: var(--color-warning);
+      }
+      /* Il maiuscolo vale per il titolo, non per il tag di stato («Confermato», non «CONFERMATO»). */
+      .legame-attuale__titolo ::ng-deep .p-tag {
+        text-transform: none;
+        letter-spacing: normal;
+      }
       .legame-attuale__titolo {
         display: flex;
         align-items: center;
@@ -676,6 +711,11 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   sceltaLegame: SceltaLegame | null = null
   legame: DatiLegameRegistrazione | null = null
   bloccoValido = true
+
+  /** Un campo della tabella delle righe e' in errore e c'e' un legame da mandare. */
+  get campiInErrore(): boolean {
+    return this.modo === 'rettifica' && !!this.legame && !this.bloccoValido
+  }
   bloccoInAttesa = false
   bloccoStato: StatoBlocco = { visibile: false, confermabile: false }
   /** Azione scelta con il pulsante: serve anche al reinvio dopo la conferma MUD. */

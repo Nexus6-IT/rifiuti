@@ -172,6 +172,8 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
     fixture.componentInstance.form.patchValue({ cerCode: '17 04 02' })
     aggiorna()
     expect(testo('correzione-cer-cambiato')).toContain('serve una nuova conferma')
+    // m1: promemoria anche sotto il campo CER
+    expect(testo('correzione-cer-cambiato-campo')).toContain('riconfermato')
     tick(ATTESA_PROPOSTA_MS)
     aggiorna()
     expect(legami.proposta).toHaveBeenCalledTimes(1)
@@ -181,6 +183,7 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
     fixture.componentInstance.form.patchValue({ cerCode: '17 04 05' })
     aggiorna()
     expect(q('correzione-cer-cambiato')).toBeNull()
+    expect(q('correzione-cer-cambiato-campo')).toBeNull()
     tick(ATTESA_PROPOSTA_MS)
   }))
 

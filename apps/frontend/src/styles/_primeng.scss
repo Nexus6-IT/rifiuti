@@ -302,6 +302,18 @@ textarea.p-inputtext {
   background: transparent !important;
   box-shadow: none;
 }
+/* Con la «x» per cancellare (`showClear`) il testo non deve passarle sotto: spazio a destra per la
+   «x» (e la freccia) e ellissi sul testo lungo (es. un contratto con numero e cliente). */
+.p-dropdown.p-dropdown-clearable .p-dropdown-label {
+  padding-right: 4.25rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.p-dropdown.p-dropdown-clearable .p-dropdown-clear-icon {
+  right: 2.75rem;
+}
 .p-dropdown .p-dropdown-trigger,
 .p-multiselect .p-multiselect-trigger {
   width: 2.5rem;
@@ -510,8 +522,17 @@ label {
   padding: var(--spacing-base) var(--spacing-lg);
   border-top: 1px solid var(--surface-border);
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--spacing-md);
+}
+/* Motivo per cui un'azione del piede e' disattivata: occupa tutta la riga sopra i pulsanti. */
+.p-dialog .p-dialog-footer .footer-motivo {
+  flex: 1 1 100%;
+  margin: 0;
+  text-align: right;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 .p-dialog .p-dialog-content,
 .p-dialog .p-dialog-footer {
@@ -525,6 +546,11 @@ label {
   .p-dialog .p-dialog-footer {
     flex-direction: column-reverse;
     align-items: stretch;
+  }
+  /* In colonna inversa il primo elemento sta in fondo: il motivo va in cima ai pulsanti. */
+  .p-dialog .p-dialog-footer .footer-motivo {
+    order: 99;
+    text-align: left;
   }
   .p-dialog .p-dialog-footer p-button,
   .p-dialog .p-dialog-footer .p-button {

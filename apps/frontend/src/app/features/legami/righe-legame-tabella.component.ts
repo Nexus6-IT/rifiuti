@@ -14,6 +14,7 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { TagModule } from 'primeng/tag'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { AriaInternoDirective } from '../../shared/directives/aria-interno.directive'
 import {
   formatCascata,
   formatNumero,
@@ -60,9 +61,18 @@ export function numeroComeStringa(n: number): string {
     InputTextModule,
     TagModule,
     NumeroItalianoDirective,
+    AriaInternoDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <p
+      class="scorri-hint"
+      aria-hidden="true"
+      *ngIf="righe.length > 0"
+      data-testid="righe-scorri-hint"
+    >
+      <i class="pi pi-arrows-h"></i> Scorri di lato per vedere tutte le colonne
+    </p>
     <div class="tabella-scroll" *ngIf="righe.length > 0">
       <table class="righe-legame" data-testid="righe-legame">
         <caption class="sr-only">
@@ -104,12 +114,16 @@ export function numeroComeStringa(n: number): string {
                   locale="it-IT"
                   [ariaLabel]="'Quantità di ' + (r.descrizione || r.tipo)"
                   styleClass="campo-riga"
+                  [inputStyleClass]="errore(r, 'quantita') ? 'p-invalid' : ''"
+                  [appAriaInterno]="!!errore(r, 'quantita')"
+                  [ariaDescrittoDa]="errore(r, 'quantita') ? idErrore(r, 'quantita') : null"
                 ></p-inputNumber>
                 <span class="unita">{{ r.unitaMisura }}</span>
                 <small
                   *ngIf="errore(r, 'quantita') as e"
                   class="field-error p-error block"
                   role="alert"
+                  [id]="idErrore(r, 'quantita')"
                   [attr.data-testid]="'errore-qta-' + r.rigaAddebitoId"
                   >{{ e }}</small
                 >
@@ -139,11 +153,15 @@ export function numeroComeStringa(n: number): string {
                     locale="it-IT"
                     [ariaLabel]="'Prezzo di ' + (r.descrizione || r.tipo)"
                     styleClass="campo-riga"
+                    [inputStyleClass]="errore(r, 'prezzo') ? 'p-invalid' : ''"
+                    [appAriaInterno]="!!errore(r, 'prezzo')"
+                    [ariaDescrittoDa]="errore(r, 'prezzo') ? idErrore(r, 'prezzo') : null"
                   ></p-inputNumber>
                   <small
                     *ngIf="errore(r, 'prezzo') as e"
                     class="field-error p-error block"
                     role="alert"
+                    [id]="idErrore(r, 'prezzo')"
                     [attr.data-testid]="'errore-prezzo-' + r.rigaAddebitoId"
                     >{{ e }}</small
                   >
@@ -170,13 +188,16 @@ export function numeroComeStringa(n: number): string {
                   [value]="testoSconto(r)"
                   (input)="alCambioSconto(r, $any($event.target).value)"
                   [attr.aria-label]="'Sconto di ' + (r.descrizione || r.tipo)"
+                  [class.p-invalid]="!!errore(r, 'sconto')"
                   [attr.aria-invalid]="errore(r, 'sconto') ? 'true' : null"
+                  [attr.aria-describedby]="errore(r, 'sconto') ? idErrore(r, 'sconto') : null"
                   placeholder="es. 10+5"
                 />
                 <small
                   *ngIf="errore(r, 'sconto') as e"
                   class="field-error p-error block"
                   role="alert"
+                  [id]="idErrore(r, 'sconto')"
                   [attr.data-testid]="'errore-sconto-' + r.rigaAddebitoId"
                   >{{ e }}</small
                 >
@@ -203,6 +224,33 @@ export function numeroComeStringa(n: number): string {
       .tabella-scroll {
         position: relative;
         overflow-x: auto;
+        /* Ombre ai bordi che compaiono solo dove c'e' altro da scorrere (trucco background-attachment). */
+        background:
+          linear-gradient(to right, var(--surface-section, #fff) 30%, transparent) left center /
+            2rem 100% no-repeat local,
+          linear-gradient(to left, var(--surface-section, #fff) 30%, transparent) right center /
+            2rem 100% no-repeat local,
+          radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.28), transparent) left center /
+            0.6rem 100% no-repeat scroll,
+          radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.28), transparent) right
+            center / 0.6rem 100% no-repeat scroll;
+      }
+      /* Indicazione visibile dello scorrimento: solo dove le colonne possono non entrare. */
+      .scorri-hint {
+        display: none;
+        margin: 0 0 0.35rem;
+        font-size: var(--font-size-xs, 0.75rem);
+        color: var(--text-secondary, #59615c);
+      }
+      @media (max-width: 600px) {
+        .scorri-hint {
+          display: block;
+        }
+      }
+      .field-error {
+        font-size: var(--font-size-xs, 0.75rem);
+        font-weight: var(--font-weight-medium, 500);
+        color: var(--color-danger, #b42318);
       }
       .righe-legame {
         width: 100%;
@@ -287,6 +335,11 @@ export class RigheLegameTabellaComponent implements OnChanges {
   }
 
   perId = (_: number, r: RigaLegame): string => r.rigaAddebitoId
+
+  /** Id del messaggio d'errore di un campo (legato al campo con `aria-describedby`). */
+  idErrore(r: RigaLegame, campo: CampoRiga): string {
+    return `errore-${campo}-${r.rigaAddebitoId}`
+  }
 
   numero(v: string | null): number | null {
     return v === null || v === undefined || v === '' ? null : Number(v)

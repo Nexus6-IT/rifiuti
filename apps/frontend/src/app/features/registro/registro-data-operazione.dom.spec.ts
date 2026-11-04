@@ -27,7 +27,6 @@ const registro: RegistroVista = {
   principale: true,
 }
 
-
 const attendi = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms))
 
 /** Data di oggi come la mostra il campo («gg/mm/aaaa»). */
@@ -132,7 +131,7 @@ describe('Registro - Data operazione precompilata all apertura', () => {
     expect(c.form.get('movementDate')!.value instanceof Date).toBeTrue()
   })
 
-  it('riaprendo il form dopo averlo chiuso la data e\' di nuovo oggi', async () => {
+  it("riaprendo il form dopo averlo chiuso la data e' di nuovo oggi", async () => {
     const c = await creaEApri()
     c.chiudiForm()
     fixture.detectChanges()
