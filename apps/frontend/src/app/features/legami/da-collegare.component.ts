@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common'
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
-import { switchMap } from 'rxjs/operators'
+import { Subject, of } from 'rxjs'
+import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
@@ -127,6 +128,7 @@ interface OpzioneId {
             (ngModelChange)="clienteId = $event; applica()"
             [showClear]="true"
             [filter]="true"
+            (onFilter)="cercaClienti($event.filter ?? '')"
             placeholder="Tutti"
             data-testid="filtro-cliente"
           />
@@ -185,6 +187,10 @@ interface OpzioneId {
           />
         </div>
       </div>
+
+      <p *ngIf="erroreClienti() as e" role="alert" class="field-error" data-testid="clienti-errore">
+        {{ e }}
+      </p>
 
       <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="legami-errore">
         {{ e }}
@@ -392,6 +398,7 @@ interface OpzioneId {
         [legame]="aperto()"
         [puoScrivere]="permessi().scrive"
         [clienti]="opzioniClienti()"
+        (cercaCliente)="cercaClienti($event)"
         (aggiornato)="dopoAggiornamento($event)"
         (chiuso)="chiudiLegame()"
       />
@@ -447,6 +454,8 @@ export class DaCollegareComponent implements OnInit {
   readonly esito = signal<({ azione: 'CONFERMA' | 'ESCLUDI' } & EsitoAzioneMassa) | null>(null)
   readonly aperto = signal<LegameVista | null>(null)
   readonly opzioniClienti = signal<OpzioneId[]>([])
+  readonly erroreClienti = signal<string | null>(null)
+  private readonly ricercaClienti = new Subject<string>()
   readonly opzioniRegistri = signal<OpzioneId[]>([])
 
   /** Selezione per movimento: attraversa le pagine. */
@@ -482,13 +491,13 @@ export class DaCollegareComponent implements OnInit {
   ngOnInit(): void {
     this.carica()
     // I menu dei filtri sono un di più: se non si caricano la lista funziona lo stesso.
-    this.clienti.clienti.list({ dimensione: 200, soloAttivi: false }).subscribe({
-      next: p =>
-        this.opzioniClienti.set(
-          p.elementi.map(c => ({ label: c.ditta.ragioneSociale, value: c.id }))
-        ),
-      error: () => this.opzioniClienti.set([]),
-    })
+    this.ricercaClienti
+      .pipe(
+        debounceTime(300),
+        switchMap(testo => this.leggiClienti(testo))
+      )
+      .subscribe(o => this.impostaClienti(o))
+    this.leggiClienti('').subscribe(o => this.impostaClienti(o))
     this.registri.listRegistri().subscribe({
       next: r =>
         this.opzioniRegistri.set(
@@ -496,6 +505,33 @@ export class DaCollegareComponent implements OnInit {
         ),
       error: () => this.opzioniRegistri.set([]),
     })
+  }
+
+  /** Ricerca sul server: solo clienti attivi, al massimo 25 (il backend accetta fino a 100). */
+  private leggiClienti(testo: string) {
+    this.erroreClienti.set(null)
+    const t = testo.trim()
+    return this.clienti.clienti
+      .list({ ...(t ? { testo: t } : {}), soloAttivi: true, dimensione: 25 })
+      .pipe(
+        switchMap(p =>
+          of(p.elementi.map(c => ({ label: c.ditta.ragioneSociale, value: c.id })) as OpzioneId[])
+        ),
+        catchError(() => {
+          this.erroreClienti.set('Impossibile caricare i clienti: riprova a cercare.')
+          return of(null)
+        })
+      )
+  }
+
+  private impostaClienti(o: OpzioneId[] | null): void {
+    // Con un errore il menu resta com'era; il messaggio lo dice.
+    if (o !== null) this.opzioniClienti.set(o)
+  }
+
+  /** Testo del filtro del menu cliente (pagina e dialog): ricerca sul server con attesa di 300 ms. */
+  cercaClienti(testo: string): void {
+    this.ricercaClienti.next(testo)
   }
 
   /** Filtri per il backend: «Esclusi» mostra solo gli esclusi (per riammetterli). */
@@ -689,9 +725,11 @@ export class DaCollegareComponent implements OnInit {
     this.inCorso.set(true)
     const lettura =
       scrive && daCreare
-        ? this.servizio
-            .daMovimento(r.movimentoId)
-            .pipe(switchMap(l => this.servizio.dettaglio(l.id)))
+        ? this.servizio.daMovimento(r.movimentoId).pipe(
+            // Il legame ora esiste: anche se `dettaglio` fallisce la lista va riletta.
+            tap(() => (this.ricaricaAllaChiusura = true)),
+            switchMap(l => this.servizio.dettaglio(l.id))
+          )
         : this.servizio.dettaglio(r.legameId!)
     lettura.subscribe({
       next: l => {
@@ -701,6 +739,8 @@ export class DaCollegareComponent implements OnInit {
       },
       error: err => {
         this.inCorso.set(false)
+        // `chiudiLegame` rilegge la lista (e azzera l'errore): il messaggio va scritto dopo.
+        if (this.ricaricaAllaChiusura) this.chiudiLegame()
         this.errore.set(leggiErroriAzione(err, 'Impossibile aprire il legame.').messaggi.join(' '))
       },
     })

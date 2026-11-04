@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
@@ -48,6 +48,7 @@ describe('DaCollegareComponent (DOM)', () => {
   let fixture: ComponentFixture<DaCollegareComponent>
   let servizio: jasmine.SpyObj<LegamiService>
   let fatturazione: jasmine.SpyObj<ImpostazioneFatturazioneService>
+  let listaClienti: jasmine.Spy
 
   async function crea(ruolo: string, righe: RigaLista[], totale = righe.length): Promise<void> {
     servizio = jasmine.createSpyObj('LegamiService', [
@@ -59,6 +60,11 @@ describe('DaCollegareComponent (DOM)', () => {
       'aggiornaContatori',
     ])
     servizio.lista.and.returnValue(of({ elementi: righe, totale }))
+    listaClienti = jasmine
+      .createSpy('list')
+      .and.returnValue(
+        of({ elementi: [{ id: 'c1', ditta: { ragioneSociale: 'Rossi Srl' } }], totale: 1 })
+      )
     fatturazione = jasmine.createSpyObj('ImpostazioneFatturazioneService', ['leggi'])
     fatturazione.leggi.and.returnValue(
       of({ fatturazioneDa: '2026-01-01', versione: 1, modificatoIl: null })
@@ -71,7 +77,7 @@ describe('DaCollegareComponent (DOM)', () => {
         { provide: ImpostazioneFatturazioneService, useValue: fatturazione },
         {
           provide: ClientiService,
-          useValue: { clienti: { list: () => of({ elementi: [], totale: 0 }) } },
+          useValue: { clienti: { list: listaClienti } },
         },
         { provide: RegistroService, useValue: { listRegistri: () => of([]) } },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
@@ -324,5 +330,57 @@ describe('DaCollegareComponent (DOM)', () => {
     c.dispatchEvent(new Event('change', { bubbles: true }))
     await stabilizza(fixture)
     expect(fixture.componentInstance.selezionate()).toBe(0)
+  })
+
+  it('clienti: la prima lettura chiede solo attivi con dimensione entro il limite del backend (100)', async () => {
+    await crea('OPERATOR', [riga(1)])
+    const arg = listaClienti.calls.first().args[0]
+    expect(arg.soloAttivi).toBeTrue()
+    expect(arg.dimensione).toBeLessThanOrEqual(100)
+    expect('testo' in arg).toBeFalse()
+    expect(fixture.componentInstance.opzioniClienti()).toEqual([
+      { label: 'Rossi Srl', value: 'c1' },
+    ])
+  })
+
+  it('clienti: la ricerca digitata va al server con `testo`, dopo l’attesa', async () => {
+    await crea('OPERATOR', [riga(1)])
+    listaClienti.calls.reset()
+    await fakeAsync(async () => {
+      fixture.componentInstance.cercaClienti('ros')
+      fixture.componentInstance.cercaClienti('rossi')
+      tick(100)
+      expect(listaClienti).not.toHaveBeenCalled()
+      tick(300)
+    })()
+    expect(listaClienti).toHaveBeenCalledTimes(1)
+    expect(listaClienti.calls.mostRecent().args[0]).toEqual({
+      testo: 'rossi',
+      soloAttivi: true,
+      dimensione: 25,
+    })
+  })
+
+  it('clienti: se la chiamata fallisce compare un errore e il menu resta com’era', async () => {
+    await crea('OPERATOR', [riga(1)])
+    listaClienti.and.returnValue(throwError(() => ({ status: 400 })))
+    await fakeAsync(async () => {
+      fixture.componentInstance.cercaClienti('x')
+      tick(400)
+    })()
+    await stabilizza(fixture)
+    expect(q('clienti-errore')?.textContent).toContain('Impossibile caricare i clienti')
+    expect(fixture.componentInstance.opzioniClienti().length).toBe(1)
+  })
+
+  it('daMovimento riesce ma dettaglio fallisce: la lista si rilegge e l’errore resta visibile', async () => {
+    await crea('OPERATOR', [riga(2, { stato: 'MANCANTE', legameId: null, versione: null })])
+    servizio.daMovimento.and.returnValue(of(legameVuoto))
+    servizio.dettaglio.and.returnValue(throwError(() => ({ status: 500 })))
+    servizio.lista.calls.reset()
+    bottone('apri-m2')!.click()
+    await stabilizza(fixture)
+    expect(servizio.lista).toHaveBeenCalledTimes(1)
+    expect(q('legami-errore')).not.toBeNull()
   })
 })

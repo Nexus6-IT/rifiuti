@@ -189,8 +189,9 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
               optionLabel="label"
               optionValue="value"
               [ngModel]="clienteId"
-              (ngModelChange)="clienteId = $event; alCambioCliente()"
+              (ngModelChange)="scegliCliente($event)"
               [filter]="true"
+              (onFilter)="cercaCliente.emit($event.filter ?? '')"
               placeholder="Scegli il cliente"
               styleClass="w-full"
               data-testid="legame-cliente-scelta"
@@ -264,6 +265,20 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
                   [attr.data-testid]="'legame-badge-manuale-' + i"
                 />
                 <small *ngIf="f.riga.prezzoSpeciale" class="cell-sub">prezzo speciale</small>
+                <small
+                  *ngIf="eRimossa(f)"
+                  class="cell-sub"
+                  [attr.data-testid]="'legame-rimossa-' + i"
+                  >da rimuovere</small
+                >
+                <p-button
+                  *ngIf="righeModificabili()"
+                  [label]="eRimossa(f) ? 'Ripristina' : 'Rimuovi'"
+                  [text]="true"
+                  size="small"
+                  (onClick)="alternaRimozione(f)"
+                  [attr.data-testid]="'legame-rimuovi-' + i"
+                />
               </td>
               <td class="num-col">
                 <p-inputNumber
@@ -344,6 +359,15 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
             </tr>
           </tbody>
         </table>
+
+        <p
+          *ngIf="righeModificabili() && senzaRighe()"
+          class="field-error"
+          role="alert"
+          data-testid="legame-senza-righe"
+        >
+          Un legame deve avere almeno una riga.
+        </p>
 
         <section
           *ngIf="righeModificabili() && (righeDisponibili().length || aggiunte.length)"
@@ -483,8 +507,10 @@ export class LegameDialogComponent implements OnChanges {
   /** Il legame da mostrare; `null` = finestra chiusa. Dopo «Ricarica» vale `corrente`. */
   @Input() legame: LegameVista | null = null
   @Input() puoScrivere = false
-  /** Clienti scegliibili (l'elenco lo carica la pagina). */
+  /** Clienti scelti: li carica la pagina, con una ricerca sul server (`cercaCliente`). */
   @Input() clienti: { label: string; value: string }[] = []
+  /** Testo digitato nel filtro del menu cliente: la pagina rilegge i clienti attivi che lo contengono. */
+  @Output() cercaCliente = new EventEmitter<string>()
   /** Dopo un salvataggio o una conferma riusciti: il legame aggiornato. */
   @Output() aggiornato = new EventEmitter<{ legame: LegameVista; confermato: boolean }>()
   @Output() chiuso = new EventEmitter<void>()
@@ -497,6 +523,10 @@ export class LegameDialogComponent implements OnChanges {
   elencoId: string | null = null
   /** Righe dell'elenco aggiunte al legame (solo con le scelte invariate). */
   aggiunte: VoceScelta[] = []
+  /** Righe del legame da togliere (`rimuovi: true`), solo con le scelte invariate. */
+  private rimosse = new Set<string>()
+  /** Cliente appena scelto: resta nel menu anche se la ricerca successiva non lo restituisce. */
+  private clienteScelto: { label: string; value: string } | null = null
   rigaDaAggiungere: string | null = null
   readonly errori = signal<string[]>([])
   readonly serveRicarica = signal(false)
@@ -524,6 +554,8 @@ export class LegameDialogComponent implements OnChanges {
     this.contrattoId = l?.contratto?.id ?? null
     this.elencoId = l?.elenco?.id ?? null
     this.aggiunte = []
+    this.rimosse = new Set()
+    this.clienteScelto = null
     this.rigaDaAggiungere = null
     this.forms = (l?.righe ?? []).map(riga => ({
       riga,
@@ -545,10 +577,16 @@ export class LegameDialogComponent implements OnChanges {
 
   /** Clienti del menu, con quello attuale anche se non è fra i primi caricati. */
   opzioniClienti(): { label: string; value: string }[] {
-    const c = this.corrente()?.cliente
-    return c && !this.clienti.some(x => x.value === c.id)
-      ? [{ label: c.etichetta, value: c.id }, ...this.clienti]
-      : this.clienti
+    const attuale = this.corrente()?.cliente
+    const extra = [
+      ...(attuale ? [{ label: attuale.etichetta, value: attuale.id }] : []),
+      ...(this.clienteScelto ? [this.clienteScelto] : []),
+    ].filter(
+      (x, i, tutti) =>
+        !this.clienti.some(c => c.value === x.value) &&
+        tutti.findIndex(y => y.value === x.value) === i
+    )
+    return [...extra, ...this.clienti]
   }
 
   opzioniContratti() {
@@ -605,12 +643,44 @@ export class LegameDialogComponent implements OnChanges {
     )
   }
 
+  eRimossa(f: RigaForm): boolean {
+    return this.rimosse.has(f.riga.rigaAddebitoId)
+  }
+
+  alternaRimozione(f: RigaForm): void {
+    const id = f.riga.rigaAddebitoId
+    const n = new Set(this.rimosse)
+    if (n.has(id)) n.delete(id)
+    else n.add(id)
+    this.rimosse = n
+    this.errori.set([])
+  }
+
+  /** Un legame deve avere almeno una riga (`RIGHE_VUOTE` del backend). */
+  senzaRighe(): boolean {
+    return (
+      this.rimosse.size > 0 &&
+      this.forms.every(f => this.rimosse.has(f.riga.rigaAddebitoId)) &&
+      this.aggiunte.length === 0
+    )
+  }
+
   /** Quantità, prezzo o sconto non validi bloccano i pulsanti (solo se le righe sono modificabili). */
   valido(): boolean {
     if (!this.righeModificabili()) return true
-    return this.forms.every(
-      f => erroreQuantita(f) === null && errorePrezzo(f) === null && erroreSconto(f.sconto) === null
-    )
+    if (this.senzaRighe()) return false
+    return this.forms
+      .filter(f => !this.eRimossa(f))
+      .every(
+        f =>
+          erroreQuantita(f) === null && errorePrezzo(f) === null && erroreSconto(f.sconto) === null
+      )
+  }
+
+  scegliCliente(id: string | null): void {
+    this.clienteId = id
+    this.clienteScelto = this.clienti.find(c => c.value === id) ?? this.clienteScelto
+    this.alCambioCliente()
   }
 
   /** Nuovo cliente: contratto ed elenco si azzerano (i candidati erano del cliente vecchio). */
@@ -654,8 +724,11 @@ export class LegameDialogComponent implements OnChanges {
     if (this.clienteCambiato()) return { clienteId: this.clienteId! }
     if (this.contrattoCambiato()) return { contrattoId: this.contrattoId! }
     if (this.elencoCambiato()) return { elencoId: this.elencoId! }
-    const righe = [
-      ...righeModificate(this.forms),
+    const righe: ModificaRigaLegame[] = [
+      ...righeModificate(this.forms.filter(f => !this.eRimossa(f))),
+      ...this.forms
+        .filter(f => this.eRimossa(f))
+        .map(f => ({ rigaAddebitoId: f.riga.rigaAddebitoId, rimuovi: true })),
       ...this.aggiunte.map(r => ({ rigaAddebitoId: r.id })),
     ]
     return righe.length ? { righe } : undefined

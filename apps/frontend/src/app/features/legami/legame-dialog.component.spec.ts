@@ -409,6 +409,53 @@ describe('LegameDialogComponent', () => {
     expect(q('legame-sconto-testo-0')?.textContent).toContain('10')
   })
 
+  it('«Rimuovi riga»: parte rimuovi:true per quella riga, le altre non toccate non partono', async () => {
+    await apri(legame({ righe: [rigaLegame(), rigaLegame({ id: 'r2', rigaAddebitoId: 'ra2' })] }))
+    bottone('legame-rimuovi-1')!.click()
+    await stabilizza(fixture)
+    expect(q('legame-rimossa-1')).not.toBeNull()
+    servizio.conferma.and.returnValue(of(legame({ stato: 'CONFERMATO' })))
+    bottone('legame-conferma')!.click()
+    await stabilizza(fixture)
+    expect(servizio.conferma).toHaveBeenCalledOnceWith('l1', {
+      versione: 3,
+      modifiche: { righe: [{ rigaAddebitoId: 'ra2', rimuovi: true }] },
+    })
+  })
+
+  it('«Ripristina» annulla la rimozione; rimuovere tutte le righe blocca i pulsanti', async () => {
+    await apri(legame())
+    bottone('legame-rimuovi-0')!.click()
+    await stabilizza(fixture)
+    expect(q('legame-senza-righe')).not.toBeNull()
+    expect(bottone('legame-conferma')!.disabled).toBeTrue()
+    bottone('legame-rimuovi-0')!.click()
+    await stabilizza(fixture)
+    expect(q('legame-senza-righe')).toBeNull()
+    expect(fixture.componentInstance.modifiche()).toBeUndefined()
+  })
+
+  it('una riga rimossa non porta i suoi ritocchi; a scelte cambiate non si può rimuovere', async () => {
+    await apri(legame({ righe: [rigaLegame(), rigaLegame({ id: 'r2', rigaAddebitoId: 'ra2' })] }))
+    await scrivi(fixture, 'legame-qta-1', '4')
+    bottone('legame-rimuovi-1')!.click()
+    await stabilizza(fixture)
+    expect(fixture.componentInstance.modifiche()).toEqual({
+      righe: [{ rigaAddebitoId: 'ra2', rimuovi: true }],
+    })
+    fixture.componentInstance.contrattoId = 'k2'
+    await stabilizza(fixture)
+    expect(q('legame-rimuovi-0')).toBeNull()
+  })
+
+  it('la ricerca nel menu cliente è inoltrata alla pagina (cercaCliente)', async () => {
+    await apri(legame({ cliente: null, righe: [] }))
+    const testi: string[] = []
+    fixture.componentInstance.cercaCliente.subscribe(t => testi.push(t))
+    fixture.componentInstance.cercaCliente.emit('bia')
+    expect(testi).toEqual(['bia'])
+  })
+
   it('sola lettura (VIEWER o stato FATTURATO): nessun campo né pulsante di scrittura', async () => {
     await apri(legame(), false)
     expect(q('legame-conferma')).toBeNull()
