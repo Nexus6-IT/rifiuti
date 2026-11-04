@@ -14,7 +14,11 @@ import {
   type Role,
 } from './env'
 import { valutaRichiesta } from './blacklist'
-import { decidiRetryDevLogin, leggiRetryAfterSecondi } from './dev-login-retry'
+import {
+  decidiRetryDevLogin,
+  decidiRetryRichiesta,
+  leggiRetryAfterSecondi,
+} from './dev-login-retry'
 
 const DEV_LOGIN_PATH = '/auth/dev/login'
 
@@ -190,13 +194,29 @@ async function richiedi<T>(
     )
   }
 
-  const risposta = await fetch(url, {
-    method: metodo,
-    headers: intestazioni(token),
-    body: corpo === undefined ? undefined : JSON.stringify(corpo),
-  })
-
-  const testoCorpo = await leggiCorpo(risposta)
+  // Con piu' worker in parallelo il throttler del backend (100 richieste/minuto) puo' rispondere
+  // 429 al setup/teardown: si attende (Retry-After, o un backoff breve e crescente) e si riprova,
+  // al massimo 5 tentativi. Il limite del backend resta com'e'.
+  let tentativo = 0
+  let risposta: Response
+  let testoCorpo: unknown
+  for (;;) {
+    tentativo++
+    risposta = await fetch(url, {
+      method: metodo,
+      headers: intestazioni(token),
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    })
+    testoCorpo = await leggiCorpo(risposta)
+    if (risposta.ok) break
+    const decisione = decidiRetryRichiesta(
+      risposta.status,
+      tentativo,
+      leggiRetryAfterSecondi(risposta.headers)
+    )
+    if (!decisione.riprova) break
+    await new Promise(r => setTimeout(r, decisione.attesaMs))
+  }
   if (!risposta.ok) {
     throw new ApiClientError(
       `${metodo} ${percorso} fallita: ${risposta.status} ${risposta.statusText} — ` +

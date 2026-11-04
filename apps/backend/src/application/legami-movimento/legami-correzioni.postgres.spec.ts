@@ -57,6 +57,7 @@ import {
   AVVISO_LEGAME_DA_RIALLINEARE,
   AVVISO_LEGAME_SCELTE_NON_APPLICATE,
 } from './legami-correzioni'
+import { joinLineari } from '../listino/lock-listino'
 import { LegamiService } from './conferma-legame.service'
 import { ListaLegamiService } from './lista-legami.service'
 import { PropostaLegameService } from './proposta-legame.service'
@@ -679,6 +680,50 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     await rettifica(s, m.id, { quantity: 90 })
     expect(visti.length).toBeGreaterThan(0)
     expect(visti.every(v => v !== '2s')).toBe(true)
+  })
+
+  it('enable_nestloop (joinLineari) e` ripristinato prima dei saldi della correzione', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    const visti: string[] = []
+    const originale = giacenza.saldiRegistroCer
+    jest
+      .spyOn(giacenza, 'saldiRegistroCer')
+      .mockImplementation(async (db: any, ...resto: any[]) => {
+        const v = await db.$queryRaw`SELECT current_setting('enable_nestloop') AS v`
+        visti.push(v[0].v)
+        return (originale as any)(db, ...resto)
+      })
+    const orig = LegamiService.prototype.allineaAlVigente
+    jest.spyOn(LegamiService.prototype, 'allineaAlVigente').mockImplementation(async function (
+      this: LegamiService,
+      tx: any,
+      ...resto: any[]
+    ) {
+      await joinLineari(tx)
+      return (orig as any).call(this, tx, ...resto)
+    })
+    await rettifica(s, m.id, { quantity: 90 })
+    expect(visti.length).toBeGreaterThan(0)
+    expect(visti.every(v => v === 'on')).toBe(true)
+  })
+
+  it('M2: il legame doveva nascere e non ci riesce: la rettifica dice NON_RIUSCITO (come la lista: MANCANTE)', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    await owner.$executeRaw`DELETE FROM legami_movimento WHERE tenant_id = ${s.tenantId}::uuid AND movimento_originale_id = ${m.id}::uuid`
+    jest.spyOn(segnalazione, 'segnalaErroreJob').mockImplementation(() => {})
+    jest
+      .spyOn(PropostaLegameService.prototype, 'proponiEScrivi')
+      .mockImplementation(async (tx: any) => {
+        await tx.$executeRaw`SELECT 1/0`
+        throw new Error('non raggiungibile')
+      })
+    const r = await rettifica(s, m.id, { quantity: 90 })
+    expect(r.fatturazione).toMatchObject({ esito: 'NON_RIUSCITO', legameId: null })
+    expect(r.avvisi).toContain(AVVISO_LEGAME_CORREZIONE_NON_RIUSCITO)
+    expect(r.avvisi).not.toContain(AVVISO_LEGAME_DA_RIALLINEARE)
+    expect(await legameDi(m.id)).toBeNull()
   })
 
   it('12 correzioni parallele sullo stesso registro col listino bloccato: TUTTE riescono, i legami scadono senza effetto', async () => {

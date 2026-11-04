@@ -199,6 +199,9 @@ cambiano. In 4.3a nessun legame si crea ancora; si imposta solo la data «Fattur
 (`GET`/`PUT /impostazioni-fatturazione`, schermata `clienti/fatturazione`) e il flag `fatturabile`
 delle causali aziendali.
 
+> **Finché la 4.3c (interfaccia dei legami) non è in produzione, non impostare «Fatturazione da»:
+> le registrazioni creerebbero legami gestibili solo via API.**
+
 **Rilascio.** Prima del deploy un backup (vedi l'avvertenza sopra):
 
 ```bash

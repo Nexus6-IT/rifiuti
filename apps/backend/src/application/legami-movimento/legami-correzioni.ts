@@ -45,6 +45,7 @@ import {
   AVVISO_LEGAME_INCOMPLETO,
   AVVISO_LEGAME_NON_RIUSCITO,
   codiceSicuro,
+  leggiImpostazioniPrima,
   ripristinaTimeout,
   SOGLIA_BUDGET_LEGAME_MS,
   type DatiLegameRegistrazione,
@@ -163,6 +164,13 @@ async function registraFallimento(
       registroId: c.registroId,
     },
   })
+  if (legameId === null) {
+    // Il legame doveva nascere e non c'e': la lista lo mostra MANCANTE, non DA_RIALLINEARE.
+    return {
+      avvisi: [AVVISO_LEGAME_CORREZIONE_NON_RIUSCITO],
+      fatturazione: { esito: 'NON_RIUSCITO', legameId: null, stato: null, motivi: [], avvisi: [] },
+    }
+  }
   return {
     avvisi: [AVVISO_LEGAME_DA_RIALLINEARE],
     fatturazione: { esito: 'DA_RIALLINEARE', legameId, stato: null, motivi: [], avvisi: [] },
@@ -273,14 +281,16 @@ export async function riallineaLegameDopoCorrezione(
   }
 
   let timeoutPrima: string | null = null
+  let nestloopPrima: string | null = null
   let daFarNascere = false
   const avvisi: string[] = []
   let fatturazione: FatturazioneCorrezione | null = null
   // Testo costante (nessun dato dell'utente).
   await tx.$executeRawUnsafe('SAVEPOINT legame_correzione')
   try {
-    const lettura = await tx.$queryRaw<{ v: string }[]>`SELECT current_setting('lock_timeout') AS v`
-    timeoutPrima = lettura[0]?.v ?? null
+    const prima = await leggiImpostazioniPrima(tx)
+    timeoutPrima = prima.timeout
+    nestloopPrima = prima.nestloop
     await impostaTimeoutAggancio(tx)
     await bloccaLegamePerRadice(tx, c.radiceId)
     const esistente = await tx.$queryRaw<{ id: string }[]>`
@@ -314,7 +324,7 @@ export async function riallineaLegameDopoCorrezione(
     } else {
       daFarNascere = c.tipo === 'RETTIFICA' && c.dopo.fatturabile
     }
-    await ripristinaTimeout(tx, timeoutPrima)
+    await ripristinaTimeout(tx, timeoutPrima, nestloopPrima)
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame_correzione')
   } catch (err) {
     // Il ROLLBACK TO annulla anche il SET LOCAL del timeout e rilascia i lock presi nel savepoint.

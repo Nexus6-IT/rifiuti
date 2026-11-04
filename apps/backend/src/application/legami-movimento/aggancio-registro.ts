@@ -157,9 +157,25 @@ export function codiceSicuro(err: unknown): string {
 }
 
 /** Riporta il valore del timeout al valore che aveva prima del savepoint (`set_config` e' parametrizzabile). */
-export async function ripristinaTimeout(tx: Prisma.TransactionClient, prima: string | null) {
-  if (prima === null) return
-  await tx.$queryRaw`SELECT set_config('lock_timeout', ${prima}, true)`
+export async function ripristinaTimeout(
+  tx: Prisma.TransactionClient,
+  prima: string | null,
+  nestloopPrima: string | null = null
+) {
+  if (prima !== null) await tx.$queryRaw`SELECT set_config('lock_timeout', ${prima}, true)`
+  // `joinLineari` (SET LOCAL enable_nestloop = off) sopravvive al RELEASE: senza questo i passi
+  // successivi della transazione (saldi, avviso FIR, audit) girerebbero con piani diversi.
+  if (nestloopPrima !== null)
+    await tx.$queryRaw`SELECT set_config('enable_nestloop', ${nestloopPrima}, true)`
+}
+
+/** Valori da ripristinare dopo il savepoint del legame (letti prima di toccare le impostazioni). */
+export async function leggiImpostazioniPrima(
+  tx: Prisma.TransactionClient
+): Promise<{ timeout: string | null; nestloop: string | null }> {
+  const l = await tx.$queryRaw<{ v: string; n: string }[]>`
+    SELECT current_setting('lock_timeout') AS v, current_setting('enable_nestloop') AS n`
+  return { timeout: l[0]?.v ?? null, nestloop: l[0]?.n ?? null }
 }
 
 /**
@@ -295,12 +311,14 @@ export async function agganciaLegameSenzaFallire(
 
   const conferma = c.legame?.azione === 'CONFERMA'
   let timeoutPrima: string | null = null
+  let nestloopPrima: string | null = null
   // Testo costante (nessun dato dell'utente).
   await tx.$executeRawUnsafe('SAVEPOINT legame')
   try {
     const mods = validaDatiLegame(c.legame)
-    const lettura = await tx.$queryRaw<{ v: string }[]>`SELECT current_setting('lock_timeout') AS v`
-    timeoutPrima = lettura[0]?.v ?? null
+    const prima = await leggiImpostazioniPrima(tx)
+    timeoutPrima = prima.timeout
+    nestloopPrima = prima.nestloop
     await impostaTimeoutAggancio(tx)
     let cambi: CambioRiga[] = []
     const r = await c.proposta.proponiEScrivi(tx, {
@@ -337,13 +355,13 @@ export async function agganciaLegameSenzaFallire(
     })
     if (r.legameId === null) {
       // Fatturazione spenta o movimento prima di «fatturazione da» (letta FOR SHARE).
-      await ripristinaTimeout(tx, timeoutPrima)
+      await ripristinaTimeout(tx, timeoutPrima, nestloopPrima)
       await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame')
       return NESSUN_COLLEGAMENTO
     }
     if (r.stato === null || r.proposta === null) {
       // Il legame della catena esisteva gia': nulla scritto, nessun audit.
-      await ripristinaTimeout(tx, timeoutPrima)
+      await ripristinaTimeout(tx, timeoutPrima, nestloopPrima)
       await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame')
       return {
         avvisi: [],
@@ -382,7 +400,7 @@ export async function agganciaLegameSenzaFallire(
       },
     })
     // SET LOCAL sopravvive al RELEASE: senza questo il resto della transazione erediterebbe i 2 s.
-    await ripristinaTimeout(tx, timeoutPrima)
+    await ripristinaTimeout(tx, timeoutPrima, nestloopPrima)
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame')
     return {
       avvisi: conferma && stato !== 'CONFERMATO' ? [AVVISO_LEGAME_INCOMPLETO] : [],

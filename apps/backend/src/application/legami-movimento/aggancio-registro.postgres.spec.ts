@@ -43,6 +43,7 @@ import {
   agganciaLegameSenzaFallire,
   type DatiLegameRegistrazione,
 } from './aggancio-registro'
+import { joinLineari } from '../listino/lock-listino'
 import { LOCK_TIMEOUT_AGGANCIO } from './lock-legame'
 import { PropostaLegameService } from './proposta-legame.service'
 
@@ -556,6 +557,54 @@ describe('Aggancio del legame alla registrazione — Postgres reale, ruolo waste
         })
     )
     expect(male).toEqual({ prima: '7s', dopo: '7s', esito: 'NON_RIUSCITO' })
+  })
+
+  it('enable_nestloop (joinLineari) si ripristina dopo il legame, a buon fine e in errore', async () => {
+    const s = await scenario()
+    const dati = (movimentoId: string, firId: string) => ({
+      tenantId: s.tenantId,
+      userId: s.utenteId,
+      registroId: s.registroId,
+      type: 'CARICO' as const,
+      movimentoId,
+      fatturabile: true,
+      causale: 'INGRESSO_ESTERNO',
+      causaleAziendaId: null,
+      cerCode: '20 03 01',
+      movementDate: new Date('2026-03-10T10:00:00Z'),
+      unit: 'KG',
+      quantity: '100',
+      firId,
+      proposta,
+    })
+    const nestloop = async (tx: any): Promise<string> =>
+      (await tx.$queryRaw<{ v: string }[]>`SELECT current_setting('enable_nestloop') AS v`)[0].v
+    const originale = PropostaLegameService.prototype.proponiEScrivi
+    const provaCon = async (fallisce: boolean) => {
+      const fir = await nuovoFir(s)
+      const m = await creaMovimentoDiTest(owner, s.tenantId, { firId: fir })
+      const spia = jest
+        .spyOn(PropostaLegameService.prototype, 'proponiEScrivi')
+        .mockImplementationOnce(async function (this: PropostaLegameService, tx, ...resto) {
+          await joinLineari(tx)
+          expect(await nestloop(tx)).toBe('off')
+          if (fallisce) await tx.$executeRaw`SELECT 1/0`
+          return (originale as any).call(this, tx, ...resto)
+        })
+      try {
+        return await nel(s.tenantId, () =>
+          app.$transaction(async tx => {
+            const prima = await nestloop(tx)
+            const e = await agganciaLegameSenzaFallire(tx, dati(m.movimentoId, fir))
+            return { prima, dopo: await nestloop(tx), esito: e.fatturazione?.esito }
+          })
+        )
+      } finally {
+        spia.mockRestore()
+      }
+    }
+    expect(await provaCon(false)).toEqual({ prima: 'on', dopo: 'on', esito: 'COLLEGATO' })
+    expect(await provaCon(true)).toEqual({ prima: 'on', dopo: 'on', esito: 'NON_RIUSCITO' })
   })
 
   // ---------------------------------------------------------------------------------------

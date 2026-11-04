@@ -1,5 +1,6 @@
 import { SOGLIA_BUDGET_LEGAME_MS } from './aggancio-registro'
 import {
+  AVVISO_LEGAME_CORREZIONE_NON_RIUSCITO,
   AVVISO_LEGAME_DA_RIALLINEARE,
   riallineaLegameDopoCorrezione,
   type DatiCorrezioneLegame,
@@ -84,6 +85,17 @@ describe('riallineaLegameDopoCorrezione (unitario)', () => {
       codice: 'BUDGET_ESAURITO',
       correzione: true,
     })
+  })
+
+  it('M2 budget esaurito con legame da far nascere: NON_RIUSCITO senza legameId (non DA_RIALLINEARE)', async () => {
+    const { tx } = txFinta()
+    tx.$queryRaw.mockResolvedValueOnce([]) // nessun legame
+    const r = await riallineaLegameDopoCorrezione(
+      tx as never,
+      dati({ trascorsoMs: SOGLIA_BUDGET_LEGAME_MS + 1 })
+    )
+    expect(r.avvisi).toEqual([AVVISO_LEGAME_CORREZIONE_NON_RIUSCITO])
+    expect(r.fatturazione).toMatchObject({ esito: 'NON_RIUSCITO', legameId: null })
   })
 
   it('errore nel riallineamento: ROLLBACK TO + RELEASE del savepoint e nessuna eccezione verso il chiamante', async () => {
