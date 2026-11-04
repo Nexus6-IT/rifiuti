@@ -25,6 +25,7 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
+import { creaRiga } from '../../test-support/listino-di-test'
 import {
   creaFirDiTest,
   creaMovimentoDiTest,
@@ -82,8 +83,6 @@ describe('Aggancio del legame alla registrazione — Postgres reale, ruolo waste
   })
 
   afterAll(async () => {
-    // Gli abbinamenti citano i movimenti (FK): per primi, per id esatti.
-    await owner.abbinamentoCaricoScarico.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await pulisciTenantDiTest(owner, tenantCreati)
     if (cerCreato) await owner.cERCode.deleteMany({ where: { code: '20 03 01' } })
     await app?.onModuleDestroy()
@@ -337,14 +336,16 @@ describe('Aggancio del legame alla registrazione — Postgres reale, ruolo waste
   it('quantita manuale non valida (0): 400 prima di scrivere, nessun movimento', async () => {
     const s = await scenario()
     const fir = await nuovoFir(s)
-    const r = await registra(
-      s,
-      comando(s, {
-        firId: fir,
-        legame: completo({ righe: [{ rigaAddebitoId: s.rigaCerId, quantita: '0' }] }),
-      })
-    )
-    expect(r.isFailure).toBe(true)
+    // Il 400 esce con il suo codice (QUANTITA_NON_VALIDA): il FE puo' segnalare il campo.
+    await expect(
+      registra(
+        s,
+        comando(s, {
+          firId: fir,
+          legame: completo({ righe: [{ rigaAddebitoId: s.rigaCerId, quantita: '0' }] }),
+        })
+      )
+    ).rejects.toMatchObject({ response: { error: 'QUANTITA_NON_VALIDA' } })
     expect(await movimentiNuovi(s)).toHaveLength(0)
     expect(await legamiDi(s)).toHaveLength(0)
   })
@@ -428,7 +429,12 @@ describe('Aggancio del legame alla registrazione — Postgres reale, ruolo waste
     // L'audit si e` scritto dopo l'errore SQL: la transazione non era in abort.
     const audit = await auditDi(s, 'LEGAME_NON_RIUSCITO')
     expect(audit).toHaveLength(1)
-    expect(audit[0].metadata).toMatchObject({ tipoErrore: expect.any(String), codice: '22012' })
+    expect(audit[0].metadata).toMatchObject({
+      tipoErrore: expect.any(String),
+      codice: '22012',
+      movimentoId: m.id,
+      registroId: s.registroId,
+    })
     expect(JSON.stringify(audit[0].metadata)).not.toMatch(/division/i)
     // La catena continua: un secondo movimento si concatena e la verifica dell'anno e` integra.
     const fir2 = await nuovoFir(s)
@@ -461,7 +467,7 @@ describe('Aggancio del legame alla registrazione — Postgres reale, ruolo waste
       expect(await legamiDi(s)).toHaveLength(0)
       expect((await movimentiNuovi(s)).map(x => x.id)).toEqual([r.value.id])
       const audit = await auditDi(s, 'LEGAME_NON_RIUSCITO')
-      expect((audit[0].metadata as { codice: string }).codice).toMatch(/^(55P03|P2010|P2028)$/)
+      expect((audit[0].metadata as { codice: string }).codice).toMatch(/^(55P03|P2010)$/)
     } finally {
       blocco.rilascia()
       await blocco.fine
@@ -652,5 +658,132 @@ describe('Aggancio del legame alla registrazione — Postgres reale, ruolo waste
     expect(await legamiDi(s)).toHaveLength(1)
     expect(await auditDi(s, 'LEGAME_NON_RIUSCITO')).toHaveLength(0)
     expect(await auditDi(s, 'ABBINAMENTO_NON_RIUSCITO')).toHaveLength(0)
+  }, 60_000)
+
+  // ---------------------------------------------------------------------------------------
+  // Giro di correzione 1 (revisione del Task 20)
+  // ---------------------------------------------------------------------------------------
+
+  it('C1: 8 registrazioni parallele sullo stesso registro con il listino bloccato: TUTTE riescono, i legami scadono senza effetto', async () => {
+    const s = await scenario()
+    const firs = await Promise.all(Array.from({ length: 8 }, () => nuovoFir(s)))
+    const blocco = tenitore(async tx => {
+      await tx.$queryRaw`SELECT id FROM righe_addebito WHERE id = ${s.rigaCerId}::uuid FOR UPDATE`
+    })
+    await blocco.pronta
+    try {
+      let finite = 0
+      const richieste = firs.map(firId =>
+        registra(s, comando(s, { firId, legame: completo() })).finally(() => finite++)
+      )
+      const esiti = await Promise.all(richieste)
+      // Un P2028 (transazione scaduta) o qualunque altro errore farebbe fallire la registrazione.
+      expect(esiti.map(e => (e.isSuccess ? 'ok' : e.error))).toEqual(Array(8).fill('ok'))
+      const progressivi = esiti.map(e => e.value.progressiveNumber)
+      expect(new Set(progressivi).size).toBe(8)
+      expect(await movimentiNuovi(s)).toHaveLength(8)
+      // Nessun legame (il listino era bloccato): tutti «mancanti», ciascuno con il suo avviso.
+      expect(await legamiDi(s)).toHaveLength(0)
+      expect(esiti.every(e => e.value.avvisi.includes(AVVISO_LEGAME_NON_RIUSCITO))).toBe(true)
+      const audit = await auditDi(s, 'LEGAME_NON_RIUSCITO')
+      expect(audit).toHaveLength(8)
+      const codici = audit.map(a => (a.metadata as { codice: string }).codice)
+      expect(codici.every(c => /^(55P03|P2010|BUDGET_ESAURITO)$/.test(c))).toBe(true)
+      const esito = await nel(s.tenantId, () => verifica.verifica(s.tenantId, s.registroId, ANNO))
+      expect(esito.primoErrore).toBeNull()
+    } finally {
+      blocco.rilascia()
+      await blocco.fine
+    }
+  }, 120_000)
+
+  it('I1: riga ambigua risolta dalla scelta dell utente (righe = selezione): legame CONFERMATO con la riga scelta', async () => {
+    const s = await scenario()
+    // Due righe CER con riferimento specifico: nessuna e` «la» principale (RIGA_AMBIGUA).
+    await owner.rigaAddebito.update({ where: { id: s.rigaCerId }, data: { riferimento: 'prima' } })
+    const seconda = await creaRiga(owner, s.tenantId, s.elencoId, {
+      tipo: 'CER',
+      cerCode: '20 03 01',
+      codiceIvaId: s.ivaId,
+      prezzo: '3',
+      riferimento: 'seconda',
+    })
+    const fir = await nuovoFir(s)
+    // Senza scelta: due righe CER, RIGA_AMBIGUA, DA_COLLEGARE.
+    const senza = await registraOk(s, comando(s, { firId: fir, legame: completo() }))
+    expect(senza.fatturazione?.motivi).toContain('RIGA_AMBIGUA')
+    // Con la scelta (lo stesso oggetto mandato alla proposta).
+    const fir2 = await nuovoFir(s)
+    const con = await registraOk(
+      s,
+      comando(s, {
+        firId: fir2,
+        legame: completo({ righe: [{ rigaAddebitoId: seconda.id }] }),
+      })
+    )
+    expect(con.fatturazione).toMatchObject({ stato: 'CONFERMATO', motivi: [] })
+    const l = await owner.legameMovimento.findUniqueOrThrow({
+      where: { id: con.fatturazione!.legameId! },
+      include: { righe: true },
+    })
+    expect(l.righe.map(r => r.rigaAddebitoId)).toEqual([seconda.id])
+    expect(l.righe[0].prezzo?.toString()).toBe('3')
+  })
+
+  it('I2: quantita e prezzo a mano lasciano audit con i cambi, con PROPOSTA e con CONFERMA', async () => {
+    const s = await scenario()
+    const righe = [{ rigaAddebitoId: s.rigaCerId, quantita: '2.5', prezzo: '12.5' }]
+    await registraOk(
+      s,
+      comando(s, { firId: await nuovoFir(s), legame: { azione: 'PROPOSTA', righe } })
+    )
+    await registraOk(s, comando(s, { firId: await nuovoFir(s), legame: completo({ righe }) }))
+    const generato = await auditDi(s, 'LEGAME_MOVIMENTO_GENERATO')
+    const confermato = await auditDi(s, 'LEGAME_MOVIMENTO_CONFERMATO')
+    expect(generato).toHaveLength(1)
+    expect(confermato).toHaveLength(1)
+    for (const a of [generato[0], confermato[0]]) {
+      const md = a.metadata as {
+        alRegistro: boolean
+        importoTotale: string
+        righe: {
+          rigaAddebitoId: string
+          quantita: { prima: string; dopo: string }
+          prezzo: { prima: string; dopo: string }
+        }[]
+      }
+      expect(md.alRegistro).toBe(true)
+      expect(md.importoTotale).toBe('31.25')
+      expect(md.righe).toEqual([
+        {
+          rigaAddebitoId: s.rigaCerId,
+          quantita: { prima: '100', dopo: '2.5' },
+          prezzo: { prima: '1', dopo: '12.5' },
+        },
+      ])
+    }
+    expect((generato[0].metadata as { statoDopo: string }).statoDopo).toBe('PROPOSTO')
+    expect((confermato[0].metadata as { statoDopo: string }).statoDopo).toBe('CONFERMATO')
+  })
+
+  it('I3: «fatturazione da» in modifica (FOR UPDATE di imposta): la registrazione attende e vede il valore nuovo', async () => {
+    const s = await scenario({ fatturazioneDa: '2026-06-01' })
+    const fir = await nuovoFir(s)
+    const blocco = tenitore(async tx => {
+      await tx.$executeRaw`UPDATE impostazioni_fatturazione SET fatturazione_da = '2026-01-01' WHERE tenant_id = ${s.tenantId}::uuid`
+    })
+    await blocco.pronta
+    let finita = false
+    const inCorso = registra(s, comando(s, { firId: fir, data: '2026-03-10' })).finally(
+      () => (finita = true)
+    )
+    await attendiLock(1, () => finita)
+    blocco.rilascia()
+    await blocco.fine
+    const r = await inCorso
+    expect(r.isSuccess ? 'ok' : r.error).toBe('ok')
+    // Con il vecchio pre-controllo senza lock il movimento sarebbe sfuggito al legame.
+    expect(r.value.fatturazione).toMatchObject({ esito: 'COLLEGATO', stato: 'PROPOSTO' })
+    expect(await legamiDi(s)).toHaveLength(1)
   }, 60_000)
 })

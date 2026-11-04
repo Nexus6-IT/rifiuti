@@ -60,7 +60,7 @@ export async function scriviProposta(
     )
   }
   // Un PROPOSTO e' per definizione completo e senza motivi: confermabile.
-  const confermato = c.conferma === true && p.stato === 'PROPOSTO'
+  const confermato = c.conferma === true && c.userId !== null && p.stato === 'PROPOSTO'
   const stato: StatoLegame = confermato ? 'CONFERMATO' : p.stato
   try {
     const inserito = await tx.$queryRaw<{ id: string }[]>`

@@ -14,7 +14,6 @@
 // Mai una scrittura su `waste_movements` (guardia automatica): `entryHash` e RENTRI non cambiano.
 import { BadRequestException, HttpException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { giornoItaliano } from '../../core/time/anno-italiano'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import {
   MOTIVI_LEGAME,
@@ -22,7 +21,6 @@ import {
   type MotivoLegame,
   type StatoLegame,
 } from '../../domain/legami-movimento/codici'
-import { movimentoInFatturazione } from '../../domain/legami-movimento/fatturazione-da'
 import { statoDopoRicalcolo } from '../../domain/legami-movimento/stato-legame'
 import {
   avvisiDaRighe,
@@ -31,12 +29,12 @@ import {
 } from '../../domain/legami-movimento/valori-legame'
 import {
   applicaModificheRighe,
+  type CambioRiga,
   righaDaProposta,
   validaModifiche,
   type ModificheLegame,
   type ModificheNorm,
 } from './conferma-legame-righe'
-import { leggiFatturazioneDaInTx } from './impostazioni-fatturazione.service'
 import { impostaTimeoutAggancio } from './lock-legame'
 import {
   importoVista,
@@ -49,6 +47,19 @@ export interface DatiLegameRegistrazione extends ModificheLegame {
   /** `CONFERMA`: legame confermato se la proposta e' completa; `PROPOSTA`: solo proposto. */
   azione: 'CONFERMA' | 'PROPOSTA'
 }
+
+/**
+ * Budget della transazione di registrazione (timeout esplicito: i 5 s di default di Prisma non
+ * bastano quando piu' registrazioni dello stesso registro si accodano sul lock del progressivo).
+ */
+export const TIMEOUT_TRANSAZIONE_REGISTRAZIONE_MS = 30_000
+export const ATTESA_CONNESSIONE_REGISTRAZIONE_MS = 10_000
+/**
+ * Oltre questo tempo trascorso dall'inizio della transazione il legame si salta senza aprire il
+ * savepoint: il movimento ha la precedenza e il legame resta «Mancante». Meta' del timeout: lascia
+ * il tempo per il commit anche se il legame attendesse tutti i suoi `LOCK_TIMEOUT_AGGANCIO`.
+ */
+export const SOGLIA_BUDGET_LEGAME_MS = TIMEOUT_TRANSAZIONE_REGISTRAZIONE_MS / 2
 
 /** Avviso quando il legame non si e' potuto scrivere. */
 export const AVVISO_LEGAME_NON_RIUSCITO =
@@ -96,6 +107,8 @@ export interface DatiAggancio {
   firId: string | null
   legame?: DatiLegameRegistrazione
   proposta: PropostaLegameService
+  /** Millisecondi trascorsi dall'inizio della transazione di registrazione (budget del legame). */
+  trascorsoMs?: number
   logger?: { error(messaggio: string, errore?: Error, contesto?: Record<string, unknown>): void }
 }
 
@@ -152,8 +165,11 @@ async function ripristinaTimeout(tx: Prisma.TransactionClient, prima: string | n
  * righe PROPOSTE). Una riga che non e' nella proposta e' un errore (400, finisce nel savepoint).
  * Motivi, avvisi e stato si ricalcolano con le stesse funzioni di dominio della conferma.
  */
-export function applicaModificheAllaProposta(p: PropostaVista, mods: ModificheNorm): PropostaVista {
-  if (mods.righe.size === 0) return p
+export function applicaModificheAllaProposta(
+  p: PropostaVista,
+  mods: ModificheNorm
+): { proposta: PropostaVista; cambi: CambioRiga[] } {
+  if (mods.righe.size === 0) return { proposta: p, cambi: [] }
   const presenti = new Set(p.righe.map(r => r.rigaAddebitoId))
   for (const id of mods.righe.keys()) {
     if (!presenti.has(id)) {
@@ -163,7 +179,7 @@ export function applicaModificheAllaProposta(p: PropostaVista, mods: ModificheNo
       })
     }
   }
-  const { righe: modificate } = applicaModificheRighe(
+  const { righe: modificate, cambi } = applicaModificheRighe(
     p.righe.map(righaDaProposta),
     mods,
     'PROPOSTO'
@@ -196,31 +212,84 @@ export function applicaModificheAllaProposta(p: PropostaVista, mods: ModificheNo
   )
   const completo = !!p.cliente && !!p.contratto && !!p.elenco && righe.length > 0
   return {
-    ...p,
-    righe,
-    motivi,
-    avvisi: avvisiDaRighe(p.avvisi, righe),
-    stato: statoDopoRicalcolo('NESSUN_LEGAME', { motivi, completo }) as StatoLegame,
+    cambi,
+    proposta: {
+      ...p,
+      righe,
+      motivi,
+      avvisi: avvisiDaRighe(p.avvisi, righe),
+      stato: statoDopoRicalcolo('NESSUN_LEGAME', { motivi, completo }) as StatoLegame,
+    },
   }
+}
+
+/** Scrive l'audit in un sottoblocco proprio: un audit che fallisce non puo' toccare la registrazione. */
+async function auditSenzaFallire(
+  tx: Prisma.TransactionClient,
+  dati: Prisma.ActivityLogUncheckedCreateInput
+): Promise<void> {
+  await tx.$executeRawUnsafe('SAVEPOINT legame_audit')
+  try {
+    await tx.activityLog.create({ data: dati })
+    await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame_audit')
+  } catch {
+    await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT legame_audit')
+  }
+}
+
+const NON_RIUSCITO: FatturazioneRegistrazione = {
+  esito: 'NON_RIUSCITO',
+  legameId: null,
+  stato: null,
+  motivi: [],
+  avvisi: [],
+}
+
+/** Il legame non si prova nemmeno: la registrazione ha gia' consumato il suo budget di tempo. */
+async function saltaPerBudget(
+  tx: Prisma.TransactionClient,
+  c: DatiAggancio
+): Promise<EsitoAggancio> {
+  const sicuro = new Error('Legame del nuovo movimento saltato (BUDGET_ESAURITO)')
+  c.logger?.error(
+    'Legame del movimento saltato: budget di tempo della registrazione esaurito',
+    sicuro,
+    {
+      tenantId: c.tenantId,
+      registroId: c.registroId,
+      movimentoId: c.movimentoId,
+    }
+  )
+  segnalaErroreJob('legameNuovoMovimento', sicuro, { tenantId: c.tenantId })
+  await auditSenzaFallire(tx, {
+    tenantId: c.tenantId,
+    userId: c.userId,
+    action: 'LEGAME_NON_RIUSCITO',
+    description: 'Legame del nuovo movimento saltato: movimento registrato senza legame',
+    metadata: {
+      tipoErrore: 'BudgetEsaurito',
+      codice: 'BUDGET_ESAURITO',
+      movimentoId: c.movimentoId,
+      registroId: c.registroId,
+    },
+  })
+  return { avvisi: [AVVISO_LEGAME_NON_RIUSCITO], fatturazione: NON_RIUSCITO }
 }
 
 /**
  * Collega il movimento appena registrato, senza mai farlo fallire. Va chiamata DOPO l'inserimento
  * dell'annotazione e (per gli scarichi) dopo l'abbinamento, con il lock del registro gia' preso.
+ *
+ * Con una causale fatturabile il savepoint si apre sempre: la data «fatturazione da» si legge
+ * FOR SHARE dentro (seguito m-C del Task 5), con il tetto di attesa del legame, cosi' una
+ * impostazione in corso di modifica non fa sfuggire il movimento ne' blocca il registro.
  */
 export async function agganciaLegameSenzaFallire(
   tx: Prisma.TransactionClient,
   c: DatiAggancio
 ): Promise<EsitoAggancio> {
   if (!c.fatturabile) return NESSUN_COLLEGAMENTO
-  // Pre-controllo senza lock: fatturazione spenta, o movimento prima di «fatturazione da», non
-  // aprono il savepoint. Se un amministratore cambia la data proprio ora, il movimento resta
-  // senza legame e la lista lo mostra «Mancante» (recuperabile); dentro il savepoint la data si
-  // rilegge FOR SHARE (seguito m-C del Task 5).
-  const fatturazioneDa = await leggiFatturazioneDaInTx(tx, c.tenantId)
-  if (!movimentoInFatturazione(giornoItaliano(c.movementDate), fatturazioneDa)) {
-    return NESSUN_COLLEGAMENTO
-  }
+  if ((c.trascorsoMs ?? 0) > SOGLIA_BUDGET_LEGAME_MS) return saltaPerBudget(tx, c)
 
   const conferma = c.legame?.azione === 'CONFERMA'
   let timeoutPrima: string | null = null
@@ -231,6 +300,7 @@ export async function agganciaLegameSenzaFallire(
     const lettura = await tx.$queryRaw<{ v: string }[]>`SELECT current_setting('lock_timeout') AS v`
     timeoutPrima = lettura[0]?.v ?? null
     await impostaTimeoutAggancio(tx)
+    let cambi: CambioRiga[] = []
     const r = await c.proposta.proponiEScrivi(tx, {
       tenantId: c.tenantId,
       userId: c.userId,
@@ -248,31 +318,67 @@ export async function agganciaLegameSenzaFallire(
         quantity: c.quantity,
         firId: c.firId,
       },
+      // `righe` e' la selezione completa (come `scelte.righe` di POST /proposta): chi registra
+      // manda lo stesso oggetto che ha mandato alla proposta.
       scelte: {
         clienteId: c.legame?.clienteId,
         contrattoId: c.legame?.contrattoId,
         elencoId: c.legame?.elencoId,
+        righeIds: c.legame?.righe?.map(riga => riga.rigaAddebitoId),
       },
       conferma,
-      adatta: p => applicaModificheAllaProposta(p, mods),
+      adatta: p => {
+        const e = applicaModificheAllaProposta(p, mods)
+        cambi = e.cambi
+        return e.proposta
+      },
     })
-    if (r.legameId === null || r.proposta === null) {
+    if (r.legameId === null) {
+      // Fatturazione spenta o movimento prima di «fatturazione da» (letta FOR SHARE).
       await ripristinaTimeout(tx, timeoutPrima)
       await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame')
       return NESSUN_COLLEGAMENTO
     }
-    const stato = r.stato ?? r.proposta.stato
-    if (stato === 'CONFERMATO') {
-      await tx.activityLog.create({
-        data: {
-          tenantId: c.tenantId,
-          userId: c.userId,
-          action: 'LEGAME_MOVIMENTO_CONFERMATO',
-          description: 'Legame movimento confermato alla registrazione',
-          metadata: { legameId: r.legameId, alRegistro: true },
+    if (r.stato === null || r.proposta === null) {
+      // Il legame della catena esisteva gia': nulla scritto, nessun audit.
+      await ripristinaTimeout(tx, timeoutPrima)
+      await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame')
+      return {
+        avvisi: [],
+        fatturazione: {
+          esito: 'COLLEGATO',
+          legameId: r.legameId,
+          stato: null,
+          motivi: [],
+          avvisi: [],
         },
-      })
+      }
     }
+    const stato = r.stato
+    let totale = new Prisma.Decimal(0)
+    for (const riga of r.proposta.righe)
+      if (riga.importo !== null) totale = totale.plus(riga.importo)
+    // Audit di creazione (decisioni 16-17: prezzi e quantita' scritti a mano si vedono qui).
+    await tx.activityLog.create({
+      data: {
+        tenantId: c.tenantId,
+        userId: c.userId,
+        action:
+          stato === 'CONFERMATO' ? 'LEGAME_MOVIMENTO_CONFERMATO' : 'LEGAME_MOVIMENTO_GENERATO',
+        description:
+          stato === 'CONFERMATO'
+            ? 'Legame movimento confermato alla registrazione'
+            : 'Legame movimento generato alla registrazione',
+        metadata: {
+          legameId: r.legameId,
+          alRegistro: true,
+          statoDopo: stato,
+          motivi: r.proposta.motivi,
+          importoTotale: totale.toFixed(),
+          righe: cambi,
+        } as unknown as Prisma.InputJsonValue,
+      },
+    })
     // SET LOCAL sopravvive al RELEASE: senza questo il resto della transazione erediterebbe i 2 s.
     await ripristinaTimeout(tx, timeoutPrima)
     await tx.$executeRawUnsafe('RELEASE SAVEPOINT legame')
@@ -287,8 +393,9 @@ export async function agganciaLegameSenzaFallire(
       },
     }
   } catch (err) {
+    // Il ROLLBACK TO annulla anche il SET LOCAL del timeout: nessun ripristino da fare qui (e
+    // nessuna istruzione in piu' fuori dal savepoint che potrebbe fallire).
     await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT legame')
-    await ripristinaTimeout(tx, timeoutPrima)
     const tipo = err instanceof Error ? err.name : 'sconosciuto'
     const codice = codiceSicuro(err)
     // Un errore «pulito»: il messaggio dell'originale potrebbe riportare valori (dati personali).
@@ -301,18 +408,13 @@ export async function agganciaLegameSenzaFallire(
       { tenantId: c.tenantId, registroId: c.registroId, tipoErrore: tipo, codice }
     )
     segnalaErroreJob('legameNuovoMovimento', sicuro, { tenantId: c.tenantId })
-    await tx.activityLog.create({
-      data: {
-        tenantId: c.tenantId,
-        userId: c.userId,
-        action: 'LEGAME_NON_RIUSCITO',
-        description: 'Legame del nuovo movimento non riuscito: movimento registrato senza legame',
-        metadata: { tipoErrore: tipo, codice },
-      },
+    await auditSenzaFallire(tx, {
+      tenantId: c.tenantId,
+      userId: c.userId,
+      action: 'LEGAME_NON_RIUSCITO',
+      description: 'Legame del nuovo movimento non riuscito: movimento registrato senza legame',
+      metadata: { tipoErrore: tipo, codice, movimentoId: c.movimentoId, registroId: c.registroId },
     })
-    return {
-      avvisi: [AVVISO_LEGAME_NON_RIUSCITO],
-      fatturazione: { esito: 'NON_RIUSCITO', legameId: null, stato: null, motivi: [], avvisi: [] },
-    }
+    return { avvisi: [AVVISO_LEGAME_NON_RIUSCITO], fatturazione: NON_RIUSCITO }
   }
 }

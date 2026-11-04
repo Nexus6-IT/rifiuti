@@ -1,4 +1,6 @@
 import {
+  AVVISO_LEGAME_NON_RIUSCITO,
+  SOGLIA_BUDGET_LEGAME_MS,
   agganciaLegameSenzaFallire,
   applicaModificheAllaProposta,
   validaDatiLegame,
@@ -43,35 +45,84 @@ describe('agganciaLegameSenzaFallire — casi senza savepoint', () => {
     expect(tx.$executeRawUnsafe).not.toHaveBeenCalled()
   })
 
-  it('fatturazione spenta: solo la lettura della data, nessun SAVEPOINT', async () => {
+  it('fatturazione spenta o movimento prima della data: il savepoint si apre e si rilascia, nessun legame', async () => {
     const tx = txFinta(null)
     const d = dati()
-    const e = await agganciaLegameSenzaFallire(tx as never, d)
-    expect(e.fatturazione).toBeNull()
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
-    expect(tx.$executeRawUnsafe).not.toHaveBeenCalled()
-    expect(d.proposta.proponiEScrivi).not.toHaveBeenCalled()
-  })
-
-  it('movimento prima di «fatturazione da»: nessun SAVEPOINT', async () => {
-    const tx = txFinta('2026-06-01')
-    const e = await agganciaLegameSenzaFallire(tx as never, dati())
-    expect(e.fatturazione).toBeNull()
-    expect(tx.$executeRawUnsafe).not.toHaveBeenCalled()
-  })
-
-  it('il giorno è quello italiano: 23:30 UTC del 31/05 è già il 01/06', async () => {
-    const tx = txFinta('2026-06-01')
-    const d = dati({ movementDate: new Date('2026-05-31T23:30:00Z') })
     ;(d.proposta.proponiEScrivi as jest.Mock).mockResolvedValue({
       legameId: null,
       creato: false,
       stato: null,
       proposta: null,
     })
-    tx.$queryRaw.mockResolvedValueOnce([{ da: '2026-06-01' }]).mockResolvedValue([{ v: '0' }])
-    await agganciaLegameSenzaFallire(tx as never, d)
+    tx.$queryRaw.mockResolvedValue([{ v: '0' }])
+    const e = await agganciaLegameSenzaFallire(tx as never, d)
+    expect(e.fatturazione).toBeNull()
     expect(tx.$executeRawUnsafe).toHaveBeenCalledWith('SAVEPOINT legame')
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith('RELEASE SAVEPOINT legame')
+    expect(tx.activityLog.create).not.toHaveBeenCalled()
+  })
+
+  it('budget esaurito: nessun SAVEPOINT del legame, NON_RIUSCITO con avviso e audit BUDGET_ESAURITO', async () => {
+    const tx = txFinta('2026-01-01')
+    const d = dati({ trascorsoMs: SOGLIA_BUDGET_LEGAME_MS + 1 })
+    const e = await agganciaLegameSenzaFallire(tx as never, d)
+    expect(e.fatturazione?.esito).toBe('NON_RIUSCITO')
+    expect(e.avvisi).toEqual([AVVISO_LEGAME_NON_RIUSCITO])
+    expect(d.proposta.proponiEScrivi).not.toHaveBeenCalled()
+    expect(tx.$executeRawUnsafe).not.toHaveBeenCalledWith('SAVEPOINT legame')
+    expect(tx.activityLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'LEGAME_NON_RIUSCITO',
+        metadata: expect.objectContaining({ codice: 'BUDGET_ESAURITO', movimentoId: 'm' }),
+      }),
+    })
+  })
+
+  it('sotto la soglia il legame si prova', async () => {
+    const tx = txFinta('2026-01-01')
+    const d = dati({ trascorsoMs: SOGLIA_BUDGET_LEGAME_MS })
+    ;(d.proposta.proponiEScrivi as jest.Mock).mockResolvedValue({
+      legameId: null,
+      creato: false,
+      stato: null,
+      proposta: null,
+    })
+    tx.$queryRaw.mockResolvedValue([{ v: '0' }])
+    await agganciaLegameSenzaFallire(tx as never, d)
+    expect(d.proposta.proponiEScrivi).toHaveBeenCalledTimes(1)
+  })
+
+  it('legame gia esistente (stato null): nessun audit, nessun errore', async () => {
+    const tx = txFinta('2026-01-01')
+    const d = dati()
+    ;(d.proposta.proponiEScrivi as jest.Mock).mockResolvedValue({
+      legameId: 'l1',
+      creato: false,
+      stato: null,
+      proposta: null,
+    })
+    tx.$queryRaw.mockResolvedValue([{ v: '0' }])
+    const e = await agganciaLegameSenzaFallire(tx as never, d)
+    expect(e.fatturazione).toMatchObject({ esito: 'COLLEGATO', legameId: 'l1', stato: null })
+    expect(tx.activityLog.create).not.toHaveBeenCalled()
+  })
+
+  it('errore: ROLLBACK TO senza altre istruzioni fuori dal savepoint prima dell audit (a sua volta in un sottoblocco)', async () => {
+    const tx = txFinta('2026-01-01')
+    const d = dati()
+    ;(d.proposta.proponiEScrivi as jest.Mock).mockRejectedValue(new Error('boom'))
+    tx.$queryRaw.mockResolvedValue([{ v: '0' }])
+    const e = await agganciaLegameSenzaFallire(tx as never, d)
+    expect(e.fatturazione?.esito).toBe('NON_RIUSCITO')
+    const sql = tx.$executeRawUnsafe.mock.calls.map(c => c[0])
+    expect(sql).toEqual([
+      'SAVEPOINT legame',
+      "SET LOCAL lock_timeout = '2s'",
+      'ROLLBACK TO SAVEPOINT legame',
+      'SAVEPOINT legame_audit',
+      'RELEASE SAVEPOINT legame_audit',
+    ])
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1) // solo la lettura del timeout, nessun ripristino
   })
 })
 
@@ -143,12 +194,16 @@ describe('applicaModificheAllaProposta', () => {
 
   it('senza modifiche: la stessa proposta', () => {
     const p = proposta([riga()])
-    expect(applicaModificheAllaProposta(p, validaModifiche(undefined))).toBe(p)
+    expect(applicaModificheAllaProposta(p, validaModifiche(undefined))).toEqual({
+      proposta: p,
+      cambi: [],
+    })
   })
 
   it('quantità e prezzo a mano: MANUALE, avviso PREZZO_MANUALE, importo ricalcolato', () => {
     const m = validaModifiche({ righe: [{ rigaAddebitoId: id, quantita: '2.5', prezzo: '12.5' }] })
-    const p = applicaModificheAllaProposta(proposta([riga()]), m)
+    const { proposta: p, cambi } = applicaModificheAllaProposta(proposta([riga()]), m)
+    expect(cambi).toHaveLength(1)
     expect(p.righe[0]).toMatchObject({
       quantita: '2.5',
       quantitaOrigine: 'MANUALE',
@@ -166,7 +221,7 @@ describe('applicaModificheAllaProposta', () => {
       ['SENZA_QUANTITA']
     )
     const m = validaModifiche({ righe: [{ rigaAddebitoId: id, quantita: '3' }] })
-    const p = applicaModificheAllaProposta(p0, m)
+    const { proposta: p } = applicaModificheAllaProposta(p0, m)
     expect(p.motivi).toEqual([])
     expect(p.stato).toBe('PROPOSTO')
   })

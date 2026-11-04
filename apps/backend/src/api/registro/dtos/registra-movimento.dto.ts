@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -83,6 +84,7 @@ export class LegameRegistrazioneDto {
 
   @ApiPropertyOptional({ type: [RigaLegameRegistrazioneDto] })
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => RigaLegameRegistrazioneDto)
   @IsOptional()

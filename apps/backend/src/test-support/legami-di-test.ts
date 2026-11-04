@@ -385,6 +385,8 @@ export async function pulisciTenantDiTest(
     ['audit', 'activity_logs'],
     ['righe legame', 'righe_legame_movimento'],
     ['legami', 'legami_movimento'],
+    ['abbinamenti', 'abbinamenti_carico_scarico'],
+    ['trasmissioni RENTRI', 'movimenti_trasmissione_rentri'],
     ['movimenti', 'waste_movements'],
     ['impostazioni', 'impostazioni_fatturazione'],
     ['righe listino', 'righe_addebito'],
