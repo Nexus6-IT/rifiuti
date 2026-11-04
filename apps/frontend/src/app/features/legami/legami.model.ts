@@ -75,7 +75,7 @@ export interface RigaLegame {
   origine: OrigineRiga
   tipo: string
   descrizione: string | null
-  tipoQuantita: string
+  tipoQuantita: string | null
   unitaMisura: string
   quantita: string | null
   quantitaOrigine: OrigineQuantita | null
@@ -98,6 +98,10 @@ export interface CandidatiLegame {
 }
 
 export interface PropostaLegame {
+  /** Falso se la causale non è fatturabile: il blocco «Fatturazione» si nasconde. */
+  fatturabile: boolean
+  /** Falso se il movimento è prima di «fatturazione da» (o la fatturazione è spenta). */
+  attiva: boolean
   stato: StatoLegame
   cliente: (VoceScelta & { fonte: FonteCliente }) | null
   /** Perché manca il cliente (es. «cliente disattivato»); accompagna il motivo SENZA_CLIENTE. */
@@ -171,24 +175,42 @@ export interface ContatoriLegami {
   daRiallineare: number
 }
 
-/** Dati del movimento non ancora registrato (POST /proposta, sola lettura). */
+/**
+ * Dati del movimento non ancora registrato (POST /proposta, sola lettura), con i nomi del registro
+ * (Task 22): `causale` è il CODICE della causale, `type` è obbligatorio (senza, la proposta è
+ * sempre non fatturabile), `quantity` è una stringa col punto.
+ */
 export interface DatiProposta {
-  causaleId: string
+  causale: string
+  causaleAziendaId?: string | null
+  type: 'CARICO' | 'SCARICO'
   cerCode: string
-  dataMovimento: string
-  unitaMisura: string
-  /** Stringa col punto. */
-  quantita: string
+  /** AAAA-MM-GG. */
+  movementDate: string
+  unit: string
+  /** Stringa col punto, al massimo 3 decimali. */
+  quantity: string
   firId?: string | null
+  /** Solo controllo di coerenza con il FIR. */
   producerSedeId?: string | null
+  scelte?: {
+    clienteId?: string
+    contrattoId?: string
+    elencoId?: string
+    /** Selezione completa delle righe (principale e proposte). */
+    righe?: { rigaAddebitoId: string }[]
+  }
 }
 
 /** Modifica di una riga: quantità > 0 (max 3 decimali), prezzo >= 0 (max 6), sconto formula o null. */
 export interface ModificaRigaLegame {
   rigaAddebitoId: string
-  quantita?: string
+  /** `null` = torna alla quantità del movimento. */
+  quantita?: string | null
   prezzo?: string
   sconto?: string | null
+  /** Toglie la riga dal legame. */
+  rimuovi?: boolean
 }
 
 export interface ModificheLegame {

@@ -17,11 +17,12 @@ describe('LegamiService', () => {
 
   it('proposta fa POST /proposta con quantità come stringa col punto', () => {
     const dati = {
-      causaleId: 'c1',
+      causale: 'INGRESSO_ESTERNO',
+      type: 'CARICO' as const,
       cerCode: '150101',
-      dataMovimento: '2026-11-03',
-      unitaMisura: 'KG',
-      quantita: '12.5',
+      movementDate: '2026-11-03',
+      unit: 'KG',
+      quantity: '12.5',
       firId: 'f1',
       producerSedeId: 's1',
     }

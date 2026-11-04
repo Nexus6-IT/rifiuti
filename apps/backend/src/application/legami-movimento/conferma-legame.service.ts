@@ -65,9 +65,11 @@ import {
 import { leggiFatturazioneDaInTx } from './impostazioni-fatturazione.service'
 import { eViolazioneFk } from './legame-scrittura'
 import {
+  clienteDaFir,
   leggiCliente,
   leggiEtichetteListino,
   leggiMovimentoPerLegame,
+  leggiRadiceDelMovimento,
   leggiStatoContratto,
   leggiTestaCatena,
   leggiValiditaElenco,
@@ -136,6 +138,9 @@ export interface LegameVista {
   scostamentoIl: string | null
   versione: number
 }
+
+/** `LegameVista` piu' i candidati per le scelte (solo nel dettaglio dell'API). */
+export type LegameVistaDettaglio = LegameVista & { candidati?: PropostaVista['candidati'] }
 
 interface Testata {
   id: string
@@ -448,6 +453,67 @@ export class LegamiService {
         bloccato: true,
       })
     })
+  }
+
+  /**
+   * Dettaglio per l'API (`GET :id`): la vista del legame piu' i `candidati` per le scelte (dialog
+   * della pagina «Da collegare») e, se manca il cliente e quello del FIR e' disattivato, il
+   * dettaglio «cliente disattivato» (decisione 19). Sola lettura. 404 se non c'e' o e' di un'altra
+   * azienda.
+   */
+  async dettaglio(tenantId: string, id: string): Promise<LegameVistaDettaglio> {
+    if (!eUuid(id)) throw nonTrovato()
+    return nelContestoTenant(tenantId, () =>
+      this.prisma.$transaction(tx => this.vistaCompletaInTx(tx, tenantId, id))
+    )
+  }
+
+  /**
+   * Legame della catena a cui appartiene il movimento (uno qualunque della catena). 404
+   * `LEGAME_MOVIMENTO_NON_TROVATO` se la catena non ha un legame o il movimento non e' dell'azienda.
+   */
+  async perMovimento(tenantId: string, movimentoId: string): Promise<LegameVistaDettaglio> {
+    if (!eUuid(movimentoId)) throw nonTrovato()
+    return nelContestoTenant(tenantId, () =>
+      this.prisma.$transaction(async tx => {
+        const radice = await leggiRadiceDelMovimento(tx, tenantId, movimentoId)
+        if (!radice) throw nonTrovato()
+        const l = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM legami_movimento
+          WHERE tenant_id = ${tenantId}::uuid AND movimento_originale_id = ${radice}::uuid`
+        if (l.length === 0) throw nonTrovato()
+        return this.vistaCompletaInTx(tx, tenantId, l[0].id)
+      })
+    )
+  }
+
+  private async vistaCompletaInTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<LegameVistaDettaglio> {
+    const v: LegameVistaDettaglio = await costruisciVista(tx, tenantId, id, null)
+    if (!STATI_MODIFICABILI.includes(v.stato) && v.stato !== 'ESCLUSO') return v
+    const mov = await leggiMovimentoPerLegame(tx, tenantId, v.movimentoVigenteId)
+    if (!mov) return v
+    if (v.cliente === null && v.dettaglioCliente === null && mov.firId) {
+      const fir = await clienteDaFir(tx, tenantId, mov.firId)
+      if (fir.cliente && !fir.cliente.attivo) v.dettaglioCliente = 'cliente disattivato'
+    }
+    if (v.stato === 'ESCLUSO') return v
+    try {
+      const p = await this.proposta.calcolaInTx(tx, tenantId, inputDaMovimento(mov), {
+        ...(v.cliente && { clienteId: v.cliente.id }),
+        ...(v.contratto && { contrattoId: v.contratto.id }),
+        ...(v.elenco && { elencoId: v.elenco.id }),
+      })
+      v.candidati = p.candidati
+    } catch (err) {
+      // I candidati sono un aiuto per le scelte: un 4xx del calcolo (scelta non piu' valida) non
+      // deve impedire di leggere il legame. Gli errori veri (database) salgono.
+      if (!(err instanceof HttpException)) throw err
+    }
+    return v
   }
 
   /** Vista del legame come la scrive il database ora, dentro una transazione gia' aperta. */
