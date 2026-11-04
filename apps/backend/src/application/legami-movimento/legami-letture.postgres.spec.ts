@@ -192,4 +192,65 @@ describe('LegamiService: letture per l`API (dettaglio, perMovimento) — Postgre
       expect([e.status, e.body.error]).toEqual([404, 'LEGAME_MOVIMENTO_NON_TROVATO'])
     }
   })
+
+  it('dettaglio (m5): DA_RIALLINEARE = candidati calcolati sulla TESTA della catena; annullata = nessun candidato', async () => {
+    const s = await scenario()
+    const l = await creaLegameDiTest(owner, s.tenantId, {
+      movimentoOriginaleId: s.movimentoId,
+      registroId: s.registroId,
+      verso: 'CARICO',
+      stato: 'PROPOSTO',
+      clienteId: s.clienteId,
+      contrattoId: s.contrattoId,
+      elencoId: s.elencoId,
+      righe: [{ rigaAddebitoId: s.rigaCerId, codiceIvaId: s.ivaId, quantita: '100', prezzo: '2' }],
+    })
+    const prima = await nel(s.tenantId, () => service.dettaglio(s.tenantId, l.legameId))
+    expect(prima.candidati?.righe.map(c => c.id)).toContain(s.rigaCerId)
+    const testa = await owner.wasteMovement.create({
+      data: {
+        tenantId: s.tenantId,
+        registroId: s.registroId,
+        progressiveYear: 2026,
+        progressiveNumber: 901,
+        type: 'CARICO',
+        movementDate: new Date('2026-03-01T10:00:00Z'),
+        registrationDate: new Date('2026-03-01T10:00:00Z'),
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: '99 99 99',
+        quantity: '90',
+        unit: 'KG',
+        tipoAnnotazione: 'RETTIFICA',
+        motivoAnnotazione: 'cambio CER',
+        movimentoOriginaleId: s.movimentoId,
+        movimentoRettificatoId: s.movimentoId,
+      },
+    })
+    // Il legame resta sul vigente vecchio (CER 20 03 01) = DA_RIALLINEARE: i candidati sono
+    // quelli della testa (CER 99 99 99), dove la riga CER del vecchio CER non c'e'.
+    const dopo = await nel(s.tenantId, () => service.dettaglio(s.tenantId, l.legameId))
+    expect(dopo.movimentoVigenteId).toBe(s.movimentoId)
+    expect(dopo.candidati?.righe.map(c => c.id) ?? []).not.toContain(s.rigaCerId)
+    await owner.wasteMovement.create({
+      data: {
+        tenantId: s.tenantId,
+        registroId: s.registroId,
+        progressiveYear: 2026,
+        progressiveNumber: 902,
+        type: 'CARICO',
+        movementDate: new Date('2026-03-01T10:00:00Z'),
+        registrationDate: new Date('2026-03-01T10:00:00Z'),
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: '99 99 99',
+        quantity: '90',
+        unit: 'KG',
+        tipoAnnotazione: 'ANNULLAMENTO',
+        motivoAnnotazione: 'annullo',
+        movimentoOriginaleId: s.movimentoId,
+        movimentoRettificatoId: testa.id,
+      },
+    })
+    const annullata = await nel(s.tenantId, () => service.dettaglio(s.tenantId, l.legameId))
+    expect(annullata.candidati).toBeUndefined()
+  })
 })

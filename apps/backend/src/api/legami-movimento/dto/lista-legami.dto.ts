@@ -4,7 +4,8 @@
  * Il DTO fa solo da lista bianca dei nomi (parametro sconosciuto: 400).
  */
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { IsIn, IsOptional, IsString } from 'class-validator'
 
 export class ListaLegamiQueryDto {
   @ApiPropertyOptional({ description: 'Uno stato della lista (anche MANCANTE, DA_RIALLINEARE)' })
@@ -12,8 +13,9 @@ export class ListaLegamiQueryDto {
   @IsString({ message: 'Lo stato non è valido.' })
   stato?: string
 
-  @ApiPropertyOptional({ description: 'Più stati separati da virgola' })
+  @ApiPropertyOptional({ description: 'Più stati separati da virgola, o parametro ripetuto' })
   @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value.join(',') : value))
   @IsString({ message: 'Gli stati non sono validi.' })
   stati?: string
 
@@ -44,7 +46,7 @@ export class ListaLegamiQueryDto {
 
   @ApiPropertyOptional({ description: '«true» per includere gli esclusi' })
   @IsOptional()
-  @IsString({ message: 'Il filtro «esclusi» non è valido.' })
+  @IsIn(['true', 'false'], { message: 'Il filtro «esclusi» deve essere true o false.' })
   esclusi?: string
 
   @ApiPropertyOptional({ example: '1' })

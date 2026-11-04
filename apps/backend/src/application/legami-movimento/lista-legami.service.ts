@@ -46,6 +46,8 @@ export type StatoListaLegame = StatoLegame | 'MANCANTE' | 'DA_RIALLINEARE'
 
 export const MAX_DIMENSIONE = 200
 export const DIMENSIONE_PREDEFINITA = 50
+/** Oltre questa pagina l'OFFSET non ha senso: 400 invece di un errore del database. */
+export const MAX_PAGINA = 10_000
 
 export interface FiltriLista {
   /** `AAAA-MM-GG`, estremi inclusi, sul giorno italiano del movimento. */
@@ -148,8 +150,8 @@ export function normalizzaFiltri(f: FiltriLista | undefined): FiltriNormalizzati
     throw nonValido(`La dimensione della pagina va da 1 a ${MAX_DIMENSIONE}.`)
   }
   const pagina = vuoto(x.pagina) ? 1 : intero(x.pagina)
-  if (!Number.isInteger(pagina) || pagina < 1) {
-    throw nonValido('La pagina parte da 1.')
+  if (!Number.isInteger(pagina) || pagina < 1 || pagina > MAX_PAGINA) {
+    throw nonValido(`La pagina va da 1 a ${MAX_PAGINA}.`)
   }
   for (const id of [x.clienteId, x.registroId]) {
     if (!vuoto(id) && !(typeof id === 'string' && UUID.test(id))) {

@@ -14,9 +14,8 @@ import {
   IsUUID,
   Min,
   ValidateIf,
-  ValidateNested,
 } from 'class-validator'
-import { PrezzoLegame, QuantitaLegame, ScontoLegame } from './valori-legame.validators'
+import { Nidificato, PrezzoLegame, QuantitaLegame, ScontoLegame } from './valori-legame.validators'
 
 export class RigaModificaLegameDto {
   @ApiProperty({ description: 'Riga di listino (del legame, o da aggiungere dall’elenco)' })
@@ -68,7 +67,7 @@ export class ModificheLegameDto {
   @IsOptional()
   @IsArray({ message: 'Le righe devono essere una lista.' })
   @ArrayMaxSize(100, { message: 'Le righe sono al massimo 100.' })
-  @ValidateNested({ each: true })
+  @Nidificato(RigaModificaLegameDto, { each: true })
   @Type(() => RigaModificaLegameDto)
   righe?: RigaModificaLegameDto[]
 }

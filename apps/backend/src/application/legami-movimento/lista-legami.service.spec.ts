@@ -18,6 +18,13 @@ describe('normalizzaFiltri (lista «da collegare»)', () => {
     expect(normalizzaFiltri({ stati: ['CONFERMATO', 'FATTURATO'] }).stati).toEqual([])
   })
 
+  it('pagina oltre il tetto (10000) o enorme: 400 FILTRI_LISTA_NON_VALIDI, non un errore del database', () => {
+    expect(normalizzaFiltri({ pagina: 10000 }).pagina).toBe(10000)
+    for (const pagina of [10001, '10001', '99999999999999999999']) {
+      expect(() => normalizzaFiltri({ pagina: pagina as never })).toThrow(/pagina/i)
+    }
+  })
+
   it('il tetto della pagina e’ 200', () => {
     expect(normalizzaFiltri({ dimensione: MAX_DIMENSIONE }).dimensione).toBe(200)
     expect(() => normalizzaFiltri({ dimensione: 201 })).toThrow(BadRequestException)

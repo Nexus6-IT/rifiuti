@@ -494,13 +494,19 @@ export class LegamiService {
   ): Promise<LegameVistaDettaglio> {
     const v: LegameVistaDettaglio = await costruisciVista(tx, tenantId, id, null)
     if (!STATI_MODIFICABILI.includes(v.stato) && v.stato !== 'ESCLUSO') return v
-    const mov = await leggiMovimentoPerLegame(tx, tenantId, v.movimentoVigenteId)
+    // Regola della lista (Task 18) e di `daMovimento` (Task 19): su un legame rimasto indietro
+    // (DA_RIALLINEARE) conta la TESTA della catena, non il movimento vigente salvato nel legame.
+    // Candidati e cliente del FIR si leggono quindi dalla testa; se la catena e' annullata non
+    // c'e' nulla da scegliere e i candidati mancano.
+    const testa =
+      v.stato === 'ESCLUSO' ? null : await leggiTestaCatena(tx, tenantId, v.movimentoOriginaleId)
+    const mov = testa ?? (await leggiMovimentoPerLegame(tx, tenantId, v.movimentoVigenteId))
     if (!mov) return v
     if (v.cliente === null && v.dettaglioCliente === null && mov.firId) {
       const fir = await clienteDaFir(tx, tenantId, mov.firId)
       if (fir.cliente && !fir.cliente.attivo) v.dettaglioCliente = 'cliente disattivato'
     }
-    if (v.stato === 'ESCLUSO') return v
+    if (v.stato === 'ESCLUSO' || testa?.tipoAnnotazione === 'ANNULLAMENTO') return v
     try {
       const p = await this.proposta.calcolaInTx(tx, tenantId, inputDaMovimento(mov), {
         ...(v.cliente && { clienteId: v.cliente.id }),

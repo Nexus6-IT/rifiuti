@@ -5,7 +5,8 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsObject, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator'
+import { IsObject, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
+import { Nidificato } from './valori-legame.validators'
 
 export class PerimetroAggiornamentoDto {
   @ApiPropertyOptional()
@@ -34,7 +35,7 @@ export class PerimetroAggiornamentoDto {
 export class AggiornaPrezziDto {
   @ApiProperty({ type: PerimetroAggiornamentoDto })
   @IsObject({ message: 'Indica il perimetro da aggiornare.' })
-  @ValidateNested()
+  @Nidificato(PerimetroAggiornamentoDto)
   @Type(() => PerimetroAggiornamentoDto)
   perimetro: PerimetroAggiornamentoDto
 

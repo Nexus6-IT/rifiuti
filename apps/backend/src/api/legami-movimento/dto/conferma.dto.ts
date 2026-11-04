@@ -1,7 +1,8 @@
 /** DTO di `POST :id/conferma`, `escludi` e `riammetti` (4.3b, Task 22, spec §8.1). */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsInt, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator'
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator'
+import { Nidificato } from './valori-legame.validators'
 import { ModificheLegameDto } from './modifica-legame.dto'
 
 export class RiammettiLegameDto {
@@ -14,7 +15,7 @@ export class RiammettiLegameDto {
 export class ConfermaLegameDto extends RiammettiLegameDto {
   @ApiPropertyOptional({ type: ModificheLegameDto, description: 'Stesse modifiche del PUT' })
   @IsOptional()
-  @ValidateNested()
+  @Nidificato(ModificheLegameDto)
   @Type(() => ModificheLegameDto)
   modifiche?: ModificheLegameDto
 }

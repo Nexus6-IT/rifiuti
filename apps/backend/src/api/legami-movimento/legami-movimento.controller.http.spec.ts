@@ -69,7 +69,7 @@ function servizi(): Servizi {
   }
 }
 
-async function creaApp(s: Servizi, ruolo: () => string) {
+async function creaApp(s: Servizi, ruolo: () => string, accesso: jest.Mock = jest.fn()) {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const moduleRef = await Test.createTestingModule({
     controllers: [LegamiMovimentoController, MovimentoLegameController],
@@ -79,7 +79,7 @@ async function creaApp(s: Servizi, ruolo: () => string) {
       { provide: ListaLegamiService, useValue: s.lista },
       { provide: AggiornaPrezziService, useValue: s.prezzi },
       { provide: AzioniMassaService, useValue: s.massa },
-      { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
+      { provide: RuoloEffettivoService, useValue: { accesso } },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
   })
@@ -110,11 +110,13 @@ describe('Legami movimento: API (HTTP con servizi finti)', () => {
   let app: INestApplication
   let s: Servizi
   let ruolo = 'OPERATOR'
+  let accesso: jest.Mock
 
   beforeEach(async () => {
     ruolo = 'OPERATOR'
+    accesso = jest.fn()
     s = servizi()
-    app = await creaApp(s, () => ruolo)
+    app = await creaApp(s, () => ruolo, accesso)
   })
 
   afterEach(async () => {
@@ -210,6 +212,88 @@ describe('Legami movimento: API (HTTP con servizi finti)', () => {
     it('senza azienda determinabile: 403 e nessun servizio', async () => {
       expect((await http().get(`/${L}/${ID}`).set('x-senza-azienda', '1')).status).toBe(403)
       expect(s.legami.dettaglio).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('ruolo effettivo nell`azienda selezionata (m6)', () => {
+    const ALTRA = '9b9b9b9b-0000-4000-8000-000000000009'
+
+    it('ADMIN nel token ma VIEWER nell`azienda selezionata: 403 sulle scritture, 200 sulle letture', async () => {
+      ruolo = 'ADMIN'
+      accesso.mockResolvedValue('VIEWER')
+      const h = (r: request.Test) => r.set('x-tenant-id', ALTRA)
+      const scritture: (() => request.Test)[] = [
+        () => h(http().put(`/${L}/${ID}`).send({ versione: 1 })),
+        () => h(http().post(`/${L}/${ID}/conferma`).send({ versione: 1 })),
+        () => h(http().post(`/${L}/${ID}/escludi`).send({ versione: 1, motivo: 'm' })),
+        () => h(http().post(`/${L}/${ID}/riammetti`).send({ versione: 1 })),
+        () =>
+          h(
+            http()
+              .post(`/${L}/azioni`)
+              .send({ azione: 'CONFERMA', movimentoIds: [MOV] })
+          ),
+        () => h(http().post(`/${L}/da-movimento/${MOV}`).send({})),
+        () =>
+          h(
+            http()
+              .post(`/${L}/aggiorna-prezzi`)
+              .send({ perimetro: { contrattoId: CONTRATTO } })
+          ),
+      ]
+      const stati: number[] = []
+      for (const r of scritture) stati.push((await r()).status)
+      expect(stati).toEqual(Array(7).fill(403))
+      expect(accesso).toHaveBeenCalled()
+      for (const g of [s.legami, s.massa, s.prezzi]) {
+        for (const f of Object.values(g)) {
+          if (f !== s.legami.dettaglio && f !== s.legami.perMovimento) {
+            expect(f).not.toHaveBeenCalled()
+          }
+        }
+      }
+      expect((await h(http().get(`/${L}/${ID}`))).status).toBe(200)
+    })
+  })
+
+  describe('messaggi dei DTO annidati (m1)', () => {
+    it('riga sbagliata: «Riga N: ...» in italiano, senza il percorso tecnico', async () => {
+      const r = await http()
+        .put(`/${L}/${ID}`)
+        .send({
+          versione: 1,
+          righe: [{ rigaAddebitoId: RIGA }, { rigaAddebitoId: RIGA, prezzo: '12,5' }],
+        })
+      expect(r.status).toBe(400)
+      const testo = JSON.stringify(r.body)
+      expect(testo).toMatch(/Riga 2: Prezzo/)
+      expect(testo).not.toMatch(/righe\.\d/)
+    })
+
+    it('modifiche della conferma, scelte della proposta, elementi di massa, perimetro', async () => {
+      const casi: [object, RegExp][] = [
+        [
+          { versione: 1, modifiche: { righe: [{ rigaAddebitoId: RIGA, quantita: '0' }] } },
+          /Riga 1: Quantità/,
+        ],
+      ]
+      const r1 = await http().post(`/${L}/${ID}/conferma`).send(casi[0][0])
+      expect(JSON.stringify(r1.body)).toMatch(casi[0][1])
+      const r2 = await http()
+        .post(`/${L}/proposta`)
+        .send({ ...proposta, scelte: { righe: [{ rigaAddebitoId: 'x' }] } })
+      expect(JSON.stringify(r2.body)).toMatch(/Riga 1: La riga non è valida/)
+      expect(JSON.stringify(r2.body)).not.toMatch(/scelte\./)
+      const r3 = await http()
+        .post(`/${L}/azioni`)
+        .send({ azione: 'CONFERMA', elementi: [{ legameId: ID, versione: 'x' }] })
+      expect(JSON.stringify(r3.body)).toMatch(/Elemento 1: La versione/)
+      ruolo = 'ADMIN'
+      const r4 = await http()
+        .post(`/${L}/aggiorna-prezzi`)
+        .send({ perimetro: { contrattoId: 'x' } })
+      expect(JSON.stringify(r4.body)).toMatch(/Il contratto non è valido/)
+      expect(JSON.stringify(r4.body)).not.toMatch(/perimetro\./)
     })
   })
 
@@ -330,6 +414,23 @@ describe('Legami movimento: API (HTTP con servizi finti)', () => {
         al: '2026-02-01',
         stati: 'PROPOSTO,MANCANTE',
       })
+    })
+
+    it('`stati` ripetuto in query e` accettato come lista (m2)', async () => {
+      const r = await http().get(`/${L}?stati=PROPOSTO&stati=MANCANTE`)
+      expect(r.status).toBe(200)
+      expect(s.lista.lista).toHaveBeenCalledWith(TENANT, { stati: 'PROPOSTO,MANCANTE' })
+    })
+
+    it('`esclusi` accetta solo true o false, altrimenti 400 col nome del campo (m3)', async () => {
+      for (const v of ['true', 'false']) {
+        expect((await http().get(`/${L}?esclusi=${v}`)).status).toBe(200)
+      }
+      for (const v of ['1', 'si', 'TRUE', '']) {
+        const r = await http().get(`/${L}?esclusi=${v}`)
+        expect([v, r.status]).toEqual([v, 400])
+        expect(JSON.stringify(r.body)).toMatch(/esclusi/)
+      }
     })
 
     it('senza filtri: oggetto vuoto; parametro sconosciuto: 400', async () => {

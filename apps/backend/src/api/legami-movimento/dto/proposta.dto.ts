@@ -16,8 +16,8 @@ import {
   IsUUID,
   Matches,
   MaxLength,
-  ValidateNested,
 } from 'class-validator'
+import { Nidificato } from './valori-legame.validators'
 
 export class RigaSceltaDto {
   @ApiProperty()
@@ -45,7 +45,7 @@ export class ScelteDto {
   @IsOptional()
   @IsArray({ message: 'Le righe devono essere una lista.' })
   @ArrayMaxSize(100, { message: 'Le righe sono al massimo 100.' })
-  @ValidateNested({ each: true })
+  @Nidificato(RigaSceltaDto, { each: true })
   @Type(() => RigaSceltaDto)
   righe?: RigaSceltaDto[]
 }
@@ -100,7 +100,7 @@ export class PropostaLegameDto {
 
   @ApiPropertyOptional({ type: ScelteDto })
   @IsOptional()
-  @ValidateNested()
+  @Nidificato(ScelteDto, { elemento: 'Scelte' })
   @Type(() => ScelteDto)
   scelte?: ScelteDto
 }

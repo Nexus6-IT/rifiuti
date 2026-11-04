@@ -11,8 +11,8 @@ import {
   IsUUID,
   MaxLength,
   Min,
-  ValidateNested,
 } from 'class-validator'
+import { Nidificato } from './valori-legame.validators'
 
 export class ElementoAzioneMassaDto {
   @ApiProperty()
@@ -34,7 +34,7 @@ export class AzioneMassaDto {
   @IsOptional()
   @IsArray({ message: 'Gli elementi devono essere una lista.' })
   @ArrayMaxSize(500, { message: 'Gli elementi sono al massimo 500.' })
-  @ValidateNested({ each: true })
+  @Nidificato(ElementoAzioneMassaDto, { each: true, elemento: 'Elemento' })
   @Type(() => ElementoAzioneMassaDto)
   elementi?: ElementoAzioneMassaDto[]
 
