@@ -327,12 +327,33 @@ describe('RegistroComponent — causali dall’API', () => {
       servizio.registra.and.returnValue(
         of({ progressiveNumber: 1, progressiveYear: 2026 } as unknown as Movimento)
       )
-      c.legame = { azione: 'CONFERMA', righe: [{ rigaAddebitoId: 'ra-1', prezzo: '12.5' }] }
-      c.salva()
+      c.legame = { azione: 'PROPOSTA', righe: [{ rigaAddebitoId: 'ra-1', prezzo: '12.5' }] }
+      c.bloccoStato = { visibile: true, confermabile: true }
+      c.salva('CONFERMA')
       expect(servizio.registra.calls.mostRecent().args[0].legame).toEqual({
         azione: 'CONFERMA',
         righe: [{ rigaAddebitoId: 'ra-1', prezzo: '12.5' }],
       })
+    })
+
+    itFa('conferma non ammessa: «Registra e conferma» non registra', () => {
+      const c = crea()
+      compila(c)
+      c.legame = { azione: 'PROPOSTA', righe: [] }
+      c.bloccoStato = { visibile: true, confermabile: false }
+      c.salva('CONFERMA')
+      expect(servizio.registra).not.toHaveBeenCalled()
+      expect(toast.error).toHaveBeenCalled()
+    })
+
+    itFa('causale che l’API dice non fatturabile: nessuna proposta da chiedere', () => {
+      const c = crea()
+      compila(c)
+      expect(c.datiLegame()).not.toBeNull()
+      risposta('CARICO', '2026-10-20').next([{ ...riga('AZ_RESO'), fatturabile: false }])
+      expect(c.datiLegame()).toBeNull()
+      risposta('CARICO', '2026-10-20').next([{ ...riga('AZ_RESO'), fatturabile: true }])
+      expect(c.datiLegame()).not.toBeNull()
     })
 
     itFa('senza blocco (causale non fatturabile) la chiave `legame` non c’è', () => {

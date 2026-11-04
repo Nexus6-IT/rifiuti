@@ -12,7 +12,9 @@ import {
   signal,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
+import { DropdownModule } from 'primeng/dropdown'
 import { TagModule } from 'primeng/tag'
 import { ClientiService } from '../clienti/clienti.service'
 import { Cliente } from '../clienti/clienti.model'
@@ -38,8 +40,11 @@ import {
 import { etichettaAvviso, etichettaMotivo } from './vocabolario-legami'
 
 /** Scelte dell'utente sul legame: sono le `scelte` della richiesta di proposta (senza le righe). */
-/** Quanto si elencano i clienti nel menu di scelta (senza FIR il cliente lo sceglie l'utente). */
-const CLIENTI_NEL_MENU = 200
+/** Clienti per richiesta nel menu di scelta (il backend accetta al massimo 100): il resto si cerca per testo. */
+const CLIENTI_NEL_MENU = 50
+
+/** Attesa prima di cercare i clienti mentre si scrive nel filtro del menu. */
+export const ATTESA_RICERCA_CLIENTI_MS = 300
 
 export type SceltaLegame = Omit<NonNullable<DatiProposta['scelte']>, 'righe'>
 
@@ -52,6 +57,12 @@ export const ATTESA_PROPOSTA_MS = 400
 export const MESSAGGIO_PROPOSTA_NON_DISPONIBILE =
   'La proposta di fatturazione non è disponibile adesso. Puoi registrare il movimento; se la causale è fatturabile, il collegamento si potrà fare dopo.'
 
+/** Stato del blocco per i pulsanti del dialog di registrazione. */
+export interface StatoBlocco {
+  visibile: boolean
+  confermabile: boolean
+}
+
 type Modifiche = Partial<Record<CampoRiga, string | null>>
 
 /**
@@ -60,16 +71,23 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
  * prezzo e sconto modificabili, motivi e avvisi. Emette `legameChange` con il blocco `legame`
  * da mettere nella registrazione (null = nessun blocco).
  *
- * Due scelte alla registrazione, come pulsanti a commutazione: «Registra senza collegare»
- * (azione PROPOSTA, predefinita: nessuna conferma automatica) e «Conferma legame» (azione
- * CONFERMA, ammessa solo con una proposta completa).
+ * Non registra da solo: l'azione (PROPOSTA o CONFERMA) la decide chi lo ospita, con i suoi
+ * pulsanti, usando `statoChange` (blocco visibile, conferma possibile). Il `legame` emesso ha
+ * sempre azione PROPOSTA: chi registra con «conferma» la sostituisce.
  *
  * Riusabile dalla rettifica (Task 27): stessi `datiMovimento`, `scelta` e `legameChange`.
  */
 @Component({
   selector: 'app-blocco-fatturazione',
   standalone: true,
-  imports: [CommonModule, ButtonModule, TagModule, RigheLegameTabellaComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ButtonModule,
+    DropdownModule,
+    TagModule,
+    RigheLegameTabellaComponent,
+  ],
   template: `
     <section
       *ngIf="visibile()"
@@ -107,17 +125,30 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
               </ng-container>
               <ng-template #senzaCliente>
                 <label class="sr-only" for="fatt-cliente-menu">Cliente da fatturare</label>
-                <select
-                  id="fatt-cliente-menu"
-                  class="p-inputtext p-component menu-legame"
+                <p-dropdown
+                  inputId="fatt-cliente-menu"
                   data-testid="fatt-cliente-menu"
-                  (change)="scegli('clienteId', $any($event.target))"
+                  styleClass="menu-legame"
+                  [options]="clienti()"
+                  optionLabel="ditta.ragioneSociale"
+                  optionValue="id"
+                  placeholder="Scegli il cliente"
+                  [filter]="true"
+                  filterBy="ditta.ragioneSociale,ditta.partitaIva"
+                  filterPlaceholder="Cerca per nome, codice o partita IVA"
+                  emptyFilterMessage="Nessun cliente trovato"
+                  [resetFilterOnHide]="true"
+                  [(ngModel)]="clienteMenu"
+                  (onChange)="scegliCliente($event.value)"
+                  (onFilter)="cercaClienti($event.filter)"
+                ></p-dropdown>
+                <small
+                  *ngIf="erroreClienti()"
+                  class="field-error p-error block"
+                  role="alert"
+                  data-testid="fatt-clienti-errore"
+                  >Non riesco a caricare i clienti: riprova a cercare.</small
                 >
-                  <option value="" selected>Scegli il cliente</option>
-                  <option *ngFor="let c of clienti()" [value]="c.id">
-                    {{ c.ditta.ragioneSociale }}
-                  </option>
-                </select>
                 <small *ngIf="p.dettaglioCliente"> ({{ p.dettaglioCliente }})</small>
               </ng-template>
             </dd>
@@ -224,38 +255,10 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
           (erroriChange)="alErrori($event)"
         ></app-righe-legame-tabella>
 
-        <div
-          class="azioni-legame"
-          role="group"
-          aria-label="Cosa fare con il legame alla registrazione"
-        >
-          <button
-            pButton
-            type="button"
-            label="Conferma legame"
-            icon="pi pi-check"
-            data-testid="fatt-conferma"
-            [class.p-button-outlined]="modo() !== 'CONFERMA'"
-            [attr.aria-pressed]="modo() === 'CONFERMA'"
-            [disabled]="!puoConfermare()"
-            (click)="imposta('CONFERMA')"
-          ></button>
-          <button
-            pButton
-            type="button"
-            label="Registra senza collegare"
-            data-testid="fatt-senza-collegare"
-            [class.p-button-outlined]="modo() !== 'PROPOSTA'"
-            [attr.aria-pressed]="modo() === 'PROPOSTA'"
-            (click)="imposta('PROPOSTA')"
-          ></button>
-        </div>
         <small class="aiuto" data-testid="fatt-aiuto">
-          {{
-            modo() === 'CONFERMA'
-              ? 'Alla registrazione il movimento viene collegato al listino con questi valori.'
-              : 'Il movimento resta «proposto»: potrai confermarlo dopo da «Da collegare».'
-          }}
+          Con «Registra e conferma legame» il movimento viene collegato al listino con questi
+          valori; con «Registra senza collegare» resta «proposto» e lo confermi dopo da «Da
+          collegare».
         </small>
       </ng-container>
     </section>
@@ -302,12 +305,6 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
         border: 1px solid var(--color-warning, #b45309);
         color: var(--color-warning, #92400e);
       }
-      .azioni-legame {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 0.75rem;
-      }
       .sr-only {
         position: absolute;
         width: 1px;
@@ -346,13 +343,18 @@ export class BloccoFatturazioneComponent implements OnChanges {
   @Output() validoChange = new EventEmitter<boolean>()
   /** Vero mentre la proposta si aggiorna: il `legame` emesso sarebbe di dati superati. */
   @Output() inAttesaChange = new EventEmitter<boolean>()
+  /**
+   * Stato per i pulsanti di chi registra: `visibile` (il blocco c'è e l'utente può scrivere) e
+   * `confermabile` (proposta completa, nessun campo in errore, nessun aggiornamento in corso).
+   */
+  @Output() statoChange = new EventEmitter<StatoBlocco>()
+  private ultimoStato: StatoBlocco | null = null
 
   readonly messaggioNonDisponibile = MESSAGGIO_PROPOSTA_NON_DISPONIBILE
 
   readonly proposta = signal<PropostaLegame | null>(null)
   readonly caricamento = signal(false)
   readonly erroreProposta = signal(false)
-  readonly modo = signal<'CONFERMA' | 'PROPOSTA'>('PROPOSTA')
   readonly cambioInSospeso = signal<{ tipo: TipoScelta; id: string } | null>(null)
   /** Clienti per il menu (solo se la proposta non ha un cliente). */
   readonly clienti = signal<Cliente[]>([])
@@ -364,12 +366,14 @@ export class BloccoFatturazioneComponent implements OnChanges {
   /** Dati cambiati, proposta nuova non ancora arrivata. */
   private readonly inAttesa = signal(false)
   private clientiCaricati = false
+  private readonly ricercaClienti$ = new Subject<{ testo: string; subito: boolean }>()
+  /** Cliente scelto nel menu (si azzera se la scelta non si applica). */
+  clienteMenu: string | null = null
+  readonly erroreClienti = signal(false)
 
   private readonly datiDebounce$ = new Subject<DatiMovimentoLegame | null>()
   private readonly subito$ = new Subject<void>()
   private chiaveDati: string | null = null
-  /** Al prossimo risultato l'azione torna PROPOSTA (cambio di FIR). */
-  private riportaAProposta = false
 
   readonly puoScrivere = computed(() => permessiLegami(this.auth.currentUser()?.role).scrive)
 
@@ -435,6 +439,27 @@ export class BloccoFatturazioneComponent implements OnChanges {
   avviso = etichettaAvviso
 
   constructor() {
+    this.ricercaClienti$
+      .pipe(
+        debounce(r => timer(r.subito ? 0 : ATTESA_RICERCA_CLIENTI_MS)),
+        switchMap(r =>
+          this.clientiService.clienti
+            .list({
+              ...(r.testo.trim() ? { testo: r.testo.trim() } : {}),
+              soloAttivi: true,
+              dimensione: CLIENTI_NEL_MENU,
+            })
+            .pipe(
+              map(esito => ({ ok: true as const, elementi: esito.elementi })),
+              catchError(() => of({ ok: false as const, elementi: [] as Cliente[] }))
+            )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(esito => {
+        this.erroreClienti.set(!esito.ok)
+        if (esito.ok) this.clienti.set(esito.elementi)
+      })
     // Si sottoscrive subito: `ngOnChanges` precede `ngOnInit` e la prima richiesta non va persa.
     merge(
       this.datiDebounce$.pipe(debounce(d => timer(d ? ATTESA_PROPOSTA_MS : 0))),
@@ -454,19 +479,10 @@ export class BloccoFatturazioneComponent implements OnChanges {
       )
       .subscribe(esito => {
         this.caricamento.set(false)
-        const prima = this.proposta()
         if (esito.stato === 'ok') {
           this.erroreProposta.set(false)
           this.proposta.set(esito.proposta)
           this.potaModifiche(esito.proposta)
-          // Cliente, contratto o elenco diversi, o un altro FIR: la conferma data prima non vale.
-          if (
-            this.riportaAProposta ||
-            esito.proposta.motivi.length > 0 ||
-            (prima !== null && cambiataIdentita(prima, esito.proposta))
-          ) {
-            this.modo.set('PROPOSTA')
-          }
           if (!esito.proposta.cliente) this.chiediClienti()
         } else if (esito.stato === 'errore') {
           // Il registro non si blocca mai: avviso e registrazione possibile, senza blocco `legame`.
@@ -476,7 +492,6 @@ export class BloccoFatturazioneComponent implements OnChanges {
           this.erroreProposta.set(false)
           this.proposta.set(null)
         }
-        this.riportaAProposta = false
         this.inAttesa.set(false)
         this.inAttesaChange.emit(false)
         // Senza blocco visibile non restano errori di campo in sospeso: non devono bloccare nessuno.
@@ -499,8 +514,6 @@ export class BloccoFatturazioneComponent implements OnChanges {
       this.scelta = null
       this.modifiche.set({})
       this.generazione.update(g => g + 1)
-      this.riportaAProposta = true
-      this.modo.set('PROPOSTA')
     }
     if (!dati) {
       this.proposta.set(null)
@@ -541,8 +554,11 @@ export class BloccoFatturazioneComponent implements OnChanges {
 
   /** Cambio di cliente, contratto o elenco dal menu. */
   scegli(tipo: TipoScelta, el: HTMLSelectElement): void {
+    this.scegliId(tipo, el.value, corrente => (el.value = corrente))
+  }
+
+  private scegliId(tipo: TipoScelta, id: string, ripristina: (corrente: string) => void): void {
     const p = this.proposta()
-    const id = el.value
     const corrente =
       (tipo === 'clienteId'
         ? p?.cliente?.id
@@ -550,12 +566,12 @@ export class BloccoFatturazioneComponent implements OnChanges {
           ? p?.contratto?.id
           : p?.elenco?.id) ?? ''
     if (!p || id === '' || id === corrente) {
-      el.value = corrente
+      ripristina(corrente)
       return
     }
     if (this.haPrezziManuali()) {
       // I valori scritti a mano andrebbero persi: prima si avvisa, l'utente decide.
-      el.value = corrente
+      ripristina(corrente)
       this.cambioInSospeso.set({ tipo, id })
       return
     }
@@ -571,12 +587,6 @@ export class BloccoFatturazioneComponent implements OnChanges {
 
   annullaCambio(): void {
     this.cambioInSospeso.set(null)
-  }
-
-  imposta(modo: 'CONFERMA' | 'PROPOSTA'): void {
-    if (modo === 'CONFERMA' && !this.puoConfermare()) return
-    this.modo.set(modo)
-    this.emetti()
   }
 
   alModifica(m: ModificaCampoRiga): void {
@@ -599,7 +609,6 @@ export class BloccoFatturazioneComponent implements OnChanges {
   alErrori(inErrore: boolean): void {
     if (this.campiInErrore() === inErrore) return
     this.campiInErrore.set(inErrore)
-    if (inErrore && this.modo() === 'CONFERMA') this.modo.set('PROPOSTA')
     this.validoChange.emit(!inErrore)
     this.emetti()
   }
@@ -616,20 +625,21 @@ export class BloccoFatturazioneComponent implements OnChanges {
     void Promise.resolve().then(fn)
   }
 
-  /** Carica i clienti la prima volta che servono (proposta senza cliente). */
+  /** Prima volta che servono (proposta senza cliente): primi clienti attivi. */
   private chiediClienti(): void {
     if (this.clientiCaricati) return
     this.clientiCaricati = true
-    this.clientiService.clienti
-      .list({ soloAttivi: true, dimensione: CLIENTI_NEL_MENU })
-      .pipe(
-        catchError(() => {
-          this.clientiCaricati = false
-          return of({ elementi: [] as Cliente[], totale: 0 })
-        }),
-        takeUntilDestroyed(this.destroyRef)
-      )
-      .subscribe(r => this.clienti.set(r.elementi))
+    this.ricercaClienti$.next({ testo: '', subito: true })
+  }
+
+  /** Ricerca sul server mentre si scrive nel filtro del menu (`testo`, `soloAttivi`, `dimensione` del DTO). */
+  cercaClienti(testo: string): void {
+    this.ricercaClienti$.next({ testo, subito: false })
+  }
+
+  /** Cliente scelto dal menu. */
+  scegliCliente(id: string | null): void {
+    this.scegliId('clienteId', id ?? '', () => (this.clienteMenu = null))
   }
 
   private haPrezziManuali(): boolean {
@@ -647,7 +657,6 @@ export class BloccoFatturazioneComponent implements OnChanges {
     this.aggiornaScelta({ ...base, [tipo]: id })
     this.modifiche.set({})
     this.generazione.update(g => g + 1)
-    this.modo.set('PROPOSTA')
     this.inAttesa.set(true)
     this.inAttesaChange.emit(true)
     this.emetti()
@@ -692,7 +701,8 @@ export class BloccoFatturazioneComponent implements OnChanges {
     // Solo le scelte esplicite dell'utente: il resto lo deriva il server, come nella proposta.
     const s = this.scelta
     return {
-      azione: this.modo(),
+      // Il blocco prepara il legame; l'azione la decide chi registra (pulsanti del dialog).
+      azione: 'PROPOSTA',
       ...(s?.clienteId ? { clienteId: s.clienteId } : {}),
       ...(s?.contrattoId ? { contrattoId: s.contrattoId } : {}),
       ...(s?.elencoId ? { elencoId: s.elencoId } : {}),
@@ -702,6 +712,19 @@ export class BloccoFatturazioneComponent implements OnChanges {
 
   private emetti(): void {
     this.legameChange.emit(this.costruisciLegame())
+    const visibile = this.visibile()
+    const stato: StatoBlocco = {
+      visibile,
+      confermabile: visibile && this.puoConfermare() && !this.inAttesa(),
+    }
+    if (
+      !this.ultimoStato ||
+      this.ultimoStato.visibile !== stato.visibile ||
+      this.ultimoStato.confermabile !== stato.confermabile
+    ) {
+      this.ultimoStato = stato
+      this.statoChange.emit(stato)
+    }
   }
 }
 
@@ -713,12 +736,4 @@ const VALORE_DI = { quantita: 'quantita', prezzo: 'prezzo', sconto: 'sconto' } a
 function uguale(campo: CampoRiga, nuovo: string | null, originale: string | null): boolean {
   if (nuovo === null || originale === null) return nuovo === originale
   return campo === 'sconto' ? nuovo === originale : Number(nuovo) === Number(originale)
-}
-
-function cambiataIdentita(prima: PropostaLegame, dopo: PropostaLegame): boolean {
-  return (
-    (prima.cliente?.id ?? null) !== (dopo.cliente?.id ?? null) ||
-    (prima.contratto?.id ?? null) !== (dopo.contratto?.id ?? null) ||
-    (prima.elenco?.id ?? null) !== (dopo.elenco?.id ?? null)
-  )
 }

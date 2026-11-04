@@ -5,7 +5,9 @@ import { Observable, Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import {
   ATTESA_PROPOSTA_MS,
+  ATTESA_RICERCA_CLIENTI_MS,
   BloccoFatturazioneComponent,
+  StatoBlocco,
   SceltaLegame,
 } from './blocco-fatturazione.component'
 import { DATI, proposta, riga } from './blocco-fatturazione.test-util'
@@ -21,9 +23,12 @@ const CLIENTI = [
 
 describe('BloccoFatturazioneComponent — logica', () => {
   let servizio: { proposta: jasmine.Spy }
+  let clientiList: jasmine.Spy
   let ruolo: string
   let fixture: ComponentFixture<BloccoFatturazioneComponent>
   let legami: (DatiLegameRegistrazione | null)[]
+  let stati: StatoBlocco[]
+  const confermabile = (): boolean => stati[stati.length - 1]?.confermabile ?? false
   let scelte: (SceltaLegame | null)[]
 
   const q = (testid: string): HTMLElement | null =>
@@ -41,13 +46,15 @@ describe('BloccoFatturazioneComponent — logica', () => {
         { provide: LegamiService, useValue: servizio },
         {
           provide: ClientiService,
-          useValue: { clienti: { list: () => of({ elementi: CLIENTI, totale: CLIENTI.length }) } },
+          useValue: { clienti: { list: clientiList } },
         },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
       ],
     })
     fixture = TestBed.createComponent(BloccoFatturazioneComponent)
     legami = []
+    stati = []
+    fixture.componentInstance.statoChange.subscribe(x => stati.push(x))
     scelte = []
     fixture.componentInstance.legameChange.subscribe(l => legami.push(l))
     fixture.componentInstance.sceltaChange.subscribe(s => scelte.push(s))
@@ -62,6 +69,9 @@ describe('BloccoFatturazioneComponent — logica', () => {
 
   beforeEach(() => {
     servizio = { proposta: jasmine.createSpy('proposta') }
+    clientiList = jasmine
+      .createSpy('list')
+      .and.callFake(() => of({ elementi: CLIENTI, totale: CLIENTI.length }))
     ruolo = 'OPERATOR'
   })
 
@@ -156,7 +166,7 @@ describe('BloccoFatturazioneComponent — logica', () => {
     const menu = q('fatt-contratto-menu') as HTMLSelectElement
     expect(menu).not.toBeNull()
     expect(menu.options.length).toBe(3)
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
     expect(testo('fatt-motivi')).toContain('Più contratti possibili')
 
     servizio.proposta.and.returnValue(
@@ -168,27 +178,16 @@ describe('BloccoFatturazioneComponent — logica', () => {
     fixture.detectChanges()
     expect(servizio.proposta.calls.mostRecent().args[0].scelte).toEqual({ contrattoId: 'co-2' })
     expect(scelte[scelte.length - 1]).toEqual({ contrattoId: 'co-2' })
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
+    expect(confermabile()).toBeTrue()
   }))
 
-  it('«Registra senza collegare»: azione PROPOSTA (predefinita), con TUTTE le righe', fakeAsync(() => {
+  it('legame emesso: azione PROPOSTA con TUTTE le righe; la conferma la decide chi registra', fakeAsync(() => {
     crea()
-    expect(ultimo()?.azione).toBe('PROPOSTA')
-    ;(q('fatt-senza-collegare') as HTMLButtonElement).click()
-    fixture.detectChanges()
     expect(ultimo()).toEqual({
       azione: 'PROPOSTA',
       righe: [{ rigaAddebitoId: 'ra-1' }, { rigaAddebitoId: 'ra-2' }],
     })
-  }))
-
-  it('«Conferma legame»: azione CONFERMA con tutte le righe, anche quelle non ritoccate', fakeAsync(() => {
-    crea()
-    ;(q('fatt-conferma') as HTMLButtonElement).click()
-    fixture.detectChanges()
-    expect(ultimo()?.azione).toBe('CONFERMA')
-    expect(ultimo()?.righe?.map(r => r.rigaAddebitoId)).toEqual(['ra-1', 'ra-2'])
-    expect(q('fatt-conferma')?.getAttribute('aria-pressed')).toBe('true')
+    expect(stati[stati.length - 1]).toEqual({ visibile: true, confermabile: true })
   }))
 
   it('ritocco di una sola riga: l’altra resta nel legame, senza valori', fakeAsync(() => {
@@ -279,7 +278,8 @@ describe('BloccoFatturazioneComponent — logica', () => {
   it('errore della proposta (500): avviso e nessun blocco `legame`, la registrazione resta possibile', fakeAsync(() => {
     crea(throwError(() => new HttpErrorResponse({ status: 500 })))
     expect(testo('fatt-errore-proposta')).toContain('Puoi registrare il movimento')
-    expect(q('fatt-conferma')).toBeNull()
+    expect(stati[stati.length - 1]?.visibile).toBeTrue()
+    expect(confermabile()).toBeFalse()
     expect(ultimo()).toBeNull()
   }))
 
@@ -294,26 +294,31 @@ describe('BloccoFatturazioneComponent — logica', () => {
     expect(ultimo()?.righe).toEqual([{ rigaAddebitoId: 'ra-1' }])
   }))
 
-  it('un altro FIR azzera scelta e ritocchi e riporta l’azione a PROPOSTA', fakeAsync(() => {
+  it('un altro FIR azzera scelta e ritocchi', fakeAsync(() => {
     crea()
     fixture.componentRef.setInput('datiMovimento', { ...DATI, firId: 'fir-1' })
     fixture.detectChanges()
     tick(ATTESA_PROPOSTA_MS)
     fixture.detectChanges()
     fixture.componentRef.setInput('scelta', { contrattoId: 'co-9' })
-    ;(q('fatt-conferma') as HTMLButtonElement).click()
     fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'prezzo', valore: '9' })
-    expect(ultimo()?.azione).toBe('CONFERMA')
-
     fixture.componentRef.setInput('datiMovimento', { ...DATI, firId: 'fir-2' })
     fixture.detectChanges()
     tick(ATTESA_PROPOSTA_MS)
     fixture.detectChanges()
     expect(fixture.componentInstance.scelta).toBeNull()
-    expect(ultimo()).toEqual({
-      azione: 'PROPOSTA',
-      righe: [{ rigaAddebitoId: 'ra-1' }, { rigaAddebitoId: 'ra-2' }],
-    })
+    expect(ultimo()?.righe).toEqual([{ rigaAddebitoId: 'ra-1' }, { rigaAddebitoId: 'ra-2' }])
+  }))
+
+  it('durante l’attesa il blocco non è confermabile', fakeAsync(() => {
+    crea()
+    expect(confermabile()).toBeTrue()
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '130' })
+    fixture.detectChanges()
+    tick(100)
+    expect(confermabile()).toBeFalse()
+    tick(ATTESA_PROPOSTA_MS)
+    expect(confermabile()).toBeTrue()
   }))
 
   it('durante il debounce il legame emesso è null e il blocco segnala l’attesa', fakeAsync(() => {
@@ -330,28 +335,6 @@ describe('BloccoFatturazioneComponent — logica', () => {
     expect(attese).toEqual([true, false])
   }))
 
-  it('cambia il cliente fra una proposta e l’altra: l’azione torna PROPOSTA', fakeAsync(() => {
-    crea()
-    ;(q('fatt-conferma') as HTMLButtonElement).click()
-    expect(ultimo()?.azione).toBe('CONFERMA')
-    servizio.proposta.and.returnValue(
-      of(proposta({ cliente: { id: 'cl-2', etichetta: 'Verdi Spa', fonte: 'FIR' } }))
-    )
-    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '5' })
-    fixture.detectChanges()
-    tick(ATTESA_PROPOSTA_MS)
-    expect(ultimo()?.azione).toBe('PROPOSTA')
-  }))
-
-  it('stesso cliente, contratto ed elenco: la conferma resta', fakeAsync(() => {
-    crea()
-    ;(q('fatt-conferma') as HTMLButtonElement).click()
-    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '5' })
-    fixture.detectChanges()
-    tick(ATTESA_PROPOSTA_MS)
-    expect(ultimo()?.azione).toBe('CONFERMA')
-  }))
-
   it('SENZA_QUANTITA: scritta la quantità si può confermare e la quantità viaggia', fakeAsync(() => {
     crea(
       of(
@@ -361,15 +344,14 @@ describe('BloccoFatturazioneComponent — logica', () => {
         })
       )
     )
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
     expect(testo('fatt-motivi')).toContain('Manca la quantità')
     fixture.componentInstance.alModifica({ rigaAddebitoId: 'ra-1', campo: 'quantita', valore: '4' })
     fixture.detectChanges()
     expect(q('fatt-motivi')).toBeNull()
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
-    ;(q('fatt-conferma') as HTMLButtonElement).click()
+    expect(confermabile()).toBeTrue()
     expect(ultimo()).toEqual({
-      azione: 'CONFERMA',
+      azione: 'PROPOSTA',
       righe: [{ rigaAddebitoId: 'ra-1', quantita: '4' }],
     })
   }))
@@ -387,7 +369,7 @@ describe('BloccoFatturazioneComponent — logica', () => {
     fixture.detectChanges()
     expect(testo('fatt-motivi')).not.toContain('Manca il prezzo')
     expect(testo('fatt-motivi')).toContain('non è valido')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
   }))
 
   it('un ritocco riportato al valore della proposta non è più un ritocco', fakeAsync(() => {
@@ -447,14 +429,12 @@ describe('BloccoFatturazioneComponent — logica', () => {
         })
       )
     )
-    const menu = q('fatt-cliente-menu') as HTMLSelectElement
-    expect(menu.options.length).toBe(3)
+    expect(q('fatt-cliente-menu')).not.toBeNull()
     expect(testo('fatt-cliente')).toContain('cliente disattivato')
     servizio.proposta.and.returnValue(
       of(proposta({ cliente: { id: 'cl-7', etichetta: 'Bianchi Srl', fonte: 'UTENTE' } }))
     )
-    menu.value = 'cl-7'
-    menu.dispatchEvent(new Event('change'))
+    fixture.componentInstance.scegliCliente('cl-7')
     tick()
     fixture.detectChanges()
     expect(servizio.proposta.calls.mostRecent().args[0].scelte).toEqual({ clienteId: 'cl-7' })
@@ -475,4 +455,49 @@ describe('BloccoFatturazioneComponent — logica', () => {
     fixture.detectChanges()
     expect(testo('fatt-cliente')).toContain('Verdi Spa')
   }))
+
+  describe('ricerca dei clienti', () => {
+    const senzaCliente = () =>
+      of(
+        proposta({
+          cliente: null,
+          contratto: null,
+          elenco: null,
+          righe: [],
+          motivi: ['SENZA_CLIENTE'],
+        })
+      )
+
+    it('prima richiesta: clienti attivi, dimensione entro il massimo del backend (100)', fakeAsync(() => {
+      crea(senzaCliente())
+      const [filtro] = clientiList.calls.mostRecent().args
+      expect(filtro).toEqual({ soloAttivi: true, dimensione: 50 })
+      expect(filtro.dimensione).toBeLessThanOrEqual(100)
+    }))
+
+    it('digitando nel filtro: ricerca sul server con `testo`, una sola richiesta dopo il debounce', fakeAsync(() => {
+      crea(senzaCliente())
+      clientiList.calls.reset()
+      fixture.componentInstance.cercaClienti('bi')
+      tick(100)
+      fixture.componentInstance.cercaClienti('bian')
+      tick(ATTESA_RICERCA_CLIENTI_MS)
+      expect(clientiList).toHaveBeenCalledTimes(1)
+      expect(clientiList.calls.mostRecent().args[0]).toEqual({
+        testo: 'bian',
+        soloAttivi: true,
+        dimensione: 50,
+      })
+    }))
+
+    it('ricerca fallita: errore visibile, il blocco resta utilizzabile', fakeAsync(() => {
+      crea(senzaCliente())
+      clientiList.and.returnValue(throwError(() => new HttpErrorResponse({ status: 400 })))
+      fixture.componentInstance.cercaClienti('x')
+      tick(ATTESA_RICERCA_CLIENTI_MS)
+      fixture.detectChanges()
+      expect(q('fatt-clienti-errore')).not.toBeNull()
+      expect(q('blocco-fatturazione')).not.toBeNull()
+    }))
+  })
 })

@@ -16,6 +16,8 @@ export interface OpzioneCausaleApi {
   codiceRentri: string | null
   operazione: string | null
   versioneId: string | null
+  /** Le registrazioni con questa causale possono avere un legame col listino (4.3). */
+  fatturabile?: boolean
 }
 
 export interface RispostaOpzioniCausali {

@@ -130,13 +130,47 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
 
   afterEach(() => fixture?.destroy())
 
-  it('causale fatturabile: il blocco compare nel dialog e la registrazione porta il legame', fakeAsync(() => {
-    const c = apri()
+  const pulsante = (testid: string): HTMLButtonElement | null =>
+    document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"] button`)
+
+  it('blocco visibile: il footer ha le due azioni e niente «Registra» singolo', fakeAsync(() => {
+    apri()
     expect(q('blocco-fatturazione')).not.toBeNull()
-    c.salva()
+    expect(pulsante('registra-senza-collegare')).not.toBeNull()
+    expect(pulsante('registra-e-conferma')).not.toBeNull()
+    expect(pulsante('registra')).toBeNull()
+  }))
+
+  it('«Registra senza collegare»: parte subito con legame PROPOSTA e tutte le righe', fakeAsync(() => {
+    apri()
+    pulsante('registra-senza-collegare')!.click()
     const corpo = servizio.registra.calls.mostRecent().args[0]
     expect(corpo.legame?.azione).toBe('PROPOSTA')
     expect(corpo.legame?.righe?.length).toBe(2)
+  }))
+
+  it('«Registra e conferma legame»: parte subito con legame CONFERMA', fakeAsync(() => {
+    apri()
+    expect(pulsante('registra-e-conferma')!.disabled).toBeFalse()
+    pulsante('registra-e-conferma')!.click()
+    expect(servizio.registra.calls.mostRecent().args[0].legame?.azione).toBe('CONFERMA')
+  }))
+
+  it('proposta incompleta: «conferma» disabilitato, «senza collegare» no', fakeAsync(() => {
+    risposta = proposta({ cliente: null, righe: [], motivi: ['SENZA_CLIENTE'] })
+    apri()
+    expect(pulsante('registra-e-conferma')!.disabled).toBeTrue()
+    expect(pulsante('registra-senza-collegare')!.disabled).toBeFalse()
+  }))
+
+  it('senza blocco (causale non fatturabile): un solo «Registra», senza legame', fakeAsync(() => {
+    risposta = proposta({ fatturabile: false })
+    apri()
+    expect(q('blocco-fatturazione')).toBeNull()
+    expect(pulsante('registra-senza-collegare')).toBeNull()
+    expect(pulsante('registra-e-conferma')).toBeNull()
+    pulsante('registra')!.click()
+    expect(Object.keys(servizio.registra.calls.mostRecent().args[0])).not.toContain('legame')
   }))
 
   it('C1: campo in errore, poi causale non fatturabile: la registrazione parte senza legame', fakeAsync(() => {
@@ -163,26 +197,25 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     expect(Object.keys(servizio.registra.calls.mostRecent().args[0])).not.toContain('legame')
   }))
 
-  it('I1: conferma attiva, poi un altro FIR: mentre aggiorna non registra, poi l’azione è PROPOSTA', fakeAsync(() => {
+  it('I1: un altro FIR: mentre la proposta si aggiorna i pulsanti aspettano e il legame vecchio non parte', fakeAsync(() => {
     const c = apri()
-    ;(q('fatt-conferma') as HTMLButtonElement).click()
-    fixture.detectChanges()
-    expect(c.legame?.azione).toBe('CONFERMA')
-
     risposta = proposta({ cliente: { id: 'cl-2', etichetta: 'Verdi Spa', fonte: 'FIR' } })
     c.form.patchValue({ firId: 'fir-2' })
     fixture.detectChanges()
     tick(50)
-    // proposta in volo: nessun legame vecchio e Registra aspetta
+    fixture.detectChanges()
     expect(c.legame).toBeNull()
-    c.salva()
+    expect(pulsante('registra-senza-collegare')!.disabled).toBeTrue()
+    expect(pulsante('registra-e-conferma')!.disabled).toBeTrue()
+    c.salva('CONFERMA')
     expect(servizio.registra).not.toHaveBeenCalled()
 
     tick(ATTESA_PROPOSTA_MS)
     fixture.detectChanges()
     tick()
-    expect(c.legame?.azione).toBe('PROPOSTA')
-    c.salva()
-    expect(servizio.registra.calls.mostRecent().args[0].legame?.azione).toBe('PROPOSTA')
+    fixture.detectChanges()
+    expect(pulsante('registra-e-conferma')!.disabled).toBeFalse()
+    pulsante('registra-e-conferma')!.click()
+    expect(servizio.registra.calls.mostRecent().args[0].legame?.azione).toBe('CONFERMA')
   }))
 })

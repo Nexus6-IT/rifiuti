@@ -112,6 +112,7 @@ import {
   BloccoFatturazioneComponent,
   DatiMovimentoLegame,
   SceltaLegame,
+  StatoBlocco,
 } from '../legami/blocco-fatturazione.component'
 import { DatiLegameRegistrazione } from '../legami/legami.model'
 
@@ -967,6 +968,7 @@ interface FirOption {
             (legameChange)="legame = $event"
             (validoChange)="bloccoFatturazioneValido = $event"
             (inAttesaChange)="bloccoInAttesa = $event"
+            (statoChange)="bloccoStato = $event"
           ></app-blocco-fatturazione>
         </form>
 
@@ -977,14 +979,37 @@ interface FirOption {
             (onClick)="chiudiForm()"
             ariaLabel="Annulla e chiudi"
           ></p-button>
-          <p-button
-            label="Registra"
-            icon="pi pi-check"
-            [loading]="saving()"
-            [disabled]="bloccoInAttesa"
-            (onClick)="salva()"
-            ariaLabel="Registra il movimento"
-          ></p-button>
+          <ng-container *ngIf="bloccoStato.visibile; else registraSingolo">
+            <p-button
+              label="Registra senza collegare"
+              [outlined]="true"
+              [loading]="saving()"
+              [disabled]="bloccoInAttesa"
+              (onClick)="salva('PROPOSTA')"
+              data-testid="registra-senza-collegare"
+              ariaLabel="Registra il movimento senza collegarlo al listino"
+            ></p-button>
+            <p-button
+              label="Registra e conferma legame"
+              icon="pi pi-check"
+              [loading]="saving()"
+              [disabled]="!bloccoStato.confermabile"
+              (onClick)="salva('CONFERMA')"
+              data-testid="registra-e-conferma"
+              ariaLabel="Registra il movimento e conferma il legame col listino"
+            ></p-button>
+          </ng-container>
+          <ng-template #registraSingolo>
+            <p-button
+              label="Registra"
+              icon="pi pi-check"
+              [loading]="saving()"
+              [disabled]="bloccoInAttesa"
+              (onClick)="salva()"
+              data-testid="registra"
+              ariaLabel="Registra il movimento"
+            ></p-button>
+          </ng-template>
         </ng-template>
       </p-dialog>
 
@@ -1401,7 +1426,18 @@ export class RegistroComponent implements OnInit {
   // ─── Blocco «Fatturazione» (4.3c) ─────────────────────────────────────────
 
   /** Dati del movimento per la proposta di legame; null finché il form è incompleto. */
-  readonly datiLegame = signal<DatiMovimentoLegame | null>(null)
+  private readonly datiForm = signal<DatiMovimentoLegame | null>(null)
+  /**
+   * Come `datiForm`, ma null se l'API dice che la causale scelta non è fatturabile: la proposta
+   * non si chiede nemmeno. Una causale che l'API non descrive resta «forse fatturabile».
+   */
+  readonly datiLegame = computed<DatiMovimentoLegame | null>(() => {
+    const dati = this.datiForm()
+    const o = this.opzioniApi()
+    if (!dati || !o || o.tipo !== dati.type) return dati
+    const causale = o.causali.find(c => c.codice === dati.causale)
+    return causale?.fatturabile === false ? null : dati
+  })
   /** Contratto ed elenco scelti dall'utente nel blocco. */
   sceltaLegame: SceltaLegame | null = null
   /** Blocco `legame` da inviare con la registrazione (null = nessuno). */
@@ -1410,6 +1446,8 @@ export class RegistroComponent implements OnInit {
   bloccoFatturazioneValido = true
   /** Vero mentre il blocco aggiorna la proposta: il `legame` emesso sarebbe superato. */
   bloccoInAttesa = false
+  /** Blocco visibile e conferma possibile: decidono i pulsanti del footer. */
+  bloccoStato: StatoBlocco = { visibile: false, confermabile: false }
   private firIdLegame: string | null = null
   private sottoscrizioneDatiLegame: Subscription | null = null
   readonly exporting = signal(false)
@@ -1555,9 +1593,9 @@ export class RegistroComponent implements OnInit {
         const firId = dati?.firId ?? null
         if (firId !== this.firIdLegame && dati) this.sceltaLegame = null
         this.firIdLegame = dati ? firId : this.firIdLegame
-        this.datiLegame.set(dati)
+        this.datiForm.set(dati)
       })
-    this.datiLegame.set(this.costruisciDatiLegame())
+    this.datiForm.set(this.costruisciDatiLegame())
   }
 
   /** Solo con i campi obbligatori compilati e la quantità positiva: prima non c'è nulla da proporre. */
@@ -1662,6 +1700,7 @@ export class RegistroComponent implements OnInit {
     this.legame = null
     this.bloccoFatturazioneValido = true
     this.bloccoInAttesa = false
+    this.bloccoStato = { visibile: false, confermabile: false }
     this.firIdLegame = null
     this.sedeBloccataDaFir.set(false)
     this.form.get('registroId')?.enable({ emitEvent: false })
@@ -2008,7 +2047,11 @@ export class RegistroComponent implements OnInit {
 
   // ─── Salvataggio ─────────────────────────────────────────────────────────
 
-  salva(): void {
+  /**
+   * `azione` solo con il blocco «Fatturazione» visibile: PROPOSTA («senza collegare») o CONFERMA.
+   * Senza blocco si registra e basta.
+   */
+  salva(azione?: 'PROPOSTA' | 'CONFERMA'): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched()
       this.toast.error('Controlla i campi evidenziati e riprova.')
@@ -2017,6 +2060,12 @@ export class RegistroComponent implements OnInit {
     // Il blocco pesa solo se c'è un `legame` da mandare: un blocco nascosto non deve mai impedire di registrare.
     if (this.legame && !this.bloccoFatturazioneValido) {
       this.toast.error('Correggi i campi evidenziati nel blocco «Fatturazione» e riprova.')
+      return
+    }
+    if (azione === 'CONFERMA' && !this.bloccoStato.confermabile) {
+      this.toast.error(
+        'Il legame non si può confermare: completa i dati del blocco «Fatturazione».'
+      )
       return
     }
     if (this.bloccoInAttesa) {
@@ -2050,7 +2099,9 @@ export class RegistroComponent implements OnInit {
         counterpartAddress: v.counterpartAddress || undefined,
         firId: v.firId || undefined,
         notes: v.notes || undefined,
-        ...(this.legame ? { legame: this.legame } : {}),
+        ...(this.legame
+          ? { legame: { ...this.legame, azione: azione ?? this.legame.azione } }
+          : {}),
       })
       .subscribe({
         next: m => {

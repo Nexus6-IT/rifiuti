@@ -2,7 +2,11 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
-import { ATTESA_PROPOSTA_MS, BloccoFatturazioneComponent } from './blocco-fatturazione.component'
+import {
+  ATTESA_PROPOSTA_MS,
+  BloccoFatturazioneComponent,
+  StatoBlocco,
+} from './blocco-fatturazione.component'
 import { DATI, proposta } from './blocco-fatturazione.test-util'
 import { DatiLegameRegistrazione, PropostaLegame } from './legami.model'
 import { LegamiService } from './legami.service'
@@ -20,6 +24,8 @@ const CLIENTI = [
 describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
   let fixture: ComponentFixture<BloccoFatturazioneComponent>
   let legami: (DatiLegameRegistrazione | null)[]
+  let stati: StatoBlocco[]
+  const confermabile = (): boolean => stati[stati.length - 1]?.confermabile ?? false
 
   const q = (testid: string): HTMLElement | null =>
     fixture.nativeElement.querySelector(`[data-testid="${testid}"]`)
@@ -66,6 +72,8 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     })
     fixture = TestBed.createComponent(BloccoFatturazioneComponent)
     legami = []
+    stati = []
+    fixture.componentInstance.statoChange.subscribe(x => stati.push(x))
     fixture.componentInstance.legameChange.subscribe(l => legami.push(l))
     fixture.componentRef.setInput('datiMovimento', DATI)
     fixture.detectChanges()
@@ -81,7 +89,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     scrivi('qta-ra-1', '1,5')
     expect(rigaRegistrata('ra-1')?.quantita).toBe('1.5')
     expect(q('errore-qta-ra-1')).toBeNull()
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
+    expect(confermabile()).toBeTrue()
   }))
 
   it('quantità "1.5": «Usa la virgola per i decimali» e il pulsante si blocca', fakeAsync(() => {
@@ -90,7 +98,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     expect(incolla(input, '1.5').defaultPrevented).toBeTrue()
     fixture.detectChanges()
     expect(q('errore-qta-ra-1')?.textContent).toContain('Usa la virgola per i decimali')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
     // il valore non è cambiato
     expect(rigaRegistrata('ra-1')?.quantita).toBeUndefined()
   }))
@@ -99,7 +107,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     crea()
     scrivi('qta-ra-1', '0')
     expect(q('errore-qta-ra-1')?.textContent).toContain('maggiore di zero')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
     expect(rigaRegistrata('ra-1')?.quantita).toBeUndefined()
   }))
 
@@ -107,16 +115,16 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     crea()
     scrivi('qta-ra-1', '1,2345')
     expect(q('errore-qta-ra-1')?.textContent).toContain('3 decimali')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
   }))
 
   it('un valore corretto dopo l’errore sblocca il pulsante', fakeAsync(() => {
     crea()
     scrivi('qta-ra-1', '0')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
     scrivi('qta-ra-1', '2,5')
     expect(q('errore-qta-ra-1')).toBeNull()
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
+    expect(confermabile()).toBeTrue()
   }))
 
   it('prezzo "12,5" a mano: inviato come "12.5", badge «prezzo manuale» e avviso', fakeAsync(() => {
@@ -158,7 +166,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     s.dispatchEvent(new Event('input'))
     fixture.detectChanges()
     expect(q('errore-sconto-ra-1')?.textContent).toContain('Usa la virgola per i decimali')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
   }))
 
   it('nessun separatore delle migliaia nei campi modificabili', fakeAsync(() => {
@@ -190,7 +198,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
       s.dispatchEvent(new Event('input'))
       fixture.detectChanges()
       expect(q('errore-sconto-ra-1')).not.toBeNull()
-      expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+      expect(confermabile()).toBeFalse()
       expect(rigaRegistrata('ra-1')?.sconto).toBeUndefined()
     }))
   }
@@ -214,7 +222,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
   it('errore su una riga, poi la riga sparisce con la nuova proposta: nessun blocco residuo', fakeAsync(() => {
     crea()
     scrivi('qta-ra-2', '0')
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeTrue()
+    expect(confermabile()).toBeFalse()
     rispostaCorrente = proposta({ righe: [proposta().righe[0]] })
     fixture.componentRef.setInput('datiMovimento', { ...DATI, cerCode: '17 04 02' })
     fixture.detectChanges()
@@ -222,6 +230,6 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     fixture.detectChanges()
     tick()
     fixture.detectChanges()
-    expect((q('fatt-conferma') as HTMLButtonElement).disabled).toBeFalse()
+    expect(confermabile()).toBeTrue()
   }))
 })
