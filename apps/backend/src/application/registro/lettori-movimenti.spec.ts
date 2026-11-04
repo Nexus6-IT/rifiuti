@@ -45,7 +45,7 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
   'application/legami-movimento/letture-legame.ts': {
     scelta: 'tutte',
     motivo:
-      'legge UNA riga per id: il movimento vigente di un legame, da cui ricalcolare la proposta (conferma, modifica, riammissione)',
+      'legge UNA riga per id: il movimento vigente di un legame (conferma, modifica, riammissione) e la TESTA di UNA catena per radice, anche un ANNULLAMENTO, per generare o riallineare il legame (azioni dalla lista); nessun conteggio',
   },
   'application/legami-movimento/aggiorna-prezzi.service.ts': {
     scelta: 'tutte',

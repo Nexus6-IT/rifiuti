@@ -341,3 +341,72 @@ export async function leggiValiditaElenco(
     WHERE e.tenant_id = ${tenantId}::uuid AND e.id = ${elencoId}::uuid`
   return r[0] ?? null
 }
+
+/** Testa vigente di una catena di annotazioni, con i dati che servono ad agganciare o riallineare il legame. */
+export interface TestaCatena extends MovimentoPerLegame {
+  id: string
+  radiceId: string
+  registroId: string
+  tipoAnnotazione: 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
+}
+
+/**
+ * Radice della catena a cui appartiene un movimento (un movimento qualunque della catena), `null`
+ * se non c'e' o e' di un'altra azienda. La radice non cambia mai: si puo' leggere prima del lock.
+ */
+export async function leggiRadiceDelMovimento(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  movimentoId: string
+): Promise<string | null> {
+  const r = await tx.$queryRaw<{ radice: string }[]>`
+    SELECT COALESCE(m.movimento_originale_id, m.id)::text AS radice
+    FROM waste_movements m
+    WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ${movimentoId}::uuid`
+  return r[0]?.radice ?? null
+}
+
+/**
+ * Testa vigente di UNA catena (l'annotazione senza successore, anche un ANNULLAMENTO): una riga,
+ * lette per radice. Si legge DOPO il lock consultivo della radice.
+ */
+export async function leggiTestaCatena(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  radiceId: string
+): Promise<TestaCatena | null> {
+  const r = await tx.$queryRaw<TestaCatena[]>`
+    SELECT m.id::text AS id, ${radiceId}::text AS "radiceId", m.registro_id::text AS "registroId",
+           m.tipo_annotazione::text AS "tipoAnnotazione",
+           m.type::text AS type, m.causale AS causale,
+           m.causale_azienda_id::text AS "causaleAziendaId", m.cer_code AS "cerCode",
+           to_char(${sqlGiornoMovimento('m')}, 'YYYY-MM-DD') AS giorno, m.unit AS unit,
+           m.quantity::text AS quantity, m.fir_id::text AS "firId"
+    FROM waste_movements m
+    WHERE m.tenant_id = ${tenantId}::uuid
+      AND (m.id = ${radiceId}::uuid OR m.movimento_originale_id = ${radiceId}::uuid)
+      AND NOT EXISTS (
+        SELECT 1 FROM waste_movements c
+        WHERE c.tenant_id = m.tenant_id AND c.movimento_rettificato_id = m.id)`
+  return r[0] ?? null
+}
+
+/**
+ * Per ogni legame indicato (JOIN unnest, mai `= ANY`) la chiave con cui si prende il suo lock
+ * consultivo: `hashtext(radice)`. Le azioni di massa elaborano i legami in questo ordine (nota m7
+ * del Task 14: con una collisione di hash due ordini per id potrebbero incrociarsi). I legami che
+ * non esistono, o sono di un'altra azienda, non compaiono.
+ */
+export async function leggiChiaviLockDeiLegami(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  legameIds: readonly string[]
+): Promise<{ id: string; chiave: number }[]> {
+  if (legameIds.length === 0) return []
+  await joinLineari(tx)
+  return tx.$queryRaw<{ id: string; chiave: number }[]>`
+    SELECT l.id::text AS id, hashtext(l.movimento_originale_id::text) AS chiave
+    FROM legami_movimento l
+    JOIN unnest(${[...legameIds]}::uuid[]) AS chiesti(chiesto) ON chiesto = l.id
+    WHERE l.tenant_id = ${tenantId}::uuid`
+}

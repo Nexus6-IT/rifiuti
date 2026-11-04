@@ -25,6 +25,7 @@ import {
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
+  eStatoFatturato,
   MOTIVI_LEGAME,
   sonoAvvisiValidi,
   sonoMotiviValidi,
@@ -35,7 +36,11 @@ import {
 } from '../../domain/legami-movimento/codici'
 import { quantitaPerRiga } from '../../domain/legami-movimento/proposta-righe'
 import type { TipoQuantita } from '../../domain/listino/riga-addebito'
-import { statoDopoRicalcolo, transizioneEscludi } from '../../domain/legami-movimento/stato-legame'
+import {
+  esitoCorrezione,
+  statoDopoRicalcolo,
+  transizioneEscludi,
+} from '../../domain/legami-movimento/stato-legame'
 import { avvisiDaRighe, motiviRighe } from '../../domain/legami-movimento/valori-legame'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
@@ -66,6 +71,7 @@ import {
   leggiStatoContratto,
   leggiValiditaElenco,
   type MovimentoPerLegame,
+  type TestaCatena,
 } from './letture-legame'
 import { bloccaLegamePerRadice, bloccaRigheLegame } from './lock-legame'
 import {
@@ -179,6 +185,12 @@ interface Esito {
   righeRimosse: string[]
   /** Prezzi scritti a mano che il ricalcolo ha buttato via (cambio di elenco/contratto/cliente). */
   prezziManualiPersi?: { rigaAddebitoId: string; prezzo: string | null; sconto: string | null }[]
+  /** Riallineamento alla testa della catena (`allineaAlVigente`): nuovo movimento vigente. */
+  vigenteId?: string
+  /** Idem: nuovo giorno del movimento (`AAAA-MM-GG`); assente = la data del legame non cambia. */
+  dataMovimento?: string
+  /** Idem: legame gia' fatturato, registra solo lo scostamento. */
+  scostamento?: boolean
 }
 
 type DatiEsito = Omit<
@@ -238,7 +250,7 @@ const ordinaMotivi = (m: Iterable<MotivoLegame>): MotivoLegame[] => {
   return MOTIVI_LEGAME.filter(x => insieme.has(x))
 }
 
-function inputDaMovimento(mov: MovimentoPerLegame): InputProposta {
+export function inputDaMovimento(mov: MovimentoPerLegame): InputProposta {
   return {
     causale: mov.causale,
     causaleAziendaId: mov.causaleAziendaId,
@@ -429,6 +441,223 @@ export class LegamiService {
         bloccato: true,
       })
     })
+  }
+
+  /** Vista del legame come la scrive il database ora, dentro una transazione gia' aperta. */
+  async vistaInTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<LegameVista> {
+    return costruisciVista(tx, tenantId, id, null)
+  }
+
+  /**
+   * Riallinea un legame rimasto indietro rispetto alla testa della catena (allineamento fallito
+   * dopo una correzione, lista «da collegare» `DA_RIALLINEARE`). Va chiamato DENTRO una
+   * transazione che ha gia' il lock consultivo della radice (`bloccaLegamePerRadice`), con la
+   * testa letta dopo quel lock. Idempotente: se il vigente e' gia' la testa non scrive nulla.
+   *
+   * L'effetto e' quello della tabella §7.5 (`esitoCorrezione`, lo stesso che usera' il Task 21):
+   * - FATTURATO / IMPORTATO_FATTURATO (decisione 21): cambiano SOLO `movimento_vigente_id`,
+   *   `scostamento_dopo_fattura` e `scostamento_il`; stato, cliente, righe e data restano;
+   * - ANNULLAMENTO in testa: ANNULLATO, righe conservate;
+   * - causale non piu' fatturabile o data prima di «fatturazione da»: ESCLUSO col testo fisso;
+   *   un ESCLUSO a mano resta tale (col suo testo) anche se la causale torna idonea;
+   * - CER cambiato, o ESCLUSO automatico tornato idoneo: proposta rifatta da zero, un CONFERMATO
+   *   torna PROPOSTO con l'avviso `CAMBIO_CER_DA_CONFERMARE` (i prezzi congelati si perdono);
+   * - altrimenti: ricalcolo sulla nuova testa, prezzi congelati e manuali invariati, quantita'
+   *   `DA_MOVIMENTO` riallineate, contratto ed elenco ricontrollati sulla nuova data.
+   * Mai una scrittura su `waste_movements`.
+   */
+  async allineaAlVigente(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    utenteId: string,
+    legameId: string,
+    testa: TestaCatena
+  ): Promise<LegameVista> {
+    const l = await leggiTestata(tx, tenantId, legameId)
+    if (!l) throw nonTrovato()
+    if (l.movimentoVigenteId === testa.id) return costruisciVista(tx, tenantId, l.id, null)
+    if (l.stato === 'ANNULLATO') throw statoNonAmmesso()
+    const righe = await leggiRighe(tx, tenantId, l.id)
+    const base: Esito = {
+      stato: l.stato,
+      clienteId: l.clienteId,
+      fonteCliente: l.fonteCliente,
+      contrattoId: l.contrattoId,
+      elencoId: l.elencoId,
+      motivi: l.motivi,
+      avvisi: l.avvisi,
+      motivoEsclusione: l.motivoEsclusione,
+      conferma: 'mantieni',
+      righe: [],
+      sostituisciRighe: false,
+      congela: false,
+      dettaglioCliente: null,
+      cambi: [],
+      righeAggiunte: [],
+      righeRimosse: [],
+      vigenteId: testa.id,
+    }
+    const opzioni = {
+      azione: 'LEGAME_MOVIMENTO_ALLINEATO',
+      descrizione: 'Legame movimento riallineato al movimento vigente',
+    }
+
+    if (eStatoFatturato(l.stato)) {
+      return this.scrivi(tx, tenantId, utenteId, l, { ...base, scostamento: true }, righe, {
+        ...opzioni,
+        bloccato: false,
+      })
+    }
+
+    const tipo = testa.tipoAnnotazione === 'ANNULLAMENTO' ? 'ANNULLAMENTO' : 'RETTIFICA'
+    const prima = await leggiMovimentoPerLegame(tx, tenantId, l.movimentoVigenteId)
+    const fatturazioneDa = await leggiFatturazioneDaInTx(tx, tenantId, { condividi: true })
+    const input = inputDaMovimento(testa)
+    const fatturabile =
+      tipo === 'ANNULLAMENTO'
+        ? true
+        : (
+            await this.proposta.calcolaInTx(
+              tx,
+              tenantId,
+              input,
+              {},
+              {
+                fatturazioneDa: FATTURAZIONE_SEMPRE,
+              }
+            )
+          ).fatturabile
+    const cerCambiato = !!prima && prima.cerCode !== testa.cerCode
+    const e = esitoCorrezione({
+      statoPrima: l.stato,
+      tipo,
+      causaleFatturabileDopo: fatturabile,
+      cerCambiato,
+      dataDopo: testa.giorno,
+      fatturazioneDa,
+      dataPrima: l.dataMovimento,
+      motivoEsclusionePrima: l.motivoEsclusione,
+      haQuantitaManuali: righe.some(r => r.quantitaOrigine === 'MANUALE'),
+      quantitaCambiata:
+        !prima ||
+        prima.unit !== testa.unit ||
+        new Prisma.Decimal(prima.quantity).cmp(new Prisma.Decimal(testa.quantity)) !== 0,
+    })
+    const comune = { ...base, dataMovimento: testa.giorno }
+
+    if (e.statoDopo === 'ANNULLATO') {
+      return this.scrivi(tx, tenantId, utenteId, l, { ...comune, stato: 'ANNULLATO' }, righe, {
+        ...opzioni,
+        bloccato: false,
+      })
+    }
+    if (e.statoDopo === 'ESCLUSO') {
+      return this.scrivi(
+        tx,
+        tenantId,
+        utenteId,
+        l,
+        {
+          ...comune,
+          stato: 'ESCLUSO',
+          motivoEsclusione: e.motivoEsclusione ?? l.motivoEsclusione,
+          conferma: 'azzera',
+        },
+        righe,
+        { ...opzioni, bloccato: false }
+      )
+    }
+    if (e.statoDopo === 'NESSUN_LEGAME') {
+      // Non puo' succedere (un legame esiste): se il dominio cambia, meglio fermarsi che scrivere.
+      throw new Error('Legame: esito di correzione senza legame per un legame esistente')
+    }
+
+    if (e.ricalcolaProposta) {
+      // Da zero: ESCLUSO automatico tornato idoneo, o CER cambiato. Resta il cliente scelto
+      // dall'utente, se ancora attivo; i prezzi manuali e congelati si perdono (audit).
+      let scelte: ScelteProposta = {}
+      if (l.fonteCliente === 'UTENTE' && l.clienteId) {
+        const c = await leggiCliente(tx, tenantId, l.clienteId)
+        if (c?.attivo) scelte = { clienteId: c.id }
+      }
+      const p = await this.proposta.calcolaEBloccaInTx(tx, tenantId, input, scelte, {
+        fatturazioneDa: FATTURAZIONE_SEMPRE,
+      })
+      if (!p.fatturabile) throw causaleNonFatturabile()
+      const nuove = p.righe.map(righaDaProposta)
+      const completo = !!p.cliente && !!p.contratto && !!p.elenco && nuove.length > 0
+      const motivi = ordinaMotivi(p.motivi)
+      const avvisi = [...p.avvisi, ...e.avvisiDaAggiungere].filter(
+        (a, i, tutti) => tutti.indexOf(a) === i
+      )
+      const prezziManualiPersi = righe
+        .filter(r => r.prezzoManuale || r.congelataIl !== null)
+        .map(r => ({ rigaAddebitoId: r.rigaAddebitoId, prezzo: r.prezzo, sconto: r.sconto }))
+      return this.scrivi(
+        tx,
+        tenantId,
+        utenteId,
+        l,
+        {
+          ...comune,
+          stato: statoDopoRicalcolo(e.statoDopo, { motivi, completo }) as StatoLegame,
+          clienteId: p.cliente?.id ?? null,
+          fonteCliente: p.cliente?.fonte ?? null,
+          contrattoId: p.contratto?.id ?? null,
+          elencoId: p.elenco?.id ?? null,
+          motivi,
+          avvisi: avvisiDaRighe(avvisi, nuove),
+          motivoEsclusione: null,
+          conferma: 'azzera',
+          righe: nuove,
+          sostituisciRighe: true,
+          dettaglioCliente: p.dettaglioCliente,
+          prezziManualiPersi,
+        },
+        righe,
+        { ...opzioni, bloccato: false }
+      )
+    }
+
+    // Stesso CER: ricalcolo sulla nuova testa. Per ricontrollare contratto ed elenco sulla nuova
+    // data anche per un CONFERMATO si ricalcola come PROPOSTO e poi lo si ripristina se resta
+    // completo e senza motivi (altrimenti scende a DA_COLLEGARE, come vuole la tabella §7.5).
+    const eraConfermato = l.stato === 'CONFERMATO'
+    const lNuovo: Testata = {
+      ...l,
+      stato: eraConfermato ? 'PROPOSTO' : l.stato,
+      movimentoVigenteId: testa.id,
+      dataMovimento: testa.giorno,
+    }
+    const nuovoVuoto: ModificheNorm = { righe: new Map() }
+    const r = await this.ricalcola(tx, tenantId, lNuovo, righe, nuovoVuoto, false)
+    const ripristina = eraConfermato && r.stato === 'PROPOSTO'
+    const avvisi = [...r.avvisi, ...e.avvisiDaAggiungere].filter(
+      (a, i, tutti) => tutti.indexOf(a) === i
+    )
+    return this.scrivi(
+      tx,
+      tenantId,
+      utenteId,
+      l,
+      {
+        ...r,
+        vigenteId: testa.id,
+        dataMovimento: testa.giorno,
+        stato: ripristina ? 'CONFERMATO' : r.stato,
+        avvisi: avvisiDaRighe(avvisi, r.righe),
+        conferma: ripristina ? 'mantieni' : 'azzera',
+        congela: ripristina,
+        righe: r.righe,
+        sostituisciRighe: r.sostituisciRighe,
+      },
+      righe,
+      { ...opzioni, bloccato: false }
+    )
   }
 
   // -----------------------------------------------------------------------------------------
@@ -849,6 +1078,10 @@ export class LegamiService {
         motivi = ${e.motivi}::text[],
         avvisi = ${e.avvisi}::text[],
         motivo_esclusione = ${e.motivoEsclusione},
+        movimento_vigente_id = COALESCE(${e.vigenteId ?? null}::uuid, movimento_vigente_id),
+        data_movimento = COALESCE(${e.dataMovimento ?? null}::date, data_movimento),
+        scostamento_dopo_fattura = scostamento_dopo_fattura OR ${e.scostamento === true}::boolean,
+        scostamento_il = CASE WHEN ${e.scostamento === true}::boolean THEN now() ELSE scostamento_il END,
         confermato_il = CASE ${modoConferma}::text WHEN 'ora' THEN now()
                         WHEN 'azzera' THEN NULL ELSE confermato_il END,
         confermato_da = CASE ${modoConferma}::text WHEN 'ora' THEN ${utenteId}::uuid
