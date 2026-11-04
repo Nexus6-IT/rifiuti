@@ -827,3 +827,7 @@ Sono vincolanti. Le opzioni scartate del §18 sono state tolte.
 10. **PDF di cortesia:** sì, nella 4.4c, con `pdfmake`.
 11. **Zucchetti in un pezzo 4.4d.** Parte quando sono noti prodotto (Ad Hoc Revolution o Infinity) e ambiente di prova. La 4.4c contiene solo TeamSystem. L'interfaccia degli adattatori prevede comunque l'invio via API con credenziali cifrate per tenant, così la 4.4d non cambia il modello.
 12. **Il download rende «emesso».** Scaricare l'XML FatturaPA o il file del gestionale rende il documento «emesso». Lo possono fare solo ADMIN e SUPER_ADMIN, con una conferma esplicita («la fattura diventerà emessa e non si potrà più annullare»). PDF e CSV restano a chi vede il documento e non cambiano lo stato.
+13. **Definitive spente in produzione fino alla 4.4c:** 4.4a e 4.4b vanno in produzione con la definitiva disattivata da un interruttore per azienda (spento di default); si accende dopo il rilascio della 4.4c e la conferma del commercialista. Anteprime e CSV restano disponibili.
+14. **Commercialista:** si costruisce con la decisione 8 (TD24). La conferma su TD24, documenti misti e nature soggette a bollo è un gate prima di accendere le definitive in produzione, non prima del codice.
+15. **TeamSystem senza prova d'import reale:** nessuna installazione disponibile. Il file si valida sul tracciato ricostruito e si rilascia segnalato in UI e nel rapporto come «non verificato su un'installazione reale».
+16. **Esecuzione:** subagent-driven, come la 4.3.

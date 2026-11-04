@@ -160,6 +160,9 @@ PrimeNG 17.18; jest, Karma, Playwright (solo in CI).
   - CSV: ZIP con `testate.csv` e `righe.csv`, UTF-8 con BOM, `;`, decimali con la virgola, date
     `gg/mm/aaaa`, ogni cella fra virgolette con i doppi apici raddoppiati.
 
+- **Interruttore delle definitive (decisione 13 della spec):** colonna additiva `definitive_attive boolean NOT NULL DEFAULT false` sulla tabella delle impostazioni di fatturazione dell'azienda, nella migration della 4.4a (Task con la migration). La definitiva (Task 19) risponde 409 `DEFINITIVE_NON_ATTIVE` se è falsa, senza toccare numerazione né legami (test). Anteprime e CSV non dipendono dall'interruttore. Rotta ADMIN per accenderla e interruttore nella UI delle impostazioni nella 4.4c, con l'avviso del gate (commercialista, decisione 14). Nessuno la accende in produzione prima del rilascio della 4.4c.
+- **TeamSystem non verificato (decisione 15):** l'export TeamSystem mostra in UI e nel rapporto «tracciato non verificato su un'installazione reale».
+
 ## Review Focus
 
 I cinque casi che la spec implica e che nessun test della spec copre. Ciascuno ha il suo test nel
