@@ -645,7 +645,12 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
 
   readonly testoFatturato =
     'Il movimento risulta già fatturato: la correzione non cambia la fattura'
-  readonly oggi = new Date()
+  /** Fine del giorno di oggi: `maxDate` di PrimeNG confronta istanti, non giorni. */
+  readonly oggi = (() => {
+    const f = new Date()
+    f.setHours(23, 59, 59, 999)
+    return f
+  })()
   readonly invio = signal(false)
   readonly conferma = signal<Conferma | null>(null)
   private readonly tipo = signal<TipoMovimento>('CARICO')
