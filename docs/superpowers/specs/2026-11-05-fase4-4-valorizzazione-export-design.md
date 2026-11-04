@@ -1,7 +1,7 @@
 # Fase 4.4 — Valorizzazione per periodo ed export
 
 **Data**: 2026-11-05
-**Stato**: bozza, da approvare (domande aperte nel §18)
+**Stato**: decisioni prese il 2026-11-05 (§19); da approvare la spec
 **Base**: `origin/master` `8e991f87` (4.3 e seguiti in produzione, sha-8e991f8), worktree `rifiuti-wt-rentri-registro`
 **Origine**: roadmap `winwaste/docs/roadmap-fasi3-4-import-gestori.md` §4.4 (con §4.5, §6, §8, §9); WinWaste `fatturazione.md` §3-§8, `contabilita.md` §8, `fatturazione-provider-sdi.md`; spec e piano della 4.3; ledger `.superpowers/sdd/2026-11-03-fase4-3/progress.md` (decisioni 1-24).
 
@@ -841,3 +841,18 @@ Le domande sono in ordine d'impatto. La prima opzione è quella consigliata. Le 
 - /home/graziano/Progetti/rifiuti-wt-rentri-registro/apps/backend/src/application/legami-movimento/lista-legami.service.ts
 - /home/graziano/Progetti/rifiuti-wt-rentri-registro/apps/backend/src/domain/listino/importi-riga.ts
 - /home/graziano/Progetti/rifiuti-wt-rentri-registro/apps/backend/src/domain/contratti-cliente/periodi-fatturazione.ts
+
+## 19. Decisioni di Graziano (2026-11-05)
+
+Sono vincolanti e sostituiscono le opzioni del §18.
+
+1. **Movimento rettificato o annullato dopo la definitiva:** lista degli scostamenti con due rimedi, presa d'atto con nota oppure nota di credito di storno totale e rifatturazione (§18.1 A).
+2. **Addebiti calcolati nella prima uscita:** caso comune (CER e V a prezzo singolo, fissi con scadenze, prezzo speciale per documento e per periodo, minimi); le altre famiglie danno un errore esplicito che blocca solo il documento (§18.2 A).
+3. **Annullo di un definitivo:** solo l'ultimo numero della serie e solo se non emesso; in ogni altro caso nota di credito (§18.3 A).
+4. **Emesso:** al primo download dell'XML o del file del gestionale, oppure con «Segna come emesso» (§18.4 A).
+5. **Raggruppamento:** un documento per contratto principale con gli allegati, più l'opzione «un documento per elenco» (§18.5 A).
+6. **Canoni fissi senza scadenze:** una volta per periodo effettivo del contratto, con marcatore; sovrapposizione parziale = errore (§18.6 A).
+7. **Avvio:** solo su richiesta dell'utente, eseguito come job in background (§18.7 A).
+8. **Tipo documento:** TD24 quando il documento raccoglie movimenti con FIR di un periodo passato, TD01 per i soli canoni, con l'avviso sul termine del 15 del mese successivo. Da confermare con un commercialista prima della 4.4b (§18.8 A).
+9. **Adattatori verso i gestionali:** TeamSystem (file a record fissi) e poi Zucchetti Ad Hoc/Infinity (API con credenziali per tenant). Se la 4.4c è troppo grande, Zucchetti va in un pezzo 4.4d. **Aruba Fatturazione Elettronica** non è un adattatore della 4.4: entra come candidato provider SDI della 4.5, accanto a Openapi e Invoicetronic.
+10. **PDF di cortesia:** sì, nella 4.4c, con `pdfmake` (§18.10 A).
