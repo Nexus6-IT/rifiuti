@@ -17,10 +17,12 @@ import { ClientiService } from '../clienti/clienti.service'
 import { RegistroService } from '../registro/registro.service'
 import { leggiErroriAzione } from '../listino/errori-azione'
 import { ImpostazioneFatturazioneService } from './impostazioni-fatturazione.service'
+import { AggiornaPrezziDialogComponent } from './aggiorna-prezzi-dialog.component'
 import { LegameDialogComponent } from './legame-dialog.component'
 import { LegamiService } from './legami.service'
 import {
   CorpoAzioneMassa,
+  EsitoAggiornamento,
   EsitoAzioneMassa,
   FiltriLista,
   LegameVista,
@@ -73,6 +75,7 @@ interface OpzioneId {
     InputTextModule,
     InputTextareaModule,
     PaginatorModule,
+    AggiornaPrezziDialogComponent,
     TableModule,
     TagModule,
     LegameDialogComponent,
@@ -87,11 +90,17 @@ interface OpzioneId {
             per la fatturazione.
           </p>
         </div>
-        <!--
-          Posto delle azioni di pagina. Task 29: qui il pulsante «Aggiorna prezzi»
-          (*ngIf="permessi().aggiornaPrezzi"), solo ADMIN e SUPER_ADMIN.
-        -->
-        <div class="page-actions" data-testid="legami-azioni-pagina"></div>
+        <!-- Azioni di pagina: «Aggiorna prezzi» solo per ADMIN e SUPER_ADMIN (spec §9). -->
+        <div class="page-actions" data-testid="legami-azioni-pagina">
+          <p-button
+            *ngIf="permessi().aggiornaPrezzi"
+            label="Aggiorna prezzi"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="aggiornaPrezziAperta.set(true)"
+            data-testid="aggiorna-prezzi-apri"
+          />
+        </div>
       </header>
 
       <div class="filters" role="search" aria-label="Filtri">
@@ -394,6 +403,13 @@ interface OpzioneId {
         />
       </div>
 
+      <app-aggiorna-prezzi-dialog
+        *ngIf="aggiornaPrezziAperta() && permessi().aggiornaPrezzi"
+        [visible]="true"
+        (applicato)="dopoAggiornaPrezzi($event)"
+        (chiuso)="aggiornaPrezziAperta.set(false)"
+      />
+
       <app-legame-dialog
         [legame]="aperto()"
         [puoScrivere]="permessi().scrive"
@@ -453,6 +469,7 @@ export class DaCollegareComponent implements OnInit {
   readonly inCorso = signal(false)
   readonly esito = signal<({ azione: 'CONFERMA' | 'ESCLUDI' } & EsitoAzioneMassa) | null>(null)
   readonly aperto = signal<LegameVista | null>(null)
+  readonly aggiornaPrezziAperta = signal(false)
   readonly opzioniClienti = signal<OpzioneId[]>([])
   readonly erroreClienti = signal<string | null>(null)
   private readonly ricercaClienti = new Subject<string>()
@@ -527,6 +544,20 @@ export class DaCollegareComponent implements OnInit {
   private impostaClienti(o: OpzioneId[] | null): void {
     // Con un errore il menu resta com'era; il messaggio lo dice.
     if (o !== null) this.opzioniClienti.set(o)
+  }
+
+  /** «Aggiorna prezzi» applicato: si chiude la finestra, si rilegge la lista e il contatore del menu. */
+  dopoAggiornaPrezzi(e: EsitoAggiornamento): void {
+    this.aggiornaPrezziAperta.set(false)
+    const dc = e.daCollegare ?? 0
+    this.toast.success(
+      `Prezzi aggiornati: ${e.aggiornati} ${e.aggiornati === 1 ? 'legame' : 'legami'}` +
+        (e.saltati > 0 ? `, ${e.saltati} saltati` : '') +
+        (dc > 0 ? `, ${dc} tornati a Da collegare` : '') +
+        '.'
+    )
+    this.servizio.aggiornaContatori()
+    this.carica()
   }
 
   /** Testo del filtro del menu cliente (pagina e dialog): ricerca sul server con attesa di 300 ms. */

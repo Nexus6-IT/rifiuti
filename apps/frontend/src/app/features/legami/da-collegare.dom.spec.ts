@@ -12,6 +12,7 @@ import {
   MSG_TETTO,
   TETTO_AZIONE_MASSA,
 } from './da-collegare.component'
+import { ListinoService } from '../listino/listino.service'
 import { ImpostazioneFatturazioneService } from './impostazioni-fatturazione.service'
 import { LegamiService } from './legami.service'
 import { LegameVista, RigaLista } from './legami.model'
@@ -49,6 +50,7 @@ describe('DaCollegareComponent (DOM)', () => {
   let servizio: jasmine.SpyObj<LegamiService>
   let fatturazione: jasmine.SpyObj<ImpostazioneFatturazioneService>
   let listaClienti: jasmine.Spy
+  let listaContratti: jasmine.Spy
 
   async function crea(ruolo: string, righe: RigaLista[], totale = righe.length): Promise<void> {
     servizio = jasmine.createSpyObj('LegamiService', [
@@ -58,6 +60,8 @@ describe('DaCollegareComponent (DOM)', () => {
       'dettaglio',
       'riammetti',
       'aggiornaContatori',
+      'anteprimaAggiornamento',
+      'applicaAggiornamento',
     ])
     servizio.lista.and.returnValue(of({ elementi: righe, totale }))
     listaClienti = jasmine
@@ -65,6 +69,7 @@ describe('DaCollegareComponent (DOM)', () => {
       .and.returnValue(
         of({ elementi: [{ id: 'c1', ditta: { ragioneSociale: 'Rossi Srl' } }], totale: 1 })
       )
+    listaContratti = jasmine.createSpy('list').and.returnValue(of({ elementi: [], totale: 0 }))
     fatturazione = jasmine.createSpyObj('ImpostazioneFatturazioneService', ['leggi'])
     fatturazione.leggi.and.returnValue(
       of({ fatturazioneDa: '2026-01-01', versione: 1, modificatoIl: null })
@@ -77,7 +82,11 @@ describe('DaCollegareComponent (DOM)', () => {
         { provide: ImpostazioneFatturazioneService, useValue: fatturazione },
         {
           provide: ClientiService,
-          useValue: { clienti: { list: listaClienti } },
+          useValue: { clienti: { list: listaClienti }, contratti: { list: listaContratti } },
+        },
+        {
+          provide: ListinoService,
+          useValue: { elenchi: { delContratto: () => of({ contesto: {}, elenchi: [] }) } },
         },
         { provide: RegistroService, useValue: { listRegistri: () => of([]) } },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
@@ -382,5 +391,35 @@ describe('DaCollegareComponent (DOM)', () => {
     await stabilizza(fixture)
     expect(servizio.lista).toHaveBeenCalledTimes(1)
     expect(q('legami-errore')).not.toBeNull()
+  })
+  describe('Aggiorna prezzi', () => {
+    it('solo ADMIN e SUPER_ADMIN vedono il pulsante', async () => {
+      for (const ruolo of ['ADMIN', 'SUPER_ADMIN']) {
+        await crea(ruolo, [riga(1)])
+        expect(q('aggiorna-prezzi-apri')).withContext(ruolo).not.toBeNull()
+        fixture.destroy()
+        TestBed.resetTestingModule()
+      }
+      for (const ruolo of ['OPERATOR', 'VIEWER']) {
+        await crea(ruolo, [riga(1)])
+        expect(q('aggiorna-prezzi-apri')).withContext(ruolo).toBeNull()
+        fixture.destroy()
+        TestBed.resetTestingModule()
+      }
+    })
+
+    it('il pulsante apre la finestra; dopo l’applica rilegge la lista e il contatore del menu', async () => {
+      await crea('ADMIN', [riga(1)])
+      bottone('aggiorna-prezzi-apri')!.click()
+      await stabilizza(fixture)
+      expect(q('aggiorna-prezzi-dialog')).not.toBeNull()
+      servizio.lista.calls.reset()
+      servizio.aggiornaContatori.calls.reset()
+      fixture.componentInstance.dopoAggiornaPrezzi({ aggiornati: 12, saltati: 3, daCollegare: 1 })
+      await stabilizza(fixture)
+      expect(servizio.lista).toHaveBeenCalled()
+      expect(servizio.aggiornaContatori).toHaveBeenCalled()
+      expect(fixture.componentInstance.aggiornaPrezziAperta()).toBeFalse()
+    })
   })
 })
