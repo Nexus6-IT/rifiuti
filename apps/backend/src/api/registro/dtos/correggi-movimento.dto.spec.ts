@@ -39,6 +39,25 @@ describe('RettificaMovimentoDto', () => {
     expect(dto.confermaAnnoPresentato).toBe(true)
   })
 
+  it('accetta il blocco legame (4.3b) e lo respinge se l’azione non è valida', async () => {
+    const dto = (await pipe.transform(
+      {
+        ...rettifica,
+        legame: {
+          azione: 'CONFERMA',
+          righe: [{ rigaAddebitoId: '11111111-1111-4111-8111-111111111111', quantita: '5' }],
+        },
+      },
+      comeCorpo(RettificaMovimentoDto)
+    )) as RettificaMovimentoDto
+    expect(dto.legame?.azione).toBe('CONFERMA')
+    const errori = await messaggi(
+      { ...rettifica, legame: { azione: 'BOH' } },
+      comeCorpo(RettificaMovimentoDto)
+    )
+    expect(errori.join(' ')).toMatch(/azione/)
+  })
+
   it.each(['type', 'registroId', 'firId', 'registrationDate'])(
     '%s nel corpo è respinto (forbidNonWhitelisted)',
     async campo => {

@@ -94,8 +94,10 @@ export interface DatiAggancio {
   userId: string | null
   registroId: string
   type: 'CARICO' | 'SCARICO'
-  /** Il movimento appena inserito: la radice della sua catena. */
+  /** Il movimento appena inserito (per una correzione: la nuova testa della catena). */
   movimentoId: string
+  /** Radice della catena; omessa vale `movimentoId` (movimento appena registrato = radice). */
+  radiceId?: string
   fatturabile: boolean
   causale: string
   causaleAziendaId: string | null
@@ -140,7 +142,7 @@ export function validaDatiLegame(legame: DatiLegameRegistrazione | undefined): M
 }
 
 /** Codice sicuro di un errore: SQLSTATE (5 caratteri), poi codice Prisma, poi codice HTTP del dominio. */
-function codiceSicuro(err: unknown): string {
+export function codiceSicuro(err: unknown): string {
   const e = err as { code?: unknown; meta?: { code?: unknown } } | null
   const forma = /^[0-9A-Z]{5}$/
   for (const c of [e?.meta?.code, e?.code]) {
@@ -155,7 +157,7 @@ function codiceSicuro(err: unknown): string {
 }
 
 /** Riporta il valore del timeout al valore che aveva prima del savepoint (`set_config` e' parametrizzabile). */
-async function ripristinaTimeout(tx: Prisma.TransactionClient, prima: string | null) {
+export async function ripristinaTimeout(tx: Prisma.TransactionClient, prima: string | null) {
   if (prima === null) return
   await tx.$queryRaw`SELECT set_config('lock_timeout', ${prima}, true)`
 }
@@ -224,7 +226,7 @@ export function applicaModificheAllaProposta(
 }
 
 /** Scrive l'audit in un sottoblocco proprio: un audit che fallisce non puo' toccare la registrazione. */
-async function auditSenzaFallire(
+export async function auditSenzaFallire(
   tx: Prisma.TransactionClient,
   dati: Prisma.ActivityLogUncheckedCreateInput
 ): Promise<void> {
@@ -306,7 +308,7 @@ export async function agganciaLegameSenzaFallire(
       userId: c.userId,
       registroId: c.registroId,
       verso: c.type,
-      movimentoOriginaleId: c.movimentoId,
+      movimentoOriginaleId: c.radiceId ?? c.movimentoId,
       movimentoVigenteId: c.movimentoId,
       input: {
         causale: c.causale,

@@ -4,6 +4,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common'
 import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -38,6 +39,15 @@ import {
   confermaVersioneAzienda,
 } from '../causali/catalogo-causali.repository'
 import { MovimentoRegistrato, movimentoDaRecord } from './registra-movimento.use-case'
+import {
+  ATTESA_CONNESSIONE_REGISTRAZIONE_MS,
+  TIMEOUT_TRANSAZIONE_REGISTRAZIONE_MS,
+  validaDatiLegame,
+  type DatiLegameRegistrazione,
+} from '../../legami-movimento/aggancio-registro'
+import { LegamiService } from '../../legami-movimento/conferma-legame.service'
+import { riallineaLegameDopoCorrezione } from '../../legami-movimento/legami-correzioni'
+import { PropostaLegameService } from '../../legami-movimento/proposta-legame.service'
 
 type TipoCorrezione = 'RETTIFICA' | 'ANNULLAMENTO'
 
@@ -69,6 +79,12 @@ interface InputCorrezione {
 
 export interface RettificaMovimentoInput extends InputCorrezione {
   dati: DatiRettifica
+  /**
+   * Blocco «Fatturazione» facoltativo (4.3b): vale per il legame che la rettifica fa nascere (causale
+   * che diventa fatturabile) e, per un legame esistente, come ritocco di cliente, contratto, elenco e
+   * righe (solo percorsi di ricalcolo). Numeri scritti male: 400 prima di scrivere qualsiasi cosa.
+   */
+  legame?: DatiLegameRegistrazione
 }
 
 export type AnnullaMovimentoInput = InputCorrezione
@@ -93,6 +109,8 @@ interface DatiAnnotazione {
   causaleAziendaId: string | null
   /** Descrizione per la risposta (assente: vale il codice). */
   causaleDescrizione?: string
+  /** La causale (alla data dell'operazione) e' fatturabile; per l'annullamento non conta. */
+  fatturabile: boolean
   cerCode: string
   wasteDescription: string | null
   quantity: Prisma.Decimal | number
@@ -104,6 +122,16 @@ interface DatiAnnotazione {
   counterpartAddress: string | null
   movementDate: Date
   notes: string | null
+}
+
+/**
+ * Timeout esplicito della transazione di correzione (come la registrazione): con i 5 s di default
+ * le correzioni in fila sul lock del progressivo scadrebbero se il legame attende il suo tetto
+ * (mai bloccare il registro per un problema commerciale).
+ */
+const OPZIONI_TRANSAZIONE_CORREZIONE = {
+  timeout: TIMEOUT_TRANSAZIONE_REGISTRAZIONE_MS,
+  maxWait: ATTESA_CONNESSIONE_REGISTRAZIONE_MS,
 }
 
 /** Soglia di tolleranza sui saldi in kg (arrotondati al grammo). */
@@ -128,11 +156,19 @@ const COLONNA_GIA_CORRETTA = /movimento_?rettificato_?id/i
  */
 @Injectable()
 export class CorreggiMovimentoUseCase {
+  /** Proposta e riallineamento del legame (iniettati; se mancano, creati su `prisma`). */
+  private readonly propostaLegami: PropostaLegameService
+  private readonly legami: LegamiService
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    @Optional() propostaLegami?: PropostaLegameService,
+    @Optional() legami?: LegamiService
   ) {
     this.logger.setContext(CorreggiMovimentoUseCase.name)
+    this.propostaLegami = propostaLegami ?? new PropostaLegameService(prisma)
+    this.legami = legami ?? new LegamiService(prisma, this.propostaLegami)
   }
 
   rettifica(input: RettificaMovimentoInput): Promise<EsitoCorrezione> {
@@ -153,11 +189,17 @@ export class CorreggiMovimentoUseCase {
       throw new BadRequestException(`Il motivo è obbligatorio (da 1 a ${MOTIVO_MASSIMO} caratteri)`)
     }
     const { tenantId, movimentoId } = input
+    // Blocco «Fatturazione» della rettifica: un numero scritto male e' un errore del client e si
+    // rifiuta prima di scrivere qualsiasi cosa (il legame, poi, non puo' piu' far fallire la correzione).
+    const legameRichiesto =
+      tipo === 'RETTIFICA' ? (input as RettificaMovimentoInput).legame : undefined
+    validaDatiLegame(legameRichiesto)
 
     let esito: EsitoCorrezione
     let versioneCausale: string | null = null
     try {
       esito = await this.prisma.$transaction(async tx => {
+        const inizioTransazione = Date.now()
         // 1. Lettura per id + azienda: un id di un'altra azienda e' un 404 (mai un 403).
         const letto = await tx.wasteMovement.findFirst({ where: { id: movimentoId, tenantId } })
         if (!letto) throw new NotFoundException('Movimento non trovato')
@@ -308,6 +350,36 @@ export class CorreggiMovimentoUseCase {
           )
         }
 
+        // 8c. Legame movimento-cliente-prezzo (fase 4.3b, spec §7.5): segue la nuova testa in un
+        // SAVEPOINT. Un problema commerciale NON fa fallire la correzione del registro: il legame
+        // resta indietro (DA_RIALLINEARE in lista), con avviso, audit e segnalazione.
+        avvisi.push(
+          ...(await riallineaLegameDopoCorrezione(tx, {
+            tenantId,
+            userId: input.userId ?? null,
+            registroId: originale.registroId,
+            tipo,
+            radiceId: radice.id,
+            nuovoVigenteId: record.id,
+            dopo: {
+              type: record.type,
+              causale: record.causale,
+              causaleAziendaId: record.causaleAziendaId,
+              cerCode: record.cerCode,
+              movementDate: record.movementDate,
+              unit: record.unit,
+              quantity: new Prisma.Decimal(record.quantity).toFixed(),
+              fatturabile: dati.fatturabile,
+              firId: record.firId ?? null,
+            },
+            legame: legameRichiesto,
+            legami: this.legami,
+            proposta: this.propostaLegami,
+            trascorsoMs: Date.now() - inizioTransazione,
+            logger: this.logger,
+          }))
+        )
+
         // 9. Saldi DOPO: blocco (rollback) o avvisi.
         const dopo = await this.saldi(tx, tenantId, originale.registroId, cerToccati)
         avvisi.push(...valutaSaldi(tipo, prima, dopo))
@@ -344,7 +416,7 @@ export class CorreggiMovimentoUseCase {
 
         versioneCausale = record.causaleAziendaId
         return { movimento: vistaCorrezione(record, dati.causaleDescrizione), avvisi }
-      })
+      }, OPZIONI_TRANSAZIONE_CORREZIONE)
     } catch (err) {
       throw await this.traduciErrore(err, tenantId, movimentoId)
     }
@@ -411,6 +483,7 @@ export class CorreggiMovimentoUseCase {
         counterpartAddress: originale.counterpartAddress,
         movementDate: originale.movementDate,
         notes: originale.notes,
+        fatturabile: true,
       }
     }
     const validazione = await validaDatiMovimento(tx, {
@@ -462,6 +535,7 @@ export class CorreggiMovimentoUseCase {
       counterpartAddress: r.counterpartAddress ?? null,
       movementDate: r.movementDate,
       notes: r.notes ?? null,
+      fatturabile: validazione.fatturabile,
     }
   }
 
