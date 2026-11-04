@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { ActivatedRoute, convertToParamMap } from '@angular/router'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ClientiService } from '../clienti/clienti.service'
@@ -52,6 +52,7 @@ describe('DaCollegareComponent (DOM)', () => {
   let fatturazione: jasmine.SpyObj<ImpostazioneFatturazioneService>
   let listaClienti: jasmine.Spy
   let listaContratti: jasmine.Spy
+  let leggiCliente: jasmine.Spy
 
   async function crea(
     ruolo: string,
@@ -76,6 +77,11 @@ describe('DaCollegareComponent (DOM)', () => {
         of({ elementi: [{ id: 'c1', ditta: { ragioneSociale: 'Rossi Srl' } }], totale: 1 })
       )
     listaContratti = jasmine.createSpy('list').and.returnValue(of({ elementi: [], totale: 0 }))
+    leggiCliente = jasmine
+      .createSpy('get')
+      .and.callFake((id: string) =>
+        of({ id, codice: 'C77', ditta: { ragioneSociale: 'Verdi Spa' } })
+      )
     fatturazione = jasmine.createSpyObj('ImpostazioneFatturazioneService', ['leggi'])
     fatturazione.leggi.and.returnValue(
       of({ fatturazioneDa: '2026-01-01', versione: 1, modificatoIl: null })
@@ -88,7 +94,10 @@ describe('DaCollegareComponent (DOM)', () => {
         { provide: ImpostazioneFatturazioneService, useValue: fatturazione },
         {
           provide: ClientiService,
-          useValue: { clienti: { list: listaClienti }, contratti: { list: listaContratti } },
+          useValue: {
+            clienti: { list: listaClienti, get: leggiCliente },
+            contratti: { list: listaContratti },
+          },
         },
         {
           provide: ListinoService,
@@ -419,6 +428,75 @@ describe('DaCollegareComponent (DOM)', () => {
   it('?clienteId non valido si ignora', async () => {
     await crea('OPERATOR', [riga(1)], 1, { clienteId: 'x; DROP' })
     expect(servizio.lista.calls.first().args[0]!.clienteId).toBeUndefined()
+  })
+
+  it('?clienteId di un cliente fuori dai primi 25: lo legge per id e il menu ha l’etichetta', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    await crea('OPERATOR', [riga(1)], 1, { clienteId: id })
+    expect(leggiCliente).toHaveBeenCalledOnceWith(id)
+    expect(fixture.componentInstance.opzioniClienti()[0]).toEqual({
+      label: 'C77 · Verdi Spa',
+      value: id,
+    })
+  })
+
+  it('?clienteId già fra i clienti caricati: nessuna lettura per id', async () => {
+    await crea('OPERATOR', [riga(1)], 1, { clienteId: 'c1' })
+    expect(leggiCliente).not.toHaveBeenCalled()
+  })
+
+  it('?contrattoId valido va come filtro contrattoId; non valido si ignora', async () => {
+    const id = '22222222-2222-4222-8222-222222222222'
+    await crea('OPERATOR', [riga(1)], 1, { contrattoId: id })
+    expect(servizio.lista.calls.first().args[0]!.contrattoId).toBe(id)
+    expect(q('filtro-contratto')).not.toBeNull()
+    bottone('filtro-contratto-togli')!.click()
+    await stabilizza(fixture)
+    expect(servizio.lista.calls.mostRecent().args[0]!.contrattoId).toBeUndefined()
+    fixture.destroy()
+    TestBed.resetTestingModule()
+    await crea('OPERATOR', [riga(1)], 1, { contrattoId: 'x' })
+    expect(servizio.lista.calls.first().args[0]!.contrattoId).toBeUndefined()
+  })
+
+  it('carica(): una nuova lettura annulla la richiesta precedente', async () => {
+    await crea('OPERATOR', [riga(1)])
+    const lenta = new Subject<{ elementi: RigaLista[]; totale: number }>()
+    const veloce = new Subject<{ elementi: RigaLista[]; totale: number }>()
+    servizio.lista.and.returnValues(lenta, veloce)
+    fixture.componentInstance.carica()
+    fixture.componentInstance.carica()
+    veloce.next({ elementi: [riga(2)], totale: 1 })
+    lenta.next({ elementi: [riga(9)], totale: 1 })
+    expect(lenta.observed).toBeFalse()
+    expect(fixture.componentInstance.righe().map(r => r.movimentoId)).toEqual(['m2'])
+  })
+
+  it('riga saltata su un’altra pagina: l’esito la descrive con data e CER, non «Movimento»', async () => {
+    await crea('OPERATOR', [riga(1)])
+    await spunta('sel-m1')
+    servizio.azioni.and.returnValue(
+      of({
+        riusciti: 0,
+        falliti: [{ legameId: 'l1', codice: 'LEGAME_INCOMPLETO', messaggio: 'Manca il prezzo' }],
+      })
+    )
+    // Dopo l'azione la lista mostra altre righe: quella saltata non c'è più nella pagina.
+    servizio.lista.and.returnValue(of({ elementi: [riga(7)], totale: 60 }))
+    bottone('massa-conferma')!.click()
+    await stabilizza(fixture)
+    const t = q('esito-saltati')?.textContent ?? ''
+    expect(t).toContain('12/03/2026')
+    expect(t).toContain('CER 080318')
+    expect(t).not.toContain('Movimento')
+  })
+
+  it('«Riallinea» dal dialog: alla chiusura la lista si rilegge', async () => {
+    await crea('OPERATOR', [riga(1)])
+    fixture.componentInstance.segnaRiallineato()
+    servizio.lista.calls.reset()
+    fixture.componentInstance.chiudiLegame()
+    expect(servizio.lista).toHaveBeenCalledTimes(1)
   })
 
   describe('Aggiorna prezzi', () => {

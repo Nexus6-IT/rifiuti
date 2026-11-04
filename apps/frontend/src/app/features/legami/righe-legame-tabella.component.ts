@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { TagModule } from 'primeng/tag'
@@ -57,6 +58,7 @@ export function numeroComeStringa(n: number): string {
   imports: [
     CommonModule,
     FormsModule,
+    ButtonModule,
     InputNumberModule,
     InputTextModule,
     TagModule,
@@ -86,16 +88,24 @@ export function numeroComeStringa(n: number): string {
             <th scope="col">Sconto %</th>
             <th *ngIf="mostraIva" scope="col">IVA</th>
             <th scope="col" class="num">Importo</th>
+            <th *ngIf="rimovibile" scope="col"><span class="sr-only">Azioni</span></th>
           </tr>
         </thead>
         <tbody>
           <tr
             *ngFor="let r of righe; trackBy: perId"
             [attr.data-testid]="'riga-' + r.rigaAddebitoId"
+            [class.riga-rimossa]="eRimossa(r)"
           >
             <td>
               <span class="voce">{{ r.descrizione || r.tipo }}</span>
               <p-tag *ngIf="r.origine === 'PROPOSTA'" severity="info" value="Aggiuntiva"></p-tag>
+              <small
+                *ngIf="eRimossa(r)"
+                class="unita"
+                [attr.data-testid]="'rimossa-' + r.rigaAddebitoId"
+                >da rimuovere</small
+              >
             </td>
 
             <td>
@@ -212,6 +222,17 @@ export function numeroComeStringa(n: number): string {
             <td class="num" [attr.data-testid]="'importo-' + r.rigaAddebitoId">
               {{ r.importo !== null ? importoTesto(r.importo) + ' €' : '—' }}
             </td>
+
+            <td *ngIf="rimovibile">
+              <p-button
+                [label]="eRimossa(r) ? 'Ripristina' : 'Rimuovi'"
+                [text]="true"
+                size="small"
+                (onClick)="rimuovi.emit(r.rigaAddebitoId)"
+                [ariaLabel]="(eRimossa(r) ? 'Ripristina ' : 'Rimuovi ') + (r.descrizione || r.tipo)"
+                [attr.data-testid]="'rimuovi-' + r.rigaAddebitoId"
+              />
+            </td>
           </tr>
         </tbody>
       </table>
@@ -268,6 +289,9 @@ export function numeroComeStringa(n: number): string {
         text-align: right;
         white-space: nowrap;
       }
+      .riga-rimossa .voce {
+        text-decoration: line-through;
+      }
       .voce {
         margin-right: 0.4rem;
       }
@@ -299,7 +323,13 @@ export class RigheLegameTabellaComponent implements OnChanges {
   @Input() mostraIva = false
   /** Cambia quando gli errori e i testi in corso vanno scordati (nuova scelta a monte). */
   @Input() generazione = 0
+  /** Mostra «Rimuovi» / «Ripristina» per riga, in una colonna a parte (finestra del legame). */
+  @Input() rimovibile = false
+  /** Id delle righe segnate «da rimuovere»: i loro errori non bloccano nulla. Passare un nuovo `Set` a ogni cambio. */
+  @Input() rimosse: ReadonlySet<string> = new Set()
   @Output() modifica = new EventEmitter<ModificaCampoRiga>()
+  /** `rigaAddebitoId` della riga di cui si chiede rimozione o ripristino. */
+  @Output() rimuovi = new EventEmitter<string>()
   /** Vero se almeno un campo è in errore. */
   @Output() erroriChange = new EventEmitter<boolean>()
 
@@ -316,7 +346,11 @@ export class RigheLegameTabellaComponent implements OnChanges {
   private ultimoStato = false
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (!changes['righe'] && !changes['generazione']) return
+    if (!changes['righe'] && !changes['generazione']) {
+      // Solo le righe da rimuovere sono cambiate: lo stato complessivo degli errori va ricalcolato.
+      if (changes['rimosse']) void Promise.resolve().then(() => this.segnalaErrori())
+      return
+    }
     if (changes['generazione'] && !changes['generazione'].firstChange) {
       this.erroriCampi.set(new Map())
       this.rifiutiCampi.set(new Map())
@@ -332,6 +366,10 @@ export class RigheLegameTabellaComponent implements OnChanges {
     }
     // Siamo nel change detection del genitore: l'uscita parte in un microtask.
     void Promise.resolve().then(() => this.segnalaErrori())
+  }
+
+  eRimossa(r: RigaLegame): boolean {
+    return this.rimosse.has(r.rigaAddebitoId)
   }
 
   perId = (_: number, r: RigaLegame): string => r.rigaAddebitoId
@@ -431,7 +469,10 @@ export class RigheLegameTabellaComponent implements OnChanges {
   }
 
   private segnalaErrori(): void {
-    const stato = this.erroriCampi().size > 0 || this.rifiutiCampi().size > 0
+    // Gli errori di una riga «da rimuovere» non contano: la riga non partirà.
+    const attivo = (m: ReadonlyMap<string, string>): boolean =>
+      [...m.keys()].some(k => !this.rimosse.has(k.split('|')[0]))
+    const stato = attivo(this.erroriCampi()) || attivo(this.rifiutiCampi())
     if (stato === this.ultimoStato) return
     this.ultimoStato = stato
     this.erroriChange.emit(stato)

@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute } from '@angular/router'
-import { Subject, of } from 'rxjs'
+import { Subject, Subscription, of } from 'rxjs'
 import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
@@ -45,6 +45,8 @@ export const LUNGHEZZA_MAX_MOTIVO = 200
 
 /** Stati che si possono scegliere nel filtro (gli altri non compaiono mai nella lista). */
 const STATI_FILTRO: StatoLista[] = ['MANCANTE', 'DA_COLLEGARE', 'PROPOSTO', 'DA_RIALLINEARE']
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const plurale = (n: number, uno: string, molti: string): string => `${n} ${n === 1 ? uno : molti}`
 
@@ -202,6 +204,17 @@ interface OpzioneId {
           />
         </div>
       </div>
+
+      <p *ngIf="contrattoId" class="nota-pagina" data-testid="filtro-contratto">
+        Elenco filtrato per un solo contratto.
+        <p-button
+          label="Togli il filtro"
+          [text]="true"
+          size="small"
+          (onClick)="contrattoId = null; applica()"
+          data-testid="filtro-contratto-togli"
+        />
+      </p>
 
       <p *ngIf="erroreClienti() as e" role="alert" class="field-error" data-testid="clienti-errore">
         {{ e }}
@@ -432,6 +445,7 @@ interface OpzioneId {
         [riepilogo]="riepilogoAperto()"
         (cercaCliente)="cercaClienti($event)"
         (aggiornato)="dopoAggiornamento($event)"
+        (riallineato)="segnaRiallineato()"
         (chiuso)="chiudiLegame()"
       />
     </div>
@@ -506,6 +520,8 @@ export class DaCollegareComponent implements OnInit {
   dal = ''
   al = ''
   clienteId: string | null = null
+  /** Solo da `?contrattoId=`: non ha un menu, ma resta nel filtro finché si resta sulla pagina. */
+  contrattoId: string | null = null
   registroId: string | null = null
   stato: StatoLista | null = null
   motivo: string | null = null
@@ -533,14 +549,14 @@ export class DaCollegareComponent implements OnInit {
   private ripristinaFocus: (() => void) | null = null
 
   ngOnInit(): void {
-    // Collegamento da altre pagine (es. clienti): `?clienteId=<uuid>` applica il filtro cliente.
-    const idCliente = this.route?.snapshot?.queryParamMap?.get('clienteId') ?? null
-    if (
-      idCliente &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idCliente)
-    ) {
-      this.clienteId = idCliente
+    // Collegamento da altre pagine (es. clienti, contratti): `?clienteId=<uuid>` e `?contrattoId=<uuid>`
+    // applicano il filtro cliente e contratto.
+    const param = (nome: string): string | null => {
+      const v = this.route?.snapshot?.queryParamMap?.get(nome) ?? null
+      return v && UUID.test(v) ? v : null
     }
+    this.clienteId = param('clienteId') ?? this.clienteId
+    this.contrattoId = param('contrattoId')
     this.carica()
     // I menu dei filtri sono un di più: se non si caricano la lista funziona lo stesso.
     this.ricercaClienti
@@ -549,7 +565,10 @@ export class DaCollegareComponent implements OnInit {
         switchMap(testo => this.leggiClienti(testo))
       )
       .subscribe(o => this.impostaClienti(o))
-    this.leggiClienti('').subscribe(o => this.impostaClienti(o))
+    this.leggiClienti('').subscribe(o => {
+      this.impostaClienti(o)
+      this.aggiungiClientePreimpostato()
+    })
     this.registri.listRegistri().subscribe({
       next: r =>
         this.opzioniRegistri.set(
@@ -583,7 +602,31 @@ export class DaCollegareComponent implements OnInit {
 
   private impostaClienti(o: OpzioneId[] | null): void {
     // Con un errore il menu resta com'era; il messaggio lo dice.
-    if (o !== null) this.opzioniClienti.set(o)
+    if (o !== null) this.opzioniClienti.set(this.conPreimpostato(o))
+  }
+
+  /** Cliente del filtro `?clienteId=` quando non è fra i primi 25: lo si legge per id, così il menu ha l'etichetta. */
+  private clientePreimpostato: OpzioneId | null = null
+
+  private conPreimpostato(o: OpzioneId[]): OpzioneId[] {
+    const p = this.clientePreimpostato
+    return p && this.clienteId === p.value && !o.some(x => x.value === p.value) ? [p, ...o] : o
+  }
+
+  private aggiungiClientePreimpostato(): void {
+    const id = this.clienteId
+    if (!id || this.opzioniClienti().some(o => o.value === id)) return
+    this.clienti.clienti.get(id).subscribe({
+      next: c => {
+        this.clientePreimpostato = {
+          label: c.codice ? `${c.codice} · ${c.ditta.ragioneSociale}` : c.ditta.ragioneSociale,
+          value: c.id,
+        }
+        this.opzioniClienti.set(this.conPreimpostato(this.opzioniClienti()))
+      },
+      // Il filtro resta applicato: manca solo l'etichetta nel menu.
+      error: () => undefined,
+    })
   }
 
   /** «Aggiorna prezzi» applicato: si chiude la finestra, si rilegge la lista e il contatore del menu. */
@@ -630,6 +673,7 @@ export class DaCollegareComponent implements OnInit {
     if (this.dal) f.dal = this.dal
     if (this.al) f.al = this.al
     if (this.clienteId) f.clienteId = this.clienteId
+    if (this.contrattoId) f.contrattoId = this.contrattoId
     if (this.registroId) f.registroId = this.registroId
     if (this.motivo) f.motivo = this.motivo as FiltriLista['motivo']
     if (this.esclusi) f.stati = ['ESCLUSO']
@@ -650,10 +694,14 @@ export class DaCollegareComponent implements OnInit {
     this.carica()
   }
 
+  /** Richiesta della lista in corso: una nuova la annulla, così una risposta lenta non copre quella nuova. */
+  private richiestaLista: Subscription | null = null
+
   carica(): void {
+    this.richiestaLista?.unsubscribe()
     this.caricamento.set(true)
     this.errore.set(null)
-    this.servizio.lista(this.filtri()).subscribe({
+    this.richiestaLista = this.servizio.lista(this.filtri()).subscribe({
       next: p => {
         this.righe.set(p.elementi)
         this.totale.set(p.totale)
@@ -757,6 +805,8 @@ export class DaCollegareComponent implements OnInit {
   private eseguiMassa(corpo: CorpoAzioneMassa): void {
     if (this.oltreTetto() || this.selezionate() === 0) return
     const mappa = new Map(this.sel())
+    // Le righe saltate possono stare su un'altra pagina: se ne tiene la descrizione per l'esito.
+    this.righeAzione = mappa
     this.inCorso.set(true)
     this.errore.set(null)
     this.servizio.azioni(corpo).subscribe({
@@ -784,9 +834,12 @@ export class DaCollegareComponent implements OnInit {
     })
   }
 
+  /** Righe selezionate all'ultima azione di massa (anche di altre pagine), per descrivere quelle saltate. */
+  private righeAzione: ReadonlyMap<string, RigaLista> = new Map()
+
   /** Riga saltata → «12/03/2026 · 08.01.01» (nessun id da mostrare). */
   descrizioneFallito(f: EsitoAzioneMassa['falliti'][number]): string {
-    const r = this.righe().find(
+    const r = [...this.righeAzione.values(), ...this.righe()].find(
       x =>
         (f.legameId && x.legameId === f.legameId) ||
         (f.movimentoId && x.movimentoId === f.movimentoId)
@@ -833,6 +886,11 @@ export class DaCollegareComponent implements OnInit {
         this.errore.set(leggiErroriAzione(err, 'Impossibile aprire il legame.').messaggi.join(' '))
       },
     })
+  }
+
+  /** «Riallinea» dalla finestra ha riscritto il legame: alla chiusura la lista si rilegge. */
+  segnaRiallineato(): void {
+    this.ricaricaAllaChiusura = true
   }
 
   chiudiLegame(): void {

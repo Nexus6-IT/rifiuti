@@ -163,6 +163,8 @@ export interface FiltriLista {
   /** Più stati insieme: nella query viaggiano separati da virgola. */
   stati?: StatoLista[]
   clienteId?: string
+  /** Contratto del legame (UUID); da `?contrattoId=` della pagina «Da collegare». */
+  contrattoId?: string
   registroId?: string
   motivo?: MotivoLegame
   dal?: string
