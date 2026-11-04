@@ -1256,7 +1256,7 @@ export class LayoutComponent implements OnInit {
   private readonly legami = inject(LegamiService)
 
   /** Movimenti in attesa di un legame (voce «Da collegare»); 0 se non si sa. */
-  readonly contatoreLegami = signal(0)
+  readonly contatoreLegami = this.legami.daCollegare
 
   /** Servizio feature-flag: pubblico così il template può usare `ff.has(...)`. */
   readonly ff = inject(FeatureFlagsService)
@@ -1563,10 +1563,7 @@ export class LayoutComponent implements OnInit {
   /** Il numero è un di più: se la chiamata fallisce la voce resta senza contatore. */
   private caricaContatoreLegami(): void {
     if (!this.ff.has('contratti')) return
-    this.legami.contatori().subscribe({
-      next: c => this.contatoreLegami.set(c.daCollegare),
-      error: () => this.contatoreLegami.set(0),
-    })
+    this.legami.aggiornaContatori()
   }
 
   /** Carica l'elenco dei tenant (endpoint riservato al SUPER_ADMIN). */

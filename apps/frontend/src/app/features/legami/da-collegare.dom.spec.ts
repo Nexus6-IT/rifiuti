@@ -56,6 +56,7 @@ describe('DaCollegareComponent (DOM)', () => {
       'daMovimento',
       'dettaglio',
       'riammetti',
+      'aggiornaContatori',
     ])
     servizio.lista.and.returnValue(of({ elementi: righe, totale }))
     fatturazione = jasmine.createSpyObj('ImpostazioneFatturazioneService', ['leggi'])
@@ -240,24 +241,88 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(servizio.lista.calls.first().args[0]!.esclusi).toBeFalse()
   })
 
-  it('MANCANTE: apre il legame dopo daMovimento; PROPOSTO: dopo dettaglio', async () => {
+  it('MANCANTE e DA_RIALLINEARE: daMovimento poi dettaglio (candidati); PROPOSTO: solo dettaglio', async () => {
     await crea('OPERATOR', [
       riga(1),
-      riga(2, { stato: 'MANCANTE', legameId: null, versione: null }),
-      riga(3, { stato: 'DA_RIALLINEARE' }),
+      riga(2, { stato: 'MANCANTE', legameId: null, versione: null, motivi: ['CONTRATTO_AMBIGUO'] }),
+      riga(3, { stato: 'DA_RIALLINEARE', legameId: 'l3' }),
     ])
+    const conCandidati = {
+      ...legameVuoto,
+      id: 'l2',
+      motivi: ['CONTRATTO_AMBIGUO'],
+      candidati: {
+        contratti: [
+          { id: 'k1', etichetta: 'A' },
+          { id: 'k2', etichetta: 'B' },
+        ],
+        elenchi: [],
+        righe: [],
+      },
+    } as unknown as LegameVista
+    servizio.daMovimento.and.returnValue(of(legameVuoto))
+    servizio.dettaglio.and.returnValue(of(conCandidati))
+    bottone('apri-m2')!.click()
+    await stabilizza(fixture)
+    expect(servizio.daMovimento).toHaveBeenCalledWith('m2')
+    expect(servizio.dettaglio).toHaveBeenCalledWith('l1')
+    expect(fixture.componentInstance.aperto()?.candidati?.contratti.length).toBe(2)
+    expect(q('legame-contratto')).not.toBeNull()
+    fixture.componentInstance.chiudiLegame()
+    bottone('apri-m3')!.click()
+    await stabilizza(fixture)
+    expect(servizio.daMovimento).toHaveBeenCalledWith('m3')
+    fixture.componentInstance.chiudiLegame()
+    servizio.daMovimento.calls.reset()
+    bottone('apri-m1')!.click()
+    await stabilizza(fixture)
+    expect(servizio.dettaglio).toHaveBeenCalledWith('l1')
+    expect(servizio.daMovimento).not.toHaveBeenCalled()
+  })
+
+  it('VIEWER: non chiama mai daMovimento; DA_RIALLINEARE si legge con dettaglio, MANCANTE è disattivato', async () => {
+    await crea('VIEWER', [
+      riga(2, { stato: 'MANCANTE', legameId: null, versione: null }),
+      riga(3, { stato: 'DA_RIALLINEARE', legameId: 'l3' }),
+    ])
+    expect(bottone('apri-m2')!.disabled).toBeTrue()
+    expect(q('apri-m2')!.title).toContain('Nessun legame ancora')
+    servizio.dettaglio.and.returnValue(of(legameVuoto))
+    bottone('apri-m3')!.click()
+    await stabilizza(fixture)
+    expect(servizio.dettaglio).toHaveBeenCalledWith('l3')
+    expect(servizio.daMovimento).not.toHaveBeenCalled()
+  })
+
+  it('aprire un MANCANTE e chiudere senza salvare: la lista si rilegge e il contatore si aggiorna', async () => {
+    await crea('OPERATOR', [riga(2, { stato: 'MANCANTE', legameId: null, versione: null })])
     servizio.daMovimento.and.returnValue(of(legameVuoto))
     servizio.dettaglio.and.returnValue(of(legameVuoto))
     bottone('apri-m2')!.click()
     await stabilizza(fixture)
-    expect(servizio.daMovimento).toHaveBeenCalledWith('m2')
-    expect(fixture.componentInstance.aperto()).toBe(legameVuoto)
-    bottone('apri-m3')!.click()
+    servizio.lista.calls.reset()
+    fixture.componentInstance.chiudiLegame()
+    expect(servizio.lista).toHaveBeenCalledTimes(1)
+    expect(servizio.aggiornaContatori).toHaveBeenCalled()
+  })
+
+  it('azione di massa riuscita: il contatore del menu si aggiorna', async () => {
+    await crea('OPERATOR', [riga(1)])
+    await spunta('sel-m1')
+    servizio.azioni.and.returnValue(of({ riusciti: 1, falliti: [] }))
+    bottone('massa-conferma')!.click()
     await stabilizza(fixture)
-    expect(servizio.daMovimento).toHaveBeenCalledWith('m3')
-    bottone('apri-m1')!.click()
+    expect(servizio.aggiornaContatori).toHaveBeenCalled()
+  })
+
+  it('cambio di un filtro: la selezione si azzera', async () => {
+    await crea('OPERATOR', [riga(1)])
+    await spunta('sel-m1')
+    expect(fixture.componentInstance.selezionate()).toBe(1)
+    const c = q<HTMLInputElement>('filtro-esclusi')!
+    c.checked = true
+    c.dispatchEvent(new Event('change', { bubbles: true }))
     await stabilizza(fixture)
-    expect(servizio.dettaglio).toHaveBeenCalledWith('l1')
-    expect(servizio.daMovimento).toHaveBeenCalledTimes(2)
+    expect(fixture.componentInstance.selezionate()).toBe(0)
   })
 })

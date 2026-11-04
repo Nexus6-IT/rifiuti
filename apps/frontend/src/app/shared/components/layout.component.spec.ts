@@ -2,7 +2,8 @@ import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { MessageService } from 'primeng/api'
 import { TestBed } from '@angular/core/testing'
 import { provideRouter } from '@angular/router'
-import { of, throwError } from 'rxjs'
+import { signal } from '@angular/core'
+import { Observable, of, throwError } from 'rxjs'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { LegamiService } from '../../features/legami/legami.service'
 import { LayoutComponent, ordinaAziendePerGruppo } from './layout.component'
@@ -86,12 +87,22 @@ describe('LayoutComponent: voce di menu Clienti', () => {
 
 describe('LayoutComponent: voce di menu «Da collegare»', () => {
   async function crea(contatori: unknown): Promise<HTMLElement> {
+    // Come il servizio vero: `aggiornaContatori` rilegge e scrive il signal (0 se fallisce).
+    const daCollegare = signal(0)
+    const servizio = {
+      daCollegare,
+      aggiornaContatori: () =>
+        (contatori as Observable<{ daCollegare: number }>).subscribe({
+          next: c => daCollegare.set(c.daCollegare),
+          error: () => daCollegare.set(0),
+        }),
+    }
     TestBed.configureTestingModule({
       imports: [LayoutComponent, HttpClientTestingModule],
       providers: [
         provideRouter([]),
         MessageService,
-        { provide: LegamiService, useValue: { contatori: () => contatori } },
+        { provide: LegamiService, useValue: servizio },
       ],
     })
     const ff = TestBed.inject(FeatureFlagsService)

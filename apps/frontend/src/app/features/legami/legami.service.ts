@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core'
+import { Injectable, inject, signal } from '@angular/core'
 import { HttpClient, HttpParams } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
@@ -44,6 +44,17 @@ export class LegamiService {
 
   contatori(): Observable<ContatoriLegami> {
     return this.http.get<ContatoriLegami>(`${this.url}/contatori`)
+  }
+
+  /** Movimenti in attesa di un legame: il numero accanto alla voce di menu. */
+  readonly daCollegare = signal(0)
+
+  /** Rilegge il contatore (menu e pagina lo chiamano dopo ogni azione); se fallisce torna a 0. */
+  aggiornaContatori(): void {
+    this.contatori().subscribe({
+      next: c => this.daCollegare.set(c.daCollegare),
+      error: () => this.daCollegare.set(0),
+    })
   }
 
   dettaglio(id: string): Observable<LegameVista> {

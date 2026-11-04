@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { switchMap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
@@ -357,7 +358,10 @@ interface OpzioneId {
                     icon="pi pi-pencil"
                     [text]="true"
                     size="small"
-                    [disabled]="inCorso()"
+                    [disabled]="inCorso() || (!permessi().scrive && r.legameId === null)"
+                    [title]="
+                      !permessi().scrive && r.legameId === null ? 'Nessun legame ancora' : ''
+                    "
                     (onClick)="apriLegame(r)"
                     [attr.data-testid]="'apri-' + r.movimentoId"
                   />
@@ -387,8 +391,9 @@ interface OpzioneId {
       <app-legame-dialog
         [legame]="aperto()"
         [puoScrivere]="permessi().scrive"
+        [clienti]="opzioniClienti()"
         (aggiornato)="dopoAggiornamento($event)"
-        (chiuso)="aperto.set(null)"
+        (chiuso)="chiudiLegame()"
       />
     </div>
   `,
@@ -512,6 +517,8 @@ export class DaCollegareComponent implements OnInit {
 
   /** Cambio di un filtro: si riparte dalla prima pagina. */
   applica(): void {
+    // La selezione riguardava righe che con i nuovi filtri potrebbero non essere più visibili.
+    this.deseleziona()
     this.pagina.set(1)
     this.carica()
   }
@@ -644,6 +651,7 @@ export class DaCollegareComponent implements OnInit {
         }
         this.sel.set(saltate)
         this.carica()
+        this.servizio.aggiornaContatori()
       },
       error: err => {
         this.inCorso.set(false)
@@ -665,16 +673,30 @@ export class DaCollegareComponent implements OnInit {
 
   // ---- singolo legame ----
 
-  /** MANCANTE e DA_RIALLINEARE si aprono dopo `daMovimento`: crea o riallinea il legame. */
+  /** Aprendo un MANCANTE `daMovimento` crea il legame: alla chiusura la lista si rilegge. */
+  private ricaricaAllaChiusura = false
+
+  /**
+   * MANCANTE e DA_RIALLINEARE si aprono dopo `daMovimento` (crea o riallinea il legame), poi
+   * `dettaglio` per avere anche i candidati dei menu. Chi non scrive non chiama mai
+   * `daMovimento` (è una scrittura, il VIEWER avrebbe 403): un DA_RIALLINEARE si legge con
+   * `dettaglio`, un MANCANTE non ha ancora un legame da mostrare.
+   */
   apriLegame(r: RigaLista): void {
+    const scrive = this.permessi().scrive
+    const daCreare = r.stato === 'MANCANTE' || r.stato === 'DA_RIALLINEARE' || r.legameId === null
+    if (!scrive && r.legameId === null) return
     this.inCorso.set(true)
     const lettura =
-      r.stato === 'MANCANTE' || r.stato === 'DA_RIALLINEARE' || r.legameId === null
-        ? this.servizio.daMovimento(r.movimentoId)
-        : this.servizio.dettaglio(r.legameId)
+      scrive && daCreare
+        ? this.servizio
+            .daMovimento(r.movimentoId)
+            .pipe(switchMap(l => this.servizio.dettaglio(l.id)))
+        : this.servizio.dettaglio(r.legameId!)
     lettura.subscribe({
       next: l => {
         this.inCorso.set(false)
+        if (scrive && daCreare) this.ricaricaAllaChiusura = true
         this.aperto.set(l)
       },
       error: err => {
@@ -684,10 +706,21 @@ export class DaCollegareComponent implements OnInit {
     })
   }
 
+  chiudiLegame(): void {
+    this.aperto.set(null)
+    if (this.ricaricaAllaChiusura) {
+      this.ricaricaAllaChiusura = false
+      this.carica()
+      this.servizio.aggiornaContatori()
+    }
+  }
+
   dopoAggiornamento(e: { legame: LegameVista; confermato: boolean }): void {
     this.aperto.set(null)
+    this.ricaricaAllaChiusura = false
     this.toast.success(e.confermato ? 'Legame confermato.' : 'Legame salvato.')
     this.carica()
+    this.servizio.aggiornaContatori()
   }
 
   riammetti(r: RigaLista): void {
@@ -698,6 +731,7 @@ export class DaCollegareComponent implements OnInit {
         this.inCorso.set(false)
         this.toast.success('Movimento riammesso nella lista.')
         this.carica()
+        this.servizio.aggiornaContatori()
       },
       error: err => {
         this.inCorso.set(false)

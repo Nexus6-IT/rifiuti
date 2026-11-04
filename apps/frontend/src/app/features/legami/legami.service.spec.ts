@@ -54,6 +54,17 @@ describe('LegamiService', () => {
     req.flush({ elementi: [], totale: 0 })
   })
 
+  it('aggiornaContatori scrive il totale nel signal condiviso; con un errore torna a 0', () => {
+    servizio.aggiornaContatori()
+    http
+      .expectOne(`${base}/contatori`)
+      .flush({ daCollegare: 9, proposti: 1, mancanti: 5, daRiallineare: 3 })
+    expect(servizio.daCollegare()).toBe(9)
+    servizio.aggiornaContatori()
+    http.expectOne(`${base}/contatori`).flush('x', { status: 500, statusText: 'err' })
+    expect(servizio.daCollegare()).toBe(0)
+  })
+
   it('contatori fa GET /contatori', () => {
     servizio.contatori().subscribe()
     const req = http.expectOne(`${base}/contatori`)

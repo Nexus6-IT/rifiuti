@@ -4,6 +4,7 @@ import { of, throwError } from 'rxjs'
 import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import {
   LegameDialogComponent,
+  erroreSconto,
   numeroPerBackend,
   righeModificate,
   RigaForm,
@@ -91,6 +92,20 @@ describe('numeroPerBackend', () => {
   })
 })
 
+describe('erroreSconto', () => {
+  it('rifiuta negativi, punto, più di tre termini e termini oltre 99,99', () => {
+    expect(erroreSconto('-5')).not.toBeNull()
+    expect(erroreSconto('10.5')).toContain('virgola')
+    expect(erroreSconto('1+2+3+4')).toContain('al massimo tre')
+    expect(erroreSconto('100')).toContain('99,99')
+    expect(erroreSconto('10,555')).not.toBeNull()
+  })
+
+  it('accetta vuoto, 10, 10,5 e 10+5,5+2', () => {
+    for (const ok of ['', '10', '10,5', '10+5,5+2']) expect(erroreSconto(ok)).toBeNull()
+  })
+})
+
 describe('righeModificate', () => {
   const form = (extra: Partial<RigaForm> = {}, riga = rigaLegame()): RigaForm => ({
     riga,
@@ -115,6 +130,11 @@ describe('righeModificate', () => {
     expect(righeModificate([form({ prezzo: 9, quantita: 2 }, r)])).toEqual([
       { rigaAddebitoId: 'ra1', quantita: '2' },
     ])
+  })
+
+  it('riga a prezzo speciale: lo sconto non parte mai', () => {
+    const r = rigaLegame({ prezzoSpeciale: true, prezzo: '8', sconto: '10' })
+    expect(righeModificate([form({ prezzo: 8, sconto: '20' }, r)])).toEqual([])
   })
 
   it('sconto svuotato su una riga con sconto: null', () => {
@@ -220,10 +240,10 @@ describe('LegameDialogComponent', () => {
 
   it('cambio di contratto con un prezzo manuale: avviso che andrà perso e contrattoId inviato', async () => {
     await apri(legame({ righe: [rigaLegame({ prezzoManuale: true })] }))
-    expect(q('legame-avviso-perdita')).toBeNull()
+    expect(q('legame-avviso-rigenera')).toBeNull()
     fixture.componentInstance.contrattoId = 'k2'
     await stabilizza(fixture)
-    expect(q('legame-avviso-perdita')?.textContent).toContain('andranno persi')
+    expect(q('legame-avviso-rigenera')?.textContent).toContain('andranno persi')
     expect(fixture.componentInstance.modifiche()).toEqual({ contrattoId: 'k2' })
   })
 
@@ -244,7 +264,7 @@ describe('LegameDialogComponent', () => {
     expect(q('legame-errore')?.textContent).toContain('Manca il prezzo')
   })
 
-  it('VERSIONE_SUPERATA: messaggio e «Ricarica» che rilegge il legame', async () => {
+  it('VERSIONE_SUPERATA: «Ricarica» rilegge tutto e la richiesta successiva porta la versione nuova', async () => {
     await apri(legame())
     servizio.modifica.and.returnValue(
       throwError(() => ({
@@ -254,11 +274,139 @@ describe('LegameDialogComponent', () => {
     )
     bottone('legame-salva')!.click()
     await stabilizza(fixture)
-    servizio.dettaglio.and.returnValue(of(legame({ versione: 4 })))
+    servizio.dettaglio.and.returnValue(of(legame({ versione: 4, stato: 'PROPOSTO' })))
     bottone('legame-ricarica')!.click()
     await stabilizza(fixture)
     expect(servizio.dettaglio).toHaveBeenCalledWith('l1')
     expect(q('legame-errore')).toBeNull()
+    servizio.modifica.and.returnValue(of(legame()))
+    bottone('legame-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.modifica.calls.mostRecent().args[1]).toEqual({ versione: 4 })
+  })
+
+  it('cambio di elenco più quantità toccata: modifiche senza righe e tabella in sola lettura', async () => {
+    await apri(
+      legame({
+        candidati: {
+          contratti: [{ id: 'k1', etichetta: 'CC-2026-001' }],
+          elenchi: [
+            { id: 'e1', etichetta: 'Listino 2026' },
+            { id: 'e2', etichetta: 'Listino speciale' },
+          ],
+          righe: [],
+        },
+      })
+    )
+    await scrivi(fixture, 'legame-qta-0', '3')
+    fixture.componentInstance.elencoId = 'e2'
+    await stabilizza(fixture)
+    expect(fixture.componentInstance.modifiche()).toEqual({ elencoId: 'e2' })
+    expect(q('legame-qta-0')).toBeNull()
+    expect(q('legame-avviso-rigenera')).not.toBeNull()
+  })
+
+  it('cambio di contratto: l’elenco si azzera e il suo menu si disattiva', async () => {
+    await apri(
+      legame({
+        candidati: {
+          contratti: [
+            { id: 'k1', etichetta: 'A' },
+            { id: 'k2', etichetta: 'B' },
+          ],
+          elenchi: [
+            { id: 'e1', etichetta: 'Listino 2026' },
+            { id: 'e2', etichetta: 'Altro' },
+          ],
+          righe: [],
+        },
+      })
+    )
+    const c = fixture.componentInstance
+    c.contrattoId = 'k2'
+    c.alCambioContratto()
+    expect(c.elencoId).toBeNull()
+    expect(c.modifiche()).toEqual({ contrattoId: 'k2' })
+    c.contrattoId = 'k1'
+    c.alCambioContratto()
+    expect(c.elencoId).toBe('e1')
+  })
+
+  it('senza cliente (SENZA_CLIENTE): si sceglie il cliente e parte solo clienteId', async () => {
+    TestBed.resetTestingModule()
+    servizio = jasmine.createSpyObj('LegamiService', ['modifica', 'conferma', 'dettaglio'])
+    await TestBed.configureTestingModule({
+      imports: [LegameDialogComponent],
+      providers: [provideNoopAnimations(), { provide: LegamiService, useValue: servizio }],
+    }).compileComponents()
+    fixture = TestBed.createComponent(LegameDialogComponent)
+    fixture.componentRef.setInput(
+      'legame',
+      legame({ cliente: null, contratto: null, elenco: null, righe: [], motivi: ['SENZA_CLIENTE'] })
+    )
+    fixture.componentRef.setInput('puoScrivere', true)
+    fixture.componentRef.setInput('clienti', [{ label: 'Bianchi Srl', value: 'c9' }])
+    await stabilizza(fixture)
+    expect(q('legame-cliente-scelta')).not.toBeNull()
+    fixture.componentInstance.clienteId = 'c9'
+    fixture.componentInstance.alCambioCliente()
+    servizio.conferma.and.returnValue(of(legame({ stato: 'CONFERMATO' })))
+    bottone('legame-conferma')!.click()
+    await stabilizza(fixture)
+    expect(servizio.conferma).toHaveBeenCalledOnceWith('l1', {
+      versione: 3,
+      modifiche: { clienteId: 'c9' },
+    })
+  })
+
+  it('RIGA_AMBIGUA: si sceglie una riga fra i candidati e parte come aggiunta', async () => {
+    await apri(
+      legame({
+        righe: [],
+        motivi: ['RIGA_AMBIGUA'],
+        candidati: {
+          contratti: [],
+          elenchi: [],
+          righe: [
+            { id: 'ra7', etichetta: 'Ritiro 080318', origine: 'PROPOSTA' },
+            { id: 'ra8', etichetta: 'Ritiro 080318 urgente', origine: 'PROPOSTA' },
+          ],
+        },
+      })
+    )
+    const c = fixture.componentInstance
+    c.rigaDaAggiungere = 'ra8'
+    c.aggiungiRiga()
+    await stabilizza(fixture)
+    expect(q('legame-aggiunta')?.textContent).toContain('urgente')
+    expect(c.righeDisponibili().map(r => r.id)).toEqual(['ra7'])
+    servizio.conferma.and.returnValue(of(legame({ stato: 'CONFERMATO' })))
+    bottone('legame-conferma')!.click()
+    await stabilizza(fixture)
+    expect(servizio.conferma).toHaveBeenCalledOnceWith('l1', {
+      versione: 3,
+      modifiche: { righe: [{ rigaAddebitoId: 'ra8' }] },
+    })
+  })
+
+  it('quantità 0: errore esplicito (nessuna correzione silenziosa) e pulsanti bloccati', async () => {
+    await apri(legame())
+    await scrivi(fixture, 'legame-qta-0', '0')
+    expect(q('legame-qta-errore-0')?.textContent).toContain('maggiore di zero')
+    expect(bottone('legame-conferma')!.disabled).toBeTrue()
+  })
+
+  it('prezzo svuotato su una riga che lo aveva: errore e pulsanti bloccati', async () => {
+    await apri(legame())
+    await scrivi(fixture, 'legame-prezzo-0', '')
+    expect(q('legame-prezzo-errore-0')?.textContent).toContain('obbligatorio')
+    expect(bottone('legame-salva')!.disabled).toBeTrue()
+  })
+
+  it('riga a prezzo speciale: anche lo sconto è di sola lettura', async () => {
+    await apri(legame({ righe: [rigaLegame({ prezzoSpeciale: true, prezzo: '8', sconto: '10' })] }))
+    expect(q('legame-sconto-0')).toBeNull()
+    expect(q('legame-sconto-testo-0')?.textContent).toContain('10')
   })
 
   it('sola lettura (VIEWER o stato FATTURATO): nessun campo né pulsante di scrittura', async () => {
