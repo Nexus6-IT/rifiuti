@@ -18,7 +18,7 @@ import { DropdownModule } from 'primeng/dropdown'
 import { TagModule } from 'primeng/tag'
 import { ClientiService } from '../clienti/clienti.service'
 import { Cliente } from '../clienti/clienti.model'
-import { Subject, catchError, debounce, map, merge, of, switchMap, timer } from 'rxjs'
+import { Subject, catchError, debounce, map, merge, of, switchMap, timeout, timer } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import {
   AvvisoLegame,
@@ -56,6 +56,9 @@ export const ATTESA_PROPOSTA_MS = 400
 
 export const MESSAGGIO_PROPOSTA_NON_DISPONIBILE =
   'La proposta di fatturazione non è disponibile adesso. Puoi registrare il movimento; se la causale è fatturabile, il collegamento si potrà fare dopo.'
+
+/** Oltre questo tempo una proposta senza risposta diventa un errore: il registro non si blocca mai. */
+export const TIMEOUT_PROPOSTA_MS = 10_000
 
 /** Stato del blocco per i pulsanti del dialog di registrazione. */
 export interface StatoBlocco {
@@ -129,12 +132,12 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
                   inputId="fatt-cliente-menu"
                   data-testid="fatt-cliente-menu"
                   styleClass="menu-legame"
-                  [options]="clienti()"
-                  optionLabel="ditta.ragioneSociale"
+                  [options]="clientiOpzioni()"
+                  optionLabel="etichetta"
                   optionValue="id"
                   placeholder="Scegli il cliente"
                   [filter]="true"
-                  filterBy="ditta.ragioneSociale,ditta.partitaIva"
+                  filterBy="etichetta,partitaIva"
                   filterPlaceholder="Cerca per nome, codice o partita IVA"
                   emptyFilterMessage="Nessun cliente trovato"
                   [resetFilterOnHide]="true"
@@ -249,13 +252,13 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
 
         <app-righe-legame-tabella
           [righe]="righeVista()"
-          [modificabile]="true"
+          [modificabile]="righeModificabili"
           [generazione]="generazione()"
           (modifica)="alModifica($event)"
           (erroriChange)="alErrori($event)"
         ></app-righe-legame-tabella>
 
-        <small class="aiuto" data-testid="fatt-aiuto">
+        <small *ngIf="righeModificabili" class="aiuto" data-testid="fatt-aiuto">
           Con «Registra e conferma legame» il movimento viene collegato al listino con questi
           valori; con «Registra senza collegare» resta «proposto» e lo confermi dopo da «Da
           collegare».
@@ -348,6 +351,12 @@ export class BloccoFatturazioneComponent implements OnChanges {
    * `confermabile` (proposta completa, nessun campo in errore, nessun aggiornamento in corso).
    */
   @Output() statoChange = new EventEmitter<StatoBlocco>()
+  /**
+   * Falso quando il blocco serve a un legame GIÀ ESISTENTE (rettifica): le righe si mostrano ma non
+   * si ritoccano e il `legame` emesso non le porta (per un legame esistente `righe` è un ritocco:
+   * mandare la selezione intera aggiungerebbe le righe della proposta).
+   */
+  @Input() righeModificabili = true
   private ultimoStato: StatoBlocco | null = null
 
   readonly messaggioNonDisponibile = MESSAGGIO_PROPOSTA_NON_DISPONIBILE
@@ -358,6 +367,14 @@ export class BloccoFatturazioneComponent implements OnChanges {
   readonly cambioInSospeso = signal<{ tipo: TipoScelta; id: string } | null>(null)
   /** Clienti per il menu (solo se la proposta non ha un cliente). */
   readonly clienti = signal<Cliente[]>([])
+  /** Opzioni del menu: l'etichetta porta il codice (distingue gli omonimi) e il filtro lo cerca. */
+  readonly clientiOpzioni = computed(() =>
+    this.clienti().map(c => ({
+      id: c.id,
+      etichetta: c.codice ? `${c.codice} · ${c.ditta.ragioneSociale}` : c.ditta.ragioneSociale,
+      partitaIva: c.ditta.partitaIva ?? '',
+    }))
+  )
   /** Cambia quando la tabella deve scordare errori e testi (nuovo contratto, elenco, cliente, FIR). */
   readonly generazione = signal(0)
 
@@ -374,6 +391,8 @@ export class BloccoFatturazioneComponent implements OnChanges {
   private readonly datiDebounce$ = new Subject<DatiMovimentoLegame | null>()
   private readonly subito$ = new Subject<void>()
   private chiaveDati: string | null = null
+  /** Dati della proposta arrivata per ultima: un'altra con dati diversi scorda gli errori dei campi (m7). */
+  private chiaveUltimaProposta: string | null = null
 
   readonly puoScrivere = computed(() => permessiLegami(this.auth.currentUser()?.role).scrive)
 
@@ -470,8 +489,11 @@ export class BloccoFatturazioneComponent implements OnChanges {
           if (!dati || !this.puoScrivere()) return of({ stato: 'vuoto' as const })
           this.caricamento.set(true)
           const scelte = this.sceltePerRichiesta()
+          const chiave = JSON.stringify(dati)
           return this.servizio.proposta({ ...dati, ...(scelte ? { scelte } : {}) }).pipe(
-            map(proposta => ({ stato: 'ok' as const, proposta })),
+            // Una richiesta che non torna non deve bloccare la registrazione: scade come un errore.
+            timeout(TIMEOUT_PROPOSTA_MS),
+            map(proposta => ({ stato: 'ok' as const, proposta, chiave })),
             catchError(() => of({ stato: 'errore' as const }))
           )
         }),
@@ -483,6 +505,12 @@ export class BloccoFatturazioneComponent implements OnChanges {
           this.erroreProposta.set(false)
           this.proposta.set(esito.proposta)
           this.potaModifiche(esito.proposta)
+          // Dati del movimento cambiati (quantità, CER...): le righe che restano possono avere
+          // valori nuovi, gli errori scritti accanto ai valori vecchi non valgono più.
+          if (this.chiaveUltimaProposta !== null && this.chiaveUltimaProposta !== esito.chiave) {
+            this.generazione.update(g => g + 1)
+          }
+          this.chiaveUltimaProposta = esito.chiave
           if (!esito.proposta.cliente) this.chiediClienti()
         } else if (esito.stato === 'errore') {
           // Il registro non si blocca mai: avviso e registrazione possibile, senza blocco `legame`.
@@ -516,6 +544,7 @@ export class BloccoFatturazioneComponent implements OnChanges {
       this.generazione.update(g => g + 1)
     }
     if (!dati) {
+      this.chiaveUltimaProposta = null
       this.proposta.set(null)
       this.erroreProposta.set(false)
       this.caricamento.set(false)
@@ -690,14 +719,16 @@ export class BloccoFatturazioneComponent implements OnChanges {
     // Mentre la proposta si aggiorna le righe emesse sarebbero di dati superati: nessun blocco.
     if (!this.visibile() || !p || this.inAttesa()) return null
     const m = this.modifiche()
-    const righe: RigaLegameRegistrazione[] = p.righe.map(r => {
-      const x = m[r.rigaAddebitoId] ?? {}
-      const out: RigaLegameRegistrazione = { rigaAddebitoId: r.rigaAddebitoId }
-      if ('quantita' in x && x.quantita !== undefined) out.quantita = x.quantita
-      if ('prezzo' in x && x.prezzo !== undefined && x.prezzo !== null) out.prezzo = x.prezzo
-      if ('sconto' in x) out.sconto = x.sconto ?? null
-      return out
-    })
+    const righe: RigaLegameRegistrazione[] = this.righeModificabili
+      ? p.righe.map(r => {
+          const x = m[r.rigaAddebitoId] ?? {}
+          const out: RigaLegameRegistrazione = { rigaAddebitoId: r.rigaAddebitoId }
+          if ('quantita' in x && x.quantita !== undefined) out.quantita = x.quantita
+          if ('prezzo' in x && x.prezzo !== undefined && x.prezzo !== null) out.prezzo = x.prezzo
+          if ('sconto' in x) out.sconto = x.sconto ?? null
+          return out
+        })
+      : []
     // Solo le scelte esplicite dell'utente: il resto lo deriva il server, come nella proposta.
     const s = this.scelta
     return {
@@ -706,7 +737,7 @@ export class BloccoFatturazioneComponent implements OnChanges {
       ...(s?.clienteId ? { clienteId: s.clienteId } : {}),
       ...(s?.contrattoId ? { contrattoId: s.contrattoId } : {}),
       ...(s?.elencoId ? { elencoId: s.elencoId } : {}),
-      righe,
+      ...(this.righeModificabili ? { righe } : {}),
     }
   }
 

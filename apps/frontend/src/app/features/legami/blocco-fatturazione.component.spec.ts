@@ -7,6 +7,7 @@ import {
   ATTESA_PROPOSTA_MS,
   ATTESA_RICERCA_CLIENTI_MS,
   BloccoFatturazioneComponent,
+  TIMEOUT_PROPOSTA_MS,
   StatoBlocco,
   SceltaLegame,
 } from './blocco-fatturazione.component'
@@ -500,4 +501,27 @@ describe('BloccoFatturazioneComponent — logica', () => {
       expect(q('blocco-fatturazione')).not.toBeNull()
     }))
   })
+
+  it('m8: una proposta che non torna scade come errore, la registrazione resta possibile', fakeAsync(() => {
+    crea(new Subject<PropostaLegame>())
+    // in volo: il blocco non c'è ancora e nessun legame viene emesso
+    expect(ultimo()).toBeNull()
+    tick(TIMEOUT_PROPOSTA_MS)
+    fixture.detectChanges()
+    expect(q('fatt-errore-proposta')).not.toBeNull()
+    expect(ultimo()).toBeNull()
+    // il dialog non resta in attesa: «Registra senza collegare» e «Registra» non sono più bloccati
+    expect(fixture.componentInstance.caricamento()).toBeFalse()
+    tick()
+    expect(stati[stati.length - 1]?.visibile).toBeTrue()
+  }))
+
+  it('m8: poco prima della soglia la richiesta è ancora in attesa', fakeAsync(() => {
+    crea(new Subject<PropostaLegame>())
+    tick(TIMEOUT_PROPOSTA_MS - 1000)
+    fixture.detectChanges()
+    expect(q('fatt-errore-proposta')).toBeNull()
+    expect(fixture.componentInstance.caricamento()).toBeTrue()
+    tick(1000)
+  }))
 })

@@ -74,6 +74,7 @@ export function numeroComeStringa(n: number): string {
             <th scope="col">Quantità</th>
             <th scope="col">Prezzo</th>
             <th scope="col">Sconto %</th>
+            <th *ngIf="mostraIva" scope="col">IVA</th>
             <th scope="col" class="num">Importo</th>
           </tr>
         </thead>
@@ -183,6 +184,10 @@ export function numeroComeStringa(n: number): string {
               <ng-template #soloSconto>{{ testoSconto(r) || '—' }}</ng-template>
             </td>
 
+            <td *ngIf="mostraIva" [attr.data-testid]="'iva-' + r.rigaAddebitoId">
+              {{ testoIva(r) }}
+            </td>
+
             <td class="num" [attr.data-testid]="'importo-' + r.rigaAddebitoId">
               {{ r.importo !== null ? importoTesto(r.importo) + ' €' : '—' }}
             </td>
@@ -239,6 +244,8 @@ export class RigheLegameTabellaComponent implements OnChanges {
   @Input() righe: RigaLegame[] = []
   /** Falso: solo lettura (VIEWER, legame fatturato). */
   @Input() modificabile = true
+  /** Colonna IVA di sola lettura (riquadro del dettaglio: i valori congelati del legame). */
+  @Input() mostraIva = false
   /** Cambia quando gli errori e i testi in corso vanno scordati (nuova scelta a monte). */
   @Input() generazione = 0
   @Output() modifica = new EventEmitter<ModificaCampoRiga>()
@@ -285,6 +292,12 @@ export class RigheLegameTabellaComponent implements OnChanges {
   /** Solo lettura: virgola, niente separatore delle migliaia. */
   testoNumero(v: string | null): string {
     return v === null ? '—' : v.replace('.', ',')
+  }
+
+  /** Aliquota (`22 %`) o natura dell'esenzione; «—» se la riga non ha né l'una né l'altra. */
+  testoIva(r: RigaLegame): string {
+    if (r.aliquotaIva !== null && r.aliquotaIva !== '') return `${formatNumero(r.aliquotaIva, 0)} %`
+    return r.naturaIva ?? '—'
   }
 
   /** Importo calcolato dal server: virgola e due decimali, senza separatore delle migliaia. */

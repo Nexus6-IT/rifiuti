@@ -31,6 +31,23 @@ import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { ToastService } from '../../core/services/toast.service'
+import { AuthService } from '../../core/services/auth.service'
+import {
+  BloccoFatturazioneComponent,
+  DatiMovimentoLegame,
+  SceltaLegame,
+  StatoBlocco,
+} from '../legami/blocco-fatturazione.component'
+import { STATI_MODIFICABILI } from '../legami/legame-dialog.component'
+import {
+  AvvisoLegame,
+  DatiLegameRegistrazione,
+  FatturazioneCorrezione,
+  LegameVista,
+} from '../legami/legami.model'
+import { LegamiService } from '../legami/legami.service'
+import { permessiLegami } from '../legami/permessi-legami'
+import { etichettaAvviso } from '../legami/vocabolario-legami'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import {
   EsitoCorrezioneMovimento,
@@ -93,6 +110,7 @@ export function messaggioErroreCorrezione(err: any): string {
     InputTextModule,
     InputTextareaModule,
     CerSelectComponent,
+    BloccoFatturazioneComponent,
   ],
   template: `
     <p-dialog
@@ -134,6 +152,35 @@ export function messaggioErroreCorrezione(err: any): string {
           <p *ngIf="modo === 'rettifica'" class="nota">
             La rettifica scrive una nuova annotazione con i dati completi qui sotto. Tipo e registro
             non si cambiano. Il movimento corretto resta nel registro, segnato come rettificato.
+          </p>
+
+          <p
+            *ngIf="fatturato()"
+            class="avviso-legame"
+            role="status"
+            data-testid="correzione-avviso-fatturato"
+          >
+            <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+            <span>
+              {{ testoFatturato }}.
+              {{
+                modo === 'annullamento'
+                  ? 'Puoi annullarlo comunque: il legame resta e segnala lo scostamento.'
+                  : 'La rettifica è consentita: il legame resta e segnala lo scostamento.'
+              }}
+            </span>
+          </p>
+          <p
+            *ngIf="modo === 'rettifica' && cerCambiato()"
+            class="avviso-legame"
+            role="status"
+            data-testid="correzione-cer-cambiato"
+          >
+            <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+            <span>
+              Il codice CER è cambiato: serve una nuova conferma del legame col listino. I prezzi
+              congelati vengono ricalcolati sul nuovo codice.
+            </span>
           </p>
 
           <form [formGroup]="form" class="corr-form" (ngSubmit)="invia()">
@@ -330,6 +377,18 @@ export function messaggioErroreCorrezione(err: any): string {
               </div>
             </ng-container>
 
+            <!-- Blocco «Fatturazione»: legame nuovo (righe ritoccabili) o esistente (solo scelte) -->
+            <app-blocco-fatturazione
+              *ngIf="modo === 'rettifica'"
+              [datiMovimento]="datiLegame()"
+              [righeModificabili]="!legameEsistente()"
+              [(scelta)]="sceltaLegame"
+              (legameChange)="legame = $event"
+              (validoChange)="bloccoValido = $event"
+              (inAttesaChange)="bloccoInAttesa = $event"
+              (statoChange)="bloccoStato = $event"
+            ></app-blocco-fatturazione>
+
             <div class="field">
               <label for="corr-motivo"
                 >Motivo della correzione <span class="req" aria-hidden="true">*</span></label
@@ -386,12 +445,24 @@ export function messaggioErroreCorrezione(err: any): string {
             (onClick)="chiudi()"
           ></p-button>
           <p-button
+            *ngIf="modo === 'rettifica' && bloccoStato.visibile"
+            label="Rettifica e conferma legame"
+            icon="pi pi-check"
+            [loading]="invio()"
+            [disabled]="!bloccoStato.confermabile"
+            data-testid="correzione-invia-conferma"
+            ariaLabel="Rettifica il movimento e conferma il legame col listino"
+            (onClick)="invia('CONFERMA')"
+          ></p-button>
+          <p-button
+            [outlined]="modo === 'rettifica' && bloccoStato.visibile"
+            [disabled]="modo === 'rettifica' && bloccoInAttesa"
             [label]="modo === 'rettifica' ? 'Rettifica' : 'Annulla il movimento'"
             icon="pi pi-check"
             [severity]="modo === 'annullamento' ? 'danger' : 'primary'"
             [loading]="invio()"
             data-testid="correzione-invia"
-            (onClick)="invia()"
+            (onClick)="invia('PROPOSTA')"
           ></p-button>
         </ng-template>
       </ng-template>
@@ -466,6 +537,22 @@ export function messaggioErroreCorrezione(err: any): string {
         margin-top: 3px;
         color: var(--color-warning);
       }
+      .avviso-legame {
+        display: flex;
+        gap: var(--spacing-sm);
+        align-items: flex-start;
+        margin: 0 0 var(--spacing-base);
+        padding: var(--spacing-sm) var(--spacing-base);
+        background: var(--color-warning-bg);
+        border: 1px solid var(--color-warning);
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-sm);
+        line-height: 1.5;
+      }
+      .avviso-legame i {
+        margin-top: 3px;
+        color: var(--color-warning);
+      }
       .conferma__testo {
         margin: 0;
         line-height: 1.5;
@@ -479,6 +566,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   private readonly fb = inject(FormBuilder)
   private readonly causali = inject(CausaliRegistroService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly legami = inject(LegamiService)
+  private readonly auth = inject(AuthService)
 
   @Input() visible = false
   @Output() visibleChange = new EventEmitter<boolean>()
@@ -487,6 +576,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   /** Emesso dopo una correzione riuscita (il chiamante ricarica l'elenco). */
   @Output() corretto = new EventEmitter<EsitoCorrezioneMovimento>()
 
+  readonly testoFatturato =
+    'Il movimento risulta già fatturato: la correzione non cambia la fattura'
   readonly oggi = new Date()
   readonly invio = signal(false)
   readonly conferma = signal<Conferma | null>(null)
@@ -495,6 +586,46 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   private readonly statoCorrente = signal<string | null>(null)
   /** La conferma FIR è già stata data: non va richiesta di nuovo dopo un 409 MUD. */
   private firConfermata = false
+
+  // ─── Legame col listino (fase 4.3) ─────────────────────────────────────────
+
+  /** Legame già esistente della catena (null: nessuno o 404). */
+  readonly legameEsistente = signal<LegameVista | null>(null)
+  /** La lettura del legame è finita (anche con 404): prima non si chiede nessuna proposta. */
+  private readonly legameCaricato = signal(false)
+  private readonly datiForm = signal<DatiMovimentoLegame | null>(null)
+  private readonly cerOriginale = signal('')
+  private readonly cerCorrente = signal('')
+  private sottoscrizioneLegame: Subscription | null = null
+  private sottoscrizioneForm: Subscription | null = null
+  /** Scelte, `legame` e stato emessi dal blocco «Fatturazione». */
+  sceltaLegame: SceltaLegame | null = null
+  legame: DatiLegameRegistrazione | null = null
+  bloccoValido = true
+  bloccoInAttesa = false
+  bloccoStato: StatoBlocco = { visibile: false, confermabile: false }
+  /** Azione scelta con il pulsante: serve anche al reinvio dopo la conferma MUD. */
+  private azioneScelta: 'PROPOSTA' | 'CONFERMA' = 'PROPOSTA'
+
+  private readonly puoScrivereLegami = computed(
+    () => permessiLegami(this.auth.currentUser()?.role).scrive
+  )
+
+  /** Il legame è già fatturato (o importato come fatturato): la correzione si può fare, non lo cambia. */
+  readonly fatturato = computed(() => {
+    const l = this.legameEsistente()
+    return !!l && (l.stato === 'FATTURATO' || l.stato === 'IMPORTATO_FATTURATO')
+  })
+
+  /** CER diverso da quello dell'annotazione corretta, su un legame che il backend rifà da zero. */
+  readonly cerCambiato = computed(() => {
+    const l = this.legameEsistente()
+    return (
+      !!l &&
+      STATI_MODIFICABILI.includes(l.stato) &&
+      this.cerCorrente().trim() !== this.cerOriginale().trim()
+    )
+  })
 
   form: FormGroup = this.creaForm()
 
@@ -508,6 +639,20 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   readonly messaggioCausale = signal<string | null>(null)
   private readonly ricaricaOpzioni = new Subject<string>()
   private sottoscrizioneOpzioni: Subscription | null = null
+
+  /**
+   * Dati per il blocco «Fatturazione»: null finché il legame non è letto, se l'utente non scrive,
+   * se il legame non si può più cambiare (fatturato, escluso, annullato) o se l'API dice che la
+   * causale scelta non è fatturabile. Cambiando il CER la proposta si rifà sul codice nuovo.
+   */
+  readonly datiLegame = computed<DatiMovimentoLegame | null>(() => {
+    const dati = this.datiForm()
+    if (!dati || !this.legameCaricato() || !this.puoScrivereLegami()) return null
+    const l = this.legameEsistente()
+    if (l && !STATI_MODIFICABILI.includes(l.stato)) return null
+    const causale = this.opzioniApi().find(c => c.codice === dati.causale)
+    return causale?.fatturabile === false ? null : dati
+  })
 
   readonly causaliOptions = computed(() => opzioniCausali(this.opzioniApi(), this.causaleAttuale()))
   readonly unitaOptions = computed(() => opzioniUnita(this.unitaCorrente()))
@@ -564,6 +709,7 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     this.opzioniApi.set([])
     this.messaggioCausale.set(null)
     this.form = this.creaForm()
+    this.azzeraLegame()
     const m = this.movimento
     this.causaleAttuale.set(m ? { codice: m.causale, descrizione: m.causaleDescrizione } : null)
     if (!m) return
@@ -590,6 +736,80 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
       notes: m.notes ?? '',
     })
     if (this.modo === 'rettifica') this.avviaOpzioniCausali(m.type)
+    this.avviaLegame(m)
+  }
+
+  private azzeraLegame(): void {
+    this.sottoscrizioneLegame?.unsubscribe()
+    this.sottoscrizioneForm?.unsubscribe()
+    this.legameEsistente.set(null)
+    this.legameCaricato.set(false)
+    this.datiForm.set(null)
+    this.cerOriginale.set('')
+    this.cerCorrente.set('')
+    this.sceltaLegame = null
+    this.legame = null
+    this.bloccoValido = true
+    this.bloccoInAttesa = false
+    this.bloccoStato = { visibile: false, confermabile: false }
+    this.azioneScelta = 'PROPOSTA'
+  }
+
+  /**
+   * Legge il legame della catena (solo chi può scrivere: il resto del dialog non lo usa) e tiene
+   * aggiornati i dati per il blocco «Fatturazione». Un errore o un 404 valgono «nessun legame»:
+   * il registro non si blocca mai per colpa del listino.
+   */
+  private avviaLegame(m: Movimento): void {
+    this.cerOriginale.set(m.cerCode ?? '')
+    this.cerCorrente.set(m.cerCode ?? '')
+    if (!this.puoScrivereLegami()) return
+    this.sottoscrizioneLegame = this.legami
+      .perMovimento(m.id)
+      .pipe(
+        catchError(() => of(null)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(l => {
+        this.legameEsistente.set(l)
+        this.legameCaricato.set(true)
+      })
+    if (this.modo !== 'rettifica') return
+    const aggiorna = (): void => {
+      this.cerCorrente.set(String(this.form.get('cerCode')?.value ?? ''))
+      this.datiForm.set(this.costruisciDatiLegame(m))
+    }
+    this.sottoscrizioneForm = this.form.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(aggiorna)
+    aggiorna()
+  }
+
+  /** Solo con i campi obbligatori compilati e la quantità positiva: prima non c'è nulla da proporre. */
+  private costruisciDatiLegame(m: Movimento): DatiMovimentoLegame | null {
+    const v = this.form.getRawValue() as Record<string, unknown>
+    const cer = typeof v['cerCode'] === 'string' ? v['cerCode'].trim() : ''
+    const quantita = v['quantity']
+    const data = v['movementDate']
+    if (
+      !v['causale'] ||
+      !cer ||
+      !(data instanceof Date) ||
+      isNaN(data.getTime()) ||
+      typeof quantita !== 'number' ||
+      !(quantita > 0)
+    ) {
+      return null
+    }
+    return {
+      causale: v['causale'] as string,
+      type: m.type,
+      cerCode: cer,
+      movementDate: giornoLocale(data),
+      unit: (v['unit'] as string) || 'KG',
+      quantity: String(quantita),
+      ...(m.firId ? { firId: m.firId } : {}),
+    }
   }
 
   /**
@@ -642,7 +862,7 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     this.conferma.set(null)
   }
 
-  invia(): void {
+  invia(azione: 'PROPOSTA' | 'CONFERMA' = 'PROPOSTA'): void {
     if (!this.movimento || this.invio()) return
     // L'annullamento ha solo il motivo; la rettifica tutto il form.
     const invalido =
@@ -652,6 +872,21 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
       this.toast.error('Controlla i campi evidenziati e riprova.')
       return
     }
+    if (this.modo === 'rettifica' && this.legame && !this.bloccoValido) {
+      this.toast.error('Correggi i campi evidenziati nel blocco «Fatturazione» e riprova.')
+      return
+    }
+    if (this.modo === 'rettifica' && azione === 'CONFERMA' && !this.bloccoStato.confermabile) {
+      this.toast.error(
+        'Il legame non si può confermare: completa i dati del blocco «Fatturazione».'
+      )
+      return
+    }
+    if (this.modo === 'rettifica' && this.bloccoInAttesa) {
+      this.toast.info('Sto calcolando la fatturazione: riprova fra un istante.')
+      return
+    }
+    this.azioneScelta = azione
     if (this.modo === 'annullamento' && this.movimento.firId && !this.firConfermata) {
       this.conferma.set({ tipo: 'FIR', testo: TESTO_CONFERMA_FIR })
       return
@@ -670,6 +905,33 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
       return
     }
     this.esegui(true)
+  }
+
+  /**
+   * Esito del legame dopo la correzione: sempre un avviso, mai un errore (la correzione è
+   * riuscita). I testi del backend (`avvisi`) sono già mostrati; qui si aggiunge solo ciò che
+   * manca, senza ripetere il rimando a «Da collegare».
+   */
+  private avvisiFatturazione(f: FatturazioneCorrezione | undefined, avvisi: string[]): void {
+    if (!f) return
+    const giaDetto = avvisi.some(a => /da collegare/i.test(a))
+    if (f.esito === 'NON_RIUSCITO' && !giaDetto) {
+      this.toast.warn(
+        'Correzione registrata, ma il movimento non è stato collegato alla fatturazione: lo trovi in «Da collegare».'
+      )
+    } else if (f.esito === 'DA_RIALLINEARE' && !giaDetto) {
+      this.toast.warn(
+        'Correzione registrata, ma il legame col listino è rimasto indietro: lo trovi in «Da collegare» (da riallineare).'
+      )
+    } else if (f.esito === 'COLLEGATO') {
+      const importanti: AvvisoLegame[] = [
+        'CAMBIO_CER_DA_CONFERMARE',
+        'QUANTITA_MANUALE_NON_DERIVATA',
+      ]
+      for (const a of f.avvisi.filter(x => importanti.includes(x))) {
+        this.toast.warn(etichettaAvviso(a))
+      }
+    }
   }
 
   private esegui(confermaAnnoPresentato: boolean): void {
@@ -695,6 +957,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
             counterpartAddress: v.counterpartAddress || undefined,
             notes: v.notes || undefined,
             motivo,
+            // Il blocco prepara il legame; l'azione la decide il pulsante premuto.
+            ...(this.legame ? { legame: { ...this.legame, azione: this.azioneScelta } } : {}),
             ...conferma,
           })
         : this.servizio.annulla(m.id, { motivo, ...conferma })
@@ -705,6 +969,7 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
         const nome = this.modo === 'rettifica' ? 'Rettifica registrata' : 'Annullamento registrato'
         this.toast.success(`${nome}: annotazione ${numeroAnnotazione(esito.movimento)}`)
         for (const avviso of esito.avvisi ?? []) this.toast.warn(avviso)
+        this.avvisiFatturazione(esito.fatturazione, esito.avvisi ?? [])
         this.corretto.emit(esito)
         this.visibleChange.emit(false)
       },

@@ -133,6 +133,12 @@ export interface RettificaMovimentoRequest {
   motivo: string
   /** Solo dopo la conferma esplicita di chi sa che il MUD di un anno toccato è già presentato. */
   confermaAnnoPresentato?: boolean
+  /**
+   * Blocco «Fatturazione» (4.3): per un legame NUOVO azione, scelte e selezione delle righe; per
+   * uno ESISTENTE solo cliente, contratto, elenco e azione (`CONFERMA` conferma se completo).
+   * Senza, il legame esistente segue la correzione da solo.
+   */
+  legame?: DatiLegameRegistrazione
 }
 
 export interface AnnullamentoMovimentoRequest {

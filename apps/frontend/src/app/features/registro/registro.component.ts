@@ -115,6 +115,7 @@ import {
   StatoBlocco,
 } from '../legami/blocco-fatturazione.component'
 import { DatiLegameRegistrazione } from '../legami/legami.model'
+import { EsitoRiquadro, RiquadroLegameComponent } from '../legami/riquadro-legame.component'
 
 interface DropdownOption<T> {
   label: string
@@ -156,6 +157,7 @@ interface FirOption {
     CausaliRegistroDialogComponent,
     CorreggiMovimentoDialogComponent,
     BloccoFatturazioneComponent,
+    RiquadroLegameComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -414,6 +416,16 @@ interface FirOption {
                 </td>
                 <td class="cell-nowrap">
                   <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
+                  <p-button
+                    icon="pi pi-eye"
+                    [text]="true"
+                    [rounded]="true"
+                    size="small"
+                    [attr.data-testid]="'registro-dettaglio-' + m.id"
+                    [ariaLabel]="'Dettaglio del movimento ' + numeroMovimento(m)"
+                    pTooltip="Dettaglio e fatturazione"
+                    (onClick)="apriDettaglio(m)"
+                  ></p-button>
                 </td>
                 <td *ngIf="piuRegistri()" data-testid="registro-col-sede">
                   {{ etichettaSede(m.registroId) }}
@@ -1106,6 +1118,36 @@ interface FirOption {
             ariaLabel="Imposta il primo numero del registro"
           ></p-button>
         </ng-template>
+      </p-dialog>
+
+      <!-- Dettaglio del movimento con il riquadro del legame ------------------>
+      <p-dialog
+        *ngIf="dettaglioMovimento as d"
+        [visible]="true"
+        (visibleChange)="chiudiDettaglio()"
+        [modal]="true"
+        [header]="'Movimento ' + numeroMovimento(d)"
+        [style]="{ width: '720px', maxWidth: '95vw' }"
+        closeAriaLabel="Chiudi il dettaglio del movimento"
+      >
+        <section class="dettaglio-mov" data-testid="registro-dettaglio">
+          <strong>{{ d.type === 'CARICO' ? 'Carico' : 'Scarico' }}</strong>
+          · {{ d.movementDate | date: 'dd/MM/yyyy' }} ·
+          <span class="cell-mono">{{ d.cerCode }}</span> · {{ d.quantity | number: '1.0-2' }}
+          {{ d.unit }} · {{ causaleLabel(d) }}
+          <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
+        </section>
+        <app-riquadro-legame
+          [movimentoId]="d.id"
+          (esitoChange)="dettaglioEsito = $event"
+        ></app-riquadro-legame>
+        <p
+          *ngIf="dettaglioEsito === 'assente'"
+          class="text-muted"
+          data-testid="registro-dettaglio-senza-legame"
+        >
+          Questo movimento non è collegato alla fatturazione.
+        </p>
       </p-dialog>
 
       <!-- Dialog rettifica / annullamento ------------------------------------->
@@ -2133,6 +2175,21 @@ export class RegistroComponent implements OnInit {
   correzioneVisibile = false
   correzioneModo: ModoCorrezione = 'rettifica'
   correzioneMovimento: Movimento | null = null
+
+  // ─── Dettaglio del movimento (con il riquadro «Fatturazione») ──────────────
+
+  dettaglioMovimento: Movimento | null = null
+  dettaglioEsito: EsitoRiquadro | null = null
+
+  apriDettaglio(m: Movimento): void {
+    this.dettaglioEsito = null
+    this.dettaglioMovimento = m
+  }
+
+  chiudiDettaglio(): void {
+    this.dettaglioMovimento = null
+    this.dettaglioEsito = null
+  }
 
   readonly esitoVerifica = signal<EsitoVerificaCatena | null>(null)
   readonly verificando = signal(false)

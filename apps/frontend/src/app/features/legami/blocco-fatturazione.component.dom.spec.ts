@@ -4,6 +4,7 @@ import { of } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import {
   ATTESA_PROPOSTA_MS,
+  ATTESA_RICERCA_CLIENTI_MS,
   BloccoFatturazioneComponent,
   StatoBlocco,
 } from './blocco-fatturazione.component'
@@ -232,4 +233,56 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     fixture.detectChanges()
     expect(confermabile()).toBeTrue()
   }))
+
+  it('m7: cambia la quantità del movimento (stesso FIR): l’errore di campo della riga si pulisce', fakeAsync(() => {
+    crea()
+    scrivi('qta-ra-1', '0')
+    expect(q('errore-qta-ra-1')).not.toBeNull()
+    expect(confermabile()).toBeFalse()
+    rispostaCorrente = proposta({
+      righe: [proposta().righe[0], proposta().righe[1]].map(r =>
+        r.rigaAddebitoId === 'ra-1' ? { ...r, quantita: '130' } : r
+      ),
+    })
+    fixture.componentRef.setInput('datiMovimento', { ...DATI, quantity: '130' })
+    fixture.detectChanges()
+    tick(ATTESA_PROPOSTA_MS)
+    fixture.detectChanges()
+    tick()
+    fixture.detectChanges()
+    expect(q('errore-qta-ra-1')).toBeNull()
+    expect(campo('qta-ra-1').value).toBe('130')
+    expect(confermabile()).toBeTrue()
+  }))
+
+  describe('m6: menu dei clienti', () => {
+    const CON_CODICE = [
+      { id: 'cl-42', codice: 'C0042', ditta: { ragioneSociale: 'Bianchi Srl', partitaIva: '011' } },
+      { id: 'cl-43', codice: null, ditta: { ragioneSociale: 'Neri Spa', partitaIva: null } },
+    ] as never[]
+
+    it('l’etichetta mostra il codice e il filtro lo trova anche se la ragione sociale non lo contiene', fakeAsync(() => {
+      crea(proposta({ cliente: null, motivi: ['SENZA_CLIENTE'] }))
+      const opzioni = fixture.componentInstance.clientiOpzioni()
+      expect(opzioni.map(o => o.etichetta)).toEqual(['Bianchi Srl', 'Neri Spa'])
+      fixture.componentInstance.clienti.set(CON_CODICE)
+      fixture.detectChanges()
+      expect(fixture.componentInstance.clientiOpzioni().map(o => o.etichetta)).toEqual([
+        'C0042 · Bianchi Srl',
+        'Neri Spa',
+      ])
+      // apertura reale del menu e filtro del dropdown per codice
+      fixture.nativeElement.querySelector('[data-testid="fatt-cliente-menu"] .p-dropdown').click()
+      fixture.detectChanges()
+      const filtro = fixture.nativeElement.querySelector('.p-dropdown-filter') as HTMLInputElement
+      filtro.value = 'C0042'
+      filtro.dispatchEvent(new Event('input'))
+      fixture.detectChanges()
+      const voci = Array.from(
+        fixture.nativeElement.querySelectorAll('.p-dropdown-item') as NodeListOf<HTMLElement>
+      ).map(e => (e.textContent ?? '').trim())
+      expect(voci).toEqual(['C0042 · Bianchi Srl'])
+      tick(ATTESA_RICERCA_CLIENTI_MS)
+    }))
+  })
 })
