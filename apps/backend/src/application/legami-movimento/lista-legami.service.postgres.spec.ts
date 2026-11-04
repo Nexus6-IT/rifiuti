@@ -79,7 +79,8 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
   function eDatabaseDiTestRigido(): boolean {
     if (!eDatabaseDiTestLocale(urlProprietario)) return false
     const u = new URL(urlProprietario)
-    return u.port === '55438' && u.pathname === '/wasteflow_ci'
+    // Solo il database di test (locale 55438 o della CI 55432): host locale e nome wasteflow_ci.
+    return ['55432', '55438'].includes(u.port) && u.pathname === '/wasteflow_ci'
   }
 
   /**
