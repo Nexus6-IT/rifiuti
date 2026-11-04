@@ -13,7 +13,7 @@ import {
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { Subject, Subscription, of } from 'rxjs'
-import { catchError, debounceTime, switchMap } from 'rxjs/operators'
+import { catchError, debounceTime, map, switchMap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
@@ -27,6 +27,8 @@ import { LegamiService } from './legami.service'
 
 export const MSG_ANTEPRIMA_RICARICATA =
   'I dati sono cambiati dopo l’anteprima: ecco quella aggiornata. Controllala e conferma di nuovo.'
+/** Lo stesso tetto di `MAX_DIFFERENZE` del backend: oltre, le righe d'esempio sono troncate. */
+export const MAX_ESEMPI = 200
 export const MSG_DATE_INCOERENTI = 'La data iniziale è dopo quella finale.'
 
 /** Righe per la ricerca dei contratti: il backend accetta fino a 100 (`@Max(100)`). */
@@ -40,26 +42,32 @@ const SALTATI: Record<string, string> = {
   PREZZO_SPECIALE: 'prezzo speciale',
 }
 
+const num = (n: number): string => n.toLocaleString('it-IT')
+
 /**
  * Riepilogo in una riga, come lo vede l'utente: «12 cambiano, 3 saltati (2 fatturati, 1 prezzo
  * speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare». Le parti a zero si
  * omettono. Le righe a prezzo manuale non sono «saltati»: hanno la loro voce.
  */
 export function descriviAnteprima(a: AnteprimaAggiornamento): string {
-  const parti: string[] = [`${a.cambiano} ${a.cambiano === 1 ? 'cambia' : 'cambiano'}`]
+  const parti: string[] = [
+    `${num(a.cambiano)} ${a.cambiano === 1 ? 'legame cambia' : 'legami cambiano'}`,
+  ]
   const saltati = a.saltati.filter(s => s.motivo !== 'PREZZO_MANUALE' && s.numero > 0)
   const totale = saltati.reduce((n, s) => n + s.numero, 0)
   if (totale > 0) {
-    const dettaglio = saltati.map(s => `${s.numero} ${SALTATI[s.motivo] ?? s.motivo}`).join(', ')
-    parti.push(`${totale} saltati (${dettaglio})`)
+    const dettaglio = saltati
+      .map(s => `${num(s.numero)} ${SALTATI[s.motivo] ?? s.motivo}`)
+      .join(', ')
+    parti.push(`${num(totale)} saltati (${dettaglio})`)
   }
   if (a.righeEscluseManuali > 0) {
     parti.push(
-      `${a.righeEscluseManuali} ${a.righeEscluseManuali === 1 ? 'esclusa' : 'escluse'}, prezzo modificato a mano`
+      `${num(a.righeEscluseManuali)} ${a.righeEscluseManuali === 1 ? 'esclusa' : 'escluse'}, prezzo modificato a mano`
     )
   }
   const dc = a.daCollegare ?? 0
-  if (dc > 0) parti.push(`${dc} ${dc === 1 ? 'passa' : 'passano'} a Da collegare`)
+  if (dc > 0) parti.push(`${num(dc)} ${dc === 1 ? 'passa' : 'passano'} a Da collegare`)
   return parti.join(', ')
 }
 
@@ -212,22 +220,16 @@ interface Opzione {
       >
         <h3 id="ap-titolo-anteprima">Anteprima</h3>
         <p class="ap-riepilogo" data-testid="ap-riepilogo">{{ riepilogo() }}</p>
-        <p *ngIf="(a.invariati ?? 0) > 0" class="ap-nota" data-testid="ap-invariati">
-          {{ a.invariati }} già allineati al listino.
+        <p *ngIf="a.invariati > 0" class="ap-nota" data-testid="ap-invariati">
+          {{ numero(a.invariati ?? 0) }} legami già allineati al listino.
         </p>
 
         <ng-container *ngIf="a.differenze.length > 0">
           <table class="ap-esempi" data-testid="ap-esempi">
             <caption>
-              {{
-                a.differenze.length === 1 ? 'Esempio' : 'Esempi'
+              Righe con prezzo o sconto diverso{{
+                a.differenze.length >= maxEsempi ? ' (le prime ' + maxEsempi + ')' : ''
               }}
-              ({{
-                a.differenze.length
-              }}
-              righe che cambiano{{
-                a.cambiano > a.differenze.length ? ', le prime' : ''
-              }})
             </caption>
             <thead>
               <tr>
@@ -249,6 +251,14 @@ interface Opzione {
             </tbody>
           </table>
         </ng-container>
+
+        <p
+          *ngIf="a.cambiano > 0 && a.differenze.length === 0"
+          class="ap-nota"
+          data-testid="ap-solo-altro"
+        >
+          Cambiano l’IVA o lo stato dei legami, non prezzi o sconti.
+        </p>
 
         <p *ngIf="a.cambiano === 0" class="ap-nota" data-testid="ap-niente">
           Non c’è niente da aggiornare.
@@ -372,23 +382,44 @@ export class AggiornaPrezziDialogComponent implements OnInit, OnChanges, OnDestr
   private perimetroAnteprima: PerimetroAggiornamento | null = null
 
   private readonly ricerca = new Subject<string>()
+  private readonly scelta = new Subject<string | null>()
   private sub = new Subscription()
 
   ngOnInit(): void {
     this.sub.add(
       this.ricerca
         .pipe(
-          debounceTime(300),
+          // La prima lettura (testo vuoto) passa dallo stesso flusso: una risposta lenta non
+          // può sovrascrivere una ricerca digitata dopo.
+          switchMap(t => (t === '' ? of(t) : of(t).pipe(debounceTime(300)))),
           switchMap(t => this.leggiContratti(t))
         )
         .subscribe(o => this.impostaContratti(o))
+    )
+    // Un solo caricamento di elenchi alla volta: cambiando contratto in fretta vale l'ultimo.
+    this.sub.add(
+      this.scelta
+        .pipe(
+          switchMap(id =>
+            id === null
+              ? of(null)
+              : this.listino.elenchi.delContratto(id).pipe(catchError(() => of(null)))
+          )
+        )
+        .subscribe(r =>
+          this.opzioniElenchi.set(
+            r === null
+              ? []
+              : r.elenchi.map(e => ({ label: `${e.codice} — ${e.descrizione}`, value: e.id }))
+          )
+        )
     )
   }
 
   ngOnChanges(c: SimpleChanges): void {
     if (c['visible'] && this.visible) {
       this.azzera()
-      this.leggiContratti('').subscribe(o => this.impostaContratti(o))
+      this.ricerca.next('')
     }
   }
 
@@ -422,13 +453,15 @@ export class AggiornaPrezziDialogComponent implements OnInit, OnChanges, OnDestr
     return this.clienti.contratti
       .list({ ...(t ? { testo: t } : {}), dimensione: DIMENSIONE_RICERCA })
       .pipe(
-        switchMap(p =>
-          of(
-            p.elementi.map(c => ({
-              label: `${c.numero} — ${c.cliente.ragioneSociale}`,
-              value: c.id,
-            })) as Opzione[]
-          )
+        map(
+          p =>
+            // Un contratto annullato non ha listino modificabile (409): non si offre.
+            p.elementi
+              .filter(c => c.stato !== 'ANNULLATO')
+              .map(c => ({
+                label: `${c.numero} — ${c.cliente.ragioneSociale}`,
+                value: c.id,
+              })) as Opzione[]
         ),
         catchError(() => {
           this.erroreContratti.set('Impossibile caricare i contratti: riprova a cercare.')
@@ -450,15 +483,7 @@ export class AggiornaPrezziDialogComponent implements OnInit, OnChanges, OnDestr
     this.elencoId = null
     this.opzioniElenchi.set([])
     this.cambiaPerimetro()
-    if (!this.contrattoId) return
-    this.listino.elenchi.delContratto(this.contrattoId).subscribe({
-      next: r =>
-        this.opzioniElenchi.set(
-          r.elenchi.map(e => ({ label: `${e.codice} — ${e.descrizione}`, value: e.id }))
-        ),
-      // Gli elenchi sono un di più: senza, si aggiorna l'intero contratto.
-      error: () => this.opzioniElenchi.set([]),
-    })
+    this.scelta.next(this.contrattoId)
   }
 
   /** Un campo del perimetro è cambiato: l'anteprima vista non vale più. */
@@ -493,6 +518,8 @@ export class AggiornaPrezziDialogComponent implements OnInit, OnChanges, OnDestr
     return a ? descriviAnteprima(a) : ''
   }
 
+  readonly maxEsempi = MAX_ESEMPI
+  numero = num
   prezzo = mostraPrezzo
   sconto = mostraSconto
 

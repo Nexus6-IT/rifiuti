@@ -39,10 +39,18 @@ function anteprima(extra: Partial<AnteprimaAggiornamento> = {}): AnteprimaAggior
 }
 
 describe('descriviAnteprima', () => {
-  it('«12 cambiano, 3 saltati (2 fatturati, 1 prezzo speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare»', () => {
+  it('«12 legami cambiano, 3 saltati (2 fatturati, 1 prezzo speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare»', () => {
     expect(descriviAnteprima(anteprima())).toBe(
-      '12 cambiano, 3 saltati (2 fatturati, 1 prezzo speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare'
+      '12 legami cambiano, 3 saltati (2 fatturati, 1 prezzo speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare'
     )
+  })
+
+  it('i conteggi hanno il separatore delle migliaia', () => {
+    expect(
+      descriviAnteprima(
+        anteprima({ cambiano: 12345, saltati: [], righeEscluseManuali: 0, daCollegare: 0 })
+      )
+    ).toBe('12.345 legami cambiano')
   })
 
   it('omette le parti a zero e usa il plurale', () => {
@@ -50,12 +58,12 @@ describe('descriviAnteprima', () => {
       descriviAnteprima(
         anteprima({ cambiano: 1, saltati: [], righeEscluseManuali: 1, daCollegare: 3 })
       )
-    ).toBe('1 cambia, 1 esclusa, prezzo modificato a mano, 3 passano a Da collegare')
+    ).toBe('1 legame cambia, 1 esclusa, prezzo modificato a mano, 3 passano a Da collegare')
     expect(
       descriviAnteprima(
         anteprima({ cambiano: 0, saltati: [], righeEscluseManuali: 0, daCollegare: 0 })
       )
-    ).toBe('0 cambiano')
+    ).toBe('0 legami cambiano')
   })
 })
 
@@ -186,7 +194,7 @@ describe('AggiornaPrezziDialogComponent', () => {
     await apri()
     await faiAnteprima()
     expect(q('ap-riepilogo')!.textContent).toContain(
-      '12 cambiano, 3 saltati (2 fatturati, 1 prezzo speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare'
+      '12 legami cambiano, 3 saltati (2 fatturati, 1 prezzo speciale), 2 escluse, prezzo modificato a mano, 1 passa a Da collegare'
     )
     const righe = document.body.querySelectorAll('[data-testid="ap-esempi"] tbody tr')
     expect(righe.length).toBe(1)
@@ -197,6 +205,56 @@ describe('AggiornaPrezziDialogComponent', () => {
     // niente identificativi interni
     expect(q('ap-esempi')!.textContent).not.toContain('m1')
     expect(q('ap-esempi')!.textContent).not.toContain('l1')
+  })
+
+  it('didascalia: meno righe dei legami che cambiano, niente «le prime»', async () => {
+    await apri()
+    servizio.anteprimaAggiornamento.and.returnValue(of(anteprima({ cambiano: 150 })))
+    await faiAnteprima()
+    const c = document.body.querySelector('[data-testid="ap-esempi"] caption')!.textContent!
+    expect(c).toContain('Righe con prezzo o sconto diverso')
+    expect(c).not.toContain('le prime')
+  })
+
+  it('didascalia: con 200 righe (tetto del backend) dice «le prime 200»', async () => {
+    await apri()
+    const d = Array.from({ length: 200 }, (_, i) => ({
+      legameId: `l${i}`,
+      movimentoId: `m${i}`,
+      prezzoPrima: '1',
+      prezzoDopo: '2',
+      scontoPrima: null,
+      scontoDopo: null,
+    }))
+    servizio.anteprimaAggiornamento.and.returnValue(of(anteprima({ cambiano: 150, differenze: d })))
+    await faiAnteprima()
+    expect(document.body.querySelector('[data-testid="ap-esempi"] caption')!.textContent).toContain(
+      'le prime 200'
+    )
+  })
+
+  it('cambiano ma nessuna riga di prezzo: nota «IVA o stato» e tabella assente', async () => {
+    await apri()
+    servizio.anteprimaAggiornamento.and.returnValue(of(anteprima({ differenze: [] })))
+    await faiAnteprima()
+    expect(q('ap-esempi')).toBeNull()
+    expect(q('ap-solo-altro')!.textContent).toContain('IVA')
+  })
+
+  it('i contratti annullati non si offrono', async () => {
+    await apri()
+    contratti.and.returnValue(
+      of({
+        elementi: [
+          { id: 'k1', numero: 'CC-1', stato: 'ATTIVO', cliente: { ragioneSociale: 'A' } },
+          { id: 'k2', numero: 'CC-2', stato: 'ANNULLATO', cliente: { ragioneSociale: 'B' } },
+        ],
+        totale: 2,
+      })
+    )
+    fixture.componentInstance.cercaContratti('c')
+    await new Promise(r => setTimeout(r, 350))
+    expect(fixture.componentInstance.opzioniContratti().map(o => o.value)).toEqual(['k1'])
   })
 
   it('senza la casella di conferma «Applica» è disattivato e non chiama il server', async () => {
@@ -246,11 +304,13 @@ describe('AggiornaPrezziDialogComponent', () => {
     await stabilizza(fixture)
     expect(servizio.anteprimaAggiornamento).toHaveBeenCalledTimes(2)
     expect(q('ap-messaggio')!.textContent).toContain(MSG_ANTEPRIMA_RICARICATA)
-    expect(q('ap-riepilogo')!.textContent).toContain('13 cambiano')
+    expect(q('ap-riepilogo')!.textContent).toContain('13 legami cambiano')
     expect(bottone('ap-applica')!.disabled).toBeTrue()
     // con la nuova conferma si applica la NUOVA firma
     await spunta()
-    servizio.applicaAggiornamento.and.returnValue(of({ aggiornati: 13, saltati: 3 }))
+    servizio.applicaAggiornamento.and.returnValue(
+      of({ aggiornati: 13, saltati: 3, daCollegare: 0 })
+    )
     bottone('ap-applica')!.click()
     await stabilizza(fixture)
     expect(servizio.applicaAggiornamento.calls.mostRecent().args).toEqual([
@@ -321,6 +381,22 @@ describe('AggiornaPrezziDialogComponent', () => {
       dlg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await stabilizza(fixture)
       expect(chiusure.length).toBe(1)
+    })
+
+    it('Esc durante l’applicazione non chiude (keydown reale)', async () => {
+      await apri()
+      fixture.componentInstance.inCorso.set(true)
+      await stabilizza(fixture)
+      const chiusure: boolean[] = []
+      fixture.componentInstance.chiuso.subscribe(() => chiusure.push(true))
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', which: 27, keyCode: 27, bubbles: true })
+      )
+      document.body
+        .querySelector('.p-dialog')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }))
+      await stabilizza(fixture)
+      expect(chiusure.length).toBe(0)
     })
 
     it('durante l’applicazione la finestra non si chiude', async () => {

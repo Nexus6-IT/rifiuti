@@ -309,15 +309,23 @@ export interface DifferenzaAggiornamento {
   scontoDopo: string | null
 }
 
+export type MotivoSaltoAggiornamento =
+  | 'FATTURATO'
+  | 'IMPORTATO_FATTURATO'
+  | 'ESCLUSO'
+  | 'ANNULLATO'
+  | 'PREZZO_SPECIALE'
+  | 'PREZZO_MANUALE'
+
 export interface AnteprimaAggiornamento {
   firma: string
   cambiano: number
   /** Legami non fatturati già allineati al listino (il backend lo manda sempre). */
-  invariati?: number
+  invariati: number
   differenze: DifferenzaAggiornamento[]
-  saltati: { motivo: string; numero: number }[]
+  saltati: { motivo: MotivoSaltoAggiornamento; numero: number }[]
   /** Legami che dopo l'aggiornamento tornano «Da collegare» (il backend lo manda sempre). */
-  daCollegare?: number
+  daCollegare: number
   /** Righe con prezzo manuale: «escluse, prezzo modificato a mano» (decisione 16). */
   righeEscluseManuali: number
 }
@@ -326,5 +334,5 @@ export interface EsitoAggiornamento {
   aggiornati: number
   saltati: number
   /** Legami passati a «Da collegare» (il backend lo manda sempre). */
-  daCollegare?: number
+  daCollegare: number
 }

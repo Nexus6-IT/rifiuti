@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { ActivatedRoute, convertToParamMap } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
@@ -52,7 +53,12 @@ describe('DaCollegareComponent (DOM)', () => {
   let listaClienti: jasmine.Spy
   let listaContratti: jasmine.Spy
 
-  async function crea(ruolo: string, righe: RigaLista[], totale = righe.length): Promise<void> {
+  async function crea(
+    ruolo: string,
+    righe: RigaLista[],
+    totale = righe.length,
+    query: Record<string, string> = {}
+  ): Promise<void> {
     servizio = jasmine.createSpyObj('LegamiService', [
       'lista',
       'azioni',
@@ -87,6 +93,10 @@ describe('DaCollegareComponent (DOM)', () => {
         {
           provide: ListinoService,
           useValue: { elenchi: { delContratto: () => of({ contesto: {}, elenchi: [] }) } },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap(query) } },
         },
         { provide: RegistroService, useValue: { listRegistri: () => of([]) } },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
@@ -392,6 +402,18 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(servizio.lista).toHaveBeenCalledTimes(1)
     expect(q('legami-errore')).not.toBeNull()
   })
+  it('?clienteId nell’indirizzo applica il filtro cliente alla prima lettura', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    await crea('OPERATOR', [riga(1)], 1, { clienteId: id })
+    expect(servizio.lista.calls.first().args[0]!.clienteId).toBe(id)
+    expect(fixture.componentInstance.clienteId).toBe(id)
+  })
+
+  it('?clienteId non valido si ignora', async () => {
+    await crea('OPERATOR', [riga(1)], 1, { clienteId: 'x; DROP' })
+    expect(servizio.lista.calls.first().args[0]!.clienteId).toBeUndefined()
+  })
+
   describe('Aggiorna prezzi', () => {
     it('solo ADMIN e SUPER_ADMIN vedono il pulsante', async () => {
       for (const ruolo of ['ADMIN', 'SUPER_ADMIN']) {

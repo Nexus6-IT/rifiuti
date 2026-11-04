@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common'
 import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { ActivatedRoute } from '@angular/router'
 import { Subject, of } from 'rxjs'
 import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
@@ -454,6 +455,7 @@ export class DaCollegareComponent implements OnInit {
   private readonly fatturazione = inject(ImpostazioneFatturazioneService)
   private readonly clienti = inject(ClientiService)
   private readonly registri = inject(RegistroService)
+  private readonly route = inject(ActivatedRoute, { optional: true })
   private readonly auth = inject(AuthService)
   private readonly toast = inject(ToastService)
 
@@ -506,6 +508,14 @@ export class DaCollegareComponent implements OnInit {
   readonly giorno = formattaGiorno
 
   ngOnInit(): void {
+    // Collegamento da altre pagine (es. clienti): `?clienteId=<uuid>` applica il filtro cliente.
+    const idCliente = this.route?.snapshot?.queryParamMap?.get('clienteId') ?? null
+    if (
+      idCliente &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idCliente)
+    ) {
+      this.clienteId = idCliente
+    }
     this.carica()
     // I menu dei filtri sono un di più: se non si caricano la lista funziona lo stesso.
     this.ricercaClienti
@@ -549,11 +559,15 @@ export class DaCollegareComponent implements OnInit {
   /** «Aggiorna prezzi» applicato: si chiude la finestra, si rilegge la lista e il contatore del menu. */
   dopoAggiornaPrezzi(e: EsitoAggiornamento): void {
     this.aggiornaPrezziAperta.set(false)
-    const dc = e.daCollegare ?? 0
+    const n = (v: number): string => v.toLocaleString('it-IT')
+    // `saltati` dell'esito somma legami (fatturati, esclusi...) e righe (speciali, manuali): non
+    // si ripete l'etichetta «saltati» dell'anteprima, che li teneva separati.
     this.toast.success(
-      `Prezzi aggiornati: ${e.aggiornati} ${e.aggiornati === 1 ? 'legame' : 'legami'}` +
-        (e.saltati > 0 ? `, ${e.saltati} saltati` : '') +
-        (dc > 0 ? `, ${dc} tornati a Da collegare` : '') +
+      `Prezzi aggiornati: ${n(e.aggiornati)} ${e.aggiornati === 1 ? 'legame' : 'legami'}` +
+        (e.saltati > 0
+          ? `. Non toccati (fatturati, esclusi, prezzo speciale o modificato a mano): ${n(e.saltati)}`
+          : '') +
+        (e.daCollegare > 0 ? `. Tornati a Da collegare: ${n(e.daCollegare)}` : '') +
         '.'
     )
     this.servizio.aggiornaContatori()
