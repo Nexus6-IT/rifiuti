@@ -1,7 +1,7 @@
 # Fase 4.4 — Valorizzazione per periodo ed export
 
 **Data**: 2026-11-05
-**Stato**: decisioni prese il 2026-11-05 (§19); in attesa di approvazione
+**Stato**: decisioni prese il 2026-11-05 (§19); approvata da Graziano il 2026-11-05
 **Base**: `origin/master` `8e991f87` (4.3 e seguiti in produzione, sha-8e991f8), worktree `rifiuti-wt-rentri-registro`
 **Origine**: roadmap `winwaste/docs/roadmap-fasi3-4-import-gestori.md` §4.4 (con §4.5, §6, §8, §9); WinWaste `fatturazione.md` §3-§8, `contabilita.md` §8, `fatturazione-provider-sdi.md`; spec e piano della 4.3; ledger `.superpowers/sdd/2026-11-03-fase4-3/progress.md` (decisioni 1-24).
 
