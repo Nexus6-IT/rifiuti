@@ -6,6 +6,11 @@ import {
 } from './legami-correzioni'
 
 jest.mock('../../core/monitoring/segnala-errore-job', () => ({ segnalaErroreJob: jest.fn() }))
+jest.mock('./impostazioni-fatturazione.service', () => ({ leggiFatturazioneDaInTx: jest.fn() }))
+import { leggiFatturazioneDaInTx } from './impostazioni-fatturazione.service'
+const fatturazioneDa = leggiFatturazioneDaInTx as jest.MockedFunction<
+  typeof leggiFatturazioneDaInTx
+>
 
 function txFinta() {
   const eseguiti: string[] = []
@@ -49,15 +54,31 @@ function dati(over: Partial<DatiCorrezioneLegame> = {}): DatiCorrezioneLegame {
 }
 
 describe('riallineaLegameDopoCorrezione (unitario)', () => {
-  it('budget esaurito: nessun savepoint e nessuna query sul legame, avviso e audit', async () => {
+  beforeEach(() => fatturazioneDa.mockResolvedValue('2026-01-01'))
+
+  it('I1 budget esaurito ma nessun legame e niente da far nascere: nessun avviso, audit o savepoint', async () => {
     const { tx, eseguiti } = txFinta()
-    const avvisi = await riallineaLegameDopoCorrezione(
+    tx.$queryRaw.mockResolvedValueOnce([]) // nessun legame
+    fatturazioneDa.mockResolvedValue(null) // fatturazione spenta
+    const r = await riallineaLegameDopoCorrezione(
       tx as never,
       dati({ trascorsoMs: SOGLIA_BUDGET_LEGAME_MS + 1 })
     )
-    expect(avvisi).toEqual([AVVISO_LEGAME_DA_RIALLINEARE])
+    expect(r).toEqual({ avvisi: [], fatturazione: null })
+    expect(eseguiti).toEqual([])
+    expect(tx.activityLog.create).not.toHaveBeenCalled()
+  })
+
+  it('budget esaurito con un legame esistente: nessun savepoint del legame, avviso, audit e DA_RIALLINEARE', async () => {
+    const { tx, eseguiti } = txFinta()
+    tx.$queryRaw.mockResolvedValueOnce([{ id: 'l-1' }])
+    const r = await riallineaLegameDopoCorrezione(
+      tx as never,
+      dati({ trascorsoMs: SOGLIA_BUDGET_LEGAME_MS + 1 })
+    )
+    expect(r.avvisi).toEqual([AVVISO_LEGAME_DA_RIALLINEARE])
+    expect(r.fatturazione).toMatchObject({ esito: 'DA_RIALLINEARE', legameId: 'l-1' })
     expect(eseguiti.some(s => s === 'SAVEPOINT legame_correzione')).toBe(false)
-    expect(tx.$queryRaw).not.toHaveBeenCalled()
     expect(eseguiti).toEqual(['SAVEPOINT legame_audit', 'RELEASE SAVEPOINT legame_audit'])
     expect(tx.activityLog.create.mock.calls[0][0].data.metadata).toMatchObject({
       codice: 'BUDGET_ESAURITO',
@@ -65,40 +86,51 @@ describe('riallineaLegameDopoCorrezione (unitario)', () => {
     })
   })
 
-  it('errore nel riallineamento: ROLLBACK TO del savepoint e nessuna eccezione verso il chiamante', async () => {
+  it('errore nel riallineamento: ROLLBACK TO + RELEASE del savepoint e nessuna eccezione verso il chiamante', async () => {
     const { tx, eseguiti } = txFinta()
     tx.$queryRaw
+      .mockResolvedValueOnce([{ id: 'l-1' }]) // pre-controllo
       .mockResolvedValueOnce([{ v: '0' }]) // lock_timeout
-      .mockResolvedValueOnce([{ id: 'l-1' }]) // legame esistente
+      .mockResolvedValueOnce([{ id: 'l-1' }]) // legame esistente sotto lock
       .mockRejectedValueOnce(new Error('testa illeggibile con dati personali'))
-    const avvisi = await riallineaLegameDopoCorrezione(tx as never, dati())
-    expect(avvisi).toEqual([AVVISO_LEGAME_DA_RIALLINEARE])
+    const r = await riallineaLegameDopoCorrezione(tx as never, dati())
+    expect(r.avvisi).toEqual([AVVISO_LEGAME_DA_RIALLINEARE])
     expect(eseguiti).toContain('ROLLBACK TO SAVEPOINT legame_correzione')
-    // Nell'audit non finisce il messaggio dell'errore originale.
-    const audit = JSON.stringify(tx.activityLog.create.mock.calls[0][0].data)
-    expect(audit).not.toMatch(/dati personali/)
+    expect(eseguiti).toContain('RELEASE SAVEPOINT legame_correzione')
+    expect(JSON.stringify(tx.activityLog.create.mock.calls[0][0].data)).not.toMatch(
+      /dati personali/
+    )
   })
 
-  it('annullo senza legame: niente da fare, nessun avviso, nessun legame creato', async () => {
+  it('annullo senza legame: niente da fare, nessuna query oltre al pre-controllo', async () => {
     const { tx, eseguiti } = txFinta()
-    tx.$queryRaw.mockResolvedValueOnce([{ v: '0' }]).mockResolvedValueOnce([])
+    tx.$queryRaw.mockResolvedValueOnce([])
     const d = dati({ tipo: 'ANNULLAMENTO' })
-    const avvisi = await riallineaLegameDopoCorrezione(tx as never, d)
-    expect(avvisi).toEqual([])
-    expect(eseguiti).toContain('RELEASE SAVEPOINT legame_correzione')
-    expect(
-      (d.proposta as never as { proponiEScrivi: jest.Mock }).proponiEScrivi
-    ).not.toHaveBeenCalled()
+    expect(await riallineaLegameDopoCorrezione(tx as never, d)).toEqual({
+      avvisi: [],
+      fatturazione: null,
+    })
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(eseguiti).toEqual([])
   })
 
   it('rettifica senza legame con causale non fatturabile: nessun legame', async () => {
     const { tx } = txFinta()
-    tx.$queryRaw.mockResolvedValueOnce([{ v: '0' }]).mockResolvedValueOnce([])
+    tx.$queryRaw.mockResolvedValueOnce([])
     const d = dati()
     d.dopo.fatturabile = false
-    expect(await riallineaLegameDopoCorrezione(tx as never, d)).toEqual([])
-    expect(
-      (d.proposta as never as { proponiEScrivi: jest.Mock }).proponiEScrivi
-    ).not.toHaveBeenCalled()
+    expect((await riallineaLegameDopoCorrezione(tx as never, d)).avvisi).toEqual([])
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+  })
+
+  it("rettifica senza legame con data prima di «fatturazione da»: nessun legame ne' savepoint", async () => {
+    const { tx, eseguiti } = txFinta()
+    tx.$queryRaw.mockResolvedValueOnce([])
+    fatturazioneDa.mockResolvedValue('2026-06-01')
+    expect(await riallineaLegameDopoCorrezione(tx as never, dati())).toEqual({
+      avvisi: [],
+      fatturazione: null,
+    })
+    expect(eseguiti).toEqual([])
   })
 })

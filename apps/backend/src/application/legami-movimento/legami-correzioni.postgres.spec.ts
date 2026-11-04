@@ -28,7 +28,9 @@ import {
   PrismaService,
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
-import { creaRiga } from '../../test-support/listino-di-test'
+import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
+import { annoSolareItaliano } from '../../core/time/anno-italiano'
+import { randomUUID } from 'crypto'
 import {
   creaFirDiTest,
   creaScenarioProposta,
@@ -49,7 +51,12 @@ import { RegistraMovimentoCommand } from '../registro/commands/registra-moviment
 import { RegistriService } from '../registro/registri.service'
 import { VerificaCatenaRegistroService } from '../registro/verifica-catena-registro.service'
 import { type DatiLegameRegistrazione } from './aggancio-registro'
-import { AVVISO_LEGAME_DA_RIALLINEARE } from './legami-correzioni'
+import {
+  AVVISO_LEGAME_CONFERMA_NON_POSSIBILE,
+  AVVISO_LEGAME_CORREZIONE_NON_RIUSCITO,
+  AVVISO_LEGAME_DA_RIALLINEARE,
+  AVVISO_LEGAME_SCELTE_NON_APPLICATE,
+} from './legami-correzioni'
 import { LegamiService } from './conferma-legame.service'
 import { ListaLegamiService } from './lista-legami.service'
 import { PropostaLegameService } from './proposta-legame.service'
@@ -296,6 +303,13 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     expect(l.righe[0].prezzo?.toFixed()).toBe(prima.righe[0].prezzo?.toFixed())
     expect(l.righe[0].congelataIl).toEqual(prima.righe[0].congelataIl)
     expect(r.avvisi).toEqual([])
+    expect(r.fatturazione).toEqual({
+      esito: 'COLLEGATO',
+      legameId: prima.id,
+      stato: 'CONFERMATO',
+      motivi: [],
+      avvisi: [],
+    })
     expect(await legamiDi(s)).toHaveLength(1)
   })
 
@@ -363,6 +377,11 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
       stato: 'PROPOSTO',
     })
     expect(r.avvisi).toEqual([])
+    expect(r.fatturazione).toMatchObject({
+      esito: 'COLLEGATO',
+      legameId: legamiS[0].id,
+      stato: 'PROPOSTO',
+    })
   })
 
   it('il blocco legame della rettifica con azione CONFERMA fa nascere un legame CONFERMATO', async () => {
@@ -441,6 +460,7 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     expect(l).toMatchObject({ stato: 'ANNULLATO', movimentoVigenteId: r.movimento.id })
     expect(l.righe).toHaveLength(1)
     expect(await legamiDi(s)).toHaveLength(1)
+    expect(r.fatturazione).toMatchObject({ esito: 'COLLEGATO', stato: 'ANNULLATO' })
   })
 
   it.each(['FATTURATO', 'IMPORTATO_FATTURATO'] as const)(
@@ -594,6 +614,7 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     const m = await registraMovimento(s, { causale: 'PRODUZIONE_INTERNA', legame: null })
     const r = await rettifica(s, m.id, { causale: 'PRODUZIONE_INTERNA', quantity: 5 })
     expect(r.avvisi).toEqual([])
+    expect(r.fatturazione).toBeUndefined()
     await annulla(s, r.movimento.id)
     expect(await legamiDi(s)).toHaveLength(0)
   })
@@ -621,6 +642,11 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     const r = await rettifica(s, m.id, { quantity: 90 })
     expect(r.movimento.tipoAnnotazione).toBe('RETTIFICA')
     expect(r.avvisi).toContain(AVVISO_LEGAME_DA_RIALLINEARE)
+    expect(r.fatturazione).toMatchObject({
+      esito: 'DA_RIALLINEARE',
+      legameId: (await legameDi(m.id))!.id,
+      stato: null,
+    })
     // La transazione NON e' in abort: la riga della correzione e l'audit sono stati scritti.
     expect(await auditDi(s, 'REGISTRO_MOVIMENTO_RETTIFICATO')).toHaveLength(1)
     const audit = await auditDi(s, 'LEGAME_NON_RIUSCITO')
@@ -691,6 +717,200 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
         movimenti.some(m => m.id === l.movimentoVigenteId)
       )
       expect(vigentiIndietro).toHaveLength(12)
+      const esito = await nel(s.tenantId, () => verifica.verifica(s.tenantId, s.registroId, ANNO))
+      expect(esito.primoErrore).toBeNull()
+    } finally {
+      blocco.rilascia()
+      await blocco.fine
+    }
+  }, 180_000)
+
+  // ---------------------------------------------------------------------------------------
+  // Giro di correzione 1 (revisione del Task 21)
+  // ---------------------------------------------------------------------------------------
+
+  /** Secondo contratto del cliente con un elenco che ha la riga del CER indicato. */
+  async function secondoContratto(s: ScenarioProposta, cer: string) {
+    const c = await creaContrattoConElenco(owner, s.tenantId, { clienteId: s.clienteId })
+    await creaRiga(owner, s.tenantId, c.elencoId, {
+      tipo: 'CER',
+      cerCode: cer,
+      codiceIvaId: s.ivaId,
+    })
+    return c
+  }
+
+  it('I2: cambio di CER con azione CONFERMA e proposta completa: il legame torna CONFERMATO', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })
+    const r = await rettifica(s, m.id, { cerCode: CER_B }, { azione: 'CONFERMA' })
+    const l = (await legameDi(m.id))!
+    expect(l).toMatchObject({ stato: 'CONFERMATO', movimentoVigenteId: r.movimento.id })
+    expect(l.confermatoIl).not.toBeNull()
+    expect(l.avvisi).not.toContain('CAMBIO_CER_DA_CONFERMARE')
+    expect(r.avvisi).toEqual([])
+    expect(r.fatturazione).toMatchObject({ esito: 'COLLEGATO', stato: 'CONFERMATO' })
+  })
+
+  it('I2: da CONFERMATO, cambio di CER con azione CONFERMA: riconfermato sui prezzi nuovi', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    await rettifica(s, m.id, { cerCode: CER_B }, { azione: 'CONFERMA' })
+    const l = (await legameDi(m.id))!
+    expect(l.stato).toBe('CONFERMATO')
+    expect(l.righe).toHaveLength(1)
+    expect(l.righe[0].congelataIl).not.toBeNull()
+  })
+
+  it("I2: il contratto scelto dall'utente nel blocco legame è applicato (cambio di CER con due contratti)", async () => {
+    const s = await scenario()
+    const c2 = await secondoContratto(s, CER_B)
+    const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })
+    const r = await rettifica(
+      s,
+      m.id,
+      { cerCode: CER_B },
+      { azione: 'CONFERMA', contrattoId: c2.contrattoId, elencoId: c2.elencoId }
+    )
+    const l = (await legameDi(m.id))!
+    expect(l).toMatchObject({
+      contrattoId: c2.contrattoId,
+      elencoId: c2.elencoId,
+      stato: 'CONFERMATO',
+      movimentoVigenteId: r.movimento.id,
+    })
+    expect(r.avvisi).toEqual([])
+  })
+
+  it('I2: CONFERMA con legame non completo: resta come il dominio dice, con i motivi e un avviso', async () => {
+    const s = await scenario()
+    const sconosciuto = '20 01 01'
+    if ((await owner.cERCode.count({ where: { code: sconosciuto } })) === 0)
+      cerCreati.push(sconosciuto)
+    await owner.cERCode.upsert({
+      where: { code: sconosciuto },
+      create: { code: sconosciuto, description: 'CER di test', category: '20', subcategory: '' },
+      update: {},
+    })
+    const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })
+    const r = await rettifica(s, m.id, { cerCode: sconosciuto }, { azione: 'CONFERMA' })
+    const l = (await legameDi(m.id))!
+    expect(l.stato).toBe('DA_COLLEGARE')
+    expect(l.motivi).toContain('SENZA_RIGA_CER')
+    expect(l.movimentoVigenteId).toBe(r.movimento.id)
+    expect(r.avvisi).toContain(AVVISO_LEGAME_CONFERMA_NON_POSSIBILE)
+    expect(r.fatturazione).toMatchObject({ esito: 'COLLEGATO', stato: 'DA_COLLEGARE' })
+    expect(r.fatturazione?.motivi).toContain('SENZA_RIGA_CER')
+  })
+
+  it('I3: blocco legame non valido (cliente inesistente): il legame si riallinea comunque, con un avviso', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })
+    const r = await rettifica(
+      s,
+      m.id,
+      { quantity: 90 },
+      { azione: 'PROPOSTA', clienteId: randomUUID() }
+    )
+    const l = (await legameDi(m.id))!
+    expect(l.movimentoVigenteId).toBe(r.movimento.id)
+    expect(l.righe[0].quantita?.toFixed()).toBe('90')
+    expect(r.avvisi).toEqual([AVVISO_LEGAME_SCELTE_NON_APPLICATE])
+    expect(r.avvisi).not.toContain(AVVISO_LEGAME_DA_RIALLINEARE)
+    expect(await auditDi(s, 'LEGAME_NON_RIUSCITO')).toHaveLength(0)
+    const elenco = await nel(s.tenantId, () =>
+      lista.lista(s.tenantId, { stati: ['DA_RIALLINEARE'] })
+    )
+    expect(elenco.elementi).toHaveLength(0)
+  })
+
+  it('I2/I3: contratto inesistente sul cambio di CER: non applicato, mai in silenzio, legame allineato', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })
+    const r = await rettifica(
+      s,
+      m.id,
+      { cerCode: CER_B },
+      { azione: 'PROPOSTA', contrattoId: randomUUID() }
+    )
+    expect(r.avvisi).toContain(AVVISO_LEGAME_SCELTE_NON_APPLICATE)
+    expect((await legameDi(m.id))!.movimentoVigenteId).toBe(r.movimento.id)
+  })
+
+  it('blocco legame con scelte su un legame FATTURATO: non applicate, con avviso (oltre allo scostamento)', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    await portaAFatturato((await legameDi(m.id))!.id, 'FATTURATO')
+    const r = await rettifica(
+      s,
+      m.id,
+      { quantity: 70 },
+      { azione: 'CONFERMA', clienteId: s.clienteId }
+    )
+    expect(r.avvisi).toEqual(
+      expect.arrayContaining([AVVISO_SCOSTAMENTO, AVVISO_LEGAME_SCELTE_NON_APPLICATE])
+    )
+    expect((await legameDi(m.id))!.stato).toBe('FATTURATO')
+  })
+
+  it('I1: fatturazione spenta e progressivo tenuto oltre il budget: nessun avviso, audit o blocco fatturazione', async () => {
+    const s = await scenario({ fatturazioneDa: null })
+    const m = await registraMovimento(s, { legame: null, senzaFir: true })
+    const segnala = jest.spyOn(segnalazione, 'segnalaErroreJob').mockImplementation(() => {})
+    const blocco = tenitore(async tx => {
+      const chiave = `${s.registroId}-${annoSolareItaliano(new Date())}`
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${chiave}))`
+    })
+    await blocco.pronta
+    try {
+      const correzione = rettifica(s, m.id, { quantity: 90 })
+      await attendiLock(1)
+      // Il budget del legame si misura dall'inizio della transazione: va fatto scadere davvero.
+      await new Promise(r => setTimeout(r, 16_000))
+      blocco.rilascia()
+      const r = await correzione
+      expect(r.avvisi).toEqual([])
+      expect(r.fatturazione).toBeUndefined()
+    } finally {
+      blocco.rilascia()
+      await blocco.fine
+    }
+    expect(await auditDi(s, 'LEGAME_NON_RIUSCITO')).toHaveLength(0)
+    expect(segnala).not.toHaveBeenCalled()
+    expect(await legamiDi(s)).toHaveLength(0)
+  }, 90_000)
+
+  it('m6: 8 rettifiche parallele che fanno nascere il legame, listino bloccato: tutte riescono', async () => {
+    const s = await scenario()
+    const movimenti: { id: string }[] = []
+    for (let i = 0; i < 8; i++) {
+      movimenti.push(await registraMovimento(s, { causale: 'PRODUZIONE_INTERNA', legame: null }))
+    }
+    const blocco = tenitore(async tx => {
+      await tx.$queryRaw`SELECT id FROM righe_addebito WHERE id = ${s.rigaCerId}::uuid FOR UPDATE`
+    })
+    await blocco.pronta
+    try {
+      const esiti = await Promise.all(
+        movimenti.map(m =>
+          rettifica(s, m.id, { causale: 'INGRESSO_ESTERNO' }, { azione: 'PROPOSTA' }).then(
+            r => ({ ok: true as const, r }),
+            (e: Error) => ({ ok: false as const, e })
+          )
+        )
+      )
+      expect(esiti.filter(e => !e.ok).map(e => (e as { e: Error }).e.message)).toEqual([])
+      const ok = esiti.map(e => (e as { r: Awaited<ReturnType<typeof rettifica>> }).r)
+      expect(new Set(ok.map(r => r.movimento.progressiveNumber)).size).toBe(8)
+      // Il listino era bloccato: nessun legame e' nato, ogni correzione lo dice.
+      expect(await legamiDi(s)).toHaveLength(0)
+      expect(ok.every(r => r.avvisi.includes(AVVISO_LEGAME_CORREZIONE_NON_RIUSCITO))).toBe(true)
+      expect(ok.every(r => r.fatturazione?.esito === 'NON_RIUSCITO')).toBe(true)
+      const codici = (await auditDi(s, 'LEGAME_NON_RIUSCITO')).map(
+        a => (a.metadata as { codice: string }).codice
+      )
+      expect(codici).toHaveLength(8)
+      expect(codici.every(c => /^(55P03|P2010|BUDGET_ESAURITO)$/.test(c))).toBe(true)
       const esito = await nel(s.tenantId, () => verifica.verifica(s.tenantId, s.registroId, ANNO))
       expect(esito.primoErrore).toBeNull()
     } finally {

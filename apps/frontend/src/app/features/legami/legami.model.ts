@@ -212,6 +212,20 @@ export interface CorpoEscludi {
   motivo: string
 }
 
+/**
+ * Blocco «Fatturazione» della risposta di rettifica/annullo (Task 21): come quello della
+ * registrazione, con l'esito in più `DA_RIALLINEARE` (il legame esiste ma è rimasto indietro
+ * rispetto al movimento: compare in «Da collegare»). Assente se non c'era nulla da collegare.
+ * `avvisi` (stringhe di EsitoCorrezioneMovimento) contiene i testi per l'utente.
+ */
+export interface FatturazioneCorrezione {
+  esito: 'COLLEGATO' | 'NON_RIUSCITO' | 'DA_RIALLINEARE'
+  legameId: string | null
+  stato: StatoLegame | null
+  motivi: MotivoLegame[]
+  avvisi: AvvisoLegame[]
+}
+
 /** Blocco `legame` facoltativo del corpo della registrazione e della rettifica (spec §7.1). */
 export interface DatiLegameRegistrazione extends ModificheLegame {
   azione: 'CONFERMA' | 'PROPOSTA'

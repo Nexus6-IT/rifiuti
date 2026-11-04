@@ -460,6 +460,44 @@ export class LegamiService {
   }
 
   /**
+   * Applica a un legame le scelte dell'utente con le regole di `modifica` (senza `conferma`) o di
+   * `conferma`, dentro una transazione che ha gia' il lock consultivo della radice (la rettifica
+   * del movimento, Task 21). Nessun controllo della `versione`: il chiamante ha appena riallineato il
+   * legame sotto lock. Errori di dominio (cliente inesistente, `LEGAME_INCOMPLETO`...) come i
+   * metodi pubblici: il chiamante li gestisce in un savepoint.
+   */
+  async applicaSceltaInTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    utenteId: string | null,
+    legameId: string,
+    m: ModificheLegame,
+    conferma: boolean
+  ): Promise<LegameVista> {
+    const mods = validaModifiche(m)
+    const l = await leggiTestata(tx, tenantId, legameId)
+    if (!l) throw nonTrovato()
+    if (!STATI_MODIFICABILI.includes(l.stato)) throw statoNonAmmesso()
+    const senzaModifiche =
+      mods.clienteId === undefined &&
+      mods.contrattoId === undefined &&
+      mods.elencoId === undefined &&
+      mods.righe.size === 0
+    if (conferma && l.stato === 'CONFERMATO' && senzaModifiche) {
+      return costruisciVista(tx, tenantId, l.id, null)
+    }
+    const righe = await leggiRighe(tx, tenantId, l.id)
+    const e = await this.ricalcola(tx, tenantId, l, righe, mods, conferma)
+    return this.scrivi(tx, tenantId, utenteId, l, e, righe, {
+      azione: conferma ? 'LEGAME_MOVIMENTO_CONFERMATO' : 'LEGAME_MOVIMENTO_MODIFICATO',
+      descrizione: conferma
+        ? 'Legame movimento confermato dalla rettifica'
+        : 'Legame movimento modificato dalla rettifica',
+      bloccato: false,
+    })
+  }
+
+  /**
    * Riallinea un legame rimasto indietro rispetto alla testa della catena (allineamento fallito
    * dopo una correzione, lista «da collegare» `DA_RIALLINEARE`). Va chiamato DENTRO una
    * transazione che ha gia' il lock consultivo della radice (`bloccaLegamePerRadice`), con la

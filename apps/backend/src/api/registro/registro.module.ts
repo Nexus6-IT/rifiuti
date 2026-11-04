@@ -40,6 +40,7 @@ import { AvvisoRentriCorrezioneService } from '../../application/rentri/registro
  *   DELETE /api/v1/registro/causali/aziendali/:id — elimina una versione mai usata (amministratori)
  */
 import { PropostaLegameService } from '../../application/legami-movimento/proposta-legame.service'
+import { LegamiService } from '../../application/legami-movimento/conferma-legame.service'
 
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule],
@@ -56,6 +57,7 @@ import { PropostaLegameService } from '../../application/legami-movimento/propos
     CatalogoCausaliAvvioService,
     AvvisoRentriCorrezioneService,
     PropostaLegameService,
+    LegamiService,
   ],
   exports: [
     RegistraMovimentoUseCase,

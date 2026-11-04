@@ -687,6 +687,17 @@ describe('RegistroController — correzioni e verifica catena (Fase 2 pezzo 3)',
     expect(avviso.calcola).not.toHaveBeenCalled()
   })
 
+  it("rettifica: il blocco legame arriva come legame, fuori da dati; senza blocco non c'e' nulla di nuovo", async () => {
+    const legame = { azione: 'CONFERMA', contrattoId: 'c-1' }
+    await crea('OPERATOR').rettifica('mov-1', { ...dto, legame } as any, richiesta)
+    const chiamata = correggi.rettifica.mock.calls[0][0]
+    expect(chiamata.legame).toEqual(legame)
+    expect(chiamata.dati).not.toHaveProperty('legame')
+    correggi.rettifica.mockClear()
+    await crea('OPERATOR').rettifica('mov-1', dto as any, richiesta)
+    expect(correggi.rettifica.mock.calls[0][0].legame).toBeUndefined()
+  })
+
   it('rettifica: un unit esplicito è mantenuto', async () => {
     await crea('ADMIN').rettifica('mov-1', { ...dto, unit: 'T' } as any, richiesta)
     expect(correggi.rettifica.mock.calls[0][0].dati.unit).toBe('T')

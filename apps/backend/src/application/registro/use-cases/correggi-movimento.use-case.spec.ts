@@ -144,7 +144,7 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     verificaMock.mockResolvedValue(undefined)
     fotoMock.mockResolvedValue(STATO_PRIMA)
     riallineaMock.mockResolvedValue([])
-    legameMock.mockResolvedValue([])
+    legameMock.mockResolvedValue({ avvisi: [], fatturazione: null })
     saldi = jest.spyOn(giacenzaModulo, 'saldiRegistroCer').mockResolvedValue(SALDO_OK)
   })
   afterEach(() => saldi.mockRestore())
@@ -168,7 +168,16 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     })
 
     it('il riallineamento riceve radice, nuova testa e budget; i suoi avvisi finiscono nella risposta', async () => {
-      legameMock.mockResolvedValue(['avviso del legame'])
+      legameMock.mockResolvedValue({
+        avvisi: ['avviso del legame'],
+        fatturazione: {
+          esito: 'COLLEGATO',
+          legameId: 'l-1',
+          stato: 'PROPOSTO',
+          motivi: [],
+          avvisi: [],
+        },
+      })
       const { uc } = useCaseCon(creaTx({}))
       const r = await uc.rettifica({ ...base, dati })
       expect(legameMock).toHaveBeenCalledTimes(1)
@@ -181,6 +190,7 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
       })
       expect(c.trascorsoMs).toBeGreaterThanOrEqual(0)
       expect(r.avvisi).toContain('avviso del legame')
+      expect(r.fatturazione).toMatchObject({ esito: 'COLLEGATO', legameId: 'l-1' })
     })
 
     it('annullo: stesso riallineamento con tipo ANNULLAMENTO', async () => {

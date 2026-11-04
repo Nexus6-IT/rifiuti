@@ -46,7 +46,10 @@ import {
   type DatiLegameRegistrazione,
 } from '../../legami-movimento/aggancio-registro'
 import { LegamiService } from '../../legami-movimento/conferma-legame.service'
-import { riallineaLegameDopoCorrezione } from '../../legami-movimento/legami-correzioni'
+import {
+  riallineaLegameDopoCorrezione,
+  type FatturazioneCorrezione,
+} from '../../legami-movimento/legami-correzioni'
 import { PropostaLegameService } from '../../legami-movimento/proposta-legame.service'
 
 type TipoCorrezione = 'RETTIFICA' | 'ANNULLAMENTO'
@@ -99,6 +102,11 @@ export interface MovimentoCorretto extends Omit<MovimentoRegistrato, 'avvisi' | 
 export interface EsitoCorrezione {
   movimento: MovimentoCorretto
   avvisi: string[]
+  /**
+   * Blocco «Fatturazione» (come nella registrazione): il legame dopo la correzione. Assente se non
+   * c'era nulla da collegare (causale non fatturabile, fatturazione spenta, annullo senza legame).
+   */
+  fatturazione?: FatturazioneCorrezione
 }
 
 /** Dati che la nuova annotazione porta (rettifica: quelli nuovi; annullamento: copia alla lettera). */
@@ -353,32 +361,31 @@ export class CorreggiMovimentoUseCase {
         // 8c. Legame movimento-cliente-prezzo (fase 4.3b, spec §7.5): segue la nuova testa in un
         // SAVEPOINT. Un problema commerciale NON fa fallire la correzione del registro: il legame
         // resta indietro (DA_RIALLINEARE in lista), con avviso, audit e segnalazione.
-        avvisi.push(
-          ...(await riallineaLegameDopoCorrezione(tx, {
-            tenantId,
-            userId: input.userId ?? null,
-            registroId: originale.registroId,
-            tipo,
-            radiceId: radice.id,
-            nuovoVigenteId: record.id,
-            dopo: {
-              type: record.type,
-              causale: record.causale,
-              causaleAziendaId: record.causaleAziendaId,
-              cerCode: record.cerCode,
-              movementDate: record.movementDate,
-              unit: record.unit,
-              quantity: new Prisma.Decimal(record.quantity).toFixed(),
-              fatturabile: dati.fatturabile,
-              firId: record.firId ?? null,
-            },
-            legame: legameRichiesto,
-            legami: this.legami,
-            proposta: this.propostaLegami,
-            trascorsoMs: Date.now() - inizioTransazione,
-            logger: this.logger,
-          }))
-        )
+        const legameRiallineato = await riallineaLegameDopoCorrezione(tx, {
+          tenantId,
+          userId: input.userId ?? null,
+          registroId: originale.registroId,
+          tipo,
+          radiceId: radice.id,
+          nuovoVigenteId: record.id,
+          dopo: {
+            type: record.type,
+            causale: record.causale,
+            causaleAziendaId: record.causaleAziendaId,
+            cerCode: record.cerCode,
+            movementDate: record.movementDate,
+            unit: record.unit,
+            quantity: new Prisma.Decimal(record.quantity).toFixed(),
+            fatturabile: dati.fatturabile,
+            firId: record.firId ?? null,
+          },
+          legame: legameRichiesto,
+          legami: this.legami,
+          proposta: this.propostaLegami,
+          trascorsoMs: Date.now() - inizioTransazione,
+          logger: this.logger,
+        })
+        avvisi.push(...legameRiallineato.avvisi)
 
         // 9. Saldi DOPO: blocco (rollback) o avvisi.
         const dopo = await this.saldi(tx, tenantId, originale.registroId, cerToccati)
@@ -415,7 +422,13 @@ export class CorreggiMovimentoUseCase {
         })
 
         versioneCausale = record.causaleAziendaId
-        return { movimento: vistaCorrezione(record, dati.causaleDescrizione), avvisi }
+        return {
+          movimento: vistaCorrezione(record, dati.causaleDescrizione),
+          avvisi,
+          ...(legameRiallineato.fatturazione
+            ? { fatturazione: legameRiallineato.fatturazione }
+            : {}),
+        }
       }, OPZIONI_TRANSAZIONE_CORREZIONE)
     } catch (err) {
       throw await this.traduciErrore(err, tenantId, movimentoId)

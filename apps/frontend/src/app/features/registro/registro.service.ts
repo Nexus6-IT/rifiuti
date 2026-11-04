@@ -3,6 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import { StatoRentri } from './stato-rentri'
+import type { FatturazioneCorrezione } from '../legami/legami.model'
 
 // ─── Modelli ────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,8 @@ export interface EsitoCorrezioneMovimento {
   avvisi: string[]
   /** Frase per l'utente se l'annotazione corretta era già su RENTRI; null altrimenti. */
   avvisoRentri?: string | null
+  /** Il legame dopo la correzione (4.3b): assente se non c'era nulla da collegare. */
+  fatturazione?: FatturazioneCorrezione
 }
 
 export interface EsitoVerificaCatena {
