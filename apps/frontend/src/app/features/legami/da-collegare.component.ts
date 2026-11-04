@@ -248,7 +248,7 @@ interface OpzioneId {
           label="Chiudi"
           [text]="true"
           size="small"
-          (onClick)="esito.set(null)"
+          (onClick)="chiudiEsito()"
           data-testid="esito-chiudi"
         />
       </section>
@@ -836,6 +836,11 @@ export class DaCollegareComponent implements OnInit {
 
   /** Righe selezionate all'ultima azione di massa (anche di altre pagine), per descrivere quelle saltate. */
   private righeAzione: ReadonlyMap<string, RigaLista> = new Map()
+
+  chiudiEsito(): void {
+    this.esito.set(null)
+    this.righeAzione = new Map()
+  }
 
   /** Riga saltata → «12/03/2026 · 08.01.01» (nessun id da mostrare). */
   descrizioneFallito(f: EsitoAzioneMassa['falliti'][number]): string {

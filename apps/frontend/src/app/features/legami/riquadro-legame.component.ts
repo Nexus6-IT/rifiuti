@@ -28,6 +28,7 @@ import { LegamiService } from './legami.service'
 import { permessiLegami } from './permessi-legami'
 import { ModificaCampoRiga, RigheLegameTabellaComponent } from './righe-legame-tabella.component'
 import {
+  LEGAME_DA_RIALLINEARE,
   Ritocchi,
   aggiornaRitocchi,
   messaggiErroreLegame,
@@ -185,6 +186,15 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
           data-testid="riquadro-ricarica"
           (onClick)="ricarica()"
         ></p-button>
+        <p-button
+          *ngIf="serveRiallinea()"
+          label="Riallinea"
+          [text]="true"
+          size="small"
+          [disabled]="inCorso()"
+          data-testid="riquadro-riallinea"
+          (onClick)="riallinea()"
+        ></p-button>
       </div>
     </section>
 
@@ -293,6 +303,8 @@ export class RiquadroLegameComponent implements OnChanges {
   readonly esito = signal<EsitoRiquadro | null>(null)
   readonly errori = signal<string[]>([])
   readonly serveRicarica = signal(false)
+  /** `LEGAME_DA_RIALLINEARE`: «Ricarica» non basta, serve `daMovimento`. */
+  readonly serveRiallinea = signal(false)
   readonly inCorso = signal(false)
   readonly campiInErrore = signal(false)
   /** Cambia dopo ogni salvataggio o ricarica: la tabella scorda errori e testi in corso. */
@@ -379,7 +391,41 @@ export class RiquadroLegameComponent implements OnChanges {
   ricarica(): void {
     this.errori.set([])
     this.serveRicarica.set(false)
+    this.serveRiallinea.set(false)
     this.richiesta$.next(this.movimentoId)
+  }
+
+  /** Riscrive il legame sul movimento vigente (`daMovimento`) e lo rilegge col `dettaglio`. */
+  riallinea(): void {
+    const l = this.legame()
+    if (!l || this.inCorso()) return
+    this.inCorso.set(true)
+    this.errori.set([])
+    this.serveRiallinea.set(false)
+    this.servizio
+      .daMovimento(l.movimentoVigenteId)
+      .pipe(
+        switchMap(r => this.servizio.dettaglio(r.id)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: nuovo => {
+          this.inCorso.set(false)
+          this.imposta(nuovo)
+          this.aggiornato.emit(nuovo)
+        },
+        error: err => {
+          this.inCorso.set(false)
+          this.mostraErrore(err)
+        },
+      })
+  }
+
+  private mostraErrore(err: unknown): void {
+    const e = messaggiErroreLegame(err)
+    this.errori.set(e.messaggi)
+    this.serveRicarica.set(e.rilettura)
+    this.serveRiallinea.set(e.codice === LEGAME_DA_RIALLINEARE)
   }
 
   alModifica(m: ModificaCampoRiga): void {
@@ -425,9 +471,7 @@ export class RiquadroLegameComponent implements OnChanges {
       },
       error: err => {
         this.inCorso.set(false)
-        const e = messaggiErroreLegame(err)
-        this.errori.set(e.messaggi)
-        this.serveRicarica.set(e.rilettura)
+        this.mostraErrore(err)
       },
     })
   }
@@ -438,6 +482,7 @@ export class RiquadroLegameComponent implements OnChanges {
     this.campiInErrore.set(false)
     this.errori.set([])
     this.serveRicarica.set(false)
+    this.serveRiallinea.set(false)
     this.generazione.update(g => g + 1)
   }
 }

@@ -491,6 +491,22 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(t).not.toContain('Movimento')
   })
 
+  it('chiudere l’esito svuota le righe tenute da parte', async () => {
+    await crea('OPERATOR', [riga(1)])
+    await spunta('sel-m1')
+    servizio.azioni.and.returnValue(
+      of({ riusciti: 0, falliti: [{ legameId: 'l1', codice: 'X', messaggio: 'no' }] })
+    )
+    servizio.lista.and.returnValue(of({ elementi: [riga(7)], totale: 60 }))
+    bottone('massa-conferma')!.click()
+    await stabilizza(fixture)
+    bottone('esito-chiudi')!.click()
+    await stabilizza(fixture)
+    expect(
+      fixture.componentInstance.descrizioneFallito({ legameId: 'l1', codice: 'X', messaggio: 'no' })
+    ).toBe('Movimento')
+  })
+
   it('«Riallinea» dal dialog: alla chiusura la lista si rilegge', async () => {
     await crea('OPERATOR', [riga(1)])
     fixture.componentInstance.segnaRiallineato()
