@@ -37,6 +37,21 @@ describe('validaRichiestaAzioneMassa', () => {
     expect(r.elementi).toHaveLength(500)
   })
 
+  it('accetta solo movimentoIds, o i due elenchi insieme fino a 500 in totale', () => {
+    const solo = validaRichiestaAzioneMassa({
+      azione: 'CONFERMA',
+      movimentoIds: [uuid(1), uuid(2)],
+    })
+    expect(solo.elementi).toEqual([])
+    expect(solo.movimentoIds).toHaveLength(2)
+    const misto = validaRichiestaAzioneMassa({
+      azione: 'CONFERMA',
+      elementi: elementi(250),
+      movimentoIds: Array.from({ length: 250 }, (_, i) => uuid(1000 + i)),
+    })
+    expect(misto.elementi.length + misto.movimentoIds.length).toBe(500)
+  })
+
   it('CONFERMA ignora il motivo (anche se non valido)', () => {
     expect(
       validaRichiestaAzioneMassa({ azione: 'CONFERMA', motivo: '', elementi: elementi(2) }).motivo

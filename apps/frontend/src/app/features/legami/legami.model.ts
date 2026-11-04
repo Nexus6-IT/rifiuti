@@ -219,15 +219,24 @@ export interface DatiLegameRegistrazione extends ModificheLegame {
 
 export interface CorpoAzioneMassa {
   azione: 'CONFERMA' | 'ESCLUDI'
-  /** Massimo 500. */
+  /** Legami già esistenti (con la versione vista). Può essere vuoto se c'è `movimentoIds`. */
   elementi: { legameId: string; versione: number }[]
+  /**
+   * Movimenti MANCANTI (nessun legame) da lavorare in un solo passo: per ciascuno il backend genera
+   * la proposta e poi la conferma o la esclude. Totale con `elementi`: da 1 a 500.
+   */
+  movimentoIds?: string[]
   /** Obbligatorio con ESCLUDI. */
   motivo?: string
 }
 
 export interface EsitoAzioneMassa {
   riusciti: number
-  falliti: { legameId: string; codice: string; messaggio: string }[]
+  /**
+   * `legameId` è null quando il fallimento è avvenuto prima che il legame esistesse (movimento
+   * MANCANTE senza proposta). `movimentoId` c'è per gli elementi indicati con `movimentoIds`.
+   */
+  falliti: { legameId: string | null; movimentoId?: string; codice: string; messaggio: string }[]
 }
 
 export interface PerimetroAggiornamento {

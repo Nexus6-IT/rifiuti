@@ -40,6 +40,7 @@ import {
 import { creaRiga } from '../../test-support/listino-di-test'
 import { AzioniMassaService } from './azioni-massa.service'
 import { LegamiService } from './conferma-legame.service'
+import { leggiTestaCatena } from './letture-legame'
 import { bloccaLegamePerRadice } from './lock-legame'
 import { PropostaLegameService, type InputProposta } from './proposta-legame.service'
 
@@ -487,7 +488,7 @@ describe('AzioniMassaService — Postgres reale, ruolo wasteflow_app', () => {
       }
     })
 
-    it('due azioni di massa sugli stessi legami in ordine opposto, in attesa dello stesso lock: nessun deadlock, ogni legame vince una sola volta', async () => {
+    it('due azioni di massa sugli stessi legami in ordine opposto, ferme sullo stesso lock (serializzazione, non prova dell’ordine, quella è nel test con la spia): nessun deadlock, ogni legame vince una sola volta', async () => {
       const s = await scenario()
       const lista = [
         await legameCompleto(s),
@@ -887,6 +888,355 @@ describe('AzioniMassaService — Postgres reale, ruolo wasteflow_app', () => {
       expect(v1.stato).toBe('ANNULLATO')
       expect(v2.versione).toBe(v1.versione)
       expect((await legameDb(legameId)).versione).toBe(2)
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('legame DA_RIALLINEARE: nessuna azione prima di aprirlo (I2)', () => {
+    it('conferma e escludi singole: 409 LEGAME_DA_RIALLINEARE, legame invariato', async () => {
+      const s = await scenario()
+      const { movimentoId, legameId } = await legameCompleto(s)
+      await correggi(s, 'RETTIFICA', movimentoId, movimentoId)
+      for (const f of [
+        () => legami.conferma(s.tenantId, s.utenteId, legameId, 1),
+        () => legami.escludi(s.tenantId, s.utenteId, legameId, 1, 'Prova'),
+        () => legami.modifica(s.tenantId, s.utenteId, legameId, 1, {}),
+      ]) {
+        expect(await errore(f())).toMatchObject({
+          status: 409,
+          body: { error: 'LEGAME_DA_RIALLINEARE' },
+        })
+      }
+      expect(await legameDb(legameId)).toMatchObject({ stato: 'PROPOSTO', versione: 1 })
+      // Dopo il riallineamento (versione 2) la conferma passa.
+      await service.daMovimento(s.tenantId, s.utenteId, movimentoId)
+      expect((await legami.conferma(s.tenantId, s.utenteId, legameId, 2)).stato).toBe('CONFERMATO')
+    })
+
+    it('azione di massa: l’elemento indietro è un fallito, gli altri proseguono', async () => {
+      const s = await scenario()
+      const a = await legameCompleto(s)
+      const b = await legameCompleto(s)
+      await correggi(s, 'RETTIFICA', b.movimentoId, b.movimentoId)
+      for (const azione of ['CONFERMA', 'ESCLUDI'] as const) {
+        const r = await service.esegui(s.tenantId, s.utenteId, {
+          azione,
+          motivo: 'Prova',
+          elementi: [
+            { legameId: b.legameId, versione: 1 },
+            ...(azione === 'ESCLUDI' ? [] : [{ legameId: a.legameId, versione: 1 }]),
+          ],
+        })
+        expect(r.falliti).toEqual([
+          { legameId: b.legameId, codice: 'LEGAME_DA_RIALLINEARE', messaggio: expect.any(String) },
+        ])
+        expect(r.riusciti).toBe(azione === 'CONFERMA' ? 1 : 0)
+      }
+      expect(await legameDb(b.legameId)).toMatchObject({ stato: 'PROPOSTO', versione: 1 })
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('esegui: movimenti MANCANTI in un solo passo (I3)', () => {
+    it('CONFERMA: proposta e conferma per ciascuno; incompleto resta DA_COLLEGARE, già presente e inesistente falliscono', async () => {
+      const s = await scenario()
+      const ok1 = await mancante(s)
+      const ok2 = await mancante(s)
+      const incompleto = await mancante(s, { cerCode: '15 01 01' })
+      const giaPresente = (await legameCompleto(s)).movimentoId
+      const inesistente = '00000000-0000-4000-8000-000000000002'
+      const r = await service.esegui(s.tenantId, s.utenteId, {
+        azione: 'CONFERMA',
+        elementi: [],
+        movimentoIds: [ok1, ok2, incompleto, giaPresente, inesistente],
+      })
+      expect(r.riusciti).toBe(2)
+      const perMov = new Map(r.falliti.map(f => [f.movimentoId, f]))
+      expect(perMov.get(incompleto)).toMatchObject({
+        codice: 'LEGAME_INCOMPLETO',
+        legameId: expect.any(String),
+      })
+      expect(perMov.get(giaPresente)).toMatchObject({
+        codice: 'LEGAME_GIA_PRESENTE',
+        legameId: null,
+      })
+      expect(perMov.get(inesistente)).toMatchObject({
+        codice: 'MOVIMENTO_NON_TROVATO',
+        legameId: null,
+      })
+      expect(r.falliti).toHaveLength(3)
+      const legamiDb = await owner.legameMovimento.findMany({
+        where: { tenantId: s.tenantId, movimentoOriginaleId: { in: [ok1, ok2, incompleto] } },
+      })
+      expect(legamiDb.map(l => l.stato).sort()).toEqual([
+        'CONFERMATO',
+        'CONFERMATO',
+        'DA_COLLEGARE',
+      ])
+      expect(
+        await owner.legameMovimento.count({
+          where: { tenantId: s.tenantId, movimentoOriginaleId: giaPresente },
+        })
+      ).toBe(1)
+    })
+
+    it('ESCLUDI su MANCANTI e insieme a un legame esistente: tutti ESCLUSO col motivo', async () => {
+      const s = await scenario()
+      const m1 = await mancante(s)
+      const esistente = await legameCompleto(s)
+      const r = await service.esegui(s.tenantId, s.utenteId, {
+        azione: 'ESCLUDI',
+        motivo: 'Conto lavoro',
+        elementi: [{ legameId: esistente.legameId, versione: 1 }],
+        movimentoIds: [m1],
+      })
+      expect(r).toEqual({ riusciti: 2, falliti: [] })
+      const l = await owner.legameMovimento.findFirstOrThrow({
+        where: { tenantId: s.tenantId, movimentoOriginaleId: m1 },
+      })
+      expect(l).toMatchObject({ stato: 'ESCLUSO', motivoEsclusione: 'Conto lavoro' })
+    })
+
+    it('il tetto di 500 vale sul totale delle due liste; il movimento fuori fatturazione è un fallito con il suo codice', async () => {
+      const s = await scenario()
+      const lista = Array.from({ length: 250 }, (_, i) => ({
+        legameId: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+        versione: 1,
+      }))
+      const mov = Array.from(
+        { length: 251 },
+        (_, i) => `00000000-0000-4000-9000-${String(i + 1).padStart(12, '0')}`
+      )
+      expect(
+        await errore(
+          service.esegui(s.tenantId, s.utenteId, {
+            azione: 'CONFERMA',
+            elementi: lista,
+            movimentoIds: mov,
+          })
+        )
+      ).toMatchObject({ status: 400, body: { error: 'TROPPI_ELEMENTI' } })
+      const vecchio = await mancante(s, { movementDate: '2025-12-31' })
+      const r = await service.esegui(s.tenantId, s.utenteId, {
+        azione: 'CONFERMA',
+        movimentoIds: [vecchio],
+      })
+      expect(r.falliti).toEqual([
+        {
+          legameId: null,
+          movimentoId: vecchio,
+          codice: 'MOVIMENTO_FUORI_FATTURAZIONE',
+          messaggio: expect.any(String),
+        },
+      ])
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('esegui: stati non ammessi e budget di tempo', () => {
+    it('ESCLUDI su FATTURATO e IMPORTATO_FATTURATO, CONFERMA su ESCLUSO e ANNULLATO: STATO_LEGAME_NON_AMMESSO', async () => {
+      const s = await scenario()
+      const ids: string[] = []
+      for (const stato of ['FATTURATO', 'IMPORTATO_FATTURATO', 'ESCLUSO', 'ANNULLATO'] as const) {
+        const m = await nuovoMovimento(s)
+        const l = await creaLegameDiTest(owner, s.tenantId, {
+          movimentoOriginaleId: m.movimentoId,
+          registroId: m.registroId,
+          verso: 'CARICO',
+          stato,
+          clienteId: s.clienteId,
+          contrattoId: s.contrattoId,
+          elencoId: s.elencoId,
+          righe: [{ rigaAddebitoId: s.rigaCerId, codiceIvaId: s.ivaId, quantita: '100' }],
+        })
+        ids.push(l.legameId)
+      }
+      const escludi = await service.esegui(s.tenantId, s.utenteId, {
+        azione: 'ESCLUDI',
+        motivo: 'Prova',
+        elementi: ids.slice(0, 2).map(legameId => ({ legameId, versione: 1 })),
+      })
+      expect(escludi.riusciti).toBe(0)
+      expect(escludi.falliti.map(f => f.codice)).toEqual([
+        'STATO_LEGAME_NON_AMMESSO',
+        'STATO_LEGAME_NON_AMMESSO',
+      ])
+      const conferma = await service.esegui(s.tenantId, s.utenteId, {
+        azione: 'CONFERMA',
+        elementi: ids.slice(2).map(legameId => ({ legameId, versione: 1 })),
+      })
+      expect(conferma.riusciti).toBe(0)
+      expect(conferma.falliti.map(f => f.codice)).toEqual([
+        'STATO_LEGAME_NON_AMMESSO',
+        'STATO_LEGAME_NON_AMMESSO',
+      ])
+    })
+
+    it('budget esaurito: gli elementi restanti escono con TEMPO_SCADUTO, i riusciti restano', async () => {
+      const s = await scenario()
+      const lista = [await legameCompleto(s), await legameCompleto(s), await legameCompleto(s)]
+      const originale = legami.conferma.bind(legami)
+      const spia = jest.spyOn(legami, 'conferma').mockImplementation(async (...a) => {
+        // Simula un elemento lento (non e' una sincronizzazione: consuma il budget).
+        await new Promise(r => setTimeout(r, 150))
+        return originale(...a)
+      })
+      try {
+        const r = await service.esegui(
+          s.tenantId,
+          s.utenteId,
+          { azione: 'CONFERMA', elementi: lista.map(x => ({ legameId: x.legameId, versione: 1 })) },
+          { budgetMs: 100 }
+        )
+        expect(r.riusciti).toBe(1)
+        expect(r.falliti.map(f => f.codice)).toEqual(['TEMPO_SCADUTO', 'TEMPO_SCADUTO'])
+        expect(
+          await owner.legameMovimento.count({
+            where: { tenantId: s.tenantId, stato: 'CONFERMATO' },
+          })
+        ).toBe(1)
+      } finally {
+        spia.mockRestore()
+      }
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('allineaAlVigente: rami del dominio (I1, I4)', () => {
+    it('I1: CONFERMATO con cliente disattivato, rettifica di sola quantità nello stesso giorno: resta CONFERMATO, quantità nuova, confermato_il invariato', async () => {
+      const s = await scenario()
+      const { movimentoId, legameId } = await legameCompleto(s)
+      await legami.conferma(s.tenantId, s.utenteId, legameId, 1)
+      const prima = await legameDb(legameId)
+      await owner.cliente.update({ where: { id: s.clienteId }, data: { attivo: false } })
+      const testa = await correggi(s, 'RETTIFICA', movimentoId, movimentoId, { quantity: '90' })
+      const v = await service.daMovimento(s.tenantId, s.utenteId, movimentoId)
+      expect(v.stato).toBe('CONFERMATO')
+      const l = await legameDb(legameId)
+      expect(l.movimentoVigenteId).toBe(testa)
+      expect(l.confermatoIl).toEqual(prima.confermatoIl)
+      expect(l.righe[0].quantita?.toFixed()).toBe('90')
+      expect(l.righe[0].congelataIl).toEqual(prima.righe[0].congelataIl)
+    })
+
+    it('Review Focus 4: CONFERMATO, la data passa oltre la fine dell’elenco: DA_COLLEGARE con ELENCO_SCADUTO, data_movimento aggiornata a parità di CER', async () => {
+      const s = await scenario()
+      const { movimentoId, legameId } = await legameCompleto(s)
+      await legami.conferma(s.tenantId, s.utenteId, legameId, 1)
+      await owner.elencoAddebiti.update({
+        where: { id: s.elencoId },
+        data: {
+          validoDal: new Date('2026-01-01T00:00:00Z'),
+          validoAl: new Date('2026-03-31T00:00:00Z'),
+        },
+      })
+      await correggi(s, 'RETTIFICA', movimentoId, movimentoId, {
+        movementDate: new Date('2026-04-15T10:00:00Z'),
+      })
+      const v = await service.daMovimento(s.tenantId, s.utenteId, movimentoId)
+      expect(v.stato).toBe('DA_COLLEGARE')
+      expect(v.motivi).toContain('ELENCO_SCADUTO')
+      const l = await legameDb(legameId)
+      expect(l.confermatoIl).toBeNull()
+      expect(l.dataMovimento.toISOString().slice(0, 10)).toBe('2026-04-15')
+    })
+
+    it('quantità MANUALE: resta e compare QUANTITA_MANUALE_NON_DERIVATA', async () => {
+      const s = await scenario()
+      const { movimentoId, legameId } = await legameCompleto(s)
+      await legami.modifica(s.tenantId, s.utenteId, legameId, 1, {
+        righe: [{ rigaAddebitoId: s.rigaCerId, quantita: '55' }],
+      })
+      await correggi(s, 'RETTIFICA', movimentoId, movimentoId, { quantity: '90' })
+      const v = await service.daMovimento(s.tenantId, s.utenteId, movimentoId)
+      expect(v.avvisi).toContain('QUANTITA_MANUALE_NON_DERIVATA')
+      const l = await legameDb(legameId)
+      expect(l.righe[0].quantita?.toFixed()).toBe('55')
+      expect(l.righe[0].quantitaOrigine).toBe('MANUALE')
+    })
+
+    it('CER cambiato: il cliente scelto dall’utente resta e l’audit elenca i prezzi persi', async () => {
+      const s = await scenario()
+      await creaRiga(owner, s.tenantId, s.elencoId, {
+        tipo: 'CER',
+        cerCode: '15 01 01',
+        codiceIvaId: s.ivaId,
+      })
+      const { movimentoId, legameId } = await legameCompleto(s)
+      await owner.$executeRaw`
+        UPDATE legami_movimento SET fonte_cliente = 'UTENTE' WHERE id = ${legameId}::uuid`
+      await legami.conferma(s.tenantId, s.utenteId, legameId, 1)
+      await correggi(s, 'RETTIFICA', movimentoId, movimentoId, { cerCode: '15 01 01' })
+      await service.daMovimento(s.tenantId, s.utenteId, movimentoId)
+      const l = await legameDb(legameId)
+      expect(l.fonteCliente).toBe('UTENTE')
+      expect(l.clienteId).toBe(s.clienteId)
+      const audit = await owner.activityLog.findFirstOrThrow({
+        where: { tenantId: s.tenantId, action: 'LEGAME_MOVIMENTO_ALLINEATO' },
+      })
+      const md = audit.metadata as { prezziManualiPersi?: { rigaAddebitoId: string }[] }
+      expect(md.prezziManualiPersi).toHaveLength(1)
+      expect(md.prezziManualiPersi?.[0].rigaAddebitoId).toBe(s.rigaCerId)
+    })
+
+    it('IMPORTATO_FATTURATO: solo vigente e scostamento, data e stato invariati', async () => {
+      const s = await scenario()
+      const m = await nuovoMovimento(s)
+      const f = await creaLegameDiTest(owner, s.tenantId, {
+        movimentoOriginaleId: m.movimentoId,
+        registroId: m.registroId,
+        verso: 'CARICO',
+        stato: 'IMPORTATO_FATTURATO',
+        clienteId: s.clienteId,
+        contrattoId: s.contrattoId,
+        elencoId: s.elencoId,
+        righe: [{ rigaAddebitoId: s.rigaCerId, codiceIvaId: s.ivaId, quantita: '100' }],
+      })
+      const prima = await legameDb(f.legameId)
+      const testa = await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId, {
+        movementDate: new Date('2026-06-01T10:00:00Z'),
+      })
+      await service.daMovimento(s.tenantId, s.utenteId, m.movimentoId)
+      const l = await legameDb(f.legameId)
+      expect(l).toMatchObject({
+        stato: 'IMPORTATO_FATTURATO',
+        movimentoVigenteId: testa,
+        scostamentoDopoFattura: true,
+        dataMovimento: prima.dataMovimento,
+      })
+      expect(l.righe[0].quantita?.toFixed()).toBe('100')
+    })
+
+    it('riuso nel Task 21: utente null, esito dello scostamento per l’avviso', async () => {
+      const s = await scenario()
+      const m = await nuovoMovimento(s)
+      const f = await creaLegameDiTest(owner, s.tenantId, {
+        movimentoOriginaleId: m.movimentoId,
+        registroId: m.registroId,
+        verso: 'CARICO',
+        stato: 'FATTURATO',
+        clienteId: s.clienteId,
+        contrattoId: s.contrattoId,
+        elencoId: s.elencoId,
+        righe: [{ rigaAddebitoId: s.rigaCerId, codiceIvaId: s.ivaId, quantita: '100' }],
+      })
+      const testaId = await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId)
+      const esito = await nel(s.tenantId, () =>
+        app.$transaction(async tx => {
+          await bloccaLegamePerRadice(tx, m.movimentoId)
+          const testa = await leggiTestaCatena(tx, s.tenantId, m.movimentoId)
+          return legami.allineaAlVigente(tx, s.tenantId, null, f.legameId, testa!)
+        })
+      )
+      expect(esito.scostamento).toBe(true)
+      expect(esito.vista.movimentoVigenteId).toBe(testaId)
+      const idem = await nel(s.tenantId, () =>
+        app.$transaction(async tx => {
+          const testa = await leggiTestaCatena(tx, s.tenantId, m.movimentoId)
+          return legami.allineaAlVigente(tx, s.tenantId, null, f.legameId, testa!)
+        })
+      )
+      expect(idem.scostamento).toBe(false)
     })
   })
 })

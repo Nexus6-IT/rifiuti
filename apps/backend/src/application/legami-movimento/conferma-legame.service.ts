@@ -69,6 +69,7 @@ import {
   leggiEtichetteListino,
   leggiMovimentoPerLegame,
   leggiStatoContratto,
+  leggiTestaCatena,
   leggiValiditaElenco,
   type MovimentoPerLegame,
   type TestaCatena,
@@ -226,6 +227,12 @@ const statoNonAmmesso = () =>
   new ConflictException({
     error: 'STATO_LEGAME_NON_AMMESSO',
     message: 'Nello stato attuale il legame non si può modificare.',
+  })
+
+const daRiallineare = () =>
+  new ConflictException({
+    error: 'LEGAME_DA_RIALLINEARE',
+    message: 'Il movimento è stato corretto: apri la riga per aggiornarla prima di procedere.',
   })
 
 const concorrente = () =>
@@ -473,13 +480,24 @@ export class LegamiService {
   async allineaAlVigente(
     tx: Prisma.TransactionClient,
     tenantId: string,
-    utenteId: string,
+    utenteId: string | null,
     legameId: string,
-    testa: TestaCatena
-  ): Promise<LegameVista> {
+    testa: TestaCatena,
+    modifiche?: ModificheLegame
+  ): Promise<{ vista: LegameVista; scostamento: boolean }> {
     const l = await leggiTestata(tx, tenantId, legameId)
     if (!l) throw nonTrovato()
-    if (l.movimentoVigenteId === testa.id) return costruisciVista(tx, tenantId, l.id, null)
+    if (l.movimentoVigenteId === testa.id) {
+      return { vista: await costruisciVista(tx, tenantId, l.id, null), scostamento: false }
+    }
+    const mods = validaModifiche(modifiche)
+    const scrivi = async (e: Esito) => ({
+      vista: await this.scrivi(tx, tenantId, utenteId, l, e, righe, {
+        ...opzioni,
+        bloccato: false,
+      }),
+      scostamento: e.scostamento === true,
+    })
     if (l.stato === 'ANNULLATO') throw statoNonAmmesso()
     const righe = await leggiRighe(tx, tenantId, l.id)
     const base: Esito = {
@@ -507,10 +525,7 @@ export class LegamiService {
     }
 
     if (eStatoFatturato(l.stato)) {
-      return this.scrivi(tx, tenantId, utenteId, l, { ...base, scostamento: true }, righe, {
-        ...opzioni,
-        bloccato: false,
-      })
+      return scrivi({ ...base, scostamento: true })
     }
 
     const tipo = testa.tipoAnnotazione === 'ANNULLAMENTO' ? 'ANNULLAMENTO' : 'RETTIFICA'
@@ -547,29 +562,19 @@ export class LegamiService {
         prima.unit !== testa.unit ||
         new Prisma.Decimal(prima.quantity).cmp(new Prisma.Decimal(testa.quantity)) !== 0,
     })
-    const comune = { ...base, dataMovimento: testa.giorno }
+    // La data si scrive solo se il dominio lo dice (mai per i fatturati: ramo gestito sopra).
+    const comune = { ...base, ...(e.aggiornaData ? { dataMovimento: testa.giorno } : {}) }
 
     if (e.statoDopo === 'ANNULLATO') {
-      return this.scrivi(tx, tenantId, utenteId, l, { ...comune, stato: 'ANNULLATO' }, righe, {
-        ...opzioni,
-        bloccato: false,
-      })
+      return scrivi({ ...comune, stato: 'ANNULLATO' })
     }
     if (e.statoDopo === 'ESCLUSO') {
-      return this.scrivi(
-        tx,
-        tenantId,
-        utenteId,
-        l,
-        {
-          ...comune,
-          stato: 'ESCLUSO',
-          motivoEsclusione: e.motivoEsclusione ?? l.motivoEsclusione,
-          conferma: 'azzera',
-        },
-        righe,
-        { ...opzioni, bloccato: false }
-      )
+      return scrivi({
+        ...comune,
+        stato: 'ESCLUSO',
+        motivoEsclusione: e.motivoEsclusione ?? l.motivoEsclusione,
+        conferma: 'azzera',
+      })
     }
     if (e.statoDopo === 'NESSUN_LEGAME') {
       // Non puo' succedere (un legame esiste): se il dominio cambia, meglio fermarsi che scrivere.
@@ -597,67 +602,74 @@ export class LegamiService {
       const prezziManualiPersi = righe
         .filter(r => r.prezzoManuale || r.congelataIl !== null)
         .map(r => ({ rigaAddebitoId: r.rigaAddebitoId, prezzo: r.prezzo, sconto: r.sconto }))
-      return this.scrivi(
-        tx,
-        tenantId,
-        utenteId,
-        l,
-        {
-          ...comune,
-          stato: statoDopoRicalcolo(e.statoDopo, { motivi, completo }) as StatoLegame,
-          clienteId: p.cliente?.id ?? null,
-          fonteCliente: p.cliente?.fonte ?? null,
-          contrattoId: p.contratto?.id ?? null,
-          elencoId: p.elenco?.id ?? null,
-          motivi,
-          avvisi: avvisiDaRighe(avvisi, nuove),
-          motivoEsclusione: null,
-          conferma: 'azzera',
-          righe: nuove,
-          sostituisciRighe: true,
-          dettaglioCliente: p.dettaglioCliente,
-          prezziManualiPersi,
-        },
-        righe,
-        { ...opzioni, bloccato: false }
-      )
+      return scrivi({
+        ...comune,
+        stato: statoDopoRicalcolo(e.statoDopo, { motivi, completo }) as StatoLegame,
+        clienteId: p.cliente?.id ?? null,
+        fonteCliente: p.cliente?.fonte ?? null,
+        contrattoId: p.contratto?.id ?? null,
+        elencoId: p.elenco?.id ?? null,
+        motivi,
+        avvisi: avvisiDaRighe(avvisi, nuove),
+        motivoEsclusione: null,
+        conferma: 'azzera',
+        righe: nuove,
+        sostituisciRighe: true,
+        dettaglioCliente: p.dettaglioCliente,
+        prezziManualiPersi,
+      })
     }
 
-    // Stesso CER: ricalcolo sulla nuova testa. Per ricontrollare contratto ed elenco sulla nuova
-    // data anche per un CONFERMATO si ricalcola come PROPOSTO e poi lo si ripristina se resta
-    // completo e senza motivi (altrimenti scende a DA_COLLEGARE, come vuole la tabella §7.5).
+    // Stesso CER: ricalcolo sulla nuova testa.
     const eraConfermato = l.stato === 'CONFERMATO'
     const lNuovo: Testata = {
       ...l,
-      stato: eraConfermato ? 'PROPOSTO' : l.stato,
       movimentoVigenteId: testa.id,
-      dataMovimento: testa.giorno,
+      ...(e.aggiornaData ? { dataMovimento: testa.giorno } : {}),
     }
-    const nuovoVuoto: ModificheNorm = { righe: new Map() }
-    const r = await this.ricalcola(tx, tenantId, lNuovo, righe, nuovoVuoto, false)
+    if (eraConfermato && !e.ricontrollaValidita) {
+      // La data non cambia: un CONFERMATO resta tale (§7.5 riga 1, §10) e non si ricontrollano
+      // cliente, contratto ed elenco. Si rifanno solo le quantita' DA_MOVIMENTO (percorso
+      // «stabile» di `ricalcola`: `quantita: null` = torna alla quantita' del movimento).
+      for (const r of righe) {
+        if (r.quantitaOrigine === 'DA_MOVIMENTO' && !mods.righe.has(r.rigaAddebitoId)) {
+          mods.righe.set(r.rigaAddebitoId, { rimuovi: false, quantita: null })
+        }
+      }
+      const r = await this.ricalcola(tx, tenantId, lNuovo, righe, mods, false)
+      const avvisiS = [...r.avvisi, ...e.avvisiDaAggiungere].filter(
+        (a, i, tutti) => tutti.indexOf(a) === i
+      )
+      return scrivi({
+        ...r,
+        vigenteId: testa.id,
+        avvisi: avvisiDaRighe(avvisiS, r.righe),
+      })
+    }
+    // Con il ricontrollo (la data cambia) o per un legame non confermato: un CONFERMATO si
+    // ricalcola come PROPOSTO, cosi' contratto ed elenco si ricontrollano sulla nuova data, e lo
+    // si ripristina se resta completo e senza motivi (altrimenti DA_COLLEGARE, §7.5).
+    const r = await this.ricalcola(
+      tx,
+      tenantId,
+      { ...lNuovo, stato: eraConfermato ? 'PROPOSTO' : l.stato },
+      righe,
+      mods,
+      false
+    )
     const ripristina = eraConfermato && r.stato === 'PROPOSTO'
     const avvisi = [...r.avvisi, ...e.avvisiDaAggiungere].filter(
       (a, i, tutti) => tutti.indexOf(a) === i
     )
-    return this.scrivi(
-      tx,
-      tenantId,
-      utenteId,
-      l,
-      {
-        ...r,
-        vigenteId: testa.id,
-        dataMovimento: testa.giorno,
-        stato: ripristina ? 'CONFERMATO' : r.stato,
-        avvisi: avvisiDaRighe(avvisi, r.righe),
-        conferma: ripristina ? 'mantieni' : 'azzera',
-        congela: ripristina,
-        righe: r.righe,
-        sostituisciRighe: r.sostituisciRighe,
-      },
-      righe,
-      { ...opzioni, bloccato: false }
-    )
+    return scrivi({
+      ...r,
+      vigenteId: testa.id,
+      ...(e.aggiornaData ? { dataMovimento: testa.giorno } : {}),
+      stato: ripristina ? 'CONFERMATO' : r.stato,
+      avvisi: avvisiDaRighe(avvisi, r.righe),
+      conferma: ripristina ? 'mantieni' : 'azzera',
+      congela: ripristina,
+    })
   }
 
   // -----------------------------------------------------------------------------------------
@@ -691,6 +703,12 @@ export class LegamiService {
           const l = await leggiTestata(tx, tenantId, id)
           if (!l) throw nonTrovato()
           if (l.versione !== versione) throw versioneSuperata()
+          if (STATI_MODIFICABILI.includes(l.stato)) {
+            // Legame rimasto indietro rispetto alla testa della catena (DA_RIALLINEARE): agire
+            // ora congelerebbe o escluderebbe sui dati del movimento superato.
+            const testa = await leggiTestaCatena(tx, tenantId, radice[0].radice)
+            if (testa && testa.id !== l.movimentoVigenteId) throw daRiallineare()
+          }
           return fn(tx, l)
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
         .catch(err => {
@@ -1047,7 +1065,7 @@ export class LegamiService {
   private async scrivi(
     tx: Prisma.TransactionClient,
     tenantId: string,
-    utenteId: string,
+    utenteId: string | null,
     l: Testata,
     e: Esito,
     righePrima: readonly RigaMem[],

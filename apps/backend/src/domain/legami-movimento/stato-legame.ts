@@ -60,8 +60,13 @@ export interface EsitoCorrezione {
   ricontrollaValidita: boolean
   /** Le righe con `quantita_origine = DA_MOVIMENTO` si ricalcolano; le MANUALE restano. */
   ricalcolaQuantitaDaMovimento: boolean
-  /** Aggiorna `movimento_vigente_id` e `data_movimento` del legame. */
-  aggiornaVigenteEData: boolean
+  /** Aggiorna `movimento_vigente_id` del legame (sempre, anche per i fatturati). */
+  aggiornaVigente: boolean
+  /**
+   * Aggiorna `data_movimento` del legame. FALSO per FATTURATO e IMPORTATO_FATTURATO: la data decide
+   * il periodo della fattura (decisione 7) e resta quella fatturata (spec §7.5).
+   */
+  aggiornaData: boolean
   /** Legame già fatturato: si registra solo `scostamento_dopo_fattura` (testo `AVVISO_SCOSTAMENTO`). */
   scostamento: boolean
   /**
@@ -117,7 +122,8 @@ const NESSUN_EFFETTO = {
   ricalcolaProposta: false,
   ricontrollaValidita: false,
   ricalcolaQuantitaDaMovimento: false,
-  aggiornaVigenteEData: false,
+  aggiornaVigente: false,
+  aggiornaData: false,
   scostamento: false,
   avvisiDaAggiungere: [] as AvvisoLegame[],
   motivoEsclusione: null,
@@ -145,13 +151,13 @@ export function esitoCorrezione(i: InputCorrezione): EsitoCorrezione {
 
 function esitoBase(i: InputCorrezione): EsitoCorrezione {
   if (i.statoPrima !== 'NESSUN_LEGAME' && eStatoFatturato(i.statoPrima)) {
-    return { ...nessunEffetto(i.statoPrima), aggiornaVigenteEData: true, scostamento: true }
+    return { ...nessunEffetto(i.statoPrima), aggiornaVigente: true, scostamento: true }
   }
   if (i.statoPrima === 'ANNULLATO') return nessunEffetto('ANNULLATO')
   if (i.tipo === 'ANNULLAMENTO') {
     if (i.statoPrima === 'NESSUN_LEGAME') return nessunEffetto('NESSUN_LEGAME')
     // L'annullo è una nuova annotazione nel registro: il vigente segue sempre l'ultima testa.
-    return { ...nessunEffetto('ANNULLATO'), aggiornaVigenteEData: true }
+    return { ...nessunEffetto('ANNULLATO'), aggiornaVigente: true, aggiornaData: true }
   }
 
   // Rettifica di un movimento con legame non fatturato (o senza legame).
@@ -178,26 +184,29 @@ function esitoBase(i: InputCorrezione): EsitoCorrezione {
       // adesso (causale prima di data); se l'ha scritta l'utente il suo testo non si tocca.
       return {
         ...nessunEffetto('ESCLUSO'),
-        aggiornaVigenteEData: true,
+        aggiornaVigente: true,
+        aggiornaData: true,
         motivoEsclusione: esclusioneAutomatica(i.motivoEsclusionePrima) ? motivoAutomatico : null,
       }
     }
     return {
       ...nessunEffetto('ESCLUSO'),
-      aggiornaVigenteEData: true,
+      aggiornaVigente: true,
+      aggiornaData: true,
       motivoEsclusione: motivoAutomatico,
     }
   }
 
   if (i.statoPrima === 'ESCLUSO') {
     if (!esclusioneAutomatica(i.motivoEsclusionePrima)) {
-      return { ...nessunEffetto('ESCLUSO'), aggiornaVigenteEData: true }
+      return { ...nessunEffetto('ESCLUSO'), aggiornaVigente: true, aggiornaData: true }
     }
     return {
       ...nessunEffetto('DA_COLLEGARE'),
       ricalcolaProposta: true,
       ricalcolaQuantitaDaMovimento: true,
-      aggiornaVigenteEData: true,
+      aggiornaVigente: true,
+      aggiornaData: true,
     }
   }
 
@@ -206,7 +215,8 @@ function esitoBase(i: InputCorrezione): EsitoCorrezione {
       ...nessunEffetto(i.statoPrima === 'CONFERMATO' ? 'PROPOSTO' : i.statoPrima),
       ricalcolaProposta: true,
       ricalcolaQuantitaDaMovimento: true,
-      aggiornaVigenteEData: true,
+      aggiornaVigente: true,
+      aggiornaData: true,
       avvisiDaAggiungere: ['CAMBIO_CER_DA_CONFERMARE'],
     }
   }
@@ -216,7 +226,8 @@ function esitoBase(i: InputCorrezione): EsitoCorrezione {
     // Con la sola data cambiata si ricontrollano contratto ed elenco attuali, senza rifare la proposta.
     ricontrollaValidita: i.dataDopo !== i.dataPrima,
     ricalcolaQuantitaDaMovimento: true,
-    aggiornaVigenteEData: true,
+    aggiornaVigente: true,
+    aggiornaData: true,
   }
 }
 

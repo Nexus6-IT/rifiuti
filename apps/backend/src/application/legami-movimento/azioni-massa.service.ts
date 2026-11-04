@@ -11,6 +11,12 @@
 // ordini per id potrebbero incrociarsi (nota m7 del Task 14). Chi in futuro tenesse piu' radici
 // nella stessa transazione deve prenderle in QUESTO ordine.
 //
+// MANCANTI IN MASSA: `movimentoIds` accanto a `elementi` (totale 1..500). Per ogni movimento una
+// transazione genera la proposta (`LEGAME_GIA_PRESENTE` se il legame esiste gia') e una seconda la
+// conferma o la esclude: una proposta incompleta resta DA_COLLEGARE e il movimento esce in
+// `falliti` con `LEGAME_INCOMPLETO`. Un budget di tempo (60 s) chiude la richiesta: gli elementi
+// non ancora trattati escono con `TEMPO_SCADUTO`, quelli riusciti restano.
+//
 // `daMovimento`: genera il legame di un movimento che non ne ha (MANCANTE) o riallinea quello
 // rimasto indietro rispetto alla testa della catena (DA_RIALLINEARE). Una transazione: lock
 // consultivo della radice -> lettura della testa -> `proponiEScrivi` oppure
@@ -42,6 +48,7 @@ import { inputDaMovimento, LegamiService, type LegameVista } from './conferma-le
 import { eViolazioneFk } from './legame-scrittura'
 import {
   leggiChiaviLockDeiLegami,
+  leggiChiaviLockDeiMovimenti,
   leggiRadiceDelMovimento,
   leggiTestaCatena,
 } from './letture-legame'
@@ -53,10 +60,12 @@ export const MAX_ELEMENTI_AZIONE_MASSA = 500
 
 export type AzioneMassa = 'CONFERMA' | 'ESCLUDI'
 
-/** Stessi nomi di `CorpoAzioneMassa` del frontend (`legami.model.ts`). */
+/** Stessi nomi di `CorpoAzioneMassa` del frontend (`legami.model.ts`). Totale elementi + movimenti: 1..500. */
 export interface RichiestaAzioneMassa {
   azione: AzioneMassa
-  elementi: { legameId: string; versione: number }[]
+  elementi?: { legameId: string; versione: number }[]
+  /** Movimenti MANCANTI da lavorare in un solo passo (proposta + conferma o esclusione). */
+  movimentoIds?: string[]
   /** Obbligatorio con ESCLUDI, ignorato con CONFERMA. */
   motivo?: string
 }
@@ -64,8 +73,12 @@ export interface RichiestaAzioneMassa {
 /** Stessi nomi di `EsitoAzioneMassa` del frontend. `messaggio` non contiene id ne' dati personali. */
 export interface EsitoAzioneMassa {
   riusciti: number
-  falliti: { legameId: string; codice: string; messaggio: string }[]
+  /** `legameId` null: il fallimento e' avvenuto prima che il legame esistesse. */
+  falliti: { legameId: string | null; movimentoId?: string; codice: string; messaggio: string }[]
 }
+
+/** Tempo massimo di una richiesta: oltre, gli elementi restanti escono con `TEMPO_SCADUTO`. */
+export const BUDGET_MS_AZIONE_MASSA = 60_000
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'LEGAME_MOVIMENTO',
@@ -101,22 +114,29 @@ function descriviErrore(err: unknown): { codice: string; messaggio: string } | n
 export function validaRichiestaAzioneMassa(r: RichiestaAzioneMassa): {
   azione: AzioneMassa
   elementi: { legameId: string; versione: number }[]
+  movimentoIds: string[]
   motivo: string | null
 } {
   if (!r || (r.azione !== 'CONFERMA' && r.azione !== 'ESCLUDI')) {
     throw richiestaNonValida('AZIONE_NON_VALIDA', 'L’azione richiesta non è valida.')
   }
-  if (!Array.isArray(r.elementi) || r.elementi.length === 0) {
+  const elementi = r.elementi ?? []
+  const movimentoIds = r.movimentoIds ?? []
+  if (!Array.isArray(elementi) || !Array.isArray(movimentoIds)) {
+    throw richiestaNonValida('ELEMENTI_NON_VALIDI', 'L’elenco dei movimenti non è valido.')
+  }
+  const totale = elementi.length + movimentoIds.length
+  if (totale === 0) {
     throw richiestaNonValida('ELEMENTI_NON_VALIDI', 'Indica almeno un movimento.')
   }
-  if (r.elementi.length > MAX_ELEMENTI_AZIONE_MASSA) {
+  if (totale > MAX_ELEMENTI_AZIONE_MASSA) {
     throw richiestaNonValida(
       'TROPPI_ELEMENTI',
       `Si possono trattare al massimo ${MAX_ELEMENTI_AZIONE_MASSA} movimenti per volta.`
     )
   }
   const visti = new Set<string>()
-  for (const x of r.elementi) {
+  for (const x of elementi) {
     if (!x || !eUuid(x.legameId) || !Number.isInteger(x.versione)) {
       throw richiestaNonValida('ELEMENTO_NON_VALIDO', 'Uno dei movimenti indicati non è valido.')
     }
@@ -125,13 +145,23 @@ export function validaRichiestaAzioneMassa(r: RichiestaAzioneMassa): {
     }
     visti.add(x.legameId)
   }
+  const vistiMov = new Set<string>()
+  for (const id of movimentoIds) {
+    if (!eUuid(id)) {
+      throw richiestaNonValida('ELEMENTO_NON_VALIDO', 'Uno dei movimenti indicati non è valido.')
+    }
+    if (vistiMov.has(id)) {
+      throw richiestaNonValida('ELEMENTO_DUPLICATO', 'Lo stesso movimento è indicato più volte.')
+    }
+    vistiMov.add(id)
+  }
   let motivo: string | null = null
   if (r.azione === 'ESCLUDI') {
     const m = validaMotivoEsclusione(r.motivo)
     if (!m.ok) throw richiestaNonValida('MOTIVO_ESCLUSIONE_NON_VALIDO', m.errore)
     motivo = m.valore
   }
-  return { azione: r.azione, elementi: r.elementi, motivo }
+  return { azione: r.azione, elementi, movimentoIds, motivo }
 }
 
 @Injectable()
@@ -145,59 +175,101 @@ export class AzioniMassaService {
   ) {}
 
   /**
-   * Conferma o esclude piu' legami. Richiesta non valida (azione, 0 o piu' di 500 elementi,
-   * id o versione non validi, doppioni, motivo mancante): 400 e non si tocca nulla. Per il resto
-   * la risposta e' sempre 200 con l'esito per elemento.
+   * Conferma o esclude piu' legami (`elementi`) e/o movimenti ancora senza legame
+   * (`movimentoIds`). Richiesta non valida (azione, 0 o piu' di 500 elementi in tutto, id o
+   * versione non validi, doppioni, motivo mancante): 400 e non si tocca nulla. Per il resto la
+   * risposta e' sempre 200 con l'esito per elemento.
    */
   async esegui(
     tenantId: string,
     utenteId: string,
-    richiesta: RichiestaAzioneMassa
+    richiesta: RichiestaAzioneMassa,
+    opzioni: { budgetMs?: number } = {}
   ): Promise<EsitoAzioneMassa> {
-    const { azione, elementi, motivo } = validaRichiestaAzioneMassa(richiesta)
+    const { azione, elementi, movimentoIds, motivo } = validaRichiestaAzioneMassa(richiesta)
+    const budgetMs = opzioni.budgetMs ?? BUDGET_MS_AZIONE_MASSA
+    const inizio = Date.now()
     const falliti: EsitoAzioneMassa['falliti'] = []
     let riusciti = 0
 
-    // Una sola lettura per l'ordine dei lock (JOIN unnest, mai una query per elemento).
-    const chiavi = await nelContestoTenant(tenantId, () =>
+    // Una sola lettura per legami e una per movimenti (JOIN unnest, mai una query per elemento).
+    const { chiaviLegami, chiaviMovimenti } = await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
         await impostaTimeoutLock(tx)
-        return leggiChiaviLockDeiLegami(
-          tx,
-          tenantId,
-          elementi.map(x => x.legameId)
-        )
+        return {
+          chiaviLegami: await leggiChiaviLockDeiLegami(
+            tx,
+            tenantId,
+            elementi.map(x => x.legameId)
+          ),
+          chiaviMovimenti: await leggiChiaviLockDeiMovimenti(tx, tenantId, movimentoIds),
+        }
       }, OPZIONI_TRANSAZIONE_SCRITTURA)
     )
-    const chiavePer = new Map(chiavi.map(c => [c.id, c.chiave]))
-    const ordinati = elementi
-      .filter(x => chiavePer.has(x.legameId))
-      .sort((a, b) => {
-        const d = chiavePer.get(a.legameId)! - chiavePer.get(b.legameId)!
-        return d !== 0 ? d : a.legameId < b.legameId ? -1 : a.legameId > b.legameId ? 1 : 0
-      })
+    const chiaveLegame = new Map(chiaviLegami.map(c => [c.id, c.chiave]))
+    const chiaveMov = new Map(chiaviMovimenti.map(c => [c.id, c.chiave]))
+
+    type Lavoro =
+      | { tipo: 'legame'; id: string; versione: number; chiave: number }
+      | { tipo: 'movimento'; id: string; chiave: number }
+    const lavori: Lavoro[] = []
     for (const x of elementi) {
-      if (!chiavePer.has(x.legameId)) {
+      const chiave = chiaveLegame.get(x.legameId)
+      if (chiave === undefined) {
         falliti.push({
           legameId: x.legameId,
           codice: CODICE_NON_TROVATO,
           messaggio: 'Legame non trovato.',
         })
-      }
+      } else lavori.push({ tipo: 'legame', id: x.legameId, versione: x.versione, chiave })
     }
+    for (const id of movimentoIds) {
+      const chiave = chiaveMov.get(id)
+      if (chiave === undefined) {
+        falliti.push({
+          legameId: null,
+          movimentoId: id,
+          codice: 'MOVIMENTO_NON_TROVATO',
+          messaggio: 'Movimento non trovato.',
+        })
+      } else lavori.push({ tipo: 'movimento', id, chiave })
+    }
+    lavori.sort((a, b) => a.chiave - b.chiave || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
-    for (const x of ordinati) {
+    const agisci = (legameId: string, versione: number) =>
+      azione === 'CONFERMA'
+        ? this.legami.conferma(tenantId, utenteId, legameId, versione)
+        : this.legami.escludi(tenantId, utenteId, legameId, versione, motivo ?? '')
+
+    for (const x of lavori) {
+      const riferimento =
+        x.tipo === 'legame' ? { legameId: x.id } : { legameId: null, movimentoId: x.id }
+      if (Date.now() - inizio >= budgetMs) {
+        falliti.push({
+          ...riferimento,
+          codice: 'TEMPO_SCADUTO',
+          messaggio: 'Tempo esaurito: riprova per i movimenti rimasti.',
+        })
+        continue
+      }
+      let legameIdCorrente: string | null = x.tipo === 'legame' ? x.id : null
       try {
-        if (azione === 'CONFERMA') {
-          await this.legami.conferma(tenantId, utenteId, x.legameId, x.versione)
+        if (x.tipo === 'legame') {
+          await agisci(x.id, x.versione)
         } else {
-          await this.legami.escludi(tenantId, utenteId, x.legameId, x.versione, motivo ?? '')
+          const nuova = await this.eseguiInTransazioneMovimento(tenantId, utenteId, x.id, true)
+          legameIdCorrente = nuova.id
+          await agisci(nuova.id, nuova.versione)
         }
         riusciti++
       } catch (err) {
+        const base = {
+          legameId: legameIdCorrente,
+          ...(x.tipo === 'movimento' ? { movimentoId: x.id } : {}),
+        }
         const d = descriviErrore(err)
         if (d) {
-          falliti.push({ legameId: x.legameId, ...d })
+          falliti.push({ ...base, ...d })
         } else {
           // Errore non previsto: l'elemento fallisce, gli altri proseguono. Niente dettagli
           // all'utente (potrebbero contenere SQL o dati); nel log solo il tipo.
@@ -205,7 +277,7 @@ export class AzioniMassaService {
             `Azione di massa ${azione}: errore non previsto (${err instanceof Error ? err.name : typeof err})`
           )
           falliti.push({
-            legameId: x.legameId,
+            ...base,
             codice: CODICE_ERRORE_INTERNO,
             messaggio: 'Operazione non riuscita: riprova più tardi.',
           })
@@ -213,7 +285,14 @@ export class AzioniMassaService {
       }
     }
 
-    await this.scriviAudit(tenantId, utenteId, azione, elementi.length, riusciti, falliti)
+    await this.scriviAudit(
+      tenantId,
+      utenteId,
+      azione,
+      elementi.length + movimentoIds.length,
+      riusciti,
+      falliti
+    )
     return { riusciti, falliti }
   }
 
@@ -226,6 +305,20 @@ export class AzioniMassaService {
    * `MOVIMENTO_ANNULLATO` (catena annullata e nessun legame).
    */
   async daMovimento(tenantId: string, utenteId: string, movimentoId: string): Promise<LegameVista> {
+    return this.eseguiInTransazioneMovimento(tenantId, utenteId, movimentoId, false)
+  }
+
+  /**
+   * Una transazione: lock della radice -> testa -> genera o riallinea. Con `soloNuovo` un legame
+   * gia' presente e' un 409 `LEGAME_GIA_PRESENTE` (azione di massa sui MANCANTI: l'elemento era
+   * MANCANTE quando l'utente ha scelto, ora non lo e' piu').
+   */
+  private async eseguiInTransazioneMovimento(
+    tenantId: string,
+    utenteId: string,
+    movimentoId: string,
+    soloNuovo: boolean
+  ): Promise<LegameVista> {
     if (!eUuid(movimentoId)) throw movimentoNonTrovato()
     return nelContestoTenant(tenantId, () =>
       this.prisma
@@ -242,7 +335,15 @@ export class AzioniMassaService {
             SELECT id::text AS id FROM legami_movimento
             WHERE tenant_id = ${tenantId}::uuid AND movimento_originale_id = ${radice}::uuid`
           if (esistente.length > 0) {
-            return this.legami.allineaAlVigente(tx, tenantId, utenteId, esistente[0].id, testa)
+            if (soloNuovo) {
+              throw new ConflictException({
+                error: 'LEGAME_GIA_PRESENTE',
+                message: 'Il movimento è già collegato: ricarica la lista.',
+              })
+            }
+            return (
+              await this.legami.allineaAlVigente(tx, tenantId, utenteId, esistente[0].id, testa)
+            ).vista
           }
 
           if (testa.tipoAnnotazione === 'ANNULLAMENTO') {
@@ -327,7 +428,11 @@ export class AzioniMassaService {
                 azione,
                 richiesti,
                 riusciti,
-                falliti: falliti.map(f => ({ legameId: f.legameId, codice: f.codice })),
+                falliti: falliti.map(f => ({
+                  legameId: f.legameId,
+                  ...(f.movimentoId ? { movimentoId: f.movimentoId } : {}),
+                  codice: f.codice,
+                })),
               } as Prisma.InputJsonValue,
             },
           })

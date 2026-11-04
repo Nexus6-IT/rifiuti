@@ -410,3 +410,23 @@ export async function leggiChiaviLockDeiLegami(
     JOIN unnest(${[...legameIds]}::uuid[]) AS chiesti(chiesto) ON chiesto = l.id
     WHERE l.tenant_id = ${tenantId}::uuid`
 }
+
+/**
+ * Per ogni movimento indicato (JOIN unnest) la radice della sua catena e la chiave del lock
+ * consultivo (`hashtext(radice)`, la stessa di `leggiChiaviLockDeiLegami`). I movimenti che non
+ * esistono, o sono di un'altra azienda, non compaiono.
+ */
+export async function leggiChiaviLockDeiMovimenti(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  movimentoIds: readonly string[]
+): Promise<{ id: string; radiceId: string; chiave: number }[]> {
+  if (movimentoIds.length === 0) return []
+  await joinLineari(tx)
+  return tx.$queryRaw<{ id: string; radiceId: string; chiave: number }[]>`
+    SELECT m.id::text AS id, COALESCE(m.movimento_originale_id, m.id)::text AS "radiceId",
+           hashtext(COALESCE(m.movimento_originale_id, m.id)::text) AS chiave
+    FROM waste_movements m
+    JOIN unnest(${[...movimentoIds]}::uuid[]) AS chiesti(chiesto) ON chiesto = m.id
+    WHERE m.tenant_id = ${tenantId}::uuid`
+}
