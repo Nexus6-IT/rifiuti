@@ -108,7 +108,7 @@ export interface RigaPropostaVista {
   tipoQuantita: string | null
   unitaMisura: string
   quantita: string | null
-  quantitaOrigine: 'DA_MOVIMENTO' | null
+  quantitaOrigine: 'DA_MOVIMENTO' | 'MANUALE' | null
   prezzoSpeciale: boolean
   prezzo: string | null
   sconto: string | null
@@ -147,6 +147,8 @@ export interface RisultatoProponiEScrivi {
   legameId: string | null
   /** `false` se il legame della catena c'era gia' (o non si scrive). */
   creato: boolean
+  /** Stato scritto; `null` se non si e' scritto nulla o il legame esisteva gia'. */
+  stato: StatoLegame | null
   /** La proposta scritta; `null` se il legame esisteva gia'. */
   proposta: PropostaVista | null
 }
@@ -685,22 +687,32 @@ export class PropostaLegameService {
       movimentoVigenteId: string
       input: InputProposta
       scelte?: ScelteProposta
+      /** Registrazione con conferma: una proposta completa nasce `CONFERMATO`. */
+      conferma?: boolean
+      /**
+       * Ritocco della proposta calcolata sui valori bloccati, prima della scrittura (la
+       * registrazione vi applica quantita', prezzo e sconto scritti a mano). Puo' lanciare.
+       */
+      adatta?: (p: PropostaVista) => PropostaVista
     }
   ): Promise<RisultatoProponiEScrivi> {
     await bloccaLegamePerRadice(tx, c.movimentoOriginaleId)
     const esistente = await tx.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM legami_movimento
       WHERE tenant_id = ${c.tenantId}::uuid AND movimento_originale_id = ${c.movimentoOriginaleId}::uuid`
-    if (esistente.length > 0) return { legameId: esistente[0].id, creato: false, proposta: null }
+    if (esistente.length > 0)
+      return { legameId: esistente[0].id, creato: false, stato: null, proposta: null }
 
     const fatturazioneDa = await leggiFatturazioneDaInTx(tx, c.tenantId, { condividi: true })
-    const proposta = await this.calcolaEBloccaInTx(tx, c.tenantId, c.input, c.scelte, {
+    const calcolata = await this.calcolaEBloccaInTx(tx, c.tenantId, c.input, c.scelte, {
       fatturazioneDa,
     })
+    const proposta =
+      c.adatta && calcolata.fatturabile && calcolata.attiva ? c.adatta(calcolata) : calcolata
     if (!proposta.fatturabile || !proposta.attiva) {
-      return { legameId: null, creato: false, proposta }
+      return { legameId: null, creato: false, stato: null, proposta }
     }
-    const { legameId } = await scriviProposta(tx, {
+    const scritto = await scriviProposta(tx, {
       tenantId: c.tenantId,
       userId: c.userId,
       registroId: c.registroId,
@@ -709,8 +721,14 @@ export class PropostaLegameService {
       movimentoVigenteId: c.movimentoVigenteId,
       dataMovimento: giornoDelMovimento(c.input.movementDate),
       proposta,
+      conferma: c.conferma,
     })
-    return { legameId, creato: true, proposta }
+    return {
+      legameId: scritto.legameId,
+      creato: scritto.stato !== null,
+      stato: scritto.stato,
+      proposta,
+    }
   }
 }
 

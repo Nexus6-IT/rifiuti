@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common'
+import { ConflictException, HttpException, Injectable } from '@nestjs/common'
 import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
@@ -41,6 +41,12 @@ import {
 } from '../../abbinamenti/abbinamenti-scrittura'
 import { segnalaErroreJob } from '../../../core/monitoring/segnala-errore-job'
 import { RegistriService, RegistroVista } from '../registri.service'
+import {
+  agganciaLegameSenzaFallire,
+  validaDatiLegame,
+  type FatturazioneRegistrazione,
+} from '../../legami-movimento/aggancio-registro'
+import { PropostaLegameService } from '../../legami-movimento/proposta-legame.service'
 
 /** Avviso all'operatore quando l'abbinamento FIFO di uno scarico appena registrato e' fallito. */
 export const AVVISO_ABBINAMENTO_NON_RIUSCITO =
@@ -95,6 +101,11 @@ export interface MovimentoRegistrato {
   ritardoGg: number
   /** Avvisi non bloccanti per l'operatore (vuoto se non ce ne sono). */
   avvisi: string[]
+  /**
+   * Blocco «Fatturazione» (fase 4.3): presente solo se la causale e' fatturabile e la fatturazione
+   * e' attiva per il giorno del movimento. Mai presente nel retry di una ricopia gia' registrata.
+   */
+  fatturazione?: FatturazioneRegistrazione
   /**
    * Vero se il FIR era già ricopiato con gli stessi dati: si restituisce il movimento
    * esistente e non se ne crea un secondo (retry idempotente).
@@ -168,14 +179,25 @@ function codiceErroreSicuro(err: unknown): string {
   return ''
 }
 
+/** Messaggio leggibile di un'eccezione HTTP del dominio (testo del corpo, altrimenti il messaggio). */
+function messaggioHttp(err: HttpException): string {
+  const corpo = err.getResponse() as { message?: unknown } | string
+  if (typeof corpo === 'string') return corpo
+  return typeof corpo.message === 'string' ? corpo.message : err.message
+}
+
 @Injectable()
 export class RegistraMovimentoUseCase {
+  /** Proposta e scrittura del legame (solo `prisma` come dipendenza: nessuna iniezione in piu'). */
+  private readonly propostaLegami: PropostaLegameService
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
     private readonly registri: RegistriService
   ) {
     this.logger.setContext(RegistraMovimentoUseCase.name)
+    this.propostaLegami = new PropostaLegameService(prisma)
   }
 
   async execute(command: RegistraMovimentoCommand): Promise<Result<MovimentoRegistrato>> {
@@ -184,6 +206,15 @@ export class RegistraMovimentoUseCase {
     const validazione = await validaDatiMovimento(this.prisma, command)
     if (validazione.errore !== undefined) return Result.fail(validazione.errore)
     const cerCode = validazione.cerCode
+
+    // 0c. Blocco «Fatturazione»: un numero scritto male e' un errore del client e si rifiuta prima
+    // di scrivere qualsiasi cosa (il legame, poi, non puo' piu' far fallire la registrazione).
+    try {
+      validaDatiLegame(command.legame)
+    } catch (err) {
+      if (err instanceof HttpException) return Result.fail(messaggioHttp(err))
+      throw err
+    }
 
     // 0d. Se è indicato un FIR collegato, deve esistere e appartenere al tenant.
     // Evita movimenti con FK penzolante verso un formulario inesistente.
@@ -384,9 +415,33 @@ export class RegistraMovimentoUseCase {
           )
         }
 
+        // 4.7: legame movimento-cliente-prezzo (fase 4.3), dopo l'abbinamento. Come l'abbinamento
+        // gira in un SAVEPOINT: un errore qui NON annulla la registrazione (anti-obiettivo della
+        // spec: mai bloccare il registro per un problema commerciale).
+        const aggancio = await agganciaLegameSenzaFallire(tx, {
+          tenantId: command.tenantId,
+          userId: command.userId ?? null,
+          registroId: registroMovimento.id,
+          type: command.type,
+          movimentoId: record.movimentoOriginaleId ?? record.id,
+          fatturabile: validazione.fatturabile,
+          causale: record.causale,
+          causaleAziendaId: validazione.causaleAziendaId,
+          cerCode: record.cerCode,
+          movementDate: record.movementDate,
+          unit: record.unit,
+          quantity: new Prisma.Decimal(record.quantity).toFixed(),
+          firId: record.firId ?? null,
+          legame: command.legame,
+          proposta: this.propostaLegami,
+          logger: this.logger,
+        })
+        avvisi.push(...aggancio.avvisi)
+
         return {
           ...this.movimentoDaRecord(record, ritardoGg, validazione.causaleDescrizione),
           avvisi,
+          ...(aggancio.fatturazione ? { fatturazione: aggancio.fatturazione } : {}),
           giaRegistrato: false,
         }
       })
