@@ -17,6 +17,7 @@ import { NotificationBellComponent } from '../../core/layout/notification-bell/n
 import { TemaService } from '../../core/services/tema.service'
 import { contrassegnoAzienda } from '../utils/contrassegno-azienda'
 import { environment } from '../../../environments/environment'
+import { LegamiService } from '../../features/legami/legami.service'
 
 interface AdminTenant {
   id: string
@@ -304,6 +305,14 @@ export function ordinaAziendePerGruppo(
               >
                 <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
                 <span class="nav-item__label">{{ item.label }}</span>
+                @if (item.contatoreLegami && contatoreLegami() > 0) {
+                  <span
+                    class="nav-item__contatore"
+                    data-testid="contatore-legami"
+                    [attr.aria-label]="contatoreLegami() + ' movimenti da collegare'"
+                    >{{ contatoreLegami() }}</span
+                  >
+                }
               </a>
             </li>
           }
@@ -871,6 +880,18 @@ export function ordinaAziendePerGruppo(
         color: var(--sidebar-ink-muted);
         transition: color var(--transition-fast);
       }
+      .nav-item__contatore {
+        margin-left: auto;
+        min-width: 1.4rem;
+        padding: 0 var(--spacing-xs);
+        border-radius: 999px;
+        background: var(--sidebar-active-bg);
+        color: var(--sidebar-ink-strong);
+        border: 1px solid var(--sidebar-active);
+        font-size: var(--font-size-xs, 0.75rem);
+        font-weight: var(--font-weight-semibold);
+        text-align: center;
+      }
       .nav-item__label {
         flex: 1;
         min-width: 0;
@@ -1232,6 +1253,10 @@ export class LayoutComponent implements OnInit {
   private readonly http = inject(HttpClient)
   private readonly tenantContext = inject(AdminTenantContextService)
   private readonly tenantSwitchService = inject(TenantSwitchService)
+  private readonly legami = inject(LegamiService)
+
+  /** Movimenti in attesa di un legame (voce «Da collegare»); 0 se non si sa. */
+  readonly contatoreLegami = signal(0)
 
   /** Servizio feature-flag: pubblico così il template può usare `ff.has(...)`. */
   readonly ff = inject(FeatureFlagsService)
@@ -1298,7 +1323,14 @@ export class LayoutComponent implements OnInit {
    * `feature` = chiave feature-flag richiesta per mostrare la voce; se assente
    * (es. Dashboard) la voce è sempre visibile.
    */
-  readonly navMain: { label: string; route: string; icon: string; feature?: string }[] = [
+  readonly navMain: {
+    label: string
+    route: string
+    icon: string
+    feature?: string
+    /** Mostra accanto all'etichetta il numero dei movimenti «Da collegare». */
+    contatoreLegami?: boolean
+  }[] = [
     { label: 'Dashboard', route: '/dashboard', icon: 'pi pi-home' },
     { label: 'FIR', route: '/fir', icon: 'pi pi-file', feature: 'fir' },
     { label: 'Registro C/S', route: '/registro', icon: 'pi pi-clipboard', feature: 'registro' },
@@ -1313,6 +1345,13 @@ export class LayoutComponent implements OnInit {
       route: '/contratti-clienti',
       icon: 'pi pi-file-edit',
       feature: 'contratti',
+    },
+    {
+      label: 'Da collegare',
+      route: '/legami/da-collegare',
+      icon: 'pi pi-link',
+      feature: 'contratti',
+      contatoreLegami: true,
     },
     {
       label: 'Fatturazione da',
@@ -1509,7 +1548,7 @@ export class LayoutComponent implements OnInit {
       .subscribe(() => this.updateTitle())
 
     // Feature-flag del tenant corrente: guida la visibilità delle voci di menu.
-    this.ff.load().subscribe()
+    this.ff.load().subscribe(() => this.caricaContatoreLegami())
 
     if (this.isSuperAdmin()) {
       // Super admin: tenant switcher basato su X-Tenant-ID (comportamento esistente).
@@ -1519,6 +1558,15 @@ export class LayoutComponent implements OnInit {
       // generico (stesso endpoint usato dai consulenti, non richiede ruolo).
       this.loadUserTenants()
     }
+  }
+
+  /** Il numero è un di più: se la chiamata fallisce la voce resta senza contatore. */
+  private caricaContatoreLegami(): void {
+    if (!this.ff.has('contratti')) return
+    this.legami.contatori().subscribe({
+      next: c => this.contatoreLegami.set(c.daCollegare),
+      error: () => this.contatoreLegami.set(0),
+    })
   }
 
   /** Carica l'elenco dei tenant (endpoint riservato al SUPER_ADMIN). */

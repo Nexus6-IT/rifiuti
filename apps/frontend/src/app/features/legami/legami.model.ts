@@ -145,6 +145,9 @@ export interface RigaLista {
   dataMovimento: string
   cerCode: string
   descrizioneMovimento: string | null
+  /** Quantità del movimento (stringa col punto) e unità di misura. */
+  quantita: string
+  unita: string
   cliente: VoceScelta | null
   motivi: MotivoLegame[]
   avvisi: AvvisoLegame[]
@@ -157,6 +160,8 @@ export interface RigaLista {
 
 export interface FiltriLista {
   stato?: StatoLista
+  /** Più stati insieme: nella query viaggiano separati da virgola. */
+  stati?: StatoLista[]
   clienteId?: string
   registroId?: string
   motivo?: MotivoLegame

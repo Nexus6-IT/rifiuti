@@ -46,6 +46,14 @@ describe('LegamiService', () => {
     req.flush({ elementi: [], totale: 0 })
   })
 
+  it('lista: stati[] in query separati da virgola ed esclusi false come "false"', () => {
+    servizio.lista({ stati: ['MANCANTE', 'PROPOSTO'], esclusi: false }).subscribe()
+    const req = http.expectOne(r => r.url === base)
+    expect(req.request.params.get('stati')).toBe('MANCANTE,PROPOSTO')
+    expect(req.request.params.get('esclusi')).toBe('false')
+    req.flush({ elementi: [], totale: 0 })
+  })
+
   it('contatori fa GET /contatori', () => {
     servizio.contatori().subscribe()
     const req = http.expectOne(`${base}/contatori`)
