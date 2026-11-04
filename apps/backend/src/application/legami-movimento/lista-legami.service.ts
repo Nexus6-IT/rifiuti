@@ -1,21 +1,23 @@
 // Lista «da collegare» dei legami movimento-cliente-prezzo (fase 4.3, Task 18; spec §7.3,
 // decisioni 5, 11 e 13). Sola lettura: nessuna scrittura, nessun lock, niente su `waste_movements`.
 //
-// Una riga per catena di correzioni (la TESTA vigente: `sqlVigente`), solo se:
-//   - la causale del movimento e' fatturabile (sistema: `causali_registro.fatturabile`; propria:
-//     la versione indicata da `causale_azienda_id`, stessa regola di `CatalogoCausali.comportamento`
-//     e quindi del conteggio dei «movimenti toccati»);
-//   - il giorno italiano del movimento (`sqlGiornoMovimento`, lo stesso frammento del conteggio e
-//     della proposta) e' >= «fatturazione da» (senza data: lista vuota);
-//   - lo stato visto dall'utente e' uno di questi:
-//       MANCANTE        nessun legame per la radice della catena;
-//       DA_RIALLINEARE  legame DA_COLLEGARE / PROPOSTO / CONFERMATO il cui `movimento_vigente_id`
-//                       non e' la testa (correzione non seguita dal legame); prevale sullo stato
-//                       vero, perche' prima va riallineato;
-//       DA_COLLEGARE, PROPOSTO  lo stato del legame;
-//       ESCLUSO         solo con `esclusi: true` (o chiedendo lo stato ESCLUSO).
-//     CONFERMATO allineato, FATTURATO, IMPORTATO_FATTURATO e ANNULLATO non compaiono: un fatturato
-//     rimasto indietro dopo una rettifica resta com'e' (solo `scostamento_dopo_fattura`).
+// Una riga per catena di correzioni, sulla sua TESTA (nessuna correzione che la sostituisca; la
+// testa puo' essere anche un ANNULLAMENTO). Entra se:
+//   (A) la testa non e' un ANNULLAMENTO, la causale e' fatturabile (sistema: `causali_registro`;
+//       propria: la versione indicata da `causale_azienda_id`, come `CatalogoCausali.comportamento`
+//       e come il conteggio dei «movimenti toccati») e il giorno italiano (`sqlGiornoMovimento`) e'
+//       >= «fatturazione da» (senza data: lista vuota); stato MANCANTE / DA_COLLEGARE / PROPOSTO /
+//       ESCLUSO (solo con `esclusi`); CONFERMATO allineato, FATTURATO e ANNULLATO non compaiono; oppure
+//   (B) il legame e' rimasto INDIETRO rispetto alla testa (`movimento_vigente_id` <> testa): stato
+//       DA_RIALLINEARE, QUALUNQUE sia la testa (annullo, causale diventata non fatturabile, data
+//       spostata prima di «fatturazione da») e qualunque lo stato del legame tranne ANNULLATO.
+//       Decisione di precedenza: «indietro» vince su ESCLUSO e su FATTURATO/IMPORTATO_FATTURATO,
+//       perche' ogni esito della correzione (Task 21) aggiorna `movimento_vigente_id`: indietro
+//       significa sempre allineamento fallito, e la 4.4 non deve fatturare o escludere sulla base
+//       di un legame che non segue piu' il registro. Per un fatturato la riga porta `fatturato:
+//       true` (decisione 21): l'unica azione e' registrare lo scostamento, la fattura non cambia.
+//   Un movimento importato non ha marcatore su `waste_movements`: compare come MANCANTE se
+//   «fatturazione da» e' anteriore all'import (la 3.8 dovra' gestirlo).
 //
 // Ordine: data del movimento crescente, poi `id` (deterministico anche a parita' di data). La
 // pagina e il totale sono due istruzioni sullo STESSO frammento SQL e nella stessa transazione
@@ -24,7 +26,7 @@
 // Prestazioni: il filtro per periodo si scrive anche in forma «sargable» su `movement_date`
 // (indice `(tenant_id, movement_date)`), un giorno di margine verso l'esterno perche' il giorno
 // italiano sposta l'istante UTC di al piu' due ore; la forma esatta resta quella sul giorno. Il
-// nome del cliente si legge DOPO la paginazione (al massimo `MAX_PER_PAGINA` righe).
+// nome del cliente si legge DOPO la paginazione (al massimo `MAX_DIMENSIONE` righe).
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
@@ -34,7 +36,6 @@ import {
   type MotivoLegame,
   type StatoLegame,
 } from '../../domain/legami-movimento/codici'
-import { sqlVigente } from '../../domain/waste-movement/vigenza'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { sqlGiornoMovimento } from './giorno-movimento'
@@ -43,8 +44,8 @@ import { normalizzaDecimale } from './proposta-legame.service'
 
 export type StatoListaLegame = StatoLegame | 'MANCANTE' | 'DA_RIALLINEARE'
 
-export const MAX_PER_PAGINA = 200
-export const PER_PAGINA_PREDEFINITO = 50
+export const MAX_DIMENSIONE = 200
+export const DIMENSIONE_PREDEFINITA = 50
 
 export interface FiltriLista {
   /** `AAAA-MM-GG`, estremi inclusi, sul giorno italiano del movimento. */
@@ -55,19 +56,21 @@ export interface FiltriLista {
   motivo?: MotivoLegame
   /** Restringe agli stati indicati (fra quelli che la lista puo' mostrare). */
   stati?: StatoListaLegame[]
+  /** Scorciatoia del FE: un solo stato (equivale a `stati: [stato]`). */
+  stato?: StatoListaLegame
   /** Include i movimenti ESCLUSO (per riammetterli). */
   esclusi?: boolean
   /** Da 1. */
   pagina?: number
   /** Da 1 a 200; predefinito 50. */
-  perPagina?: number
+  dimensione?: number
 }
 
 /** Nomi di `RigaLista` di `legami.model.ts`, piu' quantita' e unita' del movimento. */
 export interface RigaLista {
-  /** La TESTA vigente della catena. */
+  /** La TESTA della catena (anche un ANNULLAMENTO, per DA_RIALLINEARE). */
   movimentoId: string
-  /** Assente per lo stato virtuale MANCANTE (nessun legame); presente per DA_RIALLINEARE. */
+  /** Assente solo per MANCANTE (nessun legame); presente per DA_RIALLINEARE. */
   legameId: string | null
   stato: StatoListaLegame
   /** Giorno italiano `AAAA-MM-GG`. */
@@ -82,6 +85,11 @@ export interface RigaLista {
   versione: number | null
   /** Vera se la proposta e' completa e si puo' confermare in massa. */
   confermabile: boolean
+  /**
+   * Vero se il legame e' FATTURATO / IMPORTATO_FATTURATO (decisione 21): con DA_RIALLINEARE l'unica
+   * azione possibile e' registrare lo scostamento, la fattura non cambia.
+   */
+  fatturato: boolean
 }
 
 /** Nomi di `ContatoriLegami` di `legami.model.ts`. */
@@ -122,23 +130,25 @@ export interface FiltriNormalizzati {
   /** Gli stati che la lista mostra, gia' intersecati con quelli visibili. */
   stati: StatoListaLegame[]
   pagina: number
-  perPagina: number
+  dimensione: number
 }
 
-/** Valida i filtri (400 `FILTRI_LISTA_NON_VALIDI`) e applica i predefiniti. */
+/** Interi dalla query string: accetta numeri e stringhe di sole cifre. */
+function intero(v: unknown): number {
+  if (typeof v === 'string' && /^-?\d+$/.test(v.trim())) return Number(v.trim())
+  return typeof v === 'number' ? v : Number.NaN
+}
+
+/** Valida i filtri (400 `FILTRI_LISTA_NON_VALIDI`), converte i valori della query string e applica i predefiniti. */
 export function normalizzaFiltri(f: FiltriLista | undefined): FiltriNormalizzati {
   const x = f ?? {}
   const vuoto = (v: unknown) => v === undefined || v === null || v === ''
-  const perPagina = vuoto(x.perPagina) ? PER_PAGINA_PREDEFINITO : x.perPagina
-  if (
-    !Number.isInteger(perPagina) ||
-    (perPagina as number) < 1 ||
-    (perPagina as number) > MAX_PER_PAGINA
-  ) {
-    throw nonValido(`La dimensione della pagina va da 1 a ${MAX_PER_PAGINA}.`)
+  const dimensione = vuoto(x.dimensione) ? DIMENSIONE_PREDEFINITA : intero(x.dimensione)
+  if (!Number.isInteger(dimensione) || dimensione < 1 || dimensione > MAX_DIMENSIONE) {
+    throw nonValido(`La dimensione della pagina va da 1 a ${MAX_DIMENSIONE}.`)
   }
-  const pagina = vuoto(x.pagina) ? 1 : x.pagina
-  if (!Number.isInteger(pagina) || (pagina as number) < 1) {
+  const pagina = vuoto(x.pagina) ? 1 : intero(x.pagina)
+  if (!Number.isInteger(pagina) || pagina < 1) {
     throw nonValido('La pagina parte da 1.')
   }
   for (const id of [x.clienteId, x.registroId]) {
@@ -157,17 +167,20 @@ export function normalizzaFiltri(f: FiltriLista | undefined): FiltriNormalizzati
   if (!vuoto(x.motivo) && !(MOTIVI_LEGAME as readonly string[]).includes(x.motivo as string)) {
     throw nonValido('Motivo non valido.')
   }
-  const richiesti = x.stati
-  if (richiesti !== undefined) {
-    if (
-      !Array.isArray(richiesti) ||
-      richiesti.some(s => !STATI_AMMESSI_NEL_FILTRO.includes(s as string))
-    ) {
+  // `stati` (anche come testo separato da virgole) e la scorciatoia `stato` si sommano.
+  let richiesti: string[] | undefined
+  if (x.stati !== undefined || !vuoto(x.stato)) {
+    const lista: unknown =
+      typeof x.stati === 'string' ? (x.stati as string).split(',').filter(Boolean) : (x.stati ?? [])
+    if (!Array.isArray(lista)) throw nonValido('Stato non valido.')
+    richiesti = [...lista, ...(vuoto(x.stato) ? [] : [x.stato as string])]
+    if (richiesti.some(s => !STATI_AMMESSI_NEL_FILTRO.includes(s))) {
       throw nonValido('Stato non valido.')
     }
   }
-  // ESCLUSO si vede con `esclusi: true` o se lo si chiede esplicitamente.
-  const conEsclusi = x.esclusi === true || (richiesti?.includes('ESCLUSO') ?? false)
+  // ESCLUSO si vede con `esclusi: true` (anche 'true' dalla query string) o se lo si chiede.
+  const esclusi = x.esclusi === true || (x.esclusi as unknown) === 'true'
+  const conEsclusi = esclusi || (richiesti?.includes('ESCLUSO') ?? false)
   const visibili: StatoListaLegame[] = conEsclusi
     ? [...STATI_VISIBILI, 'ESCLUSO']
     : [...STATI_VISIBILI]
@@ -179,31 +192,37 @@ export function normalizzaFiltri(f: FiltriLista | undefined): FiltriNormalizzati
     registroId: vuoto(x.registroId) ? null : x.registroId!,
     motivo: vuoto(x.motivo) ? null : (x.motivo as MotivoLegame),
     stati,
-    pagina: pagina as number,
-    perPagina: perPagina as number,
+    pagina,
+    dimensione,
   }
 }
 
-/** L'espressione dello stato che l'utente vede (alias `m` movimento, `l` legame). */
+/**
+ * L'espressione dello stato che l'utente vede (alias `m` testa, `l` legame). «Indietro» prevale
+ * su ESCLUSO e sui fatturati (vedi il commento di testa); ANNULLATO e' terminale.
+ */
 const SQL_STATO_LISTA = Prisma.sql`CASE
   WHEN l.id IS NULL THEN 'MANCANTE'
-  WHEN l.stato = 'ESCLUSO' THEN 'ESCLUSO'
-  WHEN l.stato IN ('DA_COLLEGARE', 'PROPOSTO', 'CONFERMATO') AND l.movimento_vigente_id <> m.id
-    THEN 'DA_RIALLINEARE'
+  WHEN l.stato <> 'ANNULLATO' AND l.movimento_vigente_id <> m.id THEN 'DA_RIALLINEARE'
   ELSE l.stato::text
 END`
 
 /**
- * Le teste vigenti fatturabili dell'azienda, dal `da` in poi, con il loro legame (se c'e') e lo
- * stato visto dall'utente. Un solo frammento per pagina, totale e contatori.
+ * Le teste di catena dell'azienda che entrano nella lista (rami A e B del commento di testa), con
+ * il loro legame (se c'e') e lo stato visto dall'utente. Un solo frammento per pagina, totale e
+ * contatori. Il prefiltro su `movement_date` e' solo un aiuto per l'indice (margine di un giorno).
  */
 export function sqlCandidati(
   tenantId: string,
   fatturazioneDa: string,
   f: Pick<FiltriNormalizzati, 'dal' | 'al' | 'clienteId' | 'registroId' | 'motivo'>
 ): Prisma.Sql {
-  const dal = f.dal !== null && f.dal > fatturazioneDa ? f.dal : fatturazioneDa
   const giorno = sqlGiornoMovimento('m')
+  const dal =
+    f.dal === null
+      ? Prisma.empty
+      : Prisma.sql`AND m.movement_date >= (${f.dal}::date - 1)::timestamp
+      AND ${giorno} >= ${f.dal}::date`
   const al =
     f.al === null
       ? Prisma.empty
@@ -218,6 +237,7 @@ export function sqlCandidati(
     SELECT m.id AS movimento_id, m.movement_date, ${giorno} AS giorno, m.registro_id,
            m.cer_code, m.waste_description, m.quantity, m.unit,
            l.id AS legame_id, l.cliente_id, l.motivi, l.avvisi, l.versione,
+           (l.stato IN ('FATTURATO', 'IMPORTATO_FATTURATO')) AS fatturato,
            ${SQL_STATO_LISTA} AS stato_lista
     FROM waste_movements m
     LEFT JOIN legami_movimento l
@@ -229,31 +249,34 @@ export function sqlCandidati(
       ON ca.id = m.causale_azienda_id AND ca.tenant_id = m.tenant_id AND ca.natura = 'PROPRIA'
      AND ca.codice = m.causale AND ca.verso = m.type
     WHERE m.tenant_id = ${tenantId}::uuid
-      AND m.movement_date >= (${dal}::date - 1)::timestamp
-      AND ${giorno} >= ${dal}::date
-      ${al}
-      AND ${sqlVigente('m')}
-      AND COALESCE(ca.fatturabile, cs.fatturabile, false)
-      ${registro} ${cliente} ${motivo}`
+      AND NOT EXISTS (SELECT 1 FROM waste_movements c_testa WHERE c_testa.movimento_rettificato_id = m.id)
+      AND (
+        (m.tipo_annotazione <> 'ANNULLAMENTO'
+          AND COALESCE(ca.fatturabile, cs.fatturabile, false)
+          AND m.movement_date >= (${fatturazioneDa}::date - 1)::timestamp
+          AND ${giorno} >= ${fatturazioneDa}::date)
+        OR (l.id IS NOT NULL AND l.stato <> 'ANNULLATO' AND l.movimento_vigente_id <> m.id)
+      )
+      ${dal} ${al} ${registro} ${cliente} ${motivo}`
 }
 
 /** La pagina: ordina e taglia PRIMA di leggere il nome del cliente. */
 export function sqlPagina(
   tenantId: string,
   candidati: Prisma.Sql,
-  f: Pick<FiltriNormalizzati, 'stati' | 'pagina' | 'perPagina'>
+  f: Pick<FiltriNormalizzati, 'stati' | 'pagina' | 'dimensione'>
 ): Prisma.Sql {
   return Prisma.sql`
     SELECT c.movimento_id::text AS movimento_id, c.giorno::text AS giorno, c.cer_code,
            c.waste_description, c.quantity::text AS quantity, c.unit,
            c.legame_id::text AS legame_id, c.cliente_id::text AS cliente_id,
            dt.ragione_sociale AS etichetta_cliente, c.motivi, c.avvisi, c.versione,
-           c.stato_lista
+           c.fatturato, c.stato_lista
     FROM (
       SELECT c.* FROM (${candidati}) c
       WHERE c.stato_lista = ANY(${f.stati}::text[])
       ORDER BY c.movement_date, c.movimento_id
-      LIMIT ${f.perPagina} OFFSET ${(f.pagina - 1) * f.perPagina}
+      LIMIT ${f.dimensione} OFFSET ${(f.pagina - 1) * f.dimensione}
     ) c
     LEFT JOIN clienti cl ON cl.id = c.cliente_id AND cl.tenant_id = ${tenantId}::uuid
     LEFT JOIN ditte dt ON dt.id = cl.ditta_id AND dt.tenant_id = cl.tenant_id
@@ -283,6 +306,7 @@ interface RigaSql {
   motivi: string[] | null
   avvisi: string[] | null
   versione: number | null
+  fatturato: boolean | null
   stato_lista: StatoListaLegame
 }
 
@@ -301,17 +325,17 @@ export class ListaLegamiService {
   lista(
     tenantId: string,
     filtri: FiltriLista = {}
-  ): Promise<{ righe: RigaLista[]; totale: number }> {
+  ): Promise<{ elementi: RigaLista[]; totale: number }> {
     const f = normalizzaFiltri(filtri)
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(
         async tx => {
           const da = await leggiFatturazioneDaInTx(tx, tenantId)
-          if (da === null || f.stati.length === 0) return { righe: [], totale: 0 }
+          if (da === null || f.stati.length === 0) return { elementi: [], totale: 0 }
           const base = sqlCandidati(tenantId, da, f)
           const righe = await tx.$queryRaw<RigaSql[]>(sqlPagina(tenantId, base, f))
           const conteggio = await tx.$queryRaw<{ n: number }[]>(sqlConteggio(base, f.stati))
-          return { righe: righe.map(vista), totale: conteggio[0]?.n ?? 0 }
+          return { elementi: righe.map(vista), totale: conteggio[0]?.n ?? 0 }
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30_000 }
       )
@@ -334,7 +358,7 @@ export class ListaLegamiService {
             motivo: null,
           })
           const r = await tx.$queryRaw<ContatoriSql[]>`
-            SELECT count(*) FILTER (WHERE c.stato_lista IN ('MANCANTE','DA_RIALLINEARE','DA_COLLEGARE','PROPOSTO'))::int AS totale,
+            SELECT count(*) FILTER (WHERE c.stato_lista = ANY(${[...STATI_VISIBILI]}::text[]))::int AS totale,
                    count(*) FILTER (WHERE c.stato_lista = 'PROPOSTO')::int AS proposti,
                    count(*) FILTER (WHERE c.stato_lista = 'MANCANTE')::int AS mancanti,
                    count(*) FILTER (WHERE c.stato_lista = 'DA_RIALLINEARE')::int AS da_riallineare
@@ -366,12 +390,11 @@ function vista(r: RigaSql): RigaLista {
     quantita: normalizzaDecimale(r.quantity) ?? r.quantity,
     unita: r.unit,
     cliente:
-      r.cliente_id !== null && r.etichetta_cliente !== null
-        ? { id: r.cliente_id, etichetta: r.etichetta_cliente }
-        : null,
+      r.cliente_id !== null ? { id: r.cliente_id, etichetta: r.etichetta_cliente ?? '' } : null,
     motivi,
     avvisi: (r.avvisi ?? []) as AvvisoLegame[],
     versione: r.versione,
     confermabile: r.stato_lista === 'PROPOSTO' && motivi.length === 0,
+    fatturato: r.fatturato === true,
   }
 }

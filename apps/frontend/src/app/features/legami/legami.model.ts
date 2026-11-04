@@ -134,7 +134,7 @@ export interface LegameVista {
 }
 
 export interface RigaLista {
-  /** Assente per gli stati virtuali MANCANTE e DA_RIALLINEARE (nessun legame, o legame vecchio). */
+  /** Assente solo per MANCANTE (nessun legame); presente per DA_RIALLINEARE (il legame rimasto indietro). */
   legameId: string | null
   movimentoId: string
   stato: StatoLista
@@ -147,6 +147,8 @@ export interface RigaLista {
   versione: number | null
   /** Vera se la proposta è completa e si può confermare in massa. */
   confermabile: boolean
+  /** Il legame è già fatturato: con DA_RIALLINEARE l'unica azione è registrare lo scostamento. */
+  fatturato?: boolean
 }
 
 export interface FiltriLista {

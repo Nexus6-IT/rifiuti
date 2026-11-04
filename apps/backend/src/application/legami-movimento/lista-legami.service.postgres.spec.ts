@@ -3,8 +3,14 @@
  * reale, collegato COME `wasteflow_app`. Il proprietario prepara gli scenari; la pulizia e' solo
  * per id esatti (`onTenantCreato` registra l'azienda appena esiste). Le prove di volume
  * (10.000 movimenti sempre; 200.000 con `LISTA_VOLUME=200000`) usano statistiche vere (ANALYZE) e
- * poi il piano generico forzato, con `statement_timeout` esplicito e ruolo ripristinato.
+ * poi il piano generico forzato con `SET LOCAL` (plan_cache_mode e statement_timeout esplicito nella
+ * transazione: nessuna modifica al ruolo condiviso). L'id dell'azienda di volume e' scritto su file
+ * PRIMA del caricamento e ripulito (per id esatto, a blocchi) anche se un giro precedente e' stato
+ * interrotto.
  */
+import { readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { HttpException } from '@nestjs/common'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { clientComeRuolo, urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
@@ -56,36 +62,116 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
   const nel = <R>(tenantId: string, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId }, async () => await fn())
 
-  /** Idempotente: toglie le impostazioni di ruolo che le prove col piano generico mettono. */
-  const ripristinaRuolo = async () => {
-    await owner.$executeRaw`ALTER ROLE wasteflow_app RESET plan_cache_mode`
-    await owner.$executeRaw`ALTER ROLE wasteflow_app RESET statement_timeout`
+  // Aziende di volume: l'id va su file PRIMA del caricamento, cosi' un giro interrotto si ripulisce.
+  const FILE_VOLUME =
+    process.env.LISTA_VOLUME_FILE ?? join(tmpdir(), 'wasteflow-lista-volume-tenants.json')
+  const idVolumeSuFile = (): string[] => {
+    try {
+      const v: unknown = JSON.parse(readFileSync(FILE_VOLUME, 'utf8'))
+      return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
+    }
   }
+  const scriviIdVolume = (ids: string[]) => writeFileSync(FILE_VOLUME, JSON.stringify(ids))
+
+  /** Solo il database di test locale: porta 55438 e nome `wasteflow_ci`, controllo esplicito. */
+  function eDatabaseDiTestRigido(): boolean {
+    if (!eDatabaseDiTestLocale(urlProprietario)) return false
+    const u = new URL(urlProprietario)
+    return u.port === '55438' && u.pathname === '/wasteflow_ci'
+  }
+
+  /**
+   * Cancella (per id esatto) i movimenti di un'azienda di volume a BLOCCHI, ognuno nella sua
+   * transazione breve (le correzioni prima, le ordinarie dopo), dopo righe e legami. Con
+   * `session_replication_role = replica` (solo nel database di test, se il ruolo lo permette) i
+   * trigger RI per riga non girano e la cancellazione e' lineare; altrimenti i blocchi restano
+   * piccoli. Si puo' interrompere e riprendere.
+   */
+  async function pulisciVolume(tenantId: string): Promise<void> {
+    if (!eDatabaseDiTestRigido()) throw new Error('pulisciVolume: solo sul database di test locale')
+    let replica = true
+    const blocco = async (sql: string): Promise<number> => {
+      for (;;) {
+        try {
+          const r = await owner.$transaction([
+            owner.$executeRawUnsafe(`SET LOCAL statement_timeout = '60s'`),
+            ...(replica
+              ? [owner.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`)]
+              : []),
+            owner.$executeRawUnsafe(sql, tenantId),
+          ])
+          return r[r.length - 1] as number
+        } catch (e) {
+          if (replica && /permission denied/i.test(String(e))) {
+            replica = false
+            continue
+          }
+          throw e
+        }
+      }
+    }
+    const tutto = async (sql: string) => {
+      while ((await blocco(sql)) > 0) {
+        /* ripete finche' restano righe */
+      }
+    }
+    await tutto(`DELETE FROM righe_legame_movimento WHERE id IN (
+      SELECT id FROM righe_legame_movimento WHERE tenant_id = $1::uuid LIMIT 20000)`)
+    await tutto(`DELETE FROM legami_movimento WHERE id IN (
+      SELECT id FROM legami_movimento WHERE tenant_id = $1::uuid LIMIT 20000)`)
+    for (const filtro of [`tipo_annotazione <> 'ORDINARIA'`, `tipo_annotazione = 'ORDINARIA'`]) {
+      await tutto(`DELETE FROM waste_movements WHERE id IN (
+        SELECT id FROM waste_movements WHERE tenant_id = $1::uuid AND ${filtro} LIMIT 20000)`)
+    }
+  }
+
+  const volumeCreati: string[] = []
 
   beforeAll(async () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
-    await ripristinaRuolo()
     app = creaPrismaServiceApplicativo()
     service = new ListaLegamiService(app)
-  })
+    // Aziende di volume rimaste da un giro interrotto: per id esatto, una alla volta.
+    for (const id of idVolumeSuFile()) {
+      await pulisciVolume(id)
+      await pulisciTenantDiTest(owner, [id])
+    }
+    scriviIdVolume([])
+  }, 600_000)
 
   afterAll(async () => {
-    await ripristinaRuolo()
-    await pulisciTenantDiTest(owner, tenantCreati)
+    for (const id of volumeCreati) await pulisciVolume(id)
+    // Una alla volta: un timeout su un'azienda non blocca le altre.
+    for (const id of tenantCreati) await pulisciTenantDiTest(owner, [id])
+    scriviIdVolume(idVolumeSuFile().filter(id => !volumeCreati.includes(id)))
     for (const t of ['legami_movimento', 'righe_legame_movimento', 'waste_movements']) {
       await owner.$executeRawUnsafe(`ANALYZE ${t}`)
     }
     await owner.$disconnect()
     await app?.$disconnect()
-  }, 300_000)
+  }, 900_000)
 
   /**
    * Azienda con il suo scenario ma SENZA il movimento di partenza (si cancella per id esatto):
    * ogni test parte da una lista vuota. «Fatturazione da» = `da` (null = spenta; `undefined` =
    * 2026-01-01).
    */
-  async function scenario(da: string | null = '2026-01-01'): Promise<ScenarioProposta> {
-    const s = await creaScenarioProposta(owner, { onTenantCreato: id => tenantCreati.push(id) })
+  async function scenario(
+    da: string | null = '2026-01-01',
+    volume = false
+  ): Promise<ScenarioProposta> {
+    const s = await creaScenarioProposta(owner, {
+      onTenantCreato: id => {
+        tenantCreati.push(id)
+        if (volume) {
+          // Su file PRIMA di qualunque caricamento.
+          volumeCreati.push(id)
+          scriviIdVolume([...idVolumeSuFile(), id])
+        }
+      },
+    })
     await owner.wasteMovement.delete({ where: { id: s.movimentoId } })
     if (da !== null) {
       await owner.impostazioneFatturazione.create({
@@ -150,7 +236,8 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
     s: ScenarioProposta,
     tipo: 'RETTIFICA' | 'ANNULLAMENTO',
     radiceId: string,
-    testaId: string
+    testaId: string,
+    sovrascrive: { causale?: string; movementDate?: Date } = {}
   ): Promise<string> {
     const origine = await owner.wasteMovement.findUniqueOrThrow({ where: { id: radiceId } })
     const ultimo = await owner.wasteMovement.aggregate({
@@ -164,8 +251,8 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         progressiveYear: 2026,
         progressiveNumber: (ultimo._max.progressiveNumber ?? 0) + 1,
         type: origine.type,
-        movementDate: origine.movementDate,
-        causale: origine.causale,
+        movementDate: sovrascrive.movementDate ?? origine.movementDate,
+        causale: sovrascrive.causale ?? origine.causale,
         cerCode: origine.cerCode,
         quantity: '90',
         unit: 'KG',
@@ -194,7 +281,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
     it('fatturazione spenta (nessuna riga o data vuota): lista vuota e contatori a zero', async () => {
       const senzaRiga = await scenario(null)
       await nuovo(senzaRiga)
-      expect(await lista(senzaRiga)).toEqual({ righe: [], totale: 0 })
+      expect(await lista(senzaRiga)).toEqual({ elementi: [], totale: 0 })
       expect(await contatori(senzaRiga)).toEqual({
         daCollegare: 0,
         proposti: 0,
@@ -219,7 +306,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       })
       const r = await lista(s)
       expect(r.totale).toBe(1)
-      expect(r.righe[0]).toEqual({
+      expect(r.elementi[0]).toEqual({
         movimentoId: m.movimentoId,
         legameId: null,
         stato: 'MANCANTE',
@@ -233,6 +320,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         avvisi: [],
         versione: null,
         confermabile: false,
+        fatturato: false,
       })
     })
 
@@ -252,9 +340,9 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         data: { movementDate: new Date('2025-12-31T23:30:00Z') },
       })
       const r = await lista(s)
-      expect(new Set(ids(r.righe))).toEqual(new Set([uguale.movimentoId, dentro.movimentoId]))
-      expect(ids(r.righe)).not.toContain(prima.movimentoId)
-      expect(ids(r.righe)).not.toContain(fuori.movimentoId)
+      expect(new Set(ids(r.elementi))).toEqual(new Set([uguale.movimentoId, dentro.movimentoId]))
+      expect(ids(r.elementi)).not.toContain(prima.movimentoId)
+      expect(ids(r.elementi)).not.toContain(fuori.movimentoId)
       expect(r.totale).toBe(2)
     })
 
@@ -289,7 +377,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       }
       const si = await propria('AZ_SI', true)
       const no = await propria('AZ_NO', false)
-      const ids_ = ids((await lista(s)).righe)
+      const ids_ = ids((await lista(s)).elementi)
       expect(ids_).toEqual([si])
       expect(ids_).not.toContain(scarico.movimentoId)
       expect(ids_).not.toContain(no)
@@ -305,7 +393,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       ] as const) {
         await nuovo(s, { stato })
       }
-      expect(await lista(s)).toEqual({ righe: [], totale: 0 })
+      expect(await lista(s)).toEqual({ elementi: [], totale: 0 })
     })
 
     it('DA_COLLEGARE con motivi e avvisi: presente; PROPOSTO senza motivi: confermabile', async () => {
@@ -318,7 +406,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         data: '2026-03-02',
       })
       const b = await nuovo(s, { stato: 'PROPOSTO', data: '2026-03-03' })
-      const r = (await lista(s)).righe
+      const r = (await lista(s)).elementi
       const ra = r.find(x => x.movimentoId === a.movimentoId)!
       const rb = r.find(x => x.movimentoId === b.movimentoId)!
       expect(ra).toMatchObject({
@@ -347,7 +435,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       const testa = await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId)
       const r = await lista(s)
       expect(r.totale).toBe(1)
-      expect(r.righe[0]).toMatchObject({
+      expect(r.elementi[0]).toMatchObject({
         movimentoId: testa,
         legameId: m.legameId,
         stato: 'DA_RIALLINEARE',
@@ -356,19 +444,12 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       const p = await nuovo(s, { stato: 'PROPOSTO', data: '2026-04-02' })
       const testaP = await correggi(s, 'RETTIFICA', p.movimentoId, p.movimentoId)
       const r2 = await lista(s)
-      expect(r2.righe.find(x => x.movimentoId === testaP)?.stato).toBe('DA_RIALLINEARE')
+      expect(r2.elementi.find(x => x.movimentoId === testaP)?.stato).toBe('DA_RIALLINEARE')
       // Allineato (vigente = testa): torna lo stato vero.
       await owner.$executeRaw`
         UPDATE legami_movimento SET movimento_vigente_id = ${testaP}::uuid WHERE id = ${p.legameId}::uuid`
       const r3 = await lista(s)
-      expect(r3.righe.find(x => x.movimentoId === testaP)?.stato).toBe('PROPOSTO')
-    })
-
-    it('rettifica di un movimento FATTURATO indietro: assente (il fatturato non si tocca)', async () => {
-      const s = await scenario()
-      const m = await nuovo(s, { stato: 'FATTURATO' })
-      await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId)
-      expect((await lista(s)).totale).toBe(0)
+      expect(r3.elementi.find(x => x.movimentoId === testaP)?.stato).toBe('PROPOSTO')
     })
 
     it('catena senza legame con due rettifiche: un solo MANCANTE, sulla testa vigente', async () => {
@@ -378,28 +459,101 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       const r2 = await correggi(s, 'RETTIFICA', m.movimentoId, r1)
       const r = await lista(s)
       expect(r.totale).toBe(1)
-      expect(r.righe[0]).toMatchObject({ movimentoId: r2, stato: 'MANCANTE', legameId: null })
+      expect(r.elementi[0]).toMatchObject({ movimentoId: r2, stato: 'MANCANTE', legameId: null })
     })
 
-    it('catena annullata: assente anche con un legame DA_COLLEGARE', async () => {
+    it('catena annullata: allineata all’annullo = assente; con il legame indietro = DA_RIALLINEARE sulla testa ANNULLAMENTO', async () => {
       const s = await scenario()
-      const m = await nuovo(s, { stato: 'DA_COLLEGARE' })
-      await correggi(s, 'ANNULLAMENTO', m.movimentoId, m.movimentoId)
+      const allineata = await nuovo(s, { stato: 'DA_COLLEGARE', data: '2026-03-02' })
+      const annulloA = await correggi(
+        s,
+        'ANNULLAMENTO',
+        allineata.movimentoId,
+        allineata.movimentoId
+      )
+      await owner.$executeRaw`
+        UPDATE legami_movimento SET movimento_vigente_id = ${annulloA}::uuid WHERE id = ${allineata.legameId}::uuid`
       expect((await lista(s)).totale).toBe(0)
+      const indietro = await nuovo(s, { stato: 'CONFERMATO', data: '2026-03-03' })
+      const annulloB = await correggi(s, 'ANNULLAMENTO', indietro.movimentoId, indietro.movimentoId)
+      const r = await lista(s)
+      expect(r.totale).toBe(1)
+      expect(r.elementi[0]).toMatchObject({
+        movimentoId: annulloB,
+        legameId: indietro.legameId,
+        stato: 'DA_RIALLINEARE',
+        fatturato: false,
+        confermabile: false,
+      })
+      expect((await contatori(s)).daRiallineare).toBe(1)
+    })
+
+    it('rettifica che rende la causale non fatturabile: con il legame indietro DA_RIALLINEARE; allineata = assente', async () => {
+      const s = await scenario()
+      const m = await nuovo(s, { stato: 'PROPOSTO', data: '2026-03-02' })
+      const testa = await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId, {
+        causale: 'CAUSALE_NON_FATTURABILE_DI_PROVA',
+      })
+      const r = await lista(s)
+      expect(r.elementi.map(x => [x.movimentoId, x.stato])).toEqual([[testa, 'DA_RIALLINEARE']])
+      await owner.$executeRaw`
+        UPDATE legami_movimento SET movimento_vigente_id = ${testa}::uuid WHERE id = ${m.legameId}::uuid`
+      expect((await lista(s)).totale).toBe(0)
+    })
+
+    it('rettifica che sposta la data prima di «fatturazione da»: con il legame indietro DA_RIALLINEARE; allineata = assente', async () => {
+      const s = await scenario('2026-01-01')
+      const m = await nuovo(s, { stato: 'CONFERMATO', data: '2026-03-02' })
+      const testa = await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId, {
+        movementDate: new Date('2025-06-01T10:00:00Z'),
+      })
+      expect((await lista(s)).elementi.map(x => [x.movimentoId, x.stato])).toEqual([
+        [testa, 'DA_RIALLINEARE'],
+      ])
+      await owner.$executeRaw`
+        UPDATE legami_movimento SET movimento_vigente_id = ${testa}::uuid WHERE id = ${m.legameId}::uuid`
+      expect((await lista(s)).totale).toBe(0)
+    })
+
+    it('FATTURATO / IMPORTATO_FATTURATO rimasti indietro: DA_RIALLINEARE con fatturato true, non confermabili; allineati = assenti', async () => {
+      const s = await scenario()
+      const a = await nuovo(s, { stato: 'FATTURATO', data: '2026-03-02' })
+      const b = await nuovo(s, { stato: 'IMPORTATO_FATTURATO', data: '2026-03-03' })
+      const c = await nuovo(s, { stato: 'FATTURATO', data: '2026-03-04' })
+      const ta = await correggi(s, 'RETTIFICA', a.movimentoId, a.movimentoId)
+      const tb = await correggi(s, 'RETTIFICA', b.movimentoId, b.movimentoId)
+      const tc = await correggi(s, 'RETTIFICA', c.movimentoId, c.movimentoId)
+      await owner.$executeRaw`
+        UPDATE legami_movimento SET movimento_vigente_id = ${tc}::uuid WHERE id = ${c.legameId}::uuid`
+      const r = await lista(s)
+      expect(r.elementi.map(x => [x.movimentoId, x.stato, x.fatturato, x.confermabile])).toEqual([
+        [ta, 'DA_RIALLINEARE', true, false],
+        [tb, 'DA_RIALLINEARE', true, false],
+      ])
+      expect((await contatori(s)).daRiallineare).toBe(2)
+    })
+
+    it('ESCLUSO rimasto indietro: DA_RIALLINEARE anche senza esclusi (precedenza coerente con «indietro = allineamento fallito»)', async () => {
+      const s = await scenario()
+      const e = await nuovo(s, { stato: 'ESCLUSO', data: '2026-03-02' })
+      const t = await correggi(s, 'RETTIFICA', e.movimentoId, e.movimentoId)
+      expect((await lista(s)).elementi.map(x => [x.movimentoId, x.stato])).toEqual([
+        [t, 'DA_RIALLINEARE'],
+      ])
     })
 
     it('ESCLUSO: assente; con esclusi true presente, e “stati” puo’ ridurre ai soli esclusi', async () => {
       const s = await scenario()
       const e = await nuovo(s, { stato: 'ESCLUSO', data: '2026-03-02' })
       const d = await nuovo(s, { stato: 'DA_COLLEGARE', data: '2026-03-03' })
-      expect(ids((await lista(s)).righe)).toEqual([d.movimentoId])
+      expect(ids((await lista(s)).elementi)).toEqual([d.movimentoId])
       const con = await lista(s, { esclusi: true })
-      expect(ids(con.righe)).toEqual([e.movimentoId, d.movimentoId])
-      expect(con.righe[0]).toMatchObject({ stato: 'ESCLUSO', legameId: e.legameId })
+      expect(ids(con.elementi)).toEqual([e.movimentoId, d.movimentoId])
+      expect(con.elementi[0]).toMatchObject({ stato: 'ESCLUSO', legameId: e.legameId })
       const soli = await lista(s, { esclusi: true, stati: ['ESCLUSO'] })
-      expect(ids(soli.righe)).toEqual([e.movimentoId])
+      expect(ids(soli.elementi)).toEqual([e.movimentoId])
       // Chiedere lo stato ESCLUSO nei filtri equivale a chiedere gli esclusi.
-      expect(ids((await lista(s, { stati: ['ESCLUSO'] })).righe)).toEqual([e.movimentoId])
+      expect(ids((await lista(s, { stati: ['ESCLUSO'] })).elementi)).toEqual([e.movimentoId])
       // I contatori non contano gli esclusi.
       expect((await contatori(s)).daCollegare).toBe(1)
     })
@@ -409,7 +563,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       const b = await scenario()
       const mb = await nuovo(b, { stato: 'DA_COLLEGARE' })
       await nuovo(a)
-      expect(ids((await lista(a)).righe)).not.toContain(mb.movimentoId)
+      expect(ids((await lista(a)).elementi)).not.toContain(mb.movimentoId)
       expect((await lista(a, { registroId: mb.registroId })).totale).toBe(0)
       expect((await lista(a, { clienteId: b.clienteId })).totale).toBe(0)
       // Il contesto di A con il tenant di B nella chiamata e’ rifiutato (come gli altri servizi).
@@ -450,22 +604,22 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
           tipoAnnotazione: 'ORDINARIA',
         },
       })
-      expect(ids((await lista(s, { clienteId: s.clienteId })).righe)).toEqual([x.movimentoId])
-      expect(ids((await lista(s, { dal: '2026-04-10', al: '2026-05-10' })).righe)).toEqual([
+      expect(ids((await lista(s, { clienteId: s.clienteId })).elementi)).toEqual([x.movimentoId])
+      expect(ids((await lista(s, { dal: '2026-04-10', al: '2026-05-10' })).elementi)).toEqual([
         y.movimentoId,
         z.movimentoId,
       ])
-      expect(ids((await lista(s, { dal: '2026-04-11' })).righe)).toEqual([z.movimentoId, w.id])
-      expect(ids((await lista(s, { al: '2026-03-10' })).righe)).toEqual([x.movimentoId])
-      expect(ids((await lista(s, { registroId: reg2.id })).righe)).toEqual([w.id])
-      expect(ids((await lista(s, { registroId: x.registroId })).righe)).toEqual([
+      expect(ids((await lista(s, { dal: '2026-04-11' })).elementi)).toEqual([z.movimentoId, w.id])
+      expect(ids((await lista(s, { al: '2026-03-10' })).elementi)).toEqual([x.movimentoId])
+      expect(ids((await lista(s, { registroId: reg2.id })).elementi)).toEqual([w.id])
+      expect(ids((await lista(s, { registroId: x.registroId })).elementi)).toEqual([
         x.movimentoId,
         y.movimentoId,
         z.movimentoId,
       ])
-      expect(ids((await lista(s, { motivo: 'SENZA_PREZZO' })).righe)).toEqual([y.movimentoId])
-      expect(ids((await lista(s, { stati: ['MANCANTE'] })).righe)).toEqual([z.movimentoId, w.id])
-      expect(ids((await lista(s, { stati: ['PROPOSTO', 'DA_COLLEGARE'] })).righe)).toEqual([
+      expect(ids((await lista(s, { motivo: 'SENZA_PREZZO' })).elementi)).toEqual([y.movimentoId])
+      expect(ids((await lista(s, { stati: ['MANCANTE'] })).elementi)).toEqual([z.movimentoId, w.id])
+      expect(ids((await lista(s, { stati: ['PROPOSTO', 'DA_COLLEGARE'] })).elementi)).toEqual([
         x.movimentoId,
         y.movimentoId,
       ])
@@ -474,11 +628,11 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         where: { id: z.movimentoId },
         data: { movementDate: new Date('2026-05-09T23:30:00Z') },
       })
-      expect(ids((await lista(s, { dal: '2026-05-10', al: '2026-05-10' })).righe)).toEqual([
+      expect(ids((await lista(s, { dal: '2026-05-10', al: '2026-05-10' })).elementi)).toEqual([
         z.movimentoId,
       ])
       // 23:30 UTC del 9/5 e’ gia’ il 10/5 a Roma: al 9/5 restano solo x e y.
-      expect(ids((await lista(s, { al: '2026-05-09' })).righe)).toEqual([
+      expect(ids((await lista(s, { al: '2026-05-09' })).elementi)).toEqual([
         x.movimentoId,
         y.movimentoId,
       ])
@@ -488,33 +642,36 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       const s = await scenario()
       for (let i = 0; i < 7; i++) await nuovo(s, { data: '2026-03-01' }) // tutte lo stesso giorno
       for (let i = 0; i < 3; i++) await nuovo(s, { data: '2026-02-01', stato: 'DA_COLLEGARE' })
-      const p1 = await lista(s, { pagina: 1, perPagina: 4 })
-      const p2 = await lista(s, { pagina: 2, perPagina: 4 })
-      const p3 = await lista(s, { pagina: 3, perPagina: 4 })
-      const p4 = await lista(s, { pagina: 4, perPagina: 4 })
+      const p1 = await lista(s, { pagina: 1, dimensione: 4 })
+      const p2 = await lista(s, { pagina: 2, dimensione: 4 })
+      const p3 = await lista(s, { pagina: 3, dimensione: 4 })
+      const p4 = await lista(s, { pagina: 4, dimensione: 4 })
       expect([p1.totale, p2.totale, p3.totale, p4.totale]).toEqual([10, 10, 10, 10])
-      expect([p1.righe.length, p2.righe.length, p3.righe.length, p4.righe.length]).toEqual([
-        4, 4, 2, 0,
-      ])
-      const tutti = [...p1.righe, ...p2.righe, ...p3.righe].map(r => r.movimentoId)
+      expect([
+        p1.elementi.length,
+        p2.elementi.length,
+        p3.elementi.length,
+        p4.elementi.length,
+      ]).toEqual([4, 4, 2, 0])
+      const tutti = [...p1.elementi, ...p2.elementi, ...p3.elementi].map(r => r.movimentoId)
       expect(new Set(tutti).size).toBe(10)
-      const intera = await lista(s, { perPagina: 200 })
-      expect(ids(intera.righe)).toEqual(tutti)
+      const intera = await lista(s, { dimensione: 200 })
+      expect(ids(intera.elementi)).toEqual(tutti)
       // data crescente: i tre di febbraio per primi
-      expect(intera.righe.slice(0, 3).every(r => r.dataMovimento === '2026-02-01')).toBe(true)
+      expect(intera.elementi.slice(0, 3).every(r => r.dataMovimento === '2026-02-01')).toBe(true)
       // due letture uguali danno lo stesso ordine
-      expect(ids((await lista(s, { perPagina: 200 })).righe)).toEqual(tutti)
+      expect(ids((await lista(s, { dimensione: 200 })).elementi)).toEqual(tutti)
       // default: pagina 1, 50 righe
-      expect((await lista(s)).righe).toHaveLength(10)
+      expect((await lista(s)).elementi).toHaveLength(10)
     })
 
-    it('parametri non validi: 400 (perPagina 0, negativo, 201, non intero; pagina 0; id; date; stato; motivo)', async () => {
+    it('parametri non validi: 400 (dimensione 0, negativo, 201, non intero; pagina 0; id; date; stato; motivo)', async () => {
       const s = await scenario()
       const casi: FiltriLista[] = [
-        { perPagina: 201 },
-        { perPagina: 0 },
-        { perPagina: -1 },
-        { perPagina: 1.5 },
+        { dimensione: 201 },
+        { dimensione: 0 },
+        { dimensione: -1 },
+        { dimensione: 1.5 },
         { pagina: 0 },
         { pagina: 2.2 },
         { clienteId: 'non-un-uuid' },
@@ -529,7 +686,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         const e = await errore(lista(s, f))
         expect([JSON.stringify(f), e.status]).toEqual([JSON.stringify(f), 400])
       }
-      expect((await lista(s, { perPagina: 200 })).totale).toBe(0)
+      expect((await lista(s, { dimensione: 200 })).totale).toBe(0)
     })
 
     it('contatori coerenti con la lista: totale, proposti, mancanti, da riallineare', async () => {
@@ -546,8 +703,8 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       await correggi(s, 'RETTIFICA', m.movimentoId, m.movimentoId)
       await nuovo(s, { type: 'SCARICO', causale: 'AVVIO_RECUPERO' })
       const c = await contatori(s)
-      const l = await lista(s, { perPagina: 200 })
-      const conta = (st: string) => l.righe.filter(r => r.stato === st).length
+      const l = await lista(s, { dimensione: 200 })
+      const conta = (st: string) => l.elementi.filter(r => r.stato === st).length
       expect(c).toEqual({
         daCollegare: l.totale,
         proposti: conta('PROPOSTO'),
@@ -564,7 +721,10 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
   describe('prestazioni', () => {
     /** Inserisce N movimenti con legami in un’azienda, con una miscela realistica. */
     async function caricaVolume(s: ScenarioProposta, n: number) {
-      await owner.$executeRaw`
+      // Ogni inserimento ha un timeout: un piano pessimo deve dare errore, non restare appeso.
+      const conTimeout = (q: Prisma.PrismaPromise<number>) =>
+        owner.$transaction([owner.$executeRawUnsafe(`SET LOCAL statement_timeout = '120s'`), q])
+      await conTimeout(owner.$executeRaw`
         INSERT INTO waste_movements
           (tenant_id, registro_id, progressive_year, progressive_number, type, movement_date,
            registration_date, causale, cer_code, quantity, unit, tipo_annotazione, updated_at)
@@ -574,13 +734,13 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
                timestamp '2026-02-01 10:00',
                CASE WHEN g % 10 < 6 THEN 'INGRESSO_ESTERNO' ELSE 'AVVIO_RECUPERO' END,
                '20 03 01', 10, 'KG', 'ORDINARIA', now()
-        FROM generate_series(1, ${n}::int) g`
+        FROM generate_series(1, ${n}::int) g`)
       // Statistiche vere prima di costruire i legami (senza, il planner stima la tabella appena
       // svuotata da un giro precedente e l'INSERT ... SELECT puo' non finire per minuti).
       await owner.$executeRawUnsafe('ANALYZE waste_movements')
       // legami per i soli movimenti fatturabili: 85% FATTURATO, 9% CONFERMATO, 2% PROPOSTO,
       // 1% DA_COLLEGARE, 1% ESCLUSO, 2% nessun legame
-      await owner.$executeRaw`
+      await conTimeout(owner.$executeRaw`
         INSERT INTO legami_movimento
           (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
            data_movimento, cliente_id, contratto_id, elenco_id, motivo_esclusione, fatturato_il,
@@ -599,9 +759,9 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
             WHEN m.k < 85 THEN 'FATTURATO' WHEN m.k < 94 THEN 'CONFERMATO'
             WHEN m.k < 96 THEN 'PROPOSTO' WHEN m.k < 97 THEN 'DA_COLLEGARE'
             WHEN m.k < 98 THEN 'ESCLUSO' ELSE NULL END AS stato) x
-        WHERE x.stato IS NOT NULL`
+        WHERE x.stato IS NOT NULL`)
       // una rettifica ogni 7 numeri progressivi fra i fatturabili (la testa vigente e’ la rettifica)
-      await owner.$executeRaw`
+      await conTimeout(owner.$executeRaw`
         INSERT INTO waste_movements
           (tenant_id, registro_id, progressive_year, progressive_number, type, movement_date,
            registration_date, causale, cer_code, quantity, unit, tipo_annotazione,
@@ -611,14 +771,17 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
                'prova', now()
         FROM waste_movements m
         WHERE m.tenant_id = ${s.tenantId}::uuid AND m.progressive_year = 2027
-          AND m.causale = 'INGRESSO_ESTERNO' AND m.progressive_number % 7 = 0`
+          AND m.causale = 'INGRESSO_ESTERNO' AND m.progressive_number % 7 = 0`)
       for (const t of ['waste_movements', 'legami_movimento']) {
         await owner.$executeRawUnsafe(`ANALYZE ${t}`)
       }
     }
 
-    /** Conta le istruzioni che il servizio manda al database nelle sue transazioni. */
-    function conta() {
+    /**
+     * Intercetta le transazioni del servizio: esegue prima `inizio` (SET LOCAL, nessuna modifica
+     * al ruolo condiviso) e conta le istruzioni raw che il servizio manda al database.
+     */
+    function intercetta(inizio: string[] = []) {
       const testi: string[] = []
       const originale = app.$transaction.bind(app) as (...a: unknown[]) => Promise<unknown>
       const spia = jest.spyOn(app, '$transaction').mockImplementation(((
@@ -626,6 +789,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         opz: unknown
       ) =>
         originale(async (tx: Prisma.TransactionClient) => {
+          for (const q of inizio) await tx.$executeRawUnsafe(q)
           const proxy = new Proxy(tx, {
             get(t, p, r) {
               const v = Reflect.get(t, p, r)
@@ -644,18 +808,18 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         }, opz)) as never)
       return { testi, ripristina: () => spia.mockRestore() }
     }
+    const conta = () => intercetta()
 
+    /** Piano generico e timeout esplicito solo dentro le transazioni del servizio (`SET LOCAL`). */
     async function conPianoGenerico<R>(fn: () => Promise<R>): Promise<R> {
-      await owner.$executeRaw`ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
-      await owner.$executeRaw`ALTER ROLE wasteflow_app SET statement_timeout = '45s'`
+      const spia = intercetta([
+        `SET LOCAL plan_cache_mode = force_generic_plan`,
+        `SET LOCAL statement_timeout = '45s'`,
+      ])
       try {
-        await app.$disconnect()
-        await app.$connect()
         return await fn()
       } finally {
-        await ripristinaRuolo()
-        await app.$disconnect()
-        await app.$connect()
+        spia.ripristina()
       }
     }
 
@@ -720,8 +884,8 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         tempi[nome] = Date.now() - t0
         return r
       }
-      const p1 = await t('pagina 1', () => lista(s, { perPagina: 50 }))
-      const profonda = await t('pagina 40', () => lista(s, { pagina: 40, perPagina: 50 }))
+      const p1 = await t('pagina 1', () => lista(s, { dimensione: 50 }))
+      const profonda = await t('pagina 40', () => lista(s, { pagina: 40, dimensione: 50 }))
       const filtrata = await t('cliente+periodo', () =>
         lista(s, { clienteId: s.clienteId, dal: '2026-06-01', al: '2026-06-30' })
       )
@@ -734,18 +898,18 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
     const N = 10_000
 
     it('10.000 movimenti: una lista e’ un numero fisso di istruzioni (nessun N+1), statistiche vere e piano generico', async () => {
-      const s = await scenario()
+      const s = await scenario('2026-01-01', true)
       await caricaVolume(s, N)
       // Atteso calcolato in JavaScript sulla miscela inserita (una catena conta una volta):
-      // PROPOSTO e DA_COLLEGARE (k 94-96) e senza legame (k >= 98) sempre; CONFERMATO (k 85-93)
-      // solo se rettificato (DA_RIALLINEARE); FATTURATO ed ESCLUSO mai.
+      // PROPOSTO e DA_COLLEGARE (k 94-96) e senza legame (k >= 98) sempre; ogni altro stato con
+      // legame (FATTURATO, CONFERMATO, ESCLUSO) solo se la catena e' stata rettificata (g % 7 = 0:
+      // il legame resta indietro, DA_RIALLINEARE).
       let attesi = 0
       for (let g = 1; g <= N; g++) {
         if (g % 10 >= 6) continue
         const k = Math.floor(g / 10) % 100
-        if (k >= 94 && k < 97) attesi++
-        else if (k >= 98) attesi++
-        else if (k >= 85 && k < 94 && g % 7 === 0) attesi++
+        if ((k >= 94 && k < 97) || k >= 98) attesi++
+        else if (g % 7 === 0) attesi++
       }
       const spia = conta()
       let r: Awaited<ReturnType<typeof misura>>
@@ -758,7 +922,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       // Per lista: timeout + fatturazione da + pagina + conteggio; per i contatori: timeout +
       // fatturazione da + un’aggregazione. Il numero non dipende da N.
       expect(spia.testi.length).toBeLessThanOrEqual(4 * 4 + 3)
-      expect(r.p1.righe).toHaveLength(50)
+      expect(r.p1.elementi).toHaveLength(50)
       expect(r.p1.totale).toBe(attesi)
       expect(r.c.daCollegare).toBe(attesi)
       expect(r.stato.totale).toBeGreaterThan(0)
@@ -766,7 +930,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       // piano generico
       const g = await conPianoGenerico(() => misura(s, `${N} movimenti, piano generico`))
       expect(g.p1.totale).toBe(r.p1.totale)
-      expect(ids(g.p1.righe)).toEqual(ids(r.p1.righe))
+      expect(ids(g.p1.elementi)).toEqual(ids(r.p1.elementi))
       for (const v of Object.values(g.tempi)) expect(v).toBeLessThan(5000)
     }, 300_000)
 
@@ -774,7 +938,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
     ;(VOLUME > 0 ? it : it.skip)(
       'volume grande (LISTA_VOLUME): misura con statistiche vere, piano generico, caso peggiore',
       async () => {
-        const s = await scenario()
+        const s = await scenario('2026-01-01', true)
         await caricaVolume(s, VOLUME)
         await misura(s, `${VOLUME} movimenti, ANALYZE`)
         await conPianoGenerico(() => misura(s, `${VOLUME} movimenti, piano generico`))
