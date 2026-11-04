@@ -145,6 +145,9 @@ export interface RigaLista {
   dataMovimento: string
   cerCode: string
   descrizioneMovimento: string | null
+  /** Quantità del movimento (stringa col punto) e unità di misura. */
+  quantita: string
+  unita: string
   cliente: VoceScelta | null
   motivi: MotivoLegame[]
   avvisi: AvvisoLegame[]
@@ -157,6 +160,8 @@ export interface RigaLista {
 
 export interface FiltriLista {
   stato?: StatoLista
+  /** Più stati insieme: nella query viaggiano separati da virgola. */
+  stati?: StatoLista[]
   clienteId?: string
   registroId?: string
   motivo?: MotivoLegame
@@ -173,6 +178,13 @@ export interface ContatoriLegami {
   proposti: number
   mancanti: number
   daRiallineare: number
+}
+
+/** `GET /legami-movimento/contatori/per-contratto`: stessi stati della lista, raggruppati. */
+export interface ContatoriPerContratto {
+  perContratto: { contrattoId: string; daCollegare: number }[]
+  /** Legami con cliente ma senza contratto; vuoto se si filtra per contratti. */
+  senzaContratto: { clienteId: string; daCollegare: number }[]
 }
 
 /**
@@ -248,9 +260,38 @@ export interface FatturazioneCorrezione {
   avvisi: AvvisoLegame[]
 }
 
+/**
+ * Blocco «Fatturazione» della risposta di registrazione (Task 20): assente se la causale non è
+ * fatturabile, la fatturazione è spenta o non ancora attiva, o se è un retry (`giaRegistrato`).
+ * I testi per l'utente stanno in `avvisi` del movimento (HTTP 201, mai un errore).
+ */
+export interface FatturazioneRegistrazione {
+  esito: 'COLLEGATO' | 'NON_RIUSCITO'
+  legameId: string | null
+  stato: StatoLegame | null
+  motivi: MotivoLegame[]
+  avvisi: AvvisoLegame[]
+}
+
+/** Riga del blocco `legame` di registrazione/rettifica: la selezione completa più i ritocchi. */
+export interface RigaLegameRegistrazione {
+  rigaAddebitoId: string
+  quantita?: string | null
+  prezzo?: string
+  sconto?: string | null
+}
+
 /** Blocco `legame` facoltativo del corpo della registrazione e della rettifica (spec §7.1). */
-export interface DatiLegameRegistrazione extends ModificheLegame {
+export interface DatiLegameRegistrazione {
   azione: 'CONFERMA' | 'PROPOSTA'
+  clienteId?: string
+  contrattoId?: string
+  elencoId?: string
+  /**
+   * SELEZIONE COMPLETA delle righe da tenere (anche quelle non ritoccate: quelle omesse spariscono)
+   * più il ritocco dei valori. `rimuovi` non esiste: in registrazione darebbe 400.
+   */
+  righe?: RigaLegameRegistrazione[]
 }
 
 export interface CorpoAzioneMassa {
@@ -297,11 +338,23 @@ export interface DifferenzaAggiornamento {
   scontoDopo: string | null
 }
 
+export type MotivoSaltoAggiornamento =
+  | 'FATTURATO'
+  | 'IMPORTATO_FATTURATO'
+  | 'ESCLUSO'
+  | 'ANNULLATO'
+  | 'PREZZO_SPECIALE'
+  | 'PREZZO_MANUALE'
+
 export interface AnteprimaAggiornamento {
   firma: string
   cambiano: number
+  /** Legami non fatturati già allineati al listino (il backend lo manda sempre). */
+  invariati: number
   differenze: DifferenzaAggiornamento[]
-  saltati: { motivo: string; numero: number }[]
+  saltati: { motivo: MotivoSaltoAggiornamento; numero: number }[]
+  /** Legami che dopo l'aggiornamento tornano «Da collegare» (il backend lo manda sempre). */
+  daCollegare: number
   /** Righe con prezzo manuale: «escluse, prezzo modificato a mano» (decisione 16). */
   righeEscluseManuali: number
 }
@@ -309,4 +362,6 @@ export interface AnteprimaAggiornamento {
 export interface EsitoAggiornamento {
   aggiornati: number
   saltati: number
+  /** Legami passati a «Da collegare» (il backend lo manda sempre). */
+  daCollegare: number
 }

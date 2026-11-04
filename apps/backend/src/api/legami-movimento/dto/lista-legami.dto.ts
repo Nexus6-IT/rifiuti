@@ -59,3 +59,12 @@ export class ListaLegamiQueryDto {
   @IsString({ message: 'La dimensione della pagina non è valida.' })
   dimensione?: string
 }
+
+/** Query di `GET /legami-movimento/contatori/per-contratto`: id dei contratti separati da virgola. */
+export class ContatoriPerContrattoQueryDto {
+  @ApiPropertyOptional({ description: 'Id dei contratti (al massimo 200) separati da virgola' })
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value.join(',') : value))
+  @IsString({ message: 'I contratti non sono validi.' })
+  contratti?: string
+}

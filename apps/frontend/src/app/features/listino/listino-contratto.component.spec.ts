@@ -44,6 +44,7 @@ const riga = (id: string, over: Partial<RigaAddebito> = {}): RigaAddebito =>
   ({
     id,
     elencoId: 'e1',
+    eliminabile: true,
     tipo: 'CER',
     etichettaTipo: 'Riga CER',
     famiglia: 'CER',
@@ -450,6 +451,34 @@ describe('ListinoContrattoComponent', () => {
         expect(delContratto).toHaveBeenCalledTimes(2)
       })
 
+      it('elenco con eliminabile false: Elimina disabilitato con tooltip «in uso», Modifica resta', async () => {
+        await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { eliminabile: false })]))
+        expect(bottone('listino-elimina-e1')!.disabled).toBeTrue()
+        expect(q('listino-elimina-tip-e1')!.getAttribute('title')).toMatch(/in uso/i)
+        expect(bottone('listino-modifica-e1')!.disabled).toBeFalse()
+      })
+
+      it('409 ELENCO_ADDEBITI_IN_USO: mostra il messaggio del backend senza "Ricarica"', async () => {
+        eliminaElenco.and.returnValue(
+          throwError(() => ({
+            status: 409,
+            error: {
+              error: 'ELENCO_ADDEBITI_IN_USO',
+              message: "L'elenco è usato da movimenti: non si può eliminare.",
+            },
+          }))
+        )
+        await apri()
+        bottone('listino-elimina-e2')!.click()
+        await stabilizza(fixture)
+        accettaConferma()
+        await stabilizza(fixture)
+        expect(toast.error).toHaveBeenCalledWith(
+          "L'elenco è usato da movimenti: non si può eliminare."
+        )
+        expect(q('listino-ricarica')).toBeNull()
+      })
+
       it('testo di conferma con 0 e con 1 riga', async () => {
         await apri(
           'ADMIN',
@@ -850,14 +879,46 @@ describe('ListinoContrattoComponent', () => {
       expect(q('listino-elimina-riga-r1')).toBeNull()
     })
 
-    it('il cestino segue `eliminabile`, non `modificabile` (voce 26)', async () => {
-      const c = await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { eliminabile: false })]))
+    it('riga con eliminabile false: Elimina disabilitato con tooltip «in uso», Apri resta (chiusura di validità)', async () => {
+      righeList.and.returnValue(of([riga('r1', { eliminabile: false }), riga('r2')]))
+      const c = await apri()
       await scegli('e1')
-      expect(q('listino-elimina-riga-r1')).toBeNull()
-      c.eliminaRiga(riga('r1'))
+      expect(bottone('listino-elimina-riga-r1')!.disabled).toBeTrue()
+      expect(q('listino-elimina-riga-tip-r1')!.getAttribute('title')).toMatch(/in uso/i)
+      expect(bottone('listino-elimina-riga-r2')!.disabled).toBeFalse()
+      expect(q('listino-elimina-riga-tip-r2')!.getAttribute('title')).toBeNull()
+      expect(bottone('listino-apri-r1')!.disabled).toBeFalse()
+      c.eliminaRiga(riga('r1', { eliminabile: false }))
       await stabilizza(fixture)
       expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
       expect(righeElimina).not.toHaveBeenCalled()
+    })
+
+    it('elenco usato dai legami: le righe non citate restano eliminabili', async () => {
+      await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { eliminabile: false })]))
+      await scegli('e1')
+      expect(bottone('listino-elimina-riga-r1')!.disabled).toBeFalse()
+    })
+
+    it('409 RIGA_ADDEBITO_IN_USO: mostra il messaggio del backend e rilegge', async () => {
+      righeElimina.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            error: 'RIGA_ADDEBITO_IN_USO',
+            message: 'La riga è usata da movimenti: non si può eliminare.',
+          },
+        }))
+      )
+      await apri()
+      await scegli('e1')
+      await elimina()
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(toast.error).toHaveBeenCalledWith(
+        'La riga è usata da movimenti: non si può eliminare.'
+      )
+      expect(delContratto).toHaveBeenCalledTimes(2)
     })
 
     it('409 di versione: messaggio con "Ricarica", senza rileggere di nascosto', async () => {
@@ -949,7 +1010,7 @@ describe('ListinoContrattoComponent', () => {
       expect(crea).not.toHaveBeenCalled()
     })
 
-    it('modifica dipende da modificabile, elimina da eliminabile', async () => {
+    it('modifica dipende da modificabile; elimina è nascosto se non modificabile e disabilitato se in uso', async () => {
       await apri(
         'ADMIN',
         risposta('ATTIVO', [
@@ -960,7 +1021,7 @@ describe('ListinoContrattoComponent', () => {
       expect(q('listino-modifica-e1')).toBeNull()
       expect(q('listino-elimina-e1')).toBeNull()
       expect(q('listino-modifica-e2')).toBeTruthy()
-      expect(q('listino-elimina-e2')).toBeNull()
+      expect(bottone('listino-elimina-e2')!.disabled).toBeTrue()
     })
   })
 

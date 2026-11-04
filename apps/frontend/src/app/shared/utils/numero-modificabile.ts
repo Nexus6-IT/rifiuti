@@ -48,6 +48,29 @@ export function leggiCascata(testo: string): EsitoNumero<string> {
   return { valore: termini.map(conPunto).join('+'), errore: null }
 }
 
+/** Messaggio della regola E10 sulle cascate di sconto (lo stesso del backend). */
+export const MSG_CASCATA_SCONTO =
+  'Le percentuali a cascata sono al massimo tre (es. 10+5), ciascuna fino a 99,99.'
+
+/** Termine di una cascata come lo accetta il backend (`TERMINE_CASCATA`): `n`, `nn`, `n,n`, `nn,nn`. */
+const TERMINE_SCONTO = /^\d{1,2}(\.\d{1,2})?$/
+
+/**
+ * Cascata di sconto come la accetta il backend (E10): al massimo tre termini, ciascuno da 0 a
+ * 99,99, senza segno. Prima la forma (`leggiCascata`), poi i limiti: `-5`, `100`, `10,555` e
+ * quattro termini sono errori qui, perché il backend risponderebbe 400 e la registrazione intera
+ * non partirebbe.
+ */
+export function leggiScontoCascata(testo: string): EsitoNumero<string> {
+  const lettura = leggiCascata(testo)
+  if (lettura.errore !== null || lettura.valore === null) return lettura
+  const termini = lettura.valore.split('+')
+  if (termini.length > 3 || !termini.every(t => TERMINE_SCONTO.test(t))) {
+    return { valore: null, errore: MSG_CASCATA_SCONTO }
+  }
+  return lettura
+}
+
 /** Intero senza segno: `1a` e `2026x` sono errori, non 1 e 2026. */
 export function leggiIntero(testo: string): EsitoNumero<number> {
   const t = senzaSpazi(testo)

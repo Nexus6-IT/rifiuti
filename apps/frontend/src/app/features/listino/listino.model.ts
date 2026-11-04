@@ -282,6 +282,8 @@ export interface EsitoEliminazioneRiga {
 export interface RigaAddebito {
   id: string
   elencoId: string
+  /** Falso se un legame di un movimento cita la riga (decisione 8, 4.3): non si elimina. */
+  eliminabile: boolean
   tipo: string
   etichettaTipo: string
   famiglia: string

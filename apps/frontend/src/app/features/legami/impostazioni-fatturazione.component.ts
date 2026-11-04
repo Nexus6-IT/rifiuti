@@ -22,9 +22,6 @@ function movimentiToccati(err: unknown): number | null {
   return typeof n === 'number' ? n : null
 }
 
-const eVersioneSuperata = (codice: string | null): boolean =>
-  codice === 'VERSIONE_SUPERATA' || !!codice?.endsWith('_NEL_FRATTEMPO')
-
 /**
  * Schermata «Fatturazione da»: la data dalla quale i movimenti entrano nella fatturazione.
  * Data vuota = fatturazione spenta. Solo ADMIN e SUPER_ADMIN modificano.
@@ -205,7 +202,7 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
         return
       }
     }
-    if (e.conflitto && eVersioneSuperata(e.codice)) {
+    if (e.conflitto && e.rilettura) {
       this.errore.set(MESSAGGIO_VERSIONE)
       this.carica(MESSAGGIO_VERSIONE)
       return

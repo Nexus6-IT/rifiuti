@@ -46,11 +46,38 @@ describe('LegamiService', () => {
     req.flush({ elementi: [], totale: 0 })
   })
 
+  it('lista: stati[] in query separati da virgola ed esclusi false come "false"', () => {
+    servizio.lista({ stati: ['MANCANTE', 'PROPOSTO'], esclusi: false }).subscribe()
+    const req = http.expectOne(r => r.url === base)
+    expect(req.request.params.get('stati')).toBe('MANCANTE,PROPOSTO')
+    expect(req.request.params.get('esclusi')).toBe('false')
+    req.flush({ elementi: [], totale: 0 })
+  })
+
+  it('aggiornaContatori scrive il totale nel signal condiviso; con un errore torna a 0', () => {
+    servizio.aggiornaContatori()
+    http
+      .expectOne(`${base}/contatori`)
+      .flush({ daCollegare: 9, proposti: 1, mancanti: 5, daRiallineare: 3 })
+    expect(servizio.daCollegare()).toBe(9)
+    servizio.aggiornaContatori()
+    http.expectOne(`${base}/contatori`).flush('x', { status: 500, statusText: 'err' })
+    expect(servizio.daCollegare()).toBe(0)
+  })
+
   it('contatori fa GET /contatori', () => {
     servizio.contatori().subscribe()
     const req = http.expectOne(`${base}/contatori`)
     expect(req.request.method).toBe('GET')
     req.flush({ daCollegare: 0, proposti: 0, mancanti: 0, daRiallineare: 0 })
+  })
+
+  it('contatoriPerContratto fa GET /contatori/per-contratto?contratti=id,id', () => {
+    servizio.contatoriPerContratto(['c1', 'c2']).subscribe()
+    const req = http.expectOne(r => r.url === `${base}/contatori/per-contratto`)
+    expect(req.request.method).toBe('GET')
+    expect(req.request.params.get('contratti')).toBe('c1,c2')
+    req.flush({ perContratto: [], senzaContratto: [] })
   })
 
   it('dettaglio fa GET /:id', () => {

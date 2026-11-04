@@ -1,7 +1,13 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { loginAndSaveState, skipReason } from '../../fixtures/auth'
-import { hasRoleCredentials, getApiUrl } from '../../utils/env'
-import { apiLogin, apiGet, apiPost, ApiClientError } from '../../utils/api-client'
+import { getApiUrl } from '../../utils/env'
+import { apiGet, apiPost, ApiClientError } from '../../utils/api-client'
+import {
+  accediUiComeAzienda,
+  clientDbLocale,
+  creaAziendaDiTest,
+  tokenAzienda,
+  type AziendaDiTest,
+} from '../../utils/azienda-di-test'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
 import { ATTESA_SERVER, attendiElenco, cliccaEAttendi, cliccaEChiudi } from '../../utils/attese'
@@ -25,7 +31,9 @@ import { ATTESA_SERVER, attendiElenco, cliccaEAttendi, cliccaEChiudi } from '../
  *  11. Annullo del contratto A: il listino diventa di sola lettura.
  *  12. VIEWER: legge il listino senza pulsanti di scrittura.
  *
- * Isolamento (R52): tutti i dati (cliente con P.IVA valida, contratti, archivio addebiti, codice
+ * Isolamento (R52): lo spec lavora in un'AZIENDA DI TEST PROPRIA creata in `beforeAll`, non
+ * nell'azienda seed condivisa (i cui 99 codici dei registri IVA sono esauriti nel database locale
+ * che dura nel tempo); sia l'admin sia il VIEWER accedono a quell'azienda. Tutti i dati (cliente con P.IVA valida, contratti, archivio addebiti, codice
  * IVA, gruppo, registro, condizione) si creano via API in `beforeAll` con nomi casuali per
  * tentativo; il cliente non ha altri contratti, quindi variazione e ISTAT toccano solo i suoi.
  * La variazione e' filtrata sul contratto scelto nella lista e sul CER; l'ISTAT usa un mese di
@@ -81,6 +89,10 @@ const d = {
   codiceMw: '',
   codiceMw2: '',
 }
+
+const db = clientDbLocale()
+/** Azienda di test propria dello spec (vedi utils/azienda-di-test.ts), creata in `beforeAll`. */
+let azienda: AziendaDiTest
 
 /** Cio' che il tentativo ha creato, in ordine di creazione (si ripulisce al contrario). */
 let creati: Creato[] = []
@@ -151,12 +163,16 @@ const giorno = (anno: number, mese: number) => `${anno}-${String(mese).padStart(
 
 test.describe('Listino del contratto — admin', () => {
   test.describe.configure({ mode: 'serial' })
-  test.skip(!hasRoleCredentials('admin'), skipReason('admin'))
+  test.skip(
+    db === null,
+    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
+  )
 
   test.beforeAll(async () => {
-    if (!hasRoleCredentials('admin')) return
+    if (!db) return
     creati = []
-    const token = await apiLogin('admin')
+    azienda = await creaAziendaDiTest(db, 'listino contratto')
+    const token = await tokenAzienda(azienda, 'admin')
     d.cliente = conPrefissoUnico('Cliente listino')
     d.numeroA = `L-${codiceCasuale(8)}`
     d.numeroB = `L-${codiceCasuale(8)}`
@@ -286,8 +302,9 @@ test.describe('Listino del contratto — admin', () => {
   })
 
   test.afterAll(async () => {
-    if (!hasRoleCredentials('admin') || creati.length === 0) return
-    const token = await apiLogin('admin')
+    await db?.$disconnect()
+    if (!azienda || creati.length === 0) return
+    const token = await tokenAzienda(azienda, 'admin')
     const errori: string[] = []
     for (const { tipo, id } of [...creati].reverse()) {
       try {
@@ -318,8 +335,8 @@ test.describe('Listino del contratto — admin', () => {
     expect(errori, 'pulizia dei dati creati dallo spec').toEqual([])
   })
 
-  test.beforeEach(async ({ page, context }) => {
-    await loginAndSaveState(page, context, 'admin')
+  test.beforeEach(async ({ page }) => {
+    await accediUiComeAzienda(page, azienda, 'admin')
   })
 
   test('elenco 001 predefinito', async ({ page }) => {
@@ -661,14 +678,13 @@ test.describe('Listino del contratto — admin', () => {
     await soloLettura(page)
   })
 
-  test('VIEWER: legge il listino senza pulsanti di scrittura', async ({ page, context }) => {
-    test.skip(!hasRoleCredentials('viewer'), skipReason('viewer'))
+  test('VIEWER: legge il listino senza pulsanti di scrittura', async ({ page }) => {
     // B ha l'elenco 001 con le righe copiate: il VIEWER lo legge, non puo' scrivere nulla.
     expect(
       (await righeApi(d.ids.B)).length,
       'precondizione: B ha le righe copiate'
     ).toBeGreaterThan(0)
-    await loginAndSaveState(page, context, 'viewer')
+    await accediUiComeAzienda(page, azienda, 'viewer')
 
     await apriContratti(page, d.numeroB)
     await expect(pagina(page).getByRole('button', { name: 'Variazioni prezzi' })).toHaveCount(0)
@@ -785,7 +801,7 @@ interface RigaApi {
 
 /** Le righe di tutti gli elenchi di un contratto, lette via API. */
 async function righeApi(contrattoId: string): Promise<RigaApi[]> {
-  const token = await apiLogin('admin')
+  const token = await tokenAzienda(azienda, 'admin')
   const { elenchi } = await apiGet<{ elenchi: { id: string }[] }>(
     `/contratti-clienti/${contrattoId}/elenchi`,
     token

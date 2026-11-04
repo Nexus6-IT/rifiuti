@@ -1,5 +1,22 @@
 import { BadRequestException } from '@nestjs/common'
-import { DIMENSIONE_PREDEFINITA, MAX_DIMENSIONE, normalizzaFiltri } from './lista-legami.service'
+import {
+  DIMENSIONE_PREDEFINITA,
+  ListaLegamiService,
+  MAX_CONTRATTI_CONTATORI,
+  MAX_DIMENSIONE,
+  normalizzaFiltri,
+} from './lista-legami.service'
+
+describe('contatoriPerContratto: validazione degli id', () => {
+  const service = new ListaLegamiService({} as never)
+  const T = '11111111-1111-4111-8111-111111111111'
+
+  it('id non UUID o piu’ del tetto: 400 prima di toccare il database', () => {
+    expect(() => service.contatoriPerContratto(T, ['x'])).toThrow(BadRequestException)
+    const troppi = Array.from({ length: MAX_CONTRATTI_CONTATORI + 1 }, () => T)
+    expect(() => service.contatoriPerContratto(T, troppi)).toThrow(BadRequestException)
+  })
+})
 
 describe('normalizzaFiltri (lista «da collegare»)', () => {
   it('predefiniti: pagina 1, 50 righe, stati visibili senza ESCLUSO', () => {

@@ -67,16 +67,25 @@ import { ElencoAddebiti } from './listino.model'
             (onClick)="modifica.emit(e)"
             [attr.data-testid]="'listino-modifica-' + e.id"
           />
-          <p-button
-            *ngIf="e.eliminabile"
-            icon="pi pi-trash"
-            severity="danger"
-            [text]="true"
-            size="small"
-            [ariaLabel]="'Elimina l’elenco ' + e.codice"
-            (onClick)="elimina.emit(e)"
-            [attr.data-testid]="'listino-elimina-' + e.id"
-          />
+          <span
+            *ngIf="e.modificabile"
+            [attr.title]="e.eliminabile ? null : MOTIVO_IN_USO"
+            [attr.data-testid]="'listino-elimina-tip-' + e.id"
+          >
+            <p-button
+              icon="pi pi-trash"
+              severity="danger"
+              [text]="true"
+              size="small"
+              [disabled]="!e.eliminabile"
+              [ariaLabel]="
+                'Elimina l’elenco ' + e.codice + (e.eliminabile ? '' : ' (' + MOTIVO_IN_USO + ')')
+              "
+              (onClick)="elimina.emit(e)"
+              [attr.data-testid]="'listino-elimina-' + e.id"
+            />
+            <small *ngIf="!e.eliminabile" class="cell-sub" aria-hidden="true">In uso</small>
+          </span>
         </span>
       </li>
     </ul>
@@ -139,4 +148,6 @@ export class ElenchiPannelloComponent {
   @Output() nuovo = new EventEmitter<void>()
   @Output() modifica = new EventEmitter<ElencoAddebiti>()
   @Output() elimina = new EventEmitter<ElencoAddebiti>()
+
+  readonly MOTIVO_IN_USO = 'In uso: l’elenco è citato da movimenti'
 }

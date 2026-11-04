@@ -1,7 +1,14 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials, getApiUrl } from '../../utils/env'
-import { apiLogin, apiGet, apiDelete, ApiClientError } from '../../utils/api-client'
+import { apiGet, apiDelete, ApiClientError } from '../../utils/api-client'
+import {
+  accediUiComeAzienda,
+  clientDbLocale,
+  creaAziendaDiTest,
+  tokenAzienda,
+  type AziendaDiTest,
+} from '../../utils/azienda-di-test'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
 import {
@@ -32,6 +39,11 @@ import {
  * - `apps/frontend/src/app/features/contratti-cliente/*.component.ts` (elenco, dialog, sezioni,
  *   periodi, allegati, annullo)
  * - `apps/backend/src/domain/contratti-cliente/regole-contratto-cliente.ts` (messaggi di D8)
+ *
+ * Isolamento: il gruppo dell'operatore lavora in un'AZIENDA DI TEST PROPRIA creata in `beforeAll`
+ * (vedi utils/azienda-di-test.ts), non nell'azienda seed condivisa, i cui 99 codici dei registri
+ * IVA sono esauriti nel database locale che dura nel tempo; il VIEWER non crea nulla e resta
+ * sull'azienda seed.
  *
  * Il database di CI viene riusato fra due passate: codici, partita IVA, IBAN e numero del
  * contratto sono casuali per esecuzione. Pulizia in `afterAll` via API: un cliente con contratti
@@ -187,16 +199,23 @@ async function apriModificaContratto(page: Page): Promise<Locator> {
   return dlg
 }
 
+const db = clientDbLocale()
+let azienda: AziendaDiTest
+
 test.describe('Contratto cliente — operatore', () => {
   test.describe.configure({ mode: 'serial' })
-  test.skip(!hasRoleCredentials('operator'), skipReason('operator'))
+  test.skip(
+    db === null,
+    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
+  )
 
   test.beforeAll(async () => {
-    if (!hasRoleCredentials('operator')) return
+    if (!db) return
+    azienda = await creaAziendaDiTest(db, 'contratto cliente')
     // Codice del registro: uno dei due cifre ancora liberi (anche fra i disattivati, che non si
     // eliminano e restano nell'elenco). Se non ce n'e' nessuno il percorso non si puo' provare.
     const occupati = new Set(
-      (await elencoApi('registri-iva', await apiLogin('operator'))).map(r => r.codice)
+      (await elencoApi('registri-iva', await tokenAzienda(azienda, 'operator'))).map(r => r.codice)
     )
     const liberi = Array.from({ length: 90 }, (_, i) => String(10 + i)).filter(
       c => !occupati.has(c)
@@ -208,13 +227,14 @@ test.describe('Contratto cliente — operatore', () => {
     dati.registro = liberi[Math.floor(Math.random() * liberi.length)]
   })
 
-  test.beforeEach(async ({ page, context }) => {
-    await loginAndSaveState(page, context, 'operator')
+  test.beforeEach(async ({ page }) => {
+    await accediUiComeAzienda(page, azienda, 'operator')
   })
 
   test.afterAll(async () => {
-    if (!hasRoleCredentials('operator') || creati.length === 0) return
-    const token = await apiLogin('operator')
+    await db?.$disconnect()
+    if (!azienda || creati.length === 0) return
+    const token = await tokenAzienda(azienda, 'operator')
     const errori: string[] = []
     // Dal piu' recente: il cliente usa le tabelle, quindi va prima di loro.
     for (const { tabella, trova, query } of [...creati].reverse()) {
@@ -352,7 +372,7 @@ test.describe('Contratto cliente — operatore', () => {
     })
 
     // Precondizione del gruppo seriale: il cliente lo crea il test precedente.
-    const token = await apiLogin('operator')
+    const token = await tokenAzienda(azienda, 'operator')
     expect(
       (await elencoApi('clienti', token)).some(r => r.ditta?.ragioneSociale === nomi.cliente),
       `precondizione: il cliente "${nomi.cliente}" non esiste (il test "cliente su ditta nuova" non e' riuscito a crearlo)`

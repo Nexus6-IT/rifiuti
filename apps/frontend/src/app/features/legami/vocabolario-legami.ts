@@ -71,3 +71,11 @@ export function severitaStato(s: StatoLista): SeveritaStato {
       return 'secondary'
   }
 }
+
+/** Come `severitaStato`, ma con i nomi che `p-tag` di PrimeNG 17 accetta (`warning`, non `warn`). */
+export function severitaTag(
+  s: StatoLista
+): 'success' | 'info' | 'warning' | 'danger' | 'secondary' {
+  const v = severitaStato(s)
+  return v === 'warn' ? 'warning' : v
+}

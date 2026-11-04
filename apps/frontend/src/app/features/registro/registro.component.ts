@@ -108,6 +108,16 @@ import {
   testoEsitoVerifica,
 } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
+import { catturaFocus } from '../../shared/utils/ripristina-focus'
+import {
+  BloccoFatturazioneComponent,
+  DatiMovimentoLegame,
+  SceltaLegame,
+  StatoBlocco,
+} from '../legami/blocco-fatturazione.component'
+import { DatiLegameRegistrazione } from '../legami/legami.model'
+import { EsitoRiquadro, RiquadroLegameComponent } from '../legami/riquadro-legame.component'
 
 interface DropdownOption<T> {
   label: string
@@ -148,6 +158,8 @@ interface FirOption {
     RentriRigaAzioniComponent,
     CausaliRegistroDialogComponent,
     CorreggiMovimentoDialogComponent,
+    BloccoFatturazioneComponent,
+    RiquadroLegameComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -212,6 +224,7 @@ interface FirOption {
             label="Registra movimento"
             icon="pi pi-plus"
             (onClick)="apriForm()"
+            data-testid="registro-nuovo"
             ariaLabel="Registra un nuovo movimento di carico o scarico"
           ></p-button>
         </div>
@@ -406,6 +419,16 @@ interface FirOption {
                 </td>
                 <td class="cell-nowrap">
                   <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
+                  <p-button
+                    icon="pi pi-eye"
+                    [text]="true"
+                    [rounded]="true"
+                    size="small"
+                    [attr.data-testid]="'registro-dettaglio-' + m.id"
+                    [ariaLabel]="'Dettaglio del movimento ' + numeroMovimento(m)"
+                    pTooltip="Dettaglio e fatturazione"
+                    (onClick)="apriDettaglio(m)"
+                  ></p-button>
                 </td>
                 <td *ngIf="piuRegistri()" data-testid="registro-col-sede">
                   {{ etichettaSede(m.registroId) }}
@@ -952,6 +975,16 @@ interface FirOption {
               </div>
             </div>
           </section>
+
+          <!-- ===== Sezione 4: Fatturazione (visibile solo con causale fatturabile) ===== -->
+          <app-blocco-fatturazione
+            [datiMovimento]="datiLegame()"
+            [(scelta)]="sceltaLegame"
+            (legameChange)="legame = $event"
+            (validoChange)="bloccoFatturazioneValido = $event"
+            (inAttesaChange)="bloccoInAttesa = $event"
+            (statoChange)="bloccoStato = $event"
+          ></app-blocco-fatturazione>
         </form>
 
         <ng-template pTemplate="footer">
@@ -961,13 +994,35 @@ interface FirOption {
             (onClick)="chiudiForm()"
             ariaLabel="Annulla e chiudi"
           ></p-button>
-          <p-button
-            label="Registra"
-            icon="pi pi-check"
-            [loading]="saving()"
-            (onClick)="salva()"
-            ariaLabel="Registra il movimento"
-          ></p-button>
+          <ng-container *ngIf="bloccoStato.visibile; else registraSingolo">
+            <p-button
+              label="Registra senza collegare"
+              [outlined]="true"
+              [loading]="saving()"
+              [disabled]="bloccoInAttesa"
+              (onClick)="salva('PROPOSTA')"
+              data-testid="registra-senza-collegare"
+            ></p-button>
+            <p-button
+              label="Registra e conferma legame"
+              icon="pi pi-check"
+              [loading]="saving()"
+              [disabled]="!bloccoStato.confermabile"
+              (onClick)="salva('CONFERMA')"
+              data-testid="registra-e-conferma"
+            ></p-button>
+          </ng-container>
+          <ng-template #registraSingolo>
+            <p-button
+              label="Registra"
+              icon="pi pi-check"
+              [loading]="saving()"
+              [disabled]="bloccoInAttesa"
+              (onClick)="salva()"
+              data-testid="registra"
+              ariaLabel="Registra il movimento"
+            ></p-button>
+          </ng-template>
         </ng-template>
       </p-dialog>
 
@@ -1066,10 +1121,44 @@ interface FirOption {
         </ng-template>
       </p-dialog>
 
+      <!-- Dettaglio del movimento con il riquadro del legame ------------------>
+      <p-dialog
+        [visible]="!!dettaglioMovimento"
+        (visibleChange)="$event ? null : chiudiDettaglio()"
+        (onShow)="focalizzaDettaglio()"
+        [modal]="true"
+        [header]="dettaglioMovimento ? 'Movimento ' + numeroMovimento(dettaglioMovimento) : ''"
+        [style]="{ width: '720px', maxWidth: '95vw' }"
+        closeAriaLabel="Chiudi il dettaglio del movimento"
+      >
+        <ng-container *ngIf="dettaglioMovimento as d">
+          <section class="dettaglio-mov" tabindex="-1" data-testid="registro-dettaglio">
+            <strong>{{ d.type === 'CARICO' ? 'Carico' : 'Scarico' }}</strong>
+            · {{ d.movementDate | date: 'dd/MM/yyyy' }} ·
+            <span class="cell-mono">{{ d.cerCode }}</span> · {{ d.quantity | number: '1.0-3' }}
+            {{ d.unit }} · {{ causaleLabel(d) }}
+            <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
+          </section>
+          <app-riquadro-legame
+            [movimentoId]="d.id"
+            [eTesta]="vigente(d)"
+            (esitoChange)="dettaglioEsito = $event"
+          ></app-riquadro-legame>
+          <p
+            *ngIf="dettaglioEsito === 'assente'"
+            class="text-muted"
+            data-testid="registro-dettaglio-senza-legame"
+          >
+            Questo movimento non è collegato alla fatturazione.
+          </p>
+        </ng-container>
+      </p-dialog>
+
       <!-- Dialog rettifica / annullamento ------------------------------------->
       <app-correggi-movimento-dialog
         *ngIf="correzioneVisibile"
         [(visible)]="correzioneVisibile"
+        (visibleChange)="$event ? null : chiudiCorrezione()"
         [modo]="correzioneModo"
         [movimento]="correzioneMovimento"
         (corretto)="onCorretto($event)"
@@ -1380,6 +1469,34 @@ export class RegistroComponent implements OnInit {
   readonly paginazione = signal({ total: 0, page: 1, limit: 20, totalPages: 0 })
   readonly loading = signal(false)
   readonly saving = signal(false)
+
+  // ─── Blocco «Fatturazione» (4.3c) ─────────────────────────────────────────
+
+  /** Dati del movimento per la proposta di legame; null finché il form è incompleto. */
+  private readonly datiForm = signal<DatiMovimentoLegame | null>(null)
+  /**
+   * Come `datiForm`, ma null se l'API dice che la causale scelta non è fatturabile: la proposta
+   * non si chiede nemmeno. Una causale che l'API non descrive resta «forse fatturabile».
+   */
+  readonly datiLegame = computed<DatiMovimentoLegame | null>(() => {
+    const dati = this.datiForm()
+    const o = this.opzioniApi()
+    if (!dati || !o || o.tipo !== dati.type) return dati
+    const causale = o.causali.find(c => c.codice === dati.causale)
+    return causale?.fatturabile === false ? null : dati
+  })
+  /** Contratto ed elenco scelti dall'utente nel blocco. */
+  sceltaLegame: SceltaLegame | null = null
+  /** Blocco `legame` da inviare con la registrazione (null = nessuno). */
+  legame: DatiLegameRegistrazione | null = null
+  /** Falso se un campo del blocco è in errore: la registrazione aspetta. */
+  bloccoFatturazioneValido = true
+  /** Vero mentre il blocco aggiorna la proposta: il `legame` emesso sarebbe superato. */
+  bloccoInAttesa = false
+  /** Blocco visibile e conferma possibile: decidono i pulsanti del footer. */
+  bloccoStato: StatoBlocco = { visibile: false, confermabile: false }
+  private firIdLegame: string | null = null
+  private sottoscrizioneDatiLegame: Subscription | null = null
   readonly exporting = signal(false)
   readonly error = signal<string | null>(null)
 
@@ -1509,6 +1626,50 @@ export class RegistroComponent implements OnInit {
       notes: [''],
     })
     this.avviaOpzioniCausali()
+    this.avviaDatiLegame()
+  }
+
+  /** Il blocco «Fatturazione» chiede la proposta a ogni cambio dei campi che la determinano. */
+  private avviaDatiLegame(): void {
+    this.sottoscrizioneDatiLegame?.unsubscribe()
+    this.sottoscrizioneDatiLegame = this.form.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        const dati = this.costruisciDatiLegame()
+        // Un altro FIR può avere un altro cliente: la scelta di contratto ed elenco non vale più.
+        const firId = dati?.firId ?? null
+        if (firId !== this.firIdLegame && dati) this.sceltaLegame = null
+        this.firIdLegame = dati ? firId : this.firIdLegame
+        this.datiForm.set(dati)
+      })
+    this.datiForm.set(this.costruisciDatiLegame())
+  }
+
+  /** Solo con i campi obbligatori compilati e la quantità positiva: prima non c'è nulla da proporre. */
+  private costruisciDatiLegame(): DatiMovimentoLegame | null {
+    const v = this.form.getRawValue() as Record<string, unknown>
+    const cer = typeof v['cerCode'] === 'string' ? v['cerCode'].trim() : ''
+    const quantita = v['quantity']
+    const data = v['movementDate']
+    if (
+      !v['type'] ||
+      !v['causale'] ||
+      !cer ||
+      !(data instanceof Date) ||
+      typeof quantita !== 'number' ||
+      !(quantita > 0)
+    ) {
+      return null
+    }
+    return {
+      causale: v['causale'] as string,
+      type: v['type'] as TipoMovimento,
+      cerCode: cer,
+      movementDate: giornoLocale(data),
+      unit: (v['unit'] as string) || 'KG',
+      quantity: String(quantita),
+      ...(v['firId'] ? { firId: v['firId'] as string } : {}),
+    }
   }
 
   /**
@@ -1565,7 +1726,10 @@ export class RegistroComponent implements OnInit {
       })
   }
 
+  private ripristinaForm: (() => void) | null = null
+
   apriForm(): void {
+    this.ripristinaForm = catturaFocus('registro-nuovo')
     // opzioni fresche a ogni apertura: il catalogo può essere cambiato nel frattempo
     this.causali.invalida()
     this.messaggioCausale.set(null)
@@ -1582,6 +1746,12 @@ export class RegistroComponent implements OnInit {
     this.ricaricaOpzioni.next({ tipo: 'CARICO', giorno: giornoLocale(new Date()) })
     this.sottoscrizioneProposta?.unsubscribe()
     this.sottoscrizioneProposta = null
+    this.sceltaLegame = null
+    this.legame = null
+    this.bloccoFatturazioneValido = true
+    this.bloccoInAttesa = false
+    this.bloccoStato = { visibile: false, confermabile: false }
+    this.firIdLegame = null
     this.sedeBloccataDaFir.set(false)
     this.form.get('registroId')?.enable({ emitEvent: false })
     this.applicaRegistroAlForm(true)
@@ -1615,6 +1785,8 @@ export class RegistroComponent implements OnInit {
 
   chiudiForm(): void {
     this.formVisible = false
+    this.ripristinaForm?.()
+    this.ripristinaForm = null
   }
 
   /** Imposta il tipo movimento dal toggle Carico/Scarico e aggiorna lo stato. */
@@ -1927,10 +2099,29 @@ export class RegistroComponent implements OnInit {
 
   // ─── Salvataggio ─────────────────────────────────────────────────────────
 
-  salva(): void {
+  /**
+   * `azione` solo con il blocco «Fatturazione» visibile: PROPOSTA («senza collegare») o CONFERMA.
+   * Senza blocco si registra e basta.
+   */
+  salva(azione?: 'PROPOSTA' | 'CONFERMA'): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched()
       this.toast.error('Controlla i campi evidenziati e riprova.')
+      return
+    }
+    // Il blocco pesa solo se c'è un `legame` da mandare: un blocco nascosto non deve mai impedire di registrare.
+    if (this.legame && !this.bloccoFatturazioneValido) {
+      this.toast.error('Correggi i campi evidenziati nel blocco «Fatturazione» e riprova.')
+      return
+    }
+    if (azione === 'CONFERMA' && !this.bloccoStato.confermabile) {
+      this.toast.error(
+        'Il legame non si può confermare: completa i dati del blocco «Fatturazione».'
+      )
+      return
+    }
+    if (this.bloccoInAttesa) {
+      this.toast.info('Sto calcolando la fatturazione: riprova fra un istante.')
       return
     }
 
@@ -1960,6 +2151,9 @@ export class RegistroComponent implements OnInit {
         counterpartAddress: v.counterpartAddress || undefined,
         firId: v.firId || undefined,
         notes: v.notes || undefined,
+        ...(this.legame
+          ? { legame: { ...this.legame, azione: azione ?? this.legame.azione } }
+          : {}),
       })
       .subscribe({
         next: m => {
@@ -1991,6 +2185,35 @@ export class RegistroComponent implements OnInit {
   correzioneVisibile = false
   correzioneModo: ModoCorrezione = 'rettifica'
   correzioneMovimento: Movimento | null = null
+
+  // ─── Dettaglio del movimento (con il riquadro «Fatturazione») ──────────────
+
+  dettaglioMovimento: Movimento | null = null
+  dettaglioEsito: EsitoRiquadro | null = null
+
+  private ripristinaDettaglio: (() => void) | null = null
+
+  apriDettaglio(m: Movimento): void {
+    this.ripristinaDettaglio = catturaFocus(`registro-dettaglio-${m.id}`)
+    this.dettaglioEsito = null
+    this.dettaglioMovimento = m
+  }
+
+  /**
+   * PrimeNG sposta il focus solo su un elemento focalizzabile del contenuto: se non ce n'è (riquadro
+   * in sola lettura, caricamento) resterebbe sul pulsante fuori dalla finestra. Il riepilogo
+   * (`tabindex="-1"`) lo riceve comunque e il lettore di schermo annuncia il movimento.
+   */
+  focalizzaDettaglio(): void {
+    focalizzaPasso('registro-dettaglio')
+  }
+
+  chiudiDettaglio(): void {
+    this.dettaglioMovimento = null
+    this.dettaglioEsito = null
+    this.ripristinaDettaglio?.()
+    this.ripristinaDettaglio = null
+  }
 
   readonly esitoVerifica = signal<EsitoVerificaCatena | null>(null)
   readonly verificando = signal(false)
@@ -2080,10 +2303,20 @@ export class RegistroComponent implements OnInit {
       (!this.piuRegistri() || !!this.registroVerifica())
   )
 
+  private ripristinaCorrezione: (() => void) | null = null
+
   apriCorrezione(m: Movimento, modo: ModoCorrezione): void {
+    this.ripristinaCorrezione = catturaFocus(
+      `registro-${modo === 'rettifica' ? 'rettifica' : 'annulla'}-${m.id}`
+    )
     this.correzioneMovimento = m
     this.correzioneModo = modo
     this.correzioneVisibile = true
+  }
+
+  chiudiCorrezione(): void {
+    this.ripristinaCorrezione?.()
+    this.ripristinaCorrezione = null
   }
 
   /** Dopo una correzione riuscita: elenco e stato del progressivo si rileggono. */

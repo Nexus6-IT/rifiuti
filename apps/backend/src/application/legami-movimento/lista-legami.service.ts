@@ -238,7 +238,7 @@ export function sqlCandidati(
   return Prisma.sql`
     SELECT m.id AS movimento_id, m.movement_date, ${giorno} AS giorno, m.registro_id,
            m.cer_code, m.waste_description, m.quantity, m.unit,
-           l.id AS legame_id, l.cliente_id, l.motivi, l.avvisi, l.versione,
+           l.id AS legame_id, l.cliente_id, l.contratto_id, l.motivi, l.avvisi, l.versione,
            (l.stato IN ('FATTURATO', 'IMPORTATO_FATTURATO')) AS fatturato,
            ${SQL_STATO_LISTA} AS stato_lista
     FROM waste_movements m
@@ -312,6 +312,27 @@ interface RigaSql {
   stato_lista: StatoListaLegame
 }
 
+/** Quanti movimenti aspettano un'azione per un contratto (id del legame, stati visibili). */
+export interface ContatoreContratto {
+  contrattoId: string
+  daCollegare: number
+}
+
+/** Quelli con un cliente ma senza contratto (proposti non completi): per cliente. */
+export interface ContatoreClienteSenzaContratto {
+  clienteId: string
+  daCollegare: number
+}
+
+export interface ContatoriPerContratto {
+  perContratto: ContatoreContratto[]
+  /** Vuoto quando si filtra per contratti: serve solo alla lista completa. */
+  senzaContratto: ContatoreClienteSenzaContratto[]
+}
+
+/** Quanti id di contratto al massimo in una chiamata (una pagina della lista dei contratti). */
+export const MAX_CONTRATTI_CONTATORI = 200
+
 interface ContatoriSql {
   totale: number
   proposti: number
@@ -372,6 +393,68 @@ export class ListaLegamiService {
             proposti: x.proposti,
             mancanti: x.mancanti,
             daRiallineare: x.da_riallineare,
+          }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30_000 }
+      )
+    )
+  }
+
+  /**
+   * Come `contatori`, ma raggruppati per contratto del legame (una sola query GROUP BY sullo STESSO
+   * frammento `sqlCandidati` e con gli stessi stati visibili: nessuna definizione duplicata).
+   * Con `contrattiIds` restituisce solo quei contratti (la pagina della lista); senza, tutti, piu'
+   * i legami con cliente ma senza contratto, per cliente. I movimenti MANCANTI non hanno
+   * cliente ne' contratto e non compaiono qui.
+   */
+  contatoriPerContratto(
+    tenantId: string,
+    contrattiIds?: readonly string[]
+  ): Promise<ContatoriPerContratto> {
+    if (contrattiIds !== undefined) {
+      if (
+        contrattiIds.length > MAX_CONTRATTI_CONTATORI ||
+        contrattiIds.some(id => !UUID.test(id))
+      ) {
+        throw nonValido(
+          `Indicare al massimo ${MAX_CONTRATTI_CONTATORI} contratti, con identificativi validi.`
+        )
+      }
+    }
+    return nelContestoTenant(tenantId, () =>
+      this.prisma.$transaction(
+        async tx => {
+          const vuoto: ContatoriPerContratto = { perContratto: [], senzaContratto: [] }
+          if (contrattiIds?.length === 0) return vuoto
+          const da = await leggiFatturazioneDaInTx(tx, tenantId)
+          if (da === null) return vuoto
+          const base = sqlCandidati(tenantId, da, {
+            dal: null,
+            al: null,
+            clienteId: null,
+            registroId: null,
+            motivo: null,
+          })
+          const filtro =
+            contrattiIds === undefined
+              ? Prisma.sql`AND (c.contratto_id IS NOT NULL OR c.cliente_id IS NOT NULL)`
+              : Prisma.sql`AND c.contratto_id = ANY(${[...contrattiIds]}::uuid[])`
+          const r = await tx.$queryRaw<
+            { contratto_id: string | null; cliente_id: string | null; n: number }[]
+          >`
+            SELECT c.contratto_id::text AS contratto_id,
+                   CASE WHEN c.contratto_id IS NULL THEN c.cliente_id::text END AS cliente_id,
+                   count(*)::int AS n
+            FROM (${base}) c
+            WHERE c.stato_lista = ANY(${[...STATI_VISIBILI]}::text[]) ${filtro}
+            GROUP BY 1, 2`
+          return {
+            perContratto: r
+              .filter(x => x.contratto_id !== null)
+              .map(x => ({ contrattoId: x.contratto_id as string, daCollegare: x.n })),
+            senzaContratto: r
+              .filter(x => x.contratto_id === null && x.cliente_id !== null)
+              .map(x => ({ clienteId: x.cliente_id as string, daCollegare: x.n })),
           }
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30_000 }

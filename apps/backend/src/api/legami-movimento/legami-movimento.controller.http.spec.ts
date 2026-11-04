@@ -57,6 +57,7 @@ function servizi(): Servizi {
       contatori: jest
         .fn()
         .mockResolvedValue({ daCollegare: 0, proposti: 0, mancanti: 0, daRiallineare: 0 }),
+      contatoriPerContratto: jest.fn().mockResolvedValue({ perContratto: [], senzaContratto: [] }),
     },
     prezzi: {
       anteprima: jest.fn().mockResolvedValue({ firma: 'f', cambiano: 0 }),
@@ -139,6 +140,7 @@ describe('Legami movimento: API (HTTP con servizi finti)', () => {
       ['proposta', 'post', `/${L}/proposta`, proposta],
       ['lista', 'get', `/${L}`, undefined],
       ['contatori', 'get', `/${L}/contatori`, undefined],
+      ['contatori per contratto', 'get', `/${L}/contatori/per-contratto`, undefined],
       ['dettaglio', 'get', `/${L}/${ID}`, undefined],
       ['legame del movimento', 'get', `/registro/movimenti/${MOV}/legame`, undefined],
     ]
@@ -388,6 +390,16 @@ describe('Legami movimento: API (HTTP con servizi finti)', () => {
       expect(r.status).toBe(200)
       expect(r.body).toEqual({ daCollegare: 0, proposti: 0, mancanti: 0, daRiallineare: 0 })
       expect(s.lista.contatori).toHaveBeenCalledWith(TENANT)
+      expect(s.legami.dettaglio).not.toHaveBeenCalled()
+    })
+
+    it('contatori/per-contratto: senza filtro tutti i contratti, con ?contratti gli id come elenco', async () => {
+      const r = await http().get(`/${L}/contatori/per-contratto`)
+      expect(r.status).toBe(200)
+      expect(r.body).toEqual({ perContratto: [], senzaContratto: [] })
+      expect(s.lista.contatoriPerContratto).toHaveBeenCalledWith(TENANT, undefined)
+      await http().get(`/${L}/contatori/per-contratto?contratti=${ID},${CONTRATTO}`)
+      expect(s.lista.contatoriPerContratto).toHaveBeenLastCalledWith(TENANT, [ID, CONTRATTO])
       expect(s.legami.dettaglio).not.toHaveBeenCalled()
     })
 

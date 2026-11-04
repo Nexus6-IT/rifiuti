@@ -2,7 +2,14 @@ import { test, expect, type Page } from '@playwright/test'
 import { aggiungiRata, cliccaEChiudi } from '../../utils/attese'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials } from '../../utils/env'
-import { apiLogin, apiGet, apiDelete } from '../../utils/api-client'
+import { apiGet, apiDelete } from '../../utils/api-client'
+import {
+  accediUiComeAzienda,
+  clientDbLocale,
+  creaAziendaDiTest,
+  tokenAzienda,
+  type AziendaDiTest,
+} from '../../utils/azienda-di-test'
 import { conPrefisso } from '../../utils/run-id'
 
 /**
@@ -19,7 +26,10 @@ import { conPrefisso } from '../../utils/run-id'
  *
  * Il database di CI viene riusato fra due passate: i codici sono casuali per esecuzione e
  * l'IBAN ha cifre di controllo valide ma numero di conto casuale (l'IBAN e' unico per
- * azienda). Pulizia: questo spec elimina da solo, in `afterAll`, le righe che ha creato
+ * azienda). Isolamento: il test dell'operatore lavora in un'AZIENDA DI TEST PROPRIA creata in
+ * `beforeAll` (vedi utils/azienda-di-test.ts), non nell'azienda seed condivisa, i cui 99 codici
+ * dei registri IVA sono esauriti nel database locale che dura nel tempo; il test del VIEWER
+ * non crea nulla e resta sull'azienda seed. Pulizia: questo spec elimina da solo, in `afterAll`, le righe che ha creato
  * (non usa `fixtures/risorse.ts`, che copre solo le anagrafiche del registro).
  */
 
@@ -113,17 +123,29 @@ function dialogo(page: Page) {
   return page.getByRole('dialog')
 }
 
+const db = clientDbLocale()
+let azienda: AziendaDiTest
+
 test.describe('Tabelle di fatturazione — operatore', () => {
   test.describe.configure({ mode: 'serial' })
-  test.skip(!hasRoleCredentials('operator'), skipReason('operator'))
+  test.skip(
+    db === null,
+    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
+  )
 
-  test.beforeEach(async ({ page, context }) => {
-    await loginAndSaveState(page, context, 'operator')
+  test.beforeAll(async () => {
+    if (!db) return
+    azienda = await creaAziendaDiTest(db, 'tabelle fatturazione')
+  })
+
+  test.beforeEach(async ({ page }) => {
+    await accediUiComeAzienda(page, azienda, 'operator')
   })
 
   test.afterAll(async () => {
-    if (!hasRoleCredentials('operator') || creati.length === 0) return
-    const token = await apiLogin('operator')
+    await db?.$disconnect()
+    if (!azienda || creati.length === 0) return
+    const token = await tokenAzienda(azienda, 'operator')
     const errori: string[] = []
     for (const { tabella, codice, query } of creati) {
       try {
@@ -221,7 +243,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
   })
 
   test('registro IVA: "1" diventa "01"', async ({ page }) => {
-    const token = await apiLogin('operator')
+    const token = await tokenAzienda(azienda, 'operator')
     const occupati = new Set((await elencoApi('registri-iva', token)).map(r => r.codice))
     const libero = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].find(n => !occupati.has(`0${n}`))
     test.skip(
@@ -245,7 +267,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
   })
 
   test('testo di fatturazione', async ({ page }) => {
-    const token = await apiLogin('operator')
+    const token = await tokenAzienda(azienda, 'operator')
     const occupati = new Set((await elencoApi('testi-fatturazione', token)).map(r => r.codice))
     while (occupati.has(codici.testo)) codici.testo = codiceCasuale(3)
 
@@ -280,7 +302,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
 
     const riga = contenuto(page).getByRole('row', { name: new RegExp(descrizioni.categoria) })
     await expect(riga).toBeVisible()
-    const token = await apiLogin('operator')
+    const token = await tokenAzienda(azienda, 'operator')
     const lista = await apiGet<(RigaApi & { descrizione: string })[]>(
       '/codifiche-contratto?genere=CATEGORIA&incluseDisattivate=true',
       token

@@ -278,6 +278,42 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
     throw new Error('attesa un’eccezione, la chiamata e’ riuscita')
   }
 
+  describe('contatori per contratto', () => {
+    const perContratto = (s: ScenarioProposta, ids?: string[]) =>
+      nel(s.tenantId, () => service.contatoriPerContratto(s.tenantId, ids))
+
+    it('stessi stati del contatore totale, raggruppati per contratto; filtro per id; isolamento', async () => {
+      const s = await scenario()
+      await nuovo(s, { stato: 'PROPOSTO' })
+      await nuovo(s, { stato: 'DA_COLLEGARE', conCliente: true })
+      await nuovo(s, { stato: 'CONFERMATO' }) // allineato: non compare
+      await nuovo(s) // MANCANTE: senza cliente ne' contratto
+      const altro = await scenario()
+      await nuovo(altro, { stato: 'PROPOSTO' })
+
+      const tutti = await perContratto(s)
+      const totale = (await contatori(s)).daCollegare
+      expect(tutti.perContratto).toEqual([{ contrattoId: s.contrattoId, daCollegare: 2 }])
+      expect(totale).toBe(3) // i 2 con contratto + il MANCANTE
+      expect(tutti.senzaContratto).toEqual([])
+
+      const filtrato = await perContratto(s, [s.contrattoId])
+      expect(filtrato.perContratto).toEqual(tutti.perContratto)
+      expect(
+        (await perContratto(s, ['22222222-2222-4222-8222-222222222222'])).perContratto
+      ).toEqual([])
+      expect(await perContratto(s, [])).toEqual({ perContratto: [], senzaContratto: [] })
+      // Un contratto di un'altra azienda non si vede (RLS + filtro per azienda).
+      expect((await perContratto(s, [altro.contrattoId])).perContratto).toEqual([])
+    })
+
+    it('fatturazione spenta: tutto vuoto', async () => {
+      const s = await scenario(null)
+      await nuovo(s, { stato: 'PROPOSTO' })
+      expect(await perContratto(s)).toEqual({ perContratto: [], senzaContratto: [] })
+    })
+  })
+
   describe('chi entra', () => {
     it('fatturazione spenta (nessuna riga o data vuota): lista vuota e contatori a zero', async () => {
       const senzaRiga = await scenario(null)

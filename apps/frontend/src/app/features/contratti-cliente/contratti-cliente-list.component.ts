@@ -1,5 +1,14 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { RouterLink } from '@angular/router'
 import { ConfirmationService, MenuItem } from 'primeng/api'
@@ -31,6 +40,7 @@ import {
   permessoScrittura,
 } from '../clienti/tabelle/tabella-comune'
 import { OPZIONI_STATO_CONTRATTO } from '../clienti/vocabolario-clienti'
+import { LegamiService } from '../legami/legami.service'
 import { IstatDialogComponent } from '../listino/istat-dialog.component'
 import { puoVariarePrezzi } from '../listino/permessi-listino'
 import { VariazionePrezziDialogComponent } from '../listino/variazione-prezzi-dialog.component'
@@ -221,6 +231,7 @@ const SEVERITA_STATO: Readonly<
             <th scope="col">Inizio</th>
             <th scope="col">Fine</th>
             <th scope="col">Prossima fatturazione</th>
+            <th scope="col">Da collegare</th>
             <th scope="col">Listino</th>
             <th scope="col" *ngIf="puoScrivere()">Azioni</th>
           </tr>
@@ -254,6 +265,18 @@ const SEVERITA_STATO: Readonly<
               />
             </td>
             <td>{{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}</td>
+            <td>
+              <a
+                *ngIf="daCollegarePer(c.id) as n"
+                routerLink="/legami/da-collegare"
+                [queryParams]="{ clienteId: c.cliente.id }"
+                class="da-collegare"
+                [attr.aria-label]="'Movimenti da collegare del contratto ' + c.numero + ': ' + n"
+                [attr.data-testid]="'contratti-da-collegare-' + c.id"
+              >
+                <p-tag [value]="'' + n" severity="warning" />
+              </a>
+            </td>
             <td class="azioni">
               <!-- Fuori dalla colonna di scrittura: il VIEWER legge il listino (R48). -->
               <a
@@ -311,7 +334,7 @@ const SEVERITA_STATO: Readonly<
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="9 + (puoScrivere() ? 1 : 0) + (puoVariare() ? 1 : 0)">
+            <td [attr.colspan]="10 + (puoScrivere() ? 1 : 0) + (puoVariare() ? 1 : 0)">
               Nessun contratto.
             </td>
           </tr>
@@ -390,6 +413,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
   private readonly auth = inject(AuthService)
+  private readonly legami = inject(LegamiService)
 
   readonly puoScrivere = permessoScrittura()
   /** Le variazioni di massa toccano molti contratti: solo ADMIN (R11). */
@@ -461,12 +485,45 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.annullaLettura.next()
+    this.annullaDaCollegare.next()
     this.distrutto.next()
     this.elenco.ferma()
   }
 
   carica(): void {
     this.elenco.carica()
+  }
+
+  /** Movimenti da collegare per contratto della pagina visibile (id del contratto → numero). */
+  private readonly perContratto = signal<ReadonlyMap<string, number>>(new Map())
+  private readonly annullaDaCollegare = new Subject<void>()
+
+  /** A ogni pagina caricata: una sola chiamata con gli id dei contratti visibili. */
+  private readonly rileggiDaCollegare = effect(() => {
+    const ids = this.righe().map(c => c.id)
+    untracked(() => this.caricaDaCollegare(ids))
+  })
+
+  /** Conteggio esatto dal backend; se la chiamata fallisce la colonna resta vuota. */
+  private caricaDaCollegare(ids: string[]): void {
+    this.annullaDaCollegare.next()
+    if (ids.length === 0) {
+      this.perContratto.set(new Map())
+      return
+    }
+    this.legami
+      .contatoriPerContratto(ids)
+      .pipe(takeUntil(this.annullaDaCollegare), takeUntil(this.distrutto))
+      .subscribe({
+        next: r =>
+          this.perContratto.set(new Map(r.perContratto.map(x => [x.contrattoId, x.daCollegare]))),
+        error: () => this.perContratto.set(new Map()),
+      })
+  }
+
+  /** Movimenti da collegare del contratto, o 0. */
+  daCollegarePer(contrattoId: string): number {
+    return this.perContratto().get(contrattoId) ?? 0
   }
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {

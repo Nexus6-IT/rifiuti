@@ -2,6 +2,10 @@ import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { MessageService } from 'primeng/api'
 import { TestBed } from '@angular/core/testing'
 import { provideRouter } from '@angular/router'
+import { signal } from '@angular/core'
+import { Observable, of, throwError } from 'rxjs'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
+import { LegamiService } from '../../features/legami/legami.service'
 import { LayoutComponent, ordinaAziendePerGruppo } from './layout.component'
 
 describe('ordinaAziendePerGruppo', () => {
@@ -78,5 +82,65 @@ describe('LayoutComponent: voce di menu Clienti', () => {
         feature: 'contratti',
       })
     )
+  })
+})
+
+describe('LayoutComponent: voce di menu «Da collegare»', () => {
+  async function crea(contatori: unknown): Promise<HTMLElement> {
+    // Come il servizio vero: `aggiornaContatori` rilegge e scrive il signal (0 se fallisce).
+    const daCollegare = signal(0)
+    const servizio = {
+      daCollegare,
+      aggiornaContatori: () =>
+        (contatori as Observable<{ daCollegare: number }>).subscribe({
+          next: c => daCollegare.set(c.daCollegare),
+          error: () => daCollegare.set(0),
+        }),
+    }
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [
+        provideRouter([]),
+        MessageService,
+        { provide: LegamiService, useValue: servizio },
+      ],
+    })
+    const ff = TestBed.inject(FeatureFlagsService)
+    spyOn(ff, 'load').and.returnValue(
+      of({ features: ['contratti'], tier: null, userLimitTotal: null })
+    )
+    spyOn(ff, 'has').and.returnValue(true)
+    const fixture = TestBed.createComponent(LayoutComponent)
+    // Niente `whenStable`: il layout ha timer propri che non finiscono mai. Gli observable sono sincroni.
+    fixture.detectChanges()
+    fixture.detectChanges()
+    return fixture.nativeElement as HTMLElement
+  }
+
+  it('la voce porta a /legami/da-collegare ed è gated dalla feature contratti', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const voce = TestBed.createComponent(LayoutComponent).componentInstance.navMain.find(
+      v => v.route === '/legami/da-collegare'
+    )
+    expect(voce).toEqual(
+      jasmine.objectContaining({
+        label: 'Da collegare',
+        feature: 'contratti',
+        contatoreLegami: true,
+      })
+    )
+  })
+
+  it('contatore del menu: mostra il totale della lista', async () => {
+    const el = await crea(of({ daCollegare: 7, proposti: 2, mancanti: 3, daRiallineare: 2 }))
+    expect(el.querySelector('[data-testid="contatore-legami"]')?.textContent?.trim()).toBe('7')
+  })
+
+  it('contatore a zero o errore: nessun numero accanto alla voce', async () => {
+    const el = await crea(throwError(() => new Error('rete')))
+    expect(el.querySelector('[data-testid="contatore-legami"]')).toBeNull()
   })
 })
