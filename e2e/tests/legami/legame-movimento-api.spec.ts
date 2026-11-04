@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { PrismaClient } from '@prisma/client'
-import { isProductionTarget, getApiUrl } from '../../utils/env'
+import { getApiUrl } from '../../utils/env'
+import { clientDbLocale, creaAziendaDiTest } from '../../utils/azienda-di-test'
 import { devLoginTokens } from '../../utils/api-client'
 import { leggiRetryAfterSecondi } from '../../utils/dev-login-retry'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
@@ -184,18 +184,6 @@ async function ok<T = unknown>(
   return r.corpo
 }
 
-function clientDbLocale(): PrismaClient | null {
-  const url = process.env.DATABASE_URL?.trim()
-  if (!url || isProductionTarget()) return null
-  try {
-    const host = new URL(url).hostname
-    if (host !== 'localhost' && host !== '127.0.0.1') return null
-  } catch {
-    return null
-  }
-  return new PrismaClient({ datasources: { db: { url } } })
-}
-
 const db = clientDbLocale()
 
 const d = {
@@ -228,71 +216,6 @@ const tok = { admin: '', operator: '', viewer: '' }
 
 async function accedi(email: string): Promise<string> {
   return (await devLoginTokens(email)).accessToken
-}
-
-/** Crea azienda, ruoli di sistema e tre utenti di test. Solo su database locale. */
-async function creaAziendaDiTest(client: PrismaClient): Promise<void> {
-  const unico = `${Date.now().toString(36)}${codiceCasuale(4).toLowerCase()}`
-  const tenant = await client.tenant.create({
-    data: {
-      partitaIva: partitaIvaCasualeValida(),
-      ragioneSociale: conPrefissoUnico('Azienda legami API'),
-      address: 'Via delle Prove 1',
-      city: 'Milano',
-      province: 'MI',
-      postalCode: '20100',
-      country: 'IT',
-      subscriptionTier: 'PROFESSIONAL',
-      subscriptionStatus: 'ACTIVE',
-      firLimitPerMonth: 1000,
-      userLimitTotal: 10,
-    },
-  })
-  d.tenantId = tenant.id
-  const utente = async (ruolo: 'ADMIN' | 'OPERATOR' | 'VIEWER', n: number) => {
-    const email = `e2e-legami-${unico}-${ruolo.toLowerCase()}@test.invalid`
-    const u = await client.user.create({
-      data: {
-        tenantId: tenant.id,
-        keycloakId: `e2e-legami-${unico}-${ruolo.toLowerCase()}`,
-        fiscalCode: `E2E${n}${unico.toUpperCase()}`.slice(0, 16).padEnd(16, 'X'),
-        firstName: ruolo,
-        lastName: 'Legami',
-        email,
-        role: ruolo,
-      },
-    })
-    return { u, email }
-  }
-  const admin = await utente('ADMIN', 1)
-  const operator = await utente('OPERATOR', 2)
-  const viewer = await utente('VIEWER', 3)
-  d.emailAdmin = admin.email
-  d.emailOperator = operator.email
-  d.emailViewer = viewer.email
-
-  await client.$queryRawUnsafe(
-    `SELECT * FROM seed_default_roles_for_tenant($1::uuid, $2::uuid)`,
-    tenant.id,
-    admin.u.id
-  )
-  for (const [{ u }, nome] of [
-    [admin, 'ADMIN'],
-    [operator, 'OPERATOR'],
-    [viewer, 'VIEWER'],
-  ] as const) {
-    const ruolo = await client.role.findFirst({ where: { tenantId: tenant.id, name: nome } })
-    if (!ruolo) throw new Error(`ruolo ${nome} non creato per l'azienda di test`)
-    await client.userRoleAssignment.create({
-      data: {
-        userId: u.id,
-        roleId: ruolo.id,
-        tenantId: tenant.id,
-        assignedBy: admin.u.id,
-        assignedAt: new Date(),
-      },
-    })
-  }
 }
 
 /** Imposta «fatturazione da», confermando i movimenti toccati se il server li segnala. */
@@ -374,7 +297,11 @@ test.describe('Legame movimento, cliente e prezzo — API 4.3b', () => {
     if (!db) return
     creati = []
     prezzoListinoA = '10.00'
-    await creaAziendaDiTest(db)
+    const azienda = await creaAziendaDiTest(db, 'legami API')
+    d.tenantId = azienda.tenantId
+    d.emailAdmin = azienda.email.admin
+    d.emailOperator = azienda.email.operator
+    d.emailViewer = azienda.email.viewer
     tok.admin = await accedi(d.emailAdmin)
     tok.operator = await accedi(d.emailOperator)
     tok.viewer = await accedi(d.emailViewer)

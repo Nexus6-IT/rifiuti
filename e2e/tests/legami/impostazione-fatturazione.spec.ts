@@ -1,8 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { PrismaClient } from '@prisma/client'
-import { loginAndSaveState, skipReason } from '../../fixtures/auth'
-import { hasRoleCredentials, getApiUrl, isProductionTarget } from '../../utils/env'
-import { apiLogin, apiGet, apiPost } from '../../utils/api-client'
+import type { PrismaClient } from '@prisma/client'
+import { getApiUrl } from '../../utils/env'
+import { apiGet, apiPost } from '../../utils/api-client'
+import {
+  accediUiComeAzienda,
+  clientDbLocale,
+  creaAziendaDiTest,
+  tokenAzienda,
+  type AziendaDiTest,
+} from '../../utils/azienda-di-test'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
 import { ATTESA_SERVER, attendiRisposta } from '../../utils/attese'
@@ -21,7 +27,9 @@ import { ATTESA_SERVER, attendiRisposta } from '../../utils/attese'
  *      riga in `legami_movimento` / `righe_legame_movimento`, nessuna rotta del legame.
  *   6. Una riga di listino senza legami si elimina.
  *
- * Isolamento: i dati si creano via API in `beforeAll` con nomi casuali; la pulizia e' per id
+ * Isolamento: lo spec lavora in un'AZIENDA DI TEST PROPRIA creata in `beforeAll` (l'azienda seed
+ * condivisa ha esaurito i 99 codici dei registri IVA nel database locale che dura nel tempo);
+ * i dati si creano via API con nomi casuali; la pulizia e' per id
  * esatti. L'impostazione e' unica per azienda: lo spec la riporta al valore di partenza in
  * `afterAll`. Le date di impostazione sono nel 2099 e il movimento del test 5 e' di oggi, cosi' nessun movimento viene "toccato".
  * Il movimento registrato dal test 5 NON si puo' cancellare (il registro e' a catena di hash):
@@ -108,18 +116,10 @@ async function impostaConConferma(
   return r.corpo as Impostazione
 }
 
-/** Connessione di sola lettura al database locale, per contare i legami (nessuna rotta li espone). */
-function clientDbLocale(): PrismaClient | null {
-  const url = process.env.DATABASE_URL?.trim()
-  if (!url || isProductionTarget()) return null
-  try {
-    const host = new URL(url).hostname
-    if (host !== 'localhost' && host !== '127.0.0.1') return null
-  } catch {
-    return null
-  }
-  return new PrismaClient({ datasources: { db: { url } } })
-}
+/** Connessione al database locale: crea l'azienda di test e conta i legami (nessuna rotta li espone). */
+const dbLocale = clientDbLocale()
+/** Azienda di test propria dello spec (vedi utils/azienda-di-test.ts), creata in `beforeAll`. */
+let azienda: AziendaDiTest
 
 /**
  * Legami (e righe) che hanno per radice il movimento dato. Il conteggio e` per movimento e non
@@ -148,13 +148,17 @@ let idCausale = ''
 
 test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
   test.describe.configure({ mode: 'serial' })
-  test.skip(!hasRoleCredentials('admin'), skipReason('admin'))
+  test.skip(
+    dbLocale === null,
+    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
+  )
 
   test.beforeAll(async () => {
-    if (!hasRoleCredentials('admin')) return
+    if (!dbLocale) return
     creati = []
     idCausale = ''
-    const token = await apiLogin('admin')
+    azienda = await creaAziendaDiTest(dbLocale, 'impostazione fatturazione')
+    const token = await tokenAzienda(azienda, 'admin')
     d.iniziale = await apiGet<Impostazione>('/impostazioni-fatturazione', token)
     d.causale = `AZ_E2E_${codiceCasuale(8)}`
 
@@ -254,8 +258,9 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
   })
 
   test.afterAll(async () => {
-    if (!hasRoleCredentials('admin')) return
-    const token = await apiLogin('admin')
+    await dbLocale?.$disconnect()
+    if (!azienda) return
+    const token = await tokenAzienda(azienda, 'admin')
     const errori: string[] = []
     try {
       if (idCausale) await chiama('DELETE', `/registro/causali/aziendali/${idCausale}`, token)
@@ -300,7 +305,7 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
   })
 
   test('ADMIN imposta la data via API', async () => {
-    const token = await apiLogin('admin')
+    const token = await tokenAzienda(azienda, 'admin')
     const salvata = await impostaConConferma(token, DATA_A)
     expect(salvata.fatturazioneDa).toBe(DATA_A)
     expect(salvata.versione).toBeGreaterThanOrEqual(1)
@@ -325,11 +330,8 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
     )
   })
 
-  test('ADMIN la cambia e la spegne dalla schermata «Fatturazione da»', async ({
-    page,
-    context,
-  }) => {
-    await loginAndSaveState(page, context, 'admin')
+  test('ADMIN la cambia e la spegne dalla schermata «Fatturazione da»', async ({ page }) => {
+    await accediUiComeAzienda(page, azienda, 'admin')
     await page.goto('/clienti/fatturazione')
     const pagina = page.locator('#main-content')
     await expect(pagina.getByRole('heading', { level: 1, name: 'Fatturazione da' })).toBeVisible({
@@ -340,7 +342,7 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
 
     await campo.fill(DATA_B)
     await attendiRisposta(page, () => pagina.getByTestId('fatt-salva').click(), { metodo: 'PUT' })
-    const token = await apiLogin('admin')
+    const token = await tokenAzienda(azienda, 'admin')
     expect((await apiGet<Impostazione>('/impostazioni-fatturazione', token)).fatturazioneDa).toBe(
       DATA_B
     )
@@ -355,10 +357,9 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
   })
 
   test('OPERATOR riceve 403 in scrittura e puo leggere', async () => {
-    if (!hasRoleCredentials('operator')) test.skip(true, skipReason('operator'))
-    const admin = await apiLogin('admin')
+    const admin = await tokenAzienda(azienda, 'admin')
     const prima = await apiGet<Impostazione>('/impostazioni-fatturazione', admin)
-    const operatore = await apiLogin('operator')
+    const operatore = await tokenAzienda(azienda, 'operator')
     const lettura = await chiama<Impostazione>('GET', '/impostazioni-fatturazione', operatore)
     expect(lettura.stato).toBe(200)
     const scrittura = await chiama('PUT', '/impostazioni-fatturazione', operatore, {
@@ -372,7 +373,7 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
   })
 
   test('ADMIN crea una causale aziendale fatturabile', async () => {
-    const token = await apiLogin('admin')
+    const token = await tokenAzienda(azienda, 'admin')
     const r = await chiama<{ id: string; fatturabile: boolean }>(
       'POST',
       '/registro/causali/aziendali',
@@ -402,36 +403,31 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
   })
 
   test('un movimento con INGRESSO_ESTERNO non crea legami', async () => {
-    const token = await apiLogin('admin')
+    const token = await tokenAzienda(azienda, 'admin')
     await chiama('POST', '/registro/registri/assicura', token)
-    const db = clientDbLocale()
-    try {
-      const r = await chiama<{ id: string }>('POST', '/registro', token, {
-        type: 'CARICO',
-        movementDate: '2026-11-03',
-        causale: 'INGRESSO_ESTERNO',
-        cerCode: '15 01 01',
-        quantity: 12.5,
-        unit: 'KG',
-        counterpartName: conPrefissoUnico('Controparte legami'),
-      })
-      expect(r.stato, JSON.stringify(r.corpo)).toBe(201)
-      expect(r.corpo.id).toBeTruthy()
+    const r = await chiama<{ id: string }>('POST', '/registro', token, {
+      type: 'CARICO',
+      movementDate: '2026-11-03',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '15 01 01',
+      quantity: 12.5,
+      unit: 'KG',
+      counterpartName: conPrefissoUnico('Controparte legami'),
+    })
+    expect(r.stato, JSON.stringify(r.corpo)).toBe(201)
+    expect(r.corpo.id).toBeTruthy()
 
-      // «Fatturazione da» e` nel 2099: il movimento non entra in fatturazione e non ha legame
-      // (la rotta, dalla 4.3b, risponde 404 «legame non trovato»).
-      const legame = await chiama('GET', `/registro/movimenti/${r.corpo.id}/legame`, token)
-      expect(legame.stato).toBe(404)
-      if (db) {
-        expect(await contaLegamiDelMovimento(db, r.corpo.id)).toBe(0)
-      }
-    } finally {
-      await db?.$disconnect()
+    // «Fatturazione da» e` nel 2099: il movimento non entra in fatturazione e non ha legame
+    // (la rotta, dalla 4.3b, risponde 404 «legame non trovato»).
+    const legame = await chiama('GET', `/registro/movimenti/${r.corpo.id}/legame`, token)
+    expect(legame.stato).toBe(404)
+    if (dbLocale) {
+      expect(await contaLegamiDelMovimento(dbLocale, r.corpo.id)).toBe(0)
     }
   })
 
   test('una riga di listino senza legami si elimina', async () => {
-    const token = await apiLogin('admin')
+    const token = await tokenAzienda(azienda, 'admin')
     const righe = await apiGet<(Versionata & { id: string })[]>(
       `/elenchi-addebiti/${d.elencoId}/righe`,
       token
