@@ -483,6 +483,41 @@ describe('Causali del registro, schema (Postgres reale)', () => {
       await aggiorna(owner, `valida_al = NULL`)
     })
 
+    it('fatturabile: su una versione usata nel registro non si cambia, su una non usata si', async () => {
+      const a = await azienda()
+      const usata = await propria(owner, a.tenantId, { codice: 'AZ_FATT_USATA', dal: '2026-01-01' })
+      const libera = await propria(owner, a.tenantId, {
+        codice: 'AZ_FATT_LIBERA',
+        dal: '2026-01-01',
+      })
+      await movimento(owner, a, {
+        type: 'SCARICO',
+        causale: 'AZ_FATT_USATA',
+        causaleAziendaId: usata,
+      })
+      const imposta = (tx: Tx, id: string, valore: string) =>
+        tx.$executeRawUnsafe(
+          `UPDATE causali_registro_azienda SET fatturabile = ${valore}, updated_at = now() WHERE id = $1::uuid`,
+          id
+        )
+      // Usata: nessun cambio di valore, in nessuna direzione (anche verso NULL e' un cambio).
+      await respinta(tx => imposta(tx, usata, 'true'), /gia' usata.*fatturabile/)
+      await respinta(tx => imposta(tx, usata, 'NULL'), /gia' usata.*fatturabile/)
+      // Lo stesso valore non e' un cambio: l'UPDATE passa (altri campi restano modificabili).
+      await imposta(owner, usata, 'false')
+      await owner.$executeRawUnsafe(
+        `UPDATE causali_registro_azienda SET descrizione = 'Ancora ok', updated_at = now() WHERE id = $1::uuid`,
+        usata
+      )
+      // Non usata: il cambio e' ammesso.
+      await imposta(owner, libera, 'true')
+      const [r] = await owner.$queryRawUnsafe<{ fatturabile: boolean }[]>(
+        `SELECT fatturabile FROM causali_registro_azienda WHERE id = $1::uuid`,
+        libera
+      )
+      expect(r.fatturabile).toBe(true)
+    })
+
     it('il giorno di utilizzo è quello italiano: un movimento delle 23:30 UTC del 31/12 conta il 1° gennaio', async () => {
       const a = await azienda()
       const id = await propria(owner, a.tenantId, { dal: '2026-01-01' })

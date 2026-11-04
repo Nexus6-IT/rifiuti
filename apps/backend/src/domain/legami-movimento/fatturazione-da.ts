@@ -35,3 +35,13 @@ export function movimentiToccati(
   if (nuova === null) return { da: vecchia, a: null }
   return vecchia < nuova ? { da: vecchia, a: nuova } : { da: nuova, a: vecchia }
 }
+
+/**
+ * Un movimento entra nel legame solo se il suo giorno italiano è ≥ «fatturazione da»
+ * (decisione 11). Senza data impostata la fatturazione è spenta e non entra nessuno. Il confronto
+ * è lessicografico fra `AAAA-MM-GG`. È la versione in codice del filtro SQL
+ * `giorno >= fatturazione_da` (`sqlGiornoMovimento`): le due devono restare uguali.
+ */
+export function movimentoInFatturazione(giorno: string, fatturazioneDa: string | null): boolean {
+  return fatturazioneDa !== null && giorno >= fatturazioneDa
+}

@@ -17,6 +17,7 @@ import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafi
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
+import { sqlGiornoMovimento } from './giorno-movimento'
 
 export interface ImpostazioneFatturazioneVista {
   /** `AAAA-MM-GG` o null (fatturazione spenta). */
@@ -56,6 +57,23 @@ interface GruppoCausale {
   causale: string
   causale_azienda_id: string | null
   n: number
+}
+
+/**
+ * «Fatturazione da» letta DENTRO una transazione (`AAAA-MM-GG` o `null` = spenta). Con
+ * `condividi` la riga si blocca `FOR SHARE`: chi sta registrando un movimento non vede cambiare la
+ * data sotto i piedi, e chi la imposta (`FOR UPDATE`) aspetta (seguito m-C della revisione 4.3a).
+ */
+export async function leggiFatturazioneDaInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  opzioni: { condividi?: boolean } = {}
+): Promise<string | null> {
+  const blocco = opzioni.condividi ? Prisma.sql`FOR SHARE` : Prisma.empty
+  const righe = await tx.$queryRaw<{ da: string | null }[]>`
+    SELECT fatturazione_da::text AS da FROM "impostazioni_fatturazione"
+    WHERE tenant_id = ${tenantId}::uuid ${blocco}`
+  return righe[0]?.da ?? null
 }
 
 @Injectable()
@@ -197,7 +215,7 @@ async function contaToccati(
     SELECT m.type::text AS tipo, m.causale, m.causale_azienda_id::text AS causale_azienda_id,
            count(*)::int AS n
     FROM (
-      SELECT m.*, ((m.movement_date AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Rome')::date AS giorno
+      SELECT m.*, ${sqlGiornoMovimento('m')} AS giorno
       FROM "waste_movements" m
       WHERE m.tenant_id = ${tenantId}::uuid
         AND ${sqlVigente('m')}

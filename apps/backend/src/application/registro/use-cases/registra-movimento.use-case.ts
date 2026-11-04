@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common'
+import { ConflictException, Injectable, Optional } from '@nestjs/common'
 import { Prisma, WasteMovement as WasteMovementRecord } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
 import { LoggerService } from '../../../core/logger/logger.service'
@@ -41,6 +41,14 @@ import {
 } from '../../abbinamenti/abbinamenti-scrittura'
 import { segnalaErroreJob } from '../../../core/monitoring/segnala-errore-job'
 import { RegistriService, RegistroVista } from '../registri.service'
+import {
+  agganciaLegameSenzaFallire,
+  ATTESA_CONNESSIONE_REGISTRAZIONE_MS,
+  TIMEOUT_TRANSAZIONE_REGISTRAZIONE_MS,
+  validaDatiLegame,
+  type FatturazioneRegistrazione,
+} from '../../legami-movimento/aggancio-registro'
+import { PropostaLegameService } from '../../legami-movimento/proposta-legame.service'
 
 /** Avviso all'operatore quando l'abbinamento FIFO di uno scarico appena registrato e' fallito. */
 export const AVVISO_ABBINAMENTO_NON_RIUSCITO =
@@ -95,6 +103,11 @@ export interface MovimentoRegistrato {
   ritardoGg: number
   /** Avvisi non bloccanti per l'operatore (vuoto se non ce ne sono). */
   avvisi: string[]
+  /**
+   * Blocco «Fatturazione» (fase 4.3): presente solo se la causale e' fatturabile e la fatturazione
+   * e' attiva per il giorno del movimento. Mai presente nel retry di una ricopia gia' registrata.
+   */
+  fatturazione?: FatturazioneRegistrazione
   /**
    * Vero se il FIR era già ricopiato con gli stessi dati: si restituisce il movimento
    * esistente e non se ne crea un secondo (retry idempotente).
@@ -170,12 +183,17 @@ function codiceErroreSicuro(err: unknown): string {
 
 @Injectable()
 export class RegistraMovimentoUseCase {
+  /** Proposta e scrittura del legame (iniettata; se manca, creata su `prisma`). */
+  private readonly propostaLegami: PropostaLegameService
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
-    private readonly registri: RegistriService
+    private readonly registri: RegistriService,
+    @Optional() propostaLegami?: PropostaLegameService
   ) {
     this.logger.setContext(RegistraMovimentoUseCase.name)
+    this.propostaLegami = propostaLegami ?? new PropostaLegameService(prisma)
   }
 
   async execute(command: RegistraMovimentoCommand): Promise<Result<MovimentoRegistrato>> {
@@ -184,6 +202,11 @@ export class RegistraMovimentoUseCase {
     const validazione = await validaDatiMovimento(this.prisma, command)
     if (validazione.errore !== undefined) return Result.fail(validazione.errore)
     const cerCode = validazione.cerCode
+
+    // 0c. Blocco «Fatturazione»: un numero scritto male e' un errore del client e si rifiuta prima
+    // di scrivere qualsiasi cosa (il legame, poi, non puo' piu' far fallire la registrazione).
+    // Un'eccezione HTTP (400 con il suo codice, es. QUANTITA_NON_VALIDA) arriva intatta al client.
+    validaDatiLegame(command.legame)
 
     // 0d. Se è indicato un FIR collegato, deve esistere e appartenere al tenant.
     // Evita movimenti con FK penzolante verso un formulario inesistente.
@@ -248,148 +271,182 @@ export class RegistraMovimentoUseCase {
 
     let movimento: MovimentoRegistrato
     try {
-      movimento = await this.prisma.$transaction(async tx => {
-        // Ricopia del FIR, per prima (ordine fisso dei lock: FIR, progressivo, giacenza):
-        // un retry di uno scarico deve trovare il movimento già registrato prima del
-        // controllo di giacenza, che altrimenti lo respingerebbe per la quantità che lui
-        // stesso ha consumato. Senza registroId vale la ricopia esistente, ovunque sia: la si
-        // cerca PRIMA di risolvere il registro (che potrebbe chiedere di indicarlo).
-        // Il registro (sola lettura, nessun lock) si risolve prima solo se e' indicato.
-        let registro: RegistroVista | undefined
-        const risolviRegistro = () =>
-          command.firId
-            ? this.registri.risolviPerFir(tx, command.tenantId, command.registroId)
-            : this.registri.risolvi(tx, command.tenantId, command.registroId)
-        if (command.registroId || !command.firId) registro = await risolviRegistro()
-        if (command.firId) {
-          const esistente = await this.ricopiaEsistente(tx, command, cerCode, registro)
-          if (esistente) {
-            // Ritardo dalle date del movimento esistente, non da quelle del retry.
-            return {
-              ...this.movimentoDaRecord(
-                esistente,
-                this.ritardoGg(esistente),
-                esistente.causale === command.causale
-                  ? validazione.causaleDescrizione
-                  : esistente.causale
-              ),
-              avvisi: await this.avvisiDopoRicopia(tx, command.tenantId, esistente.id),
-              giaRegistrato: true,
+      movimento = await this.prisma.$transaction(
+        async tx => {
+          const inizioTransazione = Date.now()
+          // Ricopia del FIR, per prima (ordine fisso dei lock: FIR, progressivo, giacenza):
+          // un retry di uno scarico deve trovare il movimento già registrato prima del
+          // controllo di giacenza, che altrimenti lo respingerebbe per la quantità che lui
+          // stesso ha consumato. Senza registroId vale la ricopia esistente, ovunque sia: la si
+          // cerca PRIMA di risolvere il registro (che potrebbe chiedere di indicarlo).
+          // Il registro (sola lettura, nessun lock) si risolve prima solo se e' indicato.
+          let registro: RegistroVista | undefined
+          const risolviRegistro = () =>
+            command.firId
+              ? this.registri.risolviPerFir(tx, command.tenantId, command.registroId)
+              : this.registri.risolvi(tx, command.tenantId, command.registroId)
+          if (command.registroId || !command.firId) registro = await risolviRegistro()
+          if (command.firId) {
+            const esistente = await this.ricopiaEsistente(tx, command, cerCode, registro)
+            if (esistente) {
+              // Ritardo dalle date del movimento esistente, non da quelle del retry.
+              return {
+                ...this.movimentoDaRecord(
+                  esistente,
+                  this.ritardoGg(esistente),
+                  esistente.causale === command.causale
+                    ? validazione.causaleDescrizione
+                    : esistente.causale
+                ),
+                avvisi: await this.avvisiDopoRicopia(tx, command.tenantId, esistente.id),
+                giaRegistrato: true,
+              }
             }
+            registro ??= await risolviRegistro()
           }
-          registro ??= await risolviRegistro()
-        }
-        const registroMovimento = registro as RegistroVista
+          const registroMovimento = registro as RegistroVista
 
-        // Lock per-registro/anno: serializza le numerazioni dello stesso registro in transazioni
-        // concorrenti (vedi bloccaProgressivo).
-        await bloccaProgressivo(tx, registroMovimento.id, anno)
+          // Lock per-registro/anno: serializza le numerazioni dello stesso registro in transazioni
+          // concorrenti (vedi bloccaProgressivo).
+          await bloccaProgressivo(tx, registroMovimento.id, anno)
 
-        // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
-        // dentro la transaction: due scarichi concorrenti (anche di anni diversi, quindi
-        // con lock del progressivo diversi) non possono leggere la stessa giacenza.
-        const avvisi =
-          command.type === 'SCARICO'
-            ? await this.verificaGiacenza(tx, command, cerCode, registroMovimento.id)
-            : []
+          // Controllo di giacenza per SCARICO, sotto il lock della giacenza del CER e
+          // dentro la transaction: due scarichi concorrenti (anche di anni diversi, quindi
+          // con lock del progressivo diversi) non possono leggere la stessa giacenza.
+          const avvisi =
+            command.type === 'SCARICO'
+              ? await this.verificaGiacenza(tx, command, cerCode, registroMovimento.id)
+              : []
 
-        // Causale propria dell'azienda: la versione scelta deve essere ancora valida alla data
-        // dell'operazione, riletta con FOR KEY SHARE (dopo i lock del progressivo e della giacenza,
-        // prima dell'insert): una modifica concorrente della causale attende o fa fallire con 409.
-        if (validazione.causaleAziendaId !== null) {
-          await confermaVersioneAzienda(
+          // Causale propria dell'azienda: la versione scelta deve essere ancora valida alla data
+          // dell'operazione, riletta con FOR KEY SHARE (dopo i lock del progressivo e della giacenza,
+          // prima dell'insert): una modifica concorrente della causale attende o fa fallire con 409.
+          if (validazione.causaleAziendaId !== null) {
+            await confermaVersioneAzienda(
+              tx,
+              command.tenantId,
+              validazione.causaleAziendaId,
+              giornoItaliano(command.movementDate)
+            )
+          }
+
+          // Progressivo e hash dell'annotazione precedente, letti sotto il lock del progressivo.
+          const { progressivo: nextProgressivo, hashPrecedente } = await numeraAnnotazione(
             tx,
-            command.tenantId,
-            validazione.causaleAziendaId,
-            giornoItaliano(command.movementDate)
+            registroMovimento.id,
+            anno
           )
+
+          // 3. Costruzione entità di dominio (con validazioni)
+          const entity = WasteMovement.create({
+            tenantId: command.tenantId,
+            registroId: registroMovimento.id,
+            progressiveNumber: nextProgressivo,
+            progressiveYear: anno,
+            type: command.type,
+            movementDate: command.movementDate,
+            registrationDate: command.registrationDate,
+            causale: command.causale,
+            cerCode: cerCode,
+            wasteDescription: command.wasteDescription,
+            quantity: command.quantity,
+            unit: command.unit,
+            wastePhysicalState: command.wastePhysicalState,
+            wasteHazardClasses: command.wasteHazardClasses,
+            operationCode: command.operationCode,
+            counterpartName: command.counterpartName,
+            counterpartAddress: command.counterpartAddress,
+            firId: command.firId,
+            recordedByUserId: command.userId,
+            notes: command.notes,
+            hashPrecedente,
+          })
+
+          const ritardoGg = entity.ritardoRegistrazioneGg
+
+          // 4. Persistenza
+          const record = await inserisciAnnotazione(tx, {
+            tenantId: entity.tenantId,
+            registroId: entity.registroId,
+            progressiveNumber: entity.progressiveNumber,
+            progressiveYear: entity.progressiveYear,
+            type: entity.type,
+            movementDate: entity.movementDate,
+            registrationDate: entity.registrationDate,
+            causale: entity.causale,
+            causaleAziendaId: validazione.causaleAziendaId,
+            cerCode: entity.cerCode,
+            wasteDescription: entity.wasteDescription,
+            quantity: entity.quantity,
+            unit: entity.unit,
+            wastePhysicalState: entity.wastePhysicalState,
+            wasteHazardClasses: entity.wasteHazardClasses,
+            operationCode: entity.operationCode,
+            counterpartName: entity.counterpartName,
+            counterpartAddress: entity.counterpartAddress,
+            firId: entity.firId,
+            // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
+            // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.
+            firIdRicopia: command.firId,
+            ricopiaChiave: RICOPIA_ORDINARIA,
+            recordedByUserId: entity.recordedByUserId,
+            entryHash: entity.entryHash,
+            notes: entity.notes,
+          })
+
+          // 4.6: proposta FIFO degli abbinamenti carico-scarico, nella stessa transazione (D10).
+          // Decisione di Graziano del 31/10/2026: un errore qui NON annulla la registrazione. Il
+          // matching gira dentro un SAVEPOINT: se fallisce (anche con un errore SQL che manderebbe in
+          // abort la transazione) si torna al savepoint, lo scarico resta registrato e risulta
+          // NON_ABBINATO, con avviso, audit e log. Si completa da Abbinamenti.
+          if (command.type === 'SCARICO') {
+            avvisi.push(
+              ...(await this.abbinaSenzaFallire(tx, command, registroMovimento.id, {
+                scaricoId: record.id,
+                cerCode: record.cerCode,
+                movimentoOriginaleId: record.movimentoOriginaleId ?? null,
+              }))
+            )
+          }
+
+          // 4.7: legame movimento-cliente-prezzo (fase 4.3), dopo l'abbinamento. Come l'abbinamento
+          // gira in un SAVEPOINT: un errore qui NON annulla la registrazione (anti-obiettivo della
+          // spec: mai bloccare il registro per un problema commerciale).
+          const aggancio = await agganciaLegameSenzaFallire(tx, {
+            tenantId: command.tenantId,
+            userId: command.userId ?? null,
+            registroId: registroMovimento.id,
+            type: command.type,
+            movimentoId: record.movimentoOriginaleId ?? record.id,
+            fatturabile: validazione.fatturabile,
+            causale: record.causale,
+            causaleAziendaId: validazione.causaleAziendaId,
+            cerCode: record.cerCode,
+            movementDate: record.movementDate,
+            unit: record.unit,
+            quantity: new Prisma.Decimal(record.quantity).toFixed(),
+            firId: record.firId ?? null,
+            legame: command.legame,
+            proposta: this.propostaLegami,
+            trascorsoMs: Date.now() - inizioTransazione,
+            logger: this.logger,
+          })
+          avvisi.push(...aggancio.avvisi)
+
+          return {
+            ...this.movimentoDaRecord(record, ritardoGg, validazione.causaleDescrizione),
+            avvisi,
+            ...(aggancio.fatturazione ? { fatturazione: aggancio.fatturazione } : {}),
+            giaRegistrato: false,
+          }
+        },
+        {
+          // Timeout esplicito: con quello di default (5 s) le registrazioni in fila sul lock del
+          // progressivo scadrebbero se il legame attende il suo tetto (mai bloccare il registro).
+          timeout: TIMEOUT_TRANSAZIONE_REGISTRAZIONE_MS,
+          maxWait: ATTESA_CONNESSIONE_REGISTRAZIONE_MS,
         }
-
-        // Progressivo e hash dell'annotazione precedente, letti sotto il lock del progressivo.
-        const { progressivo: nextProgressivo, hashPrecedente } = await numeraAnnotazione(
-          tx,
-          registroMovimento.id,
-          anno
-        )
-
-        // 3. Costruzione entità di dominio (con validazioni)
-        const entity = WasteMovement.create({
-          tenantId: command.tenantId,
-          registroId: registroMovimento.id,
-          progressiveNumber: nextProgressivo,
-          progressiveYear: anno,
-          type: command.type,
-          movementDate: command.movementDate,
-          registrationDate: command.registrationDate,
-          causale: command.causale,
-          cerCode: cerCode,
-          wasteDescription: command.wasteDescription,
-          quantity: command.quantity,
-          unit: command.unit,
-          wastePhysicalState: command.wastePhysicalState,
-          wasteHazardClasses: command.wasteHazardClasses,
-          operationCode: command.operationCode,
-          counterpartName: command.counterpartName,
-          counterpartAddress: command.counterpartAddress,
-          firId: command.firId,
-          recordedByUserId: command.userId,
-          notes: command.notes,
-          hashPrecedente,
-        })
-
-        const ritardoGg = entity.ritardoRegistrazioneGg
-
-        // 4. Persistenza
-        const record = await inserisciAnnotazione(tx, {
-          tenantId: entity.tenantId,
-          registroId: entity.registroId,
-          progressiveNumber: entity.progressiveNumber,
-          progressiveYear: entity.progressiveYear,
-          type: entity.type,
-          movementDate: entity.movementDate,
-          registrationDate: entity.registrationDate,
-          causale: entity.causale,
-          causaleAziendaId: validazione.causaleAziendaId,
-          cerCode: entity.cerCode,
-          wasteDescription: entity.wasteDescription,
-          quantity: entity.quantity,
-          unit: entity.unit,
-          wastePhysicalState: entity.wastePhysicalState,
-          wasteHazardClasses: entity.wasteHazardClasses,
-          operationCode: entity.operationCode,
-          counterpartName: entity.counterpartName,
-          counterpartAddress: entity.counterpartAddress,
-          firId: entity.firId,
-          // Solo i movimenti registrati da qui in poi: lo storico resta NULL, e
-          // l'indice unico (tenant, fir_id_ricopia, type, ricopia_chiave) ignora i NULL.
-          firIdRicopia: command.firId,
-          ricopiaChiave: RICOPIA_ORDINARIA,
-          recordedByUserId: entity.recordedByUserId,
-          entryHash: entity.entryHash,
-          notes: entity.notes,
-        })
-
-        // 4.6: proposta FIFO degli abbinamenti carico-scarico, nella stessa transazione (D10).
-        // Decisione di Graziano del 31/10/2026: un errore qui NON annulla la registrazione. Il
-        // matching gira dentro un SAVEPOINT: se fallisce (anche con un errore SQL che manderebbe in
-        // abort la transazione) si torna al savepoint, lo scarico resta registrato e risulta
-        // NON_ABBINATO, con avviso, audit e log. Si completa da Abbinamenti.
-        if (command.type === 'SCARICO') {
-          avvisi.push(
-            ...(await this.abbinaSenzaFallire(tx, command, registroMovimento.id, {
-              scaricoId: record.id,
-              cerCode: record.cerCode,
-              movimentoOriginaleId: record.movimentoOriginaleId ?? null,
-            }))
-          )
-        }
-
-        return {
-          ...this.movimentoDaRecord(record, ritardoGg, validazione.causaleDescrizione),
-          avvisi,
-          giaRegistrato: false,
-        }
-      })
+      )
     } catch (err) {
       if (err instanceof GiacenzaInsufficienteError || err instanceof DomainError) {
         return Result.fail(err.message)

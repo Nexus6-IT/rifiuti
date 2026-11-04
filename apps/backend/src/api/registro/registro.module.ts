@@ -39,6 +39,9 @@ import { AvvisoRentriCorrezioneService } from '../../application/rentri/registro
  *   PUT  /api/v1/registro/causali/aziendali/:id/chiusura — chiude una versione (amministratori)
  *   DELETE /api/v1/registro/causali/aziendali/:id — elimina una versione mai usata (amministratori)
  */
+import { PropostaLegameService } from '../../application/legami-movimento/proposta-legame.service'
+import { LegamiService } from '../../application/legami-movimento/conferma-legame.service'
+
 @Module({
   imports: [PrismaModule, LoggerModule, AuthModule, RuoloEffettivoModule],
   controllers: [RegistroController, CausaliRegistroController],
@@ -53,6 +56,8 @@ import { AvvisoRentriCorrezioneService } from '../../application/rentri/registro
     CausaliRegistroService,
     CatalogoCausaliAvvioService,
     AvvisoRentriCorrezioneService,
+    PropostaLegameService,
+    LegamiService,
   ],
   exports: [
     RegistraMovimentoUseCase,

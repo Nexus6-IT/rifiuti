@@ -121,9 +121,17 @@ function clientDbLocale(): PrismaClient | null {
   return new PrismaClient({ datasources: { db: { url } } })
 }
 
-async function contaLegami(db: PrismaClient): Promise<number> {
+/**
+ * Legami (e righe) che hanno per radice il movimento dato. Il conteggio e` per movimento e non
+ * globale: dalla 4.3b altri spec (e il registro di altre aziende) creano legami in parallelo.
+ */
+async function contaLegamiDelMovimento(db: PrismaClient, movimentoId: string): Promise<number> {
   const r = await db.$queryRawUnsafe<{ n: bigint }[]>(
-    `SELECT (SELECT count(*) FROM legami_movimento) + (SELECT count(*) FROM righe_legame_movimento) AS n`
+    `SELECT (SELECT count(*) FROM legami_movimento WHERE movimento_originale_id = $1::uuid)
+          + (SELECT count(*) FROM righe_legame_movimento r
+               JOIN legami_movimento l ON l.id = r.legame_id
+              WHERE l.movimento_originale_id = $1::uuid) AS n`,
+    movimentoId
   )
   return Number(r[0].n)
 }
@@ -398,7 +406,6 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
     await chiama('POST', '/registro/registri/assicura', token)
     const db = clientDbLocale()
     try {
-      const prima = db ? await contaLegami(db) : 0
       const r = await chiama<{ id: string }>('POST', '/registro', token, {
         type: 'CARICO',
         movementDate: '2026-11-03',
@@ -411,12 +418,12 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
       expect(r.stato, JSON.stringify(r.corpo)).toBe(201)
       expect(r.corpo.id).toBeTruthy()
 
-      // Nessuna rotta del legame esiste in 4.3a.
+      // «Fatturazione da» e` nel 2099: il movimento non entra in fatturazione e non ha legame
+      // (la rotta, dalla 4.3b, risponde 404 «legame non trovato»).
       const legame = await chiama('GET', `/registro/movimenti/${r.corpo.id}/legame`, token)
       expect(legame.stato).toBe(404)
       if (db) {
-        expect(await contaLegami(db)).toBe(prima)
-        expect(prima).toBe(0)
+        expect(await contaLegamiDelMovimento(db, r.corpo.id)).toBe(0)
       }
     } finally {
       await db?.$disconnect()

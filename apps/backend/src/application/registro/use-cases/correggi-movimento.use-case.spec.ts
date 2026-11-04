@@ -10,12 +10,15 @@ import * as giacenzaModulo from '../giacenza-disponibile'
 import { righeCausaliSistema } from '../causali/catalogo-causali.fixture'
 import { INDICAZIONE_FIR_ANNULLATO } from '../../../core/domain/errors'
 
+import { riallineaLegameDopoCorrezione } from '../../legami-movimento/legami-correzioni'
+
 import {
   fotografiaScarico,
   riallineaDopoCorrezioneScarico,
   verificaCorrezioneCarico,
 } from '../../abbinamenti/abbinamenti-correzioni'
 
+jest.mock('../../legami-movimento/legami-correzioni')
 jest.mock('../../abbinamenti/abbinamenti-correzioni')
 const verificaMock = verificaCorrezioneCarico as jest.MockedFunction<
   typeof verificaCorrezioneCarico
@@ -23,6 +26,9 @@ const verificaMock = verificaCorrezioneCarico as jest.MockedFunction<
 const fotoMock = fotografiaScarico as jest.MockedFunction<typeof fotografiaScarico>
 const riallineaMock = riallineaDopoCorrezioneScarico as jest.MockedFunction<
   typeof riallineaDopoCorrezioneScarico
+>
+const legameMock = riallineaLegameDopoCorrezione as jest.MockedFunction<
+  typeof riallineaLegameDopoCorrezione
 >
 const STATO_PRIMA = {
   giorno: '2026-03-01',
@@ -138,9 +144,80 @@ describe('CorreggiMovimentoUseCase (unitario)', () => {
     verificaMock.mockResolvedValue(undefined)
     fotoMock.mockResolvedValue(STATO_PRIMA)
     riallineaMock.mockResolvedValue([])
+    legameMock.mockResolvedValue({ avvisi: [], fatturazione: null })
     saldi = jest.spyOn(giacenzaModulo, 'saldiRegistroCer').mockResolvedValue(SALDO_OK)
   })
   afterEach(() => saldi.mockRestore())
+
+  describe('legame movimento-cliente-prezzo (4.3b, Task 21)', () => {
+    function useCaseCon(tx: ReturnType<typeof creaTx>) {
+      const prisma = {
+        $transaction: jest.fn(async (fn: any, _opzioni?: unknown) => fn(tx)),
+        wasteMovement: { count: jest.fn().mockResolvedValue(0) },
+      }
+      return { prisma, uc: new CorreggiMovimentoUseCase(prisma as never, logger as never) }
+    }
+
+    it('la transazione di correzione ha un timeout esplicito di 30 s (maxWait 10 s)', async () => {
+      const { prisma, uc } = useCaseCon(creaTx({}))
+      await uc.rettifica({ ...base, dati })
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        timeout: 30_000,
+        maxWait: 10_000,
+      })
+    })
+
+    it('il riallineamento riceve radice, nuova testa e budget; i suoi avvisi finiscono nella risposta', async () => {
+      legameMock.mockResolvedValue({
+        avvisi: ['avviso del legame'],
+        fatturazione: {
+          esito: 'COLLEGATO',
+          legameId: 'l-1',
+          stato: 'PROPOSTO',
+          motivi: [],
+          avvisi: [],
+        },
+      })
+      const { uc } = useCaseCon(creaTx({}))
+      const r = await uc.rettifica({ ...base, dati })
+      expect(legameMock).toHaveBeenCalledTimes(1)
+      const c = legameMock.mock.calls[0][1]
+      expect(c).toMatchObject({
+        tenantId: TENANT,
+        tipo: 'RETTIFICA',
+        radiceId: 'o-1',
+        nuovoVigenteId: 'n-1',
+      })
+      expect(c.trascorsoMs).toBeGreaterThanOrEqual(0)
+      expect(r.avvisi).toContain('avviso del legame')
+      expect(r.fatturazione).toMatchObject({ esito: 'COLLEGATO', legameId: 'l-1' })
+    })
+
+    it('annullo: stesso riallineamento con tipo ANNULLAMENTO', async () => {
+      const { uc } = useCaseCon(creaTx({}))
+      await uc.annulla(base)
+      expect(legameMock.mock.calls[0][1]).toMatchObject({ tipo: 'ANNULLAMENTO' })
+    })
+
+    it('blocco legame con numeri scritti male: 400 prima di aprire la transazione', async () => {
+      const { prisma, uc } = useCaseCon(creaTx({}))
+      await expect(
+        uc.rettifica({ ...base, dati, legame: { azione: 'BOH' as never } })
+      ).rejects.toBeInstanceOf(BadRequestException)
+      await expect(
+        uc.rettifica({
+          ...base,
+          dati,
+          legame: {
+            azione: 'CONFERMA',
+            righe: [{ rigaAddebitoId: 'r-1', quantita: '1,5' }],
+          },
+        })
+      ).rejects.toBeInstanceOf(BadRequestException)
+      expect(prisma.$transaction).not.toHaveBeenCalled()
+      expect(legameMock).not.toHaveBeenCalled()
+    })
+  })
 
   describe('abbinamenti (4.6)', () => {
     it('carico: verifica la correzione con i dati nuovi in famiglia, prima della numerazione', async () => {

@@ -42,6 +42,21 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
   },
+  'application/legami-movimento/letture-legame.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge UNA riga per id: il movimento vigente di un legame (conferma, modifica, riammissione) e la TESTA di UNA catena per radice, anche un ANNULLAMENTO, per generare o riallineare il legame (azioni dalla lista); nessun conteggio',
+  },
+  'application/legami-movimento/aggiorna-prezzi.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge solo il CER del movimento vigente di ogni legame (join per id) per controllare che la riga di listino sia ancora quella del CER; non conta nulla',
+  },
+  'application/legami-movimento/lista-legami.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      "lista «da collegare»: una riga per TESTA di catena, anche un ANNULLAMENTO, perche' un legame rimasto indietro rispetto alla testa (annullo, causale non piu' fatturabile) deve comparire come DA_RIALLINEARE",
+  },
   'application/legami-movimento/impostazioni-fatturazione.service.ts': {
     scelta: 'vigenti',
     motivo:

@@ -60,4 +60,31 @@ describe('RegistraMovimentoDto', () => {
       await validate(plainToInstance(RegistraMovimentoDto, { ...minimo, quantity: 1.01 }))
     ).toEqual([])
   })
+
+  describe('blocco legame (fase 4.3)', () => {
+    const riga = { rigaAddebitoId: '11111111-1111-4111-8111-111111111111' }
+    const conLegame = (legame: object) =>
+      validate(plainToInstance(RegistraMovimentoDto, { ...minimo, legame }))
+
+    it('senza legame: valido (client esistenti invariati)', async () => {
+      expect(await validate(plainToInstance(RegistraMovimentoDto, minimo))).toEqual([])
+    })
+    it('legame valido', async () => {
+      expect(
+        await conLegame({ azione: 'CONFERMA', righe: [{ ...riga, quantita: '1.5' }] })
+      ).toEqual([])
+    })
+    it('azione sconosciuta: 400', async () => {
+      expect((await conLegame({ azione: 'X' })).length).toBeGreaterThan(0)
+    })
+    it('riga senza uuid: 400', async () => {
+      expect(
+        (await conLegame({ azione: 'PROPOSTA', righe: [{ rigaAddebitoId: 'no' }] })).length
+      ).toBeGreaterThan(0)
+    })
+    it('piu di 100 righe: 400', async () => {
+      const righe = Array.from({ length: 101 }, () => riga)
+      expect((await conLegame({ azione: 'PROPOSTA', righe })).length).toBeGreaterThan(0)
+    })
+  })
 })

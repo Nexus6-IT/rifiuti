@@ -63,3 +63,32 @@ export function decidiRetryDevLogin(
   }
   return { riprova: true, attesaMs }
 }
+
+/** Tentativi totali (il primo incluso) di una richiesta API del client e2e dopo un 429. */
+export const RICHIESTA_TENTATIVI_MAX = 5
+/** Backoff di base (ms) delle richieste API senza header di retry: 500, 1000, 2000, 4000. */
+export const RICHIESTA_BACKOFF_BASE_MS = 500
+/** Attesa massima per una singola pausa (ms), anche se il server chiede di piu'. */
+export const RICHIESTA_ATTESA_MAX_MS = 30_000
+
+/**
+ * Decide se riprovare una richiesta API (setup/teardown degli spec) dopo un 429. Il throttler
+ * risponde prima di eseguire l'handler, quindi riprovare e' sicuro anche per POST e DELETE.
+ * Il limite del backend non cambia: si attende e si riprova, al massimo 5 tentativi.
+ * @param tentativo numero del tentativo appena fallito (1 = il primo)
+ */
+export function decidiRetryRichiesta(
+  status: number,
+  tentativo: number,
+  retryAfterSecondi: number | null
+): DecisioneRetry {
+  if (status !== 429) return { riprova: false, motivo: 'status diverso da 429' }
+  if (tentativo >= RICHIESTA_TENTATIVI_MAX) return { riprova: false, motivo: 'tentativi esauriti' }
+  const attesaMs = Math.min(
+    retryAfterSecondi !== null
+      ? Math.ceil(retryAfterSecondi * 1000) + MARGINE_MS
+      : RICHIESTA_BACKOFF_BASE_MS * 2 ** (tentativo - 1),
+    RICHIESTA_ATTESA_MAX_MS
+  )
+  return { riprova: true, attesaMs }
+}

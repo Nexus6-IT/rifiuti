@@ -155,7 +155,8 @@ export class RegistroController {
       dto.counterpartAddress,
       dto.firId,
       dto.notes,
-      dto.registroId
+      dto.registroId,
+      dto.legame
     )
 
     const result = await this.registraMovimentoUseCase.execute(command)
@@ -248,7 +249,7 @@ export class RegistroController {
   ): Promise<EsitoCorrezione & { avvisoRentri: string | null }> {
     const tenantId = requireRequestTenantId(req)
     await this.richiediRuoloRegistrazione(req, tenantId)
-    const { motivo, confermaAnnoPresentato, movementDate, unit, ...resto } = dto
+    const { motivo, confermaAnnoPresentato, movementDate, unit, legame, ...resto } = dto
     const esito = await this.correggiMovimento.rettifica({
       tenantId,
       userId: req.user.id,
@@ -256,6 +257,8 @@ export class RegistroController {
       motivo,
       confermaAnnoPresentato,
       dati: { ...resto, movementDate: new Date(movementDate), unit: unit ?? 'KG' },
+      // Blocco «Fatturazione» facoltativo (4.3b): senza, il legame segue la correzione da solo.
+      legame,
     })
     return {
       ...esito,

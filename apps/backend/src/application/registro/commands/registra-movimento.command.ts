@@ -1,3 +1,4 @@
+import type { DatiLegameRegistrazione } from '../../legami-movimento/aggancio-registro'
 import type { WasteMovementType } from '../../../domain/waste-movement/waste-movement.entity'
 
 /**
@@ -44,6 +45,11 @@ export class RegistraMovimentoCommand {
      * Registro in cui annotare il movimento. Assente: il registro della sede principale o
      * l'unico registro attivo (con un FIR, sempre quello della sede principale).
      */
-    public readonly registroId: string | undefined
+    public readonly registroId: string | undefined,
+    /**
+     * Blocco «Fatturazione» facoltativo (fase 4.3): conferma o propone il legame con cliente e
+     * prezzo. Senza, il legame (se la causale e' fatturabile) nasce solo come proposta.
+     */
+    public readonly legame?: DatiLegameRegistrazione
   ) {}
 }

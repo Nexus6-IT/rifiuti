@@ -35,6 +35,7 @@ export const AVVISI_LEGAME = [
   'QUANTITA_MANUALE_NON_DERIVATA',
   'CAMBIO_CER_DA_CONFERMARE',
   'PREZZO_MANUALE',
+  'CONTRATTO_ALTRA_SEDE',
 ] as const
 export type AvvisoLegame = (typeof AVVISI_LEGAME)[number]
 
@@ -59,6 +60,7 @@ export const MESSAGGI_AVVISO: Readonly<Record<AvvisoLegame, string>> = {
   CAMBIO_CER_DA_CONFERMARE: 'Il codice CER è cambiato: conferma di nuovo il legame.',
   PREZZO_MANUALE:
     'Una o più righe hanno il prezzo modificato a mano: «Aggiorna prezzi» non le cambia.',
+  CONTRATTO_ALTRA_SEDE: 'Il contratto scelto è di un’altra sede rispetto a quella del FIR.',
 }
 
 export const STATI_FATTURATI: readonly StatoLegame[] = ['FATTURATO', 'IMPORTATO_FATTURATO']
@@ -90,6 +92,11 @@ export function validaMotivoEsclusione(
   if (valore.length === 0) return { ok: false, errore: 'Indica il motivo dell’esclusione.' }
   if (valore.length > LUNGHEZZA_MAX_MOTIVO_ESCLUSIONE) {
     return { ok: false, errore: 'Il motivo può avere al massimo 200 caratteri.' }
+  }
+  // Il testo dei motivi automatici identifica le esclusioni automatiche: un motivo scritto
+  // dall'utente uguale a uno di essi sarebbe scambiato per automatico e riammesso.
+  if (valore === MOTIVO_ESCLUSIONE_CAUSALE || valore === MOTIVO_ESCLUSIONE_DATA) {
+    return { ok: false, errore: 'Scrivi un motivo diverso da quelli automatici.' }
   }
   return { ok: true, valore }
 }

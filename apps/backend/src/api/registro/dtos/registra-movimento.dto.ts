@@ -1,6 +1,10 @@
 import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -9,6 +13,7 @@ import {
   IsUUID,
   Matches,
   MaxLength,
+  ValidateNested,
 } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
@@ -24,6 +29,66 @@ const FORMATO_CAUSALE = /^[A-Z][A-Z0-9_]*$/
 export enum WasteMovementTypeEnum {
   CARICO = 'CARICO',
   SCARICO = 'SCARICO',
+}
+
+/** Ritocco di una riga proposta (numeri come stringhe col punto: li valida il dominio). */
+export class RigaLegameRegistrazioneDto {
+  @ApiProperty()
+  @IsUUID()
+  rigaAddebitoId: string
+
+  @ApiPropertyOptional({ nullable: true, description: 'Quantità > 0, al massimo 3 decimali' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  quantita?: string | null
+
+  @ApiPropertyOptional({ description: 'Prezzo >= 0, al massimo 6 decimali' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  prezzo?: string
+
+  @ApiPropertyOptional({ nullable: true, description: 'Formula di sconto a cascata' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sconto?: string | null
+
+  @ApiPropertyOptional({ description: 'Non ammesso in registrazione' })
+  @IsOptional()
+  @IsBoolean()
+  rimuovi?: boolean
+}
+
+/** Blocco «Fatturazione» della registrazione (fase 4.3, spec §7.1). */
+export class LegameRegistrazioneDto {
+  @ApiProperty({ enum: ['CONFERMA', 'PROPOSTA'] })
+  @IsIn(['CONFERMA', 'PROPOSTA'])
+  azione: 'CONFERMA' | 'PROPOSTA'
+
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  clienteId?: string
+
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  contrattoId?: string
+
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  elencoId?: string
+
+  @ApiPropertyOptional({ type: [RigaLegameRegistrazioneDto] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => RigaLegameRegistrazioneDto)
+  @IsOptional()
+  righe?: RigaLegameRegistrazioneDto[]
 }
 
 export class RegistraMovimentoDto {
@@ -149,6 +214,18 @@ export class RegistraMovimentoDto {
   @IsUUID()
   @IsOptional()
   registroId?: string
+
+  @ApiPropertyOptional({
+    type: LegameRegistrazioneDto,
+    description:
+      'Blocco «Fatturazione» (causali fatturabili): CONFERMA o PROPOSTA del legame con cliente e ' +
+      'prezzo. Senza il blocco il legame nasce come proposta. Un errore nel legame non annulla ' +
+      'mai la registrazione.',
+  })
+  @ValidateNested()
+  @Type(() => LegameRegistrazioneDto)
+  @IsOptional()
+  legame?: LegameRegistrazioneDto
 }
 
 export class ListMovimentiDto {
