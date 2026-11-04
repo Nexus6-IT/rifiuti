@@ -6,6 +6,7 @@ import { Pagina } from '../clienti/clienti.model'
 import {
   AnteprimaAggiornamento,
   ContatoriLegami,
+  ContatoriPerContratto,
   CorpoAggiornaPrezzi,
   CorpoAzioneMassa,
   CorpoConferma,
@@ -44,6 +45,12 @@ export class LegamiService {
 
   contatori(): Observable<ContatoriLegami> {
     return this.http.get<ContatoriLegami>(`${this.url}/contatori`)
+  }
+
+  /** Una chiamata per pagina: i contratti indicati (al massimo 200) con i loro movimenti da collegare. */
+  contatoriPerContratto(contrattiIds: readonly string[]): Observable<ContatoriPerContratto> {
+    const params = new HttpParams().set('contratti', contrattiIds.join(','))
+    return this.http.get<ContatoriPerContratto>(`${this.url}/contatori/per-contratto`, { params })
   }
 
   /** Movimenti in attesa di un legame: il numero accanto alla voce di menu. */

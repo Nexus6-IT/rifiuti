@@ -23,9 +23,12 @@ const ruoli = (c: { prototype: object }, n: string) =>
 describe('LegamiMovimentoController: ruoli', () => {
   const C = LegamiMovimentoController
 
-  it.each(['proposta', 'lista', 'contatori', 'dettaglio'])('%s: lettura a tutti i ruoli', n => {
-    expect(ruoli(C, n)).toEqual(LETTURA)
-  })
+  it.each(['proposta', 'lista', 'contatori', 'contatoriPerContratto', 'dettaglio'])(
+    '%s: lettura a tutti i ruoli',
+    n => {
+      expect(ruoli(C, n)).toEqual(LETTURA)
+    }
+  )
 
   it.each(['modifica', 'conferma', 'escludi', 'riammetti', 'azioni', 'daMovimento'])(
     '%s: scrittura senza VIEWER',
@@ -45,6 +48,7 @@ describe('LegamiMovimentoController: ruoli', () => {
         'azioni',
         'conferma',
         'contatori',
+        'contatoriPerContratto',
         'daMovimento',
         'dettaglio',
         'escludi',

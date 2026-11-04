@@ -72,6 +72,14 @@ describe('LegamiService', () => {
     req.flush({ daCollegare: 0, proposti: 0, mancanti: 0, daRiallineare: 0 })
   })
 
+  it('contatoriPerContratto fa GET /contatori/per-contratto?contratti=id,id', () => {
+    servizio.contatoriPerContratto(['c1', 'c2']).subscribe()
+    const req = http.expectOne(r => r.url === `${base}/contatori/per-contratto`)
+    expect(req.request.method).toBe('GET')
+    expect(req.request.params.get('contratti')).toBe('c1,c2')
+    req.flush({ perContratto: [], senzaContratto: [] })
+  })
+
   it('dettaglio fa GET /:id', () => {
     servizio.dettaglio('l1').subscribe()
     const req = http.expectOne(`${base}/l1`)

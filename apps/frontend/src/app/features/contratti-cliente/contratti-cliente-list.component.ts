@@ -1,5 +1,14 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { RouterLink } from '@angular/router'
 import { ConfirmationService, MenuItem } from 'primeng/api'
@@ -43,8 +52,6 @@ import { SceltaClienteComponent } from './scelta-cliente.component'
 type FiltriContratti = Omit<FiltroContratti, 'pagina' | 'dimensione' | 'testo'>
 
 const GIORNI_IN_SCADENZA = 30
-/** Massimo della pagina del backend (`MAX_DIMENSIONE` di lista-legami). */
-const PAGINA_DA_COLLEGARE = 200
 
 const SEVERITA_STATO: Readonly<
   Record<StatoContrattoCliente, 'success' | 'info' | 'warning' | 'danger' | 'secondary'>
@@ -259,17 +266,14 @@ const SEVERITA_STATO: Readonly<
             </td>
             <td>{{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}</td>
             <td>
-              <!-- Per cliente: la lista dei legami non conosce il contratto (vedi daCollegarePer). -->
               <a
-                *ngIf="daCollegarePer(c.cliente.id) as n"
+                *ngIf="daCollegarePer(c.id) as n"
                 routerLink="/legami/da-collegare"
                 class="da-collegare"
-                [attr.aria-label]="
-                  'Movimenti da collegare del cliente ' + c.cliente.ragioneSociale + ': ' + n.testo
-                "
+                [attr.aria-label]="'Movimenti da collegare del contratto ' + c.numero + ': ' + n"
                 [attr.data-testid]="'contratti-da-collegare-' + c.id"
               >
-                <p-tag [value]="n.testo" severity="warning" />
+                <p-tag [value]="'' + n" severity="warning" />
               </a>
             </td>
             <td class="azioni">
@@ -462,7 +466,6 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.elenco.avvia()
-    this.caricaDaCollegare()
     this.tabelle.codifiche
       .list('CATEGORIA')
       .pipe(takeUntil(this.distrutto))
@@ -488,44 +491,38 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   carica(): void {
     this.elenco.carica()
-    this.caricaDaCollegare()
   }
 
-  /** Movimenti da collegare per cliente (id del cliente → numero) e se il conteggio è parziale. */
-  private readonly perCliente = signal<{
-    conteggi: ReadonlyMap<string, number>
-    parziale: boolean
-  }>({ conteggi: new Map(), parziale: false })
+  /** Movimenti da collegare per contratto della pagina visibile (id del contratto → numero). */
+  private readonly perContratto = signal<ReadonlyMap<string, number>>(new Map())
   private readonly annullaDaCollegare = new Subject<void>()
 
-  /**
-   * Una sola chiamata alla lista dei legami (non una per cliente): la prima pagina più ampia, poi
-   * il raggruppamento per cliente. Se i movimenti sono più di una pagina il conteggio è parziale e
-   * si scrive «N+». Lacuna del backend: manca un contatore per cliente/contratto. Se la chiamata
-   * fallisce la colonna resta vuota.
-   */
-  private caricaDaCollegare(): void {
+  /** A ogni pagina caricata: una sola chiamata con gli id dei contratti visibili. */
+  private readonly rileggiDaCollegare = effect(() => {
+    const ids = this.righe().map(c => c.id)
+    untracked(() => this.caricaDaCollegare(ids))
+  })
+
+  /** Conteggio esatto dal backend; se la chiamata fallisce la colonna resta vuota. */
+  private caricaDaCollegare(ids: string[]): void {
     this.annullaDaCollegare.next()
+    if (ids.length === 0) {
+      this.perContratto.set(new Map())
+      return
+    }
     this.legami
-      .lista({ dimensione: PAGINA_DA_COLLEGARE })
+      .contatoriPerContratto(ids)
       .pipe(takeUntil(this.annullaDaCollegare), takeUntil(this.distrutto))
       .subscribe({
-        next: p => {
-          const conteggi = new Map<string, number>()
-          for (const r of p.elementi) {
-            if (r.cliente) conteggi.set(r.cliente.id, (conteggi.get(r.cliente.id) ?? 0) + 1)
-          }
-          this.perCliente.set({ conteggi, parziale: p.totale > p.elementi.length })
-        },
-        error: () => this.perCliente.set({ conteggi: new Map(), parziale: false }),
+        next: r =>
+          this.perContratto.set(new Map(r.perContratto.map(x => [x.contrattoId, x.daCollegare]))),
+        error: () => this.perContratto.set(new Map()),
       })
   }
 
-  /** Testo del contatore del cliente, o null se non ha movimenti da collegare. */
-  daCollegarePer(clienteId: string): { testo: string } | null {
-    const { conteggi, parziale } = this.perCliente()
-    const n = conteggi.get(clienteId) ?? 0
-    return n === 0 ? null : { testo: parziale ? `${n}+` : String(n) }
+  /** Movimenti da collegare del contratto, o 0. */
+  daCollegarePer(contrattoId: string): number {
+    return this.perContratto().get(contrattoId) ?? 0
   }
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {

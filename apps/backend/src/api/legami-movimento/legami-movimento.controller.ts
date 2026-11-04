@@ -40,7 +40,7 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { AggiornaPrezziDto } from './dto/aggiorna-prezzi.dto'
 import { AzioneMassaDto } from './dto/azione-massa.dto'
 import { ConfermaLegameDto, EscludiLegameDto, RiammettiLegameDto } from './dto/conferma.dto'
-import { ListaLegamiQueryDto } from './dto/lista-legami.dto'
+import { ContatoriPerContrattoQueryDto, ListaLegamiQueryDto } from './dto/lista-legami.dto'
 import { ModificaLegameDto } from './dto/modifica-legame.dto'
 import { PropostaLegameDto } from './dto/proposta.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
@@ -111,6 +111,20 @@ export class LegamiMovimentoController {
   })
   contatori(@Req() req: any) {
     return this.lista_.contatori(requireRequestTenantId(req))
+  }
+
+  // Rotta fissa su due segmenti: prima di `:id`.
+  @Get('contatori/per-contratto')
+  @Roles(...RUOLI_LETTURA)
+  @ApiOperation({
+    summary:
+      'Contatori «da collegare» per contratto: { perContratto, senzaContratto }; ?contratti=id,id restringe ai contratti indicati',
+  })
+  @ApiResponse({ status: 400, description: 'FILTRI_LISTA_NON_VALIDI' })
+  contatoriPerContratto(@Req() req: any, @Query() query: ContatoriPerContrattoQueryDto) {
+    const ids =
+      query.contratti === undefined ? undefined : query.contratti.split(',').filter(Boolean)
+    return this.lista_.contatoriPerContratto(requireRequestTenantId(req), ids)
   }
 
   @Get(':id')

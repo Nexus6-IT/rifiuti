@@ -16,7 +16,6 @@ import {
 } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
 import { LegamiService } from '../legami/legami.service'
-import { RigaLista } from '../legami/legami.model'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
 import {
   accettaConferma,
@@ -121,7 +120,9 @@ describe('ContrattiClienteListComponent', () => {
 
   beforeEach(() => {
     list = jasmine.createSpy('list')
-    listaLegami = jasmine.createSpy('lista').and.returnValue(of({ elementi: [], totale: 0 }))
+    listaLegami = jasmine
+      .createSpy('contatoriPerContratto')
+      .and.returnValue(of({ perContratto: [], senzaContratto: [] }))
     get = jasmine.createSpy('get')
     cambiaStato = jasmine.createSpy('cambiaStato').and.returnValue(of(contratto()))
     rinnova = jasmine.createSpy('rinnova').and.returnValue(of(contratto()))
@@ -148,7 +149,7 @@ describe('ContrattiClienteListComponent', () => {
             clienti: { list: () => of({ elementi: [], totale: 0 }) },
           },
         },
-        { provide: LegamiService, useValue: { lista: listaLegami } },
+        { provide: LegamiService, useValue: { contatoriPerContratto: listaLegami } },
         { provide: TabelleFatturazioneService, useValue: { codifiche: { list: codifiche } } },
         { provide: ToastService, useValue: toast },
         MessageService,
@@ -172,41 +173,24 @@ describe('ContrattiClienteListComponent', () => {
   afterEach(() => fixture?.destroy())
 
   describe('contatore «da collegare»', () => {
-    const rigaLegame = (cliente: string | null): RigaLista =>
-      ({
-        movimentoId: 'm',
-        stato: 'MANCANTE',
-        cliente: cliente && { id: cliente, etichetta: 'X' },
-      }) as RigaLista
-
-    it('una sola chiamata alla lista dei legami e il contatore per cliente', async () => {
+    it('una sola chiamata per pagina con gli id dei contratti visibili, conteggio esatto per contratto', async () => {
       listaLegami.and.returnValue(
-        of({
-          elementi: [rigaLegame('cl1'), rigaLegame('cl1'), rigaLegame('cl9'), rigaLegame(null)],
-          totale: 4,
-        })
+        of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 3 }], senzaContratto: [] })
       )
       await apri('ADMIN', pagina(contratto(), contratto({ id: 'cc2' })))
       expect(listaLegami).toHaveBeenCalledTimes(1)
-      expect(listaLegami.calls.mostRecent().args[0]).toEqual({ dimensione: 200 })
-      expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('2')
-      expect(q('contratti-da-collegare-cc2')!.textContent!.trim()).toBe('2')
+      expect(listaLegami).toHaveBeenCalledWith(['cc1', 'cc2'])
+      expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('3')
+      expect(q('contratti-da-collegare-cc2')).toBeNull()
       expect(q('contratti-da-collegare-cc1')!.getAttribute('href')).toBe('/legami/da-collegare')
     })
 
-    it('cliente senza movimenti: nessun contatore', async () => {
-      listaLegami.and.returnValue(of({ elementi: [rigaLegame('cl9')], totale: 1 }))
-      await apri()
-      expect(q('contratti-da-collegare-cc1')).toBeNull()
+    it('pagina vuota: nessuna chiamata', async () => {
+      await apri('ADMIN', pagina())
+      expect(listaLegami).not.toHaveBeenCalled()
     })
 
-    it('più movimenti della pagina: conteggio parziale «N+»', async () => {
-      listaLegami.and.returnValue(of({ elementi: [rigaLegame('cl1')], totale: 500 }))
-      await apri()
-      expect(q('contratti-da-collegare-cc1')!.textContent!.trim()).toBe('1+')
-    })
-
-    it('errore della lista: la colonna resta vuota e la pagina funziona', async () => {
+    it('errore: la colonna resta vuota e la pagina funziona', async () => {
       listaLegami.and.returnValue(throwError(() => ({ status: 500 })))
       await apri()
       expect(q('contratti-da-collegare-cc1')).toBeNull()

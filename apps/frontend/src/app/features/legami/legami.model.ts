@@ -180,6 +180,13 @@ export interface ContatoriLegami {
   daRiallineare: number
 }
 
+/** `GET /legami-movimento/contatori/per-contratto`: stessi stati della lista, raggruppati. */
+export interface ContatoriPerContratto {
+  perContratto: { contrattoId: string; daCollegare: number }[]
+  /** Legami con cliente ma senza contratto; vuoto se si filtra per contratti. */
+  senzaContratto: { clienteId: string; daCollegare: number }[]
+}
+
 /**
  * Dati del movimento non ancora registrato (POST /proposta, sola lettura), con i nomi del registro
  * (Task 22): `causale` è il CODICE della causale, `type` è obbligatorio (senza, la proposta è
