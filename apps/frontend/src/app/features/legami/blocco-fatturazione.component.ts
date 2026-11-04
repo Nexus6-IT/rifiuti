@@ -251,6 +251,7 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
         </ul>
 
         <app-righe-legame-tabella
+          *ngIf="mostraRighe"
           [righe]="righeVista()"
           [modificabile]="righeModificabili"
           [generazione]="generazione()"
@@ -357,6 +358,8 @@ export class BloccoFatturazioneComponent implements OnChanges {
    * mandare la selezione intera aggiungerebbe le righe della proposta).
    */
   @Input() righeModificabili = true
+  /** Falso: la tabella delle righe della proposta non si mostra (legame esistente che la rettifica non rigenera). */
+  @Input() mostraRighe = true
   private ultimoStato: StatoBlocco | null = null
 
   readonly messaggioNonDisponibile = MESSAGGIO_PROPOSTA_NON_DISPONIBILE

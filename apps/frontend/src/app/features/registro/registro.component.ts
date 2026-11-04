@@ -1133,12 +1133,13 @@ interface FirOption {
         <section class="dettaglio-mov" data-testid="registro-dettaglio">
           <strong>{{ d.type === 'CARICO' ? 'Carico' : 'Scarico' }}</strong>
           · {{ d.movementDate | date: 'dd/MM/yyyy' }} ·
-          <span class="cell-mono">{{ d.cerCode }}</span> · {{ d.quantity | number: '1.0-2' }}
+          <span class="cell-mono">{{ d.cerCode }}</span> · {{ d.quantity | number: '1.0-3' }}
           {{ d.unit }} · {{ causaleLabel(d) }}
           <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
         </section>
         <app-riquadro-legame
           [movimentoId]="d.id"
+          [eTesta]="vigente(d)"
           (esitoChange)="dettaglioEsito = $event"
         ></app-riquadro-legame>
         <p
@@ -2187,8 +2188,17 @@ export class RegistroComponent implements OnInit {
   }
 
   chiudiDettaglio(): void {
+    const id = this.dettaglioMovimento?.id
     this.dettaglioMovimento = null
     this.dettaglioEsito = null
+    // PrimeNG non riporta il focus da solo: torna al pulsante da cui si era aperto il dettaglio.
+    if (id) {
+      setTimeout(() =>
+        document
+          .querySelector<HTMLElement>(`[data-testid="registro-dettaglio-${id}"] button`)
+          ?.focus()
+      )
+    }
   }
 
   readonly esitoVerifica = signal<EsitoVerificaCatena | null>(null)

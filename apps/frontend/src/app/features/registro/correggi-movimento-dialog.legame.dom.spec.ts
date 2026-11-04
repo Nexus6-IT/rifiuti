@@ -369,4 +369,132 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
     expect('legame' in registro.annulla.calls.mostRecent().args[1]).toBeFalse()
     expect(q('blocco-fatturazione')).toBeNull()
   }))
+
+  describe('legame esistente (revisione)', () => {
+    const conPrezzoManuale = (parziale: Partial<LegameVista> = {}): LegameVista =>
+      legame({
+        righe: [rigaLegame({ prezzo: '1.5', prezzoManuale: true, importo: '99.00' })],
+        ...parziale,
+      })
+
+    it('I1: mostra il legame com’è (prezzo manuale, importo del server), non la proposta di oggi', fakeAsync(() => {
+      registro.rettifica.and.returnValue(of(esito()))
+      apri('rettifica', of(conPrezzoManuale()))
+      expect(testo('correzione-legame-attuale')).toContain('Confermato')
+      expect(testo('correzione-legame-attuale')).toContain('Rossi Srl')
+      expect(q('badge-prezzo-manuale-ra-1')).not.toBeNull()
+      // un solo importo (quello del legame): la tabella della proposta (60,00) non c'è
+      expect(document.body.querySelectorAll('[data-testid="importo-ra-1"]').length).toBe(1)
+      expect(testo('importo-ra-1')).toContain('99,00')
+      // CONFERMATO e CER invariato: «Rettifica e conferma» non serve
+      expect(q('correzione-invia-conferma')).toBeNull()
+      motivo()
+      bottone('correzione-invia')!.click()
+      aggiorna()
+      expect('legame' in registro.rettifica.calls.mostRecent().args[1]).toBeFalse()
+    }))
+
+    it('I1: le scelte del legame sono le scelte iniziali del blocco e non si rimandano', fakeAsync(() => {
+      registro.rettifica.and.returnValue(of(esito()))
+      apri(
+        'rettifica',
+        of(
+          legame({
+            stato: 'PROPOSTO',
+            cliente: { id: 'cl-9', etichetta: 'Verdi Srl', fonte: 'UTENTE' },
+            contratto: { id: 'co-9', etichetta: 'Contratto speciale' },
+            elenco: { id: 'el-9', etichetta: 'Elenco speciale' },
+          })
+        )
+      )
+      expect(legami.proposta.calls.mostRecent().args[0].scelte).toEqual({
+        clienteId: 'cl-9',
+        contrattoId: 'co-9',
+        elencoId: 'el-9',
+      })
+      expect(q('correzione-scelte-cambiate')).toBeNull()
+      motivo()
+      bottone('correzione-invia-conferma')!.click()
+      aggiorna()
+      expect(registro.rettifica.calls.mostRecent().args[1].legame).toEqual({ azione: 'CONFERMA' })
+    }))
+
+    it('I1: se l’utente cambia il contratto, avviso esplicito e la scelta entra nel corpo', fakeAsync(() => {
+      registro.rettifica.and.returnValue(of(esito()))
+      proposteDaRestituire = proposta({
+        candidati: {
+          contratti: [
+            { id: 'co-1', etichetta: 'Contratto 2026' },
+            { id: 'co-2', etichetta: 'Contratto B' },
+          ],
+          elenchi: [{ id: 'el-1', etichetta: 'Listino base' }],
+          righe: [],
+        },
+      })
+      apri('rettifica', of(legame()))
+      const menu = document.body.querySelector('#fatt-contratto') as HTMLSelectElement
+      menu.value = 'co-2'
+      menu.dispatchEvent(new Event('change'))
+      aggiorna()
+      tick(ATTESA_PROPOSTA_MS)
+      aggiorna()
+      expect(testo('correzione-scelte-cambiate')).toContain('prezzi congelati')
+      expect(testo('correzione-scelte-cambiate')).toContain('scritti a mano')
+      expect(testo('correzione-scelte-cambiate')).toContain('Proposto')
+      motivo()
+      bottone('correzione-invia')!.click()
+      aggiorna()
+      expect(registro.rettifica.calls.mostRecent().args[1].legame).toEqual({
+        azione: 'PROPOSTA',
+        contrattoId: 'co-2',
+      })
+    }))
+
+    it('CER cambiato: l’avviso dice che si perdono anche i prezzi scritti a mano', fakeAsync(() => {
+      apri('rettifica', of(conPrezzoManuale()))
+      fixture.componentInstance.form.patchValue({ cerCode: '17 04 02' })
+      aggiorna()
+      expect(testo('correzione-cer-cambiato')).toContain('scritti a mano')
+      expect(testo('correzione-cer-cambiato')).toContain('serve una nuova conferma')
+      // con il CER nuovo la proposta rigenerata si mostra
+      tick(ATTESA_PROPOSTA_MS)
+      aggiorna()
+      expect(document.body.querySelectorAll('[data-testid="importo-ra-1"]').length).toBe(2)
+    }))
+
+    it('CER cambiato con causale non fatturabile: nessun avviso «nuova conferma» (il legame viene escluso)', fakeAsync(() => {
+      causali.opzioni.and.returnValue(of([opzione('SCARICO_A_TERZI', false)]))
+      apri('rettifica', of(legame()))
+      fixture.componentInstance.form.patchValue({ cerCode: '17 04 02' })
+      aggiorna()
+      expect(q('correzione-cer-cambiato')).toBeNull()
+    }))
+
+    it('I2: lettura del legame fallita (500): avviso, nessun blocco, corpo senza `legame`, rettifica possibile', fakeAsync(() => {
+      registro.rettifica.and.returnValue(of(esito()))
+      apri(
+        'rettifica',
+        throwError(() => new HttpErrorResponse({ status: 500 }))
+      )
+      expect(testo('correzione-errore-legame')).toContain('la rettifica parte senza modificarlo')
+      expect(q('blocco-fatturazione')).toBeNull()
+      expect(legami.proposta).not.toHaveBeenCalled()
+      expect(q('correzione-invia-conferma')).toBeNull()
+      motivo()
+      expect(bottone('correzione-invia')!.disabled).toBeFalse()
+      bottone('correzione-invia')!.click()
+      aggiorna()
+      expect('legame' in registro.rettifica.calls.mostRecent().args[1]).toBeFalse()
+      expect(toast.error).not.toHaveBeenCalled()
+    }))
+
+    it('I2: il 404 resta «legame nuovo» e non mostra l’avviso di lettura', fakeAsync(() => {
+      apri(
+        'rettifica',
+        throwError(() => new HttpErrorResponse({ status: 404 }))
+      )
+      expect(q('correzione-errore-legame')).toBeNull()
+      expect(q('blocco-fatturazione')).not.toBeNull()
+    }))
+  })
 })

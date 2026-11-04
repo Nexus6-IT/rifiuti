@@ -24,6 +24,7 @@ import { EMPTY, Subject, Subscription, merge, of } from 'rxjs'
 import { catchError, distinctUntilChanged, map, startWith, switchMap } from 'rxjs/operators'
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
+import { TagModule } from 'primeng/tag'
 import { CalendarModule } from 'primeng/calendar'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
@@ -47,7 +48,8 @@ import {
 } from '../legami/legami.model'
 import { LegamiService } from '../legami/legami.service'
 import { permessiLegami } from '../legami/permessi-legami'
-import { etichettaAvviso } from '../legami/vocabolario-legami'
+import { RigheLegameTabellaComponent } from '../legami/righe-legame-tabella.component'
+import { etichettaAvviso, etichettaStato, severitaTag } from '../legami/vocabolario-legami'
 import { CerSelectComponent } from '../cer/cer-select.component'
 import {
   EsitoCorrezioneMovimento,
@@ -69,6 +71,8 @@ import {
 } from './registro-opzioni'
 import { numeroAnnotazione } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+
+const ERRORE_LETTURA = Symbol('errore-lettura-legame')
 
 export type ModoCorrezione = 'rettifica' | 'annullamento'
 
@@ -111,6 +115,8 @@ export function messaggioErroreCorrezione(err: any): string {
     InputTextareaModule,
     CerSelectComponent,
     BloccoFatturazioneComponent,
+    RigheLegameTabellaComponent,
+    TagModule,
   ],
   template: `
     <p-dialog
@@ -171,6 +177,15 @@ export function messaggioErroreCorrezione(err: any): string {
             </span>
           </p>
           <p
+            *ngIf="modo === 'rettifica' && erroreLettura()"
+            class="avviso-legame"
+            role="alert"
+            data-testid="correzione-errore-legame"
+          >
+            <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+            <span>Impossibile leggere il legame: la rettifica parte senza modificarlo.</span>
+          </p>
+          <p
             *ngIf="modo === 'rettifica' && cerCambiato()"
             class="avviso-legame"
             role="status"
@@ -178,8 +193,44 @@ export function messaggioErroreCorrezione(err: any): string {
           >
             <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
             <span>
-              Il codice CER è cambiato: serve una nuova conferma del legame col listino. I prezzi
-              congelati vengono ricalcolati sul nuovo codice.
+              Il codice CER è cambiato: serve una nuova conferma del legame. Le righe si rigenerano
+              dal listino sul codice nuovo e si perdono i prezzi congelati e quelli scritti a mano;
+              il legame torna «Proposto».
+            </span>
+          </p>
+
+          <!-- Legame com'è oggi (sola lettura): la rettifica non lo cambia se non lo chiedi tu -->
+          <section
+            *ngIf="modo === 'rettifica' && legameEsistente() as l"
+            class="legame-attuale"
+            data-testid="correzione-legame-attuale"
+          >
+            <h3 class="legame-attuale__titolo">
+              Legame attuale
+              <p-tag [value]="etichettaStato(l.stato)" [severity]="severitaTag(l.stato)"></p-tag>
+            </h3>
+            <p class="legame-attuale__dati">
+              {{ l.cliente?.etichetta ?? 'Nessun cliente' }} ·
+              {{ l.contratto?.etichetta ?? 'nessun contratto' }} ·
+              {{ l.elenco?.etichetta ?? 'nessun elenco' }}
+            </p>
+            <app-righe-legame-tabella
+              [righe]="l.righe"
+              [modificabile]="false"
+              [mostraIva]="true"
+            ></app-righe-legame-tabella>
+          </section>
+          <p
+            *ngIf="modo === 'rettifica' && scelteCambiate()"
+            class="avviso-legame"
+            role="status"
+            data-testid="correzione-scelte-cambiate"
+          >
+            <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+            <span>
+              Hai cambiato cliente, contratto o elenco: le righe si rigenerano dal listino, si
+              perdono i prezzi congelati e quelli scritti a mano e il legame torna «Proposto» (resta
+              confermato solo con «Rettifica e conferma legame» e dati completi).
             </span>
           </p>
 
@@ -382,6 +433,7 @@ export function messaggioErroreCorrezione(err: any): string {
               *ngIf="modo === 'rettifica'"
               [datiMovimento]="datiLegame()"
               [righeModificabili]="!legameEsistente()"
+              [mostraRighe]="!legameEsistente() || cerCambiato()"
               [(scelta)]="sceltaLegame"
               (legameChange)="legame = $event"
               (validoChange)="bloccoValido = $event"
@@ -445,7 +497,7 @@ export function messaggioErroreCorrezione(err: any): string {
             (onClick)="chiudi()"
           ></p-button>
           <p-button
-            *ngIf="modo === 'rettifica' && bloccoStato.visibile"
+            *ngIf="modo === 'rettifica' && offriConfermaLegame()"
             label="Rettifica e conferma legame"
             icon="pi pi-check"
             [loading]="invio()"
@@ -553,6 +605,22 @@ export function messaggioErroreCorrezione(err: any): string {
         margin-top: 3px;
         color: var(--color-warning);
       }
+      .legame-attuale {
+        margin: 0 0 var(--spacing-base);
+      }
+      .legame-attuale__titolo {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        margin: 0 0 var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .legame-attuale__dati {
+        margin: 0 0 var(--spacing-sm);
+        font-size: var(--font-size-sm);
+      }
       .conferma__testo {
         margin: 0;
         line-height: 1.5;
@@ -591,6 +659,8 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
 
   /** Legame già esistente della catena (null: nessuno o 404). */
   readonly legameEsistente = signal<LegameVista | null>(null)
+  /** Lettura fallita con un errore diverso dal 404: non si sa se il legame esiste, non si tocca. */
+  readonly erroreLettura = signal(false)
   /** La lettura del legame è finita (anche con 404): prima non si chiede nessuna proposta. */
   private readonly legameCaricato = signal(false)
   private readonly datiForm = signal<DatiMovimentoLegame | null>(null)
@@ -617,15 +687,39 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     return !!l && (l.stato === 'FATTURATO' || l.stato === 'IMPORTATO_FATTURATO')
   })
 
-  /** CER diverso da quello dell'annotazione corretta, su un legame che il backend rifà da zero. */
+  /**
+   * CER diverso da quello dell'annotazione corretta, su un legame che il backend rifà da zero. Con
+   * una causale non fatturabile il legame viene escluso, non riproposto: nessun avviso.
+   */
   readonly cerCambiato = computed(() => {
     const l = this.legameEsistente()
-    return (
-      !!l &&
-      STATI_MODIFICABILI.includes(l.stato) &&
-      this.cerCorrente().trim() !== this.cerOriginale().trim()
-    )
+    if (!l || !STATI_MODIFICABILI.includes(l.stato)) return false
+    const causale = this.opzioniApi().find(c => c.codice === this.datiForm()?.causale)
+    if (causale?.fatturabile === false) return false
+    return this.cerCorrente().trim() !== this.cerOriginale().trim()
   })
+
+  etichettaStato = etichettaStato
+  severitaTag = severitaTag
+
+  /** L'utente ha scelto cliente, contratto o elenco diversi da quelli del legame esistente. */
+  scelteCambiate(): boolean {
+    const e = this.legameEsistente()
+    const s = this.sceltaLegame
+    if (!e || !s) return false
+    return (
+      (!!s.clienteId && s.clienteId !== e.cliente?.id) ||
+      (!!s.contrattoId && s.contrattoId !== e.contratto?.id) ||
+      (!!s.elencoId && s.elencoId !== e.elenco?.id)
+    )
+  }
+
+  /** «Rettifica e conferma»: non serve su un legame già CONFERMATO che la rettifica non rifà. */
+  offriConfermaLegame(): boolean {
+    if (!this.bloccoStato.visibile) return false
+    const e = this.legameEsistente()
+    return !(e?.stato === 'CONFERMATO' && !this.cerCambiato() && !this.scelteCambiate())
+  }
 
   form: FormGroup = this.creaForm()
 
@@ -647,7 +741,9 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
    */
   readonly datiLegame = computed<DatiMovimentoLegame | null>(() => {
     const dati = this.datiForm()
-    if (!dati || !this.legameCaricato() || !this.puoScrivereLegami()) return null
+    if (!dati || !this.legameCaricato() || !this.puoScrivereLegami() || this.erroreLettura()) {
+      return null
+    }
     const l = this.legameEsistente()
     if (l && !STATI_MODIFICABILI.includes(l.stato)) return null
     const causale = this.opzioniApi().find(c => c.codice === dati.causale)
@@ -744,6 +840,7 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     this.sottoscrizioneForm?.unsubscribe()
     this.legameEsistente.set(null)
     this.legameCaricato.set(false)
+    this.erroreLettura.set(false)
     this.datiForm.set(null)
     this.cerOriginale.set('')
     this.cerCorrente.set('')
@@ -767,11 +864,29 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
     this.sottoscrizioneLegame = this.legami
       .perMovimento(m.id)
       .pipe(
-        catchError(() => of(null)),
+        // Solo il 404 vale «nessun legame»: con un altro errore non si sa, e un legame nuovo
+        // manderebbe la selezione intera delle righe a un legame che potrebbe esistere.
+        catchError(err =>
+          of((err as { status?: number } | null)?.status === 404 ? null : ERRORE_LETTURA)
+        ),
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(l => {
-        this.legameEsistente.set(l)
+        if (l === ERRORE_LETTURA) {
+          this.erroreLettura.set(true)
+          this.legameEsistente.set(null)
+        } else {
+          this.legameEsistente.set(l)
+          // Le scelte del legame sono quelle iniziali del blocco: la proposta coincide con quella
+          // che il server rifà, e non si rimandano come «cambio». Il cliente solo se scelto a mano.
+          if (l) {
+            this.sceltaLegame = {
+              ...(l.cliente?.fonte === 'UTENTE' ? { clienteId: l.cliente.id } : {}),
+              ...(l.contratto ? { contrattoId: l.contratto.id } : {}),
+              ...(l.elenco ? { elencoId: l.elenco.id } : {}),
+            }
+          }
+        }
         this.legameCaricato.set(true)
       })
     if (this.modo !== 'rettifica') return
@@ -908,6 +1023,25 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   }
 
   /**
+   * Blocco `legame` del corpo. Legame nuovo: come emesso dal blocco. Legame ESISTENTE: solo
+   * l'azione e le scelte che l'utente ha cambiato rispetto al legame (mai le righe); senza
+   * scelte cambiate e con azione PROPOSTA non si manda nulla.
+   */
+  private legameDaInviare(): { legame?: DatiLegameRegistrazione } {
+    const b = this.legame
+    if (!b) return {}
+    const azione = this.azioneScelta
+    const e = this.legameEsistente()
+    if (!e) return { legame: { ...b, azione } }
+    const out: DatiLegameRegistrazione = { azione }
+    if (b.clienteId && b.clienteId !== e.cliente?.id) out.clienteId = b.clienteId
+    if (b.contrattoId && b.contrattoId !== e.contratto?.id) out.contrattoId = b.contrattoId
+    if (b.elencoId && b.elencoId !== e.elenco?.id) out.elencoId = b.elencoId
+    const cambiato = !!(out.clienteId || out.contrattoId || out.elencoId)
+    return azione === 'PROPOSTA' && !cambiato ? {} : { legame: out }
+  }
+
+  /**
    * Esito del legame dopo la correzione: sempre un avviso, mai un errore (la correzione è
    * riuscita). I testi del backend (`avvisi`) sono già mostrati; qui si aggiunge solo ciò che
    * manca, senza ripetere il rimando a «Da collegare».
@@ -958,7 +1092,7 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
             notes: v.notes || undefined,
             motivo,
             // Il blocco prepara il legame; l'azione la decide il pulsante premuto.
-            ...(this.legame ? { legame: { ...this.legame, azione: this.azioneScelta } } : {}),
+            ...this.legameDaInviare(),
             ...conferma,
           })
         : this.servizio.annulla(m.id, { motivo, ...conferma })

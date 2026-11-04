@@ -137,6 +137,16 @@ export function messaggiErroreLegame(err: unknown): {
       </dl>
 
       <p
+        *ngIf="indietro()"
+        class="avviso avviso-warn"
+        role="status"
+        data-testid="riquadro-da-riallineare"
+      >
+        Il legame è rimasto indietro rispetto all'ultima correzione del movimento: i valori qui
+        sotto sono quelli precedenti. Riallinealo dalla pagina «Da collegare».
+      </p>
+
+      <p
         *ngIf="l.scostamentoDopoFattura"
         class="avviso avviso-warn"
         role="status"
@@ -293,7 +303,18 @@ export class RiquadroLegameComponent implements OnChanges {
   private readonly destroyRef = inject(DestroyRef)
 
   /** Un movimento qualunque della catena. */
-  @Input() movimentoId: string | null = null
+  @Input() set movimentoId(v: string | null) {
+    this.idMovimento.set(v)
+  }
+  get movimentoId(): string | null {
+    return this.idMovimento()
+  }
+  private readonly idMovimento = signal<string | null>(null)
+  /**
+   * Vero se `movimentoId` è la testa (l'annotazione vigente) della catena: solo allora si può dire
+   * che un legame con un altro movimento vigente è rimasto indietro (DA_RIALLINEARE).
+   */
+  @Input() eTesta = false
   /** Dopo il caricamento: il legame c'è, non c'è (404) o la lettura è fallita. */
   @Output() esitoChange = new EventEmitter<EsitoRiquadro>()
   /** Dopo un salvataggio o una conferma riusciti (chi ospita può rileggere elenchi e contatori). */
@@ -313,7 +334,13 @@ export class RiquadroLegameComponent implements OnChanges {
   /** Solo OPERATOR/ADMIN e solo negli stati in cui il backend accetta modifiche (mai FATTURATO). */
   readonly puoModificare = computed(() => {
     const l = this.legame()
-    return this.puoScrivere() && !!l && STATI_MODIFICABILI.includes(l.stato)
+    return this.puoScrivere() && !!l && STATI_MODIFICABILI.includes(l.stato) && !this.indietro()
+  })
+
+  /** Il legame punta a un movimento vigente diverso dalla testa: la correzione non l'ha riallineato. */
+  readonly indietro = computed(() => {
+    const l = this.legame()
+    return this.eTesta && !!l && !!this.movimentoId && l.movimentoVigenteId !== this.movimentoId
   })
 
   /** Righe con i ritocchi non ancora salvati: l'importo di una riga ritoccata lo calcola il server. */
@@ -450,7 +477,7 @@ export class RiquadroLegameComponent implements OnChanges {
     this.inCorso.set(true)
     this.errori.set([])
     this.serveRicarica.set(false)
-    chiamata.subscribe({
+    chiamata.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: nuovo => {
         this.inCorso.set(false)
         this.imposta(nuovo)

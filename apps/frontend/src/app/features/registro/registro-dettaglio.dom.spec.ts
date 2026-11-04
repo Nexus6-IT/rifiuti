@@ -169,4 +169,14 @@ describe('Registro - dettaglio del movimento con il legame', () => {
     expect(legami.modifica).not.toHaveBeenCalled()
     expect(legami.conferma).not.toHaveBeenCalled()
   }))
+
+  it('alla chiusura il focus torna al pulsante «Dettaglio»', fakeAsync(() => {
+    apri(of(legame()))
+    fixture.componentInstance.chiudiDettaglio()
+    fixture.detectChanges()
+    tick()
+    expect(document.activeElement).toBe(
+      q('registro-dettaglio-m1')!.querySelector('button') as HTMLButtonElement
+    )
+  }))
 })

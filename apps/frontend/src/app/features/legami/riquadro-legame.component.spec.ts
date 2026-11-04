@@ -320,4 +320,32 @@ describe('RiquadroLegameComponent', () => {
     expect(campo('prezzo-ra-1')).toBeNull()
     expect(q('riquadro-azioni')).toBeNull()
   }))
+
+  it('DA_RIALLINEARE: legame rimasto indietro rispetto alla testa, avviso e nessuna modifica', fakeAsync(() => {
+    servizio.perMovimento.and.returnValue(
+      of(legame({ movimentoVigenteId: 'm1', stato: 'PROPOSTO' }))
+    )
+    TestBed.configureTestingModule({
+      imports: [RiquadroLegameComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: LegamiService, useValue: servizio },
+        { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
+      ],
+    })
+    fixture = TestBed.createComponent(RiquadroLegameComponent)
+    fixture.componentRef.setInput('eTesta', true)
+    fixture.componentRef.setInput('movimentoId', 'm9')
+    aggiorna()
+    expect(testo('riquadro-da-riallineare')).toContain('Da collegare')
+    expect(campo('prezzo-ra-1')).toBeNull()
+    expect(q('riquadro-azioni')).toBeNull()
+  }))
+
+  it('legame allineato alla testa: nessun avviso di riallineamento', fakeAsync(() => {
+    crea(of(legame({ movimentoVigenteId: 'm1' })))
+    fixture.componentRef.setInput('eTesta', true)
+    aggiorna()
+    expect(q('riquadro-da-riallineare')).toBeNull()
+  }))
 })
