@@ -3,7 +3,11 @@ import { HttpClient, HttpParams } from '@angular/common/http'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import { StatoRentri } from './stato-rentri'
-import type { FatturazioneCorrezione } from '../legami/legami.model'
+import type {
+  DatiLegameRegistrazione,
+  FatturazioneCorrezione,
+  FatturazioneRegistrazione,
+} from '../legami/legami.model'
 
 // ─── Modelli ────────────────────────────────────────────────────────────────
 
@@ -69,6 +73,8 @@ export interface Movimento {
   giaRegistrato?: boolean
   /** Solo nella risposta di `registra`: avvisi non bloccanti per l'operatore. */
   avvisi?: string[]
+  /** Solo nella risposta di `registra`: esito del collegamento al listino (4.3). */
+  fatturazione?: FatturazioneRegistrazione
   /** Solo nell'elenco: stato di trasmissione a RENTRI; null se l'annotazione non ha una riga. */
   trasmissioneRentri?: {
     stato: StatoRentri
@@ -106,6 +112,8 @@ export interface RegistraMovimentoRequest {
   counterpartAddress?: string
   firId?: string
   notes?: string
+  /** Blocco «Fatturazione» (4.3): senza, il legame nasce PROPOSTO e non viene mai confermato. */
+  legame?: DatiLegameRegistrazione
 }
 
 /** Corpo della rettifica: dati completi nuovi; tipo, registro, FIR e data di registrazione non si inviano. */

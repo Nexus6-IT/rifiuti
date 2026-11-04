@@ -108,6 +108,12 @@ import {
   testoEsitoVerifica,
 } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import {
+  BloccoFatturazioneComponent,
+  DatiMovimentoLegame,
+  SceltaLegame,
+} from '../legami/blocco-fatturazione.component'
+import { DatiLegameRegistrazione } from '../legami/legami.model'
 
 interface DropdownOption<T> {
   label: string
@@ -148,6 +154,7 @@ interface FirOption {
     RentriRigaAzioniComponent,
     CausaliRegistroDialogComponent,
     CorreggiMovimentoDialogComponent,
+    BloccoFatturazioneComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -952,6 +959,14 @@ interface FirOption {
               </div>
             </div>
           </section>
+
+          <!-- ===== Sezione 4: Fatturazione (visibile solo con causale fatturabile) ===== -->
+          <app-blocco-fatturazione
+            [datiMovimento]="datiLegame()"
+            [(scelta)]="sceltaLegame"
+            (legameChange)="legame = $event"
+            (validoChange)="bloccoFatturazioneValido = $event"
+          ></app-blocco-fatturazione>
         </form>
 
         <ng-template pTemplate="footer">
@@ -1380,6 +1395,18 @@ export class RegistroComponent implements OnInit {
   readonly paginazione = signal({ total: 0, page: 1, limit: 20, totalPages: 0 })
   readonly loading = signal(false)
   readonly saving = signal(false)
+
+  // ─── Blocco «Fatturazione» (4.3c) ─────────────────────────────────────────
+
+  /** Dati del movimento per la proposta di legame; null finché il form è incompleto. */
+  readonly datiLegame = signal<DatiMovimentoLegame | null>(null)
+  /** Contratto ed elenco scelti dall'utente nel blocco. */
+  sceltaLegame: SceltaLegame | null = null
+  /** Blocco `legame` da inviare con la registrazione (null = nessuno). */
+  legame: DatiLegameRegistrazione | null = null
+  /** Falso se un campo del blocco è in errore: la registrazione aspetta. */
+  bloccoFatturazioneValido = true
+  private sottoscrizioneDatiLegame: Subscription | null = null
   readonly exporting = signal(false)
   readonly error = signal<string | null>(null)
 
@@ -1509,6 +1536,43 @@ export class RegistroComponent implements OnInit {
       notes: [''],
     })
     this.avviaOpzioniCausali()
+    this.avviaDatiLegame()
+  }
+
+  /** Il blocco «Fatturazione» chiede la proposta a ogni cambio dei campi che la determinano. */
+  private avviaDatiLegame(): void {
+    this.sottoscrizioneDatiLegame?.unsubscribe()
+    this.sottoscrizioneDatiLegame = this.form.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.datiLegame.set(this.costruisciDatiLegame()))
+    this.datiLegame.set(this.costruisciDatiLegame())
+  }
+
+  /** Solo con i campi obbligatori compilati e la quantità positiva: prima non c'è nulla da proporre. */
+  private costruisciDatiLegame(): DatiMovimentoLegame | null {
+    const v = this.form.getRawValue() as Record<string, unknown>
+    const cer = typeof v['cerCode'] === 'string' ? v['cerCode'].trim() : ''
+    const quantita = v['quantity']
+    const data = v['movementDate']
+    if (
+      !v['type'] ||
+      !v['causale'] ||
+      !cer ||
+      !(data instanceof Date) ||
+      typeof quantita !== 'number' ||
+      !(quantita > 0)
+    ) {
+      return null
+    }
+    return {
+      causale: v['causale'] as string,
+      type: v['type'] as TipoMovimento,
+      cerCode: cer,
+      movementDate: giornoLocale(data),
+      unit: (v['unit'] as string) || 'KG',
+      quantity: String(quantita),
+      ...(v['firId'] ? { firId: v['firId'] as string } : {}),
+    }
   }
 
   /**
@@ -1582,6 +1646,9 @@ export class RegistroComponent implements OnInit {
     this.ricaricaOpzioni.next({ tipo: 'CARICO', giorno: giornoLocale(new Date()) })
     this.sottoscrizioneProposta?.unsubscribe()
     this.sottoscrizioneProposta = null
+    this.sceltaLegame = null
+    this.legame = null
+    this.bloccoFatturazioneValido = true
     this.sedeBloccataDaFir.set(false)
     this.form.get('registroId')?.enable({ emitEvent: false })
     this.applicaRegistroAlForm(true)
@@ -1933,6 +2000,10 @@ export class RegistroComponent implements OnInit {
       this.toast.error('Controlla i campi evidenziati e riprova.')
       return
     }
+    if (!this.bloccoFatturazioneValido) {
+      this.toast.error('Correggi i campi evidenziati nel blocco «Fatturazione» e riprova.')
+      return
+    }
 
     const v = this.form.value
     // il controllo della sede è disabilitato (assente da `value`) quando la blocca il FIR
@@ -1960,6 +2031,7 @@ export class RegistroComponent implements OnInit {
         counterpartAddress: v.counterpartAddress || undefined,
         firId: v.firId || undefined,
         notes: v.notes || undefined,
+        ...(this.legame ? { legame: this.legame } : {}),
       })
       .subscribe({
         next: m => {

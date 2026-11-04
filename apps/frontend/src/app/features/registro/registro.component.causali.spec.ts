@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { signal } from '@angular/core'
 import { ReplaySubject, of, throwError } from 'rxjs'
 import { RegistroComponent } from './registro.component'
-import { RegistroService } from './registro.service'
+import { Movimento, RegistroService } from './registro.service'
 import { CausaliRegistroService, OpzioneCausaleApi } from './causali-registro.service'
 import { giornoLocale } from './registro-opzioni'
 import { ToastService } from '../../core/services/toast.service'
@@ -281,6 +281,103 @@ describe('RegistroComponent — causali dall’API', () => {
       // le opzioni nuove tolgono la causale modificata: la scelta si azzera
       risposta('CARICO', '2026-10-20').next([riga('PRODUZIONE_INTERNA')])
       expect(c.form.get('causale')!.value).toBeNull()
+    })
+  })
+
+  describe('blocco «Fatturazione»', () => {
+    /** Dopo la registrazione il componente rilegge elenco e progressivo: qui non serve. */
+    const senzaRilettura = (c: RegistroComponent): void => {
+      spyOn(c, 'ricarica')
+      spyOn(c as never, 'caricaProgressivo')
+    }
+    const compila = (c: RegistroComponent): void => {
+      senzaRilettura(c)
+      risposta('CARICO', '2026-10-20').next([riga('AZ_RESO')])
+      c.form.patchValue({
+        causale: 'AZ_RESO',
+        cerCode: '15 01 01',
+        quantity: 10.5,
+        movementDate: new Date(2026, 9, 20),
+      })
+      tick()
+    }
+
+    itFa(
+      'i dati per la proposta nascono solo a form completo, con la quantità come stringa col punto',
+      () => {
+        const c = crea()
+        expect(c.datiLegame()).toBeNull()
+        compila(c)
+        expect(c.datiLegame()).toEqual({
+          causale: 'AZ_RESO',
+          type: 'CARICO',
+          cerCode: '15 01 01',
+          movementDate: '2026-10-20',
+          unit: 'KG',
+          quantity: '10.5',
+        })
+        c.form.patchValue({ quantity: null })
+        expect(c.datiLegame()).toBeNull()
+      }
+    )
+
+    itFa('la registrazione porta il blocco `legame` scelto nel blocco', () => {
+      const c = crea()
+      compila(c)
+      servizio.registra.and.returnValue(
+        of({ progressiveNumber: 1, progressiveYear: 2026 } as unknown as Movimento)
+      )
+      c.legame = { azione: 'CONFERMA', righe: [{ rigaAddebitoId: 'ra-1', prezzo: '12.5' }] }
+      c.salva()
+      expect(servizio.registra.calls.mostRecent().args[0].legame).toEqual({
+        azione: 'CONFERMA',
+        righe: [{ rigaAddebitoId: 'ra-1', prezzo: '12.5' }],
+      })
+    })
+
+    itFa('senza blocco (causale non fatturabile) la chiave `legame` non c’è', () => {
+      const c = crea()
+      compila(c)
+      servizio.registra.and.returnValue(
+        of({ progressiveNumber: 1, progressiveYear: 2026 } as unknown as Movimento)
+      )
+      c.salva()
+      expect(Object.keys(servizio.registra.calls.mostRecent().args[0])).not.toContain('legame')
+    })
+
+    itFa('campo del blocco in errore: la registrazione non parte', () => {
+      const c = crea()
+      compila(c)
+      c.bloccoFatturazioneValido = false
+      c.salva()
+      expect(servizio.registra).not.toHaveBeenCalled()
+      expect(toast.error).toHaveBeenCalled()
+    })
+
+    itFa('avvisi di collegamento non riuscito (HTTP 201): avvisi, non errore', () => {
+      const c = crea()
+      compila(c)
+      servizio.registra.and.returnValue(
+        of({
+          progressiveNumber: 1,
+          progressiveYear: 2026,
+          avvisi: [
+            'Movimento registrato; il collegamento non e\' riuscito: lo trovi in "Da collegare".',
+          ],
+          fatturazione: {
+            esito: 'NON_RIUSCITO',
+            legameId: null,
+            stato: null,
+            motivi: [],
+            avvisi: [],
+          },
+        } as unknown as Movimento)
+      )
+      c.salva()
+      expect(toast.warn).toHaveBeenCalledWith(
+        'Movimento registrato; il collegamento non e\' riuscito: lo trovi in "Da collegare".'
+      )
+      expect(toast.error).not.toHaveBeenCalled()
     })
   })
 })
