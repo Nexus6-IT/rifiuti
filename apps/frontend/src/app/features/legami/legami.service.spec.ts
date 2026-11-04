@@ -46,6 +46,18 @@ describe('LegamiService', () => {
     req.flush({ elementi: [], totale: 0 })
   })
 
+  it('lista: contrattoId viaggia in query (UUID), assente se non indicato', () => {
+    const id = '22222222-2222-4222-8222-222222222222'
+    servizio.lista({ contrattoId: id, pagina: 1 }).subscribe()
+    const req = http.expectOne(r => r.url === base)
+    expect(req.request.params.get('contrattoId')).toBe(id)
+    req.flush({ elementi: [], totale: 0 })
+    servizio.lista({ pagina: 1 }).subscribe()
+    const r2 = http.expectOne(r => r.url === base)
+    expect(r2.request.params.has('contrattoId')).toBe(false)
+    r2.flush({ elementi: [], totale: 0 })
+  })
+
   it('lista: stati[] in query separati da virgola ed esclusi false come "false"', () => {
     servizio.lista({ stati: ['MANCANTE', 'PROPOSTO'], esclusi: false }).subscribe()
     const req = http.expectOne(r => r.url === base)

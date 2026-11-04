@@ -44,6 +44,7 @@ import {
   OPZIONI_TRANSAZIONE_SCRITTURA,
 } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { sqlGiornoMovimento } from './giorno-movimento'
 import {
   calcolaAggiornamento,
   type CalcoloAggiornamento,
@@ -75,6 +76,14 @@ export interface DifferenzaAggiornamento {
   prezzoDopo: string | null
   scontoPrima: string | null
   scontoDopo: string | null
+  /** Numero del movimento nel registro, `progressivo/anno` (come nel registro). */
+  numeroMovimento: string
+  /** Giorno del movimento, `AAAA-MM-GG`. */
+  dataMovimento: string
+  /** Voce di listino della riga: la sua descrizione, oppure `CER xx xx xx` / il tipo. */
+  voce: string
+  /** Ragione sociale del cliente del legame (vuota se il legame non ha cliente). */
+  cliente: string
 }
 
 export interface AnteprimaAggiornamento {
@@ -319,6 +328,102 @@ async function completaCoerenzaCer(
   }
 }
 
+interface DescrizioneDifferenza {
+  numeroMovimento: string
+  dataMovimento: string
+  voce: string
+  cliente: string
+}
+
+/** Gli id gia' in memoria delle righe che si mostrano (legame, movimento vigente, riga del legame). */
+interface RiferimentiDifferenza {
+  rigaId: string
+  legameId: string
+  movimentoId: string
+}
+
+const distinti = (v: Iterable<string>): string[] => [...new Set(v)].sort()
+
+/**
+ * I campi leggibili degli esempi dell'anteprima: letture su UNA tabella alla volta con
+ * `id = ANY($ids::uuid[])` (al massimo `MAX_DIFFERENZE` id per tabella, sulla chiave primaria) e
+ * composizione in memoria. Niente join: dentro la transazione i nested loop sono spenti
+ * (`joinLineari`, usato da `leggiLegami`) e un join cosi' leggerebbe per intero il tenant di
+ * `waste_movements`, che cresce senza limite. Il numero di query e' fisso (6), non dipende dalle
+ * righe mostrate. Il movimento e' quello vigente del legame (`movimentoId`), non l'originale:
+ * dopo una rettifica numero e data sono quelli della testa.
+ */
+async function leggiDescrizioniDifferenze(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  righe: readonly RiferimentiDifferenza[]
+): Promise<Map<string, DescrizioneDifferenza>> {
+  const risultato = new Map<string, DescrizioneDifferenza>()
+  if (righe.length === 0) return risultato
+  const righeIds = distinti(righe.map(r => r.rigaId))
+  const legamiIds = distinti(righe.map(r => r.legameId))
+  const movimentiIds = distinti(righe.map(r => r.movimentoId))
+
+  const righeLegame = await tx.$queryRaw<
+    { id: string; tipo: string; descrizione: string | null; rigaAddebitoId: string }[]
+  >`
+    SELECT id::text AS id, tipo, descrizione, riga_addebito_id::text AS "rigaAddebitoId"
+    FROM righe_legame_movimento
+    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${righeIds}::uuid[])`
+  const legami = await tx.$queryRaw<{ id: string; clienteId: string | null }[]>`
+    SELECT id::text AS id, cliente_id::text AS "clienteId"
+    FROM legami_movimento
+    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${legamiIds}::uuid[])`
+  const movimenti = await tx.$queryRaw<
+    { id: string; progressivo: number; anno: number; giorno: string }[]
+  >`
+    SELECT m.id::text AS id, m.progressive_number AS progressivo, m.progressive_year AS anno,
+           to_char(${sqlGiornoMovimento('m')}, 'YYYY-MM-DD') AS giorno
+    FROM waste_movements m
+    WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ANY(${movimentiIds}::uuid[])`
+  const vociListino = await tx.$queryRaw<
+    { id: string; descrizione: string | null; cer: string | null }[]
+  >`
+    SELECT id::text AS id, descrizione, cer_code AS cer
+    FROM righe_addebito
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id = ANY(${distinti(righeLegame.map(r => r.rigaAddebitoId))}::uuid[])`
+  const clientiIds = distinti(legami.flatMap(l => (l.clienteId === null ? [] : [l.clienteId])))
+  const clienti = await tx.$queryRaw<{ id: string; dittaId: string }[]>`
+    SELECT id::text AS id, ditta_id::text AS "dittaId"
+    FROM clienti
+    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${clientiIds}::uuid[])`
+  const ditte = await tx.$queryRaw<{ id: string; ragioneSociale: string | null }[]>`
+    SELECT id::text AS id, ragione_sociale AS "ragioneSociale"
+    FROM ditte
+    WHERE tenant_id = ${tenantId}::uuid
+      AND id = ANY(${distinti(clienti.map(c => c.dittaId))}::uuid[])`
+
+  const perRiga = new Map(righeLegame.map(r => [r.id, r]))
+  const perLegame = new Map(legami.map(l => [l.id, l]))
+  const perMovimento = new Map(movimenti.map(m => [m.id, m]))
+  const perVoce = new Map(vociListino.map(v => [v.id, v]))
+  const dittaDelCliente = new Map(clienti.map(c => [c.id, c.dittaId]))
+  const ragioneSociale = new Map(ditte.map(d => [d.id, d.ragioneSociale]))
+  for (const x of righe) {
+    const rl = perRiga.get(x.rigaId)
+    const m = perMovimento.get(x.movimentoId)
+    const voce = rl ? perVoce.get(rl.rigaAddebitoId) : undefined
+    const clienteId = perLegame.get(x.legameId)?.clienteId ?? null
+    const ditta = clienteId === null ? undefined : dittaDelCliente.get(clienteId)
+    const cer = (voce?.cer ?? '').trim()
+    risultato.set(x.rigaId, {
+      numeroMovimento: m ? `${m.progressivo}/${m.anno}` : '',
+      dataMovimento: m?.giorno ?? '',
+      voce: rl
+        ? (rl.descrizione ?? voce?.descrizione ?? (cer !== '' ? `CER ${cer}` : rl.tipo))
+        : '',
+      cliente: (ditta === undefined ? null : ragioneSociale.get(ditta)) ?? '',
+    })
+  }
+  return risultato
+}
+
 /** Contratto del perimetro (anche dedotto dall'elenco): esiste, non e' eliminato e non e' annullato. */
 async function risolviContratto(
   tx: Prisma.TransactionClient,
@@ -375,22 +480,30 @@ export class AggiornaPrezziService {
         await verificaContratto(tx, tenantId, contrattoId)
         const c = calcolaAggiornamento(await leggiLegami(tx, tenantId, p), chiave(p))
         const saltati = riepilogoSaltati(c)
+        const righeCambiate = c.daScrivere
+          .flatMap(l => l.righe)
+          .filter(r => r.prezzoPrima !== r.prezzoDopo || r.scontoPrima !== r.scontoDopo)
+          .slice(0, MAX_DIFFERENZE)
+        const leggibili = await leggiDescrizioniDifferenze(tx, tenantId, righeCambiate)
         return {
           firma: c.firma,
           cambiano: c.daScrivere.length,
           invariati: c.invariati,
-          differenze: c.daScrivere
-            .flatMap(l => l.righe)
-            .filter(r => r.prezzoPrima !== r.prezzoDopo || r.scontoPrima !== r.scontoDopo)
-            .slice(0, MAX_DIFFERENZE)
-            .map(r => ({
+          differenze: righeCambiate.map(r => {
+            const d = leggibili.get(r.rigaId)
+            return {
               legameId: r.legameId,
               movimentoId: r.movimentoId,
               prezzoPrima: r.prezzoPrima,
               prezzoDopo: r.prezzoDopo,
               scontoPrima: r.scontoPrima,
               scontoDopo: r.scontoDopo,
-            })),
+              numeroMovimento: d?.numeroMovimento ?? '',
+              dataMovimento: d?.dataMovimento ?? '',
+              voce: d?.voce ?? '',
+              cliente: d?.cliente ?? '',
+            }
+          }),
           saltati,
           daCollegare: c.daCollegare,
           righeEscluseManuali: c.righeManuali,

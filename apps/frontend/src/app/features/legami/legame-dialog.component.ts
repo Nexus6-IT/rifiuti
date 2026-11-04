@@ -6,117 +6,37 @@ import {
   OnChanges,
   Output,
   SimpleChanges,
+  computed,
   inject,
   signal,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { switchMap } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
-import { InputNumberModule } from 'primeng/inputnumber'
-import { InputTextModule } from 'primeng/inputtext'
 import { TagModule } from 'primeng/tag'
-import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
-import { formatCascata, formatNumero, leggiCascata } from '../../shared/utils/numero-modificabile'
-import { leggiErroriAzione } from '../listino/errori-azione'
 import { LegamiService } from './legami.service'
 import {
   LegameVista,
   ModificaRigaLegame,
   ModificheLegame,
-  VoceScelta,
-  MotivoLegame,
-  RigaLegame,
   StatoLegame,
+  VoceScelta,
 } from './legami.model'
+import {
+  LEGAME_DA_RIALLINEARE,
+  Ritocchi,
+  aggiornaRitocchi,
+  messaggiErroreLegame,
+  righeConRitocchi,
+  righeDaRitocchi,
+} from './ritocchi-legame'
+import { ModificaCampoRiga, RigheLegameTabellaComponent } from './righe-legame-tabella.component'
 import { etichettaAvviso, etichettaMotivo, etichettaStato, severitaTag } from './vocabolario-legami'
 
 /** Stati in cui il legame si può ancora cambiare (come il backend: gli altri sono sola lettura). */
 export const STATI_MODIFICABILI: readonly StatoLegame[] = ['DA_COLLEGARE', 'PROPOSTO', 'CONFERMATO']
-
-/** Cifre decimali massime accettate dal backend. */
-const DECIMALI_QUANTITA = 3
-const DECIMALI_PREZZO = 6
-
-/** Numero → stringa col punto, senza esponente e senza zeri finali inutili (`12.5`, non `12.500000`). */
-export function numeroPerBackend(n: number, decimali: number): string {
-  const t = n.toFixed(decimali)
-  return t.includes('.') ? t.replace(/0+$/, '').replace(/\.$/, '') : t
-}
-
-const comeNumero = (v: string | null): number | null => {
-  if (v === null || v === '') return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-/** Stato di modifica di una riga: i campi numerici sono `number` perché li guida `appNumeroIt`. */
-export interface RigaForm {
-  riga: RigaLegame
-  quantita: number | null
-  prezzo: number | null
-  /** Cascata scritta con la virgola (`10,5+5`). */
-  sconto: string
-}
-
-/** Stessa regola del backend (`cascataValida`): al massimo tre termini, ciascuno fino a 99,99. */
-export const MSG_CASCATA =
-  'Le percentuali a cascata sono al massimo tre (es. 10+5), ciascuna fino a 99,99.'
-const TERMINE_CASCATA = /^\d{1,2}(\.\d{1,2})?$/
-
-/** Errore di uno sconto scritto a mano, o null. Nessun valore negativo, nessun punto decimale. */
-export function erroreSconto(testo: string): string | null {
-  const l = leggiCascata(testo)
-  if (l.errore !== null) return l.errore
-  if (l.valore === null) return null
-  return l.valore.split('+').length <= 3 && l.valore.split('+').every(t => TERMINE_CASCATA.test(t))
-    ? null
-    : MSG_CASCATA
-}
-
-export function erroreQuantita(f: RigaForm): string | null {
-  if (f.quantita === null) {
-    return comeNumero(f.riga.quantita) !== null ? 'La quantità è obbligatoria.' : null
-  }
-  return f.quantita > 0 ? null : 'La quantità deve essere maggiore di zero.'
-}
-
-export function errorePrezzo(f: RigaForm): string | null {
-  if (f.riga.prezzoSpeciale) return null
-  if (f.prezzo === null) {
-    return comeNumero(f.riga.prezzo) !== null ? 'Il prezzo è obbligatorio.' : null
-  }
-  return f.prezzo >= 0 ? null : 'Il prezzo non può essere negativo.'
-}
-
-/** Righe da inviare: solo quelle toccate (nella modifica di un legame esistente `righe` è un ritocco). */
-export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
-  const out: ModificaRigaLegame[] = []
-  for (const f of forms) {
-    const m: ModificaRigaLegame = { rigaAddebitoId: f.riga.rigaAddebitoId }
-    let toccata = false
-    const q0 = comeNumero(f.riga.quantita)
-    if (f.quantita !== null && f.quantita !== q0) {
-      m.quantita = numeroPerBackend(f.quantita, DECIMALI_QUANTITA)
-      toccata = true
-    }
-    const p0 = comeNumero(f.riga.prezzo)
-    if (!f.riga.prezzoSpeciale && f.prezzo !== null && f.prezzo !== p0) {
-      m.prezzo = numeroPerBackend(f.prezzo, DECIMALI_PREZZO)
-      toccata = true
-    }
-    // Su una riga a prezzo speciale anche lo sconto è bloccato (400 PREZZO_SPECIALE_NON_MODIFICABILE).
-    if (!f.riga.prezzoSpeciale) {
-      const s = leggiCascata(f.sconto)
-      if (s.errore === null && s.valore !== (f.riga.sconto ?? null)) {
-        m.sconto = s.valore
-        toccata = true
-      }
-    }
-    if (toccata) out.push(m)
-  }
-  return out
-}
 
 /**
  * Finestra di un legame esistente: cambia contratto ed elenco fra i candidati, ritocca quantità,
@@ -133,10 +53,8 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
     ButtonModule,
     DialogModule,
     DropdownModule,
-    InputNumberModule,
-    InputTextModule,
     TagModule,
-    NumeroItalianoDirective,
+    RigheLegameTabellaComponent,
   ],
   template: `
     <p-dialog
@@ -257,123 +175,17 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
           {{ haPrezzoManuale() ? ': i prezzi modificati a mano andranno persi' : '' }}.
         </p>
 
-        <table class="legame-righe" *ngIf="forms.length" aria-label="Righe del legame">
-          <thead>
-            <tr>
-              <th scope="col">Voce</th>
-              <th scope="col" class="num-col">Quantità</th>
-              <th scope="col" class="num-col">Prezzo</th>
-              <th scope="col">Sconto %</th>
-              <th scope="col" class="num-col">Importo</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let f of forms; let i = index" [attr.data-testid]="'legame-riga-' + i">
-              <td>
-                {{ f.riga.descrizione || f.riga.tipo }}
-                <p-tag
-                  *ngIf="prezzoManuale(f)"
-                  value="prezzo manuale"
-                  severity="warning"
-                  [attr.data-testid]="'legame-badge-manuale-' + i"
-                />
-                <small *ngIf="f.riga.prezzoSpeciale" class="cell-sub">prezzo speciale</small>
-                <small
-                  *ngIf="eRimossa(f)"
-                  class="cell-sub"
-                  [attr.data-testid]="'legame-rimossa-' + i"
-                  >da rimuovere</small
-                >
-                <p-button
-                  *ngIf="righeModificabili()"
-                  [label]="eRimossa(f) ? 'Ripristina' : 'Rimuovi'"
-                  [text]="true"
-                  size="small"
-                  (onClick)="alternaRimozione(f)"
-                  [attr.data-testid]="'legame-rimuovi-' + i"
-                />
-              </td>
-              <td class="num-col">
-                <p-inputNumber
-                  *ngIf="righeModificabili(); else qtaTesto"
-                  appNumeroIt
-                  locale="it-IT"
-                  mode="decimal"
-                  [useGrouping]="false"
-                  [minFractionDigits]="0"
-                  [maxFractionDigits]="3"
-                  [(ngModel)]="f.quantita"
-                  [inputId]="'legame-qta-' + i"
-                  [ariaLabel]="'Quantità di ' + (f.riga.descrizione || f.riga.tipo)"
-                  [attr.data-testid]="'legame-qta-' + i"
-                />
-                <ng-template #qtaTesto>{{ testoNumero(f.riga.quantita) }}</ng-template>
-                <small class="cell-sub">{{ f.riga.unitaMisura }}</small>
-                <small
-                  *ngIf="righeModificabili() && erroreQuantita(f) as e"
-                  class="field-error"
-                  role="alert"
-                  [attr.data-testid]="'legame-qta-errore-' + i"
-                  >{{ e }}</small
-                >
-              </td>
-              <td class="num-col">
-                <p-inputNumber
-                  *ngIf="righeModificabili() && !f.riga.prezzoSpeciale; else prezzoTesto"
-                  appNumeroIt
-                  locale="it-IT"
-                  mode="decimal"
-                  [useGrouping]="false"
-                  [minFractionDigits]="0"
-                  [maxFractionDigits]="6"
-                  [(ngModel)]="f.prezzo"
-                  [inputId]="'legame-prezzo-' + i"
-                  [ariaLabel]="'Prezzo di ' + (f.riga.descrizione || f.riga.tipo)"
-                  [attr.data-testid]="'legame-prezzo-' + i"
-                />
-                <ng-template #prezzoTesto>
-                  <span [attr.data-testid]="'legame-prezzo-testo-' + i">{{
-                    testoNumero(f.riga.prezzo)
-                  }}</span>
-                </ng-template>
-                <small
-                  *ngIf="righeModificabili() && errorePrezzo(f) as e"
-                  class="field-error"
-                  role="alert"
-                  [attr.data-testid]="'legame-prezzo-errore-' + i"
-                  >{{ e }}</small
-                >
-              </td>
-              <td>
-                <input
-                  *ngIf="righeModificabili() && !f.riga.prezzoSpeciale; else scontoTesto"
-                  pInputText
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  [(ngModel)]="f.sconto"
-                  [attr.id]="'legame-sconto-' + i"
-                  [attr.aria-label]="'Sconto di ' + (f.riga.descrizione || f.riga.tipo)"
-                  [attr.aria-invalid]="erroreSconto(f.sconto) ? true : null"
-                  [attr.data-testid]="'legame-sconto-' + i"
-                />
-                <ng-template #scontoTesto>
-                  <span [attr.data-testid]="'legame-sconto-testo-' + i">{{ f.sconto || '—' }}</span>
-                </ng-template>
-                <small
-                  *ngIf="righeModificabili() && erroreSconto(f.sconto) as e"
-                  class="field-error"
-                  role="alert"
-                  [attr.data-testid]="'legame-sconto-errore-' + i"
-                  >{{ e }}</small
-                >
-              </td>
-              <td class="num-col" [attr.data-testid]="'legame-importo-' + i">
-                {{ f.riga.importo !== null ? testoNumero(f.riga.importo, 2) + ' €' : '—' }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <app-righe-legame-tabella
+          [righe]="righeVista()"
+          [modificabile]="righeModificabili()"
+          [mostraIva]="true"
+          [rimovibile]="righeModificabili()"
+          [rimosse]="rimosse()"
+          [generazione]="generazione()"
+          (modifica)="alModifica($event)"
+          (rimuovi)="alternaRimozione($event)"
+          (erroriChange)="campiInErrore.set($event)"
+        />
 
         <p
           *ngIf="righeModificabili() && senzaRighe()"
@@ -441,6 +253,16 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
             (onClick)="ricarica()"
             data-testid="legame-ricarica"
           />
+          <p-button
+            *ngIf="serveRiallinea()"
+            label="Riallinea"
+            icon="pi pi-sync"
+            [text]="true"
+            size="small"
+            [disabled]="inCorso()"
+            (onClick)="riallinea()"
+            data-testid="legame-riallinea"
+          />
         </p>
       </ng-container>
 
@@ -455,15 +277,19 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
           (onClick)="salva()"
           data-testid="legame-salva"
         />
-        <p-button
+        <!-- Bottone nativo: <p-button> non inoltra aria-describedby al <button> interno. -->
+        <button
           *ngIf="modificabile()"
+          pButton
+          type="button"
           label="Conferma"
           icon="pi pi-check"
           [disabled]="inCorso() || !valido() || confermaBloccata()"
           [loading]="inCorso()"
-          (onClick)="conferma()"
+          [attr.aria-describedby]="confermaBloccata() ? 'legame-conferma-bloccata' : null"
+          (click)="conferma()"
           data-testid="legame-conferma"
-        />
+        ></button>
       </ng-template>
     </p-dialog>
   `,
@@ -498,20 +324,6 @@ export function righeModificate(forms: RigaForm[]): ModificaRigaLegame[] {
       .legame-aggiunte {
         margin-top: var(--spacing-md);
       }
-      .legame-righe {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      .legame-righe th,
-      .legame-righe td {
-        padding: var(--spacing-xs) var(--spacing-sm);
-        text-align: left;
-        vertical-align: top;
-        border-bottom: 1px solid var(--surface-border);
-      }
-      .legame-righe .num-col {
-        text-align: right;
-      }
     `,
   ],
 })
@@ -529,32 +341,38 @@ export class LegameDialogComponent implements OnChanges {
   @Output() cercaCliente = new EventEmitter<string>()
   /** Dopo un salvataggio o una conferma riusciti: il legame aggiornato. */
   @Output() aggiornato = new EventEmitter<{ legame: LegameVista; confermato: boolean }>()
+  /** Dopo «Riallinea»: il legame è stato riscritto sul server, la lista va riletta alla chiusura. */
+  @Output() riallineato = new EventEmitter<void>()
   @Output() chiuso = new EventEmitter<void>()
 
   /** Il legame in uso: parte da `legame` e si sostituisce con «Ricarica» (versione compresa). */
   readonly corrente = signal<LegameVista | null>(null)
-  forms: RigaForm[] = []
+  /** Ritocchi di quantità, prezzo e sconto non ancora salvati (emessi dalla tabella solo se validi). */
+  private readonly ritocchi = signal<Ritocchi>({})
+  /** Cambia a ogni nuovo caricamento: la tabella scorda errori e testi in corso. */
+  readonly generazione = signal(0)
+  /** Vero se un campo della tabella è in errore. */
+  readonly campiInErrore = signal(false)
   clienteId: string | null = null
   contrattoId: string | null = null
   elencoId: string | null = null
   /** Righe dell'elenco aggiunte al legame (solo con le scelte invariate). */
   aggiunte: VoceScelta[] = []
   /** Righe del legame da togliere (`rimuovi: true`), solo con le scelte invariate. */
-  private rimosse = new Set<string>()
+  readonly rimosse = signal<ReadonlySet<string>>(new Set())
   /** Cliente appena scelto: resta nel menu anche se la ricerca successiva non lo restituisce. */
   private clienteScelto: { label: string; value: string } | null = null
   rigaDaAggiungere: string | null = null
   readonly errori = signal<string[]>([])
   readonly serveRicarica = signal(false)
+  /** Il backend dice che il legame è rimasto indietro rispetto al movimento: serve «Riallinea». */
+  readonly serveRiallinea = signal(false)
   readonly inCorso = signal(false)
 
   readonly statoEtichetta = etichettaStato
   readonly statoSeverita = severitaTag
   readonly motivo = etichettaMotivo
   readonly avviso = etichettaAvviso
-  readonly erroreSconto = erroreSconto
-  readonly erroreQuantita = erroreQuantita
-  readonly errorePrezzo = errorePrezzo
 
   ngOnChanges(c: SimpleChanges): void {
     if (c['legame']) {
@@ -566,30 +384,34 @@ export class LegameDialogComponent implements OnChanges {
   private carica(l: LegameVista | null): void {
     this.errori.set([])
     this.serveRicarica.set(false)
+    this.serveRiallinea.set(false)
+    this.ritocchi.set({})
+    this.campiInErrore.set(false)
+    this.generazione.update(g => g + 1)
     this.clienteId = l?.cliente?.id ?? null
     this.contrattoId = l?.contratto?.id ?? null
     this.elencoId = l?.elenco?.id ?? null
     this.aggiunte = []
-    this.rimosse = new Set()
+    this.rimosse.set(new Set())
     this.clienteScelto = null
     this.rigaDaAggiungere = null
-    this.forms = (l?.righe ?? []).map(riga => ({
-      riga,
-      quantita: comeNumero(riga.quantita),
-      prezzo: comeNumero(riga.prezzo),
-      sconto: formatCascata(riga.sconto),
-    }))
+  }
+
+  /** Righe del legame con i ritocchi non ancora salvati (importo azzerato: lo calcola il server). */
+  readonly righeVista = computed(() =>
+    righeConRitocchi(this.corrente()?.righe ?? [], this.ritocchi())
+  )
+
+  alModifica(m: ModificaCampoRiga): void {
+    const originale = this.corrente()?.righe.find(r => r.rigaAddebitoId === m.rigaAddebitoId)
+    this.ritocchi.set(aggiornaRitocchi(this.ritocchi(), originale, m))
+    this.errori.set([])
   }
 
   titolo(): string {
     return this.riepilogo
       ? `Legame del movimento del ${this.riepilogo.split(' · ')[0]}`
       : 'Legame del movimento'
-  }
-
-  /** Numeri del backend (col punto) in sola lettura: virgola italiana; importi con due decimali. */
-  testoNumero(v: string | null, decimaliMinimi = 0): string {
-    return v === null ? '—' : formatNumero(v, decimaliMinimi)
   }
 
   menuContratto(): boolean {
@@ -608,7 +430,10 @@ export class LegameDialogComponent implements OnChanges {
    */
   confermaBloccata(): boolean {
     const l = this.corrente()
-    return !!l && l.motivi.length > 0 && this.modifiche() === undefined
+    if (!l || l.motivi.length === 0) return false
+    // Senza cliente nessun altro ritocco basta: il server rifiuterebbe comunque la conferma.
+    if (l.motivi.includes('SENZA_CLIENTE') && !this.clienteCambiato()) return true
+    return this.modifiche() === undefined
   }
 
   modificabile(): boolean {
@@ -646,7 +471,7 @@ export class LegameDialogComponent implements OnChanges {
   /** Righe candidate non ancora nel legame né già scelte. */
   righeDisponibili(): VoceScelta[] {
     const gia = new Set([
-      ...this.forms.map(f => f.riga.rigaAddebitoId),
+      ...(this.corrente()?.righe ?? []).map(r => r.rigaAddebitoId),
       ...this.aggiunte.map(r => r.id),
     ])
     return (this.corrente()?.candidati?.righe ?? []).filter(r => !gia.has(r.id))
@@ -678,49 +503,31 @@ export class LegameDialogComponent implements OnChanges {
   }
 
   haPrezzoManuale(): boolean {
-    return this.forms.some(f => this.prezzoManuale(f))
+    return this.righeVista().some(r => r.prezzoManuale)
   }
 
-  /** Vero se la riga era già a prezzo manuale o se ne è stato cambiato il prezzo qui. */
-  prezzoManuale(f: RigaForm): boolean {
-    return (
-      f.riga.prezzoManuale ||
-      (!f.riga.prezzoSpeciale && f.prezzo !== null && f.prezzo !== comeNumero(f.riga.prezzo))
-    )
-  }
-
-  eRimossa(f: RigaForm): boolean {
-    return this.rimosse.has(f.riga.rigaAddebitoId)
-  }
-
-  alternaRimozione(f: RigaForm): void {
-    const id = f.riga.rigaAddebitoId
-    const n = new Set(this.rimosse)
-    if (n.has(id)) n.delete(id)
-    else n.add(id)
-    this.rimosse = n
+  alternaRimozione(rigaAddebitoId: string): void {
+    const n = new Set(this.rimosse())
+    if (n.has(rigaAddebitoId)) n.delete(rigaAddebitoId)
+    else n.add(rigaAddebitoId)
+    this.rimosse.set(n)
     this.errori.set([])
   }
 
   /** Un legame deve avere almeno una riga (`RIGHE_VUOTE` del backend). */
   senzaRighe(): boolean {
+    const righe = this.corrente()?.righe ?? []
     return (
-      this.rimosse.size > 0 &&
-      this.forms.every(f => this.rimosse.has(f.riga.rigaAddebitoId)) &&
+      this.rimosse().size > 0 &&
+      righe.every(r => this.rimosse().has(r.rigaAddebitoId)) &&
       this.aggiunte.length === 0
     )
   }
 
-  /** Quantità, prezzo o sconto non validi bloccano i pulsanti (solo se le righe sono modificabili). */
+  /** Un campo non valido o nessuna riga bloccano i pulsanti (solo se le righe sono modificabili). */
   valido(): boolean {
     if (!this.righeModificabili()) return true
-    if (this.senzaRighe()) return false
-    return this.forms
-      .filter(f => !this.eRimossa(f))
-      .every(
-        f =>
-          erroreQuantita(f) === null && errorePrezzo(f) === null && erroreSconto(f.sconto) === null
-      )
+    return !this.senzaRighe() && !this.campiInErrore()
   }
 
   scegliCliente(id: string | null): void {
@@ -770,11 +577,13 @@ export class LegameDialogComponent implements OnChanges {
     if (this.clienteCambiato()) return { clienteId: this.clienteId! }
     if (this.contrattoCambiato()) return { contrattoId: this.contrattoId! }
     if (this.elencoCambiato()) return { elencoId: this.elencoId! }
+    const rimosse = this.rimosse()
+    const ritocchi = Object.fromEntries(
+      Object.entries(this.ritocchi()).filter(([id]) => !rimosse.has(id))
+    )
     const righe: ModificaRigaLegame[] = [
-      ...righeModificate(this.forms.filter(f => !this.eRimossa(f))),
-      ...this.forms
-        .filter(f => this.eRimossa(f))
-        .map(f => ({ rigaAddebitoId: f.riga.rigaAddebitoId, rimuovi: true })),
+      ...righeDaRitocchi(ritocchi),
+      ...[...rimosse].map(rigaAddebitoId => ({ rigaAddebitoId, rimuovi: true })),
       ...this.aggiunte.map(r => ({ rigaAddebitoId: r.id })),
     ]
     return righe.length ? { righe } : undefined
@@ -812,6 +621,32 @@ export class LegameDialogComponent implements OnChanges {
     })
   }
 
+  /**
+   * `LEGAME_DA_RIALLINEARE`: «Ricarica» non basta, serve riscrivere il legame sul movimento vigente
+   * (`daMovimento`) e poi rileggerlo col `dettaglio` per avere anche i candidati, come all'apertura.
+   */
+  riallinea(): void {
+    const l = this.corrente()
+    if (!l || this.inCorso()) return
+    this.inCorso.set(true)
+    this.errori.set([])
+    this.servizio
+      .daMovimento(l.movimentoVigenteId)
+      .pipe(switchMap(r => this.servizio.dettaglio(r.id)))
+      .subscribe({
+        next: nuovo => {
+          this.inCorso.set(false)
+          this.corrente.set(nuovo)
+          this.carica(nuovo)
+          this.riallineato.emit()
+        },
+        error: err => {
+          this.inCorso.set(false)
+          this.mostraErrore(err)
+        },
+      })
+  }
+
   chiudi(): void {
     this.chiuso.emit()
   }
@@ -832,17 +667,9 @@ export class LegameDialogComponent implements OnChanges {
   }
 
   private mostraErrore(err: unknown): void {
-    const e = leggiErroriAzione(err, 'Operazione non riuscita. Riprova.')
-    const dettagli = (
-      err as { error?: { details?: { motivi?: unknown; dettaglioCliente?: unknown } } } | null
-    )?.error?.details
-    if (e.codice === 'LEGAME_INCOMPLETO' && dettagli && Array.isArray(dettagli.motivi)) {
-      const testi = (dettagli.motivi as MotivoLegame[]).map(etichettaMotivo)
-      if (typeof dettagli.dettaglioCliente === 'string') testi.push(dettagli.dettaglioCliente)
-      this.errori.set(['Il legame è incompleto:', ...testi.map(t => `${t}.`)])
-    } else {
-      this.errori.set(e.messaggi)
-    }
+    const e = messaggiErroreLegame(err)
+    this.errori.set(e.messaggi)
     this.serveRicarica.set(e.rilettura)
+    this.serveRiallinea.set(e.codice === LEGAME_DA_RIALLINEARE)
   }
 }

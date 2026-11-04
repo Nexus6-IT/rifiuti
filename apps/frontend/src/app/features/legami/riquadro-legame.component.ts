@@ -16,7 +16,6 @@ import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
 import { Subject, catchError, map, of, switchMap } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
-import { leggiErroriAzione } from '../listino/errori-azione'
 import { STATI_MODIFICABILI } from './legame-dialog.component'
 import {
   AvvisoLegame,
@@ -27,11 +26,15 @@ import {
 } from './legami.model'
 import { LegamiService } from './legami.service'
 import { permessiLegami } from './permessi-legami'
+import { ModificaCampoRiga, RigheLegameTabellaComponent } from './righe-legame-tabella.component'
 import {
-  CampoRiga,
-  ModificaCampoRiga,
-  RigheLegameTabellaComponent,
-} from './righe-legame-tabella.component'
+  LEGAME_DA_RIALLINEARE,
+  Ritocchi,
+  aggiornaRitocchi,
+  messaggiErroreLegame,
+  righeConRitocchi,
+  righeDaRitocchi,
+} from './ritocchi-legame'
 import { etichettaAvviso, etichettaMotivo, etichettaStato, severitaTag } from './vocabolario-legami'
 
 /** Testo dell'avviso quando il movimento è stato corretto dopo la fattura (come `AVVISO_SCOSTAMENTO` del backend). */
@@ -40,39 +43,6 @@ export const TESTO_SCOSTAMENTO =
 
 /** Esito del caricamento, per chi ospita il riquadro (nel dettaglio: «nessun collegamento»). */
 export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
-
-type Ritocchi = Readonly<Record<string, Partial<Record<CampoRiga, string | null>>>>
-
-const VALORE_DI = { quantita: 'quantita', prezzo: 'prezzo', sconto: 'sconto' } as const
-
-/** Un valore scritto coincide con quello già nel legame (numeri a confronto numerico, sconti per testo). */
-function uguale(campo: CampoRiga, nuovo: string | null, originale: string | null): boolean {
-  if (nuovo === null || originale === null) return nuovo === originale
-  return campo === 'sconto' ? nuovo === originale : Number(nuovo) === Number(originale)
-}
-
-/**
- * Messaggi di un errore delle rotte del legame. Il 409 `LEGAME_INCOMPLETO` della conferma porta in
- * `details.motivi` i codici di ciò che manca: si traducono con `etichettaMotivo`, mai mostrati grezzi.
- */
-export function messaggiErroreLegame(err: unknown): {
-  messaggi: string[]
-  rilettura: boolean
-} {
-  const e = leggiErroriAzione(err, 'Operazione non riuscita. Riprova.')
-  const dettagli = (
-    err as { error?: { details?: { motivi?: unknown; dettaglioCliente?: unknown } } } | null
-  )?.error?.details
-  if (e.codice === 'LEGAME_INCOMPLETO' && dettagli && Array.isArray(dettagli.motivi)) {
-    const testi = (dettagli.motivi as MotivoLegame[]).map(etichettaMotivo)
-    if (typeof dettagli.dettaglioCliente === 'string') testi.push(dettagli.dettaglioCliente)
-    return { messaggi: ['Il legame è incompleto:', ...testi.map(t => `${t}.`)], rilettura: false }
-  }
-  return {
-    messaggi: e.messaggi,
-    rilettura: e.rilettura,
-  }
-}
 
 /**
  * Riquadro «Fatturazione» del dettaglio di un movimento (spec §8, Task 27). Carica il legame
@@ -216,6 +186,15 @@ export function messaggiErroreLegame(err: unknown): {
           data-testid="riquadro-ricarica"
           (onClick)="ricarica()"
         ></p-button>
+        <p-button
+          *ngIf="serveRiallinea()"
+          label="Riallinea"
+          [text]="true"
+          size="small"
+          [disabled]="inCorso()"
+          data-testid="riquadro-riallinea"
+          (onClick)="riallinea()"
+        ></p-button>
       </div>
     </section>
 
@@ -324,6 +303,8 @@ export class RiquadroLegameComponent implements OnChanges {
   readonly esito = signal<EsitoRiquadro | null>(null)
   readonly errori = signal<string[]>([])
   readonly serveRicarica = signal(false)
+  /** `LEGAME_DA_RIALLINEARE`: «Ricarica» non basta, serve `daMovimento`. */
+  readonly serveRiallinea = signal(false)
   readonly inCorso = signal(false)
   readonly campiInErrore = signal(false)
   /** Cambia dopo ogni salvataggio o ricarica: la tabella scorda errori e testi in corso. */
@@ -347,20 +328,7 @@ export class RiquadroLegameComponent implements OnChanges {
   readonly righeVista = computed<RigaLegame[]>(() => {
     const l = this.legame()
     if (!l) return []
-    const r = this.ritocchi()
-    return l.righe.map(riga => {
-      const x = r[riga.rigaAddebitoId]
-      if (!x) return riga
-      return {
-        ...riga,
-        quantita: 'quantita' in x ? (x.quantita ?? riga.quantita) : riga.quantita,
-        quantitaOrigine: 'quantita' in x ? 'MANUALE' : riga.quantitaOrigine,
-        prezzo: 'prezzo' in x ? (x.prezzo ?? null) : riga.prezzo,
-        sconto: 'sconto' in x ? (x.sconto ?? null) : riga.sconto,
-        prezzoManuale: riga.prezzoManuale || 'prezzo' in x || 'sconto' in x,
-        importo: null,
-      }
-    })
+    return righeConRitocchi(l.righe, this.ritocchi())
   })
 
   readonly haRitocchi = computed(() => Object.keys(this.ritocchi()).length > 0)
@@ -423,34 +391,52 @@ export class RiquadroLegameComponent implements OnChanges {
   ricarica(): void {
     this.errori.set([])
     this.serveRicarica.set(false)
+    this.serveRiallinea.set(false)
     this.richiesta$.next(this.movimentoId)
+  }
+
+  /** Riscrive il legame sul movimento vigente (`daMovimento`) e lo rilegge col `dettaglio`. */
+  riallinea(): void {
+    const l = this.legame()
+    if (!l || this.inCorso()) return
+    this.inCorso.set(true)
+    this.errori.set([])
+    this.serveRiallinea.set(false)
+    this.servizio
+      .daMovimento(l.movimentoVigenteId)
+      .pipe(
+        switchMap(r => this.servizio.dettaglio(r.id)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: nuovo => {
+          this.inCorso.set(false)
+          this.imposta(nuovo)
+          this.aggiornato.emit(nuovo)
+        },
+        error: err => {
+          this.inCorso.set(false)
+          this.mostraErrore(err)
+        },
+      })
+  }
+
+  private mostraErrore(err: unknown): void {
+    const e = messaggiErroreLegame(err)
+    this.errori.set(e.messaggi)
+    this.serveRicarica.set(e.rilettura)
+    this.serveRiallinea.set(e.codice === LEGAME_DA_RIALLINEARE)
   }
 
   alModifica(m: ModificaCampoRiga): void {
     const originale = this.legame()?.righe.find(r => r.rigaAddebitoId === m.rigaAddebitoId)
-    const attuali = this.ritocchi()
-    const riga = { ...(attuali[m.rigaAddebitoId] ?? {}) }
-    if (originale && uguale(m.campo, m.valore, originale[VALORE_DI[m.campo]])) {
-      // Tornato al valore del legame: non è più un ritocco.
-      delete riga[m.campo]
-    } else {
-      riga[m.campo] = m.valore
-    }
-    const nuovi = { ...attuali }
-    if (Object.keys(riga).length > 0) nuovi[m.rigaAddebitoId] = riga
-    else delete nuovi[m.rigaAddebitoId]
-    this.ritocchi.set(nuovi)
+    this.ritocchi.set(aggiornaRitocchi(this.ritocchi(), originale, m))
     this.errori.set([])
   }
 
   /** Solo le righe toccate: per un legame esistente `righe` è un ritocco, non la selezione intera. */
   righeDaInviare(): ModificaRigaLegame[] {
-    return Object.entries(this.ritocchi()).map(([rigaAddebitoId, x]) => ({
-      rigaAddebitoId,
-      ...('quantita' in x && x.quantita ? { quantita: x.quantita } : {}),
-      ...('prezzo' in x && x.prezzo ? { prezzo: x.prezzo } : {}),
-      ...('sconto' in x ? { sconto: x.sconto ?? null } : {}),
-    }))
+    return righeDaRitocchi(this.ritocchi())
   }
 
   salva(): void {
@@ -485,9 +471,7 @@ export class RiquadroLegameComponent implements OnChanges {
       },
       error: err => {
         this.inCorso.set(false)
-        const e = messaggiErroreLegame(err)
-        this.errori.set(e.messaggi)
-        this.serveRicarica.set(e.rilettura)
+        this.mostraErrore(err)
       },
     })
   }
@@ -498,6 +482,7 @@ export class RiquadroLegameComponent implements OnChanges {
     this.campiInErrore.set(false)
     this.errori.set([])
     this.serveRicarica.set(false)
+    this.serveRiallinea.set(false)
     this.generazione.update(g => g + 1)
   }
 }

@@ -196,6 +196,28 @@ const SEVERITA_STATO: Readonly<
         </span>
       </div>
       <p *ngIf="erroreElenco() as e" role="alert" class="field-error">{{ e }}</p>
+      <!-- Legami con cliente ma senza contratto: non stanno in nessuna riga, quindi si dicono qui. -->
+      <p
+        *ngIf="senzaContratto() as s"
+        class="senza-contratto"
+        role="status"
+        data-testid="contratti-senza-contratto"
+      >
+        <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+        {{ s.totale }}
+        {{
+          s.totale === 1
+            ? 'movimento da collegare senza contratto'
+            : 'movimenti da collegare senza contratto'
+        }}
+        <ng-container *ngIf="s.clienti > 1"> (in {{ s.clienti }} clienti)</ng-container>
+        <a
+          routerLink="/legami/da-collegare"
+          [queryParams]="s.clienteId ? { clienteId: s.clienteId } : {}"
+          data-testid="contratti-senza-contratto-link"
+          >Vedi i movimenti</a
+        >
+      </p>
       <p-table
         [value]="righe()"
         [lazy]="true"
@@ -269,7 +291,7 @@ const SEVERITA_STATO: Readonly<
               <a
                 *ngIf="daCollegarePer(c.id) as n"
                 routerLink="/legami/da-collegare"
-                [queryParams]="{ clienteId: c.cliente.id }"
+                [queryParams]="{ clienteId: c.cliente.id, contrattoId: c.id }"
                 class="da-collegare"
                 [attr.aria-label]="'Movimenti da collegare del contratto ' + c.numero + ': ' + n"
                 [attr.data-testid]="'contratti-da-collegare-' + c.id"
@@ -404,6 +426,13 @@ const SEVERITA_STATO: Readonly<
       .azioni {
         white-space: nowrap;
       }
+      .senza-contratto {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin: 0 0 0.75rem;
+      }
     `,
   ],
 })
@@ -467,6 +496,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.elenco.avvia()
+    this.caricaSenzaContratto()
     this.tabelle.codifiche
       .list('CATEGORIA')
       .pipe(takeUntil(this.distrutto))
@@ -518,6 +548,38 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
         next: r =>
           this.perContratto.set(new Map(r.perContratto.map(x => [x.contrattoId, x.daCollegare]))),
         error: () => this.perContratto.set(new Map()),
+      })
+  }
+
+  /**
+   * Riepilogo dei legami con cliente e senza contratto: tutta l'azienda, oppure il solo cliente
+   * scelto nel filtro (gli altri filtri non si applicano a legami che non hanno un contratto).
+   * Una chiamata sola all'apertura. `clienteId` c'e' solo se il cliente e' uno, e il link filtra.
+   */
+  private readonly senzaContrattoPerCliente = signal<
+    readonly { clienteId: string; daCollegare: number }[]
+  >([])
+  /** Il cliente scelto nel filtro della lista: il riepilogo lo segue. */
+  private readonly clienteFiltroSegnale = signal<string | null>(null)
+
+  readonly senzaContratto = computed(() => {
+    const filtro = this.clienteFiltroSegnale()
+    const voci = this.senzaContrattoPerCliente().filter(
+      x => filtro === null || x.clienteId === filtro
+    )
+    const totale = voci.reduce((n, x) => n + x.daCollegare, 0)
+    return totale === 0
+      ? null
+      : { totale, clienti: voci.length, clienteId: voci.length === 1 ? voci[0].clienteId : null }
+  })
+
+  private caricaSenzaContratto(): void {
+    this.legami
+      .contatoriPerContratto()
+      .pipe(takeUntil(this.distrutto))
+      .subscribe({
+        next: r => this.senzaContrattoPerCliente.set(r.senzaContratto),
+        error: () => this.senzaContrattoPerCliente.set([]),
       })
   }
 
@@ -575,6 +637,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   filtraCliente(cliente: Cliente | null): void {
     this.clienteFiltro = cliente?.id ?? null
+    this.clienteFiltroSegnale.set(this.clienteFiltro)
     this.applicaFiltri()
   }
 

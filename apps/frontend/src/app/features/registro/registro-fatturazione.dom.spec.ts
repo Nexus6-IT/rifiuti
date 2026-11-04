@@ -165,6 +165,31 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     expect(pulsante('registra-senza-collegare')!.disabled).toBeFalse()
   }))
 
+  it('m6: campo in errore, «Registra senza collegare» disattivato col motivo collegato', fakeAsync(() => {
+    apri()
+    expect(pulsante('registra-senza-collegare')!.disabled).toBeFalse()
+    const qta = document.body.querySelector<HTMLInputElement>('#qta-ra-1')!
+    qta.focus()
+    const dt = new DataTransfer()
+    dt.setData('text', '0')
+    qta.value = ''
+    qta.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+    )
+    qta.dispatchEvent(new Event('blur'))
+    fixture.detectChanges()
+    fixture.detectChanges()
+    const bottone = pulsante('registra-senza-collegare')!
+    expect(bottone.disabled).toBeTrue()
+    const motivo = document.body.querySelector('#registra-senza-collegare-motivo')
+    expect(motivo?.textContent).toContain('correggi prima i campi in errore')
+    expect(bottone.getAttribute('aria-describedby')).toBe('registra-senza-collegare-motivo')
+    // m5: il campo in errore e' marcato e collegato al suo messaggio
+    expect(qta.getAttribute('aria-invalid')).toBe('true')
+    expect(qta.getAttribute('aria-describedby')).toBe('errore-quantita-ra-1')
+    expect(document.body.querySelector('#errore-quantita-ra-1')).not.toBeNull()
+  }))
+
   it('senza blocco (causale non fatturabile): un solo «Registra», senza legame', fakeAsync(() => {
     risposta = proposta({ fatturabile: false })
     apri()

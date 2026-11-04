@@ -235,7 +235,9 @@ interface Opzione {
             </caption>
             <thead>
               <tr>
-                <th scope="col">#</th>
+                <th scope="col">Movimento</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Voce</th>
                 <th scope="col">Prezzo prima</th>
                 <th scope="col">Prezzo dopo</th>
                 <th scope="col">Sconto prima</th>
@@ -243,8 +245,13 @@ interface Opzione {
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let d of a.differenze; let i = index">
-                <td>{{ i + 1 }}</td>
+              <tr *ngFor="let d of a.differenze">
+                <td data-testid="ap-esempio-movimento">
+                  {{ d.numeroMovimento }}
+                  <span class="ap-data">{{ d.dataMovimento | date: 'dd/MM/yyyy' }}</span>
+                </td>
+                <td data-testid="ap-esempio-cliente">{{ d.cliente }}</td>
+                <td data-testid="ap-esempio-voce">{{ d.voce }}</td>
                 <td>{{ prezzo(d.prezzoPrima) }}</td>
                 <td>{{ prezzo(d.prezzoDopo) }}</td>
                 <td>{{ sconto(d.scontoPrima) }}</td>
@@ -344,9 +351,13 @@ interface Opzione {
         border-bottom: 1px solid var(--color-border, #d6d3d1);
         text-align: right;
       }
-      .ap-esempi th:first-child,
-      .ap-esempi td:first-child {
+      .ap-esempi th:nth-child(-n + 3),
+      .ap-esempi td:nth-child(-n + 3) {
         text-align: left;
+      }
+      .ap-data {
+        display: block;
+        color: var(--color-text-secondary, #57534e);
       }
       .ap-conferma {
         display: flex;

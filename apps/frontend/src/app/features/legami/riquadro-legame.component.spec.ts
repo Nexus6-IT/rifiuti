@@ -115,6 +115,8 @@ describe('RiquadroLegameComponent', () => {
       'perMovimento',
       'modifica',
       'conferma',
+      'daMovimento',
+      'dettaglio',
     ])
     ruolo = 'OPERATOR'
   })
@@ -279,6 +281,21 @@ describe('RiquadroLegameComponent', () => {
     expect(t).toContain('Manca il prezzo')
     expect(t).toContain('Manca il cliente da fatturare')
     expect(t).not.toContain('SENZA_PREZZO')
+  }))
+
+  it('LEGAME_DA_RIALLINEARE: «Riallinea» chiama daMovimento e dettaglio e mostra il legame nuovo', fakeAsync(() => {
+    crea(of(legame({ stato: 'PROPOSTO', movimentoVigenteId: 'm9' })))
+    servizio.conferma.and.returnValue(
+      throwError(() => erroreHttp(409, { error: 'LEGAME_DA_RIALLINEARE', message: 'Riallinea' }))
+    )
+    clic('riquadro-conferma')
+    expect(fixture.nativeElement.querySelector('[data-testid="riquadro-ricarica"]')).toBeNull()
+    servizio.daMovimento.and.returnValue(of(legame({ id: 'l2' })))
+    servizio.dettaglio.and.returnValue(of(legame({ id: 'l2', stato: 'PROPOSTO', versione: 8 })))
+    clic('riquadro-riallinea')
+    expect(servizio.daMovimento).toHaveBeenCalledOnceWith('m9')
+    expect(servizio.dettaglio).toHaveBeenCalledOnceWith('l2')
+    expect(fixture.nativeElement.querySelector('[data-testid="riquadro-riallinea"]')).toBeNull()
   }))
 
   it('409 di versione superata: messaggio e «Ricarica» che rilegge il legame', fakeAsync(() => {

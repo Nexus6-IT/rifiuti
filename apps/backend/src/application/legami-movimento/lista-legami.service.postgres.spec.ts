@@ -196,6 +196,8 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
     motivi?: string[]
     avvisi?: string[]
     conCliente?: boolean
+    /** Solo il cliente: il legame resta senza contratto ne' elenco. */
+    soloCliente?: boolean
     causaleAziendaId?: string
   }
 
@@ -218,9 +220,11 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         verso: type,
         stato: o.stato,
         dataMovimento: o.data ?? '2026-03-01',
-        ...(completo || o.conCliente
-          ? { clienteId: s.clienteId, contrattoId: s.contrattoId, elencoId: s.elencoId }
-          : {}),
+        ...(o.soloCliente
+          ? { clienteId: s.clienteId }
+          : completo || o.conCliente
+            ? { clienteId: s.clienteId, contrattoId: s.contrattoId, elencoId: s.elencoId }
+            : {}),
       })
       legameId = l.legameId
       if (o.motivi || o.avvisi) {
@@ -305,6 +309,19 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       expect(await perContratto(s, [])).toEqual({ perContratto: [], senzaContratto: [] })
       // Un contratto di un'altra azienda non si vede (RLS + filtro per azienda).
       expect((await perContratto(s, [altro.contrattoId])).perContratto).toEqual([])
+    })
+
+    it('legami con cliente e senza contratto: compaiono in senzaContratto, per cliente; con gli id no', async () => {
+      const s = await scenario()
+      await nuovo(s, { stato: 'DA_COLLEGARE', soloCliente: true })
+      await nuovo(s, { stato: 'DA_COLLEGARE', soloCliente: true })
+      await nuovo(s, { stato: 'PROPOSTO' })
+      await nuovo(s, { stato: 'DA_COLLEGARE' }) // senza cliente ne' contratto: non compare
+      await nuovo(s) // MANCANTE
+      const tutti = await perContratto(s)
+      expect(tutti.senzaContratto).toEqual([{ clienteId: s.clienteId, daCollegare: 2 }])
+      expect(tutti.perContratto).toEqual([{ contrattoId: s.contrattoId, daCollegare: 1 }])
+      expect((await perContratto(s, [s.contrattoId])).senzaContratto).toEqual([])
     })
 
     it('fatturazione spenta: tutto vuoto', async () => {
@@ -713,6 +730,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         { pagina: 2.2 },
         { clienteId: 'non-un-uuid' },
         { registroId: 'x' },
+        { contrattoId: 'non-un-uuid' },
         { dal: '2026-13-40' },
         { al: '1/2/2026' },
         { dal: '2026-05-02', al: '2026-05-01' },
@@ -724,6 +742,29 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
         expect([JSON.stringify(f), e.status]).toEqual([JSON.stringify(f), 400])
       }
       expect((await lista(s, { dimensione: 200 })).totale).toBe(0)
+    })
+
+    it('filtro per contratto: solo i legami di quel contratto, nessuno senza contratto, isolamento fra aziende', async () => {
+      const s = await scenario()
+      const a = await nuovo(s, { stato: 'PROPOSTO' })
+      const b = await nuovo(s, { stato: 'DA_COLLEGARE', conCliente: true })
+      await nuovo(s, { stato: 'DA_COLLEGARE', soloCliente: true }) // cliente, senza contratto
+      await nuovo(s, { stato: 'DA_COLLEGARE' }) // senza cliente
+      await nuovo(s) // MANCANTE
+      const r = await lista(s, { contrattoId: s.contrattoId, dimensione: 200 })
+      expect(r.totale).toBe(2)
+      expect(new Set(ids(r.elementi))).toEqual(new Set([a.movimentoId, b.movimentoId]))
+      // Combinato con il cliente; un contratto sconosciuto o di un'altra azienda non da' nulla.
+      expect((await lista(s, { contrattoId: s.contrattoId, clienteId: s.clienteId })).totale).toBe(
+        2
+      )
+      expect((await lista(s, { contrattoId: '22222222-2222-4222-8222-222222222222' })).totale).toBe(
+        0
+      )
+      const altro = await scenario()
+      await nuovo(altro, { stato: 'PROPOSTO' })
+      expect((await lista(s, { contrattoId: altro.contrattoId })).totale).toBe(0)
+      expect((await lista(altro, { contrattoId: altro.contrattoId })).totale).toBe(1)
     })
 
     it('contatori coerenti con la lista: totale, proposti, mancanti, da riallineare', async () => {

@@ -255,6 +255,58 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
     expect(confermabile()).toBeTrue()
   }))
 
+  it('N1: sconto «10,50» uguale a «10.5» della proposta: la riga non diventa manuale', fakeAsync(() => {
+    crea(proposta({ righe: [{ ...proposta().righe[0], sconto: '10.5' }, proposta().righe[1]] }))
+    const s = campo('sconto-ra-1')
+    s.value = '10,50'
+    s.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    expect(q('badge-prezzo-manuale-ra-1')).toBeNull()
+    expect(rigaRegistrata('ra-1')?.sconto).toBeUndefined()
+    // una cascata diversa invece si' (stesso numero di termini, valori diversi)
+    s.value = '10,5+5'
+    s.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    expect(rigaRegistrata('ra-1')?.sconto).toBe('10.5+5')
+  }))
+
+  it('N3: dati -> null -> dati con un altro FIR azzera le modifiche delle righe', fakeAsync(() => {
+    crea()
+    const con = (firId: string) => ({ ...DATI, firId })
+    const passa = (dati: unknown): void => {
+      fixture.componentRef.setInput('datiMovimento', dati)
+      fixture.detectChanges()
+      tick(ATTESA_PROPOSTA_MS)
+      fixture.detectChanges()
+      tick()
+      fixture.detectChanges()
+    }
+    passa(con('fir-1'))
+    scrivi('prezzo-ra-1', '12,5')
+    expect(q('badge-prezzo-manuale-ra-1')).not.toBeNull()
+    passa(null)
+    passa(con('fir-2'))
+    expect(q('badge-prezzo-manuale-ra-1')).toBeNull()
+  }))
+
+  it('N3: dati -> null -> dati con lo stesso FIR conserva le modifiche', fakeAsync(() => {
+    crea()
+    const con = (firId: string) => ({ ...DATI, firId })
+    const passa = (dati: unknown): void => {
+      fixture.componentRef.setInput('datiMovimento', dati)
+      fixture.detectChanges()
+      tick(ATTESA_PROPOSTA_MS)
+      fixture.detectChanges()
+      tick()
+      fixture.detectChanges()
+    }
+    passa(con('fir-1'))
+    scrivi('prezzo-ra-1', '12,5')
+    passa(null)
+    passa(con('fir-1'))
+    expect(q('badge-prezzo-manuale-ra-1')).not.toBeNull()
+  }))
+
   describe('m6: menu dei clienti', () => {
     const CON_CODICE = [
       { id: 'cl-42', codice: 'C0042', ditta: { ragioneSociale: 'Bianchi Srl', partitaIva: '011' } },

@@ -428,6 +428,12 @@ describe('Legami movimento: API (HTTP con servizi finti)', () => {
       })
     })
 
+    it('`contrattoId` passa al servizio; un parametro sconosciuto resta 400', async () => {
+      expect((await http().get(`/${L}?contrattoId=${ID}`)).status).toBe(200)
+      expect(s.lista.lista).toHaveBeenCalledWith(TENANT, { contrattoId: ID })
+      expect((await http().get(`/${L}?contrattoID=${ID}`)).status).toBe(400)
+    })
+
     it('`stati` ripetuto in query e` accettato come lista (m2)', async () => {
       const r = await http().get(`/${L}?stati=PROPOSTO&stati=MANCANTE`)
       expect(r.status).toBe(200)

@@ -394,6 +394,12 @@ export class BloccoFatturazioneComponent implements OnChanges {
   private readonly datiDebounce$ = new Subject<DatiMovimentoLegame | null>()
   private readonly subito$ = new Subject<void>()
   private chiaveDati: string | null = null
+  /**
+   * `firId` dell'ultimo movimento NON nullo visto: serve a riconoscere un altro FIR anche dopo
+   * dati -> null -> dati (con `precedente` null il confronto diretto non vedrebbe il cambio).
+   * `undefined` = nessun dato visto finora.
+   */
+  private ultimoFirId: string | null | undefined = undefined
   /** Dati della proposta arrivata per ultima: un'altra con dati diversi scorda gli errori dei campi (m7). */
   private chiaveUltimaProposta: string | null = null
 
@@ -540,8 +546,11 @@ export class BloccoFatturazioneComponent implements OnChanges {
     this.chiaveDati = chiave
     // Qui non si emette nulla (siamo nel change detection del genitore): solo stato interno,
     // le uscite partono in un microtask.
-    if (precedente && dati && (precedente.firId ?? null) !== (dati.firId ?? null)) {
-      // Un altro FIR può avere un altro cliente: scelte, ritocchi e conferma non valgono più.
+    const firPrima = precedente ? (precedente.firId ?? null) : this.ultimoFirId
+    if (dati) this.ultimoFirId = dati.firId ?? null
+    if (firPrima !== undefined && dati && firPrima !== (dati.firId ?? null)) {
+      // Un altro FIR può avere un altro cliente: scelte, ritocchi e conferma non valgono più
+      // (anche se fra i due FIR i dati sono passati da null, es. form svuotato e ricompilato).
       this.scelta = null
       this.modifiche.set({})
       this.generazione.update(g => g + 1)
@@ -769,5 +778,18 @@ const VALORE_DI = { quantita: 'quantita', prezzo: 'prezzo', sconto: 'sconto' } a
 /** Un valore scritto coincide con quello della proposta (numeri a confronto numerico, sconti per testo). */
 function uguale(campo: CampoRiga, nuovo: string | null, originale: string | null): boolean {
   if (nuovo === null || originale === null) return nuovo === originale
-  return campo === 'sconto' ? nuovo === originale : Number(nuovo) === Number(originale)
+  return campo === 'sconto' ? scontoUguale(nuovo, originale) : Number(nuovo) === Number(originale)
+}
+
+/**
+ * Sconti in catena («10+5») a confronto termine per termine come numeri: «10,50», «10.50» e «10.5»
+ * sono lo stesso sconto. Se un termine non è un numero si ripiega sul confronto per testo.
+ */
+function scontoUguale(a: string, b: string): boolean {
+  const termini = (v: string): number[] => v.split('+').map(t => Number(t.trim().replace(',', '.')))
+  const ta = termini(a)
+  const tb = termini(b)
+  const validi = [...ta, ...tb].every(n => Number.isFinite(n))
+  if (!validi) return a === b
+  return ta.length === tb.length && ta.every((n, i) => n === tb[i])
 }

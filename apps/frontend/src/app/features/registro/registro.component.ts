@@ -108,6 +108,7 @@ import {
   testoEsitoVerifica,
 } from './registro-correzioni'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { AriaInternoDirective } from '../../shared/directives/aria-interno.directive'
 import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import {
@@ -130,6 +131,13 @@ interface FirOption {
   label: string
 }
 
+/** Ultimo istante del giorno di calendario (locale) della data indicata. */
+function fineGiornata(d: Date): Date {
+  const f = new Date(d)
+  f.setHours(23, 59, 59, 999)
+  return f
+}
+
 @Component({
   selector: 'app-registro',
   standalone: true,
@@ -146,6 +154,7 @@ interface FirOption {
     CalendarModule,
     InputNumberModule,
     NumeroItalianoDirective,
+    AriaInternoDirective,
     InputTextModule,
     InputTextareaModule,
     DropdownModule,
@@ -810,8 +819,8 @@ interface FirOption {
                     locale="it-IT"
                     ariaRequired="true"
                     [styleClass]="hasError('quantity') ? 'w-full p-invalid' : 'w-full'"
-                    [attr.aria-invalid]="hasError('quantity') ? true : null"
-                    [attr.aria-describedby]="hasError('quantity') ? 'qta-err' : null"
+                    [appAriaInterno]="hasError('quantity')"
+                    [ariaDescrittoDa]="hasError('quantity') ? 'qta-err' : null"
                   ></p-inputNumber>
                   <small *ngIf="hasError('quantity')" id="qta-err" class="field-error" role="alert"
                     >Indica una quantità maggiore di zero.</small
@@ -988,6 +997,15 @@ interface FirOption {
         </form>
 
         <ng-template pTemplate="footer">
+          <p
+            id="registra-senza-collegare-motivo"
+            class="footer-motivo"
+            role="status"
+            *ngIf="senzaCollegareBloccato"
+          >
+            «Registra senza collegare» è disattivato: correggi prima i campi in errore nella tabella
+            delle righe del blocco «Fatturazione».
+          </p>
           <p-button
             label="Annulla"
             [text]="true"
@@ -999,7 +1017,9 @@ interface FirOption {
               label="Registra senza collegare"
               [outlined]="true"
               [loading]="saving()"
-              [disabled]="bloccoInAttesa"
+              [disabled]="bloccoInAttesa || senzaCollegareBloccato"
+              [appAriaInterno]="false"
+              [ariaDescrittoDa]="senzaCollegareBloccato ? 'registra-senza-collegare-motivo' : null"
               (onClick)="salva('PROPOSTA')"
               data-testid="registra-senza-collegare"
             ></p-button>
@@ -1491,6 +1511,14 @@ export class RegistroComponent implements OnInit {
   legame: DatiLegameRegistrazione | null = null
   /** Falso se un campo del blocco è in errore: la registrazione aspetta. */
   bloccoFatturazioneValido = true
+
+  /**
+   * Un campo della tabella delle righe e' in errore: anche «Registra senza collegare» manderebbe
+   * valori diversi da quelli che l'utente vede. Il pulsante si disattiva e dice perche'.
+   */
+  get senzaCollegareBloccato(): boolean {
+    return this.bloccoStato.visibile && !!this.legame && !this.bloccoFatturazioneValido
+  }
   /** Vero mentre il blocco aggiorna la proposta: il `legame` emesso sarebbe superato. */
   bloccoInAttesa = false
   /** Blocco visibile e conferma possibile: decidono i pulsanti del footer. */
@@ -1525,7 +1553,13 @@ export class RegistroComponent implements OnInit {
   /** FIR attualmente collegato (per ricalcolare la controparte al cambio tipo). */
   private firCollegato: FIR | null = null
 
-  readonly oggi = new Date()
+  /**
+   * Limite massimo del campo «Data operazione»: la FINE del giorno di oggi, non l'istante in cui il
+   * componente e' stato creato. PrimeNG confronta il valore con `maxDate` come istante: il form si
+   * apre con `new Date()` (piu' recente di un limite fissato prima) e il campo restava vuoto, senza
+   * data e quindi senza il blocco «Fatturazione». Si ricalcola a ogni apertura del form (mezzanotte).
+   */
+  oggi = fineGiornata(new Date())
 
   /** Voci del menu di export (allineate al pattern del FIR). */
   readonly exportMenuItems: MenuItem[] = [
@@ -1730,6 +1764,7 @@ export class RegistroComponent implements OnInit {
 
   apriForm(): void {
     this.ripristinaForm = catturaFocus('registro-nuovo')
+    this.oggi = fineGiornata(new Date())
     // opzioni fresche a ogni apertura: il catalogo può essere cambiato nel frattempo
     this.causali.invalida()
     this.messaggioCausale.set(null)

@@ -38,19 +38,10 @@ export class LegamiPage {
     const form = this.page.locator('form.mov-form')
     await expect(form).toBeVisible()
 
-    // Il form si apre con la data di oggi; se il campo e' rimasto vuoto (visto a volte in locale)
-    // si scrive a mano: cambiare la data ricarica le causali, quindi PRIMA di sceglierne una.
-    const data = this.page.locator('#movementDate')
+    // Il form si apre con la data di oggi gia' scritta nel campo (nessun inserimento a mano): se
+    // restasse vuoto, senza data le causali non si caricano e il blocco «Fatturazione» non compare.
     const oggi = giornoItaliano().split('-').reverse().join('/')
-    try {
-      await expect(data).toHaveValue(oggi, { timeout: 3_000 })
-    } catch {
-      await data.click()
-      await data.press('Control+A')
-      await data.pressSequentially(oggi)
-      await data.press('Tab')
-      await expect(data).toHaveValue(oggi)
-    }
+    await expect(this.page.locator('#movementDate')).toHaveValue(oggi)
 
     // Le opzioni si ricaricano anche all'apertura: scegliere la causale e' un tentativo da
     // ripetere finche' l'etichetta mostrata (non il pannello aperto) e' quella scelta.

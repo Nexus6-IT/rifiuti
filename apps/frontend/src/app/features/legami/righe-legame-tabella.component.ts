@@ -10,10 +10,12 @@ import {
   signal,
 } from '@angular/core'
 import { FormsModule } from '@angular/forms'
+import { ButtonModule } from 'primeng/button'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { InputTextModule } from 'primeng/inputtext'
 import { TagModule } from 'primeng/tag'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { AriaInternoDirective } from '../../shared/directives/aria-interno.directive'
 import {
   formatCascata,
   formatNumero,
@@ -56,13 +58,23 @@ export function numeroComeStringa(n: number): string {
   imports: [
     CommonModule,
     FormsModule,
+    ButtonModule,
     InputNumberModule,
     InputTextModule,
     TagModule,
     NumeroItalianoDirective,
+    AriaInternoDirective,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <p
+      class="scorri-hint"
+      aria-hidden="true"
+      *ngIf="righe.length > 0"
+      data-testid="righe-scorri-hint"
+    >
+      <i class="pi pi-arrows-h"></i> Scorri di lato per vedere tutte le colonne
+    </p>
     <div class="tabella-scroll" *ngIf="righe.length > 0">
       <table class="righe-legame" data-testid="righe-legame">
         <caption class="sr-only">
@@ -76,16 +88,24 @@ export function numeroComeStringa(n: number): string {
             <th scope="col">Sconto %</th>
             <th *ngIf="mostraIva" scope="col">IVA</th>
             <th scope="col" class="num">Importo</th>
+            <th *ngIf="rimovibile" scope="col"><span class="sr-only">Azioni</span></th>
           </tr>
         </thead>
         <tbody>
           <tr
             *ngFor="let r of righe; trackBy: perId"
             [attr.data-testid]="'riga-' + r.rigaAddebitoId"
+            [class.riga-rimossa]="eRimossa(r)"
           >
             <td>
               <span class="voce">{{ r.descrizione || r.tipo }}</span>
               <p-tag *ngIf="r.origine === 'PROPOSTA'" severity="info" value="Aggiuntiva"></p-tag>
+              <small
+                *ngIf="eRimossa(r)"
+                class="unita"
+                [attr.data-testid]="'rimossa-' + r.rigaAddebitoId"
+                >da rimuovere</small
+              >
             </td>
 
             <td>
@@ -104,12 +124,16 @@ export function numeroComeStringa(n: number): string {
                   locale="it-IT"
                   [ariaLabel]="'Quantità di ' + (r.descrizione || r.tipo)"
                   styleClass="campo-riga"
+                  [inputStyleClass]="errore(r, 'quantita') ? 'p-invalid' : ''"
+                  [appAriaInterno]="!!errore(r, 'quantita')"
+                  [ariaDescrittoDa]="errore(r, 'quantita') ? idErrore(r, 'quantita') : null"
                 ></p-inputNumber>
                 <span class="unita">{{ r.unitaMisura }}</span>
                 <small
                   *ngIf="errore(r, 'quantita') as e"
                   class="field-error p-error block"
                   role="alert"
+                  [id]="idErrore(r, 'quantita')"
                   [attr.data-testid]="'errore-qta-' + r.rigaAddebitoId"
                   >{{ e }}</small
                 >
@@ -139,11 +163,15 @@ export function numeroComeStringa(n: number): string {
                     locale="it-IT"
                     [ariaLabel]="'Prezzo di ' + (r.descrizione || r.tipo)"
                     styleClass="campo-riga"
+                    [inputStyleClass]="errore(r, 'prezzo') ? 'p-invalid' : ''"
+                    [appAriaInterno]="!!errore(r, 'prezzo')"
+                    [ariaDescrittoDa]="errore(r, 'prezzo') ? idErrore(r, 'prezzo') : null"
                   ></p-inputNumber>
                   <small
                     *ngIf="errore(r, 'prezzo') as e"
                     class="field-error p-error block"
                     role="alert"
+                    [id]="idErrore(r, 'prezzo')"
                     [attr.data-testid]="'errore-prezzo-' + r.rigaAddebitoId"
                     >{{ e }}</small
                   >
@@ -170,13 +198,16 @@ export function numeroComeStringa(n: number): string {
                   [value]="testoSconto(r)"
                   (input)="alCambioSconto(r, $any($event.target).value)"
                   [attr.aria-label]="'Sconto di ' + (r.descrizione || r.tipo)"
+                  [class.p-invalid]="!!errore(r, 'sconto')"
                   [attr.aria-invalid]="errore(r, 'sconto') ? 'true' : null"
+                  [attr.aria-describedby]="errore(r, 'sconto') ? idErrore(r, 'sconto') : null"
                   placeholder="es. 10+5"
                 />
                 <small
                   *ngIf="errore(r, 'sconto') as e"
                   class="field-error p-error block"
                   role="alert"
+                  [id]="idErrore(r, 'sconto')"
                   [attr.data-testid]="'errore-sconto-' + r.rigaAddebitoId"
                   >{{ e }}</small
                 >
@@ -191,6 +222,17 @@ export function numeroComeStringa(n: number): string {
             <td class="num" [attr.data-testid]="'importo-' + r.rigaAddebitoId">
               {{ r.importo !== null ? importoTesto(r.importo) + ' €' : '—' }}
             </td>
+
+            <td *ngIf="rimovibile">
+              <p-button
+                [label]="eRimossa(r) ? 'Ripristina' : 'Rimuovi'"
+                [text]="true"
+                size="small"
+                (onClick)="rimuovi.emit(r.rigaAddebitoId)"
+                [ariaLabel]="(eRimossa(r) ? 'Ripristina ' : 'Rimuovi ') + (r.descrizione || r.tipo)"
+                [attr.data-testid]="'rimuovi-' + r.rigaAddebitoId"
+              />
+            </td>
           </tr>
         </tbody>
       </table>
@@ -203,6 +245,33 @@ export function numeroComeStringa(n: number): string {
       .tabella-scroll {
         position: relative;
         overflow-x: auto;
+        /* Ombre ai bordi che compaiono solo dove c'e' altro da scorrere (trucco background-attachment). */
+        background:
+          linear-gradient(to right, var(--surface-section, #fff) 30%, transparent) left center /
+            2rem 100% no-repeat local,
+          linear-gradient(to left, var(--surface-section, #fff) 30%, transparent) right center /
+            2rem 100% no-repeat local,
+          radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.28), transparent) left center /
+            0.6rem 100% no-repeat scroll,
+          radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.28), transparent) right
+            center / 0.6rem 100% no-repeat scroll;
+      }
+      /* Indicazione visibile dello scorrimento: solo dove le colonne possono non entrare. */
+      .scorri-hint {
+        display: none;
+        margin: 0 0 0.35rem;
+        font-size: var(--font-size-xs, 0.75rem);
+        color: var(--text-secondary, #59615c);
+      }
+      @media (max-width: 600px) {
+        .scorri-hint {
+          display: block;
+        }
+      }
+      .field-error {
+        font-size: var(--font-size-xs, 0.75rem);
+        font-weight: var(--font-weight-medium, 500);
+        color: var(--color-danger, #b42318);
       }
       .righe-legame {
         width: 100%;
@@ -219,6 +288,9 @@ export function numeroComeStringa(n: number): string {
       .righe-legame .num {
         text-align: right;
         white-space: nowrap;
+      }
+      .riga-rimossa .voce {
+        text-decoration: line-through;
       }
       .voce {
         margin-right: 0.4rem;
@@ -251,7 +323,13 @@ export class RigheLegameTabellaComponent implements OnChanges {
   @Input() mostraIva = false
   /** Cambia quando gli errori e i testi in corso vanno scordati (nuova scelta a monte). */
   @Input() generazione = 0
+  /** Mostra «Rimuovi» / «Ripristina» per riga, in una colonna a parte (finestra del legame). */
+  @Input() rimovibile = false
+  /** Id delle righe segnate «da rimuovere»: i loro errori non bloccano nulla. Passare un nuovo `Set` a ogni cambio. */
+  @Input() rimosse: ReadonlySet<string> = new Set()
   @Output() modifica = new EventEmitter<ModificaCampoRiga>()
+  /** `rigaAddebitoId` della riga di cui si chiede rimozione o ripristino. */
+  @Output() rimuovi = new EventEmitter<string>()
   /** Vero se almeno un campo è in errore. */
   @Output() erroriChange = new EventEmitter<boolean>()
 
@@ -268,7 +346,11 @@ export class RigheLegameTabellaComponent implements OnChanges {
   private ultimoStato = false
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (!changes['righe'] && !changes['generazione']) return
+    if (!changes['righe'] && !changes['generazione']) {
+      // Solo le righe da rimuovere sono cambiate: lo stato complessivo degli errori va ricalcolato.
+      if (changes['rimosse']) void Promise.resolve().then(() => this.segnalaErrori())
+      return
+    }
     if (changes['generazione'] && !changes['generazione'].firstChange) {
       this.erroriCampi.set(new Map())
       this.rifiutiCampi.set(new Map())
@@ -286,7 +368,16 @@ export class RigheLegameTabellaComponent implements OnChanges {
     void Promise.resolve().then(() => this.segnalaErrori())
   }
 
+  eRimossa(r: RigaLegame): boolean {
+    return this.rimosse.has(r.rigaAddebitoId)
+  }
+
   perId = (_: number, r: RigaLegame): string => r.rigaAddebitoId
+
+  /** Id del messaggio d'errore di un campo (legato al campo con `aria-describedby`). */
+  idErrore(r: RigaLegame, campo: CampoRiga): string {
+    return `errore-${campo}-${r.rigaAddebitoId}`
+  }
 
   numero(v: string | null): number | null {
     return v === null || v === undefined || v === '' ? null : Number(v)
@@ -378,7 +469,10 @@ export class RigheLegameTabellaComponent implements OnChanges {
   }
 
   private segnalaErrori(): void {
-    const stato = this.erroriCampi().size > 0 || this.rifiutiCampi().size > 0
+    // Gli errori di una riga «da rimuovere» non contano: la riga non partirà.
+    const attivo = (m: ReadonlyMap<string, string>): boolean =>
+      [...m.keys()].some(k => !this.rimosse.has(k.split('|')[0]))
+    const stato = attivo(this.erroriCampi()) || attivo(this.rifiutiCampi())
     if (stato === this.ultimoStato) return
     this.ultimoStato = stato
     this.erroriChange.emit(stato)
