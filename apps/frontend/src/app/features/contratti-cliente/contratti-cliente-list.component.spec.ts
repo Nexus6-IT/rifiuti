@@ -230,6 +230,37 @@ describe('ContrattiClienteListComponent', () => {
       expect(q('contratti-senza-contratto-link')!.getAttribute('href')).toBe('/legami/da-collegare')
     })
 
+    it('il riepilogo segue il filtro cliente della lista', async () => {
+      listaLegami.and.callFake((ids?: string[]) =>
+        of({
+          perContratto: [],
+          senzaContratto: ids
+            ? []
+            : [
+                { clienteId: 'cl1', daCollegare: 1 },
+                { clienteId: 'cl2', daCollegare: 2 },
+              ],
+        })
+      )
+      await apri()
+      const c = fixture.componentInstance
+      c.filtraCliente({ id: 'cl2' } as Cliente)
+      await stabilizza(fixture)
+      expect(q('contratti-senza-contratto')!.textContent!.replace(/\s+/g, ' ')).toContain(
+        '2 movimenti da collegare senza contratto'
+      )
+      expect(q('contratti-senza-contratto')!.textContent).not.toContain('clienti')
+      expect(q('contratti-senza-contratto-link')!.getAttribute('href')).toBe(
+        '/legami/da-collegare?clienteId=cl2'
+      )
+      c.filtraCliente({ id: 'cl9' } as Cliente)
+      await stabilizza(fixture)
+      expect(q('contratti-senza-contratto')).toBeNull()
+      c.filtraCliente(null)
+      await stabilizza(fixture)
+      expect(q('contratti-senza-contratto')!.textContent).toContain('3 movimenti')
+    })
+
     it('nessun legame senza contratto: il riepilogo non c e', async () => {
       await apri()
       expect(q('contratti-senza-contratto')).toBeNull()

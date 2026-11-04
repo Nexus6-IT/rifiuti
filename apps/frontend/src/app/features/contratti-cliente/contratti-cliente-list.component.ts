@@ -552,33 +552,34 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Riepilogo dei legami con cliente e senza contratto (di tutta l'azienda, non della pagina):
-   * una chiamata sola all'apertura. `clienteId` c'e' solo se il cliente e' uno, e il link filtra.
+   * Riepilogo dei legami con cliente e senza contratto: tutta l'azienda, oppure il solo cliente
+   * scelto nel filtro (gli altri filtri non si applicano a legami che non hanno un contratto).
+   * Una chiamata sola all'apertura. `clienteId` c'e' solo se il cliente e' uno, e il link filtra.
    */
-  readonly senzaContratto = signal<{
-    totale: number
-    clienti: number
-    clienteId: string | null
-  } | null>(null)
+  private readonly senzaContrattoPerCliente = signal<
+    readonly { clienteId: string; daCollegare: number }[]
+  >([])
+  /** Il cliente scelto nel filtro della lista: il riepilogo lo segue. */
+  private readonly clienteFiltroSegnale = signal<string | null>(null)
+
+  readonly senzaContratto = computed(() => {
+    const filtro = this.clienteFiltroSegnale()
+    const voci = this.senzaContrattoPerCliente().filter(
+      x => filtro === null || x.clienteId === filtro
+    )
+    const totale = voci.reduce((n, x) => n + x.daCollegare, 0)
+    return totale === 0
+      ? null
+      : { totale, clienti: voci.length, clienteId: voci.length === 1 ? voci[0].clienteId : null }
+  })
 
   private caricaSenzaContratto(): void {
     this.legami
       .contatoriPerContratto()
       .pipe(takeUntil(this.distrutto))
       .subscribe({
-        next: r => {
-          const totale = r.senzaContratto.reduce((n, x) => n + x.daCollegare, 0)
-          this.senzaContratto.set(
-            totale === 0
-              ? null
-              : {
-                  totale,
-                  clienti: r.senzaContratto.length,
-                  clienteId: r.senzaContratto.length === 1 ? r.senzaContratto[0].clienteId : null,
-                }
-          )
-        },
-        error: () => this.senzaContratto.set(null),
+        next: r => this.senzaContrattoPerCliente.set(r.senzaContratto),
+        error: () => this.senzaContrattoPerCliente.set([]),
       })
   }
 
@@ -636,6 +637,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
 
   filtraCliente(cliente: Cliente | null): void {
     this.clienteFiltro = cliente?.id ?? null
+    this.clienteFiltroSegnale.set(this.clienteFiltro)
     this.applicaFiltri()
   }
 

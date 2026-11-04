@@ -150,7 +150,7 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
              natura_iva AS natura, congelata_il AS "congelataIl", prezzo_manuale AS manuale
       FROM righe_legame_movimento WHERE legame_id = ${legameId}::uuid ORDER BY ordine`
   /** I campi leggibili attesi, letti dal database con una query indipendente dal servizio. */
-  async function leggibili(movimentoId: string, rigaLegameId: string) {
+  async function leggibili(rigaLegameId: string) {
     const [x] = await owner.$queryRaw<
       {
         numero: string
@@ -164,12 +164,13 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
              to_char(((m.movement_date AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Rome')::date, 'YYYY-MM-DD') AS giorno,
              coalesce(r.descrizione, ra.descrizione) AS voce, ra.cer_code AS cer,
              dt.ragione_sociale AS cliente
-      FROM waste_movements m, righe_legame_movimento r
+      FROM righe_legame_movimento r
       JOIN legami_movimento l ON l.id = r.legame_id
+      JOIN waste_movements m ON m.id = l.movimento_vigente_id
       JOIN righe_addebito ra ON ra.id = r.riga_addebito_id
       LEFT JOIN clienti cl ON cl.id = l.cliente_id
       LEFT JOIN ditte dt ON dt.id = cl.ditta_id
-      WHERE m.id = ${movimentoId}::uuid AND r.id = ${rigaLegameId}::uuid`
+      WHERE r.id = ${rigaLegameId}::uuid`
     return {
       numeroMovimento: x.numero,
       dataMovimento: x.giorno,
@@ -233,13 +234,53 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
       expect(a.differenze).toHaveLength(3)
       for (const l of [l1, l2, l3]) {
         const d = a.differenze.find(x => x.legameId === l.legameId)!
-        expect(d).toMatchObject(await leggibili(l.movimentoId, l.righeIds[0]))
+        expect(d).toMatchObject(await leggibili(l.righeIds[0]))
         expect(d.numeroMovimento).toMatch(/^\d+\/\d{4}$/)
         expect(d.dataMovimento).toMatch(/^\d{4}-\d{2}-\d{2}$/)
         expect(d.voce).not.toBe('')
         expect(d.cliente).not.toBe('')
       }
       expect(new Set(a.differenze.map(d => d.numeroMovimento)).size).toBe(3)
+    })
+
+    it('movimento rettificato: numero e data degli esempi sono quelli della testa vigente, non dell’originale', async () => {
+      const s = await scenario()
+      const l = await nuovoLegame(s, { dataMovimento: '2026-03-01' })
+      const origine = await owner.wasteMovement.findUniqueOrThrow({ where: { id: l.movimentoId } })
+      const ultimo = await owner.wasteMovement.aggregate({
+        where: { registroId: origine.registroId, progressiveYear: 2026 },
+        _max: { progressiveNumber: true },
+      })
+      const numeroTesta = (ultimo._max.progressiveNumber ?? 0) + 1
+      const testa = await owner.wasteMovement.create({
+        data: {
+          tenantId: s.tenantId,
+          registroId: origine.registroId,
+          progressiveYear: 2026,
+          progressiveNumber: numeroTesta,
+          type: origine.type,
+          movementDate: new Date('2026-04-10T10:00:00Z'),
+          registrationDate: new Date('2026-04-10T10:00:00Z'),
+          causale: origine.causale,
+          cerCode: origine.cerCode,
+          quantity: '90',
+          unit: 'KG',
+          tipoAnnotazione: 'RETTIFICA',
+          movimentoRettificatoId: origine.id,
+          movimentoOriginaleId: origine.id,
+          motivoAnnotazione: 'prova',
+        },
+      })
+      await owner.$executeRaw`
+        UPDATE legami_movimento SET movimento_vigente_id = ${testa.id}::uuid
+        WHERE id = ${l.legameId}::uuid`
+      await prezzoListino(s.rigaCerId, '12.000000')
+      const a = await anteprima(s)
+      expect(a.differenze).toHaveLength(1)
+      expect(a.differenze[0].movimentoId).toBe(testa.id)
+      expect(a.differenze[0].numeroMovimento).toBe(`${numeroTesta}/2026`)
+      expect(a.differenze[0].dataMovimento).toBe('2026-04-10')
+      expect(a.differenze[0]).toMatchObject(await leggibili(l.righeIds[0]))
     })
 
     it('prezzo di listino da 10 a 12: anteprima cambiano 1, applica riscrive prezzo, sconto e IVA e aggiorna congelata_il', async () => {
@@ -268,7 +309,7 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
           prezzoDopo: '12.000000',
           scontoPrima: null,
           scontoDopo: '10',
-          ...(await leggibili(l.movimentoId, l.righeIds[0])),
+          ...(await leggibili(l.righeIds[0])),
         },
       ])
       // L'anteprima non scrive.
@@ -1035,6 +1076,24 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
       const a = await anteprima(s)
       const msAnteprima = Date.now() - t1
       expect(a.cambiano).toBe(50)
+      // Piano della lettura dei movimenti degli esempi, con i nested loop spenti come nella
+      // transazione del servizio: per chiave primaria, mai una scansione del tenant.
+      const ids = await owner.$queryRaw<{ riga: string; legame: string; mov: string }[]>`
+        SELECT r.id::text AS riga, l.id::text AS legame, l.movimento_vigente_id::text AS mov
+        FROM righe_legame_movimento r JOIN legami_movimento l ON l.id = r.legame_id
+        WHERE l.tenant_id = ${s.tenantId}::uuid AND l.elenco_id = ${b.elencoId}::uuid LIMIT 50`
+      const piano = async (sql: Prisma.Sql): Promise<string> =>
+        owner.$transaction(async tx => {
+          await tx.$executeRaw`SET LOCAL enable_nestloop = off`
+          const r = await tx.$queryRaw<Record<string, string>[]>(sql)
+          return r.map(x => Object.values(x)[0]).join('\n')
+        })
+      const dopo = await piano(Prisma.sql`EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)
+        SELECT m.id::text FROM waste_movements m
+        WHERE m.tenant_id = ${s.tenantId}::uuid AND m.id = ANY(${ids.map(x => x.mov)}::uuid[])`)
+      console.info(`[T17] piano movimenti degli esempi:\n${dopo}`)
+      expect(dopo).not.toMatch(/Seq Scan/)
+      expect(dopo).toMatch(/Index Cond: \(\(id = ANY/)
       const t2 = Date.now()
       const esito = await applica(s, a.firma)
       const msApplica = Date.now() - t2
