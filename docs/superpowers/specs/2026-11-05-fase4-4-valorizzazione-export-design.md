@@ -210,7 +210,7 @@ Vincoli:
 | `id`, `tenant_id`, `documento_id` | uuid | FK `(documento_id, tenant_id)` CASCADE. La cancellazione la permette solo il trigger e solo sulle bozze |
 | `numero_linea` | int | 1..n, unico per documento |
 | `tipo_riga` | enum | `MOVIMENTO`, `FASCIA_SPECIALE`, `FISSO`, `MINIMO`, `SPESA_INCASSO`, `BOLLO`, `STORNO` |
-| `legame_id`, `riga_legame_id` | uuid null | per `MOVIMENTO`. FK composte NoAction |
+| `legame_id`, `riga_legame_id` | uuid null | `legame_id` per `MOVIMENTO`; `riga_legame_id` resta sempre NULL nella 4.4 (la FK NoAction bloccherebbe la 4.3 dopo un annullo, scansione 4.4b Q1). FK composte NoAction |
 | `movimento_fatturato_id` | uuid null | `movimento_vigente_id` del legame alla definitiva (S6) |
 | `riga_addebito_id` | uuid null | FK `(riga_addebito_id, tenant_id)` NoAction. Rende «in uso» la riga di listino |
 | `descrizione` | varchar(1000) | testo già normalizzato per l'XML |
