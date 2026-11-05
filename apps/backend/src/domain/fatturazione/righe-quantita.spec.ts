@@ -1,5 +1,9 @@
 import { righeQuantitaMovimenti } from './righe-quantita'
-import { legameDi, listinoDi } from './prova-fixture'
+import {
+  azzeraContatoreLegami,
+  legameDi,
+  listinoDi,
+} from '../../test-support/calcolo-fatturazione-di-test'
 
 const periodo = { dal: '2026-11-01', al: '2026-11-30' }
 const tt = (p = {}) => listinoDi({ id: 'tt', tipo: 'TT', prezzo: '0.02', ...p })
@@ -7,6 +11,20 @@ const run = (righe: ReturnType<typeof listinoDi>[], legami: ReturnType<typeof le
   righeQuantitaMovimenti({ righe, legami, periodo })
 
 describe('righeQuantitaMovimenti', () => {
+  beforeEach(azzeraContatoreLegami)
+  it('TON con decimali: 2500,5 kg = 2,5005 t', () => {
+    const e = run(
+      [tt({ unitaMisura: 'TON', prezzo: '10.00' })],
+      [legameDi({ quantitaMovimento: '2500.5', unitaMovimento: 'KG' })]
+    )
+    expect(e.righe[0].quantita).toBe('2.5005')
+    expect(e.righe[0].prezzoTotale).toBe('25.01')
+  })
+  it('TT senza prezzo: RIGA_LEGAME_INCOMPLETA con «TT riga n»', () => {
+    const e = run([tt({ prezzo: null })], [legameDi()])
+    expect(e.righe).toHaveLength(0)
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'TT riga 1' }])
+  })
   it('TT in KG su tre legami', () => {
     const e = run(
       [tt()],

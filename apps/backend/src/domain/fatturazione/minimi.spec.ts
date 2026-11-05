@@ -1,5 +1,5 @@
 import { applicaMinimi } from './minimi'
-import { listinoDi } from './prova-fixture'
+import { listinoDi } from '../../test-support/calcolo-fatturazione-di-test'
 import type { RigaSenzaLinea } from './esito-righe'
 import type { RigaListinoDaFatturare } from './tipi'
 
@@ -53,12 +53,12 @@ describe('minimo di riga', () => {
     const a = listinoDi({
       id: 'a',
       tipo: 'CER',
-      categoriaId: '001',
+      categoriaId: 'u001',
       minimoFatturabile: '50.00',
       minimoPerCategoria: true,
     })
-    const b = listinoDi({ id: 'b', tipo: 'CER', categoriaId: '001' })
-    const c = listinoDi({ id: 'c', tipo: 'CER', categoriaId: '002' })
+    const b = listinoDi({ id: 'b', tipo: 'CER', categoriaId: 'u001' })
+    const c = listinoDi({ id: 'c', tipo: 'CER', categoriaId: 'u002' })
     const e = applicaMinimi(
       [
         rg({ rigaAddebitoId: 'a', prezzoTotale: '20.00' }),
@@ -70,6 +70,31 @@ describe('minimo di riga', () => {
     )
     expect(e.righe.map(r => r.prezzoTotale)).toEqual(['5.00'])
   })
+  it('minimo per categoria con minimi diversi: vale il più alto', () => {
+    const a = listinoDi({
+      id: 'a',
+      tipo: 'CER',
+      categoriaId: 'u1',
+      minimoFatturabile: '50.00',
+      minimoPerCategoria: true,
+    })
+    const b = listinoDi({
+      id: 'b',
+      tipo: 'CER',
+      categoriaId: 'u1',
+      minimoFatturabile: '70.00',
+      minimoPerCategoria: true,
+    })
+    const e = applicaMinimi(
+      [
+        rg({ rigaAddebitoId: 'a', prezzoTotale: '20.00' }),
+        rg({ rigaAddebitoId: 'b', prezzoTotale: '25.00' }),
+      ],
+      [],
+      mappa(a, b)
+    )
+    expect(e.righe.map(r => r.prezzoTotale)).toEqual(['25.00'])
+  })
   it('minimo raggiunto: nessuna riga', () => {
     const l = listinoDi({ id: 'a', minimoFatturabile: '50.00' })
     expect(
@@ -79,8 +104,8 @@ describe('minimo di riga', () => {
 })
 
 describe('minimi di documento', () => {
-  const cer = listinoDi({ id: 'c', tipo: 'CER', categoriaId: '001' })
-  const v = listinoDi({ id: 'v', tipo: 'V', categoriaId: '002' })
+  const cer = listinoDi({ id: 'c', tipo: 'CER', categoriaId: 'u001' })
+  const v = listinoDi({ id: 'v', tipo: 'V', categoriaId: 'u002' })
   const base = [
     rg({ rigaAddebitoId: 'c', prezzoTotale: '50.00' }),
     rg({ rigaAddebitoId: 'v', prezzoTotale: '30.00' }),
@@ -112,10 +137,44 @@ describe('minimi di documento', () => {
       '30.00'
     )
   })
-  it('M001 solo categoria 001', () => {
-    expect(applicaMinimi(base, [min('M001', '80.00')], mappa(cer, v)).righe[0].prezzoTotale).toBe(
-      '30.00'
+  it('M001: solo le righe V della categoria, confronto sul codice (uuid sul categoriaId)', () => {
+    const v1 = listinoDi({ id: 'v1', tipo: 'V', categoriaId: 'c-uuid-1', categoriaCodice: '001' })
+    const cer1 = listinoDi({
+      id: 'c1',
+      tipo: 'CER',
+      categoriaId: 'c-uuid-1',
+      categoriaCodice: '001',
+    })
+    const v2 = listinoDi({ id: 'v2', tipo: 'V', categoriaId: 'c-uuid-2', categoriaCodice: '002' })
+    const r = [
+      rg({ rigaAddebitoId: 'v1', prezzoTotale: '30.00' }),
+      rg({ rigaAddebitoId: 'c1', prezzoTotale: '50.00' }),
+      rg({ rigaAddebitoId: 'v2', prezzoTotale: '40.00' }),
+    ]
+    const e = applicaMinimi(r, [min('M001', '80.00')], mappa(v1, cer1, v2))
+    expect(e.righe.map(x => x.prezzoTotale)).toEqual(['50.00'])
+  })
+  it('M001 con righe V da 90 e minimo 80: nessuna riga (uuid contro codice)', () => {
+    const v1 = listinoDi({ id: 'v1', tipo: 'V', categoriaId: 'c-uuid', categoriaCodice: '001' })
+    const e = applicaMinimi(
+      [rg({ rigaAddebitoId: 'v1', prezzoTotale: '90.00' })],
+      [min('M001', '80.00')],
+      mappa(v1)
     )
+    expect(e.righe).toHaveLength(0)
+  })
+  it('minimo senza prezzo: RIGA_LEGAME_INCOMPLETA con «tipo riga n»', () => {
+    const e = applicaMinimi(
+      base,
+      [min('MW', '10.00'), min('MW', '1.00', { prezzo: null })],
+      mappa(cer, v)
+    )
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'MW riga 2' }])
+  })
+  it('la riga MINIMO non ha unità di misura', () => {
+    expect(
+      applicaMinimi(base, [min('MW', '100.00')], mappa(cer, v)).righe[0].unitaMisura
+    ).toBeNull()
   })
   it('codice IVA della riga MINIMO = quello del minimo', () => {
     const m = min('MW', '100.00', {

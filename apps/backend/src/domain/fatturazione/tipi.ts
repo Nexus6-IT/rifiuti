@@ -50,6 +50,8 @@ export interface RigaListinoDaFatturare {
   tipo: string
   descrizione: string | null
   categoriaId: string | null
+  /** Codice a 3 cifre della categoria (`CodificaAddebito.codice`): lo riempie il Task 5. */
+  categoriaCodice: string | null
   unitaMisura: string
   prezzo: string | null
   quantitaFissa: string | null

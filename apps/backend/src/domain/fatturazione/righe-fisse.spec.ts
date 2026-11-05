@@ -1,5 +1,5 @@
 import { righeFisse, type MarcatoreEsistente } from './righe-fisse'
-import { listinoDi } from './prova-fixture'
+import { listinoDi } from '../../test-support/calcolo-fatturazione-di-test'
 
 const contratto = { dataInizio: '2020-01-01', dataFine: null }
 const sc = (giorno: number, mese: number, ordine = 1) => ({ ordine, giorno, mese, anno: null })
@@ -31,7 +31,7 @@ describe('righeFisse con scadenze', () => {
     expect(e.righe.map(x => x.marcatore?.chiaveCompetenza)).toEqual(['2025-12-31'])
     expect(e.avvisi.map(a => a.codice)).toEqual(['ARRETRATI_PRESENTI'])
   })
-  it('scadenza di 13 mesi prima: non fatturata', () => {
+  it('scadenza di 1 mese prima: arretrato fatturato', () => {
     const r = listinoDi({ scadenze: [sc(15, 3)], periodoScadenze: 'TP' })
     const e = righeFisse({
       righe: [r],
@@ -39,8 +39,9 @@ describe('righeFisse con scadenze', () => {
       contratto,
       marcatori: [],
     })
-    // 15/03/2026 è 1 mese prima: fatturata; 15/03/2025 no
     expect(e.righe.map(x => x.marcatore?.chiaveCompetenza)).toEqual(['2026-03-15'])
+  })
+  it('scadenza di 13 mesi prima: non fatturata', () => {
     const r2 = listinoDi({
       scadenze: [{ ordine: 1, giorno: 15, mese: 3, anno: 2025 }],
       periodoScadenze: 'TP',
@@ -66,14 +67,53 @@ describe('righeFisse con scadenze', () => {
     const e = righeFisse({
       righe: [listinoDi({ scadenze: [sc(30, 6)], periodoScadenze: 'TP' })],
       periodo,
-      contratto,
+      contratto: { dataInizio: '2026-01-01', dataFine: null },
       marcatori: [mark('SCADENZA_FISSO', '2026-06-30')],
     })
-    expect(e.righe.map(x => x.marcatore?.chiaveCompetenza)).not.toContain('2026-06-30')
+    expect(e.righe).toHaveLength(0)
   })
 })
 
 describe('righeFisse senza scadenze', () => {
+  const p0 = { dal: '2026-10-01', al: '2026-10-31' }
+  it('contratto finito prima del periodo: nessuna riga', () => {
+    const e = righeFisse({
+      righe: [listinoDi()],
+      periodo: p0,
+      contratto: { dataInizio: '2020-01-01', dataFine: '2026-09-15' },
+      marcatori: [],
+    })
+    expect(e.righe).toHaveLength(0)
+  })
+  it('contratto che inizia dopo il periodo: nessuna riga', () => {
+    const e = righeFisse({
+      righe: [listinoDi()],
+      periodo: p0,
+      contratto: { dataInizio: '2026-11-01', dataFine: null },
+      marcatori: [],
+    })
+    expect(e.righe).toHaveLength(0)
+  })
+  it('contratto che finisce dentro il periodo: canone intero, stessa chiave', () => {
+    const e = righeFisse({
+      righe: [listinoDi()],
+      periodo: p0,
+      contratto: { dataInizio: '2020-01-01', dataFine: '2026-10-15' },
+      marcatori: [],
+    })
+    expect(e.righe[0].marcatore?.chiaveCompetenza).toBe('2026-10-01/2026-10-31')
+  })
+  it('prezzo assente: RIGA_LEGAME_INCOMPLETA con «F riga n»', () => {
+    const e = righeFisse({
+      righe: [listinoDi({ tipo: 'CER' }), listinoDi({ prezzo: null })],
+      periodo: p0,
+      contratto,
+      marcatori: [],
+    })
+    expect(e.righe).toHaveLength(0)
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 2' }])
+  })
+
   const r = listinoDi({ prezzo: '50.00' })
   const p = { dal: '2026-10-01', al: '2026-10-31' }
   it('riga con PERIODO_CANONE', () => {

@@ -1,4 +1,4 @@
-import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
+import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from '../domain/fatturazione/tipi'
 
 /** Fixture dei test del calcolo di fatturazione (solo per gli spec). */
 export function listinoDi(p: Partial<RigaListinoDaFatturare> = {}): RigaListinoDaFatturare {
@@ -10,6 +10,7 @@ export function listinoDi(p: Partial<RigaListinoDaFatturare> = {}): RigaListinoD
     tipo: 'F',
     descrizione: null,
     categoriaId: null,
+    categoriaCodice: null,
     unitaMisura: 'KG',
     prezzo: '10.00',
     quantitaFissa: null,
@@ -35,6 +36,11 @@ export function listinoDi(p: Partial<RigaListinoDaFatturare> = {}): RigaListinoD
 }
 
 let n = 0
+/** Azzera il contatore degli id dei legami (da chiamare in `beforeEach`). */
+export function azzeraContatoreLegami(): void {
+  n = 0
+}
+
 export function legameDi(p: Partial<RigaLegameDaFatturare> = {}): RigaLegameDaFatturare {
   n += 1
   return {

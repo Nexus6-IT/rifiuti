@@ -50,6 +50,7 @@ const voceListino = (o: Partial<RigaListinoDaFatturare> = {}): RigaListinoDaFatt
   tipo: 'CER',
   descrizione: null,
   categoriaId: null,
+  categoriaCodice: null,
   unitaMisura: 'KG',
   prezzo: null,
   quantitaFissa: null,

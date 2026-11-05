@@ -28,11 +28,11 @@ function menoDodiciMesi(data: string): string {
 
 function riga(
   r: RigaListinoDaFatturare,
+  prezzo: string,
   quantita: string,
   descrizione: string,
   marcatore: { tipo: TipoMarcatore; chiaveCompetenza: string }
 ): RigaSenzaLinea {
-  const prezzo = r.prezzo ?? '0'
   const imp = importoRiga(quantita, prezzo, r.sconto)
   return {
     tipoRiga: 'FISSO',
@@ -63,7 +63,11 @@ function sovrapposti(chiave: string, p: { dal: string; al: string }): boolean {
   return b !== undefined && a <= p.al && b >= p.dal
 }
 
-/** Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. */
+/**
+ * Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. «riga n» nei
+ * dettagli = posizione da 1 nell'array `righe` in ingresso. Una riga senza prezzo dà
+ * RIGA_LEGAME_INCOMPLETA.
+ */
 export function righeFisse(i: {
   righe: readonly RigaListinoDaFatturare[]
   periodo: { dal: string; al: string }
@@ -75,11 +79,17 @@ export function righeFisse(i: {
   const avvisi: Segnalazione<AvvisoDocumento>[] = []
   const { dal, al } = i.periodo
 
-  for (const r of i.righe) {
+  for (const [indice, r] of i.righe.entries()) {
     if (r.tipo !== 'F') continue
     const quantita = r.quantitaFissa ?? '1'
     if (new Prisma.Decimal(quantita).isZero()) continue
+    // Etichetta propria («Canone»): quella di `etichettaTipo('F')` è un testo da listino.
     const base = r.descrizione ?? 'Canone'
+    if (r.prezzo === null) {
+      errori.push({ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `F riga ${indice + 1}` })
+      continue
+    }
+    const prezzo = r.prezzo
     const proprio = i.marcatori.filter(m => m.rigaAddebitoId === r.id)
 
     if (r.scadenze.length > 0) {
@@ -100,7 +110,7 @@ export function righeFisse(i: {
               )
         const descrizione = comp === null ? base : `${base} ${testoPeriodo(comp)}`
         righe.push(
-          riga(r, quantita, descrizione, { tipo: 'SCADENZA_FISSO', chiaveCompetenza: data })
+          riga(r, prezzo, quantita, descrizione, { tipo: 'SCADENZA_FISSO', chiaveCompetenza: data })
         )
         if (data < dal && !avvisi.some(a => a.codice === 'ARRETRATI_PRESENTI')) {
           avvisi.push({ codice: 'ARRETRATI_PRESENTI' })
@@ -109,6 +119,9 @@ export function righeFisse(i: {
       continue
     }
 
+    // Contratto non attivo nel periodo: nessun canone (canone intero se inizia o finisce dentro).
+    if (i.contratto.dataInizio > al) continue
+    if (i.contratto.dataFine !== null && i.contratto.dataFine < dal) continue
     const chiave = `${dal}/${al}`
     const canoni = proprio.filter(m => m.tipo === 'PERIODO_CANONE')
     if (canoni.some(m => m.chiaveCompetenza === chiave)) continue
@@ -117,7 +130,7 @@ export function righeFisse(i: {
       continue
     }
     righe.push(
-      riga(r, quantita, `${base} ${testoPeriodo(i.periodo)}`, {
+      riga(r, prezzo, quantita, `${base} ${testoPeriodo(i.periodo)}`, {
         tipo: 'PERIODO_CANONE',
         chiaveCompetenza: chiave,
       })

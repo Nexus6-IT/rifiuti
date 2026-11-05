@@ -6,20 +6,16 @@ import {
   type ApplicaPrezzoSpeciale,
 } from '../listino/prezzo-speciale'
 import type { ErroreDocumento, Segnalazione } from './codici'
+import type { EsitoRighe, RigaSenzaLinea } from './esito-righe'
 import { famigliaCalcolata } from './costanti-fiscali'
-import type { RigaDocumentoCalcolata, RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
+import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
 
 /**
  * Righe del documento dai legami movimento-listino (spec §6.2 e §6.3, S10, scansione P13).
  * Dominio puro: nessun database, importi come stringhe decimali.
  */
 
-type RigaCalcolata = Omit<RigaDocumentoCalcolata, 'numeroLinea'>
-
-export type EsitoRighe = {
-  righe: RigaCalcolata[]
-  errori: Segnalazione<ErroreDocumento>[]
-}
+type RigaCalcolata = RigaSenzaLinea
 
 const D = (v: string): Prisma.Decimal => new Prisma.Decimal(v)
 
@@ -307,5 +303,5 @@ export function righeDaLegami(
     }
   }
 
-  return { righe, errori }
+  return { righe, errori, avvisi: [] }
 }

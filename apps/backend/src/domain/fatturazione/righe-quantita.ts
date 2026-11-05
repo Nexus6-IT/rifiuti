@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { etichettaTipo } from '../listino/tipi-addebito'
 import { importoRiga, prezzoCalcolato, quantitaDaMovimento } from '../listino/importi-riga'
 import { normalizzaUnitaRegistro } from '../waste-movement/unita-misura-registro'
 import type { ErroreDocumento, Segnalazione } from './codici'
@@ -6,14 +7,12 @@ import { testoPeriodo, type EsitoRighe, type RigaSenzaLinea } from './esito-righ
 import { giornoFestivo } from './festivi'
 import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
 
-const ETICHETTE: Readonly<Record<string, string>> = {
-  TT: 'Peso netto di tutti i rifiuti',
-  TF: 'Peso netto dei rifiuti conferiti in giorni festivi',
-}
-
 /**
  * Righe `TT` e `TF` a prezzo singolo (decisione 17): peso dei movimenti in kg (una volta per
  * legame). Ogni altra riga in ingresso è ignorata (la segnala il Task 5).
+ * Nei dettagli degli errori «riga n» è la posizione a partire da 1 della riga nell'array `righe`
+ * in ingresso (stessa convenzione di `righeDaLegami`, nell'ordine del chiamante). Una riga senza
+ * prezzo dà RIGA_LEGAME_INCOMPLETA.
  */
 export function righeQuantitaMovimenti(i: {
   righe: readonly RigaListinoDaFatturare[]
@@ -47,14 +46,18 @@ export function righeQuantitaMovimenti(i: {
 
     const quantita = quantitaDaMovimento('PESO_NETTO', r.unitaMisura, { netto: base.toFixed() })
     if (quantita === null) return
-    const prezzo = r.prezzo ?? '0'
+    if (r.prezzo === null) {
+      errori.push({ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `${r.tipo} riga ${indice + 1}` })
+      return
+    }
+    const prezzo = r.prezzo
     const imp = importoRiga(quantita, prezzo, r.sconto)
     righe.push({
       tipoRiga: 'QUANTITA_MOVIMENTI',
       legameId: null,
       rigaLegameId: null,
       rigaAddebitoId: r.id,
-      descrizione: `${r.descrizione ?? ETICHETTE[r.tipo]} ${testoPeriodo(i.periodo)}`,
+      descrizione: `${r.descrizione ?? etichettaTipo(r.tipo)} ${testoPeriodo(i.periodo)}`,
       dataMovimento: null,
       cerCode: null,
       numeroFir: null,

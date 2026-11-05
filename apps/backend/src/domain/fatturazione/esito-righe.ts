@@ -4,14 +4,12 @@ import type { RigaDocumentoCalcolata } from './tipi'
 /** Riga calcolata prima della numerazione delle linee (la assegna il calcolo del documento). */
 export type RigaSenzaLinea = Omit<RigaDocumentoCalcolata, 'numeroLinea'>
 
-/** Esito di un calcolo di righe: righe prodotte, errori del documento e avvisi. */
+/** Esito di un calcolo di righe: righe prodotte, errori del documento e avvisi (unico tipo). */
 export interface EsitoRighe {
   righe: RigaSenzaLinea[]
   errori: Segnalazione<ErroreDocumento>[]
   avvisi: Segnalazione<AvvisoDocumento>[]
 }
-
-const dueCifre = (n: number): string => String(n).padStart(2, '0')
 
 /** 'AAAA-MM-GG' -> 'gg/mm/aaaa'. */
 export function dataIt(data: string): string {
@@ -22,5 +20,3 @@ export function dataIt(data: string): string {
 export function testoPeriodo(p: { dal: string; al: string }): string {
   return `dal ${dataIt(p.dal)} al ${dataIt(p.al)}`
 }
-
-export { dueCifre }

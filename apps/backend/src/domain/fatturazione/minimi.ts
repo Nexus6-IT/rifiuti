@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import type { ErroreDocumento, Segnalazione } from './codici'
 import type { EsitoRighe, RigaSenzaLinea } from './esito-righe'
 import type { RigaListinoDaFatturare } from './tipi'
 
@@ -24,7 +25,7 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
     cerCode: null,
     numeroFir: null,
     quantita: '1',
-    unitaMisura: m.unitaMisura,
+    unitaMisura: null,
     prezzoUnitario: diff,
     sconto: null,
     importoLordo: diff,
@@ -38,10 +39,16 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
 
 /**
  * Minimi (spec §6.5): minimo di riga (`minimo_fatturabile`, anche per categoria) e righe `MW`,
- * `MF`, `M<cat>` in `minimi`. Restituisce solo le righe aggiunte (tipo MINIMO). `listino` mappa
- * `rigaAddebitoId` -> riga di listino. Per `MW`/`MF`/`M<cat>` la soglia è il `prezzo` della riga
- * (con ripiego su `minimoFatturabile`); la categoria di una riga è la `categoriaId` della sua
- * riga di listino, confrontata con le tre cifre di `M<cat>`.
+ * `MF`, `M<cat>` in `minimi`. Restituisce solo le righe aggiunte (tipo MINIMO, senza unità di
+ * misura). `listino` mappa `rigaAddebitoId` -> riga di listino. La soglia di `MW`/`MF`/`M<cat>`
+ * è il `prezzo` della riga (la famiglia MINIMO non ha `minimoFatturabile`); senza prezzo dà
+ * RIGA_LEGAME_INCOMPLETA con dettaglio «<tipo> riga n» (posizione da 1 in `minimi`).
+ *
+ * Insiemi (WinWaste `docs/fatturazione.md` §4.6, codice `:12444-12579`, e `etichettaTipo`):
+ * `MW` = tutto il documento a prezzo normale; `MF` = righe CER; `M<cat>` = righe di tipo `V` della
+ * categoria, confrontando le 3 cifre con `categoriaCodice` (non con `categoriaId`, che è un uuid).
+ * Minimo per categoria (`minimoPerCategoria`): raggruppa per `categoriaId`; se le righe della
+ * categoria hanno minimi diversi vale il più alto.
  */
 export function applicaMinimi(
   righe: readonly RigaSenzaLinea[],
@@ -49,46 +56,55 @@ export function applicaMinimi(
   listino: ReadonlyMap<string, RigaListinoDaFatturare>
 ): EsitoRighe {
   const aggiunte: RigaSenzaLinea[] = []
-  const categoria = (r: RigaSenzaLinea): string | null =>
-    r.rigaAddebitoId === null ? null : (listino.get(r.rigaAddebitoId)?.categoriaId ?? null)
+  const errori: Segnalazione<ErroreDocumento>[] = []
+  const voce = (r: RigaSenzaLinea): RigaListinoDaFatturare | undefined =>
+    r.rigaAddebitoId === null ? undefined : listino.get(r.rigaAddebitoId)
   const normali = righe.filter(r => TIPI_NEL_MINIMO.has(r.tipoRiga))
 
-  // Minimo di riga: una sola volta per riga di listino (o per categoria con minimo_per_categoria).
-  const visti = new Set<string>()
+  // Minimo di riga: per riga di listino, o per categoria (uuid) con minimo_per_categoria.
+  const gruppiCategoria = new Map<string, RigaListinoDaFatturare>()
   for (const r of listino.values()) {
-    if (r.minimoFatturabile === null || visti.has(r.id)) continue
+    if (r.minimoFatturabile === null) continue
+    if (r.minimoPerCategoria && r.categoriaId !== null) {
+      const attuale = gruppiCategoria.get(r.categoriaId)
+      if (attuale === undefined || D(r.minimoFatturabile).gt(D(attuale.minimoFatturabile ?? '0'))) {
+        gruppiCategoria.set(r.categoriaId, r)
+      }
+      continue
+    }
     const dellaRiga = normali.filter(x => x.rigaAddebitoId === r.id)
     if (dellaRiga.length === 0) continue
-    let netto: Prisma.Decimal
-    if (r.minimoPerCategoria && r.categoriaId !== null) {
-      netto = somma(normali.filter(x => categoria(x) === r.categoriaId))
-      for (const altra of listino.values()) {
-        if (altra.minimoPerCategoria && altra.categoriaId === r.categoriaId) visti.add(altra.id)
-      }
-    } else {
-      netto = somma(dellaRiga)
-    }
-    visti.add(r.id)
     const minimo = D(r.minimoFatturabile)
+    const netto = somma(dellaRiga)
+    if (netto.lt(minimo)) aggiunte.push(rigaMinimo(r, minimo.minus(netto)))
+  }
+  for (const [categoriaId, r] of gruppiCategoria) {
+    const dellaCategoria = normali.filter(x => voce(x)?.categoriaId === categoriaId)
+    if (dellaCategoria.length === 0) continue
+    const minimo = D(r.minimoFatturabile ?? '0')
+    const netto = somma(dellaCategoria)
     if (netto.lt(minimo)) aggiunte.push(rigaMinimo(r, minimo.minus(netto)))
   }
 
-  // Minimi di documento: MW (tutto), MF (righe CER), M<cat> (righe della categoria).
+  // Minimi di documento: la base è copiata una volta, i minimi non si sommano fra loro.
   const base = [...normali, ...aggiunte]
-  for (const m of minimi) {
-    const soglia = m.prezzo ?? m.minimoFatturabile
-    if (soglia === null) continue
+  minimi.forEach((m, indice) => {
     let insieme: readonly RigaSenzaLinea[]
     if (m.tipo === 'MW') insieme = base
-    else if (m.tipo === 'MF') {
-      insieme = base.filter(
-        r => r.rigaAddebitoId !== null && listino.get(r.rigaAddebitoId)?.tipo === 'CER'
-      )
-    } else if (/^M\d{3}$/.test(m.tipo)) {
-      insieme = base.filter(r => categoria(r) === m.tipo.slice(1))
-    } else continue
+    else if (m.tipo === 'MF') insieme = base.filter(r => voce(r)?.tipo === 'CER')
+    else if (/^M\d{3}$/.test(m.tipo)) {
+      insieme = base.filter(r => {
+        const v = voce(r)
+        return v?.tipo === 'V' && v.categoriaCodice === m.tipo.slice(1)
+      })
+    } else return
+    if (m.prezzo === null) {
+      errori.push({ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `${m.tipo} riga ${indice + 1}` })
+      return
+    }
+    const soglia = D(m.prezzo)
     const totale = somma(insieme)
-    if (totale.lt(D(soglia))) aggiunte.push(rigaMinimo(m, D(soglia).minus(totale)))
-  }
-  return { righe: aggiunte, errori: [], avvisi: [] }
+    if (totale.lt(soglia)) aggiunte.push(rigaMinimo(m, soglia.minus(totale)))
+  })
+  return { righe: aggiunte, errori, avvisi: [] }
 }
