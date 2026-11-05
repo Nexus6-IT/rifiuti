@@ -130,7 +130,6 @@ export function prendeLockVietati(sorgente: string): boolean {
 }
 
 describe('guardia: la fatturazione non scrive sul registro e non prende i lock del registro', () => {
-  const RADICE = join(__dirname, '..', '..', '..', '..', '..')
   const SRC = join(__dirname, '..', '..')
   // Cartelle (tutti i sorgenti non-spec) e file singoli (i due job, solo se esistono ancora).
   const CARTELLE = ['application/fatturazione', 'api/fatturazione']
@@ -145,7 +144,6 @@ describe('guardia: la fatturazione non scrive sul registro e non prende i lock d
   const nome = (f: string) => relative(SRC, f)
 
   it('la guardia trova i sorgenti della fatturazione (non e` vuota)', () => {
-    expect(RADICE.length).toBeGreaterThan(0)
     expect(percorsi.length).toBeGreaterThanOrEqual(5)
     expect(percorsi.map(nome)).toEqual(
       expect.arrayContaining([

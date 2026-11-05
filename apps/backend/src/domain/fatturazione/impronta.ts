@@ -30,6 +30,10 @@ export function improntaElaborazione(i: {
   codiciIva: readonly Voce[]
   /** Clienti di fatturazione dei documenti (Q4). */
   clienti: readonly Voce[]
+  /** Dati anagrafici di ditta e sede dei clienti (senza `versione`): l'id porta l'hash del contenuto. */
+  anagrafiche: readonly Voce[]
+  /** Registri IVA scelti dai documenti, con lo stato attivo/disattivo nell'id. */
+  registri: readonly Voce[]
   condizioniPagamento: readonly Voce[]
   speseAccessorie: readonly Voce[]
   /** Conti correnti del cedente usati dai documenti. */
@@ -48,6 +52,8 @@ export function improntaElaborazione(i: {
     ...con('riga', i.righeAddebito),
     ...con('iva', i.codiciIva),
     ...con('cliente', i.clienti),
+    ...con('anagrafica', i.anagrafiche),
+    ...con('registro', i.registri),
     ...con('condizione', i.condizioniPagamento),
     ...con('spesa', i.speseAccessorie),
     ...con('conto', i.contiCorrenti),

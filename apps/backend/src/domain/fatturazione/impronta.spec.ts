@@ -11,6 +11,8 @@ const base = () => ({
   righeAddebito: [{ id: 'R1', versione: 1 }],
   codiciIva: [{ id: 'I1', versione: 1 }],
   clienti: [{ id: 'K1', versione: 1 }],
+  anagrafiche: [{ id: 'K1:abc', versione: 0 }],
+  registri: [{ id: 'G1:attivo', versione: 1 }],
   condizioniPagamento: [{ id: 'P1', versione: 1 }],
   speseAccessorie: [{ id: 'S1', versione: 1 }],
   contiCorrenti: [{ id: 'B1', versione: 1 }],
@@ -66,6 +68,8 @@ describe('improntaElaborazione', () => {
       righeAddebito: [],
       codiciIva: [],
       clienti: [],
+      anagrafiche: [],
+      registri: [],
       condizioniPagamento: [],
       speseAccessorie: [],
       contiCorrenti: [],
@@ -114,6 +118,14 @@ describe('improntaElaborazione', () => {
         (b: ReturnType<typeof base>) => ({ ...b, contiCorrenti: [{ id: 'B1', versione: 2 }] }),
       ],
       ['cedente', (b: ReturnType<typeof base>) => ({ ...b, cedente: { id: 'T1', versione: 2 } })],
+      [
+        'anagrafica del cliente (contenuto di ditta e sede)',
+        (b: ReturnType<typeof base>) => ({ ...b, anagrafiche: [{ id: 'K1:def', versione: 0 }] }),
+      ],
+      [
+        'registro (attivo o disattivo)',
+        (b: ReturnType<typeof base>) => ({ ...b, registri: [{ id: 'G1:disattivo', versione: 1 }] }),
+      ],
       ['cedente assente', (b: ReturnType<typeof base>) => ({ ...b, cedente: null })],
     ])('versione di %s cambiata: impronta diversa', (_nome, cambia) => {
       const b = base()

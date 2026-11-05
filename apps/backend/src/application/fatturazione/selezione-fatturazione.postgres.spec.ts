@@ -83,7 +83,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
   )
   const tenantCreati: string[] = []
   const OPZ = { timeout: 120_000, maxWait: 30_000 }
-  const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t17-volume-tenants.json')
+  const FILE_VOLUME = join(tmpdir(), `wasteflow-fatt-t17-volume-${process.pid}.json`)
 
   const nel = <R>(tenantId: string, fn: (tx: Tx) => Promise<R>) =>
     app.$transaction(async tx => {
@@ -448,7 +448,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       await legame(az, sospeso)
       const bozza = await contratto(az, { stato: 'BOZZA' })
       const annullato = await contratto(az, { stato: 'ANNULLATO' })
-      for (const c of [bozza, annullato]) await legame(az, c).catch(() => undefined)
+      for (const c of [bozza, annullato]) await legame(az, c)
       const s = await seleziona(az)
       expect(s.documenti.map(d => d.contrattoId)).toEqual([sospeso.contrattoId])
       expect(codiciErrori(s.documenti[0])).toContain('CONTRATTO_SOSPESO')
@@ -485,7 +485,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
         '2026-03-10',
       ])
       // «fatturazione da» sposta il limite: un legame di dicembre 2025 non entra mai.
-      await legame(az, c, { data: '2025-12-20' }).catch(() => undefined)
+      await legame(az, c, { data: '2025-12-20' })
       const ancora = await seleziona(az, { includiArretrati: true })
       expect(ancora.documenti[0].input.legami).toHaveLength(2)
     })
@@ -619,6 +619,115 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
   // -------------------------------------------------------------------------------------------
   // Allegati: valori del principale, righe T
   // -------------------------------------------------------------------------------------------
+
+  describe('ordine del listino e arretrati su elenchi scaduti', () => {
+    it('le righe seguono l’ordine dell’elenco (tipo, codice dell’addebito), non l’ordine degli id', async () => {
+      const az = await azienda()
+      const c = await contratto(az)
+      await legame(az, c)
+      // Cinque TT con addebiti in ordine inverso rispetto alla creazione.
+      const creati: { id: string; codice: string }[] = []
+      for (const codice of ['00050', '00040', '00030', '00020', '00010']) {
+        const a = await creaAddebito(owner, az.tenantId, { tipo: 'TT', codice })
+        const r = await creaRiga(owner, az.tenantId, c.elencoId, {
+          tipo: 'TT',
+          codiceIvaId: az.listino.iva22Id,
+          prezzo: '0.01',
+          addebitoId: a.id,
+        })
+        creati.push({ id: r.id, codice })
+      }
+      const s = await seleziona(az)
+      const ordine = [...s.documenti[0].input.listino.keys()]
+      expect(ordine).toEqual([
+        c.rigaCerId,
+        ...[...creati].sort((a, b) => (a.codice < b.codice ? -1 : 1)).map(x => x.id),
+      ])
+    })
+
+    it('arretrato su un elenco non piu valido (arretrati accesi): la riga citata entra in coda, nessun errore, e niente canoni di quell’elenco', async () => {
+      const az = await azienda()
+      const c = await contratto(az)
+      // L'elenco di prima scade a febbraio; da marzo ne vale uno nuovo.
+      await owner.elencoAddebiti.update({
+        where: { id: c.elencoId },
+        data: {
+          validoDal: new Date('2026-01-01T00:00:00Z'),
+          validoAl: new Date('2026-02-28T00:00:00Z'),
+        },
+      })
+      const vecchiaF = await riga(az, c.elencoId, 'F', '99')
+      const nuovo = await owner.elencoAddebiti.create({
+        data: {
+          tenantId: az.tenantId,
+          contrattoId: c.contrattoId,
+          codice: '002',
+          descrizione: 'Nuovo',
+          validoDal: new Date('2026-03-01T00:00:00Z'),
+          validoAl: new Date('2026-12-31T00:00:00Z'),
+        },
+      })
+      const cerNuova = await riga(az, nuovo.id, 'CER', '2')
+      await legame(az, c, { data: '2026-02-10' }) // arretrato sulla riga dell'elenco scaduto
+      await legame(
+        az,
+        { ...c, elencoId: nuovo.id, rigaCerId: cerNuova },
+        { data: '2026-03-10', prezzo: '2' }
+      )
+      for (const raggruppamento of ['PER_CONTRATTO', 'PER_ELENCO'] as const) {
+        const s = await seleziona(az, { includiArretrati: true, raggruppamento })
+        const d = s.documenti[0]
+        expect(d.input.legami).toHaveLength(raggruppamento === 'PER_CONTRATTO' ? 2 : 2)
+        const ids = [...d.input.listino.keys()]
+        expect(ids).toContain(c.rigaCerId)
+        expect(ids[ids.length - 1]).toBe(c.rigaCerId)
+        // Il canone dell'elenco scaduto non si fattura: la F non e fra le fisse e non e nel listino.
+        expect(d.input.righeFisse.map(r => r.id)).not.toContain(vecchiaF)
+        expect(ids).not.toContain(vecchiaF)
+        expect(calcolaDocumento(d.input).errori).toEqual([])
+      }
+    })
+  })
+
+  describe('conteggi per documento e filtri con periodi ambigui', () => {
+    it('PER_ELENCO: arretrati e movimenti da collegare stanno nel documento giusto; con arretrati accesi nessun conteggio', async () => {
+      const az = await azienda()
+      const c = await contratto(az, { codiceElenco: 'A' })
+      const elencoB = await owner.elencoAddebiti.create({
+        data: { tenantId: az.tenantId, contrattoId: c.contrattoId, codice: 'B', descrizione: 'B' },
+      })
+      const cerB = await riga(az, elencoB.id, 'CER', '2')
+      const b = { ...c, elencoId: elencoB.id, rigaCerId: cerB }
+      await legame(az, c, { data: '2026-03-10' })
+      await legame(az, b, { data: '2026-03-11' })
+      await legame(az, b, { data: '2026-02-10' }) // arretrato dell'elenco B
+      await legame(az, c, { data: '2026-03-12', stato: 'PROPOSTO' })
+      const s = await seleziona(az, { raggruppamento: 'PER_ELENCO' })
+      const [docA, docB] = s.documenti
+      expect(docA.input.arretrati).toBe(0)
+      expect(docB.input.arretrati).toBe(1)
+      expect(docA.input.legamiDaCollegareEsclusi).toBe(1)
+      expect(docB.input.legamiDaCollegareEsclusi).toBe(0)
+      const accesi = await seleziona(az, { raggruppamento: 'PER_ELENCO', includiArretrati: true })
+      expect(accesi.documenti.map(d => d.input.arretrati)).toEqual([0, 0])
+      expect(accesi.documenti[1].input.legami).toHaveLength(2)
+    })
+
+    it('periodi ambigui con un filtro per categoria: l’errore compare solo se il contratto sarebbe entrato', async () => {
+      const az = await azienda()
+      const x = await contratto(az, { periodi: MENSILI })
+      await riga(az, x.elencoId, 'V', '3', { categoriaId: az.listino.categoriaId })
+      const y = await contratto(az, { periodi: MENSILI })
+      const s = await seleziona(az, {
+        periodoDal: '2026-10-01',
+        periodoAl: '2026-12-31',
+        filtri: { categoriaIds: [az.listino.categoriaId] },
+      })
+      expect(s.documenti).toEqual([])
+      expect(s.erroriPeriodo.map(e => e.contrattoId)).toEqual([x.contrattoId])
+      expect(s.erroriPeriodo.map(e => e.contrattoId)).not.toContain(y.contrattoId)
+    })
+  })
 
   describe('contratto allegato (Review Focus 4, decisione 17)', () => {
     async function scenarioAllegato(tipoRigaAllegato: 'TT' | 'TS') {
@@ -988,8 +1097,6 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       const impronta = improntaElaborazione(prima.versioni)
 
       // Un canone fatturato da un'altra elaborazione: un marcatore sulla riga F.
-      const altro = await contratto(az, { rigaCer: false })
-      await legame(az, altro, { stato: 'CONFERMATO', rigaId: f }).catch(() => undefined)
       const { documentoId } = await creaDocumentoDiTest(owner, az.tenantId, {
         stato: 'BOZZA',
         registroIvaId: az.tab.registroId,
@@ -1043,7 +1150,22 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
         where: { tenantId: az.tenantId },
         data: { versione: { increment: 1 } },
       })
-      expect(await imp()).not.toBe(dopoConto)
+      const dopoCedente = await imp()
+      expect(dopoCedente).not.toBe(dopoConto)
+      // Ditta e sede non hanno `versione`: contano per contenuto.
+      const cl = await owner.cliente.findUniqueOrThrow({ where: { id: c.clienteId } })
+      await owner.ditta.update({
+        where: { id: cl.dittaId },
+        data: { ragioneSociale: 'Altro nome' },
+      })
+      const dopoDitta = await imp()
+      expect(dopoDitta).not.toBe(dopoCedente)
+      await owner.sedeDitta.update({ where: { id: cl.sedeId }, data: { comune: 'Napoli' } })
+      const dopoSede = await imp()
+      expect(dopoSede).not.toBe(dopoDitta)
+      // Un registro disattivato cambia l'errore SENZA_REGISTRO_IVA: cambia anche l'impronta.
+      await owner.registroIva.update({ where: { id: az.tab.registroId }, data: { attivo: false } })
+      expect(await imp()).not.toBe(dopoSede)
     })
   })
 
@@ -1319,11 +1441,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       const s = await nel(tenantVolume, async tx => {
         await tx.$queryRaw`SELECT set_config('plan_cache_mode', 'force_generic_plan', true)`
         await tx.$queryRaw`SELECT set_config('statement_timeout', '5s', true)`
-        const x = contaQuery(tx)
-        const r = await selezionaElaborazione(x.tx, tenantVolume, P)
-        // eslint-disable-next-line no-console
-        console.info('QUERY LENTE', JSON.stringify(x.durate().filter(d => d.ms > 100)))
-        return r
+        return selezionaElaborazione(tx, tenantVolume, P)
       })
       tempi.selezioneGenerico = Date.now() - t0
       expect(s.documenti).toHaveLength(500)
@@ -1368,8 +1486,11 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
     }, 120_000)
 
     afterAll(() => {
-      // eslint-disable-next-line no-console
-      console.info(`TEMPI VOLUME (ms): ${JSON.stringify(tempi)}`)
+      // Con TEMPI_VOLUME=1 i tempi si stampano (rapporto del task); di norma la suite e' muta.
+      if (process.env.TEMPI_VOLUME === '1') {
+        // eslint-disable-next-line no-console
+        console.info(`TEMPI VOLUME (ms): ${JSON.stringify(tempi)}`)
+      }
     })
   })
 })

@@ -26,6 +26,8 @@ import { FORMA_MINIMO_CATEGORIA } from '../../domain/fatturazione/costanti-fisca
 import { righeFisse, type MarcatoreEsistente } from '../../domain/fatturazione/righe-fisse'
 import type { InputDocumento } from '../../domain/fatturazione/calcola-documento'
 import { improntaElaborazione } from '../../domain/fatturazione/impronta'
+import { ordinaRigheListino } from '../../domain/listino/ordine-righe'
+import { improntaVariazione } from '../../domain/listino/variazione-prezzi'
 import type { DatiBanca } from '../../domain/fatturazione/pagamento'
 import type {
   CodiceIvaDaFatturare,
@@ -143,6 +145,9 @@ interface RigaListinoSql {
   minimoFatturabile: string | null
   minimoPerCategoria: boolean
   codiceIvaId: string
+  addebitoId: string | null
+  cerCode: string | null
+  riferimento: string | null
 }
 
 interface ClienteRiga {
@@ -292,6 +297,8 @@ const vuotaVersioni = (
   righeAddebito: [],
   codiciIva: [],
   clienti: [],
+  anagrafiche: [],
+  registri: [],
   condizioniPagamento: [],
   speseAccessorie: [],
   contiCorrenti: [],
@@ -302,6 +309,12 @@ const vuotaVersioni = (
 /** Una riga del listino «una volta sola» per documento (canoni e minimi di un allegato, Q6). */
 const eUnaVolta = (tipo: string): boolean =>
   tipo === 'F' || tipo === 'MW' || tipo === 'MF' || FORMA_MINIMO_CATEGORIA.test(tipo)
+
+function esigibilitaDi(valore: string): 'I' | 'D' | 'S' {
+  const e = ESIGIBILITA[valore]
+  if (e === undefined) throw new Error(`Esigibilita IVA del contratto non riconosciuta: ${valore}`)
+  return e
+}
 
 type PeriodoEsito =
   | { esito: 'OK'; dal: string; al: string }
@@ -326,6 +339,11 @@ function periodoEffettivo(periodi: PeriodoFatturazione[], p: ParametriElaborazio
 interface ContrattoAttivo {
   c: ContrattoRiga
   periodo: { dal: string; al: string }
+  /**
+   * Contratto con periodi ambigui: non fa un documento. Con un filtro per categoria o tipo resta in
+   * elenco solo per decidere, sulle sue righe, se l'errore va riportato.
+   */
+  errore?: string
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -446,9 +464,12 @@ export async function selezionaElaborazione(
     const e = periodoEffettivo(periodiPer.get(c.id) ?? [], p)
     if (e.esito === 'NESSUNO') continue
     if (e.esito === 'ERRORE') {
-      // Con un filtro per categoria o tipo non si sa se il contratto sarebbe entrato: si tace.
       if (!filtraSoloPerContratto) {
         erroriPeriodo.push({ motivo: e.messaggio, quanti: 1, contrattoId: c.id })
+      } else {
+        // Con un filtro per categoria o tipo l'errore si riporta solo se il contratto sarebbe
+        // entrato: lo si giudica sulle righe degli elenchi validi nell'intervallo digitato.
+        attivi.push({ c, periodo: { dal: p.periodoDal, al: p.periodoAl }, errore: e.messaggio })
       }
       continue
     }
@@ -506,7 +527,83 @@ export async function selezionaElaborazione(
       dentroIntervallo(e.validoDal, e.validoAl, per)
     )
 
+  // 5b. Legami: il frammento della 4.3, senza copiarlo. Tutti i candidati fino alla fine del
+  // periodo piu' largo (dall'inizio di «fatturazione da» in poi) e soltanto gli stati che
+  // aspettano qualcosa: i fatturati restano fuori dalla query.
+  const candidatiSql = sqlCandidati(tenantId, fatturazioneDa, {
+    dal: null,
+    al: p.periodoAl,
+    clienteId: null,
+    contrattoId: null,
+    registroId: null,
+    motivo: null,
+  })
+  const principaleSet = new Set(principaleIds)
+  const candidatiTutti = await tx.$queryRaw<CandidatoRiga[]>`
+    SELECT c.legame_id::text AS "legameId", c.contratto_id::text AS "contrattoId",
+           c.cliente_id::text AS "clienteId", c.giorno::text AS giorno, c.stato_lista AS stato
+    FROM (${candidatiSql}) c
+    WHERE c.stato_lista IN ('CONFERMATO', 'DA_RIALLINEARE', 'PROPOSTO', 'DA_COLLEGARE', 'MANCANTE')`
+  // Solo i legami dei nostri contratti (o senza contratto): il filtro sta qui e non nella query,
+  // dove un `= ANY` su centinaia di id rallenta il piano generico (misurato).
+  const candidati = candidatiTutti.filter(
+    c => c.contrattoId === null || principaleSet.has(c.contrattoId as string)
+  )
+
+  // Dettagli dei soli legami CONFERMATO: legame, righe, movimento vigente e FIR.
+  const confermatiIds = distinti(
+    candidati.filter(c => c.stato === 'CONFERMATO').map(c => c.legameId)
+  )
+  const legamiRighe = await seNonVuota(
+    confermatiIds,
+    () =>
+      tx.$queryRaw<LegameRiga[]>`
+      SELECT id::text AS id, versione, contratto_id::text AS "contrattoId",
+             elenco_id::text AS "elencoId", movimento_vigente_id::text AS "movimentoVigenteId",
+             data_movimento::text AS "dataMovimento"
+      FROM legami_movimento
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${confermatiIds}::uuid[])`
+  )
+  const righeLegameSql = await seNonVuota(
+    confermatiIds,
+    () =>
+      tx.$queryRaw<RigaLegameSql[]>`
+      SELECT id::text AS id, legame_id::text AS "legameId", riga_addebito_id::text AS "rigaAddebitoId",
+             tipo, descrizione, unita_misura AS "unitaMisura", quantita::text AS quantita,
+             prezzo::text AS prezzo, prezzo_speciale AS "prezzoSpeciale", sconto,
+             codice_iva_id::text AS "codiceIvaId", aliquota_iva::text AS "aliquotaIva",
+             natura_iva AS "naturaIva"
+      FROM righe_legame_movimento
+      WHERE tenant_id = ${tenantId}::uuid AND legame_id = ANY(${confermatiIds}::uuid[])
+      ORDER BY legame_id, ordine`
+  )
+  const movimentoIds = distinti(legamiRighe.map(l => l.movimentoVigenteId))
+  const movimenti = await seNonVuota(
+    movimentoIds,
+    () =>
+      tx.$queryRaw<MovimentoRiga[]>`
+      SELECT id::text AS id, quantity::text AS quantita, unit AS unita, cer_code AS "cerCode",
+             fir_id::text AS "firId"
+      FROM waste_movements
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${movimentoIds}::uuid[])`
+  )
+  const movimentoPerId = new Map(movimenti.map(m => [m.id, m]))
+  const firIds = distinti(movimenti.map(m => m.firId))
+  const firs = await seNonVuota(
+    firIds,
+    () =>
+      tx.$queryRaw<{ id: string; numero: string | null }[]>`
+      SELECT id::text AS id, fir_number AS numero FROM firs
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${firIds}::uuid[])`
+  )
+  const numeroFirPer = new Map(firs.map(x => [x.id, x.numero]))
+  const legamePerId = new Map(legamiRighe.map(l => [l.id, l]))
+  const righeLegamePer = raggruppa(righeLegameSql, r => r.legameId)
+
   // 6. Righe di listino degli elenchi validi, scaglioni e scadenze, categorie e codici IVA.
+  // Righe citate dai legami che stanno in un elenco non valido nel periodo (arretrati di un
+  // listino scaduto): servono al calcolo, che altrimenti non le trova.
+  const righeCitateIds = distinti(righeLegameSql.map(r => r.rigaAddebitoId))
   const elenchiUsatiIds = distinti(
     attivi.flatMap(a =>
       [a.c.id, ...(allegatiPer.get(a.c.id) ?? []).map(x => x.id)].flatMap(cid =>
@@ -524,10 +621,28 @@ export async function selezionaElaborazione(
              prezzo_speciale AS "prezzoSpeciale", applica_a::text AS "applicaA", condizione,
              condizioni_riferite AS "condizioniRiferite", periodo_scadenze AS "periodoScadenze",
              minimo_fatturabile::text AS "minimoFatturabile",
-             minimo_per_categoria AS "minimoPerCategoria", codice_iva_id::text AS "codiceIvaId"
+             minimo_per_categoria AS "minimoPerCategoria", codice_iva_id::text AS "codiceIvaId",
+             addebito_id::text AS "addebitoId", cer_code AS "cerCode", riferimento
       FROM righe_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ANY(${elenchiUsatiIds}::uuid[])
-      ORDER BY tipo, cer_code NULLS FIRST, riferimento NULLS FIRST, id`
+      WHERE tenant_id = ${tenantId}::uuid
+        AND (elenco_id = ANY(${elenchiUsatiIds}::uuid[]) OR id = ANY(${righeCitateIds}::uuid[]))`
+  )
+  // Ordine dell'elenco come lo vede l'utente (`ordinaRigheListino`): tipo, CER o codice
+  // dell'addebito, riferimento, id. Serve il codice dell'addebito: una query per insieme.
+  const addebitoIds = distinti(righeSql.map(r => r.addebitoId))
+  const addebiti = await seNonVuota(
+    addebitoIds,
+    () =>
+      tx.$queryRaw<{ id: string; codice: string }[]>`
+      SELECT id::text AS id, codice FROM addebiti
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${addebitoIds}::uuid[])`
+  )
+  const codiceAddebito = new Map(addebiti.map(x => [x.id, x.codice]))
+  const righeOrdinate = ordinaRigheListino(
+    righeSql.map(r => ({
+      ...r,
+      addebito: r.addebitoId === null ? null : { codice: codiceAddebito.get(r.addebitoId) ?? '' },
+    }))
   )
   const speciali = righeSql.filter(r => r.prezzoSpeciale).map(r => r.id)
   const conScadenze = righeSql.filter(r => r.tipo === 'F').map(r => r.id)
@@ -638,11 +753,12 @@ export async function selezionaElaborazione(
   const registri = await seNonVuota(
     registroIds,
     () =>
-      tx.$queryRaw<{ id: string; attivo: boolean }[]>`
-      SELECT id::text AS id, attivo FROM registri_iva
+      tx.$queryRaw<{ id: string; attivo: boolean; versione: number }[]>`
+      SELECT id::text AS id, attivo, versione FROM registri_iva
       WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${registroIds}::uuid[])`
   )
   const registroAttivo = new Map(registri.map(r => [r.id, r.attivo]))
+  const registroPerId = new Map(registri.map(r => [r.id, r]))
 
   // 8. Ditte e sedi dei clienti di fatturazione.
   const dittaIds = distinti(clienti.map(c => c.dittaId))
@@ -678,79 +794,6 @@ export async function selezionaElaborazione(
   )
   const marcatoriPer = raggruppa(marcatoriTutti, m => m.rigaAddebitoId)
 
-  // 10. Legami: il frammento della 4.3, senza copiarlo. Tutti i candidati fino alla fine del
-  // periodo piu' largo (dall'inizio di «fatturazione da» in poi) e soltanto gli stati che
-  // aspettano qualcosa: i fatturati restano fuori dalla query.
-  const candidatiSql = sqlCandidati(tenantId, fatturazioneDa, {
-    dal: null,
-    al: p.periodoAl,
-    clienteId: null,
-    contrattoId: null,
-    registroId: null,
-    motivo: null,
-  })
-  const principaleSet = new Set(principaleIds)
-  const candidatiTutti = await tx.$queryRaw<CandidatoRiga[]>`
-    SELECT c.legame_id::text AS "legameId", c.contratto_id::text AS "contrattoId",
-           c.cliente_id::text AS "clienteId", c.giorno::text AS giorno, c.stato_lista AS stato
-    FROM (${candidatiSql}) c
-    WHERE c.stato_lista IN ('CONFERMATO', 'DA_RIALLINEARE', 'PROPOSTO', 'DA_COLLEGARE', 'MANCANTE')`
-  // Solo i legami dei nostri contratti (o senza contratto): il filtro sta qui e non nella query,
-  // dove un `= ANY` su centinaia di id rallenta il piano generico (misurato).
-  const candidati = candidatiTutti.filter(
-    c => c.contrattoId === null || principaleSet.has(c.contrattoId as string)
-  )
-
-  // Dettagli dei soli legami CONFERMATO: legame, righe, movimento vigente e FIR.
-  const confermatiIds = distinti(
-    candidati.filter(c => c.stato === 'CONFERMATO').map(c => c.legameId)
-  )
-  const legamiRighe = await seNonVuota(
-    confermatiIds,
-    () =>
-      tx.$queryRaw<LegameRiga[]>`
-      SELECT id::text AS id, versione, contratto_id::text AS "contrattoId",
-             elenco_id::text AS "elencoId", movimento_vigente_id::text AS "movimentoVigenteId",
-             data_movimento::text AS "dataMovimento"
-      FROM legami_movimento
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${confermatiIds}::uuid[])`
-  )
-  const righeLegameSql = await seNonVuota(
-    confermatiIds,
-    () =>
-      tx.$queryRaw<RigaLegameSql[]>`
-      SELECT id::text AS id, legame_id::text AS "legameId", riga_addebito_id::text AS "rigaAddebitoId",
-             tipo, descrizione, unita_misura AS "unitaMisura", quantita::text AS quantita,
-             prezzo::text AS prezzo, prezzo_speciale AS "prezzoSpeciale", sconto,
-             codice_iva_id::text AS "codiceIvaId", aliquota_iva::text AS "aliquotaIva",
-             natura_iva AS "naturaIva"
-      FROM righe_legame_movimento
-      WHERE tenant_id = ${tenantId}::uuid AND legame_id = ANY(${confermatiIds}::uuid[])
-      ORDER BY legame_id, ordine`
-  )
-  const movimentoIds = distinti(legamiRighe.map(l => l.movimentoVigenteId))
-  const movimenti = await seNonVuota(
-    movimentoIds,
-    () =>
-      tx.$queryRaw<MovimentoRiga[]>`
-      SELECT id::text AS id, quantity::text AS quantita, unit AS unita, cer_code AS "cerCode",
-             fir_id::text AS "firId"
-      FROM waste_movements
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${movimentoIds}::uuid[])`
-  )
-  const movimentoPerId = new Map(movimenti.map(m => [m.id, m]))
-  const firIds = distinti(movimenti.map(m => m.firId))
-  const firs = await seNonVuota(
-    firIds,
-    () =>
-      tx.$queryRaw<{ id: string; numero: string | null }[]>`
-      SELECT id::text AS id, fir_number AS numero FROM firs
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${firIds}::uuid[])`
-  )
-  const numeroFirPer = new Map(firs.map(x => [x.id, x.numero]))
-  const legamePerId = new Map(legamiRighe.map(l => [l.id, l]))
-  const righeLegamePer = raggruppa(righeLegameSql, r => r.legameId)
-
   // Codici IVA: righe di listino, righe dei legami e spese dei contratti.
   const ivaIds = distinti([
     ...righeSql.map(r => r.codiceIvaId),
@@ -771,7 +814,11 @@ export async function selezionaElaborazione(
   const eAllegato = new Set(allegati.map(a => a.id))
   const contrattoDelElenco = new Map(elenchiTutti.map(e => [e.id, e.contrattoId]))
   const listinoPerElenco = new Map<string, RigaListinoDaFatturare[]>()
-  for (const r of righeSql) {
+  const elenchiValidiSet = new Set(elenchiUsatiIds)
+  const fuoriValidita = new Set<string>()
+  for (const r of righeOrdinate) if (!elenchiValidiSet.has(r.elencoId)) fuoriValidita.add(r.id)
+  const righeFuori: RigaListinoDaFatturare[] = []
+  for (const r of righeOrdinate) {
     const iva = codiciIva.get(r.codiceIvaId)
     if (iva === undefined) continue // FK: non puo' mancare; difesa contro una lettura incoerente
     const riga: RigaListinoDaFatturare = {
@@ -798,6 +845,10 @@ export async function selezionaElaborazione(
       minimoPerCategoria: r.minimoPerCategoria,
       codiceIva: iva,
     }
+    if (fuoriValidita.has(r.id)) {
+      righeFuori.push(riga)
+      continue
+    }
     const l = listinoPerElenco.get(r.elencoId)
     if (l === undefined) listinoPerElenco.set(r.elencoId, [riga])
     else l.push(riga)
@@ -821,7 +872,7 @@ export async function selezionaElaborazione(
     else x.quanti++
   }
 
-  for (const { c, periodo } of attivi) {
+  for (const { c, periodo, errore } of attivi) {
     const principaleElenchi = elenchiValidi(c.id, periodo)
     const allegatiDelContratto = allegatiPer.get(c.id) ?? []
     const elenchiAllegati = allegatiDelContratto.flatMap(a => elenchiValidi(a.id, periodo))
@@ -840,20 +891,25 @@ export async function selezionaElaborazione(
       }
       if (fTipi !== null && !tutte.some(r => fTipi.includes(r.tipo))) continue
     }
+    if (errore !== undefined) {
+      erroriPeriodo.push({ motivo: errore, quanti: 1, contrattoId: c.id })
+      continue
+    }
 
     // Legami del contratto nell'intervallo di questo periodo.
     const delContratto = candidatiPerContratto.get(c.id) ?? []
     const finestraDal = p.includiArretrati ? null : periodo.dal
     const nellaFinestra = (g: string): boolean =>
       g <= periodo.al && (finestraDal === null || g >= finestraDal)
-    let arretrati = 0
     let daCollegareEsclusi = 0
     const confermati: CandidatoRiga[] = []
+    // Legami CONFERMATO anteriori al periodo e rimasti fuori (arretrati spenti): solo contati.
+    const arretratiFuori: CandidatoRiga[] = []
     for (const k of delContratto) {
       if (k.stato === 'CONFERMATO') {
         if (k.giorno > periodo.al) continue
-        if (k.giorno < periodo.dal) arretrati++
         if (nellaFinestra(k.giorno)) confermati.push(k)
+        else arretratiFuori.push(k)
       } else if (nellaFinestra(k.giorno)) {
         conta(k.stato, c.id)
         daCollegareEsclusi++
@@ -867,6 +923,9 @@ export async function selezionaElaborazione(
       .map(k => legamePerId.get(k.legameId as string))
       .filter((l): l is LegameRiga => l !== undefined)
     const elenchiValidiIds = new Set(principaleElenchi.map(e => e.id))
+    const legamiArretrati = arretratiFuori
+      .map(k => legamePerId.get(k.legameId as string))
+      .filter((l): l is LegameRiga => l !== undefined)
 
     const cl = clientePerId.get(c.clienteFatturazioneId)
     const ditta = cl === undefined ? undefined : dittaPerId.get(cl.dittaId)
@@ -904,11 +963,15 @@ export async function selezionaElaborazione(
     for (const [indice, elenco] of gruppi.entries()) {
       // Legami del documento: tutti (PER_CONTRATTO) o quelli dell'elenco; con PER_ELENCO i
       // legami di un elenco non valido nel periodo vanno nel documento del primo elenco.
-      const legami = legamiDelContratto.filter(l =>
+      const delDocumento = (l: LegameRiga): boolean =>
         elenco === null
           ? true
           : l.elencoId === elenco.id || (indice === 0 && !elenchiValidiIds.has(l.elencoId))
-      )
+      const legami = legamiDelContratto.filter(delDocumento)
+      // Arretrati fuori dal documento (S13: solo con l'opzione spenta) e movimenti ancora da
+      // collegare: il conteggio e' del documento (con PER_ELENCO, il secondo vale per il primo).
+      const arretrati = legamiArretrati.filter(delDocumento).length
+      const daCollegareDelDocumento = indice === 0 ? daCollegareEsclusi : 0
 
       // Listino del documento (ordine: elenchi del principale, poi quelli degli allegati).
       const righeProprie =
@@ -918,7 +981,15 @@ export async function selezionaElaborazione(
           ? righeAllegati
           : righeAllegati.filter(r => !eUnaVolta(r.tipo))
       const righeDoc = [...righeProprie, ...righeDegliAllegati]
-      const listino = new Map<string, RigaListinoDaFatturare>(righeDoc.map(r => [r.id, r]))
+      // Arretrati su un elenco non piu' valido: le righe che i legami citano entrano in coda al
+      // listino (solo per il calcolo dei legami: niente canoni, minimi o TT/TF di un elenco scaduto).
+      const citate = new Set(
+        legami.flatMap(l => (righeLegamePer.get(l.id) ?? []).map(r => r.rigaAddebitoId))
+      )
+      const righeCitateFuori = righeFuori.filter(r => citate.has(r.id))
+      const listino = new Map<string, RigaListinoDaFatturare>(
+        [...righeDoc, ...righeCitateFuori].map(r => [r.id, r])
+      )
       const fisse = righeDoc.filter(r => r.tipo === 'F')
       const quantita = righeDoc.filter(r => r.tipo === 'TT' || r.tipo === 'TF')
       const minimi = righeDoc.filter(
@@ -988,7 +1059,7 @@ export async function selezionaElaborazione(
           stato: c.stato,
           dataInizio: c.dataInizio,
           dataFine: c.dataFine,
-          esigibilita: ESIGIBILITA[c.esigibilita] ?? 'I',
+          esigibilita: esigibilitaDi(c.esigibilita),
           ritenutaPercentuale: c.ritenuta,
           condizione:
             condizione === undefined
@@ -1029,7 +1100,7 @@ export async function selezionaElaborazione(
         minimi,
         marcatori,
         codiciIva,
-        legamiDaCollegareEsclusi: daCollegareEsclusi,
+        legamiDaCollegareEsclusi: daCollegareDelDocumento,
         arretrati,
       }
 
@@ -1157,6 +1228,33 @@ export async function selezionaElaborazione(
       righeAddebito: voce(righeSql.filter(r => usati.righe.has(r.id))),
       codiciIva: voce(ivaRighe.filter(i => usati.iva.has(i.id))),
       clienti: voce(clienti.filter(x => usati.clienti.has(x.id))),
+      // Ditte e sedi non hanno `versione`: il contenuto che il calcolo legge entra con un hash.
+      anagrafiche: [...usati.clienti].map(id => {
+        const cl = clientePerId.get(id) as ClienteRiga
+        return {
+          id: `${id}:${improntaVariazione([
+            {
+              id: JSON.stringify([
+                cl.nome,
+                cl.cognome,
+                dittaPerId.get(cl.dittaId) ?? null,
+                sedePerId.get(cl.sedeId) ?? null,
+              ]),
+              versione: 0,
+            },
+          ])}`,
+          versione: 0,
+        }
+      }),
+      // Il registro scelto da un documento: attivo o no cambia l'errore SENZA_REGISTRO_IVA.
+      registri: voce(
+        documenti.flatMap(d => {
+          const r = d.registroIvaId === null ? undefined : registroPerId.get(d.registroIvaId)
+          return r === undefined
+            ? []
+            : [{ id: `${r.id}:${r.attivo ? 'attivo' : 'disattivo'}`, versione: r.versione }]
+        })
+      ),
       condizioniPagamento: voce(condizioni.filter(x => usati.condizioni.has(x.id))),
       speseAccessorie: voce(spese.filter(x => usati.spese.has(x.id))),
       contiCorrenti: voce(conti.filter(x => usati.conti.has(x.id))),
