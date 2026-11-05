@@ -203,68 +203,80 @@ export class CedenteService {
     )
   }
 
-  private async leggiDa(
+  private leggiDa(
     db: PrismaService | Prisma.TransactionClient,
     tenantId: string
   ): Promise<CedenteVista> {
-    const [riga, tenant] = await Promise.all([
-      db.cedenteFatturazione.findFirst({ where: { tenantId } }),
-      db.tenant.findUnique({
-        where: { id: tenantId },
-        select: {
-          ragioneSociale: true,
-          partitaIva: true,
-          codiceFiscale: true,
-          address: true,
-          civico: true,
-          postalCode: true,
-          city: true,
-          province: true,
-          reaNumber: true,
-          country: true,
-        },
-      }),
-    ])
-    if (!tenant) throw new NotFoundException('Azienda non trovata.')
-    const via = vuoto(tenant.address)
-      ? ''
-      : [tenant.address!.trim(), tenant.civico?.trim()].filter(Boolean).join(' ')
-    const daTenant = {
-      ragioneSociale: tenant.ragioneSociale,
-      partitaIva: tenant.partitaIva,
-      codiceFiscale: tenant.codiceFiscale,
-      indirizzo: via || null,
-      cap: tenant.postalCode,
-      comune: tenant.city,
-      provincia: tenant.province,
-      numeroRea: tenant.reaNumber,
-    }
-    const mancanti: string[] = []
-    if (!riga?.regimeFiscale) mancanti.push('Regime fiscale')
-    if (vuoto(daTenant.partitaIva)) mancanti.push('Partita IVA')
-    if (vuoto(daTenant.ragioneSociale)) mancanti.push('Ragione sociale')
-    // L'XSD vuole sempre il CAP; per l'Italia di 5 cifre.
-    const capNonValido =
-      vuoto(daTenant.cap) || (tenant.country === 'IT' && !/^\d{5}$/.test(daTenant.cap ?? ''))
-    if (vuoto(daTenant.indirizzo) || vuoto(daTenant.comune) || capNonValido) {
-      mancanti.push('Indirizzo della sede')
-    }
-    // `IscrizioneREA` dell'XML vuole insieme ufficio e numero (e stato di liquidazione).
-    if (riga?.reaUfficio && vuoto(daTenant.numeroRea)) mancanti.push('Numero REA')
-    if (!riga?.reaUfficio && !vuoto(daTenant.numeroRea) && riga) mancanti.push('Ufficio REA')
-    return {
-      regimeFiscale: riga?.regimeFiscale ?? null,
-      reaUfficio: riga?.reaUfficio ?? null,
-      capitaleSociale: riga?.capitaleSociale ? riga.capitaleSociale.toFixed(2) : null,
-      socioUnico: (riga?.socioUnico as SocioUnico | null | undefined) ?? null,
-      statoLiquidazione: (riga?.statoLiquidazione as StatoLiquidazione | undefined) ?? 'LN',
-      registroIvaPredefinitoId: riga?.registroIvaPredefinitoId ?? null,
-      idTrasmittenteCodice: riga?.idTrasmittenteCodice ?? null,
-      versione: riga?.versione ?? 0,
-      daTenant,
-      completo: mancanti.length === 0,
-      mancanti,
-    }
+    return leggiCedenteVista(db, tenantId)
+  }
+}
+
+/**
+ * Vista del cedente (riga di `cedente_fatturazione` + dati di `tenants`) letta con qualunque
+ * client, anche dentro la transazione della selezione (nessun lock). Esportata per
+ * `selezione-fatturazione.ts`: la regola di `completo` ha una sola copia.
+ */
+export async function leggiCedenteVista(
+  db: PrismaService | Prisma.TransactionClient,
+  tenantId: string
+): Promise<CedenteVista> {
+  const [riga, tenant] = await Promise.all([
+    db.cedenteFatturazione.findFirst({ where: { tenantId } }),
+    db.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        ragioneSociale: true,
+        partitaIva: true,
+        codiceFiscale: true,
+        address: true,
+        civico: true,
+        postalCode: true,
+        city: true,
+        province: true,
+        reaNumber: true,
+        country: true,
+      },
+    }),
+  ])
+  if (!tenant) throw new NotFoundException('Azienda non trovata.')
+  const via = vuoto(tenant.address)
+    ? ''
+    : [tenant.address!.trim(), tenant.civico?.trim()].filter(Boolean).join(' ')
+  const daTenant = {
+    ragioneSociale: tenant.ragioneSociale,
+    partitaIva: tenant.partitaIva,
+    codiceFiscale: tenant.codiceFiscale,
+    indirizzo: via || null,
+    cap: tenant.postalCode,
+    comune: tenant.city,
+    provincia: tenant.province,
+    numeroRea: tenant.reaNumber,
+  }
+  const mancanti: string[] = []
+  if (!riga?.regimeFiscale) mancanti.push('Regime fiscale')
+  if (vuoto(daTenant.partitaIva)) mancanti.push('Partita IVA')
+  if (vuoto(daTenant.ragioneSociale)) mancanti.push('Ragione sociale')
+  // L'XSD vuole sempre il CAP; per l'Italia di 5 cifre.
+  const capNonValido =
+    vuoto(daTenant.cap) || (tenant.country === 'IT' && !/^\d{5}$/.test(daTenant.cap ?? ''))
+  if (vuoto(daTenant.indirizzo) || vuoto(daTenant.comune) || capNonValido) {
+    mancanti.push('Indirizzo della sede')
+  }
+  // `IscrizioneREA` dell'XML vuole insieme ufficio e numero (e stato di liquidazione).
+  if (riga?.reaUfficio && vuoto(daTenant.numeroRea)) mancanti.push('Numero REA')
+  if (!riga?.reaUfficio && !vuoto(daTenant.numeroRea) && riga) mancanti.push('Ufficio REA')
+  return {
+    regimeFiscale: riga?.regimeFiscale ?? null,
+    reaUfficio: riga?.reaUfficio ?? null,
+    capitaleSociale: riga?.capitaleSociale ? riga.capitaleSociale.toFixed(2) : null,
+    socioUnico: (riga?.socioUnico as SocioUnico | null | undefined) ?? null,
+    statoLiquidazione: (riga?.statoLiquidazione as StatoLiquidazione | undefined) ?? 'LN',
+    registroIvaPredefinitoId: riga?.registroIvaPredefinitoId ?? null,
+    idTrasmittenteCodice: riga?.idTrasmittenteCodice ?? null,
+    versione: riga?.versione ?? 0,
+    daTenant,
+    completo: mancanti.length === 0,
+    mancanti,
   }
 }
 

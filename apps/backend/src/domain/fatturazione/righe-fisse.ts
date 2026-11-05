@@ -57,6 +57,13 @@ function riga(
   }
 }
 
+function incompleta(
+  r: RigaListinoDaFatturare,
+  numeroRiga: (id: string) => number
+): Segnalazione<ErroreDocumento> {
+  return { codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `F riga ${numeroRiga(r.id)}` }
+}
+
 /** Intervalli 'AAAA-MM-GG/AAAA-MM-GG' che si sovrappongono (estremi inclusi). */
 function sovrapposti(chiave: string, p: { dal: string; al: string }): boolean {
   const [a, b] = chiave.split('/')
@@ -66,36 +73,28 @@ function sovrapposti(chiave: string, p: { dal: string; al: string }): boolean {
 /**
  * Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. «riga n» nei
  * dettagli = posizione da 1 nel listino del documento, passata da `calcolaDocumento` con
- * `numeroRiga` (senza, posizione nell'array `righe`: solo per i test). Una riga senza prezzo dà
- * RIGA_LEGAME_INCOMPLETA.
+ * `numeroRiga` (obbligatorio). Una `F` senza prezzo dà RIGA_LEGAME_INCOMPLETA solo se nel periodo
+ * produrrebbe una riga (decisione 21): una scadenza non ancora fatturata, o il canone del periodo.
  */
 export function righeFisse(i: {
   righe: readonly RigaListinoDaFatturare[]
   periodo: { dal: string; al: string }
   contratto: { dataInizio: string; dataFine: string | null }
   marcatori: readonly MarcatoreEsistente[]
-  /** Numero della riga nei dettagli degli errori (default: posizione da 1 nell'array `righe`). */
-  numeroRiga?: (id: string) => number
+  /** Posizione da 1 della riga nel listino del documento: il «riga n» dei dettagli. */
+  numeroRiga: (id: string) => number
 }): EsitoRighe {
   const righe: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
   const avvisi: Segnalazione<AvvisoDocumento>[] = []
   const { dal, al } = i.periodo
 
-  for (const [indice, r] of i.righe.entries()) {
+  for (const r of i.righe) {
     if (r.tipo !== 'F') continue
     const quantita = r.quantitaFissa ?? '1'
     if (new Prisma.Decimal(quantita).isZero()) continue
     // Etichetta propria («Canone»): quella di `etichettaTipo('F')` è un testo da listino.
     const base = r.descrizione ?? 'Canone'
-    if (r.prezzo === null) {
-      errori.push({
-        codice: 'RIGA_LEGAME_INCOMPLETA',
-        dettaglio: `F riga ${i.numeroRiga?.(r.id) ?? indice + 1}`,
-      })
-      continue
-    }
-    const prezzo = r.prezzo
     const proprio = i.marcatori.filter(m => m.rigaAddebitoId === r.id)
 
     if (r.scadenze.length > 0) {
@@ -106,6 +105,11 @@ export function righeFisse(i: {
           m => m.tipo === 'SCADENZA_FISSO' && m.chiaveCompetenza === data
         )
         if (giaFatta) continue
+        // Decisione 21: una `F` senza prezzo blocca solo se in questo periodo produrrebbe una riga.
+        if (r.prezzo === null) {
+          errori.push(incompleta(r, i.numeroRiga))
+          break
+        }
         const comp =
           r.periodoScadenze === null
             ? null
@@ -116,7 +120,10 @@ export function righeFisse(i: {
               )
         const descrizione = comp === null ? base : `${base} ${testoPeriodo(comp)}`
         righe.push(
-          riga(r, prezzo, quantita, descrizione, { tipo: 'SCADENZA_FISSO', chiaveCompetenza: data })
+          riga(r, r.prezzo, quantita, descrizione, {
+            tipo: 'SCADENZA_FISSO',
+            chiaveCompetenza: data,
+          })
         )
         if (data < dal && !avvisi.some(a => a.codice === 'ARRETRATI_PRESENTI')) {
           avvisi.push({ codice: 'ARRETRATI_PRESENTI' })
@@ -135,8 +142,12 @@ export function righeFisse(i: {
       errori.push({ codice: 'CANONE_PERIODO_SOVRAPPOSTO', dettaglio: base })
       continue
     }
+    if (r.prezzo === null) {
+      errori.push(incompleta(r, i.numeroRiga))
+      continue
+    }
     righe.push(
-      riga(r, prezzo, quantita, `${base} ${testoPeriodo(i.periodo)}`, {
+      riga(r, r.prezzo, quantita, `${base} ${testoPeriodo(i.periodo)}`, {
         tipo: 'PERIODO_CANONE',
         chiaveCompetenza: chiave,
       })

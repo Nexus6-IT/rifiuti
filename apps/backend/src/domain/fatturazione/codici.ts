@@ -57,6 +57,17 @@ export const ERRORI_GENERALI = [
 export type ErroreGenerale = (typeof ERRORI_GENERALI)[number]
 
 /**
+ * Errori generali che bloccano la definitiva (decisione 24): la richiesta risponde 409 con il
+ * codice. `DATA_FUTURA` e' controllato anche all'avvio. `LEGAMI_SENZA_CONTRATTO` non blocca: quei
+ * movimenti restano fuori dai documenti.
+ */
+export const ERRORI_GENERALI_BLOCCANTI: readonly ErroreGenerale[] = [
+  'CEDENTE_INCOMPLETO',
+  'DATA_ANTERIORE_ULTIMA_FATTURA',
+  'DATA_FUTURA',
+]
+
+/**
  * Errori HTTP (400) della numerazione delle fatture, insieme chiuso e separato dagli altri: non
  * sono errori di un'elaborazione (nessun CHECK nel database li elenca).
  */
@@ -122,7 +133,8 @@ export const MESSAGGI_ERRORE: Readonly<Record<ErroreGenerale | ErroreDocumento, 
   PAGAMENTO_NON_AMMESSO:
     "Il pagamento in contanti non è ammesso con la scissione dei pagamenti o con l'IVA differita.",
   SPESA_SENZA_CODICE_IVA: "La spesa d'incasso non ha un codice IVA.",
-  RIGA_LEGAME_INCOMPLETA: 'Una riga del legame è incompleta: mancano quantità o prezzo.',
+  RIGA_LEGAME_INCOMPLETA:
+    'Una riga del legame o del listino è incompleta: mancano quantità o prezzo.',
   FAMIGLIA_NON_CALCOLATA:
     'Il contratto ha un addebito che WasteFlow non calcola ancora: il documento non si emette.',
   PREZZO_SPECIALE_NON_VALIDO: 'Il prezzo speciale del listino non è valido.',

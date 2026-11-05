@@ -1,0 +1,206 @@
+// Lock della fatturazione per periodo (fase 4.4b1, spec §8, Q20). L'ordine, mai invertito:
+//
+//   1. elaborazione FOR UPDATE                           (`bloccaElaborazione`)
+//   2. numerazioni FOR UPDATE per registro_iva_id         (`numerazione.ts`, Task 8)
+//   3. contratti FOR SHARE per id
+//   4. elenchi FOR SHARE per id
+//   5. righe di listino FOR SHARE per id                  (3-5: `bloccaPerDefinitiva`)
+//   6. testate e righe dei legami FOR UPDATE per id       (`bloccaRigheLegame`, 4.3)
+//   7. marcatori INSERT/DELETE, poi documenti in BOZZA FOR UPDATE
+//
+// La 4.4 non prende MAI il lock del registro, il lock consultivo per radice o
+// `impostazioni_fatturazione FOR UPDATE` (S5): lo prova `guardia-registro.spec.ts`.
+//
+// Perche' FOR SHARE sugli insiemi interi: il listino lo scrive con FOR UPDATE (elenchi) e FOR NO
+// KEY UPDATE (righe), che confliggono con FOR SHARE, quindi una modifica del listino e una
+// definitiva si serializzano nello stesso ordine (contratto -> elenchi -> righe) e non si
+// incrociano mai. Due definitive fra loro NON si bloccano sul listino: FOR SHARE non confligge.
+//
+// `bloccaPerDefinitiva` NON sostituisce `bloccaListinoInCondivisione` (4.3), che lavora su un
+// contratto solo e lancia 404/409: qui si blocca quello che si trova e non si lancia mai 404 o
+// 409. Un id sparito o un contratto cambiato lo vede l'impronta al passo 5 della definitiva
+// (`ANTEPRIMA_SUPERATA`, voce `cambiati`).
+import { NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import type { StatoElaborazione } from '../../domain/fatturazione/codici'
+import { bloccaRigheLegame } from '../legami-movimento/lock-legame'
+import { joinLineari } from '../listino/lock-listino'
+
+/** Gli insiemi che la definitiva blocca, tutti con id distinti e in ordine. */
+export interface InsiemiDaBloccare {
+  /** Contratti principali dei documenti e i loro allegati. */
+  contrattoIds: string[]
+  /** Elenchi di quei contratti validi nel periodo dei documenti. */
+  elencoIds: string[]
+  /** Righe di listino (`righe_addebito`) di quegli elenchi. */
+  rigaIds: string[]
+  /** Legami citati dalle righe dei documenti in bozza. */
+  legameIds: string[]
+}
+
+const distintiOrdinati = (ids: Iterable<string>): string[] => [...new Set(ids)].sort()
+
+interface DocumentoLetto {
+  id: string
+  contratto_id: string
+  elenco_id: string | null
+  periodo_dal: string
+  periodo_al: string
+}
+
+/**
+ * Legge, SENZA lock (Q20), gli insiemi che `bloccaPerDefinitiva` blocchera': contratti principali
+ * e allegati dei documenti, i loro elenchi validi nel periodo del documento, le righe di listino
+ * di quegli elenchi e i legami delle righe delle bozze. Una query per insieme (5 in tutto),
+ * qualunque sia il numero di documenti; tutte `= ANY(uuid[])` su una tabella sola.
+ */
+export async function insiemiPerDefinitiva(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  documentoIds: readonly string[]
+): Promise<InsiemiDaBloccare> {
+  const ids = distintiOrdinati(documentoIds)
+  if (ids.length === 0) return { contrattoIds: [], elencoIds: [], rigaIds: [], legameIds: [] }
+
+  const documenti = await tx.$queryRaw<DocumentoLetto[]>`
+    SELECT id::text AS id, contratto_id::text AS contratto_id, elenco_id::text AS elenco_id,
+           periodo_dal::text AS periodo_dal, periodo_al::text AS periodo_al
+    FROM documenti_fattura
+    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])`
+  const principali = distintiOrdinati(documenti.map(d => d.contratto_id))
+
+  const allegati =
+    principali.length === 0
+      ? []
+      : await tx.$queryRaw<{ id: string; principale: string }[]>`
+          SELECT id::text AS id, contratto_principale_id::text AS principale
+          FROM contratti_cliente
+          WHERE tenant_id = ${tenantId}::uuid AND eliminato_il IS NULL
+            AND contratto_principale_id = ANY(${principali}::uuid[])`
+  const contrattiIds = distintiOrdinati([...principali, ...allegati.map(a => a.id)])
+
+  // Per ogni principale, i periodi dei suoi documenti: un elenco entra se vale in uno di essi.
+  const periodi = new Map<string, { dal: string; al: string }[]>()
+  for (const d of documenti) {
+    const l = periodi.get(d.contratto_id) ?? []
+    l.push({ dal: d.periodo_dal, al: d.periodo_al })
+    periodi.set(d.contratto_id, l)
+  }
+  const principaleDi = new Map<string, string>()
+  for (const p of principali) principaleDi.set(p, p)
+  for (const a of allegati) principaleDi.set(a.id, a.principale)
+
+  const elenchi =
+    contrattiIds.length === 0
+      ? []
+      : await tx.$queryRaw<
+          {
+            id: string
+            contratto_id: string
+            valido_dal: string | null
+            valido_al: string | null
+          }[]
+        >`
+          SELECT id::text AS id, contratto_id::text AS contratto_id,
+                 valido_dal::text AS valido_dal, valido_al::text AS valido_al
+          FROM elenchi_addebiti
+          WHERE tenant_id = ${tenantId}::uuid AND contratto_id = ANY(${contrattiIds}::uuid[])`
+  const elencoIds = new Set<string>()
+  for (const d of documenti) if (d.elenco_id !== null) elencoIds.add(d.elenco_id)
+  for (const e of elenchi) {
+    const finestre = periodi.get(principaleDi.get(e.contratto_id) ?? '') ?? []
+    const vale = finestre.some(
+      f =>
+        (e.valido_dal === null || e.valido_dal <= f.al) &&
+        (e.valido_al === null || e.valido_al >= f.dal)
+    )
+    if (vale) elencoIds.add(e.id)
+  }
+  const elenchiOrdinati = distintiOrdinati(elencoIds)
+
+  const righe =
+    elenchiOrdinati.length === 0
+      ? []
+      : await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM righe_addebito
+          WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ANY(${elenchiOrdinati}::uuid[])`
+
+  const legami = await tx.$queryRaw<{ id: string }[]>`
+    SELECT DISTINCT legame_id::text AS id FROM righe_documento_fattura
+    WHERE tenant_id = ${tenantId}::uuid AND documento_id = ANY(${ids}::uuid[])
+      AND legame_id IS NOT NULL`
+
+  return {
+    contrattoIds: contrattiIds,
+    elencoIds: elenchiOrdinati,
+    rigaIds: distintiOrdinati(righe.map(r => r.id)),
+    legameIds: distintiOrdinati(legami.map(l => l.id)),
+  }
+}
+
+/**
+ * Passo 1 della definitiva: l'elaborazione `FOR UPDATE`. Due richieste insieme si accodano e la
+ * seconda trova lo stato `IN_DEFINITIVA`. 404 `ELABORAZIONE_NON_TROVATA` se non c'e' (o e' di
+ * un'altra azienda).
+ */
+export async function bloccaElaborazione(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  elaborazioneId: string
+): Promise<{ stato: StatoElaborazione; versione: number }> {
+  const righe = await tx.$queryRaw<{ stato: StatoElaborazione; versione: number }[]>`
+    SELECT stato::text AS stato, versione FROM elaborazioni_fatturazione
+    WHERE tenant_id = ${tenantId}::uuid AND id = ${elaborazioneId}::uuid
+    FOR UPDATE`
+  if (righe.length === 0) {
+    throw new NotFoundException({
+      error: 'ELABORAZIONE_NON_TROVATA',
+      message: 'Elaborazione non trovata.',
+    })
+  }
+  return righe[0]
+}
+
+/** Blocca FOR SHARE (in ordine di id) le righe di `tabella` con id nella lista. Una query. */
+async function bloccaInCondivisione(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  tabella: 'contratti_cliente' | 'elenchi_addebiti' | 'righe_addebito',
+  ids: readonly string[]
+): Promise<void> {
+  if (ids.length === 0) return
+  // Nomi di tabella da un insieme chiuso: `Prisma.raw` e' sicuro.
+  const t = Prisma.raw(tabella)
+  await tx.$queryRaw`
+    SELECT x.id::text AS id FROM ${t} x
+    JOIN unnest(${ids}::uuid[]) AS chiesti(chiesto) ON chiesto = x.id
+    WHERE x.tenant_id = ${tenantId}::uuid
+    ORDER BY x.id FOR SHARE OF x`
+}
+
+/**
+ * Passi 3-6 della definitiva: contratti FOR SHARE -> elenchi FOR SHARE -> righe di listino FOR
+ * SHARE -> testate e righe dei legami FOR UPDATE (`bloccaRigheLegame`), ciascun insieme intero con
+ * una query (`JOIN unnest`, in ordine di id). Non lancia mai 404 o 409: blocca le righe che trova.
+ *
+ * `JOIN unnest` su liste grandi vuole `enable_nestloop = off`; qui lo si spegne per le query a
+ * lista e lo si RIPRISTINA prima di tornare (scansione P46): le letture che il chiamante fa dopo,
+ * nella stessa transazione, ritrovano il planner com'era.
+ */
+export async function bloccaPerDefinitiva(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  s: InsiemiDaBloccare
+): Promise<void> {
+  const prima = (
+    await tx.$queryRaw<{ v: string }[]>`SELECT current_setting('enable_nestloop') AS v`
+  )[0].v
+  await joinLineari(tx)
+  await bloccaInCondivisione(tx, tenantId, 'contratti_cliente', distintiOrdinati(s.contrattoIds))
+  await bloccaInCondivisione(tx, tenantId, 'elenchi_addebiti', distintiOrdinati(s.elencoIds))
+  await bloccaInCondivisione(tx, tenantId, 'righe_addebito', distintiOrdinati(s.rigaIds))
+  // Chiama a sua volta `joinLineari`: il ripristino viene dopo. Se una query fallisce la
+  // transazione e' abortita e il rollback ripristina da solo il `SET LOCAL`.
+  await bloccaRigheLegame(tx, tenantId, s.legameIds)
+  await tx.$queryRaw`SELECT set_config('enable_nestloop', ${prima}, true)`
+}

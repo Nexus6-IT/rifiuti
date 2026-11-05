@@ -11,15 +11,14 @@ import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
  * Righe `TT` e `TF` a prezzo singolo (decisione 17): peso dei movimenti in kg (una volta per
  * legame). Ogni altra riga in ingresso è ignorata (la segnala il Task 5).
  * Nei dettagli degli errori «riga n» è la posizione a partire da 1 della riga nel listino del
- * documento: `calcolaDocumento` la passa con `numeroRiga`. Senza `numeroRiga` vale la posizione
- * nell'array `righe` (solo per i test). Una riga senza prezzo dà RIGA_LEGAME_INCOMPLETA.
+ * documento: `calcolaDocumento` la passa con `numeroRiga` (obbligatorio). Una riga senza prezzo dà RIGA_LEGAME_INCOMPLETA.
  */
 export function righeQuantitaMovimenti(i: {
   righe: readonly RigaListinoDaFatturare[]
   legami: readonly RigaLegameDaFatturare[]
   periodo: { dal: string; al: string }
-  /** Numero della riga nei dettagli degli errori (default: posizione da 1 nell'array `righe`). */
-  numeroRiga?: (id: string) => number
+  /** Posizione da 1 della riga nel listino del documento: il «riga n» dei dettagli. */
+  numeroRiga: (id: string) => number
 }): EsitoRighe {
   const righe: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -29,7 +28,7 @@ export function righeQuantitaMovimenti(i: {
   for (const l of i.legami) if (!perLegame.has(l.legameId)) perLegame.set(l.legameId, l)
   const legami = [...perLegame.values()]
 
-  i.righe.forEach((r, indice) => {
+  i.righe.forEach(r => {
     if ((r.tipo !== 'TT' && r.tipo !== 'TF') || r.prezzoSpeciale) return
     // L'allegato non ha movimenti propri: confluisce nel documento del principale (decisione 5).
     let scelti = r.daAllegato ? legami : legami.filter(l => l.elencoId === r.elencoId)
@@ -41,7 +40,7 @@ export function righeQuantitaMovimenti(i: {
       if (fattore === null) {
         errori.push({
           codice: 'UM_NON_UNIVOCA',
-          dettaglio: `${r.tipo} riga ${i.numeroRiga?.(r.id) ?? indice + 1}`,
+          dettaglio: `${r.tipo} riga ${i.numeroRiga(r.id)}`,
         })
         return
       }
@@ -54,7 +53,7 @@ export function righeQuantitaMovimenti(i: {
     if (r.prezzo === null) {
       errori.push({
         codice: 'RIGA_LEGAME_INCOMPLETA',
-        dettaglio: `${r.tipo} riga ${i.numeroRiga?.(r.id) ?? indice + 1}`,
+        dettaglio: `${r.tipo} riga ${i.numeroRiga(r.id)}`,
       })
       return
     }

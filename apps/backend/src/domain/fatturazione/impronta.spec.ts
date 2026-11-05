@@ -10,6 +10,19 @@ const base = () => ({
   elenchi: [{ id: 'E1', versione: 1 }],
   righeAddebito: [{ id: 'R1', versione: 1 }],
   codiciIva: [{ id: 'I1', versione: 1 }],
+  clienti: [{ id: 'K1', versione: 1 }],
+  condizioniPagamento: [{ id: 'P1', versione: 1 }],
+  speseAccessorie: [{ id: 'S1', versione: 1 }],
+  contiCorrenti: [{ id: 'B1', versione: 1 }],
+  cedente: { id: 'T1', versione: 1 } as { id: string; versione: number } | null,
+  marcatori: [
+    {
+      rigaAddebitoId: 'R1',
+      tipo: 'PERIODO_CANONE' as const,
+      chiaveCompetenza: '2026-11-01/2026-11-30',
+    },
+    { rigaAddebitoId: 'R1', tipo: 'SCADENZA_FISSO' as const, chiaveCompetenza: '2026-06-30' },
+  ],
 })
 
 describe('improntaElaborazione', () => {
@@ -52,9 +65,65 @@ describe('improntaElaborazione', () => {
       elenchi: [],
       righeAddebito: [],
       codiciIva: [],
+      clienti: [],
+      condizioniPagamento: [],
+      speseAccessorie: [],
+      contiCorrenti: [],
+      cedente: null,
+      marcatori: [],
     }
     const comeLegame = improntaElaborazione({ ...vuoto, legami: [{ id: 'X', versione: 1 }] })
     const comeContratto = improntaElaborazione({ ...vuoto, contratti: [{ id: 'X', versione: 1 }] })
     expect(comeLegame).not.toBe(comeContratto)
+  })
+
+  describe('voci della 4.4b (Q4)', () => {
+    it('un marcatore in piu: impronta diversa; ordine dei marcatori diverso: uguale', () => {
+      const b = base()
+      const piu = {
+        ...b,
+        marcatori: [
+          ...b.marcatori,
+          {
+            rigaAddebitoId: 'R2',
+            tipo: 'PERIODO_CANONE' as const,
+            chiaveCompetenza: '2026-11-01/2026-11-30',
+          },
+        ],
+      }
+      expect(improntaElaborazione(piu)).not.toBe(improntaElaborazione(b))
+      expect(improntaElaborazione({ ...b, marcatori: [...b.marcatori].reverse() })).toBe(
+        improntaElaborazione(b)
+      )
+    })
+    it.each([
+      ['cliente', (b: ReturnType<typeof base>) => ({ ...b, clienti: [{ id: 'K1', versione: 2 }] })],
+      [
+        'condizione di pagamento',
+        (b: ReturnType<typeof base>) => ({
+          ...b,
+          condizioniPagamento: [{ id: 'P1', versione: 2 }],
+        }),
+      ],
+      [
+        'spesa accessoria',
+        (b: ReturnType<typeof base>) => ({ ...b, speseAccessorie: [{ id: 'S1', versione: 2 }] }),
+      ],
+      [
+        'conto corrente',
+        (b: ReturnType<typeof base>) => ({ ...b, contiCorrenti: [{ id: 'B1', versione: 2 }] }),
+      ],
+      ['cedente', (b: ReturnType<typeof base>) => ({ ...b, cedente: { id: 'T1', versione: 2 } })],
+      ['cedente assente', (b: ReturnType<typeof base>) => ({ ...b, cedente: null })],
+    ])('versione di %s cambiata: impronta diversa', (_nome, cambia) => {
+      const b = base()
+      expect(improntaElaborazione(cambia(b))).not.toBe(improntaElaborazione(b))
+    })
+    it('stesso id in tipi diversi (cliente e conto): impronta diversa', () => {
+      const b = { ...base(), clienti: [], contiCorrenti: [] }
+      const comeCliente = improntaElaborazione({ ...b, clienti: [{ id: 'X', versione: 1 }] })
+      const comeConto = improntaElaborazione({ ...b, contiCorrenti: [{ id: 'X', versione: 1 }] })
+      expect(comeCliente).not.toBe(comeConto)
+    })
   })
 })

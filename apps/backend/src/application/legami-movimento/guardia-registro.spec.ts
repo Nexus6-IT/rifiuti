@@ -3,8 +3,8 @@
  * file di `application/legami-movimento` (escluse le spec) puo' creare, modificare o cancellare
  * righe di `waste_movements`, ne' con Prisma ne' con SQL grezzo. `entryHash` e RENTRI non cambiano.
  */
-import { readdirSync, readFileSync, statSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import { join, relative } from 'path'
 
 const CARTELLA = __dirname
 
@@ -107,5 +107,93 @@ describe('guardia: i legami non scrivono su waste_movements', () => {
     expect(senzaCommenti('/* wasteMovement.update */ const a = 1')).not.toMatch(/update/)
     // Limite documentato: `'a//b'` e il codice che segue sulla stessa riga non si controllano.
     expect(senzaCommenti("const u = 'a//b'; tx.wasteMovement.update({})")).not.toMatch(/update/)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Fatturazione per periodo (fase 4.4, Q35, S5): come il legame, non scrive mai sul registro; in
+// piu' non prende il lock del registro (consultivo, `pg_advisory_xact_lock`) ne' la riga di
+// `impostazioni_fatturazione` FOR UPDATE (la tiene solo chi imposta «fatturazione da»): un ciclo
+// di lock con la 4.3 sarebbe possibile solo se la 4.4 li prendesse.
+// ---------------------------------------------------------------------------------------------
+
+/** Lock consultivi di ogni forma (`pg_advisory_lock`, `pg_advisory_xact_lock`, `pg_try_...`). */
+export const LOCK_CONSULTIVO = /\bpg_(try_)?advisory_(xact_)?lock(_shared)?\b/i
+
+/** `impostazioni_fatturazione ... FOR UPDATE` nello stesso statement (fino a backtick o punto e virgola). */
+export const IMPOSTAZIONI_FOR_UPDATE =
+  /impostazioni_fatturazione[^`;]*?\bFOR\s+(NO\s+KEY\s+)?UPDATE\b/i
+
+export function prendeLockVietati(sorgente: string): boolean {
+  const codice = senzaCommenti(sorgente)
+  return LOCK_CONSULTIVO.test(codice) || IMPOSTAZIONI_FOR_UPDATE.test(codice)
+}
+
+describe('guardia: la fatturazione non scrive sul registro e non prende i lock del registro', () => {
+  const RADICE = join(__dirname, '..', '..', '..', '..', '..')
+  const SRC = join(__dirname, '..', '..')
+  // Cartelle (tutti i sorgenti non-spec) e file singoli (i due job, solo se esistono ancora).
+  const CARTELLE = ['application/fatturazione', 'api/fatturazione']
+  const FILE = [
+    'infrastructure/queue/jobs/fatturazione.job.ts',
+    'infrastructure/jobs/fatturazione-manutenzione.job.ts',
+  ]
+  const percorsi = [
+    ...CARTELLE.filter(c => existsSync(join(SRC, c))).flatMap(c => sorgenti(join(SRC, c))),
+    ...FILE.filter(f => existsSync(join(SRC, f))).map(f => join(SRC, f)),
+  ]
+  const nome = (f: string) => relative(SRC, f)
+
+  it('la guardia trova i sorgenti della fatturazione (non e` vuota)', () => {
+    expect(RADICE.length).toBeGreaterThan(0)
+    expect(percorsi.length).toBeGreaterThanOrEqual(5)
+    expect(percorsi.map(nome)).toEqual(
+      expect.arrayContaining([
+        'application/fatturazione/selezione-fatturazione.ts',
+        'application/fatturazione/lock-fatturazione.ts',
+      ])
+    )
+  })
+
+  it('nessun sorgente della fatturazione scrive su waste_movements', () => {
+    const colpevoli = percorsi.filter(f => scriveSuMovimenti(readFileSync(f, 'utf8')))
+    expect(colpevoli.map(nome)).toEqual([])
+  })
+
+  it('nessun sorgente della fatturazione prende un lock consultivo o impostazioni_fatturazione FOR UPDATE', () => {
+    const colpevoli = percorsi.filter(f => prendeLockVietati(readFileSync(f, 'utf8')))
+    expect(colpevoli.map(nome)).toEqual([])
+  })
+
+  describe('la guardia dei lock riconosce le forme vietate (non e` cieca)', () => {
+    const cattivi: Record<string, string> = {
+      'advisory xact': 'SELECT pg_advisory_xact_lock(hashtext(${x}))',
+      'advisory con due chiavi': "SELECT pg_advisory_xact_lock(hashtext('a'), hashtext('b'))",
+      'advisory di sessione': 'SELECT pg_advisory_lock(1)',
+      'advisory try': 'SELECT pg_try_advisory_xact_lock(1)',
+      'impostazioni for update':
+        'SELECT id FROM "impostazioni_fatturazione" WHERE tenant_id = $1 FOR UPDATE',
+      'impostazioni for update a capo':
+        'SELECT 1 FROM impostazioni_fatturazione\n WHERE tenant_id = $1\n FOR UPDATE',
+      'impostazioni for no key update': 'FROM impostazioni_fatturazione FOR NO KEY UPDATE',
+    }
+    for (const [nomeCaso, src] of Object.entries(cattivi)) {
+      it(nomeCaso, () => {
+        expect(prendeLockVietati(src)).toBe(true)
+      })
+    }
+    it('letture e lock su altre tabelle non fanno scattare la guardia', () => {
+      for (const buono of [
+        'SELECT fatturazione_da FROM impostazioni_fatturazione WHERE tenant_id = $1',
+        'SELECT fatturazione_da FROM impostazioni_fatturazione WHERE tenant_id = $1 FOR SHARE',
+        'SELECT id FROM numerazioni_fattura WHERE tenant_id = $1 FOR UPDATE',
+        'SELECT id FROM contratti_cliente FOR SHARE',
+        'const a = `SELECT 1 FROM impostazioni_fatturazione`; const b = `SELECT 1 FROM x FOR UPDATE`',
+        '// pg_advisory_xact_lock nel commento\nconst a = 1',
+        '/* impostazioni_fatturazione FOR UPDATE */ const a = 1',
+      ]) {
+        expect(prendeLockVietati(buono)).toBe(false)
+      }
+    })
   })
 })

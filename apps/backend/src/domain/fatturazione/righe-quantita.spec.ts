@@ -1,4 +1,4 @@
-import { righeQuantitaMovimenti } from './righe-quantita'
+import { righeQuantitaMovimenti as righeQuantitaDominio } from './righe-quantita'
 import {
   azzeraContatoreLegami,
   legameDi,
@@ -8,7 +8,12 @@ import {
 const periodo = { dal: '2026-11-01', al: '2026-11-30' }
 const tt = (p = {}) => listinoDi({ id: 'tt', tipo: 'TT', prezzo: '0.02', ...p })
 const run = (righe: ReturnType<typeof listinoDi>[], legami: ReturnType<typeof legameDi>[]) =>
-  righeQuantitaMovimenti({ righe, legami, periodo })
+  righeQuantitaDominio({
+    righe,
+    legami,
+    periodo,
+    numeroRiga: id => righe.findIndex(r => r.id === id) + 1,
+  })
 
 describe('righeQuantitaMovimenti', () => {
   beforeEach(azzeraContatoreLegami)
@@ -112,5 +117,13 @@ describe('righeQuantitaMovimenti', () => {
     expect(e.righe[0].importoLordo).toBe('20.00')
     expect(e.righe[0].importoSconto).toBe('2.00')
     expect(e.righe[0].prezzoTotale).toBe('18.00')
+  })
+})
+
+describe('righeQuantitaMovimenti: numeroRiga obbligatorio', () => {
+  it('senza numeroRiga non compila (tsc)', () => {
+    // @ts-expect-error manca numeroRiga
+    const senza: Parameters<typeof righeQuantitaDominio>[0] = { righe: [], legami: [], periodo }
+    expect(senza.righe).toEqual([])
   })
 })

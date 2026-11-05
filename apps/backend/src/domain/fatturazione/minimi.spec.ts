@@ -1,4 +1,5 @@
-import { applicaMinimi } from './minimi'
+import { applicaMinimi as applicaMinimiDominio } from './minimi'
+import { FORMA_MINIMO_CATEGORIA } from './costanti-fiscali'
 import { listinoDi } from '../../test-support/calcolo-fatturazione-di-test'
 import type { RigaSenzaLinea } from './esito-righe'
 import type { RigaListinoDaFatturare } from './tipi'
@@ -26,6 +27,12 @@ function rg(p: Partial<RigaSenzaLinea>): RigaSenzaLinea {
     ...p,
   }
 }
+/** Come nel calcolo del documento: «riga n» = posizione da 1 in `minimi`. */
+const applicaMinimi = (
+  righe: readonly RigaSenzaLinea[],
+  minimi: readonly RigaListinoDaFatturare[],
+  listino: ReadonlyMap<string, RigaListinoDaFatturare>
+) => applicaMinimiDominio(righe, minimi, listino, id => minimi.findIndex(m => m.id === id) + 1)
 const mappa = (...r: RigaListinoDaFatturare[]) => new Map(r.map(x => [x.id, x]))
 
 describe('minimo di riga', () => {
@@ -166,7 +173,7 @@ describe('minimi di documento', () => {
   it('minimo senza prezzo: RIGA_LEGAME_INCOMPLETA con «tipo riga n»', () => {
     const e = applicaMinimi(
       base,
-      [min('MW', '10.00'), min('MW', '1.00', { prezzo: null })],
+      [min('MW', '10.00', { id: 'm1' }), min('MW', '1.00', { id: 'm2', prezzo: null })],
       mappa(cer, v)
     )
     expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'MW riga 2' }])
@@ -183,5 +190,23 @@ describe('minimi di documento', () => {
     const r = applicaMinimi(base, [m], mappa(cer, v)).righe[0]
     expect([r.codiceIvaId, r.aliquotaIva]).toEqual(['iva10', '10.00'])
     expect(r.rigaAddebitoId).toBe('m')
+  })
+})
+
+describe('minimi: numeroRiga obbligatorio e forma M<cat> condivisa', () => {
+  it('numeroRiga e obbligatorio (tsc)', () => {
+    // @ts-expect-error manca il quarto argomento
+    const chiama = () => applicaMinimiDominio([], [], new Map())
+    expect(typeof chiama).toBe('function')
+  })
+  it('usa FORMA_MINIMO_CATEGORIA esportata da costanti-fiscali', () => {
+    expect(FORMA_MINIMO_CATEGORIA.test('M001')).toBe(true)
+    expect(FORMA_MINIMO_CATEGORIA.test('M0012')).toBe(false)
+    expect(FORMA_MINIMO_CATEGORIA.test('MW')).toBe(false)
+    // M0012 non e un minimo per categoria: nessuna riga e nessun errore
+    const m = listinoDi({ id: 'm', tipo: 'M0012', prezzo: '50.00' })
+    const e = applicaMinimiDominio([], [m], new Map([['m', m]]), () => 1)
+    expect(e.righe).toEqual([])
+    expect(e.errori).toEqual([])
   })
 })

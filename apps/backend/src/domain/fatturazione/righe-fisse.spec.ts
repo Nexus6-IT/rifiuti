@@ -1,5 +1,10 @@
-import { righeFisse, type MarcatoreEsistente } from './righe-fisse'
+import { righeFisse as righeFisseDominio, type MarcatoreEsistente } from './righe-fisse'
 import { listinoDi } from '../../test-support/calcolo-fatturazione-di-test'
+
+type IngressoFisse = Omit<Parameters<typeof righeFisseDominio>[0], 'numeroRiga'>
+/** Come nel calcolo del documento: «riga n» = posizione da 1 nell'array passato. */
+const righeFisse = (i: IngressoFisse) =>
+  righeFisseDominio({ ...i, numeroRiga: id => i.righe.findIndex(r => r.id === id) + 1 })
 
 const contratto = { dataInizio: '2020-01-01', dataFine: null }
 const sc = (giorno: number, mese: number, ordine = 1) => ({ ordine, giorno, mese, anno: null })
@@ -105,7 +110,7 @@ describe('righeFisse senza scadenze', () => {
   })
   it('prezzo assente: RIGA_LEGAME_INCOMPLETA con «F riga n»', () => {
     const e = righeFisse({
-      righe: [listinoDi({ tipo: 'CER' }), listinoDi({ prezzo: null })],
+      righe: [listinoDi({ id: 'a', tipo: 'CER' }), listinoDi({ id: 'b', prezzo: null })],
       periodo: p0,
       contratto,
       marcatori: [],
@@ -155,5 +160,72 @@ describe('righeFisse senza scadenze', () => {
       marcatori: [],
     })
     expect(e.righe).toHaveLength(0)
+  })
+})
+
+describe('righeFisse: numeroRiga obbligatorio e F senza prezzo (decisione 21)', () => {
+  const p = { dal: '2026-04-01', al: '2026-06-30' }
+  const sc = (giorno: number, mese: number) => ({ ordine: 1, giorno, mese, anno: null })
+  const ctr = { dataInizio: '2020-01-01', dataFine: null }
+
+  it('numeroRiga e obbligatorio (tsc)', () => {
+    // @ts-expect-error manca numeroRiga: il «riga n» lo da' sempre il chiamante
+    const senza: Parameters<typeof righeFisseDominio>[0] = {
+      righe: [],
+      periodo: p,
+      contratto: ctr,
+      marcatori: [],
+    }
+    expect(senza.righe).toEqual([])
+  })
+  it('senza prezzo e senza scadenze nel periodo: nessun errore', () => {
+    // scadenza con anno fisso, fuori dal periodo e dai 12 mesi di arretrati
+    const r = listinoDi({
+      prezzo: null,
+      scadenze: [{ ordine: 1, giorno: 31, mese: 3, anno: 2020 }],
+      periodoScadenze: 'TP',
+    })
+    const e = righeFisse({ righe: [r], periodo: p, contratto: ctr, marcatori: [] })
+    expect(e.errori).toEqual([])
+    expect(e.righe).toEqual([])
+  })
+  it('con una scadenza nel periodo: RIGA_LEGAME_INCOMPLETA, una sola volta', () => {
+    const r = listinoDi({
+      prezzo: null,
+      scadenze: [sc(30, 6), sc(31, 3)],
+      periodoScadenze: 'TP',
+    })
+    const e = righeFisse({ righe: [r], periodo: p, contratto: ctr, marcatori: [] })
+    expect(e.righe).toHaveLength(0)
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 1' }])
+  })
+  it('scadenza gia fatturata (marcatore): nessun errore', () => {
+    const r = listinoDi({ id: 'r1', prezzo: null, scadenze: [sc(30, 6)], periodoScadenze: 'TP' })
+    const e = righeFisse({
+      righe: [r],
+      periodo: { dal: '2026-04-01', al: '2026-06-30' },
+      contratto: { dataInizio: '2026-01-01', dataFine: null },
+      marcatori: [{ rigaAddebitoId: 'r1', tipo: 'SCADENZA_FISSO', chiaveCompetenza: '2026-06-30' }],
+    })
+    expect(e.errori).toEqual([])
+  })
+  it('canone senza prezzo, contratto non attivo nel periodo: nessun errore', () => {
+    const r = listinoDi({ prezzo: null })
+    const e = righeFisse({
+      righe: [r],
+      periodo: p,
+      contratto: { dataInizio: '2027-01-01', dataFine: null },
+      marcatori: [],
+    })
+    expect(e.errori).toEqual([])
+  })
+  it('canone senza prezzo nel periodo del contratto: RIGA_LEGAME_INCOMPLETA', () => {
+    const e = righeFisse({
+      righe: [listinoDi({ prezzo: null })],
+      periodo: p,
+      contratto: ctr,
+      marcatori: [],
+    })
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 1' }])
   })
 })
