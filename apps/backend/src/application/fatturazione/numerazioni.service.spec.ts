@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common'
+import { HttpException } from '@nestjs/common'
 import { eDataIso, numeroTesto, riservaNumeri, validaAnno } from './numerazione'
 import { NumerazioniService } from './numerazioni.service'
 
@@ -46,7 +46,10 @@ describe('numerazione (funzioni pure e validazioni, senza database)', () => {
       dataDocumento: '2026-03-15',
       ...variante,
     }
-    await expect(riservaNumeri(tx, 't', [r])).rejects.toMatchObject({ status: 400 })
+    // Difetto di chi chiama: errore interno, non un 400 dell'API.
+    const err = await riservaNumeri(tx, 't', [r]).catch(e => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err).not.toBeInstanceOf(HttpException)
     expect(tx.$queryRaw).not.toHaveBeenCalled()
   })
 })
@@ -56,7 +59,7 @@ describe('NumerazioniService (validazioni)', () => {
   const service = new NumerazioniService(prisma)
 
   it('elenco con anno fuori intervallo: 400', () => {
-    expect(() => service.elenco('t', 1900)).toThrow(BadRequestException)
+    expect(() => service.elenco('t', 1900)).toThrow(/anno fuori intervallo/)
   })
 
   it.each([
@@ -73,7 +76,10 @@ describe('NumerazioniService (validazioni)', () => {
         dataPartenza: data,
         versione: 0,
       })
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toMatchObject({
+      status: 400,
+      response: { error: data === '2100-01-01' ? 'DATA_FUTURA' : 'PARTENZA_NON_VALIDA' },
+    })
     expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 })

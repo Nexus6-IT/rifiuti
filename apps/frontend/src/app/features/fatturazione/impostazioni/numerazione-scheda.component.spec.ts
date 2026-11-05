@@ -163,6 +163,16 @@ describe('NumerazioneSchedaComponent', () => {
     expect(q('partenza-data-anno-futuro')).not.toBeNull()
   })
 
+  it("«oggi» e' quello italiano: alle 00:30 del 1 gennaio a Roma (23:30 UTC) il tetto e' il 1 gennaio", async () => {
+    jasmine.clock().install()
+    jasmine.clock().mockDate(new Date(Date.UTC(2026, 11, 31, 23, 30, 0)))
+    await crea('ADMIN', [riga({ anno: 2027 })])
+    const cal = await apri()
+    expect(cal.maxDate!.getTime()).toBe(new Date(2027, 0, 1, 23, 59, 59, 999).getTime())
+    expect(cal.maxDate!.getTime()).toBeGreaterThanOrEqual(cal.minDate!.getTime())
+    expect(q('partenza-data-anno-futuro')).toBeNull()
+  })
+
   it('il numero di partenza ammette al massimo 99999999 (come il backend)', async () => {
     await crea('ADMIN', [riga({})])
     await apri()

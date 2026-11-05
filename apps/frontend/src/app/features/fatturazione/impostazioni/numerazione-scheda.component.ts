@@ -20,11 +20,20 @@ const MESSAGGIO_VERSIONE =
 const MESSAGGIO_PARTENZA_BLOCCATA =
   'La numerazione ha già fatture definitive o annullate: il numero di partenza non si può più cambiare.'
 
-/** Fine del giorno di oggi: `maxDate` di PrimeNG confronta istanti, non giorni. */
+/**
+ * Fine del giorno di oggi NEL FUSO ITALIANO (come il backend, che rifiuta le date dopo l'oggi di
+ * Europe/Rome con `DATA_FUTURA`), come `Date` locale: `maxDate` di PrimeNG confronta istanti, non
+ * giorni, e ragiona nel calendario locale del browser.
+ */
 export function fineGiornoDiOggi(): Date {
-  const f = new Date()
-  f.setHours(23, 59, 59, 999)
-  return f
+  const oggiRoma = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Rome',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  const [a, m, g] = oggiRoma.split('-').map(Number)
+  return new Date(a, m - 1, g, 23, 59, 59, 999)
 }
 
 /** `AAAA-MM-GG` → `Date` a mezzanotte locale (senza passare da UTC). */
@@ -250,7 +259,7 @@ export class NumerazioneSchedaComponent implements OnInit {
   private readonly toast = inject(ToastService)
 
   readonly dataItaliana = dataItaliana
-  private readonly annoCorrente = new Date().getFullYear()
+  private readonly annoCorrente = fineGiornoDiOggi().getFullYear()
   readonly anni = [
     this.annoCorrente + 1,
     this.annoCorrente,

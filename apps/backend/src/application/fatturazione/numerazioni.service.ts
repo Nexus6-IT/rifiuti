@@ -11,6 +11,7 @@ import { nonTrovato } from '../clienti/registri-iva.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { MESSAGGI_NUMERAZIONE } from '../../domain/fatturazione/codici'
 import { eDataIso, oggiRoma, validaAnno } from './numerazione'
 
 export interface NumerazioneVista {
@@ -61,24 +62,19 @@ export class NumerazioniService {
     dati: DatiPartenza
   ): Promise<NumerazioneVista> {
     validaAnno(anno)
+    const partenzaNonValida = () =>
+      new BadRequestException({
+        error: 'PARTENZA_NON_VALIDA',
+        message: MESSAGGI_NUMERAZIONE.PARTENZA_NON_VALIDA,
+      })
     if (
       !Number.isInteger(dati.numeroPartenza) ||
       dati.numeroPartenza < 0 ||
-      dati.numeroPartenza > NUMERO_PARTENZA_MAX
+      dati.numeroPartenza > NUMERO_PARTENZA_MAX ||
+      (dati.dataPartenza !== null &&
+        (!eDataIso(dati.dataPartenza) || Number(dati.dataPartenza.slice(0, 4)) !== anno))
     ) {
-      throw new BadRequestException({
-        error: 'NUMERO_PARTENZA_NON_VALIDO',
-        message: 'Il numero di partenza deve essere un intero da 0 a 99999999.',
-      })
-    }
-    if (
-      dati.dataPartenza !== null &&
-      (!eDataIso(dati.dataPartenza) || Number(dati.dataPartenza.slice(0, 4)) !== anno)
-    ) {
-      throw new BadRequestException({
-        error: 'DATA_PARTENZA_NON_VALIDA',
-        message: "La data di partenza non è valida o non appartiene all'anno della numerazione.",
-      })
+      throw partenzaNonValida()
     }
     if (dati.dataPartenza !== null && dati.dataPartenza > oggiRoma()) {
       throw new BadRequestException({
@@ -96,6 +92,19 @@ export class NumerazioniService {
             select: { id: true },
           })
           if (!registro) throw nonTrovato()
+
+          // Nessuna riga e nessun valore da scrivere (0 e nessuna data, versione 0): niente da
+          // fare, e soprattutto nessuna riga vuota lasciata dietro. Senza riga non esistono
+          // documenti della coppia (invariante §4.6), quindi non c'e' nulla da controllare.
+          if (dati.numeroPartenza === 0 && dati.dataPartenza === null && dati.versione === 0) {
+            const [e] = await tx.$queryRaw<{ esiste: boolean }[]>`
+              SELECT EXISTS (
+                SELECT 1 FROM "numerazioni_fattura"
+                WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${registroIvaId}::uuid
+                  AND anno = ${anno}::int
+              ) AS esiste`
+            if (!e.esiste) return (await this.leggi(tx, tenantId, anno, registroIvaId))[0]
+          }
 
           // Stesso lock della riserva: INSERT della coppia (se manca) e poi FOR UPDATE. Una riserva
           // aperta sulla coppia fa aspettare qui il PUT fino al suo commit o rollback.
@@ -153,14 +162,7 @@ export class NumerazioniService {
             riga.ultimoNumero === dati.numeroPartenza &&
             riga.dataPartenza === dati.dataPartenza &&
             riga.ultimaData === dati.dataPartenza
-          if (invariata && creata === 1) {
-            // Niente da scrivere e la riga l'ho creata io: non lascio una riga vuota (con versione
-            // 1) che farebbe rispondere VERSIONE_SUPERATA a un secondo client fermo a 0.
-            await tx.$executeRaw`
-              DELETE FROM "numerazioni_fattura"
-              WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${registroIvaId}::uuid
-                AND anno = ${anno}::int`
-          } else if (!invariata) {
+          if (!invariata) {
             await tx.$executeRaw`
               UPDATE "numerazioni_fattura"
               SET numero_partenza = ${dati.numeroPartenza}::int,

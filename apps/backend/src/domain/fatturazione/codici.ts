@@ -56,6 +56,18 @@ export const ERRORI_GENERALI = [
 ] as const
 export type ErroreGenerale = (typeof ERRORI_GENERALI)[number]
 
+/**
+ * Errori HTTP (400) della numerazione delle fatture, insieme chiuso e separato dagli altri: non
+ * sono errori di un'elaborazione (nessun CHECK nel database li elenca).
+ */
+export const ERRORI_NUMERAZIONE = ['PARTENZA_NON_VALIDA'] as const
+export type ErroreNumerazione = (typeof ERRORI_NUMERAZIONE)[number]
+
+export const MESSAGGI_NUMERAZIONE: Readonly<Record<ErroreNumerazione, string>> = {
+  PARTENZA_NON_VALIDA:
+    "Il numero di partenza o la sua data non sono validi: la data deve cadere nell'anno della numerazione.",
+}
+
 export const ERRORI_DOCUMENTO = [
   'CONTRATTO_SOSPESO',
   'SENZA_REGISTRO_IVA',

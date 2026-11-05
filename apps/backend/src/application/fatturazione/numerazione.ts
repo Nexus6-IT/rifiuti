@@ -7,7 +7,7 @@
 // Ordine dei lock (spec §8): le coppie si bloccano SEMPRE in ordine di `registro_iva_id`, poi di
 // `anno`, sia nell'INSERT sia nel `FOR UPDATE`: due transazioni con le stesse coppie in ordine
 // opposto non si incrociano (niente 40P01).
-import { BadRequestException, ConflictException } from '@nestjs/common'
+import { ConflictException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { nonTrovato } from '../clienti/registri-iva.service'
 
@@ -73,12 +73,13 @@ export function eDataIso(s: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s
 }
 
+/**
+ * Anno ammesso. I DTO dell'API limitano gia' l'anno a 2000-2100: qui un anno fuori intervallo e'
+ * un difetto di chi chiama (errore interno, nessun codice HTTP).
+ */
 export function validaAnno(anno: number): void {
   if (!Number.isInteger(anno) || anno < ANNO_MIN || anno > ANNO_MAX) {
-    throw new BadRequestException({
-      error: 'ANNO_NON_VALIDO',
-      message: `L'anno deve essere compreso fra ${ANNO_MIN} e ${ANNO_MAX}.`,
-    })
+    throw new Error(`Numerazione: anno fuori intervallo (${ANNO_MIN}-${ANNO_MAX}).`)
   }
 }
 
@@ -167,18 +168,14 @@ export async function bloccaNumerazioni(
 function validaRichiesta(r: RichiestaNumeri): void {
   validaAnno(r.anno)
   if (!Number.isInteger(r.quanti) || r.quanti < 1) {
-    throw new BadRequestException({
-      error: 'QUANTITA_NUMERI_NON_VALIDA',
-      message: 'La quantità di numeri da riservare deve essere un intero positivo.',
-    })
+    throw new Error('Numerazione: la quantità di numeri deve essere un intero positivo.')
   }
   if (!eDataIso(r.dataDocumento) || Number(r.dataDocumento.slice(0, 4)) !== r.anno) {
     // Un documento di una data va numerato nella serie dell'anno di quella data: altrimenti il
     // numero sarebbe fiscalmente sbagliato.
-    throw new BadRequestException({
-      error: 'DATA_DOCUMENTO_NON_VALIDA',
-      message: "La data del documento non è valida o non appartiene all'anno della numerazione.",
-    })
+    throw new Error(
+      'Numerazione: data documento non valida o di un anno diverso da quello della coppia.'
+    )
   }
 }
 
@@ -227,10 +224,7 @@ export async function riservaNumeri(
     const da = c.ultimo + 1
     const a = c.ultimo + x.quanti
     if (a > INT4_MAX) {
-      throw new ConflictException({
-        error: 'NUMERAZIONE_ESAURITA',
-        message: 'La numerazione ha raggiunto il limite massimo.',
-      })
+      throw new Error('Numerazione: superato il massimo numero rappresentabile.')
     }
     c.ultimo = a
     c.data = x.dataDocumento

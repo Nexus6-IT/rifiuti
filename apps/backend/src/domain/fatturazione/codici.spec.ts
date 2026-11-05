@@ -2,8 +2,10 @@ import {
   AVVISI_DOCUMENTO,
   ERRORI_DOCUMENTO,
   ERRORI_GENERALI,
+  ERRORI_NUMERAZIONE,
   MESSAGGI_AVVISO,
   MESSAGGI_ERRORE,
+  MESSAGGI_NUMERAZIONE,
   RAGGRUPPAMENTI,
   STATI_DOCUMENTO,
   STATI_ELABORAZIONE,
@@ -105,6 +107,16 @@ describe('insiemi chiusi della fatturazione', () => {
 
   it('il tetto della definitiva e 500', () => {
     expect(TETTO_DOCUMENTI_DEFINITIVA).toBe(500)
+  })
+})
+
+describe('numerazione', () => {
+  it('gli errori HTTP della numerazione sono un insieme chiuso con messaggio italiano', () => {
+    expect(ERRORI_NUMERAZIONE).toEqual(['PARTENZA_NON_VALIDA'])
+    for (const c of ERRORI_NUMERAZIONE)
+      expect(MESSAGGI_NUMERAZIONE[c].trim().length).toBeGreaterThan(0)
+    const altri: string[] = [...ERRORI_GENERALI, ...ERRORI_DOCUMENTO, ...AVVISI_DOCUMENTO]
+    for (const c of ERRORI_NUMERAZIONE) expect(altri).not.toContain(c)
   })
 })
 

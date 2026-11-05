@@ -263,7 +263,9 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
     ]
     for (const c of casi) {
       const err = await riserva(tenantId, [c]).catch(e => e)
-      expect(err.getStatus?.()).toBe(400)
+      // Difetto di chi chiama: errore interno senza codice HTTP.
+      expect(err).toBeInstanceOf(Error)
+      expect(err.getStatus).toBeUndefined()
     }
     expect(await riga(tenantId, registroId)).toBeNull()
   })
@@ -770,6 +772,7 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
       await prova(1, '2026-02-30'),
     ]) {
       expect(e.getStatus?.()).toBe(400)
+      expect(e.getResponse()).toMatchObject({ error: 'PARTENZA_NON_VALIDA' })
     }
     expect(await riga(tenantId, registroId)).toBeNull()
   })
