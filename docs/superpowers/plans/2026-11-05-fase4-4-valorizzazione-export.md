@@ -639,8 +639,12 @@ Da portare nei brief dei task indicati. Il primo è vincolante.
   `RIGA_LEGAME_INCOMPLETA` «Una riga del legame o del listino è incompleta: mancano quantità o
   prezzo»; Task 17 passa `righeFisse`, `righeQuantita`, `minimi` come sottoinsiemi di `listino`,
   riempie `categoriaCodice` e passa le date `AAAA-MM-GG`.
-- **Task 18/19, suffisso e documenti dell'anno prima (M2):** da decidere con Graziano prima del
-  Task 19.
+- **Task 18/19, suffisso e documenti dell'anno prima (M2, decisione 20):** per una coppia che ha
+  già definitivi il suffisso è quello dell'ultimo definitivo della coppia; test con cambio di
+  suffisso a gennaio e documento datato dicembre.
+- **Task 17, `F` senza prezzo (decisione 21):** `RIGA_LEGAME_INCOMPLETA` solo se nel periodo la `F`
+  produrrebbe una riga (controllo dopo `scadenzeNelPeriodo`); test con `F` senza prezzo e senza
+  scadenze nel periodo: nessun errore.
 - **Task 19/20:** ordine `BOZZA` → figlie → `DEFINITIVO`; annullo = `rilasciaUltimo` sul
   `DEFINITIVO` non emesso, poi `ANNULLATO`, nella stessa transazione.
 - **4.4b, uso:** sorgente `documenti_fattura.elenco_id` in `COLONNE_ELENCO` di `uso-listino.ts`
