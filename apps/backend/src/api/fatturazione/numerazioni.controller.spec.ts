@@ -98,7 +98,7 @@ describe('NumerazioniController', () => {
 
     it('GET senza azienda selezionata: rifiutato', async () => {
       const r = await http().get(R).set('x-senza-azienda', '1')
-      expect(r.status).toBeGreaterThanOrEqual(400)
+      expect(r.status).toBe(403)
       expect(servizio.elenco).not.toHaveBeenCalled()
     })
 
@@ -153,6 +153,8 @@ describe('NumerazioniController', () => {
       [{ ...base, dataPartenza: '28/02/2026' }],
       [{ ...base, versione: -1 }],
       [{ numeroPartenza: 1, dataPartenza: null }],
+      [{ numeroPartenza: 1, versione: 0 }],
+      [{ ...base, dataPartenza: undefined }],
       [{ ...base, altro: 1 }],
     ])('PUT con corpo non valido %j: 400', async corpo => {
       expect((await http().put(`${R}/${REGISTRO}/2026`).send(corpo)).status).toBe(400)

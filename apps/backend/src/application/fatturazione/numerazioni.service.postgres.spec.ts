@@ -295,27 +295,34 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
     expect(esiti[1].map(e => e.registroIvaId)).toEqual([y, x])
   })
 
-  it('due transazioni sulla stessa coppia: la seconda aspetta (Lock) e riceve i numeri dopo la prima', async () => {
-    const { tenantId, registroId } = await azienda()
-    const prima = riservaAperta(tenantId, [richiesta(registroId, 3)])
-    await prima.tenuta
-    let rilasciata = false
-    const seconda = riserva(tenantId, [richiesta(registroId, 2)]).then(r => {
-      expect(rilasciata).toBe(true) // non puo' finire prima del commit della prima
-      return r
-    })
-    try {
-      await finche(1)
-    } finally {
-      rilasciata = true
-      prima.rilascia()
+  it.each([
+    ["riga nuova: attesa sull'INSERT", false],
+    ['riga esistente: attesa sul FOR UPDATE', true],
+  ])(
+    'due transazioni sulla stessa coppia (%s): la seconda aspetta (Lock) e riceve i numeri dopo la prima',
+    async (_nome, esistente) => {
+      const { tenantId, registroId } = await azienda()
+      if (esistente) await partenza(tenantId, registroId, 0, null)
+      const prima = riservaAperta(tenantId, [richiesta(registroId, 3)])
+      await prima.tenuta
+      let rilasciata = false
+      const seconda = riserva(tenantId, [richiesta(registroId, 2)]).then(r => {
+        expect(rilasciata).toBe(true) // non puo' finire prima del commit della prima
+        return r
+      })
+      try {
+        await finche(1)
+      } finally {
+        rilasciata = true
+        prima.rilascia()
+      }
+      const [r1] = await prima.esito
+      const [r2] = await seconda
+      expect([r1.da, r1.a]).toEqual([1, 3])
+      expect([r2.da, r2.a]).toEqual([4, 5])
+      expect((await riga(tenantId, registroId))!.ultimo_numero).toBe(5)
     }
-    const [r1] = await prima.esito
-    const [r2] = await seconda
-    expect([r1.da, r1.a]).toEqual([1, 3])
-    expect([r2.da, r2.a]).toEqual([4, 5])
-    expect((await riga(tenantId, registroId))!.ultimo_numero).toBe(5)
-  })
+  )
 
   it('8 riserve in parallelo su 8 tenant: nessuna attesa reciproca', async () => {
     const aziende = []
@@ -512,6 +519,46 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
     expect((await riga(tenantId, registroId))!.ultimo_numero).toBe(2)
   })
 
+  it("rilasciaUltimo di un ANNULLATO il cui numero e' stato riassegnato: 409, contatore invariato", async () => {
+    const { tenantId, registroId } = await azienda()
+    await riserva(tenantId, [richiesta(registroId, 1, '2026-03-10')])
+    const x = await definitivo(tenantId, registroId, 1, '2026-03-10')
+    // Flusso dell'annullo: rilascio mentre e' DEFINITIVO, poi ANNULLATO.
+    await rilascia(tenantId, {
+      registroIvaId: registroId,
+      anno: 2026,
+      numero: 1,
+      documentoId: x.documentoId,
+    })
+    await owner.$executeRawUnsafe(
+      `UPDATE documenti_fattura SET stato = 'ANNULLATO', motivo_annullo = 'Prova', annullato_il = now(),
+         updated_at = now() WHERE id = $1::uuid`,
+      x.documentoId
+    )
+    // Il numero 1 torna libero e va a un nuovo definitivo.
+    const [r] = await riserva(tenantId, [richiesta(registroId, 1, '2026-03-12')])
+    expect(r.da).toBe(1)
+    await definitivo(tenantId, registroId, 1, '2026-03-12')
+    const prima = await riga(tenantId, registroId)
+    expect(prima!.ultimo_numero).toBe(1)
+    // Un retry sbagliato sul vecchio annullato non rompe la serie.
+    const err = await rilascia(tenantId, {
+      registroIvaId: registroId,
+      anno: 2026,
+      numero: 1,
+      documentoId: x.documentoId,
+    }).catch(e => e)
+    expect(err).toBeInstanceOf(ConflictException)
+    expect(err.getResponse()).toMatchObject({ error: 'ANNULLO_NON_AMMESSO' })
+    expect(await riga(tenantId, registroId)).toEqual(prima)
+  })
+
+  it('un id registro in maiuscolo funziona come in minuscolo', async () => {
+    const { tenantId, registroId } = await azienda()
+    const [r] = await riserva(tenantId, [richiesta(registroId.toUpperCase(), 2)])
+    expect([r.da, r.a, r.registroIvaId]).toEqual([1, 2, registroId])
+  })
+
   // --- elenco e numero di partenza ---------------------------------------------------------------
 
   const elenco = (t: string, anno = 2026) => nel(t, () => service.elenco(t, anno))
@@ -642,51 +689,72 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
     }
   )
 
-  it('PUT della partenza contro una riserva aperta: aspetta il commit e risponde 409 se la riserva ha scritto un DEFINITIVO', async () => {
-    const { tenantId, utenteId, registroId } = await azienda()
-    const aperta = riservaAperta(tenantId, [richiesta(registroId, 1)])
-    await aperta.tenuta
-    const put = imposta(tenantId, utenteId, registroId, {
-      numeroPartenza: 50,
-      dataPartenza: null,
-      versione: 0,
-    }).catch(e => e)
-    try {
-      await finche(1)
-      // La riserva "diventa" una definitiva: il documento col numero 1 compare prima del commit.
-      await definitivo(tenantId, registroId, 1, '2026-03-15')
-    } finally {
-      aperta.rilascia()
+  it.each([
+    ['riga nuova', false],
+    ['riga esistente (attesa sul FOR UPDATE)', true],
+  ])(
+    'PUT della partenza contro una riserva aperta (%s): aspetta il commit e risponde 409 se la riserva ha scritto un DEFINITIVO',
+    async (_nome, esistente) => {
+      const { tenantId, utenteId, registroId } = await azienda()
+      if (esistente) await partenza(tenantId, registroId, 0, null)
+      const aperta = riservaAperta(tenantId, [richiesta(registroId, 1)])
+      await aperta.tenuta
+      const put = imposta(tenantId, utenteId, registroId, {
+        numeroPartenza: 50,
+        dataPartenza: null,
+        versione: esistente ? 1 : 0,
+      }).catch(e => e)
+      try {
+        await finche(1)
+        // La riserva "diventa" una definitiva: il documento col numero 1 compare prima del commit.
+        await definitivo(tenantId, registroId, 1, '2026-03-15')
+      } finally {
+        aperta.rilascia()
+      }
+      await aperta.esito
+      const err = await put
+      expect(err).toBeInstanceOf(ConflictException)
+      expect(err.getResponse()).toMatchObject({ error: 'PARTENZA_NON_MODIFICABILE' })
+      expect(await riga(tenantId, registroId)).toMatchObject({
+        ultimo_numero: 1,
+        numero_partenza: 0,
+      })
     }
-    await aperta.esito
-    const err = await put
-    expect(err).toBeInstanceOf(ConflictException)
-    expect(err.getResponse()).toMatchObject({ error: 'PARTENZA_NON_MODIFICABILE' })
-    expect(await riga(tenantId, registroId)).toMatchObject({ ultimo_numero: 1, numero_partenza: 0 })
-  })
+  )
 
-  it('PUT della partenza contro una riserva aperta poi annullata (rollback): 200', async () => {
-    const { tenantId, utenteId, registroId } = await azienda()
-    const aperta = riservaAperta(tenantId, [richiesta(registroId, 1)], true)
-    await aperta.tenuta
-    const put = imposta(tenantId, utenteId, registroId, {
-      numeroPartenza: 50,
-      dataPartenza: '2026-01-31',
-      versione: 0,
-    }).catch(e => e)
-    try {
-      await finche(1)
-    } finally {
-      aperta.rilascia()
+  it.each([
+    ['riga nuova', false],
+    ['riga esistente (attesa sul FOR UPDATE)', true],
+  ])(
+    'PUT della partenza contro una riserva aperta poi annullata (rollback, %s): 200',
+    async (_nome, esistente) => {
+      const { tenantId, utenteId, registroId } = await azienda()
+      if (esistente) await partenza(tenantId, registroId, 0, null)
+      const aperta = riservaAperta(tenantId, [richiesta(registroId, 1)], true)
+      await aperta.tenuta
+      const put = imposta(tenantId, utenteId, registroId, {
+        numeroPartenza: 50,
+        dataPartenza: '2026-01-31',
+        versione: esistente ? 1 : 0,
+      }).catch(e => e)
+      try {
+        await finche(1)
+      } finally {
+        aperta.rilascia()
+      }
+      await expect(aperta.esito).rejects.toThrow('rollback voluto')
+      const v = await put
+      expect(v).toMatchObject({
+        ultimoNumero: 50,
+        numeroPartenza: 50,
+        versione: esistente ? 2 : 1,
+      })
+      expect(await riga(tenantId, registroId)).toMatchObject({
+        ultimo_numero: 50,
+        ultima_data: '2026-01-31',
+      })
     }
-    await expect(aperta.esito).rejects.toThrow('rollback voluto')
-    const v = await put
-    expect(v).toMatchObject({ ultimoNumero: 50, numeroPartenza: 50, versione: 1 })
-    expect(await riga(tenantId, registroId)).toMatchObject({
-      ultimo_numero: 50,
-      ultima_data: '2026-01-31',
-    })
-  })
+  )
 
   it('PUT non valido: numero negativo o non intero, data fuori anno o inesistente → 400', async () => {
     const { tenantId, utenteId, registroId } = await azienda()
@@ -716,5 +784,35 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
     }).catch(e => e)
     expect(err.getStatus?.()).toBe(404)
     expect(await riga(b.tenantId, b.registroId)).toBeNull()
+  })
+
+  it('PUT con dataPartenza futura (oltre oggi): 400 DATA_FUTURA, nulla scritto', async () => {
+    const { tenantId, utenteId, registroId } = await azienda()
+    const err = await imposta(
+      tenantId,
+      utenteId,
+      registroId,
+      { numeroPartenza: 1, dataPartenza: '2100-01-01', versione: 0 },
+      2100
+    ).catch(e => e)
+    expect(err.getStatus?.()).toBe(400)
+    expect(err.getResponse()).toMatchObject({ error: 'DATA_FUTURA' })
+    expect(await riga(tenantId, registroId, 2100)).toBeNull()
+  })
+
+  it('PUT invariato su una coppia senza riga: non lascia nessuna riga e risponde versione 0', async () => {
+    const { tenantId, utenteId, registroId } = await azienda()
+    const v = await imposta(tenantId, utenteId, registroId, {
+      numeroPartenza: 0,
+      dataPartenza: null,
+      versione: 0,
+    })
+    expect(v).toMatchObject({ numeroPartenza: 0, ultimoNumero: 0, versione: 0 })
+    expect(await riga(tenantId, registroId)).toBeNull()
+    expect(
+      await owner.activityLog.count({
+        where: { tenantId, action: 'NUMERAZIONE_FATTURA_PARTENZA_IMPOSTATA' },
+      })
+    ).toBe(0)
   })
 })

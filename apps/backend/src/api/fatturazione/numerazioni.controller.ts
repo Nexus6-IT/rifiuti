@@ -5,6 +5,7 @@
  */
 import { Body, Controller, Get, Param, Put, Query, Req, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+import { oggiRoma } from '../../application/fatturazione/numerazione'
 import { NumerazioniService } from '../../application/fatturazione/numerazioni.service'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -17,14 +18,8 @@ import {
 } from './dto/numerazione.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA } from './ruoli'
 
-/** Anno corrente nel fuso italiano (a cavallo di mezzanotte l'UTC darebbe quello vecchio). */
-function annoCorrente(): number {
-  return Number(
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome', year: 'numeric' }).format(
-      new Date()
-    )
-  )
-}
+/** Anno corrente nel fuso italiano. */
+const annoCorrente = (): number => Number(oggiRoma().slice(0, 4))
 
 @ApiTags('fatturazione')
 @ApiBearerAuth()
@@ -60,7 +55,7 @@ export class NumerazioniController {
       p.anno,
       {
         numeroPartenza: dto.numeroPartenza,
-        dataPartenza: dto.dataPartenza ?? null,
+        dataPartenza: dto.dataPartenza,
         versione: dto.versione,
       }
     )

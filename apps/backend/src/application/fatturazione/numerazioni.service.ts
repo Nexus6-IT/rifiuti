@@ -11,7 +11,7 @@ import { nonTrovato } from '../clienti/registri-iva.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { eDataIso, validaAnno } from './numerazione'
+import { eDataIso, oggiRoma, validaAnno } from './numerazione'
 
 export interface NumerazioneVista {
   registroIvaId: string
@@ -78,6 +78,12 @@ export class NumerazioniService {
       throw new BadRequestException({
         error: 'DATA_PARTENZA_NON_VALIDA',
         message: "La data di partenza non è valida o non appartiene all'anno della numerazione.",
+      })
+    }
+    if (dati.dataPartenza !== null && dati.dataPartenza > oggiRoma()) {
+      throw new BadRequestException({
+        error: 'DATA_FUTURA',
+        message: 'La data di partenza non può essere successiva a oggi.',
       })
     }
     return nelContestoTenant(tenantId, () =>
@@ -147,7 +153,14 @@ export class NumerazioniService {
             riga.ultimoNumero === dati.numeroPartenza &&
             riga.dataPartenza === dati.dataPartenza &&
             riga.ultimaData === dati.dataPartenza
-          if (!invariata) {
+          if (invariata && creata === 1) {
+            // Niente da scrivere e la riga l'ho creata io: non lascio una riga vuota (con versione
+            // 1) che farebbe rispondere VERSIONE_SUPERATA a un secondo client fermo a 0.
+            await tx.$executeRaw`
+              DELETE FROM "numerazioni_fattura"
+              WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${registroIvaId}::uuid
+                AND anno = ${anno}::int`
+          } else if (!invariata) {
             await tx.$executeRaw`
               UPDATE "numerazioni_fattura"
               SET numero_partenza = ${dati.numeroPartenza}::int,

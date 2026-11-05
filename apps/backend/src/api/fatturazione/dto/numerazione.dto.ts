@@ -5,7 +5,16 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsInt, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator'
+import {
+  IsDefined,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Matches,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator'
 
 export class ElencoNumerazioniQueryDto {
   @ApiPropertyOptional({ example: 2026, description: "Anno; omesso: l'anno corrente" })
@@ -36,8 +45,9 @@ export class ImpostaPartenzaDto {
   numeroPartenza: number
 
   @ApiProperty({ type: String, nullable: true, example: '2026-03-31' })
+  @IsDefined({ message: 'dataPartenza: obbligatoria (una data o null)' })
+  @ValidateIf(o => o.dataPartenza !== null)
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dataPartenza: data nel formato AAAA-MM-GG' })
-  @IsOptional()
   dataPartenza: string | null
 
   @ApiProperty({ example: 0, description: '0 se la numerazione non esiste ancora' })

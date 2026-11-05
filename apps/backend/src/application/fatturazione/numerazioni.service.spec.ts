@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import { eDataIso, numeroTesto, riservaNumeri, validaAnno } from './numerazione'
 import { NumerazioniService } from './numerazioni.service'
 
@@ -55,7 +56,7 @@ describe('NumerazioniService (validazioni)', () => {
   const service = new NumerazioniService(prisma)
 
   it('elenco con anno fuori intervallo: 400', () => {
-    expect(() => service.elenco('t', 1900)).toThrow()
+    expect(() => service.elenco('t', 1900)).toThrow(BadRequestException)
   })
 
   it.each([
@@ -64,9 +65,10 @@ describe('NumerazioniService (validazioni)', () => {
     [100_000_000, null],
     [1, '2025-12-31'],
     [1, '2026-02-30'],
+    [1, '2100-01-01'],
   ])('impostaPartenza(%j, %j): 400 senza aprire la transazione', async (numeroPartenza, data) => {
     await expect(
-      service.impostaPartenza('t', 'u', 'r', 2026, {
+      service.impostaPartenza('t', 'u', 'r', data === '2100-01-01' ? 2100 : 2026, {
         numeroPartenza,
         dataPartenza: data,
         versione: 0,

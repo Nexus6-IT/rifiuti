@@ -169,7 +169,7 @@ export function dataItaliana(iso: string | null): string {
           locale="it-IT"
           mode="decimal"
           [min]="0"
-          [max]="999999999"
+          [max]="99999999"
           [maxFractionDigits]="0"
           styleClass="w-full"
           data-testid="partenza-numero"
@@ -185,13 +185,17 @@ export function dataItaliana(iso: string | null): string {
           [showIcon]="true"
           [showClear]="true"
           dateFormat="dd/mm/yy"
-          [maxDate]="fineGiorno()"
+          [minDate]="minDataPartenza()"
+          [maxDate]="maxDataPartenza()"
           (onShow)="aggiornaFineGiorno()"
           (onFocus)="aggiornaFineGiorno()"
           inputId="num-data"
           styleClass="w-full"
           data-testid="partenza-data"
         ></p-calendar>
+        <small *ngIf="annoFuturo()" class="nota-pagina" data-testid="partenza-data-anno-futuro"
+          >Per un anno futuro lascia la data vuota.</small
+        >
       </div>
       <p
         *ngIf="erroreDialogo() as e"
@@ -263,6 +267,16 @@ export class NumerazioneSchedaComponent implements OnInit {
   readonly fineGiorno = signal<Date>(fineGiornoDiOggi())
   numeroPartenza: number | null = null
   dataPartenza: Date | null = null
+
+  /** Primo giorno dell'anno della coppia in modifica (la data di partenza sta nell'anno). */
+  readonly minDataPartenza = (): Date => new Date(this.modificando()?.anno ?? this.anno(), 0, 1)
+  /** Il minore fra la fine di oggi e il 31 dicembre dell'anno della coppia. */
+  readonly maxDataPartenza = (): Date => {
+    const fineAnno = new Date(this.modificando()?.anno ?? this.anno(), 11, 31, 23, 59, 59, 999)
+    const oggi = this.fineGiorno()
+    return oggi.getTime() < fineAnno.getTime() ? oggi : fineAnno
+  }
+  readonly annoFuturo = (): boolean => this.maxDataPartenza() < this.minDataPartenza()
 
   readonly puoModificare = () => puoImpostareFatturazione(this.auth.currentUser()?.role)
 

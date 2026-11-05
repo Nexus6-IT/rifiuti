@@ -133,6 +133,42 @@ describe('NumerazioneSchedaComponent', () => {
     expect(cal.maxDate!.getTime()).toBe(new Date(2026, 10, 7, 23, 59, 59, 999).getTime())
   })
 
+  it("data di partenza dal template: il calendario sta nell'anno della coppia", async () => {
+    jasmine.clock().install()
+    jasmine.clock().mockDate(new Date(2026, 10, 5, 8, 0, 0))
+    // Anno passato: da 1 gennaio a 31 dicembre di quell'anno.
+    await crea('ADMIN', [riga({ anno: 2025 })])
+    let cal = await apri()
+    expect(cal.minDate!.getTime()).toBe(new Date(2025, 0, 1).getTime())
+    expect(cal.maxDate!.getTime()).toBe(new Date(2025, 11, 31, 23, 59, 59, 999).getTime())
+    expect(q('partenza-data-anno-futuro')).toBeNull()
+    bottone('partenza-annulla')!.click()
+    await stabilizza(fixture)
+    fixture.destroy()
+    TestBed.resetTestingModule()
+    // Anno corrente: il tetto e' la fine di oggi.
+    await crea('ADMIN', [riga({ anno: 2026 })])
+    cal = await apri()
+    expect(cal.minDate!.getTime()).toBe(new Date(2026, 0, 1).getTime())
+    expect(cal.maxDate!.getTime()).toBe(new Date(2026, 10, 5, 23, 59, 59, 999).getTime())
+    bottone('partenza-annulla')!.click()
+    await stabilizza(fixture)
+    fixture.destroy()
+    TestBed.resetTestingModule()
+    // Anno futuro: nessuna data selezionabile e un avviso.
+    await crea('ADMIN', [riga({ anno: 2027 })])
+    cal = await apri()
+    expect(cal.minDate!.getTime()).toBe(new Date(2027, 0, 1).getTime())
+    expect(cal.maxDate!.getTime()).toBeLessThan(cal.minDate!.getTime())
+    expect(q('partenza-data-anno-futuro')).not.toBeNull()
+  })
+
+  it('il numero di partenza ammette al massimo 99999999 (come il backend)', async () => {
+    await crea('ADMIN', [riga({})])
+    await apri()
+    expect(campoNumero().max).toBe(99999999)
+  })
+
   it('la riapertura del dialog ricalcola la fine del giorno', async () => {
     jasmine.clock().install()
     jasmine.clock().mockDate(new Date(2026, 10, 5, 8, 0, 0))

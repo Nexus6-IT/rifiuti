@@ -44,8 +44,19 @@ const INT4_MAX = 2_147_483_647
 const ANNO_MIN = 2000
 const ANNO_MAX = 2100
 
+/** Gli id sono confrontati in minuscolo: il database li restituisce cosi', il chiamante no. */
 export const chiaveNumerazione = (registroIvaId: string, anno: number): string =>
-  `${registroIvaId}:${anno}`
+  `${registroIvaId.toLowerCase()}:${anno}`
+
+/** `AAAA-MM-GG` di oggi nel fuso italiano (a cavallo di mezzanotte l'UTC darebbe il giorno prima). */
+export function oggiRoma(adesso: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Rome',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(adesso)
+}
 
 /** `15` con suffisso `/A` diventa `15/A`; senza suffisso resta `15`. */
 export function numeroTesto(numero: number, suffisso: string | null): string {
@@ -77,7 +88,7 @@ function coppieOrdinate(coppie: readonly CoppiaNumerazione[]): CoppiaNumerazione
   for (const c of coppie) {
     validaAnno(c.anno)
     viste.set(chiaveNumerazione(c.registroIvaId, c.anno), {
-      registroIvaId: c.registroIvaId,
+      registroIvaId: c.registroIvaId.toLowerCase(),
       anno: c.anno,
     })
   }
@@ -193,7 +204,7 @@ export async function riservaNumeri(
 
   const stato = await bloccaNumerazioni(tx, tenantId, r)
 
-  const idRegistri = [...new Set(r.map(x => x.registroIvaId))]
+  const idRegistri = [...new Set(r.map(x => x.registroIvaId.toLowerCase()))]
   const suffissi = await tx.$queryRaw<{ id: string; suffisso: string | null }[]>`
     SELECT id::text AS id, suffisso_numero AS suffisso FROM "registri_iva"
     WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${idRegistri}::uuid[])`
@@ -224,11 +235,11 @@ export async function riservaNumeri(
     c.ultimo = a
     c.data = x.dataDocumento
     riservati.push({
-      registroIvaId: x.registroIvaId,
+      registroIvaId: x.registroIvaId.toLowerCase(),
       anno: x.anno,
       da,
       a,
-      suffisso: suffissoDi.get(x.registroIvaId) ?? null,
+      suffisso: suffissoDi.get(x.registroIvaId.toLowerCase()) ?? null,
     })
   }
 
@@ -255,10 +266,16 @@ export async function riservaNumeri(
 
 /**
  * Annullo dell'ultimo numero (decisione 3, §5.5): restituisce `numero` alla serie. Ammesso solo se
- * `numero` e' l'`ultimo_numero` della coppia e il documento e' quello che lo porta, non e' una
- * nota di credito (decisione 18) e non e' stato emesso. La coppia e il documento si bloccano in
- * quest'ordine (numerazione, poi documento), come l'annullo. `ultima_data` torna alla data del
- * definitivo precedente della coppia o, se non ce ne sono, alla data di partenza (P1).
+ * `numero` e' l'`ultimo_numero` della coppia e il documento e' un `DEFINITIVO` che porta quel
+ * numero, non e' una nota di credito (decisione 18) e non e' stato emesso. Un documento
+ * `ANNULLATO` e' rifiutato (409 `ANNULLO_NON_AMMESSO`): il suo numero puo' essere gia' stato
+ * riassegnato a un altro definitivo, e rilasciarlo romperebbe la serie.
+ *
+ * Uso previsto (Task 19/20): l'annullo chiama questa funzione NELLA STESSA transazione, mentre il
+ * documento e' ancora `DEFINITIVO`, e subito dopo lo porta ad `ANNULLATO`. La coppia e il
+ * documento si bloccano in quest'ordine (numerazione, poi documento), come l'annullo. `ultima_data`
+ * torna alla data del definitivo precedente della coppia o, se non ce ne sono, alla data di
+ * partenza (P1).
  */
 export async function rilasciaUltimo(
   tx: Prisma.TransactionClient,
@@ -294,11 +311,7 @@ export async function rilasciaUltimo(
     WHERE tenant_id = ${tenantId}::uuid AND id = ${c.documentoId}::uuid
       AND registro_iva_id = ${c.registroIvaId}::uuid AND anno = ${c.anno}::int
     FOR UPDATE`
-  if (
-    !doc ||
-    doc.numero !== c.numero ||
-    (doc.stato !== 'DEFINITIVO' && doc.stato !== 'ANNULLATO')
-  ) {
+  if (!doc || doc.numero !== c.numero || doc.stato !== 'DEFINITIVO') {
     throw annulloNonAmmesso("Il documento non è l'ultimo numero emesso della serie.")
   }
   if (doc.tipo === 'TD04') {
