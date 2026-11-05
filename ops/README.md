@@ -289,6 +289,14 @@ build del proprio unico. Il `lock_timeout` di 5 s copre solo l'acquisizione, non
 poche migliaia di legami sono frazioni di secondo; con tabelle grandi si sceglie una finestra a
 basso traffico.
 
+Fino al commit restano in ACCESS EXCLUSIVE anche `impostazioni_fatturazione`, `spese_accessorie` e
+`registri_iva` (colonne nuove). Le FK nuove prendono SHARE ROW EXCLUSIVE su `tenants`, `clienti`,
+`contratti_cliente`, `elenchi_addebiti`, `righe_addebito` e `codici_iva`. La registrazione di un
+movimento legge `impostazioni_fatturazione` `FOR SHARE` (aggancio del legame): con il backend vecchio
+acceso aspetta per tutta la migration, poi il tetto di 2 s e il SAVEPOINT lasciano il legame
+`DA_RIALLINEARE` e la registrazione riesce. Meglio quindi lanciare la migration quando non si
+registrano movimenti.
+
 Se da' un numero diverso da zero il `VALIDATE` fallisce nominando il vincolo e la migration si ferma
 (P3009, vedi sotto): nessuna modifica resta applicata. Poi un backup:
 

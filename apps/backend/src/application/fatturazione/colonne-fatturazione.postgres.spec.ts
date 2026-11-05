@@ -671,7 +671,7 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
         expect(codiceErrore(e)).toBe('CLIENTE_CON_CONTRATTI')
       })
 
-      it('cliente solo intestatario della fattura, senza contratti propri: CLIENTE_CON_CONTRATTI', async () => {
+      it('cliente solo intestatario della fattura, senza contratti propri: CLIENTE_USATO_DA_FATTURE', async () => {
         const { a, documentoId } = await conDocumento()
         const intestatario = (await creaDittaConRuolo(owner, a.tenantId, 'CLIENTE')).ruoloId
         await owner.$executeRawUnsafe(

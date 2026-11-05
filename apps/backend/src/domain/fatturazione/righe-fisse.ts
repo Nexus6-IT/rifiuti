@@ -65,7 +65,8 @@ function sovrapposti(chiave: string, p: { dal: string; al: string }): boolean {
 
 /**
  * Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. «riga n» nei
- * dettagli = posizione da 1 nell'array `righe` in ingresso. Una riga senza prezzo dà
+ * dettagli = posizione da 1 nel listino del documento, passata da `calcolaDocumento` con
+ * `numeroRiga` (senza, posizione nell'array `righe`: solo per i test). Una riga senza prezzo dà
  * RIGA_LEGAME_INCOMPLETA.
  */
 export function righeFisse(i: {

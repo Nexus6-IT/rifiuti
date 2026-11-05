@@ -10,9 +10,9 @@ import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
 /**
  * Righe `TT` e `TF` a prezzo singolo (decisione 17): peso dei movimenti in kg (una volta per
  * legame). Ogni altra riga in ingresso è ignorata (la segnala il Task 5).
- * Nei dettagli degli errori «riga n» è la posizione a partire da 1 della riga nell'array `righe`
- * in ingresso (stessa convenzione di `righeDaLegami`, nell'ordine del chiamante). Una riga senza
- * prezzo dà RIGA_LEGAME_INCOMPLETA.
+ * Nei dettagli degli errori «riga n» è la posizione a partire da 1 della riga nel listino del
+ * documento: `calcolaDocumento` la passa con `numeroRiga`. Senza `numeroRiga` vale la posizione
+ * nell'array `righe` (solo per i test). Una riga senza prezzo dà RIGA_LEGAME_INCOMPLETA.
  */
 export function righeQuantitaMovimenti(i: {
   righe: readonly RigaListinoDaFatturare[]
