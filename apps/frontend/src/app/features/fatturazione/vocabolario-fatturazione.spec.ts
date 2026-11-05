@@ -86,6 +86,8 @@ describe('vocabolario della fatturazione', () => {
       'DATA_FUTURA',
       'CONFERMA_EMISSIONE_RICHIESTA',
       'ADATTATORE_SCONOSCIUTO',
+      'PARTENZA_NON_VALIDA',
+      'RIGA_ADDEBITO_IN_USO',
     ]
     expect(Object.keys(ERRORI_HTTP_VOCI).sort()).toEqual([...attesi].sort())
     tutteCompilate(ERRORI_HTTP_VOCI)

@@ -190,6 +190,8 @@ export interface DocumentoDettaglio extends DocumentoRiga {
 
 export interface ScostamentoRiga {
   legameId: string
+  /** Versione del legame: serve alla presa d'atto. */
+  versioneLegame: number
   documento: { id: string; numeroTesto: string; dataDocumento: string }
   tipoCorrezione: 'RETTIFICA' | 'ANNULLO' | 'CAMBIO_CER' | 'CAMBIO_CAUSALE'
   quantitaFatturata: string | null
@@ -307,6 +309,7 @@ export const CHIAVI_RIGA_DOCUMENTO: Record<keyof RigaDocumentoVista, true> = {
 
 export const CHIAVI_SCOSTAMENTO_RIGA: Record<keyof ScostamentoRiga, true> = {
   legameId: true,
+  versioneLegame: true,
   documento: true,
   tipoCorrezione: true,
   quantitaFatturata: true,

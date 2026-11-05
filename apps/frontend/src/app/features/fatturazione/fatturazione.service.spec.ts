@@ -34,6 +34,25 @@ describe('FatturazioneService', () => {
     req.flush({})
   })
 
+  it('avvia: filtri e flag passano intatti, risposta { id }', () => {
+    const dati: NuovaElaborazione = {
+      periodoDal: '2026-01-01',
+      periodoAl: '2026-01-31',
+      dataDocumento: '2026-02-03',
+      raggruppamento: 'PER_ELENCO',
+      includiArretrati: true,
+      filtri: { clienteIds: ['c1', 'c2'], contrattoIds: ['k1'], registroIvaIds: ['r1'] },
+    }
+    let esito: { id: string } | undefined
+    servizio.avvia(dati).subscribe(r => (esito = r))
+    const req = http.expectOne(elab)
+    expect(req.request.body.includiArretrati).toBeTrue()
+    expect(req.request.body.raggruppamento).toBe('PER_ELENCO')
+    expect(req.request.body.filtri.clienteIds).toEqual(['c1', 'c2'])
+    req.flush({ id: 'e9' })
+    expect(esito).toEqual({ id: 'e9' })
+  })
+
   it('lista: GET con stato, pagina e dimensione 50 di default', () => {
     servizio.lista({ stato: 'ANTEPRIMA_PRONTA' }).subscribe()
     const req = http.expectOne(r => r.url === elab)
@@ -52,6 +71,14 @@ describe('FatturazioneService', () => {
     req.flush({})
   })
 
+  it('dimensione o pagina non finite: valori predefiniti', () => {
+    servizio.lista({ dimensione: NaN, pagina: Infinity }).subscribe()
+    const req = http.expectOne(r => r.url === elab)
+    expect(req.request.params.get('dimensione')).toBe('50')
+    expect(req.request.params.get('pagina')).toBe('1')
+    req.flush({})
+  })
+
   it('dimensione 0 o negativa: il servizio manda 1', () => {
     servizio.documenti({ dimensione: -5 }).subscribe()
     const req = http.expectOne(r => r.url === doc)
@@ -67,33 +94,40 @@ describe('FatturazioneService', () => {
   })
 
   it('documentiElaborazione: GET /:id/documenti paginato', () => {
-    servizio.documentiElaborazione('e1', { pagina: 2, dimensione: 25 }).subscribe()
+    servizio.documentiElaborazione('e1', { pagina: 2, dimensione: 25, conErrori: true }).subscribe()
     const req = http.expectOne(r => r.url === `${elab}/e1/documenti`)
     expect(req.request.method).toBe('GET')
     expect(req.request.params.get('pagina')).toBe('2')
     expect(req.request.params.get('dimensione')).toBe('25')
+    expect(req.request.params.get('conErrori')).toBe('true')
     req.flush({})
   })
 
-  it('ricalcola e scarta: POST senza dati', () => {
-    servizio.ricalcola('e1').subscribe()
+  it('ricalcola e scarta: POST con la versione, risposta { id }', () => {
+    let esito: { id: string } | undefined
+    servizio.ricalcola('e1', 3).subscribe(r => (esito = r))
     const r1 = http.expectOne(`${elab}/e1/ricalcola`)
     expect(r1.request.method).toBe('POST')
-    r1.flush({})
-    servizio.scarta('e1').subscribe()
+    expect(r1.request.body).toEqual({ versione: 3 })
+    r1.flush({ id: 'e1' })
+    expect(esito).toEqual({ id: 'e1' })
+    servizio.scarta('e1', 5).subscribe()
     const r2 = http.expectOne(`${elab}/e1/scarta`)
     expect(r2.request.method).toBe('POST')
-    r2.flush({})
+    expect(r2.request.body).toEqual({ versione: 5 })
+    r2.flush({ id: 'e1' })
   })
 
   it('escludi e riammetti: POST /:id/documenti/:docId/…', () => {
     servizio.escludi('e1', 'd1').subscribe()
     const r1 = http.expectOne(`${elab}/e1/documenti/d1/escludi`)
     expect(r1.request.method).toBe('POST')
+    expect(r1.request.body).toEqual({})
     r1.flush({})
     servizio.riammetti('e1', 'd1').subscribe()
     const r2 = http.expectOne(`${elab}/e1/documenti/d1/riammetti`)
     expect(r2.request.method).toBe('POST')
+    expect(r2.request.body).toEqual({})
     r2.flush({})
   })
 
@@ -149,7 +183,7 @@ describe('FatturazioneService', () => {
   })
 
   it('storno: POST con motivo, dataDocumento e rifatturabile', () => {
-    const dati = { motivo: 'Reso', dataDocumento: '2026-11-05', rifatturabile: true }
+    const dati = { motivo: 'Reso', dataDocumento: '2026-11-05', rifatturabile: true, versione: 6 }
     servizio.storno('d1', dati).subscribe()
     const req = http.expectOne(`${doc}/d1/storno`)
     expect(req.request.method).toBe('POST')
@@ -158,9 +192,10 @@ describe('FatturazioneService', () => {
   })
 
   it('segnaEmesso: POST /:id/emesso', () => {
-    servizio.segnaEmesso('d1').subscribe()
+    servizio.segnaEmesso('d1', 4).subscribe()
     const req = http.expectOne(`${doc}/d1/emesso`)
     expect(req.request.method).toBe('POST')
+    expect(req.request.body).toEqual({ versione: 4 })
     req.flush({})
   })
 
@@ -210,19 +245,21 @@ describe('FatturazioneService', () => {
   })
 
   it('scostamenti: GET /scostamenti-fattura paginato', () => {
-    servizio.scostamenti({ pagina: 2, dimensione: 500 }).subscribe()
+    servizio.scostamenti({ pagina: 2, dimensione: 500, clienteId: 'c9' }).subscribe()
     const req = http.expectOne(r => r.url === `${api}/scostamenti-fattura`)
     expect(req.request.method).toBe('GET')
     expect(req.request.params.get('dimensione')).toBe('100')
     expect(req.request.params.get('pagina')).toBe('2')
+    expect(req.request.params.get('clienteId')).toBe('c9')
+    expect(req.request.params.has('contrattoId')).toBeFalse()
     req.flush({})
   })
 
   it('presaAtto: POST /legami-movimento/:id/presa-atto-scostamento con la nota', () => {
-    servizio.presaAtto('l1', 'Visto con il cliente').subscribe()
+    servizio.presaAtto('l1', 'Visto con il cliente', 7).subscribe()
     const req = http.expectOne(`${api}/legami-movimento/l1/presa-atto-scostamento`)
     expect(req.request.method).toBe('POST')
-    expect(req.request.body).toEqual({ nota: 'Visto con il cliente' })
+    expect(req.request.body).toEqual({ nota: 'Visto con il cliente', versione: 7 })
     req.flush(null)
   })
 })

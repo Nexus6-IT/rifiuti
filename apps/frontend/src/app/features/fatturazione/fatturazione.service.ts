@@ -24,6 +24,11 @@ export interface ParametriPagina {
   dimensione?: number
 }
 
+export interface ParametriDocumentiElaborazione extends ParametriPagina {
+  /** Solo i documenti con errori. */
+  conErrori?: boolean
+}
+
 export interface ParametriElaborazioni extends ParametriPagina {
   stato?: StatoElaborazione
 }
@@ -39,7 +44,7 @@ export interface ParametriDocumenti extends ParametriPagina {
 }
 
 export interface ParametriScostamenti extends ParametriPagina {
-  contrattoId?: string
+  clienteId?: string
 }
 
 /**
@@ -66,8 +71,8 @@ export class FatturazioneService {
   // --- Elaborazioni -------------------------------------------------------------------------
 
   /** Avvia l'anteprima (202): l'elaborazione nasce `IN_CODA`. */
-  avvia(dati: NuovaElaborazione): Observable<ElaborazioneRiga> {
-    return this.http.post<ElaborazioneRiga>(this.urlElaborazioni, dati)
+  avvia(dati: NuovaElaborazione): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(this.urlElaborazioni, dati)
   }
 
   lista(opzioni: ParametriElaborazioni = {}): Observable<Pagina<ElaborazioneRiga>> {
@@ -83,19 +88,20 @@ export class FatturazioneService {
   /** Documenti (bozze) dell'elaborazione, paginati. */
   documentiElaborazione(
     id: string,
-    opzioni: ParametriPagina = {}
+    opzioni: ParametriDocumentiElaborazione = {}
   ): Observable<Pagina<DocumentoRiga>> {
     return this.http.get<Pagina<DocumentoRiga>>(`${this.elaborazione(id)}/documenti`, {
-      params: parametri({}, opzioni),
+      params: parametri({ conErrori: opzioni.conErrori }, opzioni),
     })
   }
 
-  ricalcola(id: string): Observable<ElaborazioneRiga> {
-    return this.http.post<ElaborazioneRiga>(`${this.elaborazione(id)}/ricalcola`, {})
+  /** Accoda il ricalcolo (202). La UI rilegge `dettaglio(id)`. */
+  ricalcola(id: string, versione: number): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.elaborazione(id)}/ricalcola`, { versione })
   }
 
-  scarta(id: string): Observable<ElaborazioneRiga> {
-    return this.http.post<ElaborazioneRiga>(`${this.elaborazione(id)}/scarta`, {})
+  scarta(id: string, versione: number): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.elaborazione(id)}/scarta`, { versione })
   }
 
   escludi(id: string, documentoId: string): Observable<DocumentoRiga> {
@@ -113,8 +119,8 @@ export class FatturazioneService {
   }
 
   /** Definitiva (202): `impronta` e `versione` sono quelle dell'anteprima che l'utente ha visto. */
-  definitiva(id: string, impronta: string, versione: number): Observable<ElaborazioneRiga> {
-    return this.http.post<ElaborazioneRiga>(`${this.elaborazione(id)}/definitiva`, {
+  definitiva(id: string, impronta: string, versione: number): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>(`${this.elaborazione(id)}/definitiva`, {
       impronta,
       versione,
     })
@@ -152,13 +158,13 @@ export class FatturazioneService {
   /** Nota di credito di storno. `dataDocumento` è `AAAA-MM-GG`. */
   storno(
     id: string,
-    dati: { motivo: string; dataDocumento: string; rifatturabile: boolean }
+    dati: { motivo: string; dataDocumento: string; rifatturabile: boolean; versione: number }
   ): Observable<DocumentoDettaglio> {
     return this.http.post<DocumentoDettaglio>(`${this.urlDocumento(id)}/storno`, dati)
   }
 
-  segnaEmesso(id: string): Observable<DocumentoDettaglio> {
-    return this.http.post<DocumentoDettaglio>(`${this.urlDocumento(id)}/emesso`, {})
+  segnaEmesso(id: string, versione: number): Observable<DocumentoDettaglio> {
+    return this.http.post<DocumentoDettaglio>(`${this.urlDocumento(id)}/emesso`, { versione })
   }
 
   /** Scarica l'XML. Con `confermaEmissione: true` un documento non emesso diventa «emesso». */
@@ -195,32 +201,34 @@ export class FatturazioneService {
 
   scostamenti(opzioni: ParametriScostamenti = {}): Observable<Pagina<ScostamentoRiga>> {
     return this.http.get<Pagina<ScostamentoRiga>>(this.urlScostamenti, {
-      params: parametri({ contrattoId: opzioni.contrattoId }, opzioni),
+      params: parametri({ clienteId: opzioni.clienteId }, opzioni),
     })
   }
 
-  presaAtto(legameId: string, nota: string): Observable<void> {
+  presaAtto(legameId: string, nota: string, versione: number): Observable<void> {
     return this.http.post<void>(
       `${this.urlLegami}/${encodeURIComponent(legameId)}/presa-atto-scostamento`,
-      { nota }
+      { nota, versione }
     )
   }
 }
 
 /** Parametri di query: omette i valori assenti e porta `dimensione` a 1..100 (predefinita 50). */
 function parametri(
-  filtri: Record<string, string | number | undefined>,
+  filtri: Record<string, string | number | boolean | undefined>,
   pagina: ParametriPagina
 ): HttpParams {
   let p = new HttpParams()
   for (const [chiave, valore] of Object.entries(filtri)) {
     if (valore !== undefined && valore !== '') p = p.set(chiave, String(valore))
   }
+  const intero = (x: number | undefined, predefinito: number): number =>
+    x !== undefined && Number.isFinite(x) ? Math.floor(x) : predefinito
   const dimensione = Math.min(
     DIMENSIONE_MASSIMA,
-    Math.max(1, Math.floor(pagina.dimensione ?? DIMENSIONE_PREDEFINITA))
+    Math.max(1, intero(pagina.dimensione, DIMENSIONE_PREDEFINITA))
   )
   return p
-    .set('pagina', String(Math.max(1, Math.floor(pagina.pagina ?? 1))))
+    .set('pagina', String(Math.max(1, intero(pagina.pagina, 1))))
     .set('dimensione', String(dimensione))
 }

@@ -161,7 +161,7 @@ export const ERRORI_HTTP_VOCI = {
     "L'elaborazione è già in corso di emissione definitiva.",
     'errore'
   ),
-  ELABORAZIONE_IN_CORSO: v("L'elaborazione è ancora in corso: attendi che finisca.", 'errore'),
+  ELABORAZIONE_IN_CORSO: v("Un'elaborazione è già in corso: attendi che finisca.", 'errore'),
   TROPPI_DOCUMENTI: v(
     'Ci sono troppi documenti per questa operazione: restringi la selezione.',
     'errore'
@@ -203,6 +203,11 @@ export const ERRORI_HTTP_VOCI = {
     "Il suffisso non si può più cambiare: il registro ha già fatture definitive nell'anno.",
     'errore'
   ),
+  PARTENZA_NON_VALIDA: v(
+    "Il numero di partenza o la sua data non sono validi: la data deve cadere nell'anno della numerazione.",
+    'errore'
+  ),
+  RIGA_ADDEBITO_IN_USO: v('La riga è usata da movimenti: non si può eliminare.', 'errore'),
   SCOSTAMENTO_NON_APERTO: v('Lo scostamento non è più aperto: è già stato gestito.', 'errore'),
   // Scansione P33.
   DEFINITIVE_NON_ATTIVE: v(
