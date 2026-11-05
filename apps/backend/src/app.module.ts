@@ -52,6 +52,7 @@ import { RegistroModule } from './api/registro/registro.module'
 import { PeseModule } from './api/pese/pese.module'
 import { ClientiModule } from './api/clienti/clienti.module'
 import { ListinoModule } from './api/listino/listino.module'
+import { FatturazioneModule } from './api/fatturazione/fatturazione.module'
 import { LegamiMovimentoModule } from './api/legami-movimento/legami-movimento.module'
 // Billing SaaS (WS-F): Stripe + enforcement limiti di piano
 import { BillingModule } from './application/billing/billing.module'
@@ -166,6 +167,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     ClientiModule,
     ListinoModule,
     LegamiMovimentoModule,
+    FatturazioneModule,
 
     // Billing SaaS (WS-F): Stripe checkout/webhook/portal + enforcement limiti piano
     BillingModule,
