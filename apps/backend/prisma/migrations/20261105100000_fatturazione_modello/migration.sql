@@ -65,7 +65,7 @@ ALTER TABLE "registri_iva" ADD COLUMN "suffisso_numero" VARCHAR(10);
 -- 4. Unici additivi sui legami (bersagli delle chiavi composte delle righe di documento) ----
 
 CREATE UNIQUE INDEX "legami_movimento_id_tenant_id_key" ON "legami_movimento"("id", "tenant_id");
-CREATE UNIQUE INDEX "righe_legame_movimento_id_tenant_id_key" ON "righe_legame_movimento"("id", "tenant_id");
+CREATE UNIQUE INDEX "righe_legame_movimento_id_legame_id_tenant_id_key" ON "righe_legame_movimento"("id", "legame_id", "tenant_id");
 
 -- 5. Tabelle -------------------------------------------------------------------
 
@@ -226,7 +226,9 @@ CREATE TABLE "righe_documento_fattura" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "righe_documento_fattura_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "righe_documento_fattura_linea_positiva" CHECK ("numero_linea" >= 1)
+    CONSTRAINT "righe_documento_fattura_linea_positiva" CHECK ("numero_linea" >= 1),
+    -- La FK composta verso la riga del legame non controlla nulla con `legame_id` nullo (MATCH SIMPLE).
+    CONSTRAINT "righe_documento_fattura_riga_legame_con_legame" CHECK ("riga_legame_id" IS NULL OR "legame_id" IS NOT NULL)
 );
 
 CREATE TABLE "riepiloghi_iva_documento" (
@@ -308,7 +310,7 @@ CREATE INDEX "documenti_fattura_tenant_id_stato_data_documento_idx" ON "document
 CREATE INDEX "documenti_fattura_tenant_id_cliente_fatturazione_id_idx" ON "documenti_fattura"("tenant_id", "cliente_fatturazione_id");
 CREATE INDEX "documenti_fattura_tenant_id_elaborazione_id_idx" ON "documenti_fattura"("tenant_id", "elaborazione_id");
 
-CREATE UNIQUE INDEX "righe_documento_fattura_id_tenant_id_key" ON "righe_documento_fattura"("id", "tenant_id");
+CREATE UNIQUE INDEX "righe_documento_fattura_id_documento_id_tenant_id_key" ON "righe_documento_fattura"("id", "documento_id", "tenant_id");
 CREATE UNIQUE INDEX "righe_documento_fattura_documento_id_numero_linea_key" ON "righe_documento_fattura"("documento_id", "numero_linea");
 CREATE INDEX "righe_documento_fattura_tenant_id_legame_id_idx" ON "righe_documento_fattura"("tenant_id", "legame_id");
 CREATE INDEX "righe_documento_fattura_tenant_id_riga_addebito_id_idx" ON "righe_documento_fattura"("tenant_id", "riga_addebito_id");
@@ -350,7 +352,7 @@ ALTER TABLE "documenti_fattura" ADD CONSTRAINT "documenti_fattura_origine_fkey" 
 ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_documento_fkey" FOREIGN KEY ("documento_id", "tenant_id") REFERENCES "documenti_fattura"("id", "tenant_id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_legame_fkey" FOREIGN KEY ("legame_id", "tenant_id") REFERENCES "legami_movimento"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_riga_legame_fkey" FOREIGN KEY ("riga_legame_id", "tenant_id") REFERENCES "righe_legame_movimento"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_riga_legame_fkey" FOREIGN KEY ("riga_legame_id", "legame_id", "tenant_id") REFERENCES "righe_legame_movimento"("id", "legame_id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_riga_addebito_fkey" FOREIGN KEY ("riga_addebito_id", "tenant_id") REFERENCES "righe_addebito"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 ALTER TABLE "righe_documento_fattura" ADD CONSTRAINT "righe_documento_fattura_codice_iva_fkey" FOREIGN KEY ("codice_iva_id", "tenant_id") REFERENCES "codici_iva"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
@@ -363,12 +365,10 @@ ALTER TABLE "rate_documento_fattura" ADD CONSTRAINT "rate_documento_fattura_docu
 ALTER TABLE "marcatori_addebiti_fatturati" ADD CONSTRAINT "marcatori_addebiti_fatturati_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "marcatori_addebiti_fatturati" ADD CONSTRAINT "marcatori_addebiti_fatturati_riga_addebito_fkey" FOREIGN KEY ("riga_addebito_id", "tenant_id") REFERENCES "righe_addebito"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 ALTER TABLE "marcatori_addebiti_fatturati" ADD CONSTRAINT "marcatori_addebiti_fatturati_documento_fkey" FOREIGN KEY ("documento_id", "tenant_id") REFERENCES "documenti_fattura"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "marcatori_addebiti_fatturati" ADD CONSTRAINT "marcatori_addebiti_fatturati_riga_documento_fkey" FOREIGN KEY ("riga_documento_id", "tenant_id") REFERENCES "righe_documento_fattura"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+ALTER TABLE "marcatori_addebiti_fatturati" ADD CONSTRAINT "marcatori_addebiti_fatturati_riga_documento_fkey" FOREIGN KEY ("riga_documento_id", "documento_id", "tenant_id") REFERENCES "righe_documento_fattura"("id", "documento_id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 ALTER TABLE "contatori_file_fatturapa" ADD CONSTRAINT "contatori_file_fatturapa_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE "legami_movimento" ADD CONSTRAINT "legami_movimento_documento_fkey" FOREIGN KEY ("documento_id", "tenant_id") REFERENCES "documenti_fattura"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
-ALTER TABLE "spese_accessorie" ADD CONSTRAINT "spese_accessorie_codice_iva_fkey" FOREIGN KEY ("codice_iva_id", "tenant_id") REFERENCES "codici_iva"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- 8. CHECK sulle tabelle esistenti, NOT VALID poi VALIDATE -------------------------
 -- Il primo fallisce (nominando il vincolo) se esiste un legame FATTURATO senza documento: in
@@ -376,8 +376,12 @@ ALTER TABLE "spese_accessorie" ADD CONSTRAINT "spese_accessorie_codice_iva_fkey"
 
 ALTER TABLE "legami_movimento" ADD CONSTRAINT "legami_movimento_documento_se_fatturato" CHECK (("stato" = 'FATTURATO') = ("documento_id" IS NOT NULL)) NOT VALID;
 ALTER TABLE "legami_movimento" ADD CONSTRAINT "legami_movimento_gestito_se_scostamento" CHECK ("scostamento_gestito_il" IS NULL OR "scostamento_dopo_fattura") NOT VALID;
+ALTER TABLE "legami_movimento" ADD CONSTRAINT "legami_movimento_documento_fkey" FOREIGN KEY ("documento_id", "tenant_id") REFERENCES "documenti_fattura"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION NOT VALID;
+ALTER TABLE "spese_accessorie" ADD CONSTRAINT "spese_accessorie_codice_iva_fkey" FOREIGN KEY ("codice_iva_id", "tenant_id") REFERENCES "codici_iva"("id", "tenant_id") ON DELETE NO ACTION ON UPDATE NO ACTION NOT VALID;
 ALTER TABLE "legami_movimento" VALIDATE CONSTRAINT "legami_movimento_documento_se_fatturato";
 ALTER TABLE "legami_movimento" VALIDATE CONSTRAINT "legami_movimento_gestito_se_scostamento";
+ALTER TABLE "legami_movimento" VALIDATE CONSTRAINT "legami_movimento_documento_fkey";
+ALTER TABLE "spese_accessorie" VALIDATE CONSTRAINT "spese_accessorie_codice_iva_fkey";
 
 -- 9. Funzioni e trigger -----------------------------------------------------------
 
@@ -409,12 +413,32 @@ BEGIN
     RAISE EXCEPTION 'documenti_fattura: documento non in bozza immutabile';
   END IF;
   IF NEW.stato <> OLD.stato THEN
-    -- Solo DEFINITIVO -> ANNULLATO, e solo se non emesso (decisioni 3 e 12).
+    -- Solo DEFINITIVO -> ANNULLATO, e solo se non emesso (decisioni 3 e 12). L'annullo non scrive
+    -- l'emissione: un annullato non diventa «emesso» e non consuma un progressivo_file.
+    -- (Il divieto di annullare un TD04, decisione 18, e «solo l'ultimo numero» restano al servizio:
+    -- 409 ANNULLO_NON_AMMESSO, Task 20.)
     IF NOT (OLD.stato = 'DEFINITIVO' AND NEW.stato = 'ANNULLATO') THEN
       RAISE EXCEPTION 'documenti_fattura: transizione di stato non ammessa';
     END IF;
     IF OLD.emesso_il IS NOT NULL THEN
       RAISE EXCEPTION 'documenti_fattura: un documento emesso non si annulla';
+    END IF;
+    IF NEW.emesso_il IS DISTINCT FROM OLD.emesso_il OR NEW.xml IS DISTINCT FROM OLD.xml
+       OR NEW.xml_sha256 IS DISTINCT FROM OLD.xml_sha256
+       OR NEW.xml_generato_il IS DISTINCT FROM OLD.xml_generato_il
+       OR NEW.progressivo_file IS DISTINCT FROM OLD.progressivo_file THEN
+      RAISE EXCEPTION 'documenti_fattura: l''annullo non scrive i dati di emissione';
+    END IF;
+  ELSIF OLD.stato = 'ANNULLATO' THEN
+    -- Un annullato resta com'e': passano solo versione e updated_at (le permesse dell'elenco).
+    IF NEW.emesso_il IS DISTINCT FROM OLD.emesso_il OR NEW.xml IS DISTINCT FROM OLD.xml
+       OR NEW.xml_sha256 IS DISTINCT FROM OLD.xml_sha256
+       OR NEW.xml_generato_il IS DISTINCT FROM OLD.xml_generato_il
+       OR NEW.progressivo_file IS DISTINCT FROM OLD.progressivo_file
+       OR NEW.annullato_il IS DISTINCT FROM OLD.annullato_il
+       OR NEW.annullato_da IS DISTINCT FROM OLD.annullato_da
+       OR NEW.motivo_annullo IS DISTINCT FROM OLD.motivo_annullo THEN
+      RAISE EXCEPTION 'documenti_fattura: un documento annullato non si modifica';
     END IF;
   ELSIF NEW.annullato_il IS DISTINCT FROM OLD.annullato_il
      OR NEW.annullato_da IS DISTINCT FROM OLD.annullato_da
@@ -444,15 +468,26 @@ $fn$;
 CREATE TRIGGER documenti_fattura_immutabile BEFORE UPDATE OR DELETE ON "documenti_fattura"
   FOR EACH ROW EXECUTE FUNCTION documenti_fattura_immutabile();
 
--- Le figlie (righe, riepiloghi, rate) seguono lo stato della testata: si modificano e si cancellano
--- solo se il documento e' in bozza. Lettura semplice, nessun lock (ordine dei lock della spec §8).
--- Testata assente = cancellazione a cascata in corso: passa (la testata non in bozza non si cancella).
+-- Le figlie (righe, riepiloghi, rate) seguono lo stato della testata: si inseriscono, si modificano e
+-- si cancellano solo se il documento e' in bozza (I1 della revisione: anche l'INSERT, perche' una
+-- riga in piu' cambia il contenuto fiscale di un documento emesso). ORDINE DI CREAZIONE, anche per
+-- il TD04 di storno (Task 19 e 20): testata in BOZZA (numero nullo) -> figlie -> UPDATE della
+-- testata a DEFINITIVO con numero e data (consentito una volta sola: dopo, tutto e' bloccato).
+-- Lettura semplice, nessun lock (ordine dei lock della spec §8): in READ COMMITTED una scrittura
+-- concorrente alla promozione puo' ancora vedere BOZZA, quindi chi scrive le figlie blocca prima la
+-- testata `FOR UPDATE` (ultimo passo dell'ordine dei lock: Task 17 e 19). Testata assente =
+-- cancellazione a cascata in corso (o FK che fara' fallire l'INSERT): passa.
 CREATE FUNCTION figlie_documento_immutabili() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE
   v_stato "stato_documento_fattura";
 BEGIN
-  SELECT d.stato INTO v_stato FROM "documenti_fattura" d
-    WHERE d.id = OLD.documento_id AND d.tenant_id = OLD.tenant_id;
+  IF TG_OP = 'INSERT' THEN
+    SELECT d.stato INTO v_stato FROM "documenti_fattura" d
+      WHERE d.id = NEW.documento_id AND d.tenant_id = NEW.tenant_id;
+  ELSE
+    SELECT d.stato INTO v_stato FROM "documenti_fattura" d
+      WHERE d.id = OLD.documento_id AND d.tenant_id = OLD.tenant_id;
+  END IF;
   IF v_stato IS NOT NULL AND v_stato <> 'BOZZA' THEN
     RAISE EXCEPTION '%: le righe di un documento non in bozza sono immutabili', TG_TABLE_NAME;
   END IF;
@@ -461,16 +496,18 @@ BEGIN
       RAISE EXCEPTION '%: una riga non cambia documento', TG_TABLE_NAME;
     END IF;
     RETURN NEW;
+  ELSIF TG_OP = 'INSERT' THEN
+    RETURN NEW;
   END IF;
   RETURN OLD;
 END
 $fn$;
 
-CREATE TRIGGER figlie_documento_immutabili BEFORE UPDATE OR DELETE ON "righe_documento_fattura"
+CREATE TRIGGER figlie_documento_immutabili BEFORE INSERT OR UPDATE OR DELETE ON "righe_documento_fattura"
   FOR EACH ROW EXECUTE FUNCTION figlie_documento_immutabili();
-CREATE TRIGGER figlie_documento_immutabili BEFORE UPDATE OR DELETE ON "riepiloghi_iva_documento"
+CREATE TRIGGER figlie_documento_immutabili BEFORE INSERT OR UPDATE OR DELETE ON "riepiloghi_iva_documento"
   FOR EACH ROW EXECUTE FUNCTION figlie_documento_immutabili();
-CREATE TRIGGER figlie_documento_immutabili BEFORE UPDATE OR DELETE ON "rate_documento_fattura"
+CREATE TRIGGER figlie_documento_immutabili BEFORE INSERT OR UPDATE OR DELETE ON "rate_documento_fattura"
   FOR EACH ROW EXECUTE FUNCTION figlie_documento_immutabili();
 
 -- Sonda della numerazione senza buchi (spec §4.6; la legge `system-health`). Per ogni azienda con

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { creaCodiciIvaEcodifiche, creaContrattoConElenco, creaRiga } from './listino-di-test'
 import { creaLegameDiTest, creaMovimentoDiTest } from './legami-di-test'
 
@@ -213,6 +213,8 @@ export interface OpzioniDocumentoDiTest {
   /** Legami `CONFERMATO` dello scenario: una riga `MOVIMENTO` per ciascuna delle loro righe. */
   legamiIds?: string[]
   elaborazioneId?: string
+  /** Aggiunge una rata e un riepilogo IVA (le figlie si inseriscono prima della promozione). */
+  conRateERiepilogo?: boolean
 }
 
 /**
@@ -277,11 +279,13 @@ export async function creaDocumentoDiTest(
         legamiIds
       )
     : []
-  const importi = righe.map(
-    r => Math.round(Number(r.quantita ?? '1') * Number(r.prezzo ?? '0') * 100) / 100
+  const importi = righe.map(r =>
+    new Prisma.Decimal(r.quantita ?? '1')
+      .mul(r.prezzo ?? '0')
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
   )
-  const imponibile = importi.reduce((a, b) => a + b, 0)
-  const iva = Math.round(imponibile * 22) / 100
+  const imponibile = importi.reduce((a, b) => a.add(b), new Prisma.Decimal(0))
+  const iva = imponibile.mul(22).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
   const nonBozza = opz.stato !== 'BOZZA'
   let numero: number | null = null
   if (nonBozza) {
@@ -305,28 +309,26 @@ export async function creaDocumentoDiTest(
         periodo_dal, periodo_al, formato_trasmissione, esigibilita_iva, totale_imponibile,
         totale_iva, totale_documento, netto_a_pagare, fotografia, definito_il, annullato_il,
         motivo_annullo, updated_at)
-     VALUES ($1::uuid, $2::uuid, $3::stato_documento_fattura, 'TD01', $4::uuid, $5::smallint, $6::int,
-        $7, $8::date, $9::uuid, $9::uuid, $10::uuid, $11::uuid,
+     VALUES ($1::uuid, $2::uuid, COALESCE($3::stato_documento_fattura, 'BOZZA'), 'TD01', $4::uuid,
+        $5::smallint, $6::int, $7::text, $8::date, $9::uuid, $9::uuid, $10::uuid, $11::uuid,
         make_date($5::int, 1, 1), make_date($5::int, 12, 31), 'FPR12', 'IMMEDIATA',
         $12::numeric, $13::numeric, $14::numeric, $14::numeric, '{}'::jsonb,
-        CASE WHEN $3 <> 'BOZZA' THEN now() END,
-        CASE WHEN $3 = 'ANNULLATO' THEN now() END,
-        CASE WHEN $3 = 'ANNULLATO' THEN 'Annullato per il test' END, now())
+        NULL, NULL, NULL, now())
      RETURNING id::text AS id`,
     tenantId,
     opz.elaborazioneId ?? null,
-    opz.stato,
+    null,
     opz.registroIvaId,
     opz.anno,
-    numero,
-    numero === null ? null : String(numero),
+    null,
+    null,
     data,
     clienteId,
     contrattoId,
     elencoId,
     imponibile.toFixed(2),
     iva.toFixed(2),
-    (imponibile + iva).toFixed(2)
+    imponibile.add(iva).toFixed(2)
   )
   let linea = 0
   for (const [i, r] of righe.entries()) {
@@ -356,6 +358,44 @@ export async function creaDocumentoDiTest(
       r.codice_iva_id,
       r.aliquota_iva,
       r.natura_iva
+    )
+  }
+  if (opz.conRateERiepilogo) {
+    await owner.$executeRawUnsafe(
+      `INSERT INTO rate_documento_fattura
+         (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
+       VALUES ($1::uuid, $2::uuid, 1, 'MP05', '2026-04-30', 10, now())`,
+      tenantId,
+      doc.id
+    )
+    await owner.$executeRawUnsafe(
+      `INSERT INTO riepiloghi_iva_documento
+         (tenant_id, documento_id, aliquota, imponibile, imposta, esigibilita, updated_at)
+       VALUES ($1::uuid, $2::uuid, 22, 100, 22, 'IMMEDIATA', now())`,
+      tenantId,
+      doc.id
+    )
+  }
+  // Promozione (I1: le figlie si inseriscono con la testata in BOZZA): numero e data una volta
+  // sola, poi il trigger blocca tutto. Un ANNULLATO passa da DEFINITIVO, come nel flusso reale.
+  if (nonBozza) {
+    await owner.$executeRawUnsafe(
+      `UPDATE documenti_fattura
+         SET stato = 'DEFINITIVO', numero = $2::int, numero_testo = $3, definito_il = now(),
+             updated_at = now()
+       WHERE id = $1::uuid`,
+      doc.id,
+      numero,
+      String(numero)
+    )
+  }
+  if (opz.stato === 'ANNULLATO') {
+    await owner.$executeRawUnsafe(
+      `UPDATE documenti_fattura
+         SET stato = 'ANNULLATO', motivo_annullo = 'Annullato per il test', annullato_il = now(),
+             updated_at = now()
+       WHERE id = $1::uuid`,
+      doc.id
     )
   }
   if (opz.stato === 'DEFINITIVO' && legamiIds.length > 0) {

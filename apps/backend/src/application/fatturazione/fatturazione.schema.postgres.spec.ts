@@ -26,6 +26,7 @@ import {
   RAGGRUPPAMENTI,
   STATI_DOCUMENTO,
   STATI_ELABORAZIONE,
+  TIPI_DOCUMENTO,
   TIPI_MARCATORE,
   TIPI_RIGA_DOCUMENTO,
 } from '../../domain/fatturazione/codici'
@@ -390,7 +391,7 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
       s = await scenario({ legami: 2 })
     })
 
-    const definitivo = async (numero: number, legamiIds?: string[]) =>
+    const definitivo = async (numero: number, legamiIds?: string[], conRateERiepilogo = false) =>
       (
         await creaDocumentoDiTest(owner, s.t, {
           stato: 'DEFINITIVO',
@@ -398,6 +399,7 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
           anno: 2026,
           numero,
           legamiIds,
+          conRateERiepilogo,
         })
       ).documentoId
 
@@ -547,19 +549,7 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
     })
 
     it('UPDATE e DELETE di righe, riepiloghi e rate di un DEFINITIVO: respinti', async () => {
-      const id = await definitivo(109, [s.legamiIds[1]])
-      await owner.$executeRawUnsafe(
-        `INSERT INTO rate_documento_fattura (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
-         VALUES ($1::uuid, $2::uuid, 1, 'MP05', '2026-04-30', 10, now())`,
-        s.t,
-        id
-      )
-      await owner.$executeRawUnsafe(
-        `INSERT INTO riepiloghi_iva_documento (tenant_id, documento_id, aliquota, imponibile, imposta, esigibilita, updated_at)
-         VALUES ($1::uuid, $2::uuid, 22, 100, 22, 'IMMEDIATA', now())`,
-        s.t,
-        id
-      )
+      const id = await definitivo(109, [s.legamiIds[1]], true)
       const casi: Array<[string, string]> = [
         ['righe_documento_fattura', 'descrizione'],
         ['riepiloghi_iva_documento', 'imponibile'],
@@ -616,6 +606,202 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
       await expect(
         aggiorna(s.t, documentoId, `stato = 'ANNULLATO', numero = 120, motivo_annullo = 'No'`)
       ).rejects.toThrow(/una bozza diventa solo definitiva/)
+    })
+  })
+
+  describe('figlie: INSERT protetto e ordine di creazione (I1)', () => {
+    let s: Sc
+    beforeAll(async () => {
+      s = await scenario()
+    })
+
+    const nuovaRiga = (documentoId: string, linea: number) =>
+      inserisciRigaFissa(s, documentoId, { linea })
+    const nuovaRata = (documentoId: string) =>
+      owner.$executeRawUnsafe(
+        `INSERT INTO rate_documento_fattura (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
+         VALUES ($1::uuid, $2::uuid, 7, 'MP05', '2026-04-30', 10, now())`,
+        s.t,
+        documentoId
+      )
+    const nuovoRiepilogo = (documentoId: string) =>
+      owner.$executeRawUnsafe(
+        `INSERT INTO riepiloghi_iva_documento (tenant_id, documento_id, aliquota, natura, imponibile, imposta, esigibilita, updated_at)
+         VALUES ($1::uuid, $2::uuid, 0, 'N4', 10, 0, 'IMMEDIATA', now())`,
+        s.t,
+        documentoId
+      )
+    const crea = (stato: 'BOZZA' | 'DEFINITIVO' | 'ANNULLATO') =>
+      creaDocumentoDiTest(owner, s.t, {
+        stato,
+        registroIvaId: s.registroIvaId,
+        anno: 2026,
+      }).then(r => r.documentoId)
+
+    it('INSERT di righe, riepiloghi e rate su un DEFINITIVO: rifiutata', async () => {
+      const id = await crea('DEFINITIVO')
+      await expect(nuovaRiga(id, 50)).rejects.toThrow(/sono immutabili/)
+      await expect(nuovoRiepilogo(id)).rejects.toThrow(/sono immutabili/)
+      await expect(nuovaRata(id)).rejects.toThrow(/sono immutabili/)
+      // anche col ruolo applicativo
+      await expect(
+        comeApp(s.t, tx =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO rate_documento_fattura (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
+             VALUES ($1::uuid, $2::uuid, 8, 'MP05', '2026-04-30', 10, now())`,
+            s.t,
+            id
+          )
+        )
+      ).rejects.toThrow(/sono immutabili/)
+    })
+
+    it('INSERT su un ANNULLATO: rifiutata', async () => {
+      const id = await crea('ANNULLATO')
+      await expect(nuovaRiga(id, 50)).rejects.toThrow(/sono immutabili/)
+      await expect(nuovaRata(id)).rejects.toThrow(/sono immutabili/)
+    })
+
+    it('sequenza creazione (BOZZA) -> figlie -> promozione: ok; INSERT dopo la promozione: rifiutata', async () => {
+      const id = await crea('BOZZA')
+      await nuovaRiga(id, 1)
+      await nuovoRiepilogo(id)
+      await nuovaRata(id)
+      await comeApp(s.t, tx =>
+        tx.$executeRawUnsafe(
+          `UPDATE documenti_fattura SET stato = 'DEFINITIVO', numero = 900, numero_testo = '900', definito_il = now()
+           WHERE id = $1::uuid`,
+          id
+        )
+      )
+      await expect(nuovaRiga(id, 2)).rejects.toThrow(/sono immutabili/)
+      await expect(nuovaRata(id)).rejects.toThrow(/sono immutabili/)
+      // la promozione non si ripete: DEFINITIVO -> BOZZA e un secondo numero sono respinti
+      await expect(aggiorna(s.t, id, `stato = 'BOZZA'`)).rejects.toThrow(
+        /transizione di stato non ammessa/
+      )
+      await expect(aggiorna(s.t, id, `numero = 901`)).rejects.toThrow(
+        /documento non in bozza immutabile/
+      )
+    })
+
+    it('storno TD04: stessa sequenza (testata BOZZA con origine, figlie, promozione)', async () => {
+      const origine = await crea('DEFINITIVO')
+      const [td] = await comeApp(s.t, tx =>
+        inserisciDocumento(tx, s, { tipo: 'TD04', origineId: origine })
+      )
+      await nuovaRiga(td.id, 1)
+      await owner.$executeRawUnsafe(
+        `UPDATE documenti_fattura SET stato = 'DEFINITIVO', numero = 990, numero_testo = '990', definito_il = now() WHERE id = $1::uuid`,
+        td.id
+      )
+      await expect(nuovaRiga(td.id, 2)).rejects.toThrow(/sono immutabili/)
+    })
+  })
+
+  describe('annullato e riferimenti incrociati (M1, M4)', () => {
+    let s: Sc
+    beforeAll(async () => {
+      s = await scenario({ legami: 2 })
+    })
+
+    it('un annullato non diventa emesso e non consuma un progressivo_file; l annullo non scrive l emissione', async () => {
+      const id = (
+        await creaDocumentoDiTest(owner, s.t, {
+          stato: 'DEFINITIVO',
+          registroIvaId: s.registroIvaId,
+          anno: 2026,
+        })
+      ).documentoId
+      await expect(
+        aggiorna(s.t, id, `stato = 'ANNULLATO', motivo_annullo = 'Errore', emesso_il = now()`)
+      ).rejects.toThrow(/l'annullo non scrive i dati di emissione/)
+      await expect(
+        aggiorna(
+          s.t,
+          id,
+          `stato = 'ANNULLATO', motivo_annullo = 'Errore', progressivo_file = 'ZZZZZ'`
+        )
+      ).rejects.toThrow(/l'annullo non scrive i dati di emissione/)
+      await aggiorna(
+        s.t,
+        id,
+        `stato = 'ANNULLATO', motivo_annullo = 'Errore', annullato_il = now()`
+      )
+      for (const imposta of [
+        `emesso_il = now()`,
+        `progressivo_file = 'ZZZZZ'`,
+        `xml = '\\x3c783e'::bytea`,
+        `motivo_annullo = 'Altro'`,
+      ]) {
+        await expect(aggiorna(s.t, id, imposta)).rejects.toThrow(
+          /un documento annullato non si modifica/
+        )
+      }
+      await aggiorna(s.t, id, `versione = versione + 1, updated_at = now()`)
+    })
+
+    it('riga documento: la riga del legame deve essere di quel legame; marcatore: la riga del documento deve essere di quel documento', async () => {
+      const [l0, l1] = s.legamiIds
+      const [riga1] = await owner.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT id::text FROM righe_legame_movimento WHERE legame_id = $1::uuid LIMIT 1`,
+        l1
+      )
+      const { documentoId } = await creaDocumentoDiTest(owner, s.t, {
+        stato: 'BOZZA',
+        registroIvaId: s.registroIvaId,
+        anno: 2026,
+      })
+      const inserisci = (legame: string | null, rigaLegame: string | null) =>
+        owner.$executeRawUnsafe(
+          `INSERT INTO righe_documento_fattura
+             (tenant_id, documento_id, numero_linea, tipo_riga, legame_id, riga_legame_id, descrizione,
+              prezzo_unitario, importo_lordo, importo_sconto, prezzo_totale, codice_iva_id, aliquota_iva, updated_at)
+           VALUES ($1::uuid, $2::uuid, 1, 'MOVIMENTO', $3::uuid, $4::uuid, 'x', 1, 1, 0, 1, $5::uuid, 22, now())`,
+          s.t,
+          documentoId,
+          legame,
+          rigaLegame,
+          s.codiceIvaId
+        )
+      await expect(inserisci(l0, riga1.id)).rejects.toThrow(
+        /righe_documento_fattura_riga_legame_fkey/
+      )
+      await expect(inserisci(null, riga1.id)).rejects.toThrow(
+        /righe_documento_fattura_riga_legame_con_legame/
+      )
+      await inserisci(l1, riga1.id)
+
+      const a = (
+        await creaDocumentoDiTest(owner, s.t, {
+          stato: 'DEFINITIVO',
+          registroIvaId: s.registroIvaId,
+          anno: 2026,
+          legamiIds: [l0],
+        })
+      ).documentoId
+      const b = (
+        await creaDocumentoDiTest(owner, s.t, {
+          stato: 'DEFINITIVO',
+          registroIvaId: s.registroIvaId,
+          anno: 2026,
+          legamiIds: [l1],
+        })
+      ).documentoId
+      const [rigaB] = await owner.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT id::text FROM righe_documento_fattura WHERE documento_id = $1::uuid LIMIT 1`,
+        b
+      )
+      await expect(
+        owner.$executeRawUnsafe(
+          `INSERT INTO marcatori_addebiti_fatturati (tenant_id, riga_addebito_id, tipo, chiave_competenza, documento_id, riga_documento_id)
+           VALUES ($1::uuid, $2::uuid, 'SCADENZA_FISSO', '2026-03-31', $3::uuid, $4::uuid)`,
+          s.t,
+          s.rigaAddebitoIds[0],
+          a,
+          rigaB.id
+        )
+      ).rejects.toThrow(/marcatori_addebiti_fatturati_riga_documento_fkey/)
     })
   })
 
@@ -988,6 +1174,13 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
       expect(quotati(generali)).toEqual([...ERRORI_GENERALI].sort())
     })
 
+    it('i CHECK di tipo e formato coincidono con TIPI_DOCUMENTO e con FPR12/FPA12', async () => {
+      const tipo = await definizione('documenti_fattura', 'documenti_fattura_tipo_ammesso')
+      expect(quotati(tipo)).toEqual([...TIPI_DOCUMENTO].sort())
+      const formato = await definizione('documenti_fattura', 'documenti_fattura_formato_ammesso')
+      expect(quotati(formato)).toEqual(['FPA12', 'FPR12'])
+    })
+
     it('il CHECK del regime coincide con REGIMI_FISCALI', async () => {
       const regime = await definizione(
         'cedente_fatturazione',
@@ -1117,19 +1310,8 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
         numero: 1,
         legamiIds: s.legamiIds,
         elaborazioneId: e[0].id,
+        conRateERiepilogo: true,
       })
-      await owner.$executeRawUnsafe(
-        `INSERT INTO rate_documento_fattura (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
-         VALUES ($1::uuid, $2::uuid, 1, 'MP05', '2026-04-30', 10, now())`,
-        s.t,
-        documentoId
-      )
-      await owner.$executeRawUnsafe(
-        `INSERT INTO riepiloghi_iva_documento (tenant_id, documento_id, aliquota, imponibile, imposta, esigibilita, updated_at)
-         VALUES ($1::uuid, $2::uuid, 22, 100, 22, 'IMMEDIATA', now())`,
-        s.t,
-        documentoId
-      )
       const [riga] = await owner.$queryRawUnsafe<{ id: string }[]>(
         `SELECT id::text FROM righe_documento_fattura WHERE documento_id = $1::uuid LIMIT 1`,
         documentoId

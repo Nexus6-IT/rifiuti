@@ -264,13 +264,28 @@ composte) e le colonne nuove: `impostazioni_fatturazione.definitive_attive` (def
 > (decisioni 13 e 14). Controllo dopo ogni deploy della serie 4.4:
 > `SELECT tenant_id FROM impostazioni_fatturazione WHERE definitive_attive;` deve dare zero righe.
 
+**Ordine di creazione di un documento (Task 19 e 20, anche per il TD04 di storno).** Le figlie
+(`righe_documento_fattura`, `riepiloghi_iva_documento`, `rate_documento_fattura`) accettano INSERT,
+UPDATE e DELETE solo se la testata e' in `BOZZA`. Si crea quindi la testata in `BOZZA` (numero
+nullo), poi le figlie, poi la testata passa a `DEFINITIVO` con numero e data (una volta sola: dopo,
+il trigger blocca tutto). Chi scrive le figlie blocca prima la testata `FOR UPDATE` (il trigger legge
+lo stato senza lock). Un annullato non scrive i dati di emissione e non cambia piu'.
+
 **Prima del deploy**, un controllo. Il CHECK `legami_movimento_documento_se_fatturato` (`FATTURATO`
 se e solo se c'e' un `documento_id`) viene convalidato su tutte le righe: vanno bene i legami
 `CONFERMATO` e `IMPORTATO_FATTURATO`, non un `FATTURATO` (in produzione la 4.3 non li crea).
 
 ```sql
 SELECT count(*) FROM legami_movimento WHERE stato = 'FATTURATO';   -- deve dare 0
+SELECT count(*), pg_size_pretty(pg_total_relation_size('legami_movimento')) FROM legami_movimento;
+SELECT count(*), pg_size_pretty(pg_total_relation_size('righe_legame_movimento')) FROM righe_legame_movimento;
 ```
+
+La migration e' un'unica transazione: da `ADD COLUMN` in poi `legami_movimento` resta in ACCESS
+EXCLUSIVE fino al commit (build dei due unici, FK, `VALIDATE`), e `righe_legame_movimento` durante la
+build del proprio unico. Il `lock_timeout` di 5 s copre solo l'acquisizione, non la durata. Con
+poche migliaia di legami sono frazioni di secondo; con tabelle grandi si sceglie una finestra a
+basso traffico.
 
 Se da' un numero diverso da zero il `VALIDATE` fallisce nominando il vincolo e la migration si ferma
 (P3009, vedi sotto): nessuna modifica resta applicata. Poi un backup:
@@ -321,7 +336,7 @@ DROP TABLE marcatori_addebiti_fatturati, rate_documento_fattura, riepiloghi_iva_
   righe_documento_fattura, documenti_fattura, elaborazioni_fatturazione, numerazioni_fattura,
   cedente_fatturazione, contatori_file_fatturapa;
 DROP INDEX legami_movimento_id_tenant_id_key;
-DROP INDEX righe_legame_movimento_id_tenant_id_key;
+DROP INDEX righe_legame_movimento_id_legame_id_tenant_id_key;
 DROP TYPE tipo_marcatore_addebito, tipo_riga_documento_fattura, raggruppamento_fatturazione,
   stato_documento_fattura, stato_elaborazione_fatturazione;
 DELETE FROM _prisma_migrations WHERE migration_name = '20261105100000_fatturazione_modello';

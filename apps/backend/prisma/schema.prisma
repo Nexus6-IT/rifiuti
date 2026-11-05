@@ -1283,19 +1283,19 @@ model Produttore {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   ragioneSocialeStorica String? @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA            String? @map("partita_iva") @ignore @db.VarChar(11)
+  partitaIVA     String? @map("partita_iva") @db.VarChar(11) @ignore
 
   // Sede Legale
-  via       String? @ignore @db.VarChar(255)
-  civico    String? @ignore @db.VarChar(20)
-  cap       String? @ignore @db.VarChar(5)
-  comune    String? @ignore @db.VarChar(100)
-  provincia String? @ignore @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @ignore @db.VarChar(255)
-  telefono String? @ignore @db.VarChar(20)
-  pec      String? @ignore @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1318,20 +1318,20 @@ model Trasportatore {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   ragioneSocialeStorica   String? @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA            String? @map("partita_iva") @ignore @db.VarChar(11)
+  partitaIVA       String? @map("partita_iva") @db.VarChar(11) @ignore
   numeroIscrizione String @map("numero_iscrizione") @db.VarChar(50)
 
   // Sede Legale
-  via       String? @ignore @db.VarChar(255)
-  civico    String? @ignore @db.VarChar(20)
-  cap       String? @ignore @db.VarChar(5)
-  comune    String? @ignore @db.VarChar(100)
-  provincia String? @ignore @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @ignore @db.VarChar(255)
-  telefono String? @ignore @db.VarChar(20)
-  pec      String? @ignore @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'iscrizione all'Albo Gestori Ambientali. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -1362,20 +1362,20 @@ model Destinatario {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   ragioneSocialeStorica       String? @map("ragione_sociale") @db.VarChar(255)
-  partitaIVA            String? @map("partita_iva") @ignore @db.VarChar(11)
+  partitaIVA           String? @map("partita_iva") @db.VarChar(11) @ignore
   numeroAutorizzazione String @map("numero_autorizzazione") @db.VarChar(50)
 
   // Sede
-  via       String? @ignore @db.VarChar(255)
-  civico    String? @ignore @db.VarChar(20)
-  cap       String? @ignore @db.VarChar(5)
-  comune    String? @ignore @db.VarChar(100)
-  provincia String? @ignore @db.VarChar(2)
+  via       String? @db.VarChar(255) @ignore
+  civico    String? @db.VarChar(20) @ignore
+  cap       String? @db.VarChar(5) @ignore
+  comune    String? @db.VarChar(100) @ignore
+  provincia String? @db.VarChar(2) @ignore
 
   // Contacts
-  email    String? @ignore @db.VarChar(255)
-  telefono String? @ignore @db.VarChar(20)
-  pec      String? @ignore @db.VarChar(255)
+  email    String? @db.VarChar(255) @ignore
+  telefono String? @db.VarChar(20) @ignore
+  pec      String? @db.VarChar(255) @ignore
 
   /// Scadenza dell'autorizzazione allo smaltimento/recupero. Nullable: le
   /// anagrafiche esistenti non hanno questo dato e non va inventato (Task 3
@@ -2005,11 +2005,11 @@ model WasteMovement {
 
   @@unique([id, registroId, tenantId, type], map: "waste_movements_id_registro_tenant_type_key")
   @@unique([movimentoRettificatoId], map: "waste_movements_movimento_rettificato_id_key")
-  @@unique([registroId, progressiveYear, progressiveNumber])
-  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([movimentoOriginaleId], map: "waste_movements_movimento_originale_id_idx")
   @@index([causaleAziendaId], map: "waste_movements_causale_azienda_id_idx")
+  @@unique([registroId, progressiveYear, progressiveNumber])
   @@index([registroId, cerCode])
+  @@unique([tenantId, firIdRicopia, type, ricopiaChiave])
   @@index([tenantId, cerCode])
   @@index([tenantId, movementDate])
   @@index([tenantId, type])
@@ -2735,9 +2735,9 @@ model AccessoPesa {
   collegamenti CollegamentoAccesso[]
 
   @@unique([id, tenantId], map: "accessi_pesa_id_tenant_id_key")
+  @@index([automezzoId], map: "accessi_pesa_automezzo_id_idx")
   @@unique([registroId, anno, numero], map: "accessi_pesa_registro_id_anno_numero_key")
   @@unique([id, registroId, tenantId, verso], map: "accessi_pesa_id_registro_tenant_verso_key")
-  @@index([automezzoId], map: "accessi_pesa_automezzo_id_idx")
   @@index([tenantId], map: "accessi_pesa_tenant_id_idx")
   @@map("accessi_pesa")
 }
@@ -3885,7 +3885,7 @@ model RigaLegameMovimento {
   righeDocumento RigaDocumentoFattura[]
 
   /// Bersaglio della chiave composta delle righe di documento (4.4a).
-  @@unique([id, tenantId], map: "righe_legame_movimento_id_tenant_id_key")
+  @@unique([id, legameId, tenantId], map: "righe_legame_movimento_id_legame_id_tenant_id_key")
   @@unique([legameId, rigaAddebitoId], map: "righe_legame_movimento_legame_id_riga_addebito_id_key")
   @@index([tenantId, rigaAddebitoId], map: "righe_legame_movimento_tenant_id_riga_addebito_id_idx")
   @@index([tenantId, codiceIvaId], map: "righe_legame_movimento_tenant_id_codice_iva_id_idx")
@@ -4158,13 +4158,13 @@ model RigaDocumentoFattura {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "righe_documento_fattura_tenant_id_fkey")
   documento    DocumentoFattura     @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "righe_documento_fattura_documento_fkey")
   legame       LegameMovimento?     @relation(fields: [legameId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_legame_fkey")
-  rigaLegame   RigaLegameMovimento? @relation(fields: [rigaLegameId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_riga_legame_fkey")
+  rigaLegame   RigaLegameMovimento? @relation(fields: [rigaLegameId, legameId, tenantId], references: [id, legameId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_riga_legame_fkey")
   rigaAddebito RigaAddebito?        @relation(fields: [rigaAddebitoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_riga_addebito_fkey")
   codiceIva    CodiceIva            @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_codice_iva_fkey")
 
   marcatori MarcatoreAddebitoFatturato[]
 
-  @@unique([id, tenantId], map: "righe_documento_fattura_id_tenant_id_key")
+  @@unique([id, documentoId, tenantId], map: "righe_documento_fattura_id_documento_id_tenant_id_key")
   @@unique([documentoId, numeroLinea], map: "righe_documento_fattura_documento_id_numero_linea_key")
   @@index([tenantId, legameId], map: "righe_documento_fattura_tenant_id_legame_id_idx")
   @@index([tenantId, rigaAddebitoId], map: "righe_documento_fattura_tenant_id_riga_addebito_id_idx")
@@ -4233,7 +4233,7 @@ model MarcatoreAddebitoFatturato {
   tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "marcatori_addebiti_fatturati_tenant_id_fkey")
   rigaAddebito  RigaAddebito         @relation(fields: [rigaAddebitoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_riga_addebito_fkey")
   documento     DocumentoFattura     @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_documento_fkey")
-  rigaDocumento RigaDocumentoFattura @relation(fields: [rigaDocumentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_riga_documento_fkey")
+  rigaDocumento RigaDocumentoFattura @relation(fields: [rigaDocumentoId, documentoId, tenantId], references: [id, documentoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_riga_documento_fkey")
 
   @@unique([tenantId, rigaAddebitoId, tipo, chiaveCompetenza], map: "marcatori_addebiti_fatturati_unico_key")
   @@index([tenantId, documentoId], map: "marcatori_addebiti_fatturati_tenant_id_documento_id_idx")
