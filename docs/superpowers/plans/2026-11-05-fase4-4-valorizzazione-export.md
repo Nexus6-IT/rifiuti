@@ -625,6 +625,30 @@ scrittura: un `PUT` concorrente a una definitiva si serializza sulla numerazione
 
 ---
 
+## Seguiti dalla 4.4a (revisione finale, review-finale-4-4a.md)
+
+Da portare nei brief dei task indicati. Il primo è vincolante.
+- **Task 17, bozze e FK delle righe di legame (I1):** le righe delle bozze scrivono
+  `riga_legame_id = NULL`; lo riempie la definitiva al passo 8, dopo il `FOR UPDATE` delle righe dei
+  legami. La FK `righe_documento_fattura_riga_legame_fkey` è NO ACTION: con l'id nelle bozze, la
+  conferma o la modifica di un legame della 4.3 in un'anteprima aperta fallirebbe con 23503. Test:
+  «legame in un'anteprima aperta: conferma con cambio di elenco riuscita, l'impronta dell'anteprima
+  risulta superata».
+- **Task 17:** `numeroRiga` obbligatorio in `righe-fisse.ts`, `righe-quantita.ts`, `minimi.ts`;
+  `FORMA_MINIMO_CATEGORIA` esportata da `costanti-fiscali.ts` e usata in `minimi.ts`; testo di
+  `RIGA_LEGAME_INCOMPLETA` «Una riga del legame o del listino è incompleta: mancano quantità o
+  prezzo»; Task 17 passa `righeFisse`, `righeQuantita`, `minimi` come sottoinsiemi di `listino`,
+  riempie `categoriaCodice` e passa le date `AAAA-MM-GG`.
+- **Task 18/19, suffisso e documenti dell'anno prima (M2):** da decidere con Graziano prima del
+  Task 19.
+- **Task 19/20:** ordine `BOZZA` → figlie → `DEFINITIVO`; annullo = `rilasciaUltimo` sul
+  `DEFINITIVO` non emesso, poi `ANNULLATO`, nella stessa transazione.
+- **4.4b, uso:** sorgente `documenti_fattura.elenco_id` in `COLONNE_ELENCO` di `uso-listino.ts`
+  (M4); filtro delle numerazioni scritte come terzo elemento della tupla `sorgenti` in
+  `uso-tabelle-fatturazione.ts`; `impostaPartenza` tratta una riga vuota come assente (M3).
+- **Frontend:** dopo un 409 `SUFFISSO_NON_MODIFICABILE` il campo torna al valore salvato
+  (`registro-iva-dialog.component.ts`).
+
 # Pezzo 4.4b — elaborazione, documenti ed export di backend
 
 Da master dopo il merge della 4.4a. La conferma del commercialista su TD24, documenti misti e nature
