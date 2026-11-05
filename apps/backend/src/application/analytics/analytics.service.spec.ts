@@ -275,7 +275,7 @@ describe('AnalyticsService', () => {
       expect(await prevedi([undefined, undefined, undefined, 30, 20, 10])).toBe(0)
     })
 
-    it('serie in calo [30, 15, 5]: la retta darebbe -6,67, il risultato e 0 (mai negativo)', async () => {
+    it('serie in calo [30, 15, 5]: la retta darebbe -8,33, il risultato e 0 (mai negativo)', async () => {
       expect(await prevedi([undefined, undefined, undefined, 30, 15, 5])).toBe(0)
     })
 
