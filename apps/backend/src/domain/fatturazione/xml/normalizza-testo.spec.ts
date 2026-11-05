@@ -5,8 +5,8 @@ describe('normalizzaTesto', () => {
     expect(normalizzaTesto('Società “Rossi” – 10 €', 80)).toBe('Società "Rossi" - 10 EUR')
   })
 
-  it('Łódź diventa Lodz', () => {
-    expect(normalizzaTesto('Łódź', 80)).toBe('Lodz')
+  it('Łódź diventa Lódz: ó e Latin-1 e resta', () => {
+    expect(normalizzaTesto('Łódź', 80)).toBe('Lódz')
   })
 
   it('tronca alla lunghezza massima', () => {
@@ -29,11 +29,35 @@ describe('normalizzaTesto', () => {
     expect(normalizzaTesto('abcd efgh', 5)).toBe('abcd')
   })
 
-  it('lettere accentate non italiane diventano la lettera base', () => {
-    expect(normalizzaTesto('Müller Ångström ß Æ', 80)).toBe('Muller Angstrom ss AE')
+  it('le lettere Latin-1 restano, anche non italiane', () => {
+    expect(normalizzaTesto('Müller Ångström ß Æ François Ñ', 80)).toBe(
+      'Müller Ångström ß Æ François Ñ'
+    )
+    expect(normalizzaTesto('Řeka Šárka', 80)).toBe('Reka Sárka')
   })
 
   it('conserva i simboli Latin-1 ammessi', () => {
     expect(normalizzaTesto('5° n. 3 ± 2 £', 80)).toBe('5° n. 3 ± 2 £')
+  })
+
+  it('toglie il trattino morbido', () => {
+    expect(normalizzaTesto('ab\u00adcd', 80)).toBe('abcd')
+  })
+})
+
+describe('normalizzaTesto, insieme BASIC (campi String*Type)', () => {
+  const b = (s: string, max = 80) => normalizzaTesto(s, max, 'BASIC')
+
+  it('trascrive gradi, apici e accenti', () => {
+    expect(b('Det. n° 45')).toBe('Det. n. 45')
+    expect(b('m³')).toBe('m3')
+    expect(b('1/2026-à')).toBe('1/2026-a')
+    expect(b('RM-123°')).toBe('RM-123.')
+    expect(b('Müller ß Æ')).toBe('Muller ss AE')
+  })
+
+  it('il risultato e solo Basic Latin', () => {
+    const r = b('àèéìòù ÀÈ ç ñ ° ² ± £ € « » 😀 世 Łódź')
+    expect(r).toMatch(/^[\x20-\x7e]*$/)
   })
 })

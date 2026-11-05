@@ -16,38 +16,69 @@ import type {
 } from '../tipi'
 import { normalizzaTesto } from './normalizza-testo'
 
-/** Lunghezze massime dell'XSD per campo (caratteri). */
-export const LUNGHEZZE_XSD = {
-  Denominazione: 80,
-  Nome: 60,
-  Cognome: 60,
-  CodiceFiscale: 16,
-  IdCodice: 28,
-  Indirizzo: 60,
-  NumeroCivico: 8,
-  CAP: 5,
-  Comune: 60,
-  Provincia: 2,
-  Ufficio: 2,
-  NumeroREA: 20,
-  Numero: 20,
-  Causale: 200,
-  IdDocumento: 20,
-  CodiceCUP: 15,
-  CodiceCIG: 15,
-  Descrizione: 1000,
-  UnitaMisura: 10,
-  Natura: 4,
-  RiferimentoNormativo: 100,
-  RiferimentoTesto: 60,
-  IstitutoFinanziario: 80,
-  IBAN: 34,
-  ABI: 5,
-  CAB: 5,
-  BIC: 11,
-  PECDestinatario: 256,
-  ProgressivoInvio: 10,
-} as const
+type Insieme = 'LATIN1' | 'BASIC'
+
+/**
+ * Lunghezza massima e insieme di caratteri dell'XSD per ogni elemento di testo (XSD 1.2.3):
+ * `LATIN1` = tipi `String*LatinType`, `BASIC` = tipi `String*Type` (solo Basic Latin).
+ */
+export const LUNGHEZZE_XSD: Readonly<Record<string, { max: number; insieme: Insieme }>> = {
+  Denominazione: { max: 80, insieme: 'LATIN1' },
+  Nome: { max: 60, insieme: 'LATIN1' },
+  Cognome: { max: 60, insieme: 'LATIN1' },
+  CodiceFiscale: { max: 16, insieme: 'BASIC' },
+  IdCodice: { max: 28, insieme: 'BASIC' },
+  IdPaese: { max: 2, insieme: 'BASIC' },
+  Indirizzo: { max: 60, insieme: 'LATIN1' },
+  CAP: { max: 5, insieme: 'BASIC' },
+  Comune: { max: 60, insieme: 'LATIN1' },
+  Provincia: { max: 2, insieme: 'BASIC' },
+  Nazione: { max: 2, insieme: 'BASIC' },
+  Ufficio: { max: 2, insieme: 'BASIC' },
+  NumeroREA: { max: 20, insieme: 'BASIC' },
+  SocioUnico: { max: 2, insieme: 'BASIC' },
+  StatoLiquidazione: { max: 2, insieme: 'BASIC' },
+  RegimeFiscale: { max: 4, insieme: 'BASIC' },
+  TipoDocumento: { max: 4, insieme: 'BASIC' },
+  Divisa: { max: 3, insieme: 'BASIC' },
+  Numero: { max: 20, insieme: 'BASIC' },
+  BolloVirtuale: { max: 2, insieme: 'BASIC' },
+  Causale: { max: 200, insieme: 'LATIN1' },
+  IdDocumento: { max: 20, insieme: 'BASIC' },
+  CodiceCUP: { max: 15, insieme: 'BASIC' },
+  CodiceCIG: { max: 15, insieme: 'BASIC' },
+  Descrizione: { max: 1000, insieme: 'LATIN1' },
+  UnitaMisura: { max: 10, insieme: 'BASIC' },
+  Tipo: { max: 2, insieme: 'BASIC' },
+  Natura: { max: 4, insieme: 'BASIC' },
+  EsigibilitaIVA: { max: 1, insieme: 'BASIC' },
+  RiferimentoNormativo: { max: 100, insieme: 'LATIN1' },
+  TipoDato: { max: 10, insieme: 'BASIC' },
+  RiferimentoTesto: { max: 60, insieme: 'BASIC' },
+  CondizioniPagamento: { max: 4, insieme: 'BASIC' },
+  ModalitaPagamento: { max: 4, insieme: 'BASIC' },
+  IstitutoFinanziario: { max: 80, insieme: 'LATIN1' },
+  IBAN: { max: 34, insieme: 'BASIC' },
+  ABI: { max: 5, insieme: 'BASIC' },
+  CAB: { max: 5, insieme: 'BASIC' },
+  BIC: { max: 11, insieme: 'BASIC' },
+  PECDestinatario: { max: 256, insieme: 'BASIC' },
+  ProgressivoInvio: { max: 10, insieme: 'BASIC' },
+  FormatoTrasmissione: { max: 5, insieme: 'BASIC' },
+  CodiceDestinatario: { max: 7, insieme: 'BASIC' },
+}
+
+/**
+ * Invariante violata: un campo obbligatorio dell'XSD resta vuoto dopo la normalizzazione. Il
+ * Task 17 controlla prima, con gli errori del documento: qui e l'ultima difesa, perche un XML
+ * non valido da una fotografia immutabile non si puo piu correggere.
+ */
+export class CampoXmlObbligatorioVuotoError extends Error {
+  constructor(readonly campo: string) {
+    super(`Campo XML obbligatorio vuoto dopo la normalizzazione: ${campo}`)
+    this.name = 'CampoXmlObbligatorioVuotoError'
+  }
+}
 
 const NS_P = 'http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2'
 const SCHEMA_LOCATION =
@@ -84,11 +115,25 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-/** Elemento con testo normalizzato e troncato; omesso se resta vuoto. */
-function el(nome: string, valore: string | null | undefined, max?: number): string {
+function testoCampo(nome: string, valore: string | null | undefined): string {
   if (valore === null || valore === undefined) return ''
-  const t = normalizzaTesto(valore, max ?? Number.MAX_SAFE_INTEGER)
+  const campo = LUNGHEZZE_XSD[nome]
+  return campo === undefined
+    ? normalizzaTesto(valore, Number.MAX_SAFE_INTEGER)
+    : normalizzaTesto(valore, campo.max, campo.insieme)
+}
+
+/** Elemento facoltativo: normalizzato e troncato (max e insieme dalla tabella); omesso se vuoto. */
+function el(nome: string, valore: string | null | undefined): string {
+  const t = testoCampo(nome, valore)
   return t === '' ? '' : `<${nome}>${esc(t)}</${nome}>`
+}
+
+/** Elemento obbligatorio: se resta vuoto dopo la normalizzazione, errore con il nome del campo. */
+function elObbl(nome: string, valore: string | null | undefined): string {
+  const t = testoCampo(nome, valore)
+  if (t === '') throw new CampoXmlObbligatorioVuotoError(nome)
+  return `<${nome}>${esc(t)}</${nome}>`
 }
 
 /** Elemento con contenuto gia serializzato; omesso se vuoto. */
@@ -117,47 +162,56 @@ function num(nome: string, valore: string): string {
   return `<${nome}>${valore}</${nome}>`
 }
 
+/** Sigla di due lettere (provincia, ufficio REA), in maiuscolo; null se non e di due lettere. */
+function siglaDueLettere(v: string | null): string | null {
+  const t = v === null ? '' : v.trim()
+  return /^[A-Za-z]{2}$/.test(t) ? t.toUpperCase() : null
+}
+
 function sede(s: FotografiaDocumento['cedente']['sede']): string {
+  const provincia = siglaDueLettere(s.provincia) // facoltativa: se non e una sigla si omette
   return blocco(
     'Sede',
-    el('Indirizzo', s.indirizzo, LUNGHEZZE_XSD.Indirizzo) +
-      el('CAP', s.cap, LUNGHEZZE_XSD.CAP) +
-      el('Comune', s.comune, LUNGHEZZE_XSD.Comune) +
-      (s.provincia ? el('Provincia', s.provincia.toUpperCase(), LUNGHEZZE_XSD.Provincia) : '') +
-      el('Nazione', s.nazione)
+    elObbl('Indirizzo', s.indirizzo) +
+      elObbl('CAP', s.cap) +
+      elObbl('Comune', s.comune) +
+      (provincia !== null ? el('Provincia', provincia) : '') +
+      elObbl('Nazione', s.nazione)
   )
 }
 
-function idFiscaleIva(partitaIva: string | null): string {
-  if (!partitaIva) return ''
-  return blocco(
-    'IdFiscaleIVA',
-    el('IdPaese', 'IT') + el('IdCodice', partitaIva, LUNGHEZZE_XSD.IdCodice)
-  )
+function idFiscaleIva(partitaIva: string): string {
+  return blocco('IdFiscaleIVA', elObbl('IdPaese', 'IT') + elObbl('IdCodice', partitaIva))
+}
+
+function codiceFiscale(cf: string | null): string {
+  return el('CodiceFiscale', cf === null ? null : cf.toUpperCase())
 }
 
 function cedente(c: FotografiaDocumento['cedente']): string {
-  const rea =
-    c.rea !== null && c.rea.ufficio.trim() !== '' && c.rea.numero.trim() !== ''
-      ? blocco(
-          'IscrizioneREA',
-          el('Ufficio', c.rea.ufficio.toUpperCase(), LUNGHEZZE_XSD.Ufficio) +
-            el('NumeroREA', c.rea.numero, LUNGHEZZE_XSD.NumeroREA) +
-            (c.rea.capitaleSociale !== null
-              ? num('CapitaleSociale', importo2(c.rea.capitaleSociale))
-              : '') +
-            el('SocioUnico', c.rea.socioUnico) +
-            el('StatoLiquidazione', c.rea.statoLiquidazione)
-        )
-      : ''
+  let rea = ''
+  if (c.rea !== null && c.rea.ufficio.trim() !== '') {
+    const ufficio = siglaDueLettere(c.rea.ufficio)
+    if (ufficio === null) throw new CampoXmlObbligatorioVuotoError('Ufficio')
+    rea = blocco(
+      'IscrizioneREA',
+      elObbl('Ufficio', ufficio) +
+        elObbl('NumeroREA', c.rea.numero) +
+        (c.rea.capitaleSociale !== null
+          ? num('CapitaleSociale', importo2(c.rea.capitaleSociale))
+          : '') +
+        el('SocioUnico', c.rea.socioUnico) +
+        elObbl('StatoLiquidazione', c.rea.statoLiquidazione)
+    )
+  }
   return blocco(
     'CedentePrestatore',
     blocco(
       'DatiAnagrafici',
       idFiscaleIva(c.partitaIva) +
-        el('CodiceFiscale', c.codiceFiscale, LUNGHEZZE_XSD.CodiceFiscale) +
-        blocco('Anagrafica', el('Denominazione', c.denominazione, LUNGHEZZE_XSD.Denominazione)) +
-        el('RegimeFiscale', c.regimeFiscale)
+        codiceFiscale(c.codiceFiscale) +
+        blocco('Anagrafica', elObbl('Denominazione', c.denominazione)) +
+        elObbl('RegimeFiscale', c.regimeFiscale)
     ) +
       sede(c.sede) +
       rea
@@ -165,28 +219,31 @@ function cedente(c: FotografiaDocumento['cedente']): string {
 }
 
 function cessionario(c: FotografiaDocumento['cessionario']): string {
+  const denominazione = testoCampo('Denominazione', c.denominazione)
   const anagrafica =
-    c.denominazione !== null && c.denominazione.trim() !== ''
-      ? el('Denominazione', c.denominazione, LUNGHEZZE_XSD.Denominazione)
-      : el('Nome', c.nome, LUNGHEZZE_XSD.Nome) + el('Cognome', c.cognome, LUNGHEZZE_XSD.Cognome)
+    denominazione !== ''
+      ? elObbl('Denominazione', c.denominazione)
+      : elObbl('Nome', c.nome) + elObbl('Cognome', c.cognome)
+  const partitaIva = c.partitaIva !== null && c.partitaIva.trim() !== '' ? c.partitaIva : null
+  const cf = codiceFiscale(c.codiceFiscale)
+  if (partitaIva === null && cf === '') throw new CampoXmlObbligatorioVuotoError('IdFiscaleIVA')
   return blocco(
     'CessionarioCommittente',
     blocco(
       'DatiAnagrafici',
-      idFiscaleIva(c.partitaIva) +
-        el('CodiceFiscale', c.codiceFiscale, LUNGHEZZE_XSD.CodiceFiscale) +
-        blocco('Anagrafica', anagrafica)
+      (partitaIva !== null ? idFiscaleIva(partitaIva) : '') + cf + blocco('Anagrafica', anagrafica)
     ) + sede(c.sede)
   )
 }
 
 /** Un blocco di `Causale` ogni 200 caratteri, per ogni riga del testo di fatturazione. */
 function causali(righe: readonly string[]): string {
+  const max = LUNGHEZZE_XSD.Causale.max
   let out = ''
   for (const r of righe) {
     const t = normalizzaTesto(r, Number.MAX_SAFE_INTEGER)
-    for (let i = 0; i < t.length; i += LUNGHEZZE_XSD.Causale) {
-      const pezzo = t.slice(i, i + LUNGHEZZE_XSD.Causale).trim()
+    for (let i = 0; i < t.length; i += max) {
+      const pezzo = t.slice(i, i + max).trim()
       if (pezzo !== '') out += `<Causale>${esc(pezzo)}</Causale>`
     }
   }
@@ -198,10 +255,17 @@ function contratto(c: NonNullable<DatiFatturaXml['contratto']>): string {
   if (c.idDocumento === null || c.idDocumento.trim() === '') return ''
   return blocco(
     'DatiContratto',
-    el('IdDocumento', c.idDocumento, LUNGHEZZE_XSD.IdDocumento) +
-      el('CodiceCUP', c.cup, LUNGHEZZE_XSD.CodiceCUP) +
-      el('CodiceCIG', c.cig, LUNGHEZZE_XSD.CodiceCIG)
+    elObbl('IdDocumento', c.idDocumento) + el('CodiceCUP', c.cup) + el('CodiceCIG', c.cig)
   )
+}
+
+/** Percentuale di sconto: l'XSD (RateType) ha 2 decimali fissi, quindi non si arrotonda in silenzio. */
+function percentualeSconto(t: string): string {
+  const d = new Prisma.Decimal(t)
+  if (!d.equals(d.toDecimalPlaces(2))) {
+    throw new Error(`Sconto con piu di 2 decimali non rappresentabile nell'XML: ${t}`)
+  }
+  return decimaleXml(t, 2, 2)
 }
 
 function linea(r: RigaDocumentoCalcolata): string {
@@ -209,27 +273,23 @@ function linea(r: RigaDocumentoCalcolata): string {
     .split('+')
     .filter(t => t !== '')
     .map(t =>
-      blocco('ScontoMaggiorazione', el('Tipo', 'SC') + num('Percentuale', decimaleXml(t, 2, 2)))
+      blocco('ScontoMaggiorazione', elObbl('Tipo', 'SC') + num('Percentuale', percentualeSconto(t)))
     )
     .join('')
-  const natura =
-    r.naturaIva !== null && r.naturaIva !== ''
-      ? el('Natura', r.naturaIva, LUNGHEZZE_XSD.Natura)
-      : ''
+  const natura = r.naturaIva !== null && r.naturaIva !== '' ? el('Natura', r.naturaIva) : ''
   const fir =
     r.numeroFir !== null && r.numeroFir.trim() !== ''
       ? blocco(
           'AltriDatiGestionali',
-          el('TipoDato', 'FIR') +
-            el('RiferimentoTesto', r.numeroFir, LUNGHEZZE_XSD.RiferimentoTesto)
+          elObbl('TipoDato', 'FIR') + el('RiferimentoTesto', r.numeroFir)
         )
       : ''
   return blocco(
     'DettaglioLinee',
     num('NumeroLinea', String(r.numeroLinea)) +
-      el('Descrizione', r.descrizione === '' ? '-' : r.descrizione, LUNGHEZZE_XSD.Descrizione) +
+      elObbl('Descrizione', r.descrizione) +
       (r.quantita !== null ? num('Quantita', importo8(r.quantita)) : '') +
-      (r.quantita !== null ? el('UnitaMisura', r.unitaMisura, LUNGHEZZE_XSD.UnitaMisura) : '') +
+      (r.quantita !== null ? el('UnitaMisura', r.unitaMisura) : '') +
       num('PrezzoUnitario', importo8(r.prezzoUnitario)) +
       sconti +
       num('PrezzoTotale', importo8(r.prezzoTotale)) +
@@ -243,13 +303,11 @@ function riepilogo(r: RiepilogoIvaCalcolato): string {
   return blocco(
     'DatiRiepilogo',
     num('AliquotaIVA', decimaleXml(r.aliquota, 2, 2)) +
-      (r.natura !== null && r.natura !== '' ? el('Natura', r.natura, LUNGHEZZE_XSD.Natura) : '') +
+      (r.natura !== null && r.natura !== '' ? el('Natura', r.natura) : '') +
       num('ImponibileImporto', importo2(r.imponibile)) +
       num('Imposta', importo2(r.imposta)) +
-      el('EsigibilitaIVA', r.esigibilita) +
-      (r.riferimentoNormativo !== null
-        ? el('RiferimentoNormativo', r.riferimentoNormativo, LUNGHEZZE_XSD.RiferimentoNormativo)
-        : '')
+      elObbl('EsigibilitaIVA', r.esigibilita) +
+      el('RiferimentoNormativo', r.riferimentoNormativo)
   )
 }
 
@@ -259,35 +317,33 @@ function pagamento(p: NonNullable<DatiFatturaXml['pagamento']>): string {
     .map(r =>
       blocco(
         'DettaglioPagamento',
-        el('ModalitaPagamento', r.modalita) +
+        elObbl('ModalitaPagamento', r.modalita) +
           num('DataScadenzaPagamento', r.dataScadenza) +
           num('ImportoPagamento', importo2(r.importo)) +
-          el('IstitutoFinanziario', r.istituto, LUNGHEZZE_XSD.IstitutoFinanziario) +
-          el('IBAN', r.iban, LUNGHEZZE_XSD.IBAN) +
-          el('ABI', r.abi, LUNGHEZZE_XSD.ABI) +
-          el('CAB', r.cab, LUNGHEZZE_XSD.CAB) +
-          el('BIC', r.bic, LUNGHEZZE_XSD.BIC)
+          el('IstitutoFinanziario', r.istituto) +
+          el('IBAN', r.iban) +
+          el('ABI', r.abi) +
+          el('CAB', r.cab) +
+          el('BIC', r.bic)
       )
     )
     .join('')
-  return blocco('DatiPagamento', el('CondizioniPagamento', p.condizioni) + dettagli)
+  return blocco('DatiPagamento', elObbl('CondizioniPagamento', p.condizioni) + dettagli)
 }
 
-/** XML FatturaPA (UTF-8, senza spazi non significativi, importi col punto). */
+/**
+ * XML FatturaPA (UTF-8, senza spazi non significativi, importi col punto). Lancia
+ * `CampoXmlObbligatorioVuotoError` se un campo obbligatorio resta vuoto dopo la normalizzazione.
+ */
 export function serializzaFattura(d: DatiFatturaXml): string {
   const t = d.trasmissione
   const trasmissione = blocco(
     'DatiTrasmissione',
-    blocco(
-      'IdTrasmittente',
-      el('IdPaese', t.idPaese) + el('IdCodice', t.idCodice, LUNGHEZZE_XSD.IdCodice)
-    ) +
-      el('ProgressivoInvio', t.progressivoInvio, LUNGHEZZE_XSD.ProgressivoInvio) +
-      el('FormatoTrasmissione', t.formato) +
-      el('CodiceDestinatario', t.codiceDestinatario, 7) +
-      (t.codiceDestinatario === '0000000' && t.pecDestinatario
-        ? el('PECDestinatario', t.pecDestinatario, LUNGHEZZE_XSD.PECDestinatario)
-        : '')
+    blocco('IdTrasmittente', elObbl('IdPaese', t.idPaese) + elObbl('IdCodice', t.idCodice)) +
+      elObbl('ProgressivoInvio', t.progressivoInvio) +
+      elObbl('FormatoTrasmissione', t.formato) +
+      elObbl('CodiceDestinatario', t.codiceDestinatario) +
+      (t.codiceDestinatario === '0000000' ? el('PECDestinatario', t.pecDestinatario) : '')
   )
   const header = blocco(
     'FatturaElettronicaHeader',
@@ -299,14 +355,14 @@ export function serializzaFattura(d: DatiFatturaXml): string {
     'DatiGenerali',
     blocco(
       'DatiGeneraliDocumento',
-      el('TipoDocumento', g.tipoDocumento) +
-        el('Divisa', 'EUR') +
+      elObbl('TipoDocumento', g.tipoDocumento) +
+        elObbl('Divisa', 'EUR') +
         num('Data', g.data) +
-        el('Numero', g.numero, LUNGHEZZE_XSD.Numero) +
+        elObbl('Numero', g.numero) +
         (g.bollo !== null
           ? blocco(
               'DatiBollo',
-              el('BolloVirtuale', 'SI') + num('ImportoBollo', importo2(g.bollo.importo))
+              elObbl('BolloVirtuale', 'SI') + num('ImportoBollo', importo2(g.bollo.importo))
             )
           : '') +
         num('ImportoTotaleDocumento', importo2(g.importoTotale)) +
@@ -316,7 +372,7 @@ export function serializzaFattura(d: DatiFatturaXml): string {
       (d.fattureCollegate !== null
         ? blocco(
             'DatiFattureCollegate',
-            el('IdDocumento', d.fattureCollegate.idDocumento, LUNGHEZZE_XSD.IdDocumento) +
+            elObbl('IdDocumento', d.fattureCollegate.idDocumento) +
               num('Data', d.fattureCollegate.data)
           )
         : '')
@@ -342,8 +398,8 @@ export function serializzaFattura(d: DatiFatturaXml): string {
 }
 
 /**
- * Dati dell'XML dalla fotografia e dalle righe salvate. `DatiBollo` vale `importoBolloAl` alla
- * data del documento.
+ * Dati dell'XML dalla fotografia e dalle righe salvate. `DatiBollo` vale `testata.importoBollo`
+ * salvato alla definitiva; se manca (non dovrebbe) ripiega su `importoBolloAl` alla data.
  */
 export function datiFatturaDaDocumento(
   doc: DocumentoPerXml,
@@ -366,7 +422,7 @@ export function datiFatturaDaDocumento(
       tipoDocumento: t.tipoDocumento,
       data: t.dataDocumento,
       numero: t.numeroTesto,
-      bollo: t.bolloDovuto ? { importo: importoBolloAl(t.dataDocumento) } : null,
+      bollo: t.bolloDovuto ? { importo: t.importoBollo ?? importoBolloAl(t.dataDocumento) } : null,
       importoTotale: t.totaleDocumento,
       causale: f.testoFatturazione,
     },
