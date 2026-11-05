@@ -85,21 +85,27 @@ const datiDi = (
 
 /**
  * Il codice IVA deve essere dell'azienda (404 `CODICE_IVA_NON_TROVATO` altrimenti, anche per un
- * codice di un'altra azienda: la RLS non lo fa vedere). Si blocca `FOR SHARE` fino al commit: chi
- * lo elimina in parallelo aspetta. Un codice gia' disattivato resta valido: la spesa che lo
- * porta non si rompe.
+ * codice di un'altra azienda: la RLS non lo fa vedere) e attivo (400, come per cedente e listino).
+ * Si chiama solo per un'assegnazione NUOVA: un codice gia' salvato e poi disattivato resta
+ * ammesso. Si blocca `FOR SHARE` fino al commit: chi lo elimina in parallelo aspetta.
  */
 async function verificaCodiceIva(
   tx: Prisma.TransactionClient,
   tenantId: string,
   codiceIvaId: string
 ): Promise<void> {
-  const righe = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "codici_iva"
+  const righe = await tx.$queryRaw<{ attivo: boolean }[]>`SELECT attivo FROM "codici_iva"
     WHERE id = ${codiceIvaId}::uuid AND tenant_id = ${tenantId}::uuid FOR SHARE`
   if (righe.length === 0) {
     throw new NotFoundException({
       message: 'Codice IVA non trovato.',
       error: 'CODICE_IVA_NON_TROVATO',
+    })
+  }
+  if (!righe[0].attivo) {
+    throw new BadRequestException({
+      message: ['Il codice IVA scelto non esiste o è disattivato.'],
+      error: 'SPESA_ACCESSORIA_NON_VALIDA',
     })
   }
 }

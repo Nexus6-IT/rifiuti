@@ -248,7 +248,7 @@ describe('CodiciIvaService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({
         error: 'CODICE_IVA_IN_USO',
         message:
-          'Il codice IVA è usato da addebiti, righe dei listini o movimenti: disattivalo invece di eliminarlo.',
+          'Il codice IVA è usato da addebiti, righe dei listini, movimenti, documenti o spese accessorie: disattivalo invece di eliminarlo.',
       })
     })
 

@@ -201,6 +201,30 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
       expect(m.descrizione).toBe('Nuova')
     })
 
+    it('assegnazione nuova di un codice IVA disattivato: 400, nulla scritto; quello gia` salvato resta', async () => {
+      const a = await azienda()
+      await owner.codiceIva.update({ where: { id: a.ivaN61Id }, data: { attivo: false } })
+      const e = await errore(
+        nel(a.tenantId, () =>
+          spese.crea(a.tenantId, a.utenteId, datiSpesa('X6', { codiceIvaId: a.ivaN61Id }))
+        )
+      )
+      expect(stato(e)).toBe(400)
+      expect(await owner.spesaAccessoria.count({ where: { tenantId: a.tenantId } })).toBe(0)
+      const v = await nel(a.tenantId, () => spese.crea(a.tenantId, a.utenteId, datiSpesa('X7')))
+      const m = await errore(
+        nel(a.tenantId, () =>
+          spese.modifica(a.tenantId, a.utenteId, v.id, {
+            codiceIvaId: a.ivaN61Id,
+            versione: v.versione,
+          })
+        )
+      )
+      expect(stato(m)).toBe(400)
+      const dopo = await owner.spesaAccessoria.findUniqueOrThrow({ where: { id: v.id } })
+      expect(dopo.codiceIvaId).toBeNull()
+    })
+
     it('codice IVA citato da una spesa: non eliminabile, delete 409 CODICE_IVA_IN_USO', async () => {
       const a = await azienda()
       await nel(a.tenantId, () =>
@@ -242,8 +266,42 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
       }
       const dieci = await modifica(a, a.registroId, 'A/B-C1234', v.versione)
       expect(dieci.suffissoNumero).toBe('A/B-C1234')
-      const vuoto = await modifica(a, a.registroId, '  ', dieci.versione)
-      expect(vuoto.suffissoNumero).toBeNull()
+      const vuoto = await errore(modifica(a, a.registroId, '  ', dieci.versione))
+      expect(stato(vuoto)).toBe(400)
+      const tolto = await modifica(a, a.registroId, null, dieci.versione)
+      expect(tolto.suffissoNumero).toBeNull()
+    })
+
+    it('suffisso cambiato su un registro libero: resta eliminabile; suffisso + split nella stessa richiesta: 200', async () => {
+      const a = await azienda()
+      const v = await modifica(a, a.registroId, '/A', 1)
+      expect(v.eliminabile).toBe(true)
+      expect(await owner.numerazioneFattura.count({ where: { tenantId: a.tenantId } })).toBe(1)
+      const s = await nel(a.tenantId, () =>
+        registri.modifica(a.tenantId, a.utenteId, a.registroId, {
+          suffissoNumero: '/B',
+          ricevuteSplit: true,
+          versione: v.versione,
+        })
+      )
+      expect(s.ricevuteSplit).toBe(true)
+      await nel(a.tenantId, () =>
+        registri.elimina(a.tenantId, a.utenteId, a.registroId, s.versione)
+      )
+      expect(await owner.registroIva.count({ where: { id: a.registroId } })).toBe(0)
+      expect(await owner.numerazioneFattura.count({ where: { tenantId: a.tenantId } })).toBe(0)
+    })
+
+    it('registro con una numerazione scritta: non si elimina (409) e la riga resta', async () => {
+      const a = await azienda()
+      await owner.numerazioneFattura.create({
+        data: { tenantId: a.tenantId, registroIvaId: a.registroId, anno: ANNO, ultimoNumero: 3 },
+      })
+      const e = await errore(
+        nel(a.tenantId, () => registri.elimina(a.tenantId, a.utenteId, a.registroId, 1))
+      )
+      expect(codiceErrore(e)).toBe('REGISTRO_IVA_IN_USO')
+      expect(await owner.numerazioneFattura.count({ where: { tenantId: a.tenantId } })).toBe(1)
     })
 
     it('alla creazione il suffisso e` facoltativo e validato', async () => {
@@ -557,7 +615,7 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
           data: { tenantId: a.tenantId, codice: '06', descrizione: 'Altro' },
         })
         await owner.numerazioneFattura.create({
-          data: { tenantId: a.tenantId, registroIvaId: altro.id, anno: ANNO },
+          data: { tenantId: a.tenantId, registroIvaId: altro.id, anno: ANNO, ultimoNumero: 2 },
         })
         await provaNonEliminabile(a, altro.id)
       })
@@ -628,7 +686,8 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
           )
         )
         expect(stato(e)).toBe(409)
-        expect(codiceErrore(e)).toBe('CLIENTE_CON_CONTRATTI')
+        expect(codiceErrore(e)).toBe('CLIENTE_USATO_DA_FATTURE')
+        expect(e.getResponse().message).toContain('intestatario di fatture')
       })
 
       it('contratto del documento (anche se in bozza): CONTRATTO_CLIENTE_NON_ELIMINABILE', async () => {

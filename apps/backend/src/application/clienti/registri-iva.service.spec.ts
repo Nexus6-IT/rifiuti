@@ -51,6 +51,7 @@ describe('RegistriIvaService (Prisma finto)', () => {
       numerazioneFattura: { groupBy: jest.fn().mockResolvedValue([]) },
       cedenteFatturazione: { groupBy: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     }
     const prisma: any = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new RegistriIvaService(prisma)
@@ -205,7 +206,7 @@ describe('RegistriIvaService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({
         error: 'REGISTRO_IVA_IN_USO',
         message:
-          'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+          'Il registro IVA è usato da clienti, contratti o documenti: non può diventare il registro delle ricevute split payment.',
       })
       expect(sqlDelleChiamate()).toContain('FOR UPDATE')
       expect(tx.registroIva.updateMany).not.toHaveBeenCalled()

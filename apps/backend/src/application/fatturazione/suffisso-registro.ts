@@ -58,7 +58,23 @@ export async function controllaSuffissoModificabile(
   adesso: Date = new Date()
 ): Promise<void> {
   const anno = annoCorrente(adesso)
-  await bloccaNumerazioni(tx, tenantId, [{ registroIvaId, anno }])
+  // Una definitiva di gennaio con data di dicembre numera la coppia dell'anno prima: se quella
+  // coppia esiste si blocca anche lei (stesso lock della riserva), senza cambiare la regola del
+  // 409, che vale solo per l'anno corrente.
+  const [precedente] = await tx.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM "numerazioni_fattura"
+    WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${registroIvaId}::uuid
+      AND anno = ${anno - 1}::int`
+  await bloccaNumerazioni(
+    tx,
+    tenantId,
+    (precedente?.n ?? 0) > 0
+      ? [
+          { registroIvaId, anno: anno - 1 },
+          { registroIvaId, anno },
+        ]
+      : [{ registroIvaId, anno }]
+  )
   const ha = await registriConDefinitivoNellAnno(tx, tenantId, [registroIvaId], anno)
   if (ha.size > 0) {
     throw new ConflictException({

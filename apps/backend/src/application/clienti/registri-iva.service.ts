@@ -35,6 +35,11 @@ const ENTITA: DescrizioneEntita = {
   prefisso: 'REGISTRO_IVA',
   soggetto: 'Il registro IVA',
   femminile: false,
+  inUso: {
+    codice: 'REGISTRO_IVA_IN_USO',
+    messaggio:
+      'Il registro IVA è usato da clienti, contratti o documenti: disattivalo invece di eliminarlo.',
+  },
 }
 
 /** Unica chiave unica di business della tabella: il codice. */
@@ -88,13 +93,6 @@ const datiDi = (
   suffissoNumero: r.suffissoNumero,
   attivo: r.attivo,
 })
-
-/** Vuoto o solo spazi = nessun suffisso; `undefined` = campo non inviato. */
-function normalizzaSuffisso(v: string | null | undefined): string | null | undefined {
-  if (v === undefined || v === null) return v
-  const t = v.trim()
-  return t === '' ? null : t
-}
 
 async function comeVista(
   r: RigaRegistro,
@@ -177,7 +175,7 @@ export class RegistriIvaService {
     dati: DatiRegistroIvaConSuffisso
   ): Promise<RegistroIvaVista> {
     const valori = normalizzaRegistro(dati)
-    const suffissoNumero = normalizzaSuffisso(dati.suffissoNumero) ?? null
+    const suffissoNumero = dati.suffissoNumero ?? null
     validaOLancia(valori, suffissoNumero)
     return nelContestoTenant(tenantId, () =>
       this.prisma
@@ -207,7 +205,7 @@ export class RegistriIvaService {
           // Suffisso (§4.10): il lock della numerazione dell'anno si prende PRIMA di quello del
           // registro (ordine della spec §8) e solo se il suffisso sta davvero cambiando. Un
           // cambio concorrente della versione e' preso comunque dal confronto di `versione`.
-          const suffissoRichiesto = normalizzaSuffisso(m.suffissoNumero)
+          const suffissoRichiesto = m.suffissoNumero
           if (suffissoRichiesto !== undefined) {
             if (!suffissoValido(suffissoRichiesto)) {
               throw new BadRequestException({
@@ -255,7 +253,7 @@ export class RegistriIvaService {
               throw new ConflictException({
                 error: 'REGISTRO_IVA_IN_USO',
                 message:
-                  'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+                  'Il registro IVA è usato da clienti, contratti o documenti: non può diventare il registro delle ricevute split payment.',
               })
             }
           }
@@ -291,6 +289,15 @@ export class RegistriIvaService {
           const riga = await tx.registroIva.findFirst({ where: { id, tenantId } })
           if (!riga) throw nonTrovato()
           confrontaVersione(riga.versione, versione, ENTITA)
+          // Le righe vuote della numerazione nascono solo per il lock del suffisso: non sono un
+          // uso. Si bloccano (ordine numerazioni -> registro, come il cambio di suffisso) e si
+          // cancellano; quelle scritte restano e la FK rifiuta l'eliminazione (409 in uso).
+          await tx.$queryRaw`SELECT 1 FROM "numerazioni_fattura"
+            WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${id}::uuid
+            ORDER BY anno FOR UPDATE`
+          await tx.$executeRaw`DELETE FROM "numerazioni_fattura"
+            WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${id}::uuid
+              AND ultimo_numero = 0 AND numero_partenza = 0 AND data_partenza IS NULL`
           await scriviCondizionato(
             () => tx.registroIva.deleteMany({ where: { id, tenantId, versione } }),
             ENTITA

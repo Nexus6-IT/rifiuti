@@ -59,6 +59,11 @@ export const COLONNE_CODIFICA: ColonneReferenti = {
   contratti: ['categoriaId', 'tipoId', 'motivoAnnulloId'],
 }
 
+/** Numerazione con almeno un numero o una partenza scritti (spec §4.6). */
+const NUMERAZIONE_SCRITTA = {
+  OR: [{ ultimoNumero: { gt: 0 } }, { numeroPartenza: { gt: 0 } }, { dataPartenza: { not: null } }],
+}
+
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
 type GroupBy = (args: {
   by: string[]
@@ -90,7 +95,12 @@ export async function contaUsi(
     for (const colonna of elenco) {
       const righe = await modello.groupBy({
         by: [colonna],
-        where: { tenantId, [colonna]: { in: [...ids] } },
+        where: {
+          tenantId,
+          [colonna]: { in: [...ids] },
+          // Una riga di numerazione vuota nasce solo per il lock del suffisso: non e' un uso.
+          ...(modello === (client.numerazioneFattura as unknown) ? NUMERAZIONE_SCRITTA : {}),
+        },
         _count: { _all: true },
       })
       for (const r of righe) {

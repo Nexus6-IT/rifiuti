@@ -1348,14 +1348,15 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
     })
 
-    it('bozza citata da un documento di fattura: 409 NON_ELIMINABILE, nessuna scrittura (4.4a)', async () => {
+    it('bozza citata da un documento di fattura: 409 NON_ELIMINABILE, nessun audit (4.4a)', async () => {
       tx.documentoFattura.count.mockResolvedValue(1)
       const e = await errore(service.elimina(T, U, K, 1))
       expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_ELIMINABILE')
       expect(tx.documentoFattura.count).toHaveBeenCalledWith({
         where: { tenantId: T, contrattoId: K },
       })
-      expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+      // Il controllo sta dopo la scrittura: il 409 fa il rollback dell'eliminazione logica.
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
     })
 
     it('inesistente: 404; versione diversa: 409', async () => {

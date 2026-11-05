@@ -53,7 +53,7 @@ const ENTITA: DescrizioneEntita = {
     },
     // 4.4a: un documento di fattura cita il cliente intestatario anche senza un suo contratto.
     documenti_fattura_cliente_fatturazione_fkey: {
-      codice: 'CLIENTE_CON_CONTRATTI',
+      codice: 'CLIENTE_USATO_DA_FATTURE',
       messaggio:
         'Il cliente è intestatario di fatture: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
     },
