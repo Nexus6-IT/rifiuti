@@ -22,6 +22,13 @@ import {
   type DescrizioneEntita,
   type VincoliNoti,
 } from './anagrafica-versionata'
+import {
+  MSG_SUFFISSO_NON_VALIDO,
+  annoCorrente,
+  controllaSuffissoModificabile,
+  registriConDefinitivoNellAnno,
+  suffissoValido,
+} from '../fatturazione/suffisso-registro'
 import { COLONNE_REGISTRO, contaUsi, type ClientUsi } from './uso-tabelle-fatturazione'
 
 const ENTITA: DescrizioneEntita = {
@@ -38,15 +45,22 @@ const VINCOLI: VincoliNoti = {
   },
 }
 
+/** Dati del registro con il suffisso facoltativo del numero (4.4a, S9). */
+export type DatiRegistroIvaConSuffisso = DatiRegistroIva & { suffissoNumero?: string | null }
+
 export interface RegistroIvaVista extends DatiRegistroIva {
   id: string
   attivo: boolean
   versione: number
+  /** Suffisso del numero di fattura (per esempio `/A`), o null. */
+  suffissoNumero: string | null
+  /** false se il registro ha un definitivo nell'anno della data italiana corrente (§4.10). */
+  suffissoModificabile: boolean
   /** Nessun cliente o contratto lo cita: si puo' cancellare invece di disattivare. */
   eliminabile: boolean
 }
 
-export type ModificaRegistroIva = Partial<DatiRegistroIva> & {
+export type ModificaRegistroIva = Partial<DatiRegistroIvaConSuffisso> & {
   attivo?: boolean
   versione: number
 }
@@ -57,40 +71,57 @@ type RigaRegistro = {
   descrizione: string
   ricevuteSplit: boolean
   attivo: boolean
+  suffissoNumero: string | null
   versione: number
 }
 
 /** Campi modificabili, nell'ordine in cui compaiono in scrittura e nell'audit. */
-const CAMPI = ['codice', 'descrizione', 'ricevuteSplit', 'attivo'] as const
+const CAMPI = ['codice', 'descrizione', 'ricevuteSplit', 'suffissoNumero', 'attivo'] as const
 type Campo = (typeof CAMPI)[number]
 
-const datiDi = (r: RigaRegistro): DatiRegistroIva & { attivo: boolean } => ({
+const datiDi = (
+  r: RigaRegistro
+): DatiRegistroIva & { attivo: boolean; suffissoNumero: string | null } => ({
   codice: r.codice,
   descrizione: r.descrizione,
   ricevuteSplit: r.ricevuteSplit,
+  suffissoNumero: r.suffissoNumero,
   attivo: r.attivo,
 })
+
+/** Vuoto o solo spazi = nessun suffisso; `undefined` = campo non inviato. */
+function normalizzaSuffisso(v: string | null | undefined): string | null | undefined {
+  if (v === undefined || v === null) return v
+  const t = v.trim()
+  return t === '' ? null : t
+}
 
 async function comeVista(
   r: RigaRegistro,
   tenantId: string,
   client: ClientUsi,
-  usiNoti?: number
+  usiNoti?: number,
+  conDefinitivo?: ReadonlySet<string>
 ): Promise<RegistroIvaVista> {
   const usi = usiNoti ?? (await contaUsi(client, tenantId, [r.id], COLONNE_REGISTRO)).get(r.id) ?? 0
+  const bloccati =
+    conDefinitivo ?? (await registriConDefinitivoNellAnno(client, tenantId, [r.id], annoCorrente()))
   return {
     id: r.id,
     codice: r.codice,
     descrizione: r.descrizione,
     ricevuteSplit: r.ricevuteSplit,
     attivo: r.attivo,
+    suffissoNumero: r.suffissoNumero,
+    suffissoModificabile: !bloccati.has(r.id),
     versione: r.versione,
     eliminabile: usi === 0,
   }
 }
 
-function validaOLancia(dati: DatiRegistroIva): void {
+function validaOLancia(dati: DatiRegistroIva, suffisso: string | null = null): void {
   const errori = validaRegistro(dati)
+  if (!suffissoValido(suffisso)) errori.push(MSG_SUFFISSO_NON_VALIDO)
   if (errori.length > 0) {
     throw new BadRequestException({ message: errori, error: 'REGISTRO_IVA_NON_VALIDO' })
   }
@@ -120,7 +151,15 @@ export class RegistriIvaService {
         righe.map(r => r.id),
         COLONNE_REGISTRO
       )
-      return Promise.all(righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0)))
+      const conDefinitivo = await registriConDefinitivoNellAnno(
+        this.prisma,
+        tenantId,
+        righe.map(r => r.id),
+        annoCorrente()
+      )
+      return Promise.all(
+        righe.map(r => comeVista(r, tenantId, this.prisma, usi.get(r.id) ?? 0, conDefinitivo))
+      )
     })
   }
 
@@ -132,13 +171,20 @@ export class RegistriIvaService {
     })
   }
 
-  async crea(tenantId: string, utenteId: string, dati: DatiRegistroIva): Promise<RegistroIvaVista> {
+  async crea(
+    tenantId: string,
+    utenteId: string,
+    dati: DatiRegistroIvaConSuffisso
+  ): Promise<RegistroIvaVista> {
     const valori = normalizzaRegistro(dati)
-    validaOLancia(valori)
+    const suffissoNumero = normalizzaSuffisso(dati.suffissoNumero) ?? null
+    validaOLancia(valori, suffissoNumero)
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
-          const riga = await tx.registroIva.create({ data: { tenantId, ...valori } })
+          const riga = await tx.registroIva.create({
+            data: { tenantId, ...valori, suffissoNumero },
+          })
           await this.audit(tx, tenantId, utenteId, 'REGISTRO_IVA_CREATO', 'creato', {
             registroId: riga.id,
             codice: riga.codice,
@@ -158,6 +204,24 @@ export class RegistriIvaService {
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
+          // Suffisso (§4.10): il lock della numerazione dell'anno si prende PRIMA di quello del
+          // registro (ordine della spec §8) e solo se il suffisso sta davvero cambiando. Un
+          // cambio concorrente della versione e' preso comunque dal confronto di `versione`.
+          const suffissoRichiesto = normalizzaSuffisso(m.suffissoNumero)
+          if (suffissoRichiesto !== undefined) {
+            if (!suffissoValido(suffissoRichiesto)) {
+              throw new BadRequestException({
+                message: [MSG_SUFFISSO_NON_VALIDO],
+                error: 'REGISTRO_IVA_NON_VALIDO',
+              })
+            }
+            const [corrente] = await tx.$queryRaw<{ suffisso: string | null }[]>`
+              SELECT suffisso_numero AS suffisso FROM "registri_iva"
+              WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid`
+            if (corrente && corrente.suffisso !== suffissoRichiesto) {
+              await controllaSuffissoModificabile(tx, tenantId, id)
+            }
+          }
           // R24: vedi la spesa accessoria. Il blocco serve solo se il registro puo' diventare
           // quello delle ricevute split.
           if (m.ricevuteSplit === true) {
@@ -169,12 +233,19 @@ export class RegistriIvaService {
           confrontaVersione(prima.versione, m.versione, ENTITA)
 
           const attuali = datiDi(prima)
+          const senzaSuffisso: Record<string, unknown> = { ...m }
+          delete senzaSuffisso.suffissoNumero
           const unione = normalizzaRegistro({
             ...attuali,
-            ...Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)),
+            ...Object.fromEntries(Object.entries(senzaSuffisso).filter(([, v]) => v !== undefined)),
           })
           validaOLancia(unione)
-          const nuovi: Record<Campo, unknown> = { ...unione, attivo: m.attivo ?? attuali.attivo }
+          const nuovi: Record<Campo, unknown> = {
+            ...unione,
+            suffissoNumero:
+              suffissoRichiesto === undefined ? attuali.suffissoNumero : suffissoRichiesto,
+            attivo: m.attivo ?? attuali.attivo,
+          }
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
           if (campi.length === 0) return comeVista(prima, tenantId, tx)

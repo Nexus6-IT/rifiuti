@@ -1024,6 +1024,17 @@ export class ContrattiClienteService {
               message: 'Il contratto ha dei contratti allegati: staccali prima di eliminarlo.',
             })
           }
+          // 4.4a: l'eliminazione e' logica, quindi la FK dei documenti non scatta. Un contratto
+          // citato da un documento di fattura (anche in bozza) e' un dato fiscale: non si elimina.
+          const documenti = await tx.documentoFattura.count({
+            where: { tenantId, contrattoId: id },
+          })
+          if (documenti > 0) {
+            throw new ConflictException({
+              error: 'CONTRATTO_CLIENTE_NON_ELIMINABILE',
+              message: 'Il contratto è usato da documenti di fatturazione: non si può eliminare.',
+            })
+          }
           await scriviCondizionato(
             () =>
               tx.contrattoCliente.updateMany({

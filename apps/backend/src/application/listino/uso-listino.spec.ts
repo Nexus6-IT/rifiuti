@@ -118,6 +118,8 @@ describe('contaUsiListino', () => {
         rigaAddebito: { groupBy: jest.fn(async () => []) },
         rigaLegameMovimento: { groupBy: jest.fn(async () => righe) },
         legameMovimento: { groupBy: jest.fn(async () => righe) },
+        rigaDocumentoFattura: { groupBy: jest.fn(async () => []) },
+        marcatoreAddebitoFatturato: { groupBy: jest.fn(async () => []) },
         $queryRaw: jest.fn(),
         $executeRaw: jest.fn(),
       }) as any
@@ -157,6 +159,53 @@ describe('contaUsiListino', () => {
       expect(client.legameMovimento.groupBy).not.toHaveBeenCalled()
       expect(usi.get('x')).toBe(3)
       expect(usi.get('y')).toBe(0)
+    })
+  })
+
+  describe('documenti di fattura (4.4a)', () => {
+    const cliente = () =>
+      ({
+        addebito: { groupBy: jest.fn(async () => []) },
+        rigaAddebito: { groupBy: jest.fn(async () => []) },
+        rigaLegameMovimento: { groupBy: jest.fn(async () => []) },
+        legameMovimento: { groupBy: jest.fn(async () => []) },
+        rigaDocumentoFattura: {
+          groupBy: jest.fn(async (a: any) => [{ [a.by[0]]: 'x', _count: { _all: 2 } }]),
+        },
+        marcatoreAddebitoFatturato: {
+          groupBy: jest.fn(async (a: any) => [{ [a.by[0]]: 'x', _count: { _all: 1 } }]),
+        },
+      }) as any
+
+    it('i referenti: riga di listino -> righe documento e marcatori; codice IVA -> righe documento', () => {
+      expect(COLONNE_RIGA_LISTINO.righeDocumento).toEqual(['rigaAddebitoId'])
+      expect(COLONNE_RIGA_LISTINO.marcatori).toEqual(['rigaAddebitoId'])
+      expect(COLONNE_CODICE_IVA.righeDocumento).toEqual(['codiceIvaId'])
+      expect(COLONNE_CODICE_IVA.marcatori).toEqual([])
+    })
+
+    it('una riga di listino citata da una riga di documento e da un marcatore: due citazioni sommate', async () => {
+      const c = cliente()
+      const usi = await contaUsiListino(c, T, ['x', 'y'], COLONNE_RIGA_LISTINO)
+      expect(c.rigaDocumentoFattura.groupBy.mock.calls[0][0].by).toEqual(['rigaAddebitoId'])
+      expect(c.marcatoreAddebitoFatturato.groupBy.mock.calls[0][0].by).toEqual(['rigaAddebitoId'])
+      expect(usi.get('x')).toBe(3)
+      expect(usi.get('y')).toBe(0)
+    })
+
+    it('1000 id: una query per colonna referente, mai una per id', async () => {
+      const ids = Array.from(
+        { length: 1000 },
+        (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`
+      )
+      const c = cliente()
+      await contaUsiListino(c, T, ids, COLONNE_RIGA_LISTINO)
+      expect(c.rigaLegameMovimento.groupBy).toHaveBeenCalledTimes(1)
+      expect(c.rigaDocumentoFattura.groupBy).toHaveBeenCalledTimes(1)
+      expect(c.marcatoreAddebitoFatturato.groupBy).toHaveBeenCalledTimes(1)
+      expect(c.rigaDocumentoFattura.groupBy.mock.calls[0][0].where.rigaAddebitoId.in).toHaveLength(
+        1000
+      )
     })
   })
 })

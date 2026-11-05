@@ -7,7 +7,11 @@
  * il tipo giusto; `null` e' 400.
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsBoolean, IsInt, IsString, Min, ValidateIf } from 'class-validator'
+import { IsBoolean, IsInt, IsString, Matches, Min, ValidateIf } from 'class-validator'
+import {
+  MSG_SUFFISSO_NON_VALIDO,
+  SUFFISSO_REGEX,
+} from '../../../application/fatturazione/suffisso-registro'
 
 export class CreaRegistroIvaDto {
   @ApiProperty({ example: '01', description: 'Due cifre, da 01 a 99 (una cifra sola si completa)' })
@@ -24,6 +28,16 @@ export class CreaRegistroIvaDto {
   })
   @IsBoolean()
   ricevuteSplit: boolean
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '/A',
+    description: '1-10 caratteri [A-Za-z0-9/-]; null o omesso = nessun suffisso',
+  })
+  @ValidateIf((_, v) => v !== undefined && v !== null)
+  @IsString()
+  @Matches(SUFFISSO_REGEX, { message: MSG_SUFFISSO_NON_VALIDO })
+  suffissoNumero?: string | null
 }
 
 export class ModificaRegistroIvaDto {
@@ -41,6 +55,16 @@ export class ModificaRegistroIvaDto {
   @ValidateIf((_, v) => v !== undefined)
   @IsBoolean()
   ricevuteSplit?: boolean
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: '/A',
+    description: '1-10 caratteri [A-Za-z0-9/-]; null = togli il suffisso',
+  })
+  @ValidateIf((_, v) => v !== undefined && v !== null)
+  @IsString()
+  @Matches(SUFFISSO_REGEX, { message: MSG_SUFFISSO_NON_VALIDO })
+  suffissoNumero?: string | null
 
   @ApiPropertyOptional({ description: 'false = disattiva, true = riattiva' })
   @ValidateIf((_, v) => v !== undefined)
