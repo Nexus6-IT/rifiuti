@@ -286,7 +286,11 @@ jobs:
             echo "$CR_TOKEN" | docker login gitea.tail8be933.ts.net -u Graziano --password-stdin
             export TAG="$DEPLOY_TAG"
             COMPOSE="docker compose -p rifiuti --env-file /opt/rifiuti/.env -f docker-compose.prod.yml"
-            $COMPOSE pull
+            # Solo le nostre immagini: un pull di postgres/redis con il tag mobile
+            # (16-alpine, 7-alpine) faceva ricreare il database a ogni deploy in cui
+            # il tag era cambiato. Quelle immagini si aggiornano con un intervento
+            # deciso, backup prima; `up -d` le scarica da solo solo se mancano.
+            $COMPOSE pull backend frontend
             # Backup verificato prima delle migration (forward-only): se fallisce,
             # set -e ferma tutto e la produzione resta sulla versione precedente.
             BACKUP_MODALITA=predeploy WASTEFLOW_COMPOSE_FILE="$PWD/docker-compose.prod.yml" bash ops/backup-offsite.sh
