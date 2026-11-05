@@ -7,7 +7,11 @@
 // chi deve risalire alla riga del legame usa `(legame_id, riga_addebito_id)`.
 import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
-import type { ErroreDocumento, Segnalazione } from '../../domain/fatturazione/codici'
+import type {
+  ErroreDocumento,
+  ErroreGenerale,
+  Segnalazione,
+} from '../../domain/fatturazione/codici'
 import {
   calcolaDocumento,
   type DocumentoCalcolato,
@@ -37,14 +41,19 @@ import {
  * `dettaglio()` mappa le `Segnalazione` in `SegnalazioneVista` col messaggio.
  */
 export interface RiepilogoElaborazione {
-  /** Bozze scritte (i documenti senza registro non lo sono: stanno in `documentiNonGenerati`). */
+  /**
+   * I conteggi sono PER DOCUMENTO, non per segnalazione. `documenti`: le bozze scritte (quelli
+   * senza registro non lo sono: stanno in `documentiNonGenerati`). `errori`: bozze con almeno un
+   * errore PIU' i documenti non generati, quindi puo' superare `documenti`; gli errori generali
+   * dell'elaborazione (`erroriGenerali`) NON ci sono. `avvisi`: bozze con almeno un avviso.
+   * `totale`: somma di tutte le bozze, anche quelle con errori che non saranno emesse.
+   */
   documenti: number
-  /** Somma dei totali delle bozze. */
   totale: string
-  /** Documenti con almeno un errore, piu' quelli non generati. */
   errori: number
-  /** Documenti con almeno un avviso. */
   avvisi: number
+  /** Errori generali con il loro dettaglio (la colonna `errori_generali` ha solo i codici). */
+  erroriGenerali: Segnalazione<ErroreGenerale>[]
   erroriPeriodo: SelezioneElaborazione['erroriPeriodo']
   numerazionePrevista: { registroIvaId: string; codiceRegistro: string; da: string; a: string }[]
   totaliPerRegistro: { registroIvaId: string; imponibile: string; iva: string; totale: string }[]
@@ -158,7 +167,10 @@ export function costruisciRiepilogo(
   nonGenerati: RiepilogoElaborazione['documentiNonGenerati'],
   erroriPeriodo: SelezioneElaborazione['erroriPeriodo'],
   anno: number,
-  contesto: ContestoNumerazione
+  contesto: ContestoNumerazione,
+  erroriGenerali: SelezioneElaborazione['erroriGenerali'] = [],
+  /** `DocumentoSelezionato.chiave` dei documenti esclusi dalla definitiva: non si numerano. */
+  esclusi: ReadonlySet<string> = new Set()
 ): Omit<RiepilogoElaborazione, 'prontaIl'> {
   const codice = (registroIvaId: string): string => contesto.codiciRegistro.get(registroIvaId) ?? ''
   const perRegistro = new Map<string, BozzaCalcolata[]>()
@@ -173,7 +185,9 @@ export function costruisciRiepilogo(
   const numerazionePrevista: RiepilogoElaborazione['numerazionePrevista'] = []
   for (const registroIvaId of registri) {
     // Si numerano i documenti senza errori e non esclusi (all'anteprima nessuno e' escluso).
-    const numerabili = perRegistro.get(registroIvaId)!.filter(b => b.calcolato.errori.length === 0)
+    const numerabili = perRegistro
+      .get(registroIvaId)!
+      .filter(b => b.calcolato.errori.length === 0 && !esclusi.has(b.selezionato.chiave))
     if (numerabili.length === 0) continue
     const chiave = chiaveNumerazione(registroIvaId, anno)
     const ultimo = contesto.ultimoNumero.get(chiave) ?? 0
@@ -201,6 +215,7 @@ export function costruisciRiepilogo(
     totale: sommaDecimali(bozze.map(b => b.calcolato.totaleDocumento)).toFixed(2),
     errori: bozze.filter(b => b.calcolato.errori.length > 0).length + nonGenerati.length,
     avvisi: bozze.filter(b => b.calcolato.avvisi.length > 0).length,
+    erroriGenerali,
     erroriPeriodo,
     numerazionePrevista,
     totaliPerRegistro,
@@ -246,12 +261,13 @@ async function portaInCorso(
   if (riga.stato !== 'IN_CODA' && riga.stato !== 'IN_CORSO') return null
   if (riga.stato === 'IN_CODA') {
     try {
-      const passate = await prisma.$transaction(
-        tx => tx.$executeRaw`
+      const passate = await prisma.$transaction(async tx => {
+        await impostaTimeoutLock(tx)
+        return tx.$executeRaw`
           UPDATE elaborazioni_fatturazione SET stato = 'IN_CORSO', updated_at = now()
           WHERE tenant_id = ${tenantId}::uuid AND id = ${elaborazioneId}::uuid
             AND stato = 'IN_CODA' AND versione = ${riga.versione}::int`
-      )
+      })
       if (passate === 0) return null
     } catch (err) {
       if (eViolazioneUnica(err)) throw new ElaborazioneAttivaError()
@@ -472,6 +488,18 @@ export async function eseguiAnteprima(
       ) {
         return
       }
+      // Le esclusioni sopravvivono al ricalcolo (legate alla chiave del documento): un documento
+      // che l'utente aveva escluso non deve finire nella definitiva dopo «Ricalcola».
+      const esclusiPrima = await tx.$queryRaw<{ contrattoId: string; elencoId: string | null }[]>`
+        SELECT contratto_id::text AS "contrattoId", elenco_id::text AS "elencoId"
+        FROM documenti_fattura
+        WHERE tenant_id = ${tenantId}::uuid AND elaborazione_id = ${elaborazioneId}::uuid
+          AND stato = 'BOZZA' AND escluso_da_definitiva`
+      const esclusi = new Set(
+        esclusiPrima.map(e =>
+          e.elencoId === null ? e.contrattoId : `${e.contrattoId}:${e.elencoId}`
+        )
+      )
       await tx.$executeRaw`
         DELETE FROM documenti_fattura
         WHERE tenant_id = ${tenantId}::uuid AND elaborazione_id = ${elaborazioneId}::uuid
@@ -483,12 +511,21 @@ export async function eseguiAnteprima(
         anno
       )
       await scriviBozze(tx, tenantId, elaborazioneId, parametri, bozze)
+      const bozzeEscluse = bozze.filter(b => esclusi.has(b.selezionato.chiave))
+      if (bozzeEscluse.length > 0) {
+        // Un documento che non esiste piu' perde l'esclusione (non e' fra le bozze nuove).
+        await tx.$executeRaw`
+          UPDATE documenti_fattura SET escluso_da_definitiva = true, updated_at = now()
+          WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${bozzeEscluse.map(b => b.id)}::uuid[])`
+      }
       const parziale = costruisciRiepilogo(
         bozze,
         nonGenerati,
         selezione.erroriPeriodo,
         anno,
-        contesto
+        contesto,
+        selezione.erroriGenerali,
+        esclusi
       )
       const [{ adesso }] = await tx.$queryRaw<{ adesso: string }[]>`
         SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS adesso`

@@ -1277,7 +1277,7 @@ export async function selezionaElaborazione(
  * resta vuoto DOPO la normalizzazione: qui si controlla prima, cosi' un dato che non si puo'
  * emettere diventa un errore del documento (o del cedente) e non un'eccezione dopo la definitiva.
  */
-function cedenteNormalizzabile(c: CedenteVista): boolean {
+export function cedenteNormalizzabile(c: CedenteVista): boolean {
   const t = c.daTenant
   return (
     testo(t.ragioneSociale, 80) !== '' &&

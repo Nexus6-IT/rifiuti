@@ -31,7 +31,12 @@ function creaJob(
   return job
 }
 
-const DATI = { tenantId: 't1', elaborazioneId: 'e1', tipo: 'anteprima', versione: 1 }
+const DATI = {
+  tenantId: 't1',
+  elaborazioneId: '00000000-0000-4000-8000-000000000001',
+  tipo: 'anteprima',
+  versione: 1,
+}
 const prisma = {} as never
 
 describe('FatturazioneJobProcessor', () => {
@@ -47,7 +52,7 @@ describe('FatturazioneJobProcessor', () => {
   it('anteprima riuscita: nessuna scrittura di errore', async () => {
     mockEsegui.mockResolvedValue(undefined)
     await esegui(creaJob(DATI))
-    expect(mockEsegui).toHaveBeenCalledWith(prisma, 't1', 'e1', 1)
+    expect(mockEsegui).toHaveBeenCalledWith(prisma, 't1', '00000000-0000-4000-8000-000000000001', 1)
     expect(mockFallita).not.toHaveBeenCalled()
   })
 
@@ -72,7 +77,7 @@ describe('FatturazioneJobProcessor', () => {
     expect(mockFallita).toHaveBeenCalledWith(
       prisma,
       't1',
-      'e1',
+      '00000000-0000-4000-8000-000000000001',
       "Un'altra elaborazione era in corso",
       1
     )
@@ -96,6 +101,14 @@ describe('FatturazioneJobProcessor', () => {
   it('elaborazione non trovata (altra azienda): fallimento definitivo, nessuna FALLITA', async () => {
     mockEsegui.mockRejectedValue(new ElaborazioneNonTrovataError())
     await expect(esegui(creaJob(DATI))).rejects.toBeInstanceOf(UnrecoverableError)
+    expect(mockFallita).not.toHaveBeenCalled()
+  })
+
+  it('elaborazioneId che non e’ un UUID: fallimento definitivo prima di ogni query', async () => {
+    await expect(
+      esegui(creaJob({ ...DATI, elaborazioneId: 'non-un-uuid' }))
+    ).rejects.toBeInstanceOf(UnrecoverableError)
+    expect(mockEsegui).not.toHaveBeenCalled()
     expect(mockFallita).not.toHaveBeenCalled()
   })
 

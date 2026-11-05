@@ -66,6 +66,13 @@ export interface DocumentoNonGenerato {
   errori: SegnalazioneVista[]
 }
 
+/**
+ * `documenti`, `errori` e `avvisi` contano DOCUMENTI: `documenti` solo le bozze scritte, `errori`
+ * le bozze con almeno un errore PIU' i documenti non generati (Q3), `avvisi` le bozze con almeno un
+ * avviso. Gli errori generali dell'elaborazione (per esempio `CEDENTE_INCOMPLETO`) non entrano in
+ * `errori`: stanno in `ElaborazioneDettaglio.erroriGenerali`. `totale` somma tutte le bozze, anche
+ * quelle con errori che non saranno emesse.
+ */
 export interface ElaborazioneRiga {
   id: string
   stato: StatoElaborazione

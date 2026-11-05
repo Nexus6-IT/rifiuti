@@ -131,6 +131,46 @@ describe('ElaborazioniService — Postgres reale, ruolo wasteflow_app', () => {
       id
     )
 
+  /**
+   * Tiene (col proprietario) un lock finche' non si chiama la funzione restituita. Ritorna dopo che
+   * il lock e' stato preso.
+   */
+  async function tieniLock(sql: string): Promise<() => Promise<void>> {
+    let rilascia!: () => void
+    const aperta = new Promise<void>(r => (rilascia = r))
+    let preso!: () => void
+    const bloccato = new Promise<void>(r => (preso = r))
+    const tx = owner.$transaction(
+      async t => {
+        await t.$executeRawUnsafe(sql)
+        preso()
+        await aperta
+      },
+      { timeout: 120_000, maxWait: 30_000 }
+    )
+    await bloccato
+    return async () => {
+      rilascia()
+      await tx
+    }
+  }
+  /** Aspetta che `n` sessioni di QUESTO processo siano in attesa di un lock (mai uno sleep). */
+  async function attendiLock(n: number, finita: () => boolean): Promise<void> {
+    const scadenza = Date.now() + 20_000
+    for (;;) {
+      const [{ k }] = await owner.$queryRawUnsafe<{ k: number }[]>(
+        `SELECT count(*)::int AS k FROM pg_stat_activity
+         WHERE datname = current_database() AND application_name = $1
+           AND wait_event_type = 'Lock'`,
+        NOME_APPLICAZIONE
+      )
+      if (k >= n) return
+      if (finita() || Date.now() > scadenza)
+        throw new Error(`attesa di ${n} lock non raggiunta (${k})`)
+      await new Promise(r => setTimeout(r, 25))
+    }
+  }
+
   describe('avvia', () => {
     it('avvio valido: IN_CODA, job accodato con tenant, elaborazione e jobId «anteprima-<id>-v1» salvato in job_id', async () => {
       const { az } = await aziendaConLegame()
@@ -209,35 +249,50 @@ describe('ElaborazioniService — Postgres reale, ruolo wasteflow_app', () => {
       expect(await esito(avvia(b))).toBe('ok')
     })
 
-    it('due avvii in parallelo: nessun 500; alla fine ogni elaborazione accettata e’ pronta, una alla volta', async () => {
+    it('due avvii in parallelo (barriera su pg_stat_activity): escono due IN_CODA, mai un 500; i due job non sono mai IN_CORSO insieme (Q12)', async () => {
       const { az } = await aziendaConLegame()
-      const avvii = await Promise.allSettled([avvia(az), avvia(az)])
-      const ids: string[] = []
-      for (const a of avvii) {
-        if (a.status === 'fulfilled') ids.push(a.value.id)
-        else {
-          expect(a.reason).toBeInstanceOf(HttpException)
-          expect((a.reason as HttpException).getStatus()).toBe(409)
-        }
-      }
-      expect(ids.length).toBeGreaterThanOrEqual(1)
-
-      // Si eseguono i due job insieme: l'indice unico ne lascia passare uno, l'altro viene
-      // rinviato (ElaborazioneAttivaError) e si riprova quando il primo e' pronto.
-      const giro1 = await Promise.allSettled(ids.map(id => esegui(az, id)))
-      for (const g of giro1) {
-        if (g.status === 'rejected') expect(g.reason).toBeInstanceOf(ElaborazioneAttivaError)
-      }
-      const inCorso = await owner.$queryRawUnsafe<{ n: number }[]>(
-        `SELECT count(*)::int AS n FROM elaborazioni_fatturazione
-         WHERE tenant_id = $1::uuid AND stato = 'IN_CORSO'`,
+      // Il proprietario tiene `activity_logs`: le due `avvia` superano entrambe la lettura delle
+      // elaborazioni attive e l'INSERT, poi si fermano sull'INSERT di `activity_logs`.
+      const rilascia = await tieniLock(`LOCK TABLE activity_logs IN SHARE ROW EXCLUSIVE MODE`)
+      let finiti = 0
+      const avvii = Promise.allSettled([avvia(az), avvia(az)]).finally(() => (finiti = 1))
+      await attendiLock(2, () => finiti === 1)
+      const inCoda = await owner.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT count(*)::int AS n FROM elaborazioni_fatturazione WHERE tenant_id = $1::uuid`,
         az.tenantId
       )
-      expect(inCorso[0].n).toBe(0)
-      for (const id of ids) {
-        if ((await statoDi(id)) === 'IN_CODA') await esegui(az, id)
-        expect(await statoDi(id)).toBe('ANTEPRIMA_PRONTA')
-      }
+      // Nessuna delle due ha ancora fatto commit: la lettura semplice le ha lasciate passare.
+      expect(inCoda[0].n).toBe(0)
+      await rilascia()
+      const esiti = await avvii
+      expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
+      const ids = esiti.map(e => (e as PromiseFulfilledResult<{ id: string }>).value.id)
+      expect(await Promise.all(ids.map(statoDi))).toEqual(['IN_CODA', 'IN_CODA'])
+
+      // Primo job: A e' fermo sul suo UPDATE (riga bloccata), B arriva a IN_CORSO e si ferma sul
+      // DELETE delle bozze (`documenti_fattura` tenuta dal proprietario). Quando A riparte trova
+      // B IN_CORSO: il 23505 diventa ElaborazioneAttivaError, non un 500.
+      const [a, b] = ids
+      const rilasciaRiga = await tieniLock(
+        `SELECT 1 FROM elaborazioni_fatturazione WHERE id = '${a}'::uuid FOR UPDATE`
+      )
+      const rilasciaTabella = await tieniLock(
+        `LOCK TABLE documenti_fattura IN SHARE ROW EXCLUSIVE MODE`
+      )
+      let giro = 0
+      const jobA = esegui(az, a).finally(() => giro++)
+      const jobB = esegui(az, b).finally(() => giro++)
+      await attendiLock(2, () => giro > 0)
+      expect(await statoDi(b)).toBe('IN_CORSO')
+      expect(await statoDi(a)).toBe('IN_CODA')
+      await rilasciaRiga()
+      await expect(jobA).rejects.toBeInstanceOf(ElaborazioneAttivaError)
+      expect(await statoDi(a)).toBe('IN_CODA')
+      await rilasciaTabella()
+      await jobB
+      expect(await statoDi(b)).toBe('ANTEPRIMA_PRONTA')
+      await esegui(az, a)
+      expect(await statoDi(a)).toBe('ANTEPRIMA_PRONTA')
     })
 
     it('un job mentre un’altra elaborazione e’ IN_CORSO (23505): ElaborazioneAttivaError, resta IN_CODA; poi arriva a pronta', async () => {
@@ -430,6 +485,113 @@ describe('ElaborazioniService — Postgres reale, ruolo wasteflow_app', () => {
         await esito(nel(az.tenantId, () => servizio.escludi(az.tenantId, id, b.id, true)))
       ).toEqual({ status: 409, codice: 'ELABORAZIONE_GIA_IN_DEFINITIVA' })
       expect((await bozze(id))[0].escluso).toBe(false)
+    })
+
+    it('le esclusioni sopravvivono al ricalcolo e il documento escluso non entra nella numerazione prevista; un documento sparito perde l’esclusione', async () => {
+      const { az, c, id } = await pronta()
+      // Un secondo contratto con la sua bozza.
+      const c2 = await creaContrattoT18(owner, az)
+      await creaLegameConfermatoT18(owner, az, c2)
+      await nel(az.tenantId, () => servizio.ricalcola(az.tenantId, az.utenteId, id, 1))
+      await esegui(az, id, 2)
+      const bozzeDi = () =>
+        owner.$queryRawUnsafe<{ id: string; contratto_id: string; escluso: boolean }[]>(
+          `SELECT id::text, contratto_id::text, escluso_da_definitiva AS escluso
+           FROM documenti_fattura WHERE elaborazione_id = $1::uuid ORDER BY contratto_id`,
+          id
+        )
+      const prima = await bozzeDi()
+      expect(prima).toHaveLength(2)
+      for (const b of prima) {
+        await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, b.id, true))
+      }
+      // La definitiva ha risposto ANTEPRIMA_SUPERATA: l'utente preme «Ricalcola».
+      await owner.$executeRawUnsafe(
+        `UPDATE elaborazioni_fatturazione SET esito = $2::jsonb WHERE id = $1::uuid`,
+        id,
+        JSON.stringify({ codice: 'ANTEPRIMA_SUPERATA' })
+      )
+      // Il secondo contratto non esiste piu' fra i documenti: perde l'esclusione.
+      await owner.contrattoCliente.update({
+        where: { id: c2.contrattoId },
+        data: {
+          stato: 'ANNULLATO',
+          motivoAnnullo: 'Annullato per il test',
+          annullatoIl: new Date(),
+        },
+      })
+      await nel(az.tenantId, () => servizio.ricalcola(az.tenantId, az.utenteId, id, 2))
+      await esegui(az, id, 3)
+      const dopo = await bozzeDi()
+      expect(dopo).toHaveLength(1)
+      expect(dopo[0]).toMatchObject({ contratto_id: c.contrattoId, escluso: true })
+      const r = (await nel(az.tenantId, () => servizio.dettaglio(az.tenantId, id)))
+        .numerazionePrevista
+      expect(r).toEqual([])
+    })
+
+    it('IN_CODA orfano (oltre il limite): non blocca avvio e ricalcolo, si puo’ scartare; entro il limite no', async () => {
+      const az = await azienda()
+      const orfana = await inserisciElaborazioneT18(owner, az.tenantId, 'IN_CODA')
+      const recente = (id: string) =>
+        owner.$executeRawUnsafe(
+          `UPDATE elaborazioni_fatturazione SET updated_at = now() WHERE id = $1::uuid`,
+          id
+        )
+      const vecchia = (id: string) =>
+        owner.$executeRawUnsafe(
+          `UPDATE elaborazioni_fatturazione SET updated_at = now() - interval '20 minutes'
+           WHERE id = $1::uuid`,
+          id
+        )
+      // Entro il limite e' viva: blocca tutto, scarta compreso.
+      await recente(orfana)
+      expect(await esito(avvia(az))).toEqual({ status: 409, codice: 'ELABORAZIONE_IN_CORSO' })
+      expect(
+        await esito(nel(az.tenantId, () => servizio.scarta(az.tenantId, az.utenteId, orfana, 1)))
+      ).toEqual({ status: 409, codice: 'ELABORAZIONE_IN_CORSO' })
+      // Oltre il limite e' orfana: un nuovo avvio passa, e la vecchia si scarta.
+      await vecchia(orfana)
+      expect(await esito(avvia(az))).toBe('ok')
+      const r = await nel(az.tenantId, () => servizio.scarta(az.tenantId, az.utenteId, orfana, 1))
+      expect(r).toEqual({ id: orfana })
+      expect(await statoDi(orfana)).toBe('SCARTATA')
+    })
+
+    it('ricalcola di un IN_CODA orfano riparte con una versione nuova', async () => {
+      const az = await azienda()
+      const orfana = await inserisciElaborazioneT18(owner, az.tenantId, 'IN_CODA')
+      await owner.$executeRawUnsafe(
+        `UPDATE elaborazioni_fatturazione SET updated_at = now() - interval '20 minutes'
+         WHERE id = $1::uuid`,
+        orfana
+      )
+      await nel(az.tenantId, () => servizio.ricalcola(az.tenantId, az.utenteId, orfana, 1))
+      expect(await leggi(orfana)).toMatchObject({ stato: 'IN_CODA', versione: 2 })
+    })
+
+    it('ricalcola e scarta su DEFINITIVA: ELABORAZIONE_GIA_IN_DEFINITIVA; su SCARTATA: STATO_ELABORAZIONE_NON_VALIDO', async () => {
+      const az = await azienda()
+      const def = await inserisciElaborazioneT18(owner, az.tenantId, 'DEFINITIVA')
+      const sca = await inserisciElaborazioneT18(owner, az.tenantId, 'SCARTATA')
+      const gia = { status: 409, codice: 'ELABORAZIONE_GIA_IN_DEFINITIVA' }
+      const non = { status: 409, codice: 'STATO_ELABORAZIONE_NON_VALIDO' }
+      const r = (id: string) =>
+        esito(nel(az.tenantId, () => servizio.ricalcola(az.tenantId, az.utenteId, id, 1)))
+      const sc = (id: string) =>
+        esito(nel(az.tenantId, () => servizio.scarta(az.tenantId, az.utenteId, id, 1)))
+      expect([await r(def), await sc(def)]).toEqual([gia, gia])
+      expect([await r(sca), await sc(sca)]).toEqual([non, non])
+    })
+
+    it('ricalcola azzera riepilogo e impronta della versione precedente', async () => {
+      const { az, id } = await pronta()
+      await nel(az.tenantId, () => servizio.ricalcola(az.tenantId, az.utenteId, id, 1))
+      const [r] = await owner.$queryRawUnsafe<{ riepilogo: unknown; impronta: string | null }[]>(
+        `SELECT riepilogo, impronta FROM elaborazioni_fatturazione WHERE id = $1::uuid`,
+        id
+      )
+      expect(r).toEqual({ riepilogo: null, impronta: null })
     })
 
     it('escludi aspetta il blocco dell’elaborazione: e’ il primo anello dell’ordine dei lock', async () => {

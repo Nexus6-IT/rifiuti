@@ -17,6 +17,8 @@ import { TenantContext } from '../../../core/context/tenant-context'
 import { segnalaErroreJob } from '../../../core/monitoring/segnala-errore-job'
 import { PrismaService } from '../../persistence/prisma.service'
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** Attesa prima di riprovare quando un'altra elaborazione del tenant e' `IN_CORSO` (Q12). */
 export const ATTESA_RINVIO_MS = 30_000
 /** Quante volte il job puo' essere rimesso in attesa prima di diventare `FALLITA`. */
@@ -46,6 +48,14 @@ export class FatturazioneJobProcessor extends WorkerHost {
       throw new UnrecoverableError('Job fatturazione senza azienda (tenantId mancante)')
     }
     const tenant = tenantId.trim()
+    // Un id che non e' un UUID fallirebbe il cast di Postgres a ogni tentativo, e all'ultimo
+    // anche `segnaFallita` ne coprirebbe l'errore: fallimento definitivo subito.
+    if (
+      tipo === 'anteprima' &&
+      (typeof elaborazioneId !== 'string' || !UUID.test(elaborazioneId))
+    ) {
+      throw new UnrecoverableError('Job fatturazione con elaborazioneId non valido')
+    }
 
     await TenantContext.run({ tenantId: tenant }, async () => {
       if (tipo === 'anteprima') {

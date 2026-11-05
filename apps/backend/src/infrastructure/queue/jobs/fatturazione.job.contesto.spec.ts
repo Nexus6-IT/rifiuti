@@ -33,7 +33,12 @@ describe('FatturazioneJobProcessor - contesto azienda', () => {
       visto = TenantContext.getStoreTenantId()
     })
     await processor.process(
-      creaJob({ tenantId: 'azienda-A', elaborazioneId: 'e', tipo: 'anteprima', versione: 1 })
+      creaJob({
+        tenantId: 'azienda-A',
+        elaborazioneId: '00000000-0000-4000-8000-000000000003',
+        tipo: 'anteprima',
+        versione: 1,
+      })
     )
     expect(visto).toBe('azienda-A')
   })
@@ -44,7 +49,12 @@ describe('FatturazioneJobProcessor - contesto azienda', () => {
       visto = `${TenantContext.getStoreTenantId()}|${tenantId}`
     })
     await processor.process(
-      creaJob({ tenantId: ' azienda-A ', elaborazioneId: 'e', tipo: 'anteprima', versione: 1 })
+      creaJob({
+        tenantId: ' azienda-A ',
+        elaborazioneId: '00000000-0000-4000-8000-000000000003',
+        tipo: 'anteprima',
+        versione: 1,
+      })
     )
     expect(visto).toBe('azienda-A|azienda-A')
   })
@@ -52,18 +62,33 @@ describe('FatturazioneJobProcessor - contesto azienda', () => {
   it('due job di aziende diverse in parallelo vedono ciascuno la propria azienda', async () => {
     const visti: Record<string, string | null> = {}
     mockEsegui.mockImplementation(async (_p: unknown, _t: string, elaborazioneId: string) => {
-      await new Promise(r => setTimeout(r, elaborazioneId === 'e1' ? 20 : 1))
+      await new Promise(r =>
+        setTimeout(r, elaborazioneId === '00000000-0000-4000-8000-000000000001' ? 20 : 1)
+      )
       visti[elaborazioneId] = TenantContext.getStoreTenantId()
     })
     await Promise.all([
       processor.process(
-        creaJob({ tenantId: 'azienda-A', elaborazioneId: 'e1', tipo: 'anteprima', versione: 1 })
+        creaJob({
+          tenantId: 'azienda-A',
+          elaborazioneId: '00000000-0000-4000-8000-000000000001',
+          tipo: 'anteprima',
+          versione: 1,
+        })
       ),
       processor.process(
-        creaJob({ tenantId: 'azienda-B', elaborazioneId: 'e2', tipo: 'anteprima', versione: 1 })
+        creaJob({
+          tenantId: 'azienda-B',
+          elaborazioneId: '00000000-0000-4000-8000-000000000002',
+          tipo: 'anteprima',
+          versione: 1,
+        })
       ),
     ])
-    expect(visti).toEqual({ e1: 'azienda-A', e2: 'azienda-B' })
+    expect(visti).toEqual({
+      '00000000-0000-4000-8000-000000000001': 'azienda-A',
+      '00000000-0000-4000-8000-000000000002': 'azienda-B',
+    })
   })
 
   it.each([undefined, '', '   ', null])(
@@ -71,7 +96,12 @@ describe('FatturazioneJobProcessor - contesto azienda', () => {
     async tenantId => {
       await expect(
         processor.process(
-          creaJob({ tenantId, elaborazioneId: 'e', tipo: 'anteprima', versione: 1 })
+          creaJob({
+            tenantId,
+            elaborazioneId: '00000000-0000-4000-8000-000000000003',
+            tipo: 'anteprima',
+            versione: 1,
+          })
         )
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(mockEsegui).not.toHaveBeenCalled()

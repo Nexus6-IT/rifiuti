@@ -225,6 +225,7 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
         'documenti',
         'documentiNonGenerati',
         'errori',
+        'erroriGenerali',
         'erroriPeriodo',
         'numerazionePrevista',
         'prontaIl',
@@ -287,6 +288,9 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
     await creaLegameConfermatoT18(owner, az, c)
     const id = await anteprima(az)
     expect((await elaborazione(id)).errori_generali).toContain('CEDENTE_INCOMPLETO')
+    // Il riepilogo conserva la segnalazione intera (con il dettaglio, se c'e').
+    const r = (await elaborazione(id)).riepilogo as { erroriGenerali: { codice: string }[] }
+    expect(r.erroriGenerali.map(e => e.codice)).toContain('CEDENTE_INCOMPLETO')
   })
 
   describe('numerazione prevista e suffisso della serie (decisione 20, Q8)', () => {

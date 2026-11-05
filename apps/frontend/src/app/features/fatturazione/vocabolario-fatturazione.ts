@@ -162,6 +162,15 @@ export const ERRORI_HTTP_VOCI = {
     'errore'
   ),
   ELABORAZIONE_IN_CORSO: v("Un'elaborazione è già in corso: attendi che finisca.", 'errore'),
+  STATO_ELABORAZIONE_NON_VALIDO: v(
+    "L'elaborazione non è in uno stato in cui si possa fare questa operazione.",
+    'errore'
+  ),
+  DOCUMENTO_NON_IN_BOZZA: v('Solo un documento in bozza si può escludere o riammettere.', 'errore'),
+  CODA_NON_DISPONIBILE: v(
+    "Non è stato possibile avviare l'elaborazione: riprova fra poco.",
+    'errore'
+  ),
   TROPPI_DOCUMENTI: v(
     'Ci sono troppi documenti per questa operazione: restringi la selezione.',
     'errore'

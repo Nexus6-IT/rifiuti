@@ -33,7 +33,7 @@ jest.mock('../../../application/fatturazione/anteprima', () => ({
 
 const dati = (versione: number): JobFatturazione => ({
   tenantId: 't1',
-  elaborazioneId: 'e1',
+  elaborazioneId: '00000000-0000-4000-8000-000000000001',
   tipo: 'anteprima',
   versione,
 })
@@ -71,7 +71,11 @@ describe('coda fatturazione su Redis reale', () => {
   }
 
   it('BullMQ 5.62 accetta l’id col trattino; un id con due punti non e’ un id sicuro', async () => {
-    const id = idJobFatturazione({ tipo: 'anteprima', elaborazioneId: 'e-accetta', versione: 1 })
+    const id = idJobFatturazione({
+      tipo: 'anteprima',
+      elaborazioneId: '00000000-0000-4000-8000-000000000004',
+      versione: 1,
+    })
     await expect(coda.add('anteprima', dati(1), { jobId: id })).resolves.toBeDefined()
     await expect(coda.add('anteprima', dati(1), { jobId: 'anteprima:e1' })).rejects.toThrow()
   })
@@ -82,17 +86,37 @@ describe('coda fatturazione su Redis reale', () => {
     worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
       connection,
     })
-    const v1 = idJobFatturazione({ tipo: 'anteprima', elaborazioneId: 'e-q5', versione: 1 })
-    const v2 = idJobFatturazione({ tipo: 'anteprima', elaborazioneId: 'e-q5', versione: 2 })
-    await coda.add('anteprima', { ...dati(1), elaborazioneId: 'e-q5' }, { jobId: v1, attempts: 1 })
+    const v1 = idJobFatturazione({
+      tipo: 'anteprima',
+      elaborazioneId: '00000000-0000-4000-8000-000000000005',
+      versione: 1,
+    })
+    const v2 = idJobFatturazione({
+      tipo: 'anteprima',
+      elaborazioneId: '00000000-0000-4000-8000-000000000005',
+      versione: 2,
+    })
+    await coda.add(
+      'anteprima',
+      { ...dati(1), elaborazioneId: '00000000-0000-4000-8000-000000000005' },
+      { jobId: v1, attempts: 1 }
+    )
     await aspetta(
       async () => (await coda.getJob(v1))?.getState().then(s => s === 'failed') ?? false
     )
 
     // Lo stesso id resterebbe ignorato finche' il fallito non scade: per questo la versione.
-    await coda.add('anteprima', { ...dati(1), elaborazioneId: 'e-q5' }, { jobId: v1, attempts: 1 })
+    await coda.add(
+      'anteprima',
+      { ...dati(1), elaborazioneId: '00000000-0000-4000-8000-000000000005' },
+      { jobId: v1, attempts: 1 }
+    )
     expect(await (await coda.getJob(v1))!.getState()).toBe('failed')
-    await coda.add('anteprima', { ...dati(2), elaborazioneId: 'e-q5' }, { jobId: v2, attempts: 1 })
+    await coda.add(
+      'anteprima',
+      { ...dati(2), elaborazioneId: '00000000-0000-4000-8000-000000000005' },
+      { jobId: v2, attempts: 1 }
+    )
     await aspetta(
       async () => (await coda.getJob(v2))?.getState().then(s => s === 'completed') ?? false
     )
@@ -105,8 +129,16 @@ describe('coda fatturazione su Redis reale', () => {
     worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
       connection,
     })
-    const id = idJobFatturazione({ tipo: 'anteprima', elaborazioneId: 'e-q12', versione: 1 })
-    await coda.add('anteprima', { ...dati(1), elaborazioneId: 'e-q12' }, { jobId: id, attempts: 2 })
+    const id = idJobFatturazione({
+      tipo: 'anteprima',
+      elaborazioneId: '00000000-0000-4000-8000-000000000006',
+      versione: 1,
+    })
+    await coda.add(
+      'anteprima',
+      { ...dati(1), elaborazioneId: '00000000-0000-4000-8000-000000000006' },
+      { jobId: id, attempts: 2 }
+    )
     await aspetta(
       async () => (await coda.getJob(id))?.getState().then(s => s === 'delayed') ?? false
     )
@@ -123,8 +155,16 @@ describe('coda fatturazione su Redis reale', () => {
     worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
       connection,
     })
-    const id = idJobFatturazione({ tipo: 'anteprima', elaborazioneId: 'e-nt', versione: 1 })
-    await coda.add('anteprima', { ...dati(1), elaborazioneId: 'e-nt' }, { jobId: id, attempts: 3 })
+    const id = idJobFatturazione({
+      tipo: 'anteprima',
+      elaborazioneId: '00000000-0000-4000-8000-000000000007',
+      versione: 1,
+    })
+    await coda.add(
+      'anteprima',
+      { ...dati(1), elaborazioneId: '00000000-0000-4000-8000-000000000007' },
+      { jobId: id, attempts: 3 }
+    )
     await aspetta(
       async () => (await coda.getJob(id))?.getState().then(s => s === 'failed') ?? false
     )

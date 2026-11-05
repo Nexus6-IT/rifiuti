@@ -39,7 +39,11 @@ import {
 import { bloccaElaborazione } from './lock-fatturazione'
 import { eDataIso, oggiRoma } from './numerazione'
 import { segnaFallita, type RiepilogoElaborazione } from './anteprima'
-import type { FiltriElaborazione, ParametriElaborazione } from './selezione-fatturazione'
+import {
+  cedenteNormalizzabile,
+  type FiltriElaborazione,
+  type ParametriElaborazione,
+} from './selezione-fatturazione'
 
 export const CODA_FATTURAZIONE = 'fatturazione'
 
@@ -109,6 +113,13 @@ const ENTITA: DescrizioneEntita = {
   soggetto: "L'elaborazione",
   femminile: true,
 }
+
+/**
+ * Un `IN_CODA` piu' vecchio di cosi' e' orfano (il processo e' caduto fra il commit e `coda.add`):
+ * non blocca piu' il tenant e si puo' ricalcolare o scartare. Sta sopra i rinvii del job
+ * (10 x 30 s), che non aggiornano `updated_at`.
+ */
+const ORFANA_DOPO_MINUTI = 15
 
 const STATI_ATTIVI = ['IN_CODA', 'IN_CORSO', 'IN_DEFINITIVA'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -223,7 +234,7 @@ export class ElaborazioniService {
         .$transaction(async tx => {
           await impostaTimeoutLock(tx)
           const cedente = await leggiCedenteVista(tx, tenantId)
-          if (!cedente.completo) {
+          if (!(cedente.completo && cedenteNormalizzabile(cedente))) {
             throw new BadRequestException({
               error: 'CEDENTE_INCOMPLETO',
               message: MESSAGGI_ERRORE.CEDENTE_INCOMPLETO,
@@ -325,9 +336,11 @@ export class ElaborazioniService {
           impronta: r.impronta,
           versione: r.versione,
           definitiveAttive: i?.attive ?? false,
-          erroriGenerali: r.erroriGenerali.map(codice =>
-            vistaErrore({ codice: codice as ErroreGenerale })
-          ),
+          // Dal riepilogo (con il dettaglio); la colonna, che ha solo i codici, e' il ripiego.
+          erroriGenerali: (
+            p.erroriGenerali ??
+            r.erroriGenerali.map(codice => ({ codice: codice as ErroreGenerale }))
+          ).map(vistaErrore),
           erroriPeriodo: p.erroriPeriodo ?? [],
           numerazionePrevista: p.numerazionePrevista ?? [],
           totaliPerRegistro: p.totaliPerRegistro ?? [],
@@ -371,10 +384,14 @@ export class ElaborazioniService {
       if (e.stato === 'IN_DEFINITIVA') {
         throw giaInDefinitiva("L'elaborazione è già in definitiva: non si può ricalcolare.")
       }
-      if (e.stato === 'IN_CODA' || e.stato === 'IN_CORSO') throw elaborazioneInCorso()
-      if (e.stato !== 'ANTEPRIMA_PRONTA' && e.stato !== 'FALLITA') {
-        throw statoNonValido('ricalcolare')
+      if (e.stato === 'DEFINITIVA') {
+        throw giaInDefinitiva("L'elaborazione è definitiva: non si può ricalcolare.")
       }
+      if (e.stato === 'IN_CORSO') throw elaborazioneInCorso()
+      if (e.stato === 'IN_CODA' && !(await this.eOrfana(tx, tenantId, id))) {
+        throw elaborazioneInCorso()
+      }
+      if (e.stato === 'SCARTATA') throw statoNonValido('ricalcolare')
       await this.rifiutaSeAltraAttiva(tx, tenantId, id)
       const nuova = e.versione + 1
       const jobId = idJobFatturazione({ tipo: 'anteprima', elaborazioneId: id, versione: nuova })
@@ -382,7 +399,7 @@ export class ElaborazioniService {
       await tx.$executeRaw`
         UPDATE elaborazioni_fatturazione
         SET stato = 'IN_CODA', versione = ${nuova}::int, job_id = ${jobId}, esito = NULL,
-            errore_tecnico = NULL, updated_at = now()
+            errore_tecnico = NULL, riepilogo = NULL, impronta = NULL, updated_at = now()
         WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`
       await this.audit(tx, tenantId, utenteId, 'ELABORAZIONE_FATTURAZIONE_RICALCOLATA', id)
       return nuova
@@ -401,8 +418,14 @@ export class ElaborazioniService {
       if (e.stato === 'IN_DEFINITIVA') {
         throw giaInDefinitiva("L'elaborazione è già in definitiva: non si può scartare.")
       }
-      if (e.stato === 'IN_CODA' || e.stato === 'IN_CORSO') throw elaborazioneInCorso()
-      if (e.stato !== 'ANTEPRIMA_PRONTA' && e.stato !== 'FALLITA') statoNonValido('scartare')
+      if (e.stato === 'DEFINITIVA') {
+        throw giaInDefinitiva("L'elaborazione è definitiva: non si può scartare.")
+      }
+      if (e.stato === 'IN_CORSO') throw elaborazioneInCorso()
+      if (e.stato === 'IN_CODA' && !(await this.eOrfana(tx, tenantId, id))) {
+        throw elaborazioneInCorso()
+      }
+      if (e.stato === 'SCARTATA') throw statoNonValido('scartare')
       await tx.$executeRaw`
         DELETE FROM documenti_fattura
         WHERE tenant_id = ${tenantId}::uuid AND elaborazione_id = ${id}::uuid AND stato = 'BOZZA'`
@@ -502,6 +525,17 @@ export class ElaborazioniService {
     )
   }
 
+  private async eOrfana(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    id: string
+  ): Promise<boolean> {
+    const [r] = await tx.$queryRaw<{ orfana: boolean }[]>`
+      SELECT (updated_at < now() - make_interval(mins => ${ORFANA_DOPO_MINUTI}::int)) AS orfana
+      FROM elaborazioni_fatturazione WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`
+    return r?.orfana === true
+  }
+
   private async rifiutaSeAltraAttiva(
     tx: Prisma.TransactionClient,
     tenantId: string,
@@ -510,6 +544,8 @@ export class ElaborazioniService {
     const attive = await tx.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM elaborazioni_fatturazione
       WHERE tenant_id = ${tenantId}::uuid AND stato::text = ANY(${[...STATI_ATTIVI]}::text[])
+        AND NOT (stato = 'IN_CODA'
+                 AND updated_at < now() - make_interval(mins => ${ORFANA_DOPO_MINUTI}::int))
         ${escludiId === null ? Prisma.empty : Prisma.sql`AND id <> ${escludiId}::uuid`}
       LIMIT 1`
     if (attive.length > 0) throw elaborazioneInCorso()
