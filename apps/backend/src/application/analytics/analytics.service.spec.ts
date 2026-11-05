@@ -39,6 +39,7 @@ describe('AnalyticsService', () => {
               groupBy: jest.fn(),
               aggregate: jest.fn(),
             },
+            $queryRaw: jest.fn(),
           },
         },
         { provide: LoggerService, useValue: mockLogger },
@@ -247,48 +248,141 @@ describe('AnalyticsService', () => {
       expect(growth.previous).toBe(80)
       expect(growth.percentage).toBe(0.25) // 25% growth
     })
+  })
 
-    it('should predict next month volume', async () => {
-      const historicalData = [
-        { month: '2024-10', count: 50 },
-        { month: '2024-11', count: 75 },
-        { month: '2024-12', count: 100 },
-        { month: '2025-01', count: 125 },
-      ]
-
-      ;(prisma.fIR.groupBy as jest.Mock).mockResolvedValue(
-        historicalData.map(d => ({ month: d.month, _count: d.count }))
+  describe('Previsione del mese (regressione lineare sugli ultimi 6 mesi completi)', () => {
+    // «oggi» = 15 novembre 2026: i mesi completi sono maggio..ottobre 2026
+    const oggi = new Date(Date.UTC(2026, 10, 15, 12))
+    const mesi = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10']
+    const righe = (conteggi: Array<number | undefined>) =>
+      conteggi.flatMap((c, i) =>
+        c === undefined ? [] : [{ mese: new Date(`${mesi[i]}-01T00:00:00.000Z`), conteggio: c }]
       )
+    const prevedi = async (conteggi: Array<number | undefined>) => {
+      ;(prisma.$queryRaw as jest.Mock).mockResolvedValue(righe(conteggi))
+      return service.predictNextMonthVolume('tenant-1', oggi)
+    }
 
-      const prediction = await service.predictNextMonthVolume('tenant-1')
+    it('serie lineare [10..20] -> 22', async () => {
+      expect(await prevedi([10, 12, 14, 16, 18, 20])).toBe(22)
+    })
 
-      expect(prediction).toBeGreaterThan(125) // Should predict increase
+    it('serie costante -> la stessa', async () => {
+      expect(await prevedi([20, 20, 20, 20, 20, 20])).toBe(20)
+    })
+
+    it('serie in calo [30, 20, 10] -> 0, mai negativo', async () => {
+      expect(await prevedi([undefined, undefined, undefined, 30, 20, 10])).toBe(0)
+    })
+
+    it('si parte dal primo mese con un FIR: [0, 0, 5] dopo il primo FIR -> 5 (un mese)', async () => {
+      expect(await prevedi([undefined, undefined, undefined, undefined, undefined, 5])).toBe(5)
+    })
+
+    it('un solo mese completo [7] -> 7; due mesi -> media arrotondata', async () => {
+      expect(await prevedi([undefined, undefined, undefined, undefined, undefined, 7])).toBe(7)
+      expect(await prevedi([undefined, undefined, undefined, undefined, 3, 4])).toBe(4)
+    })
+
+    it('mesi vuoti dopo il primo FIR valgono 0', async () => {
+      // [10, 0, 0, 0, 0, 0] -> retta con pendenza negativa, prevista 0 (mai negativo)
+      expect(await prevedi([10])).toBe(0)
+    })
+
+    it('nessun mese completo -> null', async () => {
+      expect(await prevedi([])).toBeNull()
+    })
+
+    it('il mese in corso non entra: limite < primo giorno del mese corrente', async () => {
+      await prevedi([])
+      const args = (prisma.$queryRaw as jest.Mock).mock.calls[0]
+      expect(args).toContainEqual(new Date(Date.UTC(2026, 10, 1)))
+      expect(args).toContainEqual(new Date(Date.UTC(2026, 4, 1)))
     })
   })
 
-  describe('Top Producers/Carriers/Receivers', () => {
-    it('should get top waste producers', async () => {
+  describe('Top Producers/Carriers', () => {
+    it("unisce il nome alle P. IVA del groupBy mantenendo l'ordine; senza riga -> null", async () => {
       ;(prisma.fIR.groupBy as jest.Mock).mockResolvedValue([
         { producerPartitaIva: '12345678901', _count: 50 },
         { producerPartitaIva: '98765432109', _count: 30 },
         { producerPartitaIva: '11122233344', _count: 20 },
       ])
+      ;(prisma.$queryRaw as jest.Mock).mockResolvedValue([
+        { partita_iva: '11122233344', nome: 'Terza SRL' },
+        { partita_iva: '12345678901', nome: 'Prima SRL' },
+      ])
 
-      const topProducers = await service.getTopProducers('tenant-1', 10)
+      const top = await service.getTopProducers('tenant-1', 10)
 
-      expect(topProducers.length).toBe(3)
-      expect(topProducers[0].count).toBe(50)
+      expect(top).toEqual([
+        { partitaIva: '12345678901', nome: 'Prima SRL', count: 50 },
+        { partitaIva: '98765432109', nome: null, count: 30 },
+        { partitaIva: '11122233344', nome: 'Terza SRL', count: 20 },
+      ])
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
+      const chiamata = (prisma.fIR.groupBy as jest.Mock).mock.calls[0][0]
+      expect(chiamata.orderBy).toEqual([
+        { _count: { producerPartitaIva: 'desc' } },
+        { producerPartitaIva: 'asc' },
+      ])
+      expect(chiamata.where).toEqual({ tenantId: 'tenant-1', producerPartitaIva: { not: '' } })
     })
 
-    it('should get top carriers', async () => {
+    it('nome vuoto o di soli spazi -> null', async () => {
+      ;(prisma.fIR.groupBy as jest.Mock).mockResolvedValue([
+        { producerPartitaIva: '12345678901', _count: 5 },
+        { producerPartitaIva: '98765432109', _count: 4 },
+      ])
+      ;(prisma.$queryRaw as jest.Mock).mockResolvedValue([
+        { partita_iva: '12345678901', nome: '' },
+        { partita_iva: '98765432109', nome: '   ' },
+      ])
+      const top = await service.getTopProducers('tenant-1', 10)
+      expect(top.map(t => t.nome)).toEqual([null, null])
+    })
+
+    it('groupBy vuoto -> nessuna $queryRaw', async () => {
+      ;(prisma.fIR.groupBy as jest.Mock).mockResolvedValue([])
+      expect(await service.getTopProducers('tenant-1', 5)).toEqual([])
+      expect(await service.getTopCarriers('tenant-1', 5)).toEqual([])
+      expect(prisma.$queryRaw).not.toHaveBeenCalled()
+    })
+
+    it('trasportatori: nome unito, P. IVA vuota esclusa dal where', async () => {
       ;(prisma.fIR.groupBy as jest.Mock).mockResolvedValue([
         { carrierPartitaIva: '12345678901', _count: 40 },
         { carrierPartitaIva: '98765432109', _count: 35 },
       ])
+      ;(prisma.$queryRaw as jest.Mock).mockResolvedValue([
+        { partita_iva: '98765432109', nome: 'Trasporti Bis' },
+      ])
+      const top = await service.getTopCarriers('tenant-1', 10)
+      expect(top).toEqual([
+        { partitaIva: '12345678901', nome: null, count: 40 },
+        { partitaIva: '98765432109', nome: 'Trasporti Bis', count: 35 },
+      ])
+      expect((prisma.fIR.groupBy as jest.Mock).mock.calls[0][0].where).toEqual({
+        tenantId: 'tenant-1',
+        carrierPartitaIva: { not: '' },
+      })
+    })
+  })
 
-      const topCarriers = await service.getTopCarriers('tenant-1', 10)
+  describe('getFIRsByStatus con intervallo', () => {
+    it('passa createdAt gte/lte; senza intervallo nessun filtro sulla data', async () => {
+      ;(prisma.fIR.groupBy as jest.Mock).mockResolvedValue([{ status: 'COMPLETED', _count: 2 }])
+      const startDate = new Date('2026-11-01T00:00:00Z')
+      const endDate = new Date('2026-11-30T23:59:59Z')
 
-      expect(topCarriers.length).toBe(2)
+      expect(await service.getFIRsByStatus('t', { startDate, endDate })).toEqual({ COMPLETED: 2 })
+      expect((prisma.fIR.groupBy as jest.Mock).mock.calls[0][0].where).toEqual({
+        tenantId: 't',
+        createdAt: { gte: startDate, lte: endDate },
+      })
+
+      await service.getFIRsByStatus('t')
+      expect((prisma.fIR.groupBy as jest.Mock).mock.calls[1][0].where).toEqual({ tenantId: 't' })
     })
   })
 })

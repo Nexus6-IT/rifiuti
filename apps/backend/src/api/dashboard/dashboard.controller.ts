@@ -1,4 +1,13 @@
-import { Controller, Get, Query, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common'
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Query,
+  UseGuards,
+  Req,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
@@ -123,13 +132,17 @@ export class DashboardController {
   ): Promise<DashboardData> {
     const tenantId = requireRequestTenantId(req)
 
-    const dateRange =
-      startDate && endDate
-        ? {
-            startDate: new Date(startDate),
-            endDate: new Date(endDate),
-          }
-        : undefined
+    let dateRange: { startDate: Date; endDate: Date } | undefined
+    if (startDate && endDate) {
+      dateRange = { startDate: new Date(startDate), endDate: new Date(endDate) }
+      if (
+        isNaN(dateRange.startDate.getTime()) ||
+        isNaN(dateRange.endDate.getTime()) ||
+        dateRange.startDate > dateRange.endDate
+      ) {
+        throw new BadRequestException('Intervallo di date non valido')
+      }
+    }
 
     return await this.getDashboardUseCase.execute({
       tenantId,

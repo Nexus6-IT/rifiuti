@@ -37,10 +37,12 @@ export class GetDashboardUseCase {
     this.logger.info(`Fetching dashboard data for tenant ${params.tenantId}`)
 
     try {
-      // Fetch all metrics in parallel
+      // Con l'intervallo gli stati si contano due volte: su tutto il tenant per `overview`, nel
+      // periodo per `status`. Senza intervallo una sola chiamata.
+      const intervallo = params.dateRange
       const [
         totalFIRs,
-        firsByStatus,
+        firsByStatusTotale,
         totalWaste,
         wasteByCER,
         wasteByDestination,
@@ -53,6 +55,7 @@ export class GetDashboardUseCase {
         prediction,
         topProducers,
         topCarriers,
+        firsByStatusPeriodo,
       ] = await Promise.all([
         this.analyticsService.getTotalFIRs(params.tenantId),
         this.analyticsService.getFIRsByStatus(params.tenantId),
@@ -68,7 +71,11 @@ export class GetDashboardUseCase {
         this.analyticsService.predictNextMonthVolume(params.tenantId),
         this.analyticsService.getTopProducers(params.tenantId, 5),
         this.analyticsService.getTopCarriers(params.tenantId, 5),
+        intervallo
+          ? this.analyticsService.getFIRsByStatus(params.tenantId, intervallo)
+          : Promise.resolve(undefined),
       ])
+      const firsByStatus = firsByStatusPeriodo ?? firsByStatusTotale
 
       this.logger.info(`Dashboard data fetched successfully for tenant ${params.tenantId}`)
 
@@ -76,11 +83,11 @@ export class GetDashboardUseCase {
         overview: {
           totalFIRs,
           totalWasteKg: totalWaste,
-          completedFIRs: firsByStatus['COMPLETED'] || 0,
+          completedFIRs: firsByStatusTotale['COMPLETED'] || 0,
           pendingFIRs:
-            (firsByStatus['DRAFT'] || 0) +
-            (firsByStatus['SIGNED_BY_PRODUCER'] || 0) +
-            (firsByStatus['IN_TRANSIT'] || 0),
+            (firsByStatusTotale['DRAFT'] || 0) +
+            (firsByStatusTotale['SIGNED_BY_PRODUCER'] || 0) +
+            (firsByStatusTotale['IN_TRANSIT'] || 0),
           overdueFIRs: overdue,
         },
         status: {
@@ -185,12 +192,12 @@ export interface DashboardData {
       percentage: number
     }
     prediction: {
-      nextMonth: number
+      nextMonth: number | null
     }
   }
   top: {
-    producers: Array<{ partitaIva: string; count: number }>
-    carriers: Array<{ partitaIva: string; count: number }>
+    producers: Array<{ partitaIva: string; nome: string | null; count: number }>
+    carriers: Array<{ partitaIva: string; nome: string | null; count: number }>
   }
   generatedAt: Date
 }
