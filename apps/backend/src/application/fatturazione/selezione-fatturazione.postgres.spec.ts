@@ -83,7 +83,8 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
   )
   const tenantCreati: string[] = []
   const OPZ = { timeout: 120_000, maxWait: 30_000 }
-  const FILE_VOLUME = join(tmpdir(), `wasteflow-fatt-t17-volume-${process.pid}.json`)
+  // Nome fisso: un giro interrotto lascia gli id qui e il giro dopo li ripulisce.
+  const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t17-volume-tenants.json')
 
   const nel = <R>(tenantId: string, fn: (tx: Tx) => Promise<R>) =>
     app.$transaction(async tx => {
@@ -261,6 +262,29 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
     return { ...l, movimentoId: m.movimentoId, registroId: m.registroId }
   }
 
+  /** Una rettifica sposta la testa della catena: il legame resta sul movimento di prima. */
+  async function rettifica(az: Azienda, movimentoId: string, progressivo = 9_000): Promise<void> {
+    const origine = await owner.wasteMovement.findUniqueOrThrow({ where: { id: movimentoId } })
+    await owner.wasteMovement.create({
+      data: {
+        tenantId: az.tenantId,
+        registroId: origine.registroId,
+        progressiveYear: 2026,
+        progressiveNumber: progressivo,
+        type: origine.type,
+        movementDate: origine.movementDate,
+        causale: origine.causale,
+        cerCode: origine.cerCode,
+        quantity: '90',
+        unit: 'KG',
+        tipoAnnotazione: 'RETTIFICA',
+        movimentoRettificatoId: origine.id,
+        movimentoOriginaleId: origine.id,
+        motivoAnnotazione: 'prova',
+      },
+    })
+  }
+
   const doc = (s: SelezioneElaborazione, contrattoId: string): DocumentoSelezionato | undefined =>
     s.documenti.find(d => d.contrattoId === contrattoId)
 
@@ -326,7 +350,11 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
 
   afterAll(async () => {
     await pulisciTenantDiTest(owner, tenantCreati)
-    writeFileSync(FILE_VOLUME, '[]')
+    // Toglie solo i propri id: un altro processo puo' avere un'azienda di volume in corso.
+    writeFileSync(
+      FILE_VOLUME,
+      JSON.stringify(idVolumeSuFile().filter(id => !tenantCreati.includes(id)))
+    )
     await owner.$disconnect()
     await app.$disconnect()
   }, 300_000)
@@ -387,26 +415,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       const c = await contratto(az)
       await legame(az, c)
       const l = await legame(az, c)
-      // Una rettifica sposta la testa della catena: il legame resta sul movimento di prima.
-      const origine = await owner.wasteMovement.findUniqueOrThrow({ where: { id: l.movimentoId } })
-      await owner.wasteMovement.create({
-        data: {
-          tenantId: az.tenantId,
-          registroId: origine.registroId,
-          progressiveYear: 2026,
-          progressiveNumber: 9_000,
-          type: origine.type,
-          movementDate: origine.movementDate,
-          causale: origine.causale,
-          cerCode: origine.cerCode,
-          quantity: '90',
-          unit: 'KG',
-          tipoAnnotazione: 'RETTIFICA',
-          movimentoRettificatoId: origine.id,
-          movimentoOriginaleId: origine.id,
-          motivoAnnotazione: 'prova',
-        },
-      })
+      await rettifica(az, l.movimentoId)
       const s = await seleziona(az)
       expect(s.documenti).toHaveLength(1)
       expect(s.documenti[0].input.legami).toHaveLength(1)
@@ -414,6 +423,23 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       expect(s.erroriPeriodo).toEqual([
         { motivo: 'DA_RIALLINEARE', quanti: 1, contrattoId: c.contrattoId },
       ])
+    })
+
+    it('FATTURATO, IMPORTATO_FATTURATO o ESCLUSO con la testa spostata: scostamento o scelta dell’utente, non un legame da riallineare', async () => {
+      const az = await azienda()
+      const c = await contratto(az)
+      await legame(az, c)
+      let progressivo = 9_100
+      for (const stato of ['FATTURATO', 'IMPORTATO_FATTURATO', 'ESCLUSO'] as const) {
+        const l = await legame(az, c, { stato })
+        await rettifica(az, l.movimentoId, (progressivo += 1_000))
+      }
+      const s = await seleziona(az)
+      expect(s.documenti).toHaveLength(1)
+      expect(s.documenti[0].input.legami).toHaveLength(1)
+      expect(s.documenti[0].input.legamiDaCollegareEsclusi).toBe(0)
+      expect(s.erroriPeriodo).toEqual([])
+      expect(s.erroriGenerali).toEqual([])
     })
 
     it('legame PROPOSTO con contratto: avviso sul documento; movimento senza contratto: LEGAMI_SENZA_CONTRATTO, in nessun documento', async () => {
@@ -677,7 +703,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       for (const raggruppamento of ['PER_CONTRATTO', 'PER_ELENCO'] as const) {
         const s = await seleziona(az, { includiArretrati: true, raggruppamento })
         const d = s.documenti[0]
-        expect(d.input.legami).toHaveLength(raggruppamento === 'PER_CONTRATTO' ? 2 : 2)
+        expect(d.input.legami).toHaveLength(2)
         const ids = [...d.input.listino.keys()]
         expect(ids).toContain(c.rigaCerId)
         expect(ids[ids.length - 1]).toBe(c.rigaCerId)
@@ -686,6 +712,25 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
         expect(ids).not.toContain(vecchiaF)
         expect(calcolaDocumento(d.input).errori).toEqual([])
       }
+    })
+  })
+
+  describe('elenco unico scaduto senza rinnovo', () => {
+    it('con arretrati accesi la riga citata dal legame c’e comunque (la query delle righe parte)', async () => {
+      const az = await azienda()
+      const c = await contratto(az)
+      await owner.elencoAddebiti.update({
+        where: { id: c.elencoId },
+        data: {
+          validoDal: new Date('2026-01-01T00:00:00Z'),
+          validoAl: new Date('2026-02-28T00:00:00Z'),
+        },
+      })
+      await legame(az, c, { data: '2026-02-10' })
+      const s = await seleziona(az, { includiArretrati: true })
+      expect(s.documenti).toHaveLength(1)
+      expect([...s.documenti[0].input.listino.keys()]).toEqual([c.rigaCerId])
+      expect(calcolaDocumento(s.documenti[0].input).errori).toEqual([])
     })
   })
 

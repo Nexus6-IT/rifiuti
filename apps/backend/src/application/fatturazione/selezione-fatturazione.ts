@@ -543,7 +543,11 @@ export async function selezionaElaborazione(
     SELECT c.legame_id::text AS "legameId", c.contratto_id::text AS "contrattoId",
            c.cliente_id::text AS "clienteId", c.giorno::text AS giorno, c.stato_lista AS stato
     FROM (${candidatiSql}) c
-    WHERE c.stato_lista IN ('CONFERMATO', 'DA_RIALLINEARE', 'PROPOSTO', 'DA_COLLEGARE', 'MANCANTE')`
+    WHERE c.stato_lista IN ('CONFERMATO', 'DA_RIALLINEARE', 'PROPOSTO', 'DA_COLLEGARE', 'MANCANTE')
+      -- Un legame FATTURATO (o importato, o escluso) con la testata spostata e' uno scostamento
+      -- dopo la fattura (§5.7) o una scelta dell'utente: non e' un legame da riallineare.
+      AND (c.stato_lista <> 'DA_RIALLINEARE'
+           OR c.stato_legame IN ('CONFERMATO', 'PROPOSTO', 'DA_COLLEGARE'))`
   // Solo i legami dei nostri contratti (o senza contratto): il filtro sta qui e non nella query,
   // dove un `= ANY` su centinaia di id rallenta il piano generico (misurato).
   const candidati = candidatiTutti.filter(
@@ -612,7 +616,7 @@ export async function selezionaElaborazione(
     )
   )
   const righeSql = await seNonVuota(
-    elenchiUsatiIds,
+    [...elenchiUsatiIds, ...righeCitateIds],
     () =>
       tx.$queryRaw<RigaListinoSql[]>`
       SELECT id::text AS id, versione, elenco_id::text AS "elencoId", tipo, descrizione,
