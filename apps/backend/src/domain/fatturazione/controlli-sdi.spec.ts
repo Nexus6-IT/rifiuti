@@ -53,7 +53,7 @@ describe('controllaCoerenzaSdi', () => {
         ),
       })
     expect(alterato('0.02')).toEqual([
-      { codice: 'IMPORTI_NON_COERENTI', dettaglio: 'PrezzoTotale riga 1 (controllo 00423)' },
+      { codice: 'IMPORTI_NON_COERENTI', dettaglio: 'PrezzoTotale linea 1 (controllo 00423)' },
     ])
     expect(alterato('0.01')).toEqual([])
   })

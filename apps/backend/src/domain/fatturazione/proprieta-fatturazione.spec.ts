@@ -10,6 +10,7 @@ import {
   listinoDi,
 } from '../../test-support/calcolo-fatturazione-di-test'
 import { calcolaDocumento } from './calcola-documento'
+import { TOLLERANZE_SDI } from './costanti-fiscali'
 import { prezzoTotaleSdi } from './controlli-sdi'
 
 const CASI = 20000
@@ -32,14 +33,14 @@ describe('proprieta del calcolo (seme fisso)', () => {
       const netto = importoRiga(c.quantita, c.prezzo, c.sconto).netto
       const sdi = prezzoTotaleSdi(c.prezzo, c.quantita, c.sconti)
       const diff = new Prisma.Decimal(netto).minus(sdi).abs()
-      if (diff.greaterThan('0.01')) {
+      if (diff.greaterThan(TOLLERANZE_SDI.prezzoTotale)) {
         throw new Error(
           `Fuori tolleranza: q=${c.quantita} p=${c.prezzo} sconti=${c.sconti.join('+')} netto=${netto} sdi=${sdi}`
         )
       }
       if (diff.greaterThan(peggiore)) peggiore = diff
     }
-    expect(peggiore.lessThanOrEqualTo('0.01')).toBe(true)
+    expect(peggiore.lessThanOrEqualTo(TOLLERANZE_SDI.prezzoTotale)).toBe(true)
   })
 
   it(`${CASI} documenti: Σ rate = netto a pagare, Σ righe = Σ imponibili, nessun errore di importi`, () => {

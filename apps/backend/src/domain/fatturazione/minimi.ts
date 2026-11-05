@@ -53,7 +53,9 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
 export function applicaMinimi(
   righe: readonly RigaSenzaLinea[],
   minimi: readonly RigaListinoDaFatturare[],
-  listino: ReadonlyMap<string, RigaListinoDaFatturare>
+  listino: ReadonlyMap<string, RigaListinoDaFatturare>,
+  /** Numero della riga nei dettagli degli errori (default: posizione da 1 in `minimi`). */
+  numeroRiga?: (id: string) => number
 ): EsitoRighe {
   const aggiunte: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -99,7 +101,10 @@ export function applicaMinimi(
       })
     } else return
     if (m.prezzo === null) {
-      errori.push({ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `${m.tipo} riga ${indice + 1}` })
+      errori.push({
+        codice: 'RIGA_LEGAME_INCOMPLETA',
+        dettaglio: `${m.tipo} riga ${numeroRiga?.(m.id) ?? indice + 1}`,
+      })
       return
     }
     const soglia = D(m.prezzo)

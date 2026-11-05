@@ -188,6 +188,17 @@ describe('calcolaDocumento', () => {
       ])
     })
 
+    it('legame a prezzo speciale su una riga di listino a prezzo singolo: errore, il legame non sparisce', () => {
+      const d = calcolaDocumento(
+        inputDocumentoDi({
+          righeListino: [cer()],
+          legami: [legameDi(), legameDi({ quantita: '500', prezzoSpeciale: true })],
+        })
+      )
+      expect(d.errori.map(e => e.codice)).toContain('FAMIGLIA_NON_CALCOLATA')
+      expect(d.righe).toHaveLength(1)
+    })
+
     it('allegato con sola riga TT a 0.02 e legami del principale per 1500 KG: QUANTITA_MOVIMENTI 30.00, nessun errore', () => {
       const tt = listinoDi({
         id: 'tt',
@@ -265,13 +276,13 @@ describe('calcolaDocumento', () => {
       expect(d.errori).toEqual([{ codice: 'CONTRATTO_SOSPESO' }])
     })
 
-    it('ANNULLATO e BOZZA non si fatturano', () => {
-      for (const stato of ['ANNULLATO', 'BOZZA']) {
-        const d = calcolaDocumento(
-          inputDocumentoDi({ legami: [legameDi()], contratto: contrattoDi({ stato }) })
-        )
-        expect(d.righe).toEqual([])
-        expect(codici(d)).toEqual(['CONTRATTO_SOSPESO'])
+    it('ANNULLATO e BOZZA non arrivano al calcolo: eccezione di invariante', () => {
+      for (const stato of ['ANNULLATO', 'BOZZA'] as const) {
+        expect(() =>
+          calcolaDocumento(
+            inputDocumentoDi({ legami: [legameDi()], contratto: contrattoDi({ stato }) })
+          )
+        ).toThrow(stato)
       }
     })
 
@@ -291,6 +302,21 @@ describe('calcolaDocumento', () => {
       expect(d.righe.map(r => r.tipoRiga)).toEqual(['FISSO'])
       expect(avvisi(d)).toEqual(['MOVIMENTI_SOSPESI'])
       expect(d.tipoDocumento).toBe('TD01')
+    })
+
+    it('SOSPESO_MOVIMENTI con MW nel listino: nessun MINIMO fatturato (spec §6.4)', () => {
+      const mw = listinoDi({ id: 'mw', tipo: 'MW', prezzo: '50.00' })
+      const d = calcolaDocumento(
+        inputDocumentoDi({
+          righeListino: [cer(), mw],
+          minimi: [mw],
+          legami: [legameDi()],
+          contratto: contrattoDi({ stato: 'SOSPESO_MOVIMENTI' }),
+        })
+      )
+      expect(d.righe).toEqual([])
+      expect(d.righe.some(r => r.tipoRiga === 'MINIMO')).toBe(false)
+      expect(d.totaleDocumento).toBe('0.00')
     })
 
     it('SOSPESO_MOVIMENTI con riga TT: nessuna riga TT', () => {
@@ -375,24 +401,22 @@ describe('calcolaDocumento', () => {
       const d = calcolaDocumento({ ...base(), arretrati: 2 })
       expect(d.avvisi).toEqual([{ codice: 'ARRETRATI_PRESENTI', dettaglio: '2' }])
     })
-    it('arretrati dei fissi non duplicati dall avviso del chiamante', () => {
+    it('arretrati ricavati dalle righe fisse (scadenza anteriore al periodo), un solo avviso', () => {
       const f = listinoDi({
         id: 'f',
         tipo: 'F',
         prezzo: '10.00',
-        scadenze: [{ giorno: 1, mese: 6 }] as never,
+        scadenze: [{ ordine: 1, giorno: 15, mese: 6, anno: null }],
       })
-      const d = calcolaDocumento({
-        ...base(),
-        righeListino: undefined,
-        listino: new Map([
-          ['r1', cer()],
-          ['f', f],
-        ]),
+      const i = inputDocumentoDi({
+        righeListino: [cer(), f],
         righeFisse: [f],
-        arretrati: 1,
-      } as never)
-      expect(avvisi(d).filter(a => a === 'ARRETRATI_PRESENTI').length).toBeLessThanOrEqual(1)
+        legami: [legameDi()],
+      })
+      expect(calcolaDocumento(i).avvisi).toEqual([{ codice: 'ARRETRATI_PRESENTI', dettaglio: '1' }])
+      expect(calcolaDocumento({ ...i, arretrati: 4 }).avvisi).toEqual([
+        { codice: 'ARRETRATI_PRESENTI', dettaglio: '4' },
+      ])
     })
     it('TD24 con data oltre il 15: DATA_OLTRE_TERMINE_DIFFERITA; entro il 15 no', () => {
       expect(avvisi(calcolaDocumento({ ...base(), dataDocumento: '2026-12-16' }))).toEqual([
@@ -432,6 +456,14 @@ describe('calcolaDocumento', () => {
       )
       expect(d.righe).toEqual([])
       expect(codici(d)).toEqual(['TOTALE_NON_POSITIVO'])
+    })
+    it('giorno inesistente (2026-02-30): eccezione', () => {
+      expect(() => calcolaDocumento({ ...base(), dataDocumento: '2026-02-30' })).toThrow(
+        'AAAA-MM-GG'
+      )
+      expect(() =>
+        calcolaDocumento({ ...base(), periodo: { dal: '2026-11-01', al: '2026-11-31' } })
+      ).toThrow('AAAA-MM-GG')
     })
     it('data con ora o non valida: errore subito', () => {
       expect(() => calcolaDocumento({ ...base(), dataDocumento: '2026-12-05T10:00:00Z' })).toThrow(

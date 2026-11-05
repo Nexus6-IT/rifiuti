@@ -18,6 +18,8 @@ export function righeQuantitaMovimenti(i: {
   righe: readonly RigaListinoDaFatturare[]
   legami: readonly RigaLegameDaFatturare[]
   periodo: { dal: string; al: string }
+  /** Numero della riga nei dettagli degli errori (default: posizione da 1 nell'array `righe`). */
+  numeroRiga?: (id: string) => number
 }): EsitoRighe {
   const righe: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -37,7 +39,10 @@ export function righeQuantitaMovimenti(i: {
     for (const l of scelti) {
       const fattore = normalizzaUnitaRegistro(l.unitaMovimento).fattoreKg
       if (fattore === null) {
-        errori.push({ codice: 'UM_NON_UNIVOCA', dettaglio: `${r.tipo} riga ${indice + 1}` })
+        errori.push({
+          codice: 'UM_NON_UNIVOCA',
+          dettaglio: `${r.tipo} riga ${i.numeroRiga?.(r.id) ?? indice + 1}`,
+        })
         return
       }
       base = base.plus(new Prisma.Decimal(l.quantitaMovimento).times(fattore))
@@ -47,7 +52,10 @@ export function righeQuantitaMovimenti(i: {
     const quantita = quantitaDaMovimento('PESO_NETTO', r.unitaMisura, { netto: base.toFixed() })
     if (quantita === null) return
     if (r.prezzo === null) {
-      errori.push({ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `${r.tipo} riga ${indice + 1}` })
+      errori.push({
+        codice: 'RIGA_LEGAME_INCOMPLETA',
+        dettaglio: `${r.tipo} riga ${i.numeroRiga?.(r.id) ?? indice + 1}`,
+      })
       return
     }
     const prezzo = r.prezzo

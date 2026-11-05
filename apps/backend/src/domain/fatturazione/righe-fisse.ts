@@ -73,6 +73,8 @@ export function righeFisse(i: {
   periodo: { dal: string; al: string }
   contratto: { dataInizio: string; dataFine: string | null }
   marcatori: readonly MarcatoreEsistente[]
+  /** Numero della riga nei dettagli degli errori (default: posizione da 1 nell'array `righe`). */
+  numeroRiga?: (id: string) => number
 }): EsitoRighe {
   const righe: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -86,7 +88,10 @@ export function righeFisse(i: {
     // Etichetta propria («Canone»): quella di `etichettaTipo('F')` è un testo da listino.
     const base = r.descrizione ?? 'Canone'
     if (r.prezzo === null) {
-      errori.push({ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `F riga ${indice + 1}` })
+      errori.push({
+        codice: 'RIGA_LEGAME_INCOMPLETA',
+        dettaglio: `F riga ${i.numeroRiga?.(r.id) ?? indice + 1}`,
+      })
       continue
     }
     const prezzo = r.prezzo

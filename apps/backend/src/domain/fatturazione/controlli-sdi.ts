@@ -59,7 +59,7 @@ export function controllaCoerenzaSdi(d: {
   for (const r of d.righe) {
     const atteso = prezzoTotaleSdi(r.prezzoUnitario, r.quantita ?? '1', scontiDellaRiga(r.sconto))
     if (D(r.prezzoTotale).minus(D(atteso)).abs().greaterThan(D(TOLLERANZE_SDI.prezzoTotale))) {
-      violazione(`PrezzoTotale riga ${r.numeroLinea} (controllo 00423)`)
+      violazione(`PrezzoTotale linea ${r.numeroLinea} (controllo 00423)`)
     }
     const k = chiaveRiepilogo(r.aliquotaIva, r.naturaIva)
     sommaRighe.set(k, (sommaRighe.get(k) ?? new Prisma.Decimal(0)).plus(D(r.prezzoTotale)))

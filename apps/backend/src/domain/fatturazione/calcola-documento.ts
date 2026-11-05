@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import type { StatoContrattoCliente } from '../contratti-cliente/regole-contratto-cliente'
 import type { AvvisoDocumento, ErroreDocumento, Segnalazione } from './codici'
 import { famigliaCalcolata } from './costanti-fiscali'
 import { controllaCoerenzaSdi } from './controlli-sdi'
@@ -27,7 +28,7 @@ import type {
 export interface ContrattoDaFatturare {
   id: string
   versione: number
-  stato: string
+  stato: StatoContrattoCliente
   dataInizio: string
   dataFine: string | null
   esigibilita: 'I' | 'D' | 'S'
@@ -94,8 +95,15 @@ const FORMA_DATA = /^\d{4}-\d{2}-\d{2}$/
 const CODICE_NESSUN_DESTINATARIO = '0000000'
 
 function validaData(nome: string, valore: string): void {
-  if (!FORMA_DATA.test(valore)) {
-    throw new Error(`${nome}: atteso AAAA-MM-GG senza ora.`)
+  const [a, m, g] = valore.split('-').map(Number)
+  const d = new Date(Date.UTC(a, m - 1, g))
+  const esiste =
+    FORMA_DATA.test(valore) &&
+    d.getUTCFullYear() === a &&
+    d.getUTCMonth() === m - 1 &&
+    d.getUTCDate() === g
+  if (!esiste) {
+    throw new Error(`${nome}: atteso un giorno valido in forma AAAA-MM-GG senza ora.`)
   }
 }
 
@@ -121,6 +129,18 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
   for (const l of i.legami) validaData('dataMovimento', l.dataMovimento)
 
   const c = i.contratto
+  if (c.stato === 'BOZZA' || c.stato === 'ANNULLATO') {
+    throw new Error(
+      `Contratto in stato ${c.stato}: non entra in un documento (invariante del chiamante).`
+    )
+  }
+  for (const r of [...i.righeFisse, ...i.righeQuantita, ...i.minimi]) {
+    if (!i.listino.has(r.id)) {
+      throw new Error(
+        'Una riga fissa, TT/TF o minimo non e nel listino del documento (invariante).'
+      )
+    }
+  }
   const errori: Segnalazione<ErroreDocumento>[] = []
   const avvisi: Segnalazione<AvvisoDocumento>[] = []
 
@@ -139,32 +159,16 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
     }
   }
 
-  /**
-   * I Task 3 numerano «riga n» dall'array che ricevono: qui il numero torna alla posizione nel
-   * listino (stessa convenzione di tutti i dettagli del documento).
-   */
-  const accoda = (esito: EsitoRighe, sorgente?: readonly RigaListinoDaFatturare[]): void => {
-    for (const e of esito.errori) {
-      const m =
-        sorgente !== undefined && e.dettaglio !== undefined
-          ? /^(.* )?riga (\d+)$/.exec(e.dettaglio)
-          : null
-      if (m === null || sorgente === undefined) {
-        errori.push(e)
-        continue
-      }
-      const voce = sorgente[Number(m[2]) - 1]
-      const pos = voce === undefined ? undefined : posizione.get(voce.id)
-      errori.push(
-        pos === undefined ? e : { codice: e.codice, dettaglio: `${m[1] ?? ''}riga ${pos}` }
-      )
-    }
+  /** Posizione da 1 nel listino: il «riga n» di ogni dettaglio. */
+  const numeroRiga = (id: string): number => posizione.get(id) as number
+  const accoda = (esito: EsitoRighe): void => {
+    errori.push(...esito.errori)
     for (const a of esito.avvisi) {
       if (!avvisi.some(x => x.codice === a.codice)) avvisi.push(a)
     }
   }
 
-  const sospeso = c.stato !== 'ATTIVO' && c.stato !== 'SOSPESO_MOVIMENTI'
+  const sospeso = c.stato === 'SOSPESO'
   const righe: RigaSenzaLinea[] = []
 
   if (!sospeso) {
@@ -172,12 +176,23 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
       // Solo le righe fisse: niente movimenti e niente TT/TF.
       avvisi.push({ codice: 'MOVIMENTI_SOSPESI' })
     } else {
-      // 2. Righe movimento. FAMIGLIA_NON_CALCOLATA e' gia' nel controllo del listino (stesso
-      // `famigliaCalcolata`): qui si scarta il doppione, che ha un dettaglio diverso.
+      // 2. Righe movimento. Un FAMIGLIA_NON_CALCOLATA di `righeDaLegami` e' un doppione solo se
+      // il controllo del listino ha gia' segnalato la stessa riga (stessa posizione n). Se tipo o
+      // prezzo speciale congelati nel legame divergono dal listino attuale, l'errore del legame e'
+      // l'unico segnale: scartarlo farebbe sparire il legame dal documento senza errore.
+      const giaSegnalate = new Set(
+        errori
+          .filter(e => e.codice === 'FAMIGLIA_NON_CALCOLATA')
+          .map(e => /riga (\d+)$/.exec(e.dettaglio ?? '')?.[1])
+      )
       const mov = righeDaLegami(i.legami, i.listino)
       accoda({
         ...mov,
-        errori: mov.errori.filter(e => e.codice !== 'FAMIGLIA_NON_CALCOLATA'),
+        errori: mov.errori.filter(
+          e =>
+            e.codice !== 'FAMIGLIA_NON_CALCOLATA' ||
+            !giaSegnalate.has(/riga (\d+)$/.exec(e.dettaglio ?? '')?.[1])
+        ),
       })
       righe.push(...mov.righe)
       // 3. TT/TF
@@ -185,8 +200,9 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
         righe: i.righeQuantita,
         legami: i.legami,
         periodo: i.periodo,
+        numeroRiga,
       })
-      accoda(qta, i.righeQuantita)
+      accoda(qta)
       righe.push(...qta.righe)
     }
     // 4. Fisse
@@ -195,13 +211,16 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
       periodo: i.periodo,
       contratto: { dataInizio: c.dataInizio, dataFine: c.dataFine },
       marcatori: i.marcatori,
+      numeroRiga,
     })
-    accoda(fisse, i.righeFisse)
+    accoda(fisse)
     righe.push(...fisse.righe)
-    // 5. Minimi
-    const minimi = applicaMinimi(righe, i.minimi, i.listino)
-    accoda(minimi, i.minimi)
-    righe.push(...minimi.righe)
+    // 5. Minimi: con SOSPESO_MOVIMENTI entrano solo i fissi (spec §6.4), niente minimi.
+    if (c.stato !== 'SOSPESO_MOVIMENTI') {
+      const minimi = applicaMinimi(righe, i.minimi, i.listino, numeroRiga)
+      accoda(minimi)
+      righe.push(...minimi.righe)
+    }
     // 6. Spese di incasso: solo se c'e' altro da fatturare.
     if (righe.length > 0) {
       const spese = rigaSpeseIncasso(c.speseIncasso, c.condizione?.giorniRate.length ?? 0)
@@ -252,7 +271,6 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
   if (sospeso) {
     errori.push({
       codice: 'CONTRATTO_SOSPESO',
-      ...(c.stato === 'SOSPESO' ? {} : { dettaglio: c.stato.toLowerCase() }),
     })
   }
   if (c.registroIvaId === null) errori.push({ codice: 'SENZA_REGISTRO_IVA' })
@@ -288,12 +306,18 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
       dettaglio: String(i.legamiDaCollegareEsclusi),
     })
   }
-  if (i.arretrati > 0) {
-    const indice = avvisi.findIndex(a => a.codice === 'ARRETRATI_PRESENTI')
+  // Arretrati: il numero lo derivano le righe FISSO con scadenza anteriore al periodo; il campo del
+  // chiamante vale solo se maggiore (nota per il Task 17: puo' non passarlo).
+  const derivati = righeFinali.filter(
+    r => r.marcatore?.tipo === 'SCADENZA_FISSO' && r.marcatore.chiaveCompetenza < i.periodo.dal
+  ).length
+  const arretrati = Math.max(i.arretrati, derivati)
+  if (arretrati > 0) {
     const avviso: Segnalazione<AvvisoDocumento> = {
       codice: 'ARRETRATI_PRESENTI',
-      dettaglio: String(i.arretrati),
+      dettaglio: String(arretrati),
     }
+    const indice = avvisi.findIndex(a => a.codice === 'ARRETRATI_PRESENTI')
     if (indice === -1) avvisi.push(avviso)
     else avvisi[indice] = avviso
   }
