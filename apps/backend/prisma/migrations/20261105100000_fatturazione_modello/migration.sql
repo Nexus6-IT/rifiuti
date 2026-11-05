@@ -309,6 +309,9 @@ CREATE UNIQUE INDEX "documenti_fattura_un_storno" ON "documenti_fattura"("tenant
 CREATE INDEX "documenti_fattura_tenant_id_stato_data_documento_idx" ON "documenti_fattura"("tenant_id", "stato", "data_documento");
 CREATE INDEX "documenti_fattura_tenant_id_cliente_fatturazione_id_idx" ON "documenti_fattura"("tenant_id", "cliente_fatturazione_id");
 CREATE INDEX "documenti_fattura_tenant_id_elaborazione_id_idx" ON "documenti_fattura"("tenant_id", "elaborazione_id");
+CREATE INDEX "documenti_fattura_tenant_id_registro_iva_id_idx" ON "documenti_fattura"("tenant_id", "registro_iva_id");
+CREATE INDEX "documenti_fattura_tenant_id_contratto_id_idx" ON "documenti_fattura"("tenant_id", "contratto_id");
+CREATE INDEX "documenti_fattura_tenant_id_cliente_id_idx" ON "documenti_fattura"("tenant_id", "cliente_id");
 
 CREATE UNIQUE INDEX "righe_documento_fattura_id_documento_id_tenant_id_key" ON "righe_documento_fattura"("id", "documento_id", "tenant_id");
 CREATE UNIQUE INDEX "righe_documento_fattura_documento_id_numero_linea_key" ON "righe_documento_fattura"("documento_id", "numero_linea");

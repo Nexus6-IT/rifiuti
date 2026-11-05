@@ -4122,6 +4122,9 @@ model DocumentoFattura {
   @@index([tenantId, stato, dataDocumento], map: "documenti_fattura_tenant_id_stato_data_documento_idx")
   @@index([tenantId, clienteFatturazioneId], map: "documenti_fattura_tenant_id_cliente_fatturazione_id_idx")
   @@index([tenantId, elaborazioneId], map: "documenti_fattura_tenant_id_elaborazione_id_idx")
+  @@index([tenantId, registroIvaId], map: "documenti_fattura_tenant_id_registro_iva_id_idx")
+  @@index([tenantId, contrattoId], map: "documenti_fattura_tenant_id_contratto_id_idx")
+  @@index([tenantId, clienteId], map: "documenti_fattura_tenant_id_cliente_id_idx")
   @@map("documenti_fattura")
 }
 
