@@ -1,10 +1,16 @@
 import type { Scaglione } from '../listino/prezzo-speciale'
 import type { Scadenza } from '../listino/scadenze-fisse'
-import type { TipoMarcatore, TipoRigaDocumento } from './codici'
+import type {
+  AvvisoDocumento,
+  ErroreDocumento,
+  Segnalazione,
+  TipoMarcatore,
+  TipoRigaDocumento,
+} from './codici'
 
 /**
  * Ingressi e uscite del calcolo della fatturazione. Tutti gli importi sono stringhe decimali.
- * Il Task 15 aggiunge FotografiaDocumento e DocumentoPerXml.
+ * Il Task 15 ha aggiunto FotografiaDocumento, FotografiaSalvata e DocumentoPerXml (in fondo).
  */
 
 export interface CodiceIvaDaFatturare {
@@ -110,4 +116,91 @@ export interface RataCalcolata {
   abi: string | null
   cab: string | null
   bic: string | null
+}
+
+/** Sede come la vuole l'XML. Nella prima uscita solo clienti italiani (oggi i clienti non hanno nazione, Q27). */
+export interface SedeFotografia {
+  /** Via ed eventuale civico: l'XSD limita `Indirizzo` a 60 caratteri. */
+  indirizzo: string
+  cap: string
+  comune: string
+  provincia: string | null
+  nazione: 'IT'
+}
+
+/**
+ * Dati fiscali congelati alla definitiva (Q16, scansione P37): il documento non cambia se poi
+ * cambiano cedente o cliente. L'XML generato dopo usa questa fotografia.
+ */
+export interface FotografiaDocumento {
+  cedente: {
+    denominazione: string
+    partitaIva: string
+    codiceFiscale: string | null
+    regimeFiscale: string
+    sede: SedeFotografia
+    /** `IscrizioneREA` si emette solo se c'e', con ufficio, numero e stato di liquidazione insieme. */
+    rea: {
+      ufficio: string
+      numero: string
+      capitaleSociale: string | null
+      socioUnico: 'SU' | 'SM' | null
+      statoLiquidazione: 'LN' | 'LS'
+    } | null
+    idTrasmittente: string
+  }
+  cessionario: {
+    denominazione: string | null
+    nome: string | null
+    cognome: string | null
+    partitaIva: string | null
+    codiceFiscale: string | null
+    sede: SedeFotografia
+  }
+  pagamento: {
+    codice: string
+    descrizione: string
+    modalita: string
+    giorniRate: number[]
+    fineMese: boolean
+  } | null
+  conto: { istituto: string | null; iban: string | null; bic: string | null } | null
+  testoFatturazione: string[]
+  cig: string | null
+  cup: string | null
+  idDocumento: string | null
+}
+
+/**
+ * Forma di `documenti_fattura.fotografia` (Q16): le bozze salvano errori e avvisi completi di
+ * dettaglio; la definitiva la riscrive con errori `[]` e gli avvisi. Le colonne `text[]`
+ * errori/avvisi restano la fonte dei CHECK.
+ */
+export interface FotografiaSalvata extends FotografiaDocumento {
+  segnalazioni: {
+    errori: Segnalazione<ErroreDocumento>[]
+    avvisi: Segnalazione<AvvisoDocumento>[]
+  }
+}
+
+/** Documento salvato, riletto per generare l'XML: dalla fotografia e dalle righe salvate. */
+export interface DocumentoPerXml {
+  testata: {
+    tipoDocumento: 'TD01' | 'TD04' | 'TD24'
+    formatoTrasmissione: 'FPR12' | 'FPA12'
+    codiceDestinatario: string
+    pecDestinatario: string | null
+    dataDocumento: string
+    numeroTesto: string
+    totaleDocumento: string
+    bolloDovuto: boolean
+    importoBollo: string | null
+    esigibilita: 'I' | 'D' | 'S'
+    condizioniPagamento: 'TP01' | 'TP02' | null
+    origine: { numeroTesto: string; dataDocumento: string } | null
+  }
+  righe: RigaDocumentoCalcolata[]
+  riepiloghi: RiepilogoIvaCalcolato[]
+  rate: RataCalcolata[]
+  fotografia: FotografiaDocumento
 }
