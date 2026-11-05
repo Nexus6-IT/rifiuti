@@ -59,10 +59,22 @@ export const COLONNE_CODIFICA: ColonneReferenti = {
   contratti: ['categoriaId', 'tipoId', 'motivoAnnulloId'],
 }
 
-/** Numerazione con almeno un numero o una partenza scritti (spec §4.6). */
-const NUMERAZIONE_SCRITTA = {
-  OR: [{ ultimoNumero: { gt: 0 } }, { numeroPartenza: { gt: 0 } }, { dataPartenza: { not: null } }],
+/**
+ * Numerazione scritta (spec §4.6, M3): `ultimo_numero > numero_partenza` (un numero e' stato
+ * riservato) oppure `data_partenza` non nulla. Una riga vuota, o con la sola partenza numerica, e'
+ * un'assenza: il registro si elimina e la partenza si puo' ancora impostare. Il confronto fra due
+ * colonne usa il riferimento di campo di Prisma.
+ */
+function numerazioneScritta(client: ClientUsi): Filtro {
+  return {
+    OR: [
+      { ultimoNumero: { gt: client.numerazioneFattura.fields.numeroPartenza } },
+      { dataPartenza: { not: null } },
+    ],
+  }
 }
+
+type Filtro = Record<string, unknown>
 
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
 type GroupBy = (args: {
@@ -83,23 +95,28 @@ export async function contaUsi(
 ): Promise<Map<string, number>> {
   const usi = new Map<string, number>(ids.map(id => [id, 0]))
   if (ids.length === 0) return usi
-  const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[]]> = [
-    [client.cliente as unknown as { groupBy: GroupBy }, colonne.clienti],
-    [client.contrattoCliente as unknown as { groupBy: GroupBy }, colonne.contratti],
-    [client.documentoFattura as unknown as { groupBy: GroupBy }, colonne.documenti ?? []],
-    [client.numerazioneFattura as unknown as { groupBy: GroupBy }, colonne.numerazioni ?? []],
-    [client.cedenteFatturazione as unknown as { groupBy: GroupBy }, colonne.cedente ?? []],
-    [client.spesaAccessoria as unknown as { groupBy: GroupBy }, colonne.spese ?? []],
+  // Terzo elemento: filtro esplicito della sorgente. Una riga di numerazione vuota nasce solo per
+  // il lock del suffisso (o da una riserva annullata): non e' un uso.
+  const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[], Filtro]> = [
+    [client.cliente as unknown as { groupBy: GroupBy }, colonne.clienti, {}],
+    [client.contrattoCliente as unknown as { groupBy: GroupBy }, colonne.contratti, {}],
+    [client.documentoFattura as unknown as { groupBy: GroupBy }, colonne.documenti ?? [], {}],
+    [
+      client.numerazioneFattura as unknown as { groupBy: GroupBy },
+      colonne.numerazioni ?? [],
+      (colonne.numerazioni ?? []).length > 0 ? numerazioneScritta(client) : {},
+    ],
+    [client.cedenteFatturazione as unknown as { groupBy: GroupBy }, colonne.cedente ?? [], {}],
+    [client.spesaAccessoria as unknown as { groupBy: GroupBy }, colonne.spese ?? [], {}],
   ]
-  for (const [modello, elenco] of sorgenti) {
+  for (const [modello, elenco, filtro] of sorgenti) {
     for (const colonna of elenco) {
       const righe = await modello.groupBy({
         by: [colonna],
         where: {
           tenantId,
           [colonna]: { in: [...ids] },
-          // Una riga di numerazione vuota nasce solo per il lock del suffisso: non e' un uso.
-          ...(modello === (client.numerazioneFattura as unknown) ? NUMERAZIONE_SCRITTA : {}),
+          ...filtro,
         },
         _count: { _all: true },
       })

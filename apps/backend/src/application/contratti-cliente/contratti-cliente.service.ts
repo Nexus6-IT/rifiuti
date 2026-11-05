@@ -21,6 +21,7 @@
 // destinatario e riferimento amministrazione) si copia invece dal cliente di fatturazione se il
 // contratto ne ha uno diverso (R35). Il contratto non ha una PEC propria: quella resta sul cliente
 // e la legge chi fattura. Il conto corrente NON si copia: l'effettivo e' calcolato nella vista.
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
 import {
   BadRequestException,
   ConflictException,
@@ -1046,7 +1047,7 @@ export class ContrattiClienteService {
           if (documenti > 0) {
             throw new ConflictException({
               error: 'CONTRATTO_CLIENTE_NON_ELIMINABILE',
-              message: 'Il contratto è usato da documenti di fatturazione: non si può eliminare.',
+              message: MESSAGGIO_IN_USO_DA_DOCUMENTI,
             })
           }
           await tx.activityLog.create({

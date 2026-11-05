@@ -59,7 +59,8 @@ import {
   OPZIONI_TRANSAZIONE_SCRITTURA,
   type ContrattoBloccato,
 } from './lock-listino'
-import { COLONNE_RIGA_LISTINO, contaUsiListino } from './uso-listino'
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
+import { COLONNE_RIGA_LISTINO, contaUsiListino, contaUsiListinoPerOrigine } from './uso-listino'
 import {
   cerNelCatalogo,
   normalizzaCerCode,
@@ -81,6 +82,12 @@ const ENTITA: DescrizioneEntita = {
   soggetto: 'La riga di addebito',
   femminile: true,
   inUso: IN_USO,
+  inUsoPerVincolo: {
+    righe_documento_fattura_riga_addebito_fkey: {
+      codice: IN_USO.codice,
+      messaggio: MESSAGGIO_IN_USO_DA_DOCUMENTI,
+    },
+  },
 }
 
 const MSG_DUPLICATA = 'L’addebito è già nell’elenco con lo stesso riferimento.'
@@ -662,9 +669,14 @@ export class RigheAddebitoService {
           confrontaVersione(riga.versione, versione, ENTITA)
           // Fasce e scadenze vanno a cascata (FK ON DELETE CASCADE).
           // Decisione 8 (4.3): una riga citata da un legame non si elimina (la FK la difende comunque).
-          const usi = (await contaUsiListino(tx, tenantId, [id], COLONNE_RIGA_LISTINO)).get(id) ?? 0
-          if (usi > 0) {
-            throw new ConflictException({ error: IN_USO.codice, message: IN_USO.messaggio })
+          const usi = (
+            await contaUsiListinoPerOrigine(tx, tenantId, [id], COLONNE_RIGA_LISTINO)
+          ).get(id)
+          if (usi && usi.totale > 0) {
+            throw new ConflictException({
+              error: IN_USO.codice,
+              message: usi.daDocumenti > 0 ? MESSAGGIO_IN_USO_DA_DOCUMENTI : IN_USO.messaggio,
+            })
           }
           await scriviCondizionato(
             () => tx.rigaAddebito.deleteMany({ where: { id, tenantId, versione } }),

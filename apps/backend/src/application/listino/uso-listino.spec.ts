@@ -5,6 +5,7 @@ import {
   COLONNE_ELENCO,
   COLONNE_RIGA_LISTINO,
   contaUsiListino,
+  contaUsiListinoPerOrigine,
 } from './uso-listino'
 
 const T = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -118,6 +119,7 @@ describe('contaUsiListino', () => {
         rigaAddebito: { groupBy: jest.fn(async () => []) },
         rigaLegameMovimento: { groupBy: jest.fn(async () => righe) },
         legameMovimento: { groupBy: jest.fn(async () => righe) },
+        documentoFattura: { groupBy: jest.fn(async () => []) },
         rigaDocumentoFattura: { groupBy: jest.fn(async () => []) },
         marcatoreAddebitoFatturato: { groupBy: jest.fn(async () => []) },
         $queryRaw: jest.fn(),
@@ -206,6 +208,52 @@ describe('contaUsiListino', () => {
       expect(c.rigaDocumentoFattura.groupBy.mock.calls[0][0].where.rigaAddebitoId.in).toHaveLength(
         1000
       )
+    })
+  })
+
+  describe('documenti di fattura: testata (4.4b1, M4)', () => {
+    it("l'elenco e' citato anche dalle testate dei documenti con elencoId; altrove nessuna colonna", () => {
+      expect(COLONNE_ELENCO.documenti).toEqual(['elencoId'])
+      for (const c of [
+        COLONNE_ADDEBITO,
+        COLONNE_CODICE_IVA,
+        COLONNE_CODIFICA_ADDEBITO,
+        COLONNE_RIGA_LISTINO,
+      ]) {
+        expect(c.documenti).toEqual([])
+      }
+    })
+
+    const cliente = (documenti: number, legami: number) =>
+      ({
+        legameMovimento: {
+          groupBy: jest.fn(async () =>
+            legami ? [{ elencoId: 'x', _count: { _all: legami } }] : []
+          ),
+        },
+        documentoFattura: {
+          groupBy: jest.fn(async () =>
+            documenti ? [{ elencoId: 'x', _count: { _all: documenti } }] : []
+          ),
+        },
+      }) as any
+
+    it('una query sulle testate dei documenti, sommata ai legami; daDocumenti separa la parte dei documenti', async () => {
+      const c = cliente(2, 1)
+      const usi = await contaUsiListinoPerOrigine(c, T, ['x', 'y'], COLONNE_ELENCO)
+      expect(c.documentoFattura.groupBy).toHaveBeenCalledTimes(1)
+      expect(c.documentoFattura.groupBy.mock.calls[0][0].where).toEqual({
+        tenantId: T,
+        elencoId: { in: ['x', 'y'] },
+      })
+      expect(usi.get('x')).toEqual({ totale: 3, daDocumenti: 2 })
+      expect(usi.get('y')).toEqual({ totale: 0, daDocumenti: 0 })
+      expect((await contaUsiListino(cliente(2, 1), T, ['x'], COLONNE_ELENCO)).get('x')).toBe(3)
+    })
+
+    it('citato solo da un legame: daDocumenti 0', async () => {
+      const usi = await contaUsiListinoPerOrigine(cliente(0, 1), T, ['x'], COLONNE_ELENCO)
+      expect(usi.get('x')).toEqual({ totale: 1, daDocumenti: 0 })
     })
   })
 })

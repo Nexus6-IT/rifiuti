@@ -149,6 +149,13 @@ export const MESSAGGI_AVVISO: Readonly<Record<AvvisoDocumento, string>> = {
     'La data supera il 15 del mese successivo al periodo: la fattura differita è emessa oltre il termine.',
 }
 
+/**
+ * Messaggio «in uso» quando a citare e' un documento di fatturazione (Q37): anche una bozza o
+ * un'anteprima aperta lo tiene occupato, e si libera scartando le anteprime.
+ */
+export const MESSAGGIO_IN_USO_DA_DOCUMENTI =
+  'È usato da documenti di fatturazione, anche da anteprime aperte: scarta le anteprime per liberarlo'
+
 /** Una segnalazione di calcolo. `dettaglio` non contiene id ne' dati personali. */
 export interface Segnalazione<C extends string> {
   codice: C

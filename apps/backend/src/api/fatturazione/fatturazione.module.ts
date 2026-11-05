@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { CedenteService } from '../../application/fatturazione/cedente.service'
+import { DocumentiFatturaService } from '../../application/fatturazione/documenti-fattura.service'
 import { NumerazioniService } from '../../application/fatturazione/numerazioni.service'
 import { AuthModule } from '../../auth/auth.module'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
@@ -11,7 +12,7 @@ import { NumerazioniController } from './numerazioni.controller'
 @Module({
   imports: [PrismaModule, AuthModule, RuoloEffettivoModule],
   controllers: [CedenteController, NumerazioniController],
-  providers: [CedenteService, NumerazioniService],
-  exports: [CedenteService, NumerazioniService],
+  providers: [CedenteService, NumerazioniService, DocumentiFatturaService],
+  exports: [CedenteService, NumerazioniService, DocumentiFatturaService],
 })
 export class FatturazioneModule {}

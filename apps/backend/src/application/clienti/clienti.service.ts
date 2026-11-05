@@ -33,6 +33,7 @@ import {
   type DescrizioneEntita,
   type VincoliNoti,
 } from './anagrafica-versionata'
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
 import { controllaRiferimenti, type RiferimentiDaControllare } from './riferimenti-fatturazione'
 
 const ENTITA: DescrizioneEntita = {
@@ -54,8 +55,7 @@ const ENTITA: DescrizioneEntita = {
     // 4.4a: un documento di fattura cita il cliente intestatario anche senza un suo contratto.
     documenti_fattura_cliente_fatturazione_fkey: {
       codice: 'CLIENTE_USATO_DA_FATTURE',
-      messaggio:
-        'Il cliente è intestatario di fatture: non si elimina. Disattivalo per non usarlo nei contratti nuovi.',
+      messaggio: MESSAGGIO_IN_USO_DA_DOCUMENTI,
     },
   },
 }

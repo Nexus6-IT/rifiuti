@@ -48,7 +48,10 @@ describe('RegistriIvaService (Prisma finto)', () => {
       cliente: { groupBy: jest.fn().mockResolvedValue([]) },
       contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
       documentoFattura: { groupBy: jest.fn().mockResolvedValue([]) },
-      numerazioneFattura: { groupBy: jest.fn().mockResolvedValue([]) },
+      numerazioneFattura: {
+        groupBy: jest.fn().mockResolvedValue([]),
+        fields: { numeroPartenza: {} },
+      },
       cedenteFatturazione: { groupBy: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
