@@ -831,3 +831,4 @@ Sono vincolanti. Le opzioni scartate del §18 sono state tolte.
 14. **Commercialista:** si costruisce con la decisione 8 (TD24). La conferma su TD24, documenti misti e nature soggette a bollo è un gate prima di accendere le definitive in produzione, non prima del codice.
 15. **TeamSystem senza prova d'import reale:** nessuna installazione disponibile. Il file si valida sul tracciato ricostruito e si rilascia segnalato in UI e nel rapporto come «non verificato su un'installazione reale».
 16. **Esecuzione:** subagent-driven, come la 4.3.
+17. **Addebiti TT e TF nella prima uscita (05/11):** si calcolano anche gli addebiti `TT` (peso netto di tutti i rifiuti dell'elenco) e `TF` (peso netto dei rifiuti conferiti nei giorni festivi), così i contratti allegati, che hanno solo righe `T`, si fatturano. `TS`, `TP`, `TQ`, `TR` e `T` + 3 cifre restano in errore esplicito (`FAMIGLIA_NON_CALCOLATA`). Estende la decisione 2 e il §6.5.
