@@ -30,11 +30,19 @@ palette e mappatura sui token (§1-§2), direzione B (§3), tema (§4), i 35 bug
 **D2** carattere Geist, come IgniCraft; **D3** tema chiaro al primo accesso, pulsante
 Chiaro → Scuro → Sistema, scelta salvata; **D4** stati dei FIR tradotti solo nel frontend, senza
 migration; **D5** torna la fascia «Da fare oggi» della Dashboard; **D6** si correggono tutti i 35 bug,
-ognuno in un task e con un test quando si può. Percorsi relativi a `apps/frontend/src/` salvo
+ognuno in un task e con un test quando si può. Seconda tornata, sui dubbi del piano (05/11):
+**D7** il bottone primario è l'arancio IgniCraft `#b9440f` (il mockup B non vincola su questo);
+l'arancio resta solo sull'azione e sul dato principale; **D8** i riquadri di oggi della Dashboard
+(conformità, top 5 produttori e trasportatori, top 10 CER, destinazione, firme, RENTRI, previsione)
+**restano**, sotto i blocchi del mockup B, rifatti col tema nuovo e con dati corretti; i bug 5 e 7 si
+correggono davvero; per il 7 un task backend separato (nome della ditta oltre alla P. IVA), con test
+unit e Postgres, query con `= ANY(ids)`, tenant dalla richiesta, nessuna migration; **D9** i testi
+del login del Task 5 sono approvati così; **D10** nella Dashboard gli stati dei FIR sono 5, come
+nella lista FIR: «Trasmesso» non è uno stato a sé. Percorsi relativi a `apps/frontend/src/` salvo
 `fe/` = `apps/frontend/src/app/`, `e2e/` alla radice e `skill/` =
 `/home/graziano/.claude/skills/design-taste-frontend/`.
 
-**Scelte di piano** (P1-P9, da confermare in revisione; nessuna tocca backend o DB):
+**Scelte di piano** (P1-P11; solo P10 tocca il backend, nessuna il DB):
 - **P1. Geist in self-hosting.** La CSP di `apps/frontend/nginx.conf:79` ammette sia
   `https://fonts.googleapis.com` (style-src) e `https://fonts.gstatic.com` (font-src) sia `'self'`:
   entrambe le strade la rispettano. Si sceglie il self-hosting con `@fontsource-variable/geist` e
@@ -48,7 +56,8 @@ ognuno in un task e con un test quando si può. Percorsi relativi a `apps/fronte
   **stessa** mappa di `DB_TO_STATO` (`apps/backend/src/infrastructure/persistence/fir-prisma.repository.ts:104-112`):
   `DRAFT`, `AWAITING_PRODUCER` → Bozza; `AWAITING_CARRIER` → Emesso; `AWAITING_RECEIVER` → In
   transito; `COMPLETED`, `SYNCED_TO_RENTRI` → Consegnato; `CANCELLED` → Annullato. Così i conteggi
-  della Dashboard coincidono con il filtro per stato della lista FIR.
+  della Dashboard coincidono con il filtro per stato della lista FIR (D10: nessuna cella «Trasmesso»;
+  la trasmissione a RENTRI resta nel riquadro RENTRI dell'analisi).
 - **P3. Shell B.** Niente cornice e niente foglio: sidebar e contenuto sullo stesso fondo
   `--surface-ground`, card bianche da 8 px senza ombra. Sopra i 992 px **non c'è barra in alto**:
   azienda attiva, campanella, pulsante del tema, utente ed «Esci» vanno in fondo alla sidebar (come
@@ -61,12 +70,17 @@ ognuno in un task e con un test quando si può. Percorsi relativi a `apps/fronte
 - **P5. Blocchi della Dashboard (D5, mockup B).** Titolo «Panoramica» con la risposta del giorno;
   colonna sinistra fissa da 306 px con «Deposito temporaneo» e «FIR recenti»; a destra «Da fare
   oggi», «FIR di <mese> per stato» (striscia divisa a 5 celle) e «Formulari per mese» (12 barre).
-  Escono conformità, top 5 produttori e trasportatori, top 10 CER, destinazione, firme, RENTRI e
-  previsione: il mockup B non li ha. Così i bug 5 e 7 si chiudono per rimozione (il 7 avrebbe richiesto
-  il nome della ditta nell'API, che oggi dà solo la P. IVA). I dati ci sono già tutti:
-  `GET /dashboard/attenzione` (scadenze, formulari da trasmettere, scorta vidimata),
-  `GET /dashboard/andamento`, `GET /dashboard?startDate&endDate`, `GET /giacenze/deposito-temporaneo`,
-  `GET /fir?page=1&limit=5`. **Nessun task backend.** Gli avvisi del deposito entrano anche in «Da
+  Sotto, a tutta larghezza, la sezione «Analisi dell'azienda» (D8) con i riquadri di oggi rifatti:
+  una striscia divisa «Conformità · Firme · RENTRI · Andamento» (conformità con i tre fattori, firme
+  completate e tempo medio, FIR sincronizzati e in attesa, mese corrente contro il precedente e
+  previsione del prossimo), poi «Destinazione» (recupero e smaltimento come barre a rapporto vero, al
+  posto della ciambella), «Top 10 codici CER» (barre orizzontali in un solo grigio, codice in mono, kg
+  a destra) e «Produttori e trasportatori più frequenti» (due liste da 5: ragione sociale, P. IVA in
+  grigio mono, numero di FIR a destra). Niente Chart.js nella Dashboard. L'intestazione della sezione
+  dice «Tutti i formulari dell'azienda», perché l'API la calcola su tutti i FIR del tenant, non sul
+  mese. I dati: `GET /dashboard/attenzione` (scadenze, formulari da trasmettere, scorta vidimata),
+  `GET /dashboard/andamento`, `GET /dashboard` (con `startDate`/`endDate` per il mese, P10),
+  `GET /giacenze/deposito-temporaneo`, `GET /fir?page=1&limit=5`. Gli avvisi del deposito entrano anche in «Da
   fare oggi», convertiti nel frontend. La fascia non compare se non ha voci e non c'è errore, come nel
   componente di oggi (comportamento già coperto dal suo spec e citato da `e2e/tests/scadenze/flusso-scadenze.spec.ts:55`).
 - **P6. «Formulari per mese» è un SVG del componente**, non Chart.js: mese corrente nell'accento, gli
@@ -82,10 +96,27 @@ ognuno in un task e con un test quando si può. Percorsi relativi a `apps/fronte
 - **P9. Deposito temporaneo in kg**, come l'API (`DepositoRegistro.totaleKg`, `soglie.kgMaxTotale`,
   `totalePericolosiKg`, `soglie.kgMaxPericolosi`, `etaGiorni` contro `soglie.giorniMax`), non in m³
   come il mockup.
-- **Lettura di D1 «arancio sull'azione».** `--accent-fill` (bottone primario) diventa l'accento
-  `#b9440f` con testo `#ffffff` in chiaro e `#ff8a5c` con testo `#131311` in scuro; il mockup B lo ha
-  quasi nero. È un solo token: se Graziano intendeva il nero del mockup, si cambia in una riga del
-  Task 1. Ogni schermata ha **un solo** bottone primario pieno.
+- **P10. Task backend 2b (D8, bug 7, marcato BACKEND).** Due modifiche additive a
+  `GET /dashboard`, senza migration: (a) `top.producers` e `top.carriers` danno anche `nome: string | null`,
+  la ragione sociale dello snapshot del FIR più recente con quella P. IVA (`firs.producer_name`,
+  `firs.carrier_name`, colonne che esistono già); (b) `status.breakdown` rispetta `startDate`/`endDate`
+  su `created_at`. La (b) è una necessità dimostrata: oggi il controller legge l'intervallo ma
+  `GetDashboardUseCase.execute` (`apps/backend/src/application/analytics/get-dashboard.use-case.ts:57-70`)
+  non lo passa a nessuna query, quindi «FIR di novembre» mostrerebbe i FIR di sempre. Gli altri
+  indicatori restano su tutto il tenant (come dice l'intestazione della sezione d'analisi).
+- **P11. Conformità con 0 FIR (bug 5).** Il punteggio di oggi è
+  `0,4 × firme + 0,4 × RENTRI + 0,2 × (1 − ritardi)` (`analytics.service.ts:302-307`): con 0 FIR i
+  primi due valgono 0 e il terzo 1, quindi esce 20% e «Critica». Il 20% è un artefatto della formula,
+  non una misura. Con `overview.totalFIRs === 0` (lo stesso conteggio su tutto il tenant che usa
+  `getComplianceScore`) il riquadro mostra «—» in grigio al posto del numero, nessuna pillola di
+  livello, e la frase «Si calcola dal primo formulario». Si corregge nel frontend e non nel backend
+  perché il contratto dell'API e l'export CSV restano invariati e la regola «un valore che non esiste
+  è un trattino» è una regola di presentazione (house rule §11); i tre fattori seguono la stessa
+  regola. Con almeno un FIR il numero si mostra com'è, in percentuale it-IT senza decimali.
+- **D7 applicata.** `--accent-fill` (bottone primario) è l'accento `#b9440f` con testo `#ffffff` in
+  chiaro e `#ff8a5c` con testo `#131311` in scuro. Ogni schermata ha **un solo** bottone primario
+  pieno; l'arancio sui dati va solo alla serie principale (il mese corrente), non ai grafici
+  dell'analisi, che restano in grigio.
 
 ## Global Constraints
 
@@ -93,8 +124,16 @@ ognuno in un task e con un test quando si può. Percorsi relativi a `apps/fronte
   `feat(stile)`/`fix(stile)`/`test(e2e)`, **nessuna attribuzione AI** (né `Co-Authored-By` né
   `Claude-Session`; la regola di Graziano prevale su ogni suggerimento dell'ambiente). Niente push dai
   task: il push lo fa l'orchestratore all'apertura della PR.
-- **Nessuna modifica a backend, DB, migration o `nginx.conf`.** Un dato che manca all'API non si
-  inventa: si toglie il blocco e lo si scrive nel rapporto.
+- **Nessuna modifica a backend, DB, migration o `nginx.conf`**, salvo il Task 2b (P10), unico task
+  backend, senza migration. Un altro dato che manca all'API non si inventa: si scrive nel rapporto.
+- **Task 2b (backend):** tenant sempre da `requireRequestTenantId(req)` (già così in
+  `dashboard.controller.ts:124`), filtro esplicito `tenant_id = ${tenantId}::uuid` anche dentro la
+  transazione di tenant; liste di valori con `= ANY(${valori}::text[])`, mai `IN` costruito a mano;
+  test Postgres col ruolo `wasteflow_app` sul DB `127.0.0.1:55438`, pulizia solo per id esatti
+  (`pulisciTenantDiTest` di `apps/backend/src/test-support/legami-di-test.ts`); fine task:
+  `NODE_ENV=test JWT_SECRET=ci-dummy-jwt-secret-not-used-in-prod npm run test:cov` una volta,
+  `npx tsc --noEmit -p tsconfig.json`, `npx eslint "{src,test}/**/*.ts" --max-warnings=-1` da
+  `apps/backend`, la suite Postgres nuova sotto `flock $LOCK`. Mai Karma e jest insieme.
 - Testi e commenti in italiano; termini tecnici non tradotti (branch, commit, build, test, token,
   cache, deploy, layout, template, worktree). Etichette in sentence case. Mai id nei testi a schermo.
 - **Token.** Solo `var(--…)` nei componenti, mai colori letterali (eccezioni: `colori-grafici.ts`,
@@ -204,7 +243,8 @@ task indicato.
 
 **Nuovi:**
 - `fe/shared/components/navigazione-shell.ts` (+ spec), `fe/shared/components/segno-marchio.component.ts` (Task 1);
-- `fe/shared/models/stati-fir.ts` (+ spec); `fe/features/dashboard/dashboard-page/{da-fare-oggi,deposito-sintesi,fir-recenti,fir-mese-stati,barre-mensili}.component.ts` (+ spec), `dashboard-page.component.spec.ts`, `fe/features/dashboard/dashboard-page/dashboard-dati.ts` (+ spec) (Task 2);
+- `fe/shared/models/stati-fir.ts` (+ spec); `fe/features/dashboard/dashboard-page/{da-fare-oggi,deposito-sintesi,fir-recenti,fir-mese-stati,barre-mensili,analisi-sintesi,barre-orizzontali,classifica-ditte}.component.ts` (+ spec), `dashboard-page.component.spec.ts`, `fe/features/dashboard/dashboard-page/dashboard-dati.ts` (+ spec) (Task 2);
+- backend: `apps/backend/src/application/analytics/analytics-dashboard.postgres.spec.ts` (Task 2b; modifica anche `analytics.service.ts` e `get-dashboard.use-case.ts`, solo questo task);
 - `fe/shared/components/azioni-riga.component.ts` (+ spec), `fe/shared/utils/colonne-visibili.ts` (+ spec), `e2e/utils/azioni-riga.ts` (Task 4);
 - `.superpowers/sdd/2026-11-05-restyle-giro-2/{foto.sh,dati-foto.ts,ids-foto.json}` (Task 0, non committati).
 
@@ -243,7 +283,7 @@ task indicato.
 
 ---
 
-# Pezzo A (PR 1) — token, carattere, tema, shell e Dashboard
+# Pezzo A (PR 1) — token, carattere, tema, shell, Dashboard e task backend 2b
 
 ## Task 1: token IgniCraft, Geist, tema chiaro e shell B (da solo)
 
@@ -342,8 +382,9 @@ restituisce `'WasteFlow'`.
 
 ## Task 2: Dashboard «Panoramica»
 
-Bug **1, 2, 3, 5, 6, 7, 8, 9, 10** (5 e 7 per rimozione, P5). Proposta §3 (B), §6 riga 2. Mockup
-`b-dashboard.html`.
+Bug **1, 2, 3, 4** (sulla Dashboard), **5, 6, 7, 8, 9, 10**. Proposta §3 (B), §6 riga 2. Mockup
+`b-dashboard.html` per i blocchi in alto; i riquadri dell'analisi (D8, P5) seguono le stesse regole.
+Si scrive in parallelo al Task 2b dalle sue interfacce.
 
 **Files:**
 - Modify: `fe/features/dashboard/dashboard-page/dashboard-page.component.ts` (riscritto),
@@ -351,8 +392,11 @@ Bug **1, 2, 3, 5, 6, 7, 8, 9, 10** (5 e 7 per rimozione, P5). Proposta §3 (B), 
   si toglie dall'URL, come `modifica` alle righe 1482 e 1922) (+ spec esistente)
 - Create: `fe/shared/models/stati-fir.ts` (+ spec), `fe/features/dashboard/dashboard-page/dashboard-dati.ts`
   (+ spec), `da-fare-oggi.component.ts`, `deposito-sintesi.component.ts`, `fir-recenti.component.ts`,
-  `fir-mese-stati.component.ts`, `barre-mensili.component.ts` (+ uno spec ciascuno),
+  `fir-mese-stati.component.ts`, `barre-mensili.component.ts`, `analisi-sintesi.component.ts`,
+  `barre-orizzontali.component.ts`, `classifica-ditte.component.ts` (+ uno spec ciascuno),
   `dashboard-page.component.spec.ts`
+- Modify: `fe/core/services/dashboard.service.ts` (tipo `DashboardData.top`: `nome: string | null`
+  accanto a `partitaIva`, copiato **alla lettera** dalle interfacce del Task 2b)
 - Delete: `fe/features/dashboard/dashboard.component.ts`, `dashboard.component.spec.ts` (i suoi test
   sulla fascia si riportano in `da-fare-oggi.component.spec.ts`)
 
@@ -360,7 +404,8 @@ Bug **1, 2, 3, 5, 6, 7, 8, 9, 10** (5 e 7 per rimozione, P5). Proposta §3 (B), 
 - Consumes: `AttenzioneService.getAttenzione()`, `AndamentoService.getAndamento()`,
   `DashboardService.getDashboard({ startDate, endDate })`, `GiacenzeService.getDepositoTemporaneo()`,
   `FirService.getFIRList(1, 5)`, `puoCreareFir(role)` (`fe/features/fir/fir-permissions.ts:21`),
-  `FeatureFlagsService.has('fir' | 'giacenze' | 'registro')`, `coloriGrafico` non serve più qui.
+  `FeatureFlagsService.has('fir' | 'giacenze' | 'registro')`; dal Task 2b `top.producers[i].nome`,
+  `top.carriers[i].nome` e `status.breakdown` limitato all'intervallo. `coloriGrafico` non serve più qui.
 - Produces:
 ```ts
 // shared/models/stati-fir.ts
@@ -382,9 +427,25 @@ export function barreDeposito(r: DepositoRegistro): BarraDeposito[]
 //   Pericolosi (totalePericolosiKg / kgMaxPericolosi), Totale (totaleKg / kgMaxTotale), Giacenza più vecchia
 //   (max etaGiorni / giorniMax, solo se giorniMax non è null); allarme se c'è un avviso del tipo corrispondente;
 //   nota = cerCode e scadenza della giacenza più vecchia («08 01 11* · entro il 07/11»)
+export interface CellaAnalisi { etichetta: string; valore: string; dettaglio: string | null; vuota: boolean }
+export function celleAnalisi(d: DashboardData): CellaAnalisi[]
+//   4 celle nell'ordine Conformità, Firme, RENTRI, Andamento. Con d.overview.totalFIRs === 0 (P11) tutte
+//   hanno valore '—', vuota true; Conformità dettaglio 'Si calcola dal primo formulario', le altre null.
+//   Altrimenti: Conformità «82%» + dettaglio «Firme 90% · RENTRI 75% · Ritardi 4%»; Firme «18 di 20» +
+//   «Tempo medio 12,5 h» ('—' se averageTimeHours è 0 con 0 firme); RENTRI «15 di 20» + «5 in attesa»;
+//   Andamento «41 questo mese» + «32 il mese scorso · previsione 45» (percentuale in parole: «+28% sul mese
+//   scorso», «come il mese scorso» se 0, «nuovo» se il precedente è 0). Percentuali it-IT senza decimali.
+export function livelloConformita(d: DashboardData): { parola: string; tono: TonoStato } | null
+//   null con 0 FIR (nessuna pillola); EXCELLENT 'Eccellente' ok, GOOD 'Buona' ok, NEEDS_IMPROVEMENT 'Da migliorare' warn, CRITICAL 'Critica' err
+export interface VoceClassifica { nome: string; partitaIva: string; conteggio: number }
+export function vociClassifica(top: ReadonlyArray<{ partitaIva: string; nome: string | null; count: number }>): VoceClassifica[]
+//   nome null o vuoto → nome = partitaIva (e la P. IVA non si ripete in grigio)
 ```
 Componenti: `<app-da-fare-oggi [voci] [errore] (riprova)>`, `<app-deposito-sintesi [vista]>`,
-`<app-fir-recenti [fir]>`, `<app-fir-mese-stati [conteggi] [mese]>`, `<app-barre-mensili [mesi]>`.
+`<app-fir-recenti [fir]>`, `<app-fir-mese-stati [conteggi] [mese]>`, `<app-barre-mensili [mesi]>`,
+`<app-analisi-sintesi [celle] [livello]>`, `<app-barre-orizzontali [voci] [unita] [titolo]>` (voci
+`{ etichetta: string; valore: number; mono?: boolean }`, barre a rapporto vero sul massimo, un solo grigio
+`--text-secondary`), `<app-classifica-ditte [voci] [titolo]>`.
 La pagina carica le cinque sorgenti in parallelo, ognuna con il proprio stato di caricamento ed errore
 (un errore di una non spegne le altre).
 
@@ -393,7 +454,11 @@ azioni «Nuovo FIR» (primario, `routerLink="/fir"` con `queryParams { nuovo: 1 
 `ff.has('fir')` e `puoCreareFir`) ed «Esporta CSV» (bottone di testo). Griglia a due colonne sopra i
 1200 px: sinistra 306 px `position: sticky` con deposito (solo con `ff.has('giacenze')`) e FIR recenti
 (solo con `ff.has('fir')`); destra Da fare oggi, FIR del mese, Formulari per mese. Sotto i 1200 px una
-colonna nell'ordine Da fare oggi, FIR del mese, Deposito, Formulari per mese, FIR recenti.
+colonna nell'ordine Da fare oggi, FIR del mese, Deposito, Formulari per mese, FIR recenti. Sotto,
+la sezione «Analisi dell'azienda» (h2, meta «Tutti i formulari dell'azienda»): la striscia di
+`analisi-sintesi`, poi Destinazione e Top 10 CER affiancati sopra i 992 px, poi le due classifiche
+affiancate. Un riquadro senza dati resta con la sua cornice e una riga di testo («Nessun formulario
+registrato»), mai un'icona grande (bug 8).
 
 - [ ] **Step 1: foto prima** `dashboard` chiaro e scuro (azienda di prova e «Azienda Test SRL» senza FIR).
 - [ ] **Step 2: test che falliscono.**
@@ -427,10 +492,24 @@ colonna nell'ordine Da fare oggi, FIR del mese, Deposito, Formulari per mese, FI
   - `fir-recenti.component.spec.ts`: 5 righe su due linee (numero FIR in mono e pillola di stato;
     CER, produttore, «1.240 kg», data); quantità mancante → «—»; 0 FIR → «Nessun FIR registrato» e
     il link «Nuovo FIR» se permesso, nessun paginatore; link «Vedi tutti i FIR» → `/fir`.
+  - `dashboard-dati.spec.ts`, analisi: `celleAnalisi` con `totalFIRs: 0` e `compliance.score: 0.2`,
+    `level: 'CRITICAL'` → quattro celle `'—'`, nessun «20%», `livelloConformita` → `null` (bug 5);
+    con 20 FIR e `score 0.82` → «82%» e «Buona»; firme `averageTimeHours: 12.5` → «Tempo medio 12,5 h»
+    (bug 6); `vociClassifica([{ partitaIva: '01234567890', nome: 'Acciaierie Valdelsa S.p.A.', count: 12 }, { partitaIva: '09876543210', nome: null, count: 3 }])`
+    → nome della ditta nel primo, P. IVA come nome nel secondo (bug 7).
+  - `analisi-sintesi.component.spec.ts`, `barre-orizzontali.component.spec.ts`, `classifica-ditte.component.spec.ts`
+    (DOM): quattro celle in un solo contenitore diviso, nessuna icona; cella vuota con «—» in
+    `--text-tertiary` e senza pillola; barre con larghezza `valore / massimo` (12.400 su 31.000 kg →
+    `40%`), testo «12.400 kg», codice CER in mono, un solo colore di riempimento per tutte le barre
+    (nessun `#0f766e`, `#1d4ed8`: bug 4); destinazione con «Recupero» e «Smaltimento» e le loro
+    quantità, nessun `canvas`; classifica con ragione sociale in testa, P. IVA in grigio mono sotto,
+    conteggio a destra, rango «1.»-«5.» come testo senza cerchio colorato.
   - `dashboard-page.component.spec.ts` (DOM, servizi finti): un solo `h1` «Panoramica»; il sottotitolo
-    contiene `rispostaDelGiorno`; «Nuovo FIR» presente per ADMIN con `fir`, assente per VIEWER; nessun
-    testo «Conformità», «Top 5», «0.0» né chiave inglese (`COMPLETED`, `DRAFT`, `AWAITING_`) nel DOM
-    (bug 1, 5, 6, 7); getDashboard chiamato con l'intervallo del mese; errore di `getAndamento` → solo
+    contiene `rispostaDelGiorno`; «Nuovo FIR» presente per ADMIN con `fir`, assente per VIEWER; la
+    sezione «Analisi dell'azienda» presente con i suoi sei riquadri; nessun testo «0.0», «0h», nessuna
+    chiave inglese (`COMPLETED`, `DRAFT`, `AWAITING_`, `EXCELLENT`, `CRITICAL`) nel DOM e nessun
+    `canvas` (bug 1, 4, 6); con 0 FIR nessun «20%» né «Critica» (bug 5); getDashboard chiamato una
+    volta con l'intervallo del mese; errore di `getAndamento` → solo
     il blocco dei mesi mostra l'errore; nessuna card alta più di quanto serve: gli stati vuoti sono
     righe di testo, non `.empty-state` con l'icona da 3rem (bug 8).
   - `fir-list.component.spec.ts`: con `?nuovo=1` il dialog «Nuovo FIR» è aperto e il parametro sparisce.
@@ -442,19 +521,73 @@ colonna nell'ordine Da fare oggi, FIR del mese, Deposito, Formulari per mese, FI
   un'azienda senza FIR; risposte alle 7 domande di §2.7 (in particolare la 4: 4 + 6 + 9 + 21 + 1 = totale
   dell'intestazione, la somma dei 12 mesi e la media). e2e: `flusso-scadenze.spec.ts` (passo 4 torna
   verde senza modifiche); `e2e/pages/dashboard.page.ts` invariato.
-- [ ] **Step 7: commit** `feat(stile): Dashboard Panoramica con Da fare oggi, deposito temporaneo, FIR del mese e formulari per mese`.
+- [ ] **Step 7: commit** `feat(stile): Dashboard Panoramica con Da fare oggi, deposito temporaneo, FIR del mese, formulari per mese e analisi dell'azienda`.
+
+## Task 2b — BACKEND: nome della ditta nei più frequenti e stati nel periodo (`GET /dashboard`)
+
+Bug **7** (dato) e la parte dati di «FIR di <mese>» (P10). Unico task backend del piano, **nessuna
+migration**, nessuna colonna nuova: `firs.producer_name` e `firs.carrier_name` esistono già
+(`apps/backend/prisma/schema.prisma:355,362`). Percorsi relativi a `apps/backend/`.
+
+**Files:**
+- Modify: `src/application/analytics/analytics.service.ts` (`getTopProducers`, `getTopCarriers`,
+  `getFIRsByStatus`), `src/application/analytics/get-dashboard.use-case.ts` (passa l'intervallo solo a
+  `getFIRsByStatus`; tipo `DashboardData.top`), `src/application/analytics/analytics.service.spec.ts`
+- Create: `src/application/analytics/analytics-dashboard.postgres.spec.ts`
+
+**Interfaces:**
+- Produces (contratto che il Task 2 copia alla lettera):
+```ts
+// get-dashboard.use-case.ts, DashboardData.top
+producers: Array<{ partitaIva: string; nome: string | null; count: number }>
+carriers:  Array<{ partitaIva: string; nome: string | null; count: number }>
+// analytics.service.ts
+getFIRsByStatus(tenantId: string, intervallo?: { startDate: Date; endDate: Date }): Promise<Record<string, number>>
+//   con intervallo: createdAt >= startDate e <= endDate; senza: come oggi
+getTopProducers(tenantId: string, limit: number): Promise<Array<{ partitaIva: string; nome: string | null; count: number }>>
+getTopCarriers(tenantId: string, limit: number): Promise<Array<{ partitaIva: string; nome: string | null; count: number }>>
+```
+Il `groupBy` di oggi resta (stesse P. IVA, stesso ordine). Poi **una** query per tipo di ditta, dentro la
+transazione di tenant di `this.prisma` (`README-tenant-transazione.md`):
+```sql
+SELECT DISTINCT ON (producer_partita_iva) producer_partita_iva AS partita_iva, producer_name AS nome
+FROM firs
+WHERE tenant_id = ${tenantId}::uuid AND producer_partita_iva = ANY(${partiteIva}::text[])
+ORDER BY producer_partita_iva, created_at DESC, id DESC
+```
+(gemella con `carrier_*`). Il nome è quello dello snapshot più recente; stringa vuota o solo spazi →
+`null`. Lista vuota → nessuna query. Il tenant arriva da `requireRequestTenantId(req)` nel controller,
+che non cambia.
+
+- [ ] **Step 1: test unit** (`analytics.service.spec.ts`, Prisma finto): `getTopProducers` unisce
+  `nome` alle P. IVA del `groupBy` mantenendo l'ordine; P. IVA senza riga nella seconda query →
+  `nome: null`; `groupBy` vuoto → nessuna `$queryRaw`; `getFIRsByStatus(t, { startDate, endDate })`
+  passa `createdAt: { gte, lte }`, senza intervallo nessun filtro sulla data; `execute` del use case
+  passa l'intervallo a `getFIRsByStatus` e a **nessun** altro metodo.
+- [ ] **Step 2: test Postgres** (`analytics-dashboard.postgres.spec.ts`, due tenant creati dal test,
+  ruolo `wasteflow_app`): due FIR dello stesso produttore con nomi diversi → il nome del più recente;
+  un FIR dell'altro tenant con la stessa P. IVA e un altro nome → mai restituito (isolamento); FIR
+  di ottobre e di novembre → `getFIRsByStatus` con l'intervallo di novembre conta solo quelli di
+  novembre; nome vuoto → `null`; pulizia per id con `pulisciTenantDiTest`.
+- [ ] **Step 3: run** `npx jest -w 2 src/application/analytics/analytics.service.spec.ts` e, sotto
+  `flock $LOCK`, la suite Postgres → FAIL.
+- [ ] **Step 4: implementa** le tre firme sopra.
+- [ ] **Step 5: run** → PASS; fine task backend dei Global Constraints; il frontend del Task 2 compila
+  col tipo nuovo (campo additivo: nessun altro consumatore rompe).
+- [ ] **Step 6: commit** `feat(dashboard): nome della ditta nei più frequenti e stati dei FIR nel periodo`.
 
 ## Task 3: revisione e rilascio del pezzo A
 
 **File:** nessuno (revisione su `git diff master...HEAD`).
 
 - [ ] **Step 1:** revisori in parallelo: `typescript-nestjs-reviewer` (signal, unsubscribe, guard dei
-  permessi su «Nuovo FIR», funzioni pure dei Task 1-2) e `ux-ui-mobile-specialist` (screenshot del
+  permessi su «Nuovo FIR», funzioni pure dei Task 1-2; Task 2b: tenant, `= ANY`, nessun `IN` costruito,
+  isolamento nel test Postgres, contratto uguale nel frontend) e `ux-ui-mobile-specialist` (screenshot del
   Task 1 e 2 a 1440 e 390, chiaro e scuro; focus visibile; contrasto delle pillole e dell'accento in
   scuro; tastiera nella sidebar). Correzioni nello stesso branch.
 - [ ] **Step 2:** Karma completo, build, gate su Dashboard, Clienti, FIR, Registro con 0 FAIL nella
   shell; rapporto `pezzo-a.md` con il seguito P1 sulla CSP. PR «Restyle giro 2, pezzo A: token,
-  shell, tema chiaro e Dashboard», CI verde (e2e compresi), merge e deploy secondo la regola del merge
+  shell, tema chiaro, Dashboard e nome della ditta», CI verde (e2e compresi), merge e deploy secondo la regola del merge
   autonomo; `STATUS.md` e `COSTS.md`.
 
 ---
@@ -518,7 +651,7 @@ Pannello di marca piatto `var(--brand-panel)` (= `#141414` in entrambi i temi: i
 token in testa al componente con `:host { --brand-panel: #141414 }`, perché `_tokens.scss` è del Task 1
 e il pezzo A è già chiuso) con `<app-segno-marchio>` nella fiamma e il testo `--on-brand-panel`; il
 pannello non supera il 40% della larghezza sopra i 992 px e sparisce sotto i 768 px (resta il marchio
-sopra il form). Testi, alla lettera (proposta da confermare in revisione):
+sopra il form). Testi, alla lettera (approvati da Graziano, D9):
 - titolo del pannello: «Formulari, registro e RENTRI in un solo posto»;
 - sotto: «Il gestionale per le aziende che producono, trasportano e recuperano rifiuti.»;
 - elenco (senza icone in riquadri, bug 24): «FIR digitali e trasmissione a RENTRI»; «Registro di
@@ -786,11 +919,11 @@ ritardo» o «Scaduto». Le pagine del giro 1 sui token nuovi: nessun teal resid
 | 1 stati in inglese | 2 | `stati-fir.spec`, `dashboard-page.spec` (nessuna chiave inglese) |
 | 2 fascia sparita | 2 | `da-fare-oggi.spec`, e2e `flusso-scadenze` |
 | 3 colori per posizione | 2 | `fir-mese-stati.spec` (ordine rimescolato) |
-| 4 tavolozza dei grafici | 1 | `colori-grafici.spec` |
-| 5 conformità 20% su 0 FIR | 2 (rimozione, P5) | `dashboard-page.spec` |
-| 6 decimali col punto | 2 | `deposito-sintesi.spec`, `fir-recenti.spec` («1.240», nessun «0.0») |
-| 7 P. IVA al posto del nome | 2 (rimozione, P5) | `dashboard-page.spec` |
-| 8 card vuote da 300 px | 2 | `fir-recenti.spec`, `dashboard-page.spec` |
+| 4 tavolozza dei grafici | 1, 2 | `colori-grafici.spec`; spec di `barre-orizzontali` e della pagina (nessun `canvas`) |
+| 5 conformità 20% su 0 FIR | 2 (P11) | `dashboard-dati.spec` (`celleAnalisi`, `livelloConformita`), `dashboard-page.spec` |
+| 6 decimali col punto | 2 | `deposito-sintesi.spec`, `fir-recenti.spec`, `dashboard-dati.spec` («1.240», «12,5 h», nessun «0.0») |
+| 7 P. IVA al posto del nome | **2b** (dato) + 2 (vista) | `analytics.service.spec`, `analytics-dashboard.postgres.spec`, `classifica-ditte.spec` |
+| 8 card vuote da 300 px | 2 | `fir-recenti.spec`, spec dei riquadri d'analisi, `dashboard-page.spec` |
 | 9 grafico del componente morto | 2 (cancellato) | build |
 | 10 nessuna azione primaria | 2 | `dashboard-page.spec` |
 | 11 due h1 | 1 | `layout.component.spec` |
@@ -850,7 +983,7 @@ completo una volta sul branch integrato. Al più tre task in parallelo (16 GB di
 |---|---|---|---|---|
 | A | 0 | **0** | nessuno | linea di base, dati e `foto.sh` |
 | A | 1 | **1** | tutti i globali | token, carattere, tema, shell: da solo |
-| A | 2 | **2** | `features/dashboard/**`, `shared/models/stati-fir.ts`, `fir-list.component.ts` (solo `nuovo`) | da solo: è la pagina della PR 1 |
+| A | 2 | **2** ∥ **2b** | `features/dashboard/**`, `core/services/dashboard.service.ts`, `shared/models/stati-fir.ts`, `fir-list.component.ts` (solo `nuovo`) ∥ `apps/backend/src/application/analytics/**` | frontend ∥ backend, file disgiunti; il 2 scrive dal contratto del 2b, l'integrazione cherry-picka prima il 2b |
 | A | 3 | **3** | — | revisione, PR 1 |
 | B | 1 | **4** ∥ **5** | `_pagine.scss`, `_primeng.scss`, `shared/components/azioni-riga*`, `shared/utils/colonne-visibili*`, `e2e/utils/azioni-riga.ts` ∥ `features/auth/**` | 5 non usa il pattern e non tocca i globali |
 | B | 2 | **6** ∥ **7** ∥ **8** | `features/clienti/**`, `listino/addebiti-list*`, 2 spec e2e ∥ `features/contratti-cliente/**`, `listino/{listino-contratto,righe-tavola,elenchi-pannello}*`, 2 spec e2e ∥ `features/legami/{da-collegare,impostazioni-fatturazione}*` | file disgiunti; usano il Task 4 |
@@ -861,12 +994,12 @@ completo una volta sul branch integrato. Al più tre task in parallelo (16 GB di
 | C | 3 | **16** | registro, giacenze, FIR + globali raccolti | tocca i globali: da solo |
 | C | 4 | **17** | — | revisione, PR 3 |
 
-**PR proposte.** PR 1 (pezzo A, Task 0-3): token IgniCraft, Geist, tema chiaro, shell B, Dashboard
-(bug 1-18). PR 2 (pezzo B, Task 4-10): pattern delle liste, login e richiesta d'accesso, Clienti con
+**PR proposte.** PR 1 (pezzo A, Task 0-3 con il 2b): token IgniCraft, Geist, tema chiaro, shell B,
+Dashboard con l'analisi dell'azienda, e il task backend 2b (bug 1-18). PR 2 (pezzo B, Task 4-10): pattern delle liste, login e richiesta d'accesso, Clienti con
 Agenti, Addebiti e Tabelle, Contratti clienti e Listino, Da collegare e Impostazioni, CER (bug 21-32
 sulle pagine dei clienti). PR 3 (pezzo C, Task 11-17): anagrafiche, contratti del produttore, Pese,
 MUD, ESG, Anomalie, RENTRI, amministrazione, ripasso del giro 1 (bug 19, 20, 33, 34, 35 e il resto di
-25-32). Conteggio: **18 task** (0-17), di cui 3 di revisione e rilascio.
+25-32). Conteggio: **19 task** (0-17 più il 2b, unico backend), di cui 3 di revisione e rilascio.
 
 ## Self-review (eseguita)
 
@@ -880,5 +1013,6 @@ MUD, ESG, Anomalie, RENTRI, amministrazione, ripasso del giro 1 (bug 19, 20, 33,
   `fir-mese-stati` e `fir-recenti` (2); `AzioneRiga`, `app-azioni-riga`, `colonneConDati`,
   `eseguiAzioneRiga`, `nomiAzioniRiga` (4) nei Task 6, 7, 11, 12, 15; `<app-segno-marchio>` (1) nel 5;
   `etichettaPreferenzaTema` (1) nel layout (1).
-- **Dati della Dashboard:** ogni blocco ha un endpoint che esiste già (P5); nessun task backend.
+- **Dati della Dashboard:** ogni blocco ha un endpoint che esiste già (P5); il Task 2b aggiunge il
+  nome della ditta e fa rispettare l'intervallo al conteggio per stato (P10), senza migration.
 - **Proporzione:** il piano fissa firme, valori, testi e test; nessun corpo di componente.
