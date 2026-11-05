@@ -1,13 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { CodiceIva } from '../../listino/listino.model'
 import { ListinoService } from '../../listino/listino.service'
 import { SpesaAccessoriaDialogComponent } from './spesa-accessoria-dialog.component'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { bottone, q, scrivi, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
-const iva = (id: string, codice: string, natura: string | null): CodiceIva => ({
+const iva = (id: string, codice: string, natura: string | null, attivo = true): CodiceIva => ({
   id,
   versione: 1,
   eliminabile: true,
@@ -15,7 +15,7 @@ const iva = (id: string, codice: string, natura: string | null): CodiceIva => ({
   descrizione: `Codice ${codice}`,
   aliquota: natura ? '0.00' : '22.00',
   natura,
-  attivo: true,
+  attivo,
 })
 
 describe('SpesaAccessoriaDialogComponent', () => {
@@ -36,7 +36,9 @@ describe('SpesaAccessoriaDialogComponent', () => {
     tabella.crea.and.returnValue(of({ id: 's1' }))
     codiciIva = jasmine
       .createSpy('list')
-      .and.returnValue(of([iva('i22', '22', null), iva('in1', 'N1', 'N1')]))
+      .and.returnValue(
+        of([iva('i22', '22', null), iva('in1', 'N1', 'N1'), iva('vecchio', 'N1V', 'N1', false)])
+      )
     TestBed.configureTestingModule({
       imports: [SpesaAccessoriaDialogComponent],
       providers: [
@@ -160,9 +162,9 @@ describe('SpesaAccessoriaDialogComponent', () => {
       await stabilizza(fixture)
     }
 
-    it('il menu offre i codici attivi (lista senza incluseDisattivate)', async () => {
+    it('il menu offre i soli codici attivi (anche se la lista li porta tutti)', async () => {
       await apri()
-      expect(codiciIva).toHaveBeenCalledWith()
+      expect(codiciIva).toHaveBeenCalledWith({ incluseDisattivate: true })
       expect(fixture.componentInstance.opzioniIva().map(o => o.etichetta)).toEqual([
         '22 - Codice 22',
         'N1 - Codice N1',
@@ -190,23 +192,31 @@ describe('SpesaAccessoriaDialogComponent', () => {
       expect(tabella.crea.calls.mostRecent().args[0].codiceIvaId).toBeNull()
     })
 
-    it('modifica: il codice della spesa è preselezionato, anche se ora disattivato', async () => {
-      tabella.modifica.and.returnValue(of({ id: 's1' }))
+    const apriConSpesa = async (tipo: 'INCASSO' | 'BOLLO', codiceIvaId: string | null) => {
       fixture = TestBed.createComponent(SpesaAccessoriaDialogComponent)
       fixture.componentRef.setInput('elemento', {
         id: 's1',
         versione: 2,
         eliminabile: true,
-        tipo: 'INCASSO',
+        tipo,
         codice: 'I1',
-        descrizione: 'Incasso',
+        descrizione: 'Spesa',
         importo: '2.00',
         attiva: true,
-        codiceIvaId: 'vecchio',
+        codiceIvaId,
       })
       fixture.componentRef.setInput('visible', true)
       await stabilizza(fixture)
-      expect(fixture.componentInstance.opzioniIva().some(o => o.id === 'vecchio')).toBeTrue()
+    }
+
+    it('modifica: il codice della spesa è preselezionato, anche se ora disattivato', async () => {
+      tabella.modifica.and.returnValue(of({ id: 's1' }))
+      await apriConSpesa('INCASSO', 'vecchio')
+      expect(fixture.componentInstance.opzioniIva().map(o => o.etichetta)).toEqual([
+        '22 - Codice 22',
+        'N1 - Codice N1',
+        'N1V - Codice N1V (disattivato)',
+      ])
       await salva()
       expect(tabella.modifica).toHaveBeenCalledWith(
         's1',
@@ -224,6 +234,43 @@ describe('SpesaAccessoriaDialogComponent', () => {
       fixture.componentInstance.form.controls.codiceIvaId.setValue('in1')
       await stabilizza(fixture)
       expect(q('spesa-dlg-suggerimento-bollo')).toBeNull()
+    })
+
+    it('bollo con un N1 poi disattivato citato dalla spesa: nessun suggerimento', async () => {
+      await apriConSpesa('BOLLO', 'vecchio')
+      expect(q('spesa-dlg-suggerimento-bollo')).toBeNull()
+    })
+
+    it('bollo: il suggerimento non compare finché la lista non è caricata', async () => {
+      const lista = new Subject<CodiceIva[]>()
+      codiciIva.and.returnValue(lista)
+      await apri('BOLLO')
+      expect(q('spesa-dlg-suggerimento-bollo')).toBeNull()
+      lista.next([iva('i22', '22', null)])
+      await stabilizza(fixture)
+      expect(q('spesa-dlg-suggerimento-bollo')).not.toBeNull()
+    })
+
+    it('scelto poi cancellato con il pulsante del menu: il corpo ha null', async () => {
+      await compila()
+      fixture.componentInstance.form.controls.codiceIvaId.setValue('i22')
+      await stabilizza(fixture)
+      expect(q('spesa-dlg-codice-iva')!.querySelector('.p-dropdown-clear-icon')).not.toBeNull()
+      q('spesa-dlg-codice-iva')!
+        .querySelector('.p-dropdown-clear-icon')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await stabilizza(fixture)
+      expect(fixture.componentInstance.form.controls.codiceIvaId.value).toBeNull()
+      await salva()
+      expect(tabella.crea.calls.mostRecent().args[0].codiceIvaId).toBeNull()
+    })
+
+    it('errore di caricamento dei codici: messaggio nel dialog, non cancellato', async () => {
+      codiciIva.and.returnValue(
+        throwError(() => ({ error: { message: 'Elenco non disponibile.' } }))
+      )
+      await apri()
+      expect(q('spesa-dlg-errore')!.textContent).toContain('Elenco non disponibile')
     })
 
     it('incasso: nessun suggerimento sul bollo', async () => {

@@ -52,7 +52,6 @@ describe('RegistroIvaDialogComponent', () => {
       codice: '01',
       descrizione: 'Vendite estero',
       ricevuteSplit: false,
-      suffissoNumero: null,
       versione: 3,
     })
   })
@@ -113,6 +112,51 @@ describe('RegistroIvaDialogComponent', () => {
       expect('suffissoNumero' in tabella.modifica.calls.mostRecent().args[1]).toBeFalse()
     })
 
+    it('suffisso invariato: non viene mandato (la sola descrizione non può dare 409)', async () => {
+      tabella.modifica.and.returnValue(of(registro))
+      await apri({ ...registro, suffissoNumero: '/A' })
+      scrivi('registro-dlg-descrizione', 'Vendite estero')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect('suffissoNumero' in tabella.modifica.calls.mostRecent().args[1]).toBeFalse()
+    })
+
+    it('registro nuovo con suffisso: viene mandato', async () => {
+      tabella.crea.and.returnValue(of(registro))
+      await apri(null)
+      scrivi('registro-dlg-codice', '01')
+      scrivi('registro-dlg-descrizione', 'Vendite')
+      scrivi('registro-dlg-suffisso', '/A')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(tabella.crea.calls.mostRecent().args[0].suffissoNumero).toBe('/A')
+    })
+
+    it('soli spazi: rifiutato (nessun trim che lo faccia passare)', async () => {
+      await apri(null)
+      scrivi('registro-dlg-codice', '01')
+      scrivi('registro-dlg-descrizione', 'Vendite')
+      scrivi('registro-dlg-suffisso', '   ')
+      await stabilizza(fixture)
+      expect(q('registro-dlg-suffisso-errore')).not.toBeNull()
+      expect(bottone('registro-dlg-salva')!.disabled).toBeTrue()
+    })
+
+    it("aria-describedby: cita il motivo se bloccato, l'errore se il pattern fallisce", async () => {
+      await apri({ ...registro, suffissoModificabile: false })
+      expect(input().getAttribute('aria-describedby')).toBe('registro-suffisso-motivo')
+      expect(document.getElementById('registro-suffisso-motivo')).not.toBeNull()
+      fixture.destroy()
+      await apri(null)
+      expect(input().getAttribute('aria-describedby')).toBeNull()
+      scrivi('registro-dlg-suffisso', '/A B')
+      await stabilizza(fixture)
+      expect(input().getAttribute('aria-describedby')).toBe('registro-suffisso-errore')
+      expect(document.getElementById('registro-suffisso-errore')).not.toBeNull()
+    })
+
     it('un registro nuovo ha il suffisso libero', async () => {
       await apri(null)
       expect(input().disabled).toBeFalse()
@@ -147,6 +191,9 @@ describe('RegistroIvaDialogComponent', () => {
       bottone('registro-dlg-salva')!.click()
       await stabilizza(fixture)
       expect(q('registro-dlg-errore')!.textContent).toContain('Il suffisso non si può cambiare')
+      // L'elenco era vecchio: il campo si blocca e compare il motivo.
+      expect(input().disabled).toBeTrue()
+      expect(q('registro-dlg-suffisso-motivo')).not.toBeNull()
     })
   })
 })

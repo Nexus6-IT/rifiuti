@@ -5,12 +5,14 @@ import {
   EventEmitter,
   Input,
   OnChanges,
+  OnDestroy,
   Output,
   SimpleChanges,
   inject,
   signal,
 } from '@angular/core'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import { Subscription } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
@@ -148,7 +150,7 @@ import { messaggioErrore } from './tabella-comune'
     `,
   ],
 })
-export class SpesaAccessoriaDialogComponent implements OnChanges {
+export class SpesaAccessoriaDialogComponent implements OnChanges, OnDestroy {
   private readonly servizio = inject(TabelleFatturazioneService)
   private readonly listino = inject(ListinoService)
 
@@ -164,28 +166,31 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
   readonly testoSuggerimentoBollo = 'Per addebitare il bollo serve un codice IVA con natura N1'
-  /** Codici IVA attivi (lista senza paginazione: il backend non ne ha). */
-  private readonly codiciAttivi = signal<CodiceIva[]>([])
+  /** Tutti i codici IVA, anche disattivati (lista senza paginazione: il backend non ne ha). */
+  private readonly codici = signal<CodiceIva[]>([])
+  /** false finché la lista non è arrivata: il suggerimento non deve lampeggiare. */
+  private readonly caricati = signal(false)
+  private lettura?: Subscription
   private readonly codiceIvaScelto = signal<string | null>(null)
   private readonly tipoScelto = signal<TipoSpesa>('INCASSO')
 
   readonly opzioniIva = computed(() => {
-    const opzioni = this.codiciAttivi().map(c => ({
-      id: c.id,
-      etichetta: `${c.codice} - ${c.descrizione}`,
-    }))
-    // La spesa può citare un codice poi disattivato: resta scelto, così il salvataggio non lo perde.
+    // Solo i codici attivi; la spesa può citarne uno poi disattivato: resta scelto, così il
+    // salvataggio non lo perde, e la sua etichetta dice che è disattivato.
     const corrente = this.elemento?.codiceIvaId
-    if (corrente && !opzioni.some(o => o.id === corrente)) {
-      opzioni.push({ id: corrente, etichetta: 'Codice IVA attuale (disattivato)' })
-    }
-    return opzioni
+    return this.codici()
+      .filter(c => c.attivo || c.id === corrente)
+      .map(c => ({
+        id: c.id,
+        etichetta: `${c.codice} - ${c.descrizione}${c.attivo ? '' : ' (disattivato)'}`,
+      }))
   })
 
   /** Il bollo si addebita solo con un codice IVA di natura N1. */
   readonly suggerimentoBollo = computed(() => {
-    if (this.tipoScelto() !== 'BOLLO') return false
-    const c = this.codiciAttivi().find(x => x.id === this.codiceIvaScelto())
+    if (this.tipoScelto() !== 'BOLLO' || !this.caricati()) return false
+    // Anche un codice disattivato conta: ne conosciamo la natura.
+    const c = this.codici().find(x => x.id === this.codiceIvaScelto())
     return c?.natura !== 'N1'
   })
 
@@ -228,12 +233,21 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
     })
     this.tipoScelto.set(this.tipo ?? e?.tipo ?? 'INCASSO')
     this.codiceIvaScelto.set(e?.codiceIvaId ?? null)
-    this.listino.codiciIva.list().subscribe({
-      next: l => this.codiciAttivi.set(l),
-      error: err => this.errore.set(messaggioErrore(err, 'Impossibile caricare i codici IVA.')),
-    })
     this.errore.set(null)
     this.inCorso.set(false)
+    this.caricati.set(false)
+    this.lettura?.unsubscribe()
+    this.lettura = this.listino.codiciIva.list({ incluseDisattivate: true }).subscribe({
+      next: l => {
+        this.codici.set(l)
+        this.caricati.set(true)
+      },
+      error: err => this.errore.set(messaggioErrore(err, 'Impossibile caricare i codici IVA.')),
+    })
+  }
+
+  ngOnDestroy(): void {
+    this.lettura?.unsubscribe()
   }
 
   salva(): void {
