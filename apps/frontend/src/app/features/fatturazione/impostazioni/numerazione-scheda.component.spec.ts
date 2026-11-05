@@ -1,6 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { of, throwError } from 'rxjs'
+import { By } from '@angular/platform-browser'
+import { Subject, of, throwError } from 'rxjs'
+import { Calendar } from 'primeng/calendar'
+import { InputNumber } from 'primeng/inputnumber'
 import { MessageService } from 'primeng/api'
 import { AuthService } from '../../../core/services/auth.service'
 import { bottone, q, stabilizza } from '../../clienti/tabelle/tabelle-test-utils'
@@ -95,44 +98,85 @@ describe('NumerazioneSchedaComponent', () => {
     expect(q('numerazione-parte-da-1')).toBeNull()
   })
 
-  it('data di partenza: maxDate è la fine del giorno, ricalcolata a ogni apertura', async () => {
+  /** Apre il dialog dal clic sul pulsante della riga, come fa l'utente. */
+  async function apri(codice = 'VEN'): Promise<Calendar> {
+    bottone(`numerazione-modifica-${codice}`)!.click()
+    await stabilizza(fixture)
+    expect(q('partenza-numero')).not.toBeNull()
+    return fixture.debugElement.query(By.directive(Calendar)).componentInstance as Calendar
+  }
+
+  const campoNumero = (): InputNumber =>
+    fixture.debugElement.query(By.directive(InputNumber)).componentInstance as InputNumber
+
+  it('il pulsante di ogni riga dice a quale registro si riferisce', async () => {
+    await crea('ADMIN', [riga({})])
+    const b = bottone('numerazione-modifica-VEN')!
+    expect(b.getAttribute('aria-label')).toBe('Imposta il numero di partenza del registro VEN')
+  })
+
+  it('data di partenza dal template: maxDate = fine del giorno, ricalcolata a onShow e onFocus', async () => {
     jasmine.clock().install()
     jasmine.clock().mockDate(new Date(2026, 10, 5, 8, 0, 0))
     await crea('ADMIN', [riga({})])
-    const c = fixture.componentInstance
-    c.apriPartenza(riga({}))
-    expect(c.fineGiorno().getTime()).toBe(new Date(2026, 10, 5, 23, 59, 59, 999).getTime())
+    const cal = await apri()
+    expect(cal.maxDate!.getTime()).toBe(new Date(2026, 10, 5, 23, 59, 59, 999).getTime())
+
     jasmine.clock().mockDate(new Date(2026, 10, 6, 0, 30, 0))
-    c.apriPartenza(riga({}))
-    expect(c.fineGiorno().getTime()).toBe(new Date(2026, 10, 6, 23, 59, 59, 999).getTime())
+    cal.onShow.emit({})
+    fixture.detectChanges()
+    expect(cal.maxDate!.getTime()).toBe(new Date(2026, 10, 6, 23, 59, 59, 999).getTime())
+
+    jasmine.clock().mockDate(new Date(2026, 10, 7, 0, 5, 0))
+    cal.onFocus.emit(new Event('focus'))
+    fixture.detectChanges()
+    expect(cal.maxDate!.getTime()).toBe(new Date(2026, 10, 7, 23, 59, 59, 999).getTime())
   })
 
-  it('imposta la partenza: PUT con numero, data AAAA-MM-GG e versione, riga aggiornata', async () => {
+  it('la riapertura del dialog ricalcola la fine del giorno', async () => {
+    jasmine.clock().install()
+    jasmine.clock().mockDate(new Date(2026, 10, 5, 8, 0, 0))
+    await crea('ADMIN', [riga({})])
+    let cal = await apri()
+    expect(cal.maxDate!.getDate()).toBe(5)
+    bottone('partenza-annulla')!.click()
+    await stabilizza(fixture)
+    jasmine.clock().mockDate(new Date(2026, 10, 6, 0, 30, 0))
+    cal = await apri()
+    expect(cal.maxDate!.getTime()).toBe(new Date(2026, 10, 6, 23, 59, 59, 999).getTime())
+  })
+
+  it('il calendario si può svuotare con la X', async () => {
+    await crea('ADMIN', [riga({})])
+    const cal = await apri()
+    expect(cal.showClear).toBeTrue()
+  })
+
+  it('imposta la partenza dal dialog: PUT con numero, data AAAA-MM-GG e versione, riga aggiornata', async () => {
     await crea('ADMIN', [riga({ versione: 4 })])
     servizio.impostaPartenza.and.returnValue(
       of(riga({ numeroPartenza: 120, ultimoNumero: 120, dataPartenza: '2026-03-01', versione: 5 }))
     )
-    const c = fixture.componentInstance
-    c.apriPartenza(riga({ versione: 4 }))
-    c.numeroPartenza = 120
-    c.dataPartenza = new Date(2026, 2, 1)
-    c.salvaPartenza()
+    const cal = await apri()
+    campoNumero().onModelChange(120)
+    cal.onModelChange(new Date(2026, 2, 1))
+    bottone('partenza-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.impostaPartenza).toHaveBeenCalledOnceWith('r1', anno, {
       numeroPartenza: 120,
       dataPartenza: '2026-03-01',
       versione: 4,
     })
-    expect(c.modificando()).toBeNull()
+    expect(q('partenza-numero')).toBeNull()
     expect(q('numerazione-partenza')!.textContent).toContain('120')
+    expect(q('numerazione-partenza')!.textContent).toContain('01/03/2026')
   })
 
-  it('numero di partenza negativo: errore e nessuna PUT', async () => {
+  it('numero di partenza negativo: errore nel dialog e nessuna PUT', async () => {
     await crea('ADMIN', [riga({})])
-    const c = fixture.componentInstance
-    c.apriPartenza(riga({}))
-    c.numeroPartenza = -1
-    c.salvaPartenza()
+    await apri()
+    campoNumero().onModelChange(-1)
+    bottone('partenza-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.impostaPartenza).not.toHaveBeenCalled()
     expect(q('partenza-errore')).not.toBeNull()
@@ -146,36 +190,62 @@ describe('NumerazioneSchedaComponent', () => {
     })
   }
 
-  it('409 PARTENZA_NON_MODIFICABILE: messaggio e ricarica', async () => {
+  it('409 PARTENZA_NON_MODIFICABILE dal dialog: messaggio nella pagina, dialog chiuso, ricarica', async () => {
     await crea('ADMIN', [riga({})])
     servizio.impostaPartenza.and.returnValue(
       throwError(() => ({ status: 409, error: { error: 'PARTENZA_NON_MODIFICABILE' } }))
     )
     servizio.numerazioni.and.returnValue(of([riga({ partenzaModificabile: false })]))
-    const c = fixture.componentInstance
-    c.apriPartenza(riga({}))
-    c.numeroPartenza = 5
-    c.salvaPartenza()
+    await apri()
+    campoNumero().onModelChange(5)
+    bottone('partenza-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.numerazioni).toHaveBeenCalledTimes(2)
     expect(q('numerazione-errore')?.textContent).toContain('non si può più cambiare')
     expect(q('numerazione-modifica-VEN')).toBeNull()
-    expect(c.modificando()).toBeNull()
+    expect(q('partenza-numero')).toBeNull()
   })
 
-  it('409 VERSIONE_SUPERATA: messaggio e ricarica', async () => {
+  it('409 VERSIONE_SUPERATA dal dialog: messaggio, dialog chiuso, ricarica', async () => {
     await crea('ADMIN', [riga({})])
     servizio.impostaPartenza.and.returnValue(
       throwError(() => ({ status: 409, error: { error: 'VERSIONE_SUPERATA' } }))
     )
     servizio.numerazioni.and.returnValue(of([riga({ versione: 9 })]))
-    const c = fixture.componentInstance
-    c.apriPartenza(riga({}))
-    c.numeroPartenza = 5
-    c.salvaPartenza()
+    await apri()
+    campoNumero().onModelChange(5)
+    bottone('partenza-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.numerazioni).toHaveBeenCalledTimes(2)
     expect(q('numerazione-errore')?.textContent).toContain('modificata da un altro utente')
+    expect(q('partenza-numero')).toBeNull()
+  })
+
+  it('409 che non è di rilettura: l’errore resta nel dialog, che non si chiude', async () => {
+    await crea('ADMIN', [riga({})])
+    servizio.impostaPartenza.and.returnValue(
+      throwError(() => ({ status: 409, error: { error: 'ALTRO', message: 'Numero non valido.' } }))
+    )
+    await apri()
+    campoNumero().onModelChange(5)
+    bottone('partenza-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.numerazioni).toHaveBeenCalledTimes(1)
+    expect(q('partenza-errore')?.textContent).toContain('Numero non valido.')
+    expect(q('partenza-numero')).not.toBeNull()
+  })
+
+  it('due cambi d’anno rapidi: la risposta lenta dell’anno vecchio non sovrascrive', async () => {
+    await crea('ADMIN', [riga({})])
+    const lenta = new Subject<NumerazioneVista[]>()
+    servizio.numerazioni.and.returnValues(lenta, of([riga({ anno: anno - 2, ultimoNumero: 7 })]))
+    fixture.componentInstance.cambiaAnno(anno - 1)
+    fixture.componentInstance.cambiaAnno(anno - 2)
+    await stabilizza(fixture)
+    lenta.next([riga({ anno: anno - 1, ultimoNumero: 99 })])
+    await stabilizza(fixture)
+    expect(q('numerazione-ultimo')!.textContent).toContain('7')
+    expect(q('numerazione-ultimo')!.textContent).not.toContain('99')
   })
 
   it('cambio anno: rilegge l’elenco dell’anno scelto', async () => {

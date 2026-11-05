@@ -138,6 +138,7 @@ export function dataItaliana(iso: string | null): string {
                 icon="pi pi-pencil"
                 [text]="true"
                 size="small"
+                [ariaLabel]="'Imposta il numero di partenza del registro ' + r.codiceRegistro"
                 (onClick)="apriPartenza(r)"
                 [attr.data-testid]="'numerazione-modifica-' + r.codiceRegistro"
               />
@@ -168,6 +169,7 @@ export function dataItaliana(iso: string | null): string {
           locale="it-IT"
           mode="decimal"
           [min]="0"
+          [max]="999999999"
           [maxFractionDigits]="0"
           styleClass="w-full"
           data-testid="partenza-numero"
@@ -181,6 +183,7 @@ export function dataItaliana(iso: string | null): string {
         <p-calendar
           [(ngModel)]="dataPartenza"
           [showIcon]="true"
+          [showClear]="true"
           dateFormat="dd/mm/yy"
           [maxDate]="fineGiorno()"
           (onShow)="aggiornaFineGiorno()"
@@ -284,15 +287,20 @@ export class NumerazioneSchedaComponent implements OnInit {
 
   /** Rilegge l'elenco; `messaggio` resta visibile dopo la rilettura (es. versione superata). */
   carica(messaggio: string | null = null): void {
-    this.servizio.numerazioni(this.anno()).subscribe({
+    const anno = this.anno()
+    this.servizio.numerazioni(anno).subscribe({
       next: r => {
+        // Due cambi d'anno rapidi: la risposta lenta dell'anno precedente si scarta.
+        if (anno !== this.anno()) return
         this.righe.set(r)
         this.errore.set(messaggio)
       },
-      error: err =>
+      error: err => {
+        if (anno !== this.anno()) return
         this.errore.set(
           leggiErroriAzione(err, 'Impossibile caricare le numerazioni.').messaggi.join(' ')
-        ),
+        )
+      },
     })
   }
 

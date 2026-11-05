@@ -1,6 +1,13 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnInit, inject, signal } from '@angular/core'
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms'
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
+import {
+  AbstractControl,
+  FormBuilder,
+  ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
+  Validators,
+} from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
@@ -29,7 +36,6 @@ export const OPZIONI_REGIME: { value: string; label: string }[] = REGIMI_FISCALI
 }))
 
 const OPZIONI_SOCIO_UNICO = [
-  { value: null, label: 'Non indicato' },
   { value: 'SU', label: 'SU - Socio unico' },
   { value: 'SM', label: 'SM - Più soci' },
 ]
@@ -39,11 +45,45 @@ const OPZIONI_LIQUIDAZIONE = [
   { value: 'LS', label: 'LS - In liquidazione' },
 ]
 
+const MSG_CAPITALE = 'Il capitale sociale è un importo positivo con al massimo due decimali.'
+const MSG_REA = 'Indica la sigla della provincia, due lettere (es. MI).'
+
+/** Capitale sociale come lo accetta l'XSD: positivo, al massimo due decimali, virgola. */
+export const validatoreCapitale: ValidatorFn = (c: AbstractControl): ValidationErrors | null => {
+  const t = String(c.value ?? '').replace(/\s+/g, '')
+  if (t === '') return null
+  const base = validatoreNumero('decimale')(c)
+  if (base) return base
+  return /^\d+(,\d{1,2})?$/.test(t) ? null : { numero: MSG_CAPITALE }
+}
+
+/** Sigla della provincia dell'ufficio REA: due lettere. */
+export const validatoreRea: ValidatorFn = (c: AbstractControl): ValidationErrors | null => {
+  const t = String(c.value ?? '').trim()
+  return t === '' || /^[A-Za-z]{2}$/.test(t) ? null : { rea: MSG_REA }
+}
+
 /** Scheda «Dati del cedente»: dati del tenant in sola lettura e dati fiscali modificabili. */
 @Component({
   selector: 'app-cedente-scheda',
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, ButtonModule, DropdownModule, InputTextModule],
+  styles: [
+    `
+      .dati-sola-lettura {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.25rem 1rem;
+        margin: 0;
+      }
+      .dati-sola-lettura dt {
+        font-weight: 600;
+      }
+      .dati-sola-lettura dd {
+        margin: 0;
+      }
+    `,
+  ],
   template: `
     <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="cedente-errore">
       {{ e }}
@@ -52,7 +92,7 @@ const OPZIONI_LIQUIDAZIONE = [
       <p role="status">Caricamento in corso...</p>
     </section>
     <p-button
-      *ngIf="!cedente() && errore()"
+      *ngIf="daRiprovare()"
       label="Riprova"
       icon="pi pi-refresh"
       [outlined]="true"
@@ -98,7 +138,8 @@ const OPZIONI_LIQUIDAZIONE = [
       >
         <div class="field">
           <label for="ced-regime"
-            >Regime fiscale <span class="req" aria-hidden="true">*</span></label
+            >Regime fiscale <span class="req" aria-hidden="true">*</span
+            ><span class="sr-only"> (obbligatorio)</span></label
           >
           <p-dropdown
             formControlName="regimeFiscale"
@@ -109,12 +150,11 @@ const OPZIONI_LIQUIDAZIONE = [
             placeholder="Scegli il regime"
             styleClass="w-full"
             appendTo="body"
+            [required]="true"
+            [attr.aria-describedby]="erroreRegime() ? 'ced-regime-errore' : null"
             data-testid="cedente-regime"
           />
-          <small
-            *ngIf="form.controls.regimeFiscale.touched && form.controls.regimeFiscale.invalid"
-            class="field-error"
-            role="alert"
+          <small *ngIf="erroreRegime()" id="ced-regime-errore" class="field-error" role="alert"
             >Scegli il regime fiscale.</small
           >
         </div>
@@ -125,8 +165,18 @@ const OPZIONI_LIQUIDAZIONE = [
             id="ced-rea"
             formControlName="reaUfficio"
             maxlength="2"
+            [attr.aria-invalid]="erroreRea() ? 'true' : null"
+            [attr.aria-describedby]="erroreRea() ? 'ced-rea-errore' : null"
             data-testid="cedente-rea"
           />
+          <small
+            *ngIf="erroreRea() as m"
+            id="ced-rea-errore"
+            class="field-error"
+            role="alert"
+            data-testid="cedente-rea-errore"
+            >{{ m }}</small
+          >
         </div>
         <div class="field">
           <label for="ced-capitale">Capitale sociale</label>
@@ -136,10 +186,13 @@ const OPZIONI_LIQUIDAZIONE = [
             formControlName="capitaleSociale"
             inputmode="decimal"
             autocomplete="off"
+            [attr.aria-invalid]="erroreCapitale() ? 'true' : null"
+            [attr.aria-describedby]="erroreCapitale() ? 'ced-capitale-errore' : null"
             data-testid="cedente-capitale"
           />
           <small
             *ngIf="erroreCapitale() as m"
+            id="ced-capitale-errore"
             class="field-error"
             role="alert"
             data-testid="cedente-capitale-errore"
@@ -153,6 +206,8 @@ const OPZIONI_LIQUIDAZIONE = [
             [options]="opzioniSocioUnico"
             optionLabel="label"
             optionValue="value"
+            placeholder="Non indicato"
+            [showClear]="true"
             inputId="ced-socio"
             styleClass="w-full"
             appendTo="body"
@@ -176,7 +231,7 @@ const OPZIONI_LIQUIDAZIONE = [
           <label for="ced-registro">Registro IVA predefinito</label>
           <p-dropdown
             formControlName="registroIvaPredefinitoId"
-            [options]="registri()"
+            [options]="opzioniRegistro()"
             optionLabel="descrizione"
             optionValue="id"
             inputId="ced-registro"
@@ -192,6 +247,7 @@ const OPZIONI_LIQUIDAZIONE = [
           <input
             pInputText
             id="ced-trasmittente"
+            maxlength="28"
             formControlName="idTrasmittenteCodice"
             autocomplete="off"
             data-testid="cedente-trasmittente"
@@ -224,14 +280,22 @@ export class CedenteSchedaComponent implements OnInit {
   readonly opzioniLiquidazione = OPZIONI_LIQUIDAZIONE
 
   readonly cedente = signal<CedenteVista | null>(null)
+  /** Tutti i registri IVA, anche disattivati: serve a mostrare quello già scelto. */
   readonly registri = signal<RegistroIva[]>([])
+  /** Menu del registro predefinito: gli attivi, più quello già scelto anche se disattivato. */
+  readonly opzioniRegistro = computed(() => {
+    const scelto = this.cedente()?.registroIvaPredefinitoId ?? null
+    return this.registri().filter(r => r.attivo || r.id === scelto)
+  })
+  /** Vero se l'ultima lettura è fallita: «Riprova» si offre anche con dati già in pagina. */
+  readonly daRiprovare = signal(false)
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
 
   readonly form = this.fb.group({
     regimeFiscale: this.fb.control<string | null>(null, Validators.required),
-    reaUfficio: this.fb.control(''),
-    capitaleSociale: this.fb.control('', validatoreNumero('decimale')),
+    reaUfficio: this.fb.control('', validatoreRea),
+    capitaleSociale: this.fb.control('', validatoreCapitale),
     socioUnico: this.fb.control<'SU' | 'SM' | null>(null),
     statoLiquidazione: this.fb.control<'LN' | 'LS'>('LN'),
     registroIvaPredefinitoId: this.fb.control<string | null>(null),
@@ -242,8 +306,8 @@ export class CedenteSchedaComponent implements OnInit {
 
   ngOnInit(): void {
     this.carica()
-    this.tabelle.registri.list().subscribe({
-      next: r => this.registri.set(r.filter(x => x.attivo)),
+    this.tabelle.registri.list({ incluseDisattivate: true }).subscribe({
+      next: r => this.registri.set(r),
       // Senza l'elenco il menu resta vuoto: il registro predefinito è facoltativo.
       error: () => this.registri.set([]),
     })
@@ -257,6 +321,16 @@ export class CedenteSchedaComponent implements OnInit {
     return [d.indirizzo, localita].filter(Boolean).join(', ') || '—'
   }
 
+  erroreRegime(): boolean {
+    const c = this.form.controls.regimeFiscale
+    return c.touched && c.invalid
+  }
+
+  erroreRea(): string | null {
+    const e = this.form.controls.reaUfficio.errors?.['rea']
+    return typeof e === 'string' ? e : null
+  }
+
   erroreCapitale(): string | null {
     return messaggioNumero(this.form.controls.capitaleSociale)
   }
@@ -268,11 +342,14 @@ export class CedenteSchedaComponent implements OnInit {
         this.cedente.set(c)
         this.riempi(c)
         this.errore.set(messaggio)
+        this.daRiprovare.set(false)
       },
-      error: err =>
+      error: err => {
+        this.daRiprovare.set(true)
         this.errore.set(
           leggiErroriAzione(err, 'Impossibile caricare i dati del cedente.').messaggi.join(' ')
-        ),
+        )
+      },
     })
   }
 
@@ -280,7 +357,7 @@ export class CedenteSchedaComponent implements OnInit {
     this.form.reset({
       regimeFiscale: c.regimeFiscale,
       reaUfficio: c.reaUfficio ?? '',
-      capitaleSociale: formatNumero(c.capitaleSociale),
+      capitaleSociale: formatNumero(c.capitaleSociale, 2),
       socioUnico: c.socioUnico,
       statoLiquidazione: c.statoLiquidazione,
       registroIvaPredefinitoId: c.registroIvaPredefinitoId,
@@ -300,7 +377,7 @@ export class CedenteSchedaComponent implements OnInit {
     const testo = (t: string): string | null => (t.trim() === '' ? null : t.trim())
     const dati: DatiCedente = {
       regimeFiscale: v.regimeFiscale,
-      reaUfficio: testo(v.reaUfficio ?? ''),
+      reaUfficio: testo(v.reaUfficio ?? '')?.toUpperCase() ?? null,
       capitaleSociale: leggiNumero(v.capitaleSociale ?? '').valore,
       socioUnico: v.socioUnico,
       statoLiquidazione: v.statoLiquidazione ?? 'LN',
