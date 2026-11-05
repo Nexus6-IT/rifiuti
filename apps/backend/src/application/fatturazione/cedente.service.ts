@@ -243,7 +243,9 @@ export class CedenteService {
     if (!riga?.regimeFiscale) mancanti.push('Regime fiscale')
     if (vuoto(daTenant.partitaIva)) mancanti.push('Partita IVA')
     if (vuoto(daTenant.ragioneSociale)) mancanti.push('Ragione sociale')
-    const capNonValido = tenant.country === 'IT' && !/^\d{5}$/.test(daTenant.cap ?? '')
+    // L'XSD vuole sempre il CAP; per l'Italia di 5 cifre.
+    const capNonValido =
+      vuoto(daTenant.cap) || (tenant.country === 'IT' && !/^\d{5}$/.test(daTenant.cap ?? ''))
     if (vuoto(daTenant.indirizzo) || vuoto(daTenant.comune) || capNonValido) {
       mancanti.push('Indirizzo della sede')
     }

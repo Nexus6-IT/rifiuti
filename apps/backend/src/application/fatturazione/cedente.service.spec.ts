@@ -68,6 +68,13 @@ describe('CedenteService.leggi: sede e REA', () => {
     expect(v.mancanti).toEqual(['Indirizzo della sede'])
   })
 
+  it('sede estera senza CAP: «Indirizzo della sede»', async () => {
+    const v = await servizio(riga, { ...tenantCompleto, country: 'FR', postalCode: null }).leggi(
+      TENANT
+    )
+    expect(v.mancanti).toEqual(['Indirizzo della sede'])
+  })
+
   it('ufficio REA senza numero REA: «Numero REA»; numero senza ufficio: «Ufficio REA»', async () => {
     const a = await servizio(
       { ...riga, reaUfficio: 'RM' },
