@@ -276,6 +276,8 @@ se e solo se c'e' un `documento_id`) viene convalidato su tutte le righe: vanno 
 `CONFERMATO` e `IMPORTATO_FATTURATO`, non un `FATTURATO` (in produzione la 4.3 non li crea).
 
 ```sql
+-- Prima del deploy la colonna documento_id non esiste ancora: nessun FATTURATO puo' avere un
+-- documento, quindi ogni FATTURATO e' una riga che farebbe fallire il VALIDATE.
 SELECT count(*) FROM legami_movimento WHERE stato = 'FATTURATO';   -- deve dare 0
 SELECT count(*), pg_size_pretty(pg_total_relation_size('legami_movimento')) FROM legami_movimento;
 SELECT count(*), pg_size_pretty(pg_total_relation_size('righe_legame_movimento')) FROM righe_legame_movimento;
