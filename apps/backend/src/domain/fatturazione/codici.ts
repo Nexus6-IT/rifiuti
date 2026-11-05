@@ -110,8 +110,7 @@ export const MESSAGGI_ERRORE: Readonly<Record<ErroreGenerale | ErroreDocumento, 
   PAGAMENTO_NON_AMMESSO:
     "Il pagamento in contanti non è ammesso con la scissione dei pagamenti o con l'IVA differita.",
   SPESA_SENZA_CODICE_IVA: "La spesa d'incasso non ha un codice IVA.",
-  RIGA_LEGAME_INCOMPLETA:
-    'Una riga del legame è incompleta: mancano quantità, prezzo o codice IVA.',
+  RIGA_LEGAME_INCOMPLETA: 'Una riga del legame è incompleta: mancano quantità o prezzo.',
   FAMIGLIA_NON_CALCOLATA:
     'Il contratto ha un addebito che WasteFlow non calcola ancora: il documento non si emette.',
   PREZZO_SPECIALE_NON_VALIDO: 'Il prezzo speciale del listino non è valido.',
