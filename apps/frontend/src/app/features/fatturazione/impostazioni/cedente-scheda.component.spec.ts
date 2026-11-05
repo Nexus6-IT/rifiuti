@@ -166,6 +166,29 @@ describe('CedenteSchedaComponent', () => {
     expect(riquadro.textContent).toContain('Indirizzo della sede')
   })
 
+  it("le voci che vengono dall'anagrafica dicono dove si correggono", async () => {
+    await crea('ADMIN', {
+      ...incompleto,
+      mancanti: [
+        'Regime fiscale',
+        'Partita IVA',
+        'Ragione sociale',
+        'Indirizzo della sede',
+        'Numero REA',
+      ],
+    })
+    const voci = Array.from(q('cedente-incompleto')!.querySelectorAll('li')).map(li =>
+      li.textContent?.trim()
+    )
+    expect(voci).toEqual([
+      'Regime fiscale',
+      "Partita IVA (nell'anagrafica dell'azienda)",
+      "Ragione sociale (nell'anagrafica dell'azienda)",
+      "Indirizzo della sede (nell'anagrafica dell'azienda)",
+      "Numero REA (nell'anagrafica dell'azienda)",
+    ])
+  })
+
   it('cedente completo: nessun riquadro', async () => {
     await crea('ADMIN')
     expect(q('cedente-incompleto')).toBeNull()

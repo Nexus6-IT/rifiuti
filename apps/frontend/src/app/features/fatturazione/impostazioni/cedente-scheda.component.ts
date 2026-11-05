@@ -45,6 +45,14 @@ const OPZIONI_LIQUIDAZIONE = [
   { value: 'LS', label: 'LS - In liquidazione' },
 ]
 
+/** Voci di `mancanti` che non si modificano da questa scheda ma nell'anagrafica dell'azienda. */
+const VOCI_DA_ANAGRAFICA = new Set([
+  'Partita IVA',
+  'Ragione sociale',
+  'Indirizzo della sede',
+  'Numero REA',
+])
+
 const MSG_CAPITALE =
   'Il capitale sociale è un importo con al massimo 11 cifre intere e due decimali.'
 const MSG_REA = 'Indica la sigla della provincia, due lettere (es. MI).'
@@ -83,6 +91,33 @@ export const validatoreRea: ValidatorFn = (c: AbstractControl): ValidationErrors
       .dati-sola-lettura dd {
         margin: 0;
       }
+      /* Etichetta sopra e campo sotto, a tutta larghezza, come i menu. */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        margin-bottom: var(--spacing-base);
+      }
+      .field label {
+        font-weight: var(--font-weight-medium);
+      }
+      .field input {
+        width: 100%;
+      }
+      .cedente-incompleto {
+        margin-bottom: var(--spacing-base);
+      }
+      .cedente-incompleto__icona {
+        flex: none;
+        margin-top: 0.2rem;
+      }
+      .cedente-incompleto p {
+        margin: 0 0 var(--spacing-sm);
+      }
+      .cedente-incompleto ul {
+        margin: 0;
+        padding-left: var(--spacing-lg);
+      }
     `,
   ],
   template: `
@@ -104,14 +139,17 @@ export const validatoreRea: ValidatorFn = (c: AbstractControl): ValidationErrors
     <ng-container *ngIf="cedente() as c">
       <section
         *ngIf="!c.completo"
-        class="avviso-riquadro"
+        class="avviso-riquadro avviso-riquadro--warn cedente-incompleto"
         role="status"
         data-testid="cedente-incompleto"
       >
-        <p>Dati del cedente incompleti: senza questi dati non si emettono fatture. Mancano:</p>
-        <ul>
-          <li *ngFor="let m of c.mancanti">{{ m }}</li>
-        </ul>
+        <i class="pi pi-exclamation-triangle cedente-incompleto__icona" aria-hidden="true"></i>
+        <div>
+          <p>Dati del cedente incompleti: senza questi dati non si emettono fatture. Mancano:</p>
+          <ul>
+            <li *ngFor="let m of c.mancanti">{{ etichettaMancante(m) }}</li>
+          </ul>
+        </div>
       </section>
 
       <section class="surface-card" aria-labelledby="cedente-tenant-titolo">
@@ -312,6 +350,11 @@ export class CedenteSchedaComponent implements OnInit {
       // Senza l'elenco il menu resta vuoto: il registro predefinito è facoltativo.
       error: () => this.registri.set([]),
     })
+  }
+
+  /** Le voci che vengono dall'anagrafica dell'azienda dicono dove si correggono. */
+  etichettaMancante(voce: string): string {
+    return VOCI_DA_ANAGRAFICA.has(voce) ? `${voce} (nell'anagrafica dell'azienda)` : voce
   }
 
   indirizzo(c: CedenteVista): string {

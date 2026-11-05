@@ -332,5 +332,13 @@ test.describe('Impostazioni di fatturazione 4.4a (cedente, numerazione, spese)',
     if (percorsoScreenshot) {
       await page.screenshot({ path: percorsoScreenshot, fullPage: true })
     }
+    const percorsoNumerazione = process.env.E2E_SCREENSHOT_NUMERAZIONE
+    if (percorsoNumerazione) {
+      await pagina.getByRole('tab', { name: 'Numerazione' }).click()
+      await expect(pagina.getByTestId('numerazione-tabella')).toBeVisible({
+        timeout: ATTESA_SERVER,
+      })
+      await page.screenshot({ path: percorsoNumerazione, fullPage: true })
+    }
   })
 })

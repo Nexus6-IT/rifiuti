@@ -247,8 +247,27 @@ export function dataItaliana(iso: string | null): string {
         text-align: left;
         padding: 0.35rem 0.75rem 0.35rem 0;
       }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        margin-bottom: var(--spacing-base);
+      }
+      .field label {
+        font-weight: var(--font-weight-medium);
+      }
       .anno {
         max-width: 12rem;
+      }
+      .numerazioni th {
+        font-weight: var(--font-weight-semibold);
+      }
+      .numerazioni thead th {
+        border-bottom: 1px solid var(--surface-border);
+      }
+      .numerazioni tbody th,
+      .numerazioni tbody td {
+        border-bottom: 1px solid var(--surface-border);
       }
     `,
   ],
