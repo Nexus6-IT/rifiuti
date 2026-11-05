@@ -39,6 +39,17 @@ describe('ImpostazioniFatturazioneComponent', () => {
 
   afterEach(() => fixture?.destroy())
 
+  it('ha tre schede: «Fatturazione da», «Dati del cedente», «Numerazione»', async () => {
+    await crea('ADMIN')
+    const intestazioni = Array.from(
+      fixture.nativeElement.querySelectorAll('.p-tabview-nav .p-tabview-title')
+    ).map(e => (e as HTMLElement).textContent?.trim())
+    expect(intestazioni).toEqual(['Fatturazione da', 'Dati del cedente', 'Numerazione'])
+    // Le schede nuove si montano solo quando le apri.
+    expect(fixture.nativeElement.querySelector('app-cedente-scheda')).toBeNull()
+    expect(fixture.nativeElement.querySelector('app-numerazione-scheda')).toBeNull()
+  })
+
   it('mostra "Fatturazione spenta" quando la data è vuota', async () => {
     await crea('ADMIN')
     expect(q('fatt-spenta')?.textContent).toContain('Fatturazione spenta')
