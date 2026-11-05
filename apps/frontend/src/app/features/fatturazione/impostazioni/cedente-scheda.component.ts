@@ -45,16 +45,17 @@ const OPZIONI_LIQUIDAZIONE = [
   { value: 'LS', label: 'LS - In liquidazione' },
 ]
 
-const MSG_CAPITALE = 'Il capitale sociale è un importo positivo con al massimo due decimali.'
+const MSG_CAPITALE =
+  'Il capitale sociale è un importo con al massimo 11 cifre intere e due decimali.'
 const MSG_REA = 'Indica la sigla della provincia, due lettere (es. MI).'
 
-/** Capitale sociale come lo accetta l'XSD: positivo, al massimo due decimali, virgola. */
+/** Capitale sociale come lo accetta l'XSD: al massimo 11 cifre intere e due decimali, virgola. */
 export const validatoreCapitale: ValidatorFn = (c: AbstractControl): ValidationErrors | null => {
   const t = String(c.value ?? '').replace(/\s+/g, '')
   if (t === '') return null
   const base = validatoreNumero('decimale')(c)
   if (base) return base
-  return /^\d+(,\d{1,2})?$/.test(t) ? null : { numero: MSG_CAPITALE }
+  return /^\d{1,11}(,\d{1,2})?$/.test(t) ? null : { numero: MSG_CAPITALE }
 }
 
 /** Sigla della provincia dell'ufficio REA: due lettere. */

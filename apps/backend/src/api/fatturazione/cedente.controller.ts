@@ -29,7 +29,10 @@ export class CedenteController {
 
   @Put()
   @Roles(...RUOLI_AMMINISTRATORI)
-  @ApiOperation({ summary: 'Imposta i dati del cedente' })
+  @ApiOperation({
+    summary:
+      'Imposta i dati del cedente (sostituzione completa: i campi facoltativi omessi o null si cancellano)',
+  })
   @ApiResponse({ status: 404, description: 'Registro IVA non trovato' })
   @ApiResponse({ status: 409, description: 'VERSIONE_SUPERATA o OPERAZIONE_CONCORRENTE' })
   imposta(@Req() req: any, @Body() dto: ImpostaCedenteDto) {

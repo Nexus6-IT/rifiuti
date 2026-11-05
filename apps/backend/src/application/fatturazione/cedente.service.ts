@@ -2,9 +2,15 @@
 // ottimistico, come «fatturazione da» della 4.3. Partita IVA, codice fiscale, ragione sociale e
 // indirizzo si leggono da `tenants` e si mostrano in sola lettura. L'audit contiene solo nomi di
 // campo, codici e importi: mai i testi liberi (`reaUfficio`, `idTrasmittenteCodice`).
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { nonTrovato } from '../clienti/registri-iva.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
@@ -32,6 +38,11 @@ export interface CedenteVista {
     provincia: string | null
     numeroRea: string | null
   }
+  /**
+   * Nota per il costruttore dell'XML: `indirizzo` unisce via e civico (l'XSD li vuole separati,
+   * `Indirizzo` max 60 caratteri): la sede dell'XML va letta da `tenants`. `Provincia` e'
+   * facoltativa nell'XSD: si emette quando c'e'.
+   */
   completo: boolean
   mancanti: string[]
 }
@@ -119,12 +130,14 @@ export class CedenteService {
             // Con la RLS un registro di un'altra azienda non si vede: 404 come se non esistesse.
             const registro = await tx.registroIva.findFirst({
               where: { id: nuovi.registroIvaPredefinitoId, tenantId },
-              select: { id: true },
+              select: { id: true, attivo: true },
             })
-            if (!registro) {
-              throw new NotFoundException({
-                error: 'REGISTRO_IVA_NON_TROVATO',
-                message: 'Registro IVA non trovato.',
+            if (!registro) throw nonTrovato()
+            // Un registro disattivato non si sceglie di nuovo; quello gia' salvato resta ammesso.
+            if (!registro.attivo && attuale?.registroIvaPredefinitoId !== registro.id) {
+              throw new BadRequestException({
+                error: 'REGISTRO_IVA_NON_ATTIVO',
+                message: 'Il registro IVA scelto non è attivo.',
               })
             }
           }
@@ -170,7 +183,10 @@ export class CedenteService {
                 },
                 capitaleSociale: {
                   prima: prima?.capitaleSociale ?? null,
-                  dopo: nuovi.capitaleSociale,
+                  dopo:
+                    nuovi.capitaleSociale === null
+                      ? null
+                      : new Prisma.Decimal(nuovi.capitaleSociale).toFixed(2),
                 },
               } as Prisma.InputJsonValue,
             },
@@ -205,6 +221,7 @@ export class CedenteService {
           city: true,
           province: true,
           reaNumber: true,
+          country: true,
         },
       }),
     ])
@@ -226,9 +243,13 @@ export class CedenteService {
     if (!riga?.regimeFiscale) mancanti.push('Regime fiscale')
     if (vuoto(daTenant.partitaIva)) mancanti.push('Partita IVA')
     if (vuoto(daTenant.ragioneSociale)) mancanti.push('Ragione sociale')
-    if (vuoto(daTenant.indirizzo) || vuoto(daTenant.cap) || vuoto(daTenant.comune)) {
+    const capNonValido = tenant.country === 'IT' && !/^\d{5}$/.test(daTenant.cap ?? '')
+    if (vuoto(daTenant.indirizzo) || vuoto(daTenant.comune) || capNonValido) {
       mancanti.push('Indirizzo della sede')
     }
+    // `IscrizioneREA` dell'XML vuole insieme ufficio e numero (e stato di liquidazione).
+    if (riga?.reaUfficio && vuoto(daTenant.numeroRea)) mancanti.push('Numero REA')
+    if (!riga?.reaUfficio && !vuoto(daTenant.numeroRea) && riga) mancanti.push('Ufficio REA')
     return {
       regimeFiscale: riga?.regimeFiscale ?? null,
       reaUfficio: riga?.reaUfficio ?? null,

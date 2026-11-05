@@ -176,6 +176,49 @@ describe('CedenteService — Postgres reale, ruolo wasteflow_app', () => {
     expect(await owner.cedenteFatturazione.count({ where: { tenantId: a.tenantId } })).toBe(0)
   })
 
+  it('registro disattivato: 400 se nuovo, ammesso se già salvato', async () => {
+    const { tenantId, utenteId, registroId } = await azienda()
+    await imposta(tenantId, utenteId, {
+      regimeFiscale: 'RF01',
+      registroIvaPredefinitoId: registroId,
+      versione: 0,
+    })
+    await owner.registroIva.update({ where: { id: registroId }, data: { attivo: false } })
+    const r = await imposta(tenantId, utenteId, {
+      regimeFiscale: 'RF02',
+      registroIvaPredefinitoId: registroId,
+      versione: 1,
+    })
+    expect(r.registroIvaPredefinitoId).toBe(registroId)
+    const altro = await owner.registroIva.create({
+      data: { tenantId, codice: '09', descrizione: 'Spento', attivo: false },
+    })
+    const err: any = await imposta(tenantId, utenteId, {
+      regimeFiscale: 'RF02',
+      registroIvaPredefinitoId: altro.id,
+      versione: 2,
+    }).catch(e => e)
+    expect(err.getStatus()).toBe(400)
+    expect(err.getResponse().error).toBe('REGISTRO_IVA_NON_ATTIVO')
+  })
+
+  it('audit: capitale sociale «10» registrato come «10.00»', async () => {
+    const { tenantId, utenteId } = await azienda()
+    await imposta(tenantId, utenteId, { regimeFiscale: 'RF01', capitaleSociale: '10', versione: 0 })
+    const m = (await audit(tenantId))[0].metadata as any
+    expect(m.capitaleSociale).toEqual({ prima: null, dopo: '10.00' })
+  })
+
+  it('capitale sociale con 11 cifre intere si salva', async () => {
+    const { tenantId, utenteId } = await azienda()
+    const r = await imposta(tenantId, utenteId, {
+      regimeFiscale: 'RF01',
+      capitaleSociale: '12345678901.99',
+      versione: 0,
+    })
+    expect(r.capitaleSociale).toBe('12345678901.99')
+  })
+
   it('tenant senza indirizzo: completo false con «Indirizzo della sede»', async () => {
     const { tenantId, utenteId } = await azienda(false)
     const r = await imposta(tenantId, utenteId, { regimeFiscale: 'RF01', versione: 0 })

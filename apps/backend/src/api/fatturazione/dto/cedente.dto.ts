@@ -25,7 +25,7 @@ export class ImpostaCedenteDto {
   @ApiPropertyOptional({ type: String, nullable: true, example: '1000.50' })
   @IsOptional()
   @IsString()
-  @Matches(/^\d{1,13}(\.\d{1,2})?$/, {
+  @Matches(/^\d{1,11}(\.\d{1,2})?$/, {
     message: 'capitaleSociale: numero con il punto decimale e al più 2 decimali',
   })
   capitaleSociale?: string | null

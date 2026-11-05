@@ -226,12 +226,23 @@ describe('CedenteSchedaComponent', () => {
     })
   })
 
-  for (const testo of ['-5', '1000,505', '5,']) {
+  it('capitale sociale con 11 cifre intere: accettato e inviato', async () => {
+    await crea('ADMIN', incompleto)
+    fixture.componentInstance.form.patchValue({ regimeFiscale: 'RF01' })
+    servizio.salvaCedente.and.returnValue(of(completo))
+    scrivi('cedente-capitale', '12345678901,99')
+    await stabilizza(fixture)
+    bottone('cedente-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.salvaCedente.calls.mostRecent().args[0].capitaleSociale).toBe('12345678901.99')
+  })
+
+  for (const testo of ['-5', '1000,505', '5,', '123456789012', '123456789012,50']) {
     it(`capitale sociale «${testo}»: errore e nessun invio`, async () => {
       await crea('ADMIN')
       scrivi('cedente-capitale', testo)
       await stabilizza(fixture)
-      expect(q('cedente-capitale-errore')?.textContent).toContain('positivo')
+      expect(q('cedente-capitale-errore')?.textContent).toContain('11 cifre intere')
       expect(q('cedente-capitale')!.getAttribute('aria-invalid')).toBe('true')
       bottone('cedente-salva')!.click()
       await stabilizza(fixture)

@@ -143,6 +143,8 @@ describe('CedenteController', () => {
       [{ ...base, capitaleSociale: '1000,50' }],
       [{ ...base, capitaleSociale: 1000.5 }],
       [{ ...base, capitaleSociale: '1000.555' }],
+      [{ ...base, capitaleSociale: '123456789012' }],
+      [{ ...base, capitaleSociale: '123456789012.00' }],
       [{ ...base, socioUnico: 'XX' }],
       [{ ...base, statoLiquidazione: 'XX' }],
       [{ ...base, reaUfficio: 'roma' }],
@@ -155,6 +157,13 @@ describe('CedenteController', () => {
       const put = await http().put(R).send(corpo)
       expect(put.status).toBe(400)
       expect(servizio.imposta).not.toHaveBeenCalled()
+    })
+
+    it('capitale sociale con 11 cifre intere: 200', async () => {
+      const put = await http()
+        .put(R)
+        .send({ ...base, capitaleSociale: '12345678901.99' })
+      expect(put.status).toBe(200)
     })
 
     it('409 VERSIONE_SUPERATA passa al client', async () => {

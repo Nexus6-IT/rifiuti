@@ -96,7 +96,7 @@ function validaOLancia(dati: DatiRegistroIva): void {
   }
 }
 
-const nonTrovato = () =>
+export const nonTrovato = () =>
   new NotFoundException({
     message: 'Registro IVA non trovato.',
     error: 'REGISTRO_IVA_NON_TROVATO',
