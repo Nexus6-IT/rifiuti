@@ -78,7 +78,8 @@ export class DashboardController {
   @ApiQuery({
     name: 'endDate',
     required: false,
-    description: 'End date for time-range filtering (ISO 8601)',
+    description:
+      "End date for time-range filtering: ISO 8601 con l'ora, istante finale incluso (una data senza ora vale mezzanotte UTC e lascia fuori quel giorno). Va indicata insieme a startDate.",
     example: '2025-01-31T23:59:59Z',
   })
   @ApiResponse({
@@ -133,6 +134,9 @@ export class DashboardController {
     const tenantId = requireRequestTenantId(req)
 
     let dateRange: { startDate: Date; endDate: Date } | undefined
+    if (Boolean(startDate) !== Boolean(endDate)) {
+      throw new BadRequestException('Intervallo di date non valido')
+    }
     if (startDate && endDate) {
       dateRange = { startDate: new Date(startDate), endDate: new Date(endDate) }
       if (
@@ -250,7 +254,7 @@ export class DashboardController {
     lines.push(`Current Month,${data.trends.monthOverMonth.current}`)
     lines.push(`Previous Month,${data.trends.monthOverMonth.previous}`)
     lines.push(`Growth,${(data.trends.monthOverMonth.percentage * 100).toFixed(1)}%`)
-    lines.push(`Next Month Prediction,${data.trends.prediction.nextMonth}`)
+    lines.push(`Next Month Prediction,${data.trends.prediction.nextMonth ?? ''}`)
 
     return lines.join('\n')
   }

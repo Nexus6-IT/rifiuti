@@ -77,6 +77,7 @@ describe('Analytics dashboard: Postgres reale, ruolo wasteflow_app', () => {
     a: { tenantId: string; utenteId: string },
     o: {
       createdAt: Date
+      status?: 'DRAFT' | 'COMPLETED' | 'CANCELLED' | 'AWAITING_PRODUCER'
       producerPartitaIva?: string
       producerName?: string
       carrierPartitaIva?: string
@@ -101,7 +102,7 @@ describe('Analytics dashboard: Postgres reale, ruolo wasteflow_app', () => {
         wasteCategory: 'Non pericoloso',
         quantity: 100,
         unit: 'KG',
-        status: 'DRAFT',
+        status: o.status ?? 'DRAFT',
         transportDate: new Date(),
         createdAt: o.createdAt,
       },
@@ -184,12 +185,23 @@ describe('Analytics dashboard: Postgres reale, ruolo wasteflow_app', () => {
     const conteggi = [10, 12, 14, 16, 18, 20]
     for (let i = 0; i < conteggi.length; i++) {
       for (let k = 0; k < conteggi[i]; k++) {
-        await fir(a, { createdAt: new Date(Date.UTC(2026, 4 + i, 1 + (k % 27), 9)) })
+        await fir(a, {
+          createdAt: new Date(Date.UTC(2026, 4 + i, 1 + (k % 27), 9)),
+          status: 'COMPLETED',
+        })
       }
     }
     // mese in corso (parziale) e altro tenant: non cambiano nulla
     for (let k = 0; k < 3; k++) await fir(a, { createdAt: new Date(Date.UTC(2026, 10, 2, 9)) })
-    for (let k = 0; k < 50; k++) await fir(b, { createdAt: new Date(Date.UTC(2026, 9, 2, 9)) })
+    for (let k = 0; k < 50; k++) {
+      await fir(b, { createdAt: new Date(Date.UTC(2026, 9, 2, 9)), status: 'COMPLETED' })
+    }
+    // bozze, in attesa e annullati in ottobre: la previsione parla solo dei FIR compiuti
+    for (const status of ['DRAFT', 'AWAITING_PRODUCER', 'CANCELLED'] as const) {
+      for (let k = 0; k < 7; k++) {
+        await fir(a, { createdAt: new Date(Date.UTC(2026, 9, 3, 9)), status })
+      }
+    }
 
     expect(await nel(a.tenantId, () => service.predictNextMonthVolume(a.tenantId, oggi))).toBe(22)
     expect(await nel(b.tenantId, () => service.predictNextMonthVolume(b.tenantId, oggi))).toBe(50)

@@ -271,8 +271,12 @@ describe('AnalyticsService', () => {
       expect(await prevedi([20, 20, 20, 20, 20, 20])).toBe(20)
     })
 
-    it('serie in calo [30, 20, 10] -> 0, mai negativo', async () => {
+    it('serie in calo [30, 20, 10] -> 0 esatto', async () => {
       expect(await prevedi([undefined, undefined, undefined, 30, 20, 10])).toBe(0)
+    })
+
+    it('serie in calo [30, 15, 5]: la retta darebbe -6,67, il risultato e 0 (mai negativo)', async () => {
+      expect(await prevedi([undefined, undefined, undefined, 30, 15, 5])).toBe(0)
     })
 
     it('si parte dal primo mese con un FIR: [0, 0, 5] dopo il primo FIR -> 5 (un mese)', async () => {
@@ -284,8 +288,7 @@ describe('AnalyticsService', () => {
       expect(await prevedi([undefined, undefined, undefined, undefined, 3, 4])).toBe(4)
     })
 
-    it('mesi vuoti dopo il primo FIR valgono 0', async () => {
-      // [10, 0, 0, 0, 0, 0] -> retta con pendenza negativa, prevista 0 (mai negativo)
+    it('mesi vuoti dopo il primo FIR valgono 0: [10,0,0,0,0,0] -> grezza -3,33, limitata a 0', async () => {
       expect(await prevedi([10])).toBe(0)
     })
 
@@ -298,6 +301,12 @@ describe('AnalyticsService', () => {
       const args = (prisma.$queryRaw as jest.Mock).mock.calls[0]
       expect(args).toContainEqual(new Date(Date.UTC(2026, 10, 1)))
       expect(args).toContainEqual(new Date(Date.UTC(2026, 4, 1)))
+      const sql = (args[0] as string[]).join('?')
+      expect(sql).toContain('created_at >= ?')
+      expect(sql).toContain('created_at < ?')
+      expect(sql).not.toContain('<=')
+      // stessa base dell'andamento: bozze e annullati fuori
+      expect(args.some((a: unknown) => String(JSON.stringify(a)).includes('CANCELLED'))).toBe(true)
     })
   })
 

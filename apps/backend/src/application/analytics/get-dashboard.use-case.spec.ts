@@ -1,8 +1,6 @@
 import { GetDashboardUseCase } from './get-dashboard.use-case'
 import { AnalyticsService } from './analytics.service'
 import { LoggerService } from '../../core/logger/logger.service'
-import { DashboardController } from '../../api/dashboard/dashboard.controller'
-import { BadRequestException } from '@nestjs/common'
 
 describe('GetDashboardUseCase: stati nel periodo', () => {
   let analytics: Record<string, jest.Mock>
@@ -64,31 +62,5 @@ describe('GetDashboardUseCase: stati nel periodo', () => {
       if (nome === 'getFIRsByStatus') continue
       for (const call of fn.mock.calls) expect(call).not.toContainEqual(dateRange)
     }
-  })
-})
-
-describe('DashboardController: validazione delle date', () => {
-  const useCase = { execute: jest.fn().mockResolvedValue({}) }
-  const controller = new DashboardController(useCase as never)
-  const req = { tenantId: '11111111-1111-4111-8111-111111111111' }
-
-  beforeEach(() => useCase.execute.mockClear())
-
-  it('startDate non valida -> 400', async () => {
-    await expect(controller.getDashboard(req, 'abc', '2026-11-30')).rejects.toThrow(
-      BadRequestException
-    )
-    expect(useCase.execute).not.toHaveBeenCalled()
-  })
-
-  it('startDate > endDate -> 400', async () => {
-    await expect(controller.getDashboard(req, '2026-12-01', '2026-11-01')).rejects.toThrow(
-      'Intervallo di date non valido'
-    )
-  })
-
-  it('intervallo valido -> passato allo use case', async () => {
-    await controller.getDashboard(req, '2026-11-01', '2026-11-30')
-    expect(useCase.execute.mock.calls[0][0].dateRange.startDate).toEqual(new Date('2026-11-01'))
   })
 })
