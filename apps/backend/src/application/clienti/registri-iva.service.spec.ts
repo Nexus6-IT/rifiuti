@@ -47,11 +47,19 @@ describe('RegistriIvaService (Prisma finto)', () => {
       activityLog: { create: jest.fn().mockResolvedValue({}) },
       cliente: { groupBy: jest.fn().mockResolvedValue([]) },
       contrattoCliente: { groupBy: jest.fn().mockResolvedValue([]) },
+      documentoFattura: { groupBy: jest.fn().mockResolvedValue([]) },
+      numerazioneFattura: { groupBy: jest.fn().mockResolvedValue([]) },
+      cedenteFatturazione: { groupBy: jest.fn().mockResolvedValue([]) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     }
     const prisma: any = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new RegistriIvaService(prisma)
   })
+
+  /** Testo di tutte le query raw lanciate (letture dei definitivi comprese). */
+  const sqlDelleChiamate = () =>
+    tx.$queryRaw.mock.calls.map((c: any) => (c[0] as string[]).join(' ')).join('\n')
 
   describe('list / getById', () => {
     it('uso reale (R23): un groupBy per colonna referente e una sola chiamata per list; eliminabile segue il conteggio', async () => {
@@ -198,9 +206,9 @@ describe('RegistriIvaService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({
         error: 'REGISTRO_IVA_IN_USO',
         message:
-          'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+          'Il registro IVA è usato da clienti, contratti o documenti: non può diventare il registro delle ricevute split payment.',
       })
-      expect(String(tx.$queryRaw.mock.calls[0][0].join(' '))).toContain('FOR UPDATE')
+      expect(sqlDelleChiamate()).toContain('FOR UPDATE')
       expect(tx.registroIva.updateMany).not.toHaveBeenCalled()
     })
 
@@ -208,7 +216,7 @@ describe('RegistriIvaService (Prisma finto)', () => {
       tx.contrattoCliente.groupBy.mockResolvedValue([{ registroIvaId: R, _count: { _all: 1 } }])
       await service.modifica(T, U, R, { descrizione: 'Altro', versione: 1 })
       expect(tx.registroIva.updateMany).toHaveBeenCalled()
-      expect(tx.$queryRaw).not.toHaveBeenCalled()
+      expect(sqlDelleChiamate()).not.toContain('FOR UPDATE')
     })
 
     it('disattivazione: campi [attivo]', async () => {

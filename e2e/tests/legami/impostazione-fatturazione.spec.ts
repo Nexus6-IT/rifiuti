@@ -334,7 +334,9 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
     await accediUiComeAzienda(page, azienda, 'admin')
     await page.goto('/clienti/fatturazione')
     const pagina = page.locator('#main-content')
-    await expect(pagina.getByRole('heading', { level: 1, name: 'Fatturazione da' })).toBeVisible({
+    await expect(
+      pagina.getByRole('heading', { level: 1, name: 'Impostazioni di fatturazione' })
+    ).toBeVisible({
       timeout: ATTESA_SERVER,
     })
     const campo = pagina.getByTestId('fatt-data')

@@ -4,6 +4,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { MessageService } from 'primeng/api'
 import { ClienteDialogComponent } from './cliente-dialog.component'
 import { ClientiService } from './clienti.service'
+import { ListinoService } from '../listino/listino.service'
 import { TabelleFatturazioneService } from './tabelle-fatturazione.service'
 import { Agente, Cliente } from './clienti.model'
 import { RegistryService } from '../registry/registry.service'
@@ -191,6 +192,7 @@ describe('ClienteDialogComponent', () => {
         MessageService,
         { provide: ClientiService, useValue: { clienti, agenti } },
         { provide: TabelleFatturazioneService, useValue: tab },
+        { provide: ListinoService, useValue: { codiciIva: { list: () => of([]) } } },
         { provide: RegistryService, useValue: registry },
         { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
       ],

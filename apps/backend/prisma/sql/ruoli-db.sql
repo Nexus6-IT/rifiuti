@@ -127,6 +127,19 @@ BEGIN
     EXECUTE format(
       'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', v_ruolo);
 
+    -- Sonda della numerazione della fatturazione (4.4a): SECURITY INVOKER e leggibile solo da chi
+    -- aggira la RLS (`wasteflow_sistema`). La migration fa il REVOKE da PUBLIC; il GRANT sta qui
+    -- perche' alla prima `migrate deploy` il ruolo puo' non esistere ancora.
+    IF to_regprocedure('public.fatturazione_violazioni_numerazione()') IS NOT NULL THEN
+      IF v_ruolo = 'wasteflow_sistema' THEN
+        EXECUTE format(
+          'GRANT EXECUTE ON FUNCTION public.fatturazione_violazioni_numerazione() TO %I', v_ruolo);
+      ELSE
+        EXECUTE format(
+          'REVOKE EXECUTE ON FUNCTION public.fatturazione_violazioni_numerazione() FROM %I', v_ruolo);
+      END IF;
+    END IF;
+
     -- _prisma_migrations: solo lettura (la scrive solo `prisma migrate`).
     EXECUTE format(
       'REVOKE ALL ON TABLE public._prisma_migrations FROM %I', v_ruolo);

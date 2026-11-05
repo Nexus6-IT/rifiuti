@@ -19,6 +19,14 @@ export interface ColonneReferentiListino {
   righeLegame: readonly string[]
   /** Colonne delle testate dei legami (`legami_movimento`, 4.3): citano elenco, cliente, ecc. */
   legami: readonly string[]
+  /**
+   * Colonne delle righe dei documenti di fattura (`righe_documento_fattura`, 4.4a) che citano la
+   * tabella: riga di listino e codice IVA emessi. Un documento emesso e' un dato fiscale: cio' che
+   * cita non si elimina.
+   */
+  righeDocumento: readonly string[]
+  /** Colonne dei marcatori degli addebiti gia' fatturati (`marcatori_addebiti_fatturati`, 4.4a). */
+  marcatori: readonly string[]
 }
 
 export const COLONNE_CODICE_IVA: ColonneReferentiListino = {
@@ -26,6 +34,8 @@ export const COLONNE_CODICE_IVA: ColonneReferentiListino = {
   righe: ['codiceIvaId'],
   righeLegame: ['codiceIvaId'],
   legami: [],
+  righeDocumento: ['codiceIvaId'],
+  marcatori: [],
 }
 
 export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
@@ -40,6 +50,8 @@ export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
   righe: ['categoriaId', 'centroRicavoId'],
   righeLegame: [],
   legami: [],
+  righeDocumento: [],
+  marcatori: [],
 }
 
 /** Un addebito dell'archivio e' citato solo dalle righe degli elenchi, con `addebitoId`. */
@@ -48,14 +60,21 @@ export const COLONNE_ADDEBITO: ColonneReferentiListino = {
   righe: ['addebitoId'],
   righeLegame: [],
   legami: [],
+  righeDocumento: [],
+  marcatori: [],
 }
 
-/** Una riga di listino e' citata solo dalle righe dei legami (`riga_addebito_id`). */
+/**
+ * Una riga di listino e' citata dalle righe dei legami, dalle righe dei documenti di fattura e dai
+ * marcatori degli addebiti gia' fatturati (tutte con `riga_addebito_id`).
+ */
 export const COLONNE_RIGA_LISTINO: ColonneReferentiListino = {
   addebiti: [],
   righe: [],
   righeLegame: ['rigaAddebitoId'],
   legami: [],
+  righeDocumento: ['rigaAddebitoId'],
+  marcatori: ['rigaAddebitoId'],
 }
 
 /**
@@ -68,6 +87,8 @@ export const COLONNE_ELENCO: ColonneReferentiListino = {
   righe: [],
   righeLegame: [],
   legami: ['elencoId'],
+  righeDocumento: [],
+  marcatori: [],
 }
 
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
@@ -98,6 +119,8 @@ export async function contaUsiListino(
     [client.rigaAddebito as unknown as { groupBy: GroupBy }, colonne.righe],
     [client.rigaLegameMovimento as unknown as { groupBy: GroupBy }, colonne.righeLegame],
     [client.legameMovimento as unknown as { groupBy: GroupBy }, colonne.legami],
+    [client.rigaDocumentoFattura as unknown as { groupBy: GroupBy }, colonne.righeDocumento],
+    [client.marcatoreAddebitoFatturato as unknown as { groupBy: GroupBy }, colonne.marcatori],
   ]
   for (const [modello, elenco] of sorgenti) {
     for (const colonna of elenco) {

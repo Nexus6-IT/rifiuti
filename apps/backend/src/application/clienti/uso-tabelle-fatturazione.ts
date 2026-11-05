@@ -1,4 +1,4 @@
-// Quanti clienti e contratti citano le righe di una tabella di fatturazione (R23, resto di R5).
+// Quanti clienti, contratti e (4.4a) documenti, numerazioni, cedente e spese citano le righe di una tabella di fatturazione (R23, resto di R5).
 // Un `groupBy` per colonna referente, una sola chiamata per `list`/`getById`. Conta anche i
 // contratti ELIMINATI (eliminazione logica, D13): la FK li vede, quindi la riga citata non si puo'
 // cancellare e "Elimina" non deve comparire per poi rispondere 409.
@@ -10,6 +10,21 @@ export type ClientUsi = PrismaClient | Prisma.TransactionClient
 export interface ColonneReferenti {
   clienti: readonly string[]
   contratti: readonly string[]
+  /** Documenti di fattura (4.4a): colonne della testata che citano la tabella. */
+  documenti?: readonly string[]
+  /** Contatori della numerazione (`numerazioni_fattura`, 4.4a). */
+  numerazioni?: readonly string[]
+  /** Cedente della fatturazione (`cedente_fatturazione`, 4.4a): registro IVA predefinito. */
+  cedente?: readonly string[]
+  /** Spese accessorie (4.4a): codice IVA della spesa. */
+  spese?: readonly string[]
+}
+
+/** Spese accessorie che citano un codice IVA (la lista dei codici IVA le somma agli altri usi). */
+export const COLONNE_SPESE_DI_CODICE_IVA: ColonneReferenti = {
+  clienti: [],
+  contratti: [],
+  spese: ['codiceIvaId'],
 }
 
 export const COLONNE_CONDIZIONE: ColonneReferenti = {
@@ -24,9 +39,16 @@ export const COLONNE_SPESA: ColonneReferenti = {
   clienti: ['speseIncassoId', 'bolloId'],
   contratti: ['speseIncassoId', 'bolloId'],
 }
+/**
+ * Un registro IVA e' citato anche dai documenti, dai contatori della numerazione e dal cedente
+ * (registro predefinito): le FK `NoAction` impediscono di cancellarlo.
+ */
 export const COLONNE_REGISTRO: ColonneReferenti = {
   clienti: ['registroIvaId'],
   contratti: ['registroIvaId'],
+  documenti: ['registroIvaId'],
+  numerazioni: ['registroIvaId'],
+  cedente: ['registroIvaPredefinitoId'],
 }
 export const COLONNE_TESTO: ColonneReferenti = {
   clienti: [],
@@ -35,6 +57,11 @@ export const COLONNE_TESTO: ColonneReferenti = {
 export const COLONNE_CODIFICA: ColonneReferenti = {
   clienti: [],
   contratti: ['categoriaId', 'tipoId', 'motivoAnnulloId'],
+}
+
+/** Numerazione con almeno un numero o una partenza scritti (spec §4.6). */
+const NUMERAZIONE_SCRITTA = {
+  OR: [{ ultimoNumero: { gt: 0 } }, { numeroPartenza: { gt: 0 } }, { dataPartenza: { not: null } }],
 }
 
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
@@ -59,12 +86,21 @@ export async function contaUsi(
   const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[]]> = [
     [client.cliente as unknown as { groupBy: GroupBy }, colonne.clienti],
     [client.contrattoCliente as unknown as { groupBy: GroupBy }, colonne.contratti],
+    [client.documentoFattura as unknown as { groupBy: GroupBy }, colonne.documenti ?? []],
+    [client.numerazioneFattura as unknown as { groupBy: GroupBy }, colonne.numerazioni ?? []],
+    [client.cedenteFatturazione as unknown as { groupBy: GroupBy }, colonne.cedente ?? []],
+    [client.spesaAccessoria as unknown as { groupBy: GroupBy }, colonne.spese ?? []],
   ]
   for (const [modello, elenco] of sorgenti) {
     for (const colonna of elenco) {
       const righe = await modello.groupBy({
         by: [colonna],
-        where: { tenantId, [colonna]: { in: [...ids] } },
+        where: {
+          tenantId,
+          [colonna]: { in: [...ids] },
+          // Una riga di numerazione vuota nasce solo per il lock del suffisso: non e' un uso.
+          ...(modello === (client.numerazioneFattura as unknown) ? NUMERAZIONE_SCRITTA : {}),
+        },
         _count: { _all: true },
       })
       for (const r of righe) {

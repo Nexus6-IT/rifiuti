@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { SpeseAccessorieComponent } from './spese-accessorie.component'
+import { ListinoService } from '../../listino/listino.service'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { SpesaAccessoria } from '../clienti.model'
 import { AuthService } from '../../../core/services/auth.service'
@@ -17,6 +18,7 @@ const spesa: SpesaAccessoria = {
   descrizione: 'Bollo virtuale',
   importo: '2.00',
   attiva: true,
+  codiceIvaId: null,
 }
 
 describe('SpeseAccessorieComponent', () => {
@@ -37,6 +39,7 @@ describe('SpeseAccessorieComponent', () => {
       providers: [
         provideNoopAnimations(),
         { provide: TabelleFatturazioneService, useValue: { spese: tabella } },
+        { provide: ListinoService, useValue: { codiciIva: { list: () => of([]) } } },
         {
           provide: ToastService,
           useValue: jasmine.createSpyObj('ToastService', ['error', 'success']),

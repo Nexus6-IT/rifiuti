@@ -244,6 +244,128 @@ Se la migration **fallisce** (P3009) e' transazionale: `SELECT to_regclass('publ
 deve dare `NULL`; si corregge la causa e si lancia
 `npx prisma migrate resolve --rolled-back 20261103200000_legami_movimento`, poi si rilancia il deploy.
 
+### 4.4a fatturazione per periodo: rilascio e rollback
+
+Migration `20261105100000_fatturazione_modello`, additiva: nove tabelle nuove e vuote
+(`cedente_fatturazione`, `numerazioni_fattura`, `elaborazioni_fatturazione`, `documenti_fattura`,
+`righe_documento_fattura`, `riepiloghi_iva_documento`, `rate_documento_fattura`,
+`marcatori_addebiti_fatturati`, `contatori_file_fatturapa`) con RLS `ENABLE` + `FORCE`, cinque enum,
+due indici unici additivi su `legami_movimento` e `righe_legame_movimento` (bersagli delle chiavi
+composte) e le colonne nuove: `impostazioni_fatturazione.definitive_attive` (default `false`),
+`legami_movimento.documento_id` + `scostamento_gestito_il`/`_da`/`_nota`,
+`spese_accessorie.codice_iva_id`, `registri_iva.suffisso_numero`. Nessuna colonna su
+`waste_movements`. Eccezioni dichiarate alla regola «additiva»: i trigger di immutabilita'
+(`documenti_fattura_immutabile`, `figlie_documento_immutabili`, §4.12) e la funzione della sonda
+`fatturazione_violazioni_numerazione()`.
+
+> **Le definitive restano spente.** `definitive_attive` nasce `false` per tutte le aziende (e
+> un'azienda senza riga di impostazioni e' spenta): nessuna fattura si numera finche' qualcuno non
+> la accende, e nessuno lo fa prima del rilascio della 4.4c e della conferma del commercialista
+> (decisioni 13 e 14). Controllo dopo ogni deploy della serie 4.4:
+> `SELECT tenant_id FROM impostazioni_fatturazione WHERE definitive_attive;` deve dare zero righe.
+
+**Ordine di creazione di un documento (Task 19 e 20, anche per il TD04 di storno).** Le figlie
+(`righe_documento_fattura`, `riepiloghi_iva_documento`, `rate_documento_fattura`) accettano INSERT,
+UPDATE e DELETE solo se la testata e' in `BOZZA`. Si crea quindi la testata in `BOZZA` (numero
+nullo), poi le figlie, poi la testata passa a `DEFINITIVO` con numero e data (una volta sola: dopo,
+il trigger blocca tutto). Chi scrive le figlie blocca prima la testata `FOR UPDATE` (il trigger legge
+lo stato senza lock). Un annullato non scrive i dati di emissione e non cambia piu'.
+
+**Prima del deploy**, un controllo. Il CHECK `legami_movimento_documento_se_fatturato` (`FATTURATO`
+se e solo se c'e' un `documento_id`) viene convalidato su tutte le righe: vanno bene i legami
+`CONFERMATO` e `IMPORTATO_FATTURATO`, non un `FATTURATO` (in produzione la 4.3 non li crea).
+
+```sql
+-- Prima del deploy la colonna documento_id non esiste ancora: nessun FATTURATO puo' avere un
+-- documento, quindi ogni FATTURATO e' una riga che farebbe fallire il VALIDATE.
+SELECT count(*) FROM legami_movimento WHERE stato = 'FATTURATO';   -- deve dare 0
+SELECT count(*), pg_size_pretty(pg_total_relation_size('legami_movimento')) FROM legami_movimento;
+SELECT count(*), pg_size_pretty(pg_total_relation_size('righe_legame_movimento')) FROM righe_legame_movimento;
+```
+
+La migration e' un'unica transazione: da `ADD COLUMN` in poi `legami_movimento` resta in ACCESS
+EXCLUSIVE fino al commit (build dei due unici, FK, `VALIDATE`), e `righe_legame_movimento` durante la
+build del proprio unico. Il `lock_timeout` di 5 s copre solo l'acquisizione, non la durata. Con
+poche migliaia di legami sono frazioni di secondo; con tabelle grandi si sceglie una finestra a
+basso traffico.
+
+Fino al commit restano in ACCESS EXCLUSIVE anche `impostazioni_fatturazione`, `spese_accessorie` e
+`registri_iva` (colonne nuove). Le FK nuove prendono SHARE ROW EXCLUSIVE su `tenants`, `clienti`,
+`contratti_cliente`, `elenchi_addebiti`, `righe_addebito` e `codici_iva`. La registrazione di un
+movimento legge `impostazioni_fatturazione` `FOR SHARE` (aggancio del legame): con il backend vecchio
+acceso aspetta per tutta la migration, poi il tetto di 2 s e il SAVEPOINT lasciano il legame
+`DA_RIALLINEARE` e la registrazione riesce. Meglio quindi lanciare la migration quando non si
+registrano movimenti.
+
+Se da' un numero diverso da zero il `VALIDATE` fallisce nominando il vincolo e la migration si ferma
+(P3009, vedi sotto): nessuna modifica resta applicata. Poi un backup:
+
+```bash
+docker exec rifiuti-postgres-1 sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' > backup-pre-4-4a.dump
+```
+
+Il deploy lancia `npx prisma migrate deploy` col ruolo proprietario (`wasteflow`); `lock_timeout` di
+5 secondi in testa: se scade (traffico sui legami o sul listino) si rilancia il deploy. **Dopo** il
+deploy si rilancia `ops/db-ruoli.sh`: la migration fa il `REVOKE EXECUTE ... FROM PUBLIC` della
+sonda, il `GRANT EXECUTE` al solo `wasteflow_sistema` sta in `prisma/sql/ruoli-db.sql` (il ruolo puo'
+non esistere quando la migration gira). Controlli:
+
+```sql
+SELECT to_regclass('public.documenti_fattura'), to_regclass('public.contatori_file_fatturapa');
+SELECT count(*) FROM documenti_fattura;                           -- 0
+SELECT has_function_privilege('wasteflow_app', 'fatturazione_violazioni_numerazione()', 'execute');     -- false
+SELECT has_function_privilege('wasteflow_sistema', 'fatturazione_violazioni_numerazione()', 'execute'); -- true
+```
+
+**Rollback del codice** (tag precedente del backend): la migration puo' restare, il codice vecchio
+ignora le tabelle e le colonne.
+
+**Rollback dello schema** (solo se serve davvero, dopo il backup sopra e con il tag precedente gia'
+in produzione). Se esistono documenti, **esportarli prima**: i definitivi sono atti fiscali (dati
+fiscali emessi, XML, numerazione) e il `DROP` li perde per sempre; con documenti definitivi la strada
+e' il ripristino del backup, non questo blocco. Un solo blocco, dentro `BEGIN; ... COMMIT;`, come
+proprietario:
+
+```sql
+BEGIN;
+ALTER TABLE legami_movimento DROP CONSTRAINT legami_movimento_documento_se_fatturato;
+ALTER TABLE legami_movimento DROP CONSTRAINT legami_movimento_gestito_se_scostamento;
+ALTER TABLE legami_movimento DROP COLUMN documento_id, DROP COLUMN scostamento_gestito_il,
+  DROP COLUMN scostamento_gestito_da, DROP COLUMN scostamento_nota;
+ALTER TABLE spese_accessorie DROP COLUMN codice_iva_id;
+ALTER TABLE registri_iva DROP COLUMN suffisso_numero;
+ALTER TABLE impostazioni_fatturazione DROP COLUMN definitive_attive;
+DROP TRIGGER documenti_fattura_immutabile ON documenti_fattura;
+DROP TRIGGER figlie_documento_immutabili ON righe_documento_fattura;
+DROP TRIGGER figlie_documento_immutabili ON riepiloghi_iva_documento;
+DROP TRIGGER figlie_documento_immutabili ON rate_documento_fattura;
+DROP FUNCTION documenti_fattura_immutabile();
+DROP FUNCTION figlie_documento_immutabili();
+DROP FUNCTION fatturazione_violazioni_numerazione();
+DROP TABLE marcatori_addebiti_fatturati, rate_documento_fattura, riepiloghi_iva_documento,
+  righe_documento_fattura, documenti_fattura, elaborazioni_fatturazione, numerazioni_fattura,
+  cedente_fatturazione, contatori_file_fatturapa;
+DROP INDEX legami_movimento_id_tenant_id_key;
+DROP INDEX righe_legame_movimento_id_legame_id_tenant_id_key;
+DROP TYPE tipo_marcatore_addebito, tipo_riga_documento_fattura, raggruppamento_fatturazione,
+  stato_documento_fattura, stato_elaborazione_fatturazione;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261105100000_fatturazione_modello';
+COMMIT;
+```
+
+I legami che nel frattempo fossero diventati `FATTURATO` restano tali senza documento: prima del
+blocco riportarli a `CONFERMATO` (`fatturato_il`, `riferimento_fattura` nulli) o ripristinare il
+backup, altrimenti un nuovo `migrate deploy` si ferma sul `VALIDATE` del CHECK. Se la migration
+**fallisce** (P3009) e' transazionale: `SELECT to_regclass('public.documenti_fattura')` deve dare
+`NULL`; si corregge la causa e si lancia
+`npx prisma migrate resolve --rolled-back 20261105100000_fatturazione_modello`, poi si rilancia il
+deploy.
+
+**Cancellazione di un'azienda con documenti.** `DELETE FROM tenants` fallisce se l'azienda ha
+documenti non in bozza: il trigger li protegge anche dalla cascata. Nei test si usa
+`pulisciTenantDiTest` (`SET LOCAL session_replication_role = replica`, serve un superuser: e' il
+proprietario del database di test).
+
 ---
 
 ## Ripristino (Disaster Recovery)

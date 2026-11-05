@@ -165,6 +165,16 @@ model Tenant {
   legamiMovimento          LegameMovimento[]
   righeLegameMovimento     RigaLegameMovimento[]
   impostazioniFatturazione ImpostazioneFatturazione[]
+  // Fase 4 pezzo 4a
+  cedentiFatturazione         CedenteFatturazione[]
+  numerazioniFattura          NumerazioneFattura[]
+  elaborazioniFatturazione    ElaborazioneFatturazione[]
+  documentiFattura            DocumentoFattura[]
+  righeDocumentoFattura       RigaDocumentoFattura[]
+  riepiloghiIvaDocumento      RiepilogoIvaDocumento[]
+  rateDocumentoFattura        RataDocumentoFattura[]
+  marcatoriAddebitiFatturati  MarcatoreAddebitoFatturato[]
+  contatoriFileFatturapa      ContatoreFileFatturapa[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -3054,12 +3064,15 @@ model SpesaAccessoria {
   descrizione String              @db.VarChar(100)
   importo     Decimal             @db.Decimal(10, 2)
   attiva      Boolean             @default(true)
+  /// Aliquota e natura della spesa (4.4a, §4.10): senza, una spesa che si applica da l'errore `SPESA_SENZA_CODICE_IVA`.
+  codiceIvaId String?             @map("codice_iva_id") @db.Uuid
 
   versione  Int      @default(1)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "spese_accessorie_tenant_id_fkey")
+  codiceIva CodiceIva? @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "spese_accessorie_codice_iva_fkey")
 
   clientiIncasso    Cliente[]          @relation("SpeseIncassoCliente")
   clientiBollo      Cliente[]          @relation("BolloCliente")
@@ -3069,6 +3082,7 @@ model SpesaAccessoria {
   @@unique([id, tenantId], map: "spese_accessorie_id_tenant_id_key")
   @@unique([tenantId, tipo, codice], map: "spese_accessorie_tenant_id_tipo_codice_key")
   @@index([tenantId], map: "spese_accessorie_tenant_id_idx")
+  @@index([tenantId, codiceIvaId], map: "spese_accessorie_tenant_id_codice_iva_id_idx")
   @@map("spese_accessorie")
 }
 
@@ -3080,6 +3094,8 @@ model RegistroIva {
   descrizione   String  @db.VarChar(60)
   ricevuteSplit Boolean @default(false) @map("ricevute_split")
   attivo        Boolean @default(true)
+  /// Suffisso facoltativo del numero (4.4a, S9, per esempio `/A`).
+  suffissoNumero String? @map("suffisso_numero") @db.VarChar(10)
 
   versione  Int      @default(1)
   createdAt DateTime @default(now()) @map("created_at")
@@ -3089,6 +3105,9 @@ model RegistroIva {
 
   clienti          Cliente[]
   contrattiCliente ContrattoCliente[]
+  documentiFattura   DocumentoFattura[]
+  numerazioniFattura NumerazioneFattura[]
+  cedentiPredefiniti CedenteFatturazione[]
 
   @@unique([id, tenantId], map: "registri_iva_id_tenant_id_key")
   @@unique([tenantId, codice], map: "registri_iva_tenant_id_codice_key")
@@ -3239,6 +3258,8 @@ model Cliente {
   contrattiDelCliente     ContrattoCliente[] @relation("ClienteDelContratto")
   legami                  LegameMovimento[]
   contrattiDiFatturazione ContrattoCliente[] @relation("ClienteDiFatturazione")
+  documentiComeCliente             DocumentoFattura[] @relation("DocumentoCliente")
+  documentiComeClienteFatturazione DocumentoFattura[] @relation("DocumentoClienteFatturazione")
 
   @@unique([id, tenantId], map: "clienti_id_tenant_id_key")
   @@unique([tenantId, dittaId], map: "clienti_tenant_id_ditta_id_key")
@@ -3320,6 +3341,7 @@ model ContrattoCliente {
   allegatiPdf       AllegatoContrattoCliente[]
   elenchiAddebiti   ElencoAddebiti[]
   legami            LegameMovimento[]
+  documentiFattura  DocumentoFattura[]
 
   @@unique([id, tenantId], map: "contratti_cliente_id_tenant_id_key")
   /// Bersaglio della chiave composta dei legami (fase 4.3): il contratto appartiene al cliente scelto.
@@ -3418,6 +3440,8 @@ model CodiceIva {
   addebiti    Addebito[]
   righe       RigaAddebito[]
   righeLegame RigaLegameMovimento[]
+  righeDocumento  RigaDocumentoFattura[]
+  speseAccessorie SpesaAccessoria[]
 
   @@unique([id, tenantId], map: "codici_iva_id_tenant_id_key")
   @@unique([tenantId, codice], map: "codici_iva_tenant_id_codice_key")
@@ -3582,6 +3606,7 @@ model ElencoAddebiti {
   righe    RigaAddebito[]
   allegati AllegatoElencoAddebiti[]
   legami   LegameMovimento[]
+  documentiFattura DocumentoFattura[]
 
   @@unique([id, tenantId], map: "elenchi_addebiti_id_tenant_id_key")
   @@unique([contrattoId, codice], map: "elenchi_addebiti_contratto_id_codice_key")
@@ -3668,6 +3693,8 @@ model RigaAddebito {
   scaglioni   ScaglioneRigaAddebito[]
   scadenze    ScadenzaRigaAddebito[]
   righeLegame RigaLegameMovimento[]
+  righeDocumento     RigaDocumentoFattura[]
+  marcatoriFatturati MarcatoreAddebitoFatturato[]
 
   @@unique([id, tenantId], map: "righe_addebito_id_tenant_id_key")
   /// Bersaglio della chiave composta delle righe dei legami (fase 4.3): la riga appartiene all'elenco del legame.
@@ -3786,6 +3813,12 @@ model LegameMovimento {
   riferimentoFattura     String?              @map("riferimento_fattura") @db.VarChar(50)
   scostamentoDopoFattura Boolean              @default(false) @map("scostamento_dopo_fattura")
   scostamentoIl          DateTime?            @map("scostamento_il")
+  /// Documento che ha fatturato il legame (4.4a, §4.8): CHECK `legami_movimento_documento_se_fatturato` `(stato = 'FATTURATO') = (documento_id IS NOT NULL)`.
+  documentoId            String?              @map("documento_id") @db.Uuid
+  /// Presa d'atto dello scostamento dopo la fattura (decisione 1); CHECK `legami_movimento_gestito_se_scostamento`.
+  scostamentoGestitoIl   DateTime?            @map("scostamento_gestito_il")
+  scostamentoGestitoDa   String?              @map("scostamento_gestito_da") @db.Uuid
+  scostamentoNota        String?              @map("scostamento_nota") @db.VarChar(200)
   versione               Int                  @default(1)
   creatoDa               String?              @map("creato_da") @db.Uuid
   createdAt              DateTime             @default(now()) @map("created_at")
@@ -3798,16 +3831,22 @@ model LegameMovimento {
   contratto          ContrattoCliente? @relation(fields: [contrattoId, clienteId, tenantId], references: [id, clienteId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_contratto_fkey")
   elenco             ElencoAddebiti?   @relation(fields: [elencoId, contrattoId, tenantId], references: [id, contrattoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_elenco_fkey")
 
+  documento DocumentoFattura? @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "legami_movimento_documento_fkey")
+
   righe RigaLegameMovimento[]
+  righeDocumento RigaDocumentoFattura[]
 
   @@unique([tenantId, movimentoOriginaleId], map: "legami_movimento_tenant_id_movimento_originale_id_key")
   /// Bersaglio della chiave composta delle righe (che cadono con la testata).
   @@unique([id, elencoId, tenantId], map: "legami_movimento_id_elenco_id_tenant_id_key")
+  /// Bersaglio della chiave composta delle righe di documento (4.4a).
+  @@unique([id, tenantId], map: "legami_movimento_id_tenant_id_key")
   @@index([tenantId, stato, dataMovimento], map: "legami_movimento_tenant_id_stato_data_movimento_idx")
   @@index([tenantId, clienteId], map: "legami_movimento_tenant_id_cliente_id_idx")
   @@index([tenantId, contrattoId], map: "legami_movimento_tenant_id_contratto_id_idx")
   @@index([tenantId, elencoId], map: "legami_movimento_tenant_id_elenco_id_idx")
   @@index([tenantId, movimentoVigenteId], map: "legami_movimento_tenant_id_movimento_vigente_id_idx")
+  @@index([tenantId, documentoId], map: "legami_movimento_tenant_id_documento_id_idx")
   @@map("legami_movimento")
 }
 
@@ -3843,6 +3882,10 @@ model RigaLegameMovimento {
   rigaAddebito RigaAddebito    @relation(fields: [rigaAddebitoId, elencoId, tenantId], references: [id, elencoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_legame_movimento_riga_addebito_fkey")
   codiceIva    CodiceIva       @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_legame_movimento_codice_iva_fkey")
 
+  righeDocumento RigaDocumentoFattura[]
+
+  /// Bersaglio della chiave composta delle righe di documento (4.4a).
+  @@unique([id, legameId, tenantId], map: "righe_legame_movimento_id_legame_id_tenant_id_key")
   @@unique([legameId, rigaAddebitoId], map: "righe_legame_movimento_legame_id_riga_addebito_id_key")
   @@index([tenantId, rigaAddebitoId], map: "righe_legame_movimento_tenant_id_riga_addebito_id_idx")
   @@index([tenantId, codiceIvaId], map: "righe_legame_movimento_tenant_id_codice_iva_id_idx")
@@ -3854,6 +3897,8 @@ model ImpostazioneFatturazione {
   id             String    @id(map: "impostazioni_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String    @map("tenant_id") @db.Uuid
   fatturazioneDa DateTime? @map("fatturazione_da") @db.Date
+  /// Interruttore delle definitive (4.4a, decisione 13): spento = niente definitive. Un'azienda senza riga e' spenta. Non e' esposto dai DTO della 4.3.
+  definitiveAttive Boolean   @default(false) @map("definitive_attive")
   versione       Int       @default(1)
   modificatoDa   String?   @map("modificato_da") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at")
@@ -3863,4 +3908,349 @@ model ImpostazioneFatturazione {
 
   @@unique([tenantId], map: "impostazioni_fatturazione_tenant_id_key")
   @@map("impostazioni_fatturazione")
+}
+
+// ============================================================================
+// Fase 4 pezzo 4a: fatturazione per periodo (spec 2026-11-05-fase4-4, §4)
+// ============================================================================
+
+/// Stato di un'elaborazione di fatturazione (4.4a, §4.2). Ripetuto nel dominio (`domain/fatturazione/codici.ts`).
+enum StatoElaborazioneFatturazione {
+  IN_CODA
+  IN_CORSO
+  ANTEPRIMA_PRONTA
+  IN_DEFINITIVA
+  DEFINITIVA
+  FALLITA
+  SCARTATA
+
+  @@map("stato_elaborazione_fatturazione")
+}
+
+/// Stato di un documento di fattura (4.4a, §4.3): nasce BOZZA; dopo la definitiva e' immutabile (trigger `documenti_fattura_immutabile`).
+enum StatoDocumentoFattura {
+  BOZZA
+  DEFINITIVO
+  ANNULLATO
+
+  @@map("stato_documento_fattura")
+}
+
+/// Come l'elaborazione raggruppa i legami in documenti (decisione 5).
+enum RaggruppamentoFatturazione {
+  PER_CONTRATTO
+  PER_ELENCO
+
+  @@map("raggruppamento_fatturazione")
+}
+
+/// Tipo di una riga di documento (4.4a, §4.4 piu' P8: `QUANTITA_MOVIMENTI` per le righe TT e TF).
+enum TipoRigaDocumentoFattura {
+  MOVIMENTO
+  FASCIA_SPECIALE
+  FISSO
+  MINIMO
+  SPESA_INCASSO
+  BOLLO
+  STORNO
+  QUANTITA_MOVIMENTI
+
+  @@map("tipo_riga_documento_fattura")
+}
+
+/// Tipo di marcatore di un addebito gia' fatturato (4.4a, §4.7, D15 della 4.2).
+enum TipoMarcatoreAddebito {
+  SCADENZA_FISSO
+  PERIODO_CANONE
+  CONGUAGLIO
+  ACCONTO_FATTURATO
+  ACCONTO_DETRATTO
+
+  @@map("tipo_marcatore_addebito")
+}
+
+/// Dati del cedente che `tenants` non ha (4.4a, §4.9, S7): una riga per azienda. Partita IVA, codice fiscale, ragione sociale e indirizzo si leggono da `tenants`. CHECK solo in migration: `cedente_fatturazione_regime_ammesso` (elenco `REGIMI_FISCALI`), `_socio_unico_ammesso`, `_stato_liquidazione_ammesso`, `_versione_positiva`.
+model CedenteFatturazione {
+  id                       String   @id(map: "cedente_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String   @map("tenant_id") @db.Uuid
+  regimeFiscale            String   @map("regime_fiscale") @db.VarChar(4)
+  reaUfficio               String?  @map("rea_ufficio") @db.VarChar(2)
+  capitaleSociale          Decimal? @map("capitale_sociale") @db.Decimal(15, 2)
+  socioUnico               String?  @map("socio_unico") @db.VarChar(2)
+  statoLiquidazione        String   @default("LN") @map("stato_liquidazione") @db.VarChar(2)
+  registroIvaPredefinitoId String?  @map("registro_iva_predefinito_id") @db.Uuid
+  /// Vuoto = partita IVA del cedente; la 4.5 lo sovrascrive col provider.
+  idTrasmittenteCodice     String?  @map("id_trasmittente_codice") @db.VarChar(28)
+  versione                 Int      @default(1)
+  modificatoDa             String?  @map("modificato_da") @db.Uuid
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  tenant                 Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "cedente_fatturazione_tenant_id_fkey")
+  registroIvaPredefinito RegistroIva? @relation(fields: [registroIvaPredefinitoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "cedente_fatturazione_registro_iva_fkey")
+
+  @@unique([tenantId], map: "cedente_fatturazione_tenant_id_key")
+  @@map("cedente_fatturazione")
+}
+
+/// Contatore della numerazione per (azienda, registro IVA, anno) (4.4a, §4.6). La riga nasce con `INSERT ... ON CONFLICT DO NOTHING` e si blocca `FOR UPDATE`. L'invariante «numeri dei DEFINITIVO = numero_partenza+1 .. ultimo_numero» non e' esprimibile come CHECK: la verifica `fatturazione_violazioni_numerazione()`. CHECK `numerazioni_fattura_numeri_coerenti` solo in migration.
+model NumerazioneFattura {
+  tenantId       String    @map("tenant_id") @db.Uuid
+  registroIvaId  String    @map("registro_iva_id") @db.Uuid
+  anno           Int       @db.SmallInt
+  ultimoNumero   Int       @default(0) @map("ultimo_numero")
+  ultimaData     DateTime? @map("ultima_data") @db.Date
+  numeroPartenza Int       @default(0) @map("numero_partenza")
+  /// Data di partenza (P1): dopo l'annullo dell'unico definitivo di WasteFlow `ultima_data` torna a questo valore.
+  dataPartenza   DateTime? @map("data_partenza") @db.Date
+  versione       Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "numerazioni_fattura_tenant_id_fkey")
+  registroIva RegistroIva @relation(fields: [registroIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "numerazioni_fattura_registro_iva_fkey")
+
+  @@id([tenantId, registroIvaId, anno], map: "numerazioni_fattura_pkey")
+  @@map("numerazioni_fattura")
+}
+
+/// Il lotto di fatturazione (4.4a, §4.2): parametri, stato, impronta, job. Al massimo una elaborazione per azienda in `IN_CORSO` o `IN_DEFINITIVA` (indice unico parziale `elaborazioni_fatturazione_una_attiva`, solo in migration). `esito` e' scritto dal job della definitiva (`{ codice, differenze? }`).
+model ElaborazioneFatturazione {
+  id               String                        @id(map: "elaborazioni_fatturazione_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                        @map("tenant_id") @db.Uuid
+  stato            StatoElaborazioneFatturazione @default(IN_CODA)
+  periodoDal       DateTime                      @map("periodo_dal") @db.Date
+  periodoAl        DateTime                      @map("periodo_al") @db.Date
+  dataDocumento    DateTime                      @map("data_documento") @db.Date
+  /// Clienti, contratti, categorie, tipi, registri IVA. Validato dal DTO, mai interpretato dal database.
+  filtri           Json                          @default("{}")
+  raggruppamento   RaggruppamentoFatturazione
+  includiArretrati Boolean                       @default(false) @map("includi_arretrati")
+  impronta         String?                       @db.VarChar(64)
+  riepilogo        Json?
+  erroriGenerali   String[]                      @default([]) @map("errori_generali")
+  esito            Json?
+  jobId            String?                       @map("job_id") @db.VarChar(100)
+  avviataDa        String?                       @map("avviata_da") @db.Uuid
+  definitaDa       String?                       @map("definita_da") @db.Uuid
+  definitaIl       DateTime?                     @map("definita_il")
+  erroreTecnico    String?                       @map("errore_tecnico") @db.VarChar(200)
+  versione         Int                           @default(1)
+  createdAt        DateTime                      @default(now()) @map("created_at")
+  updatedAt        DateTime                      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "elaborazioni_fatturazione_tenant_id_fkey")
+
+  documenti DocumentoFattura[]
+
+  @@unique([id, tenantId], map: "elaborazioni_fatturazione_id_tenant_id_key")
+  @@index([tenantId, stato, createdAt], map: "elaborazioni_fatturazione_tenant_id_stato_created_at_idx")
+  @@map("elaborazioni_fatturazione")
+}
+
+/// Testata del documento: bozza, definitivo o annullato (4.4a, §4.3). Un trigger (`documenti_fattura_immutabile`, fail-closed) rende immutabile il documento non in bozza. Unici parziali solo in migration: `documenti_fattura_numero_definitivo`, `documenti_fattura_un_storno`. CHECK solo in migration (`documenti_fattura_*`). Le FK composte `NoAction` rendono "in uso" cliente, contratto, elenco e registro IVA.
+model DocumentoFattura {
+  id                    String                @id(map: "documenti_fattura_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                @map("tenant_id") @db.Uuid
+  /// Null per una nota di credito di storno (§5.6).
+  elaborazioneId        String?               @map("elaborazione_id") @db.Uuid
+  stato                 StatoDocumentoFattura @default(BOZZA)
+  emessoIl              DateTime?             @map("emesso_il")
+  tipoDocumento         String                @map("tipo_documento") @db.VarChar(4)
+  registroIvaId         String                @map("registro_iva_id") @db.Uuid
+  anno                  Int                   @db.SmallInt
+  numero                Int?
+  /// `numero` piu' `suffisso_numero` del registro (S9): e' il `Numero` dell'XML.
+  numeroTesto           String?               @map("numero_testo") @db.VarChar(20)
+  dataDocumento         DateTime              @map("data_documento") @db.Date
+  clienteId             String                @map("cliente_id") @db.Uuid
+  clienteFatturazioneId String                @map("cliente_fatturazione_id") @db.Uuid
+  contrattoId           String                @map("contratto_id") @db.Uuid
+  /// Solo con `PER_ELENCO`.
+  elencoId              String?               @map("elenco_id") @db.Uuid
+  periodoDal            DateTime              @map("periodo_dal") @db.Date
+  periodoAl             DateTime              @map("periodo_al") @db.Date
+  formatoTrasmissione   String                @map("formato_trasmissione") @db.VarChar(5)
+  codiceDestinatario    String?               @map("codice_destinatario") @db.VarChar(7)
+  pecDestinatario       String?               @map("pec_destinatario") @db.VarChar(255)
+  esigibilitaIva        EsigibilitaIva        @map("esigibilita_iva")
+  totaleImponibile      Decimal               @map("totale_imponibile") @db.Decimal(14, 2)
+  totaleIva             Decimal               @map("totale_iva") @db.Decimal(14, 2)
+  totaleDocumento       Decimal               @map("totale_documento") @db.Decimal(14, 2)
+  nettoAPagare          Decimal               @map("netto_a_pagare") @db.Decimal(14, 2)
+  bolloDovuto           Boolean               @default(false) @map("bollo_dovuto")
+  importoBollo          Decimal?              @map("importo_bollo") @db.Decimal(6, 2)
+  /// Cedente, cessionario, pagamento, conto, testo di fatturazione, CIG, CUP, `IdDocumento`. Scritta in bozza, riscritta e congelata alla definitiva.
+  fotografia            Json
+  /// Per `TD04`: il documento stornato (`DatiFattureCollegate`).
+  documentoOrigineId    String?               @map("documento_origine_id") @db.Uuid
+  /// Insiemi chiusi (CHECK `documenti_fattura_errori_ammessi` e `_avvisi_ammessi`, ripetuti in `domain/fatturazione/codici.ts`).
+  errori                String[]              @default([])
+  avvisi                String[]              @default([])
+  esclusoDaDefinitiva   Boolean               @default(false) @map("escluso_da_definitiva")
+  xml                   Bytes?
+  xmlSha256             String?               @map("xml_sha256") @db.VarChar(64)
+  xmlGeneratoIl         DateTime?             @map("xml_generato_il")
+  progressivoFile       String?               @map("progressivo_file") @db.VarChar(5)
+  definitoDa            String?               @map("definito_da") @db.Uuid
+  definitoIl            DateTime?             @map("definito_il")
+  annullatoDa           String?               @map("annullato_da") @db.Uuid
+  annullatoIl           DateTime?             @map("annullato_il")
+  motivoAnnullo         String?               @map("motivo_annullo") @db.VarChar(200)
+  versione              Int                   @default(1)
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "documenti_fattura_tenant_id_fkey")
+  elaborazione        ElaborazioneFatturazione? @relation(fields: [elaborazioneId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_elaborazione_fkey")
+  registroIva         RegistroIva               @relation(fields: [registroIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_registro_iva_fkey")
+  cliente             Cliente                   @relation("DocumentoCliente", fields: [clienteId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_cliente_fkey")
+  clienteFatturazione Cliente                   @relation("DocumentoClienteFatturazione", fields: [clienteFatturazioneId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_cliente_fatturazione_fkey")
+  contratto           ContrattoCliente          @relation(fields: [contrattoId, clienteId, tenantId], references: [id, clienteId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_contratto_fkey")
+  elenco              ElencoAddebiti?           @relation(fields: [elencoId, contrattoId, tenantId], references: [id, contrattoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_elenco_fkey")
+  documentoOrigine    DocumentoFattura?         @relation("DocumentoStorno", fields: [documentoOrigineId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "documenti_fattura_origine_fkey")
+
+  storni     DocumentoFattura[]           @relation("DocumentoStorno")
+  righe      RigaDocumentoFattura[]
+  riepiloghi RiepilogoIvaDocumento[]
+  rate       RataDocumentoFattura[]
+  marcatori  MarcatoreAddebitoFatturato[]
+  legami     LegameMovimento[]
+
+  @@unique([id, tenantId], map: "documenti_fattura_id_tenant_id_key")
+  @@unique([tenantId, progressivoFile], map: "documenti_fattura_tenant_id_progressivo_file_key")
+  @@index([tenantId, stato, dataDocumento], map: "documenti_fattura_tenant_id_stato_data_documento_idx")
+  @@index([tenantId, clienteFatturazioneId], map: "documenti_fattura_tenant_id_cliente_fatturazione_id_idx")
+  @@index([tenantId, elaborazioneId], map: "documenti_fattura_tenant_id_elaborazione_id_idx")
+  @@index([tenantId, registroIvaId], map: "documenti_fattura_tenant_id_registro_iva_id_idx")
+  @@index([tenantId, contrattoId], map: "documenti_fattura_tenant_id_contratto_id_idx")
+  @@index([tenantId, clienteId], map: "documenti_fattura_tenant_id_cliente_id_idx")
+  @@map("documenti_fattura")
+}
+
+/// Riga del documento, `DettaglioLinee` (4.4a, §4.4): porta l'importo (dato fiscale emesso, non un derivato). Cade con la testata solo se e' in bozza (trigger `figlie_documento_immutabili`). Le FK `NoAction` verso legame, riga del legame, riga di listino e codice IVA rendono "in uso" quegli oggetti.
+model RigaDocumentoFattura {
+  id                   String                   @id(map: "righe_documento_fattura_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                   @map("tenant_id") @db.Uuid
+  documentoId          String                   @map("documento_id") @db.Uuid
+  numeroLinea          Int                      @map("numero_linea")
+  tipoRiga             TipoRigaDocumentoFattura @map("tipo_riga")
+  legameId             String?                  @map("legame_id") @db.Uuid
+  rigaLegameId         String?                  @map("riga_legame_id") @db.Uuid
+  /// `movimento_vigente_id` del legame alla definitiva (S6).
+  movimentoFatturatoId String?                  @map("movimento_fatturato_id") @db.Uuid
+  rigaAddebitoId       String?                  @map("riga_addebito_id") @db.Uuid
+  descrizione          String                   @db.VarChar(1000)
+  dataMovimento        DateTime?                @map("data_movimento") @db.Date
+  cerCode              String?                  @map("cer_code") @db.VarChar(10)
+  numeroFir            String?                  @map("numero_fir") @db.VarChar(50)
+  quantita             Decimal?                 @db.Decimal(14, 3)
+  unitaMisura          String?                  @map("unita_misura") @db.VarChar(10)
+  prezzoUnitario       Decimal                  @map("prezzo_unitario") @db.Decimal(14, 6)
+  /// Formula a cascata.
+  sconto               String?                  @db.VarChar(20)
+  importoLordo         Decimal                  @map("importo_lordo") @db.Decimal(14, 2)
+  importoSconto        Decimal                  @map("importo_sconto") @db.Decimal(14, 2)
+  prezzoTotale         Decimal                  @map("prezzo_totale") @db.Decimal(14, 2)
+  codiceIvaId          String                   @map("codice_iva_id") @db.Uuid
+  aliquotaIva          Decimal                  @map("aliquota_iva") @db.Decimal(5, 2)
+  naturaIva            String?                  @map("natura_iva") @db.VarChar(4)
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "righe_documento_fattura_tenant_id_fkey")
+  documento    DocumentoFattura     @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "righe_documento_fattura_documento_fkey")
+  legame       LegameMovimento?     @relation(fields: [legameId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_legame_fkey")
+  rigaLegame   RigaLegameMovimento? @relation(fields: [rigaLegameId, legameId, tenantId], references: [id, legameId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_riga_legame_fkey")
+  rigaAddebito RigaAddebito?        @relation(fields: [rigaAddebitoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_riga_addebito_fkey")
+  codiceIva    CodiceIva            @relation(fields: [codiceIvaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "righe_documento_fattura_codice_iva_fkey")
+
+  marcatori MarcatoreAddebitoFatturato[]
+
+  @@unique([id, documentoId, tenantId], map: "righe_documento_fattura_id_documento_id_tenant_id_key")
+  @@unique([documentoId, numeroLinea], map: "righe_documento_fattura_documento_id_numero_linea_key")
+  @@index([tenantId, legameId], map: "righe_documento_fattura_tenant_id_legame_id_idx")
+  @@index([tenantId, rigaAddebitoId], map: "righe_documento_fattura_tenant_id_riga_addebito_id_idx")
+  @@index([tenantId, codiceIvaId], map: "righe_documento_fattura_tenant_id_codice_iva_id_idx")
+  @@map("righe_documento_fattura")
+}
+
+/// `DatiRiepilogo` per aliquota e natura (4.4a, §4.5). L'unico `(documento, aliquota, natura)` e' `NULLS NOT DISTINCT` (solo in migration, come `GiacenzaIniziale`).
+model RiepilogoIvaDocumento {
+  id                   String         @id(map: "riepiloghi_iva_documento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String         @map("tenant_id") @db.Uuid
+  documentoId          String         @map("documento_id") @db.Uuid
+  aliquota             Decimal        @db.Decimal(5, 2)
+  natura               String?        @db.VarChar(4)
+  imponibile           Decimal        @db.Decimal(14, 2)
+  imposta              Decimal        @db.Decimal(14, 2)
+  esigibilita          EsigibilitaIva
+  /// Descrizione del codice IVA per le nature.
+  riferimentoNormativo String?        @map("riferimento_normativo") @db.VarChar(100)
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "riepiloghi_iva_documento_tenant_id_fkey")
+  documento DocumentoFattura @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "riepiloghi_iva_documento_documento_fkey")
+
+  @@unique([documentoId, aliquota, natura], map: "riepiloghi_iva_documento_documento_id_aliquota_natura_key")
+  @@map("riepiloghi_iva_documento")
+}
+
+/// `DettaglioPagamento` (4.4a, §4.5). ABI e CAB si ricavano dall'IBAN italiano.
+model RataDocumentoFattura {
+  id           String   @id(map: "rate_documento_fattura_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  documentoId  String   @map("documento_id") @db.Uuid
+  ordine       Int
+  /// MP01-MP23.
+  modalita     String   @db.VarChar(4)
+  dataScadenza DateTime @map("data_scadenza") @db.Date
+  importo      Decimal  @db.Decimal(14, 2)
+  istituto     String?  @db.VarChar(80)
+  iban         String?  @db.VarChar(34)
+  abi          String?  @db.VarChar(5)
+  cab          String?  @db.VarChar(5)
+  bic          String?  @db.VarChar(11)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "rate_documento_fattura_tenant_id_fkey")
+  documento DocumentoFattura @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "rate_documento_fattura_documento_fkey")
+
+  @@unique([documentoId, ordine], map: "rate_documento_fattura_documento_id_ordine_key")
+  @@map("rate_documento_fattura")
+}
+
+/// Scadenze dei fissi, periodi dei canoni, conguagli e acconti gia' fatturati (4.4a, §4.7, D15 della 4.2). Una violazione dell'unico vuol dire doppia fatturazione. `chiave_competenza` e' `AAAA-MM-GG` oppure `AAAA-MM-GG/AAAA-MM-GG` (CHECK `marcatori_addebiti_fatturati_chiave_ammessa`).
+model MarcatoreAddebitoFatturato {
+  id               String                @id(map: "marcatori_addebiti_fatturati_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String                @map("tenant_id") @db.Uuid
+  rigaAddebitoId   String                @map("riga_addebito_id") @db.Uuid
+  tipo             TipoMarcatoreAddebito
+  chiaveCompetenza String                @map("chiave_competenza") @db.VarChar(25)
+  documentoId      String                @map("documento_id") @db.Uuid
+  rigaDocumentoId  String                @map("riga_documento_id") @db.Uuid
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "marcatori_addebiti_fatturati_tenant_id_fkey")
+  rigaAddebito  RigaAddebito         @relation(fields: [rigaAddebitoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_riga_addebito_fkey")
+  documento     DocumentoFattura     @relation(fields: [documentoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_documento_fkey")
+  rigaDocumento RigaDocumentoFattura @relation(fields: [rigaDocumentoId, documentoId, tenantId], references: [id, documentoId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "marcatori_addebiti_fatturati_riga_documento_fkey")
+
+  @@unique([tenantId, rigaAddebitoId, tipo, chiaveCompetenza], map: "marcatori_addebiti_fatturati_unico_key")
+  @@index([tenantId, documentoId], map: "marcatori_addebiti_fatturati_tenant_id_documento_id_idx")
+  @@map("marcatori_addebiti_fatturati")
+}
+
+/// Progressivo univoco del nome file FatturaPA per azienda (4.4a, §7.2). Si blocca `FOR UPDATE` da solo.
+model ContatoreFileFatturapa {
+  tenantId  String   @id(map: "contatori_file_fatturapa_pkey") @map("tenant_id") @db.Uuid
+  ultimo    Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "contatori_file_fatturapa_tenant_id_fkey")
+
+  @@map("contatori_file_fatturapa")
 }

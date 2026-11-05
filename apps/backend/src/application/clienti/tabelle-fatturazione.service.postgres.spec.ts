@@ -481,7 +481,7 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
         response: {
           error: 'REGISTRO_IVA_IN_USO',
           message:
-            'Il registro IVA è usato da clienti o contratti: disattivalo invece di eliminarlo.',
+            'Il registro IVA è usato da clienti, contratti o documenti: disattivalo invece di eliminarlo.',
         },
       })
       expect(await owner.registroIva.count({ where: { id: ids.registroId } })).toBe(1)
@@ -503,7 +503,7 @@ describe('Registri IVA, testi, codifiche — Postgres reale, ruolo wasteflow_app
         response: {
           error: 'REGISTRO_IVA_IN_USO',
           message:
-            'Il registro IVA è usato da clienti o contratti: non può diventare il registro delle ricevute split payment.',
+            'Il registro IVA è usato da clienti, contratti o documenti: non può diventare il registro delle ricevute split payment.',
         },
       })
       expect(

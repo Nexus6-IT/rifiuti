@@ -18,7 +18,23 @@ import {
   type VincoliNoti,
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { COLONNE_SPESE_DI_CODICE_IVA, contaUsi } from '../clienti/uso-tabelle-fatturazione'
 import { COLONNE_CODICE_IVA, contaUsiListino, type ListinoUsi } from './uso-listino'
+
+/**
+ * Citazioni di ciascun codice IVA: addebiti, righe, legami e documenti (listino) piu' le spese
+ * accessorie (4.4a). Una query per sorgente, mai una per codice.
+ */
+async function contaUsiCodiceIva(
+  client: ListinoUsi,
+  tenantId: string,
+  ids: readonly string[]
+): Promise<Map<string, number>> {
+  const usi = await contaUsiListino(client, tenantId, ids, COLONNE_CODICE_IVA)
+  const spese = await contaUsi(client, tenantId, ids, COLONNE_SPESE_DI_CODICE_IVA)
+  for (const [id, n] of spese) usi.set(id, (usi.get(id) ?? 0) + n)
+  return usi
+}
 
 const ENTITA: DescrizioneEntita = {
   prefisso: 'CODICE_IVA',
@@ -28,7 +44,7 @@ const ENTITA: DescrizioneEntita = {
   inUso: {
     codice: 'CODICE_IVA_IN_USO',
     messaggio:
-      'Il codice IVA è usato da addebiti, righe dei listini o movimenti: disattivalo invece di eliminarlo.',
+      'Il codice IVA è usato da addebiti, righe dei listini, movimenti, documenti o spese accessorie: disattivalo invece di eliminarlo.',
   },
 }
 
@@ -90,7 +106,7 @@ async function comeVista(
   tenantId: string,
   client: ListinoUsi
 ): Promise<CodiceIvaVista> {
-  const usi = (await contaUsiListino(client, tenantId, [r.id], COLONNE_CODICE_IVA)).get(r.id) ?? 0
+  const usi = (await contaUsiCodiceIva(client, tenantId, [r.id])).get(r.id) ?? 0
   return vistaConUsi(r, usi)
 }
 
@@ -116,11 +132,10 @@ export class CodiciIvaService {
         where: incluseDisattivate ? { tenantId } : { tenantId, attivo: true },
         orderBy: [{ attivo: 'desc' }, { codice: 'asc' }],
       })
-      const usi = await contaUsiListino(
+      const usi = await contaUsiCodiceIva(
         this.prisma,
         tenantId,
-        righe.map(r => r.id),
-        COLONNE_CODICE_IVA
+        righe.map(r => r.id)
       )
       return righe.map(r => vistaConUsi(r, usi.get(r.id) ?? 0))
     })

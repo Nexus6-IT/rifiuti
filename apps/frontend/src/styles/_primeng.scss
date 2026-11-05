@@ -705,6 +705,10 @@ label {
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+.p-tabview .p-tabview-panels {
+  padding-top: var(--spacing-base);
 }
 .p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link {
   color: var(--text-primary);

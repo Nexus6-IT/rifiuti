@@ -32,6 +32,7 @@ import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { randomUUID } from 'crypto'
 import {
+  creaDocumentoMinimoPerLegame,
   creaFirDiTest,
   creaScenarioProposta,
   pulisciTenantDiTest,
@@ -279,9 +280,19 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
   }
 
   async function portaAFatturato(legameId: string, stato: 'FATTURATO' | 'IMPORTATO_FATTURATO') {
+    // 4.4a: FATTURATO vuole il documento (CHECK `legami_movimento_documento_se_fatturato`).
+    let documentoId: string | null = null
+    if (stato === 'FATTURATO') {
+      const l = await owner.legameMovimento.findUniqueOrThrow({ where: { id: legameId } })
+      documentoId = await creaDocumentoMinimoPerLegame(owner, l.tenantId, {
+        clienteId: l.clienteId as string,
+        contrattoId: l.contrattoId as string,
+        elencoId: l.elencoId,
+      })
+    }
     await owner.legameMovimento.update({
       where: { id: legameId },
-      data: { stato, fatturatoIl: new Date(), riferimentoFattura: 'F-1' },
+      data: { stato, fatturatoIl: new Date(), riferimentoFattura: 'F-1', documentoId },
     })
   }
 

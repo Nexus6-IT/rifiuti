@@ -14,6 +14,7 @@ import {
   PeriodoFatturazione,
 } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
+import { ListinoService } from '../listino/listino.service'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
 import {
   accettaConferma,
@@ -378,6 +379,7 @@ describe('ContrattoClienteDialogComponent', () => {
           useValue: { contratti, clienti: clientiRuolo, agenti, allegati: allegatiRotta },
         },
         { provide: TabelleFatturazioneService, useValue: tab },
+        { provide: ListinoService, useValue: { codiciIva: { list: () => of([]) } } },
         { provide: RegistryService, useValue: registry },
         { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
       ],

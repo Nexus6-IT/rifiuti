@@ -31,6 +31,7 @@ import {
   creaPrismaServiceApplicativo,
 } from '../../infrastructure/persistence/prisma.service'
 import {
+  creaDocumentoMinimoPerLegame,
   creaLegameDiTest,
   creaMovimentoDiTest,
   creaScenarioProposta,
@@ -818,11 +819,17 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
       await owner.$executeRawUnsafe('ANALYZE waste_movements')
       // legami per i soli movimenti fatturabili: 85% FATTURATO, 9% CONFERMATO, 2% PROPOSTO,
       // 1% DA_COLLEGARE, 1% ESCLUSO, 2% nessun legame
+      // 4.4a: i FATTURATO citano un documento (CHECK `legami_movimento_documento_se_fatturato`).
+      const documentoVolumeId = await creaDocumentoMinimoPerLegame(owner, s.tenantId, {
+        clienteId: s.clienteId,
+        contrattoId: s.contrattoId,
+        elencoId: s.elencoId,
+      })
       await conTimeout(owner.$executeRaw`
         INSERT INTO legami_movimento
           (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
            data_movimento, cliente_id, contratto_id, elenco_id, motivo_esclusione, fatturato_il,
-           updated_at)
+           documento_id, updated_at)
         SELECT m.tenant_id, m.registro_id, m.type, m.id, m.id, x.stato::stato_legame_movimento,
                m.movement_date::date,
                CASE WHEN x.stato IN ('DA_COLLEGARE','ESCLUSO') THEN NULL ELSE ${s.clienteId}::uuid END,
@@ -830,6 +837,7 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
                CASE WHEN x.stato IN ('DA_COLLEGARE','ESCLUSO') THEN NULL ELSE ${s.elencoId}::uuid END,
                CASE WHEN x.stato = 'ESCLUSO' THEN 'prova' END,
                CASE WHEN x.stato = 'FATTURATO' THEN now() END,
+               CASE WHEN x.stato = 'FATTURATO' THEN ${documentoVolumeId}::uuid END,
                now()
         FROM (SELECT m.*, ((m.progressive_number / 10) % 100) AS k FROM waste_movements m
               WHERE m.tenant_id = ${s.tenantId}::uuid AND m.causale = 'INGRESSO_ESTERNO') m

@@ -4,7 +4,7 @@
  * `ModificaSpesaAccessoriaDto` non usa `PartialType` (che accetta anche `null`).
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsBoolean, IsIn, IsInt, IsString, Matches, Min, ValidateIf } from 'class-validator'
+import { IsBoolean, IsIn, IsInt, IsString, IsUUID, Matches, Min, ValidateIf } from 'class-validator'
 
 export const TIPI_SPESA = ['INCASSO', 'BOLLO'] as const
 export const IMPORTO_REGEX = /^\d{1,8}(\.\d{1,2})?$/
@@ -28,6 +28,14 @@ export class CreaSpesaAccessoriaDto {
   @IsString()
   @Matches(IMPORTO_REGEX, { message: MESSAGGIO_IMPORTO })
   importo: string
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Codice IVA della spesa; null o omesso = nessuno',
+  })
+  @ValidateIf((_, v) => v !== undefined && v !== null)
+  @IsUUID()
+  codiceIvaId?: string | null
 }
 
 export class ModificaSpesaAccessoriaDto {
@@ -51,6 +59,11 @@ export class ModificaSpesaAccessoriaDto {
   @IsString()
   @Matches(IMPORTO_REGEX, { message: MESSAGGIO_IMPORTO })
   importo?: string
+
+  @ApiPropertyOptional({ nullable: true, description: 'Codice IVA della spesa; null = toglilo' })
+  @ValidateIf((_, v) => v !== undefined && v !== null)
+  @IsUUID()
+  codiceIvaId?: string | null
 
   @ApiPropertyOptional({ description: 'false = disattiva, true = riattiva' })
   @ValidateIf((_, v) => v !== undefined)

@@ -50,6 +50,8 @@ describe('CodiciIvaService (Prisma finto)', () => {
       addebito: { groupBy: jest.fn().mockResolvedValue([]) },
       rigaAddebito: { groupBy: jest.fn().mockResolvedValue([]) },
       rigaLegameMovimento: { groupBy: jest.fn().mockResolvedValue([]) },
+      rigaDocumentoFattura: { groupBy: jest.fn().mockResolvedValue([]) },
+      spesaAccessoria: { groupBy: jest.fn().mockResolvedValue([]) },
     }
     prisma = { ...tx, $transaction: jest.fn(async (fn: any) => fn(tx)) }
     service = new CodiciIvaService(prisma)
@@ -65,6 +67,23 @@ describe('CodiciIvaService (Prisma finto)', () => {
       expect(v.map(x => x.eliminabile)).toEqual([false, true])
       expect(v[0].aliquota).toBe('22.00')
       expect(v[0]).toMatchObject({ id: K, codice: '22', natura: null, attivo: true, versione: 1 })
+    })
+
+    it('le spese accessorie e le righe dei documenti contano come citazioni (4.4a)', async () => {
+      tx.codiceIva.findMany.mockResolvedValue([
+        riga(),
+        riga({ id: 'altro' }),
+        riga({ id: 'terzo' }),
+      ])
+      tx.spesaAccessoria.groupBy.mockResolvedValue([{ codiceIvaId: K, _count: { _all: 1 } }])
+      tx.rigaDocumentoFattura.groupBy.mockResolvedValue([
+        { codiceIvaId: 'altro', _count: { _all: 2 } },
+      ])
+      const v = await service.list(T, true)
+      expect(tx.spesaAccessoria.groupBy).toHaveBeenCalledTimes(1)
+      expect(tx.spesaAccessoria.groupBy.mock.calls[0][0].by).toEqual(['codiceIvaId'])
+      expect(tx.rigaDocumentoFattura.groupBy).toHaveBeenCalledTimes(1)
+      expect(v.map(x => x.eliminabile)).toEqual([false, false, true])
     })
 
     it('di default non include i disattivati', async () => {
@@ -229,7 +248,7 @@ describe('CodiciIvaService (Prisma finto)', () => {
       expect(e.getResponse()).toMatchObject({
         error: 'CODICE_IVA_IN_USO',
         message:
-          'Il codice IVA è usato da addebiti, righe dei listini o movimenti: disattivalo invece di eliminarlo.',
+          'Il codice IVA è usato da addebiti, righe dei listini, movimenti, documenti o spese accessorie: disattivalo invece di eliminarlo.',
       })
     })
 

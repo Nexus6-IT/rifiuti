@@ -16,6 +16,8 @@ const registro: RegistroIva = {
   descrizione: 'Vendite',
   ricevuteSplit: false,
   attivo: true,
+  suffissoNumero: null,
+  suffissoModificabile: true,
 }
 const split: RegistroIva = { ...registro, id: 'r2', codice: '02', ricevuteSplit: true }
 

@@ -58,6 +58,37 @@ import { messaggioErrore } from './tabella-comune'
           maxlength="60"
           data-testid="registro-dlg-descrizione"
         />
+        <label for="registro-suffisso">Suffisso del numero di fattura (facoltativo)</label>
+        <div
+          [attr.title]="suffissoModificabile() ? null : motivoSuffisso"
+          data-testid="registro-dlg-suffisso-box"
+        >
+          <input
+            pInputText
+            id="registro-suffisso"
+            formControlName="suffissoNumero"
+            maxlength="10"
+            placeholder="es. /A"
+            [attr.aria-invalid]="form.controls.suffissoNumero.invalid ? 'true' : null"
+            [attr.aria-describedby]="descrizioneSuffisso()"
+            data-testid="registro-dlg-suffisso"
+          />
+        </div>
+        <small
+          *ngIf="form.controls.suffissoNumero.invalid"
+          id="registro-suffisso-errore"
+          role="alert"
+          class="field-error"
+          data-testid="registro-dlg-suffisso-errore"
+          >Da 1 a 10 caratteri: lettere, cifre, «/» e «-».</small
+        >
+        <small
+          *ngIf="!suffissoModificabile()"
+          id="registro-suffisso-motivo"
+          class="field-hint"
+          data-testid="registro-dlg-suffisso-motivo"
+          >{{ motivoSuffisso }}</small
+        >
         <div>
           <p-checkbox
             inputId="registro-split"
@@ -102,14 +133,34 @@ export class RegistroIvaDialogComponent implements OnChanges {
   @Output() salvato = new EventEmitter<RegistroIva>()
   @Output() visibleChange = new EventEmitter<boolean>()
 
+  readonly motivoSuffisso =
+    "Il registro ha già fatture definitive nell'anno in corso: il suffisso non si può più cambiare."
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
+  /** Il server ha risposto SUFFISSO_NON_MODIFICABILE: l'elenco era vecchio, il campo si blocca. */
+  private readonly bloccatoDalServer = signal(false)
+  /** Un registro nuovo ha sempre il suffisso libero. */
+  suffissoModificabile(): boolean {
+    return (this.elemento?.suffissoModificabile ?? true) && !this.bloccatoDalServer()
+  }
 
   readonly form = new FormGroup({
     codice: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     descrizione: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     ricevuteSplit: new FormControl(false, { nonNullable: true }),
+    suffissoNumero: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.pattern(/^[A-Za-z0-9/-]{1,10}$/)],
+    }),
   })
+
+  /** Id degli elementi che spiegano il campo, per `aria-describedby`. */
+  descrizioneSuffisso(): string | null {
+    const id: string[] = []
+    if (this.form.controls.suffissoNumero.invalid) id.push('registro-suffisso-errore')
+    if (!this.suffissoModificabile()) id.push('registro-suffisso-motivo')
+    return id.length ? id.join(' ') : null
+  }
 
   ngOnChanges(c: SimpleChanges): void {
     if (c['visible'] && this.visible) this.inizializza()
@@ -121,18 +172,32 @@ export class RegistroIvaDialogComponent implements OnChanges {
       codice: e?.codice ?? '',
       descrizione: e?.descrizione ?? '',
       ricevuteSplit: e?.ricevuteSplit ?? false,
+      suffissoNumero: e?.suffissoNumero ?? '',
     })
+    this.bloccatoDalServer.set(false)
+    this.aggiornaAbilitazione()
     this.errore.set(null)
     this.inCorso.set(false)
+  }
+
+  private aggiornaAbilitazione(): void {
+    if (this.suffissoModificabile()) this.form.controls.suffissoNumero.enable()
+    else this.form.controls.suffissoNumero.disable()
   }
 
   salva(): void {
     if (this.form.invalid || this.inCorso()) return
     const v = this.form.getRawValue()
+    // Senza trim: il pattern rifiuta gli spazi, quindi il valore è già quello che parte.
+    const suffisso = v.suffissoNumero || null
+    const cambiato = suffisso !== (this.elemento?.suffissoNumero ?? null)
     const dati = {
       codice: v.codice.trim(),
       descrizione: v.descrizione.trim(),
       ricevuteSplit: v.ricevuteSplit,
+      // Solo se cambiato (e sbloccato): con un elenco vecchio, rimandare quello invariato darebbe
+      // 409 SUFFISSO_NON_MODIFICABILE anche per la sola descrizione.
+      ...(this.suffissoModificabile() && cambiato ? { suffissoNumero: suffisso } : {}),
     }
     this.inCorso.set(true)
     this.errore.set(null)
@@ -150,6 +215,13 @@ export class RegistroIvaDialogComponent implements OnChanges {
       },
       error: err => {
         this.inCorso.set(false)
+        if (
+          (err as { error?: { error?: string } } | null)?.error?.error ===
+          'SUFFISSO_NON_MODIFICABILE'
+        ) {
+          this.bloccatoDalServer.set(true)
+          this.aggiornaAbilitazione()
+        }
         this.errore.set(messaggioErrore(err, 'Impossibile salvare il registro IVA.'))
       },
     })

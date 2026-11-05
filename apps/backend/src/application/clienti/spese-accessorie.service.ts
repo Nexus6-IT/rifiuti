@@ -39,15 +39,20 @@ const VINCOLI: VincoliNoti = {
   },
 }
 
+/** Dati della spesa con il codice IVA facoltativo (4.4a, §4.10); `null` = nessun codice. */
+export type DatiSpesaConCodiceIva = DatiSpesaAccessoria & { codiceIvaId?: string | null }
+
 export interface SpesaVista extends DatiSpesaAccessoria {
   id: string
+  /** Codice IVA della spesa; senza, una spesa che si applica da l'errore `SPESA_SENZA_CODICE_IVA`. */
+  codiceIvaId: string | null
   attiva: boolean
   versione: number
   /** Nessun cliente o contratto la cita: si puo' cancellare invece di disattivare. */
   eliminabile: boolean
 }
 
-export type ModificaSpesa = Partial<DatiSpesaAccessoria> & {
+export type ModificaSpesa = Partial<DatiSpesaConCodiceIva> & {
   attiva?: boolean
   versione: number
 }
@@ -59,20 +64,51 @@ type RigaSpesa = {
   descrizione: string
   importo: Prisma.Decimal
   attiva: boolean
+  codiceIvaId: string | null
   versione: number
 }
 
 /** Campi modificabili, nell'ordine in cui compaiono in scrittura e nell'audit. */
-const CAMPI = ['tipo', 'codice', 'descrizione', 'importo', 'attiva'] as const
+const CAMPI = ['tipo', 'codice', 'descrizione', 'importo', 'codiceIvaId', 'attiva'] as const
 type Campo = (typeof CAMPI)[number]
 
-const datiDi = (r: RigaSpesa): DatiSpesaAccessoria & { attiva: boolean } => ({
+const datiDi = (
+  r: RigaSpesa
+): DatiSpesaAccessoria & { attiva: boolean; codiceIvaId: string | null } => ({
   tipo: r.tipo as TipoSpesa,
   codice: r.codice,
   descrizione: r.descrizione,
   importo: r.importo.toFixed(2),
+  codiceIvaId: r.codiceIvaId,
   attiva: r.attiva,
 })
+
+/**
+ * Il codice IVA deve essere dell'azienda (404 `CODICE_IVA_NON_TROVATO` altrimenti, anche per un
+ * codice di un'altra azienda: la RLS non lo fa vedere) e attivo (400, come per cedente e listino).
+ * Si chiama solo per un'assegnazione NUOVA: un codice gia' salvato e poi disattivato resta
+ * ammesso. Si blocca `FOR SHARE` fino al commit: chi lo elimina in parallelo aspetta.
+ */
+async function verificaCodiceIva(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  codiceIvaId: string
+): Promise<void> {
+  const righe = await tx.$queryRaw<{ attivo: boolean }[]>`SELECT attivo FROM "codici_iva"
+    WHERE id = ${codiceIvaId}::uuid AND tenant_id = ${tenantId}::uuid FOR SHARE`
+  if (righe.length === 0) {
+    throw new NotFoundException({
+      message: 'Codice IVA non trovato.',
+      error: 'CODICE_IVA_NON_TROVATO',
+    })
+  }
+  if (!righe[0].attivo) {
+    throw new BadRequestException({
+      message: ['Il codice IVA scelto non esiste o è disattivato.'],
+      error: 'SPESA_ACCESSORIA_NON_VALIDA',
+    })
+  }
+}
 
 async function comeVista(
   r: RigaSpesa,
@@ -139,13 +175,17 @@ export class SpeseAccessorieService {
     })
   }
 
-  async crea(tenantId: string, utenteId: string, dati: DatiSpesaAccessoria): Promise<SpesaVista> {
+  async crea(tenantId: string, utenteId: string, dati: DatiSpesaConCodiceIva): Promise<SpesaVista> {
     const valori = normalizzaSpesa(dati)
+    const codiceIvaId = dati.codiceIvaId ?? null
     validaOLancia(valori)
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
-          const riga = await tx.spesaAccessoria.create({ data: { tenantId, ...valori } })
+          if (codiceIvaId !== null) await verificaCodiceIva(tx, tenantId, codiceIvaId)
+          const riga = await tx.spesaAccessoria.create({
+            data: { tenantId, ...valori, codiceIvaId },
+          })
           await this.audit(tx, tenantId, utenteId, 'SPESA_ACCESSORIA_CREATA', 'creata', {
             spesaId: riga.id,
             tipo: riga.tipo,
@@ -182,10 +222,19 @@ export class SpeseAccessorieService {
             ...Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)),
           })
           validaOLancia(unione)
-          const nuovi: Record<Campo, unknown> = { ...unione, attiva: m.attiva ?? attuali.attiva }
+          const codiceIvaId = m.codiceIvaId === undefined ? attuali.codiceIvaId : m.codiceIvaId
+          const nuovi: Record<Campo, unknown> = {
+            ...unione,
+            codiceIvaId,
+            attiva: m.attiva ?? attuali.attiva,
+          }
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
           if (campi.length === 0) return comeVista(prima, tenantId, tx)
+          // Solo se cambia: una spesa che porta un codice poi disattivato resta modificabile.
+          if (campi.includes('codiceIvaId') && codiceIvaId !== null) {
+            await verificaCodiceIva(tx, tenantId, codiceIvaId)
+          }
           if (campi.includes('tipo')) {
             const usi = (await contaUsi(tx, tenantId, [id], COLONNE_SPESA)).get(id) ?? 0
             if (usi > 0) {

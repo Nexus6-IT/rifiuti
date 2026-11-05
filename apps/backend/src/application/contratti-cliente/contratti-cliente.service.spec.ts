@@ -157,6 +157,7 @@ describe('ContrattiClienteService (Prisma finto)', () => {
       codificaContratto: {
         findFirst: jest.fn().mockResolvedValue({ descrizione: 'Cessata attività' }),
       },
+      documentoFattura: { count: jest.fn().mockResolvedValue(0) },
       periodoFatturazioneCliente: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -1345,6 +1346,17 @@ describe('ContrattiClienteService (Prisma finto)', () => {
         'Il contratto ha dei contratti allegati: staccali prima di eliminarlo.'
       )
       expect(tx.contrattoCliente.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('bozza citata da un documento di fattura: 409 NON_ELIMINABILE, nessun audit (4.4a)', async () => {
+      tx.documentoFattura.count.mockResolvedValue(1)
+      const e = await errore(service.elimina(T, U, K, 1))
+      expect(e.getResponse().error).toBe('CONTRATTO_CLIENTE_NON_ELIMINABILE')
+      expect(tx.documentoFattura.count).toHaveBeenCalledWith({
+        where: { tenantId: T, contrattoId: K },
+      })
+      // Il controllo sta dopo la scrittura: il 409 fa il rollback dell'eliminazione logica.
+      expect(tx.activityLog.create).not.toHaveBeenCalled()
     })
 
     it('inesistente: 404; versione diversa: 409', async () => {

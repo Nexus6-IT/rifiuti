@@ -14,6 +14,8 @@ const registro: RegistroIva = {
   descrizione: 'Vendite',
   ricevuteSplit: false,
   attivo: true,
+  suffissoNumero: null,
+  suffissoModificabile: true,
 }
 
 describe('RegistroIvaDialogComponent', () => {
@@ -71,5 +73,127 @@ describe('RegistroIvaDialogComponent', () => {
     await apri(registro)
     fixture.componentInstance.chiudi()
     expect(fixture.componentInstance.form.controls.descrizione.value).toBe('')
+  })
+
+  describe('suffisso del numero', () => {
+    const input = () => q<HTMLInputElement>('registro-dlg-suffisso')!
+
+    it('modificabile: scritto e mandato', async () => {
+      tabella.modifica.and.returnValue(of(registro))
+      await apri({ ...registro, suffissoNumero: '/A' })
+      expect(input().value).toBe('/A')
+      expect(input().disabled).toBeFalse()
+      scrivi('registro-dlg-suffisso', '/B')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(tabella.modifica.calls.mostRecent().args[1].suffissoNumero).toBe('/B')
+    })
+
+    it('svuotato: il corpo ha null', async () => {
+      tabella.modifica.and.returnValue(of(registro))
+      await apri({ ...registro, suffissoNumero: '/A' })
+      scrivi('registro-dlg-suffisso', '')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(tabella.modifica.calls.mostRecent().args[1].suffissoNumero).toBeNull()
+    })
+
+    it('non modificabile: campo disabilitato, tooltip col motivo, non viene mandato', async () => {
+      tabella.modifica.and.returnValue(of(registro))
+      await apri({ ...registro, suffissoNumero: '/A', suffissoModificabile: false })
+      expect(input().disabled).toBeTrue()
+      expect(input().value).toBe('/A')
+      expect(q('registro-dlg-suffisso-box')!.getAttribute('title')).toContain('fatture definitive')
+      expect(q('registro-dlg-suffisso-motivo')!.textContent).toContain('fatture definitive')
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect('suffissoNumero' in tabella.modifica.calls.mostRecent().args[1]).toBeFalse()
+    })
+
+    it('suffisso invariato: non viene mandato (la sola descrizione non può dare 409)', async () => {
+      tabella.modifica.and.returnValue(of(registro))
+      await apri({ ...registro, suffissoNumero: '/A' })
+      scrivi('registro-dlg-descrizione', 'Vendite estero')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect('suffissoNumero' in tabella.modifica.calls.mostRecent().args[1]).toBeFalse()
+    })
+
+    it('registro nuovo con suffisso: viene mandato', async () => {
+      tabella.crea.and.returnValue(of(registro))
+      await apri(null)
+      scrivi('registro-dlg-codice', '01')
+      scrivi('registro-dlg-descrizione', 'Vendite')
+      scrivi('registro-dlg-suffisso', '/A')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(tabella.crea.calls.mostRecent().args[0].suffissoNumero).toBe('/A')
+    })
+
+    it('soli spazi: rifiutato (nessun trim che lo faccia passare)', async () => {
+      await apri(null)
+      scrivi('registro-dlg-codice', '01')
+      scrivi('registro-dlg-descrizione', 'Vendite')
+      scrivi('registro-dlg-suffisso', '   ')
+      await stabilizza(fixture)
+      expect(q('registro-dlg-suffisso-errore')).not.toBeNull()
+      expect(bottone('registro-dlg-salva')!.disabled).toBeTrue()
+    })
+
+    it("aria-describedby: cita il motivo se bloccato, l'errore se il pattern fallisce", async () => {
+      await apri({ ...registro, suffissoModificabile: false })
+      expect(input().getAttribute('aria-describedby')).toBe('registro-suffisso-motivo')
+      expect(document.getElementById('registro-suffisso-motivo')).not.toBeNull()
+      fixture.destroy()
+      await apri(null)
+      expect(input().getAttribute('aria-describedby')).toBeNull()
+      scrivi('registro-dlg-suffisso', '/A B')
+      await stabilizza(fixture)
+      expect(input().getAttribute('aria-describedby')).toBe('registro-suffisso-errore')
+      expect(document.getElementById('registro-suffisso-errore')).not.toBeNull()
+    })
+
+    it('un registro nuovo ha il suffisso libero', async () => {
+      await apri(null)
+      expect(input().disabled).toBeFalse()
+      expect(q('registro-dlg-suffisso-box')!.getAttribute('title')).toBeNull()
+    })
+
+    for (const errato of ['/A B', '12345678901', 'à']) {
+      it(`"${errato}" è rifiutato: errore sul campo e salvataggio bloccato`, async () => {
+        await apri(null)
+        scrivi('registro-dlg-codice', '01')
+        scrivi('registro-dlg-descrizione', 'Vendite')
+        scrivi('registro-dlg-suffisso', errato)
+        await stabilizza(fixture)
+        expect(q('registro-dlg-suffisso-errore')).not.toBeNull()
+        expect(bottone('registro-dlg-salva')!.disabled).toBeTrue()
+      })
+    }
+
+    it('409 SUFFISSO_NON_MODIFICABILE: messaggio del backend nel dialog', async () => {
+      tabella.modifica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: {
+            error: 'SUFFISSO_NON_MODIFICABILE',
+            message: "Il suffisso non si può cambiare: ci sono fatture definitive nell'anno.",
+          },
+        }))
+      )
+      await apri(registro)
+      scrivi('registro-dlg-suffisso', '/C')
+      await stabilizza(fixture)
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('registro-dlg-errore')!.textContent).toContain('Il suffisso non si può cambiare')
+      // L'elenco era vecchio: il campo si blocca e compare il motivo.
+      expect(input().disabled).toBeTrue()
+      expect(q('registro-dlg-suffisso-motivo')).not.toBeNull()
+    })
   })
 })

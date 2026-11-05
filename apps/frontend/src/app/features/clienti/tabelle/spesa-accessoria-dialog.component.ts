@@ -1,19 +1,24 @@
 import { CommonModule } from '@angular/common'
 import {
   Component,
+  computed,
   EventEmitter,
   Input,
   OnChanges,
+  OnDestroy,
   Output,
   SimpleChanges,
   inject,
   signal,
 } from '@angular/core'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import { Subscription } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { InputTextModule } from 'primeng/inputtext'
+import { CodiceIva } from '../../listino/listino.model'
+import { ListinoService } from '../../listino/listino.service'
 import {
   formatNumero,
   leggiNumero,
@@ -101,6 +106,24 @@ import { messaggioErrore } from './tabella-comune'
           data-testid="spesa-dlg-importo-errore"
           >{{ ei }}</small
         >
+        <label for="spesa-codice-iva">Codice IVA</label>
+        <p-dropdown
+          inputId="spesa-codice-iva"
+          formControlName="codiceIvaId"
+          [options]="opzioniIva()"
+          optionLabel="etichetta"
+          optionValue="id"
+          [showClear]="true"
+          placeholder="Nessuno"
+          appendTo="body"
+          data-testid="spesa-dlg-codice-iva"
+        />
+        <small
+          *ngIf="suggerimentoBollo()"
+          class="field-hint"
+          data-testid="spesa-dlg-suggerimento-bollo"
+          >{{ testoSuggerimentoBollo }}</small
+        >
         <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="spesa-dlg-errore">
           {{ e }}
         </p>
@@ -127,8 +150,9 @@ import { messaggioErrore } from './tabella-comune'
     `,
   ],
 })
-export class SpesaAccessoriaDialogComponent implements OnChanges {
+export class SpesaAccessoriaDialogComponent implements OnChanges, OnDestroy {
   private readonly servizio = inject(TabelleFatturazioneService)
+  private readonly listino = inject(ListinoService)
 
   @Input() visible = false
   /** null = nuova. */
@@ -141,6 +165,34 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
   readonly tipi = OPZIONI_TIPO_SPESA
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
+  readonly testoSuggerimentoBollo = 'Per addebitare il bollo serve un codice IVA con natura N1'
+  /** Tutti i codici IVA, anche disattivati (lista senza paginazione: il backend non ne ha). */
+  private readonly codici = signal<CodiceIva[]>([])
+  /** false finché la lista non è arrivata: il suggerimento non deve lampeggiare. */
+  private readonly caricati = signal(false)
+  private lettura?: Subscription
+  private readonly codiceIvaScelto = signal<string | null>(null)
+  private readonly tipoScelto = signal<TipoSpesa>('INCASSO')
+
+  readonly opzioniIva = computed(() => {
+    // Solo i codici attivi; la spesa può citarne uno poi disattivato: resta scelto, così il
+    // salvataggio non lo perde, e la sua etichetta dice che è disattivato.
+    const corrente = this.elemento?.codiceIvaId
+    return this.codici()
+      .filter(c => c.attivo || c.id === corrente)
+      .map(c => ({
+        id: c.id,
+        etichetta: `${c.codice} - ${c.descrizione}${c.attivo ? '' : ' (disattivato)'}`,
+      }))
+  })
+
+  /** Il bollo si addebita solo con un codice IVA di natura N1. */
+  readonly suggerimentoBollo = computed(() => {
+    if (this.tipoScelto() !== 'BOLLO' || !this.caricati()) return false
+    // Anche un codice disattivato conta: ne conosciamo la natura.
+    const c = this.codici().find(x => x.id === this.codiceIvaScelto())
+    return c?.natura !== 'N1'
+  })
 
   readonly form = new FormGroup({
     tipo: new FormControl<TipoSpesa>('INCASSO', { nonNullable: true }),
@@ -150,7 +202,13 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
       nonNullable: true,
       validators: [Validators.required, validatoreNumero('decimale')],
     }),
+    codiceIvaId: new FormControl<string | null>(null),
   })
+
+  constructor() {
+    this.form.controls.codiceIvaId.valueChanges.subscribe(v => this.codiceIvaScelto.set(v))
+    this.form.controls.tipo.valueChanges.subscribe(v => this.tipoScelto.set(v))
+  }
 
   erroreImporto(): string | null {
     return messaggioNumero(this.form.controls.importo)
@@ -171,9 +229,25 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
       codice: e?.codice ?? '',
       descrizione: e?.descrizione ?? '',
       importo: formatNumero(e?.importo),
+      codiceIvaId: e?.codiceIvaId ?? null,
     })
+    this.tipoScelto.set(this.tipo ?? e?.tipo ?? 'INCASSO')
+    this.codiceIvaScelto.set(e?.codiceIvaId ?? null)
     this.errore.set(null)
     this.inCorso.set(false)
+    this.caricati.set(false)
+    this.lettura?.unsubscribe()
+    this.lettura = this.listino.codiciIva.list({ incluseDisattivate: true }).subscribe({
+      next: l => {
+        this.codici.set(l)
+        this.caricati.set(true)
+      },
+      error: err => this.errore.set(messaggioErrore(err, 'Impossibile caricare i codici IVA.')),
+    })
+  }
+
+  ngOnDestroy(): void {
+    this.lettura?.unsubscribe()
   }
 
   salva(): void {
@@ -185,6 +259,8 @@ export class SpesaAccessoriaDialogComponent implements OnChanges {
       descrizione: v.descrizione.trim(),
       // Il backend vuole il punto; il resto della normalizzazione è suo.
       importo: leggiNumero(v.importo).valore ?? '',
+      // Vuoto = nessun codice IVA: il backend vuole null, non la stringa vuota.
+      codiceIvaId: v.codiceIvaId || null,
     }
     this.inCorso.set(true)
     this.errore.set(null)
