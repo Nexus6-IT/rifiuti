@@ -122,23 +122,33 @@ export async function creaDocumentoMinimoPerLegame(
       data: { tenantId, codice: '98', descrizione: 'Registro di prova dei legami fatturati' },
       select: { id: true },
     }))
+  // La testata nasce in BOZZA e passa a DEFINITIVO (il trigger vieta la creazione diretta).
   const [doc] = await owner.$queryRawUnsafe<{ id: string }[]>(
     `INSERT INTO documenti_fattura
-       (tenant_id, stato, tipo_documento, registro_iva_id, anno, numero, numero_testo,
-        data_documento, cliente_id, cliente_fatturazione_id, contratto_id, elenco_id, periodo_dal,
-        periodo_al, formato_trasmissione, esigibilita_iva, totale_imponibile, totale_iva,
-        totale_documento, netto_a_pagare, fotografia, definito_il, updated_at)
-     SELECT $1::uuid, 'DEFINITIVO', 'TD01', $2::uuid, 2026, n.numero, n.numero::text,
-        '2026-03-15'::date, $3::uuid, $3::uuid, $4::uuid, $5::uuid, '2026-01-01', '2026-12-31',
-        'FPR12', 'IMMEDIATA', 0, 0, 0, 0, '{}'::jsonb, now(), now()
-     FROM (SELECT COALESCE(max(numero), 0) + 1 AS numero FROM documenti_fattura
-            WHERE tenant_id = $1::uuid AND registro_iva_id = $2::uuid AND anno = 2026) n
+       (tenant_id, stato, tipo_documento, registro_iva_id, anno, data_documento, cliente_id,
+        cliente_fatturazione_id, contratto_id, elenco_id, periodo_dal, periodo_al,
+        formato_trasmissione, esigibilita_iva, totale_imponibile, totale_iva, totale_documento,
+        netto_a_pagare, fotografia, updated_at)
+     VALUES ($1::uuid, 'BOZZA', 'TD01', $2::uuid, 2026, '2026-03-15'::date, $3::uuid, $3::uuid,
+        $4::uuid, $5::uuid, '2026-01-01', '2026-12-31', 'FPR12', 'IMMEDIATA', 0, 0, 0, 0,
+        '{}'::jsonb, now())
      RETURNING id::text AS id`,
     tenantId,
     registro.id,
     dati.clienteId,
     dati.contrattoId,
     dati.elencoId ?? null
+  )
+  await owner.$executeRawUnsafe(
+    `UPDATE documenti_fattura d
+       SET stato = 'DEFINITIVO', numero = n.numero, numero_testo = n.numero::text,
+           definito_il = now(), updated_at = now()
+     FROM (SELECT COALESCE(max(numero), 0) + 1 AS numero FROM documenti_fattura
+            WHERE tenant_id = $1::uuid AND registro_iva_id = $2::uuid AND anno = 2026) n
+     WHERE d.id = $3::uuid`,
+    tenantId,
+    registro.id,
+    doc.id
   )
   return doc.id
 }

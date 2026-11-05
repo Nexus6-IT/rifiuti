@@ -395,6 +395,15 @@ DECLARE
                              'xml', 'xml_sha256', 'xml_generato_il', 'progressivo_file',
                              'versione', 'updated_at'];
 BEGIN
+  -- INSERT: la testata nasce solo in BOZZA (poi figlie, poi promozione): la creazione diretta come
+  -- DEFINITIVO o ANNULLATO aggirerebbe il trigger delle figlie.
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.stato <> 'BOZZA' THEN
+      RAISE EXCEPTION 'documenti_fattura: un documento nasce in bozza';
+    END IF;
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'DELETE' THEN
     IF OLD.stato <> 'BOZZA' THEN
       RAISE EXCEPTION 'documenti_fattura: un documento non in bozza non si cancella';
@@ -465,7 +474,7 @@ BEGIN
 END
 $fn$;
 
-CREATE TRIGGER documenti_fattura_immutabile BEFORE UPDATE OR DELETE ON "documenti_fattura"
+CREATE TRIGGER documenti_fattura_immutabile BEFORE INSERT OR UPDATE OR DELETE ON "documenti_fattura"
   FOR EACH ROW EXECUTE FUNCTION documenti_fattura_immutabile();
 
 -- Le figlie (righe, riepiloghi, rate) seguono lo stato della testata: si inseriscono, si modificano e

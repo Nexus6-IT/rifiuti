@@ -145,7 +145,7 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
   }
 
   /** Inserisce una testata come `wasteflow_app`; senza `over` e' una bozza valida. */
-  function inserisciDocumento(tx: Tx, s: Sc, over: DatiDocumento = {}) {
+  function inserisciDirettoDocumento(tx: Tx, s: Sc, over: DatiDocumento = {}) {
     return tx.$queryRawUnsafe<{ id: string }[]>(
       `INSERT INTO documenti_fattura
          (tenant_id, stato, tipo_documento, registro_iva_id, anno, numero, data_documento,
@@ -174,6 +174,37 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
       over.motivo ?? null,
       over.progressivoFile ?? null
     )
+  }
+
+  /**
+   * Come `inserisciDirettoDocumento`, ma per un DEFINITIVO o un ANNULLATO crea la bozza e la
+   * promuove (il trigger vieta la creazione diretta): i CHECK scattano alla promozione.
+   */
+  async function inserisciDocumento(tx: Tx, s: Sc, over: DatiDocumento = {}) {
+    const stato = over.stato ?? 'BOZZA'
+    if (stato === 'BOZZA') return inserisciDirettoDocumento(tx, s, over)
+    const r = await inserisciDirettoDocumento(tx, s, {
+      ...over,
+      stato: 'BOZZA',
+      numero: null,
+      emessoIl: null,
+      motivo: null,
+    })
+    await tx.$executeRawUnsafe(
+      `UPDATE documenti_fattura SET stato = 'DEFINITIVO', numero = $2::int, emesso_il = $3::timestamp,
+         definito_il = now() WHERE id = $1::uuid`,
+      r[0].id,
+      over.numero === undefined ? null : over.numero,
+      over.emessoIl ?? null
+    )
+    if (stato === 'ANNULLATO') {
+      await tx.$executeRawUnsafe(
+        `UPDATE documenti_fattura SET stato = 'ANNULLATO', motivo_annullo = $2 WHERE id = $1::uuid`,
+        r[0].id,
+        over.motivo ?? null
+      )
+    }
+    return r
   }
 
   /** Una riga `FISSO` (senza legame) su un documento, col proprietario. */
@@ -240,6 +271,51 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
       await expect(comeApp(s.t, tx => inserisciDocumento(tx, s, { numero: 1 }))).rejects.toThrow(
         /documenti_fattura_numero_se_non_bozza/
       )
+    })
+
+    it('INSERT diretta come DEFINITIVO o ANNULLATO: rifiutata; INSERT come BOZZA: ok', async () => {
+      await expect(
+        comeApp(s.t, tx => inserisciDirettoDocumento(tx, s, { stato: 'DEFINITIVO', numero: 4000 }))
+      ).rejects.toThrow(/un documento nasce in bozza/)
+      await expect(
+        comeApp(s.t, tx =>
+          inserisciDirettoDocumento(tx, s, { stato: 'ANNULLATO', numero: 4001, motivo: 'x' })
+        )
+      ).rejects.toThrow(/un documento nasce in bozza/)
+      await expect(
+        comeApp(s.t, tx => inserisciDirettoDocumento(tx, s, { stato: 'BOZZA' }))
+      ).resolves.toHaveLength(1)
+    })
+
+    it('una figlia di un documento di un altro tenant: respinta (FK composta con tenant_id)', async () => {
+      const b = await scenario()
+      const { documentoId } = await creaDocumentoDiTest(owner, b.t, {
+        stato: 'BOZZA',
+        registroIvaId: b.registroIvaId,
+        anno: 2026,
+      })
+      // Ruolo applicativo, tenant A, tenant_id A, documento del tenant B: la FK non trova la coppia.
+      await expect(
+        comeApp(s.t, tx =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO rate_documento_fattura (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
+             VALUES ($1::uuid, $2::uuid, 1, 'MP05', '2026-04-30', 10, now())`,
+            s.t,
+            documentoId
+          )
+        )
+      ).rejects.toThrow(/rate_documento_fattura_documento_fkey/)
+      // Con tenant_id B e tenant A attivo: la policy WITH CHECK lo rifiuta.
+      await expect(
+        comeApp(s.t, tx =>
+          tx.$executeRawUnsafe(
+            `INSERT INTO rate_documento_fattura (tenant_id, documento_id, ordine, modalita, data_scadenza, importo, updated_at)
+             VALUES ($1::uuid, $2::uuid, 1, 'MP05', '2026-04-30', 10, now())`,
+            b.t,
+            documentoId
+          )
+        )
+      ).rejects.toThrow(/row-level security|`42501`/i)
     })
 
     it('DEFINITIVO senza numero: respinto', async () => {
