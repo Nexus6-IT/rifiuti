@@ -69,6 +69,8 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
     service = new AggiornaPrezziService(app)
   })
 
+  // Pulizia del volume (200.000 movimenti e i loro legami): dalla 4.4a ogni riga cancellata
+  // controlla anche le chiavi esterne dei documenti, e in CI i 180 s non bastano piu'.
   afterAll(async () => {
     await ripristinaRuolo()
     await pulisciTenantDiTest(owner, tenantCreati)
@@ -77,7 +79,7 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
     }
     await owner.$disconnect()
     await app?.$disconnect()
-  }, 180_000)
+  }, 600_000)
 
   async function scenario(righeV = 0): Promise<ScenarioProposta> {
     return creaScenarioProposta(owner, { righeV, onTenantCreato: id => tenantCreati.push(id) })
