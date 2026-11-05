@@ -116,7 +116,7 @@ function righeFasce(
 /** Nome della regola che rende non calcolata una riga a prezzo speciale (mai un id). */
 function nomeRegola(l: RigaListinoDaFatturare): string {
   if (l.condizione !== null || (l.condizioniRiferite ?? '').trim() !== '') return 'condizionata'
-  return l.applicaA ?? 'PREZZO_SPECIALE'
+  return l.applicaA ?? 'prezzo speciale senza regola'
 }
 
 /**
@@ -125,6 +125,11 @@ function nomeRegola(l: RigaListinoDaFatturare): string {
  * `FASCIA_SPECIALE` (DOCUMENTO: con `legameId`, subito dopo la riga; PERIODO: `legameId` nullo,
  * dopo l'ultima riga `MOVIMENTO` della riga di listino). Le anomalie non fermano il calcolo delle
  * altre righe: bloccano il documento, non il calcolo.
+ *
+ * Nel dettaglio degli errori «<regola> riga <n>», `n` e' la posizione 1-based della riga di listino
+ * nella collezione `listino` in ingresso, nell'ordine del chiamante (stessa convenzione dei Task 3 e 5).
+ * L'IVA delle fasce PERIODO e' quella congelata nelle righe di legame del gruppo, che deve essere
+ * univoca (altrimenti PREZZO_SPECIALE_NON_VALIDO).
  */
 export function righeDaLegami(
   legami: readonly RigaLegameDaFatturare[],
@@ -134,14 +139,11 @@ export function righeDaLegami(
   const errori: Segnalazione<ErroreDocumento>[] = []
   const righe: RigaCalcolata[] = []
 
-  // Numero d'ordine (1-based, per prima comparsa) delle righe di listino: il dettaglio degli errori
-  // non cita mai id.
+  // Posizione 1-based della riga nel listino in ingresso (ordine del chiamante): il dettaglio degli
+  // errori non cita mai id.
   const numeroListino = new Map<string, number>()
-  for (const r of ordinati) {
-    if (r.prezzoSpeciale && !numeroListino.has(r.rigaAddebitoId)) {
-      numeroListino.set(r.rigaAddebitoId, numeroListino.size + 1)
-    }
-  }
+  let posizione = 0
+  for (const id of listino.keys()) numeroListino.set(id, ++posizione)
 
   // Esito per riga di listino a prezzo speciale: scartata (con errore gia' registrato) o ammessa.
   const scartate = new Set<string>()
@@ -152,18 +154,18 @@ export function righeDaLegami(
   for (const r of ordinati) {
     if (!r.prezzoSpeciale || scartate.has(r.rigaAddebitoId) || speciali.has(r.rigaAddebitoId))
       continue
-    const n = numeroListino.get(r.rigaAddebitoId) as number
     const l = listino.get(r.rigaAddebitoId)
     if (!l) {
       scartate.add(r.rigaAddebitoId)
       errori.push({
         codice: 'PREZZO_SPECIALE_NON_VALIDO',
-        dettaglio: `riga di listino assente riga ${n}`,
+        dettaglio: 'riga di listino assente',
       })
       continue
     }
     if (!famigliaCalcolata({ ...l, tipo: r.tipo, prezzoSpeciale: true })) {
       scartate.add(r.rigaAddebitoId)
+      const n = numeroListino.get(r.rigaAddebitoId)
       errori.push({ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: `${nomeRegola(l)} riga ${n}` })
       continue
     }
@@ -185,7 +187,10 @@ export function righeDaLegami(
     )
     if (messaggi.length > 0) {
       scartate.add(r.rigaAddebitoId)
-      errori.push({ codice: 'PREZZO_SPECIALE_NON_VALIDO', dettaglio: `${messaggi[0]} riga ${n}` })
+      errori.push({
+        codice: 'PREZZO_SPECIALE_NON_VALIDO',
+        dettaglio: `${messaggi[0]} riga ${numeroListino.get(r.rigaAddebitoId)}`,
+      })
       continue
     }
     speciali.set(r.rigaAddebitoId, l)
@@ -195,8 +200,8 @@ export function righeDaLegami(
   for (const r of ordinati) {
     const l = speciali.get(r.rigaAddebitoId)
     if (!l || l.applicaA !== 'PERIODO') continue
-    ultimoDelGruppo.set(r.rigaAddebitoId, r.rigaLegameId)
     if (completa(r, false)) {
+      ultimoDelGruppo.set(r.rigaAddebitoId, r.rigaLegameId)
       const g = gruppiPeriodo.get(r.rigaAddebitoId) ?? []
       g.push(r)
       gruppiPeriodo.set(r.rigaAddebitoId, g)
@@ -213,6 +218,14 @@ export function righeDaLegami(
       errori.push({ codice: 'UM_NON_UNIVOCA', dettaglio: `riga ${n}` })
       continue
     }
+    if (new Set(gruppo.map(r => r.codiceIvaId)).size > 1) {
+      scartate.add(id)
+      errori.push({
+        codice: 'PREZZO_SPECIALE_NON_VALIDO',
+        dettaglio: `codice IVA non univoco riga ${n}`,
+      })
+      continue
+    }
     const somma = gruppo.reduce((s, r) => s.plus(D(r.quantita as string)), new Prisma.Decimal(0))
     const esito = applicaScaglioni(l.scaglioni, somma.toFixed(), gruppo[0].unitaMisura)
     if ('errore' in esito) {
@@ -227,9 +240,9 @@ export function righeDaLegami(
         l,
         null,
         {
-          codiceIvaId: l.codiceIva.id,
-          aliquotaIva: l.codiceIva.aliquota,
-          naturaIva: l.codiceIva.natura,
+          codiceIvaId: gruppo[0].codiceIvaId,
+          aliquotaIva: gruppo[0].aliquotaIva,
+          naturaIva: gruppo[0].naturaIva,
         },
         { dataMovimento: null }
       )
@@ -261,17 +274,21 @@ export function righeDaLegami(
       continue
     }
     const l = speciali.get(r.rigaAddebitoId) as RigaListinoDaFatturare
+    const esitoDocumento =
+      l.applicaA === 'DOCUMENTO'
+        ? applicaScaglioni(l.scaglioni, r.quantita as string, r.unitaMisura)
+        : null
+    if (esitoDocumento && 'errore' in esitoDocumento) {
+      errori.push({
+        codice: 'PREZZO_SPECIALE_NON_VALIDO',
+        dettaglio: `${esitoDocumento.errore} riga ${numeroListino.get(r.rigaAddebitoId)}`,
+      })
+      continue
+    }
     righe.push(rigaMovimentoBase(r))
 
-    if (l.applicaA === 'DOCUMENTO') {
-      const esito = applicaScaglioni(l.scaglioni, r.quantita as string, r.unitaMisura)
-      if ('errore' in esito) {
-        errori.push({
-          codice: 'PREZZO_SPECIALE_NON_VALIDO',
-          dettaglio: `${esito.errore} riga ${numeroListino.get(r.rigaAddebitoId)}`,
-        })
-        continue
-      }
+    if (esitoDocumento) {
+      const esito = esitoDocumento
       righe.push(
         ...righeFasce(
           esito,

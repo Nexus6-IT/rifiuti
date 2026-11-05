@@ -274,3 +274,109 @@ describe('righeDaLegami: ordine', () => {
     expect(a.righe.map(r => r.rigaLegameId)).toEqual(['RL0', 'RL1', 'RL2', 'RL3', 'RL9'])
   })
 })
+
+describe('righeDaLegami: correzioni del giro 1', () => {
+  const periodo = () => voceListino({ applicaA: 'PERIODO' })
+
+  it("PERIODO: l'IVA delle fasce e' quella congelata nei legami, non quella del listino", () => {
+    const iva = { codiceIvaId: 'IVA10', aliquotaIva: '10.00', naturaIva: null }
+    const { righe, errori } = righeDaLegami(
+      [
+        speciale({ rigaLegameId: 'RL1', quantita: '2500', ...iva }),
+        speciale({ legameId: 'L2', rigaLegameId: 'RL2', quantita: '3500', ...iva }),
+      ],
+      mappa(periodo())
+    )
+    expect(errori).toEqual([])
+    const fasce = righe.filter(r => r.tipoRiga === 'FASCIA_SPECIALE')
+    expect(fasce.length).toBeGreaterThan(0)
+    expect(fasce.every(r => r.codiceIvaId === 'IVA10' && r.aliquotaIva === '10.00')).toBe(true)
+  })
+
+  it('PERIODO: IVA diverse fra i legami: errore, nessuna riga', () => {
+    const r = righeDaLegami(
+      [
+        speciale({ rigaLegameId: 'RL1' }),
+        speciale({
+          legameId: 'L2',
+          rigaLegameId: 'RL2',
+          codiceIvaId: 'IVA10',
+          aliquotaIva: '10.00',
+        }),
+      ],
+      mappa(periodo())
+    )
+    expect(r.righe).toEqual([])
+    expect(r.errori).toEqual([
+      { codice: 'PREZZO_SPECIALE_NON_VALIDO', dettaglio: 'codice IVA non univoco riga 1' },
+    ])
+  })
+
+  it('PERIODO con ultima riga incompleta: le fasce escono dopo la prima MOVIMENTO', () => {
+    const r = righeDaLegami(
+      [
+        speciale({ rigaLegameId: 'RL1', quantita: '6000' }),
+        speciale({
+          legameId: 'L2',
+          rigaLegameId: 'RL2',
+          quantita: null,
+          dataMovimento: '2026-11-04',
+        }),
+      ],
+      mappa(periodo())
+    )
+    expect(r.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA' }])
+    expect(r.righe.map(x => x.tipoRiga)).toEqual([
+      'MOVIMENTO',
+      'FASCIA_SPECIALE',
+      'FASCIA_SPECIALE',
+      'FASCIA_SPECIALE',
+    ])
+  })
+
+  it('DOCUMENTO con quantità negativa: errore e nessuna MOVIMENTO', () => {
+    const r = righeDaLegami([speciale({ quantita: '-5' })], mappa(voceListino()))
+    expect(r.righe).toEqual([])
+    expect(r.errori.map(e => e.codice)).toEqual(['PREZZO_SPECIALE_NON_VALIDO'])
+  })
+
+  it('riga di listino assente: PREZZO_SPECIALE_NON_VALIDO, nessuna riga', () => {
+    const r = righeDaLegami([speciale()], new Map())
+    expect(r.righe).toEqual([])
+    expect(r.errori).toEqual([
+      { codice: 'PREZZO_SPECIALE_NON_VALIDO', dettaglio: 'riga di listino assente' },
+    ])
+  })
+
+  it('«riga <n>» e la posizione nel listino in ingresso; applicaA nullo ha nome proprio', () => {
+    const l = mappa(
+      voceListino({ id: 'A0', applicaA: 'DOCUMENTO' }),
+      voceListino({ id: 'A1', applicaA: 'GIORNO' }),
+      voceListino({ id: 'A2', applicaA: null })
+    )
+    const r = righeDaLegami(
+      [speciale({ rigaAddebitoId: 'A2', rigaLegameId: 'RL2' }), speciale({ rigaLegameId: 'RL1' })],
+      l
+    )
+    expect(r.errori).toEqual([
+      { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'GIORNO riga 2' },
+      { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'prezzo speciale senza regola riga 3' },
+    ])
+  })
+
+  it('determinismo con prezzo speciale DOCUMENTO e PERIODO misti', () => {
+    const l = [
+      speciale({ legameId: 'L1', rigaLegameId: 'RL1', rigaAddebitoId: 'A1', quantita: '2000' }),
+      speciale({ legameId: 'L2', rigaLegameId: 'RL2', rigaAddebitoId: 'A2', quantita: '3000' }),
+      speciale({
+        legameId: 'L3',
+        rigaLegameId: 'RL3',
+        rigaAddebitoId: 'A2',
+        quantita: '4000',
+        dataMovimento: '2026-11-04',
+      }),
+    ]
+    const m = mappa(voceListino(), voceListino({ id: 'A2', applicaA: 'PERIODO' }))
+    expect(righeDaLegami([...l].reverse(), m)).toEqual(righeDaLegami(l, m))
+  })
+})
