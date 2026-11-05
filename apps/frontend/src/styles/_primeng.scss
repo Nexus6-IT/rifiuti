@@ -1,12 +1,12 @@
 /* ============================================================================
-   Override componenti PrimeNG 17.18 — tema "Foglio salvia"
+   Override componenti PrimeNG 17.18 — tema "Libro mastro"
 
    Base: aura-light-noir / aura-dark-noir (angular.json). Perche' "noir":
    il suo colore primario e' gia' quasi nero (chiaro) o quasi bianco (scuro),
    quindi bottoni, checkbox, radio, switch e paginatore nascono come li vuole
    la proposta e NON servono piu' le correzioni !important che li riportavano
-   dal teal al grigio. Il teal torna solo dove lo decidiamo noi: scheda attiva,
-   selezione, barre, stato "Trasmesso".
+   dal teal al grigio. L'arancio sta solo su .wf-primario; scheda attiva
+   e selezione sono in inchiostro, gli stati sulle coppie tenui.
    Il tema Aura scrive i colori in esadecimale dentro i selettori (non usa
    variabili), quindi qui le regole hanno la stessa specificita' di Aura e
    vincono per ordine: lo styles.scss e' caricato dopo il tema.
@@ -49,10 +49,11 @@
   font-weight: var(--font-weight-medium);
   font-size: var(--font-size-sm);
   padding: 0 var(--spacing-base);
-  /* Primario: quasi nero + bianco (18:1); in scuro si inverte. */
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
-  color: var(--on-accent);
+  /* Bottone pieno di base: inchiostro + testo sul fondo (in scuro si inverte).
+     L'arancio e' solo di .wf-primario, piu' sotto. */
+  background: var(--ink-fill);
+  border-color: var(--ink-fill);
+  color: var(--on-ink);
   transition:
     background var(--transition-fast),
     border-color var(--transition-fast),
@@ -69,11 +70,11 @@
   margin: 0;
 }
 .p-button:not(:disabled):hover {
-  background: var(--accent-fill-hover);
-  border-color: var(--accent-fill-hover);
-  color: var(--on-accent);
+  background: var(--ink-fill-hover);
+  border-color: var(--ink-fill-hover);
+  color: var(--on-ink);
 }
-/* Secondari: contorno grigio e nessun colore (il teal non e' un'azione). */
+/* Secondari: contorno grigio e nessun colore (l'azione e' o inchiostro o .wf-primario). */
 .p-button.p-button-outlined {
   background: transparent;
   color: var(--text-primary);
@@ -168,6 +169,18 @@
 .p-button.p-button-rounded {
   border-radius: var(--radius-full);
 }
+/* L'unico bottone arancio della schermata: l'azione primaria. Dopo le varianti,
+   a parita' di specificita' vince lui. */
+.p-button.wf-primario {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--on-accent);
+}
+.p-button.wf-primario:not(:disabled):hover {
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover);
+  color: var(--on-accent);
+}
 .p-button.p-button-sm {
   height: var(--control-sm);
   padding: 0 var(--spacing-md);
@@ -185,7 +198,7 @@
   outline-offset: var(--focus-ring-offset);
   box-shadow: none;
 }
-/* Il bottone "link" e' un link, non un bottone: testo teal scuro. */
+/* Il bottone "link" e' un link, non un bottone: testo arancio come i link. */
 .p-button.p-button-link {
   background: transparent;
   border-color: transparent;
@@ -205,7 +218,7 @@
    2) il tema disegna sull'opzione selezionata un riquadro `::before` BIANCO
       (inset di 4px) che copre lo sfondo e sotto cui l'etichetta sparisce.
    Qui il riempimento e' del bottone, quindi il riquadro non serve.
-   Selezionata = tinta salvia + bordo e testo teal scuro (selezione = teal). */
+   Selezionata = riempimento in inchiostro (--ink-fill) con il testo sul fondo. */
 .p-selectbutton .p-button::before {
   display: none;
 }
@@ -225,9 +238,9 @@
 }
 .p-selectbutton .p-button.p-highlight,
 .p-selectbutton .p-button.p-highlight:hover {
-  background: var(--selected);
-  border-color: var(--selected-line);
-  color: var(--brand-primary-dark);
+  background: var(--ink-fill);
+  border-color: var(--ink-fill);
+  color: var(--on-ink);
 }
 .p-selectbutton .p-button.p-highlight .p-button-icon-left,
 .p-selectbutton .p-button.p-highlight .p-button-icon-right,
@@ -398,7 +411,7 @@ label {
 
 /* ===== DataTable — densa, senza riquadro =====
    Intestazioni grigie da 12px in minuscolo, righe separate da filetti,
-   riga selezionata con tinta salvia e barra teal di 2px. */
+   riga selezionata con tinta grigia e barra in inchiostro di 2px. */
 .p-datatable {
   border: 0;
   border-radius: 0;
@@ -466,8 +479,8 @@ label {
   padding: var(--spacing-md) 0;
 }
 .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
-  background: var(--accent-fill);
-  color: var(--on-accent);
+  background: var(--ink-fill);
+  color: var(--on-ink);
   border-radius: var(--radius-base);
 }
 .p-paginator .p-paginator-first,
@@ -574,8 +587,8 @@ label {
 
 /* ===== Tag / Badge: sfondo tenue + inchiostro scuro + (nei template) icona e parola =====
    Mai il solo colore. Mappa severita' → stato della proposta:
-   success = fatto/attivo (teal tenue, 8:1), warning = attenzione (ambra),
-   danger = errore (rosso), info = informativo (grigio-azzurro),
+   success = fatto/attivo (verde tenue), warning = attenzione (ambra),
+   danger = errore (rosso), info = informativo (grigio),
    nessuna severita'/secondary = bozza (grigio), contrast = da fare (contorno). */
 .p-tag {
   border-radius: var(--radius-sm);
@@ -619,8 +632,8 @@ label {
 .p-badge {
   border-radius: var(--radius-full);
   font-weight: var(--font-weight-semibold);
-  background: var(--accent-fill);
-  color: var(--on-accent);
+  background: var(--ink-fill);
+  color: var(--on-ink);
 }
 .p-badge.p-badge-success {
   background: var(--stato-sent-bg);
@@ -664,7 +677,7 @@ label {
 .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight,
 .p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight {
   background: var(--selected);
-  color: var(--brand-primary-dark);
+  color: var(--text-primary);
 }
 .p-dropdown-panel .p-dropdown-items .p-dropdown-item,
 .p-multiselect-panel .p-multiselect-items .p-multiselect-item {
@@ -688,13 +701,13 @@ label {
   color: var(--text-primary);
 }
 
-/* Aura disegna anche una barra d'inchiostro nera di 1px: sopra la nostra linea teal farebbe un doppio segno. */
+/* Aura disegna anche una barra d'inchiostro nera di 1px: sopra la nostra linea farebbe un doppio segno. */
 .p-tabview .p-tabview-ink-bar,
 .p-tabmenu .p-tabmenu-ink-bar {
   display: none;
 }
 
-/* ===== Schede: la scheda attiva e' sottolineata di 2px in teal ===== */
+/* ===== Schede: la scheda attiva e' sottolineata di 2px in inchiostro ===== */
 .p-tabview .p-tabview-nav {
   border-bottom: 1px solid var(--surface-border);
   background: transparent;
@@ -821,10 +834,10 @@ label {
   color: var(--stato-err-ink);
 }
 
-/* ===== Progress: barre teal su binario grigio ===== */
+/* ===== Progress: barre in inchiostro su binario grigio ===== */
 /* !important voluto: lo spinner anima `stroke` con una keyframe (rosso/blu/verde/giallo) che batte qualunque specificita'. */
 .p-progress-spinner-circle {
-  stroke: var(--brand-primary) !important;
+  stroke: var(--ink-fill) !important;
 }
 .p-progressbar {
   background: var(--color-gray-200);
@@ -832,7 +845,7 @@ label {
   border-radius: var(--radius-full);
 }
 .p-progressbar .p-progressbar-value {
-  background: var(--brand-primary);
+  background: var(--ink-fill);
 }
 
 /* ===== Drawer (p-sidebar) e skeleton ===== */

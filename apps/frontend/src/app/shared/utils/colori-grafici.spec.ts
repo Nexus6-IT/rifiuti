@@ -1,16 +1,40 @@
 import { coloriGrafico } from './colori-grafici'
 
 describe('coloriGrafico', () => {
-  it('in chiaro usa il teal scuro e testo scuro', () => {
-    const c = coloriGrafico('chiaro')
-    expect(c.primario).toBe('#0f766e')
-    expect(c.testo).toBe('#3d5052')
+  it('in chiaro usa i valori IgniCraft', () => {
+    expect(coloriGrafico('chiaro')).toEqual({
+      testo: '#6b6964',
+      griglia: '#eeece8',
+      primario: '#b9440f',
+      fondo: '#ffffff',
+      info: '#504e4a',
+      successo: '#1d5a35',
+      attenzione: '#6b4b00',
+      pericolo: '#b91c1c',
+      neutro: '#d3d0c9',
+    })
   })
 
-  it('in scuro usa il teal chiaro e testo chiaro', () => {
-    const c = coloriGrafico('scuro')
-    expect(c.primario).toBe('#3fc5b5')
-    expect(c.testo).toBe('#b4c4c3')
+  it('in scuro usa i valori IgniCraft', () => {
+    expect(coloriGrafico('scuro')).toEqual({
+      testo: '#96938c',
+      griglia: '#2c2b27',
+      primario: '#ff8a5c',
+      fondo: '#1d1d1a',
+      info: '#bdbab3',
+      successo: '#c4ecd2',
+      attenzione: '#ffe9a8',
+      pericolo: '#f87171',
+      neutro: '#4a4843',
+    })
+  })
+
+  it('nessun colore del vecchio teal e del blu', () => {
+    for (const tema of ['chiaro', 'scuro'] as const) {
+      const valori = Object.values(coloriGrafico(tema))
+      expect(valori).not.toContain('#0f766e')
+      expect(valori).not.toContain('#1d4ed8')
+    }
   })
 
   it('le due tavolozze hanno le stesse chiavi', () => {

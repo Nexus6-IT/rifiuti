@@ -8,11 +8,11 @@ import type { TemaEffettivo } from '../../core/services/tema.service'
  * così cambiano insieme al tema.
  */
 export interface ColoriGrafico {
-  /** Etichette, tick, legende (--text-secondary). */
+  /** Etichette, tick, legende (--text-tertiary). */
   testo: string
-  /** Linee della griglia (--color-gray-200). */
+  /** Linee della griglia (--rule). */
   griglia: string
-  /** Serie principale (--accent-fill). */
+  /** Serie principale (--brand-primary). */
   primario: string
   /** Bordo dei punti, uguale al fondo della card (--surface-card). */
   fondo: string
@@ -25,26 +25,26 @@ export interface ColoriGrafico {
 
 const TAVOLOZZE: Record<TemaEffettivo, ColoriGrafico> = {
   chiaro: {
-    testo: '#3d5052',
-    griglia: '#dce5e5',
-    primario: '#0f766e',
-    fondo: '#fcfdfd',
-    info: '#1d4ed8',
-    successo: '#15803d',
-    attenzione: '#b45309',
+    testo: '#6b6964',
+    griglia: '#eeece8',
+    primario: '#b9440f',
+    fondo: '#ffffff',
+    info: '#504e4a',
+    successo: '#1d5a35',
+    attenzione: '#6b4b00',
     pericolo: '#b91c1c',
-    neutro: '#5e7273',
+    neutro: '#d3d0c9',
   },
   scuro: {
-    testo: '#b4c4c3',
-    griglia: '#243736',
-    primario: '#3fc5b5',
-    fondo: '#111e1f',
-    info: '#8db4ff',
-    successo: '#62c987',
-    attenzione: '#f1b65a',
-    pericolo: '#f4867e',
-    neutro: '#8a9e9d',
+    testo: '#96938c',
+    griglia: '#2c2b27',
+    primario: '#ff8a5c',
+    fondo: '#1d1d1a',
+    info: '#bdbab3',
+    successo: '#c4ecd2',
+    attenzione: '#ffe9a8',
+    pericolo: '#f87171',
+    neutro: '#4a4843',
   },
 }
 

@@ -1,8 +1,8 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core'
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { HttpClient } from '@angular/common/http'
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router'
+import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router'
 import { filter } from 'rxjs/operators'
 import { AvatarModule } from 'primeng/avatar'
 import { TooltipModule } from 'primeng/tooltip'
@@ -14,14 +14,25 @@ import { AdminTenantContextService } from '../../core/services/admin-tenant-cont
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { TenantSwitchService } from '../../features/permissions/services/tenant-switch.service'
 import { NotificationBellComponent } from '../../core/layout/notification-bell/notification-bell.component'
-import { TemaService } from '../../core/services/tema.service'
+import {
+  TemaService,
+  etichettaPreferenzaTema,
+  prossimaPreferenzaTema,
+} from '../../core/services/tema.service'
 import { contrassegnoAzienda } from '../utils/contrassegno-azienda'
 import { environment } from '../../../environments/environment'
 import { LegamiService } from '../../features/legami/legami.service'
+import { rottaVoceAttiva, titoloShell, VoceShell } from './navigazione-shell'
+import { SegnoMarchioComponent } from './segno-marchio.component'
 
 interface AdminTenant {
   id: string
   ragioneSociale: string
+}
+
+/** Il pathname di un url: senza query ne' frammento. */
+function percorsoDi(url: string): string {
+  return url.split(/[?#]/)[0] || '/'
 }
 
 /** Tenant accessibile da un utente standard multi-azienda (da GET /consultant/tenants). */
@@ -88,13 +99,13 @@ export function ordinaAziendePerGruppo(
     CommonModule,
     RouterOutlet,
     RouterLink,
-    RouterLinkActive,
     FormsModule,
     AvatarModule,
     TooltipModule,
     SidebarModule,
     DropdownModule,
     NotificationBellComponent,
+    SegnoMarchioComponent,
   ],
   template: `
     <!-- Link salta-contenuto per accessibilità (WCAG 2.4.1) -->
@@ -134,13 +145,8 @@ export function ordinaAziendePerGruppo(
           class="sidebar__brand"
           aria-label="WasteFlow — vai alla dashboard"
         >
-          <span class="sidebar__brand-mark" aria-hidden="true">
-            <i class="pi pi-trash"></i>
-          </span>
-          <span class="sidebar__brand-text">
-            <span class="sidebar__brand-name">WasteFlow</span>
-            <span class="sidebar__brand-tagline">Gestione Rifiuti Digitale</span>
-          </span>
+          <app-segno-marchio [dimensione]="26" />
+          <span class="sidebar__brand-name">WasteFlow</span>
         </a>
 
         <!-- Selettore Azienda / Unità locale -->
@@ -151,8 +157,29 @@ export function ordinaAziendePerGruppo(
           <ng-container *ngTemplateOutlet="navContent; context: { mobile: false }"></ng-container>
         </nav>
 
-        <!-- Area utente + logout -->
+        <!-- In fondo: azienda attiva, campanella, tema, utente ed «Esci». Sopra i
+             992 px non c'è nessuna barra in alto. -->
         <div class="sidebar__footer">
+          <!-- Azienda attiva, solo per chi ne gestisce più d'una: riconoscibile
+               a colpo d'occhio prima di registrare qualcosa. -->
+          @if (aziendaAttiva(); as azienda) {
+            <span class="azienda-attiva" [attr.title]="'Azienda attiva: ' + azienda.nome">
+              <span class="contrassegno" aria-hidden="true" [style.background]="azienda.colore">{{
+                azienda.iniziali
+              }}</span>
+              <span class="azienda-attiva__nome"
+                ><span class="sr-only">Azienda attiva: </span>{{ azienda.nome }}</span
+              >
+            </span>
+          }
+
+          <div class="sidebar__azioni">
+            <ng-container *ngTemplateOutlet="pulsanteTema"></ng-container>
+            @if (desktop()) {
+              <app-notification-bell />
+            }
+          </div>
+
           <div class="user-card">
             <p-avatar
               [label]="userInitials()"
@@ -164,80 +191,32 @@ export function ordinaAziendePerGruppo(
               <span class="user-card__name">{{ userFullName() }}</span>
               <span class="user-card__email">{{ authService.currentUser()?.email }}</span>
             </span>
-            <button
-              type="button"
-              class="user-card__logout"
-              (click)="onLogout()"
-              pTooltip="Esci"
-              tooltipPosition="top"
-              aria-label="Esci dall'applicazione"
-            >
-              <i class="pi pi-sign-out" aria-hidden="true"></i>
-            </button>
           </div>
+          <button type="button" class="esci" (click)="onLogout()">
+            <i class="pi pi-sign-out" aria-hidden="true"></i>
+            <span>Esci</span>
+          </button>
         </div>
       </aside>
 
-      <!-- ===== Colonna contenuto (topbar + main) ===== -->
+      <!-- ===== Colonna contenuto (barra stretta solo sotto i 992 px + main) ===== -->
       <div class="content">
-        <!-- Topbar -->
+        <!-- Barra da 48 px: hamburger, nome della pagina (non un heading) e campanella. -->
         <header class="topbar" role="banner">
-          <div class="topbar__start">
-            <button
-              type="button"
-              class="topbar__hamburger"
-              (click)="toggleMobileSidebar()"
-              aria-label="Apri il menu di navigazione"
-              [attr.aria-expanded]="mobileSidebarVisible()"
-              aria-controls="mobile-drawer"
-            >
-              <i class="pi pi-bars" aria-hidden="true"></i>
-            </button>
-
-            <!-- Brand compatto solo mobile -->
-            <span class="topbar__brand">
-              <i class="pi pi-trash" aria-hidden="true"></i>
-              <span>WasteFlow</span>
-            </span>
-
-            <h1 class="topbar__title">{{ currentTitle() }}</h1>
-          </div>
-
-          <div class="topbar__end">
-            <!-- Azienda attiva, solo per chi ne gestisce più d'una: riconoscibile
-                 a colpo d'occhio prima di registrare qualcosa. -->
-            @if (aziendaAttiva(); as azienda) {
-              <span class="topbar__azienda" [attr.title]="'Azienda attiva: ' + azienda.nome">
-                <span class="contrassegno" aria-hidden="true" [style.background]="azienda.colore">{{
-                  azienda.iniziali
-                }}</span>
-                <span class="topbar__azienda-nome"
-                  ><span class="sr-only">Azienda attiva: </span>{{ azienda.nome }}</span
-                >
-              </span>
-            }
-
-            <button
-              type="button"
-              class="topbar__tema"
-              (click)="tema.cicla()"
-              [attr.aria-label]="etichettaTema()"
-              [pTooltip]="etichettaTema()"
-              tooltipPosition="bottom"
-            >
-              <i [class]="iconaTema()" aria-hidden="true"></i>
-            </button>
-
+          <button
+            type="button"
+            class="topbar__hamburger"
+            (click)="toggleMobileSidebar()"
+            aria-label="Apri il menu di navigazione"
+            [attr.aria-expanded]="mobileSidebarVisible()"
+            aria-controls="mobile-drawer"
+          >
+            <i class="pi pi-bars" aria-hidden="true"></i>
+          </button>
+          <span class="topbar__title">{{ titolo() }}</span>
+          @if (!desktop()) {
             <app-notification-bell />
-
-            <span
-              class="topbar__avatar"
-              [attr.aria-label]="'Profilo utente ' + userFullName()"
-              role="img"
-            >
-              <p-avatar [label]="userInitials()" shape="circle" styleClass="user-card__avatar" />
-            </span>
-          </div>
+          }
         </header>
 
         <!-- Drawer mobile (< 992px) -->
@@ -257,12 +236,8 @@ export function ordinaAziendePerGruppo(
               (click)="closeMobileSidebar()"
               aria-label="WasteFlow — vai alla dashboard"
             >
-              <span class="sidebar__brand-mark" aria-hidden="true"
-                ><i class="pi pi-trash"></i
-              ></span>
-              <span class="sidebar__brand-text">
-                <span class="sidebar__brand-name">WasteFlow</span>
-              </span>
+              <app-segno-marchio [dimensione]="26" />
+              <span class="sidebar__brand-name">WasteFlow</span>
             </a>
           </ng-template>
 
@@ -273,10 +248,13 @@ export function ordinaAziendePerGruppo(
           </nav>
 
           <ng-template pTemplate="footer">
-            <button type="button" class="drawer__logout" (click)="onLogout()">
-              <i class="pi pi-sign-out" aria-hidden="true"></i>
-              <span>Esci</span>
-            </button>
+            <div class="drawer__footer">
+              <ng-container *ngTemplateOutlet="pulsanteTema"></ng-container>
+              <button type="button" class="drawer__logout" (click)="onLogout()">
+                <i class="pi pi-sign-out" aria-hidden="true"></i>
+                <span>Esci</span>
+              </button>
+            </div>
           </ng-template>
         </p-sidebar>
 
@@ -298,9 +276,9 @@ export function ordinaAziendePerGruppo(
             <li>
               <a
                 [routerLink]="item.route"
-                routerLinkActive="nav-item--active"
                 class="nav-item"
-                [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
+                [class.nav-item--active]="voceAttiva() === item.route"
+                [attr.aria-current]="voceAttiva() === item.route ? 'page' : null"
                 (click)="mobile ? closeMobileSidebar() : null"
               >
                 <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
@@ -327,9 +305,9 @@ export function ordinaAziendePerGruppo(
             <li>
               <a
                 [routerLink]="item.route"
-                routerLinkActive="nav-item--active"
                 class="nav-item"
-                [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
+                [class.nav-item--active]="voceAttiva() === item.route"
+                [attr.aria-current]="voceAttiva() === item.route ? 'page' : null"
                 (click)="mobile ? closeMobileSidebar() : null"
               >
                 <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
@@ -348,9 +326,9 @@ export function ordinaAziendePerGruppo(
             <li>
               <a
                 [routerLink]="item.route"
-                routerLinkActive="nav-item--active"
                 class="nav-item"
-                [attr.aria-current]="isActiveRoute(item.route) ? 'page' : null"
+                [class.nav-item--active]="voceAttiva() === item.route"
+                [attr.aria-current]="voceAttiva() === item.route ? 'page' : null"
                 (click)="mobile ? closeMobileSidebar() : null"
               >
                 <i class="nav-item__icon" [ngClass]="item.icon" aria-hidden="true"></i>
@@ -373,10 +351,10 @@ export function ordinaAziendePerGruppo(
           <li>
             <a
               routerLink="/abbonamento"
-              routerLinkActive="nav-item--active"
               class="nav-item"
+              [class.nav-item--active]="voceAttiva() === '/abbonamento'"
               data-testid="nav-abbonamento"
-              [attr.aria-current]="isActiveRoute('/abbonamento') ? 'page' : null"
+              [attr.aria-current]="voceAttiva() === '/abbonamento' ? 'page' : null"
               (click)="mobile ? closeMobileSidebar() : null"
             >
               <i class="nav-item__icon pi pi-credit-card" aria-hidden="true"></i>
@@ -394,9 +372,9 @@ export function ordinaAziendePerGruppo(
             <li>
               <a
                 routerLink="/admin/tenants"
-                routerLinkActive="nav-item--active"
                 class="nav-item"
-                [attr.aria-current]="isActiveRoute('/admin/tenants') ? 'page' : null"
+                [class.nav-item--active]="voceAttiva() === '/admin/tenants'"
+                [attr.aria-current]="voceAttiva() === '/admin/tenants' ? 'page' : null"
                 (click)="mobile ? closeMobileSidebar() : null"
               >
                 <i class="nav-item__icon pi pi-building" aria-hidden="true"></i>
@@ -407,9 +385,9 @@ export function ordinaAziendePerGruppo(
           <li>
             <a
               routerLink="/admin/utenti"
-              routerLinkActive="nav-item--active"
               class="nav-item"
-              [attr.aria-current]="isActiveRoute('/admin/utenti') ? 'page' : null"
+              [class.nav-item--active]="voceAttiva() === '/admin/utenti'"
+              [attr.aria-current]="voceAttiva() === '/admin/utenti' ? 'page' : null"
               (click)="mobile ? closeMobileSidebar() : null"
             >
               <i class="nav-item__icon pi pi-users" aria-hidden="true"></i>
@@ -422,9 +400,9 @@ export function ordinaAziendePerGruppo(
             <li>
               <a
                 routerLink="/admin/stato-sistema"
-                routerLinkActive="nav-item--active"
                 class="nav-item"
-                [attr.aria-current]="isActiveRoute('/admin/stato-sistema') ? 'page' : null"
+                [class.nav-item--active]="voceAttiva() === '/admin/stato-sistema'"
+                [attr.aria-current]="voceAttiva() === '/admin/stato-sistema' ? 'page' : null"
                 (click)="mobile ? closeMobileSidebar() : null"
               >
                 <i class="nav-item__icon pi pi-heart" aria-hidden="true"></i>
@@ -434,6 +412,14 @@ export function ordinaAziendePerGruppo(
           }
         </ul>
       }
+    </ng-template>
+
+    <!-- ===== Pulsante del tema: dice la scelta attuale e, nell'aria-label, anche la prossima ===== -->
+    <ng-template #pulsanteTema>
+      <button type="button" class="tema" (click)="tema.cicla()" [attr.aria-label]="ariaLabelTema()">
+        <i [class]="iconaTema()" aria-hidden="true"></i>
+        <span>Tema: {{ etichettaTema() }}</span>
+      </button>
     </ng-template>
 
     <!-- ===== Selettore Azienda / Unità locale ===== -->
@@ -626,12 +612,11 @@ export function ordinaAziendePerGruppo(
       }
 
       /* ============================================================
-       Struttura: sidebar fissa a sinistra + colonna contenuto.
-       Mobile-first: di default singola colonna, la sidebar è il
-       drawer p-sidebar; da ≥992px la sidebar diventa fissa.
+       Struttura (Libro mastro): un solo fondo per sidebar e contenuto,
+       nessuna cornice e nessun foglio rientrato. Sopra i 992px la sidebar
+       e' fissa e non c'e' barra in alto; sotto, la sidebar e' il drawer
+       p-sidebar e resta una barra da 48px.
        ============================================================ */
-      /* Cornice a L: sidebar e barra in alto condividono lo stesso fondo salvia
-         (--frame), senza riga fra loro; il lavoro sta sul foglio (.main). */
       .app-shell {
         min-height: 100vh;
         background: var(--frame);
@@ -673,38 +658,14 @@ export function ordinaAziendePerGruppo(
       .sidebar__brand--drawer {
         border-bottom: none;
         padding: 0;
-      }
-
-      .sidebar__brand-mark {
-        display: grid;
-        place-items: center;
-        width: 2rem;
-        height: 2rem;
-        flex-shrink: 0;
-        border-radius: var(--radius-md);
-        background: var(--brand-primary);
-        color: var(--text-inverse);
-      }
-      .sidebar__brand-mark i {
-        font-size: 1.1rem;
-      }
-
-      .sidebar__brand-text {
-        display: flex;
-        flex-direction: column;
-        line-height: 1.1;
-        min-width: 0;
+        margin-top: 0;
       }
       .sidebar__brand-name {
         font-family: var(--font-display);
         font-size: var(--font-size-base);
         font-weight: var(--font-weight-semibold);
+        letter-spacing: -0.01em;
         color: var(--sidebar-ink-strong);
-      }
-      .sidebar__brand-tagline {
-        font-size: var(--font-size-xs);
-        color: var(--sidebar-ink-muted);
-        margin-top: 2px;
       }
 
       /* ===== Selettore Azienda / Unità locale ===== */
@@ -770,7 +731,7 @@ export function ordinaAziendePerGruppo(
         flex-shrink: 0;
       }
 
-      /* ===== Tenant switcher (SUPER_ADMIN) — coerente con la cornice salvia ===== */
+      /* ===== Tenant switcher (SUPER_ADMIN) — sul fondo della sidebar ===== */
       .tenant-switcher {
         display: flex;
         flex-direction: column;
@@ -782,7 +743,7 @@ export function ordinaAziendePerGruppo(
         font-weight: var(--font-weight-medium);
         color: var(--sidebar-ink-muted);
       }
-      /* Override PrimeNG dropdown per renderlo leggibile sulla cornice (bordo a 3:1) */
+      /* Override PrimeNG dropdown per renderlo leggibile sul fondo (bordo a 3:1) */
       :host ::ng-deep .tenant-switcher__dropdown.p-dropdown {
         width: 100%;
         background: var(--sidebar-bg-2);
@@ -836,7 +797,7 @@ export function ordinaAziendePerGruppo(
         padding: 0;
       }
 
-      /* Titolo di gruppo: grigio da 12px in minuscolo, come nella proposta. */
+      /* Titolo di gruppo: grigio da 12px in minuscolo. */
       .nav-group__title {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
@@ -844,17 +805,17 @@ export function ordinaAziendePerGruppo(
         margin: var(--spacing-base) var(--spacing-md) var(--spacing-xs);
       }
 
+      /* Voci da 32px con raggio di 8px. */
       .nav-item {
-        position: relative;
         display: flex;
         align-items: center;
         gap: var(--spacing-md);
         padding: 0 var(--spacing-md);
         min-height: 2rem;
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         color: var(--sidebar-ink);
         text-decoration: none;
-        font-weight: var(--font-weight-medium);
+        font-weight: var(--font-weight-normal);
         font-size: var(--font-size-sm);
         transition:
           background var(--transition-fast),
@@ -885,11 +846,12 @@ export function ordinaAziendePerGruppo(
         min-width: 1.4rem;
         padding: 0 var(--spacing-xs);
         border-radius: 999px;
-        background: var(--sidebar-active-bg);
+        background: var(--surface-card);
         color: var(--sidebar-ink-strong);
-        border: 1px solid var(--sidebar-active);
+        border: 1px solid var(--surface-border-strong);
         font-size: var(--font-size-xs, 0.75rem);
-        font-weight: var(--font-weight-semibold);
+        font-weight: var(--font-weight-medium);
+        font-variant-numeric: tabular-nums;
         text-align: center;
       }
       .nav-item__label {
@@ -897,39 +859,83 @@ export function ordinaAziendePerGruppo(
         min-width: 0;
       }
 
-      /* Voce attiva: pillola grigio-salvia, testo scuro, solo l'icona e' teal. */
+      /* Voce attiva: fondo grigio, testo e icona in inchiostro, peso 500. Nessuna
+         barra a sinistra: il segnale e' il fondo piu' il peso, e aria-current. */
       .nav-item--active,
       .nav-item--active:hover {
         background: var(--sidebar-active-bg);
         color: var(--sidebar-ink-strong);
-        font-weight: var(--font-weight-semibold);
-      }
-      /* Segnale non affidato alla tinta: barra teal di 2px a sinistra (5,6:1 sulla cornice). */
-      .nav-item--active::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0.4rem;
-        bottom: 0.4rem;
-        width: 2px;
-        border-radius: var(--radius-full);
-        background: var(--sidebar-active);
+        font-weight: var(--font-weight-medium);
       }
       .nav-item--active .nav-item__icon,
       .nav-item--active:hover .nav-item__icon {
         color: var(--sidebar-active);
       }
 
-      /* ===== Footer sidebar: utente + logout ===== */
+      /* ===== In fondo alla sidebar: azienda, tema e campanella, utente, Esci ===== */
       .sidebar__footer {
+        display: grid;
+        gap: var(--spacing-sm);
         padding: var(--spacing-md);
       }
+      .azienda-attiva {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        min-width: 0;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--sidebar-ink-strong);
+      }
+      .azienda-attiva__nome {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sidebar__azioni {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+      }
+      .sidebar__azioni .tema {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .tema {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        height: var(--control-md);
+        min-height: var(--control-md);
+        padding: 0 var(--spacing-md);
+        border: 1px solid var(--frame-control-border);
+        border-radius: var(--radius-lg);
+        background: transparent;
+        color: var(--sidebar-ink);
+        font-family: inherit;
+        font-size: var(--font-size-sm);
+        cursor: pointer;
+        transition:
+          background var(--transition-fast),
+          color var(--transition-fast);
+      }
+      .tema i {
+        font-size: 0.95rem;
+        color: var(--sidebar-ink-muted);
+      }
+      .tema:hover {
+        background: var(--sidebar-hover-bg);
+        color: var(--sidebar-ink-strong);
+      }
+
       .user-card {
         display: flex;
         align-items: center;
         gap: var(--spacing-sm);
-        padding: var(--spacing-xs) var(--spacing-xs) var(--spacing-xs) var(--spacing-sm);
-        border-radius: var(--radius-md);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        min-width: 0;
       }
       .user-card__info {
         display: flex;
@@ -940,7 +946,7 @@ export function ordinaAziendePerGruppo(
       }
       .user-card__name {
         font-size: var(--font-size-sm);
-        font-weight: var(--font-weight-semibold);
+        font-weight: var(--font-weight-medium);
         color: var(--sidebar-ink-strong);
         white-space: nowrap;
         overflow: hidden;
@@ -953,34 +959,34 @@ export function ordinaAziendePerGruppo(
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .user-card__logout {
-        display: grid;
-        place-items: center;
-        width: var(--touch-target-min);
-        height: var(--touch-target-min);
-        flex-shrink: 0;
-        border: none;
+      .esci {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacing-sm);
+        height: var(--control-md);
+        min-height: var(--control-md);
+        border: 1px solid var(--sidebar-border);
+        border-radius: var(--radius-lg);
         background: transparent;
+        color: var(--sidebar-ink);
+        font-family: inherit;
+        font-size: var(--font-size-sm);
         cursor: pointer;
-        border-radius: var(--radius-md);
-        color: var(--sidebar-ink-muted);
         transition:
           background var(--transition-fast),
           color var(--transition-fast);
       }
-      .user-card__logout i {
-        font-size: 1.15rem;
-      }
-      .user-card__logout:hover {
+      .esci:hover {
         background: var(--sidebar-danger-bg);
         color: var(--sidebar-danger);
       }
 
-      /* Avatar: teal di marca con le iniziali sopra (la specificita' di :host ::ng-deep batte quella di p-avatar). */
+      /* Avatar: iniziali in inchiostro (la specificita' di :host ::ng-deep batte quella di p-avatar). */
       :host ::ng-deep .user-card__avatar {
-        background: var(--brand-primary);
-        color: var(--text-inverse);
-        font-weight: var(--font-weight-semibold);
+        background: var(--ink-fill);
+        color: var(--on-ink);
+        font-weight: var(--font-weight-medium);
         font-family: var(--font-display);
       }
 
@@ -994,31 +1000,19 @@ export function ordinaAziendePerGruppo(
         min-width: 0;
       }
 
-      /* ===== Topbar ===== */
+      /* ===== Barra stretta (solo < 992px): 48px, hamburger, nome pagina, campanella ===== */
       .topbar {
         position: sticky;
         top: 0;
         z-index: var(--z-sticky);
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-base);
-        height: var(--topbar-h);
-        padding: 0 var(--spacing-base);
-        background: var(--frame);
-      }
-      .topbar__start {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-md);
-        min-width: 0;
-      }
-      .topbar__end {
-        display: flex;
-        align-items: center;
         gap: var(--spacing-sm);
+        height: var(--topbar-h);
+        padding: 0 var(--spacing-sm);
+        background: var(--frame);
+        border-bottom: 1px solid var(--surface-border);
       }
-
       .topbar__hamburger {
         display: grid;
         place-items: center;
@@ -1027,7 +1021,7 @@ export function ordinaAziendePerGruppo(
         border: none;
         background: transparent;
         cursor: pointer;
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         color: var(--text-secondary);
         transition:
           background var(--transition-fast),
@@ -1040,156 +1034,51 @@ export function ordinaAziendePerGruppo(
         background: var(--sidebar-hover-bg);
         color: var(--text-primary);
       }
-
-      .topbar__brand {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-sm);
-        font-family: var(--font-display);
-        font-size: var(--font-size-base);
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-primary);
-      }
-      .topbar__brand i {
-        color: var(--brand-primary);
-        font-size: 1.15rem;
-      }
-
       .topbar__title {
+        flex: 1;
+        min-width: 0;
         font-family: var(--font-display);
         font-size: var(--font-size-base);
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-primary);
-        margin: 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: none;
-      }
-
-      .topbar__avatar {
-        display: none;
-      }
-
-      .topbar__azienda {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--spacing-sm);
-        max-width: 18rem;
-        padding: 0.25rem 0.75rem 0.25rem 0.25rem;
-        border: 1px solid var(--sidebar-border);
-        border-radius: var(--radius-full);
-        background: var(--sidebar-bg-2);
-        font-size: var(--font-size-sm);
         font-weight: var(--font-weight-medium);
         color: var(--text-primary);
-        min-width: 0;
-      }
-      .topbar__azienda-nome {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      @media (max-width: 767.98px) {
-        .topbar__azienda {
-          padding: 0;
-          border: 0;
-        }
-        /* Su telefono resta il solo contrassegno; il nome rimane per gli screen reader. */
-        .topbar__azienda-nome {
-          position: absolute;
-          width: 1px;
-          height: 1px;
-          overflow: hidden;
-          clip: rect(0, 0, 0, 0);
-          white-space: nowrap;
-        }
-      }
-
-      .topbar__tema {
-        display: grid;
-        place-items: center;
-        width: var(--touch-target-min);
-        height: var(--touch-target-min);
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        border-radius: var(--radius-md);
-        color: var(--text-secondary);
-        transition:
-          background var(--transition-fast),
-          color var(--transition-fast);
-      }
-      .topbar__tema i {
-        font-size: 1.15rem;
-      }
-      .topbar__tema:hover {
-        background: var(--sidebar-hover-bg);
-        color: var(--text-primary);
-      }
-
-      /* Da ≥992px: niente hamburger/brand-mobile, mostra titolo contesto */
       @media (min-width: 992px) {
-        .topbar__hamburger,
-        .topbar__brand {
+        .topbar {
           display: none;
         }
-        .topbar__title {
-          display: block;
-        }
-      }
-      /* Su mobile l'avatar nella topbar dà accesso al contesto utente */
-      @media (max-width: 991.98px) {
-        .topbar__avatar {
-          display: inline-flex;
-        }
       }
 
-      /* ===== Main ===== */
-      /* Il foglio: bianco, rientrato di 8px, bordo di 1px, raggio 16px, nessuna ombra.
-         Sotto i 992px la sidebar sparisce e il foglio occupa tutta la larghezza;
-         su telefono (<= 768px) diventa lo schermo intero. */
+      /* ===== Main: sullo stesso fondo, senza bordo ne' raggio ===== */
       .main {
         flex: 1;
         min-width: 0;
         overflow-x: hidden;
-        margin: 0 var(--sheet-inset) var(--sheet-inset);
-        background: var(--sheet);
-        border: 1px solid var(--sheet-border);
-        border-radius: var(--radius-sheet);
       }
       .main:focus {
         outline: none;
       }
+      /* Il gutter laterale sta qui perche' le pagine non hanno una radice comune:
+         24px sopra i 992px, 20px fra 576 e 992, 16px sotto i 576. */
       .main__inner {
         max-width: 1600px;
         margin: 0 auto;
-        padding: clamp(0.5rem, 1.5vw, var(--spacing-base));
+        padding: 0 var(--spacing-base);
+      }
+      @media (min-width: 576px) {
+        .main__inner {
+          padding: 0 1.25rem;
+        }
       }
       @media (min-width: 992px) {
-        .main {
-          margin: 0 var(--sheet-inset) var(--sheet-inset) 0;
-        }
-      }
-      @media (max-width: 768px) {
-        .main {
-          margin: 0;
-          border-width: 1px 0 0;
-          border-radius: 0;
-        }
         .main__inner {
-          padding: 0;
-        }
-      }
-      @media print {
-        .main {
-          margin: 0;
-          border: 0;
-          border-radius: 0;
+          padding: 0 var(--spacing-lg);
         }
       }
 
-      /* ===== Drawer mobile (p-sidebar) — stessa cornice salvia ===== */
+      /* ===== Drawer mobile (p-sidebar): stesso fondo della sidebar ===== */
       :host ::ng-deep .mobile-drawer {
         background: var(--sidebar-bg);
         color: var(--sidebar-ink);
@@ -1207,7 +1096,7 @@ export function ordinaAziendePerGruppo(
         padding: var(--spacing-sm) var(--spacing-xs);
         overflow: visible;
       }
-      /* Pulsante di chiusura del drawer leggibile sulla cornice */
+      /* Pulsante di chiusura del drawer leggibile sul fondo */
       :host ::ng-deep .mobile-drawer .p-sidebar-close {
         color: var(--sidebar-ink);
       }
@@ -1224,6 +1113,14 @@ export function ordinaAziendePerGruppo(
         margin-top: 0;
       }
 
+      .drawer__footer {
+        display: grid;
+        gap: var(--spacing-sm);
+        width: 100%;
+      }
+      .drawer__footer .tema {
+        min-height: var(--touch-target-min);
+      }
       .drawer__logout {
         display: flex;
         align-items: center;
@@ -1233,7 +1130,7 @@ export function ordinaAziendePerGruppo(
         min-height: var(--touch-target-min);
         border: 1px solid var(--sidebar-border);
         background: transparent;
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         color: var(--sidebar-danger);
         font-weight: var(--font-weight-medium);
         font-size: var(--font-size-sm);
@@ -1333,7 +1230,7 @@ export class LayoutComponent implements OnInit {
   }[] = [
     { label: 'Dashboard', route: '/dashboard', icon: 'pi pi-home' },
     { label: 'FIR', route: '/fir', icon: 'pi pi-file', feature: 'fir' },
-    { label: 'Registro C/S', route: '/registro', icon: 'pi pi-clipboard', feature: 'registro' },
+    { label: 'Registro C/S', route: '/registro', icon: 'pi pi-book', feature: 'registro' },
     { label: 'Catalogo CER', route: '/cer', icon: 'pi pi-tags', feature: 'cer' },
     { label: 'MUD', route: '/mud', icon: 'pi pi-file-export', feature: 'mud' },
     { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box', feature: 'giacenze' },
@@ -1485,21 +1382,45 @@ export class LayoutComponent implements OnInit {
     return icone[this.tema.preferenza()]
   })
 
-  /** Dice il tema attuale e cosa succede premendo (sistema, chiaro, scuro, di nuovo sistema). */
-  readonly etichettaTema = computed(() => {
-    const attuale = {
-      sistema: `come il sistema (ora ${this.tema.effettivo()})`,
-      chiaro: 'chiaro',
-      scuro: 'scuro',
-    }[this.tema.preferenza()]
-    const prossimo = { sistema: 'chiaro', chiaro: 'scuro', scuro: 'come il sistema' }[
-      this.tema.preferenza()
-    ]
-    return `Tema ${attuale}. Passa a: ${prossimo}`
+  /** La scelta attuale in una parola: «Chiaro», «Scuro» o «Sistema». */
+  readonly etichettaTema = computed(() => etichettaPreferenzaTema(this.tema.preferenza()))
+
+  /**
+   * Comincia col testo visibile («Tema: Chiaro», WCAG 2.5.3) e dice anche cosa
+   * succede premendo: «Tema: Chiaro. Passa a scuro».
+   */
+  readonly ariaLabelTema = computed(() => {
+    const prossimo = etichettaPreferenzaTema(prossimaPreferenzaTema(this.tema.preferenza()))
+    return `Tema: ${this.etichettaTema()}. Passa a ${prossimo.toLowerCase()}`
   })
 
-  /** Titolo di contesto mostrato in topbar (desktop), derivato dalla rotta attiva. */
-  readonly currentTitle = signal<string>('Dashboard')
+  /** Percorso corrente (senza query ne' frammento), aggiornato a ogni NavigationEnd. */
+  private readonly percorso = signal<string>(percorsoDi(window.location.pathname))
+
+  /** Tutte le voci con una rotta: menu, anagrafiche, impostazioni, amministrazione, account. */
+  private readonly vociShell = computed<VoceShell[]>(() => [
+    ...this.navMain,
+    ...this.navAnagrafiche,
+    ...this.navImpostazioni,
+    { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
+    { label: 'Utenti', route: '/admin/utenti' },
+    { label: 'Stato del sistema', route: '/admin/stato-sistema' },
+    { label: 'Abbonamento', route: '/abbonamento' },
+  ])
+
+  /** Rotta della sola voce di menu accesa (prefisso piu' lungo per segmenti). */
+  readonly voceAttiva = computed(() =>
+    rottaVoceAttiva(
+      this.percorso(),
+      this.vociShell().map(v => v.route)
+    )
+  )
+
+  /** Nome della pagina per la barra sotto i 992 px. */
+  readonly titolo = computed(() => titoloShell(this.percorso(), this.vociShell()))
+
+  /** Vero dai 992px in su: la campanella sta in fondo alla sidebar, altrimenti nella barra. */
+  readonly desktop = signal(true)
 
   // Computed signals for reactive user display
   readonly userInitials = computed(() => {
@@ -1534,6 +1455,8 @@ export class LayoutComponent implements OnInit {
     return 'User'
   })
 
+  private readonly distruzione = inject(DestroyRef)
+
   constructor(
     readonly authService: AuthService,
     private readonly router: Router,
@@ -1542,10 +1465,11 @@ export class LayoutComponent implements OnInit {
 
   ngOnInit(): void {
     this.detectImpersonation()
-    this.updateTitle()
+    this.percorso.set(percorsoDi(this.router.url))
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
-      .subscribe(() => this.updateTitle())
+      .subscribe(e => this.percorso.set(percorsoDi(e.urlAfterRedirects)))
+    this.osservaLarghezza()
 
     // Feature-flag del tenant corrente: guida la visibilità delle voci di menu.
     this.ff.load().subscribe(() => this.caricaContatoreLegami())
@@ -1655,23 +1579,14 @@ export class LayoutComponent implements OnInit {
     window.location.reload()
   }
 
-  /** Aggiorna il titolo di contesto in base alla voce di menu corrispondente alla rotta. */
-  private updateTitle(): void {
-    const navAmministrazione = [
-      { label: this.tenantsMenuLabel(), route: '/admin/tenants' },
-      { label: 'Utenti', route: '/admin/utenti' },
-      { label: 'Stato del sistema', route: '/admin/stato-sistema' },
-    ]
-    const navAccount = [{ label: 'Abbonamento', route: '/abbonamento' }]
-    const all = [
-      ...this.navMain,
-      ...this.navAnagrafiche,
-      ...this.navImpostazioni,
-      ...navAmministrazione,
-      ...navAccount,
-    ]
-    const match = all.find(item => this.isActiveRoute(item.route))
-    this.currentTitle.set(match?.label ?? 'WasteFlow')
+  /** Tiene `desktop` allineato alla media query dei 992px. */
+  private osservaLarghezza(): void {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(min-width: 992px)')
+    this.desktop.set(media.matches)
+    const ascolta = (e: MediaQueryListEvent): void => this.desktop.set(e.matches)
+    media.addEventListener('change', ascolta)
+    this.distruzione.onDestroy(() => media.removeEventListener('change', ascolta))
   }
 
   toggleMobileSidebar(): void {
@@ -1680,10 +1595,6 @@ export class LayoutComponent implements OnInit {
 
   closeMobileSidebar(): void {
     this.mobileSidebarVisible.set(false)
-  }
-
-  isActiveRoute(route: string): boolean {
-    return window.location.pathname.startsWith(route)
   }
 
   /**
