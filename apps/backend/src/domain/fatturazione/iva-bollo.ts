@@ -17,7 +17,9 @@ const LUNGHEZZA_RIFERIMENTO_NORMATIVO = 100
 
 /**
  * Riepilogo IVA (spec §6.7): imponibile per coppia (aliquota, natura), imposta arrotondata
- * sul totale della coppia e non sulla somma delle imposte di riga. Le nature generiche
+ * sul totale della coppia e non sulla somma delle imposte di riga. Il riferimento normativo e'
+ * quello del primo codice IVA della coppia (se due codici con la stessa coppia hanno descrizioni
+ * diverse, le altre si perdono; un codice assente dalla mappa da' null). Le nature generiche
  * N2, N3 e N6 danno NATURA_NON_AMMESSA (una sola segnalazione per natura).
  */
 export function riepiloghiIva(
@@ -72,7 +74,8 @@ export function riepiloghiIva(
  * Bollo (spec §6.9). Dovuto se la somma degli imponibili con natura soggetta supera la soglia.
  * La base si calcola sui riepiloghi PRIMA di aggiungere la riga BOLLO (che ha natura N1):
  * il chiamante non deve ripassare i riepiloghi che includono il bollo stesso.
- * La riga BOLLO ha come importo quello della spesa di bollo del contratto.
+ * La spesa di bollo del contratto decide solo SE addebitare e con quale codice IVA: l'importo
+ * della riga BOLLO e' sempre quello del bollo alla data (`importoBolloAl`), uguale a `importo`.
  */
 export function valutaBollo(
   riepiloghi: readonly RiepilogoIvaCalcolato[],
@@ -109,11 +112,10 @@ export function valutaBollo(
       ],
     }
   }
-  const prezzo = arrotonda2(spesaBollo.importo)
   return {
     dovuto,
     importo,
-    rigaBollo: rigaSpesa('BOLLO', 'Bollo', prezzo, '1.00', iva),
+    rigaBollo: rigaSpesa('BOLLO', 'Bollo', importo, '1.00', iva),
     errori: [],
     avvisi: [],
   }
@@ -161,14 +163,14 @@ export function rigaSpeseIncasso(
   const totale = D(spesa.importo).times(numeroRate)
   if (totale.isZero()) return { riga: null, errori: [] }
   if (spesa.codiceIva === null) {
-    return { riga: null, errori: [{ codice: 'SPESA_SENZA_CODICE_IVA' }] }
+    return { riga: null, errori: [{ codice: 'SPESA_SENZA_CODICE_IVA', dettaglio: 'incasso' }] }
   }
   return {
     riga: rigaSpesa(
       'SPESA_INCASSO',
       spesa.descrizione,
       arrotonda2(totale.toFixed()),
-      String(numeroRate) + '.00',
+      new Prisma.Decimal(numeroRate).toFixed(2),
       spesa.codiceIva
     ),
     errori: [],

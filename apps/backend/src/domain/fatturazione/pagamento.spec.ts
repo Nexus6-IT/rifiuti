@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { abiCabDaIban, calcolaRate, type DatiBanca } from './pagamento'
 
 const IBAN = 'IT60X0542811101000000123456'
@@ -85,7 +86,19 @@ describe('calcolaRate', () => {
   })
   it('split: la somma delle rate e il netto senza IVA', () => {
     const r = calcolaRate(base({ netto: '122.00', esigibilita: 'S' }))
-    expect(r.rate.reduce((s, x) => s + Number(x.importo), 0).toFixed(2)).toBe('122.00')
+    expect(r.rate.reduce((s, x) => s.plus(x.importo), new Prisma.Decimal(0)).toFixed(2)).toBe(
+      '122.00'
+    )
+  })
+})
+
+describe('calcolaRate senza rate', () => {
+  it('giorniRate vuoto: SENZA_CONDIZIONE_PAGAMENTO', () => {
+    const r = calcolaRate(
+      base({ condizione: { modalita: 'MP08', giorniRate: [], fineMese: false } })
+    )
+    expect(r.rate).toEqual([])
+    expect(r.errori.map(e => e.codice)).toEqual(['SENZA_CONDIZIONE_PAGAMENTO'])
   })
 })
 

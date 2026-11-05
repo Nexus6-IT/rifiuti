@@ -55,7 +55,10 @@ export function calcolaRate(i: {
   }
   const abiCab = banca?.iban ? abiCabDaIban(banca.iban) : null
 
-  if (n === 0) return { condizioniPagamento, rate: [], errori }
+  if (n === 0) {
+    errori.push({ codice: 'SENZA_CONDIZIONE_PAGAMENTO' })
+    return { condizioniPagamento, rate: [], errori }
+  }
 
   const date = calcolaScadenze(i.dataDocumento, {
     giorniRate: [...i.condizione.giorniRate],

@@ -107,6 +107,21 @@ describe('valutaBollo', () => {
       codiceIvaId: 'n1',
     })
   })
+  it('spesa 2.50 con codice N1: la riga BOLLO e da 2.00 (importo del bollo)', () => {
+    const v = valutaBollo([riep('N4', '100.00')], '2026-11-05', { importo: '2.50', codiceIva: N1 })
+    expect(v.importo).toBe('2.00')
+    expect(v.rigaBollo).toMatchObject({
+      prezzoTotale: '2.00',
+      importoLordo: '2.00',
+      prezzoUnitario: '2.00',
+    })
+  })
+  it('caso limite: coi riepiloghi che includono gia la riga BOLLO N1 la soglia si sposta', () => {
+    expect(valutaBollo([riep('N4', '76.00')], '2026-11-05', null).dovuto).toBe(false)
+    expect(valutaBollo([riep('N4', '76.00'), riep('N1', '2.00')], '2026-11-05', null).dovuto).toBe(
+      true
+    )
+  })
   it('spesa senza codice IVA o con natura non N1: errore', () => {
     expect(
       valutaBollo([riep('N4', '100.00')], '2026-11-05', { importo: '2.00', codiceIva: null })
