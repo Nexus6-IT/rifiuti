@@ -889,12 +889,13 @@ export class AnnulloStornoService {
 }
 export async function ripristinaLegamiDelDocumento(tx: Prisma.TransactionClient, tenantId: string, documentoId: string): Promise<number>   // §5.5 passo 7, UPDATE … FROM righe del documento
 ```
-Annullo (§5.5): numerazione → documento → legami (`FOR UPDATE` per id) → `ANNULLATO` →
-`rilasciaUltimo` → marcatori del documento cancellati → `ripristinaLegamiDelDocumento`
+Annullo (§5.5): numerazione → documento → legami (`FOR UPDATE` per id) → `rilasciaUltimo` (sul
+`DEFINITIVO` non emesso, prima del cambio di stato: su un `ANNULLATO` risponde 409) → `ANNULLATO` → marcatori del documento cancellati → `ripristinaLegamiDelDocumento`
 (`CONFERMATO`, `fatturato_il`, `documento_id`, `riferimento_fattura` nulli,
 `scostamento_dopo_fattura` falso, `scostamento_gestito_*` nulli, `movimento_vigente_id :=
 movimento_fatturato_id`) → audit. Storno (§5.6): numerazione → origine → legami; `dataDocumento`
-non futura sul giorno italiano e ≥ `ultima_data`; TD04 `DEFINITIVO` con numero successivo, stesse
+non futura sul giorno italiano e ≥ `ultima_data`; TD04 creato in `BOZZA`, poi righe, riepiloghi e rate, poi promosso a `DEFINITIVO` con numero successivo
+(i trigger del Task 6 rifiutano le figlie su un `DEFINITIVO`), stesse
 righe coi tipi dell'origine (P6), stessi riepiloghi e rate;
 `documento_origine_id`; con `rifatturabile` ripristino come l'annullo, altrimenti legami `FATTURATO`
 e scostamenti segnati gestiti con nota «storno documento <numero_testo>» (S20).
