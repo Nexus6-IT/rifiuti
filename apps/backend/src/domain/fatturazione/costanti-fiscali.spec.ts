@@ -18,6 +18,10 @@ describe('bollo', () => {
   it('prima del 2013-06-26 e un errore', () => {
     expect(() => importoBolloAl('2013-06-25')).toThrow()
   })
+  it('data impossibile è un errore', () => {
+    expect(() => importoBolloAl('2026-13-45')).toThrow()
+    expect(() => importoBolloAl('2026-02-30')).toThrow()
+  })
   it('data malformata e un errore', () => {
     expect(() => importoBolloAl('05/11/2026')).toThrow()
     expect(() => importoBolloAl('')).toThrow()
@@ -67,22 +71,24 @@ describe('famigliaCalcolata', () => {
     expect(famigliaCalcolata(r({ tipo: 'V', prezzoSpeciale: true, applicaA }))).toBe(true)
   })
 
-  it.each([
-    'TS',
-    'TP',
-    'TQ',
-    'TR',
-    'T001',
-    'NM',
-    'NR',
-    '$A',
-    '$D',
-    '$R',
-    'PROGRESSIVO_DA_DATA',
-    'CONGUAGLIO_365',
-    'GIORNO',
-  ])('%s non e calcolata', tipo => {
-    expect(famigliaCalcolata(r({ tipo }))).toBe(false)
+  it.each(['TS', 'TP', 'TQ', 'TR', 'T001', 'NM', 'NR', '$A', '$D', '$R'])(
+    '%s non e calcolata',
+    tipo => {
+      expect(famigliaCalcolata(r({ tipo }))).toBe(false)
+    }
+  )
+
+  it.each(['PROGRESSIVO_DA_DATA', 'CONGUAGLIO_365', 'GIORNO'])(
+    'prezzo speciale %s su CER e V non è calcolato',
+    applicaA => {
+      expect(famigliaCalcolata(r({ tipo: 'CER', prezzoSpeciale: true, applicaA }))).toBe(false)
+      expect(famigliaCalcolata(r({ tipo: 'V', prezzoSpeciale: true, applicaA }))).toBe(false)
+    }
+  )
+
+  it('M con meno o più di 3 cifre non è calcolata', () => {
+    expect(famigliaCalcolata(r({ tipo: 'M01' }))).toBe(false)
+    expect(famigliaCalcolata(r({ tipo: 'M0001' }))).toBe(false)
   })
 
   it('TT e TF a prezzo speciale no', () => {

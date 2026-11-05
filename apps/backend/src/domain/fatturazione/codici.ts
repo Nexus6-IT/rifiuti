@@ -104,10 +104,11 @@ export const MESSAGGI_ERRORE: Readonly<Record<ErroreGenerale | ErroreDocumento, 
   SEDE_CLIENTE_INCOMPLETA:
     'La sede del cliente è incompleta: indirizzo, CAP, comune e nazione sono obbligatori.',
   DATI_PA_INCOMPLETI:
-    'Mancano i dati della pubblica amministrazione (codice univoco o riferimenti).',
+    "Fattura alla pubblica amministrazione con CIG o CUP: manca il numero dell'ordine o del contratto di riferimento.",
   SENZA_CONDIZIONE_PAGAMENTO: 'Il contratto non ha una condizione di pagamento.',
   PAGAMENTO_SENZA_BANCA: 'La modalità di pagamento richiede un conto corrente che non è indicato.',
-  PAGAMENTO_NON_AMMESSO: 'La modalità di pagamento non è ammessa per la fattura elettronica.',
+  PAGAMENTO_NON_AMMESSO:
+    "Il pagamento in contanti non è ammesso con la scissione dei pagamenti o con l'IVA differita.",
   SPESA_SENZA_CODICE_IVA: "La spesa d'incasso non ha un codice IVA.",
   RIGA_LEGAME_INCOMPLETA:
     'Una riga del legame è incompleta: mancano quantità, prezzo o codice IVA.',
@@ -117,7 +118,7 @@ export const MESSAGGI_ERRORE: Readonly<Record<ErroreGenerale | ErroreDocumento, 
   UM_NON_UNIVOCA: 'Le righe hanno unità di misura diverse e non si possono sommare.',
   CANONE_PERIODO_SOVRAPPOSTO: 'Il periodo del canone si sovrappone a uno già fatturato.',
   NATURA_NON_AMMESSA:
-    'La natura IVA delle righe non è ammessa (N2, N3 e N6 vanno indicate con il sottocodice).',
+    'Un codice IVA usa una natura generica (N2, N3 o N6), non più ammessa: indica il sottocodice nel codice IVA (per esempio N2.1).',
   IMPORTI_NON_COERENTI:
     'Gli importi del documento non tornano: controlla righe, riepilogo IVA e totale.',
   TOTALE_NON_POSITIVO: 'Il totale del documento non è positivo.',
@@ -131,10 +132,10 @@ export const MESSAGGI_AVVISO: Readonly<Record<AvvisoDocumento, string>> = {
   ARRETRATI_PRESENTI: 'Il documento contiene arretrati di canoni fissi di periodi precedenti.',
   BOLLO_NON_ADDEBITATO: 'Il bollo è dovuto ma il contratto non lo addebita al cliente.',
   DESTINATARIO_ASSENTE:
-    "Il cliente non ha un codice destinatario né una PEC: sara consegnato nell'area riservata.",
+    "Il cliente non ha un codice destinatario né una PEC: sarà consegnato nell'area riservata.",
   FPA_DA_FIRMARE: "Fattura verso la pubblica amministrazione: l'XML va firmato prima dell'invio.",
   DATA_OLTRE_TERMINE_DIFFERITA:
-    'La data del documento supera il termine di emissione: la fattura è differita.',
+    'La data supera il 15 del mese successivo al periodo: la fattura differita è emessa oltre il termine.',
 }
 
 /** Una segnalazione di calcolo. `dettaglio` non contiene id ne' dati personali. */
@@ -149,13 +150,13 @@ const LUNGHEZZA_MASSIMA_TESTO_BREVE = 200
 export function validaTestoBreve(
   testo: unknown
 ): { ok: true; valore: string } | { ok: false; errore: string } {
-  if (typeof testo !== 'string') return { ok: false, errore: 'Il testo e obbligatorio.' }
+  if (typeof testo !== 'string') return { ok: false, errore: 'Il testo è obbligatorio.' }
   const valore = testo.trim()
-  if (valore.length === 0) return { ok: false, errore: 'Il testo e obbligatorio.' }
+  if (valore.length === 0) return { ok: false, errore: 'Il testo è obbligatorio.' }
   if (valore.length > LUNGHEZZA_MASSIMA_TESTO_BREVE) {
     return {
       ok: false,
-      errore: `Il testo puo avere al massimo ${LUNGHEZZA_MASSIMA_TESTO_BREVE} caratteri.`,
+      errore: `Il testo può avere al massimo ${LUNGHEZZA_MASSIMA_TESTO_BREVE} caratteri.`,
     }
   }
   return { ok: true, valore }
