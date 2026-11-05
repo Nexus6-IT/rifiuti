@@ -124,6 +124,16 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'LegameMovimento',
   'RigaLegameMovimento',
   'ImpostazioneFatturazione',
+  // Fatturazione per periodo (Fase 4 pezzo 4a): dato dell'azienda.
+  'CedenteFatturazione',
+  'NumerazioneFattura',
+  'ElaborazioneFatturazione',
+  'DocumentoFattura',
+  'RigaDocumentoFattura',
+  'RiepilogoIvaDocumento',
+  'RataDocumentoFattura',
+  'MarcatoreAddebitoFatturato',
+  'ContatoreFileFatturapa',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

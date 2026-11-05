@@ -18,7 +18,12 @@ import {
   creaContrattoConElenco,
   creaRiga,
 } from '../../test-support/listino-di-test'
-import { creaLegameDiTest, creaMovimentoDiTest } from '../../test-support/legami-di-test'
+import {
+  creaDocumentoMinimoPerLegame,
+  creaLegameDiTest,
+  creaMovimentoDiTest,
+  pulisciTenantDiTest,
+} from '../../test-support/legami-di-test'
 
 const urlProprietario =
   process.env.DATABASE_URL ??
@@ -96,6 +101,8 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
     motivoEsclusione?: string | null
     fatturatoIl?: string | null
     scostamento?: boolean
+    /** 4.4a: documento che ha fatturato il legame (CHECK `legami_movimento_documento_se_fatturato`). */
+    documentoId?: string | null
   }
 
   /** Inserisce una testata di legame come `wasteflow_app`; senza `over` e' un `DA_COLLEGARE` vuoto. */
@@ -105,10 +112,10 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       `INSERT INTO legami_movimento
          (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
           data_movimento, cliente_id, fonte_cliente, contratto_id, elenco_id, motivi, avvisi,
-          motivo_esclusione, fatturato_il, scostamento_dopo_fattura, updated_at)
+          motivo_esclusione, fatturato_il, scostamento_dopo_fattura, documento_id, updated_at)
        VALUES ($1::uuid, $2::uuid, $3::waste_movement_type, $4::uuid, $15::uuid,
           $5::stato_legame_movimento, '2026-03-01'::date, $6::uuid, $7::fonte_cliente_legame,
-          $8::uuid, $9::uuid, $10::text[], $11::text[], $12, $13::timestamp, $14::boolean, now())
+          $8::uuid, $9::uuid, $10::text[], $11::text[], $12, $13::timestamp, $14::boolean, $16::uuid, now())
        RETURNING id::text AS id`,
       s.t,
       s.registroId,
@@ -124,9 +131,18 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
       over.motivoEsclusione ?? null,
       over.fatturatoIl ?? null,
       over.scostamento ?? false,
-      over.vigenteId ?? m
+      over.vigenteId ?? m,
+      over.documentoId ?? null
     )
   }
+
+  /** Un documento DEFINITIVO per i legami FATTURATO dello scenario (col proprietario). */
+  const documentoDi = (s: Scenario) =>
+    creaDocumentoMinimoPerLegame(owner, s.t, {
+      clienteId: s.clienteId,
+      contrattoId: s.contrattoId,
+      elencoId: s.elencoId,
+    })
 
   /** Dati che rendono valido un legame completo (cliente, contratto, elenco dello scenario). */
   const completo = (s: Scenario): DatiLegame => ({
@@ -190,26 +206,8 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
   })
 
   afterAll(async () => {
-    if (tenantCreati.length > 0) {
-      const in_ = tenantCreati
-      // FK composite NoAction: prima chi cita (legami e, a cascata, le loro righe), poi righe e
-      // elenchi del listino, contratti, addebiti, codifiche e codici IVA.
-      for (const tabella of [
-        'legami_movimento',
-        'righe_addebito',
-        'elenchi_addebiti',
-        'contratti_cliente',
-        'addebiti',
-        'codifiche_addebito',
-        'codici_iva',
-      ]) {
-        await owner.$executeRawUnsafe(
-          `DELETE FROM ${tabella} WHERE tenant_id = ANY($1::uuid[])`,
-          in_
-        )
-      }
-      await owner.tenant.deleteMany({ where: { id: { in: in_ } } })
-    }
+    // Pulizia unica per id esatti (4.4a: tocca anche documenti e fatture, che i trigger proteggono).
+    await pulisciTenantDiTest(owner, tenantCreati)
     await owner.$disconnect()
     await app.$disconnect()
   })
@@ -343,8 +341,11 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
 
     it('stato fatturato senza fatturato_il respinto; fatturato_il con stato non fatturato respinto', async () => {
       const s = await scenario()
+      const documentoId = await documentoDi(s)
       await expect(
-        comeApp(s.t, tx => inserisciLegame(tx, s, { ...completo(s), stato: 'FATTURATO' }))
+        comeApp(s.t, tx =>
+          inserisciLegame(tx, s, { ...completo(s), stato: 'FATTURATO', documentoId })
+        )
       ).rejects.toThrow(/legami_movimento_fatturato_coerente/)
       await expect(
         comeApp(s.t, tx =>
@@ -383,6 +384,7 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
 
     it('scostamento_dopo_fattura vero con stato CONFERMATO respinto; con FATTURATO ammesso', async () => {
       const s = await scenario()
+      const documentoId = await documentoDi(s)
       await expect(
         comeApp(s.t, tx =>
           inserisciLegame(tx, s, { ...completo(s), stato: 'CONFERMATO', scostamento: true })
@@ -395,6 +397,7 @@ describe('Legami movimento: schema (Postgres reale, ruolo wasteflow_app)', () =>
             stato: 'FATTURATO',
             fatturatoIl: '2026-04-01T00:00:00',
             scostamento: true,
+            documentoId,
           })
         )
       ).resolves.toHaveLength(1)

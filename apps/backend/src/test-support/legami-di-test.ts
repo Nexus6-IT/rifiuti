@@ -102,6 +102,48 @@ export interface OpzioniLegameDiTest {
 }
 
 /**
+ * Crea (col client PROPRIETARIO) un documento di fattura `DEFINITIVO` minimo per un legame
+ * `FATTURATO` (4.4a: il CHECK `legami_movimento_documento_se_fatturato` vuole `documento_id` se e
+ * solo se lo stato e' `FATTURATO`). Usa il registro IVA `98` dell'azienda (lo crea se manca) e il
+ * primo numero libero del 2026; nessuna riga, totali a zero. Chi serve una fattura completa usa
+ * `creaDocumentoDiTest` (fatturazione-di-test.ts). Si pulisce con `pulisciTenantDiTest`.
+ */
+export async function creaDocumentoMinimoPerLegame(
+  owner: PrismaClient,
+  tenantId: string,
+  dati: { clienteId: string; contrattoId: string; elencoId?: string | null }
+): Promise<string> {
+  const registro =
+    (await owner.registroIva.findFirst({
+      where: { tenantId, codice: '98' },
+      select: { id: true },
+    })) ??
+    (await owner.registroIva.create({
+      data: { tenantId, codice: '98', descrizione: 'Registro di prova dei legami fatturati' },
+      select: { id: true },
+    }))
+  const [doc] = await owner.$queryRawUnsafe<{ id: string }[]>(
+    `INSERT INTO documenti_fattura
+       (tenant_id, stato, tipo_documento, registro_iva_id, anno, numero, numero_testo,
+        data_documento, cliente_id, cliente_fatturazione_id, contratto_id, elenco_id, periodo_dal,
+        periodo_al, formato_trasmissione, esigibilita_iva, totale_imponibile, totale_iva,
+        totale_documento, netto_a_pagare, fotografia, definito_il, updated_at)
+     SELECT $1::uuid, 'DEFINITIVO', 'TD01', $2::uuid, 2026, n.numero, n.numero::text,
+        '2026-03-15'::date, $3::uuid, $3::uuid, $4::uuid, $5::uuid, '2026-01-01', '2026-12-31',
+        'FPR12', 'IMMEDIATA', 0, 0, 0, 0, '{}'::jsonb, now(), now()
+     FROM (SELECT COALESCE(max(numero), 0) + 1 AS numero FROM documenti_fattura
+            WHERE tenant_id = $1::uuid AND registro_iva_id = $2::uuid AND anno = 2026) n
+     RETURNING id::text AS id`,
+    tenantId,
+    registro.id,
+    dati.clienteId,
+    dati.contrattoId,
+    dati.elencoId ?? null
+  )
+  return doc.id
+}
+
+/**
  * Crea (col client PROPRIETARIO) la testata di un legame con le sue righe, rispettando i CHECK:
  * per `CONFERMATO` e i fatturati servono cliente, contratto ed elenco; per `PROPOSTO` anche; un
  * `ESCLUSO` riceve un motivo; un fatturato riceve `fatturato_il`. Le righe copiano da listino
@@ -115,13 +157,23 @@ export async function creaLegameDiTest(
 ): Promise<{ legameId: string; righeIds: string[] }> {
   const stato = opz.stato ?? 'DA_COLLEGARE'
   const fatturato = stato === 'FATTURATO' || stato === 'IMPORTATO_FATTURATO'
+  // 4.4a: un legame FATTURATO ha il suo documento (CHECK `legami_movimento_documento_se_fatturato`).
+  const documentoId =
+    stato === 'FATTURATO' && opz.clienteId && opz.contrattoId
+      ? await creaDocumentoMinimoPerLegame(owner, tenantId, {
+          clienteId: opz.clienteId,
+          contrattoId: opz.contrattoId,
+          elencoId: opz.elencoId,
+        })
+      : null
   const [legame] = await owner.$queryRawUnsafe<{ id: string }[]>(
     `INSERT INTO legami_movimento
        (tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id, stato,
         data_movimento, cliente_id, contratto_id, elenco_id, motivo_esclusione, fatturato_il,
-        updated_at)
+        documento_id, updated_at)
      VALUES ($1::uuid, $2::uuid, $3::waste_movement_type, $4::uuid, $4::uuid,
-        $5::stato_legame_movimento, $6::date, $7::uuid, $8::uuid, $9::uuid, $10, $11::timestamp, now())
+        $5::stato_legame_movimento, $6::date, $7::uuid, $8::uuid, $9::uuid, $10, $11::timestamp,
+        $12::uuid, now())
      RETURNING id::text AS id`,
     tenantId,
     opz.registroId,
@@ -133,7 +185,8 @@ export async function creaLegameDiTest(
     opz.contrattoId ?? null,
     opz.elencoId ?? null,
     stato === 'ESCLUSO' ? 'Escluso per il test' : null,
-    fatturato ? new Date().toISOString() : null
+    fatturato ? new Date().toISOString() : null,
+    documentoId
   )
   const righeIds: string[] = []
   let ordine = 0
@@ -357,11 +410,21 @@ export async function pulisciTenantDiTest(
   if (tenantIds.length === 0) return
   const ids = [...new Set(tenantIds)]
   const errori: string[] = []
-  const passo = async (nome: string, tabella: string, colonna = 'tenant_id'): Promise<void> => {
+  const passo = async (
+    nome: string,
+    tabella: string,
+    colonna = 'tenant_id',
+    replica = false
+  ): Promise<void> => {
     try {
       await owner.$transaction(
         async tx => {
           await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '20s'`)
+          // Documenti e figlie della fatturazione (4.4a): i trigger di immutabilita' rifiutano la
+          // cancellazione dei non in bozza anche al proprietario. Serve un superuser: e' il
+          // proprietario del database di test, in locale e in CI (base 4.4, Task 0). Le FK non
+          // scattano in questa modalita': l'ordine dei passi resta quello delle FK.
+          if (replica) await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`)
           if (tabella === 'waste_movements') {
             // Le catene di correzione hanno FK NoAction fra loro: un solo statement.
             await tx.$executeRawUnsafe(
@@ -381,10 +444,44 @@ export async function pulisciTenantDiTest(
       errori.push(`${nome}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
     }
   }
+  // Fatturazione per periodo (4.4a), prima dei passi dei legami: marcatori, poi le figlie dei
+  // documenti (anche dei non in bozza, quindi in modalita' replica).
+  await passo('marcatori', 'marcatori_addebiti_fatturati')
+  for (const [nome, tabella] of [
+    ['rate dei documenti', 'rate_documento_fattura'],
+    ['riepiloghi dei documenti', 'riepiloghi_iva_documento'],
+    ['righe dei documenti', 'righe_documento_fattura'],
+  ] as const) {
+    await passo(nome, tabella, 'tenant_id', true)
+  }
   for (const [nome, tabella] of [
     ['audit', 'activity_logs'],
     ['righe legame', 'righe_legame_movimento'],
     ['legami', 'legami_movimento'],
+  ] as const) {
+    await passo(nome, tabella)
+  }
+  // Documenti (anche definitivi e annullati), elaborazioni, numerazioni, contatori e cedente.
+  await passo('documenti', 'documenti_fattura', 'tenant_id', true)
+  for (const [nome, tabella] of [
+    ['elaborazioni', 'elaborazioni_fatturazione'],
+    ['numerazioni', 'numerazioni_fattura'],
+    ['contatori file', 'contatori_file_fatturapa'],
+    ['cedente', 'cedente_fatturazione'],
+  ] as const) {
+    await passo(nome, tabella)
+  }
+  // `spese_accessorie.codice_iva_id` (4.4a) ha una FK NoAction verso i codici IVA: si scollega, le
+  // spese restano e cadono con l'azienda.
+  try {
+    await owner.$executeRawUnsafe(
+      `UPDATE spese_accessorie SET codice_iva_id = NULL WHERE tenant_id = ANY($1::uuid[]) AND codice_iva_id IS NOT NULL`,
+      ids
+    )
+  } catch (e) {
+    errori.push(`spese accessorie: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+  }
+  for (const [nome, tabella] of [
     ['abbinamenti', 'abbinamenti_carico_scarico'],
     ['trasmissioni RENTRI', 'movimenti_trasmissione_rentri'],
     ['movimenti', 'waste_movements'],

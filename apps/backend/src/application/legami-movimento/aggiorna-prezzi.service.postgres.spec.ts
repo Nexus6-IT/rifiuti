@@ -29,6 +29,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import { creaContrattoConElenco, creaRiga } from '../../test-support/listino-di-test'
 import {
+  creaDocumentoMinimoPerLegame,
   creaLegameDiTest,
   creaMovimentoDiTest,
   creaScenarioProposta,
@@ -746,12 +747,19 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
       await prezzoListino(s.rigaCerId, '12.000000')
       const a = await anteprima(s)
       expect(a.cambiano).toBe(2)
+      // 4.4a: FATTURATO vuole il documento (CHECK `legami_movimento_documento_se_fatturato`).
+      const documentoId = await creaDocumentoMinimoPerLegame(owner, s.tenantId, {
+        clienteId: s.clienteId,
+        contrattoId: s.contrattoId,
+        elencoId: s.elencoId,
+      })
 
       const t = tenitore(async tx => {
         await tx.$queryRaw`SELECT id FROM legami_movimento WHERE id = ${l.legameId}::uuid FOR UPDATE`
         await tx.$queryRaw`SELECT id FROM righe_legame_movimento WHERE legame_id = ${l.legameId}::uuid FOR UPDATE`
         await tx.$executeRaw`
-          UPDATE legami_movimento SET stato = 'FATTURATO', fatturato_il = now()
+          UPDATE legami_movimento SET stato = 'FATTURATO', fatturato_il = now(),
+            documento_id = ${documentoId}::uuid
           WHERE id = ${l.legameId}::uuid`
       })
       let scrive!: ReturnType<typeof osserva<Awaited<ReturnType<typeof applica>>>>
