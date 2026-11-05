@@ -1,11 +1,25 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
+import { CodiceIva } from '../../listino/listino.model'
+import { ListinoService } from '../../listino/listino.service'
 import { SpesaAccessoriaDialogComponent } from './spesa-accessoria-dialog.component'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { bottone, q, scrivi, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
+const iva = (id: string, codice: string, natura: string | null): CodiceIva => ({
+  id,
+  versione: 1,
+  eliminabile: true,
+  codice,
+  descrizione: `Codice ${codice}`,
+  aliquota: natura ? '0.00' : '22.00',
+  natura,
+  attivo: true,
+})
+
 describe('SpesaAccessoriaDialogComponent', () => {
+  let codiciIva: jasmine.Spy
   let tabella: ReturnType<typeof tabellaFinta>
   let fixture: ComponentFixture<SpesaAccessoriaDialogComponent>
 
@@ -20,11 +34,15 @@ describe('SpesaAccessoriaDialogComponent', () => {
   beforeEach(() => {
     tabella = tabellaFinta()
     tabella.crea.and.returnValue(of({ id: 's1' }))
+    codiciIva = jasmine
+      .createSpy('list')
+      .and.returnValue(of([iva('i22', '22', null), iva('in1', 'N1', 'N1')]))
     TestBed.configureTestingModule({
       imports: [SpesaAccessoriaDialogComponent],
       providers: [
         provideNoopAnimations(),
         { provide: TabelleFatturazioneService, useValue: { spese: tabella } },
+        { provide: ListinoService, useValue: { codiciIva: { list: codiciIva } } },
       ],
     })
   })
@@ -56,6 +74,7 @@ describe('SpesaAccessoriaDialogComponent', () => {
       codice: 'I1',
       descrizione: 'Incasso',
       importo: '2.50',
+      codiceIvaId: null,
     })
   })
 
@@ -125,6 +144,91 @@ describe('SpesaAccessoriaDialogComponent', () => {
       fixture.componentRef.setInput('visible', true)
       await stabilizza(fixture)
       expect((q('spesa-dlg-importo') as HTMLInputElement).value).toBe('1000')
+    })
+  })
+
+  describe('codice IVA', () => {
+    const compila = async (tipo?: 'BOLLO' | 'INCASSO') => {
+      await apri(tipo)
+      scrivi('spesa-dlg-codice', 'X1')
+      scrivi('spesa-dlg-descrizione', 'Spesa')
+      scrivi('spesa-dlg-importo', '2')
+      await stabilizza(fixture)
+    }
+    const salva = async () => {
+      bottone('spesa-dlg-salva')!.click()
+      await stabilizza(fixture)
+    }
+
+    it('il menu offre i codici attivi (lista senza incluseDisattivate)', async () => {
+      await apri()
+      expect(codiciIva).toHaveBeenCalledWith()
+      expect(fixture.componentInstance.opzioniIva().map(o => o.etichetta)).toEqual([
+        '22 - Codice 22',
+        'N1 - Codice N1',
+      ])
+      // Dal template: il menu aperto mostra le stesse voci.
+      q('spesa-dlg-codice-iva')!.querySelector<HTMLElement>('.p-dropdown')!.click()
+      await stabilizza(fixture)
+      const voci = Array.from(document.body.querySelectorAll('.p-dropdown-item')).map(e =>
+        e.textContent?.trim()
+      )
+      expect(voci).toEqual(['22 - Codice 22', 'N1 - Codice N1'])
+    })
+
+    it('scelto: salvato nel corpo', async () => {
+      await compila()
+      fixture.componentInstance.form.controls.codiceIvaId.setValue('i22')
+      await stabilizza(fixture)
+      await salva()
+      expect(tabella.crea).toHaveBeenCalledWith(jasmine.objectContaining({ codiceIvaId: 'i22' }))
+    })
+
+    it('vuoto: il corpo ha null', async () => {
+      await compila()
+      await salva()
+      expect(tabella.crea.calls.mostRecent().args[0].codiceIvaId).toBeNull()
+    })
+
+    it('modifica: il codice della spesa è preselezionato, anche se ora disattivato', async () => {
+      tabella.modifica.and.returnValue(of({ id: 's1' }))
+      fixture = TestBed.createComponent(SpesaAccessoriaDialogComponent)
+      fixture.componentRef.setInput('elemento', {
+        id: 's1',
+        versione: 2,
+        eliminabile: true,
+        tipo: 'INCASSO',
+        codice: 'I1',
+        descrizione: 'Incasso',
+        importo: '2.00',
+        attiva: true,
+        codiceIvaId: 'vecchio',
+      })
+      fixture.componentRef.setInput('visible', true)
+      await stabilizza(fixture)
+      expect(fixture.componentInstance.opzioniIva().some(o => o.id === 'vecchio')).toBeTrue()
+      await salva()
+      expect(tabella.modifica).toHaveBeenCalledWith(
+        's1',
+        jasmine.objectContaining({ codiceIvaId: 'vecchio' })
+      )
+    })
+
+    it('bollo senza codice IVA N1: suggerimento; sparisce scegliendo N1', async () => {
+      await apri('BOLLO')
+      const testo = 'Per addebitare il bollo serve un codice IVA con natura N1'
+      expect(q('spesa-dlg-suggerimento-bollo')!.textContent).toContain(testo)
+      fixture.componentInstance.form.controls.codiceIvaId.setValue('i22')
+      await stabilizza(fixture)
+      expect(q('spesa-dlg-suggerimento-bollo')).not.toBeNull()
+      fixture.componentInstance.form.controls.codiceIvaId.setValue('in1')
+      await stabilizza(fixture)
+      expect(q('spesa-dlg-suggerimento-bollo')).toBeNull()
+    })
+
+    it('incasso: nessun suggerimento sul bollo', async () => {
+      await apri('INCASSO')
+      expect(q('spesa-dlg-suggerimento-bollo')).toBeNull()
     })
   })
 })

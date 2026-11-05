@@ -67,10 +67,13 @@ export interface DatiSpesaAccessoria {
   descrizione: string
   /** Importo come stringa decimale, es. "2.00". */
   importo: string
+  /** Codice IVA addebitato sulla spesa; null = nessuno (Task 9). */
+  codiceIvaId?: string | null
 }
 
 export interface SpesaAccessoria extends DatiSpesaAccessoria, Versionata {
   attiva: boolean
+  codiceIvaId: string | null
 }
 
 export type ModificaSpesa = Partial<DatiSpesaAccessoria> & {
@@ -82,10 +85,15 @@ export interface DatiRegistroIva {
   codice: string
   descrizione: string
   ricevuteSplit: boolean
+  /** Suffisso del numero di fattura: 1-10 caratteri `[A-Za-z0-9/-]`; null = nessuno (Task 9). */
+  suffissoNumero?: string | null
 }
 
 export interface RegistroIva extends DatiRegistroIva, Versionata {
   attivo: boolean
+  suffissoNumero: string | null
+  /** false se il registro ha un definitivo nell'anno corrente: il backend risponde 409. */
+  suffissoModificabile: boolean
 }
 
 export type ModificaRegistroIva = Partial<DatiRegistroIva> & {

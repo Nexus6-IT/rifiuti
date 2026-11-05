@@ -58,6 +58,34 @@ import { messaggioErrore } from './tabella-comune'
           maxlength="60"
           data-testid="registro-dlg-descrizione"
         />
+        <label for="registro-suffisso">Suffisso del numero di fattura (facoltativo)</label>
+        <div
+          [attr.title]="suffissoModificabile ? null : motivoSuffisso"
+          data-testid="registro-dlg-suffisso-box"
+        >
+          <input
+            pInputText
+            id="registro-suffisso"
+            formControlName="suffissoNumero"
+            maxlength="10"
+            placeholder="es. /A"
+            [attr.aria-invalid]="form.controls.suffissoNumero.invalid ? 'true' : null"
+            data-testid="registro-dlg-suffisso"
+          />
+        </div>
+        <small
+          *ngIf="form.controls.suffissoNumero.invalid"
+          role="alert"
+          class="field-error"
+          data-testid="registro-dlg-suffisso-errore"
+          >Da 1 a 10 caratteri: lettere, cifre, «/» e «-».</small
+        >
+        <small
+          *ngIf="!suffissoModificabile"
+          class="field-hint"
+          data-testid="registro-dlg-suffisso-motivo"
+          >{{ motivoSuffisso }}</small
+        >
         <div>
           <p-checkbox
             inputId="registro-split"
@@ -102,6 +130,8 @@ export class RegistroIvaDialogComponent implements OnChanges {
   @Output() salvato = new EventEmitter<RegistroIva>()
   @Output() visibleChange = new EventEmitter<boolean>()
 
+  readonly motivoSuffisso =
+    "Il registro ha già fatture definitive nell'anno in corso: il suffisso non si può più cambiare."
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
 
@@ -109,7 +139,16 @@ export class RegistroIvaDialogComponent implements OnChanges {
     codice: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     descrizione: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     ricevuteSplit: new FormControl(false, { nonNullable: true }),
+    suffissoNumero: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.pattern(/^[A-Za-z0-9/-]{1,10}$/)],
+    }),
   })
+
+  /** Un registro nuovo ha sempre il suffisso libero. */
+  get suffissoModificabile(): boolean {
+    return this.elemento?.suffissoModificabile ?? true
+  }
 
   ngOnChanges(c: SimpleChanges): void {
     if (c['visible'] && this.visible) this.inizializza()
@@ -121,7 +160,10 @@ export class RegistroIvaDialogComponent implements OnChanges {
       codice: e?.codice ?? '',
       descrizione: e?.descrizione ?? '',
       ricevuteSplit: e?.ricevuteSplit ?? false,
+      suffissoNumero: e?.suffissoNumero ?? '',
     })
+    if (this.suffissoModificabile) this.form.controls.suffissoNumero.enable()
+    else this.form.controls.suffissoNumero.disable()
     this.errore.set(null)
     this.inCorso.set(false)
   }
@@ -133,6 +175,8 @@ export class RegistroIvaDialogComponent implements OnChanges {
       codice: v.codice.trim(),
       descrizione: v.descrizione.trim(),
       ricevuteSplit: v.ricevuteSplit,
+      // Bloccato: non si rimanda, il backend risponderebbe 409 SUFFISSO_NON_MODIFICABILE.
+      ...(this.suffissoModificabile ? { suffissoNumero: v.suffissoNumero.trim() || null } : {}),
     }
     this.inCorso.set(true)
     this.errore.set(null)
