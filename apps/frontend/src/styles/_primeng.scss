@@ -478,6 +478,10 @@ label {
   border: 0;
   padding: var(--spacing-md) 0;
 }
+.p-paginator .p-paginator-current {
+  /* Aura lo colora #64748b (blu-ardesia, 4,3:1 sul fondo): grigio caldo AA. */
+  color: var(--text-secondary);
+}
 .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
   background: var(--ink-fill);
   color: var(--on-ink);

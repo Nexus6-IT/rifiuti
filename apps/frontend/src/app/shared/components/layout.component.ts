@@ -214,6 +214,18 @@ export function ordinaAziendePerGruppo(
             <i class="pi pi-bars" aria-hidden="true"></i>
           </button>
           <span class="topbar__title">{{ titolo() }}</span>
+          <!-- Chi gestisce piu' aziende vede quale e' attiva anche sul telefono. -->
+          @if (aziendaAttiva(); as azienda) {
+            <span class="topbar__azienda" [attr.title]="'Azienda attiva: ' + azienda.nome">
+              <span
+                class="contrassegno contrassegno--sm"
+                aria-hidden="true"
+                [style.background]="azienda.colore"
+                >{{ azienda.iniziali }}</span
+              >
+              <span class="sr-only">Azienda attiva: {{ azienda.nome }}</span>
+            </span>
+          }
           @if (!desktop()) {
             <app-notification-bell />
           }
@@ -1044,6 +1056,10 @@ export function ordinaAziendePerGruppo(
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .topbar__azienda {
+        display: inline-flex;
+        align-items: center;
       }
       @media (min-width: 992px) {
         .topbar {

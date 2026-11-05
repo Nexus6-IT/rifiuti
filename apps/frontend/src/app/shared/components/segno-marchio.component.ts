@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
 
-/** Segno del marchio WasteFlow (riquadro in inchiostro con la «W» in fiamma), decorativo. */
+/** Segno del marchio WasteFlow (riquadro in colore inchiostro del tema con la «W» in fiamma), decorativo. */
 @Component({
   selector: 'app-segno-marchio',
   standalone: true,
@@ -17,7 +17,7 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
       <path
         d="M7 8.5l2.6 9 3.4-6.5 3.4 6.5 2.6-9"
         fill="none"
-        stroke="var(--brand-primary-light)"
+        stroke="var(--brand-mark)"
         stroke-width="2.2"
         stroke-linecap="round"
         stroke-linejoin="round"

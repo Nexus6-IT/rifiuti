@@ -84,7 +84,7 @@
   /* ===== Testo ===== */
   --text-primary: #141414;
   --text-secondary: #504e4a;
-  /* Terziario: 5,3:1 sul bianco, 4,7:1 sul fondo. */
+  /* Terziario: 5,5:1 sul bianco, 4,9:1 sul fondo. */
   --text-tertiary: #6b6964;
   --text-disabled: #8a8780;
   --text-inverse: #ffffff;
@@ -115,6 +115,11 @@
   /* Pannello di marca di login e iscrizione: piatto, uguale nelle due modalita'. */
   --brand-panel: #141414;
   --brand-mark: #f0602a;
+  /* Ponte fino al Task 5 (login e iscrizione usano ancora il gradiente): pannello
+     piatto, nessuna sfumatura. Il Task 5 passa a --brand-panel e toglie questi tre. */
+  --brand-panel-from: var(--brand-panel);
+  --brand-panel-mid: var(--brand-panel);
+  --brand-panel-to: var(--brand-panel);
   --on-brand-panel: #ffffff;
 
   /* ===== Tipografia (Geist ospitato da noi: pesi 400/500/600) ===== */

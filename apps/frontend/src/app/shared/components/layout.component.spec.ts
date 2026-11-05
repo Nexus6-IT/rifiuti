@@ -240,6 +240,21 @@ describe('LayoutComponent: shell Libro mastro', () => {
     expect(accese.map(a => a.textContent?.trim())).toEqual(['Contratti clienti'])
   })
 
+  it("sul telefono il contrassegno dell'azienda attiva sta nella barra stretta", async () => {
+    const el = await crea()
+    const layout = fixture.componentInstance
+    expect(el.querySelector('.topbar .topbar__azienda')).toBeNull()
+    layout.userTenants.set([
+      { id: 'a', name: 'Alfa Srl' },
+      { id: 'b', name: 'Beta Srl' },
+    ])
+    layout.currentUserTenantId.set('a')
+    fixture.detectChanges()
+    const contrassegno = el.querySelector('.topbar .topbar__azienda')
+    expect(contrassegno?.textContent).toContain('Azienda attiva: Alfa Srl')
+    expect(contrassegno?.querySelector('.contrassegno')?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('il nome della pagina nella barra stretta viene dal percorso, anche fuori menu', async () => {
     expect((await crea('/notifications')).querySelector('.topbar__title')?.textContent).toBe(
       'Notifiche'
@@ -312,6 +327,19 @@ describe('LayoutComponent: shell Libro mastro', () => {
     expect(stile.borderTopWidth).toBe('0px')
     expect(stile.borderRadius).toBe('0px')
     expect(stile.marginRight).toBe('0px')
+  })
+})
+
+describe('Token: pannello di marca di login e iscrizione', () => {
+  it('i token del gradiente risolvono su un pannello scuro piatto, non su trasparente', () => {
+    const prova = document.createElement('div')
+    prova.style.background =
+      'linear-gradient(135deg, var(--brand-panel-from) 0%, var(--brand-panel-mid) 62%, var(--brand-panel-to) 100%)'
+    document.body.appendChild(prova)
+    const stile = getComputedStyle(prova)
+    expect(stile.backgroundImage).toContain('linear-gradient')
+    expect(stile.backgroundImage.match(/rgb\(20, 20, 20\)/g)?.length).toBe(3)
+    prova.remove()
   })
 })
 
