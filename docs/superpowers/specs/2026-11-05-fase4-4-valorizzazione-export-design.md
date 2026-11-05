@@ -832,3 +832,5 @@ Sono vincolanti. Le opzioni scartate del §18 sono state tolte.
 15. **TeamSystem senza prova d'import reale:** nessuna installazione disponibile. Il file si valida sul tracciato ricostruito e si rilascia segnalato in UI e nel rapporto come «non verificato su un'installazione reale».
 16. **Esecuzione:** subagent-driven, come la 4.3.
 17. **Addebiti TT e TF nella prima uscita (05/11):** si calcolano anche gli addebiti `TT` (peso netto di tutti i rifiuti dell'elenco) e `TF` (peso netto dei rifiuti conferiti nei giorni festivi), così i contratti allegati, che hanno solo righe `T`, si fatturano. `TS`, `TP`, `TQ`, `TR` e `T` + 3 cifre restano in errore esplicito (`FAMIGLIA_NON_CALCOLATA`). Estende la decisione 2 e il §6.5.
+18. **Annullo di una nota di credito TD04 (05/11):** nella prima uscita non è ammesso (409 `ANNULLO_NON_AMMESSO`). Una nota di credito sbagliata si corregge con un nuovo documento. Si rivede se serve nell'uso reale.
+19. **Giorni festivi di `TF` (05/11):** domenica e festività nazionali civili, 4 ottobre compreso dal 2026. Il patrono del comune resta fuori; se serve, entra più avanti come dato della sede.
