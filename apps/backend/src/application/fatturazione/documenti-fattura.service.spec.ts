@@ -74,6 +74,20 @@ describe('DocumentiFatturaService: validazioni prima del database', () => {
     ).rejects.toBeInstanceOf(BadRequestException)
   })
 
+  it.each([{ anno: 2026.5 }, { anno: 1999 }, { stato: 'ALTRO' as never }])(
+    'anno o stato non validi %j: 400 FILTRO_NON_VALIDO',
+    async f => {
+      await expect(servizio.lista(T, { pagina: 1, dimensione: 25, ...f })).rejects.toMatchObject({
+        status: 400,
+      })
+    }
+  )
+
+  it('righeInTx con oltre 100 id: 400 TROPPI_DOCUMENTI, non un errore interno', async () => {
+    const ids = Array.from({ length: 101 }, () => T)
+    await expect(servizio.righeInTx({} as never, T, ids)).rejects.toMatchObject({ status: 400 })
+  })
+
   it('id di filtro non uuid: 400', async () => {
     await expect(
       servizio.lista(T, { pagina: 1, dimensione: 25, clienteId: 'x' })

@@ -154,7 +154,7 @@ export const MESSAGGI_AVVISO: Readonly<Record<AvvisoDocumento, string>> = {
  * un'anteprima aperta lo tiene occupato, e si libera scartando le anteprime.
  */
 export const MESSAGGIO_IN_USO_DA_DOCUMENTI =
-  'È usato da documenti di fatturazione, anche da anteprime aperte: scarta le anteprime per liberarlo'
+  'È usato da documenti di fatturazione, anche da anteprime aperte: scarta le anteprime per liberarlo.'
 
 /** Una segnalazione di calcolo. `dettaglio` non contiene id ne' dati personali. */
 export interface Segnalazione<C extends string> {

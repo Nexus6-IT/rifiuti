@@ -314,7 +314,7 @@ describe('DocumentiFatturaService — Postgres reale, ruolo wasteflow_app', () =
       expect(pagina.elementi).toHaveLength(100)
     })
 
-    it('RLS: la lista di un altro tenant non vede i documenti', async () => {
+    it('filtro tenant: la lista di un altro tenant non vede i documenti (la RLS è in rls-catalogo)', async () => {
       const a = await azienda({ legami: 1 })
       const b = await azienda({ legami: 1 })
       await creaDocumentoDiTest(owner, a.tenantId, {
@@ -471,6 +471,24 @@ describe('DocumentiFatturaService — Postgres reale, ruolo wasteflow_app', () =
       ])
     })
 
+    it('fotografia con segnalazioni malformate: nessun 500, ripiego sulle colonne', async () => {
+      const { tenantId, scenario } = await azienda({ legami: 1 })
+      const d = await creaDocumentoDiTest(owner, tenantId, {
+        stato: 'BOZZA',
+        registroIvaId: scenario.registroIvaId,
+        anno: 2026,
+        legamiIds: scenario.legamiIds,
+      })
+      await owner.$executeRawUnsafe(
+        `UPDATE documenti_fattura SET errori = ARRAY['SENZA_REGISTRO_IVA']::text[],
+           fotografia = '{"segnalazioni":{"errori":"x","avvisi":{"a":1}}}'::jsonb WHERE id = $1::uuid`,
+        d.documentoId
+      )
+      const r = await nel(tenantId, () => servizio.lista(tenantId, { pagina: 1, dimensione: 5 }))
+      expect(r.elementi[0].errori.map(e => e.codice)).toEqual(['SENZA_REGISTRO_IVA'])
+      expect(r.elementi[0].avvisi).toEqual([])
+    })
+
     it('documento stornato: stornabile false, stornoId valorizzato, motivo STORNATO', async () => {
       const { tenantId, scenario } = await azienda({ legami: 2 })
       const reg = scenario.registroIvaId
@@ -542,7 +560,7 @@ describe('DocumentiFatturaService — Postgres reale, ruolo wasteflow_app', () =
       expect(va.emessoIl).toBeNull()
     })
 
-    it('RLS: documento di un altro tenant → 404; id inesistente → 404', async () => {
+    it('filtro tenant: documento di un altro tenant → 404; id inesistente → 404 (la RLS è in rls-catalogo)', async () => {
       const a = await azienda({ legami: 1 })
       const b = await azienda({ legami: 1 })
       const d = await creaDocumentoDiTest(owner, a.tenantId, {

@@ -254,6 +254,9 @@ export class RegistriIvaService {
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
           if (campi.length === 0) return comeVista(prima, tenantId, tx)
+          // Effetto della regola «numerazione scritta» (M3): un registro con la sola partenza
+          // numerica (ultimo_numero = numero_partenza, nessuna data) non e' in uso e puo' diventare
+          // il registro delle ricevute split; con un numero riservato o una data di partenza no.
           if (campi.includes('ricevuteSplit') && nuovi.ricevuteSplit === true) {
             const usi = (await contaUsi(tx, tenantId, [id], COLONNE_REGISTRO)).get(id) ?? 0
             if (usi > 0) {
@@ -303,9 +306,11 @@ export class RegistriIvaService {
           await tx.$queryRaw`SELECT 1 FROM "numerazioni_fattura"
             WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${id}::uuid
             ORDER BY anno FOR UPDATE`
-          await tx.$executeRaw`DELETE FROM "numerazioni_fattura"
+          const cancellate = await tx.$queryRaw<{ anno: number; numeroPartenza: number }[]>`
+            DELETE FROM "numerazioni_fattura"
             WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${id}::uuid
-              AND ultimo_numero <= numero_partenza AND data_partenza IS NULL`
+              AND ultimo_numero <= numero_partenza AND data_partenza IS NULL
+            RETURNING anno::int AS anno, numero_partenza::int AS "numeroPartenza"`
           await scriviCondizionato(
             () => tx.registroIva.deleteMany({ where: { id, tenantId, versione } }),
             ENTITA
@@ -313,6 +318,11 @@ export class RegistriIvaService {
           await this.audit(tx, tenantId, utenteId, 'REGISTRO_IVA_ELIMINATO', 'eliminato', {
             registroId: id,
             codice: riga.codice,
+            // Una partenza impostata a mano e persa con il registro resta in traccia.
+            numerazioniCancellate: (cancellate ?? []).map(c => ({
+              anno: c.anno,
+              numeroPartenza: c.numeroPartenza,
+            })),
           })
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))

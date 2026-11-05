@@ -348,6 +348,27 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
           dataPartenza: new Date(`${ANNO}-01-02T00:00:00Z`),
         },
       })
+      // Effetto su ricevuteSplit (M3): la sola partenza numerica non e' un uso, un numero
+      // riservato si'.
+      const split = (id: string) =>
+        errore(
+          nel(a.tenantId, async () => {
+            const r = await owner.registroIva.findUniqueOrThrow({ where: { id } })
+            return registri.modifica(a.tenantId, a.utenteId, id, {
+              ricevuteSplit: true,
+              versione: r.versione,
+            })
+          })
+        )
+      expect(codiceErrore(await split(scritto.id))).toBe('REGISTRO_IVA_IN_USO')
+      const nuovo = await owner.registroIva.findUniqueOrThrow({ where: { id: soloPartenza.id } })
+      const diventato = await nel(a.tenantId, () =>
+        registri.modifica(a.tenantId, a.utenteId, soloPartenza.id, {
+          ricevuteSplit: true,
+          versione: nuovo.versione,
+        })
+      )
+      expect(diventato.ricevuteSplit).toBe(true)
       const lista = await nel(a.tenantId, () => registri.list(a.tenantId, true))
       const eliminabile = (id: string) => lista.find(r => r.id === id)?.eliminabile
       expect(eliminabile(vuoto.id)).toBe(true)
@@ -359,6 +380,15 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
         await nel(a.tenantId, () => registri.elimina(a.tenantId, a.utenteId, id, r.versione))
         expect(await owner.registroIva.count({ where: { id } })).toBe(0)
       }
+      const audit = await owner.activityLog.findMany({
+        where: { tenantId: a.tenantId, action: 'REGISTRO_IVA_ELIMINATO' },
+      })
+      const dellaPartenza = audit.find(
+        x => (x.metadata as { registroId?: string }).registroId === soloPartenza.id
+      )
+      expect(
+        (dellaPartenza?.metadata as { numerazioniCancellate: unknown }).numerazioniCancellate
+      ).toEqual([{ anno: ANNO, numeroPartenza: 10 }])
       for (const id of [scritto.id, conData.id]) {
         const r = await owner.registroIva.findUniqueOrThrow({ where: { id } })
         const e = await errore(

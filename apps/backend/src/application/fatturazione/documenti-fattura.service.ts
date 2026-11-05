@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import {
   MESSAGGI_AVVISO,
   MESSAGGI_ERRORE,
+  STATI_DOCUMENTO,
   type AvvisoDocumento,
   type ErroreDocumento,
   type StatoDocumento,
@@ -194,7 +195,9 @@ function vistaSegnalazioni(
   messaggi: Readonly<Record<string, string>>
 ): SegnalazioneVista[] {
   // Fonte: la fotografia (ha il dettaglio); senza di essa si ripiega sulla colonna `text[]`.
-  const sorgente = salvate ?? colonna.map(codice => ({ codice, dettaglio: undefined }))
+  const sorgente = Array.isArray(salvate)
+    ? salvate
+    : colonna.map(codice => ({ codice, dettaglio: undefined }))
   return sorgente.map(s => ({
     codice: s.codice,
     messaggio: messaggi[s.codice] ?? s.codice,
@@ -220,6 +223,18 @@ export class DocumentiFatturaService {
       throw new BadRequestException({
         error: 'PAGINAZIONE_NON_VALIDA',
         message: `La pagina parte da 1 e la dimensione va da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
+      })
+    }
+    if (q.anno !== undefined && (!Number.isInteger(q.anno) || q.anno < 2000 || q.anno > 2100)) {
+      throw new BadRequestException({
+        error: 'FILTRO_NON_VALIDO',
+        message: "L'anno del filtro non è valido.",
+      })
+    }
+    if (q.stato !== undefined && !(STATI_DOCUMENTO as readonly string[]).includes(q.stato)) {
+      throw new BadRequestException({
+        error: 'FILTRO_NON_VALIDO',
+        message: 'Lo stato del filtro non è valido.',
       })
     }
     for (const id of [q.registroIvaId, q.clienteId, q.elaborazioneId]) {
@@ -335,7 +350,10 @@ export class DocumentiFatturaService {
   async righeInTx(tx: Db, tenantId: string, ids: readonly string[]): Promise<DocumentoRiga[]> {
     if (ids.length === 0) return []
     if (ids.length > DIMENSIONE_MASSIMA_PAGINA) {
-      throw new RangeError(`righeInTx: al massimo ${DIMENSIONE_MASSIMA_PAGINA} documenti per volta`)
+      throw new BadRequestException({
+        error: 'TROPPI_DOCUMENTI',
+        message: `Al massimo ${DIMENSIONE_MASSIMA_PAGINA} documenti per volta.`,
+      })
     }
     const contesto = await this.leggiContesto(tx, tenantId, ids)
     const perId = new Map(contesto.testate.map(t => [t.id, t]))
