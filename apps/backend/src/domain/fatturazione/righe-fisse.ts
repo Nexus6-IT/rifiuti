@@ -1,0 +1,127 @@
+import { Prisma } from '@prisma/client'
+import { formatta, giorniDelMese } from '../contratti-cliente/periodi-fatturazione'
+import { importoRiga, prezzoCalcolato } from '../listino/importi-riga'
+import {
+  periodoCompetenza,
+  scadenzeNelPeriodo,
+  type PeriodoScadenze,
+} from '../listino/scadenze-fisse'
+import type { AvvisoDocumento, ErroreDocumento, Segnalazione, TipoMarcatore } from './codici'
+import { testoPeriodo, type EsitoRighe, type RigaSenzaLinea } from './esito-righe'
+import type { RigaListinoDaFatturare } from './tipi'
+
+export interface MarcatoreEsistente {
+  rigaAddebitoId: string
+  tipo: TipoMarcatore
+  chiaveCompetenza: string
+}
+
+const MESI_ARRETRATI = 12
+
+/** `data` meno 12 mesi (il 29/02 scivola al 28/02). */
+function menoDodiciMesi(data: string): string {
+  const anno = Number(data.slice(0, 4)) - MESI_ARRETRATI / 12
+  const mese = Number(data.slice(5, 7))
+  const giorno = Math.min(Number(data.slice(8, 10)), giorniDelMese(mese, anno))
+  return formatta(anno, mese, giorno)
+}
+
+function riga(
+  r: RigaListinoDaFatturare,
+  quantita: string,
+  descrizione: string,
+  marcatore: { tipo: TipoMarcatore; chiaveCompetenza: string }
+): RigaSenzaLinea {
+  const prezzo = r.prezzo ?? '0'
+  const imp = importoRiga(quantita, prezzo, r.sconto)
+  return {
+    tipoRiga: 'FISSO',
+    legameId: null,
+    rigaLegameId: null,
+    rigaAddebitoId: r.id,
+    descrizione,
+    dataMovimento: null,
+    cerCode: null,
+    numeroFir: null,
+    quantita,
+    unitaMisura: r.unitaMisura,
+    prezzoUnitario: prezzoCalcolato(prezzo),
+    sconto: r.sconto,
+    importoLordo: imp.lordo,
+    importoSconto: imp.sconto,
+    prezzoTotale: imp.netto,
+    codiceIvaId: r.codiceIva.id,
+    aliquotaIva: r.codiceIva.aliquota,
+    naturaIva: r.codiceIva.natura,
+    marcatore,
+  }
+}
+
+/** Intervalli 'AAAA-MM-GG/AAAA-MM-GG' che si sovrappongono (estremi inclusi). */
+function sovrapposti(chiave: string, p: { dal: string; al: string }): boolean {
+  const [a, b] = chiave.split('/')
+  return b !== undefined && a <= p.al && b >= p.dal
+}
+
+/** Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. */
+export function righeFisse(i: {
+  righe: readonly RigaListinoDaFatturare[]
+  periodo: { dal: string; al: string }
+  contratto: { dataInizio: string; dataFine: string | null }
+  marcatori: readonly MarcatoreEsistente[]
+}): EsitoRighe {
+  const righe: RigaSenzaLinea[] = []
+  const errori: Segnalazione<ErroreDocumento>[] = []
+  const avvisi: Segnalazione<AvvisoDocumento>[] = []
+  const { dal, al } = i.periodo
+
+  for (const r of i.righe) {
+    if (r.tipo !== 'F') continue
+    const quantita = r.quantitaFissa ?? '1'
+    if (new Prisma.Decimal(quantita).isZero()) continue
+    const base = r.descrizione ?? 'Canone'
+    const proprio = i.marcatori.filter(m => m.rigaAddebitoId === r.id)
+
+    if (r.scadenze.length > 0) {
+      const dalArretrati = menoDodiciMesi(dal)
+      const trovate = scadenzeNelPeriodo(r.scadenze, dalArretrati, al, i.contratto)
+      for (const { scadenza, data } of trovate) {
+        const giaFatta = proprio.some(
+          m => m.tipo === 'SCADENZA_FISSO' && m.chiaveCompetenza === data
+        )
+        if (giaFatta) continue
+        const comp =
+          r.periodoScadenze === null
+            ? null
+            : periodoCompetenza(
+                scadenza,
+                r.periodoScadenze as PeriodoScadenze,
+                Number(data.slice(0, 4))
+              )
+        const descrizione = comp === null ? base : `${base} ${testoPeriodo(comp)}`
+        righe.push(
+          riga(r, quantita, descrizione, { tipo: 'SCADENZA_FISSO', chiaveCompetenza: data })
+        )
+        if (data < dal && !avvisi.some(a => a.codice === 'ARRETRATI_PRESENTI')) {
+          avvisi.push({ codice: 'ARRETRATI_PRESENTI' })
+        }
+      }
+      continue
+    }
+
+    const chiave = `${dal}/${al}`
+    const canoni = proprio.filter(m => m.tipo === 'PERIODO_CANONE')
+    if (canoni.some(m => m.chiaveCompetenza === chiave)) continue
+    if (canoni.some(m => sovrapposti(m.chiaveCompetenza, i.periodo))) {
+      errori.push({ codice: 'CANONE_PERIODO_SOVRAPPOSTO', dettaglio: base })
+      continue
+    }
+    righe.push(
+      riga(r, quantita, `${base} ${testoPeriodo(i.periodo)}`, {
+        tipo: 'PERIODO_CANONE',
+        chiaveCompetenza: chiave,
+      })
+    )
+  }
+  return { righe, errori, avvisi }
+}
