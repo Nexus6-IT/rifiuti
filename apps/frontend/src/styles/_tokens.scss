@@ -355,3 +355,34 @@
   color-scheme: dark;
 }
 }
+
+/* ============================================================================
+   Nomi di variabili ereditati: il tema PrimeNG (Aura) e le pagine piu' vecchie usano nomi come
+   --text-color-secondary, --surface-200, --red-500, --border-color, spesso con un colore
+   letterale di riserva (`var(--red-500, #ef4444)`). Quei nomi esistono solo nel tema Aura e
+   danno il suo blu-ardesia o il suo rosso saturo: fuori dalla tavolozza IgniCraft. Qui puntano
+   ai token del tema, nelle due modalita'. Per codice nuovo usare direttamente i token sopra.
+   ============================================================================ */
+:root {
+  --text-color: var(--text-primary);
+  --text-color-secondary: var(--text-secondary);
+  --primary-color: var(--ink-fill);
+  --primary-color-text: var(--on-ink);
+  --primary-50: var(--brand-primary-50);
+  --surface-100: var(--color-gray-100);
+  --surface-200: var(--color-gray-200);
+  --surface-400: var(--color-gray-400);
+  --red-500: var(--color-danger);
+  --red-600: var(--color-danger);
+  --red-700: var(--color-danger);
+  --green-500: var(--color-success);
+  --yellow-500: var(--color-warning);
+  --orange-700: var(--color-warning);
+  --blue-400: var(--color-info);
+  --border-color: var(--surface-border);
+  --color-border: var(--surface-border);
+  --color-primary: var(--ink-fill);
+  --color-surface-alt: var(--surface-hover);
+  --color-text-secondary: var(--text-secondary);
+  --color-warning-text: var(--stato-warn-ink);
+}

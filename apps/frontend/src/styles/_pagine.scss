@@ -124,25 +124,9 @@
   }
   .table-card .table-responsive {
     border-radius: 0;
-    /* Indizio di scroll orizzontale: ombre ai bordi che compaiono solo dove c'e' altro da vedere
-       ("scroll shadows": i due strati 'local' coprono le ombre a fine corsa). */
-    background:
-      linear-gradient(to right, var(--surface-card) 30%, transparent) left center / 2.5rem 100%
-        no-repeat local,
-      linear-gradient(to left, var(--surface-card) 30%, transparent) right center / 2.5rem 100%
-        no-repeat local,
-      radial-gradient(
-          farthest-side at 0 50%,
-          color-mix(in srgb, var(--text-primary) 22%, transparent),
-          transparent
-        )
-        left center / 0.75rem 100% no-repeat scroll,
-      radial-gradient(
-          farthest-side at 100% 50%,
-          color-mix(in srgb, var(--text-primary) 22%, transparent),
-          transparent
-        )
-        right center / 0.75rem 100% no-repeat scroll;
+    /* Niente ombre di scorrimento: erano sfumature (il fondo pagina le faceva sembrare una macchia
+       bianca ai bordi della tabella) e fuori dalle regole di stile. L'indizio di scorrimento e' la
+       barra, che ha un'altezza sua. */
   }
   .p-datatable .p-datatable-thead > tr > th {
     height: 2.25rem;

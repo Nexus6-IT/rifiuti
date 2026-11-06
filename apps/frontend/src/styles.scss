@@ -23,7 +23,15 @@
 @use 'styles/pagine';
 
 /* ===== Reset ===== */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
+/* Il reset di margini e padding NON tocca gli elementi di PrimeNG (classe `p-...`): i suoi stili
+   stanno in `@layer primeng`, e una regola fuori da ogni layer batte sempre una regola in un layer,
+   a prescindere dalla specificita'. Con il reset su tutto, toast, messaggi, voci dei menu a tendina,
+   icone dei campi e pallino dell'interruttore perdevano i propri margini e padding. Le regole di
+   `styles/_primeng.scss` restano fuori dal layer e vincono comunque dove servono. */
+*:not([class^='p-']):not([class*=' p-']),
+*:not([class^='p-']):not([class*=' p-'])::before,
+*:not([class^='p-']):not([class*=' p-'])::after { margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; scroll-behavior: smooth; }
 body {
   min-height: 100vh;
@@ -118,7 +126,11 @@ kbd {
 .page-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
 
 /* Riquadro: bordo di 1px, nessuna ombra. */
+/* PrimeFlex definisce `.surface-card` con `background-color: light-dark(var(--p-surface-0), ...) !important`:
+   le variabili `--p-surface-*` qui non esistono, quindi il fondo risultava trasparente (riquadro
+   uguale al fondo pagina). `body` alza la specificita' per battere quell'!important. */
 .surface-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: var(--spacing-lg); }
+body .surface-card { background-color: var(--surface-card) !important; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--spacing-base); }
 /* Niente sollevamento in hover: una cifra ferma non e' un pulsante. */
