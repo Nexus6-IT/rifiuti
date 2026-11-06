@@ -3,6 +3,7 @@ import { DOCUMENT } from '@angular/common'
 import {
   MEDIA_TEMA_SCURO,
   TemaService,
+  etichettaPreferenzaTema,
   hrefTemaPrimeng,
   leggiPreferenzaTema,
   prossimaPreferenzaTema,
@@ -34,17 +35,26 @@ describe('tema: funzioni pure', () => {
     expect(risolviTema('sistema', false)).toBe('chiaro')
   })
 
-  it('prossimaPreferenzaTema: sistema, chiaro, scuro, poi di nuovo sistema', () => {
-    expect(prossimaPreferenzaTema('sistema')).toBe('chiaro')
+  it('prossimaPreferenzaTema: chiaro, scuro, sistema, poi di nuovo chiaro', () => {
     expect(prossimaPreferenzaTema('chiaro')).toBe('scuro')
     expect(prossimaPreferenzaTema('scuro')).toBe('sistema')
+    expect(prossimaPreferenzaTema('sistema')).toBe('chiaro')
   })
 
-  it('leggiPreferenzaTema: valori sconosciuti o assenti tornano a "sistema"', () => {
+  it('leggiPreferenzaTema: valori assenti o sconosciuti valgono "chiaro"', () => {
     expect(leggiPreferenzaTema('scuro')).toBe('scuro')
     expect(leggiPreferenzaTema('chiaro')).toBe('chiaro')
-    expect(leggiPreferenzaTema(null)).toBe('sistema')
-    expect(leggiPreferenzaTema('dark')).toBe('sistema')
+    expect(leggiPreferenzaTema('sistema')).toBe('sistema')
+    expect(leggiPreferenzaTema(null)).toBe('chiaro')
+    expect(leggiPreferenzaTema('')).toBe('chiaro')
+    expect(leggiPreferenzaTema('auto')).toBe('chiaro')
+    expect(leggiPreferenzaTema('dark')).toBe('chiaro')
+  })
+
+  it('etichettaPreferenzaTema: una parola per scelta', () => {
+    expect(etichettaPreferenzaTema('chiaro')).toBe('Chiaro')
+    expect(etichettaPreferenzaTema('scuro')).toBe('Scuro')
+    expect(etichettaPreferenzaTema('sistema')).toBe('Sistema')
   })
 
   it('hrefTemaPrimeng: un file di tema PrimeNG per modalità', () => {
@@ -81,7 +91,17 @@ describe('TemaService', () => {
     document.documentElement.removeAttribute('data-theme')
   })
 
-  it('senza preferenza salvata segue il sistema e applica data-theme e il tema PrimeNG', () => {
+  it('senza preferenza salvata parte chiaro anche con il sistema in scuro', () => {
+    media.matches = true
+    const servizio = crea()
+    expect(servizio.preferenza()).toBe('chiaro')
+    expect(servizio.effettivo()).toBe('chiaro')
+    expect(doc.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(link.getAttribute('href')).toBe('tema-primeng-chiaro.css')
+  })
+
+  it('con preferenza "sistema" salvata e sistema scuro parte scuro', () => {
+    localStorage.setItem('wf_tema', 'sistema')
     media.matches = true
     const servizio = crea()
     expect(servizio.preferenza()).toBe('sistema')
@@ -91,6 +111,7 @@ describe('TemaService', () => {
   })
 
   it('con preferenza "sistema" reagisce al cambio del sistema operativo', () => {
+    localStorage.setItem('wf_tema', 'sistema')
     const servizio = crea()
     expect(servizio.effettivo()).toBe('chiaro')
     media.cambia(true)
@@ -99,18 +120,24 @@ describe('TemaService', () => {
     expect(doc.documentElement.getAttribute('data-theme')).toBe('dark')
   })
 
-  it('cicla la preferenza, la salva e la applica', () => {
+  it('cicla la preferenza (chiaro, scuro, sistema), la salva sempre e la applica', () => {
     const servizio = crea()
+    servizio.cicla()
+    TestBed.flushEffects()
+    expect(servizio.preferenza()).toBe('scuro')
+    expect(localStorage.getItem('wf_tema')).toBe('scuro')
+    expect(doc.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(link.getAttribute('href')).toBe('tema-primeng-scuro.css')
+
+    servizio.cicla()
+    TestBed.flushEffects()
+    expect(servizio.preferenza()).toBe('sistema')
+    expect(localStorage.getItem('wf_tema')).toBe('sistema')
+
     servizio.cicla()
     TestBed.flushEffects()
     expect(servizio.preferenza()).toBe('chiaro')
     expect(localStorage.getItem('wf_tema')).toBe('chiaro')
-    expect(doc.documentElement.getAttribute('data-theme')).toBe('light')
-
-    servizio.cicla()
-    TestBed.flushEffects()
-    expect(servizio.preferenza()).toBe('scuro')
-    expect(link.getAttribute('href')).toBe('tema-primeng-scuro.css')
   })
 
   it('legge la preferenza salvata', () => {
@@ -120,12 +147,38 @@ describe('TemaService', () => {
     expect(servizio.effettivo()).toBe('scuro')
   })
 
-  it('tornando a "sistema" rimuove la preferenza salvata', () => {
-    localStorage.setItem('wf_tema', 'scuro')
+  it('imposta("sistema") scrive "sistema" e non cancella la chiave', () => {
     const servizio = crea()
-    servizio.cicla()
-    TestBed.flushEffects()
-    expect(servizio.preferenza()).toBe('sistema')
-    expect(localStorage.getItem('wf_tema')).toBeNull()
+    servizio.imposta('sistema')
+    expect(localStorage.getItem('wf_tema')).toBe('sistema')
+  })
+
+  it('aggiorna theme-color in tutti i meta, in chiaro e in scuro', () => {
+    const meta = [1, 2].map(() => {
+      const m = document.createElement('meta')
+      m.setAttribute('name', 'theme-color')
+      document.head.appendChild(m)
+      return m
+    })
+    try {
+      const servizio = crea()
+      meta.forEach(m => expect(m.getAttribute('content')).toBe('#f3f2ef'))
+      servizio.imposta('scuro')
+      TestBed.flushEffects()
+      meta.forEach(m => expect(m.getAttribute('content')).toBe('#131311'))
+    } finally {
+      meta.forEach(m => m.remove())
+    }
+  })
+
+  it('con lo storage bloccato vale chiaro e non lancia', () => {
+    const spy = spyOn(Storage.prototype, 'getItem').and.throwError('bloccato')
+    const spyScrivi = spyOn(Storage.prototype, 'setItem').and.throwError('bloccato')
+    let servizio!: TemaService
+    expect(() => (servizio = crea())).not.toThrow()
+    expect(servizio.effettivo()).toBe('chiaro')
+    expect(() => servizio.imposta('scuro')).not.toThrow()
+    expect(spy).toHaveBeenCalled()
+    expect(spyScrivi).toHaveBeenCalled()
   })
 })

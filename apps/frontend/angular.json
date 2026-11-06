@@ -44,6 +44,8 @@
               },
               "../../node_modules/primeng/resources/primeng.min.css",
               "../../node_modules/primeflex/primeflex.css",
+              "../../node_modules/@fontsource-variable/geist/index.css",
+              "../../node_modules/@fontsource-variable/geist-mono/index.css",
               "src/styles.scss"
             ],
             "scripts": []

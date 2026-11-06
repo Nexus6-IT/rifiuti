@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { STATI_ESCLUSI } from '../dashboard/stati-andamento'
 
 /**
  * Analytics Service
@@ -34,12 +35,23 @@ export class AnalyticsService {
   }
 
   /**
-   * Get FIRs grouped by status
+   * Get FIRs grouped by status.
+   *
+   * Con `intervallo` conta solo i FIR con `createdAt >= startDate` e `<= endDate`;
+   * senza, tutti i FIR del tenant.
    */
-  async getFIRsByStatus(tenantId: string): Promise<Record<string, number>> {
+  async getFIRsByStatus(
+    tenantId: string,
+    intervallo?: { startDate: Date; endDate: Date }
+  ): Promise<Record<string, number>> {
     const groups = await this.prisma.fIR.groupBy({
       by: ['status'],
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(intervallo
+          ? { createdAt: { gte: intervallo.startDate, lte: intervallo.endDate } }
+          : {}),
+      },
       _count: true,
     })
 
@@ -376,79 +388,128 @@ export class AnalyticsService {
   }
 
   /**
-   * Predict next month volume using simple linear regression
+   * Previsione del volume del mese corrente (il «prossimo» dopo la serie): regressione lineare ai
+   * minimi quadrati sui conteggi mensili degli ultimi 6 mesi COMPLETI (mesi UTC, gli stessi di
+   * `GET /dashboard/andamento`). Il mese in corso, parziale, non entra mai.
+   *
+   * - 0 mesi (nessun FIR nei 6 mesi completi): `null`;
+   * - 1 o 2 mesi di serie: media arrotondata;
+   * - 3 o piu': retta `y = a + b*x` su `x = 0..n-1`, previsione `max(0, round(a + b*n))`.
+   *
+   * Stessa base di `GET /dashboard/andamento`: bozze, FIR in attesa del produttore e annullati
+   * non contano (`STATI_ESCLUSI`). La serie parte dal primo mese con almeno un FIR compiuto; i mesi vuoti dopo di esso valgono 0.
    */
-  async predictNextMonthVolume(tenantId: string): Promise<number> {
-    const groups = await this.prisma.fIR.groupBy({
-      by: ['createdAt'],
-      where: {
-        tenantId,
-        createdAt: {
-          gte: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000), // Last 4 months
-        },
-      },
-      _count: true,
-    })
+  async predictNextMonthVolume(tenantId: string, oggi: Date = new Date()): Promise<number | null> {
+    const inizioMeseCorrente = new Date(Date.UTC(oggi.getUTCFullYear(), oggi.getUTCMonth(), 1))
+    const dataInizio = new Date(Date.UTC(oggi.getUTCFullYear(), oggi.getUTCMonth() - 6, 1))
 
-    if (groups.length < 2) {
-      return 0 // Not enough data
+    const righe = await this.prisma.$queryRaw<Array<{ mese: Date; conteggio: number }>>`
+      SELECT date_trunc('month', created_at) AS mese, COUNT(*)::int AS conteggio
+      FROM firs
+      WHERE tenant_id = ${tenantId}::uuid
+        AND status::text <> ALL(${STATI_ESCLUSI}::text[])
+        AND created_at >= ${dataInizio}
+        AND created_at < ${inizioMeseCorrente}
+      GROUP BY 1
+    `
+
+    const chiave = (d: Date): string => `${d.getUTCFullYear()}-${d.getUTCMonth()}`
+    const perMese = new Map(righe.map(r => [chiave(new Date(r.mese)), Number(r.conteggio)]))
+
+    const serie: number[] = []
+    for (let i = 6; i >= 1; i--) {
+      const d = new Date(Date.UTC(oggi.getUTCFullYear(), oggi.getUTCMonth() - i, 1))
+      serie.push(perMese.get(chiave(d)) ?? 0)
     }
+    const primo = serie.findIndex(c => c > 0)
+    if (primo === -1) return null
+    const y = serie.slice(primo)
+    const n = y.length
 
-    // Simple linear trend
-    const counts = groups.map((g: { _count: number }) => g._count)
-    const _avg = counts.reduce((a: number, b: number) => a + b, 0) / counts.length
-    const trend = counts[counts.length - 1] - counts[0]
+    if (n < 3) return Math.round(y.reduce((a, b) => a + b, 0) / n)
 
-    return Math.max(0, Math.round(counts[counts.length - 1] + trend / counts.length))
+    const mediaX = (n - 1) / 2
+    const mediaY = y.reduce((a, b) => a + b, 0) / n
+    let num = 0
+    let den = 0
+    y.forEach((v, x) => {
+      num += (x - mediaX) * (v - mediaY)
+      den += (x - mediaX) ** 2
+    })
+    const b = num / den
+    const a = mediaY - b * mediaX
+    return Math.max(0, Math.round(a + b * n))
   }
 
-  /**
-   * Get top waste producers
-   */
+  /** Piu' frequenti per P. IVA del produttore, col nome dello snapshot piu' recente. */
   async getTopProducers(
     tenantId: string,
     limit: number
-  ): Promise<Array<{ partitaIva: string; count: number }>> {
+  ): Promise<Array<{ partitaIva: string; nome: string | null; count: number }>> {
     const groups = await this.prisma.fIR.groupBy({
       by: ['producerPartitaIva'],
-      where: { tenantId },
+      where: { tenantId, producerPartitaIva: { not: '' } },
       _count: true,
-      orderBy: {
-        _count: {
-          producerPartitaIva: 'desc',
-        },
-      },
+      orderBy: [{ _count: { producerPartitaIva: 'desc' } }, { producerPartitaIva: 'asc' }],
       take: limit,
     })
+    const partiteIva = groups.map((g: { producerPartitaIva: string }) => g.producerPartitaIva)
+    const nomi = new Map<string, string | null>()
+    if (partiteIva.length > 0) {
+      const righe = await this.prisma.$queryRaw<
+        Array<{ partita_iva: string; nome: string | null }>
+      >`
+        SELECT DISTINCT ON (producer_partita_iva) producer_partita_iva AS partita_iva, producer_name AS nome
+        FROM firs
+        WHERE tenant_id = ${tenantId}::uuid AND producer_partita_iva = ANY(${partiteIva}::text[])
+        ORDER BY producer_partita_iva, created_at DESC, id DESC
+      `
+      for (const r of righe) nomi.set(r.partita_iva, nomeOppureNull(r.nome))
+    }
 
     return groups.map((g: { producerPartitaIva: string; _count: number }) => ({
       partitaIva: g.producerPartitaIva,
+      nome: nomi.get(g.producerPartitaIva) ?? null,
       count: g._count,
     }))
   }
 
-  /**
-   * Get top carriers
-   */
+  /** Piu' frequenti per P. IVA del trasportatore, col nome dello snapshot piu' recente. */
   async getTopCarriers(
     tenantId: string,
     limit: number
-  ): Promise<Array<{ partitaIva: string; count: number }>> {
+  ): Promise<Array<{ partitaIva: string; nome: string | null; count: number }>> {
     const groups = await this.prisma.fIR.groupBy({
       by: ['carrierPartitaIva'],
-      where: { tenantId },
+      where: { tenantId, carrierPartitaIva: { not: '' } },
       _count: true,
-      orderBy: {
-        _count: {
-          carrierPartitaIva: 'desc',
-        },
-      },
+      orderBy: [{ _count: { carrierPartitaIva: 'desc' } }, { carrierPartitaIva: 'asc' }],
       take: limit,
     })
+    const partiteIva = groups.map((g: { carrierPartitaIva: string }) => g.carrierPartitaIva)
+    const nomi = new Map<string, string | null>()
+    if (partiteIva.length > 0) {
+      const righe = await this.prisma.$queryRaw<
+        Array<{ partita_iva: string; nome: string | null }>
+      >`
+        SELECT DISTINCT ON (carrier_partita_iva) carrier_partita_iva AS partita_iva, carrier_name AS nome
+        FROM firs
+        WHERE tenant_id = ${tenantId}::uuid AND carrier_partita_iva = ANY(${partiteIva}::text[])
+        ORDER BY carrier_partita_iva, created_at DESC, id DESC
+      `
+      for (const r of righe) nomi.set(r.partita_iva, nomeOppureNull(r.nome))
+    }
 
     return groups.map((g: { carrierPartitaIva: string; _count: number }) => ({
       partitaIva: g.carrierPartitaIva,
+      nome: nomi.get(g.carrierPartitaIva) ?? null,
       count: g._count,
     }))
   }
+}
+
+/** Stringa vuota o di soli spazi: nessun nome. */
+function nomeOppureNull(nome: string | null): string | null {
+  const pulito = nome?.trim()
+  return pulito ? pulito : null
 }

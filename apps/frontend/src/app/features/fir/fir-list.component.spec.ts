@@ -775,7 +775,7 @@ describe('FirListComponent — modifica delle bozze', () => {
     ...extra,
   })
 
-  function setup(opts: { role?: string; modifica?: string; righe?: FIR[] } = {}) {
+  function setup(opts: { role?: string; modifica?: string; nuovo?: string; righe?: FIR[] } = {}) {
     firService = jasmine.createSpyObj('FirService', [
       'getFIRList',
       'getFIRById',
@@ -810,7 +810,10 @@ describe('FirListComponent — modifica delle bozze', () => {
           provide: ActivatedRoute,
           useValue: {
             snapshot: {
-              queryParamMap: convertToParamMap(opts.modifica ? { modifica: opts.modifica } : {}),
+              queryParamMap: convertToParamMap({
+                ...(opts.modifica ? { modifica: opts.modifica } : {}),
+                ...(opts.nuovo ? { nuovo: opts.nuovo } : {}),
+              }),
             },
           },
         },
@@ -970,6 +973,36 @@ describe('FirListComponent — modifica delle bozze', () => {
       queryParamsHandling: 'merge',
       replaceUrl: true,
     })
+  })
+
+  it('con ?nuovo=1 apre il dialog «Nuovo FIR» e toglie il parametro dall’URL', () => {
+    setup({ nuovo: '1' })
+
+    expect(component.displayCreateDialog).toBeTrue()
+    expect(component.firInModifica).toBeNull()
+    expect(router.navigate).toHaveBeenCalledWith([], {
+      queryParams: { nuovo: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
+  })
+
+  it('con ?nuovo=1 un VIEWER non apre il dialog, ma il parametro sparisce comunque', () => {
+    setup({ nuovo: '1', role: 'VIEWER' })
+
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(router.navigate).toHaveBeenCalledWith([], {
+      queryParams: { nuovo: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
+  })
+
+  it('senza ?nuovo il dialog resta chiuso e l’URL non si tocca', () => {
+    setup()
+
+    expect(component.displayCreateDialog).toBeFalse()
+    expect(router.navigate).not.toHaveBeenCalled()
   })
 
   it('dal parametro ?modifica= su una bozza non modificabile avvisa e non apre il dialog', () => {

@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit } from '@angular/core'
+import { Component, DestroyRef, inject, signal, OnInit } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { CommonModule } from '@angular/common'
 import { BadgeModule } from 'primeng/badge'
 import { ButtonModule } from 'primeng/button'
@@ -94,6 +95,7 @@ import { interval } from 'rxjs'
 })
 export class NotificationBellComponent implements OnInit {
   private readonly http = inject(HttpClient)
+  private readonly distruzione = inject(DestroyRef)
   private readonly apiUrl = `${environment.apiUrl}/notifications`
 
   protected readonly notifications = signal<any[]>([])
@@ -102,7 +104,9 @@ export class NotificationBellComponent implements OnInit {
   ngOnInit(): void {
     this.loadUnreadCount()
     // Poll every 30 seconds
-    interval(30000).subscribe(() => this.loadUnreadCount())
+    interval(30000)
+      .pipe(takeUntilDestroyed(this.distruzione))
+      .subscribe(() => this.loadUnreadCount())
   }
 
   protected getBadgeValue(): string | undefined {

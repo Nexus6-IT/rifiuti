@@ -112,12 +112,13 @@ export interface DashboardData {
       percentage: number
     }
     prediction: {
-      nextMonth: number
+      /** Previsione del mese corrente sui sei mesi completi precedenti; null senza storico (Task 2b). */
+      nextMonth: number | null
     }
   }
   top: {
-    producers: Array<{ partitaIva: string; count: number }>
-    carriers: Array<{ partitaIva: string; count: number }>
+    producers: Array<{ partitaIva: string; nome: string | null; count: number }>
+    carriers: Array<{ partitaIva: string; nome: string | null; count: number }>
   }
   generatedAt: Date
 }

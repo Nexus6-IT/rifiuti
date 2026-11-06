@@ -60,7 +60,7 @@ import { partitaIvaCasualeValida } from '../../utils/partita-iva'
  * altro test o da una run precedente non ripulita) sia presente nello
  * stesso momento — l'assenza totale della fascia già ha una copertura
  * solida e non fragile a livello di componente
- * (`dashboard.component.spec.ts` — "non mostra alcuna fascia quando non ci
+ * (`da-fare-oggi.component.spec.ts` — "non mostra alcuna fascia quando non ci
  * sono voci"). Il test qui sotto verifica invece, end-to-end attraverso
  * tutto lo stack reale (DB → use case → controller → rendering), la stessa
  * garanzia SCOPED al dato di questo test: un trasportatore con scadenza

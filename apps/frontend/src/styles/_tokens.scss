@@ -1,12 +1,14 @@
 /* ============================================================================
-   WasteFlow — token del tema "Foglio salvia" (chiaro e scuro)
-   Fonte: docs/design/stile-1.html (progetto winwaste), sezione 4 della proposta.
+   WasteFlow — token del tema "Libro mastro" (chiaro e scuro)
+   Fonte: docs/design/giro-2/proposta.md (progetto winwaste), sezioni 1-2.
 
-   Idea: una cornice a L color salvia (sidebar + barra in alto) e il lavoro su
-   un foglio bianco rientrato. Il teal e' ridotto a marchio, scheda attiva,
-   selezione e stato "Trasmesso"; l'azione primaria e' quasi nera.
+   Libro mastro, colori IgniCraft (giro 2): un solo fondo caldo (sidebar e
+  contenuto), card bianche da 8px senza ombra, contorno neutro. L'arancio
+  IgniCraft vale solo sul bottone primario (.wf-primario), sul dato
+  principale, sul focus, sui link nel testo e sul segno del marchio; i bottoni
+  pieni, i badge, il paginatore e i controlli PrimeNG sono in inchiostro.
 
-   I NOMI dei token sono quelli storici (circa 1.500 usi nei componenti): qui
+  I NOMI dei token sono quelli storici (circa 1.500 usi nei componenti): qui
    cambiano solo i valori. I token nuovi (frame, sheet, stati) sono in fondo.
 
    Modalita' scura: :root[data-theme='dark'] ridefinisce SOLO i colori
@@ -16,111 +18,121 @@
    ============================================================================ */
 
 :root {
-  /* ===== Brand: teal, ridotto a marchio / scheda attiva / selezione / Trasmesso ===== */
-  --brand-primary: #0f6b63;
-  --brand-primary-dark: #0a4f48;
-  --brand-primary-light: #1a8a7f;
-  --brand-primary-50: #eef4f1;
-  --brand-primary-100: #e3f1ed;
-  --brand-secondary: #b45309;
-  --brand-secondary-dark: #92400e;
-  --brand-secondary-light: #d97706;
-  /* Il blu non fa piu' parte della palette: l'accento "info" e' un grigio-azzurro spento. */
-  --brand-accent: #35566e;
-  --brand-accent-dark: #243b4c;
-  --brand-accent-light: #5a7d96;
+  /* ===== Brand: arancio IgniCraft (testo leggibile AA, hover, fiamma) ===== */
+  --brand-primary: #b9440f;
+  --brand-primary-dark: #8f340b;
+  --brand-primary-light: #f0602a;
+  /* Selezione e menu in grigio, non in arancio (D12). */
+  --brand-primary-50: #f7f6f3;
+  --brand-primary-100: #e9e7e2;
+  --brand-secondary: #6b4b00;
+  --brand-secondary-dark: #4d3600;
+  --brand-secondary-light: #8a6200;
+  /* IgniCraft non ha un colore "info": si usano i grigi caldi. */
+  --brand-accent: #504e4a;
+  --brand-accent-dark: #141414;
+  --brand-accent-light: #6b6964;
 
-  /* ===== Azione primaria: quasi nera (fondo pieno + testo sopra) ===== */
-  --accent-fill: #17201b;
-  --accent-fill-hover: #2c3731;
+  /* ===== Bottoni pieni in inchiostro (base .p-button, paginatore, badge, selectButton) ===== */
+  --ink-fill: #141414;
+  --ink-fill-hover: #2b2a27;
+  --on-ink: #f3f2ef;
+  /* ===== Arancio: SOLO il bottone primario della schermata (.wf-primario) ===== */
+  --accent-fill: #b9440f;
+  --accent-fill-hover: #8f340b;
   --on-accent: #ffffff;
   /* Azione secondaria piena (p-button-secondary) */
-  --neutral-fill: #4a524e;
-  --neutral-fill-hover: #39413c;
+  --neutral-fill: #504e4a;
+  --neutral-fill-hover: #3a3934;
   --on-neutral: #ffffff;
 
   /* ===== Semantici (colore + sfondo tenue, AA) ===== */
-  --color-success: #0a4f48;
-  --color-success-bg: #e3f1ed;
-  --color-warning: #92400e;
-  --color-warning-bg: #fffbeb;
-  --color-danger: #8a1c1e;
-  --color-danger-bg: #ffedea;
-  --color-info: #35566e;
-  --color-info-bg: #e8eef2;
+  --color-success: #1d5a35;
+  --color-success-bg: #dcefe2;
+  --color-warning: #6b4b00;
+  --color-warning-bg: #fff0c2;
+  --color-danger: #8f1d1d;
+  --color-danger-bg: #fde4e1;
+  --color-info: #504e4a;
+  --color-info-bg: #eeece8;
 
-  /* ===== Neutrali (tinti di salvia) ===== */
-  --color-gray-50: #f3f6f4;
-  --color-gray-100: #edf1ee;
-  --color-gray-200: #e2e7e4;
-  --color-gray-300: #c9d1cc;
-  --color-gray-400: #848e88;
-  --color-gray-500: #59615c;
-  --color-gray-600: #4a524e;
-  --color-gray-700: #39413c;
-  --color-gray-800: #232a26;
-  --color-gray-900: #121614;
+  /* ===== Neutrali (grigi caldi) ===== */
+  --color-gray-50: #f7f6f3;
+  --color-gray-100: #eeece8;
+  --color-gray-200: #e3e1dc;
+  --color-gray-300: #d3d0c9;
+  --color-gray-400: #8a8780;
+  --color-gray-500: #6b6964;
+  --color-gray-600: #504e4a;
+  --color-gray-700: #3a3934;
+  --color-gray-800: #232320;
+  --color-gray-900: #141414;
 
-  /* ===== Superfici: cornice salvia, foglio e superfici bianche ===== */
-  --surface-ground: #eef2ef;
+  /* ===== Superfici: fondo caldo unico, card bianche ===== */
+  --surface-ground: #f3f2ef;
   --surface-section: #ffffff;
   --surface-card: #ffffff;
   --surface-overlay: #ffffff;
-  --surface-border: #e2e7e4;
-  --surface-border-strong: #c9d1cc;
-  /* Bordo dei controlli editabili: 3,4:1 sul foglio (WCAG 1.4.11 chiede >= 3:1). */
-  --control-border: #848e88;
-  --control-border-hover: #5f6964;
-  --surface-hover: #f6f8f7;
-  --overlay-mask: rgba(18, 22, 20, 0.4);
+  --surface-border: #e3e1dc;
+  --surface-border-strong: #d3d0c9;
+  /* Bordo dei controlli editabili: 3,4:1 sul bianco (WCAG 1.4.11 chiede >= 3:1). */
+  --control-border: #8a8780;
+  --control-border-hover: #5f5d58;
+  --surface-hover: #f7f6f3;
+  --overlay-mask: rgba(20, 20, 20, 0.4);
 
   /* ===== Testo ===== */
-  --text-primary: #121614;
-  --text-secondary: #424b46;
-  /* Secondario/muted: 6,4:1 sul foglio, 5,6:1 sulla cornice. */
-  --text-tertiary: #59615c;
-  --text-disabled: #848e88;
+  --text-primary: #141414;
+  --text-secondary: #504e4a;
+  /* Terziario: 5,5:1 sul bianco, 4,9:1 sul fondo. */
+  --text-tertiary: #6b6964;
+  --text-disabled: #8a8780;
   --text-inverse: #ffffff;
-  /* Placeholder: 5,1:1 sul campo bianco. */
-  --text-placeholder: #66706a;
+  /* Placeholder: 5,3:1 sul campo bianco. */
+  --text-placeholder: #6b6964;
 
-  /* ===== Cornice (sidebar + barra in alto): stesso fondo, nessuna riga fra loro ===== */
-  --sidebar-bg: #eef2ef;
-  --sidebar-bg-2: #f3f6f4;
-  --sidebar-ink: #39413c;
-  --sidebar-ink-muted: #59615c;
-  --sidebar-ink-strong: #121614;
-  --sidebar-active: #0f6b63;
-  --sidebar-active-bg: #dfe7e2;
-  --sidebar-border: #d5dcd8;
-  --sidebar-hover-bg: #f3f6f4;
-  --sidebar-hover-border: #c4cdc8;
-  /* Bordo dei controlli sulla cornice: 3,2:1 su #eef2ef. */
-  --frame-control-border: #7f8984;
-  --sidebar-danger: #8a1c1e;
-  --sidebar-danger-strong: #6f1517;
-  --sidebar-danger-bg: rgba(138, 28, 30, 0.09);
+  /* ===== Sidebar: sullo stesso fondo del contenuto ===== */
+  --sidebar-bg: #f3f2ef;
+  --sidebar-bg-2: #f7f6f3;
+  --sidebar-ink: #504e4a;
+  --sidebar-ink-muted: #6b6964;
+  --sidebar-ink-strong: #141414;
+  /* Icona della voce attiva e bordo del contatore: inchiostro (P12). */
+  --sidebar-active: #141414;
+  --sidebar-active-bg: #e9e7e2;
+  --sidebar-border: #e3e1dc;
+  --sidebar-hover-bg: #f7f6f3;
+  --sidebar-hover-border: #d3d0c9;
+  /* Bordo dei controlli sul fondo: 3,3:1 su #f3f2ef. */
+  --frame-control-border: #8a8780;
+  --sidebar-danger: #8f1d1d;
+  --sidebar-danger-strong: #6f1515;
+  --sidebar-danger-bg: rgba(143, 29, 29, 0.09);
 
   /* Testo del contrassegno azienda: la tavolozza e' scura in entrambe le modalita'. */
   --on-contrassegno: #ffffff;
 
-  /* Pannello di marca di login e iscrizione: uguale nelle due modalita'. */
-  --brand-panel-from: #0f6b63;
-  --brand-panel-mid: #0c5a53;
-  --brand-panel-to: #17201b;
+  /* Pannello di marca di login e iscrizione: piatto, uguale nelle due modalita'. */
+  --brand-panel: #141414;
+  --brand-mark: #f0602a;
+  /* Ponte fino al Task 5 (login e iscrizione usano ancora il gradiente): pannello
+     piatto, nessuna sfumatura. Il Task 5 passa a --brand-panel e toglie questi tre. */
+  --brand-panel-from: var(--brand-panel);
+  --brand-panel-mid: var(--brand-panel);
+  --brand-panel-to: var(--brand-panel);
   --on-brand-panel: #ffffff;
 
-  /* ===== Tipografia (IBM Plex: Sans 400/500/600, Mono 400/500) ===== */
-  --font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'IBM Plex Sans', var(--font-family);
-  --font-family-mono: 'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+  /* ===== Tipografia (Geist ospitato da noi: pesi 400/500/600) ===== */
+  --font-family: 'Geist Variable', 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Geist Variable', 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-family-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
 
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.375rem; /* titolo pagina: 22px */
+  --font-size-2xl: 1.5rem; /* titolo pagina: 24px */
   --font-size-3xl: 1.5rem; /* cifre di sintesi: 24px */
   --font-size-4xl: 2.25rem;
 
@@ -165,9 +177,9 @@
   --shadow-xs: none;
   --shadow-sm: none;
   --shadow-base: none;
-  --shadow-md: 0 12px 32px rgba(18, 22, 20, 0.18);
-  --shadow-lg: 0 12px 32px rgba(18, 22, 20, 0.18);
-  --shadow-xl: 0 12px 32px rgba(18, 22, 20, 0.22);
+  --shadow-md: 0 12px 32px rgba(20, 20, 20, 0.18);
+  --shadow-lg: 0 12px 32px rgba(20, 20, 20, 0.18);
+  --shadow-xl: 0 12px 32px rgba(20, 20, 20, 0.22);
 
   /* ===== Transizioni ===== */
   --transition-fast: 130ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -181,41 +193,42 @@
   /* ===== Accessibilita' ===== */
   --touch-target-min: 44px;
   --focus-ring-width: 2px;
-  --focus-ring-color: #0f6b63;
+  --focus-ring-color: #b9440f;
   --focus-ring-offset: 2px;
-  --focus-glow: rgba(15, 107, 99, 0.16);
+  --focus-glow: rgba(185, 68, 15, 0.16);
 
-  /* ===== Nuovi: cornice e foglio ===== */
-  --frame: #eef2ef;
-  --sheet: #ffffff;
-  --sheet-border: #e2e7e4;
-  --sheet-inset: 8px;
+  /* ===== Nuovi: fondo unico (niente cornice ne' foglio rientrato) ===== */
+  --frame: #f3f2ef;
+  --sheet: transparent;
+  --sheet-border: transparent;
+  --sheet-inset: 0px;
   --topbar-h: 48px;
   --sidebar-w: 15rem;
 
   /* ===== Nuovi: selezione e righe ===== */
-  --rule: #edf1ee;
-  --selected: #eef4f1;
-  --selected-line: #0f6b63;
-  --tab-line: #0f6b63;
+  --rule: #eeece8;
+  --selected: #e9e7e2;
+  --selected-line: #141414;
+  --tab-line: #141414;
 
   /* ===== Nuovi: stati = icona + parola + colore (coppie sfondo/inchiostro/bordo) ===== */
-  --stato-ok-bg: #edf1ee;      --stato-ok-ink: #3b4440;
-  --stato-warn-bg: #fffbeb;    --stato-warn-ink: #92400e;  --stato-warn-edge: #fcd88a;
-  --stato-err-bg: #ffedea;     --stato-err-ink: #8a1c1e;   --stato-err-edge: #f5c2bb;
-  --stato-sent-bg: #e3f1ed;    --stato-sent-ink: #0a4f48;
-  --stato-todo-bg: #ffffff;    --stato-todo-ink: #121614;  --stato-todo-edge: #848e88;
-  --stato-none-bg: #edf1ee;    --stato-none-ink: #4a524e;
-  --stato-info-bg: #e8eef2;    --stato-info-ink: #35566e;
+  --stato-ok-bg: #dcefe2;      --stato-ok-ink: #1d5a35;
+  --stato-warn-bg: #fff0c2;    --stato-warn-ink: #6b4b00;  --stato-warn-edge: #ead79a;
+  --stato-err-bg: #fde4e1;     --stato-err-ink: #8f1d1d;   --stato-err-edge: #f3bdb7;
+  --stato-err-segno: #8f1d1d;
+  --stato-sent-bg: #dcefe2;    --stato-sent-ink: #1d5a35;
+  --stato-todo-bg: #ffffff;    --stato-todo-ink: #141414;  --stato-todo-edge: #8a8780;
+  --stato-none-bg: #eeece8;    --stato-none-ink: #504e4a;
+  --stato-info-bg: #eeece8;    --stato-info-ink: #504e4a;
 
   /* ===== Allineamento variabili PrimeNG ===== */
-  --primary-color: var(--accent-fill);
-  --primary-color-text: var(--on-accent);
-  --p-primary-color: var(--accent-fill);
-  /* Anello di focus di Aura (checkbox, radio, switch, schede): lo stesso teal a 2px degli altri controlli. */
+  --primary-color: var(--ink-fill);
+  --primary-color-text: var(--on-ink);
+  --p-primary-color: var(--ink-fill);
+  /* Anello di focus di Aura (checkbox, radio, switch, schede): lo stesso arancio a 2px degli altri controlli. */
   --p-focus-ring-color: var(--focus-ring-color);
   --highlight-bg: var(--selected);
-  --highlight-text-color: var(--brand-primary-dark);
+  --highlight-text-color: var(--text-primary);
   --text-color: var(--text-primary);
   --text-color-secondary: var(--text-tertiary);
   --maskbg: var(--overlay-mask);
@@ -234,108 +247,110 @@
 }
 
 /* ============================================================================
-   Modalita' scura — solo colori. Token scuri della proposta (sezione 4).
+   Modalita' scura — solo colori. Token scuri della proposta (sezione 2).
    In stampa si usa sempre la palette chiara (@media screen).
    ============================================================================ */
 @media screen {
 :root[data-theme='dark'] {
-  --brand-primary: #5cc0b3;
-  --brand-primary-dark: #6fcabe;
-  --brand-primary-light: #7fdccf;
-  --brand-primary-50: #1a2421;
-  --brand-primary-100: #11302b;
-  --brand-secondary: #f0b44c;
-  --brand-secondary-dark: #e0a54a;
-  --brand-secondary-light: #f5c87a;
-  --brand-accent: #9db8cc;
-  --brand-accent-dark: #b9cfdf;
-  --brand-accent-light: #9db8cc;
+  --brand-primary: #ff8a5c;
+  --brand-primary-dark: #ffa47f;
+  --brand-primary-light: #ff7a45;
+  --brand-primary-50: #232320;
+  --brand-primary-100: #2c2b27;
+  --brand-secondary: #ffe9a8;
+  --brand-secondary-dark: #ffeec0;
+  --brand-secondary-light: #ffe9a8;
+  --brand-accent: #bdbab3;
+  --brand-accent-dark: #eeece7;
+  --brand-accent-light: #96938c;
 
-  --accent-fill: #edf1ee;
-  --accent-fill-hover: #ffffff;
-  --on-accent: #0d0f0e;
-  --neutral-fill: #2f3733;
-  --neutral-fill-hover: #3a443f;
-  --on-neutral: #edf1ee;
+  --ink-fill: #eeece7;
+  --ink-fill-hover: #ffffff;
+  --on-ink: #131311;
+  --accent-fill: #ff8a5c;
+  --accent-fill-hover: #ffa47f;
+  --on-accent: #131311;
+  --neutral-fill: #3a3934;
+  --neutral-fill-hover: #4a4843;
+  --on-neutral: #eeece7;
 
-  --color-success: #7fd6ca;
-  --color-success-bg: #11302b;
-  --color-warning: #f0b44c;
-  --color-warning-bg: #2b2414;
-  --color-danger: #f4978e;
-  --color-danger-bg: #2e1a1b;
-  --color-info: #9db8cc;
-  --color-info-bg: #1a232a;
+  --color-success: #c4ecd2;
+  --color-success-bg: #173d27;
+  --color-warning: #ffe9a8;
+  --color-warning-bg: #4d3a07;
+  --color-danger: #fecaca;
+  --color-danger-bg: #4a1c1c;
+  --color-info: #bdbab3;
+  --color-info-bg: #272622;
 
   /* Scala invertita: 50 e' il piu' vicino al fondo, 900 il piu' vicino al testo. */
-  --color-gray-50: #171a19;
-  --color-gray-100: #1e2321;
-  --color-gray-200: #252b28;
-  --color-gray-300: #33403a;
-  --color-gray-400: #5d6862;
-  --color-gray-500: #98a29c;
-  --color-gray-600: #a2aba6;
-  --color-gray-700: #c4ccc7;
-  --color-gray-800: #dde3df;
-  --color-gray-900: #edf1ee;
+  --color-gray-50: #1a1a17;
+  --color-gray-100: #252421;
+  --color-gray-200: #2c2b27;
+  --color-gray-300: #3a3934;
+  --color-gray-400: #6f6c66;
+  --color-gray-500: #96938c;
+  --color-gray-600: #a8a59e;
+  --color-gray-700: #bdbab3;
+  --color-gray-800: #d6d3cc;
+  --color-gray-900: #eeece7;
 
-  --surface-ground: #0d0f0e;
-  --surface-section: #141716;
-  --surface-card: #141716;
-  --surface-overlay: #1b1f1d;
-  --surface-border: #252b28;
-  --surface-border-strong: #33403a;
-  --control-border: #6b766f;
-  --control-border-hover: #98a29c;
-  --surface-hover: #191d1b;
+  --surface-ground: #131311;
+  --surface-section: #1d1d1a;
+  --surface-card: #1d1d1a;
+  --surface-overlay: #272622;
+  --surface-border: #2c2b27;
+  --surface-border-strong: #3a3934;
+  --control-border: #6f6c66;
+  --control-border-hover: #96938c;
+  --surface-hover: #232320;
   --overlay-mask: rgba(0, 0, 0, 0.6);
 
-  --text-primary: #edf1ee;
-  --text-secondary: #c4ccc7;
-  --text-tertiary: #a2aba6;
-  --text-disabled: #6b766f;
-  --text-inverse: #0d0f0e;
-  --text-placeholder: #98a29c;
+  --text-primary: #eeece7;
+  --text-secondary: #bdbab3;
+  --text-tertiary: #96938c;
+  --text-disabled: #6f6c66;
+  --text-inverse: #131311;
+  --text-placeholder: #96938c;
 
-  --sidebar-bg: #0d0f0e;
-  --sidebar-bg-2: #191d1b;
-  --sidebar-ink: #c4ccc7;
-  --sidebar-ink-muted: #a2aba6;
-  --sidebar-ink-strong: #ffffff;
-  --sidebar-active: #6fcabe;
-  --sidebar-active-bg: #232a26;
-  --sidebar-border: #252b28;
-  --sidebar-hover-bg: #191d1b;
-  --sidebar-hover-border: #33403a;
-  --frame-control-border: #6b766f;
-  --sidebar-danger: #f4978e;
-  --sidebar-danger-strong: #ffc2bc;
-  --sidebar-danger-bg: rgba(244, 151, 142, 0.12);
+  --sidebar-bg: #131311;
+  --sidebar-bg-2: #232320;
+  --sidebar-ink: #bdbab3;
+  --sidebar-ink-muted: #96938c;
+  --sidebar-ink-strong: #eeece7;
+  --sidebar-active: #eeece7;
+  --sidebar-active-bg: #2c2b27;
+  --sidebar-border: #2c2b27;
+  --sidebar-hover-bg: #232320;
+  --sidebar-hover-border: #3a3934;
+  --frame-control-border: #6f6c66;
+  --sidebar-danger: #f87171;
+  --sidebar-danger-strong: #fecaca;
+  --sidebar-danger-bg: rgba(248, 113, 113, 0.12);
 
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
   --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.7);
 
-  --focus-ring-color: #6fcabe;
-  --focus-glow: rgba(111, 202, 190, 0.22);
+  --focus-ring-color: #ff8a5c;
+  --focus-glow: rgba(255, 138, 92, 0.22);
 
-  --frame: #0d0f0e;
-  --sheet: #141716;
-  --sheet-border: #252b28;
-  --rule: #1d2220;
-  --selected: #1a2421;
-  --selected-line: #6fcabe;
-  --tab-line: #6fcabe;
+  --frame: #131311;
+  --rule: #252421;
+  --selected: #2c2b27;
+  --selected-line: #eeece7;
+  --tab-line: #eeece7;
 
-  --stato-ok-bg: #1e2321;      --stato-ok-ink: #c4ccc7;
-  --stato-warn-bg: #2b2414;    --stato-warn-ink: #f0b44c;  --stato-warn-edge: #5c4613;
-  --stato-err-bg: #2e1a1b;     --stato-err-ink: #f4978e;   --stato-err-edge: #5e2b2b;
-  --stato-sent-bg: #11302b;    --stato-sent-ink: #7fd6ca;
-  --stato-todo-bg: transparent; --stato-todo-ink: #edf1ee; --stato-todo-edge: #5d6862;
-  --stato-none-bg: #1e2321;    --stato-none-ink: #a2aba6;
-  --stato-info-bg: #1a232a;    --stato-info-ink: #9db8cc;
+  --stato-ok-bg: #173d27;      --stato-ok-ink: #c4ecd2;
+  --stato-warn-bg: #4d3a07;    --stato-warn-ink: #ffe9a8;  --stato-warn-edge: #6f5510;
+  --stato-err-bg: #4a1c1c;     --stato-err-ink: #fecaca;   --stato-err-edge: #6e2b2b;
+  --stato-err-segno: #f87171;
+  --stato-sent-bg: #173d27;    --stato-sent-ink: #c4ecd2;
+  --stato-todo-bg: transparent; --stato-todo-ink: #eeece7; --stato-todo-edge: #6f6c66;
+  --stato-none-bg: #272622;    --stato-none-ink: #bdbab3;
+  --stato-info-bg: #272622;    --stato-info-ink: #bdbab3;
 
-  --highlight-text-color: var(--brand-primary-dark);
+  --highlight-text-color: var(--text-primary);
 
   color-scheme: dark;
 }

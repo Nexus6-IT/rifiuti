@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { STATI_ESCLUSI } from './stati-andamento'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 /** Conteggio dei formulari creati in un dato mese ('YYYY-MM'). */
@@ -17,20 +17,6 @@ interface RigaGrezza {
   mese: Date
   conteggio: number
 }
-
-/**
- * Stati del ciclo di vita FIR (colonna `status`) che corrispondono al
- * dominio BOZZA (v. `fir-prisma.repository.ts`, DB_TO_STATO) o ad ANNULLATO:
- * una bozza mai emessa e un formulario annullato non sono "andamento" da
- * mostrare — non sono documenti compiuti.
- *
- * Inseriti nell'SQL come frammento letterale via `Prisma.raw` (non come
- * parametro `$queryRaw` ordinario, che legherebbe l'intera stringa come UN
- * singolo valore anziché tre, e comunque senza un tipo esplicito da
- * confrontare con la colonna enum `fir_status`): sono costanti scelte da
- * questo file, non dati esterni, nessun rischio di injection.
- */
-const STATI_ESCLUSI_SQL = Prisma.raw("'DRAFT', 'AWAITING_PRODUCER', 'CANCELLED'")
 
 /**
  * «Un conteggio dice dove sei, una serie dice dove stai andando» (Task 4 del
@@ -79,7 +65,7 @@ export class RaccogliAndamentoMensileUseCase {
       SELECT date_trunc('month', created_at) AS mese, COUNT(*)::int AS conteggio
       FROM firs
       WHERE tenant_id = ${tenantId}::uuid
-        AND status NOT IN (${STATI_ESCLUSI_SQL})
+        AND status::text <> ALL(${STATI_ESCLUSI}::text[])
         AND created_at >= ${dataInizio}
       GROUP BY mese
       ORDER BY mese ASC
