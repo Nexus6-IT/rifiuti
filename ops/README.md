@@ -264,6 +264,15 @@ composte) e le colonne nuove: `impostazioni_fatturazione.definitive_attive` (def
 > (decisioni 13 e 14). Controllo dopo ogni deploy della serie 4.4:
 > `SELECT tenant_id FROM impostazioni_fatturazione WHERE definitive_attive;` deve dare zero righe.
 
+**Rilascio 4.4b1 (elaborazione, definitiva, annullo/storno, scostamenti).** Nessuna migration: la
+colonna `esito` e la sonda della numerazione sono della 4.4a. Le rotte `/elaborazioni-fatturazione`,
+`/documenti-fattura` e `/scostamenti-fattura` sono attive, ma la definitiva risponde 409
+`DEFINITIVE_NON_ATTIVE` finche' `definitive_attive` resta `false` (atteso: zero righe dalla query
+sopra). Un job `fatturazione-manutenzione` gira ogni 10 minuti (orfani `IN_CODA` dopo 15 minuti,
+`IN_CORSO`/`IN_DEFINITIVA` dopo 5) e alle 3 di notte pulisce le bozze vecchie. Le query su liste lunghe di
+id girano con `enable_nestloop` spento nella transazione (`conJoinLineari`): reggono statistiche
+vecchie dopo un import grande e il piano generico di Prisma.
+
 **Ordine di creazione di un documento (Task 19 e 20, anche per il TD04 di storno).** Le figlie
 (`righe_documento_fattura`, `riepiloghi_iva_documento`, `rate_documento_fattura`) accettano INSERT,
 UPDATE e DELETE solo se la testata e' in `BOZZA`. Si crea quindi la testata in `BOZZA` (numero
