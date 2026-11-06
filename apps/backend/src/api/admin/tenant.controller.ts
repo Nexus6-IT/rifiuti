@@ -99,7 +99,11 @@ export class TenantController {
    */
   @Patch(':id/status')
   @Roles('SUPER_ADMIN')
-  async setStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetTenantStatusDto) {
-    return this.tenantService.setStatus(id, dto.status)
+  async setStatus(
+    @CurrentUser() currentUser: CurrentUserPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetTenantStatusDto
+  ) {
+    return this.tenantService.setStatus(currentUser, id, dto.status)
   }
 }

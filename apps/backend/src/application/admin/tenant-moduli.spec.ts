@@ -10,7 +10,7 @@ import { PLAN_FEATURES } from './feature-catalog'
 const TENANT = 'tenant-uuid'
 const ADMIN = 'utente-admin-uuid'
 
-function makeService(tier: SubscriptionTier = SubscriptionTier.TRIAL) {
+function makeService(tier: SubscriptionTier = SubscriptionTier.TRIAL, contratto?: any) {
   const prisma: any = {
     tenant: {
       findUnique: jest.fn().mockResolvedValue({
@@ -42,7 +42,7 @@ function makeService(tier: SubscriptionTier = SubscriptionTier.TRIAL) {
   }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const membership: any = { checkAccess: jest.fn().mockResolvedValue(true) }
-  const service = new TenantService(prisma, prisma, logger, membership)
+  const service = new TenantService(prisma, prisma, logger, membership, contratto)
   jest.spyOn(service as any, 'seedRoles').mockResolvedValue(undefined)
   jest.spyOn(service as any, 'associateOwner').mockResolvedValue(undefined)
   jest.spyOn(service as any, 'inAzienda').mockImplementation(async (_id: any, fn: any) => fn())
@@ -159,5 +159,50 @@ describe('TenantService — moduli aggiunti e tolti', () => {
     const comeSuper: any = await service.list(superAdmin)
     expect(comeSuper[0].moduliEffettivi).toContain('esg')
     expect(comeSuper[0].moduliEffettivi).not.toContain('cer')
+  })
+
+  it('update con featureFlags null: entrambe le colonne tornano a null (azienda al piano)', async () => {
+    const { service, prisma } = makeService()
+    await service.update(superAdmin, TENANT, { featureFlags: null } as any)
+    const [{ data }] = prisma.tenant.update.mock.calls[0]
+    expect(data.featureFlags).toBe(Prisma.DbNull)
+    expect(data.featureTolte).toBe(Prisma.DbNull)
+  })
+
+  it('figlia: moduliEffettivi viene dal contratto della madre (modulo tolto assente)', async () => {
+    const contratto: any = {
+      caricaContratto: jest.fn().mockResolvedValue({
+        subscriptionTier: 'PROFESSIONAL',
+        featureFlags: null,
+        featureTolte: ['esg'],
+      }),
+    }
+    const { service, prisma } = makeService(SubscriptionTier.TRIAL, contratto)
+    prisma.tenant.findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'figlia-uuid',
+        parentTenantId: 'madre-uuid',
+        subscriptionTier: 'TRIAL',
+        featureFlags: null,
+        featureTolte: null,
+        _count: { users: 0 },
+      },
+    ])
+    const righe: any = await service.list(superAdmin)
+    expect(contratto.caricaContratto).toHaveBeenCalledWith('figlia-uuid')
+    expect(righe[0].moduliEffettivi).toContain('mud')
+    expect(righe[0].moduliEffettivi).not.toContain('esg')
+  })
+
+  it('setStatus: stessa forma delle altre rotte, con moduliEffettivi', async () => {
+    const { service, prisma } = makeService()
+    prisma.tenant.update = jest.fn().mockResolvedValue({
+      id: TENANT,
+      subscriptionTier: 'TRIAL',
+      featureFlags: ['esg'],
+      featureTolte: null,
+    })
+    const res: any = await service.setStatus(superAdmin, TENANT, 'SUSPENDED')
+    expect(res.moduliEffettivi).toContain('esg')
   })
 })

@@ -16,6 +16,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
 import { calcolaDeltaModuli, effectiveFeatures } from './feature-catalog'
+import { ContrattoGruppoService } from '../billing/contratto-gruppo.service'
 import { assertNonPiattaforma, escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
@@ -50,7 +51,8 @@ export class TenantService {
     private readonly prisma: PrismaService,
     private readonly sistema: PrismaSistemaService,
     private readonly logger: LoggerService,
-    private readonly membership: MembershipService
+    private readonly membership: MembershipService,
+    private readonly contratto?: ContrattoGruppoService
   ) {
     this.logger.setContext(TenantService.name)
   }
@@ -59,21 +61,42 @@ export class TenantService {
    * Forma la riga per chi la riceve: solo il SUPER_ADMIN vede i moduli
    * (`featureFlags`, `featureTolte`) e il calcolato `moduliEffettivi`.
    */
-  private perUtente<T extends { subscriptionTier?: SubscriptionTier }>(
+  private async perUtente<
+    T extends { id?: string; subscriptionTier?: SubscriptionTier; parentTenantId?: string | null },
+  >(
     currentUser: CurrentUser,
     riga: T
-  ): Omit<T, 'featureFlags' | 'featureTolte'> & { moduliEffettivi?: string[] } {
+  ): Promise<Omit<T, 'featureFlags' | 'featureTolte'> & { moduliEffettivi?: string[] }> {
     const { featureFlags, featureTolte, ...resto } = riga as T & {
       featureFlags?: unknown
       featureTolte?: unknown
     }
     if (!this.isSuperAdmin(currentUser)) return resto as never
+    // Una figlia non ha moduli propri: valgono quelli del contratto della madre
+    // (stessa logica di ContrattoGruppoService, che risale alla radice).
+    let sorgente: {
+      subscriptionTier?: SubscriptionTier
+      featureFlags?: unknown
+      featureTolte?: unknown
+    } = {
+      subscriptionTier: riga.subscriptionTier,
+      featureFlags,
+      featureTolte,
+    }
+    if (riga.parentTenantId && riga.id && this.contratto) {
+      const dalGruppo = await this.contratto.caricaContratto(riga.id)
+      if (dalGruppo) sorgente = dalGruppo
+    }
     return {
       ...resto,
       featureFlags,
       featureTolte,
-      moduliEffettivi: riga.subscriptionTier
-        ? effectiveFeatures({ subscriptionTier: riga.subscriptionTier, featureFlags, featureTolte })
+      moduliEffettivi: sorgente.subscriptionTier
+        ? effectiveFeatures({
+            subscriptionTier: sorgente.subscriptionTier,
+            featureFlags: sorgente.featureFlags,
+            featureTolte: sorgente.featureTolte,
+          })
         : [],
     } as never
   }
@@ -89,7 +112,7 @@ export class TenantService {
 
   /** Dettaglio per il controller (GET :id, solo SUPER_ADMIN). */
   async getByIdPerUtente(currentUser: CurrentUser, id: string) {
-    return this.perUtente(currentUser, await this.getById(id, true))
+    return await this.perUtente(currentUser, await this.getById(id, true))
   }
 
   private isSuperAdmin(currentUser: CurrentUser): boolean {
@@ -137,7 +160,7 @@ export class TenantService {
           },
         },
       })
-      return tutte.map(t => this.perUtente(currentUser, t))
+      return await Promise.all(tutte.map(async t => await this.perUtente(currentUser, t)))
     }
 
     // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di
@@ -397,7 +420,7 @@ export class TenantService {
       )
     }
 
-    return this.perUtente(currentUser, tenant)
+    return await this.perUtente(currentUser, tenant)
   }
 
   /**
@@ -568,11 +591,11 @@ export class TenantService {
       // Per tornare a derivare dal piano si può inviare un array vuoto o `null`.
       // featureFlags e' la selezione completa: il backend salva aggiunti e tolti rispetto
       // al piano risultante dopo questa richiesta.
+      // `null` = l'azienda torna al piano (entrambe le colonne a null).
       ...(isSuperAdmin && dto.featureFlags !== undefined
-        ? this.colonneModuli(
-            (isSuperAdmin && dto.subscriptionTier) || tenant.subscriptionTier,
-            dto.featureFlags ?? []
-          )
+        ? dto.featureFlags === null
+          ? { featureFlags: Prisma.DbNull, featureTolte: Prisma.DbNull }
+          : this.colonneModuli(dto.subscriptionTier || tenant.subscriptionTier, dto.featureFlags)
         : {}),
     }
 
@@ -583,14 +606,14 @@ export class TenantService {
 
     this.logger.info('Tenant updated', { tenantId: id })
 
-    return this.perUtente(currentUser, updated)
+    return await this.perUtente(currentUser, updated)
   }
 
   /**
    * Sospende o riattiva un tenant impostandone lo stato di subscription.
    * @throws NotFoundException se il tenant non esiste.
    */
-  async setStatus(id: string, status: 'SUSPENDED' | 'ACTIVE') {
+  async setStatus(currentUser: CurrentUser, id: string, status: 'SUSPENDED' | 'ACTIVE') {
     assertNonPiattaforma(id)
     // Verifica esistenza (getById lancia NotFound se assente).
     await this.getById(id, true)
@@ -605,6 +628,6 @@ export class TenantService {
 
     this.logger.info('Tenant status changed', { tenantId: id, status })
 
-    return tenant
+    return await this.perUtente(currentUser, tenant)
   }
 }

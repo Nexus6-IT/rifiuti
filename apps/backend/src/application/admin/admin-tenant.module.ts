@@ -5,6 +5,7 @@ import { AuthModule } from '../../auth/auth.module'
 import { MeModule } from '../../api/me/me.module'
 import { TenantController } from '../../api/admin/tenant.controller'
 import { TenantService } from './tenant.service'
+import { ContrattoGruppoService } from '../billing/contratto-gruppo.service'
 import { AuditPiattaformaController } from '../../api/admin/audit-piattaforma.controller'
 import { AuditPiattaformaService } from './audit-piattaforma.service'
 
@@ -29,7 +30,7 @@ import { AuditPiattaformaService } from './audit-piattaforma.service'
 @Module({
   imports: [PrismaModule, AuthModule, LoggerModule, MeModule],
   controllers: [TenantController, AuditPiattaformaController],
-  providers: [TenantService, AuditPiattaformaService],
+  providers: [TenantService, AuditPiattaformaService, ContrattoGruppoService],
   exports: [TenantService],
 })
 export class AdminTenantModule {}

@@ -977,15 +977,22 @@ export class TenantAdminComponent implements OnInit {
    * L'admin puo' poi modificarle liberamente (override).
    */
   onTierChange(tier: SubscriptionTier): void {
-    // Stessa formula del backend: (piano + aggiunti) - tolti. In creazione non ci sono
-    // ne' aggiunti ne' tolti, quindi restano i moduli del piano.
-    const t = this.selectedTenant
-    const aggiunti = (t?.featureFlags ?? []) as string[]
-    const tolti = new Set((t?.featureTolte ?? []) as string[])
+    // Le scelte gia' fatte restano: aggiunti e tolti correnti si ricavano dalla selezione
+    // rispetto al piano di prima; il risultato e' (nuovo piano + aggiunti) - tolti.
     const known = new Set<string>(FEATURE_CATALOG.map(f => f.key))
+    const vecchioPiano = TIER_DEFAULT_FEATURES[this.pianoPrecedente] ?? []
+    const selezione = new Set<string>(this.form.featureFlags ?? [])
+    const aggiunti = [...selezione].filter(k => !vecchioPiano.includes(k as FeatureFlag))
+    const tolti = new Set(vecchioPiano.filter(k => !selezione.has(k)))
     const merged = new Set<string>([...(TIER_DEFAULT_FEATURES[tier] ?? []), ...aggiunti])
-    this.form.featureFlags = [...merged].filter(k => known.has(k) && !tolti.has(k)) as FeatureFlag[]
+    this.form.featureFlags = [...merged].filter(
+      k => known.has(k) && !tolti.has(k as FeatureFlag)
+    ) as FeatureFlag[]
+    this.pianoPrecedente = tier
   }
+
+  /** Piano mostrato nel dialog prima dell'ultimo cambio: base per ricavare aggiunti e tolti. */
+  private pianoPrecedente: SubscriptionTier = 'TRIAL'
 
   /** Azienda figlia: i moduli arrivano dal contratto della madre e qui non si cambiano. */
   isFiglia(): boolean {
@@ -997,6 +1004,7 @@ export class TenantAdminComponent implements OnInit {
     this.editMode.set(false)
     this.selectedTenant = null
     this.form = this.emptyForm()
+    this.pianoPrecedente = this.form.subscriptionTier
     this.displayDialog = true
   }
 
@@ -1024,6 +1032,7 @@ export class TenantAdminComponent implements OnInit {
       // Le caselle partono dai moduli effettivi calcolati dal backend.
       featureFlags: this.resolveFeatures(t),
     }
+    this.pianoPrecedente = t.subscriptionTier
     this.displayDialog = true
   }
 

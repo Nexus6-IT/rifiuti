@@ -306,4 +306,25 @@ describe('TenantAdminComponent - moduli (feature flags) azienda', () => {
   it('il catalogo contiene registro', () => {
     expect(component.featureCatalog.map(f => f.key)).toContain('registro')
   })
+
+  it('cambio piano dopo i clic: conserva le scelte fatte (nuovo piano + aggiunti - tolti)', async () => {
+    await apriModifica(
+      tenant({
+        subscriptionTier: 'TRIAL',
+        moduliEffettivi: ['fir', 'cer', 'anagrafiche', 'registro'],
+      })
+    )
+    await clicca('cer') // tolto dal piano TRIAL
+    await clicca('esg') // aggiunto oltre il piano TRIAL
+
+    component.form.subscriptionTier = 'PROFESSIONAL'
+    component.onTierChange('PROFESSIONAL')
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+
+    expect(component.form.featureFlags).toContain('mud') // nuovo del piano
+    expect(component.form.featureFlags).toContain('esg') // aggiunto, resta
+    expect(component.form.featureFlags).not.toContain('cer') // tolto, resta tolto
+  })
 })

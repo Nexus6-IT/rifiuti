@@ -66,7 +66,14 @@ describe('azienda piattaforma non trasformabile in azienda normale', () => {
 
   it('TenantService.setStatus sulla piattaforma', async () => {
     const t = tenantService()
-    await messaggio(async () => await t.service.setStatus(AZIENDA_PIATTAFORMA_ID, 'ACTIVE'))
+    await messaggio(
+      async () =>
+        await t.service.setStatus(
+          { id: 'u', role: 'SUPER_ADMIN', tenantId: 't' },
+          AZIENDA_PIATTAFORMA_ID,
+          'ACTIVE'
+        )
+    )
     expect(t.prisma.tenant.update).not.toHaveBeenCalled()
   })
 

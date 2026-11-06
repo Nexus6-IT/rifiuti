@@ -135,5 +135,5 @@ export class UpdateTenantDto {
     each: true,
     message: `featureFlags ammette solo: ${FEATURE_KEYS.join(', ')}`,
   })
-  featureFlags?: string[]
+  featureFlags?: string[] | null
 }
