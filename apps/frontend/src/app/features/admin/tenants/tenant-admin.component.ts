@@ -97,6 +97,7 @@ interface TenantFormData {
   pec: string
   telefono: string
   atecoCode: string
+  reaNumber: string
   address: string
   civico: string
   city: string
@@ -417,6 +418,18 @@ interface TenantFormData {
                   name="atecoCode"
                   [(ngModel)]="form.atecoCode"
                   placeholder="es. 38.11.00"
+                />
+              </div>
+              <div class="field col-12 md:col-6">
+                <label for="t-rea">Numero REA</label>
+                <input
+                  pInputText
+                  id="t-rea"
+                  name="reaNumber"
+                  maxlength="9"
+                  [(ngModel)]="form.reaNumber"
+                  placeholder="opzionale"
+                  data-testid="tenant-rea-number"
                 />
               </div>
               <div class="field col-12 md:col-6">
@@ -986,6 +999,7 @@ export class TenantAdminComponent implements OnInit {
       pec: t.pec ?? '',
       telefono: t.telefono ?? '',
       atecoCode: t.atecoCode ?? '',
+      reaNumber: t.reaNumber ?? '',
       address: t.address,
       civico: t.civico ?? '',
       city: t.city,
@@ -1156,6 +1170,7 @@ export class TenantAdminComponent implements OnInit {
       pec: trim(this.form.pec),
       telefono: trim(this.form.telefono),
       atecoCode: trim(this.form.atecoCode),
+      reaNumber: trim(this.form.reaNumber),
       civico: trim(this.form.civico),
       country: trim(this.form.country),
     }
@@ -1184,6 +1199,7 @@ export class TenantAdminComponent implements OnInit {
       pec: '',
       telefono: '',
       atecoCode: '',
+      reaNumber: '',
       address: '',
       civico: '',
       city: '',
