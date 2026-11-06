@@ -99,7 +99,7 @@ describe('Migration unita_locali_mud — codice MUD e anagrafica delle sedi (Pos
     ) as Record<string, number>
 
   beforeAll(async () => {
-    expect(URL_ORIGINALE).toMatch(/@(127\.0\.0\.1|localhost):(55432|55436)\/wasteflow_ci\b/)
+    expect(URL_ORIGINALE).toMatch(/@(127\.0\.0\.1|localhost):[0-9]{1,5}\/wasteflow_ci\b/)
     admin = new PrismaClient({ datasources: { db: { url: `${BASE_URL}/postgres` } } })
     await admin.$executeRawUnsafe(`CREATE DATABASE ${nomeDb}`)
 

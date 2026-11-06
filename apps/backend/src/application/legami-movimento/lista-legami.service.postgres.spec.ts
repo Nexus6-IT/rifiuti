@@ -76,12 +76,12 @@ describe('ListaLegamiService — Postgres reale, ruolo wasteflow_app', () => {
   }
   const scriviIdVolume = (ids: string[]) => writeFileSync(FILE_VOLUME, JSON.stringify(ids))
 
-  /** Solo il database di test locale: porta 55438 e nome `wasteflow_ci`, controllo esplicito. */
+  /** Solo il database di test locale: host locale e nome `wasteflow_ci`, controllo esplicito. */
   function eDatabaseDiTestRigido(): boolean {
     if (!eDatabaseDiTestLocale(urlProprietario)) return false
     const u = new URL(urlProprietario)
-    // Solo il database di test (locale 55438 o della CI 55432): host locale e nome wasteflow_ci.
-    return ['55432', '55438'].includes(u.port) && u.pathname === '/wasteflow_ci'
+    // Solo il database di test: host locale e nome wasteflow_ci (porta qualunque: la CI la assegna a runtime).
+    return u.pathname === '/wasteflow_ci'
   }
 
   /**
