@@ -101,4 +101,8 @@ describe('CodeProbe', () => {
     expect(voce?.state).toBe('unknown')
     expect(voce?.detail).toContain('non registrata')
   })
+
+  it('la coda fatturazione e\x27 fra le attese (Q41)', () => {
+    expect(CODE_ATTESE.map(c => c.nome)).toContain('fatturazione')
+  })
 })

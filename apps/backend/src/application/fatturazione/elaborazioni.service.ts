@@ -128,7 +128,7 @@ const ENTITA: DescrizioneEntita = {
  * non blocca piu' il tenant e si puo' ricalcolare o scartare. Sta sopra i rinvii del job
  * (10 x 30 s), che non aggiornano `updated_at`.
  */
-const ORFANA_DOPO_MINUTI = 15
+export const ORFANA_DOPO_MINUTI = 15
 
 const STATI_ATTIVI = ['IN_CODA', 'IN_CORSO', 'IN_DEFINITIVA'] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

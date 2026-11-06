@@ -10,6 +10,7 @@ import {
 import { NumerazioniService } from '../../application/fatturazione/numerazioni.service'
 import { AuthModule } from '../../auth/auth.module'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
+import { FatturazioneManutenzioneJob } from '../../infrastructure/jobs/fatturazione-manutenzione.job'
 import { FatturazioneJobProcessor } from '../../infrastructure/queue/jobs/fatturazione.job'
 import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
 import { CedenteController } from './cedente.controller'
@@ -32,6 +33,7 @@ import { NumerazioniController } from './numerazioni.controller'
     AnnulloStornoService,
     ElaborazioniService,
     FatturazioneJobProcessor,
+    FatturazioneManutenzioneJob,
   ],
   exports: [
     CedenteService,

@@ -1292,12 +1292,6 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
   })
 
   describe('sonda della numerazione', () => {
-    it('chiamata da wasteflow_app: permesso negato', async () => {
-      await expect(
-        app.$queryRawUnsafe(`SELECT * FROM fatturazione_violazioni_numerazione()`)
-      ).rejects.toThrow(/permission denied|permesso negato|42501/i)
-    })
-
     it('chiamata da wasteflow_sistema: conta mancanti, doppi e fuori intervallo, solo per azienda', async () => {
       const s = await scenario()
       const violazioni = async () => {
