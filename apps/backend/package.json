@@ -13,7 +13,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "db:ruoli": "bash ../../ops/db-ruoli.sh --dev",
-    "test:cov": "jest --coverage --forceExit --ci --runInBand",
+    "test:cov": "jest --coverage --forceExit --ci --maxWorkers=1 --workerIdleMemoryLimit=1024MB",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
@@ -24,7 +24,7 @@
     "seed:roles": "node dist/prisma/seeds/roles.seed.js",
     "seed:rbac": "npm run seed:permissions && npm run seed:roles",
     "test:oracolo": "jest -c jest.oracolo.config.js --forceExit --ci --runInBand",
-    "test:postgres": "jest -c jest.postgres.config.js --forceExit --runInBand",
+    "test:postgres": "jest -c jest.postgres.config.js --forceExit --maxWorkers=1 --workerIdleMemoryLimit=1024MB",
     "test:redis": "jest -c jest.redis.config.js --forceExit --runInBand"
   },
   "dependencies": {
