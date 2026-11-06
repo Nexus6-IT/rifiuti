@@ -67,7 +67,9 @@ export function etichettaDataFir(iso: string, adesso: Date = new Date()): string
                   [barrato]="f.stato === annullato"
                 />
               </span>
-              <span class="r2">{{ f.rifiuto.cerCode }}{{ produttore(f) }}</span>
+              <span class="r2" [attr.title]="f.rifiuto.cerCode + produttore(f)"
+                >{{ f.rifiuto.cerCode }}{{ produttore(f) }}</span
+              >
               <span class="r2 dx num">{{ quantita(f) }} · {{ data(f) }}</span>
             </li>
           }
