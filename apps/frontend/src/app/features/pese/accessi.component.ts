@@ -177,60 +177,62 @@ import {
           {{ e }}
         </p>
 
-        <table class="tabella" data-testid="ac-tabella">
-          <caption class="solo-lettori">
-            Accessi all'impianto
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Numero</th>
-              <th scope="col">Data</th>
-              <th scope="col">Verso</th>
-              <th scope="col">Targa</th>
-              <th scope="col">CER</th>
-              <th scope="col">Netto</th>
-              <th scope="col">Stato</th>
-              <th scope="col"><span class="solo-lettori">Azioni</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let r of righe()" [attr.data-testid]="'ac-riga-' + r.id">
-              <td>{{ r.numero }}</td>
-              <td>{{ dataIt(r.apertoIl) }}</td>
-              <td>{{ r.verso === 'CARICO' ? 'Carico' : 'Scarico' }}</td>
-              <td>{{ r.targa || '—' }}</td>
-              <td>{{ r.cerCode || '—' }}</td>
-              <td>
-                <ng-container *ngIf="r.nettoKg != null; else senzaNetto"
-                  >{{ kg(r.nettoKg)
-                  }}<span class="nota"> {{ qualita(r.qualita) }}</span></ng-container
-                >
-                <ng-template #senzaNetto>—</ng-template>
-              </td>
-              <td>
-                {{ etichettaStato(r.stato) }}
-                <span class="badge" *ngIf="r.manuale" [attr.data-testid]="'ac-manuale-' + r.id"
-                  >Manuale</span
-                >
-                <span class="badge" *ngIf="r.rettificato">Rettificato</span>
-                <span class="badge" *ngIf="r.collegato">Collegato</span>
-              </td>
-              <td>
-                <p-button
-                  label="Apri"
-                  [text]="true"
-                  size="small"
-                  (onClick)="apri(r.id)"
-                  [attr.data-testid]="'ac-apri-' + r.id"
-                  [ariaLabel]="'Apri l\\'accesso ' + r.numero"
-                ></p-button>
-              </td>
-            </tr>
-            <tr *ngIf="!righe().length && !caricamento()">
-              <td colspan="8" data-testid="ac-vuota">Nessun accesso trovato.</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="table-responsive">
+          <table class="tabella" data-testid="ac-tabella">
+            <caption class="solo-lettori">
+              Accessi all'impianto
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Numero</th>
+                <th scope="col">Data</th>
+                <th scope="col">Verso</th>
+                <th scope="col">Targa</th>
+                <th scope="col">CER</th>
+                <th scope="col">Netto</th>
+                <th scope="col">Stato</th>
+                <th scope="col"><span class="solo-lettori">Azioni</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of righe()" [attr.data-testid]="'ac-riga-' + r.id">
+                <td>{{ r.numero }}</td>
+                <td>{{ dataIt(r.apertoIl) }}</td>
+                <td>{{ r.verso === 'CARICO' ? 'Carico' : 'Scarico' }}</td>
+                <td>{{ r.targa || '—' }}</td>
+                <td>{{ r.cerCode || '—' }}</td>
+                <td>
+                  <ng-container *ngIf="r.nettoKg != null; else senzaNetto"
+                    >{{ kg(r.nettoKg)
+                    }}<span class="nota"> {{ qualita(r.qualita) }}</span></ng-container
+                  >
+                  <ng-template #senzaNetto>—</ng-template>
+                </td>
+                <td>
+                  {{ etichettaStato(r.stato) }}
+                  <span class="badge" *ngIf="r.manuale" [attr.data-testid]="'ac-manuale-' + r.id"
+                    >Manuale</span
+                  >
+                  <span class="badge" *ngIf="r.rettificato">Rettificato</span>
+                  <span class="badge" *ngIf="r.collegato">Collegato</span>
+                </td>
+                <td>
+                  <p-button
+                    label="Apri"
+                    [text]="true"
+                    size="small"
+                    (onClick)="apri(r.id)"
+                    [attr.data-testid]="'ac-apri-' + r.id"
+                    [ariaLabel]="'Apri l\\'accesso ' + r.numero"
+                  ></p-button>
+                </td>
+              </tr>
+              <tr *ngIf="!righe().length && !caricamento()">
+                <td colspan="8" data-testid="ac-vuota">Nessun accesso trovato.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <nav class="paginazione" *ngIf="pagine() > 1" aria-label="Pagine dell'elenco">
           <p-button
@@ -293,7 +295,7 @@ import {
         justify-content: space-between;
         align-items: center;
         padding: var(--spacing-xs) 0;
-        border-bottom: 1px solid var(--border-color, #ddd);
+        border-bottom: 1px solid var(--border-color);
       }
       .tabella {
         width: 100%;
@@ -302,8 +304,17 @@ import {
       .tabella th,
       .tabella td {
         text-align: left;
-        padding: var(--spacing-xs) var(--spacing-sm);
-        border-bottom: 1px solid var(--border-color, #ddd);
+        padding: var(--spacing-sm);
+        border-bottom: 1px solid var(--rule);
+        vertical-align: middle;
+      }
+      /* Intestazioni come nelle altre tabelle: 12px, grigio, peso medio, senza tutto nero. */
+      .tabella th {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-tertiary);
+        white-space: nowrap;
+        border-bottom-color: var(--surface-border);
       }
       .solo-lettori {
         position: absolute;

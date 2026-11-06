@@ -398,8 +398,9 @@ const SEVERITA_STATO: Readonly<
   `,
   styles: [
     `
+      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
       .pagina {
-        padding: 1rem;
+        padding: var(--spacing-lg) 0;
       }
       .barra {
         display: flex;
@@ -415,13 +416,16 @@ const SEVERITA_STATO: Readonly<
         gap: 0.5rem;
         align-items: center;
       }
+      /* L'etichetta «Cliente» alza solo quel campo: i controlli si allineano sul bordo inferiore. */
       .filtri {
         margin-bottom: 0.5rem;
+        align-items: flex-end;
       }
       .spunta {
         display: inline-flex;
         gap: 0.4rem;
         align-items: center;
+        height: var(--control-md);
       }
       .azioni {
         white-space: nowrap;

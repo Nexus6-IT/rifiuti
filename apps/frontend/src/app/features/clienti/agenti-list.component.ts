@@ -132,8 +132,9 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
   `,
   styles: [
     `
+      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
       .pagina {
-        padding: 1rem;
+        padding: var(--spacing-lg) 0;
       }
       .barra {
         display: flex;

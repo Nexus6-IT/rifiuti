@@ -452,6 +452,16 @@ interface OpzioneId {
   `,
   styles: [
     `
+      /* Il filtro «Esclusi» e' una casella: sta a sinistra, non allargata a tutta la colonna. */
+      .filters__field--stretto {
+        flex: 0 0 auto;
+      }
+      .filters__field--stretto input[type='checkbox'] {
+        align-self: flex-start;
+        width: 1rem;
+        height: 1rem;
+        margin: 0.5rem 0;
+      }
       .barra-massa {
         display: flex;
         flex-wrap: wrap;

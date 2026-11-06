@@ -245,16 +245,7 @@ export function numeroComeStringa(n: number): string {
       .tabella-scroll {
         position: relative;
         overflow-x: auto;
-        /* Ombre ai bordi che compaiono solo dove c'e' altro da scorrere (trucco background-attachment). */
-        background:
-          linear-gradient(to right, var(--surface-section, #fff) 30%, transparent) left center /
-            2rem 100% no-repeat local,
-          linear-gradient(to left, var(--surface-section, #fff) 30%, transparent) right center /
-            2rem 100% no-repeat local,
-          radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.28), transparent) left center /
-            0.6rem 100% no-repeat scroll,
-          radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.28), transparent) right
-            center / 0.6rem 100% no-repeat scroll;
+        /* Niente ombre ai bordi: erano sfumature. Sul telefono lo scorrimento lo dice la nota sopra. */
       }
       /* Indicazione visibile dello scorrimento: solo dove le colonne possono non entrare. */
       .scorri-hint {
@@ -297,7 +288,7 @@ export function numeroComeStringa(n: number): string {
       }
       .unita {
         margin-left: 0.35rem;
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
       }
       :host ::ng-deep .campo-riga,
       :host ::ng-deep .campo-riga input,

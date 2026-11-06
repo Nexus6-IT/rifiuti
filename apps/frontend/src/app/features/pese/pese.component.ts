@@ -15,54 +15,58 @@ type Scheda = 'accessi' | 'automezzi' | 'strumenti'
   standalone: true,
   imports: [CommonModule, AccessiComponent, AutomezziComponent, StrumentiPesaComponent],
   template: `
-    <h1 class="titolo">Pese</h1>
-    <div role="tablist" aria-label="Sezioni delle pese" class="schede">
-      <button
-        *ngFor="let s of schede"
-        type="button"
-        role="tab"
-        class="scheda"
-        [id]="'pese-scheda-' + s.id"
-        [attr.aria-selected]="attiva() === s.id"
-        [attr.aria-controls]="'pese-pannello'"
-        [attr.tabindex]="attiva() === s.id ? 0 : -1"
-        [class.attiva]="attiva() === s.id"
-        (click)="attiva.set(s.id)"
-        (keydown)="tasto($event)"
-        [attr.data-testid]="'pese-scheda-' + s.id"
-      >
-        {{ s.etichetta }}
-      </button>
-    </div>
-    <div id="pese-pannello" role="tabpanel" [attr.aria-labelledby]="'pese-scheda-' + attiva()">
-      <app-pese-accessi *ngIf="attiva() === 'accessi'"></app-pese-accessi>
-      <app-pese-automezzi *ngIf="attiva() === 'automezzi'"></app-pese-automezzi>
-      <app-pese-strumenti *ngIf="attiva() === 'strumenti'"></app-pese-strumenti>
+    <div class="page">
+      <h1 class="titolo">Pese</h1>
+      <div role="tablist" aria-label="Sezioni delle pese" class="schede">
+        <button
+          *ngFor="let s of schede"
+          type="button"
+          role="tab"
+          class="scheda"
+          [id]="'pese-scheda-' + s.id"
+          [attr.aria-selected]="attiva() === s.id"
+          [attr.aria-controls]="'pese-pannello'"
+          [attr.tabindex]="attiva() === s.id ? 0 : -1"
+          [class.attiva]="attiva() === s.id"
+          (click)="attiva.set(s.id)"
+          (keydown)="tasto($event)"
+          [attr.data-testid]="'pese-scheda-' + s.id"
+        >
+          {{ s.etichetta }}
+        </button>
+      </div>
+      <div id="pese-pannello" role="tabpanel" [attr.aria-labelledby]="'pese-scheda-' + attiva()">
+        <app-pese-accessi *ngIf="attiva() === 'accessi'"></app-pese-accessi>
+        <app-pese-automezzi *ngIf="attiva() === 'automezzi'"></app-pese-automezzi>
+        <app-pese-strumenti *ngIf="attiva() === 'strumenti'"></app-pese-strumenti>
+      </div>
     </div>
   `,
   styles: [
     `
       .titolo {
-        font-size: var(--font-size-xl);
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        line-height: 1.2;
         margin: 0 0 var(--spacing-base);
       }
       .schede {
         display: flex;
         gap: var(--spacing-sm);
-        border-bottom: 1px solid var(--border-color, #ddd);
+        border-bottom: 1px solid var(--surface-border);
         margin-bottom: var(--spacing-base);
       }
       .scheda {
         background: none;
         border: 0;
-        border-bottom: 3px solid transparent;
+        border-bottom: 2px solid transparent;
         padding: var(--spacing-sm) var(--spacing-base);
         cursor: pointer;
         font: inherit;
         color: var(--text-secondary);
       }
       .scheda.attiva {
-        border-bottom-color: var(--color-primary, #2563eb);
+        border-bottom-color: var(--tab-line);
         color: var(--text-primary);
         font-weight: var(--font-weight-medium);
       }

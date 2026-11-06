@@ -189,8 +189,9 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
   `,
   styles: [
     `
+      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
       .pagina {
-        padding: 1rem;
+        padding: var(--spacing-lg) 0;
       }
       .barra {
         display: flex;
