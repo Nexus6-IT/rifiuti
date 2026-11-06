@@ -555,7 +555,7 @@ azioni «Nuovo FIR» (primario, `<a pButton class="wf-primario" routerLink="/fir
 di testo, sul telefono nel menu ⋯ della riga del titolo, app-screens §12). Griglia a due colonne sopra i
 1200 px: sinistra 306 px `position: sticky` con deposito (solo con `ff.has('giacenze')`) e FIR recenti
 (solo con `ff.has('fir')`); destra Da fare oggi, FIR del mese, Formulari per mese. Sotto i 1200 px una
-colonna nell'ordine Da fare oggi, FIR del mese, Deposito, Formulari per mese, FIR recenti. Sotto,
+colonna nell'ordine del DOM: Da fare oggi, FIR del mese, Formulari per mese, Deposito, FIR recenti (revisione del pezzo A: gli avvisi del deposito stanno già in Da fare oggi). Sotto,
 la sezione «Analisi dell'azienda» (h2, meta «Tutti i formulari dell'azienda»): la striscia di
 `analisi-sintesi`, poi Destinazione e Top 10 CER affiancati sopra i 992 px, poi le due classifiche
 affiancate. Un riquadro senza dati resta con la sua cornice e una riga di testo («Nessun formulario
