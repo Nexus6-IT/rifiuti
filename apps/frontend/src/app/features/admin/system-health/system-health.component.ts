@@ -243,13 +243,13 @@ interface Sezione {
          sempre l'etichetta testuale dello stato (requisito di accessibilita'
          e, qui, anche di chiarezza: «non misurabile» non ha un colore ovvio). */
       .sh-pallino--ok {
-        background: var(--green-500);
+        background: var(--stato-ok-ink);
       }
       .sh-pallino--warn {
-        background: var(--yellow-500);
+        background: var(--stato-warn-ink);
       }
       .sh-pallino--error {
-        background: var(--red-500);
+        background: var(--stato-err-segno);
       }
       .sh-pallino--off {
         background: var(--surface-400);
