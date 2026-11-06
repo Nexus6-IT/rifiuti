@@ -5,11 +5,10 @@ import { SubscriptionTier } from '@prisma/client'
  *
  * Le feature sono "moduli funzionali" che il piano di abbonamento
  * (`subscriptionTier`) abilita di default e che il SUPER_ADMIN può
- * sovrascrivere puntualmente per singolo tenant tramite `Tenant.featureFlags`.
+ * modificare per singolo tenant: `Tenant.featureFlags` (aggiunti) e
+ * `Tenant.featureTolte` (tolti).
  *
  * Risoluzione effettiva: vedi `effectiveFeatures()`.
- *   - se `featureFlags` è valorizzato (array) → è un override esplicito;
- *   - se è null/assente → si derivano dal piano (`PLAN_FEATURES[tier]`).
  */
 
 /** Chiavi feature riconosciute dalla piattaforma. */
@@ -85,41 +84,42 @@ export function isFeatureKey(value: unknown): value is FeatureKey {
  */
 export interface TenantFeatureSource {
   subscriptionTier: SubscriptionTier
-  /** Override admin: array di chiavi feature. Se null/assente → deriva dal piano. */
+  /** Moduli AGGIUNTI oltre al piano (array di chiavi). Null/assente = nessuno. */
   featureFlags?: unknown
+  /** Moduli del piano TOLTI a questa azienda (array di chiavi). Null/assente = nessuno. */
+  featureTolte?: unknown
+}
+
+function chiaviValide(valore: unknown): FeatureKey[] {
+  return Array.isArray(valore) ? (valore as unknown[]).filter(isFeatureKey) : []
 }
 
 /**
- * Feature effettivamente abilitate per un tenant.
+ * Feature effettivamente abilitate per un tenant:
+ *   (moduli del piano ∪ `featureFlags` aggiunti) − `featureTolte`.
  *
- * Semantica (fix feature-flag propagation — WS-F):
- *  - Le feature di default del piano (`PLAN_FEATURES[subscriptionTier]`) sono
- *    SEMPRE incluse, indipendentemente dall'override. Questo garantisce che i
- *    tenant esistenti ricevano automaticamente le nuove feature aggiunte al
- *    loro piano (es. 'registro' aggiunto a PROFESSIONAL).
- *  - `featureFlags` è ADDITIVO: aggiunge feature extra oltre al piano
- *    (es. accesso anticipato a funzionalità premium per un tenant specifico).
- *  - Per RIMUOVERE una feature da un tenant si imposta `featureFlags = null`
- *    e si declassa il piano — non si usa l'array come blacklist.
- *
- * Invariante: un tenant TRIAL non riceve mai feature PROFESSIONAL/ENTERPRISE
- * da questo calcolo (le feature aggiuntive in `featureFlags` sono additive ma
- * un SUPER_ADMIN può tecnicamente aggiungere qualsiasi feature; è la sua
- * responsabilità, non un bug di sicurezza commerciale).
+ * Un modulo nuovo del piano arriva quindi a tutte le aziende che non l'hanno tolto.
+ * Un modulo tolto prevale sempre su uno aggiunto.
  */
 export function effectiveFeatures(tenant: TenantFeatureSource): FeatureKey[] {
   const planFeatures = PLAN_FEATURES[tenant.subscriptionTier] ?? []
-  const flags = tenant.featureFlags
+  const tolte = new Set<FeatureKey>(chiaviValide(tenant.featureTolte))
+  const merged = new Set<FeatureKey>([...planFeatures, ...chiaviValide(tenant.featureFlags)])
+  return [...merged].filter(k => !tolte.has(k))
+}
 
-  if (!Array.isArray(flags)) {
-    // Nessun override: usa le feature del piano.
-    return planFeatures
+/**
+ * Dalla selezione completa di moduli al delta rispetto al piano:
+ * aggiunti = selezione − piano, tolti = piano − selezione.
+ */
+export function calcolaDeltaModuli(
+  tier: SubscriptionTier,
+  selezione: readonly string[]
+): { aggiunti: FeatureKey[]; tolti: FeatureKey[] } {
+  const piano = PLAN_FEATURES[tier] ?? []
+  const scelti = new Set<FeatureKey>(selezione.filter(isFeatureKey))
+  return {
+    aggiunti: [...scelti].filter(k => !piano.includes(k)),
+    tolti: piano.filter(k => !scelti.has(k)),
   }
-
-  // Override additivo: unione di (feature di piano) + (feature dell'override).
-  // Garantisce che nuove feature aggiunte al piano si propaghino ai tenant
-  // con override storico, senza togliere mai feature del piano corrente.
-  const extraKeys = (flags as unknown[]).filter(isFeatureKey)
-  const merged = new Set<FeatureKey>([...planFeatures, ...extraKeys])
-  return [...merged]
 }

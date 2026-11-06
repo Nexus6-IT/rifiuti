@@ -8,7 +8,7 @@ import { ContrattoGruppoService } from '../../application/billing/contratto-grup
 const RADICE = 'tenant-madre-uuid'
 const FIGLIA = 'tenant-figlia-uuid'
 
-function makeService() {
+function makeService(tolteMadre: string[] | null = null) {
   // La madre arriva in join sulla riga della figlia: e' la forma restituita
   // dalla `select` con relazione di ContrattoGruppoService (una sola query).
   const rigaRadice = {
@@ -20,6 +20,7 @@ function makeService() {
     firLimitPerMonth: 0,
     userLimitTotal: 50,
     featureFlags: null,
+    featureTolte: tolteMadre,
     aziendeLimit: 5,
     ragioneSociale: 'Gruppo Madre Srl',
   }
@@ -57,5 +58,14 @@ describe('MeFeaturesService — gruppo', () => {
 
     expect(risposta.tier).toBe('ENTERPRISE')
     expect(risposta.userLimitTotal).toBe(50)
+  })
+
+  it('una figlia usa i moduli tolti dalla madre', async () => {
+    const service = makeService(['esg'])
+
+    const risposta = await service.getFeaturesForUser({ tenantId: FIGLIA } as any)
+
+    expect(risposta.features).not.toContain('esg')
+    expect(risposta.features).toContain('fir')
   })
 })

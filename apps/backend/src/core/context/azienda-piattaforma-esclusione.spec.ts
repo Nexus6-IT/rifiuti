@@ -15,6 +15,8 @@ const NON_NECESSARIO: Record<string, string> = {
     'filtra per ownerUserId, parentTenantId o id gia noti: la piattaforma non ha owner, madre ne e tra le aziende accessibili',
   'api/me/ruolo-effettivo.service.ts':
     'findFirst per id + ownerUserId: la piattaforma non ha owner',
+  'application/billing/contratto-gruppo.service.ts':
+    'findMany per id delle madri delle figlie gia lette: la piattaforma non e madre di nessuno (assertNonPiattaforma su parentTenantId)',
   'application/billing/billing.service.ts':
     'findFirst per stripeCustomerId: la piattaforma non ha un customer Stripe',
   'application/queries/handlers/get-aggregated-dashboard.handler.ts':

@@ -12,7 +12,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing'
 import { ConfigService } from '@nestjs/config'
-import { SubscriptionStatus, SubscriptionTier } from '@prisma/client'
+import { Prisma, SubscriptionStatus, SubscriptionTier } from '@prisma/client'
 import { BillingService } from './billing.service'
 import { StripeService } from './stripe.service'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
@@ -339,6 +339,59 @@ describe('BillingService', () => {
           }),
         })
       )
+    })
+  })
+
+  describe('cambio di piano: moduli aggiunti e tolti', () => {
+    it('subscription.updated azzera featureFlags e featureTolte', async () => {
+      const tenant = makeTenant({ stripeCustomerId: 'cus_test123' })
+      ;(mockPrisma.tenant.findFirst as jest.Mock).mockResolvedValue(tenant)
+      ;(mockPrisma.tenant.update as jest.Mock).mockResolvedValue({})
+
+      await service.processWebhookEvent({
+        id: 'evt_sub_updated_moduli',
+        type: 'customer.subscription.updated',
+        data: {
+          object: {
+            id: 'sub_test',
+            customer: 'cus_test123',
+            status: 'active',
+            current_period_end: 0,
+            items: { data: [] },
+            metadata: {},
+          },
+        },
+      } as any)
+
+      const [{ data }] = (mockPrisma.tenant.update as jest.Mock).mock.calls[0]
+      expect(data.featureFlags).toBe(Prisma.DbNull)
+      expect(data.featureTolte).toBe(Prisma.DbNull)
+    })
+
+    it('subscription.deleted azzera featureFlags e featureTolte', async () => {
+      const tenant = makeTenant({
+        stripeCustomerId: 'cus_test123',
+        stripeSubscriptionId: 'sub_test',
+      })
+      ;(mockPrisma.tenant.findFirst as jest.Mock).mockResolvedValue(tenant)
+      ;(mockPrisma.tenant.update as jest.Mock).mockResolvedValue({})
+
+      await service.processWebhookEvent({
+        id: 'evt_sub_deleted_moduli',
+        type: 'customer.subscription.deleted',
+        data: {
+          object: {
+            id: 'sub_test',
+            customer: 'cus_test123',
+            status: 'canceled',
+            items: { data: [] },
+          },
+        },
+      } as any)
+
+      const [{ data }] = (mockPrisma.tenant.update as jest.Mock).mock.calls[0]
+      expect(data.featureFlags).toBe(Prisma.DbNull)
+      expect(data.featureTolte).toBe(Prisma.DbNull)
     })
   })
 

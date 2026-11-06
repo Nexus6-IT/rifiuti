@@ -24,7 +24,10 @@ function makeService(ownerUserId: string = ADMIN) {
   }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const membership: any = { checkAccess: jest.fn().mockResolvedValue(true) }
-  const service = new TenantService(prisma, prisma, logger, membership)
+  const service = new TenantService(prisma, prisma, logger, membership, {
+    caricaContratto: jest.fn(),
+    caricaContrattiRadici: jest.fn(),
+  } as never)
   // Seeding ruoli e associazione del proprietario non c'entrano con il piano.
   jest.spyOn(service as any, 'seedRoles').mockResolvedValue(undefined)
   jest.spyOn(service as any, 'associateOwner').mockResolvedValue(undefined)
@@ -85,7 +88,16 @@ describe('TenantService — campi di piano', () => {
     await service.update(superAdmin, TENANT, { ...dtoPiano, telefono: '0612345678' } as any)
 
     const [{ data }] = prisma.tenant.update.mock.calls[0]
-    expect(data).toEqual({ ...dtoPiano, telefono: '0612345678' })
+    // featureFlags e' la selezione completa: si salva il delta rispetto al piano ENTERPRISE
+    // (tutti i moduli tranne 'fir' risultano tolti, nessuno aggiunto).
+    const { featureFlags: _selezione, ...altri } = dtoPiano
+    expect(data).toEqual({
+      ...altri,
+      telefono: '0612345678',
+      featureFlags: [],
+      featureTolte: expect.not.arrayContaining(['fir']),
+    })
+    expect(data.featureTolte.length).toBeGreaterThan(0)
   })
 
   it('create: per un ADMIN il piano resta TRIAL/TRIAL e le feature derivate dal piano', async () => {

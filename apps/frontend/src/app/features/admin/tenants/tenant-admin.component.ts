@@ -39,6 +39,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'anagrafiche', label: 'Anagrafiche' },
   { key: 'mud', label: 'MUD' },
   { key: 'giacenze', label: 'Giacenze' },
+  { key: 'registro', label: 'Registro cronologico C/S' },
   { key: 'contratti', label: 'Contratti' },
   { key: 'esg', label: 'ESG/CO2' },
   { key: 'anomalie', label: 'Anomalie' },
@@ -47,20 +48,11 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'pese', label: 'Pese (inserimento manuale)' },
 ]
 
-/** Feature predefinite per piano: l'admin puo' poi sovrascriverle. */
+/** Feature del piano: allineate a `PLAN_FEATURES` del backend (feature-catalog.ts). */
+const TRIAL_FEATURES: FeatureFlag[] = ['fir', 'cer', 'anagrafiche', 'registro']
 const TIER_DEFAULT_FEATURES: Record<string, FeatureFlag[]> = {
-  TRIAL: ['fir', 'cer', 'anagrafiche'],
-  PROFESSIONAL: [
-    'fir',
-    'cer',
-    'anagrafiche',
-    'mud',
-    'giacenze',
-    'contratti',
-    'esg',
-    'anomalie',
-    'pese',
-  ],
+  TRIAL: TRIAL_FEATURES,
+  PROFESSIONAL: [...TRIAL_FEATURES, 'mud', 'giacenze', 'contratti', 'esg', 'anomalie', 'pese'],
   ENTERPRISE: FEATURE_CATALOG.map(f => f.key),
 }
 
@@ -624,8 +616,14 @@ interface TenantFormData {
             <fieldset class="form-fieldset">
               <legend class="form-legend">Feature abilitate</legend>
               <p class="feature-hint text-tertiary">
-                Precompilate dal piano selezionato. Puoi modificarle (override) per questo tenant.
+                Precompilate dal piano selezionato. Puoi aggiungere o togliere moduli per questo
+                tenant.
               </p>
+              @if (isFiglia()) {
+                <p class="feature-hint" role="note" data-testid="moduli-figlia-nota">
+                  I moduli arrivano dal contratto del gruppo: si cambiano sull'azienda madre
+                </p>
+              }
               <div
                 class="grid formgrid feature-grid"
                 role="group"
@@ -637,6 +635,7 @@ interface TenantFormData {
                     [name]="'feat-' + f.key"
                     [value]="f.key"
                     [(ngModel)]="form.featureFlags"
+                    [disabled]="isFiglia()"
                     [label]="f.label"
                   ></p-checkbox>
                 </div>
@@ -978,7 +977,26 @@ export class TenantAdminComponent implements OnInit {
    * L'admin puo' poi modificarle liberamente (override).
    */
   onTierChange(tier: SubscriptionTier): void {
-    this.form.featureFlags = [...(TIER_DEFAULT_FEATURES[tier] ?? [])]
+    // Le scelte gia' fatte restano: aggiunti e tolti correnti si ricavano dalla selezione
+    // rispetto al piano di prima; il risultato e' (nuovo piano + aggiunti) - tolti.
+    const known = new Set<string>(FEATURE_CATALOG.map(f => f.key))
+    const vecchioPiano = TIER_DEFAULT_FEATURES[this.pianoPrecedente] ?? []
+    const selezione = new Set<string>(this.form.featureFlags ?? [])
+    const aggiunti = [...selezione].filter(k => !vecchioPiano.includes(k as FeatureFlag))
+    const tolti = new Set(vecchioPiano.filter(k => !selezione.has(k)))
+    const merged = new Set<string>([...(TIER_DEFAULT_FEATURES[tier] ?? []), ...aggiunti])
+    this.form.featureFlags = [...merged].filter(
+      k => known.has(k) && !tolti.has(k as FeatureFlag)
+    ) as FeatureFlag[]
+    this.pianoPrecedente = tier
+  }
+
+  /** Piano mostrato nel dialog prima dell'ultimo cambio: base per ricavare aggiunti e tolti. */
+  private pianoPrecedente: SubscriptionTier = 'TRIAL'
+
+  /** Azienda figlia: i moduli arrivano dal contratto della madre e qui non si cambiano. */
+  isFiglia(): boolean {
+    return this.editMode() && !!this.selectedTenant?.parentTenantId
   }
 
   // --- Creazione / modifica ---
@@ -986,6 +1004,7 @@ export class TenantAdminComponent implements OnInit {
     this.editMode.set(false)
     this.selectedTenant = null
     this.form = this.emptyForm()
+    this.pianoPrecedente = this.form.subscriptionTier
     this.displayDialog = true
   }
 
@@ -1010,22 +1029,28 @@ export class TenantAdminComponent implements OnInit {
       subscriptionStatus: t.subscriptionStatus,
       firLimitPerMonth: t.firLimitPerMonth ?? null,
       userLimitTotal: t.userLimitTotal ?? null,
-      // featureFlags null = derivate dal piano: precompila coi default del piano.
-      featureFlags: this.resolveFeatures(t.featureFlags, t.subscriptionTier),
+      // Le caselle partono dai moduli effettivi calcolati dal backend.
+      featureFlags: this.resolveFeatures(t),
     }
+    this.pianoPrecedente = t.subscriptionTier
     this.displayDialog = true
   }
 
-  /** Normalizza le feature del tenant; se null/assenti usa i default del piano. */
-  private resolveFeatures(
-    flags: FeatureFlag[] | string[] | null | undefined,
-    tier: SubscriptionTier
-  ): FeatureFlag[] {
-    const known = new Set(FEATURE_CATALOG.map(f => f.key))
-    if (flags && flags.length > 0) {
-      return (flags as string[]).filter((k): k is FeatureFlag => known.has(k as FeatureFlag))
+  /**
+   * Moduli effettivi dell'azienda: `moduliEffettivi` del backend; se manca (risposta
+   * senza il campo) si ricalcolano con la stessa formula: (piano + aggiunti) - tolti.
+   */
+  private resolveFeatures(t: Tenant): FeatureFlag[] {
+    const known = new Set<string>(FEATURE_CATALOG.map(f => f.key))
+    if (Array.isArray(t.moduliEffettivi)) {
+      return (t.moduliEffettivi as string[]).filter((k): k is FeatureFlag => known.has(k))
     }
-    return [...(TIER_DEFAULT_FEATURES[tier] ?? [])]
+    const tolti = new Set((t.featureTolte ?? []) as string[])
+    const merged = new Set<string>([
+      ...(TIER_DEFAULT_FEATURES[t.subscriptionTier] ?? []),
+      ...((t.featureFlags ?? []) as string[]),
+    ])
+    return [...merged].filter((k): k is FeatureFlag => known.has(k) && !tolti.has(k))
   }
 
   save(): void {
@@ -1187,7 +1212,8 @@ export class TenantAdminComponent implements OnInit {
       subscriptionStatus: this.form.subscriptionStatus || undefined,
       firLimitPerMonth: this.form.firLimitPerMonth ?? undefined,
       userLimitTotal: this.form.userLimitTotal ?? undefined,
-      featureFlags: this.form.featureFlags ?? [],
+      // Azienda figlia: i moduli non si mandano (restano quelli del contratto della madre).
+      ...(this.isFiglia() ? {} : { featureFlags: this.form.featureFlags ?? [] }),
     }
   }
 

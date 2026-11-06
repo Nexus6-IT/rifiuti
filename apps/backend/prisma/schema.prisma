@@ -61,8 +61,11 @@ model Tenant {
   userLimitTotal   Int @default(5) @map("user_limit_total")
 
   // Feature flag effettivi (array di chiavi feature abilitate). Se null si
-  // derivano dal piano (subscriptionTier); se valorizzato e' un override admin.
+  // derivano dal piano (subscriptionTier); se valorizzato sono i moduli AGGIUNTI oltre al piano.
   featureFlags Json? @map("feature_flags")
+  // Moduli del piano TOLTI a questa azienda (array di chiavi). Moduli effettivi =
+  // (piano + featureFlags) - featureTolte. Null = nessun modulo tolto.
+  featureTolte Json? @map("feature_tolte")
 
   // Integrazione Stripe (SaaS billing). Nullable: null finché il tenant non ha
   // mai avviato un checkout. ATTIVARE: impostare STRIPE_SECRET_KEY in .env.

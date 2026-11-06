@@ -13,6 +13,7 @@ export interface ContrattoEffettivo {
   firLimitPerMonth: number
   userLimitTotal: number
   featureFlags: unknown
+  featureTolte: unknown
   aziendeLimit: number | null
   ragioneSociale: string
 }
@@ -26,6 +27,7 @@ interface RigaContratto {
   firLimitPerMonth: number
   userLimitTotal: number
   featureFlags: unknown
+  featureTolte: unknown
   aziendeLimit: number | null
   ragioneSociale: string
 }
@@ -77,6 +79,21 @@ export class ContrattoGruppoService {
     return this.toContrattoEffettivo(tenant.madre ?? tenant)
   }
 
+  /**
+   * Contratti di piu' radici in una sola query, per id (nessun N+1 negli elenchi).
+   * Le radici non trovate non compaiono nella mappa.
+   */
+  async caricaContrattiRadici(
+    radiciIds: readonly string[]
+  ): Promise<Map<string, ContrattoEffettivo>> {
+    if (radiciIds.length === 0) return new Map()
+    const righe = await this.prisma.tenant.findMany({
+      where: { id: { in: [...radiciIds] } },
+      select: ContrattoGruppoService.CAMPI_CONTRATTO,
+    })
+    return new Map(righe.map(r => [r.id, this.toContrattoEffettivo(r)]))
+  }
+
   /** Colonne che compongono il contratto: nient'altro va letto. */
   private static readonly CAMPI_CONTRATTO = {
     id: true,
@@ -86,6 +103,7 @@ export class ContrattoGruppoService {
     firLimitPerMonth: true,
     userLimitTotal: true,
     featureFlags: true,
+    featureTolte: true,
     aziendeLimit: true,
     ragioneSociale: true,
   } as const
@@ -99,6 +117,7 @@ export class ContrattoGruppoService {
       firLimitPerMonth: radice.firLimitPerMonth,
       userLimitTotal: radice.userLimitTotal,
       featureFlags: radice.featureFlags,
+      featureTolte: radice.featureTolte,
       aziendeLimit: radice.aziendeLimit,
       ragioneSociale: radice.ragioneSociale,
     }
