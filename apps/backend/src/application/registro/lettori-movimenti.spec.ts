@@ -150,6 +150,16 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'legge quantita, unita, CER e FIR del movimento vigente di ogni legame CONFERMATO (per id); la scelta delle teste e dei legami indietro e del frammento sqlCandidati della lista',
   },
+  'application/fatturazione/scostamenti.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      'legge per chiave primaria i movimenti della pagina (testa vigente e movimento fatturato) per confrontare quantita, CER e causale; nessun conteggio ne` ambito',
+  },
+  'test-support/fatturazione-annullo-di-test.ts': {
+    scelta: 'tutte',
+    motivo:
+      'fixture degli spec Postgres di annullo e storno: legge la radice e crea una rettifica di prova; non calcola nulla',
+  },
   'test-support/fatturazione-di-test.ts': {
     scelta: 'tutte',
     motivo:

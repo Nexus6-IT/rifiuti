@@ -190,7 +190,11 @@ export interface ListinoLegami {
  * addebito V, contratto ATTIVO, elenco predefinito con tre righe (CER A a 10, CER B a 8, V a 7
  * proposta sui due CER) e una riga CER mai usata. Ogni id creato entra in `creati` (pulizia).
  */
-export async function creaListinoLegami(token: string, creati: Creato[]): Promise<ListinoLegami> {
+export async function creaListinoLegami(
+  token: string,
+  creati: Creato[],
+  opzioni: { modalitaPagamento?: string } = {}
+): Promise<ListinoLegami> {
   const crea = async <T extends Versionata>(tipo: string, corpo: unknown): Promise<T> => {
     const r = await ok<Record<string, unknown>>('POST', `/${tipo}`, token, corpo)
     const riga = (
@@ -216,7 +220,7 @@ export async function creaListinoLegami(token: string, creati: Creato[]): Promis
   const condizione = await crea<Versionata>('condizioni-pagamento', {
     codice: codiceCasuale(8),
     descrizione: conPrefissoUnico('Condizione'),
-    modalita: 'MP05',
+    modalita: opzioni.modalitaPagamento ?? 'MP05',
     giorniRate: [30],
     fineMese: false,
   })
