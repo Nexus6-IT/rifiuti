@@ -127,11 +127,10 @@ kbd {
 .page-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
 
 /* Riquadro: bordo di 1px, nessuna ombra. */
-/* PrimeFlex definisce `.surface-card` con `background-color: light-dark(var(--p-surface-0), ...) !important`:
-   le variabili `--p-surface-*` qui non esistono, quindi il fondo risultava trasparente (riquadro
-   uguale al fondo pagina). `body` alza la specificita' per battere quell'!important. */
+/* PrimeFlex definisce `.surface-card` con `background-color: light-dark(var(--p-surface-0), var(--p-surface-900)) !important`
+   e le variabili `--p-surface-*` qui non esistevano: fondo trasparente. Le definiamo su `:root` (in `styles/_tokens.scss`),
+   cosi' l'!important di PrimeFlex stesso risolve sul fondo del riquadro, senza un secondo !important. */
 .surface-card { background: var(--surface-card); border: 1px solid var(--surface-border); border-radius: var(--radius-lg); padding: var(--spacing-lg); }
-body .surface-card { background-color: var(--surface-card) !important; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--spacing-base); }
 /* Niente sollevamento in hover: una cifra ferma non e' un pulsante. */

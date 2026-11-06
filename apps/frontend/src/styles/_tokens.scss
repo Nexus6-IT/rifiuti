@@ -229,6 +229,9 @@
   --p-focus-ring-color: var(--focus-ring-color);
   --highlight-bg: var(--selected);
   --highlight-text-color: var(--text-primary);
+  /* Variabili che PrimeFlex si aspetta per `.surface-card` (light-dark(surface-0, surface-900)). */
+  --p-surface-0: var(--surface-card);
+  --p-surface-900: var(--surface-card);
   --text-color: var(--text-primary);
   --text-color-secondary: var(--text-tertiary);
   --maskbg: var(--overlay-mask);
