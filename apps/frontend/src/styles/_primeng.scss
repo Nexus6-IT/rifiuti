@@ -811,15 +811,15 @@ input[type='file']::file-selector-button:hover {
   border-bottom: 2px solid transparent;
   padding: var(--spacing-md) var(--spacing-lg);
 }
-.p-tabview .p-tabview-panels {
-  padding-top: var(--spacing-base);
-}
 .p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link {
   color: var(--text-primary);
   border-bottom-color: var(--tab-line);
   background: transparent;
 }
+/* Il reset globale esenta gli elementi `p-...`: senza questo il tema PrimeNG rimette 1.125rem di padding ai lati
+   e il contenuto delle schede rientra rispetto al titolo e alla barra. */
 .p-tabview .p-tabview-panels {
+  padding: var(--spacing-base) 0 0;
   background: transparent;
   color: var(--text-primary);
 }
