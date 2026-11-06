@@ -202,12 +202,12 @@ export function anteprimaInCsv(a: AnteprimaVariazioneContratti): string {
         text-align: left;
       }
       .avvisi {
-        border-left: 3px solid var(--yellow-500, #f59e0b);
+        border-left: 3px solid var(--yellow-500);
         padding: 0.25rem 0.75rem;
         margin: 0.5rem 0;
       }
       .invariata {
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
         opacity: 0.7;
       }
       .navigazione {

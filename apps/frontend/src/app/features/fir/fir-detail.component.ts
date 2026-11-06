@@ -905,12 +905,12 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       }
 
       .allegati-dimensione {
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
         font-size: 0.875rem;
       }
 
       .allegati-vuoto {
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
         font-style: italic;
       }
     `,

@@ -200,7 +200,7 @@ interface Sezione {
         color: var(--text-color-secondary);
       }
       .sh-errore {
-        color: var(--red-600, #b91c1c);
+        color: var(--red-600);
       }
       .sh-lista {
         list-style: none;
@@ -243,29 +243,29 @@ interface Sezione {
          sempre l'etichetta testuale dello stato (requisito di accessibilita'
          e, qui, anche di chiarezza: «non misurabile» non ha un colore ovvio). */
       .sh-pallino--ok {
-        background: var(--green-500, #22c55e);
+        background: var(--green-500);
       }
       .sh-pallino--warn {
-        background: var(--yellow-500, #eab308);
+        background: var(--yellow-500);
       }
       .sh-pallino--error {
-        background: var(--red-500, #ef4444);
+        background: var(--red-500);
       }
       .sh-pallino--off {
-        background: var(--surface-400, #9ca3af);
+        background: var(--surface-400);
       }
       .sh-pallino--info {
-        background: var(--blue-400, #60a5fa);
+        background: var(--blue-400);
       }
       .sh-pallino--unknown {
         background: repeating-linear-gradient(
           45deg,
-          var(--surface-400, #9ca3af),
-          var(--surface-400, #9ca3af) 2px,
+          var(--surface-400),
+          var(--surface-400) 2px,
           transparent 2px,
           transparent 4px
         );
-        border: 1px solid var(--surface-400, #9ca3af);
+        border: 1px solid var(--surface-400);
       }
       .sh-stato {
         font-size: var(--font-size-sm);

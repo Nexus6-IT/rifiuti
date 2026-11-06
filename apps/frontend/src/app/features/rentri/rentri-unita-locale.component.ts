@@ -437,7 +437,7 @@ const FORM_MUD_VUOTO = (): FormMud => ({
         color: var(--text-secondary);
       }
       .text-danger {
-        color: var(--red-500, #dc2626);
+        color: var(--color-danger);
       }
       .text-tertiary {
         color: var(--text-tertiary);

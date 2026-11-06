@@ -239,7 +239,7 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
       }
       .riquadro-dati dt {
         font-size: 0.8rem;
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
       }
       .riquadro-dati dd {
         margin: 0;

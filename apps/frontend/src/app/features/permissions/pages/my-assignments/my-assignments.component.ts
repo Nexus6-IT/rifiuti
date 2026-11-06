@@ -400,7 +400,7 @@ import {
 
           .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--brand-primary), var(--brand-primary-light));
+            background: var(--ink-fill);
             transition: width var(--transition-base);
           }
         }

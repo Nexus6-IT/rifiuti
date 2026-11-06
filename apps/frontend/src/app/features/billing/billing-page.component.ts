@@ -496,7 +496,6 @@ const PIANI: PianoInfo[] = [
         border: 1px solid var(--surface-border);
         border-radius: var(--radius-lg, 0.75rem);
         padding: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
       }
       .current-plan-card__header {
         display: flex;
@@ -602,21 +601,16 @@ const PIANI: PianoInfo[] = [
         border: 1.5px solid var(--surface-border);
         border-radius: var(--radius-lg, 0.75rem);
         padding: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-        transition:
-          border-color 0.15s,
-          box-shadow 0.15s;
+        transition: border-color 0.15s;
       }
       .piano-card:hover {
-        border-color: var(--brand-primary-light);
-        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.1);
+        border-color: var(--control-border-hover);
       }
       .piano-card--evidenziato {
-        border-color: var(--brand-primary);
-        box-shadow: 0 4px 16px rgba(13, 148, 136, 0.15);
+        border-color: var(--ink-fill);
       }
       .piano-card--corrente {
-        border-color: var(--brand-primary-dark);
+        border-color: var(--ink-fill);
       }
 
       /* Ribbon "Più popolare" */
