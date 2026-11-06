@@ -368,6 +368,7 @@ export class BillingService {
         subscriptionEnd: new Date(),
         // Ripristina le feature al piano TRIAL (null = derivate dal piano, non override fisso)
         featureFlags: Prisma.DbNull,
+        featureTolte: Prisma.DbNull,
         firLimitPerMonth: 10,
         userLimitTotal: 2,
       },
@@ -459,6 +460,7 @@ export class BillingService {
         // Reset featureFlags a null → si derivano dal piano (fix feature-flag propagation).
         // Non usare override fisso: così i nuovi piani vengono automaticamente applicati.
         featureFlags: Prisma.DbNull,
+        featureTolte: Prisma.DbNull,
         firLimitPerMonth: planLimits.firLimitPerMonth,
         userLimitTotal: planLimits.userLimitTotal,
       },

@@ -13,6 +13,7 @@ export type FeatureFlag =
   | 'anagrafiche'
   | 'mud'
   | 'giacenze'
+  | 'registro'
   | 'contratti'
   | 'esg'
   | 'anomalie'
@@ -45,6 +46,12 @@ export interface Tenant {
   userLimitTotal: number
   /** Feature abilitate; `null` = derivate dal piano. */
   featureFlags?: FeatureFlag[] | string[] | null
+  /** Moduli del piano tolti a questa azienda (solo SUPER_ADMIN li riceve). */
+  featureTolte?: FeatureFlag[] | string[] | null
+  /** Moduli effettivi = (piano + aggiunti) - tolti, calcolati dal backend (solo SUPER_ADMIN). */
+  moduliEffettivi?: FeatureFlag[] | string[]
+  /** Valorizzato per un'azienda figlia: i moduli arrivano dal contratto della madre. */
+  parentTenantId?: string | null
   /**
    * Id dell'utente ADMIN che ha creato l'azienda in self-service.
    * Valorizzato per le aziende create da un tenant admin; assente per i tenant

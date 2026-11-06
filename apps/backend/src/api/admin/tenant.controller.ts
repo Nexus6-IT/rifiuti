@@ -58,8 +58,11 @@ export class TenantController {
    */
   @Get(':id')
   @Roles('SUPER_ADMIN')
-  async getById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tenantService.getById(id, true)
+  async getById(
+    @CurrentUser() currentUser: CurrentUserPayload,
+    @Param('id', ParseUUIDPipe) id: string
+  ) {
+    return this.tenantService.getByIdPerUtente(currentUser, id)
   }
 
   /**

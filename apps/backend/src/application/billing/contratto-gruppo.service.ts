@@ -13,6 +13,7 @@ export interface ContrattoEffettivo {
   firLimitPerMonth: number
   userLimitTotal: number
   featureFlags: unknown
+  featureTolte: unknown
   aziendeLimit: number | null
   ragioneSociale: string
 }
@@ -26,6 +27,7 @@ interface RigaContratto {
   firLimitPerMonth: number
   userLimitTotal: number
   featureFlags: unknown
+  featureTolte: unknown
   aziendeLimit: number | null
   ragioneSociale: string
 }
@@ -86,6 +88,7 @@ export class ContrattoGruppoService {
     firLimitPerMonth: true,
     userLimitTotal: true,
     featureFlags: true,
+    featureTolte: true,
     aziendeLimit: true,
     ragioneSociale: true,
   } as const
@@ -99,6 +102,7 @@ export class ContrattoGruppoService {
       firLimitPerMonth: radice.firLimitPerMonth,
       userLimitTotal: radice.userLimitTotal,
       featureFlags: radice.featureFlags,
+      featureTolte: radice.featureTolte,
       aziendeLimit: radice.aziendeLimit,
       ragioneSociale: radice.ragioneSociale,
     }

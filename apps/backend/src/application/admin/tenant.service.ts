@@ -15,6 +15,7 @@ import { seedRolesForTenant } from './system-roles'
 import { TenantContext } from '../../core/context/tenant-context'
 import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
+import { calcolaDeltaModuli, effectiveFeatures } from './feature-catalog'
 import { assertNonPiattaforma, escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
@@ -54,6 +55,43 @@ export class TenantService {
     this.logger.setContext(TenantService.name)
   }
 
+  /**
+   * Forma la riga per chi la riceve: solo il SUPER_ADMIN vede i moduli
+   * (`featureFlags`, `featureTolte`) e il calcolato `moduliEffettivi`.
+   */
+  private perUtente<T extends { subscriptionTier?: SubscriptionTier }>(
+    currentUser: CurrentUser,
+    riga: T
+  ): Omit<T, 'featureFlags' | 'featureTolte'> & { moduliEffettivi?: string[] } {
+    const { featureFlags, featureTolte, ...resto } = riga as T & {
+      featureFlags?: unknown
+      featureTolte?: unknown
+    }
+    if (!this.isSuperAdmin(currentUser)) return resto as never
+    return {
+      ...resto,
+      featureFlags,
+      featureTolte,
+      moduliEffettivi: riga.subscriptionTier
+        ? effectiveFeatures({ subscriptionTier: riga.subscriptionTier, featureFlags, featureTolte })
+        : [],
+    } as never
+  }
+
+  /** Colonne da salvare per una selezione completa di moduli, calcolate sul piano dato. */
+  private colonneModuli(tier: SubscriptionTier, selezione: readonly string[]) {
+    const { aggiunti, tolti } = calcolaDeltaModuli(tier, selezione)
+    return {
+      featureFlags: aggiunti as unknown as Prisma.InputJsonValue,
+      featureTolte: tolti as unknown as Prisma.InputJsonValue,
+    }
+  }
+
+  /** Dettaglio per il controller (GET :id, solo SUPER_ADMIN). */
+  async getByIdPerUtente(currentUser: CurrentUser, id: string) {
+    return this.perUtente(currentUser, await this.getById(id, true))
+  }
+
   private isSuperAdmin(currentUser: CurrentUser): boolean {
     return currentUser.role === UserRole.SUPER_ADMIN
   }
@@ -90,7 +128,7 @@ export class TenantService {
     // Sistema: il super admin elenca TUTTE le aziende (where {}) con il conteggio utenti, a prescindere
     // dal tenant nello store (il middleware gli mette sempre il proprio o quello dell'header).
     if (this.isSuperAdmin(currentUser)) {
-      return await this.sistema.tenant.findMany({
+      const tutte = await this.sistema.tenant.findMany({
         where: escludiPiattaforma(where),
         orderBy: { ragioneSociale: 'asc' },
         include: {
@@ -99,6 +137,7 @@ export class TenantService {
           },
         },
       })
+      return tutte.map(t => this.perUtente(currentUser, t))
     }
 
     // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di
@@ -108,15 +147,17 @@ export class TenantService {
       orderBy: { ragioneSociale: 'asc' },
     })
     // Una transazione per azienda: al massimo 4 insieme, per non esaurire il pool.
-    return await mapConLimite(aziende, 4, async azienda => ({
-      ...azienda,
-      _count: {
-        users: await this.inAzienda(
-          azienda.id,
-          async () => await this.prisma.user.count({ where: { tenantId: azienda.id } })
-        ),
-      },
-    }))
+    return await mapConLimite(aziende, 4, async azienda =>
+      this.perUtente(currentUser, {
+        ...azienda,
+        _count: {
+          users: await this.inAzienda(
+            azienda.id,
+            async () => await this.prisma.user.count({ where: { tenantId: azienda.id } })
+          ),
+        },
+      })
+    )
   }
 
   /**
@@ -276,6 +317,7 @@ export class TenantService {
       | 'firLimitPerMonth'
       | 'userLimitTotal'
       | 'featureFlags'
+      | 'featureTolte'
     >
     let subscriptionData: SubscriptionData
     if (isSuperAdmin) {
@@ -288,9 +330,11 @@ export class TenantService {
         // Solo se il SUPER_ADMIN ha passato un override esplicito nel DTO lo si
         // persiste; altrimenti null garantisce che le nuove feature del piano
         // si propaghino automaticamente ai tenant esistenti.
-        featureFlags: dto.featureFlags
-          ? (dto.featureFlags as unknown as Prisma.InputJsonValue)
-          : Prisma.DbNull,
+        // `dto.featureFlags` e' la selezione completa delle caselle: si salva il delta
+        // rispetto al piano (aggiunti / tolti). Senza selezione, entrambe null.
+        ...(dto.featureFlags
+          ? this.colonneModuli(dto.subscriptionTier ?? SubscriptionTier.TRIAL, dto.featureFlags)
+          : { featureFlags: Prisma.DbNull, featureTolte: Prisma.DbNull }),
       }
     } else {
       // Piano di default forzato per le aziende create dagli admin.
@@ -301,6 +345,7 @@ export class TenantService {
         subscriptionStatus: SubscriptionStatus.TRIAL,
         // userLimitTotal/firLimitPerMonth: si lasciano i default di schema.
         featureFlags: Prisma.DbNull,
+        featureTolte: Prisma.DbNull,
       }
     }
 
@@ -352,7 +397,7 @@ export class TenantService {
       )
     }
 
-    return tenant
+    return this.perUtente(currentUser, tenant)
   }
 
   /**
@@ -521,10 +566,13 @@ export class TenantService {
       ...(isSuperAdmin && dto.aziendeLimit !== undefined ? { aziendeLimit: dto.aziendeLimit } : {}),
       // featureFlags: array di override (validato in DTO contro FEATURE_KEYS).
       // Per tornare a derivare dal piano si può inviare un array vuoto o `null`.
+      // featureFlags e' la selezione completa: il backend salva aggiunti e tolti rispetto
+      // al piano risultante dopo questa richiesta.
       ...(isSuperAdmin && dto.featureFlags !== undefined
-        ? {
-            featureFlags: dto.featureFlags as unknown as Prisma.InputJsonValue,
-          }
+        ? this.colonneModuli(
+            (isSuperAdmin && dto.subscriptionTier) || tenant.subscriptionTier,
+            dto.featureFlags ?? []
+          )
         : {}),
     }
 
@@ -535,7 +583,7 @@ export class TenantService {
 
     this.logger.info('Tenant updated', { tenantId: id })
 
-    return updated
+    return this.perUtente(currentUser, updated)
   }
 
   /**

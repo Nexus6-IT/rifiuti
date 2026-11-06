@@ -85,7 +85,16 @@ describe('TenantService — campi di piano', () => {
     await service.update(superAdmin, TENANT, { ...dtoPiano, telefono: '0612345678' } as any)
 
     const [{ data }] = prisma.tenant.update.mock.calls[0]
-    expect(data).toEqual({ ...dtoPiano, telefono: '0612345678' })
+    // featureFlags e' la selezione completa: si salva il delta rispetto al piano ENTERPRISE
+    // (tutti i moduli tranne 'fir' risultano tolti, nessuno aggiunto).
+    const { featureFlags: _selezione, ...altri } = dtoPiano
+    expect(data).toEqual({
+      ...altri,
+      telefono: '0612345678',
+      featureFlags: [],
+      featureTolte: expect.not.arrayContaining(['fir']),
+    })
+    expect(data.featureTolte.length).toBeGreaterThan(0)
   })
 
   it('create: per un ADMIN il piano resta TRIAL/TRIAL e le feature derivate dal piano', async () => {

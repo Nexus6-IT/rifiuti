@@ -221,7 +221,7 @@ describe('TenantAdminComponent - moduli (feature flags) azienda', () => {
   }
 
   it('il click sul DOM aggiunge e toglie il modulo, e update lo invia', async () => {
-    await apriModifica(tenant({ featureFlags: ['fir'] }))
+    await apriModifica(tenant({ moduliEffettivi: ['fir'] }))
     const catalogo = component.featureCatalog.map(f => f.key)
     const daAggiungere = catalogo.find(k => !component.form.featureFlags.includes(k))!
     const daTogliere = component.form.featureFlags[0]
@@ -236,5 +236,74 @@ describe('TenantAdminComponent - moduli (feature flags) azienda', () => {
     const dto = service.update.calls.mostRecent().args[1]
     expect(dto.featureFlags).toContain(daAggiungere)
     expect(dto.featureFlags).not.toContain(daTogliere)
+  })
+
+  function casellaChecked(key: string): boolean {
+    return casella(key).classList.contains('p-highlight')
+  }
+
+  it('deseleziona un modulo del piano: il payload non lo contiene', async () => {
+    await apriModifica(tenant({ moduliEffettivi: ['fir', 'cer', 'anagrafiche', 'registro'] }))
+    expect(casellaChecked('cer')).toBeTrue()
+
+    await clicca('cer')
+    component.save()
+
+    const dto = service.update.calls.mostRecent().args[1]
+    expect(dto.featureFlags).not.toContain('cer')
+    expect(dto.featureFlags).toContain('fir')
+  })
+
+  it('riapre con moduliEffettivi senza quel modulo: casella vuota', async () => {
+    await apriModifica(tenant({ moduliEffettivi: ['fir', 'anagrafiche', 'registro'] }))
+    expect(casellaChecked('cer')).toBeFalse()
+    expect(casellaChecked('fir')).toBeTrue()
+  })
+
+  it('nessun modulo resta nessun modulo alla riapertura', async () => {
+    await apriModifica(tenant({ moduliEffettivi: [] }))
+    expect(component.form.featureFlags).toEqual([])
+    for (const f of component.featureCatalog) {
+      expect(casellaChecked(f.key)).withContext(f.key).toBeFalse()
+    }
+  })
+
+  it('cambio piano: caselle = moduli del piano + aggiunti - tolti', async () => {
+    await apriModifica(
+      tenant({
+        subscriptionTier: 'TRIAL',
+        moduliEffettivi: ['fir', 'cer', 'anagrafiche', 'esg'],
+        featureFlags: ['esg'],
+        featureTolte: ['registro'],
+      })
+    )
+    component.onTierChange('PROFESSIONAL')
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+
+    expect(component.form.featureFlags).toContain('mud')
+    expect(component.form.featureFlags).toContain('esg')
+    expect(component.form.featureFlags).not.toContain('registro')
+  })
+
+  it('azienda figlia: caselle disabilitate, nota visibile, save senza featureFlags', async () => {
+    await apriModifica(tenant({ parentTenantId: 'madre-1', moduliEffettivi: ['fir'] }))
+
+    const input = document.body.querySelector<HTMLInputElement>(
+      'p-checkbox[ng-reflect-input-id="feat-fir"] input'
+    )
+    expect(input?.disabled).toBeTrue()
+    expect(document.body.textContent).toContain(
+      "I moduli arrivano dal contratto del gruppo: si cambiano sull'azienda madre"
+    )
+
+    component.save()
+    const dto = service.update.calls.mostRecent().args[1]
+    expect(dto.featureFlags).toBeUndefined()
+  })
+
+  it('il catalogo contiene registro', () => {
+    expect(component.featureCatalog.map(f => f.key)).toContain('registro')
   })
 })
