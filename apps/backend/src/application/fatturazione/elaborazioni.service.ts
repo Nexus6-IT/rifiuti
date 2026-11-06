@@ -471,13 +471,13 @@ export class ElaborazioniService {
         .$transaction(async tx => {
           await impostaTimeoutLock(tx)
           const e = await bloccaElaborazione(tx, tenantId, id)
-          if (e.stato !== 'ANTEPRIMA_PRONTA') {
+          if (e.stato === 'IN_DEFINITIVA' || e.stato === 'DEFINITIVA') {
             throw giaInDefinitiva(
-              e.stato === 'IN_DEFINITIVA' || e.stato === 'DEFINITIVA'
-                ? "L'elaborazione è già in definitiva: i documenti non si possono più escludere."
-                : "L'anteprima non è pronta: i documenti non si possono escludere."
+              "L'elaborazione è già in definitiva: i documenti non si possono più escludere."
             )
           }
+          if (e.stato === 'IN_CODA' || e.stato === 'IN_CORSO') throw elaborazioneInCorso()
+          if (e.stato !== 'ANTEPRIMA_PRONTA') statoNonValido('escludere')
           if (!UUID.test(documentoId)) throw documentoNonTrovato()
           const [d] = await tx.$queryRaw<{ stato: string }[]>`
             SELECT stato::text AS stato FROM documenti_fattura

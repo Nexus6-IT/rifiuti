@@ -25,7 +25,7 @@ import {
 import { improntaElaborazione } from '../../domain/fatturazione/impronta'
 import type { FotografiaSalvata } from '../../domain/fatturazione/tipi'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
-import { impostaTimeoutLock, joinLineari } from '../listino/lock-listino'
+import { impostaTimeoutLock } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import {
   calcolaBozze,
@@ -34,6 +34,7 @@ import {
   type BozzaCalcolata,
 } from './anteprima'
 import { bloccaElaborazione, bloccaPerDefinitiva, insiemiPerDefinitiva } from './lock-fatturazione'
+import { conJoinLineari } from './piani-query'
 import {
   numeroTesto,
   riservaNumeri,
@@ -306,24 +307,6 @@ function inBlocchi<T>(l: readonly T[], n: number): T[][] {
   const blocchi: T[][] = []
   for (let i = 0; i < l.length; i += n) blocchi.push(l.slice(i, i + n))
   return blocchi
-}
-
-/**
- * Esegue `fn` con il nested loop spento (query `JOIN unnest` su liste grandi) e lo RIPRISTINA
- * appena finita (scansione P46): le letture che seguono ritrovano il planner com'era. Se `fn`
- * fallisce la transazione e' abortita e il rollback ripristina da solo il `SET LOCAL`.
- */
-export async function conJoinLineari<R>(
-  tx: Prisma.TransactionClient,
-  fn: () => Promise<R>
-): Promise<R> {
-  const [{ v }] = await tx.$queryRaw<
-    { v: string }[]
-  >`SELECT current_setting('enable_nestloop') AS v`
-  await joinLineari(tx)
-  const risultato = await fn()
-  await tx.$queryRaw`SELECT set_config('enable_nestloop', ${v}, true)`
-  return risultato
 }
 
 /** Confronto fra una bozza salvata e il suo ricalcolo: `null` se uguali, altrimenti il motivo. */

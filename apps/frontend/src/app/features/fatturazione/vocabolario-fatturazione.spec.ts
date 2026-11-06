@@ -137,7 +137,7 @@ describe('vocabolario della fatturazione', () => {
     tutteCompilate(MOTIVI_NON_STORNABILE_VOCI)
   })
 
-  it('i sei esiti di errore.codice hanno etichetta, ELABORAZIONE_INTERROTTA compreso', () => {
+  it('i sette esiti di errore.codice hanno etichetta, ELABORAZIONE_INTERROTTA e NESSUN_DOCUMENTO_DEFINIBILE compresi', () => {
     expect([...ESITI_ELABORAZIONE].map(String).sort()).toEqual(
       [
         'ANTEPRIMA_SUPERATA',
@@ -146,9 +146,10 @@ describe('vocabolario della fatturazione', () => {
         'DEFINITIVE_NON_ATTIVE',
         'DOPPIA_FATTURAZIONE',
         'ELABORAZIONE_INTERROTTA',
+        'NESSUN_DOCUMENTO_DEFINIBILE',
       ].sort()
     )
-    expect(Object.keys(ESITI_ELABORAZIONE_VOCI).length).toBe(6)
+    expect(Object.keys(ESITI_ELABORAZIONE_VOCI).length).toBe(7)
     tutteCompilate(ESITI_ELABORAZIONE_VOCI)
     expect(ESITI_ELABORAZIONE_VOCI.ELABORAZIONE_INTERROTTA.etichetta).toBe(
       "L'elaborazione si è interrotta: richiedi di nuovo la definitiva"

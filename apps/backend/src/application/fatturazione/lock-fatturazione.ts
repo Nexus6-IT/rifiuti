@@ -6,7 +6,14 @@
 //   4. elenchi FOR SHARE per id
 //   5. righe di listino FOR SHARE per id                  (3-5: `bloccaPerDefinitiva`)
 //   6. testate e righe dei legami FOR UPDATE per id       (`bloccaRigheLegame`, 4.3)
-//   7. marcatori INSERT/DELETE, poi documenti in BOZZA FOR UPDATE
+//   7. definitiva: documenti in BOZZA FOR UPDATE, poi marcatori INSERT/DELETE
+//      (`definitiva.ts`, passi 8-9)
+//      annullo e storno: documento DEFINITIVO FOR UPDATE, dopo la numerazione e PRIMA dei legami
+//      (passo 2 di `annullo-storno.service.ts`)
+//
+// I passi 6 e 7 sono righe diverse fra definitiva e annullo/storno (una BOZZA non e' mai l'origine
+// di un annullo nella stessa finestra), quindi l'ordine diverso fra i due percorsi non puo' dare
+// un ciclo: le risorse COMUNI (numerazione, legami, marcatori) si prendono sempre in quest'ordine.
 //
 // La 4.4 non prende MAI il lock del registro, il lock consultivo per radice o
 // `impostazioni_fatturazione FOR UPDATE` (S5): lo prova `guardia-registro.spec.ts`.
@@ -122,24 +129,26 @@ export async function insiemiPerDefinitiva(
   // da una riga del documento puo' stare in un elenco fuori validita' (arretrati, elenco scaduto).
   // Anche quella riga e il suo elenco si bloccano, altrimenti una modifica del listino concorrente
   // la cambierebbe sotto la definitiva. Una sola query per le due cose.
+  // CTE MATERIALIZED su `unnest` (I2 del Task 27a): l'array dei documenti si converte UNA volta e
+  // non per ogni riga (piano generico con `= ANY(($n)::uuid[])` come Filter: 5 s a 10.000
+  // legami contro 45 ms).
   const citati = await tx.$queryRaw<{ tipo: string; id: string; elenco_id: string | null }[]>`
+    WITH d AS MATERIALIZED (SELECT DISTINCT unnest(${ids}::uuid[]) AS id),
+    x AS MATERIALIZED (
+      SELECT r.legame_id, r.riga_addebito_id FROM righe_documento_fattura r
+      JOIN d ON d.id = r.documento_id
+      WHERE r.tenant_id = ${tenantId}::uuid)
     SELECT 'L' AS tipo, x.legame_id::text AS id, NULL::text AS elenco_id
-    FROM righe_documento_fattura x
-    WHERE x.tenant_id = ${tenantId}::uuid AND x.documento_id = ANY(${ids}::uuid[])
-      AND x.legame_id IS NOT NULL
+    FROM x WHERE x.legame_id IS NOT NULL
     UNION
     SELECT 'R', ra.id::text, ra.elenco_id::text
     FROM righe_addebito ra
     WHERE ra.tenant_id = ${tenantId}::uuid AND ra.id IN (
-      SELECT x.riga_addebito_id FROM righe_documento_fattura x
-      WHERE x.tenant_id = ${tenantId}::uuid AND x.documento_id = ANY(${ids}::uuid[])
-        AND x.riga_addebito_id IS NOT NULL
+      SELECT x.riga_addebito_id FROM x WHERE x.riga_addebito_id IS NOT NULL
       UNION
       SELECT rl.riga_addebito_id FROM righe_legame_movimento rl
-      WHERE rl.tenant_id = ${tenantId}::uuid AND rl.legame_id IN (
-        SELECT x.legame_id FROM righe_documento_fattura x
-        WHERE x.tenant_id = ${tenantId}::uuid AND x.documento_id = ANY(${ids}::uuid[])
-          AND x.legame_id IS NOT NULL))`
+      WHERE rl.tenant_id = ${tenantId}::uuid
+        AND rl.legame_id IN (SELECT x.legame_id FROM x WHERE x.legame_id IS NOT NULL))`
   for (const c of citati) if (c.tipo === 'R' && c.elenco_id !== null) elencoIds.add(c.elenco_id)
   const elenchiOrdinati = distintiOrdinati(elencoIds)
   const righeCitate = citati.filter(c => c.tipo === 'R').map(c => c.id)

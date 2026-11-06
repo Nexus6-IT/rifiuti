@@ -487,6 +487,29 @@ describe('ElaborazioniService — Postgres reale, ruolo wasteflow_app', () => {
       expect((await bozze(id))[0].escluso).toBe(false)
     })
 
+    it.each([
+      ['DEFINITIVA', 'ELABORAZIONE_GIA_IN_DEFINITIVA'],
+      ['IN_CODA', 'ELABORAZIONE_IN_CORSO'],
+      ['IN_CORSO', 'ELABORAZIONE_IN_CORSO'],
+      ['FALLITA', 'STATO_ELABORAZIONE_NON_VALIDO'],
+      ['SCARTATA', 'STATO_ELABORAZIONE_NON_VALIDO'],
+    ])(
+      'escludi con l’elaborazione %s: 409 %s (I3 del Task 27a), documento invariato',
+      async (stato, codice) => {
+        const { az, id } = await pronta()
+        const [b] = await bozze(id)
+        await owner.$executeRawUnsafe(
+          `UPDATE elaborazioni_fatturazione SET stato = $2::stato_elaborazione_fatturazione WHERE id = $1::uuid`,
+          id,
+          stato
+        )
+        expect(
+          await esito(nel(az.tenantId, () => servizio.escludi(az.tenantId, id, b.id, true)))
+        ).toEqual({ status: 409, codice })
+        expect((await bozze(id))[0].escluso).toBe(false)
+      }
+    )
+
     it('le esclusioni sopravvivono al ricalcolo e il documento escluso non entra nella numerazione prevista; un documento sparito perde l’esclusione', async () => {
       const { az, c, id } = await pronta()
       // Un secondo contratto con la sua bozza.

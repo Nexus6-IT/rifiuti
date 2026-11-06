@@ -26,7 +26,7 @@ import { bloccaRigheLegame } from '../legami-movimento/lock-legame'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { eViolazioneUnica } from './anteprima'
-import { conJoinLineari } from './definitiva'
+import { conJoinLineari } from './piani-query'
 import {
   annullabilita,
   DocumentiFatturaService,

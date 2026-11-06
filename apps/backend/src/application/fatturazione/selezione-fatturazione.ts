@@ -38,6 +38,7 @@ import type {
 import { normalizzaTesto } from '../../domain/fatturazione/xml/normalizza-testo'
 import { leggiFatturazioneDaInTx } from '../legami-movimento/impostazioni-fatturazione.service'
 import { sqlCandidati } from '../legami-movimento/lista-legami.service'
+import { conJoinLineari } from './piani-query'
 import { leggiCedenteVista, type CedenteVista } from './cedente.service'
 
 export interface FiltriElaborazione {
@@ -539,7 +540,13 @@ export async function selezionaElaborazione(
     motivo: null,
   })
   const principaleSet = new Set(principaleIds)
-  const candidatiTutti = await tx.$queryRaw<CandidatoRiga[]>`
+  // Con il nested loop spento (I1 del Task 27a): con statistiche vecchie il planner stima 1 riga
+  // per il tenant e sceglie un nested loop quadratico sul join dei legami (13,7 s a 10.000
+  // legami, 27 ms col loop spento). `conJoinLineari` ripristina il valore letto prima.
+  const candidatiTutti = await conJoinLineari(
+    tx,
+    () =>
+      tx.$queryRaw<CandidatoRiga[]>`
     SELECT c.legame_id::text AS "legameId", c.contratto_id::text AS "contrattoId",
            c.cliente_id::text AS "clienteId", c.giorno::text AS giorno, c.stato_lista AS stato
     FROM (${candidatiSql}) c
@@ -548,6 +555,7 @@ export async function selezionaElaborazione(
       -- dopo la fattura (§5.7) o una scelta dell'utente: non e' un legame da riallineare.
       AND (c.stato_lista <> 'DA_RIALLINEARE'
            OR c.stato_legame IN ('CONFERMATO', 'PROPOSTO', 'DA_COLLEGARE'))`
+  )
   // Solo i legami dei nostri contratti (o senza contratto): il filtro sta qui e non nella query,
   // dove un `= ANY` su centinaia di id rallenta il piano generico (misurato).
   const candidati = candidatiTutti.filter(
