@@ -237,6 +237,17 @@ export const ERRORI_HTTP_VOCI = {
     'errore'
   ),
   ADATTATORE_SCONOSCIUTO: v('Il gestionale scelto non è tra quelli disponibili.', 'errore'),
+  // Task 25a (m4, m7): 400 dei servizi (difesa dietro ai DTO, tranne motivo e nota) e 404.
+  MOTIVO_NON_VALIDO: v('Il motivo è obbligatorio e al massimo di 200 caratteri.', 'errore'),
+  VERSIONE_NON_VALIDA: v('La versione indicata non è valida: ricarica la pagina.', 'errore'),
+  DATA_NON_VALIDA: v('La data deve essere nel formato AAAA-MM-GG.', 'errore'),
+  RIFATTURABILE_NON_VALIDO: v('Indica se il documento è rifatturabile.', 'errore'),
+  NOTA_NON_VALIDA: v('La nota è obbligatoria e al massimo di 200 caratteri.', 'errore'),
+  PAGINAZIONE_NON_VALIDA: v('La pagina parte da 1 e la dimensione va da 1 a 100.', 'errore'),
+  FILTRO_NON_VALIDO: v('Uno dei filtri non è valido.', 'errore'),
+  LEGAME_MOVIMENTO_NON_TROVATO: v('Il legame non esiste più: ricarica la pagina.', 'errore'),
+  DOCUMENTO_NON_TROVATO: v('Il documento non esiste più: ricarica la pagina.', 'errore'),
+  ELABORAZIONE_NON_TROVATA: v("L'elaborazione non esiste più: ricarica la pagina.", 'errore'),
 } as const
 
 /** Esiti che non sono anche errori HTTP né errori generali. */

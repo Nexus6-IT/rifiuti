@@ -91,9 +91,38 @@ describe('vocabolario della fatturazione', () => {
       'ADATTATORE_SCONOSCIUTO',
       'PARTENZA_NON_VALIDA',
       'RIGA_ADDEBITO_IN_USO',
+      // Task 25a (m4, m7): 400 e 404 dei servizi della fatturazione.
+      'MOTIVO_NON_VALIDO',
+      'VERSIONE_NON_VALIDA',
+      'DATA_NON_VALIDA',
+      'RIFATTURABILE_NON_VALIDO',
+      'NOTA_NON_VALIDA',
+      'PAGINAZIONE_NON_VALIDA',
+      'FILTRO_NON_VALIDO',
+      'LEGAME_MOVIMENTO_NON_TROVATO',
+      'DOCUMENTO_NON_TROVATO',
+      'ELABORAZIONE_NON_TROVATA',
     ]
     expect(Object.keys(ERRORI_HTTP_VOCI).sort()).toEqual([...attesi].sort())
     tutteCompilate(ERRORI_HTTP_VOCI)
+  })
+
+  it('i codici 400 e 404 del Task 25a hanno un testo per l`utente, non il codice grezzo', () => {
+    for (const codice of [
+      'MOTIVO_NON_VALIDO',
+      'VERSIONE_NON_VALIDA',
+      'DATA_NON_VALIDA',
+      'RIFATTURABILE_NON_VALIDO',
+      'NOTA_NON_VALIDA',
+      'PAGINAZIONE_NON_VALIDA',
+      'FILTRO_NON_VALIDO',
+      'LEGAME_MOVIMENTO_NON_TROVATO',
+      'DOCUMENTO_NON_TROVATO',
+      'ELABORAZIONE_NON_TROVATA',
+    ]) {
+      const voce = voceSegnalazione(codice)
+      expect([codice, voce.severita, voce.etichetta === codice]).toEqual([codice, 'errore', false])
+    }
   })
 
   it('i cinque MotivoNonAnnullabile, STORNATO compreso, e i due MotivoNonStornabile', () => {

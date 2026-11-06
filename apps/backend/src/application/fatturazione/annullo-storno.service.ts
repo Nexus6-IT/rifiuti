@@ -78,6 +78,27 @@ const MESSAGGI_STORNO: Readonly<Record<MotivoNonStornabile, string>> = {
   NOTA_DI_CREDITO: 'Una nota di credito non si storna.',
 }
 
+/** Indice unico parziale dello storno (migration 4.4a): un solo TD04 non annullato per origine. */
+const VINCOLO_UN_STORNO = 'documenti_fattura_un_storno'
+
+/**
+ * m1: solo il 23505 dell'indice dello storno vale `STORNO_GIA_PRESENTE`. Il nome del vincolo sta in
+ * `meta.target` (P2002) o nel messaggio del raw (P2010); senza nome (con la RLS Prisma puo`
+ * riportare `target: null`) non si decide e l'errore resta interno.
+ */
+function eViolazioneUnStorno(err: unknown): boolean {
+  if (!eViolazioneUnica(err)) return false
+  const meta = (err as Prisma.PrismaClientKnownRequestError).meta as
+    | { target?: unknown; message?: unknown }
+    | undefined
+  const target = meta?.target
+  if (Array.isArray(target) ? target.includes(VINCOLO_UN_STORNO) : target === VINCOLO_UN_STORNO) {
+    return true
+  }
+  const messaggio = typeof meta?.message === 'string' ? meta.message : ''
+  return new RegExp(`unique constraint \\\\?"${VINCOLO_UN_STORNO}\\\\?"`).test(messaggio)
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MOTIVO_MAX = 200
 
@@ -206,7 +227,6 @@ export class AnnulloStornoService {
           ])
           // 2. Documento FOR UPDATE e controlli SOTTO lock.
           const d = await this.bloccaDocumento(tx, tenantId, documentoId)
-          this.controllaCoppia(d, prima)
           const haStorno = await this.haStorno(tx, tenantId, documentoId)
           const ammesso = annullabilita({
             stato: d.stato,
@@ -225,6 +245,9 @@ export class AnnulloStornoService {
               details: { motivo: motivoNo },
             })
           }
+          // m2: la coppia si controlla solo sul DEFINITIVO (immutabile). Una BOZZA puo` averla
+          // cambiata (ricalcolo) e ha gia` risposto NON_DEFINITIVO qui sopra.
+          this.controllaCoppia(d, prima)
           if (d.versione !== versione) throw versioneSuperata()
 
           // 3. Testate e righe dei legami FOR UPDATE per id.
@@ -315,13 +338,15 @@ export class AnnulloStornoService {
           ])
           // 2. Origine FOR UPDATE e controlli sotto lock.
           const o = await this.bloccaDocumento(tx, tenantId, documentoId)
-          if (o.registroIvaId !== prima.registroIvaId) {
-            throw new Error('Storno: il registro del documento e cambiato durante la lettura.')
-          }
           if (o.stato !== 'DEFINITIVO') {
             throw this.stornoNonAmmesso('NON_DEFINITIVO')
           }
           if (o.tipoDocumento === 'TD04') throw this.stornoNonAmmesso('NOTA_DI_CREDITO')
+          // m2: il registro si controlla solo sul DEFINITIVO (immutabile): una BOZZA spostata da
+          // un ricalcolo ha gia` risposto NON_DEFINITIVO.
+          if (o.registroIvaId !== prima.registroIvaId) {
+            throw new Error('Storno: il registro del documento e cambiato durante la lettura.')
+          }
           if (await this.haStorno(tx, tenantId, documentoId)) {
             throw new ConflictException({
               error: 'STORNO_GIA_PRESENTE',
@@ -397,7 +422,7 @@ export class AnnulloStornoService {
           return this.documenti.dettaglioInTx(tx, tenantId, stornoId)
         }, OPZIONI_TRANSAZIONE_SCRITTURA)
         .catch(err => {
-          if (eViolazioneUnica(err)) {
+          if (eViolazioneUnStorno(err)) {
             throw new ConflictException({
               error: 'STORNO_GIA_PRESENTE',
               message: 'Il documento ha già una nota di credito di storno.',
