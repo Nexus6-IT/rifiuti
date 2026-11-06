@@ -78,6 +78,8 @@ describe('DashboardPageComponent', () => {
     voci?: VoceAttenzione[]
     deposito?: ReturnType<typeof depositoFixture>
     erroreAndamento?: boolean
+    erroreDeposito?: boolean
+    fir?: FIR[]
   }
 
   function setup(o: Opzioni = {}): HTMLElement {
@@ -90,10 +92,13 @@ describe('DashboardPageComponent', () => {
       o.erroreAndamento ? throwError(() => new Error('boom')) : of({ mesi: mesiSerie() })
     )
     giacenzeService = jasmine.createSpyObj('GiacenzeService', ['getDepositoTemporaneo'])
-    giacenzeService.getDepositoTemporaneo.and.returnValue(of(o.deposito ?? depositoFixture()))
+    giacenzeService.getDepositoTemporaneo.and.returnValue(
+      o.erroreDeposito ? throwError(() => new Error('boom')) : of(o.deposito ?? depositoFixture())
+    )
     firService = jasmine.createSpyObj('FirService', ['getFIRList'])
+    const righeFir = o.fir ?? [1, 2, 3, 4, 5].map(firRecente)
     firService.getFIRList.and.returnValue(
-      of({ items: [1, 2, 3, 4, 5].map(firRecente), total: 5, page: 1, limit: 5, totalPages: 1 })
+      of({ items: righeFir, total: righeFir.length, page: 1, limit: 5, totalPages: 1 })
     )
 
     TestBed.configureTestingModule({
@@ -234,7 +239,16 @@ describe('DashboardPageComponent', () => {
       'Produttori più frequenti',
       'Trasportatori più frequenti',
     ])
-    expect(sezione.querySelectorAll('[data-testid^="analisi-"]').length).toBeGreaterThanOrEqual(5)
+    const ids = Array.from(sezione.querySelectorAll('[data-testid^="analisi-"]')).map(e =>
+      e.getAttribute('data-testid')
+    )
+    expect(ids).toEqual([
+      'analisi-sintesi',
+      'analisi-conformita',
+      'analisi-firme',
+      'analisi-rentri',
+      'analisi-andamento',
+    ])
   })
 
   it('niente chiavi inglesi, «0.0», «0h» né canvas nel DOM (bug 1, 4, 6)', () => {
@@ -254,6 +268,40 @@ describe('DashboardPageComponent', () => {
     expect(el.querySelector('canvas')).toBeNull()
   })
 
+  it('niente «0.0» né «0h» nemmeno con valori a zero: azienda senza FIR e firme senza tempo medio (I4)', () => {
+    const proibiti = ['0.0', '0h', '0 h', 'NaN', 'undefined']
+    const senzaFir = setup({ dati: dashboardSenzaFir() }).textContent ?? ''
+    for (const p of proibiti) expect(senzaFir).not.toContain(p)
+    TestBed.resetTestingModule()
+    const base = dashboardFixture()
+    const zeri =
+      setup({
+        dati: dashboardFixture({
+          signatures: { completionRate: 1, total: 4, completed: 4, averageTimeHours: 0 },
+          compliance: {
+            score: 0.5,
+            level: 'NEEDS_IMPROVEMENT',
+            factors: { ...base.compliance.factors, overdueRate: 0, rentriSyncRate: 0 },
+          },
+        }),
+      }).textContent ?? ''
+    for (const p of proibiti) expect(zeri).not.toContain(p)
+  })
+
+  it('con il deposito in errore la risposta del giorno non dichiara «nessuna scadenza» (I2)', () => {
+    const el = setup({ erroreDeposito: true })
+    const sotto = el.querySelector('[data-testid="panoramica-sottotitolo"]')?.textContent ?? ''
+    expect(sotto).not.toContain('Nessuna scadenza')
+    expect(sotto).toContain('deposito')
+  })
+
+  it('«Esporta CSV» del menu ⋯ è disattivo finché mancano i dati (M10)', () => {
+    const el = setup()
+    expect(el.querySelector('p-menu')).toBeTruthy()
+    const comp = fixture.componentInstance as unknown as { menuAzioni(): { disabled?: boolean }[] }
+    expect(comp.menuAzioni()[0].disabled).toBeFalse()
+  })
+
   it('con 0 FIR nessun «20%» né «Critica» (bug 5) e tutte le celle in «—»', () => {
     const el = setup({ dati: dashboardSenzaFir() })
     const testo = el.textContent ?? ''
@@ -262,7 +310,7 @@ describe('DashboardPageComponent', () => {
     const valori = Array.from(el.querySelectorAll('app-analisi-sintesi .cella__v')).map(v =>
       v.textContent?.trim()
     )
-    expect(valori.slice(0, 3)).toEqual(['—', '—', '—'])
+    expect(valori).toEqual(['—', '—', '—', '—'])
   })
 
   it("Andamento «questo mese» è il valore dell'ultima barra (M8), non trends.monthOverMonth", () => {
@@ -330,10 +378,9 @@ describe('DashboardPageComponent', () => {
       dati: dashboardSenzaFir(),
       deposito: depositoFixture([]),
       voci: [],
+      fir: [],
     })
-    firService.getFIRList.and.returnValue(
-      of({ items: [], total: 0, page: 1, limit: 5, totalPages: 0 })
-    )
+    expect(el.querySelector('[data-testid="fir-recenti-vuoto"]')).toBeTruthy()
     const blocchi = Array.from(el.querySelectorAll<HTMLElement>('.griglia, .analisi'))
     for (const blocco of blocchi) expect(blocco.querySelector('.empty-state, .pi')).toBeNull()
     for (const card of Array.from(el.querySelectorAll<HTMLElement>('.card'))) {

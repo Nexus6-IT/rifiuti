@@ -62,6 +62,11 @@ describe('FirRecentiComponent', () => {
     expect(el.querySelector('.r1')?.textContent?.trim()).toBe('Bozza')
   })
 
+  it('un FIR annullato senza numero non si presenta come «Bozza» (I1)', () => {
+    const el = crea({ fir: [fir({ numeroProgressivo: null, stato: FIRStato.ANNULLATO })] })
+    expect(el.querySelector('.r1')?.textContent?.trim()).toBe('Senza numero')
+  })
+
   it("l'annullato ha la pillola barrata", () => {
     const el = crea({ fir: [fir({ stato: FIRStato.ANNULLATO })] })
     expect(el.querySelector('.pillola')?.classList).toContain('pillola--barrata')

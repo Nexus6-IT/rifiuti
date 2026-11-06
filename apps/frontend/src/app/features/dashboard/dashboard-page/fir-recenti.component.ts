@@ -148,7 +148,9 @@ export class FirRecentiComponent {
   @Input() puoCreare = false
 
   numero(f: FIR): string {
-    return f.numeroProgressivo?.trim() ? f.numeroProgressivo : 'Bozza'
+    if (f.numeroProgressivo?.trim()) return f.numeroProgressivo
+    // «Bozza» vale solo per una bozza: un annullato senza numero non e' una bozza.
+    return f.stato === FIRStato.BOZZA ? 'Bozza' : 'Senza numero'
   }
 
   etichetta(f: FIR): string {

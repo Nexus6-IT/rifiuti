@@ -96,13 +96,28 @@ describe('BarreMensiliComponent', () => {
     expect(el.querySelector('.meta')?.textContent).toContain('dic 2025 – nov 2026')
   })
 
-  it('tutti zero: testo «Nessun formulario negli ultimi dodici mesi» e la linea di base', () => {
+  it('tutti zero: solo la riga vuota, senza grafico né colonne, e la card resta bassa (I3, bug 8)', () => {
     const el = crea({ mesi: serie(new Array(12).fill(0)) })
     expect(el.querySelector('[data-testid="andamento-vuoto"]')?.textContent?.trim()).toBe(
       'Nessun formulario negli ultimi dodici mesi'
     )
-    expect(el.querySelector('line.base')).toBeTruthy()
-    expect(el.querySelectorAll('rect').length).toBe(0)
+    expect(el.querySelector('svg')).toBeNull()
+    expect(el.querySelector('.colonne')).toBeNull()
+    expect((el.querySelector('.card') as HTMLElement).offsetHeight).toBeLessThan(120)
+  })
+
+  it("l'aria-label dell'SVG contiene la media, perché i figli di un'immagine non si leggono (M5)", () => {
+    const el = crea({ mesi: serie(valori) })
+    expect(el.querySelector('svg')?.getAttribute('aria-label')).toContain('media 137 al mese')
+  })
+
+  it('la tabella sr-only raggruppa le migliaia (M6)', () => {
+    const el = crea({ mesi: serie([1240, ...valori.slice(1)]) })
+    expect(
+      el
+        .querySelector('[data-testid="andamento-tabella-testuale"] tbody td:last-child')
+        ?.textContent?.trim()
+    ).toBe('1.240')
   })
 
   it('la tabella sr-only ha 12 righe', () => {

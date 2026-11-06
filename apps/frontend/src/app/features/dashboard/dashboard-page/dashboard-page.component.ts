@@ -111,7 +111,7 @@ function inCaricamento<T>(): Sorgente<T> {
             (onClick)="esportaCsv()"
             ariaLabel="Esporta i dati della dashboard in formato CSV"
           />
-          <p-menu #menu [popup]="true" [model]="menuAzioni" appendTo="body" />
+          <p-menu #menu [popup]="true" [model]="menuAzioni()" appendTo="body" />
           <p-button
             class="altre"
             icon="pi pi-ellipsis-h"
@@ -403,9 +403,14 @@ export class DashboardPageComponent implements OnInit {
   protected readonly deposito = signal<Sorgente<DepositoTemporaneoVista>>(inCaricamento())
   protected readonly firRecenti = signal<Sorgente<FIR[]>>(inCaricamento())
 
-  protected readonly menuAzioni: MenuItem[] = [
-    { label: 'Esporta CSV', icon: 'pi pi-download', command: () => this.esportaCsv() },
-  ]
+  protected readonly menuAzioni = computed<MenuItem[]>(() => [
+    {
+      label: 'Esporta CSV',
+      icon: 'pi pi-download',
+      disabled: !this.dashboard().dati,
+      command: () => this.esportaCsv(),
+    },
+  ])
 
   protected readonly puoCreare = computed(() => puoCreareFir(this.auth.currentUser()?.role))
   protected readonly mostraNuovoFir = computed(() => this.ff.has('fir') && this.puoCreare())
@@ -427,7 +432,11 @@ export class DashboardPageComponent implements OnInit {
     // Una verifica fallita non e' «nessuna scadenza»: non si dichiara il via libera.
     this.attenzione().errore
       ? 'Controllo delle scadenze non riuscito'
-      : rispostaDelGiorno(this.voci())
+      : this.ff.has('giacenze') && this.deposito().errore
+        ? this.voci().length === 0
+          ? 'Controllo del deposito non riuscito'
+          : `${rispostaDelGiorno(this.voci())}, controllo del deposito non riuscito`
+        : rispostaDelGiorno(this.voci())
   )
 
   protected readonly dataEstesa = computed(() =>

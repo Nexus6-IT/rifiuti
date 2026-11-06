@@ -25,6 +25,7 @@ export function intervalloMeseCorrente(oggi: Date): { startDate: Date; endDate: 
 export function vociDaDeposito(vista: DepositoTemporaneoVista): VoceAttenzione[] {
   const voci: VoceAttenzione[] = []
   for (const registro of vista.registri) {
+    if (!registro.attivo) continue
     for (const avviso of registro.avvisi) {
       voci.push({
         chiave: `deposito-${avviso.tipo.toLowerCase().replace(/_/g, '-')}`,
@@ -136,7 +137,8 @@ export function barreDeposito(r: DepositoRegistro): BarraDeposito[] {
       limite: r.soglie.kgMaxTotale,
       unita: 'kg',
       allarme: ha('QUANTITA_TOTALE'),
-      nota: notaQuantita(),
+      // La nota vale per tutto il registro: basta una volta, sotto «Pericolosi».
+      nota: null,
     })
   }
 

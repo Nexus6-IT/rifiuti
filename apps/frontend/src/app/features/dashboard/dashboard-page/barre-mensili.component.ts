@@ -78,20 +78,22 @@ function annoMese(mese: string): string {
         </p>
       } @else {
         @if (vuoto) {
-          <p class="vuoto vuoto--grafico" data-testid="andamento-vuoto">
+          <!-- Nessun formulario: una sola riga di testo, niente grafico piatto (bug 8). -->
+          <p class="vuoto" data-testid="andamento-vuoto">
             Nessun formulario negli ultimi dodici mesi
           </p>
-        }
-        <svg
-          class="grafico"
-          [attr.viewBox]="'0 0 ' + L + ' ' + H"
-          preserveAspectRatio="none"
-          role="img"
-          [attr.aria-label]="'Formulari creati per mese: ' + periodo"
-          data-testid="andamento-grafico"
-        >
-          <line class="base" x1="0" [attr.x2]="L" [attr.y1]="H - 0.5" [attr.y2]="H - 0.5" />
-          @if (!vuoto) {
+        } @else {
+          <svg
+            class="grafico"
+            [attr.viewBox]="'0 0 ' + L + ' ' + H"
+            preserveAspectRatio="none"
+            role="img"
+            [attr.aria-label]="
+              'Formulari creati per mese: ' + periodo + ', media ' + mediaTesto + ' al mese'
+            "
+            data-testid="andamento-grafico"
+          >
+            <line class="base" x1="0" [attr.x2]="L" [attr.y1]="H - 0.5" [attr.y2]="H - 0.5" />
             @for (b of barre; track b.mese) {
               <rect
                 [attr.data-mese]="b.mese"
@@ -112,16 +114,16 @@ function annoMese(mese: string): string {
               [attr.y2]="yMedia"
               [attr.aria-label]="'Media ' + mediaTesto + ' al mese'"
             />
-          }
-        </svg>
-        <div class="colonne num" aria-hidden="true">
-          @for (b of barre; track b.mese) {
-            <span class="colonna" [class.colonna--corrente]="b.corrente">
-              <span class="colonna__v">{{ b.conteggio | number: '1.0-0' }}</span>
-              <span class="colonna__m">{{ b.etichetta }}</span>
-            </span>
-          }
-        </div>
+          </svg>
+          <div class="colonne num" aria-hidden="true">
+            @for (b of barre; track b.mese) {
+              <span class="colonna" [class.colonna--corrente]="b.corrente">
+                <span class="colonna__v">{{ b.conteggio | number: '1.0-0' }}</span>
+                <span class="colonna__m">{{ b.etichetta }}</span>
+              </span>
+            }
+          </div>
+        }
       }
 
       <!-- Alternativa testuale: il grafico da solo non dice nulla a uno screen reader. -->
@@ -139,7 +141,7 @@ function annoMese(mese: string): string {
           @for (b of barre; track b.mese) {
             <tr>
               <td>{{ b.etichetta }} {{ b.mese.split('-')[0] }}</td>
-              <td style="text-align: right">{{ b.conteggio }}</td>
+              <td style="text-align: right">{{ b.conteggio | number: '1.0-0' }}</td>
             </tr>
           }
         </tbody>

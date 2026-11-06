@@ -76,6 +76,11 @@ describe('dashboard-dati', () => {
       expect(voci[0].azione).toEqual({ etichetta: 'Vedi le giacenze', rotta: '/giacenze' })
     })
 
+    it('ignora i registri non attivi, come il blocco del deposito (M9)', () => {
+      const vista = depositoFixture([registroFixture({ attivo: false, avvisi: [avviso({})] })])
+      expect(vociDaDeposito(vista)).toEqual([])
+    })
+
     it('senza avvisi non dà voci', () => {
       expect(vociDaDeposito(depositoFixture())).toEqual([])
     })
@@ -164,7 +169,7 @@ describe('dashboard-dati', () => {
       const barre = barreDeposito(r)
       expect(barre.length).toBe(3)
       expect(barre[0].nota).toBe('Criterio non ancora scelto')
-      expect(barre[1].nota).toBe('Criterio non ancora scelto')
+      expect(barre[1].nota).toBeNull()
     })
 
     it('con quantità parziale la nota dice «solo i rifiuti in kg»', () => {
