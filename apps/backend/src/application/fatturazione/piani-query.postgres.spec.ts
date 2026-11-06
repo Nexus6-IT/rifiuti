@@ -47,7 +47,8 @@ import { insiemiPerDefinitiva } from './lock-fatturazione'
 import { selezionaElaborazione } from './selezione-fatturazione'
 
 const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t27a-piani-tenants.json')
-const SOGLIA_SELEZIONE_MS = 5_000
+// 10 s sul totale: in locale la selezione custom ripetuta 6 volte sta a ~1,9 s; le forme degeneri superano i 20 s.
+const SOGLIA_SELEZIONE_MS = 10_000
 const SOGLIA_CITATI_MS = 3_000
 const ESECUZIONI = 6
 
