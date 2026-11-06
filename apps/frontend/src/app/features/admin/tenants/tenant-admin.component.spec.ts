@@ -152,3 +152,89 @@ describe('TenantAdminComponent - Numero REA', () => {
     expect(service.update.calls.mostRecent().args[1].reaNumber).toBe('777888')
   })
 })
+
+describe('TenantAdminComponent - moduli (feature flags) azienda', () => {
+  let fixture: ComponentFixture<TenantAdminComponent>
+  let component: TenantAdminComponent
+  let service: jasmine.SpyObj<TenantAdminService>
+
+  beforeEach(async () => {
+    service = jasmine.createSpyObj<TenantAdminService>('TenantAdminService', [
+      'list',
+      'create',
+      'update',
+      'setStatus',
+    ])
+    service.list.and.returnValue(of([]))
+    service.update.and.returnValue(of(tenant()))
+    const userService = jasmine.createSpyObj<UserAdminService>('UserAdminService', ['list'])
+    userService.list.and.returnValue(of([]))
+
+    await TestBed.configureTestingModule({
+      imports: [TenantAdminComponent],
+      providers: [
+        provideNoopAnimations(),
+        ConfirmationService,
+        { provide: TenantAdminService, useValue: service },
+        { provide: UserAdminService, useValue: userService },
+        {
+          provide: AuthService,
+          useValue: { currentUser: signal({ id: 'u1', email: 'u@test.com', role: 'SUPER_ADMIN' }) },
+        },
+        {
+          provide: ToastService,
+          useValue: jasmine.createSpyObj<ToastService>('ToastService', [
+            'success',
+            'error',
+            'info',
+            'warn',
+          ]),
+        },
+      ],
+    }).compileComponents()
+
+    fixture = TestBed.createComponent(TenantAdminComponent)
+    component = fixture.componentInstance
+    fixture.detectChanges()
+  })
+
+  async function apriModifica(t: Tenant): Promise<void> {
+    component.openEditDialog(t)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+  }
+
+  function casella(key: string): HTMLElement {
+    const el = document.body.querySelector<HTMLElement>(
+      `p-checkbox[ng-reflect-input-id="feat-${key}"] .p-checkbox-box`
+    )
+    expect(el).withContext(`casella ${key}`).not.toBeNull()
+    return el as HTMLElement
+  }
+
+  async function clicca(key: string): Promise<void> {
+    casella(key).click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+  }
+
+  it('il click sul DOM aggiunge e toglie il modulo, e update lo invia', async () => {
+    await apriModifica(tenant({ featureFlags: ['fir'] }))
+    const catalogo = component.featureCatalog.map(f => f.key)
+    const daAggiungere = catalogo.find(k => !component.form.featureFlags.includes(k))!
+    const daTogliere = component.form.featureFlags[0]
+
+    await clicca(daAggiungere)
+    expect(component.form.featureFlags).toContain(daAggiungere)
+
+    await clicca(daTogliere)
+    expect(component.form.featureFlags).not.toContain(daTogliere)
+
+    component.save()
+    const dto = service.update.calls.mostRecent().args[1]
+    expect(dto.featureFlags).toContain(daAggiungere)
+    expect(dto.featureFlags).not.toContain(daTogliere)
+  })
+})
