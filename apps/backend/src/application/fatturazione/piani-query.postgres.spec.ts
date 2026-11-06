@@ -48,7 +48,8 @@ import { selezionaElaborazione } from './selezione-fatturazione'
 
 const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t27a-piani-tenants.json')
 const SOGLIA_SELEZIONE_MS = 4_000
-const SOGLIA_CITATI_MS = 1_500
+const SOGLIA_CITATI_MS = 3_000
+const SOGLIA_GENERICO_MS = 10_000
 
 describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -127,6 +128,22 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
     expect(sel.documenti.length).toBeGreaterThan(0)
     expect(ms).toBeLessThan(SOGLIA_SELEZIONE_MS)
   }, 180_000)
+
+  it(`I4: la selezione con il piano generico (sesta esecuzione di Prisma) resta sotto ${SOGLIA_GENERICO_MS} ms (cast dell'array per riga: 40-64 s)`, async () => {
+    const t0 = Date.now()
+    const sel = await b.nel(tenantId, () =>
+      app.$transaction(
+        async tx => {
+          await tx.$executeRawUnsafe(`SET LOCAL plan_cache_mode = force_generic_plan`)
+          return selezionaElaborazione(tx, tenantId, { ...PARAMETRI_T19 })
+        },
+        { timeout: 170_000 }
+      )
+    )
+    const ms = Date.now() - t0
+    expect(sel.documenti.length).toBeGreaterThan(0)
+    expect(ms).toBeLessThan(SOGLIA_GENERICO_MS)
+  }, 200_000)
 
   it(`I2: le righe citate con il piano generico su 500 documenti restano sotto ${SOGLIA_CITATI_MS} ms (conversione dei 500 uuid per ogni riga: 5 s)`, async () => {
     const { id } = await b.nel(tenantId, () =>

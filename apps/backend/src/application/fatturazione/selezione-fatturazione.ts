@@ -425,7 +425,7 @@ export async function selezionaElaborazione(
       SELECT contratto_id::text AS "contrattoId", giorno_inizio AS "giornoInizio",
              mese_inizio AS "meseInizio", giorno_fine AS "giornoFine", mese_fine AS "meseFine"
       FROM periodi_fatturazione_cliente
-      WHERE tenant_id = ${tenantId}::uuid AND contratto_id = ANY(${contrattoIdsTutti}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND contratto_id IN (SELECT unnest(${contrattoIdsTutti}::uuid[]))
       ORDER BY contratto_id, ordine`
   )
   const periodiPer = raggruppa(periodiRighe, r => r.contrattoId)
@@ -442,7 +442,7 @@ export async function selezionaElaborazione(
              iban, conto_corrente_id::text AS "contoCorrenteId",
              registro_iva_id::text AS "registroIvaId"
       FROM clienti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${clienteFattIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${clienteFattIds}::uuid[]))`
   )
   const clientePerId = new Map(clienti.map(c => [c.id, c]))
 
@@ -498,7 +498,7 @@ export async function selezionaElaborazione(
              NULL::text AS "idDocumentoPa", c.contratto_principale_id::text AS "principaleId"
       FROM contratti_cliente c
       WHERE c.tenant_id = ${tenantId}::uuid AND c.eliminato_il IS NULL AND c.stato = 'ATTIVO'
-        AND c.contratto_principale_id = ANY(${principaleIds}::uuid[])
+        AND c.contratto_principale_id IN (SELECT unnest(${principaleIds}::uuid[]))
       ORDER BY c.numero, c.id`
   )
   const allegati = allegatiRighe.filter(a => {
@@ -518,7 +518,7 @@ export async function selezionaElaborazione(
              valido_dal::text AS "validoDal", valido_al::text AS "validoAl",
              codice_cig AS cig, codice_cup AS cup, id_documento_pa AS "idDocumentoPa"
       FROM elenchi_addebiti
-      WHERE tenant_id = ${tenantId}::uuid AND contratto_id = ANY(${contrattiConElenchi}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND contratto_id IN (SELECT unnest(${contrattiConElenchi}::uuid[]))
       ORDER BY codice, id`
   )
   const elenchiPerContratto = raggruppa(elenchiTutti, e => e.contrattoId)
@@ -574,7 +574,7 @@ export async function selezionaElaborazione(
              elenco_id::text AS "elencoId", movimento_vigente_id::text AS "movimentoVigenteId",
              data_movimento::text AS "dataMovimento"
       FROM legami_movimento
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${confermatiIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${confermatiIds}::uuid[]))`
   )
   const righeLegameSql = await seNonVuota(
     confermatiIds,
@@ -586,7 +586,7 @@ export async function selezionaElaborazione(
              codice_iva_id::text AS "codiceIvaId", aliquota_iva::text AS "aliquotaIva",
              natura_iva AS "naturaIva"
       FROM righe_legame_movimento
-      WHERE tenant_id = ${tenantId}::uuid AND legame_id = ANY(${confermatiIds}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND legame_id IN (SELECT unnest(${confermatiIds}::uuid[]))
       ORDER BY legame_id, ordine`
   )
   const movimentoIds = distinti(legamiRighe.map(l => l.movimentoVigenteId))
@@ -597,7 +597,7 @@ export async function selezionaElaborazione(
       SELECT id::text AS id, quantity::text AS quantita, unit AS unita, cer_code AS "cerCode",
              fir_id::text AS "firId"
       FROM waste_movements
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${movimentoIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${movimentoIds}::uuid[]))`
   )
   const movimentoPerId = new Map(movimenti.map(m => [m.id, m]))
   const firIds = distinti(movimenti.map(m => m.firId))
@@ -606,7 +606,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; numero: string | null }[]>`
       SELECT id::text AS id, fir_number AS numero FROM firs
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${firIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${firIds}::uuid[]))`
   )
   const numeroFirPer = new Map(firs.map(x => [x.id, x.numero]))
   const legamePerId = new Map(legamiRighe.map(l => [l.id, l]))
@@ -637,7 +637,7 @@ export async function selezionaElaborazione(
              addebito_id::text AS "addebitoId", cer_code AS "cerCode", riferimento
       FROM righe_addebito
       WHERE tenant_id = ${tenantId}::uuid
-        AND (elenco_id = ANY(${elenchiUsatiIds}::uuid[]) OR id = ANY(${righeCitateIds}::uuid[]))`
+        AND (elenco_id IN (SELECT unnest(${elenchiUsatiIds}::uuid[])) OR id IN (SELECT unnest(${righeCitateIds}::uuid[])))`
   )
   // Ordine dell'elenco come lo vede l'utente (`ordinaRigheListino`): tipo, CER o codice
   // dell'addebito, riferimento, id. Serve il codice dell'addebito: una query per insieme.
@@ -647,7 +647,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; codice: string }[]>`
       SELECT id::text AS id, codice FROM addebiti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${addebitoIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${addebitoIds}::uuid[]))`
   )
   const codiceAddebito = new Map(addebiti.map(x => [x.id, x.codice]))
   const righeOrdinate = ordinaRigheListino(
@@ -665,7 +665,7 @@ export async function selezionaElaborazione(
       SELECT riga_id::text AS "rigaId", ordine, fino_a::text AS "finoA", prezzo::text AS prezzo,
              sconto, provvigione, tipo_calcolo AS "tipoCalcolo"
       FROM scaglioni_riga_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND riga_id = ANY(${speciali}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND riga_id IN (SELECT unnest(${speciali}::uuid[]))
       ORDER BY riga_id, ordine`
   )
   const scadenzeRighe = await seNonVuota(
@@ -674,7 +674,7 @@ export async function selezionaElaborazione(
       tx.$queryRaw<(Scadenza & { rigaId: string })[]>`
       SELECT riga_id::text AS "rigaId", ordine, giorno, mese, anno::int AS anno
       FROM scadenze_riga_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND riga_id = ANY(${conScadenze}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND riga_id IN (SELECT unnest(${conScadenze}::uuid[]))
       ORDER BY riga_id, ordine`
   )
   const scaglioniPer = raggruppa(scaglioniRighe, s => s.rigaId)
@@ -686,7 +686,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; codice: string }[]>`
       SELECT id::text AS id, codice FROM codifiche_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${categoriaIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${categoriaIds}::uuid[]))`
   )
   const codiceCategoria = new Map(categorie.map(c => [c.id, c.codice]))
 
@@ -709,7 +709,7 @@ export async function selezionaElaborazione(
       SELECT id::text AS id, versione, codice, descrizione, modalita, giorni_rate AS "giorniRate",
              fine_mese AS "fineMese"
       FROM condizioni_pagamento
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${condizioneIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${condizioneIds}::uuid[]))`
   )
   const condizionePerId = new Map(condizioni.map(c => [c.id, c]))
 
@@ -732,7 +732,7 @@ export async function selezionaElaborazione(
         { id: string; versione: number; banca: string; iban: string; bic: string | null }[]
       >`
       SELECT id::text AS id, versione, banca, iban, bic FROM conti_correnti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${contoIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${contoIds}::uuid[]))`
   )
   const contoPerId = new Map(conti.map(c => [c.id, c]))
 
@@ -744,7 +744,7 @@ export async function selezionaElaborazione(
       SELECT id::text AS id, versione, descrizione, importo::text AS importo,
              codice_iva_id::text AS "codiceIvaId"
       FROM spese_accessorie
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${spesaIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${spesaIds}::uuid[]))`
   )
   const spesaPerId = new Map(spese.map(s => [s.id, s]))
 
@@ -754,7 +754,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; righe: string[] }[]>`
       SELECT id::text AS id, righe FROM testi_fatturazione
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${testoIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${testoIds}::uuid[]))`
   )
   const testoPerId = new Map(testi.map(t => [t.id, t.righe]))
 
@@ -767,7 +767,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; attivo: boolean; versione: number }[]>`
       SELECT id::text AS id, attivo, versione FROM registri_iva
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${registroIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${registroIds}::uuid[]))`
   )
   const registroAttivo = new Map(registri.map(r => [r.id, r.attivo]))
   const registroPerId = new Map(registri.map(r => [r.id, r]))
@@ -781,14 +781,14 @@ export async function selezionaElaborazione(
       tx.$queryRaw<DittaRiga[]>`
       SELECT id::text AS id, ragione_sociale AS "ragioneSociale", partita_iva AS "partitaIva",
              codice_fiscale AS "codiceFiscale"
-      FROM ditte WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${dittaIds}::uuid[])`
+      FROM ditte WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${dittaIds}::uuid[]))`
   )
   const sedi = await seNonVuota(
     sedeIds,
     () =>
       tx.$queryRaw<SedeRiga[]>`
       SELECT id::text AS id, via, civico, cap, comune, provincia FROM sedi_ditte
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${sedeIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${sedeIds}::uuid[]))`
   )
   const dittaPerId = new Map(ditte.map(d => [d.id, d]))
   const sedePerId = new Map(sedi.map(s => [s.id, s]))
@@ -801,7 +801,7 @@ export async function selezionaElaborazione(
       SELECT riga_addebito_id::text AS "rigaAddebitoId", tipo::text AS tipo,
              chiave_competenza AS "chiaveCompetenza"
       FROM marcatori_addebiti_fatturati
-      WHERE tenant_id = ${tenantId}::uuid AND riga_addebito_id = ANY(${conScadenze}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND riga_addebito_id IN (SELECT unnest(${conScadenze}::uuid[]))
       ORDER BY riga_addebito_id, tipo, chiave_competenza`
   )
   const marcatoriPer = raggruppa(marcatoriTutti, m => m.rigaAddebitoId)
@@ -818,7 +818,7 @@ export async function selezionaElaborazione(
       tx.$queryRaw<(CodiceIvaDaFatturare & { versione: number })[]>`
       SELECT id::text AS id, versione, aliquota::text AS aliquota, natura, descrizione
       FROM codici_iva
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ivaIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${ivaIds}::uuid[]))`
   )
   const codiciIva = new Map<string, CodiceIvaDaFatturare>(ivaRighe.map(c => [c.id, c]))
 

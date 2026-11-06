@@ -74,7 +74,7 @@ export async function insiemiPerDefinitiva(
     SELECT id::text AS id, contratto_id::text AS contratto_id, elenco_id::text AS elenco_id,
            periodo_dal::text AS periodo_dal, periodo_al::text AS periodo_al
     FROM documenti_fattura
-    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ids}::uuid[])`
+    WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${ids}::uuid[]))`
   const principali = distintiOrdinati(documenti.map(d => d.contratto_id))
 
   const allegati =
@@ -84,7 +84,7 @@ export async function insiemiPerDefinitiva(
           SELECT id::text AS id, contratto_principale_id::text AS principale
           FROM contratti_cliente
           WHERE tenant_id = ${tenantId}::uuid AND eliminato_il IS NULL
-            AND contratto_principale_id = ANY(${principali}::uuid[])`
+            AND contratto_principale_id IN (SELECT unnest(${principali}::uuid[]))`
   const contrattiIds = distintiOrdinati([...principali, ...allegati.map(a => a.id)])
 
   // Per ogni principale, i periodi dei suoi documenti: un elenco entra se vale in uno di essi.
@@ -112,7 +112,7 @@ export async function insiemiPerDefinitiva(
           SELECT id::text AS id, contratto_id::text AS contratto_id,
                  valido_dal::text AS valido_dal, valido_al::text AS valido_al
           FROM elenchi_addebiti
-          WHERE tenant_id = ${tenantId}::uuid AND contratto_id = ANY(${contrattiIds}::uuid[])`
+          WHERE tenant_id = ${tenantId}::uuid AND contratto_id IN (SELECT unnest(${contrattiIds}::uuid[]))`
   const elencoIds = new Set<string>()
   for (const d of documenti) if (d.elenco_id !== null) elencoIds.add(d.elenco_id)
   for (const e of elenchi) {
@@ -159,7 +159,7 @@ export async function insiemiPerDefinitiva(
       ? []
       : await tx.$queryRaw<{ id: string }[]>`
           SELECT id::text AS id FROM righe_addebito
-          WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ANY(${elenchiOrdinati}::uuid[])`
+          WHERE tenant_id = ${tenantId}::uuid AND elenco_id IN (SELECT unnest(${elenchiOrdinati}::uuid[]))`
 
   return {
     contrattoIds: contrattiIds,

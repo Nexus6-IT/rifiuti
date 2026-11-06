@@ -516,7 +516,7 @@ export async function eseguiAnteprima(
         // Un documento che non esiste piu' perde l'esclusione (non e' fra le bozze nuove).
         await tx.$executeRaw`
           UPDATE documenti_fattura SET escluso_da_definitiva = true, updated_at = now()
-          WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${bozzeEscluse.map(b => b.id)}::uuid[])`
+          WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${bozzeEscluse.map(b => b.id)}::uuid[]))`
       }
       const parziale = costruisciRiepilogo(
         bozze,

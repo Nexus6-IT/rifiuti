@@ -380,7 +380,7 @@ async function contaDifferenze(
     (
       await tx.$queryRaw<{ id: string }[]>`
         SELECT id::text AS id FROM legami_movimento
-        WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${[...nelleBozze]}::uuid[])
+        WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${[...nelleBozze]}::uuid[]))
           AND (stato <> 'CONFERMATO' OR fatturato_il IS NOT NULL)`
     ).map(r => r.id)
   )
@@ -391,7 +391,7 @@ async function contaDifferenze(
   if (prontaIl !== null && comuni.length > 0) {
     const r = await tx.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM legami_movimento
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${comuni}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${comuni}::uuid[]))
         AND updated_at > (${prontaIl}::timestamptz AT TIME ZONE 'UTC')`
     for (const x of r) legamiCambiati.add(x.id)
   }
@@ -564,7 +564,7 @@ async function definitivaInTransazione(
   if (elenchiDaLeggere.length > 0) {
     const righeElenchi = await tx.$queryRaw<{ id: string; codice: string }[]>`
       SELECT id::text AS id, codice FROM elenchi_addebiti
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${elenchiDaLeggere}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${elenchiDaLeggere}::uuid[]))`
     for (const r of righeElenchi) codiceElenco.set(r.id, r.codice)
   }
   const collator = new Intl.Collator('it')
@@ -604,7 +604,7 @@ async function definitivaInTransazione(
   const documentoIds = ordinati.map(c => c.id).sort()
   await tx.$queryRaw`
     SELECT id::text AS id FROM documenti_fattura
-    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${documentoIds}::uuid[]) AND stato = 'BOZZA'
+    WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${documentoIds}::uuid[])) AND stato = 'BOZZA'
     ORDER BY id FOR UPDATE`
 
   // 8a. Righe: solo `movimento_fatturato_id` (= `movimento_vigente_id` del legame); `riga_legame_id`
