@@ -11,7 +11,6 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-  NotImplementedException,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
@@ -19,6 +18,7 @@ import type { Queue } from 'bullmq'
 import {
   MESSAGGI_ERRORE,
   STATI_ELABORAZIONE,
+  TETTO_DOCUMENTI_DEFINITIVA,
   type ErroreDocumento,
   type ErroreGenerale,
   type Segnalazione,
@@ -38,7 +38,14 @@ import {
 } from './documenti-fattura.service'
 import { bloccaElaborazione } from './lock-fatturazione'
 import { eDataIso, oggiRoma } from './numerazione'
-import { segnaFallita, type RiepilogoElaborazione } from './anteprima'
+import { eViolazioneUnica, segnaFallita, type RiepilogoElaborazione } from './anteprima'
+import {
+  definitiveAttive,
+  leggiCandidati,
+  primoErroreBloccante,
+  riportaAnteprimaPronta,
+  ultimaDataSuperiore,
+} from './definitiva'
 import {
   cedenteNormalizzabile,
   type FiltriElaborazione,
@@ -54,6 +61,8 @@ export interface JobFatturazione {
   versione: number
   /** Volte che il job e' stato rimesso in attesa per un'altra elaborazione attiva (Q12). */
   rinvii?: number
+  /** Chi ha chiesto la definitiva (solo per `definitiva`): finisce in `definita_da`. */
+  utenteId?: string
 }
 
 /**
@@ -139,6 +148,11 @@ const versioneSuperata = () =>
   new ConflictException({
     error: 'VERSIONE_SUPERATA',
     message: "L'elaborazione è cambiata nel frattempo: ricarica per vedere i dati aggiornati.",
+  })
+const anteprimaSuperata = () =>
+  new ConflictException({
+    error: 'ANTEPRIMA_SUPERATA',
+    message: "I dati sono cambiati dopo l'anteprima: ricalcola per vedere i documenti aggiornati.",
   })
 const giaInDefinitiva = (messaggio: string) =>
   new ConflictException({ error: 'ELABORAZIONE_GIA_IN_DEFINITIVA', message: messaggio })
@@ -487,14 +501,117 @@ export class ElaborazioniService {
     )
   }
 
-  /** La scrive il Task 19. */
+  /**
+   * Richiesta della definitiva (spec §5.4, rotta `POST /:id/definitiva`): transazione breve e
+   * SINCRONA, perche' i codici HTTP non possono venire da un job (scansione P36). Controlla, in
+   * quest'ordine: stato (il secondo clic riceve `ELABORAZIONE_GIA_IN_DEFINITIVA`, prima della
+   * versione), versione, impronta, interruttore delle definitive, errori generali bloccanti
+   * (decisione 24), data anteriore all'ultima fattura (Q15), documenti da numerare (1-500).
+   * Poi porta l'elaborazione a `IN_DEFINITIVA` con la versione + 1 e il `job_id`, e DOPO il commit
+   * accoda il job `definitiva` con quell'id (Q5: un rilancio dopo un fallimento ha una versione
+   * nuova e quindi un id nuovo). Risponde `{ id }` (202 dalla rotta).
+   */
   async chiediDefinitiva(
-    _tenantId: string,
-    _utenteId: string,
-    _id: string,
-    _b: { impronta: string; versione: number }
-  ): Promise<void> {
-    throw new NotImplementedException('non implementato')
+    tenantId: string,
+    utenteId: string,
+    id: string,
+    b: { impronta: string; versione: number }
+  ): Promise<{ id: string }> {
+    if (!UUID.test(id)) throw elaborazioneNonTrovata()
+    const nuovaVersione = await nelContestoTenant(tenantId, () =>
+      this.prisma
+        .$transaction(async tx => {
+          await impostaTimeoutLock(tx)
+          const e = await bloccaElaborazione(tx, tenantId, id)
+          // a. Il secondo clic: prima della versione.
+          if (e.stato === 'IN_DEFINITIVA' || e.stato === 'DEFINITIVA') {
+            throw giaInDefinitiva(
+              e.stato === 'DEFINITIVA'
+                ? "L'elaborazione è già definitiva."
+                : "L'elaborazione è già in definitiva: attendi che finisca."
+            )
+          }
+          if (e.stato !== 'ANTEPRIMA_PRONTA') throw elaborazioneInCorso()
+          if (e.versione !== b.versione) throw versioneSuperata()
+          const [r] = await tx.$queryRaw<
+            { impronta: string | null; erroriGenerali: string[]; dataDocumento: string }[]
+          >`
+            SELECT impronta, COALESCE(errori_generali, ARRAY[]::text[]) AS "erroriGenerali",
+                   data_documento::text AS "dataDocumento"
+            FROM elaborazioni_fatturazione
+            WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`
+          if (r.impronta === null || r.impronta !== b.impronta) throw anteprimaSuperata()
+          // b. Interruttore (lettura semplice, nessun lock).
+          if (!(await definitiveAttive(tx, tenantId))) {
+            throw new ConflictException({
+              error: 'DEFINITIVE_NON_ATTIVE',
+              message: 'Le definitive non sono ancora attive per questa azienda.',
+            })
+          }
+          // c. Errori generali bloccanti (decisione 24).
+          const bloccante = primoErroreBloccante(r.erroriGenerali)
+          if (bloccante !== null) {
+            throw new ConflictException({
+              error: bloccante,
+              message: MESSAGGI_ERRORE[bloccante],
+            })
+          }
+          const candidati = await leggiCandidati(tx, tenantId, id)
+          const ultimaData = await ultimaDataSuperiore(tx, tenantId, candidati, r.dataDocumento)
+          if (ultimaData !== null) {
+            throw new ConflictException({
+              error: 'DATA_ANTERIORE_ULTIMA_FATTURA',
+              message: MESSAGGI_ERRORE.DATA_ANTERIORE_ULTIMA_FATTURA,
+              details: { ultimaData },
+            })
+          }
+          // d. Documenti da numerare.
+          if (candidati.length === 0) {
+            throw new ConflictException({
+              error: 'NESSUN_DOCUMENTO_DEFINIBILE',
+              message: 'Nessun documento è definibile: sono tutti esclusi o hanno errori.',
+            })
+          }
+          if (candidati.length > TETTO_DOCUMENTI_DEFINITIVA) {
+            throw new BadRequestException({
+              error: 'TROPPI_DOCUMENTI',
+              message: `Al massimo ${TETTO_DOCUMENTI_DEFINITIVA} documenti per volta: dividi l'elaborazione con i filtri.`,
+            })
+          }
+          // e. IN_DEFINITIVA con la versione nuova. 23505 dell'indice unico (§4.2): un'altra
+          // elaborazione del tenant e' `IN_CORSO` o `IN_DEFINITIVA`.
+          const nuova = e.versione + 1
+          const jobId = idJobFatturazione({
+            tipo: 'definitiva',
+            elaborazioneId: id,
+            versione: nuova,
+          })
+          await tx.$executeRaw`
+            UPDATE elaborazioni_fatturazione
+            SET stato = 'IN_DEFINITIVA', versione = ${nuova}::int, job_id = ${jobId}, esito = NULL,
+                errore_tecnico = NULL, updated_at = now()
+            WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'ELABORAZIONE_FATTURAZIONE_DEFINITIVA_RICHIESTA',
+              description: 'Definitiva di fatturazione richiesta',
+              metadata: {
+                elaborazioneId: id,
+                documenti: candidati.length,
+              } as Prisma.InputJsonValue,
+            },
+          })
+          return nuova
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
+        .catch(err => {
+          if (eViolazioneUnica(err)) throw elaborazioneInCorso()
+          return traduciErrorePrisma(err, ENTITA, {})
+        })
+    )
+    await this.accodaDefinitiva(tenantId, utenteId, id, nuovaVersione)
+    return { id }
   }
 
   // -------------------------------------------------------------------------------------------
@@ -594,6 +711,46 @@ export class ElaborazioniService {
       throw new ServiceUnavailableException({
         error: 'CODA_NON_DISPONIBILE',
         message: "Non è stato possibile avviare l'elaborazione: riprova fra poco.",
+      })
+    }
+  }
+
+  /**
+   * Accoda il job della definitiva dopo il commit, senza ritentativi (`attempts: 1`, spec §9). Se
+   * la coda non risponde l'elaborazione non deve restare `IN_DEFINITIVA`: torna `ANTEPRIMA_PRONTA`.
+   */
+  private async accodaDefinitiva(
+    tenantId: string,
+    utenteId: string,
+    elaborazioneId: string,
+    versione: number
+  ): Promise<void> {
+    const dati: JobFatturazione = {
+      tenantId,
+      elaborazioneId,
+      tipo: 'definitiva',
+      versione,
+      utenteId,
+    }
+    const jobId = idJobFatturazione(dati)
+    try {
+      await this.coda.add('definitiva', dati, {
+        jobId,
+        attempts: 1,
+        removeOnComplete: { age: 86_400, count: 1_000 },
+        removeOnFail: { age: 604_800 },
+      })
+    } catch {
+      await riportaAnteprimaPronta(
+        this.prisma,
+        tenantId,
+        elaborazioneId,
+        { versione, jobId },
+        { esito: null, erroreTecnico: 'Impossibile accodare la definitiva' }
+      )
+      throw new ServiceUnavailableException({
+        error: 'CODA_NON_DISPONIBILE',
+        message: 'Non è stato possibile avviare la definitiva: riprova fra poco.',
       })
     }
   }

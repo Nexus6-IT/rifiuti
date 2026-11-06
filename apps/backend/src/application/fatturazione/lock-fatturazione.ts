@@ -51,8 +51,9 @@ interface DocumentoLetto {
 /**
  * Legge, SENZA lock (Q20), gli insiemi che `bloccaPerDefinitiva` blocchera': contratti principali
  * e allegati dei documenti, i loro elenchi validi nel periodo del documento, le righe di listino
- * di quegli elenchi e i legami delle righe delle bozze. Una query per insieme (5 in tutto),
- * qualunque sia il numero di documenti; tutte `= ANY(uuid[])` su una tabella sola.
+ * di quegli elenchi e i legami delle righe delle bozze, piu' le righe di listino CITATE da quei
+ * legami e dalle righe dei documenti con il loro elenco, anche fuori validita' (N2 del Task 17).
+ * Al piu' 5 query in tutto, qualunque sia il numero di documenti; tutte `= ANY(uuid[])`.
  */
 export async function insiemiPerDefinitiva(
   tx: Prisma.TransactionClient,
@@ -116,8 +117,34 @@ export async function insiemiPerDefinitiva(
     )
     if (vale) elencoIds.add(e.id)
   }
-  const elenchiOrdinati = distintiOrdinati(elencoIds)
 
+  // Legami delle bozze e righe di listino CITATE (N2 del Task 17): una riga citata da un legame o
+  // da una riga del documento puo' stare in un elenco fuori validita' (arretrati, elenco scaduto).
+  // Anche quella riga e il suo elenco si bloccano, altrimenti una modifica del listino concorrente
+  // la cambierebbe sotto la definitiva. Una sola query per le due cose.
+  const citati = await tx.$queryRaw<{ tipo: string; id: string; elenco_id: string | null }[]>`
+    SELECT 'L' AS tipo, x.legame_id::text AS id, NULL::text AS elenco_id
+    FROM righe_documento_fattura x
+    WHERE x.tenant_id = ${tenantId}::uuid AND x.documento_id = ANY(${ids}::uuid[])
+      AND x.legame_id IS NOT NULL
+    UNION
+    SELECT 'R', ra.id::text, ra.elenco_id::text
+    FROM righe_addebito ra
+    WHERE ra.tenant_id = ${tenantId}::uuid AND ra.id IN (
+      SELECT x.riga_addebito_id FROM righe_documento_fattura x
+      WHERE x.tenant_id = ${tenantId}::uuid AND x.documento_id = ANY(${ids}::uuid[])
+        AND x.riga_addebito_id IS NOT NULL
+      UNION
+      SELECT rl.riga_addebito_id FROM righe_legame_movimento rl
+      WHERE rl.tenant_id = ${tenantId}::uuid AND rl.legame_id IN (
+        SELECT x.legame_id FROM righe_documento_fattura x
+        WHERE x.tenant_id = ${tenantId}::uuid AND x.documento_id = ANY(${ids}::uuid[])
+          AND x.legame_id IS NOT NULL))`
+  for (const c of citati) if (c.tipo === 'R' && c.elenco_id !== null) elencoIds.add(c.elenco_id)
+  const elenchiOrdinati = distintiOrdinati(elencoIds)
+  const righeCitate = citati.filter(c => c.tipo === 'R').map(c => c.id)
+
+  // Le righe di listino di TUTTI gli elenchi bloccati (insiemi interi, Q20), citate comprese.
   const righe =
     elenchiOrdinati.length === 0
       ? []
@@ -125,16 +152,11 @@ export async function insiemiPerDefinitiva(
           SELECT id::text AS id FROM righe_addebito
           WHERE tenant_id = ${tenantId}::uuid AND elenco_id = ANY(${elenchiOrdinati}::uuid[])`
 
-  const legami = await tx.$queryRaw<{ id: string }[]>`
-    SELECT DISTINCT legame_id::text AS id FROM righe_documento_fattura
-    WHERE tenant_id = ${tenantId}::uuid AND documento_id = ANY(${ids}::uuid[])
-      AND legame_id IS NOT NULL`
-
   return {
     contrattoIds: contrattiIds,
     elencoIds: elenchiOrdinati,
-    rigaIds: distintiOrdinati(righe.map(r => r.id)),
-    legameIds: distintiOrdinati(legami.map(l => l.id)),
+    rigaIds: distintiOrdinati([...righe.map(r => r.id), ...righeCitate]),
+    legameIds: distintiOrdinati(citati.filter(c => c.tipo === 'L').map(c => c.id)),
   }
 }
 

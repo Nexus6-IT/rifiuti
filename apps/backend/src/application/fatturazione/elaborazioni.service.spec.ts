@@ -1,4 +1,4 @@
-import { HttpException, NotImplementedException } from '@nestjs/common'
+import { HttpException } from '@nestjs/common'
 import { Queue } from 'bullmq'
 import { ElaborazioniService, idJobFatturazione } from './elaborazioni.service'
 import type { ParametriElaborazione } from './selezione-fatturazione'
@@ -99,7 +99,7 @@ describe('ElaborazioniService.avvia: controlli prima del database', () => {
   })
 })
 
-describe('ElaborazioniService: paginazione e stub', () => {
+describe('ElaborazioniService: paginazione e validazioni', () => {
   it('lista e documenti rifiutano una dimensione oltre 100 e accettano 100', async () => {
     const s = servizio()
     expect((await esito(s.lista('t', { pagina: 1, dimensione: 101 }))).codice).toBe(
@@ -120,13 +120,16 @@ describe('ElaborazioniService: paginazione e stub', () => {
     ).toBe('PAGINAZIONE_NON_VALIDA')
   })
 
-  it('chiediDefinitiva: non implementato (lo scrive il Task 19)', async () => {
-    await expect(
-      servizio().chiediDefinitiva('t', 'u', 'e', { impronta: 'x', versione: 1 })
-    ).rejects.toBeInstanceOf(NotImplementedException)
-    await expect(
-      servizio().chiediDefinitiva('t', 'u', 'e', { impronta: 'x', versione: 1 })
-    ).rejects.toThrow('non implementato')
+  it('chiediDefinitiva: un id che non e’ un UUID e’ un 404 senza toccare il database', async () => {
+    expect(
+      await esito(servizio().chiediDefinitiva('t', 'u', 'xx', { impronta: 'x', versione: 1 }))
+    ).toEqual({ status: 404, codice: 'ELABORAZIONE_NON_TROVATA' })
+  })
+
+  it('l’id del job della definitiva ha il trattino e la versione (Q5)', () => {
+    expect(idJobFatturazione({ tipo: 'definitiva', elaborazioneId: 'abc', versione: 3 })).toBe(
+      'definitiva-abc-v3'
+    )
   })
 
   it('un id che non e’ un UUID e’ un 404 senza toccare il database', async () => {

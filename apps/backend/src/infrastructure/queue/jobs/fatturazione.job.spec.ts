@@ -7,12 +7,20 @@ import { ATTESA_RINVIO_MS, FatturazioneJobProcessor, RINVII_MASSIMI } from './fa
 
 const mockEsegui = jest.fn()
 const mockFallita = jest.fn()
+const mockDefinitiva = jest.fn()
+const mockSegnala = jest.fn()
+jest.mock('../../../application/fatturazione/definitiva', () => ({
+  ...jest.requireActual('../../../application/fatturazione/definitiva'),
+  eseguiDefinitiva: (...a: unknown[]) => mockDefinitiva(...a),
+}))
 jest.mock('../../../application/fatturazione/anteprima', () => ({
   ...jest.requireActual('../../../application/fatturazione/anteprima'),
   eseguiAnteprima: (...a: unknown[]) => mockEsegui(...a),
   segnaFallita: (...a: unknown[]) => mockFallita(...a),
 }))
-jest.mock('../../../core/monitoring/segnala-errore-job', () => ({ segnalaErroreJob: jest.fn() }))
+jest.mock('../../../core/monitoring/segnala-errore-job', () => ({
+  segnalaErroreJob: (...a: unknown[]) => mockSegnala(...a),
+}))
 
 function creaJob(
   data: Record<string, unknown>,
@@ -44,6 +52,8 @@ describe('FatturazioneJobProcessor', () => {
   beforeEach(() => {
     mockEsegui.mockReset()
     mockFallita.mockReset()
+    mockDefinitiva.mockReset()
+    mockSegnala.mockReset()
     processor = new FatturazioneJobProcessor(prisma)
   })
   const esegui = (job: ReturnType<typeof creaJob>) =>
@@ -112,10 +122,79 @@ describe('FatturazioneJobProcessor', () => {
     expect(mockFallita).not.toHaveBeenCalled()
   })
 
-  it('un tipo che questo task non gestisce (la definitiva e’ del Task 19): fallimento definitivo', async () => {
-    await expect(esegui(creaJob({ ...DATI, tipo: 'definitiva' }))).rejects.toBeInstanceOf(
+  describe('definitiva (Task 19)', () => {
+    const UTENTE = '00000000-0000-4000-8000-0000000000aa'
+    const dati = { ...DATI, tipo: 'definitiva', versione: 2, utenteId: UTENTE }
+    const job = (o: { attemptsMade?: number } = {}) => ({
+      ...creaJob(dati, { attempts: 1, ...o }),
+      id: 'definitiva-00000000-0000-4000-8000-000000000001-v2',
+    })
+
+    it('esegue la definitiva col contesto del tenant, la versione e il job_id del job', async () => {
+      mockDefinitiva.mockResolvedValue({ esito: 'DEFINITIVA', documenti: 1, numeri: [] })
+      await esegui(job() as never)
+      expect(mockDefinitiva).toHaveBeenCalledWith(
+        prisma,
+        't1',
+        '00000000-0000-4000-8000-000000000001',
+        UTENTE,
+        { versione: 2, jobId: 'definitiva-00000000-0000-4000-8000-000000000001-v2' }
+      )
+      expect(mockEsegui).not.toHaveBeenCalled()
+      expect(mockSegnala).not.toHaveBeenCalled()
+    })
+
+    it('un esito negativo (ANTEPRIMA_SUPERATA) non e un errore del job: e gia nella colonna esito', async () => {
+      mockDefinitiva.mockResolvedValue({
+        esito: 'ANTEPRIMA_SUPERATA',
+        differenze: { nuovi: 1, cambiati: 0, fatturatiDaAltri: 0 },
+      })
+      await expect(esegui(job() as never)).resolves.toBeUndefined()
+      expect(mockSegnala).not.toHaveBeenCalled()
+    })
+
+    it('un errore tecnico: segnalato, il job fallisce senza un secondo tentativo (attempts 1)', async () => {
+      mockDefinitiva.mockRejectedValue(new Error('guasto'))
+      await expect(esegui(job() as never)).rejects.toThrow('guasto')
+      expect(mockSegnala).toHaveBeenCalledWith('fatturazione-definitiva', expect.any(Error), {
+        tenantId: 't1',
+      })
+      // Il ritorno a ANTEPRIMA_PRONTA lo fa `eseguiDefinitiva`, non il job: niente FALLITA.
+      expect(mockFallita).not.toHaveBeenCalled()
+    })
+
+    it('elaborazione non trovata (altra azienda): fallimento definitivo, niente segnalazione', async () => {
+      mockDefinitiva.mockRejectedValue(new ElaborazioneNonTrovataError())
+      await expect(esegui(job() as never)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(mockSegnala).not.toHaveBeenCalled()
+    })
+
+    it('senza azienda, con elaborazioneId o utenteId non validi: fallimento definitivo prima di ogni query', async () => {
+      for (const sbagliati of [
+        { tenantId: '' },
+        { elaborazioneId: 'non-un-uuid' },
+        { utenteId: 'non-un-uuid' },
+      ]) {
+        await expect(
+          esegui({ ...job(), data: { ...dati, ...sbagliati } } as never)
+        ).rejects.toBeInstanceOf(UnrecoverableError)
+      }
+      expect(mockDefinitiva).not.toHaveBeenCalled()
+    })
+
+    it('un job vecchio senza utenteId parte lo stesso (definita_da resta nullo)', async () => {
+      mockDefinitiva.mockResolvedValue({ esito: 'NON_ESEGUITA' })
+      const { utenteId: _scartato, ...senza } = dati
+      await esegui({ ...job(), data: senza } as never)
+      expect(mockDefinitiva.mock.calls[0][3]).toBeNull()
+    })
+  })
+
+  it('un tipo sconosciuto: fallimento definitivo', async () => {
+    await expect(esegui(creaJob({ ...DATI, tipo: 'altro' }))).rejects.toBeInstanceOf(
       UnrecoverableError
     )
     expect(mockEsegui).not.toHaveBeenCalled()
+    expect(mockDefinitiva).not.toHaveBeenCalled()
   })
 })

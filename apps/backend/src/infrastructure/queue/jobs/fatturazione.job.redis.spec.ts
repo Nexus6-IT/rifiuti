@@ -31,6 +31,12 @@ jest.mock('../../../application/fatturazione/anteprima', () => ({
   segnaFallita: jest.fn().mockResolvedValue(undefined),
 }))
 
+const mockDefinitiva = jest.fn()
+jest.mock('../../../application/fatturazione/definitiva', () => ({
+  ...jest.requireActual('../../../application/fatturazione/definitiva'),
+  eseguiDefinitiva: (...a: unknown[]) => mockDefinitiva(...a),
+}))
+
 const dati = (versione: number): JobFatturazione => ({
   tenantId: 't1',
   elaborazioneId: '00000000-0000-4000-8000-000000000001',
@@ -56,6 +62,7 @@ describe('coda fatturazione su Redis reale', () => {
     await worker?.close()
     worker = undefined
     mockEsegui.mockReset()
+    mockDefinitiva.mockReset()
   })
   afterAll(async () => {
     await coda.obliterate({ force: true })
@@ -169,5 +176,49 @@ describe('coda fatturazione su Redis reale', () => {
       async () => (await coda.getJob(id))?.getState().then(s => s === 'failed') ?? false
     )
     expect(mockEsegui).toHaveBeenCalledTimes(1)
+  })
+
+  it('definitiva (Task 19): un job fallito non impedisce la richiesta dopo; l’id ha il trattino, un solo tentativo, identita del job passata a eseguiDefinitiva', async () => {
+    const processor = new FatturazioneJobProcessor({} as never)
+    mockDefinitiva
+      .mockRejectedValueOnce(new Error('guasto'))
+      .mockResolvedValue({ esito: 'DEFINITIVA', documenti: 1, numeri: [] })
+    worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
+      connection,
+    })
+    const elaborazioneId = '00000000-0000-4000-8000-000000000008'
+    const utenteId = '00000000-0000-4000-8000-0000000000aa'
+    const v2 = idJobFatturazione({ tipo: 'definitiva', elaborazioneId, versione: 2 })
+    const v3 = idJobFatturazione({ tipo: 'definitiva', elaborazioneId, versione: 3 })
+    expect(v2).toBe(`definitiva-${elaborazioneId}-v2`)
+    const corpo = (versione: number): JobFatturazione => ({
+      tenantId: 't1',
+      elaborazioneId,
+      tipo: 'definitiva',
+      versione,
+      utenteId,
+    })
+    await coda.add('definitiva', corpo(2), { jobId: v2, attempts: 1 })
+    await aspetta(
+      async () => (await coda.getJob(v2))?.getState().then(s => s === 'failed') ?? false
+    )
+    // Un solo tentativo: nessun secondo giro automatico.
+    expect(mockDefinitiva).toHaveBeenCalledTimes(1)
+    expect((await coda.getJob(v2))!.attemptsMade).toBe(1)
+
+    // Stesso id: ignorato finche' il fallito non scade. Per questo la versione dopo.
+    await coda.add('definitiva', corpo(2), { jobId: v2, attempts: 1 })
+    expect(await (await coda.getJob(v2))!.getState()).toBe('failed')
+    await coda.add('definitiva', corpo(3), { jobId: v3, attempts: 1 })
+    await aspetta(
+      async () => (await coda.getJob(v3))?.getState().then(s => s === 'completed') ?? false
+    )
+    expect(mockDefinitiva).toHaveBeenCalledTimes(2)
+    expect(mockDefinitiva.mock.calls[1].slice(1)).toEqual([
+      't1',
+      elaborazioneId,
+      utenteId,
+      { versione: 3, jobId: v3 },
+    ])
   })
 })

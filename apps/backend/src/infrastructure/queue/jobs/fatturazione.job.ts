@@ -9,6 +9,7 @@ import {
   eseguiAnteprima,
   segnaFallita,
 } from '../../../application/fatturazione/anteprima'
+import { eseguiDefinitiva } from '../../../application/fatturazione/definitiva'
 import {
   CODA_FATTURAZIONE,
   type JobFatturazione,
@@ -28,7 +29,9 @@ export const RINVII_MASSIMI = 10
  * Worker della coda `fatturazione` (spec §9): il lavoro gira nel contesto dell'azienda del job,
  * col ruolo applicativo e la RLS. Senza azienda: `UnrecoverableError` senza toccare il database.
  * Il job `anteprima` ha 2 tentativi; l'ultimo che fallisce porta l'elaborazione a `FALLITA`.
- * La definitiva e' del Task 19.
+ * Il job `definitiva` ha UN solo tentativo (spec §9): un secondo troverebbe l'impronta cambiata o lo
+ * stato non piu' valido, e l'utente rilancia con una versione nuova. Le uscite senza commit
+ * riportano l'elaborazione a `ANTEPRIMA_PRONTA` dentro `eseguiDefinitiva`.
  */
 @Processor(CODA_FATTURAZIONE, { concurrency: 2 })
 export class FatturazioneJobProcessor extends WorkerHost {
@@ -39,7 +42,8 @@ export class FatturazioneJobProcessor extends WorkerHost {
   }
 
   async process(job: Job<JobFatturazione>, token?: string): Promise<void> {
-    const { tenantId, elaborazioneId, tipo, versione } = job.data ?? ({} as JobFatturazione)
+    const { tenantId, elaborazioneId, tipo, versione, utenteId } =
+      job.data ?? ({} as JobFatturazione)
 
     // Un retry non puo' far comparire un tenantId che non c'e': fallimento definitivo, prima di
     // qualunque query (stesso schema di `rentri-sync`).
@@ -51,10 +55,13 @@ export class FatturazioneJobProcessor extends WorkerHost {
     // Un id che non e' un UUID fallirebbe il cast di Postgres a ogni tentativo, e all'ultimo
     // anche `segnaFallita` ne coprirebbe l'errore: fallimento definitivo subito.
     if (
-      tipo === 'anteprima' &&
+      (tipo === 'anteprima' || tipo === 'definitiva') &&
       (typeof elaborazioneId !== 'string' || !UUID.test(elaborazioneId))
     ) {
       throw new UnrecoverableError('Job fatturazione con elaborazioneId non valido')
+    }
+    if (tipo === 'definitiva' && utenteId !== undefined && !UUID.test(String(utenteId))) {
+      throw new UnrecoverableError('Job fatturazione con utenteId non valido')
     }
 
     await TenantContext.run({ tenantId: tenant }, async () => {
@@ -62,8 +69,44 @@ export class FatturazioneJobProcessor extends WorkerHost {
         await this.anteprima(job, token, tenant, elaborazioneId, versione)
         return
       }
+      if (tipo === 'definitiva') {
+        await this.definitiva(job, tenant, elaborazioneId, versione, utenteId ?? null)
+        return
+      }
       throw new UnrecoverableError(`Tipo di job fatturazione non gestito: ${String(tipo)}`)
     })
+  }
+
+  /**
+   * Un solo tentativo. L'esito (anche negativo) e' gia' nella colonna `esito` dell'elaborazione:
+   * il job finisce senza errore. Un errore tecnico ha gia' riportato l'elaborazione a
+   * `ANTEPRIMA_PRONTA` con `errore_tecnico`: qui si segnala e si lascia fallire il job.
+   */
+  private async definitiva(
+    job: Job<JobFatturazione>,
+    tenantId: string,
+    elaborazioneId: string,
+    versione: number,
+    utenteId: string | null
+  ): Promise<void> {
+    try {
+      const esito = await eseguiDefinitiva(this.prisma, tenantId, elaborazioneId, utenteId, {
+        versione,
+        jobId: String(job.id),
+      })
+      this.logger.log(`Definitiva ${esito.esito} (jobId=${job.id})`)
+    } catch (err) {
+      if (err instanceof ElaborazioneNonTrovataError) {
+        // Non e' di questo tenant (o non esiste): niente da scrivere, niente da ritentare.
+        throw new UnrecoverableError('Elaborazione non trovata')
+      }
+      this.logger.error(
+        `Definitiva fallita (jobId=${job.id})`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      segnalaErroreJob('fatturazione-definitiva', err, { tenantId })
+      throw err
+    }
   }
 
   private async anteprima(
