@@ -1,9 +1,20 @@
 // Scostamenti dopo la fattura e presa d'atto (fase 4.4b1, Task 21, spec §5.7).
 //
-// Lista: legami `FATTURATO` con `scostamento_dopo_fattura` e senza presa d'atto, uno per legame
-// (Q40). La pagina dei legami si legge con un join su `documenti_fattura`; il resto (testa della
-// catena, righe `MOVIMENTO` del documento) si legge per pagina con `= ANY(ids)`, mai per tenant
-// dopo `joinLineari`. Non scrive nulla e non prende lock.
+// Lista: legami `FATTURATO` con scostamento aperto, uno per legame (Q40). La pagina dei legami si
+// legge con un join su `documenti_fattura`; il resto (movimento fatturato e testa della catena,
+// righe `MOVIMENTO` del documento, righe del legame) si legge per pagina con `= ANY(ids)`, mai per
+// tenant dopo `joinLineari`. La lettura e' una sola transazione REPEATABLE READ: totale e pagina
+// vedono lo stesso istante. Non scrive nulla e non prende lock.
+//
+// Scostamento APERTO (un solo punto, `condizioneScostamentoAperto`, usato da lista, totale, presa
+// d'atto e suo UPDATE): `scostamento_dopo_fattura AND (scostamento_gestito_il IS NULL OR
+// scostamento_il > scostamento_gestito_il)`. Una nuova rettifica dopo la presa d'atto (la 4.3
+// aggiorna `scostamento_il`, non tocca `scostamento_gestito_*`) riapre lo scostamento: e' una
+// differenza nuova. La 4.3 non si tocca.
+//
+// La testa e' `movimento_vigente_id` del legame. Se un riallineamento e' fallito (legame
+// `DA_RIALLINEARE`, decisione 21) il vigente puo' essere rimasto indietro: la lista mostra allora
+// il valore della testa vecchia. Lo segnala la UI del 25b/4.4c, non questo servizio.
 //
 // Presa d'atto: il legame si blocca `FOR UPDATE` per id, da solo (nessun altro lock: ne' quello del
 // registro, ne' quello consultivo per radice, S5). Una correzione concorrente del registro che
@@ -73,27 +84,45 @@ interface LegameInPagina {
   dataDocumento: string
 }
 
-interface TestaLetta {
+interface MovimentoLetto {
   id: string
   tipoAnnotazione: 'ORDINARIA' | 'RETTIFICA' | 'ANNULLAMENTO'
   cerCode: string | null
   quantity: string | null
+  unit: string | null
+  causale: string | null
 }
 
 interface RigaLetta {
   legameId: string
   documentoId: string
+  rigaAddebitoId: string | null
+  movimentoFatturatoId: string | null
   quantita: string | null
-  cerCode: string | null
   prezzoUnitario: string
   sconto: string | null
   prezzoTotale: string
 }
 
+interface RigaLegameLetta {
+  legameId: string
+  rigaAddebitoId: string
+  tipoQuantita: RigaFatturataScostamento['tipoQuantita']
+  unitaMisura: string
+  quantitaOrigine: RigaFatturataScostamento['quantitaOrigine']
+  prezzoSpeciale: boolean
+}
+
 /**
- * Condizione comune di "scostamento aperto". Esportata con i costruttori delle query della
- * pagina perche' il test di volume ne fa l'EXPLAIN: sono le query che girano davvero.
+ * Scostamento aperto: l'UNICA definizione, per la lista, il totale, la presa d'atto e il suo
+ * UPDATE. `alias` e' un nome fisso scritto qui dentro (mai input), vuoto per la tabella senza alias.
  */
+export function condizioneScostamentoAperto(alias: string): Prisma.Sql {
+  const c = Prisma.raw(alias === '' ? '' : `${alias}.`)
+  return Prisma.sql`(${c}scostamento_dopo_fattura AND (${c}scostamento_gestito_il IS NULL OR ${c}scostamento_il > ${c}scostamento_gestito_il))`
+}
+
+/** Costruttori delle query della pagina: esportati perche' il test di volume ne fa l'EXPLAIN. */
 export function sqlPaginaScostamenti(
   tenantId: string,
   clienteId: string | undefined,
@@ -123,8 +152,7 @@ function condizioniScostamentiAperti(tenantId: string, clienteId: string | undef
   const condizioni: Prisma.Sql[] = [
     Prisma.sql`l.tenant_id = ${tenantId}::uuid`,
     Prisma.sql`l.stato = 'FATTURATO'::stato_legame_movimento`,
-    Prisma.sql`l.scostamento_dopo_fattura`,
-    Prisma.sql`l.scostamento_gestito_il IS NULL`,
+    condizioneScostamentoAperto('l'),
   ]
   if (clienteId !== undefined) {
     condizioni.push(Prisma.sql`d.cliente_fatturazione_id = ${clienteId}::uuid`)
@@ -132,13 +160,14 @@ function condizioniScostamentiAperti(tenantId: string, clienteId: string | undef
   return Prisma.join(condizioni, ' AND ')
 }
 
-/** Testa vigente di ciascun legame della pagina, per chiave primaria. */
-export function sqlTestePerVigenti(tenantId: string, vigenteIds: string[]): Prisma.Sql {
+/** Movimenti (testa vigente e movimento fatturato) della pagina, per chiave primaria. */
+export function sqlMovimentiPerId(tenantId: string, movimentoIds: string[]): Prisma.Sql {
   return Prisma.sql`
     SELECT m.id::text AS id, m.tipo_annotazione::text AS "tipoAnnotazione",
-           m.cer_code AS "cerCode", m.quantity::text AS quantity
+           m.cer_code AS "cerCode", m.quantity::text AS quantity, m.unit AS unit,
+           m.causale AS causale
     FROM waste_movements m
-    WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ANY(${vigenteIds}::uuid[])`
+    WHERE m.tenant_id = ${tenantId}::uuid AND m.id = ANY(${movimentoIds}::uuid[])`
 }
 
 /** Righe `MOVIMENTO` dei documenti della pagina, per legame e per documento. */
@@ -149,13 +178,27 @@ export function sqlRigheDellaPagina(
 ): Prisma.Sql {
   return Prisma.sql`
     SELECT r.legame_id::text AS "legameId", r.documento_id::text AS "documentoId",
-           r.quantita::text AS quantita, r.cer_code AS "cerCode",
-           r.prezzo_unitario::text AS "prezzoUnitario", r.sconto AS sconto,
-           r.prezzo_totale::text AS "prezzoTotale"
+           r.riga_addebito_id::text AS "rigaAddebitoId",
+           r.movimento_fatturato_id::text AS "movimentoFatturatoId",
+           r.quantita::text AS quantita, r.prezzo_unitario::text AS "prezzoUnitario",
+           r.sconto AS sconto, r.prezzo_totale::text AS "prezzoTotale"
     FROM righe_documento_fattura r
     WHERE r.tenant_id = ${tenantId}::uuid AND r.tipo_riga = 'MOVIMENTO'::tipo_riga_documento_fattura
       AND r.legame_id = ANY(${legameIds}::uuid[]) AND r.documento_id = ANY(${documentoIds}::uuid[])
     ORDER BY r.documento_id, r.numero_linea`
+}
+
+/**
+ * Righe dei legami della pagina: dicono come si ricalcola la quantita' di ciascuna riga del
+ * documento. `riga_legame_id` e' NULL nei documenti (Q1): la chiave e' `(legame, riga_addebito)`.
+ */
+export function sqlRigheDeiLegami(tenantId: string, legameIds: string[]): Prisma.Sql {
+  return Prisma.sql`
+    SELECT g.legame_id::text AS "legameId", g.riga_addebito_id::text AS "rigaAddebitoId",
+           g.tipo_quantita::text AS "tipoQuantita", g.unita_misura AS "unitaMisura",
+           g.quantita_origine::text AS "quantitaOrigine", g.prezzo_speciale AS "prezzoSpeciale"
+    FROM righe_legame_movimento g
+    WHERE g.tenant_id = ${tenantId}::uuid AND g.legame_id = ANY(${legameIds}::uuid[])`
 }
 
 const quantita3 = (q: string | null): string | null =>
@@ -219,16 +262,19 @@ export class ScostamentiService {
   async lista(tenantId: string, q: FiltriScostamenti): Promise<Pagina<ScostamentoRiga>> {
     paginaValida(q)
     return nelContestoTenant(tenantId, () =>
-      this.prisma.$transaction(async tx => {
-        const [{ totale }] = await tx.$queryRaw<{ totale: number }[]>(
-          sqlTotaleScostamenti(tenantId, q.clienteId)
-        )
-        const legami = await tx.$queryRaw<LegameInPagina[]>(
-          sqlPaginaScostamenti(tenantId, q.clienteId, q.dimensione, (q.pagina - 1) * q.dimensione)
-        )
-        const elementi = await this.costruisci(tx, tenantId, legami)
-        return { elementi, totale, pagina: q.pagina, dimensione: q.dimensione }
-      })
+      this.prisma.$transaction(
+        async tx => {
+          const [{ totale }] = await tx.$queryRaw<{ totale: number }[]>(
+            sqlTotaleScostamenti(tenantId, q.clienteId)
+          )
+          const legami = await tx.$queryRaw<LegameInPagina[]>(
+            sqlPaginaScostamenti(tenantId, q.clienteId, q.dimensione, (q.pagina - 1) * q.dimensione)
+          )
+          const elementi = await this.costruisci(tx, tenantId, legami)
+          return { elementi, totale, pagina: q.pagina, dimensione: q.dimensione }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      )
     )
   }
 
@@ -239,48 +285,60 @@ export class ScostamentiService {
     legami: LegameInPagina[]
   ): Promise<ScostamentoRiga[]> {
     if (legami.length === 0) return []
-    const teste = new Map(
-      (
-        await tx.$queryRaw<TestaLetta[]>(
-          sqlTestePerVigenti(tenantId, [...new Set(legami.map(l => l.movimentoVigenteId))])
-        )
-      ).map(t => [t.id, t])
-    )
+    const legameIds = legami.map(l => l.id)
     const righeLette = await tx.$queryRaw<RigaLetta[]>(
-      sqlRigheDellaPagina(
-        tenantId,
-        legami.map(l => l.id),
-        [...new Set(legami.map(l => l.documentoId))]
+      sqlRigheDellaPagina(tenantId, legameIds, [...new Set(legami.map(l => l.documentoId))])
+    )
+    const righeLegame = new Map(
+      (await tx.$queryRaw<RigaLegameLetta[]>(sqlRigheDeiLegami(tenantId, legameIds))).map(g => [
+        `${g.legameId}:${g.rigaAddebitoId}`,
+        g,
+      ])
+    )
+    const movimentoIds = new Set<string>(legami.map(l => l.movimentoVigenteId))
+    for (const r of righeLette) if (r.movimentoFatturatoId) movimentoIds.add(r.movimentoFatturatoId)
+    const movimenti = new Map(
+      (await tx.$queryRaw<MovimentoLetto[]>(sqlMovimentiPerId(tenantId, [...movimentoIds]))).map(
+        m => [m.id, m]
       )
     )
     const righePerLegame = new Map<string, RigaLetta[]>()
     for (const r of righeLette) {
-      const l = r.legameId
-      const lista = righePerLegame.get(l) ?? []
+      const lista = righePerLegame.get(r.legameId) ?? []
       lista.push(r)
-      righePerLegame.set(l, lista)
+      righePerLegame.set(r.legameId, lista)
     }
 
     return legami.map(l => {
       // Solo le righe del documento che ha fatturato il legame (un documento annullato o stornato
       // prima puo' avere citato lo stesso legame).
       const righe = (righePerLegame.get(l.id) ?? []).filter(r => r.documentoId === l.documentoId)
-      const testa = teste.get(l.movimentoVigenteId)
-      const fatturato: RigaFatturataScostamento[] = righe.map(r => ({
-        quantita: r.quantita,
-        prezzoTotale: r.prezzoTotale,
-        prezzoUnitario: r.prezzoUnitario,
-        sconto: r.sconto,
-        tipoRiga: 'MOVIMENTO',
-        // Il prezzo 0 e' la riga a prezzo speciale: l'importo sta nelle fasce (Task 2).
-        prezzoSpeciale: new Prisma.Decimal(r.prezzoUnitario).isZero(),
-      }))
-      const annullato = testa?.tipoAnnotazione === 'ANNULLAMENTO'
+      const testa = movimenti.get(l.movimentoVigenteId)
+      // FK composta legame -> movimento vigente: la testa c'e' sempre. Se manca e' un difetto.
+      if (!testa) throw new Error('Scostamenti: movimento vigente del legame non trovato.')
+      const idFatturato = righe.find(r => r.movimentoFatturatoId)?.movimentoFatturatoId
+      const fatturatoMov = idFatturato ? movimenti.get(idFatturato) : undefined
+      const fatturato: RigaFatturataScostamento[] = righe.map(r => {
+        const g = r.rigaAddebitoId ? righeLegame.get(`${l.id}:${r.rigaAddebitoId}`) : undefined
+        return {
+          quantita: r.quantita,
+          prezzoTotale: r.prezzoTotale,
+          prezzoUnitario: r.prezzoUnitario,
+          sconto: r.sconto,
+          tipoRiga: 'MOVIMENTO',
+          prezzoSpeciale: g?.prezzoSpeciale ?? false,
+          tipoQuantita: g?.tipoQuantita ?? null,
+          unitaMisura: g?.unitaMisura ?? null,
+          quantitaOrigine: g?.quantitaOrigine ?? null,
+        }
+      })
+      const annullato = testa.tipoAnnotazione === 'ANNULLAMENTO'
+      const quantitaTesta = quantita3(testa.quantity)
       const attuale = valoreAttualeScostamento({
         fatturato,
-        testa: { quantita: quantita3(testa?.quantity ?? null), annullato },
+        testa: { quantity: quantitaTesta, unit: testa.unit, annullato },
       })
-      const quantitaFatturata = quantita3(righe[0]?.quantita ?? null)
+      const quantitaFatturata = quantita3(fatturatoMov?.quantity ?? null)
       return {
         legameId: l.id,
         versioneLegame: l.versione,
@@ -290,11 +348,15 @@ export class ScostamentiService {
           dataDocumento: l.dataDocumento,
         },
         tipoCorrezione: tipoCorrezioneScostamento({
-          tipoAnnotazione: testa?.tipoAnnotazione ?? 'RETTIFICA',
-          cerTesta: testa?.cerCode ?? null,
-          cerFatturato: righe.find(r => r.cerCode !== null)?.cerCode ?? null,
-          quantitaTesta: quantita3(testa?.quantity ?? null),
-          quantitaFatturata,
+          tipoAnnotazione: testa.tipoAnnotazione,
+          cerTesta: testa.cerCode,
+          cerFatturato: fatturatoMov?.cerCode ?? testa.cerCode,
+          quantitaTesta,
+          unitaTesta: testa.unit,
+          quantitaFatturata: fatturatoMov ? quantitaFatturata : quantitaTesta,
+          unitaFatturata: fatturatoMov ? fatturatoMov.unit : testa.unit,
+          causaleTesta: testa.causale,
+          causaleFatturata: fatturatoMov ? fatturatoMov.causale : testa.causale,
         }),
         quantitaFatturata,
         importoFatturato: importoFatturatoScostamento(fatturato),
@@ -331,7 +393,7 @@ export class ScostamentiService {
             }[]
           >`
             SELECT stato::text AS stato, versione::int AS versione,
-                   (scostamento_dopo_fattura AND scostamento_gestito_il IS NULL) AS aperto,
+                   ${condizioneScostamentoAperto('')} AS aperto,
                    documento_id::text AS "documentoId"
             FROM legami_movimento
             WHERE tenant_id = ${tenantId}::uuid AND id = ${legameId}::uuid
@@ -351,8 +413,8 @@ export class ScostamentiService {
             SET scostamento_gestito_il = now(), scostamento_gestito_da = ${utenteId}::uuid,
                 scostamento_nota = ${nota}, versione = versione + 1, updated_at = now()
             WHERE tenant_id = ${tenantId}::uuid AND id = ${legameId}::uuid
-              AND stato = 'FATTURATO' AND scostamento_dopo_fattura
-              AND scostamento_gestito_il IS NULL AND versione = ${versione}::int`
+              AND stato = 'FATTURATO' AND ${condizioneScostamentoAperto('')}
+              AND versione = ${versione}::int`
           if (aggiornati !== 1) throw new Error('Presa d’atto: legame non aggiornato.')
           await tx.activityLog.create({
             data: {

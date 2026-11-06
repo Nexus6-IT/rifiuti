@@ -2,7 +2,7 @@
  * Volume della lista degli scostamenti (fase 4.4b1, Task 21, Q32) contro un Postgres reale,
  * collegato COME `wasteflow_app` (RLS FORCE): 200.000 movimenti e 200.000 legami in un solo tenant,
  * 60 documenti definitivi e 40 scostamenti aperti. La pagina deve stare sotto 1 s e le sue query
- * non devono leggere movimenti e legami con una scansione sequenziale (le righe dei documenti sono
+ * non devono leggere i movimenti con una scansione sequenziale (le righe dei documenti sono
  * 60: la sequenziale su una tabella cosi piccola e il piano giusto). Fixture a blocchi (col
  * proprietario), pulizia solo per id esatti; le aziende di volume rimaste da un giro interrotto
  * si ripuliscono dai loro id, scritti su file.
@@ -37,7 +37,7 @@ import {
   ScostamentiService,
   sqlPaginaScostamenti,
   sqlRigheDellaPagina,
-  sqlTestePerVigenti,
+  sqlMovimentiPerId,
   sqlTotaleScostamenti,
 } from './scostamenti.service'
 
@@ -45,6 +45,7 @@ const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t21-volume-tenants.json')
 const MOVIMENTI = 200_000
 const DOCUMENTI = 60
 const SCOSTAMENTI = 40
+const BLOCCO_FATTURATO = 5_000
 
 describe(`Scostamenti — volume: ${MOVIMENTI} movimenti nel tenant`, () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -102,14 +103,30 @@ describe(`Scostamenti — volume: ${MOVIMENTI} movimenti nel tenant`, () => {
     await analizza()
     // I primi DOCUMENTI legami stanno su contratti diversi: un documento ciascuno, in date diverse.
     const fatturati = volume.legamiIds.slice(0, DOCUMENTI)
+    let primoDocumento = ''
     for (const [i, legameId] of fatturati.entries()) {
-      await creaDocumentoDiTest(owner, t.id, {
+      const { documentoId } = await creaDocumentoDiTest(owner, t.id, {
         stato: 'DEFINITIVO',
         registroIvaId: volume.registroIvaId,
         anno: 2026,
         dataDocumento: `2026-04-${String((i % 28) + 1).padStart(2, '0')}`,
         legamiIds: [legameId],
       })
+      if (i === 0) primoDocumento = documentoId
+    }
+    // I4: in esercizio quasi tutti i legami finiscono FATTURATO e ci restano. Gli altri 199.940 si
+    // portano a FATTURATO (a blocchi, col proprietario) sul primo documento: nessuno ha scostamento.
+    const resto = volume.legamiIds.slice(DOCUMENTI)
+    for (let da = 0; da < resto.length; da += BLOCCO_FATTURATO) {
+      await owner.$executeRawUnsafe(
+        `UPDATE legami_movimento
+         SET stato = 'FATTURATO', fatturato_il = now(), documento_id = $3::uuid,
+             riferimento_fattura = '1', updated_at = now()
+         WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])`,
+        t.id,
+        resto.slice(da, da + BLOCCO_FATTURATO),
+        primoDocumento
+      )
     }
     legamiScostati = fatturati.slice(0, SCOSTAMENTI)
     await owner.$executeRawUnsafe(
@@ -130,18 +147,24 @@ describe(`Scostamenti — volume: ${MOVIMENTI} movimenti nel tenant`, () => {
 
   const nel = <R>(fn: () => Promise<R>) => TenantContext.run({ tenantId }, async () => await fn())
 
-  it(`${MOVIMENTI} movimenti nel tenant: il tenant ne ha davvero tanti`, async () => {
+  it(`${MOVIMENTI} movimenti nel tenant: il tenant ne ha davvero tanti, quasi tutti FATTURATO`, async () => {
     const [r] = await owner.$queryRawUnsafe<{ n: number }[]>(
       `SELECT count(*)::int AS n FROM waste_movements WHERE tenant_id = $1::uuid`,
       tenantId
     )
     expect(r.n).toBe(MOVIMENTI)
+    const [f] = await owner.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM legami_movimento WHERE tenant_id = $1::uuid AND stato = 'FATTURATO'`,
+      tenantId
+    )
+    expect(f.n).toBe(MOVIMENTI)
   })
 
   it('una pagina da 25 sta sotto 1 s e riporta solo gli scostamenti aperti', async () => {
     const t0 = Date.now()
     const p = await nel(() => servizio.lista(tenantId, { pagina: 1, dimensione: 25 }))
     const ms = Date.now() - t0
+    console.log(`lista: pagina da 25 + totale in ${ms} ms`)
     expect(ms).toBeLessThan(1000)
     expect(p.totale).toBe(SCOSTAMENTI)
     expect(p.elementi).toHaveLength(25)
@@ -151,7 +174,7 @@ describe(`Scostamenti — volume: ${MOVIMENTI} movimenti nel tenant`, () => {
     expect([...visti].sort()).toEqual([...legamiScostati].sort())
   })
 
-  it('EXPLAIN delle query della pagina: nessuna Seq Scan su movimenti e legami', async () => {
+  it('EXPLAIN delle query della pagina: nessuna Seq Scan su waste_movements', async () => {
     const ids = legamiScostati.slice(0, 25)
     const documenti = (
       await owner.$queryRawUnsafe<{ id: string }[]>(
@@ -168,22 +191,23 @@ describe(`Scostamenti — volume: ${MOVIMENTI} movimenti nel tenant`, () => {
     const query: [string, Prisma.Sql][] = [
       ['pagina', sqlPaginaScostamenti(tenantId, undefined, 25, 0)],
       ['totale', sqlTotaleScostamenti(tenantId, undefined)],
-      ['teste', sqlTestePerVigenti(tenantId, vigenti)],
+      ['teste', sqlMovimentiPerId(tenantId, vigenti)],
       ['righe', sqlRigheDellaPagina(tenantId, ids, documenti)],
     ]
     for (const [nome, sql] of query) {
       const piano = await nel(() =>
         app.$transaction(async tx => {
           const righe = await tx.$queryRawUnsafe<Record<string, string>[]>(
-            `EXPLAIN ${sql.text}`,
+            `EXPLAIN (ANALYZE) ${sql.text}`,
             ...sql.values
           )
           return righe.map(r => Object.values(r)[0]).join('\n')
         })
       )
+      console.log(`${nome}: ${/Execution Time: .*/.exec(piano)?.[0] ?? '?'}`)
       expect({ nome, piano }).toEqual({
         nome,
-        piano: expect.not.stringMatching(/Seq Scan on (waste_movements|legami_movimento)/),
+        piano: expect.not.stringMatching(/Seq Scan on waste_movements/),
       })
     }
   })

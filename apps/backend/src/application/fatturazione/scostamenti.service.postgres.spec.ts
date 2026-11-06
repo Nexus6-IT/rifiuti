@@ -27,7 +27,12 @@ import { creaBancoT20, type BancoT20 } from '../../test-support/fatturazione-ann
 import { creaDocumentoDiTest } from '../../test-support/fatturazione-di-test'
 import type { AziendaT18 } from '../../test-support/fatturazione-t18-di-test'
 import { esitoHttp as esito } from '../../test-support/fatturazione-t19-di-test'
-import { pulisciTenantDiTest } from '../../test-support/legami-di-test'
+import {
+  creaLegameDiTest,
+  creaMovimentoDiTest,
+  pulisciTenantDiTest,
+} from '../../test-support/legami-di-test'
+import { creaRiga } from '../../test-support/listino-di-test'
 import { ScostamentiService } from './scostamenti.service'
 
 type Tipo = 'RETTIFICA' | 'ANNULLAMENTO'
@@ -70,7 +75,14 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
     az: AziendaT18,
     legameId: string,
     radiceId: string,
-    o: { tipo?: Tipo; quantita?: string; cer?: string } = {}
+    o: {
+      tipo?: Tipo
+      quantita?: string
+      cer?: string
+      causale?: string
+      /** Testa attuale della catena (default: la radice). */
+      precedenteId?: string
+    } = {}
   ): Promise<string> {
     const origine = await owner.wasteMovement.findUniqueOrThrow({ where: { id: radiceId } })
     const ultimo = await owner.wasteMovement.aggregate({
@@ -85,12 +97,12 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
         progressiveNumber: (ultimo._max.progressiveNumber ?? 0) + 1,
         type: origine.type,
         movementDate: origine.movementDate,
-        causale: origine.causale,
+        causale: o.causale ?? origine.causale,
         cerCode: o.cer ?? origine.cerCode,
         quantity: o.quantita ?? '90',
         unit: 'KG',
         tipoAnnotazione: o.tipo ?? 'RETTIFICA',
-        movimentoRettificatoId: radiceId,
+        movimentoRettificatoId: o.precedenteId ?? radiceId,
         movimentoOriginaleId: radiceId,
         motivoAnnotazione: 'prova',
       },
@@ -122,7 +134,10 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
   async function fatturaConRighe(
     az: AziendaT18,
     legameId: string,
-    o: { data?: string; extra?: { prezzo: string; speciale?: boolean }[] } = {}
+    o: {
+      data?: string
+      extra?: { prezzo: string; speciale?: boolean; rigaAddebitoId?: string }[]
+    } = {}
   ): Promise<string> {
     const { documentoId } = await creaDocumentoDiTest(owner, az.tenantId, {
       stato: 'BOZZA',
@@ -163,7 +178,7 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
         linea,
         legameId,
         base.movimento_fatturato_id,
-        base.riga_addebito_id,
+        e.rigaAddebitoId ?? base.riga_addebito_id,
         base.data_movimento,
         base.quantita,
         e.speciale ? '0' : e.prezzo,
@@ -192,6 +207,56 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
       String(n)
     )
     return documentoId
+  }
+
+  /** Contratto con un legame CONFERMATO la cui riga ha UM, tipo di quantità e origine scelti. */
+  async function legameConRiga(
+    az: AziendaT18,
+    o: {
+      quantity?: string
+      unit?: string
+      quantitaRiga: string
+      prezzo: string
+      um?: string
+      tipoQuantita?: 'PESO_NETTO' | 'UNO'
+      origine?: 'DA_MOVIMENTO' | 'MANUALE'
+    }
+  ) {
+    const c = await b.t19.contratto(az, { senzaLegame: true })
+    const m = await creaMovimentoDiTest(owner, az.tenantId, {
+      movementDate: '2026-03-10',
+      quantity: o.quantity ?? '1000',
+      unit: o.unit ?? 'KG',
+    })
+    const l = await creaLegameDiTest(owner, az.tenantId, {
+      movimentoOriginaleId: m.movimentoId,
+      registroId: m.registroId,
+      verso: m.type,
+      stato: 'CONFERMATO',
+      clienteId: c.clienteId,
+      contrattoId: c.contrattoId,
+      elencoId: c.elencoId,
+      dataMovimento: '2026-03-10',
+      righe: [
+        {
+          rigaAddebitoId: c.rigaCerId,
+          codiceIvaId: az.listino.iva22Id,
+          quantita: o.quantitaRiga,
+          prezzo: o.prezzo,
+        },
+      ],
+    })
+    await owner.$executeRawUnsafe(
+      `UPDATE righe_legame_movimento
+       SET tipo_quantita = $2::tipo_quantita_addebito, unita_misura = $3,
+           quantita_origine = $4::origine_quantita_legame
+       WHERE legame_id = $1::uuid`,
+      l.legameId,
+      o.tipoQuantita ?? 'PESO_NETTO',
+      o.um ?? 'KG',
+      o.origine ?? 'DA_MOVIMENTO'
+    )
+    return { ...c, legameId: l.legameId, movimentoId: m.movimentoId }
   }
 
   const legame = async (id: string) => (await b.legami([id]))[0]
@@ -273,15 +338,32 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
       })
     })
 
-    it('una riga a prezzo singolo e una a prezzo speciale: soloQuantita, importoAttuale null', async () => {
+    it('una riga a prezzo singolo e una a prezzo speciale (dalla riga del legame): soloQuantita, importoAttuale null', async () => {
       const az = await b.t19.azienda()
       const c = await b.t19.contratto(az)
       const [{ movimento_originale_id: movimentoId }] = await owner.$queryRawUnsafe<
         { movimento_originale_id: string }[]
       >(`SELECT movimento_originale_id::text FROM legami_movimento WHERE id = $1::uuid`, c.legameId)
-      await fatturaConRighe(az, c.legameId as string, {
-        extra: [{ prezzo: '0', speciale: true }],
+      // Seconda riga di listino e seconda riga del legame, a prezzo speciale.
+      const v = await creaRiga(owner, az.tenantId, c.elencoId, {
+        tipo: 'CER',
+        cerCode: '20 03 07',
+        codiceIvaId: az.listino.iva22Id,
       })
+      await owner.$executeRawUnsafe(
+        `INSERT INTO righe_legame_movimento
+           (tenant_id, legame_id, elenco_id, riga_addebito_id, ordine, origine, tipo, tipo_quantita,
+            unita_misura, quantita, quantita_origine, prezzo_speciale, prezzo, prezzo_manuale,
+            codice_iva_id, aliquota_iva, natura_iva, updated_at)
+         SELECT tenant_id, legame_id, elenco_id, $2::uuid, 2, origine, tipo, tipo_quantita,
+                unita_misura, quantita, quantita_origine, true, NULL, false, codice_iva_id,
+                aliquota_iva, natura_iva, now()
+         FROM righe_legame_movimento WHERE legame_id = $1::uuid AND ordine = 1`,
+        c.legameId,
+        v.id
+      )
+      // `creaDocumentoDiTest` crea una riga MOVIMENTO per ciascuna riga del legame (2).
+      await fatturaConRighe(az, c.legameId as string)
       await correggi(az, c.legameId as string, movimentoId, { quantita: '200' })
       const [e] = (await lista(az)).elementi
       expect(e).toMatchObject({
@@ -289,6 +371,81 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
         importoAttuale: null,
         quantitaAttuale: '200.000',
       })
+    })
+
+    it('C1: riga a 100 euro/tonnellata, 1000 kg fatturati, rettifica a 1200 kg: attuale 120.00; quantità del movimento in kg', async () => {
+      const az = await b.t19.azienda()
+      const c = await legameConRiga(az, { quantitaRiga: '1', prezzo: '100', um: 'TON' })
+      const docId = await fatturaConRighe(az, c.legameId)
+      expect((await righeDi(docId))[0]).toMatchObject({
+        quantita: '1.000',
+        prezzo_totale: '100.00',
+      })
+      await correggi(az, c.legameId, c.movimentoId, { quantita: '1200' })
+      const [e] = (await lista(az)).elementi
+      expect(e).toMatchObject({
+        quantitaFatturata: '1000.000',
+        importoFatturato: '100.00',
+        quantitaAttuale: '1200.000',
+        importoAttuale: '120.00',
+        soloQuantita: false,
+        tipoCorrezione: 'RETTIFICA',
+      })
+    })
+
+    it('C1: riga UNO (viaggio a 50 euro): importo attuale uguale al fatturato', async () => {
+      const az = await b.t19.azienda()
+      const c = await legameConRiga(az, {
+        quantitaRiga: '1',
+        prezzo: '50',
+        um: 'NR',
+        tipoQuantita: 'UNO',
+      })
+      await fatturaConRighe(az, c.legameId)
+      await correggi(az, c.legameId, c.movimentoId, { quantita: '1200' })
+      const [e] = (await lista(az)).elementi
+      expect(e).toMatchObject({ importoFatturato: '50.00', importoAttuale: '50.00' })
+    })
+
+    it('C1: riga MANUALE: importo attuale uguale al fatturato; annullo: resta anche quello', async () => {
+      const az = await b.t19.azienda()
+      const c = await legameConRiga(az, { quantitaRiga: '3', prezzo: '10', origine: 'MANUALE' })
+      await fatturaConRighe(az, c.legameId)
+      const t = await correggi(az, c.legameId, c.movimentoId, { quantita: '1200' })
+      expect((await lista(az)).elementi[0]).toMatchObject({
+        importoFatturato: '30.00',
+        importoAttuale: '30.00',
+      })
+      await correggi(az, c.legameId, c.movimentoId, { tipo: 'ANNULLAMENTO', precedenteId: t })
+      expect((await lista(az)).elementi[0]).toMatchObject({
+        tipoCorrezione: 'ANNULLO',
+        importoAttuale: '30.00',
+      })
+    })
+
+    it('m1: riga a prezzo singolo con prezzo 0 (omaggio): importo 0.00, non soloQuantita', async () => {
+      const az = await b.t19.azienda()
+      const c = await legameConRiga(az, { quantitaRiga: '1000', prezzo: '0' })
+      await fatturaConRighe(az, c.legameId)
+      await correggi(az, c.legameId, c.movimentoId, { quantita: '1200' })
+      const [e] = (await lista(az)).elementi
+      expect(e).toMatchObject({ soloQuantita: false, importoAttuale: '0.00' })
+    })
+
+    it('I2: causale diversa a parità di quantità e CER: CAMBIO_CAUSALE', async () => {
+      const az = await b.t19.azienda()
+      const c = await legameConRiga(az, { quantitaRiga: '1000', prezzo: '1' })
+      await fatturaConRighe(az, c.legameId)
+      await correggi(az, c.legameId, c.movimentoId, { quantita: '1000', causale: 'RIENTRO' })
+      expect((await lista(az)).elementi[0].tipoCorrezione).toBe('CAMBIO_CAUSALE')
+    })
+
+    it('I2: stessa causale e stessa quantità (cambia altro): RETTIFICA', async () => {
+      const az = await b.t19.azienda()
+      const c = await legameConRiga(az, { quantitaRiga: '1000', prezzo: '1' })
+      await fatturaConRighe(az, c.legameId)
+      await correggi(az, c.legameId, c.movimentoId, { quantita: '1000' })
+      expect((await lista(az)).elementi[0].tipoCorrezione).toBe('RETTIFICA')
     })
 
     it('cambio di CER: tipo CAMBIO_CER quando la riga fatturata porta il CER', async () => {
@@ -533,6 +690,74 @@ describe('Scostamenti e presa d’atto — Postgres reale, ruolo wasteflow_app',
         (ko as { codice: string }).codice
       )
     })
+
+    it('I3: presa d’atto, nuova rettifica: lo scostamento ricompare e la seconda presa d’atto riesce', async () => {
+      const { az, d } = await conScostamento()
+      const prima = await legame(d.legameId)
+      await presaAtto(az, d.legameId, 'prima', prima.versione)
+      expect((await lista(az)).totale).toBe(0)
+
+      // Seconda rettifica della stessa catena: la testa attuale e' la prima rettifica.
+      const testa = (await legame(d.legameId)).movimento_vigente_id
+      await new Promise(r => setTimeout(r, 20))
+      await correggi(az, d.legameId, d.movimentoId, { quantita: '70', precedenteId: testa })
+      const r = await lista(az)
+      expect(r.totale).toBe(1)
+      expect(r.elementi[0]).toMatchObject({ legameId: d.legameId, quantitaAttuale: '70.000' })
+
+      const l = await legame(d.legameId)
+      await presaAtto(az, d.legameId, 'seconda', l.versione)
+      expect((await lista(az)).totale).toBe(0)
+      expect((await legame(d.legameId)).scostamento_nota).toBe('seconda')
+      // E una presa d'atto ripetuta sulla stessa differenza resta rifiutata.
+      expect(
+        await esito(presaAtto(az, d.legameId, 'terza', (await legame(d.legameId)).versione))
+      ).toMatchObject({ status: 409, codice: 'SCOSTAMENTO_NON_APERTO' })
+    })
+
+    it('I3: dopo uno storno non rifatturabile una rettifica successiva riapre lo scostamento', async () => {
+      const { az, d } = await conScostamento()
+      await b.stornaCorrente(az, d.id, { rifatturabile: false })
+      expect((await lista(az)).totale).toBe(0)
+      const testa = (await legame(d.legameId)).movimento_vigente_id
+      await new Promise(r => setTimeout(r, 20))
+      await correggi(az, d.legameId, d.movimentoId, { quantita: '70', precedenteId: testa })
+      expect((await lista(az)).totale).toBe(1)
+      const l = await legame(d.legameId)
+      await presaAtto(az, d.legameId, 'dopo lo storno', l.versione)
+      expect((await lista(az)).totale).toBe(0)
+    })
+
+    it('m4: legame tenuto da un’altra transazione: 409 OPERAZIONE_CONCORRENTE allo scadere del lock_timeout', async () => {
+      const { az, d } = await conScostamento()
+      const { versione } = await legame(d.legameId)
+      let rilascia!: () => void
+      const aperto = new Promise<void>(r => (rilascia = r))
+      let pronto!: () => void
+      const bloccato = new Promise<void>(r => (pronto = r))
+      const tenuta = owner.$transaction(
+        async tx => {
+          await tx.$queryRawUnsafe(
+            `SELECT id FROM legami_movimento WHERE id = $1::uuid FOR UPDATE`,
+            d.legameId
+          )
+          pronto()
+          await aperto
+        },
+        { timeout: 60_000 }
+      )
+      try {
+        await bloccato
+        expect(await esito(presaAtto(az, d.legameId, 'ok', versione))).toMatchObject({
+          status: 409,
+          codice: 'OPERAZIONE_CONCORRENTE',
+        })
+      } finally {
+        rilascia()
+        await tenuta
+      }
+      expect((await legame(d.legameId)).scostamento_gestito_il).toBeNull()
+    }, 60_000)
 
     it('dopo l’annullo del documento lo scostamento non c’è più e la presa d’atto è rifiutata', async () => {
       const { az, d } = await conScostamento()
