@@ -313,7 +313,10 @@ function inBlocchi<T>(l: readonly T[], n: number): T[][] {
  * appena finita (scansione P46): le letture che seguono ritrovano il planner com'era. Se `fn`
  * fallisce la transazione e' abortita e il rollback ripristina da solo il `SET LOCAL`.
  */
-async function conJoinLineari<R>(tx: Prisma.TransactionClient, fn: () => Promise<R>): Promise<R> {
+export async function conJoinLineari<R>(
+  tx: Prisma.TransactionClient,
+  fn: () => Promise<R>
+): Promise<R> {
   const [{ v }] = await tx.$queryRaw<
     { v: string }[]
   >`SELECT current_setting('enable_nestloop') AS v`

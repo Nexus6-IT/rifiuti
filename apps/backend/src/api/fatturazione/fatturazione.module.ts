@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq'
 import { Module } from '@nestjs/common'
+import { AnnulloStornoService } from '../../application/fatturazione/annullo-storno.service'
 import { CedenteService } from '../../application/fatturazione/cedente.service'
 import { DocumentiFatturaService } from '../../application/fatturazione/documenti-fattura.service'
 import {
@@ -28,9 +29,16 @@ import { NumerazioniController } from './numerazioni.controller'
     CedenteService,
     NumerazioniService,
     DocumentiFatturaService,
+    AnnulloStornoService,
     ElaborazioniService,
     FatturazioneJobProcessor,
   ],
-  exports: [CedenteService, NumerazioniService, DocumentiFatturaService, ElaborazioniService],
+  exports: [
+    CedenteService,
+    NumerazioniService,
+    DocumentiFatturaService,
+    AnnulloStornoService,
+    ElaborazioniService,
+  ],
 })
 export class FatturazioneModule {}
