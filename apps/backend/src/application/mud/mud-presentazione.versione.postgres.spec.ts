@@ -64,7 +64,7 @@ describe('MudPresentazione: versione del calcolo — Postgres reale, ruolo waste
 
   beforeAll(async () => {
     expect(process.env.DATABASE_URL ?? '').toMatch(
-      /@(127\.0\.0\.1|localhost):(55432|55436)\/wasteflow_ci\b/
+      /@(127\.0\.0\.1|localhost):[0-9]{1,5}\/wasteflow_ci\b/
     )
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
