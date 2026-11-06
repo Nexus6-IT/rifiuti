@@ -129,10 +129,11 @@ describe('ElenchiAddebitiService (Prisma finto)', () => {
       })
     })
 
-    it('codice esplicito senza predefinito: nessun lock consultivo; "1" diventa 001, "ab" AB', async () => {
+    it('codice esplicito senza predefinito: lock consultivo per contratto (come ogni creazione); "1" diventa 001, "ab" AB', async () => {
       await service.crea(T, U, C, { codice: '1', descrizione: 'X' })
       await service.crea(T, U, C, { codice: 'ab', descrizione: 'X' })
-      expect(tx.$executeRaw).not.toHaveBeenCalled()
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(2)
+      expect(String(tx.$executeRaw.mock.calls[0][0])).toContain('pg_advisory_xact_lock')
       const codici = tx.elencoAddebiti.create.mock.calls.map((c: any) => c[0].data.codice)
       expect(codici).toEqual(['001', 'AB'])
     })
