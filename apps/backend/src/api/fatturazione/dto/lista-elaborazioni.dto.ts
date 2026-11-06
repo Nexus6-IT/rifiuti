@@ -6,17 +6,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator'
+import { MAX_PAGINA } from '../../../application/fatturazione/documenti-fattura.service'
 import { STATI_ELABORAZIONE } from '../../../domain/fatturazione/codici'
 
 export const DIMENSIONE_PREDEFINITA = 50
 export const DIMENSIONE_MASSIMA = 100
 
 export class PaginaQueryDto {
-  @ApiPropertyOptional({ example: 1, minimum: 1, default: 1 })
+  @ApiPropertyOptional({ example: 1, minimum: 1, maximum: MAX_PAGINA, default: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(MAX_PAGINA, { message: `pagina: al massimo ${MAX_PAGINA}` })
   pagina: number = 1
 
   @ApiPropertyOptional({ example: 50, minimum: 1, maximum: DIMENSIONE_MASSIMA, default: 50 })

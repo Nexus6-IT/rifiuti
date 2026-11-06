@@ -282,6 +282,14 @@ describe('Fatturazione: API (HTTP con servizi finti)', () => {
       for (const f of tuttiIServizi()) expect(f).not.toHaveBeenCalled()
     })
 
+    it.each(lista400)('%s: pagina oltre il limite (100000) e` 400, mai un 500', async (_n, p) => {
+      const r = await http().get(`${p}?pagina=100001&dimensione=100`)
+      expect(r.status).toBe(400)
+      expect(JSON.stringify(r.body.message)).toMatch(/pagina/i)
+      expect((await http().get(`${p}?pagina=50000000`)).status).toBe(400)
+      expect((await http().get(`${p}?pagina=100000&dimensione=100`)).status).toBe(200)
+    })
+
     it.each(lista400)(
       '%s: dimensione 100 passa; i predefiniti sono pagina 1 e dimensione 50',
       async (_n, p) => {

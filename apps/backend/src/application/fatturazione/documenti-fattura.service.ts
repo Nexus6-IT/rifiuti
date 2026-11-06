@@ -129,6 +129,11 @@ export interface FiltriDocumenti {
 }
 
 export const DIMENSIONE_MASSIMA_PAGINA = 100
+/**
+ * Pagina massima delle liste: con dimensione 100 lo scarto resta <= 1e7, ben dentro l'int di
+ * `OFFSET ...::int` (oltre, Postgres risponde `integer out of range` e l'utente vedrebbe un 500).
+ */
+export const MAX_PAGINA = 100_000
 
 export interface DatiAnnullabilita {
   stato: StatoDocumento
@@ -218,11 +223,12 @@ export class DocumentiFatturaService {
       q.pagina < 1 ||
       !Number.isInteger(q.dimensione) ||
       q.dimensione < 1 ||
-      q.dimensione > DIMENSIONE_MASSIMA_PAGINA
+      q.dimensione > DIMENSIONE_MASSIMA_PAGINA ||
+      q.pagina > MAX_PAGINA
     ) {
       throw new BadRequestException({
         error: 'PAGINAZIONE_NON_VALIDA',
-        message: `La pagina parte da 1 e la dimensione va da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
+        message: `La pagina va da 1 a ${MAX_PAGINA} e la dimensione da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
       })
     }
     if (q.anno !== undefined && (!Number.isInteger(q.anno) || q.anno < 2000 || q.anno > 2100)) {

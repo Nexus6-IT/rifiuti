@@ -31,6 +31,7 @@ import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { leggiCedenteVista } from './cedente.service'
 import {
   DIMENSIONE_MASSIMA_PAGINA,
+  MAX_PAGINA,
   DocumentiFatturaService,
   type DocumentoRiga,
   type Pagina,
@@ -761,11 +762,12 @@ export class ElaborazioniService {
       pagina < 1 ||
       !Number.isInteger(dimensione) ||
       dimensione < 1 ||
-      dimensione > DIMENSIONE_MASSIMA_PAGINA
+      dimensione > DIMENSIONE_MASSIMA_PAGINA ||
+      pagina > MAX_PAGINA
     ) {
       throw new BadRequestException({
         error: 'PAGINAZIONE_NON_VALIDA',
-        message: `La pagina parte da 1 e la dimensione va da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
+        message: `La pagina va da 1 a ${MAX_PAGINA} e la dimensione da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
       })
     }
   }

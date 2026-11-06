@@ -86,6 +86,9 @@ const VINCOLO_UN_STORNO = 'documenti_fattura_un_storno'
  * `meta.target` (P2002) o nel messaggio del raw (P2010); senza nome (con la RLS Prisma puo`
  * riportare `target: null`) non si decide e l'errore resta interno.
  */
+// Nota (m3 della revisione): il formato del messaggio P2010 e` verificato solo con un errore
+// costruito a mano. Nella pratica il ramo non si raggiunge (`haStorno` sotto lock risponde prima);
+// se Prisma cambiasse formato l'errore resterebbe interno (fail-closed).
 function eViolazioneUnStorno(err: unknown): boolean {
   if (!eViolazioneUnica(err)) return false
   const meta = (err as Prisma.PrismaClientKnownRequestError).meta as

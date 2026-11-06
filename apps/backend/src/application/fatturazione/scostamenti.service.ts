@@ -39,7 +39,7 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { DIMENSIONE_MASSIMA_PAGINA, type Pagina } from './documenti-fattura.service'
+import { DIMENSIONE_MASSIMA_PAGINA, MAX_PAGINA, type Pagina } from './documenti-fattura.service'
 
 /** = `ScostamentoRiga` del frontend (Task 14). */
 export interface ScostamentoRiga {
@@ -219,11 +219,12 @@ function paginaValida(q: FiltriScostamenti): void {
     q.pagina < 1 ||
     !Number.isInteger(q.dimensione) ||
     q.dimensione < 1 ||
-    q.dimensione > DIMENSIONE_MASSIMA_PAGINA
+    q.dimensione > DIMENSIONE_MASSIMA_PAGINA ||
+    q.pagina > MAX_PAGINA
   ) {
     throw new BadRequestException({
       error: 'PAGINAZIONE_NON_VALIDA',
-      message: `La pagina parte da 1 e la dimensione va da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
+      message: `La pagina va da 1 a ${MAX_PAGINA} e la dimensione da 1 a ${DIMENSIONE_MASSIMA_PAGINA}.`,
     })
   }
   if (q.clienteId !== undefined && !UUID.test(q.clienteId)) {

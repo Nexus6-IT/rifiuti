@@ -32,8 +32,11 @@ export class DocumentiFatturaController {
   @ApiOperation({ summary: 'Documenti paginati: registro, anno, stato, cliente, date' })
   lista(@Req() req: any, @Query() q: ListaDocumentiQueryDto) {
     const { pagina, dimensione, ...filtri } = q
-    const definiti = Object.fromEntries(Object.entries(filtri).filter(([, v]) => v !== undefined))
-    return this.documenti.lista(requireRequestTenantId(req), { pagina, dimensione, ...definiti })
+    // Solo i filtri presenti: una chiave `undefined` non deve arrivare al servizio.
+    const presenti = Object.fromEntries(
+      Object.entries(filtri).filter(([, v]) => v !== undefined)
+    ) as Omit<ListaDocumentiQueryDto, 'pagina' | 'dimensione'>
+    return this.documenti.lista(requireRequestTenantId(req), { pagina, dimensione, ...presenti })
   }
 
   @Get(':id')
