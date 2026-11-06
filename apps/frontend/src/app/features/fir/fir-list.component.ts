@@ -1481,6 +1481,22 @@ export class FirListComponent implements OnInit {
     this.loadFIRList({ first: 0, rows: this.pageSize })
     const idModifica = this.route.snapshot.queryParamMap.get('modifica')
     if (idModifica) this.apriModificaDaId(idModifica)
+    this.apriNuovoDaParametro()
+  }
+
+  /**
+   * `?nuovo=1` (dal pulsante «Nuovo FIR» della Dashboard) apre il dialog di creazione, ma solo a
+   * chi puo' creare un FIR; il parametro si toglie sempre dall'URL, cosi' un ricaricamento della
+   * pagina non riapre il dialog.
+   */
+  private apriNuovoDaParametro(): void {
+    if (this.route.snapshot.queryParamMap.get('nuovo') !== '1') return
+    if (this.puoCreareFir()) this.showCreateDialog()
+    void this.router.navigate([], {
+      queryParams: { nuovo: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    })
   }
 
   /**
