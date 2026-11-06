@@ -3,7 +3,7 @@
 // allegati vanno a cascata) e audit. Le regole sui dati stanno in `domain/listino/elenco-addebiti`.
 //
 // Ordine dei lock (R40): contratto FOR SHARE (stato e cancellazione, in fila con `bloccaELeggi`
-// della 4.1) -> lock consultivo per contratto (solo predefinito e creazione senza codice) ->
+// della 4.1) -> lock consultivo per contratto (predefinito e ogni creazione) ->
 // elenco FOR UPDATE. Le scritture del listino non cambiano la `versione` del contratto (D16).
 // Le transazioni di scrittura partono con `lock_timeout` (`lock-listino.ts`): oltre l'attesa 409
 // `OPERAZIONE_CONCORRENTE`. La `versione` dell'elenco protegge i dati dell'elenco e la sostituzione
@@ -406,7 +406,7 @@ export class ElenchiAddebitiService {
 
   // ---------------------------------------------------------------------------------------------
 
-  /** Un tentativo di creazione: codice esplicito, oppure primo libero letto sotto lock consultivo. */
+  /** Un tentativo di creazione: codice esplicito, oppure primo libero; sempre sotto lock consultivo. */
   private creaInTransazione(
     tenantId: string,
     utenteId: string,
@@ -416,7 +416,9 @@ export class ElenchiAddebitiService {
     return this.prisma.$transaction(async tx => {
       await impostaTimeoutLock(tx)
       const contratto = await bloccaContrattoListino(tx, tenantId, contrattoId)
-      if (valori.codice === '' || valori.predefinito) await lockConsultivoContratto(tx, contrattoId)
+      // Sempre sotto lock: la creazione con codice esplicito e quella senza codice si serializzano
+      // sul contratto, cosi' il primo codice libero si legge dopo che l'esplicito e' stato scritto.
+      await lockConsultivoContratto(tx, contrattoId)
       const codice =
         valori.codice === '' ? await this.assegnaCodice(tx, tenantId, contrattoId) : valori.codice
 

@@ -3,6 +3,7 @@
  * dentro il `TenantContext`. Il proprietario prepara aziende, contratti e righe e legge lo stato
  * finale. Pulizia solo per id esatti creati.
  */
+import { ConflictException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -555,20 +556,85 @@ describe('ElenchiAddebitiService — Postgres reale, ruolo wasteflow_app', () =>
     expect(await owner.elencoAddebiti.count({ where: { contrattoId, predefinito: true } })).toBe(1)
   })
 
-  it('creazione con codice esplicito contro una senza codice: nessun 500, codici distinti', async () => {
+  /**
+   * Barriera: una transazione del proprietario tiene il lock consultivo del contratto; le creazioni
+   * partono una alla volta (ognuna aspetta di essere in coda su pg_stat_activity), quindi l'ordine
+   * di acquisizione e' deciso dal test e non dalla fortuna. Rilasciata la barriera, il lock passa
+   * nell'ordine di arrivo.
+   */
+  async function inCodaSulLock(contrattoId: string, avvii: Array<() => Promise<unknown>>) {
+    let rilascia!: () => void
+    const barriera = new Promise<void>(r => (rilascia = r))
+    let tenuto!: () => void
+    const eTenuto = new Promise<void>(r => (tenuto = r))
+    const tenitore = owner.$transaction(
+      async tx => {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext('listino-contratto'), hashtext(${contrattoId}))`
+        tenuto()
+        await barriera
+      },
+      { timeout: 60_000 }
+    )
+    await eTenuto
+    const inAttesa = async () => {
+      const r = await owner.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND application_name = ${NOME_APPLICAZIONE}
+          AND wait_event_type = 'Lock' AND wait_event = 'advisory'`
+      return r[0].n
+    }
+    try {
+      const promesse: Array<Promise<unknown>> = []
+      for (const [i, avvia] of avvii.entries()) {
+        promesse.push(avvia())
+        const scadenza = Date.now() + 30_000
+        while ((await inAttesa()) < i + 1) {
+          if (Date.now() > scadenza) throw new Error(`creazione ${i + 1} non in coda sul lock`)
+          await new Promise(r => setTimeout(r, 25))
+        }
+      }
+      rilascia()
+      await tenitore
+      return await Promise.allSettled(promesse)
+    } finally {
+      rilascia()
+      await tenitore.catch(() => undefined)
+    }
+  }
+
+  it('codice esplicito in coda prima di una senza codice: tutte e due riescono, codici distinti', async () => {
     const { tenantId, utenteId, contrattoId } = await conContratto()
-    const esiti = await Promise.allSettled([
-      nel(tenantId, () =>
-        service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Esplicito', codice: '002' })
-      ),
-      nel(tenantId, () => service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Auto' })),
+    const esiti = await inCodaSulLock(contrattoId, [
+      () =>
+        nel(tenantId, () =>
+          service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Esplicito', codice: '002' })
+        ),
+      () =>
+        nel(tenantId, () => service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Auto' })),
     ])
     expect(esiti.map(e => e.status)).toEqual(['fulfilled', 'fulfilled'])
     const codici = (await owner.elencoAddebiti.findMany({ where: { contrattoId } })).map(
       e => e.codice
     )
-    expect(new Set(codici).size).toBe(codici.length)
-    expect(codici).toHaveLength(3)
+    expect(codici.sort()).toEqual(['001', '002', '003'])
+  })
+
+  it('senza codice in coda prima di un esplicito uguale: 409 di dominio, mai 500', async () => {
+    const { tenantId, utenteId, contrattoId } = await conContratto()
+    const esiti = await inCodaSulLock(contrattoId, [
+      () =>
+        nel(tenantId, () => service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Auto' })),
+      () =>
+        nel(tenantId, () =>
+          service.crea(tenantId, utenteId, contrattoId, { descrizione: 'Esplicito', codice: '002' })
+        ),
+    ])
+    expect(esiti[0].status).toBe('fulfilled')
+    expect(esiti[1].status).toBe('rejected')
+    const err = (esiti[1] as PromiseRejectedResult).reason as ConflictException
+    expect(err).toBeInstanceOf(ConflictException)
+    expect(err.getResponse()).toMatchObject({ error: 'ELENCO_ADDEBITI_CODICE_DUPLICATO' })
   })
 
   it('creazione: audit ELENCO_ADDEBITI_CREATO con id, numero del contratto e codice, senza testo libero', async () => {
