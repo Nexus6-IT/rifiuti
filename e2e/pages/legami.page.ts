@@ -82,9 +82,22 @@ export class LegamiPage {
 
   /** Sceglie il cliente nel menu del blocco «Fatturazione» (cercando per ragione sociale). */
   async scegliCliente(ragioneSociale: string): Promise<void> {
-    await this.page.getByTestId('fatt-cliente-menu').click()
-    await this.page.locator('.p-dropdown-panel .p-dropdown-filter').fill(ragioneSociale)
-    await this.page.getByRole('option', { name: new RegExp(ragioneSociale) }).click()
+    const menu = this.page.getByTestId('fatt-cliente-menu')
+    const opzione = this.page.getByRole('option', { name: new RegExp(ragioneSociale) })
+    // La ricerca sul server (debounce di 300 ms dopo il filtro) sostituisce le opzioni del menu
+    // mentre il clic e' in corso: su un runner lento il clic puo' andare perso senza errore e il
+    // blocco resta senza cliente. Si ripete finche' il menu sparisce (cliente scelto: la
+    // proposta lo mostra al suo posto), non finche' il clic "riesce".
+    await expect(async () => {
+      if (!(await menu.isVisible())) return
+      if (!(await opzione.isVisible())) await menu.click()
+      await this.page.locator('.p-dropdown-panel .p-dropdown-filter').fill(ragioneSociale)
+      await opzione.click({ timeout: 3_000 })
+      await expect(menu).toBeHidden({ timeout: 3_000 })
+    }).toPass({ timeout: ATTESA_SERVER })
+    await expect(this.page.getByTestId('fatt-cliente')).toContainText(ragioneSociale, {
+      timeout: ATTESA_SERVER,
+    })
   }
 
   /** Riga di una tabella delle righe del legame (blocco, riquadro) per id della riga di listino. */
