@@ -181,18 +181,19 @@ jobs:
   # ne' e' bloccato dagli altri.
   #
   # Raggiungibilita' del database: il runner gira con
-  # `container.network = host` (vedi ops/setup-gitea-runner.sh). FIX ROUND 1
-  # (2026-08-04): con `--network host` Docker IGNORA la pubblicazione delle
-  # porte (`ports:`/`-p`) — verificato sul runner reale, il servizio Postgres
-  # restava in ascolto sulla SUA porta di default (5432) sull'host, non su
-  # quella "mappata". Niente piu' `services:` con `ports:`. Avviamo Postgres
-  # con uno step `docker run` esplicito, dicendogli di ascoltare DIRETTAMENTE
-  # sulla porta che vogliamo (`-c port=55432`): in rete host non c'e' nessuna
-  # mappatura da rispettare, quindi funziona a prescindere. Nome del
-  # container legato a `github.run_id` per evitare collisioni fra run
-  # concorrenti sullo stesso runner, con rimozione garantita in uno step
-  # `if: always()` (altrimenti restano container Postgres orfani sul runner,
-  # come gia' successo con i volumi buildx — vedi cron gitea-runner-cleanup).
+  # `container.network = host` (vedi ops/setup-gitea-runner.sh) e con
+  # capacity 2 (x2 runner) due run della CI possono stare insieme sullo stesso
+  # host. Con la rete host Docker IGNORA la pubblicazione delle porte
+  # (verificato sul runner reale, 2026-08-04) e una porta fissa (`-c port=NNNNN`)
+  # farebbe collidere due run: il secondo Postgres non apre la porta, il
+  # controllo /dev/tcp passa lo stesso perche' e' aperta dal primo, e i test
+  # girano sul database dell'altra run (409 OPERAZIONE_CONCORRENTE, hook scaduti,
+  # «connection failed»). Quindi scripts/ci/postgres-job.sh: container sulla
+  # rete bridge con `-p 127.0.0.1::5432`, porta host assegnata dal kernel,
+  # esportata su $GITHUB_ENV (PG_CI_PORT, DATABASE_URL, POSTGRES_CI_CONTAINER).
+  # Nome del container legato a run_id e job, rimozione garantita in uno step
+  # `if: always()` (altrimenti restano container orfani sul runner, come gia'
+  # successo con i volumi buildx — vedi cron gitea-runner-cleanup).
   # ==========================================================================
   test-postgres:
     name: Test integrazione (PostgreSQL reale)
@@ -201,11 +202,11 @@ jobs:
       run:
         working-directory: apps/backend
     env:
-      # Costruito qui, non preso dal codice applicativo: credenziali e porta
-      # sono quelle del container Postgres effimero di questo job, non quelle
-      # attese in sviluppo/produzione.
-      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55432/wasteflow_ci?schema=public&connect_timeout=30&pool_timeout=30"
-      POSTGRES_CI_CONTAINER: "postgres-ci-${{ github.run_id }}"
+      # DATABASE_URL, PG_CI_PORT e POSTGRES_CI_CONTAINER NON stanno qui: li
+      # esporta scripts/ci/postgres-job.sh su $GITHUB_ENV con la porta scelta
+      # dal kernel per questo job (credenziali = quelle del container effimero,
+      # non quelle attese in sviluppo/produzione). Query string dell'URL:
+      PG_CI_QUERY: "schema=public&connect_timeout=30&pool_timeout=30"
       # Password dei ruoli DB creati da ops/db-ruoli.sh: valgono solo per il
       # container effimero di questo job. Le legge anche lo spec
       # ruoli-db.postgres.spec.ts per ripristinarle a fine test.
@@ -232,52 +233,16 @@ jobs:
       - name: Prisma generate
         run: npm run prisma:generate
 
-      # `docker run` esplicito invece di `services:` (vedi nota sopra: con
-      # network host la pubblicazione delle porte non viene applicata).
-      # `-c port=55432` fa ascoltare Postgres direttamente su quella porta,
-      # anche in rete host. `--rm` come rete di sicurezza aggiuntiva (in caso
-      # il container si fermi da solo), ma la rimozione affidabile e'
-      # comunque delegata allo step finale `if: always()`.
+      # Postgres via scripts/ci/postgres-job.sh (vedi nota sopra): porta host
+      # assegnata dal kernel, attesa con pg_isready nel container E connessione
+      # TCP sulla porta host. Niente `services:` ne' porta fissa.
       #
-      # POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256: in rete host i test si
-      # collegano da 127.0.0.1, dove l'immagine ufficiale mette `trust` in
-      # pg_hba.conf (ogni password passa, e il test "la vecchia password non
-      # entra piu'" di ruoli-db.postgres.spec.ts non dimostrerebbe nulla). Cosi'
-      # le connessioni TCP chiedono la password; il socket locale (usato da
+      # POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 (nello script): le
+      # connessioni TCP chiedono la password; il socket locale (usato da
       # `docker exec psql`, db-ruoli.sh e dai test bash) resta `trust`.
-      - name: Avvia PostgreSQL (docker run, porta esplicita)
-        run: |
-          docker run -d --rm \
-            --name "$POSTGRES_CI_CONTAINER" \
-            --network host \
-            -e POSTGRES_USER=wasteflow \
-            -e POSTGRES_PASSWORD=wasteflow_ci \
-            -e POSTGRES_DB=wasteflow_ci \
-            -e POSTGRES_INITDB_ARGS="--auth-host=scram-sha-256" \
-            postgres:16-alpine \
-            -c port=55432 \
-            -c log_lock_waits=on -c deadlock_timeout=1s \
-            -c log_min_duration_statement=3000
-
-      # Verifica esplicita e attiva che la porta sia raggiungibile: usiamo il
-      # redirector /dev/tcp di bash (built-in, nessun tool esterno da
-      # assumere installato sul runner) invece di fare affidamento su un
-      # health-check di `services:` la cui semantica su Gitea Actions non e'
-      # stata verificata in questo repo.
-      - name: Attendi che PostgreSQL sia raggiungibile
-        run: |
-          for i in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/55432) 2>/dev/null; then
-              exec 3<&- 3>&-
-              echo "PostgreSQL raggiungibile su 127.0.0.1:55432 (tentativo ${i})"
-              exit 0
-            fi
-            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
-            sleep 2
-          done
-          echo "PostgreSQL non raggiungibile su 127.0.0.1:55432 dopo 30 tentativi" >&2
-          docker logs "$POSTGRES_CI_CONTAINER" || true
-          exit 1
+      - name: Avvia PostgreSQL (porta assegnata dal kernel)
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/ci/postgres-job.sh avvia
 
       # Ulteriore margine di sicurezza: la porta puo' essere aperta prima che
       # Postgres abbia finito l'inizializzazione di ruoli/database (accetta
@@ -306,9 +271,9 @@ jobs:
       # pezzo 3.
       - name: Crea i ruoli DB (ops/db-ruoli.sh, psql nel container)
         working-directory: ${{ github.workspace }}
-        env:
-          PG_EXEC: "docker exec -i -e PGPORT=55432 ${{ env.POSTGRES_CI_CONTAINER }}"
-        run: bash ops/db-ruoli.sh
+        # Porta interna 5432 del container: nessun PGPORT.
+        run: |
+          PG_EXEC="docker exec -i $POSTGRES_CI_CONTAINER" bash ops/db-ruoli.sh
 
       # Suite di integrazione su Postgres reale: isolamento fra aziende
       # sorelle, gerarchia tenant, repository Prisma (CER, FIR, RENTRI).
@@ -318,13 +283,11 @@ jobs:
         run: npm run test:postgres
 
       # Backup verificato e ripristino di prova contro il PostgreSQL reale del
-      # job. PGPORT serve perche' qui Postgres ascolta sulla 55432 anche dentro
-      # il container (-c port=55432).
+      # job (porta interna 5432, nessun PGPORT).
       - name: Test backup e ripristino di prova (PostgreSQL reale)
         working-directory: ${{ github.workspace }}
-        env:
-          PG_EXEC: "docker exec -i -e PGPORT=55432 ${{ env.POSTGRES_CI_CONTAINER }}"
-        run: bash ops/test/backup-verifica.test.sh
+        run: |
+          PG_EXEC="docker exec -i $POSTGRES_CI_CONTAINER" bash ops/test/backup-verifica.test.sh
 
       # Diagnosi: se un passo fallisce, il log di Postgres (crash di un backend,
       # recovery, connessioni rifiutate) e la memoria del runner finiscono nel log
@@ -343,7 +306,8 @@ jobs:
       # anche i casi in cui il container e' rimasto vivo (es. job annullato).
       - name: Rimuovi il container PostgreSQL (sempre)
         if: always()
-        run: docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/ci/postgres-job.sh ferma
 
   # ==========================================================================
   # E2E - Playwright (Task 7 del piano UAT/E2E; ampliato oltre tests/public
@@ -401,13 +365,14 @@ jobs:
   # script referenzia la tabella `permissions`, quindi seed:rbac (permessi +
   # ruoli di sistema) deve girare PRIMA, non dopo.
   #
-  # Stessa infrastruttura del job "test-postgres": docker run esplicito (mai
-  # `services:`, per il motivo li' commentato su --network host e la
-  # pubblicazione delle porte), attesa attiva su condizione via /dev/tcp,
-  # rimozione garantita con `if: always()`. Porta Postgres diversa (55433)
-  # da quella del job "test-postgres" (55432): entrambi i job sono
-  # indipendenti (nessun `needs`) e possono girare in parallelo sullo stesso
-  # runner in rete host, dove una porta duplicata collidirebbe.
+  # Stessa infrastruttura del job "test-postgres": Postgres e Redis con porta
+  # host assegnata dal kernel (scripts/ci/postgres-job.sh, redis-job.sh; mai
+  # `services:`, per il motivo li' commentato su --network host), attesa attiva
+  # su condizione, rimozione garantita con `if: always()`. Nessuna porta fissa:
+  # i job (anche di run diverse) possono girare in parallelo sullo stesso
+  # runner in rete host, dove una porta duplicata collidirebbe. Anche backend e
+  # frontend usano porte libere scelte a runtime (scripts/ci/porta-libera.sh):
+  # E2E_BACKEND_PORT e E2E_FRONTEND_PORT, esportate su $GITHUB_ENV.
   #
   # LIMITE NOTO (non risolto in questo task): il reporter HTML di Playwright
   # scrive sempre nella stessa cartella (e2e-report/, vedi playwright.config.ts)
@@ -422,15 +387,10 @@ jobs:
     name: E2E (Playwright, tests/public + resto via dev-login)
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: "postgresql://wasteflow:wasteflow_ci@127.0.0.1:55433/wasteflow_ci?schema=public"
-      POSTGRES_CI_CONTAINER: "postgres-e2e-${{ github.run_id }}"
+      # DATABASE_URL e POSTGRES_CI_CONTAINER li esporta postgres-job.sh su
+      # $GITHUB_ENV. E2E_BACKEND_PORT / E2E_FRONTEND_PORT / E2E_BASE_URL /
+      # E2E_API_URL li esporta porta-libera.sh e lo step "Scegli le porte".
       FRONTEND_CI_CONTAINER: "frontend-e2e-${{ github.run_id }}"
-      # Il frontend e' servito da nginx sulla porta 80 del container (vedi
-      # step "Avvia il frontend"): con --network host quella e' anche la
-      # porta host, nessun mapping da fare (stesso motivo di Postgres sopra).
-      # localhost:3000 (default di e2e/utils/env.ts) resta il backend diretto,
-      # usato dalle spec che chiamano l'API senza passare dal browser.
-      E2E_BASE_URL: "http://localhost"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -473,35 +433,20 @@ jobs:
       - name: Lint e2e (check-only)
         run: npx eslint "e2e/**/*.ts" --max-warnings=-1
 
-      # `docker run` esplicito invece di `services:` (vedi nota del job
-      # "test-postgres": con rete host la pubblicazione delle porte non viene
-      # applicata). Porta 55433, non 55432, per non collidere con quel job se
-      # girano in parallelo sullo stesso runner.
-      - name: Avvia PostgreSQL (docker run, porta esplicita)
-        run: |
-          docker run -d --rm \
-            --name "$POSTGRES_CI_CONTAINER" \
-            --network host \
-            -e POSTGRES_USER=wasteflow \
-            -e POSTGRES_PASSWORD=wasteflow_ci \
-            -e POSTGRES_DB=wasteflow_ci \
-            postgres:16-alpine \
-            -c port=55433
+      # Postgres via scripts/ci/postgres-job.sh (vedi nota del job
+      # "test-postgres"): porta assegnata dal kernel, attesa inclusa.
+      - name: Avvia PostgreSQL (porta assegnata dal kernel)
+        run: bash scripts/ci/postgres-job.sh avvia
 
-      - name: Attendi che PostgreSQL sia raggiungibile
+      # Porte libere per backend (nest, nativo) e frontend (nginx in rete host).
+      # E2E_BASE_URL/E2E_API_URL sono le variabili che e2e/utils/env.ts e
+      # playwright.config.ts leggono gia': in locale restano 4200/3000.
+      - name: Scegli le porte di backend e frontend
         run: |
-          for i in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/55433) 2>/dev/null; then
-              exec 3<&- 3>&-
-              echo "PostgreSQL raggiungibile su 127.0.0.1:55433 (tentativo ${i})"
-              exit 0
-            fi
-            echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
-            sleep 2
-          done
-          echo "PostgreSQL non raggiungibile su 127.0.0.1:55433 dopo 30 tentativi" >&2
-          docker logs "$POSTGRES_CI_CONTAINER" || true
-          exit 1
+          bash scripts/ci/porta-libera.sh E2E_BACKEND_PORT E2E_FRONTEND_PORT
+          . <(grep -E '^E2E_(BACKEND|FRONTEND)_PORT=' "$GITHUB_ENV" | tail -2)
+          echo "E2E_BASE_URL=http://localhost:${E2E_FRONTEND_PORT}" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=http://localhost:${E2E_BACKEND_PORT}/api/v1" >> "$GITHUB_ENV"
 
       - name: Applica le migrazioni Prisma (con retry)
         working-directory: apps/backend
@@ -585,12 +530,13 @@ jobs:
         working-directory: apps/backend
         env:
           NODE_ENV: production
-          PORT: "3000"
           API_PREFIX: "api/v1"
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
+          # Porta scelta a runtime da porta-libera.sh (non fissa: run parallele).
+          export PORT="${E2E_BACKEND_PORT:?E2E_BACKEND_PORT non impostata}"
           export REDIS_HOST=127.0.0.1 REDIS_PORT="${REDIS_CI_PORT:?REDIS_CI_PORT non impostata}"
           export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_PORT"
           nohup node dist/main.js > /tmp/backend-e2e-prod.log 2>&1 &
@@ -599,15 +545,15 @@ jobs:
       - name: Attendi che il backend sia raggiungibile
         run: |
           for i in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+            if (exec 3<>/dev/tcp/127.0.0.1/${E2E_BACKEND_PORT}) 2>/dev/null; then
               exec 3<&- 3>&-
-              echo "Backend raggiungibile su 127.0.0.1:3000 (tentativo ${i})"
+              echo "Backend raggiungibile su 127.0.0.1:${E2E_BACKEND_PORT} (tentativo ${i})"
               exit 0
             fi
             echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
             sleep 2
           done
-          echo "Backend non raggiungibile su 127.0.0.1:3000 dopo 30 tentativi" >&2
+          echo "Backend non raggiungibile su 127.0.0.1:${E2E_BACKEND_PORT} dopo 30 tentativi" >&2
           cat /tmp/backend-e2e-prod.log || true
           exit 1
 
@@ -651,22 +597,30 @@ jobs:
             --network host \
             --add-host backend:127.0.0.1 \
             nginx:alpine
-          docker cp apps/frontend/nginx.conf "$FRONTEND_CI_CONTAINER":/etc/nginx/conf.d/default.conf
+          # Porte dinamiche: il nginx.conf di produzione ascolta sulla 80 e fa
+          # proxy_pass verso backend:3000. Si riscrivono SOLO queste due righe
+          # in una copia (il resto, CSP/HSTS inclusi, resta quello vero).
+          sed -e "s/^\([[:space:]]*listen[[:space:]]*\)80;/\1${E2E_FRONTEND_PORT};/" \
+              -e "s#proxy_pass http://backend:3000;#proxy_pass http://backend:${E2E_BACKEND_PORT};#" \
+              apps/frontend/nginx.conf > /tmp/nginx-e2e.conf
+          grep -q "listen ${E2E_FRONTEND_PORT};" /tmp/nginx-e2e.conf
+          grep -q "backend:${E2E_BACKEND_PORT};" /tmp/nginx-e2e.conf
+          docker cp /tmp/nginx-e2e.conf "$FRONTEND_CI_CONTAINER":/etc/nginx/conf.d/default.conf
           docker cp apps/frontend/dist/frontend/. "$FRONTEND_CI_CONTAINER":/usr/share/nginx/html/
           docker start "$FRONTEND_CI_CONTAINER"
 
       - name: Attendi che il frontend sia raggiungibile
         run: |
           for i in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/80) 2>/dev/null; then
+            if (exec 3<>/dev/tcp/127.0.0.1/${E2E_FRONTEND_PORT}) 2>/dev/null; then
               exec 3<&- 3>&-
-              echo "Frontend raggiungibile su 127.0.0.1:80 (tentativo ${i})"
+              echo "Frontend raggiungibile su 127.0.0.1:${E2E_FRONTEND_PORT} (tentativo ${i})"
               exit 0
             fi
             echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
             sleep 2
           done
-          echo "Frontend non raggiungibile su 127.0.0.1:80 dopo 30 tentativi" >&2
+          echo "Frontend non raggiungibile su 127.0.0.1:${E2E_FRONTEND_PORT} dopo 30 tentativi" >&2
           docker logs "$FRONTEND_CI_CONTAINER" || true
           exit 1
 
@@ -694,14 +648,14 @@ jobs:
           # secondo avvio fallirebbe con EADDRINUSE se partisse mentre il
           # processo precedente sta ancora chiudendo il listener.
           for i in $(seq 1 15); do
-            if ! (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
-              echo "Porta 3000 libera (tentativo ${i})"
+            if ! (exec 3<>/dev/tcp/127.0.0.1/${E2E_BACKEND_PORT}) 2>/dev/null; then
+              echo "Porta ${E2E_BACKEND_PORT} libera (tentativo ${i})"
               exit 0
             fi
             exec 3<&- 3>&- 2>/dev/null || true
             sleep 1
           done
-          echo "Porta 3000 ancora occupata dopo 15 tentativi, proseguo comunque" >&2
+          echo "Porta ${E2E_BACKEND_PORT} ancora occupata dopo 15 tentativi, proseguo comunque" >&2
 
       - name: Avvia il backend — passata 2, dev-login (node dist/main.js, in background)
         working-directory: apps/backend
@@ -710,12 +664,13 @@ jobs:
           # alla passata 1 (vedi commento "CONFLITTO NODE_ENV" sopra). Stesso
           # PORT/API_PREFIX/JWT_SECRET: e' la continuazione dello stesso
           # backend applicativo, non un secondo ambiente diverso.
-          PORT: "3000"
           API_PREFIX: "api/v1"
           JWT_SECRET: ci-dummy-jwt-secret-not-used-in-prod
           SIGNATURE_PROVIDER: sandbox
           TSA_PROVIDER: mock
         run: |
+          # Porta scelta a runtime da porta-libera.sh (non fissa: run parallele).
+          export PORT="${E2E_BACKEND_PORT:?E2E_BACKEND_PORT non impostata}"
           export REDIS_HOST=127.0.0.1 REDIS_PORT="${REDIS_CI_PORT:?REDIS_CI_PORT non impostata}"
           export REDIS_CLUSTER_NODES="127.0.0.1:$REDIS_PORT"
           nohup node dist/main.js > /tmp/backend-e2e-devlogin.log 2>&1 &
@@ -724,15 +679,15 @@ jobs:
       - name: Attendi che il backend (passata 2) sia raggiungibile
         run: |
           for i in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/3000) 2>/dev/null; then
+            if (exec 3<>/dev/tcp/127.0.0.1/${E2E_BACKEND_PORT}) 2>/dev/null; then
               exec 3<&- 3>&-
-              echo "Backend (passata 2) raggiungibile su 127.0.0.1:3000 (tentativo ${i})"
+              echo "Backend (passata 2) raggiungibile su 127.0.0.1:${E2E_BACKEND_PORT} (tentativo ${i})"
               exit 0
             fi
             echo "Tentativo ${i}/30: porta non ancora raggiungibile, riprovo tra 2s..."
             sleep 2
           done
-          echo "Backend (passata 2) non raggiungibile su 127.0.0.1:3000 dopo 30 tentativi" >&2
+          echo "Backend (passata 2) non raggiungibile su 127.0.0.1:${E2E_BACKEND_PORT} dopo 30 tentativi" >&2
           cat /tmp/backend-e2e-devlogin.log || true
           exit 1
 
@@ -771,7 +726,7 @@ jobs:
       - name: Rimuovi container e processi (sempre)
         if: always()
         run: |
-          docker rm -f "$POSTGRES_CI_CONTAINER" 2>/dev/null || true
+          bash scripts/ci/postgres-job.sh ferma || true
           bash scripts/ci/redis-job.sh ferma || true
           docker rm -f "$FRONTEND_CI_CONTAINER" 2>/dev/null || true
           # Due possibili backend in vita a seconda di dove si e' fermato il
