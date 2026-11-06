@@ -41,6 +41,14 @@ describe('stili globali', () => {
       expect(css(senzaP).paddingLeft).toBe('0px')
     })
 
+    it("ha specificita' zero: una classe nostra con padding batte il reset", () => {
+      stile('.pagina-prova { padding-top: 24px; margin-bottom: 10px }')
+      monta('<div class="pagina-prova">a</div>')
+      const el = radice.firstElementChild as Element
+      expect(css(el).paddingTop).toBe('24px')
+      expect(css(el).marginBottom).toBe('10px')
+    })
+
     it("un elemento con la classe p-... in seconda posizione e' esentato come in prima", () => {
       stile('@layer primeng { .p-prova { margin-top: -8px } }')
       monta('<div class="altra p-prova">a</div>')

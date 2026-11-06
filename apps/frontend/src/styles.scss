@@ -27,11 +27,12 @@
 /* Il reset di margini e padding NON tocca gli elementi di PrimeNG (classe `p-...`): i suoi stili
    stanno in `@layer primeng`, e una regola fuori da ogni layer batte sempre una regola in un layer,
    a prescindere dalla specificita'. Con il reset su tutto, toast, messaggi, voci dei menu a tendina,
-   icone dei campi e pallino dell'interruttore perdevano i propri margini e padding. Le regole di
+   icone dei campi e pallino dell'interruttore perdevano i propri margini e padding. `:where()` tiene la
+   specificita' a zero come il vecchio `*`: le classi nostre (`.page { padding }`) devono batterlo. Le regole di
    `styles/_primeng.scss` restano fuori dal layer e vincono comunque dove servono. */
-*:not([class^='p-']):not([class*=' p-']),
-*:not([class^='p-']):not([class*=' p-'])::before,
-*:not([class^='p-']):not([class*=' p-'])::after { margin: 0; padding: 0; }
+:where(*:not([class^='p-']):not([class*=' p-'])),
+:where(*:not([class^='p-']):not([class*=' p-']))::before,
+:where(*:not([class^='p-']):not([class*=' p-']))::after { margin: 0; padding: 0; }
 html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; scroll-behavior: smooth; }
 body {
   min-height: 100vh;
