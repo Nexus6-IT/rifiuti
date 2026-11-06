@@ -32,6 +32,7 @@ export interface Tenant {
   pec?: string | null
   telefono?: string | null
   atecoCode?: string | null
+  reaNumber?: string | null
   address: string
   civico?: string | null
   city: string
@@ -69,6 +70,8 @@ export interface CreateTenantDto {
   pec?: string
   telefono?: string
   atecoCode?: string
+  /** Numero REA (1-9 caratteri); serve alla fattura elettronica e al MUD. */
+  reaNumber?: string
   civico?: string
   country?: string
   subscriptionTier?: SubscriptionTier
