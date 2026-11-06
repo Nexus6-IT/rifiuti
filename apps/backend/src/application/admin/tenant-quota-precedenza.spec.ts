@@ -50,7 +50,13 @@ function makeService(opts: {
   }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const membership: any = { checkAccess: jest.fn().mockResolvedValue(true) }
-  return { prisma, service: new TenantService(prisma, prisma, logger, membership) }
+  return {
+    prisma,
+    service: new TenantService(prisma, prisma, logger, membership, {
+      caricaContratto: jest.fn(),
+      caricaContrattiRadici: jest.fn(),
+    } as never),
+  }
 }
 
 const adminCorrente = { id: ADMIN, role: 'ADMIN', tenantId: MADRE } as any

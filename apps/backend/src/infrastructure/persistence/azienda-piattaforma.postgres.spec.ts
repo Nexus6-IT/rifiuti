@@ -34,6 +34,7 @@ import { PrismaSistemaService } from './prisma-sistema.service'
 import { PrismaPermissionAuditLogRepository } from './permission-audit-log.repository'
 import { AuditLoggingProcessor } from '../jobs/audit-logging.job'
 import { AuditPiattaformaService } from '../../application/admin/audit-piattaforma.service'
+import { ContrattoGruppoService } from '../../application/billing/contratto-gruppo.service'
 import { TenantService } from '../../application/admin/tenant.service'
 import { DeadlineCheckerService } from '../../application/notifications/deadline-checker.service'
 
@@ -163,7 +164,13 @@ describe('Azienda piattaforma (Postgres reale, RLS attiva)', () => {
     })
 
     it('elenco aziende del super admin e dell admin', async () => {
-      const service = new TenantService(app, sistema, logger, {} as never)
+      const service = new TenantService(
+        app,
+        sistema,
+        logger,
+        {} as never,
+        new ContrattoGruppoService(app)
+      )
       const superAdmin = await service.list({
         id: utente,
         role: 'SUPER_ADMIN',

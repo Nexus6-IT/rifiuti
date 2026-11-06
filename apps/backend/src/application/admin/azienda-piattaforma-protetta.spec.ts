@@ -20,7 +20,7 @@ function tenantService() {
       count: jest.fn().mockResolvedValue(0),
     },
   }
-  return { prisma, service: new TenantService(prisma, {} as any, logger, {} as any) }
+  return { prisma, service: new TenantService(prisma, {} as any, logger, {} as any, {} as any) }
 }
 
 async function messaggio(fn: () => Promise<unknown>): Promise<string> {

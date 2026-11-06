@@ -79,6 +79,21 @@ export class ContrattoGruppoService {
     return this.toContrattoEffettivo(tenant.madre ?? tenant)
   }
 
+  /**
+   * Contratti di piu' radici in una sola query, per id (nessun N+1 negli elenchi).
+   * Le radici non trovate non compaiono nella mappa.
+   */
+  async caricaContrattiRadici(
+    radiciIds: readonly string[]
+  ): Promise<Map<string, ContrattoEffettivo>> {
+    if (radiciIds.length === 0) return new Map()
+    const righe = await this.prisma.tenant.findMany({
+      where: { id: { in: [...radiciIds] } },
+      select: ContrattoGruppoService.CAMPI_CONTRATTO,
+    })
+    return new Map(righe.map(r => [r.id, this.toContrattoEffettivo(r)]))
+  }
+
   /** Colonne che compongono il contratto: nient'altro va letto. */
   private static readonly CAMPI_CONTRATTO = {
     id: true,

@@ -16,7 +16,7 @@ import { TenantContext } from '../../core/context/tenant-context'
 import { mapConLimite } from '../../core/utils/map-con-limite'
 import { MembershipService } from '../../api/me/membership.service'
 import { calcolaDeltaModuli, effectiveFeatures } from './feature-catalog'
-import { ContrattoGruppoService } from '../billing/contratto-gruppo.service'
+import { ContrattoGruppoService, ContrattoEffettivo } from '../billing/contratto-gruppo.service'
 import { assertNonPiattaforma, escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
@@ -52,7 +52,7 @@ export class TenantService {
     private readonly sistema: PrismaSistemaService,
     private readonly logger: LoggerService,
     private readonly membership: MembershipService,
-    private readonly contratto?: ContrattoGruppoService
+    private readonly contratto: ContrattoGruppoService
   ) {
     this.logger.setContext(TenantService.name)
   }
@@ -65,7 +65,8 @@ export class TenantService {
     T extends { id?: string; subscriptionTier?: SubscriptionTier; parentTenantId?: string | null },
   >(
     currentUser: CurrentUser,
-    riga: T
+    riga: T,
+    contrattiMadri?: ReadonlyMap<string, ContrattoEffettivo>
   ): Promise<Omit<T, 'featureFlags' | 'featureTolte'> & { moduliEffettivi?: string[] }> {
     const { featureFlags, featureTolte, ...resto } = riga as T & {
       featureFlags?: unknown
@@ -83,8 +84,10 @@ export class TenantService {
       featureFlags,
       featureTolte,
     }
-    if (riga.parentTenantId && riga.id && this.contratto) {
-      const dalGruppo = await this.contratto.caricaContratto(riga.id)
+    if (riga.parentTenantId && riga.id) {
+      const dalGruppo = contrattiMadri
+        ? contrattiMadri.get(riga.parentTenantId)
+        : await this.contratto.caricaContratto(riga.id)
       if (dalGruppo) sorgente = dalGruppo
     }
     return {
@@ -160,7 +163,12 @@ export class TenantService {
           },
         },
       })
-      return await Promise.all(tutte.map(async t => await this.perUtente(currentUser, t)))
+      // Contratti delle madri caricati una volta sola (le figlie ereditano da lì).
+      const idMadri = [...new Set(tutte.map(t => t.parentTenantId).filter((m): m is string => !!m))]
+      const contrattiMadri = await this.contratto.caricaContrattiRadici(idMadri)
+      return await Promise.all(
+        tutte.map(async t => await this.perUtente(currentUser, t, contrattiMadri))
+      )
     }
 
     // ADMIN: le aziende possedute sono altre rispetto al suo contesto; il conteggio utenti di

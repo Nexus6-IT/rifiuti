@@ -7,6 +7,7 @@
  * Eseguire con `npm run test:postgres`.
  */
 import { PrismaClient, SubscriptionTier } from '@prisma/client'
+import { TenantService } from './tenant.service'
 import { effectiveFeatures } from './feature-catalog'
 import { ContrattoGruppoService } from '../billing/contratto-gruppo.service'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -104,5 +105,51 @@ describe('Moduli azienda: featureFlags + featureTolte (Postgres reale)', () => {
     const f = effectiveFeatures(contratto!)
     expect(f).toContain('mud')
     expect(f).not.toContain('registro')
+  })
+
+  it('list del SUPER_ADMIN: la figlia mostra i moduli della madre, tolti compresi', async () => {
+    const madre = await owner.tenant.create({
+      data: {
+        partitaIva: `MD${sfx}6`,
+        ragioneSociale: 'Madre list SRL',
+        country: 'IT',
+        subscriptionTier: SubscriptionTier.PROFESSIONAL,
+        featureTolte: ['esg'],
+      },
+    })
+    creati.push(madre.id)
+    const figlia = await owner.tenant.create({
+      data: {
+        partitaIva: `MD${sfx}7`,
+        ragioneSociale: 'Figlia list SRL',
+        country: 'IT',
+        parentTenantId: madre.id,
+      },
+    })
+    creati.push(figlia.id)
+
+    const logger: any = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    }
+    const service = new TenantService(
+      owner as never,
+      owner as never,
+      logger,
+      {} as never,
+      new ContrattoGruppoService(owner as never)
+    )
+    const righe: any[] = await service.list({
+      id: 'super',
+      role: 'SUPER_ADMIN',
+      tenantId: madre.id,
+    })
+    const rigaFiglia = righe.find(r => r.id === figlia.id)
+    const rigaMadre = righe.find(r => r.id === madre.id)
+    expect(rigaMadre.moduliEffettivi).not.toContain('esg')
+    expect(rigaFiglia.moduliEffettivi).toContain('mud')
+    expect(rigaFiglia.moduliEffettivi).not.toContain('esg')
   })
 })

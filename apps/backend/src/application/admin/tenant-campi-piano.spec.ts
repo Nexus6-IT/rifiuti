@@ -24,7 +24,10 @@ function makeService(ownerUserId: string = ADMIN) {
   }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const membership: any = { checkAccess: jest.fn().mockResolvedValue(true) }
-  const service = new TenantService(prisma, prisma, logger, membership)
+  const service = new TenantService(prisma, prisma, logger, membership, {
+    caricaContratto: jest.fn(),
+    caricaContrattiRadici: jest.fn(),
+  } as never)
   // Seeding ruoli e associazione del proprietario non c'entrano con il piano.
   jest.spyOn(service as any, 'seedRoles').mockResolvedValue(undefined)
   jest.spyOn(service as any, 'associateOwner').mockResolvedValue(undefined)

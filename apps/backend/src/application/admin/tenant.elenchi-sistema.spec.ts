@@ -14,7 +14,14 @@ function costruisci() {
   const sistema: any = { tenant: { findMany: jest.fn().mockResolvedValue([]) } }
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const membership: any = {}
-  return { prisma, sistema, service: new TenantService(prisma, sistema, logger, membership) }
+  return {
+    prisma,
+    sistema,
+    service: new TenantService(prisma, sistema, logger, membership, {
+      caricaContratto: jest.fn(),
+      caricaContrattiRadici: jest.fn(),
+    } as never),
+  }
 }
 
 const superAdmin = { id: 'su', role: 'SUPER_ADMIN', tenantId: 't-casa' } as any
