@@ -27,6 +27,11 @@ export interface ColonneReferentiListino {
   righeDocumento: readonly string[]
   /** Colonne dei marcatori degli addebiti gia' fatturati (`marcatori_addebiti_fatturati`, 4.4a). */
   marcatori: readonly string[]
+  /**
+   * Colonne delle testate dei documenti di fattura (`documenti_fattura`, 4.4b1, M4) che citano la
+   * tabella: oggi solo l'elenco (`elencoId`), che una bozza o un definitivo congela.
+   */
+  documenti: readonly string[]
 }
 
 export const COLONNE_CODICE_IVA: ColonneReferentiListino = {
@@ -36,6 +41,7 @@ export const COLONNE_CODICE_IVA: ColonneReferentiListino = {
   legami: [],
   righeDocumento: ['codiceIvaId'],
   marcatori: [],
+  documenti: [],
 }
 
 export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
@@ -52,6 +58,7 @@ export const COLONNE_CODIFICA_ADDEBITO: ColonneReferentiListino = {
   legami: [],
   righeDocumento: [],
   marcatori: [],
+  documenti: [],
 }
 
 /** Un addebito dell'archivio e' citato solo dalle righe degli elenchi, con `addebitoId`. */
@@ -62,6 +69,7 @@ export const COLONNE_ADDEBITO: ColonneReferentiListino = {
   legami: [],
   righeDocumento: [],
   marcatori: [],
+  documenti: [],
 }
 
 /**
@@ -75,6 +83,7 @@ export const COLONNE_RIGA_LISTINO: ColonneReferentiListino = {
   legami: [],
   righeDocumento: ['rigaAddebitoId'],
   marcatori: ['rigaAddebitoId'],
+  documenti: [],
 }
 
 /**
@@ -89,6 +98,7 @@ export const COLONNE_ELENCO: ColonneReferentiListino = {
   legami: ['elencoId'],
   righeDocumento: [],
   marcatori: [],
+  documenti: ['elencoId'],
 }
 
 type RigaConteggio = Record<string, unknown> & { _count: { _all: number } }
@@ -112,17 +122,40 @@ export async function contaUsiListino(
   ids: readonly string[],
   colonne: ColonneReferentiListino
 ): Promise<Map<string, number>> {
-  const usi = new Map<string, number>(ids.map(id => [id, 0]))
+  const dettaglio = await contaUsiListinoPerOrigine(client, tenantId, ids, colonne)
+  return new Map([...dettaglio].map(([id, u]) => [id, u.totale]))
+}
+
+/** Citazioni di un id: il totale e la parte che viene da documenti di fatturazione (Q37). */
+export interface UsiListino {
+  totale: number
+  /** Righe e testate dei documenti e marcatori: stesse query del totale, nessuna in piu'. */
+  daDocumenti: number
+}
+
+/**
+ * Come `contaUsiListino`, ma distingue le citazioni dei documenti di fatturazione (testate, righe,
+ * marcatori) dalle altre, cosi' il messaggio «in uso» puo' dire di scartare le anteprime (Q37)
+ * senza una query in piu'.
+ */
+export async function contaUsiListinoPerOrigine(
+  client: ListinoUsi,
+  tenantId: string,
+  ids: readonly string[],
+  colonne: ColonneReferentiListino
+): Promise<Map<string, UsiListino>> {
+  const usi = new Map<string, UsiListino>(ids.map(id => [id, { totale: 0, daDocumenti: 0 }]))
   if (ids.length === 0) return usi
-  const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[]]> = [
-    [client.addebito as unknown as { groupBy: GroupBy }, colonne.addebiti],
-    [client.rigaAddebito as unknown as { groupBy: GroupBy }, colonne.righe],
-    [client.rigaLegameMovimento as unknown as { groupBy: GroupBy }, colonne.righeLegame],
-    [client.legameMovimento as unknown as { groupBy: GroupBy }, colonne.legami],
-    [client.rigaDocumentoFattura as unknown as { groupBy: GroupBy }, colonne.righeDocumento],
-    [client.marcatoreAddebitoFatturato as unknown as { groupBy: GroupBy }, colonne.marcatori],
+  const sorgenti: Array<[{ groupBy: GroupBy }, readonly string[], boolean]> = [
+    [client.addebito as unknown as { groupBy: GroupBy }, colonne.addebiti, false],
+    [client.rigaAddebito as unknown as { groupBy: GroupBy }, colonne.righe, false],
+    [client.rigaLegameMovimento as unknown as { groupBy: GroupBy }, colonne.righeLegame, false],
+    [client.legameMovimento as unknown as { groupBy: GroupBy }, colonne.legami, false],
+    [client.rigaDocumentoFattura as unknown as { groupBy: GroupBy }, colonne.righeDocumento, true],
+    [client.marcatoreAddebitoFatturato as unknown as { groupBy: GroupBy }, colonne.marcatori, true],
+    [client.documentoFattura as unknown as { groupBy: GroupBy }, colonne.documenti, true],
   ]
-  for (const [modello, elenco] of sorgenti) {
+  for (const [modello, elenco, eDocumento] of sorgenti) {
     for (const colonna of elenco) {
       const righe = await modello.groupBy({
         by: [colonna],
@@ -131,7 +164,11 @@ export async function contaUsiListino(
       })
       for (const r of righe) {
         const id = r[colonna]
-        if (typeof id === 'string') usi.set(id, (usi.get(id) ?? 0) + r._count._all)
+        const u = typeof id === 'string' ? usi.get(id) : undefined
+        if (u) {
+          u.totale += r._count._all
+          if (eDocumento) u.daDocumenti += r._count._all
+        }
       }
     }
   }

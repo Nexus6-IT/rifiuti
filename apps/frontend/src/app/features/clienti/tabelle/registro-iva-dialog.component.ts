@@ -220,6 +220,8 @@ export class RegistroIvaDialogComponent implements OnChanges {
           'SUFFISSO_NON_MODIFICABILE'
         ) {
           this.bloccatoDalServer.set(true)
+          // Il valore scritto non vale più: il campo mostra quello salvato.
+          this.form.controls.suffissoNumero.setValue(this.elemento?.suffissoNumero ?? '')
           this.aggiornaAbilitazione()
         }
         this.errore.set(messaggioErrore(err, 'Impossibile salvare il registro IVA.'))

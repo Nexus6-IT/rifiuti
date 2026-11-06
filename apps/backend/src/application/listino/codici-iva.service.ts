@@ -2,6 +2,7 @@
 // disattivazione al posto della cancellazione quando il codice e' citato da un addebito o da una
 // riga di un listino (D13, R44) e audit (D16). Le regole sui dati stanno in `domain/listino/codice-iva`; per il resto il servizio
 // segue i registri IVA della 4.1.
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
@@ -45,6 +46,12 @@ const ENTITA: DescrizioneEntita = {
     codice: 'CODICE_IVA_IN_USO',
     messaggio:
       'Il codice IVA è usato da addebiti, righe dei listini, movimenti, documenti o spese accessorie: disattivalo invece di eliminarlo.',
+  },
+  inUsoPerVincolo: {
+    righe_documento_fattura_codice_iva_fkey: {
+      codice: 'CODICE_IVA_IN_USO',
+      messaggio: MESSAGGIO_IN_USO_DA_DOCUMENTI,
+    },
   },
 }
 

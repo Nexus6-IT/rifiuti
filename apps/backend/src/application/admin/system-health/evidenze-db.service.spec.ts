@@ -53,4 +53,27 @@ describe('EvidenzeDbService', () => {
       await expect(service.verificaCatalogoCausali()).rejects.toThrow('causali_registro')
     })
   })
+
+  describe('verificaNumerazioneFatturazione', () => {
+    it('senza violazioni la voce e\x27 sana', async () => {
+      const sistema = { $queryRaw: jest.fn().mockResolvedValue([]) }
+      const service = new EvidenzeDbService(sistema as never)
+      await expect(service.verificaNumerazioneFatturazione()).resolves.toContain('nessuna')
+    })
+
+    it('con violazioni solleva riportando solo i conteggi, mai gli id delle aziende', async () => {
+      const sistema = {
+        $queryRaw: jest.fn().mockResolvedValue([
+          { tenant_id: 'azienda-segreta-1', violazioni: 2 },
+          { tenant_id: 'azienda-segreta-2', violazioni: 1 },
+        ]),
+      }
+      const service = new EvidenzeDbService(sistema as never)
+      const errore = await service.verificaNumerazioneFatturazione().catch((e: Error) => e)
+      expect((errore as Error).message).toBe(
+        'Numerazione delle fatture non coerente: 3 violazioni in 2 aziende'
+      )
+      expect((errore as Error).message).not.toContain('azienda-segreta')
+    })
+  })
 })

@@ -147,8 +147,15 @@ export class NumerazioniService {
           }
 
           // Una riga appena creata (la prima scrittura porta la versione a 1, come per il cedente)
-          //  da questa transazione equivale a «non esiste»: versione 0.
-          const versioneAttuale = creata === 1 ? 0 : riga.versione
+          // da questa transazione equivale a «non esiste»: versione 0. Lo stesso vale per una riga
+          // vuota (M3: nata solo per il lock del suffisso, senza numeri, partenza, date ne'
+          // documenti: il controllo dei documenti e' appena passato): la vista la mostra a 0.
+          const vuota =
+            riga.ultimoNumero === 0 &&
+            riga.numeroPartenza === 0 &&
+            riga.dataPartenza === null &&
+            riga.ultimaData === null
+          const versioneAttuale = creata === 1 || vuota ? 0 : riga.versione
           if (versioneAttuale !== dati.versione) {
             throw new ConflictException({
               error: 'VERSIONE_SUPERATA',
@@ -203,22 +210,31 @@ export class NumerazioniService {
     anno: number,
     registroIvaId: string | null
   ): Promise<RigaVista[]> {
+    // `versione` 0 anche per una riga vuota senza documenti (M3): per il client e' come se non
+    // esistesse, e la sua prima scrittura parte da 0.
     return db.$queryRaw<RigaVista[]>`
-      SELECT r.id::text AS "registroIvaId", r.codice AS "codiceRegistro", ${anno}::int AS anno,
-             COALESCE(n.ultimo_numero, 0)::int AS "ultimoNumero", n.ultima_data::text AS "ultimaData",
-             COALESCE(n.numero_partenza, 0)::int AS "numeroPartenza",
-             n.data_partenza::text AS "dataPartenza",
-             NOT EXISTS (
-               SELECT 1 FROM "documenti_fattura" d
-               WHERE d.tenant_id = r.tenant_id AND d.registro_iva_id = r.id AND d.anno = ${anno}::int
-                 AND d.stato IN ('DEFINITIVO', 'ANNULLATO')
-             ) AS "partenzaModificabile",
-             COALESCE(n.versione, 0)::int AS versione
-      FROM "registri_iva" r
-      LEFT JOIN "numerazioni_fattura" n
-        ON n.tenant_id = r.tenant_id AND n.registro_iva_id = r.id AND n.anno = ${anno}::int
-      WHERE r.tenant_id = ${tenantId}::uuid
-        AND (${registroIvaId}::uuid IS NULL AND r.attivo OR r.id = ${registroIvaId}::uuid)
-      ORDER BY r.codice, r.id`
+      SELECT x."registroIvaId", x."codiceRegistro", x.anno, x."ultimoNumero", x."ultimaData",
+             x."numeroPartenza", x."dataPartenza", x."partenzaModificabile",
+             CASE WHEN x."partenzaModificabile" AND x."ultimoNumero" = 0 AND x."numeroPartenza" = 0
+                       AND x."dataPartenza" IS NULL AND x."ultimaData" IS NULL
+                  THEN 0 ELSE x."versioneRiga" END AS versione
+      FROM (
+        SELECT r.id::text AS "registroIvaId", r.codice AS "codiceRegistro", ${anno}::int AS anno,
+               COALESCE(n.ultimo_numero, 0)::int AS "ultimoNumero", n.ultima_data::text AS "ultimaData",
+               COALESCE(n.numero_partenza, 0)::int AS "numeroPartenza",
+               n.data_partenza::text AS "dataPartenza",
+               NOT EXISTS (
+                 SELECT 1 FROM "documenti_fattura" d
+                 WHERE d.tenant_id = r.tenant_id AND d.registro_iva_id = r.id AND d.anno = ${anno}::int
+                   AND d.stato IN ('DEFINITIVO', 'ANNULLATO')
+               ) AS "partenzaModificabile",
+               COALESCE(n.versione, 0)::int AS "versioneRiga"
+        FROM "registri_iva" r
+        LEFT JOIN "numerazioni_fattura" n
+          ON n.tenant_id = r.tenant_id AND n.registro_iva_id = r.id AND n.anno = ${anno}::int
+        WHERE r.tenant_id = ${tenantId}::uuid
+          AND (${registroIvaId}::uuid IS NULL AND r.attivo OR r.id = ${registroIvaId}::uuid)
+      ) x
+      ORDER BY x."codiceRegistro", x."registroIvaId"`
   }
 }

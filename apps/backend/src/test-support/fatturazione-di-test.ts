@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { creaCodiciIvaEcodifiche, creaContrattoConElenco, creaRiga } from './listino-di-test'
 import { creaLegameDiTest, creaMovimentoDiTest } from './legami-di-test'
@@ -346,7 +347,9 @@ export async function creaDocumentoDiTest(
       doc.id,
       linea,
       r.legame_id,
-      r.riga_legame_id,
+      // `riga_legame_id` resta SEMPRE NULL nei documenti, anche in bozza (Q1, seguito I1 della
+      // 4.4a): la 4.3 puo' cancellare le righe del legame dopo un annullo o uno storno.
+      null,
       r.movimento_vigente_id,
       r.riga_addebito_id,
       r.data_movimento,
@@ -420,4 +423,278 @@ export async function creaCedenteDiTest(owner: PrismaClient, tenantId: string): 
      VALUES ($1::uuid, 'RF01', 'MI', 'LN', now())`,
     tenantId
   )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Task 17: «fatturazione da», cedente completo e scenario di volume (aggiunte, nessuna firma
+// preesistente cambia).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Imposta «fatturazione da» dell'azienda (`AAAA-MM-GG`; `null` = fatturazione spenta). La
+ * selezione dell'elaborazione, come la lista della 4.3, non vede nulla finche' e' spenta. Non
+ * tocca `definitive_attive`.
+ */
+export async function impostaFatturazioneDaDiTest(
+  owner: PrismaClient,
+  tenantId: string,
+  da: string | null
+): Promise<void> {
+  await owner.$executeRawUnsafe(
+    `INSERT INTO impostazioni_fatturazione (tenant_id, fatturazione_da, updated_at)
+     VALUES ($1::uuid, $2::date, now())
+     ON CONFLICT (tenant_id) DO UPDATE SET fatturazione_da = EXCLUDED.fatturazione_da`,
+    tenantId,
+    da
+  )
+}
+
+/**
+ * Rende completo il cedente di un'azienda di test: indirizzo della sede, partita IVA e ragione
+ * sociale su `tenants` (la partita IVA c'e' gia' se l'azienda l'ha) e la riga di
+ * `cedente_fatturazione` (regime `RF01`, REA `MI` con numero). Se la riga esiste la lascia.
+ * Con `registroIvaPredefinitoId` imposta anche il registro predefinito del cedente.
+ */
+export async function completaCedenteDiTest(
+  owner: PrismaClient,
+  tenantId: string,
+  opz: { registroIvaPredefinitoId?: string | null } = {}
+): Promise<void> {
+  await owner.tenant.update({
+    where: { id: tenantId },
+    data: {
+      address: 'Via del Cedente',
+      civico: '10',
+      postalCode: '20100',
+      city: 'Milano',
+      province: 'MI',
+      country: 'IT',
+      reaNumber: '1234567',
+    },
+  })
+  await owner.$executeRawUnsafe(
+    `INSERT INTO cedente_fatturazione
+       (tenant_id, regime_fiscale, rea_ufficio, stato_liquidazione, registro_iva_predefinito_id,
+        updated_at)
+     VALUES ($1::uuid, 'RF01', 'MI', 'LN', $2::uuid, now())
+     ON CONFLICT (tenant_id) DO UPDATE
+       SET registro_iva_predefinito_id = EXCLUDED.registro_iva_predefinito_id`,
+    tenantId,
+    opz.registroIvaPredefinitoId ?? null
+  )
+}
+
+export interface OpzioniScenarioVolume {
+  /** Quanti contratti attivi (uno per cliente, un elenco ciascuno con una riga `CER`). Omesso: 500. */
+  contratti?: number
+  /** Quanti legami `CONFERMATO` in tutto, ripartiti a turno fra i contratti. Omesso: 10.000. */
+  legami?: number
+  /** Primo giorno dei movimenti (`AAAA-MM-GG`); i movimenti coprono 28 giorni. Omesso: `2026-03-01`. */
+  primoGiorno?: string
+}
+
+export interface ScenarioVolume {
+  contrattoIds: string[]
+  clienteIds: string[]
+  elencoIds: string[]
+  rigaAddebitoIds: string[]
+  legamiIds: string[]
+  registroIvaId: string
+  condizioneId: string
+  codiceIvaId: string
+}
+
+/**
+ * Crea (col client PROPRIETARIO, a blocchi di SQL con `unnest`: pochi secondi anche per 10.000
+ * legami) l'azienda di volume gia' esistente: cedente completo, «fatturazione da» all'inizio
+ * dell'anno, `contratti` clienti con un contratto attivo (registro IVA e condizione di pagamento
+ * impostati), un elenco e una riga `CER` a un euro, e `legami` movimenti con un legame `CONFERMATO`
+ * ciascuno (100 KG, riga del legame sulla riga `CER`). Gli id sono generati qui: la pulizia e'
+ * `pulisciTenantDiTest` sull'azienda, per id esatto.
+ */
+export async function creaScenarioVolume(
+  owner: PrismaClient,
+  tenantId: string,
+  opz: OpzioniScenarioVolume = {}
+): Promise<ScenarioVolume> {
+  const nContratti = opz.contratti ?? 500
+  const nLegami = opz.legami ?? 10_000
+  const primoGiorno = opz.primoGiorno ?? '2026-03-01'
+  const id = (): string => randomUUID()
+  const lista = (n: number): string[] => Array.from({ length: n }, id)
+
+  const listino = await creaCodiciIvaEcodifiche(owner, tenantId)
+  const tabelle = await creaTabelleFatturazione(owner, tenantId)
+  await completaCedenteDiTest(owner, tenantId, { registroIvaPredefinitoId: tabelle.registroId })
+  await impostaFatturazioneDaDiTest(owner, tenantId, '2026-01-01')
+  const registro = await owner.registroRifiuti.create({
+    data: { tenantId, descrizione: 'Registro di volume' },
+  })
+
+  const dittaIds = lista(nContratti)
+  const sedeIds = lista(nContratti)
+  const clienteIds = lista(nContratti)
+  const contrattoIds = lista(nContratti)
+  const elencoIds = lista(nContratti)
+  const rigaIds = lista(nContratti)
+  const T = tenantId
+  await owner.$transaction(
+    async tx => {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO ditte (id, tenant_id, ragione_sociale, partita_iva, updated_at)
+         SELECT t.id, $1::uuid, 'Cliente di volume ' || t.n, lpad((70000000000 + t.n)::text, 11, '0'), now()
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS t(id, n)`,
+        T,
+        dittaIds
+      )
+      await tx.$executeRawUnsafe(
+        `INSERT INTO sedi_ditte (id, tenant_id, ditta_id, via, civico, cap, comune, provincia, principale, updated_at)
+         SELECT s.id, $1::uuid, d.id, 'Via Roma', '1', '00100', 'Roma', 'RM', true, now()
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS s(id, n)
+         JOIN unnest($3::uuid[]) WITH ORDINALITY AS d(id, n) USING (n)`,
+        T,
+        sedeIds,
+        dittaIds
+      )
+      await tx.$executeRawUnsafe(
+        `INSERT INTO clienti (id, tenant_id, ditta_id, sede_id, updated_at)
+         SELECT c.id, $1::uuid, d.id, s.id, now()
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS c(id, n)
+         JOIN unnest($3::uuid[]) WITH ORDINALITY AS d(id, n) USING (n)
+         JOIN unnest($4::uuid[]) WITH ORDINALITY AS s(id, n) USING (n)`,
+        T,
+        clienteIds,
+        dittaIds,
+        sedeIds
+      )
+      await tx.$executeRawUnsafe(
+        `INSERT INTO contratti_cliente
+           (id, tenant_id, numero, descrizione, stato, data_inizio, cliente_id, registro_iva_id,
+            condizione_pagamento_id, conto_corrente_id, updated_at)
+         SELECT k.id, $1::uuid, 'VOL-' || lpad(k.n::text, 6, '0'), 'Contratto di volume',
+                'ATTIVO', '2026-01-01'::date, c.id, $4::uuid, $5::uuid, $6::uuid, now()
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS k(id, n)
+         JOIN unnest($3::uuid[]) WITH ORDINALITY AS c(id, n) USING (n)`,
+        T,
+        contrattoIds,
+        clienteIds,
+        tabelle.registroId,
+        tabelle.condizioneId,
+        tabelle.contoId
+      )
+      await tx.$executeRawUnsafe(
+        `INSERT INTO elenchi_addebiti (id, tenant_id, contratto_id, codice, descrizione, updated_at)
+         SELECT e.id, $1::uuid, k.id, '001', 'Elenco di volume', now()
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS e(id, n)
+         JOIN unnest($3::uuid[]) WITH ORDINALITY AS k(id, n) USING (n)`,
+        T,
+        elencoIds,
+        contrattoIds
+      )
+      await tx.$executeRawUnsafe(
+        `INSERT INTO righe_addebito
+           (id, tenant_id, elenco_id, tipo, cer_code, tipo_quantita, unita_misura, prezzo,
+            codice_iva_id, updated_at)
+         SELECT r.id, $1::uuid, e.id, 'CER', '20 03 01', 'PESO_NETTO', 'KG', 1, $4::uuid, now()
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS r(id, n)
+         JOIN unnest($3::uuid[]) WITH ORDINALITY AS e(id, n) USING (n)`,
+        T,
+        rigaIds,
+        elencoIds,
+        listino.iva22Id
+      )
+    },
+    { timeout: 120_000 }
+  )
+
+  // Movimenti, legami e righe dei legami: a blocchi di 2.000 per non tenere una query enorme.
+  const legamiIds: string[] = []
+  const BLOCCO = 2_000
+  for (let da = 0; da < nLegami; da += BLOCCO) {
+    const n = Math.min(BLOCCO, nLegami - da)
+    const movimentoIds = lista(n)
+    const blocco = lista(n)
+    const rigaLegameIds = lista(n)
+    // Il legame `da + i` sta sul contratto `(da + i) % nContratti`.
+    const indici = Array.from({ length: n }, (_, i) => (da + i) % nContratti)
+    const contratti = indici.map(i => contrattoIds[i])
+    const clienti = indici.map(i => clienteIds[i])
+    const elenchi = indici.map(i => elencoIds[i])
+    const righe = indici.map(i => rigaIds[i])
+    await owner.$transaction(
+      async tx => {
+        await tx.$executeRawUnsafe(
+          `INSERT INTO waste_movements
+             (id, tenant_id, updated_at, type, cer_code, quantity, unit, movement_date,
+              progressive_number, progressive_year, registration_date, causale, registro_id,
+              tipo_annotazione)
+           SELECT m.id, $1::uuid, now(), 'CARICO'::waste_movement_type, '20 03 01', 100, 'KG',
+                  ($4::date + ((($5::int + m.n::int) % 28)::int) * interval '1 day') + interval '10 hours',
+                  $5::int + m.n::int, 2026,
+                  ($4::date + ((($5::int + m.n::int) % 28)::int) * interval '1 day') + interval '10 hours',
+                  'INGRESSO_ESTERNO', $3::uuid, 'ORDINARIA'::tipo_annotazione_movimento
+           FROM unnest($2::uuid[]) WITH ORDINALITY AS m(id, n)`,
+          T,
+          movimentoIds,
+          registro.id,
+          primoGiorno,
+          da
+        )
+        await tx.$executeRawUnsafe(
+          `INSERT INTO legami_movimento
+             (id, tenant_id, registro_id, verso, movimento_originale_id, movimento_vigente_id,
+              stato, data_movimento, cliente_id, contratto_id, elenco_id, updated_at)
+           SELECT l.id, $1::uuid, $3::uuid, 'CARICO'::waste_movement_type, m.id, m.id,
+                  'CONFERMATO'::stato_legame_movimento,
+                  ($7::date + ((($8::int + l.n::int) % 28)::int) * interval '1 day')::date,
+                  cl.id, ct.id, el.id, now()
+           FROM unnest($2::uuid[]) WITH ORDINALITY AS l(id, n)
+           JOIN unnest($4::uuid[]) WITH ORDINALITY AS m(id, n) USING (n)
+           JOIN unnest($5::uuid[]) WITH ORDINALITY AS cl(id, n) USING (n)
+           JOIN unnest($6::uuid[]) WITH ORDINALITY AS ct(id, n) USING (n)
+           JOIN unnest($9::uuid[]) WITH ORDINALITY AS el(id, n) USING (n)`,
+          T,
+          blocco,
+          registro.id,
+          movimentoIds,
+          clienti,
+          contratti,
+          primoGiorno,
+          da,
+          elenchi
+        )
+        await tx.$executeRawUnsafe(
+          `INSERT INTO righe_legame_movimento
+             (id, tenant_id, legame_id, elenco_id, riga_addebito_id, ordine, origine, tipo,
+              tipo_quantita, unita_misura, quantita, quantita_origine, prezzo_speciale, prezzo,
+              prezzo_manuale, codice_iva_id, aliquota_iva, natura_iva, updated_at)
+           SELECT r.id, $1::uuid, l.id, el.id, ra.id, 1, 'PRINCIPALE'::origine_riga_legame, 'CER',
+                  'PESO_NETTO'::tipo_quantita_addebito, 'KG', 100,
+                  'DA_MOVIMENTO'::origine_quantita_legame, false, 1, false, $6::uuid, 22, NULL, now()
+           FROM unnest($2::uuid[]) WITH ORDINALITY AS r(id, n)
+           JOIN unnest($3::uuid[]) WITH ORDINALITY AS l(id, n) USING (n)
+           JOIN unnest($4::uuid[]) WITH ORDINALITY AS el(id, n) USING (n)
+           JOIN unnest($5::uuid[]) WITH ORDINALITY AS ra(id, n) USING (n)`,
+          T,
+          rigaLegameIds,
+          blocco,
+          elenchi,
+          righe,
+          listino.iva22Id
+        )
+      },
+      { timeout: 120_000 }
+    )
+    legamiIds.push(...blocco)
+  }
+  return {
+    contrattoIds,
+    clienteIds,
+    elencoIds,
+    rigaAddebitoIds: rigaIds,
+    legamiIds,
+    registroIvaId: tabelle.registroId,
+    condizioneId: tabelle.condizioneId,
+    codiceIvaId: listino.iva22Id,
+  }
 }

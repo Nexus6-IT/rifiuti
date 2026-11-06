@@ -41,6 +41,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
   'auth/strategies/spid.strategy.ts': 'il codice fiscale si cerca su tutte le aziende al login',
   'infrastructure/jobs/cleanup-old-permission-requests.job.ts':
     'scansione dei permessi temporanei vecchi di tutte le aziende',
+  'infrastructure/jobs/fatturazione-manutenzione.job.ts':
+    'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto (pulizia bozze e recupero degli orfani)',
   'infrastructure/jobs/rentri-certificato-scadenza.job.ts':
     'scansione di tutte le aziende attive e delle loro credenziali RENTRI',
   'infrastructure/jobs/rentri-riconciliazione.job.ts':

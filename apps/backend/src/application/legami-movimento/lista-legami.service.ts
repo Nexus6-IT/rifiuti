@@ -249,6 +249,7 @@ export function sqlCandidati(
            m.cer_code, m.waste_description, m.quantity, m.unit,
            l.id AS legame_id, l.cliente_id, l.contratto_id, l.motivi, l.avvisi, l.versione,
            (l.stato IN ('FATTURATO', 'IMPORTATO_FATTURATO')) AS fatturato,
+           l.stato::text AS stato_legame,
            ${SQL_STATO_LISTA} AS stato_lista
     FROM waste_movements m
     LEFT JOIN legami_movimento l

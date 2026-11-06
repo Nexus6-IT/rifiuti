@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import type { ErroreDocumento, Segnalazione } from './codici'
+import { FORMA_MINIMO_CATEGORIA } from './costanti-fiscali'
 import type { EsitoRighe, RigaSenzaLinea } from './esito-righe'
 import type { RigaListinoDaFatturare } from './tipi'
 
@@ -42,7 +43,7 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
  * `MF`, `M<cat>` in `minimi`. Restituisce solo le righe aggiunte (tipo MINIMO, senza unità di
  * misura). `listino` mappa `rigaAddebitoId` -> riga di listino. La soglia di `MW`/`MF`/`M<cat>`
  * è il `prezzo` della riga (la famiglia MINIMO non ha `minimoFatturabile`); senza prezzo dà
- * RIGA_LEGAME_INCOMPLETA con dettaglio «<tipo> riga n» (posizione da 1 in `minimi`).
+ * RIGA_LEGAME_INCOMPLETA con dettaglio «<tipo> riga n» (`numeroRiga`, posizione da 1 nel listino del documento).
  *
  * Insiemi (WinWaste `docs/fatturazione.md` §4.6, codice `:12444-12579`, e `etichettaTipo`):
  * `MW` = tutto il documento a prezzo normale; `MF` = righe CER; `M<cat>` = righe di tipo `V` della
@@ -54,8 +55,8 @@ export function applicaMinimi(
   righe: readonly RigaSenzaLinea[],
   minimi: readonly RigaListinoDaFatturare[],
   listino: ReadonlyMap<string, RigaListinoDaFatturare>,
-  /** Numero della riga nei dettagli degli errori (default: posizione da 1 in `minimi`). */
-  numeroRiga?: (id: string) => number
+  /** Posizione da 1 della riga nel listino del documento: il «riga n» dei dettagli. */
+  numeroRiga: (id: string) => number
 ): EsitoRighe {
   const aggiunte: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -90,11 +91,11 @@ export function applicaMinimi(
 
   // Minimi di documento: la base è copiata una volta, i minimi non si sommano fra loro.
   const base = [...normali, ...aggiunte]
-  minimi.forEach((m, indice) => {
+  minimi.forEach(m => {
     let insieme: readonly RigaSenzaLinea[]
     if (m.tipo === 'MW') insieme = base
     else if (m.tipo === 'MF') insieme = base.filter(r => voce(r)?.tipo === 'CER')
-    else if (/^M\d{3}$/.test(m.tipo)) {
+    else if (FORMA_MINIMO_CATEGORIA.test(m.tipo)) {
       insieme = base.filter(r => {
         const v = voce(r)
         return v?.tipo === 'V' && v.categoriaCodice === m.tipo.slice(1)
@@ -103,7 +104,7 @@ export function applicaMinimi(
     if (m.prezzo === null) {
       errori.push({
         codice: 'RIGA_LEGAME_INCOMPLETA',
-        dettaglio: `${m.tipo} riga ${numeroRiga?.(m.id) ?? indice + 1}`,
+        dettaglio: `${m.tipo} riga ${numeroRiga(m.id)}`,
       })
       return
     }

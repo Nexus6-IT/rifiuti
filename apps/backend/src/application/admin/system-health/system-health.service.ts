@@ -135,6 +135,12 @@ export class SystemHealthService {
         verifica: () => this.evidenze.verificaConnessione(),
       },
       {
+        key: 'numerazione-fatturazione',
+        label: 'Numerazione delle fatture senza buchi',
+        configurato: true,
+        verifica: () => this.evidenze.verificaNumerazioneFatturazione(),
+      },
+      {
         key: 'catalogo-causali',
         label: 'Catalogo causali del registro',
         configurato: true,

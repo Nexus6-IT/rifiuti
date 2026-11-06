@@ -32,7 +32,8 @@ import {
   type VincoliNoti,
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { COLONNE_ELENCO, contaUsiListino } from './uso-listino'
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
+import { COLONNE_ELENCO, contaUsiListino, contaUsiListinoPerOrigine } from './uso-listino'
 import {
   bloccaContrattoListino,
   impostaTimeoutLock,
@@ -53,6 +54,12 @@ const ENTITA: DescrizioneEntita = {
   femminile: false,
   // Decisione 8 (4.3): le righe citate da un legame non si cancellano, nemmeno a cascata.
   inUso: IN_USO,
+  inUsoPerVincolo: {
+    documenti_fattura_elenco_fkey: {
+      codice: IN_USO.codice,
+      messaggio: MESSAGGIO_IN_USO_DA_DOCUMENTI,
+    },
+  },
 }
 
 /** Unica chiave unica di business della tabella: il codice dentro il contratto. */
@@ -373,9 +380,12 @@ export class ElenchiAddebitiService {
           const { contratto, prima } = await this.bloccaElenco(tx, tenantId, id, false)
           confrontaVersione(prima.versione, versione, ENTITA)
           const righe = await tx.rigaAddebito.count({ where: { tenantId, elencoId: id } })
-          const usi = (await contaUsiListino(tx, tenantId, [id], COLONNE_ELENCO)).get(id) ?? 0
-          if (usi > 0) {
-            throw new ConflictException({ error: IN_USO.codice, message: IN_USO.messaggio })
+          const usi = (await contaUsiListinoPerOrigine(tx, tenantId, [id], COLONNE_ELENCO)).get(id)
+          if (usi && usi.totale > 0) {
+            throw new ConflictException({
+              error: IN_USO.codice,
+              message: usi.daDocumenti > 0 ? MESSAGGIO_IN_USO_DA_DOCUMENTI : IN_USO.messaggio,
+            })
           }
           // Righe, fasce, scadenze e allegati vanno a cascata (FK ON DELETE CASCADE).
           await scriviCondizionato(

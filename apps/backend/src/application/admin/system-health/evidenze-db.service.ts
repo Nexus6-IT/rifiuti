@@ -143,6 +143,36 @@ export class EvidenzeDbService implements LettoreEvidenze {
     return `${righe} causali di sistema presenti`
   }
 
+  /**
+   * Sonda della numerazione senza buchi (fatturazione, Q41): chiama la funzione SQL
+   * `fatturazione_violazioni_numerazione()` col client di sistema (il ruolo applicativo non puo'
+   * eseguirla). Restituisce solo conteggi per azienda, nessun dato dei documenti; le aziende senza
+   * violazioni non compaiono.
+   */
+  async violazioniNumerazione(): Promise<{ tenantId: string; violazioni: number }[]> {
+    const righe = await this.sistema.$queryRaw<{ tenant_id: string; violazioni: number }[]>`
+      SELECT tenant_id::text AS tenant_id, violazioni
+      FROM fatturazione_violazioni_numerazione()
+      WHERE violazioni > 0
+      ORDER BY tenant_id`
+    return righe.map(r => ({ tenantId: r.tenant_id, violazioni: Number(r.violazioni) }))
+  }
+
+  /**
+   * Voce di stato della numerazione: solleva se una azienda ha violazioni, cosi' la voce diventa
+   * `error`. Il messaggio riporta solo i conteggi, mai gli id delle aziende.
+   */
+  async verificaNumerazioneFatturazione(): Promise<string> {
+    const violazioni = await this.violazioniNumerazione()
+    if (violazioni.length > 0) {
+      const totale = violazioni.reduce((somma, r) => somma + r.violazioni, 0)
+      throw new Error(
+        `Numerazione delle fatture non coerente: ${totale} violazioni in ${violazioni.length} aziende`
+      )
+    }
+    return 'nessuna violazione della numerazione delle fatture'
+  }
+
   private async misuraBackup(): Promise<MisuraFreschezza> {
     const pianificazione = await this.sistema.backupSchedule.findFirst({
       where: { isActive: true },

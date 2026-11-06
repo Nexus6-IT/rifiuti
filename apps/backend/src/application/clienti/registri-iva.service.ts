@@ -1,6 +1,7 @@
 // Registri IVA sezionali delle vendite (4.1a, D24): anagrafica per azienda con lock ottimistico
 // (D14), disattivazione al posto della cancellazione quando il registro e' in uso (D13) e audit
 // (D16). Le regole sui dati stanno in `domain/clienti/registro-iva`.
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
 import {
   BadRequestException,
   ConflictException,
@@ -39,6 +40,12 @@ const ENTITA: DescrizioneEntita = {
     codice: 'REGISTRO_IVA_IN_USO',
     messaggio:
       'Il registro IVA è usato da clienti, contratti o documenti: disattivalo invece di eliminarlo.',
+  },
+  inUsoPerVincolo: {
+    documenti_fattura_registro_iva_fkey: {
+      codice: 'REGISTRO_IVA_IN_USO',
+      messaggio: MESSAGGIO_IN_USO_DA_DOCUMENTI,
+    },
   },
 }
 
@@ -247,6 +254,9 @@ export class RegistriIvaService {
 
           const campi = CAMPI.filter(c => !uguali(nuovi[c], attuali[c]))
           if (campi.length === 0) return comeVista(prima, tenantId, tx)
+          // Effetto della regola «numerazione scritta» (M3): un registro con la sola partenza
+          // numerica (ultimo_numero = numero_partenza, nessuna data) non e' in uso e puo' diventare
+          // il registro delle ricevute split; con un numero riservato o una data di partenza no.
           if (campi.includes('ricevuteSplit') && nuovi.ricevuteSplit === true) {
             const usi = (await contaUsi(tx, tenantId, [id], COLONNE_REGISTRO)).get(id) ?? 0
             if (usi > 0) {
@@ -289,15 +299,18 @@ export class RegistriIvaService {
           const riga = await tx.registroIva.findFirst({ where: { id, tenantId } })
           if (!riga) throw nonTrovato()
           confrontaVersione(riga.versione, versione, ENTITA)
-          // Le righe vuote della numerazione nascono solo per il lock del suffisso: non sono un
-          // uso. Si bloccano (ordine numerazioni -> registro, come il cambio di suffisso) e si
+          // Le righe non scritte della numerazione (ultimo_numero <= numero_partenza e nessuna data
+          // di partenza, stessa regola di `contaUsi`) nascono per il lock del suffisso o da una
+          // partenza solo numerica: non sono un uso. Si bloccano (ordine numerazioni -> registro, come il cambio di suffisso) e si
           // cancellano; quelle scritte restano e la FK rifiuta l'eliminazione (409 in uso).
           await tx.$queryRaw`SELECT 1 FROM "numerazioni_fattura"
             WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${id}::uuid
             ORDER BY anno FOR UPDATE`
-          await tx.$executeRaw`DELETE FROM "numerazioni_fattura"
+          const cancellate = await tx.$queryRaw<{ anno: number; numeroPartenza: number }[]>`
+            DELETE FROM "numerazioni_fattura"
             WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ${id}::uuid
-              AND ultimo_numero = 0 AND numero_partenza = 0 AND data_partenza IS NULL`
+              AND ultimo_numero <= numero_partenza AND data_partenza IS NULL
+            RETURNING anno::int AS anno, numero_partenza::int AS "numeroPartenza"`
           await scriviCondizionato(
             () => tx.registroIva.deleteMany({ where: { id, tenantId, versione } }),
             ENTITA
@@ -305,6 +318,11 @@ export class RegistriIvaService {
           await this.audit(tx, tenantId, utenteId, 'REGISTRO_IVA_ELIMINATO', 'eliminato', {
             registroId: id,
             codice: riga.codice,
+            // Una partenza impostata a mano e persa con il registro resta in traccia.
+            numerazioniCancellate: (cancellate ?? []).map(c => ({
+              anno: c.anno,
+              numeroPartenza: c.numeroPartenza,
+            })),
           })
         })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))

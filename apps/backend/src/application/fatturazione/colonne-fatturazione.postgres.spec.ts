@@ -36,6 +36,7 @@ import {
   creaContrattoConElenco,
   creaRiga,
 } from '../../test-support/listino-di-test'
+import { MESSAGGIO_IN_USO_DA_DOCUMENTI } from '../../domain/fatturazione/codici'
 import { ClientiService } from '../clienti/clienti.service'
 import { RegistriIvaService } from '../clienti/registri-iva.service'
 import { SpeseAccessorieService } from '../clienti/spese-accessorie.service'
@@ -304,6 +305,100 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
       expect(await owner.numerazioneFattura.count({ where: { tenantId: a.tenantId } })).toBe(1)
     })
 
+    it('registro con una riga di numerazione vuota: eliminabile; con ultimo_numero > partenza: non eliminabile', async () => {
+      const a = await azienda()
+      const vuoto = await owner.registroIva.create({
+        data: { tenantId: a.tenantId, codice: '05', descrizione: 'Con riga vuota' },
+      })
+      await owner.numerazioneFattura.create({
+        data: { tenantId: a.tenantId, registroIvaId: vuoto.id, anno: ANNO },
+      })
+      const scritto = await owner.registroIva.create({
+        data: { tenantId: a.tenantId, codice: '06', descrizione: 'Con numeri' },
+      })
+      await owner.numerazioneFattura.create({
+        data: {
+          tenantId: a.tenantId,
+          registroIvaId: scritto.id,
+          anno: ANNO,
+          numeroPartenza: 10,
+          ultimoNumero: 12,
+        },
+      })
+      const soloPartenza = await owner.registroIva.create({
+        data: { tenantId: a.tenantId, codice: '09', descrizione: 'Solo partenza numerica' },
+      })
+      await owner.numerazioneFattura.create({
+        data: {
+          tenantId: a.tenantId,
+          registroIvaId: soloPartenza.id,
+          anno: ANNO,
+          numeroPartenza: 10,
+          ultimoNumero: 10,
+        },
+      })
+      const conData = await owner.registroIva.create({
+        data: { tenantId: a.tenantId, codice: '10', descrizione: 'Con data di partenza' },
+      })
+      await owner.numerazioneFattura.create({
+        data: {
+          tenantId: a.tenantId,
+          registroIvaId: conData.id,
+          anno: ANNO,
+          dataPartenza: new Date(`${ANNO}-01-02T00:00:00Z`),
+        },
+      })
+      // Effetto su ricevuteSplit (M3): la sola partenza numerica non e' un uso, un numero
+      // riservato si'.
+      const split = (id: string) =>
+        errore(
+          nel(a.tenantId, async () => {
+            const r = await owner.registroIva.findUniqueOrThrow({ where: { id } })
+            return registri.modifica(a.tenantId, a.utenteId, id, {
+              ricevuteSplit: true,
+              versione: r.versione,
+            })
+          })
+        )
+      expect(codiceErrore(await split(scritto.id))).toBe('REGISTRO_IVA_IN_USO')
+      const nuovo = await owner.registroIva.findUniqueOrThrow({ where: { id: soloPartenza.id } })
+      const diventato = await nel(a.tenantId, () =>
+        registri.modifica(a.tenantId, a.utenteId, soloPartenza.id, {
+          ricevuteSplit: true,
+          versione: nuovo.versione,
+        })
+      )
+      expect(diventato.ricevuteSplit).toBe(true)
+      const lista = await nel(a.tenantId, () => registri.list(a.tenantId, true))
+      const eliminabile = (id: string) => lista.find(r => r.id === id)?.eliminabile
+      expect(eliminabile(vuoto.id)).toBe(true)
+      expect(eliminabile(soloPartenza.id)).toBe(true)
+      expect(eliminabile(scritto.id)).toBe(false)
+      expect(eliminabile(conData.id)).toBe(false)
+      for (const id of [vuoto.id, soloPartenza.id]) {
+        const r = await owner.registroIva.findUniqueOrThrow({ where: { id } })
+        await nel(a.tenantId, () => registri.elimina(a.tenantId, a.utenteId, id, r.versione))
+        expect(await owner.registroIva.count({ where: { id } })).toBe(0)
+      }
+      const audit = await owner.activityLog.findMany({
+        where: { tenantId: a.tenantId, action: 'REGISTRO_IVA_ELIMINATO' },
+      })
+      const dellaPartenza = audit.find(
+        x => (x.metadata as { registroId?: string }).registroId === soloPartenza.id
+      )
+      expect(
+        (dellaPartenza?.metadata as { numerazioniCancellate: unknown }).numerazioniCancellate
+      ).toEqual([{ anno: ANNO, numeroPartenza: 10 }])
+      for (const id of [scritto.id, conData.id]) {
+        const r = await owner.registroIva.findUniqueOrThrow({ where: { id } })
+        const e = await errore(
+          nel(a.tenantId, () => registri.elimina(a.tenantId, a.utenteId, id, r.versione))
+        )
+        expect(codiceErrore(e)).toBe('REGISTRO_IVA_IN_USO')
+        expect(await owner.registroIva.count({ where: { id } })).toBe(1)
+      }
+    })
+
     it('alla creazione il suffisso e` facoltativo e validato', async () => {
       const a = await azienda()
       const ok = await nel(a.tenantId, () =>
@@ -527,6 +622,7 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
       )
       expect(stato(e)).toBe(409)
       expect(codiceErrore(e)).toBe('RIGA_ADDEBITO_IN_USO')
+      expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
     })
 
     it('riga di listino citata solo da un marcatore: eliminabile false, delete 409 RIGA_ADDEBITO_IN_USO', async () => {
@@ -579,6 +675,7 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
       )
       expect(stato(e)).toBe(409)
       expect(codiceErrore(e)).toBe('CODICE_IVA_IN_USO')
+      expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
     })
 
     describe('registro IVA', () => {
@@ -595,6 +692,24 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
         expect(stato(e)).toBe(409)
         expect(codiceErrore(e)).toBe('REGISTRO_IVA_IN_USO')
       }
+
+      it('citato dalla testata di un documento: 409 col messaggio dei documenti (Q37)', async () => {
+        const a = await azienda()
+        const altro = await owner.registroIva.create({
+          data: { tenantId: a.tenantId, codice: '11', descrizione: 'Dei documenti' },
+        })
+        await creaDocumentoDiTest(owner, a.tenantId, {
+          stato: 'BOZZA',
+          registroIvaId: altro.id,
+          anno: ANNO,
+        })
+        const riga = await owner.registroIva.findUniqueOrThrow({ where: { id: altro.id } })
+        const e = await errore(
+          nel(a.tenantId, () => registri.elimina(a.tenantId, a.utenteId, altro.id, riga.versione))
+        )
+        expect(codiceErrore(e)).toBe('REGISTRO_IVA_IN_USO')
+        expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
+      })
 
       it('citato da un documento', async () => {
         const a = await azienda()
@@ -687,7 +802,7 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
         )
         expect(stato(e)).toBe(409)
         expect(codiceErrore(e)).toBe('CLIENTE_USATO_DA_FATTURE')
-        expect(e.getResponse().message).toContain('intestatario di fatture')
+        expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
       })
 
       it('contratto del documento (anche se in bozza): CONTRATTO_CLIENTE_NON_ELIMINABILE', async () => {
@@ -704,6 +819,7 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
         )
         expect(stato(e)).toBe(409)
         expect(codiceErrore(e)).toBe('CONTRATTO_CLIENTE_NON_ELIMINABILE')
+        expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
         const dopo = await owner.contrattoCliente.findUniqueOrThrow({ where: { id: contrattoId } })
         expect(dopo.eliminatoIl).toBeNull()
       })
@@ -735,7 +851,29 @@ describe('Colonne della fatturazione nei servizi esistenti — Postgres reale, r
         )
         expect(stato(e)).toBe(409)
         expect(codiceErrore(e)).toBe('ELENCO_ADDEBITI_IN_USO')
+        expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
         expect(await owner.elencoAddebiti.count({ where: { id: elenco.id } })).toBe(1)
+      })
+
+      it("elenco citato dalla testata di un documento senza alcun legame: 409 e l'elenco risulta usato (M4)", async () => {
+        const { a, documentoId, elenco } = await conDocumento()
+        expect(
+          await owner.legameMovimento.count({
+            where: { tenantId: a.tenantId, elencoId: elenco.id },
+          })
+        ).toBe(0)
+        await owner.$executeRawUnsafe(
+          `UPDATE documenti_fattura SET elenco_id = $2::uuid WHERE id = $1::uuid`,
+          documentoId,
+          elenco.id
+        )
+        const lista = await nel(a.tenantId, () => elenchi.list(a.tenantId, elenco.contrattoId))
+        expect(lista.elenchi.find(e => e.id === elenco.id)?.eliminabile).toBe(false)
+        const e = await errore(
+          nel(a.tenantId, () => elenchi.elimina(a.tenantId, a.utenteId, elenco.id, elenco.versione))
+        )
+        expect(codiceErrore(e)).toBe('ELENCO_ADDEBITI_IN_USO')
+        expect(e.getResponse().message).toBe(MESSAGGIO_IN_USO_DA_DOCUMENTI)
       })
     })
   })

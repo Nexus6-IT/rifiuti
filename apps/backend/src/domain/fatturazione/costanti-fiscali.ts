@@ -63,7 +63,7 @@ export const FAMIGLIE_CALCOLATE: readonly string[] = [
 
 const SEGNAPOSTO_MINIMO_CATEGORIA = 'M<cat>'
 /** Forma di `M<cat>`: M + 3 cifre (come in listino/tipi-addebito.ts). */
-const FORMA_MINIMO_CATEGORIA = /^M\d{3}$/
+export const FORMA_MINIMO_CATEGORIA = /^M\d{3}$/
 /** Tipi letterali: derivati da FAMIGLIE_CALCOLATE, unica fonte di verità. */
 const TIPI_CALCOLATI_LETTERALI: ReadonlySet<string> = new Set(
   FAMIGLIE_CALCOLATE.filter(f => f !== SEGNAPOSTO_MINIMO_CATEGORIA)

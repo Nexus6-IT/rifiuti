@@ -195,5 +195,23 @@ describe('RegistroIvaDialogComponent', () => {
       expect(input().disabled).toBeTrue()
       expect(q('registro-dlg-suffisso-motivo')).not.toBeNull()
     })
+
+    it('409 SUFFISSO_NON_MODIFICABILE: il campo torna al valore salvato', async () => {
+      tabella.modifica.and.returnValue(
+        throwError(() => ({
+          status: 409,
+          error: { error: 'SUFFISSO_NON_MODIFICABILE', message: 'Suffisso bloccato.' },
+        }))
+      )
+      await apri({ ...registro, suffissoNumero: '/A' })
+      scrivi('registro-dlg-suffisso', '/C')
+      await stabilizza(fixture)
+      expect(input().value).toBe('/C')
+      bottone('registro-dlg-salva')!.click()
+      await stabilizza(fixture)
+      expect(q('registro-dlg-errore')!.textContent).toContain('Suffisso bloccato.')
+      expect(input().value).toBe('/A')
+      expect(input().disabled).toBeTrue()
+    })
   })
 })

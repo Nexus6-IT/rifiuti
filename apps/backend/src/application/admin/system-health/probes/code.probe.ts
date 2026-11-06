@@ -39,6 +39,7 @@ export const CODE_ATTESE: DescrittoreCoda[] = [
   { nome: 'permission-expiration', label: 'Scadenza permessi temporanei' },
   { nome: 'permission-cleanup', label: 'Pulizia richieste di permesso' },
   { nome: 'cache-warming', label: 'Riscaldamento cache permessi' },
+  { nome: 'fatturazione', label: 'Elaborazioni di fatturazione' },
 ]
 
 /** Conteggi che ci interessano, nell'ordine in cui li mostriamo. */

@@ -165,6 +165,61 @@ export async function bloccaNumerazioni(
   return stato
 }
 
+/**
+ * Suffisso di ciascuna serie (decisione 20, Q8), per chiave `chiaveNumerazione`. SOLA LETTURA.
+ * Una serie (registro, anno) che ha gia' almeno un `DEFINITIVO` prende il suffisso di quello col
+ * numero piu' alto, ricavato da `numero_testo` togliendo il prefisso `numero::text`
+ * (`15/A` -> `/A`, `15` -> nessun suffisso). Una serie senza definitivi prende il suffisso attuale
+ * del registro. Cosi' un suffisso cambiato a gennaio non spezza la serie di dicembre, e la
+ * numerazione prevista dell'anteprima coincide con quella di definitiva e storno.
+ */
+export async function suffissiDelleSerie(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  coppie: readonly CoppiaNumerazione[]
+): Promise<Map<string, string | null>> {
+  const risultato = new Map<string, string | null>()
+  const ordinate = coppieOrdinate(coppie)
+  if (ordinate.length === 0) return risultato
+  const registri = ordinate.map(c => c.registroIvaId)
+  const anni = ordinate.map(c => c.anno)
+
+  const dei = await tx.$queryRaw<{ id: string; suffisso: string | null }[]>`
+    SELECT id::text AS id, suffisso_numero AS suffisso FROM "registri_iva"
+    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${[...new Set(registri)]}::uuid[])`
+  const suffissoRegistro = new Map(dei.map(x => [x.id, x.suffisso]))
+
+  const ultimi = await tx.$queryRaw<
+    { registroIvaId: string; anno: number; numero: number; numeroTesto: string | null }[]
+  >`
+    SELECT DISTINCT ON (d.registro_iva_id, d.anno)
+           d.registro_iva_id::text AS "registroIvaId", d.anno::int AS anno,
+           d.numero::int AS numero, d.numero_testo AS "numeroTesto"
+    FROM "documenti_fattura" d
+    JOIN unnest(${registri}::uuid[], ${anni}::int[]) AS c(registro_iva_id, anno)
+      ON d.registro_iva_id = c.registro_iva_id AND d.anno = c.anno
+    WHERE d.tenant_id = ${tenantId}::uuid AND d.stato = 'DEFINITIVO' AND d.numero IS NOT NULL
+    ORDER BY d.registro_iva_id, d.anno, d.numero DESC`
+  const dellUltimo = new Map<string, string | null>()
+  for (const u of ultimi) {
+    const prefisso = String(u.numero)
+    if (u.numeroTesto !== null && u.numeroTesto.startsWith(prefisso)) {
+      const resto = u.numeroTesto.slice(prefisso.length)
+      dellUltimo.set(chiaveNumerazione(u.registroIvaId, u.anno), resto === '' ? null : resto)
+    }
+  }
+  for (const c of ordinate) {
+    const chiave = chiaveNumerazione(c.registroIvaId, c.anno)
+    risultato.set(
+      chiave,
+      dellUltimo.has(chiave)
+        ? (dellUltimo.get(chiave) ?? null)
+        : (suffissoRegistro.get(c.registroIvaId) ?? null)
+    )
+  }
+  return risultato
+}
+
 function validaRichiesta(r: RichiestaNumeri): void {
   validaAnno(r.anno)
   if (!Number.isInteger(r.quanti) || r.quanti < 1) {
@@ -201,11 +256,8 @@ export async function riservaNumeri(
 
   const stato = await bloccaNumerazioni(tx, tenantId, r)
 
-  const idRegistri = [...new Set(r.map(x => x.registroIvaId.toLowerCase()))]
-  const suffissi = await tx.$queryRaw<{ id: string; suffisso: string | null }[]>`
-    SELECT id::text AS id, suffisso_numero AS suffisso FROM "registri_iva"
-    WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${idRegistri}::uuid[])`
-  const suffissoDi = new Map(suffissi.map(s => [s.id, s.suffisso]))
+  // Decisione 20: il suffisso e' quello della SERIE (registro, anno), non del solo registro.
+  const suffissoDi = await suffissiDelleSerie(tx, tenantId, r)
 
   const corrente = new Map<string, { ultimo: number; data: string | null }>()
   for (const [chiave, s] of stato)
@@ -233,7 +285,7 @@ export async function riservaNumeri(
       anno: x.anno,
       da,
       a,
-      suffisso: suffissoDi.get(x.registroIvaId.toLowerCase()) ?? null,
+      suffisso: suffissoDi.get(chiaveNumerazione(x.registroIvaId, x.anno)) ?? null,
     })
   }
 

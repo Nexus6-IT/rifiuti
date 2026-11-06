@@ -737,7 +737,8 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
       const put = imposta(tenantId, utenteId, registroId, {
         numeroPartenza: 50,
         dataPartenza: '2026-01-31',
-        versione: esistente ? 1 : 0,
+        // M3: una riga vuota (qui creata prima del PUT) vale come assente, quindi versione 0.
+        versione: 0,
       }).catch(e => e)
       try {
         await finche(1)
@@ -817,5 +818,47 @@ describe('Numerazione fatture — Postgres reale, ruolo wasteflow_app', () => {
         where: { tenantId, action: 'NUMERAZIONE_FATTURA_PARTENZA_IMPOSTATA' },
       })
     ).toBe(0)
+  })
+
+  it('PUT su una riga vuota nata per il lock del suffisso: versione 0 come senza riga, 200 (M3)', async () => {
+    const { tenantId, utenteId, registroId } = await azienda()
+    // La riga vuota ha versione 1 nel database (default), ma la vista la mostra a 0.
+    await owner.numerazioneFattura.create({
+      data: { tenantId, registroIvaId: registroId, anno: 2026 },
+    })
+    expect((await elenco(tenantId))[0]).toMatchObject({ ultimoNumero: 0, versione: 0 })
+    const invariato = await imposta(tenantId, utenteId, registroId, {
+      numeroPartenza: 0,
+      dataPartenza: null,
+      versione: 0,
+    })
+    expect(invariato.versione).toBe(0)
+    const v = await imposta(tenantId, utenteId, registroId, {
+      numeroPartenza: 120,
+      dataPartenza: '2026-01-10',
+      versione: 0,
+    })
+    expect(v).toMatchObject({ numeroPartenza: 120, ultimoNumero: 120, dataPartenza: '2026-01-10' })
+    expect(v.versione).toBeGreaterThan(0)
+    // Riga ora scritta: la versione 0 non vale piu'.
+    const e = await imposta(tenantId, utenteId, registroId, {
+      numeroPartenza: 130,
+      dataPartenza: null,
+      versione: 0,
+    }).catch((x: unknown) => x)
+    expect((e as ConflictException).getResponse()).toMatchObject({ error: 'VERSIONE_SUPERATA' })
+  })
+
+  it('PUT su una riga vuota con la versione reale del database (non zero): 409 VERSIONE_SUPERATA', async () => {
+    const { tenantId, utenteId, registroId } = await azienda()
+    await owner.numerazioneFattura.create({
+      data: { tenantId, registroIvaId: registroId, anno: 2026 },
+    })
+    const e = await imposta(tenantId, utenteId, registroId, {
+      numeroPartenza: 50,
+      dataPartenza: null,
+      versione: 1,
+    }).catch((x: unknown) => x)
+    expect((e as ConflictException).getResponse()).toMatchObject({ error: 'VERSIONE_SUPERATA' })
   })
 })

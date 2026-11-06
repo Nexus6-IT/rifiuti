@@ -210,7 +210,7 @@ Vincoli:
 | `id`, `tenant_id`, `documento_id` | uuid | FK `(documento_id, tenant_id)` CASCADE. La cancellazione la permette solo il trigger e solo sulle bozze |
 | `numero_linea` | int | 1..n, unico per documento |
 | `tipo_riga` | enum | `MOVIMENTO`, `FASCIA_SPECIALE`, `FISSO`, `MINIMO`, `SPESA_INCASSO`, `BOLLO`, `STORNO` |
-| `legame_id`, `riga_legame_id` | uuid null | per `MOVIMENTO`. FK composte NoAction |
+| `legame_id`, `riga_legame_id` | uuid null | `legame_id` per `MOVIMENTO`; `riga_legame_id` resta sempre NULL nella 4.4 (la FK NoAction bloccherebbe la 4.3 dopo un annullo, scansione 4.4b Q1). FK composte NoAction |
 | `movimento_fatturato_id` | uuid null | `movimento_vigente_id` del legame alla definitiva (S6) |
 | `riga_addebito_id` | uuid null | FK `(riga_addebito_id, tenant_id)` NoAction. Rende «in uso» la riga di listino |
 | `descrizione` | varchar(1000) | testo già normalizzato per l'XML |
@@ -834,3 +834,10 @@ Sono vincolanti. Le opzioni scartate del §18 sono state tolte.
 17. **Addebiti TT e TF nella prima uscita (05/11):** si calcolano anche gli addebiti `TT` (peso netto di tutti i rifiuti dell'elenco) e `TF` (peso netto dei rifiuti conferiti nei giorni festivi), così i contratti allegati, che hanno solo righe `T`, si fatturano. `TS`, `TP`, `TQ`, `TR` e `T` + 3 cifre restano in errore esplicito (`FAMIGLIA_NON_CALCOLATA`). Estende la decisione 2 e il §6.5.
 18. **Annullo di una nota di credito TD04 (05/11):** nella prima uscita non è ammesso (409 `ANNULLO_NON_AMMESSO`). Una nota di credito sbagliata si corregge con un nuovo documento. Si rivede se serve nell'uso reale.
 19. **Giorni festivi di `TF` (05/11):** domenica e festività nazionali civili, 4 ottobre compreso dal 2026. Il patrono del comune resta fuori; se serve, entra più avanti come dato della sede.
+20. **Suffisso cambiato e documenti dell'anno prima (05/11):** un documento numerato nella serie di un anno che ha già definitivi prende il suffisso dell'ultimo definitivo di quella serie; il suffisso nuovo vale per le serie che non hanno ancora definitivi.
+21. **Addebito fisso `F` senza prezzo (05/11):** `RIGA_LEGAME_INCOMPLETA` solo nei periodi in cui la `F` produrrebbe una riga (scadenza o canone del periodo); negli altri periodi non blocca.
+22. **Canone con contratto che inizia o finisce nel periodo (05/11):** si fattura il canone intero del periodo, come WinWaste; nessuna proporzione ai giorni.
+23. **Import da WinWaste (05/11):** l'import crea i marcatori `SCADENZA_FISSO` (e `PERIODO_CANONE`) delle scadenze già fatturate in WinWaste, così WasteFlow non le rifattura come arretrati. Requisito del lavoro di import, non della 4.4.
+24. **Errori generali e definitiva (05/11):** `CEDENTE_INCOMPLETO` e `DATA_ANTERIORE_ULTIMA_FATTURA` bloccano la definitiva: la richiesta risponde 409 con il codice dell'errore generale. `LEGAMI_SENZA_CONTRATTO` non blocca: quei movimenti restano fuori dalla fattura e compaiono in un avviso.
+25. **Filtri per categoria e per tipo di addebito (05/11):** scelgono i contratti, non le righe. Entra un contratto che ha almeno una riga di listino attiva della categoria o del tipo scelto, e il documento resta sempre intero (minimi, fasce e bollo calcolati su tutto il documento).
+26. **Divisione della 4.4b (05/11):** la 4.4b esce in due pezzi, ciascuno con la sua PR. **4.4b1**: elaborazione, anteprima, definitiva, annullo, storno, scostamenti, pulizia e le loro API (Task 14, 15, 17, 17b, 18, 19, 20, 21, 22, 25a, 26a, 27a del piano). **4.4b2**: XSD, XML, emissione, CSV ed export (Task 16, 23, 24, 25b, 26b, 27b). La 4.4b2 parte dopo il merge della 4.4b1; la 4.5 aspetta la 4.4b2.

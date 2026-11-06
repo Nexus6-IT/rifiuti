@@ -19,7 +19,7 @@ import { ATTESA_SERVER } from '../../utils/attese'
  *   3. ADMIN imposta il numero di partenza 120; un numero non valido da' 400 PARTENZA_NON_VALIDA;
  *      OPERATOR 403.
  *   4. Una spesa accessoria si crea con il codice IVA e il registro ha il suffisso.
- *   5. Nessuna rotta di elaborazione esiste ancora: POST /elaborazioni-fatturazione = 404.
+ *   5. La rotta di elaborazione esiste (4.4b1): POST /elaborazioni-fatturazione con corpo vuoto = 400.
  *   6. Schermata: la scheda «Dati del cedente» si apre (screenshot per la revisione del menu
  *      «Socio unico»).
  *
@@ -309,10 +309,10 @@ test.describe('Impostazioni di fatturazione 4.4a (cedente, numerazione, spese)',
     expect(inesistente.stato).toBeLessThan(500)
   })
 
-  test('nessuna rotta di elaborazione esiste ancora (4.4b): POST /elaborazioni-fatturazione = 404', async () => {
+  test('la rotta di elaborazione esiste (4.4b1) e rifiuta un corpo vuoto: POST /elaborazioni-fatturazione = 400', async () => {
     const token = await tokenAzienda(azienda, 'admin')
     const r = await chiama('POST', '/elaborazioni-fatturazione', token, {})
-    expect(r.stato).toBe(404)
+    expect(r.stato).toBe(400)
   })
 
   test('la scheda «Dati del cedente» si apre e mostra il menu «Socio unico»', async ({ page }) => {

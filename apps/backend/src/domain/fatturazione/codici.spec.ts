@@ -2,6 +2,7 @@ import {
   AVVISI_DOCUMENTO,
   ERRORI_DOCUMENTO,
   ERRORI_GENERALI,
+  ERRORI_GENERALI_BLOCCANTI,
   ERRORI_NUMERAZIONE,
   MESSAGGI_AVVISO,
   MESSAGGI_ERRORE,
@@ -164,5 +165,22 @@ describe('validaTestoBreve', () => {
     const r = validaTestoBreve('a'.repeat(201))
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.errore.length).toBeGreaterThan(0)
+  })
+})
+
+describe('seguiti della 4.4a (Task 17)', () => {
+  it('ERRORI_GENERALI_BLOCCANTI: cedente, data anteriore e data futura, non i legami senza contratto', () => {
+    expect([...ERRORI_GENERALI_BLOCCANTI]).toEqual([
+      'CEDENTE_INCOMPLETO',
+      'DATA_ANTERIORE_ULTIMA_FATTURA',
+      'DATA_FUTURA',
+    ])
+    expect(ERRORI_GENERALI_BLOCCANTI).not.toContain('LEGAMI_SENZA_CONTRATTO')
+    for (const c of ERRORI_GENERALI_BLOCCANTI) expect(ERRORI_GENERALI).toContain(c)
+  })
+  it('messaggio di RIGA_LEGAME_INCOMPLETA uguale al testo del frontend', () => {
+    expect(MESSAGGI_ERRORE.RIGA_LEGAME_INCOMPLETA).toBe(
+      'Una riga del legame o del listino è incompleta: mancano quantità o prezzo.'
+    )
   })
 })
