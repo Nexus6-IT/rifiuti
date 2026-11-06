@@ -47,6 +47,7 @@ export interface LegameVista {
   avvisi: string[]
   righe: RigaVista[]
   versione: number
+  cliente: { id: string } | null
 }
 
 export const CER_A = '15 01 01'
@@ -174,6 +175,7 @@ export async function impostaFatturazioneDa(token: string, data: string | null):
 
 /** Dati di listino dell'azienda di test: cliente, contratto ATTIVO, elenco e righe. */
 export interface ListinoLegami {
+  registroIvaId: string
   clienteId: string
   clienteEtichetta: string
   contrattoId: string
@@ -193,7 +195,7 @@ export interface ListinoLegami {
 export async function creaListinoLegami(
   token: string,
   creati: Creato[],
-  opzioni: { modalitaPagamento?: string } = {}
+  opzioni: { modalitaPagamento?: string; registroIvaId?: string } = {}
 ): Promise<ListinoLegami> {
   const crea = async <T extends Versionata>(tipo: string, corpo: unknown): Promise<T> => {
     const r = await ok<Record<string, unknown>>('POST', `/${tipo}`, token, corpo)
@@ -212,11 +214,13 @@ export async function creaListinoLegami(
   const liberi = Array.from({ length: 99 }, (_, n) => String(n + 1).padStart(2, '0')).filter(
     c => !registriEsistenti.has(c)
   )
-  const registro = await crea<Versionata>('registri-iva', {
-    codice: liberi[Math.floor(Math.random() * liberi.length)],
-    descrizione: conPrefissoUnico('Registro'),
-    ricevuteSplit: false,
-  })
+  const registro: Versionata = opzioni.registroIvaId
+    ? { id: opzioni.registroIvaId, versione: 0 }
+    : await crea<Versionata>('registri-iva', {
+        codice: liberi[Math.floor(Math.random() * liberi.length)],
+        descrizione: conPrefissoUnico('Registro'),
+        ricevuteSplit: false,
+      })
   const condizione = await crea<Versionata>('condizioni-pagamento', {
     codice: codiceCasuale(8),
     descrizione: conPrefissoUnico('Condizione'),
@@ -295,6 +299,7 @@ export async function creaListinoLegami(
   })
   const libera = await rigaCer(CER_RIGA_LIBERA, '5.00')
   return {
+    registroIvaId: registro.id,
     clienteId: cliente.id,
     clienteEtichetta: ragioneSociale,
     contrattoId: contratto.id,

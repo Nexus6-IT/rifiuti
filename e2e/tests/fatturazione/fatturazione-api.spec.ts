@@ -29,6 +29,7 @@ import {
   ok,
   periodoDiProva,
   type Creato,
+  type DocumentoApi,
   type ElaborazioneApi,
   type ListinoLegami,
   type NumerazioneApi,
@@ -72,13 +73,15 @@ test.describe('Fatturazione per periodo (API)', () => {
   let owner: PrismaClient
   let azienda: AziendaDiTest
   let listino: ListinoLegami
-  let elencoAlternativoId: string
+  let listino2: ListinoLegami
+  const elenchi: Record<string, { alternativo: string; predefinito: string }> = {}
   const tok = { admin: '', operator: '', viewer: '' }
 
   // Stato condiviso fra i test seriali.
   let anteprima1: ElaborazioneApi
-  let documento1Id = ''
   let legame1: { legameId: string; movimentoId: string }
+  let legame2: { legameId: string; movimentoId: string }
+  let superata: { id: string; versione: number }
   let elaborazione1Definitiva: ElaborazioneApi
   const chiaviViste: {
     dettaglio?: Record<string, unknown>
@@ -88,11 +91,14 @@ test.describe('Fatturazione per periodo (API)', () => {
     scostamento?: Record<string, unknown>
   } = {}
 
-  const registraConfermato = (kg: number) =>
-    registraViaApi(tok.admin, {
-      kg,
-      legame: { azione: 'CONFERMA', clienteId: listino.clienteId },
-    })
+  const registraConfermato = (kg: number, clienteId = listino.clienteId) =>
+    registraViaApi(tok.admin, { kg, legame: { azione: 'CONFERMA', clienteId } })
+
+  /** Id dei legami con righe MOVIMENTO di un documento. */
+  const legamiDelDocumento = async (documentoId: string): Promise<string[]> =>
+    (await dettaglioDocumento(tok.admin, documentoId)).righe
+      .filter(r => r.tipoRiga === 'MOVIMENTO' && r.legameId !== null)
+      .map(r => r.legameId as string)
 
   const legame = (id: string) => ok<LegameVista>('GET', `/legami-movimento/${id}`, tok.admin)
   const numerazioni = () => ok<NumerazioneApi[]>('GET', '/numerazioni-fattura', tok.admin)
@@ -118,12 +124,23 @@ test.describe('Fatturazione per periodo (API)', () => {
 
     // Contanti (MP01): una modalita` bancaria richiederebbe un conto corrente del cedente.
     listino = await creaListinoLegami(tok.admin, creati, { modalitaPagamento: 'MP01' })
-    ;({ elencoAlternativoId } = await aggiungiRigaFEdElencoAlternativo(
-      tok.admin,
-      creati,
-      listino,
-      periodo.scadenzaF
-    ))
+    // Secondo contratto e secondo cliente sullo STESSO registro IVA: la definitiva numera 1 e 2.
+    listino2 = await creaListinoLegami(tok.admin, creati, {
+      modalitaPagamento: 'MP01',
+      registroIvaId: listino.registroIvaId,
+    })
+    for (const [l, scadenza] of [
+      [listino, periodo.scadenzaF],
+      [listino2, null],
+    ] as const) {
+      const { elencoAlternativoId } = await aggiungiRigaFEdElencoAlternativo(
+        tok.admin,
+        creati,
+        l,
+        scadenza
+      )
+      elenchi[l.clienteId] = { alternativo: elencoAlternativoId, predefinito: l.elencoId }
+    }
     // «Fatturazione da» = inizio del periodo; le definitive restano spente (default).
     await impostaFatturazioneDa(tok.admin, periodo.dal)
 
@@ -133,6 +150,9 @@ test.describe('Fatturazione per periodo (API)', () => {
       return { legameId: m.legameId!, movimentoId: m.movimentoId }
     })()
     expect((await legame(legame1.legameId)).stato).toBe('CONFERMATO')
+    const m2 = await registraConfermato(11, listino2.clienteId)
+    expect(m2.legameId, 'il secondo movimento nasce con un legame').toBeTruthy()
+    legame2 = { legameId: m2.legameId!, movimentoId: m2.movimentoId }
   })
 
   test.afterAll(async () => {
@@ -152,19 +172,22 @@ test.describe('Fatturazione per periodo (API)', () => {
     expect(anteprima1.definitiveAttive, 'interruttore ancora spento').toBe(false)
     expect(anteprima1.erroriGenerali).toEqual([])
     expect(anteprima1.errore).toBeNull()
-    expect(anteprima1.documenti).toBe(1)
+    expect(anteprima1.documenti).toBe(2)
     expect(anteprima1.impronta).toMatch(/^[0-9a-f]{64}$/)
     chiaviViste.dettaglio = anteprima1 as unknown as Record<string, unknown>
 
     const pagina = await documentiDi(tok.admin, anteprima1.id)
-    expect(pagina.totale).toBe(1)
-    const bozza = pagina.elementi[0]
+    expect(pagina.totale).toBe(2)
+    const dettagli = await Promise.all(
+      pagina.elementi.map(x => dettaglioDocumento(tok.admin, x.id))
+    )
+    const d = dettagli.find(x => x.righe.some(r => r.legameId === legame1.legameId))!
+    const bozza = pagina.elementi.find(x => x.id === d.id)!
     expect(bozza.stato).toBe('BOZZA')
     expect(bozza.numeroTesto).toBeNull()
     expect(bozza.errori).toEqual([])
     chiaviViste.documentoRiga = bozza as unknown as Record<string, unknown>
 
-    const d = await dettaglioDocumento(tok.admin, bozza.id)
     const tipi = d.righe.map(r => r.tipoRiga)
     expect(tipi, 'righe di movimento').toContain('MOVIMENTO')
     expect(tipi, 'riga fissa con scadenza nel periodo').toContain('FISSO')
@@ -172,7 +195,6 @@ test.describe('Fatturazione per periodo (API)', () => {
     expect(riga.legameId).toBe(legame1.legameId)
     chiaviViste.documentoDettaglio = d as unknown as Record<string, unknown>
     chiaviViste.riga = riga as unknown as Record<string, unknown>
-    documento1Id = d.id
   })
 
   test('definitiva con l`interruttore ancora spento: 409 DEFINITIVE_NON_ATTIVE', async () => {
@@ -204,17 +226,27 @@ test.describe('Fatturazione per periodo (API)', () => {
     expect(elaborazione1Definitiva.stato).toBe('DEFINITIVA')
 
     const pagina = await documentiDi(tok.admin, anteprima1.id)
-    const numeri = pagina.elementi.map(x => Number(x.numeroTesto?.split('/').pop() ?? NaN)).sort()
+    expect(pagina.elementi).toHaveLength(2)
     expect(pagina.elementi.every(x => x.stato === 'DEFINITIVO')).toBe(true)
-    expect(numeri, 'numeri progressivi senza buchi, da 1').toEqual(numeri.map((_, i) => i + 1))
+    expect(new Set(pagina.elementi.map(x => x.registro.id)).size, 'stesso registro').toBe(1)
+    const numeri = pagina.elementi
+      .map(x => Number(x.numeroTesto?.split('/')[0] ?? NaN))
+      .sort((a, b) => a - b)
+    expect(numeri, 'numeri progressivi senza buchi, da 1').toEqual([1, 2])
     expect((await legame(legame1.legameId)).stato).toBe('FATTURATO')
+    expect((await legame(legame2.legameId)).stato).toBe('FATTURATO')
     const num = (await numerazioni()).find(x => x.registroIvaId === pagina.elementi[0].registro.id)
-    expect(num?.ultimoNumero).toBe(pagina.elementi.length)
+    expect(num?.ultimoNumero).toBe(2)
   })
 
   test('annullo dell`ultimo non emesso: ANNULLATO, numero rilasciato; il legame si conferma di nuovo con cambio di elenco senza errori', async () => {
-    const d = await dettaglioDocumento(tok.admin, documento1Id)
-    expect(d.annullabile, JSON.stringify(d.motivoNonAnnullabile)).toBe(true)
+    // Solo l'ultimo numero del registro e` annullabile: lo si trova, non lo si presume.
+    const elenco = (await documentiDi(tok.admin, anteprima1.id)).elementi
+    const annullabili = elenco.filter(x => x.annullabile)
+    expect(annullabili, 'un solo documento annullabile: l`ultimo numero').toHaveLength(1)
+    expect(elenco.find(x => !x.annullabile)?.motivoNonAnnullabile).toBe('NON_ULTIMO')
+    const d = await dettaglioDocumento(tok.admin, annullabili[0].id)
+    const [legameAnnullatoId] = await legamiDelDocumento(d.id)
     const r = await chiama<{ stato: string }>(
       'POST',
       `/documenti-fattura/${d.id}/annulla`,
@@ -225,16 +257,17 @@ test.describe('Fatturazione per periodo (API)', () => {
     expect((await dettaglioDocumento(tok.admin, d.id)).stato).toBe('ANNULLATO')
 
     const num = (await numerazioni()).find(x => x.registroIvaId === d.registro.id)
-    expect(num?.ultimoNumero, 'numero rilasciato').toBe(0)
+    expect(num?.ultimoNumero, 'numero rilasciato: da 2 a 1').toBe(1)
 
     // Q1: il legame torna lavorabile e si ri-conferma cambiando elenco, senza errori.
-    const l = await legame(legame1.legameId)
+    const l = await legame(legameAnnullatoId)
     expect(l.stato).not.toBe('FATTURATO')
+    const elencoDi = elenchi[l.cliente!.id]
     const conf = await chiama<LegameVista>(
       'POST',
       `/legami-movimento/${l.id}/conferma`,
       tok.admin,
-      { versione: l.versione, modifiche: { elencoId: elencoAlternativoId } }
+      { versione: l.versione, modifiche: { elencoId: elencoDi.alternativo } }
     )
     expect(conf.stato, JSON.stringify(conf.corpo)).toBe(200)
     expect(conf.corpo.stato).toBe('CONFERMATO')
@@ -244,19 +277,32 @@ test.describe('Fatturazione per periodo (API)', () => {
       'POST',
       `/legami-movimento/${l.id}/conferma`,
       tok.admin,
-      { versione: l2.versione, modifiche: { elencoId: listino.elencoId } }
+      { versione: l2.versione, modifiche: { elencoId: elencoDi.predefinito } }
     )
     expect(indietro.stato, JSON.stringify(indietro.corpo)).toBe(200)
   })
 
   test('rettifica di un movimento fatturato → scostamento in lista → storno rifatturabile → riallineamento → nuova elaborazione e definitiva', async () => {
-    // Nuova fattura definitiva col movimento di prova.
+    // Rifattura il legame annullato: dopo questa definitiva tutti e due i legami sono FATTURATO.
+    test.setTimeout(180_000)
     const a = await anteprimaPronta(tok.admin, periodo, dataDocumento)
     expect(a.documenti).toBe(1)
     await definitivaCompleta(tok.admin, a)
-    const doc = (await documentiDi(tok.admin, a.id)).elementi[0]
-    expect(doc.stato).toBe('DEFINITIVO')
     expect((await legame(legame1.legameId)).stato).toBe('FATTURATO')
+    expect((await legame(legame2.legameId)).stato).toBe('FATTURATO')
+    // Il documento definitivo di legame1: nella prima elaborazione o in questa.
+    const candidati = [
+      ...(await documentiDi(tok.admin, anteprima1.id)).elementi,
+      ...(await documentiDi(tok.admin, a.id)).elementi,
+    ]
+    let doc: DocumentoApi | undefined
+    for (const c of candidati) {
+      const d = await dettaglioDocumento(tok.admin, c.id)
+      if (d.stato === 'DEFINITIVO' && d.righe.some(r => r.legameId === legame1.legameId)) doc = c
+    }
+    expect(doc, 'documento definitivo del legame 1').toBeTruthy()
+    doc = doc as DocumentoApi
+    expect(doc.stato).toBe('DEFINITIVO')
 
     // Rettifica della quantita` del movimento gia` fatturato.
     const rett = await chiama<{ id?: string; movimento?: { id: string } }>(
@@ -348,31 +394,44 @@ test.describe('Fatturazione per periodo (API)', () => {
     // Un movimento nuovo, confermato DOPO l'anteprima, cambia la selezione e quindi l'impronta.
     const nuovo = await registraConfermato(7)
     expect(nuovo.legameId).toBeTruthy()
-    const r = await chiama<{ error: string }>(
-      'POST',
-      `/elaborazioni-fatturazione/${a.id}/definitiva`,
-      tok.admin,
-      { impronta: a.impronta, versione: a.versione }
-    )
-    // Il controllo dell'impronta e` della richiesta (409) o del job (esito sull'elaborazione).
-    if (r.stato === 409) {
-      expect(r.corpo.error).toBe('ANTEPRIMA_SUPERATA')
-    } else {
-      expect(r.stato).toBe(202)
-      const dopo = await attendiElaborazione(tok.admin, a.id, ['ANTEPRIMA_PRONTA', 'DEFINITIVA'])
-      expect(dopo.errore?.codice).toBe('ANTEPRIMA_SUPERATA')
-    }
+    // Il 409 sincrono confronta solo l'impronta del corpo con quella salvata (elaborazioni.service.ts,
+    // chiediDefinitiva): qui coincidono, quindi la richiesta e` accettata (202). La differenza dei
+    // dati la scopre il job (definitiva.ts) e la scrive in `errore`, riportando ANTEPRIMA_PRONTA.
+    const r = await chiama('POST', `/elaborazioni-fatturazione/${a.id}/definitiva`, tok.admin, {
+      impronta: a.impronta,
+      versione: a.versione,
+    })
+    expect(r.stato, JSON.stringify(r.corpo)).toBe(202)
+    const dopo = await attendiElaborazione(tok.admin, a.id, ['ANTEPRIMA_PRONTA', 'DEFINITIVA'])
+    expect(dopo.stato).toBe('ANTEPRIMA_PRONTA')
+    expect(dopo.errore?.codice).toBe('ANTEPRIMA_SUPERATA')
     expect((await legame(nuovo.legameId!)).stato, 'il nuovo movimento non e` fatturato').toBe(
       'CONFERMATO'
     )
+    superata = { id: a.id, versione: dopo.versione }
+  })
+
+  test('ANTEPRIMA_SUPERATA sincrono: impronta del corpo diversa da quella salvata, 409 e nulla cambia', async () => {
+    const vecchia = await chiama<{ error: string }>(
+      'POST',
+      `/elaborazioni-fatturazione/${superata.id}/definitiva`,
+      tok.admin,
+      { impronta: '0'.repeat(64), versione: superata.versione }
+    )
+    expect(vecchia.stato, JSON.stringify(vecchia.corpo)).toBe(409)
+    expect(vecchia.corpo.error).toBe('ANTEPRIMA_SUPERATA')
+    const e = await ok<ElaborazioneApi>(
+      'GET',
+      `/elaborazioni-fatturazione/${superata.id}`,
+      tok.admin
+    )
+    expect(e.stato).toBe('ANTEPRIMA_PRONTA')
+    expect(e.versione, 'versione invariata: nessun job accodato').toBe(superata.versione)
     // Pulizia dello stato: l'anteprima superata si scarta.
-    const e = await ok<ElaborazioneApi>('GET', `/elaborazioni-fatturazione/${a.id}`, tok.admin)
-    if (e.stato === 'ANTEPRIMA_PRONTA') {
-      const s = await chiama('POST', `/elaborazioni-fatturazione/${a.id}/scarta`, tok.admin, {
-        versione: e.versione,
-      })
-      expect(s.stato, JSON.stringify(s.corpo)).toBe(200)
-    }
+    const s = await chiama('POST', `/elaborazioni-fatturazione/${superata.id}/scarta`, tok.admin, {
+      versione: superata.versione,
+    })
+    expect(s.stato, JSON.stringify(s.corpo)).toBe(200)
   })
 
   test('VIEWER 403 su avvio, OPERATOR 403 su definitiva', async () => {

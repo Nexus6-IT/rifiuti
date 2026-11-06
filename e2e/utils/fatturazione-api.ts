@@ -173,7 +173,7 @@ export async function aggiungiRigaFEdElencoAlternativo(
   token: string,
   creati: Creato[],
   listino: ListinoLegami,
-  scadenzaF: string
+  scadenzaF: string | null
 ): Promise<{ elencoAlternativoId: string }> {
   const crea = async (tipo: string, corpo: unknown): Promise<Versionata> => {
     const r = await ok<Versionata>('POST', `/${tipo}`, token, corpo)
@@ -198,16 +198,18 @@ export async function aggiungiRigaFEdElencoAlternativo(
     tipo: 'F',
     listini: [{ numero: 2, prezzo: '3.00' }],
   })
-  const [anno, mese, giorno] = scadenzaF.split('-').map(Number)
-  await ok('POST', `/elenchi-addebiti/${listino.elencoId}/righe`, token, {
-    tipo: 'F',
-    addebitoId: addebitoF.id,
-    unitaMisura: 'NR',
-    codiceIvaId,
-    prezzo: '3.00',
-    quantitaFissa: '1',
-    scadenze: [{ ordine: 1, giorno, mese, anno }],
-  })
+  if (scadenzaF !== null) {
+    const [anno, mese, giorno] = scadenzaF.split('-').map(Number)
+    await ok('POST', `/elenchi-addebiti/${listino.elencoId}/righe`, token, {
+      tipo: 'F',
+      addebitoId: addebitoF.id,
+      unitaMisura: 'NR',
+      codiceIvaId,
+      prezzo: '3.00',
+      quantitaFissa: '1',
+      scadenze: [{ ordine: 1, giorno, mese, anno }],
+    })
+  }
   // Elenco alternativo (non predefinito) con una riga CER propria, per cambiare elenco al legame.
   const alt = await ok<Versionata>(
     'POST',
