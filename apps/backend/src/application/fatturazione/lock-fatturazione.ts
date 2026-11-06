@@ -32,6 +32,7 @@ import { Prisma } from '@prisma/client'
 import type { StatoElaborazione } from '../../domain/fatturazione/codici'
 import { bloccaRigheLegame } from '../legami-movimento/lock-legame'
 import { joinLineari } from '../listino/lock-listino'
+import { conJoinLineari } from './piani-query'
 
 /** Gli insiemi che la definitiva blocca, tutti con id distinti e in ordine. */
 export interface InsiemiDaBloccare {
@@ -62,7 +63,16 @@ interface DocumentoLetto {
  * legami e dalle righe dei documenti con il loro elenco, anche fuori validita' (N2 del Task 17).
  * Al piu' 5 query in tutto, qualunque sia il numero di documenti; tutte `= ANY(uuid[])`.
  */
-export async function insiemiPerDefinitiva(
+export function insiemiPerDefinitiva(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  documentoIds: readonly string[]
+): Promise<InsiemiDaBloccare> {
+  // Nested loop spento (I5 del Task 27a), ripristinato alla fine: vedi `selezionaElaborazione`.
+  return conJoinLineari(tx, () => insiemiPerDefinitivaInterna(tx, tenantId, documentoIds))
+}
+
+async function insiemiPerDefinitivaInterna(
   tx: Prisma.TransactionClient,
   tenantId: string,
   documentoIds: readonly string[]

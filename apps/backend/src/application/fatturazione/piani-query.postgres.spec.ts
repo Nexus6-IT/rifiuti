@@ -47,9 +47,9 @@ import { insiemiPerDefinitiva } from './lock-fatturazione'
 import { selezionaElaborazione } from './selezione-fatturazione'
 
 const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t27a-piani-tenants.json')
-const SOGLIA_SELEZIONE_MS = 4_000
+const SOGLIA_SELEZIONE_MS = 5_000
 const SOGLIA_CITATI_MS = 3_000
-const SOGLIA_GENERICO_MS = 10_000
+const ESECUZIONI = 6
 
 describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -117,55 +117,77 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
     await app?.onModuleDestroy()
   }, 300_000)
 
-  it(`I1: la selezione su 10.000 legami con statistiche vecchie resta sotto ${SOGLIA_SELEZIONE_MS} ms (nested loop quadratico: 13 s)`, async () => {
-    const t0 = Date.now()
-    const sel = await b.nel(tenantId, () =>
-      app.$transaction(tx => selezionaElaborazione(tx, tenantId, { ...PARAMETRI_T19 }), {
-        timeout: 120_000,
-      })
-    )
-    const ms = Date.now() - t0
-    expect(sel.documenti.length).toBeGreaterThan(0)
-    expect(ms).toBeLessThan(SOGLIA_SELEZIONE_MS)
-  }, 180_000)
-
-  it(`I4: la selezione con il piano generico (sesta esecuzione di Prisma) resta sotto ${SOGLIA_GENERICO_MS} ms (cast dell'array per riga: 40-64 s)`, async () => {
+  /** Un giro della selezione in una transazione propria, col piano richiesto: tempo e risultato. */
+  const selezione = async (generico: boolean) => {
     const t0 = Date.now()
     const sel = await b.nel(tenantId, () =>
       app.$transaction(
         async tx => {
-          await tx.$executeRawUnsafe(`SET LOCAL plan_cache_mode = force_generic_plan`)
+          if (generico) await tx.$executeRawUnsafe(`SET LOCAL plan_cache_mode = force_generic_plan`)
           return selezionaElaborazione(tx, tenantId, { ...PARAMETRI_T19 })
         },
         { timeout: 170_000 }
       )
     )
-    const ms = Date.now() - t0
-    expect(sel.documenti.length).toBeGreaterThan(0)
-    expect(ms).toBeLessThan(SOGLIA_GENERICO_MS)
-  }, 200_000)
+    return { ms: Date.now() - t0, documenti: sel.documenti.length }
+  }
 
-  it(`I2: le righe citate con il piano generico su 500 documenti restano sotto ${SOGLIA_CITATI_MS} ms (conversione dei 500 uuid per ogni riga: 5 s)`, async () => {
-    const { id } = await b.nel(tenantId, () =>
-      b.servizio.avvia(tenantId, utenteId, { ...PARAMETRI_T19 })
-    )
-    await b.nel(tenantId, () => eseguiAnteprima(app, tenantId, id, 1))
-    const documentoIds = (await b.documenti(id)).map(d => d.id)
-    expect(documentoIds).toHaveLength(500)
-
+  /** Come sopra per le righe citate della definitiva. */
+  const citati = async (documentoIds: string[], generico: boolean) => {
     const t0 = Date.now()
     const insiemi = await b.nel(tenantId, () =>
       app.$transaction(
         async tx => {
-          await tx.$executeRawUnsafe(`SET LOCAL plan_cache_mode = force_generic_plan`)
+          if (generico) await tx.$executeRawUnsafe(`SET LOCAL plan_cache_mode = force_generic_plan`)
           return insiemiPerDefinitiva(tx, tenantId, documentoIds)
         },
-        { timeout: 120_000 }
+        { timeout: 170_000 }
       )
     )
-    const ms = Date.now() - t0
-    expect(insiemi.legameIds).toHaveLength(10_000)
-    expect(insiemi.rigaIds.length).toBeGreaterThan(0)
-    expect(ms).toBeLessThan(SOGLIA_CITATI_MS)
+    return { ms: Date.now() - t0, legami: insiemi.legameIds.length, righe: insiemi.rigaIds.length }
+  }
+
+  let documentoIds: string[] = []
+
+  it(`selezione, force_generic_plan: sotto ${SOGLIA_SELEZIONE_MS} ms (I4: cast dell'array per riga, 40-64 s)`, async () => {
+    const r = await selezione(true)
+    expect(r.documenti).toBeGreaterThan(0)
+    expect(r.ms).toBeLessThan(SOGLIA_SELEZIONE_MS)
+  }, 200_000)
+
+  it(`selezione, piano custom, statistiche vecchie, ${ESECUZIONI} volte di fila: TOTALE sotto ${SOGLIA_SELEZIONE_MS} ms (I1: 13 s per giro; I5: IN (SELECT unnest) 22 s in totale)`, async () => {
+    const tempi: number[] = []
+    for (let i = 0; i < ESECUZIONI; i++) {
+      const r = await selezione(false)
+      expect(r.documenti).toBeGreaterThan(0)
+      tempi.push(r.ms)
+    }
+    expect(tempi.reduce((a, t) => a + t, 0)).toBeLessThan(SOGLIA_SELEZIONE_MS)
   }, 300_000)
+
+  it('prepara 500 bozze con l’anteprima', async () => {
+    const { id } = await b.nel(tenantId, () =>
+      b.servizio.avvia(tenantId, utenteId, { ...PARAMETRI_T19 })
+    )
+    await b.nel(tenantId, () => eseguiAnteprima(app, tenantId, id, 1))
+    documentoIds = (await b.documenti(id)).map(d => d.id)
+    expect(documentoIds).toHaveLength(500)
+  }, 300_000)
+
+  it(`righe citate, piano custom, ${ESECUZIONI} volte di fila: TOTALE sotto ${SOGLIA_CITATI_MS} ms (I5: IN (SELECT unnest) 12 s in totale)`, async () => {
+    const tempi: number[] = []
+    for (let i = 0; i < ESECUZIONI; i++) {
+      const r = await citati(documentoIds, false)
+      expect(r.legami).toBe(10_000)
+      expect(r.righe).toBeGreaterThan(0)
+      tempi.push(r.ms)
+    }
+    expect(tempi.reduce((a, t) => a + t, 0)).toBeLessThan(SOGLIA_CITATI_MS)
+  }, 300_000)
+
+  it(`righe citate, force_generic_plan: sotto ${SOGLIA_CITATI_MS} ms (I2: conversione per riga, 5 s)`, async () => {
+    const r = await citati(documentoIds, true)
+    expect(r.legami).toBe(10_000)
+    expect(r.ms).toBeLessThan(SOGLIA_CITATI_MS)
+  }, 200_000)
 })

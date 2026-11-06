@@ -355,7 +355,19 @@ interface ContrattoAttivo {
  * Seleziona i documenti di un'elaborazione. Sola lettura, nessun lock: va chiamata dentro una
  * transazione nel contesto del tenant (RLS) e, per l'anteprima, in `REPEATABLE READ`.
  */
-export async function selezionaElaborazione(
+export function selezionaElaborazione(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  p: ParametriElaborazione
+): Promise<SelezioneElaborazione> {
+  // Nested loop spento per tutta la selezione (I5 del Task 27a): le liste lunghe (`IN (SELECT
+  // unnest(..))`) diventano un hash join, mai il nested loop quadratico che il planner sceglie con
+  // statistiche vecchie. Il piano generico regge perche' l'array si converte una volta sola.
+  // Il valore di `enable_nestloop` letto prima si ripristina alla fine (Q39).
+  return conJoinLineari(tx, () => selezionaElaborazioneInterna(tx, tenantId, p))
+}
+
+async function selezionaElaborazioneInterna(
   tx: Prisma.TransactionClient,
   tenantId: string,
   p: ParametriElaborazione
@@ -686,7 +698,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; codice: string }[]>`
       SELECT id::text AS id, codice FROM codifiche_addebito
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${categoriaIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${categoriaIds}::uuid[])`
   )
   const codiceCategoria = new Map(categorie.map(c => [c.id, c.codice]))
 
@@ -709,7 +721,7 @@ export async function selezionaElaborazione(
       SELECT id::text AS id, versione, codice, descrizione, modalita, giorni_rate AS "giorniRate",
              fine_mese AS "fineMese"
       FROM condizioni_pagamento
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${condizioneIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${condizioneIds}::uuid[])`
   )
   const condizionePerId = new Map(condizioni.map(c => [c.id, c]))
 
@@ -732,7 +744,7 @@ export async function selezionaElaborazione(
         { id: string; versione: number; banca: string; iban: string; bic: string | null }[]
       >`
       SELECT id::text AS id, versione, banca, iban, bic FROM conti_correnti
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${contoIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${contoIds}::uuid[])`
   )
   const contoPerId = new Map(conti.map(c => [c.id, c]))
 
@@ -744,7 +756,7 @@ export async function selezionaElaborazione(
       SELECT id::text AS id, versione, descrizione, importo::text AS importo,
              codice_iva_id::text AS "codiceIvaId"
       FROM spese_accessorie
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${spesaIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${spesaIds}::uuid[])`
   )
   const spesaPerId = new Map(spese.map(s => [s.id, s]))
 
@@ -754,7 +766,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; righe: string[] }[]>`
       SELECT id::text AS id, righe FROM testi_fatturazione
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${testoIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${testoIds}::uuid[])`
   )
   const testoPerId = new Map(testi.map(t => [t.id, t.righe]))
 
@@ -767,7 +779,7 @@ export async function selezionaElaborazione(
     () =>
       tx.$queryRaw<{ id: string; attivo: boolean; versione: number }[]>`
       SELECT id::text AS id, attivo, versione FROM registri_iva
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${registroIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${registroIds}::uuid[])`
   )
   const registroAttivo = new Map(registri.map(r => [r.id, r.attivo]))
   const registroPerId = new Map(registri.map(r => [r.id, r]))
@@ -818,7 +830,7 @@ export async function selezionaElaborazione(
       tx.$queryRaw<(CodiceIvaDaFatturare & { versione: number })[]>`
       SELECT id::text AS id, versione, aliquota::text AS aliquota, natura, descrizione
       FROM codici_iva
-      WHERE tenant_id = ${tenantId}::uuid AND id IN (SELECT unnest(${ivaIds}::uuid[]))`
+      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${ivaIds}::uuid[])`
   )
   const codiciIva = new Map<string, CodiceIvaDaFatturare>(ivaRighe.map(c => [c.id, c]))
 

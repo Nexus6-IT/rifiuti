@@ -1520,7 +1520,8 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
         insiemi = await insiemiPerDefinitiva(x.tx, tenantVolume, ids)
         query = x.n()
       })
-      expect(query).toBeLessThanOrEqual(5)
+      // 5 query dell'insieme + 3 del wrapper `conJoinLineari` (lettura, SET e ripristino di enable_nestloop).
+      expect(query).toBeLessThanOrEqual(5 + 3)
       expect(insiemi.contrattoIds).toHaveLength(500)
       expect(insiemi.elencoIds).toHaveLength(500)
       expect(insiemi.rigaIds).toHaveLength(500)
