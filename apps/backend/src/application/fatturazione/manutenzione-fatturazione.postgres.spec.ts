@@ -322,7 +322,7 @@ describe('Manutenzione della fatturazione — Postgres reale, ruolo wasteflow_ap
   })
 
   describe('FatturazioneManutenzioneJob — isolamento fra tenant', () => {
-    function creaJob(tenantIds: string[], erroreSuPrimo: boolean) {
+    function creaJob(tenantIds: string[], erroreSuPrimo: boolean, getJobs?: Promise<unknown>) {
       const sistemaFinto = {
         tenant: { findMany: jest.fn().mockResolvedValue(tenantIds.map(id => ({ id }))) },
       }
@@ -335,7 +335,7 @@ describe('Manutenzione della fatturazione — Postgres reale, ruolo wasteflow_ap
         },
       }
       const coda = {
-        getJobs: jest.fn().mockResolvedValue([]),
+        getJobs: jest.fn().mockReturnValue(getJobs ?? Promise.resolve([])),
       }
       const job = new FatturazioneManutenzioneJob(
         prismaConGuasto as never,
@@ -357,6 +357,15 @@ describe('Manutenzione della fatturazione — Postgres reale, ruolo wasteflow_ap
       expect(esito).toEqual({ tenantTotali: 2, tenantConErrore: 1, bozzeCancellate: 1 })
       expect(await esistono([ba])).toEqual([ba])
       expect(await esistono([bb])).toEqual([])
+    })
+
+    it('timeout dei job vivi scaduto: nessuna elaborazione diventa FALLITA', async () => {
+      const a = await azienda()
+      const ea = await elaborazione(a, 'IN_CORSO', fa(0, 30), 'z')
+      const job = creaJob([a.tenantId], false, new Promise(() => undefined))
+      job.timeoutJobViviMs = 20
+      await expect(job.recuperaOrfani()).rejects.toThrow(/timeout/i)
+      expect((await statoDi(ea)).stato).toBe('IN_CORSO')
     })
 
     it('orfani: errore sul primo tenant, il secondo viene recuperato', async () => {

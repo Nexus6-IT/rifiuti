@@ -19,6 +19,8 @@ import { PrismaService } from '../persistence/prisma.service'
 /** Una transazione per tenant: la pulizia di molte bozze puo' durare piu' dei 15 s delle scritture interattive. */
 const OPZIONI_TRANSAZIONE_MANUTENZIONE = { timeout: 60_000, maxWait: 10_000 } as const
 
+export const TIMEOUT_JOB_VIVI_MS = 10_000
+
 /** Stati della coda in cui un job e' ancora «vivo»: lo lavora qualcuno o lo lavorera'. */
 const STATI_JOB_VIVI = ['active', 'waiting', 'delayed', 'prioritized', 'paused'] as const
 
@@ -49,6 +51,8 @@ export class FatturazioneManutenzioneJob implements OnModuleInit {
   private readonly logger = new Logger(FatturazioneManutenzioneJob.name)
   /** Sostituibile nei test. */
   orologio: () => Date = () => new Date()
+  /** Attesa massima per l'elenco dei job vivi; oltre, il giro degli orfani salta. */
+  timeoutJobViviMs = TIMEOUT_JOB_VIVI_MS
 
   constructor(
     private readonly prisma: PrismaService,
@@ -56,14 +60,16 @@ export class FatturazioneManutenzioneJob implements OnModuleInit {
     @InjectQueue(CODA_FATTURAZIONE) private readonly coda: Queue
   ) {}
 
-  /** Un'elaborazione appesa da prima del riavvio non deve aspettare il cron: bloccherebbe il tenant. */
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.recuperaOrfani()
-    } catch (errore: unknown) {
+  /**
+   * Un'elaborazione appesa da prima del riavvio non deve aspettare il cron: bloccherebbe il tenant.
+   * Il giro parte SENZA essere atteso: con Redis lento o giu' l'avvio dell'applicazione non resta
+   * appeso. L'errore si logga e si segnala, cosi' non nasce una unhandled rejection.
+   */
+  onModuleInit(): void {
+    void this.recuperaOrfani().catch((errore: unknown) => {
       this.logger.error("Controllo degli orfani all'avvio fallito", errore as Error)
       segnalaErroreJob('eseguiRecuperoOrfani', errore)
-    }
+    })
   }
 
   @Cron(CronExpression.EVERY_10_MINUTES)
@@ -119,7 +125,19 @@ export class FatturazioneManutenzioneJob implements OnModuleInit {
   }
 
   private async jobVivi(): Promise<ReadonlySet<string>> {
-    const job = await this.coda.getJobs([...STATI_JOB_VIVI])
+    let timer: NodeJS.Timeout | undefined
+    const scadenza = new Promise<never>((_, rifiuta) => {
+      timer = setTimeout(
+        () => rifiuta(new Error("Timeout sull'elenco dei job vivi della coda fatturazione")),
+        this.timeoutJobViviMs
+      )
+    })
+    let job: Awaited<ReturnType<Queue['getJobs']>>
+    try {
+      job = await Promise.race([this.coda.getJobs([...STATI_JOB_VIVI]), scadenza])
+    } finally {
+      clearTimeout(timer)
+    }
     const ids = new Set<string>()
     for (const j of job) if (j?.id) ids.add(String(j.id))
     return ids

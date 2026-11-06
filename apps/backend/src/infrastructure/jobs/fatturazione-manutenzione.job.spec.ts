@@ -57,13 +57,15 @@ describe('FatturazioneManutenzioneJob', () => {
   })
 
   it("gli orfani si controllano anche all'avvio del modulo", async () => {
-    await job.onModuleInit()
+    job.onModuleInit()
+    await new Promise(r => setTimeout(r, 20))
     expect(mockRecupera).toHaveBeenCalledTimes(2)
   })
 
   it("l'avvio non fa cadere il modulo se Redis non risponde", async () => {
     coda.getJobs.mockRejectedValue(new Error("redis giu'"))
-    await expect(job.onModuleInit()).resolves.toBeUndefined()
+    expect(job.onModuleInit()).toBeUndefined()
+    await new Promise(r => setTimeout(r, 20))
     expect(mockSegnala).toHaveBeenCalled()
   })
 
@@ -95,5 +97,22 @@ describe('FatturazioneManutenzioneJob', () => {
     expect(mockSegnala).toHaveBeenCalledWith('eseguiPulizia', expect.any(Error), {
       tenantId: 't1',
     })
+  })
+
+  it('onModuleInit si risolve subito anche se la coda non risponde mai (non blocca l\x27avvio)', async () => {
+    coda.getJobs.mockReturnValue(new Promise(() => undefined))
+    job.timeoutJobViviMs = 30
+    expect(job.onModuleInit()).toBeUndefined()
+    // Il giro in sottofondo scade e non recupera nulla; nessuna unhandled rejection.
+    await new Promise(r => setTimeout(r, 80))
+    expect(mockRecupera).not.toHaveBeenCalled()
+    expect(mockSegnala).toHaveBeenCalledWith('eseguiRecuperoOrfani', expect.any(Error))
+  })
+
+  it('con il timeout dei job vivi scaduto il giro salta e rifiuta', async () => {
+    coda.getJobs.mockReturnValue(new Promise(() => undefined))
+    job.timeoutJobViviMs = 20
+    await expect(job.recuperaOrfani()).rejects.toThrow(/timeout/i)
+    expect(mockRecupera).not.toHaveBeenCalled()
   })
 })
