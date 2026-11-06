@@ -452,6 +452,22 @@ interface OpzioneId {
   `,
   styles: [
     `
+      /* Sette filtri: in griglia a colonne uguali, cosi' la seconda riga segue le colonne della prima
+         (con il flex-wrap generale ogni riga si distribuiva per conto suo). */
+      .filters {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+        align-items: end;
+      }
+      .filters__field {
+        max-width: none;
+      }
+      .filters__field p-dropdown {
+        display: block;
+      }
+      .filters__field ::ng-deep .p-dropdown {
+        width: 100%;
+      }
       /* Il filtro «Esclusi» e' una casella: sta a sinistra, non allargata a tutta la colonna. */
       .filters__field--stretto {
         flex: 0 0 auto;

@@ -42,7 +42,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
     MessageModule,
   ],
   template: `
-    <div class="page" style="max-width: 1000px;">
+    <div class="page">
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Blocchi e vidimazione RENTRI</h1>
