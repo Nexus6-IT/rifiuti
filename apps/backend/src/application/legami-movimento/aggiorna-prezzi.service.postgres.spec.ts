@@ -1103,7 +1103,8 @@ describe('AggiornaPrezziService — Postgres reale, ruolo wasteflow_app', () => 
         WHERE m.tenant_id = ${s.tenantId}::uuid AND m.id = ANY(${ids.map(x => x.mov)}::uuid[])`)
       console.info(`[T17] piano movimenti degli esempi:\n${dopo}`)
       expect(dopo).not.toMatch(/Seq Scan/)
-      expect(dopo).toMatch(/Index Cond: \(\(id = ANY/)
+      // Index Scan stampa «((id = ANY», Bitmap Index Scan «(id = ANY»: tutte e due usano la pkey.
+      expect(dopo).toMatch(/Index Cond: \(+id = ANY/)
       const t2 = Date.now()
       const esito = await applica(s, a.firma)
       const msApplica = Date.now() - t2
