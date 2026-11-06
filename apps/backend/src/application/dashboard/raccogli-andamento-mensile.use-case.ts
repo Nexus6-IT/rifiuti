@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { STATI_ESCLUSI_SQL } from './stati-andamento'
+import { STATI_ESCLUSI } from './stati-andamento'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
 /** Conteggio dei formulari creati in un dato mese ('YYYY-MM'). */
@@ -65,7 +65,7 @@ export class RaccogliAndamentoMensileUseCase {
       SELECT date_trunc('month', created_at) AS mese, COUNT(*)::int AS conteggio
       FROM firs
       WHERE tenant_id = ${tenantId}::uuid
-        AND status NOT IN (${STATI_ESCLUSI_SQL})
+        AND status::text <> ALL(${STATI_ESCLUSI}::text[])
         AND created_at >= ${dataInizio}
       GROUP BY mese
       ORDER BY mese ASC

@@ -132,7 +132,7 @@ interface GruppoBarre {
         color: var(--text-secondary);
       }
       .barra--allarme .barra__riempi {
-        background: var(--color-danger);
+        background: var(--stato-err-segno);
       }
       .barra--allarme .barra__nota {
         color: var(--color-danger);

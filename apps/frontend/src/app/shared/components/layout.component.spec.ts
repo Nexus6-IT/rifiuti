@@ -6,7 +6,7 @@ import { provideLocationMocks } from '@angular/common/testing'
 import { provideRouter, Router } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { signal } from '@angular/core'
-import { Observable, of, throwError } from 'rxjs'
+import { Observable, Subject, of, throwError } from 'rxjs'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { LegamiService } from '../../features/legami/legami.service'
 import { LayoutComponent, ordinaAziendePerGruppo } from './layout.component'
@@ -311,6 +311,38 @@ describe('LayoutComponent: shell Libro mastro', () => {
     } finally {
       localStorage.removeItem('wf_impersonating_name')
     }
+  })
+
+  it('la shell distrutta si stacca da router.events (niente subscription orfane)', async () => {
+    await crea()
+    const eventi = TestBed.inject(Router).events as unknown as Subject<unknown>
+    const conShell = eventi.observers.length
+    fixture.destroy()
+    expect(eventi.observers.length).toBeLessThan(conShell)
+  })
+
+  it('lo skip link porta il focus su main senza cambiare rotta (base href)', async () => {
+    const el = await crea('/clienti')
+    const router = TestBed.inject(Router)
+    const link = el.querySelector<HTMLAnchorElement>('a.skip-to-main')!
+    const evento = new MouseEvent('click', { bubbles: true, cancelable: true })
+    link.dispatchEvent(evento)
+    expect(evento.defaultPrevented).toBeTrue()
+    expect(router.url).toBe('/clienti')
+    expect(document.activeElement).toBe(el.querySelector('main#main-content'))
+  })
+
+  it('alla chiusura del drawer il focus torna al bottone che lo ha aperto', async () => {
+    const el = await crea()
+    const apri = el.querySelector<HTMLElement>('.topbar__hamburger')!
+    apri.style.display = 'inline-flex'
+    ;(el.querySelector('.topbar') as HTMLElement).style.display = 'flex'
+    const altro = document.createElement('button')
+    document.body.appendChild(altro)
+    altro.focus()
+    fixture.componentInstance.alChiudersiDrawer()
+    expect(document.activeElement).toBe(apri)
+    altro.remove()
   })
 
   it('il gutter laterale sta su .main__inner: 24px da 992, 20px da 576, 16px sotto', async () => {

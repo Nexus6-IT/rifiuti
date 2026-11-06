@@ -39,11 +39,17 @@ function avviso(over: Partial<AvvisoDeposito>): AvvisoDeposito {
 
 describe('dashboard-dati', () => {
   describe('intervalloMeseCorrente', () => {
-    it('va dal 1° del mese alle 00:00 locali fino a oggi', () => {
-      const oggi = new Date(2026, 10, 5, 9, 20)
+    it('va dal 1° del mese alle 00:00 UTC fino a oggi', () => {
+      const oggi = new Date(Date.UTC(2026, 10, 5, 9, 20))
       const { startDate, endDate } = intervalloMeseCorrente(oggi)
-      expect(startDate.getTime()).toBe(new Date(2026, 10, 1, 0, 0, 0, 0).getTime())
+      expect(startDate.getTime()).toBe(Date.UTC(2026, 10, 1))
       expect(endDate.getTime()).toBe(oggi.getTime())
+    })
+
+    it('a cavallo della mezzanotte usa il mese UTC, come le barre', () => {
+      // 31/10 23:30 UTC = 1/11 00:30 a Roma: per il backend e' ancora ottobre.
+      const oggi = new Date(Date.UTC(2026, 9, 31, 23, 30))
+      expect(intervalloMeseCorrente(oggi).startDate.getTime()).toBe(Date.UTC(2026, 9, 1))
     })
   })
 
@@ -263,7 +269,7 @@ describe('dashboard-dati', () => {
       })
       const a = celleAnalisi(d, mesi)[3]
       expect(a.valore).toBe('41 questo mese')
-      expect(a.dettaglio).toBe('32 il mese scorso · previsione 45')
+      expect(a.dettaglio).toBe('32 il mese scorso · previsione del mese 45')
       expect(a.variazione).toBe('+28% sul mese scorso')
     })
 
@@ -274,7 +280,7 @@ describe('dashboard-dati', () => {
           prediction: { nextMonth: null },
         },
       })
-      expect(celleAnalisi(d, mesi)[3].dettaglio).toBe('32 il mese scorso · previsione —')
+      expect(celleAnalisi(d, mesi)[3].dettaglio).toBe('32 il mese scorso · previsione del mese —')
     })
 
     it('variazione in parole: invariato, nuovo, calo', () => {

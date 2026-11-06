@@ -208,7 +208,7 @@ describe('DashboardPageComponent', () => {
     expect(dashboardService.getDashboard).toHaveBeenCalledTimes(1)
     const { startDate, endDate } = dashboardService.getDashboard.calls.mostRecent().args[0]!
     const oggi = new Date()
-    expect(startDate.getTime()).toBe(new Date(oggi.getFullYear(), oggi.getMonth(), 1).getTime())
+    expect(startDate.getTime()).toBe(Date.UTC(oggi.getUTCFullYear(), oggi.getUTCMonth(), 1))
     expect(Math.abs(endDate.getTime() - oggi.getTime())).toBeLessThan(60_000)
   })
 
@@ -330,7 +330,7 @@ describe('DashboardPageComponent', () => {
     const andamento = el.querySelector('[data-testid="analisi-andamento"]')?.textContent ?? ''
     expect(andamento).toContain(`${ultimaColonna} questo mese`)
     expect(andamento).not.toContain('999')
-    expect(andamento).toContain('previsione —')
+    expect(andamento).toContain('previsione del mese —')
   })
 
   it('i nomi delle ditte vengono dal backend, la P. IVA sotto', () => {
@@ -371,6 +371,17 @@ describe('DashboardPageComponent', () => {
     expect(el.querySelector('[data-testid="analisi-errore"]')).toBeTruthy()
     expect(el.querySelector('app-fir-recenti li')).toBeTruthy()
     expect(el.querySelector('app-barre-mensili rect')).toBeTruthy()
+  })
+
+  it('nel DOM «Da fare oggi» viene prima di tutto il resto (ordine visivo = ordine di lettura)', () => {
+    const el = setup({})
+    const daFare = el.querySelector('app-da-fare-oggi')!
+    for (const sel of ['app-deposito-sintesi', 'app-fir-recenti', 'app-barre-mensili']) {
+      const altro = el.querySelector(sel)!
+      expect(!!(daFare.compareDocumentPosition(altro) & Node.DOCUMENT_POSITION_FOLLOWING))
+        .withContext(sel)
+        .toBeTrue()
+    }
   })
 
   it("gli stati vuoti sono righe di testo, mai .empty-state con l'icona grande (bug 8)", () => {

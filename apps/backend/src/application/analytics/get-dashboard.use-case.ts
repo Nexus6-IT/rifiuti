@@ -192,6 +192,7 @@ export interface DashboardData {
       percentage: number
     }
     prediction: {
+      /** Previsione del MESE CORRENTE (il nome `nextMonth` e' storico: e' il «prossimo» dopo la serie). */
       nextMonth: number | null
     }
   }

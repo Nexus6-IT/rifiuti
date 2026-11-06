@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms'
 import { HttpClient } from '@angular/common/http'
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router'
 import { filter } from 'rxjs/operators'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { AvatarModule } from 'primeng/avatar'
 import { TooltipModule } from 'primeng/tooltip'
 import { SidebarModule } from 'primeng/sidebar'
@@ -109,7 +110,9 @@ export function ordinaAziendePerGruppo(
   ],
   template: `
     <!-- Link salta-contenuto per accessibilità (WCAG 2.4.1) -->
-    <a href="#main-content" class="skip-to-main">Vai al contenuto principale</a>
+    <a href="#main-content" class="skip-to-main" (click)="vaiAlContenuto($event)"
+      >Vai al contenuto principale</a
+    >
 
     <!-- ===== Banner globale di impersonificazione (full-width, sopra tutto) ===== -->
     @if (isImpersonating()) {
@@ -234,6 +237,7 @@ export function ordinaAziendePerGruppo(
         <!-- Drawer mobile (< 992px) -->
         <p-sidebar
           [(visible)]="mobileSidebarVisibleProxy"
+          (onHide)="alChiudersiDrawer()"
           position="left"
           [modal]="true"
           [showCloseIcon]="true"
@@ -1483,7 +1487,10 @@ export class LayoutComponent implements OnInit {
     this.detectImpersonation()
     this.percorso.set(percorsoDi(this.router.url))
     this.router.events
-      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .pipe(
+        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+        takeUntilDestroyed(this.distruzione)
+      )
       .subscribe(e => this.percorso.set(percorsoDi(e.urlAfterRedirects)))
     this.osservaLarghezza()
 
@@ -1607,6 +1614,20 @@ export class LayoutComponent implements OnInit {
 
   toggleMobileSidebar(): void {
     this.mobileSidebarVisible.update(v => !v)
+  }
+
+  /**
+   * Skip link: con `<base href="/">` l'href `#main-content` risolverebbe su `/#main-content`
+   * (la Dashboard). Si porta il focus su `main` senza toccare la rotta.
+   */
+  vaiAlContenuto(evento: Event): void {
+    evento.preventDefault()
+    document.getElementById('main-content')?.focus()
+  }
+
+  /** Chiuso il drawer (anche con Esc) il focus torna al bottone che lo aveva aperto. */
+  alChiudersiDrawer(): void {
+    document.querySelector<HTMLElement>('.topbar__hamburger')?.focus()
   }
 
   closeMobileSidebar(): void {

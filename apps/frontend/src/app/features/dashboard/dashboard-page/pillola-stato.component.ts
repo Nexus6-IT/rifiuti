@@ -63,7 +63,6 @@ import { TonoStato } from '../../../shared/models/stati-fir'
       }
       .pillola--barrata {
         color: var(--text-tertiary);
-        text-decoration: line-through;
       }
       .pillola--barrata::before {
         display: none;

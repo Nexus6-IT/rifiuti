@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { LoggerService } from '../../core/logger/logger.service'
-import { STATI_ESCLUSI_SQL } from '../dashboard/stati-andamento'
+import { STATI_ESCLUSI } from '../dashboard/stati-andamento'
 
 /**
  * Analytics Service
@@ -397,7 +397,7 @@ export class AnalyticsService {
    * - 3 o piu': retta `y = a + b*x` su `x = 0..n-1`, previsione `max(0, round(a + b*n))`.
    *
    * Stessa base di `GET /dashboard/andamento`: bozze, FIR in attesa del produttore e annullati
-   * non contano (`STATI_ESCLUSI_SQL`). La serie parte dal primo mese con almeno un FIR compiuto; i mesi vuoti dopo di esso valgono 0.
+   * non contano (`STATI_ESCLUSI`). La serie parte dal primo mese con almeno un FIR compiuto; i mesi vuoti dopo di esso valgono 0.
    */
   async predictNextMonthVolume(tenantId: string, oggi: Date = new Date()): Promise<number | null> {
     const inizioMeseCorrente = new Date(Date.UTC(oggi.getUTCFullYear(), oggi.getUTCMonth(), 1))
@@ -407,7 +407,7 @@ export class AnalyticsService {
       SELECT date_trunc('month', created_at) AS mese, COUNT(*)::int AS conteggio
       FROM firs
       WHERE tenant_id = ${tenantId}::uuid
-        AND status NOT IN (${STATI_ESCLUSI_SQL})
+        AND status::text <> ALL(${STATI_ESCLUSI}::text[])
         AND created_at >= ${dataInizio}
         AND created_at < ${inizioMeseCorrente}
       GROUP BY 1

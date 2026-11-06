@@ -9,10 +9,13 @@ import { AndamentoMensileVoce } from '../andamento.service'
 import { VoceAttenzione } from '../attenzione.service'
 import { TonoStato } from '../../../shared/models/stati-fir'
 
-/** Dal 1° del mese di `oggi` alle 00:00 (ora locale) fino a `oggi`. */
+/**
+ * Dal 1° del mese di `oggi` alle 00:00 UTC fino a `oggi`. Mese UTC come nel backend (barre e
+ * previsione), cosi' «FIR del mese» e «Formulari per mese» contano lo stesso mese.
+ */
 export function intervalloMeseCorrente(oggi: Date): { startDate: Date; endDate: Date } {
   return {
-    startDate: new Date(oggi.getFullYear(), oggi.getMonth(), 1, 0, 0, 0, 0),
+    startDate: new Date(Date.UTC(oggi.getUTCFullYear(), oggi.getUTCMonth(), 1)),
     endDate: new Date(oggi.getTime()),
   }
 }
@@ -245,7 +248,7 @@ export function celleAnalisi(
     andamento = {
       etichetta: 'Andamento',
       valore: TRATTINO,
-      dettaglio: `previsione ${previsione}`,
+      dettaglio: `previsione del mese ${previsione}`,
       variazione: null,
       vuota: true,
     }
@@ -256,8 +259,8 @@ export function celleAnalisi(
       etichetta: 'Andamento',
       valore: `${formatoIntero.format(corrente)} questo mese`,
       dettaglio: precedenteVoce
-        ? `${formatoIntero.format(precedenteVoce.conteggio)} il mese scorso · previsione ${previsione}`
-        : `previsione ${previsione}`,
+        ? `${formatoIntero.format(precedenteVoce.conteggio)} il mese scorso · previsione del mese ${previsione}`
+        : `previsione del mese ${previsione}`,
       variazione: precedenteVoce ? variazioneInParole(corrente, precedenteVoce.conteggio) : null,
       vuota: false,
     }

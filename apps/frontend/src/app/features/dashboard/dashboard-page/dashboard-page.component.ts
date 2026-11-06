@@ -123,25 +123,6 @@ function inCaricamento<T>(): Sorgente<T> {
       </header>
 
       <div class="griglia">
-        <div class="col col--sx">
-          @if (ff.has('giacenze')) {
-            <app-deposito-sintesi
-              class="b-deposito"
-              [vista]="deposito().dati"
-              [caricamento]="deposito().caricamento"
-              [errore]="deposito().errore"
-            />
-          }
-          @if (ff.has('fir')) {
-            <app-fir-recenti
-              class="b-recenti"
-              [fir]="firRecenti().dati ?? []"
-              [caricamento]="firRecenti().caricamento"
-              [errore]="firRecenti().errore"
-              [puoCreare]="puoCreare()"
-            />
-          }
-        </div>
         <div class="col col--dx">
           <app-da-fare-oggi
             class="b-da-fare"
@@ -164,6 +145,25 @@ function inCaricamento<T>(): Sorgente<T> {
             [errore]="andamento().errore"
             (riprova)="caricaAndamento()"
           />
+        </div>
+        <div class="col col--sx">
+          @if (ff.has('giacenze')) {
+            <app-deposito-sintesi
+              class="b-deposito"
+              [vista]="deposito().dati"
+              [caricamento]="deposito().caricamento"
+              [errore]="deposito().errore"
+            />
+          }
+          @if (ff.has('fir')) {
+            <app-fir-recenti
+              class="b-recenti"
+              [fir]="firRecenti().dati ?? []"
+              [caricamento]="firRecenti().caricamento"
+              [errore]="firRecenti().errore"
+              [puoCreare]="puoCreare()"
+            />
+          }
         </div>
       </div>
 
@@ -216,6 +216,10 @@ function inCaricamento<T>(): Sorgente<T> {
       :host {
         display: block;
       }
+      /* Come .page delle altre pagine: 24px sopra il titolo. */
+      .pagina {
+        padding: var(--spacing-lg) 0;
+      }
       .titolo {
         display: flex;
         align-items: flex-end;
@@ -266,21 +270,6 @@ function inCaricamento<T>(): Sorgente<T> {
       .col {
         display: contents;
       }
-      .b-da-fare {
-        order: 1;
-      }
-      .b-mese {
-        order: 2;
-      }
-      .b-deposito {
-        order: 3;
-      }
-      .b-mesi {
-        order: 4;
-      }
-      .b-recenti {
-        order: 5;
-      }
       @media (min-width: 1200px) {
         .griglia {
           grid-template-columns: 306px minmax(0, 1fr);
@@ -291,12 +280,17 @@ function inCaricamento<T>(): Sorgente<T> {
           align-content: start;
           min-width: 0;
         }
+        /* Nel DOM la colonna di destra (Da fare oggi) viene prima: si legge e si tabula
+           nell'ordine in cui si vede. Qui la si rimette a destra. */
+        .col--dx {
+          grid-column: 2;
+          grid-row: 1;
+        }
         .col--sx {
+          grid-column: 1;
+          grid-row: 1;
           position: sticky;
           top: 24px;
-        }
-        .col > * {
-          order: 0;
         }
       }
 
