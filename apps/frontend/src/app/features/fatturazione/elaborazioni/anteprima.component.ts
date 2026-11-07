@@ -6,6 +6,7 @@ import { EMPTY, Observable, Subject, concat, of, timer } from 'rxjs'
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { PaginatorModule, PaginatorState } from 'primeng/paginator'
 import { TableModule } from 'primeng/table'
 import { TabViewModule } from 'primeng/tabview'
@@ -127,6 +128,7 @@ interface GruppoErrori {
     RouterLink,
     ButtonModule,
     DialogModule,
+    RipristinaFocusDirective,
     PaginatorModule,
     TableModule,
     TabViewModule,
@@ -292,7 +294,7 @@ interface GruppoErrori {
             </div>
           </dl>
 
-          <p-tabView>
+          <p-tabView [scrollable]="true">
             <p-tabPanel [header]="'Documenti (' + d.documenti + ')'">
               <div class="table-card" data-testid="tab-documenti">
                 <p
@@ -522,6 +524,7 @@ interface GruppoErrori {
       />
 
       <p-dialog
+        [appRipristinaFocus]="scartaAperta()"
         [visible]="scartaAperta()"
         (visibleChange)="$event ? null : chiudiScarta()"
         header="Scarta l'anteprima"

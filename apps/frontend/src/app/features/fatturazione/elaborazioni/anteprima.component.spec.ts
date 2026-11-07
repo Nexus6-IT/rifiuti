@@ -182,6 +182,22 @@ describe('AnteprimaComponent', () => {
       fixture.destroy()
     }))
 
+    it('chiudendo «Scarta» il focus torna al pulsante che l’ha aperto', fakeAsync(() => {
+      crea()
+      const origine = document.createElement('button')
+      document.body.appendChild(origine)
+      origine.focus()
+      comp.scartaAperta.set(true)
+      fixture.detectChanges()
+      document.body.focus()
+      comp.scartaAperta.set(false)
+      fixture.detectChanges()
+      tick(100)
+      expect(document.activeElement).toBe(origine)
+      origine.remove()
+      fixture.destroy()
+    }))
+
     it('definitiva: manda impronta e versione dell’anteprima vista, poi rilegge', fakeAsync(() => {
       servizio.definitiva.and.returnValue(of({ id: 'e1' }))
       crea()
