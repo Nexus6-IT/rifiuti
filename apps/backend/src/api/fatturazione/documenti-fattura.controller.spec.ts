@@ -23,6 +23,7 @@ describe('DocumentiFatturaController', () => {
     expect(ruoli('segnaEmesso')).toEqual(['SUPER_ADMIN', 'ADMIN'])
     expect(ruoli('scaricaXml')).toEqual(['SUPER_ADMIN', 'ADMIN'])
     // L'export e` a tutti i ruoli: XML_ZIP e adattatori li limita il ruolo effettivo nel metodo.
+    expect(ruoli('pdf')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     expect(ruoli('esporta')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
   })
 
@@ -35,6 +36,7 @@ describe('DocumentiFatturaController', () => {
     const c = new DocumentiFatturaController(
       documenti as never,
       annullo as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never

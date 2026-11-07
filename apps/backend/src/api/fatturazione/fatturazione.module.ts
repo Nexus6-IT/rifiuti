@@ -8,6 +8,7 @@ import {
   ElaborazioniService,
 } from '../../application/fatturazione/elaborazioni.service'
 import { ExportService } from '../../application/fatturazione/export.service'
+import { PdfCortesiaService } from '../../application/fatturazione/pdf-cortesia'
 import { NumerazioniService } from '../../application/fatturazione/numerazioni.service'
 import { ScostamentiService } from '../../application/fatturazione/scostamenti.service'
 import { XmlDocumentoService } from '../../application/fatturazione/xml-documento.service'
@@ -47,6 +48,7 @@ import { ScostamentiController } from './scostamenti.controller'
     ElaborazioniService,
     XmlDocumentoService,
     ExportService,
+    PdfCortesiaService,
     FatturazioneJobProcessor,
     FatturazioneManutenzioneJob,
   ],

@@ -1,7 +1,6 @@
 /**
  * Documenti di fattura in lettura, annullo e storno (4.4b1, §11-§12). Azienda SELEZIONATA, mai dal
- * corpo. 4.4b2 (Task 25b): XML, «segna come emesso» ed export (CSV e `XML_ZIP`); il PDF e` del
- * Task 28. Il download e` uno `StreamableFile` con `Content-Disposition: attachment`; `XML_ZIP`
+ * corpo. 4.4b2 (Task 25b): XML, «segna come emesso» ed export (CSV e `XML_ZIP`); il PDF (Task 28) e` `GET :id/pdf`, a tutti i ruoli di lettura. Il download e` uno `StreamableFile` con `Content-Disposition: attachment`; `XML_ZIP`
  * aggiunge `X-Documenti-Saltati` (esposto dal CORS in `main.ts`). Le risposte dei servizi
  * passano intatte; gli errori di dominio (`ANNULLO_NON_AMMESSO` e `STORNO_NON_AMMESSO` con
  * `details.motivo`, `STORNO_GIA_PRESENTE`, `VERSIONE_SUPERATA`, ...) escono dai servizi.
@@ -24,6 +23,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { AnnulloStornoService } from '../../application/fatturazione/annullo-storno.service'
 import { DocumentiFatturaService } from '../../application/fatturazione/documenti-fattura.service'
 import { ExportService } from '../../application/fatturazione/export.service'
+import { PdfCortesiaService } from '../../application/fatturazione/pdf-cortesia'
 import { XmlDocumentoService } from '../../application/fatturazione/xml-documento.service'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -48,7 +48,8 @@ export class DocumentiFatturaController {
     private readonly annullo: AnnulloStornoService,
     private readonly xml: XmlDocumentoService,
     private readonly esportazione: ExportService,
-    private readonly membership: RuoloEffettivoService
+    private readonly membership: RuoloEffettivoService,
+    private readonly pdfCortesia: PdfCortesiaService
   ) {}
 
   @Get()
@@ -69,6 +70,21 @@ export class DocumentiFatturaController {
   @ApiResponse({ status: 404, description: 'DOCUMENTO_NON_TROVATO' })
   dettaglio(@Req() req: any, @Param() p: DocumentoParamDto) {
     return this.documenti.dettaglio(requireRequestTenantId(req), p.id)
+  }
+
+  @Get(':id/pdf')
+  @Roles(...RUOLI_LETTURA)
+  @ApiOperation({
+    summary: 'Copia di cortesia in PDF (dati salvati, mai l`XML); le bozze hanno la filigrana',
+  })
+  @ApiResponse({ status: 404, description: 'DOCUMENTO_NON_TROVATO, PDF_NON_DISPONIBILE' })
+  async pdf(
+    @Req() req: any,
+    @Param() p: DocumentoParamDto,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    const file = await this.pdfCortesia.pdf(requireRequestTenantId(req), p.id)
+    return scarica(res, file.contenuto, 'application/pdf', file.nomeFile)
   }
 
   @Post(':id/annulla')
