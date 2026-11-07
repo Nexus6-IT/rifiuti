@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router'
-import { Subject, of, throwError } from 'rxjs'
+import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router'
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { DocumentoDettaglio } from '../fatturazione.model'
 import { FatturazioneService, FileScaricato } from '../fatturazione.service'
@@ -25,6 +25,8 @@ describe('DocumentoDettaglioComponent', () => {
   let comp: DocumentoDettaglioComponent
   let servizio: jasmine.SpyObj<FatturazioneService>
   let salvati: string[]
+  let params$: BehaviorSubject<ParamMap>
+  let query$: BehaviorSubject<ParamMap>
 
   async function crea(
     ruolo = 'ADMIN',
@@ -42,6 +44,8 @@ describe('DocumentoDettaglioComponent', () => {
     servizio.documento.and.returnValue(of(doc))
     servizio.scaricaXml.and.returnValue(of(file()))
     servizio.scaricaPdf.and.returnValue(of(file()))
+    params$ = new BehaviorSubject(convertToParamMap({ id: 'd1' }))
+    query$ = new BehaviorSubject(convertToParamMap(query))
     await TestBed.configureTestingModule({
       imports: [DocumentoDettaglioComponent],
       providers: [
@@ -50,12 +54,7 @@ describe('DocumentoDettaglioComponent', () => {
         { provide: FatturazioneService, useValue: servizio },
         {
           provide: ActivatedRoute,
-          useValue: {
-            snapshot: {
-              paramMap: convertToParamMap({ id: 'd1' }),
-              queryParamMap: convertToParamMap(query),
-            },
-          },
+          useValue: { paramMap: params$, queryParamMap: query$ },
         },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
       ],
@@ -130,6 +129,66 @@ describe('DocumentoDettaglioComponent', () => {
       expect(q('dd-storno')).toBeNull()
       expect(q('dd-pdf')).not.toBeNull()
     })
+  })
+
+  describe('rotta', () => {
+    it('da un documento all’altro sulla stessa rotta la pagina mostra il nuovo', async () => {
+      await crea()
+      servizio.documento.and.callFake(id =>
+        of(dettaglioDocumento({ id, numeroTesto: id === 'd2' ? '16/A' : '15/A' }))
+      )
+      params$.next(convertToParamMap({ id: 'd2' }))
+      fixture.detectChanges()
+      expect(servizio.documento).toHaveBeenCalledWith('d2')
+      expect(q('dd-numero')?.textContent).toContain('16/A')
+    })
+
+    it('la lettura del vecchio documento, arrivata tardi, non copre il nuovo', async () => {
+      await crea()
+      const lenta = new Subject<DocumentoDettaglio>()
+      servizio.documento.and.returnValues(
+        lenta,
+        of(dettaglioDocumento({ id: 'd2', numeroTesto: '16/A' }))
+      )
+      params$.next(convertToParamMap({ id: 'dX' }))
+      params$.next(convertToParamMap({ id: 'd2' }))
+      lenta.next(dettaglioDocumento({ id: 'dX', numeroTesto: '99/A' }))
+      fixture.detectChanges()
+      expect(q('dd-numero')?.textContent).toContain('16/A')
+    })
+
+    it('cambiando documento si chiudono i dialog e il parametro storno vale per il nuovo', async () => {
+      await crea('ADMIN', dettaglioDocumento(), {})
+      comp.apriAnnulla()
+      params$.next(convertToParamMap({ id: 'd2' }))
+      expect(comp.annullaAperta()).toBeFalse()
+      query$.next(convertToParamMap({ storno: '1', rifatturabile: '1' }))
+      expect(comp.stornoAperto()).toBeTrue()
+      expect(comp.rifatturabileIniziale()).toBeTrue()
+    })
+  })
+
+  describe('ruolo insufficiente: nessuna chiamata HTTP dai metodi', () => {
+    for (const ruolo of ['VIEWER', 'OPERATOR']) {
+      it(`${ruolo}`, async () => {
+        await crea(ruolo, dettaglioDocumento({ emessoIl: '2026-11-04T10:00:00.000Z' }))
+        comp.scaricaXml()
+        comp.apriConferma('xml')
+        comp.apriConferma('emesso')
+        comp.apriAnnulla()
+        comp.apriStorno(true)
+        comp.annulla('Motivo')
+        comp.storna({ motivo: 'M', dataDocumento: '2026-11-07', rifatturabile: false })
+        comp.confermaEmissione()
+        expect(comp.annullaAperta()).toBeFalse()
+        expect(comp.stornoAperto()).toBeFalse()
+        expect(comp.conferma()).toBeNull()
+        expect(servizio.scaricaXml).not.toHaveBeenCalled()
+        expect(servizio.annulla).not.toHaveBeenCalled()
+        expect(servizio.storno).not.toHaveBeenCalled()
+        expect(servizio.segnaEmesso).not.toHaveBeenCalled()
+      })
+    }
   })
 
   describe('annullo', () => {

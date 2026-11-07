@@ -56,6 +56,7 @@ export const MSG_NON_CARICATI = 'Impossibile caricare i documenti.'
 export const MSG_ESPORTAZIONE_FALLITA = 'Impossibile esportare i documenti.'
 export const MSG_SERVE_SELEZIONE =
   'Seleziona dei documenti o imposta un filtro (registro, anno, date o cliente) per esportare.'
+export const MSG_SERVE_SELEZIONE_CON_STATO = 'Seleziona i documenti oppure togli il filtro di stato'
 export const MSG_PERIODO_ROVESCIATO = 'La data iniziale è dopo quella finale.'
 export const MSG_TROPPI_SELEZIONATI = `Si possono selezionare al massimo ${MAX_DOCUMENTI_SELEZIONABILI} documenti per volta.`
 export const MSG_GESTIONALI_NON_CARICATI = 'Impossibile caricare i gestionali per l’export.'
@@ -168,7 +169,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
         <div class="page-header__titles">
           <h1 class="page-title">Documenti</h1>
           <p class="page-subtitle">
-            Le fatture e le note di credito emesse: consulta, esporta e gestisci.
+            I documenti di fattura: bozze delle anteprime, definitivi e annullati.
           </p>
         </div>
         <div class="page-actions" data-testid="dl-export">
@@ -203,7 +204,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
       </header>
 
       <p *ngIf="!selezioneExport()" class="text-secondary" data-testid="dl-serve-selezione">
-        {{ msgServeSelezione }}
+        {{ msgServeSelezione() }}
       </p>
 
       <div class="dl-filtri" data-testid="dl-filtri">
@@ -526,6 +527,8 @@ export class DocumentiListaComponent {
     formato: string
     elenco: MancanteVista[]
     chiavi: ChiaveMancante[]
+    /** La selezione dell'export respinto, non quella di quando si clicca il link. */
+    selezione: SelezioneExport
   } | null>(null)
 
   /** Fine del giorno italiano di oggi, ricalcolata a ogni apertura del calendario. */
@@ -533,7 +536,8 @@ export class DocumentiListaComponent {
 
   readonly giorno = formattaGiorno
   readonly importo = importoItaliano
-  readonly msgServeSelezione = MSG_SERVE_SELEZIONE
+  readonly msgServeSelezione = (): string =>
+    this.stato ? MSG_SERVE_SELEZIONE_CON_STATO : MSG_SERVE_SELEZIONE
   readonly msgPeriodoRovesciato = MSG_PERIODO_ROVESCIATO
   readonly msgMappatureMancanti =
     'Mancano delle mappature per il gestionale. Completale e ripeti l’export.'
@@ -547,7 +551,7 @@ export class DocumentiListaComponent {
     ['BOZZA', 'DEFINITIVO', 'ANNULLATO'] as const
   ).map(s => ({ label: STATI_DOCUMENTO_VOCI[s].etichetta, value: s }))
   readonly opzioniAnni: { label: string; value: number }[] = (() => {
-    const corrente = new Date().getFullYear()
+    const corrente = fineGiornoDiOggi().getFullYear()
     return Array.from({ length: 7 }, (_, i) => ({
       label: String(corrente - i),
       value: corrente - i,
@@ -697,6 +701,9 @@ export class DocumentiListaComponent {
         break
     }
     this.pagina.set(1)
+    this.mancanti.set(null)
+    this.esito.set(null)
+    this.infoSaltati.set(null)
     this.selezione.set(new Set())
     this.erroreSelezione.set(null)
     if (!this.periodoRovesciato()) this.carica()
@@ -748,10 +755,17 @@ export class DocumentiListaComponent {
     this.selezione.set(nuova)
   }
 
+  /** Formati diversi da CSV (XML, gestionali): solo ADMIN. */
+  private puoEsportareOltreCsv(): boolean {
+    return this.permessi().scaricaXml
+  }
+
   /** Che cosa esportare: i documenti scelti, altrimenti i filtri; `null` se non c'è né l'uno né l'altro. */
   readonly selezioneExport = (): SelezioneExport | null => {
     const scelti = this.selezione()
     if (scelti.size > 0) return { documentoIds: [...scelti] }
+    // `SelezioneExport` non ha lo stato: un export per filtro esporterebbe più di ciò che la lista mostra.
+    if (this.stato) return null
     const s: SelezioneExport = {
       ...(this.registroIvaId ? { registroIvaId: this.registroIvaId } : {}),
       ...(this.anno ? { anno: this.anno } : {}),
@@ -770,18 +784,19 @@ export class DocumentiListaComponent {
 
   /** XML e gestionali rendono «emessi» i documenti: prima la conferma. */
   chiediEsportazione(formato: string, nome: string, verificato: boolean): void {
-    if (!this.permessi().scaricaXml || this.inEsportazione() || !this.selezioneExport()) return
+    if (!this.puoEsportareOltreCsv() || this.inEsportazione() || !this.selezioneExport()) return
     this.inAttesa.set({ formato, nome, verificato })
   }
 
   confermaEsportazione(): void {
     const a = this.inAttesa()
-    if (a !== null) this.esporta(a.formato, true)
+    if (a !== null && this.puoEsportareOltreCsv()) this.esporta(a.formato, true)
   }
 
   private esporta(formato: string, confermaEmissione: boolean): void {
     const selezione = this.selezioneExport()
     if (selezione === null || this.inEsportazione()) return
+    if (formato !== 'CSV' && !this.puoEsportareOltreCsv()) return
     this.inEsportazione.set(true)
     this.esito.set(null)
     this.infoSaltati.set(null)
@@ -807,6 +822,7 @@ export class DocumentiListaComponent {
                 formato,
                 elenco: leggiMancanti(e),
                 chiavi: chiaviPerMappature(e),
+                selezione,
               })
             } else {
               this.esito.set(messaggioEsportazione(e))
@@ -818,10 +834,9 @@ export class DocumentiListaComponent {
   /** Salva la selezione usata e va alle mappature (contratto con il Task 35). */
   vaiAlleMappature(): void {
     const m = this.mancanti()
-    const selezione = this.selezioneExport()
     if (m === null) return
     try {
-      sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, JSON.stringify(selezione ?? {}))
+      sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, JSON.stringify(m.selezione))
     } catch {
       /* sessionStorage non disponibile: la pagina delle mappature riparte senza selezione */
     }

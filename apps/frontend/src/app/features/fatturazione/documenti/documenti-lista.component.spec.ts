@@ -265,6 +265,78 @@ describe('DocumentiListaComponent', () => {
     })
   })
 
+  describe('stato e selezione dell’export', () => {
+    it('con un filtro di stato l’export per filtro è disattivato, con il messaggio', async () => {
+      await crea()
+      comp.cambia('registroIvaId', 'r1')
+      comp.cambia('stato', 'ANNULLATO')
+      fixture.detectChanges()
+      expect(comp.selezioneExport()).toBeNull()
+      comp.esportaCsv()
+      expect(servizio.esporta).not.toHaveBeenCalled()
+      expect(q('dl-serve-selezione')?.textContent).toContain(
+        'Seleziona i documenti oppure togli il filtro di stato'
+      )
+    })
+
+    it('con lo stato attivo ma documenti scelti si esporta per id', async () => {
+      await crea()
+      comp.cambia('stato', 'ANNULLATO')
+      comp.seleziona('d1', true)
+      comp.esportaCsv()
+      expect(servizio.esporta).toHaveBeenCalledWith('CSV', { documentoIds: ['d1'] }, false)
+    })
+
+    it('«Completa le mappature» salva la selezione dell’export respinto, non una successiva', async () => {
+      await crea()
+      servizio.esporta.and.returnValue(
+        throwError(() =>
+          erroreBlob(409, {
+            error: 'MAPPATURE_MANCANTI',
+            details: {
+              mancanti: [{ tipo: 'CODICE_IVA', chiaveWasteflow: '22', etichetta: 'IVA 22%' }],
+            },
+          })
+        )
+      )
+      comp.seleziona('d1', true)
+      comp.chiediEsportazione('TEAMSYSTEM', 'TeamSystem', false)
+      comp.confermaEsportazione()
+      await svuotaPromesse()
+      comp.seleziona('d2', true)
+      comp.vaiAlleMappature()
+      expect(JSON.parse(sessionStorage.getItem(CHIAVE_SELEZIONE_MAPPATURE) ?? 'null')).toEqual({
+        documentoIds: ['d1'],
+      })
+    })
+
+    it('cambiando filtro spariscono riquadro delle mappature, esito e saltati', async () => {
+      await crea()
+      servizio.esporta.and.returnValue(throwError(() => erroreBlob(500, {})))
+      comp.seleziona('d1', true)
+      comp.esportaCsv()
+      await svuotaPromesse()
+      expect(comp.esito()).not.toBeNull()
+      comp.cambia('anno', 2025)
+      expect(comp.esito()).toBeNull()
+      expect(comp.mancanti()).toBeNull()
+    })
+  })
+
+  describe('ruolo insufficiente: nessuna chiamata HTTP dai metodi', () => {
+    for (const ruolo of ['VIEWER', 'OPERATOR']) {
+      it(`${ruolo}`, async () => {
+        await crea(ruolo)
+        comp.seleziona('d1', true)
+        comp.chiediEsportazione('XML_ZIP', 'XML (zip)', true)
+        comp.inAttesa.set({ formato: 'XML_ZIP', nome: 'XML (zip)', verificato: true })
+        comp.confermaEsportazione()
+        ;(comp as unknown as { esporta(f: string, c: boolean): void }).esporta('TEAMSYSTEM', true)
+        expect(servizio.esporta).not.toHaveBeenCalled()
+      })
+    }
+  })
+
   describe('permessi', () => {
     for (const ruolo of ['VIEWER', 'OPERATOR']) {
       it(`${ruolo}: solo CSV, nessun XML né gestionale (e il gestionale non viene nemmeno caricato)`, async () => {

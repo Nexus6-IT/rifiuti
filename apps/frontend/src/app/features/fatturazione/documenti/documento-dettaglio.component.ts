@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, RouterLink } from '@angular/router'
-import { EMPTY, Observable, Subject } from 'rxjs'
+import { EMPTY, Observable, Subject, combineLatest, merge } from 'rxjs'
 import { catchError, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { TableModule } from 'primeng/table'
@@ -385,10 +385,10 @@ export class DocumentoDettaglioComponent {
   private readonly auth = inject(AuthService)
   private readonly destroyRef = inject(DestroyRef)
 
-  private readonly id = this.route.snapshot.paramMap.get('id') ?? ''
-  private readonly chiedeStorno = this.route.snapshot.queryParamMap.get('storno') === '1'
-  private readonly chiedeRifatturabile =
-    this.route.snapshot.queryParamMap.get('rifatturabile') === '1'
+  /** Id e parametri seguono la rotta: da un documento all'altro il componente è lo stesso. */
+  private id = ''
+  private chiedeStorno = false
+  private chiedeRifatturabile = false
   /** Il parametro `storno` apre il dialog una volta sola. */
   private stornoRichiestoGestito = false
 
@@ -435,12 +435,18 @@ export class DocumentoDettaglioComponent {
   private readonly lettura$ = new Subject<void>()
 
   constructor() {
-    this.lettura$
+    const rotta$ = combineLatest([this.route.paramMap, this.route.queryParamMap]).pipe(
+      tap(([p, q]) =>
+        this.cambiaRotta(p.get('id') ?? '', q.get('storno') === '1', q.get('rifatturabile') === '1')
+      )
+    )
+    merge(rotta$, this.lettura$)
       .pipe(
         tap(() => {
           this.caricamento.set(true)
           this.errore.set(null)
         }),
+        // Una lettura nuova (altro documento o «Riprova») annulla la pendente.
         switchMap(() =>
           this.servizio.documento(this.id).pipe(
             catchError(err => {
@@ -457,7 +463,30 @@ export class DocumentoDettaglioComponent {
         this.caricamento.set(false)
         this.apriStornoRichiesto(d)
       })
-    this.carica()
+  }
+
+  /** Nuova rotta: azzera il documento, i dialog, gli esiti e il parametro `storno`. */
+  private cambiaRotta(id: string, storno: boolean, rifatturabile: boolean): void {
+    this.id = id
+    this.chiedeStorno = storno
+    this.chiedeRifatturabile = rifatturabile
+    this.stornoRichiestoGestito = false
+    this.dettaglio.set(null)
+    this.esito.set(null)
+    this.erroreDialog.set(null)
+    this.annullaAperta.set(false)
+    this.stornoAperto.set(false)
+    this.conferma.set(null)
+  }
+
+  /** XML ed emissione: solo ADMIN (il template nasconde i pulsanti, il metodo si difende). */
+  private puoXml(): boolean {
+    return this.permessi().scaricaXml
+  }
+
+  /** Annullo, storno e «emesso»: solo chi rende definitivo. */
+  private puoScrivere(): boolean {
+    return this.permessi().rendeDefinitiva
   }
 
   carica(): void {
@@ -474,17 +503,20 @@ export class DocumentoDettaglioComponent {
   // --- Dialog ------------------------------------------------------------------------------
 
   apriAnnulla(): void {
+    if (!this.puoScrivere()) return
     this.erroreDialog.set(null)
     this.annullaAperta.set(true)
   }
 
   apriStorno(rifatturabile: boolean): void {
+    if (!this.puoScrivere()) return
     this.erroreDialog.set(null)
     this.rifatturabileIniziale.set(rifatturabile)
     this.stornoAperto.set(true)
   }
 
   apriConferma(tipo: Conferma): void {
+    if (!(tipo === 'xml' ? this.puoXml() : this.puoScrivere())) return
     this.erroreDialog.set(null)
     this.conferma.set(tipo)
   }
@@ -505,7 +537,7 @@ export class DocumentoDettaglioComponent {
     ripiego: string
   ): void {
     const d = this.dettaglio()
-    if (d === null || this.inAzione()) return
+    if (!this.puoScrivere() || d === null || this.inAzione()) return
     this.inAzione.set(true)
     this.erroreDialog.set(null)
     chiamata(d.versione)
@@ -513,6 +545,8 @@ export class DocumentoDettaglioComponent {
       .subscribe({
         next: nuovo => {
           this.inAzione.set(false)
+          // Se nel frattempo si è passati a un altro documento, la risposta non lo copre.
+          if (nuovo.id !== this.id) return
           this.dettaglio.set(nuovo)
           this.annullaAperta.set(false)
           this.stornoAperto.set(false)
@@ -528,30 +562,32 @@ export class DocumentoDettaglioComponent {
   }
 
   annulla(motivo: string): void {
+    if (!this.puoScrivere()) return
     this.scrivi(v => this.servizio.annulla(this.id, motivo, v), MSG_ANNULLO_FALLITO)
   }
 
   storna(dati: DatiStorno): void {
+    if (!this.puoScrivere()) return
     this.scrivi(v => this.servizio.storno(this.id, { ...dati, versione: v }), MSG_STORNO_FALLITO)
   }
 
   confermaEmissione(): void {
     const tipo = this.conferma()
     if (tipo === 'xml') this.scarica(true)
-    else if (tipo === 'emesso')
+    else if (tipo === 'emesso' && this.puoScrivere())
       this.scrivi(v => this.servizio.segnaEmesso(this.id, v), MSG_EMESSO_FALLITO)
   }
 
   /** «Scarica XML»: un documento già emesso si scarica subito, gli altri chiedono conferma. */
   scaricaXml(): void {
     const d = this.dettaglio()
-    if (d === null || this.inAzione()) return
+    if (!this.puoXml() || d === null || this.inAzione()) return
     if (d.emessoIl === null) this.apriConferma('xml')
     else this.scarica(false)
   }
 
   private scarica(confermaEmissione: boolean): void {
-    if (this.inAzione()) return
+    if (!this.puoXml() || this.inAzione()) return
     this.inAzione.set(true)
     this.esito.set(null)
     this.erroreDialog.set(null)
