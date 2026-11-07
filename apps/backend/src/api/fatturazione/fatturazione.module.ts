@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq'
 import { Module } from '@nestjs/common'
 import { ADATTATORI_EXPORT } from '../../application/fatturazione/adattatori/adattatore-export-contabile'
 import { MappatureService } from '../../application/fatturazione/adattatori/mappature.service'
+import { TeamSystemAdattatore } from '../../application/fatturazione/adattatori/teamsystem.adattatore'
 import { RegistroAdattatori } from '../../application/fatturazione/adattatori/registro-adattatori'
 import { AnnulloStornoService } from '../../application/fatturazione/annullo-storno.service'
 import { CedenteService } from '../../application/fatturazione/cedente.service'
@@ -55,7 +56,7 @@ import { ScostamentiController } from './scostamenti.controller'
     ExportService,
     PdfCortesiaService,
     // Elenco degli adattatori contabili (provider multi): TeamSystem e gli altri vi si aggiungono.
-    { provide: ADATTATORI_EXPORT, useFactory: () => [] },
+    { provide: ADATTATORI_EXPORT, useFactory: () => [new TeamSystemAdattatore()] },
     RegistroAdattatori,
     MappatureService,
     FatturazioneJobProcessor,

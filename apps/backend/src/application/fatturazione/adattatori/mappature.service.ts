@@ -23,6 +23,7 @@ import {
   type TipoMappatura,
 } from './adattatore-export-contabile'
 import { RegistroAdattatori } from './registro-adattatori'
+import { leggiChiaveIva, NOMI_TIPO_RIGA } from './teamsystem.adattatore'
 
 /** Voci per richiesta (il DTO applica lo stesso limite; qui resta come difesa del servizio) (le colonne sono corte, ma una richiesta non deve poter essere enorme). */
 export const MAX_VOCI_MAPPATURE = 500
@@ -331,8 +332,12 @@ export class MappatureService {
       }
     }
     for (const r of righe) {
-      if (r.tipo === 'CONTO_RICAVI')
-        risultato.set(chiaveMappatura(r.tipo, r.chiaveWasteflow), r.chiaveWasteflow)
+      if (r.tipo === 'CONTO_RICAVI') {
+        risultato.set(
+          chiaveMappatura(r.tipo, r.chiaveWasteflow),
+          `Ricavi: ${NOMI_TIPO_RIGA[r.chiaveWasteflow] ?? r.chiaveWasteflow.toLowerCase()}`
+        )
+      }
     }
     const clienti = per('CLIENTE')
     if (clienti.length > 0) {
@@ -359,26 +364,35 @@ export class MappatureService {
         })
       )
     }
+    // CODICE_IVA: la chiave e' `chiaveIva(aliquota, natura)` (TeamSystem). Si cerca il codice IVA
+    // dell'azienda con quell'aliquota e quella natura; se l'azienda non lo ha, si usa lo stesso
+    // testo che l'adattatore dà alla chiave mancante.
     const iva = per('CODICE_IVA')
     if (iva.length > 0) {
-      const t = await db.$queryRaw<
-        { id: string; codice: string; aliquota: string; descrizione: string }[]
-      >`
-        SELECT id::text AS id, codice AS codice, aliquota::text AS aliquota,
-               descrizione AS descrizione
-        FROM "codici_iva"
-        WHERE tenant_id = ${tenantId}::uuid
-          AND (id::text = ANY(${iva}::text[]) OR codice = ANY(${iva}::text[])
-               OR aliquota::text = ANY(${iva}::text[]))
-        ORDER BY codice`
-      registra(
-        'CODICE_IVA',
-        t.map(x => ({ id: x.id, codice: x.codice, etichetta: x.descrizione }))
-      )
-      // I documenti portano l'aliquota («22.00»): vale come chiave se il codice non la contiene.
-      for (const x of t) {
-        const k = chiaveMappatura('CODICE_IVA', x.aliquota)
-        if (!risultato.has(k)) risultato.set(k, x.descrizione)
+      const lette = iva.flatMap(k => {
+        const l = leggiChiaveIva(k)
+        return l ? [{ k, ...l }] : []
+      })
+      if (lette.length > 0) {
+        const t = await db.$queryRaw<{ k: string; descrizione: string }[]>`
+          SELECT DISTINCT ON (x.k) x.k AS k, c.descrizione AS descrizione
+          FROM unnest(${lette.map(l => l.k)}::text[], ${lette.map(l => l.aliquota)}::numeric[],
+                      ${lette.map(l => l.natura ?? '')}::text[]) AS x(k, a, n)
+          JOIN "codici_iva" c ON c.tenant_id = ${tenantId}::uuid
+                             AND c.aliquota = x.a AND c.natura IS NOT DISTINCT FROM NULLIF(x.n, '')
+          ORDER BY x.k, c.codice`
+        for (const x of t) risultato.set(chiaveMappatura('CODICE_IVA', x.k), x.descrizione)
+      }
+      for (const l of lette) {
+        const k = chiaveMappatura('CODICE_IVA', l.k)
+        if (!risultato.has(k)) {
+          risultato.set(
+            k,
+            l.natura !== null
+              ? `IVA esente ${l.natura}`
+              : `IVA ${new Prisma.Decimal(l.aliquota).toString()}%`
+          )
+        }
       }
     }
     const pagamenti = per('PAGAMENTO')

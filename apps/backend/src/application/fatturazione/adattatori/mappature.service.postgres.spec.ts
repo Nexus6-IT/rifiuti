@@ -37,6 +37,7 @@ import {
 
 type Voce = Omit<VoceMappatura, 'versione'> & { versione?: number | null }
 import { RegistroAdattatori } from './registro-adattatori'
+import { NOMI_TIPO_RIGA, TeamSystemAdattatore } from './teamsystem.adattatore'
 
 function documento(registro: string, aliquote: string[]): DocumentoPerExport {
   return {
@@ -166,11 +167,28 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
       { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '10' },
       { tipo: 'CODICE_IVA', chiaveWasteflow: '10.00', valore: '20' },
     ])
-    const e = ETICHETTA_NON_PRESENTE
     expect(r).toEqual([
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '10.00', valore: '20', versione: 1, etichetta: e },
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '10', versione: 1, etichetta: e },
-      { tipo: 'REGISTRO', chiaveWasteflow: 'B', valore: '02', versione: 1, etichetta: e },
+      {
+        tipo: 'CODICE_IVA',
+        chiaveWasteflow: '10.00',
+        valore: '20',
+        versione: 1,
+        etichetta: 'IVA 10%',
+      },
+      {
+        tipo: 'CODICE_IVA',
+        chiaveWasteflow: '22.00',
+        valore: '10',
+        versione: 1,
+        etichetta: 'IVA 22%',
+      },
+      {
+        tipo: 'REGISTRO',
+        chiaveWasteflow: 'B',
+        valore: '02',
+        versione: 1,
+        etichetta: ETICHETTA_NON_PRESENTE,
+      },
     ])
     expect(await lista(a)).toEqual(r)
   })
@@ -254,7 +272,7 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
     }
     const cliente = await nuovoCliente('Rossi Costruzioni SRL', { codice: 'CL1' })
     const persona = await nuovoCliente('Bianchi Mario', { nome: 'Mario', cognome: 'Bianchi' })
-    const iva = await owner.codiceIva.create({
+    await owner.codiceIva.create({
       data: {
         tenantId: a.tenantId,
         codice: 'A22',
@@ -274,25 +292,50 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
     const reg = await owner.registroIva.create({
       data: { tenantId: a.tenantId, codice: '01', descrizione: 'Vendite' },
     })
-    const r = await imposta(a, [
-      { tipo: 'CLIENTE', chiaveWasteflow: cliente.id, valore: '1' },
-      { tipo: 'CLIENTE', chiaveWasteflow: persona.id, valore: '2' },
-      { tipo: 'CLIENTE', chiaveWasteflow: randomUUID(), valore: '3' },
-      { tipo: 'CODICE_IVA', chiaveWasteflow: iva.id, valore: '4' },
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '8' },
-      { tipo: 'PAGAMENTO', chiaveWasteflow: pag.codice, valore: '5' },
-      { tipo: 'REGISTRO', chiaveWasteflow: reg.id, valore: '6' },
-      { tipo: 'CONTO_RICAVI', chiaveWasteflow: 'CER 17 09 04', valore: '7' },
+    // Le chiavi sono quelle che l'adattatore vero chiede per documenti di prova.
+    const documentoDi = (clienteId: string, pagamento: string) =>
+      ({
+        documento: {
+          cliente: { id: clienteId, denominazione: 'x' },
+          riepiloghi: [
+            { aliquota: '22.00', natura: null },
+            { aliquota: '0.00', natura: 'N4' },
+          ],
+          righe: [{ tipoRiga: 'MOVIMENTO' }, { tipoRiga: 'BOLLO' }, { tipoRiga: 'FISSO' }],
+        },
+        numero: 1,
+        anno: 2026,
+        registroCodice: reg.codice,
+        fotografia: { pagamento: { codice: pagamento, descrizione: 'x' } },
+      }) as unknown as DocumentoPerExport
+    const richieste = new TeamSystemAdattatore().mappatureRichieste([
+      documentoDi(cliente.id, pag.codice),
+      documentoDi(persona.id, pag.codice),
     ])
-    const per = new Map(r.map(v => [v.valore, v.etichetta]))
-    expect(per.get('1')).toBe('Rossi Costruzioni SRL')
-    expect(per.get('2')).toBe('Bianchi Mario')
-    expect(per.get('3')).toBe(ETICHETTA_NON_PRESENTE)
-    expect(per.get('4')).toBe('IVA ordinaria 22%')
-    expect(per.get('8')).toBe('IVA ordinaria 22%')
-    expect(per.get('5')).toBe('Bonifico a 30 giorni')
-    expect(per.get('6')).toBe('01 - Vendite')
-    expect(per.get('7')).toBe('CER 17 09 04')
+    const r = await imposta(a, [
+      ...richieste.map((c, i) => ({
+        tipo: c.tipo,
+        chiaveWasteflow: c.chiaveWasteflow,
+        valore: `V${i}`,
+      })),
+      { tipo: 'CLIENTE', chiaveWasteflow: randomUUID(), valore: 'SPARITO' },
+    ])
+    expect(await lista(a)).toEqual(r)
+    const per = (tipo: string, chiave: string) =>
+      r.find(v => v.tipo === tipo && v.chiaveWasteflow === chiave)!.etichetta
+    // Mai «(non più presente)» per una chiave prodotta dall'adattatore.
+    expect(r.filter(v => v.valore !== 'SPARITO').map(v => v.etichetta)).not.toContain(
+      ETICHETTA_NON_PRESENTE
+    )
+    expect(r.find(v => v.valore === 'SPARITO')!.etichetta).toBe(ETICHETTA_NON_PRESENTE)
+    expect(per('CLIENTE', cliente.id)).toBe('Rossi Costruzioni SRL')
+    expect(per('CLIENTE', persona.id)).toBe('Bianchi Mario')
+    expect(per('CODICE_IVA', '22.00')).toBe('IVA ordinaria 22%')
+    expect(per('CODICE_IVA', '0.00/N4')).toBe('IVA esente N4')
+    expect(per('PAGAMENTO', pag.codice)).toBe('Bonifico a 30 giorni')
+    expect(per('REGISTRO', reg.codice)).toBe('01 - Vendite')
+    expect(per('CONTO_RICAVI', 'MOVIMENTO')).toBe(`Ricavi: ${NOMI_TIPO_RIGA.MOVIMENTO}`)
+    expect(per('CONTO_RICAVI', 'BOLLO')).toBe('Ricavi: bollo')
   })
 
   it('valore null cancella la voce', async () => {

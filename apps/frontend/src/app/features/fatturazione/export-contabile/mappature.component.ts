@@ -12,6 +12,7 @@ import { leggiErroriAzione } from '../../listino/errori-azione'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
 import {
   AdattatoreVista,
+  CHIAVE_SELEZIONE_MAPPATURE,
   ChiaveMancante,
   MAX_VALORE_MAPPATURA,
   MAX_VOCI_MAPPATURE,
@@ -34,8 +35,6 @@ export const TITOLI_TIPI_MAPPATURA: Readonly<Record<TipoMappatura, string>> = {
   REGISTRO: 'Registri IVA',
 }
 
-/** Chiave di `sessionStorage` in cui la pagina dei documenti lascia la selezione dell'export. */
-export const CHIAVE_SELEZIONE_EXPORT = 'wasteflow.export-contabile.selezione'
 export const MESSAGGIO_TROPPE_MODIFICHE =
   'Salva le modifiche fatte prima di continuare (massimo 500 per volta)'
 const RIGHE_PER_PAGINA = 50
@@ -85,7 +84,7 @@ export function mancantiDaStato(stato: unknown): ChiaveMancante[] {
 /** Selezione dell'export lasciata in `sessionStorage`; `null` se assente o illeggibile. */
 export function selezioneDaSessione(): SelezioneExport | null {
   try {
-    const testo = sessionStorage.getItem(CHIAVE_SELEZIONE_EXPORT)
+    const testo = sessionStorage.getItem(CHIAVE_SELEZIONE_MAPPATURE)
     const valore: unknown = testo === null ? null : JSON.parse(testo)
     return typeof valore === 'object' && valore !== null && !Array.isArray(valore)
       ? (valore as SelezioneExport)
@@ -211,7 +210,7 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
             <p>Per esportare servono ancora questi corrispondenti:</p>
             <ul>
               <li *ngFor="let r of mancanti(); trackBy: perRiga">
-                {{ titoli[r.tipo] }}: {{ r.etichetta || assente }}
+                {{ titolo(r.tipo) }}: {{ r.etichetta || assente }}
               </li>
             </ul>
           </section>
@@ -257,7 +256,7 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
                       class="p-inputtext p-component"
                       [attr.aria-label]="
                         'Valore nel gestionale per ' +
-                        titoli[r.tipo] +
+                        titolo(r.tipo) +
                         ' ' +
                         (r.etichetta || assente)
                       "
@@ -376,6 +375,7 @@ export class MappatureComponent {
     })
   }
 
+  titolo = (tipo: string): string => this.titoli[tipo as TipoMappatura] ?? tipo
   perCodice = (_: number, a: AdattatoreVista): string => a.codice
   perRiga = (
     _: number,

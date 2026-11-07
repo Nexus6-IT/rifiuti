@@ -219,6 +219,13 @@ export class FatturazioneService {
     return this.http.get(`${this.urlDocumento(id)}/pdf`, { responseType: 'blob' })
   }
 
+  /** Copia di cortesia come file (nome da `Content-Disposition`), stesso schema di `scaricaXml`. */
+  scaricaPdf(id: string): Observable<FileScaricato> {
+    return this.http
+      .get(`${this.urlDocumento(id)}/pdf`, { responseType: 'blob', observe: 'response' })
+      .pipe(map(daRisposta))
+  }
+
   /**
    * `formato`: `CSV`, `XML_ZIP` o il codice di un adattatore. `XML_ZIP` e adattatori rendono i
    * documenti «emessi» e richiedono `confermaEmissione: true`; `CSV` no.

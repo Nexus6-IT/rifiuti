@@ -7,16 +7,13 @@ import { AuthService } from '../../../core/services/auth.service'
 import { bottone, q, stabilizza } from '../../clienti/tabelle/tabelle-test-utils'
 import {
   AdattatoreVista,
+  CHIAVE_SELEZIONE_MAPPATURE,
   ChiaveMancante,
   MAX_VOCI_MAPPATURE,
   MappaturaVista,
 } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
-import {
-  CHIAVE_SELEZIONE_EXPORT,
-  MESSAGGIO_TROPPE_MODIFICHE,
-  MappatureComponent,
-} from './mappature.component'
+import { MESSAGGIO_TROPPE_MODIFICHE, MappatureComponent } from './mappature.component'
 
 const ADATTATORE: AdattatoreVista = {
   codice: 'TEAMSYSTEM',
@@ -88,7 +85,7 @@ describe('MappatureComponent', () => {
   afterEach(() => {
     fixture?.destroy()
     history.replaceState({}, '')
-    sessionStorage.removeItem(CHIAVE_SELEZIONE_EXPORT)
+    sessionStorage.removeItem(CHIAVE_SELEZIONE_MAPPATURE)
   })
 
   it("adattatore con verificato false: riquadro «Tracciato non verificato su un'installazione reale» in cima", async () => {
@@ -296,7 +293,7 @@ describe('MappatureComponent', () => {
 
   it('selezione in sessionStorage: POST mancanti e chiavi in cima', async () => {
     const selezione = { anno: 2026, registroIvaId: 'r1' }
-    sessionStorage.setItem(CHIAVE_SELEZIONE_EXPORT, JSON.stringify(selezione))
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, JSON.stringify(selezione))
     await crea('ADMIN', {})
     servizio.chiaviMancanti.and.returnValue(
       of([{ tipo: 'CODICE_IVA', chiaveWasteflow: '10', etichetta: 'IVA 10%' }])
@@ -309,7 +306,7 @@ describe('MappatureComponent', () => {
   })
 
   it('history.state ha la precedenza: nessun POST', async () => {
-    sessionStorage.setItem(CHIAVE_SELEZIONE_EXPORT, JSON.stringify({ anno: 2026 }))
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, JSON.stringify({ anno: 2026 }))
     await crea('ADMIN', {
       mancanti: [{ tipo: 'CODICE_IVA', chiaveWasteflow: '10', etichetta: 'IVA 10%' }],
     })
@@ -318,7 +315,7 @@ describe('MappatureComponent', () => {
   })
 
   it('sessionStorage illeggibile o assente: nessun POST e la pagina funziona', async () => {
-    sessionStorage.setItem(CHIAVE_SELEZIONE_EXPORT, '{non json')
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, '{non json')
     await crea('ADMIN', { mappature: [mappatura({})] })
     expect(servizio.chiaviMancanti).not.toHaveBeenCalled()
     expect(q('mappature-mancanti')).toBeNull()

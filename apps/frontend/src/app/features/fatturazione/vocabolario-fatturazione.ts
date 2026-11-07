@@ -303,6 +303,13 @@ export const TIPI_RIGA_VOCI: Readonly<Record<string, VoceVocabolario>> = {
   QUANTITA_MOVIMENTI: v('Quantità dei movimenti', 'info'),
 }
 
+/** Tipi di documento SDI emessi dalla fatturazione. */
+export const TIPI_DOCUMENTO_VOCI: Readonly<Record<string, VoceVocabolario>> = {
+  TD01: v('Fattura', 'info'),
+  TD04: v('Nota di credito', 'info'),
+  TD24: v('Fattura differita', 'info'),
+}
+
 export const TIPI_CORREZIONE_VOCI = {
   RETTIFICA: v('Rettifica', 'avviso'),
   ANNULLO: v('Annullo', 'avviso'),
@@ -310,12 +317,39 @@ export const TIPI_CORREZIONE_VOCI = {
   CAMBIO_CAUSALE: v('Cambio di causale', 'avviso'),
 } as const
 
+/**
+ * Motivi di `erroriPeriodo` che il backend emette: gli stati della lista «da collegare» dei
+ * movimenti del periodo (`selezione-fatturazione.ts`). Gli altri motivi sono testi già pronti
+ * (periodo ambiguo) e si mostrano com'e'.
+ */
+export const MOTIVI_DA_COLLEGARE = [
+  'DA_RIALLINEARE',
+  'PROPOSTO',
+  'DA_COLLEGARE',
+  'MANCANTE',
+] as const
+export type MotivoDaCollegare = (typeof MOTIVI_DA_COLLEGARE)[number]
+
+export const MOTIVI_PERIODO_VOCI: Readonly<Record<MotivoDaCollegare, VoceVocabolario>> = {
+  DA_RIALLINEARE: v(
+    'Movimenti da riallineare: il movimento è cambiato dopo il collegamento',
+    'errore'
+  ),
+  PROPOSTO: v('Movimenti con un legame solo proposto: confermalo', 'errore'),
+  DA_COLLEGARE: v('Movimenti da collegare a un contratto', 'errore'),
+  MANCANTE: v('Movimenti senza legame', 'errore'),
+}
+
+export const eMotivoDaCollegare = (m: string): m is MotivoDaCollegare =>
+  (MOTIVI_DA_COLLEGARE as readonly string[]).includes(m)
+
 const TUTTE_LE_SEGNALAZIONI: Readonly<Record<string, VoceVocabolario>> = {
   ...ERRORI_HTTP_VOCI,
   ...ERRORI_GENERALI_VOCI,
   ...ERRORI_DOCUMENTO_VOCI,
   ...AVVISI_DOCUMENTO_VOCI,
   ...ESITI_PROPRI,
+  ...MOTIVI_PERIODO_VOCI,
 }
 
 /**

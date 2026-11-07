@@ -227,6 +227,19 @@ describe('FatturazioneService', () => {
     req.flush(new Blob())
   })
 
+  it('scaricaPdf: GET /:id/pdf, blob con nome da Content-Disposition (stesso schema di scaricaXml)', () => {
+    let esito: FileScaricato | undefined
+    servizio.scaricaPdf('d1').subscribe(r => (esito = r))
+    const req = http.expectOne(`${doc}/d1/pdf`)
+    expect(req.request.method).toBe('GET')
+    expect(req.request.responseType).toBe('blob')
+    req.flush(new Blob(['%PDF']), {
+      headers: { 'Content-Disposition': 'attachment; filename="fattura-1-A.pdf"' },
+    })
+    expect(esito).toEqual(jasmine.objectContaining({ nomeFile: 'fattura-1-A.pdf', saltati: 0 }))
+    expect(esito?.blob.size).toBe(4)
+  })
+
   it('esporta(XML_ZIP, s, true) manda confermaEmissione: true e la selezione', () => {
     const selezione = { registroIvaId: 'r1', anno: 2026, numeroDa: 1, numeroA: 10 }
     let esito: FileScaricato | undefined

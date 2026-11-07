@@ -106,3 +106,9 @@ export const DESCRIZIONI_REGIMI: Readonly<Record<string, string>> = {
   RF19: 'Forfettario',
   RF20: 'Regime transfrontaliero di Franchigia IVA (Direttiva UE 2020/285)',
 }
+
+/** Risposta del `PUT /impostazioni-fatturazione/definitive` (Task 29b): la versione è unica per la riga. */
+export interface DefinitiveVista {
+  definitiveAttive: boolean
+  versione: number
+}

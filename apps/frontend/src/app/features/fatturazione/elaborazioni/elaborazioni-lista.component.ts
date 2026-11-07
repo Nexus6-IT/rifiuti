@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { EMPTY, Subject, catchError, switchMap, tap } from 'rxjs'
+import { EMPTY, Observable, Subject, catchError, concat, of, switchMap, tap, timer } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { PaginatorModule, PaginatorState } from 'primeng/paginator'
 import { TableModule } from 'primeng/table'
@@ -11,7 +11,7 @@ import { AuthService } from '../../../core/services/auth.service'
 import { formattaGiorno } from '../../giacenze/giorno'
 import { importoItaliano } from '../../listino/listino-calcoli'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
-import { ElaborazioneRiga, StatoElaborazione } from '../fatturazione.model'
+import { ElaborazioneRiga, Pagina, StatoElaborazione } from '../fatturazione.model'
 import { DIMENSIONE_MASSIMA, FatturazioneService } from '../fatturazione.service'
 import { permessiFatturazione } from '../permessi-fatturazione'
 import {
@@ -20,6 +20,10 @@ import {
   VoceVocabolario,
 } from '../vocabolario-fatturazione'
 import { NuovaElaborazioneDialogComponent } from './nuova-elaborazione-dialog.component'
+
+/** Ogni quanto si rilegge la lista finché una riga è in calcolo o in emissione. */
+export const INTERVALLO_LISTA_MS = 3000
+const STATI_TRANSITORI: readonly StatoElaborazione[] = ['IN_CODA', 'IN_CORSO', 'IN_DEFINITIVA']
 
 type SeveritaTag = 'success' | 'info' | 'warning' | 'danger'
 
@@ -187,7 +191,7 @@ export class ElaborazioniListaComponent {
           this.errore.set(null)
         }),
         switchMap(pagina =>
-          this.servizio.lista({ pagina, dimensione: this.dimensione }).pipe(
+          this.giro(pagina).pipe(
             catchError(err => {
               this.caricamento.set(false)
               this.errore.set(
@@ -205,6 +209,22 @@ export class ElaborazioniListaComponent {
         this.caricamento.set(false)
       })
     this.carica()
+  }
+
+  /**
+   * Legge la pagina; finché una riga visibile è transitoria aspetta 3 s dalla risposta e rilegge
+   * (mai due richieste insieme). Una lettura nuova (`switchMap`) o la distruzione lo interrompe.
+   */
+  private giro(pagina: number): Observable<Pagina<ElaborazioneRiga>> {
+    return this.servizio
+      .lista({ pagina, dimensione: this.dimensione })
+      .pipe(
+        switchMap(p =>
+          p.elementi.some(r => STATI_TRANSITORI.includes(r.stato))
+            ? concat(of(p), timer(INTERVALLO_LISTA_MS).pipe(switchMap(() => this.giro(pagina))))
+            : of(p)
+        )
+      )
   }
 
   carica(): void {

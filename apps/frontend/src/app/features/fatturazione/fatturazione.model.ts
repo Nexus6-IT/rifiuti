@@ -98,8 +98,21 @@ export interface ElaborazioneDettaglio extends ElaborazioneRiga {
   versione: number
   definitiveAttive: boolean
   erroriGenerali: SegnalazioneVista[]
-  erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
-  numerazionePrevista: { registroIvaId: string; codiceRegistro: string; da: string; a: string }[]
+  erroriPeriodo: {
+    motivo: string
+    quanti: number
+    contrattoId: string | null
+    /** Assente nei riepiloghi salvati prima del campo. */
+    contrattoNumero?: string | null
+  }[]
+  /** `quanti`: i documenti che la definitiva numererebbe in quel registro (calcolati alla lettura). */
+  numerazionePrevista: {
+    registroIvaId: string
+    codiceRegistro: string
+    da: string
+    a: string
+    quanti: number
+  }[]
   totaliPerRegistro: {
     registroIvaId: string
     imponibile: string
@@ -202,6 +215,9 @@ export interface ScostamentoRiga {
   documento: { id: string; numeroTesto: string; dataDocumento: string }
   tipoCorrezione: 'RETTIFICA' | 'ANNULLO' | 'CAMBIO_CER' | 'CAMBIO_CAUSALE'
   quantitaFatturata: string | null
+  /** Unità di misura dei due movimenti (può cambiare: 1000 KG → 1 T). */
+  unitaFatturata: string | null
+  unitaAttuale: string | null
   importoFatturato: string
   quantitaAttuale: string | null
   importoAttuale: string | null
@@ -320,6 +336,8 @@ export const CHIAVI_SCOSTAMENTO_RIGA: Record<keyof ScostamentoRiga, true> = {
   documento: true,
   tipoCorrezione: true,
   quantitaFatturata: true,
+  unitaFatturata: true,
+  unitaAttuale: true,
   importoFatturato: true,
   quantitaAttuale: true,
   importoAttuale: true,
@@ -377,3 +395,6 @@ export interface VoceMappatura {
 export const MAX_VOCI_MAPPATURE = 500
 export const MAX_CHIAVE_MAPPATURA = 100
 export const MAX_VALORE_MAPPATURA = 50
+
+/** Chiave di `sessionStorage` con la selezione dell'export (JSON di `SelezioneExport`) per la pagina delle mappature. */
+export const CHIAVE_SELEZIONE_MAPPATURE = 'wasteflow.fatturazione.selezioneMappature'
