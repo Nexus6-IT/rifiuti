@@ -837,6 +837,7 @@ async function selezionaElaborazioneInterna(
   // Righe di listino nella forma del calcolo (stesso oggetto in tutti i documenti).
   const eAllegato = new Set(allegati.map(a => a.id))
   const contrattoDelElenco = new Map(elenchiTutti.map(e => [e.id, e.contrattoId]))
+  const codiciElenco = new Map(elenchiTutti.map(e => [e.id, e.codice]))
   const listinoPerElenco = new Map<string, RigaListinoDaFatturare[]>()
   const elenchiValidiSet = new Set(elenchiUsatiIds)
   const fuoriValidita = new Set<string>()
@@ -1119,6 +1120,7 @@ async function selezionaElaborazioneInterna(
         dataDocumento: p.dataDocumento,
         legami: legamiDaFatturare,
         listino,
+        codiciElenco,
         righeFisse: fisse,
         righeQuantita: quantita,
         minimi,

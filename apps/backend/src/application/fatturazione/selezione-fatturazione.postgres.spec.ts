@@ -847,8 +847,12 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       const { az } = await scenarioAllegato('TS')
       const s = await seleziona(az)
       const errori = calcolaDocumento(s.documenti[0].input).errori
-      // Il listino va dal principale agli allegati: la riga CER e la 1, la TS la 2.
-      expect(errori).toContainEqual({ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'TS riga 2' })
+      // Il listino va dal principale agli allegati; il dettaglio dice la posizione nell'elenco
+      // dell'allegato (la TS e la sua prima riga), non quella nel listino unito.
+      expect(errori).toContainEqual({
+        codice: 'FAMIGLIA_NON_CALCOLATA',
+        dettaglio: "TS riga 1 dell'elenco 001",
+      })
     })
 
     it('riga NM dell’elenco principale mai citata dai legami: FAMIGLIA_NON_CALCOLATA', async () => {
@@ -860,7 +864,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       expect(s.documenti[0].input.listino.size).toBe(2)
       expect(calcolaDocumento(s.documenti[0].input).errori).toContainEqual({
         codice: 'FAMIGLIA_NON_CALCOLATA',
-        dettaglio: 'NM riga 2',
+        dettaglio: "NM riga 2 dell'elenco 001",
       })
     })
 

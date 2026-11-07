@@ -240,7 +240,7 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
     ])
   })
 
-  it('bozza con FAMIGLIA_NON_CALCOLATA: fotografia.segnalazioni.errori con dettaglio «TS riga N» (Q16)', async () => {
+  it('bozza con FAMIGLIA_NON_CALCOLATA: fotografia.segnalazioni.errori con dettaglio «TS riga N dell’elenco X» (Q16)', async () => {
     const az = await azienda()
     const c = await creaContrattoT18(owner, az)
     await creaLegameConfermatoT18(owner, az, c)
@@ -249,7 +249,7 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
     const [d] = await documenti(id)
     expect(d.errori).toContain('FAMIGLIA_NON_CALCOLATA')
     const e = d.fotografia.segnalazioni.errori.find(x => x.codice === 'FAMIGLIA_NON_CALCOLATA')
-    expect(e?.dettaglio).toBe('TS riga 2')
+    expect(e?.dettaglio).toBe("TS riga 2 dell'elenco 001")
     expect((await elaborazione(id)).riepilogo).toMatchObject({ errori: 1, documenti: 1 })
   })
 

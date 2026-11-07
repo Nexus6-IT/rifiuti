@@ -63,6 +63,11 @@ export interface InputDocumento {
    * questa mappa. `categoriaCodice` (3 cifre) serve a `M<cat>`. Le costruisce il Task 17.
    */
   listino: ReadonlyMap<string, RigaListinoDaFatturare>
+  /**
+   * Codice (es. «001») di ogni elenco del listino, per `elencoId`. Serve al «riga n dell'elenco X»
+   * dei dettagli; se manca un elenco il dettaglio resta la posizione nel listino unito.
+   */
+  codiciElenco?: ReadonlyMap<string, string>
   righeFisse: RigaListinoDaFatturare[]
   righeQuantita: RigaListinoDaFatturare[]
   minimi: RigaListinoDaFatturare[]
@@ -166,6 +171,28 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
     for (const a of esito.avvisi) {
       if (!avvisi.some(x => x.codice === a.codice)) avvisi.push(a)
     }
+  }
+
+  /**
+   * Unico punto in cui un «<regola> riga n» (n = posizione nel listino unito, P12) diventa
+   * «<regola> riga p dell'elenco <codice>», con p = posizione nel suo elenco. Senza il codice
+   * dell'elenco (o con un n fuori listino) il dettaglio resta com'e'.
+   */
+  const idPerPosizione = [...i.listino.values()]
+  const posizioneNelElenco = new Map<string, number>()
+  const contatoPerElenco = new Map<string, number>()
+  for (const r of idPerPosizione) {
+    const p = (contatoPerElenco.get(r.elencoId) ?? 0) + 1
+    contatoPerElenco.set(r.elencoId, p)
+    posizioneNelElenco.set(r.id, p)
+  }
+  const localizzaRiga = <T extends { dettaglio?: string }>(s: T): T => {
+    const m = /^(.*riga )(\d+)$/.exec(s.dettaglio ?? '')
+    if (m === null) return s
+    const riga = idPerPosizione[Number(m[2]) - 1]
+    const codice = riga === undefined ? undefined : i.codiciElenco?.get(riga.elencoId)
+    if (riga === undefined || codice === undefined) return s
+    return { ...s, dettaglio: `${m[1]}${posizioneNelElenco.get(riga.id)} dell'elenco ${codice}` }
   }
 
   const sospeso = c.stato === 'SOSPESO'
@@ -342,7 +369,7 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
     nettoAPagare: netto.toFixed(2),
     bolloDovuto: bollo.dovuto,
     importoBollo: bollo.importo,
-    errori,
-    avvisi,
+    errori: errori.map(localizzaRiga),
+    avvisi: avvisi.map(localizzaRiga),
   }
 }
