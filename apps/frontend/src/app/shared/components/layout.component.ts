@@ -1271,7 +1271,7 @@ export class LayoutComponent implements OnInit {
       contatoreLegami: true,
     },
     {
-      label: 'Fatturazione',
+      label: 'Fatture per periodo',
       route: '/fatturazione',
       icon: 'pi pi-euro',
       feature: 'contratti',

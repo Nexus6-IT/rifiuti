@@ -459,6 +459,25 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(servizio.lista.calls.first().args[0]!.contrattoId).toBeUndefined()
   })
 
+  it('?dal, ?al e ?stato validi diventano filtri; date o stato non validi si ignorano', async () => {
+    await crea('OPERATOR', [riga(1)], 1, {
+      dal: '2026-10-01',
+      al: '2026-10-31',
+      stato: 'DA_COLLEGARE',
+    })
+    const f = servizio.lista.calls.first().args[0]!
+    expect(f.dal).toBe('2026-10-01')
+    expect(f.al).toBe('2026-10-31')
+    expect(f.stati).toEqual(['DA_COLLEGARE'])
+    fixture.destroy()
+    TestBed.resetTestingModule()
+    await crea('OPERATOR', [riga(1)], 1, { dal: '2026-02-30', al: 'ieri', stato: 'CONFERMATO' })
+    const g = servizio.lista.calls.first().args[0]!
+    expect(g.dal).toBeUndefined()
+    expect(g.al).toBeUndefined()
+    expect(g.stati).toBeUndefined()
+  })
+
   it('carica(): una nuova lettura annulla la richiesta precedente', async () => {
     await crea('OPERATOR', [riga(1)])
     const lenta = new Subject<{ elementi: RigaLista[]; totale: number }>()

@@ -88,7 +88,7 @@ describe('LayoutComponent: voce di menu Clienti', () => {
   })
 })
 
-describe('LayoutComponent: voce di menu «Fatturazione»', () => {
+describe('LayoutComponent: voce di menu «Fatture per periodo»', () => {
   it('porta a /fatturazione, accanto a «Da collegare», gated dalla feature contratti', () => {
     TestBed.configureTestingModule({
       imports: [LayoutComponent, HttpClientTestingModule],
@@ -98,7 +98,7 @@ describe('LayoutComponent: voce di menu «Fatturazione»', () => {
     const i = nav.findIndex(v => v.route === '/fatturazione')
     expect(i).toBeGreaterThan(-1)
     expect(nav[i]).toEqual(
-      jasmine.objectContaining({ label: 'Fatturazione', feature: 'contratti' })
+      jasmine.objectContaining({ label: 'Fatture per periodo', feature: 'contratti' })
     )
     expect(nav[i - 1].route).toBe('/legami/da-collegare')
   })

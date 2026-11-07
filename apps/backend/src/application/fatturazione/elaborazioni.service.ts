@@ -38,6 +38,11 @@ import {
   type SegnalazioneVista,
 } from './documenti-fattura.service'
 import { bloccaElaborazione } from './lock-fatturazione'
+import {
+  conQuantiSalvati,
+  numerazioneAllaLettura,
+  type VoceNumerazionePrevista,
+} from './numerazione-prevista'
 import { eDataIso, oggiRoma } from './numerazione'
 import { eViolazioneUnica, segnaFallita, type RiepilogoElaborazione } from './anteprima'
 import {
@@ -100,8 +105,8 @@ export interface ElaborazioneDettaglio extends ElaborazioneRiga {
   versione: number
   definitiveAttive: boolean
   erroriGenerali: SegnalazioneVista[]
-  erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
-  numerazionePrevista: RiepilogoElaborazione['numerazionePrevista']
+  erroriPeriodo: RiepilogoElaborazione['erroriPeriodo']
+  numerazionePrevista: VoceNumerazionePrevista[]
   totaliPerRegistro: RiepilogoElaborazione['totaliPerRegistro']
   documentiNonGenerati: {
     contrattoId: string
@@ -343,6 +348,25 @@ export class ElaborazioniService {
           SELECT definitive_attive AS attive FROM impostazioni_fatturazione
           WHERE tenant_id = ${tenantId}::uuid`
         const p = r.riepilogo ?? {}
+        const salvata = p.numerazionePrevista ?? []
+        // Il riepilogo e' scritto al calcolo e `escludi` non lo riscrive: finche' le bozze esistono
+        // i numeri si ricalcolano con i candidati della definitiva (stesso predicato di
+        // `leggiCandidati`, `definitiva.ts`).
+        let numerazionePrevista: VoceNumerazionePrevista[]
+        if (r.stato === 'ANTEPRIMA_PRONTA' || r.stato === 'IN_DEFINITIVA') {
+          const conteggi = await tx.$queryRaw<{ registroIvaId: string; quanti: number }[]>`
+            SELECT registro_iva_id::text AS "registroIvaId", count(*)::int AS quanti
+            FROM documenti_fattura
+            WHERE tenant_id = ${tenantId}::uuid AND elaborazione_id = ${id}::uuid
+              AND stato = 'BOZZA' AND NOT escluso_da_definitiva AND cardinality(errori) = 0
+            GROUP BY registro_iva_id`
+          numerazionePrevista = numerazioneAllaLettura(
+            salvata,
+            new Map(conteggi.map(c => [c.registroIvaId, c.quanti]))
+          )
+        } else {
+          numerazionePrevista = conQuantiSalvati(salvata)
+        }
         return {
           ...riga(r),
           raggruppamento: r.raggruppamento,
@@ -357,7 +381,7 @@ export class ElaborazioniService {
             r.erroriGenerali.map(codice => ({ codice: codice as ErroreGenerale }))
           ).map(vistaErrore),
           erroriPeriodo: p.erroriPeriodo ?? [],
-          numerazionePrevista: p.numerazionePrevista ?? [],
+          numerazionePrevista,
           totaliPerRegistro: p.totaliPerRegistro ?? [],
           documentiNonGenerati: (p.documentiNonGenerati ?? []).map(d => ({
             ...d,
