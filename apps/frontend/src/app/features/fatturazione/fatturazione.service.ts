@@ -47,12 +47,6 @@ export interface ParametriScostamenti extends ParametriPagina {
   clienteId?: string
 }
 
-/**
- * Servizio HTTP della fatturazione per periodo (4.4b), una funzione per rotta del §11 della spec
- * (mappature e credenziali sono della 4.4c/d). Separato da `ImpostazioniFatturazione44Service`.
- * `confermaEmissione` è sempre un parametro esplicito: il servizio non lo mette mai a `true`
- * da solo (Q28).
- */
 /** File scaricato: nome da `Content-Disposition`, `saltati` da `X-Documenti-Saltati` (XML_ZIP). */
 export interface FileScaricato {
   blob: Blob
@@ -84,6 +78,12 @@ function daRisposta(r: HttpResponse<Blob>): FileScaricato {
   }
 }
 
+/**
+ * Servizio HTTP della fatturazione per periodo (4.4b), una funzione per rotta del §11 della spec
+ * (mappature e credenziali sono della 4.4c/d). Separato da `ImpostazioniFatturazione44Service`.
+ * `confermaEmissione` è sempre un parametro esplicito: il servizio non lo mette mai a `true`
+ * da solo (Q28).
+ */
 @Injectable({ providedIn: 'root' })
 export class FatturazioneService {
   private readonly http = inject(HttpClient)

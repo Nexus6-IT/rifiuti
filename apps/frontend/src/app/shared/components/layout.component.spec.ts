@@ -88,6 +88,22 @@ describe('LayoutComponent: voce di menu Clienti', () => {
   })
 })
 
+describe('LayoutComponent: voce di menu «Fatturazione»', () => {
+  it('porta a /fatturazione, accanto a «Da collegare», gated dalla feature contratti', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const nav = TestBed.createComponent(LayoutComponent).componentInstance.navMain
+    const i = nav.findIndex(v => v.route === '/fatturazione')
+    expect(i).toBeGreaterThan(-1)
+    expect(nav[i]).toEqual(
+      jasmine.objectContaining({ label: 'Fatturazione', feature: 'contratti' })
+    )
+    expect(nav[i - 1].route).toBe('/legami/da-collegare')
+  })
+})
+
 describe('LayoutComponent: voce di menu «Da collegare»', () => {
   async function crea(contatori: unknown): Promise<HTMLElement> {
     // Come il servizio vero: `aggiornaContatori` rilegge e scrive il signal (0 se fallisce).
