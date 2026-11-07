@@ -260,6 +260,19 @@ describe('validaFatturePA (lotto)', () => {
     expect(esiti[0].errori).toEqual([])
   })
 
+  it('un XML non ben formato dentro il lotto: il lotto intero e non valido (si fallisce chiusi), mai un esito valido', async () => {
+    const buono = costruisciFattura()
+    const malformato = buono.replace('</p:FatturaElettronica>', '')
+    const esiti = await validaFatturePA([buono, malformato, buono])
+    expect(esiti).toHaveLength(3)
+    expect(esiti[1].valido).toBe(false)
+    expect(esiti[1].errori.length).toBeGreaterThan(0)
+    // Scelta prudente del Task 16: l'errore di parsing non ha una posizione attribuibile a un file,
+    // quindi NESSUN file del lotto risulta valido (nessuna emissione parziale su un lotto sospetto).
+    expect(esiti.map(e => e.valido)).toEqual([false, false, false])
+    expect((await validaFatturaPA(malformato)).valido).toBe(false)
+  })
+
   it('lista vuota: nessun esito', async () => {
     expect(await validaFatturePA([])).toEqual([])
   })
