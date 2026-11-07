@@ -166,6 +166,10 @@ describe('ExportService — piani con statistiche vecchie', () => {
         .catch(() => undefined)
     }
     await pulisciTenantDiTest(owner, tenantCreati)
+    // Statistiche rifatte: le suite successive non devono partire con pg_statistic vuota.
+    for (const t of TABELLE) {
+      await owner.$executeRawUnsafe(`ANALYZE ${t}`).catch(() => undefined)
+    }
     if (cerCreati.length > 0) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await owner.$disconnect()
     await app?.$disconnect()
