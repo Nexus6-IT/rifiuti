@@ -28,7 +28,14 @@ import { creaAdattatoreFinto } from '../../../test-support/adattatore-finto'
 import { partitaIvaUnica } from '../../../test-support/anagrafiche-di-test'
 import { pulisciTenantDiTest } from '../../../test-support/legami-di-test'
 import type { DocumentoPerExport } from '../export-csv'
-import { MappatureService, MAX_VOCI_MAPPATURE } from './mappature.service'
+import {
+  ETICHETTA_NON_PRESENTE,
+  MappatureService,
+  MAX_VOCI_MAPPATURE,
+  type VoceMappatura,
+} from './mappature.service'
+
+type Voce = Omit<VoceMappatura, 'versione'> & { versione?: number | null }
 import { RegistroAdattatori } from './registro-adattatori'
 
 function documento(registro: string, aliquote: string[]): DocumentoPerExport {
@@ -81,11 +88,15 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
     })
     return { tenantId: t.id, utenteId: u.id }
   }
-  const imposta = (
-    a: { tenantId: string; utenteId: string },
-    voci: Parameters<MappatureService['imposta']>[3],
-    adattatore = 'FINTO'
-  ) => nel(a.tenantId, () => servizio.imposta(a.tenantId, a.utenteId, adattatore, voci))
+  const imposta = (a: { tenantId: string; utenteId: string }, voci: Voce[], adattatore = 'FINTO') =>
+    nel(a.tenantId, () =>
+      servizio.imposta(
+        a.tenantId,
+        a.utenteId,
+        adattatore,
+        voci.map(v => ({ ...v, versione: v.versione ?? null }))
+      )
+    )
   const lista = (a: { tenantId: string }, adattatore = 'FINTO') =>
     nel(a.tenantId, () => servizio.lista(a.tenantId, adattatore))
 
@@ -155,10 +166,11 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
       { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '10' },
       { tipo: 'CODICE_IVA', chiaveWasteflow: '10.00', valore: '20' },
     ])
+    const e = ETICHETTA_NON_PRESENTE
     expect(r).toEqual([
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '10.00', valore: '20', versione: 1 },
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '10', versione: 1 },
-      { tipo: 'REGISTRO', chiaveWasteflow: 'B', valore: '02', versione: 1 },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '10.00', valore: '20', versione: 1, etichetta: e },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '10', versione: 1, etichetta: e },
+      { tipo: 'REGISTRO', chiaveWasteflow: 'B', valore: '02', versione: 1, etichetta: e },
     ])
     expect(await lista(a)).toEqual(r)
   })
@@ -170,14 +182,117 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
       { tipo: 'CLIENTE', chiaveWasteflow: 'c2', valore: 'B' },
     ])
     const r = await imposta(a, [
-      { tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A2' },
-      { tipo: 'CLIENTE', chiaveWasteflow: 'c2', valore: 'B' },
+      { tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A2', versione: 1 },
+      { tipo: 'CLIENTE', chiaveWasteflow: 'c2', valore: 'B', versione: 1 },
     ])
     expect(r.map(v => [v.chiaveWasteflow, v.valore, v.versione])).toEqual([
       ['c1', 'A2', 2],
       ['c2', 'B', 1],
     ])
     expect(await lista(a, 'ALTRO')).toEqual([])
+  })
+
+  it('due salvataggi con la stessa versione: il secondo dà 409 VERSIONE_SUPERATA e non scrive nulla', async () => {
+    const a = await azienda()
+    await imposta(a, [
+      { tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A' },
+      { tipo: 'CLIENTE', chiaveWasteflow: 'c2', valore: 'B' },
+    ])
+    await imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A2', versione: 1 }])
+    await expect(
+      imposta(a, [
+        { tipo: 'CLIENTE', chiaveWasteflow: 'c2', valore: 'B2', versione: 1 },
+        { tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A3', versione: 1 },
+      ])
+    ).rejects.toMatchObject({ response: expect.objectContaining({ error: 'VERSIONE_SUPERATA' }) })
+    expect((await lista(a)).map(v => [v.chiaveWasteflow, v.valore, v.versione])).toEqual([
+      ['c1', 'A2', 2],
+      ['c2', 'B', 1],
+    ])
+  })
+
+  it('voce nuova che esiste già, voce con versione ma sparita, cancellazione con versione vecchia: 409', async () => {
+    const a = await azienda()
+    await imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A' }])
+    const atteso = { response: expect.objectContaining({ error: 'VERSIONE_SUPERATA' }) }
+    await expect(
+      imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'X', versione: null }])
+    ).rejects.toMatchObject(atteso)
+    await expect(
+      imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'nuova', valore: 'X', versione: 3 }])
+    ).rejects.toMatchObject(atteso)
+    await imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'A2', versione: 1 }])
+    await expect(
+      imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: null, versione: 1 }])
+    ).rejects.toMatchObject(atteso)
+    expect((await lista(a)).map(v => [v.valore, v.versione])).toEqual([['A2', 2]])
+    await expect(
+      imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: null, versione: 2 }])
+    ).resolves.toEqual([])
+  })
+
+  it('il GET risolve le etichette con una query per tipo; senza corrispondenza «(non più presente)»', async () => {
+    const a = await azienda()
+    const nuovoCliente = async (ragioneSociale: string, extra: object) => {
+      const ditta = await owner.ditta.create({
+        data: { tenantId: a.tenantId, ragioneSociale, partitaIva: partitaIvaUnica() },
+      })
+      const sede = await owner.sedeDitta.create({
+        data: {
+          tenantId: a.tenantId,
+          dittaId: ditta.id,
+          via: 'Via Roma',
+          civico: '1',
+          comune: 'Milano',
+          cap: '20100',
+          provincia: 'MI',
+        },
+      })
+      return owner.cliente.create({
+        data: { tenantId: a.tenantId, dittaId: ditta.id, sedeId: sede.id, ...extra },
+      })
+    }
+    const cliente = await nuovoCliente('Rossi Costruzioni SRL', { codice: 'CL1' })
+    const persona = await nuovoCliente('Bianchi Mario', { nome: 'Mario', cognome: 'Bianchi' })
+    const iva = await owner.codiceIva.create({
+      data: {
+        tenantId: a.tenantId,
+        codice: 'A22',
+        aliquota: '22.00',
+        descrizione: 'IVA ordinaria 22%',
+      },
+    })
+    const pag = await owner.condizionePagamento.create({
+      data: {
+        tenantId: a.tenantId,
+        codice: 'BB30',
+        descrizione: 'Bonifico a 30 giorni',
+        giorniRate: [30],
+        modalita: 'MP05',
+      },
+    })
+    const reg = await owner.registroIva.create({
+      data: { tenantId: a.tenantId, codice: '01', descrizione: 'Vendite' },
+    })
+    const r = await imposta(a, [
+      { tipo: 'CLIENTE', chiaveWasteflow: cliente.id, valore: '1' },
+      { tipo: 'CLIENTE', chiaveWasteflow: persona.id, valore: '2' },
+      { tipo: 'CLIENTE', chiaveWasteflow: randomUUID(), valore: '3' },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: iva.id, valore: '4' },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: '8' },
+      { tipo: 'PAGAMENTO', chiaveWasteflow: pag.codice, valore: '5' },
+      { tipo: 'REGISTRO', chiaveWasteflow: reg.id, valore: '6' },
+      { tipo: 'CONTO_RICAVI', chiaveWasteflow: 'CER 17 09 04', valore: '7' },
+    ])
+    const per = new Map(r.map(v => [v.valore, v.etichetta]))
+    expect(per.get('1')).toBe('Rossi Costruzioni SRL')
+    expect(per.get('2')).toBe('Bianchi Mario')
+    expect(per.get('3')).toBe(ETICHETTA_NON_PRESENTE)
+    expect(per.get('4')).toBe('IVA ordinaria 22%')
+    expect(per.get('8')).toBe('IVA ordinaria 22%')
+    expect(per.get('5')).toBe('Bonifico a 30 giorni')
+    expect(per.get('6')).toBe('01 - Vendite')
+    expect(per.get('7')).toBe('CER 17 09 04')
   })
 
   it('valore null cancella la voce', async () => {
@@ -215,7 +330,7 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
 
   it('voci non valide: 400 e nulla scritto (tipo, chiave, valore troppo lungo, duplicati)', async () => {
     const a = await azienda()
-    const casi: Parameters<MappatureService['imposta']>[3][] = [
+    const casi: Voce[][] = [
       [{ tipo: 'XX' as never, chiaveWasteflow: 'a', valore: 'b' }],
       [{ tipo: 'CLIENTE', chiaveWasteflow: '  ', valore: 'b' }],
       [{ tipo: 'CLIENTE', chiaveWasteflow: 'k'.repeat(101), valore: 'b' }],

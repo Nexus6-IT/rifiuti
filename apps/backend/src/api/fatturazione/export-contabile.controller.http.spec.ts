@@ -7,6 +7,7 @@ import { APP_FILTER } from '@nestjs/core'
 import { Test } from '@nestjs/testing'
 import request from 'supertest'
 import { RegistroAdattatori } from '../../application/fatturazione/adattatori/registro-adattatori'
+import { ExportService } from '../../application/fatturazione/export.service'
 import { MappatureService } from '../../application/fatturazione/adattatori/mappature.service'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
@@ -23,11 +24,13 @@ describe('ExportContabileController (HTTP con servizi finti)', () => {
     lista: jest.fn(),
     imposta: jest.fn(),
   }
+  const esportazione = { mancantiPerAdattatore: jest.fn() }
 
   beforeEach(async () => {
     ruolo = 'ADMIN'
     mappature.lista.mockReset().mockResolvedValue([])
     mappature.imposta.mockReset().mockResolvedValue([])
+    esportazione.mancantiPerAdattatore.mockReset().mockResolvedValue([])
     const logger: any = {
       setContext: jest.fn(),
       info: jest.fn(),
@@ -45,6 +48,7 @@ describe('ExportContabileController (HTTP con servizi finti)', () => {
           ]),
         },
         { provide: MappatureService, useValue: mappature },
+        { provide: ExportService, useValue: esportazione },
         { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
       ],
@@ -82,6 +86,8 @@ describe('ExportContabileController (HTTP con servizi finti)', () => {
   it.each(['OPERATOR', 'VIEWER'])('%s: adattatori e mappature sono vietati (403)', async r => {
     ruolo = r
     expect((await http().get('/export-contabile/adattatori')).status).toBe(403)
+    expect((await http().post('/export-contabile/FINTO/mancanti').send({})).status).toBe(403)
+    expect(esportazione.mancantiPerAdattatore).not.toHaveBeenCalled()
     expect((await http().get('/export-contabile/FINTO/mappature')).status).toBe(403)
     expect((await http().put('/export-contabile/FINTO/mappature').send({ voci: [] })).status).toBe(
       403
@@ -102,8 +108,8 @@ describe('ExportContabileController (HTTP con servizi finti)', () => {
 
   it('PUT mappature: passa utente e voci al servizio (valore null ammesso)', async () => {
     const voci = [
-      { tipo: 'CLIENTE', chiaveWasteflow: 'k', valore: 'v' },
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: null },
+      { tipo: 'CLIENTE', chiaveWasteflow: 'k', valore: 'v', versione: 2 },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', valore: null, versione: null },
     ]
     const r = await http().put('/export-contabile/FINTO/mappature').send({ voci })
     expect(r.status).toBe(200)
@@ -115,6 +121,7 @@ describe('ExportContabileController (HTTP con servizi finti)', () => {
       tipo: 'CLIENTE',
       chiaveWasteflow: `k${i}`,
       valore: 'v',
+      versione: null,
     }))
     const r = await http().put('/export-contabile/FINTO/mappature').send({ voci })
     expect(r.status).toBe(400)
@@ -140,5 +147,39 @@ describe('ExportContabileController (HTTP con servizi finti)', () => {
     const r = await http().get(`/export-contabile/${'X'.repeat(31)}/mappature`)
     expect(r.status).toBe(400)
     expect(mappature.lista).not.toHaveBeenCalled()
+  })
+
+  it('PUT: la versione è obbligatoria (null per una voce nuova); non intera o zero: 400', async () => {
+    const base = { tipo: 'CLIENTE', chiaveWasteflow: 'k', valore: 'v' }
+    for (const versione of [undefined, 0, 1.5, 'x']) {
+      const voce = versione === undefined ? base : { ...base, versione }
+      const r = await http()
+        .put('/export-contabile/FINTO/mappature')
+        .send({ voci: [voce] })
+      expect(r.status).toBe(400)
+    }
+    expect(mappature.imposta).not.toHaveBeenCalled()
+  })
+
+  it('POST mancanti: stessa selezione dell`export, azienda della richiesta, 200', async () => {
+    esportazione.mancantiPerAdattatore.mockResolvedValue([
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '22.00', etichetta: 'IVA 22%' },
+    ])
+    const selezione = { anno: 2026, registroIvaId: '0b7a3d6e-8d57-4b8e-9f3a-2f5a6f1c9d11' }
+    const r = await http().post('/export-contabile/FINTO/mancanti').send(selezione)
+    expect(r.status).toBe(200)
+    expect(r.body).toHaveLength(1)
+    expect(esportazione.mancantiPerAdattatore).toHaveBeenCalledWith(TENANT, 'FINTO', selezione)
+  })
+
+  it('POST mancanti: un filtro non valido o oltre 2000 id è 400 e il servizio non è chiamato', async () => {
+    expect((await http().post('/export-contabile/FINTO/mancanti').send({ anno: 1 })).status).toBe(
+      400
+    )
+    const ids = Array.from({ length: 2001 }, () => '0b7a3d6e-8d57-4b8e-9f3a-2f5a6f1c9d11')
+    expect(
+      (await http().post('/export-contabile/FINTO/mancanti').send({ documentoIds: ids })).status
+    ).toBe(400)
+    expect(esportazione.mancantiPerAdattatore).not.toHaveBeenCalled()
   })
 })

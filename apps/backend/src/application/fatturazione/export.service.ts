@@ -22,7 +22,7 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { impostaTimeoutLock } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import type { FileGenerato } from './adattatori/adattatore-export-contabile'
+import type { ChiaveMancante, FileGenerato } from './adattatori/adattatore-export-contabile'
 import { MappatureService, mancantiDa, richiesteUniche } from './adattatori/mappature.service'
 import { RegistroAdattatori } from './adattatori/registro-adattatori'
 import { DocumentiFatturaService } from './documenti-fattura.service'
@@ -188,6 +188,63 @@ export class ExportService {
         { timeout: 120_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       )
     )
+  }
+
+  /**
+   * Chiavi che l'adattatore chiede per i documenti scelti e che l'azienda non ha ancora mappato
+   * (stessa selezione e stessi limiti dell'export; mai bozze, annullati esclusi). Sola lettura:
+   * nessun lock e nessuna emissione.
+   */
+  async mancantiPerAdattatore(
+    tenantId: string,
+    codice: string,
+    selezione: SelezioneExport
+  ): Promise<ChiaveMancante[]> {
+    const adattatore = this.registro.trova(codice)
+    validaSelezione(selezione, TETTO_DOCUMENTI_ADATTATORE)
+    return nelContestoTenant(tenantId, () =>
+      this.prisma.$transaction(
+        async tx => {
+          const selezionati = await this.seleziona(tx, tenantId, selezione, {
+            tetto: TETTO_DOCUMENTI_ADATTATORE,
+            senzaBozze: true,
+          })
+          const ids = selezionati.map(s => s.id)
+          const stati = await this.statiDocumenti(tx, tenantId, ids)
+          const definitivi = selezionati.filter(s => stati.get(s.id) === 'DEFINITIVO')
+          const dettagli = await this.documenti.dettagliInTx(
+            tx,
+            tenantId,
+            definitivi.map(s => s.id)
+          )
+          const richieste = richiesteUniche(
+            adattatore.mappatureRichieste(perExportDa(definitivi, dettagli))
+          )
+          const valori = await this.mappature.valoriInTx(tx, tenantId, adattatore.codice, richieste)
+          return mancantiDa(richieste, valori)
+        },
+        { timeout: 120_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      )
+    )
+  }
+
+  /** Stato dei documenti, senza lock. */
+  private async statiDocumenti(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    ids: readonly string[]
+  ): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map()
+    const lista = [...ids]
+    const righe = await conJoinLineari(
+      tx,
+      () =>
+        tx.$queryRaw<{ id: string; stato: string }[]>`
+        SELECT d.id::text AS id, d.stato::text AS stato
+        FROM "documenti_fattura" d
+        WHERE d.tenant_id = ${tenantId}::uuid AND d.id IN (SELECT unnest(${lista}::uuid[]))`
+    )
+    return new Map(righe.map(r => [r.id, r.stato]))
   }
 
   /**

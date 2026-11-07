@@ -9,6 +9,8 @@ import {
   IsArray,
   IsDefined,
   IsIn,
+  IsInt,
+  Min,
   IsString,
   MaxLength,
   MinLength,
@@ -49,6 +51,17 @@ export class VoceMappaturaDto {
   @MinLength(1)
   @MaxLength(50)
   valore: string | null
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Versione letta (`null` = voce nuova): se non corrisponde, 409 VERSIONE_SUPERATA',
+  })
+  @IsDefined()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(1)
+  versione: number | null
 }
 
 export class ImpostaMappatureDto {
