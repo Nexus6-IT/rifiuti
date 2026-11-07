@@ -266,9 +266,15 @@ describe('DocumentoDettaglioComponent', () => {
   })
 
   describe('storno', () => {
-    it('manda motivo, data, rifatturabile e versione letta', async () => {
+    it('manda motivo, data, rifatturabile e versione letta; la risposta e` la NOTA di credito: il dialog si chiude e si rilegge l`origine', async () => {
       await crea()
-      servizio.storno.and.returnValue(of(dettaglioDocumento({ stornabile: false, stornoId: 'n1' })))
+      // Il backend risponde con il dettaglio della nota di credito (id diverso dall'origine).
+      servizio.storno.and.returnValue(
+        of(dettaglioDocumento({ id: 'n1', tipoDocumento: 'TD04', documentoOrigineId: 'd1' }))
+      )
+      servizio.documento.and.returnValue(
+        of(dettaglioDocumento({ stornabile: false, stornoId: 'n1', versione: 4 }))
+      )
       comp.apriStorno(false)
       comp.storna({ motivo: 'Errore', dataDocumento: '2026-11-07', rifatturabile: true })
       expect(servizio.storno).toHaveBeenCalledWith('d1', {
@@ -278,6 +284,22 @@ describe('DocumentoDettaglioComponent', () => {
         versione: 3,
       })
       expect(comp.stornoAperto()).toBeFalse()
+      expect(servizio.documento).toHaveBeenCalledTimes(2)
+      expect(comp.dettaglio()?.id).toBe('d1')
+      expect(comp.dettaglio()?.stornoId).toBe('n1')
+    })
+
+    it('risposta tardiva dello storno dopo un cambio di documento: nessuna rilettura del nuovo', async () => {
+      await crea()
+      const lenta = new Subject<DocumentoDettaglio>()
+      servizio.storno.and.returnValue(lenta)
+      comp.storna({ motivo: 'E', dataDocumento: '2026-11-07', rifatturabile: false })
+      servizio.documento.and.callFake(id => of(dettaglioDocumento({ id })))
+      params$.next(convertToParamMap({ id: 'd2' }))
+      const chiamate = servizio.documento.calls.count()
+      lenta.next(dettaglioDocumento({ id: 'n1', tipoDocumento: 'TD04' }))
+      expect(servizio.documento.calls.count()).toBe(chiamate)
+      expect(comp.dettaglio()?.id).toBe('d2')
     })
 
     it('STORNO_GIA_PRESENTE: messaggio dal vocabolario e rilettura', async () => {

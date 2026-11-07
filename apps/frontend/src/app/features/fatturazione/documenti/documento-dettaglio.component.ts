@@ -531,26 +531,34 @@ export class DocumentoDettaglioComponent {
 
   // --- Azioni ------------------------------------------------------------------------------
 
-  /** Esegue l'azione che restituisce il documento aggiornato; una alla volta. */
+  /**
+   * Esegue l'azione che restituisce il documento aggiornato; una alla volta. Con
+   * `rispondeConAltroDocumento` (lo storno: il backend risponde con la NOTA di credito, non con
+   * l'origine) la risposta non si mostra: si chiudono i dialog e si rilegge l'origine, che ora ha
+   * il rimando alla nota.
+   */
   private scrivi(
     chiamata: (versione: number) => Observable<DocumentoDettaglio>,
-    ripiego: string
+    ripiego: string,
+    rispondeConAltroDocumento = false
   ): void {
     const d = this.dettaglio()
     if (!this.puoScrivere() || d === null || this.inAzione()) return
     this.inAzione.set(true)
     this.erroreDialog.set(null)
+    const idRichiesta = this.id
     chiamata(d.versione)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: nuovo => {
           this.inAzione.set(false)
           // Se nel frattempo si è passati a un altro documento, la risposta non lo copre.
-          if (nuovo.id !== this.id) return
-          this.dettaglio.set(nuovo)
+          if (rispondeConAltroDocumento ? idRichiesta !== this.id : nuovo.id !== this.id) return
           this.annullaAperta.set(false)
           this.stornoAperto.set(false)
           this.conferma.set(null)
+          if (rispondeConAltroDocumento) this.carica()
+          else this.dettaglio.set(nuovo)
         },
         error: err => {
           this.inAzione.set(false)
@@ -568,7 +576,11 @@ export class DocumentoDettaglioComponent {
 
   storna(dati: DatiStorno): void {
     if (!this.puoScrivere()) return
-    this.scrivi(v => this.servizio.storno(this.id, { ...dati, versione: v }), MSG_STORNO_FALLITO)
+    this.scrivi(
+      v => this.servizio.storno(this.id, { ...dati, versione: v }),
+      MSG_STORNO_FALLITO,
+      true
+    )
   }
 
   confermaEmissione(): void {
