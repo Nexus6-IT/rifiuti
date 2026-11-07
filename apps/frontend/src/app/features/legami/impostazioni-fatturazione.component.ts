@@ -144,7 +144,7 @@ function movimentiToccati(err: unknown): number | null {
             </div>
             <p class="nota-pagina">
               {{
-                definitiveUi
+                impostazione()?.definitiveAttive
                   ? 'Le fatture definitive sono attive per questa azienda.'
                   : 'Le fatture definitive sono spente: restano disponibili anteprime ed esportazione CSV.'
               }}
@@ -312,6 +312,7 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
       icon: 'pi pi-exclamation-triangle',
       acceptLabel: 'Attiva',
       rejectLabel: 'Annulla',
+      defaultFocus: 'reject',
       accept: () => this.inviaDefinitive(true),
       reject: () => (this.definitiveUi = false),
     })

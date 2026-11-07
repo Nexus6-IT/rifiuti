@@ -334,6 +334,30 @@ describe('ImpostazioniFatturazioneComponent', () => {
       expect(q('fatt-errore')).toBeNull()
     })
 
+    it('PUT in volo: interruttore e pulsanti disabilitati, nota ancora «spente»', async () => {
+      const inVolo = new Subject<{ definitiveAttive: boolean; versione: number }>()
+      await crea('ADMIN')
+      servizio44.impostaDefinitive.and.returnValue(inVolo)
+      await clicca()
+      accettaConferma()
+      await stabilizza(fixture)
+      expect(input().disabled).toBeTrue()
+      expect(bottone('fatt-salva')!.disabled).toBeTrue()
+      expect(fixture.nativeElement.textContent).toContain('definitive sono spente')
+      inVolo.next({ definitiveAttive: true, versione: 1 })
+      inVolo.complete()
+      await stabilizza(fixture)
+      expect(input().disabled).toBeFalse()
+      expect(bottone('fatt-salva')!.disabled).toBeFalse()
+      expect(fixture.nativeElement.textContent).toContain('definitive sono attive')
+    })
+
+    it('il dialog di accensione mette il focus su «Annulla»', async () => {
+      await crea('ADMIN')
+      await clicca()
+      expect(document.activeElement?.classList.contains('p-confirm-dialog-reject')).toBeTrue()
+    })
+
     it('la lettura pendente viene annullata alla chiusura della pagina', async () => {
       const pendente = new Subject<ImpostazioneFatturazione>()
       await crea('ADMIN')
