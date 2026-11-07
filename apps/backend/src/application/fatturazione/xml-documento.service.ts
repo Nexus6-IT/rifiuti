@@ -142,6 +142,16 @@ function xmlNonValido(errori: string[], indice?: number): UnprocessableEntityExc
   })
 }
 
+/**
+ * Stato cambiato sotto i piedi in un punto che il lock rende irraggiungibile in pratica: si
+ * risponde 409 come per ogni contesa, mai un 500 generico; l'utente ripete la richiesta.
+ */
+const operazioneConcorrente = () =>
+  new ConflictException({
+    error: 'OPERAZIONE_CONCORRENTE',
+    message: 'Il documento è cambiato nel frattempo: ripeti l’operazione.',
+  })
+
 const sha256 = (b: Buffer): string => createHash('sha256').update(b).digest('hex')
 
 @Injectable()
@@ -329,7 +339,12 @@ export class XmlDocumentoService {
         daGenerare.map(d => posizione.get(d.id))
       )
 
-      // --- Fase 2: scritture.
+      // --- Fase 2: scritture. Un commit per blocco, di proposito: lo zip non e' atomico. Se un
+      // blocco fallisce (lock timeout o altro), i blocchi gia' committati restano emessi e
+      // l'utente riceve l'errore senza zip. Ripetere la richiesta e' sicuro e completa il lavoro:
+      // i documenti con XML tornano con gli stessi byte e nome file, senza progressivo nuovo
+      // (la A riserva solo per quelli ancora senza XML). Un'unica transazione tratterrebbe i
+      // lock di 500 documenti per l'intera durata.
       const primo =
         daGenerare.length > 0 ? await this.riservaProgressivi(tenantId, daGenerare.length) : 0
       const progressivoDi = new Map(daGenerare.map((d, i) => [d.id, primo + i]))
@@ -360,7 +375,7 @@ export class XmlDocumentoService {
                 const n = progressivoDi.get(d.id)
                 if (n === undefined) {
                   // Documento diventato senza XML dopo la fase 1: impossibile (l'XML non si toglie).
-                  throw new Error('Documento senza progressivo riservato.')
+                  throw operazioneConcorrente()
                 }
                 return progressivoBase36(n)
               })
@@ -462,7 +477,8 @@ export class XmlDocumentoService {
     const testi: string[] = []
     for (let i = 0; i < documenti.length; i++) {
       const d = documenti[i]
-      if (d.perXml === null) throw new Error('Dati XML non letti.')
+      // Irraggiungibile: `leggi` carica i dati di ogni DEFINITIVO senza XML, che sono i soli passati qui.
+      if (d.perXml === null) throw operazioneConcorrente()
       try {
         testi.push(serializzaFattura(datiFatturaDaDocumento(d.perXml, progressivi[i])))
       } catch (err) {
@@ -512,7 +528,7 @@ export class XmlDocumentoService {
       ) v
       WHERE d.tenant_id = ${tenantId}::uuid AND d.id = v.id
         AND d.stato = 'DEFINITIVO' AND d.xml IS NULL`
-    if (aggiornati !== righe.length) throw new Error('XML: documenti non aggiornati.')
+    if (aggiornati !== righe.length) throw operazioneConcorrente()
   }
 
   /** Un solo audit per documento, alla sua prima emissione; mai dati personali. */
@@ -541,7 +557,7 @@ export class XmlDocumentoService {
 
   private comeFile(d: DocumentoLetto): FileXml {
     if (d.xml === null || d.progressivoFile === null) {
-      throw new Error('Documento senza XML salvato.')
+      throw operazioneConcorrente()
     }
     return {
       nomeFile: nomeFile(d.partitaIva, d.progressivoFile),

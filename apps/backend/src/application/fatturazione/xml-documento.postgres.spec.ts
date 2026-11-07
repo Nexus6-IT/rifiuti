@@ -381,11 +381,27 @@ describe('XmlDocumentoService — Postgres reale, ruolo wasteflow_app', () => {
     expect((await riga(d1.id)).emesso_il).toBeNull()
   }, 90_000)
 
-  it('due zip paralleli sugli stessi documenti: stessi nomi e byte, un progressivo per documento, un audit per documento, nessun deadlock', async () => {
+  it('due zip paralleli sugli stessi documenti in ordine opposto, sovrapposti da una barriera: stessi byte, un progressivo e un audit per documento, nessun deadlock', async () => {
     const az = await b.t19.azienda()
     const docs = await b.definitivi(az, 3)
     const ids = docs.map(d => d.id)
+    // Barriera: nessuno dei due zip entra nelle scritture prima che entrambi abbiano la loro A,
+    // quindi le due B (blocco unico) si contendono gli stessi lock di documento.
+    const privato = xml as unknown as {
+      riservaProgressivi: (t: string, n: number) => Promise<number>
+    }
+    const originale = privato.riservaProgressivi.bind(xml)
+    let arrivate = 0
+    let apri!: () => void
+    const cancello = new Promise<void>(r => (apri = r))
+    jest.spyOn(privato, 'riservaProgressivi').mockImplementation(async (t, n) => {
+      const primo = await originale(t, n)
+      if (++arrivate === 2) apri()
+      await cancello
+      return primo
+    })
     const [x, y] = await Promise.all([zipDi(az, ids), zipDi(az, [...ids].reverse())])
+    expect(arrivate).toBe(2)
     expect(await nomiDelloZip(x.contenuto)).toEqual(await nomiDelloZip(y.contenuto))
     const zx = await JSZip.loadAsync(x.contenuto)
     const zy = await JSZip.loadAsync(y.contenuto)
@@ -394,6 +410,16 @@ describe('XmlDocumentoService — Postgres reale, ruolo wasteflow_app', () => {
     }
     expect(await progressiviSalvati(az.tenantId)).toHaveLength(3)
     expect(await b.t19.conteggioAudit(az.tenantId, 'DOCUMENTO_FATTURA_EMESSO')).toBe(3)
+  }, 90_000)
+
+  it('«segna come emesso», poi XML senza conferma: l’XML esce, nessun 400, nessun secondo audit di emissione', async () => {
+    const az = await b.t19.azienda()
+    const [, d2] = await b.definitivi(az, 2)
+    await xml.segnaEmesso(az.tenantId, az.utenteId, d2.id, await b.versioneDi(d2.id))
+    const f = await xmlDi(az, d2.id, NO)
+    expect((await validaFatturaPA(f.contenuto.toString('utf8'))).valido).toBe(true)
+    expect((await riga(d2.id)).progressivo_file).toBe('00001')
+    expect(await b.t19.conteggioAudit(az.tenantId, 'DOCUMENTO_FATTURA_EMESSO')).toBe(1)
   }, 90_000)
 
   it('zip contro XML singolo parallelo sullo stesso documento: stessi byte per quel documento', async () => {

@@ -110,13 +110,23 @@ describe('XmlDocumentoService, zip da 500 — Postgres reale', () => {
     )
   }
 
+  const nuovoServizio = () => new XmlDocumentoService(app, new DocumentiFatturaService(app))
+
+  async function conXml(tenantId: string) {
+    return owner.$queryRawUnsafe<{ id: string; p: string }[]>(
+      `SELECT id::text, progressivo_file AS p FROM documenti_fattura
+       WHERE tenant_id = $1::uuid AND xml IS NOT NULL`,
+      tenantId
+    )
+  }
+
   it('500 documenti: zip valido in pochi secondi, un progressivo per documento, seconda richiesta senza scritture', async () => {
     const az = await b.t19.azienda()
     const [d] = await b.definitivi(az, 1)
     const altri = await clona(az.tenantId, d.id, TETTO_DOCUMENTI_XML_ZIP - 1)
     const ids = [d.id, ...altri]
     expect(ids).toHaveLength(500)
-    const servizio = new XmlDocumentoService(app, new DocumentiFatturaService(app))
+    const servizio = nuovoServizio()
 
     const t0 = Date.now()
     const { contenuto, saltati } = await servizio.zip(az.tenantId, az.utenteId, ids, {
@@ -150,5 +160,74 @@ describe('XmlDocumentoService, zip da 500 — Postgres reale', () => {
     console.log(`ZIP500 prima richiesta ${primo} ms, seconda ${secondo} ms`)
     expect(primo).toBeLessThan(60_000)
     expect(secondo).toBeLessThan(primo)
+  }, 240_000)
+
+  it('blocco 2 che fallisce: il blocco 1 resta emesso; la ripetizione da lo zip completo, stessi progressivi per il blocco 1', async () => {
+    const az = await b.t19.azienda()
+    const [d] = await b.definitivi(az, 1)
+    const altri = await clona(az.tenantId, d.id, 59)
+    const ids = [d.id, ...altri] // 60 documenti: blocchi da 50 e da 10
+    const servizio = nuovoServizio()
+    const privato = servizio as unknown as { salva: (...a: unknown[]) => Promise<void> }
+    const originale = privato.salva.bind(servizio)
+    let chiamate = 0
+    const spia = jest.spyOn(privato, 'salva').mockImplementation(async (...a) => {
+      if (++chiamate === 2) throw new Error('guasto simulato al blocco 2')
+      return originale(...a)
+    })
+    await expect(
+      servizio.zip(az.tenantId, az.utenteId, ids, { confermaEmissione: true })
+    ).rejects.toThrow()
+    spia.mockRestore()
+    const dopoGuasto = await conXml(az.tenantId)
+    expect(dopoGuasto).toHaveLength(50)
+
+    const { contenuto, saltati } = await servizio.zip(az.tenantId, az.utenteId, ids, {
+      confermaEmissione: true,
+    })
+    expect(saltati).toBe(0)
+    expect(Object.keys((await JSZip.loadAsync(contenuto)).files)).toHaveLength(60)
+    const dopo = await conXml(az.tenantId)
+    expect(dopo).toHaveLength(60)
+    // Il blocco 1 mantiene il suo progressivo (stessi byte, stesso nome); solo i 10 restanti ne
+    // hanno di nuovi.
+    const prima = new Map(dopoGuasto.map(r => [r.id, r.p]))
+    for (const r of dopo) if (prima.has(r.id)) expect(r.p).toBe(prima.get(r.id))
+    expect(new Set(dopo.map(r => r.p)).size).toBe(60)
+    const [{ n }] = await owner.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM activity_logs WHERE tenant_id = $1::uuid
+         AND action = 'DOCUMENTO_FATTURA_EMESSO'`,
+      az.tenantId
+    )
+    expect(n).toBe(60)
+  }, 240_000)
+
+  it('due zip da 50 documenti in ordine opposto, sovrapposti da una barriera: nessun deadlock, un solo progressivo per documento', async () => {
+    const az = await b.t19.azienda()
+    const [d] = await b.definitivi(az, 1)
+    const ids = [d.id, ...(await clona(az.tenantId, d.id, 49))]
+    const servizio = nuovoServizio()
+    const privato = servizio as unknown as {
+      riservaProgressivi: (t: string, n: number) => Promise<number>
+    }
+    const originale = privato.riservaProgressivi.bind(servizio)
+    let arrivate = 0
+    let apri!: () => void
+    const cancello = new Promise<void>(r => (apri = r))
+    jest.spyOn(privato, 'riservaProgressivi').mockImplementation(async (t, n) => {
+      const primo = await originale(t, n)
+      if (++arrivate === 2) apri()
+      await cancello
+      return primo
+    })
+    const [x, y] = await Promise.all([
+      servizio.zip(az.tenantId, az.utenteId, ids, { confermaEmissione: true }),
+      servizio.zip(az.tenantId, az.utenteId, [...ids].reverse(), { confermaEmissione: true }),
+    ])
+    jest.restoreAllMocks()
+    expect(Object.keys((await JSZip.loadAsync(x.contenuto)).files).sort()).toEqual(
+      Object.keys((await JSZip.loadAsync(y.contenuto)).files).sort()
+    )
+    expect(new Set((await conXml(az.tenantId)).map(r => r.p)).size).toBe(50)
   }, 240_000)
 })

@@ -211,6 +211,9 @@ export class ExportService {
     const { contenuto, saltati } = await this.xml.zip(tenantId, utenteId, ids, {
       confermaEmissione: b.confermaEmissione === true,
     })
+    // Audit dell'export in una transazione propria, dopo l'emissione: l'emissione ha gia' il suo
+    // audit atomico con la scrittura (`DOCUMENTO_FATTURA_EMESSO`); questo registra solo la
+    // consegna del file. Se fallisse non deve disfare documenti gia' emessi ne' far perdere lo zip.
     await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(tx =>
         tx.activityLog.create({
