@@ -203,10 +203,46 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
           tipo: v.tipo,
           chiaveWasteflow: v.chiaveWasteflow,
           valore: '07',
+          versione: null,
         }))
       )
     )
   }
+
+  it('mancantiPerAdattatore: stesse chiavi del 409 dell`export, senza emettere; dopo la mappatura è vuoto', async () => {
+    const a = await azienda()
+    const prima = await stato(a.definitivoId)
+    const mancanti = await nel(a.tenantId, () =>
+      servizio.mancantiPerAdattatore(a.tenantId, 'FINTO', {})
+    )
+    let errore: any
+    try {
+      await esporta(a, 'FINTO', true)
+    } catch (e) {
+      errore = e
+    }
+    expect(mancanti).toEqual(errore.getResponse().details.mancanti)
+    expect(mancanti.length).toBeGreaterThan(0)
+    expect(await stato(a.definitivoId)).toEqual(prima)
+    // Un'elaborazione di un altro identificativo e un filtro non valido restano errori.
+    await expect(
+      nel(a.tenantId, () => servizio.mancantiPerAdattatore(a.tenantId, 'NO', {}))
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'ADATTATORE_SCONOSCIUTO' }),
+    })
+    await expect(
+      nel(a.tenantId, () => servizio.mancantiPerAdattatore(a.tenantId, 'FINTO', { anno: 1 }))
+    ).rejects.toMatchObject({ response: expect.objectContaining({ error: 'FILTRO_NON_VALIDO' }) })
+    await mappaCompleta(a)
+    expect(
+      await nel(a.tenantId, () => servizio.mancantiPerAdattatore(a.tenantId, 'FINTO', {}))
+    ).toEqual([])
+    expect(
+      await owner.activityLog.count({
+        where: { tenantId: a.tenantId, action: 'DOCUMENTI_FATTURA_ESPORTATI' },
+      })
+    ).toBe(0)
+  })
 
   it('riuscito (FILE): il file dell`adattatore, il definitivo emesso, l`annullato no, audit', async () => {
     const a = await azienda()

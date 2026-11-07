@@ -4,18 +4,20 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, RouterLink } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
-import { InputTextModule } from 'primeng/inputtext'
-import { Observable, Subject, catchError, map, of, switchMap } from 'rxjs'
+import { TableModule } from 'primeng/table'
+import { Observable, Subject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
 import { leggiErroriAzione } from '../../listino/errori-azione'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
 import {
   AdattatoreVista,
+  CHIAVE_SELEZIONE_MAPPATURE,
   ChiaveMancante,
   MAX_VALORE_MAPPATURA,
   MAX_VOCI_MAPPATURE,
   MappaturaVista,
+  SelezioneExport,
   TIPI_MAPPATURA,
   TipoMappatura,
   VoceMappatura,
@@ -33,7 +35,10 @@ export const TITOLI_TIPI_MAPPATURA: Readonly<Record<TipoMappatura, string>> = {
   REGISTRO: 'Registri IVA',
 }
 
-const MESSAGGIO_SALVATO = 'Mappature salvate.'
+export const MESSAGGIO_TROPPE_MODIFICHE =
+  'Salva le modifiche fatte prima di continuare (massimo 500 per volta)'
+const RIGHE_PER_PAGINA = 50
+const ETICHETTA_ASSENTE = '(non più presente)'
 const MESSAGGIO_VERSIONE_SUPERATA = ERRORI_HTTP_VOCI.VERSIONE_SUPERATA.etichetta
 
 /** Una riga della pagina: una voce salvata oppure una chiave mancante ancora da compilare. */
@@ -44,6 +49,8 @@ export interface RigaMappatura {
   etichetta: string | null
   /** Valore salvato sul server; `null` = voce mai salvata. */
   salvato: string | null
+  /** Versione letta dal server; `null` = voce nuova. */
+  versione: number | null
   /** Valore nel campo. */
   valore: string
 }
@@ -56,6 +63,7 @@ interface Richiesta {
 interface Caricamento {
   adattatori: AdattatoreVista[]
   mappature: MappaturaVista[]
+  mancanti: ChiaveMancante[]
 }
 
 /** Chiavi mancanti passate dalla pagina dei documenti (`history.state`); ignora il resto. */
@@ -73,6 +81,19 @@ export function mancantiDaStato(stato: unknown): ChiaveMancante[] {
   )
 }
 
+/** Selezione dell'export lasciata in `sessionStorage`; `null` se assente o illeggibile. */
+export function selezioneDaSessione(): SelezioneExport | null {
+  try {
+    const testo = sessionStorage.getItem(CHIAVE_SELEZIONE_MAPPATURE)
+    const valore: unknown = testo === null ? null : JSON.parse(testo)
+    return typeof valore === 'object' && valore !== null && !Array.isArray(valore)
+      ? (valore as SelezioneExport)
+      : null
+  } catch {
+    return null
+  }
+}
+
 const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string =>
   `${r.tipo}:${r.chiaveWasteflow}`
 
@@ -84,7 +105,7 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
 @Component({
   selector: 'app-mappature',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, ButtonModule, InputTextModule],
+  imports: [CommonModule, FormsModule, RouterLink, ButtonModule, TableModule],
   template: `
     <div class="page pagina-lavoro">
       <header class="page-header">
@@ -111,6 +132,10 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
         </div>
       </header>
 
+      <p *ngIf="troppeModifiche()" class="field-error" role="alert" data-testid="mappature-troppe">
+        {{ messaggioTroppe }}
+      </p>
+
       <p
         *ngIf="!permessi().imposta"
         class="surface-card nota-pagina"
@@ -123,7 +148,7 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
       <ng-container *ngIf="permessi().imposta">
         <div
           *ngIf="adattatore() && !adattatore()!.verificato"
-          class="avviso-tracciato"
+          class="avviso-riquadro avviso-riquadro--warn"
           role="note"
           data-testid="mappature-non-verificato"
         >
@@ -178,14 +203,14 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
           <section
             *ngIf="mancanti().length > 0"
             class="surface-card mancanti"
-            role="status"
+            aria-labelledby="mappature-mancanti-titolo"
             data-testid="mappature-mancanti"
           >
-            <h2 class="titolo-sezione">Mappature mancanti</h2>
+            <h2 class="titolo-sezione" id="mappature-mancanti-titolo">Mappature mancanti</h2>
             <p>Per esportare servono ancora questi corrispondenti:</p>
             <ul>
               <li *ngFor="let r of mancanti(); trackBy: perRiga">
-                {{ titoli[r.tipo] }}: {{ r.etichetta || r.chiaveWasteflow }}
+                {{ titolo(r.tipo) }}: {{ r.etichetta || assente }}
               </li>
             </ul>
           </section>
@@ -204,47 +229,48 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
             [attr.data-testid]="'mappature-sezione-' + s.tipo"
           >
             <h2 class="titolo-sezione">{{ titoli[s.tipo] }}</h2>
-            <table class="mappature">
-              <caption class="sr-only">
-                {{
-                  titoli[s.tipo]
-                }}: chiave di WasteFlow e valore nel gestionale
-              </caption>
-              <thead>
+            <p-table
+              [value]="s.righe"
+              [paginator]="s.righe.length > righePerPagina"
+              [rows]="righePerPagina"
+              [rowTrackBy]="perRiga"
+              styleClass="mappature"
+            >
+              <ng-template pTemplate="caption">
+                <span class="sr-only"
+                  >{{ titoli[s.tipo] }}: voce di WasteFlow e valore nel gestionale</span
+                >
+              </ng-template>
+              <ng-template pTemplate="header">
                 <tr>
-                  <th scope="col">Chiave WasteFlow</th>
-                  <th scope="col">Descrizione</th>
+                  <th scope="col">Voce di WasteFlow</th>
                   <th scope="col">Valore nel gestionale</th>
                 </tr>
-              </thead>
-              <tbody>
-                <tr
-                  *ngFor="let r of s.righe; trackBy: perRiga"
-                  [attr.data-testid]="'mappature-riga-' + r.tipo + '-' + r.chiaveWasteflow"
-                >
-                  <th scope="row">{{ r.chiaveWasteflow }}</th>
-                  <td>{{ r.etichetta || '—' }}</td>
+              </ng-template>
+              <ng-template pTemplate="body" let-r>
+                <tr [attr.data-testid]="'mappature-riga-' + r.tipo + '-' + r.chiaveWasteflow">
+                  <th scope="row">{{ r.etichetta || assente }}</th>
                   <td>
                     <input
-                      pInputText
                       type="text"
-                      [id]="'mappatura-' + r.tipo + '-' + r.chiaveWasteflow"
+                      class="p-inputtext p-component"
                       [attr.aria-label]="
                         'Valore nel gestionale per ' +
-                        titoli[r.tipo] +
+                        titolo(r.tipo) +
                         ' ' +
-                        (r.etichetta || r.chiaveWasteflow)
+                        (r.etichetta || assente)
                       "
                       [maxLength]="maxValore"
                       [ngModel]="r.valore"
+                      [disabled]="inCorso()"
                       (ngModelChange)="modifica(r, $event)"
                       autocomplete="off"
                       [attr.data-testid]="'mappature-valore-' + r.tipo + '-' + r.chiaveWasteflow"
                     />
                   </td>
                 </tr>
-              </tbody>
-            </table>
+              </ng-template>
+            </p-table>
           </section>
         </ng-container>
       </ng-container>
@@ -252,13 +278,6 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
   `,
   styles: [
     `
-      .avviso-tracciato {
-        border: 1px solid var(--yellow-500, #eab308);
-        background: color-mix(in srgb, var(--yellow-500, #eab308) 12%, transparent);
-        border-radius: var(--border-radius, 6px);
-        padding: var(--spacing-base) var(--spacing-lg, 1rem);
-        margin-bottom: var(--spacing-base);
-      }
       .titolo-sezione {
         font-size: 1.05rem;
         margin: 0 0 var(--spacing-sm, 0.5rem);
@@ -266,18 +285,11 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
       .surface-card + .surface-card {
         margin-top: var(--spacing-base);
       }
-      .mappature {
-        border-collapse: collapse;
-        width: 100%;
-        position: relative;
-      }
-      .mappature th,
-      .mappature td {
+      :host ::ng-deep .mappature th,
+      :host ::ng-deep .mappature td {
         text-align: left;
-        padding: 0.35rem 0.75rem 0.35rem 0;
-        border-bottom: 1px solid var(--surface-border);
       }
-      .mappature input {
+      :host ::ng-deep .mappature input {
         width: 100%;
         max-width: 16rem;
       }
@@ -297,6 +309,9 @@ export class MappatureComponent {
 
   readonly titoli = TITOLI_TIPI_MAPPATURA
   readonly maxValore = MAX_VALORE_MAPPATURA
+  readonly righePerPagina = RIGHE_PER_PAGINA
+  readonly assente = ETICHETTA_ASSENTE
+  readonly messaggioTroppe = MESSAGGIO_TROPPE_MODIFICHE
 
   readonly permessi = computed(() => permessiFatturazione(this.auth.currentUser()?.role))
 
@@ -335,12 +350,17 @@ export class MappatureComponent {
         tipo: r.tipo,
         chiaveWasteflow: r.chiaveWasteflow,
         valore: nuovo === '' ? null : nuovo,
+        versione: r.versione,
       })
     }
     return voci
   })
 
-  readonly puoSalvare = computed(() => this.voci().length > 0 && !this.inCorso())
+  /** Oltre il tetto del backend «Salva» si disattiva: niente invii a blocchi. */
+  readonly troppeModifiche = computed(() => this.voci().length > MAX_VOCI_MAPPATURE)
+  readonly puoSalvare = computed(
+    () => this.voci().length > 0 && !this.troppeModifiche() && !this.inCorso()
+  )
 
   constructor() {
     this.richieste$
@@ -355,6 +375,7 @@ export class MappatureComponent {
     })
   }
 
+  titolo = (tipo: string): string => this.titoli[tipo as TipoMappatura] ?? tipo
   perCodice = (_: number, a: AdattatoreVista): string => a.codice
   perRiga = (
     _: number,
@@ -375,10 +396,8 @@ export class MappatureComponent {
     const codice = this.adattatore()?.codice
     const voci = this.voci()
     if (!codice || voci.length === 0 || this.inCorso()) return
-    if (voci.length > MAX_VOCI_MAPPATURE) {
-      this.errore.set(ERRORI_HTTP_VOCI.TROPPE_VOCI.etichetta)
-      return
-    }
+    if (voci.length > MAX_VOCI_MAPPATURE) return
+    const cancellate = voci.filter(v => v.valore === null).length
     this.inCorso.set(true)
     this.errore.set(null)
     this.servizio
@@ -388,7 +407,10 @@ export class MappatureComponent {
         next: salvate => {
           this.inCorso.set(false)
           this.righe.set(this.costruisciRighe(salvate, this.righe()))
-          this.toast.success(MESSAGGIO_SALVATO, 'Export contabile')
+          this.toast.success(
+            cancellate > 0 ? `Mappature salvate (${cancellate} cancellate).` : 'Mappature salvate.',
+            'Export contabile'
+          )
         },
         error: err => {
           this.inCorso.set(false)
@@ -413,10 +435,11 @@ export class MappatureComponent {
       // Le mappature si chiedono solo per un adattatore che esiste.
       switchMap(adattatori =>
         r.adattatore && adattatori.some(a => a.codice === r.adattatore)
-          ? this.servizio
-              .mappature(r.adattatore)
-              .pipe(map((mappature): Caricamento => ({ adattatori, mappature })))
-          : of<Caricamento>({ adattatori, mappature: [] })
+          ? forkJoin({
+              mappature: this.servizio.mappature(r.adattatore),
+              mancanti: this.mancanti$(r.adattatore),
+            }).pipe(map((x): Caricamento => ({ adattatori, ...x })))
+          : of<Caricamento>({ adattatori, mappature: [], mancanti: [] })
       ),
       map(esito => {
         this.applica(r, esito)
@@ -433,6 +456,23 @@ export class MappatureComponent {
     )
   }
 
+  /**
+   * Chiavi mancanti: prima quelle passate nella navigazione (`history.state`); altrimenti la
+   * selezione lasciata in `sessionStorage` si manda al backend, che dice che cosa manca ora.
+   * Un errore qui non blocca la pagina: le mappature restano modificabili.
+   */
+  private mancanti$(adattatore: string): Observable<ChiaveMancante[]> {
+    if (this.mancantiRicevute.length > 0) return of(this.mancantiRicevute)
+    const selezione = selezioneDaSessione()
+    if (selezione === null) return of([])
+    return this.servizio.chiaviMancanti(adattatore, selezione).pipe(
+      catchError(() => {
+        this.errore.set('Non è stato possibile verificare quali mappature mancano.')
+        return of([])
+      })
+    )
+  }
+
   private applica(r: Richiesta, esito: Caricamento): void {
     this.caricamento.set(false)
     this.adattatori.set(esito.adattatori)
@@ -444,22 +484,23 @@ export class MappatureComponent {
     if (r.adattatore && !scelto && esito.adattatori.length > 0) {
       this.errore.set(ERRORI_HTTP_VOCI.ADATTATORE_SCONOSCIUTO.etichetta)
     }
+    this.mancantiRicevute = esito.mancanti
     this.righe.set(scelto ? this.costruisciRighe(esito.mappature, []) : [])
   }
 
   /**
-   * Righe = voci salvate + chiavi mancanti non ancora salvate. Nella rilettura dopo un salvataggio
-   * le etichette note si conservano e i valori scritti ma non salvati (voci vuote) si perdono.
+   * Righe = voci salvate (con etichetta del backend) + chiavi mancanti non ancora salvate.
    */
-  private costruisciRighe(salvate: MappaturaVista[], precedenti: RigaMappatura[]): RigaMappatura[] {
-    const etichette = new Map<string, string>()
-    for (const m of this.mancantiRicevute) etichette.set(chiaveRiga(m), m.etichetta)
-    for (const p of precedenti) if (p.etichetta) etichette.set(chiaveRiga(p), p.etichetta)
+  private costruisciRighe(
+    salvate: MappaturaVista[],
+    _precedenti: RigaMappatura[]
+  ): RigaMappatura[] {
     const righe: RigaMappatura[] = salvate.map(m => ({
       tipo: m.tipo,
       chiaveWasteflow: m.chiaveWasteflow,
-      etichetta: etichette.get(chiaveRiga(m)) ?? null,
+      etichetta: m.etichetta,
       salvato: m.valore,
+      versione: m.versione,
       valore: m.valore,
     }))
     const presenti = new Set(righe.map(chiaveRiga))
@@ -470,12 +511,14 @@ export class MappatureComponent {
         chiaveWasteflow: m.chiaveWasteflow,
         etichetta: m.etichetta,
         salvato: null,
+        versione: null,
         valore: '',
       })
     }
     return righe.sort(
       (a, b) =>
         TIPI_MAPPATURA.indexOf(a.tipo) - TIPI_MAPPATURA.indexOf(b.tipo) ||
+        (a.etichetta ?? '').localeCompare(b.etichetta ?? '', 'it') ||
         a.chiaveWasteflow.localeCompare(b.chiaveWasteflow, 'it')
     )
   }

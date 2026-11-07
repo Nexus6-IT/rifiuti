@@ -7,12 +7,13 @@ import { AuthService } from '../../../core/services/auth.service'
 import { bottone, q, stabilizza } from '../../clienti/tabelle/tabelle-test-utils'
 import {
   AdattatoreVista,
+  CHIAVE_SELEZIONE_MAPPATURE,
   ChiaveMancante,
   MAX_VOCI_MAPPATURE,
   MappaturaVista,
 } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
-import { MappatureComponent } from './mappature.component'
+import { MESSAGGIO_TROPPE_MODIFICHE, MappatureComponent } from './mappature.component'
 
 const ADATTATORE: AdattatoreVista = {
   codice: 'TEAMSYSTEM',
@@ -26,6 +27,7 @@ const mappatura = (o: Partial<MappaturaVista>): MappaturaVista => ({
   chiaveWasteflow: '22',
   valore: 'A22',
   versione: 1,
+  etichetta: 'IVA 22%',
   ...o,
 })
 
@@ -50,7 +52,9 @@ describe('MappatureComponent', () => {
       'adattatori',
       'mappature',
       'salvaMappature',
+      'chiaviMancanti',
     ])
+    servizio.chiaviMancanti.and.returnValue(of([]))
     servizio.adattatori.and.returnValue(of(opzioni.adattatori ?? [ADATTATORE]))
     servizio.mappature.and.returnValue(of(opzioni.mappature ?? []))
     const codice = opzioni.adattatore === undefined ? 'TEAMSYSTEM' : opzioni.adattatore
@@ -81,6 +85,7 @@ describe('MappatureComponent', () => {
   afterEach(() => {
     fixture?.destroy()
     history.replaceState({}, '')
+    sessionStorage.removeItem(CHIAVE_SELEZIONE_MAPPATURE)
   })
 
   it("adattatore con verificato false: riquadro «Tracciato non verificato su un'installazione reale» in cima", async () => {
@@ -114,7 +119,7 @@ describe('MappatureComponent', () => {
     expect(q('mappature-sezione-CLIENTE')).toBeNull()
     expect(servizio.mappature).toHaveBeenCalledOnceWith('TEAMSYSTEM')
     const riga22 = q('mappature-riga-CODICE_IVA-22')!
-    expect(riga22.textContent).toContain('22')
+    expect(riga22.textContent).toContain('IVA 22%')
     expect(campo('mappature-valore-CODICE_IVA-22').value).toBe('A22')
     const riga10 = q('mappature-riga-CODICE_IVA-10')!
     expect(riga10.textContent).toContain('IVA 10%')
@@ -162,8 +167,8 @@ describe('MappatureComponent', () => {
   it('salvataggio di più voci in un solo PUT, solo le modificate', async () => {
     await crea('ADMIN', {
       mappature: [
-        mappatura({ chiaveWasteflow: '22', valore: 'A22' }),
-        mappatura({ chiaveWasteflow: '4', valore: 'A4' }),
+        mappatura({ chiaveWasteflow: '22', valore: 'A22', versione: 3 }),
+        mappatura({ chiaveWasteflow: '4', valore: 'A4', etichetta: 'IVA 4%' }),
       ],
       mancanti: [{ tipo: 'PAGAMENTO', chiaveWasteflow: 'BONIFICO', etichetta: 'Bonifico' }],
     })
@@ -180,8 +185,8 @@ describe('MappatureComponent', () => {
     await stabilizza(fixture)
     expect(servizio.salvaMappature).toHaveBeenCalledTimes(1)
     expect(servizio.salvaMappature).toHaveBeenCalledWith('TEAMSYSTEM', [
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: 'B22' },
-      { tipo: 'PAGAMENTO', chiaveWasteflow: 'BONIFICO', valore: 'P1' },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: 'B22', versione: 3 },
+      { tipo: 'PAGAMENTO', chiaveWasteflow: 'BONIFICO', valore: 'P1', versione: null },
     ])
     expect(campo('mappature-valore-CODICE_IVA-22').value).toBe('B22')
     expect(bottone('mappature-salva')!.disabled).toBeTrue()
@@ -201,7 +206,7 @@ describe('MappatureComponent', () => {
     bottone('mappature-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.salvaMappature).toHaveBeenCalledWith('TEAMSYSTEM', [
-      { tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: null },
+      { tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: null, versione: 1 },
     ])
   })
 
@@ -218,22 +223,103 @@ describe('MappatureComponent', () => {
     expect(voci.length).toBe(1)
   })
 
-  it('oltre 500 voci modificate: messaggio del vocabolario, nessuna richiesta', async () => {
+  it('oltre 500 modifiche: «Salva» disattivato con il messaggio, nessuna richiesta', async () => {
     await crea('ADMIN', { mappature: [mappatura({})] })
-    // 501 campi non si disegnano (pInputText ridisegna ciascuno): si riempie il segnale e si salva.
-    const comp = fixture.componentInstance
-    comp.righe.set(
+    fixture.componentInstance.righe.set(
       Array.from({ length: MAX_VOCI_MAPPATURE + 1 }, (_, i) => ({
         tipo: 'CODICE_IVA' as const,
         chiaveWasteflow: `K${i}`,
-        etichetta: null,
+        etichetta: `Voce ${i}`,
         salvato: 'v',
+        versione: 1,
         valore: 'w',
       }))
     )
-    comp.salva()
+    await stabilizza(fixture)
+    expect(bottone('mappature-salva')!.disabled).toBeTrue()
+    expect(q('mappature-troppe')!.textContent).toContain(
+      'Salva le modifiche fatte prima di continuare (massimo 500 per volta)'
+    )
+    expect(MESSAGGIO_TROPPE_MODIFICHE).toContain('massimo 500 per volta')
+    fixture.componentInstance.salva()
     expect(servizio.salvaMappature).not.toHaveBeenCalled()
-    expect(comp.errore()).toContain('troppe')
+  })
+
+  it('1500 voci: si disegna la prima pagina da 50 senza errori e se ne modifica una', async () => {
+    const molte = Array.from({ length: 1500 }, (_, i) =>
+      mappatura({
+        tipo: 'CLIENTE',
+        chiaveWasteflow: `c${i}`,
+        valore: `V${i}`,
+        etichetta: `Cliente ${String(i).padStart(4, '0')}`,
+      })
+    )
+    await crea('ADMIN', { mappature: molte })
+    const campi = document.body.querySelectorAll('[data-testid^="mappature-valore-CLIENTE-"]')
+    expect(campi.length).toBe(50)
+    expect(document.body.querySelector('.p-paginator')).not.toBeNull()
+    servizio.salvaMappature.and.returnValue(of(molte))
+    await scrivi('mappature-valore-CLIENTE-c0', 'NUOVO')
+    bottone('mappature-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.salvaMappature).toHaveBeenCalledWith('TEAMSYSTEM', [
+      { tipo: 'CLIENTE', chiaveWasteflow: 'c0', valore: 'NUOVO', versione: 1 },
+    ])
+  })
+
+  it('i campi non usano la direttiva pInputText e nessuna riga mostra la chiave grezza', async () => {
+    await crea('ADMIN', {
+      mappature: [
+        mappatura({
+          tipo: 'CLIENTE',
+          chiaveWasteflow: '0b7a3d6e-id-grezzo',
+          etichetta: 'Rossi SRL',
+        }),
+      ],
+    })
+    const campo = q<HTMLInputElement>('mappature-valore-CLIENTE-0b7a3d6e-id-grezzo')!
+    expect(campo.classList.contains('p-inputtext')).toBeTrue()
+    expect(q('mappature-riga-CLIENTE-0b7a3d6e-id-grezzo')!.textContent).not.toContain('id-grezzo')
+  })
+
+  it('durante il salvataggio i campi sono disattivati', async () => {
+    await crea('ADMIN', { mappature: [mappatura({})] })
+    servizio.salvaMappature.and.returnValue(new Subject<MappaturaVista[]>())
+    await scrivi('mappature-valore-CODICE_IVA-22', 'X')
+    bottone('mappature-salva')!.click()
+    await stabilizza(fixture)
+    expect(campo('mappature-valore-CODICE_IVA-22').disabled).toBeTrue()
+  })
+
+  it('selezione in sessionStorage: POST mancanti e chiavi in cima', async () => {
+    const selezione = { anno: 2026, registroIvaId: 'r1' }
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, JSON.stringify(selezione))
+    await crea('ADMIN', {})
+    servizio.chiaviMancanti.and.returnValue(
+      of([{ tipo: 'CODICE_IVA', chiaveWasteflow: '10', etichetta: 'IVA 10%' }])
+    )
+    param.next(convertToParamMap({ adattatore: 'TEAMSYSTEM' }))
+    await stabilizza(fixture)
+    expect(servizio.chiaviMancanti).toHaveBeenCalledWith('TEAMSYSTEM', selezione)
+    expect(q('mappature-mancanti')!.textContent).toContain('IVA 10%')
+    expect(campo('mappature-valore-CODICE_IVA-10').value).toBe('')
+  })
+
+  it('history.state ha la precedenza: nessun POST', async () => {
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, JSON.stringify({ anno: 2026 }))
+    await crea('ADMIN', {
+      mancanti: [{ tipo: 'CODICE_IVA', chiaveWasteflow: '10', etichetta: 'IVA 10%' }],
+    })
+    expect(servizio.chiaviMancanti).not.toHaveBeenCalled()
+    expect(q('mappature-mancanti')).not.toBeNull()
+  })
+
+  it('sessionStorage illeggibile o assente: nessun POST e la pagina funziona', async () => {
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, '{non json')
+    await crea('ADMIN', { mappature: [mappatura({})] })
+    expect(servizio.chiaviMancanti).not.toHaveBeenCalled()
+    expect(q('mappature-mancanti')).toBeNull()
+    expect(q('mappature-sezione-CODICE_IVA')).not.toBeNull()
   })
 
   it('409 VERSIONE_SUPERATA: messaggio e ricarica', async () => {
@@ -282,7 +368,12 @@ describe('MappatureComponent', () => {
   it('le GET pendenti si annullano alla distruzione e al cambio di adattatore', async () => {
     const lenta = new Subject<MappaturaVista[]>()
     history.replaceState({}, '')
-    servizio = jasmine.createSpyObj('FatturazioneService', ['adattatori', 'mappature'])
+    servizio = jasmine.createSpyObj('FatturazioneService', [
+      'adattatori',
+      'mappature',
+      'chiaviMancanti',
+    ])
+    servizio.chiaviMancanti.and.returnValue(of([]))
     servizio.adattatori.and.returnValue(of([ADATTATORE, { ...ADATTATORE, codice: 'ALTRO' }]))
     servizio.mappature.and.returnValue(lenta)
     param = new BehaviorSubject(convertToParamMap({ adattatore: 'TEAMSYSTEM' }))

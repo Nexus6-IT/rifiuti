@@ -7,6 +7,7 @@ import {
   DocumentoDettaglio,
   DocumentoRiga,
   ElaborazioneDettaglio,
+  ChiaveMancante,
   ElaborazioneRiga,
   MappaturaVista,
   NuovaElaborazione,
@@ -253,6 +254,14 @@ export class FatturazioneService {
   mappature(adattatore: string): Observable<MappaturaVista[]> {
     return this.http.get<MappaturaVista[]>(
       `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mappature`
+    )
+  }
+
+  /** Chiavi ancora da mappare per i documenti scelti (stessa selezione dell'export). */
+  chiaviMancanti(adattatore: string, selezione: SelezioneExport): Observable<ChiaveMancante[]> {
+    return this.http.post<ChiaveMancante[]>(
+      `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mancanti`,
+      selezione
     )
   }
 

@@ -46,7 +46,7 @@ const DESCRIZIONE_FATTURA = 'FATTURA VENDITA'
 const CAUSALE_NOTA_CREDITO = '002'
 const DESCRIZIONE_NOTA_CREDITO = 'NOTA CREDITO EM'
 
-const NOMI_TIPO_RIGA: Record<string, string> = {
+export const NOMI_TIPO_RIGA: Record<string, string> = {
   MOVIMENTO: 'movimenti',
   FASCIA_SPECIALE: 'fasce speciali',
   FISSO: 'canoni fissi',
@@ -203,8 +203,14 @@ function mappa(mappature: Mappe, tipo: TipoMappatura, chiave: string, dove: stri
 }
 
 /** Chiave della mappatura `CODICE_IVA`: l'aliquota, con la natura se l'aliquota e' zero. */
-const chiaveIva = (aliquota: string, natura: string | null): string =>
+export const chiaveIva = (aliquota: string, natura: string | null): string =>
   natura !== null ? `${aliquota}/${natura}` : aliquota
+
+/** Inverso di `chiaveIva`; `null` se la chiave non ha la forma attesa. */
+export function leggiChiaveIva(chiave: string): { aliquota: string; natura: string | null } | null {
+  const m = /^(\d+(?:\.\d+)?)(?:\/(.+))?$/.exec(chiave)
+  return m ? { aliquota: m[1], natura: m[2] ?? null } : null
+}
 
 const eNotaDiCredito = (d: DocumentoPerExport): boolean => d.documento.tipoDocumento === 'TD04'
 

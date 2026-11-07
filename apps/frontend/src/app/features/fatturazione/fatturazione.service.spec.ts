@@ -318,13 +318,21 @@ describe('FatturazioneService', () => {
 
   it('salvaMappature: PUT con { voci } in un’unica richiesta, null per cancellare', () => {
     const voci = [
-      { tipo: 'CODICE_IVA' as const, chiaveWasteflow: '22', valore: 'A22' },
-      { tipo: 'CLIENTE' as const, chiaveWasteflow: 'C1', valore: null },
+      { tipo: 'CODICE_IVA' as const, chiaveWasteflow: '22', valore: 'A22', versione: 2 },
+      { tipo: 'CLIENTE' as const, chiaveWasteflow: 'C1', valore: null, versione: null },
     ]
     servizio.salvaMappature('TEAM SYSTEM', voci).subscribe()
     const req = http.expectOne(`${api}/export-contabile/TEAM%20SYSTEM/mappature`)
     expect(req.request.method).toBe('PUT')
     expect(req.request.body).toEqual({ voci })
+    req.flush([])
+  })
+
+  it('chiaviMancanti: POST /export-contabile/:adattatore/mancanti con la selezione', () => {
+    servizio.chiaviMancanti('TEAMSYSTEM', { anno: 2026, documentoIds: ['d1'] }).subscribe()
+    const req = http.expectOne(`${api}/export-contabile/TEAMSYSTEM/mancanti`)
+    expect(req.request.method).toBe('POST')
+    expect(req.request.body).toEqual({ anno: 2026, documentoIds: ['d1'] })
     req.flush([])
   })
 })
