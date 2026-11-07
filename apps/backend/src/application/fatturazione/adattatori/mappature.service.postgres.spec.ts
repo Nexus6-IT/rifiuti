@@ -103,13 +103,20 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
       const vincoli = await owner.$queryRawUnsafe<{ conname: string }[]>(
         `SELECT conname FROM pg_constraint WHERE conrelid = 'mappature_export_contabile'::regclass ORDER BY 1`
       )
-      expect(vincoli.map(v => v.conname)).toEqual(
-        expect.arrayContaining([
-          'mappature_export_contabile_pkey',
-          'mappature_export_contabile_tipo_ammesso',
-          'mappature_export_contabile_tenant_id_fkey',
-        ])
+      expect(vincoli.map(v => v.conname)).toEqual([
+        'mappature_export_contabile_adattatore_non_vuoto',
+        'mappature_export_contabile_chiave_non_vuota',
+        'mappature_export_contabile_pkey',
+        'mappature_export_contabile_tenant_id_fkey',
+        'mappature_export_contabile_tipo_ammesso',
+        'mappature_export_contabile_valore_non_vuoto',
+        'mappature_export_contabile_versione_positiva',
+      ])
+      const [privilegi] = await owner.$queryRawUnsafe<{ sistema: boolean; app: boolean }[]>(
+        `SELECT has_table_privilege('wasteflow_sistema', 'mappature_export_contabile', 'SELECT,INSERT,UPDATE,DELETE') AS sistema,
+                has_table_privilege('wasteflow_app', 'mappature_export_contabile', 'SELECT,INSERT,UPDATE,DELETE') AS app`
       )
+      expect(privilegi).toEqual({ sistema: true, app: true })
       const [indice] = await owner.$queryRawUnsafe<{ def: string }[]>(
         `SELECT indexdef AS def FROM pg_indexes WHERE indexname = 'legami_movimento_scostati_idx'`
       )

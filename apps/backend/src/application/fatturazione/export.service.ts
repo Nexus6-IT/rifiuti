@@ -322,13 +322,16 @@ export class ExportService {
                 metadata: { formato: adattatore.codice, documenti: perExport.length, saltati },
               },
             })
-            const unico = await this.impacchetta(adattatore.codice, file)
-            return { ...unico, saltati }
+            return { file, saltati }
           },
           { timeout: 120_000, maxWait: 5_000 }
         )
         .catch(err => traduciErrorePrisma(err, ENTITA_EXPORT, {}))
-    )
+    ).then(async ({ file, saltati }) => ({
+      // Lo zip si comprime dopo il commit: i lock sui documenti non aspettano la compressione.
+      ...(await this.impacchetta(adattatore.codice, file)),
+      saltati,
+    }))
   }
 
   /** Blocca i documenti in ordine di id (nessun deadlock fra due export) e ne torna lo stato. */

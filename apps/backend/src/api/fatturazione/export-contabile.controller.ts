@@ -53,7 +53,7 @@ export class ExportContabileController {
   @ApiResponse({
     status: 400,
     description:
-      'ADATTATORE_SCONOSCIUTO, TROPPE_VOCI (al massimo 500), VOCI_NON_VALIDE, VOCI_DUPLICATE',
+      'ADATTATORE_SCONOSCIUTO, VOCI_NON_VALIDE, VOCI_DUPLICATE; oltre 500 voci risponde la validazione del DTO',
   })
   @ApiResponse({ status: 409, description: 'OPERAZIONE_CONCORRENTE' })
   imposta(@Req() req: any, @Param() p: ParametriAdattatoreDto, @Body() dto: ImpostaMappatureDto) {

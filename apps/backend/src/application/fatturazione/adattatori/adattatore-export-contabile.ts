@@ -49,7 +49,11 @@ export interface AdattatoreExportContabile {
    * export lo mostrano all'utente.
    */
   readonly verificato: boolean
-  /** Le chiavi di WasteFlow che i documenti usano e che l'adattatore sa tradurre. */
+  /**
+   * Le chiavi di WasteFlow che i documenti usano e che l'adattatore sa tradurre. Ogni
+   * `chiaveWasteflow` ha al massimo 100 caratteri (colonna e DTO): una chiave piu' lunga non si
+   * potrebbe mappare e l'export resterebbe in 409.
+   */
   mappatureRichieste(documenti: readonly DocumentoPerExport[]): ChiaveMancante[]
   /**
    * Modalita' FILE: genera i file. Le `mappature` hanno chiave `chiaveMappatura(tipo, chiave)`.

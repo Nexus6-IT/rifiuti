@@ -110,6 +110,14 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
       anno: 2026,
       legamiIds: [scenario.legamiIds[1]],
     })
+    // L'annullato ha un'aliquota propria (10): il suo codice IVA non deve comparire fra le mancanti.
+    await owner.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`)
+      await tx.$executeRawUnsafe(
+        `UPDATE righe_documento_fattura SET aliquota_iva = 10 WHERE documento_id = $1::uuid`,
+        annullato.documentoId
+      )
+    })
     return {
       tenantId: t.id,
       utenteId: utente.id,
@@ -151,15 +159,23 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
     expect(errore?.getStatus?.()).toBe(409)
     const corpo = errore.getResponse()
     expect(corpo.error).toBe('MAPPATURE_MANCANTI')
-    expect(corpo.details.mancanti).toEqual(
-      expect.arrayContaining([
-        {
-          tipo: 'REGISTRO',
-          chiaveWasteflow: a.registroCodice,
-          etichetta: `Registro ${a.registroCodice}`,
-        },
-      ])
+    // Elenco esatto: la chiave IVA dell'annullato (10) non compare, perche' l'annullato e' saltato.
+    const iva = await owner.$queryRawUnsafe<{ a: string }[]>(
+      `SELECT DISTINCT aliquota_iva::text AS a FROM righe_documento_fattura WHERE documento_id = $1::uuid`,
+      a.definitivoId
     )
+    expect(corpo.details.mancanti).toEqual([
+      ...iva.map(r => ({
+        tipo: 'CODICE_IVA',
+        chiaveWasteflow: r.a,
+        etichetta: `IVA ${r.a}%`,
+      })),
+      {
+        tipo: 'REGISTRO',
+        chiaveWasteflow: a.registroCodice,
+        etichetta: `Registro ${a.registroCodice}`,
+      },
+    ])
     expect(finto.genera).not.toHaveBeenCalled()
     expect(await stato(a.definitivoId)).toEqual(prima)
     expect((await stato(a.definitivoId)).emesso_il).toBeNull()
@@ -269,5 +285,43 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
     const JSZip = (await import('jszip')).default
     const zip = await JSZip.loadAsync(r.contenuto)
     expect(Object.keys(zip.files).sort()).toEqual(['a.txt', 'b.txt'])
+  })
+
+  it('annullo concorrente: il documento annullato mentre l`export aspetta il lock non si emette', async () => {
+    const a = await azienda()
+    let export_: Promise<Awaited<ReturnType<typeof esporta>>> | undefined
+    await owner.$transaction(
+      async tx => {
+        await tx.$executeRawUnsafe(
+          `UPDATE documenti_fattura SET stato = 'ANNULLATO', motivo_annullo = 'prova', versione = versione + 1 WHERE id = $1::uuid`,
+          a.definitivoId
+        )
+        // L'export parte mentre l'annullo non e' ancora committato: seleziona il documento come
+        // DEFINITIVO e poi aspetta sul FOR UPDATE.
+        export_ = esporta(a, 'FINTO', true)
+        const inizio = Date.now()
+        for (;;) {
+          const [r] = await tx.$queryRawUnsafe<{ n: number }[]>(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+             WHERE application_name = $1 AND wait_event_type = 'Lock'`,
+            `fatt-t29e-${process.pid}`
+          )
+          if (r.n > 0) break
+          if (Date.now() - inizio > 4000) throw new Error('l`export non e` in attesa del lock')
+          await new Promise(res => setTimeout(res, 50))
+        }
+      },
+      { timeout: 10_000 }
+    )
+    const r = await export_!
+    expect(r.saltati).toBe(2)
+    expect((await stato(a.definitivoId)).emesso_il).toBeNull()
+    expect(
+      await owner.activityLog.count({
+        where: { tenantId: a.tenantId, action: 'DOCUMENTO_FATTURA_EMESSO' },
+      })
+    ).toBe(0)
+    expect(finto.genera).toHaveBeenCalledTimes(1)
+    expect(finto.genera.mock.calls[0][0]).toHaveLength(0)
   })
 })

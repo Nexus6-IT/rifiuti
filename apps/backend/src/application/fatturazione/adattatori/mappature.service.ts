@@ -5,8 +5,9 @@
 // (i codici dei clienti del gestionale sono dati dell'azienda).
 //
 // Nessun lock oltre a quelli di riga della propria scrittura: le voci si scrivono in ordine
-// (tipo, chiave) cosi' due richieste concorrenti non si incrociano; un'attesa oltre il timeout
-// diventa 409 `OPERAZIONE_CONCORRENTE`.
+// (tipo, chiave) e l'INSERT e' ordinato; il DELETE no, quindi un deadlock fra richieste che
+// scrivono e cancellano chiavi incrociate e' possibile: Postgres ne ferma una e diventa 409
+// `OPERAZIONE_CONCORRENTE` (come l'attesa oltre il timeout).
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
@@ -23,7 +24,7 @@ import {
 } from './adattatore-export-contabile'
 import { RegistroAdattatori } from './registro-adattatori'
 
-/** Voci per richiesta (le colonne sono corte, ma una richiesta non deve poter essere enorme). */
+/** Voci per richiesta (il DTO applica lo stesso limite; qui resta come difesa del servizio) (le colonne sono corte, ma una richiesta non deve poter essere enorme). */
 export const MAX_VOCI_MAPPATURE = 500
 const LUNGHEZZA_MASSIMA_CHIAVE = 100
 const LUNGHEZZA_MASSIMA_VALORE = 50

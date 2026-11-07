@@ -2,7 +2,7 @@
  * Documenti di fattura in lettura, annullo e storno (4.4b1, §11-§12). Azienda SELEZIONATA, mai dal
  * corpo. 4.4b2 (Task 25b): XML, «segna come emesso» ed export (CSV e `XML_ZIP`); il PDF e` del
  * Task 28. Il download e` uno `StreamableFile` con `Content-Disposition: attachment`; `XML_ZIP`
- * aggiunge `X-Documenti-Saltati` (esposto dal CORS in `main.ts`). Le risposte dei servizi
+ * e gli adattatori aggiungono `X-Documenti-Saltati` (esposto dal CORS in `main.ts`). Le risposte dei servizi
  * passano intatte; gli errori di dominio (`ANNULLO_NON_AMMESSO` e `STORNO_NON_AMMESSO` con
  * `details.motivo`, `STORNO_GIA_PRESENTE`, `VERSIONE_SUPERATA`, ...) escono dai servizi.
  */
@@ -147,6 +147,15 @@ export class DocumentiFatturaController {
   @Roles(...RUOLI_LETTURA)
   @ApiOperation({ summary: 'Esporta i documenti selezionati (CSV, XML_ZIP o adattatore)' })
   @ApiResponse({ status: 400, description: 'TROPPI_DOCUMENTI, FILTRO_NON_VALIDO' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'ADATTATORE_SCONOSCIUTO, ADATTATORE_NON_A_FILE, CONFERMA_EMISSIONE_RICHIESTA, DATA_NON_VALIDA',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'MAPPATURE_MANCANTI (elenco in details.mancanti) o OPERAZIONE_CONCORRENTE',
+  })
   @ApiResponse({ status: 422, description: 'XML_NON_VALIDO' })
   async esporta(
     @Req() req: any,
@@ -162,13 +171,12 @@ export class DocumentiFatturaController {
       selezione: dto.selezione,
       confermaEmissione: eCsv ? false : (dto.confermaEmissione ?? false),
     })
-    if (dto.formato === FORMATO_XML_ZIP) res.setHeader('X-Documenti-Saltati', String(esito.saltati))
+    if (!eCsv) res.setHeader('X-Documenti-Saltati', String(esito.saltati))
     return scarica(res, esito.contenuto, esito.contentType, esito.nomeFile)
   }
 }
 
 const FORMATO_CSV = 'CSV'
-const FORMATO_XML_ZIP = 'XML_ZIP'
 
 /** Risposta di download: byte del servizio, tipo, lunghezza e `attachment` col nome del file. */
 function scarica(res: Response, contenuto: Buffer, tipo: string, nomeFile: string): StreamableFile {
