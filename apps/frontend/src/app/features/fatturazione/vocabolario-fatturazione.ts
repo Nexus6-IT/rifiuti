@@ -238,6 +238,13 @@ export const ERRORI_HTTP_VOCI = {
     'errore'
   ),
   ADATTATORE_SCONOSCIUTO: v('Il gestionale scelto non è tra quelli disponibili.', 'errore'),
+  // Task 29/35: 400 delle mappature dell'export contabile.
+  TROPPE_VOCI: v('Le mappature da salvare sono troppe in una volta: salvale a gruppi.', 'errore'),
+  VOCI_NON_VALIDE: v(
+    'Una mappatura non è valida: la chiave arriva a 100 caratteri e il valore a 50.',
+    'errore'
+  ),
+  VOCI_DUPLICATE: v('La stessa mappatura è indicata più volte.', 'errore'),
   // Task 25a (m4, m7): 400 dei servizi (difesa dietro ai DTO, tranne motivo e nota) e 404.
   MOTIVO_NON_VALIDO: v('Il motivo è obbligatorio e al massimo di 200 caratteri.', 'errore'),
   VERSIONE_NON_VALIDA: v('La versione indicata non è valida: ricarica la pagina.', 'errore'),

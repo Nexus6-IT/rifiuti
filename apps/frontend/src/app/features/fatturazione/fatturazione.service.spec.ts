@@ -288,4 +288,30 @@ describe('FatturazioneService', () => {
     expect(req.request.body).toEqual({ nota: 'Visto con il cliente', versione: 7 })
     req.flush(null)
   })
+
+  it('adattatori: GET /export-contabile/adattatori', () => {
+    servizio.adattatori().subscribe()
+    const req = http.expectOne(`${api}/export-contabile/adattatori`)
+    expect(req.request.method).toBe('GET')
+    req.flush([])
+  })
+
+  it('mappature: GET /export-contabile/:adattatore/mappature', () => {
+    servizio.mappature('TEAMSYSTEM').subscribe()
+    const req = http.expectOne(`${api}/export-contabile/TEAMSYSTEM/mappature`)
+    expect(req.request.method).toBe('GET')
+    req.flush([])
+  })
+
+  it('salvaMappature: PUT con { voci } in un’unica richiesta, null per cancellare', () => {
+    const voci = [
+      { tipo: 'CODICE_IVA' as const, chiaveWasteflow: '22', valore: 'A22' },
+      { tipo: 'CLIENTE' as const, chiaveWasteflow: 'C1', valore: null },
+    ]
+    servizio.salvaMappature('TEAM SYSTEM', voci).subscribe()
+    const req = http.expectOne(`${api}/export-contabile/TEAM%20SYSTEM/mappature`)
+    expect(req.request.method).toBe('PUT')
+    expect(req.request.body).toEqual({ voci })
+    req.flush([])
+  })
 })

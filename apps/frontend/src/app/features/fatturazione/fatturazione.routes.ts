@@ -11,4 +11,14 @@ export const FATTURAZIONE_ROUTES: Routes = [
     loadComponent: () =>
       import('./elaborazioni/elaborazioni-lista.component').then(m => m.ElaborazioniListaComponent),
   },
+  {
+    path: 'export-contabile',
+    loadComponent: () =>
+      import('./export-contabile/mappature.component').then(m => m.MappatureComponent),
+  },
+  {
+    path: 'export-contabile/:adattatore',
+    loadComponent: () =>
+      import('./export-contabile/mappature.component').then(m => m.MappatureComponent),
+  },
 ]
