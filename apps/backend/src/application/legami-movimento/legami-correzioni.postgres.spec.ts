@@ -338,6 +338,51 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     expect(l.righe[0].quantita?.toFixed()).toBe('80')
   })
 
+  it("la vista del legame porta documentoId: null se non fatturato, l'id del documento se FATTURATO", async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    const l0 = (await legameDi(m.id))!
+    expect((await legami.dettaglio(s.tenantId, l0.id)).documentoId).toBeNull()
+    expect((await legami.perMovimento(s.tenantId, m.id)).documentoId).toBeNull()
+    await portaAFatturato(l0.id, 'FATTURATO')
+    const documentoId = (await owner.legameMovimento.findUniqueOrThrow({ where: { id: l0.id } }))
+      .documentoId
+    expect(documentoId).not.toBeNull()
+    expect((await legami.dettaglio(s.tenantId, l0.id)).documentoId).toBe(documentoId)
+    expect((await legami.perMovimento(s.tenantId, m.id)).documentoId).toBe(documentoId)
+  })
+
+  it("scostamentoAperto: segue la condizione della lista (gestito_il nullo, poi presa d'atto, poi nuova correzione)", async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    const l0 = (await legameDi(m.id))!
+    const aperto = async (): Promise<boolean> =>
+      (await legami.dettaglio(s.tenantId, l0.id)).scostamentoAperto
+    expect(await aperto()).toBe(false)
+    await portaAFatturato(l0.id, 'FATTURATO')
+    expect(await aperto()).toBe(false)
+    const t0 = new Date(Date.now() - 60_000)
+    await owner.legameMovimento.update({
+      where: { id: l0.id },
+      data: { scostamentoDopoFattura: true, scostamentoIl: t0, scostamentoGestitoIl: null },
+    })
+    expect(await aperto()).toBe(true)
+    // Presa d'atto: gestito dopo lo scostamento, il flag storico resta vero.
+    await owner.legameMovimento.update({
+      where: { id: l0.id },
+      data: { scostamentoGestitoIl: new Date(t0.getTime() + 1000) },
+    })
+    const v = await legami.dettaglio(s.tenantId, l0.id)
+    expect(v.scostamentoDopoFattura).toBe(true)
+    expect(v.scostamentoAperto).toBe(false)
+    // Nuova correzione dopo la presa d'atto: riapre.
+    await owner.legameMovimento.update({
+      where: { id: l0.id },
+      data: { scostamentoIl: new Date(t0.getTime() + 5000) },
+    })
+    expect(await aperto()).toBe(true)
+  })
+
   it('quantità MANUALE resta e compare QUANTITA_MANUALE_NON_DERIVATA', async () => {
     const s = await scenario()
     const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })

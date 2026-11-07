@@ -98,8 +98,21 @@ export interface ElaborazioneDettaglio extends ElaborazioneRiga {
   versione: number
   definitiveAttive: boolean
   erroriGenerali: SegnalazioneVista[]
-  erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
-  numerazionePrevista: { registroIvaId: string; codiceRegistro: string; da: string; a: string }[]
+  erroriPeriodo: {
+    motivo: string
+    quanti: number
+    contrattoId: string | null
+    /** Assente nei riepiloghi salvati prima del campo. */
+    contrattoNumero?: string | null
+  }[]
+  /** `quanti`: i documenti che la definitiva numererebbe in quel registro (calcolati alla lettura). */
+  numerazionePrevista: {
+    registroIvaId: string
+    codiceRegistro: string
+    da: string
+    a: string
+    quanti: number
+  }[]
   totaliPerRegistro: {
     registroIvaId: string
     imponibile: string
@@ -202,6 +215,9 @@ export interface ScostamentoRiga {
   documento: { id: string; numeroTesto: string; dataDocumento: string }
   tipoCorrezione: 'RETTIFICA' | 'ANNULLO' | 'CAMBIO_CER' | 'CAMBIO_CAUSALE'
   quantitaFatturata: string | null
+  /** Unità di misura dei due movimenti (può cambiare: 1000 KG → 1 T). */
+  unitaFatturata: string | null
+  unitaAttuale: string | null
   importoFatturato: string
   quantitaAttuale: string | null
   importoAttuale: string | null
@@ -320,8 +336,78 @@ export const CHIAVI_SCOSTAMENTO_RIGA: Record<keyof ScostamentoRiga, true> = {
   documento: true,
   tipoCorrezione: true,
   quantitaFatturata: true,
+  unitaFatturata: true,
+  unitaAttuale: true,
   importoFatturato: true,
   quantitaAttuale: true,
   importoAttuale: true,
   soloQuantita: true,
+}
+
+// --- Export contabile: adattatori e mappature (4.4c, Task 29 e 35) -------------------------------
+
+export const TIPI_MAPPATURA = [
+  'CODICE_IVA',
+  'CONTO_RICAVI',
+  'CLIENTE',
+  'PAGAMENTO',
+  'REGISTRO',
+] as const
+export type TipoMappatura = (typeof TIPI_MAPPATURA)[number]
+
+/** Un gestionale contabile verso cui si esporta (`GET /export-contabile/adattatori`). */
+export interface AdattatoreVista {
+  codice: string
+  nome: string
+  modalita: 'FILE' | 'API'
+  /** `false` = «tracciato non verificato su un'installazione reale» (decisione 15). */
+  verificato: boolean
+}
+
+/** Una mappatura salvata: chiave di WasteFlow, valore del gestionale. */
+export interface MappaturaVista {
+  tipo: TipoMappatura
+  chiaveWasteflow: string
+  valore: string
+  versione: number
+  /** Testo per l'utente (cliente, aliquota...), risolto dal backend. */
+  etichetta: string
+}
+
+/** Una chiave che i documenti da esportare richiedono e che l'azienda non ha ancora mappato. */
+export interface ChiaveMancante {
+  tipo: TipoMappatura
+  chiaveWasteflow: string
+  /** Testo per l'utente (per esempio «IVA 22%»). */
+  etichetta: string
+}
+
+/** Voce del `PUT`: `valore: null` cancella la mappatura. */
+export interface VoceMappatura {
+  tipo: TipoMappatura
+  chiaveWasteflow: string
+  valore: string | null
+  /** Versione letta (`null` = voce nuova): se non corrisponde il backend risponde 409. */
+  versione: number | null
+}
+
+/** Limiti del backend: voci per richiesta, caratteri della chiave e del valore. */
+export const MAX_VOCI_MAPPATURE = 500
+export const MAX_CHIAVE_MAPPATURA = 100
+export const MAX_VALORE_MAPPATURA = 50
+
+/**
+ * Chiave di `sessionStorage` con la `SelezioneExport` dell'export respinto per mappature mancanti
+ * (`MAPPATURE_MANCANTI`): la scrive la pagina dei documenti prima di andare alle mappature, la
+ * legge la pagina delle mappature (Task 33 e 35). Ogni accesso va in try/catch.
+ */
+export const CHIAVE_SELEZIONE_MAPPATURE = 'wasteflow.fatturazione.selezioneMappature'
+
+/** Toglie la selezione lasciata per le mappature, quando ha fatto il suo lavoro. */
+export function rimuoviSelezioneMappature(): void {
+  try {
+    sessionStorage.removeItem(CHIAVE_SELEZIONE_MAPPATURE)
+  } catch {
+    /* sessionStorage non disponibile: non c'e' niente da togliere */
+  }
 }

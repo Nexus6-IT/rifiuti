@@ -29,13 +29,14 @@ describe('ImpostazioniFatturazioneController', () => {
     it('GET a tutti i ruoli, PUT solo ADMIN e SUPER_ADMIN', () => {
       expect(ruoli('leggi')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
       expect(ruoli('imposta')).toEqual(['SUPER_ADMIN', 'ADMIN'])
+      expect(ruoli('impostaDefinitive')).toEqual(['SUPER_ADMIN', 'ADMIN'])
     })
 
     it('ogni rotta pubblica ha @Roles esplicito', () => {
       const metodi = Object.getOwnPropertyNames(proto).filter(
         n => n !== 'constructor' && typeof proto[n] === 'function'
       )
-      expect(metodi.sort()).toEqual(['imposta', 'leggi'])
+      expect(metodi.sort()).toEqual(['imposta', 'impostaDefinitive', 'leggi'])
       for (const n of metodi) expect(ruoli(n)?.length).toBeGreaterThan(0)
     })
   })
@@ -44,14 +45,17 @@ describe('ImpostazioniFatturazioneController', () => {
     let app: INestApplication
     let servizio: Record<string, jest.Mock>
     let ruolo = 'ADMIN'
+    let ruoloEffettivo: jest.Mock
 
     beforeEach(async () => {
       ruolo = 'ADMIN'
+      ruoloEffettivo = jest.fn().mockResolvedValue('ADMIN')
       servizio = {
         leggi: jest
           .fn()
           .mockResolvedValue({ fatturazioneDa: null, versione: 0, modificatoIl: null }),
         imposta: jest.fn().mockResolvedValue({ fatturazioneDa: '2026-01-01', versione: 1 }),
+        impostaDefinitive: jest.fn().mockResolvedValue({ definitiveAttive: true, versione: 2 }),
       }
       const logger: any = {
         setContext: jest.fn(),
@@ -63,7 +67,7 @@ describe('ImpostazioniFatturazioneController', () => {
         controllers: [ImpostazioniFatturazioneController],
         providers: [
           { provide: ImpostazioniFatturazioneService, useValue: servizio },
-          { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
+          { provide: RuoloEffettivoService, useValue: { accesso: jest.fn(), ruoloEffettivo } },
           { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
         ],
       })
@@ -156,6 +160,75 @@ describe('ImpostazioniFatturazioneController', () => {
       expect(put.body.error).toBe('CONFERMA_RICHIESTA')
       expect(put.body.details).toEqual({ movimentiToccati: 3 })
       expect(put.body.movimentiToccati).toBeUndefined()
+    })
+
+    describe('PUT /definitive', () => {
+      const D = `${R}/definitive`
+
+      it.each(['VIEWER', 'OPERATOR'])('come %s: 403, servizio mai chiamato', async r => {
+        ruolo = r
+        const put = await http().put(D).send({ attive: true, versione: 1 })
+        expect(put.status).toBe(403)
+        expect(servizio.impostaDefinitive).not.toHaveBeenCalled()
+      })
+
+      it.each(['ADMIN', 'SUPER_ADMIN'])('come %s: azienda dal request, utente e corpo', async r => {
+        ruolo = r
+        ruoloEffettivo.mockResolvedValue(r)
+        const put = await http().put(D).send({ attive: true, versione: 1 })
+        expect(put.status).toBe(200)
+        expect(put.body).toEqual({ definitiveAttive: true, versione: 2 })
+        expect(servizio.impostaDefinitive).toHaveBeenCalledWith(TENANT, 'utente-1', {
+          attive: true,
+          versione: 1,
+        })
+        expect(ruoloEffettivo).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'utente-1' }),
+          TENANT
+        )
+      })
+
+      it.each(['VIEWER', 'OPERATOR'])(
+        'ADMIN nel token ma solo %s nell’azienda selezionata: 403',
+        async effettivo => {
+          ruoloEffettivo.mockResolvedValue(effettivo)
+          const put = await http().put(D).send({ attive: true, versione: 1 })
+          expect(put.status).toBe(403)
+          expect(put.body.error).toBe('RUOLO_AZIENDA_SELEZIONATA_INSUFFICIENTE')
+          expect(servizio.impostaDefinitive).not.toHaveBeenCalled()
+        }
+      )
+
+      it('senza azienda selezionata: rifiutato', async () => {
+        const put = await http()
+          .put(D)
+          .set('x-senza-azienda', '1')
+          .send({ attive: true, versione: 1 })
+        expect(put.status).toBeGreaterThanOrEqual(400)
+        expect(servizio.impostaDefinitive).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        [{ versione: 1 }],
+        [{ attive: 'si', versione: 1 }],
+        [{ attive: true }],
+        [{ attive: true, versione: -1 }],
+        [{ attive: true, versione: 1.5 }],
+        [{ attive: true, versione: 1, altro: 1 }],
+      ])('corpo non valido %j: 400', async corpo => {
+        const put = await http().put(D).send(corpo)
+        expect(put.status).toBe(400)
+        expect(servizio.impostaDefinitive).not.toHaveBeenCalled()
+      })
+
+      it('409 VERSIONE_SUPERATA propagato', async () => {
+        servizio.impostaDefinitive.mockRejectedValue(
+          new ConflictException({ error: 'VERSIONE_SUPERATA', message: 'x' })
+        )
+        const put = await http().put(D).send({ attive: false, versione: 0 })
+        expect(put.status).toBe(409)
+        expect(put.body.error).toBe('VERSIONE_SUPERATA')
+      })
     })
   })
 })

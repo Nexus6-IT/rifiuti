@@ -1,9 +1,12 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnInit, inject, signal } from '@angular/core'
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { Subscription } from 'rxjs'
 import { FormsModule } from '@angular/forms'
 import { ConfirmationService, SharedModule } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
+import { InputSwitchModule } from 'primeng/inputswitch'
 import { InputTextModule } from 'primeng/inputtext'
 import { TabViewModule } from 'primeng/tabview'
 import { AuthService } from '../../core/services/auth.service'
@@ -11,9 +14,15 @@ import { ToastService } from '../../core/services/toast.service'
 import { leggiErroriAzione } from '../listino/errori-azione'
 import { puoImpostareFatturazione } from './permessi-legami'
 import { ImpostazioneFatturazione } from './legami.model'
+import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import { ImpostazioneFatturazioneService } from './impostazioni-fatturazione.service'
 import { CedenteSchedaComponent } from '../fatturazione/impostazioni/cedente-scheda.component'
+import { ImpostazioniFatturazione44Service } from '../fatturazione/impostazioni/impostazioni-fatturazione-4-4.service'
+import { ERRORI_HTTP_VOCI } from '../fatturazione/vocabolario-fatturazione'
 import { NumerazioneSchedaComponent } from '../fatturazione/impostazioni/numerazione-scheda.component'
+
+const AVVISO_DEFINITIVE =
+  "Accendi le definitive solo dopo la conferma del commercialista su TD24, documenti misti e nature soggette a bollo. Dopo l'accensione le fatture ricevono un numero definitivo."
 
 const MESSAGGIO_VERSIONE =
   "L'impostazione è stata modificata da un altro utente: i dati sono stati ricaricati."
@@ -38,6 +47,7 @@ function movimentiToccati(err: unknown): number | null {
     FormsModule,
     ButtonModule,
     ConfirmDialogModule,
+    InputSwitchModule,
     InputTextModule,
     TabViewModule,
     SharedModule,
@@ -53,7 +63,7 @@ function movimentiToccati(err: unknown): number | null {
         </div>
       </header>
 
-      <p-tabView>
+      <p-tabView [scrollable]="true">
         <p-tabPanel header="Fatturazione da">
           <p class="page-subtitle">
             Solo i movimenti con data uguale o successiva a quella indicata entrano nella
@@ -130,6 +140,23 @@ function movimentiToccati(err: unknown): number | null {
                   : 'Solo gli amministratori possono modificare questa impostazione.'
               }}
             </p>
+            <div class="riga-definitive">
+              <p-inputSwitch
+                inputId="fatt-definitive-input"
+                [(ngModel)]="definitiveUi"
+                [disabled]="!puoModificare() || inCorso()"
+                (onChange)="cambiaDefinitive($event.checked)"
+                data-testid="fatt-definitive"
+              />
+              <label for="fatt-definitive-input">Definitive attive</label>
+            </div>
+            <p class="nota-pagina">
+              {{
+                impostazione()?.definitiveAttive
+                  ? 'Le fatture definitive sono attive per questa azienda.'
+                  : 'Le fatture definitive sono spente: restano disponibili anteprime ed esportazione CSV.'
+              }}
+            </p>
           </section>
         </p-tabPanel>
         <p-tabPanel header="Dati del cedente">
@@ -139,11 +166,21 @@ function movimentiToccati(err: unknown): number | null {
           <ng-template pTemplate="content"><app-numerazione-scheda /></ng-template>
         </p-tabPanel>
       </p-tabView>
-      <p-confirmDialog />
+      <p-confirmDialog
+        [style]="{ width: '32rem', maxWidth: '96vw' }"
+        (onHide)="ripristinaFocus()"
+      />
     </div>
   `,
   styles: [
     `
+      .riga-definitive {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        margin: var(--spacing-md) 0 var(--spacing-xs);
+      }
+
       /* Etichetta, data e pulsanti sulla stessa riga, con spazio fra loro e stessa altezza. */
       .riga-data {
         display: flex;
@@ -160,11 +197,18 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
   private readonly auth = inject(AuthService)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
+  /** Riporta il focus a chi ha aperto la conferma (PrimeNG non lo fa); sostituito a ogni apertura. */
+  ripristinaFocus: () => void = () => undefined
+  private readonly servizio44 = inject(ImpostazioniFatturazione44Service)
+  private readonly destroyRef = inject(DestroyRef)
+  private lettura: Subscription | null = null
 
   readonly impostazione = signal<ImpostazioneFatturazione | null>(null)
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
   data = ''
+  /** Valore mostrato dall'interruttore; si riallinea a `impostazione()` dopo ogni esito. */
+  definitiveUi = false
 
   readonly puoModificare = () => puoImpostareFatturazione(this.auth.currentUser()?.role)
 
@@ -174,17 +218,22 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
 
   /** Rilegge l'impostazione; `messaggio` resta visibile dopo la rilettura (es. versione superata). */
   carica(messaggio: string | null = null): void {
-    this.servizio.leggi().subscribe({
-      next: i => {
-        this.impostazione.set(i)
-        this.data = i.fatturazioneDa ?? ''
-        this.errore.set(messaggio)
-      },
-      error: err =>
-        this.errore.set(
-          leggiErroriAzione(err, "Impossibile caricare l'impostazione.").messaggi.join(' ')
-        ),
-    })
+    this.lettura?.unsubscribe()
+    this.lettura = this.servizio
+      .leggi()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: i => {
+          this.impostazione.set(i)
+          this.data = i.fatturazioneDa ?? ''
+          this.definitiveUi = i.definitiveAttive === true
+          this.errore.set(messaggio)
+        },
+        error: err =>
+          this.errore.set(
+            leggiErroriAzione(err, "Impossibile caricare l'impostazione.").messaggi.join(' ')
+          ),
+      })
   }
 
   /** Spegne la fatturazione (data null): scelta esplicita, mai dedotta da un campo vuoto. */
@@ -211,11 +260,13 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
         versione: corrente.versione,
         ...(confermaMovimenti === undefined ? {} : { confermaMovimenti }),
       })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: i => {
           this.inCorso.set(false)
           this.impostazione.set(i)
           this.data = i.fatturazioneDa ?? ''
+          this.definitiveUi = i.definitiveAttive === true
           this.toast.success('Impostazione salvata.', 'Fatturazione')
         },
         error: err => {
@@ -230,6 +281,7 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
     if (e.conflitto && e.codice === 'CONFERMA_RICHIESTA') {
       const n = movimentiToccati(err)
       if (n !== null) {
+        this.ripristinaFocus = catturaFocus('fatt-salva')
         this.conferma.confirm({
           header: 'Conferma il cambio di data',
           message: `Verranno toccati ${n} ${n === 1 ? 'movimento' : 'movimenti'}. Vuoi procedere?`,
@@ -248,5 +300,69 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
     }
     this.errore.set(e.messaggi.join(' '))
     if (e.rilettura) this.carica(this.errore())
+  }
+
+  /** Accensione con avviso e conferma; spegnimento diretto. Il rifiuto riporta l'interruttore a prima. */
+  cambiaDefinitive(attive: boolean): void {
+    const corrente = this.impostazione()
+    if (!corrente || this.inCorso() || !this.puoModificare()) {
+      this.definitiveUi = corrente?.definitiveAttive === true
+      return
+    }
+    if (!attive) {
+      this.inviaDefinitive(false)
+      return
+    }
+    this.ripristinaFocus = catturaFocus('fatt-definitive')
+    this.conferma.confirm({
+      header: 'Attiva le definitive',
+      message: AVVISO_DEFINITIVE,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Attiva',
+      rejectLabel: 'Annulla',
+      defaultFocus: 'reject',
+      // «Annulla» senza riempimento, «Attiva» pieno: la scelta sicura non deve pesare come quella che cambia le cose.
+      rejectButtonStyleClass: 'p-button-text',
+      accept: () => this.inviaDefinitive(true),
+      reject: () => (this.definitiveUi = false),
+    })
+  }
+
+  private inviaDefinitive(attive: boolean): void {
+    const corrente = this.impostazione()
+    if (!corrente) return
+    this.inCorso.set(true)
+    this.errore.set(null)
+    this.servizio44
+      .impostaDefinitive(attive, corrente.versione)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: r => {
+          this.inCorso.set(false)
+          // La versione è unica per la riga: la riprendiamo anche per la parte «Fatturazione da».
+          this.impostazione.set({
+            ...corrente,
+            definitiveAttive: r.definitiveAttive,
+            versione: r.versione,
+          })
+          this.definitiveUi = r.definitiveAttive
+          this.toast.success(attive ? 'Definitive attivate.' : 'Definitive spente.', 'Fatturazione')
+        },
+        error: err => {
+          this.inCorso.set(false)
+          this.definitiveUi = corrente.definitiveAttive === true
+          const e = leggiErroriAzione(err, 'Impossibile salvare le definitive.')
+          if (e.conflitto && e.rilettura) {
+            this.errore.set(MESSAGGIO_VERSIONE)
+            this.carica(MESSAGGIO_VERSIONE)
+            return
+          }
+          const voce =
+            e.codice && Object.prototype.hasOwnProperty.call(ERRORI_HTTP_VOCI, e.codice)
+              ? ERRORI_HTTP_VOCI[e.codice as keyof typeof ERRORI_HTTP_VOCI].etichetta
+              : null
+          this.errore.set(voce ?? e.messaggi.join(' '))
+        },
+      })
   }
 }

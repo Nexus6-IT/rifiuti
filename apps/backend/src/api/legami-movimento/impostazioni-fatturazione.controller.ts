@@ -10,7 +10,9 @@ import { Roles } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
-import { ImpostaFatturazioneDto } from './dto/impostazione-fatturazione.dto'
+import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { RUOLI_AMMINISTRATIVI, richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
+import { ImpostaDefinitiveDto, ImpostaFatturazioneDto } from './dto/impostazione-fatturazione.dto'
 import { RUOLI_LETTURA, RUOLI_AMMINISTRATORI } from './ruoli'
 
 @ApiTags('legami-movimento')
@@ -18,7 +20,10 @@ import { RUOLI_LETTURA, RUOLI_AMMINISTRATORI } from './ruoli'
 @Controller('impostazioni-fatturazione')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ImpostazioniFatturazioneController {
-  constructor(private readonly impostazioni: ImpostazioniFatturazioneService) {}
+  constructor(
+    private readonly impostazioni: ImpostazioniFatturazioneService,
+    private readonly membership: RuoloEffettivoService
+  ) {}
 
   @Get()
   @Roles(...RUOLI_LETTURA)
@@ -38,5 +43,20 @@ export class ImpostazioniFatturazioneController {
   })
   imposta(@Req() req: any, @Body() dto: ImpostaFatturazioneDto) {
     return this.impostazioni.imposta(requireRequestTenantId(req), req.user.id, dto)
+  }
+
+  /**
+   * Interruttore delle definitive (4.4c, decisione 13). Oltre a `@Roles` (ruolo del token) si
+   * controlla il ruolo EFFETTIVO nell'azienda selezionata: un consulente ADMIN del proprio studio
+   * non accende le definitive dell'azienda di un cliente dove e' solo CONSULTANT.
+   */
+  @Put('definitive')
+  @Roles(...RUOLI_AMMINISTRATORI)
+  @ApiOperation({ summary: 'Accende o spegne le definitive dell’azienda' })
+  @ApiResponse({ status: 409, description: 'VERSIONE_SUPERATA o OPERAZIONE_CONCORRENTE' })
+  async impostaDefinitive(@Req() req: any, @Body() dto: ImpostaDefinitiveDto) {
+    const tenantId = requireRequestTenantId(req)
+    await richiediRuoloEffettivo(this.membership, req.user, tenantId, RUOLI_AMMINISTRATIVI)
+    return this.impostazioni.impostaDefinitive(tenantId, req.user.id, dto)
   }
 }

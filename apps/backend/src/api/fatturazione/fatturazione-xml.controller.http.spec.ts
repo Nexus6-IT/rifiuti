@@ -5,6 +5,7 @@
  */
 import {
   ConflictException,
+  NotFoundException,
   ExecutionContext,
   INestApplication,
   ValidationPipe,
@@ -15,6 +16,7 @@ import request from 'supertest'
 import { AnnulloStornoService } from '../../application/fatturazione/annullo-storno.service'
 import { DocumentiFatturaService } from '../../application/fatturazione/documenti-fattura.service'
 import { ExportService } from '../../application/fatturazione/export.service'
+import { PdfCortesiaService } from '../../application/fatturazione/pdf-cortesia'
 import { XmlDocumentoService } from '../../application/fatturazione/xml-documento.service'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
@@ -32,6 +34,7 @@ const ZIP = Buffer.from('PK-finto')
 interface Finti {
   xml: Record<string, jest.Mock>
   esporta: Record<string, jest.Mock>
+  pdf: Record<string, jest.Mock>
 }
 
 function finti(): Finti {
@@ -42,6 +45,11 @@ function finti(): Finti {
         .mockResolvedValue({ nomeFile: 'IT01234567890_00001.xml', contenuto: XML, sha256: 'x' }),
       zip: jest.fn().mockResolvedValue({ contenuto: ZIP, saltati: 1 }),
       segnaEmesso: jest.fn().mockResolvedValue({ id: DOC, emessoIl: '2026-11-07T10:00:00.000Z' }),
+    },
+    pdf: {
+      pdf: jest
+        .fn()
+        .mockResolvedValue({ nomeFile: 'VEN-12-2026.pdf', contenuto: Buffer.from('%PDF-finto') }),
     },
     esporta: {
       esporta: jest.fn().mockResolvedValue({
@@ -63,6 +71,7 @@ async function creaApp(f: Finti, ruolo: () => string, effettivo: () => string = 
       { provide: AnnulloStornoService, useValue: { annulla: jest.fn(), storna: jest.fn() } },
       { provide: XmlDocumentoService, useValue: f.xml },
       { provide: ExportService, useValue: f.esporta },
+      { provide: PdfCortesiaService, useValue: f.pdf },
       {
         provide: RuoloEffettivoService,
         useValue: { accesso: jest.fn(), ruoloEffettivo: jest.fn(async () => effettivo()) },
@@ -184,6 +193,34 @@ describe('Fatturazione: XML, emissione ed export (HTTP con servizi finti)', () =
     })
   })
 
+  describe('PDF di cortesia (Task 28)', () => {
+    it.each(['VIEWER', 'OPERATOR', 'ADMIN', 'SUPER_ADMIN'])(
+      '%s: 200 con tipo e nome file',
+      async r => {
+        ruolo = r
+        const res = await http().get(`/${D}/${DOC}/pdf`)
+        expect(res.status).toBe(200)
+        expect(res.headers['content-type']).toContain('application/pdf')
+        expect(res.headers['content-disposition']).toBe('attachment; filename="VEN-12-2026.pdf"')
+        expect(f.pdf.pdf).toHaveBeenCalledWith(TENANT, DOC)
+      }
+    )
+
+    it('id non uuid: 400 senza chiamare il servizio', async () => {
+      expect((await http().get(`/${D}/non-un-uuid/pdf`)).status).toBe(400)
+      expect(f.pdf.pdf).not.toHaveBeenCalled()
+    })
+
+    it('documento di un altro tenant: il 404 del servizio passa intatto', async () => {
+      f.pdf.pdf.mockRejectedValue(
+        new NotFoundException({ error: 'DOCUMENTO_NON_TROVATO', message: 'Documento non trovato.' })
+      )
+      const res = await http().get(`/${D}/${DOC}/pdf`)
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('DOCUMENTO_NON_TROVATO')
+    })
+  })
+
   describe('XML', () => {
     it('senza confermaEmissione: 400, nessun servizio chiamato', async () => {
       expect((await xml({})).status).toBe(400)
@@ -295,6 +332,27 @@ describe('Fatturazione: XML, emissione ed export (HTTP con servizi finti)', () =
     it('XML_ZIP senza saltati: header 0; CSV: nessun header', async () => {
       expect((await zip()).headers['x-documenti-saltati']).toBe('0')
       expect((await csv()).headers['x-documenti-saltati']).toBeUndefined()
+    })
+
+    it('adattatore: header X-Documenti-Saltati col numero dei saltati, anche 0', async () => {
+      const adattatore = (formato: string) =>
+        http()
+          .post(`/${D}/export`)
+          .send({ formato, selezione: { anno: 2026 }, confermaEmissione: true })
+      f.esporta.esporta.mockResolvedValue({
+        nomeFile: 'prova.txt',
+        contentType: 'text/plain',
+        contenuto: Buffer.from('x'),
+        saltati: 2,
+      })
+      expect((await adattatore('FINTO')).headers['x-documenti-saltati']).toBe('2')
+      f.esporta.esporta.mockResolvedValue({
+        nomeFile: 'prova.txt',
+        contentType: 'text/plain',
+        contenuto: Buffer.from('x'),
+        saltati: 0,
+      })
+      expect((await adattatore('FINTO')).headers['x-documenti-saltati']).toBe('0')
     })
 
     it('download con Content-Disposition attachment, nome del file e tipo del servizio', async () => {

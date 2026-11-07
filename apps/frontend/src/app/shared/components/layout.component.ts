@@ -1271,6 +1271,30 @@ export class LayoutComponent implements OnInit {
       contatoreLegami: true,
     },
     {
+      label: 'Fatture per periodo',
+      route: '/fatturazione',
+      icon: 'pi pi-euro',
+      feature: 'contratti',
+    },
+    {
+      label: 'Documenti di fattura',
+      route: '/fatturazione/documenti',
+      icon: 'pi pi-list',
+      feature: 'contratti',
+    },
+    {
+      label: 'Scostamenti',
+      route: '/fatturazione/scostamenti',
+      icon: 'pi pi-sliders-h',
+      feature: 'contratti',
+    },
+    {
+      label: 'Export contabile',
+      route: '/fatturazione/export-contabile',
+      icon: 'pi pi-download',
+      feature: 'contratti',
+    },
+    {
       label: 'Fatturazione da',
       route: '/clienti/fatturazione',
       icon: 'pi pi-calendar',

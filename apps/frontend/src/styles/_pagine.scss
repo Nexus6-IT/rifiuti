@@ -293,3 +293,99 @@
     }
   }
 }
+
+/* ===== Errori e avvisi nei campi e nei dialog (fuori da .pagina-lavoro: i dialog stanno nel body) =====
+   `.field-error`: messaggio di errore sotto un campo o in fondo a un dialog (colore danger, AA su bianco).
+   `.avviso-nota`: avviso non bloccante (es. tracciato non verificato) in riquadro, con bordo sinistro. */
+.field-error {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.4;
+}
+.avviso-nota {
+  margin: var(--spacing-sm) 0 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--stato-warn-edge);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--stato-warn-bg);
+  color: var(--stato-warn-ink);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+/* ===== Tabelle a schede sul telefono =====
+   `styleClass="tabella-schede"` sul p-table e `data-etichetta="..."` su ogni cella con etichetta:
+   sotto i 640px ogni riga diventa una scheda con «etichetta .... valore» (niente scroll
+   orizzontale che nasconde Stato, Totale e l'azione). L'intestazione resta per i lettori di schermo. */
+@media (max-width: 640px) {
+  .tabella-schede .p-datatable-table,
+  .tabella-schede .p-datatable-thead,
+  .tabella-schede .p-datatable-tbody,
+  .tabella-schede .p-datatable-tbody > tr,
+  .tabella-schede .p-datatable-tbody > tr > td {
+    display: block;
+    width: 100%;
+  }
+  .tabella-schede .p-datatable-thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .tabella-schede .p-datatable-tbody > tr {
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--surface-border);
+  }
+  .tabella-schede .p-datatable-tbody > tr > td {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) 0;
+    border: 0;
+    text-align: right;
+    white-space: normal;
+  }
+  .tabella-schede .p-datatable-tbody > tr > td[data-etichetta]::before {
+    content: attr(data-etichetta);
+    flex: none;
+    margin-right: auto;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    text-align: left;
+  }
+  /* cella senza etichetta (selezione, azione): a sinistra la selezione, a destra l'azione */
+  .tabella-schede .p-datatable-tbody > tr > td:not([data-etichetta]):last-child {
+    justify-content: flex-end;
+  }
+  .tabella-schede .p-datatable-tbody > tr > td:not([data-etichetta]):not(:last-child) {
+    justify-content: flex-start;
+  }
+  /* riga vuota: il contenitore del messaggio resta com'era */
+  .tabella-schede
+    .p-datatable-tbody
+    > tr.p-datatable-emptymessage
+    > td:not([data-etichetta]):last-child {
+    display: block;
+    text-align: center;
+  }
+}
+
+/* Schede (p-tabView non scorrevole) sul telefono: la riga delle schede scorre di lato e il bordo
+   destro sfumato dice che c'e' altro. Dove si puo' si usa [scrollable]="true" (frecce). */
+@media (max-width: 576px) {
+  .p-tabview:not(.p-tabview-scrollable) .p-tabview-nav-content {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  }
+  .p-tabview .p-tabview-nav li .p-tabview-nav-link {
+    padding: var(--spacing-md) var(--spacing-base);
+    white-space: nowrap;
+  }
+}

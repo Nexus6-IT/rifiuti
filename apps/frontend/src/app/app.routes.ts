@@ -168,6 +168,11 @@ export const routes: Routes = [
           import('./features/legami/da-collegare.component').then(m => m.DaCollegareComponent),
       },
       {
+        path: 'fatturazione',
+        loadChildren: () =>
+          import('./features/fatturazione/fatturazione.routes').then(m => m.FATTURAZIONE_ROUTES),
+      },
+      {
         path: 'clienti/fatturazione',
         loadComponent: () =>
           import('./features/legami/impostazioni-fatturazione.component').then(

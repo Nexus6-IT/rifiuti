@@ -455,6 +455,103 @@ describe('ElaborazioniService — Postgres reale, ruolo wasteflow_app', () => {
       expect((await bozze(id))[0].escluso).toBe(false)
     })
 
+    it('dettaglio dopo escludi: numerazione prevista ricalcolata sui candidati (1 su 3 escluso: quanti 2, intervallo corrispondente)', async () => {
+      const { az, id } = await pronta()
+      const [base] = await owner.$queryRawUnsafe<{ registro: string; anno: number }[]>(
+        `SELECT registro_iva_id::text AS registro, anno::int AS anno FROM documenti_fattura
+         WHERE elaborazione_id = $1::uuid`,
+        id
+      )
+      // Altre due bozze nello stesso registro: il riepilogo salvato ne conosce una sola.
+      for (let i = 0; i < 2; i++) {
+        await creaDocumentoDiTest(owner, az.tenantId, {
+          stato: 'BOZZA',
+          registroIvaId: base.registro,
+          anno: base.anno,
+          elaborazioneId: id,
+        })
+      }
+      const letta = () =>
+        nel(az.tenantId, () => servizio.dettaglio(az.tenantId, id)).then(d => d.numerazionePrevista)
+      const prima = await letta()
+      expect(prima).toHaveLength(1)
+      expect(prima[0].quanti).toBe(3)
+      const [da] = [prima[0].da]
+      const primo = Number(/^\d+/.exec(da)![0])
+      const suffisso = da.replace(/^\d+/, '')
+      expect(prima[0].a).toBe(`${primo + 2}${suffisso}`)
+
+      const docs = await bozze(id)
+      await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, docs[0].id, true))
+      const dopo = await letta()
+      expect(dopo[0].quanti).toBe(2)
+      expect(dopo[0].da).toBe(da)
+      expect(dopo[0].a).toBe(`${primo + 1}${suffisso}`)
+
+      await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, docs[1].id, true))
+      await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, docs[2].id, true))
+      expect(await letta()).toEqual([])
+    })
+
+    it('dettaglio: se il numero di partenza cambia dopo l’anteprima, da e a seguono il contatore attuale', async () => {
+      const { az, id } = await pronta()
+      const [base] = await owner.$queryRawUnsafe<{ registro: string; anno: number }[]>(
+        `SELECT registro_iva_id::text AS registro, anno::int AS anno FROM documenti_fattura
+         WHERE elaborazione_id = $1::uuid`,
+        id
+      )
+      const letta = () =>
+        nel(az.tenantId, () => servizio.dettaglio(az.tenantId, id)).then(d => d.numerazionePrevista)
+      const prima = await letta()
+      expect(prima).toHaveLength(1)
+      const quanti = prima[0].quanti
+      // Come il PUT del numero di partenza (4.4b1): `ultimo_numero = numero_partenza`.
+      await owner.$executeRawUnsafe(
+        `INSERT INTO numerazioni_fattura (tenant_id, registro_iva_id, anno, ultimo_numero,
+                                          numero_partenza, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::int, 499, 499, now())
+         ON CONFLICT (tenant_id, registro_iva_id, anno)
+         DO UPDATE SET ultimo_numero = 499, numero_partenza = 499`,
+        az.tenantId,
+        base.registro,
+        base.anno
+      )
+      const dopo = await letta()
+      expect(dopo).toHaveLength(1)
+      const suffisso = prima[0].da.replace(/^\d+/, '')
+      expect(dopo[0].da).toBe(`500${suffisso}`)
+      expect(dopo[0].a).toBe(`${499 + quanti}${suffisso}`)
+      expect(dopo[0].quanti).toBe(quanti)
+    })
+
+    it('dettaglio di una DEFINITIVA: la numerazione mostra i numeri davvero assegnati, dai documenti', async () => {
+      const { az, id } = await pronta()
+      const [base] = await owner.$queryRawUnsafe<{ registro: string; anno: number }[]>(
+        `SELECT registro_iva_id::text AS registro, anno::int AS anno FROM documenti_fattura
+         WHERE elaborazione_id = $1::uuid`,
+        id
+      )
+      for (const numero of [7, 8]) {
+        await creaDocumentoDiTest(owner, az.tenantId, {
+          stato: 'DEFINITIVO',
+          registroIvaId: base.registro,
+          anno: base.anno,
+          numero,
+          elaborazioneId: id,
+        })
+      }
+      await owner.$executeRawUnsafe(
+        `UPDATE elaborazioni_fatturazione SET stato = 'DEFINITIVA' WHERE id = $1::uuid`,
+        id
+      )
+      const n = (await nel(az.tenantId, () => servizio.dettaglio(az.tenantId, id)))
+        .numerazionePrevista
+      expect(n).toHaveLength(1)
+      expect(n[0]).toMatchObject({ registroIvaId: base.registro, quanti: 2 })
+      expect(Number(/^\d+/.exec(n[0].da)![0])).toBe(7)
+      expect(Number(/^\d+/.exec(n[0].a)![0])).toBe(8)
+    })
+
     it('escludi su un DEFINITIVO: 409; su un documento di un’altra elaborazione: 404', async () => {
       const { az, c, id } = await pronta()
       const { documentoId } = await creaDocumentoDiTest(owner, az.tenantId, {

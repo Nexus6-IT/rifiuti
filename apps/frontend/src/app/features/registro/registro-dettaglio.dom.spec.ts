@@ -3,6 +3,7 @@ import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { HttpErrorResponse } from '@angular/common/http'
 import { DatePipe } from '@angular/common'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { provideRouter } from '@angular/router'
 import { Observable, of, throwError } from 'rxjs'
 import { RegistroComponent } from './registro.component'
 import { Movimento, RegistroService, RegistroVista } from './registro.service'
@@ -60,7 +61,9 @@ const legame = (parziale: Partial<LegameVista> = {}): LegameVista => ({
   confermatoIl: null,
   fatturatoIl: '2026-11-10T00:00:00.000Z',
   riferimentoFattura: null,
+  documentoId: null,
   scostamentoDopoFattura: true,
+  scostamentoAperto: true,
   scostamentoIl: null,
   versione: 4,
   ...parziale,
@@ -121,6 +124,7 @@ describe('Registro - dettaglio del movimento con il legame', () => {
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         DatePipe,
         { provide: RegistroService, useValue: servizio },
         { provide: LegamiService, useValue: legami },
@@ -164,7 +168,7 @@ describe('Registro - dettaglio del movimento con il legame', () => {
 
   it('VIEWER: vede il riquadro in sola lettura, nessuna rotta di scrittura', fakeAsync(() => {
     ruolo = 'VIEWER'
-    apri(of(legame({ stato: 'PROPOSTO', scostamentoDopoFattura: false })))
+    apri(of(legame({ stato: 'PROPOSTO', scostamentoDopoFattura: false, scostamentoAperto: false })))
     expect(q('riquadro-legame')).not.toBeNull()
     expect(q('riquadro-azioni')).toBeNull()
     expect(document.body.querySelector('#prezzo-ra-1')).toBeNull()

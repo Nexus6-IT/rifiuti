@@ -33,6 +33,8 @@ import { pulisciTenantDiTest } from '../../test-support/legami-di-test'
 import { assicuraCatalogoCer } from '../../test-support/listino-di-test'
 import { DocumentiFatturaService } from './documenti-fattura.service'
 import { XmlDocumentoService } from './xml-documento.service'
+import { MappatureService } from './adattatori/mappature.service'
+import { RegistroAdattatori } from './adattatori/registro-adattatori'
 import { ExportService, TETTO_DOCUMENTI_CSV } from './export.service'
 
 const TABELLE = [
@@ -60,7 +62,9 @@ describe('ExportService — piani con statistiche vecchie', () => {
     new ExportService(
       db,
       new DocumentiFatturaService(db),
-      new XmlDocumentoService(db, new DocumentiFatturaService(db))
+      new XmlDocumentoService(db, new DocumentiFatturaService(db)),
+      new RegistroAdattatori([]),
+      new MappatureService(db, new RegistroAdattatori([]))
     )
   const esporta = (
     s: ExportService,

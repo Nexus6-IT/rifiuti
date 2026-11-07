@@ -95,7 +95,12 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
 
   it('GET senza riga: spenta, versione 0', async () => {
     const { tenantId } = await azienda()
-    expect(await leggi(tenantId)).toEqual({ fatturazioneDa: null, versione: 0, modificatoIl: null })
+    expect(await leggi(tenantId)).toEqual({
+      fatturazioneDa: null,
+      definitiveAttive: false,
+      versione: 0,
+      modificatoIl: null,
+    })
   })
 
   it('prima impostazione (versione 0): 200, versione 1, data AAAA-MM-GG; poi si legge uguale', async () => {
@@ -284,6 +289,7 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
     await imposta(a.tenantId, a.utenteId, { fatturazioneDa: '2026-01-01', versione: 0 })
     expect(await leggi(b.tenantId)).toEqual({
       fatturazioneDa: null,
+      definitiveAttive: false,
       versione: 0,
       modificatoIl: null,
     })
@@ -343,7 +349,12 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
   it('PUT null senza riga: nessuna riga, nessun audit, stato attuale', async () => {
     const { tenantId, utenteId } = await azienda()
     const r = await imposta(tenantId, utenteId, { fatturazioneDa: null, versione: 0 })
-    expect(r).toEqual({ fatturazioneDa: null, versione: 0, modificatoIl: null })
+    expect(r).toEqual({
+      fatturazioneDa: null,
+      definitiveAttive: false,
+      versione: 0,
+      modificatoIl: null,
+    })
     expect(await owner.impostazioneFatturazione.count({ where: { tenantId } })).toBe(0)
     expect(
       await owner.activityLog.count({
@@ -512,4 +523,124 @@ describe('ImpostazioniFatturazioneService — Postgres reale, ruolo wasteflow_ap
       })
     }
   )
+
+  describe('interruttore delle definitive (4.4c, Task 29b)', () => {
+    const definitive = (
+      t: string,
+      u: string,
+      b: Parameters<ImpostazioniFatturazioneService['impostaDefinitive']>[2]
+    ) => nel(t, () => service.impostaDefinitive(t, u, b))
+
+    const lettura = (t: string) =>
+      owner.impostazioneFatturazione.findFirstOrThrow({ where: { tenantId: t } })
+
+    it('accende: definitiveAttive true, versione + 1, audit con prima e dopo', async () => {
+      const { tenantId, utenteId } = await azienda()
+      await imposta(tenantId, utenteId, { fatturazioneDa: '2026-01-01', versione: 0 })
+      const r = await definitive(tenantId, utenteId, { attive: true, versione: 1 })
+      expect(r).toEqual({ definitiveAttive: true, versione: 2 })
+      const riga = await lettura(tenantId)
+      expect(riga.definitiveAttive).toBe(true)
+      expect(riga.modificatoDa).toBe(utenteId)
+      expect(riga.fatturazioneDa?.toISOString().slice(0, 10)).toBe('2026-01-01')
+      const audit = await owner.activityLog.findMany({
+        where: { tenantId, action: 'DEFINITIVE_ATTIVE_MODIFICATE' },
+      })
+      expect(audit).toHaveLength(1)
+      expect(audit[0].userId).toBe(utenteId)
+      expect(audit[0].metadata).toEqual({ precedente: false, nuova: true })
+    })
+
+    it('spegne: definitiveAttive false, versione + 1, audit true -> false', async () => {
+      const { tenantId, utenteId } = await azienda()
+      await imposta(tenantId, utenteId, { fatturazioneDa: '2026-01-01', versione: 0 })
+      await definitive(tenantId, utenteId, { attive: true, versione: 1 })
+      const r = await definitive(tenantId, utenteId, { attive: false, versione: 2 })
+      expect(r).toEqual({ definitiveAttive: false, versione: 3 })
+      expect((await lettura(tenantId)).definitiveAttive).toBe(false)
+      const audit = await owner.activityLog.findMany({
+        where: { tenantId, action: 'DEFINITIVE_ATTIVE_MODIFICATE' },
+        orderBy: { createdAt: 'asc' },
+      })
+      expect(audit.map(a => a.metadata)).toEqual([
+        { precedente: false, nuova: true },
+        { precedente: true, nuova: false },
+      ])
+    })
+
+    it('azienda senza riga: la riga si crea con fatturazione_da nullo', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await definitive(tenantId, utenteId, { attive: true, versione: 0 })
+      expect(r.definitiveAttive).toBe(true)
+      expect(r.versione).toBe(1)
+      const riga = await lettura(tenantId)
+      expect(riga.fatturazioneDa).toBeNull()
+      expect(riga.definitiveAttive).toBe(true)
+    })
+
+    it('azienda senza riga e attive false: nessuna riga, nessun audit', async () => {
+      const { tenantId, utenteId } = await azienda()
+      const r = await definitive(tenantId, utenteId, { attive: false, versione: 0 })
+      expect(r).toEqual({ definitiveAttive: false, versione: 0 })
+      expect(await owner.impostazioneFatturazione.count({ where: { tenantId } })).toBe(0)
+    })
+
+    it('valore invariato: nessuna scrittura, nessun audit, versione uguale', async () => {
+      const { tenantId, utenteId } = await azienda()
+      await imposta(tenantId, utenteId, { fatturazioneDa: '2026-01-01', versione: 0 })
+      const r = await definitive(tenantId, utenteId, { attive: false, versione: 1 })
+      expect(r).toEqual({ definitiveAttive: false, versione: 1 })
+      expect(
+        await owner.activityLog.count({
+          where: { tenantId, action: 'DEFINITIVE_ATTIVE_MODIFICATE' },
+        })
+      ).toBe(0)
+    })
+
+    it('versione vecchia: 409 VERSIONE_SUPERATA, nulla cambia', async () => {
+      const { tenantId, utenteId } = await azienda()
+      await imposta(tenantId, utenteId, { fatturazioneDa: '2026-01-01', versione: 0 })
+      const e: any = await definitive(tenantId, utenteId, { attive: true, versione: 0 }).catch(
+        x => x
+      )
+      expect(e.getStatus()).toBe(409)
+      expect(e.getResponse().error).toBe('VERSIONE_SUPERATA')
+      const senzaRiga = await azienda()
+      const e2: any = await definitive(senzaRiga.tenantId, senzaRiga.utenteId, {
+        attive: true,
+        versione: 4,
+      }).catch(x => x)
+      expect(e2.getResponse().error).toBe('VERSIONE_SUPERATA')
+      expect((await lettura(tenantId)).definitiveAttive).toBe(false)
+    })
+
+    it('GET espone definitiveAttive', async () => {
+      const { tenantId, utenteId } = await azienda()
+      await definitive(tenantId, utenteId, { attive: true, versione: 0 })
+      expect(await leggi(tenantId)).toMatchObject({ definitiveAttive: true, versione: 1 })
+    })
+
+    it('il PUT di fatturazione_da della 4.3 non cambia definitive_attive', async () => {
+      const { tenantId, utenteId } = await azienda()
+      await definitive(tenantId, utenteId, { attive: true, versione: 0 })
+      const r = await imposta(tenantId, utenteId, { fatturazioneDa: '2026-03-01', versione: 1 })
+      expect(r.definitiveAttive).toBe(true)
+      expect((await lettura(tenantId)).definitiveAttive).toBe(true)
+      await imposta(tenantId, utenteId, { fatturazioneDa: null, versione: 2 })
+      expect((await lettura(tenantId)).definitiveAttive).toBe(true)
+    })
+
+    it('RLS: l’azienda B non vede né cambia l’interruttore di A', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      await definitive(a.tenantId, a.utenteId, { attive: true, versione: 0 })
+      expect((await leggi(b.tenantId)).definitiveAttive).toBe(false)
+      // Con il contesto di B e la versione di A non si tocca la riga di A: B non ha riga.
+      const e: any = await definitive(b.tenantId, b.utenteId, { attive: true, versione: 1 }).catch(
+        x => x
+      )
+      expect(e.getResponse().error).toBe('VERSIONE_SUPERATA')
+      expect((await lettura(a.tenantId)).versione).toBe(1)
+    })
+  })
 })

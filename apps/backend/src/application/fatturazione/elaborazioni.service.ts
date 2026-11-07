@@ -38,7 +38,19 @@ import {
   type SegnalazioneVista,
 } from './documenti-fattura.service'
 import { bloccaElaborazione } from './lock-fatturazione'
-import { eDataIso, oggiRoma } from './numerazione'
+import {
+  conQuantiSalvati,
+  numerazioneAllaLettura,
+  type NumerazioneCorrente,
+  type VoceNumerazionePrevista,
+} from './numerazione-prevista'
+import {
+  chiaveNumerazione,
+  eDataIso,
+  leggiNumerazioniSenzaLock,
+  oggiRoma,
+  suffissiDelleSerie,
+} from './numerazione'
 import { eViolazioneUnica, segnaFallita, type RiepilogoElaborazione } from './anteprima'
 import {
   definitiveAttive,
@@ -100,8 +112,8 @@ export interface ElaborazioneDettaglio extends ElaborazioneRiga {
   versione: number
   definitiveAttive: boolean
   erroriGenerali: SegnalazioneVista[]
-  erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
-  numerazionePrevista: RiepilogoElaborazione['numerazionePrevista']
+  erroriPeriodo: RiepilogoElaborazione['erroriPeriodo']
+  numerazionePrevista: VoceNumerazionePrevista[]
   totaliPerRegistro: RiepilogoElaborazione['totaliPerRegistro']
   documentiNonGenerati: {
     contrattoId: string
@@ -343,6 +355,64 @@ export class ElaborazioniService {
           SELECT definitive_attive AS attive FROM impostazioni_fatturazione
           WHERE tenant_id = ${tenantId}::uuid`
         const p = r.riepilogo ?? {}
+        const salvata = p.numerazionePrevista ?? []
+        // Il riepilogo e' scritto al calcolo e `escludi` non lo riscrive: finche' le bozze esistono
+        // i numeri si ricalcolano con i candidati della definitiva (stesso predicato di
+        // `leggiCandidati`, `definitiva.ts`).
+        let numerazionePrevista: VoceNumerazionePrevista[]
+        if (r.stato === 'ANTEPRIMA_PRONTA' || r.stato === 'IN_DEFINITIVA') {
+          const conteggi = await tx.$queryRaw<{ registroIvaId: string; quanti: number }[]>`
+            SELECT registro_iva_id::text AS "registroIvaId", count(*)::int AS quanti
+            FROM documenti_fattura
+            WHERE tenant_id = ${tenantId}::uuid AND elaborazione_id = ${id}::uuid
+              AND stato = 'BOZZA' AND NOT escluso_da_definitiva AND cardinality(errori) = 0
+            GROUP BY registro_iva_id`
+          // Contatore e suffisso attuali, in sola lettura e senza lock (S5): le stesse funzioni
+          // della numerazione della definitiva (`riservaNumeri`), cosi' `da` non resta quello
+          // salvato al calcolo se nel frattempo e' cambiato il numero di partenza.
+          const anno = Number(r.dataDocumento.slice(0, 4))
+          const coppie = conteggi.map(c => ({ registroIvaId: c.registroIvaId, anno }))
+          const contatori = await leggiNumerazioniSenzaLock(tx, tenantId, coppie)
+          const suffissi = await suffissiDelleSerie(tx, tenantId, coppie)
+          const corrente = new Map<string, NumerazioneCorrente>()
+          for (const { registroIvaId } of coppie) {
+            const chiave = chiaveNumerazione(registroIvaId, anno)
+            corrente.set(registroIvaId, {
+              ultimoNumero: contatori.get(chiave)?.ultimoNumero ?? 0,
+              suffisso: suffissi.get(chiave) ?? null,
+            })
+          }
+          numerazionePrevista = numerazioneAllaLettura(
+            salvata,
+            new Map(conteggi.map(c => [c.registroIvaId, c.quanti])),
+            corrente
+          )
+        } else if (r.stato === 'DEFINITIVA') {
+          // Dopo la definitiva si mostrano i numeri davvero assegnati, non quelli previsti al
+          // calcolo (esclusi, contatore cambiato nel frattempo): dai documenti stessi.
+          const reali = await tx.$queryRaw<
+            {
+              registroIvaId: string
+              codiceRegistro: string
+              quanti: number
+              da: string
+              a: string
+            }[]
+          >`
+            SELECT d.registro_iva_id::text AS "registroIvaId", ri.codice AS "codiceRegistro",
+                   count(*)::int AS quanti,
+                   (array_agg(d.numero_testo ORDER BY d.numero))[1] AS da,
+                   (array_agg(d.numero_testo ORDER BY d.numero DESC))[1] AS a
+            FROM documenti_fattura d
+            JOIN registri_iva ri ON ri.id = d.registro_iva_id AND ri.tenant_id = d.tenant_id
+            WHERE d.tenant_id = ${tenantId}::uuid AND d.elaborazione_id = ${id}::uuid
+              AND d.numero IS NOT NULL AND d.numero_testo IS NOT NULL
+            GROUP BY d.registro_iva_id, ri.codice
+            ORDER BY ri.codice, d.registro_iva_id`
+          numerazionePrevista = reali.length > 0 ? reali : conQuantiSalvati(salvata)
+        } else {
+          numerazionePrevista = conQuantiSalvati(salvata)
+        }
         return {
           ...riga(r),
           raggruppamento: r.raggruppamento,
@@ -357,7 +427,7 @@ export class ElaborazioniService {
             r.erroriGenerali.map(codice => ({ codice: codice as ErroreGenerale }))
           ).map(vistaErrore),
           erroriPeriodo: p.erroriPeriodo ?? [],
-          numerazionePrevista: p.numerazionePrevista ?? [],
+          numerazionePrevista,
           totaliPerRegistro: p.totaliPerRegistro ?? [],
           documentiNonGenerati: (p.documentiNonGenerati ?? []).map(d => ({
             ...d,

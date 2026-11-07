@@ -31,6 +31,11 @@ describe('ImpostazioniFatturazioneService — validazione', () => {
     await expect(
       // nelContestoTenant richiede il TenantContext: se fallisce qui il test lo dira'
       service.leggi('t')
-    ).resolves.toEqual({ fatturazioneDa: null, versione: 0, modificatoIl: null })
+    ).resolves.toEqual({
+      fatturazioneDa: null,
+      definitiveAttive: false,
+      versione: 0,
+      modificatoIl: null,
+    })
   })
 })

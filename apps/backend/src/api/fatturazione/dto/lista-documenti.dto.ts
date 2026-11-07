@@ -31,6 +31,11 @@ export class ListaDocumentiQueryDto extends PaginaQueryDto {
   @IsUUID()
   clienteId?: string
 
+  @ApiPropertyOptional({ description: 'Solo i documenti generati da questa elaborazione' })
+  @IsOptional()
+  @IsUUID()
+  elaborazioneId?: string
+
   @ApiPropertyOptional({ example: '2026-01-01' })
   @IsOptional()
   @Matches(DATA_ISO, { message: 'dataDa: data nel formato AAAA-MM-GG.' })

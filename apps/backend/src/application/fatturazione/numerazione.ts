@@ -166,6 +166,41 @@ export async function bloccaNumerazioni(
 }
 
 /**
+ * Stato delle coppie (registro, anno) in SOLA LETTURA e senza lock: per la numerazione prevista
+ * che il dettaglio mostra prima della definitiva. Una coppia senza riga non compare nella mappa
+ * (equivale a «nessun numero ancora assegnato»). `ultimoNumero` e' il contatore attuale, che il
+ * numero di partenza imposta (`ultimo_numero = numero_partenza`): la definitiva parte da li'.
+ */
+export async function leggiNumerazioniSenzaLock(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  coppie: readonly CoppiaNumerazione[]
+): Promise<Map<string, StatoNumerazione>> {
+  const ordinate = coppieOrdinate(coppie)
+  const stato = new Map<string, StatoNumerazione>()
+  if (ordinate.length === 0) return stato
+  const registri = ordinate.map(c => c.registroIvaId)
+  const anni = ordinate.map(c => c.anno)
+  const righe = await tx.$queryRaw<RigaNumerazione[]>`
+    SELECT n.registro_iva_id::text AS "registroIvaId", n.anno::int AS anno,
+           n.ultimo_numero AS "ultimoNumero", n.ultima_data::text AS "ultimaData",
+           n.numero_partenza AS "numeroPartenza", n.data_partenza::text AS "dataPartenza"
+    FROM "numerazioni_fattura" n
+    JOIN unnest(${registri}::uuid[], ${anni}::int[]) AS c(registro_iva_id, anno)
+      ON n.registro_iva_id = c.registro_iva_id AND n.anno = c.anno
+    WHERE n.tenant_id = ${tenantId}::uuid`
+  for (const r of righe) {
+    stato.set(chiaveNumerazione(r.registroIvaId, r.anno), {
+      ultimoNumero: r.ultimoNumero,
+      ultimaData: r.ultimaData,
+      numeroPartenza: r.numeroPartenza,
+      dataPartenza: r.dataPartenza,
+    })
+  }
+  return stato
+}
+
+/**
  * Suffisso di ciascuna serie (decisione 20, Q8), per chiave `chiaveNumerazione`. SOLA LETTURA.
  * Una serie (registro, anno) che ha gia' almeno un `DEFINITIVO` prende il suffisso di quello col
  * numero piu' alto, ricavato da `numero_testo` togliendo il prefisso `numero::text`

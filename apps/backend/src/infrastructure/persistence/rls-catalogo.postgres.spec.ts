@@ -64,9 +64,11 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // 67 dalla fase 4.3: le tre tabelle dei legami (`legami_movimento`, `righe_legame_movimento`,
     // `impostazioni_fatturazione`) sono provate per nome in
     // `application/legami-movimento/legami-movimento.schema.postgres.spec.ts`.
+    // 77 dalla 4.4c (Task 29): `mappature_export_contabile`, provata per nome in
+    // `application/fatturazione/adattatori/mappature.service.postgres.spec.ts`.
     // 76 dalla fase 4.4a: le nove tabelle della fatturazione per periodo sono provate per nome in
     // `application/fatturazione/fatturazione.schema.postgres.spec.ts`.
-    expect(righe.length).toBe(76)
+    expect(righe.length).toBe(77)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,

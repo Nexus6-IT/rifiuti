@@ -238,6 +238,30 @@ export const ERRORI_HTTP_VOCI = {
     'errore'
   ),
   ADATTATORE_SCONOSCIUTO: v('Il gestionale scelto non è tra quelli disponibili.', 'errore'),
+  // Export con un adattatore (Task 29/30): 400 del tracciato e della selezione.
+  EXPORT_TEAMSYSTEM_NON_GENERABILE: v(
+    'Il tracciato TeamSystem non si può generare con i dati o le mappature attuali: controlla le mappature.',
+    'errore'
+  ),
+  EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA: v(
+    'Il tracciato TeamSystem non gestisce ancora i clienti esteri.',
+    'errore'
+  ),
+  ADATTATORE_NON_A_FILE: v(
+    "Questo gestionale non produce un file: l'invio non è ancora disponibile.",
+    'errore'
+  ),
+  NESSUN_DOCUMENTO_DA_ESPORTARE: v(
+    'Nessun documento della selezione si può esportare: sono tutti annullati.',
+    'errore'
+  ),
+  // Task 29/35: 400 delle mappature dell'export contabile.
+  TROPPE_VOCI: v('Le mappature da salvare sono troppe in una volta: salvale a gruppi.', 'errore'),
+  VOCI_NON_VALIDE: v(
+    'Una mappatura non è valida: la chiave arriva a 100 caratteri e il valore a 50.',
+    'errore'
+  ),
+  VOCI_DUPLICATE: v('La stessa mappatura è indicata più volte.', 'errore'),
   // Task 25a (m4, m7): 400 dei servizi (difesa dietro ai DTO, tranne motivo e nota) e 404.
   MOTIVO_NON_VALIDO: v('Il motivo è obbligatorio e al massimo di 200 caratteri.', 'errore'),
   VERSIONE_NON_VALIDA: v('La versione indicata non è valida: ricarica la pagina.', 'errore'),
@@ -296,6 +320,13 @@ export const TIPI_RIGA_VOCI: Readonly<Record<string, VoceVocabolario>> = {
   QUANTITA_MOVIMENTI: v('Quantità dei movimenti', 'info'),
 }
 
+/** Tipi di documento SDI emessi dalla fatturazione. */
+export const TIPI_DOCUMENTO_VOCI: Readonly<Record<string, VoceVocabolario>> = {
+  TD01: v('Fattura', 'info'),
+  TD04: v('Nota di credito', 'info'),
+  TD24: v('Fattura differita', 'info'),
+}
+
 export const TIPI_CORREZIONE_VOCI = {
   RETTIFICA: v('Rettifica', 'avviso'),
   ANNULLO: v('Annullo', 'avviso'),
@@ -303,12 +334,39 @@ export const TIPI_CORREZIONE_VOCI = {
   CAMBIO_CAUSALE: v('Cambio di causale', 'avviso'),
 } as const
 
+/**
+ * Motivi di `erroriPeriodo` che il backend emette: gli stati della lista «da collegare» dei
+ * movimenti del periodo (`selezione-fatturazione.ts`). Gli altri motivi sono testi già pronti
+ * (periodo ambiguo) e si mostrano com'e'.
+ */
+export const MOTIVI_DA_COLLEGARE = [
+  'DA_RIALLINEARE',
+  'PROPOSTO',
+  'DA_COLLEGARE',
+  'MANCANTE',
+] as const
+export type MotivoDaCollegare = (typeof MOTIVI_DA_COLLEGARE)[number]
+
+export const MOTIVI_PERIODO_VOCI: Readonly<Record<MotivoDaCollegare, VoceVocabolario>> = {
+  DA_RIALLINEARE: v(
+    'Movimenti da riallineare: il movimento è cambiato dopo il collegamento',
+    'errore'
+  ),
+  PROPOSTO: v('Movimenti con un legame solo proposto: confermalo', 'errore'),
+  DA_COLLEGARE: v('Movimenti da collegare a un contratto', 'errore'),
+  MANCANTE: v('Movimenti senza legame', 'errore'),
+}
+
+export const eMotivoDaCollegare = (m: string): m is MotivoDaCollegare =>
+  (MOTIVI_DA_COLLEGARE as readonly string[]).includes(m)
+
 const TUTTE_LE_SEGNALAZIONI: Readonly<Record<string, VoceVocabolario>> = {
   ...ERRORI_HTTP_VOCI,
   ...ERRORI_GENERALI_VOCI,
   ...ERRORI_DOCUMENTO_VOCI,
   ...AVVISI_DOCUMENTO_VOCI,
   ...ESITI_PROPRI,
+  ...MOTIVI_PERIODO_VOCI,
 }
 
 /**

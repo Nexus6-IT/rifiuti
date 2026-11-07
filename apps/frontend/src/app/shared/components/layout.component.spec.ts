@@ -88,6 +88,39 @@ describe('LayoutComponent: voce di menu Clienti', () => {
   })
 })
 
+describe('LayoutComponent: voce di menu «Fatture per periodo»', () => {
+  it('porta a /fatturazione, accanto a «Da collegare», gated dalla feature contratti', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const nav = TestBed.createComponent(LayoutComponent).componentInstance.navMain
+    const i = nav.findIndex(v => v.route === '/fatturazione')
+    expect(i).toBeGreaterThan(-1)
+    expect(nav[i]).toEqual(
+      jasmine.objectContaining({ label: 'Fatture per periodo', feature: 'contratti' })
+    )
+    expect(nav[i - 1].route).toBe('/legami/da-collegare')
+  })
+
+  it('«Scostamenti» ed «Export contabile» stanno con le altre voci di fatturazione, prima di «Fatturazione da»', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const rotte = TestBed.createComponent(LayoutComponent).componentInstance.navMain.map(
+      v => v.route
+    )
+    const i = rotte.indexOf('/fatturazione/documenti')
+    expect(rotte.slice(i, i + 4)).toEqual([
+      '/fatturazione/documenti',
+      '/fatturazione/scostamenti',
+      '/fatturazione/export-contabile',
+      '/clienti/fatturazione',
+    ])
+  })
+})
+
 describe('LayoutComponent: voce di menu «Da collegare»', () => {
   async function crea(contatori: unknown): Promise<HTMLElement> {
     // Come il servizio vero: `aggiornaContatori` rilegge e scrive il signal (0 se fallisce).

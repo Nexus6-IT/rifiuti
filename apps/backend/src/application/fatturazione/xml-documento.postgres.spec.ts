@@ -31,6 +31,8 @@ import type { AziendaT18 } from '../../test-support/fatturazione-t18-di-test'
 import { esitoHttp as esito } from '../../test-support/fatturazione-t19-di-test'
 import { pulisciTenantDiTest } from '../../test-support/legami-di-test'
 import { DocumentiFatturaService } from './documenti-fattura.service'
+import { MappatureService } from './adattatori/mappature.service'
+import { RegistroAdattatori } from './adattatori/registro-adattatori'
 import { ExportService } from './export.service'
 import { XmlDocumentoService } from './xml-documento.service'
 
@@ -55,7 +57,13 @@ describe('XmlDocumentoService — Postgres reale, ruolo wasteflow_app', () => {
     b.servizio.orologio = () => new Date('2026-05-01T10:00:00Z')
     const documenti = new DocumentiFatturaService(app)
     xml = new XmlDocumentoService(app, documenti)
-    esportatore = new ExportService(app, documenti, xml)
+    esportatore = new ExportService(
+      app,
+      documenti,
+      xml,
+      new RegistroAdattatori([]),
+      new MappatureService(app, new RegistroAdattatori([]))
+    )
   })
   afterEach(() => jest.restoreAllMocks())
   afterAll(async () => {

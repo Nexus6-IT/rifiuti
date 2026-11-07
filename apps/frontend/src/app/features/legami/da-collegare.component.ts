@@ -46,6 +46,18 @@ export const LUNGHEZZA_MAX_MOTIVO = 200
 /** Stati che si possono scegliere nel filtro (gli altri non compaiono mai nella lista). */
 const STATI_FILTRO: StatoLista[] = ['MANCANTE', 'DA_COLLEGARE', 'PROPOSTO', 'DA_RIALLINEARE']
 
+/** `AAAA-MM-GG` che esiste nel calendario. */
+function eGiornoIso(v: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)
+  if (!m) return false
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  return (
+    d.getUTCFullYear() === Number(m[1]) &&
+    d.getUTCMonth() === Number(m[2]) - 1 &&
+    d.getUTCDate() === Number(m[3])
+  )
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const plurale = (n: number, uno: string, molti: string): string => `${n} ${n === 1 ? uno : molti}`
@@ -583,6 +595,15 @@ export class DaCollegareComponent implements OnInit {
     }
     this.clienteId = param('clienteId') ?? this.clienteId
     this.contrattoId = param('contrattoId')
+    // `?dal=`, `?al=` (AAAA-MM-GG esistenti) e `?stato=` (uno di quelli del filtro): il resto si ignora.
+    const giorno = (nome: string): string | null => {
+      const v = this.route?.snapshot?.queryParamMap?.get(nome) ?? null
+      return v !== null && eGiornoIso(v) ? v : null
+    }
+    this.dal = giorno('dal') ?? this.dal
+    this.al = giorno('al') ?? this.al
+    const stato = this.route?.snapshot?.queryParamMap?.get('stato') ?? null
+    this.stato = STATI_FILTRO.find(s => s === stato) ?? this.stato
     this.carica()
     // I menu dei filtri sono un di più: se non si caricano la lista funziona lo stesso.
     this.ricercaClienti

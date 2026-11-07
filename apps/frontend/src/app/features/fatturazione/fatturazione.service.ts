@@ -3,16 +3,20 @@ import { Injectable, inject } from '@angular/core'
 import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import {
+  AdattatoreVista,
   DocumentoDettaglio,
   DocumentoRiga,
   ElaborazioneDettaglio,
+  ChiaveMancante,
   ElaborazioneRiga,
+  MappaturaVista,
   NuovaElaborazione,
   Pagina,
   ScostamentoRiga,
   SelezioneExport,
   StatoDocumento,
   StatoElaborazione,
+  VoceMappatura,
 } from './fatturazione.model'
 
 export const DIMENSIONE_PREDEFINITA = 50
@@ -41,18 +45,13 @@ export interface ParametriDocumenti extends ParametriPagina {
   clienteId?: string
   dataDa?: string
   dataA?: string
+  elaborazioneId?: string
 }
 
 export interface ParametriScostamenti extends ParametriPagina {
   clienteId?: string
 }
 
-/**
- * Servizio HTTP della fatturazione per periodo (4.4b), una funzione per rotta del §11 della spec
- * (mappature e credenziali sono della 4.4c/d). Separato da `ImpostazioniFatturazione44Service`.
- * `confermaEmissione` è sempre un parametro esplicito: il servizio non lo mette mai a `true`
- * da solo (Q28).
- */
 /** File scaricato: nome da `Content-Disposition`, `saltati` da `X-Documenti-Saltati` (XML_ZIP). */
 export interface FileScaricato {
   blob: Blob
@@ -84,6 +83,12 @@ function daRisposta(r: HttpResponse<Blob>): FileScaricato {
   }
 }
 
+/**
+ * Servizio HTTP della fatturazione per periodo (4.4b), una funzione per rotta del §11 della spec
+ * (mappature e credenziali sono della 4.4c/d). Separato da `ImpostazioniFatturazione44Service`.
+ * `confermaEmissione` è sempre un parametro esplicito: il servizio non lo mette mai a `true`
+ * da solo (Q28).
+ */
 @Injectable({ providedIn: 'root' })
 export class FatturazioneService {
   private readonly http = inject(HttpClient)
@@ -91,6 +96,7 @@ export class FatturazioneService {
   private readonly urlDocumenti = `${environment.apiUrl}/documenti-fattura`
   private readonly urlScostamenti = `${environment.apiUrl}/scostamenti-fattura`
   private readonly urlLegami = `${environment.apiUrl}/legami-movimento`
+  private readonly urlExportContabile = `${environment.apiUrl}/export-contabile`
 
   private elaborazione(id: string): string {
     return `${this.urlElaborazioni}/${encodeURIComponent(id)}`
@@ -169,6 +175,7 @@ export class FatturazioneService {
           clienteId: opzioni.clienteId,
           dataDa: opzioni.dataDa,
           dataA: opzioni.dataA,
+          elaborazioneId: opzioni.elaborazioneId,
         },
         opzioni
       ),
@@ -209,9 +216,11 @@ export class FatturazioneService {
       .pipe(map(daRisposta))
   }
 
-  /** Copia di cortesia: non cambia lo stato. */
-  pdf(id: string): Observable<Blob> {
-    return this.http.get(`${this.urlDocumento(id)}/pdf`, { responseType: 'blob' })
+  /** Copia di cortesia come file (nome da `Content-Disposition`), stesso schema di `scaricaXml`. */
+  scaricaPdf(id: string): Observable<FileScaricato> {
+    return this.http
+      .get(`${this.urlDocumento(id)}/pdf`, { responseType: 'blob', observe: 'response' })
+      .pipe(map(daRisposta))
   }
 
   /**
@@ -230,6 +239,35 @@ export class FatturazioneService {
         { responseType: 'blob', observe: 'response' }
       )
       .pipe(map(daRisposta))
+  }
+
+  // --- Export contabile (solo ADMIN e SUPER_ADMIN) -------------------------------------------
+
+  /** Gestionali disponibili; vuoto se nessun adattatore è registrato. */
+  adattatori(): Observable<AdattatoreVista[]> {
+    return this.http.get<AdattatoreVista[]>(`${this.urlExportContabile}/adattatori`)
+  }
+
+  mappature(adattatore: string): Observable<MappaturaVista[]> {
+    return this.http.get<MappaturaVista[]>(
+      `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mappature`
+    )
+  }
+
+  /** Chiavi ancora da mappare per i documenti scelti (stessa selezione dell'export). */
+  chiaviMancanti(adattatore: string, selezione: SelezioneExport): Observable<ChiaveMancante[]> {
+    return this.http.post<ChiaveMancante[]>(
+      `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mancanti`,
+      selezione
+    )
+  }
+
+  /** Scrive le voci in un solo `PUT` (`valore: null` cancella) e restituisce le mappature aggiornate. */
+  salvaMappature(adattatore: string, voci: VoceMappatura[]): Observable<MappaturaVista[]> {
+    return this.http.put<MappaturaVista[]>(
+      `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mappature`,
+      { voci }
+    )
   }
 
   // --- Scostamenti --------------------------------------------------------------------------

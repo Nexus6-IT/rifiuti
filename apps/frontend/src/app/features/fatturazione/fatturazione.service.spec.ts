@@ -219,12 +219,17 @@ describe('FatturazioneService', () => {
     req.flush(new Blob())
   })
 
-  it('pdf: GET /:id/pdf, risposta blob', () => {
-    servizio.pdf('d1').subscribe()
+  it('scaricaPdf: GET /:id/pdf, blob con nome da Content-Disposition (stesso schema di scaricaXml)', () => {
+    let esito: FileScaricato | undefined
+    servizio.scaricaPdf('d1').subscribe(r => (esito = r))
     const req = http.expectOne(`${doc}/d1/pdf`)
     expect(req.request.method).toBe('GET')
     expect(req.request.responseType).toBe('blob')
-    req.flush(new Blob())
+    req.flush(new Blob(['%PDF']), {
+      headers: { 'Content-Disposition': 'attachment; filename="fattura-1-A.pdf"' },
+    })
+    expect(esito).toEqual(jasmine.objectContaining({ nomeFile: 'fattura-1-A.pdf', saltati: 0 }))
+    expect(esito?.blob.size).toBe(4)
   })
 
   it('esporta(XML_ZIP, s, true) manda confermaEmissione: true e la selezione', () => {
@@ -287,5 +292,39 @@ describe('FatturazioneService', () => {
     expect(req.request.method).toBe('POST')
     expect(req.request.body).toEqual({ nota: 'Visto con il cliente', versione: 7 })
     req.flush(null)
+  })
+
+  it('adattatori: GET /export-contabile/adattatori', () => {
+    servizio.adattatori().subscribe()
+    const req = http.expectOne(`${api}/export-contabile/adattatori`)
+    expect(req.request.method).toBe('GET')
+    req.flush([])
+  })
+
+  it('mappature: GET /export-contabile/:adattatore/mappature', () => {
+    servizio.mappature('TEAMSYSTEM').subscribe()
+    const req = http.expectOne(`${api}/export-contabile/TEAMSYSTEM/mappature`)
+    expect(req.request.method).toBe('GET')
+    req.flush([])
+  })
+
+  it('salvaMappature: PUT con { voci } in un’unica richiesta, null per cancellare', () => {
+    const voci = [
+      { tipo: 'CODICE_IVA' as const, chiaveWasteflow: '22', valore: 'A22', versione: 2 },
+      { tipo: 'CLIENTE' as const, chiaveWasteflow: 'C1', valore: null, versione: null },
+    ]
+    servizio.salvaMappature('TEAM SYSTEM', voci).subscribe()
+    const req = http.expectOne(`${api}/export-contabile/TEAM%20SYSTEM/mappature`)
+    expect(req.request.method).toBe('PUT')
+    expect(req.request.body).toEqual({ voci })
+    req.flush([])
+  })
+
+  it('chiaviMancanti: POST /export-contabile/:adattatore/mancanti con la selezione', () => {
+    servizio.chiaviMancanti('TEAMSYSTEM', { anno: 2026, documentoIds: ['d1'] }).subscribe()
+    const req = http.expectOne(`${api}/export-contabile/TEAMSYSTEM/mancanti`)
+    expect(req.request.method).toBe('POST')
+    expect(req.request.body).toEqual({ anno: 2026, documentoIds: ['d1'] })
+    req.flush([])
   })
 })

@@ -41,6 +41,7 @@ import {
   statoDopoRicalcolo,
   transizioneEscludi,
 } from '../../domain/legami-movimento/stato-legame'
+import { condizioneScostamentoAperto } from './scostamento-aperto'
 import { avvisiDaRighe, motiviRighe } from '../../domain/legami-movimento/valori-legame'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
@@ -134,7 +135,11 @@ export interface LegameVista {
   confermatoIl: string | null
   fatturatoIl: string | null
   riferimentoFattura: string | null
+  /** Documento che ha fatturato il legame; null se non e' FATTURATO. */
+  documentoId: string | null
   scostamentoDopoFattura: boolean
+  /** Scostamento da gestire: stessa condizione della lista degli scostamenti. */
+  scostamentoAperto: boolean
   scostamentoIl: string | null
   versione: number
 }
@@ -159,7 +164,9 @@ interface Testata {
   confermatoDa: string | null
   fatturatoIl: Date | null
   riferimentoFattura: string | null
+  documentoId: string | null
   scostamentoDopoFattura: boolean
+  scostamentoAperto: boolean
   scostamentoIl: Date | null
   versione: number
 }
@@ -1360,7 +1367,10 @@ async function leggiTestata(
            l.motivi AS motivi, l.avvisi AS avvisi, l.motivo_esclusione AS "motivoEsclusione",
            l.confermato_il AS "confermatoIl", l.confermato_da::text AS "confermatoDa",
            l.fatturato_il AS "fatturatoIl", l.riferimento_fattura AS "riferimentoFattura",
+           l.documento_id::text AS "documentoId",
            l.scostamento_dopo_fattura AS "scostamentoDopoFattura",
+           (l.stato = 'FATTURATO'::stato_legame_movimento
+            AND ${condizioneScostamentoAperto('l')}) AS "scostamentoAperto",
            l.scostamento_il AS "scostamentoIl", l.versione AS versione
     FROM legami_movimento l
     WHERE l.tenant_id = ${tenantId}::uuid AND l.id = ${id}::uuid`
@@ -1457,7 +1467,9 @@ async function costruisciVista(
     confermatoIl: iso(l.confermatoIl),
     fatturatoIl: iso(l.fatturatoIl),
     riferimentoFattura: l.riferimentoFattura,
+    documentoId: l.documentoId,
     scostamentoDopoFattura: l.scostamentoDopoFattura,
+    scostamentoAperto: l.scostamentoAperto,
     scostamentoIl: iso(l.scostamentoIl),
     versione: l.versione,
   }

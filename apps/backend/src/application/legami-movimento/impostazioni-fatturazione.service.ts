@@ -22,8 +22,20 @@ import { sqlGiornoMovimento } from './giorno-movimento'
 export interface ImpostazioneFatturazioneVista {
   /** `AAAA-MM-GG` o null (fatturazione spenta). */
   fatturazioneDa: string | null
+  /** Interruttore delle definitive (4.4c, decisione 13): sola lettura qui, si cambia con `impostaDefinitive`. */
+  definitiveAttive: boolean
   versione: number
   modificatoIl: string | null
+}
+
+export interface DatiDefinitive {
+  attive: boolean
+  versione: number
+}
+
+export interface EsitoDefinitive {
+  definitiveAttive: boolean
+  versione: number
 }
 
 export interface DatiImpostazioneFatturazione {
@@ -83,7 +95,9 @@ export class ImpostazioniFatturazioneService {
   async leggi(tenantId: string): Promise<ImpostazioneFatturazioneVista> {
     return nelContestoTenant(tenantId, async () => {
       const riga = await this.prisma.impostazioneFatturazione.findFirst({ where: { tenantId } })
-      if (!riga) return { fatturazioneDa: null, versione: 0, modificatoIl: null }
+      if (!riga) {
+        return { fatturazioneDa: null, definitiveAttive: false, versione: 0, modificatoIl: null }
+      }
       return vista(riga)
     })
   }
@@ -128,7 +142,12 @@ export class ImpostazioniFatturazioneService {
           const prima = attuale?.da ?? null
           // Nessun cambio (o spenta senza riga): niente scrittura, niente audit, stato attuale.
           if (!attuale && dati.fatturazioneDa === null) {
-            return { fatturazioneDa: null, versione: 0, modificatoIl: null }
+            return {
+              fatturazioneDa: null,
+              definitiveAttive: false,
+              versione: 0,
+              modificatoIl: null,
+            }
           }
           if (attuale && prima === dati.fatturazioneDa) {
             const letta = await tx.impostazioneFatturazione.findFirst({ where: { tenantId } })
@@ -183,6 +202,65 @@ export class ImpostazioniFatturazioneService {
         })
     )
   }
+
+  /**
+   * Interruttore delle definitive (4.4c, decisione 13, scansione P34). Stesso lock ottimistico di
+   * `imposta` (riga `FOR UPDATE` + versione). Nessun cambio di valore (o spenta senza riga):
+   * niente scrittura, niente audit, versione invariata. Azienda senza riga: la riga si crea con
+   * `fatturazione_da` nullo. L'audit porta solo il valore prima e dopo.
+   */
+  async impostaDefinitive(
+    tenantId: string,
+    utenteId: string,
+    dati: DatiDefinitive
+  ): Promise<EsitoDefinitive> {
+    return nelContestoTenant(tenantId, () =>
+      this.prisma
+        .$transaction(async tx => {
+          await impostaTimeoutLock(tx)
+          const righe = await tx.$queryRaw<{ id: string; attive: boolean; versione: number }[]>`
+            SELECT id, definitive_attive AS attive, versione
+            FROM "impostazioni_fatturazione"
+            WHERE tenant_id = ${tenantId}::uuid FOR UPDATE`
+          const attuale = righe[0]
+          if ((attuale?.versione ?? 0) !== dati.versione) throw versioneSuperata()
+
+          const prima = attuale?.attive ?? false
+          if (prima === dati.attive) {
+            return { definitiveAttive: prima, versione: attuale?.versione ?? 0 }
+          }
+
+          const scritta = attuale
+            ? await tx.impostazioneFatturazione.update({
+                where: { id: attuale.id },
+                data: {
+                  definitiveAttive: dati.attive,
+                  versione: { increment: 1 },
+                  modificatoDa: utenteId,
+                },
+              })
+            : await tx.impostazioneFatturazione.create({
+                data: { tenantId, definitiveAttive: dati.attive, modificatoDa: utenteId },
+              })
+          await tx.activityLog.create({
+            data: {
+              tenantId,
+              userId: utenteId,
+              action: 'DEFINITIVE_ATTIVE_MODIFICATE',
+              description: 'Interruttore delle definitive modificato',
+              metadata: { precedente: prima, nuova: dati.attive } as Prisma.InputJsonValue,
+            },
+          })
+          return { definitiveAttive: scritta.definitiveAttive, versione: scritta.versione }
+        }, OPZIONI_TRANSAZIONE_SCRITTURA)
+        .catch(err => {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            throw versioneSuperata()
+          }
+          return traduciErrorePrisma(err, ENTITA, {})
+        })
+    )
+  }
 }
 
 function giorno(d: Date | null): string | null {
@@ -191,11 +269,13 @@ function giorno(d: Date | null): string | null {
 
 function vista(r: {
   fatturazioneDa: Date | null
+  definitiveAttive: boolean
   versione: number
   updatedAt: Date
 }): ImpostazioneFatturazioneVista {
   return {
     fatturazioneDa: giorno(r.fatturazioneDa),
+    definitiveAttive: r.definitiveAttive,
     versione: r.versione,
     modificatoIl: r.updatedAt.toISOString(),
   }

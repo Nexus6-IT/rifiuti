@@ -375,6 +375,44 @@ documenti non in bozza: il trigger li protegge anche dalla cascata. Nei test si 
 `pulisciTenantDiTest` (`SET LOCAL session_replication_role = replica`, serve un superuser: e' il
 proprietario del database di test).
 
+### 4.4c mappature dell'export contabile e indice degli scostamenti: rilascio e rollback
+
+Migration `20261107100000_fatturazione_mappature`, additiva: una tabella nuova e vuota
+(`mappature_export_contabile`, RLS `ENABLE` + `FORCE`, unico per azienda + adattatore + tipo +
+chiave) e un indice parziale su `legami_movimento`
+(`legami_movimento_scostati_idx` su `(tenant_id, documento_id) WHERE stato = 'FATTURATO' AND
+scostamento_dopo_fattura`), che evita alla lista degli scostamenti di leggere in sequenza i legami di
+tutte le aziende. Il predicato non contiene `scostamento_gestito_il`: una presa d'atto non sposta
+righe dentro e fuori dall'indice. `lock_timeout` di 5 secondi in testa.
+
+**Il `CREATE INDEX` non e' `CONCURRENTLY`** (dentro la transazione della migration non si puo'):
+tiene un lock `SHARE` su `legami_movimento` finche' non finisce, quindi le scritture sui legami
+(registrazione di un movimento, conferme) aspettano. Il predicato seleziona pochissime righe, ma la
+scansione per costruirlo legge tutta la tabella: con 2 milioni di legami e' questione di qualche
+secondo. Lanciare il deploy quando non si registrano movimenti. Se il `lock_timeout` scade la
+migration resta registrata come fallita e il deploy successivo si ferma con **P3009**: prima si
+lancia `npx prisma migrate resolve --rolled-back 20261107100000_fatturazione_mappature` (la
+migration e' in una transazione: non lascia nulla a meta'), poi si rilancia il deploy. Dopo il deploy si rilancia `ops/db-ruoli.sh`. Controlli:
+
+```sql
+SELECT to_regclass('public.mappature_export_contabile');          -- non NULL
+SELECT count(*) FROM mappature_export_contabile;                  -- 0
+SELECT indexdef FROM pg_indexes WHERE indexname = 'legami_movimento_scostati_idx';
+```
+
+**Rollback del codice**: la migration puo' restare, il codice vecchio ignora tabella e indice.
+
+**Rollback dello schema** (dopo un backup, solo se serve davvero; le mappature sono configurazione
+dell'azienda: esportarle prima con `SELECT * FROM mappature_export_contabile`):
+
+```sql
+BEGIN;
+DROP INDEX legami_movimento_scostati_idx;
+DROP TABLE mappature_export_contabile;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261107100000_fatturazione_mappature';
+COMMIT;
+```
+
 ---
 
 ## Ripristino (Disaster Recovery)
