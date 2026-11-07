@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { HttpErrorResponse } from '@angular/common/http'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { provideRouter } from '@angular/router'
 import { Observable, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { riga } from './blocco-fatturazione.test-util'
@@ -71,6 +72,7 @@ describe('RiquadroLegameComponent', () => {
       imports: [RiquadroLegameComponent],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         { provide: LegamiService, useValue: servizio },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
       ],
@@ -364,5 +366,45 @@ describe('RiquadroLegameComponent', () => {
     fixture.componentRef.setInput('eTesta', true)
     aggiorna()
     expect(q('riquadro-da-riallineare')).toBeNull()
+  }))
+
+  it('FATTURATO: link al documento della fattura', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          fatturatoIl: '2026-10-31T10:00:00.000Z',
+          riferimentoFattura: '12/2026',
+          documentoId: 'doc-9',
+        })
+      )
+    )
+    const a = fixture.nativeElement.querySelector(
+      '[data-testid="riquadro-vai-documento"]'
+    ) as HTMLAnchorElement
+    expect(a.getAttribute('href')).toBe('/fatturazione/documenti/doc-9')
+  }))
+
+  it('non fatturato: nessun link al documento né agli scostamenti', fakeAsync(() => {
+    crea(of(legame({ documentoId: null })))
+    expect(q('riquadro-vai-documento')).toBeNull()
+    expect(q('riquadro-vai-scostamenti')).toBeNull()
+  }))
+
+  it('con scostamento dopo la fattura: «Vai agli scostamenti» (anche per il VIEWER)', fakeAsync(() => {
+    ruolo = 'VIEWER'
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          scostamentoDopoFattura: true,
+          scostamentoIl: '2026-11-02T10:00:00.000Z',
+          documentoId: 'doc-9',
+        })
+      )
+    )
+    const a = q('riquadro-vai-scostamenti') as HTMLAnchorElement
+    expect(a.textContent).toContain('Vai agli scostamenti')
+    expect(a.getAttribute('href')).toBe('/fatturazione/scostamenti')
   }))
 })

@@ -12,6 +12,7 @@ import {
   signal,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { RouterLink } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
 import { Subject, catchError, map, of, switchMap } from 'rxjs'
@@ -57,7 +58,7 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
 @Component({
   selector: 'app-riquadro-legame',
   standalone: true,
-  imports: [CommonModule, ButtonModule, TagModule, RigheLegameTabellaComponent],
+  imports: [CommonModule, RouterLink, ButtonModule, TagModule, RigheLegameTabellaComponent],
   template: `
     <section
       *ngIf="legame() as l"
@@ -98,6 +99,13 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
           <dd data-testid="riquadro-fatturato">
             {{ l.fatturatoIl | date: 'dd/MM/yyyy'
             }}<span *ngIf="l.riferimentoFattura"> · {{ l.riferimentoFattura }}</span>
+            <a
+              *ngIf="l.stato === 'FATTURATO' && l.documentoId"
+              [routerLink]="['/fatturazione', 'documenti', l.documentoId]"
+              data-testid="riquadro-vai-documento"
+            >
+              · Apri il documento</a
+            >
           </dd>
         </div>
         <div *ngIf="l.motivoEsclusione">
@@ -126,6 +134,9 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
         }}<span *ngIf="l.scostamentoIl">
           (correzione del {{ l.scostamentoIl | date: 'dd/MM/yyyy' }})</span
         >.
+        <a routerLink="/fatturazione/scostamenti" data-testid="riquadro-vai-scostamenti"
+          >Vai agli scostamenti</a
+        >
       </p>
 
       <ul *ngIf="motivi().length" class="elenco-avvisi" data-testid="riquadro-motivi">

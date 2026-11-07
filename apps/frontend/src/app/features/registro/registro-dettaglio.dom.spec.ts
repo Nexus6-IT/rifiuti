@@ -3,6 +3,7 @@ import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { HttpErrorResponse } from '@angular/common/http'
 import { DatePipe } from '@angular/common'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { provideRouter } from '@angular/router'
 import { Observable, of, throwError } from 'rxjs'
 import { RegistroComponent } from './registro.component'
 import { Movimento, RegistroService, RegistroVista } from './registro.service'
@@ -121,6 +122,7 @@ describe('Registro - dettaglio del movimento con il legame', () => {
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         DatePipe,
         { provide: RegistroService, useValue: servizio },
         { provide: LegamiService, useValue: legami },
