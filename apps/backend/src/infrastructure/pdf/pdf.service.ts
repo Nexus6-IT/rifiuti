@@ -13,6 +13,21 @@ import {
 const PdfPrinter = require('pdfmake/src/printer')
 import { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
 
+/** Stampante pdfmake con i font Roboto incorporati: condivisa dai servizi che generano PDF. */
+export function creaStampantePdf(): any {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const vfsFonts = require('pdfmake/build/vfs_fonts')
+  const fonts = {
+    Roboto: {
+      normal: Buffer.from(vfsFonts['Roboto-Regular.ttf'], 'base64'),
+      bold: Buffer.from(vfsFonts['Roboto-Medium.ttf'], 'base64'),
+      italics: Buffer.from(vfsFonts['Roboto-Italic.ttf'], 'base64'),
+      bolditalics: Buffer.from(vfsFonts['Roboto-MediumItalic.ttf'], 'base64'),
+    },
+  }
+  return new PdfPrinter(fonts)
+}
+
 /**
  * PDF Service
  *
@@ -30,19 +45,7 @@ export class PDFService {
   constructor(private readonly logger: LoggerService) {
     this.logger.setContext(PDFService.name)
 
-    // Initialize pdfmake with fonts
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const vfsFonts = require('pdfmake/build/vfs_fonts')
-    const fonts = {
-      Roboto: {
-        normal: Buffer.from(vfsFonts['Roboto-Regular.ttf'], 'base64'),
-        bold: Buffer.from(vfsFonts['Roboto-Medium.ttf'], 'base64'),
-        italics: Buffer.from(vfsFonts['Roboto-Italic.ttf'], 'base64'),
-        bolditalics: Buffer.from(vfsFonts['Roboto-MediumItalic.ttf'], 'base64'),
-      },
-    }
-
-    this.printer = new PdfPrinter(fonts)
+    this.printer = creaStampantePdf()
   }
 
   /**

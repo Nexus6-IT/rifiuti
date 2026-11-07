@@ -18,6 +18,7 @@ import request from 'supertest'
 import { AnnulloStornoService } from '../../application/fatturazione/annullo-storno.service'
 import { DocumentiFatturaService } from '../../application/fatturazione/documenti-fattura.service'
 import { ExportService } from '../../application/fatturazione/export.service'
+import { PdfCortesiaService } from '../../application/fatturazione/pdf-cortesia'
 import { XmlDocumentoService } from '../../application/fatturazione/xml-documento.service'
 import { ElaborazioniService } from '../../application/fatturazione/elaborazioni.service'
 import { ScostamentiService } from '../../application/fatturazione/scostamenti.service'
@@ -84,6 +85,7 @@ async function creaApp(s: Servizi, ruolo: () => string) {
       { provide: ScostamentiService, useValue: s.scost },
       { provide: XmlDocumentoService, useValue: {} },
       { provide: ExportService, useValue: {} },
+      { provide: PdfCortesiaService, useValue: {} },
       { provide: RuoloEffettivoService, useValue: { accesso: jest.fn() } },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
