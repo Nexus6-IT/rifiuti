@@ -2,11 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { provideRouter } from '@angular/router'
 import { HttpErrorResponse } from '@angular/common/http'
+import { By } from '@angular/platform-browser'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { Pagina, ScostamentoRiga } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
-import { ScostamentiComponent } from './scostamenti.component'
+import { PresaAttoDialogComponent } from './presa-atto-dialog.component'
+import { ScostamentiComponent, differenzaDecimale } from './scostamenti.component'
 
 function riga(n: number, extra: Partial<ScostamentoRiga> = {}): ScostamentoRiga {
   return {
@@ -17,6 +19,8 @@ function riga(n: number, extra: Partial<ScostamentoRiga> = {}): ScostamentoRiga 
     quantitaFatturata: '1250.5',
     importoFatturato: '12345.60',
     quantitaAttuale: '1000',
+    unitaFatturata: 'KG',
+    unitaAttuale: 'KG',
     importoAttuale: '9876.50',
     soloQuantita: false,
     ...extra,
@@ -70,8 +74,8 @@ describe('ScostamentiComponent', () => {
     expect(t('sc-documento')).toContain('1/2026')
     expect(t('sc-documento')).toContain('31/10/2026')
     expect(t('sc-tipo')).toBe('Rettifica')
-    expect(t('sc-qta-fatturata')).toBe('1.250,5')
-    expect(t('sc-qta-attuale')).toBe('1.000')
+    expect(t('sc-qta-fatturata')).toBe('1.250,5 KG')
+    expect(t('sc-qta-attuale')).toBe('1.000 KG')
     expect(t('sc-importo-fatturato')).toBe('12.345,60')
     expect(t('sc-importo-attuale')).toBe('9.876,50')
   })
@@ -101,6 +105,9 @@ describe('ScostamentiComponent', () => {
       'Prezzo speciale'
     )
     expect(tr.querySelector('[data-testid="sc-importo-attuale"]')!.textContent!.trim()).toBe('—')
+    expect(tr.querySelector('[data-testid="sc-differenza"]')!.textContent!.trim()).toBe(
+      'Differenza di quantità: −250,5 KG'
+    )
   })
 
   it("«Presa d'atto» solo per ADMIN; il VIEWER e l'OPERATOR non vedono azioni", async () => {
@@ -116,6 +123,40 @@ describe('ScostamentiComponent', () => {
       fixture.destroy()
       TestBed.resetTestingModule()
     }
+  })
+
+  it('cambio di unità: ogni quantità porta la sua unità', async () => {
+    await crea(
+      'ADMIN',
+      of(
+        pagina([
+          riga(1, {
+            quantitaFatturata: '1000',
+            unitaFatturata: 'KG',
+            quantitaAttuale: '1',
+            unitaAttuale: 'T',
+          }),
+        ])
+      )
+    )
+    const tr = q('scostamento-lg-1')!
+    expect(tr.querySelector('[data-testid="sc-qta-fatturata"]')!.textContent!.trim()).toBe(
+      '1.000 KG'
+    )
+    expect(tr.querySelector('[data-testid="sc-qta-attuale"]')!.textContent!.trim()).toBe('1 T')
+    expect(tr.querySelector('[data-testid="sc-differenza"]')).toBeNull()
+  })
+
+  it('il binding (registrata) del dialog chiude e rilegge la lista', async () => {
+    await crea('ADMIN')
+    q('presa-atto-lg-1')!.querySelector('button')!.click()
+    fixture.detectChanges()
+    servizio.scostamenti.calls.reset()
+    fixture.debugElement
+      .query(By.directive(PresaAttoDialogComponent))
+      .componentInstance.registrata.emit()
+    expect(servizio.scostamenti).toHaveBeenCalledTimes(1)
+    expect(fixture.componentInstance.scelto()).toBeNull()
   })
 
   it("«Presa d'atto» apre il dialog con la nota; a registrazione avvenuta rilegge la lista", async () => {
@@ -176,5 +217,15 @@ describe('ScostamentiComponent', () => {
     servizio.scostamenti.and.returnValue(of(pagina([riga(2)])))
     fixture.componentInstance.carica()
     expect(lenta.observed).toBeFalse()
+  })
+})
+
+describe('differenzaDecimale', () => {
+  it('sottrae in aritmetica decimale esatta', () => {
+    expect(differenzaDecimale('1000', '1250.5')).toBe('-250.5')
+    expect(differenzaDecimale('0.3', '0.1')).toBe('0.2')
+    expect(differenzaDecimale('5.000', '5')).toBe('0')
+    expect(differenzaDecimale('0.05', '0.1')).toBe('-0.05')
+    expect(differenzaDecimale(null, '1')).toBeNull()
   })
 })

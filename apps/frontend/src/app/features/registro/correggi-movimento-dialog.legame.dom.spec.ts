@@ -60,6 +60,7 @@ function legame(parziale: Partial<LegameVista> = {}): LegameVista {
     riferimentoFattura: null,
     documentoId: null,
     scostamentoDopoFattura: false,
+    scostamentoAperto: false,
     scostamentoIl: null,
     versione: 2,
     ...parziale,

@@ -45,6 +45,7 @@ function legame(parziale: Partial<LegameVista> = {}): LegameVista {
     riferimentoFattura: null,
     documentoId: null,
     scostamentoDopoFattura: false,
+    scostamentoAperto: false,
     scostamentoIl: null,
     versione: 3,
     ...parziale,
@@ -165,6 +166,7 @@ describe('RiquadroLegameComponent', () => {
           fatturatoIl: '2026-11-10T00:00:00.000Z',
           riferimentoFattura: 'FT 12/2026',
           scostamentoDopoFattura: true,
+          scostamentoAperto: true,
           scostamentoIl: '2026-11-12T00:00:00.000Z',
         })
       )
@@ -406,6 +408,35 @@ describe('RiquadroLegameComponent', () => {
     expect(q('riquadro-vai-documento')).toBeNull()
   }))
 
+  it('scostamento già gestito: avviso ma nessun «Vai agli scostamenti»', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          scostamentoDopoFattura: true,
+          scostamentoAperto: false,
+          scostamentoIl: '2026-11-02T10:00:00.000Z',
+          documentoId: 'doc-9',
+        })
+      )
+    )
+    expect(q('riquadro-avviso-AVVISO_SCOSTAMENTO')).not.toBeNull()
+    expect(q('riquadro-vai-scostamenti')).toBeNull()
+  }))
+
+  it('il separatore «·» non sta dentro il link al documento', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          fatturatoIl: '2026-10-31T10:00:00.000Z',
+          documentoId: 'doc-1',
+        })
+      )
+    )
+    expect(testo('riquadro-vai-documento')).toBe('Apri il documento')
+  }))
+
   it('non fatturato: nessun link al documento né agli scostamenti', fakeAsync(() => {
     crea(of(legame({ documentoId: null })))
     expect(q('riquadro-vai-documento')).toBeNull()
@@ -419,6 +450,7 @@ describe('RiquadroLegameComponent', () => {
         legame({
           stato: 'FATTURATO',
           scostamentoDopoFattura: true,
+          scostamentoAperto: true,
           scostamentoIl: '2026-11-02T10:00:00.000Z',
           documentoId: 'doc-9',
         })

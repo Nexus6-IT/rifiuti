@@ -22,6 +22,27 @@ const TIPI_CORREZIONE: Record<ScostamentoRiga['tipoCorrezione'], string> = {
   CAMBIO_CAUSALE: 'Cambio di causale',
 }
 
+/** a − b fra stringhe decimali col punto, in aritmetica intera (nessun number). Null se non valide. */
+export function differenzaDecimale(a: string | null, b: string | null): string | null {
+  const leggi = (v: string | null): { n: bigint; dec: number } | null => {
+    const m = v === null ? null : /^(-?)(\d+)(?:\.(\d+))?$/.exec(v.trim())
+    if (!m) return null
+    const frac = m[3] ?? ''
+    const n = BigInt(m[2] + frac) * (m[1] === '-' ? -1n : 1n)
+    return { n, dec: frac.length }
+  }
+  const x = leggi(a)
+  const y = leggi(b)
+  if (!x || !y) return null
+  const dec = Math.max(x.dec, y.dec)
+  const diff = x.n * 10n ** BigInt(dec - x.dec) - y.n * 10n ** BigInt(dec - y.dec)
+  const neg = diff < 0n
+  const cifre = (neg ? -diff : diff).toString().padStart(dec + 1, '0')
+  const intero = cifre.slice(0, cifre.length - dec)
+  const frazione = cifre.slice(cifre.length - dec).replace(/0+$/, '')
+  return `${neg ? '-' : ''}${intero}${frazione ? '.' + frazione : ''}`
+}
+
 /**
  * Scostamenti (4.4c, Task 34): movimenti già fatturati e poi corretti. Per ognuno la fattura e
  * il valore attuale, con due strade per l'amministratore: «Presa d'atto» (la fattura resta) o
@@ -93,10 +114,10 @@ const TIPI_CORREZIONE: Record<ScostamentoRiga['tipoCorrezione'], string> = {
               </td>
               <td data-testid="sc-tipo">{{ tipo(r.tipoCorrezione) }}</td>
               <td class="num-col" data-testid="sc-qta-fatturata">
-                {{ quantita(r.quantitaFatturata) }}
+                {{ quantitaConUnita(r.quantitaFatturata, r.unitaFatturata) }}
               </td>
               <td class="num-col" data-testid="sc-qta-attuale">
-                {{ quantita(r.quantitaAttuale) }}
+                {{ quantitaConUnita(r.quantitaAttuale, r.unitaAttuale) }}
               </td>
               <td class="num-col" data-testid="sc-importo-fatturato">
                 {{ importo(r.importoFatturato) }}
@@ -107,6 +128,12 @@ const TIPI_CORREZIONE: Record<ScostamentoRiga['tipoCorrezione'], string> = {
                 }}</span>
                 <small *ngIf="r.soloQuantita" class="field-hint" data-testid="sc-solo-quantita"
                   >Prezzo speciale: conta solo la differenza di quantità.</small
+                >
+                <small
+                  *ngIf="r.soloQuantita && differenza(r) as d"
+                  class="field-hint"
+                  data-testid="sc-differenza"
+                  >Differenza di quantità: {{ d }}</small
                 >
               </td>
               <td class="cell-nowrap">
@@ -176,6 +203,16 @@ export class ScostamentiComponent {
   readonly giorno = formattaGiorno
   readonly importo = importoItaliano
   readonly quantita = (v: string | null): string => (v === null ? '—' : decimaleItaliano(v))
+  readonly quantitaConUnita = (v: string | null, u: string | null): string =>
+    v === null ? '—' : `${decimaleItaliano(v)}${u ? ' ' + u : ''}`
+  /** Differenza attuale − fatturata (solo con la stessa unità), col segno; vuota se non calcolabile. */
+  readonly differenza = (r: ScostamentoRiga): string => {
+    if (r.unitaAttuale !== r.unitaFatturata) return ''
+    const d = differenzaDecimale(r.quantitaAttuale, r.quantitaFatturata)
+    if (d === null) return ''
+    const t = decimaleItaliano(d.replace('-', ''))
+    return `${d.startsWith('-') ? '−' : d === '0' ? '' : '+'}${t}${r.unitaAttuale ? ' ' + r.unitaAttuale : ''}`
+  }
   readonly tipo = (t: ScostamentoRiga['tipoCorrezione']): string => TIPI_CORREZIONE[t] ?? t
 
   /** Una lettura nuova annulla quella pendente (`switchMap`). */

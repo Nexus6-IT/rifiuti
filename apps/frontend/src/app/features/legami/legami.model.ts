@@ -134,6 +134,8 @@ export interface LegameVista {
   /** Documento della fattura (null se non fatturato): serve al link del riquadro. */
   documentoId: string | null
   scostamentoDopoFattura: boolean
+  /** Scostamento ancora da gestire (non preso in carico): stessa condizione della lista. */
+  scostamentoAperto: boolean
   scostamentoIl: string | null
   versione: number
   candidati?: CandidatiLegame

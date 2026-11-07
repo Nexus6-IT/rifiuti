@@ -63,6 +63,7 @@ const legame = (parziale: Partial<LegameVista> = {}): LegameVista => ({
   riferimentoFattura: null,
   documentoId: null,
   scostamentoDopoFattura: true,
+  scostamentoAperto: true,
   scostamentoIl: null,
   versione: 4,
   ...parziale,
@@ -167,7 +168,7 @@ describe('Registro - dettaglio del movimento con il legame', () => {
 
   it('VIEWER: vede il riquadro in sola lettura, nessuna rotta di scrittura', fakeAsync(() => {
     ruolo = 'VIEWER'
-    apri(of(legame({ stato: 'PROPOSTO', scostamentoDopoFattura: false })))
+    apri(of(legame({ stato: 'PROPOSTO', scostamentoDopoFattura: false, scostamentoAperto: false })))
     expect(q('riquadro-legame')).not.toBeNull()
     expect(q('riquadro-azioni')).toBeNull()
     expect(document.body.querySelector('#prezzo-ra-1')).toBeNull()

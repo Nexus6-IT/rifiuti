@@ -99,12 +99,13 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
           <dd data-testid="riquadro-fatturato">
             {{ l.fatturatoIl | date: 'dd/MM/yyyy'
             }}<span *ngIf="l.riferimentoFattura"> · {{ l.riferimentoFattura }}</span>
-            <a
+            <span *ngIf="l.stato === 'FATTURATO' && l.documentoId" aria-hidden="true"> · </span
+            ><a
               *ngIf="l.stato === 'FATTURATO' && l.documentoId"
               [routerLink]="['/fatturazione', 'documenti', l.documentoId]"
               data-testid="riquadro-vai-documento"
             >
-              · Apri il documento</a
+              Apri il documento</a
             >
           </dd>
         </div>
@@ -134,7 +135,10 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
         }}<span *ngIf="l.scostamentoIl">
           (correzione del {{ l.scostamentoIl | date: 'dd/MM/yyyy' }})</span
         >.
-        <a routerLink="/fatturazione/scostamenti" data-testid="riquadro-vai-scostamenti"
+        <a
+          *ngIf="l.scostamentoAperto"
+          routerLink="/fatturazione/scostamenti"
+          data-testid="riquadro-vai-scostamenti"
           >Vai agli scostamenti</a
         >
       </p>

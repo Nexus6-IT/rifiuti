@@ -202,6 +202,9 @@ export interface ScostamentoRiga {
   documento: { id: string; numeroTesto: string; dataDocumento: string }
   tipoCorrezione: 'RETTIFICA' | 'ANNULLO' | 'CAMBIO_CER' | 'CAMBIO_CAUSALE'
   quantitaFatturata: string | null
+  /** Unità di misura dei due movimenti (può cambiare: 1000 KG → 1 T). */
+  unitaFatturata: string | null
+  unitaAttuale: string | null
   importoFatturato: string
   quantitaAttuale: string | null
   importoAttuale: string | null
@@ -320,6 +323,8 @@ export const CHIAVI_SCOSTAMENTO_RIGA: Record<keyof ScostamentoRiga, true> = {
   documento: true,
   tipoCorrezione: true,
   quantitaFatturata: true,
+  unitaFatturata: true,
+  unitaAttuale: true,
   importoFatturato: true,
   quantitaAttuale: true,
   importoAttuale: true,

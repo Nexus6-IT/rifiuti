@@ -12,6 +12,8 @@ const scostamento: ScostamentoRiga = {
   documento: { id: 'd-1', numeroTesto: '12/2026', dataDocumento: '2026-10-31' },
   tipoCorrezione: 'RETTIFICA',
   quantitaFatturata: '10',
+  unitaFatturata: 'KG',
+  unitaAttuale: 'KG',
   importoFatturato: '100.00',
   quantitaAttuale: '8',
   importoAttuale: '80.00',
