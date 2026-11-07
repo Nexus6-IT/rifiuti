@@ -208,7 +208,7 @@ import { SEZIONE_CONTRATTO } from './sezione-contratto'
         margin: 0;
         padding-left: 1.25rem;
         font-size: 0.9rem;
-        color: var(--text-color-secondary, #666);
+        color: var(--text-color-secondary);
       }
     `,
   ],

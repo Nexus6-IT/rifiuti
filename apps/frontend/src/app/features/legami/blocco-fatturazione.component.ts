@@ -286,7 +286,7 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
       }
       .dati-legame dt {
         font-size: 0.8rem;
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
       }
       .dati-legame dd {
         margin: 0;
@@ -319,7 +319,7 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
       .aiuto {
         display: block;
         margin-top: 0.35rem;
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
       }
     `,
   ],

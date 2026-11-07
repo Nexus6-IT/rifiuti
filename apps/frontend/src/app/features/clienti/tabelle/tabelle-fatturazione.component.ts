@@ -40,41 +40,47 @@ const SCHEDE = [
     CodificheAddebitoTabComponent,
   ],
   template: `
-    <h1>Tabelle di fatturazione</h1>
-    <p-tabView [scrollable]="true" [activeIndex]="indiceAttivo()" (onChange)="scegli($event.index)">
-      <p-tabPanel header="Condizioni di pagamento">
-        <ng-template pTemplate="content"><app-condizioni-pagamento /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Conti correnti">
-        <ng-template pTemplate="content"><app-conti-correnti /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Spese e bollo">
-        <ng-template pTemplate="content"><app-spese-accessorie /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Registri IVA">
-        <ng-template pTemplate="content"><app-registri-iva /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Testi di fatturazione">
-        <ng-template pTemplate="content"><app-testi-fatturazione /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Categorie e tipi">
-        <ng-template pTemplate="content">
-          <app-codifiche-contratto genere="CATEGORIA" />
-          <app-codifiche-contratto genere="TIPO" />
-        </ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Motivi di annullo">
-        <ng-template pTemplate="content"
-          ><app-codifiche-contratto genere="MOTIVO_ANNULLO"
-        /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Codici IVA">
-        <ng-template pTemplate="content"><app-codici-iva-tab /></ng-template>
-      </p-tabPanel>
-      <p-tabPanel header="Gruppi e categorie di addebito">
-        <ng-template pTemplate="content"><app-codifiche-addebito-tab /></ng-template>
-      </p-tabPanel>
-    </p-tabView>
+    <div class="page">
+      <h1>Tabelle di fatturazione</h1>
+      <p-tabView
+        [scrollable]="true"
+        [activeIndex]="indiceAttivo()"
+        (onChange)="scegli($event.index)"
+      >
+        <p-tabPanel header="Condizioni di pagamento">
+          <ng-template pTemplate="content"><app-condizioni-pagamento /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Conti correnti">
+          <ng-template pTemplate="content"><app-conti-correnti /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Spese e bollo">
+          <ng-template pTemplate="content"><app-spese-accessorie /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Registri IVA">
+          <ng-template pTemplate="content"><app-registri-iva /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Testi di fatturazione">
+          <ng-template pTemplate="content"><app-testi-fatturazione /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Categorie e tipi">
+          <ng-template pTemplate="content">
+            <app-codifiche-contratto genere="CATEGORIA" />
+            <app-codifiche-contratto genere="TIPO" />
+          </ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Motivi di annullo">
+          <ng-template pTemplate="content"
+            ><app-codifiche-contratto genere="MOTIVO_ANNULLO"
+          /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Codici IVA">
+          <ng-template pTemplate="content"><app-codici-iva-tab /></ng-template>
+        </p-tabPanel>
+        <p-tabPanel header="Gruppi e categorie di addebito">
+          <ng-template pTemplate="content"><app-codifiche-addebito-tab /></ng-template>
+        </p-tabPanel>
+      </p-tabView>
+    </div>
   `,
 })
 export class TabelleFatturazioneComponent {

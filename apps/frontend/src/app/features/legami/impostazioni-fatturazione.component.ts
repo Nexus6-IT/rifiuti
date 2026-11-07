@@ -93,34 +93,36 @@ function movimentiToccati(err: unknown): number | null {
             >
               Fatturazione spenta
             </p>
-            <label for="fatt-da">Fatturazione da</label>
-            <input
-              pInputText
-              id="fatt-da"
-              name="fatturazioneDa"
-              type="date"
-              [(ngModel)]="data"
-              [disabled]="!puoModificare()"
-              aria-describedby="fatt-nota"
-              data-testid="fatt-data"
-            />
-            <p-button
-              label="Salva"
-              icon="pi pi-check"
-              [disabled]="!puoModificare() || inCorso()"
-              [loading]="inCorso()"
-              (onClick)="salva()"
-              data-testid="fatt-salva"
-            />
-            <p-button
-              *ngIf="impostazione()?.fatturazioneDa"
-              label="Spegni la fatturazione"
-              icon="pi pi-power-off"
-              [outlined]="true"
-              [disabled]="!puoModificare() || inCorso()"
-              (onClick)="spegni()"
-              data-testid="fatt-spegni"
-            />
+            <div class="riga-data">
+              <label for="fatt-da">Fatturazione da</label>
+              <input
+                pInputText
+                id="fatt-da"
+                name="fatturazioneDa"
+                type="date"
+                [(ngModel)]="data"
+                [disabled]="!puoModificare()"
+                aria-describedby="fatt-nota"
+                data-testid="fatt-data"
+              />
+              <p-button
+                label="Salva"
+                icon="pi pi-check"
+                [disabled]="!puoModificare() || inCorso()"
+                [loading]="inCorso()"
+                (onClick)="salva()"
+                data-testid="fatt-salva"
+              />
+              <p-button
+                *ngIf="impostazione()?.fatturazioneDa"
+                label="Spegni la fatturazione"
+                icon="pi pi-power-off"
+                [outlined]="true"
+                [disabled]="!puoModificare() || inCorso()"
+                (onClick)="spegni()"
+                data-testid="fatt-spegni"
+              />
+            </div>
             <p id="fatt-nota" class="nota-pagina">
               {{
                 puoModificare()
@@ -140,6 +142,18 @@ function movimentiToccati(err: unknown): number | null {
       <p-confirmDialog />
     </div>
   `,
+  styles: [
+    `
+      /* Etichetta, data e pulsanti sulla stessa riga, con spazio fra loro e stessa altezza. */
+      .riga-data {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--spacing-md);
+        margin-bottom: var(--spacing-sm);
+      }
+    `,
+  ],
 })
 export class ImpostazioniFatturazioneComponent implements OnInit {
   private readonly servizio = inject(ImpostazioneFatturazioneService)

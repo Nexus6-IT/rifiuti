@@ -222,9 +222,7 @@ import {
     `
       .verify-signatures-container {
         padding: clamp(1.5rem, 4vw, 3rem) var(--spacing-lg);
-        background:
-          radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 55%),
-          var(--surface-ground);
+        background: var(--surface-ground);
         min-height: 100vh;
       }
 

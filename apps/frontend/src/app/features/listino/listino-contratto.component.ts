@@ -227,8 +227,9 @@ import { RigheTavolaComponent } from './righe-tavola.component'
   `,
   styles: [
     `
+      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
       .pagina {
-        padding: 1rem;
+        padding: var(--spacing-lg) 0;
       }
       .indietro {
         display: inline-flex;

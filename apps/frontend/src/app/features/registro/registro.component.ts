@@ -427,17 +427,21 @@ function fineGiornata(d: Date): Date {
                   />
                 </td>
                 <td class="cell-nowrap">
-                  <span class="prog-badge">{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span>
-                  <p-button
-                    icon="pi pi-eye"
-                    [text]="true"
-                    [rounded]="true"
-                    size="small"
-                    [attr.data-testid]="'registro-dettaglio-' + m.id"
-                    [ariaLabel]="'Dettaglio del movimento ' + numeroMovimento(m)"
-                    pTooltip="Dettaglio e fatturazione"
-                    (onClick)="apriDettaglio(m)"
-                  ></p-button>
+                  <div class="cella-prog">
+                    <span class="prog-badge"
+                      >{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span
+                    >
+                    <p-button
+                      icon="pi pi-eye"
+                      [text]="true"
+                      [rounded]="true"
+                      size="small"
+                      [attr.data-testid]="'registro-dettaglio-' + m.id"
+                      [ariaLabel]="'Dettaglio del movimento ' + numeroMovimento(m)"
+                      pTooltip="Dettaglio e fatturazione"
+                      (onClick)="apriDettaglio(m)"
+                    ></p-button>
+                  </div>
                 </td>
                 <td *ngIf="piuRegistri()" data-testid="registro-col-sede">
                   {{ etichettaSede(m.registroId) }}
@@ -1225,6 +1229,17 @@ function fineGiornata(d: Date): Date {
       }
       .causale-label {
         color: var(--text-primary);
+      }
+      /* Numero e occhio sulla stessa linea della prima riga delle altre celle: il bottone da 32px
+         non deve alzare la cella (prima il numero finiva ~6px piu' in basso del resto). */
+      .cella-prog {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-xs);
+        height: 1.3125rem;
+      }
+      .cella-prog .p-button {
+        margin: -0.4rem 0;
       }
       .waste-desc {
         display: block;

@@ -326,11 +326,11 @@ interface Opzione {
       .ap-messaggio {
         padding: var(--spacing-sm) var(--spacing-md);
         border-left: 4px solid var(--color-warning, #b45309);
-        background: var(--color-surface-alt, #f5f5f4);
+        background: var(--color-surface-alt);
       }
       .ap-anteprima {
         outline: none;
-        border-top: 1px solid var(--color-border, #d6d3d1);
+        border-top: 1px solid var(--color-border);
         padding-top: var(--spacing-md);
       }
       .ap-riepilogo {
@@ -348,7 +348,7 @@ interface Opzione {
       .ap-esempi th,
       .ap-esempi td {
         padding: var(--spacing-xs) var(--spacing-sm);
-        border-bottom: 1px solid var(--color-border, #d6d3d1);
+        border-bottom: 1px solid var(--color-border);
         text-align: right;
       }
       .ap-esempi th:nth-child(-n + 3),
@@ -357,7 +357,7 @@ interface Opzione {
       }
       .ap-data {
         display: block;
-        color: var(--color-text-secondary, #57534e);
+        color: var(--color-text-secondary);
       }
       .ap-conferma {
         display: flex;

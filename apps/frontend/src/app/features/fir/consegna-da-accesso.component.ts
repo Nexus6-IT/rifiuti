@@ -171,10 +171,10 @@ interface Candidato {
       }
       .cda__nota {
         display: block;
-        color: var(--text-color-secondary, #555);
+        color: var(--text-color-secondary);
       }
       .cda__errore {
-        color: var(--red-700, #b91c1c);
+        color: var(--red-700);
       }
       .cda__badge {
         font-size: 0.75rem;
@@ -182,7 +182,7 @@ interface Candidato {
         text-transform: uppercase;
       }
       .cda__avviso {
-        color: var(--orange-700, #b45309);
+        color: var(--orange-700);
       }
       .cda__elenco {
         border: 1px solid var(--surface-border, #ccc);

@@ -238,7 +238,7 @@ function notificaAccodamento(toast: ToastService, r: RispostaAccodamento): void 
       }
       .rentri-riga-nota {
         display: block;
-        color: var(--orange-700, #b45309);
+        color: var(--orange-700);
       }
     `,
   ],
@@ -628,7 +628,7 @@ type TipoConferma = 'selezionati' | 'storico'
       }
       .rentri-nota {
         font-size: 0.85rem;
-        color: var(--text-color-secondary, #6b7280);
+        color: var(--text-color-secondary);
       }
     `,
   ],

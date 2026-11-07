@@ -154,113 +154,119 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
 
       <section aria-labelledby="ad-pesate-titolo" class="blocco">
         <h3 id="ad-pesate-titolo">Pesate</h3>
-        <table class="tabella" data-testid="ad-pesate">
-          <caption class="solo-lettori">
-            Pesate dell'accesso
-            {{
-              a.numero
-            }}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">N.</th>
-              <th scope="col">Fonte</th>
-              <th scope="col">Peso originale</th>
-              <th scope="col">Peso effettivo</th>
-              <th scope="col">Strumento</th>
-              <th scope="col">Registrata il</th>
-              <th scope="col">Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            <ng-container *ngFor="let p of a.pesate">
-              <tr [attr.data-testid]="'ad-pesata-' + p.ordine">
-                <td>{{ p.ordine }}</td>
-                <td>
-                  {{ fonte(p.fonte) }}
-                  <span
-                    class="badge"
-                    *ngFor="let b of badge(p)"
-                    [class.badge-ko]="b === 'Dato alterato'"
-                    [attr.data-testid]="'ad-badge-' + p.ordine"
-                    >{{ b }}</span
-                  >
-                </td>
-                <td>{{ kg(p.pesoOriginaleKg) }}</td>
-                <td>
-                  <ng-container *ngIf="p.rettifiche.length; else uguale"
-                    ><strong data-testid="ad-effettivo">{{
-                      kg(p.pesoEffettivoKg)
-                    }}</strong></ng-container
-                  ><ng-template #uguale>—</ng-template>
-                </td>
-                <td>
-                  {{ p.strumento?.descrizione || p.strumentoEsterno || '—' }}
-                  <div class="nota" *ngIf="p.alibiId">Alibi {{ p.alibiId }}</div>
-                  <div class="nota" *ngIf="p.oraStrumento">
-                    Ora strumento {{ dataOra(p.oraStrumento) }}
-                  </div>
-                </td>
-                <td>
-                  {{ dataOra(p.oraRicezione) }}
-                  <div class="nota" *ngIf="p.operatore">{{ p.operatore }}</div>
-                </td>
-                <td class="azioni-riga">
-                  <p-button
-                    *ngIf="p.allegato"
-                    label="Apri allegato"
-                    icon="pi pi-paperclip"
-                    [text]="true"
-                    size="small"
-                    (onClick)="apriAllegato(p.allegato)"
-                    [attr.data-testid]="'ad-allegato-' + p.ordine"
-                    [ariaLabel]="'Apri l\\'allegato della pesata ' + p.ordine"
-                  ></p-button>
-                  <p-button
-                    *ngIf="puoRettificarePesata(a, p)"
-                    label="Rettifica"
-                    icon="pi pi-pencil"
-                    [text]="true"
-                    size="small"
-                    (onClick)="apriDialogo({ tipo: 'rettifica', pesata: p }, $event)"
-                    [attr.data-testid]="'ad-rettifica-' + p.ordine"
-                    [ariaLabel]="'Rettifica il peso della pesata ' + p.ordine"
-                  ></p-button>
-                </td>
+        <div class="table-responsive">
+          <table class="tabella" data-testid="ad-pesate">
+            <caption class="solo-lettori">
+              Pesate dell'accesso
+              {{
+                a.numero
+              }}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">N.</th>
+                <th scope="col">Fonte</th>
+                <th scope="col">Peso originale</th>
+                <th scope="col">Peso effettivo</th>
+                <th scope="col">Strumento</th>
+                <th scope="col">Registrata il</th>
+                <th scope="col">Azioni</th>
               </tr>
-              <tr *ngIf="p.motivo || p.avvisi.length || p.rettifiche.length" class="dettaglio-riga">
-                <td></td>
-                <td colspan="6">
-                  <div *ngIf="p.motivo" class="nota">Motivo: {{ p.motivo }}</div>
-                  <ul class="avvisi" *ngIf="p.avvisi.length">
-                    <li *ngFor="let v of avvisiPesata(p)">{{ v }}</li>
-                  </ul>
-                  <div *ngIf="p.rettifiche.length" [attr.data-testid]="'ad-storico-' + p.ordine">
-                    <strong class="nota">Rettifiche</strong>
-                    <ol class="storico">
-                      <li *ngFor="let r of p.rettifiche">
-                        n. {{ r.numero }}: {{ kg(r.pesoPrecedenteKg) }} → {{ kg(r.pesoNuovoKg) }} —
-                        {{ r.motivo }}
-                        <span class="nota"
-                          >({{ r.autore || 'utente' }}, {{ dataOra(r.createdAt) }})</span
-                        >
-                        <span class="badge badge-ko" *ngIf="!r.integra">Dato alterato</span>
-                        <p-button
-                          *ngIf="r.allegato"
-                          label="Apri allegato"
-                          [text]="true"
-                          size="small"
-                          (onClick)="apriAllegato(r.allegato)"
-                          [ariaLabel]="'Apri l\\'allegato della rettifica ' + r.numero"
-                        ></p-button>
-                      </li>
-                    </ol>
-                  </div>
-                </td>
-              </tr>
-            </ng-container>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <ng-container *ngFor="let p of a.pesate">
+                <tr [attr.data-testid]="'ad-pesata-' + p.ordine">
+                  <td>{{ p.ordine }}</td>
+                  <td>
+                    {{ fonte(p.fonte) }}
+                    <span
+                      class="badge"
+                      *ngFor="let b of badge(p)"
+                      [class.badge-ko]="b === 'Dato alterato'"
+                      [attr.data-testid]="'ad-badge-' + p.ordine"
+                      >{{ b }}</span
+                    >
+                  </td>
+                  <td>{{ kg(p.pesoOriginaleKg) }}</td>
+                  <td>
+                    <ng-container *ngIf="p.rettifiche.length; else uguale"
+                      ><strong data-testid="ad-effettivo">{{
+                        kg(p.pesoEffettivoKg)
+                      }}</strong></ng-container
+                    ><ng-template #uguale>—</ng-template>
+                  </td>
+                  <td>
+                    {{ p.strumento?.descrizione || p.strumentoEsterno || '—' }}
+                    <div class="nota" *ngIf="p.alibiId">Alibi {{ p.alibiId }}</div>
+                    <div class="nota" *ngIf="p.oraStrumento">
+                      Ora strumento {{ dataOra(p.oraStrumento) }}
+                    </div>
+                  </td>
+                  <td>
+                    {{ dataOra(p.oraRicezione) }}
+                    <div class="nota" *ngIf="p.operatore">{{ p.operatore }}</div>
+                  </td>
+                  <td class="azioni-riga">
+                    <p-button
+                      *ngIf="p.allegato"
+                      label="Apri allegato"
+                      icon="pi pi-paperclip"
+                      [text]="true"
+                      size="small"
+                      (onClick)="apriAllegato(p.allegato)"
+                      [attr.data-testid]="'ad-allegato-' + p.ordine"
+                      [ariaLabel]="'Apri l\\'allegato della pesata ' + p.ordine"
+                    ></p-button>
+                    <p-button
+                      *ngIf="puoRettificarePesata(a, p)"
+                      label="Rettifica"
+                      icon="pi pi-pencil"
+                      [text]="true"
+                      size="small"
+                      (onClick)="apriDialogo({ tipo: 'rettifica', pesata: p }, $event)"
+                      [attr.data-testid]="'ad-rettifica-' + p.ordine"
+                      [ariaLabel]="'Rettifica il peso della pesata ' + p.ordine"
+                    ></p-button>
+                  </td>
+                </tr>
+                <tr
+                  *ngIf="p.motivo || p.avvisi.length || p.rettifiche.length"
+                  class="dettaglio-riga"
+                >
+                  <td></td>
+                  <td colspan="6">
+                    <div *ngIf="p.motivo" class="nota">Motivo: {{ p.motivo }}</div>
+                    <ul class="avvisi" *ngIf="p.avvisi.length">
+                      <li *ngFor="let v of avvisiPesata(p)">{{ v }}</li>
+                    </ul>
+                    <div *ngIf="p.rettifiche.length" [attr.data-testid]="'ad-storico-' + p.ordine">
+                      <strong class="nota">Rettifiche</strong>
+                      <ol class="storico">
+                        <li *ngFor="let r of p.rettifiche">
+                          n. {{ r.numero }}: {{ kg(r.pesoPrecedenteKg) }} →
+                          {{ kg(r.pesoNuovoKg) }} —
+                          {{ r.motivo }}
+                          <span class="nota"
+                            >({{ r.autore || 'utente' }}, {{ dataOra(r.createdAt) }})</span
+                          >
+                          <span class="badge badge-ko" *ngIf="!r.integra">Dato alterato</span>
+                          <p-button
+                            *ngIf="r.allegato"
+                            label="Apri allegato"
+                            [text]="true"
+                            size="small"
+                            (onClick)="apriAllegato(r.allegato)"
+                            [ariaLabel]="'Apri l\\'allegato della rettifica ' + r.numero"
+                          ></p-button>
+                        </li>
+                      </ol>
+                    </div>
+                  </td>
+                </tr>
+              </ng-container>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section aria-labelledby="ad-coll-titolo" class="blocco">
@@ -449,7 +455,14 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
         text-align: left;
         padding: var(--spacing-xs) var(--spacing-sm);
         vertical-align: top;
-        border-bottom: 1px solid var(--border-color, #ddd);
+        border-bottom: 1px solid var(--rule);
+      }
+      .tabella th {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-tertiary);
+        white-space: nowrap;
+        border-bottom-color: var(--surface-border);
       }
       .solo-lettori {
         position: absolute;

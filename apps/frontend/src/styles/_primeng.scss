@@ -265,6 +265,14 @@
   background: var(--surface-section);
   transition: border-color var(--transition-fast);
 }
+/* <select> nativo con classe p-inputtext: Aura gli toglie l'aspetto nativo (appearance: none) e
+   senza freccia sembrava un campo di testo da 60px. Si rimette l'aspetto nativo (freccia) e una
+   larghezza minima leggibile. */
+select.p-inputtext {
+  appearance: auto;
+  min-width: 8rem;
+  padding-right: var(--spacing-sm);
+}
 textarea.p-inputtext {
   height: auto;
   min-height: calc(var(--control-md) * 2);
@@ -388,6 +396,24 @@ label {
   padding-right: 2.25rem;
 }
 
+/* L'icona sta a meta' altezza del CAMPO, non del contenitore: Aura la centra con
+   `top: 50%; margin-top: -0.5rem`, ma il reset globale azzerava quel margine (l'icona restava
+   8px troppo in basso). Qui il centraggio e' esplicito e il campo non si siede sulla linea di
+   base (altrimenti il contenitore e' piu' alto del campo di qualche pixel). */
+.p-input-icon-left,
+.p-input-icon-right {
+  vertical-align: middle;
+}
+.p-input-icon-left > .p-inputtext,
+.p-input-icon-right > .p-inputtext {
+  vertical-align: top;
+}
+.p-input-icon-left > i,
+.p-input-icon-right > i {
+  top: calc(50% - 0.5rem);
+  margin-top: 0;
+}
+
 /* Calendar / password: l'input interno eredita le regole sopra. */
 .p-calendar,
 .p-password {
@@ -395,6 +421,63 @@ label {
 }
 .p-calendar .p-datepicker-trigger {
   height: var(--control-md);
+}
+
+/* Bottone attaccato al campo (calendario, autocomplete, numero): Aura lo disegna come `.p-button`,
+   quindi nel nostro tema usciva pieno d'inchiostro (un blocco nero accanto a un campo bianco).
+   Qui e' un'appendice del campo: stesso fondo, stesso bordo, icona grigia. */
+.p-calendar .p-datepicker-trigger.p-button,
+.p-autocomplete .p-autocomplete-dropdown.p-button,
+.p-inputnumber .p-inputnumber-button {
+  width: 2.25rem;
+  height: var(--control-md);
+  background: var(--surface-section);
+  border: 1px solid var(--control-border);
+  border-left: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-secondary);
+}
+.p-calendar .p-datepicker-trigger.p-button:not(:disabled):hover,
+.p-autocomplete .p-autocomplete-dropdown.p-button:not(:disabled):hover,
+.p-inputnumber .p-inputnumber-button:not(:disabled):hover {
+  background: var(--surface-hover);
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
+}
+.p-calendar .p-datepicker-trigger.p-button:focus-visible,
+.p-autocomplete .p-autocomplete-dropdown.p-button:focus-visible {
+  outline-offset: -2px;
+}
+.p-calendar-w-btn .p-inputtext,
+.p-autocomplete-dd .p-autocomplete-input {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Controlli nativi lasciati nei template (checkbox, radio, file): almeno nei colori del tema. */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--ink-fill);
+}
+input[type='file'] {
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+input[type='file']::file-selector-button {
+  height: var(--control-sm);
+  margin-right: var(--spacing-md);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-section);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+input[type='file']::file-selector-button:hover {
+  background: var(--surface-hover);
 }
 
 /* ===== Checkbox / Radio / Switch =====
@@ -471,6 +554,10 @@ label {
 .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon {
   background: transparent;
   color: var(--text-primary);
+}
+/* Freccia dell'ordinamento: Aura la colora blu-ardesia (#64748b). */
+.p-datatable .p-sortable-column .p-sortable-column-icon {
+  color: var(--text-tertiary);
 }
 .p-paginator {
   background: transparent;
@@ -724,15 +811,15 @@ label {
   border-bottom: 2px solid transparent;
   padding: var(--spacing-md) var(--spacing-lg);
 }
-.p-tabview .p-tabview-panels {
-  padding-top: var(--spacing-base);
-}
 .p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link {
   color: var(--text-primary);
   border-bottom-color: var(--tab-line);
   background: transparent;
 }
+/* Il reset globale esenta gli elementi `p-...`: senza questo il tema PrimeNG rimette 1.125rem di padding ai lati
+   e il contenuto delle schede rientra rispetto al titolo e alla barra. */
 .p-tabview .p-tabview-panels {
+  padding: var(--spacing-base) 0 0;
   background: transparent;
   color: var(--text-primary);
 }
@@ -753,6 +840,17 @@ label {
   background: transparent;
 }
 
+/* Frecce di scorrimento delle schede: Aura le fa bianche con ombra, un blocco bianco sul fondo. */
+.p-tabview .p-tabview-nav-btn.p-link {
+  background: var(--surface-ground);
+  color: var(--text-secondary);
+  box-shadow: none;
+  border-radius: 0;
+}
+.p-tabview .p-tabview-nav-btn.p-link:hover {
+  color: var(--text-primary);
+}
+
 /* ===== Toolbar: piatta, solo un filetto sotto ===== */
 .p-toolbar {
   background: var(--surface-card);
@@ -765,7 +863,16 @@ label {
 /* ===== Toast / Message: stesse coppie dei tag, il significato sta anche nell'icona ===== */
 .p-toast .p-toast-message {
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
+}
+/* Sul telefono il toast sta dentro il margine della pagina (16px), non a 9px dal bordo. */
+@media (max-width: 576px) {
+  .p-toast {
+    left: var(--spacing-base);
+    right: var(--spacing-base);
+    width: auto;
+    max-width: none;
+  }
 }
 .p-toast .p-toast-message.p-toast-message-success {
   background: var(--stato-sent-bg);
@@ -820,6 +927,19 @@ label {
 }
 .p-inline-message {
   border-radius: var(--radius-base);
+  /* Aura da' bordo e icona in blu/ambra/rosso saturi: qui le coppie del tema. */
+  border: 1px solid var(--surface-border);
+  outline: 0;
+}
+.p-inline-message .p-inline-message-icon,
+.p-inline-message .p-inline-message-text {
+  color: inherit;
+}
+.p-inline-message.p-inline-message-warn {
+  border-color: var(--stato-warn-edge);
+}
+.p-inline-message.p-inline-message-error {
+  border-color: var(--stato-err-edge);
 }
 .p-inline-message.p-inline-message-success {
   background: var(--stato-sent-bg);

@@ -159,7 +159,7 @@ const LIMITE = 100
         margin-bottom: var(--spacing-base);
       }
       .elenco {
-        border: 1px solid var(--border-color, #ccc);
+        border: 1px solid var(--border-color);
         max-height: 260px;
         overflow: auto;
         padding: var(--spacing-sm);

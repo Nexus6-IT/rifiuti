@@ -384,7 +384,7 @@ import { coloriGrafico } from '../../../../shared/utils/colori-grafici'
       .loading-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(255, 255, 255, 0.9);
+        background: color-mix(in srgb, var(--surface-card) 90%, transparent);
         display: flex;
         flex-direction: column;
         align-items: center;

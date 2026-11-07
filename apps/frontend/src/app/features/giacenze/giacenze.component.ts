@@ -421,13 +421,27 @@ const TUTTE_LE_SEDI = ''
       .col-cer-giacenza {
         min-width: 18rem;
       }
+      /* Su un fondo di stato etichetta e nota prendono l'inchiostro della coppia: il grigio terziario
+         sul fondo ambra scuro dava 3,6:1 (sotto AA). */
       .stat-card--warn {
         border-color: var(--stato-warn-edge);
         background: var(--stato-warn-bg);
+        color: var(--stato-warn-ink);
+      }
+      .stat-card--warn .stat-card__label,
+      .stat-card--warn .stat-card__value,
+      .stat-card--warn .stat-card__hint {
+        color: var(--stato-warn-ink);
       }
       .stat-card--err {
         border-color: var(--stato-err-edge);
         background: var(--stato-err-bg);
+        color: var(--stato-err-ink);
+      }
+      .stat-card--err .stat-card__label,
+      .stat-card--err .stat-card__value,
+      .stat-card--err .stat-card__hint {
+        color: var(--stato-err-ink);
       }
 
       .empty-state--compact {
