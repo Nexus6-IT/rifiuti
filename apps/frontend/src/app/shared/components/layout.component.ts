@@ -1277,6 +1277,12 @@ export class LayoutComponent implements OnInit {
       feature: 'contratti',
     },
     {
+      label: 'Documenti di fattura',
+      route: '/fatturazione/documenti',
+      icon: 'pi pi-list',
+      feature: 'contratti',
+    },
+    {
       label: 'Fatturazione da',
       route: '/clienti/fatturazione',
       icon: 'pi pi-calendar',
