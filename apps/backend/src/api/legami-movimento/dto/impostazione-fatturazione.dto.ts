@@ -3,7 +3,7 @@
  * della data (calendario) e' del servizio, che risponde 400 con `details.errori` sul campo (R60).
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsInt, IsOptional, IsString, Min, ValidateIf } from 'class-validator'
+import { IsBoolean, IsInt, IsOptional, IsString, Min, ValidateIf } from 'class-validator'
 
 export class ImpostaFatturazioneDto {
   @ApiProperty({
@@ -26,4 +26,16 @@ export class ImpostaFatturazioneDto {
   @IsInt()
   @Min(0)
   confermaMovimenti?: number
+}
+
+/** DTO di `PUT /impostazioni-fatturazione/definitive` (4.4c, decisione 13). */
+export class ImpostaDefinitiveDto {
+  @ApiProperty({ example: true, description: 'true accende le definitive, false le spegne' })
+  @IsBoolean()
+  attive: boolean
+
+  @ApiProperty({ example: 1, description: '0 se l’impostazione non esiste ancora' })
+  @IsInt()
+  @Min(0)
+  versione: number
 }
