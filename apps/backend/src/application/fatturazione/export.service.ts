@@ -4,7 +4,7 @@
 // fino ad allora ogni altro formato risponde 400 `ADATTATORE_SCONOSCIUTO`.
 //
 // Letture per insieme, mai per documento: una query seleziona (e conta) i documenti, poi i
-// dettagli si leggono a blocchi di 100 con `DocumentiFatturaService.dettagliInTx` (una query per
+// dettagli si leggono in un passaggio con `DocumentiFatturaService.dettagliInTx` (una query per
 // tabella e per blocco). Tetto di 5000 documenti. Il CSV e' in sola lettura: non rende «emesso» il
 // documento (S18), non prende lock e non scrive altro che l'audit.
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
@@ -13,7 +13,7 @@ import JSZip from 'jszip'
 import type { FotografiaDocumento } from '../../domain/fatturazione/tipi'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
-import { DIMENSIONE_MASSIMA_PAGINA, DocumentiFatturaService } from './documenti-fattura.service'
+import { DocumentiFatturaService } from './documenti-fattura.service'
 import { TETTO_DOCUMENTI_XML_ZIP, XmlDocumentoService } from './xml-documento.service'
 import { righeCsv, testateCsv, type DocumentoPerExport } from './export-csv'
 import { eDataIso } from './numerazione'
@@ -139,26 +139,26 @@ export class ExportService {
             tetto: TETTO_DOCUMENTI_CSV,
             senzaBozze: false,
           })
+          // Un solo passaggio per tabella su tutti i documenti (lista lunga: `IN (SELECT unnest)`
+          // col nested loop spento): a blocchi di 100 ogni blocco rileggeva le righe dell'intero
+          // tenant quando le statistiche sono vecchie.
+          const dettagli = await this.documenti.dettagliInTx(
+            tx,
+            tenantId,
+            selezionati.map(s => s.id)
+          )
+          const perId = new Map(dettagli.map(d => [d.id, d]))
           const perExport: DocumentoPerExport[] = []
-          for (let da = 0; da < selezionati.length; da += DIMENSIONE_MASSIMA_PAGINA) {
-            const blocco = selezionati.slice(da, da + DIMENSIONE_MASSIMA_PAGINA)
-            const dettagli = await this.documenti.dettagliInTx(
-              tx,
-              tenantId,
-              blocco.map(s => s.id)
-            )
-            const perId = new Map(dettagli.map(d => [d.id, d]))
-            for (const s of blocco) {
-              const documento = perId.get(s.id)
-              if (documento) {
-                perExport.push({
-                  documento,
-                  numero: s.numero,
-                  anno: s.anno,
-                  registroCodice: s.registroCodice,
-                  fotografia: s.fotografia,
-                })
-              }
+          for (const s of selezionati) {
+            const documento = perId.get(s.id)
+            if (documento) {
+              perExport.push({
+                documento,
+                numero: s.numero,
+                anno: s.anno,
+                registroCodice: s.registroCodice,
+                fotografia: s.fotografia,
+              })
             }
           }
           const contenuto = await this.comprimi(perExport)
