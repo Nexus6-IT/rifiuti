@@ -134,6 +134,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'RataDocumentoFattura',
   'MarcatoreAddebitoFatturato',
   'ContatoreFileFatturapa',
+  // Mappature dell'export contabile (4.4c, Task 29).
+  'MappaturaExportContabile',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

@@ -1,5 +1,8 @@
 import { BullModule } from '@nestjs/bullmq'
 import { Module } from '@nestjs/common'
+import { ADATTATORI_EXPORT } from '../../application/fatturazione/adattatori/adattatore-export-contabile'
+import { MappatureService } from '../../application/fatturazione/adattatori/mappature.service'
+import { RegistroAdattatori } from '../../application/fatturazione/adattatori/registro-adattatori'
 import { AnnulloStornoService } from '../../application/fatturazione/annullo-storno.service'
 import { CedenteService } from '../../application/fatturazione/cedente.service'
 import { DocumentiFatturaService } from '../../application/fatturazione/documenti-fattura.service'
@@ -19,6 +22,7 @@ import { FatturazioneJobProcessor } from '../../infrastructure/queue/jobs/fattur
 import { RuoloEffettivoModule } from '../me/ruolo-effettivo.module'
 import { CedenteController } from './cedente.controller'
 import { DocumentiFatturaController } from './documenti-fattura.controller'
+import { ExportContabileController } from './export-contabile.controller'
 import { ElaborazioniController } from './elaborazioni.controller'
 import { NumerazioniController } from './numerazioni.controller'
 import { ScostamentiController } from './scostamenti.controller'
@@ -38,6 +42,7 @@ import { ScostamentiController } from './scostamenti.controller'
     ElaborazioniController,
     DocumentiFatturaController,
     ScostamentiController,
+    ExportContabileController,
   ],
   providers: [
     CedenteService,
@@ -49,6 +54,10 @@ import { ScostamentiController } from './scostamenti.controller'
     XmlDocumentoService,
     ExportService,
     PdfCortesiaService,
+    // Elenco degli adattatori contabili (provider multi): TeamSystem e gli altri vi si aggiungono.
+    { provide: ADATTATORI_EXPORT, useFactory: () => [] },
+    RegistroAdattatori,
+    MappatureService,
     FatturazioneJobProcessor,
     FatturazioneManutenzioneJob,
   ],
@@ -61,6 +70,8 @@ import { ScostamentiController } from './scostamenti.controller'
     ElaborazioniService,
     XmlDocumentoService,
     ExportService,
+    RegistroAdattatori,
+    MappatureService,
   ],
 })
 export class FatturazioneModule {}

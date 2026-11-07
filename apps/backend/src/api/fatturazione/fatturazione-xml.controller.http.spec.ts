@@ -334,6 +334,27 @@ describe('Fatturazione: XML, emissione ed export (HTTP con servizi finti)', () =
       expect((await csv()).headers['x-documenti-saltati']).toBeUndefined()
     })
 
+    it('adattatore: header X-Documenti-Saltati col numero dei saltati, anche 0', async () => {
+      const adattatore = (formato: string) =>
+        http()
+          .post(`/${D}/export`)
+          .send({ formato, selezione: { anno: 2026 }, confermaEmissione: true })
+      f.esporta.esporta.mockResolvedValue({
+        nomeFile: 'prova.txt',
+        contentType: 'text/plain',
+        contenuto: Buffer.from('x'),
+        saltati: 2,
+      })
+      expect((await adattatore('FINTO')).headers['x-documenti-saltati']).toBe('2')
+      f.esporta.esporta.mockResolvedValue({
+        nomeFile: 'prova.txt',
+        contentType: 'text/plain',
+        contenuto: Buffer.from('x'),
+        saltati: 0,
+      })
+      expect((await adattatore('FINTO')).headers['x-documenti-saltati']).toBe('0')
+    })
+
     it('download con Content-Disposition attachment, nome del file e tipo del servizio', async () => {
       f.esporta.esporta.mockResolvedValue({
         nomeFile: 'fatture-2026.csv',

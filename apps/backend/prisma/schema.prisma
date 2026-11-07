@@ -178,6 +178,7 @@ model Tenant {
   rateDocumentoFattura        RataDocumentoFattura[]
   marcatoriAddebitiFatturati  MarcatoreAddebitoFatturato[]
   contatoriFileFatturapa      ContatoreFileFatturapa[]
+  mappatureExportContabile    MappaturaExportContabile[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -4256,4 +4257,23 @@ model ContatoreFileFatturapa {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "contatori_file_fatturapa_tenant_id_fkey")
 
   @@map("contatori_file_fatturapa")
+}
+
+/// Mappatura per azienda fra una chiave di WasteFlow (codice IVA, conto dei ricavi, cliente, pagamento, registro) e il codice che il gestionale contabile si aspetta (4.4c, Task 29, §7.3). Una riga per (azienda, adattatore, tipo, chiave); il valore nullo non esiste: cancellare una voce la elimina. CHECK solo in migration: `mappature_export_contabile_tipo_ammesso`, `_adattatore_non_vuoto`, `_valore_non_vuoto`, `_chiave_non_vuota`, `_versione_positiva`.
+model MappaturaExportContabile {
+  id              String   @id(map: "mappature_export_contabile_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  adattatore      String   @db.VarChar(30)
+  tipo            String   @db.VarChar(20)
+  chiaveWasteflow String   @map("chiave_wasteflow") @db.VarChar(100)
+  valore          String   @db.VarChar(50)
+  versione        Int      @default(1)
+  modificatoDa    String?  @map("modificato_da") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "mappature_export_contabile_tenant_id_fkey")
+
+  @@unique([tenantId, adattatore, tipo, chiaveWasteflow], map: "mappature_export_contabile_unico_key")
+  @@map("mappature_export_contabile")
 }

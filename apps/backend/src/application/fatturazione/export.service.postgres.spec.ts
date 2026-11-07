@@ -33,6 +33,8 @@ import {
 import { pulisciTenantDiTest } from '../../test-support/legami-di-test'
 import { assicuraCatalogoCer } from '../../test-support/listino-di-test'
 import { DocumentiFatturaService } from './documenti-fattura.service'
+import { MappatureService } from './adattatori/mappature.service'
+import { RegistroAdattatori } from './adattatori/registro-adattatori'
 import { ExportService, TETTO_DOCUMENTI_CSV } from './export.service'
 import { XmlDocumentoService } from './xml-documento.service'
 
@@ -52,7 +54,9 @@ describe('ExportService CSV — Postgres reale, ruolo wasteflow_app', () => {
     servizio = new ExportService(
       app,
       new DocumentiFatturaService(app),
-      new XmlDocumentoService(app, new DocumentiFatturaService(app))
+      new XmlDocumentoService(app, new DocumentiFatturaService(app)),
+      new RegistroAdattatori([]),
+      new MappatureService(app, new RegistroAdattatori([]))
     )
     cerCreati.push(...(await assicuraCatalogoCer(owner, ['20 03 01'])))
   })
