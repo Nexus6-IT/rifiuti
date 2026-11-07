@@ -1,4 +1,10 @@
 import { expect } from '@playwright/test'
+import { execFileSync } from 'child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join, resolve } from 'path'
+import { inflateRawSync } from 'zlib'
+import { getApiUrl } from './env'
 import { chiama, codiceCasuale, giornoItaliano, ok, creaListinoLegami } from './legami-api'
 import type { Creato, ListinoLegami, Risposta, Versionata } from './legami-api'
 import { conPrefissoUnico } from './run-id'
@@ -76,6 +82,8 @@ export interface DocumentoDettaglioApi extends DocumentoApi {
   versione: number
   documentoOrigineId: string | null
   stornoId: string | null
+  emessoIl: string | null
+  xmlGenerato: boolean
 }
 
 export interface ScostamentoApi {
@@ -232,3 +240,98 @@ export async function aggiungiRigaFEdElencoAlternativo(
 }
 
 export { codiceCasuale, creaListinoLegami }
+
+// ---------------------------------------------------------------------------------------------
+// 4.4b2 (Task 26b): download binari, lettura di uno ZIP e validazione con lo script del backend.
+// ---------------------------------------------------------------------------------------------
+
+export interface Scaricato {
+  stato: number
+  tipo: string
+  intestazioni: Headers
+  corpo: Buffer
+}
+
+/** Chiamata che restituisce i byte della risposta (XML, ZIP): il client `chiama` legge solo testo. */
+export async function scarica(
+  metodo: string,
+  percorso: string,
+  token: string,
+  corpo?: unknown
+): Promise<Scaricato> {
+  for (let tentativo = 1; ; tentativo++) {
+    const r = await fetch(`${getApiUrl()}${percorso}`, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    })
+    if (r.status === 429 && tentativo < 6) {
+      await new Promise(res => setTimeout(res, 2000 * tentativo))
+      continue
+    }
+    return {
+      stato: r.status,
+      tipo: r.headers.get('content-type') ?? '',
+      intestazioni: r.headers,
+      corpo: Buffer.from(await r.arrayBuffer()),
+    }
+  }
+}
+
+/** Contenuto di un file ZIP (metodi 0 e 8) letto dalla directory centrale: nessuna dipendenza. */
+export function leggiZip(zip: Buffer): Map<string, Buffer> {
+  const risultato = new Map<string, Buffer>()
+  let fine = -1
+  for (let i = zip.length - 22; i >= 0; i--) {
+    if (zip.readUInt32LE(i) === 0x06054b50) {
+      fine = i
+      break
+    }
+  }
+  if (fine < 0) throw new Error('ZIP non valido: directory centrale assente')
+  const voci = zip.readUInt16LE(fine + 10)
+  let p = zip.readUInt32LE(fine + 16)
+  for (let n = 0; n < voci; n++) {
+    if (zip.readUInt32LE(p) !== 0x02014b50) throw new Error('ZIP non valido: voce illeggibile')
+    const metodo = zip.readUInt16LE(p + 10)
+    const dimCompressa = zip.readUInt32LE(p + 20)
+    const lunNome = zip.readUInt16LE(p + 28)
+    const lunExtra = zip.readUInt16LE(p + 30)
+    const lunCommento = zip.readUInt16LE(p + 32)
+    const offset = zip.readUInt32LE(p + 42)
+    const nome = zip.subarray(p + 46, p + 46 + lunNome).toString('utf8')
+    const lunNomeLocale = zip.readUInt16LE(offset + 26)
+    const lunExtraLocale = zip.readUInt16LE(offset + 28)
+    const inizio = offset + 30 + lunNomeLocale + lunExtraLocale
+    const dati = zip.subarray(inizio, inizio + dimCompressa)
+    risultato.set(nome, metodo === 0 ? Buffer.from(dati) : inflateRawSync(dati))
+    p += 46 + lunNome + lunExtra + lunCommento
+  }
+  return risultato
+}
+
+/**
+ * Valida un XML FatturaPA con `apps/backend/scripts/valida-fatturapa.ts` (XSD ufficiale), lanciato
+ * da `apps/backend` (scansione P45: l'e2e non importa il codice del backend). Il file temporaneo
+ * si rimuove sempre.
+ */
+export function validaConScript(xml: Buffer | string): { valido: boolean; messaggi: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'valida-fatturapa-'))
+  try {
+    const file = join(dir, 'fattura.xml')
+    writeFileSync(file, xml)
+    try {
+      execFileSync('npx', ['ts-node', '-P', 'tsconfig.json', 'scripts/valida-fatturapa.ts', file], {
+        cwd: resolve(__dirname, '../../apps/backend'),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 120_000,
+      })
+      return { valido: true, messaggi: '' }
+    } catch (e) {
+      const err = e as { stderr?: Buffer; stdout?: Buffer }
+      return { valido: false, messaggi: `${err.stdout ?? ''}${err.stderr ?? ''}` }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
