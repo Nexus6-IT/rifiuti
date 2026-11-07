@@ -101,6 +101,29 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
     expect(response.status).toHaveBeenCalledWith(500)
   })
 
+  it('un corpo oltre il limite (PayloadTooLargeError di body-parser) e` 413, non 500', () => {
+    const errore = Object.assign(new Error('request entity too large'), {
+      type: 'entity.too.large',
+      status: 413,
+      statusCode: 413,
+    })
+    filter.catch(errore, host)
+    expect(response.status).toHaveBeenCalledWith(413)
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 413,
+        error: 'PAYLOAD_TROPPO_GRANDE',
+        message: expect.stringContaining('troppo grande'),
+      })
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('anche un errore con solo statusCode 413 e` 413', () => {
+    filter.catch(Object.assign(new Error('x'), { statusCode: 413 }), host)
+    expect(response.status).toHaveBeenCalledWith(413)
+  })
+
   it('un FIR annullato nel frattempo è un conflitto (409), non un errore imprevisto', () => {
     filter.catch(new FirAnnullatoNelFrattempoError('fir-1'), host)
 

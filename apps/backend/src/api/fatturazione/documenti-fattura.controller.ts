@@ -137,7 +137,10 @@ export class DocumentiFatturaController {
   /**
    * Il CSV e` a tutti i ruoli di lettura e non cambia lo stato (`confermaEmissione` ignorata).
    * `XML_ZIP` e gli adattatori rendono i documenti emessi: servono ADMIN o SUPER_ADMIN, verificati
-   * sul ruolo EFFETTIVO nell'azienda selezionata (`@Roles` vede solo quello del token).
+   * sul ruolo EFFETTIVO nell'azienda selezionata. `@Roles` (RolesGuard) lo usa gia` quando arriva
+   * l'header dell'azienda, ma qui la rotta e` aperta a tutti i ruoli di lettura: la scelta dipende
+   * dal `formato` nel corpo, che un decoratore non vede. Il controllo nel metodo vale anche senza
+   * header e non dipende dal modo in cui il guard ricava l'azienda.
    */
   @Post('export')
   @HttpCode(200)

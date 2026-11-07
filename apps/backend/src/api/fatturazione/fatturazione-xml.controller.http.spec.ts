@@ -54,7 +54,7 @@ function finti(): Finti {
   }
 }
 
-async function creaApp(f: Finti, ruolo: () => string) {
+async function creaApp(f: Finti, ruolo: () => string, effettivo: () => string = ruolo) {
   const logger: any = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   const moduleRef = await Test.createTestingModule({
     controllers: [DocumentiFatturaController],
@@ -65,7 +65,7 @@ async function creaApp(f: Finti, ruolo: () => string) {
       { provide: ExportService, useValue: f.esporta },
       {
         provide: RuoloEffettivoService,
-        useValue: { accesso: jest.fn(), ruoloEffettivo: jest.fn(async () => ruolo()) },
+        useValue: { accesso: jest.fn(), ruoloEffettivo: jest.fn(async () => effettivo()) },
       },
       { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
     ],
@@ -92,11 +92,17 @@ describe('Fatturazione: XML, emissione ed export (HTTP con servizi finti)', () =
   let app: INestApplication
   let f: Finti
   let ruolo = 'ADMIN'
+  let effettivo: string | null = null
 
   beforeEach(async () => {
     ruolo = 'ADMIN'
+    effettivo = null
     f = finti()
-    app = await creaApp(f, () => ruolo)
+    app = await creaApp(
+      f,
+      () => ruolo,
+      () => effettivo ?? ruolo
+    )
   })
   afterEach(async () => {
     await app.close()
@@ -150,6 +156,22 @@ describe('Fatturazione: XML, emissione ed export (HTTP con servizi finti)', () =
       expect((await zip()).status).toBe(200)
       expect((await csv()).status).toBe(200)
       expect((await emesso()).status).toBe(200)
+    })
+
+    it('token ADMIN ma ruolo effettivo VIEWER nell`azienda selezionata: XML_ZIP 403', async () => {
+      ruolo = 'ADMIN'
+      effettivo = 'VIEWER'
+      expect((await zip()).status).toBe(403)
+      expect(f.esporta.esporta).not.toHaveBeenCalled()
+    })
+
+    it('token VIEWER ma ruolo effettivo ADMIN: XML_ZIP passa il controllo nel metodo', async () => {
+      // Il guard decide sul token (il mock non risolve l`header): qui si prova che il controllo
+      // nel metodo usa il ruolo effettivo, non quello del token.
+      ruolo = 'OPERATOR'
+      effettivo = 'ADMIN'
+      expect((await csv()).status).toBe(200)
+      expect((await zip()).status).toBe(200)
     })
 
     it('un formato diverso da CSV (adattatore) richiede un amministratore', async () => {
