@@ -626,7 +626,9 @@ async function selezionaElaborazioneInterna(
 
   // 6. Righe di listino degli elenchi validi, scaglioni e scadenze, categorie e codici IVA.
   // Righe citate dai legami che stanno in un elenco non valido nel periodo (arretrati di un
-  // listino scaduto): servono al calcolo, che altrimenti non le trova.
+  // listino scaduto): servono al calcolo, che altrimenti non le trova. Di quegli elenchi si
+  // leggono tutte le righe (stessa query), cosi' la posizione nell'elenco e' quella vera; nel
+  // listino del documento entrano comunque solo le citate.
   const righeCitateIds = distinti(righeLegameSql.map(r => r.rigaAddebitoId))
   const elenchiUsatiIds = distinti(
     attivi.flatMap(a =>
@@ -649,7 +651,11 @@ async function selezionaElaborazioneInterna(
              addebito_id::text AS "addebitoId", cer_code AS "cerCode", riferimento
       FROM righe_addebito
       WHERE tenant_id = ${tenantId}::uuid
-        AND (elenco_id IN (SELECT unnest(${elenchiUsatiIds}::uuid[])) OR id IN (SELECT unnest(${righeCitateIds}::uuid[])))`
+        AND (elenco_id IN (SELECT unnest(${elenchiUsatiIds}::uuid[]))
+             OR id IN (SELECT unnest(${righeCitateIds}::uuid[]))
+             OR elenco_id IN (SELECT elenco_id FROM righe_addebito
+                              WHERE tenant_id = ${tenantId}::uuid
+                                AND id IN (SELECT unnest(${righeCitateIds}::uuid[]))))`
   )
   // Ordine dell'elenco come lo vede l'utente (`ordinaRigheListino`): tipo, CER o codice
   // dell'addebito, riferimento, id. Serve il codice dell'addebito: una query per insieme.
@@ -837,19 +843,33 @@ async function selezionaElaborazioneInterna(
   // Righe di listino nella forma del calcolo (stesso oggetto in tutti i documenti).
   const eAllegato = new Set(allegati.map(a => a.id))
   const contrattoDelElenco = new Map(elenchiTutti.map(e => [e.id, e.contrattoId]))
-  const codiciElenco = new Map(elenchiTutti.map(e => [e.id, e.codice]))
+  const numeroContratto = new Map([
+    ...attivi.map((a): [string, string] => [a.c.id, a.c.numero]),
+    ...allegati.map((a): [string, string] => [a.id, a.numero]),
+  ])
+  const elenchiDelCalcolo = new Map(
+    elenchiTutti.map(e => [
+      e.id,
+      { codice: e.codice, contratto: numeroContratto.get(e.contrattoId) ?? '' },
+    ])
+  )
   const listinoPerElenco = new Map<string, RigaListinoDaFatturare[]>()
   const elenchiValidiSet = new Set(elenchiUsatiIds)
   const fuoriValidita = new Set<string>()
   for (const r of righeOrdinate) if (!elenchiValidiSet.has(r.elencoId)) fuoriValidita.add(r.id)
   const righeFuori: RigaListinoDaFatturare[] = []
+  const contatePerElenco = new Map<string, number>()
   for (const r of righeOrdinate) {
+    // Posizione nell'elenco intero, nell'ordine dell'utente (`ordinaRigheListino`).
+    const posizioneInElenco = (contatePerElenco.get(r.elencoId) ?? 0) + 1
+    contatePerElenco.set(r.elencoId, posizioneInElenco)
     const iva = codiciIva.get(r.codiceIvaId)
     if (iva === undefined) continue // FK: non puo' mancare; difesa contro una lettura incoerente
     const riga: RigaListinoDaFatturare = {
       id: r.id,
       versione: r.versione,
       elencoId: r.elencoId,
+      posizioneInElenco,
       daAllegato: eAllegato.has(contrattoDelElenco.get(r.elencoId) as string),
       tipo: r.tipo,
       descrizione: r.descrizione,
@@ -1020,7 +1040,6 @@ async function selezionaElaborazioneInterna(
       const minimi = righeDoc.filter(
         r => r.tipo === 'MW' || r.tipo === 'MF' || FORMA_MINIMO_CATEGORIA.test(r.tipo)
       )
-      const posizione = new Map([...listino.keys()].map((id, i) => [id, i + 1]))
       const marcatori = fisse.flatMap(r => marcatoriPer.get(r.id) ?? [])
 
       // Il documento esiste se c'e' qualcosa da fatturare: movimenti (non con SOSPESO_MOVIMENTI,
@@ -1030,7 +1049,6 @@ async function selezionaElaborazioneInterna(
         periodo,
         contratto: { dataInizio: c.dataInizio, dataFine: c.dataFine },
         marcatori,
-        numeroRiga: id => posizione.get(id) as number,
       })
       const haFissi = esitoFissi.righe.length > 0 || esitoFissi.errori.length > 0
       const haMovimenti = legami.length > 0 && c.stato !== 'SOSPESO_MOVIMENTI'
@@ -1120,7 +1138,7 @@ async function selezionaElaborazioneInterna(
         dataDocumento: p.dataDocumento,
         legami: legamiDaFatturare,
         listino,
-        codiciElenco,
+        elenchi: elenchiDelCalcolo,
         righeFisse: fisse,
         righeQuantita: quantita,
         minimi,

@@ -43,7 +43,7 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
  * `MF`, `M<cat>` in `minimi`. Restituisce solo le righe aggiunte (tipo MINIMO, senza unità di
  * misura). `listino` mappa `rigaAddebitoId` -> riga di listino. La soglia di `MW`/`MF`/`M<cat>`
  * è il `prezzo` della riga (la famiglia MINIMO non ha `minimoFatturabile`); senza prezzo dà
- * RIGA_LEGAME_INCOMPLETA con dettaglio «<tipo> riga n» (`numeroRiga`, posizione da 1 nel listino del documento).
+ * RIGA_LEGAME_INCOMPLETA con dettaglio «<tipo>» e `rigaId` (la posizione la scrive `calcolaDocumento`).
  *
  * Insiemi (WinWaste `docs/fatturazione.md` §4.6, codice `:12444-12579`, e `etichettaTipo`):
  * `MW` = tutto il documento a prezzo normale; `MF` = righe CER; `M<cat>` = righe di tipo `V` della
@@ -54,9 +54,7 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
 export function applicaMinimi(
   righe: readonly RigaSenzaLinea[],
   minimi: readonly RigaListinoDaFatturare[],
-  listino: ReadonlyMap<string, RigaListinoDaFatturare>,
-  /** Posizione da 1 della riga nel listino del documento: il «riga n» dei dettagli. */
-  numeroRiga: (id: string) => number
+  listino: ReadonlyMap<string, RigaListinoDaFatturare>
 ): EsitoRighe {
   const aggiunte: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -104,7 +102,8 @@ export function applicaMinimi(
     if (m.prezzo === null) {
       errori.push({
         codice: 'RIGA_LEGAME_INCOMPLETA',
-        dettaglio: `${m.tipo} riga ${numeroRiga(m.id)}`,
+        dettaglio: m.tipo,
+        rigaId: m.id,
       })
       return
     }

@@ -234,16 +234,15 @@ describe('righeDaLegami: prezzo speciale', () => {
   })
 
   it.each([
-    [{ applicaA: 'PROGRESSIVO_DA_DATA' }, 'PROGRESSIVO_DA_DATA riga 1'],
-    [{ applicaA: 'CONGUAGLIO_365' }, 'CONGUAGLIO_365 riga 1'],
-    [{ applicaA: 'GIORNO' }, 'GIORNO riga 1'],
-    [{ applicaA: 'DOCUMENTO', condizione: 2 }, 'condizionata riga 1'],
-    [{ applicaA: 'DOCUMENTO', condizioniRiferite: '1C' }, 'condizionata riga 1'],
+    [{ applicaA: 'PROGRESSIVO_DA_DATA' }, 'PROGRESSIVO_DA_DATA'],
+    [{ applicaA: 'CONGUAGLIO_365' }, 'CONGUAGLIO_365'],
+    [{ applicaA: 'GIORNO' }, 'GIORNO'],
+    [{ applicaA: 'DOCUMENTO', condizione: 2 }, 'condizionata'],
+    [{ applicaA: 'DOCUMENTO', condizioniRiferite: '1C' }, 'condizionata'],
   ] as const)('FAMIGLIA_NON_CALCOLATA %j', (o, dettaglio) => {
     const r = righeDaLegami([speciale()], mappa(voceListino(o)))
     expect(r.righe).toEqual([])
-    expect(r.errori).toEqual([{ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio }])
-    expect(JSON.stringify(r.errori)).not.toContain('A1')
+    expect(r.errori).toEqual([{ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio, rigaId: 'A1' }])
   })
 
   it('una famiglia non calcolata non impedisce il calcolo delle altre righe', () => {
@@ -309,7 +308,7 @@ describe('righeDaLegami: correzioni del giro 1', () => {
     )
     expect(r.righe).toEqual([])
     expect(r.errori).toEqual([
-      { codice: 'PREZZO_SPECIALE_NON_VALIDO', dettaglio: 'codice IVA non univoco riga 1' },
+      { codice: 'PREZZO_SPECIALE_NON_VALIDO', dettaglio: 'codice IVA non univoco', rigaId: 'A1' },
     ])
   })
 
@@ -349,7 +348,7 @@ describe('righeDaLegami: correzioni del giro 1', () => {
     ])
   })
 
-  it('«riga <n>» e la posizione nel listino in ingresso; applicaA nullo ha nome proprio', () => {
+  it('la segnalazione cita la riga di listino per id; applicaA nullo ha nome proprio', () => {
     const l = mappa(
       voceListino({ id: 'A0', applicaA: 'DOCUMENTO' }),
       voceListino({ id: 'A1', applicaA: 'GIORNO' }),
@@ -360,8 +359,8 @@ describe('righeDaLegami: correzioni del giro 1', () => {
       l
     )
     expect(r.errori).toEqual([
-      { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'GIORNO riga 2' },
-      { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'prezzo speciale senza regola riga 3' },
+      { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'GIORNO', rigaId: 'A1' },
+      { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'prezzo speciale senza regola', rigaId: 'A2' },
     ])
   })
 

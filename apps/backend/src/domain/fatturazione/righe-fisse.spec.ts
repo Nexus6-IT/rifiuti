@@ -1,10 +1,7 @@
 import { righeFisse as righeFisseDominio, type MarcatoreEsistente } from './righe-fisse'
 import { listinoDi } from '../../test-support/calcolo-fatturazione-di-test'
 
-type IngressoFisse = Omit<Parameters<typeof righeFisseDominio>[0], 'numeroRiga'>
-/** Come nel calcolo del documento: «riga n» = posizione da 1 nell'array passato. */
-const righeFisse = (i: IngressoFisse) =>
-  righeFisseDominio({ ...i, numeroRiga: id => i.righe.findIndex(r => r.id === id) + 1 })
+const righeFisse = righeFisseDominio
 
 const contratto = { dataInizio: '2020-01-01', dataFine: null }
 const sc = (giorno: number, mese: number, ordine = 1) => ({ ordine, giorno, mese, anno: null })
@@ -108,7 +105,7 @@ describe('righeFisse senza scadenze', () => {
     })
     expect(e.righe[0].marcatore?.chiaveCompetenza).toBe('2026-10-01/2026-10-31')
   })
-  it('prezzo assente: RIGA_LEGAME_INCOMPLETA con «F riga n»', () => {
+  it('prezzo assente: RIGA_LEGAME_INCOMPLETA con «F» e rigaId', () => {
     const e = righeFisse({
       righe: [listinoDi({ id: 'a', tipo: 'CER' }), listinoDi({ id: 'b', prezzo: null })],
       periodo: p0,
@@ -116,7 +113,7 @@ describe('righeFisse senza scadenze', () => {
       marcatori: [],
     })
     expect(e.righe).toHaveLength(0)
-    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 2' }])
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F', rigaId: 'b' }])
   })
 
   const r = listinoDi({ prezzo: '50.00' })
@@ -163,21 +160,11 @@ describe('righeFisse senza scadenze', () => {
   })
 })
 
-describe('righeFisse: numeroRiga obbligatorio e F senza prezzo (decisione 21)', () => {
+describe('righeFisse: F senza prezzo (decisione 21)', () => {
   const p = { dal: '2026-04-01', al: '2026-06-30' }
   const sc = (giorno: number, mese: number) => ({ ordine: 1, giorno, mese, anno: null })
   const ctr = { dataInizio: '2020-01-01', dataFine: null }
 
-  it('numeroRiga e obbligatorio (tsc)', () => {
-    // @ts-expect-error manca numeroRiga: il «riga n» lo da' sempre il chiamante
-    const senza: Parameters<typeof righeFisseDominio>[0] = {
-      righe: [],
-      periodo: p,
-      contratto: ctr,
-      marcatori: [],
-    }
-    expect(senza.righe).toEqual([])
-  })
   it('senza prezzo e senza scadenze nel periodo: nessun errore', () => {
     // scadenza con anno fisso, fuori dal periodo e dai 12 mesi di arretrati
     const r = listinoDi({
@@ -197,7 +184,7 @@ describe('righeFisse: numeroRiga obbligatorio e F senza prezzo (decisione 21)', 
     })
     const e = righeFisse({ righe: [r], periodo: p, contratto: ctr, marcatori: [] })
     expect(e.righe).toHaveLength(0)
-    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 1' }])
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F', rigaId: 'r1' }])
   })
   it('scadenza gia fatturata (marcatore): nessun errore', () => {
     const r = listinoDi({ id: 'r1', prezzo: null, scadenze: [sc(30, 6)], periodoScadenze: 'TP' })
@@ -226,6 +213,6 @@ describe('righeFisse: numeroRiga obbligatorio e F senza prezzo (decisione 21)', 
       contratto: ctr,
       marcatori: [],
     })
-    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 1' }])
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F', rigaId: 'r1' }])
   })
 })

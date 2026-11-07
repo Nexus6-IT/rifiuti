@@ -64,10 +64,11 @@ export interface InputDocumento {
    */
   listino: ReadonlyMap<string, RigaListinoDaFatturare>
   /**
-   * Codice (es. «001») di ogni elenco del listino, per `elencoId`. Serve al «riga n dell'elenco X»
-   * dei dettagli; se manca un elenco il dettaglio resta la posizione nel listino unito.
+   * Codice (es. «001») e numero del contratto di ogni elenco del listino, per `elencoId`. Serve al
+   * «riga p dell'elenco X (contratto N)» dei dettagli; se manca un elenco, o la posizione nel suo
+   * elenco, il dettaglio cita la posizione nel listino unito.
    */
-  codiciElenco?: ReadonlyMap<string, string>
+  elenchi?: ReadonlyMap<string, { codice: string; contratto: string }>
   righeFisse: RigaListinoDaFatturare[]
   righeQuantita: RigaListinoDaFatturare[]
   minimi: RigaListinoDaFatturare[]
@@ -149,23 +150,13 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
   const errori: Segnalazione<ErroreDocumento>[] = []
   const avvisi: Segnalazione<AvvisoDocumento>[] = []
 
-  // Posizione da 1 di ogni riga nel listino, nell'ordine del chiamante.
-  const posizione = new Map<string, number>()
-  let n = 0
-  for (const id of i.listino.keys()) posizione.set(id, ++n)
-
   // 1. Controllo del listino: ogni riga attiva del documento, citata o no dai legami.
   for (const [id, r] of i.listino) {
     if (!famigliaCalcolata(r)) {
-      errori.push({
-        codice: 'FAMIGLIA_NON_CALCOLATA',
-        dettaglio: `${r.tipo} riga ${posizione.get(id)}`,
-      })
+      errori.push({ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: r.tipo, rigaId: id })
     }
   }
 
-  /** Posizione da 1 nel listino: il «riga n» di ogni dettaglio. */
-  const numeroRiga = (id: string): number => posizione.get(id) as number
   const accoda = (esito: EsitoRighe): void => {
     errori.push(...esito.errori)
     for (const a of esito.avvisi) {
@@ -174,25 +165,22 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
   }
 
   /**
-   * Unico punto in cui un «<regola> riga n» (n = posizione nel listino unito, P12) diventa
-   * «<regola> riga p dell'elenco <codice>», con p = posizione nel suo elenco. Senza il codice
-   * dell'elenco (o con un n fuori listino) il dettaglio resta com'e'.
+   * Unico punto in cui una segnalazione su una riga di listino (`rigaId`) prende il suo
+   * dettaglio: «<regola> riga p dell'elenco <codice> (contratto <numero>)», con p = posizione
+   * della riga nel suo elenco completo. Senza elenco o posizione noti cita la posizione da 1
+   * nel listino unito (P12). `rigaId` non esce dal calcolo.
    */
-  const idPerPosizione = [...i.listino.values()]
-  const posizioneNelElenco = new Map<string, number>()
-  const contatoPerElenco = new Map<string, number>()
-  for (const r of idPerPosizione) {
-    const p = (contatoPerElenco.get(r.elencoId) ?? 0) + 1
-    contatoPerElenco.set(r.elencoId, p)
-    posizioneNelElenco.set(r.id, p)
-  }
-  const localizzaRiga = <T extends { dettaglio?: string }>(s: T): T => {
-    const m = /^(.*riga )(\d+)$/.exec(s.dettaglio ?? '')
-    if (m === null) return s
-    const riga = idPerPosizione[Number(m[2]) - 1]
-    const codice = riga === undefined ? undefined : i.codiciElenco?.get(riga.elencoId)
-    if (riga === undefined || codice === undefined) return s
-    return { ...s, dettaglio: `${m[1]}${posizioneNelElenco.get(riga.id)} dell'elenco ${codice}` }
+  const posizioneNelListino = new Map([...i.listino.keys()].map((id, k) => [id, k + 1]))
+  const localizzaRiga = <T extends { dettaglio?: string; rigaId?: string }>(s: T): T => {
+    const { rigaId, ...resto } = s
+    if (rigaId === undefined) return s
+    const riga = i.listino.get(rigaId)
+    const elenco = riga === undefined ? undefined : i.elenchi?.get(riga.elencoId)
+    const dove =
+      riga?.posizioneInElenco !== undefined && elenco !== undefined
+        ? `riga ${riga.posizioneInElenco} dell'elenco ${elenco.codice} (contratto ${elenco.contratto})`
+        : `riga ${posizioneNelListino.get(rigaId)}`
+    return { ...resto, dettaglio: [s.dettaglio, dove].filter(x => x !== undefined).join(' ') } as T
   }
 
   const sospeso = c.stato === 'SOSPESO'
@@ -208,17 +196,13 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
       // prezzo speciale congelati nel legame divergono dal listino attuale, l'errore del legame e'
       // l'unico segnale: scartarlo farebbe sparire il legame dal documento senza errore.
       const giaSegnalate = new Set(
-        errori
-          .filter(e => e.codice === 'FAMIGLIA_NON_CALCOLATA')
-          .map(e => /riga (\d+)$/.exec(e.dettaglio ?? '')?.[1])
+        errori.filter(e => e.codice === 'FAMIGLIA_NON_CALCOLATA').map(e => e.rigaId)
       )
       const mov = righeDaLegami(i.legami, i.listino)
       accoda({
         ...mov,
         errori: mov.errori.filter(
-          e =>
-            e.codice !== 'FAMIGLIA_NON_CALCOLATA' ||
-            !giaSegnalate.has(/riga (\d+)$/.exec(e.dettaglio ?? '')?.[1])
+          e => e.codice !== 'FAMIGLIA_NON_CALCOLATA' || !giaSegnalate.has(e.rigaId)
         ),
       })
       righe.push(...mov.righe)
@@ -227,7 +211,6 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
         righe: i.righeQuantita,
         legami: i.legami,
         periodo: i.periodo,
-        numeroRiga,
       })
       accoda(qta)
       righe.push(...qta.righe)
@@ -238,13 +221,12 @@ export function calcolaDocumento(i: InputDocumento): DocumentoCalcolato {
       periodo: i.periodo,
       contratto: { dataInizio: c.dataInizio, dataFine: c.dataFine },
       marcatori: i.marcatori,
-      numeroRiga,
     })
     accoda(fisse)
     righe.push(...fisse.righe)
     // 5. Minimi: con SOSPESO_MOVIMENTI entrano solo i fissi (spec §6.4), niente minimi.
     if (c.stato !== 'SOSPESO_MOVIMENTI') {
-      const minimi = applicaMinimi(righe, i.minimi, i.listino, numeroRiga)
+      const minimi = applicaMinimi(righe, i.minimi, i.listino)
       accoda(minimi)
       righe.push(...minimi.righe)
     }

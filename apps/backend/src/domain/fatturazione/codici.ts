@@ -172,6 +172,11 @@ export const MESSAGGIO_IN_USO_DA_DOCUMENTI =
 export interface Segnalazione<C extends string> {
   codice: C
   dettaglio?: string
+  /**
+   * Interno al calcolo: id della riga di listino cui si riferisce la segnalazione. Lo consuma
+   * `calcolaDocumento` per scrivere «riga p dell'elenco X (contratto N)» e non esce mai dal calcolo.
+   */
+  rigaId?: string
 }
 
 const LUNGHEZZA_MASSIMA_TESTO_BREVE = 200

@@ -249,7 +249,10 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
     const [d] = await documenti(id)
     expect(d.errori).toContain('FAMIGLIA_NON_CALCOLATA')
     const e = d.fotografia.segnalazioni.errori.find(x => x.codice === 'FAMIGLIA_NON_CALCOLATA')
-    expect(e?.dettaglio).toBe("TS riga 2 dell'elenco 001")
+    const numero = (
+      await owner.contrattoCliente.findUniqueOrThrow({ where: { id: c.contrattoId } })
+    ).numero
+    expect(e?.dettaglio).toBe(`TS riga 2 dell'elenco 001 (contratto ${numero})`)
     expect((await elaborazione(id)).riepilogo).toMatchObject({ errori: 1, documenti: 1 })
   })
 
