@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { validateXML, XMLFileInfo } from 'xmllint-wasm'
+import { validateXML, XMLFileInfo, XMLValidationError } from 'xmllint-wasm'
 
 /** Esito della validazione contro l'XSD FatturaPA. */
 export interface EsitoValidazioneXsd {
@@ -62,22 +62,58 @@ function messaggioSenzaValori(messaggio: string): string {
   return `Elemento ${nome}: ${categoria}`
 }
 
+/** Toglie la riga riassuntiva «<file> fails to validate», che non è un errore dell'XSD. */
+function erroriUtili(errori: ReadonlyArray<XMLValidationError>): XMLValidationError[] {
+  return errori.filter(e => e.loc !== null || !/ fails to validate\s*$/.test(e.rawMessage))
+}
+
+function opzioniXmllint(xml: Array<{ fileName: string; contents: string }>) {
+  const { schema, preload } = caricaSchemi()
+  return {
+    xml,
+    schema: [schema],
+    preload,
+    // Una fattura da molte righe (o un lotto) supera la memoria predefinita (16 MiB).
+    initialMemoryPages: 256,
+    maxMemoryPages: 2048,
+  }
+}
+
+/**
+ * Valida più XML FatturaPA in una sola chiamata a xmllint-wasm (che per ogni chiamata crea un
+ * Worker e ricompila il wasm): l'esito è nello stesso ordine dell'ingresso. Un errore senza
+ * posizione attribuibile a un file rende non valido l'intero lotto (si fallisce chiusi).
+ */
+export async function validaFatturePA(xml: string[]): Promise<EsitoValidazioneXsd[]> {
+  if (xml.length === 0) return []
+  const r = await validateXML(
+    opzioniXmllint(xml.map((contents, i) => ({ fileName: `fattura-${i}.xml`, contents })))
+  )
+  if (r.valid) return xml.map(() => ({ valido: true, errori: [] }))
+  const perFile = new Map<string, string[]>()
+  const generali: string[] = []
+  for (const e of erroriUtili(r.errors)) {
+    const nome = e.loc?.fileName
+    const msg = messaggioSenzaValori(e.message)
+    if (nome === undefined) generali.push(msg)
+    else perFile.set(nome, [...(perFile.get(nome) ?? []), msg])
+  }
+  return xml.map((_, i) => {
+    const errori = [...(perFile.get(`fattura-${i}.xml`) ?? []), ...generali].slice(0, MAX_ERRORI)
+    return errori.length === 0 ? { valido: true, errori } : { valido: false, errori }
+  })
+}
+
 /**
  * Valida un XML FatturaPA contro l'XSD ufficiale (v1.2.3). Non fa accessi alla rete: gli schemi
  * sono letti da `xsd/` e xmllint-wasm gira in memoria.
  */
 export async function validaFatturaPA(xml: string): Promise<EsitoValidazioneXsd> {
-  const { schema, preload } = caricaSchemi()
-  const r = await validateXML({
-    xml: [{ fileName: 'fattura.xml', contents: xml }],
-    schema: [schema],
-    preload,
-    // Una fattura da molte righe supera la memoria predefinita (16 MiB).
-    initialMemoryPages: 256,
-    maxMemoryPages: 1024,
-  })
+  const r = await validateXML(opzioniXmllint([{ fileName: 'fattura.xml', contents: xml }]))
   if (r.valid) return { valido: true, errori: [] }
-  const errori = r.errors.slice(0, MAX_ERRORI).map(e => messaggioSenzaValori(e.message))
+  const errori = erroriUtili(r.errors)
+    .slice(0, MAX_ERRORI)
+    .map(e => messaggioSenzaValori(e.message))
   if (errori.length === 0) errori.push('Elemento documento: non conforme allo schema')
   return { valido: false, errori }
 }

@@ -5,7 +5,18 @@ import https from 'https'
 import net from 'net'
 import { join } from 'path'
 import { REGIMI_FISCALI } from '../../domain/fatturazione/costanti-fiscali'
-import { validaFatturaPA } from './valida-xsd'
+import type { RigaDocumentoCalcolata, RiepilogoIvaCalcolato } from '../../domain/fatturazione/tipi'
+import {
+  serializzaFattura,
+  type DatiFatturaXml,
+} from '../../domain/fatturazione/xml/serializza-fattura'
+import { validateXML } from 'xmllint-wasm'
+import { validaFatturaPA, validaFatturePA } from './valida-xsd'
+
+jest.mock('xmllint-wasm', () => {
+  const reale = jest.requireActual('xmllint-wasm')
+  return { ...reale, validateXML: jest.fn(reale.validateXML) }
+})
 
 const DIR_XSD = join(__dirname, 'xsd')
 const XSD_FATTURA = 'Schema_VFPR12_v1.2.3.xsd'
@@ -14,10 +25,7 @@ const XSD_DSIG = 'xmldsig-core-schema.xsd'
 interface Opzioni {
   versione?: 'FPR12' | 'FPA12'
   tipo?: string
-  codiceDestinatario?: string | null
   pec?: string | null
-  numero?: string
-  totale?: string
   descrizione?: string
   esigibilita?: 'I' | 'D' | 'S'
   naturaRiga?: string
@@ -25,48 +33,103 @@ interface Opzioni {
   bollo?: boolean
   contratto?: boolean
   fattureCollegate?: boolean
-  ddt?: boolean
   righe?: number
-  fuoriOrdine?: boolean
 }
 
-/** Costruisce una fattura nel rispetto dell'ordine delle sequenze dell'XSD, con scostamenti mirati. */
+const sede = {
+  indirizzo: 'Via Roma 1',
+  cap: '00100',
+  comune: 'Roma',
+  provincia: 'RM',
+  nazione: 'IT' as const,
+}
+
+/** Fattura prodotta dal serializzatore vero (Task 15), con scostamenti mirati. */
 function costruisciFattura(o: Opzioni = {}): string {
   const versione = o.versione ?? 'FPR12'
-  const codDest =
-    o.codiceDestinatario === undefined
-      ? versione === 'FPA12'
-        ? 'UFABCD'
-        : '0000000'
-      : o.codiceDestinatario
-  const righe = o.righe ?? 1
-  const natura = o.naturaRiga
-  const esig = o.esigibilita ?? 'I'
-  const linee = Array.from(
-    { length: righe },
-    (_, i) =>
-      `<DettaglioLinee><NumeroLinea>${i + 1}</NumeroLinea><Descrizione>${i === 0 && o.descrizione ? o.descrizione : `Prestazione ${i + 1}`}</Descrizione><Quantita>1.00</Quantita><PrezzoUnitario>10.00</PrezzoUnitario><PrezzoTotale>10.00</PrezzoTotale><AliquotaIVA>${natura ? '0.00' : '22.00'}</AliquotaIVA>${natura ? `<Natura>${natura}</Natura>` : ''}</DettaglioLinee>`
-  ).join('')
-  const trasmissione = o.fuoriOrdine
-    ? `<ProgressivoInvio>00001</ProgressivoInvio><IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdTrasmittente>`
-    : `<IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdTrasmittente><ProgressivoInvio>00001</ProgressivoInvio>`
-  const cessionario = o.cessionarioPersonaFisica
-    ? `<DatiAnagrafici><CodiceFiscale>RSSMRA80A01H501U</CodiceFiscale><Anagrafica><Nome>Mario</Nome><Cognome>Rossi</Cognome></Anagrafica></DatiAnagrafici>`
-    : `<DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>09876543210</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Cliente Spa</Denominazione></Anagrafica></DatiAnagrafici>`
-  const bollo = o.bollo
-    ? `<DatiBollo><BolloVirtuale>SI</BolloVirtuale><ImportoBollo>2.00</ImportoBollo></DatiBollo>`
-    : ''
-  const contratto = o.contratto
-    ? `<DatiOrdineAcquisto><IdDocumento>ORD-77</IdDocumento><CodiceCUP>B11B20000010001</CodiceCUP><CodiceCIG>8123456789</CodiceCIG></DatiOrdineAcquisto>`
-    : ''
-  const collegate = o.fattureCollegate
-    ? `<DatiFattureCollegate><IdDocumento>1/2026</IdDocumento><Data>2026-10-31</Data></DatiFattureCollegate>`
-    : ''
-  const ddt = o.ddt
-    ? `<DatiDDT><NumeroDDT>DDT-9</NumeroDDT><DataDDT>2026-10-30</DataDDT></DatiDDT>`
-    : ''
-  const riepilogo = `<DatiRiepilogo><AliquotaIVA>${natura ? '0.00' : '22.00'}</AliquotaIVA>${natura ? `<Natura>${natura}</Natura>` : ''}<ImponibileImporto>${(righe * 10).toFixed(2)}</ImponibileImporto><Imposta>${natura ? '0.00' : (righe * 2.2).toFixed(2)}</Imposta><EsigibilitaIVA>${esig}</EsigibilitaIVA>${natura ? '<RiferimentoNormativo>Art. 15 DPR 633/72</RiferimentoNormativo>' : ''}</DatiRiepilogo>`
-  return `<?xml version="1.0" encoding="UTF-8"?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="${versione}"><FatturaElettronicaHeader><DatiTrasmissione>${trasmissione}<FormatoTrasmissione>${versione}</FormatoTrasmissione>${codDest === null ? '' : `<CodiceDestinatario>${codDest}</CodiceDestinatario>`}${o.pec ? `<PECDestinatario>${o.pec}</PECDestinatario>` : ''}</DatiTrasmissione><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Cedente Srl</Denominazione></Anagrafica><RegimeFiscale>RF01</RegimeFiscale></DatiAnagrafici><Sede><Indirizzo>Via Roma 1</Indirizzo><CAP>00100</CAP><Comune>Roma</Comune><Provincia>RM</Provincia><Nazione>IT</Nazione></Sede></CedentePrestatore><CessionarioCommittente>${cessionario}<Sede><Indirizzo>Via Milano 2</Indirizzo><CAP>20100</CAP><Comune>Milano</Comune><Provincia>MI</Provincia><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>${o.tipo ?? 'TD01'}</TipoDocumento><Divisa>EUR</Divisa><Data>2026-11-07</Data><Numero>${o.numero ?? '1/2026'}</Numero>${bollo}<ImportoTotaleDocumento>${o.totale ?? (righe * 12.2).toFixed(2)}</ImportoTotaleDocumento></DatiGeneraliDocumento>${contratto}${collegate}${ddt}</DatiGenerali><DatiBeniServizi>${linee}${riepilogo}</DatiBeniServizi><DatiPagamento><CondizioniPagamento>TP02</CondizioniPagamento><DettaglioPagamento><ModalitaPagamento>MP05</ModalitaPagamento><ImportoPagamento>${(righe * 12.2).toFixed(2)}</ImportoPagamento></DettaglioPagamento></DatiPagamento></FatturaElettronicaBody></p:FatturaElettronica>`
+  const natura = o.naturaRiga ?? null
+  const n = o.righe ?? 1
+  const righe: RigaDocumentoCalcolata[] = Array.from({ length: n }, (_, i) => ({
+    numeroLinea: i + 1,
+    tipoRiga: 'MOVIMENTO',
+    legameId: null,
+    rigaLegameId: null,
+    rigaAddebitoId: null,
+    descrizione: i === 0 && o.descrizione ? o.descrizione : `Prestazione ${i + 1}`,
+    dataMovimento: null,
+    cerCode: null,
+    numeroFir: null,
+    quantita: '1',
+    unitaMisura: 'kg',
+    prezzoUnitario: '10',
+    sconto: null,
+    importoLordo: '10.00',
+    importoSconto: '0.00',
+    prezzoTotale: '10.00',
+    codiceIvaId: 'c',
+    aliquotaIva: natura ? '0.00' : '22.00',
+    naturaIva: natura,
+  }))
+  const riepilogo: RiepilogoIvaCalcolato = {
+    aliquota: natura ? '0.00' : '22.00',
+    natura,
+    imponibile: (n * 10).toFixed(2),
+    imposta: natura ? '0.00' : (n * 2.2).toFixed(2),
+    esigibilita: o.esigibilita ?? 'I',
+    riferimentoNormativo: natura ? 'Art. 15 DPR 633/72' : null,
+  }
+  const dati: DatiFatturaXml = {
+    trasmissione: {
+      idPaese: 'IT',
+      idCodice: '01234567890',
+      progressivoInvio: '00001',
+      formato: versione,
+      codiceDestinatario: versione === 'FPA12' ? 'UFABCD' : '0000000',
+      pecDestinatario: o.pec ?? null,
+    },
+    cedente: {
+      denominazione: 'Cedente Srl',
+      partitaIva: '01234567890',
+      codiceFiscale: '01234567890',
+      regimeFiscale: 'RF01',
+      sede,
+      rea: null,
+      idTrasmittente: '01234567890',
+    },
+    cessionario: o.cessionarioPersonaFisica
+      ? {
+          denominazione: null,
+          nome: 'Mario',
+          cognome: 'Rossi',
+          partitaIva: null,
+          codiceFiscale: 'RSSMRA80A01H501U',
+          sede,
+        }
+      : {
+          denominazione: 'Cliente Spa',
+          nome: null,
+          cognome: null,
+          partitaIva: '09876543210',
+          codiceFiscale: null,
+          sede,
+        },
+    generali: {
+      tipoDocumento: o.tipo ?? 'TD01',
+      data: '2026-11-07',
+      numero: '1/2026',
+      bollo: o.bollo ? { importo: '2.00' } : null,
+      importoTotale: (n * 12.2).toFixed(2),
+      causale: [],
+    },
+    contratto: o.contratto
+      ? { idDocumento: 'ORD-77', cig: '8123456789', cup: 'B11B20000010001' }
+      : null,
+    fattureCollegate: o.fattureCollegate ? { idDocumento: '1/2026', data: '2026-10-31' } : null,
+    linee: righe,
+    riepiloghi: [riepilogo],
+    pagamento: null,
+  }
+  return serializzaFattura(dati)
 }
 
 const sha256 = (f: string): string =>
@@ -96,25 +159,18 @@ describe('XSD FatturaPA: file e costanti', () => {
   })
 })
 
-describe('validaFatturaPA: fatture valide', () => {
+describe('validaFatturaPA: fatture valide (prodotte dal serializzatore)', () => {
   const casi: Array<[string, Opzioni]> = [
-    ['FPR12 TD24 (differita) con DDT', { tipo: 'TD24', ddt: true }],
+    ['FPR12 TD24 (differita)', { tipo: 'TD24' }],
     ['FPA12 con CIG, CUP e IdDocumento', { versione: 'FPA12', contratto: true }],
     ['TD04 con DatiFattureCollegate', { tipo: 'TD04', fattureCollegate: true }],
     ['split payment (esigibilità S)', { esigibilita: 'S' }],
-    ['bollo virtuale con natura N1', { bollo: true, naturaRiga: 'N1', totale: '12.20' }],
-    [
-      'cessionario persona fisica',
-      {
-        cessionarioPersonaFisica: true,
-        codiceDestinatario: '0000000',
-        pec: 'mario@pec.example.it',
-      },
-    ],
+    ['bollo virtuale con natura N1', { bollo: true, naturaRiga: 'N1' }],
+    ['cessionario persona fisica', { cessionarioPersonaFisica: true }],
     ['300 righe', { righe: 300 }],
     [
-      'testi con caratteri Latin-1 (già normalizzati)',
-      { descrizione: 'Società "normalizzata" è àèìòù ñ ç' },
+      'testi fuori Latin-1 normalizzati dal serializzatore',
+      { descrizione: 'Società “Rossi” – 10 € Łódź àèìòù' },
     ],
   ]
   it.each(casi)('%s', async (_nome, opzioni) => {
@@ -123,35 +179,54 @@ describe('validaFatturaPA: fatture valide', () => {
     expect(esito.valido).toBe(true)
   })
 
-  it('testo con carattere fuori Latin-1 (Ł): rifiutato, per questo serve il normalizzatore', async () => {
-    const esito = await validaFatturaPA(costruisciFattura({ descrizione: 'Łódź' }))
+  it('testo con carattere fuori Latin-1 (Ł) iniettato a mano: rifiutato', async () => {
+    const xml = costruisciFattura().replace('Prestazione 1', 'Łódź')
+    const esito = await validaFatturaPA(xml)
     expect(esito.valido).toBe(false)
     expect(esito.errori.join('\n')).toContain('Descrizione')
   })
 })
 
 describe('validaFatturaPA: controprove', () => {
-  const casi: Array<[string, Opzioni, string]> = [
+  const casi: Array<[string, (x: string) => string, string]> = [
     [
       'manca CodiceDestinatario',
-      { codiceDestinatario: null },
+      x => x.replace(/<CodiceDestinatario>[^<]*<\/CodiceDestinatario>/, ''),
       'CodiceDestinatario|PECDestinatario|DatiTrasmissione',
     ],
-    ['Numero vuoto', { numero: '' }, 'Numero'],
-    ['ImportoTotaleDocumento con la virgola', { totale: '122,00' }, 'ImportoTotaleDocumento'],
-    ['Natura inesistente (N9)', { naturaRiga: 'N9' }, 'Natura'],
-    ['elemento fuori ordine', { fuoriOrdine: true }, 'ProgressivoInvio|IdTrasmittente'],
+    ['Numero vuoto', x => x.replace('<Numero>1/2026</Numero>', '<Numero></Numero>'), 'Numero'],
+    [
+      'ImportoTotaleDocumento con la virgola',
+      x => x.replace(/<ImportoTotaleDocumento>(\d+)\.(\d+)</, '<ImportoTotaleDocumento>$1,$2<'),
+      'ImportoTotaleDocumento',
+    ],
+    [
+      'Natura inesistente (N9)',
+      x => x.replace(/<Natura>N1<\/Natura>/g, '<Natura>N9</Natura>'),
+      'Natura',
+    ],
+    [
+      'elemento fuori ordine',
+      x =>
+        x.replace(
+          /(<IdTrasmittente>.*?<\/IdTrasmittente>)(<ProgressivoInvio>.*?<\/ProgressivoInvio>)/,
+          '$2$1'
+        ),
+      'ProgressivoInvio|IdTrasmittente',
+    ],
   ]
-  it.each(casi)('%s', async (_nome, opzioni, atteso) => {
-    const esito = await validaFatturaPA(costruisciFattura(opzioni))
+  it.each(casi)('%s', async (_nome, altera, atteso) => {
+    const base = costruisciFattura({ naturaRiga: 'N1' })
+    const xml = altera(base)
+    expect(xml).not.toBe(base)
+    const esito = await validaFatturaPA(xml)
     expect(esito.valido).toBe(false)
-    expect(esito.errori.length).toBeGreaterThan(0)
     expect(esito.errori.join('\n')).toMatch(new RegExp(atteso))
   })
 
   it("la natura generica N2 passa l'XSD: la rifiuta il controllo di business (NATURE_NON_AMMESSE), non lo schema", async () => {
-    const esito = await validaFatturaPA(costruisciFattura({ naturaRiga: 'N2' }))
-    expect(esito.valido).toBe(true)
+    const xml = costruisciFattura({ naturaRiga: 'N1' }).replace(/<Natura>N1</g, '<Natura>N2<')
+    expect((await validaFatturaPA(xml)).valido).toBe(true)
   })
 
   it('XML non ben formato: non valido, senza eccezioni', async () => {
@@ -161,17 +236,54 @@ describe('validaFatturaPA: controprove', () => {
   })
 
   it("i messaggi d'errore non contengono i valori dei campi", async () => {
-    const segreti = ['SEGRETO-DENOMINAZIONE-XYZ', 'SEGRETO-NUMERO-QRS']
-    const xml = costruisciFattura({
-      numero: 'SEGRETO-NUMERO-QRS'.padEnd(40, 'x'),
-      totale: '1,5 SEGRETO-DENOMINAZIONE-XYZ',
-    })
+    const xml = costruisciFattura()
+      .replace(
+        '<Numero>1/2026</Numero>',
+        `<Numero>${'SEGRETO-NUMERO-QRS'.padEnd(40, 'x')}</Numero>`
+      )
+      .replace(/<ImportoTotaleDocumento>[^<]*</, '<ImportoTotaleDocumento>1,5 SEGRETO-IMPORTO<')
     const esito = await validaFatturaPA(xml)
     expect(esito.valido).toBe(false)
     const testo = esito.errori.join('\n')
-    for (const s of segreti) expect(testo).not.toContain(s)
+    expect(testo).not.toMatch(/SEGRETO|1,5/)
     expect(testo).not.toContain("'")
-    expect(testo).not.toMatch(/\d{2}\/2026|1,5/)
+  })
+})
+
+describe('validaFatturePA (lotto)', () => {
+  it('esito per ogni XML, nello stesso ordine, con errori attribuiti al file giusto', async () => {
+    const buono = costruisciFattura()
+    const rotto = buono.replace('<Numero>1/2026</Numero>', '<Numero></Numero>')
+    const esiti = await validaFatturePA([buono, rotto, buono])
+    expect(esiti.map(e => e.valido)).toEqual([true, false, true])
+    expect(esiti[1].errori.join('\n')).toContain('Numero')
+    expect(esiti[0].errori).toEqual([])
+  })
+
+  it('lista vuota: nessun esito', async () => {
+    expect(await validaFatturePA([])).toEqual([])
+  })
+
+  it('stesso esito di validaFatturaPA singola', async () => {
+    const rotto = costruisciFattura().replace('<Numero>1/2026</Numero>', '<Numero></Numero>')
+    expect((await validaFatturePA([rotto]))[0]).toEqual(await validaFatturaPA(rotto))
+  })
+})
+
+describe('schema passato a xmllint', () => {
+  it('schemaLocation di xmldsig riscritto sul file locale, nessun riferimento http rimasto', async () => {
+    const mock = validateXML as unknown as jest.Mock
+    mock.mockClear()
+    await validaFatturaPA(costruisciFattura())
+    const opzioni = mock.mock.calls[0][0] as {
+      schema: Array<{ contents: string }>
+      preload: Array<{ fileName: string; contents: string }>
+    }
+    const schema = opzioni.schema[0].contents
+    expect(schema).toContain(`schemaLocation="${XSD_DSIG}"`)
+    expect(/schemaLocation="https?:/.test(schema)).toBe(false)
+    expect(opzioni.preload.map(f => f.fileName)).toContain(XSD_DSIG)
+    for (const f of opzioni.preload) expect(/schemaLocation="https?:/.test(f.contents)).toBe(false)
   })
 })
 
