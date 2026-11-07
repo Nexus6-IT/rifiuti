@@ -386,3 +386,10 @@ export interface VoceMappatura {
 export const MAX_VOCI_MAPPATURE = 500
 export const MAX_CHIAVE_MAPPATURA = 100
 export const MAX_VALORE_MAPPATURA = 50
+
+/**
+ * Chiave di `sessionStorage` con la `SelezioneExport` dell'export respinto per mappature mancanti
+ * (`MAPPATURE_MANCANTI`): la scrive la pagina dei documenti prima di andare alle mappature, la
+ * legge la pagina delle mappature (Task 33 e 35). Ogni accesso va in try/catch.
+ */
+export const CHIAVE_SELEZIONE_MAPPATURE = 'wasteflow.fatturazione.selezioneMappature'

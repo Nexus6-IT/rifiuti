@@ -60,6 +60,13 @@ const SEVERITA_TAG: Record<SeveritaFatturazione, SeveritaTag> = {
         </div>
         <div class="page-actions" data-testid="elaborazioni-azioni-pagina">
           <p-button
+            label="Documenti"
+            icon="pi pi-list"
+            [outlined]="true"
+            (onClick)="vaiAiDocumenti()"
+            data-testid="elaborazioni-documenti"
+          />
+          <p-button
             *ngIf="permessi().prepara"
             label="Nuova elaborazione"
             icon="pi pi-plus"
@@ -234,6 +241,10 @@ export class ElaborazioniListaComponent {
   cambiaPagina(e: PaginatorState): void {
     this.pagina.set((e.page ?? 0) + 1)
     this.carica()
+  }
+
+  vaiAiDocumenti(): void {
+    void this.router.navigate(['/fatturazione', 'documenti'])
   }
 
   apri(r: ElaborazioneRiga): void {
