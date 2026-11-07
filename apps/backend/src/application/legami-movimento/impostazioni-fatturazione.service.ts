@@ -226,7 +226,7 @@ export class ImpostazioniFatturazioneService {
           if ((attuale?.versione ?? 0) !== dati.versione) throw versioneSuperata()
 
           const prima = attuale?.attive ?? false
-          if (prima === dati.attive && (attuale || !dati.attive)) {
+          if (prima === dati.attive) {
             return { definitiveAttive: prima, versione: attuale?.versione ?? 0 }
           }
 

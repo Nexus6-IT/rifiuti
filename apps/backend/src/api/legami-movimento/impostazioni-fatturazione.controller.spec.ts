@@ -188,13 +188,16 @@ describe('ImpostazioniFatturazioneController', () => {
         )
       })
 
-      it('ADMIN nel token ma solo VIEWER nell’azienda selezionata: 403', async () => {
-        ruoloEffettivo.mockResolvedValue('VIEWER')
-        const put = await http().put(D).send({ attive: true, versione: 1 })
-        expect(put.status).toBe(403)
-        expect(put.body.error).toBe('RUOLO_AZIENDA_SELEZIONATA_INSUFFICIENTE')
-        expect(servizio.impostaDefinitive).not.toHaveBeenCalled()
-      })
+      it.each(['VIEWER', 'OPERATOR'])(
+        'ADMIN nel token ma solo %s nell’azienda selezionata: 403',
+        async effettivo => {
+          ruoloEffettivo.mockResolvedValue(effettivo)
+          const put = await http().put(D).send({ attive: true, versione: 1 })
+          expect(put.status).toBe(403)
+          expect(put.body.error).toBe('RUOLO_AZIENDA_SELEZIONATA_INSUFFICIENTE')
+          expect(servizio.impostaDefinitive).not.toHaveBeenCalled()
+        }
+      )
 
       it('senza azienda selezionata: rifiutato', async () => {
         const put = await http()
