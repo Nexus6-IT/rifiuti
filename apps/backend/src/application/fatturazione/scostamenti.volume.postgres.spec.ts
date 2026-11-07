@@ -209,6 +209,14 @@ describe(`Scostamenti — volume: ${MOVIMENTI} movimenti nel tenant`, () => {
         nome,
         piano: expect.not.stringMatching(/Seq Scan on waste_movements/),
       })
+      // Seguito del Task 21: con l'indice parziale `legami_movimento_scostati_idx` (migration 4.4c)
+      // pagina e totale non leggono in sequenza la tabella dei legami di tutte le aziende.
+      if (nome === 'pagina' || nome === 'totale') {
+        expect({ nome, piano }).toEqual({
+          nome,
+          piano: expect.not.stringMatching(/Seq Scan on legami_movimento/),
+        })
+      }
     }
   })
 })
