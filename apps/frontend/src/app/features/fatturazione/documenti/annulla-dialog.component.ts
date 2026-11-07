@@ -3,6 +3,7 @@ import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 
 /** Lunghezza massima del motivo di annullo e di storno (come il backend). */
@@ -15,9 +16,17 @@ export const MAX_MOTIVO = 200
 @Component({
   selector: 'app-annulla-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, ButtonModule, DialogModule, InputTextareaModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ButtonModule,
+    DialogModule,
+    RipristinaFocusDirective,
+    InputTextareaModule,
+  ],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiudi()"
       header="Annulla il documento"

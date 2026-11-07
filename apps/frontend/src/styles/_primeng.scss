@@ -482,14 +482,57 @@ input[type='file']::file-selector-button:hover {
 
 /* ===== Checkbox / Radio / Switch =====
    Colore pieno (quasi nero) gia' dato dal tema noir: niente piu' override teal.
-   Qui solo il bordo a riposo, portato a 3:1 (WCAG 1.4.11). */
-.p-checkbox .p-checkbox-box,
-.p-radiobutton .p-radiobutton-box {
+   Qui solo il bordo a riposo, portato a 3:1 (WCAG 1.4.11). Queste regole stanno fuori
+   dal layer `primeng` e quindi battono Aura: per questo valgono SOLO a riposo
+   (non selezionato, non disabilitato), altrimenti nasconderebbero lo stato selezionato.
+   Selezionato, hover e focus li ridichiariamo qui con i token, perche' il tema li da' in
+   un layer che perde. */
+.p-checkbox:not(.p-checkbox-checked):not(.p-checkbox-disabled) .p-checkbox-box:not(.p-highlight),
+.p-radiobutton:not(.p-radiobutton-checked):not(.p-radiobutton-disabled)
+  .p-radiobutton-box:not(.p-highlight) {
   border-color: var(--control-border);
   background: var(--surface-section);
 }
-.p-inputswitch .p-inputswitch-slider {
+.p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box:not(.p-highlight):hover,
+.p-radiobutton:not(.p-radiobutton-disabled) .p-radiobutton-box:not(.p-highlight):hover {
+  border-color: var(--control-border-hover);
+}
+.p-checkbox .p-checkbox-box.p-highlight,
+.p-radiobutton .p-radiobutton-box.p-highlight {
+  border-color: var(--ink-fill);
+  background: var(--ink-fill);
+}
+.p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box.p-highlight:hover,
+.p-radiobutton:not(.p-radiobutton-disabled) .p-radiobutton-box.p-highlight:hover {
+  border-color: var(--ink-fill-hover);
+  background: var(--ink-fill-hover);
+}
+.p-checkbox .p-checkbox-box.p-highlight .p-checkbox-icon {
+  color: var(--surface-section);
+}
+.p-radiobutton .p-radiobutton-box.p-highlight .p-radiobutton-icon {
+  background: var(--surface-section);
+}
+.p-checkbox .p-checkbox-box.p-focus,
+.p-radiobutton .p-radiobutton-box.p-focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.p-checkbox.p-checkbox-disabled .p-checkbox-box,
+.p-radiobutton.p-radiobutton-disabled .p-radiobutton-box {
+  opacity: 0.55;
+}
+.p-inputswitch:not(.p-inputswitch-checked):not(.p-disabled) .p-inputswitch-slider {
   background: var(--control-border);
+}
+.p-inputswitch.p-inputswitch-checked .p-inputswitch-slider {
+  background: var(--ink-fill);
+}
+.p-inputswitch.p-inputswitch-checked:not(.p-disabled):hover .p-inputswitch-slider {
+  background: var(--ink-fill-hover);
+}
+.p-inputswitch.p-disabled .p-inputswitch-slider {
+  opacity: 0.55;
 }
 
 /* ===== DataTable — densa, senza riquadro =====

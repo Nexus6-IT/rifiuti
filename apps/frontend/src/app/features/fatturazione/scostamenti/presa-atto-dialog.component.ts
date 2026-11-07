@@ -14,6 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { Subscription } from 'rxjs'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
@@ -32,9 +33,17 @@ export const NOTA_MASSIMA = 200
 @Component({
   selector: 'app-presa-atto-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, ButtonModule, DialogModule, InputTextareaModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ButtonModule,
+    DialogModule,
+    RipristinaFocusDirective,
+    InputTextareaModule,
+  ],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="alCambioVisibilita($event)"
       header="Presa d'atto dello scostamento"

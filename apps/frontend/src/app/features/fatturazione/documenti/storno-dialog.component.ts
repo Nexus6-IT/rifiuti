@@ -13,6 +13,7 @@ import { ButtonModule } from 'primeng/button'
 import { CalendarModule } from 'primeng/calendar'
 import { CheckboxModule } from 'primeng/checkbox'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { fineGiornoDiOggi, isoLocale } from '../impostazioni/numerazione-scheda.component'
 import { MAX_MOTIVO } from './annulla-dialog.component'
@@ -39,10 +40,12 @@ export interface DatiStorno {
     CalendarModule,
     CheckboxModule,
     DialogModule,
+    RipristinaFocusDirective,
     InputTextareaModule,
   ],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiudi()"
       header="Storna il documento"
@@ -70,6 +73,7 @@ export interface DatiStorno {
       <div class="storno-campo">
         <label for="storno-data">Data della nota di credito (obbligatorio)</label>
         <p-calendar
+          [showOnFocus]="false"
           inputId="storno-data"
           [required]="true"
           [(ngModel)]="data"

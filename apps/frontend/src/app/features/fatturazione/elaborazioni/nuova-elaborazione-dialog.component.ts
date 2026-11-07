@@ -18,6 +18,7 @@ import { ButtonModule } from 'primeng/button'
 import { CalendarModule } from 'primeng/calendar'
 import { CheckboxModule } from 'primeng/checkbox'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { DropdownModule } from 'primeng/dropdown'
 import { ClientiService } from '../../clienti/clienti.service'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
@@ -57,10 +58,12 @@ type Ricerca = string | null
     CalendarModule,
     CheckboxModule,
     DialogModule,
+    RipristinaFocusDirective,
     DropdownModule,
   ],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiudi()"
       header="Nuova elaborazione"
@@ -75,6 +78,7 @@ type Ricerca = string | null
         <div class="ne-campo">
           <label for="ne-dal">Periodo dal (obbligatorio)</label>
           <p-calendar
+            [showOnFocus]="false"
             inputId="ne-dal"
             [required]="true"
             [(ngModel)]="periodoDal"
@@ -88,6 +92,7 @@ type Ricerca = string | null
         <div class="ne-campo">
           <label for="ne-al">Periodo al (obbligatorio)</label>
           <p-calendar
+            [showOnFocus]="false"
             inputId="ne-al"
             [required]="true"
             [(ngModel)]="periodoAl"
@@ -101,6 +106,7 @@ type Ricerca = string | null
         <div class="ne-campo">
           <label for="ne-doc">Data del documento (obbligatorio)</label>
           <p-calendar
+            [showOnFocus]="false"
             inputId="ne-doc"
             [required]="true"
             [(ngModel)]="dataDocumento"

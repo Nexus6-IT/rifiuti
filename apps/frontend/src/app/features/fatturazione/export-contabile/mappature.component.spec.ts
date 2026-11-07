@@ -124,7 +124,22 @@ describe('MappatureComponent', () => {
     const riga10 = q('mappature-riga-CODICE_IVA-10')!
     expect(riga10.textContent).toContain('IVA 10%')
     expect(campo('mappature-valore-CODICE_IVA-10').value).toBe('')
-    expect(campo('mappature-valore-CODICE_IVA-10').getAttribute('maxlength')).toBe('50')
+    // il tracciato TeamSystem vuole solo cifre, al massimo 3 per il codice IVA
+    expect(campo('mappature-valore-CODICE_IVA-10').getAttribute('maxlength')).toBe('3')
+    expect(campo('mappature-valore-CODICE_IVA-10').getAttribute('inputmode')).toBe('numeric')
+  })
+
+  it('sotto ogni gruppo dice il formato richiesto e lo collega al campo', async () => {
+    await crea('ADMIN', {
+      mappature: [
+        mappatura({ tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: 'A22' }),
+        mappatura({ tipo: 'CONTO_RICAVI', chiaveWasteflow: 'RIFIUTO', valore: '' }),
+      ],
+    })
+    const hint = q('mappature-formato-CODICE_IVA')!
+    expect(hint.textContent).toContain('al massimo 3 cifre')
+    expect(campo('mappature-valore-CODICE_IVA-22').getAttribute('aria-describedby')).toBe(hint.id)
+    expect(q('mappature-formato-CONTO_RICAVI')!.textContent).toContain('7 cifre')
   })
 
   it('elenco delle mancanti in cima, finché non hanno un valore', async () => {

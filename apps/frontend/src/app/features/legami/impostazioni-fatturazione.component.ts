@@ -14,6 +14,7 @@ import { ToastService } from '../../core/services/toast.service'
 import { leggiErroriAzione } from '../listino/errori-azione'
 import { puoImpostareFatturazione } from './permessi-legami'
 import { ImpostazioneFatturazione } from './legami.model'
+import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import { ImpostazioneFatturazioneService } from './impostazioni-fatturazione.service'
 import { CedenteSchedaComponent } from '../fatturazione/impostazioni/cedente-scheda.component'
 import { ImpostazioniFatturazione44Service } from '../fatturazione/impostazioni/impostazioni-fatturazione-4-4.service'
@@ -21,7 +22,7 @@ import { ERRORI_HTTP_VOCI } from '../fatturazione/vocabolario-fatturazione'
 import { NumerazioneSchedaComponent } from '../fatturazione/impostazioni/numerazione-scheda.component'
 
 const AVVISO_DEFINITIVE =
-  'Accendi le definitive solo dopo la conferma del commercialista su TD24, documenti misti e nature soggette a bollo'
+  "Accendi le definitive solo dopo la conferma del commercialista su TD24, documenti misti e nature soggette a bollo. Dopo l'accensione le fatture ricevono un numero definitivo."
 
 const MESSAGGIO_VERSIONE =
   "L'impostazione è stata modificata da un altro utente: i dati sono stati ricaricati."
@@ -62,7 +63,7 @@ function movimentiToccati(err: unknown): number | null {
         </div>
       </header>
 
-      <p-tabView>
+      <p-tabView [scrollable]="true">
         <p-tabPanel header="Fatturazione da">
           <p class="page-subtitle">
             Solo i movimenti con data uguale o successiva a quella indicata entrano nella
@@ -132,6 +133,13 @@ function movimentiToccati(err: unknown): number | null {
                 data-testid="fatt-spegni"
               />
             </div>
+            <p id="fatt-nota" class="nota-pagina">
+              {{
+                puoModificare()
+                  ? 'Per spegnere la fatturazione usa il pulsante «Spegni la fatturazione».'
+                  : 'Solo gli amministratori possono modificare questa impostazione.'
+              }}
+            </p>
             <div class="riga-definitive">
               <p-inputSwitch
                 inputId="fatt-definitive-input"
@@ -149,13 +157,6 @@ function movimentiToccati(err: unknown): number | null {
                   : 'Le fatture definitive sono spente: restano disponibili anteprime ed esportazione CSV.'
               }}
             </p>
-            <p id="fatt-nota" class="nota-pagina">
-              {{
-                puoModificare()
-                  ? 'Per spegnere la fatturazione usa il pulsante «Spegni la fatturazione».'
-                  : 'Solo gli amministratori possono modificare questa impostazione.'
-              }}
-            </p>
           </section>
         </p-tabPanel>
         <p-tabPanel header="Dati del cedente">
@@ -165,7 +166,10 @@ function movimentiToccati(err: unknown): number | null {
           <ng-template pTemplate="content"><app-numerazione-scheda /></ng-template>
         </p-tabPanel>
       </p-tabView>
-      <p-confirmDialog />
+      <p-confirmDialog
+        [style]="{ width: '32rem', maxWidth: '96vw' }"
+        (onHide)="ripristinaFocus()"
+      />
     </div>
   `,
   styles: [
@@ -193,6 +197,8 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
   private readonly auth = inject(AuthService)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
+  /** Riporta il focus a chi ha aperto la conferma (PrimeNG non lo fa); sostituito a ogni apertura. */
+  ripristinaFocus: () => void = () => undefined
   private readonly servizio44 = inject(ImpostazioniFatturazione44Service)
   private readonly destroyRef = inject(DestroyRef)
   private lettura: Subscription | null = null
@@ -275,6 +281,7 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
     if (e.conflitto && e.codice === 'CONFERMA_RICHIESTA') {
       const n = movimentiToccati(err)
       if (n !== null) {
+        this.ripristinaFocus = catturaFocus('fatt-salva')
         this.conferma.confirm({
           header: 'Conferma il cambio di data',
           message: `Verranno toccati ${n} ${n === 1 ? 'movimento' : 'movimenti'}. Vuoi procedere?`,
@@ -306,6 +313,7 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
       this.inviaDefinitive(false)
       return
     }
+    this.ripristinaFocus = catturaFocus('fatt-definitive')
     this.conferma.confirm({
       header: 'Attiva le definitive',
       message: AVVISO_DEFINITIVE,
@@ -313,6 +321,8 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
       acceptLabel: 'Attiva',
       rejectLabel: 'Annulla',
       defaultFocus: 'reject',
+      // «Annulla» senza riempimento, «Attiva» pieno: la scelta sicura non deve pesare come quella che cambia le cose.
+      rejectButtonStyleClass: 'p-button-text',
       accept: () => this.inviaDefinitive(true),
       reject: () => (this.definitiveUi = false),
     })

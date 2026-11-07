@@ -36,6 +36,22 @@ export const TITOLI_TIPI_MAPPATURA: Readonly<Record<TipoMappatura, string>> = {
   REGISTRO: 'Registri IVA',
 }
 
+/**
+ * Formato che il tracciato TeamSystem richiede per ogni tipo di mappatura: solo cifre, al massimo
+ * N (i codici piu' corti si riempiono di zeri a sinistra). Le larghezze sono quelle del tracciato
+ * (`teamsystem.adattatore.ts`); un valore fuori formato fa rispondere l'export 400
+ * `EXPORT_TEAMSYSTEM_NON_GENERABILE`, quindi lo si dice prima.
+ */
+export const FORMATO_MAPPATURA_TEAMSYSTEM: Readonly<
+  Record<TipoMappatura, { cifre: number; suggerimento: string }>
+> = {
+  CODICE_IVA: { cifre: 3, suggerimento: 'Codice di al massimo 3 cifre, solo numeri (es. 022).' },
+  CONTO_RICAVI: { cifre: 7, suggerimento: 'Conto di al massimo 7 cifre, solo numeri.' },
+  CLIENTE: { cifre: 5, suggerimento: 'Codice cliente di al massimo 5 cifre, solo numeri.' },
+  PAGAMENTO: { cifre: 3, suggerimento: 'Codice di al massimo 3 cifre, solo numeri.' },
+  REGISTRO: { cifre: 2, suggerimento: 'Codice registro di al massimo 2 cifre, solo numeri.' },
+}
+
 export const MESSAGGIO_TROPPE_MODIFICHE =
   'Salva le modifiche fatte prima di continuare (massimo 500 per volta)'
 const RIGHE_PER_PAGINA = 50
@@ -230,6 +246,14 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
             [attr.data-testid]="'mappature-sezione-' + s.tipo"
           >
             <h2 class="titolo-sezione">{{ titoli[s.tipo] }}</h2>
+            <p
+              *ngIf="formato(s.tipo) as f"
+              class="nota-pagina"
+              [attr.id]="'mappature-formato-' + s.tipo"
+              [attr.data-testid]="'mappature-formato-' + s.tipo"
+            >
+              {{ f.suggerimento }}
+            </p>
             <p-table
               [value]="s.righe"
               [paginator]="s.righe.length > righePerPagina"
@@ -261,7 +285,11 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
                         ' ' +
                         (r.etichetta || assente)
                       "
-                      [maxLength]="maxValore"
+                      [maxLength]="formato(r.tipo)?.cifre ?? maxValore"
+                      [attr.inputmode]="formato(r.tipo) ? 'numeric' : null"
+                      [attr.aria-describedby]="
+                        formato(r.tipo) ? 'mappature-formato-' + r.tipo : null
+                      "
                       [ngModel]="r.valore"
                       [disabled]="inCorso()"
                       (ngModelChange)="modifica(r, $event)"
@@ -285,6 +313,17 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
       }
       .surface-card + .surface-card {
         margin-top: var(--spacing-base);
+      }
+      :host ::ng-deep .mappature table {
+        table-layout: fixed;
+        width: 100%;
+      }
+      :host ::ng-deep .mappature th:first-child {
+        width: 55%;
+      }
+      .mancanti ul {
+        margin: 0;
+        padding-left: 1.25rem;
       }
       :host ::ng-deep .mappature th,
       :host ::ng-deep .mappature td {
@@ -375,6 +414,12 @@ export class MappatureComponent {
       this.richieste$.next({ adattatore: this.codiceCorrente, messaggio: null })
     })
   }
+
+  /** Formato richiesto per il gestionale in uso (oggi solo TeamSystem), o `null` se non noto. */
+  formato = (tipo: TipoMappatura): { cifre: number; suggerimento: string } | null =>
+    this.adattatore()?.codice.toUpperCase() === 'TEAMSYSTEM'
+      ? FORMATO_MAPPATURA_TEAMSYSTEM[tipo]
+      : null
 
   titolo = (tipo: string): string => this.titoli[tipo as TipoMappatura] ?? tipo
   perCodice = (_: number, a: AdattatoreVista): string => a.codice

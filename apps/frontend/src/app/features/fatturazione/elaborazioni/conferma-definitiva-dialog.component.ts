@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, EventEmitter, Input, Output } from '@angular/core'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { formattaGiorno } from '../../giacenze/giorno'
 
 /** Intervallo di numeri previsto per un registro (da `numerazionePrevista`). */
@@ -51,9 +52,10 @@ export function testoConferma(r: RiepilogoConferma): string {
 @Component({
   selector: 'app-conferma-definitiva-dialog',
   standalone: true,
-  imports: [CommonModule, ButtonModule, DialogModule],
+  imports: [CommonModule, ButtonModule, DialogModule, RipristinaFocusDirective],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiudi()"
       header="Rendi definitiva"
