@@ -2,7 +2,13 @@ import { HttpClient, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable } from 'rxjs'
 import { environment } from '../../../../environments/environment'
-import { CedenteVista, DatiCedente, DatiPartenza, NumerazioneVista } from './impostazioni.model'
+import {
+  CedenteVista,
+  DatiCedente,
+  DatiPartenza,
+  DefinitiveVista,
+  NumerazioneVista,
+} from './impostazioni.model'
 
 /**
  * Servizio HTTP delle schede «Dati del cedente» e «Numerazione» (4.4a). Separato da
@@ -13,6 +19,7 @@ export class ImpostazioniFatturazione44Service {
   private readonly http = inject(HttpClient)
   private readonly urlCedente = `${environment.apiUrl}/cedente-fatturazione`
   private readonly urlNumerazioni = `${environment.apiUrl}/numerazioni-fattura`
+  private readonly urlDefinitive = `${environment.apiUrl}/impostazioni-fatturazione/definitive`
 
   leggiCedente(): Observable<CedenteVista> {
     return this.http.get<CedenteVista>(this.urlCedente)
@@ -37,5 +44,10 @@ export class ImpostazioniFatturazione44Service {
       `${this.urlNumerazioni}/${encodeURIComponent(registroIvaId)}/${anno}`,
       dati
     )
+  }
+
+  /** Accende o spegne le definitive; `versione` è quella unica della riga delle impostazioni. */
+  impostaDefinitive(attive: boolean, versione: number): Observable<DefinitiveVista> {
+    return this.http.put<DefinitiveVista>(this.urlDefinitive, { attive, versione })
   }
 }
