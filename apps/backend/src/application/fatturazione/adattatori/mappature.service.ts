@@ -19,6 +19,7 @@ import { conJoinLineari } from '../piani-query'
 import {
   chiaveMappatura,
   TIPI_MAPPATURA,
+  type AdattatoreExportContabile,
   type ChiaveMancante,
   type TipoMappatura,
 } from './adattatore-export-contabile'
@@ -68,11 +69,30 @@ const ENTITA: DescrizioneEntita = {
   femminile: true,
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/**
+ * Le chiavi che sono uuid validi, per confrontare `id = ANY(uuid[])`: con `id::text = ANY(...)`
+ * Postgres non usa l'indice della chiave primaria (35 r2). Le altre chiavi restano al confronto
+ * per `codice`; un cast di un testo non uuid farebbe fallire la query.
+ */
+const soloUuid = (chiavi: readonly string[]): string[] => chiavi.filter(k => UUID.test(k))
+
+const NOMI_TIPO: Readonly<Record<TipoMappatura, string>> = {
+  CODICE_IVA: 'codice IVA',
+  CONTO_RICAVI: 'conto ricavi',
+  CLIENTE: 'cliente',
+  PAGAMENTO: 'pagamento',
+  REGISTRO: 'registro',
+}
+
 const vociNonValide = (message: string, error = 'VOCI_NON_VALIDE'): BadRequestException =>
   new BadRequestException({ error, message })
 
 /** Controlli sulle voci, tutti prima di toccare il database. Torna le voci normalizzate e ordinate. */
-function normalizza(voci: readonly VoceMappatura[]): VoceMappatura[] {
+function normalizza(
+  voci: readonly VoceMappatura[],
+  formati: AdattatoreExportContabile['formatiMappature'] = undefined
+): VoceMappatura[] {
   if (!Array.isArray(voci)) throw vociNonValide('Le voci non sono valide.')
   if (voci.length > MAX_VOCI_MAPPATURE) {
     throw vociNonValide(`Al massimo ${MAX_VOCI_MAPPATURE} voci per richiesta.`, 'TROPPE_VOCI')
@@ -100,6 +120,14 @@ function normalizza(voci: readonly VoceMappatura[]): VoceMappatura[] {
       if (pulito === '' || pulito.length > LUNGHEZZA_MASSIMA_VALORE) {
         throw vociNonValide(
           `Il valore di una voce deve avere da 1 a ${LUNGHEZZA_MASSIMA_VALORE} caratteri.`
+        )
+      }
+    }
+    const formato = formati?.[v.tipo as TipoMappatura]
+    if (valore !== null && formato !== undefined) {
+      if (!/^\d+$/.test(valore) || valore.length > formato.massimo) {
+        throw vociNonValide(
+          `Il valore di una mappatura «${NOMI_TIPO[v.tipo as TipoMappatura]}» deve essere un codice numerico di al massimo ${formato.massimo} cifre.`
         )
       }
     }
@@ -140,8 +168,7 @@ export class MappatureService {
     adattatore: string,
     voci: readonly VoceMappatura[]
   ): Promise<MappaturaVista[]> {
-    this.registro.trova(adattatore)
-    const ordinate = normalizza(voci)
+    const ordinate = normalizza(voci, this.registro.trova(adattatore).formatiMappature)
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
@@ -162,7 +189,8 @@ export class MappatureService {
                 if (v.versione !== null) throw versioneSuperata()
                 continue
               }
-              if (v.versione !== null && v.versione !== e.versione) throw versioneSuperata()
+              // La cancellazione di una voce esistente vuole la versione letta (35 r1).
+              if (v.versione !== e.versione) throw versioneSuperata()
               daEliminare.push(e.id)
             } else if (e === undefined) {
               if (v.versione !== null) throw versioneSuperata()
@@ -355,7 +383,7 @@ export class MappatureService {
         FROM "clienti" c
         JOIN "ditte" d ON d.id = c.ditta_id AND d.tenant_id = c.tenant_id
         WHERE c.tenant_id = ${tenantId}::uuid
-          AND (c.id::text = ANY(${clienti}::text[]) OR c.codice = ANY(${clienti}::text[]))`
+          AND (c.id = ANY(${soloUuid(clienti)}::uuid[]) OR c.codice = ANY(${clienti}::text[]))`
       registra(
         'CLIENTE',
         t.map(x => {
@@ -401,7 +429,7 @@ export class MappatureService {
         SELECT id::text AS id, codice AS codice, descrizione AS descrizione
         FROM "condizioni_pagamento"
         WHERE tenant_id = ${tenantId}::uuid
-          AND (id::text = ANY(${pagamenti}::text[]) OR codice = ANY(${pagamenti}::text[]))`
+          AND (id = ANY(${soloUuid(pagamenti)}::uuid[]) OR codice = ANY(${pagamenti}::text[]))`
       registra(
         'PAGAMENTO',
         t.map(x => ({ id: x.id, codice: x.codice, etichetta: x.descrizione }))
@@ -412,7 +440,7 @@ export class MappatureService {
       const t = await db.$queryRaw<{ id: string; codice: string; descrizione: string }[]>`
         SELECT id::text AS id, codice AS codice, descrizione AS descrizione FROM "registri_iva"
         WHERE tenant_id = ${tenantId}::uuid
-          AND (id::text = ANY(${registri}::text[]) OR codice = ANY(${registri}::text[]))`
+          AND (id = ANY(${soloUuid(registri)}::uuid[]) OR codice = ANY(${registri}::text[]))`
       registra(
         'REGISTRO',
         t.map(x => ({ id: x.id, codice: x.codice, etichetta: `${x.codice} - ${x.descrizione}` }))

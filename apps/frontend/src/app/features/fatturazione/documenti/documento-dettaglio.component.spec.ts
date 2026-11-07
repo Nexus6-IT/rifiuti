@@ -199,6 +199,16 @@ describe('DocumentoDettaglioComponent', () => {
       )
       expect(bottone('dd-annulla')?.disabled).toBeTrue()
       expect(q('dd-motivo-annullo')?.textContent).toContain("Si annulla solo l'ultimo numero")
+      // Il motivo e` annunciato da chi usa la tastiera o uno screen reader (33 m4).
+      const descrittoDa = bottone('dd-annulla')!.getAttribute('aria-describedby')
+      expect(descrittoDa).toBe('dd-motivo-annullo')
+      expect(document.getElementById(descrittoDa!)).toBe(q('dd-motivo-annullo'))
+    })
+
+    it('«Annulla» attivo: nessun aria-describedby', async () => {
+      await crea()
+      expect(bottone('dd-annulla')?.disabled).toBeFalse()
+      expect(bottone('dd-annulla')!.hasAttribute('aria-describedby')).toBeFalse()
     })
 
     it('già emesso: il motivo è quello dell’emissione e non c’è «Segna come emesso»', async () => {

@@ -45,6 +45,7 @@ export interface ParametriDocumenti extends ParametriPagina {
   clienteId?: string
   dataDa?: string
   dataA?: string
+  elaborazioneId?: string
 }
 
 export interface ParametriScostamenti extends ParametriPagina {
@@ -174,6 +175,7 @@ export class FatturazioneService {
           clienteId: opzioni.clienteId,
           dataDa: opzioni.dataDa,
           dataA: opzioni.dataA,
+          elaborazioneId: opzioni.elaborazioneId,
         },
         opzioni
       ),
@@ -212,11 +214,6 @@ export class FatturazioneService {
         { responseType: 'blob', observe: 'response' }
       )
       .pipe(map(daRisposta))
-  }
-
-  /** Copia di cortesia: non cambia lo stato. */
-  pdf(id: string): Observable<Blob> {
-    return this.http.get(`${this.urlDocumento(id)}/pdf`, { responseType: 'blob' })
   }
 
   /** Copia di cortesia come file (nome da `Content-Disposition`), stesso schema di `scaricaXml`. */

@@ -1369,7 +1369,8 @@ async function leggiTestata(
            l.fatturato_il AS "fatturatoIl", l.riferimento_fattura AS "riferimentoFattura",
            l.documento_id::text AS "documentoId",
            l.scostamento_dopo_fattura AS "scostamentoDopoFattura",
-           ${condizioneScostamentoAperto('l')} AS "scostamentoAperto",
+           (l.stato = 'FATTURATO'::stato_legame_movimento
+            AND ${condizioneScostamentoAperto('l')}) AS "scostamentoAperto",
            l.scostamento_il AS "scostamentoIl", l.versione AS versione
     FROM legami_movimento l
     WHERE l.tenant_id = ${tenantId}::uuid AND l.id = ${id}::uuid`

@@ -142,7 +142,7 @@ interface GruppoErrori {
           <a routerLink="/fatturazione/elaborazioni" class="an-indietro" data-testid="an-indietro"
             >← Elaborazioni</a
           >
-          <h1 class="page-title">Anteprima dell'elaborazione</h1>
+          <h1 class="page-title" data-testid="an-titolo">{{ titolo() }}</h1>
           <p class="page-subtitle" *ngIf="dettaglio() as d" data-testid="an-periodo">
             Periodo dal {{ giorno(d.periodoDal) }} al {{ giorno(d.periodoAl) }} · documenti del
             {{ giorno(d.dataDocumento) }}
@@ -227,9 +227,30 @@ interface GruppoErrori {
         <p *ngIf="d.stato === 'SCARTATA'" class="text-secondary" data-testid="an-scartata">
           Questa anteprima è stata scartata.
         </p>
-        <p *ngIf="d.stato === 'DEFINITIVA'" class="an-ok" role="status" data-testid="an-definitiva">
-          Le fatture sono state emesse.
-        </p>
+        <div
+          *ngIf="d.stato === 'DEFINITIVA'"
+          class="an-ok"
+          role="status"
+          data-testid="an-definitiva"
+        >
+          <p data-testid="an-definitiva-testo">
+            Le fatture sono state rese definitive e numerate: scaricale o esportale dalla lista dei
+            documenti.
+          </p>
+          <ul *ngIf="d.numerazionePrevista.length" data-testid="an-definitiva-numeri">
+            <li *ngFor="let n of d.numerazionePrevista">
+              Registro {{ n.codiceRegistro }}:
+              {{ n.quanti === 1 ? '1 documento' : n.quanti + ' documenti' }},
+              {{ n.quanti === 1 ? 'numero ' + n.da : 'da ' + n.da + ' a ' + n.a }}
+            </li>
+          </ul>
+          <a
+            routerLink="/fatturazione/documenti"
+            [queryParams]="{ elaborazione: d.id }"
+            data-testid="an-vai-documenti"
+            >Vai ai documenti</a
+          >
+        </div>
 
         <div *ngIf="esito() as e" class="an-esito" role="alert" data-testid="an-esito">
           <p data-testid="an-esito-messaggio">{{ e.messaggio }}</p>
@@ -291,6 +312,7 @@ interface GruppoErrori {
                 >
                   <ng-template pTemplate="header">
                     <tr>
+                      <th scope="col" *ngIf="d.stato === 'DEFINITIVA'">Numero</th>
                       <th scope="col">Cliente</th>
                       <th scope="col">Contratto</th>
                       <th scope="col">Registro</th>
@@ -306,6 +328,13 @@ interface GruppoErrori {
                       [attr.data-testid]="'documento-' + r.id"
                       [class.an-escluso]="r.esclusoDaDefinitiva"
                     >
+                      <td
+                        *ngIf="d.stato === 'DEFINITIVA'"
+                        class="cell-nowrap"
+                        data-testid="doc-numero"
+                      >
+                        {{ r.numeroTesto ?? '—' }}
+                      </td>
                       <td>
                         {{ r.cliente.denominazione }}
                         <p-tag
@@ -335,14 +364,23 @@ interface GruppoErrori {
                         </ul>
                       </td>
                       <td class="cell-nowrap">
-                        <p-button
-                          label="Dettaglio"
-                          icon="pi pi-eye"
-                          [text]="true"
-                          size="small"
-                          (onClick)="documentoAperto.set(r.id)"
+                        <a
+                          *ngIf="d.stato === 'DEFINITIVA' && r.stato !== 'BOZZA'; else dialogo"
+                          class="p-button p-button-text p-button-sm"
+                          [routerLink]="['/fatturazione', 'documenti', r.id]"
                           [attr.data-testid]="'dettaglio-' + r.id"
-                        />
+                          >Dettaglio</a
+                        >
+                        <ng-template #dialogo>
+                          <p-button
+                            label="Dettaglio"
+                            icon="pi pi-eye"
+                            [text]="true"
+                            size="small"
+                            (onClick)="documentoAperto.set(r.id)"
+                            [attr.data-testid]="'dettaglio-' + r.id"
+                          />
+                        </ng-template>
                         <ng-container *ngIf="puoModificareDocumenti()">
                           <p-button
                             *ngIf="!r.esclusoDaDefinitiva"
@@ -370,7 +408,7 @@ interface GruppoErrori {
                   </ng-template>
                   <ng-template pTemplate="emptymessage">
                     <tr>
-                      <td colspan="8">
+                      <td [attr.colspan]="d.stato === 'DEFINITIVA' ? 9 : 8">
                         <div class="empty-state" data-testid="documenti-vuoti">
                           <span class="empty-state__title">Nessun documento.</span>
                         </div>
@@ -609,6 +647,13 @@ export class AnteprimaComponent {
     STATI_ELABORAZIONE_VOCI[s] ?? { etichetta: s, severita: 'info' }
   readonly severita = (v: VoceVocabolario): SeveritaTag => SEVERITA_TAG[v.severita]
 
+  /** Il titolo segue lo stato: dopo la definitiva o lo scarto non e` piu` un'anteprima. */
+  readonly titolo = computed(() => {
+    const s = this.dettaglio()?.stato
+    if (s === 'DEFINITIVA') return 'Elaborazione definitiva'
+    if (s === 'SCARTATA') return 'Elaborazione scartata'
+    return "Anteprima dell'elaborazione"
+  })
   readonly inAttesa = computed(() => {
     const d = this.dettaglio()
     return d !== null && STATI_TRANSITORI.includes(d.stato)

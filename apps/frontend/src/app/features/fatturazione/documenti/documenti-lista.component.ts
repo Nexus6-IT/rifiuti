@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormsModule } from '@angular/forms'
-import { Router } from '@angular/router'
+import { ActivatedRoute, Router } from '@angular/router'
 import { EMPTY, Subject, of } from 'rxjs'
 import { catchError, debounceTime, map, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
@@ -25,6 +25,7 @@ import {
   CHIAVE_SELEZIONE_MAPPATURE,
   ChiaveMancante,
   DocumentoRiga,
+  rimuoviSelezioneMappature,
   SelezioneExport,
   StatoDocumento,
   TIPI_MAPPATURA,
@@ -46,6 +47,8 @@ import {
   MSG_EMISSIONE_PIU_DOCUMENTI,
   MSG_TRACCIATO_NON_VERIFICATO,
 } from './conferma-emissione-dialog.component'
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Righe delle ricerche lato server. */
 export const DIMENSIONE_RICERCA = 25
@@ -69,10 +72,25 @@ const TITOLI_MAPPATURA: Readonly<Record<TipoMappatura, string>> = {
   REGISTRO: 'Registro',
 }
 
+/** Codici dell'adattatore che si correggono nelle mappature del gestionale. */
+const CODICI_DA_MAPPATURE: readonly string[] = ['EXPORT_TEAMSYSTEM_NON_GENERABILE']
+
+/** Testo libero del backend per questi due: e` gia` scritto per l'utente (nessun id). */
+const CODICI_CON_TESTO_DEL_BACKEND: readonly string[] = [
+  'EXPORT_TEAMSYSTEM_NON_GENERABILE',
+  'EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA',
+]
+
 /** Errore di un export: il vocabolario dei codici; 422 senza codice = XML non valido (m3). */
 function messaggioEsportazione(err: unknown): string {
   const stato = (err as { status?: number } | null)?.status
-  if (stato === 422 && codiceErrore(err) === null) return ERRORI_HTTP_VOCI.XML_NON_VALIDO.etichetta
+  const codice = codiceErrore(err)
+  if (stato === 422 && codice === null) return ERRORI_HTTP_VOCI.XML_NON_VALIDO.etichetta
+  if (codice !== null && CODICI_CON_TESTO_DEL_BACKEND.includes(codice)) {
+    // Per esempio «Il codice cliente non è un codice numerico di al massimo 5 cifre.»
+    const testo = (err as { error?: { message?: unknown } } | null)?.error?.message
+    if (typeof testo === 'string' && testo.trim() !== '') return testo
+  }
   return messaggioDaCodice(err, MSG_ESPORTAZIONE_FALLITA)
 }
 
@@ -328,7 +346,33 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
           data-testid="dl-riprova"
         />
       </p>
-      <p *ngIf="esito() as e" role="alert" class="field-error" data-testid="dl-esito">{{ e }}</p>
+      <p *ngIf="esito() as e" role="alert" class="field-error" data-testid="dl-esito">
+        {{ e }}
+        <p-button
+          *ngIf="esitoMappature() as f"
+          label="Apri le mappature del gestionale"
+          icon="pi pi-arrow-right"
+          [text]="true"
+          size="small"
+          (onClick)="apriMappature(f)"
+          data-testid="dl-esito-mappature"
+        />
+      </p>
+      <p
+        *ngIf="elaborazioneId"
+        class="text-secondary"
+        role="status"
+        data-testid="dl-filtro-elaborazione"
+      >
+        Documenti di una sola elaborazione.
+        <p-button
+          label="Mostra tutti"
+          [text]="true"
+          size="small"
+          (onClick)="togliElaborazione()"
+          data-testid="dl-togli-elaborazione"
+        />
+      </p>
       <p *ngIf="infoSaltati() as s" role="status" class="text-secondary" data-testid="dl-saltati">
         {{ s }}
       </p>
@@ -443,7 +487,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
         *ngIf="permessi().scaricaXml"
         [visible]="inAttesa() !== null"
         [titolo]="'Esporta ' + (inAttesa()?.nome ?? '')"
-        [messaggio]="messaggioEmissione"
+        [messaggio]="messaggioEmissione()"
         [avviso]="
           inAttesa() && !inAttesa()!.verificato && inAttesa()!.formato !== 'XML_ZIP'
             ? avvisoTracciato
@@ -489,6 +533,7 @@ export class DocumentiListaComponent {
   private readonly clienti = inject(ClientiService)
   private readonly tabelle = inject(TabelleFatturazioneService)
   private readonly router = inject(Router)
+  private readonly route = inject(ActivatedRoute)
   private readonly auth = inject(AuthService)
   private readonly destroyRef = inject(DestroyRef)
 
@@ -501,6 +546,8 @@ export class DocumentiListaComponent {
   clienteId: string | null = null
   dataDa: Date | null = null
   dataA: Date | null = null
+  /** Dalla pagina dell'elaborazione definitiva (`?elaborazione=<id>`): solo i suoi documenti. */
+  elaborazioneId: string | null = null
 
   readonly righe = signal<DocumentoRiga[]>([])
   readonly totale = signal(0)
@@ -510,6 +557,8 @@ export class DocumentiListaComponent {
   readonly caricamento = signal(false)
   readonly errore = signal<string | null>(null)
   readonly esito = signal<string | null>(null)
+  /** Gestionale le cui mappature vanno corrette, se l'errore dell'export lo chiede. */
+  readonly esitoMappature = signal<string | null>(null)
   readonly infoSaltati = signal<string | null>(null)
   readonly erroreSelezione = signal<string | null>(null)
   readonly erroreClienti = signal<string | null>(null)
@@ -541,7 +590,19 @@ export class DocumentiListaComponent {
   readonly msgPeriodoRovesciato = MSG_PERIODO_ROVESCIATO
   readonly msgMappatureMancanti =
     'Mancano delle mappature per il gestionale. Completale e ripeti l’export.'
-  readonly messaggioEmissione = MSG_EMISSIONE_PIU_DOCUMENTI
+  /** Quanti documenti si esportano: la selezione, oppure il totale del filtro. */
+  readonly documentiDaEsportare = computed(() =>
+    this.selezione().size > 0 ? this.selezione().size : this.totale()
+  )
+  readonly messaggioEmissione = computed(() => {
+    const n = this.documentiDaEsportare()
+    // Il numero e` quello della selezione o del filtro: bozze e annullati non si esportano.
+    const quanti =
+      n === 1
+        ? 'Documenti da esportare: 1 (bozze e annullati non vengono esportati).'
+        : `Documenti da esportare: ${n} (bozze e annullati non vengono esportati).`
+    return `${quanti} ${MSG_EMISSIONE_PIU_DOCUMENTI}`
+  })
   readonly avvisoTracciato = MSG_TRACCIATO_NON_VERIFICATO
   readonly tipoDocumento = (t: string): string => TIPI_DOCUMENTO_VOCI[t]?.etichetta ?? t
   readonly voceStato = (s: StatoDocumento): VoceVocabolario =>
@@ -565,6 +626,8 @@ export class DocumentiListaComponent {
   private readonly ricercaClienti$ = new Subject<string>()
 
   constructor() {
+    const elaborazione = this.route.snapshot.queryParamMap.get('elaborazione')
+    if (elaborazione !== null && UUID.test(elaborazione)) this.elaborazioneId = elaborazione
     this.richiesta$
       .pipe(
         tap(() => {
@@ -582,6 +645,7 @@ export class DocumentiListaComponent {
               clienteId: this.clienteId ?? undefined,
               dataDa: this.dataDa ? isoLocale(this.dataDa) : undefined,
               dataA: this.dataA ? isoLocale(this.dataA) : undefined,
+              elaborazioneId: this.elaborazioneId ?? undefined,
             })
             .pipe(
               catchError(err => {
@@ -713,6 +777,22 @@ export class DocumentiListaComponent {
     this.richiesta$.next()
   }
 
+  /** Dalla scritta di un export respinto per il formato di una mappatura. */
+  apriMappature(formato: string): void {
+    void this.router.navigate(['/fatturazione', 'export-contabile', formato])
+  }
+
+  togliElaborazione(): void {
+    this.elaborazioneId = null
+    this.pagina.set(1)
+    this.selezione.set(new Set())
+    void this.router.navigate([], {
+      queryParams: { elaborazione: null },
+      queryParamsHandling: 'merge',
+    })
+    this.carica()
+  }
+
   cambiaPagina(e: PaginatorState): void {
     this.pagina.set((e.page ?? 0) + 1)
     this.carica()
@@ -767,6 +847,7 @@ export class DocumentiListaComponent {
     // `SelezioneExport` non ha lo stato: un export per filtro esporterebbe più di ciò che la lista mostra.
     if (this.stato) return null
     const s: SelezioneExport = {
+      ...(this.elaborazioneId ? { elaborazioneId: this.elaborazioneId } : {}),
       ...(this.registroIvaId ? { registroIvaId: this.registroIvaId } : {}),
       ...(this.anno ? { anno: this.anno } : {}),
       ...(this.dataDa ? { dataDa: isoLocale(this.dataDa) } : {}),
@@ -799,6 +880,7 @@ export class DocumentiListaComponent {
     if (formato !== 'CSV' && !this.puoEsportareOltreCsv()) return
     this.inEsportazione.set(true)
     this.esito.set(null)
+    this.esitoMappature.set(null)
     this.infoSaltati.set(null)
     this.mancanti.set(null)
     this.servizio
@@ -809,6 +891,8 @@ export class DocumentiListaComponent {
           this.inEsportazione.set(false)
           this.inAttesa.set(null)
           this.salva(file, formato === 'XML_ZIP' ? 'documenti-xml.zip' : 'documenti.zip')
+          // L'export e` riuscito: la selezione lasciata per le mappature non serve piu` (35 r4).
+          rimuoviSelezioneMappature()
           if (file.saltati > 0) this.infoSaltati.set(testoSaltati(file.saltati))
           // I documenti esportati con conferma sono diventati emessi: la lista cambia.
           if (confermaEmissione) this.carica()
@@ -826,6 +910,10 @@ export class DocumentiListaComponent {
               })
             } else {
               this.esito.set(messaggioEsportazione(e))
+              const c = codiceErrore(e)
+              if (c !== null && CODICI_DA_MAPPATURE.includes(c) && formato !== 'CSV') {
+                this.esitoMappature.set(formato)
+              }
             }
           }),
       })

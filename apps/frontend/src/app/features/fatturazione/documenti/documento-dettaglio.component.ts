@@ -136,15 +136,18 @@ type Conferma = 'xml' | 'emesso'
             tooltipPosition="bottom"
             data-testid="dd-annulla-wrap"
           >
-            <p-button
+            <!-- Pulsante nativo: p-button (17.18) non ha un input per aria-describedby. -->
+            <button
+              pButton
+              type="button"
               label="Annulla"
               icon="pi pi-times"
-              severity="danger"
-              [outlined]="true"
+              class="p-button-danger p-button-outlined"
               [disabled]="motivoNonAnnullabile(d) !== null || inAzione()"
-              (onClick)="apriAnnulla()"
+              [attr.aria-describedby]="motivoNonAnnullabile(d) ? 'dd-motivo-annullo' : null"
+              (click)="apriAnnulla()"
               data-testid="dd-annulla"
-            />
+            ></button>
           </span>
           <p-button
             *ngIf="permessi().rendeDefinitiva && d.stornabile"
@@ -161,6 +164,7 @@ type Conferma = 'xml' | 'emesso'
 
       <p
         *ngIf="dettaglio() && permessi().rendeDefinitiva && motivoNonAnnullabile(dettaglio()!) as m"
+        id="dd-motivo-annullo"
         class="text-secondary"
         data-testid="dd-motivo-annullo"
       >

@@ -238,6 +238,23 @@ export const ERRORI_HTTP_VOCI = {
     'errore'
   ),
   ADATTATORE_SCONOSCIUTO: v('Il gestionale scelto non è tra quelli disponibili.', 'errore'),
+  // Export con un adattatore (Task 29/30): 400 del tracciato e della selezione.
+  EXPORT_TEAMSYSTEM_NON_GENERABILE: v(
+    'Il tracciato TeamSystem non si può generare con i dati o le mappature attuali: controlla le mappature.',
+    'errore'
+  ),
+  EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA: v(
+    'Il tracciato TeamSystem non gestisce ancora i clienti esteri.',
+    'errore'
+  ),
+  ADATTATORE_NON_A_FILE: v(
+    "Questo gestionale non produce un file: l'invio non è ancora disponibile.",
+    'errore'
+  ),
+  NESSUN_DOCUMENTO_DA_ESPORTARE: v(
+    'Nessun documento della selezione si può esportare: sono tutti annullati.',
+    'errore'
+  ),
   // Task 29/35: 400 delle mappature dell'export contabile.
   TROPPE_VOCI: v('Le mappature da salvare sono troppe in una volta: salvale a gruppi.', 'errore'),
   VOCI_NON_VALIDE: v(

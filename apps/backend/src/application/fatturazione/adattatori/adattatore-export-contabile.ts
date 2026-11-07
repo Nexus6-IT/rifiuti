@@ -22,6 +22,12 @@ export interface ChiaveMancante {
   etichetta: string
 }
 
+/** Formato del valore di una mappatura: un codice numerico di al massimo `massimo` cifre. */
+export interface FormatoMappatura {
+  soloCifre: true
+  massimo: number
+}
+
 export interface FileGenerato {
   nome: string
   contentType: string
@@ -54,6 +60,12 @@ export interface AdattatoreExportContabile {
    * `chiaveWasteflow` ha al massimo 100 caratteri (colonna e DTO): una chiave piu' lunga non si
    * potrebbe mappare e l'export resterebbe in 409.
    */
+  /**
+   * Formato atteso del valore di una mappatura, per tipo: se presente, `MappatureService.imposta`
+   * rifiuta (400 `VOCI_NON_VALIDE`) un valore diverso da un codice di sole cifre, di al massimo
+   * `massimo` cifre. Cosi' l'errore esce quando l'ADMIN compila la mappatura e non all'export.
+   */
+  readonly formatiMappature?: Partial<Record<TipoMappatura, FormatoMappatura>>
   mappatureRichieste(documenti: readonly DocumentoPerExport[]): ChiaveMancante[]
   /**
    * Modalita' FILE: genera i file. Le `mappature` hanno chiave `chiaveMappatura(tipo, chiave)`.

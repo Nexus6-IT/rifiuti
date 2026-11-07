@@ -219,14 +219,6 @@ describe('FatturazioneService', () => {
     req.flush(new Blob())
   })
 
-  it('pdf: GET /:id/pdf, risposta blob', () => {
-    servizio.pdf('d1').subscribe()
-    const req = http.expectOne(`${doc}/d1/pdf`)
-    expect(req.request.method).toBe('GET')
-    expect(req.request.responseType).toBe('blob')
-    req.flush(new Blob())
-  })
-
   it('scaricaPdf: GET /:id/pdf, blob con nome da Content-Disposition (stesso schema di scaricaXml)', () => {
     let esito: FileScaricato | undefined
     servizio.scaricaPdf('d1').subscribe(r => (esito = r))

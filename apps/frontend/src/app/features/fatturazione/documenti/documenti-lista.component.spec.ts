@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
-import { Router } from '@angular/router'
+import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
 import { Observable, Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { ClientiService } from '../../clienti/clienti.service'
@@ -51,7 +51,11 @@ describe('DocumentiListaComponent', () => {
 
   async function crea(
     ruolo = 'ADMIN',
-    opzioni: { lista?: Observable<Pagina<DocumentoRiga>>; adattatori?: AdattatoreVista[] } = {}
+    opzioni: {
+      lista?: Observable<Pagina<DocumentoRiga>>
+      adattatori?: AdattatoreVista[]
+      query?: Record<string, string>
+    } = {}
   ): Promise<void> {
     servizio = jasmine.createSpyObj('FatturazioneService', ['documenti', 'esporta', 'adattatori'])
     servizio.documenti.and.returnValue(
@@ -67,6 +71,10 @@ describe('DocumentiListaComponent', () => {
         provideNoopAnimations(),
         { provide: FatturazioneService, useValue: servizio },
         { provide: Router, useValue: router },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap(opzioni.query ?? {}) } },
+        },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
         { provide: ClientiService, useValue: { clienti: { list: clientiList } } },
         {
@@ -492,6 +500,86 @@ describe('DocumentiListaComponent', () => {
       spyOn(Storage.prototype, 'setItem').and.throwError('quota')
       expect(() => comp.vaiAlleMappature()).not.toThrow()
       expect(router.navigate).toHaveBeenCalled()
+    })
+
+    it('la conferma dice quanti documenti si esportano: la selezione, oppure il totale del filtro', async () => {
+      await crea('ADMIN', {
+        lista: of(paginaDocumenti([documentoRiga(1), documentoRiga(2)], 37)),
+      })
+      comp.cambia('anno', 2026)
+      comp.chiediEsportazione('TEAMSYSTEM', 'TeamSystem', false)
+      fixture.detectChanges()
+      expect(q('conferma-emissione-testo')!.textContent).toContain('Documenti da esportare: 37')
+      comp.inAttesa.set(null)
+      comp.seleziona('d1', true)
+      comp.seleziona('d2', true)
+      comp.chiediEsportazione('TEAMSYSTEM', 'TeamSystem', false)
+      fixture.detectChanges()
+      expect(q('conferma-emissione-testo')!.textContent).toContain('Documenti da esportare: 2 ')
+    })
+
+    it('400 EXPORT_TEAMSYSTEM_NON_GENERABILE: il testo del backend e il collegamento alle mappature', async () => {
+      await crea()
+      servizio.esporta.and.returnValue(
+        throwError(() =>
+          erroreBlob(400, {
+            error: 'EXPORT_TEAMSYSTEM_NON_GENERABILE',
+            message: 'Il codice cliente non è un codice numerico di al massimo 5 cifre.',
+          })
+        )
+      )
+      comp.seleziona('d1', true)
+      comp.chiediEsportazione('TEAMSYSTEM', 'TeamSystem', false)
+      comp.confermaEsportazione()
+      await svuotaPromesse()
+      fixture.detectChanges()
+      expect(q('dl-esito')?.textContent).toContain('al massimo 5 cifre')
+      q('dl-esito-mappature')!.querySelector('button')!.click()
+      expect(router.navigate).toHaveBeenCalledWith([
+        '/fatturazione',
+        'export-contabile',
+        'TEAMSYSTEM',
+      ])
+    })
+
+    it('400 EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA e NESSUN_DOCUMENTO_DA_ESPORTARE: etichetta del vocabolario', async () => {
+      await crea()
+      for (const [codice, testo] of [
+        ['EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA', 'clienti esteri'],
+        ['NESSUN_DOCUMENTO_DA_ESPORTARE', 'sono tutti annullati'],
+      ]) {
+        servizio.esporta.and.returnValue(throwError(() => erroreBlob(400, { error: codice })))
+        comp.seleziona('d1', true)
+        comp.esportaCsv()
+        await svuotaPromesse()
+        fixture.detectChanges()
+        expect(q('dl-esito')?.textContent).toContain(testo)
+        expect(q('dl-esito-mappature')).toBeNull()
+      }
+    })
+
+    it('un export riuscito toglie la selezione lasciata per le mappature', async () => {
+      await crea()
+      sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, '{"documentoIds":["d1"]}')
+      comp.seleziona('d1', true)
+      comp.esportaCsv()
+      await svuotaPromesse()
+      expect(sessionStorage.getItem(CHIAVE_SELEZIONE_MAPPATURE)).toBeNull()
+    })
+
+    it('?elaborazione=<uuid>: la lista e l`export si limitano a quell`elaborazione, "Mostra tutti" la toglie', async () => {
+      const id = '11111111-2222-3333-4444-555555555555'
+      await crea('ADMIN', { query: { elaborazione: id } })
+      expect(servizio.documenti.calls.mostRecent().args[0]!.elaborazioneId).toBe(id)
+      expect(comp.selezioneExport()).toEqual({ elaborazioneId: id })
+      expect(q('dl-filtro-elaborazione')).not.toBeNull()
+      comp.togliElaborazione()
+      expect(servizio.documenti.calls.mostRecent().args[0]!.elaborazioneId).toBeUndefined()
+    })
+
+    it('?elaborazione non uuid: ignorato', async () => {
+      await crea('ADMIN', { query: { elaborazione: 'x' } })
+      expect(servizio.documenti.calls.mostRecent().args[0]!.elaborazioneId).toBeUndefined()
     })
 
     it('422 XML_NON_VALIDO senza posizione né dati: messaggio fisso', async () => {

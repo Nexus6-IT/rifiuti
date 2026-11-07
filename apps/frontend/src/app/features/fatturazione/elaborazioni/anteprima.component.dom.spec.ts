@@ -181,6 +181,47 @@ describe('AnteprimaComponent (DOM)', () => {
     expect(q('tab-numerazione')).toBeNull()
   })
 
+  it("titolo: «Anteprima» finche` e` un'anteprima, poi «Elaborazione definitiva»", async () => {
+    await crea('ADMIN')
+    expect(q('an-titolo')!.textContent).toContain('Anteprima')
+    fixture.destroy()
+    TestBed.resetTestingModule()
+    await crea('ADMIN', dettaglio({ stato: 'DEFINITIVA' }))
+    expect(q('an-titolo')!.textContent).toContain('Elaborazione definitiva')
+    expect(q('an-titolo')!.textContent).not.toContain('Anteprima')
+  })
+
+  it('dopo la definitiva: non dice «emesse», mostra i numeri assegnati e il link ai documenti filtrati', async () => {
+    await crea(
+      'ADMIN',
+      dettaglio({
+        stato: 'DEFINITIVA',
+        numerazionePrevista: [
+          { registroIvaId: 'r1', codiceRegistro: 'A', da: '100/A', a: '101/A', quanti: 2 },
+        ],
+      }),
+      [
+        documentoRiga(1, { stato: 'DEFINITIVO', numeroTesto: '100/A' }),
+        documentoRiga(2, { stato: 'DEFINITIVO', numeroTesto: '101/A' }),
+        documentoRiga(3, { stato: 'BOZZA', esclusoDaDefinitiva: true }),
+      ]
+    )
+    const testo = q('an-definitiva')!.textContent!
+    expect(testo).not.toContain('emesse')
+    expect(testo).toContain('definitive')
+    expect(q('an-definitiva-numeri')!.textContent).toContain('2 documenti')
+    expect(q('an-definitiva-numeri')!.textContent).toContain('da 100/A a 101/A')
+    const vai = q<HTMLAnchorElement>('an-vai-documenti')!
+    expect(vai.getAttribute('href')).toContain('/fatturazione/documenti')
+    expect(vai.getAttribute('href')).toContain('elaborazione=e1')
+    // Colonna «Numero» e «Dettaglio» verso il documento (non per le bozze escluse).
+    expect(tutti('doc-numero').map(x => x.textContent!.trim())).toEqual(['100/A', '101/A', '—'])
+    expect(q<HTMLAnchorElement>('dettaglio-d1')!.getAttribute('href')).toBe(
+      '/fatturazione/documenti/d1'
+    )
+    expect(q('dettaglio-d3')!.tagName).not.toBe('A')
+  })
+
   it('numerazione prevista «da 15/A a 42/A»', async () => {
     await crea('ADMIN')
     expect(q('numerazione-r1')!.textContent).toContain('da 15/A a 42/A')

@@ -339,6 +339,13 @@ export class ExportService {
               definitivi.map(s => s.id)
             )
             const perExport = perExportDa(definitivi, dettagli)
+            // Una selezione di soli annullati: un file vuoto non e' un export riuscito.
+            if (perExport.length === 0) {
+              throw new BadRequestException({
+                error: 'NESSUN_DOCUMENTO_DA_ESPORTARE',
+                message: 'Nessun documento della selezione si può esportare: sono tutti annullati.',
+              })
+            }
 
             // Mappature: tutte presenti, altrimenti 409 e nessun effetto (rollback di quanto sopra).
             const richieste = richiesteUniche(adattatore.mappatureRichieste(perExport))

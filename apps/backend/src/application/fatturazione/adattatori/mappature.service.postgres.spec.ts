@@ -344,7 +344,9 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
       { tipo: 'PAGAMENTO', chiaveWasteflow: 'MP05', valore: 'BB' },
       { tipo: 'PAGAMENTO', chiaveWasteflow: 'MP01', valore: 'CC' },
     ])
-    const r = await imposta(a, [{ tipo: 'PAGAMENTO', chiaveWasteflow: 'MP05', valore: null }])
+    const r = await imposta(a, [
+      { tipo: 'PAGAMENTO', chiaveWasteflow: 'MP05', valore: null, versione: 1 },
+    ])
     expect(r.map(v => v.chiaveWasteflow)).toEqual(['MP01'])
     const righe = await owner.$queryRawUnsafe<{ n: number }[]>(
       `SELECT count(*)::int AS n FROM mappature_export_contabile WHERE tenant_id = $1::uuid`,
@@ -355,6 +357,52 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
     await expect(
       imposta(a, [{ tipo: 'PAGAMENTO', chiaveWasteflow: 'NONC', valore: null }])
     ).resolves.toHaveLength(1)
+  })
+
+  it('cancellare una voce esistente senza la versione letta: 409 e la voce resta (35 r1)', async () => {
+    const a = await azienda()
+    await imposta(a, [{ tipo: 'PAGAMENTO', chiaveWasteflow: 'MP05', valore: 'BB' }])
+    await expect(
+      imposta(a, [{ tipo: 'PAGAMENTO', chiaveWasteflow: 'MP05', valore: null }])
+    ).rejects.toMatchObject({ response: expect.objectContaining({ error: 'VERSIONE_SUPERATA' }) })
+    expect(await lista(a)).toHaveLength(1)
+  })
+
+  it('TeamSystem vuole codici numerici: un valore non numerico o troppo lungo e` un 400 chiaro e nulla viene scritto', async () => {
+    const a = await azienda()
+    const ts = new MappatureService(app, new RegistroAdattatori([new TeamSystemAdattatore()]))
+    const prova = (voci: Voce[]) =>
+      nel(a.tenantId, () =>
+        ts.imposta(
+          a.tenantId,
+          a.utenteId,
+          'TEAMSYSTEM',
+          voci.map(v => ({ ...v, versione: v.versione ?? null }))
+        )
+      )
+    const casi: [Voce, string][] = [
+      [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: 'ABC12' }, 'cliente'],
+      [{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: '123456' }, 'al massimo 5 cifre'],
+      [{ tipo: 'REGISTRO', chiaveWasteflow: 'A', valore: '123' }, 'al massimo 2 cifre'],
+      [{ tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: '12a' }, 'codice IVA'],
+    ]
+    for (const [voce, testo] of casi) {
+      await expect(prova([voce])).rejects.toMatchObject({
+        response: expect.objectContaining({
+          error: 'VOCI_NON_VALIDE',
+          message: expect.stringContaining(testo),
+        }),
+      })
+    }
+    // Un codice valido passa (anche con zeri a sinistra).
+    await expect(
+      prova([{ tipo: 'CLIENTE', chiaveWasteflow: 'c1', valore: '00042' }])
+    ).resolves.toHaveLength(1)
+    const righe = await owner.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM mappature_export_contabile WHERE tenant_id = $1::uuid`,
+      a.tenantId
+    )
+    expect(righe[0].n).toBe(1)
   })
 
   it('PUT con 501 voci: 400, nulla scritto; con 500 passa', async () => {
@@ -415,7 +463,7 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
       { tipo: 'CLIENTE', chiaveWasteflow: 'segreto-chiave', valore: 'segreto-valore' },
       { tipo: 'CLIENTE', chiaveWasteflow: 'altra', valore: 'x' },
     ])
-    await imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'altra', valore: null }])
+    await imposta(a, [{ tipo: 'CLIENTE', chiaveWasteflow: 'altra', valore: null, versione: 1 }])
     const log = await owner.activityLog.findMany({
       where: { tenantId: a.tenantId, action: 'MAPPATURE_EXPORT_IMPOSTATE' },
       orderBy: { createdAt: 'asc' },

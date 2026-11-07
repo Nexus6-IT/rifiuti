@@ -55,7 +55,8 @@ export class VoceMappaturaDto {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'Versione letta (`null` = voce nuova): se non corrisponde, 409 VERSIONE_SUPERATA',
+    description:
+      'Versione letta (`null` = voce nuova): se non corrisponde, 409 VERSIONE_SUPERATA. Anche per cancellare (`valore: null`) una voce esistente serve la versione letta',
   })
   @IsDefined()
   @ValidateIf((_o, v) => v !== null)

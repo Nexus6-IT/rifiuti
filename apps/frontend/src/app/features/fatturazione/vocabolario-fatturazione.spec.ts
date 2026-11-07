@@ -89,6 +89,11 @@ describe('vocabolario della fatturazione', () => {
       'DATA_FUTURA',
       'CONFERMA_EMISSIONE_RICHIESTA',
       'ADATTATORE_SCONOSCIUTO',
+      // Task 37a: 400 dell'export con un adattatore.
+      'EXPORT_TEAMSYSTEM_NON_GENERABILE',
+      'EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA',
+      'ADATTATORE_NON_A_FILE',
+      'NESSUN_DOCUMENTO_DA_ESPORTARE',
       'TROPPE_VOCI',
       'VOCI_NON_VALIDE',
       'VOCI_DUPLICATE',

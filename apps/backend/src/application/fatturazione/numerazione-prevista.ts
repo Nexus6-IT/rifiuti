@@ -15,21 +15,41 @@ function cifreIniziali(testo: string): { numero: number; resto: string } | null 
   return m ? { numero: Number(m[1]), resto: m[2] } : null
 }
 
+/** Contatore attuale di un registro (anno della data documento) e suffisso della serie. */
+export interface NumerazioneCorrente {
+  ultimoNumero: number
+  suffisso: string | null
+}
+
 /**
  * Numerazione prevista alla lettura. Il riepilogo salvato al calcolo dell'anteprima non sa degli
- * esclusi (`escludi` non lo riscrive): `da` e il suffisso restano quelli salvati, `quanti` e `a`
- * si ricalcolano con i candidati reali della definitiva (bozze non escluse e senza errori), per
- * registro. Un registro senza candidati sparisce.
+ * esclusi (`escludi` non lo riscrive) ne' di un contatore cambiato dopo (numero di partenza
+ * modificato, un'altra elaborazione resa definitiva): `quanti` si ricalcola con i candidati reali
+ * della definitiva (bozze non escluse e senza errori), per registro, e `da`/`a` partono dal
+ * contatore attuale (`corrente`), con il suffisso della serie, come fa la definitiva. Se per un
+ * registro `corrente` manca si ripiega sul `da` salvato. Un registro senza candidati sparisce.
  */
 export function numerazioneAllaLettura(
   salvata: readonly VoceSalvata[],
-  candidatiPerRegistro: ReadonlyMap<string, number>
+  candidatiPerRegistro: ReadonlyMap<string, number>,
+  corrente: ReadonlyMap<string, NumerazioneCorrente> = new Map()
 ): VoceNumerazionePrevista[] {
   const risultato: VoceNumerazionePrevista[] = []
   for (const v of salvata) {
     const quanti = candidatiPerRegistro.get(v.registroIvaId) ?? 0
+    if (quanti <= 0) continue
+    const c = corrente.get(v.registroIvaId)
+    if (c !== undefined) {
+      risultato.push({
+        ...v,
+        quanti,
+        da: numeroTesto(c.ultimoNumero + 1, c.suffisso),
+        a: numeroTesto(c.ultimoNumero + quanti, c.suffisso),
+      })
+      continue
+    }
     const da = cifreIniziali(v.da)
-    if (quanti <= 0 || da === null) continue
+    if (da === null) continue
     risultato.push({ ...v, quanti, a: numeroTesto(da.numero + quanti - 1, da.resto || null) })
   }
   return risultato

@@ -8,7 +8,7 @@ import { TableModule } from 'primeng/table'
 import { Observable, Subject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
-import { leggiErroriAzione } from '../../listino/errori-azione'
+import { codiceErrore, leggiErroriAzione } from '../../listino/errori-azione'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
 import {
   AdattatoreVista,
@@ -17,6 +17,7 @@ import {
   MAX_VALORE_MAPPATURA,
   MAX_VOCI_MAPPATURE,
   MappaturaVista,
+  rimuoviSelezioneMappature,
   SelezioneExport,
   TIPI_MAPPATURA,
   TipoMappatura,
@@ -407,6 +408,8 @@ export class MappatureComponent {
         next: salvate => {
           this.inCorso.set(false)
           this.righe.set(this.costruisciRighe(salvate, this.righe()))
+          // Completate le mappature mancanti, la selezione dell'export non serve piu' (35 r4).
+          if (this.mancanti().length === 0) rimuoviSelezioneMappature()
           this.toast.success(
             cancellate > 0 ? `Mappature salvate (${cancellate} cancellate).` : 'Mappature salvate.',
             'Export contabile'
@@ -418,8 +421,12 @@ export class MappatureComponent {
             this.ricarica(MESSAGGIO_VERSIONE_SUPERATA)
             return
           }
+          // Un valore rifiutato per il formato del gestionale ha un testo suo, per l'utente.
           this.errore.set(
-            messaggiErroreFatturazione(err, 'Impossibile salvare le mappature.').join(' ')
+            (codiceErrore(err) === 'VOCI_NON_VALIDE'
+              ? leggiErroriAzione(err, 'Una mappatura non è valida.').messaggi
+              : messaggiErroreFatturazione(err, 'Impossibile salvare le mappature.')
+            ).join(' ')
           )
         },
       })

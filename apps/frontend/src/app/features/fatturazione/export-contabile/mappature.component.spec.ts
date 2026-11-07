@@ -179,11 +179,14 @@ describe('MappatureComponent', () => {
         mappatura({ tipo: 'PAGAMENTO', chiaveWasteflow: 'BONIFICO', valore: 'P1' }),
       ])
     )
+    sessionStorage.setItem(CHIAVE_SELEZIONE_MAPPATURE, '{"documentoIds":["d1"]}')
     await scrivi('mappature-valore-CODICE_IVA-22', '  B22 ')
     await scrivi('mappature-valore-PAGAMENTO-BONIFICO', 'P1')
     bottone('mappature-salva')!.click()
     await stabilizza(fixture)
     expect(servizio.salvaMappature).toHaveBeenCalledTimes(1)
+    // Mappature completate: la selezione dell'export non serve piu` (35 r4).
+    expect(sessionStorage.getItem(CHIAVE_SELEZIONE_MAPPATURE)).toBeNull()
     expect(servizio.salvaMappature).toHaveBeenCalledWith('TEAMSYSTEM', [
       { tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: 'B22', versione: 3 },
       { tipo: 'PAGAMENTO', chiaveWasteflow: 'BONIFICO', valore: 'P1', versione: null },
@@ -343,6 +346,24 @@ describe('MappatureComponent', () => {
     expect(servizio.mappature).toHaveBeenCalledTimes(1)
     expect(q('mappature-errore')).not.toBeNull()
     expect(campo('mappature-valore-CODICE_IVA-22').value).toBe('X')
+  })
+
+  it('400 VOCI_NON_VALIDE: si mostra il testo del backend (formato del gestionale), non quello generico', async () => {
+    await crea('ADMIN', { mappature: [mappatura({})] })
+    servizio.salvaMappature.and.returnValue(
+      throwError(() => ({
+        status: 400,
+        error: {
+          error: 'VOCI_NON_VALIDE',
+          message:
+            'Il valore di una mappatura «cliente» deve essere un codice numerico di al massimo 5 cifre.',
+        },
+      }))
+    )
+    await scrivi('mappature-valore-CODICE_IVA-22', 'ABC12')
+    bottone('mappature-salva')!.click()
+    await stabilizza(fixture)
+    expect(q('mappature-errore')!.textContent).toContain('al massimo 5 cifre')
   })
 
   it('errore 400 con codice del vocabolario: etichetta, senza id né dati', async () => {

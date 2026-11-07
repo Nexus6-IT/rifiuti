@@ -402,3 +402,12 @@ export const MAX_VALORE_MAPPATURA = 50
  * legge la pagina delle mappature (Task 33 e 35). Ogni accesso va in try/catch.
  */
 export const CHIAVE_SELEZIONE_MAPPATURE = 'wasteflow.fatturazione.selezioneMappature'
+
+/** Toglie la selezione lasciata per le mappature, quando ha fatto il suo lavoro. */
+export function rimuoviSelezioneMappature(): void {
+  try {
+    sessionStorage.removeItem(CHIAVE_SELEZIONE_MAPPATURE)
+  } catch {
+    /* sessionStorage non disponibile: non c'e' niente da togliere */
+  }
+}

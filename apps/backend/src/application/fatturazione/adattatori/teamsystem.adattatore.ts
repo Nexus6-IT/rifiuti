@@ -14,6 +14,7 @@ import {
   type AdattatoreExportContabile,
   type ChiaveMancante,
   type FileGenerato,
+  type FormatoMappatura,
   type TipoMappatura,
 } from './adattatore-export-contabile'
 import { LUNGHEZZA_RECORD, RECORD_1, RECORD_2, type CampoTracciato } from './teamsystem-tracciato'
@@ -255,7 +256,7 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
     'TRF_COD_CLIFOR',
     numerico(
       mappa(mappature, 'CLIENTE', doc.cliente.id, 'del cliente'),
-      5,
+      FORMATI_MAPPATURE.CLIENTE.massimo,
       'La mappatura del cliente'
     )
   )
@@ -273,7 +274,7 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
   if (fot.pagamento !== null) {
     const codice = numerico(
       mappa(mappature, 'PAGAMENTO', fot.pagamento.codice, 'del pagamento'),
-      3,
+      FORMATI_MAPPATURE.PAGAMENTO.massimo,
       'La mappatura del pagamento'
     )
     r.imposta('TRF_CFCODPAG', campoFisso(codice, 4, 'D', '0'))
@@ -293,7 +294,7 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
     'TRF_SERIE',
     numerico(
       mappa(mappature, 'REGISTRO', d.registroCodice, 'del registro IVA'),
-      2,
+      FORMATI_MAPPATURE.REGISTRO.massimo,
       'La mappatura del registro IVA'
     )
   )
@@ -306,7 +307,7 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
       'TRF_ALIQ',
       numerico(
         mappa(mappature, 'CODICE_IVA', chiaveIva(riep.aliquota, riep.natura), 'del codice IVA'),
-        3,
+        FORMATI_MAPPATURE.CODICE_IVA.massimo,
         'La mappatura del codice IVA'
       ),
       i
@@ -327,7 +328,7 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
   for (const riga of doc.righe) {
     const conto = numerico(
       mappa(mappature, 'CONTO_RICAVI', riga.tipoRiga, 'del conto dei ricavi'),
-      7,
+      FORMATI_MAPPATURE.CONTO_RICAVI.massimo,
       'La mappatura del conto dei ricavi'
     )
     perConto.set(conto, (perConto.get(conto) ?? new Prisma.Decimal(0)).add(riga.prezzoTotale))
@@ -388,7 +389,7 @@ function costruisciRecord2(d: DocumentoPerExport, mappature: Mappe): string {
       'TRF_POR_CODPAG',
       numerico(
         mappa(mappature, 'PAGAMENTO', fot.pagamento.codice, 'del pagamento'),
-        3,
+        FORMATI_MAPPATURE.PAGAMENTO.massimo,
         'La mappatura del pagamento'
       )
     )
@@ -456,12 +457,23 @@ function nomeFile(documenti: readonly DocumentoPerExport[]): string {
   return `${sigla}${ggmm(date[0])}${ggmm(date[date.length - 1])}`
 }
 
+/** Larghezza (cifre) del codice di ogni mappatura nel tracciato. */
+const FORMATI_MAPPATURE: Readonly<Record<TipoMappatura, FormatoMappatura>> = {
+  CLIENTE: { soloCifre: true, massimo: 5 },
+  CONTO_RICAVI: { soloCifre: true, massimo: 7 },
+  CODICE_IVA: { soloCifre: true, massimo: 3 },
+  PAGAMENTO: { soloCifre: true, massimo: 3 },
+  REGISTRO: { soloCifre: true, massimo: 2 },
+}
+
 export class TeamSystemAdattatore implements AdattatoreExportContabile {
   readonly codice = 'TEAMSYSTEM'
   readonly nome = 'TeamSystem'
   readonly modalita = 'FILE' as const
   /** Tracciato non verificato su un'installazione reale (decisione 15). */
   readonly verificato = false
+  /** Le stesse larghezze con cui `genera` chiama `numerico()`: i due devono restare allineati. */
+  readonly formatiMappature = FORMATI_MAPPATURE
 
   mappatureRichieste(documenti: readonly DocumentoPerExport[]): ChiaveMancante[] {
     const voci = new Map<string, ChiaveMancante>()

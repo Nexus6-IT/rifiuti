@@ -349,15 +349,16 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
       },
       { timeout: 10_000 }
     )
-    const r = await export_!
-    expect(r.saltati).toBe(2)
+    // Tutti annullati: niente file vuoto riuscito, 400 e nessun effetto.
+    await expect(export_!).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'NESSUN_DOCUMENTO_DA_ESPORTARE' }),
+    })
     expect((await stato(a.definitivoId)).emesso_il).toBeNull()
     expect(
       await owner.activityLog.count({
         where: { tenantId: a.tenantId, action: 'DOCUMENTO_FATTURA_EMESSO' },
       })
     ).toBe(0)
-    expect(finto.genera).toHaveBeenCalledTimes(1)
-    expect(finto.genera.mock.calls[0][0]).toHaveLength(0)
+    expect(finto.genera).not.toHaveBeenCalled()
   })
 })
