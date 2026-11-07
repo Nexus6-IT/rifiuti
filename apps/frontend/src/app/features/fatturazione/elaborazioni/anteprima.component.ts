@@ -24,6 +24,7 @@ import {
   SeveritaFatturazione,
   STATI_ELABORAZIONE_VOCI,
   VoceVocabolario,
+  eMotivoDaCollegare,
   voceSegnalazione,
 } from '../vocabolario-fatturazione'
 import {
@@ -47,6 +48,9 @@ const STATI_CON_DOCUMENTI: readonly StatoElaborazione[] = [
   'IN_DEFINITIVA',
   'DEFINITIVA',
 ]
+
+/** 409 che dicono «lo stato non è più quello che vedi». */
+const RILEGGI_DOPO = ['VERSIONE_SUPERATA', 'ELABORAZIONE_GIA_IN_DEFINITIVA']
 
 export const MSG_FALLITA =
   'L’elaborazione non è riuscita. Torna all’elenco e avvia una nuova anteprima; se succede ancora, contatta l’assistenza.'
@@ -91,17 +95,14 @@ function leggiDifferenze(x: unknown): Differenze | null {
 const testoDifferenze = (d: Differenze): string =>
   `Differenze: ${d.nuovi} nuovi, ${d.cambiati} cambiati, ${d.fatturatiDaAltri} già fatturati da altri.`
 
-/** Parte numerica iniziale di un numero di documento (`15/A` → 15). */
-const cifreIniziali = (testo: string): number | null => {
-  const m = /^\d+/.exec(testo)
-  return m ? Number(m[0]) : null
-}
-
 /** Gruppo della scheda «Errori del periodo»: stesso motivo, contratti diversi. */
 interface GruppoErrori {
   motivo: string
   quanti: number
-  contratti: { contrattoId: string; quanti: number }[]
+  /** `true` se il motivo è uno stato della lista «da collegare»: solo allora c'è il link. */
+  conLink: boolean
+  /** Una voce per contratto; `contrattoId` nullo = movimenti senza contratto. */
+  voci: { contrattoId: string | null; quanti: number }[]
 }
 
 /**
@@ -175,16 +176,20 @@ interface GruppoErrori {
               label="Rendi definitiva"
               icon="pi pi-check"
               [disabled]="motivoDefinitiva() !== null || inAzione()"
-              [attr.aria-describedby]="motivoDefinitiva() ? 'an-motivo-definitiva' : null"
               (onClick)="confermaAperta.set(true)"
               data-testid="btn-definitiva"
             />
-            <span id="an-motivo-definitiva" class="sr-only" data-testid="motivo-definitiva">{{
-              motivoDefinitiva() ?? ''
-            }}</span>
           </span>
         </div>
       </header>
+
+      <p
+        *ngIf="puoRendereDefinitiva() && motivoDefinitiva() as m"
+        class="text-secondary"
+        data-testid="motivo-definitiva"
+      >
+        {{ m }}
+      </p>
 
       <p *ngIf="errore() as e" role="alert" class="field-error" data-testid="an-errore">
         {{ e }}
@@ -211,7 +216,7 @@ interface GruppoErrori {
         <p *ngIf="d.stato === 'FALLITA'" role="alert" class="field-error" data-testid="an-fallita">
           {{ msgFallita }}
         </p>
-        <p *ngIf="d.stato === 'SCARTATA'" class="text-muted" data-testid="an-scartata">
+        <p *ngIf="d.stato === 'SCARTATA'" class="text-secondary" data-testid="an-scartata">
           Questa anteprima è stata scartata.
         </p>
         <p *ngIf="d.stato === 'DEFINITIVA'" class="an-ok" role="status" data-testid="an-definitiva">
@@ -389,7 +394,7 @@ interface GruppoErrori {
 
             <p-tabPanel [header]="'Errori del periodo (' + totaleErroriPeriodo() + ')'">
               <div data-testid="tab-errori-periodo">
-                <p *ngIf="!gruppiErrori().length" class="text-muted" data-testid="errori-vuoti">
+                <p *ngIf="!gruppiErrori().length" class="text-secondary" data-testid="errori-vuoti">
                   Nessun errore nel periodo.
                 </p>
                 <section
@@ -401,13 +406,13 @@ interface GruppoErrori {
                     <span data-testid="errori-motivo">{{ voce(g.motivo).etichetta }}</span>
                     <p-tag severity="danger" [value]="'' + g.quanti" data-testid="errori-quanti" />
                   </h3>
-                  <ul>
-                    <li *ngFor="let c of g.contratti">
+                  <ul *ngIf="g.conLink">
+                    <li *ngFor="let c of g.voci; let i = index">
                       <a
                         routerLink="/legami/da-collegare"
-                        [queryParams]="parametriDaCollegare(c.contrattoId, d)"
+                        [queryParams]="parametriDaCollegare(g.motivo, c.contrattoId, d)"
                         data-testid="errori-link"
-                        >Vedi i movimenti da collegare del contratto ({{ c.quanti }})</a
+                        >{{ testoLink(c.contrattoId, i, c.quanti) }}</a
                       >
                     </li>
                   </ul>
@@ -419,7 +424,7 @@ interface GruppoErrori {
               <div data-testid="tab-numerazione">
                 <p
                   *ngIf="!d.numerazionePrevista.length"
-                  class="text-muted"
+                  class="text-secondary"
                   data-testid="numerazione-vuota"
                 >
                   Nessun documento da numerare.
@@ -515,8 +520,8 @@ interface GruppoErrori {
       }
       .an-esito {
         border: 1px solid var(--color-border);
-        border-left: 4px solid var(--color-danger, #b3261e);
-        border-radius: var(--radius-md, 6px);
+        border-left: 4px solid var(--color-danger);
+        border-radius: var(--radius-md);
         padding: var(--spacing-sm) var(--spacing-md);
         margin-bottom: var(--spacing-md);
       }
@@ -540,7 +545,7 @@ interface GruppoErrori {
       }
       .an-riepilogo dt {
         font-size: 0.8125rem;
-        color: var(--color-text-muted);
+        color: var(--text-secondary);
       }
       .an-riepilogo dd {
         margin: 0;
@@ -555,7 +560,7 @@ interface GruppoErrori {
         margin: var(--spacing-md) 0 var(--spacing-xs);
       }
       .an-escluso td {
-        opacity: 0.6;
+        color: var(--text-secondary);
       }
     `,
   ],
@@ -621,6 +626,10 @@ export class AnteprimaComponent {
     if ((d.definitiveAttive as boolean | undefined) !== true) {
       return ERRORI_HTTP_VOCI.DEFINITIVE_NON_ATTIVE.etichetta
     }
+    // L'impronta salvata non cambia: la richiesta ricadrebbe nello stesso esito.
+    if (d.errore?.codice === 'ANTEPRIMA_SUPERATA') {
+      return ERRORI_HTTP_VOCI.ANTEPRIMA_SUPERATA.etichetta
+    }
     if (d.impronta === null) return MSG_ANTEPRIMA_INCOMPLETA
     if (d.erroriGenerali.some(e => e.codice !== 'LEGAMI_SENZA_CONTRATTO')) {
       return MSG_BLOCCO_GENERALE
@@ -634,11 +643,10 @@ export class AnteprimaComponent {
   readonly riepilogoConferma = computed<RiepilogoConferma | null>(() => {
     const d = this.dettaglio()
     if (d === null) return null
+    // `quanti` lo calcola il backend alla lettura, con i candidati reali della definitiva.
     let documenti: number | null = 0
     for (const n of d.numerazionePrevista) {
-      const da = cifreIniziali(n.da)
-      const a = cifreIniziali(n.a)
-      documenti = documenti !== null && da !== null && a !== null ? documenti + (a - da + 1) : null
+      documenti = documenti !== null && typeof n.quanti === 'number' ? documenti + n.quanti : null
     }
     return {
       documenti,
@@ -669,9 +677,14 @@ export class AnteprimaComponent {
   readonly gruppiErrori = computed<GruppoErrori[]>(() => {
     const per = new Map<string, GruppoErrori>()
     for (const e of this.dettaglio()?.erroriPeriodo ?? []) {
-      const g = per.get(e.motivo) ?? { motivo: e.motivo, quanti: 0, contratti: [] }
+      const g = per.get(e.motivo) ?? {
+        motivo: e.motivo,
+        quanti: 0,
+        conLink: eMotivoDaCollegare(e.motivo),
+        voci: [],
+      }
       g.quanti += e.quanti
-      if (e.contrattoId !== null) g.contratti.push({ contrattoId: e.contrattoId, quanti: e.quanti })
+      g.voci.push({ contrattoId: e.contrattoId, quanti: e.quanti })
       per.set(e.motivo, g)
     }
     return [...per.values()]
@@ -773,8 +786,25 @@ export class AnteprimaComponent {
     )
   }
 
-  parametriDaCollegare(contrattoId: string, d: ElaborazioneDettaglio): Record<string, string> {
-    return { contrattoId, dataDa: d.periodoDal, dataA: d.periodoAl }
+  /** Filtri della pagina «Da collegare»: periodo (`dal`/`al`), stato e, se c'è, contratto. */
+  parametriDaCollegare(
+    motivo: string,
+    contrattoId: string | null,
+    d: ElaborazioneDettaglio
+  ): Record<string, string> {
+    return {
+      stato: motivo,
+      dal: d.periodoDal,
+      al: d.periodoAl,
+      ...(contrattoId !== null ? { contrattoId } : {}),
+    }
+  }
+
+  /** Testo del link, distinto per ogni voce del gruppo. */
+  testoLink(contrattoId: string | null, indice: number, quanti: number): string {
+    return contrattoId === null
+      ? `Apri i movimenti senza contratto (${quanti})`
+      : `Apri i movimenti del contratto ${indice + 1} (${quanti})`
   }
 
   // --- Azioni -------------------------------------------------------------------------------
@@ -808,6 +838,8 @@ export class AnteprimaComponent {
         error: err => {
           dopo?.()
           this.esitoAzione.set(this.daErrore(err, ripiego))
+          // Stato cambiato altrove: la pagina si riallinea (e riprende il giro se serve).
+          if (RILEGGI_DOPO.includes(codiceErrore(err) ?? '')) this.carica()
         },
       })
   }
@@ -881,7 +913,7 @@ export class AnteprimaComponent {
       .subscribe({
         next: nuovo => {
           this.documenti.update(righe => righe.map(x => (x.id === nuovo.id ? nuovo : x)))
-          // La numerazione prevista dipende dagli esclusi: si rilegge il dettaglio.
+          // La numerazione prevista dipende dagli esclusi: il backend la ricalcola a ogni lettura.
           this.carica()
         },
         error: err => this.esitoAzione.set(this.daErrore(err, ripiego)),

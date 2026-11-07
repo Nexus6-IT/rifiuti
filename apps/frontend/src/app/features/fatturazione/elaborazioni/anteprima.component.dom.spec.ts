@@ -114,34 +114,105 @@ describe('AnteprimaComponent (DOM)', () => {
     expect(q('documento-d1')!.querySelector('[data-testid="doc-escluso"]')).toBeNull()
   })
 
-  it('errori del periodo raggruppati per motivo, con link ai movimenti da collegare per periodo e contratto', async () => {
+  it('errori del periodo (motivi reali): etichette leggibili e link con periodo, stato e contratto', async () => {
     await crea(
       'ADMIN',
       dettaglio({
         erroriPeriodo: [
-          { motivo: 'SENZA_REGISTRO_IVA', quanti: 2, contrattoId: 'k1' },
-          { motivo: 'SENZA_REGISTRO_IVA', quanti: 3, contrattoId: 'k2' },
-          { motivo: 'CONTRATTO_SOSPESO', quanti: 1, contrattoId: null },
+          { motivo: 'DA_COLLEGARE', quanti: 4, contrattoId: null },
+          { motivo: 'DA_RIALLINEARE', quanti: 2, contrattoId: 'k1' },
+          { motivo: 'DA_RIALLINEARE', quanti: 3, contrattoId: 'k2' },
+          {
+            motivo: 'Nell’intervallo terminano più periodi del contratto: restringi le date.',
+            quanti: 1,
+            contrattoId: 'k3',
+          },
         ],
       })
     )
     const gruppi = tutti('errori-gruppo')
-    expect(gruppi.length).toBe(2)
-    expect(gruppi[0].querySelector('[data-testid="errori-quanti"]')!.textContent).toContain('5')
-    const link = gruppi[0].querySelectorAll<HTMLAnchorElement>('[data-testid="errori-link"]')
-    expect(link.length).toBe(2)
-    const href = link[0].getAttribute('href')!
-    expect(href).toContain('/legami/da-collegare')
-    expect(href).toContain('contrattoId=k1')
-    expect(href).toContain('dataDa=2026-10-01')
-    expect(href).toContain('dataA=2026-10-31')
-    expect(gruppi[1].querySelector('[data-testid="errori-link"]')).toBeNull()
+    expect(gruppi.length).toBe(3)
+    const titoli = gruppi.map(g => g.querySelector('[data-testid="errori-motivo"]')!.textContent!)
+    expect(titoli[0]).toContain('Movimenti da collegare a un contratto')
+    expect(titoli[1]).toContain('Movimenti da riallineare')
+    expect(titoli.join(' ')).not.toContain('DA_COLLEGARE')
+    expect(titoli.join(' ')).not.toContain('DA_RIALLINEARE')
+    expect(titoli[2]).toContain('restringi le date')
+
+    // Senza contratto il link c'è lo stesso, con stato e periodo.
+    const senza = gruppi[0].querySelectorAll<HTMLAnchorElement>('[data-testid="errori-link"]')
+    expect(senza.length).toBe(1)
+    const h0 = senza[0].getAttribute('href')!
+    expect(h0).toContain('/legami/da-collegare')
+    expect(h0).toContain('stato=DA_COLLEGARE')
+    expect(h0).toContain('dal=2026-10-01')
+    expect(h0).toContain('al=2026-10-31')
+    expect(h0).not.toContain('contrattoId')
+    expect(senza[0].textContent).toContain('senza contratto')
+
+    // Con più contratti: due link, testi distinti, contratto nel filtro.
+    const con = gruppi[1].querySelectorAll<HTMLAnchorElement>('[data-testid="errori-link"]')
+    expect(con.length).toBe(2)
+    expect(con[0].getAttribute('href')).toContain('contrattoId=k1')
+    expect(con[1].getAttribute('href')).toContain('contrattoId=k2')
+    expect(con[0].textContent).not.toBe(con[1].textContent)
+    expect(gruppi[1].querySelector('[data-testid="errori-quanti"]')!.textContent).toContain('5')
+
+    // Periodo ambiguo: nessun link verso «da collegare».
+    expect(gruppi[2].querySelector('[data-testid="errori-link"]')).toBeNull()
   })
 
   it('numerazione prevista «da 15/A a 42/A»', async () => {
     await crea('ADMIN')
     expect(q('numerazione-r1')!.textContent).toContain('da 15/A a 42/A')
     expect(q('numerazione-r1')!.textContent).toContain('12.345,60')
+  })
+
+  it('dopo «Escludi» la conferma usa il numero riletto dal backend (quanti), non quello vecchio', async () => {
+    await crea('ADMIN')
+    servizio.escludi.and.returnValue(of(documentoRiga(1, { esclusoDaDefinitiva: true })))
+    servizio.dettaglio.and.returnValue(
+      of(
+        dettaglio({
+          versione: 3,
+          numerazionePrevista: [
+            { registroIvaId: 'r1', codiceRegistro: 'A', da: '15/A', a: '41/A', quanti: 27 },
+          ],
+        })
+      )
+    )
+    bottone('escludi-d1')!.click()
+    fixture.detectChanges()
+    bottone('btn-definitiva')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('conferma-testo')!.textContent).toContain(
+      'Verranno emessi 27 documenti, numeri da 15/A a 41/A del registro A'
+    )
+  })
+
+  it('tutti esclusi (numerazione vuota): «Rendi definitiva» disattivato con il motivo, visibile come testo', async () => {
+    await crea('ADMIN', dettaglio({ numerazionePrevista: [] }))
+    expect(bottone('btn-definitiva')!.disabled).toBeTrue()
+    expect(q('motivo-definitiva')!.textContent).toContain(
+      'Non c’è nessun documento da rendere definitivo'.replace('’', "'")
+    )
+  })
+
+  it('anteprima già superata (esito salvato): «Rendi definitiva» disattivato, «Ricalcola» resta', async () => {
+    await crea(
+      'ADMIN',
+      dettaglio({
+        errore: {
+          codice: 'ANTEPRIMA_SUPERATA',
+          differenze: { nuovi: 1, cambiati: 0, fatturatiDaAltri: 0 },
+        },
+      })
+    )
+    expect(bottone('btn-definitiva')!.disabled).toBeTrue()
+    expect(q('motivo-definitiva')!.textContent).toContain('non è più aggiornata')
+    expect(q('esito-ricalcola')).not.toBeNull()
   })
 
   it('«Rendi definitiva» apre la conferma con numeri e data, e manda impronta e versione', async () => {

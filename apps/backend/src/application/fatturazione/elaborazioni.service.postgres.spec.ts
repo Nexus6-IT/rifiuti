@@ -455,6 +455,44 @@ describe('ElaborazioniService — Postgres reale, ruolo wasteflow_app', () => {
       expect((await bozze(id))[0].escluso).toBe(false)
     })
 
+    it('dettaglio dopo escludi: numerazione prevista ricalcolata sui candidati (1 su 3 escluso: quanti 2, intervallo corrispondente)', async () => {
+      const { az, id } = await pronta()
+      const [base] = await owner.$queryRawUnsafe<{ registro: string; anno: number }[]>(
+        `SELECT registro_iva_id::text AS registro, anno::int AS anno FROM documenti_fattura
+         WHERE elaborazione_id = $1::uuid`,
+        id
+      )
+      // Altre due bozze nello stesso registro: il riepilogo salvato ne conosce una sola.
+      for (let i = 0; i < 2; i++) {
+        await creaDocumentoDiTest(owner, az.tenantId, {
+          stato: 'BOZZA',
+          registroIvaId: base.registro,
+          anno: base.anno,
+          elaborazioneId: id,
+        })
+      }
+      const letta = () =>
+        nel(az.tenantId, () => servizio.dettaglio(az.tenantId, id)).then(d => d.numerazionePrevista)
+      const prima = await letta()
+      expect(prima).toHaveLength(1)
+      expect(prima[0].quanti).toBe(3)
+      const [da] = [prima[0].da]
+      const primo = Number(/^\d+/.exec(da)![0])
+      const suffisso = da.replace(/^\d+/, '')
+      expect(prima[0].a).toBe(`${primo + 2}${suffisso}`)
+
+      const docs = await bozze(id)
+      await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, docs[0].id, true))
+      const dopo = await letta()
+      expect(dopo[0].quanti).toBe(2)
+      expect(dopo[0].da).toBe(da)
+      expect(dopo[0].a).toBe(`${primo + 1}${suffisso}`)
+
+      await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, docs[1].id, true))
+      await nel(az.tenantId, () => servizio.escludi(az.tenantId, id, docs[2].id, true))
+      expect(await letta()).toEqual([])
+    })
+
     it('escludi su un DEFINITIVO: 409; su un documento di un’altra elaborazione: 404', async () => {
       const { az, c, id } = await pronta()
       const { documentoId } = await creaDocumentoDiTest(owner, az.tenantId, {

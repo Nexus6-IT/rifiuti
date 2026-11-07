@@ -65,7 +65,7 @@ export function testoConferma(r: RiepilogoConferma): string {
       data-testid="conferma-definitiva-dialog"
     >
       <p *ngIf="riepilogo as r" data-testid="conferma-testo">{{ testo(r) }}</p>
-      <p class="text-muted">Una volta emessi, i documenti non sono più modificabili.</p>
+      <p class="text-secondary">Una volta emessi, i documenti non sono più modificabili.</p>
       <ng-template pTemplate="footer">
         <p-button
           label="Annulla"

@@ -99,7 +99,14 @@ export interface ElaborazioneDettaglio extends ElaborazioneRiga {
   definitiveAttive: boolean
   erroriGenerali: SegnalazioneVista[]
   erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
-  numerazionePrevista: { registroIvaId: string; codiceRegistro: string; da: string; a: string }[]
+  /** `quanti`: i documenti che la definitiva numererebbe in quel registro (calcolati alla lettura). */
+  numerazionePrevista: {
+    registroIvaId: string
+    codiceRegistro: string
+    da: string
+    a: string
+    quanti: number
+  }[]
   totaliPerRegistro: {
     registroIvaId: string
     imponibile: string

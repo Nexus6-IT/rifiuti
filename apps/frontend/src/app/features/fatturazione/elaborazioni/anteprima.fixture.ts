@@ -21,7 +21,9 @@ export function dettaglio(extra: Partial<ElaborazioneDettaglio> = {}): Elaborazi
     definitiveAttive: true,
     erroriGenerali: [],
     erroriPeriodo: [],
-    numerazionePrevista: [{ registroIvaId: 'r1', codiceRegistro: 'A', da: '15/A', a: '42/A' }],
+    numerazionePrevista: [
+      { registroIvaId: 'r1', codiceRegistro: 'A', da: '15/A', a: '42/A', quanti: 28 },
+    ],
     totaliPerRegistro: [
       { registroIvaId: 'r1', imponibile: '10000.00', iva: '2345.60', totale: '12345.60' },
     ],

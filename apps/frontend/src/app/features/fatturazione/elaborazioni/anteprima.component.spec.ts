@@ -234,6 +234,20 @@ describe('AnteprimaComponent', () => {
       fixture.destroy()
     }))
 
+    it('409 VERSIONE_SUPERATA o ELABORAZIONE_GIA_IN_DEFINITIVA: messaggio e rilettura dello stato', fakeAsync(() => {
+      for (const codice of ['VERSIONE_SUPERATA', 'ELABORAZIONE_GIA_IN_DEFINITIVA']) {
+        servizio.dettaglio.calls.reset()
+        servizio.ricalcola.and.returnValue(
+          throwError(() => ({ status: 409, error: { error: codice, message: 'x' } }))
+        )
+        crea()
+        comp.ricalcola()
+        expect(comp.esito()).not.toBeNull()
+        expect(servizio.dettaglio).toHaveBeenCalledTimes(2)
+        fixture.destroy()
+      }
+    }))
+
     it('errore di un’azione: nessun id o testo tecnico nel messaggio', fakeAsync(() => {
       servizio.ricalcola.and.returnValue(
         throwError(() => ({ status: 500, error: { message: 'Errore interno e1 ' } }))

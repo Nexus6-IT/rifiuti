@@ -95,7 +95,7 @@ export const testoSegnalazione = (s: SegnalazioneVista): string =>
                 <td class="num-col">{{ r.numeroLinea }}</td>
                 <td>
                   {{ r.descrizione }}
-                  <small class="text-muted">{{ tipoRiga(r.tipoRiga) }}</small>
+                  <small class="text-secondary">{{ tipoRiga(r.tipoRiga) }}</small>
                 </td>
                 <td class="num-col">
                   {{ r.quantita === null ? '' : numero(r.quantita) }} {{ r.unitaMisura ?? '' }}
