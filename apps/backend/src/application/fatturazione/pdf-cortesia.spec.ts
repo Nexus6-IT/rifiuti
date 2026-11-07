@@ -163,6 +163,41 @@ describe('definizionePdf', () => {
     expect(t).toContain('Nota di credito')
   })
 
+  it('annullato: filigrana ANNULLATO e prefisso nel nome del file', () => {
+    const d = documento([riga(1)], { stato: 'ANNULLATO' })
+    expect((definizionePdf(d, fotografia, false) as any).watermark.text).toBe('ANNULLATO')
+    expect(nomeFilePdf(d)).toBe('annullato-VEN-12-A-2026.pdf')
+  })
+
+  it('TD04: mostra numero e data del documento stornato, solo se noti', () => {
+    const d = documento([riga(1)], { tipoDocumento: 'TD04' })
+    const t = testo(
+      definizionePdf(d, fotografia, false, { numeroTesto: '7/A', dataDocumento: '2026-10-01' })
+    )
+    expect(t).toContain('Storno della fattura N. 7/A del 01/10/2026')
+    expect(testo(definizionePdf(d, fotografia, false))).not.toContain('Storno della fattura')
+  })
+
+  it('REA, capitale sociale e riferimento ordine, se nella fotografia', () => {
+    const f: FotografiaDocumento = {
+      ...fotografia,
+      idDocumento: 'ORD-55',
+      cedente: {
+        ...fotografia.cedente,
+        rea: {
+          ufficio: 'RM',
+          numero: '123456',
+          capitaleSociale: '10000.00',
+          socioUnico: null,
+          statoLiquidazione: 'LN',
+        },
+      },
+    }
+    const t = testo(definizionePdf(documento(), f, false))
+    expect(t).toContain('REA RM-123456, capitale sociale € 10.000,00')
+    expect(t).toContain('Rif. ordine: ORD-55')
+  })
+
   it('bollo e privato senza partita IVA', () => {
     const f: FotografiaDocumento = {
       ...fotografia,

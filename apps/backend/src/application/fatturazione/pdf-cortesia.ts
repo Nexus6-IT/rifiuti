@@ -60,6 +60,9 @@ function bloccoParte(titolo: string, nome: string, s: SedeFotografia, fiscali: s
 /** Nome del file: solo registro, numero e anno, mai dati personali. */
 export function nomeFilePdf(doc: DocumentoDettaglio): string {
   const pulito = (s: string) => s.replace(/[^A-Za-z0-9_-]+/g, '-')
+  if (doc.stato === 'ANNULLATO') {
+    return `annullato-${pulito(doc.registro.codice)}-${pulito(doc.numeroTesto ?? 'senza-numero')}-${doc.dataDocumento.slice(0, 4)}.pdf`
+  }
   if (doc.stato === 'BOZZA' || !doc.numeroTesto) {
     return `anteprima-${pulito(doc.registro.codice)}-${doc.dataDocumento}.pdf`
   }
@@ -69,8 +72,10 @@ export function nomeFilePdf(doc: DocumentoDettaglio): string {
 export function definizionePdf(
   doc: DocumentoDettaglio,
   fotografia: FotografiaDocumento,
-  bozza: boolean
+  bozza: boolean,
+  origine: { numeroTesto: string; dataDocumento: string } | null = null
 ): TDocumentDefinitions {
+  const filigrana = bozza ? 'ANTEPRIMA' : doc.stato === 'ANNULLATO' ? 'ANNULLATO' : null
   const { cedente, cessionario } = fotografia
   const nomeCessionario =
     cessionario.denominazione ?? [cessionario.nome, cessionario.cognome].filter(Boolean).join(' ')
@@ -122,6 +127,14 @@ export function definizionePdf(
             bozza || !doc.numeroTesto
               ? { text: 'Anteprima, numero non assegnato', fontSize: 10 }
               : { text: `N. ${doc.numeroTesto}`, fontSize: 12, bold: true },
+            ...(origine
+              ? [
+                  {
+                    text: `Storno della fattura N. ${origine.numeroTesto} del ${dataIt(origine.dataDocumento)}`,
+                    fontSize: 9,
+                  } as Content,
+                ]
+              : []),
           ],
         },
         {
@@ -138,6 +151,15 @@ export function definizionePdf(
         bloccoParte('Cedente', cedente.denominazione, cedente.sede, [
           `P. IVA ${cedente.partitaIva}`,
           ...(cedente.codiceFiscale ? [`C.F. ${cedente.codiceFiscale}`] : []),
+          ...(cedente.rea
+            ? [
+                `REA ${cedente.rea.ufficio}-${cedente.rea.numero}` +
+                  (cedente.rea.capitaleSociale
+                    ? `, capitale sociale € ${formattaImportoIt(cedente.rea.capitaleSociale)}`
+                    : '') +
+                  (cedente.rea.statoLiquidazione === 'LS' ? ', in liquidazione' : ''),
+              ]
+            : []),
         ]),
         bloccoParte('Cessionario', nomeCessionario, cessionario.sede, [
           ...(cessionario.partitaIva ? [`P. IVA ${cessionario.partitaIva}`] : []),
@@ -214,7 +236,7 @@ export function definizionePdf(
         body: [
           [
             { text: 'Rata', style: 'testata' },
-            { text: 'Modalità', style: 'testata' },
+            { text: 'Condizioni', style: 'testata' },
             { text: 'Scadenza', style: 'testata' },
             { text: 'Importo', style: 'testata', alignment: 'right' as const },
           ],
@@ -259,6 +281,7 @@ export function definizionePdf(
     ...fotografia.testoFatturazione,
     ...(fotografia.cig ? [`CIG: ${fotografia.cig}`] : []),
     ...(fotografia.cup ? [`CUP: ${fotografia.cup}`] : []),
+    ...(fotografia.idDocumento ? [`Rif. ordine: ${fotografia.idDocumento}`] : []),
     ...(fotografia.conto?.iban
       ? [
           `Coordinate bancarie: ${[fotografia.conto.istituto, fotografia.conto.iban]
@@ -287,8 +310,8 @@ export function definizionePdf(
       fontSize: 8,
       margin: [0, 0, 0, 20],
     }),
-    ...(bozza
-      ? { watermark: { text: 'ANTEPRIMA', color: '#999999', opacity: 0.15, bold: true } }
+    ...(filigrana
+      ? { watermark: { text: filigrana, color: '#999999', opacity: 0.15, bold: true } }
       : {}),
     content: contenuto,
     defaultStyle: { fontSize: 9 },
@@ -326,13 +349,23 @@ export class PdfCortesiaService {
 
   /** Solo letture, in una transazione sola: dettaglio e fotografia sono dello stesso istante. */
   async pdf(tenantId: string, id: string): Promise<PdfDocumento> {
-    const { doc, fotografia } = await nelContestoTenant(tenantId, () =>
+    const { doc, fotografia, origine } = await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
         const doc = await this.documenti.dettaglioInTx(tx, tenantId, id)
         const [riga] = await tx.$queryRaw<{ fotografia: FotografiaDocumento | null }[]>`
           SELECT fotografia FROM documenti_fattura
           WHERE tenant_id = ${tenantId}::uuid AND id = ${id}::uuid`
-        return { doc, fotografia: riga?.fotografia ?? null }
+        // Numero e data dell'origine sono dati salvati: gli stessi che l'XML mette in
+        // `DatiFattureCollegate`.
+        let origine: { numeroTesto: string; dataDocumento: string } | null = null
+        if (doc.documentoOrigineId) {
+          const [o] = await tx.$queryRaw<{ numeroTesto: string | null; data: string }[]>`
+            SELECT numero_testo AS "numeroTesto", data_documento::text AS data
+            FROM documenti_fattura
+            WHERE tenant_id = ${tenantId}::uuid AND id = ${doc.documentoOrigineId}::uuid`
+          if (o?.numeroTesto) origine = { numeroTesto: o.numeroTesto, dataDocumento: o.data }
+        }
+        return { doc, fotografia: riga?.fotografia ?? null, origine }
       })
     )
     if (!fotografia?.cedente || !fotografia.cessionario) {
@@ -341,7 +374,9 @@ export class PdfCortesiaService {
         message: 'Il documento non ha i dati fiscali salvati per la copia di cortesia.',
       })
     }
-    const contenuto = await generaPdf(definizionePdf(doc, fotografia, doc.stato === 'BOZZA'))
+    const contenuto = await generaPdf(
+      definizionePdf(doc, fotografia, doc.stato === 'BOZZA', origine)
+    )
     return { nomeFile: nomeFilePdf(doc), contenuto }
   }
 }
