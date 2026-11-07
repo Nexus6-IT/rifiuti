@@ -71,7 +71,13 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'X-Correlation-ID'],
-    exposedHeaders: ['X-Total-Count', 'X-Page', 'X-Page-Size'],
+    exposedHeaders: [
+      'X-Total-Count',
+      'X-Page',
+      'X-Page-Size',
+      'Content-Disposition',
+      'X-Documenti-Saltati',
+    ],
     maxAge: 3600, // Cache preflight requests for 1 hour
   })
 

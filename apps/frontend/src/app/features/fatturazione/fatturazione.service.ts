@@ -1,6 +1,6 @@
-import { HttpClient, HttpParams } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable } from 'rxjs'
+import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import {
   DocumentoDettaglio,
@@ -53,6 +53,37 @@ export interface ParametriScostamenti extends ParametriPagina {
  * `confermaEmissione` è sempre un parametro esplicito: il servizio non lo mette mai a `true`
  * da solo (Q28).
  */
+/** File scaricato: nome da `Content-Disposition`, `saltati` da `X-Documenti-Saltati` (XML_ZIP). */
+export interface FileScaricato {
+  blob: Blob
+  nomeFile: string | null
+  saltati: number
+}
+
+/** Nome da `attachment; filename="..."` (anche `filename*=UTF-8''...`); null se assente. */
+export function nomeFileDa(disposition: string | null): string | null {
+  if (!disposition) return null
+  const esteso = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  if (esteso) {
+    try {
+      return decodeURIComponent(esteso[1].trim())
+    } catch {
+      /* ripiega sul nome semplice */
+    }
+  }
+  const semplice = /filename="?([^";]+)"?/i.exec(disposition)
+  return semplice ? semplice[1].trim() : null
+}
+
+function daRisposta(r: HttpResponse<Blob>): FileScaricato {
+  const saltati = Number.parseInt(r.headers.get('X-Documenti-Saltati') ?? '', 10)
+  return {
+    blob: r.body ?? new Blob(),
+    nomeFile: nomeFileDa(r.headers.get('Content-Disposition')),
+    saltati: Number.isFinite(saltati) && saltati > 0 ? saltati : 0,
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class FatturazioneService {
   private readonly http = inject(HttpClient)
@@ -168,12 +199,14 @@ export class FatturazioneService {
   }
 
   /** Scarica l'XML. Con `confermaEmissione: true` un documento non emesso diventa «emesso». */
-  scaricaXml(id: string, confermaEmissione: boolean): Observable<Blob> {
-    return this.http.post(
-      `${this.urlDocumento(id)}/xml`,
-      { confermaEmissione },
-      { responseType: 'blob' }
-    )
+  scaricaXml(id: string, confermaEmissione: boolean): Observable<FileScaricato> {
+    return this.http
+      .post(
+        `${this.urlDocumento(id)}/xml`,
+        { confermaEmissione },
+        { responseType: 'blob', observe: 'response' }
+      )
+      .pipe(map(daRisposta))
   }
 
   /** Copia di cortesia: non cambia lo stato. */
@@ -189,12 +222,14 @@ export class FatturazioneService {
     formato: string,
     selezione: SelezioneExport,
     confermaEmissione: boolean
-  ): Observable<Blob> {
-    return this.http.post(
-      `${this.urlDocumenti}/export`,
-      { formato, selezione, confermaEmissione },
-      { responseType: 'blob' }
-    )
+  ): Observable<FileScaricato> {
+    return this.http
+      .post(
+        `${this.urlDocumenti}/export`,
+        { formato, selezione, confermaEmissione },
+        { responseType: 'blob', observe: 'response' }
+      )
+      .pipe(map(daRisposta))
   }
 
   // --- Scostamenti --------------------------------------------------------------------------

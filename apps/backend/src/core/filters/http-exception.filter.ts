@@ -165,6 +165,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorCode = CODICE_CERTIFICATO_MANCANTE
       message = exception.message
     }
+    // Corpo oltre il limite: `PayloadTooLargeError` di body-parser non e` una HttpException, ma
+    // porta `type: 'entity.too.large'` e status 413. E` un errore del client, non un guasto.
+    else if (eCorpoTroppoGrande(exception)) {
+      statusCode = HttpStatus.PAYLOAD_TOO_LARGE
+      errorCode = 'PAYLOAD_TROPPO_GRANDE'
+      message = 'La richiesta è troppo grande: riduci i dati inviati.'
+    }
     // Handle unexpected errors — messaggio generico, nessun leak di dettagli interni.
     else if (exception instanceof Error) {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR
@@ -303,4 +310,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     return statusMap[statusCode] || 'UNKNOWN_ERROR'
   }
+}
+
+/** Errore di body-parser per corpo oltre il limite (o qualunque errore con stato 413). */
+function eCorpoTroppoGrande(e: unknown): boolean {
+  if (!(e instanceof Error)) return false
+  const x = e as Error & { type?: unknown; status?: unknown; statusCode?: unknown }
+  return x.type === 'entity.too.large' || x.status === 413 || x.statusCode === 413
 }
