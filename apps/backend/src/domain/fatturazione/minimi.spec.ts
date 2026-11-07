@@ -27,12 +27,11 @@ function rg(p: Partial<RigaSenzaLinea>): RigaSenzaLinea {
     ...p,
   }
 }
-/** Come nel calcolo del documento: «riga n» = posizione da 1 in `minimi`. */
 const applicaMinimi = (
   righe: readonly RigaSenzaLinea[],
   minimi: readonly RigaListinoDaFatturare[],
   listino: ReadonlyMap<string, RigaListinoDaFatturare>
-) => applicaMinimiDominio(righe, minimi, listino, id => minimi.findIndex(m => m.id === id) + 1)
+) => applicaMinimiDominio(righe, minimi, listino)
 const mappa = (...r: RigaListinoDaFatturare[]) => new Map(r.map(x => [x.id, x]))
 
 describe('minimo di riga', () => {
