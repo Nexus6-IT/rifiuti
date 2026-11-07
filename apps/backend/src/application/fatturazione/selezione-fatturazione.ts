@@ -127,6 +127,16 @@ interface ElencoRiga {
   idDocumentoPa: string | null
 }
 
+/** Chiavi d'ordine di una riga di listino (quelle di `ordinaRigheListino`), senza il resto. */
+interface ChiaveOrdineRiga {
+  id: string
+  elencoId: string
+  tipo: string
+  cerCode: string | null
+  riferimento: string | null
+  codiceAddebito: string | null
+}
+
 interface RigaListinoSql {
   id: string
   versione: number
@@ -626,9 +636,7 @@ async function selezionaElaborazioneInterna(
 
   // 6. Righe di listino degli elenchi validi, scaglioni e scadenze, categorie e codici IVA.
   // Righe citate dai legami che stanno in un elenco non valido nel periodo (arretrati di un
-  // listino scaduto): servono al calcolo, che altrimenti non le trova. Di quegli elenchi si
-  // leggono tutte le righe (stessa query), cosi' la posizione nell'elenco e' quella vera; nel
-  // listino del documento entrano comunque solo le citate.
+  // listino scaduto): servono al calcolo, che altrimenti non le trova.
   const righeCitateIds = distinti(righeLegameSql.map(r => r.rigaAddebitoId))
   const elenchiUsatiIds = distinti(
     attivi.flatMap(a =>
@@ -651,11 +659,7 @@ async function selezionaElaborazioneInterna(
              addebito_id::text AS "addebitoId", cer_code AS "cerCode", riferimento
       FROM righe_addebito
       WHERE tenant_id = ${tenantId}::uuid
-        AND (elenco_id IN (SELECT unnest(${elenchiUsatiIds}::uuid[]))
-             OR id IN (SELECT unnest(${righeCitateIds}::uuid[]))
-             OR elenco_id IN (SELECT elenco_id FROM righe_addebito
-                              WHERE tenant_id = ${tenantId}::uuid
-                                AND id IN (SELECT unnest(${righeCitateIds}::uuid[]))))`
+        AND (elenco_id IN (SELECT unnest(${elenchiUsatiIds}::uuid[])) OR id IN (SELECT unnest(${righeCitateIds}::uuid[])))`
   )
   // Ordine dell'elenco come lo vede l'utente (`ordinaRigheListino`): tipo, CER o codice
   // dell'addebito, riferimento, id. Serve il codice dell'addebito: una query per insieme.
@@ -674,6 +678,48 @@ async function selezionaElaborazioneInterna(
       addebito: r.addebitoId === null ? null : { codice: codiceAddebito.get(r.addebitoId) ?? '' },
     }))
   )
+  // Posizione nell'elenco intero delle righe citate di un elenco non valido nel periodo: di quegli
+  // elenchi si leggono soltanto le chiavi d'ordine (niente scaglioni, scadenze, categorie), poi
+  // si ordina con `ordinaRigheListino`, lo stesso ordine dell'utente.
+  const validiSql = new Set(elenchiUsatiIds)
+  const citateSql = new Set(righeCitateIds)
+  const elenchiScadutiIds = distinti(
+    righeSql.filter(r => citateSql.has(r.id) && !validiSql.has(r.elencoId)).map(r => r.elencoId)
+  )
+  const posizioneFuori = new Map<string, number>()
+  if (elenchiScadutiIds.length > 0) {
+    const chiavi = await conJoinLineari(tx, () =>
+      elenchiScadutiIds.length <= 100
+        ? tx.$queryRaw<ChiaveOrdineRiga[]>`
+      SELECT r.id::text AS id, r.elenco_id::text AS "elencoId", r.tipo, r.cer_code AS "cerCode",
+             r.riferimento, a.codice AS "codiceAddebito"
+      FROM righe_addebito r
+      LEFT JOIN addebiti a ON a.id = r.addebito_id AND a.tenant_id = r.tenant_id
+      WHERE r.tenant_id = ${tenantId}::uuid AND r.elenco_id = ANY(${elenchiScadutiIds}::uuid[])`
+        : tx.$queryRaw<ChiaveOrdineRiga[]>`
+      SELECT r.id::text AS id, r.elenco_id::text AS "elencoId", r.tipo, r.cer_code AS "cerCode",
+             r.riferimento, a.codice AS "codiceAddebito"
+      FROM righe_addebito r
+      LEFT JOIN addebiti a ON a.id = r.addebito_id AND a.tenant_id = r.tenant_id
+      WHERE r.tenant_id = ${tenantId}::uuid
+        AND r.elenco_id IN (SELECT unnest(${elenchiScadutiIds}::uuid[]))`
+    )
+    const contate = new Map<string, number>()
+    for (const r of ordinaRigheListino(
+      chiavi.map(c => ({
+        id: c.id,
+        elencoId: c.elencoId,
+        tipo: c.tipo,
+        cerCode: c.cerCode,
+        riferimento: c.riferimento,
+        addebito: c.codiceAddebito === null ? null : { codice: c.codiceAddebito },
+      }))
+    )) {
+      const n = (contate.get(r.elencoId) ?? 0) + 1
+      contate.set(r.elencoId, n)
+      posizioneFuori.set(r.id, n)
+    }
+  }
   const speciali = righeSql.filter(r => r.prezzoSpeciale).map(r => r.id)
   const conScadenze = righeSql.filter(r => r.tipo === 'F').map(r => r.id)
   const scaglioniRighe = await seNonVuota(
@@ -861,8 +907,9 @@ async function selezionaElaborazioneInterna(
   const contatePerElenco = new Map<string, number>()
   for (const r of righeOrdinate) {
     // Posizione nell'elenco intero, nell'ordine dell'utente (`ordinaRigheListino`).
-    const posizioneInElenco = (contatePerElenco.get(r.elencoId) ?? 0) + 1
-    contatePerElenco.set(r.elencoId, posizioneInElenco)
+    const contata = (contatePerElenco.get(r.elencoId) ?? 0) + 1
+    contatePerElenco.set(r.elencoId, contata)
+    const posizioneInElenco = posizioneFuori.get(r.id) ?? contata
     const iva = codiciIva.get(r.codiceIvaId)
     if (iva === undefined) continue // FK: non puo' mancare; difesa contro una lettura incoerente
     const riga: RigaListinoDaFatturare = {
