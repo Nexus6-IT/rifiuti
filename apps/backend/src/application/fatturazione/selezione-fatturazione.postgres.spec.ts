@@ -734,6 +734,31 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
     })
   })
 
+  describe('dettaglio «riga p dell’elenco X (contratto N)» con elenco scaduto', () => {
+    it('la posizione e quella nell’elenco intero, anche se nel listino entra solo la riga citata', async () => {
+      const az = await azienda()
+      const c = await contratto(az)
+      await owner.elencoAddebiti.update({
+        where: { id: c.elencoId },
+        data: {
+          validoDal: new Date('2026-01-01T00:00:00Z'),
+          validoAl: new Date('2026-02-28T00:00:00Z'),
+        },
+      })
+      await riga(az, c.elencoId, 'F', '99')
+      // Ordine dell'elenco: CER, F, NM. La NM e la terza dell'elenco, ma l'unica citata.
+      const nm = await riga(az, c.elencoId, 'NM', '5')
+      await legame(az, c, { data: '2026-02-10', rigaId: nm })
+      const s = await seleziona(az, { includiArretrati: true })
+      const d = s.documenti[0]
+      expect([...d.input.listino.keys()]).toEqual([nm])
+      expect(calcolaDocumento(d.input).errori).toContainEqual({
+        codice: 'FAMIGLIA_NON_CALCOLATA',
+        dettaglio: `NM riga 3 dell'elenco 001 (contratto ${d.contrattoNumero})`,
+      })
+    })
+  })
+
   describe('conteggi per documento e filtri con periodi ambigui', () => {
     it('PER_ELENCO: arretrati e movimenti da collegare stanno nel documento giusto; con arretrati accesi nessun conteggio', async () => {
       const az = await azienda()
@@ -844,11 +869,18 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
     })
 
     it('stesso scenario con la riga dell’allegato TS: FAMIGLIA_NON_CALCOLATA con la posizione nel listino', async () => {
-      const { az } = await scenarioAllegato('TS')
+      const { az, all } = await scenarioAllegato('TS')
+      const numeroAllegato = (
+        await owner.contrattoCliente.findUniqueOrThrow({ where: { id: all.contrattoId } })
+      ).numero
       const s = await seleziona(az)
       const errori = calcolaDocumento(s.documenti[0].input).errori
-      // Il listino va dal principale agli allegati: la riga CER e la 1, la TS la 2.
-      expect(errori).toContainEqual({ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'TS riga 2' })
+      // Il listino va dal principale agli allegati; il dettaglio dice la posizione nell'elenco
+      // dell'allegato (la TS e la sua prima riga), non quella nel listino unito.
+      expect(errori).toContainEqual({
+        codice: 'FAMIGLIA_NON_CALCOLATA',
+        dettaglio: `TS riga 1 dell'elenco 001 (contratto ${numeroAllegato})`,
+      })
     })
 
     it('riga NM dell’elenco principale mai citata dai legami: FAMIGLIA_NON_CALCOLATA', async () => {
@@ -860,7 +892,7 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       expect(s.documenti[0].input.listino.size).toBe(2)
       expect(calcolaDocumento(s.documenti[0].input).errori).toContainEqual({
         codice: 'FAMIGLIA_NON_CALCOLATA',
-        dettaglio: 'NM riga 2',
+        dettaglio: `NM riga 2 dell'elenco 001 (contratto ${s.documenti[0].contrattoNumero})`,
       })
     })
 

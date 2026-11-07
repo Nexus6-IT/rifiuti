@@ -158,9 +158,51 @@ describe('calcolaDocumento', () => {
             listinoDi({ id: 'a2', tipo: 'TS', daAllegato: true, elencoId: 'E2' }),
           ],
           legami: [legameDi()],
+          elenchi: new Map([
+            ['E1', { codice: '001', contratto: 'C-1' }],
+            ['E2', { codice: '001', contratto: 'C-2/A' }],
+          ]),
         })
       )
-      expect(d.errori).toEqual([{ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'TS riga 3' }])
+      expect(d.errori).toEqual([
+        {
+          codice: 'FAMIGLIA_NON_CALCOLATA',
+          dettaglio: "TS riga 2 dell'elenco 001 (contratto C-2/A)",
+        },
+      ])
+    })
+
+    it("posizione nell'elenco portata dalla lettura: vale anche se nel listino del documento entra solo una riga", () => {
+      const d = calcolaDocumento(
+        inputDocumentoDi({
+          righeListino: [
+            cer(),
+            listinoDi({ id: 'x', tipo: 'NM', elencoId: 'E3', posizioneInElenco: 4 }),
+          ],
+          legami: [legameDi()],
+          elenchi: new Map([
+            ['E1', { codice: '001', contratto: 'C-1' }],
+            ['E3', { codice: '000', contratto: 'C-1' }],
+          ]),
+        })
+      )
+      expect(d.errori).toEqual([
+        {
+          codice: 'FAMIGLIA_NON_CALCOLATA',
+          dettaglio: "NM riga 4 dell'elenco 000 (contratto C-1)",
+        },
+      ])
+      expect(JSON.stringify(d.errori)).not.toContain('rigaId')
+    })
+
+    it('dettaglio senza codici elenco noti: resta la posizione nel listino unito', () => {
+      const d = calcolaDocumento(
+        inputDocumentoDi({
+          righeListino: [cer(), listinoDi({ id: 'x', tipo: 'NM' })],
+          legami: [legameDi()],
+        })
+      )
+      expect(d.errori).toEqual([{ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'NM riga 2' }])
     })
 
     it.each(['NM', '$A'])('riga %s nel listino: FAMIGLIA_NON_CALCOLATA', tipo => {
@@ -168,9 +210,15 @@ describe('calcolaDocumento', () => {
         inputDocumentoDi({
           righeListino: [cer(), listinoDi({ id: 'x', tipo })],
           legami: [legameDi()],
+          elenchi: new Map([['E1', { codice: '001', contratto: 'C-1' }]]),
         })
       )
-      expect(d.errori).toEqual([{ codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: `${tipo} riga 2` }])
+      expect(d.errori).toEqual([
+        {
+          codice: 'FAMIGLIA_NON_CALCOLATA',
+          dettaglio: `${tipo} riga 2 dell'elenco 001 (contratto C-1)`,
+        },
+      ])
     })
 
     it('prezzo speciale con regola non calcolata citata dai legami: un solo errore, con la posizione nel listino', () => {
@@ -181,10 +229,14 @@ describe('calcolaDocumento', () => {
             cer({ id: 'sp', prezzoSpeciale: true, applicaA: 'GIORNO' }),
           ],
           legami: [legameDi({ rigaAddebitoId: 'sp', prezzoSpeciale: true })],
+          elenchi: new Map([['E1', { codice: '001', contratto: 'C-1' }]]),
         })
       )
       expect(d.errori.filter(e => e.codice === 'FAMIGLIA_NON_CALCOLATA')).toEqual([
-        { codice: 'FAMIGLIA_NON_CALCOLATA', dettaglio: 'CER riga 2' },
+        {
+          codice: 'FAMIGLIA_NON_CALCOLATA',
+          dettaglio: "CER riga 2 dell'elenco 001 (contratto C-1)",
+        },
       ])
     })
 
@@ -228,9 +280,12 @@ describe('calcolaDocumento', () => {
           righeListino: [cer(), listinoDi({ id: 'altra', tipo: 'CER' }), f],
           righeFisse: [f],
           legami: [legameDi()],
+          elenchi: new Map([['E1', { codice: '001', contratto: 'C-1' }]]),
         })
       )
-      expect(d.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F riga 3' }])
+      expect(d.errori).toEqual([
+        { codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: "F riga 3 dell'elenco 001 (contratto C-1)" },
+      ])
     })
 
     it('M<cat>: il minimo usa il codice a 3 cifre della categoria', () => {

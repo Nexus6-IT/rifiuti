@@ -127,8 +127,14 @@ export function inputDocumentoDi(
   p: Partial<InputDocumento> & { righeListino?: RigaListinoDaFatturare[] } = {}
 ): InputDocumento {
   const { righeListino, ...resto } = p
+  // Posizione nell'elenco: se non data, l'ordine di arrivo fra le righe dello stesso elenco.
+  const contate = new Map<string, number>()
   const listino = new Map<string, RigaListinoDaFatturare>(
-    (righeListino ?? [listinoDi({ id: 'r1', tipo: 'CER' })]).map(r => [r.id, r])
+    (righeListino ?? [listinoDi({ id: 'r1', tipo: 'CER' })]).map(r => {
+      const k = (contate.get(r.elencoId) ?? 0) + 1
+      contate.set(r.elencoId, k)
+      return [r.id, { ...r, posizioneInElenco: r.posizioneInElenco ?? k }]
+    })
   )
   return {
     raggruppamento: 'PER_CONTRATTO',

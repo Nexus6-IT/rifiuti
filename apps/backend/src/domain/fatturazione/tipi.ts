@@ -52,6 +52,12 @@ export interface RigaListinoDaFatturare {
   id: string
   versione: number
   elencoId: string
+  /**
+   * Posizione da 1 della riga nel suo elenco COMPLETO, secondo `ordinaRigheListino` (la stessa che
+   * vede l'utente). La legge chi costruisce il listino; se manca il dettaglio cita la posizione
+   * nel listino unito del documento.
+   */
+  posizioneInElenco?: number
   daAllegato: boolean
   tipo: string
   descrizione: string | null
