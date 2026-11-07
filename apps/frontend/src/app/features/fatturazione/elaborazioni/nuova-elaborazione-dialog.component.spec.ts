@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { By } from '@angular/platform-browser'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
@@ -92,8 +92,10 @@ describe('NuovaElaborazioneDialogComponent', () => {
     expect(listaContratti.calls.mostRecent().args[0]).toEqual(
       jasmine.objectContaining({ dimensione: 25 })
     )
-    comp.cercaClienti('ross')
-    await new Promise(r => setTimeout(r, 350))
+    fakeAsync(() => {
+      comp.cercaClienti('ross')
+      tick(300)
+    })()
     expect(listaClienti.calls.mostRecent().args[0]).toEqual(
       jasmine.objectContaining({ testo: 'ross', dimensione: 25 })
     )
@@ -273,7 +275,6 @@ describe('NuovaElaborazioneDialogComponent', () => {
   it('la ricerca contratti segue il cliente scelto', async () => {
     await crea()
     comp.scegliCliente('c1')
-    await new Promise(r => setTimeout(r, 350))
     expect(listaContratti.calls.mostRecent().args[0]).toEqual(
       jasmine.objectContaining({ clienteId: 'c1', dimensione: 25 })
     )
@@ -288,5 +289,85 @@ describe('NuovaElaborazioneDialogComponent', () => {
     comp.inCorso.set(true)
     comp.chiudi()
     expect(chiusi.length).toBe(1)
+  })
+  it('un cliente trovato per partita IVA resta nel menu (filtro locale su label e partitaIva)', async () => {
+    await crea()
+    listaClienti.and.returnValue(
+      of({
+        elementi: [
+          {
+            id: 'c9',
+            codice: 'C9',
+            ditta: { ragioneSociale: 'Bianchi Spa', partitaIva: '01234567890' },
+          },
+        ],
+        totale: 1,
+      })
+    )
+    fakeAsync(() => {
+      comp.cercaClienti('01234567890')
+      tick(300)
+    })()
+    await dopo(fixture)
+    const menu = fixture.debugElement.query(By.css('[data-testid="nuova-filtro-cliente"]'))
+      .componentInstance as { filterBy: string; options: { value: string; partitaIva?: string }[] }
+    expect(menu.filterBy).toContain('partitaIva')
+    expect(menu.options.find(o => o.value === 'c9')?.partitaIva).toBe('01234567890')
+  })
+
+  it('il cliente scelto resta in testa al menu dopo una ricerca che non lo contiene', async () => {
+    await crea()
+    comp.scegliCliente('c1')
+    listaClienti.and.returnValue(
+      of({ elementi: [{ id: 'c2', ditta: { ragioneSociale: 'Bianchi Spa' } }], totale: 1 })
+    )
+    fakeAsync(() => {
+      comp.cercaClienti('bianchi')
+      tick(300)
+    })()
+    expect(comp.opzioniClienti().map(o => o.value)).toEqual(['c1', 'c2'])
+    expect(comp.clienteId).toBe('c1')
+  })
+
+  it('il contratto scelto resta in testa al menu dopo una ricerca che non lo contiene', async () => {
+    await crea()
+    comp.scegliContratto('k1')
+    listaContratti.and.returnValue(
+      of({
+        elementi: [
+          {
+            id: 'k2',
+            numero: 'CC-2026-002',
+            stato: 'ATTIVO',
+            cliente: { ragioneSociale: 'Verdi' },
+          },
+        ],
+        totale: 1,
+      })
+    )
+    fakeAsync(() => {
+      comp.cercaContratti('002')
+      tick(300)
+    })()
+    expect(comp.opzioniContratti().map(o => o.value)).toEqual(['k1', 'k2'])
+  })
+
+  it('gli errori di ricerca di clienti e contratti sono separati', async () => {
+    await crea()
+    listaClienti.and.returnValue(throwError(() => new Error('x')))
+    comp.scegliCliente('c1')
+    comp.cercaClienti('')
+    await dopo(fixture)
+    expect(comp.erroreClienti()).toContain('clienti')
+    expect(comp.erroreContratti()).toBeNull()
+  })
+
+  it('le etichette dei campi obbligatori lo dichiarano', async () => {
+    await crea()
+    for (const id of ['ne-dal', 'ne-al', 'ne-doc']) {
+      expect(document.body.querySelector(`label[for="${id}"]`)!.textContent).toContain(
+        'obbligatorio'
+      )
+    }
   })
 })

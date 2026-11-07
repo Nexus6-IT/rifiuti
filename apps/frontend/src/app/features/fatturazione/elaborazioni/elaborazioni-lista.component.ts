@@ -9,11 +9,16 @@ import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { AuthService } from '../../../core/services/auth.service'
 import { formattaGiorno } from '../../giacenze/giorno'
+import { importoItaliano } from '../../listino/listino-calcoli'
 import { messaggiErroreFatturazione } from '../errori-fatturazione'
 import { ElaborazioneRiga, StatoElaborazione } from '../fatturazione.model'
 import { DIMENSIONE_MASSIMA, FatturazioneService } from '../fatturazione.service'
 import { permessiFatturazione } from '../permessi-fatturazione'
-import { SeveritaFatturazione, STATI_ELABORAZIONE_VOCI } from '../vocabolario-fatturazione'
+import {
+  SeveritaFatturazione,
+  STATI_ELABORAZIONE_VOCI,
+  VoceVocabolario,
+} from '../vocabolario-fatturazione'
 import { NuovaElaborazioneDialogComponent } from './nuova-elaborazione-dialog.component'
 
 type SeveritaTag = 'success' | 'info' | 'warning' | 'danger'
@@ -23,14 +28,6 @@ const SEVERITA_TAG: Record<SeveritaFatturazione, SeveritaTag> = {
   info: 'info',
   avviso: 'warning',
   errore: 'danger',
-}
-
-/** Importo decimale del backend, in sola lettura: `12345.60` → `12.345,60`. */
-export function importoIt(v: string): string {
-  const n = Number(v)
-  return Number.isFinite(n)
-    ? n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : v
 }
 
 /**
@@ -170,10 +167,14 @@ export class ElaborazioniListaComponent {
   readonly nuovaAperta = signal(false)
 
   readonly giorno = formattaGiorno
-  readonly importo = importoIt
-  readonly etichettaStato = (s: StatoElaborazione): string => STATI_ELABORAZIONE_VOCI[s].etichetta
+  readonly importo = importoItaliano
+  /** Uno stato fuori dall'insieme (backend più nuovo del frontend) non rompe la riga. */
+  private voceStato(s: StatoElaborazione): VoceVocabolario {
+    return STATI_ELABORAZIONE_VOCI[s] ?? { etichetta: s, severita: 'info' }
+  }
+  readonly etichettaStato = (s: StatoElaborazione): string => this.voceStato(s).etichetta
   readonly severitaStato = (s: StatoElaborazione): SeveritaTag =>
-    SEVERITA_TAG[STATI_ELABORAZIONE_VOCI[s].severita]
+    SEVERITA_TAG[this.voceStato(s).severita]
 
   /** Una lettura nuova annulla quella pendente (`switchMap`): una risposta lenta non copre la nuova. */
   private readonly richiesta$ = new Subject<number>()

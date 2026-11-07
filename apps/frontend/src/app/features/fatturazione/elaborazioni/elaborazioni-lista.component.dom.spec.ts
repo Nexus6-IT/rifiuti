@@ -160,4 +160,11 @@ describe('ElaborazioniListaComponent (DOM)', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/fatturazione', 'elaborazioni', 'e77'])
     expect(fixture.componentInstance.nuovaAperta()).toBeFalse()
   })
+
+  it('uno stato sconosciuto non rompe la riga', async () => {
+    await crea('ADMIN', of(pagina([riga(1, { stato: 'NUOVO_STATO' as never })])))
+    expect(q('elaborazione-e1')!.querySelector('[data-testid="el-stato"]')!.textContent).toContain(
+      'NUOVO_STATO'
+    )
+  })
 })

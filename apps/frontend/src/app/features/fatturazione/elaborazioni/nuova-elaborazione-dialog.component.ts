@@ -36,6 +36,7 @@ export const MSG_DATA_FUTURA = 'La data del documento non può essere nel futuro
 interface Opzione {
   label: string
   value: string
+  partitaIva?: string
 }
 
 /** `null` annulla la ricerca in corso (chiusura del dialog). */
@@ -72,9 +73,10 @@ type Ricerca = string | null
     >
       <div class="ne-campi">
         <div class="ne-campo">
-          <label for="ne-dal">Periodo dal</label>
+          <label for="ne-dal">Periodo dal (obbligatorio)</label>
           <p-calendar
             inputId="ne-dal"
+            [required]="true"
             [(ngModel)]="periodoDal"
             [showIcon]="true"
             dateFormat="dd/mm/yy"
@@ -84,9 +86,10 @@ type Ricerca = string | null
           />
         </div>
         <div class="ne-campo">
-          <label for="ne-al">Periodo al</label>
+          <label for="ne-al">Periodo al (obbligatorio)</label>
           <p-calendar
             inputId="ne-al"
+            [required]="true"
             [(ngModel)]="periodoAl"
             [showIcon]="true"
             dateFormat="dd/mm/yy"
@@ -96,9 +99,10 @@ type Ricerca = string | null
           />
         </div>
         <div class="ne-campo">
-          <label for="ne-doc">Data del documento</label>
+          <label for="ne-doc">Data del documento (obbligatorio)</label>
           <p-calendar
             inputId="ne-doc"
+            [required]="true"
             [(ngModel)]="dataDocumento"
             [showIcon]="true"
             dateFormat="dd/mm/yy"
@@ -169,7 +173,7 @@ type Ricerca = string | null
               [ngModel]="clienteId"
               (ngModelChange)="scegliCliente($event)"
               [filter]="true"
-              filterBy="label"
+              filterBy="label,partitaIva"
               filterPlaceholder="Cerca per nome, codice o partita IVA"
               (onFilter)="cercaClienti($event.filter ?? '')"
               [showClear]="true"
@@ -186,7 +190,8 @@ type Ricerca = string | null
               [options]="opzioniContratti()"
               optionLabel="label"
               optionValue="value"
-              [(ngModel)]="contrattoId"
+              [ngModel]="contrattoId"
+              (ngModelChange)="scegliContratto($event)"
               [filter]="true"
               filterBy="label"
               filterPlaceholder="Cerca per numero o cliente"
@@ -200,10 +205,18 @@ type Ricerca = string | null
           </div>
         </div>
         <p
-          *ngIf="erroreRicerca() as e"
+          *ngIf="erroreClienti() as e"
           role="alert"
           class="field-error"
-          data-testid="nuova-errore-ricerca"
+          data-testid="nuova-errore-clienti"
+        >
+          {{ e }}
+        </p>
+        <p
+          *ngIf="erroreContratti() as e"
+          role="alert"
+          class="field-error"
+          data-testid="nuova-errore-contratti"
         >
           {{ e }}
         </p>
@@ -286,7 +299,10 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
   readonly fineGiorno = signal<Date>(fineGiornoDiOggi())
   readonly inCorso = signal(false)
   readonly errore = signal<string[]>([])
-  readonly erroreRicerca = signal<string | null>(null)
+  readonly erroreClienti = signal<string | null>(null)
+  readonly erroreContratti = signal<string | null>(null)
+  private clienteScelto: Opzione | null = null
+  private contrattoScelto: Opzione | null = null
   readonly opzioniClienti = signal<Opzione[]>([])
   readonly opzioniContratti = signal<Opzione[]>([])
 
@@ -342,7 +358,7 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(o => {
-        if (o !== null) this.opzioniClienti.set(o)
+        if (o !== null) this.opzioniClienti.set(this.conScelto(o, this.clienteScelto))
       })
     this.ricercaContratti$
       .pipe(
@@ -356,7 +372,7 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe(o => {
-        if (o !== null) this.opzioniContratti.set(o)
+        if (o !== null) this.opzioniContratti.set(this.conScelto(o, this.contrattoScelto))
       })
   }
 
@@ -388,14 +404,17 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
     this.contrattoId = null
     this.clienteRicerca = null
     this.errore.set([])
-    this.erroreRicerca.set(null)
+    this.erroreClienti.set(null)
+    this.erroreContratti.set(null)
+    this.clienteScelto = null
+    this.contrattoScelto = null
     this.inCorso.set(false)
     this.opzioniClienti.set([])
     this.opzioniContratti.set([])
   }
 
   private leggiClienti(testo: string) {
-    this.erroreRicerca.set(null)
+    this.erroreClienti.set(null)
     const t = testo.trim()
     return this.clienti.clienti
       .list({ ...(t ? { testo: t } : {}), soloAttivi: true, dimensione: DIMENSIONE_RICERCA })
@@ -405,17 +424,18 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
             p.elementi.map(c => ({
               label: c.codice ? `${c.codice} · ${c.ditta.ragioneSociale}` : c.ditta.ragioneSociale,
               value: c.id,
+              partitaIva: c.ditta.partitaIva ?? '',
             })) as Opzione[]
         ),
         catchError(() => {
-          this.erroreRicerca.set('Impossibile caricare i clienti: riprova a cercare.')
+          this.erroreClienti.set('Impossibile caricare i clienti: riprova a cercare.')
           return of(null)
         })
       )
   }
 
   private leggiContratti(testo: string) {
-    this.erroreRicerca.set(null)
+    this.erroreContratti.set(null)
     const t = testo.trim()
     return this.clienti.contratti
       .list({
@@ -432,10 +452,15 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
             })) as Opzione[]
         ),
         catchError(() => {
-          this.erroreRicerca.set('Impossibile caricare i contratti: riprova a cercare.')
+          this.erroreContratti.set('Impossibile caricare i contratti: riprova a cercare.')
           return of(null)
         })
       )
+  }
+
+  /** L'opzione scelta resta in testa all'elenco: PrimeNG mostra «Tutti» se il valore non è fra le opzioni. */
+  private conScelto(o: Opzione[], scelto: Opzione | null): Opzione[] {
+    return scelto && !o.some(x => x.value === scelto.value) ? [scelto, ...o] : o
   }
 
   cercaClienti(testo: string): void {
@@ -449,9 +474,16 @@ export class NuovaElaborazioneDialogComponent implements OnChanges {
   /** Cliente scelto (o tolto): il contratto già scelto si azzera e la ricerca dei contratti lo segue. */
   scegliCliente(id: string | null): void {
     this.clienteId = id || null
+    this.clienteScelto = this.opzioniClienti().find(o => o.value === this.clienteId) ?? null
+    this.contrattoScelto = null
     this.clienteRicerca = this.clienteId
     this.contrattoId = null
     this.ricercaContratti$.next('')
+  }
+
+  scegliContratto(id: string | null): void {
+    this.contrattoId = id || null
+    this.contrattoScelto = this.opzioniContratti().find(o => o.value === this.contrattoId) ?? null
   }
 
   /** Il corpo della richiesta, con le date `AAAA-MM-GG`. Solo a form valido. */
