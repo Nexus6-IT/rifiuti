@@ -22,7 +22,7 @@ import { erroreDaBlob, salvaFile } from '../download-fatturazione'
 import { messaggioDaCodice } from '../messaggio-da-codice'
 import { DocumentoDettaglio, SegnalazioneVista } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
-import { TIPI_RIGA_VOCI, voceSegnalazione } from '../vocabolario-fatturazione'
+import { TIPI_DOCUMENTO_VOCI, TIPI_RIGA_VOCI, voceSegnalazione } from '../vocabolario-fatturazione'
 
 export const MSG_DOCUMENTO_NON_CARICATO = 'Impossibile caricare il documento.'
 export const MSG_PDF_NON_SCARICATO = 'Impossibile scaricare la copia di cortesia.'
@@ -62,7 +62,7 @@ export const testoSegnalazione = (s: SegnalazioneVista): string =>
           >
           <span>Contratto {{ d.contratto.numero }}</span>
           <span>Registro {{ d.registro.codice }}</span>
-          <span>{{ d.tipoDocumento }} del {{ giorno(d.dataDocumento) }}</span>
+          <span>{{ tipoDocumento(d.tipoDocumento) }} del {{ giorno(d.dataDocumento) }}</span>
         </div>
 
         <ul class="da-segnalazioni" *ngIf="d.errori.length" data-testid="doc-errori">
@@ -242,6 +242,7 @@ export class DocumentoAnteprimaDialogComponent implements OnChanges {
   readonly importo = importoItaliano
   readonly numero = (v: string): string => decimaleItaliano(v)
   readonly testo = testoSegnalazione
+  readonly tipoDocumento = (t: string): string => TIPI_DOCUMENTO_VOCI[t]?.etichetta ?? t
   readonly tipoRiga = (t: string): string => TIPI_RIGA_VOCI[t]?.etichetta ?? t
   /** Salvataggio del file: sostituibile nei test. */
   salva = salvaFile

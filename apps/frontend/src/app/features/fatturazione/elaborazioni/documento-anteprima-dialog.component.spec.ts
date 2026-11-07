@@ -123,6 +123,8 @@ describe('DocumentoAnteprimaDialogComponent', () => {
     expect(rate).toContain('31/12/2026')
     expect(rate).toContain('1.220,00')
     expect(q('doc-totale')!.textContent).toContain('1.220,00')
+    expect(q('doc-testata')!.textContent).toContain('Fattura del 03/11/2026')
+    expect(q('doc-testata')!.textContent).not.toContain('TD01')
     expect(q('doc-avvisi')!.textContent).not.toContain('testo del backend')
   })
 

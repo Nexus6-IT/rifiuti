@@ -120,7 +120,12 @@ describe('AnteprimaComponent (DOM)', () => {
       dettaglio({
         erroriPeriodo: [
           { motivo: 'DA_COLLEGARE', quanti: 4, contrattoId: null },
-          { motivo: 'DA_RIALLINEARE', quanti: 2, contrattoId: 'k1' },
+          {
+            motivo: 'DA_RIALLINEARE',
+            quanti: 2,
+            contrattoId: 'k1',
+            contrattoNumero: 'CC-2026-001',
+          },
           { motivo: 'DA_RIALLINEARE', quanti: 3, contrattoId: 'k2' },
           {
             motivo: 'Nell’intervallo terminano più periodi del contratto: restringi le date.',
@@ -155,11 +160,25 @@ describe('AnteprimaComponent (DOM)', () => {
     expect(con.length).toBe(2)
     expect(con[0].getAttribute('href')).toContain('contrattoId=k1')
     expect(con[1].getAttribute('href')).toContain('contrattoId=k2')
+    expect(con[0].textContent).toContain('contratto CC-2026-001 (2)')
+    // Riepilogo salvato prima del campo: testo generico, senza indice.
+    expect(con[1].textContent).toContain('di un contratto (3)')
+    expect(con[1].textContent).not.toMatch(/contratto \d/)
     expect(con[0].textContent).not.toBe(con[1].textContent)
     expect(gruppi[1].querySelector('[data-testid="errori-quanti"]')!.textContent).toContain('5')
 
     // Periodo ambiguo: nessun link verso «da collegare».
     expect(gruppi[2].querySelector('[data-testid="errori-link"]')).toBeNull()
+  })
+
+  it('dopo la definitiva (o se scartata) la scheda «Numerazione prevista» non compare', async () => {
+    await crea('ADMIN', dettaglio({ stato: 'DEFINITIVA' }))
+    expect(q('tab-numerazione')).toBeNull()
+    expect(q('tab-documenti')).not.toBeNull()
+    fixture.destroy()
+    TestBed.resetTestingModule()
+    await crea('ADMIN', dettaglio({ stato: 'SCARTATA' }))
+    expect(q('tab-numerazione')).toBeNull()
   })
 
   it('numerazione prevista «da 15/A a 42/A»', async () => {

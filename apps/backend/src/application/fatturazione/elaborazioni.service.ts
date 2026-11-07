@@ -105,7 +105,7 @@ export interface ElaborazioneDettaglio extends ElaborazioneRiga {
   versione: number
   definitiveAttive: boolean
   erroriGenerali: SegnalazioneVista[]
-  erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
+  erroriPeriodo: RiepilogoElaborazione['erroriPeriodo']
   numerazionePrevista: VoceNumerazionePrevista[]
   totaliPerRegistro: RiepilogoElaborazione['totaliPerRegistro']
   documentiNonGenerati: {

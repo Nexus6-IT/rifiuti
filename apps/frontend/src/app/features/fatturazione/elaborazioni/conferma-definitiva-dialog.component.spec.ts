@@ -84,6 +84,9 @@ describe('ConfermaDefinitivaDialogComponent', () => {
     expect(q('conferma-testo')!.textContent).toContain(
       'Verranno emessi 28 documenti, numeri da 15/A a 42/A del registro A, data 03/11/2026.'
     )
+    expect(document.body.textContent).toContain(
+      'I numeri sono previsti: vengono assegnati in modo definitivo alla conferma.'
+    )
     q<HTMLButtonElement>('conferma-ok')!.querySelector('button')!.click()
     expect(confermato).toHaveBeenCalledTimes(1)
   })

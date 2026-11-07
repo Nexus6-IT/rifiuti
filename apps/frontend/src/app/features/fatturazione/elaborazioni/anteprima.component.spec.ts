@@ -235,7 +235,13 @@ describe('AnteprimaComponent', () => {
     }))
 
     it('409 VERSIONE_SUPERATA o ELABORAZIONE_GIA_IN_DEFINITIVA: messaggio e rilettura dello stato', fakeAsync(() => {
-      for (const codice of ['VERSIONE_SUPERATA', 'ELABORAZIONE_GIA_IN_DEFINITIVA']) {
+      for (const codice of [
+        'VERSIONE_SUPERATA',
+        'ELABORAZIONE_GIA_IN_DEFINITIVA',
+        'ANTEPRIMA_SUPERATA',
+        'DATA_ANTERIORE_ULTIMA_FATTURA',
+        'NESSUN_DOCUMENTO_DEFINIBILE',
+      ]) {
         servizio.dettaglio.calls.reset()
         servizio.ricalcola.and.returnValue(
           throwError(() => ({ status: 409, error: { error: codice, message: 'x' } }))

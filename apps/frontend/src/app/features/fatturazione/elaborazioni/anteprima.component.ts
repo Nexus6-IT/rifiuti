@@ -50,7 +50,15 @@ const STATI_CON_DOCUMENTI: readonly StatoElaborazione[] = [
 ]
 
 /** 409 che dicono «lo stato non è più quello che vedi». */
-const RILEGGI_DOPO = ['VERSIONE_SUPERATA', 'ELABORAZIONE_GIA_IN_DEFINITIVA']
+const RILEGGI_DOPO = [
+  'VERSIONE_SUPERATA',
+  'ELABORAZIONE_GIA_IN_DEFINITIVA',
+  // Numeri o dati diversi da quelli visti: si rilegge il dettaglio.
+  'ANTEPRIMA_SUPERATA',
+  'DOPPIA_FATTURAZIONE',
+  'DATA_ANTERIORE_ULTIMA_FATTURA',
+  'NESSUN_DOCUMENTO_DEFINIBILE',
+]
 
 export const MSG_FALLITA =
   'L’elaborazione non è riuscita. Torna all’elenco e avvia una nuova anteprima; se succede ancora, contatta l’assistenza.'
@@ -102,7 +110,7 @@ interface GruppoErrori {
   /** `true` se il motivo è uno stato della lista «da collegare»: solo allora c'è il link. */
   conLink: boolean
   /** Una voce per contratto; `contrattoId` nullo = movimenti senza contratto. */
-  voci: { contrattoId: string | null; quanti: number }[]
+  voci: { contrattoId: string | null; contrattoNumero: string | null; quanti: number }[]
 }
 
 /**
@@ -407,12 +415,12 @@ interface GruppoErrori {
                     <p-tag severity="danger" [value]="'' + g.quanti" data-testid="errori-quanti" />
                   </h3>
                   <ul *ngIf="g.conLink">
-                    <li *ngFor="let c of g.voci; let i = index">
+                    <li *ngFor="let c of g.voci">
                       <a
                         routerLink="/legami/da-collegare"
                         [queryParams]="parametriDaCollegare(g.motivo, c.contrattoId, d)"
                         data-testid="errori-link"
-                        >{{ testoLink(c.contrattoId, i, c.quanti) }}</a
+                        >{{ testoLink(c.contrattoId, c.contrattoNumero, c.quanti) }}</a
                       >
                     </li>
                   </ul>
@@ -420,7 +428,7 @@ interface GruppoErrori {
               </div>
             </p-tabPanel>
 
-            <p-tabPanel header="Numerazione prevista">
+            <p-tabPanel *ngIf="conNumerazione()" header="Numerazione prevista">
               <div data-testid="tab-numerazione">
                 <p
                   *ngIf="!d.numerazionePrevista.length"
@@ -610,6 +618,11 @@ export class AnteprimaComponent {
     const d = this.dettaglio()
     return d !== null && d.stato !== 'IN_CODA' && d.stato !== 'IN_CORSO' && d.stato !== 'FALLITA'
   })
+  /** I numeri previsti hanno senso finché i documenti non sono emessi o scartati. */
+  readonly conNumerazione = computed(() => {
+    const s = this.dettaglio()?.stato
+    return s === 'ANTEPRIMA_PRONTA' || s === 'IN_DEFINITIVA'
+  })
   readonly puoPreparare = computed(
     () => this.permessi().prepara && this.dettaglio()?.stato === 'ANTEPRIMA_PRONTA'
   )
@@ -684,7 +697,11 @@ export class AnteprimaComponent {
         voci: [],
       }
       g.quanti += e.quanti
-      g.voci.push({ contrattoId: e.contrattoId, quanti: e.quanti })
+      g.voci.push({
+        contrattoId: e.contrattoId,
+        contrattoNumero: e.contrattoNumero ?? null,
+        quanti: e.quanti,
+      })
       per.set(e.motivo, g)
     }
     return [...per.values()]
@@ -801,10 +818,12 @@ export class AnteprimaComponent {
   }
 
   /** Testo del link, distinto per ogni voce del gruppo. */
-  testoLink(contrattoId: string | null, indice: number, quanti: number): string {
-    return contrattoId === null
-      ? `Apri i movimenti senza contratto (${quanti})`
-      : `Apri i movimenti del contratto ${indice + 1} (${quanti})`
+  testoLink(contrattoId: string | null, numero: string | null | undefined, quanti: number): string {
+    if (contrattoId === null) return `Apri i movimenti senza contratto (${quanti})`
+    // Riepiloghi vecchi senza numero: testo generico, mai una posizione che sembri un numero.
+    return numero
+      ? `Apri i movimenti del contratto ${numero} (${quanti})`
+      : `Apri i movimenti di un contratto (${quanti})`
   }
 
   // --- Azioni -------------------------------------------------------------------------------

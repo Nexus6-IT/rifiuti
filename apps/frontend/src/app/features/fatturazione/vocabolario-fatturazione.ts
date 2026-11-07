@@ -296,6 +296,13 @@ export const TIPI_RIGA_VOCI: Readonly<Record<string, VoceVocabolario>> = {
   QUANTITA_MOVIMENTI: v('Quantità dei movimenti', 'info'),
 }
 
+/** Tipi di documento SDI emessi dalla fatturazione. */
+export const TIPI_DOCUMENTO_VOCI: Readonly<Record<string, VoceVocabolario>> = {
+  TD01: v('Fattura', 'info'),
+  TD04: v('Nota di credito', 'info'),
+  TD24: v('Fattura differita', 'info'),
+}
+
 export const TIPI_CORREZIONE_VOCI = {
   RETTIFICA: v('Rettifica', 'avviso'),
   ANNULLO: v('Annullo', 'avviso'),

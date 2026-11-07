@@ -420,8 +420,16 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
       expect(s.documenti).toHaveLength(1)
       expect(s.documenti[0].input.legami).toHaveLength(1)
       expect(s.documenti[0].input.legamiDaCollegareEsclusi).toBe(1)
+      const numero = (
+        await owner.contrattoCliente.findUniqueOrThrow({ where: { id: c.contrattoId } })
+      ).numero
       expect(s.erroriPeriodo).toEqual([
-        { motivo: 'DA_RIALLINEARE', quanti: 1, contrattoId: c.contrattoId },
+        {
+          motivo: 'DA_RIALLINEARE',
+          quanti: 1,
+          contrattoId: c.contrattoId,
+          contrattoNumero: numero,
+        },
       ])
     })
 
@@ -459,11 +467,14 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
         'MOVIMENTI_DA_COLLEGARE_ESCLUSI'
       )
       expect(s.erroriGenerali).toEqual([{ codice: 'LEGAMI_SENZA_CONTRATTO', dettaglio: '2' }])
+      const numero = (
+        await owner.contrattoCliente.findUniqueOrThrow({ where: { id: c.contrattoId } })
+      ).numero
       expect(s.erroriPeriodo).toEqual(
         expect.arrayContaining([
-          { motivo: 'PROPOSTO', quanti: 1, contrattoId: c.contrattoId },
-          { motivo: 'DA_COLLEGARE', quanti: 1, contrattoId: null },
-          { motivo: 'MANCANTE', quanti: 1, contrattoId: null },
+          { motivo: 'PROPOSTO', quanti: 1, contrattoId: c.contrattoId, contrattoNumero: numero },
+          { motivo: 'DA_COLLEGARE', quanti: 1, contrattoId: null, contrattoNumero: null },
+          { motivo: 'MANCANTE', quanti: 1, contrattoId: null, contrattoNumero: null },
         ])
       )
     })
@@ -570,6 +581,9 @@ describe('Selezione dell’elaborazione (Postgres reale, ruolo wasteflow_app)', 
           motivo: "Nell'intervallo terminano più periodi del contratto: restringi le date.",
           quanti: 1,
           contrattoId: c.contrattoId,
+          contrattoNumero: (
+            await owner.contrattoCliente.findUniqueOrThrow({ where: { id: c.contrattoId } })
+          ).numero,
         },
       ])
     })

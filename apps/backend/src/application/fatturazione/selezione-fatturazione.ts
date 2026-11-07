@@ -82,7 +82,13 @@ export interface SelezioneElaborazione {
    * data nel periodo, per motivo e contratto; piu' i contratti con periodi ambigui (il motivo e'
    * il messaggio, `quanti` 1).
    */
-  erroriPeriodo: { motivo: string; quanti: number; contrattoId: string | null }[]
+  erroriPeriodo: {
+    motivo: string
+    quanti: number
+    contrattoId: string | null
+    /** Numero del contratto (assente nei riepiloghi salvati prima del campo). */
+    contrattoNumero: string | null
+  }[]
   versioni: Parameters<typeof improntaElaborazione>[0]
 }
 
@@ -488,7 +494,12 @@ async function selezionaElaborazioneInterna(
     if (e.esito === 'NESSUNO') continue
     if (e.esito === 'ERRORE') {
       if (!filtraSoloPerContratto) {
-        erroriPeriodo.push({ motivo: e.messaggio, quanti: 1, contrattoId: c.id })
+        erroriPeriodo.push({
+          motivo: e.messaggio,
+          quanti: 1,
+          contrattoId: c.id,
+          contrattoNumero: c.numero,
+        })
       } else {
         // Con un filtro per categoria o tipo l'errore si riporta solo se il contratto sarebbe
         // entrato: lo si giudica sulle righe degli elenchi validi nell'intervallo digitato.
@@ -956,11 +967,15 @@ async function selezionaElaborazioneInterna(
     c => c.contrattoId as string
   )
   /** Una riga di errore del periodo per (motivo, contratto). */
-  const conteggi = new Map<string, { motivo: string; quanti: number; contrattoId: string | null }>()
-  const conta = (motivo: string, contrattoId: string | null): void => {
+  const conteggi = new Map<string, SelezioneElaborazione['erroriPeriodo'][number]>()
+  const conta = (
+    motivo: string,
+    contrattoId: string | null,
+    contrattoNumero: string | null
+  ): void => {
     const k = `${motivo}\u0000${contrattoId ?? ''}`
     const x = conteggi.get(k)
-    if (x === undefined) conteggi.set(k, { motivo, quanti: 1, contrattoId })
+    if (x === undefined) conteggi.set(k, { motivo, quanti: 1, contrattoId, contrattoNumero })
     else x.quanti++
   }
 
@@ -984,7 +999,12 @@ async function selezionaElaborazioneInterna(
       if (fTipi !== null && !tutte.some(r => fTipi.includes(r.tipo))) continue
     }
     if (errore !== undefined) {
-      erroriPeriodo.push({ motivo: errore, quanti: 1, contrattoId: c.id })
+      erroriPeriodo.push({
+        motivo: errore,
+        quanti: 1,
+        contrattoId: c.id,
+        contrattoNumero: c.numero,
+      })
       continue
     }
 
@@ -1003,7 +1023,7 @@ async function selezionaElaborazioneInterna(
         if (nellaFinestra(k.giorno)) confermati.push(k)
         else arretratiFuori.push(k)
       } else if (nellaFinestra(k.giorno)) {
-        conta(k.stato, c.id)
+        conta(k.stato, c.id, c.numero)
         daCollegareEsclusi++
       }
     }
@@ -1236,7 +1256,7 @@ async function selezionaElaborazioneInterna(
   const senzaContratto = filtraSenzaContratto(candidati, p, fClienti, {
     salta: fContratti !== null || fCategorie !== null || fTipi !== null || fRegistri !== null,
   })
-  for (const k of senzaContratto) conta(k.stato, null)
+  for (const k of senzaContratto) conta(k.stato, null, null)
   if (senzaContratto.length > 0) {
     erroriGenerali.push({
       codice: 'LEGAMI_SENZA_CONTRATTO',
