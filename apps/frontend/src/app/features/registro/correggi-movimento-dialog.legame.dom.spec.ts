@@ -58,6 +58,7 @@ function legame(parziale: Partial<LegameVista> = {}): LegameVista {
     confermatoIl: '2026-10-21T08:00:00.000Z',
     fatturatoIl: null,
     riferimentoFattura: null,
+    documentoId: null,
     scostamentoDopoFattura: false,
     scostamentoIl: null,
     versione: 2,

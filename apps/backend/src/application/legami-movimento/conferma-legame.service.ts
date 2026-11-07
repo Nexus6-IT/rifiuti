@@ -134,6 +134,8 @@ export interface LegameVista {
   confermatoIl: string | null
   fatturatoIl: string | null
   riferimentoFattura: string | null
+  /** Documento che ha fatturato il legame; null se non e' FATTURATO. */
+  documentoId: string | null
   scostamentoDopoFattura: boolean
   scostamentoIl: string | null
   versione: number
@@ -159,6 +161,7 @@ interface Testata {
   confermatoDa: string | null
   fatturatoIl: Date | null
   riferimentoFattura: string | null
+  documentoId: string | null
   scostamentoDopoFattura: boolean
   scostamentoIl: Date | null
   versione: number
@@ -1360,6 +1363,7 @@ async function leggiTestata(
            l.motivi AS motivi, l.avvisi AS avvisi, l.motivo_esclusione AS "motivoEsclusione",
            l.confermato_il AS "confermatoIl", l.confermato_da::text AS "confermatoDa",
            l.fatturato_il AS "fatturatoIl", l.riferimento_fattura AS "riferimentoFattura",
+           l.documento_id::text AS "documentoId",
            l.scostamento_dopo_fattura AS "scostamentoDopoFattura",
            l.scostamento_il AS "scostamentoIl", l.versione AS versione
     FROM legami_movimento l
@@ -1457,6 +1461,7 @@ async function costruisciVista(
     confermatoIl: iso(l.confermatoIl),
     fatturatoIl: iso(l.fatturatoIl),
     riferimentoFattura: l.riferimentoFattura,
+    documentoId: l.documentoId,
     scostamentoDopoFattura: l.scostamentoDopoFattura,
     scostamentoIl: iso(l.scostamentoIl),
     versione: l.versione,

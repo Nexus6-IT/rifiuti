@@ -61,6 +61,7 @@ const legame = (parziale: Partial<LegameVista> = {}): LegameVista => ({
   confermatoIl: null,
   fatturatoIl: '2026-11-10T00:00:00.000Z',
   riferimentoFattura: null,
+  documentoId: null,
   scostamentoDopoFattura: true,
   scostamentoIl: null,
   versione: 4,

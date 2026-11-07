@@ -338,6 +338,20 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     expect(l.righe[0].quantita?.toFixed()).toBe('80')
   })
 
+  it("la vista del legame porta documentoId: null se non fatturato, l'id del documento se FATTURATO", async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    const l0 = (await legameDi(m.id))!
+    expect((await legami.dettaglio(s.tenantId, l0.id)).documentoId).toBeNull()
+    expect((await legami.perMovimento(s.tenantId, m.id)).documentoId).toBeNull()
+    await portaAFatturato(l0.id, 'FATTURATO')
+    const documentoId = (await owner.legameMovimento.findUniqueOrThrow({ where: { id: l0.id } }))
+      .documentoId
+    expect(documentoId).not.toBeNull()
+    expect((await legami.dettaglio(s.tenantId, l0.id)).documentoId).toBe(documentoId)
+    expect((await legami.perMovimento(s.tenantId, m.id)).documentoId).toBe(documentoId)
+  })
+
   it('quantità MANUALE resta e compare QUANTITA_MANUALE_NON_DERIVATA', async () => {
     const s = await scenario()
     const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })

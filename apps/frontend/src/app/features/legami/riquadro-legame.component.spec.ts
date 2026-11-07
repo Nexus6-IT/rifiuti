@@ -43,6 +43,7 @@ function legame(parziale: Partial<LegameVista> = {}): LegameVista {
     confermatoIl: '2026-11-03T10:00:00.000Z',
     fatturatoIl: null,
     riferimentoFattura: null,
+    documentoId: null,
     scostamentoDopoFattura: false,
     scostamentoIl: null,
     versione: 3,
@@ -383,6 +384,26 @@ describe('RiquadroLegameComponent', () => {
       '[data-testid="riquadro-vai-documento"]'
     ) as HTMLAnchorElement
     expect(a.getAttribute('href')).toBe('/fatturazione/documenti/doc-9')
+  }))
+
+  it('«Apri il documento» compare quando documentoId è valorizzato, non quando è null', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          fatturatoIl: '2026-10-31T10:00:00.000Z',
+          documentoId: 'doc-1',
+        })
+      )
+    )
+    expect(testo('riquadro-vai-documento')).toContain('Apri il documento')
+  }))
+
+  it('FATTURATO senza documentoId: nessun link', fakeAsync(() => {
+    crea(
+      of(legame({ stato: 'FATTURATO', fatturatoIl: '2026-10-31T10:00:00.000Z', documentoId: null }))
+    )
+    expect(q('riquadro-vai-documento')).toBeNull()
   }))
 
   it('non fatturato: nessun link al documento né agli scostamenti', fakeAsync(() => {

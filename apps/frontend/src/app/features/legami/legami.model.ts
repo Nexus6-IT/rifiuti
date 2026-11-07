@@ -131,8 +131,8 @@ export interface LegameVista {
   confermatoIl: string | null
   fatturatoIl: string | null
   riferimentoFattura: string | null
-  /** Documento della fattura (se il backend lo espone): serve al link del riquadro. */
-  documentoId?: string | null
+  /** Documento della fattura (null se non fatturato): serve al link del riquadro. */
+  documentoId: string | null
   scostamentoDopoFattura: boolean
   scostamentoIl: string | null
   versione: number

@@ -48,6 +48,7 @@ function legame(extra: Partial<LegameVista> = {}): LegameVista {
     confermatoIl: null,
     fatturatoIl: null,
     riferimentoFattura: null,
+    documentoId: null,
     scostamentoDopoFattura: false,
     scostamentoIl: null,
     versione: 3,
