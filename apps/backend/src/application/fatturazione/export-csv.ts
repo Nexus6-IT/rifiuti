@@ -132,7 +132,7 @@ export function righeCsv(documenti: readonly DocumentoPerExport[]): string {
         cellaTestoCsv(r.descrizione),
         data(r.dataMovimento),
         cellaCsv(r.cerCode),
-        cellaCsv(r.numeroFir),
+        cellaTestoCsv(r.numeroFir),
         importo(r.quantita),
         cellaCsv(r.unitaMisura),
         importo(r.prezzoUnitario),

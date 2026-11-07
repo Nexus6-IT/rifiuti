@@ -6,7 +6,7 @@
 // dettagli si leggono a blocchi di 100 con `DocumentiFatturaService.dettagliInTx` (una query per
 // tabella e per blocco). Tetto di 5000 documenti. Il CSV e' in sola lettura: non rende «emesso» il
 // documento (S18), non prende lock e non scrive altro che l'audit.
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import JSZip from 'jszip'
 import type { FotografiaDocumento } from '../../domain/fatturazione/tipi'
@@ -172,7 +172,7 @@ export class ExportService {
             saltati: 0,
           }
         },
-        { timeout: 120_000 }
+        { timeout: 120_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       )
     )
   }
@@ -187,6 +187,18 @@ export class ExportService {
     tenantId: string,
     s: SelezioneExport
   ): Promise<DocumentoSelezionato[]> {
+    if (s.elaborazioneId !== undefined) {
+      // Un'elaborazione inesistente o di un'altra azienda non e' «nessun documento»: e' un errore.
+      const trovata = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id::text AS id FROM "elaborazioni_fatturazione"
+        WHERE tenant_id = ${tenantId}::uuid AND id = ${s.elaborazioneId}::uuid`
+      if (trovata.length === 0) {
+        throw new NotFoundException({
+          error: 'ELABORAZIONE_NON_TROVATA',
+          message: 'Elaborazione non trovata.',
+        })
+      }
+    }
     const condizioni: Prisma.Sql[] = [Prisma.sql`d.tenant_id = ${tenantId}::uuid`]
     if (s.elaborazioneId !== undefined) {
       condizioni.push(Prisma.sql`d.elaborazione_id = ${s.elaborazioneId}::uuid`)

@@ -140,6 +140,10 @@ describe('testate.csv e righe.csv', () => {
     expect(linee[1]).toContain('"10/03/2026"')
     expect(linee[0].split(';').length).toBe(18)
   })
+  it('righe: il numero FIR passa dalla protezione delle formule', () => {
+    const l = righeCsv([doc({}, [riga(1, { numeroFir: '=CMD()' })])]).split('\r\n')[1]
+    expect(l).toContain('"\'=CMD()"')
+  })
   it('righe: documento senza righe produce solo l intestazione', () => {
     expect(righeCsv([doc({}, [])]).split('\r\n')).toHaveLength(2)
   })

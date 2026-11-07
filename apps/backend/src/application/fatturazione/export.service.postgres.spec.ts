@@ -164,8 +164,16 @@ describe('ExportService CSV — Postgres reale, ruolo wasteflow_app', () => {
     expect(t).toHaveLength(2)
     expect(t[1]).toContain('"BOZZA"')
     // le bozze di un'altra elaborazione (id inesistente) non entrano mai
-    const altra = await esporta(a, { elaborazioneId: randomUUID() })
-    expect(linee((await leggiZip(altra.contenuto)).testate)).toHaveLength(1)
+    await expect(esporta(a, { elaborazioneId: randomUUID() })).rejects.toMatchObject({
+      status: 404,
+      response: { error: 'ELABORAZIONE_NON_TROVATA' },
+    })
+    // l'elaborazione di un altro tenant e' come inesistente
+    const b = await azienda()
+    await expect(esporta(b, { elaborazioneId: elab.id })).rejects.toMatchObject({
+      status: 404,
+      response: { error: 'ELABORAZIONE_NON_TROVATA' },
+    })
   })
 
   it('il CSV non cambia i documenti (emesso_il, versione, updated_at)', async () => {
@@ -354,36 +362,31 @@ describe('ExportService CSV — Postgres reale, ruolo wasteflow_app', () => {
       expect(linee((await leggiZip(r2.contenuto)).testate)).toHaveLength(TETTO_DOCUMENTI_CSV + 1)
       expect(ms2).toBeLessThan(20_000)
 
-      // oltre il tetto per filtro: 400 dopo il conteggio
-      await owner.$executeRawUnsafe(
+      // 5001° documento definitivo: il filtro per anno supera il tetto (ramo del conteggio)
+      const [extra] = await owner.$queryRawUnsafe<{ id: string }[]>(
         `INSERT INTO documenti_fattura
            (tenant_id, stato, tipo_documento, registro_iva_id, anno, data_documento, cliente_id,
             cliente_fatturazione_id, contratto_id, periodo_dal, periodo_al, formato_trasmissione,
             esigibilita_iva, totale_imponibile, totale_iva, totale_documento, netto_a_pagare,
             fotografia, updated_at)
          VALUES ($1::uuid, 'BOZZA', 'TD01', $2::uuid, 2026, '2026-02-02', $3::uuid, $3::uuid,
-            $4::uuid, '2026-01-01', '2026-12-31', 'FPR12', 'IMMEDIATA', 1, 0, 1, 1, '{}'::jsonb, now())`,
+            $4::uuid, '2026-01-01', '2026-12-31', 'FPR12', 'IMMEDIATA', 1, 0, 1, 1, '{}'::jsonb, now())
+         RETURNING id::text AS id`,
         a.tenantId,
         a.registri[0],
         a.scenario.clienteId,
         a.scenario.contrattoId
       )
-      const elab = await owner.$queryRawUnsafe<{ id: string }[]>(
-        `INSERT INTO elaborazioni_fatturazione
-           (tenant_id, periodo_dal, periodo_al, data_documento, raggruppamento, updated_at)
-         VALUES ($1::uuid, '2026-01-01', '2026-12-31', '2026-06-01', 'PER_CONTRATTO', now())
-         RETURNING id::text AS id`,
-        a.tenantId
-      )
       await owner.$executeRawUnsafe(
-        `UPDATE documenti_fattura SET elaborazione_id = $2::uuid WHERE tenant_id = $1::uuid AND stato = 'BOZZA'`,
-        a.tenantId,
-        elab[0].id
+        `UPDATE documenti_fattura SET stato = 'DEFINITIVO', numero = $2::int, numero_testo = $2::text,
+                definito_il = now(), updated_at = now() WHERE id = $1::uuid`,
+        extra.id,
+        TETTO_DOCUMENTI_CSV + 1
       )
-      // 5000 definitivi + 1 bozza dell'elaborazione = 5001 con l'elaborazione, ma il filtro
-      // per elaborazione prende solo la bozza: il tetto si prova con tutti gli id
-      const tutti = [...ids, randomUUID()]
-      await expect(esporta(a, { documentoIds: tutti })).rejects.toMatchObject({
+      await expect(esporta(a, { anno: 2026 })).rejects.toMatchObject({
+        response: { error: 'TROPPI_DOCUMENTI' },
+      })
+      await expect(esporta(a, { documentoIds: [...ids, extra.id] })).rejects.toMatchObject({
         response: { error: 'TROPPI_DOCUMENTI' },
       })
     }, 120_000)
