@@ -88,7 +88,7 @@ export function differenzaDecimale(a: string | null, b: string | null): string |
           [value]="righe()"
           [loading]="caricamento()"
           dataKey="legameId"
-          styleClass="p-datatable-sm"
+          styleClass="p-datatable-sm tabella-schede"
           aria-label="Scostamenti dopo la fattura"
         >
           <ng-template pTemplate="header">
@@ -104,7 +104,7 @@ export function differenzaDecimale(a: string | null, b: string | null): string |
           </ng-template>
           <ng-template pTemplate="body" let-r>
             <tr [attr.data-testid]="'scostamento-' + r.legameId">
-              <td class="cell-nowrap" data-testid="sc-documento">
+              <td class="cell-nowrap" data-etichetta="Documento" data-testid="sc-documento">
                 <a
                   [routerLink]="['/fatturazione', 'documenti', r.documento.id]"
                   [attr.data-testid]="'sc-link-documento-' + r.legameId"
@@ -112,17 +112,27 @@ export function differenzaDecimale(a: string | null, b: string | null): string |
                 >
                 del {{ giorno(r.documento.dataDocumento) }}
               </td>
-              <td data-testid="sc-tipo">{{ tipo(r.tipoCorrezione) }}</td>
-              <td class="num-col" data-testid="sc-qta-fatturata">
+              <td data-etichetta="Correzione" data-testid="sc-tipo">
+                {{ tipo(r.tipoCorrezione) }}
+              </td>
+              <td
+                class="num-col"
+                data-etichetta="Quantità fatturata"
+                data-testid="sc-qta-fatturata"
+              >
                 {{ quantitaConUnita(r.quantitaFatturata, r.unitaFatturata) }}
               </td>
-              <td class="num-col" data-testid="sc-qta-attuale">
+              <td class="num-col" data-etichetta="Quantità attuale" data-testid="sc-qta-attuale">
                 {{ quantitaConUnita(r.quantitaAttuale, r.unitaAttuale) }}
               </td>
-              <td class="num-col" data-testid="sc-importo-fatturato">
+              <td
+                class="num-col"
+                data-etichetta="Importo fatturato"
+                data-testid="sc-importo-fatturato"
+              >
                 {{ importo(r.importoFatturato) }}
               </td>
-              <td class="num-col">
+              <td class="num-col" data-etichetta="Importo attuale">
                 <span data-testid="sc-importo-attuale">{{
                   r.importoAttuale === null ? '—' : importo(r.importoAttuale)
                 }}</span>

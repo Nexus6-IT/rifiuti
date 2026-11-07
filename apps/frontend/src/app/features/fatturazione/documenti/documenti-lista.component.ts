@@ -357,7 +357,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
           [value]="righe()"
           [loading]="caricamento()"
           dataKey="id"
-          styleClass="p-datatable-sm"
+          styleClass="p-datatable-sm tabella-schede"
           aria-label="Documenti di fattura"
         >
           <ng-template pTemplate="header">
@@ -391,23 +391,32 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
                   [attr.data-testid]="'dl-sel-' + r.id"
                 />
               </td>
-              <td class="cell-nowrap" data-testid="dl-numero">{{ r.numeroTesto ?? '—' }}</td>
+              <td class="cell-nowrap" data-etichetta="Numero" data-testid="dl-numero">
+                {{ r.numeroTesto ?? '—' }}
+              </td>
               <td
                 class="cell-nowrap"
                 [class.dl-annullato]="r.stato === 'ANNULLATO'"
+                data-etichetta="Data"
                 data-testid="dl-data"
               >
                 {{ giorno(r.dataDocumento) }}
               </td>
-              <td data-testid="dl-cliente">{{ r.cliente.denominazione }}</td>
-              <td data-testid="dl-tipo">{{ tipoDocumento(r.tipoDocumento) }}</td>
-              <td data-testid="dl-stato">
+              <td data-etichetta="Cliente" data-testid="dl-cliente">
+                {{ r.cliente.denominazione }}
+              </td>
+              <td data-etichetta="Tipo" data-testid="dl-tipo">
+                {{ tipoDocumento(r.tipoDocumento) }}
+              </td>
+              <td data-etichetta="Stato" data-testid="dl-stato">
                 <p-tag
                   [value]="voceStato(r.stato).etichetta"
                   [severity]="severita(voceStato(r.stato))"
                 />
               </td>
-              <td class="num-col" data-testid="dl-totale">{{ importo(r.totaleDocumento) }}</td>
+              <td class="num-col" data-etichetta="Totale" data-testid="dl-totale">
+                {{ importo(r.totaleDocumento) }}
+              </td>
               <td class="cell-nowrap">
                 <p-button
                   label="Apri"

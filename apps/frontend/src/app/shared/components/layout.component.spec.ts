@@ -102,6 +102,23 @@ describe('LayoutComponent: voce di menu «Fatture per periodo»', () => {
     )
     expect(nav[i - 1].route).toBe('/legami/da-collegare')
   })
+
+  it('«Scostamenti» ed «Export contabile» stanno con le altre voci di fatturazione, prima di «Fatturazione da»', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const rotte = TestBed.createComponent(LayoutComponent).componentInstance.navMain.map(
+      v => v.route
+    )
+    const i = rotte.indexOf('/fatturazione/documenti')
+    expect(rotte.slice(i, i + 4)).toEqual([
+      '/fatturazione/documenti',
+      '/fatturazione/scostamenti',
+      '/fatturazione/export-contabile',
+      '/clienti/fatturazione',
+    ])
+  })
 })
 
 describe('LayoutComponent: voce di menu «Da collegare»', () => {

@@ -14,6 +14,7 @@ import { EMPTY, Subject, from } from 'rxjs'
 import { catchError, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { formattaGiorno } from '../../giacenze/giorno'
@@ -39,9 +40,17 @@ export const testoSegnalazione = (s: SegnalazioneVista): string =>
 @Component({
   selector: 'app-documento-anteprima-dialog',
   standalone: true,
-  imports: [CommonModule, ButtonModule, DialogModule, TableModule, TagModule],
+  imports: [
+    CommonModule,
+    ButtonModule,
+    DialogModule,
+    RipristinaFocusDirective,
+    TableModule,
+    TagModule,
+  ],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiuso.emit()"
       header="Documento in anteprima"

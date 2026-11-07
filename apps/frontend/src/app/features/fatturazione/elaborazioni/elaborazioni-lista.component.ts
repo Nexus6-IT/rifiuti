@@ -93,7 +93,7 @@ const SEVERITA_TAG: Record<SeveritaFatturazione, SeveritaTag> = {
           [value]="righe()"
           [loading]="caricamento()"
           dataKey="id"
-          styleClass="p-datatable-sm"
+          styleClass="p-datatable-sm tabella-schede"
           aria-label="Elaborazioni di fatturazione"
         >
           <ng-template pTemplate="header">
@@ -109,18 +109,24 @@ const SEVERITA_TAG: Record<SeveritaFatturazione, SeveritaTag> = {
           </ng-template>
           <ng-template pTemplate="body" let-r>
             <tr [attr.data-testid]="'elaborazione-' + r.id">
-              <td class="cell-nowrap" data-testid="el-data">
+              <td class="cell-nowrap" data-etichetta="Data" data-testid="el-data">
                 {{ r.createdAt | date: 'dd/MM/yyyy HH:mm' }}
               </td>
-              <td class="cell-nowrap" data-testid="el-periodo">
+              <td class="cell-nowrap" data-etichetta="Periodo" data-testid="el-periodo">
                 {{ giorno(r.periodoDal) }} – {{ giorno(r.periodoAl) }}
               </td>
-              <td data-testid="el-stato">
+              <td data-etichetta="Stato" data-testid="el-stato">
                 <p-tag [value]="etichettaStato(r.stato)" [severity]="severitaStato(r.stato)" />
               </td>
-              <td class="num-col" data-testid="el-documenti">{{ r.documenti }}</td>
-              <td class="num-col" data-testid="el-totale">{{ importo(r.totale) }}</td>
-              <td class="num-col" data-testid="el-errori">{{ r.errori }}</td>
+              <td class="num-col" data-etichetta="Documenti" data-testid="el-documenti">
+                {{ r.documenti }}
+              </td>
+              <td class="num-col" data-etichetta="Totale" data-testid="el-totale">
+                {{ importo(r.totale) }}
+              </td>
+              <td class="num-col" data-etichetta="Errori" data-testid="el-errori">
+                {{ r.errori }}
+              </td>
               <td class="cell-nowrap">
                 <p-button
                   label="Apri"

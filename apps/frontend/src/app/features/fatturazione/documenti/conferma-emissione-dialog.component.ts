@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, EventEmitter, Input, Output } from '@angular/core'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
+import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 
 /** Decisione 12: scaricare l'XML o esportare rende il documento emesso. */
 export const MSG_EMISSIONE = 'La fattura diventerà emessa e non si potrà più annullare.'
@@ -19,9 +20,10 @@ export const MSG_TRACCIATO_NON_VERIFICATO = "Tracciato non verificato su un'inst
 @Component({
   selector: 'app-conferma-emissione-dialog',
   standalone: true,
-  imports: [CommonModule, ButtonModule, DialogModule],
+  imports: [CommonModule, ButtonModule, DialogModule, RipristinaFocusDirective],
   template: `
     <p-dialog
+      [appRipristinaFocus]="visible"
       [visible]="visible"
       (visibleChange)="$event ? null : chiudi()"
       [header]="titolo"
@@ -33,7 +35,7 @@ export const MSG_TRACCIATO_NON_VERIFICATO = "Tracciato non verificato su un'inst
       data-testid="conferma-emissione-dialog"
     >
       <p data-testid="conferma-emissione-testo">{{ messaggio }}</p>
-      <p *ngIf="avviso" class="field-error" role="note" data-testid="conferma-emissione-avviso">
+      <p *ngIf="avviso" class="avviso-nota" role="note" data-testid="conferma-emissione-avviso">
         {{ avviso }}
       </p>
       <p *ngIf="errore" role="alert" class="field-error" data-testid="conferma-emissione-errore">

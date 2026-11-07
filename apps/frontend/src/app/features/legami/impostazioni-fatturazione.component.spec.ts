@@ -17,7 +17,7 @@ const spenta: ImpostazioneFatturazione = {
   definitiveAttive: false,
 }
 const AVVISO =
-  'Accendi le definitive solo dopo la conferma del commercialista su TD24, documenti misti e nature soggette a bollo'
+  "Accendi le definitive solo dopo la conferma del commercialista su TD24, documenti misti e nature soggette a bollo. Dopo l'accensione le fatture ricevono un numero definitivo."
 
 describe('ImpostazioniFatturazioneComponent', () => {
   let fixture: ComponentFixture<ImpostazioniFatturazioneComponent>
