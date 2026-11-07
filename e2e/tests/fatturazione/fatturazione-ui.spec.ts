@@ -425,14 +425,14 @@ test.describe('Fatturazione per periodo (interfaccia)', () => {
     // Un documento che non e` l'ultimo: «Annulla» disattivato con il motivo in chiaro.
     await page.goto(`/fatturazione/documenti/${docA.id}`)
     await expect(page.getByTestId('dd-numero')).toBeVisible({ timeout: ATTESA_SERVER })
-    await expect(fp.bottone('dd-annulla')).toBeDisabled()
+    await expect(page.getByTestId('dd-annulla')).toBeDisabled()
     await expect(page.getByTestId('dd-motivo-annullo')).not.toBeEmpty()
 
     // L'ultimo (123): si annulla con il motivo.
     await page.goto(`/fatturazione/documenti/${docC.id}`)
     await expect(page.getByTestId('dd-numero')).toHaveText(docC.numeroTesto!)
-    await expect(fp.bottone('dd-annulla')).toBeEnabled()
-    await fp.bottone('dd-annulla').click()
+    await expect(page.getByTestId('dd-annulla')).toBeEnabled()
+    await page.getByTestId('dd-annulla').click()
     await expect(page.locator('#annulla-motivo')).toBeVisible()
     await expect(fp.bottone('annulla-conferma')).toBeDisabled()
     await page.locator('#annulla-motivo').fill('Prova e2e: documento emesso per errore')
