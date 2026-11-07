@@ -33,12 +33,14 @@ const LUNGHEZZA_SIGLA = 4
 /** Modalita di pagamento (codice SDI) che il gestionale chiama «ricevuta bancaria» (tipo effetto 2). Da verificare su un'installazione reale. */
 const MODALITA_RICEVUTA_BANCARIA = 'MP12'
 /** Tipo effetto di una rata con modalita diversa dalla ricevuta bancaria («altro»). Da verificare su un'installazione reale. */
+/** Tipi effetto: ricevuta bancaria e «altro». Da verificare su un'installazione reale. */
 const TIPO_EFFETTO_ALTRO = '3'
 const TIPO_EFFETTO_RICEVUTA_BANCARIA = '2'
 
 const MAX_RIEPILOGHI_IVA = 8
 const MAX_CONTI_RICAVI = 8
 const MAX_RATE = 12
+/** Causali e descrizioni del gestionale per fattura e nota di credito. Da verificare su un'installazione reale. */
 const CAUSALE_FATTURA = '001'
 const DESCRIZIONE_FATTURA = 'FATTURA VENDITA'
 const CAUSALE_NOTA_CREDITO = '002'
@@ -57,8 +59,10 @@ const NOMI_TIPO_RIGA: Record<string, string> = {
 
 type Mappe = ReadonlyMap<string, string>
 
-const nonGenerabile = (message: string): BadRequestException =>
-  new BadRequestException({ error: 'EXPORT_TEAMSYSTEM_NON_GENERABILE', message })
+const nonGenerabile = (
+  message: string,
+  error = 'EXPORT_TEAMSYSTEM_NON_GENERABILE'
+): BadRequestException => new BadRequestException({ error, message })
 
 /**
  * Un campo a larghezza fissa. Un valore piu' lungo viene troncato; uno piu' corto si riempie con
@@ -230,6 +234,14 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
     )
   }
 
+  // Partita IVA e codice fiscale vanno nei campi italiani: un cliente estero andrebbe nei campi
+  // `*_ESTERO` (nessun cliente estero oggi, Q27).
+  if ((cess.sede.nazione as string) !== 'IT') {
+    throw nonGenerabile(
+      'Il tracciato TeamSystem non gestisce ancora i clienti esteri.',
+      'EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA'
+    )
+  }
   r.imposta('TRF_DITTA', numerico(CODICE_DITTA, 5, 'Il codice ditta'))
   r.imposta('TRF_VERSIONE', '3')
   r.imposta('TRF_TARC', '0')
@@ -425,16 +437,17 @@ const ordina = (documenti: readonly DocumentoPerExport[]): DocumentoPerExport[] 
  */
 function nomeFile(documenti: readonly DocumentoPerExport[]): string {
   const primo = documenti[0]
-  const sigla =
-    normalizzaAscii(primo?.fotografia.cedente.denominazione ?? '')
-      .replace(/[^A-Za-z0-9]/g, '')
-      .toUpperCase()
-      .slice(0, LUNGHEZZA_SIGLA)
-      .padEnd(LUNGHEZZA_SIGLA, '_') || SIGLA_PREDEFINITA
   if (documenti.length === 0) return SIGLA_PREDEFINITA
+  const base = normalizzaAscii(primo?.fotografia.cedente.denominazione ?? '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, LUNGHEZZA_SIGLA)
+  // Senza lettere o cifre il ripiego e' `TFRAW`; una sigla corta si completa con `_` (l'originale
+  // usa spazi, che in un nome di file non servono).
+  const sigla = base === '' ? SIGLA_PREDEFINITA : base.padEnd(LUNGHEZZA_SIGLA, '_')
   const date = documenti.map(x => x.documento.dataDocumento).sort()
   const ggmm = (iso: string): string => `${iso.slice(8, 10)}${iso.slice(5, 7)}`
-  return `${sigla.trim() === '' ? SIGLA_PREDEFINITA : sigla}${ggmm(date[0])}${ggmm(date[date.length - 1])}`
+  return `${sigla}${ggmm(date[0])}${ggmm(date[date.length - 1])}`
 }
 
 export class TeamSystemAdattatore implements AdattatoreExportContabile {

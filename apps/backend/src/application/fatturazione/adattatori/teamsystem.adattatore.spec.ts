@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FotografiaDocumento } from '../../../domain/fatturazione/tipi'
@@ -360,5 +361,77 @@ describe('TeamSystemAdattatore', () => {
     const m = new Map(MAPPE)
     m.delete(chiaveMappatura('REGISTRO', 'VEN'))
     expect(() => a.genera([docA()], m)).toThrow(/registro/i)
+  })
+
+  it('senza denominazione del cedente il nome file usa TFRAW', () => {
+    const d = docA()
+    d.fotografia.cedente.denominazione = '  --  '
+    expect(a.genera([d], MAPPE)[0].nome).toBe('TFRAW05110511')
+  })
+
+  it('un cliente estero: errore con codice di dominio, nessuna cifra sbagliata', () => {
+    const d = docA()
+    ;(d.fotografia.cessionario.sede as { nazione: string }).nazione = 'DE'
+    expect.assertions(2)
+    try {
+      a.genera([d], MAPPE)
+    } catch (e) {
+      expect((e as BadRequestException).getResponse()).toMatchObject({
+        error: 'EXPORT_TEAMSYSTEM_NAZIONE_NON_SUPPORTATA',
+      })
+      expect(e).toBeInstanceOf(BadRequestException)
+    }
+  })
+
+  it('mezzo centesimo: arrotondato per eccesso sul valore assoluto; sotto mezzo, segno positivo', () => {
+    const d = docA()
+    d.documento.riepiloghi[0] = {
+      ...d.documento.riepiloghi[0],
+      imponibile: '0.005',
+      imposta: '-0.005',
+    }
+    d.documento.riepiloghi[1] = {
+      ...d.documento.riepiloghi[1],
+      imponibile: '-0.004',
+      imposta: '0.004',
+    }
+    const r = testo(a, [d]).split('\r\n')[0]
+    expect(r.slice(474, 486)).toBe('00000000001+')
+    expect(r.slice(494, 505)).toBe('0000000001-')
+    expect(r.slice(474 + 31, 486 + 31)).toBe('00000000000+')
+    expect(r.slice(494 + 31, 505 + 31)).toBe('0000000000+')
+  })
+
+  it('un importo oltre la larghezza del campo: errore chiaro', () => {
+    const d = docA()
+    d.documento.riepiloghi[0] = { ...d.documento.riepiloghi[0], imponibile: '1000000000.00' }
+    expect(() => a.genera([d], MAPPE)).toThrow(/troppo grande/)
+    const ok = docA()
+    ok.documento.riepiloghi[0] = { ...ok.documento.riepiloghi[0], imponibile: '999999999.99' }
+    expect(testo(a, [ok]).slice(474, 486)).toBe('99999999999+')
+  })
+
+  it('piu di 12 rate: errore chiaro, 12 vanno bene', () => {
+    const rate = (n: number) =>
+      Array.from({ length: n }, (_, i) => rata(i + 1, 'MP05', '2026-12-05', '1.00'))
+    const d = docA()
+    d.documento.rate = rate(13)
+    expect(() => a.genera([d], MAPPE)).toThrow(/12 rate/)
+    d.documento.rate = rate(12)
+    expect(testo(a, [d]).split('\r\n')[1].slice(2380, 2382)).toBe('12')
+  })
+
+  it('piu di 8 conti di ricavo: errore chiaro, 8 vanno bene', () => {
+    const m = new Map(MAPPE)
+    const righe = (n: number) =>
+      Array.from({ length: n }, (_, i) => {
+        m.set(chiaveMappatura('CONTO_RICAVI', `T${i}`), String(5200000 + i))
+        return rigaDoc(i + 1, `T${i}`, '1.00', '22.00')
+      })
+    const d = docA()
+    d.documento.righe = righe(9) as never
+    expect(() => a.genera([d], m)).toThrow(/8 conti di ricavo/)
+    d.documento.righe = righe(8) as never
+    expect(testo(a, [d], m)).toHaveLength(2 * (7001 + 2))
   })
 })

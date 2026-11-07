@@ -30,7 +30,7 @@ const c = (
 /**
  * Lunghezza di ogni record, CR LF esclusi. Il codice originale somma 7001 (l'ultimo campo
  * riempitivo comincia in posizione 7000 e ha 2 caratteri): la specifica ufficiale potrebbe dire
- * 7000.
+ * 7000. Da verificare su un'installazione reale.
  */
 export const LUNGHEZZA_RECORD = 7001
 
