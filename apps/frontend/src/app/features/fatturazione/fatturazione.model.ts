@@ -352,6 +352,8 @@ export interface MappaturaVista {
   chiaveWasteflow: string
   valore: string
   versione: number
+  /** Testo per l'utente (cliente, aliquota...), risolto dal backend. */
+  etichetta: string
 }
 
 /** Una chiave che i documenti da esportare richiedono e che l'azienda non ha ancora mappato. */
@@ -367,6 +369,8 @@ export interface VoceMappatura {
   tipo: TipoMappatura
   chiaveWasteflow: string
   valore: string | null
+  /** Versione letta (`null` = voce nuova): se non corrisponde il backend risponde 409. */
+  versione: number | null
 }
 
 /** Limiti del backend: voci per richiesta, caratteri della chiave e del valore. */
