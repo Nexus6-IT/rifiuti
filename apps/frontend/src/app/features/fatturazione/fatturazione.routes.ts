@@ -16,4 +16,9 @@ export const FATTURAZIONE_ROUTES: Routes = [
     loadComponent: () =>
       import('./elaborazioni/anteprima.component').then(m => m.AnteprimaComponent),
   },
+  {
+    path: 'scostamenti',
+    loadComponent: () =>
+      import('./scostamenti/scostamenti.component').then(m => m.ScostamentiComponent),
+  },
 ]

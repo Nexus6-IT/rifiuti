@@ -39,6 +39,7 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { traduciErrorePrisma, type DescrizioneEntita } from '../clienti/anagrafica-versionata'
 import { impostaTimeoutLock, OPZIONI_TRANSAZIONE_SCRITTURA } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { condizioneScostamentoAperto } from '../legami-movimento/scostamento-aperto'
 import { DIMENSIONE_MASSIMA_PAGINA, MAX_PAGINA, type Pagina } from './documenti-fattura.service'
 
 /** = `ScostamentoRiga` del frontend (Task 14). */
@@ -49,6 +50,9 @@ export interface ScostamentoRiga {
   documento: { id: string; numeroTesto: string; dataDocumento: string }
   tipoCorrezione: TipoCorrezioneScostamento
   quantitaFatturata: string | null
+  /** Unita' di misura del movimento fatturato e di quello attuale (puo' cambiare: 1000 KG -> 1 T). */
+  unitaFatturata: string | null
+  unitaAttuale: string | null
   importoFatturato: string
   quantitaAttuale: string | null
   importoAttuale: string | null
@@ -113,14 +117,7 @@ interface RigaLegameLetta {
   prezzoSpeciale: boolean
 }
 
-/**
- * Scostamento aperto: l'UNICA definizione, per la lista, il totale, la presa d'atto e il suo
- * UPDATE. `alias` e' un nome fisso scritto qui dentro (mai input), vuoto per la tabella senza alias.
- */
-export function condizioneScostamentoAperto(alias: string): Prisma.Sql {
-  const c = Prisma.raw(alias === '' ? '' : `${alias}.`)
-  return Prisma.sql`(${c}scostamento_dopo_fattura AND (${c}scostamento_gestito_il IS NULL OR ${c}scostamento_il > ${c}scostamento_gestito_il))`
-}
+export { condizioneScostamentoAperto }
 
 /** Costruttori delle query della pagina: esportati perche' il test di volume ne fa l'EXPLAIN. */
 export function sqlPaginaScostamenti(
@@ -360,6 +357,8 @@ export class ScostamentiService {
           causaleFatturata: fatturatoMov ? fatturatoMov.causale : testa.causale,
         }),
         quantitaFatturata,
+        unitaFatturata: fatturatoMov ? fatturatoMov.unit : testa.unit,
+        unitaAttuale: testa.unit,
         importoFatturato: importoFatturatoScostamento(fatturato),
         quantitaAttuale: attuale.quantitaAttuale,
         importoAttuale: attuale.importoAttuale,

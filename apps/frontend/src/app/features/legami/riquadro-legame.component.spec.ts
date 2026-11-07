@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { HttpErrorResponse } from '@angular/common/http'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { provideRouter } from '@angular/router'
 import { Observable, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { riga } from './blocco-fatturazione.test-util'
@@ -42,7 +43,9 @@ function legame(parziale: Partial<LegameVista> = {}): LegameVista {
     confermatoIl: '2026-11-03T10:00:00.000Z',
     fatturatoIl: null,
     riferimentoFattura: null,
+    documentoId: null,
     scostamentoDopoFattura: false,
+    scostamentoAperto: false,
     scostamentoIl: null,
     versione: 3,
     ...parziale,
@@ -71,6 +74,7 @@ describe('RiquadroLegameComponent', () => {
       imports: [RiquadroLegameComponent],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         { provide: LegamiService, useValue: servizio },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
       ],
@@ -162,6 +166,7 @@ describe('RiquadroLegameComponent', () => {
           fatturatoIl: '2026-11-10T00:00:00.000Z',
           riferimentoFattura: 'FT 12/2026',
           scostamentoDopoFattura: true,
+          scostamentoAperto: true,
           scostamentoIl: '2026-11-12T00:00:00.000Z',
         })
       )
@@ -364,5 +369,95 @@ describe('RiquadroLegameComponent', () => {
     fixture.componentRef.setInput('eTesta', true)
     aggiorna()
     expect(q('riquadro-da-riallineare')).toBeNull()
+  }))
+
+  it('FATTURATO: link al documento della fattura', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          fatturatoIl: '2026-10-31T10:00:00.000Z',
+          riferimentoFattura: '12/2026',
+          documentoId: 'doc-9',
+        })
+      )
+    )
+    const a = fixture.nativeElement.querySelector(
+      '[data-testid="riquadro-vai-documento"]'
+    ) as HTMLAnchorElement
+    expect(a.getAttribute('href')).toBe('/fatturazione/documenti/doc-9')
+  }))
+
+  it('«Apri il documento» compare quando documentoId è valorizzato, non quando è null', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          fatturatoIl: '2026-10-31T10:00:00.000Z',
+          documentoId: 'doc-1',
+        })
+      )
+    )
+    expect(testo('riquadro-vai-documento')).toContain('Apri il documento')
+  }))
+
+  it('FATTURATO senza documentoId: nessun link', fakeAsync(() => {
+    crea(
+      of(legame({ stato: 'FATTURATO', fatturatoIl: '2026-10-31T10:00:00.000Z', documentoId: null }))
+    )
+    expect(q('riquadro-vai-documento')).toBeNull()
+  }))
+
+  it('scostamento già gestito: avviso ma nessun «Vai agli scostamenti»', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          scostamentoDopoFattura: true,
+          scostamentoAperto: false,
+          scostamentoIl: '2026-11-02T10:00:00.000Z',
+          documentoId: 'doc-9',
+        })
+      )
+    )
+    expect(q('riquadro-avviso-AVVISO_SCOSTAMENTO')).not.toBeNull()
+    expect(q('riquadro-vai-scostamenti')).toBeNull()
+  }))
+
+  it('il separatore «·» non sta dentro il link al documento', fakeAsync(() => {
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          fatturatoIl: '2026-10-31T10:00:00.000Z',
+          documentoId: 'doc-1',
+        })
+      )
+    )
+    expect(testo('riquadro-vai-documento')).toBe('Apri il documento')
+  }))
+
+  it('non fatturato: nessun link al documento né agli scostamenti', fakeAsync(() => {
+    crea(of(legame({ documentoId: null })))
+    expect(q('riquadro-vai-documento')).toBeNull()
+    expect(q('riquadro-vai-scostamenti')).toBeNull()
+  }))
+
+  it('con scostamento dopo la fattura: «Vai agli scostamenti» (anche per il VIEWER)', fakeAsync(() => {
+    ruolo = 'VIEWER'
+    crea(
+      of(
+        legame({
+          stato: 'FATTURATO',
+          scostamentoDopoFattura: true,
+          scostamentoAperto: true,
+          scostamentoIl: '2026-11-02T10:00:00.000Z',
+          documentoId: 'doc-9',
+        })
+      )
+    )
+    const a = q('riquadro-vai-scostamenti') as HTMLAnchorElement
+    expect(a.textContent).toContain('Vai agli scostamenti')
+    expect(a.getAttribute('href')).toBe('/fatturazione/scostamenti')
   }))
 })
