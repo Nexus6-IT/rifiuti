@@ -1,2 +1,3 @@
 *.sh text eol=lf
 apps/backend/src/infrastructure/fatturapa/xsd/*.xsd -text
+apps/backend/src/application/fatturazione/adattatori/riferimenti/teamsystem-*.txt -text
