@@ -1,6 +1,6 @@
 /**
  * DocumentiFatturaController (4.4b1, Task 25a): ruoli e passaggio intatto dei valori dei servizi.
- * `POST /:id/emesso`, XML, PDF ed export sono del Task 25b.
+ * Le rotte di XML, emissione ed export (Task 25b) sono in `fatturazione-xml.controller.http.spec.ts`.
  */
 import { Reflector } from '@nestjs/core'
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator'
@@ -20,6 +20,10 @@ describe('DocumentiFatturaController', () => {
     expect(ruoli('dettaglio')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
     expect(ruoli('annulla')).toEqual(['SUPER_ADMIN', 'ADMIN'])
     expect(ruoli('storno')).toEqual(['SUPER_ADMIN', 'ADMIN'])
+    expect(ruoli('segnaEmesso')).toEqual(['SUPER_ADMIN', 'ADMIN'])
+    expect(ruoli('scaricaXml')).toEqual(['SUPER_ADMIN', 'ADMIN'])
+    // L'export e` a tutti i ruoli: XML_ZIP e adattatori li limita il ruolo effettivo nel metodo.
+    expect(ruoli('esporta')).toEqual(['SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER'])
   })
 
   it('passa tenant e utente e restituisce il valore del servizio', async () => {
@@ -28,7 +32,13 @@ describe('DocumentiFatturaController', () => {
       annulla: jest.fn().mockResolvedValue({ id: ID, stato: 'ANNULLATO' }),
       storna: jest.fn().mockResolvedValue({ id: 'nuovo' }),
     }
-    const c = new DocumentiFatturaController(documenti as never, annullo as never)
+    const c = new DocumentiFatturaController(
+      documenti as never,
+      annullo as never,
+      {} as never,
+      {} as never,
+      {} as never
+    )
     expect(await c.dettaglio(req, { id: ID })).toEqual({ id: ID, x: 1 })
     expect(documenti.dettaglio).toHaveBeenCalledWith(TENANT, ID)
     expect(await c.annulla(req, { id: ID }, { motivo: 'errore', versione: 2 })).toEqual({
