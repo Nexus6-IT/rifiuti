@@ -3,16 +3,19 @@ import { Injectable, inject } from '@angular/core'
 import { Observable, map } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import {
+  AdattatoreVista,
   DocumentoDettaglio,
   DocumentoRiga,
   ElaborazioneDettaglio,
   ElaborazioneRiga,
+  MappaturaVista,
   NuovaElaborazione,
   Pagina,
   ScostamentoRiga,
   SelezioneExport,
   StatoDocumento,
   StatoElaborazione,
+  VoceMappatura,
 } from './fatturazione.model'
 
 export const DIMENSIONE_PREDEFINITA = 50
@@ -91,6 +94,7 @@ export class FatturazioneService {
   private readonly urlDocumenti = `${environment.apiUrl}/documenti-fattura`
   private readonly urlScostamenti = `${environment.apiUrl}/scostamenti-fattura`
   private readonly urlLegami = `${environment.apiUrl}/legami-movimento`
+  private readonly urlExportContabile = `${environment.apiUrl}/export-contabile`
 
   private elaborazione(id: string): string {
     return `${this.urlElaborazioni}/${encodeURIComponent(id)}`
@@ -237,6 +241,27 @@ export class FatturazioneService {
         { responseType: 'blob', observe: 'response' }
       )
       .pipe(map(daRisposta))
+  }
+
+  // --- Export contabile (solo ADMIN e SUPER_ADMIN) -------------------------------------------
+
+  /** Gestionali disponibili; vuoto se nessun adattatore è registrato. */
+  adattatori(): Observable<AdattatoreVista[]> {
+    return this.http.get<AdattatoreVista[]>(`${this.urlExportContabile}/adattatori`)
+  }
+
+  mappature(adattatore: string): Observable<MappaturaVista[]> {
+    return this.http.get<MappaturaVista[]>(
+      `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mappature`
+    )
+  }
+
+  /** Scrive le voci in un solo `PUT` (`valore: null` cancella) e restituisce le mappature aggiornate. */
+  salvaMappature(adattatore: string, voci: VoceMappatura[]): Observable<MappaturaVista[]> {
+    return this.http.put<MappaturaVista[]>(
+      `${this.urlExportContabile}/${encodeURIComponent(adattatore)}/mappature`,
+      { voci }
+    )
   }
 
   // --- Scostamenti --------------------------------------------------------------------------

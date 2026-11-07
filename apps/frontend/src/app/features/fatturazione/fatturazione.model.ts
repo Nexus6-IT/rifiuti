@@ -338,3 +338,51 @@ export const CHIAVI_SCOSTAMENTO_RIGA: Record<keyof ScostamentoRiga, true> = {
   importoAttuale: true,
   soloQuantita: true,
 }
+
+// --- Export contabile: adattatori e mappature (4.4c, Task 29 e 35) -------------------------------
+
+export const TIPI_MAPPATURA = [
+  'CODICE_IVA',
+  'CONTO_RICAVI',
+  'CLIENTE',
+  'PAGAMENTO',
+  'REGISTRO',
+] as const
+export type TipoMappatura = (typeof TIPI_MAPPATURA)[number]
+
+/** Un gestionale contabile verso cui si esporta (`GET /export-contabile/adattatori`). */
+export interface AdattatoreVista {
+  codice: string
+  nome: string
+  modalita: 'FILE' | 'API'
+  /** `false` = «tracciato non verificato su un'installazione reale» (decisione 15). */
+  verificato: boolean
+}
+
+/** Una mappatura salvata: chiave di WasteFlow, valore del gestionale. */
+export interface MappaturaVista {
+  tipo: TipoMappatura
+  chiaveWasteflow: string
+  valore: string
+  versione: number
+}
+
+/** Una chiave che i documenti da esportare richiedono e che l'azienda non ha ancora mappato. */
+export interface ChiaveMancante {
+  tipo: TipoMappatura
+  chiaveWasteflow: string
+  /** Testo per l'utente (per esempio «IVA 22%»). */
+  etichetta: string
+}
+
+/** Voce del `PUT`: `valore: null` cancella la mappatura. */
+export interface VoceMappatura {
+  tipo: TipoMappatura
+  chiaveWasteflow: string
+  valore: string | null
+}
+
+/** Limiti del backend: voci per richiesta, caratteri della chiave e del valore. */
+export const MAX_VOCI_MAPPATURE = 500
+export const MAX_CHIAVE_MAPPATURA = 100
+export const MAX_VALORE_MAPPATURA = 50

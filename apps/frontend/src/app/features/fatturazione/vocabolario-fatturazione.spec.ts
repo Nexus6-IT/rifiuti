@@ -89,6 +89,9 @@ describe('vocabolario della fatturazione', () => {
       'DATA_FUTURA',
       'CONFERMA_EMISSIONE_RICHIESTA',
       'ADATTATORE_SCONOSCIUTO',
+      'TROPPE_VOCI',
+      'VOCI_NON_VALIDE',
+      'VOCI_DUPLICATE',
       'PARTENZA_NON_VALIDA',
       'RIGA_ADDEBITO_IN_USO',
       // Task 25a (m4, m7): 400 e 404 dei servizi della fatturazione.
