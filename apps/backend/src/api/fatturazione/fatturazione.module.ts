@@ -7,8 +7,10 @@ import {
   CODA_FATTURAZIONE,
   ElaborazioniService,
 } from '../../application/fatturazione/elaborazioni.service'
+import { ExportService } from '../../application/fatturazione/export.service'
 import { NumerazioniService } from '../../application/fatturazione/numerazioni.service'
 import { ScostamentiService } from '../../application/fatturazione/scostamenti.service'
+import { XmlDocumentoService } from '../../application/fatturazione/xml-documento.service'
 import { AuthModule } from '../../auth/auth.module'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { FatturazioneManutenzioneJob } from '../../infrastructure/jobs/fatturazione-manutenzione.job'
@@ -43,6 +45,8 @@ import { ScostamentiController } from './scostamenti.controller'
     AnnulloStornoService,
     ScostamentiService,
     ElaborazioniService,
+    XmlDocumentoService,
+    ExportService,
     FatturazioneJobProcessor,
     FatturazioneManutenzioneJob,
   ],
@@ -53,6 +57,8 @@ import { ScostamentiController } from './scostamenti.controller'
     AnnulloStornoService,
     ScostamentiService,
     ElaborazioniService,
+    XmlDocumentoService,
+    ExportService,
   ],
 })
 export class FatturazioneModule {}

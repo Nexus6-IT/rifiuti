@@ -20,6 +20,7 @@ import type { FotografiaSalvata } from '../../domain/fatturazione/tipi'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { eDataIso } from './numerazione'
+import { conJoinLineari } from './piani-query'
 
 /** Q9, nell'ordine di controllo. */
 export type MotivoNonAnnullabile =
@@ -167,6 +168,21 @@ export function annullabilita(d: DatiAnnullabilita): {
 
 type Db = Prisma.TransactionClient
 
+/** Oltre questa lunghezza una lista di id non va in `= ANY` ma in `IN (SELECT unnest(..))`. */
+const MAX_LISTA_ANY = 100
+
+/**
+ * Condizione su una lista di id. Fino a 100 `= ANY` (letture mirate); oltre, `IN (SELECT unnest)`
+ * da eseguire dentro `conJoinLineari` (4.4b1, Task 27a): con statistiche vecchie `= ANY` su
+ * migliaia di id diventa un nested loop o una scansione dell'intero tenant per ogni blocco.
+ */
+function inLista(colonna: string, valori: readonly string[]): Prisma.Sql {
+  const lista = [...valori]
+  return valori.length > MAX_LISTA_ANY
+    ? Prisma.sql`${Prisma.raw(colonna)} IN (SELECT unnest(${lista}::uuid[]))`
+    : Prisma.sql`${Prisma.raw(colonna)} = ANY(${lista}::uuid[])`
+}
+
 interface TestataLetta {
   id: string
   stato: StatoDocumento
@@ -303,12 +319,41 @@ export class DocumentiFatturaService {
   /** 404 `DOCUMENTO_NON_TROVATO` se non c'e' (o e' di un'altra azienda). */
   async dettaglioInTx(tx: Db, tenantId: string, id: string): Promise<DocumentoDettaglio> {
     if (!UUID.test(id)) throw documentoNonTrovato()
-    const contesto = await this.leggiContesto(tx, tenantId, [id])
-    const t = contesto.testate[0]
-    if (!t) throw documentoNonTrovato()
-    const riga = this.mappa(t, contesto)
-    const righe = await tx.$queryRaw<RigaDocumentoVista[]>`
-      SELECT numero_linea::int AS "numeroLinea", tipo_riga::text AS "tipoRiga",
+    const [dettaglio] = await this.dettagliInTx(tx, tenantId, [id])
+    if (!dettaglio) throw documentoNonTrovato()
+    return dettaglio
+  }
+
+  /**
+   * I dettagli dei documenti indicati, nell'ordine degli id (quelli non trovati o di un'altra
+   * azienda mancano). `ids.length` <= 100: una query per tabella (testate, clienti, contratti,
+   * registri, storni, numerazioni, righe, riepiloghi, rate), mai una per documento. Usato anche
+   * dagli export, a blocchi.
+   */
+  async dettagliInTx(
+    tx: Db,
+    tenantId: string,
+    ids: readonly string[]
+  ): Promise<DocumentoDettaglio[]> {
+    if (ids.length === 0) return []
+    // Liste lunghe (gli export): un solo passaggio per tabella, col nested loop spento.
+    if (ids.length > MAX_LISTA_ANY) {
+      return conJoinLineari(tx, () => this.dettagliLetti(tx, tenantId, ids))
+    }
+    return this.dettagliLetti(tx, tenantId, ids)
+  }
+
+  private async dettagliLetti(
+    tx: Db,
+    tenantId: string,
+    ids: readonly string[]
+  ): Promise<DocumentoDettaglio[]> {
+    const contesto = await this.leggiContesto(tx, tenantId, ids)
+    if (contesto.testate.length === 0) return []
+    const trovati = contesto.testate.map(t => t.id)
+    const righe = await tx.$queryRaw<(RigaDocumentoVista & { documentoId: string })[]>`
+      SELECT documento_id::text AS "documentoId",
+             numero_linea::int AS "numeroLinea", tipo_riga::text AS "tipoRiga",
              legame_id::text AS "legameId", riga_addebito_id::text AS "rigaAddebitoId",
              descrizione, data_movimento::text AS "dataMovimento", cer_code AS "cerCode",
              numero_fir AS "numeroFir", quantita::text AS quantita, unita_misura AS "unitaMisura",
@@ -317,36 +362,57 @@ export class DocumentiFatturaService {
              prezzo_totale::text AS "prezzoTotale", aliquota_iva::text AS "aliquotaIva",
              natura_iva AS "naturaIva"
       FROM "righe_documento_fattura"
-      WHERE tenant_id = ${tenantId}::uuid AND documento_id = ${id}::uuid
-      ORDER BY numero_linea, id`
-    const riepiloghi = await tx.$queryRaw<RiepilogoIvaVista[]>`
-      SELECT aliquota::text AS aliquota, natura, imponibile::text AS imponibile,
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('documento_id', trovati)}
+      ORDER BY documento_id, numero_linea, id`
+    const riepiloghi = await tx.$queryRaw<(RiepilogoIvaVista & { documentoId: string })[]>`
+      SELECT documento_id::text AS "documentoId",
+             aliquota::text AS aliquota, natura, imponibile::text AS imponibile,
              imposta::text AS imposta,
              CASE esigibilita WHEN 'IMMEDIATA' THEN 'I' WHEN 'DIFFERITA' THEN 'D' ELSE 'S' END
                AS esigibilita,
              riferimento_normativo AS "riferimentoNormativo"
       FROM "riepiloghi_iva_documento"
-      WHERE tenant_id = ${tenantId}::uuid AND documento_id = ${id}::uuid
-      ORDER BY aliquota DESC, natura NULLS FIRST, esigibilita, id`
-    const rate = await tx.$queryRaw<RataVista[]>`
-      SELECT ordine::int AS ordine, modalita, data_scadenza::text AS "dataScadenza",
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('documento_id', trovati)}
+      ORDER BY documento_id, aliquota DESC, natura NULLS FIRST, esigibilita, id`
+    const rate = await tx.$queryRaw<(RataVista & { documentoId: string })[]>`
+      SELECT documento_id::text AS "documentoId",
+             ordine::int AS ordine, modalita, data_scadenza::text AS "dataScadenza",
              importo::text AS importo, istituto, iban, abi, cab, bic
       FROM "rate_documento_fattura"
-      WHERE tenant_id = ${tenantId}::uuid AND documento_id = ${id}::uuid
-      ORDER BY ordine, id`
-    return {
-      ...riga,
-      righe: righe.map(r => ({ ...r })),
-      riepiloghi: riepiloghi.map(r => ({ ...r })),
-      rate: rate.map(r => ({ ...r })),
-      nettoAPagare: t.nettoAPagare,
-      bolloDovuto: t.bolloDovuto,
-      importoBollo: t.importoBollo,
-      versione: t.versione,
-      documentoOrigineId: t.documentoOrigineId,
-      stornoId: contesto.storni.get(t.id) ?? null,
-      xmlGenerato: t.xmlGenerato,
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('documento_id', trovati)}
+      ORDER BY documento_id, ordine, id`
+    const perDocumento = <T extends { documentoId: string }>(righeLette: T[]) => {
+      const m = new Map<string, Omit<T, 'documentoId'>[]>()
+      for (const { documentoId, ...resto } of righeLette) {
+        const l = m.get(documentoId)
+        if (l) l.push(resto)
+        else m.set(documentoId, [resto])
+      }
+      return m
     }
+    const righeDi = perDocumento(righe)
+    const riepiloghiDi = perDocumento(riepiloghi)
+    const rateDi = perDocumento(rate)
+    const perId = new Map(contesto.testate.map(t => [t.id, t]))
+    return ids.flatMap(id => {
+      const t = perId.get(id)
+      if (!t) return []
+      return [
+        {
+          ...this.mappa(t, contesto),
+          righe: (righeDi.get(id) ?? []).map(r => ({ ...r })),
+          riepiloghi: (riepiloghiDi.get(id) ?? []).map(r => ({ ...r })),
+          rate: (rateDi.get(id) ?? []).map(r => ({ ...r })),
+          nettoAPagare: t.nettoAPagare,
+          bolloDovuto: t.bolloDovuto,
+          importoBollo: t.importoBollo,
+          versione: t.versione,
+          documentoOrigineId: t.documentoOrigineId,
+          stornoId: contesto.storni.get(t.id) ?? null,
+          xmlGenerato: t.xmlGenerato,
+        },
+      ]
+    })
   }
 
   /**
@@ -390,7 +456,7 @@ export class DocumentiFatturaService {
              (d.xml IS NOT NULL) AS "xmlGenerato",
              d.fotografia -> 'segnalazioni' AS segnalazioni
       FROM "documenti_fattura" d
-      WHERE d.tenant_id = ${tenantId}::uuid AND d.id = ANY(${lista}::uuid[])`
+      WHERE d.tenant_id = ${tenantId}::uuid AND ${inLista('d.id', lista)}`
     if (testate.length === 0) {
       return {
         testate,
@@ -408,23 +474,23 @@ export class DocumentiFatturaService {
       SELECT c.id::text AS id, dt.ragione_sociale AS denominazione
       FROM "clienti" c
       JOIN "ditte" dt ON dt.id = c.ditta_id AND dt.tenant_id = c.tenant_id
-      WHERE c.tenant_id = ${tenantId}::uuid AND c.id = ANY(${clientiIds}::uuid[])`
+      WHERE c.tenant_id = ${tenantId}::uuid AND ${inLista('c.id', clientiIds)}`
     const contratti = await tx.$queryRaw<{ id: string; numero: string }[]>`
       SELECT id::text AS id, numero FROM "contratti_cliente"
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${contrattiIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('id', contrattiIds)}`
     const registri = await tx.$queryRaw<{ id: string; codice: string }[]>`
       SELECT id::text AS id, codice FROM "registri_iva"
-      WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${registriIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('id', registriIds)}`
     const storni = await tx.$queryRaw<{ origine: string; id: string }[]>`
       SELECT documento_origine_id::text AS origine, id::text AS id FROM "documenti_fattura"
-      WHERE tenant_id = ${tenantId}::uuid AND documento_origine_id = ANY(${lista}::uuid[])
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('documento_origine_id', lista)}
         AND tipo_documento = 'TD04' AND stato <> 'ANNULLATO'`
     // Ultimo numero della coppia (registro, anno), letto senza lock: serve solo a dire se un
     // definitivo e' l'ultimo; l'annullo vero rilegge sotto lock.
     const ultimi = await tx.$queryRaw<{ registro: string; anno: number; ultimo: number }[]>`
       SELECT registro_iva_id::text AS registro, anno::int AS anno, ultimo_numero::int AS ultimo
       FROM "numerazioni_fattura"
-      WHERE tenant_id = ${tenantId}::uuid AND registro_iva_id = ANY(${registriIds}::uuid[])`
+      WHERE tenant_id = ${tenantId}::uuid AND ${inLista('registro_iva_id', registriIds)}`
     return {
       testate,
       clienti: new Map(clienti.map(c => [c.id, c.denominazione])),

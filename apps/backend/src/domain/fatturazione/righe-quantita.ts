@@ -10,15 +10,13 @@ import type { RigaLegameDaFatturare, RigaListinoDaFatturare } from './tipi'
 /**
  * Righe `TT` e `TF` a prezzo singolo (decisione 17): peso dei movimenti in kg (una volta per
  * legame). Ogni altra riga in ingresso è ignorata (la segnala il Task 5).
- * Nei dettagli degli errori «riga n» è la posizione a partire da 1 della riga nel listino del
- * documento: `calcolaDocumento` la passa con `numeroRiga` (obbligatorio). Una riga senza prezzo dà RIGA_LEGAME_INCOMPLETA.
+ * Gli errori portano il tipo come dettaglio e `rigaId`; la posizione la scrive `calcolaDocumento`.
+ * Una riga senza prezzo dà RIGA_LEGAME_INCOMPLETA.
  */
 export function righeQuantitaMovimenti(i: {
   righe: readonly RigaListinoDaFatturare[]
   legami: readonly RigaLegameDaFatturare[]
   periodo: { dal: string; al: string }
-  /** Posizione da 1 della riga nel listino del documento: il «riga n» dei dettagli. */
-  numeroRiga: (id: string) => number
 }): EsitoRighe {
   const righe: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -40,7 +38,8 @@ export function righeQuantitaMovimenti(i: {
       if (fattore === null) {
         errori.push({
           codice: 'UM_NON_UNIVOCA',
-          dettaglio: `${r.tipo} riga ${i.numeroRiga(r.id)}`,
+          dettaglio: r.tipo,
+          rigaId: r.id,
         })
         return
       }
@@ -53,7 +52,8 @@ export function righeQuantitaMovimenti(i: {
     if (r.prezzo === null) {
       errori.push({
         codice: 'RIGA_LEGAME_INCOMPLETA',
-        dettaglio: `${r.tipo} riga ${i.numeroRiga(r.id)}`,
+        dettaglio: r.tipo,
+        rigaId: r.id,
       })
       return
     }

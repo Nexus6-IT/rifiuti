@@ -1,7 +1,7 @@
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
 import { TestBed } from '@angular/core/testing'
 import { environment } from '../../../environments/environment'
-import { FatturazioneService } from './fatturazione.service'
+import { FatturazioneService, FileScaricato, nomeFileDa } from './fatturazione.service'
 import { NuovaElaborazione } from './fatturazione.model'
 
 describe('FatturazioneService', () => {
@@ -200,12 +200,16 @@ describe('FatturazioneService', () => {
   })
 
   it('scaricaXml(id, true) manda confermaEmissione: true, risposta blob', () => {
-    servizio.scaricaXml('d1', true).subscribe()
+    let esito: FileScaricato | undefined
+    servizio.scaricaXml('d1', true).subscribe(r => (esito = r))
     const req = http.expectOne(`${doc}/d1/xml`)
     expect(req.request.method).toBe('POST')
     expect(req.request.body).toEqual({ confermaEmissione: true })
     expect(req.request.responseType).toBe('blob')
-    req.flush(new Blob(['<xml/>']))
+    req.flush(new Blob(['<xml/>']), {
+      headers: { 'Content-Disposition': 'attachment; filename="IT01_00001.xml"' },
+    })
+    expect(esito).toEqual(jasmine.objectContaining({ nomeFile: 'IT01_00001.xml', saltati: 0 }))
   })
 
   it('scaricaXml(id, false) manda false: il servizio non la inventa', () => {
@@ -225,12 +229,34 @@ describe('FatturazioneService', () => {
 
   it('esporta(XML_ZIP, s, true) manda confermaEmissione: true e la selezione', () => {
     const selezione = { registroIvaId: 'r1', anno: 2026, numeroDa: 1, numeroA: 10 }
-    servizio.esporta('XML_ZIP', selezione, true).subscribe()
+    let esito: FileScaricato | undefined
+    servizio.esporta('XML_ZIP', selezione, true).subscribe(r => (esito = r))
     const req = http.expectOne(`${doc}/export`)
     expect(req.request.method).toBe('POST')
     expect(req.request.body).toEqual({ formato: 'XML_ZIP', selezione, confermaEmissione: true })
     expect(req.request.responseType).toBe('blob')
-    req.flush(new Blob())
+    req.flush(new Blob(['PK']), {
+      headers: {
+        'Content-Disposition': 'attachment; filename="fatture-2026.zip"',
+        'X-Documenti-Saltati': '2',
+      },
+    })
+    expect(esito?.nomeFile).toBe('fatture-2026.zip')
+    expect(esito?.saltati).toBe(2)
+    expect(esito?.blob.size).toBe(2)
+  })
+
+  it('esporta senza header: nomeFile null e saltati 0', () => {
+    let esito: FileScaricato | undefined
+    servizio.esporta('CSV', {}, false).subscribe(r => (esito = r))
+    http.expectOne(`${doc}/export`).flush(new Blob())
+    expect(esito).toEqual(jasmine.objectContaining({ nomeFile: null, saltati: 0 }))
+  })
+
+  it('nomeFileDa legge filename* UTF-8 e il nome semplice', () => {
+    expect(nomeFileDa("attachment; filename*=UTF-8''fattura%20%C3%A8.xml")).toBe('fattura è.xml')
+    expect(nomeFileDa('attachment; filename=a.csv')).toBe('a.csv')
+    expect(nomeFileDa(null)).toBeNull()
   })
 
   it('esporta(CSV, s, false) manda false', () => {

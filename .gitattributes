@@ -1,1 +1,2 @@
 *.sh text eol=lf
+apps/backend/src/infrastructure/fatturapa/xsd/*.xsd -text

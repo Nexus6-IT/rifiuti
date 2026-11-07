@@ -57,11 +57,8 @@ function riga(
   }
 }
 
-function incompleta(
-  r: RigaListinoDaFatturare,
-  numeroRiga: (id: string) => number
-): Segnalazione<ErroreDocumento> {
-  return { codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: `F riga ${numeroRiga(r.id)}` }
+function incompleta(r: RigaListinoDaFatturare): Segnalazione<ErroreDocumento> {
+  return { codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'F', rigaId: r.id }
 }
 
 /** Intervalli 'AAAA-MM-GG/AAAA-MM-GG' che si sovrappongono (estremi inclusi). */
@@ -71,9 +68,8 @@ function sovrapposti(chiave: string, p: { dal: string; al: string }): boolean {
 }
 
 /**
- * Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. «riga n» nei
- * dettagli = posizione da 1 nel listino del documento, passata da `calcolaDocumento` con
- * `numeroRiga` (obbligatorio). Una `F` senza prezzo dà RIGA_LEGAME_INCOMPLETA solo se nel periodo
+ * Addebiti fissi `F` e canoni (spec §6.4). Le righe che non sono `F` sono ignorate. Gli errori
+ * portano `F` come dettaglio e `rigaId` (la posizione la scrive `calcolaDocumento`). Una `F` senza prezzo dà RIGA_LEGAME_INCOMPLETA solo se nel periodo
  * produrrebbe una riga (decisione 21): una scadenza non ancora fatturata, o il canone del periodo.
  */
 export function righeFisse(i: {
@@ -81,8 +77,6 @@ export function righeFisse(i: {
   periodo: { dal: string; al: string }
   contratto: { dataInizio: string; dataFine: string | null }
   marcatori: readonly MarcatoreEsistente[]
-  /** Posizione da 1 della riga nel listino del documento: il «riga n» dei dettagli. */
-  numeroRiga: (id: string) => number
 }): EsitoRighe {
   const righe: RigaSenzaLinea[] = []
   const errori: Segnalazione<ErroreDocumento>[] = []
@@ -107,7 +101,7 @@ export function righeFisse(i: {
         if (giaFatta) continue
         // Decisione 21: una `F` senza prezzo blocca solo se in questo periodo produrrebbe una riga.
         if (r.prezzo === null) {
-          errori.push(incompleta(r, i.numeroRiga))
+          errori.push(incompleta(r))
           break
         }
         const comp =
@@ -143,7 +137,7 @@ export function righeFisse(i: {
       continue
     }
     if (r.prezzo === null) {
-      errori.push(incompleta(r, i.numeroRiga))
+      errori.push(incompleta(r))
       continue
     }
     righe.push(

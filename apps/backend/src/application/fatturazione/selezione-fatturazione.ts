@@ -127,6 +127,16 @@ interface ElencoRiga {
   idDocumentoPa: string | null
 }
 
+/** Chiavi d'ordine di una riga di listino (quelle di `ordinaRigheListino`), senza il resto. */
+interface ChiaveOrdineRiga {
+  id: string
+  elencoId: string
+  tipo: string
+  cerCode: string | null
+  riferimento: string | null
+  codiceAddebito: string | null
+}
+
 interface RigaListinoSql {
   id: string
   versione: number
@@ -668,6 +678,48 @@ async function selezionaElaborazioneInterna(
       addebito: r.addebitoId === null ? null : { codice: codiceAddebito.get(r.addebitoId) ?? '' },
     }))
   )
+  // Posizione nell'elenco intero delle righe citate di un elenco non valido nel periodo: di quegli
+  // elenchi si leggono soltanto le chiavi d'ordine (niente scaglioni, scadenze, categorie), poi
+  // si ordina con `ordinaRigheListino`, lo stesso ordine dell'utente.
+  const validiSql = new Set(elenchiUsatiIds)
+  const citateSql = new Set(righeCitateIds)
+  const elenchiScadutiIds = distinti(
+    righeSql.filter(r => citateSql.has(r.id) && !validiSql.has(r.elencoId)).map(r => r.elencoId)
+  )
+  const posizioneFuori = new Map<string, number>()
+  if (elenchiScadutiIds.length > 0) {
+    const chiavi = await conJoinLineari(tx, () =>
+      elenchiScadutiIds.length <= 100
+        ? tx.$queryRaw<ChiaveOrdineRiga[]>`
+      SELECT r.id::text AS id, r.elenco_id::text AS "elencoId", r.tipo, r.cer_code AS "cerCode",
+             r.riferimento, a.codice AS "codiceAddebito"
+      FROM righe_addebito r
+      LEFT JOIN addebiti a ON a.id = r.addebito_id AND a.tenant_id = r.tenant_id
+      WHERE r.tenant_id = ${tenantId}::uuid AND r.elenco_id = ANY(${elenchiScadutiIds}::uuid[])`
+        : tx.$queryRaw<ChiaveOrdineRiga[]>`
+      SELECT r.id::text AS id, r.elenco_id::text AS "elencoId", r.tipo, r.cer_code AS "cerCode",
+             r.riferimento, a.codice AS "codiceAddebito"
+      FROM righe_addebito r
+      LEFT JOIN addebiti a ON a.id = r.addebito_id AND a.tenant_id = r.tenant_id
+      WHERE r.tenant_id = ${tenantId}::uuid
+        AND r.elenco_id IN (SELECT unnest(${elenchiScadutiIds}::uuid[]))`
+    )
+    const contate = new Map<string, number>()
+    for (const r of ordinaRigheListino(
+      chiavi.map(c => ({
+        id: c.id,
+        elencoId: c.elencoId,
+        tipo: c.tipo,
+        cerCode: c.cerCode,
+        riferimento: c.riferimento,
+        addebito: c.codiceAddebito === null ? null : { codice: c.codiceAddebito },
+      }))
+    )) {
+      const n = (contate.get(r.elencoId) ?? 0) + 1
+      contate.set(r.elencoId, n)
+      posizioneFuori.set(r.id, n)
+    }
+  }
   const speciali = righeSql.filter(r => r.prezzoSpeciale).map(r => r.id)
   const conScadenze = righeSql.filter(r => r.tipo === 'F').map(r => r.id)
   const scaglioniRighe = await seNonVuota(
@@ -837,18 +889,34 @@ async function selezionaElaborazioneInterna(
   // Righe di listino nella forma del calcolo (stesso oggetto in tutti i documenti).
   const eAllegato = new Set(allegati.map(a => a.id))
   const contrattoDelElenco = new Map(elenchiTutti.map(e => [e.id, e.contrattoId]))
+  const numeroContratto = new Map([
+    ...attivi.map((a): [string, string] => [a.c.id, a.c.numero]),
+    ...allegati.map((a): [string, string] => [a.id, a.numero]),
+  ])
+  const elenchiDelCalcolo = new Map(
+    elenchiTutti.map(e => [
+      e.id,
+      { codice: e.codice, contratto: numeroContratto.get(e.contrattoId) ?? '' },
+    ])
+  )
   const listinoPerElenco = new Map<string, RigaListinoDaFatturare[]>()
   const elenchiValidiSet = new Set(elenchiUsatiIds)
   const fuoriValidita = new Set<string>()
   for (const r of righeOrdinate) if (!elenchiValidiSet.has(r.elencoId)) fuoriValidita.add(r.id)
   const righeFuori: RigaListinoDaFatturare[] = []
+  const contatePerElenco = new Map<string, number>()
   for (const r of righeOrdinate) {
+    // Posizione nell'elenco intero, nell'ordine dell'utente (`ordinaRigheListino`).
+    const contata = (contatePerElenco.get(r.elencoId) ?? 0) + 1
+    contatePerElenco.set(r.elencoId, contata)
+    const posizioneInElenco = posizioneFuori.get(r.id) ?? contata
     const iva = codiciIva.get(r.codiceIvaId)
     if (iva === undefined) continue // FK: non puo' mancare; difesa contro una lettura incoerente
     const riga: RigaListinoDaFatturare = {
       id: r.id,
       versione: r.versione,
       elencoId: r.elencoId,
+      posizioneInElenco,
       daAllegato: eAllegato.has(contrattoDelElenco.get(r.elencoId) as string),
       tipo: r.tipo,
       descrizione: r.descrizione,
@@ -1019,7 +1087,6 @@ async function selezionaElaborazioneInterna(
       const minimi = righeDoc.filter(
         r => r.tipo === 'MW' || r.tipo === 'MF' || FORMA_MINIMO_CATEGORIA.test(r.tipo)
       )
-      const posizione = new Map([...listino.keys()].map((id, i) => [id, i + 1]))
       const marcatori = fisse.flatMap(r => marcatoriPer.get(r.id) ?? [])
 
       // Il documento esiste se c'e' qualcosa da fatturare: movimenti (non con SOSPESO_MOVIMENTI,
@@ -1029,7 +1096,6 @@ async function selezionaElaborazioneInterna(
         periodo,
         contratto: { dataInizio: c.dataInizio, dataFine: c.dataFine },
         marcatori,
-        numeroRiga: id => posizione.get(id) as number,
       })
       const haFissi = esitoFissi.righe.length > 0 || esitoFissi.errori.length > 0
       const haMovimenti = legami.length > 0 && c.stato !== 'SOSPESO_MOVIMENTI'
@@ -1119,6 +1185,7 @@ async function selezionaElaborazioneInterna(
         dataDocumento: p.dataDocumento,
         legami: legamiDaFatturare,
         listino,
+        elenchi: elenchiDelCalcolo,
         righeFisse: fisse,
         righeQuantita: quantita,
         minimi,

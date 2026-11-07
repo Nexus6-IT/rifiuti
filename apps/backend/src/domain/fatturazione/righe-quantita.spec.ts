@@ -12,7 +12,6 @@ const run = (righe: ReturnType<typeof listinoDi>[], legami: ReturnType<typeof le
     righe,
     legami,
     periodo,
-    numeroRiga: id => righe.findIndex(r => r.id === id) + 1,
   })
 
 describe('righeQuantitaMovimenti', () => {
@@ -25,10 +24,10 @@ describe('righeQuantitaMovimenti', () => {
     expect(e.righe[0].quantita).toBe('2.5005')
     expect(e.righe[0].prezzoTotale).toBe('25.01')
   })
-  it('TT senza prezzo: RIGA_LEGAME_INCOMPLETA con «TT riga n»', () => {
+  it('TT senza prezzo: RIGA_LEGAME_INCOMPLETA con «TT» e rigaId', () => {
     const e = run([tt({ prezzo: null })], [legameDi()])
     expect(e.righe).toHaveLength(0)
-    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'TT riga 1' }])
+    expect(e.errori).toEqual([{ codice: 'RIGA_LEGAME_INCOMPLETA', dettaglio: 'TT', rigaId: 'tt' }])
   })
   it('TT in KG su tre legami', () => {
     const e = run(
@@ -102,7 +101,7 @@ describe('righeQuantitaMovimenti', () => {
   it('movimento in LT: UM_NON_UNIVOCA con dettaglio', () => {
     const e = run([listinoDi({ tipo: 'F' }), tt()], [legameDi({ unitaMovimento: 'LT' })])
     expect(e.righe).toHaveLength(0)
-    expect(e.errori).toEqual([{ codice: 'UM_NON_UNIVOCA', dettaglio: 'TT riga 2' }])
+    expect(e.errori).toEqual([{ codice: 'UM_NON_UNIVOCA', dettaglio: 'TT', rigaId: 'tt' }])
   })
   it('TS, TT a prezzo speciale, NM: ignorate', () => {
     const e = run(
@@ -117,13 +116,5 @@ describe('righeQuantitaMovimenti', () => {
     expect(e.righe[0].importoLordo).toBe('20.00')
     expect(e.righe[0].importoSconto).toBe('2.00')
     expect(e.righe[0].prezzoTotale).toBe('18.00')
-  })
-})
-
-describe('righeQuantitaMovimenti: numeroRiga obbligatorio', () => {
-  it('senza numeroRiga non compila (tsc)', () => {
-    // @ts-expect-error manca numeroRiga
-    const senza: Parameters<typeof righeQuantitaDominio>[0] = { righe: [], legami: [], periodo }
-    expect(senza.righe).toEqual([])
   })
 })
