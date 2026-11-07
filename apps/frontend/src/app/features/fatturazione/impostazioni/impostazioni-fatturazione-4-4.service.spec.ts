@@ -48,4 +48,12 @@ describe('ImpostazioniFatturazione44Service', () => {
     expect(req.request.body).toEqual(dati)
     req.flush({})
   })
+
+  it('impostaDefinitive fa PUT su /impostazioni-fatturazione/definitive con attive e versione', () => {
+    servizio.impostaDefinitive(true, 3).subscribe()
+    const req = http.expectOne(`${environment.apiUrl}/impostazioni-fatturazione/definitive`)
+    expect(req.request.method).toBe('PUT')
+    expect(req.request.body).toEqual({ attive: true, versione: 3 })
+    req.flush({ definitiveAttive: true, versione: 4 })
+  })
 })

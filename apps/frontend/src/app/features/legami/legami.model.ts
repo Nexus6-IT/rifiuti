@@ -3,6 +3,8 @@ export interface ImpostazioneFatturazione {
   fatturazioneDa: string | null
   versione: number
   modificatoIl: string | null
+  /** Interruttore delle definitive (4.4c, decisione 13): condivide la `versione` con la data. */
+  definitiveAttive?: boolean
 }
 
 export interface DatiImpostazioneFatturazione {
