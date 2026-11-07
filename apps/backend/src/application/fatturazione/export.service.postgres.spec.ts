@@ -34,6 +34,7 @@ import { pulisciTenantDiTest } from '../../test-support/legami-di-test'
 import { assicuraCatalogoCer } from '../../test-support/listino-di-test'
 import { DocumentiFatturaService } from './documenti-fattura.service'
 import { ExportService, TETTO_DOCUMENTI_CSV } from './export.service'
+import { XmlDocumentoService } from './xml-documento.service'
 
 describe('ExportService CSV — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -48,7 +49,11 @@ describe('ExportService CSV — Postgres reale, ruolo wasteflow_app', () => {
   beforeAll(async () => {
     expect(eDatabaseDiTestLocale(urlProprietario)).toBe(true)
     app = creaPrismaServiceApplicativo()
-    servizio = new ExportService(app, new DocumentiFatturaService(app))
+    servizio = new ExportService(
+      app,
+      new DocumentiFatturaService(app),
+      new XmlDocumentoService(app, new DocumentiFatturaService(app))
+    )
     cerCreati.push(...(await assicuraCatalogoCer(owner, ['20 03 01'])))
   })
 
@@ -239,8 +244,6 @@ describe('ExportService CSV — Postgres reale, ruolo wasteflow_app', () => {
           `${e.getStatus?.()}:${e.getResponse?.().error}`
       )
     expect(await codice(esporta(a, {}, 'PDF'))).toBe('400:ADATTATORE_SCONOSCIUTO')
-    // XML_ZIP lo collega il Task 23
-    expect(await codice(esporta(a, {}, 'XML_ZIP'))).toBe('400:ADATTATORE_SCONOSCIUTO')
     expect(await codice(esporta(a, { registroIvaId: 'x' }))).toBe('400:FILTRO_NON_VALIDO')
     expect(await codice(esporta(a, { anno: 1999 }))).toBe('400:FILTRO_NON_VALIDO')
     expect(await codice(esporta(a, { numeroDa: 5, numeroA: 2 }))).toBe('400:FILTRO_NON_VALIDO')
