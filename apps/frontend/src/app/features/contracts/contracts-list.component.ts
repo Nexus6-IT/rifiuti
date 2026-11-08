@@ -10,6 +10,7 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
 import { HttpErrorResponse } from '@angular/common/http'
+import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { AzioneRiga, AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
 import { colonneConDati } from '../../shared/utils/colonne-visibili'
@@ -20,6 +21,7 @@ import {
   ContractType,
   messaggioDaErrore,
 } from './contracts.service'
+import { puoGestireContratti } from './permessi-contratti'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
 import { separaIdentificativo } from '../registry/identificativo-fiscale'
 import { SelectOption, STATUS_LABELS, TYPE_LABELS } from './contract-vocabulary'
@@ -32,6 +34,11 @@ const ALLOWED_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
   SUSPENDED: ['ACTIVE', 'TERMINATED'],
   EXPIRED: [],
   TERMINATED: [],
+}
+
+interface AzioniRiga {
+  principale: AzioneRiga | null
+  altre: AzioneRiga[]
 }
 
 const STATUS_SEVERITY: Record<
@@ -74,6 +81,7 @@ const STATUS_SEVERITY: Record<
         </div>
         <div class="page-actions">
           <p-button
+            *ngIf="puoGestire()"
             label="Nuovo contratto"
             icon="pi pi-plus"
             styleClass="wf-primario"
@@ -136,7 +144,7 @@ const STATUS_SEVERITY: Record<
             <th scope="col">Tipo</th>
             <th scope="col">Stato</th>
             <th scope="col" *ngIf="visibili().has('periodo')">Periodo</th>
-            <th scope="col" class="azioni-col">Azioni</th>
+            <th scope="col" class="azioni-col" *ngIf="puoGestire()">Azioni</th>
           </tr>
         </ng-template>
         <ng-template pTemplate="body" let-c>
@@ -166,7 +174,7 @@ const STATUS_SEVERITY: Record<
               <p-tag [value]="statusLabel(c.status)" [severity]="statusSeverity(c.status)"></p-tag>
             </td>
             <td class="m-hide nw" *ngIf="visibili().has('periodo')">{{ periodLabel(c) }}</td>
-            <td class="azioni-col">
+            <td class="azioni-col" *ngIf="puoGestire()">
               <app-azioni-riga
                 [nome]="c.contractNumber"
                 [principale]="azioniDi(c).principale"
@@ -227,12 +235,23 @@ const STATUS_SEVERITY: Record<
             styleClass="w-full"
             appendTo="body"
           ></p-dropdown>
+          <p
+            *ngIf="statoTerminale()"
+            class="avviso-terminale"
+            role="alert"
+            data-testid="avviso-terminale"
+          >
+            <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+            Non si potrà tornare indietro: da «{{ statusLabel(targetStatus!) }}» il contratto non si
+            può più modificare né cambiare di stato.
+          </p>
         </div>
         <ng-template pTemplate="footer">
           <p-button label="Annulla" [text]="true" (onClick)="displayStatus = false" />
           <p-button
             label="Conferma"
             icon="pi pi-check"
+            [severity]="statoTerminale() ? 'danger' : undefined"
             [loading]="changingStatus()"
             [disabled]="!targetStatus"
             (onClick)="confirmStatusChange()"
@@ -268,6 +287,17 @@ const STATUS_SEVERITY: Record<
         color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
       }
+      .avviso-terminale {
+        margin-top: var(--spacing-md);
+        color: var(--color-danger);
+        font-size: var(--font-size-sm);
+      }
+      .mb-3 {
+        margin-bottom: var(--spacing-base);
+      }
+      .mb-2 {
+        margin-bottom: var(--spacing-sm);
+      }
       .nw {
         white-space: nowrap;
       }
@@ -295,6 +325,10 @@ export class ContractsListComponent implements OnInit {
   private readonly contractsService = inject(ContractsService)
   private readonly toast = inject(ToastService)
   private readonly confirmation = inject(ConfirmationService)
+  private readonly auth = inject(AuthService)
+
+  /** Chi non gestisce i contratti (VIEWER) legge l'elenco: niente Nuovo, niente colonna Azioni. */
+  readonly puoGestire = computed(() => puoGestireContratti(this.auth.currentUser()?.role))
 
   /** «P.IVA» o «C.F.» in caratteri normali e il numero (l'unica parte in mono). */
   identificativo(p: { partitaIVA: string | null; codiceFiscale?: string | null }): {
@@ -319,7 +353,9 @@ export class ContractsListComponent implements OnInit {
     colonneConDati(this.contracts(), { periodo: c => c.startDate })
   )
   /** Colonne del p-table (per la riga dello stato vuoto). */
-  readonly colonneTotali = computed(() => 5 + (this.visibili().has('periodo') ? 1 : 0))
+  readonly colonneTotali = computed(
+    () => 4 + (this.visibili().has('periodo') ? 1 : 0) + (this.puoGestire() ? 1 : 0)
+  )
 
   /**
    * Azioni di ogni riga, ricalcolate solo quando cambiano i contratti o lo stato di una chiamata in
@@ -328,6 +364,7 @@ export class ContractsListComponent implements OnInit {
   private readonly azioniPerRiga = computed(() => {
     const apertura = this.apriInCorso()
     const eliminazione = this.eliminando()
+    if (!this.puoGestire()) return new Map<string, AzioniRiga>()
     return new Map(
       this.contracts().map(c => [c.id, this.costruisciAzioni(c, apertura, eliminazione)] as const)
     )
@@ -389,7 +426,7 @@ export class ContractsListComponent implements OnInit {
     return c.counterparty?.ragioneSociale ?? '—'
   }
 
-  azioniDi(c: Contract): { principale: AzioneRiga | null; altre: AzioneRiga[] } {
+  azioniDi(c: Contract): AzioniRiga {
     return this.azioniPerRiga().get(c.id) ?? { principale: null, altre: [] }
   }
 
@@ -397,7 +434,7 @@ export class ContractsListComponent implements OnInit {
     c: Contract,
     apertura: string | null,
     eliminazione: string | null
-  ): { principale: AzioneRiga; altre: AzioneRiga[] } {
+  ): AzioniRiga {
     const modificaOff = !c.modificabili?.length || apertura === c.id
     const altre: AzioneRiga[] = [
       {
@@ -427,6 +464,11 @@ export class ContractsListComponent implements OnInit {
       },
       altre,
     }
+  }
+
+  /** Risolto e Scaduto sono stati finali: dopo non si torna indietro. */
+  statoTerminale(): boolean {
+    return this.targetStatus === 'TERMINATED' || this.targetStatus === 'EXPIRED'
   }
 
   nextStatuses(s: ContractStatus): ContractStatus[] {

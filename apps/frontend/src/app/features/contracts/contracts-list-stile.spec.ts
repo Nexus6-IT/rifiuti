@@ -1,6 +1,5 @@
 import { registerLocaleData } from '@angular/common'
 import localeIt from '@angular/common/locales/it'
-import { signal } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { MessageService } from 'primeng/api'
@@ -76,8 +75,10 @@ async function inIframe390(
 describe('ContractsListComponent: pattern delle liste (Task 12)', () => {
   let fixture: ComponentFixture<ContractsListComponent>
   let contracts: jasmine.SpyObj<ContractsService>
+  let ruoloCorrente = 'OPERATOR'
 
-  async function apri(righe: Contract[] = [contratto()]) {
+  async function apri(righe: Contract[] = [contratto()], ruolo = 'OPERATOR') {
+    ruoloCorrente = ruolo
     contracts.list.and.returnValue(of(righe))
     fixture = TestBed.createComponent(ContractsListComponent)
     fixture.detectChanges()
@@ -118,7 +119,7 @@ describe('ContractsListComponent: pattern delle liste (Task 12)', () => {
         },
         { provide: RegistryService, useValue: registry },
         { provide: CerService, useValue: cer },
-        { provide: AuthService, useValue: { currentUser: signal({ role: 'OPERATOR' }) } },
+        { provide: AuthService, useValue: { currentUser: () => ({ role: ruoloCorrente }) } },
       ],
     })
   })
@@ -257,5 +258,69 @@ describe('ContractsListComponent: pattern delle liste (Task 12)', () => {
     } finally {
       iframe.remove()
     }
+  })
+
+  describe('ruoli', () => {
+    it('OPERATOR: Nuovo contratto, colonna Azioni, Modifica e ⋯', async () => {
+      await apri([contratto()], 'OPERATOR')
+      expect(document.body.textContent).toContain('Nuovo contratto')
+      expect(intestazioni()).toContain('Azioni')
+      expect(q('[data-testid="azione-principale"]')).not.toBeNull()
+      expect(q('[data-testid="azioni-altre"]')).not.toBeNull()
+    })
+
+    it("VIEWER: legge l'elenco, senza Nuovo contratto, colonna Azioni, Modifica e ⋯", async () => {
+      await apri([contratto()], 'VIEWER')
+      expect(document.body.textContent).toContain('CTR-2026-001')
+      expect(document.body.textContent).not.toContain('Nuovo contratto')
+      expect(primari().length).toBe(0)
+      expect(intestazioni()).not.toContain('Azioni')
+      expect(q('[data-testid="azione-principale"]')).toBeNull()
+      expect(q('[data-testid="azioni-altre"]')).toBeNull()
+      const celle = q('[data-testid="contratti-riga-c1"]')!.querySelectorAll('td').length
+      expect(celle).toBe(intestazioni().length)
+    })
+
+    it('VIEWER con zero righe: lo stato vuoto copre tutte le colonne', async () => {
+      await apri([], 'VIEWER')
+      const td = q('tbody td[colspan]')!
+      expect(Number(td.getAttribute('colspan'))).toBe(intestazioni().length)
+    })
+  })
+
+  describe('cambio di stato verso uno stato finale', () => {
+    const apriDialog = async (stato: 'ACTIVE' | 'TERMINATED' | 'EXPIRED') => {
+      await apri([contratto({ status: 'ACTIVE' })])
+      const c = fixture.componentInstance
+      c.openStatusDialog(contratto({ status: 'ACTIVE' }))
+      c.targetStatus = stato
+      fixture.detectChanges()
+      await fixture.whenStable()
+      fixture.detectChanges()
+    }
+    const conferma = () =>
+      Array.from(document.body.querySelectorAll<HTMLButtonElement>('.p-dialog-footer button')).find(
+        b => b.textContent?.includes('Conferma')
+      )!
+
+    it('Risolto: bottone rosso e avviso «non si potrà tornare indietro»', async () => {
+      await apriDialog('TERMINATED')
+      expect(conferma().classList).toContain('p-button-danger')
+      expect(q('[data-testid="avviso-terminale"]')!.textContent).toContain(
+        'Non si potrà tornare indietro'
+      )
+    })
+
+    it('Scaduto: bottone rosso e avviso', async () => {
+      await apriDialog('EXPIRED')
+      expect(conferma().classList).toContain('p-button-danger')
+      expect(q('[data-testid="avviso-terminale"]')).not.toBeNull()
+    })
+
+    it('Sospeso o Attivo: bottone normale, nessun avviso', async () => {
+      await apriDialog('ACTIVE')
+      expect(conferma().classList).not.toContain('p-button-danger')
+      expect(q('[data-testid="avviso-terminale"]')).toBeNull()
+    })
   })
 })
