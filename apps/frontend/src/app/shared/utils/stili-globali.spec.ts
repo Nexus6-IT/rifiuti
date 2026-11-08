@@ -114,7 +114,13 @@ describe('stili globali', () => {
   })
 
   describe('paginatore', () => {
-    it("l'anello di focus della pagina corrente e degli altri bottoni e arancio, 2px, visibile", () => {
+    it("l'anello di focus della pagina corrente e degli altri bottoni e arancio, 2px, visibile (anche con la transizione di Aura)", () => {
+      // Aura anima `outline-color` in 200 ms partendo da currentColor: nel primo frame l'anello
+      // aveva il colore del testo (chiaro su chiaro). Stessa regola di Aura, nel suo @layer.
+      stile(
+        '@layer primeng { .p-paginator .p-paginator-pages .p-paginator-page, .p-paginator .p-paginator-next {' +
+          ' color: rgb(243, 242, 239); transition: background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s, outline-color 0.2s } }'
+      )
       monta(
         '<div class="p-paginator"><span class="p-paginator-pages">' +
           '<button class="p-paginator-page p-highlight">1</button>' +
@@ -129,9 +135,63 @@ describe('stili globali', () => {
       const arancio = css(sonda).color
       for (const b of Array.from(radice.querySelectorAll<HTMLElement>('button'))) {
         b.focus()
+        expect(b.matches(':focus-visible')).withContext('focus da tastiera').toBeTrue()
         expect(css(b).outlineStyle).toBe('solid')
         expect(css(b).outlineWidth).toBe('2px')
+        // subito, senza aspettare la transizione
         expect(css(b).outlineColor).toBe(arancio)
+        expect(css(b).transitionProperty).not.toContain('outline')
+      }
+    })
+  })
+
+  describe('bottoni con variante (danger, success, ...)', () => {
+    const regoleHover = (): { sel: string; stile: CSSStyleDeclaration; inMedia: string }[] => {
+      const trovate: { sel: string; stile: CSSStyleDeclaration; inMedia: string }[] = []
+      const visita = (regole: CSSRuleList, media: string): void => {
+        for (const r of Array.from(regole)) {
+          if (
+            r instanceof CSSStyleRule &&
+            /p-button-(danger|success|warning|info|help)/.test(r.selectorText) &&
+            r.selectorText.includes(':hover')
+          ) {
+            trovate.push({ sel: r.selectorText, stile: r.style, inMedia: media })
+          } else if (r instanceof CSSMediaRule) {
+            visita(r.cssRules, r.conditionText)
+          }
+        }
+      }
+      for (const foglio of Array.from(document.styleSheets)) {
+        try {
+          visita(foglio.cssRules, '')
+        } catch {
+          /* foglio di un'altra origine */
+        }
+      }
+      return trovate
+    }
+
+    it('all hover il bottone «danger» resta rosso: la regola riscrive lo sfondo, non solo il filtro (I1)', () => {
+      const regole = regoleHover().filter(
+        r =>
+          /\.p-button-danger:not\(:disabled\):hover$/.test(r.sel) &&
+          !r.sel.includes('outlined') &&
+          !r.sel.includes('text')
+      )
+      const sfondo = regole.filter(r =>
+        r.stile.getPropertyValue('background').includes('--color-danger')
+      )
+      expect(sfondo.length).withContext('regola che riscrive lo sfondo').toBeGreaterThan(0)
+      expect(sfondo[0].stile.getPropertyValue('border-color')).toContain('--color-danger')
+    })
+
+    it("la tinta piu' scura dell'hover vale solo con (hover: hover): col tocco non resta attaccata (I1)", () => {
+      const conFiltro = regoleHover().filter(r =>
+        r.stile.getPropertyValue('filter').includes('brightness')
+      )
+      expect(conFiltro.length).toBeGreaterThan(0)
+      for (const r of conFiltro) {
+        expect(r.inMedia).withContext(r.sel).toContain('hover: hover')
       }
     })
   })

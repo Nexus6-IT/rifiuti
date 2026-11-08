@@ -154,13 +154,43 @@
   background: var(--color-info);
   border-color: var(--color-info);
 }
+/* Hover delle varianti piene. Lo sfondo va riscritto: la regola generale `.p-button:not(:disabled):hover`
+   (inchiostro) altrimenti vince e il «pericolo» diventa nero proprio quando si sta per premere.
+   Senza puntatore preciso (telefono) l'hover resta attaccato dopo il tap: li' il bottone resta com'e'
+   a riposo; la tinta piu' scura vale solo con `@media (hover: hover)`. */
+.p-button.p-button-success:not(.p-button-outlined):not(.p-button-text):not(:disabled):hover {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.p-button.p-button-danger:not(:disabled):hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.p-button.p-button-warning:not(.p-button-outlined):not(.p-button-text):not(:disabled):hover {
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.p-button.p-button-info:not(.p-button-outlined):not(.p-button-text):not(:disabled):hover,
+.p-button.p-button-help:not(.p-button-outlined):not(.p-button-text):not(:disabled):hover {
+  background: var(--color-info);
+  border-color: var(--color-info);
+}
 .p-button.p-button-success:not(:disabled):hover,
 .p-button.p-button-danger:not(:disabled):hover,
 .p-button.p-button-warning:not(:disabled):hover,
 .p-button.p-button-info:not(:disabled):hover,
 .p-button.p-button-help:not(:disabled):hover {
   color: var(--text-inverse);
-  filter: brightness(0.92);
+  filter: none;
+}
+@media (hover: hover) {
+  .p-button.p-button-success:not(:disabled):hover,
+  .p-button.p-button-danger:not(:disabled):hover,
+  .p-button.p-button-warning:not(:disabled):hover,
+  .p-button.p-button-info:not(:disabled):hover,
+  .p-button.p-button-help:not(:disabled):hover {
+    filter: brightness(0.92);
+  }
 }
 /* Varianti outlined/text colorate: solo il testo cambia. */
 .p-button.p-button-outlined.p-button-danger,
@@ -647,6 +677,24 @@ input[type='file']::file-selector-button:hover {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   box-shadow: none;
+  /* Aura anima `outline-color` in 200 ms partendo da currentColor: per un frame l'anello ha il colore
+     del testo (chiaro su chiaro sulla pagina corrente). Il focus deve vedersi subito. */
+  transition: none;
+}
+.p-datepicker .p-datepicker-header .p-datepicker-prev:focus-visible,
+.p-datepicker .p-datepicker-header .p-datepicker-next:focus-visible,
+.p-datepicker table td > span:focus {
+  transition: none;
+}
+@media (max-width: 639.98px) {
+  .p-paginator .p-paginator-first,
+  .p-paginator .p-paginator-prev,
+  .p-paginator .p-paginator-next,
+  .p-paginator .p-paginator-last,
+  .p-paginator .p-paginator-pages .p-paginator-page {
+    min-width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 .p-paginator .p-paginator-first,
 .p-paginator .p-paginator-prev,
@@ -866,6 +914,52 @@ input[type='file']::file-selector-button:hover {
 }
 .p-datepicker:not(.p-datepicker-inline) {
   background: var(--surface-overlay);
+}
+/* Calendario: Oggi, intestazione e anelli nei neutri caldi dei token (Aura li dà grigio-ardesia). */
+.p-datepicker table td.p-datepicker-today > span:not(.p-highlight) {
+  background: var(--selected);
+  color: var(--text-primary);
+}
+.p-datepicker .p-datepicker-header,
+.p-datepicker .p-datepicker-header .p-datepicker-title .p-datepicker-year,
+.p-datepicker .p-datepicker-header .p-datepicker-title .p-datepicker-month {
+  color: var(--text-primary);
+}
+.p-datepicker .p-datepicker-header .p-datepicker-prev,
+.p-datepicker .p-datepicker-header .p-datepicker-next,
+.p-datepicker table th > span {
+  color: var(--text-secondary);
+}
+.p-datepicker .p-datepicker-header .p-datepicker-prev:enabled:hover,
+.p-datepicker .p-datepicker-header .p-datepicker-next:enabled:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.p-datepicker .p-datepicker-header .p-datepicker-prev:focus-visible,
+.p-datepicker .p-datepicker-header .p-datepicker-next:focus-visible,
+.p-datepicker table td > span:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+/* Sul telefono giorni e frecce da 44 px (7 x 44 = 308 px: il pannello sta nello schermo a 360). */
+@media (max-width: 639.98px) {
+  .p-datepicker table td {
+    padding: 0;
+  }
+  .p-datepicker table td > span {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .p-datepicker .p-datepicker-header .p-datepicker-prev,
+  .p-datepicker .p-datepicker-header .p-datepicker-next {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .p-calendar .p-datepicker-trigger.p-button {
+    width: 2.75rem;
+    flex: 0 0 2.75rem;
+  }
 }
 .p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight,
 .p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight {
