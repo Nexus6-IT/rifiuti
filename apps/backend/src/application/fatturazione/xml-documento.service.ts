@@ -496,11 +496,16 @@ export class XmlDocumentoService {
     }
     const esiti =
       documenti.length === 1 ? [await validaFatturaPA(testi[0])] : await validaFatturePA(testi)
-    const i = esiti.findIndex(e => !e.valido)
-    if (i >= 0) {
+    // Il documento da indicare: il primo con errori propri; se nessuno li ha, il primo invalido.
+    const primoInvalido = esiti.findIndex(e => !e.valido)
+    if (primoInvalido >= 0) {
+      const proprio = esiti.findIndex(e => !e.valido && e.attribuibile === true)
+      const i = proprio >= 0 ? proprio : primoInvalido
       this.logger.warn(`XML non conforme all'XSD per il documento ${documenti[i].id}`)
-      // Se tutto il lotto e' invalido con gli stessi errori, l'errore non e' attribuibile a un file.
-      const attribuibile = esiti.some(e => e.valido) || esiti.length === 1
+      // La posizione si riporta se almeno un file ha errori propri, se qualche altro file del lotto
+      // è valido, o se il lotto è un file solo. Se TUTTO il lotto è invalido per soli errori
+      // generali (es. XML non ben formato), l'errore non è attribuibile a un file: fail-closed.
+      const attribuibile = proprio >= 0 || esiti.some(e => e.valido) || esiti.length === 1
       throw xmlNonValido(esiti[i].errori, attribuibile ? posizioni[i] : undefined)
     }
     return testi.map(t => Buffer.from(t, 'utf8'))
