@@ -2,7 +2,7 @@
  * AccessRequestComponent — pagina pubblica "Richiedi accesso" (lead capture).
  *
  * Percorso: /richiedi-accesso (alias storico /signup) — pubblico.
- * Design system "B": slate + teal (#0d9488), IBM Plex, griglia 8pt, WCAG 2.1 AA.
+ * Stile «Libro mastro»: pannello piatto, colori IgniCraft, Geist, WCAG 2.1 AA.
  *
  * NON crea alcun account: raccoglie i dati di contatto dell'azienda e li invia
  * al backend (POST /auth/access-request). Un consulente ricontatta l'azienda per
@@ -320,9 +320,8 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
             <p-button
               type="submit"
               label="Invia richiesta"
-              icon="pi pi-send"
               [loading]="loading"
-              styleClass="w-full submit-button"
+              styleClass="w-full submit-button wf-primario"
               [attr.aria-busy]="loading"
             />
           </form>
@@ -367,11 +366,12 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
         overflow: hidden;
         color: var(--on-brand-panel);
         background: var(--brand-panel);
+        border-inline-end: 1px solid var(--surface-border);
       }
       .auth__brand-inner {
         position: sticky;
         top: 0;
-        height: 100vh;
+        min-height: 100vh;
         display: flex;
         flex-direction: column;
         gap: var(--spacing-2xl);
@@ -381,6 +381,7 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
       }
 
       .brand-mark {
+        --text-primary: var(--on-brand-panel);
         display: flex;
         align-items: center;
         gap: 0.65rem;
@@ -428,7 +429,7 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
       }
       .brand-list__item {
         padding: var(--spacing-md) 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.16);
+        border-top: 1px solid color-mix(in srgb, var(--on-brand-panel) 16%, transparent);
         font-size: var(--font-size-base);
         color: var(--on-brand-panel);
       }
@@ -453,7 +454,6 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
       .auth__panel {
         width: 100%;
         max-width: 480px;
-        animation: fadeInUp var(--transition-base);
       }
 
       .auth__logo-mobile {
@@ -630,7 +630,9 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
         text-decoration: none;
         border: 1.5px solid var(--brand-primary-dark);
         color: var(--brand-primary-dark);
-        transition: all var(--transition-fast);
+        transition:
+          background-color var(--transition-fast),
+          color var(--transition-fast);
       }
       .goto-login:hover {
         background: var(--brand-primary-50);
@@ -638,8 +640,8 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
       }
 
       /* ============ Submit ============ */
-      :host ::ng-deep .submit-button .p-button {
-        min-height: 50px;
+      :host ::ng-deep .p-button.submit-button {
+        min-height: 44px;
         justify-content: center;
         font-size: var(--font-size-base) !important;
       }
@@ -670,12 +672,6 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
         }
         .auth__title {
           font-size: var(--font-size-2xl);
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .auth__panel {
-          animation: none;
         }
       }
     `,

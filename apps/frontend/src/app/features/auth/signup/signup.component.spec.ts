@@ -66,4 +66,15 @@ describe('AccessRequestComponent (restyle «Libro mastro»)', () => {
     const maiuscoli = tutti.filter(e => getComputedStyle(e).textTransform === 'uppercase')
     expect(maiuscoli.map(e => e.className)).toEqual([])
   })
+
+  it("«Invia richiesta» è l'unico bottone primario (.wf-primario)", () => {
+    const primari = el.querySelectorAll('.wf-primario')
+    expect(primari.length).toBe(1)
+    expect(primari[0].textContent).toContain('Invia richiesta')
+  })
+
+  it('il pannello è separato dal form da un bordo', () => {
+    const pannello = el.querySelector('.auth__brand') as HTMLElement
+    expect(getComputedStyle(pannello).borderInlineEndWidth).toBe('1px')
+  })
 })

@@ -61,7 +61,6 @@ import { AuthService } from '../../core/services/auth.service'
         border: 1px solid var(--surface-border);
         border-radius: var(--radius-xl);
         box-shadow: var(--shadow-md);
-        animation: fadeInUp var(--transition-base);
       }
       .callback__brand {
         display: flex;
@@ -101,11 +100,6 @@ import { AuthService } from '../../core/services/auth.service'
         font-size: var(--font-size-sm);
         color: var(--text-secondary);
         line-height: var(--line-height-normal);
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .callback__card {
-          animation: none;
-        }
       }
     `,
   ],

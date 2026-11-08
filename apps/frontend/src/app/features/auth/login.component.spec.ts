@@ -82,13 +82,15 @@ describe('LoginComponent (restyle «Libro mastro»)', () => {
     expect(maiuscoli.length).toBe(0)
   })
 
-  it('il pannello, se visibile, non supera il 40% della larghezza', () => {
+  it("«Accedi» è l'unico bottone primario (.wf-primario)", () => {
+    const primari = el.querySelectorAll('.wf-primario')
+    expect(primari.length).toBe(1)
+    expect(primari[0].textContent).toContain('Accedi')
+  })
+
+  it('il pannello è separato dal form da un bordo', () => {
     const pannello = el.querySelector('.auth__brand') as HTMLElement
-    const griglia = el.querySelector('.auth') as HTMLElement
-    if (getComputedStyle(pannello).display === 'none') return
-    expect(pannello.getBoundingClientRect().width).toBeLessThanOrEqual(
-      griglia.getBoundingClientRect().width * 0.4 + 1
-    )
+    expect(getComputedStyle(pannello).borderInlineEndWidth).toBe('1px')
   })
 
   it('mantiene il bottone «Accedi»', () => {
