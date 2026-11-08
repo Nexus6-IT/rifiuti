@@ -106,4 +106,78 @@ describe('NotificationService — Postgres reale, ruolo wasteflow_app', () => {
     expect(out.length).toBeGreaterThan(0)
     expect(out.every(n => !n.isRead())).toBe(true)
   })
+
+  it('createNotification salva la riga (isRead false, senza campi ignoti)', async () => {
+    const n = await TenantContext.run({ tenantId }, () =>
+      service.createNotification({
+        tenantId,
+        userId,
+        userEmail: 'x@example.com',
+        userName: 'X',
+        type: 'SYSTEM_ERROR',
+        title: 'creata',
+        message: 'm',
+        severity: 'INFO',
+        metadata: { a: 1 },
+      })
+    )
+    const riga = await owner.notification.findUniqueOrThrow({ where: { id: n.getId() } })
+    expect(riga).toMatchObject({ isRead: false, readAt: null, title: 'creata' })
+  })
+
+  it('la lettura esclude le notifiche di un altro utente e di un altro tenant', async () => {
+    const suffisso = `${Date.now()}`.slice(-8)
+    const altroTenant = await owner.tenant.create({
+      data: { partitaIva: `NX${suffisso}`, ragioneSociale: 'Altra SRL', country: 'IT' },
+    })
+    const mk = (tid: string, k: string) =>
+      owner.user.create({
+        data: {
+          tenantId: tid,
+          keycloakId: `keycloak-notif-${k}-${suffisso}`,
+          fiscalCode: `FC${k}${suffisso}`,
+          firstName: 'A',
+          lastName: 'B',
+          email: `notif-${k}-${suffisso}@example.com`,
+          role: 'ADMIN',
+        },
+      })
+    const stessoTenant = await mk(tenantId, 'st')
+    const utenteAltro = await mk(altroTenant.id, 'al')
+    try {
+      const altroUtente = await owner.notification.create({
+        data: {
+          tenantId,
+          userId: stessoTenant.id,
+          type: 'SYSTEM_ERROR',
+          title: 'altro utente',
+          message: 'm',
+        },
+      })
+      const altraAzienda = await owner.notification.create({
+        data: {
+          tenantId: altroTenant.id,
+          userId: utenteAltro.id,
+          type: 'SYSTEM_ERROR',
+          title: 'altra azienda',
+          message: 'm',
+        },
+      })
+      const out = await TenantContext.run({ tenantId }, () =>
+        service.getUserNotifications({ userId, tenantId })
+      )
+      const ids = out.map(x => x.getId())
+      expect(ids).not.toContain(altroUtente.id)
+      expect(ids).not.toContain(altraAzienda.id)
+    } finally {
+      await owner.notification.deleteMany({
+        where: {
+          tenantId: { in: [tenantId, altroTenant.id] },
+          userId: { in: [stessoTenant.id, utenteAltro.id] },
+        },
+      })
+      await owner.user.deleteMany({ where: { id: { in: [stessoTenant.id, utenteAltro.id] } } })
+      await owner.tenant.deleteMany({ where: { id: altroTenant.id } })
+    }
+  })
 })

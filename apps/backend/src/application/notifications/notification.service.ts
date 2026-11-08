@@ -63,7 +63,19 @@ export class NotificationService {
 
     // Persist to database
     await this.prisma.notification.create({
-      data: notification.toPlainObject(),
+      // Campo per campo: `metadata` non ha colonna e `read` si chiama `isRead`.
+      data: {
+        id: notification.getId(),
+        tenantId: notification.getTenantId(),
+        userId: notification.getUserId(),
+        type: notification.getType(),
+        title: notification.getTitle(),
+        message: notification.getMessage(),
+        severity: notification.getSeverity(),
+        actionUrl: notification.getActionUrl(),
+        isRead: notification.isRead(),
+        createdAt: notification.getCreatedAt(),
+      } satisfies Prisma.NotificationUncheckedCreateInput,
     })
 
     // Send email if requested
