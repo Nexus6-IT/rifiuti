@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core'
+import { Component, OnInit, computed, inject, signal } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { TableModule } from 'primeng/table'
@@ -7,11 +7,12 @@ import { TagModule } from 'primeng/tag'
 import { DialogModule } from 'primeng/dialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
-import { TooltipModule } from 'primeng/tooltip'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
 import { HttpErrorResponse } from '@angular/common/http'
 import { ToastService } from '../../core/services/toast.service'
+import { AzioneRiga, AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import {
   ContractsService,
   Contract,
@@ -20,7 +21,7 @@ import {
   messaggioDaErrore,
 } from './contracts.service'
 import { ContractCreateDialogComponent } from './contract-create-dialog.component'
-import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
+import { separaIdentificativo } from '../registry/identificativo-fiscale'
 import { SelectOption, STATUS_LABELS, TYPE_LABELS } from './contract-vocabulary'
 
 /** Transizioni di stato ammesse (mirror di ALLOWED_TRANSITIONS del backend). */
@@ -57,9 +58,9 @@ const STATUS_SEVERITY: Record<
     DialogModule,
     DropdownModule,
     ProgressSpinnerModule,
-    TooltipModule,
     ConfirmDialogModule,
     ContractCreateDialogComponent,
+    AzioniRigaComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -75,6 +76,7 @@ const STATUS_SEVERITY: Record<
           <p-button
             label="Nuovo contratto"
             icon="pi pi-plus"
+            styleClass="wf-primario"
             (onClick)="apriCreazione()"
             ariaLabel="Crea un nuovo contratto"
           />
@@ -82,33 +84,22 @@ const STATUS_SEVERITY: Record<
       </header>
 
       <!-- Filtro per stato -->
-      <section class="surface-card mb-4" aria-label="Filtro contratti">
-        <div class="filter-row">
-          <div class="filter-row__field">
-            <label for="contract-status-filter" class="block mb-2">Stato</label>
-            <p-dropdown
-              inputId="contract-status-filter"
-              [options]="statusFilterOptions"
-              [(ngModel)]="statusFilter"
-              optionLabel="label"
-              optionValue="value"
-              [showClear]="true"
-              placeholder="Tutti"
-              styleClass="w-full"
-              ariaLabel="Filtra contratti per stato"
-              (onChange)="loadContracts()"
-              (onClear)="loadContracts()"
-            ></p-dropdown>
-          </div>
-          <p-button
-            label="Aggiorna"
-            icon="pi pi-refresh"
-            [outlined]="true"
-            (onClick)="loadContracts()"
-            ariaLabel="Aggiorna l'elenco dei contratti"
-          />
-        </div>
-      </section>
+      <div class="barra-filtri" role="group" aria-label="Filtro contratti">
+        <label for="contract-status-filter" class="filtro-etichetta">Stato</label>
+        <p-dropdown
+          inputId="contract-status-filter"
+          [options]="statusFilterOptions"
+          [(ngModel)]="statusFilter"
+          optionLabel="label"
+          optionValue="value"
+          [showClear]="true"
+          placeholder="Tutti"
+          styleClass="filtro-stato"
+          ariaLabel="Filtra contratti per stato"
+          (onChange)="loadContracts()"
+          (onClear)="loadContracts()"
+        ></p-dropdown>
+      </div>
 
       <!-- Stato error -->
       <section *ngIf="error()" class="surface-card">
@@ -129,98 +120,79 @@ const STATUS_SEVERITY: Record<
       </section>
 
       <!-- Tabella -->
-      <section *ngIf="!error()" class="surface-card">
-        <div class="table-responsive">
-          <p-table
-            [value]="contracts()"
-            [loading]="loading()"
-            [paginator]="contracts().length > 10"
-            [rows]="10"
-            styleClass="p-datatable-sm"
-          >
-            <ng-template pTemplate="header">
-              <tr>
-                <th scope="col">Numero</th>
-                <th scope="col">Controparte</th>
-                <th scope="col">Tipo</th>
-                <th scope="col">Stato</th>
-                <th scope="col">Periodo</th>
-                <th scope="col" style="width: 170px">Azioni</th>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="body" let-c>
-              <tr>
-                <td>
-                  <strong>{{ c.contractNumber }}</strong>
-                </td>
-                <td>
-                  <span class="controparte">
-                    <span class="controparte__nome">{{ counterpartyLabel(c) }}</span>
-                    <span
-                      *ngIf="c.counterparty && identificativo(c.counterparty)"
-                      class="controparte__piva"
-                    >
-                      {{ identificativo(c.counterparty) }}
-                    </span>
-                  </span>
-                </td>
-                <td>{{ typeLabel(c.contractType) }}</td>
-                <td>
-                  <p-tag
-                    [value]="statusLabel(c.status)"
-                    [severity]="statusSeverity(c.status)"
-                  ></p-tag>
-                </td>
-                <td>{{ periodLabel(c) }}</td>
-                <td class="azioni">
-                  <span [pTooltip]="tooltipModifica(c)" tooltipPosition="top">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="apriModifica(c)"
-                      [disabled]="modificaDisabilitata(c)"
-                      [ariaLabel]="etichettaModifica(c)"
-                    />
-                  </span>
-                  <span pTooltip="Cambia stato" tooltipPosition="top">
-                    <p-button
-                      icon="pi pi-sync"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="openStatusDialog(c)"
-                      [disabled]="!nextStatuses(c.status).length"
-                      [ariaLabel]="'Cambia stato del contratto ' + c.contractNumber"
-                    />
-                  </span>
-                  <span *ngIf="c.eliminabile" pTooltip="Elimina" tooltipPosition="top">
-                    <p-button
-                      icon="pi pi-trash"
-                      severity="danger"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="chiediEliminazione(c)"
-                      [disabled]="eliminando() === c.id"
-                      [ariaLabel]="'Elimina il contratto ' + c.contractNumber"
-                    />
-                  </span>
-                </td>
-              </tr>
-            </ng-template>
-            <ng-template pTemplate="emptymessage">
-              <tr>
-                <td colspan="6">
-                  <div class="empty-state">
-                    <i class="pi pi-file empty-state__icon" aria-hidden="true"></i>
-                    <span class="empty-state__title">Nessun contratto</span>
-                    <p>Non risultano contratti per il filtro selezionato.</p>
-                  </div>
-                </td>
-              </tr>
-            </ng-template>
-          </p-table>
-        </div>
-      </section>
+      <p-table
+        *ngIf="!error()"
+        [value]="contracts()"
+        [loading]="loading()"
+        [paginator]="true"
+        [alwaysShowPaginator]="false"
+        [rows]="10"
+        styleClass="p-datatable-sm lista-telefono"
+      >
+        <ng-template pTemplate="header">
+          <tr>
+            <th scope="col">Numero</th>
+            <th scope="col">Controparte</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Stato</th>
+            <th scope="col" *ngIf="visibili().has('periodo')">Periodo</th>
+            <th scope="col" class="azioni-col">Azioni</th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-c>
+          <tr [attr.data-testid]="'contratti-riga-' + c.id">
+            <td class="nw">
+              <strong class="mono-numero">{{ c.contractNumber }}</strong>
+              <p-tag
+                class="solo-tel"
+                [value]="statusLabel(c.status)"
+                [severity]="statusSeverity(c.status)"
+              ></p-tag>
+            </td>
+            <td class="m2">
+              <span class="controparte">
+                <span class="controparte__nome">{{ counterpartyLabel(c) }}</span>
+                <span
+                  *ngIf="c.counterparty && identificativo(c.counterparty).numero"
+                  class="controparte__piva"
+                >
+                  {{ identificativo(c.counterparty).prefisso }}
+                  <span class="mono">{{ identificativo(c.counterparty).numero }}</span>
+                </span>
+              </span>
+            </td>
+            <td class="m-hide nw">{{ typeLabel(c.contractType) }}</td>
+            <td class="m-hide nw">
+              <p-tag [value]="statusLabel(c.status)" [severity]="statusSeverity(c.status)"></p-tag>
+            </td>
+            <td class="m-hide nw" *ngIf="visibili().has('periodo')">{{ periodLabel(c) }}</td>
+            <td class="azioni-col">
+              <app-azioni-riga
+                [nome]="c.contractNumber"
+                [principale]="azioniDi(c).principale"
+                [altre]="azioniDi(c).altre"
+              />
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td [attr.colspan]="colonneTotali()">
+              <div class="empty-state">
+                <i class="pi pi-file empty-state__icon" aria-hidden="true"></i>
+                <span class="empty-state__title">Nessun contratto</span>
+                <p>
+                  {{
+                    statusFilter
+                      ? 'Non risultano contratti per il filtro selezionato.'
+                      : 'Non ci sono ancora contratti.'
+                  }}
+                </p>
+              </div>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
 
       <app-contract-create-dialog
         [(visible)]="displayCreate"
@@ -274,39 +246,47 @@ const STATUS_SEVERITY: Record<
       .empty-state__icon--danger {
         color: var(--color-danger);
       }
-      /* Barra filtri: dropdown stato + Aggiorna allineati e spaziati a 12px */
-      .filter-row {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end;
-        gap: var(--spacing-md);
+      .filtro-etichetta {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
       }
-      .filter-row__field {
-        flex: 1 1 220px;
-        min-width: 200px;
-        max-width: 320px;
+      :host ::ng-deep .filtro-stato {
+        width: 14rem;
+      }
+      .mono,
+      .mono-numero {
+        font-family: var(--font-family-mono);
       }
       .controparte {
         display: flex;
         flex-direction: column;
         line-height: 1.3;
+        overflow-wrap: anywhere;
       }
       .controparte__piva {
         font-size: var(--font-size-sm);
         color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
       }
-      .azioni {
+      .nw {
         white-space: nowrap;
       }
-      .mb-4 {
-        margin-bottom: var(--spacing-xl);
+      .solo-tel {
+        display: none;
       }
-      .mb-3 {
-        margin-bottom: var(--spacing-base);
-      }
-      .mb-2 {
-        margin-bottom: var(--spacing-sm);
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline-block;
+          margin-left: var(--spacing-sm);
+        }
+        :host ::ng-deep .filtro-stato {
+          width: 100%;
+        }
+        .controparte {
+          flex-direction: row;
+          flex-wrap: wrap;
+          gap: 0 var(--spacing-sm);
+        }
       }
     `,
   ],
@@ -316,9 +296,12 @@ export class ContractsListComponent implements OnInit {
   private readonly toast = inject(ToastService)
   private readonly confirmation = inject(ConfirmationService)
 
-  /** "P.IVA …" o "C.F. …" della controparte (un privato non ha la P.IVA). */
-  identificativo(p: { partitaIVA: string | null; codiceFiscale?: string | null }): string {
-    return etichettaIdentificativo(p.partitaIVA, p.codiceFiscale)
+  /** «P.IVA» o «C.F.» in caratteri normali e il numero (l'unica parte in mono). */
+  identificativo(p: { partitaIVA: string | null; codiceFiscale?: string | null }): {
+    prefisso: string
+    numero: string
+  } {
+    return separaIdentificativo(p.partitaIVA, p.codiceFiscale)
   }
 
   readonly contracts = signal<Contract[]>([])
@@ -330,6 +313,25 @@ export class ContractsListComponent implements OnInit {
   readonly apriInCorso = signal<string | null>(null)
   /** Id del contratto in eliminazione (il cestino resta disabilitato durante la chiamata). */
   readonly eliminando = signal<string | null>(null)
+
+  /** Colonne facoltative con almeno un dato nella pagina: le altre non si disegnano. */
+  readonly visibili = computed(() =>
+    colonneConDati(this.contracts(), { periodo: c => c.startDate })
+  )
+  /** Colonne del p-table (per la riga dello stato vuoto). */
+  readonly colonneTotali = computed(() => 5 + (this.visibili().has('periodo') ? 1 : 0))
+
+  /**
+   * Azioni di ogni riga, ricalcolate solo quando cambiano i contratti o lo stato di una chiamata in
+   * corso: `app-azioni-riga` ricostruirebbe il menu a ogni nuovo array.
+   */
+  private readonly azioniPerRiga = computed(() => {
+    const apertura = this.apriInCorso()
+    const eliminazione = this.eliminando()
+    return new Map(
+      this.contracts().map(c => [c.id, this.costruisciAzioni(c, apertura, eliminazione)] as const)
+    )
+  })
 
   statusFilter: ContractStatus | null = null
 
@@ -387,6 +389,46 @@ export class ContractsListComponent implements OnInit {
     return c.counterparty?.ragioneSociale ?? '—'
   }
 
+  azioniDi(c: Contract): { principale: AzioneRiga | null; altre: AzioneRiga[] } {
+    return this.azioniPerRiga().get(c.id) ?? { principale: null, altre: [] }
+  }
+
+  private costruisciAzioni(
+    c: Contract,
+    apertura: string | null,
+    eliminazione: string | null
+  ): { principale: AzioneRiga; altre: AzioneRiga[] } {
+    const modificaOff = !c.modificabili?.length || apertura === c.id
+    const altre: AzioneRiga[] = [
+      {
+        etichetta: 'Cambia stato',
+        icona: 'pi pi-sync',
+        disabilitata: !this.nextStatuses(c.status).length,
+        motivo: 'Da questo stato il contratto non cambia più stato',
+        esegui: () => this.openStatusDialog(c),
+      },
+    ]
+    if (c.eliminabile) {
+      altre.push({
+        etichetta: 'Elimina',
+        icona: 'pi pi-trash',
+        pericolosa: true,
+        disabilitata: eliminazione === c.id,
+        esegui: () => this.chiediEliminazione(c),
+      })
+    }
+    return {
+      principale: {
+        etichetta: `Modifica il contratto ${c.contractNumber}`,
+        icona: 'pi pi-pencil',
+        disabilitata: modificaOff,
+        motivo: modificaOff && c.modificabili?.length ? undefined : this.tooltipModifica(c),
+        esegui: () => this.apriModifica(c),
+      },
+      altre,
+    }
+  }
+
   nextStatuses(s: ContractStatus): ContractStatus[] {
     return ALLOWED_TRANSITIONS[s] ?? []
   }
@@ -414,20 +456,6 @@ export class ContractsListComponent implements OnInit {
       return 'Un contratto scaduto o cessato non si modifica'
     }
     return 'Questo contratto non si può modificare'
-  }
-
-  /** Disabilitato se il backend non indica campi modificabili o se la lettura e' in corso. */
-  modificaDisabilitata(c: Contract): boolean {
-    return !c.modificabili?.length || this.apriInCorso() === c.id
-  }
-
-  /**
-   * Etichetta accessibile: se il pulsante e' disabilitato per lo stato, il motivo e' nell'etichetta
-   * (tastiera e screen reader non vedono il tooltip di un pulsante disabilitato).
-   */
-  etichettaModifica(c: Contract): string {
-    const base = `Modifica il contratto ${c.contractNumber}`
-    return c.modificabili?.length ? base : `${base}: ${this.tooltipModifica(c)}`
   }
 
   /** Rilegge il contratto (versione e campi modificabili aggiornati) prima di aprire il dialog. */
