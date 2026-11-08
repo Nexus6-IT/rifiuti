@@ -9,7 +9,6 @@ import {
 import { TableModule } from 'primeng/table'
 import { CardModule } from 'primeng/card'
 import { ButtonModule } from 'primeng/button'
-import { TagModule } from 'primeng/tag'
 import { InputTextModule } from 'primeng/inputtext'
 import { DropdownModule } from 'primeng/dropdown'
 import { CheckboxModule } from 'primeng/checkbox'
@@ -26,7 +25,6 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
     TableModule,
     CardModule,
     ButtonModule,
-    TagModule,
     InputTextModule,
     DropdownModule,
     CheckboxModule,
@@ -69,12 +67,7 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
                   <span
                     ><strong class="cell-mono">{{ cer.code }}</strong> — {{ cer.description }}</span
                   >
-                  <p-tag
-                    *ngIf="cer.isPericoloso"
-                    value="Pericoloso"
-                    severity="danger"
-                    [rounded]="true"
-                  />
+                  <span *ngIf="cer.isPericoloso" class="pillola-pericoloso">Pericoloso</span>
                 </div>
               </ng-template>
             </p-autoComplete>
@@ -123,69 +116,64 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
 
         <!-- Tabella CER -->
         <div *ngIf="!error" class="surface-card table-card">
-          <div class="table-responsive">
-            <p-table
-              [value]="cerList"
-              [loading]="loading"
-              [paginator]="true"
-              [rows]="pageSize"
-              [totalRecords]="totalRecords"
-              [lazy]="true"
-              (onLazyLoad)="loadCERList($event)"
-              responsiveLayout="scroll"
-              [rowHover]="true"
-              selectionMode="single"
-              [(selection)]="selectedCERFromTable"
-              (onRowSelect)="onRowSelect($event)"
-              [tableStyle]="{ 'min-width': '48rem' }"
-            >
-              <ng-template pTemplate="caption">
-                <span class="sr-only">Elenco dei codici del Catalogo Europeo dei Rifiuti</span>
-              </ng-template>
-              <ng-template pTemplate="header">
-                <tr>
-                  <th scope="col" style="width: 130px">Codice</th>
-                  <th scope="col">Descrizione</th>
-                  <th scope="col" style="width: 160px">Categoria</th>
-                  <th scope="col" style="width: 130px">Pericoloso</th>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="body" let-cer>
-                <tr [pSelectableRow]="cer">
-                  <td>
-                    <span class="cell-mono">{{ cer.code }}</span>
-                  </td>
-                  <td>{{ cer.description }}</td>
-                  <td>{{ cer.category }}</td>
-                  <td>
-                    <p-tag
-                      *ngIf="cer.isPericoloso"
-                      value="Pericoloso"
-                      severity="danger"
-                      [rounded]="true"
-                    />
-                    <p-tag
-                      *ngIf="!cer.isPericoloso"
-                      value="Non pericoloso"
-                      severity="success"
-                      [rounded]="true"
-                    />
-                  </td>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="emptymessage">
-                <tr>
-                  <td colspan="4">
-                    <div class="empty-state">
-                      <i class="pi pi-search empty-state__icon" aria-hidden="true"></i>
-                      <p class="empty-state__title">Nessun codice CER trovato</p>
-                      <p>Modifica i filtri o prova un altro termine di ricerca.</p>
-                    </div>
-                  </td>
-                </tr>
-              </ng-template>
-            </p-table>
-          </div>
+          <p-table
+            [styleClass]="
+              'p-datatable-sm lista-telefono' + (cerList.length === 0 ? ' senza-righe' : '')
+            "
+            [value]="cerList"
+            [loading]="loading"
+            [paginator]="true"
+            [alwaysShowPaginator]="false"
+            [rows]="pageSize"
+            [totalRecords]="totalRecords"
+            [lazy]="true"
+            (onLazyLoad)="loadCERList($event)"
+            [rowHover]="true"
+            selectionMode="single"
+            [(selection)]="selectedCERFromTable"
+            (onRowSelect)="onRowSelect($event)"
+          >
+            <ng-template pTemplate="caption">
+              <span class="sr-only">Elenco dei codici del Catalogo Europeo dei Rifiuti</span>
+            </ng-template>
+            <ng-template pTemplate="header">
+              <tr>
+                <th scope="col" class="num-col" style="width: 9rem">Codice</th>
+                <th scope="col">Descrizione</th>
+                <th scope="col" class="num-col" style="width: 7rem">Categoria</th>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-cer>
+              <tr [pSelectableRow]="cer">
+                <td class="num-col">
+                  <span class="cell-mono"
+                    >{{ codiceSenzaAsterisco(cer.code)
+                    }}<span
+                      class="cer-segno"
+                      [attr.aria-hidden]="cer.isPericoloso ? 'true' : null"
+                      >{{ cer.isPericoloso ? '*' : '' }}</span
+                    ></span
+                  >
+                </td>
+                <td class="m2">
+                  {{ cer.description }}
+                  <span *ngIf="cer.isPericoloso" class="pillola-pericoloso">Pericoloso</span>
+                </td>
+                <td class="num-col m-hide">{{ cer.category }}</td>
+              </tr>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+              <tr>
+                <td colspan="3">
+                  <div class="empty-state">
+                    <i class="pi pi-search empty-state__icon" aria-hidden="true"></i>
+                    <p class="empty-state__title">Nessun codice CER trovato</p>
+                    <p>Modifica i filtri o prova un altro termine di ricerca.</p>
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
         </div>
       </div>
 
@@ -212,12 +200,7 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
               <span
                 ><strong class="cell-mono">{{ cer.code }}</strong> — {{ cer.description }}</span
               >
-              <p-tag
-                *ngIf="cer.isPericoloso"
-                value="Pericoloso"
-                severity="danger"
-                [rounded]="true"
-              />
+              <span *ngIf="cer.isPericoloso" class="pillola-pericoloso">Pericoloso</span>
             </div>
           </ng-template>
         </p-autoComplete>
@@ -274,6 +257,32 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
         color: var(--text-primary);
       }
 
+      /* Il segno del pericoloso: asterisco del codice in coda, con lo spazio riservato anche
+         ai non pericolosi, cosi' le cifre restano incolonnate a destra. */
+      .cer-segno {
+        display: inline-block;
+        width: 1ch;
+        text-align: left;
+        color: var(--stato-err-segno);
+      }
+
+      /* Pillola «Pericoloso»: tinta err tenue, inchiostro dello stesso tono, 22 px. */
+      .pillola-pericoloso {
+        display: inline-flex;
+        align-items: center;
+        flex: none;
+        height: 22px;
+        margin-left: var(--spacing-sm);
+        padding: 0 8px;
+        border-radius: var(--radius-sm);
+        background: var(--stato-err-bg);
+        color: var(--stato-err-ink);
+        font-size: 12px;
+        font-weight: var(--font-weight-medium);
+        white-space: nowrap;
+        vertical-align: middle;
+      }
+
       .cer-suggestion {
         display: flex;
         justify-content: space-between;
@@ -299,6 +308,22 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
         .p-datatable .p-datatable-tbody > tr.p-selectable-row:hover {
           cursor: pointer;
         }
+        .p-datatable .p-datatable-tbody > tr > td.num-col .cell-mono {
+          white-space: nowrap;
+        }
+      }
+
+      /* Telefono: righe a due linee (codice sopra, descrizione sotto), il codice a sinistra. */
+      @media (max-width: 640px) {
+        :host ::ng-deep .p-datatable.lista-telefono td.num-col {
+          text-align: left;
+        }
+        .pillola-pericoloso {
+          margin-left: 0;
+          margin-top: var(--spacing-xs);
+          display: flex;
+          width: fit-content;
+        }
       }
     `,
   ],
@@ -322,7 +347,7 @@ export class CerSearchComponent implements OnInit {
   totalRecords = 0
   pageSize = 20
   currentPage = 1
-  private lastLoadEvent: any = { first: 0, rows: 20 }
+  private lastLoadEvent: { first: number; rows: number } = { first: 0, rows: 20 }
 
   categoryOptions = [
     { label: 'Carta e Cartone', value: 'CARTA' },
@@ -339,26 +364,33 @@ export class CerSearchComponent implements OnInit {
 
   constructor(private cerService: CerService) {}
 
+  /** Il codice senza l'asterisco finale: il segno si disegna a parte (`cer-segno`). */
+  codiceSenzaAsterisco(code: string): string {
+    return code.replace(/\*+$/, '')
+  }
+
   ngOnInit(): void {
     if (!this.compactMode) {
       this.loadCERList({ first: 0, rows: this.pageSize })
     }
   }
 
-  loadCERList(event: any): void {
+  loadCERList(event: { first?: number | null; rows?: number | null }): void {
     this.loading = true
     this.error = false
-    this.lastLoadEvent = event
-    const page = Math.floor(event.first / event.rows) + 1
+    const first = event.first ?? 0
+    const rows = event.rows ?? this.pageSize
+    this.lastLoadEvent = { first, rows }
+    const page = Math.floor(first / rows) + 1
     this.currentPage = page
 
     let observable
     if (this.onlyPericolosi) {
-      observable = this.cerService.getCERPericolosi(page, event.rows)
+      observable = this.cerService.getCERPericolosi(page, rows)
     } else if (this.selectedCategory) {
-      observable = this.cerService.getCERByCategory(this.selectedCategory, page, event.rows)
+      observable = this.cerService.getCERByCategory(this.selectedCategory, page, rows)
     } else {
-      observable = this.cerService.getCERList(page, event.rows)
+      observable = this.cerService.getCERList(page, rows)
     }
 
     observable.subscribe({
@@ -399,7 +431,7 @@ export class CerSearchComponent implements OnInit {
     this.cerSelected.emit(event.value)
   }
 
-  onRowSelect(event: any): void {
+  onRowSelect(event: { data?: CER | CER[] }): void {
     const cer = event.data as CER
     const searchResult: CERSearchResult = {
       code: cer.code,
