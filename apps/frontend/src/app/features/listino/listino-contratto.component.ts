@@ -103,6 +103,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
           label="Provvigioni e sconti"
           icon="pi pi-percentage"
           [outlined]="true"
+          severity="secondary"
           size="small"
           (onClick)="provvigioniAperte.set(true)"
           data-testid="listino-provvigioni-sconti"
@@ -140,6 +141,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
               <p-button
                 label="Nuova riga"
                 icon="pi pi-plus"
+                styleClass="wf-primario"
                 (onClick)="nuovaRiga()"
                 data-testid="listino-nuova-riga"
               />
@@ -147,6 +149,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
                 label="Copia da un altro elenco"
                 icon="pi pi-copy"
                 [outlined]="true"
+                severity="secondary"
                 (onClick)="copiaAperta.set(true)"
                 data-testid="listino-copia"
               />
@@ -154,6 +157,7 @@ import { RigheTavolaComponent } from './righe-tavola.component'
                 label="Aggiungi righe da un altro elenco"
                 icon="pi pi-clone"
                 [outlined]="true"
+                severity="secondary"
                 (onClick)="aggiungiAperto.set(true)"
                 data-testid="listino-aggiungi-righe"
               />
@@ -227,10 +231,6 @@ import { RigheTavolaComponent } from './righe-tavola.component'
   `,
   styles: [
     `
-      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
-      .pagina {
-        padding: var(--spacing-lg) 0;
-      }
       .indietro {
         display: inline-flex;
         gap: 0.4rem;
@@ -251,13 +251,13 @@ import { RigheTavolaComponent } from './righe-tavola.component'
       }
       .colonne {
         display: grid;
-        grid-template-columns: minmax(16rem, 22rem) 1fr;
+        grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
         gap: 1rem;
         margin-top: 1rem;
       }
       @media (max-width: 900px) {
         .colonne {
-          grid-template-columns: 1fr;
+          grid-template-columns: minmax(0, 1fr);
         }
       }
     `,
