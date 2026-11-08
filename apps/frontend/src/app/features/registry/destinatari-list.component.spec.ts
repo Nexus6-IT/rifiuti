@@ -3,6 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { DestinatariListComponent } from './destinatari-list.component'
+import { apriMenuRiga, chiudiMenuRiga, scegliVoceRiga } from '../clienti/tabelle/azioni-test-utils'
 import { RegistryService } from './registry.service'
 import { AuthService } from '../../core/services/auth.service'
 import { Destinatario } from '../../shared/models/registry.model'
@@ -278,9 +279,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
   it('un VIEWER non vede le azioni Modifica/Elimina sulla riga', () => {
     creaComponente('VIEWER')
 
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
-    ).toBeNull()
+    expect(fixture.nativeElement.querySelector('[data-testid="destinatari-azioni-d1"]')).toBeNull()
     expect(fixture.nativeElement.querySelector('[data-testid="destinatari-elimina-d1"]')).toBeNull()
   })
 
@@ -291,7 +290,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
       fixture.nativeElement.querySelector('[data-testid="destinatari-nuovo-button"]')
     ).toBeTruthy()
     expect(
-      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
+      fixture.nativeElement.querySelector('[data-testid="destinatari-azioni-d1"]')
     ).toBeTruthy()
   })
 })
@@ -371,6 +370,7 @@ describe('DestinatariListComponent — ditte, codice fiscale e sedi', () => {
 
   afterEach(() => {
     fixture.destroy()
+    chiudiMenuRiga()
     document.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
   })
 
@@ -425,13 +425,12 @@ describe('DestinatariListComponent — ditte, codice fiscale e sedi', () => {
     expect(tid('destinatari-da-verificare-r2')).toBeNull()
   })
 
-  it('il pulsante "Sedi (n)" mostra il numero di sedi e apre il dialog della ditta (clic reale)', () => {
-    const bottone =
-      tid('destinatari-sedi-r1')!.querySelector('button') ?? tid('destinatari-sedi-r1')!
-    expect(bottone.textContent).toContain('Sedi (3)')
-    expect(tid('destinatari-sedi-r2')!.textContent).toContain('Sedi (1)')
-    ;(bottone as HTMLElement).click()
-    fixture.detectChanges()
+  it('«Sedi (n)» sta nel menu ⋯ con il numero di sedi e apre il dialog della ditta (clic reale)', async () => {
+    expect(await apriMenuRiga(fixture, tid('destinatari-row-r1')!)).toContain('Sedi (3)')
+    chiudiMenuRiga()
+    expect(await apriMenuRiga(fixture, tid('destinatari-row-r2')!)).toContain('Sedi (1)')
+    chiudiMenuRiga()
+    await scegliVoceRiga(fixture, tid('destinatari-row-r1')!, 'Sedi')
 
     expect(registryService.getDitta).toHaveBeenCalledOnceWith('dit1')
     expect(document.querySelector('[data-testid="sedi-ditta-dialog"]')).toBeTruthy()
