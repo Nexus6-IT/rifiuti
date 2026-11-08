@@ -50,7 +50,7 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
       <!-- KPI per gravità: una sola striscia divisa, lo stato è la parola e il pallino -->
       <div
         *ngIf="!loading() && !error() && loaded()"
-        class="striscia mb-4"
+        class="striscia striscia-divisa mb-4"
         role="group"
         aria-label="Anomalie per gravità"
       >
@@ -211,72 +211,6 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
       }
       .empty-state__icon--success {
         color: var(--color-success);
-      }
-      .striscia {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        background: var(--surface-card);
-        border: 1px solid var(--surface-border);
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-      }
-      .cella {
-        display: flex;
-        flex-direction: column;
-        padding: 14px 16px;
-        border-left: 1px solid var(--surface-border);
-        min-width: 0;
-      }
-      .cella:first-child {
-        border-left: 0;
-      }
-      .cella__l {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 13px;
-        color: var(--text-secondary);
-      }
-      .cella__v {
-        margin-top: 4px;
-        font-size: 30px;
-        line-height: 1.1;
-        font-weight: var(--font-weight-medium);
-        letter-spacing: -0.02em;
-        color: var(--text-primary);
-      }
-      .cella__h {
-        margin-top: 2px;
-        font-size: var(--font-size-xs);
-        color: var(--text-tertiary);
-      }
-      .pallino {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        flex: none;
-        background: var(--text-tertiary);
-      }
-      .tono-todo .pallino {
-        background: var(--text-primary);
-      }
-      .tono-warn .pallino {
-        background: var(--stato-warn-ink);
-      }
-      .tono-err .pallino {
-        background: var(--stato-err-ink);
-      }
-      @media (max-width: 575.98px) {
-        .striscia {
-          grid-template-columns: minmax(0, 1fr);
-        }
-        .cella {
-          border-left: 0;
-          border-top: 1px solid var(--surface-border);
-        }
-        .cella:first-child {
-          border-top: 0;
-        }
       }
       .mb-4 {
         margin-bottom: var(--spacing-xl);

@@ -896,7 +896,7 @@ describe('MudComponent', () => {
       )
     })
 
-    it('l interruttore ha lo stato per il lettore e in parola accanto («No» / «Sì»)', async () => {
+    it('l interruttore ha lo stato per il lettore e in parola accanto («Tenuta» / «Non tenuta»)', async () => {
       crea()
       fixture.detectChanges()
       await fixture.whenStable()
@@ -909,11 +909,36 @@ describe('MudComponent', () => {
           .querySelector('[data-testid="mud-obbligo-stato"]')
           ?.textContent?.trim()
       expect(input.getAttribute('aria-checked')).toBe('false')
-      expect(parola()).toBe('No')
+      expect(parola()).toBe('Tenuta')
       input.click()
       fixture.detectChanges()
       expect(input.getAttribute('aria-checked')).toBe('true')
-      expect(parola()).toBe('Sì')
+      expect(parola()).toBe('Non tenuta')
+    })
+
+    it('a 360 px la parola di stato sta su una riga e l etichetta resta accanto', async () => {
+      crea()
+      const host = fixture.nativeElement as HTMLElement
+      host.style.display = 'block'
+      host.style.width = '360px'
+      document.body.appendChild(host)
+      fixture.detectChanges()
+      await fixture.whenStable()
+      fixture.detectChanges()
+      const input = host.querySelector<HTMLInputElement>('#mud-non-dovuto')!
+      input.click()
+      fixture.detectChanges()
+      const parola = host.querySelector<HTMLElement>('[data-testid="mud-obbligo-stato"]')!
+      const riga = host.querySelector<HTMLElement>('.mud-obbligo')!
+      const label = host.querySelector<HTMLElement>('label[for="mud-non-dovuto"]')!
+      expect(parola.textContent!.trim()).toBe('Non tenuta')
+      expect(parola.getBoundingClientRect().height).toBeLessThan(
+        parseFloat(getComputedStyle(parola).lineHeight) * 1.5
+      )
+      expect(
+        Math.abs(label.getBoundingClientRect().top - parola.getBoundingClientRect().top)
+      ).toBeLessThan(8)
+      expect(riga.scrollWidth).toBeLessThanOrEqual(riga.clientWidth)
     })
 
     it('la parola di stato sta fra l interruttore e l etichetta, che resta a destra', async () => {

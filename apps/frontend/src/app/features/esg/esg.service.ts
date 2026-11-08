@@ -11,7 +11,7 @@ export interface EsgByCer {
   co2AvoidedKg: number
 }
 
-/** Report ESG / CO2 restituito dal backend. */
+/** Report ESG / CO₂ restituito dal backend. */
 export interface EsgReport {
   period: { from: string; to: string } | null
   totals: {
@@ -26,8 +26,8 @@ export interface EsgReport {
 }
 
 /**
- * Client per il report ESG / CO2: indicatori ambientali aggregati
- * (tasso di recupero, kg deviati da discarica, CO2 evitata) con dettaglio per CER.
+ * Client per il report ESG / CO₂: indicatori ambientali aggregati
+ * (tasso di recupero, kg deviati da discarica, CO₂ evitata) con dettaglio per CER.
  */
 @Injectable({ providedIn: 'root' })
 export class EsgService {

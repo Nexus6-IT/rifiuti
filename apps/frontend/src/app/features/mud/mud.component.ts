@@ -223,7 +223,7 @@ function oggiIso(): string {
         <div class="mud-obbligo">
           <p-inputSwitch inputId="mud-non-dovuto" [(ngModel)]="obbligoNonDovuto"></p-inputSwitch>
           <span class="mud-obbligo__stato" data-testid="mud-obbligo-stato" aria-hidden="true">{{
-            obbligoNonDovuto ? 'Sì' : 'No'
+            obbligoNonDovuto ? 'Non tenuta' : 'Tenuta'
           }}</span>
           <label for="mud-non-dovuto">Questa azienda non è tenuta a presentare il MUD</label>
         </div>
@@ -715,8 +715,16 @@ function oggiIso(): string {
         align-items: center;
         gap: var(--spacing-sm);
       }
+      .mud-obbligo {
+        flex-wrap: nowrap;
+        align-items: flex-start;
+      }
+      .mud-obbligo label {
+        flex: 1 1 0;
+        min-width: 0;
+      }
       .mud-obbligo__stato {
-        min-width: 1.5rem;
+        white-space: nowrap;
         font-weight: var(--font-weight-semibold);
         color: var(--text-primary);
       }
