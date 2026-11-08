@@ -14,6 +14,7 @@ import { ToastService } from '../../core/services/toast.service'
 import { RegistryService } from '../registry/registry.service'
 import { CerService } from '../cer/cer.service'
 import { PaginatedResponse } from '../../shared/models/registry.model'
+import { apriMenuRiga, chiudiMenuRiga, scegliVoceRiga } from '../clienti/tabelle/azioni-test-utils'
 
 describe('ContractsListComponent — modifica ed eliminazione', () => {
   let fixture: ComponentFixture<ContractsListComponent>
@@ -83,6 +84,8 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
   const pulsante = (etichetta: string) =>
     document.body.querySelector(`button[aria-label="${etichetta}"]`) as HTMLButtonElement | null
 
+  const riga = (id: string) => document.body.querySelector(`[data-testid="contratti-riga-${id}"]`)!
+
   const caricate = () => contracts.list.calls.count()
 
   beforeEach(() => {
@@ -129,18 +132,20 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
     fixture.detectChanges()
   })
 
+  afterEach(() => chiudiMenuRiga())
+
   describe('pulsanti', () => {
     it('Modifica disabilitato se modificabili è vuoto, col tooltip del motivo', () => {
       expect(pulsante('Modifica il contratto CTR-2026-001')?.disabled).toBeFalse()
       expect(pulsante('Modifica il contratto CTR-2026-003')?.disabled).toBeFalse()
       expect(
         pulsante(
-          'Modifica il contratto CTR-2026-002: Riporta il contratto in bozza per modificarlo'
+          'Modifica il contratto CTR-2026-002, non disponibile: Riporta il contratto in bozza per modificarlo'
         )?.disabled
       ).toBeTrue()
       expect(
         pulsante(
-          'Modifica il contratto CTR-2026-004: Un contratto scaduto o cessato non si modifica'
+          'Modifica il contratto CTR-2026-004, non disponibile: Un contratto scaduto o cessato non si modifica'
         )?.disabled
       ).toBeTrue()
       expect(component.tooltipModifica(inApprovazione)).toBe(
@@ -160,11 +165,11 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
 
     it("il motivo di Modifica disabilitato è nell'etichetta accessibile (letto dal DOM)", () => {
       const dis = pulsante(
-        'Modifica il contratto CTR-2026-002: Riporta il contratto in bozza per modificarlo'
+        'Modifica il contratto CTR-2026-002, non disponibile: Riporta il contratto in bozza per modificarlo'
       )
       expect(dis?.disabled).toBeTrue()
       const cessatoBtn = pulsante(
-        'Modifica il contratto CTR-2026-004: Un contratto scaduto o cessato non si modifica'
+        'Modifica il contratto CTR-2026-004, non disponibile: Un contratto scaduto o cessato non si modifica'
       )
       expect(cessatoBtn?.disabled).toBeTrue()
       // abilitato: etichetta senza motivo
@@ -173,17 +178,30 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
 
     it('un click su Modifica disabilitato non chiama getById', () => {
       pulsante(
-        'Modifica il contratto CTR-2026-002: Riporta il contratto in bozza per modificarlo'
+        'Modifica il contratto CTR-2026-002, non disponibile: Riporta il contratto in bozza per modificarlo'
       )!.click()
       fixture.detectChanges()
       expect(contracts.getById).not.toHaveBeenCalled()
     })
 
-    it('Elimina compare solo se eliminabile', () => {
-      expect(pulsante('Elimina il contratto CTR-2026-001')).not.toBeNull()
-      expect(pulsante('Elimina il contratto CTR-2026-002')).not.toBeNull()
-      expect(pulsante('Elimina il contratto CTR-2026-003')).toBeNull()
-      expect(pulsante('Elimina il contratto CTR-2026-004')).toBeNull()
+    it('Elimina compare nel menu ⋯ solo se eliminabile', async () => {
+      expect(await apriMenuRiga(fixture, riga('id-1'))).toContain('Elimina')
+      chiudiMenuRiga()
+      expect(await apriMenuRiga(fixture, riga('id-2'))).toContain('Elimina')
+      chiudiMenuRiga()
+      expect(await apriMenuRiga(fixture, riga('id-3'))).not.toContain('Elimina')
+      chiudiMenuRiga()
+      expect(await apriMenuRiga(fixture, riga('id-4'))).not.toContain('Elimina')
+    })
+
+    it('Cambia stato apre il dialog del contratto; disabilitato senza transizioni', async () => {
+      await scegliVoceRiga(fixture, riga('id-1'), 'Cambia stato')
+      expect(component.displayStatus).toBeTrue()
+      expect(component.selectedContract()?.id).toBe('id-1')
+      component.displayStatus = false
+      chiudiMenuRiga()
+      const voci = await apriMenuRiga(fixture, riga('id-4'))
+      expect(voci[0]).toContain('Non disponibile')
     })
   })
 
@@ -265,23 +283,22 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
   })
 
   describe('eliminazione', () => {
-    const apriConferma = () => {
-      pulsante('Elimina il contratto CTR-2026-001')!.click()
-      fixture.detectChanges()
+    const apriConferma = async () => {
+      await scegliVoceRiga(fixture, riga('id-1'), 'Elimina')
     }
     const bottoneConferma = (classe: string) =>
       document.body.querySelector(`.p-confirm-dialog ${classe}`) as HTMLButtonElement | null
 
-    it('chiede conferma col numero del contratto, senza id', () => {
-      apriConferma()
+    it('chiede conferma col numero del contratto, senza id', async () => {
+      await apriConferma()
       const testo = document.body.querySelector('.p-confirm-dialog-message')?.textContent ?? ''
       expect(testo).toContain('CTR-2026-001')
       expect(testo).not.toContain('id-1')
       expect(contracts.elimina).not.toHaveBeenCalled()
     })
 
-    it('se confermata chiama elimina con la versione e ricarica la lista', () => {
-      apriConferma()
+    it('se confermata chiama elimina con la versione e ricarica la lista', async () => {
+      await apriConferma()
       const prima = caricate()
       bottoneConferma('.p-confirm-dialog-accept')!.click()
       fixture.detectChanges()
@@ -290,44 +307,50 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       expect(caricate()).toBe(prima + 1)
     })
 
-    it('il focus iniziale della conferma è su Annulla', () => {
+    it('il focus iniziale della conferma è su Annulla', async () => {
       const confirm = spyOn(
         fixture.debugElement.injector.get(ConfirmationService),
         'confirm'
       ).and.callThrough()
-      apriConferma()
+      await apriConferma()
       expect(confirm.calls.mostRecent().args[0].defaultFocus).toBe('reject')
     })
 
-    it('durante la chiamata il cestino è disabilitato', () => {
+    it('durante la chiamata il cestino è disabilitato', async () => {
       const risposta = new Subject<void>()
       contracts.elimina.and.returnValue(risposta)
-      apriConferma()
+      await apriConferma()
       bottoneConferma('.p-confirm-dialog-accept')!.click()
       fixture.detectChanges()
       expect(component.eliminando()).toBe('id-1')
-      expect(pulsante('Elimina il contratto CTR-2026-001')?.disabled).toBeTrue()
+      await apriMenuRiga(fixture, riga('id-1'))
+      const voceElimina = Array.from(
+        document.body.querySelectorAll<HTMLElement>('.p-menu [role="menuitem"]')
+      ).find(v => v.textContent?.trim().startsWith('Elimina'))!
+      expect(
+        voceElimina.getAttribute('aria-disabled') ?? voceElimina.getAttribute('data-p-disabled')
+      ).toBe('true')
       risposta.next()
       risposta.complete()
       fixture.detectChanges()
       expect(component.eliminando()).toBeNull()
     })
 
-    it('se annullata non chiama elimina', () => {
-      apriConferma()
+    it('se annullata non chiama elimina', async () => {
+      await apriConferma()
       bottoneConferma('.p-confirm-dialog-reject')!.click()
       fixture.detectChanges()
       expect(contracts.elimina).not.toHaveBeenCalled()
     })
 
-    it('dopo un 409 mostra il messaggio del backend e ricarica la lista', () => {
+    it('dopo un 409 mostra il messaggio del backend e ricarica la lista', async () => {
       contracts.elimina.and.returnValue(
         errore(409, {
           message: 'Il contratto è stato modificato nel frattempo.',
           error: 'CONTRATTO_MODIFICATO_NEL_FRATTEMPO',
         })
       )
-      apriConferma()
+      await apriConferma()
       const prima = caricate()
       bottoneConferma('.p-confirm-dialog-accept')!.click()
       fixture.detectChanges()
@@ -335,9 +358,9 @@ describe('ContractsListComponent — modifica ed eliminazione', () => {
       expect(caricate()).toBe(prima + 1)
     })
 
-    it('dopo un 404 ricarica la lista', () => {
+    it('dopo un 404 ricarica la lista', async () => {
       contracts.elimina.and.returnValue(errore(404, { message: 'Contratto non trovato' }))
-      apriConferma()
+      await apriConferma()
       const prima = caricate()
       bottoneConferma('.p-confirm-dialog-accept')!.click()
       fixture.detectChanges()
