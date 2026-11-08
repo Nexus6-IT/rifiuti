@@ -193,7 +193,7 @@ import { EsgReport, EsgService } from './esg.service'
               </ng-template>
               <ng-template pTemplate="body" let-row>
                 <tr>
-                  <td>
+                  <td class="cer-codice">
                     <strong>{{ row.cerCode }}</strong>
                   </td>
                   <td class="text-right">{{ row.recoveryKg | number: '1.0-0' }}</td>
@@ -220,6 +220,10 @@ import { EsgReport, EsgService } from './esg.service'
   `,
   styles: [
     `
+      /* Il codice CER («13 02 05*») non va a capo: a 360 px usciva su tre righe. */
+      .cer-codice {
+        white-space: nowrap;
+      }
       .esg-section-title {
         font-family: var(--font-display);
         font-size: var(--font-size-lg);

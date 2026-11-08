@@ -87,6 +87,7 @@ const STATUS_SEVERITY: Record<
             styleClass="wf-primario"
             (onClick)="apriCreazione()"
             ariaLabel="Crea un nuovo contratto"
+            data-testid="contratti-nuovo"
           />
         </div>
       </header>

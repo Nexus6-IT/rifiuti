@@ -78,7 +78,7 @@ const STATUS_SEVERITY: Record<string, 'success' | 'info' | 'warning' | 'danger' 
 
 /** Etichette in italiano per i piani di abbonamento noti. */
 const TIER_LABELS: Record<string, string> = {
-  TRIAL: 'Trial',
+  TRIAL: 'Prova',
   PROFESSIONAL: 'Professional',
   ENTERPRISE: 'Enterprise',
 }
@@ -238,12 +238,12 @@ interface TenantFormData {
                 </td>
                 <td class="num-col m2">
                   P.IVA <span class="mono">{{ t.partitaIva }}</span
-                  ><span class="solo-tel"> · {{ t.city }} ({{ t.province }})</span
+                  ><span class="solo-tel"> · {{ luogo(t) }}</span
                   ><span class="solo-tel" *ngIf="t.subscriptionStatus === 'SUSPENDED'">
                     · Sospeso</span
                   >
                 </td>
-                <td class="m-hide">{{ t.city }} ({{ t.province }})</td>
+                <td class="m-hide">{{ luogo(t) }}</td>
                 @if (isSuperAdmin()) {
                   <td class="m-hide">{{ tierLabel(t.subscriptionTier) }}</td>
                   <td class="m-hide">
@@ -945,6 +945,14 @@ export class TenantAdminComponent implements OnInit {
   statusSeverity(s: string): 'success' | 'info' | 'warning' | 'danger' | 'secondary' {
     return STATUS_SEVERITY[s] ?? 'info'
   }
+  /** «Città (PR)»; un dato che manca e' un trattino, mai «()» o «Roma ()». */
+  luogo(t: { city?: string | null; province?: string | null }): string {
+    const citta = t.city?.trim()
+    const prov = t.province?.trim()
+    if (citta && prov) return `${citta} (${prov})`
+    return citta || (prov ? `(${prov})` : '—')
+  }
+
   tierLabel(t: string): string {
     return TIER_LABELS[t] ?? t
   }

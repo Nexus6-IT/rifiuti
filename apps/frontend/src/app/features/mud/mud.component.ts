@@ -148,6 +148,7 @@ function oggiIso(): string {
           <div class="mud-toolbar__actions">
             <p-button
               label="Genera report"
+              styleClass="wf-primario"
               icon="pi pi-chart-bar"
               [loading]="loadingReport()"
               [disabled]="!selectedYear"
@@ -223,7 +224,11 @@ function oggiIso(): string {
       <!-- Obbligo del MUD (A-W-10): solo chi può modificarlo secondo il backend -->
       <section *ngIf="obbligo()?.puoModificare" class="surface-card mb-4">
         <div class="mud-obbligo">
-          <p-inputSwitch inputId="mud-non-dovuto" [(ngModel)]="obbligoNonDovuto"></p-inputSwitch>
+          <p-inputSwitch
+            inputId="mud-non-dovuto"
+            [(ngModel)]="obbligoNonDovuto"
+            data-testid="mud-obbligo-interruttore"
+          ></p-inputSwitch>
           <span class="mud-obbligo__stato" data-testid="mud-obbligo-stato" aria-hidden="true">{{
             obbligoNonDovuto ? 'Non tenuta' : 'Tenuta'
           }}</span>

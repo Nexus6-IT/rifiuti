@@ -246,6 +246,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
           <p-button
             label="Salva certificato"
+            styleClass="wf-primario"
             icon="pi pi-save"
             [loading]="saving()"
             [disabled]="!canSubmit()"

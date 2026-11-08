@@ -323,7 +323,8 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               <div class="detail-field">
                 <span class="detail-label">Numero FIR ufficiale</span>
                 <span
-                  class="detail-value cell-mono"
+                  class="detail-value"
+                  [class.cell-mono]="!!f.rentriNumeroFir"
                   data-testid="fir-detail-rentri-numero-ufficiale"
                 >
                   {{ f.rentriNumeroFir || 'Non ancora assegnato' }}

@@ -58,6 +58,7 @@ import { CampoDataComponent } from '../../shared/components/campo-data.component
         <p-button
           *ngIf="puoOperare()"
           label="Nuovo accesso"
+          styleClass="wf-primario"
           icon="pi pi-plus"
           (onClick)="apriNuovo($event)"
           data-testid="ac-nuovo"

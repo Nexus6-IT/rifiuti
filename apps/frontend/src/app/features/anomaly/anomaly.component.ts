@@ -192,8 +192,8 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
                 </td>
                 <td>{{ typeLabel(a.type) }}</td>
                 <td>{{ a.message }}</td>
-                <td>{{ a.firNumber || '-' }}</td>
-                <td>{{ a.cerCode || '-' }}</td>
+                <td>{{ a.firNumber || '—' }}</td>
+                <td>{{ a.cerCode || '—' }}</td>
               </tr>
             </ng-template>
           </p-table>
