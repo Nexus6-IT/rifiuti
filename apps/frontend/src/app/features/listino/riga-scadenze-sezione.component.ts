@@ -29,6 +29,7 @@ import { leggiIntero, leggiNumero } from '../../shared/utils/numero-modificabile
 import { RigaCampoComponent } from './riga-campo.component'
 import { RigaForm } from './riga-modulo'
 import { OPZIONI_PERIODO_SCADENZE, PERIODI_EXTRA } from './vocabolario-listino'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /** Una scadenza come si scrive nel dialog: giorno, mese e anno (vuoto = ogni anno). */
 interface ScadenzaTesto {
@@ -53,7 +54,14 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
 @Component({
   selector: 'app-riga-scadenze-sezione',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, ButtonModule, InputTextModule, RigaCampoComponent],
+  imports: [
+    CampoDataComponent,
+    CommonModule,
+    ReactiveFormsModule,
+    ButtonModule,
+    InputTextModule,
+    RigaCampoComponent,
+  ],
   template: `
     <fieldset class="gruppo" *ngIf="attiva()" data-testid="riga-sezione-scadenze">
       <legend>Scadenze</legend>
@@ -81,12 +89,11 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
             campo="periodoExtraDal"
             [errori]="stato.erroriDi('periodoExtraDal')"
           >
-            <input
-              pInputText
-              type="date"
-              id="riga-periodo-extra-dal"
+            <app-campo-data
+              inputId="riga-periodo-extra-dal"
               formControlName="periodoExtraDal"
               data-testid="riga-periodo-extra-dal"
+              [piena]="true"
             />
           </app-riga-campo>
           <app-riga-campo
@@ -95,12 +102,11 @@ const intero = (t: string): number => leggiIntero(t).valore ?? 0
             campo="periodoExtraAl"
             [errori]="stato.erroriDi('periodoExtraAl')"
           >
-            <input
-              pInputText
-              type="date"
-              id="riga-periodo-extra-al"
+            <app-campo-data
+              inputId="riga-periodo-extra-al"
               formControlName="periodoExtraAl"
               data-testid="riga-periodo-extra-al"
+              [piena]="true"
             />
           </app-riga-campo>
         </ng-container>

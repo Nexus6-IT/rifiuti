@@ -1,0 +1,81 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { ActivatedRoute, Router, provideRouter } from '@angular/router'
+import { of } from 'rxjs'
+import { PermissionStore } from '../../../../core/state/permission.store'
+import { PermissionDeniedComponent } from './permission-denied.component'
+
+/** Task 15 (bug 19): la pagina di accesso negato che il guard del super amministratore raggiunge. */
+describe('PermissionDeniedComponent (accesso negato)', () => {
+  let fixture: ComponentFixture<PermissionDeniedComponent>
+
+  const apri = (params: Record<string, string>) => {
+    TestBed.configureTestingModule({
+      imports: [PermissionDeniedComponent],
+      providers: [
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { queryParams: of(params) } },
+        { provide: PermissionStore, useValue: { permissions: () => [] } },
+      ],
+    })
+    fixture = TestBed.createComponent(PermissionDeniedComponent)
+    fixture.detectChanges()
+    return fixture.nativeElement as HTMLElement
+  }
+
+  it('dice quale pagina e quale ruolo, in italiano e con il nome del ruolo (non il codice)', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    const testo = el.textContent ?? ''
+    expect(testo).toContain('«Abbonamento»')
+    expect(testo).toContain('amministratore')
+    expect(el.querySelector('[data-testid="ruolo-attuale"]')?.textContent).toContain(
+      'Amministratore'
+    )
+    expect(testo).not.toMatch(/\bADMIN\b/)
+  })
+
+  it('non inventa contatti: nessun telefono, nessun support@, lo stesso «Contatta il supporto» del login (I8)', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    const testo = el.textContent ?? ''
+    expect(testo).not.toMatch(/\+39|1234|Chiama il supporto/)
+    expect(testo).not.toContain('support@wasteflow.it')
+    const link = el.querySelector<HTMLAnchorElement>('[data-testid="contatta-supporto"]')!
+    expect(link.getAttribute('href')).toBe('mailto:supporto@wasteflow.it')
+    expect(link.textContent?.toLowerCase()).toContain('contatta il supporto')
+  })
+
+  it("con lo store dei permessi vuoto non dice «Nessun permesso assegnato»: la sezione non c'e", () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    expect(el.textContent).not.toContain('Nessun permesso')
+    expect(el.querySelector('[data-testid="permessi-attuali"]')).toBeNull()
+  })
+
+  it('ha un solo h1 e nessun <main> annidato in quello della shell', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    expect(el.querySelectorAll('h1').length).toBe(1)
+    expect(el.querySelector('main')).toBeNull()
+  })
+
+  it('un solo bottone primario (arancio): «Vai alla dashboard»', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    const primari = el.querySelectorAll('.wf-primario')
+    expect(primari.length).toBe(1)
+    expect(primari[0].getAttribute('data-testid')).toBe('vai-alla-dashboard')
+  })
+
+  it("«Richiedi accesso» c'e solo se la pagina chiede un permesso, e porta a my-grants", () => {
+    const el = apri({ resource: 'Tabelle', role: 'OPERATOR', permission: 'fir:create:all' })
+    const bottone = el.querySelector('[data-testid="request-access-button"]') as HTMLElement
+    expect(bottone).not.toBeNull()
+    const router = TestBed.inject(Router)
+    const nav = spyOn(router, 'navigate').and.resolveTo(true)
+    bottone.click()
+    expect(nav).toHaveBeenCalledWith(['/permissions/my-grants'], {
+      queryParams: { richiedi: 'fir:create:all' },
+    })
+  })
+
+  it('dal guard SUPER_ADMIN (nessun permesso) il bottone non compare', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    expect(el.querySelector('[data-testid="request-access-button"]')).toBeNull()
+  })
+})

@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { DestinatariListComponent } from './destinatari-list.component'
+import { apriMenuRiga, chiudiMenuRiga, scegliVoceRiga } from '../clienti/tabelle/azioni-test-utils'
 import { RegistryService } from './registry.service'
 import { AuthService } from '../../core/services/auth.service'
 import { Destinatario } from '../../shared/models/registry.model'
@@ -110,6 +112,24 @@ describe('DestinatariListComponent — data di scadenza autorizzazione (facoltat
 
     const inviato = registryService.createDestinatario.calls.mostRecent().args[0]
     expect(inviato.scadenzaAutorizzazione).toBeUndefined()
+  })
+
+  it('la scadenza e un calendario in italiano: la data scritta arriva al form come AAAA-MM-GG', async () => {
+    component.editDestinatario(DESTINATARIO_ESISTENTE)
+    fixture.detectChanges()
+    // Due livelli di ngModel (il form e il calendario dentro il campo): due giri.
+    await fixture.whenStable()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(document.querySelector('label[for="dest-scad-autorizzazione"]')).not.toBeNull()
+    const campo = document.getElementById('dest-scad-autorizzazione') as HTMLInputElement
+    expect(campo.value).toBe('15/03/2027')
+    scriviCampoData(campo, '2028-01-31')
+    expect(component.formData.scadenzaAutorizzazione).toBe('2028-01-31')
+    scriviCampoData(campo, '')
+    expect(component.formData.scadenzaAutorizzazione).toBe('')
   })
 
   it('in modifica, precompila il campo con la scadenza esistente', () => {
@@ -278,9 +298,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
   it('un VIEWER non vede le azioni Modifica/Elimina sulla riga', () => {
     creaComponente('VIEWER')
 
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
-    ).toBeNull()
+    expect(fixture.nativeElement.querySelector('[data-testid="destinatari-azioni-d1"]')).toBeNull()
     expect(fixture.nativeElement.querySelector('[data-testid="destinatari-elimina-d1"]')).toBeNull()
   })
 
@@ -291,7 +309,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
       fixture.nativeElement.querySelector('[data-testid="destinatari-nuovo-button"]')
     ).toBeTruthy()
     expect(
-      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
+      fixture.nativeElement.querySelector('[data-testid="destinatari-azioni-d1"]')
     ).toBeTruthy()
   })
 })
@@ -371,6 +389,7 @@ describe('DestinatariListComponent — ditte, codice fiscale e sedi', () => {
 
   afterEach(() => {
     fixture.destroy()
+    chiudiMenuRiga()
     document.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
   })
 
@@ -425,13 +444,12 @@ describe('DestinatariListComponent — ditte, codice fiscale e sedi', () => {
     expect(tid('destinatari-da-verificare-r2')).toBeNull()
   })
 
-  it('il pulsante "Sedi (n)" mostra il numero di sedi e apre il dialog della ditta (clic reale)', () => {
-    const bottone =
-      tid('destinatari-sedi-r1')!.querySelector('button') ?? tid('destinatari-sedi-r1')!
-    expect(bottone.textContent).toContain('Sedi (3)')
-    expect(tid('destinatari-sedi-r2')!.textContent).toContain('Sedi (1)')
-    ;(bottone as HTMLElement).click()
-    fixture.detectChanges()
+  it('«Sedi (n)» sta nel menu ⋯ con il numero di sedi e apre il dialog della ditta (clic reale)', async () => {
+    expect(await apriMenuRiga(fixture, tid('destinatari-row-r1')!)).toContain('Sedi (3)')
+    chiudiMenuRiga()
+    expect(await apriMenuRiga(fixture, tid('destinatari-row-r2')!)).toContain('Sedi (1)')
+    chiudiMenuRiga()
+    await scegliVoceRiga(fixture, tid('destinatari-row-r1')!, 'Sedi')
 
     expect(registryService.getDitta).toHaveBeenCalledOnceWith('dit1')
     expect(document.querySelector('[data-testid="sedi-ditta-dialog"]')).toBeTruthy()

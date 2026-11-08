@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 import { RouterLink } from '@angular/router'
 import { VoceAttenzione } from '../attenzione.service'
 import { TonoStato } from '../../../shared/models/stati-fir'
-import { PillolaStatoComponent } from './pillola-stato.component'
+import { PillolaStatoComponent } from '../../../shared/components/pillola-stato.component'
 import { STILI_BLOCCO } from './dashboard-stili'
 
 const PAROLA_GRAVITA: Record<VoceAttenzione['gravita'], string> = {

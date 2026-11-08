@@ -373,9 +373,7 @@ const DOCS: Record<string, LegalDoc> = {
       .legal-version {
         font-size: 0.75rem;
         font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--color-danger);
+        color: var(--text-secondary);
         margin: 0 0 0.5rem;
       }
       .legal-title {

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
 import { TonoStato } from '../../../shared/models/stati-fir'
 import { CellaAnalisi } from './dashboard-dati'
-import { PillolaStatoComponent } from './pillola-stato.component'
+import { PillolaStatoComponent } from '../../../shared/components/pillola-stato.component'
 import { STILI_BLOCCO } from './dashboard-stili'
 
 /**

@@ -5,6 +5,7 @@ import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ClientiService } from '../clienti/clienti.service'
+import { inputDelCampoData } from '../../shared/testing/campo-data'
 import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { RegistroService } from '../registro/registro.service'
 import {
@@ -476,6 +477,25 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(g.dal).toBeUndefined()
     expect(g.al).toBeUndefined()
     expect(g.stati).toBeUndefined()
+  })
+
+  it('i filtri Dal e Al sono calendari in italiano: la lista si rilegge all uscita dal campo, non a ogni tasto', async () => {
+    await crea('OPERATOR', [riga(1)], 1, { dal: '2026-10-01' })
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(inputDelCampoData(q('filtro-dal'))!.value).toBe('01/10/2026')
+    expect(document.querySelector('label[for="dc-dal"]')).not.toBeNull()
+    expect(document.getElementById('dc-dal')).toBe(inputDelCampoData(q('filtro-dal')))
+    const chiamate = servizio.lista.calls.count()
+    const al = inputDelCampoData(q('filtro-al'))!
+    al.value = '31/10/2026'
+    al.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))
+    al.dispatchEvent(new Event('input', { bubbles: true }))
+    await stabilizza(fixture)
+    expect(servizio.lista.calls.count()).toBe(chiamate)
+    al.dispatchEvent(new Event('blur', { bubbles: true }))
+    await stabilizza(fixture)
+    expect(servizio.lista.calls.mostRecent().args[0]!.al).toBe('2026-10-31')
+    expect(servizio.lista.calls.mostRecent().args[0]!.dal).toBe('2026-10-01')
   })
 
   it('carica(): una nuova lettura annulla la richiesta precedente', async () => {

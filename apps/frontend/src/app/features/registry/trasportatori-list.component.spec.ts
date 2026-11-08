@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { TrasportatoriListComponent } from './trasportatori-list.component'
+import { apriMenuRiga, chiudiMenuRiga, scegliVoceRiga } from '../clienti/tabelle/azioni-test-utils'
 import { RegistryService } from './registry.service'
 import { AuthService } from '../../core/services/auth.service'
 import { Trasportatore } from '../../shared/models/registry.model'
@@ -110,6 +112,22 @@ describe('TrasportatoriListComponent — data di scadenza iscrizione (facoltativ
 
     const inviato = registryService.createTrasportatore.calls.mostRecent().args[0]
     expect(inviato.scadenzaIscrizione).toBeUndefined()
+  })
+
+  it('la scadenza e un calendario in italiano: la data scritta arriva al form come AAAA-MM-GG', async () => {
+    component.editTrasportatore(TRASPORTATORE_ESISTENTE)
+    fixture.detectChanges()
+    // Due livelli di ngModel (il form e il calendario dentro il campo): due giri.
+    await fixture.whenStable()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(document.querySelector('label[for="tra-scad-iscrizione"]')).not.toBeNull()
+    const campo = document.getElementById('tra-scad-iscrizione') as HTMLInputElement
+    expect(campo.value).toBe('15/03/2027')
+    scriviCampoData(campo, '2028-01-31')
+    expect(component.formData.scadenzaIscrizione).toBe('2028-01-31')
   })
 
   it('in modifica, precompila il campo con la scadenza esistente', () => {
@@ -282,7 +300,7 @@ describe('TrasportatoriListComponent — gating dei pulsanti in base al ruolo (V
     creaComponente('VIEWER')
 
     expect(
-      fixture.nativeElement.querySelector('[data-testid="trasportatori-modifica-t1"]')
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-azioni-t1"]')
     ).toBeNull()
     expect(
       fixture.nativeElement.querySelector('[data-testid="trasportatori-elimina-t1"]')
@@ -296,7 +314,7 @@ describe('TrasportatoriListComponent — gating dei pulsanti in base al ruolo (V
       fixture.nativeElement.querySelector('[data-testid="trasportatori-nuovo-button"]')
     ).toBeTruthy()
     expect(
-      fixture.nativeElement.querySelector('[data-testid="trasportatori-modifica-t1"]')
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-azioni-t1"]')
     ).toBeTruthy()
   })
 })
@@ -376,6 +394,7 @@ describe('TrasportatoriListComponent — ditte, codice fiscale e sedi', () => {
 
   afterEach(() => {
     fixture.destroy()
+    chiudiMenuRiga()
     document.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
   })
 
@@ -430,13 +449,12 @@ describe('TrasportatoriListComponent — ditte, codice fiscale e sedi', () => {
     expect(tid('trasportatori-da-verificare-r2')).toBeNull()
   })
 
-  it('il pulsante "Sedi (n)" mostra il numero di sedi e apre il dialog della ditta (clic reale)', () => {
-    const bottone =
-      tid('trasportatori-sedi-r1')!.querySelector('button') ?? tid('trasportatori-sedi-r1')!
-    expect(bottone.textContent).toContain('Sedi (3)')
-    expect(tid('trasportatori-sedi-r2')!.textContent).toContain('Sedi (1)')
-    ;(bottone as HTMLElement).click()
-    fixture.detectChanges()
+  it('«Sedi (n)» sta nel menu ⋯ con il numero di sedi e apre il dialog della ditta (clic reale)', async () => {
+    expect(await apriMenuRiga(fixture, tid('trasportatori-row-r1')!)).toContain('Sedi (3)')
+    chiudiMenuRiga()
+    expect(await apriMenuRiga(fixture, tid('trasportatori-row-r2')!)).toContain('Sedi (1)')
+    chiudiMenuRiga()
+    await scegliVoceRiga(fixture, tid('trasportatori-row-r1')!, 'Sedi')
 
     expect(registryService.getDitta).toHaveBeenCalledOnceWith('dit1')
     expect(document.querySelector('[data-testid="sedi-ditta-dialog"]')).toBeTruthy()

@@ -5,6 +5,8 @@ import { ButtonModule } from 'primeng/button'
 import { MessageModule } from 'primeng/message'
 import { TagModule } from 'primeng/tag'
 import { PermissionStore } from '../../../../core/state/permission.store'
+import { PermissionFormatPipe } from '../../pipes/permission-format.pipe'
+import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
 
 /**
  * PermissionDeniedComponent
@@ -24,10 +26,17 @@ import { PermissionStore } from '../../../../core/state/permission.store'
 @Component({
   selector: 'app-permission-denied',
   standalone: true,
-  imports: [CommonModule, ButtonModule, MessageModule, TagModule],
+  imports: [
+    CommonModule,
+    ButtonModule,
+    MessageModule,
+    TagModule,
+    PermissionFormatPipe,
+    RoleDescriptionPipe,
+  ],
   template: `
     <div class="denied-page">
-      <main class="denied-container" role="main">
+      <div class="denied-container">
         <!-- Intestazione -->
         <div class="denied-header">
           <div class="denied-icon-wrapper" aria-hidden="true">
@@ -81,11 +90,20 @@ import { PermissionStore } from '../../../../core/state/permission.store'
               <i class="pi pi-user" aria-hidden="true"></i>
               Il tuo ruolo attuale
             </h2>
-            <p-tag [value]="currentRole" severity="info"></p-tag>
+            <p-tag
+              [value]="currentRole | roleDescription: 'name'"
+              severity="info"
+              data-testid="ruolo-attuale"
+            ></p-tag>
           </div>
 
           <!-- Permessi dell'utente -->
-          <div class="info-section" *ngIf="showUserPermissions">
+          <!-- Solo se l'elenco c'è: «nessun permesso» contraddirebbe «I miei permessi» quando lo store non è ancora caricato. -->
+          <div
+            class="info-section"
+            *ngIf="showUserPermissions && getUserPermissions().length > 0"
+            data-testid="permessi-attuali"
+          >
             <h2 class="section-title">
               <i class="pi pi-list" aria-hidden="true"></i>
               I tuoi permessi attuali
@@ -93,11 +111,7 @@ import { PermissionStore } from '../../../../core/state/permission.store'
             <div class="permissions-list">
               <div *ngFor="let permission of getUserPermissions()" class="permission-item">
                 <i class="pi pi-check-circle" aria-hidden="true"></i>
-                <code>{{ permission }}</code>
-              </div>
-              <div *ngIf="getUserPermissions().length === 0" class="no-permissions">
-                <i class="pi pi-info-circle" aria-hidden="true"></i>
-                <span>Nessun permesso assegnato</span>
+                <span>{{ permission | permissionFormat }}</span>
               </div>
             </div>
           </div>
@@ -112,9 +126,10 @@ import { PermissionStore } from '../../../../core/state/permission.store'
               <li>
                 <i class="pi pi-envelope" aria-hidden="true"></i>
                 <span>
-                  Contatta l'amministratore all'indirizzo
-                  <a [href]="'mailto:' + supportEmail">{{ supportEmail }}</a>
-                  per richiedere l'accesso.
+                  Chiedi l'accesso all'amministratore della tua azienda, oppure
+                  <a [href]="'mailto:' + supportEmail" data-testid="contatta-supporto"
+                    >contatta il supporto</a
+                  >.
                 </span>
               </li>
               <li>
@@ -141,14 +156,16 @@ import { PermissionStore } from '../../../../core/state/permission.store'
             pButton
             label="Torna indietro"
             icon="pi pi-arrow-left"
+            class="p-button-outlined"
             (click)="goBack()"
             data-testid="go-back-button"
           ></button>
           <button
+            *ngIf="requiredPermission"
             pButton
             label="Richiedi accesso"
             icon="pi pi-user-plus"
-            class="p-button-success"
+            class="p-button-outlined"
             (click)="requestAccess()"
             data-testid="request-access-button"
           ></button>
@@ -156,20 +173,12 @@ import { PermissionStore } from '../../../../core/state/permission.store'
             pButton
             label="Vai alla dashboard"
             icon="pi pi-home"
-            class="p-button-outlined"
+            class="wf-primario"
+            data-testid="vai-alla-dashboard"
             (click)="goToDashboard()"
           ></button>
         </div>
-
-        <!-- Aiuto aggiuntivo -->
-        <div class="surface-card additional-help">
-          <p class="help-text">
-            <i class="pi pi-question-circle" aria-hidden="true"></i>
-            Hai bisogno di assistenza immediata? Chiama il supporto al
-            <strong>{{ supportPhone }}</strong>
-          </p>
-        </div>
-      </main>
+      </div>
     </div>
   `,
   styles: [
@@ -209,7 +218,7 @@ import { PermissionStore } from '../../../../core/state/permission.store'
 
       .denied-icon {
         font-size: 2.75rem;
-        color: var(--brand-primary-dark);
+        color: var(--text-secondary);
       }
 
       .denied-title {
@@ -239,10 +248,10 @@ import { PermissionStore } from '../../../../core/state/permission.store'
         padding: var(--spacing-lg);
         background: var(--color-gray-50);
         border-radius: var(--radius-md);
-        border-left: 4px solid var(--brand-primary);
+        border-left: 4px solid var(--rule);
       }
       .info-section.next-steps {
-        border-left-color: var(--color-success);
+        border-left-color: var(--rule);
       }
 
       .section-title {
@@ -255,7 +264,7 @@ import { PermissionStore } from '../../../../core/state/permission.store'
         margin: 0 0 var(--spacing-base);
       }
       .section-title i {
-        color: var(--brand-primary-dark);
+        color: var(--text-secondary);
       }
 
       .permission-code {
@@ -284,8 +293,6 @@ import { PermissionStore } from '../../../../core/state/permission.store'
       }
       .breakdown-item .label {
         font-size: var(--font-size-xs);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
         color: var(--text-tertiary);
         font-weight: var(--font-weight-semibold);
       }
@@ -323,14 +330,6 @@ import { PermissionStore } from '../../../../core/state/permission.store'
         color: var(--color-success);
       }
 
-      .no-permissions {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-sm);
-        color: var(--text-tertiary);
-        padding: var(--spacing-base);
-      }
-
       .steps-list {
         list-style: none;
         padding: 0;
@@ -352,7 +351,7 @@ import { PermissionStore } from '../../../../core/state/permission.store'
         margin-bottom: 0;
       }
       .steps-list i {
-        color: var(--brand-primary-dark);
+        color: var(--text-secondary);
         font-size: var(--font-size-xl);
         margin-top: 0.1rem;
         flex-shrink: 0;
@@ -363,22 +362,6 @@ import { PermissionStore } from '../../../../core/state/permission.store'
         justify-content: center;
         flex-wrap: wrap;
         gap: var(--spacing-base);
-      }
-
-      .additional-help {
-        text-align: center;
-      }
-      .help-text {
-        margin: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: var(--spacing-sm);
-        color: var(--text-secondary);
-      }
-      .help-text i {
-        color: var(--brand-primary-dark);
       }
 
       @media (max-width: 576px) {
@@ -406,9 +389,8 @@ export class PermissionDeniedComponent implements OnInit {
   resourceName: string = ''
   showUserPermissions: boolean = true
 
-  // Support contact info
-  supportEmail: string = 'support@wasteflow.it'
-  supportPhone: string = '+39 02 1234 5678'
+  /** Lo stesso indirizzo del «Contatta il supporto» del login. Nessun recapito inventato. */
+  supportEmail: string = 'supporto@wasteflow.it'
 
   ngOnInit(): void {
     // Read error details from route query params
@@ -436,14 +418,21 @@ export class PermissionDeniedComponent implements OnInit {
     }
   }
 
+  /** «Abbonamento» tra virgolette; i testi generici («questa pagina») restano come sono. */
+  private nomeRisorsa(): string {
+    return /^questa /.test(this.resourceName) ? this.resourceName : `«${this.resourceName}»`
+  }
+
   /**
    * Get contextual error message
    */
   getErrorMessage(): string {
+    const ruolo = new RoleDescriptionPipe().transform(this.currentRole, 'name')
     if (this.requiredPermission) {
-      return `Per accedere a ${this.resourceName} ti serve il permesso "${this.requiredPermission}". Il tuo ruolo attuale "${this.currentRole}" non lo include.`
+      const permesso = new PermissionFormatPipe().transform(this.requiredPermission)
+      return `Per accedere a ${this.nomeRisorsa()} ti serve il permesso «${permesso}». Il tuo ruolo attuale, ${ruolo.toLowerCase()}, non lo include.`
     }
-    return 'Non disponi dei permessi sufficienti per accedere a questa risorsa.'
+    return `Non hai i permessi per aprire ${this.nomeRisorsa()}. Il tuo ruolo attuale è ${ruolo.toLowerCase()}.`
   }
 
   /**
@@ -496,12 +485,9 @@ export class PermissionDeniedComponent implements OnInit {
    * This connects to User Story 7: Self-service permission request workflow
    */
   requestAccess(): void {
-    this.router.navigate(['/permissions/request'], {
-      queryParams: {
-        permission: this.requiredPermission,
-        reason: 'Access denied - requesting permission',
-        returnUrl: this.router.url,
-      },
+    // La richiesta di permessi temporanei si fa dal dialog di «Le mie concessioni».
+    this.router.navigate(['/permissions/my-grants'], {
+      queryParams: { richiedi: this.requiredPermission },
     })
   }
 
@@ -509,9 +495,9 @@ export class PermissionDeniedComponent implements OnInit {
    * Open email to contact support
    */
   contactSupport(): void {
-    const subject = encodeURIComponent('Access Request - Permission Denied')
+    const subject = encodeURIComponent('Richiesta di accesso - permesso negato')
     const body = encodeURIComponent(
-      `Hello,\n\nI am requesting access to the following resource:\n\nRequired Permission: ${this.requiredPermission}\nCurrent Role: ${this.currentRole}\n\nPlease grant me access or provide guidance.\n\nThank you.`
+      `Buongiorno,\n\nrichiedo l'accesso alla seguente risorsa:\n\nPermesso richiesto: ${this.requiredPermission}\nRuolo attuale: ${this.currentRole}\n\nVi chiedo di concedermi l'accesso o di indicarmi come procedere.\n\nGrazie.`
     )
     window.location.href = `mailto:${this.supportEmail}?subject=${subject}&body=${body}`
   }

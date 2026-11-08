@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router'
 import { FIR } from '../../../shared/models/fir.model'
 import { ETICHETTE_STATO_FIR, TONO_STATO_FIR, TonoStato } from '../../../shared/models/stati-fir'
 import { FIRStato } from '../../../shared/models/fir.model'
-import { PillolaStatoComponent } from './pillola-stato.component'
+import { PillolaStatoComponent } from '../../../shared/components/pillola-stato.component'
 import { STILI_BLOCCO } from './dashboard-stili'
 
 /** «Oggi 09:14», «Ieri 15:02», «3/11 17:50». */

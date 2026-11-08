@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { MESSAGGIO_CONCORRENTE } from './errori-azione'
 import { ElencoDialogComponent } from './elenco-dialog.component'
@@ -86,6 +87,27 @@ describe('ElencoDialogComponent', () => {
     await apri(false, null)
     fixture.destroy()
     expect(() => codice$.next('009')).not.toThrow()
+  })
+
+  it('le date di validità e del documento sono calendari: la data scritta finisce nel modulo come AAAA-MM-GG', async () => {
+    await apri(false)
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    for (const id of ['el-dal', 'el-al', 'el-datapa']) {
+      expect(document.querySelector(`label[for="${id}"]`))
+        .withContext(id)
+        .not.toBeNull()
+      expect(document.getElementById(id)).withContext(id).not.toBeNull()
+    }
+    scriviCampoData(document.getElementById('el-dal'), '2026-02-01')
+    scriviCampoData(document.getElementById('el-al'), '2026-12-31')
+    scriviCampoData(document.getElementById('el-datapa'), '2026-01-15')
+    await stabilizza(fixture)
+    const m = fixture.componentInstance.modulo
+    expect([m.validoDal, m.validoAl, m.dataDocumentoPa]).toEqual([
+      '2026-02-01',
+      '2026-12-31',
+      '2026-01-15',
+    ])
   })
 
   describe('409 (M1)', () => {

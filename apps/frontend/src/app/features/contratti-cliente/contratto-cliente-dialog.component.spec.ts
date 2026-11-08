@@ -26,6 +26,7 @@ import {
 import { RegistryService } from '../registry/registry.service'
 import { ContrattoClienteDialogComponent } from './contratto-cliente-dialog.component'
 import { SezionePagamentoComponent } from './sezione-pagamento.component'
+import { eCampoData, inputDelCampoData, leggiCampoData } from '../../shared/testing/campo-data'
 
 const sede = (id: string, over: Partial<SedeDitta> = {}): SedeDitta => ({
   id,
@@ -300,7 +301,10 @@ describe('ContrattoClienteDialogComponent', () => {
     contratti.get.and.returnValue(of(c))
     return apri(c)
   }
-  const valore = (id: string) => q<HTMLInputElement | HTMLSelectElement>(id)!.value
+  const valore = (id: string) => {
+    const el = q<HTMLInputElement | HTMLSelectElement>(id)!
+    return eCampoData(el) ? leggiCampoData(el) : el.value
+  }
   function scegli(id: string, v: string) {
     const sel = q<HTMLSelectElement>(id)!
     sel.value = v
@@ -1022,7 +1026,7 @@ describe('ContrattoClienteDialogComponent', () => {
       const modificabili = TUTTI.filter(c => !['numero', 'clienteId', 'dataInizio'].includes(c))
       await apriCon(contratto({ stato: 'ATTIVO', modificabili: [...modificabili] }))
       expect(q<HTMLInputElement>('contratto-dlg-numero')!.disabled).toBeTrue()
-      expect(q<HTMLInputElement>('contratto-dlg-data-inizio')!.disabled).toBeTrue()
+      expect(inputDelCampoData(q('contratto-dlg-data-inizio'))!.disabled).toBeTrue()
       expect(
         q<HTMLInputElement>('contratto-dlg-cliente')!.querySelector('input')!.disabled
       ).toBeTrue()

@@ -41,6 +41,7 @@ import {
   testoConferma,
 } from './mud.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /** Riga della tabella per CER, comune al file e alle sue dichiarazioni. */
 interface RigaCerTabella {
@@ -98,6 +99,7 @@ function oggiIso(): string {
   selector: 'app-mud',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     AccordionModule,
@@ -146,6 +148,7 @@ function oggiIso(): string {
           <div class="mud-toolbar__actions">
             <p-button
               label="Genera report"
+              styleClass="wf-primario"
               icon="pi pi-chart-bar"
               [loading]="loadingReport()"
               [disabled]="!selectedYear"
@@ -221,7 +224,14 @@ function oggiIso(): string {
       <!-- Obbligo del MUD (A-W-10): solo chi può modificarlo secondo il backend -->
       <section *ngIf="obbligo()?.puoModificare" class="surface-card mb-4">
         <div class="mud-obbligo">
-          <p-inputSwitch inputId="mud-non-dovuto" [(ngModel)]="obbligoNonDovuto"></p-inputSwitch>
+          <p-inputSwitch
+            inputId="mud-non-dovuto"
+            [(ngModel)]="obbligoNonDovuto"
+            data-testid="mud-obbligo-interruttore"
+          ></p-inputSwitch>
+          <span class="mud-obbligo__stato" data-testid="mud-obbligo-stato" aria-hidden="true">{{
+            obbligoNonDovuto ? 'Non tenuta' : 'Tenuta'
+          }}</span>
           <label for="mud-non-dovuto">Questa azienda non è tenuta a presentare il MUD</label>
         </div>
         <div *ngIf="obbligoNonDovuto" class="mt-3">
@@ -582,12 +592,11 @@ function oggiIso(): string {
       <ng-container *ngIf="dialogo() === 'segnatura'">
         <div class="mb-3">
           <label for="mud-data-presentazione" class="block mb-2">Data della presentazione</label>
-          <input
-            id="mud-data-presentazione"
-            type="date"
-            pInputText
+          <app-campo-data
+            inputId="mud-data-presentazione"
             [max]="oggi"
             [(ngModel)]="dataPresentazione"
+            [piena]="true"
           />
         </div>
         <ng-container *ngIf="esportazioni().length; else senzaEsportazioni">
@@ -711,6 +720,19 @@ function oggiIso(): string {
         flex-wrap: wrap;
         align-items: center;
         gap: var(--spacing-sm);
+      }
+      .mud-obbligo {
+        flex-wrap: nowrap;
+        align-items: flex-start;
+      }
+      .mud-obbligo label {
+        flex: 1 1 0;
+        min-width: 0;
+      }
+      .mud-obbligo__stato {
+        white-space: nowrap;
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
       }
       .mud-conferma,
       .mud-motivo {

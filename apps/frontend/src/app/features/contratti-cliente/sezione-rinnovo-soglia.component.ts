@@ -5,6 +5,7 @@ import { InputTextModule } from 'primeng/inputtext'
 import { CodiceRinnovo } from '../clienti/clienti.model'
 import { messaggioNumero } from '../../shared/utils/numero-modificabile'
 import { FormContratto } from './contratto-cliente-form'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /**
  * Sezione "Rinnovo e soglia": rinnovo automatico, codice rinnovo (solo S e N, Q8), incremento
@@ -15,7 +16,7 @@ import { FormContratto } from './contratto-cliente-form'
 @Component({
   selector: 'app-sezione-rinnovo-soglia',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, InputTextModule],
+  imports: [CampoDataComponent, CommonModule, ReactiveFormsModule, InputTextModule],
   template: `
     <div class="sezione" [formGroup]="form">
       <label class="casella">
@@ -54,12 +55,11 @@ import { FormContratto } from './contratto-cliente-form'
       </label>
 
       <label for="contratto-dlg-soglia-dal">Inizio controllo soglia</label>
-      <input
-        pInputText
-        type="date"
-        id="contratto-dlg-soglia-dal"
+      <app-campo-data
+        inputId="contratto-dlg-soglia-dal"
         formControlName="sogliaDal"
         data-testid="contratto-dlg-soglia-dal"
+        [piena]="true"
       />
       <label for="contratto-dlg-soglia">Soglia massima (€)</label>
       <input

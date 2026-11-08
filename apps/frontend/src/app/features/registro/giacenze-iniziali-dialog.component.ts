@@ -52,6 +52,7 @@ import {
   annoItaliano,
 } from './registro.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 const formatoGiornoRoma = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
@@ -140,6 +141,7 @@ const dataNonFutura = (): ValidatorFn => control => {
   selector: 'app-giacenze-iniziali-dialog',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     ReactiveFormsModule,
     ButtonModule,
@@ -382,14 +384,13 @@ const dataNonFutura = (): ValidatorFn => control => {
                   <label for="gi-data"
                     >In deposito dal <span class="req" aria-hidden="true">*</span></label
                   >
-                  <input
-                    type="date"
-                    id="gi-data"
+                  <app-campo-data
+                    inputId="gi-data"
                     formControlName="dataRiferimento"
-                    class="p-inputtext w-full"
-                    [attr.max]="oggi"
-                    aria-required="true"
-                    [attr.aria-invalid]="errore('dataRiferimento') ? true : null"
+                    [max]="oggi"
+                    [ariaRequired]="true"
+                    [ariaInvalid]="!!errore('dataRiferimento')"
+                    [piena]="true"
                   />
                   <small *ngIf="errore('dataRiferimento')" class="field-error" role="alert"
                     >Indica una data non successiva a oggi.</small

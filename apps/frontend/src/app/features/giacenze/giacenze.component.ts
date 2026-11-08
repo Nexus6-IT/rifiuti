@@ -456,7 +456,6 @@ const TUTTE_LE_SEDI = ''
 
       .alert-banner {
         border: 1px solid var(--stato-warn-edge);
-        border-left: 3px solid var(--stato-warn-ink);
         border-radius: var(--radius-md);
         padding: var(--spacing-sm) var(--spacing-base);
         background: var(--stato-warn-bg);

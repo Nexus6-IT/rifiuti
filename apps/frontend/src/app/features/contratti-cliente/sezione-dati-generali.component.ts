@@ -29,6 +29,7 @@ import { SedeDitta } from '../../shared/models/registry.model'
 import { FormContratto } from './contratto-cliente-form'
 import { SEZIONE_CONTRATTO } from './sezione-contratto'
 import { SceltaClienteComponent } from './scelta-cliente.component'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /** Le voci correnti di un contratto già salvato: possono non essere più fra quelle attive. */
 export interface CorrentiGenerali {
@@ -51,6 +52,7 @@ const etichettaSede = (s: SedeDitta): string => `${s.via} ${s.civico}, ${s.citta
   selector: 'app-sezione-dati-generali',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     ReactiveFormsModule,
     InputTextModule,
@@ -140,32 +142,29 @@ const etichettaSede = (s: SedeDitta): string => `${s.via} ${s.civico}, ${s.citta
       <div class="riga">
         <div class="campo">
           <label for="contratto-dlg-data-inizio">Data di inizio</label>
-          <input
-            type="date"
-            class="p-inputtext"
-            id="contratto-dlg-data-inizio"
+          <app-campo-data
+            inputId="contratto-dlg-data-inizio"
             formControlName="dataInizio"
             data-testid="contratto-dlg-data-inizio"
+            [piena]="true"
           />
         </div>
         <div class="campo">
           <label for="contratto-dlg-data-fine">Data di fine</label>
-          <input
-            type="date"
-            class="p-inputtext"
-            id="contratto-dlg-data-fine"
+          <app-campo-data
+            inputId="contratto-dlg-data-fine"
             formControlName="dataFine"
             data-testid="contratto-dlg-data-fine"
+            [piena]="true"
           />
         </div>
         <div class="campo">
           <label for="contratto-dlg-data-stipula">Data di stipula</label>
-          <input
-            type="date"
-            class="p-inputtext"
-            id="contratto-dlg-data-stipula"
+          <app-campo-data
+            inputId="contratto-dlg-data-stipula"
             formControlName="dataStipula"
             data-testid="contratto-dlg-data-stipula"
+            [piena]="true"
           />
         </div>
       </div>

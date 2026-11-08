@@ -75,6 +75,29 @@ describe('RentriBlocchiComponent', () => {
     expect(service.scorta).not.toHaveBeenCalled()
   })
 
+  it("con un errore di caricamento mostra solo il riquadro d'errore: niente «0 numeri» né «Nessun blocco» (I6)", () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(throwError(() => new Error('400')))
+    service.scorta.and.returnValue(throwError(() => new Error('400')))
+
+    fixture.detectChanges()
+    const html: HTMLElement = fixture.nativeElement
+
+    expect(html.querySelector('[data-testid="rentri-blocchi-errore"]')).not.toBeNull()
+    expect(html.querySelector('[data-testid="rentri-blocchi-scorta"]')).toBeNull()
+    expect(html.querySelector('[data-testid="rentri-blocchi-empty-state"]')).toBeNull()
+    expect(html.textContent).not.toContain('numeri disponibili')
+    expect(html.textContent).not.toContain('Nessun blocco attivo')
+
+    // «Riprova» rilegge; se stavolta va bene i dati tornano e l'errore sparisce.
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+    ;(html.querySelector('[data-testid="rentri-blocchi-riprova"] button') as HTMLElement).click()
+    fixture.detectChanges()
+    expect(html.querySelector('[data-testid="rentri-blocchi-errore"]')).toBeNull()
+    expect(html.querySelector('[data-testid="rentri-blocchi-scorta"]')).not.toBeNull()
+  })
+
   it('carica blocchi e scorta per OPERATOR (visibilità in lettura)', () => {
     setup('OPERATOR')
     service.blocchi.and.returnValue(of([blocco()]))
@@ -246,5 +269,17 @@ describe('RentriBlocchiComponent', () => {
 
     expect(toast.error).toHaveBeenCalledWith('Blocco non attivo')
     expect(component.displayVidimaDialog).toBe(true)
+  })
+
+  it('la pagina ha la larghezza di .page, senza max-width proprio', () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+    fixture.detectChanges()
+
+    const pagina = (fixture.nativeElement as HTMLElement).querySelector('.page') as HTMLElement
+    expect(pagina).not.toBeNull()
+    expect(pagina.getAttribute('style') ?? '').not.toContain('max-width')
+    expect(getComputedStyle(pagina).maxWidth).toBe('1320px')
   })
 })

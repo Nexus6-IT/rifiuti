@@ -28,7 +28,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   standalone: true,
   imports: [CommonModule, ButtonModule],
   template: `
-    <div class="page" style="max-width: 900px;">
+    <div class="page">
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Codifiche RENTRI</h1>

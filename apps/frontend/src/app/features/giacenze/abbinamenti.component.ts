@@ -96,7 +96,7 @@ export const chiaveAmbito = (a: { cerCode: string; famiglia: string }): string =
             *ngIf="vista()?.puoModificare"
             label="Abbina con FIFO i non abbinati"
             icon="pi pi-link"
-            [outlined]="true"
+            styleClass="wf-primario"
             [loading]="inElaborazione()"
             (onClick)="abbinaNonAbbinati()"
             data-testid="abbina-non-abbinati"

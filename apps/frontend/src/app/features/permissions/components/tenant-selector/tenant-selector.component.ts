@@ -140,8 +140,6 @@ import { FormsModule } from '@angular/forms'
         opacity: 0.9;
         font-weight: var(--font-weight-medium);
         font-size: var(--font-size-xs);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
       }
 
       .tenant-name {
@@ -199,8 +197,6 @@ import { FormsModule } from '@angular/forms'
         border-radius: var(--radius-full);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
       }
 
       /* Role badge variants by role type (semantic, AA-contrast) */

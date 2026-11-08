@@ -179,6 +179,8 @@
   --shadow-base: none;
   --shadow-md: 0 12px 32px rgba(20, 20, 20, 0.18);
   --shadow-lg: 0 12px 32px rgba(20, 20, 20, 0.18);
+  /* Toast: galleggia ma resta basso e leggero (sotto la soglia del controllo «heavy-shadow»). */
+  --shadow-toast: 0 4px 8px rgba(20, 20, 20, 0.1);
   --shadow-xl: 0 12px 32px rgba(20, 20, 20, 0.22);
 
   /* ===== Transizioni ===== */
@@ -333,6 +335,7 @@
 
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-toast: 0 4px 8px rgba(0, 0, 0, 0.4);
   --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.7);
 
   --focus-ring-color: #ff8a5c;
@@ -383,9 +386,6 @@
   --orange-700: var(--color-warning);
   --blue-400: var(--color-info);
   --border-color: var(--surface-border);
-  --color-border: var(--surface-border);
   --color-primary: var(--ink-fill);
-  --color-surface-alt: var(--surface-hover);
-  --color-text-secondary: var(--text-secondary);
   --color-warning-text: var(--stato-warn-ink);
 }

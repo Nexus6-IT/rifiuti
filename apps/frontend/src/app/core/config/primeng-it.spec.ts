@@ -20,4 +20,26 @@ describe('traduzione italiana di PrimeNG', () => {
     expect(config.getTranslation('monthNames')[0]).toBe('gennaio')
     expect(config.getTranslation('firstDayOfWeek')).toBe(1)
   })
+
+  it('non lascia nessuna etichetta ARIA, del calendario o del paginatore, in inglese', () => {
+    const config = TestBed.inject(PrimeNGConfig)
+    applicaTraduzionePrimeng(config)
+    const t = config.translation
+    // Ogni chiave `aria` che PrimeNG ha di serie ha la sua versione italiana, diversa dall'originale.
+    const predefinite = new PrimeNGConfig().translation.aria ?? {}
+    const aria = t.aria ?? {}
+    for (const chiave of Object.keys(predefinite) as (keyof typeof predefinite)[]) {
+      expect(aria[chiave]).withContext(`aria.${chiave}`).toBeTruthy()
+      if (!/^\{[a-zA-Z]+\}$/.test(predefinite[chiave] ?? '')) {
+        expect(aria[chiave]).withContext(`aria.${chiave}`).not.toBe(predefinite[chiave])
+      }
+    }
+    expect(t.chooseDate).toBe('Scegli la data')
+    expect(t.prevMonth).toBe('Mese precedente')
+    expect(t.nextMonth).toBe('Mese successivo')
+    expect(aria.firstPageLabel).toBe('Prima pagina')
+    expect(aria.rowsPerPageLabel).toBe('Righe per pagina')
+    expect(aria.close).toBe('Chiudi')
+    expect(aria.pageLabel).toBe('Pagina {page}')
+  })
 })

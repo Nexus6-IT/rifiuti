@@ -24,6 +24,7 @@ import { Opzione } from '../clienti/opzioni-fatturazione'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
 import { messaggioErrore } from '../clienti/tabelle/tabella-comune'
 import { SceltaClienteComponent } from './scelta-cliente.component'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /**
  * Proroga massiva delle scadenze (D11, come F6 di WinWaste): sposta di un anno la fine dei
@@ -34,6 +35,7 @@ import { SceltaClienteComponent } from './scelta-cliente.component'
   selector: 'app-proroga-dialog',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     ReactiveFormsModule,
     ButtonModule,
@@ -63,12 +65,11 @@ import { SceltaClienteComponent } from './scelta-cliente.component'
       <form [formGroup]="form" (ngSubmit)="avanti()" class="dlg-form" [hidden]="inRiepilogo()">
         <p>Sposta di un anno la data di fine dei contratti che scadono entro la data indicata.</p>
         <label for="proroga-data">Contratti con fine entro il</label>
-        <input
-          pInputText
-          id="proroga-data"
-          type="date"
+        <app-campo-data
+          inputId="proroga-data"
           formControlName="scadutiEntro"
           data-testid="proroga-data"
+          [piena]="true"
         />
         <div class="spunta">
           <p-checkbox

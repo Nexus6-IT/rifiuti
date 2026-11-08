@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
 import { ClientiService } from '../clienti/clienti.service'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { ListinoService } from '../listino/listino.service'
 import {
@@ -373,6 +374,25 @@ describe('AggiornaPrezziDialogComponent', () => {
     await stabilizza(fixture)
     expect(q('ap-riepilogo')).toBeNull()
     expect(fixture.componentInstance.confermato).toBeFalse()
+  })
+
+  it('le date del perimetro sono calendari: la data scritta arriva all anteprima come AAAA-MM-GG', async () => {
+    await apri()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    await scegliContratto()
+    scriviCampoData(q('ap-dal'), '2026-03-01')
+    scriviCampoData(q('ap-al'), '2026-03-31')
+    await stabilizza(fixture)
+    expect(fixture.componentInstance.dal).toBe('2026-03-01')
+    expect(fixture.componentInstance.al).toBe('2026-03-31')
+    bottone('ap-anteprima')!.click()
+    await stabilizza(fixture)
+    const filtri = servizio.anteprimaAggiornamento.calls.mostRecent().args[0] as {
+      dal?: string
+      al?: string
+    }
+    expect(filtri.dal).toBe('2026-03-01')
+    expect(filtri.al).toBe('2026-03-31')
   })
 
   describe('accessibilità', () => {

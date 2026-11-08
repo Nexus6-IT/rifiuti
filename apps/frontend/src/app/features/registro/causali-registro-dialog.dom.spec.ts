@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
@@ -205,6 +206,26 @@ describe('CausaliRegistroDialogComponent (click veri, HTTP simulato)', () => {
     expect(campo.getAttribute('aria-invalid')).toBe('true')
     expect(campo.getAttribute('aria-describedby')).toBe('cg-codice-err')
     expect(document.getElementById('cg-codice-err')?.getAttribute('role')).toBe('alert')
+    flush()
+  }))
+
+  it('«Valida dal» è un calendario in italiano: obbligatorio, e svuotato segnala l errore sul campo', fakeAsync(() => {
+    apri({ sistema: [], aziendali: [propria()] })
+    clic('cg-modifica-v1')
+    fixture.detectChanges()
+    tick()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    const campo = document.getElementById('cg-dal') as HTMLInputElement
+    expect(document.querySelector('label[for="cg-dal"]')).not.toBeNull()
+    expect(campo.value).toBe('01/01/2026')
+    expect(campo.getAttribute('aria-required')).toBe('true')
+    scriviCampoData(campo, '')
+    fixture.detectChanges()
+    clic('cg-invia')
+    fixture.detectChanges()
+    expect(campo.getAttribute('aria-invalid')).toBe('true')
+    expect(campo.getAttribute('aria-describedby')).toBe('cg-dal-err')
+    expect(document.getElementById('cg-dal-err')?.textContent).toContain('Indica una data')
     flush()
   }))
 

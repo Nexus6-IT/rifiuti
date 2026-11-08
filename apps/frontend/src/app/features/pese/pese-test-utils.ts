@@ -1,4 +1,5 @@
 // Aiuti per le spec DOM delle pese: eventi reali sul DOM, mai chiamate dirette ai metodi.
+import { eCampoData, scriviCampoData } from '../../shared/testing/campo-data'
 import { AccessoVista, PesataVista } from './pese.service'
 
 export const q = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
@@ -9,8 +10,12 @@ export const qb = (id: string): HTMLButtonElement | null => {
   return e instanceof HTMLButtonElement ? e : (e?.querySelector('button') ?? null)
 }
 
-export const scrivi = (el: HTMLInputElement | HTMLTextAreaElement, t: string): void => {
-  el.value = t
+export const scrivi = (
+  el: HTMLInputElement | HTMLTextAreaElement | HTMLElement,
+  t: string
+): void => {
+  if (eCampoData(el)) return scriviCampoData(el, t)
+  ;(el as HTMLInputElement).value = t
   el.dispatchEvent(new Event('input', { bubbles: true }))
 }
 

@@ -188,8 +188,10 @@ const ETICHETTA_RUOLO: Record<TipoRuoloDitta, string> = {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
         color: var(--text-primary);
-        border-left: 3px solid var(--color-warning, #b45309);
-        padding-left: var(--spacing-sm);
+        background: var(--stato-warn-bg);
+        border: 1px solid var(--stato-warn-edge);
+        border-radius: var(--radius-sm);
+        padding: var(--spacing-xs) var(--spacing-sm);
       }
       .field-error {
         font-size: var(--font-size-xs);

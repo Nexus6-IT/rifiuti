@@ -38,7 +38,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="page" style="max-width: 820px;">
+    <div class="page">
       <p-confirmDialog></p-confirmDialog>
 
       <header class="page-header">
@@ -136,7 +136,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
         </section>
 
         <!-- Caricamento -->
-        <section class="surface-card" aria-label="Caricamento certificato">
+        <section class="surface-card rentri-modulo" aria-label="Caricamento certificato">
           <h2 class="rentri-section-title mb-2">
             {{ status()?.configured ? 'Sostituisci' : 'Carica' }} certificato
           </h2>
@@ -246,6 +246,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
           <p-button
             label="Salva certificato"
+            styleClass="wf-primario"
             icon="pi pi-save"
             [loading]="saving()"
             [disabled]="!canSubmit()"
@@ -311,6 +312,12 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
       .rentri-meta dd {
         margin: 0;
         color: var(--text-primary);
+      }
+      .rentri-modulo .field {
+        max-width: 40rem;
+      }
+      .rentri-modulo textarea {
+        max-width: 72ch;
       }
       .rentri-file {
         display: block;
@@ -446,14 +453,10 @@ export class RentriCredentialComponent implements OnInit {
           }
 
     this.credentialService.setCredential(payload).subscribe({
-      next: res => {
+      next: () => {
         this.saving.set(false)
-        // L'algoritmo lo ricava il backend dalla chiave: lo si mostra in sola lettura.
-        this.toast.success(
-          res.algorithm
-            ? `Certificato RENTRI salvato (algoritmo ${res.algorithm})`
-            : 'Certificato RENTRI salvato'
-        )
+        // L'algoritmo lo ricava il backend dalla chiave e sta già nella card «Stato».
+        this.toast.success('Certificato RENTRI salvato')
         this.resetSecrets()
         this.loadStatus()
       },

@@ -20,6 +20,7 @@ import { MESSAGGIO_CONCORRENTE, naturaConflitto } from './errori-azione'
 import { messaggiErrore } from './listino-calcoli'
 import { ElencoAddebiti, NuovoElenco } from './listino.model'
 import { ListinoService } from './listino.service'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 interface ModuloElenco {
   codice: string
@@ -59,7 +60,14 @@ const vuotoNull = (v: string): string | null => (v.trim() === '' ? null : v.trim
 @Component({
   selector: 'app-elenco-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, ButtonModule, DialogModule, InputTextModule],
+  imports: [
+    CampoDataComponent,
+    CommonModule,
+    FormsModule,
+    ButtonModule,
+    DialogModule,
+    InputTextModule,
+  ],
   template: `
     <p-dialog
       [visible]="visible"
@@ -86,9 +94,9 @@ const vuotoNull = (v: string): string | null => (v.trim() === '' ? null : v.trim
         <label for="el-nota2">Nota 2</label>
         <input pInputText id="el-nota2" name="nota2" maxlength="45" [(ngModel)]="modulo.nota2" />
         <label for="el-dal">Valido dal</label>
-        <input pInputText id="el-dal" name="dal" type="date" [(ngModel)]="modulo.validoDal" />
+        <app-campo-data inputId="el-dal" name="dal" [(ngModel)]="modulo.validoDal" [piena]="true" />
         <label for="el-al">Valido al</label>
-        <input pInputText id="el-al" name="al" type="date" [(ngModel)]="modulo.validoAl" />
+        <app-campo-data inputId="el-al" name="al" [(ngModel)]="modulo.validoAl" [piena]="true" />
         <label for="el-cig">CIG</label>
         <input pInputText id="el-cig" name="cig" maxlength="10" [(ngModel)]="modulo.codiceCig" />
         <label for="el-cup">CUP</label>
@@ -96,12 +104,11 @@ const vuotoNull = (v: string): string | null => (v.trim() === '' ? null : v.trim
         <label for="el-idpa">Id documento PA</label>
         <input pInputText id="el-idpa" name="idpa" [(ngModel)]="modulo.idDocumentoPa" />
         <label for="el-datapa">Data documento PA</label>
-        <input
-          pInputText
-          id="el-datapa"
+        <app-campo-data
+          inputId="el-datapa"
           name="datapa"
-          type="date"
           [(ngModel)]="modulo.dataDocumentoPa"
+          [piena]="true"
         />
         <label class="spunta" for="el-predefinito">
           <input

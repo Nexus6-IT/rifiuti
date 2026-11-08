@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { aspettaData, scriviData } from '../../utils/campo-data'
 import type { PrismaClient } from '@prisma/client'
 import { getApiUrl } from '../../utils/env'
 import { apiGet, apiPost } from '../../utils/api-client'
@@ -340,16 +341,9 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
       timeout: ATTESA_SERVER,
     })
     // Il campo e' un calendario (`p-calendar`): si legge e si scrive come `gg/mm/aaaa`.
-    const dataIt = (iso: string): string => iso.split('-').reverse().join('/')
-    const campo = pagina.getByTestId('fatt-data').locator('input')
-    await expect(campo).toHaveValue(dataIt(DATA_A), { timeout: ATTESA_SERVER })
-
-    await campo.click()
-    await campo.press('Control+A')
-    await campo.pressSequentially(dataIt(DATA_B))
-    // Il pannello del calendario si chiude cliccando fuori.
-    await pagina.getByRole('heading', { level: 1 }).click()
-    await expect(campo).toHaveValue(dataIt(DATA_B))
+    const campo = pagina.getByTestId('fatt-data')
+    await aspettaData(campo, DATA_A)
+    await scriviData(page, campo, DATA_B)
     await attendiRisposta(page, () => pagina.getByTestId('fatt-salva').click(), { metodo: 'PUT' })
     const token = await tokenAzienda(azienda, 'admin')
     expect((await apiGet<Impostazione>('/impostazioni-fatturazione', token)).fatturazioneDa).toBe(

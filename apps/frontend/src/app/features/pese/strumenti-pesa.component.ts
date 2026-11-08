@@ -24,6 +24,7 @@ import {
 } from './pese-formato'
 import { PesoItalianoDirective } from './peso-it.directive'
 import { PeseService, StrumentoPesa } from './pese.service'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 // Come le colonne: portata Decimal(10,2), divisione Decimal(8,3).
 const MASSIMO_PORTATA = 99_999_999.99
@@ -42,6 +43,7 @@ const decimaliMax =
   selector: 'app-pese-strumenti',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     ReactiveFormsModule,
     ButtonModule,
@@ -277,12 +279,11 @@ const decimaliMax =
           </div>
           <div class="field">
             <label for="str-data">Ultima verificazione</label>
-            <input
-              id="str-data"
-              type="date"
-              class="p-inputtext w-full"
+            <app-campo-data
+              inputId="str-data"
               formControlName="dataUltimaVerificazione"
-              [attr.max]="oggi"
+              [max]="oggi"
+              [piena]="true"
             />
           </div>
         </div>

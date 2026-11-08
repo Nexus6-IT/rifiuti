@@ -38,6 +38,7 @@ import {
 } from '../../shared/utils/numero-modificabile'
 import { puoVariarePrezzi } from './permessi-listino'
 import { ETICHETTE_TIPO_VARIAZIONE, TIPI_ELENCABILI } from './vocabolario-listino'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 const TIPI = Object.keys(ETICHETTE_TIPO_VARIAZIONE) as TipoVariazione[]
 export const MESSAGGIO_VARIAZIONE_SUPERATA =
@@ -73,6 +74,7 @@ const SCELTE_VUOTE = (): Scelte => ({
   selector: 'app-variazione-prezzi-dialog',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     ReactiveFormsModule,
     ButtonModule,
@@ -335,45 +337,40 @@ const SCELTE_VUOTE = (): Scelte => ({
         <h3 class="sezione">Date del contratto</h3>
         <div class="date">
           <label for="vp-inizio-dal">Inizio dal</label>
-          <input
-            id="vp-inizio-dal"
-            type="date"
-            class="p-inputtext"
+          <app-campo-data
+            inputId="vp-inizio-dal"
             formControlName="inizioDal"
             data-testid="vp-inizio-dal"
+            [piena]="true"
           />
           <label for="vp-inizio-al">al</label>
-          <input
-            id="vp-inizio-al"
-            type="date"
-            class="p-inputtext"
+          <app-campo-data
+            inputId="vp-inizio-al"
             formControlName="inizioAl"
             data-testid="vp-inizio-al"
+            [piena]="true"
           />
           <label for="vp-fine-dal">Fine dal</label>
-          <input
-            id="vp-fine-dal"
-            type="date"
-            class="p-inputtext"
+          <app-campo-data
+            inputId="vp-fine-dal"
             formControlName="fineDal"
             data-testid="vp-fine-dal"
+            [piena]="true"
           />
           <label for="vp-fine-al">al</label>
-          <input
-            id="vp-fine-al"
-            type="date"
-            class="p-inputtext"
+          <app-campo-data
+            inputId="vp-fine-al"
             formControlName="fineAl"
             data-testid="vp-fine-al"
+            [piena]="true"
           />
         </div>
         <label for="vp-prima-scadenza">Fissi con prima scadenza il</label>
-        <input
-          id="vp-prima-scadenza"
-          type="date"
-          class="p-inputtext"
+        <app-campo-data
+          inputId="vp-prima-scadenza"
           formControlName="primaScadenzaFissi"
           data-testid="vp-prima-scadenza"
+          [piena]="true"
         />
       </form>
 

@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
 import { ActivatedRoute, Router, RouterModule } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
-import { TagModule } from 'primeng/tag'
 import { MessageModule } from 'primeng/message'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
@@ -18,6 +17,8 @@ import { FirService } from './fir.service'
 import { puoModificareFir } from './fir-permissions'
 import { testoMotivoNonModificabile } from './fir-form'
 import { FIR, FIRStato, ParteFIR, ScostamentoPeso } from '../../shared/models/fir.model'
+import { TONO_STATO_FIR, TonoStato } from '../../shared/models/stati-fir'
+import { PillolaStatoComponent } from '../../shared/components/pillola-stato.component'
 import {
   formattaNumero,
   formattaPercentuale,
@@ -84,7 +85,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
     FormsModule,
     RouterModule,
     ButtonModule,
-    TagModule,
+    PillolaStatoComponent,
     MessageModule,
     ProgressSpinnerModule,
     ConfirmDialogModule,
@@ -167,7 +168,11 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
             <div class="detail-field">
               <span class="detail-label">Stato</span>
               <span data-testid="fir-detail-stato">
-                <p-tag [value]="getStatoLabel(f.stato)" [severity]="getStatoSeverity(f.stato)" />
+                <app-pillola-stato
+                  [tono]="tonoStato(f.stato)"
+                  [testo]="getStatoLabel(f.stato)"
+                  [barrato]="f.stato === FIRStato.ANNULLATO"
+                />
               </span>
               @if (motivoNonModificabile(f); as motivo) {
                 <small class="detail-hint" data-testid="fir-detail-motivo-non-modificabile">{{
@@ -318,7 +323,8 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
               <div class="detail-field">
                 <span class="detail-label">Numero FIR ufficiale</span>
                 <span
-                  class="detail-value cell-mono"
+                  class="detail-value"
+                  [class.cell-mono]="!!f.rentriNumeroFir"
                   data-testid="fir-detail-rentri-numero-ufficiale"
                 >
                   {{ f.rentriNumeroFir || 'Non ancora assegnato' }}
@@ -894,7 +900,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
         align-items: center;
         gap: var(--spacing-sm);
         padding: var(--spacing-sm);
-        border: 1px solid var(--surface-border, #e5e7eb);
+        border: 1px solid var(--surface-border);
         border-radius: 6px;
       }
 
@@ -1044,18 +1050,12 @@ export class FirDetailComponent implements OnInit {
     return labels[stato] ?? stato
   }
 
-  getStatoSeverity(
-    stato: FIRStato
-  ): 'success' | 'info' | 'warning' | 'danger' | 'secondary' | 'contrast' | undefined {
-    const severityMap: Record<FIRStato, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
-      [FIRStato.BOZZA]: 'secondary',
-      [FIRStato.EMESSO]: 'info',
-      [FIRStato.IN_TRANSITO]: 'warning',
-      [FIRStato.CONSEGNATO]: 'success',
-      [FIRStato.ANNULLATO]: 'danger',
-    }
-    return severityMap[stato]
+  /** Tono della pillola di stato: gli stessi della Dashboard (`TONO_STATO_FIR`). */
+  tonoStato(stato: FIRStato): TonoStato {
+    return TONO_STATO_FIR[stato]
   }
+
+  readonly FIRStato = FIRStato
 
   getOrigineLegameLabel(origine: string): string {
     return ORIGINE_LEGAME_LABELS[origine] ?? origine

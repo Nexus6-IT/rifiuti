@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
@@ -210,6 +211,22 @@ describe('GiacenzeInizialiDialogComponent - unità, validazione e click', () => 
     clic('gi-salva')
     expect(servizio.creaGiacenzaIniziale).toHaveBeenCalledTimes(1)
     expect(servizio.creaGiacenzaIniziale.calls.mostRecent().args[0].unita).toBe('M3')
+  })
+
+  it('la data di riferimento e un calendario in italiano: scritta a mano arriva al form, non oltre oggi', () => {
+    apri(elenco({ voci: [] }))
+    clic('gi-aggiungi')
+    fixture.detectChanges()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(document.querySelector('label[for="gi-data"]')).not.toBeNull()
+    const campo = document.getElementById('gi-data') as HTMLInputElement
+    expect(campo.getAttribute('aria-required')).toBe('true')
+    scriviCampoData(campo, '2026-03-29')
+    expect(c.form.get('dataRiferimento')?.value).toBe('2026-03-29')
+    // Oltre oggi non si accetta: il campo torna all'ultima data valida.
+    scriviCampoData(campo, '2999-01-01')
+    expect(c.form.get('dataRiferimento')?.value).toBe('2026-03-29')
+    expect(campo.value).toBe('29/03/2026')
   })
 
   it('click su Elimina porta il focus su "Sì"; il click su "Sì" cancella', fakeAsync(() => {

@@ -23,6 +23,8 @@ import {
   ImpersonateResult,
 } from './user-admin.service'
 import { NumeroItalianoDirective } from '../../../shared/directives/numero-it.directive'
+import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
+import { AzioniDiRiga, MemoriaAzioni } from '../../clienti/tabelle/azioni-lista'
 
 interface SelectOption<T> {
   label: string
@@ -34,13 +36,6 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Amministratore',
   OPERATOR: 'Operatore',
   VIEWER: 'Visualizzatore',
-}
-
-const ROLE_SEVERITY: Record<UserRole, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
-  SUPER_ADMIN: 'danger',
-  ADMIN: 'warning',
-  OPERATOR: 'info',
-  VIEWER: 'secondary',
 }
 
 /** Regex CF persona fisica (16 alfanumerici); validazione di forma, non di checksum. */
@@ -64,6 +59,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
     PasswordModule,
     ConfirmDialogModule,
     TooltipModule,
+    AzioniRigaComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -77,44 +73,35 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
           <p-button
             label="Nuovo utente"
             icon="pi pi-plus"
+            styleClass="wf-primario"
             (onClick)="openCreateDialog()"
             ariaLabel="Crea un nuovo utente"
+            data-testid="utenti-nuovo"
           />
         </div>
       </header>
 
       <!-- Selettore tenant (solo SUPER_ADMIN) -->
-      <section *ngIf="isSuperAdmin()" class="surface-card mb-4" aria-label="Filtro per tenant">
-        <div class="grid formgrid" style="align-items: end;">
-          <div class="field col-12 md:col-5">
-            <label for="tenant-filter" class="block mb-2">Tenant</label>
-            <p-dropdown
-              inputId="tenant-filter"
-              [options]="tenantOptions()"
-              [(ngModel)]="tenantFilter"
-              optionLabel="ragioneSociale"
-              optionValue="id"
-              [filter]="true"
-              filterBy="ragioneSociale"
-              [showClear]="true"
-              placeholder="Tutti i tenant"
-              styleClass="w-full"
-              ariaLabel="Filtra utenti per tenant"
-              (onChange)="loadUsers()"
-              (onClear)="loadUsers()"
-            ></p-dropdown>
-          </div>
-          <div class="field col-12 md:col-3 flex align-items-end">
-            <p-button
-              label="Aggiorna"
-              icon="pi pi-refresh"
-              [outlined]="true"
-              (onClick)="loadUsers()"
-              ariaLabel="Aggiorna l'elenco degli utenti"
-            />
-          </div>
+      <div *ngIf="isSuperAdmin()" class="barra-filtri" role="search" aria-label="Filtro per tenant">
+        <div class="barra-filtri__tenant">
+          <label for="tenant-filter" class="barra-filtri__etichetta">Tenant</label>
+          <p-dropdown
+            inputId="tenant-filter"
+            [options]="tenantOptions()"
+            [(ngModel)]="tenantFilter"
+            optionLabel="ragioneSociale"
+            optionValue="id"
+            [filter]="true"
+            filterBy="ragioneSociale"
+            [showClear]="true"
+            placeholder="Tutti i tenant"
+            styleClass="w-full"
+            ariaLabel="Filtra utenti per tenant"
+            (onChange)="loadUsers()"
+            (onClear)="loadUsers()"
+          ></p-dropdown>
         </div>
-      </section>
+      </div>
 
       <!-- Stato error -->
       <section *ngIf="error()" class="surface-card">
@@ -141,34 +128,40 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
             [value]="users()"
             [loading]="loading()"
             [paginator]="users().length > 10"
+            [alwaysShowPaginator]="false"
             [rows]="10"
-            styleClass="p-datatable-sm"
+            [styleClass]="'p-datatable-sm lista-telefono' + (users().length ? '' : ' senza-righe')"
           >
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Nome</th>
                 <th scope="col">Email</th>
-                <th scope="col">Codice fiscale</th>
+                <th scope="col" class="md-hide">Codice fiscale</th>
                 <th scope="col">Ruolo</th>
                 @if (isSuperAdmin()) {
-                  <th scope="col">Quota aziende</th>
+                  <th scope="col" class="num-col md-hide">Quota aziende</th>
                 }
-                <th scope="col">Stato</th>
-                <th scope="col" style="width: 230px">Azioni</th>
+                <th scope="col" class="md-hide">Stato</th>
+                <th scope="col" class="num-col azioni-col">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-u>
-              <tr>
-                <td>
+              <tr [attr.data-testid]="'utente-riga-' + u.id">
+                <td class="chi nome-utente">
                   <strong>{{ u.firstName }} {{ u.lastName }}</strong>
                 </td>
-                <td>{{ u.email }}</td>
-                <td class="font-mono">{{ u.fiscalCode }}</td>
-                <td>
-                  <p-tag [value]="roleLabel(u.role)" [severity]="roleSeverity(u.role)"></p-tag>
+                <td class="m2 email-utente">
+                  {{ u.email }}<span class="solo-tel"> · {{ roleLabel(u.role) }}</span
+                  ><span class="solo-tel solo-disabilitato" *ngIf="u.enabled === false">
+                    · Disabilitato</span
+                  >
+                </td>
+                <td class="m-hide md-hide mono">{{ u.fiscalCode }}</td>
+                <td class="m-hide">
+                  <p-tag [value]="roleLabel(u.role)" severity="secondary"></p-tag>
                 </td>
                 @if (isSuperAdmin()) {
-                  <td>
+                  <td class="num-col m-hide md-hide">
                     <!-- Quota significativa solo per gli ADMIN -->
                     <span *ngIf="u.role === 'ADMIN'; else noQuota">
                       {{ u.companyLimit ?? 1 }}
@@ -178,57 +171,18 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
                     >
                   </td>
                 }
-                <td>
+                <td class="m-hide md-hide">
                   <p-tag
                     [value]="u.enabled === false ? 'Disabilitato' : 'Abilitato'"
                     [severity]="u.enabled === false ? 'danger' : 'success'"
                   ></p-tag>
                 </td>
-                <td>
-                  <!-- Impersona: solo SUPER_ADMIN, mai sugli altri super-admin -->
-                  @if (isSuperAdmin() && u.role !== 'SUPER_ADMIN') {
-                    <p-button
-                      icon="pi pi-eye"
-                      [rounded]="true"
-                      [text]="true"
-                      severity="help"
-                      (onClick)="openImpersonateDialog(u)"
-                      pTooltip="Impersona"
-                      [ariaLabel]="'Impersona ' + u.firstName + ' ' + u.lastName"
-                    />
-                  }
-                  <p-button
-                    icon="pi pi-user-edit"
-                    [rounded]="true"
-                    [text]="true"
-                    (onClick)="openRoleDialog(u)"
-                    pTooltip="Cambia ruolo"
-                    [ariaLabel]="'Cambia ruolo di ' + u.firstName + ' ' + u.lastName"
-                  />
-                  <!-- Imposta quota aziende: solo SUPER_ADMIN, solo per gli ADMIN -->
-                  @if (isSuperAdmin() && u.role === 'ADMIN') {
-                    <p-button
-                      icon="pi pi-building"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="openCompanyLimitDialog(u)"
-                      pTooltip="Imposta quota aziende"
-                      [ariaLabel]="'Imposta quota aziende di ' + u.firstName + ' ' + u.lastName"
-                    />
-                  }
-                  <p-button
-                    [icon]="u.enabled === false ? 'pi pi-lock-open' : 'pi pi-lock'"
-                    [rounded]="true"
-                    [text]="true"
-                    [severity]="u.enabled === false ? 'success' : 'danger'"
-                    (onClick)="toggleStatus(u)"
-                    [pTooltip]="u.enabled === false ? 'Abilita utente' : 'Disabilita utente'"
-                    [ariaLabel]="
-                      (u.enabled === false ? 'Abilita ' : 'Disabilita ') +
-                      u.firstName +
-                      ' ' +
-                      u.lastName
-                    "
+                <td class="azioni-col">
+                  <app-azioni-riga
+                    [attr.data-testid]="'utente-azioni-' + u.id"
+                    [nome]="u.firstName + ' ' + u.lastName"
+                    [principale]="azioni.di(u).principale"
+                    [altre]="azioni.di(u).altre"
                   />
                 </td>
               </tr>
@@ -430,7 +384,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
         <div *ngIf="selectedUser() as su">
           <p class="mb-3">
             Utente <strong>{{ su.firstName }} {{ su.lastName }}</strong> — ruolo attuale:
-            <p-tag [value]="roleLabel(su.role)" [severity]="roleSeverity(su.role)"></p-tag>
+            <p-tag [value]="roleLabel(su.role)" severity="secondary"></p-tag>
           </p>
           <label for="u-target-role" class="block mb-2">Nuovo ruolo</label>
           <p-dropdown
@@ -506,6 +460,62 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
       .text-tertiary {
         color: var(--text-tertiary);
       }
+      .barra-filtri__tenant {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-md);
+        flex: 0 1 24rem;
+        min-width: 16rem;
+      }
+      .barra-filtri__tenant p-dropdown {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .barra-filtri__etichetta {
+        color: var(--text-tertiary);
+        font-size: var(--font-size-sm);
+      }
+      .chi {
+        overflow-wrap: anywhere;
+      }
+      .mono {
+        font-family: var(--font-family-mono);
+        font-size: var(--font-size-sm);
+      }
+      .azioni-col {
+        white-space: nowrap;
+      }
+      .solo-tel {
+        display: none;
+      }
+      /* Fra 640 e 992 px la tabella non ci sta: Codice fiscale, Quota aziende e Stato lasciano posto a nome, ruolo e azioni, che non devono andare a capo lettera per lettera. */
+      @media (min-width: 641px) and (max-width: 991.98px) {
+        .md-hide {
+          display: none;
+        }
+        /* Senza la colonna Stato, un utente disabilitato lo dice accanto all'email. */
+        .solo-disabilitato {
+          display: inline;
+        }
+      }
+      .email-utente {
+        overflow-wrap: anywhere;
+      }
+      .nome-utente {
+        min-width: 9rem;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
+        .barra-filtri__tenant {
+          flex: 1 1 auto;
+          min-width: 0;
+          width: 100%;
+        }
+      }
       .field-error {
         color: var(--color-danger);
       }
@@ -557,6 +567,44 @@ export class UserAdminComponent implements OnInit {
   readonly roleOptions: SelectOption<UserRole>[] = (Object.keys(ROLE_LABELS) as UserRole[]).map(
     r => ({ label: ROLE_LABELS[r], value: r })
   )
+
+  /**
+   * Azioni di ogni riga: «Cambia ruolo» come azione principale; nel menu ⋯ le altre, ciascuna solo
+   * per chi il backend lascia eseguirla (`user-admin.controller.ts`): Impersona e Imposta quota
+   * aziende solo SUPER_ADMIN, Disabilita/Abilita SUPER_ADMIN e ADMIN. Mai Impersona su un altro
+   * SUPER_ADMIN. In fondo, in rosso, nulla: nessuna azione elimina un utente.
+   */
+  readonly azioni = new MemoriaAzioni<AdminUser>((u): AzioniDiRiga => {
+    const altre: AzioniDiRiga['altre'] = []
+    if (this.isSuperAdmin() && u.role !== 'SUPER_ADMIN') {
+      altre.push({
+        etichetta: 'Impersona',
+        icona: 'pi pi-eye',
+        esegui: () => this.openImpersonateDialog(u),
+      })
+    }
+    if (this.isSuperAdmin() && u.role === 'ADMIN') {
+      altre.push({
+        etichetta: 'Imposta quota aziende',
+        icona: 'pi pi-building',
+        esegui: () => this.openCompanyLimitDialog(u),
+      })
+    }
+    altre.push({
+      etichetta: u.enabled === false ? 'Abilita' : 'Disabilita',
+      icona: u.enabled === false ? 'pi pi-lock-open' : 'pi pi-ban',
+      esegui: () => this.toggleStatus(u),
+    })
+    return {
+      // Senza icona: sul bottone si legge «Cambia ruolo»; il nome dell'utente entra nel nome
+      // accessibile (app-azioni-riga lo aggiunge dal `nome` della riga).
+      principale: {
+        etichetta: 'Cambia ruolo',
+        esegui: () => this.openRoleDialog(u),
+      },
+      altre,
+    }
+  })
 
   readonly createForm = this.fb.group({
     firstName: ['', [Validators.required]],
@@ -644,9 +692,6 @@ export class UserAdminComponent implements OnInit {
   // --- Etichette ---
   roleLabel(r: UserRole): string {
     return ROLE_LABELS[r] ?? r
-  }
-  roleSeverity(r: UserRole): 'success' | 'info' | 'warning' | 'danger' | 'secondary' {
-    return ROLE_SEVERITY[r] ?? 'info'
   }
 
   // --- Form helper ---
@@ -799,8 +844,11 @@ export class UserAdminComponent implements OnInit {
       header: enable ? 'Abilita utente' : 'Disabilita utente',
       message: `Sei sicuro di voler ${azione} ${u.firstName} ${u.lastName}?`,
       icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Conferma',
+      acceptLabel: enable ? 'Abilita' : 'Disabilita',
       rejectLabel: 'Annulla',
+      // Disabilitare toglie l'accesso: bottone rosso e focus su «Annulla».
+      acceptButtonStyleClass: enable ? undefined : 'p-button-danger',
+      defaultFocus: 'reject',
       accept: () => {
         this.userService.setStatus(u.id, enable).subscribe({
           next: () => {
@@ -825,6 +873,7 @@ export class UserAdminComponent implements OnInit {
       icon: 'pi pi-eye',
       acceptLabel: 'Impersona',
       rejectLabel: 'Annulla',
+      defaultFocus: 'reject',
       accept: () => this.doImpersonate(u),
     })
   }

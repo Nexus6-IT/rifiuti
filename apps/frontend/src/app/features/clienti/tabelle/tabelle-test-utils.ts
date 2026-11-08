@@ -1,5 +1,6 @@
 import { ComponentFixture } from '@angular/core/testing'
 import { of } from 'rxjs'
+import { eCampoData, scriviCampoData } from '../../../shared/testing/campo-data'
 
 /** Finto di una `Tabella` del servizio: i metodi sono spy. */
 export function tabellaFinta() {
@@ -17,6 +18,7 @@ export const bottone = (id: string): HTMLButtonElement | null => {
 
 export function scrivi(id: string, testo: string): void {
   const el = q<HTMLInputElement>(id)!
+  if (eCampoData(el)) return scriviCampoData(el, testo)
   el.value = testo
   el.dispatchEvent(new Event('input', { bubbles: true }))
 }

@@ -5,7 +5,7 @@
  * la registrazione di un nuovo movimento (CARICO o SCARICO) tramite un
  * dialog con form validato, raggruppato in sezioni logiche.
  *
- * Design system "B": slate + teal-700 #0f766e, IBM Plex, griglia 8pt, WCAG 2.1 AA.
+ * Stile «Libro mastro» (giro 2): token del tema, Geist, griglia 8pt, WCAG 2.1 AA.
  */
 
 import { Component, DestroyRef, OnInit, inject, signal, computed } from '@angular/core'
@@ -81,7 +81,11 @@ import {
   RuoloFir,
 } from './registro-fir'
 import { CerSelectComponent } from '../cer/cer-select.component'
-import { GiacenzeInizialiDialogComponent } from './giacenze-iniziali-dialog.component'
+import { PillolaStatoComponent } from '../../shared/components/pillola-stato.component'
+import {
+  GiacenzeInizialiDialogComponent,
+  etichettaUnita,
+} from './giacenze-iniziali-dialog.component'
 import {
   RentriRegistroPannelloComponent,
   RentriRigaAzioniComponent,
@@ -149,6 +153,7 @@ function fineGiornata(d: Date): Date {
     SplitButtonModule,
     TableModule,
     TagModule,
+    PillolaStatoComponent,
     ProgressSpinnerModule,
     DialogModule,
     CalendarModule,
@@ -232,6 +237,7 @@ function fineGiornata(d: Date): Date {
             *ngIf="offriRegistrazione()"
             label="Registra movimento"
             icon="pi pi-plus"
+            styleClass="wf-primario"
             (onClick)="apriForm()"
             data-testid="registro-nuovo"
             ariaLabel="Registra un nuovo movimento di carico o scarico"
@@ -447,11 +453,15 @@ function fineGiornata(d: Date): Date {
                   {{ etichettaSede(m.registroId) }}
                 </td>
                 <td>
-                  <p-tag
-                    [value]="m.type"
-                    [severity]="m.type === 'CARICO' ? 'success' : 'info'"
-                    [icon]="m.type === 'CARICO' ? 'pi pi-arrow-down' : 'pi pi-arrow-up'"
-                  ></p-tag>
+                  <span class="tipo-mov" data-testid="registro-tipo">
+                    <i
+                      class="pi tipo-mov__freccia"
+                      [class.pi-arrow-down]="m.type === 'CARICO'"
+                      [class.pi-arrow-up]="m.type !== 'CARICO'"
+                      aria-hidden="true"
+                    ></i
+                    >{{ m.type === 'CARICO' ? 'Carico' : 'Scarico' }}
+                  </span>
                 </td>
                 <td class="cell-nowrap">{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
                 <td>
@@ -468,7 +478,7 @@ function fineGiornata(d: Date): Date {
                 </td>
                 <td class="num-col">
                   <span class="num">{{ m.quantity | number: '1.0-2' }}</span>
-                  <span class="unit">{{ m.unit }}</span>
+                  <span class="unit">{{ unitaLeggibile(m.unit) }}</span>
                 </td>
                 <td>
                   <span
@@ -485,14 +495,12 @@ function fineGiornata(d: Date): Date {
                 </td>
                 <td>
                   <div class="stato-stack">
-                    <p-tag
+                    <app-pillola-stato
                       *ngIf="!m.fuoriTermine"
-                      value="Nei termini"
-                      severity="success"
-                      icon="pi pi-check"
-                      styleClass="stato-tag"
+                      tono="none"
+                      testo="Nei termini"
                       pTooltip="Registrato entro il termine di legge"
-                    ></p-tag>
+                    />
                     <p-tag
                       *ngIf="correzione(m) as c"
                       [value]="c"
@@ -505,24 +513,22 @@ function fineGiornata(d: Date): Date {
                     <p-tag
                       *ngIf="annotazione(m) as a"
                       [value]="a"
-                      severity="info"
+                      severity="secondary"
                       icon="pi pi-pencil"
                       styleClass="stato-tag stato-tag--correzione"
                       [pTooltip]="m.motivoAnnotazione ? 'Motivo: ' + m.motivoAnnotazione : a"
                       [attr.data-testid]="'registro-annotazione-' + m.id"
                     ></p-tag>
-                    <p-tag
+                    <app-pillola-stato
                       *ngIf="m.fuoriTermine"
-                      [value]="'Fuori termine' + (m.ritardoGg ? ' · +' + m.ritardoGg + ' gg' : '')"
-                      severity="warning"
-                      icon="pi pi-clock"
-                      styleClass="stato-tag"
+                      tono="warn"
+                      [testo]="'Fuori termine' + (m.ritardoGg ? ' · +' + m.ritardoGg + ' gg' : '')"
                       [pTooltip]="
                         'Registrato con ' +
                         (m.ritardoGg ?? 0) +
                         ' gg di ritardo sul termine di legge'
                       "
-                    ></p-tag>
+                    />
                   </div>
                 </td>
                 <td *ngIf="rentriColonna()">
@@ -1251,8 +1257,25 @@ function fineGiornata(d: Date): Date {
         font-weight: var(--font-weight-medium);
         color: var(--text-primary);
       }
+      /* «kg» come testo normale grigio dopo la cifra: mai maiuscolo ne' maiuscoletto. */
       .unit {
         margin-left: 4px;
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-normal);
+        text-transform: none;
+        font-variant-caps: normal;
+        color: var(--text-secondary);
+      }
+      /* Carico / Scarico: parola in sentence case, la freccia e' un'icona grigia (nessun colore di stato). */
+      .tipo-mov {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        text-transform: none;
+        color: var(--text-primary);
+      }
+      .tipo-mov__freccia {
         font-size: var(--font-size-xs);
         color: var(--text-tertiary);
       }
@@ -1300,7 +1323,7 @@ function fineGiornata(d: Date): Date {
       }
       .esito-verifica--errore {
         border-color: var(--color-danger);
-        background: var(--color-danger-bg, #fef2f2);
+        background: var(--color-danger-bg);
         color: var(--color-danger);
       }
       .text-muted {
@@ -1336,11 +1359,9 @@ function fineGiornata(d: Date): Date {
       .form-section__title {
         margin: 0;
         font-family: var(--font-display);
-        font-size: var(--font-size-xs);
+        font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--text-tertiary);
+        color: var(--text-secondary);
       }
       .form-divider {
         border: 0;
@@ -2284,6 +2305,11 @@ export class RegistroComponent implements OnInit {
   numeroMovimento(m: Movimento): string {
     return `${m.progressiveNumber}/${m.progressiveYear}`
   }
+  /** Unità come si legge («kg», «t», «m³»): il backend le salva in maiuscolo. */
+  unitaLeggibile(unita: string): string {
+    return etichettaUnita(unita)
+  }
+
   tooltipCorrezione(m: Movimento): string {
     return m.stato === 'ANNULLATO'
       ? 'Annullato: la registrazione non conta più nei calcoli'

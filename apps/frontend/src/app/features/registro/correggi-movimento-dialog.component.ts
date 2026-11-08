@@ -648,8 +648,7 @@ export function messaggioErroreCorrezione(err: any): string {
         gap: var(--spacing-sm);
         margin: 0 0 var(--spacing-sm);
         font-size: var(--font-size-sm);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-weight: var(--font-weight-semibold);
       }
       .legame-attuale__dati {
         margin: 0 0 var(--spacing-sm);

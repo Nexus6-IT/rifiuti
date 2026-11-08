@@ -2,6 +2,7 @@ import { expect, type Download, type Locator, type Page } from '@playwright/test
 import { devLoginTokens } from '../utils/api-client'
 import type { AziendaDiTest, RuoloAzienda } from '../utils/azienda-di-test'
 import { ATTESA_SERVER, attendiElenco, attendiRisposta, cliccaEAttendi } from '../utils/attese'
+import { dataItaliana, scriviData as scriviDataCampo } from '../utils/campo-data'
 
 /**
  * Page Object dell'interfaccia di fatturazione (pezzo 4.4c): elaborazioni, anteprima, documenti,
@@ -10,7 +11,7 @@ import { ATTESA_SERVER, attendiElenco, attendiRisposta, cliccaEAttendi } from '.
  */
 
 /** `AAAA-MM-GG` -> `gg/mm/aaaa`, il formato dei campi data PrimeNG dell'interfaccia. */
-export const dataIt = (iso: string): string => iso.split('-').reverse().join('/')
+export const dataIt = dataItaliana
 
 export class FatturazionePage {
   constructor(readonly page: Page) {}
@@ -53,13 +54,7 @@ export class FatturazionePage {
 
   /** Scrive una data in un `p-calendar` (digitando `gg/mm/aaaa`) e ne chiude il pannello. */
   async scriviData(inputId: string, iso: string): Promise<void> {
-    const campo = this.page.locator(`#${inputId}`)
-    await campo.click()
-    await campo.press('Control+A')
-    await campo.pressSequentially(dataIt(iso))
-    // Escape chiuderebbe l'intero dialogo: il pannello del calendario si chiude cliccando fuori.
-    await this.page.locator('.p-dialog-title').first().click()
-    await expect(campo).toHaveValue(dataIt(iso))
+    await scriviDataCampo(this.page, this.page.locator(`#${inputId}`), iso)
   }
 
   /** Apre «Nuova elaborazione» e compila periodo e data documento (senza avviare). */

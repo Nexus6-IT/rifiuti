@@ -26,6 +26,8 @@ import {
   FeatureFlag,
 } from './tenant-admin.service'
 import { NumeroItalianoDirective } from '../../../shared/directives/numero-it.directive'
+import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
+import { AzioniDiRiga, MemoriaAzioni } from '../../clienti/tabelle/azioni-lista'
 
 interface SelectOption<T> {
   label: string
@@ -41,7 +43,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'giacenze', label: 'Giacenze' },
   { key: 'registro', label: 'Registro cronologico C/S' },
   { key: 'contratti', label: 'Contratti' },
-  { key: 'esg', label: 'ESG/CO2' },
+  { key: 'esg', label: 'ESG/CO₂' },
   { key: 'anomalie', label: 'Anomalie' },
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
@@ -76,7 +78,7 @@ const STATUS_SEVERITY: Record<string, 'success' | 'info' | 'warning' | 'danger' 
 
 /** Etichette in italiano per i piani di abbonamento noti. */
 const TIER_LABELS: Record<string, string> = {
-  TRIAL: 'Trial',
+  TRIAL: 'Prova',
   PROFESSIONAL: 'Professional',
   ENTERPRISE: 'Enterprise',
 }
@@ -121,6 +123,7 @@ interface TenantFormData {
     TooltipModule,
     ProgressSpinnerModule,
     ConfirmDialogModule,
+    AzioniRigaComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -151,6 +154,8 @@ interface TenantFormData {
           <p-button
             [label]="isSuperAdmin() ? 'Nuovo tenant' : 'Nuova azienda'"
             icon="pi pi-plus"
+            styleClass="wf-primario"
+            data-testid="tenant-nuovo"
             [disabled]="!isSuperAdmin() && quotaReached()"
             (onClick)="onNewClick()"
             [pTooltip]="
@@ -204,95 +209,61 @@ interface TenantFormData {
             [value]="tenants()"
             [loading]="loading()"
             [paginator]="tenants().length > 10"
+            [alwaysShowPaginator]="false"
             [rows]="10"
             [rowsPerPageOptions]="[10, 25, 50]"
             currentPageReportTemplate="{first}-{last} di {totalRecords}"
             [showCurrentPageReport]="tenants().length > 10"
-            styleClass="p-datatable-sm"
+            [styleClass]="
+              'p-datatable-sm lista-telefono' + (tenants().length ? '' : ' senza-righe')
+            "
           >
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Ragione sociale</th>
-                <th scope="col">Partita IVA</th>
+                <th scope="col" class="num-col">Partita IVA</th>
                 <th scope="col">Città / Prov.</th>
                 @if (isSuperAdmin()) {
                   <th scope="col">Piano</th>
                   <th scope="col">Stato</th>
                 }
-                <th scope="col" style="width: 9rem">Utenti</th>
-                <th scope="col" style="width: 8rem">Azioni</th>
+                <th scope="col" class="num-col">Utenti</th>
+                <th scope="col" class="num-col azioni-col">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-t>
-              <tr>
-                <td>
-                  <span class="cell-label">Ragione sociale</span>
+              <tr [attr.data-testid]="'tenant-riga-' + t.id">
+                <td class="chi">
                   <span class="font-semibold">{{ t.ragioneSociale }}</span>
                 </td>
-                <td>
-                  <span class="cell-label">Partita IVA</span>
-                  <span class="mono">{{ t.partitaIva }}</span>
+                <td class="num-col m2">
+                  P.IVA <span class="mono">{{ t.partitaIva }}</span
+                  ><span class="solo-tel"> · {{ luogo(t) }}</span
+                  ><span class="solo-tel" *ngIf="t.subscriptionStatus === 'SUSPENDED'">
+                    · Sospeso</span
+                  >
                 </td>
-                <td>
-                  <span class="cell-label">Città / Prov.</span>
-                  {{ t.city }} ({{ t.province }})
-                </td>
+                <td class="m-hide">{{ luogo(t) }}</td>
                 @if (isSuperAdmin()) {
-                  <td>
-                    <span class="cell-label">Piano</span>
-                    {{ tierLabel(t.subscriptionTier) }}
-                  </td>
-                  <td>
-                    <span class="cell-label">Stato</span>
+                  <td class="m-hide">{{ tierLabel(t.subscriptionTier) }}</td>
+                  <td class="m-hide">
                     <p-tag
                       [value]="statusLabel(t.subscriptionStatus)"
                       [severity]="statusSeverity(t.subscriptionStatus)"
                     ></p-tag>
                   </td>
                 }
-                <td>
-                  <span class="cell-label">Utenti</span>
+                <td class="num-col m-hide">
                   {{ t._count?.users ?? 0
                   }}<span class="text-tertiary"> / {{ t.userLimitTotal ?? '—' }} max</span>
                 </td>
-                <td>
-                  <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    <p-button
-                      icon="pi pi-pencil"
-                      [rounded]="true"
-                      [text]="true"
-                      (onClick)="openEditDialog(t)"
-                      pTooltip="Modifica"
-                      tooltipPosition="top"
-                      [ariaLabel]="'Modifica ' + t.ragioneSociale"
-                    />
-                    <!-- Sospendi/riattiva: azione riservata al SUPER_ADMIN -->
-                    @if (isSuperAdmin()) {
-                      <p-button
-                        *ngIf="t.subscriptionStatus !== 'SUSPENDED'"
-                        icon="pi pi-ban"
-                        [rounded]="true"
-                        [text]="true"
-                        severity="danger"
-                        (onClick)="confirmSetStatus(t, 'SUSPENDED')"
-                        pTooltip="Sospendi"
-                        tooltipPosition="top"
-                        [ariaLabel]="'Sospendi ' + t.ragioneSociale"
-                      />
-                      <p-button
-                        *ngIf="t.subscriptionStatus === 'SUSPENDED'"
-                        icon="pi pi-check-circle"
-                        [rounded]="true"
-                        [text]="true"
-                        severity="success"
-                        (onClick)="confirmSetStatus(t, 'ACTIVE')"
-                        pTooltip="Riattiva"
-                        tooltipPosition="top"
-                        [ariaLabel]="'Riattiva ' + t.ragioneSociale"
-                      />
-                    }
-                  </div>
+                <td class="azioni-col">
+                  <app-azioni-riga
+                    [attr.data-testid]="'tenant-azioni-' + t.id"
+                    [nome]="t.ragioneSociale"
+                    [principale]="azioni.di(t).principale"
+                    [altre]="azioni.di(t).altre"
+                  />
                 </td>
               </tr>
             </ng-template>
@@ -314,6 +285,7 @@ interface TenantFormData {
                     <p-button
                       [label]="isSuperAdmin() ? 'Nuovo tenant' : 'Nuova azienda'"
                       icon="pi pi-plus"
+                      [outlined]="true"
                       [disabled]="!isSuperAdmin() && quotaReached()"
                       (onClick)="onNewClick()"
                       [ariaLabel]="
@@ -681,11 +653,6 @@ interface TenantFormData {
         font-family: var(--font-family-mono);
         font-size: var(--font-size-sm);
       }
-      .row-actions {
-        display: flex;
-        gap: var(--spacing-xs);
-        justify-content: flex-end;
-      }
 
       .empty-state__icon {
         font-size: 2.75rem;
@@ -722,15 +689,19 @@ interface TenantFormData {
         flex-shrink: 0;
       }
 
-      /* Etichette riga per la vista impilata su mobile (nascoste su desktop) */
-      .cell-label {
+      .chi {
+        overflow-wrap: anywhere;
+      }
+      .azioni-col {
+        white-space: nowrap;
+      }
+      .solo-tel {
         display: none;
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-tertiary);
-        font-size: var(--font-size-xs);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.15rem;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
       }
 
       .loading-row {
@@ -803,30 +774,6 @@ interface TenantFormData {
         margin-bottom: 0;
         margin-left: var(--spacing-sm);
       }
-
-      /* Vista a card impilata su mobile */
-      @media (max-width: 768px) {
-        :host ::ng-deep .p-datatable .p-datatable-thead {
-          display: none;
-        }
-        :host ::ng-deep .p-datatable .p-datatable-tbody > tr {
-          display: block;
-          padding: var(--spacing-sm) 0;
-          border-bottom: 1px solid var(--surface-border);
-        }
-        :host ::ng-deep .p-datatable .p-datatable-tbody > tr > td {
-          display: block;
-          border: none;
-          padding: 0.35rem var(--spacing-base);
-        }
-        .cell-label {
-          display: block;
-        }
-        .row-actions {
-          justify-content: flex-start;
-          padding-top: var(--spacing-xs);
-        }
-      }
     `,
   ],
 })
@@ -877,6 +824,36 @@ export class TenantAdminComponent implements OnInit {
   })
 
   /** Numero di colonne della tabella (per i colspan di empty/loading). */
+  /**
+   * Azioni di ogni riga: «Modifica» per tutti (PUT: SUPER_ADMIN e ADMIN); nel menu ⋯ «Sospendi» o
+   * «Riattiva», SOLO per il SUPER_ADMIN (`PATCH :id/status` e' `@Roles('SUPER_ADMIN')`). L'ADMIN
+   * non ha menu.
+   */
+  readonly azioni = new MemoriaAzioni<Tenant>(
+    (t): AzioniDiRiga => ({
+      principale: {
+        etichetta: 'Modifica',
+        icona: 'pi pi-pencil',
+        esegui: () => this.openEditDialog(t),
+      },
+      altre: this.isSuperAdmin()
+        ? [
+            t.subscriptionStatus === 'SUSPENDED'
+              ? {
+                  etichetta: 'Riattiva',
+                  icona: 'pi pi-check-circle',
+                  esegui: () => this.confirmSetStatus(t, 'ACTIVE'),
+                }
+              : {
+                  etichetta: 'Sospendi',
+                  icona: 'pi pi-ban',
+                  esegui: () => this.confirmSetStatus(t, 'SUSPENDED'),
+                },
+          ]
+        : [],
+    })
+  )
+
   readonly colCount = computed(() => (this.isSuperAdmin() ? 7 : 5))
 
   /** Intestazione del dialog adattata a ruolo e modalità. */
@@ -968,6 +945,14 @@ export class TenantAdminComponent implements OnInit {
   statusSeverity(s: string): 'success' | 'info' | 'warning' | 'danger' | 'secondary' {
     return STATUS_SEVERITY[s] ?? 'info'
   }
+  /** «Città (PR)»; un dato che manca e' un trattino, mai «()» o «Roma ()». */
+  luogo(t: { city?: string | null; province?: string | null }): string {
+    const citta = t.city?.trim()
+    const prov = t.province?.trim()
+    if (citta && prov) return `${citta} (${prov})`
+    return citta || (prov ? `(${prov})` : '—')
+  }
+
   tierLabel(t: string): string {
     return TIER_LABELS[t] ?? t
   }
@@ -1144,8 +1129,11 @@ export class TenantAdminComponent implements OnInit {
       message: `Sei sicuro di voler ${action} il tenant "${t.ragioneSociale}"?`,
       header: status === 'SUSPENDED' ? 'Conferma sospensione' : 'Conferma riattivazione',
       icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Conferma',
+      acceptLabel: status === 'SUSPENDED' ? 'Sospendi' : 'Riattiva',
       rejectLabel: 'Annulla',
+      // Sospendere toglie l'accesso a un'intera azienda: bottone rosso, focus su «Annulla».
+      acceptButtonStyleClass: status === 'SUSPENDED' ? 'p-button-danger' : undefined,
+      defaultFocus: 'reject',
       accept: () => {
         this.tenantService.setStatus(t.id, status).subscribe({
           next: () => {

@@ -8,24 +8,32 @@ import { InputTextModule } from 'primeng/inputtext'
 import { DialogModule } from 'primeng/dialog'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
-import { TooltipModule } from 'primeng/tooltip'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { MessageModule } from 'primeng/message'
 import { TagModule } from 'primeng/tag'
-import { IconFieldModule } from 'primeng/iconfield'
-import { InputIconModule } from 'primeng/inputicon'
 import { RegistryService, CreateTrasportatoreDto } from './registry.service'
 import { Trasportatore, Indirizzo, Ditta, SedeDitta } from '../../shared/models/registry.model'
 import { AuthService } from '../../core/services/auth.service'
 import { puoGestireAnagrafiche } from './registry-permissions'
 import { DittaIdentificativiComponent } from './ditta-identificativi.component'
 import { SediDittaDialogComponent } from './sedi-ditta-dialog.component'
-import { ErroriIdentificativi, identificativiPerSalvataggio } from './identificativo-fiscale'
+import {
+  ErroriIdentificativi,
+  identificativiPerSalvataggio,
+  separaIdentificativo,
+} from './identificativo-fiscale'
+import { AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
+import { MemoriaAzioni } from '../clienti/tabelle/azioni-lista'
+import { chiediConferma } from '../clienti/tabelle/tabella-comune'
+import { azioniAnagrafica } from './azioni-anagrafica'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 @Component({
   selector: 'app-trasportatori-list',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     TableModule,
@@ -33,14 +41,12 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
     InputTextModule,
     DialogModule,
     ConfirmDialogModule,
-    TooltipModule,
     ProgressSpinnerModule,
     MessageModule,
     TagModule,
-    IconFieldModule,
-    InputIconModule,
     DittaIdentificativiComponent,
     SediDittaDialogComponent,
+    AzioniRigaComponent,
   ],
   providers: [ConfirmationService],
   template: `
@@ -59,6 +65,7 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
               label="Nuovo trasportatore"
               icon="pi pi-plus"
               (onClick)="showCreateDialog()"
+              styleClass="wf-primario"
               ariaLabel="Crea nuovo trasportatore"
               data-testid="trasportatori-nuovo-button"
             />
@@ -66,21 +73,20 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
         </div>
       </header>
 
-      <section class="surface-card registry-panel" aria-label="Elenco trasportatori">
+      <section class="surface-card table-card registry-panel" aria-label="Elenco trasportatori">
         <!-- Toolbar di ricerca -->
-        <div class="registry-toolbar">
-          <p-iconField iconPosition="left" class="registry-search">
-            <p-inputIcon><i class="pi pi-search" aria-hidden="true"></i></p-inputIcon>
+        <div class="barra-filtri registry-toolbar">
+          <span class="barra-filtri__ricerca">
+            <i class="pi pi-search" aria-hidden="true"></i>
             <input
               pInputText
-              type="text"
+              type="search"
               [(ngModel)]="searchTerm"
-              placeholder="Cerca per ragione sociale, P.IVA, iscrizione…"
+              placeholder="Ragione sociale o P.IVA"
               aria-label="Cerca tra i trasportatori (filtra la pagina corrente)"
-              class="w-full"
             />
-          </p-iconField>
-          <span class="registry-count" aria-live="polite">
+          </span>
+          <span class="barra-filtri__destra registry-count" aria-live="polite">
             {{ totalRecords ?? 0 }}
             {{ (totalRecords ?? 0) === 1 ? 'trasportatore' : 'trasportatori' }}
           </span>
@@ -101,6 +107,7 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
             [value]="filteredTrasportatori"
             [loading]="loading"
             [paginator]="true"
+            [alwaysShowPaginator]="false"
             [rows]="pageSize"
             [totalRecords]="totalRecords"
             [lazy]="true"
@@ -108,30 +115,33 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
             [rowsPerPageOptions]="[10, 25, 50]"
             currentPageReportTemplate="{first}-{last} di {totalRecords}"
             [showCurrentPageReport]="totalRecords > 0"
-            responsiveLayout="scroll"
+            styleClass="p-datatable-sm lista-telefono"
           >
             <ng-template pTemplate="header">
               <tr>
                 <th scope="col">Ragione sociale</th>
-                <th scope="col">P.IVA / C.F.</th>
-                <th scope="col">N. iscrizione Albo</th>
+                <th scope="col" class="num-col">P.IVA / C.F.</th>
+                @if (visibili.has('numero')) {
+                  <th scope="col">N. iscrizione Albo</th>
+                }
                 <th scope="col">Sede legale</th>
-                <th scope="col">PEC</th>
-                <th scope="col" style="width: 12rem">Azioni</th>
+                @if (visibili.has('pec')) {
+                  <th scope="col">PEC</th>
+                }
+                @if (haAzioni) {
+                  <th scope="col" class="num-col azioni-col">Azioni</th>
+                }
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-trasportatore>
               <tr [attr.data-testid]="'trasportatori-row-' + trasportatore.id">
-                <td>
-                  <span class="cell-label">Ragione sociale</span>
-                  <span class="font-semibold">{{ trasportatore.ragioneSociale }}</span>
-                </td>
-                <td>
-                  <span class="cell-label">P.IVA / C.F.</span>
+                <td class="chi">{{ trasportatore.ragioneSociale }}</td>
+                <td class="num-col m2">
+                  {{ identificativo(trasportatore).prefisso }}
                   <span
                     class="mono"
                     [attr.data-testid]="'trasportatori-identificativo-' + trasportatore.id"
-                    >{{ trasportatore.partitaIVA || trasportatore.codiceFiscale }}</span
+                    >{{ identificativo(trasportatore).numero || '—' }}</span
                   >
                   @if (trasportatore.partitaIVA && trasportatore.codiceFiscale) {
                     <span class="mono ident-secondario">{{ trasportatore.codiceFiscale }}</span>
@@ -144,66 +154,38 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
                     >
                   }
                 </td>
-                <td>
-                  <span class="cell-label">N. iscrizione Albo</span>
-                  <p-tag [value]="trasportatore.numeroIscrizione" severity="info" />
-                </td>
-                <td>
-                  <span class="cell-label">Sede legale</span>
-                  {{ formatIndirizzo(trasportatore.sedeLegale) }}
-                </td>
-                <td>
-                  <span class="cell-label">PEC</span>
-                  <span [class.text-tertiary]="!trasportatore.pec">{{
-                    trasportatore.pec || 'Non indicata'
-                  }}</span>
-                </td>
-                <td>
-                  <span class="cell-label">Azioni</span>
-                  <div class="row-actions">
-                    @if (trasportatore.dittaId) {
-                      <p-button
-                        [label]="'Sedi (' + (trasportatore.numeroSedi ?? 1) + ')'"
-                        icon="pi pi-map-marker"
-                        [text]="true"
-                        size="small"
-                        (onClick)="apriSedi(trasportatore)"
-                        [ariaLabel]="'Sedi di ' + trasportatore.ragioneSociale"
-                        [attr.data-testid]="'trasportatori-sedi-' + trasportatore.id"
-                      />
+                @if (visibili.has('numero')) {
+                  <td class="m-hide">
+                    @if (trasportatore.numeroIscrizione) {
+                      <p-tag [value]="trasportatore.numeroIscrizione" severity="info" />
+                    } @else {
+                      <span class="text-tertiary">—</span>
                     }
-                  </div>
-                  @if (puoGestire()) {
-                    <div class="row-actions">
-                      <p-button
-                        icon="pi pi-pencil"
-                        [rounded]="true"
-                        [text]="true"
-                        (onClick)="editTrasportatore(trasportatore)"
-                        pTooltip="Modifica"
-                        tooltipPosition="top"
-                        [ariaLabel]="'Modifica ' + trasportatore.ragioneSociale"
-                        [attr.data-testid]="'trasportatori-modifica-' + trasportatore.id"
-                      />
-                      <p-button
-                        icon="pi pi-trash"
-                        [rounded]="true"
-                        [text]="true"
-                        severity="danger"
-                        (onClick)="deleteTrasportatore(trasportatore)"
-                        pTooltip="Elimina"
-                        tooltipPosition="top"
-                        [ariaLabel]="'Elimina ' + trasportatore.ragioneSociale"
-                        [attr.data-testid]="'trasportatori-elimina-' + trasportatore.id"
-                      />
-                    </div>
-                  }
-                </td>
+                  </td>
+                }
+                <td class="m-hide">{{ formatIndirizzo(trasportatore.sedeLegale) }}</td>
+                @if (visibili.has('pec')) {
+                  <td class="m-hide">
+                    <span [class.text-tertiary]="!trasportatore.pec">{{
+                      trasportatore.pec || '—'
+                    }}</span>
+                  </td>
+                }
+                @if (haAzioni) {
+                  <td class="azioni-col">
+                    <app-azioni-riga
+                      [attr.data-testid]="'trasportatori-azioni-' + trasportatore.id"
+                      [nome]="trasportatore.ragioneSociale"
+                      [principale]="azioni.di(trasportatore).principale"
+                      [altre]="azioni.di(trasportatore).altre"
+                    />
+                  </td>
+                }
               </tr>
             </ng-template>
             <ng-template pTemplate="emptymessage">
               <tr>
-                <td colspan="6">
+                <td [attr.colspan]="colonneTotali">
                   <div class="empty-state">
                     <i class="pi pi-truck empty-state__icon" aria-hidden="true"></i>
                     <p class="empty-state__title">Nessun trasportatore trovato</p>
@@ -212,6 +194,7 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
                       <p-button
                         label="Nuovo trasportatore"
                         icon="pi pi-plus"
+                        [outlined]="true"
                         (onClick)="showCreateDialog()"
                         ariaLabel="Crea nuovo trasportatore"
                       />
@@ -222,7 +205,7 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
             </ng-template>
             <ng-template pTemplate="loadingbody">
               <tr>
-                <td colspan="6">
+                <td [attr.colspan]="colonneTotali">
                   <div class="loading-row">
                     <p-progressSpinner
                       styleClass="loading-spinner"
@@ -313,13 +296,12 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
                    dato può mancare per le anagrafiche già esistenti. -->
               <div class="field col-12 md:col-6">
                 <label for="tra-scad-iscrizione">Scadenza iscrizione Albo</label>
-                <input
-                  pInputText
-                  type="date"
-                  id="tra-scad-iscrizione"
+                <app-campo-data
+                  inputId="tra-scad-iscrizione"
                   name="scadenzaIscrizione"
                   [(ngModel)]="formData.scadenzaIscrizione"
                   data-testid="trasportatori-scadenza-iscrizione-input"
+                  [piena]="true"
                 />
                 <small class="field-hint"
                   >Facoltativa: se nota, abilita il promemoria di scadenza.</small
@@ -436,29 +418,11 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
       }
 
       .registry-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: var(--spacing-base);
+        margin: 0;
         padding: var(--spacing-base) var(--spacing-lg);
         border-bottom: 1px solid var(--surface-border);
       }
-      .registry-search {
-        flex: 1 1 18rem;
-        min-width: 0;
-        display: block;
-      }
-      .registry-search .w-full {
-        width: 100%;
-      }
-      /* Spazio a sinistra: evita che l'icona lente si sovrapponga a placeholder/testo */
-      .registry-search input {
-        padding-left: 2.5rem;
-      }
       .registry-count {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        font-weight: var(--font-weight-medium);
         white-space: nowrap;
       }
 
@@ -472,10 +436,12 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
 
       .mono {
         font-family: var(--font-family-mono);
-        font-size: var(--font-size-sm);
+      }
+      .chi {
+        overflow-wrap: anywhere;
       }
       .ident-secondario {
-        display: block;
+        margin-left: var(--spacing-sm);
         color: var(--text-tertiary);
       }
       .badge-da-verificare {
@@ -489,22 +455,6 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
         color: var(--text-primary);
         white-space: nowrap;
       }
-      .row-actions {
-        display: flex;
-        gap: var(--spacing-xs);
-        justify-content: flex-end;
-      }
-
-      .cell-label {
-        display: none;
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-tertiary);
-        font-size: var(--font-size-xs);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.15rem;
-      }
-
       .loading-row {
         display: flex;
         align-items: center;
@@ -516,6 +466,17 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
       :host ::ng-deep .loading-spinner {
         width: 2.25rem;
         height: 2.25rem;
+      }
+
+      /* Telefono: il riquadro non ha padding, le righe a due linee tengono il loro. */
+      @media (max-width: 640px) {
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr {
+          padding-left: var(--spacing-base);
+          padding-right: var(--spacing-base);
+        }
+        .registry-toolbar {
+          padding: var(--spacing-md) var(--spacing-base);
+        }
       }
 
       .empty-state__icon {
@@ -559,32 +520,6 @@ import { ErroriIdentificativi, identificativiPerSalvataggio } from './identifica
         display: block;
         margin-top: var(--spacing-xs);
       }
-
-      @media (max-width: 768px) {
-        :host ::ng-deep .p-datatable .p-datatable-thead {
-          display: none;
-        }
-        :host ::ng-deep .p-datatable .p-datatable-tbody > tr {
-          display: block;
-          padding: var(--spacing-sm) 0;
-          border-bottom: 1px solid var(--surface-border);
-        }
-        :host ::ng-deep .p-datatable .p-datatable-tbody > tr > td {
-          display: block;
-          border: none;
-          padding: 0.35rem var(--spacing-base);
-        }
-        .cell-label {
-          display: block;
-        }
-        .row-actions {
-          justify-content: flex-start;
-          padding-top: var(--spacing-xs);
-        }
-        .registry-toolbar {
-          padding: var(--spacing-base);
-        }
-      }
     `,
   ],
 })
@@ -621,6 +556,49 @@ export class TrasportatoriListComponent implements OnInit {
   // trasportatori), qui si evita solo di mostrare un'azione che il server
   // rifiuterebbe con 403.
   readonly puoGestire = computed(() => puoGestireAnagrafiche(this.authService.currentUser()?.role))
+
+  /** Azioni di riga: Modifica sulla riga, nel menu ⋯ «Sedi (n)» ed «Elimina». */
+  readonly azioni = new MemoriaAzioni<Trasportatore>(r =>
+    azioniAnagrafica({
+      nome: r.ragioneSociale,
+      puoGestire: this.puoGestire(),
+      dittaId: r.dittaId,
+      numeroSedi: r.numeroSedi,
+      modifica: () => this.editTrasportatore(r),
+      sedi: () => this.apriSedi(r),
+      elimina: () => this.deleteTrasportatore(r),
+    })
+  )
+
+  /** Colonne facoltative con almeno un dato nella pagina (le altre non si disegnano). */
+  private visibiliPer: { righe: Trasportatore[]; colonne: Set<string> } | null = null
+  get visibili(): Set<string> {
+    if (this.visibiliPer?.righe !== this.trasportatori) {
+      this.visibiliPer = {
+        righe: this.trasportatori,
+        colonne: colonneConDati(this.trasportatori, {
+          pec: r => r.pec,
+          numero: r => r.numeroIscrizione,
+        }),
+      }
+    }
+    return this.visibiliPer.colonne
+  }
+
+  /** La colonna «Azioni» c'e' solo se almeno una riga ha un'azione (anche solo «Sedi» in sola lettura). */
+  get haAzioni(): boolean {
+    return this.puoGestire() || this.trasportatori.some(r => !!r.dittaId)
+  }
+
+  /** Colonne del p-table, per le righe dello stato vuoto e del caricamento. */
+  get colonneTotali(): number {
+    return 3 + this.visibili.size + (this.haAzioni ? 1 : 0)
+  }
+
+  /** «P.IVA» o «C.F.» in caratteri normali e il numero (l'unica parte in mono). */
+  identificativo(r: Trasportatore): { prefisso: string; numero: string } {
+    return separaIdentificativo(r.partitaIVA, r.codiceFiscale)
+  }
 
   constructor(
     private registryService: RegistryService,
@@ -694,7 +672,7 @@ export class TrasportatoriListComponent implements OnInit {
       sedeLegale: { ...trasportatore.sedeLegale },
       pec: trasportatore.pec,
       // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
-      // direttamente con l'input HTML type="date".
+      // direttamente con il campo data (`app-campo-data`).
       scadenzaIscrizione: trasportatore.scadenzaIscrizione ?? '',
     }
     this.erroriId = {}
@@ -818,32 +796,27 @@ export class TrasportatoriListComponent implements OnInit {
   }
 
   deleteTrasportatore(trasportatore: Trasportatore): void {
-    this.confirmationService.confirm({
-      message: `Sei sicuro di voler eliminare ${trasportatore.ragioneSociale}?`,
-      header: 'Conferma Eliminazione',
-      icon: 'pi pi-exclamation-triangle',
-      accept: () => {
-        this.registryService.deleteTrasportatore(trasportatore.id).subscribe({
-          next: () => {
-            this.messageService.add({
-              severity: 'success',
-              summary: 'Successo',
-              detail: 'Trasportatore eliminato',
-            })
-            this.loadTrasportatori({
-              first: (this.currentPage - 1) * this.pageSize,
-              rows: this.pageSize,
-            })
-          },
-          error: () => {
-            this.messageService.add({
-              severity: 'error',
-              summary: 'Errore',
-              detail: "Errore nell'eliminazione del trasportatore",
-            })
-          },
-        })
-      },
+    chiediConferma(this.confirmationService, `Eliminare ${trasportatore.ragioneSociale}?`, () => {
+      this.registryService.deleteTrasportatore(trasportatore.id).subscribe({
+        next: () => {
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Successo',
+            detail: 'Trasportatore eliminato',
+          })
+          this.loadTrasportatori({
+            first: (this.currentPage - 1) * this.pageSize,
+            rows: this.pageSize,
+          })
+        },
+        error: () => {
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Errore',
+            detail: "Errore nell'eliminazione del trasportatore",
+          })
+        },
+      })
     })
   }
 

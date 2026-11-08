@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { scriviData } from '../../utils/campo-data'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials, getApiUrl } from '../../utils/env'
 import { apiGet, apiDelete, ApiClientError } from '../../utils/api-client'
@@ -428,12 +429,12 @@ test.describe('Contratto cliente — operatore', () => {
     await expect(async () => {
       await dlg.getByLabel('Numero', { exact: true }).fill(dati.numero)
       await dlg.getByLabel('Descrizione', { exact: true }).fill(nomi.contratto)
-      await dlg.getByLabel('Data di inizio').fill('2026-01-01')
-      await dlg.getByLabel('Data di fine').fill('2027-12-31')
+      await scriviData(page, dlg.getByLabel('Data di inizio'), '2026-01-01')
+      await scriviData(page, dlg.getByLabel('Data di fine'), '2027-12-31')
       await expect(dlg.getByLabel('Numero', { exact: true })).toHaveValue(dati.numero, {
         timeout: 1_000,
       })
-      await expect(dlg.getByLabel('Data di fine')).toHaveValue('2027-12-31', { timeout: 1_000 })
+      await expect(dlg.getByLabel('Data di fine')).toHaveValue('31/12/2027', { timeout: 1_000 })
     }).toPass({ timeout: 10_000 })
 
     // Periodi: la frequenza genera i quattro trimestri.

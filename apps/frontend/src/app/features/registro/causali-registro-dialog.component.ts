@@ -52,6 +52,7 @@ import {
   opzioniRuoloMud,
 } from './causali-gestione'
 import { dataItaliana, oggiItaliano } from './giacenze-iniziali-dialog.component'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 export type ModoFormCausale = 'nuova' | 'modifica' | 'versione' | 'chiusura'
 
@@ -64,6 +65,7 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
   selector: 'app-causali-registro-dialog',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     ReactiveFormsModule,
     ButtonModule,
@@ -361,14 +363,13 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
               <label for="cg-al"
                 >Ultimo giorno di validità <span class="req" aria-hidden="true">*</span></label
               >
-              <input
-                id="cg-al"
-                type="date"
+              <app-campo-data
+                inputId="cg-al"
                 formControlName="validaAl"
-                class="p-inputtext w-full"
-                aria-required="true"
-                [attr.aria-invalid]="errore('validaAl') ? true : null"
-                [attr.aria-describedby]="errore('validaAl') ? 'cg-al-err' : null"
+                [ariaRequired]="true"
+                [ariaInvalid]="!!errore('validaAl')"
+                [ariaDescribedby]="errore('validaAl') ? 'cg-al-err' : null"
+                [piena]="true"
               />
               <small *ngIf="errore('validaAl')" id="cg-al-err" class="field-error" role="alert"
                 >Indica una data.</small
@@ -477,14 +478,13 @@ const PATTERN_CODICE = /^AZ_[A-Z0-9_]{2,40}$/
                   >Valida dal
                   <span *ngIf="m !== 'nuova'" class="req" aria-hidden="true">*</span></label
                 >
-                <input
-                  id="cg-dal"
-                  type="date"
+                <app-campo-data
+                  inputId="cg-dal"
                   formControlName="validaDal"
-                  class="p-inputtext w-full"
-                  [attr.aria-required]="m !== 'nuova' ? 'true' : null"
-                  [attr.aria-invalid]="errore('validaDal') ? true : null"
-                  [attr.aria-describedby]="errore('validaDal') ? 'cg-dal-err' : null"
+                  [ariaRequired]="m !== 'nuova'"
+                  [ariaInvalid]="!!errore('validaDal')"
+                  [ariaDescribedby]="errore('validaDal') ? 'cg-dal-err' : null"
+                  [piena]="true"
                 />
                 <small *ngIf="errore('validaDal')" id="cg-dal-err" class="field-error" role="alert"
                   >Indica una data.</small

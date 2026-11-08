@@ -1,4 +1,5 @@
 import { type Page, type Locator, expect } from '@playwright/test'
+import { eseguiAzioneRiga } from '../utils/azioni-riga'
 
 /**
  * Page Object per /admin/utenti (UserAdminComponent).
@@ -29,7 +30,11 @@ export class AdminUsersPage {
     return this.table.getByRole('row').filter({ hasText: email })
   }
 
-  impersonaButtonInRow(row: Locator): Locator {
-    return row.getByRole('button', { name: /impersona/i })
+  /**
+   * «Impersona» sta nel menu ⋯ della riga (solo SUPER_ADMIN): `eseguiAzioneRiga` apre il menu e
+   * sceglie la voce, o clicca il bottone se un domani tornasse sulla riga.
+   */
+  async impersona(row: Locator) {
+    await eseguiAzioneRiga(this.page, row, 'Impersona')
   }
 }

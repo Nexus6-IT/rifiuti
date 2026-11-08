@@ -1,4 +1,5 @@
 import { type Page, type Locator, expect } from '@playwright/test'
+import { eseguiAzioneRiga } from '../utils/azioni-riga'
 
 /** Page Object per /admin/tenants (TenantAdminComponent). */
 export class AdminTenantsPage {
@@ -27,7 +28,7 @@ export class AdminTenantsPage {
    * (blacklist — PATCH /admin/tenants/:id/status). Il guardrail lo blocca su
    * produzione.
    */
-  statusButtonInRow(row: Locator): Locator {
-    return row.getByRole('button', { name: /sospendi|riattiva/i })
+  async cambiaStato(row: Locator, azione: 'Sospendi' | 'Riattiva') {
+    await eseguiAzioneRiga(this.page, row, azione)
   }
 }

@@ -58,7 +58,7 @@ const PIANI: PianoInfo[] = [
       'Export MUD',
       'Giacenze magazzino',
       'Contratti',
-      'ESG / CO2',
+      'ESG / CO₂',
       'Rilevamento anomalie',
       'Integrazione RENTRI (beta)',
     ],
@@ -343,7 +343,7 @@ const PIANI: PianoInfo[] = [
                       [label]="piano.evidenziato ? 'Passa a ' + piano.nome : 'Scegli ' + piano.nome"
                       icon="pi pi-arrow-up-right"
                       [class]="
-                        piano.evidenziato ? 'p-button-primary w-full' : 'p-button-outlined w-full'
+                        piano.evidenziato ? 'wf-primario w-full' : 'p-button-outlined w-full'
                       "
                       [loading]="checkoutLoading() === piano.tier"
                       [disabled]="billingStatus()!.status === 'SUSPENDED' || testMode()"
@@ -454,18 +454,18 @@ const PIANI: PianoInfo[] = [
       /* Callout prova guidata (accento brand teal) */
       .alert--trial {
         background: var(--brand-primary-50);
-        border-left-color: var(--brand-primary-dark);
-        color: var(--brand-primary-dark);
+        border-left-color: var(--text-primary);
+        color: var(--text-primary);
       }
       .alert__link {
         /* teal-700 su bianco/teal-50 = contrasto AA */
-        color: var(--brand-primary-dark);
+        color: var(--text-primary);
         font-weight: var(--font-weight-semibold);
         text-decoration: underline;
         text-underline-offset: 2px;
       }
       .alert__link:hover {
-        color: var(--brand-primary-dark);
+        color: var(--text-primary);
       }
       .alert__icon {
         font-size: 1.25rem;
@@ -505,10 +505,8 @@ const PIANI: PianoInfo[] = [
         margin-bottom: 1.25rem;
       }
       .current-plan-card__title {
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
         color: var(--text-tertiary);
         margin: 0 0 0.25rem;
       }
@@ -561,8 +559,6 @@ const PIANI: PianoInfo[] = [
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
         color: var(--text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
       }
       .stat-item__value {
         font-size: var(--font-size-lg);
@@ -618,13 +614,10 @@ const PIANI: PianoInfo[] = [
         position: absolute;
         top: -1px;
         right: 1.5rem;
-        /* teal-700 su bianco = 5.47:1 col testo bianco (era teal-600 = 3.74:1 = fail AA). */
-        background: var(--brand-primary-dark);
-        color: var(--text-inverse);
+        background: var(--ink-fill);
+        color: var(--on-ink);
         font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        font-weight: var(--font-weight-semibold);
         padding: var(--spacing-xs) var(--spacing-sm);
         border-radius: 0 0 var(--radius-md, 0.5rem) var(--radius-md, 0.5rem);
       }
@@ -661,7 +654,7 @@ const PIANI: PianoInfo[] = [
         font-family: var(--font-display);
         font-size: 2rem;
         font-weight: var(--font-weight-bold);
-        color: var(--brand-primary-dark);
+        color: var(--text-primary);
         line-height: 1;
       }
       .piano-card__periodicita {
@@ -689,7 +682,7 @@ const PIANI: PianoInfo[] = [
         color: var(--text-primary);
       }
       .limit-item__icon {
-        color: var(--brand-primary);
+        color: var(--text-secondary);
         font-size: 0.875rem;
         flex-shrink: 0;
       }
@@ -736,7 +729,7 @@ const PIANI: PianoInfo[] = [
       }
       .billing-footer__link {
         /* Link come testo: teal-700 = 5.47:1 su bianco (teal-600 = 3.74:1 = fail AA). */
-        color: var(--brand-primary-dark);
+        color: var(--text-primary);
         text-decoration: none;
       }
       .billing-footer__link:hover {

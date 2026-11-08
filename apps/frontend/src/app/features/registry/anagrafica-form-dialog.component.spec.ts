@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService } from 'primeng/api'
@@ -171,6 +172,16 @@ describe('AnagraficaFormDialogComponent — codice fiscale, ditta già presente,
     expect(q('label[for="ana-produttore-cf"]')!.textContent).toContain('Codice fiscale')
     expect(q<HTMLInputElement>('#ana-produttore-cf')!.maxLength).toBe(16)
     expect(q('label[for="ana-produttore-piva"] .req')).toBeNull()
+  })
+
+  it('le scadenze di trasportatore e destinatario sono calendari in italiano', async () => {
+    await apri('trasportatore')
+    expect(doc.querySelector('input[type="date"]')).toBeNull()
+    expect(q('label[for="ana-trasportatore-scad-iscrizione"]')).not.toBeNull()
+    const campo = q<HTMLInputElement>('#ana-trasportatore-scad-iscrizione')!
+    expect(campo.placeholder).toBe('gg/mm/aaaa')
+    scriviCampoData(campo, '2027-06-30')
+    expect(component.form.scadenzaIscrizione).toBe('2027-06-30')
   })
 
   it('senza né P.IVA né codice fiscale: "Indica la partita IVA o il codice fiscale." e nessuna chiamata', async () => {

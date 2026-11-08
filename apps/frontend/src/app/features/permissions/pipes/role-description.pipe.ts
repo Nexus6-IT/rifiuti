@@ -2,33 +2,26 @@ import { Pipe, PipeTransform } from '@angular/core'
 
 /**
  * RoleDescriptionPipe
- * Transforms role IDs or names into human-readable descriptions
- * T126: Role description pipe for User Story 3
+ * Trasforma il nome (o l'id) di un ruolo nel testo italiano da mostrare.
  *
- * Purpose: Provide clear role descriptions for permission discovery pages
- *
- * Usage:
+ * Uso:
  * ```
- * {{ 'FIELD_OPERATOR' | roleDescription }}
- * // Output: "Operators who create and manage FIRs in the field"
- *
- * {{ 'FACILITY_MANAGER' | roleDescription:'short' }}
- * // Output: "Facility Manager"
+ * {{ 'OPERATOR' | roleDescription }}           // descrizione lunga
+ * {{ 'OPERATOR' | roleDescription:'name' }}    // «Operatore»
+ * {{ 'ADMIN' | roleDescription:'short' }}      // «Accesso completo al sistema»
  * ```
  *
- * Requirements from spec.md:
- * - Provide clear, concise role descriptions
- * - Help users understand what each role can do
- * - Support both short (name) and long (description) formats
+ * Regole (restyle giro 2, Task 15):
+ * - mai un codice inglese per i ruoli noti (ADMIN, OPERATOR, VIEWER, CONSULTANT,
+ *   COMPLIANCE_OFFICER, SUPER_ADMIN e gli alias storici);
+ * - i nomi sono in sentence case («Amministratore di sistema»): il maiuscolo continuo non si usa;
+ * - un ruolo personalizzato (creato dall'azienda) si legge comunque in italiano.
  */
 @Pipe({
   name: 'roleDescription',
   standalone: true,
 })
 export class RoleDescriptionPipe implements PipeTransform {
-  /**
-   * Role metadata: display names and descriptions
-   */
   private readonly roleMetadata: Record<
     string,
     {
@@ -37,69 +30,88 @@ export class RoleDescriptionPipe implements PipeTransform {
       longDescription: string
     }
   > = {
-    SYSTEM_ADMIN: {
-      displayName: 'System Administrator',
-      shortDescription: 'Full system access',
+    SUPER_ADMIN: {
+      displayName: 'Super amministratore',
+      shortDescription: 'Gestione della piattaforma',
       longDescription:
-        'System administrators have complete control over the platform, including user management, system configuration, and all tenant operations.',
+        'Il super amministratore gestisce la piattaforma: aziende, utenti, abbonamenti e stato del sistema.',
+    },
+    ADMIN: {
+      // Stesso nome della colonna Ruolo di Utenti («Amministratore»): una pagina non deve chiamarlo in un altro modo.
+      displayName: 'Amministratore',
+      shortDescription: 'Accesso completo al sistema',
+      longDescription:
+        "L'amministratore ha il controllo completo dell'azienda: utenti, ruoli, permessi e tutte le attività operative.",
+    },
+    SYSTEM_ADMIN: {
+      displayName: 'Amministratore di sistema',
+      shortDescription: 'Accesso completo al sistema',
+      longDescription:
+        "L'amministratore di sistema ha il controllo completo dell'azienda: utenti, ruoli, permessi e tutte le attività operative.",
     },
     FACILITY_MANAGER: {
-      displayName: 'Facility Manager',
-      shortDescription: 'Manages facility operations',
+      displayName: 'Responsabile di sede',
+      shortDescription: "Gestisce l'attività della sede",
       longDescription:
-        'Facility managers oversee waste management operations for their assigned facilities, including creating FIRs, managing staff, and viewing analytics.',
+        'Il responsabile di sede coordina la gestione dei rifiuti nelle sedi assegnate: crea i FIR, gestisce il personale e consulta le analisi.',
     },
     FIELD_OPERATOR: {
-      displayName: 'Field Operator',
-      shortDescription: 'Creates and manages FIRs',
+      displayName: 'Operatore',
+      shortDescription: 'Crea e gestisce i FIR',
       longDescription:
-        'Field operators work on-site to create and manage FIRs for waste collection, transportation, and disposal activities.',
+        'L’operatore lavora sul campo: crea e gestisce i FIR per la raccolta, il trasporto e lo smaltimento dei rifiuti.',
     },
     COMPLIANCE_OFFICER: {
-      displayName: 'Compliance Officer',
-      shortDescription: 'Reviews audit trails',
+      displayName: 'Responsabile della conformità',
+      shortDescription: 'Controlla il registro delle attività',
       longDescription:
-        'Compliance officers review permission audit trails, generate reports for regulatory inspections, and ensure ARPA compliance.',
+        'Il responsabile della conformità controlla il registro delle attività sui permessi, prepara i report per le verifiche degli enti e cura il rispetto delle norme ARPA.',
     },
     ENVIRONMENTAL_CONSULTANT: {
-      displayName: 'Environmental Consultant',
-      shortDescription: 'Manages multiple clients',
+      displayName: 'Consulente ambientale',
+      shortDescription: 'Segue più aziende clienti',
       longDescription:
-        'Environmental consultants provide waste management expertise across multiple client tenants, with the ability to switch contexts and view aggregated data.',
+        'Il consulente ambientale offre la sua competenza a più aziende clienti: può passare da un’azienda all’altra e consultare i dati riepilogativi.',
     },
     VIEWER: {
-      displayName: 'Viewer',
-      shortDescription: 'Read-only access',
+      displayName: 'Visualizzatore',
+      shortDescription: 'Accesso in sola lettura',
       longDescription:
-        'Viewers have read-only access to FIRs and reports within their assigned facilities, without the ability to create or modify data.',
+        'Il visualizzatore consulta FIR e report delle sedi assegnate, senza poter creare o modificare dati.',
+    },
+    UNKNOWN: {
+      displayName: 'Ruolo non disponibile',
+      shortDescription: 'Ruolo non ancora caricato',
+      longDescription: 'Il ruolo non è ancora disponibile: riprova tra qualche istante.',
     },
   }
 
+  /** Alias storici e nomi brevi (i ruoli di sistema del backend si chiamano ADMIN, OPERATOR, ...). */
+  private readonly nameMap: Record<string, string> = {
+    ADMINISTRATOR: 'SYSTEM_ADMIN',
+    MANAGER: 'FACILITY_MANAGER',
+    OPERATOR: 'FIELD_OPERATOR',
+    CONSULTANT: 'ENVIRONMENTAL_CONSULTANT',
+    AUDITOR: 'COMPLIANCE_OFFICER',
+    OFFICER: 'COMPLIANCE_OFFICER',
+    'READ-ONLY': 'VIEWER',
+    READONLY: 'VIEWER',
+  }
+
   /**
-   * Transform role name/ID to human-readable description
-   *
-   * @param roleNameOrId Role name (e.g., "FIELD_OPERATOR") or ID
-   * @param mode Format mode: "name", "short", or "long" (default)
-   * @returns Human-readable role description
+   * @param roleNameOrId Nome del ruolo (es. «OPERATOR») o suo id
+   * @param mode «name» (nome), «short» (descrizione breve) o «long» (descrizione estesa, default)
    */
   transform(roleNameOrId: string, mode: 'name' | 'short' | 'long' = 'long'): string {
-    // Validation
     if (!roleNameOrId || typeof roleNameOrId !== 'string') {
-      return 'Unknown role'
+      return 'Ruolo sconosciuto'
     }
 
-    // Normalize role name (convert to uppercase, handle both IDs and names)
-    const normalizedRole = this.normalizeRoleName(roleNameOrId)
-
-    // Get role metadata
-    const metadata = this.roleMetadata[normalizedRole]
-
+    const metadata = this.roleMetadata[this.normalizeRoleName(roleNameOrId)]
     if (!metadata) {
-      // Fallback for unknown roles
       return this.formatUnknownRole(roleNameOrId, mode)
     }
 
-    // Return appropriate format
     switch (mode) {
       case 'name':
         return metadata.displayName
@@ -111,71 +123,43 @@ export class RoleDescriptionPipe implements PipeTransform {
     }
   }
 
-  /**
-   * Normalize role name to standard format
-   */
   private normalizeRoleName(roleNameOrId: string): string {
-    // If it's a UUID-like ID, can't normalize - return as-is
+    // Un id (uuid) non si può ricondurre a un nome: resta com'è.
     if (roleNameOrId.includes('-') && roleNameOrId.length > 20) {
       return roleNameOrId
     }
-
-    // Convert to uppercase and handle common variations
     const normalized = roleNameOrId.toUpperCase().trim()
-
-    // Handle common name variations
-    const nameMap: Record<string, string> = {
-      ADMIN: 'SYSTEM_ADMIN',
-      ADMINISTRATOR: 'SYSTEM_ADMIN',
-      MANAGER: 'FACILITY_MANAGER',
-      OPERATOR: 'FIELD_OPERATOR',
-      CONSULTANT: 'ENVIRONMENTAL_CONSULTANT',
-      AUDITOR: 'COMPLIANCE_OFFICER',
-      OFFICER: 'COMPLIANCE_OFFICER',
-      'READ-ONLY': 'VIEWER',
-      READONLY: 'VIEWER',
-    }
-
-    return nameMap[normalized] || normalized
+    return this.nameMap[normalized] || normalized
   }
 
-  /**
-   * Format unknown role name gracefully
-   */
+  /** Ruolo personalizzato: «RESPONSABILE_MAGAZZINO» diventa «Responsabile magazzino». */
   private formatUnknownRole(roleNameOrId: string, mode: 'name' | 'short' | 'long'): string {
-    // Try to make it human-readable
-    const formatted = roleNameOrId
-      .replace(/_/g, ' ')
-      .replace(/-/g, ' ')
-      .toLowerCase()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
+    const parole = roleNameOrId.replace(/[_-]/g, ' ').trim().toLowerCase()
+    const formatted = parole.charAt(0).toUpperCase() + parole.slice(1)
 
     switch (mode) {
       case 'name':
         return formatted
       case 'short':
-        return `Custom role: ${formatted}`
+        return `Ruolo personalizzato: ${formatted}`
       case 'long':
       default:
-        return `This is a custom role named "${formatted}". Contact your administrator for details about this role's permissions.`
+        return `Questo è un ruolo personalizzato chiamato «${formatted}». Per sapere cosa può fare, rivolgiti all'amministratore.`
     }
   }
 
-  /**
-   * Get all available roles
-   * Useful for dropdowns and selection components
-   */
+  /** Tutti i ruoli noti, per i menu a tendina. */
   getAllRoles(): Array<{
     name: string
     displayName: string
     description: string
   }> {
-    return Object.entries(this.roleMetadata).map(([name, metadata]) => ({
-      name,
-      displayName: metadata.displayName,
-      description: metadata.shortDescription,
-    }))
+    return Object.entries(this.roleMetadata)
+      .filter(([name]) => name !== 'UNKNOWN')
+      .map(([name, metadata]) => ({
+        name,
+        displayName: metadata.displayName,
+        description: metadata.shortDescription,
+      }))
   }
 }

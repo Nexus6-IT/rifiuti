@@ -31,11 +31,13 @@ import {
   StatoAccesso,
   StrumentoPesa,
 } from './pese.service'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 @Component({
   selector: 'app-pese-accessi',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     ButtonModule,
@@ -56,6 +58,7 @@ import {
         <p-button
           *ngIf="puoOperare()"
           label="Nuovo accesso"
+          styleClass="wf-primario"
           icon="pi pi-plus"
           (onClick)="apriNuovo($event)"
           data-testid="ac-nuovo"
@@ -130,10 +133,8 @@ import {
           </div>
           <div class="field">
             <label for="ac-f-dal">Dal</label>
-            <input
-              id="ac-f-dal"
-              type="date"
-              class="p-inputtext"
+            <app-campo-data
+              inputId="ac-f-dal"
               [(ngModel)]="filtri.dal"
               name="dal"
               data-testid="ac-f-dal"
@@ -141,10 +142,8 @@ import {
           </div>
           <div class="field">
             <label for="ac-f-al">Al</label>
-            <input
-              id="ac-f-al"
-              type="date"
-              class="p-inputtext"
+            <app-campo-data
+              inputId="ac-f-al"
               [(ngModel)]="filtri.al"
               name="al"
               data-testid="ac-f-al"

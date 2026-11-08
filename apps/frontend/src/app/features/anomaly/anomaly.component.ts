@@ -47,22 +47,31 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
         </div>
       </header>
 
-      <!-- KPI per gravità -->
-      <div *ngIf="!loading() && !error() && loaded()" class="stat-grid mb-4">
-        <div class="stat-card stat-card--danger">
-          <span class="stat-card__label">Gravità alta</span>
-          <span class="stat-card__value">{{ countBySeverity('HIGH') | number }}</span>
-          <span class="stat-card__hint">richiedono intervento</span>
+      <!-- KPI per gravità: una sola striscia divisa, lo stato è la parola e il pallino -->
+      <div
+        *ngIf="!loading() && !error() && loaded()"
+        class="striscia striscia-divisa mb-4"
+        role="group"
+        aria-label="Anomalie per gravità"
+      >
+        <div class="cella tono-err" data-testid="anomalie-alta">
+          <span class="cella__l"><span class="pallino" aria-hidden="true"></span>Gravità alta</span>
+          <span class="cella__v num">{{ countBySeverity('HIGH') | number }}</span>
+          <span class="cella__h">richiedono intervento</span>
         </div>
-        <div class="stat-card stat-card--warning">
-          <span class="stat-card__label">Gravità media</span>
-          <span class="stat-card__value">{{ countBySeverity('MEDIUM') | number }}</span>
-          <span class="stat-card__hint">da verificare</span>
+        <div class="cella tono-warn" data-testid="anomalie-media">
+          <span class="cella__l"
+            ><span class="pallino" aria-hidden="true"></span>Gravità media</span
+          >
+          <span class="cella__v num">{{ countBySeverity('MEDIUM') | number }}</span>
+          <span class="cella__h">da verificare</span>
         </div>
-        <div class="stat-card stat-card--info">
-          <span class="stat-card__label">Gravità bassa</span>
-          <span class="stat-card__value">{{ countBySeverity('LOW') | number }}</span>
-          <span class="stat-card__hint">segnalazioni minori</span>
+        <div class="cella tono-todo" data-testid="anomalie-bassa">
+          <span class="cella__l"
+            ><span class="pallino" aria-hidden="true"></span>Gravità bassa</span
+          >
+          <span class="cella__v num">{{ countBySeverity('LOW') | number }}</span>
+          <span class="cella__h">segnalazioni minori</span>
         </div>
       </div>
 
@@ -183,8 +192,8 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
                 </td>
                 <td>{{ typeLabel(a.type) }}</td>
                 <td>{{ a.message }}</td>
-                <td>{{ a.firNumber || '-' }}</td>
-                <td>{{ a.cerCode || '-' }}</td>
+                <td>{{ a.firNumber || '—' }}</td>
+                <td>{{ a.cerCode || '—' }}</td>
               </tr>
             </ng-template>
           </p-table>
@@ -202,24 +211,6 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
       }
       .empty-state__icon--success {
         color: var(--color-success);
-      }
-      .stat-card--danger {
-        border-color: var(--color-danger);
-      }
-      .stat-card--danger .stat-card__value {
-        color: var(--color-danger);
-      }
-      .stat-card--warning {
-        border-color: var(--color-warning);
-      }
-      .stat-card--warning .stat-card__value {
-        color: var(--color-warning);
-      }
-      .stat-card--info {
-        border-color: var(--color-info);
-      }
-      .stat-card--info .stat-card__value {
-        color: var(--color-info);
       }
       .mb-4 {
         margin-bottom: var(--spacing-xl);

@@ -10,8 +10,8 @@ import { ToastService } from '../../core/services/toast.service'
 import { EsgReport, EsgService } from './esg.service'
 
 /**
- * Pagina ESG / CO2: indicatori ambientali aggregati del tenant.
- * Mostra tasso di recupero, kg deviati da discarica, CO2 evitata e i totali
+ * Pagina ESG / CO₂: indicatori ambientali aggregati del tenant.
+ * Mostra tasso di recupero, kg deviati da discarica, CO₂ evitata e i totali
  * prodotto/recupero/smaltimento, con dettaglio per codice CER.
  * Filtro periodo opzionale (data inizio/fine).
  */
@@ -31,9 +31,9 @@ import { EsgReport, EsgService } from './esg.service'
     <div class="page">
       <header class="page-header">
         <div class="page-header__titles">
-          <h1 class="page-title">ESG / CO2 — Indicatori ambientali</h1>
+          <h1 class="page-title">ESG / CO₂ — Indicatori ambientali</h1>
           <p class="page-subtitle">
-            Tasso di recupero, rifiuti deviati da discarica e CO2 evitata, con dettaglio per codice
+            Tasso di recupero, rifiuti deviati da discarica e CO₂ evitata, con dettaglio per codice
             CER
           </p>
         </div>
@@ -152,10 +152,10 @@ import { EsgReport, EsgService } from './esg.service'
             <span class="stat-card__value">{{ r.landfillDivertedKg | number: '1.0-0' }}</span>
             <span class="stat-card__hint">kg non conferiti in discarica</span>
           </div>
-          <div class="stat-card stat-card--accent">
-            <span class="stat-card__label">CO2 evitata</span>
+          <div class="stat-card">
+            <span class="stat-card__label">CO₂ evitata</span>
             <span class="stat-card__value">{{ r.co2AvoidedKg | number: '1.0-0' }}</span>
-            <span class="stat-card__hint">kg di CO2 equivalente</span>
+            <span class="stat-card__hint">kg di CO₂ equivalente</span>
           </div>
         </div>
 
@@ -188,12 +188,12 @@ import { EsgReport, EsgService } from './esg.service'
                   <th scope="col">CER</th>
                   <th scope="col" class="text-right">Recupero (kg)</th>
                   <th scope="col" class="text-right">Smaltimento (kg)</th>
-                  <th scope="col" class="text-right">CO2 evitata (kg)</th>
+                  <th scope="col" class="text-right">CO₂ evitata (kg)</th>
                 </tr>
               </ng-template>
               <ng-template pTemplate="body" let-row>
                 <tr>
-                  <td>
+                  <td class="cer-codice">
                     <strong>{{ row.cerCode }}</strong>
                   </td>
                   <td class="text-right">{{ row.recoveryKg | number: '1.0-0' }}</td>
@@ -220,14 +220,14 @@ import { EsgReport, EsgService } from './esg.service'
   `,
   styles: [
     `
+      /* Il codice CER («13 02 05*») non va a capo: a 360 px usciva su tre righe. */
+      .cer-codice {
+        white-space: nowrap;
+      }
       .esg-section-title {
         font-family: var(--font-display);
         font-size: var(--font-size-lg);
         margin: 0;
-      }
-      .stat-card--accent {
-        border-color: var(--brand-primary);
-        background: var(--brand-primary-50);
       }
       .stat-card--sub .stat-card__value {
         font-size: var(--font-size-2xl);

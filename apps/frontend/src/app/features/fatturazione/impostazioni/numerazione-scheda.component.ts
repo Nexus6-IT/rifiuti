@@ -10,6 +10,7 @@ import { SharedModule } from 'primeng/api'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
 import { NumeroItalianoDirective } from '../../../shared/directives/numero-it.directive'
+import { dataLocale, isoLocale } from '../../../shared/utils/data-iso'
 import { puoImpostareFatturazione } from '../../legami/permessi-legami'
 import { leggiErroriAzione } from '../../listino/errori-azione'
 import { ImpostazioniFatturazione44Service } from './impostazioni-fatturazione-4-4.service'
@@ -36,17 +37,7 @@ export function fineGiornoDiOggi(): Date {
   return new Date(a, m - 1, g, 23, 59, 59, 999)
 }
 
-/** `AAAA-MM-GG` → `Date` a mezzanotte locale (senza passare da UTC). */
-export function dataLocale(iso: string | null): Date | null {
-  const m = iso === null ? null : /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null
-}
-
-/** `Date` locale → `AAAA-MM-GG` (mai `toISOString`, che passa da UTC). */
-export function isoLocale(d: Date): string {
-  const due = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`
-}
+export { dataLocale, isoLocale }
 
 /** `AAAA-MM-GG` → `gg/mm/aaaa`; vuoto se assente. */
 export function dataItaliana(iso: string | null): string {
