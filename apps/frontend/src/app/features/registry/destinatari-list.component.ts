@@ -673,7 +673,7 @@ export class DestinatariListComponent implements OnInit {
       sede: { ...destinatario.sede },
       pec: destinatario.pec,
       // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
-      // direttamente con l'input HTML type="date".
+      // direttamente con il campo data (`app-campo-data`).
       scadenzaAutorizzazione: destinatario.scadenzaAutorizzazione ?? '',
     }
     this.erroriId = {}

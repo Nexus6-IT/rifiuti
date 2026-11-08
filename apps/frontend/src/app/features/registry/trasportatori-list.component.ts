@@ -672,7 +672,7 @@ export class TrasportatoriListComponent implements OnInit {
       sedeLegale: { ...trasportatore.sedeLegale },
       pec: trasportatore.pec,
       // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
-      // direttamente con l'input HTML type="date".
+      // direttamente con il campo data (`app-campo-data`).
       scadenzaIscrizione: trasportatore.scadenzaIscrizione ?? '',
     }
     this.erroriId = {}

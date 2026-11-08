@@ -1,3 +1,7 @@
+// Il fuso e' fisso: gli spec delle date (isoLocale contro toISOString) non devono dipendere dalla macchina.
+// In UTC una regressione su toISOString non si vedrebbe.
+process.env.TZ = 'Europe/Rome'
+
 // Configurazione Karma esplicita.
 //
 // PERCHE' ESISTE QUESTO FILE: la configurazione inline in `angular.json` usa i

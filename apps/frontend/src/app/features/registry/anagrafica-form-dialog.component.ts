@@ -40,7 +40,7 @@ interface FormData {
   numeroIscrizione: string
   numeroAutorizzazione: string
   // Scadenza facoltativa (Task 3 scadenzario): stringa yyyy-MM-dd per
-  // l'input HTML type="date", vuota se non impostata.
+  // il campo data (`app-campo-data`), vuota se non impostata.
   scadenzaIscrizione: string
   scadenzaAutorizzazione: string
 }
@@ -626,7 +626,7 @@ export class AnagraficaFormDialogComponent implements OnChanges {
     if (this.tipo === 'trasportatore') {
       this.form.numeroIscrizione = (entity as Trasportatore).numeroIscrizione ?? ''
       // Il backend restituisce una stringa ISO (yyyy-MM-dd): compatibile
-      // direttamente con l'input HTML type="date".
+      // direttamente con il campo data (`app-campo-data`).
       this.form.scadenzaIscrizione = (entity as Trasportatore).scadenzaIscrizione ?? ''
     }
     if (this.tipo === 'destinatario') {
