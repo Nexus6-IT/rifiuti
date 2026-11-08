@@ -292,6 +292,17 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
     const reg = await owner.registroIva.create({
       data: { tenantId: a.tenantId, codice: '01', descrizione: 'Vendite' },
     })
+    await owner.codificaAddebito.create({
+      data: {
+        tenantId: a.tenantId,
+        genere: 'CENTRO_RICAVO',
+        codice: '010',
+        descrizione: 'Smaltimento',
+      },
+    })
+    await owner.codificaAddebito.create({
+      data: { tenantId: a.tenantId, genere: 'CATEGORIA', codice: '020', descrizione: 'Canoni' },
+    })
     // Le chiavi sono quelle che l'adattatore vero chiede per documenti di prova.
     const documentoDi = (clienteId: string, pagamento: string) =>
       ({
@@ -301,7 +312,14 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
             { aliquota: '22.00', natura: null },
             { aliquota: '0.00', natura: 'N4' },
           ],
-          righe: [{ tipoRiga: 'MOVIMENTO' }, { tipoRiga: 'BOLLO' }, { tipoRiga: 'FISSO' }],
+          righe: [
+            { tipoRiga: 'MOVIMENTO', centroRicavoCodice: '010', categoriaCodice: '020' },
+            { tipoRiga: 'MOVIMENTO', centroRicavoCodice: null, categoriaCodice: '020' },
+            // Centro non piu' in anagrafica: l'etichetta ripiega sul codice, mai «non piu presente».
+            { tipoRiga: 'MOVIMENTO', centroRicavoCodice: '099', categoriaCodice: null },
+            { tipoRiga: 'MOVIMENTO', centroRicavoCodice: null, categoriaCodice: null },
+            { tipoRiga: 'BOLLO', centroRicavoCodice: null, categoriaCodice: null },
+          ],
         },
         numero: 1,
         anno: 2026,
@@ -334,8 +352,24 @@ describe('MappatureService — Postgres reale, ruolo wasteflow_app', () => {
     expect(per('CODICE_IVA', '0.00/N4')).toBe('IVA esente N4')
     expect(per('PAGAMENTO', pag.codice)).toBe('Bonifico a 30 giorni')
     expect(per('REGISTRO', reg.codice)).toBe('01 - Vendite')
-    expect(per('CONTO_RICAVI', 'MOVIMENTO')).toBe(`Ricavi: ${NOMI_TIPO_RIGA.MOVIMENTO}`)
-    expect(per('CONTO_RICAVI', 'BOLLO')).toBe('Ricavi: bollo')
+    expect(per('CONTO_RICAVI', 'CR:010')).toBe('Ricavi: Smaltimento')
+    expect(per('CONTO_RICAVI', 'CAT:020')).toBe('Ricavi: categoria Canoni')
+    expect(per('CONTO_RICAVI', 'CR:099')).toBe('Ricavi: centro di ricavo 099')
+    expect(per('CONTO_RICAVI', 'TIPO:MOVIMENTO')).toBe(`Ricavi: ${NOMI_TIPO_RIGA.MOVIMENTO}`)
+    expect(per('CONTO_RICAVI', 'TIPO:BOLLO')).toBe('Ricavi: bollo')
+    // Le chiavi mancanti dell'export (409) portano la stessa descrizione.
+    const mancanti = await nel(a.tenantId, () =>
+      app.$transaction(tx =>
+        servizio.conEtichetteContoRicavi(
+          tx,
+          a.tenantId,
+          richieste.filter(c => c.tipo === 'CONTO_RICAVI')
+        )
+      )
+    )
+    expect(mancanti.find(m => m.chiaveWasteflow === 'CR:010')?.etichetta).toBe(
+      'Ricavi: Smaltimento'
+    )
   })
 
   it('valore null cancella la voce', async () => {

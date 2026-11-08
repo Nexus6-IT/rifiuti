@@ -24,7 +24,11 @@ import {
   type TipoMappatura,
 } from './adattatore-export-contabile'
 import { RegistroAdattatori } from './registro-adattatori'
-import { leggiChiaveIva, NOMI_TIPO_RIGA } from './teamsystem.adattatore'
+import {
+  etichettaContoRicavi,
+  leggiChiaveContoRicavi,
+  leggiChiaveIva,
+} from './teamsystem.adattatore'
 
 /** Voci per richiesta (il DTO applica lo stesso limite; qui resta come difesa del servizio) (le colonne sono corte, ma una richiesta non deve poter essere enorme). */
 export const MAX_VOCI_MAPPATURE = 500
@@ -244,6 +248,69 @@ export class MappatureService {
     )
   }
 
+  /**
+   * Sostituisce l'etichetta delle chiavi `CONTO_RICAVI` con la descrizione del centro di ricavo o
+   * della categoria (l'adattatore, puro, ha solo il codice). Per l'export, che risponde 409 con le
+   * chiavi mancanti: stessa dicitura della pagina delle mappature.
+   */
+  async conEtichetteContoRicavi(
+    db: Prisma.TransactionClient | PrismaService,
+    tenantId: string,
+    mancanti: readonly ChiaveMancante[]
+  ): Promise<ChiaveMancante[]> {
+    const chiavi = mancanti.filter(m => m.tipo === 'CONTO_RICAVI').map(m => m.chiaveWasteflow)
+    if (chiavi.length === 0) return [...mancanti]
+    const etichette = await this.etichetteContoRicavi(db, tenantId, chiavi)
+    return mancanti.map(m =>
+      m.tipo === 'CONTO_RICAVI'
+        ? { ...m, etichetta: etichette.get(m.chiaveWasteflow) ?? m.etichetta }
+        : m
+    )
+  }
+
+  /**
+   * Etichette delle chiavi del conto ricavi (`CR:`, `CAT:`, `TIPO:`): una query per tipo di
+   * anagrafica (centri di ricavo, categorie). Un codice che non e' piu' in anagrafica ripiega sul
+   * codice: la chiave e' valida, quindi mai «(non più presente)».
+   */
+  private async etichetteContoRicavi(
+    db: Prisma.TransactionClient | PrismaService,
+    tenantId: string,
+    chiavi: readonly string[]
+  ): Promise<Map<string, string>> {
+    const letti = chiavi.map(chiave => ({ chiave, k: leggiChiaveContoRicavi(chiave) }))
+    const descrizioni = async (
+      genere: 'CENTRO_RICAVO' | 'CATEGORIA',
+      livello: 'CR' | 'CAT'
+    ): Promise<Map<string, string>> => {
+      const codici = letti
+        .filter(l => l.k?.livello === livello)
+        .map(l => (l.k as { valore: string }).valore)
+      const trovate = new Map<string, string>()
+      if (codici.length === 0) return trovate
+      const t = await db.$queryRaw<{ codice: string; descrizione: string }[]>`
+        SELECT codice AS codice, descrizione AS descrizione
+        FROM "codifiche_addebito"
+        WHERE tenant_id = ${tenantId}::uuid AND genere = ${genere}::genere_codifica_addebito
+          AND codice = ANY(${codici}::text[])`
+      for (const x of t) trovate.set(x.codice, x.descrizione)
+      return trovate
+    }
+    const centri = await descrizioni('CENTRO_RICAVO', 'CR')
+    const categorie = await descrizioni('CATEGORIA', 'CAT')
+    const risultato = new Map<string, string>()
+    for (const { chiave, k } of letti) {
+      const descrizione =
+        k?.livello === 'CR'
+          ? centri.get(k.valore)
+          : k?.livello === 'CAT'
+            ? categorie.get(k.valore)
+            : undefined
+      risultato.set(chiave, etichettaContoRicavi(chiave, descrizione))
+    }
+    return risultato
+  }
+
   /** Le chiavi richieste dai documenti scelti che l'azienda non ha ancora mappato. */
   async mancanti(
     tenantId: string,
@@ -256,7 +323,7 @@ export class MappatureService {
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
         const valori = await this.valoriInTx(tx, tenantId, adattatore, richieste)
-        return mancantiDa(richieste, valori)
+        return this.conEtichetteContoRicavi(tx, tenantId, mancantiDa(richieste, valori))
       })
     )
   }
@@ -337,8 +404,8 @@ export class MappatureService {
 
   /**
    * Etichette per le voci lette: una query per tipo, non una per voce. La chiave puo' essere
-   * l'identificativo o il codice dell'anagrafica: si risolve per entrambi. `CONTO_RICAVI` non ha
-   * un'anagrafica (la chiave e' gia' un testo per l'utente).
+   * l'identificativo o il codice dell'anagrafica: si risolve per entrambi. `CONTO_RICAVI`: chiave a
+   * cascata `CR:`/`CAT:`/`TIPO:` (vedi `etichetteContoRicavi`).
    */
   private async etichette(
     db: Prisma.TransactionClient | PrismaService,
@@ -359,12 +426,11 @@ export class MappatureService {
         }
       }
     }
-    for (const r of righe) {
-      if (r.tipo === 'CONTO_RICAVI') {
-        risultato.set(
-          chiaveMappatura(r.tipo, r.chiaveWasteflow),
-          `Ricavi: ${NOMI_TIPO_RIGA[r.chiaveWasteflow] ?? r.chiaveWasteflow.toLowerCase()}`
-        )
+    const conti = per('CONTO_RICAVI')
+    if (conti.length > 0) {
+      const perChiave = await this.etichetteContoRicavi(db, tenantId, conti)
+      for (const [chiave, etichetta] of perChiave) {
+        risultato.set(chiaveMappatura('CONTO_RICAVI', chiave), etichetta)
       }
     }
     const clienti = per('CLIENTE')

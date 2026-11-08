@@ -62,6 +62,10 @@ export interface RigaDocumentoVista {
   tipoRiga: string
   legameId: string | null
   rigaAddebitoId: string | null
+  /** Codice del centro di ricavo dell'addebito, fotografato sulla riga (chiave `CR:` del conto ricavi). */
+  centroRicavoCodice: string | null
+  /** Codice della categoria dell'addebito, fotografato sulla riga (chiave `CAT:`). */
+  categoriaCodice: string | null
   descrizione: string
   dataMovimento: string | null
   cerCode: string | null
@@ -355,6 +359,7 @@ export class DocumentiFatturaService {
       SELECT documento_id::text AS "documentoId",
              numero_linea::int AS "numeroLinea", tipo_riga::text AS "tipoRiga",
              legame_id::text AS "legameId", riga_addebito_id::text AS "rigaAddebitoId",
+             centro_ricavo_codice AS "centroRicavoCodice", categoria_codice AS "categoriaCodice",
              descrizione, data_movimento::text AS "dataMovimento", cer_code AS "cerCode",
              numero_fir AS "numeroFir", quantita::text AS quantita, unita_misura AS "unitaMisura",
              prezzo_unitario::text AS "prezzoUnitario", sconto,

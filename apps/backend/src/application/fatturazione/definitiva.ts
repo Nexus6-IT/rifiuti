@@ -34,6 +34,7 @@ import {
   type BozzaCalcolata,
 } from './anteprima'
 import { bloccaElaborazione, bloccaPerDefinitiva, insiemiPerDefinitiva } from './lock-fatturazione'
+import { leggiCodiciRicavo } from './codici-ricavo'
 import { conJoinLineari } from './piani-query'
 import {
   numeroTesto,
@@ -295,6 +296,8 @@ interface RigaSalvata {
   tipoRiga: string
   legameId: string | null
   rigaAddebitoId: string | null
+  centroRicavoCodice: string | null
+  categoriaCodice: string | null
   prezzoTotale: string
 }
 
@@ -524,7 +527,9 @@ async function definitivaInTransazione(
       tx.$queryRaw<RigaSalvata[]>`
       SELECT r.id::text AS id, r.documento_id::text AS "documentoId", r.numero_linea AS "numeroLinea",
              r.tipo_riga::text AS "tipoRiga", r.legame_id::text AS "legameId",
-             r.riga_addebito_id::text AS "rigaAddebitoId", r.prezzo_totale::text AS "prezzoTotale"
+             r.riga_addebito_id::text AS "rigaAddebitoId",
+             r.centro_ricavo_codice AS "centroRicavoCodice", r.categoria_codice AS "categoriaCodice",
+             r.prezzo_totale::text AS "prezzoTotale"
       FROM righe_documento_fattura r
       JOIN unnest(${candidati.map(c => c.id)}::uuid[]) AS chiesti(chiesto) ON chiesto = r.documento_id
       WHERE r.tenant_id = ${tenantId}::uuid`
@@ -655,6 +660,39 @@ async function definitivaInTransazione(
           FROM unnest(${blocco.map(x => x.id)}::uuid[],
                       ${blocco.map(x => movimentoDi.get(x.legameId as string) as string)}::uuid[])
                AS u(id, movimento)
+          WHERE r.tenant_id = ${tenantId}::uuid AND r.id = u.id`
+      }
+    })
+  }
+
+  // 8a bis. Centro di ricavo e categoria (Task 30b): le righe di listino sono gia' bloccate
+  // `FOR SHARE` (bloccaPerDefinitiva), quindi i codici riletti qui sono quelli che restano
+  // fotografati. Si aggiornano solo le righe che differiscono dall'anteprima.
+  const codiciRicavo = await leggiCodiciRicavo(
+    tx,
+    tenantId,
+    salvate.flatMap(r => (r.rigaAddebitoId === null ? [] : [r.rigaAddebitoId]))
+  )
+  const daAggiornare = salvate.filter(r => {
+    if (r.rigaAddebitoId === null) return false
+    const nuovi = codiciRicavo.get(r.rigaAddebitoId)
+    return (
+      nuovi !== undefined &&
+      (nuovi.centroRicavoCodice !== r.centroRicavoCodice ||
+        nuovi.categoriaCodice !== r.categoriaCodice)
+    )
+  })
+  if (daAggiornare.length > 0) {
+    await conJoinLineari(tx, async () => {
+      for (const blocco of inBlocchi(daAggiornare, 5_000)) {
+        await tx.$executeRaw`
+          UPDATE righe_documento_fattura r
+          SET centro_ricavo_codice = NULLIF(u.centro, ''), categoria_codice = NULLIF(u.categoria, ''),
+              updated_at = now()
+          FROM unnest(${blocco.map(x => x.id)}::uuid[],
+                      ${blocco.map(x => codiciRicavo.get(x.rigaAddebitoId as string)?.centroRicavoCodice ?? '')}::text[],
+                      ${blocco.map(x => codiciRicavo.get(x.rigaAddebitoId as string)?.categoriaCodice ?? '')}::text[])
+               AS u(id, centro, categoria)
           WHERE r.tenant_id = ${tenantId}::uuid AND r.id = u.id`
       }
     })

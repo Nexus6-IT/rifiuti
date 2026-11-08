@@ -4159,6 +4159,10 @@ model RigaDocumentoFattura {
   codiceIvaId          String                   @map("codice_iva_id") @db.Uuid
   aliquotaIva          Decimal                  @map("aliquota_iva") @db.Decimal(5, 2)
   naturaIva            String?                  @map("natura_iva") @db.VarChar(4)
+  /// Codice del centro di ricavo dell'addebito, fotografato alla creazione della riga (4.4c, Task 30b). Chiave `CR:` del conto ricavi.
+  centroRicavoCodice   String?                  @map("centro_ricavo_codice") @db.VarChar(3)
+  /// Codice della categoria dell'addebito, fotografato come sopra. Chiave `CAT:` del conto ricavi.
+  categoriaCodice      String?                  @map("categoria_codice") @db.VarChar(3)
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
 

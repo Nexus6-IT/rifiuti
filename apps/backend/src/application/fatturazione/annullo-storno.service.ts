@@ -576,11 +576,13 @@ export class AnnulloStornoService {
     const righe = await tx.$executeRaw`
       INSERT INTO righe_documento_fattura
         (tenant_id, documento_id, numero_linea, tipo_riga, legame_id, riga_legame_id,
-         movimento_fatturato_id, riga_addebito_id, descrizione, data_movimento, cer_code,
+         movimento_fatturato_id, riga_addebito_id, centro_ricavo_codice, categoria_codice,
+         descrizione, data_movimento, cer_code,
          numero_fir, quantita, unita_misura, prezzo_unitario, sconto, importo_lordo,
          importo_sconto, prezzo_totale, codice_iva_id, aliquota_iva, natura_iva, updated_at)
       SELECT r.tenant_id, ${nuovoId}::uuid, r.numero_linea, r.tipo_riga, r.legame_id, NULL,
-             r.movimento_fatturato_id, r.riga_addebito_id, r.descrizione, r.data_movimento,
+             r.movimento_fatturato_id, r.riga_addebito_id, r.centro_ricavo_codice,
+             r.categoria_codice, r.descrizione, r.data_movimento,
              r.cer_code, r.numero_fir, r.quantita, r.unita_misura, r.prezzo_unitario, r.sconto,
              r.importo_lordo, r.importo_sconto, r.prezzo_totale, r.codice_iva_id, r.aliquota_iva,
              r.natura_iva, now()

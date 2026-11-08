@@ -221,7 +221,7 @@ export class ExportService {
             adattatore.mappatureRichieste(perExportDa(definitivi, dettagli))
           )
           const valori = await this.mappature.valoriInTx(tx, tenantId, adattatore.codice, richieste)
-          return mancantiDa(richieste, valori)
+          return this.mappature.conEtichetteContoRicavi(tx, tenantId, mancantiDa(richieste, valori))
         },
         { timeout: 120_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       )
@@ -355,8 +355,13 @@ export class ExportService {
               adattatore.codice,
               richieste
             )
-            const mancanti = mancantiDa(richieste, valori)
-            if (mancanti.length > 0) {
+            const senzaEtichette = mancantiDa(richieste, valori)
+            if (senzaEtichette.length > 0) {
+              const mancanti = await this.mappature.conEtichetteContoRicavi(
+                tx,
+                tenantId,
+                senzaEtichette
+              )
               throw new ConflictException({
                 error: 'MAPPATURE_MANCANTI',
                 message: 'Mancano delle mappature: completale per esportare.',

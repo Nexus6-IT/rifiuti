@@ -519,6 +519,20 @@ describe('Definitiva, concorrenza e volume — Postgres reale, ruolo wasteflow_a
       let t0 = Date.now()
       const volume = await creaScenarioVolume(owner, t.id)
       tempi.caricamento = Date.now() - t0
+      // Task 30b: centro di ricavo e categoria su tutte le righe di listino del tenant, cosi' la
+      // lettura dei codici (500 righe distinte, forma a JOIN lineare) pesa davvero nei tempi.
+      await owner.$executeRawUnsafe(
+        `WITH c AS (
+           INSERT INTO codifiche_addebito (tenant_id, genere, codice, descrizione, updated_at)
+           VALUES ($1::uuid, 'CENTRO_RICAVO', '010', 'Centro di volume', now()),
+                  ($1::uuid, 'CATEGORIA', '020', 'Categoria di volume', now())
+           RETURNING id, genere)
+         UPDATE righe_addebito r
+         SET centro_ricavo_id = (SELECT id FROM c WHERE genere = 'CENTRO_RICAVO'),
+             categoria_id = (SELECT id FROM c WHERE genere = 'CATEGORIA')
+         WHERE r.tenant_id = $1::uuid`,
+        t.id
+      )
       await owner.$executeRawUnsafe(
         `UPDATE impostazioni_fatturazione SET definitive_attive = true WHERE tenant_id = $1::uuid`,
         t.id
@@ -571,6 +585,14 @@ describe('Definitiva, concorrenza e volume — Postgres reale, ruolo wasteflow_a
           id
         )
         expect(senza).toBe(0)
+        const [{ conCodici }] = await owner.$queryRawUnsafe<{ conCodici: number }[]>(
+          `SELECT count(*)::int AS "conCodici" FROM righe_documento_fattura r
+           JOIN documenti_fattura d ON d.id = r.documento_id
+           WHERE d.elaborazione_id = $1::uuid AND r.tipo_riga = 'MOVIMENTO'
+             AND r.centro_ricavo_codice = '010' AND r.categoria_codice = '020'`,
+          id
+        )
+        expect(conCodici).toBe(10_000)
         await b.verificaSerie(t.id)
         expect(await b.conteggioAudit(t.id, 'DOCUMENTO_FATTURA_DEFINITIVO')).toBe(500)
       } finally {
