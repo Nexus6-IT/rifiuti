@@ -1,4 +1,5 @@
 import { type Page, type Locator, expect } from '@playwright/test'
+import { eseguiAzioneRiga } from '../utils/azioni-riga'
 
 /**
  * Page Object per le pagine dedicate delle tre anagrafiche di registro
@@ -78,12 +79,9 @@ export class AnagrafichePage {
     return this.page.getByTestId(`${this.area}-row-${id}`)
   }
 
+  /** Azione principale della riga («Modifica <ragione sociale>»): il bottone dentro `app-azioni-riga`. */
   editButton(id: string): Locator {
-    return this.page.getByTestId(`${this.area}-modifica-${id}`)
-  }
-
-  deleteButton(id: string): Locator {
-    return this.page.getByTestId(`${this.area}-elimina-${id}`)
+    return this.row(id).getByTestId('azione-principale')
   }
 
   /**
@@ -123,22 +121,17 @@ export class AnagrafichePage {
 
   /**
    * Elimina una riga: azione DISTRUTTIVA per le 3 anagrafiche (guardrail in
-   * utils/blacklist.ts). Clicca l'icona elimina della riga, conferma nel
-   * `p-confirmDialog` dedicato all'area, e attende che la riga sparisca.
+   * utils/blacklist.ts). «Elimina» sta nel menu ⋯ della riga; poi conferma nel
+   * `p-confirmDialog` dedicato all'area (bottone rosso «Elimina», «Annulla» ha il
+   * focus iniziale) e attende che la riga sparisca.
    *
    * Il pulsante di conferma NON ha un `data-testid` proprio (solo il dialog
-   * lo ha) — gap già documentato in `e2e/SELECTORS-DEBT.md` ("Anagrafiche —
-   * Produttori, Trasportatori, Destinatari": il template di default di
-   * PrimeNG `ConfirmationService` non espone i pulsanti interni, e i tre
-   * componenti non passano `acceptLabel`, quindi resta la label di default
-   * di PrimeNG senza traduzione italiana configurata — "Yes", non "Sì").
-   * Il locator accetta entrambe le lingue per non dipendere da quale
-   * traduzione risulti effettivamente montata.
+   * lo ha) — gap già documentato in `e2e/SELECTORS-DEBT.md`: si cerca per nome.
    */
   async elimina(id: string) {
-    await this.deleteButton(id).click()
+    await eseguiAzioneRiga(this.page, this.row(id), 'Elimina')
     await expect(this.confirmDialog).toBeVisible()
-    await this.confirmDialog.getByRole('button', { name: /^(s(ì|i)|yes)$/i }).click()
+    await this.confirmDialog.getByRole('button', { name: 'Elimina', exact: true }).click()
     await expect(this.row(id)).toBeHidden()
   }
 

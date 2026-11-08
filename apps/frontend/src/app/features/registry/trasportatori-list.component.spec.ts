@@ -3,6 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
 import { TrasportatoriListComponent } from './trasportatori-list.component'
+import { apriMenuRiga, chiudiMenuRiga, scegliVoceRiga } from '../clienti/tabelle/azioni-test-utils'
 import { RegistryService } from './registry.service'
 import { AuthService } from '../../core/services/auth.service'
 import { Trasportatore } from '../../shared/models/registry.model'
@@ -376,6 +377,7 @@ describe('TrasportatoriListComponent — ditte, codice fiscale e sedi', () => {
 
   afterEach(() => {
     fixture.destroy()
+    chiudiMenuRiga()
     document.querySelectorAll('.p-dialog-mask').forEach(e => e.remove())
   })
 
@@ -430,13 +432,12 @@ describe('TrasportatoriListComponent — ditte, codice fiscale e sedi', () => {
     expect(tid('trasportatori-da-verificare-r2')).toBeNull()
   })
 
-  it('il pulsante "Sedi (n)" mostra il numero di sedi e apre il dialog della ditta (clic reale)', () => {
-    const bottone =
-      tid('trasportatori-sedi-r1')!.querySelector('button') ?? tid('trasportatori-sedi-r1')!
-    expect(bottone.textContent).toContain('Sedi (3)')
-    expect(tid('trasportatori-sedi-r2')!.textContent).toContain('Sedi (1)')
-    ;(bottone as HTMLElement).click()
-    fixture.detectChanges()
+  it('«Sedi (n)» sta nel menu ⋯ con il numero di sedi e apre il dialog della ditta (clic reale)', async () => {
+    expect(await apriMenuRiga(fixture, tid('trasportatori-row-r1')!)).toContain('Sedi (3)')
+    chiudiMenuRiga()
+    expect(await apriMenuRiga(fixture, tid('trasportatori-row-r2')!)).toContain('Sedi (1)')
+    chiudiMenuRiga()
+    await scegliVoceRiga(fixture, tid('trasportatori-row-r1')!, 'Sedi')
 
     expect(registryService.getDitta).toHaveBeenCalledOnceWith('dit1')
     expect(document.querySelector('[data-testid="sedi-ditta-dialog"]')).toBeTruthy()

@@ -1,4 +1,5 @@
 import { type Page, type Locator, expect } from '@playwright/test'
+import { eseguiAzioneRiga } from '../utils/azioni-riga'
 
 export type RegistryEntity = 'produttori' | 'trasportatori' | 'destinatari'
 
@@ -30,7 +31,8 @@ export class RegistryPage {
     // l'ambiguità alla radice invece di provare a restringere la regex.
     this.nuovoButton = page.getByTestId(`${entity}-nuovo-button`)
     this.table = page.getByRole('table')
-    this.searchInput = page.getByRole('textbox', { name: /cerca/i })
+    // il campo di ricerca e' `type="search"`: per il ruolo e' un searchbox, non un textbox
+    this.searchInput = page.getByRole('searchbox', { name: /cerca/i })
   }
 
   async goto() {
@@ -48,9 +50,10 @@ export class RegistryPage {
   /**
    * Elimina una riga: azione DISTRUTTIVA per le 3 anagrafiche (blacklist).
    * Il guardrail la blocca comunque su produzione — usarla solo in ambienti
-   * locali/staging con dati throwaway.
+   * locali/staging con dati throwaway. «Elimina» sta nel menu ⋯ della riga:
+   * dopo si apre la conferma (bottone rosso «Elimina»), che qui NON si accetta.
    */
-  deleteButtonInRow(row: Locator): Locator {
-    return row.getByRole('button', { name: /elimina/i })
+  async apriEliminaInRow(row: Locator): Promise<void> {
+    await eseguiAzioneRiga(this.page, row, 'Elimina')
   }
 }
