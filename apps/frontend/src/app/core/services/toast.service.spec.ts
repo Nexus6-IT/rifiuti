@@ -38,4 +38,12 @@ describe('ToastService', () => {
 
     expect(messageService.add.calls.mostRecent().args[0].summary).toBe('Invio non riuscito')
   })
+
+  it('i toast di errore restano visibili più a lungo degli altri (10 s contro 5 s)', () => {
+    service.error('x')
+    expect(messageService.add.calls.mostRecent().args[0].life).toBe(10000)
+
+    service.success('x')
+    expect(messageService.add.calls.mostRecent().args[0].life).toBe(5000)
+  })
 })

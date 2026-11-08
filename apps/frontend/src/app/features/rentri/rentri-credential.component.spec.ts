@@ -75,4 +75,25 @@ describe('RentriCredentialComponent', () => {
     expect(pagina.getAttribute('style') ?? '').not.toContain('max-width')
     expect(getComputedStyle(pagina).maxWidth).toBe('1320px')
   })
+
+  it("il toast di salvataggio non cita l'algoritmo e il modulo ha una larghezza di lettura", () => {
+    credentialService.setCredential.and.returnValue(of({ success: true, algorithm: 'ES256' }))
+    const toast = TestBed.inject(ToastService) as jasmine.SpyObj<ToastService>
+    const c = fixture.componentInstance
+    c.clientId = 'c1'
+    c.mode = 'pem'
+    c.certificatePem = 'cert'
+    c.privateKeyPem = 'key'
+    c.save()
+    fixture.detectChanges()
+
+    expect(toast.success).toHaveBeenCalledWith('Certificato RENTRI salvato')
+    const campo = (fixture.nativeElement as HTMLElement).querySelector(
+      '.rentri-modulo .field'
+    ) as HTMLElement
+    expect(getComputedStyle(campo).maxWidth).toBe('640px')
+    const pem = (fixture.nativeElement as HTMLElement).querySelector('#r-pem-cert') as HTMLElement
+    expect(pem).not.toBeNull()
+    expect(getComputedStyle(pem).maxWidth).not.toBe('none')
+  })
 })
