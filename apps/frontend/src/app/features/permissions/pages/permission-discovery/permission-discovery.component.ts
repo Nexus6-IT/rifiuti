@@ -323,6 +323,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
         gap: var(--spacing-lg);
+        align-items: start;
       }
 
       .category-card {

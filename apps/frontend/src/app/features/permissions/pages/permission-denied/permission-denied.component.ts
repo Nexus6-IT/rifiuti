@@ -159,6 +159,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
             data-testid="go-back-button"
           ></button>
           <button
+            *ngIf="requiredPermission"
             pButton
             label="Richiedi accesso"
             icon="pi pi-user-plus"
@@ -516,12 +517,9 @@ export class PermissionDeniedComponent implements OnInit {
    * This connects to User Story 7: Self-service permission request workflow
    */
   requestAccess(): void {
-    this.router.navigate(['/permissions/request'], {
-      queryParams: {
-        permission: this.requiredPermission,
-        reason: 'Access denied - requesting permission',
-        returnUrl: this.router.url,
-      },
+    // La richiesta di permessi temporanei si fa dal dialog di «Le mie concessioni».
+    this.router.navigate(['/permissions/my-grants'], {
+      queryParams: { richiedi: this.requiredPermission },
     })
   }
 

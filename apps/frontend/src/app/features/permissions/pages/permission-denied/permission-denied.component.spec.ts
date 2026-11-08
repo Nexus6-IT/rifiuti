@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { ActivatedRoute, provideRouter } from '@angular/router'
+import { ActivatedRoute, Router, provideRouter } from '@angular/router'
 import { of } from 'rxjs'
 import { PermissionStore } from '../../../../core/state/permission.store'
 import { PermissionDeniedComponent } from './permission-denied.component'
@@ -44,5 +44,22 @@ describe('PermissionDeniedComponent (accesso negato)', () => {
     const primari = el.querySelectorAll('.wf-primario')
     expect(primari.length).toBe(1)
     expect(primari[0].getAttribute('data-testid')).toBe('vai-alla-dashboard')
+  })
+
+  it("«Richiedi accesso» c'e solo se la pagina chiede un permesso, e porta a my-grants", () => {
+    const el = apri({ resource: 'Tabelle', role: 'OPERATOR', permission: 'fir:create:all' })
+    const bottone = el.querySelector('[data-testid="request-access-button"]') as HTMLElement
+    expect(bottone).not.toBeNull()
+    const router = TestBed.inject(Router)
+    const nav = spyOn(router, 'navigate').and.resolveTo(true)
+    bottone.click()
+    expect(nav).toHaveBeenCalledWith(['/permissions/my-grants'], {
+      queryParams: { richiedi: 'fir:create:all' },
+    })
+  })
+
+  it('dal guard SUPER_ADMIN (nessun permesso) il bottone non compare', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    expect(el.querySelector('[data-testid="request-access-button"]')).toBeNull()
   })
 })
