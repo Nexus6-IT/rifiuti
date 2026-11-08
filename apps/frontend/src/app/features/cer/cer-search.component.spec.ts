@@ -37,7 +37,8 @@ describe('CerSearchComponent (stile del giro 2)', () => {
     return fixture.nativeElement as HTMLElement
   }
 
-  const righe = (el: HTMLElement) => Array.from(el.querySelectorAll('tbody tr.p-selectable-row'))
+  const righe = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('tbody tr:not(.p-datatable-emptymessage)'))
 
   beforeEach(() => {
     servizio = jasmine.createSpyObj<CerService>('CerService', [
@@ -116,14 +117,14 @@ describe('CerSearchComponent (stile del giro 2)', () => {
     const fondo = getComputedStyle(bottone).backgroundColor
     expect(fondo).not.toBe(inchiostro)
     // senza il tema Aura (Karma carica solo styles.scss) vale la regola di _primeng.scss:
-    // il bottone e' un'appendice del campo, col fondo del campo o senza fondo, mai pieno
+    // il bottone e' un'appendice del campo, con il fondo del campo (mai trasparente, mai pieno)
     sonda.style.backgroundColor = getComputedStyle(document.documentElement)
       .getPropertyValue('--surface-section')
       .trim()
     document.body.appendChild(sonda)
     const campo = getComputedStyle(sonda).backgroundColor
     sonda.remove()
-    expect(['rgba(0, 0, 0, 0)', 'transparent', campo]).toContain(fondo)
+    expect(fondo).toBe(campo)
   })
 
   it('segue il pattern delle liste: nessun min-width fisso, righe a due linee sul telefono', () => {
@@ -136,13 +137,34 @@ describe('CerSearchComponent (stile del giro 2)', () => {
     expect(riga.querySelector('td.m-hide')).not.toBeNull()
   })
 
+  it('le righe non sono selezionabili: niente tabindex, niente classe di selezione', () => {
+    const el = monta([cer(), cer({ code: '01 01 02' })])
+    for (const r of righe(el)) {
+      expect(r.hasAttribute('tabindex')).toBeFalse()
+      expect(r.classList).not.toContain('p-selectable-row')
+    }
+    expect(el.querySelectorAll('tbody [tabindex]').length).toBe(0)
+  })
+
+  it('il filtro Categoria manda al servizio il capitolo a due cifre «XX»', () => {
+    const el = monta([cer()])
+    servizio.getCERByCategory.and.returnValue(of(pagina([cer({ code: '15 01 01' })])))
+    const c = fixture.componentInstance
+    expect(c.categoryOptions.length).toBeGreaterThan(0)
+    for (const o of c.categoryOptions) expect(o.value).toMatch(/^\d{2}$/)
+    c.selectedCategory = '15'
+    c.onFilterChange()
+    fixture.detectChanges()
+    expect(servizio.getCERByCategory).toHaveBeenCalledWith('15', 1, 20)
+    expect(el.textContent).toContain('15 01 01')
+  })
+
   it('con una sola pagina non mostra il paginatore, con zero righe nemmeno', () => {
     const una = monta([cer()])
     expect(una.querySelector('.p-paginator')).toBeNull()
     fixture.destroy()
     const zero = monta([])
     expect(zero.querySelector('.p-paginator')).toBeNull()
-    expect(zero.querySelector('.p-datatable.senza-righe')).not.toBeNull()
     expect(zero.textContent).toContain('Nessun codice CER trovato')
   })
 

@@ -1,11 +1,7 @@
-import { Component, OnInit, Output, EventEmitter, Input } from '@angular/core'
+import { Component, OnInit, Input } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { FormsModule } from '@angular/forms'
-import {
-  AutoCompleteModule,
-  AutoCompleteCompleteEvent,
-  AutoCompleteSelectEvent,
-} from 'primeng/autocomplete'
+import { AutoCompleteModule, AutoCompleteCompleteEvent } from 'primeng/autocomplete'
 import { TableModule } from 'primeng/table'
 import { CardModule } from 'primeng/card'
 import { ButtonModule } from 'primeng/button'
@@ -60,7 +56,6 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
               ariaLabel="Cerca un codice CER per codice o descrizione"
               styleClass="w-full"
               inputStyleClass="w-full"
-              (onSelect)="onCERSelect($event)"
             >
               <ng-template let-cer pTemplate="item">
                 <div class="cer-suggestion">
@@ -117,9 +112,7 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
         <!-- Tabella CER -->
         <div *ngIf="!error" class="surface-card table-card">
           <p-table
-            [styleClass]="
-              'p-datatable-sm lista-telefono' + (cerList.length === 0 ? ' senza-righe' : '')
-            "
+            styleClass="p-datatable-sm lista-telefono"
             [value]="cerList"
             [loading]="loading"
             [paginator]="true"
@@ -129,9 +122,6 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
             [lazy]="true"
             (onLazyLoad)="loadCERList($event)"
             [rowHover]="true"
-            selectionMode="single"
-            [(selection)]="selectedCERFromTable"
-            (onRowSelect)="onRowSelect($event)"
           >
             <ng-template pTemplate="caption">
               <span class="sr-only">Elenco dei codici del Catalogo Europeo dei Rifiuti</span>
@@ -144,7 +134,7 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-cer>
-              <tr [pSelectableRow]="cer">
+              <tr>
                 <td class="num-col">
                   <span class="cell-mono"
                     >{{ codiceSenzaAsterisco(cer.code)
@@ -192,7 +182,6 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
           [ariaLabel]="label"
           styleClass="w-full"
           inputStyleClass="w-full"
-          (onSelect)="onCERSelect($event)"
           [required]="required"
         >
           <ng-template let-cer pTemplate="item">
@@ -305,9 +294,6 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
         .p-autocomplete-input {
           width: 100%;
         }
-        .p-datatable .p-datatable-tbody > tr.p-selectable-row:hover {
-          cursor: pointer;
-        }
         .p-datatable .p-datatable-tbody > tr > td.num-col .cell-mono {
           white-space: nowrap;
         }
@@ -315,9 +301,6 @@ import { CER, CERSearchResult } from '../../shared/models/cer.model'
 
       /* Telefono: righe a due linee (codice sopra, descrizione sotto), il codice a sinistra. */
       @media (max-width: 640px) {
-        :host ::ng-deep .p-datatable.lista-telefono td.num-col {
-          text-align: left;
-        }
         .pillola-pericoloso {
           margin-left: 0;
           margin-top: var(--spacing-xs);
@@ -333,12 +316,10 @@ export class CerSearchComponent implements OnInit {
   @Input() label = 'Codice CER'
   @Input() placeholder = 'Cerca codice CER...'
   @Input() required = false
-  @Output() cerSelected = new EventEmitter<CERSearchResult>()
 
   cerList: CER[] = []
   filteredCERs: CERSearchResult[] = []
   selectedCER: CERSearchResult | null = null
-  selectedCERFromTable: CER | null = null
   selectedCategory: string | null = null
   onlyPericolosi = false
 
@@ -349,17 +330,28 @@ export class CerSearchComponent implements OnInit {
   currentPage = 1
   private lastLoadEvent: { first: number; rows: number } = { first: 0, rows: 20 }
 
+  /** Capitoli del CER: il backend filtra per le prime due cifre del codice («XX»). */
   categoryOptions = [
-    { label: 'Carta e Cartone', value: 'CARTA' },
-    { label: 'Plastica', value: 'PLASTICA' },
-    { label: 'Vetro', value: 'VETRO' },
-    { label: 'Metalli', value: 'METALLI' },
-    { label: 'Legno', value: 'LEGNO' },
-    { label: 'Tessili', value: 'TESSILI' },
-    { label: 'Rifiuti Urbani', value: 'URBANI' },
-    { label: 'Costruzione e Demolizione', value: 'COSTRUZIONE' },
-    { label: 'Rifiuti Chimici', value: 'CHIMICI' },
-    { label: 'Rifiuti Sanitari', value: 'SANITARI' },
+    { label: '01 · Prospezione ed estrazione', value: '01' },
+    { label: '02 · Agricoltura e industria alimentare', value: '02' },
+    { label: '03 · Legno, carta e cartone', value: '03' },
+    { label: '04 · Tessile e cuoio', value: '04' },
+    { label: '05 · Petrolio e gas', value: '05' },
+    { label: '06 · Chimica inorganica', value: '06' },
+    { label: '07 · Chimica organica', value: '07' },
+    { label: '08 · Vernici, adesivi e inchiostri', value: '08' },
+    { label: '09 · Fotografia', value: '09' },
+    { label: '10 · Processi termici', value: '10' },
+    { label: '11 · Trattamento dei metalli', value: '11' },
+    { label: '12 · Lavorazione di metalli e plastica', value: '12' },
+    { label: '13 · Oli esausti', value: '13' },
+    { label: '14 · Solventi e refrigeranti', value: '14' },
+    { label: '15 · Imballaggi e assorbenti', value: '15' },
+    { label: '16 · Rifiuti non specificati', value: '16' },
+    { label: '17 · Costruzione e demolizione', value: '17' },
+    { label: '18 · Sanita e ricerca', value: '18' },
+    { label: '19 · Impianti di trattamento', value: '19' },
+    { label: '20 · Rifiuti urbani', value: '20' },
   ]
 
   constructor(private cerService: CerService) {}
@@ -425,20 +417,6 @@ export class CerSearchComponent implements OnInit {
         this.filteredCERs = []
       },
     })
-  }
-
-  onCERSelect(event: AutoCompleteSelectEvent): void {
-    this.cerSelected.emit(event.value)
-  }
-
-  onRowSelect(event: { data?: CER | CER[] }): void {
-    const cer = event.data as CER
-    const searchResult: CERSearchResult = {
-      code: cer.code,
-      description: cer.description,
-      isPericoloso: cer.isPericoloso,
-    }
-    this.cerSelected.emit(searchResult)
   }
 
   onFilterChange(): void {

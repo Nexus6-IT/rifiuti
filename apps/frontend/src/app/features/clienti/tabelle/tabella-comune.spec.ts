@@ -11,6 +11,14 @@ describe('tabella-comune', () => {
       expect(conferma.confirm).toHaveBeenCalledWith(
         jasmine.objectContaining({ header: 'Conferma eliminazione', acceptLabel: 'Elimina' })
       )
+      // azione distruttiva: accetta in rosso, Annulla in testo e col focus iniziale
+      expect(conferma.confirm.calls.mostRecent().args[0]).toEqual(
+        jasmine.objectContaining({
+          acceptButtonStyleClass: 'p-button-danger',
+          rejectButtonStyleClass: 'p-button-text',
+          defaultFocus: 'reject',
+        })
+      )
       chiediConferma(conferma, 'Disattivare?', () => undefined, {
         header: 'Conferma disattivazione',
         acceptLabel: 'Disattiva',
@@ -18,6 +26,16 @@ describe('tabella-comune', () => {
       expect(conferma.confirm.calls.mostRecent().args[0]).toEqual(
         jasmine.objectContaining({ header: 'Conferma disattivazione', acceptLabel: 'Disattiva' })
       )
+    })
+  })
+
+  describe('chiediConferma non distruttiva', () => {
+    it('con pericolosa=false il bottone non e rosso ma il focus resta su Annulla', () => {
+      const conferma = jasmine.createSpyObj<ConfirmationService>('ConfirmationService', ['confirm'])
+      chiediConferma(conferma, 'Rinnovare?', () => undefined, { pericolosa: false })
+      const o = conferma.confirm.calls.mostRecent().args[0]
+      expect(o.acceptButtonStyleClass).toBeUndefined()
+      expect(o.defaultFocus).toBe('reject')
     })
   })
 

@@ -11,7 +11,13 @@ import { azioniDiRiga, MemoriaAzioni } from './azioni-lista'
 import { ContoCorrenteInElenco } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ContoCorrenteDialogComponent } from './conto-corrente-dialog.component'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 
 @Component({
   selector: 'app-conti-correnti',
@@ -122,7 +128,7 @@ export class ContiCorrentiComponent implements OnInit {
       modifica: () => this.apri(c),
       etichettaModifica: 'Modifica',
       attivo: c.attivo,
-      cambiaStato: () => this.cambiaStato(c),
+      cambiaStato: () => this.chiediCambiaStato(c),
       elimina: c.eliminabile ? () => this.elimina(c) : undefined,
     })
   )
@@ -145,6 +151,16 @@ export class ContiCorrentiComponent implements OnInit {
   apri(c: ContoCorrenteInElenco | null): void {
     this.selezionato.set(c)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(c: ContoCorrenteInElenco): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      c.attivo,
+      `il conto "${c.codice} - ${c.descrizione}"`,
+      () => this.cambiaStato(c)
+    )
   }
 
   cambiaStato(c: ContoCorrenteInElenco): void {

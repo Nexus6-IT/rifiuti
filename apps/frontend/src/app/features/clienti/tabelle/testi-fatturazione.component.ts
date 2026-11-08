@@ -8,7 +8,13 @@ import { ToastService } from '../../../core/services/toast.service'
 import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
 import { azioniDiRiga, MemoriaAzioni } from './azioni-lista'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 import { TestoFatturazione } from '../clienti.model'
 import { TestoFatturazioneDialogComponent } from './testo-fatturazione-dialog.component'
 
@@ -116,7 +122,7 @@ export class TestiFatturazioneComponent implements OnInit {
       modifica: () => this.apri(t),
       etichettaModifica: 'Modifica',
       attivo: t.attivo,
-      cambiaStato: () => this.cambiaStato(t),
+      cambiaStato: () => this.chiediCambiaStato(t),
       elimina: t.eliminabile ? () => this.elimina(t) : undefined,
     })
   )
@@ -139,6 +145,13 @@ export class TestiFatturazioneComponent implements OnInit {
   apri(t: TestoFatturazione | null): void {
     this.selezionato.set(t)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(t: TestoFatturazione): void {
+    cambiaStatoConConferma(this.conferma, t.attivo, `il testo "${t.codice} - ${t.titolo}"`, () =>
+      this.cambiaStato(t)
+    )
   }
 
   cambiaStato(t: TestoFatturazione): void {

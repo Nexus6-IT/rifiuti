@@ -8,6 +8,7 @@ import {
   eseguiERicarica,
   messaggioErrore,
   permessoScrittura,
+  cambiaStatoConConferma,
 } from './tabella-comune'
 
 /**
@@ -50,6 +51,17 @@ export abstract class CodificheTabellaBase<T extends CodificaBase<G>, G extends 
   apri(c: T | null): void {
     this.selezionata.set(c)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(c: T): void {
+    const g = this.vocabolario.etichetta(c.genere).toLowerCase()
+    cambiaStatoConConferma(
+      this.conferma,
+      c.attiva,
+      `${this.vocabolario.concordanza(c.genere).articolo} ${g} "${c.codice} - ${c.descrizione}"`,
+      () => this.cambiaStato(c)
+    )
   }
 
   cambiaStato(c: T): void {

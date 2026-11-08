@@ -163,8 +163,12 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
         position: sticky;
         right: 0;
         z-index: 1;
-        background: var(--surface-ground) !important;
+        background: var(--surface-ground);
         box-shadow: -1px 0 0 var(--rule);
+      }
+      /* PrimeNG vuole l'intestazione trasparente: sul th serve !important, sul td no. */
+      th.azioni-col {
+        background: var(--surface-ground) !important;
       }
       .visually-hidden {
         position: absolute;
@@ -179,7 +183,6 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
         td.azioni-col {
           position: static;
           box-shadow: none;
-          background: none;
           width: auto;
           min-width: 0;
         }

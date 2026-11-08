@@ -26,9 +26,9 @@ import { SegnoMarchioComponent } from '../../shared/components/segno-marchio.com
     SegnoMarchioComponent,
   ],
   template: `
-    <div class="auth">
+    <div class="auth" data-testid="auth">
       <!-- ===== Pannello brand (sinistra) ===== -->
-      <aside class="auth__brand" aria-hidden="true">
+      <aside class="auth__brand" data-testid="auth-brand" aria-hidden="true">
         <div class="auth__brand-inner">
           <div class="brand-mark">
             <app-segno-marchio [dimensione]="32" />
@@ -57,7 +57,7 @@ import { SegnoMarchioComponent } from '../../shared/components/segno-marchio.com
       <main class="auth__main" id="contenuto-login">
         <div class="auth__panel">
           <!-- Logo mobile (visibile solo dove il pannello brand è nascosto) -->
-          <div class="auth__logo-mobile">
+          <div class="auth__logo-mobile" data-testid="auth-logo-mobile">
             <app-segno-marchio [dimensione]="32" />
             <span class="brand-mark__name">WasteFlow</span>
           </div>
@@ -339,7 +339,7 @@ import { SegnoMarchioComponent } from '../../shared/components/segno-marchio.com
       }
 
       /* ============ Responsive ============ */
-      @media (max-width: 767.98px) {
+      @media (max-width: 991.98px) {
         .auth {
           grid-template-columns: 1fr;
         }
@@ -349,6 +349,19 @@ import { SegnoMarchioComponent } from '../../shared/components/segno-marchio.com
         .auth__logo-mobile {
           display: flex;
         }
+      }
+      /* Su un tablet il form sta al centro e il piè di pagina lo segue: col piè di pagina in fondo
+         allo schermo resterebbe in mezzo un vuoto di centinaia di pixel. Sul telefono il form
+         riempie lo schermo e il piè di pagina sta in basso. */
+      @media (min-width: 576px) and (max-width: 991.98px) {
+        .auth__main {
+          justify-content: center;
+        }
+        .auth__footer {
+          margin-top: 0;
+        }
+      }
+      @media (max-width: 575.98px) {
         .auth__main {
           min-height: 100vh;
         }

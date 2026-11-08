@@ -12,7 +12,7 @@ import type { Locator, Page } from '@playwright/test'
 
 /** Bottone ⋯ della riga, se la riga ha un menu. */
 function kebab(riga: Locator): Locator {
-  return riga.locator('button[aria-haspopup="menu"]')
+  return riga.getByTestId('azioni-altre')
 }
 
 /** Voci del menu aperto (il menu sta nel body, non dentro la riga). */
@@ -36,20 +36,22 @@ async function chiudiMenu(page: Page, riga: Locator): Promise<void> {
 /**
  * Esegue un'azione della riga: clicca il bottone con quel nome se c'e' sulla riga, altrimenti apre
  * il menu ⋯ e sceglie la voce.
- * @param nome testo o espressione regolare del nome accessibile (bottone) o dell'etichetta (voce)
+ * @param nome testo esatto (maiuscole comprese: «Attiva» non combacia con «Disattiva») o espressione
+ *   regolare del nome accessibile (bottone) o dell'etichetta (voce)
  */
 export async function eseguiAzioneRiga(
   page: Page,
   riga: Locator,
   nome: string | RegExp
 ): Promise<void> {
-  const bottone = riga.getByRole('button', { name: nome })
+  const esatto = typeof nome === 'string'
+  const bottone = riga.getByRole('button', { name: nome, exact: esatto })
   if ((await bottone.count()) > 0) {
     await bottone.first().click()
     return
   }
   await apriMenu(page, riga)
-  await vociMenu(page).filter({ hasText: nome }).first().click()
+  await page.getByRole('menuitem', { name: nome, exact: esatto }).first().click()
 }
 
 /**
@@ -58,7 +60,7 @@ export async function eseguiAzioneRiga(
  */
 export async function nomiAzioniRiga(page: Page, riga: Locator): Promise<string[]> {
   const bottoni = await riga
-    .locator('button:not([aria-haspopup="menu"])')
+    .locator('button:not([data-testid="azioni-altre"])')
     .evaluateAll(els =>
       els
         .map(e => (e.getAttribute('aria-label') ?? e.textContent ?? '').trim())

@@ -640,7 +640,7 @@ test.describe('Listino del contratto — admin', () => {
     await apriContratti(page, d.numeroA)
     await pagina(page)
       .getByTestId(`contratti-riga-${d.ids.A}`)
-      .getByRole('button', { name: /^Modifica/ })
+      .getByTestId('azione-principale')
       .click()
     const dlg = dialogo(page, 'Modifica contratto')
     await expect(dlg).toBeVisible()

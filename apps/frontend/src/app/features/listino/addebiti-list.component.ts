@@ -17,6 +17,7 @@ import {
   chiediConferma,
   eseguiERicarica,
   permessoScrittura,
+  cambiaStatoConConferma,
 } from '../clienti/tabelle/tabella-comune'
 import { AddebitoDialogComponent } from './addebito-dialog.component'
 import { Addebito, FiltroAddebiti } from './listino.model'
@@ -103,9 +104,7 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
         (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
-        [styleClass]="
-          'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')
-        "
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
@@ -237,7 +236,7 @@ export class AddebitiListComponent implements OnInit, OnDestroy {
           ]
         : [],
       attivo: a.attivo,
-      cambiaStato: scrive ? () => this.cambiaStato(a) : undefined,
+      cambiaStato: scrive ? () => this.chiediCambiaStato(a) : undefined,
       elimina: scrive && a.eliminabile ? () => this.elimina(a) : undefined,
     })
   })
@@ -277,6 +276,13 @@ export class AddebitiListComponent implements OnInit, OnDestroy {
   apriVariazione(a: Addebito | null): void {
     this.addebitiVariazione.set(a ? [a.id] : null)
     this.variazioneAperta.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(a: Addebito): void {
+    cambiaStatoConConferma(this.conferma, a.attivo, `l'addebito "${a.descrizione}"`, () =>
+      this.cambiaStato(a)
+    )
   }
 
   cambiaStato(a: Addebito): void {

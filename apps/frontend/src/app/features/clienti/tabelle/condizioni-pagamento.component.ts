@@ -12,7 +12,13 @@ import { CondizionePagamento } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ETICHETTE_MODALITA } from '../vocabolario-clienti'
 import { CondizionePagamentoDialogComponent } from './condizione-pagamento-dialog.component'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 
 @Component({
   selector: 'app-condizioni-pagamento',
@@ -118,7 +124,7 @@ export class CondizioniPagamentoComponent implements OnInit {
       modifica: () => this.apri(c),
       etichettaModifica: 'Modifica',
       attivo: c.attiva,
-      cambiaStato: () => this.cambiaStato(c),
+      cambiaStato: () => this.chiediCambiaStato(c),
       elimina: c.eliminabile ? () => this.elimina(c) : undefined,
     })
   )
@@ -145,6 +151,16 @@ export class CondizioniPagamentoComponent implements OnInit {
   apri(c: CondizionePagamento | null): void {
     this.selezionata.set(c)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(c: CondizionePagamento): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      c.attiva,
+      `la condizione "${c.codice} - ${c.descrizione}"`,
+      () => this.cambiaStato(c)
+    )
   }
 
   cambiaStato(c: CondizionePagamento): void {

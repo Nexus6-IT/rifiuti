@@ -47,7 +47,7 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
       [puoScrivere]="puoScrivere()"
       [testid]="testid"
       (modifica)="apri($event)"
-      (cambiaStato)="cambiaStato($event)"
+      (cambiaStato)="chiediCambiaStato($event)"
       (elimina)="elimina($event)"
     />
     <app-codifica-dialog

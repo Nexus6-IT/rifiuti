@@ -10,6 +10,7 @@ import {
   identificativoPerRicerca,
   normalizzaIdentificativo,
   partitaIvaDaVerificare,
+  separaIdentificativo,
   validaIdentificativi,
 } from './identificativo-fiscale'
 
@@ -284,5 +285,19 @@ describe('etichette dell’identificativo (menu e dettaglio)', () => {
     expect(etichettaIdentificativiCompleta('', 'RSSMRA80A01H501U')).toBe('C.F. RSSMRA80A01H501U')
     expect(etichettaIdentificativiCompleta('12345678903', null)).toBe('P.IVA 12345678903')
     expect(etichettaIdentificativiCompleta(null, null)).toBe('P.IVA N/D')
+  })
+})
+
+describe('separaIdentificativo', () => {
+  it("P.IVA se c'e', altrimenti C.F., altrimenti due stringhe vuote", () => {
+    expect(separaIdentificativo(' 12345678903 ', 'RSSMRA80A01H501U')).toEqual({
+      prefisso: 'P.IVA',
+      numero: '12345678903',
+    })
+    expect(separaIdentificativo(null, 'RSSMRA80A01H501U')).toEqual({
+      prefisso: 'C.F.',
+      numero: 'RSSMRA80A01H501U',
+    })
+    expect(separaIdentificativo('  ', undefined)).toEqual({ prefisso: '', numero: '' })
   })
 })

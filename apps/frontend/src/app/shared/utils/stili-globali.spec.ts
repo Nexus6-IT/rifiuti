@@ -113,6 +113,29 @@ describe('stili globali', () => {
     })
   })
 
+  describe('paginatore', () => {
+    it("l'anello di focus della pagina corrente e degli altri bottoni e arancio, 2px, visibile", () => {
+      monta(
+        '<div class="p-paginator"><span class="p-paginator-pages">' +
+          '<button class="p-paginator-page p-highlight">1</button>' +
+          '<button class="p-paginator-page">2</button></span>' +
+          '<button class="p-paginator-next">&gt;</button></div>'
+      )
+      const sonda = document.createElement('i')
+      sonda.style.color = getComputedStyle(document.documentElement)
+        .getPropertyValue('--focus-ring-color')
+        .trim()
+      radice.appendChild(sonda)
+      const arancio = css(sonda).color
+      for (const b of Array.from(radice.querySelectorAll<HTMLElement>('button'))) {
+        b.focus()
+        expect(css(b).outlineStyle).toBe('solid')
+        expect(css(b).outlineWidth).toBe('2px')
+        expect(css(b).outlineColor).toBe(arancio)
+      }
+    })
+  })
+
   describe('controlli nativi', () => {
     it("checkbox e radio nativi prendono l'inchiostro del tema come colore di accento", () => {
       monta('<input type="checkbox" /><input type="radio" />')

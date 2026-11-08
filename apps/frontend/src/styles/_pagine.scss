@@ -539,6 +539,12 @@
     font-size: var(--font-size-sm);
     color: var(--text-tertiary);
   }
+  /* le cifre della seconda linea (P. IVA, identificativi) e quelle della prima cella stanno a
+     sinistra, come il testo: a destra restano solo sul desktop. Una regola per tutte le pagine. */
+  .p-datatable.lista-telefono .p-datatable-tbody > tr > td.num-col.m2,
+  .p-datatable.lista-telefono .p-datatable-tbody > tr > td.num-col:first-child {
+    text-align: left;
+  }
   /* riga del messaggio «nessun dato»: resta un blocco unico */
   .p-datatable.lista-telefono .p-datatable-tbody > tr.p-datatable-emptymessage {
     display: block;

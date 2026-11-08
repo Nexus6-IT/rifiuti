@@ -641,6 +641,13 @@ input[type='file']::file-selector-button:hover {
   color: var(--on-ink);
   border-radius: var(--radius-base);
 }
+.p-paginator button:focus-visible {
+  /* Aura mette l'anello nel colore del fondo: sulla pagina corrente (inchiostro) o sul fondo della
+     pagina spariva. L'anello arancio e' quello di tutti i controlli. */
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: none;
+}
 .p-paginator .p-paginator-first,
 .p-paginator .p-paginator-prev,
 .p-paginator .p-paginator-next,

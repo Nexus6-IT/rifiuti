@@ -8,7 +8,13 @@ import { ToastService } from '../../../core/services/toast.service'
 import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
 import { azioniDiRiga, MemoriaAzioni } from './azioni-lista'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 import { RegistroIva } from '../clienti.model'
 import { RegistroIvaDialogComponent } from './registro-iva-dialog.component'
 
@@ -119,7 +125,7 @@ export class RegistriIvaComponent implements OnInit {
       modifica: () => this.apri(r),
       etichettaModifica: 'Modifica',
       attivo: r.attivo,
-      cambiaStato: () => this.cambiaStato(r),
+      cambiaStato: () => this.chiediCambiaStato(r),
       elimina: r.eliminabile ? () => this.elimina(r) : undefined,
     })
   )
@@ -142,6 +148,16 @@ export class RegistriIvaComponent implements OnInit {
   apri(r: RegistroIva | null): void {
     this.selezionato.set(r)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(r: RegistroIva): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      r.attivo,
+      `il registro "${r.codice} - ${r.descrizione}"`,
+      () => this.cambiaStato(r)
+    )
   }
 
   cambiaStato(r: RegistroIva): void {

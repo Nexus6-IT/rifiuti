@@ -27,3 +27,39 @@ export function catturaFocus(testidOrigine?: string): () => void {
     }, 50)
   }
 }
+
+/**
+ * Dopo una voce del menu ⋯ che apre un dialog (modifica, conferma): quando il dialog si chiude il
+ * focus torna sul ⋯ della riga. Il menu a quel punto e' gia' chiuso e il focus sarebbe finito su
+ * `body`. Se la lista viene riletta e la riga ridisegnata, il ⋯ si ritrova dall'etichetta
+ * accessibile («Altre azioni per <nome>»). Se nessun dialog si apre entro un secondo (la voce
+ * naviga o fa altro) non fa niente.
+ */
+export function ripristinaFocusDopoDialog(bottone: HTMLElement, etichetta: string): void {
+  const maschere = (): number => document.querySelectorAll('.p-dialog-mask').length
+  const prima = maschere()
+  let aperto = false
+  const osservatore = new MutationObserver(() => {
+    const ora = maschere()
+    if (!aperto && ora > prima) {
+      aperto = true
+      window.clearTimeout(rinuncia)
+    } else if (aperto && ora <= prima) {
+      osservatore.disconnect()
+      setTimeout(() => {
+        const attivo = document.activeElement
+        if (attivo && attivo !== document.body) return
+        const t = bottone.isConnected
+          ? bottone
+          : Array.from(document.querySelectorAll<HTMLElement>('[data-testid="azioni-altre"]')).find(
+              b => b.getAttribute('aria-label') === etichetta
+            )
+        t?.focus()
+      }, 50)
+    }
+  })
+  osservatore.observe(document.body, { childList: true, subtree: true })
+  const rinuncia = window.setTimeout(() => {
+    if (!aperto) osservatore.disconnect()
+  }, 1000)
+}

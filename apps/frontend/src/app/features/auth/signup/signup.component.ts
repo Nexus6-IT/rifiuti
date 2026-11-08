@@ -45,9 +45,9 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
   template: `
     <p-toast position="top-right" />
 
-    <div class="auth">
+    <div class="auth" data-testid="auth">
       <!-- ===== Pannello brand (sinistra) ===== -->
-      <aside class="auth__brand" aria-hidden="true">
+      <aside class="auth__brand" data-testid="auth-brand" aria-hidden="true">
         <div class="auth__brand-inner">
           <div class="brand-mark">
             <app-segno-marchio [dimensione]="32" />
@@ -81,7 +81,7 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
           role="status"
           aria-live="polite"
         >
-          <div class="auth__logo-mobile">
+          <div class="auth__logo-mobile" data-testid="auth-logo-mobile">
             <app-segno-marchio [dimensione]="32" />
             <span class="brand-mark__name">WasteFlow</span>
           </div>
@@ -107,7 +107,7 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
         <!-- Form di richiesta accesso -->
         <div *ngIf="!requestComplete" class="auth__panel">
           <!-- Logo mobile -->
-          <div class="auth__logo-mobile">
+          <div class="auth__logo-mobile" data-testid="auth-logo-mobile">
             <app-segno-marchio [dimensione]="32" />
             <span class="brand-mark__name">WasteFlow</span>
           </div>
@@ -647,7 +647,7 @@ import { SegnoMarchioComponent } from '../../../shared/components/segno-marchio.
       }
 
       /* ============ Responsive ============ */
-      @media (max-width: 767.98px) {
+      @media (max-width: 991.98px) {
         .auth {
           grid-template-columns: 1fr;
         }

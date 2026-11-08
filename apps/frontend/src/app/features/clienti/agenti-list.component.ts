@@ -9,7 +9,7 @@ import { TableModule } from 'primeng/table'
 import { ToastService } from '../../core/services/toast.service'
 import { AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
 import { colonneConDati } from '../../shared/utils/colonne-visibili'
-import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
+import { separaIdentificativo } from '../registry/identificativo-fiscale'
 import { AgenteDialogComponent } from './agente-dialog.component'
 import { Agente } from './clienti.model'
 import { ClientiService } from './clienti.service'
@@ -72,9 +72,7 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
         (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
-        [styleClass]="
-          'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')
-        "
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
@@ -91,7 +89,7 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
           <tr [attr.data-testid]="'agenti-riga-' + a.id">
             <td class="chi">{{ a.ditta.ragioneSociale }}</td>
             <td class="num-col m2">
-              {{ prefissoId(a) }} <span class="mono">{{ numeroId(a) }}</span
+              {{ idDi(a).prefisso }} <span class="mono">{{ idDi(a).numero || '—' }}</span
               ><span class="solo-tel" *ngIf="!a.attivo"> · Disattivato</span>
             </td>
             <td class="m-hide" *ngIf="visibili().has('codice')">{{ a.codice }}</td>
@@ -141,9 +139,6 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
       @media (max-width: 640px) {
         .solo-tel {
           display: inline;
-        }
-        td.num-col.m2 {
-          text-align: left;
         }
       }
     `,
@@ -198,21 +193,9 @@ export class AgentiListComponent implements OnInit, OnDestroy {
     this.elenco.cambiaPagina(ev)
   }
 
-  /** «P.IVA» o «C.F.»: in caratteri normali. */
-  prefissoId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
-    return this.identificativo(x as never).split(' ')[0] ?? ''
-  }
-
-  /** Il numero: l'unica parte in mono. */
-  numeroId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
-    return this.identificativo(x as never)
-      .split(' ')
-      .slice(1)
-      .join(' ')
-  }
-
-  identificativo(a: Agente): string {
-    return etichettaIdentificativo(a.ditta.partitaIva, a.ditta.codiceFiscale)
+  /** «P.IVA» o «C.F.» in caratteri normali e il numero (l'unica parte in mono). */
+  idDi(x: Agente): { prefisso: string; numero: string } {
+    return separaIdentificativo(x.ditta.partitaIva, x.ditta.codiceFiscale)
   }
 
   apri(a: Agente | null): void {

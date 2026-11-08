@@ -13,6 +13,7 @@ import {
   chiediConferma,
   eseguiERicarica,
   permessoScrittura,
+  cambiaStatoConConferma,
 } from '../../clienti/tabelle/tabella-comune'
 import { ListinoService } from '../listino.service'
 import { CodiceIva } from '../listino.model'
@@ -123,7 +124,7 @@ export class CodiciIvaTabComponent implements OnInit {
       modifica: () => this.apri(r),
       etichettaModifica: 'Modifica',
       attivo: r.attivo,
-      cambiaStato: () => this.cambiaStato(r),
+      cambiaStato: () => this.chiediCambiaStato(r),
       elimina: r.eliminabile ? () => this.elimina(r) : undefined,
     })
   )
@@ -146,6 +147,16 @@ export class CodiciIvaTabComponent implements OnInit {
   apri(r: CodiceIva | null): void {
     this.selezionato.set(r)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(r: CodiceIva): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      r.attivo,
+      `il codice IVA "${r.codice} - ${r.descrizione}"`,
+      () => this.cambiaStato(r)
+    )
   }
 
   cambiaStato(r: CodiceIva): void {

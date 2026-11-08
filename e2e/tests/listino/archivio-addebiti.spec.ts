@@ -108,6 +108,12 @@ function contenuto(page: Page) {
 
 /** Nessuna riga ha azioni: ne' bottoni (principale o ⋯) ne' colonna «Azioni». */
 async function expectSenzaAzioni(page: Page): Promise<void> {
+  // `toHaveCount(0)` passa subito se la lista non e' ancora arrivata: prima si aspetta la prima riga
+  // (di dati, o il messaggio di lista vuota: il VIEWER puo' non avere dati in questa scheda;
+  // le schede non attive restano nel DOM, nascoste)
+  await expect(contenuto(page).locator('tbody tr:visible').first()).toBeVisible({
+    timeout: ATTESA_SERVER,
+  })
   await expect(
     contenuto(page).getByRole('button', {
       name: /^(Modifica|Varia i prezzi|Disattiva|Riattiva|Elimina|Altre azioni)/,
@@ -245,7 +251,7 @@ test.describe('Archivio addebiti — admin', () => {
     })
     const rigaOrd = contenuto(page).getByTestId(`iva-riga-${dati.iva22}`)
     await expect(rigaOrd).toContainText(nomi.iva22)
-    await expect(rigaOrd).toContainText(/^.*22(\.00)?%/)
+    await expect(rigaOrd).toContainText(/^.*22([.,]00)?%/)
 
     // Natura con aliquota piena: il backend rifiuta e il messaggio si vede nel dialog.
     await contenuto(page).getByRole('button', { name: 'Nuovo codice IVA' }).click()

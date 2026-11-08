@@ -254,3 +254,18 @@ export function etichettaIdentificativiCompleta(
   if (codiceFiscale?.trim()) parti.push(`C.F. ${codiceFiscale.trim()}`)
   return parti.length > 0 ? parti.join(' · ') : 'P.IVA N/D'
 }
+
+/**
+ * Le due parti di «P.IVA 123…» / «C.F. ABC…» per le liste: il prefisso in caratteri normali e il
+ * numero (l'unica parte in mono). Entrambi vuoti se non c'e' nessun identificativo.
+ */
+export function separaIdentificativo(
+  partitaIva: string | null | undefined,
+  codiceFiscale: string | null | undefined
+): { prefisso: string; numero: string } {
+  const piva = partitaIva?.trim()
+  if (piva) return { prefisso: 'P.IVA', numero: piva }
+  const cf = codiceFiscale?.trim()
+  if (cf) return { prefisso: 'C.F.', numero: cf }
+  return { prefisso: '', numero: '' }
+}

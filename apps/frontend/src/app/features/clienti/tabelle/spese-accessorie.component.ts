@@ -13,7 +13,13 @@ import { SpesaAccessoria, TipoSpesa } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ETICHETTE_TIPO_SPESA, OPZIONI_TIPO_SPESA } from '../vocabolario-clienti'
 import { SpesaAccessoriaDialogComponent } from './spesa-accessoria-dialog.component'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 
 @Component({
   selector: 'app-spese-accessorie',
@@ -134,7 +140,7 @@ export class SpeseAccessorieComponent implements OnInit {
       modifica: () => this.apri(s),
       etichettaModifica: 'Modifica',
       attivo: s.attiva,
-      cambiaStato: () => this.cambiaStato(s),
+      cambiaStato: () => this.chiediCambiaStato(s),
       elimina: s.eliminabile ? () => this.elimina(s) : undefined,
     })
   )
@@ -167,6 +173,16 @@ export class SpeseAccessorieComponent implements OnInit {
   apri(s: SpesaAccessoria | null): void {
     this.selezionata.set(s)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(s: SpesaAccessoria): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      s.attiva,
+      `la spesa "${s.codice} - ${s.descrizione}"`,
+      () => this.cambiaStato(s)
+    )
   }
 
   cambiaStato(s: SpesaAccessoria): void {

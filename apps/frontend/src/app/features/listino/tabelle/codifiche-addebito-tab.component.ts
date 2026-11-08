@@ -62,7 +62,7 @@ import { CodificaAddebitoDialogComponent } from './codifica-addebito-dialog.comp
       [puoScrivere]="puoScrivere()"
       [testid]="testid"
       (modifica)="apri($event)"
-      (cambiaStato)="cambiaStato($event)"
+      (cambiaStato)="chiediCambiaStato($event)"
       (elimina)="elimina($event)"
     />
     <app-codifica-addebito-dialog

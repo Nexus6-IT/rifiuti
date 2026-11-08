@@ -257,9 +257,7 @@ const SEVERITA_STATO: Readonly<
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
         class="tabella-fitta"
-        [styleClass]="
-          'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')
-        "
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
@@ -279,7 +277,12 @@ const SEVERITA_STATO: Readonly<
             <th scope="col" *ngIf="colonne().has('categoria')">Categoria</th>
             <th scope="col">Stato</th>
             <th scope="col">Periodo</th>
-            <th scope="col" *ngIf="colonne().has('prossima')" title="Prossima fatturazione">
+            <th
+              scope="col"
+              *ngIf="colonne().has('prossima')"
+              title="Prossima fatturazione"
+              aria-label="Prossima fatturazione"
+            >
               Prossima fatt.
             </th>
             <th scope="col" *ngIf="colonne().has('daCollegare')">Da collegare</th>
@@ -463,10 +466,12 @@ const SEVERITA_STATO: Readonly<
         position: sticky;
         right: 0;
         z-index: 1;
-        background: var(
-          --surface-ground
-        ) !important; /* anche il th: PrimeNG lo vuole trasparente */
+        background: var(--surface-ground);
         box-shadow: -1px 0 0 var(--rule);
+      }
+      /* PrimeNG vuole l'intestazione trasparente: sul th serve !important, sul td no. */
+      th.azioni-col {
+        background: var(--surface-ground) !important;
       }
       .senza-contratto {
         display: flex;
@@ -509,7 +514,6 @@ const SEVERITA_STATO: Readonly<
         td.azioni-col {
           position: static;
           box-shadow: none;
-          background: none;
           width: auto;
           min-width: 0;
         }
@@ -574,10 +578,10 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   readonly totale = this.elenco.totale
   readonly erroreElenco = this.elenco.errore
 
-  /** Colonne facoltative con almeno un dato nella pagina: le altre non si mostrano. */
   /** Sul telefono i filtri stanno in un pannello «Filtri», chiuso all'apertura. */
   readonly filtriAperti = signal(false)
 
+  /** Colonne facoltative con almeno un dato nella pagina: le altre non si mostrano. */
   readonly colonne = computed(() =>
     colonneConDati<ContrattoCliente>(this.righe(), {
       descrizione: c => c.descrizione,
@@ -926,6 +930,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
     chiediConferma(this.conferma, testo, () => this.rinnovaConfermato(c), {
       header: 'Conferma rinnovo',
       acceptLabel: 'Rinnova',
+      pericolosa: false,
     })
   }
 

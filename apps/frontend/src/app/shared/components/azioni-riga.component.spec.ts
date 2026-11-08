@@ -231,3 +231,51 @@ describe('AzioniRigaComponent dentro un p-dialog', () => {
     document.body.querySelectorAll('.p-menu-overlay, .p-dialog-mask').forEach(e => e.remove())
   })
 })
+
+describe('AzioniRigaComponent: focus dopo un dialog aperto da una voce', () => {
+  @Component({
+    standalone: true,
+    imports: [AzioniRigaComponent, DialogModule],
+    template: `
+      <app-azioni-riga [altre]="altre" nome="Rossi" />
+      <p-dialog [(visible)]="visibile" [modal]="true" header="Conferma">
+        <button type="button" id="dentro">Ok</button>
+      </p-dialog>
+    `,
+  })
+  class OspiteConDialogComponent {
+    visibile = false
+    altre: AzioneRiga[] = [{ etichetta: 'Duplica', esegui: () => (this.visibile = true) }]
+  }
+
+  it('chiuso il dialog il focus torna sul ⋯ della riga, non su body', async () => {
+    await TestBed.configureTestingModule({
+      imports: [OspiteConDialogComponent],
+      providers: [provideNoopAnimations()],
+    }).compileComponents()
+    const fixture = TestBed.createComponent(OspiteConDialogComponent)
+    const assesta = async (): Promise<void> => {
+      fixture.detectChanges()
+      await fixture.whenStable()
+      fixture.detectChanges()
+    }
+    await assesta()
+    const kebab = fixture.nativeElement.querySelector(
+      'button[aria-haspopup="menu"]'
+    ) as HTMLButtonElement
+    kebab.click()
+    await assesta()
+    document.body.querySelector<HTMLElement>('[role="menuitem"] a')?.click()
+    await assesta()
+    expect(document.body.querySelector('.p-dialog-mask')).not.toBeNull()
+    // il dialog prende il focus, poi si chiude (Esc/Annulla): il focus sarebbe su body
+    document.body.querySelector<HTMLElement>('#dentro')?.focus()
+    fixture.componentInstance.visibile = false
+    await assesta()
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    await new Promise(r => setTimeout(r, 120))
+    expect(document.activeElement).toBe(kebab)
+    fixture.destroy()
+    document.body.querySelectorAll('.p-menu-overlay, .p-dialog-mask').forEach(e => e.remove())
+  })
+})

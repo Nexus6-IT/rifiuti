@@ -341,7 +341,7 @@ test.describe('Impostazione fatturazione e fatturabile — 4.3a', () => {
     })
     // Il campo e' un calendario (`p-calendar`): si legge e si scrive come `gg/mm/aaaa`.
     const dataIt = (iso: string): string => iso.split('-').reverse().join('/')
-    const campo = pagina.locator('#fatt-da')
+    const campo = pagina.getByTestId('fatt-data').locator('input')
     await expect(campo).toHaveValue(dataIt(DATA_A), { timeout: ATTESA_SERVER })
 
     await campo.click()

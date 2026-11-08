@@ -9,6 +9,7 @@ import {
 import { MenuItem } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { Menu, MenuModule } from 'primeng/menu'
+import { ripristinaFocusDopoDialog } from '../utils/ripristina-focus'
 
 /** Un'azione disponibile su una riga di lista. */
 export interface AzioneRiga {
@@ -178,7 +179,14 @@ export class AzioniRigaComponent {
       disabled: !!a.disabilitata,
       title: a.disabilitata ? a.motivo : undefined,
       styleClass: classi || undefined,
-      command: a.disabilitata ? undefined : () => a.esegui(),
+      command: a.disabilitata
+        ? undefined
+        : () => {
+            // se la voce apre un dialog, alla sua chiusura il focus torna qui (vale per ogni pagina)
+            const bottone = this.bottoneApri?.nativeElement
+            if (bottone) ripristinaFocusDopoDialog(bottone, this.etichettaAltre())
+            a.esegui()
+          },
     }
   }
 }

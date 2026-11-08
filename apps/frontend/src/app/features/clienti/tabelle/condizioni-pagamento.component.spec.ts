@@ -92,7 +92,20 @@ describe('CondizioniPagamentoComponent', () => {
     await apri([condizione()])
     tabella.modifica.and.returnValue(of(condizione({ attiva: false, versione: 4 })))
     await scegliVoceRiga(fixture, q('cond-riga-3060')!, 'Disattiva')
+    // «Disattiva» chiede conferma: finche' non si accetta non parte nulla
+    expect(tabella.modifica).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Conferma disattivazione')
+    accettaConferma()
+    await stabilizza(fixture)
     expect(tabella.modifica).toHaveBeenCalledWith('c1', { attiva: false, versione: 3 })
+  })
+
+  it('Riattiva parte subito, senza conferma', async () => {
+    await apri([condizione({ attiva: false })])
+    tabella.modifica.and.returnValue(of(condizione({ attiva: true, versione: 4 })))
+    await scegliVoceRiga(fixture, q('cond-riga-3060')!, 'Riattiva')
+    expect(document.body.textContent).not.toContain('Conferma disattivazione')
+    expect(tabella.modifica).toHaveBeenCalledWith('c1', { attiva: true, versione: 3 })
   })
 
   it('VIEWER: nessun pulsante di scrittura', async () => {

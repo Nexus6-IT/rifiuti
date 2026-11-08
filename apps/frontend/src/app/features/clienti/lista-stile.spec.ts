@@ -237,7 +237,6 @@ describe('Liste del Task 6 (pattern delle liste)', () => {
     it('la tabella e una lista-telefono; con zero righe: testo dello stato vuoto, senza paginatore', async () => {
       await apri('ADMIN', [])
       expect(q('.p-datatable')!.classList).toContain('lista-telefono')
-      expect(q('.p-datatable')!.classList).toContain('senza-righe')
       expect(document.body.textContent).toContain('Nessun cliente.')
       expect(q('.p-paginator')).toBeNull()
     })

@@ -93,6 +93,28 @@ describe('LoginComponent (restyle «Libro mastro»)', () => {
     expect(getComputedStyle(pannello).borderInlineEndWidth).toBe('1px')
   })
 
+  it('sotto i 992px il pannello di marca si nasconde (a 768px il titolo andrebbe su tre righe)', () => {
+    const regole: CSSMediaRule[] = []
+    for (const foglio of Array.from(document.styleSheets)) {
+      try {
+        for (const r of Array.from(foglio.cssRules)) {
+          if (r instanceof CSSMediaRule && /max-width:\s*991\.98px/.test(r.conditionText)) {
+            if (
+              Array.from(r.cssRules).some(c =>
+                (c as CSSStyleRule).selectorText?.includes('auth__brand')
+              )
+            ) {
+              regole.push(r)
+            }
+          }
+        }
+      } catch {
+        /* foglio di un'altra origine */
+      }
+    }
+    expect(regole.length).toBeGreaterThan(0)
+  })
+
   it('mantiene il bottone «Accedi»', () => {
     const bottone = el.querySelector('p-button button') as HTMLButtonElement
     expect(bottone.textContent).toContain('Accedi')

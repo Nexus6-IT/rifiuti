@@ -10,7 +10,7 @@ import { Subject, takeUntil } from 'rxjs'
 import { AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
 import { ToastService } from '../../core/services/toast.service'
 import { colonneConDati } from '../../shared/utils/colonne-visibili'
-import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
+import { separaIdentificativo } from '../registry/identificativo-fiscale'
 import { ClienteDialogComponent } from './cliente-dialog.component'
 import { Cliente } from './clienti.model'
 import { ClientiService } from './clienti.service'
@@ -106,9 +106,7 @@ import {
         (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
-        [styleClass]="
-          'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')
-        "
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
@@ -129,7 +127,7 @@ import {
               {{ c.ditta.ragioneSociale }}
             </td>
             <td class="num-col m2">
-              {{ prefissoId(c) }} <span class="mono">{{ numeroId(c) }}</span
+              {{ idDi(c).prefisso }} <span class="mono">{{ idDi(c).numero || '—' }}</span
               ><span class="solo-tel" *ngIf="!c.attivo"> · Disattivato</span>
             </td>
             <td class="m-hide" *ngIf="visibili().has('codice')">{{ c.codice }}</td>
@@ -226,9 +224,6 @@ import {
         .solo-tel {
           display: inline;
         }
-        td.num-col.m2 {
-          text-align: left;
-        }
       }
     `,
   ],
@@ -294,21 +289,9 @@ export class ClientiListComponent implements OnInit, OnDestroy {
     this.elenco.cambiaPagina(ev)
   }
 
-  /** «P.IVA» o «C.F.»: in caratteri normali. */
-  prefissoId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
-    return this.identificativo(x as never).split(' ')[0] ?? ''
-  }
-
-  /** Il numero: l'unica parte in mono. */
-  numeroId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
-    return this.identificativo(x as never)
-      .split(' ')
-      .slice(1)
-      .join(' ')
-  }
-
-  identificativo(c: Cliente): string {
-    return etichettaIdentificativo(c.ditta.partitaIva, c.ditta.codiceFiscale)
+  /** «P.IVA» o «C.F.» in caratteri normali e il numero (l'unica parte in mono). */
+  idDi(x: Cliente): { prefisso: string; numero: string } {
+    return separaIdentificativo(x.ditta.partitaIva, x.ditta.codiceFiscale)
   }
 
   vai(percorso: string): void {

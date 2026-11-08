@@ -292,7 +292,7 @@ export class ContrattoClienteDialogComponent implements OnChanges {
         this.conferma,
         'Ci sono modifiche non salvate al contratto: andando al listino andranno perse. Continuare?',
         () => this.vaiAlListino(id),
-        { header: 'Modifiche non salvate', acceptLabel: 'Vai al listino' }
+        { header: 'Modifiche non salvate', acceptLabel: 'Vai al listino', pericolosa: false }
       )
       return
     }

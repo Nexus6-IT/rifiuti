@@ -555,6 +555,8 @@ test.describe('Contratto cliente — operatore', () => {
 
     await expect(riga).toContainText('Annullato')
     // Annullato = definitivo: nessuna transizione, nessun rinnovo, nessuna eliminazione.
+    // (il filtro esclude solo «Modifica»: se la riga avra' un altro bottone non di scrittura,
+    // va aggiunto qui)
     const azioni = await nomiAzioniRiga(page, riga)
     expect(azioni.filter(n => !/^Modifica/.test(n))).toEqual([])
   })
@@ -574,7 +576,14 @@ test.describe('Contratto cliente — VIEWER', () => {
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo contratto' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('button', { name: 'Proroga scadenze' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
-    for (const riga of await contenuto(page).locator('tbody tr').all()) {
+    // `all()` e' una foto istantanea: prima si aspetta almeno una riga di dati, altrimenti il ciclo
+    // potrebbe non girare mai (elenco non ancora arrivato) e il test passerebbe senza controllare
+    await expect(
+      contenuto(page).locator('tbody tr[data-testid^="contratti-riga-"]').first()
+    ).toBeVisible({ timeout: ATTESA_SERVER })
+    for (const riga of await contenuto(page)
+      .locator('tbody tr[data-testid^="contratti-riga-"]')
+      .all()) {
       const nomi = await nomiAzioniRiga(page, riga)
       expect(
         nomi.filter(n => /^(Modifica|Attiva|Riattiva|Sospendi|Annulla|Rinnova|Elimina)/.test(n))
@@ -585,7 +594,13 @@ test.describe('Contratto cliente — VIEWER', () => {
     await expect(contenuto(page).getByRole('heading', { level: 1, name: 'Clienti' })).toBeVisible()
     await expect(contenuto(page).getByRole('table')).toBeVisible()
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo cliente' })).toHaveCount(0)
-    for (const riga of await contenuto(page).locator('tbody tr').all()) {
+    await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
+    await expect(
+      contenuto(page).locator('tbody tr[data-testid^="clienti-riga-"]').first()
+    ).toBeVisible({ timeout: ATTESA_SERVER })
+    for (const riga of await contenuto(page)
+      .locator('tbody tr[data-testid^="clienti-riga-"]')
+      .all()) {
       const nomi = await nomiAzioniRiga(page, riga)
       expect(nomi.filter(n => /^(Modifica|Disattiva|Riattiva|Elimina)/.test(n))).toEqual([])
     }
