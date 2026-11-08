@@ -22,6 +22,7 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { impostaTimeoutLock } from '../listino/lock-listino'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { bloccaElaborazione } from './lock-fatturazione'
+import { leggiCodiciRicavo } from './codici-ricavo'
 import { conJoinLineari } from './piani-query'
 import {
   chiaveNumerazione,
@@ -383,6 +384,15 @@ async function scriviBozze(
     })
   }
 
+  // Centro di ricavo e categoria dell'addebito, fotografati sulla riga (Task 30b): una query per
+  // tutte le righe con un addebito, non una per riga.
+  const codici = await leggiCodiciRicavo(
+    tx,
+    tenantId,
+    bozze.flatMap(b =>
+      b.calcolato.righe.flatMap(r => (r.rigaAddebitoId === null ? [] : [r.rigaAddebitoId]))
+    )
+  )
   const righe = bozze.flatMap(b =>
     b.calcolato.righe.map(r => ({
       tenantId,
@@ -393,6 +403,12 @@ async function scriviBozze(
       // Sempre NULL (I1, Q1, Q2): vedi l'intestazione del file.
       rigaLegameId: null,
       rigaAddebitoId: r.rigaAddebitoId,
+      centroRicavoCodice:
+        r.rigaAddebitoId === null
+          ? null
+          : (codici.get(r.rigaAddebitoId)?.centroRicavoCodice ?? null),
+      categoriaCodice:
+        r.rigaAddebitoId === null ? null : (codici.get(r.rigaAddebitoId)?.categoriaCodice ?? null),
       descrizione: r.descrizione,
       dataMovimento: r.dataMovimento === null ? null : dataUtc(r.dataMovimento),
       cerCode: r.cerCode,

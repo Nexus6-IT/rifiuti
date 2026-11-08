@@ -649,6 +649,50 @@ describe('Fatturazione per periodo: schema (Postgres reale, ruolo wasteflow_app)
       }
     })
 
+    it('centro_ricavo_codice e categoria_codice (Task 30b): colonne varchar(3) nullable; modificabili in BOZZA, immutabili in un DEFINITIVO', async () => {
+      const colonne = await owner.$queryRawUnsafe<
+        { column_name: string; is_nullable: string; character_maximum_length: number }[]
+      >(
+        `SELECT column_name, is_nullable, character_maximum_length FROM information_schema.columns
+         WHERE table_name = 'righe_documento_fattura'
+           AND column_name IN ('centro_ricavo_codice', 'categoria_codice') ORDER BY column_name`
+      )
+      expect(colonne).toEqual([
+        { column_name: 'categoria_codice', is_nullable: 'YES', character_maximum_length: 3 },
+        { column_name: 'centro_ricavo_codice', is_nullable: 'YES', character_maximum_length: 3 },
+      ])
+      const { documentoId } = await creaDocumentoDiTest(owner, s.t, {
+        stato: 'BOZZA',
+        registroIvaId: s.registroIvaId,
+        anno: 2026,
+        legamiIds: [s.legamiIds[0]],
+      })
+      const imposta = () =>
+        comeApp(s.t, tx =>
+          tx.$executeRawUnsafe(
+            `UPDATE righe_documento_fattura SET centro_ricavo_codice = '010', categoria_codice = '020', updated_at = now()
+             WHERE documento_id = $1::uuid`,
+            documentoId
+          )
+        )
+      await expect(imposta()).resolves.toBeGreaterThan(0)
+      await owner.$executeRawUnsafe(
+        `UPDATE documenti_fattura SET stato = 'DEFINITIVO', numero = 111, definito_il = now() WHERE id = $1::uuid`,
+        documentoId
+      )
+      await expect(imposta()).rejects.toThrow(/sono immutabili/)
+      for (const colonna of ['centro_ricavo_codice', 'categoria_codice']) {
+        await expect(
+          comeApp(s.t, tx =>
+            tx.$executeRawUnsafe(
+              `UPDATE righe_documento_fattura SET ${colonna} = NULL WHERE documento_id = $1::uuid`,
+              documentoId
+            )
+          )
+        ).rejects.toThrow(/sono immutabili/)
+      }
+    })
+
     it('UPDATE di movimento_fatturato_id su una riga di una BOZZA: ammesso; dopo il passaggio a DEFINITIVO: respinto', async () => {
       const { documentoId } = await creaDocumentoDiTest(owner, s.t, {
         stato: 'BOZZA',

@@ -46,7 +46,11 @@ export const FORMATO_MAPPATURA_TEAMSYSTEM: Readonly<
   Record<TipoMappatura, { cifre: number; suggerimento: string }>
 > = {
   CODICE_IVA: { cifre: 3, suggerimento: 'Codice di al massimo 3 cifre, solo numeri (es. 022).' },
-  CONTO_RICAVI: { cifre: 7, suggerimento: 'Conto di al massimo 7 cifre, solo numeri.' },
+  CONTO_RICAVI: {
+    cifre: 7,
+    suggerimento:
+      'Conto di al massimo 7 cifre, solo numeri. Si sceglie per centro di ricavo, poi categoria, poi tipo di riga.',
+  },
   CLIENTE: { cifre: 5, suggerimento: 'Codice cliente di al massimo 5 cifre, solo numeri.' },
   PAGAMENTO: { cifre: 3, suggerimento: 'Codice di al massimo 3 cifre, solo numeri.' },
   REGISTRO: { cifre: 2, suggerimento: 'Codice registro di al massimo 2 cifre, solo numeri.' },

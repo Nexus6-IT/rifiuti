@@ -203,6 +203,48 @@ function mappa(mappature: Mappe, tipo: TipoMappatura, chiave: string, dove: stri
   return v
 }
 
+/** Riga di documento, per quanto serve a scegliere la chiave del conto ricavi. */
+export interface RigaPerContoRicavi {
+  tipoRiga: string
+  centroRicavoCodice?: string | null
+  categoriaCodice?: string | null
+}
+
+/**
+ * Chiave della mappatura `CONTO_RICAVI` di una riga, a cascata: `CR:<centro di ricavo>`, poi
+ * `CAT:<categoria>`, poi `TIPO:<tipo riga>`. I codici sono quelli fotografati sulla riga alla
+ * creazione (Task 30b): dopo l'emissione una modifica dell'addebito non sposta il ricavo. Il tipo
+ * riga copre le righe senza addebito (bollo, spese di incasso, storni) e i documenti precedenti.
+ * Usata da `mappatureRichieste`, da `genera` e dal servizio delle etichette: un'unica definizione.
+ */
+export function chiaveContoRicavi(riga: RigaPerContoRicavi): string {
+  const centro = riga.centroRicavoCodice?.trim() ?? ''
+  if (centro !== '') return `CR:${centro}`
+  const categoria = riga.categoriaCodice?.trim() ?? ''
+  if (categoria !== '') return `CAT:${categoria}`
+  return `TIPO:${riga.tipoRiga}`
+}
+
+/** Inverso di `chiaveContoRicavi`: livello e valore; `null` se la chiave non ha la forma attesa. */
+export function leggiChiaveContoRicavi(
+  chiave: string
+): { livello: 'CR' | 'CAT' | 'TIPO'; valore: string } | null {
+  const m = /^(CR|CAT|TIPO):(.+)$/.exec(chiave)
+  return m ? { livello: m[1] as 'CR' | 'CAT' | 'TIPO', valore: m[2] } : null
+}
+
+/**
+ * Etichetta di una chiave del conto ricavi. L'adattatore e' puro e non conosce le anagrafiche:
+ * per centro e categoria usa il codice; `MappatureService` la sostituisce con la descrizione.
+ */
+export function etichettaContoRicavi(chiave: string, descrizione?: string): string {
+  const k = leggiChiaveContoRicavi(chiave)
+  if (k === null) return `Ricavi: ${chiave}`
+  if (k.livello === 'CR') return `Ricavi: ${descrizione ?? `centro di ricavo ${k.valore}`}`
+  if (k.livello === 'CAT') return `Ricavi: categoria ${descrizione ?? k.valore}`
+  return `Ricavi: ${NOMI_TIPO_RIGA[k.valore] ?? k.valore.toLowerCase()}`
+}
+
 /** Chiave della mappatura `CODICE_IVA`: l'aliquota, con la natura se l'aliquota e' zero. */
 export const chiaveIva = (aliquota: string, natura: string | null): string =>
   natura !== null ? `${aliquota}/${natura}` : aliquota
@@ -327,7 +369,7 @@ function costruisciRecord1(d: DocumentoPerExport, mappature: Mappe): string {
   const perConto = new Map<string, Prisma.Decimal>()
   for (const riga of doc.righe) {
     const conto = numerico(
-      mappa(mappature, 'CONTO_RICAVI', riga.tipoRiga, 'del conto dei ricavi'),
+      mappa(mappature, 'CONTO_RICAVI', chiaveContoRicavi(riga), 'del conto dei ricavi'),
       FORMATI_MAPPATURE.CONTO_RICAVI.massimo,
       'La mappatura del conto dei ricavi'
     )
@@ -498,8 +540,8 @@ export class TeamSystemAdattatore implements AdattatoreExportContabile {
       for (const riga of d.documento.righe) {
         aggiungi(
           'CONTO_RICAVI',
-          riga.tipoRiga,
-          `Ricavi: ${NOMI_TIPO_RIGA[riga.tipoRiga] ?? riga.tipoRiga.toLowerCase()}`
+          chiaveContoRicavi(riga),
+          etichettaContoRicavi(chiaveContoRicavi(riga))
         )
       }
     }

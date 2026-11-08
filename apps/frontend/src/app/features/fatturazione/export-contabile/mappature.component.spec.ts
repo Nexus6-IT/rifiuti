@@ -140,6 +140,9 @@ describe('MappatureComponent', () => {
     expect(hint.textContent).toContain('al massimo 3 cifre')
     expect(campo('mappature-valore-CODICE_IVA-22').getAttribute('aria-describedby')).toBe(hint.id)
     expect(q('mappature-formato-CONTO_RICAVI')!.textContent).toContain('7 cifre')
+    expect(q('mappature-formato-CONTO_RICAVI')!.textContent).toContain(
+      'per centro di ricavo, poi categoria, poi tipo di riga'
+    )
   })
 
   it('elenco delle mancanti in cima, finché non hanno un valore', async () => {

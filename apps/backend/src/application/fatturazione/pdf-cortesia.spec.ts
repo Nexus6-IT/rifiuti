@@ -49,6 +49,8 @@ const riga = (n: number, over: Partial<RigaDocumentoVista> = {}): RigaDocumentoV
   tipoRiga: 'MOVIMENTO',
   legameId: null,
   rigaAddebitoId: null,
+  centroRicavoCodice: null,
+  categoriaCodice: null,
   descrizione: `Smaltimento rifiuti linea ${n}`,
   dataMovimento: '2026-10-15',
   cerCode: '150101',

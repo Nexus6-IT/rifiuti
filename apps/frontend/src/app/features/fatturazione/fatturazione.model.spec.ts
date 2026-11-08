@@ -28,7 +28,7 @@ describe('chiavi esaustive del modello', () => {
     expect(Object.keys(CHIAVI_ELABORAZIONE_DETTAGLIO).length).toBe(10 + 13)
     expect(Object.keys(CHIAVI_DOCUMENTO_RIGA).length).toBe(18)
     expect(Object.keys(CHIAVI_DOCUMENTO_DETTAGLIO).length).toBe(18 + 10)
-    expect(Object.keys(CHIAVI_RIGA_DOCUMENTO).length).toBe(17)
+    expect(Object.keys(CHIAVI_RIGA_DOCUMENTO).length).toBe(19)
     expect(Object.keys(CHIAVI_SCOSTAMENTO_RIGA).length).toBe(11)
     expect(CHIAVI_DOCUMENTO_DETTAGLIO['xmlGenerato']).toBeTrue()
     expect(CHIAVI_ELABORAZIONE_DETTAGLIO['erroreTecnico']).toBeTrue()

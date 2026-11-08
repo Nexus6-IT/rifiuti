@@ -67,6 +67,8 @@ const CHIAVI_DETTAGLIO = [
 ].sort()
 const CHIAVI_RIGA_VISTA = [
   'aliquotaIva',
+  'categoriaCodice',
+  'centroRicavoCodice',
   'cerCode',
   'dataMovimento',
   'descrizione',

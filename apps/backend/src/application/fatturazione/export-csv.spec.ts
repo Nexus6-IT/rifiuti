@@ -15,6 +15,8 @@ const riga = (n: number, extra: Partial<RigaDocumentoVista> = {}): RigaDocumento
   tipoRiga: 'MOVIMENTO',
   legameId: null,
   rigaAddebitoId: null,
+  centroRicavoCodice: null,
+  categoriaCodice: null,
   descrizione: 'Rifiuti "speciali"; non pericolosi',
   dataMovimento: '2026-03-10',
   cerCode: '20 03 01',

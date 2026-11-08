@@ -413,6 +413,34 @@ DELETE FROM _prisma_migrations WHERE migration_name = '20261107100000_fatturazio
 COMMIT;
 ```
 
+### 4.4c conto ricavi per centro e categoria: rilascio e rollback
+
+Migration `20261108100000_righe_documento_centro_categoria`, additiva: due colonne nullable
+(`centro_ricavo_codice`, `categoria_codice`, `varchar(3)`) su `righe_documento_fattura`, nessun
+indice, nessun trigger nuovo (`figlie_documento_immutabili` copre gia' tutta la riga di un documento
+non in bozza). `lock_timeout` di 5 secondi in testa; `ADD COLUMN` nullable senza default non
+riscrive la tabella. Nessun dato esistente da convertire: le righe gia' scritte restano con NULL e
+nell'export cadono sulla chiave `TIPO:` (le definitive sono spente e `mappature_export_contabile`
+e' vuota in produzione). Dopo il deploy si rilancia `ops/db-ruoli.sh`. Controllo:
+
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'righe_documento_fattura'
+  AND column_name IN ('centro_ricavo_codice', 'categoria_codice');   -- 2 righe
+```
+
+**Rollback del codice**: la migration puo' restare, il codice vecchio ignora le colonne (ma le
+chiavi `CONTO_RICAVI` tornano per tipo riga: le mappature `CR:`/`CAT:` non servono piu').
+
+**Rollback dello schema** (solo se serve davvero):
+
+```sql
+BEGIN;
+ALTER TABLE righe_documento_fattura DROP COLUMN centro_ricavo_codice, DROP COLUMN categoria_codice;
+DELETE FROM _prisma_migrations WHERE migration_name = '20261108100000_righe_documento_centro_categoria';
+COMMIT;
+```
+
 ---
 
 ## Ripristino (Disaster Recovery)

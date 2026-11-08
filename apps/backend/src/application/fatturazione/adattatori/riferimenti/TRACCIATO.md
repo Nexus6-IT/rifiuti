@@ -22,6 +22,7 @@ Tracciato ricostruito dall'analisi in sola lettura dell'export TeamSystem di Win
 
 - Il TD04 usa la causale `002` («NOTA CREDITO EM»), la fattura `001`. Gli importi di imponibile, imposta e ricavi hanno il segno dell'importo del documento (positivi in una nota di credito normale); il totale fattura e sempre positivo.
 - Le rate di una nota di credito hanno sempre segno `-`, quelle di una fattura `+`.
+- Conto ricavi: la chiave `CONTO_RICAVI` di ogni riga e a cascata `CR:<codice centro di ricavo>` -> `CAT:<codice categoria>` -> `TIPO:<tipo riga>` (funzione `chiaveContoRicavi`). I codici sono fotografati sulla riga del documento alla creazione (e riletti dalla definitiva): una modifica dell'addebito dopo l'emissione non cambia l'export. Bollo, spese di incasso e righe senza addebito cadono su `TIPO:`.
 - Limiti: 8 riepiloghi IVA, 8 conti di ricavo, 12 rate per documento; oltre, l'export risponde con un errore.
 
 ## Record 1 (tipo 0)
@@ -81,7 +82,7 @@ Tracciato ricostruito dall'analisi in sola lettura dell'export TeamSystem di Win
 | 493  | 2     | `TRF_IVA11`                | NU   | x8, passo 31  | non valorizzato: zeri                                                                                  |
 | 495  | 11    | `TRF_IMPOSTA`              | NU   | x8, passo 31  | imposta di ogni riepilogo IVA, in centesimi, segno finale; slot vuoto `0000000000+`                    |
 | 723  | 12    | `TRF_TOT_FATT`             | NU   | 1             | totale documento in centesimi, sempre positivo (anche per la nota di credito)                          |
-| 735  | 7     | `TRF_CONTO_RIC`            | NU   | x8, passo 19  | mappatura `CONTO_RICAVI` (7 cifre), un conto per slot; slot vuoto `0000000`                            |
+| 735  | 7     | `TRF_CONTO_RIC`            | NU   | x8, passo 19  | mappatura `CONTO_RICAVI` (7 cifre, chiave per riga: `CR:<centro di ricavo>`, poi `CAT:<categoria>`, poi `TIPO:<tipo riga>`; due chiavi sullo stesso conto si sommano), un conto per slot; slot vuoto `0000000` |
 | 742  | 12    | `TRF_IMP_RIC`              | NU   | x8, passo 19  | somma dei prezzi totali delle righe del conto, in centesimi, segno finale; slot vuoto `00000000000+`   |
 | 887  | 3     | `TRF_CAU_PAGAM`            | NU   | 1             | non valorizzato: zeri                                                                                  |
 | 890  | 15    | `TRF_CAU_DES_PAGAM`        | AN   | 1             | non valorizzato: spazi                                                                                 |

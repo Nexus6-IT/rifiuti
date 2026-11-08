@@ -5,7 +5,7 @@ import type { FotografiaDocumento } from '../../../domain/fatturazione/tipi'
 import type { DocumentoDettaglio, RataVista } from '../documenti-fattura.service'
 import type { DocumentoPerExport } from '../export-csv'
 import { chiaveMappatura } from './adattatore-export-contabile'
-import { campoFisso, TeamSystemAdattatore } from './teamsystem.adattatore'
+import { campoFisso, chiaveContoRicavi, TeamSystemAdattatore } from './teamsystem.adattatore'
 
 const RIFERIMENTO = join(__dirname, 'riferimenti', 'teamsystem-due-documenti.txt')
 
@@ -14,7 +14,8 @@ const rigaDoc = (
   tipoRiga: string,
   prezzoTotale: string,
   aliquotaIva: string,
-  naturaIva: string | null = null
+  naturaIva: string | null = null,
+  codici: { centroRicavoCodice?: string | null; categoriaCodice?: string | null } = {}
 ) => ({
   numeroLinea: n,
   tipoRiga,
@@ -33,6 +34,8 @@ const rigaDoc = (
   prezzoTotale,
   aliquotaIva,
   naturaIva,
+  centroRicavoCodice: codici.centroRicavoCodice ?? null,
+  categoriaCodice: codici.categoriaCodice ?? null,
 })
 
 const rata = (
@@ -150,8 +153,12 @@ const docA = (): DocumentoPerExport =>
     cig: 'ABC1234567',
     cup: 'J12B34567890123',
     righe: [
-      rigaDoc(1, 'MOVIMENTO', '100.00', '22.00'),
-      rigaDoc(2, 'FISSO', '50.00', '22.00'),
+      // Centro di ricavo 010 (vince sulla categoria), categoria 020 senza centro, nessun codice.
+      rigaDoc(1, 'MOVIMENTO', '100.00', '22.00', null, {
+        centroRicavoCodice: '010',
+        categoriaCodice: '030',
+      }),
+      rigaDoc(2, 'FISSO', '50.00', '22.00', null, { categoriaCodice: '020' }),
       rigaDoc(3, 'MOVIMENTO', '30.00', '10.00'),
     ],
     riepiloghi: [
@@ -198,8 +205,9 @@ const MAPPE = new Map<string, string>([
   [chiaveMappatura('CODICE_IVA', '22.00'), '022'],
   [chiaveMappatura('CODICE_IVA', '10.00'), '010'],
   [chiaveMappatura('CODICE_IVA', '0.00/N4'), '004'],
-  [chiaveMappatura('CONTO_RICAVI', 'MOVIMENTO'), '5100001'],
-  [chiaveMappatura('CONTO_RICAVI', 'FISSO'), '5100002'],
+  [chiaveMappatura('CONTO_RICAVI', 'TIPO:MOVIMENTO'), '5100001'],
+  [chiaveMappatura('CONTO_RICAVI', 'CAT:020'), '5100002'],
+  [chiaveMappatura('CONTO_RICAVI', 'CR:010'), '5100010'],
   [chiaveMappatura('CLIENTE', 'c1'), '00123'],
   [chiaveMappatura('CLIENTE', 'c2'), '00456'],
   [chiaveMappatura('PAGAMENTO', 'RIBA30'), '12'],
@@ -224,8 +232,90 @@ describe('campoFisso', () => {
   })
 })
 
+describe('chiaveContoRicavi', () => {
+  it('centro di ricavo, poi categoria, poi tipo di riga', () => {
+    expect(
+      chiaveContoRicavi({
+        tipoRiga: 'MOVIMENTO',
+        centroRicavoCodice: '010',
+        categoriaCodice: '020',
+      })
+    ).toBe('CR:010')
+    expect(
+      chiaveContoRicavi({ tipoRiga: 'MOVIMENTO', centroRicavoCodice: null, categoriaCodice: '020' })
+    ).toBe('CAT:020')
+    expect(
+      chiaveContoRicavi({ tipoRiga: 'BOLLO', centroRicavoCodice: null, categoriaCodice: null })
+    ).toBe('TIPO:BOLLO')
+  })
+  it('codici assenti o vuoti cadono sul livello successivo', () => {
+    expect(chiaveContoRicavi({ tipoRiga: 'FISSO' })).toBe('TIPO:FISSO')
+    expect(
+      chiaveContoRicavi({ tipoRiga: 'FISSO', centroRicavoCodice: '', categoriaCodice: ' ' })
+    ).toBe('TIPO:FISSO')
+  })
+})
+
 describe('TeamSystemAdattatore', () => {
   const a = new TeamSystemAdattatore()
+
+  const conti = (docs: DocumentoPerExport[], m: Map<string, string>): [string, string][] => {
+    const r = testo(a, docs, m).split('\r\n')[0]
+    const out: [string, string][] = []
+    for (let i = 0; i < 8; i++) {
+      const conto = r.slice(734 + 19 * i, 741 + 19 * i)
+      if (conto !== '0000000') out.push([conto, r.slice(741 + 19 * i, 753 + 19 * i)])
+    }
+    return out
+  }
+
+  it('due righe MOVIMENTO di centri di ricavo diversi: due conti nel Rec1, in ordine di conto', () => {
+    const d = documento({
+      righe: [
+        rigaDoc(1, 'MOVIMENTO', '60.00', '22.00', null, { centroRicavoCodice: '010' }),
+        rigaDoc(2, 'MOVIMENTO', '40.00', '22.00', null, { centroRicavoCodice: '011' }),
+      ],
+      riepiloghi: [{ aliquota: '22.00', natura: null, imponibile: '100.00', imposta: '22.00' }],
+      rate: [rata(1, 'MP12', '2026-12-05', '122.00')],
+      totale: '122.00',
+      totaleIva: '22.00',
+    })
+    const m = new Map(MAPPE)
+    m.set(chiaveMappatura('CONTO_RICAVI', 'CR:010'), '5100010')
+    m.set(chiaveMappatura('CONTO_RICAVI', 'CR:011'), '5100011')
+    expect(conti([d], m)).toEqual([
+      ['5100010', '00000006000+'],
+      ['5100011', '00000004000+'],
+    ])
+  })
+
+  it('due chiavi diverse mappate sullo stesso conto: gli importi si sommano in un solo conto', () => {
+    const d = documento({
+      righe: [
+        rigaDoc(1, 'MOVIMENTO', '60.00', '22.00', null, { centroRicavoCodice: '010' }),
+        rigaDoc(2, 'MOVIMENTO', '40.00', '22.00', null, { categoriaCodice: '020' }),
+        rigaDoc(3, 'BOLLO', '2.00', '22.00'),
+      ],
+      riepiloghi: [{ aliquota: '22.00', natura: null, imponibile: '102.00', imposta: '22.44' }],
+      rate: [rata(1, 'MP12', '2026-12-05', '124.44')],
+      totale: '124.44',
+      totaleIva: '22.44',
+    })
+    const m = new Map(MAPPE)
+    m.set(chiaveMappatura('CONTO_RICAVI', 'CR:010'), '5100009')
+    m.set(chiaveMappatura('CONTO_RICAVI', 'CAT:020'), '5100009')
+    m.set(chiaveMappatura('CONTO_RICAVI', 'TIPO:BOLLO'), '5100003')
+    expect(conti([d], m)).toEqual([
+      ['5100003', '00000000200+'],
+      ['5100009', '00000010000+'],
+    ])
+  })
+
+  it('una chiave CR: non mappata e un errore di mappatura, anche se esiste TIPO: della stessa riga', () => {
+    const m = new Map(MAPPE)
+    m.delete(chiaveMappatura('CONTO_RICAVI', 'CR:010'))
+    expect(() => testo(a, [docA()], m)).toThrow(/CR:010|ricavi/i)
+  })
 
   it("e un adattatore a file, non verificato su un'installazione reale", () => {
     expect(a.codice).toBe('TEAMSYSTEM')
@@ -286,8 +376,9 @@ describe('TeamSystemAdattatore', () => {
         'CLIENTE:c2',
         'CODICE_IVA:10.00',
         'CODICE_IVA:22.00',
-        'CONTO_RICAVI:FISSO',
-        'CONTO_RICAVI:MOVIMENTO',
+        'CONTO_RICAVI:CAT:020',
+        'CONTO_RICAVI:CR:010',
+        'CONTO_RICAVI:TIPO:MOVIMENTO',
         'PAGAMENTO:BONIFICO',
         'PAGAMENTO:RIBA30',
         'REGISTRO:VEN',
@@ -301,7 +392,7 @@ describe('TeamSystemAdattatore', () => {
 
   it("un'aliquota zero con natura ha la chiave aliquota/natura", () => {
     const d = documento({
-      righe: [rigaDoc(1, 'FISSO', '10.00', '0.00', 'N4')],
+      righe: [rigaDoc(1, 'MOVIMENTO', '10.00', '0.00', 'N4')],
       riepiloghi: [{ aliquota: '0.00', natura: 'N4', imponibile: '10.00', imposta: '0.00' }],
       rate: [],
       totale: '10.00',
@@ -425,7 +516,7 @@ describe('TeamSystemAdattatore', () => {
     const m = new Map(MAPPE)
     const righe = (n: number) =>
       Array.from({ length: n }, (_, i) => {
-        m.set(chiaveMappatura('CONTO_RICAVI', `T${i}`), String(5200000 + i))
+        m.set(chiaveMappatura('CONTO_RICAVI', `TIPO:T${i}`), String(5200000 + i))
         return rigaDoc(i + 1, `T${i}`, '1.00', '22.00')
       })
     const d = docA()

@@ -158,6 +158,9 @@ export interface RigaDocumentoVista {
   tipoRiga: string
   legameId: string | null
   rigaAddebitoId: string | null
+  /** Codici dell'addebito fotografati sulla riga (conto ricavi dell'export): assenti nei dati vecchi. */
+  centroRicavoCodice?: string | null
+  categoriaCodice?: string | null
   descrizione: string
   dataMovimento: string | null
   cerCode: string | null
@@ -315,6 +318,8 @@ export const CHIAVI_RIGA_DOCUMENTO: Record<keyof RigaDocumentoVista, true> = {
   tipoRiga: true,
   legameId: true,
   rigaAddebitoId: true,
+  centroRicavoCodice: true,
+  categoriaCodice: true,
   descrizione: true,
   dataMovimento: true,
   cerCode: true,
