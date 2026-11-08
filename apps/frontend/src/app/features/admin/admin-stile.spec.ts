@@ -103,6 +103,21 @@ describe('UserAdminComponent (stile)', () => {
     document.body.querySelectorAll('.p-dialog-mask, .p-confirm-dialog').forEach(n => n.remove())
   })
 
+  it('fra 640 e 992 px Codice fiscale, Quota aziende e Stato lasciano posto a nome e azioni (I5)', async () => {
+    const el = await monta('SUPER_ADMIN', [utente({ id: 'a1', role: 'ADMIN' })])
+    const nascoste = Array.from(el.querySelectorAll('th.md-hide')).map(th => th.textContent?.trim())
+    expect(nascoste).toEqual(['Codice fiscale', 'Quota aziende', 'Stato'])
+    expect(riga(el, 'a1').querySelectorAll('td.md-hide').length).toBe(3)
+    // Nome, email, ruolo e azioni restano: nessuna colonna essenziale porta la classe.
+    expect(riga(el, 'a1').querySelector('td.azioni-col')?.classList.contains('md-hide')).toBeFalse()
+    const stili = (UserAdminComponent as unknown as { ɵcmp: { styles?: string[] } }).ɵcmp.styles
+    const css = (stili ?? []).join('\n').replace(/\s+/g, ' ')
+    expect(css).toMatch(
+      /@media \(min-width: 641px\) and \(max-width: 991\.98px\) \{ \.md-hide(\[[^\]]*\])? \{ display: none/
+    )
+    expect(css).toMatch(/\.nome-utente(\[[^\]]*\])? \{[^}]*word-break: normal/)
+  })
+
   it('un solo h1 e un solo bottone primario («Nuovo utente»)', async () => {
     const el = await monta('ADMIN', [utente()])
     expect(el.querySelectorAll('h1').length).toBe(1)
@@ -224,6 +239,19 @@ describe('TenantAdminComponent (stile)', () => {
   afterEach(() => {
     chiudiMenuRiga()
     document.body.querySelectorAll('.p-confirm-dialog').forEach(n => n.remove())
+  })
+
+  it('citta e provincia mancanti sono un trattino, non «()»; il piano di prova si chiama «Prova» (M8)', async () => {
+    const el = await monta('SUPER_ADMIN', [
+      tenant({ id: 'x1', city: '', province: '', subscriptionTier: 'TRIAL' }),
+      tenant({ id: 'x2', city: 'Roma', province: 'RM' }),
+    ])
+    const testo = (id: string) => riga(el, id).textContent ?? ''
+    expect(testo('x1')).not.toContain('()')
+    expect(testo('x1')).toContain('—')
+    expect(testo('x1')).toContain('Prova')
+    expect(testo('x1')).not.toContain('Trial')
+    expect(testo('x2')).toContain('Roma (RM)')
   })
 
   it('un solo h1 (per ruolo) e un solo bottone primario', async () => {

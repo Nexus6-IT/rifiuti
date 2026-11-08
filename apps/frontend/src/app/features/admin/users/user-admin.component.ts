@@ -136,30 +136,32 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
               <tr>
                 <th scope="col">Nome</th>
                 <th scope="col">Email</th>
-                <th scope="col">Codice fiscale</th>
+                <th scope="col" class="md-hide">Codice fiscale</th>
                 <th scope="col">Ruolo</th>
                 @if (isSuperAdmin()) {
-                  <th scope="col" class="num-col">Quota aziende</th>
+                  <th scope="col" class="num-col md-hide">Quota aziende</th>
                 }
-                <th scope="col">Stato</th>
+                <th scope="col" class="md-hide">Stato</th>
                 <th scope="col" class="num-col azioni-col">Azioni</th>
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-u>
               <tr [attr.data-testid]="'utente-riga-' + u.id">
-                <td class="chi">
+                <td class="chi nome-utente">
                   <strong>{{ u.firstName }} {{ u.lastName }}</strong>
                 </td>
-                <td class="m2">
+                <td class="m2 email-utente">
                   {{ u.email }}<span class="solo-tel"> · {{ roleLabel(u.role) }}</span
-                  ><span class="solo-tel" *ngIf="u.enabled === false"> · Disabilitato</span>
+                  ><span class="solo-tel solo-disabilitato" *ngIf="u.enabled === false">
+                    · Disabilitato</span
+                  >
                 </td>
-                <td class="m-hide mono">{{ u.fiscalCode }}</td>
+                <td class="m-hide md-hide mono">{{ u.fiscalCode }}</td>
                 <td class="m-hide">
                   <p-tag [value]="roleLabel(u.role)" severity="secondary"></p-tag>
                 </td>
                 @if (isSuperAdmin()) {
-                  <td class="num-col m-hide">
+                  <td class="num-col m-hide md-hide">
                     <!-- Quota significativa solo per gli ADMIN -->
                     <span *ngIf="u.role === 'ADMIN'; else noQuota">
                       {{ u.companyLimit ?? 1 }}
@@ -169,7 +171,7 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
                     >
                   </td>
                 }
-                <td class="m-hide">
+                <td class="m-hide md-hide">
                   <p-tag
                     [value]="u.enabled === false ? 'Disabilitato' : 'Abilitato'"
                     [severity]="u.enabled === false ? 'danger' : 'success'"
@@ -485,6 +487,24 @@ const CF_REGEX = /^[A-Za-z0-9]{16}$/
       }
       .solo-tel {
         display: none;
+      }
+      /* Fra 640 e 992 px la tabella non ci sta: Codice fiscale, Quota aziende e Stato lasciano posto a nome, ruolo e azioni, che non devono andare a capo lettera per lettera. */
+      @media (min-width: 641px) and (max-width: 991.98px) {
+        .md-hide {
+          display: none;
+        }
+        /* Senza la colonna Stato, un utente disabilitato lo dice accanto all'email. */
+        .solo-disabilitato {
+          display: inline;
+        }
+      }
+      .email-utente {
+        overflow-wrap: anywhere;
+      }
+      .nome-utente {
+        min-width: 9rem;
+        overflow-wrap: normal;
+        word-break: normal;
       }
       @media (max-width: 640px) {
         .solo-tel {

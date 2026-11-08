@@ -28,7 +28,7 @@ describe('RoleCardComponent (italiano)', () => {
 
   it('nome, tipo e descrizione di un ruolo di sistema sono in italiano', () => {
     const testo = monta(ruolo()).textContent ?? ''
-    expect(testo).toContain('Amministratore di sistema')
+    expect(testo).toContain('Amministratore')
     expect(testo).toContain('Di sistema')
     expect(testo).toContain('Accesso completo al sistema')
     expect(testo).not.toMatch(

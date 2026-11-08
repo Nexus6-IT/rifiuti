@@ -75,6 +75,29 @@ describe('RentriBlocchiComponent', () => {
     expect(service.scorta).not.toHaveBeenCalled()
   })
 
+  it("con un errore di caricamento mostra solo il riquadro d'errore: niente «0 numeri» né «Nessun blocco» (I6)", () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(throwError(() => new Error('400')))
+    service.scorta.and.returnValue(throwError(() => new Error('400')))
+
+    fixture.detectChanges()
+    const html: HTMLElement = fixture.nativeElement
+
+    expect(html.querySelector('[data-testid="rentri-blocchi-errore"]')).not.toBeNull()
+    expect(html.querySelector('[data-testid="rentri-blocchi-scorta"]')).toBeNull()
+    expect(html.querySelector('[data-testid="rentri-blocchi-empty-state"]')).toBeNull()
+    expect(html.textContent).not.toContain('numeri disponibili')
+    expect(html.textContent).not.toContain('Nessun blocco attivo')
+
+    // «Riprova» rilegge; se stavolta va bene i dati tornano e l'errore sparisce.
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+    ;(html.querySelector('[data-testid="rentri-blocchi-riprova"] button') as HTMLElement).click()
+    fixture.detectChanges()
+    expect(html.querySelector('[data-testid="rentri-blocchi-errore"]')).toBeNull()
+    expect(html.querySelector('[data-testid="rentri-blocchi-scorta"]')).not.toBeNull()
+  })
+
   it('carica blocchi e scorta per OPERATOR (visibilità in lettura)', () => {
     setup('OPERATOR')
     service.blocchi.and.returnValue(of([blocco()]))

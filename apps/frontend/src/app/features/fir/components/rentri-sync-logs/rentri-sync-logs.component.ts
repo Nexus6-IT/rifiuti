@@ -137,7 +137,10 @@ import {
       }
 
       <!-- Tabella dei log -->
+      <!-- Con un errore la tabella sta nascosta (non distrutta, per non rifare la lettura): «Nessun log»
+           e il paginatore a zero righe direbbero una cosa falsa, perché il dato non è arrivato. -->
       <p-table
+        [style.display]="errorMessage() ? 'none' : null"
         [value]="logs()"
         [loading]="loading()"
         [paginator]="true"
@@ -300,7 +303,7 @@ export class RENTRISyncLogsComponent implements OnInit {
     this.loading.set(true)
     this.errorMessage.set(null)
 
-    const params: any = {
+    const params: NonNullable<Parameters<RENTRISyncService['getSyncLogs']>[0]> = {
       page: this.currentPage,
       limit: this.pageSize,
     }
@@ -341,9 +344,10 @@ export class RENTRISyncLogsComponent implements OnInit {
   /**
    * Gestisce il cambio pagina.
    */
-  protected onPageChange(event: any): void {
-    this.currentPage = event.first / event.rows + 1
-    this.pageSize = event.rows
+  protected onPageChange(event: { first?: number | null; rows?: number | null }): void {
+    const righe = event.rows || this.pageSize
+    this.currentPage = (event.first ?? 0) / righe + 1
+    this.pageSize = righe
     this.loadLogs()
   }
 

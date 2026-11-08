@@ -36,6 +36,13 @@ export class RoleDescriptionPipe implements PipeTransform {
       longDescription:
         'Il super amministratore gestisce la piattaforma: aziende, utenti, abbonamenti e stato del sistema.',
     },
+    ADMIN: {
+      // Stesso nome della colonna Ruolo di Utenti («Amministratore»): una pagina non deve chiamarlo in un altro modo.
+      displayName: 'Amministratore',
+      shortDescription: 'Accesso completo al sistema',
+      longDescription:
+        "L'amministratore ha il controllo completo dell'azienda: utenti, ruoli, permessi e tutte le attività operative.",
+    },
     SYSTEM_ADMIN: {
       displayName: 'Amministratore di sistema',
       shortDescription: 'Accesso completo al sistema',
@@ -81,7 +88,6 @@ export class RoleDescriptionPipe implements PipeTransform {
 
   /** Alias storici e nomi brevi (i ruoli di sistema del backend si chiamano ADMIN, OPERATOR, ...). */
   private readonly nameMap: Record<string, string> = {
-    ADMIN: 'SYSTEM_ADMIN',
     ADMINISTRATOR: 'SYSTEM_ADMIN',
     MANAGER: 'FACILITY_MANAGER',
     OPERATOR: 'FIELD_OPERATOR',

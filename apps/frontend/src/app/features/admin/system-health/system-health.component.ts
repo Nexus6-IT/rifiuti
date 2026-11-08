@@ -220,6 +220,8 @@ interface Sezione {
       .sh-voce__testo {
         flex: 1;
         min-width: 0;
+        /* Una chiave di job lunga («registro-…-scheduler») non deve uscire dalla card a 360 px. */
+        overflow-wrap: anywhere;
       }
       .sh-voce__intestazione {
         display: flex;

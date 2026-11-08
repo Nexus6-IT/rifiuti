@@ -31,7 +31,7 @@ describe('RoleDescriptionPipe', () => {
   })
 
   it('traduce i nomi principali in sentence case', () => {
-    expect(pipe.transform('ADMIN', 'name')).toBe('Amministratore di sistema')
+    expect(pipe.transform('ADMIN', 'name')).toBe('Amministratore')
     expect(pipe.transform('SUPER_ADMIN', 'name')).toBe('Super amministratore')
     expect(pipe.transform('OPERATOR', 'name')).toBe('Operatore')
     expect(pipe.transform('VIEWER', 'name')).toBe('Visualizzatore')

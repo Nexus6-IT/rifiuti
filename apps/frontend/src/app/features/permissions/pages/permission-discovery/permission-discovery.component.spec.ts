@@ -63,7 +63,7 @@ describe('PermissionDiscoveryComponent (stile)', () => {
   it('mostra il ruolo come badge in sentence case, in italiano, senza maiuscolo forzato', () => {
     const el = monta()
     const badge = el.querySelector<HTMLElement>('[data-testid="role-badge"]')!
-    expect(badge.textContent?.trim()).toBe('Amministratore di sistema')
+    expect(badge.textContent?.trim()).toBe('Amministratore')
     const tag = badge.querySelector<HTMLElement>('.p-tag') ?? badge
     expect(getComputedStyle(tag).textTransform).not.toBe('uppercase')
     expect(el.querySelector('.page-subtitle')?.textContent).toContain('Accesso completo al sistema')

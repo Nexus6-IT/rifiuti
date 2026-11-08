@@ -26,11 +26,27 @@ describe('PermissionDeniedComponent (accesso negato)', () => {
     const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
     const testo = el.textContent ?? ''
     expect(testo).toContain('«Abbonamento»')
-    expect(testo).toContain('amministratore di sistema')
+    expect(testo).toContain('amministratore')
     expect(el.querySelector('[data-testid="ruolo-attuale"]')?.textContent).toContain(
-      'Amministratore di sistema'
+      'Amministratore'
     )
     expect(testo).not.toMatch(/\bADMIN\b/)
+  })
+
+  it('non inventa contatti: nessun telefono, nessun support@, lo stesso «Contatta il supporto» del login (I8)', () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    const testo = el.textContent ?? ''
+    expect(testo).not.toMatch(/\+39|1234|Chiama il supporto/)
+    expect(testo).not.toContain('support@wasteflow.it')
+    const link = el.querySelector<HTMLAnchorElement>('[data-testid="contatta-supporto"]')!
+    expect(link.getAttribute('href')).toBe('mailto:supporto@wasteflow.it')
+    expect(link.textContent?.toLowerCase()).toContain('contatta il supporto')
+  })
+
+  it("con lo store dei permessi vuoto non dice «Nessun permesso assegnato»: la sezione non c'e", () => {
+    const el = apri({ resource: 'Abbonamento', role: 'ADMIN' })
+    expect(el.textContent).not.toContain('Nessun permesso')
+    expect(el.querySelector('[data-testid="permessi-attuali"]')).toBeNull()
   })
 
   it('ha un solo h1 e nessun <main> annidato in quello della shell', () => {

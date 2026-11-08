@@ -85,8 +85,29 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
             [text]="notaPortaleTesto"
           ></p-message>
 
+          <!-- Con un errore di caricamento non si mostra nessun dato: «0 numeri» e «nessun blocco»
+               direbbero una cosa falsa, perché il dato non è arrivato. -->
+          <section
+            *ngIf="errore()"
+            class="surface-card mb-4"
+            role="alert"
+            data-testid="rentri-blocchi-errore"
+          >
+            <div class="empty-state">
+              <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true"></i>
+              <span class="empty-state__title">Impossibile caricare i blocchi RENTRI</span>
+              <p>I dati non sono arrivati. Riprova fra qualche istante.</p>
+              <p-button
+                label="Riprova"
+                icon="pi pi-refresh"
+                (onClick)="load()"
+                data-testid="rentri-blocchi-riprova"
+              ></p-button>
+            </div>
+          </section>
+
           <!-- Scorta in evidenza: è il dato che serve ogni giorno. -->
-          <section class="surface-card mb-4" data-testid="rentri-blocchi-scorta">
+          <section *ngIf="!errore()" class="surface-card mb-4" data-testid="rentri-blocchi-scorta">
             <h2 class="rentri-section-title mb-3">Scorta di numeri pronti all'uso</h2>
             <div class="rentri-scorta-totale" data-testid="rentri-blocchi-scorta-totale">
               <span class="rentri-scorta-totale__numero">{{
@@ -110,7 +131,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
 
           <!-- Nessun blocco attivo: stato vuoto che spiega il problema, non una tabella vuota. -->
           <section
-            *ngIf="bloccheAttivi().length === 0"
+            *ngIf="!errore() && bloccheAttivi().length === 0"
             class="surface-card mb-4"
             data-testid="rentri-blocchi-empty-state"
           >
@@ -128,7 +149,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
 
           <!-- Blocchi attivi -->
           <section
-            *ngIf="bloccheAttivi().length > 0"
+            *ngIf="!errore() && bloccheAttivi().length > 0"
             class="surface-card mb-4"
             aria-label="Blocchi RENTRI attivi"
             data-testid="rentri-blocchi-list-attivi"
@@ -185,7 +206,7 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN']
 
           <!-- Blocchi disattivati: distinti ma NON nascosti (storico). -->
           <section
-            *ngIf="bloccheDisattivati().length > 0"
+            *ngIf="!errore() && bloccheDisattivati().length > 0"
             class="surface-card rentri-blocchi-disattivati"
             aria-label="Blocchi RENTRI disattivati"
             data-testid="rentri-blocchi-list-disattivati"
@@ -355,6 +376,8 @@ export class RentriBlocchiComponent implements OnInit {
   readonly blocchi = signal<RentriBlocco[]>([])
   readonly scorta = signal<RentriScorta | null>(null)
   readonly loading = signal(false)
+  /** Almeno una delle due letture e' fallita: niente dati, solo il riquadro d'errore con «Riprova». */
+  readonly errore = signal(false)
   readonly vidimando = signal(false)
 
   readonly bloccheAttivi = computed(() => this.blocchi().filter(b => !b.disattivo))
@@ -394,8 +417,9 @@ export class RentriBlocchiComponent implements OnInit {
     }
   }
 
-  private load(): void {
+  load(): void {
     this.loading.set(true)
+    this.errore.set(false)
     let pending = 2
     const done = () => {
       pending -= 1
@@ -407,6 +431,7 @@ export class RentriBlocchiComponent implements OnInit {
         done()
       },
       error: () => {
+        this.errore.set(true)
         this.toast.error('Impossibile caricare i blocchi RENTRI')
         done()
       },
@@ -417,6 +442,7 @@ export class RentriBlocchiComponent implements OnInit {
         done()
       },
       error: () => {
+        this.errore.set(true)
         this.toast.error('Impossibile caricare la scorta RENTRI')
         done()
       },

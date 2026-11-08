@@ -98,7 +98,12 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
           </div>
 
           <!-- Permessi dell'utente -->
-          <div class="info-section" *ngIf="showUserPermissions">
+          <!-- Solo se l'elenco c'è: «nessun permesso» contraddirebbe «I miei permessi» quando lo store non è ancora caricato. -->
+          <div
+            class="info-section"
+            *ngIf="showUserPermissions && getUserPermissions().length > 0"
+            data-testid="permessi-attuali"
+          >
             <h2 class="section-title">
               <i class="pi pi-list" aria-hidden="true"></i>
               I tuoi permessi attuali
@@ -107,10 +112,6 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
               <div *ngFor="let permission of getUserPermissions()" class="permission-item">
                 <i class="pi pi-check-circle" aria-hidden="true"></i>
                 <span>{{ permission | permissionFormat }}</span>
-              </div>
-              <div *ngIf="getUserPermissions().length === 0" class="no-permissions">
-                <i class="pi pi-info-circle" aria-hidden="true"></i>
-                <span>Nessun permesso assegnato</span>
               </div>
             </div>
           </div>
@@ -125,9 +126,10 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
               <li>
                 <i class="pi pi-envelope" aria-hidden="true"></i>
                 <span>
-                  Contatta l'amministratore all'indirizzo
-                  <a [href]="'mailto:' + supportEmail">{{ supportEmail }}</a>
-                  per richiedere l'accesso.
+                  Chiedi l'accesso all'amministratore della tua azienda, oppure
+                  <a [href]="'mailto:' + supportEmail" data-testid="contatta-supporto"
+                    >contatta il supporto</a
+                  >.
                 </span>
               </li>
               <li>
@@ -175,15 +177,6 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
             data-testid="vai-alla-dashboard"
             (click)="goToDashboard()"
           ></button>
-        </div>
-
-        <!-- Aiuto aggiuntivo -->
-        <div class="surface-card additional-help">
-          <p class="help-text">
-            <i class="pi pi-question-circle" aria-hidden="true"></i>
-            Hai bisogno di assistenza immediata? Chiama il supporto al
-            <strong>{{ supportPhone }}</strong>
-          </p>
         </div>
       </div>
     </div>
@@ -337,14 +330,6 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
         color: var(--color-success);
       }
 
-      .no-permissions {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-sm);
-        color: var(--text-tertiary);
-        padding: var(--spacing-base);
-      }
-
       .steps-list {
         list-style: none;
         padding: 0;
@@ -379,22 +364,6 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
         gap: var(--spacing-base);
       }
 
-      .additional-help {
-        text-align: center;
-      }
-      .help-text {
-        margin: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: var(--spacing-sm);
-        color: var(--text-secondary);
-      }
-      .help-text i {
-        color: var(--text-secondary);
-      }
-
       @media (max-width: 576px) {
         .denied-actions {
           flex-direction: column;
@@ -420,9 +389,8 @@ export class PermissionDeniedComponent implements OnInit {
   resourceName: string = ''
   showUserPermissions: boolean = true
 
-  // Support contact info
-  supportEmail: string = 'support@wasteflow.it'
-  supportPhone: string = '+39 02 1234 5678'
+  /** Lo stesso indirizzo del «Contatta il supporto» del login. Nessun recapito inventato. */
+  supportEmail: string = 'supporto@wasteflow.it'
 
   ngOnInit(): void {
     // Read error details from route query params
