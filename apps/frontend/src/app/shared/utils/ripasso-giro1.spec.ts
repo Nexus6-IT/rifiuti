@@ -75,7 +75,12 @@ describe('Ripasso delle pagine del giro 1 sui token del giro 2', () => {
 
       it('maiuscolo solo sui campi in cui si digita una sigla (provincia, codice fiscale)', () => {
         const regole = css().match(/[^{}]+\{[^{}]*text-transform:\s*uppercase[^{}]*\}/g) ?? []
-        const selettori = regole.map(r => r.split('{')[0].replace(/\[_ng\w+-%COMP%\]/g, '').trim())
+        const selettori = regole.map(r =>
+          r
+            .split('{')[0]
+            .replace(/\[_ng\w+-%COMP%\]/g, '')
+            .trim()
+        )
         for (const s of selettori) {
           expect(s)
             .withContext(`«${s}» e maiuscolo ma non e un campo di sigla`)

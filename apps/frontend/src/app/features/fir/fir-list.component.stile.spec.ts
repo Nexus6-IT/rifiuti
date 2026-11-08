@@ -11,9 +11,6 @@ import { RegistryService } from '../registry/registry.service'
 import { ExportService } from '../../core/services/export.service'
 import { RENTRISyncService } from './services/rentri-sync.service'
 import { AuthService } from '../../core/services/auth.service'
-import { PeseService } from '../pese/pese.service'
-import { RentriBlocchiService } from '../rentri/rentri-blocchi.service'
-import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 
 /**
  * Lista FIR, giro 2: stati con tono (pillola), un solo bottone primario, nessun paginatore sotto
