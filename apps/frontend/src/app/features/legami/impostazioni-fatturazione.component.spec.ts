@@ -1,7 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
-import { MessageService } from 'primeng/api'
+import { MessageService, PrimeNGConfig } from 'primeng/api'
+import { applicaTraduzionePrimeng } from '../../core/config/primeng-it'
 import { AuthService } from '../../core/services/auth.service'
 import { accettaConferma, bottone, q, stabilizza } from '../clienti/tabelle/tabelle-test-utils'
 import { ImpostazioniFatturazioneComponent } from './impostazioni-fatturazione.component'
@@ -42,12 +43,17 @@ describe('ImpostazioniFatturazioneComponent', () => {
     await stabilizza(fixture)
   }
 
-  async function scriviData(valore: string): Promise<void> {
-    const el = q<HTMLInputElement>('fatt-data')!
-    el.value = valore
+  /** Scrive la data nel calendario come la scrive una persona: `gg/mm/aaaa` (qui parte da `AAAA-MM-GG`). */
+  async function scriviData(iso: string): Promise<void> {
+    const el = document.body.querySelector<HTMLInputElement>('#fatt-da')!
+    el.value = iso.split('-').reverse().join('/')
+    // PrimeNG legge l'input solo se prima c'e' stato un tasto premuto.
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))
     el.dispatchEvent(new Event('input', { bubbles: true }))
     await stabilizza(fixture)
   }
+  const campoData = (): HTMLInputElement =>
+    document.body.querySelector<HTMLInputElement>('#fatt-da')!
 
   afterEach(() => fixture?.destroy())
 
@@ -119,10 +125,97 @@ describe('ImpostazioniFatturazioneComponent', () => {
     })
   })
 
+  describe('calendario «Fatturazione da» (giro 2)', () => {
+    it("e' un p-calendar, non un campo data nativo, con il formato italiano", async () => {
+      await crea('ADMIN', {
+        fatturazioneDa: '2026-03-01',
+        versione: 1,
+        modificatoIl: null,
+        definitiveAttive: false,
+      })
+      expect(document.body.querySelector('input[type="date"]')).toBeNull()
+      expect(q('fatt-data')!.tagName.toLowerCase()).toBe('p-calendar')
+      expect(campoData().value).toBe('01/03/2026')
+      expect(document.body.querySelector('label[for="fatt-da"]')?.textContent).toContain(
+        'Fatturazione da'
+      )
+    })
+
+    it("il Date passato al calendario e' sempre lo stesso oggetto (altrimenti ngModel lo riscrive a ogni ciclo)", async () => {
+      await crea('ADMIN', {
+        fatturazioneDa: '2026-03-01',
+        versione: 1,
+        modificatoIl: null,
+        definitiveAttive: false,
+      })
+      const c = fixture.componentInstance
+      expect(c.dataCalendario).toBeInstanceOf(Date)
+      expect(c.dataCalendario).toBe(c.dataCalendario)
+    })
+
+    it('il pannello si apre in italiano e scegliere un giorno salva la data ISO', async () => {
+      await crea('ADMIN', {
+        fatturazioneDa: '2026-03-01',
+        versione: 1,
+        modificatoIl: null,
+        definitiveAttive: false,
+      })
+      servizio.salva.and.returnValue(
+        of({
+          fatturazioneDa: '2026-03-15',
+          versione: 2,
+          modificatoIl: null,
+          definitiveAttive: false,
+        })
+      )
+      const config = TestBed.inject(PrimeNGConfig)
+      applicaTraduzionePrimeng(config)
+      campoData().focus()
+      campoData().click()
+      await stabilizza(fixture)
+      const pannello = document.body.querySelector('.p-datepicker')!
+      expect(pannello.textContent).toContain('marzo')
+      const giorno15 = Array.from(
+        pannello.querySelectorAll('td:not(.p-datepicker-other-month) span')
+      ).find(e => e.textContent?.trim() === '15') as HTMLElement
+      giorno15.click()
+      await stabilizza(fixture)
+      bottone('fatt-salva')!.click()
+      await stabilizza(fixture)
+      expect(servizio.salva.calls.mostRecent().args[0]).toEqual({
+        fatturazioneDa: '2026-03-15',
+        versione: 1,
+      })
+    })
+
+    it("un testo che non e' una data non si salva: «Data non valida»", async () => {
+      await crea('ADMIN')
+      const el = campoData()
+      el.value = '31/02/xx'
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      await stabilizza(fixture)
+      bottone('fatt-salva')!.click()
+      await stabilizza(fixture)
+      expect(servizio.salva).not.toHaveBeenCalled()
+      expect(q('fatt-errore')?.textContent).toContain('Data non valida')
+    })
+
+    it('un solo h1 con il testo di sempre e un solo bottone primario («Salva»)', async () => {
+      await crea('ADMIN')
+      const h1 = document.body.querySelectorAll('h1')
+      expect(h1.length).toBe(1)
+      expect(h1[0].textContent?.trim()).toBe('Impostazioni di fatturazione')
+      const primari = document.body.querySelectorAll('.wf-primario')
+      expect(primari.length).toBe(1)
+      expect(bottone('fatt-salva')!.classList.contains('wf-primario')).toBeTrue()
+    })
+  })
+
   for (const ruolo of ['VIEWER', 'OPERATOR']) {
     it(`${ruolo}: campo e pulsante disabilitati`, async () => {
       await crea(ruolo)
-      expect(q<HTMLInputElement>('fatt-data')!.disabled).toBeTrue()
+      expect(campoData().disabled).toBeTrue()
       expect(bottone('fatt-salva')!.disabled).toBeTrue()
     })
   }
@@ -140,7 +233,7 @@ describe('ImpostazioniFatturazioneComponent', () => {
     await stabilizza(fixture)
     expect(servizio.leggi).toHaveBeenCalledTimes(2)
     expect(q('fatt-errore')?.textContent).toContain('modificata da un altro utente')
-    expect(q<HTMLInputElement>('fatt-data')!.value).toBe('2026-03-01')
+    expect(campoData().value).toBe('01/03/2026')
   })
 
   it('Annulla sulla conferma: nessun rinvio', async () => {

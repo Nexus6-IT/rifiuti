@@ -32,6 +32,8 @@ import {
   StatoLista,
 } from './legami.model'
 import { formatNumero } from '../../shared/utils/numero-modificabile'
+import { AzioneRiga, AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import { permessiLegami } from './permessi-legami'
@@ -97,6 +99,7 @@ interface OpzioneId {
     TableModule,
     TagModule,
     LegameDialogComponent,
+    AzioniRigaComponent,
   ],
   template: `
     <div class="page pagina-lavoro">
@@ -275,6 +278,7 @@ interface OpzioneId {
         <p-button
           [label]="'Conferma ' + selezionate() + (selezionate() === 1 ? ' legame' : ' legami')"
           icon="pi pi-check"
+          styleClass="wf-primario"
           [disabled]="oltreTetto() || inCorso() || escludiAperto()"
           (onClick)="conferma()"
           data-testid="massa-conferma"
@@ -326,14 +330,23 @@ interface OpzioneId {
 
       <div class="table-card">
         <p-table
+          *ngIf="righe().length > 0 || caricamento(); else senzaRighe"
           [value]="righe()"
           [loading]="caricamento()"
           dataKey="movimentoId"
-          styleClass="p-datatable-sm"
+          [styleClass]="
+            'p-datatable-sm lista-telefono' +
+            (permessi().scrive && !esclusi ? ' con-selezione' : '')
+          "
         >
           <ng-template pTemplate="header">
             <tr>
-              <th scope="col" *ngIf="permessi().scrive && !esclusi" style="width: 2.5rem">
+              <th
+                scope="col"
+                class="sel-col"
+                *ngIf="permessi().scrive && !esclusi"
+                style="width: 2.5rem"
+              >
                 <input
                   type="checkbox"
                   aria-label="Seleziona tutte le righe della pagina"
@@ -343,17 +356,17 @@ interface OpzioneId {
                 />
               </th>
               <th scope="col">Data</th>
-              <th scope="col">CER</th>
-              <th scope="col" class="num-col">Quantità</th>
-              <th scope="col">Cliente</th>
+              <th scope="col" class="m-hide">CER</th>
+              <th scope="col" class="num-col m-hide">Quantità</th>
+              <th scope="col" class="m-hide" *ngIf="colonne().has('cliente')">Cliente</th>
               <th scope="col">Stato</th>
-              <th scope="col">Da sistemare</th>
-              <th scope="col"><span class="sr-only">Azioni</span></th>
+              <th scope="col" class="m-hide" *ngIf="colonne().has('sistemare')">Da sistemare</th>
+              <th scope="col" class="azioni-col"><span class="sr-only">Azioni</span></th>
             </tr>
           </ng-template>
           <ng-template pTemplate="body" let-r>
             <tr [attr.data-testid]="'riga-' + r.movimentoId">
-              <td *ngIf="permessi().scrive && !esclusi">
+              <td class="sel-col" *ngIf="permessi().scrive && !esclusi">
                 <input
                   type="checkbox"
                   [attr.aria-label]="
@@ -371,16 +384,18 @@ interface OpzioneId {
                   [attr.data-testid]="'sel-' + r.movimentoId"
                 />
               </td>
-              <td class="cell-nowrap">{{ giorno(r.dataMovimento) }}</td>
-              <td class="cell-mono">
+              <td class="cell-nowrap principale">{{ giorno(r.dataMovimento) }}</td>
+              <td class="cell-mono m-hide">
                 {{ r.cerCode }}
                 <small class="cell-sub cell-ellipsis" *ngIf="r.descrizioneMovimento">{{
                   r.descrizioneMovimento
                 }}</small>
               </td>
-              <td class="num-col">{{ numero(r.quantita) }} {{ r.unita }}</td>
-              <td>{{ r.cliente?.etichetta ?? '—' }}</td>
-              <td>
+              <td class="num-col m-hide">{{ numero(r.quantita) }} {{ r.unita }}</td>
+              <td class="m-hide" *ngIf="colonne().has('cliente')">
+                {{ r.cliente?.etichetta ?? '—' }}
+              </td>
+              <td class="stato-col">
                 <div class="stato-stack">
                   <p-tag
                     [value]="statoEtichetta(r.stato)"
@@ -390,51 +405,38 @@ interface OpzioneId {
                   <small *ngIf="r.fatturato" class="cell-sub">fatturato</small>
                 </div>
               </td>
-              <td>
+              <td class="m-hide" *ngIf="colonne().has('sistemare')">
                 <ul class="elenco-compatto" [attr.data-testid]="'motivi-' + r.movimentoId">
                   <li *ngFor="let m of r.motivi" data-testid="motivo">{{ motivoEt(m) }}</li>
                   <li *ngFor="let a of r.avvisi" data-testid="avviso">{{ avvisoEt(a) }}</li>
                 </ul>
               </td>
-              <td class="cell-nowrap">
-                <p-button
-                  *ngIf="r.stato === 'ESCLUSO' && permessi().scrive; else apri"
-                  label="Riammetti"
-                  icon="pi pi-undo"
-                  [outlined]="true"
-                  size="small"
-                  [disabled]="inCorso()"
-                  (onClick)="riammetti(r)"
-                  [attr.data-testid]="'riammetti-' + r.movimentoId"
-                />
-                <ng-template #apri>
-                  <p-button
-                    [label]="permessi().scrive ? 'Apri' : 'Dettaglio'"
-                    icon="pi pi-pencil"
-                    [text]="true"
-                    size="small"
-                    [disabled]="inCorso() || (!permessi().scrive && r.legameId === null)"
-                    [title]="
-                      !permessi().scrive && r.legameId === null ? 'Nessun legame ancora' : ''
-                    "
-                    (onClick)="apriLegame(r)"
-                    [attr.data-testid]="'apri-' + r.movimentoId"
-                  />
-                </ng-template>
+              <!-- Solo sul telefono (sul desktop la cella e' nascosta): cio' che le colonne m-hide dicono. -->
+              <td class="dettaglio-tel" data-testid="dettaglio-telefono">
+                {{ r.cliente?.etichetta ?? 'Senza cliente' }} · CER {{ r.cerCode }} ·
+                {{ numero(r.quantita) }} {{ r.unita }}
               </td>
-            </tr>
-          </ng-template>
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td [attr.colspan]="8">
-                <div class="empty-state" data-testid="legami-vuota">
-                  <span class="empty-state__title">{{ messaggioVuoto() }}</span>
-                </div>
+              <td class="azioni-col">
+                <app-azioni-riga
+                  [principale]="azionePrincipale(r)"
+                  [altre]="[]"
+                  [nome]="nomeRiga(r)"
+                  [attr.data-testid]="
+                    (r.stato === 'ESCLUSO' && permessi().scrive ? 'riammetti-' : 'apri-') +
+                    r.movimentoId
+                  "
+                />
               </td>
             </tr>
           </ng-template>
         </p-table>
+        <ng-template #senzaRighe>
+          <div class="riga-stato" role="status" data-testid="legami-vuota">
+            {{ messaggioVuoto() }}
+          </div>
+        </ng-template>
         <p-paginator
+          *ngIf="totale() > dimensione"
           [first]="(pagina() - 1) * dimensione"
           [rows]="dimensione"
           [totalRecords]="totale()"
@@ -464,14 +466,17 @@ interface OpzioneId {
   `,
   styles: [
     `
-      /* Sette filtri: in griglia a colonne uguali, cosi' la seconda riga segue le colonne della prima
-         (con il flex-wrap generale ogni riga si distribuiva per conto suo). */
-      .filters {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-        align-items: end;
+      /* Sette filtri su una riga (flex, allineati alla base) dai 1000px in su; sotto, vanno a capo e
+         sotto i 640px ognuno prende tutta la riga. */
+      .pagina-lavoro .filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--spacing-md);
       }
-      .filters__field {
+      .pagina-lavoro .filters__field {
+        flex: 1 1 9rem;
+        min-width: 9rem;
         max-width: none;
       }
       .filters__field p-dropdown {
@@ -481,14 +486,101 @@ interface OpzioneId {
         width: 100%;
       }
       /* Il filtro «Esclusi» e' una casella: sta a sinistra, non allargata a tutta la colonna. */
-      .filters__field--stretto {
+      .pagina-lavoro .filters__field--stretto {
         flex: 0 0 auto;
+        min-width: 0;
       }
       .filters__field--stretto input[type='checkbox'] {
         align-self: flex-start;
         width: 1rem;
         height: 1rem;
         margin: 0.5rem 0;
+      }
+      @media (max-width: 640px) {
+        .pagina-lavoro .filters__field {
+          flex: 1 1 100%;
+        }
+      }
+      /* Stato vuoto: una riga di stato dentro la card, senza intestazioni ne paginatore. */
+      .riga-stato {
+        padding: var(--spacing-md) var(--spacing-base);
+        color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+      }
+      .dettaglio-tel {
+        display: none;
+      }
+      /* Telefono: [casella] | data, dettaglio, stato | azioni. */
+      @media (max-width: 640px) {
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr {
+          grid-template-columns: 1fr auto;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono.con-selezione .p-datatable-tbody > tr {
+          grid-template-columns: auto 1fr auto;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.principale {
+          grid-column: 1;
+          grid-row: 1;
+          font-weight: var(--font-weight-medium);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.dettaglio-tel {
+          display: block;
+          grid-column: 1;
+          grid-row: 2;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+          overflow-wrap: anywhere;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.stato-col {
+          grid-column: 1;
+          grid-row: 3;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.azioni-col {
+          grid-column: 2;
+          grid-row: 1 / span 3;
+        }
+        :host
+          ::ng-deep
+          .p-datatable.lista-telefono.con-selezione
+          .p-datatable-tbody
+          > tr
+          > td.sel-col {
+          grid-column: 1;
+          grid-row: 1 / span 3;
+          align-self: center;
+        }
+        :host
+          ::ng-deep
+          .p-datatable.lista-telefono.con-selezione
+          .p-datatable-tbody
+          > tr
+          > td.principale,
+        :host
+          ::ng-deep
+          .p-datatable.lista-telefono.con-selezione
+          .p-datatable-tbody
+          > tr
+          > td.dettaglio-tel,
+        :host
+          ::ng-deep
+          .p-datatable.lista-telefono.con-selezione
+          .p-datatable-tbody
+          > tr
+          > td.stato-col {
+          grid-column: 2;
+        }
+        :host
+          ::ng-deep
+          .p-datatable.lista-telefono.con-selezione
+          .p-datatable-tbody
+          > tr
+          > td.azioni-col {
+          grid-column: 3;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono td.sel-col input[type='checkbox'] {
+          width: 1.5rem;
+          height: 1.5rem;
+        }
       }
       .barra-massa {
         display: flex;
@@ -529,6 +621,13 @@ export class DaCollegareComponent implements OnInit {
   readonly permessi = computed(() => permessiLegami(this.auth.currentUser()?.role))
 
   readonly righe = signal<RigaLista[]>([])
+  /** Colonne facoltative che hanno almeno un dato nella pagina: le altre si nascondono. */
+  readonly colonne = computed(() =>
+    colonneConDati<RigaLista>(this.righe(), {
+      cliente: r => r.cliente?.etichetta,
+      sistemare: r => (r.motivi.length + r.avvisi.length > 0 ? 'si' : null),
+    })
+  )
   readonly totale = signal(0)
   readonly pagina = signal(1)
   readonly dimensione = 50
@@ -769,6 +868,31 @@ export class DaCollegareComponent implements OnInit {
       next: i => this.fatturazioneSpenta.set(i.fatturazioneDa === null),
       error: () => this.fatturazioneSpenta.set(false),
     })
+  }
+
+  /** Nome della riga per i lettori di schermo: «movimento del 12/03/2026, CER 080318». */
+  nomeRiga(r: RigaLista): string {
+    return `movimento del ${formattaGiorno(r.dataMovimento)}, CER ${r.cerCode}`
+  }
+
+  /** Azione unica della riga: «Riammetti» per un escluso (chi scrive), altrimenti «Apri» o «Dettaglio». */
+  azionePrincipale(r: RigaLista): AzioneRiga {
+    if (r.stato === 'ESCLUSO' && this.permessi().scrive) {
+      return {
+        etichetta: 'Riammetti',
+        icona: 'pi pi-undo',
+        disabilitata: this.inCorso(),
+        esegui: () => this.riammetti(r),
+      }
+    }
+    const senzaLegame = !this.permessi().scrive && r.legameId === null
+    return {
+      etichetta: this.permessi().scrive ? 'Apri' : 'Dettaglio',
+      icona: 'pi pi-pencil',
+      disabilitata: this.inCorso() || senzaLegame,
+      ...(senzaLegame ? { motivo: 'Nessun legame ancora' } : {}),
+      esegui: () => this.apriLegame(r),
+    }
   }
 
   messaggioVuoto(): string {
