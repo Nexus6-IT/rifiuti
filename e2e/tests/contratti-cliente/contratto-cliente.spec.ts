@@ -11,6 +11,7 @@ import {
 } from '../../utils/azienda-di-test'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
+import { eseguiAzioneRiga, nomiAzioniRiga } from '../../utils/azioni-riga'
 import {
   ATTESA_SERVER,
   aggiungiRata,
@@ -454,7 +455,7 @@ test.describe('Contratto cliente — operatore', () => {
 
     // Attivazione senza registro IVA: rifiutata col messaggio del backend, resta in bozza.
     // Il rifiuto e' atteso (4xx): si aspetta la risposta, poi il messaggio.
-    await attendiRisposta(page, () => riga.getByRole('button', { name: 'Attiva' }).click(), {
+    await attendiRisposta(page, () => eseguiAzioneRiga(page, riga, 'Attiva'), {
       stato: [400, 409, 422],
     })
     await expect(page.getByText('Per attivare il contratto indica il registro IVA.')).toBeVisible({
@@ -470,9 +471,9 @@ test.describe('Contratto cliente — operatore', () => {
     await cliccaEChiudi(page, dlg.getByRole('button', { name: 'Salva' }), dlg)
 
     const riga = rigaContratto(page)
-    await attendiRisposta(page, () => riga.getByRole('button', { name: 'Attiva' }).click())
+    await attendiRisposta(page, () => eseguiAzioneRiga(page, riga, 'Attiva'))
     await expect(riga).toContainText('Attivo', { timeout: ATTESA_SERVER })
-    await expect(riga.getByRole('button', { name: 'Sospendi solo movimenti' })).toBeVisible()
+    expect(await nomiAzioniRiga(page, riga)).toContain('Sospendi solo movimenti')
   })
 
   test('contratto attivo: cliente bloccato e PDF caricato', async ({ page }) => {
@@ -503,10 +504,10 @@ test.describe('Contratto cliente — operatore', () => {
     const riga = rigaContratto(page)
     await expect(riga).toContainText('31/12/2027')
 
-    await riga.getByRole('button', { name: 'Sospendi solo movimenti' }).click()
+    await eseguiAzioneRiga(page, riga, 'Sospendi solo movimenti')
     await expect(riga).toContainText('Sospeso (solo movimenti)')
 
-    await riga.getByRole('button', { name: 'Rinnova' }).click()
+    await eseguiAzioneRiga(page, riga, 'Rinnova')
     const conferma = page
       .getByRole('alertdialog')
       .or(page.getByRole('dialog', { name: /rinnovo/i }))
@@ -531,7 +532,7 @@ test.describe('Contratto cliente — operatore', () => {
 
     await apriContratti(page)
     const riga = rigaContratto(page)
-    await riga.getByRole('button', { name: 'Annulla', exact: false }).click()
+    await eseguiAzioneRiga(page, riga, /Annulla il contratto/)
 
     const annullo = dialogo(page, new RegExp(`Annulla il contratto ${dati.numero}`))
     await expect(annullo).toBeVisible()
@@ -554,9 +555,8 @@ test.describe('Contratto cliente — operatore', () => {
 
     await expect(riga).toContainText('Annullato')
     // Annullato = definitivo: nessuna transizione, nessun rinnovo, nessuna eliminazione.
-    await expect(
-      riga.getByRole('button', { name: /Attiva|Riattiva|Sospendi|Rinnova|Elimina/ })
-    ).toHaveCount(0)
+    const azioni = await nomiAzioniRiga(page, riga)
+    expect(azioni.filter(n => !/^Modifica/.test(n))).toEqual([])
   })
 })
 
@@ -574,18 +574,20 @@ test.describe('Contratto cliente — VIEWER', () => {
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo contratto' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('button', { name: 'Proroga scadenze' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
-    await expect(
-      contenuto(page).getByRole('button', {
-        name: /^(Modifica|Attiva|Riattiva|Sospendi|Annulla|Rinnova|Elimina)/,
-      })
-    ).toHaveCount(0)
+    for (const riga of await contenuto(page).locator('tbody tr').all()) {
+      const nomi = await nomiAzioniRiga(page, riga)
+      expect(
+        nomi.filter(n => /^(Modifica|Attiva|Riattiva|Sospendi|Annulla|Rinnova|Elimina)/.test(n))
+      ).toEqual([])
+    }
 
     await page.goto('/clienti')
     await expect(contenuto(page).getByRole('heading', { level: 1, name: 'Clienti' })).toBeVisible()
     await expect(contenuto(page).getByRole('table')).toBeVisible()
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo cliente' })).toHaveCount(0)
-    await expect(
-      contenuto(page).getByRole('button', { name: /^(Modifica|Disattiva|Riattiva|Elimina)/ })
-    ).toHaveCount(0)
+    for (const riga of await contenuto(page).locator('tbody tr').all()) {
+      const nomi = await nomiAzioniRiga(page, riga)
+      expect(nomi.filter(n => /^(Modifica|Disattiva|Riattiva|Elimina)/.test(n))).toEqual([])
+    }
   })
 })
