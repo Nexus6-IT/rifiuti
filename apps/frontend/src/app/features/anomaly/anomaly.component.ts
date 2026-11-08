@@ -47,22 +47,31 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
         </div>
       </header>
 
-      <!-- KPI per gravità -->
-      <div *ngIf="!loading() && !error() && loaded()" class="stat-grid mb-4">
-        <div class="stat-card stat-card--danger">
-          <span class="stat-card__label">Gravità alta</span>
-          <span class="stat-card__value">{{ countBySeverity('HIGH') | number }}</span>
-          <span class="stat-card__hint">richiedono intervento</span>
+      <!-- KPI per gravità: una sola striscia divisa, lo stato è la parola e il pallino -->
+      <div
+        *ngIf="!loading() && !error() && loaded()"
+        class="striscia mb-4"
+        role="group"
+        aria-label="Anomalie per gravità"
+      >
+        <div class="cella tono-err" data-testid="anomalie-alta">
+          <span class="cella__l"><span class="pallino" aria-hidden="true"></span>Gravità alta</span>
+          <span class="cella__v num">{{ countBySeverity('HIGH') | number }}</span>
+          <span class="cella__h">richiedono intervento</span>
         </div>
-        <div class="stat-card stat-card--warning">
-          <span class="stat-card__label">Gravità media</span>
-          <span class="stat-card__value">{{ countBySeverity('MEDIUM') | number }}</span>
-          <span class="stat-card__hint">da verificare</span>
+        <div class="cella tono-warn" data-testid="anomalie-media">
+          <span class="cella__l"
+            ><span class="pallino" aria-hidden="true"></span>Gravità media</span
+          >
+          <span class="cella__v num">{{ countBySeverity('MEDIUM') | number }}</span>
+          <span class="cella__h">da verificare</span>
         </div>
-        <div class="stat-card stat-card--info">
-          <span class="stat-card__label">Gravità bassa</span>
-          <span class="stat-card__value">{{ countBySeverity('LOW') | number }}</span>
-          <span class="stat-card__hint">segnalazioni minori</span>
+        <div class="cella tono-todo" data-testid="anomalie-bassa">
+          <span class="cella__l"
+            ><span class="pallino" aria-hidden="true"></span>Gravità bassa</span
+          >
+          <span class="cella__v num">{{ countBySeverity('LOW') | number }}</span>
+          <span class="cella__h">segnalazioni minori</span>
         </div>
       </div>
 
@@ -203,23 +212,71 @@ type TagSeverity = 'success' | 'info' | 'warning' | 'danger' | undefined
       .empty-state__icon--success {
         color: var(--color-success);
       }
-      .stat-card--danger {
-        border-color: var(--color-danger);
+      .striscia {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        background: var(--surface-card);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
       }
-      .stat-card--danger .stat-card__value {
-        color: var(--color-danger);
+      .cella {
+        display: flex;
+        flex-direction: column;
+        padding: 14px 16px;
+        border-left: 1px solid var(--surface-border);
+        min-width: 0;
       }
-      .stat-card--warning {
-        border-color: var(--color-warning);
+      .cella:first-child {
+        border-left: 0;
       }
-      .stat-card--warning .stat-card__value {
-        color: var(--color-warning);
+      .cella__l {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-secondary);
       }
-      .stat-card--info {
-        border-color: var(--color-info);
+      .cella__v {
+        margin-top: 4px;
+        font-size: 30px;
+        line-height: 1.1;
+        font-weight: var(--font-weight-medium);
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
       }
-      .stat-card--info .stat-card__value {
-        color: var(--color-info);
+      .cella__h {
+        margin-top: 2px;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
+      .pallino {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--text-tertiary);
+      }
+      .tono-todo .pallino {
+        background: var(--text-primary);
+      }
+      .tono-warn .pallino {
+        background: var(--stato-warn-ink);
+      }
+      .tono-err .pallino {
+        background: var(--stato-err-ink);
+      }
+      @media (max-width: 575.98px) {
+        .striscia {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .cella {
+          border-left: 0;
+          border-top: 1px solid var(--surface-border);
+        }
+        .cella:first-child {
+          border-top: 0;
+        }
       }
       .mb-4 {
         margin-bottom: var(--spacing-xl);

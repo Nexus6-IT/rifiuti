@@ -26,7 +26,7 @@ export const STILI_PESE = `
   }
   .griglia {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
     gap: 0 var(--spacing-base);
   }
   .azioni {
@@ -38,7 +38,10 @@ export const STILI_PESE = `
   .avviso-manuale {
     margin: 0 0 var(--spacing-base);
     padding: var(--spacing-sm) var(--spacing-base);
-    border-left: 4px solid var(--color-warning);
+    border: 1px solid var(--stato-warn-edge);
+    border-radius: var(--radius-md);
+    background: var(--stato-warn-bg);
+    color: var(--stato-warn-ink);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
   }

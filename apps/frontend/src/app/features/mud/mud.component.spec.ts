@@ -896,6 +896,41 @@ describe('MudComponent', () => {
       )
     })
 
+    it('l interruttore ha lo stato per il lettore e in parola accanto («No» / «Sì»)', async () => {
+      crea()
+      fixture.detectChanges()
+      await fixture.whenStable()
+      fixture.detectChanges()
+      const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+        '#mud-non-dovuto'
+      )!
+      const parola = () =>
+        (fixture.nativeElement as HTMLElement)
+          .querySelector('[data-testid="mud-obbligo-stato"]')
+          ?.textContent?.trim()
+      expect(input.getAttribute('aria-checked')).toBe('false')
+      expect(parola()).toBe('No')
+      input.click()
+      fixture.detectChanges()
+      expect(input.getAttribute('aria-checked')).toBe('true')
+      expect(parola()).toBe('Sì')
+    })
+
+    it('la parola di stato sta fra l interruttore e l etichetta, che resta a destra', async () => {
+      crea()
+      fixture.detectChanges()
+      await fixture.whenStable()
+      fixture.detectChanges()
+      const riga = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+        '.mud-obbligo'
+      )!
+      const x = (sel: string) => riga.querySelector(sel)!.getBoundingClientRect().left
+      expect(x('[data-testid="mud-obbligo-stato"]')).toBeGreaterThan(x('p-inputswitch'))
+      expect(x('label[for="mud-non-dovuto"]')).toBeGreaterThan(
+        x('[data-testid="mud-obbligo-stato"]')
+      )
+    })
+
     it('chi non può modificarlo non vede l interruttore', () => {
       mud.getObbligo.and.returnValue(of({ ...OBBLIGO, puoModificare: false }))
       crea()
