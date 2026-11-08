@@ -56,31 +56,35 @@ import {
           />
         </span>
         <div class="barra-filtri__destra">
-          <p-button
-            label="Agenti"
-            icon="pi pi-briefcase"
-            [outlined]="true"
-            (onClick)="vai('/clienti/agenti')"
-            data-testid="clienti-agenti"
-          />
-          <p-button
-            label="Tabelle di fatturazione"
-            icon="pi pi-table"
-            [outlined]="true"
-            (onClick)="vai('/clienti/tabelle')"
-            data-testid="clienti-tabelle"
-          />
-          <p-button
-            label="Archivio addebiti"
-            icon="pi pi-list"
-            [outlined]="true"
-            (onClick)="vai('/clienti/addebiti')"
-            data-testid="clienti-addebiti"
-          />
+          <div class="sec">
+            <p-button
+              label="Agenti"
+              icon="pi pi-briefcase"
+              [outlined]="true"
+              (onClick)="vai('/clienti/agenti')"
+              data-testid="clienti-agenti"
+            />
+            <p-button
+              label="Tabelle di fatturazione"
+              icon="pi pi-table"
+              [outlined]="true"
+              (onClick)="vai('/clienti/tabelle')"
+              data-testid="clienti-tabelle"
+            />
+            <p-button
+              label="Archivio addebiti"
+              icon="pi pi-list"
+              [outlined]="true"
+              (onClick)="vai('/clienti/addebiti')"
+              data-testid="clienti-addebiti"
+            />
+          </div>
           <p-button
             *ngIf="puoScrivere()"
             label="Nuovo cliente"
             icon="pi pi-plus"
+            class="nuovo"
+            ariaLabel="Nuovo cliente"
             styleClass="wf-primario"
             (onClick)="apriNuovo()"
             data-testid="clienti-nuovo"
@@ -124,8 +128,9 @@ import {
             <td class="chi">
               {{ c.ditta.ragioneSociale }}
             </td>
-            <td class="num-col m2 mono">
-              {{ identificativo(c) }}<span class="solo-tel" *ngIf="!c.attivo"> · Disattivato</span>
+            <td class="num-col m2">
+              {{ prefissoId(c) }} <span class="mono">{{ numeroId(c) }}</span
+              ><span class="solo-tel" *ngIf="!c.attivo"> · Disattivato</span>
             </td>
             <td class="m-hide" *ngIf="visibili().has('codice')">{{ c.codice }}</td>
             <td class="m-hide" *ngIf="visibili().has('codiceDestinatario')">
@@ -175,13 +180,49 @@ import {
       .chi {
         overflow-wrap: anywhere;
       }
-      .barra-filtri__destra {
+      .barra-filtri__destra,
+      .sec {
         flex-wrap: wrap;
+      }
+      .sec {
+        display: flex;
+        gap: var(--spacing-md);
       }
       .solo-tel {
         display: none;
       }
+      /* Telefono: ricerca e «Nuovo cliente» (solo icona) sulla prima riga, le altre tre voci su una sola riga di testo. */
       @media (max-width: 640px) {
+        .barra-filtri {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: var(--spacing-sm);
+        }
+        .barra-filtri__destra {
+          display: contents;
+        }
+        .nuovo {
+          grid-column: 2;
+          grid-row: 1;
+        }
+        .sec {
+          grid-column: 1 / -1;
+          grid-row: 2;
+          flex-wrap: nowrap;
+          gap: var(--spacing-xs);
+        }
+        :host ::ng-deep .nuovo .p-button-label {
+          display: none;
+        }
+        :host ::ng-deep .sec .p-button {
+          height: 44px;
+          padding: 0 var(--spacing-sm);
+          font-size: var(--font-size-xs);
+          border-color: transparent;
+        }
+        :host ::ng-deep .sec .p-button-icon {
+          display: none;
+        }
         .solo-tel {
           display: inline;
         }
@@ -251,6 +292,19 @@ export class ClientiListComponent implements OnInit, OnDestroy {
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
     this.elenco.cambiaPagina(ev)
+  }
+
+  /** «P.IVA» o «C.F.»: in caratteri normali. */
+  prefissoId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
+    return this.identificativo(x as never).split(' ')[0] ?? ''
+  }
+
+  /** Il numero: l'unica parte in mono. */
+  numeroId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
+    return this.identificativo(x as never)
+      .split(' ')
+      .slice(1)
+      .join(' ')
   }
 
   identificativo(c: Cliente): string {

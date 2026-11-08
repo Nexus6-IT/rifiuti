@@ -90,8 +90,9 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
         <ng-template pTemplate="body" let-a>
           <tr [attr.data-testid]="'agenti-riga-' + a.id">
             <td class="chi">{{ a.ditta.ragioneSociale }}</td>
-            <td class="num-col m2 mono">
-              {{ identificativo(a) }}<span class="solo-tel" *ngIf="!a.attivo"> · Disattivato</span>
+            <td class="num-col m2">
+              {{ prefissoId(a) }} <span class="mono">{{ numeroId(a) }}</span
+              ><span class="solo-tel" *ngIf="!a.attivo"> · Disattivato</span>
             </td>
             <td class="m-hide" *ngIf="visibili().has('codice')">{{ a.codice }}</td>
             <td class="num-col m-hide">{{ a.clienti }}</td>
@@ -195,6 +196,19 @@ export class AgentiListComponent implements OnInit, OnDestroy {
 
   cambiaPagina(ev: { first?: number | null; rows?: number | null }): void {
     this.elenco.cambiaPagina(ev)
+  }
+
+  /** «P.IVA» o «C.F.»: in caratteri normali. */
+  prefissoId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
+    return this.identificativo(x as never).split(' ')[0] ?? ''
+  }
+
+  /** Il numero: l'unica parte in mono. */
+  numeroId(x: { ditta: { partitaIva: string | null; codiceFiscale: string | null } }): string {
+    return this.identificativo(x as never)
+      .split(' ')
+      .slice(1)
+      .join(' ')
   }
 
   identificativo(a: Agente): string {

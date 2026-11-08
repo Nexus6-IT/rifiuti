@@ -1,3 +1,6 @@
+import { registerLocaleData } from '@angular/common'
+import localeIt from '@angular/common/locales/it'
+import { LOCALE_ID } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
@@ -36,6 +39,8 @@ const n61: CodiceIva = {
   eliminabile: false,
 }
 
+registerLocaleData(localeIt, 'it-IT')
+
 describe('CodiciIvaTabComponent', () => {
   let tabella: ReturnType<typeof tabellaFinta>
   let toast: jasmine.SpyObj<ToastService>
@@ -55,6 +60,7 @@ describe('CodiciIvaTabComponent', () => {
       imports: [CodiciIvaTabComponent],
       providers: [
         provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'it-IT' },
         { provide: ListinoService, useValue: { codiciIva: tabella } },
         { provide: ToastService, useValue: toast },
         { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
@@ -66,7 +72,7 @@ describe('CodiciIvaTabComponent', () => {
   it("elenco con le disattivate: codice, aliquota e natura; l'id non si vede", async () => {
     await apri()
     expect(tabella.list).toHaveBeenCalledWith({ incluseDisattivate: true })
-    expect(q('iva-riga-22')!.textContent).toContain('22.00%')
+    expect(q('iva-riga-22')!.textContent).toContain('22,00%')
     expect(q('iva-riga-N61')!.textContent).toContain('N6.1')
     expect(document.body.textContent).not.toContain('7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b')
   })

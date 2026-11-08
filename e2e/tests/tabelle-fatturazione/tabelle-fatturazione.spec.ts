@@ -11,7 +11,7 @@ import {
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
 import { conPrefisso } from '../../utils/run-id'
-import { eseguiAzioneRiga, nomiAzioniRiga } from '../../utils/azioni-riga'
+import { eseguiAzioneRiga } from '../../utils/azioni-riga'
 
 /**
  * E2E — Tabelle di fatturazione (pezzo 4.1a, R10): dalla pagina `/clienti/tabelle`
@@ -112,7 +112,8 @@ async function apriTabelle(page: Page, scheda: string): Promise<void> {
 }
 
 /**
- * Il titolo della pagina sta nell'`<h1>` del contenuto e il menu ha una voce omonima: tutto cio' che non e' un dialog o un'opzione di dropdown (appese al body)
+ * Il titolo della pagina sta nell'`<h1>` del contenuto e il menu ha una voce
+ * omonima: tutto cio' che non e' un dialog o un'opzione di dropdown (appese al body)
  * si cerca dentro `#main-content`.
  */
 function contenuto(page: Page) {
@@ -342,8 +343,11 @@ test.describe('Tabelle di fatturazione — VIEWER', () => {
       await expect(contenuto(page).getByRole('tabpanel').getByRole('table')).toBeVisible()
       await expect(contenuto(page).getByRole('button', { name: nuovo })).toHaveCount(0)
       // nessuna azione di riga: ne' il bottone principale ne' il menu ⋯, ne' la colonna «Azioni»
-      const primaRiga = contenuto(page).getByRole('tabpanel').locator('tbody tr').first()
-      expect(await nomiAzioniRiga(page, primaRiga)).toEqual([])
+      await expect(
+        contenuto(page).getByRole('button', {
+          name: /^(Modifica|Disattiva|Riattiva|Elimina|Altre azioni)/,
+        })
+      ).toHaveCount(0)
       await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
     }
     await contenuto(page).getByRole('tab', { name: 'Categorie e tipi' }).click()

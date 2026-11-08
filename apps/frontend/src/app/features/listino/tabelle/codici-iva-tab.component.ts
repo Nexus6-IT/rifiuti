@@ -63,7 +63,7 @@ import { CodiceIvaDialogComponent } from './codice-iva-dialog.component'
           <td class="m2">
             {{ r.descrizione }}<span class="solo-tel" *ngIf="!r.attivo"> · Disattivato</span>
           </td>
-          <td class="num-col m-hide">{{ r.aliquota }}%</td>
+          <td class="num-col m-hide">{{ r.aliquota | number: '1.2-2' }}%</td>
           <td class="m-hide" *ngIf="visibili().has('natura')">{{ r.natura }}</td>
           <td class="m-hide">{{ r.attivo ? 'Attivo' : 'Disattivato' }}</td>
           <td class="azioni-col" *ngIf="puoScrivere()">

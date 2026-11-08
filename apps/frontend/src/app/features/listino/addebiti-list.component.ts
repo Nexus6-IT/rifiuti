@@ -131,7 +131,7 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
             </td>
             <td class="m-hide" *ngIf="visibili().has('unitaMisura')">{{ a.unitaMisura }}</td>
             <td class="num-col m-hide" *ngIf="visibili().has('prezzo')">
-              {{ prezzoBase(a) | number: '1.2-2' }}
+              {{ prezzoBase(a) ? (prezzoBase(a) | number: '1.2-2') : '—' }}
             </td>
             <td class="m-hide">{{ a.attivo ? 'Sì' : 'No' }}</td>
             <td class="azioni-col" *ngIf="haAzioni()">

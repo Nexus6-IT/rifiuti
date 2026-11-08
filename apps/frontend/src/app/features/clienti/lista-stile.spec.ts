@@ -120,6 +120,37 @@ async function inIframe390(
 describe('Liste del Task 6 (pattern delle liste)', () => {
   afterEach(() => chiudiMenuRiga())
 
+  describe('voce pericolosa del menu ⋯', () => {
+    const colore = (tema: 'light' | 'dark'): { voce: string; attesa: string } => {
+      document.documentElement.setAttribute('data-theme', tema)
+      const radice = document.createElement('div')
+      radice.innerHTML = `<div class="p-menu"><ul>
+        <li class="p-menuitem azione-pericolosa"><div class="p-menuitem-content"><a class="p-menuitem-link"><span class="p-menuitem-icon"></span><span class="p-menuitem-text">Elimina</span></a></div></li>
+        <li class="p-menuitem"><div class="p-menuitem-content"><a class="p-menuitem-link"><span class="p-menuitem-text">Disattiva</span></a></div></li>
+        </ul></div><i class="sonda" style="color: var(--color-danger)"></i>`
+      document.body.appendChild(radice)
+      const voce = getComputedStyle(
+        radice.querySelector('.azione-pericolosa .p-menuitem-text')!
+      ).color
+      const attesa = getComputedStyle(radice.querySelector('.sonda')!).color
+      const normale = getComputedStyle(
+        radice.querySelector('li:not(.azione-pericolosa) .p-menuitem-text')!
+      ).color
+      radice.remove()
+      document.documentElement.removeAttribute('data-theme')
+      expect(normale).not.toBe(attesa)
+      return { voce, attesa }
+    }
+    it('«Elimina» e rossa (colore calcolato = --color-danger) in chiaro', () => {
+      const { voce, attesa } = colore('light')
+      expect(voce).toBe(attesa)
+    })
+    it('«Elimina» e rossa (colore calcolato = --color-danger) in scuro', () => {
+      const { voce, attesa } = colore('dark')
+      expect(voce).toBe(attesa)
+    })
+  })
+
   describe('Clienti', () => {
     let fixture: ComponentFixture<ClientiListComponent>
     let list: jasmine.Spy
@@ -198,7 +229,9 @@ describe('Liste del Task 6 (pattern delle liste)', () => {
         expect(css(cella).textAlign).toBe('right')
       }
       const piva = q('[data-testid="clienti-riga-cl1"]')!.querySelectorAll('td')[1]
-      expect(css(piva).fontFamily).toContain('Geist Mono')
+      expect(css(piva).fontFamily).not.toContain('Geist Mono')
+      expect(css(piva.querySelector('.mono')!).fontFamily).toContain('Geist Mono')
+      expect(piva.querySelector('.mono')!.textContent!.trim()).toBe('12345678903')
     })
 
     it('la tabella e una lista-telefono; con zero righe: testo dello stato vuoto, senza paginatore', async () => {
