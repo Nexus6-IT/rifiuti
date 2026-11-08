@@ -21,6 +21,7 @@ import {
 import { STILI_PESE } from './pese-stili'
 import { PesoItalianoDirective } from './peso-it.directive'
 import { DatiPesataManuale, StrumentoPesa } from './pese.service'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 export const MASSIMO_PESO_KG = 99_999_999.99
 export const ESTERNO = '__esterno'
@@ -35,7 +36,13 @@ export interface PesataManualeRaccolta {
 @Component({
   selector: 'app-pesata-manuale-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, InputNumberModule, PesoItalianoDirective],
+  imports: [
+    CampoDataComponent,
+    CommonModule,
+    ReactiveFormsModule,
+    InputNumberModule,
+    PesoItalianoDirective,
+  ],
   template: `
     <p class="avviso-manuale" data-testid="pm-avviso">{{ avviso }}</p>
     <form [formGroup]="form" (submit)="$event.preventDefault()" novalidate data-testid="pm-form">
@@ -147,13 +154,12 @@ export interface PesataManualeRaccolta {
         </div>
         <div class="field">
           <label [for]="id('data')">Giorno indicato dallo strumento</label>
-          <input
-            [id]="id('data')"
-            type="date"
-            class="p-inputtext w-full"
+          <app-campo-data
+            [inputId]="id('data')"
             formControlName="data"
-            [attr.max]="oggi"
+            [max]="oggi"
             data-testid="pm-data"
+            [piena]="true"
           />
         </div>
         <div class="field">

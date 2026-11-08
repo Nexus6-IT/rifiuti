@@ -6,6 +6,7 @@ import { StrumentiPesaComponent } from './strumenti-pesa.component'
 import { ElencoConPermessi, PeseService, StrumentoPesa } from './pese.service'
 import { RegistroService } from '../registro/registro.service'
 import { ToastService } from '../../core/services/toast.service'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { giornoRoma } from './pese-formato'
 
 function strumento(p: Partial<StrumentoPesa> = {}): StrumentoPesa {
@@ -127,6 +128,26 @@ describe('StrumentiPesaComponent (DOM)', () => {
     const dati = pese.creaStrumento.calls.mostRecent().args[0]
     expect(dati.descrizione).toBe('Pesa 2')
     expect(dati.divisioneKg).toBe(0.5)
+  })
+
+  it('la data di verificazione e un calendario in italiano: la modifica arriva al server come AAAA-MM-GG', async () => {
+    apri(elenco([strumento()]))
+    pese.aggiornaStrumento.and.returnValue(of(strumento()))
+    qb('str-modifica-s1')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(document.querySelector('label[for="str-data"]')).not.toBeNull()
+    const campo = document.getElementById('str-data') as HTMLInputElement
+    expect(campo.value).toBe('10/05/2025')
+    scriviCampoData(campo, '2026-03-29')
+    fixture.detectChanges()
+    qb('str-salva')!.click()
+    expect(pese.aggiornaStrumento).toHaveBeenCalledTimes(1)
+    expect(pese.aggiornaStrumento.calls.mostRecent().args[1].dataUltimaVerificazione).toBe(
+      '2026-03-29'
+    )
   })
 
   it('"0.5" nella divisione e rifiutato', () => {

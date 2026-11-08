@@ -17,6 +17,7 @@ import {
 } from '../../shared/models/registry.model'
 import { DittaIdentificativiComponent } from './ditta-identificativi.component'
 import { ErroriIdentificativi, identificativiPerSalvataggio } from './identificativo-fiscale'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 export type TipoAnagrafica = 'produttore' | 'trasportatore' | 'destinatario'
 export type ModalitaAnagrafica = 'create' | 'edit'
@@ -76,6 +77,7 @@ function indirizzoFrom(f: FormData): Indirizzo {
   selector: 'app-anagrafica-form-dialog',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     DialogModule,
@@ -216,13 +218,11 @@ function indirizzoFrom(f: FormData): Indirizzo {
           <div class="ana-row" *ngIf="tipo === 'trasportatore' || tipo === 'destinatario'">
             <div class="field ana-row__half" *ngIf="tipo === 'trasportatore'">
               <label [for]="pfx + '-scad-iscrizione'"> Scadenza iscrizione Albo </label>
-              <input
-                pInputText
-                type="date"
-                [id]="pfx + '-scad-iscrizione'"
+              <app-campo-data
+                [inputId]="pfx + '-scad-iscrizione'"
                 name="scadenzaIscrizione"
                 [(ngModel)]="form.scadenzaIscrizione"
-                class="w-full"
+                [piena]="true"
               />
               <small class="field-hint"
                 >Facoltativa: se nota, abilita il promemoria di scadenza.</small
@@ -231,13 +231,11 @@ function indirizzoFrom(f: FormData): Indirizzo {
 
             <div class="field ana-row__half" *ngIf="tipo === 'destinatario'">
               <label [for]="pfx + '-scad-autorizzazione'"> Scadenza autorizzazione </label>
-              <input
-                pInputText
-                type="date"
-                [id]="pfx + '-scad-autorizzazione'"
+              <app-campo-data
+                [inputId]="pfx + '-scad-autorizzazione'"
                 name="scadenzaAutorizzazione"
                 [(ngModel)]="form.scadenzaAutorizzazione"
-                class="w-full"
+                [piena]="true"
               />
               <small class="field-hint"
                 >Facoltativa: se nota, abilita il promemoria di scadenza.</small

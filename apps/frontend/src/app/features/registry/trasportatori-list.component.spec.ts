@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
@@ -111,6 +112,22 @@ describe('TrasportatoriListComponent — data di scadenza iscrizione (facoltativ
 
     const inviato = registryService.createTrasportatore.calls.mostRecent().args[0]
     expect(inviato.scadenzaIscrizione).toBeUndefined()
+  })
+
+  it('la scadenza e un calendario in italiano: la data scritta arriva al form come AAAA-MM-GG', async () => {
+    component.editTrasportatore(TRASPORTATORE_ESISTENTE)
+    fixture.detectChanges()
+    // Due livelli di ngModel (il form e il calendario dentro il campo): due giri.
+    await fixture.whenStable()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(document.querySelector('label[for="tra-scad-iscrizione"]')).not.toBeNull()
+    const campo = document.getElementById('tra-scad-iscrizione') as HTMLInputElement
+    expect(campo.value).toBe('15/03/2027')
+    scriviCampoData(campo, '2028-01-31')
+    expect(component.formData.scadenzaIscrizione).toBe('2028-01-31')
   })
 
   it('in modifica, precompila il campo con la scadenza esistente', () => {

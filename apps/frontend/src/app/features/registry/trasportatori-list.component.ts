@@ -27,11 +27,13 @@ import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import { MemoriaAzioni } from '../clienti/tabelle/azioni-lista'
 import { chiediConferma } from '../clienti/tabelle/tabella-comune'
 import { azioniAnagrafica } from './azioni-anagrafica'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 @Component({
   selector: 'app-trasportatori-list',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     TableModule,
@@ -294,13 +296,12 @@ import { azioniAnagrafica } from './azioni-anagrafica'
                    dato può mancare per le anagrafiche già esistenti. -->
               <div class="field col-12 md:col-6">
                 <label for="tra-scad-iscrizione">Scadenza iscrizione Albo</label>
-                <input
-                  pInputText
-                  type="date"
-                  id="tra-scad-iscrizione"
+                <app-campo-data
+                  inputId="tra-scad-iscrizione"
                   name="scadenzaIscrizione"
                   [(ngModel)]="formData.scadenzaIscrizione"
                   data-testid="trasportatori-scadenza-iscrizione-input"
+                  [piena]="true"
                 />
                 <small class="field-hint"
                   >Facoltativa: se nota, abilita il promemoria di scadenza.</small

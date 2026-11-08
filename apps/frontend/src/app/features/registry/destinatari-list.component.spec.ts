@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { scriviCampoData } from '../../shared/testing/campo-data'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
 import { MessageService, ConfirmationService } from 'primeng/api'
@@ -111,6 +112,24 @@ describe('DestinatariListComponent — data di scadenza autorizzazione (facoltat
 
     const inviato = registryService.createDestinatario.calls.mostRecent().args[0]
     expect(inviato.scadenzaAutorizzazione).toBeUndefined()
+  })
+
+  it('la scadenza e un calendario in italiano: la data scritta arriva al form come AAAA-MM-GG', async () => {
+    component.editDestinatario(DESTINATARIO_ESISTENTE)
+    fixture.detectChanges()
+    // Due livelli di ngModel (il form e il calendario dentro il campo): due giri.
+    await fixture.whenStable()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    expect(document.querySelector('label[for="dest-scad-autorizzazione"]')).not.toBeNull()
+    const campo = document.getElementById('dest-scad-autorizzazione') as HTMLInputElement
+    expect(campo.value).toBe('15/03/2027')
+    scriviCampoData(campo, '2028-01-31')
+    expect(component.formData.scadenzaAutorizzazione).toBe('2028-01-31')
+    scriviCampoData(campo, '')
+    expect(component.formData.scadenzaAutorizzazione).toBe('')
   })
 
   it('in modifica, precompila il campo con la scadenza esistente', () => {

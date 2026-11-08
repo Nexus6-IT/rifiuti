@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { dataComeSiScrive, scriviCampoData } from '../../shared/testing/campo-data'
 import { HttpErrorResponse, HttpHeaders, HttpResponse } from '@angular/common/http'
 import { ActivatedRoute, convertToParamMap } from '@angular/router'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
@@ -805,6 +806,28 @@ describe('MudComponent', () => {
         'MUD segnato come presentato: i promemoria si fermano.'
       )
       expect(component.presentazione()?.status).toBe('SUBMITTED')
+    })
+
+    it('la data della presentazione e un calendario in italiano, non oltre oggi', async () => {
+      mud.segnaPresentato.and.returnValue(of(stato({ status: 'SUBMITTED' })))
+      crea()
+      component.apriSegnatura()
+      fixture.detectChanges()
+      // Due livelli di ngModel (la finestra e il calendario dentro il campo): qualche giro.
+      for (let giro = 0; giro < 3; giro++) {
+        await new Promise(r => setTimeout(r))
+        fixture.detectChanges()
+      }
+
+      expect(document.body.querySelector('input[type="date"]')).toBeNull()
+      expect(document.querySelector('label[for="mud-data-presentazione"]')).not.toBeNull()
+      const campo = document.getElementById('mud-data-presentazione') as HTMLInputElement
+      expect(campo.value).toBe(dataComeSiScrive(component.oggi))
+      scriviCampoData(campo, '2026-06-30')
+      expect(component.dataPresentazione).toBe('2026-06-30')
+      scriviCampoData(campo, '2999-01-01')
+      expect(component.dataPresentazione).toBe('2026-06-30')
+      expect(campo.value).toBe('30/06/2026')
     })
 
     it('senza esportazioni dichiara il file non tracciato e non chiede conferme', () => {

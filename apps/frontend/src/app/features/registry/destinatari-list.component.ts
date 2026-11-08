@@ -27,11 +27,13 @@ import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import { MemoriaAzioni } from '../clienti/tabelle/azioni-lista'
 import { chiediConferma } from '../clienti/tabelle/tabella-comune'
 import { azioniAnagrafica } from './azioni-anagrafica'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 @Component({
   selector: 'app-destinatari-list',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     TableModule,
@@ -291,13 +293,12 @@ import { azioniAnagrafica } from './azioni-anagrafica'
                    il dato può mancare per le anagrafiche già esistenti. -->
               <div class="field col-12 md:col-6">
                 <label for="dest-scad-autorizzazione">Scadenza autorizzazione</label>
-                <input
-                  pInputText
-                  type="date"
-                  id="dest-scad-autorizzazione"
+                <app-campo-data
+                  inputId="dest-scad-autorizzazione"
                   name="scadenzaAutorizzazione"
                   [(ngModel)]="formData.scadenzaAutorizzazione"
                   data-testid="destinatari-scadenza-autorizzazione-input"
+                  [piena]="true"
                 />
                 <small class="field-hint"
                   >Facoltativa: se nota, abilita il promemoria di scadenza.</small

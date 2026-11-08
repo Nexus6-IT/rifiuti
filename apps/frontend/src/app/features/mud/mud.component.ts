@@ -41,6 +41,7 @@ import {
   testoConferma,
 } from './mud.service'
 import { NumeroItalianoDirective } from '../../shared/directives/numero-it.directive'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /** Riga della tabella per CER, comune al file e alle sue dichiarazioni. */
 interface RigaCerTabella {
@@ -98,6 +99,7 @@ function oggiIso(): string {
   selector: 'app-mud',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     AccordionModule,
@@ -585,12 +587,11 @@ function oggiIso(): string {
       <ng-container *ngIf="dialogo() === 'segnatura'">
         <div class="mb-3">
           <label for="mud-data-presentazione" class="block mb-2">Data della presentazione</label>
-          <input
-            id="mud-data-presentazione"
-            type="date"
-            pInputText
+          <app-campo-data
+            inputId="mud-data-presentazione"
             [max]="oggi"
             [(ngModel)]="dataPresentazione"
+            [piena]="true"
           />
         </div>
         <ng-container *ngIf="esportazioni().length; else senzaEsportazioni">

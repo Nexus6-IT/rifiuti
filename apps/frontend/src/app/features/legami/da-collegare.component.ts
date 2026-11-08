@@ -38,6 +38,7 @@ import { focalizzaPasso } from '../../shared/utils/focalizza-passo'
 import { catturaFocus } from '../../shared/utils/ripristina-focus'
 import { permessiLegami } from './permessi-legami'
 import { etichettaAvviso, etichettaMotivo, etichettaStato, severitaTag } from './vocabolario-legami'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 /** Righe per azione di massa: il tetto del backend (`@ArrayMaxSize(500)` su elementi + movimenti). */
 export const TETTO_AZIONE_MASSA = 500
@@ -88,6 +89,7 @@ interface OpzioneId {
   selector: 'app-da-collegare',
   standalone: true,
   imports: [
+    CampoDataComponent,
     CommonModule,
     FormsModule,
     ButtonModule,
@@ -127,10 +129,8 @@ interface OpzioneId {
       <div class="filters" role="search" aria-label="Filtri">
         <div class="filters__field">
           <label class="filters__label" for="dc-dal">Dal</label>
-          <input
-            pInputText
-            id="dc-dal"
-            type="date"
+          <app-campo-data
+            inputId="dc-dal"
             [ngModel]="dal"
             (ngModelChange)="dal = $event; applica()"
             data-testid="filtro-dal"
@@ -138,10 +138,8 @@ interface OpzioneId {
         </div>
         <div class="filters__field">
           <label class="filters__label" for="dc-al">Al</label>
-          <input
-            pInputText
-            id="dc-al"
-            type="date"
+          <app-campo-data
+            inputId="dc-al"
             [ngModel]="al"
             (ngModelChange)="al = $event; applica()"
             data-testid="filtro-al"

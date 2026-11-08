@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { scriviData } from '../../utils/campo-data'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
@@ -151,7 +152,7 @@ test.describe('Trasportatore — CRUD via UI (operator)', () => {
     await page.getByLabel('Ragione sociale').fill(ragioneSociale)
     await page.getByLabel('Partita IVA').fill(partitaIVA)
     await page.getByLabel('N. iscrizione Albo Gestori').fill(numeroIscrizione)
-    await anagrafiche.scadenzaInput.fill(scadenza)
+    await scriviData(page, anagrafiche.scadenzaInput, scadenza)
     await page.getByLabel('Via').fill(SEDE_VALIDA.via)
     await page.getByLabel('Civico').fill(SEDE_VALIDA.civico)
     await page.getByLabel('CAP').fill(SEDE_VALIDA.cap)
@@ -221,7 +222,7 @@ test.describe('Destinatario — CRUD via UI (operator)', () => {
     await page.getByLabel('Ragione sociale').fill(ragioneSociale)
     await page.getByLabel('Partita IVA').fill(partitaIVA)
     await page.getByLabel('N. autorizzazione').fill(numeroAutorizzazione)
-    await anagrafiche.scadenzaInput.fill(scadenza)
+    await scriviData(page, anagrafiche.scadenzaInput, scadenza)
     await page.getByLabel('Via').fill(SEDE_VALIDA.via)
     await page.getByLabel('Civico').fill(SEDE_VALIDA.civico)
     await page.getByLabel('CAP').fill(SEDE_VALIDA.cap)

@@ -24,6 +24,7 @@ import { leggiErroriAzione } from '../listino/errori-azione'
 import { ListinoService } from '../listino/listino.service'
 import { AnteprimaAggiornamento, EsitoAggiornamento, PerimetroAggiornamento } from './legami.model'
 import { LegamiService } from './legami.service'
+import { CampoDataComponent } from '../../shared/components/campo-data.component'
 
 export const MSG_ANTEPRIMA_RICARICATA =
   'I dati sono cambiati dopo l’anteprima: ecco quella aggiornata. Controllala e conferma di nuovo.'
@@ -100,7 +101,15 @@ interface Opzione {
 @Component({
   selector: 'app-aggiorna-prezzi-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule, ButtonModule, DialogModule, DropdownModule, InputTextModule],
+  imports: [
+    CampoDataComponent,
+    CommonModule,
+    FormsModule,
+    ButtonModule,
+    DialogModule,
+    DropdownModule,
+    InputTextModule,
+  ],
   template: `
     <p-dialog
       [visible]="visible"
@@ -159,26 +168,24 @@ interface Opzione {
         </div>
         <div class="ap-campo">
           <label for="ap-dal">Movimenti dal (facoltativo)</label>
-          <input
-            pInputText
-            id="ap-dal"
-            type="date"
+          <app-campo-data
+            inputId="ap-dal"
             [ngModel]="dal"
             (ngModelChange)="dal = $event; cambiaPerimetro()"
             [disabled]="inCorso()"
             data-testid="ap-dal"
+            [piena]="true"
           />
         </div>
         <div class="ap-campo">
           <label for="ap-al">Movimenti al (facoltativo)</label>
-          <input
-            pInputText
-            id="ap-al"
-            type="date"
+          <app-campo-data
+            inputId="ap-al"
             [ngModel]="al"
             (ngModelChange)="al = $event; cambiaPerimetro()"
             [disabled]="inCorso()"
             data-testid="ap-al"
+            [piena]="true"
           />
         </div>
       </div>
