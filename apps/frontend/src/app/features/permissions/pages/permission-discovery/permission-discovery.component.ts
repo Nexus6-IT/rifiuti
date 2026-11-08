@@ -7,6 +7,7 @@ import { TooltipModule } from 'primeng/tooltip'
 import { ButtonModule } from 'primeng/button'
 import { PermissionStore } from '../../../../core/state/permission.store'
 import { RoleStore } from '../../../../core/state/role.store'
+import { AuthService } from '../../../../core/services/auth.service'
 import { PermissionFormatPipe } from '../../pipes/permission-format.pipe'
 import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
 
@@ -18,7 +19,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
  * Features:
  * - Mobile: Accordion layout (collapsible categories)
  * - Desktop: Grid layout (cards)
- * - Visual indicators: ✓ allowed (green), ○ view-only (blue), ✗ denied (gray)
+ * - Indicatori: spunta consentito, trattino sola lettura, croce negato (icone, non emoji)
  * - 56px touch targets per plan.md mobile-first requirements
  * - Permission grouping by module (FIR, User, Role, Analytics, etc.)
  * - Human-readable descriptions using PermissionFormatPipe
@@ -49,7 +50,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
         <div class="page-actions">
           <p-tag
             [value]="currentRole() | roleDescription: 'name'"
-            severity="info"
+            severity="secondary"
             styleClass="role-badge"
             data-testid="role-badge"
           ></p-tag>
@@ -63,13 +64,22 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
         aria-label="Legenda degli stati dei permessi"
       >
         <span class="legend-item"
-          ><span class="permission-icon allowed" aria-hidden="true">✓</span> Consentito</span
+          ><span class="permission-icon allowed" aria-hidden="true"
+            ><i class="pi pi-check"></i
+          ></span>
+          Consentito</span
         >
         <span class="legend-item"
-          ><span class="permission-icon view-only" aria-hidden="true">○</span> Sola lettura</span
+          ><span class="permission-icon view-only" aria-hidden="true"
+            ><i class="pi pi-minus"></i
+          ></span>
+          Sola lettura</span
         >
         <span class="legend-item"
-          ><span class="permission-icon denied" aria-hidden="true">✗</span> Negato</span
+          ><span class="permission-icon denied" aria-hidden="true"
+            ><i class="pi pi-times"></i
+          ></span>
+          Negato</span
         >
       </div>
 
@@ -84,7 +94,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
       <!-- Stato di errore -->
       <div *ngIf="permissionStore.error()" class="surface-card error-state" role="alert">
         <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
-        <p>{{ permissionStore.error() }}</p>
+        <p>Impossibile caricare i permessi. Riprova tra qualche istante.</p>
         <button pButton label="Riprova" icon="pi pi-refresh" (click)="retryLoad()"></button>
       </div>
 
@@ -112,11 +122,11 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
                   data-testid="permission-icon"
                   aria-hidden="true"
                 >
-                  {{ getPermissionIcon(permission.raw) }}
+                  <i [class]="getPermissionIcon(permission.raw)"></i>
                 </div>
                 <div class="permission-details">
                   <span class="permission-name" data-testid="permission-status">
-                    {{ permission.raw | permissionFormat }}
+                    {{ permission.raw | permissionFormat: 'short' }}
                     <span class="sr-only">— {{ getPermissionStateLabel(permission.raw) }}</span>
                   </span>
                   <span class="permission-scope">{{ permission.scope }}</span>
@@ -128,7 +138,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
                   [pTooltip]="getPermissionHelp(permission.raw)"
                   tooltipPosition="left"
                   data-testid="help-icon"
-                  [attr.aria-label]="'Aiuto su ' + (permission.raw | permissionFormat)"
+                  [attr.aria-label]="'Aiuto su ' + (permission.raw | permissionFormat: 'short')"
                 ></button>
               </div>
             </div>
@@ -159,11 +169,11 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
                 [class]="getPermissionState(permission.raw)"
                 aria-hidden="true"
               >
-                {{ getPermissionIcon(permission.raw) }}
+                <i [class]="getPermissionIcon(permission.raw)"></i>
               </div>
               <div class="permission-info">
                 <span class="permission-name">
-                  {{ permission.raw | permissionFormat }}
+                  {{ permission.raw | permissionFormat: 'short' }}
                   <span class="sr-only">— {{ getPermissionStateLabel(permission.raw) }}</span>
                 </span>
                 <span class="permission-scope">{{ permission.scope }}</span>
@@ -173,7 +183,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
                 [pTooltip]="getPermissionHelp(permission.raw)"
                 tooltipPosition="top"
                 role="img"
-                [attr.aria-label]="'Aiuto su ' + (permission.raw | permissionFormat)"
+                [attr.aria-label]="'Aiuto su ' + (permission.raw | permissionFormat: 'short')"
               ></i>
             </div>
           </div>
@@ -190,8 +200,6 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
       :host ::ng-deep .role-badge {
         font-size: var(--font-size-sm);
         padding: 0.4rem 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
       }
 
       .legend {
@@ -305,8 +313,6 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
       .permission-scope {
         font-size: var(--font-size-xs);
         color: var(--text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
       }
 
       .help-button {
@@ -317,6 +323,7 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
         gap: var(--spacing-lg);
+        align-items: start;
       }
 
       .category-card {
@@ -364,16 +371,19 @@ import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
 export class PermissionDiscoveryComponent implements OnInit {
   protected readonly permissionStore = inject(PermissionStore)
   protected readonly roleStore = inject(RoleStore)
+  private readonly auth = inject(AuthService)
   private readonly breakpointObserver = inject(BreakpointObserver)
 
   // Responsive state
   isMobile = signal(false)
 
   // Current user role
-  currentRole = computed(() => {
-    const roles = this.roleStore.roles()
-    return roles.length > 0 ? roles[0].name : 'UNKNOWN'
-  })
+  // Il ruolo dell'utente: l'assegnazione caricata, altrimenti il ruolo del suo account (il
+  // SUPER_ADMIN non ha assegnazioni). `roles()` sono i ruoli dell'azienda, non i suoi: prenderne
+  // il primo mostrava a tutti il ruolo sbagliato.
+  currentRole = computed(
+    () => this.roleStore.userRoles()[0]?.roleName ?? this.auth.currentUser()?.role ?? 'UNKNOWN'
+  )
 
   // Permission categories
   permissionCategories = computed(() => {
@@ -414,7 +424,7 @@ export class PermissionDiscoveryComponent implements OnInit {
 
       categoryMap.get(resource)!.push({
         raw: permission,
-        scope: scope.toUpperCase(),
+        scope: this.getScopeLabel(scope),
       })
     })
 
@@ -426,6 +436,16 @@ export class PermissionDiscoveryComponent implements OnInit {
         permissions: perms,
       }))
       .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  /** Ambito del permesso in italiano. */
+  private getScopeLabel(scope: string): string {
+    const nomi: Record<string, string> = {
+      all: 'Tutti',
+      own: 'Solo i propri',
+      facility: 'Delle sedi assegnate',
+    }
+    return nomi[scope] ?? scope
   }
 
   /**
@@ -441,6 +461,13 @@ export class PermissionDiscoveryComponent implements OnInit {
       analytics: 'Analisi e report',
       mud: 'Dichiarazione MUD',
       backup: 'Backup di sistema',
+      facility: 'Gestione sedi',
+      report: 'Report',
+      notification: 'Notifiche',
+      admin: 'Amministrazione',
+      system: 'Sistema',
+      audit: 'Audit dei permessi',
+      consultant: 'Consulenti',
     }
 
     return categoryNames[resource] || `Gestione ${resource}`
@@ -472,11 +499,11 @@ export class PermissionDiscoveryComponent implements OnInit {
 
     switch (state) {
       case 'allowed':
-        return '✓'
+        return 'pi pi-check'
       case 'view-only':
-        return '○'
+        return 'pi pi-minus'
       case 'denied':
-        return '✗'
+        return 'pi pi-times'
     }
   }
 

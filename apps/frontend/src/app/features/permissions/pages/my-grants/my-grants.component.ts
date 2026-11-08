@@ -6,6 +6,7 @@ import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ProgressSpinnerModule } from 'primeng/progressspinner'
 import { MessageModule } from 'primeng/message'
+import { ActivatedRoute } from '@angular/router'
 import { DialogService } from 'primeng/dynamicdialog'
 import { MessageService } from 'primeng/api'
 import {
@@ -204,11 +205,16 @@ export class MyGrantsComponent implements OnInit {
   constructor(
     private apiService: TemporaryPermissionApiService,
     private dialogService: DialogService,
-    private messageService: MessageService
+    private messageService: MessageService,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
     this.loadGrants()
+    // Arrivo da «Accesso non consentito» (?richiedi=<permesso>): apre subito il dialog.
+    if (this.route.snapshot.queryParamMap.get('richiedi')) {
+      this.openRequestDialog()
+    }
   }
 
   loadGrants(): void {
