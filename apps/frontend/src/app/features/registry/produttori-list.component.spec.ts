@@ -79,7 +79,7 @@ describe('ProduttoriListComponent — selettori data-testid', () => {
   })
 
   it('espone i pulsanti azione per riga con lo stesso id', () => {
-    expect(testid('produttori-modifica-p1')).toBeTruthy()
+    expect(testid('produttori-azioni-p1')).toBeTruthy()
   })
 })
 
@@ -217,7 +217,7 @@ describe('ProduttoriListComponent — gating dei pulsanti in base al ruolo (VIEW
   it('un VIEWER non vede le azioni Modifica/Elimina sulla riga', () => {
     creaComponente('VIEWER')
 
-    expect(fixture.nativeElement.querySelector('[data-testid="produttori-modifica-p1"]')).toBeNull()
+    expect(fixture.nativeElement.querySelector('[data-testid="produttori-azioni-p1"]')).toBeNull()
     expect(fixture.nativeElement.querySelector('[data-testid="produttori-elimina-p1"]')).toBeNull()
   })
 
@@ -227,9 +227,7 @@ describe('ProduttoriListComponent — gating dei pulsanti in base al ruolo (VIEW
     expect(
       fixture.nativeElement.querySelector('[data-testid="produttori-nuovo-button"]')
     ).toBeTruthy()
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="produttori-modifica-p1"]')
-    ).toBeTruthy()
+    expect(fixture.nativeElement.querySelector('[data-testid="produttori-azioni-p1"]')).toBeTruthy()
   })
 })
 

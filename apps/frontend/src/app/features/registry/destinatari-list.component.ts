@@ -78,7 +78,7 @@ import { azioniAnagrafica } from './azioni-anagrafica'
               pInputText
               type="search"
               [(ngModel)]="searchTerm"
-              placeholder="Cerca per ragione sociale, P.IVA, autorizzazione…"
+              placeholder="Ragione sociale o P.IVA"
               aria-label="Cerca tra i destinatari (filtra la pagina corrente)"
             />
           </span>
@@ -169,7 +169,7 @@ import { azioniAnagrafica } from './azioni-anagrafica'
                 @if (haAzioni) {
                   <td class="azioni-col">
                     <app-azioni-riga
-                      [attr.data-testid]="'destinatari-modifica-' + destinatario.id"
+                      [attr.data-testid]="'destinatari-azioni-' + destinatario.id"
                       [nome]="destinatario.ragioneSociale"
                       [principale]="azioni.di(destinatario).principale"
                       [altre]="azioni.di(destinatario).altre"

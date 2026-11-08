@@ -279,9 +279,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
   it('un VIEWER non vede le azioni Modifica/Elimina sulla riga', () => {
     creaComponente('VIEWER')
 
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
-    ).toBeNull()
+    expect(fixture.nativeElement.querySelector('[data-testid="destinatari-azioni-d1"]')).toBeNull()
     expect(fixture.nativeElement.querySelector('[data-testid="destinatari-elimina-d1"]')).toBeNull()
   })
 
@@ -292,7 +290,7 @@ describe('DestinatariListComponent — gating dei pulsanti in base al ruolo (VIE
       fixture.nativeElement.querySelector('[data-testid="destinatari-nuovo-button"]')
     ).toBeTruthy()
     expect(
-      fixture.nativeElement.querySelector('[data-testid="destinatari-modifica-d1"]')
+      fixture.nativeElement.querySelector('[data-testid="destinatari-azioni-d1"]')
     ).toBeTruthy()
   })
 })

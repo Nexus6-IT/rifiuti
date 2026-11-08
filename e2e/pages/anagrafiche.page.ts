@@ -79,9 +79,9 @@ export class AnagrafichePage {
     return this.page.getByTestId(`${this.area}-row-${id}`)
   }
 
-  /** Azione principale della riga («Modifica <ragione sociale>»): il bottone dentro `app-azioni-riga`. */
+  /** Azione principale della riga («Modifica <ragione sociale>»), non «Sedi» del VIEWER. */
   editButton(id: string): Locator {
-    return this.row(id).getByTestId('azione-principale')
+    return this.row(id).getByRole('button', { name: /^Modifica / })
   }
 
   /**

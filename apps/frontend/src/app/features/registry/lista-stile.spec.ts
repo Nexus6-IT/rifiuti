@@ -214,6 +214,7 @@ for (const caso of CASI) {
       expect(accetta.textContent).toContain('Elimina')
       expect(accetta.classList).toContain('p-button-danger')
       expect(q('.p-confirm-dialog-reject')!.textContent).toContain('Annulla')
+      expect(document.activeElement).toBe(q('.p-confirm-dialog-reject'))
       expect(document.body.textContent).toContain('ACME S.r.l.')
     })
 
@@ -273,9 +274,12 @@ for (const caso of CASI) {
       await apri('VIEWER')
       expect(intestazioni()).toContain('Azioni')
       expect(riga().querySelectorAll('button').length).toBe(1)
+      expect(riga().querySelector('[data-testid="azione-principale"]')!.textContent).toContain(
+        'Sedi (3)'
+      )
       expect(
         riga().querySelector('[data-testid="azione-principale"]')!.getAttribute('aria-label')
-      ).toBe('Sedi di ACME S.r.l.')
+      ).toBe('Sedi (3) ACME S.r.l.')
       expect(q('[data-testid="azioni-altre"]')).toBeNull()
     })
 

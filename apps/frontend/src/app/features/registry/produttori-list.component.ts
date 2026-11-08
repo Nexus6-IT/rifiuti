@@ -76,7 +76,7 @@ import { azioniAnagrafica } from './azioni-anagrafica'
               pInputText
               type="search"
               [(ngModel)]="searchTerm"
-              placeholder="Cerca per ragione sociale, P.IVA, sede…"
+              placeholder="Ragione sociale o P.IVA"
               aria-label="Cerca tra i produttori (filtra la pagina corrente)"
             />
           </span>
@@ -153,7 +153,7 @@ import { azioniAnagrafica } from './azioni-anagrafica'
                 @if (haAzioni) {
                   <td class="azioni-col">
                     <app-azioni-riga
-                      [attr.data-testid]="'produttori-modifica-' + produttore.id"
+                      [attr.data-testid]="'produttori-azioni-' + produttore.id"
                       [nome]="produttore.ragioneSociale"
                       [principale]="azioni.di(produttore).principale"
                       [altre]="azioni.di(produttore).altre"

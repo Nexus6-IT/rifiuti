@@ -26,7 +26,8 @@ export function azioniAnagrafica(o: OpzioniAzioniAnagrafica): AzioniDiRiga {
     : null
   if (!o.puoGestire) {
     return {
-      principale: sedi ? { ...sedi, etichetta: `Sedi di ${o.nome}` } : null,
+      // senza icona: il bottone mostra il testo «Sedi (n)», il nome accessibile aggiunge la ragione sociale
+      principale: sedi ? { etichetta: sedi.etichetta, esegui: o.sedi } : null,
       altre: [],
     }
   }

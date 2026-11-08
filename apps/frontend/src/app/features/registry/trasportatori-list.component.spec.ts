@@ -283,7 +283,7 @@ describe('TrasportatoriListComponent — gating dei pulsanti in base al ruolo (V
     creaComponente('VIEWER')
 
     expect(
-      fixture.nativeElement.querySelector('[data-testid="trasportatori-modifica-t1"]')
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-azioni-t1"]')
     ).toBeNull()
     expect(
       fixture.nativeElement.querySelector('[data-testid="trasportatori-elimina-t1"]')
@@ -297,7 +297,7 @@ describe('TrasportatoriListComponent — gating dei pulsanti in base al ruolo (V
       fixture.nativeElement.querySelector('[data-testid="trasportatori-nuovo-button"]')
     ).toBeTruthy()
     expect(
-      fixture.nativeElement.querySelector('[data-testid="trasportatori-modifica-t1"]')
+      fixture.nativeElement.querySelector('[data-testid="trasportatori-azioni-t1"]')
     ).toBeTruthy()
   })
 })

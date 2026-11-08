@@ -80,7 +80,7 @@ import { azioniAnagrafica } from './azioni-anagrafica'
               pInputText
               type="search"
               [(ngModel)]="searchTerm"
-              placeholder="Cerca per ragione sociale, P.IVA, iscrizione…"
+              placeholder="Ragione sociale o P.IVA"
               aria-label="Cerca tra i trasportatori (filtra la pagina corrente)"
             />
           </span>
@@ -172,7 +172,7 @@ import { azioniAnagrafica } from './azioni-anagrafica'
                 @if (haAzioni) {
                   <td class="azioni-col">
                     <app-azioni-riga
-                      [attr.data-testid]="'trasportatori-modifica-' + trasportatore.id"
+                      [attr.data-testid]="'trasportatori-azioni-' + trasportatore.id"
                       [nome]="trasportatore.ragioneSociale"
                       [principale]="azioni.di(trasportatore).principale"
                       [altre]="azioni.di(trasportatore).altre"
