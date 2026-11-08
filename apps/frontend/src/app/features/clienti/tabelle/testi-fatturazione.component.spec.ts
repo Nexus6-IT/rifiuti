@@ -56,9 +56,9 @@ describe('TestiFatturazioneComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('testo-nuovo')).toBeNull()
-    expect(q('testo-modifica-AB')).toBeNull()
-    expect(q('testo-attivo-AB')).toBeNull()
-    expect(q('testo-elimina-AB')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('elimina: conferma e poi manda id e versione', async () => {

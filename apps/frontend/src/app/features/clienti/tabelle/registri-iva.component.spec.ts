@@ -73,9 +73,9 @@ describe('RegistriIvaComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('registro-nuovo')).toBeNull()
-    expect(q('registro-modifica-01')).toBeNull()
-    expect(q('registro-attivo-01')).toBeNull()
-    expect(q('registro-elimina-01')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('elimina: conferma e poi manda id e versione', async () => {

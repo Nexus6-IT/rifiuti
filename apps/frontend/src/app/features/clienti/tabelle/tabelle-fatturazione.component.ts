@@ -65,7 +65,7 @@ const SCHEDE = [
         <p-tabPanel header="Categorie e tipi">
           <ng-template pTemplate="content">
             <app-codifiche-contratto genere="CATEGORIA" />
-            <app-codifiche-contratto genere="TIPO" />
+            <app-codifiche-contratto genere="TIPO" [primario]="false" />
           </ng-template>
         </p-tabPanel>
         <p-tabPanel header="Motivi di annullo">
@@ -82,6 +82,14 @@ const SCHEDE = [
       </p-tabView>
     </div>
   `,
+  styles: [
+    `
+      /* Il gutter laterale e' della shell: la pagina tiene solo lo spazio sopra il titolo. */
+      .page {
+        padding: var(--spacing-lg) 0;
+      }
+    `,
+  ],
 })
 export class TabelleFatturazioneComponent {
   private readonly route = inject(ActivatedRoute)

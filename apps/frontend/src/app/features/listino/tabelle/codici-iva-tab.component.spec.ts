@@ -14,6 +14,7 @@ import {
   stabilizza,
   tabellaFinta,
 } from '../../clienti/tabelle/tabelle-test-utils'
+import { apriMenuRiga, chiudiMenuRiga } from '../../clienti/tabelle/azioni-test-utils'
 
 const iva22: CodiceIva = {
   id: '7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b',
@@ -128,14 +129,15 @@ describe('CodiciIvaTabComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('iva-nuovo')).toBeNull()
-    expect(q('iva-modifica-22')).toBeNull()
-    expect(q('iva-attivo-22')).toBeNull()
-    expect(q('iva-elimina-22')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('"Elimina" solo se eliminabile; conferma e poi manda id e versione', async () => {
     await apri()
-    expect(q('iva-elimina-N61')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('iva-riga-N61')!)).not.toContain('Elimina')
+    chiudiMenuRiga()
     tabella.elimina.and.returnValue(of(undefined))
     fixture.componentInstance.elimina(iva22)
     await stabilizza(fixture)

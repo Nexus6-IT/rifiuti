@@ -9,6 +9,7 @@ import { MessageService } from 'primeng/api'
 import { RegistryService } from '../registry/registry.service'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
+import { apriMenuRiga } from './tabelle/azioni-test-utils'
 import { accettaConferma, q, scrivi, stabilizza } from './tabelle/tabelle-test-utils'
 
 const agente = (over: Partial<Agente> = {}): Agente => ({
@@ -178,12 +179,12 @@ describe('AgentiListComponent', () => {
 
   it('Elimina solo se eliminabile', async () => {
     await apri('ADMIN', pagina(agente({ eliminabile: false })))
-    expect(q('agenti-elimina-a1')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('agenti-riga-a1')!)).toEqual(['Disattiva'])
   })
 
   it("eliminabile: il pulsante Elimina c'è", async () => {
     await apri('ADMIN', pagina(agente({ eliminabile: true })))
-    expect(q('agenti-elimina-a1')).toBeTruthy()
+    expect(await apriMenuRiga(fixture, q('agenti-riga-a1')!)).toEqual(['Disattiva', 'Elimina'])
   })
 
   it('Elimina: conferma e poi manda id e versione', async () => {
@@ -213,9 +214,9 @@ describe('AgentiListComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('agenti-nuovo')).toBeNull()
-    expect(q('agenti-modifica-a1')).toBeNull()
-    expect(q('agenti-attiva-a1')).toBeNull()
-    expect(q('agenti-elimina-a1')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('errore di caricamento: messaggio del backend', async () => {
