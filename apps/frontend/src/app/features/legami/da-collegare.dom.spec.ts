@@ -661,6 +661,8 @@ describe('DaCollegareComponent (DOM)', () => {
       const b = host.querySelector('button') as HTMLButtonElement
       expect(b.getAttribute('aria-label')).toContain('Apri')
       expect(b.getAttribute('aria-label')).toContain('12/03/2026')
+      // il testo e' visibile, non solo nel nome accessibile
+      expect(b.textContent?.trim()).toBe('Apri')
     })
 
     it("«Fatturazione non attiva» e' una riga di stato dentro la card, senza intestazioni ne paginatore", async () => {
@@ -689,6 +691,22 @@ describe('DaCollegareComponent (DOM)', () => {
       TestBed.resetTestingModule()
       await crea('ADMIN', [riga(1)], 120)
       expect(document.body.querySelector('.p-paginator')).not.toBeNull()
+    })
+
+    it('«Riammetti» ha il testo visibile', async () => {
+      await crea('OPERATOR', [riga(7, { stato: 'ESCLUSO', versione: 4 })])
+      expect(q('riammetti-m7')!.querySelector('button')!.textContent?.trim()).toBe('Riammetti')
+    })
+
+    it('a 360px «Da sistemare» resta visibile, sotto lo stato', async () => {
+      await crea('ADMIN', [riga(1, { motivi: ['SENZA_CONTRATTO' as never] })])
+      const doc = await nelViewport(360)
+      const win = doc.defaultView as Window
+      const sistemare = doc.querySelector('td.sistemare-col') as HTMLElement
+      expect(win.getComputedStyle(sistemare).display).not.toBe('none')
+      const stato = (doc.querySelector('td.stato-col') as HTMLElement).getBoundingClientRect()
+      expect(sistemare.getBoundingClientRect().top).toBeGreaterThanOrEqual(stato.bottom - 1)
+      expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(doc.documentElement.clientWidth)
     })
 
     it('le colonne senza dati spariscono: «Da sistemare» con nessun motivo, «Cliente» senza cliente', async () => {

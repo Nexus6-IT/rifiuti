@@ -360,7 +360,7 @@ interface OpzioneId {
               <th scope="col" class="num-col m-hide">Quantità</th>
               <th scope="col" class="m-hide" *ngIf="colonne().has('cliente')">Cliente</th>
               <th scope="col">Stato</th>
-              <th scope="col" class="m-hide" *ngIf="colonne().has('sistemare')">Da sistemare</th>
+              <th scope="col" *ngIf="colonne().has('sistemare')">Da sistemare</th>
               <th scope="col" class="azioni-col"><span class="sr-only">Azioni</span></th>
             </tr>
           </ng-template>
@@ -405,7 +405,7 @@ interface OpzioneId {
                   <small *ngIf="r.fatturato" class="cell-sub">fatturato</small>
                 </div>
               </td>
-              <td class="m-hide" *ngIf="colonne().has('sistemare')">
+              <td class="sistemare-col" *ngIf="colonne().has('sistemare')">
                 <ul class="elenco-compatto" [attr.data-testid]="'motivi-' + r.movimentoId">
                   <li *ngFor="let m of r.motivi" data-testid="motivo">{{ motivoEt(m) }}</li>
                   <li *ngFor="let a of r.avvisi" data-testid="avviso">{{ avvisoEt(a) }}</li>
@@ -535,9 +535,15 @@ interface OpzioneId {
           grid-column: 1;
           grid-row: 3;
         }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.sistemare-col {
+          grid-column: 1;
+          grid-row: 4;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
         :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.azioni-col {
           grid-column: 2;
-          grid-row: 1 / span 3;
+          grid-row: 1 / span 4;
         }
         :host
           ::ng-deep
@@ -546,7 +552,7 @@ interface OpzioneId {
           > tr
           > td.sel-col {
           grid-column: 1;
-          grid-row: 1 / span 3;
+          grid-row: 1 / span 4;
           align-self: center;
         }
         :host
@@ -566,7 +572,13 @@ interface OpzioneId {
           .p-datatable.lista-telefono.con-selezione
           .p-datatable-tbody
           > tr
-          > td.stato-col {
+          > td.stato-col,
+        :host
+          ::ng-deep
+          .p-datatable.lista-telefono.con-selezione
+          .p-datatable-tbody
+          > tr
+          > td.sistemare-col {
           grid-column: 2;
         }
         :host
@@ -577,7 +589,8 @@ interface OpzioneId {
           > td.azioni-col {
           grid-column: 3;
         }
-        :host ::ng-deep .p-datatable.lista-telefono td.sel-col input[type='checkbox'] {
+        :host ::ng-deep .p-datatable.lista-telefono td.sel-col input[type='checkbox'],
+        .filters__field--stretto input[type='checkbox'] {
           width: 1.5rem;
           height: 1.5rem;
         }
@@ -880,7 +893,6 @@ export class DaCollegareComponent implements OnInit {
     if (r.stato === 'ESCLUSO' && this.permessi().scrive) {
       return {
         etichetta: 'Riammetti',
-        icona: 'pi pi-undo',
         disabilitata: this.inCorso(),
         esegui: () => this.riammetti(r),
       }
@@ -888,7 +900,6 @@ export class DaCollegareComponent implements OnInit {
     const senzaLegame = !this.permessi().scrive && r.legameId === null
     return {
       etichetta: this.permessi().scrive ? 'Apri' : 'Dettaglio',
-      icona: 'pi pi-pencil',
       disabilitata: this.inCorso() || senzaLegame,
       ...(senzaLegame ? { motivo: 'Nessun legame ancora' } : {}),
       esegui: () => this.apriLegame(r),

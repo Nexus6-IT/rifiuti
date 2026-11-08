@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common'
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Subscription } from 'rxjs'
 import { FormsModule } from '@angular/forms'
@@ -112,6 +112,7 @@ function movimentiToccati(err: unknown): number | null {
                 dateFormat="dd/mm/yy"
                 placeholder="gg/mm/aaaa"
                 [showIcon]="true"
+                #calendario
                 [(ngModel)]="dataCalendario"
                 [disabled]="!puoModificare()"
                 data-testid="fatt-data"
@@ -237,6 +238,15 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
     const valida = v instanceof Date && !Number.isNaN(v.getTime())
     this.dataDate = valida ? v : null
     this.dataIso = valida ? isoLocale(v) : ''
+  }
+
+  /**
+   * `p-calendar` 17.18 non ha `ariaDescribedBy`: la nota (che per chi non puo' modificare dice
+   * perche') si collega all'input interno appena il calendario compare.
+   */
+  @ViewChild('calendario', { read: ElementRef })
+  set calendario(el: ElementRef<HTMLElement> | undefined) {
+    el?.nativeElement.querySelector('#fatt-da')?.setAttribute('aria-describedby', 'fatt-nota')
   }
 
   readonly puoModificare = () => puoImpostareFatturazione(this.auth.currentUser()?.role)

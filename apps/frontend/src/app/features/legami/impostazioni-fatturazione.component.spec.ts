@@ -153,6 +153,66 @@ describe('ImpostazioniFatturazioneComponent', () => {
       expect(c.dataCalendario).toBe(c.dataCalendario)
     })
 
+    it("il campo (anche disabilitato) e' descritto dalla nota col motivo", async () => {
+      for (const ruolo of ['ADMIN', 'VIEWER']) {
+        await crea(ruolo)
+        expect(campoData().getAttribute('aria-describedby')).withContext(ruolo).toBe('fatt-nota')
+        expect(document.getElementById('fatt-nota')).withContext(ruolo).not.toBeNull()
+        fixture.destroy()
+        TestBed.resetTestingModule()
+      }
+      await crea('VIEWER')
+      expect(campoData().disabled).toBeTrue()
+      expect(document.getElementById('fatt-nota')!.textContent).toContain('Solo gli amministratori')
+    })
+
+    it('senza modifiche «Salva» rimanda la data caricata', async () => {
+      await crea('ADMIN', {
+        fatturazioneDa: '2026-03-01',
+        versione: 1,
+        modificatoIl: null,
+        definitiveAttive: false,
+      })
+      servizio.salva.and.returnValue(
+        of({
+          fatturazioneDa: '2026-03-01',
+          versione: 2,
+          modificatoIl: null,
+          definitiveAttive: false,
+        })
+      )
+      bottone('fatt-salva')!.click()
+      await stabilizza(fixture)
+      expect(servizio.salva.calls.mostRecent().args[0]).toEqual({
+        fatturazioneDa: '2026-03-01',
+        versione: 1,
+      })
+    })
+
+    it('campo svuotato: «Data non valida», nessuna chiamata; «Spegni» lascia il campo vuoto', async () => {
+      await crea('ADMIN', {
+        fatturazioneDa: '2026-03-01',
+        versione: 1,
+        modificatoIl: null,
+        definitiveAttive: false,
+      })
+      const el = campoData()
+      el.value = ''
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+      await stabilizza(fixture)
+      bottone('fatt-salva')!.click()
+      await stabilizza(fixture)
+      expect(servizio.salva).not.toHaveBeenCalled()
+      expect(q('fatt-errore')?.textContent).toContain('Data non valida')
+      servizio.salva.and.returnValue(
+        of({ fatturazioneDa: null, versione: 2, modificatoIl: null, definitiveAttive: false })
+      )
+      bottone('fatt-spegni')!.click()
+      await stabilizza(fixture)
+      expect(campoData().value).toBe('')
+    })
+
     it('il pannello si apre in italiano e scegliere un giorno salva la data ISO', async () => {
       await crea('ADMIN', {
         fatturazioneDa: '2026-03-01',
