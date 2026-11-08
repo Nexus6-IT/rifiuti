@@ -26,7 +26,7 @@ export class ToastService {
   /**
    * Show success toast
    */
-  success(detail: string, summary: string = 'Success', life: number = 5000): void {
+  success(detail: string, summary: string = 'Fatto', life: number = 5000): void {
     this.messageService.add({
       severity: 'success',
       summary,
@@ -38,7 +38,7 @@ export class ToastService {
   /**
    * Show error toast
    */
-  error(detail: string, summary: string = 'Error', life: number = 5000): void {
+  error(detail: string, summary: string = 'Errore', life: number = 5000): void {
     this.messageService.add({
       severity: 'error',
       summary,
@@ -50,7 +50,7 @@ export class ToastService {
   /**
    * Show warning toast
    */
-  warn(detail: string, summary: string = 'Warning', life: number = 5000): void {
+  warn(detail: string, summary: string = 'Attenzione', life: number = 5000): void {
     this.messageService.add({
       severity: 'warn',
       summary,
@@ -62,7 +62,7 @@ export class ToastService {
   /**
    * Show info toast
    */
-  info(detail: string, summary: string = 'Info', life: number = 5000): void {
+  info(detail: string, summary: string = 'Informazione', life: number = 5000): void {
     this.messageService.add({
       severity: 'info',
       summary,

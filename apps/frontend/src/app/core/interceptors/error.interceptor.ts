@@ -15,47 +15,47 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      let errorMessage = 'An unexpected error occurred'
+      let errorMessage = 'Si è verificato un errore imprevisto.'
       let severity: 'error' | 'warn' = 'error'
 
       if (error.error instanceof ErrorEvent) {
-        errorMessage = `Client Error: ${error.error.message}`
+        errorMessage = `Errore del client: ${error.error.message}`
       } else {
         switch (error.status) {
           case 400:
-            errorMessage = 'Invalid request. Please check your input.'
+            errorMessage = 'Richiesta non valida. Controlla i dati inseriti.'
             severity = 'warn'
             if (error.error?.message) {
               errorMessage = error.error.message
             }
             break
           case 401:
-            errorMessage = 'Authentication required. Please log in.'
+            errorMessage = 'Autenticazione richiesta. Accedi di nuovo.'
             break
           case 403:
-            errorMessage = 'You do not have permission to perform this action.'
+            errorMessage = 'Non hai il permesso di eseguire questa azione.'
             break
           case 404:
-            errorMessage = 'The requested resource was not found.'
+            errorMessage = 'La risorsa richiesta non è stata trovata.'
             severity = 'warn'
             break
           case 409:
-            errorMessage = 'Conflict detected. The resource may have been modified.'
+            errorMessage = 'Conflitto: la risorsa potrebbe essere stata modificata.'
             severity = 'warn'
             break
           case 422:
-            errorMessage = 'Validation failed. Please check your input.'
+            errorMessage = 'Validazione non riuscita. Controlla i dati inseriti.'
             severity = 'warn'
             break
           case 429:
-            errorMessage = 'Too many requests. Please try again later.'
+            errorMessage = 'Troppe richieste. Riprova più tardi.'
             severity = 'warn'
             break
           case 500:
-            errorMessage = 'Server error. Please try again later.'
+            errorMessage = 'Errore del server. Riprova più tardi.'
             break
           case 503:
-            errorMessage = 'Service temporarily unavailable. Please try again later.'
+            errorMessage = 'Servizio temporaneamente non disponibile. Riprova più tardi.'
             break
           default:
             if (error.error?.message) {
@@ -66,7 +66,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       messageService.add({
         severity: severity,
-        summary: severity === 'error' ? 'Error' : 'Warning',
+        summary: severity === 'error' ? 'Errore' : 'Attenzione',
         detail: errorMessage,
         life: 5000,
       })

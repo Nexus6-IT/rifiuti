@@ -38,7 +38,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN']
   ],
   providers: [ConfirmationService],
   template: `
-    <div class="page" style="max-width: 820px;">
+    <div class="page">
       <p-confirmDialog></p-confirmDialog>
 
       <header class="page-header">

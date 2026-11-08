@@ -68,4 +68,11 @@ describe('RentriCredentialComponent', () => {
       jasmine.objectContaining({ algorithm: jasmine.anything() })
     )
   })
+
+  it('la pagina ha la larghezza di .page, senza max-width proprio', () => {
+    const pagina = (fixture.nativeElement as HTMLElement).querySelector('.page') as HTMLElement
+    expect(pagina).not.toBeNull()
+    expect(pagina.getAttribute('style') ?? '').not.toContain('max-width')
+    expect(getComputedStyle(pagina).maxWidth).toBe('1320px')
+  })
 })
