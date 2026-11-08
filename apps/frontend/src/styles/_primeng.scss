@@ -105,6 +105,30 @@
   border-color: var(--neutral-fill-hover);
   color: var(--on-neutral);
 }
+/* Secondari a testo o a contorno (severity «secondary»): Aura li colora #64748b con tre classi, che
+   battono le nostre a due. Sul fondo caldo della pagina fanno 4,25:1 (sotto AA) e sono fuori
+   tavolozza: stessi grigi dei bottoni text/outlined normali. */
+.p-button.p-button-secondary.p-button-text,
+.p-button.p-button-outlined.p-button-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.p-button.p-button-outlined.p-button-secondary {
+  color: var(--text-primary);
+  border-color: var(--control-border);
+}
+.p-button.p-button-secondary.p-button-text:not(:disabled):hover,
+.p-button.p-button-secondary.p-button-text:not(:disabled):active {
+  background: var(--color-gray-100);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.p-button.p-button-outlined.p-button-secondary:not(:disabled):hover,
+.p-button.p-button-outlined.p-button-secondary:not(:disabled):active {
+  background: var(--surface-hover);
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
+}
 /* Varianti piene: il testo e' --text-inverse, che si inverte insieme al fondo. */
 .p-button.p-button-success,
 .p-button.p-button-danger,
@@ -427,7 +451,6 @@ label {
    quindi nel nostro tema usciva pieno d'inchiostro (un blocco nero accanto a un campo bianco).
    Qui e' un'appendice del campo: stesso fondo, stesso bordo, icona grigia. */
 .p-calendar .p-datepicker-trigger.p-button,
-.p-autocomplete .p-autocomplete-dropdown.p-button,
 .p-inputnumber .p-inputnumber-button {
   width: 2.25rem;
   height: var(--control-md);
@@ -438,7 +461,6 @@ label {
   color: var(--text-secondary);
 }
 .p-calendar .p-datepicker-trigger.p-button:not(:disabled):hover,
-.p-autocomplete .p-autocomplete-dropdown.p-button:not(:disabled):hover,
 .p-inputnumber .p-inputnumber-button:not(:disabled):hover {
   background: var(--surface-hover);
   border-color: var(--control-border-hover);
@@ -447,6 +469,26 @@ label {
 .p-calendar .p-datepicker-trigger.p-button:focus-visible,
 .p-autocomplete .p-autocomplete-dropdown.p-button:focus-visible {
   outline-offset: -2px;
+}
+/* Autocomplete con freccia (bug 29): il bottone e' la coda del campo, non un bottone. Senza fondo
+   (quello del campo si vede attraverso), icona grigia, stesso bordo del campo. */
+.p-autocomplete .p-autocomplete-dropdown.p-button {
+  width: 2.25rem;
+  height: var(--control-md);
+  background: transparent;
+  border: 1px solid var(--control-border);
+  border-left: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-secondary);
+}
+.p-autocomplete .p-autocomplete-dropdown.p-button .p-icon,
+.p-autocomplete .p-autocomplete-dropdown.p-button .pi {
+  color: var(--text-secondary);
+}
+.p-autocomplete .p-autocomplete-dropdown.p-button:not(:disabled):hover {
+  background: var(--surface-hover);
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
 }
 .p-calendar-w-btn .p-inputtext,
 .p-autocomplete-dd .p-autocomplete-input {
@@ -623,6 +665,24 @@ input[type='file']::file-selector-button:hover {
 .p-paginator .p-paginator-last,
 .p-paginator .p-paginator-pages .p-paginator-page {
   color: var(--text-secondary);
+}
+
+/* Tabella senza righe (bug 32): il paginatore con «0 di 0» e le frecce spente non serve a nessuno.
+   La pagina mette `styleClass="senza-righe"` al p-table quando l'elenco e' vuoto. */
+.senza-righe .p-paginator {
+  display: none;
+}
+
+/* Menu delle azioni di riga (app-azioni-riga): la voce pericolosa e' rossa, quella disabilitata con
+   un motivo resta raggiungibile dal puntatore, cosi' il title si legge. */
+.p-menu .p-menuitem.azione-pericolosa .p-menuitem-link,
+.p-menu .p-menuitem.azione-pericolosa .p-menuitem-text,
+.p-menu .p-menuitem.azione-pericolosa .p-menuitem-icon {
+  color: var(--color-danger);
+}
+.p-menu .p-menuitem.azione-con-motivo {
+  pointer-events: auto;
+  cursor: not-allowed;
 }
 
 /* ===== Dialog: galleggia, quindi e' l'unica cosa con ombra ===== */

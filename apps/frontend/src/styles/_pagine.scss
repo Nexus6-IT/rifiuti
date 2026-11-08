@@ -389,3 +389,145 @@
     white-space: nowrap;
   }
 }
+
+/* ============================================================================
+   Pattern delle liste (giro 2, Task 4) — FUORI da `.pagina-lavoro`
+   Le pagine dei task 6-15 non hanno `.pagina-lavoro`: queste classi valgono ovunque.
+   .barra-filtri (+ __ricerca)  barra sopra la lista, campo di ricerca largo almeno 320px
+   .lista-telefono              sul p-table: intestazioni 12px grigie, righe da 48px; sotto i 640px
+                                righe a due linee da 56px (td.m-hide nascosta, td.m2 a tutta riga)
+   .num-col                     colonne numeriche a destra, cifre tabellari
+   .senza-righe                 sul p-table vuoto: niente paginatore (regola in _primeng.scss)
+   ============================================================================ */
+
+/* ===== Barra filtri ===== */
+.barra-filtri {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+.barra-filtri__ricerca {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 24rem;
+  min-width: 20rem; /* 320px */
+}
+.barra-filtri__ricerca > i {
+  position: absolute;
+  left: var(--spacing-md);
+  top: 50%;
+  margin: 0;
+  transform: translateY(-50%); /* centrata sulla riga, non sul contenitore piu' alto */
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.barra-filtri__ricerca > input {
+  width: 100%;
+  height: var(--control-md);
+  padding-left: 2.25rem;
+}
+.barra-filtri__destra {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+/* ===== Tabella delle liste ===== */
+.p-datatable th.num-col,
+.p-datatable td.num-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.p-datatable.lista-telefono .p-datatable-thead > tr > th {
+  height: 2.375rem;
+  padding: 0 var(--spacing-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.p-datatable.lista-telefono .p-datatable-tbody > tr > td {
+  height: 3rem; /* 48px */
+  padding: 0 var(--spacing-md);
+  vertical-align: middle;
+}
+.p-datatable.lista-telefono .p-datatable-tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+.p-datatable.lista-telefono .p-datatable-tbody > tr > td.num-col {
+  white-space: nowrap;
+}
+
+/* Telefono: ogni riga e' un blocco a due linee (nome e valore principale sopra, dettaglio sotto). */
+@media (max-width: 640px) {
+  .barra-filtri {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .barra-filtri__ricerca {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+  }
+  .barra-filtri__ricerca > input {
+    height: 44px;
+  }
+  .barra-filtri__destra {
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .p-datatable.lista-telefono .p-datatable-table,
+  .p-datatable.lista-telefono .p-datatable-tbody {
+    display: block;
+    width: 100%;
+  }
+  /* L'intestazione resta per i lettori di schermo, ma non occupa spazio. */
+  .p-datatable.lista-telefono .p-datatable-thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .p-datatable.lista-telefono .p-datatable-tbody > tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px var(--spacing-md);
+    align-content: center;
+    min-height: 3.5rem; /* 56px */
+    padding: var(--spacing-md) 0;
+    border-top: 1px solid var(--rule);
+  }
+  .p-datatable.lista-telefono .p-datatable-tbody > tr:first-child {
+    border-top: 0;
+  }
+  .p-datatable.lista-telefono .p-datatable-tbody > tr > td {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .p-datatable.lista-telefono .p-datatable-tbody > tr > td.m-hide {
+    display: none;
+  }
+  .p-datatable.lista-telefono .p-datatable-tbody > tr > td.m2 {
+    grid-column: 1 / -1;
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+  }
+  /* riga del messaggio «nessun dato»: resta un blocco unico */
+  .p-datatable.lista-telefono .p-datatable-tbody > tr.p-datatable-emptymessage {
+    display: block;
+    min-height: 0;
+  }
+}

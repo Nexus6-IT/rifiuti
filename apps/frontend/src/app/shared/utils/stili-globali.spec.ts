@@ -104,10 +104,16 @@ describe('stili globali', () => {
         .trim()
       sonda.style.color = sezione
       const rgbSezione = css(sonda).color
-      for (const sel of ['.p-datepicker-trigger', '.p-autocomplete-dropdown']) {
+      // il calendario ha il fondo del campo; il dropdown dell'autocomplete e' senza fondo (bug 29:
+      // si vede quello del campo), ma mai d'inchiostro
+      const fondoAtteso: Record<string, string> = {
+        '.p-datepicker-trigger': rgbSezione,
+        '.p-autocomplete-dropdown': 'rgba(0, 0, 0, 0)',
+      }
+      for (const sel of Object.keys(fondoAtteso)) {
         const b = css(radice.querySelector(sel) as Element)
         expect(b.backgroundColor).not.toBe(rgbInk)
-        expect(b.backgroundColor).toBe(rgbSezione)
+        expect(b.backgroundColor).toBe(fondoAtteso[sel])
         expect(b.borderLeftWidth).toBe('0px')
       }
     })
