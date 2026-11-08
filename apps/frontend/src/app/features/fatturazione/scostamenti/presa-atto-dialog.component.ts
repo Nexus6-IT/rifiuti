@@ -54,7 +54,7 @@ export const NOTA_MASSIMA = 200
     >
       <div class="dlg-form">
         <p>La fattura resta com'è: la nota spiega perché lo scostamento non richiede uno storno.</p>
-        <label for="presa-atto-nota">Nota</label>
+        <label for="presa-atto-nota">Nota (obbligatorio)</label>
         <textarea
           pInputTextarea
           id="presa-atto-nota"

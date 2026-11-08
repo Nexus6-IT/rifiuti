@@ -435,7 +435,12 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
                   [attr.data-testid]="'dl-sel-' + r.id"
                 />
               </td>
-              <td class="cell-nowrap" data-etichetta="Numero" data-testid="dl-numero">
+              <td
+                class="cell-nowrap"
+                [class.dl-annullato]="r.stato === 'ANNULLATO'"
+                data-etichetta="Numero"
+                data-testid="dl-numero"
+              >
                 {{ r.numeroTesto ?? '—' }}
               </td>
               <td
@@ -526,6 +531,10 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
       .dl-annullato {
         text-decoration: line-through;
         color: var(--text-secondary);
+      }
+      .dl-mancanti ul {
+        margin: 0 0 var(--spacing-sm);
+        padding-left: 1.25rem;
       }
       .dl-mancanti {
         border: 1px solid var(--surface-border);

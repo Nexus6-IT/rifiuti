@@ -145,6 +145,50 @@ describe('MappatureComponent', () => {
     )
   })
 
+  it('conti ricavi: avverte che un documento ammette al massimo 8 conti diversi', async () => {
+    await crea('ADMIN', {
+      mappature: [
+        mappatura({ tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: '022' }),
+        mappatura({ tipo: 'CONTO_RICAVI', chiaveWasteflow: 'RIFIUTO', valore: '4010001' }),
+      ],
+    })
+    const limite = q('mappature-limite-conti')!
+    expect(limite.textContent).toContain('al massimo 8 conti di ricavo diversi')
+    expect(limite.textContent).toContain('stesso conto')
+    expect(q('mappature-sezione-CONTO_RICAVI')!.contains(limite)).toBeTrue()
+    expect(
+      q('mappature-sezione-CODICE_IVA')!.querySelector('[data-testid="mappature-limite-conti"]')
+    ).toBeNull()
+    // il campo del conto ne riporta il riferimento accanto al formato
+    expect(
+      campo('mappature-valore-CONTO_RICAVI-RIFIUTO').getAttribute('aria-describedby')
+    ).toContain(limite.id)
+  })
+
+  it('il limite di 8 conti compare solo per TeamSystem', async () => {
+    await crea('ADMIN', {
+      adattatori: [{ ...ADATTATORE, codice: 'ALTRO', nome: 'Altro' }],
+      adattatore: 'ALTRO',
+      mappature: [mappatura({ tipo: 'CONTO_RICAVI', chiaveWasteflow: 'RIFIUTO', valore: 'X' })],
+    })
+    expect(q('mappature-limite-conti')).toBeNull()
+  })
+
+  it('un campo mancante e` segnato come non valido finche` e` vuoto', async () => {
+    await crea('ADMIN', {
+      mappature: [mappatura({ tipo: 'CODICE_IVA', chiaveWasteflow: '22', valore: '022' })],
+      mancanti: [{ tipo: 'CODICE_IVA', chiaveWasteflow: '10', etichetta: 'IVA 10%' }],
+    })
+    const mancante = campo('mappature-valore-CODICE_IVA-10')
+    expect(mancante.getAttribute('aria-invalid')).toBe('true')
+    expect(mancante.classList).toContain('campo-mancante')
+    const salvato = campo('mappature-valore-CODICE_IVA-22')
+    expect(salvato.getAttribute('aria-invalid')).toBeNull()
+    expect(salvato.classList).not.toContain('campo-mancante')
+    await scrivi('mappature-valore-CODICE_IVA-10', '010')
+    expect(campo('mappature-valore-CODICE_IVA-10').getAttribute('aria-invalid')).toBeNull()
+  })
+
   it('elenco delle mancanti in cima, finché non hanno un valore', async () => {
     await crea('ADMIN', {
       mancanti: [{ tipo: 'CODICE_IVA', chiaveWasteflow: '10', etichetta: 'IVA 10%' }],
@@ -285,6 +329,30 @@ describe('MappatureComponent', () => {
     await stabilizza(fixture)
     expect(servizio.salvaMappature).toHaveBeenCalledWith('TEAMSYSTEM', [
       { tipo: 'CLIENTE', chiaveWasteflow: 'c0', valore: 'NUOVO', versione: 1 },
+    ])
+  })
+
+  it('si modifica un campo della seconda pagina e il salvataggio lo invia', async () => {
+    const molte = Array.from({ length: 120 }, (_, i) =>
+      mappatura({
+        tipo: 'CLIENTE',
+        chiaveWasteflow: `c${i}`,
+        valore: `V${i}`,
+        etichetta: `Cliente ${String(i).padStart(4, '0')}`,
+      })
+    )
+    await crea('ADMIN', { mappature: molte })
+    const pagina2 = document.body.querySelectorAll<HTMLElement>('.p-paginator-page')[1]
+    pagina2.click()
+    await stabilizza(fixture)
+    expect(q('mappature-valore-CLIENTE-c0')).toBeNull()
+    expect(campo('mappature-valore-CLIENTE-c50').value).toBe('V50')
+    servizio.salvaMappature.and.returnValue(of(molte))
+    await scrivi('mappature-valore-CLIENTE-c50', '12345')
+    bottone('mappature-salva')!.click()
+    await stabilizza(fixture)
+    expect(servizio.salvaMappature).toHaveBeenCalledOnceWith('TEAMSYSTEM', [
+      { tipo: 'CLIENTE', chiaveWasteflow: 'c50', valore: '12345', versione: 1 },
     ])
   })
 
