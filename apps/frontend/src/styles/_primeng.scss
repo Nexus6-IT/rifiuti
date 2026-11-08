@@ -105,6 +105,30 @@
   border-color: var(--neutral-fill-hover);
   color: var(--on-neutral);
 }
+/* Secondari a testo o a contorno (severity «secondary»): Aura li colora #64748b con tre classi, che
+   battono le nostre a due. Sul fondo caldo della pagina fanno 4,25:1 (sotto AA) e sono fuori
+   tavolozza: stessi grigi dei bottoni text/outlined normali. */
+.p-button.p-button-secondary.p-button-text,
+.p-button.p-button-outlined.p-button-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.p-button.p-button-outlined.p-button-secondary {
+  color: var(--text-primary);
+  border-color: var(--control-border);
+}
+.p-button.p-button-secondary.p-button-text:not(:disabled):hover,
+.p-button.p-button-secondary.p-button-text:not(:disabled):active {
+  background: var(--color-gray-100);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+.p-button.p-button-outlined.p-button-secondary:not(:disabled):hover,
+.p-button.p-button-outlined.p-button-secondary:not(:disabled):active {
+  background: var(--surface-hover);
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
+}
 /* Varianti piene: il testo e' --text-inverse, che si inverte insieme al fondo. */
 .p-button.p-button-success,
 .p-button.p-button-danger,
@@ -623,6 +647,33 @@ input[type='file']::file-selector-button:hover {
 .p-paginator .p-paginator-last,
 .p-paginator .p-paginator-pages .p-paginator-page {
   color: var(--text-secondary);
+}
+
+/* Tabella senza righe (bug 32): il paginatore con «0 di 0» e le frecce spente non serve a nessuno.
+   La pagina mette `styleClass="senza-righe"` al p-table quando l'elenco e' vuoto. */
+.senza-righe .p-paginator {
+  display: none;
+}
+
+/* Menu delle azioni di riga (app-azioni-riga): la voce pericolosa e' rossa, quella disabilitata con
+   un motivo resta raggiungibile dal puntatore, cosi' il title si legge. */
+.p-menu .p-menuitem.azione-pericolosa .p-menuitem-link,
+.p-menu .p-menuitem.azione-pericolosa .p-menuitem-text,
+.p-menu .p-menuitem.azione-pericolosa .p-menuitem-icon {
+  color: var(--color-danger);
+}
+/* Voce disabilitata con motivo: il motivo e' una seconda riga di testo (a capo con \n nell'etichetta). */
+.p-menu .p-menuitem.azione-con-motivo {
+  cursor: not-allowed;
+}
+.p-menu .p-menuitem.azione-con-motivo .p-menuitem-text {
+  white-space: pre-line;
+  line-height: 1.35;
+}
+/* Bottone principale disabilitato con motivo: il title si legge anche col puntatore. */
+.p-button.azioni-riga__principale:disabled[title] {
+  pointer-events: auto;
+  cursor: not-allowed;
 }
 
 /* ===== Dialog: galleggia, quindi e' l'unica cosa con ombra ===== */
