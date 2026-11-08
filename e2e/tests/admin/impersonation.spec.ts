@@ -24,7 +24,7 @@ test.describe('Impersonificazione utente (SUPER_ADMIN)', () => {
 
       // TODO: individuare una riga utente di test dedicata (non un utente reale)
       const row = adminUsers.rowByEmail('TODO-utente-test@example.com')
-      await adminUsers.impersonaButtonInRow(row).click()
+      await adminUsers.impersona(row)
 
       const dashboard = new DashboardPage(page)
       await expect(dashboard.impersonationBanner).toBeVisible()

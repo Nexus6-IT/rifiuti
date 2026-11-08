@@ -1,6 +1,7 @@
 import { Component, OnInit, signal, computed } from '@angular/core'
 import { CommonModule } from '@angular/common'
 import { HttpClient } from '@angular/common/http'
+import { firstValueFrom } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
 import { TooltipModule } from 'primeng/tooltip'
@@ -13,7 +14,7 @@ interface Notification {
   message: string
   read: boolean
   createdAt: string
-  metadata?: any
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -42,17 +43,34 @@ interface Notification {
           <p-button
             label="Segna tutte come lette"
             icon="pi pi-check"
+            [outlined]="true"
             (onClick)="markAllAsRead()"
             [disabled]="hasNoUnreadNotifications()"
+            data-testid="segna-tutte-lette"
           ></p-button>
         </div>
       </header>
 
-      <section class="notifications-list" aria-label="Elenco notifiche">
+      <section *ngIf="errore()" class="surface-card" role="alert" data-testid="notifiche-errore">
+        <div class="empty-state">
+          <i class="pi pi-exclamation-triangle empty-state__icon" aria-hidden="true"></i>
+          <p class="empty-state__title">Impossibile caricare le notifiche</p>
+          <p>Si è verificato un errore. Riprova.</p>
+          <p-button
+            label="Riprova"
+            icon="pi pi-refresh"
+            [outlined]="true"
+            (onClick)="loadNotifications()"
+          ></p-button>
+        </div>
+      </section>
+
+      <section *ngIf="!errore()" class="notifications-list" aria-label="Elenco notifiche">
         <article
           *ngFor="let notification of notifications()"
           class="surface-card notification-item"
           [class.notification-item--unread]="!notification.read"
+          data-testid="notifica"
         >
           <div class="notification-icon" aria-hidden="true">
             <i [class]="getNotificationIcon(notification.type)"></i>
@@ -60,26 +78,25 @@ interface Notification {
           <div class="notification-content">
             <h2 class="notification-title">
               {{ notification.title }}
-              <p-tag *ngIf="!notification.read" value="Nuovo" severity="info"></p-tag>
+              <p-tag *ngIf="!notification.read" value="Nuova" severity="secondary"></p-tag>
             </h2>
             <p class="notification-message">{{ notification.message }}</p>
             <small class="notification-time">{{ formatDate(notification.createdAt) }}</small>
-          </div>
-          <div class="notification-actions">
-            <p-button
-              *ngIf="!notification.read"
-              icon="pi pi-check"
-              [rounded]="true"
-              [text]="true"
-              severity="success"
-              (onClick)="markAsRead(notification.id)"
-              pTooltip="Segna come letta"
-              [attr.aria-label]="'Segna come letta la notifica: ' + notification.title"
-            ></p-button>
+            <div class="notification-actions" *ngIf="!notification.read">
+              <p-button
+                label="Segna come letta"
+                icon="pi pi-check"
+                [outlined]="true"
+                size="small"
+                (onClick)="markAsRead(notification.id)"
+                [attr.aria-label]="'Segna come letta la notifica: ' + notification.title"
+                data-testid="segna-letta"
+              ></p-button>
+            </div>
           </div>
         </article>
 
-        <div *ngIf="hasNoNotifications()" class="surface-card">
+        <div *ngIf="hasNoNotifications() && !caricamento()" class="surface-card">
           <div class="empty-state">
             <i class="pi pi-inbox empty-state__icon" aria-hidden="true"></i>
             <p class="empty-state__title">Nessuna notifica</p>
@@ -102,23 +119,16 @@ interface Notification {
         gap: var(--spacing-base);
         align-items: flex-start;
         padding: var(--spacing-lg);
-        transition:
-          box-shadow var(--transition-base),
-          transform var(--transition-base);
-      }
-
-      .notification-item:hover {
-        box-shadow: var(--shadow-md);
       }
 
       .notification-item--unread {
-        border-left: 4px solid var(--brand-primary);
-        background-color: var(--brand-primary-50);
+        /* Non letta: fondo grigio tenue, mai l'arancio (che e' solo del bottone primario). */
+        background-color: var(--surface-hover);
       }
 
       .notification-icon {
         font-size: 1.75rem;
-        color: var(--brand-primary);
+        color: var(--text-secondary);
         flex-shrink: 0;
         line-height: 1;
       }
@@ -148,7 +158,7 @@ interface Notification {
       }
 
       .notification-actions {
-        flex-shrink: 0;
+        margin-top: var(--spacing-sm);
       }
 
       @media (max-width: 576px) {
@@ -162,6 +172,8 @@ interface Notification {
 export class NotificationsPageComponent implements OnInit {
   protected readonly notifications = signal<Notification[]>([])
   protected readonly unreadCount = computed(() => this.notifications().filter(n => !n.read).length)
+  protected readonly caricamento = signal(true)
+  protected readonly errore = signal(false)
   private readonly apiUrl = `${environment.apiUrl}/notifications`
 
   constructor(private readonly http: HttpClient) {}
@@ -170,18 +182,23 @@ export class NotificationsPageComponent implements OnInit {
     this.loadNotifications()
   }
 
-  private async loadNotifications(): Promise<void> {
+  protected async loadNotifications(): Promise<void> {
+    this.caricamento.set(true)
+    this.errore.set(false)
     try {
-      const data = await this.http.get<Notification[]>(`${this.apiUrl}/user`).toPromise()
+      const data = await firstValueFrom(this.http.get<Notification[]>(this.apiUrl))
       this.notifications.set(data || [])
     } catch (error) {
       console.error('Failed to load notifications', error)
+      this.errore.set(true)
+    } finally {
+      this.caricamento.set(false)
     }
   }
 
   protected async markAsRead(id: string): Promise<void> {
     try {
-      await this.http.patch(`${this.apiUrl}/${id}/read`, {}).toPromise()
+      await firstValueFrom(this.http.post(`${this.apiUrl}/${id}/mark-read`, {}))
 
       // Update local state
       this.notifications.update(notifications =>
@@ -194,7 +211,7 @@ export class NotificationsPageComponent implements OnInit {
 
   protected async markAllAsRead(): Promise<void> {
     try {
-      await this.http.post(`${this.apiUrl}/mark-all-read`, {}).toPromise()
+      await firstValueFrom(this.http.post(`${this.apiUrl}/mark-all-read`, {}))
 
       // Update local state
       this.notifications.update(notifications => notifications.map(n => ({ ...n, read: true })))
@@ -205,6 +222,16 @@ export class NotificationsPageComponent implements OnInit {
 
   protected getNotificationIcon(type: string): string {
     const icons: Record<string, string> = {
+      // Tipi veri del backend (enum NotificationType) e quelli storici della pagina.
+      SIGNATURE_REQUIRED: 'pi pi-file-edit',
+      FIR_DEADLINE_APPROACHING: 'pi pi-clock',
+      MUD_DEADLINE_APPROACHING: 'pi pi-clock',
+      SUBSCRIPTION_EXPIRING: 'pi pi-credit-card',
+      AUTORIZZAZIONE_IN_SCADENZA: 'pi pi-clock',
+      CERTIFICATO_RENTRI_IN_SCADENZA: 'pi pi-clock',
+      TRASPORTATORE_ISCRIZIONE_IN_SCADENZA: 'pi pi-clock',
+      DESTINATARIO_AUTORIZZAZIONE_IN_SCADENZA: 'pi pi-clock',
+      SYSTEM_ERROR: 'pi pi-exclamation-triangle',
       FIR_SIGNATURE_REQUIRED: 'pi pi-file-edit',
       FIR_COMPLETED: 'pi pi-check-circle',
       RENTRI_SYNC_FAILED: 'pi pi-exclamation-triangle',
@@ -232,9 +259,9 @@ export class NotificationsPageComponent implements OnInit {
     const diffDays = Math.floor(diffMs / 86400000)
 
     if (diffMins < 1) return 'Proprio ora'
-    if (diffMins < 60) return `${diffMins} minuti fa`
-    if (diffHours < 24) return `${diffHours} ore fa`
-    if (diffDays < 7) return `${diffDays} giorni fa`
+    if (diffMins < 60) return diffMins === 1 ? '1 minuto fa' : `${diffMins} minuti fa`
+    if (diffHours < 24) return diffHours === 1 ? '1 ora fa' : `${diffHours} ore fa`
+    if (diffDays < 7) return diffDays === 1 ? '1 giorno fa' : `${diffDays} giorni fa`
 
     return d.toLocaleDateString('it-IT', {
       day: 'numeric',

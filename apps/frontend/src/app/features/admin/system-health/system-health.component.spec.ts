@@ -84,6 +84,16 @@ describe('SystemHealthComponent', () => {
     expect(html.textContent).toContain('SELECT 1 eseguita')
   })
 
+  it('stile: un solo h1, nessuna larghezza massima inline (come le altre pagine) e un solo primario o nessuno', () => {
+    setup('SUPER_ADMIN')
+    fixture.detectChanges()
+
+    const html: HTMLElement = fixture.nativeElement
+    expect(html.querySelectorAll('h1').length).toBe(1)
+    expect(html.querySelector('.page')?.getAttribute('style') ?? '').not.toContain('max-width')
+    expect(html.querySelectorAll('.wf-primario').length).toBe(0)
+  })
+
   it('dichiara quando i dati vengono dalla cache e di che eta', () => {
     setup('SUPER_ADMIN')
     service.stato.and.returnValue(of(stato({ cached: true, cacheAgeSeconds: 42 })))

@@ -51,7 +51,7 @@ interface Sezione {
   standalone: true,
   imports: [CommonModule, ButtonModule],
   template: `
-    <div class="page" style="max-width: 1100px;">
+    <div class="page">
       <header class="page-header">
         <div class="page-header__titles">
           <h1 class="page-title">Stato del sistema</h1>
@@ -200,7 +200,7 @@ interface Sezione {
         color: var(--text-color-secondary);
       }
       .sh-errore {
-        color: var(--red-600);
+        color: var(--color-danger);
       }
       .sh-lista {
         list-style: none;

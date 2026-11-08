@@ -5,6 +5,8 @@ import { ButtonModule } from 'primeng/button'
 import { TagModule } from 'primeng/tag'
 import { TooltipModule } from 'primeng/tooltip'
 import { Role } from '../../../../core/state/role.store'
+import { PermissionFormatPipe } from '../../pipes/permission-format.pipe'
+import { RoleDescriptionPipe } from '../../pipes/role-description.pipe'
 
 /**
  * RoleCardComponent
@@ -23,58 +25,71 @@ import { Role } from '../../../../core/state/role.store'
 @Component({
   selector: 'app-role-card',
   standalone: true,
-  imports: [CommonModule, CardModule, ButtonModule, TagModule, TooltipModule],
+  imports: [
+    CommonModule,
+    CardModule,
+    ButtonModule,
+    TagModule,
+    TooltipModule,
+    PermissionFormatPipe,
+    RoleDescriptionPipe,
+  ],
   template: `
     <p-card [styleClass]="'role-card ' + (role.isSystemRole ? 'system-role' : 'custom-role')">
       <ng-template pTemplate="header">
         <div class="card-header">
           <div class="role-name-section">
-            <h3 class="role-name">{{ role.name }}</h3>
+            <h3 class="role-name">{{ role.name | roleDescription: 'name' }}</h3>
             <p-tag
-              [value]="role.isSystemRole ? 'System' : 'Custom'"
-              [severity]="role.isSystemRole ? 'info' : 'success'"
+              [value]="role.isSystemRole ? 'Di sistema' : 'Personalizzato'"
+              severity="secondary"
               styleClass="role-type-tag"
             ></p-tag>
           </div>
           <i
             *ngIf="role.isSystemRole"
             class="pi pi-lock system-icon"
-            pTooltip="System role - cannot be modified or deleted"
+            pTooltip="Ruolo di sistema: non si può modificare né eliminare"
+            aria-label="Ruolo di sistema"
           ></i>
         </div>
       </ng-template>
 
       <div class="card-content">
         <p class="role-description">
-          {{ role.description || 'No description provided' }}
+          {{
+            role.isSystemRole || !role.description
+              ? (role.name | roleDescription: 'short')
+              : role.description
+          }}
         </p>
 
         <div class="role-stats">
           <div class="stat-item">
             <i class="pi pi-shield stat-icon"></i>
-            <span class="stat-label">Permissions:</span>
+            <span class="stat-label">Permessi:</span>
             <span class="stat-value">{{ role.permissions.length }}</span>
           </div>
           <div class="stat-item">
             <i class="pi pi-users stat-icon"></i>
-            <span class="stat-label">Users:</span>
+            <span class="stat-label">Utenti:</span>
             <span class="stat-value">{{ userCount }}</span>
           </div>
         </div>
 
         <!-- Permission preview (first 3 permissions) -->
         <div class="permissions-preview" *ngIf="role.permissions.length > 0">
-          <p class="preview-label">Key Permissions:</p>
+          <p class="preview-label">Permessi principali:</p>
           <div class="permissions-list">
             <p-tag
               *ngFor="let permission of getPreviewPermissions()"
-              [value]="permission"
+              [value]="permission | permissionFormat: 'short'"
               severity="secondary"
               styleClass="permission-tag"
             ></p-tag>
             <p-tag
               *ngIf="role.permissions.length > 3"
-              [value]="'+' + (role.permissions.length - 3) + ' more'"
+              [value]="'+' + (role.permissions.length - 3) + ' altri'"
               severity="secondary"
               styleClass="permission-tag more-tag"
             ></p-tag>
@@ -83,7 +98,7 @@ import { Role } from '../../../../core/state/role.store'
 
         <div class="no-permissions" *ngIf="role.permissions.length === 0">
           <i class="pi pi-info-circle"></i>
-          <span>No permissions assigned</span>
+          <span>Nessun permesso assegnato</span>
         </div>
       </div>
 
@@ -92,26 +107,26 @@ import { Role } from '../../../../core/state/role.store'
           <button
             pButton
             icon="pi pi-user-plus"
-            label="Assign"
-            class="p-button-sm p-button-success"
+            label="Assegna"
+            class="p-button-sm"
             (click)="onAssign.emit(role)"
-            pTooltip="Assign this role to a user"
+            pTooltip="Assegna questo ruolo a un utente"
           ></button>
           <button
             pButton
             icon="pi pi-eye"
-            label="View Details"
+            label="Dettagli"
             class="p-button-sm p-button-outlined"
             (click)="onViewDetails.emit(role)"
-            pTooltip="View role details and permissions"
+            pTooltip="Vedi i dettagli e i permessi del ruolo"
           ></button>
           <button
             pButton
             icon="pi pi-users"
-            label="Users"
+            label="Utenti"
             class="p-button-sm p-button-outlined"
             (click)="onViewUsers.emit(role)"
-            pTooltip="View users with this role"
+            pTooltip="Vedi gli utenti con questo ruolo"
           ></button>
         </div>
       </ng-template>
