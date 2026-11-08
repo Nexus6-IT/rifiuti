@@ -89,6 +89,13 @@ describe('AbbinamentiComponent (DOM)', () => {
     expect(testo()).not.toContain('s1')
   })
 
+  it('un solo bottone primario («Abbina con FIFO»); gli altri sono a contorno', async () => {
+    await setup()
+    const primari = fixture.nativeElement.querySelectorAll('.wf-primario')
+    expect(primari.length).toBe(1)
+    expect(primari[0].textContent).toContain('Abbina con FIFO')
+  })
+
   it('nessun ambito: testo previsto', async () => {
     await setup(vista({ ambiti: [] }))
     expect(q('[data-testid="nessun-ambito"]')?.textContent).toContain(

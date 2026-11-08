@@ -58,7 +58,7 @@ const PIANI: PianoInfo[] = [
       'Export MUD',
       'Giacenze magazzino',
       'Contratti',
-      'ESG / CO2',
+      'ESG / CO₂',
       'Rilevamento anomalie',
       'Integrazione RENTRI (beta)',
     ],

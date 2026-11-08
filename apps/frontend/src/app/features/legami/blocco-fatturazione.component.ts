@@ -273,9 +273,8 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
         margin-top: 1rem;
       }
       .blocco-titolo {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
         margin: 0 0 0.5rem;
       }
       .dati-legame {
@@ -305,9 +304,9 @@ type Modifiche = Partial<Record<CampoRiga, string | null>>
         border-radius: 6px;
       }
       .avviso-warn {
-        background: var(--color-warning-bg, #fef3c7);
-        border: 1px solid var(--color-warning, #b45309);
-        color: var(--color-warning, #92400e);
+        background: var(--stato-warn-bg);
+        border: 1px solid var(--stato-warn-edge);
+        color: var(--stato-warn-ink);
       }
       .sr-only {
         position: absolute;

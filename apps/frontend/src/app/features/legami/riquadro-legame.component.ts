@@ -241,9 +241,8 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
         margin-bottom: 0.5rem;
       }
       .riquadro-titolo {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
         margin: 0;
       }
       .riquadro-dati {
@@ -270,14 +269,14 @@ export type EsitoRiquadro = 'presente' | 'assente' | 'errore'
         border-radius: 6px;
       }
       .avviso-warn {
-        background: var(--color-warning-bg, #fef3c7);
-        border: 1px solid var(--color-warning, #b45309);
-        color: var(--color-warning, #92400e);
+        background: var(--stato-warn-bg);
+        border: 1px solid var(--stato-warn-edge);
+        color: var(--stato-warn-ink);
       }
       .avviso-errore {
-        background: var(--color-danger-bg, #fee2e2);
-        border: 1px solid var(--color-danger, #b91c1c);
-        color: var(--color-danger, #991b1b);
+        background: var(--stato-err-bg);
+        border: 1px solid var(--stato-err-edge);
+        color: var(--stato-err-ink);
       }
       .avviso p {
         margin: 0;

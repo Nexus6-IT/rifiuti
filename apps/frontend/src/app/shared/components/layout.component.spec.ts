@@ -7,6 +7,7 @@ import { provideRouter, Router } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { signal } from '@angular/core'
 import { Observable, Subject, of, throwError } from 'rxjs'
+import { AuthService, User } from '../../core/services/auth.service'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { LegamiService } from '../../features/legami/legami.service'
 import { LayoutComponent, ordinaAziendePerGruppo } from './layout.component'
@@ -194,7 +195,7 @@ class BottoniProvaComponent {}
 describe('LayoutComponent: shell Libro mastro', () => {
   let fixture: ComponentFixture<LayoutComponent>
 
-  async function crea(url = '/dashboard'): Promise<HTMLElement> {
+  async function crea(url = '/dashboard', ruolo?: string): Promise<HTMLElement> {
     TestBed.configureTestingModule({
       imports: [LayoutComponent, HttpClientTestingModule],
       providers: [
@@ -208,6 +209,13 @@ describe('LayoutComponent: shell Libro mastro', () => {
       of({ features: ['contratti'], tier: null, userLimitTotal: null })
     )
     spyOn(ff, 'has').and.returnValue(true)
+    if (ruolo) {
+      TestBed.inject(AuthService).currentUser.set({
+        id: 'u1',
+        email: 'a@test.invalid',
+        role: ruolo,
+      } as unknown as User)
+    }
     await TestBed.inject(Router).navigateByUrl(url)
     fixture = TestBed.createComponent(LayoutComponent)
     fixture.detectChanges()
@@ -376,6 +384,26 @@ describe('LayoutComponent: shell Libro mastro', () => {
     fixture.componentInstance.alChiudersiDrawer()
     expect(document.activeElement).toBe(apri)
     altro.remove()
+  })
+
+  it('la voce di ESG si scrive «ESG / CO₂» (con il pedice), nel menu e nel modello', async () => {
+    const el = await crea()
+    expect(voce(el, 'ESG').textContent).toContain('ESG / CO₂')
+    expect(voce(el, 'ESG').textContent).not.toContain('CO2')
+  })
+
+  it("SUPER_ADMIN: l'etichetta «Tenant attivo» sta ad almeno 16px dal bordo dello schermo", async () => {
+    const el = await crea('/dashboard', 'SUPER_ADMIN')
+    const etichetta = el.querySelector<HTMLElement>('.sidebar .tenant-switcher__label')!
+    expect(etichetta.textContent).toMatch(/Tenant attivo/)
+    const rientro = parseFloat(getComputedStyle(etichetta).paddingLeft)
+    // La sidebar e' attaccata al bordo dello schermo e non ha rientro proprio: il testo dista
+    // dal bordo quanto il margine del selettore piu' il rientro dell'etichetta.
+    const sidebar = el.querySelector('.sidebar') as HTMLElement
+    expect(parseFloat(getComputedStyle(sidebar).paddingLeft)).toBe(0)
+    const selettore = etichetta.closest('.tenant-switcher') as HTMLElement
+    const dalBordo = parseFloat(getComputedStyle(selettore).marginLeft) + rientro
+    expect(dalBordo).toBeGreaterThanOrEqual(16)
   })
 
   it('il gutter laterale sta su .main__inner: 24px da 992, 20px da 576, 16px sotto', async () => {

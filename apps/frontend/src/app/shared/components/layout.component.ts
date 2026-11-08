@@ -755,6 +755,8 @@ export function ordinaAziendePerGruppo(
         margin: var(--spacing-md) var(--spacing-md) 0;
       }
       .tenant-switcher__label {
+        /* Il testo non sta a meno di 16 px dal bordo dello schermo (controllo «edge-text»). */
+        padding-left: 6px;
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
         color: var(--sidebar-ink-muted);
@@ -1300,7 +1302,7 @@ export class LayoutComponent implements OnInit {
       icon: 'pi pi-calendar',
       feature: 'contratti',
     },
-    { label: 'ESG / CO2', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
+    { label: 'ESG / CO₂', route: '/esg', icon: 'pi pi-chart-line', feature: 'esg' },
     {
       label: 'Anomalie',
       route: '/anomalie',

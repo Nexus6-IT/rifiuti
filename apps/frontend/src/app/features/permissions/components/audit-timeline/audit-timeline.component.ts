@@ -173,7 +173,7 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe'
       }
 
       .timeline-item.denied .timeline-content {
-        border-left: 3px solid var(--color-danger);
+        border-color: var(--stato-err-edge);
       }
 
       .timeline-header {
@@ -192,8 +192,6 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe'
         border-radius: var(--radius-xl);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
       }
 
       .decision-badge.denied {
@@ -260,8 +258,6 @@ import { AuditTimestampPipe } from '../../pipes/audit-timestamp.pipe'
       .detail-label {
         font-size: var(--font-size-xs);
         color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
       }
 
       .detail-value {

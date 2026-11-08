@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core'
-import { TonoStato } from '../../../shared/models/stati-fir'
+import { TonoStato } from '../models/stati-fir'
 
 /**
  * Pillola di stato da 22 px: parola + pallino + tinta tenue (mai il solo colore).

@@ -271,7 +271,7 @@ type Ricerca = string | null
         margin: var(--spacing-md) 0;
       }
       .ne-filtri {
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--surface-border);
         border-radius: var(--radius-md, 6px);
         padding: var(--spacing-md);
         margin: 0 0 var(--spacing-md);

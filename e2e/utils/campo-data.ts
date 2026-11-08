@@ -17,7 +17,7 @@ export function inputData(campo: Locator): Locator {
 
 /**
  * Scrive `iso` (`AAAA-MM-GG`, o `''` per svuotare) nel campo e ne esce chiudendo il pannello del
- * calendario con un click fuori (Escape chiuderebbe un eventuale dialog intero).
+ * calendario con Tab (Escape o un click sulla maschera chiuderebbero un eventuale dialog).
  */
 export async function scriviData(page: Page, campo: Locator, iso: string): Promise<void> {
   const input = inputData(campo)
@@ -25,7 +25,10 @@ export async function scriviData(page: Page, campo: Locator, iso: string): Promi
   await input.press('Control+A')
   if (iso) await input.pressSequentially(dataItaliana(iso))
   else await input.press('Backspace')
-  await page.mouse.click(0, 0)
+  // Tab: il campo perde il focus (il valore arriva al form) e PrimeNG chiude il pannello. Un click
+  // fuori rischia di cadere sul pannello stesso o sulla maschera, che chiuderebbe il dialog.
+  await input.press('Tab')
+  await expect(page.locator('.p-datepicker')).toHaveCount(0)
   await expect(input).toHaveValue(dataItaliana(iso))
 }
 

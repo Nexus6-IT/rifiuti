@@ -965,7 +965,7 @@ input[type='file']::file-selector-button:hover {
 /* ===== Toast / Message: stesse coppie dei tag, il significato sta anche nell'icona ===== */
 .p-toast .p-toast-message {
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-toast);
 }
 /* Sul telefono il toast sta dentro il margine della pagina (16px), non a 9px dal bordo. */
 @media (max-width: 576px) {

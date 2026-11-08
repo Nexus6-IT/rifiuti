@@ -43,7 +43,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'giacenze', label: 'Giacenze' },
   { key: 'registro', label: 'Registro cronologico C/S' },
   { key: 'contratti', label: 'Contratti' },
-  { key: 'esg', label: 'ESG/CO2' },
+  { key: 'esg', label: 'ESG/CO₂' },
   { key: 'anomalie', label: 'Anomalie' },
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },

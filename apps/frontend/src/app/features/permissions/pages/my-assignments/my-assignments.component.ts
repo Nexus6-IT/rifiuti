@@ -362,8 +362,8 @@ import {
       padding: var(--spacing-2xl) var(--spacing-base);
       text-align: center;
       color: var(--text-secondary);
-      border-left: 4px solid var(--color-danger);
-      background: var(--color-danger-bg);
+      border: 1px solid var(--stato-err-edge);
+      background: var(--stato-err-bg);
 
       i {
         margin-bottom: var(--spacing-base);
@@ -555,9 +555,7 @@ import {
           .location-label {
             font-size: var(--font-size-sm);
             font-weight: var(--font-weight-semibold);
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--text-tertiary);
+            color: var(--text-secondary);
           }
         }
 

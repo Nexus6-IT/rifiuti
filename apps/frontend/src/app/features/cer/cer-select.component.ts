@@ -9,7 +9,7 @@
  * sia con `formControlName` (reactive form del registro). Il valore
  * scritto/emesso è SEMPRE la stringa del codice CER canonico ("NN NN NN"(*)).
  *
- * Design system "B": teal-700 #0f766e, bordi slate-500, WCAG 2.1 AA.
+ * Stile «Libro mastro» (giro 2): token del tema, bordi neutri, WCAG 2.1 AA.
  */
 
 import { Component, Input, forwardRef } from '@angular/core'

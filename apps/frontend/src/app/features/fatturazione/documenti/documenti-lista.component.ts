@@ -528,7 +528,7 @@ function chiaviPerMappature(err: unknown): ChiaveMancante[] {
         color: var(--text-secondary);
       }
       .dl-mancanti {
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--surface-border);
         border-left: 4px solid var(--color-danger);
         border-radius: var(--radius-md);
         padding: var(--spacing-sm) var(--spacing-md);

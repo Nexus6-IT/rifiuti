@@ -179,13 +179,12 @@ interface Candidato {
       .cda__badge {
         font-size: 0.75rem;
         font-weight: 600;
-        text-transform: uppercase;
       }
       .cda__avviso {
-        color: var(--orange-700);
+        color: var(--stato-warn-ink);
       }
       .cda__elenco {
-        border: 1px solid var(--surface-border, #ccc);
+        border: 1px solid var(--surface-border);
         max-height: 200px;
         overflow: auto;
         padding: 0.5rem;

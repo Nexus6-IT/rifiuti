@@ -6,7 +6,6 @@ import { TableModule } from 'primeng/table'
 import { ButtonModule } from 'primeng/button'
 import { InputTextModule } from 'primeng/inputtext'
 import { DropdownModule } from 'primeng/dropdown'
-import { TagModule } from 'primeng/tag'
 import { DialogModule } from 'primeng/dialog'
 import { InputNumberModule } from 'primeng/inputnumber'
 import { MessageModule } from 'primeng/message'
@@ -21,6 +20,8 @@ import { shareReplay } from 'rxjs/operators'
 import { FirService, CreateFIRDto, ModificaFIRDto, TipoTratta } from './fir.service'
 import { InputTextareaModule } from 'primeng/inputtextarea'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
+import { TONO_STATO_FIR, TonoStato } from '../../shared/models/stati-fir'
+import { PillolaStatoComponent } from '../../shared/components/pillola-stato.component'
 import { ExportService } from '../../core/services/export.service'
 import { RegistryService } from '../registry/registry.service'
 import { Produttore, Trasportatore, Destinatario, Ditta } from '../../shared/models/registry.model'
@@ -69,7 +70,7 @@ interface OpzioneSede {
     ButtonModule,
     InputTextModule,
     DropdownModule,
-    TagModule,
+    PillolaStatoComponent,
     DialogModule,
     InputNumberModule,
     NumeroItalianoDirective,
@@ -103,7 +104,12 @@ interface OpzioneSede {
             [disabled]="loading || firList.length === 0"
           />
           @if (puoCreareFir()) {
-            <p-button label="Nuovo FIR" icon="pi pi-plus" (onClick)="showCreateDialog()" />
+            <p-button
+              label="Nuovo FIR"
+              icon="pi pi-plus"
+              styleClass="wf-primario"
+              (onClick)="showCreateDialog()"
+            />
           }
         </div>
       </header>
@@ -161,13 +167,14 @@ interface OpzioneSede {
             [value]="firList"
             [loading]="loading"
             [paginator]="true"
+            [alwaysShowPaginator]="false"
             [rows]="pageSize"
             [totalRecords]="totalRecords"
             [lazy]="true"
             (onLazyLoad)="loadFIRList($event)"
             responsiveLayout="scroll"
-            styleClass="p-datatable-sm"
-            [tableStyle]="{ 'min-width': '60rem' }"
+            [styleClass]="'p-datatable-sm' + (firList.length ? '' : ' senza-righe fir-vuota')"
+            [tableStyle]="{ 'min-width': firList.length ? '60rem' : '0' }"
           >
             <ng-template pTemplate="caption">
               <span class="sr-only">Elenco dei Formulari di Identificazione dei Rifiuti</span>
@@ -195,9 +202,10 @@ interface OpzioneSede {
                   {{ fir.rifiuto.quantita }} {{ fir.rifiuto.unitaMisura }}
                 </td>
                 <td>
-                  <p-tag
-                    [value]="getStatoLabel(fir.stato)"
-                    [severity]="getStatoSeverity(fir.stato)"
+                  <app-pillola-stato
+                    [tono]="tonoStato(fir.stato)"
+                    [testo]="getStatoLabel(fir.stato)"
+                    [barrato]="fir.stato === FIRStato.ANNULLATO"
                     [pTooltip]="motivoNonModificabileRiga(fir)"
                     tooltipPosition="top"
                     [attr.data-testid]="'fir-stato-' + fir.id"
@@ -1037,14 +1045,16 @@ interface OpzioneSede {
         flex-direction: column;
         gap: var(--spacing-md); /* 12px intra-sezione (era 16px) */
       }
+      /* Lista vuota: niente intestazioni (sul telefono sforerebbero lo schermo) e il messaggio a tutta larghezza. */
+      :host ::ng-deep .fir-vuota .p-datatable-thead {
+        display: none;
+      }
       .fir-section__title {
         margin: 0;
         font-family: var(--font-display);
-        font-size: var(--font-size-xs);
+        font-size: var(--font-size-sm);
         font-weight: var(--font-weight-semibold);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--text-tertiary);
+        color: var(--text-secondary);
       }
       .fir-divider {
         border: 0;
@@ -1436,7 +1446,7 @@ export class FirListComponent implements OnInit {
   statoOptions = [
     { label: 'Bozza', value: FIRStato.BOZZA },
     { label: 'Emesso', value: FIRStato.EMESSO },
-    { label: 'In Transito', value: FIRStato.IN_TRANSITO },
+    { label: 'In transito', value: FIRStato.IN_TRANSITO },
     { label: 'Consegnato', value: FIRStato.CONSEGNATO },
     { label: 'Annullato', value: FIRStato.ANNULLATO },
   ]
@@ -2293,18 +2303,12 @@ export class FirListComponent implements OnInit {
     return this.statoOptions.find(o => o.value === stato)?.label ?? stato
   }
 
-  getStatoSeverity(
-    stato: FIRStato
-  ): 'success' | 'info' | 'warning' | 'danger' | 'secondary' | 'contrast' | undefined {
-    const severityMap: Record<FIRStato, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
-      [FIRStato.BOZZA]: 'secondary',
-      [FIRStato.EMESSO]: 'info',
-      [FIRStato.IN_TRANSITO]: 'warning',
-      [FIRStato.CONSEGNATO]: 'success',
-      [FIRStato.ANNULLATO]: 'danger',
-    }
-    return severityMap[stato]
+  /** Tono della pillola di stato: gli stessi della Dashboard (`TONO_STATO_FIR`). */
+  tonoStato(stato: FIRStato): TonoStato {
+    return TONO_STATO_FIR[stato]
   }
+
+  readonly FIRStato = FIRStato
 
   /**
    * Lo stato RENTRI non ha senso per un FIR mai emesso (BOZZA) o annullato:
