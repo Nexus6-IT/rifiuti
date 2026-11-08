@@ -133,7 +133,7 @@ export class NotificationService {
     })
 
     return notifications.map((n: any) =>
-      Notification.create({
+      Notification.ricostruisci({
         id: n.id,
         tenantId: n.tenantId,
         userId: n.userId,
@@ -143,6 +143,9 @@ export class NotificationService {
         severity: n.severity as NotificationSeverity,
         actionUrl: n.actionUrl || undefined,
         metadata: {}, // Prisma schema does not have metadata field, so pass empty object
+        read: n.isRead,
+        createdAt: n.createdAt,
+        readAt: n.readAt,
       })
     )
   }
