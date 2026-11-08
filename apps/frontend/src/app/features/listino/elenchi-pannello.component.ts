@@ -28,6 +28,8 @@ import { ElencoAddebiti } from './listino.model'
         label="Nuovo elenco"
         icon="pi pi-plus"
         size="small"
+        [outlined]="true"
+        severity="secondary"
         (onClick)="nuovo.emit()"
         data-testid="listino-nuovo-elenco"
       />
@@ -42,11 +44,14 @@ import { ElencoAddebiti } from './listino.model'
         <button
           type="button"
           class="voce"
+          [attr.title]="e.codice + ' ' + e.descrizione"
           [attr.aria-pressed]="e.id === scelto?.id"
           (click)="scegli.emit(e)"
           [attr.data-testid]="'listino-scegli-' + e.id"
         >
-          <strong>{{ e.codice }}</strong> {{ e.descrizione }}
+          <span class="voce__testo"
+            ><strong>{{ e.codice }}</strong> {{ e.descrizione }}</span
+          >
           <span class="validita" *ngIf="e.validoDal && e.validoAl">
             dal {{ e.validoDal | date: 'dd/MM/yyyy' }} al {{ e.validoAl | date: 'dd/MM/yyyy' }}
           </span>
@@ -118,8 +123,8 @@ import { ElencoAddebiti } from './listino.model'
         border-left: 3px solid transparent;
       }
       .lista li.scelto {
-        border-left-color: var(--primary-color);
-        background: var(--surface-100);
+        border-left-color: var(--selected-line);
+        background: var(--selected);
       }
       .voce {
         background: none;
@@ -127,12 +132,21 @@ import { ElencoAddebiti } from './listino.model'
         text-align: left;
         cursor: pointer;
         flex: 1;
+        min-width: 0;
         font: inherit;
+        color: inherit;
+      }
+      /* Descrizione su una riga con ellissi: il title del bottone la dice intera. */
+      .voce__testo {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .validita {
         display: block;
         font-size: 0.85em;
-        color: var(--text-color-secondary);
+        color: var(--text-secondary);
       }
     `,
   ],

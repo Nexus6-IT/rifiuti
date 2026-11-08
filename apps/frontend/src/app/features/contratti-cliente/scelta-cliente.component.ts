@@ -34,7 +34,7 @@ export const etichettaCliente = (c: {
   standalone: true,
   imports: [CommonModule, FormsModule, AutoCompleteModule, ButtonModule],
   template: `
-    <label [for]="prefisso">{{ etichetta }}</label>
+    <label *ngIf="!senzaEtichetta" [for]="prefisso">{{ etichetta }}</label>
     <div class="scelta">
       <p-autoComplete
         [inputId]="prefisso"
@@ -52,6 +52,7 @@ export const etichettaCliente = (c: {
         [showClear]="true"
         [disabled]="disabled"
         [ariaLabel]="etichetta"
+        [placeholder]="segnaposto"
         styleClass="w-full"
         [attr.data-testid]="prefisso"
       />
@@ -96,6 +97,10 @@ export class SceltaClienteComponent implements OnChanges, OnDestroy {
   @Input() escludiId: string | null = null
   @Input() disabled = false
   @Input() puoCreare = false
+  /** Nei filtri di una lista l'etichetta non sta sopra il campo: resta come `aria-label`. */
+  @Input() senzaEtichetta = false
+  /** Testo del campo vuoto (nei filtri: «Tutti i clienti»). */
+  @Input() segnaposto = ''
   @Output() scelto = new EventEmitter<Cliente | null>()
   @Output() nuovo = new EventEmitter<unknown>()
 
