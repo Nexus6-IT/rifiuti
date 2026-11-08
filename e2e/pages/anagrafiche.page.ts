@@ -81,7 +81,7 @@ export class AnagrafichePage {
 
   /** Azione principale della riga («Modifica <ragione sociale>»), non «Sedi» del VIEWER. */
   editButton(id: string): Locator {
-    return this.row(id).getByRole('button', { name: /^Modifica / })
+    return this.row(id).getByTestId('azione-principale')
   }
 
   /**

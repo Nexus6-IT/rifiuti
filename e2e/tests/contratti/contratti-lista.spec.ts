@@ -136,6 +136,8 @@ test.describe('Lista contratti del produttore', () => {
     await page.goto('/contratti')
     await attendiElenco(page)
     await expect(riga(page, id)).toBeVisible()
+    // Controprova del negativo VIEWER: chi può gestire vede il bottone con lo stesso testid.
+    await expect(contenuto(page).getByTestId('contratti-nuovo')).toBeVisible()
     await eseguiAzioneRiga(page, riga(page, id), 'Cambia stato')
     const dlg = page.getByRole('dialog', { name: 'Cambia stato contratto' })
     await dlg.locator('#c-target-status').click()
@@ -156,7 +158,7 @@ test.describe('Lista contratti del produttore', () => {
     await expect(riga(page, id)).toBeVisible()
     await eseguiAzioneRiga(page, riga(page, id), 'Elimina')
     const conferma = page.getByRole('alertdialog').or(page.locator('.p-confirm-dialog'))
-    await conferma.getByRole('button', { name: 'Elimina' }).click()
+    await conferma.getByRole('button', { name: 'Elimina', exact: true }).click()
     await expect(riga(page, id)).toHaveCount(0, { timeout: ATTESA_SERVER })
   })
 
@@ -167,7 +169,7 @@ test.describe('Lista contratti del produttore', () => {
     await page.goto('/contratti')
     await attendiElenco(page)
     await expect(riga(page, id)).toBeVisible()
-    await expect(contenuto(page).getByRole('button', { name: 'Nuovo contratto' })).toHaveCount(0)
+    await expect(contenuto(page).getByTestId('contratti-nuovo')).toHaveCount(0)
     await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
     await expect(contenuto(page).getByTestId('azioni-altre')).toHaveCount(0)
     await expect(contenuto(page).getByTestId('azione-principale')).toHaveCount(0)

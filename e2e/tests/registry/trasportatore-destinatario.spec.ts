@@ -51,12 +51,14 @@ interface TrasportatoreResponse {
   id: string
   ragioneSociale: string
   numeroIscrizione: string
+  scadenzaIscrizione?: string | null
 }
 
 interface DestinatarioResponse {
   id: string
   ragioneSociale: string
   numeroAutorizzazione: string
+  scadenzaAutorizzazione?: string | null
 }
 
 function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) {
@@ -81,18 +83,24 @@ function payloadDestinatario(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+/** Giorno locale `AAAA-MM-GG` (mai `toISOString`: sposterebbe il giorno nei fusi lontani da UTC). */
+function giornoLocale(d: Date): string {
+  const due = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`
+}
+
 /** Ieri (scadenza passata) in formato ISO (solo giorno). */
 function ieriIso(): string {
   const d = new Date()
   d.setDate(d.getDate() - 1)
-  return d.toISOString().slice(0, 10)
+  return giornoLocale(d)
 }
 
 /** Fra un anno (scadenza futura) in formato ISO (solo giorno). */
 function fraUnAnnoIso(): string {
   const d = new Date()
   d.setFullYear(d.getFullYear() + 1)
-  return d.toISOString().slice(0, 10)
+  return giornoLocale(d)
 }
 
 /**
@@ -169,6 +177,8 @@ test.describe('Trasportatore — CRUD via UI (operator)', () => {
       'il trasportatore creato dalla UI deve comparire in GET /registry/trasportatori'
     ).toBeTruthy()
     registra('trasportatore', creato!.id)
+    // La data scritta nel campo deve essere arrivata al backend, giorno per giorno.
+    expect(creato!.scadenzaIscrizione?.slice(0, 10)).toBe(scadenza)
 
     await expect(anagrafiche.row(creato!.id)).toContainText(ragioneSociale)
   })
@@ -239,6 +249,8 @@ test.describe('Destinatario — CRUD via UI (operator)', () => {
       'il destinatario creato dalla UI deve comparire in GET /registry/destinatari'
     ).toBeTruthy()
     registra('destinatario', creato!.id)
+    // La data scritta nel campo deve essere arrivata al backend, giorno per giorno.
+    expect(creato!.scadenzaAutorizzazione?.slice(0, 10)).toBe(scadenza)
 
     await expect(anagrafiche.row(creato!.id)).toContainText(ragioneSociale)
   })

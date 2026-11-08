@@ -65,9 +65,9 @@ test.describe('Pese e MUD: apertura delle pagine', () => {
     const stato = page.getByTestId('mud-obbligo-stato')
     await expect(stato).toBeVisible({ timeout: ATTESA_SERVER })
     await expect(stato).toHaveText('Tenuta')
-    await page.locator('p-inputswitch .p-inputswitch-slider').click()
+    await page.getByTestId('mud-obbligo-interruttore').click()
     await expect(stato).toHaveText('Non tenuta')
-    await page.locator('p-inputswitch .p-inputswitch-slider').click()
+    await page.getByTestId('mud-obbligo-interruttore').click()
     await expect(stato).toHaveText('Tenuta')
   })
 
