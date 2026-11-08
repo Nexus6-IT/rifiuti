@@ -173,7 +173,9 @@ interface OpzioneSede {
             [lazy]="true"
             (onLazyLoad)="loadFIRList($event)"
             responsiveLayout="scroll"
-            [styleClass]="'p-datatable-sm' + (firList.length ? '' : ' senza-righe fir-vuota')"
+            [styleClass]="
+              'p-datatable-sm lista-telefono' + (firList.length ? '' : ' senza-righe fir-vuota')
+            "
             [tableStyle]="{ 'min-width': firList.length ? '60rem' : '0' }"
           >
             <ng-template pTemplate="caption">
@@ -191,17 +193,17 @@ interface OpzioneSede {
               </tr>
             </ng-template>
             <ng-template pTemplate="body" let-fir>
-              <tr>
-                <td>
+              <tr [attr.data-testid]="'fir-riga-' + fir.id">
+                <td class="f-num">
                   <span class="cell-mono">{{ fir.numeroProgressivo || 'N/D' }}</span>
                 </td>
-                <td>
+                <td class="f-cer">
                   <span class="cell-mono">{{ fir.rifiuto.cerCode }}</span>
                 </td>
-                <td class="num-col cell-nowrap">
+                <td class="num-col cell-nowrap f-qta">
                   {{ fir.rifiuto.quantita }} {{ fir.rifiuto.unitaMisura }}
                 </td>
-                <td>
+                <td class="f-stato">
                   <app-pillola-stato
                     [tono]="tonoStato(fir.stato)"
                     [testo]="getStatoLabel(fir.stato)"
@@ -211,7 +213,7 @@ interface OpzioneSede {
                     [attr.data-testid]="'fir-stato-' + fir.id"
                   />
                 </td>
-                <td>
+                <td class="f-rentri" [class.m-hide]="!mostraStatoRentri(fir)">
                   <app-rentri-sync-badge
                     *ngIf="mostraStatoRentri(fir)"
                     [numeroFir]="fir.numeroProgressivo || fir.id"
@@ -224,8 +226,8 @@ interface OpzioneSede {
                   />
                   <span *ngIf="!mostraStatoRentri(fir)" class="row-actions__none">—</span>
                 </td>
-                <td class="cell-nowrap">{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
-                <td>
+                <td class="cell-nowrap f-data">{{ fir.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+                <td class="azioni-col">
                   <div class="row-actions">
                     <p-button
                       *ngIf="fir.stato === 'BOZZA'"
@@ -1018,6 +1020,57 @@ interface OpzioneSede {
       }
       .row-actions__none {
         color: var(--text-secondary);
+      }
+      /* Telefono (pattern lista-telefono): ogni FIR e' una scheda. Prima riga numero e stato, seconda
+         CER e quantita', terza la data, poi il badge RENTRI (solo se c'e') e le azioni a tutta riga,
+         con bottoni da 44px. La tabella perde la larghezza minima della versione desktop. */
+      @media (max-width: 640px) {
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-table {
+          min-width: 0 !important;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr {
+          row-gap: var(--spacing-xs);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.f-num {
+          grid-column: 1;
+          grid-row: 1;
+          font-weight: var(--font-weight-medium);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.f-stato {
+          grid-column: 2;
+          grid-row: 1;
+          justify-self: end;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.f-cer {
+          grid-column: 1;
+          grid-row: 2;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.f-qta {
+          grid-column: 2;
+          grid-row: 2;
+          justify-self: end;
+          font-size: var(--font-size-sm);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.f-data {
+          grid-column: 1 / -1;
+          grid-row: 3;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.f-rentri {
+          grid-column: 1 / -1;
+          grid-row: 4;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.azioni-col {
+          grid-column: 1 / -1;
+          grid-row: 5;
+          justify-self: stretch;
+        }
+        .row-actions {
+          margin-top: var(--spacing-xs);
+        }
       }
       /* Testo leggibile sui pulsanti pieni teal, in chiaro e in scuro */
       .row-actions ::ng-deep .p-button:not(.p-button-text):not(.p-button-outlined) .p-button-label,

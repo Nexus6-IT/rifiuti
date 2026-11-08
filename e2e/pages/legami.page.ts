@@ -299,11 +299,20 @@ export class LegamiPage {
     await this.page.getByTestId(`listino-scegli-${elencoId}`).click()
   }
 
-  eliminaRiga(rigaId: string): Locator {
-    return this.page.getByTestId(`listino-elimina-riga-${rigaId}`).locator('button')
+  /** Apre il menu ⋯ della riga del listino e restituisce la voce «Elimina» (disabilitata se la riga e' in uso). */
+  async voceEliminaRiga(rigaId: string): Promise<Locator> {
+    const riga = this.page.getByTestId(`listino-riga-${rigaId}`)
+    await riga.getByTestId('azioni-altre').click()
+    return this.page.getByRole('menuitem', { name: /^Elimina/ })
+  }
+
+  /** Chiude il menu aperto da `voceEliminaRiga`. */
+  async chiudiMenuRiga(): Promise<void> {
+    await this.page.keyboard.press('Escape')
+    await this.page.getByRole('menuitem').first().waitFor({ state: 'hidden' })
   }
 
   suggerimentoEliminaRiga(rigaId: string): Locator {
-    return this.page.getByTestId(`listino-elimina-riga-tip-${rigaId}`)
+    return this.page.getByTestId(`listino-in-uso-${rigaId}`)
   }
 }

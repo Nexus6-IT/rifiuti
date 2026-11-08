@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common'
 import { Component, EventEmitter, Input, Output, computed, signal } from '@angular/core'
-import { ButtonModule } from 'primeng/button'
 import { TableModule } from 'primeng/table'
+import { AzioneRiga, AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
 import {
   cascataItaliana,
   decimaleItaliano,
@@ -20,7 +20,7 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
 @Component({
   selector: 'app-righe-tavola',
   standalone: true,
-  imports: [CommonModule, ButtonModule, TableModule],
+  imports: [CommonModule, AzioniRigaComponent, TableModule],
   template: `
     <p *ngIf="errore" role="alert" class="field-error" data-testid="listino-errore-righe">
       {{ errore }}
@@ -90,36 +90,20 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
               {{ r.appunti }}
             </td>
             <td class="azioni-col">
-              <p-button
-                icon="pi pi-external-link"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Apri la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
-                (onClick)="apri.emit(r)"
-                [attr.data-testid]="'listino-apri-' + r.id"
+              <app-azioni-riga
+                [principale]="azioniDi(r).principale"
+                [altre]="azioniDi(r).altre"
+                [nome]="codiceRiga(r)"
               />
-              <!-- Disabilitato, non nascosto: una riga usata dai legami resta chiusa/disattivata da "Apri". -->
-              <span
-                *ngIf="puoEliminare"
-                [attr.title]="r.eliminabile ? null : MOTIVO_IN_USO"
-                [attr.data-testid]="'listino-elimina-riga-tip-' + r.id"
+              <!-- Visibile anche a menu chiuso: una riga usata dai legami non si elimina. -->
+              <small
+                *ngIf="puoEliminare && !r.eliminabile"
+                class="cell-sub"
+                aria-hidden="true"
+                [attr.title]="MOTIVO_IN_USO"
+                [attr.data-testid]="'listino-in-uso-' + r.id"
+                >In uso</small
               >
-                <p-button
-                  icon="pi pi-trash"
-                  severity="danger"
-                  [text]="true"
-                  size="small"
-                  [disabled]="!r.eliminabile"
-                  [ariaLabel]="
-                    'Elimina la riga ' +
-                    (r.cerCode ?? r.addebito?.codice ?? r.tipo) +
-                    (r.eliminabile ? '' : ' (' + MOTIVO_IN_USO + ')')
-                  "
-                  (onClick)="elimina.emit(r)"
-                  [attr.data-testid]="'listino-elimina-riga-' + r.id"
-                />
-                <small *ngIf="!r.eliminabile" class="cell-sub" aria-hidden="true">In uso</small>
-              </span>
             </td>
           </tr>
         </ng-template>
@@ -192,11 +176,6 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
         .cella-codice {
           font-weight: 500;
         }
-        /* Apri ed Elimina: area di tocco da 44px (i p-button stanno nella vista di PrimeNG). */
-        :host ::ng-deep td.azioni-col .p-button {
-          min-width: 2.75rem;
-          height: 2.75rem;
-        }
       }
     `,
   ],
@@ -229,11 +208,55 @@ export class RigheTavolaComponent {
   @Input() caricamento = false
   @Input() errore: string | null = null
   /** Mostra "Elimina" su ogni riga: solo a chi scrive, con elenco modificabile e contratto attivo. */
-  @Input() puoEliminare = false
+  @Input() set puoEliminare(v: boolean) {
+    this.eliminaAbilitato.set(v)
+  }
+  get puoEliminare(): boolean {
+    return this.eliminaAbilitato()
+  }
+  private readonly eliminaAbilitato = signal(false)
   @Output() apri = new EventEmitter<RigaAddebito>()
   @Output() elimina = new EventEmitter<RigaAddebito>()
 
   readonly MOTIVO_IN_USO = 'In uso: la riga è citata da movimenti'
+
+  /** Azioni di ogni riga, calcolate una volta per cambio di righe: il menu aperto non vede il modello cambiare. */
+  private readonly azioniPerRiga = computed(
+    () => new Map(this.righe().map(r => [r.id, this.costruisciAzioni(r)]))
+  )
+
+  azioniDi(r: RigaAddebito): { principale: AzioneRiga; altre: AzioneRiga[] } {
+    return this.azioniPerRiga().get(r.id) ?? this.costruisciAzioni(r)
+  }
+
+  codiceRiga(r: RigaAddebito): string {
+    return r.cerCode ?? r.addebito?.codice ?? r.tipo
+  }
+
+  /**
+   * «Apri» sulla riga; «Elimina» nel menu ⋯ (in rosso), solo a chi scrive. Disabilitata, non
+   * nascosta, se la riga e' usata dai legami: il motivo e' nella voce.
+   */
+  private costruisciAzioni(r: RigaAddebito): { principale: AzioneRiga; altre: AzioneRiga[] } {
+    return {
+      principale: {
+        etichetta: 'Apri la riga',
+        icona: 'pi pi-external-link',
+        esegui: () => this.apri.emit(r),
+      },
+      altre: this.eliminaAbilitato()
+        ? [
+            {
+              etichetta: 'Elimina',
+              pericolosa: true,
+              disabilitata: !r.eliminabile,
+              motivo: r.eliminabile ? undefined : this.MOTIVO_IN_USO,
+              esegui: () => this.elimina.emit(r),
+            },
+          ]
+        : [],
+    }
+  }
 
   /** Fisso: quantità fissa (vuota = 1); `CER`/`V`: etichetta del tipo di quantità (E15). */
   quantita(r: RigaAddebito): string {
