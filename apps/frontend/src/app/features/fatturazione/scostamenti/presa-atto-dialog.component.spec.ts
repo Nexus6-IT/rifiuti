@@ -57,6 +57,13 @@ describe('PresaAttoDialogComponent', () => {
 
   afterEach(() => fixture?.destroy())
 
+  it('l’etichetta del campo dice che la nota è obbligatoria', async () => {
+    await crea()
+    expect(document.querySelector('label[for="presa-atto-nota"]')?.textContent).toContain(
+      '(obbligatorio)'
+    )
+  })
+
   it('nota obbligatoria: senza testo (o solo spazi) il pulsante resta spento', async () => {
     await crea()
     expect(

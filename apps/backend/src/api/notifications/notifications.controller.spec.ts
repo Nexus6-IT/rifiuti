@@ -46,6 +46,14 @@ describe('NotificationsController', () => {
   })
 
   describe('getNotifications', () => {
+    it('unreadOnly arriva come stringa dalla query: "true" filtra sulle non lette', async () => {
+      await controller.getNotifications(mockReq, 'true' as unknown as boolean, 10)
+
+      expect(notificationService.getUserNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({ unreadOnly: true })
+      )
+    })
+
     it('dovrebbe restituire le notifiche usando req.user.id', async () => {
       await controller.getNotifications(mockReq, false, 10)
 

@@ -414,13 +414,19 @@ test.describe('Legame movimento — interfaccia 4.3c', () => {
     // La riga CER A e' citata dai legami dei test precedenti.
     const legami = new LegamiPage(page)
     await legami.vaiAlListino(listino.contrattoId, listino.elencoId)
-    await expect(legami.eliminaRiga(listino.rigaCerA.id)).toBeVisible({ timeout: ATTESA_SERVER })
-    await expect(legami.eliminaRiga(listino.rigaCerA.id)).toBeDisabled()
+    await expect(page.getByTestId(`listino-riga-${listino.rigaCerA.id}`)).toBeVisible({
+      timeout: ATTESA_SERVER,
+    })
+    const voceUsata = await legami.voceEliminaRiga(listino.rigaCerA.id)
+    await expect(voceUsata).toBeVisible()
+    await expect(voceUsata).toBeDisabled()
+    await legami.chiudiMenuRiga()
     await expect(legami.suggerimentoEliminaRiga(listino.rigaCerA.id)).toHaveAttribute(
       'title',
       /In uso/
     )
-    await expect(legami.eliminaRiga(listino.rigaLibera.id)).toBeEnabled()
+    await expect(await legami.voceEliminaRiga(listino.rigaLibera.id)).toBeEnabled()
+    await legami.chiudiMenuRiga()
     // Anche per il server la riga usata non si elimina; resta nell'elenco.
     const r = await chiama<{ error?: string }>(
       'DELETE',

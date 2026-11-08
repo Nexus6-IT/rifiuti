@@ -56,6 +56,9 @@ export const FORMATO_MAPPATURA_TEAMSYSTEM: Readonly<
   REGISTRO: { cifre: 2, suggerimento: 'Codice registro di al massimo 2 cifre, solo numeri.' },
 }
 
+/** Conti di ricavo distinti ammessi in un documento dal tracciato TeamSystem (`MAX_CONTI_RICAVI`). */
+export const MAX_CONTI_RICAVI_TEAMSYSTEM = 8
+
 export const MESSAGGIO_TROPPE_MODIFICHE =
   'Salva le modifiche fatte prima di continuare (massimo 500 per volta)'
 const RIGHE_PER_PAGINA = 50
@@ -258,6 +261,16 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
             >
               {{ f.suggerimento }}
             </p>
+            <p
+              *ngIf="s.tipo === 'CONTO_RICAVI' && formato(s.tipo)"
+              class="nota-pagina"
+              id="mappature-limite-conti"
+              data-testid="mappature-limite-conti"
+            >
+              Un documento può avere al massimo {{ maxContiRicavi }} conti di ricavo diversi: se i
+              suoi centri di ricavo finiscono su più conti, l'export viene respinto. In quel caso
+              assegna lo stesso conto a più centri.
+            </p>
             <p-table
               [value]="s.righe"
               [paginator]="s.righe.length > righePerPagina"
@@ -291,9 +304,9 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
                       "
                       [maxLength]="formato(r.tipo)?.cifre ?? maxValore"
                       [attr.inputmode]="formato(r.tipo) ? 'numeric' : null"
-                      [attr.aria-describedby]="
-                        formato(r.tipo) ? 'mappature-formato-' + r.tipo : null
-                      "
+                      [attr.aria-describedby]="descrizioneCampo(r.tipo)"
+                      [class.campo-mancante]="eMancante(r)"
+                      [attr.aria-invalid]="eMancante(r) ? 'true' : null"
                       [ngModel]="r.valore"
                       [disabled]="inCorso()"
                       (ngModelChange)="modifica(r, $event)"
@@ -337,6 +350,9 @@ const chiaveRiga = (r: { tipo: TipoMappatura; chiaveWasteflow: string }): string
         width: 100%;
         max-width: 16rem;
       }
+      :host ::ng-deep .mappature input.campo-mancante {
+        border-color: var(--color-danger);
+      }
       .elenco-adattatori {
         margin: 0;
         padding-left: 1.25rem;
@@ -353,6 +369,7 @@ export class MappatureComponent {
 
   readonly titoli = TITOLI_TIPI_MAPPATURA
   readonly maxValore = MAX_VALORE_MAPPATURA
+  readonly maxContiRicavi = MAX_CONTI_RICAVI_TEAMSYSTEM
   readonly righePerPagina = RIGHE_PER_PAGINA
   readonly assente = ETICHETTA_ASSENTE
   readonly messaggioTroppe = MESSAGGIO_TROPPE_MODIFICHE
@@ -375,9 +392,7 @@ export class MappatureComponent {
   private codiceCorrente: string | null = null
   private readonly richieste$ = new Subject<Richiesta>()
 
-  readonly mancanti = computed(() =>
-    this.righe().filter(r => r.etichetta !== null && r.valore.trim() === '' && r.salvato === null)
-  )
+  readonly mancanti = computed(() => this.righe().filter(r => this.eMancante(r)))
 
   readonly sezioni = computed(() =>
     TIPI_MAPPATURA.map(tipo => ({ tipo, righe: this.righe().filter(r => r.tipo === tipo) })).filter(
@@ -424,6 +439,17 @@ export class MappatureComponent {
     this.adattatore()?.codice.toUpperCase() === 'TEAMSYSTEM'
       ? FORMATO_MAPPATURA_TEAMSYSTEM[tipo]
       : null
+
+  /** Chiave richiesta da un export respinto e ancora senza valore. */
+  eMancante = (r: RigaMappatura): boolean =>
+    r.etichetta !== null && r.valore.trim() === '' && r.salvato === null
+
+  /** Id dei suggerimenti che descrivono il campo (formato e, per i conti, il limite di 8). */
+  descrizioneCampo = (tipo: TipoMappatura): string | null => {
+    if (!this.formato(tipo)) return null
+    const id = 'mappature-formato-' + tipo
+    return tipo === 'CONTO_RICAVI' ? `${id} mappature-limite-conti` : id
+  }
 
   titolo = (tipo: string): string => this.titoli[tipo as TipoMappatura] ?? tipo
   perCodice = (_: number, a: AdattatoreVista): string => a.codice

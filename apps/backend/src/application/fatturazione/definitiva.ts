@@ -665,9 +665,12 @@ async function definitivaInTransazione(
     })
   }
 
-  // 8a bis. Centro di ricavo e categoria (Task 30b): le righe di listino sono gia' bloccate
-  // `FOR SHARE` (bloccaPerDefinitiva), quindi i codici riletti qui sono quelli che restano
-  // fotografati. Si aggiornano solo le righe che differiscono dall'anteprima.
+  // 8a bis. Centro di ricavo e categoria (Task 30b): si rileggono i codici al momento della
+  // definitiva e si aggiornano solo le righe che differiscono dall'anteprima. Le righe di listino
+  // (`righe_addebito`) sono bloccate `FOR SHARE` (bloccaPerDefinitiva), ma `addebiti` e
+  // `codifiche_addebito` NO: i codici sono quelli visti da questo statement (READ COMMITTED), non
+  // un valore garantito stabile fino al commit. Una rinomina della codifica concorrente puo'
+  // quindi cadere fra questa lettura e il commit; resta fotografato quanto letto qui.
   const codiciRicavo = await leggiCodiciRicavo(
     tx,
     tenantId,

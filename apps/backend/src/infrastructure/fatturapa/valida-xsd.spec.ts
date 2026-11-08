@@ -273,13 +273,30 @@ describe('validaFatturePA (lotto)', () => {
     expect((await validaFatturaPA(malformato)).valido).toBe(false)
   })
 
+  it('lotto tutto non valido con errori propri di ogni file: ogni esito è attribuibile al suo file', async () => {
+    const buono = costruisciFattura()
+    const rotto = buono.replace('<Numero>1/2026</Numero>', '<Numero></Numero>')
+    const esiti = await validaFatturePA([rotto, rotto])
+    expect(esiti.map(e => e.valido)).toEqual([false, false])
+    expect(esiti.map(e => e.attribuibile)).toEqual([true, true])
+  })
+
+  it('errore generale senza file (XML malformato): gli esiti non sono attribuibili', async () => {
+    const buono = costruisciFattura()
+    const malformato = buono.replace('</p:FatturaElettronica>', '')
+    const esiti = await validaFatturePA([buono, malformato, buono])
+    expect(esiti.every(e => !e.valido)).toBe(true)
+    expect(esiti[0].attribuibile).toBe(false)
+    expect(esiti[2].attribuibile).toBe(false)
+  })
+
   it('lista vuota: nessun esito', async () => {
     expect(await validaFatturePA([])).toEqual([])
   })
 
   it('stesso esito di validaFatturaPA singola', async () => {
     const rotto = costruisciFattura().replace('<Numero>1/2026</Numero>', '<Numero></Numero>')
-    expect((await validaFatturePA([rotto]))[0]).toEqual(await validaFatturaPA(rotto))
+    expect((await validaFatturePA([rotto]))[0]).toMatchObject(await validaFatturaPA(rotto))
   })
 })
 

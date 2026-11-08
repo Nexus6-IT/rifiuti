@@ -33,7 +33,8 @@ export class NotificationsController {
     return await this.notificationService.getUserNotifications({
       userId: req.user.id,
       tenantId: requireRequestTenantId(req),
-      unreadOnly: unreadOnly === true,
+      // dalla query string arriva il testo «true», non un booleano
+      unreadOnly: String(unreadOnly) === 'true',
       limit: limit ? parseInt(String(limit)) : 50,
     })
   }

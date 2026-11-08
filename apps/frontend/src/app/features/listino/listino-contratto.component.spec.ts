@@ -126,6 +126,23 @@ describe('ListinoContrattoComponent', () => {
     await stabilizza(fixture)
   }
 
+  /** Azioni di una riga della tavola (`app-azioni-riga`): «Apri» e il menu ⋯ con «Elimina». */
+  const principaleRiga = (id: string): HTMLButtonElement | null =>
+    q(`listino-riga-${id}`)?.querySelector<HTMLButtonElement>(
+      '[data-testid="azione-principale"]'
+    ) ?? null
+  const kebabRiga = (id: string): HTMLButtonElement | null =>
+    q(`listino-riga-${id}`)?.querySelector<HTMLButtonElement>('[data-testid="azioni-altre"]') ??
+    null
+  const vociMenu = (): HTMLElement[] =>
+    Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+  const apriMenuRiga = async (id: string): Promise<void> => {
+    kebabRiga(id)!.click()
+    await stabilizza(fixture)
+  }
+  const voceElimina = (): HTMLElement | undefined =>
+    vociMenu().find(v => v.textContent!.trim().startsWith('Elimina'))
+
   const testo = (id: string) => q(id)?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
 
   beforeEach(() => {
@@ -784,8 +801,9 @@ describe('ListinoContrattoComponent', () => {
     it('il pulsante Apri apre la riga, con un nome accessibile', async () => {
       const c = await apri()
       await scegli('e1')
-      expect(bottone('listino-apri-r1')!.getAttribute('aria-label')).toBe('Apri la riga 20 03 01')
-      bottone('listino-apri-r1')!.click()
+      expect(principaleRiga('r1')).withContext('bottone Apri della riga').not.toBeNull()
+      expect(principaleRiga('r1')!.getAttribute('aria-label')).toBe('Apri la riga 20 03 01')
+      principaleRiga('r1')!.click()
       expect(c.rigaAperta()?.id).toBe('r1')
     })
 
@@ -802,7 +820,7 @@ describe('ListinoContrattoComponent', () => {
       const c = await apri()
       await scegli('e1')
       expect(q('riga-tipo')).toBeNull()
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       expect(c.rigaAperta()?.id).toBe('r1')
       expect(q('riga-tipo')).toBeTruthy()
@@ -824,7 +842,7 @@ describe('ListinoContrattoComponent', () => {
       await scegli('e1')
       righeList.calls.reset()
       delContratto.calls.reset()
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       bottone('riga-salva')!.click()
       await stabilizza(fixture)
@@ -840,14 +858,14 @@ describe('ListinoContrattoComponent', () => {
       )
       await apri()
       await scegli('e1')
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       bottone('riga-salva')!.click()
       await stabilizza(fixture)
       expect(q('listino-avvisi-riga')!.getAttribute('role')).toBe('status')
       expect(q('listino-avvisi-riga')!.textContent).toContain('cita la condizione 1')
       righeModifica.and.returnValue(of({ ...riga('r1'), avvisi: [] }))
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       bottone('riga-salva')!.click()
       await stabilizza(fixture)
@@ -860,7 +878,7 @@ describe('ListinoContrattoComponent', () => {
       )
       const c = await apri()
       await scegli('e1')
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       bottone('riga-salva')!.click()
       await stabilizza(fixture)
@@ -875,7 +893,7 @@ describe('ListinoContrattoComponent', () => {
       await apri('VIEWER')
       await scegli('e1')
       expect(q('listino-nuova-riga')).toBeNull()
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       expect(q('riga-tipo')).toBeTruthy()
       expect(q('riga-salva')).toBeNull()
@@ -885,7 +903,7 @@ describe('ListinoContrattoComponent', () => {
       await apri('ADMIN', risposta('ANNULLATO'))
       await scegli('e1')
       expect(q('listino-nuova-riga')).toBeNull()
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       expect(q('riga-salva')).toBeNull()
     })
@@ -894,7 +912,7 @@ describe('ListinoContrattoComponent', () => {
       await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { modificabile: false })]))
       await scegli('e1')
       expect(q('listino-nuova-riga')).toBeNull()
-      bottone('listino-apri-r1')!.click()
+      principaleRiga('r1')!.click()
       await stabilizza(fixture)
       expect(q('riga-salva')).toBeNull()
     })
@@ -912,7 +930,8 @@ describe('ListinoContrattoComponent', () => {
 
   describe('eliminazione della riga (I1)', () => {
     const elimina = async () => {
-      bottone('listino-elimina-riga-r1')!.click()
+      await apriMenuRiga('r1')
+      voceElimina()!.querySelector<HTMLElement>('a')!.click()
       await stabilizza(fixture)
     }
 
@@ -966,15 +985,16 @@ describe('ListinoContrattoComponent', () => {
     it('il pulsante ha un nome accessibile', async () => {
       await apri()
       await scegli('e1')
-      expect(bottone('listino-elimina-riga-r1')!.getAttribute('aria-label')).toBe(
-        'Elimina la riga 20 03 01'
-      )
+      expect(principaleRiga('r1')!.getAttribute('aria-label')).toBe('Apri la riga 20 03 01')
+      expect(kebabRiga('r1')!.getAttribute('aria-label')).toBe('Altre azioni per 20 03 01')
+      await apriMenuRiga('r1')
+      expect(voceElimina()!.textContent).toContain('Elimina')
     })
 
     it('VIEWER: nessun pulsante, e il metodo non scrive', async () => {
       const c = await apri('VIEWER')
       await scegli('e1')
-      expect(q('listino-elimina-riga-r1')).toBeNull()
+      expect(kebabRiga('r1')).toBeNull()
       c.eliminaRiga(riga('r1'))
       expect(righeElimina).not.toHaveBeenCalled()
     })
@@ -982,7 +1002,7 @@ describe('ListinoContrattoComponent', () => {
     it('contratto annullato: nessun pulsante', async () => {
       await apri('ADMIN', risposta('ANNULLATO'))
       await scegli('e1')
-      expect(q('listino-elimina-riga-r1')).toBeNull()
+      expect(kebabRiga('r1')).toBeNull()
     })
 
     it('elenco non modificabile: nessun pulsante', async () => {
@@ -991,7 +1011,7 @@ describe('ListinoContrattoComponent', () => {
         risposta('ATTIVO', [elenco('e1', { modificabile: false, eliminabile: false })])
       )
       await scegli('e1')
-      expect(q('listino-elimina-riga-r1')).toBeNull()
+      expect(kebabRiga('r1')).toBeNull()
     })
 
     it('elenco non modificabile: la guardia di eliminaRiga blocca anche una chiamata diretta (riga eliminabile)', async () => {
@@ -1010,11 +1030,19 @@ describe('ListinoContrattoComponent', () => {
       righeList.and.returnValue(of([riga('r1', { eliminabile: false }), riga('r2')]))
       const c = await apri()
       await scegli('e1')
-      expect(bottone('listino-elimina-riga-r1')!.disabled).toBeTrue()
-      expect(q('listino-elimina-riga-tip-r1')!.getAttribute('title')).toMatch(/in uso/i)
-      expect(bottone('listino-elimina-riga-r2')!.disabled).toBeFalse()
-      expect(q('listino-elimina-riga-tip-r2')!.getAttribute('title')).toBeNull()
-      expect(bottone('listino-apri-r1')!.disabled).toBeFalse()
+      expect(q('listino-in-uso-r1')!.textContent).toContain('In uso')
+      expect(q('listino-in-uso-r1')!.getAttribute('title')).toMatch(/in uso/i)
+      expect(q('listino-in-uso-r2')).toBeNull()
+      await apriMenuRiga('r1')
+      expect(voceElimina()!.getAttribute('aria-disabled')).toBe('true')
+      expect(voceElimina()!.textContent).toMatch(/non disponibile.*in uso/is)
+      document.body
+        .querySelector<HTMLElement>('.p-menu')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await stabilizza(fixture)
+      await apriMenuRiga('r2')
+      expect(voceElimina()!.getAttribute('aria-disabled')).not.toBe('true')
+      expect(principaleRiga('r1')!.disabled).toBeFalse()
       c.eliminaRiga(riga('r1', { eliminabile: false }))
       await stabilizza(fixture)
       expect(document.body.querySelector('.p-confirm-dialog-accept')).toBeNull()
@@ -1024,7 +1052,8 @@ describe('ListinoContrattoComponent', () => {
     it('elenco usato dai legami: le righe non citate restano eliminabili', async () => {
       await apri('ADMIN', risposta('ATTIVO', [elenco('e1', { eliminabile: false })]))
       await scegli('e1')
-      expect(bottone('listino-elimina-riga-r1')!.disabled).toBeFalse()
+      await apriMenuRiga('r1')
+      expect(voceElimina()!.getAttribute('aria-disabled')).not.toBe('true')
     })
 
     it('409 RIGA_ADDEBITO_IN_USO: mostra il messaggio del backend e rilegge', async () => {

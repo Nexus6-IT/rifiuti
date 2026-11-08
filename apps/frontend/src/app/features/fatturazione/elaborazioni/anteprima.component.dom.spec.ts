@@ -171,6 +171,15 @@ describe('AnteprimaComponent (DOM)', () => {
     expect(gruppi[2].querySelector('[data-testid="errori-link"]')).toBeNull()
   })
 
+  it('la scheda dei problemi non finali si chiama «Segnalazioni del periodo», non «Errori»', async () => {
+    await crea('ADMIN')
+    const intestazioni = Array.from(
+      document.body.querySelectorAll<HTMLElement>('.p-tabview-nav-link')
+    ).map(e => e.textContent ?? '')
+    expect(intestazioni.some(t => t.includes('Segnalazioni del periodo ('))).toBeTrue()
+    expect(intestazioni.some(t => t.includes('Errori del periodo'))).toBeFalse()
+  })
+
   it('dopo la definitiva (o se scartata) la scheda «Numerazione prevista» non compare', async () => {
     await crea('ADMIN', dettaglio({ stato: 'DEFINITIVA' }))
     expect(q('tab-numerazione')).toBeNull()

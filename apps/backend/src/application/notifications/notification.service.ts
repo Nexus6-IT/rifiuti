@@ -63,7 +63,19 @@ export class NotificationService {
 
     // Persist to database
     await this.prisma.notification.create({
-      data: notification.toPlainObject(),
+      // Campo per campo: `metadata` non ha colonna e `read` si chiama `isRead`.
+      data: {
+        id: notification.getId(),
+        tenantId: notification.getTenantId(),
+        userId: notification.getUserId(),
+        type: notification.getType(),
+        title: notification.getTitle(),
+        message: notification.getMessage(),
+        severity: notification.getSeverity(),
+        actionUrl: notification.getActionUrl(),
+        isRead: notification.isRead(),
+        createdAt: notification.getCreatedAt(),
+      } satisfies Prisma.NotificationUncheckedCreateInput,
     })
 
     // Send email if requested
@@ -133,7 +145,7 @@ export class NotificationService {
     })
 
     return notifications.map((n: any) =>
-      Notification.create({
+      Notification.ricostruisci({
         id: n.id,
         tenantId: n.tenantId,
         userId: n.userId,
@@ -143,6 +155,9 @@ export class NotificationService {
         severity: n.severity as NotificationSeverity,
         actionUrl: n.actionUrl || undefined,
         metadata: {}, // Prisma schema does not have metadata field, so pass empty object
+        read: n.isRead,
+        createdAt: n.createdAt,
+        readAt: n.readAt,
       })
     )
   }

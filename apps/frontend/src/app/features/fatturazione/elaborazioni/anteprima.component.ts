@@ -104,7 +104,7 @@ function leggiDifferenze(x: unknown): Differenze | null {
 const testoDifferenze = (d: Differenze): string =>
   `Differenze: ${d.nuovi} nuovi, ${d.cambiati} cambiati, ${d.fatturatiDaAltri} già fatturati da altri.`
 
-/** Gruppo della scheda «Errori del periodo»: stesso motivo, contratti diversi. */
+/** Gruppo della scheda «Segnalazioni del periodo»: stesso motivo, contratti diversi. */
 interface GruppoErrori {
   motivo: string
   quanti: number
@@ -440,10 +440,10 @@ interface GruppoErrori {
               </div>
             </p-tabPanel>
 
-            <p-tabPanel [header]="'Errori del periodo (' + totaleErroriPeriodo() + ')'">
+            <p-tabPanel [header]="'Segnalazioni del periodo (' + totaleErroriPeriodo() + ')'">
               <div data-testid="tab-errori-periodo">
                 <p *ngIf="!gruppiErrori().length" class="text-secondary" data-testid="errori-vuoti">
-                  Nessun errore nel periodo.
+                  Nessuna segnalazione nel periodo.
                 </p>
                 <section
                   *ngFor="let g of gruppiErrori()"
@@ -562,6 +562,12 @@ interface GruppoErrori {
         font-size: 0.875rem;
       }
       .an-attesa,
+      .an-ok ul,
+      .an-non-generati,
+      .an-gruppo ul {
+        margin: 0 0 var(--spacing-sm);
+        padding-left: 1.25rem;
+      }
       .an-ok {
         display: flex;
         align-items: center;

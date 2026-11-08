@@ -31,6 +31,10 @@ describe('vocabolario della fatturazione', () => {
     tutteCompilate(STATI_DOCUMENTO_VOCI)
   })
 
+  it('«Annullato» non ha il colore degli avvisi: il giallo resta per le segnalazioni', () => {
+    expect(STATI_DOCUMENTO_VOCI.ANNULLATO.severita).not.toBe('avviso')
+  })
+
   it('ogni errore (4 generali + 18 del documento) e avviso (7) ha etichetta e severità', () => {
     expect(Object.keys(ERRORI_GENERALI_VOCI).length).toBe(4)
     expect(Object.keys(ERRORI_DOCUMENTO_VOCI).length).toBe(18)

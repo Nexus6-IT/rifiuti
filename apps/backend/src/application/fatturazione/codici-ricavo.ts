@@ -10,7 +10,11 @@ export interface CodiciRicavo {
   categoriaCodice: string | null
 }
 
-/** Oltre questa lunghezza la lista di id passa da `= ANY` a un `JOIN` lineare su `unnest`. */
+/**
+ * La query usa sempre `JOIN unnest`, mai `= ANY`. Fino a questa lunghezza gira com'e'; oltre gira
+ * dentro `conJoinLineari` (nested loop spento, 4.4b1 T27a), perche' con statistiche vecchie su una
+ * lista lunga il planner sceglierebbe un nested loop quadratico.
+ */
 const SOGLIA_LISTA_LUNGA = 100
 
 /**

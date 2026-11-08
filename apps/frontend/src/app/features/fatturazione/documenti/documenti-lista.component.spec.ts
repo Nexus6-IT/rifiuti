@@ -198,6 +198,22 @@ describe('DocumentiListaComponent', () => {
       expect(comp.opzioniClienti().map(o => o.label)).toEqual(['Bianchi'])
     })
 
+    it('il numero del documento annullato è barrato come la data (non si confonde con la nota di credito)', async () => {
+      await crea('ADMIN', {
+        lista: of(
+          paginaDocumenti([
+            documentoRiga(1, { stato: 'ANNULLATO', numeroTesto: '123' }),
+            documentoRiga(2, { stato: 'DEFINITIVO', numeroTesto: '123' }),
+          ])
+        ),
+      })
+      const numeri = Array.from(
+        document.body.querySelectorAll<HTMLElement>('[data-testid="dl-numero"]')
+      )
+      expect(numeri[0].classList.contains('dl-annullato')).toBeTrue()
+      expect(numeri[1].classList.contains('dl-annullato')).toBeFalse()
+    })
+
     it('la data annullata è barrata e ha l’etichetta di stato', async () => {
       await crea('ADMIN', {
         lista: of(paginaDocumenti([documentoRiga(1, { stato: 'ANNULLATO', numeroTesto: '9/A' })])),

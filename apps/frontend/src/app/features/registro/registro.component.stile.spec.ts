@@ -171,4 +171,52 @@ describe('Registro: stile del giro 2', () => {
       fixture.nativeElement.querySelector('[data-testid="registro-nuovo"] button').classList
     ).toContain('wf-primario')
   })
+
+  describe('telefono: scheda per movimento (lista-telefono)', () => {
+    /** Testo delle regole dentro le media query dei 640 px. */
+    function regolePhone(): string {
+      const testi: string[] = []
+      for (const foglio of Array.from(document.styleSheets)) {
+        let regole: CSSRuleList
+        try {
+          regole = foglio.cssRules
+        } catch {
+          continue
+        }
+        for (const r of Array.from(regole)) {
+          if (r instanceof CSSMediaRule && r.conditionText.includes('640px')) {
+            testi.push(r.cssText)
+          }
+        }
+      }
+      return testi.join('\n')
+    }
+
+    it('la tabella e una lista-telefono e le celle hanno il loro ruolo nella scheda', () => {
+      expect(fixture.nativeElement.querySelector('.p-datatable')!.classList).toContain(
+        'lista-telefono'
+      )
+      for (const c of ['c-prog', 'c-tipo', 'c-data', 'c-cer', 'c-causale', 'c-qta', 'c-contr']) {
+        expect(riga('a').querySelector(`td.${c}`))
+          .withContext(`cella ${c}`)
+          .not.toBeNull()
+      }
+      expect(riga('a').querySelector('td.c-stato')).not.toBeNull()
+    })
+
+    it('controparte e FIR vuoti si nascondono sul telefono, pieni no', () => {
+      // 'a' e 'b' non hanno ne' controparte ne' FIR
+      expect(riga('a').querySelector('td.c-contr')!.classList).toContain('m-hide')
+      expect(riga('a').querySelector('td.c-fir')!.classList).toContain('m-hide')
+    })
+
+    it('sotto i 640 px la tabella perde la larghezza minima e le celle hanno la loro riga', () => {
+      const css = regolePhone()
+      expect(css).toMatch(/\.p-datatable-table[^}]*min-width:\s*0/)
+      for (const c of ['c-prog', 'c-qta', 'c-causale', 'c-stato', 'azioni-col']) {
+        expect(css).withContext(c).toContain(`td.${c}`)
+      }
+      expect(css).toMatch(/td\.c-prog \.p-button[^}]*height:\s*44px/)
+    })
+  })
 })

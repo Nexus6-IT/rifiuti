@@ -6,8 +6,11 @@ import { joinLineari } from '../listino/lock-listino'
 
 /**
  * Esegue `fn` con il nested loop spento (query `JOIN unnest` su liste grandi) e lo RIPRISTINA
- * appena finita (scansione P46): le letture che seguono ritrovano il planner com'era. Se `fn`
- * fallisce la transazione e' abortita e il rollback ripristina da solo il `SET LOCAL`.
+ * appena finita (scansione P46): le letture che seguono ritrovano il planner com'era. Il
+ * ripristino avviene anche se `fn` lancia: un errore di dominio che il chiamante cattura restando
+ * nella transazione non lascia il planner alterato. Se invece l'errore ha abortito la transazione
+ * il ripristino fallirebbe e nasconderebbe l'errore vero: lo si ignora, perche' il rollback
+ * ripristina da solo il `SET LOCAL`.
  */
 export async function conJoinLineari<R>(
   tx: Prisma.TransactionClient,
@@ -17,7 +20,13 @@ export async function conJoinLineari<R>(
     { v: string }[]
   >`SELECT current_setting('enable_nestloop') AS v`
   await joinLineari(tx)
-  const risultato = await fn()
+  let risultato: R
+  try {
+    risultato = await fn()
+  } catch (errore) {
+    await tx.$queryRaw`SELECT set_config('enable_nestloop', ${v}, true)`.catch(() => undefined)
+    throw errore
+  }
   await tx.$queryRaw`SELECT set_config('enable_nestloop', ${v}, true)`
   return risultato
 }

@@ -197,8 +197,8 @@ test.describe('Fatturazione per periodo (interfaccia)', () => {
     }
     await expect(page.getByTestId('an-riepilogo')).toContainText('3')
 
-    // Errori del periodo: il movimento senza legame, con il link alla pagina «Da collegare».
-    await page.getByRole('tab', { name: /Errori del periodo/ }).click()
+    // Segnalazioni del periodo: il movimento senza legame, con il link alla pagina «Da collegare».
+    await page.getByRole('tab', { name: /Segnalazioni del periodo/ }).click()
     const gruppo = page.getByTestId('errori-gruppo').first()
     await expect(gruppo).toBeVisible()
     await expect(gruppo.getByTestId('errori-quanti')).toHaveText('1')

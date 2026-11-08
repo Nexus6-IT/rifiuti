@@ -36,7 +36,7 @@ export const STATI_ELABORAZIONE_VOCI: Readonly<Record<StatoElaborazione, VoceVoc
 export const STATI_DOCUMENTO_VOCI: Readonly<Record<StatoDocumento, VoceVocabolario>> = {
   BOZZA: v('Bozza', 'info'),
   DEFINITIVO: v('Definitivo', 'successo'),
-  ANNULLATO: v('Annullato', 'avviso'),
+  ANNULLATO: v('Annullato', 'info'),
 }
 
 /** Errori generali (bloccano la definitiva, tranne i legami senza contratto: decisione 24). */
