@@ -120,4 +120,68 @@ describe('FirListComponent: stile del giro 2', () => {
     expect(dentro.left).toBeGreaterThanOrEqual(radice.getBoundingClientRect().left)
     expect(dentro.right).toBeLessThanOrEqual(radice.getBoundingClientRect().right + 1)
   })
+
+  describe('telefono: scheda per FIR (lista-telefono)', () => {
+    /** Regole del componente dentro la media query dei 640 px. */
+    function regolePhone(): string {
+      const testi: string[] = []
+      for (const foglio of Array.from(document.styleSheets)) {
+        let regole: CSSRuleList
+        try {
+          regole = foglio.cssRules
+        } catch {
+          continue
+        }
+        for (const r of Array.from(regole)) {
+          if (r instanceof CSSMediaRule && r.conditionText.includes('640px')) {
+            testi.push(r.cssText)
+          }
+        }
+      }
+      return testi.join('\n')
+    }
+
+    it('la tabella e una lista-telefono e ogni cella ha il suo ruolo nella scheda', () => {
+      monta([fir('1', FIRStato.BOZZA)])
+      const tabella = fixture.nativeElement.querySelector('.p-datatable') as HTMLElement
+      expect(tabella.classList).toContain('lista-telefono')
+      const riga = fixture.nativeElement.querySelector('[data-testid="fir-riga-1"]') as HTMLElement
+      for (const c of ['f-num', 'f-cer', 'f-qta', 'f-stato', 'f-rentri', 'f-data', 'azioni-col']) {
+        expect(riga.querySelector(`td.${c}`))
+          .withContext(`cella ${c}`)
+          .not.toBeNull()
+      }
+    })
+
+    it('le azioni stanno in una cella azioni-col mai nascosta (44 px dal pattern globale)', () => {
+      monta([fir('1', FIRStato.BOZZA)])
+      const azioni = fixture.nativeElement.querySelector(
+        '[data-testid="fir-riga-1"] td.azioni-col'
+      ) as HTMLElement
+      expect(azioni.classList).not.toContain('m-hide')
+      expect(azioni.querySelector('.row-actions')).not.toBeNull()
+    })
+
+    it('la cella RENTRI si nasconde sul telefono solo se il FIR non ha uno stato RENTRI', () => {
+      monta([fir('1', FIRStato.BOZZA), fir('2', FIRStato.CONSEGNATO)])
+      const cella = (id: string): HTMLElement =>
+        fixture.nativeElement.querySelector(`[data-testid="fir-riga-${id}"] td.f-rentri`)
+      const nascoste = [cella('1'), cella('2')].filter(c => c.classList.contains('m-hide'))
+      const conBadge = [cella('1'), cella('2')].filter(c =>
+        c.querySelector('app-rentri-sync-badge')
+      )
+      expect(nascoste.length + conBadge.length).toBe(2)
+      for (const c of nascoste) expect(c.querySelector('app-rentri-sync-badge')).toBeNull()
+      for (const c of conBadge) expect(c.classList).not.toContain('m-hide')
+    })
+
+    it('sotto i 640 px la tabella perde la larghezza minima e la scheda e una griglia a due colonne', () => {
+      monta([fir('1', FIRStato.BOZZA)])
+      const css = regolePhone()
+      expect(css).toContain('td.f-num')
+      expect(css).toContain('td.f-stato')
+      expect(css).toContain('td.azioni-col')
+      expect(css).toMatch(/\.p-datatable-table[^}]*min-width:\s*0/)
+    })
+  })
 })

@@ -379,7 +379,7 @@ function fineGiornata(d: Date): Date {
         <div class="table-responsive">
           <p-table
             [value]="movimenti()"
-            styleClass="p-datatable-sm"
+            styleClass="p-datatable-sm lista-telefono"
             [rowHover]="true"
             [responsiveLayout]="'scroll'"
             [tableStyle]="{ 'min-width': '64rem' }"
@@ -418,7 +418,7 @@ function fineGiornata(d: Date): Date {
                 [class.riga-non-vigente]="!vigente(m)"
                 [attr.data-testid]="'registro-riga-' + m.id"
               >
-                <td *ngIf="rentriSelezionabile()">
+                <td *ngIf="rentriSelezionabile()" class="c-sel">
                   <input
                     type="checkbox"
                     [attr.data-testid]="'registro-rentri-sel-' + m.id"
@@ -432,7 +432,7 @@ function fineGiornata(d: Date): Date {
                     "
                   />
                 </td>
-                <td class="cell-nowrap">
+                <td class="cell-nowrap c-prog">
                   <div class="cella-prog">
                     <span class="prog-badge"
                       >{{ m.progressiveYear }}/{{ m.progressiveNumber }}</span
@@ -449,10 +449,10 @@ function fineGiornata(d: Date): Date {
                     ></p-button>
                   </div>
                 </td>
-                <td *ngIf="piuRegistri()" data-testid="registro-col-sede">
+                <td *ngIf="piuRegistri()" class="c-sede" data-testid="registro-col-sede">
                   {{ etichettaSede(m.registroId) }}
                 </td>
-                <td>
+                <td class="c-tipo">
                   <span class="tipo-mov" data-testid="registro-tipo">
                     <i
                       class="pi tipo-mov__freccia"
@@ -463,11 +463,11 @@ function fineGiornata(d: Date): Date {
                     >{{ m.type === 'CARICO' ? 'Carico' : 'Scarico' }}
                   </span>
                 </td>
-                <td class="cell-nowrap">{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
-                <td>
+                <td class="cell-nowrap c-data">{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
+                <td class="c-cer">
                   <span class="cell-mono">{{ m.cerCode }}</span>
                 </td>
-                <td>
+                <td class="c-causale">
                   <span class="causale-label">{{ causaleLabel(m) }}</span>
                   <span
                     *ngIf="m.wasteDescription"
@@ -476,11 +476,11 @@ function fineGiornata(d: Date): Date {
                     >{{ m.wasteDescription }}</span
                   >
                 </td>
-                <td class="num-col">
+                <td class="num-col c-qta">
                   <span class="num">{{ m.quantity | number: '1.0-2' }}</span>
                   <span class="unit">{{ unitaLeggibile(m.unit) }}</span>
                 </td>
-                <td>
+                <td class="c-contr" [class.m-hide]="!m.counterpartName">
                   <span
                     *ngIf="m.counterpartName; else nessuno"
                     class="cell-ellipsis"
@@ -489,11 +489,11 @@ function fineGiornata(d: Date): Date {
                   >
                   <ng-template #nessuno><span class="text-muted">—</span></ng-template>
                 </td>
-                <td>
+                <td class="c-fir" [class.m-hide]="!m.firId">
                   <span *ngIf="m.firId" class="fir-ref" [pTooltip]="m.firId">FIR</span>
                   <span *ngIf="!m.firId" class="text-muted">—</span>
                 </td>
-                <td>
+                <td class="c-stato">
                   <div class="stato-stack">
                     <app-pillola-stato
                       *ngIf="!m.fuoriTermine"
@@ -531,7 +531,7 @@ function fineGiornata(d: Date): Date {
                     />
                   </div>
                 </td>
-                <td *ngIf="rentriColonna()">
+                <td *ngIf="rentriColonna()" class="c-rentri">
                   <app-rentri-riga-azioni
                     [movimentoId]="m.id"
                     [registroId]="m.registroId ?? registroRentri() ?? null"
@@ -1302,6 +1302,107 @@ function fineGiornata(d: Date): Date {
       .azioni-col {
         white-space: nowrap;
         text-align: right;
+      }
+      /* Telefono (pattern lista-telefono): ogni movimento e' una scheda a due colonne. Numero (e
+         spunta RENTRI) in alto, tipo e quantita', CER e data, poi causale, controparte, sede, FIR,
+         stato, RENTRI e correzioni a tutta riga. Le celle vuote (controparte, FIR) si nascondono.
+         Righe senza gap: quelle non occupate non devono lasciare vuoti. */
+      @media (max-width: 640px) {
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-table {
+          min-width: 0 !important;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr {
+          row-gap: 0;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td {
+          padding-top: var(--spacing-xs);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-prog {
+          grid-column: 1;
+          grid-row: 1;
+          padding-top: 0;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-sel {
+          grid-column: 2;
+          grid-row: 1;
+          justify-self: end;
+          padding-top: 0;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-sel input {
+          width: 1.5rem;
+          height: 1.5rem;
+          margin: 0.625rem;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-tipo {
+          grid-column: 1;
+          grid-row: 2;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-qta {
+          grid-column: 2;
+          grid-row: 2;
+          justify-self: end;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-cer {
+          grid-column: 1;
+          grid-row: 3;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-data {
+          grid-column: 2;
+          grid-row: 3;
+          justify-self: end;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-causale {
+          grid-column: 1 / -1;
+          grid-row: 4;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-contr {
+          grid-column: 1 / -1;
+          grid-row: 5;
+          font-size: var(--font-size-sm);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-sede {
+          grid-column: 1 / -1;
+          grid-row: 6;
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-fir {
+          grid-column: 1 / -1;
+          grid-row: 7;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-stato {
+          grid-column: 1 / -1;
+          grid-row: 8;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.c-rentri {
+          grid-column: 1 / -1;
+          grid-row: 9;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono .p-datatable-tbody > tr > td.azioni-col {
+          grid-column: 1 / -1;
+          grid-row: 10;
+          justify-self: stretch;
+          text-align: left;
+        }
+        td.azioni-col .azioni-stack {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+        .cella-prog {
+          height: auto;
+        }
+        .cella-prog .p-button {
+          margin: 0;
+        }
+        :host ::ng-deep .p-datatable.lista-telefono td.c-prog .p-button {
+          min-width: 44px;
+          height: 44px;
+        }
       }
       /* Rettifica e Annulla impilati: la colonna dimezza la larghezza. */
       .azioni-stack {
