@@ -85,6 +85,77 @@ describe('pattern delle liste (stili globali)', () => {
     })
   })
 
+  describe('.lista-telefono a 390px (iframe)', () => {
+    let iframe: HTMLIFrameElement
+
+    /** Iframe largo 390px con gli stessi stili del documento: la media query vale per il suo viewport. */
+    const montaIframe = async (html: string): Promise<Document> => {
+      iframe = document.createElement('iframe')
+      iframe.style.cssText = 'width:390px;height:700px;border:0;position:fixed;left:0;top:0'
+      document.body.appendChild(iframe)
+      const doc = iframe.contentDocument as Document
+      doc.open()
+      doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>')
+      doc.close()
+      const caricamenti: Promise<void>[] = []
+      document.head.querySelectorAll('style, link[rel="stylesheet"]').forEach(n => {
+        const copia = n.cloneNode(true) as HTMLElement
+        if (copia.tagName === 'LINK') {
+          caricamenti.push(new Promise(ok => copia.addEventListener('load', () => ok())))
+        }
+        doc.head.appendChild(copia)
+      })
+      doc.body.innerHTML = html
+      await Promise.all(caricamenti)
+      return doc
+    }
+
+    const lunga =
+      'Acciaierie e Lavorazioni Metalliche della Valdelsa Società Per Azioni Unipersonale'
+    const riga = (azioniClasse: string) => `
+      <tr>
+        <td class="principale">${lunga}</td>
+        <td class="m-hide num-col">286.450,00 €</td>
+        <td class="m2">01234560528 · Via Roma 1, Colle di Val d'Elsa</td>
+        <td class="${azioniClasse}"><button class="p-button" type="button">Modifica</button><button class="p-button" type="button">...</button></td>
+      </tr>`
+    const tab = (azioniClasse: string) =>
+      `<div class="p-datatable lista-telefono"><table class="p-datatable-table">
+        <thead class="p-datatable-thead"><tr><th>Cliente</th><th class="num-col">Totale</th><th>m2</th><th>Azioni</th></tr></thead>
+        <tbody class="p-datatable-tbody">${riga(azioniClasse)}${riga(azioniClasse)}</tbody></table></div>`
+
+    afterEach(() => iframe?.remove())
+
+    it('righe a due linee da almeno 56px, td.m-hide nascosta, td.m2 a tutta riga, nessuno scroll orizzontale', async () => {
+      const doc = await montaIframe(tab('azioni-col'))
+      const win = doc.defaultView as Window
+      expect(win.innerWidth).toBe(390)
+      const tr = doc.querySelector('tbody tr') as HTMLElement
+      expect(tr.getBoundingClientRect().height).toBeGreaterThanOrEqual(56)
+      expect(win.getComputedStyle(doc.querySelector('td.m-hide') as Element).display).toBe('none')
+      const m2 = doc.querySelector('td.m2') as HTMLElement
+      expect(m2.getBoundingClientRect().width).toBeGreaterThan(300)
+      expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(doc.documentElement.clientWidth)
+    })
+
+    it('la cella azioni (mai m-hide) sta nella colonna 2, a destra, con bottoni da almeno 44px', async () => {
+      const doc = await montaIframe(tab('azioni-col'))
+      const principale = (doc.querySelector('td.principale') as HTMLElement).getBoundingClientRect()
+      const azioni = doc.querySelector('td.azioni-col') as HTMLElement
+      const r = azioni.getBoundingClientRect()
+      expect(doc.defaultView?.getComputedStyle(azioni).display).not.toBe('none')
+      expect(r.left).toBeGreaterThanOrEqual(principale.right - 1)
+      expect(r.right).toBeLessThanOrEqual(390)
+      // sulla stessa altezza del nome, non in una riga a parte sotto
+      expect(r.top).toBeLessThan(principale.bottom)
+      doc.querySelectorAll('td.azioni-col .p-button').forEach(b => {
+        const rb = b.getBoundingClientRect()
+        expect(rb.height).toBeGreaterThanOrEqual(44)
+        expect(rb.width).toBeGreaterThanOrEqual(44)
+      })
+    })
+  })
+
   describe('.num-col fuori da .pagina-lavoro', () => {
     it('allinea a destra intestazione e cella, con cifre tabellari', () => {
       monta(tabella('lista-telefono'))

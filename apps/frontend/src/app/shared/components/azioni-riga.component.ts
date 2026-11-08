@@ -8,7 +8,7 @@ import {
 } from '@angular/core'
 import { MenuItem } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
-import { MenuModule } from 'primeng/menu'
+import { Menu, MenuModule } from 'primeng/menu'
 
 /** Un'azione disponibile su una riga di lista. */
 export interface AzioneRiga {
@@ -64,7 +64,7 @@ export interface AzioneRiga {
         data-testid="azioni-altre"
         aria-haspopup="menu"
         [attr.aria-expanded]="aperto()"
-        [attr.aria-label]="'Altre azioni per ' + nome"
+        [attr.aria-label]="etichettaAltre()"
         (click)="menu.toggle($event)"
       ></button>
       <p-menu
@@ -72,7 +72,7 @@ export interface AzioneRiga {
         [popup]="true"
         appendTo="body"
         [model]="voci()"
-        (onShow)="aperto.set(true)"
+        (onShow)="alMostrare()"
         (onHide)="alChiudere()"
       />
     }
@@ -101,14 +101,42 @@ export class AzioniRigaComponent {
   @Input() nome = ''
 
   @ViewChild('apri') private bottoneApri?: ElementRef<HTMLButtonElement>
+  @ViewChild('menu') private menuRef?: Menu
+  private contenitoreMenu?: HTMLElement
 
   protected readonly aperto = signal(false)
   protected readonly voci = signal<MenuItem[]>([])
   private altreAzioni: AzioneRiga[] = []
 
+  protected readonly etichettaAltre = (): string =>
+    this.nome.trim() ? `Altre azioni per ${this.nome.trim()}` : 'Altre azioni'
+
   protected nomeAccessibile(azione: AzioneRiga): string {
     const base = azione.etichetta.trim()
-    return this.nome && !base.includes(this.nome) ? `${base} ${this.nome}` : base
+    const nome = this.nome.trim()
+    const completo = nome && !base.includes(nome) ? `${base} ${nome}` : base
+    return azione.disabilitata && azione.motivo
+      ? `${completo}, non disponibile: ${azione.motivo}`
+      : completo
+  }
+
+  /**
+   * Esc chiude il menu (lo fa PrimeNG sulla lista): qui si ferma la propagazione, altrimenti lo
+   * stesso Esc arriva al `document` e chiude anche il `p-dialog` che contiene la riga.
+   */
+  protected alMostrare(): void {
+    this.aperto.set(true)
+    const contenitore = this.menuRef?.container as HTMLElement | undefined
+    if (contenitore) {
+      this.contenitoreMenu = contenitore
+      contenitore.addEventListener('keydown', this.fermaEsc)
+    }
+  }
+
+  private readonly fermaEsc = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+    }
   }
 
   /**
@@ -117,6 +145,8 @@ export class AzioniRigaComponent {
    */
   protected alChiudere(): void {
     this.aperto.set(false)
+    this.contenitoreMenu?.removeEventListener('keydown', this.fermaEsc)
+    this.contenitoreMenu = undefined
     const attivo = document.activeElement
     const nelMenu = attivo instanceof Element && attivo.closest('.p-menu') !== null
     if (!attivo || attivo === document.body || nelMenu) {
@@ -140,8 +170,10 @@ export class AzioniRigaComponent {
     ]
       .filter(Boolean)
       .join(' ')
+    const conMotivo = a.disabilitata && a.motivo
     return {
-      label: a.etichetta,
+      // il motivo e' testo visibile (seconda riga, `pre-line`) e quindi anche nell'aria-label della voce
+      label: conMotivo ? `${a.etichetta}\nNon disponibile: ${a.motivo}` : a.etichetta,
       icon: a.icona,
       disabled: !!a.disabilitata,
       title: a.disabilitata ? a.motivo : undefined,

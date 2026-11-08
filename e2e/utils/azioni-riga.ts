@@ -3,6 +3,9 @@ import type { Locator, Page } from '@playwright/test'
 /**
  * Azioni di riga delle liste (componente `app-azioni-riga`): l'azione principale e' un bottone sulla
  * riga, le altre stanno nel menu aperto dal bottone ⋯ («Altre azioni per <nome>»), appeso al body.
+
+ * Nota: per il bottone principale `nomiAzioniRiga` restituisce il nome accessibile completo
+ * (es. «Modifica Rossi S.r.l.»), non la sola etichetta.
  * Questi helper trattano le due forme allo stesso modo, cosi' un test non dipende da quale azione
  * e' la principale e funziona prima e dopo la conversione di una pagina al pattern.
  */
