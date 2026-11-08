@@ -576,10 +576,14 @@ test.describe('Contratto cliente — VIEWER', () => {
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo contratto' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('button', { name: 'Proroga scadenze' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
-    // `all()` e' una foto istantanea: prima si aspetta almeno una riga di dati, altrimenti il ciclo
-    // potrebbe non girare mai (elenco non ancora arrivato) e il test passerebbe senza controllare
+    // `all()` e' una foto istantanea: prima si aspetta che l'elenco sia arrivato (una riga di
+    // dati o il messaggio di lista vuota: il DB della CI parte senza contratti), altrimenti il ciclo
+    // girerebbe su una tabella ancora in caricamento
     await expect(
-      contenuto(page).locator('tbody tr[data-testid^="contratti-riga-"]').first()
+      contenuto(page)
+        .locator('tbody tr[data-testid^="contratti-riga-"]')
+        .first()
+        .or(contenuto(page).getByRole('cell', { name: 'Nessun contratto.' }))
     ).toBeVisible({ timeout: ATTESA_SERVER })
     for (const riga of await contenuto(page)
       .locator('tbody tr[data-testid^="contratti-riga-"]')
@@ -596,7 +600,10 @@ test.describe('Contratto cliente — VIEWER', () => {
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo cliente' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
     await expect(
-      contenuto(page).locator('tbody tr[data-testid^="clienti-riga-"]').first()
+      contenuto(page)
+        .locator('tbody tr[data-testid^="clienti-riga-"]')
+        .first()
+        .or(contenuto(page).getByRole('cell', { name: 'Nessun cliente.' }))
     ).toBeVisible({ timeout: ATTESA_SERVER })
     for (const riga of await contenuto(page)
       .locator('tbody tr[data-testid^="clienti-riga-"]')
