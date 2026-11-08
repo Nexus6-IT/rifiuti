@@ -11,6 +11,7 @@ import {
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
 import { conPrefisso } from '../../utils/run-id'
+import { eseguiAzioneRiga, nomiAzioniRiga } from '../../utils/azioni-riga'
 
 /**
  * E2E — Tabelle di fatturazione (pezzo 4.1a, R10): dalla pagina `/clienti/tabelle`
@@ -111,8 +112,7 @@ async function apriTabelle(page: Page, scheda: string): Promise<void> {
 }
 
 /**
- * Il titolo della pagina compare due volte (topbar + `<h1>` del contenuto) e il menu ha una
- * voce omonima: tutto cio' che non e' un dialog o un'opzione di dropdown (appese al body)
+ * Il titolo della pagina sta nell'`<h1>` del contenuto e il menu ha una voce omonima: tutto cio' che non e' un dialog o un'opzione di dropdown (appese al body)
  * si cerca dentro `#main-content`.
  */
 function contenuto(page: Page) {
@@ -186,9 +186,9 @@ test.describe('Tabelle di fatturazione — operatore', () => {
   test('disattiva e riattiva la condizione', async ({ page }) => {
     await apriTabelle(page, 'Condizioni di pagamento')
     const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.condizione) })
-    await riga.getByRole('button', { name: 'Disattiva' }).click()
+    await eseguiAzioneRiga(page, riga, 'Disattiva')
     await expect(riga).toContainText('Disattivata')
-    await riga.getByRole('button', { name: 'Riattiva' }).click()
+    await eseguiAzioneRiga(page, riga, 'Riattiva')
     await expect(riga).toContainText('Attiva')
     await expect(riga).not.toContainText('Disattivata')
   })
@@ -239,7 +239,7 @@ test.describe('Tabelle di fatturazione — operatore', () => {
     const riga = contenuto(page).getByRole('row', { name: new RegExp(codici.spesa) })
     await expect(riga).toContainText('Bollo')
     await expect(riga).toContainText(descrizioni.spesa)
-    await expect(riga).toContainText('2.00')
+    await expect(riga).toContainText('2,00')
   })
 
   test('registro IVA: "1" diventa "01"', async ({ page }) => {
@@ -341,11 +341,10 @@ test.describe('Tabelle di fatturazione — VIEWER', () => {
       await contenuto(page).getByRole('tab', { name: scheda }).click()
       await expect(contenuto(page).getByRole('tabpanel').getByRole('table')).toBeVisible()
       await expect(contenuto(page).getByRole('button', { name: nuovo })).toHaveCount(0)
-      await expect(contenuto(page).getByRole('button', { name: 'Modifica' })).toHaveCount(0)
-      await expect(
-        contenuto(page).getByRole('button', { name: /^(Disattiva|Riattiva)$/ })
-      ).toHaveCount(0)
-      await expect(contenuto(page).getByRole('button', { name: 'Elimina' })).toHaveCount(0)
+      // nessuna azione di riga: ne' il bottone principale ne' il menu ⋯, ne' la colonna «Azioni»
+      const primaRiga = contenuto(page).getByRole('tabpanel').locator('tbody tr').first()
+      expect(await nomiAzioniRiga(page, primaRiga)).toEqual([])
+      await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
     }
     await contenuto(page).getByRole('tab', { name: 'Categorie e tipi' }).click()
     await expect(contenuto(page).getByRole('button', { name: /^Nuov[oa]$/ })).toHaveCount(0)

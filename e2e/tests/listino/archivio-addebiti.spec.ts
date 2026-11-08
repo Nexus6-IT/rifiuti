@@ -5,6 +5,7 @@ import { apiLogin, apiGet, apiDelete, ApiClientError } from '../../utils/api-cli
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
 import { ATTESA_SERVER, attendiRisposta, cliccaEAttendi, cliccaEChiudi } from '../../utils/attese'
+import { eseguiAzioneRiga, nomiAzioniRiga } from '../../utils/azioni-riga'
 
 /**
  * E2E — Archivio addebiti (pezzo 4.2a, Task 15): dai codici IVA alla variazione dei prezzi.
@@ -316,7 +317,7 @@ test.describe('Archivio addebiti — admin', () => {
 
     const riga = await rigaAddebito(page)
     await expect(riga).toContainText(nomi.gruppo)
-    await expect(riga).toContainText('5.00')
+    await expect(riga).toContainText('5,00')
     await expect(riga).toContainText('Sì')
   })
 
@@ -356,7 +357,7 @@ test.describe('Archivio addebiti — admin', () => {
   test('variazione +10 % sul listino 2: anteprima e conferma', async ({ page }) => {
     await apriArchivio(page)
     const riga = await rigaAddebito(page)
-    await riga.getByRole('button', { name: /^Varia i prezzi/ }).click()
+    await eseguiAzioneRiga(page, riga, /^Varia i prezzi/)
 
     const dlg = dialogo(page, /Variazione prezzi/)
     await expect(dlg).toBeVisible()
@@ -431,9 +432,8 @@ test.describe('Archivio addebiti — VIEWER', () => {
     await contenuto(page).getByRole('tab', { name: 'Codici IVA' }).click()
     await expect(contenuto(page).getByRole('table')).toBeVisible()
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo codice IVA' })).toHaveCount(0)
-    await expect(
-      contenuto(page).getByRole('button', { name: /^(Modifica|Disattiva|Riattiva|Elimina)/ })
-    ).toHaveCount(0)
+    const primaRigaIva = contenuto(page).locator('tbody tr').first()
+    expect(await nomiAzioniRiga(page, primaRigaIva)).toEqual([])
 
     await contenuto(page).getByRole('tab', { name: 'Gruppi e categorie di addebito' }).click()
     await expect(contenuto(page).getByRole('table')).toBeVisible()
@@ -444,10 +444,7 @@ test.describe('Archivio addebiti — VIEWER', () => {
     await expect(contenuto(page).getByRole('button', { name: 'Nuovo addebito' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('button', { name: 'Variazione prezzi' })).toHaveCount(0)
     await expect(contenuto(page).getByRole('columnheader', { name: 'Azioni' })).toHaveCount(0)
-    await expect(
-      contenuto(page).getByRole('button', {
-        name: /^(Modifica|Varia i prezzi|Disattiva|Riattiva|Elimina)/,
-      })
-    ).toHaveCount(0)
+    const primaRiga = contenuto(page).locator('tbody tr').first()
+    expect(await nomiAzioniRiga(page, primaRiga)).toEqual([])
   })
 })
