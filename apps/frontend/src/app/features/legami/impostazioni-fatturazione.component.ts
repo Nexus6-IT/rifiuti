@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common'
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { Component, DestroyRef, ElementRef, OnInit, ViewChild, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Subscription } from 'rxjs'
 import { FormsModule } from '@angular/forms'
@@ -7,7 +7,7 @@ import { ConfirmationService, SharedModule } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { InputSwitchModule } from 'primeng/inputswitch'
-import { InputTextModule } from 'primeng/inputtext'
+import { CalendarModule } from 'primeng/calendar'
 import { TabViewModule } from 'primeng/tabview'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
@@ -15,6 +15,7 @@ import { leggiErroriAzione } from '../listino/errori-azione'
 import { puoImpostareFatturazione } from './permessi-legami'
 import { ImpostazioneFatturazione } from './legami.model'
 import { catturaFocus } from '../../shared/utils/ripristina-focus'
+import { dataLocale, isoLocale } from '../fatturazione/impostazioni/numerazione-scheda.component'
 import { ImpostazioneFatturazioneService } from './impostazioni-fatturazione.service'
 import { CedenteSchedaComponent } from '../fatturazione/impostazioni/cedente-scheda.component'
 import { ImpostazioniFatturazione44Service } from '../fatturazione/impostazioni/impostazioni-fatturazione-4-4.service'
@@ -48,7 +49,7 @@ function movimentiToccati(err: unknown): number | null {
     ButtonModule,
     ConfirmDialogModule,
     InputSwitchModule,
-    InputTextModule,
+    CalendarModule,
     TabViewModule,
     SharedModule,
     CedenteSchedaComponent,
@@ -105,19 +106,21 @@ function movimentiToccati(err: unknown): number | null {
             </p>
             <div class="riga-data">
               <label for="fatt-da">Fatturazione da</label>
-              <input
-                pInputText
-                id="fatt-da"
+              <p-calendar
+                inputId="fatt-da"
                 name="fatturazioneDa"
-                type="date"
-                [(ngModel)]="data"
+                dateFormat="dd/mm/yy"
+                placeholder="gg/mm/aaaa"
+                [showIcon]="true"
+                #calendario
+                [(ngModel)]="dataCalendario"
                 [disabled]="!puoModificare()"
-                aria-describedby="fatt-nota"
                 data-testid="fatt-data"
               />
               <p-button
                 label="Salva"
                 icon="pi pi-check"
+                styleClass="wf-primario"
                 [disabled]="!puoModificare() || inCorso()"
                 [loading]="inCorso()"
                 (onClick)="salva()"
@@ -206,9 +209,45 @@ export class ImpostazioniFatturazioneComponent implements OnInit {
   readonly impostazione = signal<ImpostazioneFatturazione | null>(null)
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
-  data = ''
   /** Valore mostrato dall'interruttore; si riallinea a `impostazione()` dopo ogni esito. */
   definitiveUi = false
+
+  /**
+   * Data in `AAAA-MM-GG` (vuota = nessuna data valida). Il `Date` per il calendario si conserva a
+   * parte: un getter che ne crea uno nuovo a ogni lettura farebbe riscrivere il valore a `ngModel`
+   * a ogni ciclo di rilevamento, senza fine.
+   */
+  private dataIso = ''
+  private dataDate: Date | null = null
+  get data(): string {
+    return this.dataIso
+  }
+  set data(v: string) {
+    this.dataIso = v
+    this.dataDate = dataLocale(v)
+  }
+
+  /**
+   * Valore del calendario: `Date` locale (mai UTC). Un testo che non e' una data (PrimeNG passa la
+   * stringa digitata) azzera `data`, cosi' «Salva» risponde «Data non valida».
+   */
+  get dataCalendario(): Date | null {
+    return this.dataDate
+  }
+  set dataCalendario(v: Date | string | null) {
+    const valida = v instanceof Date && !Number.isNaN(v.getTime())
+    this.dataDate = valida ? v : null
+    this.dataIso = valida ? isoLocale(v) : ''
+  }
+
+  /**
+   * `p-calendar` 17.18 non ha `ariaDescribedBy`: la nota (che per chi non puo' modificare dice
+   * perche') si collega all'input interno appena il calendario compare.
+   */
+  @ViewChild('calendario', { read: ElementRef })
+  set calendario(el: ElementRef<HTMLElement> | undefined) {
+    el?.nativeElement.querySelector('#fatt-da')?.setAttribute('aria-describedby', 'fatt-nota')
+  }
 
   readonly puoModificare = () => puoImpostareFatturazione(this.auth.currentUser()?.role)
 

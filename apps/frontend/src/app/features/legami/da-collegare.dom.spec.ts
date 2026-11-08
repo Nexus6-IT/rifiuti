@@ -256,7 +256,7 @@ describe('DaCollegareComponent (DOM)', () => {
     expect(q('sel-m1')).toBeNull()
     expect(q('seleziona-pagina')).toBeNull()
     expect(q('barra-massa')).toBeNull()
-    expect(q('apri-m1')?.textContent).toContain('Dettaglio')
+    expect(q('apri-m1')?.querySelector('button')?.getAttribute('aria-label')).toContain('Dettaglio')
   })
 
   it('riammetti dal filtro Esclusi', async () => {
@@ -327,7 +327,7 @@ describe('DaCollegareComponent (DOM)', () => {
       riga(3, { stato: 'DA_RIALLINEARE', legameId: 'l3' }),
     ])
     expect(bottone('apri-m2')!.disabled).toBeTrue()
-    expect(q('apri-m2')!.title).toContain('Nessun legame ancora')
+    expect(q('apri-m2')!.querySelector('button')!.title).toContain('Nessun legame ancora')
     servizio.dettaglio.and.returnValue(of(legameVuoto))
     bottone('apri-m3')!.click()
     await stabilizza(fixture)
@@ -562,6 +562,179 @@ describe('DaCollegareComponent (DOM)', () => {
       expect(servizio.lista).toHaveBeenCalled()
       expect(servizio.aggiornaContatori).toHaveBeenCalled()
       expect(fixture.componentInstance.aggiornaPrezziAperta()).toBeFalse()
+    })
+  })
+
+  describe('restyle giro 2 (pattern delle liste)', () => {
+    /**
+     * Iframe largo `larghezza` px con gli stili del documento (anche quelli del componente, che
+     * Angular mette in `head`) e il DOM renderizzato della pagina: la media query vale per il suo
+     * viewport. PrimeNG (`@layer primeng`) non e' caricato in Karma: si misura la struttura.
+     */
+    let iframe: HTMLIFrameElement
+    const nelViewport = async (larghezza: number): Promise<Document> => {
+      iframe = document.createElement('iframe')
+      iframe.style.cssText = `width:${larghezza}px;height:900px;border:0;position:fixed;left:0;top:0`
+      document.body.appendChild(iframe)
+      const doc = iframe.contentDocument as Document
+      doc.open()
+      doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>')
+      doc.close()
+      const caricamenti: Promise<void>[] = []
+      document.head.querySelectorAll('style, link[rel="stylesheet"]').forEach(n => {
+        const copia = n.cloneNode(true) as HTMLElement
+        if (copia.tagName === 'LINK') {
+          caricamenti.push(new Promise(ok => copia.addEventListener('load', () => ok())))
+        }
+        doc.head.appendChild(copia)
+      })
+      doc.body.innerHTML = `<div style="padding:24px">${fixture.nativeElement.outerHTML}</div>`
+      await Promise.all(caricamenti)
+      return doc
+    }
+    afterEach(() => iframe?.remove())
+
+    const campiFiltro = (doc: Document): HTMLElement[] =>
+      Array.from(doc.querySelectorAll<HTMLElement>('.filters__field'))
+
+    it('a 1440px i filtri stanno su una riga, allineati alla base', async () => {
+      await crea('ADMIN', [riga(1)])
+      const doc = await nelViewport(1200)
+      const campi = campiFiltro(doc)
+      expect(campi.length).toBe(7)
+      const alto = campi.map(c => Math.round(c.getBoundingClientRect().top))
+      const basso = campi.map(c => Math.round(c.getBoundingClientRect().bottom))
+      expect(new Set(alto).size).withContext('tutti i campi sulla stessa riga').toBe(1)
+      expect(new Set(basso).size).withContext('stessa base').toBe(1)
+    })
+
+    it('a 390px i filtri vanno a capo, uno per riga, a tutta larghezza', async () => {
+      await crea('ADMIN', [riga(1)])
+      const doc = await nelViewport(390)
+      const campi = campiFiltro(doc)
+      const alti = campi.map(c => Math.round(c.getBoundingClientRect().top))
+      expect(new Set(alti).size).toBe(campi.length)
+      campi.forEach(c => expect(c.getBoundingClientRect().width).toBeGreaterThan(300))
+      expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(doc.documentElement.clientWidth)
+    })
+
+    it("la tabella usa lista-telefono, le cifre stanno a destra e la cella azioni non e' mai m-hide", async () => {
+      await crea('ADMIN', [riga(1)])
+      expect(document.body.querySelector('.p-datatable.lista-telefono')).not.toBeNull()
+      const th = document.body.querySelector('th.num-col') as HTMLElement
+      const td = document.body.querySelector('td.num-col') as HTMLElement
+      expect(getComputedStyle(th).textAlign).toBe('right')
+      expect(getComputedStyle(td).textAlign).toBe('right')
+      const azioni = document.body.querySelector('td.azioni-col') as HTMLElement
+      expect(azioni).not.toBeNull()
+      expect(azioni.classList.contains('m-hide')).toBeFalse()
+    })
+
+    it("a 390px la riga e' una lista a due righe: azioni visibili in colonna 2, nessuno scroll orizzontale", async () => {
+      await crea('ADMIN', [
+        riga(1, {
+          cliente: {
+            id: 'c1',
+            etichetta:
+              'Acciaierie e Lavorazioni Metalliche della Valdelsa Societa Per Azioni Unipersonale',
+          },
+        }),
+      ])
+      const doc = await nelViewport(360)
+      const win = doc.defaultView as Window
+      const tr = doc.querySelector('tbody tr') as HTMLElement
+      expect(tr.getBoundingClientRect().height).toBeGreaterThanOrEqual(56)
+      expect(win.getComputedStyle(doc.querySelector('td.m-hide') as Element).display).toBe('none')
+      const azioni = doc.querySelector('td.azioni-col') as HTMLElement
+      const r = azioni.getBoundingClientRect()
+      expect(win.getComputedStyle(azioni).display).not.toBe('none')
+      expect(r.right).toBeLessThanOrEqual(360)
+      const bottoneRiga = azioni.querySelector('button') as HTMLElement
+      expect(bottoneRiga.getBoundingClientRect().height).toBeGreaterThanOrEqual(44)
+      expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(doc.documentElement.clientWidth)
+    })
+
+    it("azione di riga: «Apri» e' un app-azioni-riga con nome accessibile del movimento", async () => {
+      await crea('ADMIN', [riga(1)])
+      const host = q('apri-m1')!
+      expect(host.tagName.toLowerCase()).toBe('app-azioni-riga')
+      const b = host.querySelector('button') as HTMLButtonElement
+      expect(b.getAttribute('aria-label')).toContain('Apri')
+      expect(b.getAttribute('aria-label')).toContain('12/03/2026')
+      // il testo e' visibile, non solo nel nome accessibile
+      expect(b.textContent?.trim()).toBe('Apri')
+    })
+
+    it("«Fatturazione non attiva» e' una riga di stato dentro la card, senza intestazioni ne paginatore", async () => {
+      await crea('ADMIN', [])
+      fatturazione.leggi.and.returnValue(
+        of({ fatturazioneDa: null, versione: 0, modificatoIl: null })
+      )
+      fixture.componentInstance.carica()
+      await stabilizza(fixture)
+      const stato = q('legami-vuota')!
+      expect(stato.textContent).toContain(MSG_FATTURAZIONE_NON_ATTIVA)
+      expect(stato.getAttribute('role')).toBe('status')
+      expect(stato.closest('.table-card')).not.toBeNull()
+      expect(document.body.querySelector('.p-paginator')).toBeNull()
+      expect(document.body.querySelector('.table-card th')).toBeNull()
+    })
+
+    it('zero righe: nessun paginatore; sotto una pagina di righe neppure; oltre una pagina si', async () => {
+      await crea('ADMIN', [])
+      expect(document.body.querySelector('.p-paginator')).toBeNull()
+      fixture.destroy()
+      TestBed.resetTestingModule()
+      await crea('ADMIN', [riga(1)], 1)
+      expect(document.body.querySelector('.p-paginator')).toBeNull()
+      fixture.destroy()
+      TestBed.resetTestingModule()
+      await crea('ADMIN', [riga(1)], 120)
+      expect(document.body.querySelector('.p-paginator')).not.toBeNull()
+    })
+
+    it('«Riammetti» ha il testo visibile', async () => {
+      await crea('OPERATOR', [riga(7, { stato: 'ESCLUSO', versione: 4 })])
+      expect(q('riammetti-m7')!.querySelector('button')!.textContent?.trim()).toBe('Riammetti')
+    })
+
+    it('a 360px «Da sistemare» resta visibile, sotto lo stato', async () => {
+      await crea('ADMIN', [riga(1, { motivi: ['SENZA_CONTRATTO' as never] })])
+      const doc = await nelViewport(360)
+      const win = doc.defaultView as Window
+      const sistemare = doc.querySelector('td.sistemare-col') as HTMLElement
+      expect(win.getComputedStyle(sistemare).display).not.toBe('none')
+      const stato = (doc.querySelector('td.stato-col') as HTMLElement).getBoundingClientRect()
+      expect(sistemare.getBoundingClientRect().top).toBeGreaterThanOrEqual(stato.bottom - 1)
+      expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(doc.documentElement.clientWidth)
+    })
+
+    it('le colonne senza dati spariscono: «Da sistemare» con nessun motivo, «Cliente» senza cliente', async () => {
+      await crea('ADMIN', [riga(1, { cliente: null, motivi: [], avvisi: [] })])
+      const intestazioni = Array.from(document.body.querySelectorAll('.table-card th')).map(t =>
+        t.textContent?.trim()
+      )
+      expect(intestazioni).not.toContain('Da sistemare')
+      expect(intestazioni).not.toContain('Cliente')
+      fixture.destroy()
+      TestBed.resetTestingModule()
+      await crea('ADMIN', [riga(1, { motivi: ['SENZA_CONTRATTO' as never] })])
+      const con = Array.from(document.body.querySelectorAll('.table-card th')).map(t =>
+        t.textContent?.trim()
+      )
+      expect(con).toContain('Da sistemare')
+      expect(con).toContain('Cliente')
+    })
+
+    it("un solo h1 con il testo di sempre e al piu' un bottone primario", async () => {
+      await crea('ADMIN', [riga(1), riga(2)])
+      const h1 = document.body.querySelectorAll('h1')
+      expect(h1.length).toBe(1)
+      expect(h1[0].textContent?.trim()).toBe('Da collegare')
+      expect(document.body.querySelectorAll('.wf-primario').length).toBeLessThanOrEqual(1)
+      await spunta('sel-m1')
+      expect(document.body.querySelectorAll('.wf-primario').length).toBe(1)
+      expect(bottone('massa-conferma')!.classList.contains('wf-primario')).toBeTrue()
     })
   })
 })
