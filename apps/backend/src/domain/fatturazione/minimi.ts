@@ -49,7 +49,12 @@ function rigaMinimo(m: RigaListinoDaFatturare, differenza: Prisma.Decimal): Riga
  * `MW` = tutto il documento a prezzo normale; `MF` = righe CER; `M<cat>` = righe di tipo `V` della
  * categoria, confrontando le 3 cifre con `categoriaCodice` (non con `categoriaId`, che è un uuid).
  * Minimo per categoria (`minimoPerCategoria`): raggruppa per `categoriaId`; se le righe della
- * categoria hanno minimi diversi vale il più alto.
+ * categoria hanno minimi diversi vale il più alto, e la riga MINIMO aggiunta eredita il centro di
+ * ricavo e i codici di QUELLA riga di listino (quella col minimo più alto), non di un'altra della
+ * categoria. A parità di minimo vale la prima incontrata scorrendo `listino` (ordine di inserimento
+ * della Map): con centri di ricavo diversi nella stessa categoria il centro del minimo dipende da
+ * quell'ordine, quindi in pratica le righe di una categoria con `minimoPerCategoria` condividono il
+ * centro.
  */
 export function applicaMinimi(
   righe: readonly RigaSenzaLinea[],

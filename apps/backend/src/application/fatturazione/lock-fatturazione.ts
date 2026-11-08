@@ -31,7 +31,6 @@ import { NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import type { StatoElaborazione } from '../../domain/fatturazione/codici'
 import { bloccaRigheLegame } from '../legami-movimento/lock-legame'
-import { joinLineari } from '../listino/lock-listino'
 import { conJoinLineari } from './piani-query'
 
 /** Gli insiemi che la definitiva blocca, tutti con id distinti e in ordine. */
@@ -233,15 +232,12 @@ export async function bloccaPerDefinitiva(
   tenantId: string,
   s: InsiemiDaBloccare
 ): Promise<void> {
-  const prima = (
-    await tx.$queryRaw<{ v: string }[]>`SELECT current_setting('enable_nestloop') AS v`
-  )[0].v
-  await joinLineari(tx)
-  await bloccaInCondivisione(tx, tenantId, 'contratti_cliente', distintiOrdinati(s.contrattoIds))
-  await bloccaInCondivisione(tx, tenantId, 'elenchi_addebiti', distintiOrdinati(s.elencoIds))
-  await bloccaInCondivisione(tx, tenantId, 'righe_addebito', distintiOrdinati(s.rigaIds))
-  // Chiama a sua volta `joinLineari`: il ripristino viene dopo. Se una query fallisce la
-  // transazione e' abortita e il rollback ripristina da solo il `SET LOCAL`.
-  await bloccaRigheLegame(tx, tenantId, s.legameIds)
-  await tx.$queryRaw`SELECT set_config('enable_nestloop', ${prima}, true)`
+  await conJoinLineari(tx, async () => {
+    await bloccaInCondivisione(tx, tenantId, 'contratti_cliente', distintiOrdinati(s.contrattoIds))
+    await bloccaInCondivisione(tx, tenantId, 'elenchi_addebiti', distintiOrdinati(s.elencoIds))
+    await bloccaInCondivisione(tx, tenantId, 'righe_addebito', distintiOrdinati(s.rigaIds))
+    // Chiama a sua volta `joinLineari`: il ripristino lo fa `conJoinLineari` alla fine, anche se
+    // una query lancia.
+    await bloccaRigheLegame(tx, tenantId, s.legameIds)
+  })
 }

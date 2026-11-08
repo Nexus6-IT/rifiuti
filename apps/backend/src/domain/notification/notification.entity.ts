@@ -63,6 +63,31 @@ export class Notification {
     return new Notification(params)
   }
 
+  /**
+   * Ricostruisce una notifica già salvata, con lo stato di lettura e le date vere
+   * (`create` invece parte sempre da «non letta, creata adesso»).
+   */
+  static ricostruisci(params: {
+    id: string
+    tenantId: string
+    userId: string
+    type: NotificationType
+    title: string
+    message: string
+    severity: NotificationSeverity
+    actionUrl?: string
+    metadata?: Record<string, any>
+    read: boolean
+    createdAt: Date
+    readAt?: Date | null
+  }): Notification {
+    const notification = new Notification(params)
+    notification.read = params.read
+    notification.createdAt = params.createdAt
+    notification.readAt = params.readAt ?? undefined
+    return notification
+  }
+
   markAsRead(): void {
     if (!this.read) {
       this.read = true

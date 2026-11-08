@@ -467,6 +467,28 @@ describe('XmlDocumentoService — Postgres reale, ruolo wasteflow_app', () => {
     expect(await contatore(az.tenantId)).toBe(0)
   }, 90_000)
 
+  it('lotto tutto non valido ma con errori di file: il 422 riporta la posizione del primo attribuibile', async () => {
+    const az = await b.t19.azienda()
+    const docs = await b.definitivi(az, 3)
+    const modulo = jest.requireActual('../../infrastructure/fatturapa/valida-xsd')
+    jest.spyOn(modulo, 'validaFatturePA').mockImplementation(async (...a: unknown[]) =>
+      (a[0] as string[]).map((_, i) => ({
+        valido: false,
+        errori: [i === 0 ? 'errore generale' : 'Elemento Numero: valore non ammesso'],
+        attribuibile: i !== 0,
+      }))
+    )
+    const e = await esito(
+      zipDi(
+        az,
+        docs.map(d => d.id)
+      )
+    )
+    expect(e).toMatchObject({ status: 422, codice: 'XML_NON_VALIDO' })
+    expect((e as { details?: Record<string, unknown> }).details).toMatchObject({ indice: 2 })
+    for (const d of docs) expect((await riga(d.id)).emesso_il).toBeNull()
+  }, 90_000)
+
   // -------------------------------------------------------------------------------------------
   // ExportService, formato XML_ZIP
   // -------------------------------------------------------------------------------------------

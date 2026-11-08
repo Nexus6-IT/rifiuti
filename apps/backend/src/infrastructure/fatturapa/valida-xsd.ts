@@ -7,6 +7,12 @@ export interface EsitoValidazioneXsd {
   valido: boolean
   /** Messaggi dell'XSD senza il contenuto dei campi: solo nome dell'elemento e tipo di violazione. */
   errori: string[]
+  /**
+   * Solo nell'esito a lotto: `true` se l'invalidità dipende da almeno un errore proprio di
+   * QUESTO file (la sua posizione nella selezione è significativa); assente o `false` se il file
+   * è invalido solo per errori generali del lotto (es. XML non ben formato).
+   */
+  attribuibile?: boolean
 }
 
 const NOME_XSD_FATTURA = 'Schema_VFPR12_v1.2.3.xsd'
@@ -100,7 +106,9 @@ export async function validaFatturePA(xml: string[]): Promise<EsitoValidazioneXs
   }
   return xml.map((_, i) => {
     const errori = [...(perFile.get(`fattura-${i}.xml`) ?? []), ...generali].slice(0, MAX_ERRORI)
-    return errori.length === 0 ? { valido: true, errori } : { valido: false, errori }
+    return errori.length === 0
+      ? { valido: true, errori }
+      : { valido: false, errori, attribuibile: perFile.has(`fattura-${i}.xml`) }
   })
 }
 
