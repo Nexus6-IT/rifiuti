@@ -22,11 +22,16 @@ export function permessoScrittura(): Signal<boolean> {
   return computed(() => puoGestireAnagrafiche(auth.currentUser()?.role))
 }
 
+/**
+ * Conferma condivisa. L'azione e' distruttiva di default (Elimina, Disattiva, Rimuovi): bottone
+ * rosso per accettare, «Annulla» in testo e focus iniziale su «Annulla», cosi' Invio non cancella.
+ * `pericolosa: false` per le conferme che non distruggono niente (rinnovo, cambio pagina).
+ */
 export function chiediConferma(
   conferma: ConfirmationService,
   messaggio: string,
   accetta: () => void,
-  testi: { header?: string; acceptLabel?: string } = {}
+  testi: { header?: string; acceptLabel?: string; pericolosa?: boolean } = {}
 ): void {
   conferma.confirm({
     header: testi.header ?? 'Conferma eliminazione',
@@ -34,8 +39,33 @@ export function chiediConferma(
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: testi.acceptLabel ?? 'Elimina',
     rejectLabel: 'Annulla',
+    acceptButtonStyleClass: testi.pericolosa === false ? undefined : 'p-button-danger',
+    rejectButtonStyleClass: 'p-button-text',
+    defaultFocus: 'reject',
     accept: accetta,
   })
+}
+
+/**
+ * «Disattiva» chiede conferma (la riga resta sui documenti che la citano, ma non si sceglie piu'
+ * per quelli nuovi); «Riattiva» no. Una regola sola per tutte le liste.
+ */
+export function cambiaStatoConConferma(
+  conferma: ConfirmationService,
+  attivo: boolean,
+  descrizione: string,
+  esegui: () => void
+): void {
+  if (!attivo) {
+    esegui()
+    return
+  }
+  chiediConferma(
+    conferma,
+    `Disattivare ${descrizione}? Resta dove e' gia' usata, ma non si sceglie per i nuovi inserimenti.`,
+    esegui,
+    { header: 'Conferma disattivazione', acceptLabel: 'Disattiva' }
+  )
 }
 
 /**

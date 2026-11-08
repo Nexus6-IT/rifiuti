@@ -9,6 +9,7 @@ import { PasswordModule } from 'primeng/password'
 import { ButtonModule } from 'primeng/button'
 import { DividerModule } from 'primeng/divider'
 import { AuthService } from '../../core/services/auth.service'
+import { SegnoMarchioComponent } from '../../shared/components/segno-marchio.component'
 
 @Component({
   selector: 'app-login',
@@ -22,46 +23,33 @@ import { AuthService } from '../../core/services/auth.service'
     PasswordModule,
     ButtonModule,
     DividerModule,
+    SegnoMarchioComponent,
   ],
   template: `
-    <div class="auth">
+    <div class="auth" data-testid="auth">
       <!-- ===== Pannello brand (sinistra) ===== -->
-      <aside class="auth__brand" aria-hidden="true">
+      <aside class="auth__brand" data-testid="auth-brand" aria-hidden="true">
         <div class="auth__brand-inner">
           <div class="brand-mark">
-            <span class="brand-mark__glyph"><i class="pi pi-sync"></i></span>
+            <app-segno-marchio [dimensione]="32" />
             <span class="brand-mark__name">WasteFlow</span>
           </div>
 
           <div class="brand-hero">
             <p class="brand-hero__eyebrow">Gestione digitale dei rifiuti</p>
-            <h2 class="brand-hero__title">La tracciabilità dei rifiuti, semplice e conforme.</h2>
+            <h2 class="brand-hero__title">Formulari, registro e RENTRI in un solo posto</h2>
             <p class="brand-hero__lede">
-              Piattaforma per la Pubblica Amministrazione: formulari, registri e comunicazioni
-              ambientali in un unico flusso digitale.
+              Il gestionale per le aziende che producono, trasportano e recuperano rifiuti.
             </p>
           </div>
 
           <ul class="brand-list">
-            <li class="brand-list__item">
-              <i class="pi pi-file-edit" aria-hidden="true"></i>
-              <span>Gestione completa dei FIR</span>
-            </li>
-            <li class="brand-list__item">
-              <i class="pi pi-sync" aria-hidden="true"></i>
-              <span>Integrazione RENTRI</span>
-            </li>
-            <li class="brand-list__item">
-              <i class="pi pi-chart-line" aria-hidden="true"></i>
-              <span>Tracciabilità in tempo reale</span>
-            </li>
-            <li class="brand-list__item">
-              <i class="pi pi-verified" aria-hidden="true"></i>
-              <span>Conformità normativa garantita</span>
-            </li>
+            <li class="brand-list__item">FIR digitali e trasmissione a RENTRI</li>
+            <li class="brand-list__item">Registro di carico e scarico sempre allineato</li>
+            <li class="brand-list__item">MUD preparato dai dati dell'anno</li>
           </ul>
 
-          <p class="brand-foot">Piattaforma modulare per la Pubblica Amministrazione</p>
+          <p class="brand-foot">WasteFlow · IgniCraft</p>
         </div>
       </aside>
 
@@ -69,8 +57,8 @@ import { AuthService } from '../../core/services/auth.service'
       <main class="auth__main" id="contenuto-login">
         <div class="auth__panel">
           <!-- Logo mobile (visibile solo dove il pannello brand è nascosto) -->
-          <div class="auth__logo-mobile">
-            <span class="brand-mark__glyph"><i class="pi pi-sync" aria-hidden="true"></i></span>
+          <div class="auth__logo-mobile" data-testid="auth-logo-mobile">
+            <app-segno-marchio [dimensione]="32" />
             <span class="brand-mark__name">WasteFlow</span>
           </div>
 
@@ -83,9 +71,8 @@ import { AuthService } from '../../core/services/auth.service'
           <div class="auth__idp" role="group" aria-label="Accesso">
             <p-button
               label="Accedi"
-              icon="pi pi-sign-in"
               [loading]="loading"
-              styleClass="w-full idp-button idp-button--spid"
+              styleClass="w-full idp-button idp-button--spid wf-primario"
               (onClick)="onSPIDLogin()"
               ariaLabel="Accedi a WasteFlow"
             />
@@ -124,68 +111,36 @@ import { AuthService } from '../../core/services/auth.service'
       .auth {
         min-height: 100vh;
         display: grid;
-        grid-template-columns: 1.05fr 1fr;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
         background: var(--surface-ground);
       }
 
       /* ============ Pannello brand ============ */
+      /* Pannello piatto «Libro mastro»: inchiostro pieno, nessuna sfumatura; ≤ 40% sopra i 992 px. */
       .auth__brand {
         position: relative;
         overflow: hidden;
-        /* Pannello di marca: stesso aspetto in chiaro e in scuro (token fissi). */
         color: var(--on-brand-panel);
-        background:
-          radial-gradient(120% 90% at 12% 8%, rgba(255, 255, 255, 0.16) 0%, transparent 46%),
-          radial-gradient(130% 120% at 92% 100%, rgba(0, 0, 0, 0.22) 0%, transparent 55%),
-          linear-gradient(
-            150deg,
-            var(--brand-panel-from) 0%,
-            var(--brand-panel-mid) 62%,
-            var(--brand-panel-to) 100%
-          );
-      }
-      .auth__brand::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background-image: radial-gradient(
-          circle at 78% 22%,
-          rgba(255, 255, 255, 0.1) 0,
-          transparent 42%
-        );
-        pointer-events: none;
+        background: var(--brand-panel);
+        border-inline-end: 1px solid var(--surface-border);
       }
       .auth__brand-inner {
-        position: relative;
-        z-index: 1;
-        height: 100%;
+        position: sticky;
+        top: 0;
+        min-height: 100vh;
         display: flex;
         flex-direction: column;
         gap: var(--spacing-2xl);
-        padding: clamp(2rem, 4vw, 4rem);
+        padding: clamp(2rem, 4vw, 3.5rem);
         max-width: 560px;
         margin-left: auto;
       }
 
       .brand-mark {
+        --text-primary: var(--on-brand-panel);
         display: flex;
         align-items: center;
-        gap: 0.7rem;
-      }
-      .brand-mark__glyph {
-        width: 44px;
-        height: 44px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(255, 255, 255, 0.16);
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        border-radius: var(--radius-md);
-        backdrop-filter: blur(8px);
-      }
-      .brand-mark__glyph i {
-        font-size: 1.35rem;
-        color: var(--on-brand-panel);
+        gap: 0.65rem;
       }
       .brand-mark__name {
         font-family: var(--font-display);
@@ -199,16 +154,14 @@ import { AuthService } from '../../core/services/auth.service'
         margin-top: auto;
       }
       .brand-hero__eyebrow {
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-semibold);
-        color: rgba(255, 255, 255, 0.82);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--brand-mark);
         margin: 0 0 var(--spacing-sm);
       }
       .brand-hero__title {
         font-family: var(--font-display);
-        font-size: clamp(1.75rem, 3vw, 2.5rem);
+        font-size: clamp(1.75rem, 2.6vw, 2.25rem);
         line-height: 1.15;
         font-weight: var(--font-weight-bold);
         color: var(--on-brand-panel);
@@ -216,44 +169,32 @@ import { AuthService } from '../../core/services/auth.service'
         letter-spacing: -0.02em;
       }
       .brand-hero__lede {
-        font-size: var(--font-size-lg);
+        font-size: var(--font-size-base);
         line-height: var(--line-height-relaxed);
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--on-brand-panel);
+        opacity: 0.82;
         margin: 0;
-        max-width: 46ch;
+        max-width: 42ch;
       }
 
+      /* Elenco a righe sottili, senza icone in riquadri */
       .brand-list {
         list-style: none;
-        display: grid;
-        gap: var(--spacing-md);
+        margin: 0;
+        padding: 0;
       }
       .brand-list__item {
-        display: flex;
-        align-items: center;
-        gap: var(--spacing-md);
+        padding: var(--spacing-md) 0;
+        border-top: 1px solid color-mix(in srgb, var(--on-brand-panel) 16%, transparent);
         font-size: var(--font-size-base);
-        font-weight: var(--font-weight-medium);
-        color: rgba(255, 255, 255, 0.95);
-      }
-      .brand-list__item i {
-        width: 34px;
-        height: 34px;
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(255, 255, 255, 0.14);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        border-radius: var(--radius-base);
-        font-size: 1rem;
         color: var(--on-brand-panel);
       }
 
       .brand-foot {
         margin: 0;
         font-size: var(--font-size-sm);
-        color: rgba(255, 255, 255, 0.75);
+        color: var(--on-brand-panel);
+        opacity: 0.7;
       }
 
       /* ============ Pannello form ============ */
@@ -261,14 +202,13 @@ import { AuthService } from '../../core/services/auth.service'
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         gap: var(--spacing-xl);
-        padding: clamp(1.5rem, 4vw, 3rem);
+        padding: clamp(1.5rem, 6vh, 4rem) clamp(1.5rem, 4vw, 3rem) clamp(1.5rem, 4vw, 3rem);
       }
       .auth__panel {
         width: 100%;
         max-width: 420px;
-        animation: fadeInUp var(--transition-base);
       }
 
       .auth__logo-mobile {
@@ -277,13 +217,6 @@ import { AuthService } from '../../core/services/auth.service'
         gap: 0.6rem;
         justify-content: center;
         margin-bottom: var(--spacing-xl);
-      }
-      .auth__logo-mobile .brand-mark__glyph {
-        background: var(--brand-primary-50);
-        border-color: var(--brand-primary-100);
-      }
-      .auth__logo-mobile .brand-mark__glyph i {
-        color: var(--brand-primary-dark);
       }
       .auth__logo-mobile .brand-mark__name {
         color: var(--text-primary);
@@ -373,6 +306,7 @@ import { AuthService } from '../../core/services/auth.service'
       }
 
       .auth__footer {
+        margin-top: auto;
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
@@ -393,19 +327,19 @@ import { AuthService } from '../../core/services/auth.service'
       }
 
       /* ============ Bottoni IdP / submit ============ */
-      :host ::ng-deep .idp-button .p-button,
-      :host ::ng-deep .submit-button .p-button {
-        min-height: 50px;
+      :host ::ng-deep .p-button.idp-button,
+      :host ::ng-deep .p-button.submit-button {
+        min-height: 44px;
         justify-content: center;
         font-size: var(--font-size-base) !important;
       }
       /* CIE in stile outlined ma con bordo più marcato */
-      :host ::ng-deep .idp-button--cie .p-button {
+      :host ::ng-deep .p-button.idp-button--cie {
         border-width: 1.5px;
       }
 
       /* ============ Responsive ============ */
-      @media (max-width: 960px) {
+      @media (max-width: 991.98px) {
         .auth {
           grid-template-columns: 1fr;
         }
@@ -415,9 +349,21 @@ import { AuthService } from '../../core/services/auth.service'
         .auth__logo-mobile {
           display: flex;
         }
+      }
+      /* Su un tablet il form sta al centro e il piè di pagina lo segue: col piè di pagina in fondo
+         allo schermo resterebbe in mezzo un vuoto di centinaia di pixel. Sul telefono il form
+         riempie lo schermo e il piè di pagina sta in basso. */
+      @media (min-width: 576px) and (max-width: 991.98px) {
+        .auth__main {
+          justify-content: center;
+        }
+        .auth__footer {
+          margin-top: 0;
+        }
+      }
+      @media (max-width: 575.98px) {
         .auth__main {
           min-height: 100vh;
-          justify-content: center;
         }
       }
 
@@ -427,12 +373,6 @@ import { AuthService } from '../../core/services/auth.service'
         }
         .auth__title {
           font-size: var(--font-size-2xl);
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .auth__panel {
-          animation: none;
         }
       }
     `,

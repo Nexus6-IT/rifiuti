@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core'
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { ConfirmationService } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
@@ -9,11 +9,15 @@ import { InputTextModule } from 'primeng/inputtext'
 import { TableModule } from 'primeng/table'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
+import { AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
+import { azioniDiRiga, MemoriaAzioni } from '../clienti/tabelle/azioni-lista'
 import { ElencoPaginato } from '../clienti/tabelle/elenco-paginato'
 import {
   chiediConferma,
   eseguiERicarica,
   permessoScrittura,
+  cambiaStatoConConferma,
 } from '../clienti/tabelle/tabella-comune'
 import { AddebitoDialogComponent } from './addebito-dialog.component'
 import { Addebito, FiltroAddebiti } from './listino.model'
@@ -38,13 +42,14 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
     TableModule,
     AddebitoDialogComponent,
     VariazioneArchivioDialogComponent,
+    AzioniRigaComponent,
   ],
   providers: [ConfirmationService],
   template: `
     <section class="pagina">
       <h1>Archivio addebiti</h1>
-      <div class="barra">
-        <span class="p-input-icon-left">
+      <div class="barra-filtri">
+        <span class="barra-filtri__ricerca">
           <i class="pi pi-search" aria-hidden="true"></i>
           <input
             pInputText
@@ -55,7 +60,7 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
             data-testid="addebiti-cerca"
           />
         </span>
-        <div class="barra__azioni">
+        <div class="barra-filtri__destra">
           <label class="spunta" for="addebiti-solo-attivi">
             <p-checkbox
               inputId="addebiti-solo-attivi"
@@ -78,6 +83,7 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
             *ngIf="puoScrivere()"
             label="Nuovo addebito"
             icon="pi pi-plus"
+            styleClass="wf-primario"
             (onClick)="apri(null)"
             data-testid="addebiti-nuovo"
           />
@@ -89,6 +95,7 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
         [lazy]="true"
         [lazyLoadOnInit]="false"
         [paginator]="true"
+        [alwaysShowPaginator]="false"
         [rows]="elenco.dimensione"
         [first]="elenco.primo"
         [totalRecords]="totale()"
@@ -97,77 +104,48 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
         (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
-        styleClass="p-datatable-sm"
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
             <th scope="col">Codice</th>
             <th scope="col">Descrizione</th>
-            <th scope="col">Gruppo</th>
-            <th scope="col">Tipo</th>
-            <th scope="col">U.M.</th>
-            <th scope="col">Prezzo listino 1</th>
+            <th scope="col" *ngIf="visibili().has('gruppo')">Gruppo</th>
+            <th scope="col" *ngIf="visibili().has('tipo')">Tipo</th>
+            <th scope="col" *ngIf="visibili().has('unitaMisura')">U.M.</th>
+            <th scope="col" class="num-col" *ngIf="visibili().has('prezzo')">Prezzo listino 1</th>
             <th scope="col">Attivo</th>
-            <th scope="col" *ngIf="puoScrivere() || puoVariare()">Azioni</th>
+            <th scope="col" class="num-col azioni-col" *ngIf="haAzioni()">Azioni</th>
           </tr>
         </ng-template>
         <ng-template pTemplate="body" let-a>
           <tr [attr.data-testid]="'addebiti-riga-' + a.id">
             <td>{{ a.codice }}</td>
-            <td>{{ a.descrizione }}</td>
-            <td>{{ a.gruppo.descrizione }}</td>
-            <td [attr.title]="a.etichettaTipo">{{ a.tipo }}</td>
-            <td>{{ a.unitaMisura }}</td>
-            <td>{{ prezzoBase(a) }}</td>
-            <td>{{ a.attivo ? 'Sì' : 'No' }}</td>
-            <td *ngIf="puoScrivere() || puoVariare()">
-              <p-button
-                *ngIf="puoScrivere()"
-                label="Modifica"
-                icon="pi pi-pencil"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Modifica l’addebito ' + a.descrizione"
-                (onClick)="apri(a)"
+            <td class="m2 chi">
+              {{ a.descrizione }}<span class="solo-tel" *ngIf="!a.attivo"> · Disattivato</span>
+            </td>
+            <td class="m-hide" *ngIf="visibili().has('gruppo')">{{ a.gruppo.descrizione }}</td>
+            <td class="m-hide" *ngIf="visibili().has('tipo')" [attr.title]="a.etichettaTipo">
+              {{ a.tipo }}
+            </td>
+            <td class="m-hide" *ngIf="visibili().has('unitaMisura')">{{ a.unitaMisura }}</td>
+            <td class="num-col m-hide" *ngIf="visibili().has('prezzo')">
+              {{ prezzoBase(a) ? (prezzoBase(a) | number: '1.2-2') : '—' }}
+            </td>
+            <td class="m-hide">{{ a.attivo ? 'Sì' : 'No' }}</td>
+            <td class="azioni-col" *ngIf="haAzioni()">
+              <app-azioni-riga
                 [attr.data-testid]="'addebiti-modifica-' + a.id"
-              />
-              <p-button
-                *ngIf="puoVariare()"
-                label="Varia prezzi"
-                icon="pi pi-percentage"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Varia i prezzi dell’addebito ' + a.descrizione"
-                (onClick)="apriVariazione(a)"
-                [attr.data-testid]="'addebiti-varia-' + a.id"
-              />
-              <p-button
-                *ngIf="puoScrivere()"
-                [label]="a.attivo ? 'Disattiva' : 'Riattiva'"
-                [icon]="a.attivo ? 'pi pi-ban' : 'pi pi-replay'"
-                [text]="true"
-                size="small"
-                [ariaLabel]="(a.attivo ? 'Disattiva' : 'Riattiva') + ' l’addebito ' + a.descrizione"
-                (onClick)="cambiaStato(a)"
-                [attr.data-testid]="'addebiti-attiva-' + a.id"
-              />
-              <p-button
-                *ngIf="puoScrivere() && a.eliminabile"
-                label="Elimina"
-                icon="pi pi-trash"
-                severity="danger"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Elimina l’addebito ' + a.descrizione"
-                (onClick)="elimina(a)"
-                [attr.data-testid]="'addebiti-elimina-' + a.id"
+                [nome]="a.descrizione"
+                [principale]="azioni.di(a).principale"
+                [altre]="azioni.di(a).altre"
               />
             </td>
           </tr>
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="puoScrivere() || puoVariare() ? 8 : 7">Nessun addebito.</td>
+            <td [attr.colspan]="colonneTotali()">Nessun addebito.</td>
           </tr>
         </ng-template>
       </p-table>
@@ -189,27 +167,28 @@ import { VariazioneArchivioDialogComponent } from './variazione-archivio-dialog.
   `,
   styles: [
     `
-      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
+      /* Il gutter laterale e' della shell: la pagina tiene solo lo spazio sopra il titolo. */
       .pagina {
         padding: var(--spacing-lg) 0;
       }
-      .barra {
-        display: flex;
-        justify-content: space-between;
+      .barra-filtri__destra {
         flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-bottom: 0.5rem;
-      }
-      .barra__azioni {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.5rem;
       }
       .spunta {
         display: flex;
         align-items: center;
         gap: 0.4rem;
+      }
+      .chi {
+        overflow-wrap: anywhere;
+      }
+      .solo-tel {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
       }
     `,
   ],
@@ -229,6 +208,38 @@ export class AddebitiListComponent implements OnInit, OnDestroy {
   readonly righe = this.elenco.righe
   readonly totale = this.elenco.totale
   readonly erroreElenco = this.elenco.errore
+  /** Colonne facoltative con almeno un dato nella pagina: le altre non si disegnano. */
+  readonly visibili = computed(() =>
+    colonneConDati(this.righe(), {
+      gruppo: a => a.gruppo?.descrizione,
+      tipo: a => a.tipo,
+      unitaMisura: a => a.unitaMisura,
+      prezzo: a => this.prezzoBase(a),
+    })
+  )
+  /** La colonna delle azioni c'e' per chi puo' modificare o variare i prezzi. */
+  readonly haAzioni = () => this.puoScrivere() || this.puoVariare()
+  /** Colonne del p-table (per la riga dello stato vuoto). */
+  readonly colonneTotali = computed(() => 3 + this.visibili().size + (this.haAzioni() ? 1 : 0))
+  readonly azioni = new MemoriaAzioni<Addebito>(a => {
+    const scrive = this.puoScrivere()
+    return azioniDiRiga({
+      modifica: scrive ? () => this.apri(a) : undefined,
+      etichettaModifica: `Modifica l’addebito ${a.descrizione}`,
+      extra: this.puoVariare()
+        ? [
+            {
+              etichetta: 'Varia i prezzi…',
+              icona: 'pi pi-percentage',
+              esegui: () => this.apriVariazione(a),
+            },
+          ]
+        : [],
+      attivo: a.attivo,
+      cambiaStato: scrive ? () => this.chiediCambiaStato(a) : undefined,
+      elimina: scrive && a.eliminabile ? () => this.elimina(a) : undefined,
+    })
+  })
   readonly dialogoAperto = signal(false)
   readonly selezionato = signal<Addebito | null>(null)
   readonly variazioneAperta = signal(false)
@@ -265,6 +276,13 @@ export class AddebitiListComponent implements OnInit, OnDestroy {
   apriVariazione(a: Addebito | null): void {
     this.addebitiVariazione.set(a ? [a.id] : null)
     this.variazioneAperta.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(a: Addebito): void {
+    cambiaStatoConConferma(this.conferma, a.attivo, `l'addebito "${a.descrizione}"`, () =>
+      this.cambiaStato(a)
+    )
   }
 
   cambiaStato(a: Addebito): void {

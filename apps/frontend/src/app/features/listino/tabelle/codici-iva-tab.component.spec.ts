@@ -1,3 +1,6 @@
+import { registerLocaleData } from '@angular/common'
+import localeIt from '@angular/common/locales/it'
+import { LOCALE_ID } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of, throwError } from 'rxjs'
@@ -14,6 +17,7 @@ import {
   stabilizza,
   tabellaFinta,
 } from '../../clienti/tabelle/tabelle-test-utils'
+import { apriMenuRiga, chiudiMenuRiga } from '../../clienti/tabelle/azioni-test-utils'
 
 const iva22: CodiceIva = {
   id: '7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b',
@@ -35,6 +39,8 @@ const n61: CodiceIva = {
   eliminabile: false,
 }
 
+registerLocaleData(localeIt, 'it-IT')
+
 describe('CodiciIvaTabComponent', () => {
   let tabella: ReturnType<typeof tabellaFinta>
   let toast: jasmine.SpyObj<ToastService>
@@ -54,6 +60,7 @@ describe('CodiciIvaTabComponent', () => {
       imports: [CodiciIvaTabComponent],
       providers: [
         provideNoopAnimations(),
+        { provide: LOCALE_ID, useValue: 'it-IT' },
         { provide: ListinoService, useValue: { codiciIva: tabella } },
         { provide: ToastService, useValue: toast },
         { provide: AuthService, useValue: { currentUser: () => ({ role: 'ADMIN' }) } },
@@ -65,7 +72,7 @@ describe('CodiciIvaTabComponent', () => {
   it("elenco con le disattivate: codice, aliquota e natura; l'id non si vede", async () => {
     await apri()
     expect(tabella.list).toHaveBeenCalledWith({ incluseDisattivate: true })
-    expect(q('iva-riga-22')!.textContent).toContain('22.00%')
+    expect(q('iva-riga-22')!.textContent).toContain('22,00%')
     expect(q('iva-riga-N61')!.textContent).toContain('N6.1')
     expect(document.body.textContent).not.toContain('7f3b2c9e-iva1-4d5a-9b1e-0c2d3e4f5a6b')
   })
@@ -128,14 +135,15 @@ describe('CodiciIvaTabComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('iva-nuovo')).toBeNull()
-    expect(q('iva-modifica-22')).toBeNull()
-    expect(q('iva-attivo-22')).toBeNull()
-    expect(q('iva-elimina-22')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('"Elimina" solo se eliminabile; conferma e poi manda id e versione', async () => {
     await apri()
-    expect(q('iva-elimina-N61')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('iva-riga-N61')!)).not.toContain('Elimina')
+    chiudiMenuRiga()
     tabella.elimina.and.returnValue(of(undefined))
     fixture.componentInstance.elimina(iva22)
     await stabilizza(fixture)

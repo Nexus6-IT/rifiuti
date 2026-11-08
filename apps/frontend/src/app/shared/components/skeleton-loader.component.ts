@@ -138,15 +138,11 @@ import { CommonModule } from '@angular/common'
         gap: var(--spacing-md);
       }
 
+      /* Barre grigie piatte: niente sfumatura (house rule: niente gradienti). Il respiro e' una
+         variazione di opacita', spenta con prefers-reduced-motion. */
       .skeleton {
-        background: linear-gradient(
-          90deg,
-          var(--color-gray-200) 25%,
-          var(--color-gray-100) 50%,
-          var(--color-gray-200) 75%
-        );
-        background-size: 200% 100%;
-        animation: loading 1.5s ease-in-out infinite;
+        background: var(--color-gray-200);
+        animation: respiro 1.5s ease-in-out infinite;
         border-radius: var(--radius-sm);
       }
 
@@ -216,19 +212,19 @@ import { CommonModule } from '@angular/common'
         border: 1px solid var(--surface-border);
       }
 
-      @keyframes loading {
-        0% {
-          background-position: 200% 0;
-        }
+      @keyframes respiro {
+        0%,
         100% {
-          background-position: -200% 0;
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.55;
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
         .skeleton {
           animation: none;
-          background: var(--color-gray-200);
         }
       }
 

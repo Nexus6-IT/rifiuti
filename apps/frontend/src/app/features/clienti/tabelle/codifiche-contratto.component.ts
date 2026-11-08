@@ -36,6 +36,7 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
         *ngIf="puoScrivere()"
         [label]="concordanza().nuovo"
         icon="pi pi-plus"
+        [styleClass]="primario ? 'wf-primario' : ''"
         (onClick)="apri(null)"
         [attr.data-testid]="'codifica-nuova-' + genere"
       />
@@ -46,7 +47,7 @@ const TITOLI: Readonly<Record<GenereCodifica, string>> = {
       [puoScrivere]="puoScrivere()"
       [testid]="testid"
       (modifica)="apri($event)"
-      (cambiaStato)="cambiaStato($event)"
+      (cambiaStato)="chiediCambiaStato($event)"
       (elimina)="elimina($event)"
     />
     <app-codifica-dialog
@@ -87,6 +88,8 @@ export class CodificheContrattoComponent
   }
 
   @Input() genere: GenereCodifica = 'CATEGORIA'
+  /** Un solo bottone primario per pagina: nella scheda con due elenchi il secondo e' normale. */
+  @Input() primario = true
 
   /** `data-testid` con il genere: nella stessa pagina ci sono tre schede. */
   readonly testid = (azione: AzioneCodifica, c: { codice: string }): string =>

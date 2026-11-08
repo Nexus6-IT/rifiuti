@@ -23,6 +23,8 @@ import { TagModule } from 'primeng/tag'
 import { Subject, takeUntil } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
+import { AzioneRiga, AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import {
   Cliente,
   ContrattoCliente,
@@ -83,6 +85,7 @@ const SEVERITA_STATO: Readonly<
     MenuModule,
     TableModule,
     TagModule,
+    AzioniRigaComponent,
     AnnulloDialogComponent,
     ContrattoClienteDialogComponent,
     ProrogaDialogComponent,
@@ -94,8 +97,8 @@ const SEVERITA_STATO: Readonly<
   template: `
     <section class="pagina">
       <h1>Contratti clienti</h1>
-      <div class="barra">
-        <span class="p-input-icon-left">
+      <div class="barra-filtri">
+        <span class="barra-filtri__ricerca">
           <i class="pi pi-search" aria-hidden="true"></i>
           <input
             pInputText
@@ -123,6 +126,7 @@ const SEVERITA_STATO: Readonly<
               label="Variazioni prezzi"
               icon="pi pi-percentage"
               [outlined]="true"
+              severity="secondary"
               (onClick)="menuVariazioni.toggle($event)"
               aria-haspopup="true"
               data-testid="contratti-variazioni"
@@ -134,19 +138,36 @@ const SEVERITA_STATO: Readonly<
               label="Proroga scadenze"
               icon="pi pi-calendar-plus"
               [outlined]="true"
+              severity="secondary"
               (onClick)="proroga()"
               data-testid="contratti-proroga"
             />
             <p-button
               label="Nuovo contratto"
               icon="pi pi-plus"
+              styleClass="wf-primario"
               (onClick)="apriNuovo()"
               data-testid="contratti-nuovo"
             />
           </ng-container>
         </div>
       </div>
-      <div class="filtri">
+      <button
+        type="button"
+        class="filtri-toggle p-button p-button-outlined p-button-secondary"
+        [attr.aria-expanded]="filtriAperti()"
+        aria-controls="contratti-filtri"
+        (click)="filtriAperti.set(!filtriAperti())"
+        data-testid="contratti-filtri-toggle"
+      >
+        <i class="pi pi-filter" aria-hidden="true"></i>&nbsp;Filtri
+      </button>
+      <div
+        id="contratti-filtri"
+        class="barra-filtri"
+        [class.filtri-chiusi]="!filtriAperti()"
+        data-testid="contratti-filtri"
+      >
         <p-dropdown
           [options]="opzioniStato"
           [ngModel]="statoFiltro"
@@ -157,9 +178,12 @@ const SEVERITA_STATO: Readonly<
           data-testid="contratti-filtro-stato"
         />
         <app-scelta-cliente
+          class="filtro-cliente"
           prefisso="contratti-filtro-cliente"
           prefissoNuovo="contratti-filtro-cliente-nuovo"
-          etichetta="Cliente"
+          etichetta="Filtra per cliente"
+          segnaposto="Tutti i clienti"
+          [senzaEtichetta]="true"
           (scelto)="filtraCliente($event)"
         />
         <p-dropdown
@@ -223,6 +247,7 @@ const SEVERITA_STATO: Readonly<
         [lazy]="true"
         [lazyLoadOnInit]="false"
         [paginator]="true"
+        [alwaysShowPaginator]="false"
         [rows]="elenco.dimensione"
         [first]="elenco.primo"
         [totalRecords]="totale()"
@@ -231,11 +256,12 @@ const SEVERITA_STATO: Readonly<
         (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
-        styleClass="p-datatable-sm"
+        class="tabella-fitta"
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
-            <th scope="col" *ngIf="puoVariare()">
+            <th scope="col" *ngIf="puoVariare()" class="m-hide">
               <input
                 type="checkbox"
                 [checked]="tuttiScelti()"
@@ -247,20 +273,26 @@ const SEVERITA_STATO: Readonly<
             </th>
             <th scope="col">Numero</th>
             <th scope="col">Cliente</th>
-            <th scope="col">Descrizione</th>
-            <th scope="col">Categoria</th>
+            <th scope="col" *ngIf="colonne().has('descrizione')">Descrizione</th>
+            <th scope="col" *ngIf="colonne().has('categoria')">Categoria</th>
             <th scope="col">Stato</th>
-            <th scope="col">Inizio</th>
-            <th scope="col">Fine</th>
-            <th scope="col">Prossima fatturazione</th>
-            <th scope="col">Da collegare</th>
+            <th scope="col">Periodo</th>
+            <th
+              scope="col"
+              *ngIf="colonne().has('prossima')"
+              title="Prossima fatturazione"
+              aria-label="Prossima fatturazione"
+            >
+              Prossima fatt.
+            </th>
+            <th scope="col" *ngIf="colonne().has('daCollegare')">Da collegare</th>
             <th scope="col">Listino</th>
-            <th scope="col" *ngIf="puoScrivere()">Azioni</th>
+            <th scope="col" *ngIf="puoScrivere()" class="azioni-col">Azioni</th>
           </tr>
         </ng-template>
         <ng-template pTemplate="body" let-c>
           <tr [attr.data-testid]="'contratti-riga-' + c.id">
-            <td *ngIf="puoVariare()">
+            <td *ngIf="puoVariare()" class="m-hide">
               <input
                 type="checkbox"
                 [checked]="scelti().has(c.id)"
@@ -269,16 +301,26 @@ const SEVERITA_STATO: Readonly<
                 [attr.data-testid]="'contratti-scegli-' + c.id"
               />
             </td>
-            <td>{{ c.numero }}</td>
-            <td>{{ c.cliente.ragioneSociale }}</td>
-            <td>{{ c.descrizione }}</td>
-            <td>{{ c.categoria?.descrizione }}</td>
-            <td>
-              <p-tag [value]="etichettaStato(c.stato)" [severity]="severita(c.stato)" />
+            <td class="cella-numero">{{ c.numero }}</td>
+            <td class="cella-testo" [attr.title]="c.cliente.ragioneSociale">
+              {{ c.cliente.ragioneSociale }}
             </td>
-            <td>{{ c.dataInizio | date: 'dd/MM/yyyy' }}</td>
-            <td>
-              {{ c.dataFine | date: 'dd/MM/yyyy' }}
+            <td
+              *ngIf="colonne().has('descrizione')"
+              class="cella-testo m-hide"
+              [attr.title]="c.descrizione"
+            >
+              {{ c.descrizione }}
+            </td>
+            <td
+              *ngIf="colonne().has('categoria')"
+              class="cella-categoria m-hide"
+              [attr.title]="c.categoria?.descrizione"
+            >
+              {{ c.categoria?.descrizione }}
+            </td>
+            <td class="cella-stato m2">
+              <p-tag [value]="etichettaStato(c.stato)" [severity]="severita(c.stato)" />
               <p-tag
                 *ngIf="c.scaduto"
                 value="Scaduto"
@@ -286,8 +328,16 @@ const SEVERITA_STATO: Readonly<
                 data-testid="contratti-scaduto"
               />
             </td>
-            <td>{{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}</td>
-            <td>
+            <td class="m-hide cella-periodo">
+              {{ c.dataInizio | date: 'dd/MM/yyyy'
+              }}<ng-container *ngIf="c.dataFine">
+                – {{ c.dataFine | date: 'dd/MM/yyyy' }}</ng-container
+              >
+            </td>
+            <td *ngIf="colonne().has('prossima')" class="m-hide">
+              {{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}
+            </td>
+            <td *ngIf="colonne().has('daCollegare')" class="m-hide">
               <a
                 *ngIf="daCollegarePer(c.id) as n"
                 routerLink="/legami/da-collegare"
@@ -299,66 +349,31 @@ const SEVERITA_STATO: Readonly<
                 <p-tag [value]="'' + n" severity="warning" />
               </a>
             </td>
-            <td class="azioni">
+            <td class="cella-listino m2">
               <!-- Fuori dalla colonna di scrittura: il VIEWER legge il listino (R48). -->
               <a
                 [routerLink]="['/contratti-clienti', c.id, 'listino']"
                 class="p-button p-button-text p-button-sm"
+                title="Listino"
                 [attr.aria-label]="'Listino del contratto ' + c.numero"
                 [attr.data-testid]="'contratti-listino-' + c.id"
               >
-                <i class="pi pi-list" aria-hidden="true"></i>&nbsp;Listino
+                <i class="pi pi-list" aria-hidden="true"></i
+                ><span class="solo-telefono-testo">&nbsp;Listino</span>
               </a>
             </td>
-            <td *ngIf="puoScrivere()" class="azioni">
-              <p-button
-                label="Modifica"
-                icon="pi pi-pencil"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Modifica il contratto ' + c.numero"
-                (onClick)="apriModifica(c)"
-                [attr.data-testid]="'contratti-modifica-' + c.id"
-              />
-              <p-button
-                *ngFor="let s of c.transizioni"
-                [label]="etichettaAzione(c, s)"
-                [text]="true"
-                size="small"
-                [severity]="s === 'ANNULLATO' ? 'danger' : 'secondary'"
-                [ariaLabel]="etichettaAzione(c, s) + ' il contratto ' + c.numero"
-                (onClick)="cambiaStato(c, s)"
-                [attr.data-testid]="'contratti-stato-' + c.id + '-' + s"
-              />
-              <p-button
-                *ngIf="c.rinnovabile"
-                label="Rinnova"
-                icon="pi pi-refresh"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Rinnova il contratto ' + c.numero"
-                (onClick)="rinnova(c)"
-                [attr.data-testid]="'contratti-rinnova-' + c.id"
-              />
-              <p-button
-                *ngIf="c.eliminabile"
-                label="Elimina"
-                icon="pi pi-trash"
-                severity="danger"
-                [text]="true"
-                size="small"
-                [ariaLabel]="'Elimina il contratto ' + c.numero"
-                (onClick)="elimina(c)"
-                [attr.data-testid]="'contratti-elimina-' + c.id"
+            <td *ngIf="puoScrivere()" class="azioni-col">
+              <app-azioni-riga
+                [principale]="azioniDi(c).principale"
+                [altre]="azioniDi(c).altre"
+                [nome]="c.numero"
               />
             </td>
           </tr>
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="10 + (puoScrivere() ? 1 : 0) + (puoVariare() ? 1 : 0)">
-              Nessun contratto.
-            </td>
+            <td [attr.colspan]="numeroColonne()">Nessun contratto.</td>
           </tr>
         </ng-template>
       </p-table>
@@ -398,28 +413,19 @@ const SEVERITA_STATO: Readonly<
   `,
   styles: [
     `
-      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
-      .pagina {
-        padding: var(--spacing-lg) 0;
-      }
-      .barra {
-        display: flex;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-bottom: 0.5rem;
-      }
-      .barra__azioni,
-      .filtri {
+      .barra__azioni {
         display: flex;
         flex-wrap: wrap;
         gap: 0.5rem;
         align-items: center;
+        margin-left: auto;
       }
-      /* L'etichetta «Cliente» alza solo quel campo: i controlli si allineano sul bordo inferiore. */
-      .filtri {
-        margin-bottom: 0.5rem;
-        align-items: flex-end;
+      /* Dodici colonne in 1150px: il respiro fra le celle scende da 12 a circa 6px. */
+      .tabella-fitta {
+        --spacing-md: 0.4rem;
+      }
+      .filtro-cliente {
+        width: 16rem; /* il segnaposto «Tutti i clienti» sta intero */
       }
       .spunta {
         display: inline-flex;
@@ -427,8 +433,45 @@ const SEVERITA_STATO: Readonly<
         align-items: center;
         height: var(--control-md);
       }
-      .azioni {
+      /* Cliente, descrizione e categoria su una riga sola: l'ellissi taglia, il title dice tutto. */
+      .cella-testo,
+      .cella-categoria {
         white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 10rem;
+      }
+      .cella-categoria {
+        max-width: 7rem;
+      }
+      .cella-stato {
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
+      }
+      .cella-numero,
+      .cella-periodo,
+      .cella-stato,
+      .cella-listino {
+        white-space: nowrap;
+      }
+      /* Colonna delle azioni: larghezza fissa e sempre in vista. Se le colonne piene non stanno nella
+         larghezza, scorre la tavola (il wrapper di p-table) e questa cella resta ferma a destra. */
+      th.azioni-col,
+      td.azioni-col {
+        min-width: 7.5rem;
+        width: 7.5rem;
+        text-align: right;
+        white-space: nowrap;
+        position: sticky;
+        right: 0;
+        z-index: 1;
+        background: var(--surface-ground);
+        box-shadow: -1px 0 0 var(--rule);
+      }
+      /* PrimeNG vuole l'intestazione trasparente: sul th serve !important, sul td no. */
+      th.azioni-col {
+        background: var(--surface-ground) !important;
       }
       .senza-contratto {
         display: flex;
@@ -436,6 +479,63 @@ const SEVERITA_STATO: Readonly<
         gap: 0.5rem;
         align-items: center;
         margin: 0 0 0.75rem;
+      }
+      /* Telefono: numero e cliente su due righe, stato e listino sulla terza. */
+      .filtri-toggle.filtri-toggle {
+        display: none;
+      }
+      /* Su desktop il link al listino è la sola icona (il nome sta nell'aria-label e nel title). */
+      .solo-telefono-testo {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      @media (max-width: 640px) {
+        .solo-telefono-testo {
+          position: static;
+          width: auto;
+          height: auto;
+          clip: auto;
+        }
+        .filtri-toggle.filtri-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 44px;
+          margin-bottom: var(--spacing-md);
+        }
+        .filtri-chiusi {
+          display: none;
+        }
+        th.azioni-col,
+        td.azioni-col {
+          position: static;
+          box-shadow: none;
+          width: auto;
+          min-width: 0;
+        }
+        .filtro-cliente {
+          width: 100%;
+        }
+        .cella-testo,
+        .cella-numero {
+          max-width: none;
+        }
+        .cella-numero {
+          font-weight: 500;
+        }
+        .cella-stato {
+          grid-column: 1 !important;
+          grid-row: 3;
+        }
+        .cella-listino {
+          grid-column: 2 !important;
+          grid-row: 3;
+          justify-self: end;
+        }
       }
     `,
   ],
@@ -477,6 +577,62 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   readonly righe = this.elenco.righe
   readonly totale = this.elenco.totale
   readonly erroreElenco = this.elenco.errore
+
+  /** Sul telefono i filtri stanno in un pannello «Filtri», chiuso all'apertura. */
+  readonly filtriAperti = signal(false)
+
+  /** Colonne facoltative con almeno un dato nella pagina: le altre non si mostrano. */
+  readonly colonne = computed(() =>
+    colonneConDati<ContrattoCliente>(this.righe(), {
+      descrizione: c => c.descrizione,
+      categoria: c => c.categoria?.descrizione,
+      prossima: c => c.prossimaFinePeriodo,
+      daCollegare: c => this.daCollegarePer(c.id) || null,
+    })
+  )
+
+  /** Intestazioni mostrate (per il colspan dello stato vuoto). */
+  readonly numeroColonne = computed(
+    () => 5 + (this.puoVariare() ? 1 : 0) + (this.puoScrivere() ? 1 : 0) + this.colonne().size
+  )
+
+  /** Azioni di ogni riga, calcolate una volta per pagina: il menu aperto non vede il modello cambiare. */
+  private readonly azioniPerContratto = computed(
+    () => new Map(this.righe().map(c => [c.id, this.costruisciAzioni(c)]))
+  )
+
+  azioniDi(c: ContrattoCliente): { principale: AzioneRiga; altre: AzioneRiga[] } {
+    return this.azioniPerContratto().get(c.id) ?? this.costruisciAzioni(c)
+  }
+
+  /**
+   * «Modifica» sulla riga; nel menu ⋯ le transizioni di stato della vista, «Rinnova» e, in fondo e
+   * in rosso, «Annulla il contratto» ed «Elimina».
+   */
+  private costruisciAzioni(c: ContrattoCliente): { principale: AzioneRiga; altre: AzioneRiga[] } {
+    const stati: AzioneRiga[] = c.transizioni.map(s => ({
+      etichetta:
+        s === 'ANNULLATO' ? `Annulla il contratto ${c.numero}` : this.etichettaAzione(c, s),
+      pericolosa: s === 'ANNULLATO',
+      esegui: () => this.cambiaStato(c, s),
+    }))
+    const altre: AzioneRiga[] = [
+      ...stati.filter(a => !a.pericolosa),
+      ...(c.rinnovabile ? [{ etichetta: 'Rinnova', esegui: () => this.rinnova(c) }] : []),
+      ...stati.filter(a => a.pericolosa),
+      ...(c.eliminabile
+        ? [{ etichetta: 'Elimina', pericolosa: true, esegui: () => this.elimina(c) }]
+        : []),
+    ]
+    return {
+      principale: {
+        etichetta: 'Modifica',
+        icona: 'pi pi-pencil',
+        esegui: () => this.apriModifica(c),
+      },
+      altre,
+    }
+  }
 
   readonly opzioniStato = OPZIONI_STATO_CONTRATTO
   readonly categorie = signal<Opzione[]>([])
@@ -774,6 +930,7 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
     chiediConferma(this.conferma, testo, () => this.rinnovaConfermato(c), {
       header: 'Conferma rinnovo',
       acceptLabel: 'Rinnova',
+      pericolosa: false,
     })
   }
 

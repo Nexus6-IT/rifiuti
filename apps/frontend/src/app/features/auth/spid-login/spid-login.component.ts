@@ -117,9 +117,7 @@ import { AuthService } from '../../../core/services/auth.service'
         align-items: center;
         padding: var(--spacing-xl);
         gap: var(--spacing-base);
-        background:
-          radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 60%),
-          var(--surface-ground);
+        background: var(--surface-ground);
       }
 
       .login-card {

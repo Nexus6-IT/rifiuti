@@ -11,6 +11,7 @@ import { ClientiListComponent } from './clienti-list.component'
 import { Cliente, Pagina } from './clienti.model'
 import { ClientiService } from './clienti.service'
 import { TabelleFatturazioneService } from './tabelle-fatturazione.service'
+import { apriMenuRiga } from './tabelle/azioni-test-utils'
 import { accettaConferma, bottone, q, scrivi, stabilizza } from './tabelle/tabelle-test-utils'
 
 const cliente = (over: Partial<Cliente> = {}): Cliente => ({
@@ -202,12 +203,12 @@ describe('ClientiListComponent', () => {
 
   it('Elimina solo se eliminabile', async () => {
     await apri('ADMIN', pagina(cliente({ eliminabile: false })))
-    expect(q('clienti-elimina-cl1')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('clienti-riga-cl1')!)).toEqual(['Disattiva'])
   })
 
   it("eliminabile: il pulsante Elimina c'è", async () => {
     await apri('ADMIN', pagina(cliente({ eliminabile: true })))
-    expect(q('clienti-elimina-cl1')).toBeTruthy()
+    expect(await apriMenuRiga(fixture, q('clienti-riga-cl1')!)).toEqual(['Disattiva', 'Elimina'])
   })
 
   it('Elimina: conferma con il testo previsto e poi manda id e versione', async () => {
@@ -242,21 +243,21 @@ describe('ClientiListComponent', () => {
 
   it('azioni con aria-label che cita la ragione sociale', async () => {
     await apri()
-    for (const id of ['clienti-modifica-cl1', 'clienti-attiva-cl1', 'clienti-elimina-cl1']) {
-      expect(bottone(id)!.getAttribute('aria-label')).toContain('Verdi Servizi S.r.l.')
-    }
+    const riga = q('clienti-riga-cl1')!
+    expect(bottone('clienti-modifica-cl1')!.getAttribute('aria-label')).toBe(
+      'Modifica il cliente Verdi Servizi S.r.l.'
+    )
+    expect(riga.querySelector('[data-testid="azioni-altre"]')!.getAttribute('aria-label')).toBe(
+      'Altre azioni per Verdi Servizi S.r.l.'
+    )
   })
 
   it('VIEWER: nessun pulsante di scrittura, ma Agenti e Tabelle restano', async () => {
     await apri('VIEWER')
-    for (const id of [
-      'clienti-nuovo',
-      'clienti-modifica-cl1',
-      'clienti-attiva-cl1',
-      'clienti-elimina-cl1',
-    ]) {
-      expect(q(id)).toBeNull()
-    }
+    expect(q('clienti-nuovo')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
     expect(q('clienti-agenti')).toBeTruthy()
     expect(q('clienti-tabelle')).toBeTruthy()
     expect(q('clienti-addebiti')).toBeTruthy()

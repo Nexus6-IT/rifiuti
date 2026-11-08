@@ -5,8 +5,16 @@ import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../../core/services/toast.service'
+import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
+import { azioniDiRiga, MemoriaAzioni } from './azioni-lista'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 import { RegistroIva } from '../clienti.model'
 import { RegistroIvaDialogComponent } from './registro-iva-dialog.component'
 
@@ -15,6 +23,7 @@ import { RegistroIvaDialogComponent } from './registro-iva-dialog.component'
   standalone: true,
   imports: [
     CommonModule,
+    AzioniRigaComponent,
     ButtonModule,
     ConfirmDialogModule,
     TableModule,
@@ -27,54 +36,39 @@ import { RegistroIvaDialogComponent } from './registro-iva-dialog.component'
         *ngIf="puoScrivere()"
         label="Nuovo registro"
         icon="pi pi-plus"
+        styleClass="wf-primario"
         (onClick)="apri(null)"
         data-testid="registro-nuovo"
       />
     </div>
     <p *ngIf="erroreElenco() as e" role="alert" class="field-error">{{ e }}</p>
-    <p-table [value]="righe()" styleClass="p-datatable-sm">
+    <p-table
+      [value]="righe()"
+      [styleClass]="'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')"
+    >
       <ng-template pTemplate="header">
         <tr>
           <th scope="col">Codice</th>
           <th scope="col">Descrizione</th>
           <th scope="col">Stato</th>
-          <th scope="col" *ngIf="puoScrivere()">Azioni</th>
+          <th scope="col" class="num-col azioni-col" *ngIf="puoScrivere()">Azioni</th>
         </tr>
       </ng-template>
       <ng-template pTemplate="body" let-r>
         <tr [attr.data-testid]="'registro-riga-' + r.codice">
           <td>{{ r.codice }}</td>
-          <td>
+          <td class="m2">
             {{ r.descrizione }}
             <span *ngIf="r.ricevuteSplit" class="badge-split">Ricevute split</span>
+            <span class="solo-tel" *ngIf="!r.attivo"> · Disattivato</span>
           </td>
-          <td>{{ r.attivo ? 'Attivo' : 'Disattivato' }}</td>
-          <td *ngIf="puoScrivere()">
-            <p-button
-              label="Modifica"
-              icon="pi pi-pencil"
-              [text]="true"
-              size="small"
-              (onClick)="apri(r)"
+          <td class="m-hide">{{ r.attivo ? 'Attivo' : 'Disattivato' }}</td>
+          <td class="azioni-col" *ngIf="puoScrivere()">
+            <app-azioni-riga
               [attr.data-testid]="'registro-modifica-' + r.codice"
-            />
-            <p-button
-              [label]="r.attivo ? 'Disattiva' : 'Riattiva'"
-              [icon]="r.attivo ? 'pi pi-ban' : 'pi pi-replay'"
-              [text]="true"
-              size="small"
-              (onClick)="cambiaStato(r)"
-              [attr.data-testid]="'registro-attivo-' + r.codice"
-            />
-            <p-button
-              *ngIf="r.eliminabile"
-              label="Elimina"
-              icon="pi pi-trash"
-              severity="danger"
-              [text]="true"
-              size="small"
-              (onClick)="elimina(r)"
-              [attr.data-testid]="'registro-elimina-' + r.codice"
+              [nome]="r.codice + ' - ' + r.descrizione"
+              [principale]="azioni.di(r).principale"
+              [altre]="azioni.di(r).altre"
             />
           </td>
         </tr>
@@ -100,6 +94,14 @@ import { RegistroIvaDialogComponent } from './registro-iva-dialog.component'
         justify-content: flex-end;
         margin-bottom: 0.5rem;
       }
+      .solo-tel {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
+      }
       .badge-split {
         margin-left: 0.5rem;
         padding: 0.1rem 0.5rem;
@@ -118,6 +120,15 @@ export class RegistriIvaComponent implements OnInit {
   readonly puoScrivere = permessoScrittura()
   readonly righe = signal<RegistroIva[]>([])
   readonly erroreElenco = signal<string | null>(null)
+  readonly azioni = new MemoriaAzioni<RegistroIva>(r =>
+    azioniDiRiga({
+      modifica: () => this.apri(r),
+      etichettaModifica: 'Modifica',
+      attivo: r.attivo,
+      cambiaStato: () => this.chiediCambiaStato(r),
+      elimina: r.eliminabile ? () => this.elimina(r) : undefined,
+    })
+  )
   readonly dialogoAperto = signal(false)
   readonly selezionato = signal<RegistroIva | null>(null)
 
@@ -137,6 +148,16 @@ export class RegistriIvaComponent implements OnInit {
   apri(r: RegistroIva | null): void {
     this.selezionato.set(r)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(r: RegistroIva): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      r.attivo,
+      `il registro "${r.codice} - ${r.descrizione}"`,
+      () => this.cambiaStato(r)
+    )
   }
 
   cambiaStato(r: RegistroIva): void {

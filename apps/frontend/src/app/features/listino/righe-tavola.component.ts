@@ -8,6 +8,7 @@ import {
   importoItaliano,
   totaleFissiAnnuo,
 } from './listino-calcoli'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import { RigaAddebito } from './listino.model'
 import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
 
@@ -24,97 +25,150 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
     <p *ngIf="errore" role="alert" class="field-error" data-testid="listino-errore-righe">
       {{ errore }}
     </p>
-    <p-table
-      [value]="righe()"
-      [loading]="caricamento"
-      styleClass="p-datatable-sm"
-      [scrollable]="true"
-    >
-      <ng-template pTemplate="caption">
-        <span class="sr-only">Righe dell'elenco</span>
-      </ng-template>
-      <ng-template pTemplate="header">
-        <tr>
-          <th scope="col">Tipo</th>
-          <th scope="col">CER / addebito</th>
-          <th scope="col">Rif.</th>
-          <th scope="col">Descrizione</th>
-          <th scope="col">U.M.</th>
-          <th scope="col">Quantità</th>
-          <th scope="col">Prezzo</th>
-          <th scope="col">Sconto</th>
-          <th scope="col">IVA</th>
-          <th scope="col">Provvigione</th>
-          <th scope="col">Cond.</th>
-          <th scope="col">Minimo</th>
-          <th scope="col">Categoria</th>
-          <th scope="col">Appunti</th>
-          <th scope="col"><span class="visually-hidden">Azioni</span></th>
-        </tr>
-      </ng-template>
-      <ng-template pTemplate="body" let-r>
-        <tr (dblclick)="apri.emit(r)" [attr.data-testid]="'listino-riga-' + r.id">
-          <td [attr.title]="r.etichettaTipo">{{ r.tipo }}</td>
-          <td>{{ r.cerCode ?? r.addebito?.codice }}</td>
-          <td>{{ r.riferimento }}</td>
-          <td>{{ r.descrizione ?? r.addebito?.descrizione }}</td>
-          <td>{{ r.unitaMisura }}</td>
-          <td>{{ quantita(r) }}</td>
-          <td>{{ r.prezzoSpeciale ? 'speciale' : prezzo(r.prezzo) }}</td>
-          <td>{{ cascata(r.sconto) }}</td>
-          <td>{{ r.codiceIva.codice }}</td>
-          <td>{{ cascata(r.provvigione) }}</td>
-          <td>{{ r.condizione }}</td>
-          <td>{{ prezzo(r.minimoFatturabile) }}</td>
-          <td>{{ r.categoria?.descrizione }}</td>
-          <td>{{ r.appunti }}</td>
-          <td>
-            <p-button
-              icon="pi pi-external-link"
-              [text]="true"
-              size="small"
-              [ariaLabel]="'Apri la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
-              (onClick)="apri.emit(r)"
-              [attr.data-testid]="'listino-apri-' + r.id"
-            />
-            <!-- Disabilitato, non nascosto: una riga usata dai legami resta chiusa/disattivata da "Apri". -->
-            <span
-              *ngIf="puoEliminare"
-              [attr.title]="r.eliminabile ? null : MOTIVO_IN_USO"
-              [attr.data-testid]="'listino-elimina-riga-tip-' + r.id"
+    <!-- Se le colonne piene non stanno nello spazio, scorre la tavola e non la pagina. -->
+    <div class="tavola">
+      <p-table
+        [value]="righe()"
+        [loading]="caricamento"
+        styleClass="p-datatable-sm lista-telefono"
+        class="tabella-fitta"
+      >
+        <ng-template pTemplate="caption">
+          <span class="sr-only">Righe dell'elenco</span>
+        </ng-template>
+        <ng-template pTemplate="header">
+          <tr>
+            <th scope="col" class="m-hide">Tipo</th>
+            <th scope="col">CER / addebito</th>
+            <th scope="col" *ngIf="colonne().has('riferimento')">Rif.</th>
+            <th scope="col" *ngIf="colonne().has('descrizione')">Descrizione</th>
+            <th scope="col" *ngIf="colonne().has('um')">U.M.</th>
+            <th scope="col" *ngIf="colonne().has('quantita')" class="num-col">Quantità</th>
+            <th scope="col" class="num-col">Prezzo</th>
+            <th scope="col" *ngIf="colonne().has('sconto')" class="num-col">Sconto</th>
+            <th scope="col" class="m-hide">IVA</th>
+            <th scope="col" *ngIf="colonne().has('provvigione')" class="num-col">Provvigione</th>
+            <th scope="col" *ngIf="colonne().has('condizione')">Cond.</th>
+            <th scope="col" *ngIf="colonne().has('minimo')" class="num-col">Minimo</th>
+            <th scope="col" *ngIf="colonne().has('categoria')">Categoria</th>
+            <th scope="col" *ngIf="colonne().has('appunti')">Appunti</th>
+            <th scope="col" class="azioni-col"><span class="visually-hidden">Azioni</span></th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-r>
+          <tr (dblclick)="apri.emit(r)" [attr.data-testid]="'listino-riga-' + r.id">
+            <td class="m-hide" [attr.title]="r.etichettaTipo">{{ r.tipo }}</td>
+            <td class="cella-codice">{{ r.cerCode ?? r.addebito?.codice }}</td>
+            <td *ngIf="colonne().has('riferimento')" class="m-hide">{{ r.riferimento }}</td>
+            <td
+              *ngIf="colonne().has('descrizione')"
+              class="cella-testo"
+              [attr.title]="r.descrizione ?? r.addebito?.descrizione"
             >
+              {{ r.descrizione ?? r.addebito?.descrizione }}
+            </td>
+            <td *ngIf="colonne().has('um')" class="m-hide">{{ r.unitaMisura }}</td>
+            <td *ngIf="colonne().has('quantita')" class="num-col m-hide">{{ quantita(r) }}</td>
+            <td class="num-col m2">{{ r.prezzoSpeciale ? 'speciale' : prezzo(r.prezzo) }}</td>
+            <td *ngIf="colonne().has('sconto')" class="num-col m-hide">{{ cascata(r.sconto) }}</td>
+            <td class="m-hide">{{ r.codiceIva.codice }}</td>
+            <td *ngIf="colonne().has('provvigione')" class="num-col m-hide">
+              {{ cascata(r.provvigione) }}
+            </td>
+            <td *ngIf="colonne().has('condizione')" class="m-hide">{{ r.condizione }}</td>
+            <td *ngIf="colonne().has('minimo')" class="num-col m-hide">
+              {{ prezzo(r.minimoFatturabile) }}
+            </td>
+            <td *ngIf="colonne().has('categoria')" class="m-hide">
+              {{ r.categoria?.descrizione }}
+            </td>
+            <td
+              *ngIf="colonne().has('appunti')"
+              class="cella-testo m-hide"
+              [attr.title]="r.appunti"
+            >
+              {{ r.appunti }}
+            </td>
+            <td class="azioni-col">
               <p-button
-                icon="pi pi-trash"
-                severity="danger"
+                icon="pi pi-external-link"
                 [text]="true"
                 size="small"
-                [disabled]="!r.eliminabile"
-                [ariaLabel]="
-                  'Elimina la riga ' +
-                  (r.cerCode ?? r.addebito?.codice ?? r.tipo) +
-                  (r.eliminabile ? '' : ' (' + MOTIVO_IN_USO + ')')
-                "
-                (onClick)="elimina.emit(r)"
-                [attr.data-testid]="'listino-elimina-riga-' + r.id"
+                [ariaLabel]="'Apri la riga ' + (r.cerCode ?? r.addebito?.codice ?? r.tipo)"
+                (onClick)="apri.emit(r)"
+                [attr.data-testid]="'listino-apri-' + r.id"
               />
-              <small *ngIf="!r.eliminabile" class="cell-sub" aria-hidden="true">In uso</small>
-            </span>
-          </td>
-        </tr>
-      </ng-template>
-      <ng-template pTemplate="emptymessage">
-        <tr>
-          <td colspan="15">Nessuna riga.</td>
-        </tr>
-      </ng-template>
-    </p-table>
+              <!-- Disabilitato, non nascosto: una riga usata dai legami resta chiusa/disattivata da "Apri". -->
+              <span
+                *ngIf="puoEliminare"
+                [attr.title]="r.eliminabile ? null : MOTIVO_IN_USO"
+                [attr.data-testid]="'listino-elimina-riga-tip-' + r.id"
+              >
+                <p-button
+                  icon="pi pi-trash"
+                  severity="danger"
+                  [text]="true"
+                  size="small"
+                  [disabled]="!r.eliminabile"
+                  [ariaLabel]="
+                    'Elimina la riga ' +
+                    (r.cerCode ?? r.addebito?.codice ?? r.tipo) +
+                    (r.eliminabile ? '' : ' (' + MOTIVO_IN_USO + ')')
+                  "
+                  (onClick)="elimina.emit(r)"
+                  [attr.data-testid]="'listino-elimina-riga-' + r.id"
+                />
+                <small *ngIf="!r.eliminabile" class="cell-sub" aria-hidden="true">In uso</small>
+              </span>
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td [attr.colspan]="numeroColonne()">Nessuna riga.</td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
     <p class="totale" data-testid="listino-totale-fissi">Totale fissi: {{ totaleFissiTesto() }}</p>
   `,
   styles: [
     `
+      .tavola {
+        overflow-x: auto;
+      }
+      .tabella-fitta {
+        --spacing-md: 0.5rem;
+      }
       .totale {
         text-align: right;
         font-weight: 600;
+      }
+      /* Descrizione e appunti su una riga sola: l'ellissi taglia, il title dice tutto. */
+      .cella-testo {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 16rem;
+      }
+      .cella-codice {
+        white-space: nowrap;
+        font-weight: 500;
+      }
+      th.azioni-col,
+      td.azioni-col {
+        text-align: right;
+        white-space: nowrap;
+        min-width: 6.5rem;
+        position: sticky;
+        right: 0;
+        z-index: 1;
+        background: var(--surface-ground);
+        box-shadow: -1px 0 0 var(--rule);
+      }
+      /* PrimeNG vuole l'intestazione trasparente: sul th serve !important, sul td no. */
+      th.azioni-col {
+        background: var(--surface-ground) !important;
       }
       .visually-hidden {
         position: absolute;
@@ -123,12 +177,51 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
         overflow: hidden;
         clip: rect(0 0 0 0);
       }
+      /* Telefono: codice sopra, descrizione sotto, prezzo sulla terza riga. */
+      @media (max-width: 640px) {
+        th.azioni-col,
+        td.azioni-col {
+          position: static;
+          box-shadow: none;
+          width: auto;
+          min-width: 0;
+        }
+        .cella-testo {
+          max-width: none;
+        }
+        .cella-codice {
+          font-weight: 500;
+        }
+        /* Apri ed Elimina: area di tocco da 44px (i p-button stanno nella vista di PrimeNG). */
+        :host ::ng-deep td.azioni-col .p-button {
+          min-width: 2.75rem;
+          height: 2.75rem;
+        }
+      }
     `,
   ],
 })
 export class RigheTavolaComponent {
   readonly righe = signal<RigaAddebito[]>([])
   readonly totaleFissiTesto = computed(() => importoItaliano(totaleFissiAnnuo(this.righe())))
+
+  /** Colonne facoltative con almeno un dato: le altre non si mostrano. */
+  readonly colonne = computed(() =>
+    colonneConDati<RigaAddebito>(this.righe(), {
+      riferimento: r => r.riferimento,
+      descrizione: r => r.descrizione ?? r.addebito?.descrizione,
+      um: r => r.unitaMisura,
+      quantita: r => this.quantita(r),
+      sconto: r => r.sconto,
+      provvigione: r => r.provvigione,
+      condizione: r => r.condizione,
+      minimo: r => r.minimoFatturabile,
+      categoria: r => r.categoria?.descrizione,
+      appunti: r => r.appunti,
+    })
+  )
+  /** Intestazioni mostrate (per il colspan del messaggio vuoto): cinque sempre presenti. */
+  readonly numeroColonne = computed(() => 5 + this.colonne().size)
 
   @Input({ required: true }) set elementi(v: RigaAddebito[]) {
     this.righe.set(v)

@@ -67,9 +67,9 @@ describe('SpeseAccessorieComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('spesa-nuova')).toBeNull()
-    expect(q('spesa-modifica-B1')).toBeNull()
-    expect(q('spesa-attiva-B1')).toBeNull()
-    expect(q('spesa-elimina-B1')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('elimina: conferma e poi manda id e versione', async () => {

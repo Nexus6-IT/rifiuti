@@ -11,6 +11,7 @@ import {
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
 import { ATTESA_SERVER, attendiElenco, cliccaEAttendi, cliccaEChiudi } from '../../utils/attese'
+import { eseguiAzioneRiga, nomiAzioniRiga } from '../../utils/azioni-riga'
 
 /**
  * E2E — Listino del contratto (pezzo 4.2b, Task 30): dall'elenco all'adeguamento ISTAT.
@@ -637,7 +638,10 @@ test.describe('Listino del contratto — admin', () => {
     page,
   }) => {
     await apriContratti(page, d.numeroA)
-    await pagina(page).getByTestId(`contratti-modifica-${d.ids.A}`).click()
+    await pagina(page)
+      .getByTestId(`contratti-riga-${d.ids.A}`)
+      .getByTestId('azione-principale')
+      .click()
     const dlg = dialogo(page, 'Modifica contratto')
     await expect(dlg).toBeVisible()
     await expect(dlg.getByText('Caricamento…')).toBeHidden({ timeout: ATTESA_SERVER })
@@ -658,7 +662,7 @@ test.describe('Listino del contratto — admin', () => {
   test('annulla il contratto A: il listino diventa di sola lettura', async ({ page }) => {
     await apriContratti(page, d.numeroA)
     const riga = pagina(page).getByTestId(`contratti-riga-${d.ids.A}`)
-    await riga.getByRole('button', { name: `Annulla il contratto ${d.numeroA}` }).click()
+    await eseguiAzioneRiga(page, riga, `Annulla il contratto ${d.numeroA}`)
     const annullo = dialogo(page, new RegExp(`Annulla il contratto ${d.numeroA}`))
     await expect(annullo).toBeVisible()
     await annullo.getByTestId('annullo-testo').fill('Prova e2e del listino')
@@ -687,6 +691,9 @@ test.describe('Listino del contratto — admin', () => {
     await accediUiComeAzienda(page, azienda, 'viewer')
 
     await apriContratti(page, d.numeroB)
+    // Il VIEWER non ha azioni di riga: né «Modifica» né il menu ⋯.
+    const rigaB = pagina(page).getByTestId(`contratti-riga-${d.ids.B}`)
+    expect(await nomiAzioniRiga(page, rigaB)).toEqual([])
     await expect(pagina(page).getByRole('button', { name: 'Variazioni prezzi' })).toHaveCount(0)
     await expect(pagina(page).getByTestId('contratti-nuovo')).toHaveCount(0)
     await pagina(page).getByTestId(`contratti-listino-${d.ids.B}`).click()

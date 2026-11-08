@@ -6,6 +6,7 @@ import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { CondizionePagamento } from '../clienti.model'
 import { AuthService } from '../../../core/services/auth.service'
 import { ToastService } from '../../../core/services/toast.service'
+import { apriMenuRiga, chiudiMenuRiga, scegliVoceRiga } from './azioni-test-utils'
 import { accettaConferma, bottone, q, stabilizza, tabellaFinta } from './tabelle-test-utils'
 
 const condizione = (p: Partial<CondizionePagamento> = {}): CondizionePagamento => ({
@@ -82,24 +83,37 @@ describe('CondizioniPagamentoComponent', () => {
 
   it('Elimina visibile solo se eliminabile', async () => {
     await apri([condizione(), condizione({ id: 'c2', codice: 'RB', eliminabile: false })])
-    expect(q('cond-elimina-3060')).not.toBeNull()
-    expect(q('cond-elimina-RB')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('cond-riga-3060')!)).toContain('Elimina')
+    chiudiMenuRiga()
+    expect(await apriMenuRiga(fixture, q('cond-riga-RB')!)).not.toContain('Elimina')
   })
 
   it('Disattiva/Riattiva manda attiva e versione', async () => {
     await apri([condizione()])
     tabella.modifica.and.returnValue(of(condizione({ attiva: false, versione: 4 })))
-    bottone('cond-attiva-3060')!.click()
+    await scegliVoceRiga(fixture, q('cond-riga-3060')!, 'Disattiva')
+    // «Disattiva» chiede conferma: finche' non si accetta non parte nulla
+    expect(tabella.modifica).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Conferma disattivazione')
+    accettaConferma()
     await stabilizza(fixture)
     expect(tabella.modifica).toHaveBeenCalledWith('c1', { attiva: false, versione: 3 })
+  })
+
+  it('Riattiva parte subito, senza conferma', async () => {
+    await apri([condizione({ attiva: false })])
+    tabella.modifica.and.returnValue(of(condizione({ attiva: true, versione: 4 })))
+    await scegliVoceRiga(fixture, q('cond-riga-3060')!, 'Riattiva')
+    expect(document.body.textContent).not.toContain('Conferma disattivazione')
+    expect(tabella.modifica).toHaveBeenCalledWith('c1', { attiva: true, versione: 3 })
   })
 
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri([condizione()], 'VIEWER')
     expect(q('cond-nuova')).toBeNull()
-    expect(q('cond-modifica-3060')).toBeNull()
-    expect(q('cond-attiva-3060')).toBeNull()
-    expect(q('cond-elimina-3060')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('elimina: conferma e poi manda id e versione', async () => {

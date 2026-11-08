@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common'
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core'
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core'
 import { ConfirmationService } from 'primeng/api'
 import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
@@ -7,10 +7,13 @@ import { InputTextModule } from 'primeng/inputtext'
 import { TableModule } from 'primeng/table'
 
 import { ToastService } from '../../core/services/toast.service'
-import { etichettaIdentificativo } from '../registry/identificativo-fiscale'
+import { AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
+import { colonneConDati } from '../../shared/utils/colonne-visibili'
+import { separaIdentificativo } from '../registry/identificativo-fiscale'
 import { AgenteDialogComponent } from './agente-dialog.component'
 import { Agente } from './clienti.model'
 import { ClientiService } from './clienti.service'
+import { azioniDiRiga, MemoriaAzioni } from './tabelle/azioni-lista'
 import { ElencoPaginato } from './tabelle/elenco-paginato'
 import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/tabella-comune'
 
@@ -25,30 +28,34 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
     InputTextModule,
     TableModule,
     AgenteDialogComponent,
+    AzioniRigaComponent,
   ],
   providers: [ConfirmationService],
   template: `
     <section class="pagina">
       <h1>Agenti</h1>
-      <div class="barra">
-        <span class="p-input-icon-left">
+      <div class="barra-filtri">
+        <span class="barra-filtri__ricerca">
           <i class="pi pi-search" aria-hidden="true"></i>
           <input
             pInputText
             type="search"
-            placeholder="Cerca per ragione sociale, partita IVA o codice"
+            placeholder="Cerca per nome, P. IVA o codice"
             aria-label="Cerca un agente"
             (input)="elenco.cerca($any($event.target).value)"
             data-testid="agenti-cerca"
           />
         </span>
-        <p-button
-          *ngIf="puoScrivere()"
-          label="Nuovo agente"
-          icon="pi pi-plus"
-          (onClick)="apri(null)"
-          data-testid="agenti-nuovo"
-        />
+        <div class="barra-filtri__destra">
+          <p-button
+            *ngIf="puoScrivere()"
+            label="Nuovo agente"
+            icon="pi pi-plus"
+            styleClass="wf-primario"
+            (onClick)="apri(null)"
+            data-testid="agenti-nuovo"
+          />
+        </div>
       </div>
       <p *ngIf="erroreElenco() as e" role="alert" class="field-error">{{ e }}</p>
       <p-table
@@ -56,6 +63,7 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
         [lazy]="true"
         [lazyLoadOnInit]="false"
         [paginator]="true"
+        [alwaysShowPaginator]="false"
         [rows]="elenco.dimensione"
         [first]="elenco.primo"
         [totalRecords]="totale()"
@@ -64,60 +72,43 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
         (onLazyLoad)="elenco.cambiaPagina($event)"
         currentPageReportTemplate="{first}-{last} di {totalRecords}"
         [showCurrentPageReport]="totale() > 0"
-        styleClass="p-datatable-sm"
+        styleClass="p-datatable-sm lista-telefono"
       >
         <ng-template pTemplate="header">
           <tr>
             <th scope="col">Ragione sociale</th>
-            <th scope="col">P.IVA / C.F.</th>
-            <th scope="col">Codice</th>
-            <th scope="col">Clienti</th>
-            <th scope="col">Contratti</th>
+            <th scope="col" class="num-col">P.IVA / C.F.</th>
+            <th scope="col" *ngIf="visibili().has('codice')">Codice</th>
+            <th scope="col" class="num-col">Clienti</th>
+            <th scope="col" class="num-col">Contratti</th>
             <th scope="col">Attivo</th>
-            <th scope="col" *ngIf="puoScrivere()">Azioni</th>
+            <th scope="col" class="num-col azioni-col" *ngIf="puoScrivere()">Azioni</th>
           </tr>
         </ng-template>
         <ng-template pTemplate="body" let-a>
           <tr [attr.data-testid]="'agenti-riga-' + a.id">
-            <td>{{ a.ditta.ragioneSociale }}</td>
-            <td>{{ identificativo(a) }}</td>
-            <td>{{ a.codice }}</td>
-            <td>{{ a.clienti }}</td>
-            <td>{{ a.contratti }}</td>
-            <td>{{ a.attivo ? 'Sì' : 'No' }}</td>
-            <td *ngIf="puoScrivere()">
-              <p-button
-                label="Modifica"
-                icon="pi pi-pencil"
-                [text]="true"
-                size="small"
-                (onClick)="apri(a)"
+            <td class="chi">{{ a.ditta.ragioneSociale }}</td>
+            <td class="num-col m2">
+              {{ idDi(a).prefisso }} <span class="mono">{{ idDi(a).numero || '—' }}</span
+              ><span class="solo-tel" *ngIf="!a.attivo"> · Disattivato</span>
+            </td>
+            <td class="m-hide" *ngIf="visibili().has('codice')">{{ a.codice }}</td>
+            <td class="num-col m-hide">{{ a.clienti }}</td>
+            <td class="num-col m-hide">{{ a.contratti }}</td>
+            <td class="m-hide">{{ a.attivo ? 'Sì' : 'No' }}</td>
+            <td class="azioni-col" *ngIf="puoScrivere()">
+              <app-azioni-riga
                 [attr.data-testid]="'agenti-modifica-' + a.id"
-              />
-              <p-button
-                [label]="a.attivo ? 'Disattiva' : 'Riattiva'"
-                [icon]="a.attivo ? 'pi pi-ban' : 'pi pi-replay'"
-                [text]="true"
-                size="small"
-                (onClick)="disattiva(a)"
-                [attr.data-testid]="'agenti-attiva-' + a.id"
-              />
-              <p-button
-                *ngIf="a.eliminabile"
-                label="Elimina"
-                icon="pi pi-trash"
-                severity="danger"
-                [text]="true"
-                size="small"
-                (onClick)="elimina(a)"
-                [attr.data-testid]="'agenti-elimina-' + a.id"
+                [nome]="a.ditta.ragioneSociale"
+                [principale]="azioni.di(a).principale"
+                [altre]="azioni.di(a).altre"
               />
             </td>
           </tr>
         </ng-template>
         <ng-template pTemplate="emptymessage">
           <tr>
-            <td [attr.colspan]="puoScrivere() ? 7 : 6">Nessun agente.</td>
+            <td [attr.colspan]="colonneTotali()">Nessun agente.</td>
           </tr>
         </ng-template>
       </p-table>
@@ -132,15 +123,23 @@ import { chiediConferma, eseguiERicarica, permessoScrittura } from './tabelle/ta
   `,
   styles: [
     `
-      /* Stessi margini delle altre pagine: gutter laterale e 24px sopra il titolo. */
+      /* Il gutter laterale e' della shell: la pagina tiene solo lo spazio sopra il titolo. */
       .pagina {
         padding: var(--spacing-lg) 0;
       }
-      .barra {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.75rem;
-        margin-bottom: 0.5rem;
+      .mono {
+        font-family: var(--font-family-mono);
+      }
+      .chi {
+        overflow-wrap: anywhere;
+      }
+      .solo-tel {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
       }
     `,
   ],
@@ -158,6 +157,19 @@ export class AgentiListComponent implements OnInit, OnDestroy {
   readonly righe = this.elenco.righe
   readonly totale = this.elenco.totale
   readonly erroreElenco = this.elenco.errore
+  /** Colonne facoltative con almeno un dato nella pagina: le altre non si disegnano. */
+  readonly visibili = computed(() => colonneConDati(this.righe(), { codice: a => a.codice }))
+  /** Colonne del p-table (per la riga dello stato vuoto). */
+  readonly colonneTotali = computed(() => 5 + this.visibili().size + (this.puoScrivere() ? 1 : 0))
+  readonly azioni = new MemoriaAzioni<Agente>(a =>
+    azioniDiRiga({
+      modifica: () => this.apri(a),
+      etichettaModifica: `Modifica l'agente ${a.ditta.ragioneSociale}`,
+      attivo: a.attivo,
+      cambiaStato: () => this.disattiva(a),
+      elimina: a.eliminabile ? () => this.elimina(a) : undefined,
+    })
+  )
   readonly dialogoAperto = signal(false)
   readonly selezionato = signal<Agente | null>(null)
 
@@ -181,8 +193,9 @@ export class AgentiListComponent implements OnInit, OnDestroy {
     this.elenco.cambiaPagina(ev)
   }
 
-  identificativo(a: Agente): string {
-    return etichettaIdentificativo(a.ditta.partitaIva, a.ditta.codiceFiscale)
+  /** «P.IVA» o «C.F.» in caratteri normali e il numero (l'unica parte in mono). */
+  idDi(x: Agente): { prefisso: string; numero: string } {
+    return separaIdentificativo(x.ditta.partitaIva, x.ditta.codiceFiscale)
   }
 
   apri(a: Agente | null): void {

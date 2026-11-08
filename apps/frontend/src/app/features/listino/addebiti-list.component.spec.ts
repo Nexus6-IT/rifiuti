@@ -16,6 +16,7 @@ import {
   scrivi,
   stabilizza,
 } from '../clienti/tabelle/tabelle-test-utils'
+import { apriMenuRiga } from '../clienti/tabelle/azioni-test-utils'
 
 const rif = (id: string, codice: string, descrizione: string) => ({ id, codice, descrizione })
 
@@ -171,33 +172,33 @@ describe('AddebitiListComponent', () => {
 
   it('Elimina solo se eliminabile', async () => {
     await apri('ADMIN', pagina(addebito({ eliminabile: false })))
-    expect(q('addebiti-elimina-ad1')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('addebiti-riga-ad1')!)).toEqual([
+      'Varia i prezzi…',
+      'Disattiva',
+    ])
   })
 
   it('VIEWER: nessun pulsante di scrittura né di variazione', async () => {
     await apri('VIEWER')
-    for (const id of [
-      'addebiti-nuovo',
-      'addebiti-modifica-ad1',
-      'addebiti-attiva-ad1',
-      'addebiti-elimina-ad1',
-      'addebiti-variazione',
-    ]) {
+    for (const id of ['addebiti-nuovo', 'addebiti-variazione']) {
       expect(q(id)).toBeNull()
     }
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('OPERATOR scrive ma non può fare la variazione di massa (solo SUPER_ADMIN e ADMIN)', async () => {
     await apri('OPERATOR')
     expect(q('addebiti-nuovo')).toBeTruthy()
     expect(q('addebiti-variazione')).toBeNull()
-    expect(q('addebiti-varia-ad1')).toBeNull()
+    expect(await apriMenuRiga(fixture, q('addebiti-riga-ad1')!)).not.toContain('Varia i prezzi…')
   })
 
   it('ADMIN vede la variazione di massa e quella della riga', async () => {
     await apri('ADMIN')
     expect(q('addebiti-variazione')).toBeTruthy()
-    expect(q('addebiti-varia-ad1')).toBeTruthy()
+    expect(await apriMenuRiga(fixture, q('addebiti-riga-ad1')!)).toContain('Varia i prezzi…')
   })
 
   it('Nuovo e Modifica aprono il dialog; Variazione apre il dialog di variazione', async () => {

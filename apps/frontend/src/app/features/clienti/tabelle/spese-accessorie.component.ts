@@ -7,17 +7,26 @@ import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { DropdownModule } from 'primeng/dropdown'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../../core/services/toast.service'
+import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
+import { azioniDiRiga, MemoriaAzioni } from './azioni-lista'
 import { SpesaAccessoria, TipoSpesa } from '../clienti.model'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
 import { ETICHETTE_TIPO_SPESA, OPZIONI_TIPO_SPESA } from '../vocabolario-clienti'
 import { SpesaAccessoriaDialogComponent } from './spesa-accessoria-dialog.component'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 
 @Component({
   selector: 'app-spese-accessorie',
   standalone: true,
   imports: [
     CommonModule,
+    AzioniRigaComponent,
     FormsModule,
     ButtonModule,
     ConfirmDialogModule,
@@ -41,55 +50,41 @@ import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from
         *ngIf="puoScrivere()"
         label="Nuova spesa"
         icon="pi pi-plus"
+        styleClass="wf-primario"
         (onClick)="apri(null)"
         data-testid="spesa-nuova"
       />
     </div>
     <p *ngIf="erroreElenco() as e" role="alert" class="field-error">{{ e }}</p>
-    <p-table [value]="righe()" styleClass="p-datatable-sm">
+    <p-table
+      [value]="righe()"
+      [styleClass]="'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')"
+    >
       <ng-template pTemplate="header">
         <tr>
           <th scope="col">Tipo</th>
           <th scope="col">Codice</th>
           <th scope="col">Descrizione</th>
-          <th scope="col">Importo</th>
+          <th scope="col" class="num-col">Importo</th>
           <th scope="col">Stato</th>
-          <th scope="col" *ngIf="puoScrivere()">Azioni</th>
+          <th scope="col" class="num-col azioni-col" *ngIf="puoScrivere()">Azioni</th>
         </tr>
       </ng-template>
       <ng-template pTemplate="body" let-s>
         <tr [attr.data-testid]="'spesa-riga-' + s.codice">
-          <td>{{ etichettaTipo(s.tipo) }}</td>
+          <td class="m-hide">{{ etichettaTipo(s.tipo) }}</td>
           <td>{{ s.codice }}</td>
-          <td>{{ s.descrizione }}</td>
-          <td>{{ s.importo }}</td>
-          <td>{{ s.attiva ? 'Attiva' : 'Disattivata' }}</td>
-          <td *ngIf="puoScrivere()">
-            <p-button
-              label="Modifica"
-              icon="pi pi-pencil"
-              [text]="true"
-              size="small"
-              (onClick)="apri(s)"
+          <td class="m2">
+            {{ s.descrizione }}<span class="solo-tel" *ngIf="!s.attiva"> · Disattivata</span>
+          </td>
+          <td class="num-col m-hide">{{ s.importo | number: '1.2-2' }}</td>
+          <td class="m-hide">{{ s.attiva ? 'Attiva' : 'Disattivata' }}</td>
+          <td class="azioni-col" *ngIf="puoScrivere()">
+            <app-azioni-riga
               [attr.data-testid]="'spesa-modifica-' + s.codice"
-            />
-            <p-button
-              [label]="s.attiva ? 'Disattiva' : 'Riattiva'"
-              [icon]="s.attiva ? 'pi pi-ban' : 'pi pi-replay'"
-              [text]="true"
-              size="small"
-              (onClick)="cambiaStato(s)"
-              [attr.data-testid]="'spesa-attiva-' + s.codice"
-            />
-            <p-button
-              *ngIf="s.eliminabile"
-              label="Elimina"
-              icon="pi pi-trash"
-              severity="danger"
-              [text]="true"
-              size="small"
-              (onClick)="elimina(s)"
-              [attr.data-testid]="'spesa-elimina-' + s.codice"
+              [nome]="s.codice + ' - ' + s.descrizione"
+              [principale]="azioni.di(s).principale"
+              [altre]="azioni.di(s).altre"
             />
           </td>
         </tr>
@@ -116,6 +111,14 @@ import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from
         justify-content: space-between;
         margin-bottom: 0.5rem;
       }
+      .solo-tel {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
+      }
     `,
   ],
 })
@@ -132,6 +135,15 @@ export class SpeseAccessorieComponent implements OnInit {
   readonly filtro = signal<TipoSpesa | null>(null)
   readonly righe = signal<SpesaAccessoria[]>([])
   readonly erroreElenco = signal<string | null>(null)
+  readonly azioni = new MemoriaAzioni<SpesaAccessoria>(s =>
+    azioniDiRiga({
+      modifica: () => this.apri(s),
+      etichettaModifica: 'Modifica',
+      attivo: s.attiva,
+      cambiaStato: () => this.chiediCambiaStato(s),
+      elimina: s.eliminabile ? () => this.elimina(s) : undefined,
+    })
+  )
   readonly dialogoAperto = signal(false)
   readonly selezionata = signal<SpesaAccessoria | null>(null)
 
@@ -161,6 +173,16 @@ export class SpeseAccessorieComponent implements OnInit {
   apri(s: SpesaAccessoria | null): void {
     this.selezionata.set(s)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(s: SpesaAccessoria): void {
+    cambiaStatoConConferma(
+      this.conferma,
+      s.attiva,
+      `la spesa "${s.codice} - ${s.descrizione}"`,
+      () => this.cambiaStato(s)
+    )
   }
 
   cambiaStato(s: SpesaAccessoria): void {

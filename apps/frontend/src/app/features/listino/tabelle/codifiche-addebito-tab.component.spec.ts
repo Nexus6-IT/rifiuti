@@ -104,9 +104,9 @@ describe('CodificheAddebitoTabComponent', () => {
   it('VIEWER: nessun pulsante di scrittura', async () => {
     await apri('VIEWER')
     expect(q('codifica-add-nuova')).toBeNull()
-    expect(q('codifica-add-modifica-001')).toBeNull()
-    expect(q('codifica-add-attiva-001')).toBeNull()
-    expect(q('codifica-add-elimina-001')).toBeNull()
+    expect(
+      document.body.querySelector('[data-testid="azione-principale"], [data-testid="azioni-altre"]')
+    ).toBeNull()
   })
 
   it('elimina: conferma e poi manda id e versione', async () => {

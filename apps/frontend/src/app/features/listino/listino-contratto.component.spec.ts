@@ -543,6 +543,28 @@ describe('ListinoContrattoComponent', () => {
     })
   })
 
+  describe('pagina (giro 2)', () => {
+    it('la radice non ha un padding proprio: il gutter sta nella shell', async () => {
+      await apri()
+      const radice = fixture.nativeElement.querySelector('section.pagina') as HTMLElement
+      expect(getComputedStyle(radice).paddingTop).toBe('0px')
+      expect(getComputedStyle(radice).paddingLeft).toBe('0px')
+    })
+
+    it('un solo primario arancio: «Nuova riga»; «Nuovo elenco» e «Provvigioni e sconti» no', async () => {
+      await apri()
+      await scegli('e1')
+      const primari = document.body.querySelectorAll('.wf-primario')
+      expect(primari.length).toBe(1)
+      expect(primari[0].textContent).toContain('Nuova riga')
+    })
+
+    it('senza elenco scelto non c’è nessun primario', async () => {
+      await apri()
+      expect(document.body.querySelectorAll('.wf-primario').length).toBe(0)
+    })
+  })
+
   describe('tavola delle righe', () => {
     it('prima della scelta: invito a scegliere un elenco', async () => {
       await apri()
@@ -573,6 +595,99 @@ describe('ListinoContrattoComponent', () => {
         'Appunti',
         'Azioni',
       ])
+    })
+
+    describe('pattern delle liste (giro 2)', () => {
+      const vuota = (id: string, over: Partial<RigaAddebito> = {}) =>
+        riga(id, {
+          riferimento: null,
+          sconto: null,
+          provvigione: null,
+          condizione: null,
+          minimoFatturabile: null,
+          categoria: null,
+          appunti: null,
+          ...over,
+        })
+      const intestazioni = () =>
+        Array.from(document.body.querySelectorAll('th')).map(t => t.textContent!.trim())
+
+      it('le colonne senza dati in nessuna riga non si mostrano', async () => {
+        righeList.and.returnValue(of([vuota('r1')]))
+        await apri()
+        await scegli('e1')
+        const intest = intestazioni()
+        for (const nascosta of [
+          'Rif.',
+          'Sconto',
+          'Provvigione',
+          'Cond.',
+          'Minimo',
+          'Categoria',
+          'Appunti',
+        ]) {
+          expect(intest).withContext(nascosta).not.toContain(nascosta)
+        }
+        expect(intest).toEqual(
+          jasmine.arrayContaining(['Tipo', 'CER / addebito', 'Prezzo', 'IVA', 'Azioni'])
+        )
+        expect(q('listino-riga-r1')!.querySelectorAll('td').length).toBe(intest.length)
+      })
+
+      it('una colonna resta se almeno una riga ha il dato', async () => {
+        righeList.and.returnValue(of([vuota('r1'), vuota('r2', { appunti: 'ritiro il lunedì' })]))
+        await apri()
+        await scegli('e1')
+        expect(intestazioni()).toContain('Appunti')
+      })
+
+      it('numeri a destra e tabellari (quantità, prezzo, sconto, provvigione, minimo)', async () => {
+        await apri()
+        await scegli('e1')
+        const celle = Array.from(q('listino-riga-r1')!.querySelectorAll<HTMLElement>('td.num-col'))
+        expect(celle.length).toBeGreaterThanOrEqual(5)
+        for (const c of celle) {
+          expect(getComputedStyle(c).textAlign).toBe('right')
+          expect(getComputedStyle(c).fontVariantNumeric).toContain('tabular-nums')
+        }
+        expect(celle.map(c => c.textContent!.trim())).toContain('0,12')
+      })
+
+      it('descrizione e appunti lunghi: una riga con ellissi e title completo', async () => {
+        const lunga = 'Rifiuti urbani misti raccolti presso le utenze '.repeat(5).trim()
+        righeList.and.returnValue(of([riga('r1', { descrizione: lunga, appunti: lunga })]))
+        await apri()
+        await scegli('e1')
+        const piene = Array.from(q('listino-riga-r1')!.querySelectorAll<HTMLElement>('td')).filter(
+          c => c.textContent!.includes('Rifiuti urbani misti raccolti')
+        )
+        expect(piene.length).toBe(2)
+        for (const c of piene) {
+          expect(c.getAttribute('title')).toBe(lunga)
+          expect(getComputedStyle(c).whiteSpace).toBe('nowrap')
+          expect(getComputedStyle(c).textOverflow).toBe('ellipsis')
+        }
+        expect(q('listino-riga-r1')!.getBoundingClientRect().height).toBeLessThanOrEqual(48.5)
+      })
+
+      it('sul telefono: lista-telefono, la cella delle azioni non è mai nascosta', async () => {
+        await apri()
+        await scegli('e1')
+        expect(document.body.querySelector('.p-datatable.lista-telefono')).not.toBeNull()
+        const azioni = q('listino-riga-r1')!.querySelector('td.azioni-col')!
+        expect(azioni).toBeTruthy()
+        expect(azioni.classList).not.toContain('m-hide')
+        expect(q('listino-riga-r1')!.querySelectorAll('td.m-hide').length).toBeGreaterThan(3)
+      })
+
+      it('nessuna riga: il messaggio occupa tutte le colonne mostrate', async () => {
+        righeList.and.returnValue(of([]))
+        await apri()
+        await scegli('e1')
+        expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe(
+          String(intestazioni().length)
+        )
+      })
     })
 
     it('la riga mostra i dati leggibili e mai gli id', async () => {

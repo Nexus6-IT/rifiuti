@@ -7,13 +7,7 @@ import { MessageService } from 'primeng/api'
 import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
-import {
-  Cliente,
-  CodificaContratto,
-  ContrattoCliente,
-  Pagina,
-  StatoContrattoCliente,
-} from '../clienti/clienti.model'
+import { Cliente, CodificaContratto, ContrattoCliente, Pagina } from '../clienti/clienti.model'
 import { ClientiService } from '../clienti/clienti.service'
 import { LegamiService } from '../legami/legami.service'
 import { TabelleFatturazioneService } from '../clienti/tabelle-fatturazione.service'
@@ -115,6 +109,31 @@ describe('ContrattiClienteListComponent', () => {
     await stabilizza(fixture)
   }
 
+  /** Bottone ⋯ della riga e voci del menu aperto (appeso al body). */
+  const kebab = (id = 'cc1'): HTMLButtonElement | null =>
+    q(`contratti-riga-${id}`)?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]') ??
+    null
+  const voci = (): HTMLElement[] =>
+    Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+  const nomiVoci = (): string[] => voci().map(v => v.textContent!.trim())
+  const principale = (id = 'cc1'): HTMLButtonElement | null =>
+    q(`contratti-riga-${id}`)?.querySelector<HTMLButtonElement>(
+      '[data-testid="azione-principale"]'
+    ) ?? null
+  const apriMenu = async (id = 'cc1'): Promise<void> => {
+    kebab(id)!.click()
+    await stabilizza(fixture)
+  }
+  const scegliVoce = async (nome: string | RegExp, id = 'cc1'): Promise<void> => {
+    await apriMenu(id)
+    const voce = voci().find(v =>
+      typeof nome === 'string' ? v.textContent!.trim() === nome : nome.test(v.textContent!)
+    )
+    expect(voce).withContext(`voce «${nome}» fra ${nomiVoci()}`).toBeTruthy()
+    voce!.querySelector<HTMLElement>('a')!.click()
+    await stabilizza(fixture)
+  }
+
   const figlio = <T>(tipo: new (...a: never[]) => T): T =>
     fixture.debugElement.query(By.directive(tipo)).componentInstance as T
 
@@ -170,7 +189,10 @@ describe('ContrattiClienteListComponent', () => {
       add: { imports: [ContrattoDialogFinto, VariazioneDialogFinta, IstatDialogFinto] },
     })
   })
-  afterEach(() => fixture?.destroy())
+  afterEach(() => {
+    fixture?.destroy()
+    document.body.querySelectorAll('.p-menu-overlay').forEach(e => e.remove())
+  })
 
   describe('contatore «da collegare»', () => {
     it('una sola chiamata per pagina con gli id dei contratti visibili, conteggio esatto per contratto', async () => {
@@ -288,9 +310,8 @@ describe('ContrattiClienteListComponent', () => {
           'Descrizione',
           'Categoria',
           'Stato',
-          'Inizio',
-          'Fine',
-          'Prossima fatturazione',
+          'Periodo',
+          'Prossima fatt.',
         ])
       )
     })
@@ -324,12 +345,70 @@ describe('ContrattiClienteListComponent', () => {
       expect(q('contratti-riga-cc2')!.textContent).not.toContain('Scaduto')
     })
 
-    it('senza data di fine né prossima fatturazione le celle sono vuote', async () => {
-      // OPERATOR: senza la colonna di scelta dell'ADMIN gli indici delle celle restano questi.
-      await apri('OPERATOR', pagina(contratto({ dataFine: null, prossimaFinePeriodo: null })))
-      const celle = q('contratti-riga-cc1')!.querySelectorAll('td')
-      expect(celle[6].textContent!.trim()).toBe('')
-      expect(celle[7].textContent!.trim()).toBe('')
+    it('una colonna senza dati in nessuna riga non si mostra (né intestazione né cella)', async () => {
+      await apri(
+        'OPERATOR',
+        pagina(contratto({ dataFine: null, prossimaFinePeriodo: null, categoria: null }))
+      )
+      const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
+        t.textContent!.trim()
+      )
+      for (const nascosta of ['Prossima fatt.', 'Categoria', 'Da collegare']) {
+        expect(intest).not.toContain(nascosta)
+      }
+      expect(intest).toEqual(jasmine.arrayContaining(['Numero', 'Cliente', 'Stato', 'Periodo']))
+      expect(q('contratti-riga-cc1')!.querySelectorAll('td').length).toBe(intest.length)
+    })
+
+    it('la colonna resta se almeno una riga ha il dato', async () => {
+      await apri(
+        'OPERATOR',
+        pagina(
+          contratto({ prossimaFinePeriodo: null }),
+          contratto({ id: 'cc2', prossimaFinePeriodo: '2027-06-30' })
+        )
+      )
+      const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
+        t.textContent!.trim()
+      )
+      expect(intest).toContain('Prossima fatt.')
+    })
+
+    it('il periodo unisce inizio e fine; senza fine c’è la sola data di inizio', async () => {
+      await apri('OPERATOR', pagina(contratto({ dataFine: null }), contratto({ id: 'cc2' })))
+      const periodo = (id: string) =>
+        q(`contratti-riga-${id}`)!.querySelector('.cella-periodo')!.textContent!.trim()
+      expect(periodo('cc2')).toBe('15/01/2026 – 31/12/2026')
+      expect(periodo('cc1')).toBe('15/01/2026')
+    })
+
+    it('«Scaduto» sta nella cella dello Stato, che sul telefono non è nascosta', async () => {
+      await apri('ADMIN', pagina(contratto({ scaduto: true })))
+      const cella = q('contratti-scaduto')!.closest('td')!
+      expect(cella.classList).toContain('cella-stato')
+      expect(cella.classList).not.toContain('m-hide')
+    })
+
+    it('sul telefono i filtri stanno in un pannello «Filtri», chiuso e apribile', async () => {
+      await apri()
+      const toggle = q('contratti-filtri-toggle')!
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      expect(q('contratti-filtri')!.classList).toContain('filtri-chiusi')
+      toggle.click()
+      await stabilizza(fixture)
+      expect(toggle.getAttribute('aria-expanded')).toBe('true')
+      expect(q('contratti-filtri')!.classList).not.toContain('filtri-chiusi')
+    })
+
+    it('«Da collegare» compare solo se un contratto ha movimenti da collegare', async () => {
+      listaLegami.and.returnValue(
+        of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 2 }], senzaContratto: [] })
+      )
+      await apri()
+      const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
+        t.textContent!.trim()
+      )
+      expect(intest).toContain('Da collegare')
     })
 
     it('un solo caricamento iniziale, pagina 1 e dimensione 25, senza filtri', async () => {
@@ -438,14 +517,21 @@ describe('ContrattiClienteListComponent', () => {
   })
 
   describe('azioni di stato', () => {
-    it('mostra solo le transizioni della vista, con le etichette giuste', async () => {
+    it('la riga ha «Modifica» come bottone e le altre azioni nel menu ⋯, pericolose in fondo', async () => {
       await apri()
-      expect(bottone('contratti-stato-cc1-SOSPESO')!.textContent).toContain('Sospendi')
-      expect(bottone('contratti-stato-cc1-SOSPESO_MOVIMENTI')!.textContent).toContain(
-        'Sospendi solo movimenti'
-      )
-      expect(bottone('contratti-stato-cc1-ANNULLATO')!.textContent).toContain('Annulla')
-      expect(q('contratti-stato-cc1-ATTIVO')).toBeNull()
+      expect(principale()!.getAttribute('aria-label')).toBe('Modifica CC-2026-001')
+      expect(principale()!.querySelector('.pi-pencil')).toBeTruthy()
+      expect(kebab()!.getAttribute('aria-label')).toBe('Altre azioni per CC-2026-001')
+      // niente bottoni di stato sulla riga
+      expect(q('contratti-stato-cc1-SOSPESO')).toBeNull()
+      expect(q('contratti-rinnova-cc1')).toBeNull()
+      await apriMenu()
+      expect(nomiVoci()).toEqual([
+        'Sospendi',
+        'Sospendi solo movimenti',
+        'Rinnova',
+        'Annulla il contratto CC-2026-001',
+      ])
     })
 
     it('bozza: "Attiva"; sospeso: "Riattiva"', async () => {
@@ -460,39 +546,36 @@ describe('ContrattiClienteListComponent', () => {
           })
         )
       )
-      expect(bottone('contratti-stato-b-ATTIVO')!.textContent).toContain('Attiva')
-      expect(bottone('contratti-stato-b-ATTIVO')!.textContent).not.toContain('Riattiva')
-      expect(bottone('contratti-stato-s-ATTIVO')!.textContent).toContain('Riattiva')
-      expect(q('contratti-stato-b-SOSPESO')).toBeNull()
+      await apriMenu('b')
+      expect(nomiVoci()).toContain('Attiva')
+      expect(nomiVoci()).not.toContain('Riattiva')
+      expect(nomiVoci()).not.toContain('Sospendi')
+      await stabilizza(fixture)
+      document.body.querySelectorAll('.p-menu-overlay').forEach(e => e.remove())
+      await apriMenu('s')
+      expect(nomiVoci()).toContain('Riattiva')
     })
 
-    it('annullato: nessuna azione di stato (non lo decide il frontend)', async () => {
+    it('annullato: nessuna azione di stato e nessun ⋯ (non lo decide il frontend)', async () => {
       await apri(
         'ADMIN',
         pagina(contratto({ stato: 'ANNULLATO', transizioni: [], rinnovabile: false }))
       )
-      for (const s of [
-        'ATTIVO',
-        'SOSPESO',
-        'SOSPESO_MOVIMENTI',
-        'ANNULLATO',
-      ] as StatoContrattoCliente[]) {
-        expect(q(`contratti-stato-cc1-${s}`)).toBeNull()
-      }
+      expect(kebab()).toBeNull()
+      expect(principale()).toBeTruthy()
     })
 
     it('Sospendi manda stato e versione e poi ricarica', async () => {
       await apri()
       list.calls.reset()
-      bottone('contratti-stato-cc1-SOSPESO')!.click()
+      await scegliVoce('Sospendi')
       expect(cambiaStato).toHaveBeenCalledOnceWith('cc1', { stato: 'SOSPESO', versione: 3 })
       expect(list).toHaveBeenCalledTimes(1)
     })
 
     it("Annulla non cambia stato da sola: apre il dialog dell'annullo col contratto", async () => {
       await apri()
-      bottone('contratti-stato-cc1-ANNULLATO')!.click()
-      await stabilizza(fixture)
+      await scegliVoce('Annulla il contratto CC-2026-001')
       expect(cambiaStato).not.toHaveBeenCalled()
       const dlg = figlio(AnnulloDialogComponent)
       expect(dlg.visible).toBeTrue()
@@ -501,8 +584,7 @@ describe('ContrattiClienteListComponent', () => {
 
     it('annullato: chiude il dialog e ricarica; fallito: toast col messaggio e ricarica', async () => {
       await apri()
-      bottone('contratti-stato-cc1-ANNULLATO')!.click()
-      await stabilizza(fixture)
+      await scegliVoce(/^Annulla il contratto/)
       list.calls.reset()
       figlio(AnnulloDialogComponent).annullato.emit(contratto({ stato: 'ANNULLATO' }))
       await stabilizza(fixture)
@@ -523,7 +605,7 @@ describe('ContrattiClienteListComponent', () => {
         }))
       )
       list.calls.reset()
-      bottone('contratti-stato-cc1-ATTIVO')!.click()
+      await scegliVoce('Attiva')
       expect(toast.error).toHaveBeenCalledWith(
         'Per attivare il contratto indica la condizione di pagamento.'
       )
@@ -539,7 +621,7 @@ describe('ContrattiClienteListComponent', () => {
         }))
       )
       list.calls.reset()
-      bottone('contratti-stato-cc1-SOSPESO')!.click()
+      await scegliVoce('Sospendi')
       expect(toast.error).toHaveBeenCalledWith('Dallo stato Annullato non si passa a Attivo.')
       expect(list).toHaveBeenCalledTimes(1)
     })
@@ -548,18 +630,19 @@ describe('ContrattiClienteListComponent', () => {
   describe('rinnovo', () => {
     it("Rinnova non c'è se non rinnovabile", async () => {
       await apri('ADMIN', pagina(contratto({ rinnovabile: false })))
-      expect(q('contratti-rinnova-cc1')).toBeNull()
+      await apriMenu()
+      expect(nomiVoci()).not.toContain('Rinnova')
     })
 
     it("Rinnova c'è se rinnovabile", async () => {
       await apri('ADMIN', pagina(contratto({ rinnovabile: true })))
-      expect(q('contratti-rinnova-cc1')).toBeTruthy()
+      await apriMenu()
+      expect(nomiVoci()).toContain('Rinnova')
     })
 
     it('la conferma mostra la nuova data di fine e poi manda id e versione', async () => {
       await apri()
-      bottone('contratti-rinnova-cc1')!.click()
-      await stabilizza(fixture)
+      await scegliVoce('Rinnova')
       expect(document.body.textContent).toContain('CC-2026-001')
       expect(document.body.textContent).toContain('31/12/2026')
       expect(document.body.textContent).toContain('31/12/2027')
@@ -599,18 +682,25 @@ describe('ContrattiClienteListComponent', () => {
   describe('eliminazione', () => {
     it("Elimina non c'è se non eliminabile", async () => {
       await apri('ADMIN', pagina(contratto({ eliminabile: false })))
-      expect(q('contratti-elimina-cc1')).toBeNull()
+      await apriMenu()
+      expect(nomiVoci()).not.toContain('Elimina')
     })
 
     it("Elimina c'è se eliminabile", async () => {
       await apri('ADMIN', pagina(contratto({ eliminabile: true })))
-      expect(q('contratti-elimina-cc1')).toBeTruthy()
+      await apriMenu()
+      expect(nomiVoci()).toEqual([
+        'Sospendi',
+        'Sospendi solo movimenti',
+        'Rinnova',
+        'Annulla il contratto CC-2026-001',
+        'Elimina',
+      ])
     })
 
     it('conferma con il numero e poi manda id e versione', async () => {
       await apri('ADMIN', pagina(contratto({ eliminabile: true })))
-      bottone('contratti-elimina-cc1')!.click()
-      await stabilizza(fixture)
+      await scegliVoce('Elimina')
       expect(document.body.textContent).toContain('Eliminare il contratto CC-2026-001?')
       expect(elimina).not.toHaveBeenCalled()
       accettaConferma()
@@ -643,7 +733,7 @@ describe('ContrattiClienteListComponent', () => {
     it('Modifica rilegge il contratto e apre il dialog con la versione vera', async () => {
       await apri()
       get.and.returnValue(of(contratto({ versione: 9 })))
-      bottone('contratti-modifica-cc1')!.click()
+      principale()!.click()
       await stabilizza(fixture)
       expect(get).toHaveBeenCalledOnceWith('cc1')
       const dlg = figlio(ContrattoDialogFinto)
@@ -684,17 +774,11 @@ describe('ContrattiClienteListComponent', () => {
   describe('permessi e accessibilità', () => {
     it('VIEWER: nessuna azione di scrittura, ma elenco e filtri sì', async () => {
       await apri('VIEWER', pagina(contratto({ eliminabile: true })))
-      for (const id of [
-        'contratti-nuovo',
-        'contratti-proroga',
-        'contratti-modifica-cc1',
-        'contratti-stato-cc1-SOSPESO',
-        'contratti-stato-cc1-ANNULLATO',
-        'contratti-rinnova-cc1',
-        'contratti-elimina-cc1',
-      ]) {
+      for (const id of ['contratti-nuovo', 'contratti-proroga']) {
         expect(q(id)).toBeNull()
       }
+      expect(principale()).toBeNull()
+      expect(kebab()).toBeNull()
       expect(q('contratti-cerca')).toBeTruthy()
       expect(q('contratti-riga-cc1')).toBeTruthy()
     })
@@ -706,8 +790,6 @@ describe('ContrattiClienteListComponent', () => {
       expect(a.textContent).toContain('Listino')
       expect(a.getAttribute('href')).toBe('/contratti-clienti/cc1/listino')
       expect(a.getAttribute('aria-label')).toContain('CC-2026-001')
-      // la colonna di scrittura non c'è, quella del listino sì
-      expect(q('contratti-modifica-cc1')).toBeNull()
       const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
         t.textContent!.trim()
       )
@@ -715,37 +797,29 @@ describe('ContrattiClienteListComponent', () => {
       expect(intest).not.toContain('Azioni')
     })
 
-    it('colspan del vuoto per l’ADMIN: 12 colonne (scelta e azioni)', async () => {
-      await apri('ADMIN', pagina())
-      expect(q('contratti-listino-cc1')).toBeNull()
-      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('12')
-    })
-
-    it('colspan del vuoto per chi scrive senza variare: 11 colonne', async () => {
-      await apri('OPERATOR', pagina())
-      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('11')
-    })
-
-    it('colspan del vuoto per il VIEWER: 10 colonne', async () => {
-      await apri('VIEWER', pagina())
-      expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe('10')
-    })
+    for (const [ruolo, colonne] of [
+      ['ADMIN', 7],
+      ['OPERATOR', 6],
+      ['VIEWER', 5],
+    ] as const) {
+      it(`colspan del vuoto per ${ruolo}: ${colonne} colonne, quante le intestazioni mostrate`, async () => {
+        await apri(ruolo, pagina())
+        expect(document.body.querySelectorAll('th').length).toBe(colonne)
+        expect(document.body.querySelector('td[colspan]')!.getAttribute('colspan')).toBe(
+          String(colonne)
+        )
+      })
+    }
 
     it('azione Listino anche per chi scrive', async () => {
       await apri('ADMIN')
       expect(q('contratti-listino-cc1')).toBeTruthy()
     })
 
-    it('le azioni hanno un aria-label che cita il numero del contratto', async () => {
+    it('le azioni hanno un nome accessibile che cita il numero del contratto', async () => {
       await apri('ADMIN', pagina(contratto({ eliminabile: true })))
-      for (const id of [
-        'contratti-modifica-cc1',
-        'contratti-stato-cc1-SOSPESO',
-        'contratti-rinnova-cc1',
-        'contratti-elimina-cc1',
-      ]) {
-        expect(bottone(id)!.getAttribute('aria-label')).toContain('CC-2026-001')
-      }
+      expect(principale()!.getAttribute('aria-label')).toContain('CC-2026-001')
+      expect(kebab()!.getAttribute('aria-label')).toContain('CC-2026-001')
     })
   })
 
@@ -834,6 +908,124 @@ describe('ContrattiClienteListComponent', () => {
       expect(list).toHaveBeenCalledTimes(1)
       figlio(VariazioneDialogFinta).applicata.emit(2)
       expect(list).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('pattern delle liste (giro 2)', () => {
+    const lunga = 'Descrizione molto lunga '.repeat(9).trim()
+    const celleDi = (id = 'cc1'): HTMLElement[] =>
+      Array.from(q(`contratti-riga-${id}`)!.querySelectorAll<HTMLElement>('td'))
+
+    it('descrizione e cliente stanno su una riga con ellissi e title completo, riga da 48px', async () => {
+      await apri(
+        'OPERATOR',
+        pagina(
+          contratto({
+            descrizione: lunga,
+            cliente: { ...contratto().cliente, ragioneSociale: lunga },
+          })
+        )
+      )
+      for (const cella of celleDi().filter(c => c.textContent!.includes('Descrizione molto'))) {
+        const stile = getComputedStyle(cella)
+        expect(stile.whiteSpace).toBe('nowrap')
+        expect(stile.textOverflow).toBe('ellipsis')
+        expect(cella.getAttribute('title')).toBe(lunga)
+      }
+      expect(q('contratti-riga-cc1')!.getBoundingClientRect().height).toBeLessThanOrEqual(48.5)
+    })
+
+    it('l’ultima colonna sta tutta dentro la tabella con tutte le colonne piene (1150px di contenuto)', async () => {
+      listaLegami.and.returnValue(
+        of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 12 }], senzaContratto: [] })
+      )
+      await apri('ADMIN', pagina(contratto({ scaduto: true })))
+      fixture.nativeElement.style.cssText = 'display:block;width:1150px'
+      fixture.detectChanges()
+      const tabella = fixture.nativeElement.querySelector('.p-datatable') as HTMLElement
+      const ultima = celleDi().at(-1)!
+      expect(ultima.classList).toContain('azioni-col')
+      expect(ultima.getBoundingClientRect().right).toBeLessThanOrEqual(
+        tabella.getBoundingClientRect().right + 0.5
+      )
+      expect(
+        ultima.querySelector('[data-testid="azione-principale"]')!.getBoundingClientRect().right
+      ).toBeLessThanOrEqual(tabella.getBoundingClientRect().right + 0.5)
+    })
+
+    it('i filtri non hanno etichetta sopra: il cliente ha segnaposto e aria-label come gli altri', async () => {
+      await apri()
+      expect(document.body.querySelector('label[for="contratti-filtro-cliente"]')).toBeNull()
+      const filtri = document.body.querySelector('[data-testid="contratti-filtri"]')!
+      // l'unica <label> è quella della casella «In scadenza», a fianco e non sopra
+      expect(Array.from(filtri.querySelectorAll('label')).map(l => l.textContent!.trim())).toEqual([
+        'In scadenza entro 30 giorni',
+      ])
+      const campo = q('contratti-filtro-cliente')!.querySelector('input')!
+      expect(campo.getAttribute('placeholder')).toBe('Tutti i clienti')
+      expect(campo.getAttribute('aria-label')).toBe('Filtra per cliente')
+      expect(campo.scrollWidth).toBeLessThanOrEqual(campo.clientWidth)
+      expect(document.body.querySelector('[aria-label="Cerca un contratto"]')).toBeTruthy()
+    })
+
+    it('un solo bottone primario arancio («Nuovo contratto»)', async () => {
+      await apri()
+      const primari = document.body.querySelectorAll('.wf-primario')
+      expect(primari.length).toBe(1)
+      expect(primari[0].textContent).toContain('Nuovo contratto')
+    })
+
+    it('zero contratti: nessun paginatore', async () => {
+      await apri('ADMIN', pagina())
+      expect(document.body.querySelector('.p-paginator')).toBeNull()
+    })
+
+    it('una sola pagina di contratti: nessun paginatore', async () => {
+      await apri('ADMIN', pagina(contratto()))
+      expect(document.body.querySelector('.p-paginator')).toBeNull()
+    })
+
+    it('più pagine di contratti: il paginatore c’è', async () => {
+      await apri('ADMIN', { elementi: [contratto()], totale: 60 })
+      expect(document.body.querySelector('.p-paginator')).not.toBeNull()
+    })
+
+    it('sul telefono: tabella lista-telefono, celle secondarie nascoste ma mai quella delle azioni', async () => {
+      await apri('ADMIN')
+      expect(fixture.nativeElement.querySelector('.p-datatable.lista-telefono')).not.toBeNull()
+      const azioni = celleDi().at(-1)!
+      expect(azioni.classList).toContain('azioni-col')
+      expect(azioni.classList).not.toContain('m-hide')
+      const nascoste = celleDi().filter(c => c.classList.contains('m-hide'))
+      expect(nascoste.length).toBeGreaterThanOrEqual(3)
+    })
+
+    it('la colonna delle azioni ha larghezza minima fissa', async () => {
+      await apri('ADMIN')
+      const th = Array.from(document.body.querySelectorAll<HTMLElement>('th')).find(
+        t => t.textContent!.trim() === 'Azioni'
+      )!
+      expect(parseFloat(getComputedStyle(th).minWidth)).toBeGreaterThanOrEqual(120)
+    })
+
+    it('a 1150px con «Scaduto» e tutte le colonne piene il link «Listino» non sta sotto le azioni', async () => {
+      listaLegami.and.returnValue(
+        of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 12 }], senzaContratto: [] })
+      )
+      await apri('ADMIN', pagina(contratto({ scaduto: true })))
+      fixture.nativeElement.style.cssText = 'display:block;width:1150px'
+      fixture.detectChanges()
+      const link = q('contratti-listino-cc1')!
+      const r = link.getBoundingClientRect()
+      // elementFromPoint vede solo il viewport: con l'iframe di Karma stretto resta la geometria.
+      if (r.right < window.innerWidth) {
+        const colpito = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        expect(link.contains(colpito))
+          .withContext(`trovato ${colpito?.outerHTML.slice(0, 80)}`)
+          .toBeTrue()
+      }
+      const azioni = celleDi().at(-1)!.getBoundingClientRect()
+      expect(r.right).toBeLessThanOrEqual(azioni.left + 0.5)
     })
   })
 })

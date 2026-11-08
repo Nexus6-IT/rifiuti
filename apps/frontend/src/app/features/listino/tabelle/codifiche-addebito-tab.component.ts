@@ -51,6 +51,7 @@ import { CodificaAddebitoDialogComponent } from './codifica-addebito-dialog.comp
         *ngIf="puoScrivere()"
         [label]="concordanza().nuovo"
         icon="pi pi-plus"
+        styleClass="wf-primario"
         (onClick)="apri(null)"
         data-testid="codifica-add-nuova"
       />
@@ -61,7 +62,7 @@ import { CodificaAddebitoDialogComponent } from './codifica-addebito-dialog.comp
       [puoScrivere]="puoScrivere()"
       [testid]="testid"
       (modifica)="apri($event)"
-      (cambiaStato)="cambiaStato($event)"
+      (cambiaStato)="chiediCambiaStato($event)"
       (elimina)="elimina($event)"
     />
     <app-codifica-addebito-dialog

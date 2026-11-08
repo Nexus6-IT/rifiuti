@@ -5,8 +5,16 @@ import { ButtonModule } from 'primeng/button'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { TableModule } from 'primeng/table'
 import { ToastService } from '../../../core/services/toast.service'
+import { AzioniRigaComponent } from '../../../shared/components/azioni-riga.component'
+import { azioniDiRiga, MemoriaAzioni } from './azioni-lista'
 import { TabelleFatturazioneService } from '../tabelle-fatturazione.service'
-import { caricaElenco, chiediConferma, eseguiERicarica, permessoScrittura } from './tabella-comune'
+import {
+  caricaElenco,
+  chiediConferma,
+  eseguiERicarica,
+  permessoScrittura,
+  cambiaStatoConConferma,
+} from './tabella-comune'
 import { TestoFatturazione } from '../clienti.model'
 import { TestoFatturazioneDialogComponent } from './testo-fatturazione-dialog.component'
 
@@ -15,6 +23,7 @@ import { TestoFatturazioneDialogComponent } from './testo-fatturazione-dialog.co
   standalone: true,
   imports: [
     CommonModule,
+    AzioniRigaComponent,
     ButtonModule,
     ConfirmDialogModule,
     TableModule,
@@ -27,54 +36,39 @@ import { TestoFatturazioneDialogComponent } from './testo-fatturazione-dialog.co
         *ngIf="puoScrivere()"
         label="Nuovo testo"
         icon="pi pi-plus"
+        styleClass="wf-primario"
         (onClick)="apri(null)"
         data-testid="testo-nuovo"
       />
     </div>
     <p *ngIf="erroreElenco() as e" role="alert" class="field-error">{{ e }}</p>
-    <p-table [value]="righe()" styleClass="p-datatable-sm">
+    <p-table
+      [value]="righe()"
+      [styleClass]="'p-datatable-sm lista-telefono' + (righe().length === 0 ? ' senza-righe' : '')"
+    >
       <ng-template pTemplate="header">
         <tr>
           <th scope="col">Codice</th>
           <th scope="col">Testo</th>
           <th scope="col">Stato</th>
-          <th scope="col" *ngIf="puoScrivere()">Azioni</th>
+          <th scope="col" class="num-col azioni-col" *ngIf="puoScrivere()">Azioni</th>
         </tr>
       </ng-template>
       <ng-template pTemplate="body" let-t>
         <tr [attr.data-testid]="'testo-riga-' + t.codice">
           <td>{{ t.codice }}</td>
-          <td>
-            <strong>{{ t.titolo }}</strong>
+          <td class="m2">
+            <strong>{{ t.titolo }}</strong
+            ><span class="solo-tel" *ngIf="!t.attivo"> · Disattivato</span>
             <div class="anteprima">{{ t.righe[0] }}</div>
           </td>
-          <td>{{ t.attivo ? 'Attivo' : 'Disattivato' }}</td>
-          <td *ngIf="puoScrivere()">
-            <p-button
-              label="Modifica"
-              icon="pi pi-pencil"
-              [text]="true"
-              size="small"
-              (onClick)="apri(t)"
+          <td class="m-hide">{{ t.attivo ? 'Attivo' : 'Disattivato' }}</td>
+          <td class="azioni-col" *ngIf="puoScrivere()">
+            <app-azioni-riga
               [attr.data-testid]="'testo-modifica-' + t.codice"
-            />
-            <p-button
-              [label]="t.attivo ? 'Disattiva' : 'Riattiva'"
-              [icon]="t.attivo ? 'pi pi-ban' : 'pi pi-replay'"
-              [text]="true"
-              size="small"
-              (onClick)="cambiaStato(t)"
-              [attr.data-testid]="'testo-attivo-' + t.codice"
-            />
-            <p-button
-              *ngIf="t.eliminabile"
-              label="Elimina"
-              icon="pi pi-trash"
-              severity="danger"
-              [text]="true"
-              size="small"
-              (onClick)="elimina(t)"
-              [attr.data-testid]="'testo-elimina-' + t.codice"
+              [nome]="t.codice + ' - ' + t.titolo"
+              [principale]="azioni.di(t).principale"
+              [altre]="azioni.di(t).altre"
             />
           </td>
         </tr>
@@ -100,6 +94,14 @@ import { TestoFatturazioneDialogComponent } from './testo-fatturazione-dialog.co
         justify-content: flex-end;
         margin-bottom: 0.5rem;
       }
+      .solo-tel {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .solo-tel {
+          display: inline;
+        }
+      }
       .anteprima {
         color: var(--text-color-secondary);
         font-size: 0.9rem;
@@ -115,6 +117,15 @@ export class TestiFatturazioneComponent implements OnInit {
   readonly puoScrivere = permessoScrittura()
   readonly righe = signal<TestoFatturazione[]>([])
   readonly erroreElenco = signal<string | null>(null)
+  readonly azioni = new MemoriaAzioni<TestoFatturazione>(t =>
+    azioniDiRiga({
+      modifica: () => this.apri(t),
+      etichettaModifica: 'Modifica',
+      attivo: t.attivo,
+      cambiaStato: () => this.chiediCambiaStato(t),
+      elimina: t.eliminabile ? () => this.elimina(t) : undefined,
+    })
+  )
   readonly dialogoAperto = signal(false)
   readonly selezionato = signal<TestoFatturazione | null>(null)
 
@@ -134,6 +145,13 @@ export class TestiFatturazioneComponent implements OnInit {
   apri(t: TestoFatturazione | null): void {
     this.selezionato.set(t)
     this.dialogoAperto.set(true)
+  }
+
+  /** «Disattiva» chiede conferma, «Riattiva» no. */
+  chiediCambiaStato(t: TestoFatturazione): void {
+    cambiaStatoConConferma(this.conferma, t.attivo, `il testo "${t.codice} - ${t.titolo}"`, () =>
+      this.cambiaStato(t)
+    )
   }
 
   cambiaStato(t: TestoFatturazione): void {

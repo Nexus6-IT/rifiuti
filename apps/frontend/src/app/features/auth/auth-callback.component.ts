@@ -46,9 +46,7 @@ import { AuthService } from '../../core/services/auth.service'
         align-items: center;
         justify-content: center;
         padding: var(--spacing-lg);
-        background:
-          radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 60%),
-          var(--surface-ground);
+        background: var(--surface-ground);
       }
       .callback__card {
         display: flex;
@@ -63,7 +61,6 @@ import { AuthService } from '../../core/services/auth.service'
         border: 1px solid var(--surface-border);
         border-radius: var(--radius-xl);
         box-shadow: var(--shadow-md);
-        animation: fadeInUp var(--transition-base);
       }
       .callback__brand {
         display: flex;
@@ -103,11 +100,6 @@ import { AuthService } from '../../core/services/auth.service'
         font-size: var(--font-size-sm);
         color: var(--text-secondary);
         line-height: var(--line-height-normal);
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .callback__card {
-          animation: none;
-        }
       }
     `,
   ],
