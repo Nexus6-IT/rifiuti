@@ -46,9 +46,7 @@ import { AuthService } from '../../core/services/auth.service'
         align-items: center;
         justify-content: center;
         padding: var(--spacing-lg);
-        background:
-          radial-gradient(120% 90% at 50% 0%, var(--brand-primary-50) 0%, transparent 60%),
-          var(--surface-ground);
+        background: var(--surface-ground);
       }
       .callback__card {
         display: flex;
