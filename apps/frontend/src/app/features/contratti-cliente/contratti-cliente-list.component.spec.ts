@@ -310,9 +310,8 @@ describe('ContrattiClienteListComponent', () => {
           'Descrizione',
           'Categoria',
           'Stato',
-          'Inizio',
-          'Fine',
-          'Prossima fatturazione',
+          'Periodo',
+          'Prossima fatt.',
         ])
       )
     })
@@ -354,22 +353,51 @@ describe('ContrattiClienteListComponent', () => {
       const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
         t.textContent!.trim()
       )
-      for (const nascosta of ['Fine', 'Prossima fatturazione', 'Categoria', 'Da collegare']) {
+      for (const nascosta of ['Prossima fatt.', 'Categoria', 'Da collegare']) {
         expect(intest).not.toContain(nascosta)
       }
-      expect(intest).toEqual(jasmine.arrayContaining(['Numero', 'Cliente', 'Stato', 'Inizio']))
+      expect(intest).toEqual(jasmine.arrayContaining(['Numero', 'Cliente', 'Stato', 'Periodo']))
       expect(q('contratti-riga-cc1')!.querySelectorAll('td').length).toBe(intest.length)
     })
 
     it('la colonna resta se almeno una riga ha il dato', async () => {
       await apri(
         'OPERATOR',
-        pagina(contratto({ dataFine: null }), contratto({ id: 'cc2', dataFine: '2027-06-30' }))
+        pagina(
+          contratto({ prossimaFinePeriodo: null }),
+          contratto({ id: 'cc2', prossimaFinePeriodo: '2027-06-30' })
+        )
       )
       const intest = Array.from(document.body.querySelectorAll('th')).map(t =>
         t.textContent!.trim()
       )
-      expect(intest).toContain('Fine')
+      expect(intest).toContain('Prossima fatt.')
+    })
+
+    it('il periodo unisce inizio e fine; senza fine c’è la sola data di inizio', async () => {
+      await apri('OPERATOR', pagina(contratto({ dataFine: null }), contratto({ id: 'cc2' })))
+      const periodo = (id: string) =>
+        q(`contratti-riga-${id}`)!.querySelector('.cella-periodo')!.textContent!.trim()
+      expect(periodo('cc2')).toBe('15/01/2026 – 31/12/2026')
+      expect(periodo('cc1')).toBe('15/01/2026')
+    })
+
+    it('«Scaduto» sta nella cella dello Stato, che sul telefono non è nascosta', async () => {
+      await apri('ADMIN', pagina(contratto({ scaduto: true })))
+      const cella = q('contratti-scaduto')!.closest('td')!
+      expect(cella.classList).toContain('cella-stato')
+      expect(cella.classList).not.toContain('m-hide')
+    })
+
+    it('sul telefono i filtri stanno in un pannello «Filtri», chiuso e apribile', async () => {
+      await apri()
+      const toggle = q('contratti-filtri-toggle')!
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      expect(q('contratti-filtri')!.classList).toContain('filtri-chiusi')
+      toggle.click()
+      await stabilizza(fixture)
+      expect(toggle.getAttribute('aria-expanded')).toBe('true')
+      expect(q('contratti-filtri')!.classList).not.toContain('filtri-chiusi')
     })
 
     it('«Da collegare» compare solo se un contratto ha movimenti da collegare', async () => {
@@ -911,7 +939,7 @@ describe('ContrattiClienteListComponent', () => {
       listaLegami.and.returnValue(
         of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 12 }], senzaContratto: [] })
       )
-      await apri('ADMIN', pagina(contratto()))
+      await apri('ADMIN', pagina(contratto({ scaduto: true })))
       fixture.nativeElement.style.cssText = 'display:block;width:1150px'
       fixture.detectChanges()
       const tabella = fixture.nativeElement.querySelector('.p-datatable') as HTMLElement
@@ -978,6 +1006,26 @@ describe('ContrattiClienteListComponent', () => {
         t => t.textContent!.trim() === 'Azioni'
       )!
       expect(parseFloat(getComputedStyle(th).minWidth)).toBeGreaterThanOrEqual(120)
+    })
+
+    it('a 1150px con «Scaduto» e tutte le colonne piene il link «Listino» non sta sotto le azioni', async () => {
+      listaLegami.and.returnValue(
+        of({ perContratto: [{ contrattoId: 'cc1', daCollegare: 12 }], senzaContratto: [] })
+      )
+      await apri('ADMIN', pagina(contratto({ scaduto: true })))
+      fixture.nativeElement.style.cssText = 'display:block;width:1150px'
+      fixture.detectChanges()
+      const link = q('contratti-listino-cc1')!
+      const r = link.getBoundingClientRect()
+      // elementFromPoint vede solo il viewport: con l'iframe di Karma stretto resta la geometria.
+      if (r.right < window.innerWidth) {
+        const colpito = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        expect(link.contains(colpito))
+          .withContext(`trovato ${colpito?.outerHTML.slice(0, 80)}`)
+          .toBeTrue()
+      }
+      const azioni = celleDi().at(-1)!.getBoundingClientRect()
+      expect(r.right).toBeLessThanOrEqual(azioni.left + 0.5)
     })
   })
 })

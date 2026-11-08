@@ -48,7 +48,7 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
             <th scope="col" *ngIf="colonne().has('sconto')" class="num-col">Sconto</th>
             <th scope="col" class="m-hide">IVA</th>
             <th scope="col" *ngIf="colonne().has('provvigione')" class="num-col">Provvigione</th>
-            <th scope="col" *ngIf="colonne().has('condizione')" class="num-col">Cond.</th>
+            <th scope="col" *ngIf="colonne().has('condizione')">Cond.</th>
             <th scope="col" *ngIf="colonne().has('minimo')" class="num-col">Minimo</th>
             <th scope="col" *ngIf="colonne().has('categoria')">Categoria</th>
             <th scope="col" *ngIf="colonne().has('appunti')">Appunti</th>
@@ -75,7 +75,7 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
             <td *ngIf="colonne().has('provvigione')" class="num-col m-hide">
               {{ cascata(r.provvigione) }}
             </td>
-            <td *ngIf="colonne().has('condizione')" class="num-col m-hide">{{ r.condizione }}</td>
+            <td *ngIf="colonne().has('condizione')" class="m-hide">{{ r.condizione }}</td>
             <td *ngIf="colonne().has('minimo')" class="num-col m-hide">
               {{ prezzo(r.minimoFatturabile) }}
             </td>
@@ -163,7 +163,7 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
         position: sticky;
         right: 0;
         z-index: 1;
-        background: var(--surface-ground);
+        background: var(--surface-ground) !important;
         box-shadow: -1px 0 0 var(--rule);
       }
       .visually-hidden {
@@ -188,6 +188,11 @@ import { ETICHETTE_TIPO_QUANTITA } from './vocabolario-listino'
         }
         .cella-codice {
           font-weight: 500;
+        }
+        /* Apri ed Elimina: area di tocco da 44px (i p-button stanno nella vista di PrimeNG). */
+        :host ::ng-deep td.azioni-col .p-button {
+          min-width: 2.75rem;
+          height: 2.75rem;
         }
       }
     `,

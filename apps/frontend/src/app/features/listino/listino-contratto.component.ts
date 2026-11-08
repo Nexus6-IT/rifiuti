@@ -84,7 +84,9 @@ import { RigheTavolaComponent } from './righe-tavola.component'
       </p>
 
       <header *ngIf="contesto() as c" class="intestazione" data-testid="listino-intestazione">
-        <h1>Listino del contratto {{ c.contratto.numero }}</h1>
+        <h1>
+          Listino del contratto <span class="numero">{{ c.contratto.numero }}</span>
+        </h1>
         <div class="intestazione__dati">
           <span data-testid="listino-cliente" *ngIf="c.contratto.clienteRagioneSociale as cl">{{
             cl
@@ -231,6 +233,9 @@ import { RigheTavolaComponent } from './righe-tavola.component'
   `,
   styles: [
     `
+      .numero {
+        white-space: nowrap;
+      }
       .indietro {
         display: inline-flex;
         gap: 0.4rem;

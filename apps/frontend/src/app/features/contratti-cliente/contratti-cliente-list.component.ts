@@ -152,7 +152,22 @@ const SEVERITA_STATO: Readonly<
           </ng-container>
         </div>
       </div>
-      <div class="barra-filtri" data-testid="contratti-filtri">
+      <button
+        type="button"
+        class="filtri-toggle p-button p-button-outlined p-button-secondary"
+        [attr.aria-expanded]="filtriAperti()"
+        aria-controls="contratti-filtri"
+        (click)="filtriAperti.set(!filtriAperti())"
+        data-testid="contratti-filtri-toggle"
+      >
+        <i class="pi pi-filter" aria-hidden="true"></i>&nbsp;Filtri
+      </button>
+      <div
+        id="contratti-filtri"
+        class="barra-filtri"
+        [class.filtri-chiusi]="!filtriAperti()"
+        data-testid="contratti-filtri"
+      >
         <p-dropdown
           [options]="opzioniStato"
           [ngModel]="statoFiltro"
@@ -263,9 +278,10 @@ const SEVERITA_STATO: Readonly<
             <th scope="col" *ngIf="colonne().has('descrizione')">Descrizione</th>
             <th scope="col" *ngIf="colonne().has('categoria')">Categoria</th>
             <th scope="col">Stato</th>
-            <th scope="col">Inizio</th>
-            <th scope="col" *ngIf="colonne().has('fine')">Fine</th>
-            <th scope="col" *ngIf="colonne().has('prossima')">Prossima fatturazione</th>
+            <th scope="col">Periodo</th>
+            <th scope="col" *ngIf="colonne().has('prossima')" title="Prossima fatturazione">
+              Prossima fatt.
+            </th>
             <th scope="col" *ngIf="colonne().has('daCollegare')">Da collegare</th>
             <th scope="col">Listino</th>
             <th scope="col" *ngIf="puoScrivere()" class="azioni-col">Azioni</th>
@@ -302,16 +318,18 @@ const SEVERITA_STATO: Readonly<
             </td>
             <td class="cella-stato m2">
               <p-tag [value]="etichettaStato(c.stato)" [severity]="severita(c.stato)" />
-            </td>
-            <td class="m-hide">{{ c.dataInizio | date: 'dd/MM/yyyy' }}</td>
-            <td *ngIf="colonne().has('fine')" class="m-hide cella-fine">
-              {{ c.dataFine | date: 'dd/MM/yyyy' }}
               <p-tag
                 *ngIf="c.scaduto"
                 value="Scaduto"
                 severity="danger"
                 data-testid="contratti-scaduto"
               />
+            </td>
+            <td class="m-hide cella-periodo">
+              {{ c.dataInizio | date: 'dd/MM/yyyy'
+              }}<ng-container *ngIf="c.dataFine">
+                – {{ c.dataFine | date: 'dd/MM/yyyy' }}</ng-container
+              >
             </td>
             <td *ngIf="colonne().has('prossima')" class="m-hide">
               {{ c.prossimaFinePeriodo | date: 'dd/MM/yyyy' }}
@@ -333,10 +351,12 @@ const SEVERITA_STATO: Readonly<
               <a
                 [routerLink]="['/contratti-clienti', c.id, 'listino']"
                 class="p-button p-button-text p-button-sm"
+                title="Listino"
                 [attr.aria-label]="'Listino del contratto ' + c.numero"
                 [attr.data-testid]="'contratti-listino-' + c.id"
               >
-                <i class="pi pi-list" aria-hidden="true"></i>&nbsp;Listino
+                <i class="pi pi-list" aria-hidden="true"></i
+                ><span class="solo-telefono-testo">&nbsp;Listino</span>
               </a>
             </td>
             <td *ngIf="puoScrivere()" class="azioni-col">
@@ -416,13 +436,18 @@ const SEVERITA_STATO: Readonly<
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 12rem;
+        max-width: 10rem;
       }
       .cella-categoria {
-        max-width: 8rem;
+        max-width: 7rem;
+      }
+      .cella-stato {
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
       }
       .cella-numero,
-      .cella-fine,
+      .cella-periodo,
       .cella-stato,
       .cella-listino {
         white-space: nowrap;
@@ -438,7 +463,9 @@ const SEVERITA_STATO: Readonly<
         position: sticky;
         right: 0;
         z-index: 1;
-        background: var(--surface-ground);
+        background: var(
+          --surface-ground
+        ) !important; /* anche il th: PrimeNG lo vuole trasparente */
         box-shadow: -1px 0 0 var(--rule);
       }
       .senza-contratto {
@@ -449,7 +476,35 @@ const SEVERITA_STATO: Readonly<
         margin: 0 0 0.75rem;
       }
       /* Telefono: numero e cliente su due righe, stato e listino sulla terza. */
+      .filtri-toggle.filtri-toggle {
+        display: none;
+      }
+      /* Su desktop il link al listino è la sola icona (il nome sta nell'aria-label e nel title). */
+      .solo-telefono-testo {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
       @media (max-width: 640px) {
+        .solo-telefono-testo {
+          position: static;
+          width: auto;
+          height: auto;
+          clip: auto;
+        }
+        .filtri-toggle.filtri-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 44px;
+          margin-bottom: var(--spacing-md);
+        }
+        .filtri-chiusi {
+          display: none;
+        }
         th.azioni-col,
         td.azioni-col {
           position: static;
@@ -520,11 +575,13 @@ export class ContrattiClienteListComponent implements OnInit, OnDestroy {
   readonly erroreElenco = this.elenco.errore
 
   /** Colonne facoltative con almeno un dato nella pagina: le altre non si mostrano. */
+  /** Sul telefono i filtri stanno in un pannello «Filtri», chiuso all'apertura. */
+  readonly filtriAperti = signal(false)
+
   readonly colonne = computed(() =>
     colonneConDati<ContrattoCliente>(this.righe(), {
       descrizione: c => c.descrizione,
       categoria: c => c.categoria?.descrizione,
-      fine: c => c.dataFine,
       prossima: c => c.prossimaFinePeriodo,
       daCollegare: c => this.daCollegarePer(c.id) || null,
     })
