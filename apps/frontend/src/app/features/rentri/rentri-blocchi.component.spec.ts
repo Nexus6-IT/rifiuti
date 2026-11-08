@@ -247,4 +247,16 @@ describe('RentriBlocchiComponent', () => {
     expect(toast.error).toHaveBeenCalledWith('Blocco non attivo')
     expect(component.displayVidimaDialog).toBe(true)
   })
+
+  it('la pagina ha la larghezza di .page, senza max-width proprio', () => {
+    setup('ADMIN')
+    service.blocchi.and.returnValue(of([blocco()]))
+    service.scorta.and.returnValue(of(scorta()))
+    fixture.detectChanges()
+
+    const pagina = (fixture.nativeElement as HTMLElement).querySelector('.page') as HTMLElement
+    expect(pagina).not.toBeNull()
+    expect(pagina.getAttribute('style') ?? '').not.toContain('max-width')
+    expect(getComputedStyle(pagina).maxWidth).toBe('1320px')
+  })
 })
