@@ -383,6 +383,25 @@ describe('Il legame segue la correzione del movimento — Postgres reale, ruolo 
     expect(await aperto()).toBe(true)
   })
 
+  it('scostamentoAperto: un IMPORTATO_FATTURATO rettificato non e aperto (la lista degli scostamenti contiene solo i FATTURATO)', async () => {
+    const s = await scenario()
+    const m = await registraMovimento(s)
+    const l0 = (await legameDi(m.id))!
+    await portaAFatturato(l0.id, 'IMPORTATO_FATTURATO')
+    await owner.legameMovimento.update({
+      where: { id: l0.id },
+      data: {
+        scostamentoDopoFattura: true,
+        scostamentoIl: new Date(Date.now() - 60_000),
+        scostamentoGestitoIl: null,
+      },
+    })
+    const v = await legami.dettaglio(s.tenantId, l0.id)
+    expect(v.stato).toBe('IMPORTATO_FATTURATO')
+    expect(v.scostamentoDopoFattura).toBe(true)
+    expect(v.scostamentoAperto).toBe(false)
+  })
+
   it('quantità MANUALE resta e compare QUANTITA_MANUALE_NON_DERIVATA', async () => {
     const s = await scenario()
     const m = await registraMovimento(s, { legame: { azione: 'PROPOSTA' } })

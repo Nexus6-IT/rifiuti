@@ -8,7 +8,7 @@
  * dell'EXPLAIN (modello `piani-query.postgres.spec.ts`). Pulizia per id esatti.
  */
 import { randomUUID } from 'node:crypto'
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
@@ -222,6 +222,65 @@ describe('ExportService — piani con statistiche vecchie', () => {
         tot += ms
       }
       expect(tot).toBeLessThan(SOGLIA_MS)
+    } finally {
+      await owner.$executeRawUnsafe(`ALTER ROLE wasteflow_app RESET plan_cache_mode`)
+      await generico.$disconnect()
+    }
+  }, 400_000)
+
+  // -------------------------------------------------------------------------------------------
+  // dettagliInTx da solo, nelle due forme della lista (`= ANY` fino a 100 id, `IN (SELECT unnest)`
+  // dentro `conJoinLineari` oltre). Seguito 4.4b2 m4: il test dell'export passa da qui solo in modo
+  // indiretto; qui si misura la funzione con statistiche vecchie, piano custom e piano generico.
+  // Con statistiche del tutto assenti un blocco da 100 costa ~0,5 s (50 blocchi = 25 s): per questo
+  // gli export leggono in un solo passaggio e lo zip (500 documenti) usa al piu' 5 blocchi.
+  // -------------------------------------------------------------------------------------------
+  async function dettagliA(
+    db: PrismaService,
+    ids: string[],
+    dimensioneBlocco: number
+  ): Promise<number> {
+    const s = crea(db)
+    let letti = 0
+    await nel(() =>
+      db.$transaction(
+        async tx => {
+          for (let da = 0; da < ids.length; da += dimensioneBlocco) {
+            const dettagli = await s['documenti'].dettagliInTx(
+              tx,
+              tenantId,
+              ids.slice(da, da + dimensioneBlocco)
+            )
+            letti += dettagli.length
+          }
+        },
+        { timeout: 120_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+      )
+    )
+    return letti
+  }
+
+  it(`dettagliInTx, statistiche vecchie, piano custom: 5 blocchi da 100 id (lo zip da 500) e una lista da 5000 sotto ${SOGLIA_MS} ms`, async () => {
+    await rendiVecchieLeStatistiche()
+    const t0 = Date.now()
+    expect(await dettagliA(app, documentoIds.slice(0, 500), 100)).toBe(500)
+    await rendiVecchieLeStatistiche()
+    expect(await dettagliA(app, documentoIds, documentoIds.length)).toBe(documentoIds.length)
+    expect(Date.now() - t0).toBeLessThan(SOGLIA_MS)
+  }, 400_000)
+
+  it(`dettagliInTx, statistiche vecchie, force_generic_plan: 5 blocchi da 100 id (lo zip da 500) e una lista da 5000 sotto ${SOGLIA_MS} ms`, async () => {
+    await owner.$executeRawUnsafe(
+      `ALTER ROLE wasteflow_app SET plan_cache_mode = force_generic_plan`
+    )
+    const generico = creaPrismaServiceApplicativo()
+    try {
+      await rendiVecchieLeStatistiche()
+      const t0 = Date.now()
+      expect(await dettagliA(generico, documentoIds.slice(0, 500), 100)).toBe(500)
+      await rendiVecchieLeStatistiche()
+      expect(await dettagliA(generico, documentoIds, documentoIds.length)).toBe(documentoIds.length)
+      expect(Date.now() - t0).toBeLessThan(SOGLIA_MS)
     } finally {
       await owner.$executeRawUnsafe(`ALTER ROLE wasteflow_app RESET plan_cache_mode`)
       await generico.$disconnect()
