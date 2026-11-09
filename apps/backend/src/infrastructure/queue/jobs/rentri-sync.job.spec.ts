@@ -1,5 +1,5 @@
 import { RENTRISyncJobProcessor } from './rentri-sync.job'
-import { Job } from 'bullmq'
+import { Job, UnrecoverableError } from 'bullmq'
 
 /**
  * Integration tests for RENTRI Sync Job Processor
@@ -12,6 +12,7 @@ describe('RENTRISyncJobProcessor', () => {
   let mockLogger: any
   let mockMetrics: any
   let mockSyncUseCase: any
+  let mockModuli: { moduliAttivi: jest.Mock }
   let mockRentriSyncQueue: any
 
   beforeEach(() => {
@@ -43,6 +44,7 @@ describe('RENTRISyncJobProcessor', () => {
     }
 
     mockRentriSyncQueue = {}
+    mockModuli = { moduliAttivi: jest.fn().mockResolvedValue(['fir', 'rentri']) }
 
     // Directly instantiate the processor with mocks
     processor = new RENTRISyncJobProcessor(
@@ -50,8 +52,39 @@ describe('RENTRISyncJobProcessor', () => {
       mockLogger,
       mockMetrics,
       mockSyncUseCase,
-      mockRentriSyncQueue
+      mockRentriSyncQueue,
+      mockModuli as any
     )
+  })
+
+  describe('modulo rentri ricontrollato (D4b)', () => {
+    const jobDi = (data: Record<string, unknown>) =>
+      ({
+        id: 'job-m',
+        name: 'rentri-sync',
+        data,
+        attemptsMade: 0,
+        updateProgress: jest.fn(),
+      }) as unknown as Job
+
+    it('modulo tolto con il job gia in coda: UnrecoverableError MODULO_NON_ATTIVO, nessuna sync', async () => {
+      mockModuli.moduliAttivi.mockResolvedValue(['fir'])
+      const errore = await (processor as any)
+        .processJob(jobDi({ type: 'single', firId: 'f1', tenantId: 't1' }))
+        .catch((e: unknown) => e)
+      expect(errore).toBeInstanceOf(UnrecoverableError)
+      expect((errore as Error).message).toContain('MODULO_NON_ATTIVO')
+      expect(mockSyncUseCase.execute).not.toHaveBeenCalled()
+    })
+
+    it('errore del database sul controllo: errore normale (si ritenta)', async () => {
+      mockModuli.moduliAttivi.mockRejectedValue(new Error('db giu'))
+      const errore = await (processor as any)
+        .processJob(jobDi({ type: 'single', firId: 'f1', tenantId: 't1' }))
+        .catch((e: unknown) => e)
+      expect(errore).toBeInstanceOf(Error)
+      expect(errore).not.toBeInstanceOf(UnrecoverableError)
+    })
   })
 
   describe('Single FIR Processing', () => {

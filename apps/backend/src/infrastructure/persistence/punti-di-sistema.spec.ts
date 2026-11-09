@@ -51,6 +51,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
   'infrastructure/jobs/rentri-rifornimento-scorta.job.ts':
     'elenco di tutte le aziende attive, poi ogni azienda nel suo contesto',
+  'infrastructure/jobs/rentri-trasmissioni-sospese.job.ts':
+    'elenco delle aziende attive per scegliere quelle col modulo rentri, prima della query dei FIR sospesi',
   'infrastructure/persistence/consultant-tenant-association.repository.ts':
     "associazioni del consulente (elenco e cambio azienda) su piu' aziende, vincolate all'utente autenticato",
   'infrastructure/persistence/fir-prisma.repository.ts':

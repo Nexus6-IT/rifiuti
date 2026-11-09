@@ -33,6 +33,8 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
   const FIR_ID = 'fir-123'
   const TENANT_ID = 'tenant-456'
 
+  let mockModuli: { moduliAttivi: jest.Mock }
+
   beforeEach(() => {
     mockModalitaLegameService = {
       getForTenant: jest.fn(),
@@ -69,12 +71,29 @@ describe('TrasmettiFIRSecondoModalitaUseCase', () => {
       save: jest.fn().mockResolvedValue(undefined),
     }
 
+    mockModuli = { moduliAttivi: jest.fn().mockResolvedValue(['fir', 'rentri']) }
     useCase = new TrasmettiFIRSecondoModalitaUseCase(
       mockModalitaLegameService,
       mockRentriSyncQueue,
       mockFirRepository,
-      mockLogger
+      mockLogger,
+      mockModuli as any
     )
+  })
+
+  it('modulo rentri non attivo: nessuna trasmissione, nessuna lettura della modalita, FIR non toccato', async () => {
+    mockModuli.moduliAttivi.mockResolvedValue(['fir', 'registro'])
+    mockModalitaLegameService.getForTenant.mockResolvedValue({
+      modalitaLegame: 'AUTOMATICA',
+      certificatoConfigurato: true,
+    })
+
+    const esito = await useCase.eseguiSeAutomatica({ firId: FIR_ID, tenantId: TENANT_ID })
+
+    expect(esito).toEqual({ avviata: false, motivo: 'MODULO_NON_ATTIVO' })
+    expect(mockModuli.moduliAttivi).toHaveBeenCalledWith(TENANT_ID)
+    expect(mockRentriSyncQueue.addSyncJob).not.toHaveBeenCalled()
+    expect(mockFirRepository.save).not.toHaveBeenCalled()
   })
 
   it('AUTOMATICA + certificato configurato: accoda la trasmissione senza richiedere conferma', async () => {

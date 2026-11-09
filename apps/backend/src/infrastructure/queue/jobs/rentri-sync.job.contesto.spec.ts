@@ -34,7 +34,8 @@ describe('RENTRISyncJobProcessor - contesto azienda', () => {
       logger as any,
       metrics as any,
       syncUseCase as any,
-      {} as any
+      {} as any,
+      { moduliAttivi: async () => ['rentri'] } as any
     )
   })
 

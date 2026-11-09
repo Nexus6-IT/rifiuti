@@ -10,6 +10,7 @@ import { Test } from '@nestjs/testing'
 import { FEATURE_KEYS, FeatureKey } from '../application/admin/feature-catalog'
 import { AppModule } from '../app.module'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { JwtAuthGuard as JwtAuthGuardCore } from '../core/auth/jwt-auth.guard'
 import {
   RICHIEDE_MODULO,
   RichiedeModulo,
@@ -44,7 +45,7 @@ interface VoceModulo {
   metodi?: Record<string, readonly FeatureKey[] | 'senza-modulo'>
 }
 
-const LETTURA_ANAGRAFICHE = ['anagrafiche', 'fir', 'registro', 'contratti'] as const
+const LETTURA_ANAGRAFICHE = ['anagrafiche', 'fir', 'registro', 'contratti', 'pese'] as const
 
 /** Letture delle anagrafiche condivise con FIR, registro e contratti (P2: basta una delle chiavi). */
 const LETTURE_REGISTRY: Record<string, readonly FeatureKey[]> = {
@@ -60,7 +61,11 @@ const CONTRATTI = (motivo: string): VoceModulo => ({ chiavi: ['contratti'], moti
 
 export const MAPPA_MODULI: Record<string, VoceModulo> = {
   // fir
-  'api/fir/fir.controller.v2.ts': { chiavi: ['fir'], motivo: 'Formulari: rotte /fir' },
+  'api/fir/fir.controller.v2.ts': {
+    chiavi: ['fir'],
+    motivo: 'Formulari: rotte /fir; la lista e una lettura condivisa con registro, pese e RENTRI',
+    metodi: { list: ['fir', 'registro', 'pese', 'rentri'] },
+  },
   'api/signatures/signatures.controller.ts': {
     motivo:
       'Firma dei FIR (fir). verify e verify-url sono pubbliche (QR code sulla copia cartacea): ' +
@@ -94,7 +99,15 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     metodi: { cerca: LETTURA_ANAGRAFICHE, dettaglio: LETTURA_ANAGRAFICHE },
   },
   // registro
-  'api/registro/registro.controller.ts': { chiavi: ['registro'], motivo: 'Registro cronologico' },
+  'api/registro/registro.controller.ts': {
+    chiavi: ['registro'],
+    motivo:
+      'Registro cronologico; letture condivise: elenco dei registri (giacenze, pese, contratti) e movimenti (pese, contratti)',
+    metodi: {
+      elencaRegistri: ['registro', 'giacenze', 'pese', 'contratti'],
+      lista: ['registro', 'pese', 'contratti'],
+    },
+  },
   'api/registro/causali-registro.controller.ts': {
     chiavi: ['registro'],
     motivo: 'Causali del registro cronologico',
@@ -357,6 +370,10 @@ function effettivo(reflector: Reflector, classe: Type<unknown>, fn: () => unknow
   return null
 }
 
+/**
+ * Rotte dichiarate dalla classe stessa: quelle ereditate da una classe base NON sono viste
+ * (oggi nessun controller eredita rotte; `nessunControllerEreditaRotte` lo impone).
+ */
 function rotte(classe: Type<unknown>): { nome: string; fn: () => unknown; get: boolean }[] {
   const proto = classe.prototype as Record<string, unknown>
   return Object.getOwnPropertyNames(proto)
@@ -379,8 +396,8 @@ function haJwtGuard(classe: Type<unknown>, fn: () => unknown): boolean {
     ...((Reflect.getMetadata(GUARDS_METADATA, classe) as unknown[]) ?? []),
     ...((Reflect.getMetadata(GUARDS_METADATA, fn) as unknown[]) ?? []),
   ]
-  // Per nome: nel codice esistono piu' classi `JwtAuthGuard` (auth/guards, core/auth).
-  return guards.some(g => (g as { name?: string } | undefined)?.name === 'JwtAuthGuard')
+  // Le due classi reali (auth/guards e core/auth): una classe omonima altrove non vale.
+  return guards.some(g => g === JwtAuthGuard || g === JwtAuthGuardCore)
 }
 
 /** Problemi dei controller montati (metatype) rispetto agli elenchi. `fileDiClasse`: nome -> file. */
@@ -587,6 +604,16 @@ describe('moduli: i controller montati nell app (DiscoveryService + Reflector)',
 
   it('ogni rotta montata ha il modulo atteso, JwtAuthGuard e nessun conflitto di decoratori', () => {
     expect(problemiRuntime(montati, reflector, classi, MAPPA_MODULI, BASE, NON_MONTATI)).toEqual([])
+  })
+
+  it('nessun controller montato eredita rotte da una classe base (rotte() non le vedrebbe)', () => {
+    const ereditano = montati.filter(c => {
+      const base = Object.getPrototypeOf(c.prototype) as object
+      return (
+        base !== Object.prototype && Object.getOwnPropertyNames(base).some(n => n !== 'constructor')
+      )
+    })
+    expect(ereditano.map(c => c.name)).toEqual([])
   })
 
   it('CERController ha JwtAuthGuard: il catalogo non e piu leggibile senza login', () => {
