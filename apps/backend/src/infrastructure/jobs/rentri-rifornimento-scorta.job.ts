@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
@@ -41,7 +42,8 @@ export class RentriRifornimentoScortaJob {
     private readonly scortaRepo: RentriScortaRepository,
     private readonly avviaVidimazione: AvviaVidimazioneScortaUseCase,
     private readonly logger: LoggerService,
-    private readonly credenziali: RentriCredentialResolver
+    private readonly credenziali: RentriCredentialResolver,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext(RentriRifornimentoScortaJob.name)
   }
@@ -52,10 +54,17 @@ export class RentriRifornimentoScortaJob {
 
     try {
       // Sistema: elenco di tutte le aziende attive, senza un'azienda nota in partenza
-      const tenants = await this.sistema.tenant.findMany({
+      const candidati = await this.sistema.tenant.findMany({
         where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
         select: { id: true },
       })
+
+      // Solo le aziende col modulo rentri (D4b): UNA query per tutte, senza N+1.
+      const conModulo = await this.moduli.tenantConModulo(
+        candidati.map(t => t.id),
+        'rentri'
+      )
+      const tenants = candidati.filter(t => conModulo.has(t.id))
 
       let sediRifornite = 0
       let sediInErrore = 0

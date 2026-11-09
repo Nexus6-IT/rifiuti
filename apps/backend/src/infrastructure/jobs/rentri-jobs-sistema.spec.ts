@@ -21,6 +21,7 @@ import { RentriCredentialResolver } from '../rentri/rentri-credential.resolver'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { RentriScortaRepository } from '../persistence/rentri-scorta.repository'
 import { AvviaVidimazioneScortaUseCase } from '../../application/rentri/scorta/avvia-vidimazione-scorta.use-case'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { TenantContext } from '../../core/context/tenant-context'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
@@ -41,6 +42,11 @@ const applicativoVietato = new Proxy(
     },
   }
 )
+
+/** Moduli: tutte le aziende hanno `rentri` (il filtro e' coperto dai test unitari dei job). */
+const tutteLeAziendeHannoRentri = {
+  tenantConModulo: async (ids: readonly string[]) => new Set(ids),
+}
 
 const sede = {
   numIscrSito: 'OP1',
@@ -65,6 +71,7 @@ describe('RentriCertificatoScadenzaJob — client di sistema', () => {
         { provide: PrismaSistemaService, useValue: sistema },
         { provide: MetricsService, useValue: { rentriCertificateExpiryDays: { set: jest.fn() } } },
         { provide: LoggerService, useValue: logger },
+        { provide: ModuliAttiviService, useValue: tutteLeAziendeHannoRentri },
       ],
     }).compile()
 
@@ -88,6 +95,7 @@ describe('RentriRiconciliazioneJob — client di sistema e contesto per azienda'
         { provide: RiconciliaStatoRentriUseCase, useValue: useCase },
         { provide: RentriCredentialResolver, useValue: resolver },
         { provide: LoggerService, useValue: logger },
+        { provide: ModuliAttiviService, useValue: tutteLeAziendeHannoRentri },
       ],
     }).compile()
     return { job: modulo.get(RentriRiconciliazioneJob), sistema, resolver }
@@ -132,6 +140,7 @@ describe('RentriRifornimentoScortaJob — client di sistema e contesto per azien
         { provide: RentriScortaRepository, useValue: scorta },
         { provide: AvviaVidimazioneScortaUseCase, useValue: vidima },
         { provide: LoggerService, useValue: logger },
+        { provide: ModuliAttiviService, useValue: tutteLeAziendeHannoRentri },
       ],
     }).compile()
     return {
@@ -210,7 +219,8 @@ describe('RentriTrasmissioniSospeseJob — contesto per azienda', () => {
       firRepo as never,
       queue as never,
       logger as never,
-      modalita as never
+      modalita as never,
+      { tenantConModulo: async (ids: readonly string[]) => new Set(ids) } as never
     )
 
     await job.riprendi()

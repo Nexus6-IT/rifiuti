@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
@@ -40,7 +41,8 @@ export class RentriRegistroTrasmissioneJob {
     private readonly credenziali: RentriCredentialResolver,
     private readonly repo: TrasmissioniRegistroRepository,
     private readonly trasmetti: TrasmettiLottoRegistroUseCase,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext(RentriRegistroTrasmissioneJob.name)
   }
@@ -61,10 +63,17 @@ export class RentriRegistroTrasmissioneJob {
           'Invii RENTRI sospesi (RENTRI_REGISTRO_INVII_ATTIVI=false): si leggono solo gli esiti'
         )
       }
-      const tenants = await this.sistema.tenant.findMany({
+      const candidati = await this.sistema.tenant.findMany({
         where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
         select: { id: true },
       })
+
+      // Solo le aziende col modulo rentri (D4b): UNA query per tutte, senza N+1.
+      const conModulo = await this.moduli.tenantConModulo(
+        candidati.map(t => t.id),
+        'rentri'
+      )
+      const tenants = candidati.filter(t => conModulo.has(t.id))
       let aziendeInErrore = 0
       for (const tenant of tenants) {
         const ok = await this.giroAzienda(tenant.id, invii)

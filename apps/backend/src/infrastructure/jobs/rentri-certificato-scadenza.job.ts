@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { MetricsService } from '../../core/metrics/metrics.service'
@@ -33,7 +34,8 @@ export class RentriCertificatoScadenzaJob {
   constructor(
     private readonly sistema: PrismaSistemaService,
     private readonly metrics: MetricsService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext(RentriCertificatoScadenzaJob.name)
   }
@@ -66,8 +68,13 @@ export class RentriCertificatoScadenzaJob {
         where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
         select: { id: true },
       })
+      // Solo le aziende col modulo rentri (D4b): UNA query per tutte, senza N+1.
+      const conModulo = await this.moduli.tenantConModulo(
+        tenantsAttivi.map(t => t.id),
+        'rentri'
+      )
       const credenziali = await this.sistema.rentriCredential.findMany({
-        where: { tenantId: { in: tenantsAttivi.map(t => t.id) } },
+        where: { tenantId: { in: tenantsAttivi.filter(t => conModulo.has(t.id)).map(t => t.id) } },
         select: { tenantId: true, certificatePem: true },
       })
 

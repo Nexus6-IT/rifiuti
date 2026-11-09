@@ -14,8 +14,10 @@ import {
   CODA_FATTURAZIONE,
   type JobFatturazione,
 } from '../../../application/fatturazione/elaborazioni.service'
+import { MODULO_NON_ATTIVO } from '../../../core/context/modulo-non-attivo-errore'
 import { TenantContext } from '../../../core/context/tenant-context'
 import { segnalaErroreJob } from '../../../core/monitoring/segnala-errore-job'
+import { ModuliAttiviService } from '../../../application/admin/moduli-attivi.service'
 import { PrismaService } from '../../persistence/prisma.service'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -28,6 +30,8 @@ export const RINVII_MASSIMI = 10
 /**
  * Worker della coda `fatturazione` (spec §9): il lavoro gira nel contesto dell'azienda del job,
  * col ruolo applicativo e la RLS. Senza azienda: `UnrecoverableError` senza toccare il database.
+ * All'avvio ricontrolla il modulo `contratti` dell'azienda (puo' essere stato tolto dopo l'accodamento):
+ * se manca, `UnrecoverableError` `MODULO_NON_ATTIVO` senza toccare l'elaborazione, e il job non si ripete.
  * Il job `anteprima` ha 2 tentativi; l'ultimo che fallisce porta l'elaborazione a `FALLITA`.
  * Il job `definitiva` ha UN solo tentativo (spec §9): un secondo troverebbe l'impronta cambiata o lo
  * stato non piu' valido, e l'utente rilancia con una versione nuova. Le uscite senza commit
@@ -37,7 +41,10 @@ export const RINVII_MASSIMI = 10
 export class FatturazioneJobProcessor extends WorkerHost {
   private readonly logger = new Logger(FatturazioneJobProcessor.name)
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly moduli: ModuliAttiviService
+  ) {
     super()
   }
 
@@ -62,6 +69,19 @@ export class FatturazioneJobProcessor extends WorkerHost {
     }
     if (tipo === 'definitiva' && utenteId !== undefined && !UUID.test(String(utenteId))) {
       throw new UnrecoverableError('Job fatturazione con utenteId non valido')
+    }
+
+    // Il modulo puo' essere stato tolto dopo l'accodamento: un job gia' in coda non deve produrre
+    // nulla (ne' un'elaborazione, ne' numeri di fattura) e non si ripete. Un errore del database
+    // qui e' un errore normale: il job viene ritentato.
+    const moduli = await this.moduli.moduliAttivi(tenant)
+    if (!moduli.includes('contratti')) {
+      this.logger.warn(
+        `Job fatturazione scartato: modulo contratti non attivo (jobId=${job.id}, tenantId=${tenant})`
+      )
+      throw new UnrecoverableError(
+        `${MODULO_NON_ATTIVO}: il modulo contratti non e' attivo per l'azienda del job`
+      )
     }
 
     await TenantContext.run({ tenantId: tenant }, async () => {

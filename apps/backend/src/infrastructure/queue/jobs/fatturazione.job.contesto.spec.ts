@@ -23,7 +23,10 @@ describe('FatturazioneJobProcessor - contesto azienda', () => {
     delete process.env.CURRENT_TENANT_ID
     mockEsegui.mockReset()
     prisma = { $queryRaw: jest.fn(), $transaction: jest.fn(), $executeRaw: jest.fn() }
-    processor = new FatturazioneJobProcessor(prisma as never)
+    processor = new FatturazioneJobProcessor(
+      prisma as never,
+      { moduliAttivi: async () => ['contratti'] } as never
+    )
   })
 
   it('il lavoro del job gira nel contesto dell’azienda del job', async () => {

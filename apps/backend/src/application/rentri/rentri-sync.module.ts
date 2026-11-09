@@ -31,6 +31,7 @@ import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.us
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
+import { ModuliAttiviModule } from '../admin/moduli-attivi.module'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
@@ -174,6 +175,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     PrismaModule,
     RentriModule,
     RuoloEffettivoModule,
+    // Job: moduli attivi delle aziende (filtro `rentri`)
+    ModuliAttiviModule,
   ],
   controllers: [
     RENTRISyncController,
