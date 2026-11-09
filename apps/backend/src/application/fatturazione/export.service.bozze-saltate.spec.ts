@@ -15,6 +15,7 @@ describe('ExportService.esporta XML_ZIP: bozze scelte fra i saltati', () => {
       $queryRaw: jest.fn(async (strings: TemplateStringsArray) => {
         const testo = strings.join('?')
         interrogazioni.push(testo)
+        if (testo.includes('current_setting')) return [{ v: 'on' }]
         if (testo.includes('AS n ')) return [{ n: opzioni.bozze }]
         if (testo.includes('AS totale')) return [{ totale: opzioni.righe.length }]
         return opzioni.righe.map(id => ({ id, numero: 1, anno: 2026, registroCodice: 'A' }))
