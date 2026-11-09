@@ -21,6 +21,8 @@ import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { LettoreAnnotazioniRentri } from '../../application/rentri/registro/lettore-annotazioni-rentri'
 import { TrasmettiLottoRegistroUseCase } from '../../application/rentri/registro/trasmetti-lotto-registro.use-case'
 import { TrasmissioniRegistroRepository } from '../../application/rentri/registro/trasmissioni-registro.repository'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
+import { ContrattoGruppoService } from '../../application/billing/contratto-gruppo.service'
 import { RentriRegistroTrasmissioneJob } from './rentri-registro-trasmissione.job'
 
 describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
@@ -54,6 +56,7 @@ describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
         partitaIva: partitaIvaUnica(),
         ragioneSociale: 'Job RENTRI SRL',
         country: 'IT',
+        subscriptionTier: 'ENTERPRISE',
       },
     })
     tenantCreati.push(t.id)
@@ -188,7 +191,8 @@ describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
       credenziali,
       repo,
       trasmetti,
-      logger
+      logger,
+      new ModuliAttiviService(new ContrattoGruppoService(app))
     )
 
     await job.eseguiTrasmissione()
@@ -206,5 +210,46 @@ describe('RentriRegistroTrasmissioneJob — Postgres reale', () => {
     expect(righe.map(r => r.stato).sort()).toEqual(['INCERTA', 'TRASMESSA', 'TRASMESSA'])
     const primoRegistro = righe.filter(r => r.registroId === registro.id)
     expect(primoRegistro.map(r => r.stato).sort()).toEqual(['INCERTA', 'TRASMESSA'])
+  })
+
+  it('moduli a lotti col ruolo applicativo: madre ENTERPRISE e sua figlia TRIAL si, azienda TRIAL no, una sola lettura', async () => {
+    const madre = await owner.tenant.create({
+      data: {
+        partitaIva: partitaIvaUnica(),
+        ragioneSociale: 'Madre moduli',
+        country: 'IT',
+        subscriptionTier: 'ENTERPRISE',
+      },
+    })
+    tenantCreati.push(madre.id)
+    const figlia = await owner.tenant.create({
+      data: {
+        partitaIva: partitaIvaUnica(),
+        ragioneSociale: 'Figlia moduli',
+        country: 'IT',
+        subscriptionTier: 'TRIAL',
+        parentTenantId: madre.id,
+      },
+    })
+    tenantCreati.push(figlia.id)
+    const senza = await owner.tenant.create({
+      data: {
+        partitaIva: partitaIvaUnica(),
+        ragioneSociale: 'Senza rentri',
+        country: 'IT',
+        subscriptionTier: 'TRIAL',
+      },
+    })
+    tenantCreati.push(senza.id)
+    const lettura = jest.spyOn(app.tenant, 'findMany')
+
+    const ok = await new ModuliAttiviService(new ContrattoGruppoService(app)).tenantConModulo(
+      [madre.id, figlia.id, senza.id],
+      'rentri'
+    )
+
+    expect([...ok].sort()).toEqual([madre.id, figlia.id].sort())
+    expect(lettura).toHaveBeenCalledTimes(1)
+    lettura.mockRestore()
   })
 })

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import type { RentriModalitaLegame } from '@prisma/client'
 import { Cron, CronExpression } from '@nestjs/schedule'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { TenantContext } from '../../core/context/tenant-context'
@@ -46,7 +47,8 @@ export class RentriTrasmissioniSospeseJob {
     private readonly firRepo: FIRPrismaRepository,
     private readonly queue: RENTRISyncQueue,
     private readonly logger: LoggerService,
-    private readonly modalitaLegame: RentriModalitaLegameService
+    private readonly modalitaLegame: RentriModalitaLegameService,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext(RentriTrasmissioniSospeseJob.name)
   }
@@ -60,11 +62,19 @@ export class RentriTrasmissioniSospeseJob {
         new Date(Date.now() - ETA_MASSIMA_PENDING_RENTRI_MS)
       )
 
+      // Solo le aziende col modulo rentri (D4b): una sola query per tutte quelle dell'elenco.
+      // Senza modulo i FIR non si riaccodano: la ripresa non deve far partire invii RENTRI.
+      const conModulo =
+        sospese.length === 0
+          ? new Set<string>()
+          : await this.moduli.tenantConModulo([...new Set(sospese.map(s => s.tenantId))], 'rentri')
+
       let accodate = 0
       let inErrore = 0
       let inAttesaManuale = 0
       const modalitaPerTenant = new Map<string, Promise<RentriModalitaLegame>>()
       for (const { firId, tenantId, stato } of sospese) {
+        if (!conModulo.has(tenantId)) continue
         try {
           if (!modalitaPerTenant.has(tenantId)) {
             modalitaPerTenant.set(

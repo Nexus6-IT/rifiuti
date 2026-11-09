@@ -3,6 +3,16 @@ import { RentriRifornimentoScortaJob } from './rentri-rifornimento-scorta.job'
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
+/** Moduli: tutte le aziende hanno `rentri`, salvo quelle elencate in `senza`. */
+function moduliMock(senza: string[] = []) {
+  return {
+    tenantConModulo: jest.fn(
+      async (ids: readonly string[], _modulo: string) =>
+        new Set(ids.filter(id => !senza.includes(id)))
+    ),
+  }
+}
+
 describe('RentriRifornimentoScortaJob', () => {
   const mockLogger = {
     setContext: jest.fn(),
@@ -12,7 +22,12 @@ describe('RentriRifornimentoScortaJob', () => {
     debug: jest.fn(),
   }
 
-  function build(unitaLocali: Record<string, unknown[]>, senzaCertificato: string[] = []) {
+  function build(
+    unitaLocali: Record<string, unknown[]>,
+    senzaCertificato: string[] = [],
+    senzaModulo: string[] = []
+  ) {
+    const moduli = moduliMock(senzaModulo)
     const prisma = {
       tenant: {
         findMany: jest.fn().mockResolvedValue(Object.keys(unitaLocali).map(id => ({ id }))),
@@ -38,9 +53,10 @@ describe('RentriRifornimentoScortaJob', () => {
       scortaRepo as any,
       avviaVidimazione as any,
       mockLogger as any,
-      resolver as any
+      resolver as any,
+      moduli as any
     )
-    return { job, scortaRepo, avviaVidimazione, unitaLocaleService, resolver }
+    return { job, scortaRepo, avviaVidimazione, unitaLocaleService, resolver, moduli }
   }
 
   afterEach(() => jest.clearAllMocks())
@@ -158,5 +174,43 @@ describe('RentriRifornimentoScortaJob', () => {
     expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
       tags: { job: 'eseguiRifornimento', tenantId: 't1' },
     })
+  })
+
+  it('moduli: le aziende senza il modulo rentri non sono toccate, UNA query sui moduli', async () => {
+    const sede = {
+      numIscrSito: 'OP1',
+      codiceBloccoPredefinito: 'BLK-A',
+      dimensioneScortaDesiderata: 10,
+    }
+    const { job, scortaRepo, avviaVidimazione, unitaLocaleService, resolver, moduli } = build(
+      { t1: [sede], 't-no': [sede], t3: [sede] },
+      [],
+      ['t-no']
+    )
+    scortaRepo.contaTotaleDisponibili.mockResolvedValue(4)
+
+    await job.eseguiRifornimento()
+
+    expect(moduli.tenantConModulo).toHaveBeenCalledTimes(1)
+    expect(moduli.tenantConModulo).toHaveBeenCalledWith(['t1', 't-no', 't3'], 'rentri')
+    expect(resolver.haCredenziale).not.toHaveBeenCalledWith('t-no')
+    expect(unitaLocaleService.listForTenant).not.toHaveBeenCalledWith('t-no')
+    expect(avviaVidimazione.execute).toHaveBeenCalledTimes(2)
+    expect(mockLogger.error).not.toHaveBeenCalled()
+  })
+
+  it('moduli: nessuna azienda col modulo, il giro termina senza errori', async () => {
+    const { job, avviaVidimazione, unitaLocaleService } = build(
+      { t1: [], t2: [] },
+      [],
+      ['t1', 't2']
+    )
+
+    await job.eseguiRifornimento()
+
+    expect(unitaLocaleService.listForTenant).not.toHaveBeenCalled()
+    expect(avviaVidimazione.execute).not.toHaveBeenCalled()
+    expect(mockLogger.error).not.toHaveBeenCalled()
+    expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 })

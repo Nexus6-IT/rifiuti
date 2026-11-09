@@ -38,4 +38,18 @@ export class ModuliAttiviService {
   async moduliAttivi(tenantId: string): Promise<FeatureKey[]> {
     return (await this.pianoAzienda(tenantId))?.moduli ?? []
   }
+
+  /**
+   * Fra `tenantIds`, quelle con `modulo` attivo: UNA sola query per tutto l'elenco (nessun N+1),
+   * per i job che scorrono molte aziende. Una figlia vale per i moduli della madre; un'azienda
+   * inesistente e' esclusa (fail-closed); un errore del database si propaga.
+   */
+  async tenantConModulo(tenantIds: readonly string[], modulo: FeatureKey): Promise<Set<string>> {
+    const contratti = await this.contratto.caricaContrattiAziende(tenantIds)
+    const attive = new Set<string>()
+    for (const [id, contratto] of contratti) {
+      if (effectiveFeatures(contratto).includes(modulo)) attive.add(id)
+    }
+    return attive
+  }
 }

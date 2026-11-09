@@ -80,6 +80,25 @@ export class ContrattoGruppoService {
   }
 
   /**
+   * Contratto effettivo di piu' aziende (radici o figlie) in UNA sola query, per id: la madre
+   * e' in join, come in `caricaContratto`. Serve ai job che scorrono molte aziende senza N+1.
+   * Le aziende non trovate non compaiono nella mappa (chi chiama le tratta come senza contratto).
+   */
+  async caricaContrattiAziende(
+    tenantIds: readonly string[]
+  ): Promise<Map<string, ContrattoEffettivo>> {
+    if (tenantIds.length === 0) return new Map()
+    const righe = await this.prisma.tenant.findMany({
+      where: { id: { in: [...tenantIds] } },
+      select: {
+        ...ContrattoGruppoService.CAMPI_CONTRATTO,
+        madre: { select: ContrattoGruppoService.CAMPI_CONTRATTO },
+      },
+    })
+    return new Map(righe.map(r => [r.id, this.toContrattoEffettivo(r.madre ?? r)]))
+  }
+
+  /**
    * Contratti di piu' radici in una sola query, per id (nessun N+1 negli elenchi).
    * Le radici non trovate non compaiono nella mappa.
    */

@@ -5,6 +5,16 @@ import { SOGLIA_STALLO_RENTRI_MS } from '../../application/rentri/sync-fir-to-re
 
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
 
+/** Moduli: tutte le aziende hanno `rentri`, salvo quelle elencate in `senza`. */
+function moduliMock(senza: string[] = []) {
+  return {
+    tenantConModulo: jest.fn(
+      async (ids: readonly string[], _modulo: string) =>
+        new Set(ids.filter(id => !senza.includes(id)))
+    ),
+  }
+}
+
 describe('RentriRegistroTrasmissioneJob', () => {
   const mockLogger = {
     setContext: jest.fn(),
@@ -25,8 +35,10 @@ describe('RentriRegistroTrasmissioneJob', () => {
   function build(
     registriPerTenant: Record<string, string[]>,
     senzaCertificato: string[] = [],
-    chiamate: string[] = []
+    chiamate: string[] = [],
+    senzaModulo: string[] = []
   ) {
+    const moduli = moduliMock(senzaModulo)
     const sistema = {
       tenant: {
         findMany: jest.fn().mockResolvedValue(Object.keys(registriPerTenant).map(id => ({ id }))),
@@ -72,9 +84,10 @@ describe('RentriRegistroTrasmissioneJob', () => {
       resolver as any,
       repo as any,
       trasmetti as any,
-      mockLogger as any
+      mockLogger as any,
+      moduli as any
     )
-    return { job, sistema, prisma, resolver, repo, trasmetti, chiamate }
+    return { job, sistema, prisma, resolver, repo, trasmetti, chiamate, moduli }
   }
 
   afterEach(() => jest.clearAllMocks())
@@ -230,5 +243,34 @@ describe('RentriRegistroTrasmissioneJob', () => {
     await job.eseguiTrasmissione()
     const tutto = JSON.stringify([...mockLogger.info.mock.calls, ...mockLogger.warn.mock.calls])
     expect(tutto).not.toMatch(/corpo|codiceFiscale|partitaIva/i)
+  })
+
+  it('moduli: le aziende senza il modulo rentri non sono toccate, UNA query sui moduli', async () => {
+    const { job, resolver, repo, trasmetti, moduli } = build(
+      { t1: ['r1'], 't-no': ['r2'], t3: ['r3'] },
+      [],
+      [],
+      ['t-no']
+    )
+
+    await job.eseguiTrasmissione()
+
+    expect(moduli.tenantConModulo).toHaveBeenCalledTimes(1)
+    expect(moduli.tenantConModulo).toHaveBeenCalledWith(['t1', 't-no', 't3'], 'rentri')
+    expect(resolver.haCredenziale).not.toHaveBeenCalledWith('t-no')
+    expect(repo.adottaAutomatiche).not.toHaveBeenCalledWith('t-no', expect.anything())
+    expect(trasmetti.trasmettiRegistro).toHaveBeenCalledTimes(2)
+    expect(trasmetti.trasmettiRegistro).not.toHaveBeenCalledWith('t-no', 'r2')
+  })
+
+  it('moduli: nessuna azienda col modulo, il giro termina senza errori', async () => {
+    const { job, resolver, trasmetti } = build({ t1: ['r1'], t2: ['r2'] }, [], [], ['t1', 't2'])
+
+    await job.eseguiTrasmissione()
+
+    expect(resolver.haCredenziale).not.toHaveBeenCalled()
+    expect(trasmetti.trasmettiRegistro).not.toHaveBeenCalled()
+    expect(mockLogger.error).not.toHaveBeenCalled()
+    expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 })

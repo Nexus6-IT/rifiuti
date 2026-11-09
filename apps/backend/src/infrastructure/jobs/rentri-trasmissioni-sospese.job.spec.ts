@@ -15,6 +15,7 @@ describe('RentriTrasmissioniSospeseJob', () => {
   let firRepo: { elencaTrasmissioniRentriSospese: jest.Mock }
   let queue: { addSyncJob: jest.Mock; getJobState: jest.Mock }
   let modalita: { getForTenant: jest.Mock }
+  let moduli: { tenantConModulo: jest.Mock }
   let job: RentriTrasmissioniSospeseJob
 
   beforeEach(() => {
@@ -29,7 +30,16 @@ describe('RentriTrasmissioniSospeseJob', () => {
         .fn()
         .mockResolvedValue({ modalitaLegame: 'AUTOMATICA', certificatoConfigurato: true }),
     }
-    job = new RentriTrasmissioniSospeseJob(firRepo as any, queue as any, logger, modalita as any)
+    moduli = {
+      tenantConModulo: jest.fn(async (ids: readonly string[]) => new Set(ids)),
+    }
+    job = new RentriTrasmissioniSospeseJob(
+      firRepo as any,
+      queue as any,
+      logger,
+      modalita as any,
+      moduli as any
+    )
   })
 
   it('trasmissioni sospese: FIR di azienda senza certificato accodato comunque (lo chiude lo use case)', async () => {
@@ -187,5 +197,38 @@ describe('RentriTrasmissioniSospeseJob', () => {
 
     await expect(job.riprendi()).resolves.toBeUndefined()
     expect(queue.addSyncJob).not.toHaveBeenCalled()
+  })
+
+  it('moduli: i FIR delle aziende senza il modulo rentri non si riaccodano, UNA query sui moduli', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f1', tenantId: 't1', stato: 'SYNCING' },
+      { firId: 'f2', tenantId: 't-no', stato: 'SYNCING' },
+      { firId: 'f3', tenantId: 't1', stato: 'SYNCING' },
+      { firId: 'f4', tenantId: 't-no', stato: 'PENDING' },
+    ])
+    moduli.tenantConModulo.mockResolvedValue(new Set(['t1']))
+
+    await job.riprendi()
+
+    expect(moduli.tenantConModulo).toHaveBeenCalledTimes(1)
+    expect(moduli.tenantConModulo).toHaveBeenCalledWith(['t1', 't-no'], 'rentri')
+    expect(queue.addSyncJob).toHaveBeenCalledTimes(2)
+    expect(queue.addSyncJob).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't-no' }))
+    expect(modalita.getForTenant).not.toHaveBeenCalledWith('t-no')
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('moduli: nessun FIR sospeso, nessuna query sui moduli; nessuna azienda col modulo, nessun errore', async () => {
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([])
+    await job.riprendi()
+    expect(moduli.tenantConModulo).not.toHaveBeenCalled()
+
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
+      { firId: 'f1', tenantId: 't-no', stato: 'SYNCING' },
+    ])
+    moduli.tenantConModulo.mockResolvedValue(new Set())
+    await job.riprendi()
+    expect(queue.addSyncJob).not.toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
   })
 })

@@ -29,11 +29,22 @@ const { X509Certificate } = require('node:crypto')
  * l'aggiornamento del gauge per gli altri tenant) e il filtro sui soli
  * tenant ACTIVE/TRIAL.
  */
+/** Moduli: tutte le aziende hanno `rentri`, salvo quelle elencate in `senza`. */
+function moduliMock(senza: string[] = []) {
+  return {
+    tenantConModulo: jest.fn(
+      async (ids: readonly string[], _modulo: string) =>
+        new Set(ids.filter(id => !senza.includes(id)))
+    ),
+  }
+}
+
 describe('RentriCertificatoScadenzaJob', () => {
   let job: RentriCertificatoScadenzaJob
   let mockPrisma: any
   let mockMetrics: any
   let mockLogger: any
+  let mockModuli: ReturnType<typeof moduliMock>
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -55,7 +66,8 @@ describe('RentriCertificatoScadenzaJob', () => {
     }
     ;(X509Certificate as jest.Mock).mockReset()
 
-    job = new RentriCertificatoScadenzaJob(mockPrisma, mockMetrics, mockLogger)
+    mockModuli = moduliMock()
+    job = new RentriCertificatoScadenzaJob(mockPrisma, mockMetrics, mockLogger, mockModuli as any)
   })
 
   it('interroga solo le credenziali dei tenant attivi/in prova (ACTIVE/TRIAL), piattaforma esclusa', async () => {
@@ -174,5 +186,30 @@ describe('RentriCertificatoScadenzaJob', () => {
 
     await expect(job.controllaScadenze()).resolves.toEqual({ tenantTotali: 2, tenantConErrore: 1 })
     expect(mockMetrics.rentriCertificateExpiryDays.set).toHaveBeenCalledTimes(1)
+  })
+
+  it('moduli: legge le credenziali delle sole aziende col modulo rentri, UNA query sui moduli', async () => {
+    mockModuli.tenantConModulo.mockResolvedValue(new Set(['tenant-sano']))
+    mockPrisma.rentriCredential.findMany.mockResolvedValue([])
+
+    await job.eseguiControlloScadenza()
+
+    expect(mockModuli.tenantConModulo).toHaveBeenCalledTimes(1)
+    expect(mockModuli.tenantConModulo).toHaveBeenCalledWith(['tenant-1', 'tenant-sano'], 'rentri')
+    expect(mockPrisma.rentriCredential.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: { in: ['tenant-sano'] } } })
+    )
+  })
+
+  it('moduli: nessuna azienda col modulo, il giro termina senza errori e senza leggere credenziali', async () => {
+    mockModuli.tenantConModulo.mockResolvedValue(new Set())
+    mockPrisma.rentriCredential.findMany.mockResolvedValue([])
+
+    const esito = await job.controllaScadenze()
+
+    expect(mockMetrics.rentriCertificateExpiryDays.set).not.toHaveBeenCalled()
+    expect(mockLogger.error).not.toHaveBeenCalled()
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+    expect(esito.tenantConErrore).toBe(0)
   })
 })

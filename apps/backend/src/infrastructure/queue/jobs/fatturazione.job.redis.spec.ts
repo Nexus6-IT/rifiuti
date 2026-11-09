@@ -88,7 +88,10 @@ describe('coda fatturazione su Redis reale', () => {
   })
 
   it('un job fallito non impedisce di ripetere la richiesta: la versione dopo ha un id nuovo ed e’ eseguita (Q5)', async () => {
-    const processor = new FatturazioneJobProcessor({} as never)
+    const processor = new FatturazioneJobProcessor(
+      {} as never,
+      { moduliAttivi: async () => ['contratti'] } as never
+    )
     mockEsegui.mockRejectedValueOnce(new Error('guasto')).mockResolvedValue(undefined)
     worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
       connection,
@@ -131,7 +134,10 @@ describe('coda fatturazione su Redis reale', () => {
   })
 
   it('un’altra elaborazione attiva: il job finisce in delayed con rinvii aggiornato (Q12)', async () => {
-    const processor = new FatturazioneJobProcessor({} as never)
+    const processor = new FatturazioneJobProcessor(
+      {} as never,
+      { moduliAttivi: async () => ['contratti'] } as never
+    )
     mockEsegui.mockRejectedValue(new ElaborazioneAttivaError())
     worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
       connection,
@@ -157,7 +163,10 @@ describe('coda fatturazione su Redis reale', () => {
   })
 
   it('elaborazione non trovata: il job fallisce subito, senza secondo tentativo', async () => {
-    const processor = new FatturazioneJobProcessor({} as never)
+    const processor = new FatturazioneJobProcessor(
+      {} as never,
+      { moduliAttivi: async () => ['contratti'] } as never
+    )
     mockEsegui.mockRejectedValue(new ElaborazioneNonTrovataError())
     worker = new Worker(nome, (job: Job<JobFatturazione>, token) => processor.process(job, token), {
       connection,
@@ -179,7 +188,10 @@ describe('coda fatturazione su Redis reale', () => {
   })
 
   it('definitiva (Task 19): un job fallito non impedisce la richiesta dopo; l’id ha il trattino, un solo tentativo, identita del job passata a eseguiDefinitiva', async () => {
-    const processor = new FatturazioneJobProcessor({} as never)
+    const processor = new FatturazioneJobProcessor(
+      {} as never,
+      { moduliAttivi: async () => ['contratti'] } as never
+    )
     mockDefinitiva
       .mockRejectedValueOnce(new Error('guasto'))
       .mockResolvedValue({ esito: 'DEFINITIVA', documenti: 1, numeri: [] })
