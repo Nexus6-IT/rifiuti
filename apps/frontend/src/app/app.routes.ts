@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router'
 import { authGuard } from './core/guards/auth.guard'
 import { superAdminGuard } from './core/guards/super-admin.guard'
+import { moduloGuard } from './core/guards/modulo.guard'
 
 export const routes: Routes = [
   {
@@ -65,22 +66,30 @@ export const routes: Routes = [
       },
       {
         path: 'fir',
+        canActivate: [moduloGuard],
+        data: { modulo: 'fir' },
         loadComponent: () =>
           import('./features/fir/fir-list.component').then(m => m.FirListComponent),
       },
       {
         // Dettaglio di un singolo formulario: dati, stato RENTRI, cronologia trasmissioni, azioni.
         path: 'fir/:id',
+        canActivate: [moduloGuard],
+        data: { modulo: 'fir' },
         loadComponent: () =>
           import('./features/fir/fir-detail.component').then(m => m.FirDetailComponent),
       },
       {
         path: 'cer',
+        canActivate: [moduloGuard],
+        data: { modulo: 'cer' },
         loadComponent: () =>
           import('./features/cer/cer-search.component').then(m => m.CerSearchComponent),
       },
       {
         path: 'produttori',
+        canActivate: [moduloGuard],
+        data: { modulo: 'anagrafiche' },
         loadComponent: () =>
           import('./features/registry/produttori-list.component').then(
             m => m.ProduttoriListComponent
@@ -88,6 +97,8 @@ export const routes: Routes = [
       },
       {
         path: 'trasportatori',
+        canActivate: [moduloGuard],
+        data: { modulo: 'anagrafiche' },
         loadComponent: () =>
           import('./features/registry/trasportatori-list.component').then(
             m => m.TrasportatoriListComponent
@@ -95,6 +106,8 @@ export const routes: Routes = [
       },
       {
         path: 'destinatari',
+        canActivate: [moduloGuard],
+        data: { modulo: 'anagrafiche' },
         loadComponent: () =>
           import('./features/registry/destinatari-list.component').then(
             m => m.DestinatariListComponent
@@ -109,44 +122,62 @@ export const routes: Routes = [
       },
       {
         path: 'mud',
+        canActivate: [moduloGuard],
+        data: { modulo: 'mud' },
         loadComponent: () => import('./features/mud/mud.component').then(m => m.MudComponent),
       },
       {
         path: 'esg',
+        canActivate: [moduloGuard],
+        data: { modulo: 'esg' },
         loadComponent: () => import('./features/esg/esg.component').then(m => m.EsgComponent),
       },
       {
         path: 'pese',
+        canActivate: [moduloGuard],
+        data: { modulo: 'pese' },
         loadComponent: () => import('./features/pese/pese.component').then(m => m.PeseComponent),
       },
       {
         path: 'giacenze',
+        canActivate: [moduloGuard],
+        data: { modulo: 'giacenze' },
         loadComponent: () =>
           import('./features/giacenze/giacenze.component').then(m => m.GiacenzeComponent),
       },
       {
         path: 'giacenze/abbinamenti',
+        canActivate: [moduloGuard],
+        data: { modulo: 'giacenze' },
         loadComponent: () =>
           import('./features/giacenze/abbinamenti.component').then(m => m.AbbinamentiComponent),
       },
       {
         // Registro cronologico di carico/scarico (art. 190 D.Lgs 152/2006)
         path: 'registro',
+        canActivate: [moduloGuard],
+        data: { modulo: 'registro' },
         loadComponent: () =>
           import('./features/registro/registro.component').then(m => m.RegistroComponent),
       },
       {
         path: 'anomalie',
+        canActivate: [moduloGuard],
+        data: { modulo: 'anomalie' },
         loadComponent: () =>
           import('./features/anomaly/anomaly.component').then(m => m.AnomalyComponent),
       },
       {
         path: 'clienti',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/clienti/clienti-list.component').then(m => m.ClientiListComponent),
       },
       {
         path: 'clienti/tabelle',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/clienti/tabelle/tabelle-fatturazione.component').then(
             m => m.TabelleFatturazioneComponent
@@ -154,26 +185,36 @@ export const routes: Routes = [
       },
       {
         path: 'clienti/agenti',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/clienti/agenti-list.component').then(m => m.AgentiListComponent),
       },
       {
         path: 'clienti/addebiti',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/listino/addebiti-list.component').then(m => m.AddebitiListComponent),
       },
       {
         path: 'legami/da-collegare',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/legami/da-collegare.component').then(m => m.DaCollegareComponent),
       },
       {
         path: 'fatturazione',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadChildren: () =>
           import('./features/fatturazione/fatturazione.routes').then(m => m.FATTURAZIONE_ROUTES),
       },
       {
         path: 'clienti/fatturazione',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/legami/impostazioni-fatturazione.component').then(
             m => m.ImpostazioniFatturazioneComponent
@@ -181,6 +222,8 @@ export const routes: Routes = [
       },
       {
         path: 'contratti-clienti',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/contratti-cliente/contratti-cliente-list.component').then(
             m => m.ContrattiClienteListComponent
@@ -188,6 +231,8 @@ export const routes: Routes = [
       },
       {
         path: 'contratti-clienti/:id/listino',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/listino/listino-contratto.component').then(
             m => m.ListinoContrattoComponent
@@ -195,6 +240,8 @@ export const routes: Routes = [
       },
       {
         path: 'contratti',
+        canActivate: [moduloGuard],
+        data: { modulo: 'contratti' },
         loadComponent: () =>
           import('./features/contracts/contracts-list.component').then(
             m => m.ContractsListComponent
@@ -206,7 +253,8 @@ export const routes: Routes = [
         // l'accesso digitando l'URL; l'autorizzazione reale resta sul backend
         // (reference-data.controller.ts, @Roles('SUPER_ADMIN')).
         path: 'reference-data',
-        canActivate: [superAdminGuard],
+        canActivate: [superAdminGuard, moduloGuard],
+        data: { modulo: 'reference_data' },
         loadComponent: () =>
           import('./features/reference-data/reference-data.component').then(
             m => m.ReferenceDataComponent
@@ -251,6 +299,8 @@ export const routes: Routes = [
       {
         // Gestione certificato RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/certificato',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-credential.component').then(
             m => m.RentriCredentialComponent
@@ -259,6 +309,8 @@ export const routes: Routes = [
       {
         // Modalità di legame RENTRI (solo admin — enforcement lato componente + backend)
         path: 'rentri/modalita-legame',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-modalita-legame.component').then(
             m => m.RentriModalitaLegameComponent
@@ -267,6 +319,8 @@ export const routes: Routes = [
       {
         // Sedi RENTRI / unità locali del tenant, R2 multi-sede (solo admin — enforcement lato componente + backend)
         path: 'rentri/sedi',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-unita-locale.component').then(
             m => m.RentriUnitaLocaleComponent
@@ -276,6 +330,8 @@ export const routes: Routes = [
         // Ricerca e aggancio formulari RENTRI (R2 Task 8) — SUPER_ADMIN/ADMIN/OPERATOR,
         // enforcement lato componente + backend (RentriFormulariController)
         path: 'rentri/formulari',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-formulari.component').then(
             m => m.RentriFormulariComponent
@@ -284,12 +340,16 @@ export const routes: Routes = [
       {
         // Unità locali lette dall'ente RENTRI, R4 Task 7 (solo admin — enforcement lato componente + backend)
         path: 'rentri/unita-locali',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-siti.component').then(m => m.RentriSitiComponent),
       },
       {
         // Diagnostica allineamento codifiche RENTRI, R4 Task 7 (solo admin — enforcement lato componente + backend)
         path: 'rentri/codifiche',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-codifiche-diagnostica.component').then(
             m => m.RentriCodificheDiagnosticaComponent
@@ -299,6 +359,8 @@ export const routes: Routes = [
         // Diagnostica RENTRI — salute del collegamento da dati locali, R5 Task 3
         // (SUPER_ADMIN/ADMIN/OPERATOR — enforcement lato componente + backend)
         path: 'rentri/diagnostica',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-diagnostica.component').then(
             m => m.RentriDiagnosticaComponent
@@ -308,6 +370,8 @@ export const routes: Routes = [
         // Blocchi virtuali e scorta di numeri vidimati (SUPER_ADMIN/ADMIN/OPERATOR
         // in lettura, scrittura solo admin — enforcement lato componente + backend)
         path: 'rentri/blocchi',
+        canActivate: [moduloGuard],
+        data: { modulo: 'rentri' },
         loadComponent: () =>
           import('./features/rentri/rentri-blocchi.component').then(m => m.RentriBlocchiComponent),
       },
