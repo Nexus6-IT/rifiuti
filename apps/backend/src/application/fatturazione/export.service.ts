@@ -165,6 +165,7 @@ export class ExportService {
           const { documenti: selezionati } = await this.seleziona(tx, tenantId, selezione, {
             tetto: TETTO_DOCUMENTI_CSV,
             senzaBozze: false,
+            contaBozze: false, // il CSV non riporta i saltati: la query sarebbe scartata
           })
           // Un solo passaggio per tabella su tutti i documenti (lista lunga: `IN (SELECT unnest)`
           // col nested loop spento): a blocchi di 100 ogni blocco rileggeva le righe dell'intero
@@ -516,7 +517,7 @@ export class ExportService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     s: SelezioneExport,
-    o: { tetto: number; senzaBozze: boolean }
+    o: { tetto: number; senzaBozze: boolean; contaBozze?: boolean }
   ): Promise<SelezioneLetta> {
     if (s.elaborazioneId !== undefined) {
       // Un'elaborazione inesistente o di un'altra azienda non e' «nessun documento»: e' un errore.
@@ -563,7 +564,7 @@ export class ExportService {
         SELECT count(*)::int AS totale FROM "documenti_fattura" d WHERE ${dove}`
       if (totale > o.tetto) throw troppiDocumenti(o.tetto)
       let bozzeScelte = 0
-      if (lista && escludeBozze) {
+      if (lista && escludeBozze && o.contaBozze !== false) {
         const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM "documenti_fattura" d WHERE ${doveBozze}`
         bozzeScelte = n
