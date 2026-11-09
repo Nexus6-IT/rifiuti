@@ -73,6 +73,19 @@ describe('TenantService — campi di piano', () => {
     }
   })
 
+  it('update: null su ATECO e REA li azzera, omessi restano invariati', async () => {
+    const { service, prisma } = makeService()
+
+    await service.update(admin, TENANT, { atecoCode: null, reaNumber: null } as any)
+    expect(prisma.tenant.update.mock.calls[0][0].data).toEqual({ atecoCode: null, reaNumber: null })
+
+    prisma.tenant.update.mockClear()
+    await service.update(admin, TENANT, { telefono: '06' } as any)
+    const { data } = prisma.tenant.update.mock.calls[0][0]
+    expect(data).not.toHaveProperty('atecoCode')
+    expect(data).not.toHaveProperty('reaNumber')
+  })
+
   it('update: un ADMIN non proprietario riceve Forbidden e nessun update', async () => {
     const { service, prisma } = makeService(ALTRO_ADMIN)
 

@@ -2,12 +2,13 @@ import { CommonModule } from '@angular/common'
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, RouterLink } from '@angular/router'
-import { EMPTY, Observable, Subject, concat, of, timer } from 'rxjs'
+import { EMPTY, Observable, Subject } from 'rxjs'
 import { catchError, finalize, switchMap, tap } from 'rxjs/operators'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { RipristinaFocusDirective } from '../../../shared/directives/ripristina-focus.directive'
 import { PaginatorModule, PaginatorState } from 'primeng/paginator'
+import { pollingTransitorio } from './polling-transitorio'
 import { TableModule } from 'primeng/table'
 import { TabViewModule } from 'primeng/tabview'
 import { TagModule } from 'primeng/tag'
@@ -812,17 +813,16 @@ export class AnteprimaComponent {
     this.carica()
   }
 
-  /** Legge il dettaglio; finché lo stato è transitorio aspetta 3 s dalla risposta e rilegge. */
+  /** Legge il dettaglio; finché lo stato è transitorio aspetta 3 s dalla risposta e rilegge (un errore transitorio non ferma il giro, vedi `pollingTransitorio`). */
   private ciclo(): Observable<ElaborazioneDettaglio> {
-    return this.servizio
-      .dettaglio(this.id)
-      .pipe(
-        switchMap(d =>
-          STATI_TRANSITORI.includes(d.stato)
-            ? concat(of(d), timer(INTERVALLO_AGGIORNAMENTO_MS).pipe(switchMap(() => this.ciclo())))
-            : of(d)
-        )
-      )
+    return pollingTransitorio(
+      () => this.servizio.dettaglio(this.id),
+      d => STATI_TRANSITORI.includes(d.stato),
+      {
+        intervalloMs: INTERVALLO_AGGIORNAMENTO_MS,
+        alErrore: err => this.errore.set(messaggioDaCodice(err, MSG_NON_CARICATA)),
+      }
+    )
   }
 
   private applica(d: ElaborazioneDettaglio): void {

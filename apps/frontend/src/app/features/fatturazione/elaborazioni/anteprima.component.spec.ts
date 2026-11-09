@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router'
-import { Subject, of, throwError } from 'rxjs'
+import { Subject, defer, finalize, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { ElaborazioneDettaglio } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
@@ -10,6 +10,7 @@ import {
   INTERVALLO_AGGIORNAMENTO_MS,
   MSG_NON_CARICATA,
 } from './anteprima.component'
+import { MAX_ERRORI_POLLING } from './polling-transitorio'
 import { dettaglio, documentoRiga, paginaDocumenti } from './anteprima.fixture'
 
 describe('AnteprimaComponent', () => {
@@ -120,17 +121,60 @@ describe('AnteprimaComponent', () => {
       expect(servizio.dettaglio).toHaveBeenCalledTimes(1)
     }))
 
-    it('errore durante l’aggiornamento: messaggio e il giro si ferma', fakeAsync(() => {
+    it('errore HTTP transitorio durante l’aggiornamento: messaggio, riprova al giro dopo e si ripulisce', fakeAsync(() => {
       servizio.dettaglio.and.returnValues(
         of(stato('IN_CORSO')),
-        throwError(() => ({ status: 500, error: { message: 'boom' } }))
+        throwError(() => ({ status: 500, error: { message: 'boom' } })),
+        of(stato('ANTEPRIMA_PRONTA', 2))
       )
       crea()
       tick(INTERVALLO_AGGIORNAMENTO_MS)
       expect(comp.errore()).toBe(MSG_NON_CARICATA)
-      tick(INTERVALLO_AGGIORNAMENTO_MS * 3)
-      expect(servizio.dettaglio).toHaveBeenCalledTimes(2)
+      tick(INTERVALLO_AGGIORNAMENTO_MS)
+      expect(servizio.dettaglio).toHaveBeenCalledTimes(3)
+      expect(comp.errore()).toBeNull()
+      tick(INTERVALLO_AGGIORNAMENTO_MS * 5)
+      expect(servizio.dettaglio).toHaveBeenCalledTimes(3)
       fixture.destroy()
+    }))
+
+    it('errori consecutivi oltre il tetto: il giro si ferma col messaggio', fakeAsync(() => {
+      let n = 0
+      servizio.dettaglio.and.callFake(() =>
+        n++ === 0 ? of(stato('IN_CORSO')) : throwError(() => ({ status: 503, error: {} }))
+      )
+      crea()
+      tick(INTERVALLO_AGGIORNAMENTO_MS * (MAX_ERRORI_POLLING + 10))
+      expect(servizio.dettaglio).toHaveBeenCalledTimes(1 + MAX_ERRORI_POLLING)
+      expect(comp.errore()).toBe(MSG_NON_CARICATA)
+      fixture.destroy()
+    }))
+
+    it('errore alla prima lettura: messaggio e nessun giro', fakeAsync(() => {
+      servizio.dettaglio.and.returnValue(throwError(() => ({ status: 500, error: {} })))
+      crea()
+      tick(INTERVALLO_AGGIORNAMENTO_MS * 5)
+      expect(servizio.dettaglio).toHaveBeenCalledTimes(1)
+      expect(comp.errore()).toBe(MSG_NON_CARICATA)
+      fixture.destroy()
+    }))
+
+    it('nessuna crescita delle sottoscrizioni durante il giro', fakeAsync(() => {
+      let attive = 0
+      let massimo = 0
+      servizio.dettaglio.and.callFake(() =>
+        defer(() => {
+          attive++
+          massimo = Math.max(massimo, attive)
+          return of(stato('IN_CORSO'))
+        }).pipe(finalize(() => attive--))
+      )
+      crea()
+      tick(INTERVALLO_AGGIORNAMENTO_MS * 20)
+      expect(servizio.dettaglio).toHaveBeenCalledTimes(21)
+      expect(massimo).toBe(1)
+      fixture.destroy()
+      expect(attive).toBe(0)
     }))
 
     it('risposta tardiva: una lettura nuova annulla la pendente e la vecchia non scrive', fakeAsync(() => {

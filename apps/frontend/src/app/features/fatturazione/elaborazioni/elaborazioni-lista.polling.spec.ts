@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Router } from '@angular/router'
-import { Subject, of, throwError } from 'rxjs'
+import { Subject, defer, finalize, of, throwError } from 'rxjs'
 import { AuthService } from '../../../core/services/auth.service'
 import { ClientiService } from '../../clienti/clienti.service'
 import { ElaborazioneRiga, Pagina } from '../fatturazione.model'
 import { FatturazioneService } from '../fatturazione.service'
+import { MAX_ERRORI_POLLING } from './polling-transitorio'
 import { ElaborazioniListaComponent } from './elaborazioni-lista.component'
 
 const riga = (n: number, stato: ElaborazioneRiga['stato']): ElaborazioneRiga => ({
@@ -100,17 +101,67 @@ describe('ElaborazioniListaComponent: aggiornamento degli stati transitori', () 
     expect(lista).toHaveBeenCalledTimes(2)
   }))
 
-  it('errore durante l’aggiornamento: messaggio e il giro si ferma', fakeAsync(() => {
+  it('errore HTTP transitorio durante l’aggiornamento: messaggio, riprova al giro dopo e si ripulisce', fakeAsync(() => {
     lista.and.returnValues(
       of(pagina([riga(1, 'IN_CORSO')])),
-      throwError(() => ({ status: 500, error: {} }))
+      throwError(() => ({ status: 500, error: {} })),
+      of(pagina([riga(1, 'DEFINITIVA')]))
     )
     crea()
     tick(3000)
     expect(fixture.componentInstance.errore()).toContain('Impossibile caricare')
+    tick(3000)
+    expect(lista).toHaveBeenCalledTimes(3)
+    expect(fixture.componentInstance.errore()).toBeNull()
+    expect(fixture.componentInstance.righe()[0].stato).toBe('DEFINITIVA')
     tick(30000)
-    expect(lista).toHaveBeenCalledTimes(2)
+    expect(lista).toHaveBeenCalledTimes(3)
     fixture.destroy()
+  }))
+
+  it('errori consecutivi oltre il tetto: il giro si ferma col messaggio', fakeAsync(() => {
+    lista.and.returnValues(of(pagina([riga(1, 'IN_CORSO')])))
+    lista.and.callFake(
+      (() => {
+        let n = 0
+        return () =>
+          n++ === 0
+            ? of(pagina([riga(1, 'IN_CORSO')]))
+            : throwError(() => ({ status: 503, error: {} }))
+      })()
+    )
+    crea()
+    tick(3000 * MAX_ERRORI_POLLING + 30000)
+    expect(lista).toHaveBeenCalledTimes(1 + MAX_ERRORI_POLLING)
+    expect(fixture.componentInstance.errore()).toContain('Impossibile caricare')
+    fixture.destroy()
+  }))
+
+  it('errore alla prima lettura: messaggio e nessun giro', fakeAsync(() => {
+    lista.and.returnValue(throwError(() => ({ status: 500, error: {} })))
+    crea()
+    tick(30000)
+    expect(lista).toHaveBeenCalledTimes(1)
+    expect(fixture.componentInstance.errore()).toContain('Impossibile caricare')
+    fixture.destroy()
+  }))
+
+  it('nessuna crescita delle sottoscrizioni: una sola sottoscrizione attiva alla fonte per giro', fakeAsync(() => {
+    let attive = 0
+    let massimo = 0
+    lista.and.callFake(() =>
+      defer(() => {
+        attive++
+        massimo = Math.max(massimo, attive)
+        return of(pagina([riga(1, 'IN_CORSO')]))
+      }).pipe(finalize(() => attive--))
+    )
+    crea()
+    tick(3000 * 20)
+    expect(lista.calls.count()).toBe(21)
+    expect(massimo).toBe(1)
+    fixture.destroy()
+    expect(attive).toBe(0)
   }))
 
   it('cambio pagina durante il giro: parte un giro nuovo, la risposta tardiva del vecchio non conta', fakeAsync(() => {

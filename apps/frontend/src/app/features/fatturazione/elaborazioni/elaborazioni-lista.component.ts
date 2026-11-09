@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common'
 import { Component, computed, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { EMPTY, Observable, Subject, catchError, concat, of, switchMap, tap, timer } from 'rxjs'
+import { EMPTY, Observable, Subject, catchError, switchMap, tap } from 'rxjs'
 import { ButtonModule } from 'primeng/button'
 import { PaginatorModule, PaginatorState } from 'primeng/paginator'
 import { TableModule } from 'primeng/table'
@@ -19,10 +19,12 @@ import {
   STATI_ELABORAZIONE_VOCI,
   VoceVocabolario,
 } from '../vocabolario-fatturazione'
+import { pollingTransitorio } from './polling-transitorio'
 import { NuovaElaborazioneDialogComponent } from './nuova-elaborazione-dialog.component'
 
 /** Ogni quanto si rilegge la lista finché una riga è in calcolo o in emissione. */
 export const INTERVALLO_LISTA_MS = 3000
+const MSG_NON_CARICATE = 'Impossibile caricare le elaborazioni.'
 const STATI_TRANSITORI: readonly StatoElaborazione[] = ['IN_CODA', 'IN_CORSO', 'IN_DEFINITIVA']
 
 type SeveritaTag = 'success' | 'info' | 'warning' | 'danger'
@@ -207,9 +209,7 @@ export class ElaborazioniListaComponent {
           this.giro(pagina).pipe(
             catchError(err => {
               this.caricamento.set(false)
-              this.errore.set(
-                messaggiErroreFatturazione(err, 'Impossibile caricare le elaborazioni.').join(' ')
-              )
+              this.errore.set(messaggiErroreFatturazione(err, MSG_NON_CARICATE).join(' '))
               return EMPTY
             })
           )
@@ -219,6 +219,7 @@ export class ElaborazioniListaComponent {
       .subscribe(p => {
         this.righe.set(p.elementi)
         this.totale.set(p.totale)
+        this.errore.set(null)
         this.caricamento.set(false)
       })
     this.carica()
@@ -226,18 +227,20 @@ export class ElaborazioniListaComponent {
 
   /**
    * Legge la pagina; finché una riga visibile è transitoria aspetta 3 s dalla risposta e rilegge
-   * (mai due richieste insieme). Una lettura nuova (`switchMap`) o la distruzione lo interrompe.
+   * (mai due richieste insieme). Un errore HTTP durante il giro non lo ferma: messaggio e nuovo
+   * tentativo al giro dopo, fino a un tetto di errori consecutivi. Una lettura nuova (`switchMap`)
+   * o la distruzione lo interrompe.
    */
   private giro(pagina: number): Observable<Pagina<ElaborazioneRiga>> {
-    return this.servizio
-      .lista({ pagina, dimensione: this.dimensione })
-      .pipe(
-        switchMap(p =>
-          p.elementi.some(r => STATI_TRANSITORI.includes(r.stato))
-            ? concat(of(p), timer(INTERVALLO_LISTA_MS).pipe(switchMap(() => this.giro(pagina))))
-            : of(p)
-        )
-      )
+    return pollingTransitorio(
+      () => this.servizio.lista({ pagina, dimensione: this.dimensione }),
+      p => p.elementi.some(r => STATI_TRANSITORI.includes(r.stato)),
+      {
+        intervalloMs: INTERVALLO_LISTA_MS,
+        alErrore: err =>
+          this.errore.set(messaggiErroreFatturazione(err, MSG_NON_CARICATE).join(' ')),
+      }
+    )
   }
 
   carica(): void {

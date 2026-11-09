@@ -381,7 +381,7 @@ interface TenantFormData {
                   id="t-ateco"
                   name="atecoCode"
                   [(ngModel)]="form.atecoCode"
-                  placeholder="es. 38.11.00"
+                  placeholder="es. 381100 (6 cifre, senza punti)"
                 />
               </div>
               <div class="field col-12 md:col-6">
@@ -392,7 +392,7 @@ interface TenantFormData {
                   name="reaNumber"
                   maxlength="9"
                   [(ngModel)]="form.reaNumber"
-                  placeholder="opzionale"
+                  placeholder="es. 1234567 (solo cifre, senza la sigla della provincia)"
                   data-testid="tenant-rea-number"
                 />
               </div>
@@ -1169,6 +1169,9 @@ export class TenantAdminComponent implements OnInit {
       province: this.form.province.trim().toUpperCase(),
       postalCode: this.form.postalCode.trim(),
       ...this.optionalFields(),
+      // In modifica un campo svuotato deve azzerare il valore (null), non essere omesso.
+      atecoCode: this.form.atecoCode?.trim() || null,
+      reaNumber: this.form.reaNumber?.trim() || null,
     }
   }
 
