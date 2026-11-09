@@ -19,6 +19,9 @@ describe('moduloNonAttivoInterceptor', () => {
   let navigaA: jasmine.Spy
   let aggiunti: { severity?: string; detail?: string }[]
   let contesto: AdminTenantContextService
+  /** Moduli attivi dopo la ricarica e `data.modulo` della rotta corrente (null = rotta base). */
+  let moduliAttivi: string[]
+  let moduloRotta: string | null
 
   const url = `${environment.apiUrl}/fatturazione/elaborazioni`
   const rifiuto = {
@@ -32,6 +35,8 @@ describe('moduloNonAttivoInterceptor', () => {
     localStorage.removeItem('wf_admin_tenant')
     ricarica = jasmine.createSpy('ricarica')
     ricaricaModuli = jasmine.createSpy('ricarica moduli').and.returnValue(of({ features: ['fir'] }))
+    moduliAttivi = ['fir']
+    moduloRotta = 'contratti'
     navigaA = jasmine.createSpy('navigateByUrl').and.resolveTo(true)
     aggiunti = []
     TestBed.configureTestingModule({
@@ -39,8 +44,33 @@ describe('moduloNonAttivoInterceptor', () => {
         provideHttpClient(withInterceptors([moduloNonAttivoInterceptor])),
         provideHttpClientTesting(),
         { provide: RICARICA_PAGINA, useValue: ricarica },
-        { provide: FeatureFlagsService, useValue: { ricarica: ricaricaModuli } },
-        { provide: Router, useValue: { navigateByUrl: navigaA, url: '/fatturazione' } },
+        {
+          provide: FeatureFlagsService,
+          useValue: {
+            ricarica: ricaricaModuli,
+            loaded: () => true,
+            has: (k: string) => moduliAttivi.includes(k),
+          },
+        },
+        {
+          provide: Router,
+          useValue: {
+            navigateByUrl: navigaA,
+            routerState: {
+              snapshot: {
+                get root() {
+                  return {
+                    data: {},
+                    firstChild: {
+                      data: moduloRotta ? { modulo: moduloRotta } : {},
+                      firstChild: null,
+                    },
+                  }
+                },
+              },
+            },
+          },
+        },
         { provide: MessageService, useValue: { add: (m: never) => aggiunti.push(m) } },
       ],
     })
@@ -54,7 +84,7 @@ describe('moduloNonAttivoInterceptor', () => {
     localStorage.removeItem('wf_admin_tenant')
   })
 
-  it('su 403 MODULO_NON_ATTIVO ricarica i moduli, mostra il toast e porta a /dashboard', () => {
+  it('su 403 MODULO_NON_ATTIVO con la rotta corrente di quel modulo: ricarica, toast e /dashboard', () => {
     let errore: unknown
     http.get(url).subscribe({ error: e => (errore = e) })
     backend.expectOne(url).flush(rifiuto, { status: 403, statusText: 'Forbidden' })
@@ -65,6 +95,27 @@ describe('moduloNonAttivoInterceptor', () => {
     expect(aggiunti[0].detail).toBe(MESSAGGIO_MODULO_NON_ATTIVO)
     expect(navigaA).toHaveBeenCalledWith('/dashboard')
     expect(errore).toBeTruthy()
+  })
+
+  it('chiamata secondaria di una pagina lecita (modulo attivo): ricarica ma non espelle, nessun toast', () => {
+    moduloRotta = 'fir'
+    let errore: unknown
+    http.get(`${environment.apiUrl}/rentri/sync/logs`).subscribe({ error: e => (errore = e) })
+    backend
+      .expectOne(`${environment.apiUrl}/rentri/sync/logs`)
+      .flush(rifiuto, { status: 403, statusText: 'Forbidden' })
+    expect(ricaricaModuli).toHaveBeenCalledTimes(1)
+    expect(navigaA).not.toHaveBeenCalled()
+    expect(aggiunti.length).toBe(0)
+    expect(errore).toBeTruthy()
+  })
+
+  it('chiamata secondaria da una rotta base (senza data.modulo): nessun redirect', () => {
+    moduloRotta = null
+    http.get(url).subscribe({ error: () => undefined })
+    backend.expectOne(url).flush(rifiuto, { status: 403, statusText: 'Forbidden' })
+    expect(navigaA).not.toHaveBeenCalled()
+    expect(aggiunti.length).toBe(0)
   })
 
   it("NON azzera l'azienda selezionata e NON ricarica la pagina", () => {
@@ -107,9 +158,9 @@ describe('moduloNonAttivoInterceptor', () => {
     http.get(`${url}/2`).subscribe({ error: () => undefined })
     backend.expectOne(url).flush(rifiuto, { status: 403, statusText: 'Forbidden' })
     backend.expectOne(`${url}/2`).flush(rifiuto, { status: 403, statusText: 'Forbidden' })
-    expect(aggiunti.length).toBe(1)
     expect(ricaricaModuli).toHaveBeenCalledTimes(1)
     inCorso.next({ features: [] })
     inCorso.complete()
+    expect(aggiunti.length).toBe(1)
   })
 })

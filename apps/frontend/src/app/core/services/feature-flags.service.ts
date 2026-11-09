@@ -92,6 +92,8 @@ export class FeatureFlagsService {
     this.loading.set(true)
     const richiesta$ = this.http.get<MeFeaturesResponse>(`${environment.apiUrl}/me/features`).pipe(
       tap(res => {
+        // Risposta in ritardo per un'azienda non più selezionata: non sovrascrive i moduli attuali.
+        if (tenant !== this.tenantContext.selectedTenantId()) return
         this.features.set(Array.isArray(res?.features) ? res.features : [])
         this.tier.set(res?.tier ?? null)
         this.userLimitTotal.set(res?.userLimitTotal ?? null)

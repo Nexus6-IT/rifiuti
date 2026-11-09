@@ -600,7 +600,7 @@ describe('FirListComponent — consegna dal netto di un accesso di pesa', () => 
         { provide: PeseService, useValue: pese },
         {
           provide: FeatureFlagsService,
-          useValue: { has: (k: string) => featurePese && k === 'pese' },
+          useValue: { has: (k: string) => k === 'rentri' || (featurePese && k === 'pese') },
         },
         { provide: RegistryService, useValue: registry },
         {

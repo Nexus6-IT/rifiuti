@@ -15,6 +15,7 @@ import { RentriFormulariService } from '../rentri/rentri-formulari.service'
 import { RentriFirLifecycleService } from '../rentri/rentri-fir-lifecycle.service'
 import { FIR, FIRStato } from '../../shared/models/fir.model'
 import { ConfirmationService } from 'primeng/api'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 
 /**
  * TDD per la pagina di dettaglio del formulario FIR (R1 Task 4).
@@ -55,7 +56,9 @@ describe('FirDetailComponent', () => {
     canSyncToRENTRI: true,
   }
 
-  function setup(overrides: { role?: string; firId?: string; autoConfirm?: boolean } = {}) {
+  function setup(
+    overrides: { role?: string; firId?: string; autoConfirm?: boolean; rentri?: boolean } = {}
+  ) {
     const activatedRouteStub = {
       snapshot: {
         paramMap: convertToParamMap({ id: overrides.firId ?? 'fir-1' }),
@@ -105,6 +108,10 @@ describe('FirDetailComponent', () => {
       { provide: RentriFormulariService, useValue: rentriFormulariService },
       { provide: RentriFirLifecycleService, useValue: rentriFirLifecycleService },
       { provide: AuthService, useValue: authService },
+      {
+        provide: FeatureFlagsService,
+        useValue: { has: (k: string) => k !== 'rentri' || overrides.rentri !== false },
+      },
     ]
 
     TestBed.configureTestingModule({
@@ -1565,6 +1572,24 @@ describe('FirDetailComponent', () => {
       expect(component.haAzioni(bozza())).toBeTrue()
       expect(component.puoModificare(bozza({ modificabile: false }))).toBeFalse()
       expect(component.puoModificare({ ...baseFIR, modificabile: true })).toBeFalse()
+    })
+  })
+
+  describe('azienda senza il modulo rentri (TRIAL/PROFESSIONAL)', () => {
+    it('apre il dettaglio senza cronologia RENTRI e senza nessuna chiamata a /rentri/', () => {
+      setup({ rentri: false })
+      firService.getFIRById.and.returnValue(
+        of({ ...baseFIR, rentriNumeroFir: 'RENTRI-1', rentriSyncStatus: 'SYNCED' } as FIR)
+      )
+      fixture.detectChanges()
+      const el = fixture.nativeElement as HTMLElement
+      expect(el.textContent).toContain('FIR-2026-000001')
+      expect(el.querySelector('[data-testid="rentri-sync-logs"]')).toBeNull()
+      expect(el.querySelector('[data-testid="fir-detail-rentri-status"]')).toBeNull()
+      expect(rentriSyncService.getSyncLogs).not.toHaveBeenCalled()
+      expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
+      expect(rentriFirLifecycleService.elencaAllegati).not.toHaveBeenCalled()
+      httpMock.expectNone(r => r.url.includes('/rentri/'))
     })
   })
 })

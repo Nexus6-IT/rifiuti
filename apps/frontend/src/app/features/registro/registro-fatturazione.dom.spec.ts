@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
@@ -98,6 +99,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         DatePipe,
         { provide: RegistroService, useValue: servizio },

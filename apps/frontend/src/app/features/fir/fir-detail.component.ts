@@ -28,6 +28,7 @@ import { RENTRISyncBadgeComponent } from './components/rentri-sync-badge/rentri-
 import { RENTRISyncLogsComponent } from './components/rentri-sync-logs/rentri-sync-logs.component'
 import { etichettaIdentificativiCompleta } from '../registry/identificativo-fiscale'
 import { RENTRISyncService } from './services/rentri-sync.service'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AuthService } from '../../core/services/auth.service'
 import { RentriFormulariService } from '../rentri/rentri-formulari.service'
 import {
@@ -584,10 +585,12 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
           </section>
         }
 
-        <!-- Cronologia delle trasmissioni -->
-        <section class="detail-section" aria-label="Cronologia delle trasmissioni RENTRI">
-          <app-rentri-sync-logs [firId]="f.id"></app-rentri-sync-logs>
-        </section>
+        <!-- Cronologia delle trasmissioni: chiama /rentri/sync/logs, solo con il modulo rentri -->
+        @if (ff.has('rentri')) {
+          <section class="detail-section" aria-label="Cronologia delle trasmissioni RENTRI">
+            <app-rentri-sync-logs [firId]="f.id"></app-rentri-sync-logs>
+          </section>
+        }
       }
     </div>
 
@@ -935,6 +938,8 @@ export class FirDetailComponent implements OnInit {
   private readonly rentriFormulariService = inject(RentriFormulariService)
   private readonly rentriFirLifecycleService = inject(RentriFirLifecycleService)
   private readonly authService = inject(AuthService)
+  /** Moduli attivi: le chiamate RENTRI partono solo con il modulo `rentri` (altrimenti 403). */
+  protected readonly ff = inject(FeatureFlagsService)
   private readonly confirmationService = inject(ConfirmationService)
   private readonly messageService = inject(MessageService)
 
@@ -1063,11 +1068,13 @@ export class FirDetailComponent implements OnInit {
 
   /** V. fir-list.component.ts: lo stato RENTRI non ha senso prima dell'emissione o dopo l'annullo. */
   mostraStatoRentri(fir: FIR): boolean {
-    return fir.stato !== FIRStato.BOZZA && fir.stato !== FIRStato.ANNULLATO
+    return this.ff.has('rentri') && fir.stato !== FIRStato.BOZZA && fir.stato !== FIRStato.ANNULLATO
   }
 
   /** Ruoli SUPER_ADMIN/ADMIN/OPERATOR: stessi ruoli richiesti dal backend su RENTRISyncController. */
   private canManageRENTRI(): boolean {
+    // Senza il modulo rentri ogni chiamata /rentri/* risponde 403: nessuna azione, nessun caricamento.
+    if (!this.ff.has('rentri')) return false
     const role = this.authService.currentUser()?.role
     return !!role && RENTRI_ROLES.includes(role)
   }

@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
 import { scriviCampoData } from '../../shared/testing/campo-data'
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
@@ -457,6 +458,7 @@ describe('RegistroComponent - pulsante Causali', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         DatePipe,
         { provide: RegistroService, useValue: servizio },

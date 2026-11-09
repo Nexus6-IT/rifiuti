@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
 import { scriviCampoData } from '../../shared/testing/campo-data'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
@@ -86,6 +87,7 @@ describe('GiacenzeInizialiDialogComponent - unità, validazione e click', () => 
     TestBed.configureTestingModule({
       imports: [GiacenzeInizialiDialogComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         { provide: RegistroService, useValue: servizio },
         { provide: ToastService, useValue: toast },
@@ -282,6 +284,7 @@ describe('RegistroComponent - pulsante Giacenze iniziali (template reale)', () =
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         DatePipe,
         { provide: RegistroService, useValue: servizio },

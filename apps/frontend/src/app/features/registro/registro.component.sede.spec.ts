@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { TestBed } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { of, throwError } from 'rxjs'
@@ -47,6 +48,7 @@ describe('RegistroComponent — sede del registro', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         DatePipe,
         { provide: RegistroService, useValue: servizio },
         { provide: ToastService, useValue: toast },

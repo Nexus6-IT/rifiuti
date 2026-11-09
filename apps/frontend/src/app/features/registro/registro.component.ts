@@ -50,6 +50,7 @@ import { PaginatorModule } from 'primeng/paginator'
 import { ToastService } from '../../core/services/toast.service'
 import { ExportService } from '../../core/services/export.service'
 import { AuthService } from '../../core/services/auth.service'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AdminTenantContextService } from '../../core/services/admin-tenant-context.service'
 import { CompanyService } from '../../core/services/company.service'
 import { FirService } from '../fir/fir.service'
@@ -1615,6 +1616,7 @@ export class RegistroComponent implements OnInit {
   private readonly datePipe = inject(DatePipe)
   private readonly exportService = inject(ExportService)
   private readonly auth = inject(AuthService)
+  private readonly ff = inject(FeatureFlagsService)
   private readonly tenantContext = inject(AdminTenantContextService)
   private readonly company = inject(CompanyService)
   private readonly firService = inject(FirService)
@@ -2437,6 +2439,8 @@ export class RegistroComponent implements OnInit {
   readonly rentriSelezionati = signal<string[]>([])
   /** Il pannello c'è solo con un registro determinato (come le giacenze iniziali). */
   registroRentri(): string | undefined {
+    // Il pannello chiama /rentri/registro/*: senza il modulo rentri non si monta (evita il 403).
+    if (!this.ff.has('rentri')) return undefined
     return this.registroGiacenzeIniziali()
   }
   /**

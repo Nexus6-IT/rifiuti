@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
@@ -45,6 +46,7 @@ describe('FirListComponent: stile del giro 2', () => {
     TestBed.configureTestingModule({
       imports: [FirListComponent, NoopAnimationsModule, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         { provide: FirService, useValue: firService },
         { provide: RegistryService, useValue: reg },
         {

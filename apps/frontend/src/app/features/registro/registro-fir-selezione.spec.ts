@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { TestBed } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { signal } from '@angular/core'
@@ -37,6 +38,7 @@ describe('RegistroComponent — selezione di un FIR', () => {
   function creaPer(partitaIva: string): void {
     TestBed.configureTestingModule({
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         FormBuilder,
         DatePipe,
         { provide: RegistroService, useValue: {} },

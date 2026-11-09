@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { HttpErrorResponse } from '@angular/common/http'
@@ -123,6 +124,7 @@ describe('Registro - dettaglio del movimento con il legame', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         provideRouter([]),
         DatePipe,
