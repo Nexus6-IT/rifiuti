@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import type { FeatureKey } from '../admin/feature-catalog'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { calcolaScadenza } from '../notifications/scadenza-controparte.util'
 
@@ -95,13 +96,23 @@ export function ordinaVociPerGravita(voci: VoceAttenzione[]): VoceAttenzione[] {
 export class RaccogliAttenzioneUseCase {
   constructor(private readonly prisma: PrismaService) {}
 
-  async raccogli(tenantId: string): Promise<AttenzioneResult> {
+  /**
+   * `moduli`: i moduli attivi dell'azienda, letti UNA volta per richiesta da chi chiama
+   * (`ModuliAttiviService`, fonte unica). Una voce che dipende da un modulo non attivo non si
+   * calcola nemmeno: niente query e niente voce che porta a una pagina chiusa dal guard.
+   */
+  async raccogli(tenantId: string, moduli: ReadonlySet<FeatureKey>): Promise<AttenzioneResult> {
     const raccoglitori: Array<() => Promise<VoceAttenzione[]>> = [
-      () => this.voceCertificatoRentri(tenantId),
       () => this.vociAutorizzazioniImpianto(tenantId),
-      () => this.vociTrasportatoriInScadenza(tenantId),
-      () => this.vociDestinatariInScadenza(tenantId),
     ]
+    if (moduli.has('rentri')) raccoglitori.push(() => this.voceCertificatoRentri(tenantId))
+    // Le voci portano a `/trasportatori` e `/destinatari`, rotte del modulo anagrafiche.
+    if (moduli.has('anagrafiche')) {
+      raccoglitori.push(
+        () => this.vociTrasportatoriInScadenza(tenantId),
+        () => this.vociDestinatariInScadenza(tenantId)
+      )
+    }
 
     const risultati = await Promise.all(raccoglitori.map(raccoglitore => raccoglitore()))
     const voci = ordinaVociPerGravita(risultati.flat())

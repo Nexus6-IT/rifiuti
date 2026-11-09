@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { FIRStatus, RENTRISyncStatus } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-scorta.repository'
+import type { FeatureKey } from '../admin/feature-catalog'
 import { VoceAttenzione, AttenzioneResult } from './raccogli-attenzione.use-case'
 
 /**
@@ -61,7 +62,12 @@ export class RaccogliIndicatoriAzioneUseCase {
     private readonly scortaRepo: RentriScortaRepository
   ) {}
 
-  async raccogli(tenantId: string): Promise<AttenzioneResult> {
+  /**
+   * `moduli`: moduli attivi dell'azienda (una lettura per richiesta, fatta da chi chiama).
+   * Entrambe le voci sono del modulo `rentri`: senza, non si calcolano e la risposta e' vuota.
+   */
+  async raccogli(tenantId: string, moduli: ReadonlySet<FeatureKey>): Promise<AttenzioneResult> {
+    if (!moduli.has('rentri')) return { voci: [] }
     const [daTrasmettere, scorta] = await Promise.all([
       this.voceFormulariDaTrasmettere(tenantId),
       this.vociScortaVidimata(tenantId),
