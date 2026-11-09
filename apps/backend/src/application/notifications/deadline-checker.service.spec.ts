@@ -52,6 +52,7 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../billing/contratto-gruppo.service'
 
 jest.mock('../../infrastructure/rentri/rentri-certificato-scadenza.util')
 jest.mock('@sentry/node', () => ({ captureException: jest.fn() }))
@@ -933,8 +934,7 @@ describe('DeadlineCheckerService', () => {
       expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: escludiPiattaforma({
-            subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
-            mudNonDovuto: false,
+            AND: [{ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }, { mudNonDovuto: false }],
           }),
         })
       )

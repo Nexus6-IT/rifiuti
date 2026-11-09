@@ -6,6 +6,7 @@ import { MisuraFreschezza } from './probes/freschezza.probe'
 import { StatoCredenziale } from './probes/credenziali.probe'
 import { calcolaGiorniAllaScadenzaCertificato } from '../../../infrastructure/rentri/rentri-certificato-scadenza.util'
 import { MESSAGGIO_CATALOGO_CAUSALI_VUOTO } from '../../registro/causali/catalogo-causali-avvio.service'
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../billing/contratto-gruppo.service'
 import { escludiPiattaforma } from '../../../core/context/azienda-piattaforma'
 
 /**
@@ -97,7 +98,7 @@ export class EvidenzeDbService implements LettoreEvidenze {
   }
 
   /**
-   * Credenziali RENTRI delle sole aziende ATTIVE/TRIAL — stesso insieme che
+   * Credenziali RENTRI delle sole aziende con abbonamento operativo (radice del gruppo) — stesso insieme che
    * il job giornaliero di scadenza considera (`RentriCertificatoScadenzaJob`):
    * allarmare sul certificato scaduto di un'azienda cessata sarebbe rumore.
    *
@@ -107,7 +108,7 @@ export class EvidenzeDbService implements LettoreEvidenze {
    */
   async credenziali(): Promise<StatoCredenziale[]> {
     const tenantAttivi = await this.sistema.tenant.findMany({
-      where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+      where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
       select: { id: true },
     })
 

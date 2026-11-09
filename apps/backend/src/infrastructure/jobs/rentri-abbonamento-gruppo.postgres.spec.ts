@@ -25,6 +25,8 @@ import { ContrattoGruppoService } from '../../application/billing/contratto-grup
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 import { PrismaService, creaPrismaServiceApplicativo } from '../persistence/prisma.service'
+import { DeadlineCheckerService } from '../../application/notifications/deadline-checker.service'
+import { EvidenzeDbService } from '../../application/admin/system-health/evidenze-db.service'
 import { RentriRiconciliazioneJob } from './rentri-riconciliazione.job'
 
 type Stato = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'
@@ -93,6 +95,49 @@ describe('Job RENTRI: abbonamento del gruppo — Postgres reale', () => {
     expect(nostre).toEqual([madreAttiva, figliaScaduta, madreProva, figliaSospesa].sort())
     expect(trattate).not.toContain(madreSospesa)
     expect(trattate).not.toContain(figliaAttiva)
+  })
+
+  it('scadenze certificato, evidenze di sistema e promemoria MUD: contano la radice del gruppo', async () => {
+    const madreAttiva = await azienda('ACTIVE')
+    const figliaScaduta = await azienda('EXPIRED', madreAttiva)
+    const madreSospesa = await azienda('SUSPENDED')
+    const figliaAttiva = await azienda('ACTIVE', madreSospesa)
+    const mie = new Set([madreAttiva, figliaScaduta, madreSospesa, figliaAttiva])
+    const attesi = [madreAttiva, figliaScaduta].sort()
+
+    // Si intercetta la lettura delle credenziali: contano gli id aziende con cui viene chiesta.
+    const spia = jest.spyOn(sistema.rentriCredential, 'findMany').mockResolvedValue([] as never)
+    const idsPassati = () =>
+      (spia.mock.calls.at(-1)?.[0] as { where: { tenantId: { in: string[] } } }).where.tenantId.in
+        .filter(id => mie.has(id))
+        .sort()
+
+    await new EvidenzeDbService(sistema).credenziali()
+    expect(idsPassati()).toEqual(attesi)
+
+    const checker = new DeadlineCheckerService(app, sistema, {} as never, {} as never, logger, {
+      scadenzaPresentazione: () => ({ data: '2026-07-09', fonte: 'REGISTRO' }),
+    } as never)
+    await checker.checkRentriCertificateExpiration()
+    expect(idsPassati()).toEqual(attesi)
+    spia.mockRestore()
+
+    // Promemoria MUD: la stessa query tenant, con il filtro «MUD dovuto» in AND.
+    // La lista resta vuota: nessuna notifica ne' email partono dal database di prova.
+    const lette = jest.spyOn(sistema.tenant, 'findMany').mockResolvedValue([] as never)
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval'] })
+    jest.setSystemTime(new Date(2026, 6, 2))
+    try {
+      await checker.checkMudDeadlines()
+    } finally {
+      jest.useRealTimers()
+    }
+    const where = (lette.mock.calls[0]?.[0] as { where: object }).where
+    const trovate = await owner.tenant.findMany({
+      where: { AND: [where, { id: { in: [...mie] } }] },
+    })
+    expect(trovate.map(t => t.id).sort()).toEqual(attesi)
+    lette.mockRestore()
   })
 
   it('il filtro e` una sola query con join sulla madre (nessun N+1)', async () => {
