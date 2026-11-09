@@ -54,7 +54,25 @@ test.describe('Moduli chiusi nel backend', () => {
   const anagrafiche: Array<{ percorso: string; id: string }> = []
   const problemiPulizia: string[] = []
 
-  const token = (a: AziendaDiTest, ruolo: 'admin' | 'viewer' = 'admin') => tokenAzienda(a, ruolo)
+  // Un dev-login per utente, poi si riusa il token: ogni login pesa sul throttler globale
+  // (100 richieste al minuto per IP) e un nuovo login dello stesso utente invalida il precedente.
+  // I test UI rifanno il login degli admin: dopo di loro si usa `fresco = true`.
+  const sessioni = new Map<string, string>()
+  const token = async (
+    a: AziendaDiTest,
+    ruolo: 'admin' | 'viewer' = 'admin',
+    fresco = false
+  ): Promise<string> => {
+    const chiave = `${a.tenantId}:${ruolo}`
+    if (fresco || !sessioni.has(chiave)) sessioni.set(chiave, await tokenAzienda(a, ruolo))
+    return sessioni.get(chiave)!
+  }
+  const tokenSuperAdmin = async (): Promise<string> => {
+    if (!sessioni.has('super')) {
+      sessioni.set('super', (await devLoginTokens(superAdmin.email)).accessToken)
+    }
+    return sessioni.get('super')!
+  }
 
   /** Corpo di un 403 per modulo non attivo, con le chiavi che avrebbero consentito l'accesso. */
   const moduloNonAttivo = (moduli: string[]) => ({
@@ -112,7 +130,7 @@ test.describe('Moduli chiusi nel backend', () => {
 
   /** Imposta i moduli di UN'azienda creata da questo spec, come SUPER_ADMIN (PUT /admin/tenants/:id). */
   async function impostaModuli(azienda: AziendaDiTest, moduli: string[] | null): Promise<void> {
-    const tk = (await devLoginTokens(superAdmin.email)).accessToken
+    const tk = await tokenSuperAdmin()
     const r = await chiama('PUT', `/admin/tenants/${azienda.tenantId}`, tk, {
       featureFlags: moduli,
     })
@@ -130,7 +148,7 @@ test.describe('Moduli chiusi nel backend', () => {
   test.afterAll(async () => {
     if (!owner) return
     try {
-      const tk = await token(pro)
+      const tk = await token(pro, 'admin', true) // i test UI hanno rifatto il login
       // Il FIR non ha un endpoint di cancellazione: per id esatto sul database di test.
       if (firId) await owner.fIR.deleteMany({ where: { id: firId } })
       for (const { percorso, id } of [...anagrafiche].reverse()) {
@@ -233,7 +251,7 @@ test.describe('Moduli chiusi nel backend', () => {
     })
 
     test('SUPER_ADMIN con X-Tenant-ID verso la TRIAL vale come la TRIAL; senza header vale la sua azienda', async () => {
-      const tk = (await devLoginTokens(superAdmin.email)).accessToken
+      const tk = await tokenSuperAdmin()
       const conHeader = await fetch(`${getApiUrl()}/clienti`, {
         headers: { Authorization: `Bearer ${tk}`, 'X-Tenant-ID': trial.tenantId },
       })
