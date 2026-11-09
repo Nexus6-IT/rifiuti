@@ -47,6 +47,7 @@ import {
   LegameVista,
 } from '../legami/legami.model'
 import { LegamiService } from '../legami/legami.service'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { permessiLegami } from '../legami/permessi-legami'
 import { RigheLegameTabellaComponent } from '../legami/righe-legame-tabella.component'
 import { etichettaAvviso, etichettaStato, severitaTag } from '../legami/vocabolario-legami'
@@ -669,6 +670,7 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   private readonly destroyRef = inject(DestroyRef)
   private readonly legami = inject(LegamiService)
   private readonly auth = inject(AuthService)
+  private readonly ff = inject(FeatureFlagsService)
 
   @Input() visible = false
   @Output() visibleChange = new EventEmitter<boolean>()
@@ -720,8 +722,9 @@ export class CorreggiMovimentoDialogComponent implements OnChanges {
   /** Azione scelta con il pulsante: serve anche al reinvio dopo la conferma MUD. */
   private azioneScelta: 'PROPOSTA' | 'CONFERMA' = 'PROPOSTA'
 
+  /** Ruolo E modulo `contratti`: senza modulo le API dei legami rispondono 403. */
   private readonly puoScrivereLegami = computed(
-    () => permessiLegami(this.auth.currentUser()?.role).scrive
+    () => permessiLegami(this.auth.currentUser()?.role).scrive && this.ff.has('contratti')
   )
 
   /** Il legame è già fatturato (o importato come fatturato): la correzione si può fare, non lo cambia. */

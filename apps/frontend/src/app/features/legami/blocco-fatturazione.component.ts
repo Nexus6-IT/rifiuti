@@ -31,6 +31,7 @@ import {
   RigaLegameRegistrazione,
 } from './legami.model'
 import { LegamiService } from './legami.service'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { permessiLegami } from './permessi-legami'
 import {
   CampoRiga,
@@ -327,6 +328,7 @@ export class BloccoFatturazioneComponent implements OnChanges {
   private readonly servizio = inject(LegamiService)
   private readonly clientiService = inject(ClientiService)
   private readonly auth = inject(AuthService)
+  private readonly ff = inject(FeatureFlagsService)
   private readonly destroyRef = inject(DestroyRef)
 
   /** Dati del movimento in compilazione; `null` finché mancano i campi obbligatori. */
@@ -402,7 +404,10 @@ export class BloccoFatturazioneComponent implements OnChanges {
   /** Dati della proposta arrivata per ultima: un'altra con dati diversi scorda gli errori dei campi (m7). */
   private chiaveUltimaProposta: string | null = null
 
-  readonly puoScrivere = computed(() => permessiLegami(this.auth.currentUser()?.role).scrive)
+  /** Serve il ruolo E il modulo `contratti`: senza, le API dei legami rispondono 403. */
+  readonly puoScrivere = computed(
+    () => permessiLegami(this.auth.currentUser()?.role).scrive && this.ff.has('contratti')
+  )
 
   /** Visibile solo se la causale è fatturabile e la fatturazione è attiva (o se la proposta è fallita). */
   readonly visibile = computed(() => {

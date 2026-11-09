@@ -10,6 +10,7 @@
  */
 
 import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common'
+import { SkipThrottle } from '@nestjs/throttler'
 import { ConfigService } from '@nestjs/config'
 import { Public } from '../decorators/public.decorator'
 import { JwtTokensService } from '../services/jwt-tokens.service'
@@ -19,6 +20,9 @@ import { DevLoginDto } from '../dto/dev-login.dto'
 import { ConsentiSelezioneNonValida } from '../../core/decorators/consenti-selezione-non-valida.decorator'
 
 // Login di sviluppo: come la sessione, non dipende dall'azienda selezionata.
+// Senza throttler: gli e2e fanno un dev-login per utente e il limite globale (100/min per IP)
+// li farebbe fallire a caso. Il controller non e' montato in produzione (vedi `auth.module.ts`).
+@SkipThrottle()
 @ConsentiSelezioneNonValida()
 @Controller('auth')
 export class DevAuthController {

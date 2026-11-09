@@ -1170,18 +1170,20 @@ function fineGiornata(d: Date): Date {
             {{ d.unit }} · {{ causaleLabel(d) }}
             <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
           </section>
-          <app-riquadro-legame
-            [movimentoId]="d.id"
-            [eTesta]="vigente(d)"
-            (esitoChange)="dettaglioEsito = $event"
-          ></app-riquadro-legame>
-          <p
-            *ngIf="dettaglioEsito === 'assente'"
-            class="text-muted"
-            data-testid="registro-dettaglio-senza-legame"
-          >
-            Questo movimento non è collegato alla fatturazione.
-          </p>
+          <ng-container *ngIf="ff.has('contratti')">
+            <app-riquadro-legame
+              [movimentoId]="d.id"
+              [eTesta]="vigente(d)"
+              (esitoChange)="dettaglioEsito = $event"
+            ></app-riquadro-legame>
+            <p
+              *ngIf="dettaglioEsito === 'assente'"
+              class="text-muted"
+              data-testid="registro-dettaglio-senza-legame"
+            >
+              Questo movimento non è collegato alla fatturazione.
+            </p>
+          </ng-container>
         </ng-container>
       </p-dialog>
 
@@ -1616,7 +1618,7 @@ export class RegistroComponent implements OnInit {
   private readonly datePipe = inject(DatePipe)
   private readonly exportService = inject(ExportService)
   private readonly auth = inject(AuthService)
-  private readonly ff = inject(FeatureFlagsService)
+  protected readonly ff = inject(FeatureFlagsService)
   private readonly tenantContext = inject(AdminTenantContextService)
   private readonly company = inject(CompanyService)
   private readonly firService = inject(FirService)

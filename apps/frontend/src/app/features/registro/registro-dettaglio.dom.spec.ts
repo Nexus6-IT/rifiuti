@@ -78,6 +78,7 @@ describe('Registro - dettaglio del movimento con il legame', () => {
   let fixture: ComponentFixture<RegistroComponent>
   let legami: jasmine.SpyObj<LegamiService>
   let ruolo: string
+  let contratti = true
 
   function apri(risposta: Observable<LegameVista>): void {
     legami.perMovimento.and.returnValue(risposta)
@@ -124,7 +125,10 @@ describe('Registro - dettaglio del movimento con il legame', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
-        { provide: FeatureFlagsService, useValue: { has: () => true } },
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => k !== 'contratti' || contratti },
+        },
         provideNoopAnimations(),
         provideRouter([]),
         DatePipe,
@@ -153,12 +157,25 @@ describe('Registro - dettaglio del movimento con il legame', () => {
 
   afterEach(() => fixture?.destroy())
 
+  beforeEach(() => {
+    contratti = true
+  })
+
   it('«Dettaglio» apre il movimento col riquadro del legame (letto per id del movimento)', fakeAsync(() => {
     apri(of(legame()))
     expect(q('registro-dettaglio')?.textContent).toContain('17 04 05')
     expect(legami.perMovimento).toHaveBeenCalledOnceWith('m1')
     expect(q('riquadro-legame')).not.toBeNull()
     expect(q('riquadro-avviso-AVVISO_SCOSTAMENTO')).not.toBeNull()
+    expect(q('registro-dettaglio-senza-legame')).toBeNull()
+  }))
+
+  it('I1: senza il modulo contratti il dettaglio non legge il legame e non mostra il riquadro', fakeAsync(() => {
+    contratti = false
+    apri(of(legame()))
+    expect(q('registro-dettaglio')?.textContent).toContain('17 04 05')
+    expect(legami.perMovimento).not.toHaveBeenCalled()
+    expect(q('riquadro-legame')).toBeNull()
     expect(q('registro-dettaglio-senza-legame')).toBeNull()
   }))
 

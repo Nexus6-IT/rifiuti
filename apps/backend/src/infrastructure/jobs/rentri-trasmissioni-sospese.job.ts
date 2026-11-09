@@ -64,12 +64,12 @@ export class RentriTrasmissioniSospeseJob {
       // Tutte le aziende, qualunque sia l'abbonamento: un FIR gia' SYNCING e' una trasmissione partita
       // e va portata a termine anche se l'azienda e' sospesa o scaduta. Per i PENDING (nuovi invii)
       // lo stato ACTIVE/TRIAL e' gia' nella query del repository. Una lettura delle aziende, una dei moduli.
-      const attive = await this.sistema.tenant.findMany({
+      const aziende = await this.sistema.tenant.findMany({
         where: escludiPiattaforma(),
         select: { id: true },
       })
       const conModulo = await this.moduli.tenantConModulo(
-        attive.map(t => t.id),
+        aziende.map(t => t.id),
         'rentri'
       )
       const sospese = await this.firRepo.elencaTrasmissioniRentriSospese(

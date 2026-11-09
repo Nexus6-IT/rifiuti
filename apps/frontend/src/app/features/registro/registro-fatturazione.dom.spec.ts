@@ -40,6 +40,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
   let servizio: jasmine.SpyObj<RegistroService>
   let fixture: ComponentFixture<RegistroComponent>
   let risposta: PropostaLegame
+  let contratti = true
 
   function apri(): RegistroComponent {
     fixture = TestBed.createComponent(RegistroComponent)
@@ -72,6 +73,7 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
 
   beforeEach(() => {
     risposta = proposta()
+    contratti = true
     servizio = jasmine.createSpyObj<RegistroService>('RegistroService', [
       'lista',
       'listRegistri',
@@ -99,7 +101,10 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
-        { provide: FeatureFlagsService, useValue: { has: () => true } },
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => k !== 'contratti' || contratti },
+        },
         provideNoopAnimations(),
         DatePipe,
         { provide: RegistroService, useValue: servizio },
@@ -134,6 +139,17 @@ describe('Registro - blocco Fatturazione nel dialog reale', () => {
 
   const pulsante = (testid: string): HTMLButtonElement | null =>
     document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"] button`)
+
+  it('I1: azienda senza il modulo contratti: nessuna proposta, nessun blocco, solo «Registra»', fakeAsync(() => {
+    contratti = false
+    const proposta$ = spyOn(TestBed.inject(LegamiService), 'proposta').and.callThrough()
+    apri()
+    expect(proposta$).not.toHaveBeenCalled()
+    expect(q('blocco-fatturazione')).toBeNull()
+    expect(pulsante('registra')).not.toBeNull()
+    expect(pulsante('registra-senza-collegare')).toBeNull()
+    expect(pulsante('registra-e-conferma')).toBeNull()
+  }))
 
   it('blocco visibile: il footer ha le due azioni e niente «Registra» singolo', fakeAsync(() => {
     apri()
