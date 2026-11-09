@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { AnalyticsService } from './analytics.service'
 import { GetDashboardUseCase } from './get-dashboard.use-case'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
+import { ModuliAttiviModule } from '../admin/moduli-attivi.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 
 /**
@@ -10,7 +11,7 @@ import { LoggerModule } from '../../core/logger/logger.module'
  * Provides analytics and dashboard metrics functionality.
  */
 @Module({
-  imports: [PrismaModule, LoggerModule],
+  imports: [PrismaModule, LoggerModule, ModuliAttiviModule],
   providers: [AnalyticsService, GetDashboardUseCase],
   exports: [AnalyticsService, GetDashboardUseCase],
 })

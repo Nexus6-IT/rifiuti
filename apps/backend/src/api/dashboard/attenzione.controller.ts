@@ -7,6 +7,7 @@ import {
   AttenzioneResult,
   ordinaVociPerGravita,
 } from '../../application/dashboard/raccogli-attenzione.use-case'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { RaccogliIndicatoriAzioneUseCase } from '../../application/dashboard/raccogli-indicatori-azione.use-case'
 
 /**
@@ -32,7 +33,8 @@ import { RaccogliIndicatoriAzioneUseCase } from '../../application/dashboard/rac
 export class AttenzioneController {
   constructor(
     private readonly raccogliAttenzioneUseCase: RaccogliAttenzioneUseCase,
-    private readonly raccogliIndicatoriAzioneUseCase: RaccogliIndicatoriAzioneUseCase
+    private readonly raccogliIndicatoriAzioneUseCase: RaccogliIndicatoriAzioneUseCase,
+    private readonly moduliAttivi: ModuliAttiviService
   ) {}
 
   /**
@@ -62,9 +64,11 @@ export class AttenzioneController {
   async getAttenzione(@Req() req: any): Promise<AttenzioneResult> {
     const tenantId = requireRequestTenantId(req)
 
+    // Una sola lettura dei moduli per richiesta, condivisa dai due use case.
+    const moduli = new Set(await this.moduliAttivi.moduliAttivi(tenantId))
     const [attenzione, indicatori] = await Promise.all([
-      this.raccogliAttenzioneUseCase.raccogli(tenantId),
-      this.raccogliIndicatoriAzioneUseCase.raccogli(tenantId),
+      this.raccogliAttenzioneUseCase.raccogli(tenantId, moduli),
+      this.raccogliIndicatoriAzioneUseCase.raccogli(tenantId, moduli),
     ])
 
     return { voci: ordinaVociPerGravita([...attenzione.voci, ...indicatori.voci]) }

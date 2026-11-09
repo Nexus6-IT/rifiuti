@@ -3,6 +3,7 @@
  * controllo all'avvio, elenco dei tenant dal client di sistema, job vivi dalla coda, errore di
  * Redis che ferma il giro degli orfani. L'effetto sul database lo prova la spec Postgres.
  */
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import { CronExpression } from '@nestjs/schedule'
 import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
@@ -51,7 +52,7 @@ describe('FatturazioneManutenzioneJob', () => {
   it('i tenant vengono dal client di sistema, senza la piattaforma, solo attivi o in prova', async () => {
     await job.pulisciBozze()
     expect(sistema.tenant.findMany).toHaveBeenCalledWith({
-      where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+      where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
       select: { id: true },
     })
   })

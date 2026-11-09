@@ -1,3 +1,4 @@
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import * as Sentry from '@sentry/node'
 import { RentriCertificatoScadenzaJob } from './rentri-certificato-scadenza.job'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
@@ -77,7 +78,7 @@ describe('RentriCertificatoScadenzaJob', () => {
 
     expect(mockPrisma.tenant.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
       })
     )
     expect(mockPrisma.rentriCredential.findMany).toHaveBeenCalledWith(

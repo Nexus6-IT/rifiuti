@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { SubscriptionStatus, SubscriptionTier } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 
@@ -31,6 +32,20 @@ interface RigaContratto {
   aziendeLimit: number | null
   ragioneSociale: string
 }
+
+/** Stati dell'abbonamento in cui un'azienda opera: i job periodici saltano le altre. */
+export const STATI_ABBONAMENTO_OPERATIVI: SubscriptionStatus[] = ['ACTIVE', 'TRIAL']
+
+/**
+ * Condizione (da usare come `{ OR: ... }` in un `where` su `Tenant`) che dice: l'abbonamento del
+ * GRUPPO e' operativo. Lo stato che conta e' quello della radice: una radice lo ha in tabella, una
+ * figlia ha una colonna propria ma NON autorevole (vedi `ContrattoGruppoService`), quindi per le
+ * figlie si guarda la madre. Una sola query con join, come `caricaContrattiAziende`.
+ */
+export const ABBONAMENTO_OPERATIVO_DEL_GRUPPO: Prisma.TenantWhereInput[] = [
+  { parentTenantId: null, subscriptionStatus: { in: STATI_ABBONAMENTO_OPERATIVI } },
+  { madre: { subscriptionStatus: { in: STATI_ABBONAMENTO_OPERATIVI } } },
+]
 
 /**
  * ContrattoGruppoService — UNICO punto da cui si legge il contratto.

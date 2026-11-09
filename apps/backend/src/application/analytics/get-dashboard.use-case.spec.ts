@@ -1,5 +1,6 @@
 import { GetDashboardUseCase } from './get-dashboard.use-case'
 import { AnalyticsService } from './analytics.service'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { LoggerService } from '../../core/logger/logger.service'
 
 describe('GetDashboardUseCase: stati nel periodo', () => {
@@ -30,7 +31,9 @@ describe('GetDashboardUseCase: stati nel periodo', () => {
       info: jest.fn(),
       error: jest.fn(),
     } as unknown as LoggerService
-    useCase = new GetDashboardUseCase(analytics as unknown as AnalyticsService, logger)
+    useCase = new GetDashboardUseCase(analytics as unknown as AnalyticsService, logger, {
+      moduliAttivi: jest.fn().mockResolvedValue(['rentri']),
+    } as unknown as ModuliAttiviService)
   })
 
   it('senza intervallo: una sola chiamata a getFIRsByStatus', async () => {

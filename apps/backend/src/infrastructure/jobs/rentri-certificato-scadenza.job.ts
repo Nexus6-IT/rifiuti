@@ -1,3 +1,4 @@
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
@@ -65,7 +66,7 @@ export class RentriCertificatoScadenzaJob {
       // ACTIVE/TRIAL, poi le credenziali di quei soli tenant.
       // Sistema: scansione di tutte le aziende attive e delle loro credenziali (gauge globale)
       const tenantsAttivi = await this.sistema.tenant.findMany({
-        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
         select: { id: true },
       })
       // Solo le aziende col modulo rentri (D4b): UNA query per tutte, senza N+1.
