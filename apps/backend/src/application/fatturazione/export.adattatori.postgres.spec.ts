@@ -286,6 +286,13 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
       anno: 2026,
       legamiIds: [altra.legamiLiberi[0]],
     })
+    // Seconda bozza dell'azienda, NON scelta: non deve contare fra i saltati.
+    await creaDocumentoDiTest(owner, a.tenantId, {
+      stato: 'BOZZA',
+      registroIvaId: a.registroId,
+      anno: 2026,
+      legamiIds: [a.legamiLiberi[1]],
+    })
     const r = await esporta(a, 'FINTO', true, {
       documentoIds: [
         a.definitivoId,

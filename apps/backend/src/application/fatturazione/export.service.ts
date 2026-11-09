@@ -527,12 +527,7 @@ export class ExportService {
     if (s.elaborazioneId !== undefined) {
       condizioni.push(Prisma.sql`d.elaborazione_id = ${s.elaborazioneId}::uuid`)
     }
-    // Le condizioni senza il filtro di stato servono anche a contare le bozze scelte a mano.
-    const senzaStato = [...condizioni]
     const escludeBozze = s.elaborazioneId === undefined || o.senzaBozze
-    if (escludeBozze) {
-      condizioni.push(Prisma.sql`d.stato IN ('DEFINITIVO', 'ANNULLATO')`)
-    }
     if (s.registroIvaId !== undefined)
       condizioni.push(Prisma.sql`d.registro_iva_id = ${s.registroIvaId}::uuid`)
     if (s.anno !== undefined) condizioni.push(Prisma.sql`d.anno = ${s.anno}::int`)
@@ -549,7 +544,12 @@ export class ExportService {
     }
     // Una bozza scelta nella lista e' un documento saltato, non un id ignoto: si conta solo se
     // esiste nell'azienda (il tenant e' nelle condizioni) ed e' in stato BOZZA.
-    const doveBozze = Prisma.join([...senzaStato, Prisma.sql`d.stato = 'BOZZA'`], ' AND ')
+    // I filtri non di stato (compresa la lista) valgono anche per il conteggio delle bozze.
+    const filtri = [...condizioni]
+    if (escludeBozze) {
+      condizioni.push(Prisma.sql`d.stato IN ('DEFINITIVO', 'ANNULLATO')`)
+    }
+    const doveBozze = Prisma.join([...filtri, Prisma.sql`d.stato = 'BOZZA'`], ' AND ')
     const dove = Prisma.join(condizioni, ' AND ')
     const leggi = async (): Promise<SelezioneLetta> => {
       const [{ totale }] = await tx.$queryRaw<{ totale: number }[]>`
