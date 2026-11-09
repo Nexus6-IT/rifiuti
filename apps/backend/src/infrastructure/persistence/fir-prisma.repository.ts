@@ -3,6 +3,7 @@
  * Implementazione concreta del repository FIR con Prisma ORM
  */
 
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import { Injectable, Logger } from '@nestjs/common'
 import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
@@ -292,8 +293,9 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
     const aziende = await this.sistema.tenant.findMany({
       where: escludiPiattaforma({
         rentriModalitaLegame: { in: ['AUTOMATICA', 'IBRIDA'] },
-        // Come gli altri job RENTRI: solo aziende con abbonamento attivo o in prova
-        subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] },
+        // Come gli altri job RENTRI: solo aziende con abbonamento attivo o in prova, secondo il
+        // contratto della radice del gruppo (non la colonna propria della figlia)
+        OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO,
       }),
       select: { id: true },
     })

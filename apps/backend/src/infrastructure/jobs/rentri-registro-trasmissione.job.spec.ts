@@ -1,3 +1,4 @@
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import * as Sentry from '@sentry/node'
 import { RentriRegistroTrasmissioneJob } from './rentri-registro-trasmissione.job'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
@@ -220,8 +221,8 @@ describe('RentriRegistroTrasmissioneJob', () => {
     const where = (sistema.tenant.findMany.mock.calls[0] as any[])[0].where
     expect(JSON.stringify(where)).toContain('ACTIVE')
     expect(JSON.stringify(where)).toContain('TRIAL')
-    expect(where).toEqual(escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }))
-    expect(where).not.toEqual({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } })
+    expect(where).toEqual(escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }))
+    expect(where).not.toEqual({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO })
   })
 
   it('solo registri con identificativo RENTRI', async () => {

@@ -1,3 +1,4 @@
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
@@ -157,7 +158,7 @@ export class FatturazioneManutenzioneJob implements OnModuleInit {
     lavoro: (tenantId: string) => Promise<void>
   ): Promise<{ tenantTotali: number; tenantConErrore: number }> {
     const tenants = await this.sistema.tenant.findMany({
-      where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+      where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
       select: { id: true },
     })
     let tenantConErrore = 0

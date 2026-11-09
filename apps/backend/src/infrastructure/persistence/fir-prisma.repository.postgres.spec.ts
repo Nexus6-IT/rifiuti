@@ -700,7 +700,8 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
 
       async function creaTenant(
         modalita: 'MANUALE' | 'AUTOMATICA' | 'IBRIDA',
-        subscriptionStatus: 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' = 'ACTIVE'
+        subscriptionStatus: 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' = 'ACTIVE',
+        parentTenantId?: string
       ): Promise<string> {
         const t = await prisma.tenant.create({
           data: {
@@ -709,6 +710,7 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
             country: 'IT',
             rentriModalitaLegame: modalita,
             subscriptionStatus,
+            ...(parentTenantId ? { parentTenantId } : {}),
           },
         })
         extra.tenant.push(t.id)
@@ -744,8 +746,13 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
 
       afterAll(async () => {
         if (creati.length > 0) await prisma.fIR.deleteMany({ where: { id: { in: creati } } })
-        if (extra.tenant.length > 0)
+        // Le figlie prima delle madri (FK `Restrict`), solo per id esatti.
+        if (extra.tenant.length > 0) {
+          await prisma.tenant.deleteMany({
+            where: { id: { in: extra.tenant }, parentTenantId: { not: null } },
+          })
           await prisma.tenant.deleteMany({ where: { id: { in: extra.tenant } } })
+        }
         if (extra.piattaformaCreata)
           await prisma.tenant.deleteMany({ where: { id: AZIENDA_PIATTAFORMA_ID } })
       })
@@ -936,6 +943,22 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         expect(ids).toEqual(expect.arrayContaining([inAttiva, inProva]))
         expect(ids).not.toContain(inScaduta)
         expect(ids).not.toContain(inSospesa)
+      })
+
+      it("l'abbonamento di una figlia e' quello della madre: colonna propria divergente ignorata", async () => {
+        const madreAttiva = await creaTenant('AUTOMATICA', 'ACTIVE')
+        const figliaScaduta = await creaTenant('AUTOMATICA', 'EXPIRED', madreAttiva)
+        const madreSospesa = await creaTenant('AUTOMATICA', 'SUSPENDED')
+        const figliaAttiva = await creaTenant('AUTOMATICA', 'ACTIVE', madreSospesa)
+        const inFigliaScaduta = await firDi(figliaScaduta)
+        const inFigliaAttiva = await firDi(figliaAttiva)
+
+        const ids = (
+          await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO, await tuttiGliId())
+        ).map(e => e.firId)
+
+        expect(ids).toContain(inFigliaScaduta)
+        expect(ids).not.toContain(inFigliaAttiva)
       })
 
       it("un FIR appena riaperto di un'altra azienda passa davanti a molti PENDING vecchi oltre il limite", async () => {
