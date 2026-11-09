@@ -76,7 +76,7 @@ export class GetDashboardUseCase {
           : Promise.resolve(RENTRI_NON_ATTIVO),
         this.analyticsService.getSignatureCompletionRate(params.tenantId),
         this.analyticsService.getAverageSignatureTime(params.tenantId),
-        this.analyticsService.getComplianceScore(params.tenantId),
+        this.analyticsService.getComplianceScore(params.tenantId, { conRentri }),
         this.analyticsService.getOverdueFIRs(params.tenantId),
         this.analyticsService.getMonthOverMonthGrowth(params.tenantId),
         this.analyticsService.predictNextMonthVolume(params.tenantId),

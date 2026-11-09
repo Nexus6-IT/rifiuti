@@ -66,4 +66,18 @@ describe('GetDashboardUseCase: stati nel periodo', () => {
       for (const call of fn.mock.calls) expect(call).not.toContainEqual(dateRange)
     }
   })
+
+  it('la conformita si calcola con o senza RENTRI secondo il modulo', async () => {
+    analytics.getFIRsByStatus.mockResolvedValue({})
+    await useCase.execute({ tenantId: 't' })
+    expect(analytics.getComplianceScore).toHaveBeenCalledWith('t', { conRentri: true })
+    const senza = new GetDashboardUseCase(
+      analytics as unknown as AnalyticsService,
+      { setContext: jest.fn(), info: jest.fn(), error: jest.fn() } as unknown as LoggerService,
+      { moduliAttivi: jest.fn().mockResolvedValue([]) } as unknown as ModuliAttiviService
+    )
+    analytics.getComplianceScore.mockClear()
+    await senza.execute({ tenantId: 't' })
+    expect(analytics.getComplianceScore).toHaveBeenCalledWith('t', { conRentri: false })
+  })
 })

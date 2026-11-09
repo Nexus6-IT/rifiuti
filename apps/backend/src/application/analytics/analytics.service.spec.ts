@@ -227,6 +227,35 @@ describe('AnalyticsService', () => {
       expect(score.level).toBe('EXCELLENT')
     })
 
+    it('senza modulo rentri: pesi ripesati (0,4/0,2 -> 2/3 e 1/3), rentriSyncRate 0, nessun conteggio SYNCED', async () => {
+      ;(prisma.fIR.count as jest.Mock)
+        .mockResolvedValueOnce(100) // total FIRs
+        .mockResolvedValueOnce(100) // firmati
+        .mockResolvedValueOnce(0) // in ritardo
+
+      const r = await service.getComplianceScore('tenant-1', { conRentri: false })
+
+      // Tutto firmato e nulla in ritardo: 1, non il tetto di 0,6 dei pesi con RENTRI.
+      expect(r.score).toBeCloseTo(1, 10)
+      expect(r.level).toBe('EXCELLENT')
+      expect(r.factors.rentriSyncRate).toBe(0)
+      expect(prisma.fIR.count).toHaveBeenCalledTimes(3)
+      expect(prisma.fIR.count).not.toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', rentriSyncStatus: 'SYNCED' },
+      })
+    })
+
+    it('senza modulo rentri: metà firmati e un quarto in ritardo', async () => {
+      ;(prisma.fIR.count as jest.Mock)
+        .mockResolvedValueOnce(100)
+        .mockResolvedValueOnce(50)
+        .mockResolvedValueOnce(25)
+
+      const r = await service.getComplianceScore('tenant-1', { conRentri: false })
+
+      expect(r.score).toBeCloseTo(0.5 * (2 / 3) + 0.75 * (1 / 3), 10)
+    })
+
     it('should identify overdue FIRs', async () => {
       ;(prisma.fIR.count as jest.Mock).mockResolvedValue(5)
 
