@@ -376,7 +376,10 @@ describe('Moduli attivi: dal JWT all handler su Postgres', () => {
     it('un cambio di piano vale dalla richiesta successiva, senza riavvio', async () => {
       const tk = token(utenteTrial, trial)
       await get('contratti', tk).expect(403)
-      await admin.tenant.update({ where: { id: trial }, data: { subscriptionTier: 'PROFESSIONAL' } })
+      await admin.tenant.update({
+        where: { id: trial },
+        data: { subscriptionTier: 'PROFESSIONAL' },
+      })
       try {
         await get('contratti', tk).expect(200)
       } finally {
@@ -435,7 +438,10 @@ describe('Moduli attivi: dal JWT all handler su Postgres', () => {
 
     it('il cliente che passa a PROFESSIONAL apre il modulo al consulente alla richiesta dopo', async () => {
       await get('contratti', token(consulente, studio), trial).expect(403)
-      await admin.tenant.update({ where: { id: trial }, data: { subscriptionTier: 'PROFESSIONAL' } })
+      await admin.tenant.update({
+        where: { id: trial },
+        data: { subscriptionTier: 'PROFESSIONAL' },
+      })
       try {
         await get('contratti', token(consulente, studio), trial).expect(200)
       } finally {
@@ -450,7 +456,9 @@ describe('Moduli attivi: dal JWT all handler su Postgres', () => {
       expect(JSON.stringify(res.body)).not.toContain('moduli')
       expect(chiamateHandler).toBe(0)
       // Identico per un'azienda inesistente (nessuna enumerazione).
-      const inesistente = await get('contratti', token(consulente, studio), randomUUID()).expect(403)
+      const inesistente = await get('contratti', token(consulente, studio), randomUUID()).expect(
+        403
+      )
       expect(inesistente.body).toEqual(res.body)
     })
 

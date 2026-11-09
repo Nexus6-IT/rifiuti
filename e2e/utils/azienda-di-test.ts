@@ -28,7 +28,11 @@ export type RuoloAzienda = 'admin' | 'operator' | 'viewer'
 export interface AziendaDiTest {
   tenantId: string
   email: Record<RuoloAzienda, string>
+  /** Id degli utenti creati (admin, operator, viewer), per la pulizia per id esatti. */
+  userIds: string[]
 }
+
+export type PianoAzienda = 'TRIAL' | 'PROFESSIONAL' | 'ENTERPRISE'
 
 const ALFABETO = 'abcdefghjkmnpqrstuvwxyz23456789'
 
@@ -57,7 +61,9 @@ export function clientDbLocale(): PrismaClient | null {
  */
 export async function creaAziendaDiTest(
   client: PrismaClient,
-  etichetta: string
+  etichetta: string,
+  /** Piano dell'azienda (default PROFESSIONAL, come l'azienda seed della CI). */
+  piano: PianoAzienda = 'PROFESSIONAL'
 ): Promise<AziendaDiTest> {
   const unico = `${Date.now().toString(36)}${suffissoCasuale(4)}`
   const sigla = etichetta.toLowerCase().replace(/[^a-z0-9]+/g, '-')
@@ -70,7 +76,7 @@ export async function creaAziendaDiTest(
       province: 'MI',
       postalCode: '20100',
       country: 'IT',
-      subscriptionTier: 'PROFESSIONAL',
+      subscriptionTier: piano,
       subscriptionStatus: 'ACTIVE',
       firLimitPerMonth: 1000,
       userLimitTotal: 10,
@@ -120,7 +126,64 @@ export async function creaAziendaDiTest(
   return {
     tenantId: tenant.id,
     email: { admin: admin.email, operator: operator.email, viewer: viewer.email },
+    userIds: [admin.u.id, operator.u.id, viewer.u.id],
   }
+}
+
+/**
+ * Crea un utente SUPER_ADMIN dentro l'azienda di test indicata (`users.tenant_id` e' NOT NULL,
+ * quindi un SUPER_ADMIN ha sempre un'azienda di casa: senza `X-Tenant-ID` valgono i suoi moduli).
+ * Restituisce id ed email; l'id va passato a `eliminaAziendaDiTest` per la pulizia.
+ */
+export async function creaSuperAdminDiTest(
+  client: PrismaClient,
+  tenantId: string,
+  etichetta: string
+): Promise<{ id: string; email: string }> {
+  const unico = `${Date.now().toString(36)}${suffissoCasuale(4)}`
+  const sigla = etichetta.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  const email = `e2e-${sigla}-${unico}-superadmin@test.invalid`
+  const u = await client.user.create({
+    data: {
+      tenantId,
+      keycloakId: `e2e-${sigla}-${unico}-superadmin`,
+      fiscalCode: `E2E9${unico.toUpperCase()}`.slice(0, 16).padEnd(16, 'X'),
+      firstName: 'SUPER_ADMIN',
+      lastName: etichetta.slice(0, 40),
+      email,
+      role: 'SUPER_ADMIN',
+    },
+  })
+  return { id: u.id, email }
+}
+
+/**
+ * Cancella, per id ESATTI, utenti e azienda creati da `creaAziendaDiTest` (e gli eventuali altri
+ * utenti passati in `altriUtenti`). Mai per prefisso. Ritorna i problemi incontrati (un'azienda
+ * con dati immutabili, per esempio movimenti del registro, non si cancella: resta nel database
+ * di test come per gli altri spec). Le aziende senza dati immutabili spariscono.
+ */
+export async function eliminaAziendaDiTest(
+  client: PrismaClient,
+  azienda: AziendaDiTest,
+  altriUtenti: string[] = []
+): Promise<string[]> {
+  const problemi: string[] = []
+  const utenti = [...azienda.userIds, ...altriUtenti]
+  const passo = async (nome: string, f: () => Promise<unknown>) => {
+    try {
+      await f()
+    } catch (e) {
+      problemi.push(`${nome}: ${(e as Error).message.split('\n').pop()}`)
+    }
+  }
+  await passo('assegnazioni ruolo', () =>
+    client.userRoleAssignment.deleteMany({ where: { tenantId: azienda.tenantId } })
+  )
+  await passo('ruoli', () => client.role.deleteMany({ where: { tenantId: azienda.tenantId } }))
+  await passo('utenti', () => client.user.deleteMany({ where: { id: { in: utenti } } }))
+  await passo('azienda', () => client.tenant.deleteMany({ where: { id: azienda.tenantId } }))
+  return problemi
 }
 
 /** Token API di un utente dell'azienda di test (dev-login: un nuovo accesso invalida il precedente). */
