@@ -116,6 +116,8 @@ services:
       # Interruttore di emergenza degli invii del registro a RENTRI: solo il testo
       # esatto "false" li sospende (ops/README, F2-9). Default: attivi.
       RENTRI_REGISTRO_INVII_ATTIVI: ${RENTRI_REGISTRO_INVII_ATTIVI:-true}
+      # Moduli commerciali chiusi nel backend: blocca (default) | registra (solo avviso nel log).
+      MODULI_BACKEND_MODALITA: ${MODULI_BACKEND_MODALITA:-blocca}
       # Cifratura a riposo dei certificati RENTRI per-tenant
       RENTRI_CREDENTIAL_ENC_KEY: ${RENTRI_CREDENTIAL_ENC_KEY:?RENTRI_CREDENTIAL_ENC_KEY richiesta}
       # Firma: scelta ESPLICITA obbligatoria (fail-closed, P3 task 1). In
