@@ -129,6 +129,8 @@ export class AnalisiSintesiComponent {
   @Input() conRentri = true
 
   protected etichetteScheletro(): string[] {
-    return ['Conformità', 'Firme', 'RENTRI', 'Andamento'].filter(e => this.conRentri || e !== 'RENTRI')
+    return ['Conformità', 'Firme', 'RENTRI', 'Andamento'].filter(
+      e => this.conRentri || e !== 'RENTRI'
+    )
   }
 }

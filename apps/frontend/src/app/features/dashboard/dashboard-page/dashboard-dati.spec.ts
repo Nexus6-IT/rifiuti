@@ -252,9 +252,11 @@ describe('dashboard-dati', () => {
       const celle = celleAnalisi(dashboardFixture(), mesi, false)
       expect(celle.map(c => c.etichetta)).toEqual(['Conformità', 'Firme', 'Andamento'])
       expect(celle[0].dettaglio).toBe('Firme 90% · Ritardi 4%')
-      expect(
-        celleAnalisi(dashboardSenzaFir(), [], false).map(c => c.etichetta)
-      ).toEqual(['Conformità', 'Firme', 'Andamento'])
+      expect(celleAnalisi(dashboardSenzaFir(), [], false).map(c => c.etichetta)).toEqual([
+        'Conformità',
+        'Firme',
+        'Andamento',
+      ])
     })
 
     it('raggruppa anche le quattro cifre: «1.240 di 1.300» e «1.647 questo mese»', () => {
