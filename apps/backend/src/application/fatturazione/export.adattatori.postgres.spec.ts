@@ -145,10 +145,9 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
     )
   const stato = (id: string) =>
     owner
-      .$queryRawUnsafe<{ emesso_il: Date | null; versione: number }[]>(
-        `SELECT emesso_il, versione FROM documenti_fattura WHERE id = $1::uuid`,
-        id
-      )
+      .$queryRawUnsafe<
+        { emesso_il: Date | null; versione: number }[]
+      >(`SELECT emesso_il, versione FROM documenti_fattura WHERE id = $1::uuid`, id)
       .then(r => r[0])
   it('mappature mancanti: 409 MAPPATURE_MANCANTI con l`elenco in details, nessun file, nessun emesso_il', async () => {
     const a = await azienda()

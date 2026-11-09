@@ -105,8 +105,9 @@ describe('Job RENTRI: abbonamento del gruppo — Postgres reale', () => {
     })
     ;(client as any).$on('query', (e: { query: string }) => query.push(e.query))
     const { escludiPiattaforma } = await import('../../core/context/azienda-piattaforma')
-    const { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } =
-      await import('../../application/billing/contratto-gruppo.service')
+    const { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } = await import(
+      '../../application/billing/contratto-gruppo.service'
+    )
     await client.tenant.findMany({
       where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
       select: { id: true },
