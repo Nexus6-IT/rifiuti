@@ -11,10 +11,13 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger'
 import { CERCatalogService } from '../../domain/cer/services/cer-catalog.service'
 import { cerCanonico } from '../../domain/waste-movement/cer-registro'
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 export class CERResponseDto {
   id: string
@@ -33,6 +36,8 @@ export class CERStatisticsDto {
 
 @ApiTags('cer')
 @Controller('cer')
+@UseGuards(JwtAuthGuard)
+@RichiedeModulo('cer', 'fir', 'registro', 'giacenze')
 export class CERController {
   constructor(private readonly cerCatalogService: CERCatalogService) {}
 

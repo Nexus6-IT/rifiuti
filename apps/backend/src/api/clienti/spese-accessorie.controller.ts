@@ -32,10 +32,12 @@ import {
   ModificaSpesaAccessoriaDto,
   TIPI_SPESA,
 } from './dto/spesa-accessoria.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('spese-accessorie')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SpeseAccessorieController {
   constructor(private readonly spese: SpeseAccessorieService) {}

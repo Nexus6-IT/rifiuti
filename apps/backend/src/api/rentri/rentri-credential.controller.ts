@@ -39,6 +39,7 @@ import {
 } from '../../infrastructure/rentri/certificato/algoritmo-da-chiave'
 import { validaCertificato } from '../../infrastructure/rentri/certificato/valida-certificato'
 import { SetRentriCredentialDto } from './dto/set-rentri-credential.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Esito generico delle operazioni di scrittura (mai segreti). */
 interface SuccessResponse {
@@ -77,6 +78,7 @@ interface CredentialStatusResponse {
 // Global prefix is `api/v1` (vedi main.ts), quindi il path completo è
 // `api/v1/rentri/credential`.
 @Controller('rentri/credential')
+@RichiedeModulo('rentri')
 // Gestione di un segreto sensibile (certificato/chiave del tenant): riservata
 // agli amministratori del tenant.
 @UseGuards(JwtAuthGuard, RolesGuard)

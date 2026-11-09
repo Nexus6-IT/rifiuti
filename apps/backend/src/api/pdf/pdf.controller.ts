@@ -18,6 +18,7 @@ import { MUDGeneratorService } from '../../application/mud/mud-generator.service
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
 import { generaQrVidimazione } from '../../infrastructure/rentri/qr/qr-vidimazione'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * PDF Controller
@@ -39,6 +40,7 @@ export class PdfController {
   @Get('fir/:id')
   @ApiOperation({ summary: 'Download FIR as PDF' })
   @ApiParam({ name: 'id', type: String, description: 'FIR ID' })
+  @RichiedeModulo('fir')
   async downloadFIR(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
     // Il tenant DEVE essere quello dell'utente autenticato: senza questo vincolo
     // qualsiasi utente scaricherebbe il FIR di qualsiasi tenant conoscendone l'id.
@@ -99,6 +101,7 @@ export class PdfController {
   @Get('mud/:year')
   @ApiOperation({ summary: 'Download MUD report as PDF' })
   @ApiParam({ name: 'year', type: Number, description: 'Report year' })
+  @RichiedeModulo('mud')
   async downloadMUD(@Param('year') year: string, @Req() req: any, @Res() res: Response) {
     const reportYear = parseInt(year, 10)
 

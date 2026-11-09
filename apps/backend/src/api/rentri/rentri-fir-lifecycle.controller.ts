@@ -44,6 +44,7 @@ import { AnnullaFirRentriDto } from './dto/annulla-fir-rentri.dto'
 import { CaricaAllegatoFirRentriDto } from './dto/carica-allegato-fir-rentri.dto'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * `rule` di `DomainException.businessRuleViolation` per cui esiste una
@@ -86,6 +87,7 @@ const RULE_TRADOTTE_TASK_9 = new Set([
 @ApiTags('RENTRI FIR Lifecycle')
 @ApiBearerAuth()
 @Controller('rentri/fir')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
 export class RentriFirLifecycleController {

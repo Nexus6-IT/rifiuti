@@ -47,6 +47,7 @@ import {
   UpdateTrasportatoreDto,
   UpdateDestinatarioDto,
 } from './dto/create-registry.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 // ---- Swagger: campi di ditta e sede comuni alle risposte (F2-10) ----
 const CAMPI_DITTA_SWAGGER = {
@@ -95,6 +96,7 @@ const rispostaSwagger = (proprieta: Record<string, unknown>) => ({
 @ApiTags('registry')
 @ApiBearerAuth()
 @Controller('registry')
+@RichiedeModulo('anagrafiche')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RegistryController {
   constructor(
@@ -235,6 +237,7 @@ export class RegistryController {
     description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
   })
   @Get('produttori')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti')
   async listProduttori(@Req() req: any) {
     // req.tenantId è impostato dal TenantContextMiddleware (da JWT) e sovrascritto
     // dal TenantSwitchInterceptor quando l'utente invia X-Tenant-ID valido.
@@ -268,6 +271,7 @@ export class RegistryController {
   })
   @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('produttori/:id')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti')
   async getProduttore(@Param('id') id: string) {
     const result = await this.getProduttoreUseCase.execute({ id })
 
@@ -348,6 +352,7 @@ export class RegistryController {
     description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
   })
   @Get('trasportatori')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti')
   async listTrasportatori(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
     const result = await this.listTrasportatoriUseCase.execute({ tenantId })
@@ -388,6 +393,7 @@ export class RegistryController {
   })
   @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('trasportatori/:id')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti')
   async getTrasportatore(@Param('id') id: string) {
     const result = await this.getTrasportatoreUseCase.execute({ id })
 
@@ -472,6 +478,7 @@ export class RegistryController {
     description: 'Elenco paginato; ogni voce porta ditta, sede predefinita e numero di sedi',
   })
   @Get('destinatari')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti')
   async listDestinatari(@Req() req: any) {
     const tenantId = requireRequestTenantId(req)
     const result = await this.listDestinatariUseCase.execute({ tenantId })
@@ -510,6 +517,7 @@ export class RegistryController {
   })
   @ApiResponse({ status: 404, description: 'Controparte non trovata' })
   @Get('destinatari/:id')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti')
   async getDestinatario(@Param('id') id: string) {
     const result = await this.getDestinatarioUseCase.execute({ id })
 

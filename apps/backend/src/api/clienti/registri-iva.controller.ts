@@ -27,10 +27,12 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { RegistriIvaService } from '../../application/clienti/registri-iva.service'
 import { CreaRegistroIvaDto, ModificaRegistroIvaDto } from './dto/registro-iva.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('registri-iva')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RegistriIvaController {
   constructor(private readonly registri: RegistriIvaService) {}

@@ -44,6 +44,7 @@ import { ContatoriPerContrattoQueryDto, ListaLegamiQueryDto } from './dto/lista-
 import { ModificaLegameDto } from './dto/modifica-legame.dto'
 import { PropostaLegameDto } from './dto/proposta.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Corpo della proposta -> input del servizio (nomi del registro) e scelte (`righe` -> `righeIds`). */
 export function inputEScelteDaProposta(dto: PropostaLegameDto): {
@@ -74,6 +75,7 @@ export function inputEScelteDaProposta(dto: PropostaLegameDto): {
 @ApiTags('legami-movimento')
 @ApiBearerAuth()
 @Controller('legami-movimento')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LegamiMovimentoController {
   constructor(

@@ -11,10 +11,12 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RUOLI_LETTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('legami-movimento')
 @ApiBearerAuth()
 @Controller('registro/movimenti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class MovimentoLegameController {
   constructor(private readonly legami: LegamiService) {}

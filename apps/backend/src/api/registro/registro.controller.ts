@@ -65,6 +65,7 @@ import {
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { annoSolareItaliano } from '../../core/time/anno-italiano'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono registrare movimenti e
@@ -76,6 +77,7 @@ export const RUOLI_PROGRESSIVO_INIZIALE: readonly RuoloApplicativo[] = ['SUPER_A
 
 @ApiTags('registro')
 @Controller('registro')
+@RichiedeModulo('registro')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class RegistroController {

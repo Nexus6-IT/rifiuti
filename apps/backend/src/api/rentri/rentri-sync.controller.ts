@@ -44,6 +44,7 @@ import {
   SyncLogEntryDto,
   QueueMetricsResponseDto,
 } from './dto/sync-fir.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Ruoli che possono confermare una nuova trasmissione dopo la verifica sul portale. */
 const RUOLI_NUOVA_TRASMISSIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADMIN']
@@ -74,6 +75,7 @@ const RUOLI_NUOVA_TRASMISSIONE: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'A
 @ApiTags('RENTRI Sync')
 @ApiBearerAuth()
 @Controller('rentri/sync')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
 export class RENTRISyncController {

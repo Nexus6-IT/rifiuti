@@ -35,12 +35,14 @@ import {
 } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { CreateRentriUnitaLocaleDto } from './dto/create-rentri-unita-locale.dto'
 import { UpdateRentriUnitaLocaleDto } from './dto/update-rentri-unita-locale.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('rentri')
 @ApiBearerAuth()
 // Global prefix is `api/v1` (vedi main.ts), quindi il path completo è
 // `api/v1/rentri/unita-locali`.
 @Controller('rentri/unita-locali')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RentriUnitaLocaleController {
   constructor(private readonly service: RentriUnitaLocaleService) {}

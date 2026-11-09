@@ -13,10 +13,12 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { ListaScostamentiQueryDto } from './dto/lista-scostamenti.dto'
 import { LegameParamDto, PresaAttoDto } from './dto/presa-atto.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('fatturazione')
 @ApiBearerAuth()
 @Controller()
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ScostamentiController {
   constructor(private readonly scostamenti: ScostamentiService) {}

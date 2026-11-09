@@ -26,6 +26,7 @@ import { GiacenzeService } from './giacenze.service'
 import { GiacenzeQueryDto } from './giacenze-query.dto'
 import { SoglieDepositoDto } from './soglie-deposito.dto'
 import { SoglieDepositoService, SoglieNonValideError } from './soglie-deposito.service'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 const MESSAGGIO_REGISTRO_NON_TROVATO = 'Registro non trovato.'
 
@@ -38,6 +39,7 @@ const MESSAGGIO_REGISTRO_NON_TROVATO = 'Registro non trovato.'
  */
 @ApiTags('giacenze')
 @Controller('giacenze')
+@RichiedeModulo('giacenze')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class GiacenzeController {

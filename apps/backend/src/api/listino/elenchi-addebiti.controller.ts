@@ -31,10 +31,12 @@ import { AggiungiRigheDto, SostituisciDaDto } from './dto/azioni-listino.dto'
 import { ModificaElencoAddebitiDto } from './dto/elenco-addebiti.dto'
 import { CreaRigaAddebitoDto } from './dto/riga-addebito.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('elenchi-addebiti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ElenchiAddebitiController {
   constructor(

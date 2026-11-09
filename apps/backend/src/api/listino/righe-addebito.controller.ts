@@ -32,10 +32,12 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ModificaRigaAddebitoDto } from './dto/riga-addebito.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('righe-addebito')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RigheAddebitoController {
   constructor(private readonly righe: RigheAddebitoService) {}

@@ -27,10 +27,12 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { ContiCorrentiService } from '../../application/clienti/conti-correnti.service'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 import { CreaContoCorrenteDto, ModificaContoCorrenteDto } from './dto/conto-corrente.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('conti-correnti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContiCorrentiController {
   constructor(private readonly conti: ContiCorrentiService) {}

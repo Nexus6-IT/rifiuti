@@ -3,12 +3,14 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { EsgService } from './esg.service'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * ESG Controller — report ambientale (CO₂ evitata, % recupero) dal dato RENTRI.
  */
 @ApiTags('esg')
 @Controller('esg')
+@RichiedeModulo('esg')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class EsgController {

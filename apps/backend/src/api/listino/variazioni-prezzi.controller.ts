@@ -29,10 +29,12 @@ import {
   MesiIstatQueryDto,
 } from './dto/variazione-prezzi.dto'
 import { RUOLI_VARIAZIONI } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('variazioni-prezzi')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class VariazioniPrezziController {
   constructor(private readonly variazioni: VariazioniPrezziService) {}

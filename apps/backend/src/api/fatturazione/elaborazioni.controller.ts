@@ -23,10 +23,12 @@ import {
 } from './dto/lista-elaborazioni.dto'
 import { NuovaElaborazioneDto } from './dto/nuova-elaborazione.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('fatturazione')
 @ApiBearerAuth()
 @Controller('elaborazioni-fatturazione')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ElaborazioniController {
   constructor(private readonly elaborazioni: ElaborazioniService) {}

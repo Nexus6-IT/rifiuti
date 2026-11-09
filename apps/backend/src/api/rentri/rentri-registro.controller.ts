@@ -66,6 +66,7 @@ import {
   TrasmettiRentriDto,
   TrasmettiStoricoRentriDto,
 } from './dto/rentri-registro.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 const uuid = (messaggio: string) =>
   new ParseUUIDPipe({ exceptionFactory: () => new BadRequestException(messaggio) })
@@ -108,6 +109,7 @@ export interface RispostaAccodamento {
 
 @ApiTags('rentri-registro')
 @Controller('rentri/registro')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class RentriRegistroController {

@@ -46,10 +46,12 @@ import {
   ProrogaScadenzeDto,
   RinnovaContrattoClienteDto,
 } from './dto/contratto-cliente.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('contratti-clienti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContrattiClienteController {
   constructor(private readonly contratti: ContrattiClienteService) {}

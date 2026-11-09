@@ -28,6 +28,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { RentriUnitaLocale } from '../../infrastructure/rentri/rentri-unita-locale.service'
 import { SincronizzaSitiUseCase } from '../../application/rentri/use-cases/sincronizza-siti.use-case'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 interface RisultatoSiti {
   items: RentriUnitaLocale[]
@@ -38,6 +39,7 @@ interface RisultatoSiti {
 // Global prefix è `api/v1` (vedi main.ts), quindi il path completo è
 // `api/v1/rentri/siti`.
 @Controller('rentri/siti')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
 export class RentriSitiController {

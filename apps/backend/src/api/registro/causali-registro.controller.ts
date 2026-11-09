@@ -44,9 +44,11 @@ import {
   NuovaVersioneCausaleDto,
   VersoCausaleDto,
 } from './dtos/causali-registro.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('registro')
 @Controller('registro/causali')
+@RichiedeModulo('registro')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class CausaliRegistroController {

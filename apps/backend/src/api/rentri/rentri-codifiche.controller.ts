@@ -55,6 +55,7 @@ import {
   AllineamentoRentriGiaInCorsoError,
 } from '../../application/reference-data/rentri-codifiche-sync.service'
 import { CERPrismaRepository } from '../../infrastructure/persistence/cer-prisma.repository'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Voce dell'elenco codici CER non più confermati dall'ultimo allineamento. */
 interface CodiceCerNonPresente {
@@ -83,6 +84,7 @@ interface DiagnosticaCodificheResponse {
 // Global prefix è `api/v1` (vedi main.ts), quindi il path completo è
 // `api/v1/rentri/codifiche/allinea`.
 @Controller('rentri/codifiche')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')
 export class RentriCodificheController {

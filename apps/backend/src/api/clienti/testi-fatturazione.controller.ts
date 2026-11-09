@@ -30,10 +30,12 @@ import {
   ModificaTestoFatturazioneDto,
 } from './dto/testo-fatturazione.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('testi-fatturazione')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TestiFatturazioneController {
   constructor(private readonly testi: TestiFatturazioneService) {}
