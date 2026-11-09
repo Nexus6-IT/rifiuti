@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
@@ -76,6 +77,7 @@ describe('Registro - Data operazione precompilata all apertura', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         DatePipe,
         { provide: RegistroService, useValue: servizio },

@@ -3,6 +3,7 @@
  * madre: e' la stessa regola dell'enforcement, applicata alla UI.
  */
 import { MeFeaturesService } from './me-features.service'
+import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { ContrattoGruppoService } from '../../application/billing/contratto-gruppo.service'
 
 const RADICE = 'tenant-madre-uuid'
@@ -47,7 +48,7 @@ function makeService(tolteMadre: string[] | null = null) {
       ),
     },
   }
-  return new MeFeaturesService(prisma, new ContrattoGruppoService(prisma))
+  return new MeFeaturesService(new ModuliAttiviService(new ContrattoGruppoService(prisma)))
 }
 
 describe('MeFeaturesService — gruppo', () => {

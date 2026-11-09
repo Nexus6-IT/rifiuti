@@ -779,6 +779,13 @@ GRANT (default privileges di `ops/db-ruoli.sh`).
   riaccensione parte tutto quello che si e' accumulato in coda: controllare prima il numero di
   righe `DA_TRASMETTERE` (`SELECT count(*) FROM movimenti_trasmissione_rentri WHERE stato =
   'DA_TRASMETTERE' AND escluso_il IS NULL`).
+- **Controllo dei moduli nel backend**: variabile `MODULI_BACKEND_MODALITA`, default del codice `blocca`;
+  in produzione il compose la porta a `registra` per il primo rilascio (09/11), da riportare a `blocca` dopo i log;
+  (403 `MODULO_NON_ATTIVO` sulle rotte di un modulo non attivo per l'azienda); `registra` lascia
+  passare e scrive solo un avviso nel log (rilascio graduale); qualunque altro valore vale `blocca`.
+  Si cambia in `/opt/rifiuti/.env` e richiede il riavvio del backend (`docker compose --env-file
+  /opt/rifiuti/.env -f docker-compose.prod.yml up -d backend`). Un errore del database risponde 503
+  in entrambe le modalita'.
 - **Esclusione di una singola annotazione dall'invio automatico** (seguito del 31/10/2026, migration
   `20261102100000_rentri_esclusione_invio_automatico`: tre colonne nullable `escluso_il`,
   `escluso_da`, `motivo_esclusione` su `movimenti_trasmissione_rentri` e un CHECK che le ammette solo

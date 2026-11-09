@@ -3,6 +3,7 @@ import { LoggerModule } from '../../../core/logger/logger.module'
 import { MetricsModule } from '../../../core/metrics/metrics.module'
 import { PrismaModule } from '../../../infrastructure/persistence/prisma.module'
 import { RentriModule } from '../../../infrastructure/rentri/rentri.module'
+import { ModuliAttiviModule } from '../../admin/moduli-attivi.module'
 import { AuthModule } from '../../../auth/auth.module'
 import { RuoloEffettivoModule } from '../../../api/me/ruolo-effettivo.module'
 import { RentriRegistroController } from '../../../api/rentri/rentri-registro.controller'
@@ -30,6 +31,8 @@ import { ImpostazioniRentriRegistroService } from './impostazioni-rentri-registr
     RentriModule,
     AuthModule,
     RuoloEffettivoModule,
+    // Il job filtra le aziende col modulo `rentri`
+    ModuliAttiviModule,
   ],
   controllers: [RentriRegistroController],
   providers: [

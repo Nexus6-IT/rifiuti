@@ -25,11 +25,17 @@ import {
  * (P2002/unique constraint) in un errore di dominio leggibile
  * (FormularioGiaAgganciatoError), non lasciarla risalire grezza.
  */
+/** Tutte le aziende ammesse (come prima del filtro per modulo): i test non dipendono dal piano. */
+async function tuttiGliIdDi(p: PrismaClient): Promise<string[]> {
+  return (await p.tenant.findMany({ select: { id: true } })).map(t => t.id)
+}
+
 describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_fir) su Postgres reale', () => {
   let prisma: PrismaClient
   let repo: FIRPrismaRepository
   let tenantId: string
   let userId: string
+  const tuttiGliId = () => tuttiGliIdDi(prisma)
 
   beforeAll(async () => {
     prisma = new PrismaClient()
@@ -672,7 +678,8 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       const elenco = await repoLettura.elencaTrasmissioniRentriSospese(
         SOGLIA,
         1000,
-        new Date('2026-01-01T00:00:00Z')
+        new Date('2026-01-01T00:00:00Z'),
+        await tuttiGliId()
       )
       const ids = elenco.map(e => e.firId)
       expect(ids).toEqual(expect.arrayContaining([scaduto.id, senzaData.id]))
@@ -760,7 +767,12 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         const recente = await firDi(auto, {}, null) // updated_at = adesso, dopo SOGLIA
         const troppoVecchio = await firDi(auto, {}, new Date('2026-08-01T10:00:00.000Z'))
 
-        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(
+          SOGLIA,
+          1000,
+          TETTO,
+          await tuttiGliId()
+        )
         const ids = elenco.map(e => e.firId)
 
         expect(elenco.find(e => e.firId === inAuto)).toEqual({
@@ -803,7 +815,12 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         })
         try {
           const firPiattaforma = await firDi(AZIENDA_PIATTAFORMA_ID)
-          const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)
+          const elenco = await repoLettura.elencaTrasmissioniRentriSospese(
+            SOGLIA,
+            1000,
+            TETTO,
+            await tuttiGliId()
+          )
           expect(elenco.map(e => e.firId)).not.toContain(firPiattaforma)
         } finally {
           await prisma.tenant.update({
@@ -825,9 +842,64 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
           rentriSyncStatus: 'SYNCING',
           rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
         })
-        const elenco = await vuoto.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)
+        const elenco = await vuoto.elencaTrasmissioniRentriSospese(
+          SOGLIA,
+          1000,
+          TETTO,
+          await tuttiGliId()
+        )
         expect(elenco.map(e => e.firId)).toContain(syncing)
         expect(elenco.every(e => e.stato === 'SYNCING')).toBe(true)
+      })
+
+      it('starvation: 101 SYNCING di aziende senza rentri non occupano il lotto di 100 di chi ha il modulo', async () => {
+        const senzaRentri = await creaTenant('AUTOMATICA')
+        const conRentri = await creaTenant('AUTOMATICA')
+        const vecchio = {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2000-01-01Z'),
+        }
+        for (let i = 0; i < 101; i++) await firDi(senzaRentri, vecchio)
+        const suo = await firDi(conRentri, {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2000-06-01Z'),
+        })
+
+        // Come fa il job: l'elenco delle aziende ammesse (col modulo) e' solo conRentri, e il LIMIT e' 100.
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 100, TETTO, [
+          conRentri,
+        ])
+
+        expect(elenco.map(e => e.firId)).toEqual([suo])
+        expect(elenco.some(e => e.tenantId === senzaRentri)).toBe(false)
+      })
+
+      it('azienda SOSPESA col modulo: il suo SYNCING si riprende (trasmissione partita), il suo PENDING no', async () => {
+        const sospesa = await creaTenant('AUTOMATICA', 'SUSPENDED')
+        const syncing = await firDi(sospesa, {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2000-01-01Z'),
+        })
+        const pending = await firDi(sospesa)
+
+        const ids = (
+          await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 100, TETTO, [sospesa])
+        ).map(e => e.firId)
+
+        expect(ids).toContain(syncing)
+        expect(ids).not.toContain(pending)
+      })
+
+      it('aziende ammesse vuote: elenco vuoto, nessun errore SQL', async () => {
+        const t = await creaTenant('AUTOMATICA')
+        await firDi(t, {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2000-01-01Z'),
+        })
+        await firDi(t)
+        expect(await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 100, TETTO, [])).toEqual(
+          []
+        )
       })
 
       it('i SYNCING in stallo vengono prima dei PENDING mai avviati, anche con un limite basso', async () => {
@@ -837,7 +909,12 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
           rentriSyncStatus: 'SYNCING',
           rentriSyncAvviatoAt: new Date('2026-10-23T09:00:00.000Z'),
         })
-        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1, TETTO)
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(
+          SOGLIA,
+          1,
+          TETTO,
+          await tuttiGliId()
+        )
         expect(elenco).toHaveLength(1)
         expect(elenco[0].stato).toBe('SYNCING')
       })
@@ -852,9 +929,9 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         const inScaduta = await firDi(scaduta)
         const inSospesa = await firDi(sospesa)
 
-        const ids = (await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO)).map(
-          e => e.firId
-        )
+        const ids = (
+          await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 1000, TETTO, await tuttiGliId())
+        ).map(e => e.firId)
 
         expect(ids).toEqual(expect.arrayContaining([inAttiva, inProva]))
         expect(ids).not.toContain(inScaduta)
@@ -868,11 +945,21 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         const riaperto = await firDi(sana, {}, new Date('2026-10-22T08:00:00.000Z'))
 
         // I SYNCING in stallo (anche di altri test) vengono comunque per primi: il limite li include.
-        const tutti = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 10000, TETTO)
+        const tutti = await repoLettura.elencaTrasmissioniRentriSospese(
+          SOGLIA,
+          10000,
+          TETTO,
+          await tuttiGliId()
+        )
         const nSyncing = tutti.filter(e => e.stato === 'SYNCING').length
         const limite = nSyncing + 5
 
-        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, limite, TETTO)
+        const elenco = await repoLettura.elencaTrasmissioniRentriSospese(
+          SOGLIA,
+          limite,
+          TETTO,
+          await tuttiGliId()
+        )
 
         expect(elenco).toHaveLength(limite)
         // Il primo PENDING dopo i SYNCING e' il riaperto di recente.
@@ -885,13 +972,15 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         const dopo = await repoLettura.elencaTrasmissioniRentriSospese(
           new Date('2026-10-23T10:00:00.000Z'),
           1000,
-          TETTO
+          TETTO,
+          await tuttiGliId()
         )
         expect(dopo.map(e => e.firId)).toContain(id)
         const prima = await repoLettura.elencaTrasmissioniRentriSospese(
           new Date('2026-10-23T08:00:00.000Z'),
           1000,
-          TETTO
+          TETTO,
+          await tuttiGliId()
         )
         expect(prima.map(e => e.firId)).not.toContain(id)
       })
@@ -983,7 +1072,8 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
           const sospese = await repoLettura.elencaTrasmissioniRentriSospese(
             SOGLIA,
             1000,
-            new Date('2026-10-01T00:00:00.000Z')
+            new Date('2026-10-01T00:00:00.000Z'),
+            await tuttiGliId()
           )
           expect(sospese.find(e => e.firId === fir.id)).toEqual({
             firId: fir.id,

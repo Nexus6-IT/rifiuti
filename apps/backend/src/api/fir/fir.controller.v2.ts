@@ -60,6 +60,7 @@ import { RUOLI_OPERATORE_PESA } from '../pese/ruoli-pesa'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MaxDecimali } from '../../core/validators/max-decimali'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono creare un FIR. Come nel
@@ -107,6 +108,7 @@ export class AnnullaFIRDto {
 
 @ApiTags('fir')
 @Controller('fir')
+@RichiedeModulo('fir')
 // RolesGuard oltre a JwtAuthGuard: le azioni sul ciclo di vita (emetti/presa-in-carico/
 // conferma-consegna/annulla) richiedono un ruolo operativo tramite @Roles. La creazione
 // decide invece sul ruolo EFFETTIVO nell'azienda selezionata, dentro il controller. Le
@@ -242,6 +244,8 @@ export class FIRControllerV2 {
     return FIRResponseDto.fromDomain(result.value)
   }
 
+  // Lettura usata anche da pese (collega documento), registro e RENTRI: basta una delle chiavi.
+  @RichiedeModulo('fir', 'registro', 'pese', 'rentri')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

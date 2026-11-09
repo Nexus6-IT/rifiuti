@@ -22,6 +22,7 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { ContractService, ContractStatus } from './contract.service'
 import { CreateContractDto, ChangeContractStatusDto } from './dto/create-contract.dto'
 import { ModificaContrattoDto } from './dto/modifica-contratto.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Data da stringa ISO: `null` (svuota) e `undefined` (non cambia) restano tali. */
 const comeData = (v: string | null | undefined): Date | null | undefined =>
@@ -32,6 +33,7 @@ const comeData = (v: string | null | undefined): Date | null | undefined =>
  */
 @ApiTags('contracts')
 @Controller('contracts')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class ContractController {

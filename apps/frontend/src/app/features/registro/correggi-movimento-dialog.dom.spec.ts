@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
@@ -149,6 +150,7 @@ describe('Registro - rettifica e annullamento (template reale, click veri)', () 
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         DatePipe,
         { provide: RegistroService, useValue: servizio },
@@ -555,6 +557,7 @@ describe('CorreggiMovimentoDialogComponent - unità, stato fisico e causali', ()
     TestBed.configureTestingModule({
       imports: [CorreggiMovimentoDialogComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         { provide: RegistroService, useValue: servizio },
         { provide: CausaliRegistroService, useValue: causali },

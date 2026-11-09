@@ -46,10 +46,12 @@ import {
 } from './allegato-contratto-upload'
 import { contentDisposition } from '../common/content-disposition'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('contratti-clienti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AllegatiContrattoClienteController {
   constructor(private readonly allegati: AllegatiContrattoClienteService) {}

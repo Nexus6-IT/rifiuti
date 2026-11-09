@@ -5,6 +5,8 @@ import { LoggerService } from '../../../core/logger/logger.service'
 import { MetricsService } from '../../../core/metrics/metrics.service'
 import { SyncFIRToRENTRIUseCase } from '../../../application/rentri/sync-fir-to-rentri.use-case'
 import { RENTRISyncQueue } from '../rentri-sync.queue'
+import { ModuliAttiviService } from '../../../application/admin/moduli-attivi.service'
+import { MODULO_NON_ATTIVO } from '../../../core/context/modulo-non-attivo-errore'
 import { TenantContext } from '../../../core/context/tenant-context'
 
 /**
@@ -37,7 +39,8 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
     private readonly logger: LoggerService,
     private readonly metrics: MetricsService,
     private readonly syncFIRUseCase: SyncFIRToRENTRIUseCase,
-    private readonly rentriSyncQueue: RENTRISyncQueue
+    private readonly rentriSyncQueue: RENTRISyncQueue,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext('RENTRISyncJobProcessor')
   }
@@ -99,6 +102,20 @@ export class RENTRISyncJobProcessor implements OnModuleInit {
         { jobId: job.id, type, attemptsMade: job.attemptsMade }
       )
       throw new UnrecoverableError('Job RENTRI sync senza azienda (tenantId mancante)')
+    }
+
+    // Il modulo puo' essere stato tolto dopo l'accodamento (o fra un retry e l'altro): un job gia'
+    // in coda non deve parlare con RENTRI e non si ripete. Un errore del database qui e' normale.
+    const moduli = await this.moduli.moduliAttivi(tenantId.trim())
+    if (!moduli.includes('rentri')) {
+      this.logger.warn('Job RENTRI sync scartato: modulo rentri non attivo', {
+        jobId: job.id,
+        type,
+        tenantId,
+      })
+      throw new UnrecoverableError(
+        `${MODULO_NON_ATTIVO}: il modulo rentri non e' attivo per l'azienda del job`
+      )
     }
 
     try {

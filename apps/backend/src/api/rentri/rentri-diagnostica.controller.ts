@@ -31,11 +31,13 @@ import {
   GetRentriDiagnosticaUseCase,
   RentriDiagnostica,
 } from '../../application/rentri/get-rentri-diagnostica.use-case'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('rentri')
 @ApiBearerAuth()
 // Global prefix è `api/v1` (v. main.ts): path completo `api/v1/rentri/diagnostica`.
 @Controller('rentri/diagnostica')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 // Coerente con R1: stessi ruoli con visibilità sull'area RENTRI già usati da
 // `RentriFormulariController`/`RentriSyncController` (ricerca/aggancio e

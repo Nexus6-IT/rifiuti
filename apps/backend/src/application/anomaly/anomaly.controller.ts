@@ -3,12 +3,14 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { AnomalyDetectionService } from './anomaly-detection.service'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * Anomaly Controller — rilevamento anomalie nei FIR/movimenti del tenant.
  */
 @ApiTags('anomaly')
 @Controller('anomaly')
+@RichiedeModulo('anomalie')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AnomalyController {

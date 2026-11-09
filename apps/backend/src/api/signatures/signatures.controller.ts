@@ -42,6 +42,7 @@ import { DomainException } from '../../domain/shared/domain-exception'
 import { ApplySignatureDto, ApplySignatureResponseDto } from './dto/apply-signature.dto'
 import { VerifySignaturesResponseDto } from './dto/verify-signatures.dto'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
+import { RichiedeModulo, SenzaModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** UUID v1-v5 — l'id FIR è una colonna Postgres `uuid`. */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -93,6 +94,7 @@ export class SignaturesController {
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   @ApiResponse({ status: 403, description: 'Livello SPID insufficiente o autenticazione scaduta' })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @RichiedeModulo('fir')
   async applySignature(
     @Param('firId') firId: string,
     @Body() dto: ApplySignatureDto,
@@ -175,6 +177,9 @@ export class SignaturesController {
   })
   @ApiResponse({ status: 400, description: 'ID FIR malformato' })
   @ApiResponse({ status: 404, description: 'FIR non trovato' })
+  @SenzaModulo(
+    'Verifica pubblica da QR code sulla copia cartacea: senza autenticazione e senza azienda'
+  )
   async verifySignatures(@Param('firId') firId: string): Promise<VerifySignaturesResponseDto> {
     // ID malformato → 400 (evita il Prisma error P2023 che degenererebbe in 500).
     if (!UUID_REGEX.test(firId)) {
@@ -224,6 +229,7 @@ export class SignaturesController {
   @ApiResponse({ status: 400, description: 'ID FIR malformato' })
   @ApiResponse({ status: 401, description: 'Non autenticato' })
   @ApiResponse({ status: 404, description: 'FIR non trovato o non appartenente al tenant' })
+  @RichiedeModulo('fir')
   async verifySignaturesDettaglio(
     @Param('firId') firId: string,
     @Req() req: any
@@ -270,6 +276,7 @@ export class SignaturesController {
       },
     },
   })
+  @SenzaModulo('URL pubblico di verifica per il QR code: senza autenticazione e senza azienda')
   async getVerificationUrl(@Param('firId') firId: string): Promise<{ url: string }> {
     const url = this.verifySignaturesUseCase.generateVerificationUrl(firId)
     return { url }

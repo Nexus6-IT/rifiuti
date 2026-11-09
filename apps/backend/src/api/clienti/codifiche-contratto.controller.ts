@@ -32,10 +32,12 @@ import {
   ProssimoCodiceQueryDto,
 } from './dto/codifica-contratto.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('codifiche-contratto')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CodificheContrattoController {
   constructor(private readonly codifiche: CodificheContrattoService) {}

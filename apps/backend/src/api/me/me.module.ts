@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { AuthModule } from '../../auth/auth.module'
-import { BillingModule } from '../../application/billing/billing.module'
+import { ModuliAttiviModule } from '../../application/admin/moduli-attivi.module'
 import { MeFeaturesController } from './me-features.controller'
 import { MeFeaturesService } from './me-features.service'
 import { MembershipController } from './membership.controller'
@@ -15,14 +15,14 @@ import { MembershipService } from './membership.service'
  * Dipendenze:
  *  - PrismaModule    → lettura tenant (tier/limiti/featureFlags).
  *  - AuthModule      → JwtAuthGuard (autenticazione).
- *  - BillingModule   → ContrattoGruppoService (contratto della radice per le figlie).
+ *  - ModuliAttiviModule → ModuliAttiviService (moduli e piano dal contratto della radice).
  *
  * Da registrare in `app.module.ts`:
  *   import { MeModule } from './api/me/me.module';
  *   imports: [ ..., MeModule ]
  */
 @Module({
-  imports: [PrismaModule, AuthModule, BillingModule],
+  imports: [PrismaModule, AuthModule, ModuliAttiviModule],
   controllers: [MeFeaturesController, MembershipController],
   providers: [MeFeaturesService, MembershipService],
   // MembershipService esportato: usato dal TenantSwitchInterceptor (globale in AppModule)

@@ -17,6 +17,7 @@ import {
   ParametriNumerazioneDto,
 } from './dto/numerazione.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Anno corrente nel fuso italiano. */
 const annoCorrente = (): number => Number(oggiRoma().slice(0, 4))
@@ -24,6 +25,7 @@ const annoCorrente = (): number => Number(oggiRoma().slice(0, 4))
 @ApiTags('fatturazione')
 @ApiBearerAuth()
 @Controller('numerazioni-fattura')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class NumerazioniController {
   constructor(private readonly numerazioni: NumerazioniService) {}

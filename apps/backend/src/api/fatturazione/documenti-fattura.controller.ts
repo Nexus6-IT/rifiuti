@@ -37,10 +37,12 @@ import { EsportaDto } from './dto/export.dto'
 import { DocumentoParamDto, ListaDocumentiQueryDto } from './dto/lista-documenti.dto'
 import { StornoDto } from './dto/storno.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('fatturazione')
 @ApiBearerAuth()
 @Controller('documenti-fattura')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DocumentiFatturaController {
   constructor(

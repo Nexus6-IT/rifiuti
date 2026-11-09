@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
@@ -38,6 +39,8 @@ function mov(id: string, n: number, stato: StatoRentri | null): Movimento {
 }
 
 describe('RegistroComponent — trasmissione a RENTRI', () => {
+  /** Modulo `rentri` attivo per l'azienda (le aziende TRIAL/PROFESSIONAL non lo hanno). */
+  let moduloRentri = true
   let servizio: jasmine.SpyObj<RegistroService>
   let rentri: jasmine.SpyObj<RentriRegistroService>
   let toast: jasmine.SpyObj<ToastService>
@@ -121,6 +124,10 @@ describe('RegistroComponent — trasmissione a RENTRI', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => k !== 'rentri' || moduloRentri },
+        },
         DatePipe,
         provideNoopAnimations(),
         { provide: RegistroService, useValue: servizio },
@@ -144,6 +151,8 @@ describe('RegistroComponent — trasmissione a RENTRI', () => {
   })
   afterEach(() => fixture?.destroy())
 
+  beforeEach(() => (moduloRentri = true))
+
   const el = (testid: string): HTMLInputElement | null =>
     document.body.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)
 
@@ -156,6 +165,13 @@ describe('RegistroComponent — trasmissione a RENTRI', () => {
     expect(el('registro-rentri-sel-m-rif')!.disabled).toBeFalse()
     expect(el('registro-rentri-sel-m-ok')!.disabled).toBeTrue()
     expect(el('registro-rentri-sel-m-attesa')!.disabled).toBeTrue()
+  })
+
+  it('azienda senza il modulo rentri: nessun pannello, nessuna chiamata a /rentri/registro', () => {
+    moduloRentri = false
+    monta()
+    expect(rentri.registri).not.toHaveBeenCalled()
+    expect(el('registro-col-rentri')).toBeNull()
   })
 
   it('senza puoTrasmettere non ci sono checkbox', () => {

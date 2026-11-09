@@ -13,6 +13,8 @@ import { PrometheusModule } from '@willsoto/nestjs-prometheus'
 import { HttpExceptionFilter } from './core/filters/http-exception.filter'
 import { TenantContextMiddleware } from './core/middleware/tenant-context.middleware'
 import { TenantSwitchInterceptor } from './core/interceptors/tenant-switch.interceptor'
+import { ModuloAttivoInterceptor } from './core/interceptors/modulo-attivo.interceptor'
+import { ModuliAttiviModule } from './application/admin/moduli-attivi.module'
 import { AuthModule } from './auth/auth.module'
 import { PrismaModule } from './infrastructure/persistence/prisma.module'
 import { RegistryModule } from './api/registry/registry.module'
@@ -157,6 +159,7 @@ import { AccessRequestModule } from './application/access-request/access-request
 
     // Endpoint "self" utente autenticato
     MeModule,
+    ModuliAttiviModule,
 
     // Firma digitale FIR (WS-E) — cablato e raggiungibile; default sandbox
     SignaturesModule,
@@ -197,6 +200,13 @@ import { AccessRequestModule } from './application/access-request/access-request
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantSwitchInterceptor,
+    },
+    // Moduli commerciali chiusi nel backend (`@RichiedeModulo`/`@SenzaModulo`). DEVE stare
+    // DOPO TenantSwitchInterceptor: legge l'azienda selezionata gia' validata. Non invertire
+    // (c'e' un test sull'ordine).
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ModuloAttivoInterceptor,
     },
   ],
 })

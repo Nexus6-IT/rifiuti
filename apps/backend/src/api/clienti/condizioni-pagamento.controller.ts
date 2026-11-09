@@ -30,10 +30,12 @@ import {
   CreaCondizionePagamentoDto,
   ModificaCondizionePagamentoDto,
 } from './dto/condizione-pagamento.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('condizioni-pagamento')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CondizioniPagamentoController {
   constructor(private readonly condizioni: CondizioniPagamentoService) {}

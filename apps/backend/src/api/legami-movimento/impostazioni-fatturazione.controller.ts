@@ -14,10 +14,12 @@ import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { RUOLI_AMMINISTRATIVI, richiediRuoloEffettivo } from '../me/richiedi-ruolo-effettivo'
 import { ImpostaDefinitiveDto, ImpostaFatturazioneDto } from './dto/impostazione-fatturazione.dto'
 import { RUOLI_LETTURA, RUOLI_AMMINISTRATORI } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('legami-movimento')
 @ApiBearerAuth()
 @Controller('impostazioni-fatturazione')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ImpostazioniFatturazioneController {
   constructor(

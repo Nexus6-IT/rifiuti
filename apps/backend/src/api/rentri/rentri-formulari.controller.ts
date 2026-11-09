@@ -77,6 +77,7 @@ import {
 import { traduciErroreRentri } from '../../application/rentri/rentri-error-presentation'
 import { AgganciaFormularioRentriDto } from './dto/aggancia-formulario-rentri.dto'
 import { RilasciaLegameRentriDto } from './dto/rilascia-legame-rentri.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /** Messaggio di dominio quando il tenant non ha ancora configurato nessuna unità locale RENTRI. */
 const UNITA_LOCALE_MANCANTE_RULE = 'UNITA_LOCALE_MANCANTE'
@@ -86,6 +87,7 @@ const UNITA_LOCALE_MANCANTE_RULE = 'UNITA_LOCALE_MANCANTE'
 // Global prefix `api/v1` (v. main.ts): i path completi sono
 // `api/v1/rentri/formulari` e `api/v1/rentri/fir/:id/rilascia-legame-rentri`.
 @Controller()
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
 export class RentriFormulariController {

@@ -5,6 +5,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Roles } from '../../auth/decorators/roles.decorator'
 import { ReferenceDataService } from './reference-data.service'
 import { ReferenceDataSeederService, ReferenceDataset } from './reference-data-seeder.service'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * Reference Data Controller — stato e consultazione delle tabelle condivise
@@ -21,6 +22,7 @@ import { ReferenceDataSeederService, ReferenceDataset } from './reference-data-s
  */
 @ApiTags('reference-data')
 @Controller('reference-data')
+@RichiedeModulo('reference_data')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN')
 @ApiBearerAuth()

@@ -28,6 +28,7 @@ import {
   SalvaAbbinamentoDto,
 } from './abbinamenti.dto'
 import { AbbinamentiService, puoModificare, puoRicalcolare } from './abbinamenti.service'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 const MSG_NON_MODIFICA = 'Il tuo ruolo non consente di modificare gli abbinamenti.'
 const MSG_NON_RICALCOLA =
@@ -43,6 +44,7 @@ const idValido = new ParseUUIDPipe({
  */
 @ApiTags('abbinamenti')
 @Controller('abbinamenti')
+@RichiedeModulo('giacenze')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AbbinamentiController {

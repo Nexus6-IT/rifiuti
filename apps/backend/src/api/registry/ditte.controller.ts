@@ -28,6 +28,7 @@ import {
 import { TenantContext } from '../../core/context/tenant-context'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { AggiornaDittaDto, AggiornaSedeDto, CercaDittaDto, CreaSedeDto } from './dto/ditte.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 const SCRITTURA = ['SUPER_ADMIN', 'ADMIN', 'OPERATOR'] as const
 
@@ -51,6 +52,7 @@ const indirizzoDi = (d: {
 @ApiTags('registry')
 @ApiBearerAuth()
 @Controller('registry/ditte')
+@RichiedeModulo('anagrafiche')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DitteController {
   constructor(private readonly ditte: DitteService) {}
@@ -67,6 +69,7 @@ export class DitteController {
   })
   @Post('cerca')
   @HttpCode(HttpStatus.OK)
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti', 'pese')
   async cerca(@Req() req: any, @Body() dto: CercaDittaDto) {
     requireRequestTenantId(req)
     return { ditta: await this.ditte.cerca(dto.identificativo) }
@@ -76,6 +79,7 @@ export class DitteController {
   @ApiResponse({ status: 200, description: 'Ditta, sedi e id dei ruoli' })
   @ApiResponse({ status: 404, description: "Ditta non trovata nell'azienda selezionata" })
   @Get(':id')
+  @RichiedeModulo('anagrafiche', 'fir', 'registro', 'contratti', 'pese')
   async dettaglio(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
     requireRequestTenantId(req)
     return this.ditte.dettaglio(id)

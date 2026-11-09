@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { HttpErrorResponse } from '@angular/common/http'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Observable, Subject, of, throwError } from 'rxjs'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AuthService } from '../../core/services/auth.service'
 import {
   ATTESA_PROPOSTA_MS,
@@ -26,6 +27,7 @@ describe('BloccoFatturazioneComponent — logica', () => {
   let servizio: { proposta: jasmine.Spy }
   let clientiList: jasmine.Spy
   let ruolo: string
+  let contratti = true
   let fixture: ComponentFixture<BloccoFatturazioneComponent>
   let legami: (DatiLegameRegistrazione | null)[]
   let stati: StatoBlocco[]
@@ -50,6 +52,10 @@ describe('BloccoFatturazioneComponent — logica', () => {
           useValue: { clienti: { list: clientiList } },
         },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => k !== 'contratti' || contratti },
+        },
       ],
     })
     fixture = TestBed.createComponent(BloccoFatturazioneComponent)
@@ -74,6 +80,7 @@ describe('BloccoFatturazioneComponent — logica', () => {
       .createSpy('list')
       .and.callFake(() => of({ elementi: CLIENTI, totale: CLIENTI.length }))
     ruolo = 'OPERATOR'
+    contratti = true
   })
 
   it('causale non fatturabile: blocco nascosto e nessun legame', fakeAsync(() => {
@@ -84,6 +91,14 @@ describe('BloccoFatturazioneComponent — logica', () => {
 
   it('fatturazione spenta: nascosto', fakeAsync(() => {
     crea(of(proposta({ attiva: false })))
+    expect(q('blocco-fatturazione')).toBeNull()
+    expect(ultimo()).toBeNull()
+  }))
+
+  it('I1: azienda senza il modulo contratti: blocco nascosto e nessuna proposta (niente 403)', fakeAsync(() => {
+    contratti = false
+    crea()
+    expect(servizio.proposta).not.toHaveBeenCalled()
     expect(q('blocco-fatturazione')).toBeNull()
     expect(ultimo()).toBeNull()
   }))

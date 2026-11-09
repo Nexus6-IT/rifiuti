@@ -56,6 +56,7 @@ import { AutomezzoDto, ElencoAutomezziQueryDto } from './dto/automezzo.dto'
 import { StrumentoPesaDto } from './dto/strumento-pesa.dto'
 import { ImpostaTaraDto } from './dto/tara.dto'
 import { RUOLI_OPERATORE_PESA, RUOLI_RESPONSABILE_PESA } from './ruoli-pesa'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 function schemaMultipart(dto: string) {
   return {
@@ -75,6 +76,7 @@ function schemaMultipart(dto: string) {
  */
 @ApiTags('pese')
 @Controller('pese')
+@RichiedeModulo('pese')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class PeseController {

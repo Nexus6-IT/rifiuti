@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { DatePipe } from '@angular/common'
 import { HttpErrorResponse } from '@angular/common/http'
@@ -64,6 +65,7 @@ describe('RegistroComponent — causali dall’API', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         DatePipe,
         { provide: RegistroService, useValue: servizio },
         { provide: CausaliRegistroService, useValue: causali },
@@ -445,6 +447,7 @@ describe('RegistroComponent — riapertura del form dopo una modifica del catalo
     TestBed.configureTestingModule({
       imports: [RegistroComponent],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         DatePipe,
         {
           provide: RegistroService,

@@ -34,6 +34,7 @@ import { AnnullaPresentazioneDto } from './dtos/annulla-presentazione.dto'
 import { MudIntegrazioniService } from '../../application/mud/mud-integrazioni.service'
 import type { IntegrazioniMud } from '../../application/mud/aggregazione/mud-integrazioni'
 import { IntegrazioniMudDto } from './dtos/integrazioni-mud.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono segnare l'azienda come non
@@ -55,6 +56,7 @@ const RUOLI_INTEGRAZIONI_MUD: readonly RuoloApplicativo[] = ['SUPER_ADMIN', 'ADM
  * telematico versionato per anno.
  */
 @Controller('mud')
+@RichiedeModulo('mud')
 @UseGuards(JwtAuthGuard)
 @ApiTags('MUD Reports')
 @ApiBearerAuth()

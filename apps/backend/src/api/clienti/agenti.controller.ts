@@ -27,10 +27,12 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { AgentiService } from '../../application/clienti/agenti.service'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 import { CreaAgenteDto, ElencoAgentiQueryDto, ModificaAgenteDto } from './dto/agente.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('agenti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AgentiController {
   constructor(private readonly agenti: AgentiService) {}

@@ -3,6 +3,7 @@ import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { HttpErrorResponse } from '@angular/common/http'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Observable, of, throwError } from 'rxjs'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { ClientiService } from '../clienti/clienti.service'
@@ -131,6 +132,8 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
     fixture.detectChanges()
   }
 
+  let contratti = true
+
   const motivo = (): void => {
     fixture.componentInstance.form.patchValue({ motivo: 'Quantità errata' })
     aggiorna()
@@ -147,10 +150,15 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
       invalida: jasmine.createSpy('invalida'),
     }
     ruolo = 'OPERATOR'
+    contratti = true
     TestBed.configureTestingModule({
       imports: [CorreggiMovimentoDialogComponent, HttpClientTestingModule],
       providers: [
         provideNoopAnimations(),
+        {
+          provide: FeatureFlagsService,
+          useValue: { has: (k: string) => k !== 'contratti' || contratti },
+        },
         { provide: RegistroService, useValue: registro },
         { provide: LegamiService, useValue: legami },
         { provide: ToastService, useValue: toast },
@@ -165,6 +173,15 @@ describe('CorreggiMovimentoDialog - legame col listino', () => {
   })
 
   afterEach(() => fixture?.destroy())
+
+  it('I1: senza il modulo contratti la rettifica non legge il legame e non mostra avvisi', fakeAsync(() => {
+    contratti = false
+    apri('rettifica', of(legame()))
+    expect(legami.perMovimento).not.toHaveBeenCalled()
+    expect(legami.proposta).not.toHaveBeenCalled()
+    expect(q('correzione-errore-legame')).toBeNull()
+    expect(q('blocco-fatturazione')).toBeNull()
+  }))
 
   it('rettifica con CER cambiato: avviso «serve una nuova conferma» e blocco rivalutato sul CER nuovo', fakeAsync(() => {
     apri('rettifica', of(legame()))

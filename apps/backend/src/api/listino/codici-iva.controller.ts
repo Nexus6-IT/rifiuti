@@ -27,10 +27,12 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { CreaCodiceIvaDto, ModificaCodiceIvaDto } from './dto/codice-iva.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('codici-iva')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CodiciIvaController {
   constructor(private readonly codici: CodiciIvaService) {}

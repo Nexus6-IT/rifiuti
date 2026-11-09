@@ -16,10 +16,12 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { SelezioneExportDto } from './dto/export.dto'
 import { ImpostaMappatureDto, ParametriAdattatoreDto } from './dto/mappature.dto'
 import { RUOLI_AMMINISTRATORI } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('fatturazione')
 @ApiBearerAuth()
 @Controller('export-contabile')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ExportContabileController {
   constructor(

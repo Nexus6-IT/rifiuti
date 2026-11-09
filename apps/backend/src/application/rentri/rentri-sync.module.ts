@@ -20,6 +20,7 @@ import { DomainEventsService } from '../../core/domain-events.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
 import { RiapriTrasmissioneRentriUseCase } from './riapri-trasmissione-rentri.use-case'
@@ -31,6 +32,7 @@ import { RilasciaFormularioRENTRIUseCase } from './rilascia-formulario-rentri.us
 import { CREA_FIR_DA_FORMULARIO_RENTRI_PORT } from './crea-fir-da-formulario-rentri.port'
 import { CreaFIRDaDettaglioRENTRIUseCase } from './crea-fir-da-dettaglio-rentri.use-case'
 import { RiconciliaStatoRentriUseCase } from './riconcilia-stato-rentri.use-case'
+import { ModuliAttiviModule } from '../admin/moduli-attivi.module'
 import { RentriRiconciliazioneJob } from '../../infrastructure/jobs/rentri-riconciliazione.job'
 import { RentriCertificatoScadenzaJob } from '../../infrastructure/jobs/rentri-certificato-scadenza.job'
 import { GetAzioniDisponibiliUseCase } from './get-azioni-disponibili.use-case'
@@ -174,6 +176,8 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
     PrismaModule,
     RentriModule,
     RuoloEffettivoModule,
+    // Job: moduli attivi delle aziende (filtro `rentri`)
+    ModuliAttiviModule,
   ],
   controllers: [
     RENTRISyncController,
@@ -239,15 +243,23 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         modalitaLegameService: RentriModalitaLegameService,
         rentriSyncQueue: RENTRISyncQueue,
         firRepo: FIRPrismaRepository,
-        logger: LoggerService
+        logger: LoggerService,
+        moduli: ModuliAttiviService
       ) =>
         new TrasmettiFIRSecondoModalitaUseCase(
           modalitaLegameService,
           rentriSyncQueue,
           firRepo,
-          logger
+          logger,
+          moduli
         ),
-      inject: [RentriModalitaLegameService, RENTRISyncQueue, FIRPrismaRepository, LoggerService],
+      inject: [
+        RentriModalitaLegameService,
+        RENTRISyncQueue,
+        FIRPrismaRepository,
+        LoggerService,
+        ModuliAttiviService,
+      ],
     },
     {
       provide: ConfermaLegameRENTRIUseCase,

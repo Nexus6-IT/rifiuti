@@ -38,6 +38,7 @@ import {
   EsitoEmissionePossibile,
 } from '../../application/rentri/scorta/verifica-emissione-possibile.use-case'
 import { VidimaScortaRentriDto } from './dto/vidima-scorta-rentri.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 /**
  * REST API della scorta di numeri FIR pre-vidimati RENTRI (R6). Contratto
@@ -58,6 +59,7 @@ import { VidimaScortaRentriDto } from './dto/vidima-scorta-rentri.dto'
 @ApiTags('rentri')
 @ApiBearerAuth()
 @Controller('rentri')
+@RichiedeModulo('rentri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN', 'OPERATOR')
 export class RentriScortaController {

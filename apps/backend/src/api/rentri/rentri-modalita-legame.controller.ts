@@ -18,12 +18,14 @@ import {
   RentriModalitaLegameStatus,
 } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { SetRentriModalitaLegameDto } from './dto/set-rentri-modalita-legame.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('rentri')
 @ApiBearerAuth()
 // Global prefix is `api/v1` (vedi main.ts), quindi il path completo è
 // `api/v1/rentri/modalita-legame`.
 @Controller('rentri/modalita-legame')
+@RichiedeModulo('rentri')
 // Scelta che impegna il tenant verso RENTRI: riservata agli amministratori.
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN', 'ADMIN')

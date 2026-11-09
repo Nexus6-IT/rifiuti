@@ -16,6 +16,7 @@ import { PdfCortesiaService } from '../../application/fatturazione/pdf-cortesia'
 import { NumerazioniService } from '../../application/fatturazione/numerazioni.service'
 import { ScostamentiService } from '../../application/fatturazione/scostamenti.service'
 import { XmlDocumentoService } from '../../application/fatturazione/xml-documento.service'
+import { ModuliAttiviModule } from '../../application/admin/moduli-attivi.module'
 import { AuthModule } from '../../auth/auth.module'
 import { PrismaModule } from '../../infrastructure/database/prisma.module'
 import { FatturazioneManutenzioneJob } from '../../infrastructure/jobs/fatturazione-manutenzione.job'
@@ -34,6 +35,8 @@ import { ScostamentiController } from './scostamenti.controller'
     PrismaModule,
     AuthModule,
     RuoloEffettivoModule,
+    // Il worker ricontrolla il modulo `contratti` all'avvio del job
+    ModuliAttiviModule,
     // La connessione root BullMQ e' globale (`PermissionsModule`): qui solo la coda.
     BullModule.registerQueue({ name: CODA_FATTURAZIONE }),
   ],

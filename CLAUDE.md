@@ -46,4 +46,14 @@ TypeScript 5.2+ (Backend: Node.js 20 LTS, Frontend: Angular 17): Follow standard
 - 001-production-ready-app: Added TypeScript 5.2+ (Backend: Node.js 20 LTS, Frontend: Angular 17) (2025-10-18)
 
 <!-- MANUAL ADDITIONS START -->
+## Moduli commerciali
+
+- **Moduli commerciali chiusi nel backend.** Ogni controller nuovo dichiara il suo modulo con
+  `@RichiedeModulo('<chiave>')` (classe o metodo; con piu' chiavi ne basta una) oppure sta in
+  `BASE` di `api/controller-moduli.spec.ts` con un motivo scritto; una rotta pubblica dentro un
+  controller di modulo va marcata `@SenzaModulo('<motivo>')`. Il controller va aggiunto a
+  `MAPPA_MODULI` o `BASE` nello stesso commit: altrimenti la spec fallisce. Lato frontend la rotta
+  nuova ha `canActivate: [moduloGuard]` e `data: { modulo }` (spec `rotte-moduli.spec.ts`). Un
+  componente di una pagina di base (registro, FIR, dashboard) che chiama API di un modulo deve
+  stare dietro `ff.has('<modulo>')`: senza, l'azienda TRIAL riceve 403.
 <!-- MANUAL ADDITIONS END -->

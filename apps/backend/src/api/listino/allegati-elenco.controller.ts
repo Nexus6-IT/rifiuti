@@ -45,10 +45,12 @@ import {
 } from '../clienti/allegato-contratto-upload'
 import { contentDisposition } from '../common/content-disposition'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('elenchi-addebiti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AllegatiElencoController {
   constructor(private readonly allegati: AllegatiElencoService) {}

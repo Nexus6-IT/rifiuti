@@ -1,6 +1,7 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http'
 import { InjectionToken, inject } from '@angular/core'
-import { Observable, catchError, from, mergeMap, of, throwError } from 'rxjs'
+import { catchError, mergeMap, throwError } from 'rxjs'
+import { codiceErrore } from './codice-errore'
 import { AdminTenantContextService } from '../services/admin-tenant-context.service'
 import { environment } from '../../../environments/environment'
 
@@ -75,30 +76,4 @@ export const tenantInterceptor: HttpInterceptorFn = (req, next) => {
       )
     )
   )
-}
-
-/**
- * Codice `error` del corpo di un errore HTTP. Con `responseType: 'blob'` (download) il corpo è
- * un Blob e va letto: senza, il 403 di un download non attivava il ripristino. Il Blob non si
- * consuma leggendolo, quindi il chiamante riceve l'errore originale ancora leggibile.
- */
-function codiceErrore(errore: unknown): Observable<unknown> {
-  if (!(errore instanceof HttpErrorResponse)) return of(undefined)
-  const corpo: unknown = errore.error
-  if (corpo instanceof Blob) {
-    if (errore.status !== 403) return of(undefined)
-    return from(
-      corpo.text().then(
-        testo => {
-          try {
-            return (JSON.parse(testo) as { error?: unknown } | null)?.error
-          } catch {
-            return undefined
-          }
-        },
-        () => undefined
-      )
-    )
-  }
-  return of((corpo as { error?: unknown } | null)?.error)
 }

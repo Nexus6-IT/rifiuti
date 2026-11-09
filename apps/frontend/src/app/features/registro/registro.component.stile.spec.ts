@@ -1,3 +1,4 @@
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { DatePipe } from '@angular/common'
@@ -88,6 +89,7 @@ describe('Registro: stile del giro 2', () => {
     TestBed.configureTestingModule({
       imports: [RegistroComponent, HttpClientTestingModule],
       providers: [
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
         provideNoopAnimations(),
         provideRouter([]),
         DatePipe,

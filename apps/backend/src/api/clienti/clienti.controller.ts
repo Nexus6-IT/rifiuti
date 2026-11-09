@@ -31,10 +31,12 @@ import {
 } from '../../application/clienti/clienti.service'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
 import { CreaClienteDto, ElencoClientiQueryDto, ModificaClienteDto } from './dto/cliente.dto'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('clienti')
 @ApiBearerAuth()
 @Controller('clienti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ClientiController {
   constructor(private readonly clienti: ClientiService) {}

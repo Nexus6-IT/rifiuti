@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { of } from 'rxjs'
+import { FeatureFlagsService } from '../../core/services/feature-flags.service'
 import { AuthService } from '../../core/services/auth.service'
 import {
   ATTESA_PROPOSTA_MS,
@@ -69,6 +70,7 @@ describe('BloccoFatturazioneComponent — campi numerici (DOM)', () => {
           useValue: { clienti: { list: () => of({ elementi: CLIENTI, totale: CLIENTI.length }) } },
         },
         { provide: AuthService, useValue: { currentUser: () => ({ role: 'OPERATOR' }) } },
+        { provide: FeatureFlagsService, useValue: { has: () => true } },
       ],
     })
     fixture = TestBed.createComponent(BloccoFatturazioneComponent)

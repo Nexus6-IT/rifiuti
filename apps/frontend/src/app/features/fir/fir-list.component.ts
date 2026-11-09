@@ -2369,11 +2369,12 @@ export class FirListComponent implements OnInit {
    * l'operatore. La colonna resta muta (—) in questi due stati.
    */
   mostraStatoRentri(fir: FIR): boolean {
-    return fir.stato !== FIRStato.BOZZA && fir.stato !== FIRStato.ANNULLATO
+    return this.ff.has('rentri') && fir.stato !== FIRStato.BOZZA && fir.stato !== FIRStato.ANNULLATO
   }
 
   /** Ruoli SUPER_ADMIN/ADMIN/OPERATOR: stessi ruoli richiesti dal backend su RENTRISyncController. */
   private canManageRENTRI(): boolean {
+    if (!this.ff.has('rentri')) return false
     const role = this.authService.currentUser()?.role
     return !!role && RENTRI_ROLES.includes(role)
   }

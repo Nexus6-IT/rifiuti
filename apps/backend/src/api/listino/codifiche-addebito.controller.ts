@@ -32,10 +32,12 @@ import {
   ProssimoCodiceAddebitoQueryDto,
 } from './dto/codifica-addebito.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('codifiche-addebito')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CodificheAddebitoController {
   constructor(private readonly codifiche: CodificheAddebitoService) {}

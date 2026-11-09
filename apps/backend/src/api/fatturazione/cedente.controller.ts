@@ -12,10 +12,12 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { requireRequestTenantId } from '../../core/context/resolve-request-tenant'
 import { ImpostaCedenteDto } from './dto/cedente.dto'
 import { RUOLI_AMMINISTRATORI, RUOLI_LETTURA } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('fatturazione')
 @ApiBearerAuth()
 @Controller('cedente-fatturazione')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CedenteController {
   constructor(private readonly cedente: CedenteService) {}

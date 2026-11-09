@@ -125,4 +125,8 @@ describe('DevAuthController', () => {
       )
     })
   })
+
+  it("non e' soggetto al throttler globale (gli e2e fanno un dev-login per utente)", () => {
+    expect(Reflect.getMetadata('THROTTLER:SKIPdefault', DevAuthController)).toBe(true)
+  })
 })

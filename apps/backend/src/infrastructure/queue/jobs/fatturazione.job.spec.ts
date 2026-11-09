@@ -46,6 +46,8 @@ const DATI = {
   versione: 1,
 }
 const prisma = {} as never
+const moduliAttivi = jest.fn()
+const moduli = { moduliAttivi } as never
 
 describe('FatturazioneJobProcessor', () => {
   let processor: FatturazioneJobProcessor
@@ -54,7 +56,8 @@ describe('FatturazioneJobProcessor', () => {
     mockFallita.mockReset()
     mockDefinitiva.mockReset()
     mockSegnala.mockReset()
-    processor = new FatturazioneJobProcessor(prisma)
+    moduliAttivi.mockReset().mockResolvedValue(['fir', 'contratti'])
+    processor = new FatturazioneJobProcessor(prisma, moduli)
   })
   const esegui = (job: ReturnType<typeof creaJob>) =>
     processor.process(job as unknown as Job<never>, 'token')
@@ -196,5 +199,50 @@ describe('FatturazioneJobProcessor', () => {
     )
     expect(mockEsegui).not.toHaveBeenCalled()
     expect(mockDefinitiva).not.toHaveBeenCalled()
+  })
+
+  describe('modulo contratti ricontrollato all’avvio', () => {
+    it('modulo tolto con l’anteprima gia’ in coda: non fa nulla e non si ripete (UnrecoverableError)', async () => {
+      moduliAttivi.mockResolvedValue(['fir', 'cer'])
+      const job = creaJob(DATI, { attemptsMade: 0, attempts: 2 })
+      const errore = await esegui(job).catch((e: unknown) => e)
+      expect(errore).toBeInstanceOf(UnrecoverableError)
+      expect((errore as Error).message).toContain('MODULO_NON_ATTIVO')
+      expect(moduliAttivi).toHaveBeenCalledWith('t1')
+      expect(mockEsegui).not.toHaveBeenCalled()
+      expect(mockFallita).not.toHaveBeenCalled()
+      expect(job.moveToDelayed).not.toHaveBeenCalled()
+    })
+
+    it('modulo tolto con la definitiva gia’ in coda: non fa nulla e non si ripete', async () => {
+      moduliAttivi.mockResolvedValue([])
+      const job = creaJob({ ...DATI, tipo: 'definitiva', utenteId: undefined })
+      await expect(esegui(job)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(mockDefinitiva).not.toHaveBeenCalled()
+      expect(mockSegnala).not.toHaveBeenCalled()
+    })
+
+    it('modulo attivo: il job procede come prima, controllo con il tenant del job', async () => {
+      mockEsegui.mockResolvedValue(undefined)
+      await esegui(creaJob(DATI))
+      expect(moduliAttivi).toHaveBeenCalledTimes(1)
+      expect(mockEsegui).toHaveBeenCalledTimes(1)
+    })
+
+    it('errore del database sul controllo: errore NORMALE (si ritenta), niente di scritto', async () => {
+      moduliAttivi.mockRejectedValue(new Error('db giu'))
+      const errore = await esegui(creaJob(DATI)).catch((e: unknown) => e)
+      expect(errore).toBeInstanceOf(Error)
+      expect(errore).not.toBeInstanceOf(UnrecoverableError)
+      expect(mockEsegui).not.toHaveBeenCalled()
+      expect(mockFallita).not.toHaveBeenCalled()
+    })
+
+    it('senza azienda il fallimento definitivo resta e non interroga i moduli', async () => {
+      await expect(esegui(creaJob({ ...DATI, tenantId: '' }))).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(moduliAttivi).not.toHaveBeenCalled()
+    })
   })
 })

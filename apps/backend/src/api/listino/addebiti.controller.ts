@@ -33,10 +33,12 @@ import {
   CorpoVariazioneArchivioDto,
 } from './dto/variazione-prezzi.dto'
 import { RUOLI_LETTURA, RUOLI_SCRITTURA, RUOLI_VARIAZIONI } from './ruoli'
+import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
 
 @ApiTags('listino')
 @ApiBearerAuth()
 @Controller('addebiti')
+@RichiedeModulo('contratti')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AddebitiController {
   constructor(
