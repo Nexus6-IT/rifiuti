@@ -44,7 +44,7 @@ export function pollingTransitorio<T>(
       }),
       catchError(err => {
         consecutivi++
-        if (!lettoAlmenoUnaVolta || consecutivi >= maxErrori) return throwError(() => err)
+        if (!lettoAlmenoUnaVolta || consecutivi > maxErrori) return throwError(() => err)
         alErrore?.(err)
         return EMPTY
       }),

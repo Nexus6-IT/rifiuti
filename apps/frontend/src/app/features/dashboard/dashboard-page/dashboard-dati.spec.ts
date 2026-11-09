@@ -248,6 +248,15 @@ describe('dashboard-dati', () => {
       expect(celle[2].dettaglio).toBe('5 in attesa')
     })
 
+    it('senza modulo rentri: niente cella RENTRI e niente RENTRI nel dettaglio della conformità', () => {
+      const celle = celleAnalisi(dashboardFixture(), mesi, false)
+      expect(celle.map(c => c.etichetta)).toEqual(['Conformità', 'Firme', 'Andamento'])
+      expect(celle[0].dettaglio).toBe('Firme 90% · Ritardi 4%')
+      expect(
+        celleAnalisi(dashboardSenzaFir(), [], false).map(c => c.etichetta)
+      ).toEqual(['Conformità', 'Firme', 'Andamento'])
+    })
+
     it('raggruppa anche le quattro cifre: «1.240 di 1.300» e «1.647 questo mese»', () => {
       const d = dashboardFixture({
         signatures: { completionRate: 0.9, total: 1300, completed: 1240, averageTimeHours: 3 },

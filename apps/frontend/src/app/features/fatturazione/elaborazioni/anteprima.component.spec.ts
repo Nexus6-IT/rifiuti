@@ -145,7 +145,7 @@ describe('AnteprimaComponent', () => {
       )
       crea()
       tick(INTERVALLO_AGGIORNAMENTO_MS * (MAX_ERRORI_POLLING + 10))
-      expect(servizio.dettaglio).toHaveBeenCalledTimes(1 + MAX_ERRORI_POLLING)
+      expect(servizio.dettaglio).toHaveBeenCalledTimes(2 + MAX_ERRORI_POLLING)
       expect(comp.errore()).toBe(MSG_NON_CARICATA)
       fixture.destroy()
     }))

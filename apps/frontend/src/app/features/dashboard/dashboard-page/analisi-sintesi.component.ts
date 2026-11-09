@@ -21,7 +21,7 @@ import { STILI_BLOCCO } from './dashboard-stili'
       [attr.aria-busy]="caricamento ? 'true' : null"
     >
       @if (caricamento) {
-        @for (e of ['Conformità', 'Firme', 'RENTRI', 'Andamento']; track e) {
+        @for (e of etichetteScheletro(); track e) {
           <div class="cella">
             <span class="cella__l">{{ e }}</span>
             <span class="sk" style="width: 96px; height: 29px; margin-top: 4px"></span>
@@ -58,7 +58,8 @@ import { STILI_BLOCCO } from './dashboard-stili'
     `
       .striscia {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
         background: var(--surface-card);
         border: 1px solid var(--surface-border);
         border-radius: var(--radius-lg);
@@ -103,6 +104,7 @@ import { STILI_BLOCCO } from './dashboard-stili'
       }
       @media (max-width: 991.98px) {
         .striscia {
+          grid-auto-flow: row;
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
         .cella {
@@ -123,4 +125,10 @@ export class AnalisiSintesiComponent {
   @Input() celle: readonly CellaAnalisi[] = []
   @Input() livello: { parola: string; tono: TonoStato } | null = null
   @Input() caricamento = false
+  /** Senza il modulo `rentri` la cella RENTRI non c'e', nemmeno nello scheletro. */
+  @Input() conRentri = true
+
+  protected etichetteScheletro(): string[] {
+    return ['Conformità', 'Firme', 'RENTRI', 'Andamento'].filter(e => this.conRentri || e !== 'RENTRI')
+  }
 }

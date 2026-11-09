@@ -23,6 +23,15 @@ describe('AnalisiSintesiComponent', () => {
     expect(el.querySelector('i, .pi, svg, canvas')).toBeNull()
   })
 
+  it('senza modulo rentri: tre celle, anche nello scheletro, nessuna RENTRI', () => {
+    const el = crea({ celle: celleAnalisi(dashboardFixture(), mesi, false), conRentri: false })
+    expect(el.querySelectorAll('.cella').length).toBe(3)
+    expect(el.textContent).not.toContain('RENTRI')
+    const sk = crea({ caricamento: true, conRentri: false })
+    expect(sk.querySelectorAll('.cella').length).toBe(3)
+    expect(sk.textContent).not.toContain('RENTRI')
+  })
+
   it('le cifre e il livello di conformità come pillola', () => {
     const d = dashboardFixture()
     const el = crea({ celle: celleAnalisi(d, mesi), livello: { parola: 'Buona', tono: 'ok' } })
