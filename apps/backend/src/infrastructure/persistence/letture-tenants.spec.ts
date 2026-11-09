@@ -53,6 +53,12 @@ const ECCEZIONI: Eccezione[] = [
       'il `where` contiene lo spread di FILTRO_AZIENDE_TENUTE_AL_MUD (costante di filtro, mai vuota) dentro escludiPiattaforma() e subscriptionStatus letterale',
   },
   {
+    file: 'infrastructure/jobs/rentri-trasmissioni-sospese.job.ts',
+    contiene: 'this.sistema.tenant.findMany({ where: escludiPiattaforma(), select: { id: true }',
+    motivo:
+      "il job riprende i FIR SYNCING di tutte le aziende clienti, qualunque abbonamento (una trasmissione gia' partita va portata a termine): escludiPiattaforma() senza argomento = tutte tranne la piattaforma; il filtro per modulo rentri viene dopo, con tenantConModulo",
+  },
+  {
     file: 'prisma/seeds/roles.seed.ts',
     contiene: 'prisma.tenant.findMany({ where: escludiPiattaforma() })',
     motivo:
