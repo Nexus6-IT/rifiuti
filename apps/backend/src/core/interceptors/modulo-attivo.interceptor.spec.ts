@@ -7,6 +7,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common'
 import { APP_INTERCEPTOR, Reflector } from '@nestjs/core'
 import { lastValueFrom, of } from 'rxjs'
@@ -112,9 +113,10 @@ describe('ModuloAttivoInterceptor', () => {
     ).rejects.toBeInstanceOf(ForbiddenException)
   })
 
-  it('senza utente (rotta pubblica): passa, ci pensa il guard JWT', async () => {
+  it('senza utente su una rotta di modulo: 401, non passa', async () => {
     const m = jest.fn()
-    expect(await esegui(make(m), ctx(ControllerDiClasse, 'ereditaDallaClasse', {}))).toBe('HANDLER')
+    const p = esegui(make(m), ctx(ControllerDiClasse, 'ereditaDallaClasse', {}))
+    await expect(p).rejects.toBeInstanceOf(UnauthorizedException)
     expect(m).not.toHaveBeenCalled()
   })
 
@@ -206,11 +208,36 @@ describe('ModuloAttivoInterceptor', () => {
     ).rejects.toBeInstanceOf(ServiceUnavailableException)
   })
 
-  it('@ConsentiSelezioneNonValida: si controlla l azienda primaria, non la selezionata', async () => {
+  it('@ConsentiSelezioneNonValida con selezione valida: si controlla la selezionata', async () => {
     const m = jest.fn().mockResolvedValue(['registro'])
     const req = { user: utente(), tenantId: SELEZIONATA }
     await esegui(make(m), ctx(ControllerDiClasse, 'recupero', req))
+    expect(m).toHaveBeenCalledWith(SELEZIONATA)
+  })
+
+  it('@ConsentiSelezioneNonValida con selezione respinta: req.tenantId e la primaria', async () => {
+    const m = jest.fn().mockResolvedValue(['registro'])
+    const req = { user: utente(), tenantId: PRIMARIA }
+    await esegui(make(m), ctx(ControllerDiClasse, 'recupero', req))
     expect(m).toHaveBeenCalledWith(PRIMARIA)
+  })
+
+  it('utente normale senza azienda in modalita registra: avviso e passa', async () => {
+    process.env.MODULI_BACKEND_MODALITA = 'registra'
+    const m = jest.fn()
+    const i = make(m)
+    const warn = jest.spyOn((i as any).logger, 'warn').mockImplementation(() => undefined)
+    const r = await esegui(
+      i,
+      ctx(ControllerDiClasse, 'ereditaDallaClasse', {
+        user: utente({ tenantId: '' }),
+        method: 'GET',
+        path: '/x',
+      })
+    )
+    expect(r).toBe('HANDLER')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(m).not.toHaveBeenCalled()
   })
 
   it('modalita registra: avviso nel log e la richiesta passa', async () => {
@@ -218,7 +245,7 @@ describe('ModuloAttivoInterceptor', () => {
     const m = jest.fn().mockResolvedValue([])
     const i = make(m)
     const warn = jest.spyOn((i as any).logger, 'warn').mockImplementation(() => undefined)
-    const req = { user: utente(), tenantId: PRIMARIA, method: 'GET', url: '/x' }
+    const req = { user: utente(), tenantId: PRIMARIA, method: 'GET', path: '/x' }
     expect(await esegui(i, ctx(ControllerDiClasse, 'ereditaDallaClasse', req))).toBe('HANDLER')
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0][0])).toContain('registro')

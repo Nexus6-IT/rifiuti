@@ -6,12 +6,12 @@ import {
   Logger,
   NestInterceptor,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { Observable, from, switchMap, throwError } from 'rxjs'
 import { Request } from 'express'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
-import { CONSENTI_SELEZIONE_NON_VALIDA } from '../decorators/consenti-selezione-non-valida.decorator'
 import { RICHIEDE_MODULO, SENZA_MODULO } from '../decorators/richiede-modulo.decorator'
 import { resolveRequestTenantId } from '../context/resolve-request-tenant'
 import { VERIFICA_AZIENDA_NON_DISPONIBILE } from '../context/azienda-selezionata-errori'
@@ -36,8 +36,9 @@ export function modalitaModuli(): ModalitaModuli {
  *
  * Algoritmo:
  *  1. non http, o nessun `@RichiedeModulo`/`@SenzaModulo`, o `@SenzaModulo` -> passa;
- *  2. senza `req.user` -> passa (rotta pubblica: ci pensa `JwtAuthGuard`);
- *  3. azienda = selezionata, o la primaria su `@ConsentiSelezioneNonValida`;
+ *  2. senza `req.user` -> 401 (una rotta di modulo non e' mai pubblica);
+ *  3. azienda = `resolveRequestTenantId(req)`: quella su cui l'handler opera davvero (la
+ *     selezionata validata; su una rotta di recupero con selezione respinta, la primaria);
  *  4. SUPER_ADMIN senza azienda -> passa; altri senza azienda -> 403;
  *  5. moduli attivi dell'azienda (`ModuliAttiviService`); basta UNA delle chiavi richieste,
  *     altrimenti 403 `MODULO_NON_ATTIVO` (in `registra`: avviso e passa);
@@ -64,20 +65,23 @@ export class ModuloAttivoInterceptor implements NestInterceptor {
 
     const req = context.switchToHttp().getRequest<Request>()
     const user = (req as any).user
-    if (!user) return next.handle()
+    // Una rotta di modulo non e' mai pubblica: senza utente 401, mai passare (fail-closed).
+    if (!user) return throwError(() => new UnauthorizedException())
 
-    const recupero =
-      this.reflector.getAllAndOverride<boolean>(CONSENTI_SELEZIONE_NON_VALIDA, [
-        context.getHandler(),
-        context.getClass(),
-      ]) === true
-    const tenantId = recupero
-      ? String(user.tenantId ?? '').trim() || resolveRequestTenantId(req)
-      : resolveRequestTenantId(req)
+    // Azienda su cui l'handler opera davvero: la selezionata gia' validata da
+    // TenantSwitchInterceptor, o la primaria se la selezione non e' valida su una rotta di recupero.
+    const tenantId = resolveRequestTenantId(req)
 
     if (!tenantId) {
       // D2b: il SUPER_ADMIN senza azienda opera a livello di piattaforma.
       if (user.role === 'SUPER_ADMIN') return next.handle()
+      if (modalitaModuli() === 'registra') {
+        this.logger.warn(
+          `Nessuna azienda (solo registrato): ${req.method} ${req.path}, utente=${user.id}, ` +
+            `richiesti=${richiesti.join('|')}`
+        )
+        return next.handle()
+      }
       return throwError(() => this.rifiuta(richiesti))
     }
 
@@ -96,7 +100,7 @@ export class ModuloAttivoInterceptor implements NestInterceptor {
           return next.handle()
         if (modalitaModuli() === 'registra') {
           this.logger.warn(
-            `Modulo non attivo (solo registrato): ${req.method} ${req.url}, ` +
+            `Modulo non attivo (solo registrato): ${req.method} ${req.path}, ` +
               `azienda=${tenantId}, utente=${user.id}, richiesti=${richiesti.join('|')}`
           )
           return next.handle()
@@ -112,7 +116,7 @@ export class ModuloAttivoInterceptor implements NestInterceptor {
 
   /**
    * Chiavi richieste dalla rotta, o null se non ne richiede. Il metodo prevale sulla classe;
-   * a pari livello `@SenzaModulo` e' un'esenzione.
+   * a pari livello `@RichiedeModulo` prevale su `@SenzaModulo` (i due non vanno mai insieme).
    */
   private chiaviRichieste(context: ExecutionContext): readonly string[] | null {
     for (const bersaglio of [context.getHandler(), context.getClass()]) {
