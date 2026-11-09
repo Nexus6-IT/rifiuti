@@ -277,11 +277,15 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
    *   non deve affamare il recupero degli stalli. Fra i PENDING vengono prima quelli
    *   aggiornati piu' di recente (es. riaperti dal caricamento del certificato), poi i vecchi.
    *   Le aziende in MANUALE non si toccano: li' la trasmissione parte solo a mano.
+   * `tenantAmmessi` (aziende col modulo `rentri`, scelte dal job) filtra DENTRO la query, prima del
+   *   LIMIT, in entrambi i rami: i FIR di aziende senza modulo non occupano il lotto (niente
+   *   starvation). Elenco vuoto = nessun FIR.
    */
   async elencaTrasmissioniRentriSospese(
     sogliaStallo: Date,
     limite: number,
-    pendingAggiornatiDopo: Date
+    pendingAggiornatiDopo: Date,
+    tenantAmmessi: readonly string[]
   ): Promise<Array<{ firId: string; tenantId: string; stato: 'SYNCING' | 'PENDING' }>> {
     // Sistema: elenco delle aziende con trasmissione automatica (nessuna azienda nota in partenza).
     // La lettura di `tenants` passa da escludiPiattaforma; il join non si scrive in SQL grezzo.
@@ -301,7 +305,8 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
     >`
       SELECT id::text AS fir_id, tenant_id::text AS tenant_id, rentri_sync_status::text AS stato
       FROM firs
-      WHERE (
+      WHERE tenant_id::text = ANY(${[...tenantAmmessi]}::text[])
+        AND ((
           rentri_sync_status = 'SYNCING'::rentri_sync_status
           AND (rentri_sync_avviato_at IS NULL OR rentri_sync_avviato_at < ${sogliaStallo})
         )
@@ -314,7 +319,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
           AND status = ANY(${[...STATI_FIR_EMESSI]}::text[]::fir_status[])
           AND rentri_stato_formulario::text IS DISTINCT FROM ${STATO_RENTRI_ANNULLATO}
           AND tenant_id::text = ANY(${idAziende}::text[])
-        )
+        ))
       ORDER BY (rentri_sync_status = 'SYNCING'::rentri_sync_status) DESC,
         CASE WHEN rentri_sync_status = 'SYNCING'::rentri_sync_status
           THEN rentri_sync_avviato_at END NULLS FIRST,

@@ -175,6 +175,8 @@ export class RegistroController {
    * Filtri disponibili: tipo (CARICO/SCARICO), CER, causale, periodo, FIR collegato.
    * Ordinamento: data operazione DESC.
    */
+  // Lettura usata anche da pese (collega documento) e legami: basta una delle chiavi.
+  @RichiedeModulo('registro', 'pese', 'contratti')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -365,6 +367,8 @@ export class RegistroController {
    * ogni ruolo con accesso all'azienda, come la lista. I registri nascono con
    * `POST registri/assicura` o alla prima registrazione.
    */
+  // Lettura usata anche da giacenze, abbinamenti, pese e legami: basta una delle chiavi.
+  @RichiedeModulo('registro', 'giacenze', 'pese', 'contratti')
   @Get('registri')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Registri dell'azienda (uno per sede), in sola lettura" })

@@ -16,6 +16,7 @@ describe('RentriTrasmissioniSospeseJob', () => {
   let queue: { addSyncJob: jest.Mock; getJobState: jest.Mock }
   let modalita: { getForTenant: jest.Mock }
   let moduli: { tenantConModulo: jest.Mock }
+  let sistema: { tenant: { findMany: jest.Mock } }
   let job: RentriTrasmissioniSospeseJob
 
   beforeEach(() => {
@@ -33,12 +34,14 @@ describe('RentriTrasmissioniSospeseJob', () => {
     moduli = {
       tenantConModulo: jest.fn(async (ids: readonly string[]) => new Set(ids)),
     }
+    sistema = { tenant: { findMany: jest.fn().mockResolvedValue([{ id: 't1' }, { id: 't-no' }]) } }
     job = new RentriTrasmissioniSospeseJob(
       firRepo as any,
       queue as any,
       logger,
       modalita as any,
-      moduli as any
+      moduli as any,
+      sistema as any
     )
   })
 
@@ -199,35 +202,39 @@ describe('RentriTrasmissioniSospeseJob', () => {
     expect(queue.addSyncJob).not.toHaveBeenCalled()
   })
 
-  it('moduli: i FIR delle aziende senza il modulo rentri non si riaccodano, UNA query sui moduli', async () => {
+  it('moduli: il filtro per azienda va alla query (prima del LIMIT), UNA lettura dei moduli', async () => {
+    moduli.tenantConModulo.mockResolvedValue(new Set(['t1']))
     firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
       { firId: 'f1', tenantId: 't1', stato: 'SYNCING' },
-      { firId: 'f2', tenantId: 't-no', stato: 'SYNCING' },
       { firId: 'f3', tenantId: 't1', stato: 'SYNCING' },
-      { firId: 'f4', tenantId: 't-no', stato: 'PENDING' },
     ])
-    moduli.tenantConModulo.mockResolvedValue(new Set(['t1']))
 
     await job.riprendi()
 
     expect(moduli.tenantConModulo).toHaveBeenCalledTimes(1)
     expect(moduli.tenantConModulo).toHaveBeenCalledWith(['t1', 't-no'], 'rentri')
+    expect(firRepo.elencaTrasmissioniRentriSospese).toHaveBeenCalledWith(
+      expect.any(Date),
+      100,
+      expect.any(Date),
+      ['t1']
+    )
     expect(queue.addSyncJob).toHaveBeenCalledTimes(2)
-    expect(queue.addSyncJob).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't-no' }))
-    expect(modalita.getForTenant).not.toHaveBeenCalledWith('t-no')
     expect(logger.error).not.toHaveBeenCalled()
   })
 
-  it('moduli: nessun FIR sospeso, nessuna query sui moduli; nessuna azienda col modulo, nessun errore', async () => {
-    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([])
-    await job.riprendi()
-    expect(moduli.tenantConModulo).not.toHaveBeenCalled()
-
-    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([
-      { firId: 'f1', tenantId: 't-no', stato: 'SYNCING' },
-    ])
+  it('moduli: nessuna azienda col modulo, elenco vuoto passato alla query, nessun errore', async () => {
     moduli.tenantConModulo.mockResolvedValue(new Set())
+    firRepo.elencaTrasmissioniRentriSospese.mockResolvedValue([])
+
     await job.riprendi()
+
+    expect(firRepo.elencaTrasmissioniRentriSospese).toHaveBeenCalledWith(
+      expect.any(Date),
+      100,
+      expect.any(Date),
+      []
+    )
     expect(queue.addSyncJob).not.toHaveBeenCalled()
     expect(logger.error).not.toHaveBeenCalled()
   })

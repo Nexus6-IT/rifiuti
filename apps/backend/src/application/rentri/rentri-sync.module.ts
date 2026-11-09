@@ -20,6 +20,7 @@ import { DomainEventsService } from '../../core/domain-events.service'
 import { SyncFIRToRENTRIUseCase } from './sync-fir-to-rentri.use-case'
 import { TriggerBatchSyncUseCase } from './trigger-batch-sync.use-case'
 import { GetSyncStatusUseCase } from './get-sync-status.use-case'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { TrasmettiFIRSecondoModalitaUseCase } from './trasmetti-fir-secondo-modalita.use-case'
 import { ConfermaLegameRENTRIUseCase } from './conferma-legame-rentri.use-case'
 import { RiapriTrasmissioneRentriUseCase } from './riapri-trasmissione-rentri.use-case'
@@ -242,15 +243,23 @@ import { RentriCredentialController } from '../../api/rentri/rentri-credential.c
         modalitaLegameService: RentriModalitaLegameService,
         rentriSyncQueue: RENTRISyncQueue,
         firRepo: FIRPrismaRepository,
-        logger: LoggerService
+        logger: LoggerService,
+        moduli: ModuliAttiviService
       ) =>
         new TrasmettiFIRSecondoModalitaUseCase(
           modalitaLegameService,
           rentriSyncQueue,
           firRepo,
-          logger
+          logger,
+          moduli
         ),
-      inject: [RentriModalitaLegameService, RENTRISyncQueue, FIRPrismaRepository, LoggerService],
+      inject: [
+        RentriModalitaLegameService,
+        RENTRISyncQueue,
+        FIRPrismaRepository,
+        LoggerService,
+        ModuliAttiviService,
+      ],
     },
     {
       provide: ConfermaLegameRENTRIUseCase,

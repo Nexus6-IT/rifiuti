@@ -220,7 +220,8 @@ describe('RentriTrasmissioniSospeseJob — contesto per azienda', () => {
       queue as never,
       logger as never,
       modalita as never,
-      { tenantConModulo: async (ids: readonly string[]) => new Set(ids) } as never
+      { tenantConModulo: async (ids: readonly string[]) => new Set(ids) } as never,
+      { tenant: { findMany: async () => [{ id: 't1' }, { id: 't2' }] } } as never
     )
 
     await job.riprendi()

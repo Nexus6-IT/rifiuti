@@ -5,6 +5,8 @@ import { ModuliAttiviService } from '../../application/admin/moduli-attivi.servi
 import { LoggerService } from '../../core/logger/logger.service'
 import { segnalaErroreJob } from '../../core/monitoring/segnala-errore-job'
 import { TenantContext } from '../../core/context/tenant-context'
+import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
+import { PrismaSistemaService } from '../persistence/prisma-sistema.service'
 import { FIRPrismaRepository } from '../persistence/fir-prisma.repository'
 import { RENTRISyncQueue } from '../queue/rentri-sync.queue'
 import { RentriModalitaLegameService } from '../rentri/rentri-modalita-legame.service'
@@ -48,7 +50,8 @@ export class RentriTrasmissioniSospeseJob {
     private readonly queue: RENTRISyncQueue,
     private readonly logger: LoggerService,
     private readonly modalitaLegame: RentriModalitaLegameService,
-    private readonly moduli: ModuliAttiviService
+    private readonly moduli: ModuliAttiviService,
+    private readonly sistema: PrismaSistemaService
   ) {
     this.logger.setContext(RentriTrasmissioniSospeseJob.name)
   }
@@ -56,25 +59,29 @@ export class RentriTrasmissioniSospeseJob {
   @Cron(CronExpression.EVERY_30_MINUTES)
   async riprendi(): Promise<void> {
     try {
+      // Solo le aziende col modulo rentri (D4b), scelte PRIMA della query dei FIR: il filtro sta
+      // dentro la query, prima del LIMIT, cosi' i FIR di aziende senza modulo non affamano le altre.
+      // Una sola lettura delle aziende attive e una sola sui moduli.
+      const attive = await this.sistema.tenant.findMany({
+        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        select: { id: true },
+      })
+      const conModulo = await this.moduli.tenantConModulo(
+        attive.map(t => t.id),
+        'rentri'
+      )
       const sospese = await this.firRepo.elencaTrasmissioniRentriSospese(
         new Date(Date.now() - SOGLIA_STALLO_RENTRI_MS),
         RentriTrasmissioniSospeseJob.LIMITE,
-        new Date(Date.now() - ETA_MASSIMA_PENDING_RENTRI_MS)
+        new Date(Date.now() - ETA_MASSIMA_PENDING_RENTRI_MS),
+        [...conModulo]
       )
-
-      // Solo le aziende col modulo rentri (D4b): una sola query per tutte quelle dell'elenco.
-      // Senza modulo i FIR non si riaccodano: la ripresa non deve far partire invii RENTRI.
-      const conModulo =
-        sospese.length === 0
-          ? new Set<string>()
-          : await this.moduli.tenantConModulo([...new Set(sospese.map(s => s.tenantId))], 'rentri')
 
       let accodate = 0
       let inErrore = 0
       let inAttesaManuale = 0
       const modalitaPerTenant = new Map<string, Promise<RentriModalitaLegame>>()
       for (const { firId, tenantId, stato } of sospese) {
-        if (!conModulo.has(tenantId)) continue
         try {
           if (!modalitaPerTenant.has(tenantId)) {
             modalitaPerTenant.set(

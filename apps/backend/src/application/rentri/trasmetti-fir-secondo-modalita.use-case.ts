@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
 import { LoggerService } from '../../core/logger/logger.service'
 import { RentriModalitaLegameService } from '../../infrastructure/rentri/rentri-modalita-legame.service'
 import { RENTRISyncQueue } from '../../infrastructure/queue/rentri-sync.queue'
@@ -50,7 +51,8 @@ export class TrasmettiFIRSecondoModalitaUseCase {
     private readonly modalitaLegameService: RentriModalitaLegameService,
     private readonly rentriSyncQueue: RENTRISyncQueue,
     private readonly firRepository: IFIRRepository,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext('TrasmettiFIRSecondoModalitaUseCase')
   }
@@ -67,6 +69,17 @@ export class TrasmettiFIRSecondoModalitaUseCase {
     correlationId?: string
   }): Promise<EsitoOrchestrazioneRENTRI> {
     const { firId, tenantId, correlationId } = params
+
+    // D4b: senza il modulo `rentri` l'azienda si tratta come MANUALE, anche se la modalita'
+    // e' rimasta su AUTOMATICA/IBRIDA da quando il modulo era attivo. L'emissione resta valida.
+    const moduli = await this.moduli.moduliAttivi(tenantId)
+    if (!moduli.includes('rentri')) {
+      this.logger.debug('Modulo rentri non attivo: nessuna trasmissione automatica', {
+        firId,
+        tenantId,
+      })
+      return { avviata: false, motivo: 'MODULO_NON_ATTIVO' }
+    }
 
     const { modalitaLegame, certificatoConfigurato } =
       await this.modalitaLegameService.getForTenant(tenantId)
@@ -168,7 +181,7 @@ export interface EsitoOrchestrazioneRENTRI {
   /** Se una trasmissione è stata effettivamente accodata. */
   avviata: boolean
   /** Perché NON è partita nulla, quando avviata è false. */
-  motivo?: 'MANUALE' | 'CERTIFICATO_MANCANTE'
+  motivo?: 'MANUALE' | 'CERTIFICATO_MANCANTE' | 'MODULO_NON_ATTIVO'
   /** true se, a trasmissione riuscita, il legame richiederà conferma esplicita (modalità IBRIDA). */
   richiedeConferma?: boolean
   /** Identificativo del job accodato, quando avviata è true. */

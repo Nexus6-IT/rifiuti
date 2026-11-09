@@ -244,6 +244,8 @@ export class FIRControllerV2 {
     return FIRResponseDto.fromDomain(result.value)
   }
 
+  // Lettura usata anche da pese (collega documento), registro e RENTRI: basta una delle chiavi.
+  @RichiedeModulo('fir', 'registro', 'pese', 'rentri')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

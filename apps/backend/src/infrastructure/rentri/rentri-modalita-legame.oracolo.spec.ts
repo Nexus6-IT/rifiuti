@@ -315,7 +315,8 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
       modalitaLegameService,
       rentriSyncQueue,
       firRepository as any,
-      creaLoggerOrchestrazione()
+      creaLoggerOrchestrazione(),
+      { moduliAttivi: async () => ['fir', 'rentri'] } as any
     )
 
     // Timer reale (non fake di Jest, che bloccherebbe app.inject()) che
@@ -395,7 +396,8 @@ describe('TrasmettiFIRSecondoModalitaUseCase — modalità di trasmissione contr
       modalitaLegameService,
       rentriSyncQueue,
       firRepository as any,
-      creaLoggerOrchestrazione()
+      creaLoggerOrchestrazione(),
+      { moduliAttivi: async () => ['fir', 'rentri'] } as any
     )
 
     const esito = await trasmettiUseCase.eseguiSeAutomatica({
