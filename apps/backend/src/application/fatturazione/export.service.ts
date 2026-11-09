@@ -279,6 +279,13 @@ export class ExportService {
         { timeout: 60_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       )
     )
+    if (ids.length === 0) {
+      throw new BadRequestException({
+        error: 'NESSUN_DOCUMENTO_DA_ESPORTARE',
+        message:
+          'Nessun documento della selezione si può esportare: sono tutti annullati o in bozza.',
+      })
+    }
     const esitoZip = await this.xml.zip(tenantId, utenteId, ids, {
       confermaEmissione: b.confermaEmissione === true,
     })

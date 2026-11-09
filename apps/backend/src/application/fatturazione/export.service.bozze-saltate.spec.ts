@@ -61,4 +61,12 @@ describe('ExportService.esporta XML_ZIP: bozze scelte fra i saltati', () => {
     // Solo conteggio e righe: nessuna lettura delle bozze.
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2)
   })
+
+  it('con sole bozze scelte (nessun esportabile): 400 NESSUN_DOCUMENTO_DA_ESPORTARE, zip non chiamato', async () => {
+    const { servizio, xml } = crea({ bozze: 2, righe: [] })
+    await expect(esporta(servizio, [randomUUID(), randomUUID()])).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'NESSUN_DOCUMENTO_DA_ESPORTARE' }),
+    })
+    expect(xml.zip).not.toHaveBeenCalled()
+  })
 })
