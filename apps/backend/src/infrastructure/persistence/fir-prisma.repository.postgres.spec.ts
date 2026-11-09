@@ -874,6 +874,22 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
         expect(elenco.some(e => e.tenantId === senzaRentri)).toBe(false)
       })
 
+      it('azienda SOSPESA col modulo: il suo SYNCING si riprende (trasmissione partita), il suo PENDING no', async () => {
+        const sospesa = await creaTenant('AUTOMATICA', 'SUSPENDED')
+        const syncing = await firDi(sospesa, {
+          rentriSyncStatus: 'SYNCING',
+          rentriSyncAvviatoAt: new Date('2000-01-01Z'),
+        })
+        const pending = await firDi(sospesa)
+
+        const ids = (
+          await repoLettura.elencaTrasmissioniRentriSospese(SOGLIA, 100, TETTO, [sospesa])
+        ).map(e => e.firId)
+
+        expect(ids).toContain(syncing)
+        expect(ids).not.toContain(pending)
+      })
+
       it('aziende ammesse vuote: elenco vuoto, nessun errore SQL', async () => {
         const t = await creaTenant('AUTOMATICA')
         await firDi(t, {

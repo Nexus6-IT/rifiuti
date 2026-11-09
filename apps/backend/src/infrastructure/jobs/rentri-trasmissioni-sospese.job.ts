@@ -61,9 +61,11 @@ export class RentriTrasmissioniSospeseJob {
     try {
       // Solo le aziende col modulo rentri (D4b), scelte PRIMA della query dei FIR: il filtro sta
       // dentro la query, prima del LIMIT, cosi' i FIR di aziende senza modulo non affamano le altre.
-      // Una sola lettura delle aziende attive e una sola sui moduli.
+      // Tutte le aziende, qualunque sia l'abbonamento: un FIR gia' SYNCING e' una trasmissione partita
+      // e va portata a termine anche se l'azienda e' sospesa o scaduta. Per i PENDING (nuovi invii)
+      // lo stato ACTIVE/TRIAL e' gia' nella query del repository. Una lettura delle aziende, una dei moduli.
       const attive = await this.sistema.tenant.findMany({
-        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        where: escludiPiattaforma(),
         select: { id: true },
       })
       const conModulo = await this.moduli.tenantConModulo(
