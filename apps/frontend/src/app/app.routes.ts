@@ -221,6 +221,17 @@ export const routes: Routes = [
           ),
       },
       {
+        // Modelli di stampa (FIR e distinta dei ritiri): backend @RichiedeModulo('fir', 'ritiri')
+        // e solo ADMIN. Basta uno dei due moduli.
+        path: 'impostazioni/modelli-stampa',
+        canActivate: [moduloGuard],
+        data: { modulo: ['fir', 'ritiri'] },
+        loadComponent: () =>
+          import('./features/impostazioni/modelli-stampa/modelli-stampa.component').then(
+            m => m.ModelliStampaComponent
+          ),
+      },
+      {
         path: 'contratti-clienti',
         canActivate: [moduloGuard],
         data: { modulo: 'contratti' },
