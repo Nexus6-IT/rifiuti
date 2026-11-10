@@ -398,11 +398,14 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
 
     // Le transizioni di stato aggiornano solo i campi scalari: tenant e
     // produttore-utente non cambiano dopo la creazione.
+    // `transport_date` e' nel documento firmato: dopo la creazione non si riscrive mai, altrimenti
+    // ogni transizione invalida le firme gia' apposte.
+    const { transportDate: _soloCreazione, ...scalarsAggiornamento } = scalars
     try {
       await client.fIR.upsert({
         where: { id: fir.id },
         create: createData,
-        update: scalars,
+        update: scalarsAggiornamento,
       })
     } catch (error) {
       throw this.translateUniqueConstraintError(error, fir)
@@ -940,7 +943,8 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       _id: record.id,
       _stato: this.statoFromDb(record.status), // Map FIRStatus (DB) -> FIRStato (dominio)
       _numeroProgressivo: record.firNumber,
-      _dataPresaCarico: record.transportDate,
+      // Colonna dedicata; sui FIR precedenti alla colonna si ripiega sulla data di trasporto.
+      _dataPresaCarico: record.presaInCaricoIl ?? record.transportDate,
       _dataConsegna: record.actualArrivalDate,
       _pesoEffettivo: record.effectiveWeight ? Number(record.effectiveWeight) : null,
       _firme: this.firmeFromRecord(record.signatures),
@@ -1097,7 +1101,11 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       unit: fir.rifiuto.quantita.unitaMisura,
       provenienza: fir.provenienza || undefined,
       tipoTrattaPrincipale: fir.tipoTrattaPrincipale || undefined,
-      transportDate: fir.dataPresaCarico || new Date(),
+      // Data di trasporto: entra nel documento firmato, quindi la scrive solo la creazione
+      // (`salvaCon` la toglie dall'update). Il momento reale della presa in carico sta in
+      // `presaInCaricoIl`, scritto solo dopo la firma del trasportatore.
+      transportDate: new Date(),
+      presaInCaricoIl: fir.firme.trasportatore ? (fir.dataPresaCarico ?? undefined) : undefined,
       actualArrivalDate: fir.dataConsegna,
       ...this.rentriToPersistence(fir),
     }

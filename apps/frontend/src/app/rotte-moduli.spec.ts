@@ -61,6 +61,7 @@ const BASE: string[] = [
   'login',
   'richiedi-accesso',
   'auth/callback',
+  'verify/:firId',
   'legal/termini',
   'legal/privacy',
   'legal/dpa',

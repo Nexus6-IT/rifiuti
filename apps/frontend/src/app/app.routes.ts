@@ -28,6 +28,15 @@ export const routes: Routes = [
       import('./features/auth/auth-callback.component').then(m => m.AuthCallbackComponent),
   },
   {
+    // Verifica pubblica delle firme del FIR: e' l'URL del QR stampato sul PDF (rotta pubblica,
+    // senza authGuard: la apre chiunque scansioni il codice).
+    path: 'verify/:firId',
+    loadComponent: () =>
+      import('./features/verify/verify-signatures/verify-signatures.component').then(
+        m => m.VerifySignaturesComponent
+      ),
+  },
+  {
     // Pagine legali pubbliche (ToS, Privacy, DPA) — senza authGuard
     path: 'legal/termini',
     loadComponent: () =>

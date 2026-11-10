@@ -199,7 +199,8 @@ export class LettoreAnnotazioniRentri {
 
       risultato.set(f.id, {
         numeroFir: f.rentriNumeroFir ?? f.firNumber,
-        dataInizioTrasporto: f.transportDate.toISOString(),
+        // Stesso valore di prima (la presa in carico riscriveva transport_date): ora sta nella colonna dedicata.
+        dataInizioTrasporto: (f.presaInCaricoIl ?? f.transportDate).toISOString(),
         dataFineTrasporto: f.actualArrivalDate ? f.actualArrivalDate.toISOString() : null,
         pesoVerificatoDestinoKg: f.effectiveWeight === null ? null : Number(f.effectiveWeight),
         provenienza: f.provenienza === 'URBANO' ? 'U' : f.provenienza === 'SPECIALE' ? 'S' : null,
