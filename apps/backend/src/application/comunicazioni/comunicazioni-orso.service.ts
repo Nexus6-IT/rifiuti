@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { giornoItaliano } from '../../core/time/anno-italiano'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { aggregaOrso } from '../../domain/comunicazioni/orso/aggrega-orso'
 import {
@@ -20,6 +21,7 @@ import {
   ComunicazioneNonTrovataError,
   type AnteprimaOrso,
   type AvvisoOrso as AvvisoComunicazione,
+  type MovimentoAvviso,
   type ComunicazioneVista,
   type ComunicazioniOrsoPort,
   type FileComunicazione,
@@ -45,18 +47,19 @@ export type CodiceAvvisoComunicazione =
   | CodiceAvvisoOrso
   | 'PROVINCIA_IMPIANTO_MANCANTE'
   | 'DESCRIZIONE_VUOTA'
+  | 'PROVINCIA_DA_INDIRIZZO'
   | 'DATI_NON_VALIDI'
 
 const MESSAGGI: Record<CodiceAvvisoComunicazione, string> = {
   PROVINCIA_CONFERITORE_MANCANTE:
-    'Provincia del conferitore non ricavabile dal FIR: il carico non si può classificare come regionale o extra-regionale.',
+    'Provincia del conferitore non ricavabile dal FIR: il carico non si può classificare come provinciale o extra-provinciale.',
   QUANTITA_NON_CONVERTIBILE:
     'Quantità in un’unità non convertibile in kg (manca il peso specifico): il movimento non può entrare nel file.',
   OPERAZIONE_MANCANTE: 'Operazione di recupero o smaltimento non indicata sul movimento.',
-  TRATTATO_INTERNAMENTE_DEFAULT:
-    'Per i rifiuti prodotti la quantità trattata internamente è impostata a 0: il registro non la distingue.',
+  PROVINCIA_DA_INDIRIZZO:
+    'Provincia del conferitore ricavata dall’indirizzo della controparte (nessun FIR collegato): verifica che sia corretta.',
   PROVINCIA_IMPIANTO_MANCANTE:
-    'La sede non ha la provincia: serve per distinguere i carichi regionali da quelli extra-regionali.',
+    'La sede non ha la provincia: serve per distinguere i carichi provinciali da quelli extra-provinciali.',
   DESCRIZIONE_VUOTA:
     'Movimento senza descrizione del rifiuto: il tracciato richiede da 1 a 100 caratteri.',
   DATI_NON_VALIDI: 'I dati non rispettano il tracciato O.R.SO.',
@@ -72,6 +75,15 @@ const BLOCCANTI = new Set<CodiceAvvisoComunicazione>([
 
 export function eBloccante(codice: CodiceAvvisoComunicazione): boolean {
   return BLOCCANTI.has(codice)
+}
+
+/** Ultimo mese da dichiarare: 12 per gli anni passati, il mese corrente nell'anno in corso, 0 nel futuro. */
+export function ultimoMeseDichiarabile(anno: number, adesso: Date = new Date()): number {
+  const oggi = giornoItaliano(adesso)
+  const annoCorrente = Number(oggi.slice(0, 4))
+  if (anno < annoCorrente) return 12
+  if (anno > annoCorrente) return 0
+  return Number(oggi.slice(5, 7))
 }
 
 /** Hash dei dati che finiscono nel file: stessi dati, stesso hash (l'aggregatore ordina tutto). */
@@ -98,7 +110,7 @@ export function anteprimaMesi(a: AggregatoOrso): AnteprimaMeseOrso[] {
         descrizione: p.descrizione,
         operazioni: [],
         totT: p.totale,
-        trattataInternamenteT: p.trattatoInternamente,
+        giacenzaFineMeseT: p.giacenzaFineMese,
       })),
     }
   })
@@ -106,7 +118,8 @@ export function anteprimaMesi(a: AggregatoOrso): AnteprimaMeseOrso[] {
 
 /** Avvisi raggruppati per codice (uno per tipo, con tutti i movimenti coinvolti). */
 export function raggruppaAvvisi(
-  grezzi: ReadonlyArray<{ codice: CodiceAvvisoComunicazione; movimentoIds: string[] }>
+  grezzi: ReadonlyArray<{ codice: CodiceAvvisoComunicazione; movimentoIds: string[] }>,
+  dettagli: ReadonlyMap<string, MovimentoAvviso> = new Map()
 ): AvvisoComunicazione[] {
   const perCodice = new Map<CodiceAvvisoComunicazione, Set<string>>()
   for (const a of grezzi) {
@@ -119,6 +132,10 @@ export function raggruppaAvvisi(
       codice,
       messaggio: MESSAGGI[codice],
       movimentoIds: [...ids].sort(),
+      movimenti: [...ids]
+        .sort()
+        .map(id => dettagli.get(id))
+        .filter((d): d is MovimentoAvviso => d !== undefined),
     }))
     .sort(
       (x, y) =>
@@ -174,6 +191,8 @@ const SELEZIONE_VISTA = {
   inviataDa: true,
 } as const
 
+const LIMITE_ELENCO = 200
+
 const giorno = (d: Date) => d.toISOString().slice(0, 10)
 
 function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneVista {
@@ -223,26 +242,45 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       a: fine,
       catalogo,
       pesiSpecifici: leggiIntegrazioni(record?.reportData).pesiSpecifici,
+      anno,
     })
 
     const provincia = (lettura.provinciaImpianto ?? '').trim() || null
+    // Anno in corso: si dichiarano i mesi fino a quello corrente; gli anni passati per intero.
+    const ultimoMese = ultimoMeseDichiarabile(anno)
     const aggregato = aggregaOrso(adattaMovimentiOrso(lettura.movimenti), {
       anno,
       provinciaImpianto: provincia ?? '',
+      giacenze: lettura.giacenze.filter(g => g.mese <= ultimoMese),
     })
-    const dati = aggregatoInImpiantoMesi(aggregato, AUTORE)
+    const dati = aggregatoInImpiantoMesi(aggregato, AUTORE, ultimoMese)
 
     const grezzi: Array<{ codice: CodiceAvvisoComunicazione; movimentoIds: string[] }> =
       aggregato.avvisi.filter(
         a => provincia !== null || a.codice !== 'PROVINCIA_CONFERITORE_MANCANTE'
       )
     if (provincia === null) grezzi.push({ codice: 'PROVINCIA_IMPIANTO_MANCANTE', movimentoIds: [] })
+    const daIndirizzo = movimentiConteggiati(lettura.movimenti).filter(m => m.provinciaDaIndirizzo)
+    if (daIndirizzo.length > 0) {
+      grezzi.push({ codice: 'PROVINCIA_DA_INDIRIZZO', movimentoIds: daIndirizzo.map(m => m.id) })
+    }
     const senzaDescrizione = movimentiSenzaDescrizione(lettura.movimenti)
     if (senzaDescrizione.length > 0) {
       grezzi.push({ codice: 'DESCRIZIONE_VUOTA', movimentoIds: senzaDescrizione.map(m => m.id) })
     }
     const bloccantiTracciato = this.tracciato().validaDati(dati)
-    const avvisi = raggruppaAvvisi(grezzi)
+    const dettagli = new Map(
+      lettura.movimenti.map(m => [
+        m.id,
+        {
+          id: m.id,
+          data: giornoItaliano(m.movementDate),
+          numero: m.numero,
+          cer: m.cer,
+        },
+      ])
+    )
+    const avvisi = raggruppaAvvisi(grezzi, dettagli)
     // Errori del tracciato non già spiegati da un avviso: non si genera un file che l'XSD rifiuta.
     if (
       bloccantiTracciato.length > 0 &&
@@ -381,14 +419,18 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
         ...(f.anno !== undefined ? this.periodo(f.anno) : {}),
       },
       orderBy: [{ generataIl: 'desc' }, { id: 'desc' }],
+      take: LIMITE_ELENCO,
       select: SELEZIONE_VISTA,
     })
-    // L'hash attuale serve solo per le inviate, una volta per sede e anno.
+    // L'hash attuale serve solo per le inviate e solo con sede e anno nel filtro: senza, il
+    // ricalcolo di un anno intero per ogni sede-anno inviato sarebbe troppo oneroso.
+    const calcolaHash = f.unitaLocaleId !== undefined && f.anno !== undefined
+    // Una volta per sede e anno.
     const attuali = new Map<string, string | null>()
     const out: ComunicazioneVista[] = []
     for (const r of righe) {
       let hash: string | null = null
-      if (r.stato === 'INVIATA') {
+      if (r.stato === 'INVIATA' && calcolaHash) {
         const anno = r.periodoDa.getUTCFullYear()
         const k = `${r.unitaLocaleId}|${anno}`
         if (!attuali.has(k)) {
@@ -426,14 +468,17 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       select: SELEZIONE_VISTA,
     })
     if (!r) throw new ComunicazioneNonTrovataError()
-    let corrente = r
-    if (r.stato !== 'INVIATA') {
-      corrente = await this.prisma.comunicazioneConsorzio.update({
-        where: { id: r.id },
-        data: { stato: 'INVIATA', inviataIl: new Date(), inviataDa: utenteId },
-        select: SELEZIONE_VISTA,
-      })
-    }
+    // Atomica: solo la richiesta che trova la comunicazione ancora GENERATA la segna; le altre
+    // non cambiano chi e quando l'ha segnata.
+    await this.prisma.comunicazioneConsorzio.updateMany({
+      where: { id, tenantId, stato: 'GENERATA' },
+      data: { stato: 'INVIATA', inviataIl: new Date(), inviataDa: utenteId },
+    })
+    const corrente = await this.prisma.comunicazioneConsorzio.findFirst({
+      where: { id, tenantId },
+      select: SELEZIONE_VISTA,
+    })
+    if (!corrente) throw new ComunicazioneNonTrovataError()
     const hash = await this.calcola(tenantId, r.unitaLocaleId, r.periodoDa.getUTCFullYear()).then(
       x => x.hashDati,
       () => null

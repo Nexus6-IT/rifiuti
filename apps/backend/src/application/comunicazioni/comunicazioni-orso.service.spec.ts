@@ -18,10 +18,35 @@ describe('raggruppaAvvisi', () => {
     expect(r[0].messaggio).toContain('non convertibile')
   })
 
+  it('i messaggi parlano di province (extra-provinciale), non di regioni', () => {
+    const r = raggruppaAvvisi([
+      { codice: 'PROVINCIA_CONFERITORE_MANCANTE', movimentoIds: [] },
+      { codice: 'PROVINCIA_IMPIANTO_MANCANTE', movimentoIds: [] },
+    ])
+    for (const a of r) {
+      expect(a.messaggio).toMatch(/extra-provincial/)
+      expect(a.messaggio).not.toMatch(/regional/)
+    }
+  })
+
+  it('allega ai movimenti dell avviso data, numero e CER quando li conosce', () => {
+    const r = raggruppaAvvisi(
+      [{ codice: 'OPERAZIONE_MANCANTE', movimentoIds: ['b', 'a'] }],
+      new Map([
+        ['a', { id: 'a', data: '2025-03-10', numero: '4/2025', cer: '150101' }],
+        ['b', { id: 'b', data: '2025-03-11', numero: '5/2025', cer: '150107' }],
+      ])
+    )
+    expect(r[0].movimenti).toEqual([
+      { id: 'a', data: '2025-03-10', numero: '4/2025', cer: '150101' },
+      { id: 'b', data: '2025-03-11', numero: '5/2025', cer: '150107' },
+    ])
+  })
+
   it('distingue gli avvisi bloccanti da quelli informativi', () => {
     expect(eBloccante('PROVINCIA_IMPIANTO_MANCANTE')).toBe(true)
     expect(eBloccante('DESCRIZIONE_VUOTA')).toBe(true)
-    expect(eBloccante('TRATTATO_INTERNAMENTE_DEFAULT')).toBe(false)
+    expect(eBloccante('PROVINCIA_DA_INDIRIZZO')).toBe(false)
     expect(eBloccante('OPERAZIONE_MANCANTE')).toBe(false)
   })
 })
@@ -45,7 +70,7 @@ describe('anteprimaMesi', () => {
           },
         ],
         prodotti: [
-          { cer: '191212', descrizione: 'Scarti', totale: '0.8', trattatoInternamente: '0' },
+          { cer: '191212', descrizione: 'Scarti', totale: '0.8', giacenzaFineMese: '1.2' },
         ],
       },
     ],
@@ -72,7 +97,7 @@ describe('anteprimaMesi', () => {
       descrizione: 'Scarti',
       operazioni: [],
       totT: '0.8',
-      trattataInternamenteT: '0',
+      giacenzaFineMeseT: '1.2',
     })
   })
 })

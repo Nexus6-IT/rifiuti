@@ -3,7 +3,10 @@
  * dentro il `TenantContext` dell'azienda. Il proprietario prepara i dati e la pulizia toglie solo
  * le righe create qui, per `tenantId`.
  */
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { PrismaClient } from '@prisma/client'
+import { validateXML } from 'xmllint-wasm'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
@@ -36,6 +39,11 @@ import {
   ComunicazioneConBloccantiError,
   ComunicazioneNonTrovataError,
 } from './comunicazioni-orso.port'
+
+const XSD = readFileSync(
+  join(__dirname, '../../domain/comunicazioni/orso/__fixtures__/ImpiantoMesi.xsd'),
+  'utf8'
+)
 
 describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -103,11 +111,17 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     return m.id
   }
 
-  async function scarico(az: AziendaMud, kg: number, giorno: string, descrizione = 'Scarti') {
+  async function scarico(
+    az: AziendaMud,
+    kg: number,
+    giorno: string,
+    descrizione = 'Scarti',
+    cer = '19 12 12'
+  ) {
     const m = await creaMovimento(owner, az, {
       type: 'SCARICO',
       causale: 'AVVIO_RECUPERO',
-      cerCode: '19 12 12',
+      cerCode: cer,
       quantita: kg,
       unita: 'KG',
       giorno,
@@ -173,10 +187,13 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     expect(a.bloccanti).toBe(true)
   })
 
-  it('descrizione vuota è bloccante', async () => {
+  it('descrizione vuota: ripiega sul catalogo CER, bloccante solo se manca anche lì', async () => {
     const az = await nuovaAzienda('O3')
     await caricoConFir(az, 'MI', 100, '2025-03-10')
-    await scarico(az, 50, '2025-03-12', '   ')
+    await scarico(az, 50, '2025-03-11', '   ') // CER 19 12 12 nel catalogo: nessun blocco
+    const ok = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+    expect(ok.avvisi.map(x => x.codice)).not.toContain('DESCRIZIONE_VUOTA')
+    await scarico(az, 50, '2025-03-12', '   ', '99 99 99') // CER fuori catalogo
     const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
     expect(a.avvisi.map(x => x.codice)).toContain('DESCRIZIONE_VUOTA')
     expect(a.bloccanti).toBe(true)
@@ -227,6 +244,14 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     expect(f.nomeFile).toBe(g1.nomeFile)
     expect(f.xml).toContain('<ImpiantoMesi')
     expect(f.xml).toContain('<Mese value="3">')
+    // Tutti i 12 mesi dell'anno passato (anche i vuoti), Extra sempre presente, XSD rispettato.
+    expect(f.xml.match(/<Mese value=/g)).toHaveLength(12)
+    expect(f.xml).toContain('Extra')
+    const esito = await validateXML({
+      xml: [{ fileName: 'f.xml', contents: f.xml }],
+      schema: [XSD],
+    })
+    expect(esito.errors).toEqual([])
 
     const inviata = await nelTenant(az, () =>
       servizio.segnaInviata(az.tenantId, az.utenteId, g1.id)
@@ -258,6 +283,70 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
       servizio.genera(az.tenantId, az.utenteId, p.unitaLocaleId, p.anno)
     )
     expect(g3.id).not.toBe(g1.id)
+  })
+
+  it('un anno senza movimenti si può dichiarare: 12 mesi vuoti validi sull XSD', async () => {
+    const az = await nuovaAzienda('O5')
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2024))
+    expect(a.bloccanti).toBe(false)
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2024)
+    )
+    const f = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
+    expect(f.xml.match(/<Mese value="\d+"/g)).toHaveLength(12)
+    const esito = await validateXML({
+      xml: [{ fileName: 'f.xml', contents: f.xml }],
+      schema: [XSD],
+    })
+    expect(esito.errors).toEqual([])
+  })
+
+  it('la giacenza a fine mese entra nel file come QuantitaTrattataInternamente', async () => {
+    const az = await nuovaAzienda('O6')
+    await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'PRODUZIONE_INTERNA',
+      cerCode: '15 01 06',
+      quantita: 5000,
+      giorno: '2025-01-10',
+      descrizione: 'Imballaggi misti',
+    })
+    await creaMovimento(owner, az, {
+      type: 'SCARICO',
+      causale: 'AVVIO_RECUPERO',
+      cerCode: '15 01 06',
+      quantita: 2000,
+      giorno: '2025-03-12',
+      descrizione: 'Imballaggi misti',
+      operationCode: 'R13',
+    })
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
+    expect(a.bloccanti).toBe(false)
+    // Gennaio: nessuna uscita ma 5 t in giacenza; marzo: 2 t uscite, 3 t in giacenza.
+    expect(a.mesi[0].prodotti).toEqual([
+      expect.objectContaining({ cer: '150106', totT: '0', giacenzaFineMeseT: '5' }),
+    ])
+    expect(a.mesi[2].prodotti).toEqual([
+      expect.objectContaining({ cer: '150106', totT: '2', giacenzaFineMeseT: '3' }),
+    ])
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025)
+    )
+    const f = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
+    expect(f.xml).toContain('QuantitaTrattataInternamente="3"')
+  })
+
+  it('segna inviata: due richieste insieme lasciano chi e quando della prima', async () => {
+    const az = await nuovaAzienda('O7')
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2024)
+    )
+    const [x, y] = await Promise.all([
+      nelTenant(az, () => servizio.segnaInviata(az.tenantId, az.utenteId, g.id)),
+      nelTenant(az, () => servizio.segnaInviata(az.tenantId, az.utenteId, g.id)),
+    ])
+    expect(x.inviataIl).toBe(y.inviataIl)
+    expect(x.stato).toBe('INVIATA')
   })
 
   it('un’altra azienda non vede né scarica le comunicazioni (RLS)', async () => {

@@ -31,7 +31,16 @@ export type CodiceAvvisoOrso =
   | 'PROVINCIA_CONFERITORE_MANCANTE'
   | 'QUANTITA_NON_CONVERTIBILE'
   | 'OPERAZIONE_MANCANTE'
-  | 'TRATTATO_INTERNAMENTE_DEFAULT'
+
+/** Giacenza del CER a fine mese, calcolata dal registro (carichi - scarichi vigenti, aperture). */
+export interface GiacenzaFineMeseOrso {
+  /** 1-12 */
+  mese: number
+  cer: string
+  /** descrizione per il nodo se il CER non ha uscite nel mese; null = nessuna disponibile */
+  descrizione: string | null
+  kg: number
+}
 
 export interface AvvisoOrso {
   codice: CodiceAvvisoOrso
@@ -58,8 +67,11 @@ export interface RifiutoProdottoOrso {
   descrizione: string
   /** tonnellate prodotte (Out Tot) */
   totale: string
-  /** tonnellate trattate internamente: 0 finché il registro non le ha */
-  trattatoInternamente: string
+  /**
+   * Tonnellate in giacenza a fine mese: l'attributo `QuantitaTrattataInternamente` di O.R.SO.
+   * indica «in realtà la giacenza a fine mese» (guida v2.5, pag. 17).
+   */
+  giacenzaFineMese: string
 }
 
 export interface MeseOrso {

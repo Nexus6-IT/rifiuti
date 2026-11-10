@@ -61,6 +61,17 @@ describe('adattaMovimentiOrso', () => {
     expect(m.mese).toBe(3)
   })
 
+  it.each([
+    ['R 13', 'R13'],
+    ['r13', 'R13'],
+    [' D15 ', 'D15'],
+    ['R13/R4', null],
+    ['recupero', null],
+  ])('operazione %p normalizzata in %p', (grezza, atteso) => {
+    const [m] = adattaMovimentiOrso([letto({ operationCode: grezza })])
+    expect(m.operazione).toBe(atteso)
+  })
+
   it('operazione vuota diventa null', () => {
     const [m] = adattaMovimentiOrso([letto({ operationCode: '  ' })])
     expect(m.operazione).toBeNull()
@@ -94,32 +105,49 @@ describe('aggregatoInImpiantoMesi', () => {
           },
         ],
         prodotti: [
-          { cer: '191212', descrizione: 'Scarti', totale: '0.8', trattatoInternamente: '0' },
-          { cer: '191201', descrizione: 'Zero', totale: '0', trattatoInternamente: '0' },
+          { cer: '191212', descrizione: 'Scarti', totale: '0.8', giacenzaFineMese: '0' },
+          { cer: '191201', descrizione: 'Zero', totale: '0', giacenzaFineMese: '0' },
         ],
       },
     ],
   }
 
-  it('produce Tot e, solo se diverso da zero, Extra per i ricevuti', () => {
+  it('produce sempre Tot ed Extra per i ricevuti (la guida li vuole entrambi)', () => {
     const d = aggregatoInImpiantoMesi(aggregato, 'WasteFlow')
     expect(d.autore).toBe('WasteFlow')
     expect(d.anni).toHaveLength(1)
-    const [r1, r2] = d.anni[0].mesi[0].ricevuti
+    const [r1, r2] = d.anni[0].mesi[2].ricevuti
     expect(r1.ingressi).toEqual([
       { q: '1.5', f: 1, ts: 'Tot', s: '0' },
       { q: '0.5', f: 1, ts: 'Extra', s: '0' },
     ])
     expect(r1.operazioni).toEqual(['R13'])
-    expect(r2.ingressi).toEqual([{ q: '2', f: 0, ts: 'Tot', s: '0' }])
+    expect(r2.ingressi).toEqual([
+      { q: '2', f: 0, ts: 'Tot', s: '0' },
+      { q: '0', f: 0, ts: 'Extra', s: '0' },
+    ])
   })
 
-  it('produce l’uscita Tot solo se > 0 e riporta il trattato internamente', () => {
+  it('produce l’uscita Tot solo se > 0 e riporta la giacenza a fine mese', () => {
     const d = aggregatoInImpiantoMesi(aggregato)
-    const [p1, p2] = d.anni[0].mesi[0].prodotti
+    const [p1, p2] = d.anni[0].mesi[2].prodotti
     expect(p1.uscite).toEqual([{ q: '0.8', ts: 'Tot', s: '0' }])
     expect(p1.quantitaTrattataInternamente).toBe('0')
     expect(p2.uscite).toEqual([])
+  })
+
+  it('dichiara sempre i 12 mesi: quelli senza nodi restano vuoti (anno fermo incluso)', () => {
+    const d = aggregatoInImpiantoMesi(aggregato)
+    expect(d.anni[0].mesi.map(m => m.mese)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    expect(d.anni[0].mesi[0]).toEqual({ mese: 1, ricevuti: [], prodotti: [] })
+    expect(d.anni[0].mesi[2].ricevuti).toHaveLength(2)
+    const vuoto = aggregatoInImpiantoMesi({ anno: 2025, mesi: [], avvisi: [], bloccato: false })
+    expect(vuoto.anni[0].mesi).toHaveLength(12)
+  })
+
+  it('con ultimoMese dichiara solo i mesi fino a quello (anno in corso)', () => {
+    const d = aggregatoInImpiantoMesi(aggregato, undefined, 4)
+    expect(d.anni[0].mesi.map(m => m.mese)).toEqual([1, 2, 3, 4])
   })
 })
 

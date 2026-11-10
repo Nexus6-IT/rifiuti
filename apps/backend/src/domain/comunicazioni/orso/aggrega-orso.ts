@@ -2,6 +2,7 @@ import { convertiInKg } from '../../waste-movement/unita-misura-registro'
 import { chiaveConfrontoCer } from '../../waste-movement/cer-registro'
 import type {
   AggregatoOrso,
+  GiacenzaFineMeseOrso,
   AvvisoOrso,
   CodiceAvvisoOrso,
   MeseOrso,
@@ -16,6 +17,8 @@ export interface ParametriOrso {
   anno: number
   /** provincia dell'impianto (sigla): i carichi da altre province sono «Extra» */
   provinciaImpianto: string
+  /** giacenze a fine mese per CER (dal registro); senza, tutte 0 */
+  giacenze?: readonly GiacenzaFineMeseOrso[]
 }
 
 /** kg arrotondati al grammo → grammi interi (niente somme in virgola mobile). */
@@ -64,7 +67,7 @@ export function aggregaOrso(movimenti: readonly MovimentoOrso[], p: ParametriOrs
   const ricevuti = new Map<string, GruppoRicevuto & { mese: number }>()
   const prodotti = new Map<
     string,
-    { mese: number; cer: string; descrizione: string; tot: number }
+    { mese: number; cer: string; descrizione: string; tot: number; giac: number }
   >()
   const avvisiMap = new Map<string, AvvisoOrso>()
 
@@ -88,7 +91,7 @@ export function aggregaOrso(movimenti: readonly MovimentoOrso[], p: ParametriOrs
       avviso('QUANTITA_NON_CONVERTIBILE', true, m, cer)
       continue
     }
-    const chiave = `${m.mese}|${cer}|${descrizione}`
+    const chiave = `${m.mese}|${cer}|${descrizione.toLowerCase()}`
 
     if (ricevuto) {
       const gr =
@@ -117,10 +120,32 @@ export function aggregaOrso(movimenti: readonly MovimentoOrso[], p: ParametriOrs
       }
       ricevuti.set(chiave, gr)
     } else {
-      const gr = prodotti.get(chiave) ?? { mese: m.mese, cer, descrizione, tot: 0 }
+      const gr = prodotti.get(chiave) ?? { mese: m.mese, cer, descrizione, tot: 0, giac: 0 }
       gr.tot += g
       prodotti.set(chiave, gr)
-      avviso('TRATTATO_INTERNAMENTE_DEFAULT', false, m, cer)
+    }
+  }
+
+  // Giacenza a fine mese: va sul primo nodo prodotto (per descrizione) del CER nel mese; se il CER
+  // non ha uscite nel mese compare un nodo senza uscite.
+  for (const gz of p.giacenze ?? []) {
+    const g = Math.round(gz.kg * 1000)
+    if (!Number.isInteger(gz.mese) || gz.mese < 1 || gz.mese > 12 || !(g > 0)) continue
+    const cer = chiaveConfrontoCer(gz.cer)
+    const nodi = [...prodotti.values()]
+      .filter(n => n.mese === gz.mese && n.cer === cer)
+      .sort((a, b) => a.descrizione.localeCompare(b.descrizione))
+    if (nodi.length > 0) {
+      nodi[0].giac += g
+    } else {
+      const descrizione = descrizionePulita(gz.descrizione)
+      prodotti.set(`${gz.mese}|${cer}|${descrizione.toLowerCase()}`, {
+        mese: gz.mese,
+        cer,
+        descrizione,
+        tot: 0,
+        giac: g,
+      })
     }
   }
 
@@ -151,7 +176,7 @@ export function aggregaOrso(movimenti: readonly MovimentoOrso[], p: ParametriOrs
       cer: g.cer,
       descrizione: g.descrizione,
       totale: grammiInTonnellate(g.tot),
-      trattatoInternamente: '0',
+      giacenzaFineMese: grammiInTonnellate(g.giac),
     }
     mese(g.mese).prodotti.push(r)
   }

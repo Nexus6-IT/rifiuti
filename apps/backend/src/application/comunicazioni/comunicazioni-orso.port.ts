@@ -5,10 +5,22 @@
  * Le quantita' sono stringhe decimali col punto.
  */
 
+/** Movimento coinvolto in un avviso, con quanto serve per ritrovarlo nel registro. */
+export interface MovimentoAvviso {
+  id: string
+  /** Giorno `AAAA-MM-GG` del movimento. */
+  data: string
+  /** Numero progressivo nel registro, «n/anno». */
+  numero: string
+  /** Le sole cifre del CER. */
+  cer: string
+}
+
 export interface AvvisoOrso {
   codice: string
   messaggio: string
   movimentoIds: string[]
+  movimenti?: MovimentoAvviso[]
 }
 
 export interface RigaRicevutoOrso {
@@ -25,7 +37,8 @@ export interface RigaProdottoOrso {
   descrizione: string
   operazioni: string[]
   totT: string
-  trattataInternamenteT: string
+  /** Giacenza a fine mese, tonnellate (`QuantitaTrattataInternamente` di O.R.SO.). */
+  giacenzaFineMeseT: string
 }
 
 export interface MeseOrso {

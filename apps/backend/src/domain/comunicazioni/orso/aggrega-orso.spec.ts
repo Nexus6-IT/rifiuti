@@ -120,7 +120,7 @@ describe('aggregaOrso', () => {
     expect(r.mesi[0].ricevuti[0].f).toBe(0)
   })
 
-  it('gli scarichi diventano prodotti con trattato internamente 0 e avviso', () => {
+  it('gli scarichi diventano prodotti con giacenza a fine mese 0 se non ce n e', () => {
     const r = aggregaOrso(
       [mov({ id: 's', verso: 'SCARICO', ruoloMud: 'AVVIATO', quantita: 250, mese: 4 })],
       P
@@ -134,12 +134,64 @@ describe('aggregaOrso', () => {
             cer: '170405',
             descrizione: 'Ferro e acciaio',
             totale: '0.25',
-            trattatoInternamente: '0',
+            giacenzaFineMese: '0',
           },
         ],
       },
     ])
-    expect(r.avvisi[0]).toMatchObject({ codice: 'TRATTATO_INTERNAMENTE_DEFAULT', bloccante: false })
+    expect(r.avvisi).toEqual([])
+  })
+
+  it('la giacenza a fine mese entra nel nodo prodotto del CER (nel primo per descrizione)', () => {
+    const r = aggregaOrso(
+      [
+        mov({ id: 's1', verso: 'SCARICO', ruoloMud: 'AVVIATO', quantita: 250, mese: 4 }),
+        mov({
+          id: 's2',
+          verso: 'SCARICO',
+          ruoloMud: 'AVVIATO',
+          quantita: 100,
+          mese: 4,
+          descrizione: 'Rottami',
+        }),
+      ],
+      { ...P, giacenze: [{ mese: 4, cer: '17 04 05', descrizione: 'Ferro e acciaio', kg: 1500 }] }
+    )
+    expect(r.mesi[0].prodotti.map(x => [x.descrizione, x.giacenzaFineMese])).toEqual([
+      ['Ferro e acciaio', '1.5'],
+      ['Rottami', '0'],
+    ])
+  })
+
+  it('un CER in giacenza senza uscite nel mese compare come prodotto senza uscite', () => {
+    const r = aggregaOrso([], {
+      ...P,
+      giacenze: [
+        { mese: 5, cer: '17 04 05', descrizione: 'Ferro  e acciaio', kg: 2000 },
+        { mese: 6, cer: '17 04 05', descrizione: 'Ferro e acciaio', kg: 0 },
+      ],
+    })
+    expect(r.mesi).toEqual([
+      {
+        mese: 5,
+        ricevuti: [],
+        prodotti: [
+          { cer: '170405', descrizione: 'Ferro e acciaio', totale: '0', giacenzaFineMese: '2' },
+        ],
+      },
+    ])
+  })
+
+  it('le descrizioni che differiscono solo per maiuscole formano un solo nodo', () => {
+    const r = aggregaOrso(
+      [
+        mov({ id: 'a', descrizione: 'Imballaggi misti' }),
+        mov({ id: 'b', descrizione: 'imballaggi MISTI' }),
+      ],
+      P
+    )
+    expect(r.mesi[0].ricevuti).toHaveLength(1)
+    expect(r.mesi[0].ricevuti[0]).toMatchObject({ descrizione: 'Imballaggi misti', totale: '2' })
   })
 
   it('ignora i movimenti esclusi, i carichi non ricevuti da terzi e i mesi non validi', () => {

@@ -30,7 +30,7 @@ export interface MovimentoLetto {
  */
 export function adattaMovimentiOrso(letti: readonly MovimentoLetto[]): MovimentoOrso[] {
   return letti.map(m => {
-    const operazione = (m.operationCode ?? '').trim()
+    const operazione = normalizzaOperazione(m.operationCode)
     return {
       id: m.id,
       mese: Number(giornoItaliano(m.movementDate).slice(5, 7)),
@@ -41,29 +41,49 @@ export function adattaMovimentiOrso(letti: readonly MovimentoLetto[]): Movimento
       quantita: m.kg !== null ? m.kg : m.quantita,
       unita: m.kg !== null ? 'kg' : m.unita,
       kgPerUnita: null,
-      operazione: operazione === '' ? null : operazione,
+      operazione,
       conFir: m.conFir,
       provinciaConferitore: m.provinciaConferitore,
     }
   })
 }
 
+/**
+ * Codice operazione R/D come lo vuole O.R.SO.: «R 13» e «r13» diventano «R13». Un codice che non
+ * si riconosce (per esempio «R13/R4») diventa null: l'aggregatore lo segnala per movimento.
+ */
+export function normalizzaOperazione(codice: string | null | undefined): string | null {
+  const c = (codice ?? '').replace(/\s+/g, '').toUpperCase()
+  return /^[RD]\d{1,2}$/.test(c) ? c : null
+}
+
 const NON_ZERO = /[1-9]/
 
 /** Uscita dell'aggregatore → dati del serializzatore (soggetto «Tot» per tutti, `s` = 0). */
-export function aggregatoInImpiantoMesi(a: AggregatoOrso, autore?: string): ImpiantoMesiDati {
-  const mesi = a.mesi.map(m => ({
+export function aggregatoInImpiantoMesi(
+  a: AggregatoOrso,
+  autore?: string,
+  ultimoMese = 12
+): ImpiantoMesiDati {
+  // Tutti i mesi dell'anno: un mese senza nodi dice a O.R.SO. che non si sono ritirati né prodotti
+  // rifiuti (guida v2.5, pag. 16); un mese assente resterebbe non compilato.
+  const perMese = new Map(a.mesi.map(m => [m.mese, m]))
+  const tutti = Array.from({ length: ultimoMese }, (_, i) => {
+    return perMese.get(i + 1) ?? { mese: i + 1, ricevuti: [], prodotti: [] }
+  })
+  const mesi = tutti.map(m => ({
     mese: m.mese,
     ricevuti: m.ricevuti.map((r): RifiutoRicevutoDati => {
       const ingressi: RifiutoRicevutoDati['ingressi'] = [{ q: r.totale, f: r.f, ts: 'Tot', s: '0' }]
-      if (NON_ZERO.test(r.extra)) ingressi.push({ q: r.extra, f: r.f, ts: 'Extra', s: '0' })
+      // Tot ed Extra sono entrambi obbligatori in modalità normale (guida v2.5, pag. 14)
+      ingressi.push({ q: r.extra, f: r.f, ts: 'Extra', s: '0' })
       return { cer: r.cer, descrizione: r.descrizione, operazioni: r.operazioni, ingressi }
     }),
     prodotti: m.prodotti.map(
       (p): RifiutoProdottoDati => ({
         cer: p.cer,
         descrizione: p.descrizione,
-        quantitaTrattataInternamente: p.trattatoInternamente,
+        quantitaTrattataInternamente: p.giacenzaFineMese,
         uscite: NON_ZERO.test(p.totale) ? [{ q: p.totale, ts: 'Tot', s: '0' }] : [],
       })
     ),

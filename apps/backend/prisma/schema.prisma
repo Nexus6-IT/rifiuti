@@ -4315,6 +4315,7 @@ model ComunicazioneConsorzio {
   @@unique([id, tenantId], map: "comunicazioni_consorzi_id_tenant_id_key")
   @@unique([tenantId, consorzio, unitaLocaleId, periodoDa, periodoA, tracciato, versione, hashDati], map: "comunicazioni_consorzi_idempotenza_key")
   @@index([unitaLocaleId], map: "comunicazioni_consorzi_unita_locale_idx")
+  @@index([tenantId, consorzio, periodoDa(sort: Desc)], map: "comunicazioni_consorzi_elenco_idx")
   @@map("comunicazioni_consorzi")
 }
 

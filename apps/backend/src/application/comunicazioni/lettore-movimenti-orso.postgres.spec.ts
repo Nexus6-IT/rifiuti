@@ -271,6 +271,159 @@ describe('leggiMovimentiOrso — Postgres reale, ruolo wasteflow_app', () => {
     expect(con?.kg).toBe(9)
   })
 
+  it('descrizione vuota: ripiega sulla descrizione del catalogo CER, tagliata a 100', async () => {
+    const codice = '99 88 77'
+    const cat = await owner.cERCode.upsert({
+      where: { code: codice },
+      update: { description: 'D'.repeat(130) },
+      create: {
+        code: codice,
+        description: 'D'.repeat(130),
+        category: 'prova',
+        subcategory: 'prova',
+      },
+    })
+    try {
+      const mov = await creaMovimento(owner, az, {
+        type: 'CARICO',
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: codice,
+        quantita: 10,
+        giorno: '2025-03-12',
+      })
+      const { movimenti } = await leggi(az)
+      expect(movimenti.find(m => m.id === mov.id)?.descrizione).toBe('D'.repeat(100))
+    } finally {
+      await owner.cERCode.deleteMany({ where: { id: cat.id } })
+    }
+  })
+
+  it('operazione: ripiega sul codice del FIR se il movimento non lo ha', async () => {
+    const dest = { ragioneSociale: 'Dest2', partitaIva: partitaIvaUnica() }
+    const trasp = { ragioneSociale: 'Trasp2', partitaIva: partitaIvaUnica() }
+    const firId = await creaFirConFirma(owner, az, {
+      numero: 'FIR-ORSO-2',
+      giornoTrasporto: '2025-03-16',
+      destinatarioId: await creaSoggettoMud(owner, az.tenantId, 'DESTINATARIO', dest),
+      destinatario: dest,
+      trasportatoreId: await creaSoggettoMud(owner, az.tenantId, 'TRASPORTATORE', trasp),
+      trasportatore: trasp,
+      cerCode: '17 02 01',
+      quantita: 40,
+      codiceOperazione: 'R13',
+    })
+    const mov = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '17 02 01',
+      quantita: 40,
+      giorno: '2025-03-16',
+      firId,
+    })
+    const { movimenti } = await leggi(az)
+    expect(movimenti.find(m => m.id === mov.id)?.operationCode).toBe('R13')
+  })
+
+  it('provincia del conferitore senza FIR: la ricava dalla sigla fra parentesi dell indirizzo', async () => {
+    const conSigla = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '17 02 02',
+      quantita: 5,
+      giorno: '2025-03-17',
+      counterpartAddress: 'Via Roma 1, 24100 Bergamo (bg)',
+    })
+    const senza = await creaMovimento(owner, az, {
+      type: 'CARICO',
+      causale: 'INGRESSO_ESTERNO',
+      cerCode: '17 02 02',
+      quantita: 5,
+      giorno: '2025-03-18',
+      counterpartAddress: 'Via Roma 1, Bergamo',
+    })
+    const { movimenti } = await leggi(az)
+    expect(movimenti.find(m => m.id === conSigla.id)).toMatchObject({
+      provinciaConferitore: 'BG',
+      provinciaDaIndirizzo: true,
+    })
+    expect(movimenti.find(m => m.id === senza.id)).toMatchObject({
+      provinciaConferitore: null,
+      provinciaDaIndirizzo: false,
+    })
+  })
+
+  it('giacenze a fine mese: aperture + carichi - scarichi vigenti, anche di anni precedenti', async () => {
+    const sede = await owner.rentriUnitaLocale.create({
+      data: {
+        tenantId: az.tenantId,
+        numIscrSito: 'OP0001MS999999-MI0003',
+        denominazione: 'Sede giacenze',
+      },
+    })
+    const reg = await owner.registroRifiuti.create({
+      data: { tenantId: az.tenantId, descrizione: 'Giacenze', unitaLocaleId: sede.id },
+    })
+    const azG = { ...az, unitaLocaleId: sede.id, registroId: reg.id } as AziendaMud
+    await creaMovimento(owner, azG, {
+      type: 'CARICO',
+      causale: 'PRODUZIONE_INTERNA',
+      cerCode: '15 01 06',
+      quantita: 4000,
+      giorno: '2024-12-20',
+      descrizione: 'Imballaggi misti',
+    })
+    await creaMovimento(owner, azG, {
+      type: 'CARICO',
+      causale: 'PRODUZIONE_INTERNA',
+      cerCode: '15 01 06',
+      quantita: 1000,
+      giorno: '2025-02-10',
+    })
+    await creaMovimento(owner, azG, {
+      type: 'SCARICO',
+      causale: 'AVVIO_RECUPERO',
+      cerCode: '15 01 06',
+      quantita: 2.5,
+      unita: 'T',
+      giorno: '2025-03-05',
+    })
+    const annullata = await creaMovimento(owner, azG, {
+      type: 'SCARICO',
+      causale: 'AVVIO_RECUPERO',
+      cerCode: '15 01 06',
+      quantita: 999,
+      giorno: '2025-03-06',
+    })
+    await creaMovimento(owner, azG, {
+      tipo: 'ANNULLAMENTO',
+      type: 'SCARICO',
+      causale: 'AVVIO_RECUPERO',
+      cerCode: '15 01 06',
+      quantita: 999,
+      giorno: '2025-03-06',
+      rettificatoId: annullata.id,
+      originaleId: annullata.id,
+    })
+    const lettura = await TenantContext.run({ tenantId: az.tenantId }, async () =>
+      leggiMovimentiOrso(app, {
+        tenantId: az.tenantId,
+        unitaLocaleId: sede.id,
+        da: new Date('2025-01-01T00:00:00Z'),
+        a: new Date('2026-01-01T00:00:00Z'),
+        catalogo: await caricaCatalogoCausali(app, az.tenantId),
+        anno: 2025,
+      })
+    )
+    const perMese = Object.fromEntries(
+      lettura.giacenze.filter(g => g.cer === '150106').map(g => [g.mese, g.kg])
+    )
+    expect(perMese[1]).toBe(4000)
+    expect(perMese[2]).toBe(5000)
+    expect(perMese[3]).toBe(2500)
+    expect(perMese[12]).toBe(2500)
+    expect(lettura.giacenze.find(g => g.cer === '150106')?.descrizione).toBe('Imballaggi misti')
+  })
+
   it('vede solo i movimenti della propria azienda', async () => {
     const lettura = await leggi(altraAzienda)
     expect(lettura.movimenti.map(m => m.quantita)).toEqual([4])
