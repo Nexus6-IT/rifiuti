@@ -52,6 +52,7 @@ import { SignaturesModule } from './application/signatures/signatures.module'
 // Registro cronologico carico/scarico (WS-C) — art. 190 D.Lgs 152/2006
 import { RegistroModule } from './api/registro/registro.module'
 import { PeseModule } from './api/pese/pese.module'
+import { RitiriModule } from './ritiri/ritiri.module'
 import { ClientiModule } from './api/clienti/clienti.module'
 import { ListinoModule } from './api/listino/listino.module'
 import { ModelliStampaModule } from './api/modelli-stampa/modelli-stampa.module'
@@ -168,6 +169,7 @@ import { AccessRequestModule } from './application/access-request/access-request
     // Registro cronologico carico/scarico (WS-C) — art. 190 D.Lgs 152/2006
     RegistroModule,
     PeseModule,
+    RitiriModule,
     ClientiModule,
     ListinoModule,
     ModelliStampaModule,

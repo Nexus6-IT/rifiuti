@@ -40,6 +40,9 @@ import {
   FirNonTrovatoError,
   FirNonModificabileError,
   FormularioGiaAgganciatoError,
+  FirGiaGeneratoDalRitiroError,
+  RitiroNonProgrammatoError,
+  RitiroNonTrovatoError,
   FirmaSenzaUtenteError,
   FirNonPiuInBozzaError,
 } from '../../core/domain/errors'
@@ -370,7 +373,9 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
     // forma `connect`, non come FK scalari: l'upsert con write annidati usa
     // l'input "checked" che richiede la relazione (altrimenti: "Argument
     // `tenant` is missing"). Si estraggono quindi gli scalari e si collega.
-    const { tenantId, producerUserId, ...scalars } = data
+    // `ritiroId` e' una FK composta (ritiro_id, tenant_id): si collega con `ritiro.connect` solo
+    // in creazione, mai in update (immutabile, trigger).
+    const { tenantId, producerUserId, ritiroId, ...scalars } = data
     const riga = await this.conservaAnnullamentoEnte(client, fir.id, tenantId, scalars)
     // Lock ottimistico: la riga e' bloccata dalla SELECT, quindi il confronto precede ogni scrittura.
     if (riga && opzioni?.verificaVersione && riga.versione !== fir.versione) {
@@ -391,6 +396,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       ...scalars,
       tenant: { connect: { id: tenantId } },
       producerUser: { connect: { id: producerUserId } },
+      ...(ritiroId ? { ritiro: { connect: { id_tenantId: { id: ritiroId, tenantId } } } } : {}),
     }
     if (transportersCreate.length > 0) {
       createData.transportersAggiuntivi = { create: transportersCreate }
@@ -525,6 +531,34 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
 
     if (isUniqueViolationOnRentriNumeroFir && fir.rentriNumeroFir) {
       return new FormularioGiaAgganciatoError(fir.rentriNumeroFir)
+    }
+
+    // 4.7: ritiro di origine. Il 23505 sull'indice parziale e' la corsa fra due generazioni.
+    const messaggio = error instanceof Error ? error.message : ''
+    const prismaNoto = error instanceof Prisma.PrismaClientKnownRequestError
+    const target = prismaNoto ? String(error.meta?.target ?? '') : ''
+    if (
+      messaggio.includes('firs_ritiro_attivo_key') ||
+      // Prisma non riporta il nome di un indice parziale ("(not available)"): in creazione l'unico
+      // 23505 possibile, a parte il numero RENTRI gia' tradotto sopra, e' `firs_ritiro_attivo_key`.
+      (prismaNoto &&
+        error.code === 'P2002' &&
+        !!fir.ritiroId &&
+        !target.includes('rentri_numero_fir'))
+    ) {
+      return new FirGiaGeneratoDalRitiroError()
+    }
+    // Trigger `firs_ritiro_controlli` (SQLSTATE WR001): il ritiro non e' piu' PROGRAMMATO.
+    if (messaggio.includes('WR001') || messaggio.includes('RITIRO_NON_PROGRAMMATO')) {
+      return new RitiroNonProgrammatoError()
+    }
+    // FK composta (ritiro_id, tenant_id): ritiro inesistente o di un altro tenant.
+    if (
+      fir.ritiroId &&
+      ((prismaNoto && (error.code === 'P2003' || error.code === 'P2025')) ||
+        messaggio.includes('firs_ritiro_fkey'))
+    ) {
+      return new RitiroNonTrovatoError()
     }
 
     return error
@@ -968,6 +1002,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       _versione: record.versione ?? 0,
       _firmePresenti: (record.signatures?.length ?? 0) > 0,
       _inAttesaFirmaProduttore: record.status === 'AWAITING_PRODUCER',
+      _ritiroId: record.ritiroId ?? null,
     })
 
     return fir
@@ -1097,6 +1132,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
       unit: fir.rifiuto.quantita.unitaMisura,
       provenienza: fir.provenienza || undefined,
       tipoTrattaPrincipale: fir.tipoTrattaPrincipale || undefined,
+      ritiroId: fir.ritiroId || undefined,
       transportDate: fir.dataPresaCarico || new Date(),
       actualArrivalDate: fir.dataConsegna,
       ...this.rentriToPersistence(fir),
