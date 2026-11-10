@@ -51,7 +51,8 @@ const TONO_GRAVITA: Record<VoceAttenzione['gravita'], TonoStato> = {
               <span class="todo__t">
                 <b>Verifica delle scadenze non riuscita</b>
                 <span
-                  >Non è stato possibile controllare oggi certificato RENTRI e autorizzazioni.
+                  >Non è stato possibile controllare oggi
+                  {{ conRentri ? 'certificato RENTRI e autorizzazioni' : 'le autorizzazioni' }}.
                   Riprova.</span
                 >
               </span>
@@ -152,6 +153,8 @@ export class DaFareOggiComponent {
   /** La verifica delle scadenze non e' riuscita: «non lo so» non e' «tutto a posto». */
   @Input() errore = false
   @Input() caricamento = false
+  /** Azienda con il modulo `rentri`: solo allora il controllo riguarda anche il certificato RENTRI. */
+  @Input() conRentri = true
   @Output() readonly riprova = new EventEmitter<void>()
 
   get conteggio(): string {

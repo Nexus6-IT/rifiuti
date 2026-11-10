@@ -114,6 +114,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   },
   // mud
   'api/mud/mud.controller.ts': { chiavi: ['mud'], motivo: 'Dichiarazione MUD' },
+  'api/comunicazioni/comunicazioni.controller.ts': {
+    chiavi: ['comunicazioni'],
+    motivo: 'Comunicazioni ai consorzi (O.R.SO.)',
+  },
   // giacenze
   'application/giacenze/giacenze.controller.ts': {
     chiavi: ['giacenze'],
@@ -213,7 +217,9 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   'api/rentri/rentri-sync.controller.ts': { chiavi: ['rentri'], motivo: 'RENTRI: trasmissioni' },
   'api/rentri/rentri-unita-locale.controller.ts': {
     chiavi: ['rentri'],
-    motivo: 'RENTRI: unita locali',
+    motivo:
+      'RENTRI: unita locali; l elenco e una lettura condivisa con le comunicazioni (scelta sede)',
+    metodi: { list: ['rentri', 'comunicazioni'] },
   },
 }
 

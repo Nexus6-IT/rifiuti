@@ -55,6 +55,28 @@ export function clientDbLocale(): PrismaClient | null {
   return new PrismaClient({ datasources: { db: { url } } })
 }
 
+/** Motivo dello skip quando il database non e' locale. */
+export const MOTIVO_DB_NON_LOCALE =
+  'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
+
+/**
+ * Skip ESPLICITO solo fuori dalla CI: in CI (`CI` impostata) il database e' sempre locale
+ * (postgres-job.sh), quindi un database non locale li' e' un errore di configurazione e non deve
+ * far saltare in silenzio l'intero spec. Si usa in `test.skip(saltaSeDbNonLocale(db), MOTIVO...)`.
+ */
+export function saltaSeDbNonLocale(db: PrismaClient | null): boolean {
+  return db === null && !process.env.CI
+}
+
+/** In `beforeAll`: in CI fa FALLIRE lo spec se il database non e' locale (invece di saltarlo). */
+export function assicuraDbLocale(db: PrismaClient | null): asserts db is PrismaClient {
+  if (db === null) {
+    throw new Error(
+      `${MOTIVO_DB_NON_LOCALE}. In CI questo spec non si salta: controlla DATABASE_URL.`
+    )
+  }
+}
+
 /**
  * Crea l'azienda di test con i tre utenti e i ruoli di sistema. `etichetta` entra nella ragione
  * sociale (insieme al prefisso della run) e nelle email degli utenti.

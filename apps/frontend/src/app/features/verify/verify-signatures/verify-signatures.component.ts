@@ -151,11 +151,11 @@ import {
                 <!-- Signature Details -->
                 <div *ngIf="event.signature" class="signature-details">
                   <div class="grid">
-                    <div class="col-12 md:col-6 mb-2">
+                    <div *ngIf="event.signature.signerName" class="col-12 md:col-6 mb-2">
                       <p class="text-sm text-tertiary mb-1">Firmatario</p>
                       <p class="font-semibold">{{ event.signature.signerName }}</p>
                     </div>
-                    <div class="col-12 md:col-6 mb-2">
+                    <div *ngIf="event.signature.signerFiscalCode" class="col-12 md:col-6 mb-2">
                       <p class="text-sm text-tertiary mb-1">Codice Fiscale</p>
                       <p class="font-semibold">{{ event.signature.signerFiscalCode }}</p>
                     </div>

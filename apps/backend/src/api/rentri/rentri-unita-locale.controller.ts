@@ -48,6 +48,7 @@ export class RentriUnitaLocaleController {
   constructor(private readonly service: RentriUnitaLocaleService) {}
 
   @Get()
+  @RichiedeModulo('rentri', 'comunicazioni')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Elenca le unità locali RENTRI del tenant corrente' })
   @ApiResponse({ status: 200, description: 'Elenco unità locali' })

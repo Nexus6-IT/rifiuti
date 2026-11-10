@@ -106,3 +106,18 @@ describe('feature-catalog: ritiri', () => {
     ).not.toContain('ritiri')
   })
 })
+
+describe('feature-catalog: comunicazioni', () => {
+  it('il modulo comunicazioni e solo in ENTERPRISE e si aggiunge ai piani via featureFlags', () => {
+    expect(FEATURE_KEYS).toContain('comunicazioni')
+    expect(PLAN_FEATURES[SubscriptionTier.ENTERPRISE]).toContain('comunicazioni')
+    expect(PLAN_FEATURES[SubscriptionTier.PROFESSIONAL]).not.toContain('comunicazioni')
+    expect(PLAN_FEATURES[SubscriptionTier.TRIAL]).not.toContain('comunicazioni')
+    expect(
+      effectiveFeatures({
+        subscriptionTier: SubscriptionTier.PROFESSIONAL,
+        featureFlags: ['comunicazioni'],
+      })
+    ).toContain('comunicazioni')
+  })
+})

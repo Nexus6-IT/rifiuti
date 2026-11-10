@@ -28,6 +28,15 @@ export const routes: Routes = [
       import('./features/auth/auth-callback.component').then(m => m.AuthCallbackComponent),
   },
   {
+    // Verifica pubblica delle firme del FIR: e' l'URL del QR stampato sul PDF (rotta pubblica,
+    // senza authGuard: la apre chiunque scansioni il codice).
+    path: 'verify/:firId',
+    loadComponent: () =>
+      import('./features/verify/verify-signatures/verify-signatures.component').then(
+        m => m.VerifySignaturesComponent
+      ),
+  },
+  {
     // Pagine legali pubbliche (ToS, Privacy, DPA) — senza authGuard
     path: 'legal/termini',
     loadComponent: () =>
@@ -118,6 +127,16 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/notifications/notifications-page/notifications-page.component').then(
             m => m.NotificationsPageComponent
+          ),
+      },
+      {
+        // Comunicazioni ai consorzi (O.R.SO., 4.9a): lettura per tutti, scrittura ADMIN/OPERATOR (backend)
+        path: 'comunicazioni',
+        canActivate: [moduloGuard],
+        data: { modulo: 'comunicazioni' },
+        loadComponent: () =>
+          import('./features/comunicazioni/comunicazioni.component').then(
+            m => m.ComunicazioniComponent
           ),
       },
       {

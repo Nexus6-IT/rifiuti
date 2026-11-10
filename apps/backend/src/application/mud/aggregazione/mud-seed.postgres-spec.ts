@@ -127,6 +127,8 @@ export interface DatiMovimento {
   firId?: string
   operationCode?: string
   counterpartName?: string
+  counterpartAddress?: string
+  descrizione?: string
   /** predecessore (solo per correzioni) */
   rettificatoId?: string
   /** radice della catena (solo per correzioni) */
@@ -157,6 +159,8 @@ export async function creaMovimento(
       firId: o.firId,
       operationCode: o.operationCode ?? null,
       counterpartName: o.counterpartName ?? null,
+      counterpartAddress: o.counterpartAddress ?? null,
+      wasteDescription: o.descrizione ?? null,
       tipoAnnotazione: tipo,
       movimentoRettificatoId: tipo === 'ORDINARIA' ? null : o.rettificatoId,
       movimentoOriginaleId: tipo === 'ORDINARIA' ? null : o.originaleId,

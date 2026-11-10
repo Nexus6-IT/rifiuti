@@ -138,6 +138,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'MappaturaExportContabile',
   // Ritiri programmati (4.7).
   'Ritiro',
+  // Comunicazioni a consorzi e osservatori (4.9a, T0).
+  'ComunicazioneConsorzio',
+  'ComunicazioneConsorzioMovimento',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',

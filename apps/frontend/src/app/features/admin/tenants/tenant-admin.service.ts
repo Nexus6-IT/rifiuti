@@ -21,6 +21,7 @@ export type FeatureFlag =
   | 'reference_data'
   | 'pese'
   | 'ritiri'
+  | 'comunicazioni'
 
 /** Stato dell'abbonamento del tenant. */
 export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED' | string
@@ -92,12 +93,18 @@ export interface CreateTenantDto {
 
 /** Payload di aggiornamento parziale (partitaIva non modificabile). */
 export type UpdateTenantDto = Partial<
-  Omit<CreateTenantDto, 'partitaIva' | 'atecoCode' | 'reaNumber'>
+  Omit<
+    CreateTenantDto,
+    'partitaIva' | 'atecoCode' | 'reaNumber' | 'codiceFiscale' | 'pec' | 'telefono' | 'civico'
+  >
 > & {
-  /** `null` svuota il valore a database; omesso lo lascia invariato. */
+  /** Facoltativi: `null` svuota il valore a database; omesso lo lascia invariato. */
   atecoCode?: string | null
-  /** `null` svuota il valore a database; omesso lo lascia invariato. */
   reaNumber?: string | null
+  codiceFiscale?: string | null
+  pec?: string | null
+  telefono?: string | null
+  civico?: string | null
 }
 
 /**

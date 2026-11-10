@@ -73,6 +73,23 @@ describe('TenantService — campi di piano', () => {
     }
   })
 
+  it('update: null su codiceFiscale, pec, telefono e civico li azzera', async () => {
+    const { service, prisma } = makeService()
+
+    await service.update(admin, TENANT, {
+      codiceFiscale: null,
+      pec: null,
+      telefono: null,
+      civico: null,
+    } as any)
+    expect(prisma.tenant.update.mock.calls[0][0].data).toEqual({
+      codiceFiscale: null,
+      pec: null,
+      telefono: null,
+      civico: null,
+    })
+  })
+
   it('update: null su ATECO e REA li azzera, omessi restano invariati', async () => {
     const { service, prisma } = makeService()
 

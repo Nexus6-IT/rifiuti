@@ -554,6 +554,14 @@ describe('FirListComponent — consegna dal netto di un accesso di pesa', () => 
 
   const qd = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 
+  it('puoConfermareConsegna: solo in transito e non legato a RENTRI', () => {
+    expect(component.puoConfermareConsegna(firInTransito)).toBeTrue()
+    expect(
+      component.puoConfermareConsegna({ ...firInTransito, rentriNumeroFir: 'FIR-RENTRI-1' })
+    ).toBeFalse()
+    expect(component.puoConfermareConsegna({ ...firInTransito, stato: 'EMESSO' })).toBeFalse()
+  })
+
   function apri(fir = firInTransito) {
     component.showConsegnaDialog(fir)
     fixture.detectChanges()

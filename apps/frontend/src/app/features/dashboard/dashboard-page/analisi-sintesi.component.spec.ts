@@ -32,6 +32,26 @@ describe('AnalisiSintesiComponent', () => {
     expect(sk.textContent).not.toContain('RENTRI')
   })
 
+  it('sotto 992 px con tre celle l’ultima occupa tutta la riga: nessun buco nella griglia', () => {
+    if (window.innerWidth >= 992) {
+      pending('serve una finestra sotto 992 px')
+      return
+    }
+    for (const sk of [false, true]) {
+      const el = crea({
+        celle: sk ? [] : celleAnalisi(dashboardFixture(), mesi, false),
+        caricamento: sk,
+        conRentri: false,
+      })
+      const striscia = el.querySelector('.striscia') as HTMLElement
+      const celle = Array.from(el.querySelectorAll<HTMLElement>('.cella'))
+      expect(celle.length).toBe(3)
+      const larghezza = striscia.getBoundingClientRect().width
+      expect(celle[2].getBoundingClientRect().width).toBeGreaterThan(larghezza * 0.95)
+      expect(celle[0].getBoundingClientRect().width).toBeLessThan(larghezza * 0.6)
+    }
+  })
+
   it('le cifre e il livello di conformità come pillola', () => {
     const d = dashboardFixture()
     const el = crea({ celle: celleAnalisi(d, mesi), livello: { parola: 'Buona', tono: 'ok' } })

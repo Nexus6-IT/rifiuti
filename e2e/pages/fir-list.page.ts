@@ -28,6 +28,16 @@ export class FirListPage {
     await expect(this.page).toHaveURL(/\/fir/)
   }
 
+  /** Riga della lista per id del FIR (`data-testid="fir-riga-<id>"`): stabile prima e dopo l'emissione. */
+  rigaPerId(id: string): Locator {
+    return this.page.getByTestId(`fir-riga-${id}`)
+  }
+
+  /** Pillola di stato del FIR (testo «Bozza», «Emesso», «In transito», «Consegnato»). */
+  statoPerId(id: string): Locator {
+    return this.page.getByTestId(`fir-stato-${id}`)
+  }
+
   /** Riga tabella per numero FIR (testo visibile, non un id stabile). */
   rowByText(text: string | RegExp): Locator {
     return this.table.getByRole('row').filter({ hasText: text })

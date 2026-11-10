@@ -27,6 +27,21 @@ import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { FirModificatoNelFrattempoError, FirNonTrovatoError } from '../../core/domain/errors'
 
+/**
+ * Il ciclo di vita del FIR salva le firme con ruoli italiani, il sottosistema crittografico
+ * ragiona con quelli inglesi: senza conversione `isImmutable`/`isCompleted` non vedono mai le tre
+ * firme e i controlli di ordine e duplicato di `applySignature` non scattano.
+ */
+const RUOLI_CICLO_DI_VITA: Record<string, SignatureRole> = {
+  PRODUTTORE: 'PRODUCER' as SignatureRole,
+  TRASPORTATORE: 'CARRIER' as SignatureRole,
+  DESTINATARIO: 'RECEIVER' as SignatureRole,
+}
+
+export function normalizzaRuoloFirma(ruolo: string): SignatureRole {
+  return RUOLI_CICLO_DI_VITA[ruolo] ?? (ruolo as SignatureRole)
+}
+
 // Include per le query firma: signatures + user (per fiscal code legacy)
 const SIGNATURE_INCLUDE = {
   signatures: {
@@ -205,7 +220,7 @@ export class SignatureFIRRepository implements FIRRepository {
             signerName:
               sig.signerName ??
               (sig.user ? `${sig.user.firstName} ${sig.user.lastName}` : 'Sconosciuto'),
-            role: sig.role as SignatureRole,
+            role: normalizzaRuoloFirma(sig.role),
             signatureValue: sig.signatureValue,
             signatureMethod: (sig.signatureMethod ?? 'ECDSA-SHA256') as SignatureMethod,
             certificateHash: sig.certificateHash,

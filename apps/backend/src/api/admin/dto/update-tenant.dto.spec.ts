@@ -25,3 +25,30 @@ describe('UpdateTenantDto: ATECO e REA svuotabili', () => {
     expect(e.map(x => x.property).sort()).toEqual(['atecoCode', 'reaNumber'])
   })
 })
+
+describe('UpdateTenantDto: altri campi facoltativi svuotabili', () => {
+  it('accetta null per codiceFiscale, pec, telefono e civico', async () => {
+    expect(await errori({ codiceFiscale: null, pec: null, telefono: null, civico: null })).toEqual(
+      []
+    )
+  })
+
+  it('NON accetta null sui campi obbligatori e su country (colonna non nullable)', async () => {
+    const e = await errori({
+      ragioneSociale: null,
+      address: null,
+      city: null,
+      province: null,
+      postalCode: null,
+      country: null,
+    })
+    expect(e.map(x => x.property).sort()).toEqual([
+      'address',
+      'city',
+      'country',
+      'postalCode',
+      'province',
+      'ragioneSociale',
+    ])
+  })
+})

@@ -26,6 +26,7 @@ export const FEATURE_KEYS = [
   'reference_data',
   'pese',
   'ritiri',
+  'comunicazioni',
 ] as const
 
 /** Tipo della singola chiave feature. */
@@ -46,6 +47,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   reference_data: 'Dati di riferimento (ISTAT/ATECO)',
   pese: 'Pese (inserimento manuale)',
   ritiri: 'Ritiri programmati',
+  comunicazioni: 'Comunicazioni a consorzi e osservatori',
 }
 
 /**

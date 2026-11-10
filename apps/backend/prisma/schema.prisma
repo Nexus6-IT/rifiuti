@@ -180,6 +180,8 @@ model Tenant {
   contatoriFileFatturapa      ContatoreFileFatturapa[]
   mappatureExportContabile    MappaturaExportContabile[]
   ritiri                      Ritiro[]
+  comunicazioniConsorzi       ComunicazioneConsorzio[]
+  comunicazioniConsorziMovimenti ComunicazioneConsorzioMovimento[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -428,7 +430,14 @@ model FIR {
   /// contratto RENTRI. Nullable per lo stesso motivo di `provenienza` sopra.
   tipoTrattaPrincipale TipoTratta? @map("tipo_tratta_principale")
 
+  /// Data indicata per il trasporto, fissata alla creazione: entra nel documento firmato e dopo
+  /// l'emissione non si riscrive piu' (altrimenti le firme gia' apposte smettono di valere).
   transportDate        DateTime  @map("transport_date")
+  /// Momento REALE della presa in carico da parte del trasportatore (firma compresa). Colonna
+  /// separata da `transport_date` perche' scritta dopo le prime firme: non fa parte del documento
+  /// firmato. Null finche' la presa in carico non e' avvenuta (e sui FIR precedenti alla colonna,
+  /// dove vale ripiegare su `transport_date`).
+  presaInCaricoIl      DateTime? @map("presa_in_carico_il") @db.Timestamptz(6)
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
   actualArrivalDate    DateTime? @map("actual_arrival_date")
   transportNotes       String?   @map("transport_notes") @db.Text
@@ -2026,6 +2035,7 @@ model WasteMovement {
   collegamentiAccesso CollegamentoAccesso[]
   abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
   abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
+  comunicazioniConsorzi  ComunicazioneConsorzioMovimento[]
   /// Solo relazioni inverse (fase 4.3): il legame commerciale non aggiunge colonne al movimento.
   legamiComeOriginale LegameMovimento[] @relation("LegameOriginale")
   legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
@@ -2207,7 +2217,9 @@ model RentriUnitaLocale {
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   registri RegistroRifiuti[]
+  comunicazioniConsorzi ComunicazioneConsorzio[]
 
+  @@unique([id, tenantId], map: "rentri_unita_locali_id_tenant_id_key")
   @@unique([tenantId, numIscrSito])
   @@unique([tenantId, progressivoMud], map: "rentri_unita_locali_tenant_progressivo_mud_key")
   @@index([tenantId])
@@ -4391,4 +4403,57 @@ model MappaturaExportContabile {
 
   @@unique([tenantId, adattatore, tipo, chiaveWasteflow], map: "mappature_export_contabile_unico_key")
   @@map("mappature_export_contabile")
+}
+
+/// Comunicazione generata a un consorzio o a un osservatorio (4.9a, T0, P9 §4.2). Il file sta in `contenuto` perche' non c'e' storage a oggetti. `stato`: GENERATA | INVIATA (segnata a mano). CHECK solo in migration: `comunicazioni_consorzi_stato_ammesso`, `_periodo_valido`, `_hash_formato`, `_invio_coerente`, `_consorzio_non_vuoto`, `_tracciato_non_vuoto`, `_nome_file_non_vuoto`.
+model ComunicazioneConsorzio {
+  id            String    @id(map: "comunicazioni_consorzi_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  consorzio     String    @db.VarChar(20)
+  unitaLocaleId String    @map("unita_locale_id") @db.Uuid
+  periodoDa     DateTime  @map("periodo_da") @db.Date
+  periodoA      DateTime  @map("periodo_a") @db.Date
+  tracciato     String    @db.VarChar(40)
+  versione      String    @db.VarChar(20)
+  stato         String    @default("GENERATA") @db.VarChar(10)
+  hashDati      String    @map("hash_dati") @db.VarChar(64)
+  nomeFile      String    @map("nome_file") @db.VarChar(255)
+  contenuto     String
+  generataIl    DateTime  @default(now()) @map("generata_il") @db.Timestamptz(3)
+  generataDa    String?   @map("generata_da") @db.Uuid
+  inviataIl     DateTime? @map("inviata_il") @db.Timestamptz(3)
+  inviataDa     String?   @map("inviata_da") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  tenant      Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "comunicazioni_consorzi_tenant_id_fkey")
+  unitaLocale RentriUnitaLocale                 @relation(fields: [unitaLocaleId, tenantId], references: [id, tenantId], onDelete: Restrict, onUpdate: NoAction, map: "comunicazioni_consorzi_unita_locale_fkey")
+  movimenti   ComunicazioneConsorzioMovimento[]
+
+  @@unique([id, tenantId], map: "comunicazioni_consorzi_id_tenant_id_key")
+  @@unique([tenantId, consorzio, unitaLocaleId, periodoDa, periodoA, tracciato, versione, hashDati], map: "comunicazioni_consorzi_idempotenza_key")
+  @@index([unitaLocaleId], map: "comunicazioni_consorzi_unita_locale_idx")
+  @@index([tenantId, consorzio, periodoDa(sort: Desc)], map: "comunicazioni_consorzi_elenco_idx")
+  @@map("comunicazioni_consorzi")
+}
+
+/// Istantanea di un movimento incluso in una comunicazione, con la quantita' in kg (4.9a, T0). Conserva registro e tipo perche' la chiave esterna usa la chiave unica di `waste_movements` (id, registro_id, tenant_id, type). CHECK solo in migration: `comunicazioni_consorzi_movimenti_quantita_check`.
+model ComunicazioneConsorzioMovimento {
+  id              String            @id(map: "comunicazioni_consorzi_movimenti_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+  comunicazioneId String            @map("comunicazione_id") @db.Uuid
+  movimentoId     String            @map("movimento_id") @db.Uuid
+  registroId      String            @map("registro_id") @db.Uuid
+  movimentoTipo   WasteMovementType @map("movimento_tipo")
+  quantitaKg      Decimal           @map("quantita_kg") @db.Decimal(14, 3)
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "comunicazioni_consorzi_movimenti_tenant_id_fkey")
+  comunicazione ComunicazioneConsorzio @relation(fields: [comunicazioneId, tenantId], references: [id, tenantId], onDelete: Cascade, onUpdate: NoAction, map: "comunicazioni_consorzi_movimenti_comunicazione_fkey")
+  movimento    WasteMovement          @relation(fields: [movimentoId, registroId, tenantId, movimentoTipo], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "comunicazioni_consorzi_movimenti_movimento_fkey")
+
+  @@unique([comunicazioneId, movimentoId], map: "comunicazioni_consorzi_movimenti_unico_key")
+  @@index([movimentoId], map: "comunicazioni_consorzi_movimenti_movimento_idx")
+  @@index([tenantId], map: "comunicazioni_consorzi_movimenti_tenant_id_idx")
+  @@map("comunicazioni_consorzi_movimenti")
 }

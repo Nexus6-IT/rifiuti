@@ -256,7 +256,7 @@ interface OpzioneSede {
                       [attr.aria-label]="'Presa in carico FIR ' + (fir.numeroProgressivo || fir.id)"
                     />
                     <p-button
-                      *ngIf="fir.stato === 'IN_TRANSITO'"
+                      *ngIf="puoConfermareConsegna(fir)"
                       label="Conferma consegna"
                       icon="pi pi-check"
                       size="small"
@@ -1908,6 +1908,11 @@ export class FirListComponent implements OnInit {
     }
   }
 
+  /** «Conferma consegna» solo su un FIR in transito NON legato a RENTRI (lì comanda RENTRI). */
+  puoConfermareConsegna(fir: FIR): boolean {
+    return fir.stato === FIRStato.IN_TRANSITO && !fir.rentriNumeroFir
+  }
+
   /** Il pulsante «Modifica» compare solo su una bozza modificabile e solo per i ruoli che possono farlo. */
   puoModificaRiga(fir: FIR): boolean {
     return fir.stato === FIRStato.BOZZA && !!fir.modificabile && this.puoModificareFir()
@@ -2400,7 +2405,7 @@ export class FirListComponent implements OnInit {
     const haAzioneCiclo =
       fir.stato === FIRStato.BOZZA ||
       fir.stato === FIRStato.EMESSO ||
-      fir.stato === FIRStato.IN_TRANSITO
+      this.puoConfermareConsegna(fir)
     const haAzioneRentri =
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||

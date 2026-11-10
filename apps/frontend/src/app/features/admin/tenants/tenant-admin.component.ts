@@ -48,8 +48,8 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
   { key: 'pese', label: 'Pese (inserimento manuale)' },
-  // 'ritiri': la chiave nel catalogo del backend la aggiunge 4.7 T13 (qui solo la stringa).
   { key: 'ritiri', label: 'Ritiri programmati' },
+  { key: 'comunicazioni', label: 'Comunicazioni a consorzi e osservatori' },
 ]
 
 /** Feature del piano: allineate a `PLAN_FEATURES` del backend (feature-catalog.ts). */
@@ -1174,6 +1174,11 @@ export class TenantAdminComponent implements OnInit {
       // In modifica un campo svuotato deve azzerare il valore (null), non essere omesso.
       atecoCode: this.form.atecoCode?.trim() || null,
       reaNumber: this.form.reaNumber?.trim() || null,
+      codiceFiscale: this.form.codiceFiscale?.trim() || null,
+      pec: this.form.pec?.trim() || null,
+      telefono: this.form.telefono?.trim() || null,
+      civico: this.form.civico?.trim() || null,
+      // `country` NON si svuota: la colonna non e' nullable (default IT), vuoto = invariato.
     }
   }
 
