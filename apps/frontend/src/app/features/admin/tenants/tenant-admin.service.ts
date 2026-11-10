@@ -20,6 +20,7 @@ export type FeatureFlag =
   | 'rentri'
   | 'reference_data'
   | 'pese'
+  | 'ritiri'
 
 /** Stato dell'abbonamento del tenant. */
 export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED' | string

@@ -14,7 +14,7 @@ import { LayoutComponent } from './shared/components/layout.component'
  */
 
 /** Rotte di modulo: percorso completo -> chiave del modulo (mappa §1 della proposta). */
-const MAPPA_MODULI: Record<string, string> = {
+const MAPPA_MODULI: Record<string, string | string[]> = {
   fir: 'fir',
   'fir/:id': 'fir',
   cer: 'cer',
@@ -45,6 +45,9 @@ const MAPPA_MODULI: Record<string, string> = {
   'fatturazione/documenti/:id': 'contratti',
   'fatturazione/export-contabile': 'contratti',
   'fatturazione/export-contabile/:adattatore': 'contratti',
+  ritiri: 'ritiri',
+  'ritiri/giorno': 'ritiri',
+  'impostazioni/modelli-stampa': ['fir', 'ritiri'],
   'reference-data': 'reference_data',
   'rentri/certificato': 'rentri',
   'rentri/modalita-legame': 'rentri',
@@ -131,7 +134,7 @@ describe('rotte dei moduli: moduloGuard su ogni rotta', () => {
       const voce = piatte.find(p => p.percorso === percorso)
       expect(voce).withContext('rotta mancante').toBeDefined()
       expect(haGuard(voce!.route)).withContext('canActivate senza moduloGuard').toBeTrue()
-      expect(moduliDi(voce!.route)).toEqual([modulo])
+      expect(moduliDi(voce!.route)).toEqual([modulo].flat())
     })
   }
 
@@ -160,11 +163,15 @@ describe('menu e rotte: ogni voce con feature porta a una rotta protetta dal suo
     layout = TestBed.createComponent(LayoutComponent).componentInstance
   })
 
-  const protetta = (route: string, feature: string): boolean => {
+  /** `feature` può essere una lista («almeno una fra»): la rotta deve avere lo stesso insieme. */
+  const protetta = (route: string, feature: string | string[]): boolean => {
     const chiave = route.replace(/^\//, '')
     const voce = piatte.find(p => p.percorso === chiave)
     if (!voce) return false
-    return [...voce.antenati, voce.route].some(r => haGuard(r) && moduliDi(r).includes(feature))
+    const richieste = [feature].flat()
+    return [...voce.antenati, voce.route].some(
+      r => haGuard(r) && richieste.every(f => moduliDi(r).includes(f))
+    )
   }
 
   it('navMain', () => {
