@@ -12,7 +12,6 @@ import { RouterLink } from '@angular/router'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { TableModule } from 'primeng/table'
-import { Observable } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { AzioneRiga, AzioniRigaComponent } from '../../shared/components/azioni-riga.component'
@@ -22,6 +21,7 @@ import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import { puoCreareFir } from '../fir/fir-permissions'
 import { AnagraficaSelectComponent } from '../registry/anagrafica-select.component'
 import { EsitoGenerazioneDialogComponent } from './esito-generazione-dialog.component'
+import { NonEseguitoDialogComponent } from './non-eseguito-dialog.component'
 import { RitiroDialogComponent } from './ritiro-dialog.component'
 import { STILI_RITIRI } from './ritiri-stili'
 import {
@@ -69,6 +69,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
     DialogModule,
     TableModule,
     AzioniRigaComponent,
+    NonEseguitoDialogComponent,
     CampoDataComponent,
     PillolaStatoComponent,
     AnagraficaSelectComponent,
@@ -337,8 +338,21 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
       (chiuso)="chiudiEsiti()"
     ></app-esito-generazione-dialog>
 
+    <app-non-eseguito-dialog
+      *ngIf="pendenteMotivo() as p"
+      [ritiro]="p.ritiro"
+      [azione]="p.tipo === 'ANNULLA' ? 'ANNULLA' : 'NON_ESEGUITO'"
+      [titolo]="testiAzione(p).titolo"
+      [etichettaConferma]="testiAzione(p).bottone"
+      [pericolosa]="testiAzione(p).pericolosa"
+      prefisso="ri-azione"
+      [(motivo)]="motivo"
+      (eseguito)="azioneEseguita(p.tipo)"
+      (chiuso)="chiudiAzione()"
+    ></app-non-eseguito-dialog>
+
     <p-dialog
-      *ngIf="pendente() as p"
+      *ngIf="pendenteRiprogramma() as p"
       [visible]="true"
       (visibleChange)="!$event && chiudiAzione()"
       [header]="testiAzione(p).titolo"
@@ -349,20 +363,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
       <p class="nota" data-testid="ri-azione-riepilogo">
         Ritiro del {{ data(p.ritiro.dataPrevista) }} di {{ p.ritiro.produttore.nome }}.
       </p>
-      <div class="field" *ngIf="p.tipo !== 'RIPROGRAMMA'">
-        <label for="ri-motivo">Motivo <span class="req" aria-hidden="true">*</span></label>
-        <textarea
-          id="ri-motivo"
-          class="p-inputtext w-full"
-          rows="3"
-          maxlength="500"
-          [(ngModel)]="motivo"
-          [attr.aria-invalid]="erroreAzione() ? true : null"
-          aria-describedby="ri-azione-errore"
-          data-testid="ri-motivo"
-        ></textarea>
-      </div>
-      <div class="field" *ngIf="p.tipo === 'RIPROGRAMMA'">
+      <div class="field">
         <label for="ri-nuova-data">Nuova data <span class="req" aria-hidden="true">*</span></label>
         <app-campo-data
           inputId="ri-nuova-data"
@@ -382,7 +383,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
         {{ e }}
       </p>
       <div class="azioni">
-        <!-- Il fuoco parte su «Torna indietro»: Invio non annulla nulla per sbaglio. -->
+        <!-- Il fuoco parte su «Torna indietro»: Invio non riprogramma nulla per sbaglio. -->
         <p-button
           label="Torna indietro"
           [text]="true"
@@ -392,8 +393,6 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
         ></p-button>
         <p-button
           [label]="testiAzione(p).bottone"
-          [severity]="testiAzione(p).pericolosa ? 'danger' : undefined"
-          [styleClass]="testiAzione(p).pericolosa ? 'p-button-danger' : ''"
           [loading]="inCorso()"
           [disabled]="inCorso()"
           (onClick)="confermaAzione()"
@@ -692,41 +691,40 @@ export class RitiriComponent implements OnInit {
     this.erroreAzione.set(null)
   }
 
-  confermaAzione(): void {
+  /** Ritiro in attesa del motivo (annulla / non eseguito): il dialog del motivo fa il resto. */
+  readonly pendenteMotivo = computed(() => {
     const p = this.pendente()
+    return p && p.tipo !== 'RIPROGRAMMA' ? p : null
+  })
+  readonly pendenteRiprogramma = computed(() => {
+    const p = this.pendente()
+    return p && p.tipo === 'RIPROGRAMMA' ? p : null
+  })
+
+  /** Il dialog del motivo ha già chiamato il servizio: avviso e ricarico. */
+  azioneEseguita(tipo: TipoAzione): void {
+    this.pendente.set(null)
+    this.toast.success(
+      tipo === 'ANNULLA' ? 'Ritiro annullato.' : 'Ritiro segnato come non eseguito.'
+    )
+    this.carica()
+  }
+
+  confermaAzione(): void {
+    const p = this.pendenteRiprogramma()
     if (!p || this.inCorso()) return
     const { ritiro } = p
-    let richiesta: Observable<RitiroVista>
-    if (p.tipo === 'RIPROGRAMMA') {
-      if (!this.nuovaData) {
-        this.erroreAzione.set('Indica la nuova data.')
-        return
-      }
-      richiesta = this.servizio.riprogramma(ritiro.id, this.nuovaData, ritiro.versione)
-    } else {
-      const motivo = this.motivo.trim()
-      if (!motivo) {
-        this.erroreAzione.set('Il motivo è obbligatorio.')
-        return
-      }
-      richiesta =
-        p.tipo === 'ANNULLA'
-          ? this.servizio.annulla(ritiro.id, motivo, ritiro.versione)
-          : this.servizio.nonEseguito(ritiro.id, motivo, ritiro.versione)
+    if (!this.nuovaData) {
+      this.erroreAzione.set('Indica la nuova data.')
+      return
     }
     this.inCorso.set(true)
     this.erroreAzione.set(null)
-    richiesta.subscribe({
+    this.servizio.riprogramma(ritiro.id, this.nuovaData, ritiro.versione).subscribe({
       next: () => {
         this.inCorso.set(false)
         this.pendente.set(null)
-        this.toast.success(
-          p.tipo === 'ANNULLA'
-            ? 'Ritiro annullato.'
-            : p.tipo === 'NON_ESEGUITO'
-              ? 'Ritiro segnato come non eseguito.'
-              : 'Ritiro riprogrammato.'
-        )
+        this.toast.success('Ritiro riprogrammato.')
         this.carica()
       },
       error: err => {

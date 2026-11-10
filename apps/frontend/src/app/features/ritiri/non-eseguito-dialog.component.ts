@@ -1,6 +1,8 @@
 /**
- * Dialog «Non eseguito» con motivo obbligatorio (4.7 T11). Chiama da sé `nonEseguito` e avvisa con
- * `eseguito` a fine; il 409 (FIR attivo, versione cambiata) resta dentro il dialog come errore.
+ * Dialog del motivo per «Non eseguito» e «Annulla» (4.7 T11, unificato in T14). Chiama da sé
+ * `nonEseguito` o `annulla` e avvisa con `eseguito` a fine; il 409 (FIR attivo, versione cambiata)
+ * resta dentro il dialog come errore. `prefisso` dà gli id di test (`<prefisso>-motivo`, `-errore`,
+ * `-conferma`, `-indietro`, `-riepilogo`); `motivo` è a due vie, così chi apre può precompilarlo.
  */
 import { CommonModule } from '@angular/common'
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
@@ -19,33 +21,36 @@ import { STILI_RITIRI } from './ritiri-stili'
     <p-dialog
       [visible]="true"
       (visibleChange)="!$event && chiuso.emit()"
-      header="Segna come non eseguito"
+      [header]="titolo"
       [modal]="true"
       [style]="{ width: '480px', maxWidth: '95vw' }"
       closeAriaLabel="Chiudi senza procedere"
     >
-      <p class="nota" data-testid="ne-riepilogo">
+      <p class="nota" [attr.data-testid]="prefisso + '-riepilogo'">
         Ritiro del {{ data(ritiro.dataPrevista) }} di {{ ritiro.produttore.nome }}.
       </p>
       <div class="field">
-        <label for="ne-motivo">Motivo <span class="req" aria-hidden="true">*</span></label>
+        <label [for]="prefisso + '-motivo'"
+          >Motivo <span class="req" aria-hidden="true">*</span></label
+        >
         <textarea
-          id="ne-motivo"
+          [id]="prefisso + '-motivo'"
           class="p-inputtext w-full"
           rows="3"
           maxlength="500"
-          [(ngModel)]="motivo"
+          [ngModel]="motivo"
+          (ngModelChange)="impostaMotivo($event)"
           [attr.aria-invalid]="errore() ? true : null"
-          aria-describedby="ne-errore"
-          data-testid="ne-motivo"
+          [attr.aria-describedby]="prefisso + '-errore'"
+          [attr.data-testid]="prefisso + '-motivo'"
         ></textarea>
       </div>
       <p
         *ngIf="errore() as e"
-        id="ne-errore"
+        [id]="prefisso + '-errore'"
         role="alert"
         class="field-error"
-        data-testid="ne-errore"
+        [attr.data-testid]="prefisso + '-errore'"
       >
         {{ e }}
       </p>
@@ -54,15 +59,17 @@ import { STILI_RITIRI } from './ritiri-stili'
           label="Torna indietro"
           [text]="true"
           (onClick)="chiuso.emit()"
-          data-testid="ne-indietro"
+          [attr.data-testid]="prefisso + '-indietro'"
           [autofocus]="true"
         ></p-button>
         <p-button
-          label="Segna non eseguito"
+          [label]="etichettaConferma"
+          [severity]="pericolosa ? 'danger' : undefined"
+          [styleClass]="pericolosa ? 'p-button-danger' : ''"
           [loading]="inCorso()"
           [disabled]="inCorso()"
           (onClick)="conferma()"
-          data-testid="ne-conferma"
+          [attr.data-testid]="prefisso + '-conferma'"
         ></p-button>
       </div>
     </p-dialog>
@@ -73,13 +80,24 @@ export class NonEseguitoDialogComponent {
   private readonly servizio = inject(RitiriService)
 
   @Input({ required: true }) ritiro!: RitiroVista
+  @Input() azione: 'NON_ESEGUITO' | 'ANNULLA' = 'NON_ESEGUITO'
+  @Input() titolo = 'Segna come non eseguito'
+  @Input() etichettaConferma = 'Segna non eseguito'
+  @Input() pericolosa = false
+  @Input() prefisso = 'ne'
+  @Input() motivo = ''
+  @Output() readonly motivoChange = new EventEmitter<string>()
   @Output() readonly eseguito = new EventEmitter<RitiroVista>()
   @Output() readonly chiuso = new EventEmitter<void>()
 
-  motivo = ''
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
   readonly data = dataItaliana
+
+  impostaMotivo(valore: string): void {
+    this.motivo = valore
+    this.motivoChange.emit(valore)
+  }
 
   conferma(): void {
     if (this.inCorso()) return
@@ -90,7 +108,11 @@ export class NonEseguitoDialogComponent {
     }
     this.inCorso.set(true)
     this.errore.set(null)
-    this.servizio.nonEseguito(this.ritiro.id, motivo, this.ritiro.versione).subscribe({
+    const richiesta =
+      this.azione === 'ANNULLA'
+        ? this.servizio.annulla(this.ritiro.id, motivo, this.ritiro.versione)
+        : this.servizio.nonEseguito(this.ritiro.id, motivo, this.ritiro.versione)
+    richiesta.subscribe({
       next: r => {
         this.inCorso.set(false)
         this.eseguito.emit(r)

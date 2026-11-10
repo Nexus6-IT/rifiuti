@@ -221,6 +221,22 @@ export const routes: Routes = [
           ),
       },
       {
+        // Ritiri programmati (4.7): backend @RichiedeModulo('ritiri').
+        path: 'ritiri',
+        canActivate: [moduloGuard],
+        data: { modulo: 'ritiri' },
+        loadComponent: () =>
+          import('./features/ritiri/ritiri.component').then(m => m.RitiriComponent),
+      },
+      {
+        // Lista del giorno da telefono (ordine di giro, PDF del FIR, non eseguito).
+        path: 'ritiri/giorno',
+        canActivate: [moduloGuard],
+        data: { modulo: 'ritiri' },
+        loadComponent: () =>
+          import('./features/ritiri/ritiri-giorno.component').then(m => m.RitiriGiornoComponent),
+      },
+      {
         // Modelli di stampa (FIR e distinta dei ritiri): backend @RichiedeModulo('fir', 'ritiri')
         // e solo ADMIN. Basta uno dei due moduli.
         path: 'impostazioni/modelli-stampa',

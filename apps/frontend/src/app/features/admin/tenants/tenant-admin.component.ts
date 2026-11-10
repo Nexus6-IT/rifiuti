@@ -48,6 +48,8 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
   { key: 'pese', label: 'Pese (inserimento manuale)' },
+  // 'ritiri': la chiave nel catalogo del backend la aggiunge 4.7 T13 (qui solo la stringa).
+  { key: 'ritiri', label: 'Ritiri programmati' },
 ]
 
 /** Feature del piano: allineate a `PLAN_FEATURES` del backend (feature-catalog.ts). */
