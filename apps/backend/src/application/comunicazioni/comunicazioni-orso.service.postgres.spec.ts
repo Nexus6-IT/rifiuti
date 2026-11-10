@@ -51,6 +51,7 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
   let servizio: ComunicazioniOrsoService
   const tenantCreati: string[] = []
   let contatoreFir = 0
+  const cerCreati: string[] = []
 
   const nelTenant = <R>(az: AziendaMud, fn: () => Promise<R>) =>
     TenantContext.run({ tenantId: az.tenantId }, fn)
@@ -140,12 +141,26 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     const [r] = await app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`
     expect(r.u).toBe('wasteflow_app')
     servizio = new ComunicazioniOrsoService(app)
+    // Il ripiego sulla descrizione legge il catalogo: su un database con sole migration è vuoto.
+    const code = '19 12 12'
+    if ((await owner.cERCode.count({ where: { code } })) === 0) cerCreati.push(code)
+    await owner.cERCode.upsert({
+      where: { code },
+      create: {
+        code,
+        description: 'Altri rifiuti (compresi materiali misti)',
+        category: '19',
+        subcategory: '',
+      },
+      update: {},
+    })
   })
 
   afterAll(async () => {
     // L'istantanea punta ai movimenti (NO ACTION): prima le comunicazioni, poi il resto.
     await owner.comunicazioneConsorzio.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await pulisciAziendeMud(owner, tenantCreati)
+    if (cerCreati.length) await owner.cERCode.deleteMany({ where: { code: { in: cerCreati } } })
     await app.onModuleDestroy?.()
     await owner.$disconnect()
   })
@@ -193,6 +208,11 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     await scarico(az, 50, '2025-03-11', '   ') // CER 19 12 12 nel catalogo: nessun blocco
     const ok = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
     expect(ok.avvisi.map(x => x.codice)).not.toContain('DESCRIZIONE_VUOTA')
+    await scarico(az, 10, '2025-03-13', '', '191212') // riga storica senza spazi: stesso ripiego
+    const senzaSpazi = await nelTenant(az, () =>
+      servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025)
+    )
+    expect(senzaSpazi.avvisi.map(x => x.codice)).not.toContain('DESCRIZIONE_VUOTA')
     await scarico(az, 50, '2025-03-12', '   ', '99 99 99') // CER fuori catalogo
     const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
     expect(a.avvisi.map(x => x.codice)).toContain('DESCRIZIONE_VUOTA')

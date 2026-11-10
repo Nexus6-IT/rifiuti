@@ -1,4 +1,5 @@
 import type { AggregatoOrso } from '../../domain/comunicazioni/orso/aggregato'
+import type { MeseDati } from '../../domain/comunicazioni/orso/impianto-mesi'
 import {
   anteprimaMesi,
   eBloccante,
@@ -108,5 +109,26 @@ describe('hashDatiOrso', () => {
     expect(hashDatiOrso(base)).toBe(hashDatiOrso({ anni: [{ anno: 2025, mesi: [] }] }))
     expect(hashDatiOrso(base)).toMatch(/^[0-9a-f]{64}$/)
     expect(hashDatiOrso(base)).not.toBe(hashDatiOrso({ anni: [{ anno: 2026, mesi: [] }] }))
+  })
+
+  it('non cambia se cambiano solo i mesi vuoti dichiarati (anno in corso, passa un mese)', () => {
+    const mese = (n: number, pieno: boolean): MeseDati => ({
+      mese: n,
+      ricevuti: pieno ? [{ cer: '200301', descrizione: 'x', operazioni: [], ingressi: [] }] : [],
+      prodotti: [],
+    })
+    const finoANovembre = {
+      anni: [{ anno: 2026, mesi: [mese(1, false), mese(3, true), mese(11, false)] }],
+    }
+    const finoADicembre = {
+      anni: [
+        { anno: 2026, mesi: [mese(1, false), mese(3, true), mese(11, false), mese(12, false)] },
+      ],
+    }
+    expect(hashDatiOrso(finoADicembre)).toBe(hashDatiOrso(finoANovembre))
+    const conMovimentoADicembre = {
+      anni: [{ anno: 2026, mesi: [mese(3, true), mese(12, true)] }],
+    }
+    expect(hashDatiOrso(conMovimentoADicembre)).not.toBe(hashDatiOrso(finoANovembre))
   })
 })

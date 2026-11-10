@@ -86,9 +86,20 @@ export function ultimoMeseDichiarabile(anno: number, adesso: Date = new Date()):
   return Number(oggi.slice(5, 7))
 }
 
-/** Hash dei dati che finiscono nel file: stessi dati, stesso hash (l'aggregatore ordina tutto). */
+/**
+ * Hash dei dati che finiscono nel file: stessi dati, stesso hash (l'aggregatore ordina tutto).
+ * I mesi senza nodi non entrano: nell'anno in corso il numero di mesi dichiarati cresce da solo
+ * col calendario e non deve far risultare «modificata dopo l'invio» una comunicazione intatta.
+ */
 export function hashDatiOrso(dati: ImpiantoMesiDati): string {
-  return createHash('sha256').update(JSON.stringify(dati)).digest('hex')
+  const coperti = {
+    ...dati,
+    anni: dati.anni.map(a => ({
+      ...a,
+      mesi: a.mesi.filter(m => m.ricevuti.length > 0 || m.prodotti.length > 0),
+    })),
+  }
+  return createHash('sha256').update(JSON.stringify(coperti)).digest('hex')
 }
 
 /** Anteprima mese per mese (12 mesi, anche vuoti) dall'aggregato. */

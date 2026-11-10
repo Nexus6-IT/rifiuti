@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { WHERE_VIGENTE } from '../../domain/waste-movement/vigenza'
 import { giornoItaliano } from '../../core/time/anno-italiano'
-import { cerSoloCifre } from '../../domain/waste-movement/cer-registro'
+import { cerCanonico, cerSoloCifre } from '../../domain/waste-movement/cer-registro'
 import { convertiInKg } from '../../domain/waste-movement/unita-misura-registro'
 import type { CatalogoCausali } from '../../domain/waste-movement/catalogo-causali'
 import {
@@ -311,7 +311,7 @@ export async function leggiMovimentiOrso(
 
   // Descrizione vuota: ripiego sul catalogo CER (tagliata a 100 caratteri come l'XSD).
   const senzaDescrizione = [
-    ...new Set(grezzi.filter(m => !m.wasteDescription?.trim()).map(m => m.cerCode)),
+    ...new Set(grezzi.filter(m => !m.wasteDescription?.trim()).map(m => cerCanonico(m.cerCode))),
   ]
   const catalogoCer = senzaDescrizione.length
     ? await db.cERCode.findMany({
@@ -319,7 +319,9 @@ export async function leggiMovimentiOrso(
         select: { code: true, description: true },
       })
     : []
-  const descrizionePerCer = new Map(catalogoCer.map(c => [c.code, c.description.trim()]))
+  const descrizionePerCer = new Map(
+    catalogoCer.map(c => [cerSoloCifre(c.code), c.description.trim()])
+  )
 
   const movimenti = grezzi.map((m): MovimentoOrso => {
     const tipo = m.type === 'SCARICO' ? 'SCARICO' : 'CARICO'
@@ -333,7 +335,7 @@ export async function leggiMovimentiOrso(
     }
     const op = operazioneDelMovimento(p.catalogo, m, f)
     const descrizione =
-      m.wasteDescription?.trim() || descrizionePerCer.get(m.cerCode)?.slice(0, 100) || null
+      m.wasteDescription?.trim() || descrizionePerCer.get(cer)?.slice(0, 100) || null
     const provinciaFir = f?.producerSedeId ? (provinciaPerSede.get(f.producerSedeId) ?? null) : null
     const provinciaIndirizzo = provinciaFir ? null : siglaDaIndirizzo(m.counterpartAddress)
     return {
