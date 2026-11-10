@@ -121,7 +121,9 @@ export class PeseController {
     return this.comeHttp(() => this.strumenti.aggiorna(tenantId, req.user.id, id, dto))
   }
 
+  // Letto anche dai ritiri (scelta del mezzo): basta uno dei due moduli.
   @Get('automezzi')
+  @RichiedeModulo('pese', 'ritiri')
   @ApiOperation({ summary: 'Automezzi dell’azienda, con filtro per targa' })
   async elencaAutomezzi(@Req() req: any, @Query() query: ElencoAutomezziQueryDto) {
     const tenantId = requireRequestTenantId(req)

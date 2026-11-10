@@ -105,6 +105,7 @@ describe('Servizio ritiri — Postgres reale, ruolo wasteflow_app', () => {
     cerCode: '200301',
     descrizione: 'Rifiuti urbani non differenziati',
     quantitaPresunta: '1250.5',
+    codiceOperazione: 'R13',
     chiaveIdempotenza: crypto.randomUUID(),
     ...extra,
   })

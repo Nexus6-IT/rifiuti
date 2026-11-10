@@ -168,7 +168,12 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['anomalie'],
     motivo: 'Anomalie e controlli di coerenza',
   },
-  'api/pese/pese.controller.ts': { chiavi: ['pese'], motivo: 'Pese in ingresso e uscita' },
+  'api/pese/pese.controller.ts': {
+    chiavi: ['pese'],
+    motivo: 'Pese in ingresso e uscita; elenco automezzi letto anche dai ritiri',
+    metodi: { elencaAutomezzi: ['pese', 'ritiri'] },
+  },
+  'api/ritiri/ritiri.controller.ts': { chiavi: ['ritiri'], motivo: 'Ritiri programmati' },
   'application/reference-data/reference-data.controller.ts': {
     chiavi: ['reference_data'],
     motivo: 'Dati di riferimento (SUPER_ADMIN)',

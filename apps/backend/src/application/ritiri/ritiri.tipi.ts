@@ -86,9 +86,8 @@ export interface DatiRitiro {
   numeroColli?: number | null
   quantitaPresunta: string
   unita?: string
-  /** Se assente si ricava dal codice operazione (prefisso D o R), altrimenti RECOVERY. */
-  tipoOperazione?: WasteOperationType | null
-  codiceOperazione?: string | null
+  /** Obbligatorio (R/D): il tipo di operazione ne deriva, non si indica a parte. */
+  codiceOperazione: string
   provenienza?: ProvenienzaRifiuto | null
   tipoTratta?: TipoTratta | null
   annotazioni?: string | null

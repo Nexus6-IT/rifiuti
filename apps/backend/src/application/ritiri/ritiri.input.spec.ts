@@ -3,7 +3,9 @@ import type { DatiRitiro } from './ritiri.tipi'
 
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 
-const base = (extra: Partial<DatiRitiro> = {}): DatiRitiro => ({
+const base = (
+  extra: Partial<Omit<DatiRitiro, 'codiceOperazione'>> & { codiceOperazione?: string | null } = {}
+): DatiRitiro => ({
   dataPrevista: '2026-12-01',
   produttoreId: U(1),
   produttoreSedeId: U(2),
@@ -13,7 +15,8 @@ const base = (extra: Partial<DatiRitiro> = {}): DatiRitiro => ({
   cerCode: '20 03 01',
   descrizione: 'Rifiuti urbani',
   quantitaPresunta: '1250.5',
-  ...extra,
+  codiceOperazione: 'R13',
+  ...(extra as Partial<DatiRitiro>),
 })
 
 describe('normalizzaDatiRitiro', () => {
@@ -25,6 +28,16 @@ describe('normalizzaDatiRitiro', () => {
       expect(e.valori.unita).toBe('KG')
       expect(e.valori.tipoOperazione).toBe('RECOVERY')
     }
+  })
+
+  it.each([undefined, null, '', '  '])('rifiuta il codice operazione assente (%p)', c => {
+    const e = normalizzaDatiRitiro(base({ codiceOperazione: c }))
+    expect(e.ok).toBe(false)
+    if (!e.ok) expect(e.messaggi.join(' ')).toContain('codice')
+  })
+
+  it.each(['X1', '10', 'RR'])('rifiuta il codice operazione %p che non comincia con D o R', c => {
+    expect(normalizzaDatiRitiro(base({ codiceOperazione: c })).ok).toBe(false)
   })
 
   it.each(['0', '-1', '1,5', 'abc', '1.234', '', '123456789'])('rifiuta la quantità %p', q => {
@@ -47,13 +60,12 @@ describe('normalizzaDatiRitiro', () => {
     if (!e.ok) expect(e.messaggi.length).toBe(2)
   })
 
-  it('ricava il tipo di operazione dal codice D/R se non è indicato', () => {
+  it('deriva il tipo di operazione dalla lettera del codice, senza default', () => {
     const d = normalizzaDatiRitiro(base({ codiceOperazione: 'D10' }))
-    const r = normalizzaDatiRitiro(base({ codiceOperazione: 'R13' }))
-    const x = normalizzaDatiRitiro(base({ codiceOperazione: 'D1', tipoOperazione: 'RECOVERY' }))
+    const r = normalizzaDatiRitiro(base({ codiceOperazione: 'r13' }))
     expect(d.ok && d.valori.tipoOperazione).toBe('DISPOSAL')
     expect(r.ok && r.valori.tipoOperazione).toBe('RECOVERY')
-    expect(x.ok && x.valori.tipoOperazione).toBe('RECOVERY')
+    expect(r.ok && r.valori.codiceOperazione).toBe('R13')
   })
 
   it("rifiuta un'unità non supportata e normalizza il maiuscolo", () => {

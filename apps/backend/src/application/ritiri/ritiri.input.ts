@@ -35,7 +35,7 @@ export interface ValoriRitiro {
   quantitaPresunta: string
   unita: string
   tipoOperazione: WasteOperationType
-  codiceOperazione: string | null
+  codiceOperazione: string
   provenienza: ProvenienzaRifiuto | null
   tipoTratta: TipoTratta | null
   annotazioni: string | null
@@ -69,13 +69,11 @@ const vuotoANull = (v: string | null | undefined): string | null => {
   return t ? t : null
 }
 
-function tipoOperazioneDa(
-  esplicito: WasteOperationType | null | undefined,
-  codice: string | null
-): WasteOperationType {
-  if (esplicito === 'RECOVERY' || esplicito === 'DISPOSAL') return esplicito
-  const iniziale = codice?.trim().charAt(0).toUpperCase()
-  return iniziale === 'D' ? 'DISPOSAL' : 'RECOVERY'
+/** Codice operazione dell'allegato B/C alla parte IV del D.Lgs 152/2006: D1-D15, R1-R13. */
+const CODICE_OPERAZIONE = /^[DR]\d{1,2}$/
+
+function tipoOperazioneDa(codice: string): WasteOperationType {
+  return codice.startsWith('D') ? 'DISPOSAL' : 'RECOVERY'
 }
 
 export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
@@ -129,9 +127,11 @@ export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
     messaggi.push("L'unità di misura non è supportata.")
   }
 
-  const codiceOperazione = vuotoANull(dati.codiceOperazione)
-  if ((codiceOperazione?.length ?? 0) > 10) {
-    messaggi.push("Il codice dell'operazione può avere al massimo 10 caratteri.")
+  const codiceOperazione = vuotoANull(dati.codiceOperazione)?.toUpperCase() ?? null
+  if (codiceOperazione === null) {
+    messaggi.push("Il codice dell'operazione è obbligatorio.")
+  } else if (!CODICE_OPERAZIONE.test(codiceOperazione)) {
+    messaggi.push("Il codice dell'operazione deve essere un codice R o D (es. R13, D10).")
   }
 
   if (messaggi.length > 0) return { ok: false, messaggi }
@@ -155,8 +155,8 @@ export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
       numeroColli: colli,
       quantitaPresunta: quantita.toFixed(2),
       unita,
-      tipoOperazione: tipoOperazioneDa(dati.tipoOperazione, codiceOperazione),
-      codiceOperazione,
+      tipoOperazione: tipoOperazioneDa(codiceOperazione ?? ''),
+      codiceOperazione: codiceOperazione ?? '',
       provenienza: dati.provenienza ?? null,
       tipoTratta: dati.tipoTratta ?? null,
       annotazioni: vuotoANull(dati.annotazioni),
