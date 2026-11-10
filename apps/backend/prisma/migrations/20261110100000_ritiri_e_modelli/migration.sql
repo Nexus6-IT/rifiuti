@@ -17,7 +17,7 @@
 -- Additiva: nessun DROP, nessuna colonna esistente toccata. `firs` e `company_templates` hanno gia'
 -- la policy. Gli indici parziali e i trigger si scrivono solo in SQL (Prisma non conosce il WHERE).
 --
--- Ripristino a mano: DROP TRIGGER firs_ritiro_controlli ON firs; DROP FUNCTION firs_ritiro_controlli();
+-- Ripristino a mano: DROP TRIGGER firs_ritiro_controlli ON firs; DROP TRIGGER firs_ritiro_immutabile ON firs; DROP FUNCTION firs_ritiro_controlli();
 -- (la deduplica di `is_default` in `company_templates` non si annulla.) DROP INDEX firs_ritiro_attivo_key, firs_tenant_ritiro_idx, company_templates_default_ambito_key;
 -- ALTER TABLE firs DROP CONSTRAINT firs_ritiro_fkey; ALTER TABLE firs DROP COLUMN ritiro_id;
 -- DROP TABLE ritiri; ALTER TABLE company_templates DROP COLUMN ambito, DROP COLUMN copie,
@@ -136,15 +136,21 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  IF NEW."ritiro_id" IS DISTINCT FROM OLD."ritiro_id" THEN
-    RAISE EXCEPTION 'RITIRO_ID_IMMUTABILE' USING ERRCODE = 'WR002';
-  END IF;
+  -- UPDATE (trigger AFTER con WHEN, v. sotto): arriva qui solo se `ritiro_id` e' cambiato.
+  RAISE EXCEPTION 'RITIRO_ID_IMMUTABILE' USING ERRCODE = 'WR002';
   RETURN NEW;
 END;
 $fn$;
 
-CREATE TRIGGER firs_ritiro_controlli BEFORE INSERT OR UPDATE ON "firs"
+-- Niente trigger BEFORE UPDATE su `firs`: ogni BEFORE ROW trigger fa bloccare la riga prima
+-- dell'UPDATE con il modo calcolato dalle colonne del SET (Prisma le scrive tutte, anche le chiavi
+-- uniche), quindi diventa FOR UPDATE e aspetta il FOR KEY SHARE dei movimenti del registro.
+-- Un trigger AFTER con WHEN non blocca nulla e scatta solo se `ritiro_id` cambia.
+CREATE TRIGGER firs_ritiro_controlli BEFORE INSERT ON "firs"
   FOR EACH ROW EXECUTE FUNCTION firs_ritiro_controlli();
+CREATE TRIGGER firs_ritiro_immutabile AFTER UPDATE ON "firs"
+  FOR EACH ROW WHEN (OLD."ritiro_id" IS DISTINCT FROM NEW."ritiro_id")
+  EXECUTE FUNCTION firs_ritiro_controlli();
 
 -- 5. Modelli di stampa --------------------------------------------------------------------------
 
