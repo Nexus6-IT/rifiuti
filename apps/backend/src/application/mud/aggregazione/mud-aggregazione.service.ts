@@ -695,8 +695,19 @@ export class MudAggregazioneService {
         tenantId,
         status: { in: [...STATI_FIR_EMESSI] },
         signatures: { some: { role: 'TRASPORTATORE' } },
-        transportDate: { gte: inizio, lt: fine },
-        OR: [{ rentriStatoFormulario: null }, { rentriStatoFormulario: { not: 'Annullato' } }],
+        // Il momento del trasporto e' la presa in carico (colonna dedicata); sui FIR precedenti
+        // alla colonna vale `transport_date`, che allora veniva riscritta dalla presa in carico.
+        AND: [
+          {
+            OR: [
+              { presaInCaricoIl: { gte: inizio, lt: fine } },
+              { presaInCaricoIl: null, transportDate: { gte: inizio, lt: fine } },
+            ],
+          },
+          {
+            OR: [{ rentriStatoFormulario: null }, { rentriStatoFormulario: { not: 'Annullato' } }],
+          },
+        ],
       },
       select: { id: true, firNumber: true, rentriNumeroFir: true },
     })

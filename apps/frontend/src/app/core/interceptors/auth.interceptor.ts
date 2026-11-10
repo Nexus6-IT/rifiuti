@@ -26,6 +26,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     '/auth/refresh',
     '/health',
     '/auth/access-request',
+    // Verifica pubblica delle firme (QR del PDF): anonima, niente token ne' refresh.
+    '/verify',
   ]
   const isPublicEndpoint = publicEndpoints.some(endpoint => req.url.includes(endpoint))
 

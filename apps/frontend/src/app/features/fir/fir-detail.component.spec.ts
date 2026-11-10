@@ -65,7 +65,12 @@ describe('FirDetailComponent', () => {
       },
     }
 
-    firService = jasmine.createSpyObj('FirService', ['getFIRById', 'emettiFIR', 'presaInCarico'])
+    firService = jasmine.createSpyObj('FirService', [
+      'getFIRById',
+      'emettiFIR',
+      'presaInCarico',
+      'confermaConsegna',
+    ])
     rentriSyncService = jasmine.createSpyObj('RENTRISyncService', [
       'syncFIR',
       'confermaLegame',
@@ -1590,6 +1595,57 @@ describe('FirDetailComponent', () => {
       expect(rentriFirLifecycleService.azioniDisponibili).not.toHaveBeenCalled()
       expect(rentriFirLifecycleService.elencaAllegati).not.toHaveBeenCalled()
       httpMock.expectNone(r => r.url.includes('/rentri/'))
+    })
+  })
+  describe('Conferma consegna (destinatario)', () => {
+    it('su un FIR IN_TRANSITO mostra il bottone, che apre il dialog con il peso', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, stato: FIRStato.IN_TRANSITO }))
+      fixture.detectChanges()
+
+      const el: HTMLElement = fixture.nativeElement
+      const bottone = el.querySelector(
+        '[data-testid="fir-detail-conferma-consegna"]'
+      ) as HTMLElement | null
+      expect(bottone).toBeTruthy()
+      component.apriConsegna()
+      fixture.detectChanges()
+      expect(component['consegnaDialogVisible']).toBeTrue()
+    })
+
+    it('su un FIR EMESSO il bottone non c e', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of(baseFIR))
+      fixture.detectChanges()
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="fir-detail-conferma-consegna"]'
+        )
+      ).toBeNull()
+    })
+
+    it('la conferma invia il peso e aggiorna il FIR a CONSEGNATO', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, stato: FIRStato.IN_TRANSITO }))
+      fixture.detectChanges()
+      firService.confermaConsegna.and.returnValue(of({ ...baseFIR, stato: FIRStato.CONSEGNATO }))
+
+      component.apriConsegna()
+      component['consegnaPeso'] = 98.5
+      component.confermaConsegna()
+
+      expect(firService.confermaConsegna).toHaveBeenCalledWith('fir-1', { pesoEffettivo: 98.5 })
+      expect(component['fir']()?.stato).toBe(FIRStato.CONSEGNATO)
+      expect(component['consegnaDialogVisible']).toBeFalse()
+    })
+
+    it('senza peso valido non chiama il servizio', () => {
+      setup()
+      firService.getFIRById.and.returnValue(of({ ...baseFIR, stato: FIRStato.IN_TRANSITO }))
+      fixture.detectChanges()
+      component.apriConsegna()
+      component.confermaConsegna()
+      expect(firService.confermaConsegna).not.toHaveBeenCalled()
     })
   })
 })

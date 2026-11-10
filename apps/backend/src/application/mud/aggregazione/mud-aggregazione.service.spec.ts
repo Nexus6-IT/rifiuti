@@ -1253,11 +1253,28 @@ describe('MudAggregazioneService', () => {
         tenantId: 't1',
         status: { in: ['AWAITING_CARRIER', 'AWAITING_RECEIVER', 'COMPLETED', 'SYNCED_TO_RENTRI'] },
         signatures: { some: { role: 'TRASPORTATORE' } },
-        transportDate: {
-          gte: new Date('2024-12-31T23:00:00.000Z'),
-          lt: new Date('2025-12-31T23:00:00.000Z'),
-        },
-        OR: [{ rentriStatoFormulario: null }, { rentriStatoFormulario: { not: 'Annullato' } }],
+        AND: [
+          {
+            OR: [
+              {
+                presaInCaricoIl: {
+                  gte: new Date('2024-12-31T23:00:00.000Z'),
+                  lt: new Date('2025-12-31T23:00:00.000Z'),
+                },
+              },
+              {
+                presaInCaricoIl: null,
+                transportDate: {
+                  gte: new Date('2024-12-31T23:00:00.000Z'),
+                  lt: new Date('2025-12-31T23:00:00.000Z'),
+                },
+              },
+            ],
+          },
+          {
+            OR: [{ rentriStatoFormulario: null }, { rentriStatoFormulario: { not: 'Annullato' } }],
+          },
+        ],
       },
       select: expect.anything(),
     })

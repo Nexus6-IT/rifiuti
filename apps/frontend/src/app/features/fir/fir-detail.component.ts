@@ -387,6 +387,15 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   [attr.aria-label]="'Presa in carico FIR ' + (f.numeroProgressivo || f.id)"
                 />
               }
+              @if (f.stato === 'IN_TRANSITO') {
+                <p-button
+                  label="Conferma consegna"
+                  icon="pi pi-check"
+                  (onClick)="apriConsegna()"
+                  data-testid="fir-detail-conferma-consegna"
+                  [attr.aria-label]="'Conferma consegna FIR ' + (f.numeroProgressivo || f.id)"
+                />
+              }
               @if (canTrasmettereRentri(f)) {
                 <p-button
                   label="Trasmetti a RENTRI"
@@ -747,6 +756,48 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
       </ng-template>
     </p-dialog>
 
+    <!-- Conferma consegna del destinatario: la firma e' l'effetto della conferma -->
+    <p-dialog
+      header="Conferma consegna"
+      [(visible)]="consegnaDialogVisible"
+      [modal]="true"
+      [style]="{ width: '24rem' }"
+      data-testid="fir-detail-consegna-dialog"
+    >
+      <div class="form-field">
+        <label for="consegna-peso">Quantità verificata a destino</label>
+        <p-inputNumber
+          appNumeroIt
+          locale="it-IT"
+          [useGrouping]="false"
+          mode="decimal"
+          inputId="consegna-peso"
+          [(ngModel)]="consegnaPeso"
+          [minFractionDigits]="2"
+          [maxFractionDigits]="2"
+          [max]="99999999.99"
+          styleClass="w-full"
+          data-testid="fir-detail-consegna-peso"
+        />
+      </div>
+      <ng-template pTemplate="footer">
+        <p-button
+          label="Annulla"
+          [text]="true"
+          (onClick)="consegnaDialogVisible = false"
+          data-testid="fir-detail-consegna-annulla"
+        />
+        <p-button
+          label="Conferma"
+          icon="pi pi-check"
+          [disabled]="!consegnaPeso || consegnaPeso <= 0"
+          [loading]="consegnaInCorso()"
+          (onClick)="confermaConsegna()"
+          data-testid="fir-detail-consegna-conferma"
+        />
+      </ng-template>
+    </p-dialog>
+
     <p-toast></p-toast>
   `,
   styles: [
@@ -960,6 +1011,10 @@ export class FirDetailComponent implements OnInit {
 
   // --- Annullamento del formulario, con nota (R3 Task 5) ---
   protected readonly annullamentoDialogVisible = signal(false)
+  /** Dialog «Conferma consegna» (destinatario): peso verificato a destino. */
+  protected consegnaDialogVisible = false
+  protected consegnaPeso: number | null = null
+  protected readonly consegnaInCorso = signal(false)
   protected readonly annullamentoInCorso = signal(false)
   protected annullamentoMotivo = ''
 
@@ -1200,6 +1255,7 @@ export class FirDetailComponent implements OnInit {
       this.puoModificare(fir) ||
       fir.stato === FIRStato.BOZZA ||
       fir.stato === FIRStato.EMESSO ||
+      fir.stato === FIRStato.IN_TRANSITO ||
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||
       this.mostraRitrasmettiDopoVerifica(fir) ||
@@ -1228,6 +1284,38 @@ export class FirDetailComponent implements OnInit {
           severity: 'error',
           summary: 'Errore',
           detail: this.extractError(err, "Errore nell'emissione del FIR"),
+        })
+      },
+    })
+  }
+
+  apriConsegna(): void {
+    this.consegnaPeso = null
+    this.consegnaDialogVisible = true
+  }
+
+  /** Conferma consegna (IN_TRANSITO → CONSEGNATO): firma del destinatario sul FIR. */
+  confermaConsegna(): void {
+    const fir = this.fir()
+    if (!fir || !this.consegnaPeso || this.consegnaPeso <= 0) return
+    this.consegnaInCorso.set(true)
+    this.firService.confermaConsegna(fir.id, { pesoEffettivo: this.consegnaPeso }).subscribe({
+      next: updated => {
+        this.consegnaInCorso.set(false)
+        this.consegnaDialogVisible = false
+        this.fir.set(updated)
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Consegna confermata',
+          detail: 'Il formulario è stato consegnato e firmato dal destinatario',
+        })
+      },
+      error: err => {
+        this.consegnaInCorso.set(false)
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: this.extractError(err, 'Errore nella conferma della consegna'),
         })
       },
     })

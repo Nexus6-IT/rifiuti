@@ -1,8 +1,7 @@
 import { Injectable, inject } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
-import { Observable, tap } from 'rxjs'
+import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
-import { LoggerService } from './logger.service'
 
 /**
  * Signature Service
@@ -19,47 +18,7 @@ import { LoggerService } from './logger.service'
 })
 export class SignatureService {
   private readonly http = inject(HttpClient)
-  private readonly logger = inject(LoggerService)
   private readonly apiUrl = `${environment.apiUrl}/fir`
-
-  constructor() {
-    this.logger.setContext(SignatureService.name)
-  }
-
-  /**
-   * Apply digital signature to FIR
-   *
-   * Requires:
-   * - SPID Level 2+ authentication
-   * - Recent authentication (<15 minutes)
-   * - Valid signature order
-   *
-   * @param firId - FIR identifier
-   * @param role - Signature role (PRODUCER, CARRIER, RECEIVER)
-   * @returns Signature application result
-   */
-  applySignature(
-    firId: string,
-    role: 'PRODUCER' | 'CARRIER' | 'RECEIVER'
-  ): Observable<ApplySignatureResponse> {
-    this.logger.info(`Applying ${role} signature to FIR ${firId}`)
-
-    return this.http
-      .post<ApplySignatureResponse>(`${this.apiUrl}/${firId}/sign`, {
-        role,
-      })
-      .pipe(
-        tap(response => {
-          this.logger.info(
-            `${role} signature applied successfully. New status: ${response.firStatus}`
-          )
-
-          if (response.isCompleted) {
-            this.logger.info(`FIR ${firId} completed - all signatures applied`)
-          }
-        })
-      )
-  }
 
   /**
    * Verify all signatures on FIR
@@ -71,15 +30,7 @@ export class SignatureService {
    * @returns Verification results
    */
   verifySignatures(firId: string): Observable<VerifySignaturesResponse> {
-    this.logger.debug(`Verifying signatures for FIR ${firId}`)
-
-    return this.http.get<VerifySignaturesResponse>(`${this.apiUrl}/${firId}/verify`).pipe(
-      tap(response => {
-        this.logger.debug(
-          `Verification completed: ${response.signatureCount} signatures, all valid: ${response.allValid}`
-        )
-      })
-    )
+    return this.http.get<VerifySignaturesResponse>(`${this.apiUrl}/${firId}/verify`)
   }
 
   /**

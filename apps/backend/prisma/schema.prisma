@@ -427,7 +427,14 @@ model FIR {
   /// contratto RENTRI. Nullable per lo stesso motivo di `provenienza` sopra.
   tipoTrattaPrincipale TipoTratta? @map("tipo_tratta_principale")
 
+  /// Data indicata per il trasporto, fissata alla creazione: entra nel documento firmato e dopo
+  /// l'emissione non si riscrive piu' (altrimenti le firme gia' apposte smettono di valere).
   transportDate        DateTime  @map("transport_date")
+  /// Momento REALE della presa in carico da parte del trasportatore (firma compresa). Colonna
+  /// separata da `transport_date` perche' scritta dopo le prime firme: non fa parte del documento
+  /// firmato. Null finche' la presa in carico non e' avvenuta (e sui FIR precedenti alla colonna,
+  /// dove vale ripiegare su `transport_date`).
+  presaInCaricoIl      DateTime? @map("presa_in_carico_il") @db.Timestamptz(6)
   estimatedArrivalDate DateTime? @map("estimated_arrival_date")
   actualArrivalDate    DateTime? @map("actual_arrival_date")
   transportNotes       String?   @map("transport_notes") @db.Text
