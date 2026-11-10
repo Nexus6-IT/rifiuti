@@ -47,12 +47,6 @@ const ECCEZIONI: Eccezione[] = [
       "list() dell'ADMIN: il `where` e' una variabile (filtro sulle aziende possedute) ma passa da escludiPiattaforma()",
   },
   {
-    file: 'application/notifications/deadline-checker.service.ts',
-    contiene: 'this.sistema.tenant.findMany({ where: escludiPiattaforma({ subscriptionStatus',
-    motivo:
-      'il `where` contiene lo spread di FILTRO_AZIENDE_TENUTE_AL_MUD (costante di filtro, mai vuota) dentro escludiPiattaforma() e subscriptionStatus letterale',
-  },
-  {
     file: 'infrastructure/jobs/rentri-trasmissioni-sospese.job.ts',
     contiene: 'this.sistema.tenant.findMany({ where: escludiPiattaforma(), select: { id: true }',
     motivo:

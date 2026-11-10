@@ -198,10 +198,13 @@ function variazioneInParole(corrente: number, precedente: number): string {
  */
 export function celleAnalisi(
   d: DashboardData,
-  mesi: readonly AndamentoMensileVoce[]
+  mesi: readonly AndamentoMensileVoce[],
+  conRentri = true
 ): CellaAnalisi[] {
+  const senzaRentri = (celle: CellaAnalisi[]): CellaAnalisi[] =>
+    conRentri ? celle : celle.filter(c => c.etichetta !== 'RENTRI')
   if (d.overview.totalFIRs === 0) {
-    return [
+    return senzaRentri([
       {
         etichetta: 'Conformità',
         valore: TRATTINO,
@@ -211,14 +214,18 @@ export function celleAnalisi(
       { etichetta: 'Firme', valore: TRATTINO, dettaglio: null, vuota: true },
       { etichetta: 'RENTRI', valore: TRATTINO, dettaglio: null, vuota: true },
       { etichetta: 'Andamento', valore: TRATTINO, dettaglio: null, vuota: true },
-    ]
+    ])
   }
 
   const f = d.compliance.factors
   const conformita: CellaAnalisi = {
     etichetta: 'Conformità',
     valore: formatoPercento.format(d.compliance.score),
-    dettaglio: `Firme ${formatoPercento.format(f.signatureCompletionRate)} · RENTRI ${formatoPercento.format(f.rentriSyncRate)} · Ritardi ${formatoPercento.format(f.overdueRate)}`,
+    dettaglio: [
+      `Firme ${formatoPercento.format(f.signatureCompletionRate)}`,
+      ...(conRentri ? [`RENTRI ${formatoPercento.format(f.rentriSyncRate)}`] : []),
+      `Ritardi ${formatoPercento.format(f.overdueRate)}`,
+    ].join(' · '),
     vuota: false,
   }
 
@@ -265,7 +272,7 @@ export function celleAnalisi(
       vuota: false,
     }
   }
-  return [conformita, firme, rentri, andamento]
+  return senzaRentri([conformita, firme, rentri, andamento])
 }
 
 const LIVELLI: Record<DashboardData['compliance']['level'], { parola: string; tono: TonoStato }> = {

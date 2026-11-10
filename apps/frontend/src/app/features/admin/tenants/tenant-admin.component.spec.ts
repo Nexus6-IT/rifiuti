@@ -151,6 +151,24 @@ describe('TenantAdminComponent - Numero REA', () => {
     expect(service.update).toHaveBeenCalledTimes(1)
     expect(service.update.calls.mostRecent().args[1].reaNumber).toBe('777888')
   })
+
+  it('svuotando REA e ATECO in modifica invia null (azzera il valore)', async () => {
+    const input = await apriDialog(tenant({ reaNumber: '654321', atecoCode: '381100' }))
+    await scrivi(input, '')
+    component.form.atecoCode = '  '
+
+    component.save()
+
+    const dto = service.update.calls.mostRecent().args[1]
+    expect(dto.reaNumber).toBeNull()
+    expect(dto.atecoCode).toBeNull()
+  })
+
+  it('il suggerimento del REA dice solo cifre, senza sigla', async () => {
+    const input = await apriDialog()
+
+    expect(input.placeholder).toContain('solo cifre')
+  })
 })
 
 describe('TenantAdminComponent - moduli (feature flags) azienda', () => {

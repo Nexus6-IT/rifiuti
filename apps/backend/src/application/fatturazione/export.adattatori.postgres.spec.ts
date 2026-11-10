@@ -122,6 +122,8 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
       tenantId: t.id,
       utenteId: utente.id,
       registroCodice: registro.codice,
+      registroId: registro.id,
+      legamiLiberi: scenario.legamiIds.slice(2),
       definitivoId: definitivo.documentoId,
       annullatoId: annullato.documentoId,
     }
@@ -266,6 +268,80 @@ describe('ExportService con adattatore — Postgres reale, ruolo wasteflow_app',
     })
     expect(esportati).toHaveLength(1)
     expect(esportati[0].metadata).toEqual({ formato: 'FINTO', documenti: 1, saltati: 1 })
+  })
+
+  it('bozze scelte in documentoIds: contano fra i saltati; id ignoti e bozze di altre aziende no', async () => {
+    const a = await azienda()
+    const altra = await azienda()
+    await mappaCompleta(a)
+    const bozza = await creaDocumentoDiTest(owner, a.tenantId, {
+      stato: 'BOZZA',
+      registroIvaId: a.registroId,
+      anno: 2026,
+      legamiIds: [a.legamiLiberi[0]],
+    })
+    const bozzaAltra = await creaDocumentoDiTest(owner, altra.tenantId, {
+      stato: 'BOZZA',
+      registroIvaId: altra.registroId,
+      anno: 2026,
+      legamiIds: [altra.legamiLiberi[0]],
+    })
+    // Seconda bozza dell'azienda, NON scelta: non deve contare fra i saltati.
+    await creaDocumentoDiTest(owner, a.tenantId, {
+      stato: 'BOZZA',
+      registroIvaId: a.registroId,
+      anno: 2026,
+      legamiIds: [a.legamiLiberi[1]],
+    })
+    const r = await esporta(a, 'FINTO', true, {
+      documentoIds: [
+        a.definitivoId,
+        a.annullatoId,
+        bozza.documentoId,
+        bozzaAltra.documentoId,
+        randomUUID(),
+      ],
+    })
+    // 1 annullato + 1 bozza dell'azienda: l'id di un'altra azienda e quello ignoto non contano.
+    expect(r.saltati).toBe(2)
+    const esportati = await owner.activityLog.findMany({
+      where: { tenantId: a.tenantId, action: 'DOCUMENTI_FATTURA_ESPORTATI' },
+    })
+    expect(esportati[0].metadata).toEqual({ formato: 'FINTO', documenti: 1, saltati: 2 })
+    // La bozza non si emette e resta bozza.
+    const [b] = await owner.$queryRawUnsafe<{ stato: string }[]>(
+      `SELECT stato::text AS stato FROM documenti_fattura WHERE id = $1::uuid`,
+      bozza.documentoId
+    )
+    expect(b.stato).toBe('BOZZA')
+  })
+
+  it('senza documentoIds le bozze dell`azienda non entrano nel conteggio dei saltati', async () => {
+    const a = await azienda()
+    await mappaCompleta(a)
+    const r = await esporta(a, 'FINTO', true)
+    expect(r.saltati).toBe(1)
+  })
+
+  it('sole bozze scelte: 400 NESSUN_DOCUMENTO_DA_ESPORTARE, nulla emesso', async () => {
+    const a = await azienda()
+    const bozza = await creaDocumentoDiTest(owner, a.tenantId, {
+      stato: 'BOZZA',
+      registroIvaId: a.registroId,
+      anno: 2026,
+      legamiIds: [a.legamiLiberi[0]],
+    })
+    await expect(
+      esporta(a, 'FINTO', true, { documentoIds: [bozza.documentoId] })
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'NESSUN_DOCUMENTO_DA_ESPORTARE' }),
+    })
+    await expect(
+      esporta(a, 'FINTO', true, { documentoIds: [a.annullatoId] })
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'NESSUN_DOCUMENTO_DA_ESPORTARE' }),
+    })
+    expect((await stato(a.definitivoId)).emesso_il).toBeNull()
   })
 
   it('senza confermaEmissione: 400 CONFERMA_EMISSIONE_RICHIESTA e nulla emesso; con documenti gia` emessi non serve', async () => {

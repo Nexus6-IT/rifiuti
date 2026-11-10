@@ -90,7 +90,14 @@ export interface CreateTenantDto {
 }
 
 /** Payload di aggiornamento parziale (partitaIva non modificabile). */
-export type UpdateTenantDto = Partial<Omit<CreateTenantDto, 'partitaIva'>>
+export type UpdateTenantDto = Partial<
+  Omit<CreateTenantDto, 'partitaIva' | 'atecoCode' | 'reaNumber'>
+> & {
+  /** `null` svuota il valore a database; omesso lo lascia invariato. */
+  atecoCode?: string | null
+  /** `null` svuota il valore a database; omesso lo lascia invariato. */
+  reaNumber?: string | null
+}
 
 /**
  * Client per l'amministrazione dei tenant (solo SUPER_ADMIN).

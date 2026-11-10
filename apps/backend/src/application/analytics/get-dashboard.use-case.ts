@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { AnalyticsService } from './analytics.service'
 import { LoggerService } from '../../core/logger/logger.service'
+import { ModuliAttiviService } from '../admin/moduli-attivi.service'
+
+/** Valori del blocco `rentri` per un'azienda senza il modulo: nessuna lettura, tutto a zero. */
+const RENTRI_NON_ATTIVO = { total: 0, synced: 0, rate: 0 }
 
 /**
  * Get Dashboard Use Case
@@ -19,7 +23,8 @@ import { LoggerService } from '../../core/logger/logger.service'
 export class GetDashboardUseCase {
   constructor(
     private readonly analyticsService: AnalyticsService,
-    private readonly logger: LoggerService
+    private readonly logger: LoggerService,
+    private readonly moduli: ModuliAttiviService
   ) {
     this.logger.setContext(GetDashboardUseCase.name)
   }
@@ -40,6 +45,10 @@ export class GetDashboardUseCase {
       // Con l'intervallo gli stati si contano due volte: su tutto il tenant per `overview`, nel
       // periodo per `status`. Senza intervallo una sola chiamata.
       const intervallo = params.dateRange
+      // Una sola lettura dei moduli per richiesta (fonte unica). Il blocco `rentri` e' del modulo
+      // omonimo: senza, non si interroga RENTRI e il blocco resta con tutti i valori a zero (il
+      // frontend lo legge sempre: il contratto della risposta non cambia).
+      const conRentri = (await this.moduli.moduliAttivi(params.tenantId)).includes('rentri')
       const [
         totalFIRs,
         firsByStatusTotale,
@@ -62,10 +71,12 @@ export class GetDashboardUseCase {
         this.analyticsService.getTotalWasteQuantity(params.tenantId),
         this.analyticsService.getWasteByCERCode(params.tenantId),
         this.analyticsService.getWasteByDestination(params.tenantId),
-        this.analyticsService.getRENTRISyncRate(params.tenantId),
+        conRentri
+          ? this.analyticsService.getRENTRISyncRate(params.tenantId)
+          : Promise.resolve(RENTRI_NON_ATTIVO),
         this.analyticsService.getSignatureCompletionRate(params.tenantId),
         this.analyticsService.getAverageSignatureTime(params.tenantId),
-        this.analyticsService.getComplianceScore(params.tenantId),
+        this.analyticsService.getComplianceScore(params.tenantId, { conRentri }),
         this.analyticsService.getOverdueFIRs(params.tenantId),
         this.analyticsService.getMonthOverMonthGrowth(params.tenantId),
         this.analyticsService.predictNextMonthVolume(params.tenantId),

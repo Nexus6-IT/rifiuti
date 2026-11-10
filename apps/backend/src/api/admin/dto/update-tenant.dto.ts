@@ -42,12 +42,14 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   @Length(1, 10)
-  atecoCode?: string
+  /** `null` azzera il valore (campo svuotato in modifica); omesso lo lascia invariato. */
+  atecoCode?: string | null
 
   @IsOptional()
   @IsString()
   @Length(1, 9)
-  reaNumber?: string
+  /** `null` azzera il valore (campo svuotato in modifica); omesso lo lascia invariato. */
+  reaNumber?: string | null
 
   @IsOptional()
   @IsInt()

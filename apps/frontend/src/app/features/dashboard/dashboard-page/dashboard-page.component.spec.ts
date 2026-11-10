@@ -227,7 +227,7 @@ describe('DashboardPageComponent', () => {
   })
 
   it("la sezione «Analisi dell'azienda» ha la striscia e i quattro riquadri", () => {
-    const el = setup()
+    const el = setup({ feature: ['fir', 'giacenze', 'rentri'] })
     const sezione = el.querySelector('[data-testid="analisi-azienda"]') as HTMLElement
     expect(sezione.querySelector('h2')?.textContent?.trim()).toBe("Analisi dell'azienda")
     expect(sezione.textContent).toContain("Tutti i formulari dell'azienda")
@@ -302,8 +302,16 @@ describe('DashboardPageComponent', () => {
     expect(comp.menuAzioni()[0].disabled).toBeFalse()
   })
 
+  it('senza il modulo rentri la striscia non ha la cella RENTRI né la voce nel dettaglio', () => {
+    const el = setup()
+    expect(el.querySelector('[data-testid="analisi-rentri"]')).toBeNull()
+    expect(el.querySelectorAll('app-analisi-sintesi .cella').length).toBe(3)
+    const conformita = el.querySelector('[data-testid="analisi-conformita"]')?.textContent ?? ''
+    expect(conformita).not.toContain('RENTRI')
+  })
+
   it('con 0 FIR nessun «20%» né «Critica» (bug 5) e tutte le celle in «—»', () => {
-    const el = setup({ dati: dashboardSenzaFir() })
+    const el = setup({ dati: dashboardSenzaFir(), feature: ['fir', 'giacenze', 'rentri'] })
     const testo = el.textContent ?? ''
     expect(testo).not.toContain('20%')
     expect(testo).not.toContain('Critica')

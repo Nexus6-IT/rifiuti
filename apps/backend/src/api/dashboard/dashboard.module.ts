@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { DashboardController } from './dashboard.controller'
 import { AttenzioneController } from './attenzione.controller'
 import { AndamentoController } from './andamento.controller'
+import { ModuliAttiviModule } from '../../application/admin/moduli-attivi.module'
 import { AnalyticsModule } from '../../application/analytics/analytics.module'
 import { RaccogliAttenzioneUseCase } from '../../application/dashboard/raccogli-attenzione.use-case'
 import { RaccogliIndicatoriAzioneUseCase } from '../../application/dashboard/raccogli-indicatori-azione.use-case'
@@ -37,7 +38,7 @@ import { RentriScortaRepository } from '../../infrastructure/persistence/rentri-
  * "Nest can't resolve dependencies of RentriScortaRepository").
  */
 @Module({
-  imports: [AnalyticsModule, PrismaModule],
+  imports: [AnalyticsModule, PrismaModule, ModuliAttiviModule],
   controllers: [DashboardController, AttenzioneController, AndamentoController],
   providers: [
     RaccogliAttenzioneUseCase,

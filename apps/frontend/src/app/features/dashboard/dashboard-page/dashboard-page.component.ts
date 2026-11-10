@@ -182,6 +182,7 @@ function inCaricamento<T>(): Sorgente<T> {
             [celle]="celle()"
             [livello]="livello()"
             [caricamento]="dashboard().caricamento"
+            [conRentri]="ff.has('rentri')"
           />
           <div class="coppia">
             <app-barre-orizzontali
@@ -451,7 +452,7 @@ export class DashboardPageComponent implements OnInit {
 
   protected readonly celle = computed(() => {
     const d = this.dashboard().dati
-    return d ? celleAnalisi(d, this.mesi()) : []
+    return d ? celleAnalisi(d, this.mesi(), this.ff.has('rentri')) : []
   })
   protected readonly livello = computed(() => {
     const d = this.dashboard().dati

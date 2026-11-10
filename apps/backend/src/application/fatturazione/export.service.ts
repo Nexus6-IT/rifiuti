@@ -56,7 +56,10 @@ export interface EsitoExport {
   nomeFile: string
   contentType: string
   contenuto: Buffer
-  /** Annullati esclusi da `XML_ZIP` (Task 23); sempre 0 per il CSV, che li esporta con lo stato. */
+  /**
+   * Annullati esclusi da `XML_ZIP` (Task 23) e dagli adattatori, piu' le bozze scelte in
+   * `documentoIds`; sempre 0 per il CSV, che esporta gli annullati con lo stato.
+   */
   saltati: number
 }
 
@@ -126,6 +129,12 @@ function troppiDocumenti(tetto: number): BadRequestException {
   })
 }
 
+/** Documenti selezionati e bozze scelte in `documentoIds` ed escluse dall'export (da contare fra i saltati). */
+interface SelezioneLetta {
+  documenti: DocumentoSelezionato[]
+  bozzeScelte: number
+}
+
 interface DocumentoSelezionato {
   id: string
   numero: number | null
@@ -153,9 +162,10 @@ export class ExportService {
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(
         async tx => {
-          const selezionati = await this.seleziona(tx, tenantId, selezione, {
+          const { documenti: selezionati } = await this.seleziona(tx, tenantId, selezione, {
             tetto: TETTO_DOCUMENTI_CSV,
             senzaBozze: false,
+            contaBozze: false, // il CSV non riporta i saltati: la query sarebbe scartata
           })
           // Un solo passaggio per tabella su tutti i documenti (lista lunga: `IN (SELECT unnest)`
           // col nested loop spento): a blocchi di 100 ogni blocco rileggeva le righe dell'intero
@@ -205,7 +215,7 @@ export class ExportService {
     return nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(
         async tx => {
-          const selezionati = await this.seleziona(tx, tenantId, selezione, {
+          const { documenti: selezionati } = await this.seleziona(tx, tenantId, selezione, {
             tetto: TETTO_DOCUMENTI_ADATTATORE,
             senzaBozze: true,
           })
@@ -258,21 +268,31 @@ export class ExportService {
   ): Promise<EsitoExport> {
     const selezione = b.selezione ?? {}
     validaSelezione(selezione, TETTO_DOCUMENTI_XML_ZIP)
-    const ids = await nelContestoTenant(tenantId, () =>
+    const { ids, bozzeScelte } = await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(
-        async tx =>
-          (
-            await this.seleziona(tx, tenantId, selezione, {
-              tetto: TETTO_DOCUMENTI_XML_ZIP,
-              senzaBozze: true,
-            })
-          ).map(d => d.id),
+        async tx => {
+          const letta = await this.seleziona(tx, tenantId, selezione, {
+            tetto: TETTO_DOCUMENTI_XML_ZIP,
+            senzaBozze: true,
+          })
+          return { ids: letta.documenti.map(d => d.id), bozzeScelte: letta.bozzeScelte }
+        },
         { timeout: 60_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       )
     )
-    const { contenuto, saltati } = await this.xml.zip(tenantId, utenteId, ids, {
+    if (ids.length === 0) {
+      throw new BadRequestException({
+        error: 'NESSUN_DOCUMENTO_DA_ESPORTARE',
+        message:
+          'Nessun documento della selezione si può esportare: sono tutti annullati o in bozza.',
+      })
+    }
+    const esitoZip = await this.xml.zip(tenantId, utenteId, ids, {
       confermaEmissione: b.confermaEmissione === true,
     })
+    const contenuto = esitoZip.contenuto
+    // Le bozze scelte a mano non entrano nello zip: sono saltati come gli annullati.
+    const saltati = esitoZip.saltati + bozzeScelte
     // Audit dell'export in una transazione propria, dopo l'emissione: l'emissione ha gia' il suo
     // audit atomico con la scrittura (`DOCUMENTO_FATTURA_EMESSO`); questo registra solo la
     // consegna del file. Se fallisse non deve disfare documenti gia' emessi ne' far perdere lo zip.
@@ -284,7 +304,11 @@ export class ExportService {
             userId: utenteId,
             action: 'DOCUMENTI_FATTURA_ESPORTATI',
             description: 'Documenti di fatturazione esportati',
-            metadata: { formato: FORMATO_XML_ZIP, documenti: ids.length - saltati, saltati },
+            metadata: {
+              formato: FORMATO_XML_ZIP,
+              documenti: ids.length - esitoZip.saltati,
+              saltati,
+            },
           },
         })
       )
@@ -324,15 +348,17 @@ export class ExportService {
         .$transaction(
           async tx => {
             await impostaTimeoutLock(tx)
-            const selezionati = await this.seleziona(tx, tenantId, selezione, {
-              tetto: TETTO_DOCUMENTI_ADATTATORE,
-              senzaBozze: true,
-            })
+            const { documenti: selezionati, bozzeScelte } = await this.seleziona(
+              tx,
+              tenantId,
+              selezione,
+              { tetto: TETTO_DOCUMENTI_ADATTATORE, senzaBozze: true }
+            )
             const ids = selezionati.map(s => s.id)
             const stati = await this.bloccaDocumenti(tx, tenantId, ids)
             if (stati.size !== ids.length) throw operazioneConcorrente()
             const definitivi = selezionati.filter(s => stati.get(s.id) === 'DEFINITIVO')
-            const saltati = selezionati.length - definitivi.length
+            const saltati = selezionati.length - definitivi.length + bozzeScelte
             const dettagli = await this.documenti.dettagliInTx(
               tx,
               tenantId,
@@ -343,7 +369,8 @@ export class ExportService {
             if (perExport.length === 0) {
               throw new BadRequestException({
                 error: 'NESSUN_DOCUMENTO_DA_ESPORTARE',
-                message: 'Nessun documento della selezione si può esportare: sono tutti annullati.',
+                message:
+                  'Nessun documento della selezione si può esportare: sono tutti annullati o in bozza.',
               })
             }
 
@@ -490,8 +517,8 @@ export class ExportService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     s: SelezioneExport,
-    o: { tetto: number; senzaBozze: boolean }
-  ): Promise<DocumentoSelezionato[]> {
+    o: { tetto: number; senzaBozze: boolean; contaBozze?: boolean }
+  ): Promise<SelezioneLetta> {
     if (s.elaborazioneId !== undefined) {
       // Un'elaborazione inesistente o di un'altra azienda non e' «nessun documento»: e' un errore.
       const trovata = await tx.$queryRaw<{ id: string }[]>`
@@ -508,9 +535,7 @@ export class ExportService {
     if (s.elaborazioneId !== undefined) {
       condizioni.push(Prisma.sql`d.elaborazione_id = ${s.elaborazioneId}::uuid`)
     }
-    if (s.elaborazioneId === undefined || o.senzaBozze) {
-      condizioni.push(Prisma.sql`d.stato IN ('DEFINITIVO', 'ANNULLATO')`)
-    }
+    const escludeBozze = s.elaborazioneId === undefined || o.senzaBozze
     if (s.registroIvaId !== undefined)
       condizioni.push(Prisma.sql`d.registro_iva_id = ${s.registroIvaId}::uuid`)
     if (s.anno !== undefined) condizioni.push(Prisma.sql`d.anno = ${s.anno}::int`)
@@ -525,18 +550,33 @@ export class ExportService {
       // Lista lunga: una sola forma, `IN (SELECT unnest(..))` col nested loop spento (4.4b1, T27a).
       condizioni.push(Prisma.sql`d.id IN (SELECT unnest(${s.documentoIds}::uuid[]))`)
     }
+    // Una bozza scelta nella lista e' un documento saltato, non un id ignoto: si conta solo se
+    // esiste nell'azienda (il tenant e' nelle condizioni) ed e' in stato BOZZA.
+    // I filtri non di stato (compresa la lista) valgono anche per il conteggio delle bozze.
+    const filtri = [...condizioni]
+    if (escludeBozze) {
+      condizioni.push(Prisma.sql`d.stato IN ('DEFINITIVO', 'ANNULLATO')`)
+    }
+    const doveBozze = Prisma.join([...filtri, Prisma.sql`d.stato = 'BOZZA'`], ' AND ')
     const dove = Prisma.join(condizioni, ' AND ')
-    const leggi = async (): Promise<DocumentoSelezionato[]> => {
+    const leggi = async (): Promise<SelezioneLetta> => {
       const [{ totale }] = await tx.$queryRaw<{ totale: number }[]>`
         SELECT count(*)::int AS totale FROM "documenti_fattura" d WHERE ${dove}`
       if (totale > o.tetto) throw troppiDocumenti(o.tetto)
-      return tx.$queryRaw<DocumentoSelezionato[]>`
+      let bozzeScelte = 0
+      if (lista && escludeBozze && o.contaBozze !== false) {
+        const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM "documenti_fattura" d WHERE ${doveBozze}`
+        bozzeScelte = n
+      }
+      const documenti = await tx.$queryRaw<DocumentoSelezionato[]>`
         SELECT d.id::text AS id, d.numero::int AS numero, d.anno::int AS anno,
                COALESCE(ri.codice, '') AS "registroCodice", d.fotografia AS fotografia
         FROM "documenti_fattura" d
         LEFT JOIN "registri_iva" ri ON ri.id = d.registro_iva_id AND ri.tenant_id = d.tenant_id
         WHERE ${dove}
         ORDER BY d.anno, ri.codice, d.numero NULLS LAST, d.data_documento, d.id`
+      return { documenti, bozzeScelte }
     }
     return lista ? conJoinLineari(tx, leggi) : leggi()
   }

@@ -537,12 +537,16 @@ describe('XmlDocumentoService — Postgres reale, ruolo wasteflow_app', () => {
     ).toMatchObject({ status: 400, codice: 'TROPPI_DOCUMENTI', details: { massimo: 500 } })
     await b.t19.contratto(az)
     const e = await b.t19.pronta(az)
-    const vuoto = await esportatore.esporta(az.tenantId, az.utenteId, {
-      formato: 'XML_ZIP',
-      selezione: { elaborazioneId: e.id },
-      confermaEmissione: true,
-    })
-    expect(await nomiDelloZip(vuoto.contenuto)).toEqual([])
+    // Da un'elaborazione con sole bozze nulla è esportabile: 400 come gli adattatori.
+    expect(
+      await esito(
+        esportatore.esporta(az.tenantId, az.utenteId, {
+          formato: 'XML_ZIP',
+          selezione: { elaborazioneId: e.id },
+          confermaEmissione: true,
+        })
+      )
+    ).toMatchObject({ status: 400, codice: 'NESSUN_DOCUMENTO_DA_ESPORTARE' })
   }, 90_000)
 
   // -------------------------------------------------------------------------------------------

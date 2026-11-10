@@ -1,3 +1,4 @@
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../../application/billing/contratto-gruppo.service'
 import { Injectable } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
@@ -64,7 +65,7 @@ export class RentriRegistroTrasmissioneJob {
         )
       }
       const candidati = await this.sistema.tenant.findMany({
-        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
         select: { id: true },
       })
 

@@ -269,9 +269,15 @@ export class AnalyticsService {
   }
 
   /**
-   * Calculate compliance score (0-1)
+   * Calculate compliance score (0-1).
+   * Senza il modulo `rentri` (`conRentri: false`) RENTRI non entra nel punteggio: le altre
+   * componenti si ripesano in proporzione ai pesi di prima (0,4 e 0,2, somma 1) e
+   * `rentriSyncRate` resta 0, senza leggere i FIR sincronizzati.
    */
-  async getComplianceScore(tenantId: string): Promise<{
+  async getComplianceScore(
+    tenantId: string,
+    opzioni: { conRentri?: boolean } = {}
+  ): Promise<{
     score: number
     level: 'EXCELLENT' | 'GOOD' | 'NEEDS_IMPROVEMENT' | 'CRITICAL'
     totalFIRs: number
@@ -281,6 +287,7 @@ export class AnalyticsService {
       overdueRate: number
     }
   }> {
+    const conRentri = opzioni.conRentri ?? true
     const totalFIRs = await this.prisma.fIR.count({
       where: { tenantId },
     })
@@ -292,12 +299,14 @@ export class AnalyticsService {
       },
     })
 
-    const syncedToRENTRI = await this.prisma.fIR.count({
-      where: {
-        tenantId,
-        rentriSyncStatus: 'SYNCED',
-      },
-    })
+    const syncedToRENTRI = conRentri
+      ? await this.prisma.fIR.count({
+          where: {
+            tenantId,
+            rentriSyncStatus: 'SYNCED',
+          },
+        })
+      : 0
 
     // TODO: SIGNED_BY_PRODUCER and IN_TRANSIT don't exist in Prisma schema
     // Valid statuses are: DRAFT, AWAITING_PRODUCER, AWAITING_CARRIER, AWAITING_RECEIVER, COMPLETED, SYNCED_TO_RENTRI, CANCELLED
@@ -316,7 +325,9 @@ export class AnalyticsService {
     const overdueRate = totalFIRs > 0 ? overdue / totalFIRs : 0
 
     // Weighted score: 40% signatures, 40% RENTRI sync, 20% timeliness
-    const score = signatureRate * 0.4 + syncRate * 0.4 + (1 - overdueRate) * 0.2
+    const score = conRentri
+      ? signatureRate * 0.4 + syncRate * 0.4 + (1 - overdueRate) * 0.2
+      : signatureRate * (0.4 / 0.6) + (1 - overdueRate) * (0.2 / 0.6)
 
     let level: 'EXCELLENT' | 'GOOD' | 'NEEDS_IMPROVEMENT' | 'CRITICAL'
     if (score >= 0.9) level = 'EXCELLENT'

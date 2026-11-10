@@ -2,6 +2,9 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { RaccogliAttenzioneUseCase } from './raccogli-attenzione.use-case'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { FEATURE_KEYS } from '../admin/feature-catalog'
+
+const TUTTI_I_MODULI = new Set(FEATURE_KEYS)
 
 // Stesso pattern di `rentri-certificato-scadenza.job.spec.ts`: generare un
 // vero certificato X.509 firmato richiederebbe OpenSSL o una libreria
@@ -116,7 +119,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       const [voce] = risultato.voci
@@ -142,7 +145,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].gravita).toBe('critico')
@@ -159,7 +162,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].chiave).toBe('certificato-rentri')
@@ -170,7 +173,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       const prisma = buildPrisma()
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(0)
     })
@@ -186,7 +189,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(0)
     })
@@ -204,7 +207,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].chiave).toBe('autorizzazione')
@@ -232,7 +235,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].gravita).toBe('critico')
@@ -253,7 +256,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].chiave).toBe('trasportatore-iscrizione')
@@ -283,7 +286,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci[0].titolo).toMatch(/Nome Nuovo SRL/)
       expect(prisma.db.trasportatore.findMany).toHaveBeenCalledWith(
@@ -304,7 +307,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].gravita).toBe('critico')
@@ -314,7 +317,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       const prisma = buildPrisma()
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(0)
     })
@@ -336,7 +339,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].chiave).toBe('destinatario-autorizzazione')
@@ -366,7 +369,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].gravita).toBe('critico')
@@ -376,7 +379,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       const prisma = buildPrisma()
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(0)
     })
@@ -418,7 +421,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
       const percorsi = percorsiDichiaratiFrontend()
       if (percorsi === null) {
         // eslint-disable-next-line no-console
@@ -465,7 +468,7 @@ describe('RaccogliAttenzioneUseCase', () => {
       })
       const useCase = new RaccogliAttenzioneUseCase(prisma)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(2)
       expect(risultato.voci[0].gravita).toBe('critico')

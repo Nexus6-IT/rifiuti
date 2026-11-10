@@ -12,6 +12,7 @@ import { calcolaScadenza } from './scadenza-controparte.util'
 import { FILTRO_AZIENDE_TENUTE_AL_MUD } from '../mud/mud-obbligo.service'
 import { MudVersionRegistry } from '../mud/export/mud-version.registry'
 import { formattaDataItaliana, giornoItaliano } from '../../core/time/anno-italiano'
+import { ABBONAMENTO_OPERATIVO_DEL_GRUPPO } from '../billing/contratto-gruppo.service'
 import { escludiPiattaforma } from '../../core/context/azienda-piattaforma'
 
 /**
@@ -107,11 +108,9 @@ export class DeadlineCheckerService {
       // non tenute al MUD (A-W-10) restano fuori: niente MUDReport, notifiche né email.
       // Sistema: scansione di tutte le aziende attive, senza un'azienda nota in partenza
       const tenants = await this.sistema.tenant.findMany({
+        // Stato operativo della radice del gruppo (come i job RENTRI), non della riga stessa.
         where: escludiPiattaforma({
-          subscriptionStatus: {
-            in: ['ACTIVE', 'TRIAL'], // Include active and trial subscriptions
-          },
-          ...FILTRO_AZIENDE_TENUTE_AL_MUD,
+          AND: [{ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }, FILTRO_AZIENDE_TENUTE_AL_MUD],
         }),
         include: {
           mudReports: {
@@ -703,7 +702,7 @@ export class DeadlineCheckerService {
     try {
       // Sistema: scansione di tutte le aziende attive e delle loro credenziali
       const tenantsAttivi = await this.sistema.tenant.findMany({
-        where: escludiPiattaforma({ subscriptionStatus: { in: ['ACTIVE', 'TRIAL'] } }),
+        where: escludiPiattaforma({ OR: ABBONAMENTO_OPERATIVO_DEL_GRUPPO }),
         select: { id: true },
       })
 

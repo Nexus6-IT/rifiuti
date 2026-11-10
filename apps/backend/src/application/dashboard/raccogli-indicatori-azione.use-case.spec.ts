@@ -1,5 +1,8 @@
 import { RaccogliIndicatoriAzioneUseCase } from './raccogli-indicatori-azione.use-case'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
+import { FEATURE_KEYS } from '../admin/feature-catalog'
+
+const TUTTI_I_MODULI = new Set(FEATURE_KEYS)
 
 const TENANT = 'tenant-uuid-001'
 
@@ -39,7 +42,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       })
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       const [voce] = risultato.voci
@@ -66,7 +69,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       })
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].gravita).toBe('critico')
@@ -78,7 +81,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       const prisma = buildPrisma()
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(0)
     })
@@ -87,7 +90,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       const prisma = buildPrisma()
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
 
-      await useCase.raccogli(TENANT)
+      await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       const { where } = (prisma.db.fIR.groupBy as jest.Mock).mock.calls[0][0]
       expect(where.status.notIn).toContain('CANCELLED')
@@ -110,7 +113,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       const scortaRepo = buildScortaRepo({ contaTotaleDisponibili: jest.fn().mockResolvedValue(2) })
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       const [voce] = risultato.voci
@@ -143,7 +146,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       })
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, scortaRepo)
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(1)
       expect(risultato.voci[0].gravita).toBe('informativo')
@@ -153,7 +156,7 @@ describe('RaccogliIndicatoriAzioneUseCase', () => {
       const prisma = buildPrisma()
       const useCase = new RaccogliIndicatoriAzioneUseCase(prisma, buildScortaRepo())
 
-      const risultato = await useCase.raccogli(TENANT)
+      const risultato = await useCase.raccogli(TENANT, TUTTI_I_MODULI)
 
       expect(risultato.voci).toHaveLength(0)
       expect(prisma.db.rentriUnitaLocale.findMany).toHaveBeenCalledWith(
