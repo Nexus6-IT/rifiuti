@@ -249,20 +249,10 @@ test.describe('Ciclo di vita FIR completo', () => {
     await expect(lista.statoPerId(fir.id)).toHaveText(/emesso/i, { timeout: ATTESA_SERVER })
   })
 
-  // Difetto del prodotto, indagine in corso: «verifica pubblica: solo la firma del destinatario è
-  // valida». Su un FIR consegnato le firme di produttore e trasportatore sono su un hash del
-  // documento diverso da quello attuale (la consegna aggiunge peso e data), quindi
-  // GET /fir/:id/verify risponde allValid=false. Il test asserisce il comportamento GIUSTO ed e'
-  // marcato `test.fail()`: oggi fallisce (atteso, risulta verde); quando il difetto sara' corretto
-  // diventera' rosso («atteso il fallimento, ma passa») e andra' tolto il marcatore.
-  test('firma digitale: un FIR consegnato porta tre firme valide, verifica pubblica allValid (difetto noto: solo la firma del destinatario è valida)', async () => {
-    test.fail(
-      true,
-      'verifica pubblica: solo la firma del destinatario è valida (allValid=false su FIR consegnato, indagine in corso)'
-    )
-    // La finestra di firma non e' raggiungibile dalla lista (v. il fixme sotto): la firma si
-    // esercita dall'API. Ogni passo del ciclo firma da se' (SIGNATURE_PROVIDER sandbox in CI) e la
-    // verifica pubblica (GET /fir/:id/verify, la stessa del QR sulla copia cartacea) ricalcola le firme.
+  // Le firme si appongono con le azioni di ciclo (Emetti, Presa in carico, Conferma consegna): ogni
+  // passo firma da se' (SIGNATURE_PROVIDER sandbox in CI). La verifica pubblica
+  // (GET /fir/:id/verify, la stessa del QR sulla copia cartacea) ricalcola le firme.
+  test('firma digitale: un FIR consegnato porta tre firme valide, verifica pubblica allValid', async () => {
     const fir = await creaFirInStato(tokenAdmin, anagrafiche, 'CONSEGNATO')
     const verifica = await chiama<{
       allValid: boolean
@@ -283,11 +273,53 @@ test.describe('Ciclo di vita FIR completo', () => {
       'firme non valide'
     ).toEqual([])
     expect(verifica.corpo.allValid).toBe(true)
+    expect(verifica.corpo.isCompleted).toBe(true)
   })
 
-  test('firma del FIR dall’interfaccia', async () => {
-    test.fixme(true, 'dialog di firma non montato in nessuna pagina')
-    // Da scrivere quando il dialog di firma (signature-dialog) sara' montato in lista o dettaglio FIR.
+  test('firma dall’interfaccia: Conferma consegna dal dettaglio, poi la pagina pubblica /verify mostra le firme valide', async ({
+    page,
+    browser,
+  }) => {
+    const fir = await creaFirInStato(tokenAdmin, anagrafiche, 'IN_TRANSITO', { quantita: 10 })
+    await accediUiComeAzienda(page, azienda, 'operator')
+    await page.goto(`/fir/${fir.id}`)
+    await expect(page.getByTestId('fir-detail-stato')).toContainText(/in transito/i, {
+      timeout: ATTESA_SERVER,
+    })
+
+    await page.getByTestId('fir-detail-conferma-consegna').click()
+    const dialog = page.getByTestId('fir-detail-consegna-dialog')
+    await expect(dialog).toBeVisible()
+    const peso = dialog.locator('#consegna-peso')
+    await peso.click()
+    await peso.pressSequentially('9,5')
+    await peso.blur()
+    await attendiRisposta(page, () => page.getByTestId('fir-detail-consegna-conferma').click(), {
+      metodo: 'POST',
+      percorso: /\/fir\/[^/]+\/conferma-consegna/,
+    })
+    await expect(page.getByTestId('fir-detail-stato')).toContainText(/consegnato/i, {
+      timeout: ATTESA_SERVER,
+    })
+    expect((await leggiFir(tokenAdmin, fir.id)).stato).toBe('CONSEGNATO')
+
+    // Pagina pubblica: contesto nuovo, senza sessione ne' token.
+    const pubblico = await browser.newContext()
+    try {
+      const verifica = await pubblico.newPage()
+      await verifica.goto(`/verify/${fir.id}`)
+      await expect(
+        verifica.getByRole('heading', { name: 'Verifica Firme Digitali FIR' })
+      ).toBeVisible()
+      await expect(verifica.getByText('Firme Valide', { exact: true })).toBeVisible({
+        timeout: ATTESA_SERVER,
+      })
+      await expect(verifica.getByText('3 / 3')).toBeVisible()
+      await expect(verifica.getByText('Completato', { exact: true })).toBeVisible()
+      await expect(verifica.getByText('Firme Non Valide')).toHaveCount(0)
+    } finally {
+      await pubblico.close()
+    }
   })
 
   test('sync RENTRI in batch: i FIR emessi vengono accodati, una bozza viene saltata', async () => {
