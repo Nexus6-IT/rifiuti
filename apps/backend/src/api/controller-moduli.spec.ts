@@ -79,7 +79,7 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   },
   'api/pdf/pdf.controller.ts': {
     motivo: 'Un solo controller per due moduli: il PDF del FIR (fir) e quello del MUD (mud)',
-    metodi: { downloadFIR: ['fir'], downloadMUD: ['mud'] },
+    metodi: { downloadFIR: ['fir'], downloadFIRSerie: ['fir'], downloadMUD: ['mud'] },
   },
   // cer: catalogo condiviso in lettura con FIR, registro e giacenze
   'api/cer/cer.controller.ts': {
