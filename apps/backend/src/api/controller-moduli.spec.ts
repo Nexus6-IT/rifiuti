@@ -79,7 +79,7 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   },
   'api/pdf/pdf.controller.ts': {
     motivo: 'Un solo controller per due moduli: il PDF del FIR (fir) e quello del MUD (mud)',
-    metodi: { downloadFIR: ['fir'], downloadMUD: ['mud'] },
+    metodi: { downloadFIR: ['fir'], downloadFIRSerie: ['fir'], downloadMUD: ['mud'] },
   },
   // cer: catalogo condiviso in lettura con FIR, registro e giacenze
   'api/cer/cer.controller.ts': {
@@ -137,6 +137,11 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   'api/clienti/registri-iva.controller.ts': CONTRATTI('Registri IVA'),
   'api/clienti/spese-accessorie.controller.ts': CONTRATTI('Spese accessorie'),
   'api/clienti/testi-fatturazione.controller.ts': CONTRATTI('Testi di fatturazione'),
+  'api/modelli-stampa/modelli-stampa.controller.ts': {
+    // TODO(integrazione T13): con la chiave `ritiri` diventa ['fir', 'ritiri'].
+    chiavi: ['fir'],
+    motivo: 'Modelli di stampa di FIR e distinta dei ritiri',
+  },
   'api/listino/addebiti.controller.ts': CONTRATTI('Listino: addebiti'),
   'api/listino/allegati-elenco.controller.ts': CONTRATTI('Listino: allegati degli elenchi'),
   'api/listino/codici-iva.controller.ts': CONTRATTI('Listino: codici IVA'),
