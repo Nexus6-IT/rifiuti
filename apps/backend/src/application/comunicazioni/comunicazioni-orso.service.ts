@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { aggregaOrso } from '../../domain/comunicazioni/orso/aggrega-orso'
@@ -15,6 +15,16 @@ import { registroTracciati } from '../../domain/comunicazioni/registro-tracciati
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
 import { limitiAnnoMud } from '../mud/aggregazione/mud-regole'
 import { leggiIntegrazioni } from '../mud/aggregazione/mud-integrazioni'
+import {
+  ComunicazioneConBloccantiError,
+  ComunicazioneNonTrovataError,
+  type AnteprimaOrso,
+  type AvvisoOrso as AvvisoComunicazione,
+  type ComunicazioneVista,
+  type ComunicazioniOrsoPort,
+  type FileComunicazione,
+  type MeseOrso as AnteprimaMeseOrso,
+} from './comunicazioni-orso.port'
 import {
   leggiMovimentiOrso,
   type MovimentoOrso as MovimentoLettoDb,
@@ -36,66 +46,6 @@ export type CodiceAvvisoComunicazione =
   | 'PROVINCIA_IMPIANTO_MANCANTE'
   | 'DESCRIZIONE_VUOTA'
   | 'DATI_NON_VALIDI'
-
-export interface AvvisoComunicazione {
-  codice: CodiceAvvisoComunicazione
-  messaggio: string
-  movimentoIds: string[]
-}
-
-export interface AnteprimaMeseOrso {
-  mese: number
-  ricevuti: Array<{
-    cer: string
-    descrizione: string
-    operazioni: string[]
-    totT: string
-    extraT: string
-    conFir: boolean
-  }>
-  prodotti: Array<{
-    cer: string
-    descrizione: string
-    operazioni: string[]
-    totT: string
-    trattataInternamenteT: string
-  }>
-}
-
-export interface ComunicazioneVista {
-  id: string
-  consorzio: string
-  unitaLocaleId: string
-  /** data `YYYY-MM-DD` */
-  periodoDa: string
-  periodoA: string
-  tracciato: string
-  versione: string
-  stato: 'GENERATA' | 'INVIATA'
-  hashDati: string
-  nomeFile: string
-  generataIl: string
-  generataDa: string | null
-  inviataIl?: string
-  inviataDa?: string
-  modificataDopoInvio: boolean
-}
-
-export interface AnteprimaOrso {
-  unitaLocale: { id: string; nome: string; provincia: string | null }
-  anno: number
-  mesi: AnteprimaMeseOrso[]
-  avvisi: AvvisoComunicazione[]
-  bloccanti: boolean
-  hashDati: string
-  ultima?: ComunicazioneVista
-}
-
-export interface FileComunicazione {
-  nomeFile: string
-  contentType: string
-  contenuto: string
-}
 
 const MESSAGGI: Record<CodiceAvvisoComunicazione, string> = {
   PROVINCIA_CONFERITORE_MANCANTE:
@@ -240,7 +190,7 @@ function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneV
     hashDati: r.hashDati,
     nomeFile: r.nomeFile,
     generataIl: r.generataIl.toISOString(),
-    generataDa: r.generataDa,
+    generataDa: r.generataDa ?? '',
     ...(r.inviataIl ? { inviataIl: r.inviataIl.toISOString() } : {}),
     ...(r.inviataDa ? { inviataDa: r.inviataDa } : {}),
     modificataDopoInvio: stato === 'INVIATA' && hashAttuale !== null && hashAttuale !== r.hashDati,
@@ -248,7 +198,7 @@ function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneV
 }
 
 @Injectable()
-export class ComunicazioniOrsoService {
+export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
   constructor(private readonly prisma: PrismaService) {}
 
   private async calcola(tenantId: string, unitaLocaleId: string, anno: number): Promise<Calcolo> {
@@ -256,7 +206,7 @@ export class ComunicazioniOrsoService {
       where: { id: unitaLocaleId, tenantId },
       select: { id: true, denominazione: true, provincia: true, numIscrSito: true },
     })
-    if (!unita) throw new NotFoundException('Sede non trovata')
+    if (!unita) throw new ComunicazioneNonTrovataError()
 
     const { inizio, fine } = limitiAnnoMud(anno)
     const [catalogo, record] = await Promise.all([
@@ -294,7 +244,10 @@ export class ComunicazioniOrsoService {
     const bloccantiTracciato = this.tracciato().validaDati(dati)
     const avvisi = raggruppaAvvisi(grezzi)
     // Errori del tracciato non già spiegati da un avviso: non si genera un file che l'XSD rifiuta.
-    if (bloccantiTracciato.length > 0 && !avvisi.some(a => eBloccante(a.codice))) {
+    if (
+      bloccantiTracciato.length > 0 &&
+      !avvisi.some(a => eBloccante(a.codice as CodiceAvvisoComunicazione))
+    ) {
       avvisi.unshift({
         codice: 'DATI_NON_VALIDI',
         messaggio: `${MESSAGGI.DATI_NON_VALIDI} ${bloccantiTracciato.slice(0, 5).join('; ')}`,
@@ -314,7 +267,7 @@ export class ComunicazioniOrsoService {
       dati,
       aggregato,
       avvisi,
-      bloccanti: avvisi.some(a => eBloccante(a.codice)),
+      bloccanti: avvisi.some(a => eBloccante(a.codice as CodiceAvvisoComunicazione)),
       hashDati: hashDatiOrso(dati),
     }
   }
@@ -327,10 +280,8 @@ export class ComunicazioniOrsoService {
     return { periodoDa: new Date(Date.UTC(anno, 0, 1)), periodoA: new Date(Date.UTC(anno, 11, 31)) }
   }
 
-  async anteprima(
-    tenantId: string,
-    p: { unitaLocaleId: string; anno: number }
-  ): Promise<AnteprimaOrso> {
+  async anteprima(tenantId: string, unitaLocaleId: string, anno: number): Promise<AnteprimaOrso> {
+    const p = { unitaLocaleId, anno }
     const c = await this.calcola(tenantId, p.unitaLocaleId, p.anno)
     const ultima = await this.prisma.comunicazioneConsorzio.findFirst({
       where: {
@@ -357,15 +308,15 @@ export class ComunicazioniOrsoService {
   async genera(
     tenantId: string,
     utenteId: string,
-    p: { unitaLocaleId: string; anno: number }
+    unitaLocaleId: string,
+    anno: number
   ): Promise<ComunicazioneVista> {
+    const p = { unitaLocaleId, anno }
     const c = await this.calcola(tenantId, p.unitaLocaleId, p.anno)
     if (c.bloccanti) {
-      throw new BadRequestException({
-        code: 'COMUNICAZIONE_CON_BLOCCANTI',
-        message: 'Ci sono avvisi bloccanti: correggi i dati prima di generare il file.',
-        avvisi: c.avvisi.filter(a => eBloccante(a.codice)),
-      })
+      throw new ComunicazioneConBloccantiError(
+        c.avvisi.filter(a => eBloccante(a.codice as CodiceAvvisoComunicazione))
+      )
     }
     const chiave = {
       tenantId,
@@ -391,16 +342,21 @@ export class ComunicazioniOrsoService {
     }))
     const sede = c.unita.numIscrSito.replace(/[^A-Za-z0-9_-]/g, '_')
     try {
-      const creata = await this.prisma.comunicazioneConsorzio.create({
-        data: {
-          ...chiave,
-          nomeFile: `${CONSORZIO_ORSO}_${TRACCIATO}_${p.anno}_${sede}.${this.tracciato().estensione}`,
-          contenuto,
-          stato: 'GENERATA',
-          generataDa: utenteId,
-          movimenti: { createMany: { data: snapshot } },
-        },
-        select: SELEZIONE_VISTA,
+      const creata = await this.prisma.$transaction(async tx => {
+        const riga = await tx.comunicazioneConsorzio.create({
+          data: {
+            ...chiave,
+            nomeFile: `${CONSORZIO_ORSO}_${TRACCIATO}_${p.anno}_${sede}.${this.tracciato().estensione}`,
+            contenuto,
+            stato: 'GENERATA',
+            generataDa: utenteId,
+          },
+          select: SELEZIONE_VISTA,
+        })
+        await tx.comunicazioneConsorzioMovimento.createMany({
+          data: snapshot.map(m => ({ ...m, comunicazioneId: riga.id })),
+        })
+        return riga
       })
       return vista(creata, c.hashDati)
     } catch (e) {
@@ -415,12 +371,12 @@ export class ComunicazioniOrsoService {
 
   async elenca(
     tenantId: string,
-    f: { unitaLocaleId?: string; anno?: number } = {}
+    f: { consorzio?: string; unitaLocaleId?: string; anno?: number } = {}
   ): Promise<ComunicazioneVista[]> {
     const righe = await this.prisma.comunicazioneConsorzio.findMany({
       where: {
         tenantId,
-        consorzio: CONSORZIO_ORSO,
+        consorzio: f.consorzio ?? CONSORZIO_ORSO,
         ...(f.unitaLocaleId ? { unitaLocaleId: f.unitaLocaleId } : {}),
         ...(f.anno !== undefined ? this.periodo(f.anno) : {}),
       },
@@ -456,11 +412,10 @@ export class ComunicazioniOrsoService {
       where: { id, tenantId },
       select: { nomeFile: true, contenuto: true, consorzio: true, tracciato: true, versione: true },
     })
-    if (!r) throw new NotFoundException('Comunicazione non trovata')
+    if (!r) throw new ComunicazioneNonTrovataError()
     return {
       nomeFile: r.nomeFile,
-      contentType: registroTracciati.get(r.consorzio, `${r.tracciato}-${r.versione}`).contentType,
-      contenuto: r.contenuto,
+      xml: r.contenuto,
     }
   }
 
@@ -470,7 +425,7 @@ export class ComunicazioniOrsoService {
       where: { id, tenantId },
       select: SELEZIONE_VISTA,
     })
-    if (!r) throw new NotFoundException('Comunicazione non trovata')
+    if (!r) throw new ComunicazioneNonTrovataError()
     let corrente = r
     if (r.stato !== 'INVIATA') {
       corrente = await this.prisma.comunicazioneConsorzio.update({

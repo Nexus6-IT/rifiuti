@@ -3,7 +3,6 @@
  * dentro il `TenantContext` dell'azienda. Il proprietario prepara i dati e la pulizia toglie solo
  * le righe create qui, per `tenantId`.
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -33,6 +32,10 @@ import {
 } from '../mud/aggregazione/mud-seed.postgres-spec'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { ComunicazioniOrsoService } from './comunicazioni-orso.service'
+import {
+  ComunicazioneConBloccantiError,
+  ComunicazioneNonTrovataError,
+} from './comunicazioni-orso.port'
 
 describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -126,6 +129,8 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
   })
 
   afterAll(async () => {
+    // L'istantanea punta ai movimenti (NO ACTION): prima le comunicazioni, poi il resto.
+    await owner.comunicazioneConsorzio.deleteMany({ where: { tenantId: { in: tenantCreati } } })
     await pulisciAziendeMud(owner, tenantCreati)
     await app.onModuleDestroy?.()
     await owner.$disconnect()
@@ -145,26 +150,24 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
       data: { wasteDescription: 'Urbani', operationCode: 'R13' },
     })
     const p = { unitaLocaleId: az.unitaLocaleId, anno: 2025 }
-    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, p))
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, p.unitaLocaleId, p.anno))
     expect(a.bloccanti).toBe(true)
     expect(a.avvisi.find(x => x.codice === 'PROVINCIA_CONFERITORE_MANCANTE')?.movimentoIds).toEqual(
       [m.id]
     )
-    const errore = await nelTenant(az, () => servizio.genera(az.tenantId, az.utenteId, p)).catch(
-      (e: unknown) => e
+    const errore = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, p.unitaLocaleId, p.anno)
+    ).catch((e: unknown) => e)
+    expect(errore).toBeInstanceOf(ComunicazioneConBloccantiError)
+    expect((errore as ComunicazioneConBloccantiError).avvisi.map(x => x.codice)).toContain(
+      'PROVINCIA_CONFERITORE_MANCANTE'
     )
-    expect(errore).toBeInstanceOf(BadRequestException)
-    expect((errore as BadRequestException).getResponse()).toMatchObject({
-      code: 'COMUNICAZIONE_CON_BLOCCANTI',
-    })
     expect(await owner.comunicazioneConsorzio.count({ where: { tenantId: az.tenantId } })).toBe(0)
   })
 
   it('sede senza provincia: avviso bloccante dedicato', async () => {
     const az = await nuovaAzienda('O2', null)
-    const a = await nelTenant(az, () =>
-      servizio.anteprima(az.tenantId, { unitaLocaleId: az.unitaLocaleId, anno: 2025 })
-    )
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
     expect(a.unitaLocale.provincia).toBeNull()
     expect(a.avvisi.map(x => x.codice)).toContain('PROVINCIA_IMPIANTO_MANCANTE')
     expect(a.bloccanti).toBe(true)
@@ -174,9 +177,7 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     const az = await nuovaAzienda('O3')
     await caricoConFir(az, 'MI', 100, '2025-03-10')
     await scarico(az, 50, '2025-03-12', '   ')
-    const a = await nelTenant(az, () =>
-      servizio.anteprima(az.tenantId, { unitaLocaleId: az.unitaLocaleId, anno: 2025 })
-    )
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
     expect(a.avvisi.map(x => x.codice)).toContain('DESCRIZIONE_VUOTA')
     expect(a.bloccanti).toBe(true)
   })
@@ -188,7 +189,7 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     const c2 = await caricoConFir(az, 'MI', 200, '2025-03-11')
     const s1 = await scarico(az, 100, '2025-03-20')
 
-    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, p))
+    const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, p.unitaLocaleId, p.anno))
     expect(a.bloccanti).toBe(false)
     expect(a.mesi).toHaveLength(12)
     expect(a.mesi[2].ricevuti).toEqual([
@@ -197,7 +198,9 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     expect(a.mesi[2].prodotti[0]).toMatchObject({ cer: '191212', totT: '0.1' })
     expect(a.ultima).toBeUndefined()
 
-    const g1 = await nelTenant(az, () => servizio.genera(az.tenantId, az.utenteId, p))
+    const g1 = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, p.unitaLocaleId, p.anno)
+    )
     expect(g1).toMatchObject({
       consorzio: 'ORSO',
       stato: 'GENERATA',
@@ -208,7 +211,9 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
       modificataDopoInvio: false,
     })
     expect(g1.nomeFile).toMatch(/^ORSO_ImpiantoMesi_2025_.+\.xml$/)
-    const g2 = await nelTenant(az, () => servizio.genera(az.tenantId, az.utenteId, p))
+    const g2 = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, p.unitaLocaleId, p.anno)
+    )
     expect(g2.id).toBe(g1.id)
     expect(await owner.comunicazioneConsorzio.count({ where: { tenantId: az.tenantId } })).toBe(1)
 
@@ -219,10 +224,9 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     expect(Number(snapshot.find(s => s.movimentoId === c1)?.quantitaKg)).toBe(300)
 
     const f = await nelTenant(az, () => servizio.file(az.tenantId, g1.id))
-    expect(f.contentType).toBe('application/xml')
     expect(f.nomeFile).toBe(g1.nomeFile)
-    expect(f.contenuto).toContain('<ImpiantoMesi')
-    expect(f.contenuto).toContain('<Mese value="3">')
+    expect(f.xml).toContain('<ImpiantoMesi')
+    expect(f.xml).toContain('<Mese value="3">')
 
     const inviata = await nelTenant(az, () =>
       servizio.segnaInviata(az.tenantId, az.utenteId, g1.id)
@@ -245,12 +249,14 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     )
     expect(elenco).toHaveLength(1)
     expect(elenco[0].modificataDopoInvio).toBe(true)
-    const a2 = await nelTenant(az, () => servizio.anteprima(az.tenantId, p))
+    const a2 = await nelTenant(az, () => servizio.anteprima(az.tenantId, p.unitaLocaleId, p.anno))
     expect(a2.ultima?.modificataDopoInvio).toBe(true)
     expect(a2.hashDati).not.toBe(g1.hashDati)
 
     // Rigenerando con i dati nuovi nasce una seconda comunicazione.
-    const g3 = await nelTenant(az, () => servizio.genera(az.tenantId, az.utenteId, p))
+    const g3 = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, p.unitaLocaleId, p.anno)
+    )
     expect(g3.id).not.toBe(g1.id)
   })
 
@@ -258,20 +264,18 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     const az = await nuovaAzienda('O5')
     await caricoConFir(az, 'MI', 100, '2025-05-10')
     const g = await nelTenant(az, () =>
-      servizio.genera(az.tenantId, az.utenteId, { unitaLocaleId: az.unitaLocaleId, anno: 2025 })
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025)
     )
     const altra = await nuovaAzienda('O6')
     expect(await nelTenant(altra, () => servizio.elenca(altra.tenantId))).toEqual([])
     await expect(
       nelTenant(altra, () => servizio.file(altra.tenantId, g.id))
-    ).rejects.toBeInstanceOf(NotFoundException)
+    ).rejects.toBeInstanceOf(ComunicazioneNonTrovataError)
     await expect(
       nelTenant(altra, () => servizio.segnaInviata(altra.tenantId, altra.utenteId, g.id))
-    ).rejects.toBeInstanceOf(NotFoundException)
+    ).rejects.toBeInstanceOf(ComunicazioneNonTrovataError)
     await expect(
-      nelTenant(altra, () =>
-        servizio.anteprima(altra.tenantId, { unitaLocaleId: az.unitaLocaleId, anno: 2025 })
-      )
-    ).rejects.toBeInstanceOf(NotFoundException)
+      nelTenant(altra, () => servizio.anteprima(altra.tenantId, az.unitaLocaleId, 2025))
+    ).rejects.toBeInstanceOf(ComunicazioneNonTrovataError)
   })
 })
