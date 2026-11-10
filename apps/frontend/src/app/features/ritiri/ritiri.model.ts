@@ -195,6 +195,16 @@ export function generabile(r: RitiroVista): boolean {
   return r.stato === 'PROGRAMMATO' && r.statoVisibile === 'DA_GENERARE'
 }
 
+/** Si può spuntare ogni ritiro ancora programmato: da generare, da emettere o da stampare. */
+export function selezionabile(r: RitiroVista): boolean {
+  return r.stato === 'PROGRAMMATO'
+}
+
+/** FIR in bozza (ancora senza numero): si può emettere in serie. */
+export function daEmettereInSerie(r: RitiroVista): boolean {
+  return r.stato === 'PROGRAMMATO' && r.statoVisibile === 'FIR_BOZZA' && r.fir !== null
+}
+
 /** Modifica, non eseguito e annullo solo senza FIR attivo (il backend ricontrolla con 409). */
 export function modificabile(r: RitiroVista): boolean {
   return r.stato === 'PROGRAMMATO' && r.fir === null

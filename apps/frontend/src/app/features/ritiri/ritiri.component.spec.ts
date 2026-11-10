@@ -2,9 +2,12 @@ import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { provideRouter } from '@angular/router'
+import { HttpHeaders, HttpResponse } from '@angular/common/http'
 import { of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
+import { FirService } from '../fir/fir.service'
+import { FIR } from '../../shared/models/fir.model'
 import { RegistryService } from '../registry/registry.service'
 import { PeseService } from '../pese/pese.service'
 import { RitiriComponent } from './ritiri.component'
@@ -23,6 +26,7 @@ describe('RitiriComponent', () => {
   let fixture: ComponentFixture<RitiriComponent>
   let servizio: jasmine.SpyObj<RitiriService>
   let toast: jasmine.SpyObj<ToastService>
+  let fir: jasmine.SpyObj<FirService>
 
   const righe: RitiroVista[] = [
     ritiroDiProva({ id: 'r1' }),
@@ -48,8 +52,12 @@ describe('RitiriComponent', () => {
       'nonEseguito',
       'riprogramma',
       'generaFir',
+      'stampaFir',
+      'distinta',
     ])
     servizio.elenca.and.returnValue(of({ righe: elenco, totale: elenco.length }))
+    fir = jasmine.createSpyObj<FirService>('FirService', ['emettiFIR'])
+    fir.emettiFIR.and.returnValue(of({} as unknown as FIR))
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'info', 'warn'])
     await TestBed.configureTestingModule({
       imports: [RitiriComponent, HttpClientTestingModule],
@@ -58,6 +66,7 @@ describe('RitiriComponent', () => {
         provideRouter([]),
         { provide: RitiriService, useValue: servizio },
         { provide: ToastService, useValue: toast },
+        { provide: FirService, useValue: fir },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
         { provide: PeseService, useValue: { elencaAutomezzi: () => of({ righe: [] }) } },
         { provide: RegistryService, useValue: {} },
@@ -92,12 +101,15 @@ describe('RitiriComponent', () => {
     expect(ultimo.cerCode).toBeUndefined()
   })
 
-  it('solo i ritiri da generare si possono spuntare', async () => {
+  it('si spuntano solo i ritiri programmati (con o senza FIR), non i non eseguiti né gli annullati', async () => {
     await crea()
     expect(q<HTMLInputElement>('ri-sel-r1')!.disabled).toBeFalse()
-    expect(q<HTMLInputElement>('ri-sel-r2')!.disabled).toBeTrue()
+    expect(q<HTMLInputElement>('ri-sel-r2')!.disabled).toBeFalse()
     expect(q<HTMLInputElement>('ri-sel-r3')!.disabled).toBeTrue()
+    expect(q<HTMLInputElement>('ri-sel-r4')!.disabled).toBeTrue()
     expect(bottone('ri-genera')!.disabled).toBeTrue()
+    expect(bottone('ri-emetti')!.disabled).toBeTrue()
+    expect(bottone('ri-stampa-fir')!.disabled).toBeTrue()
   })
 
   it('Genera FIR manda i ritiri spuntati e apre l’esito', async () => {
@@ -113,6 +125,126 @@ describe('RitiriComponent', () => {
     fixture.detectChanges()
     expect(servizio.generaFir).toHaveBeenCalledOnceWith(['r1'])
     expect(q('eg-riepilogo')).not.toBeNull()
+  })
+
+  it('Stampa FIR manda i ritiri spuntati con un FIR, scarica il PDF e avvisa dei saltati', async () => {
+    await crea()
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    servizio.stampaFir.and.returnValue(
+      of(
+        new HttpResponse({
+          body: new Blob(['%PDF']),
+          headers: new HttpHeaders({
+            'Content-Disposition': 'attachment; filename="FIR-ritiri.pdf"',
+            'X-Ritiri-Saltati': '1',
+          }),
+        })
+      )
+    )
+    q<HTMLInputElement>('ri-sel-r1')!.click()
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    fixture.detectChanges()
+    // r1 non ha FIR: parte solo r2
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'])
+    expect(URL.createObjectURL).toHaveBeenCalled()
+    expect(toast.warn).toHaveBeenCalledWith(jasmine.stringContaining('saltato'))
+  })
+
+  it('Stampa FIR: un errore del server si mostra senza scaricare nulla', async () => {
+    await crea()
+    servizio.stampaFir.and.returnValue(
+      throwError(() => ({ status: 400, error: { message: 'Nessuno dei ritiri ha un FIR.' } }))
+    )
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    expect(toast.error).toHaveBeenCalledWith('Nessuno dei ritiri ha un FIR.')
+  })
+
+  it('Emetti FIR emette solo le bozze spuntate, una alla volta, e a fine corsa ricarica l’elenco', async () => {
+    await crea()
+    q<HTMLInputElement>('ri-sel-r1')!.click()
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-emetti')!.click()
+    fixture.detectChanges()
+    expect(fir.emettiFIR.calls.allArgs()).toEqual([['f2']])
+    expect(q('em-riepilogo')?.textContent).toContain('1 emessi')
+    servizio.elenca.calls.reset()
+    bottone('em-chiudi')!.click()
+    fixture.detectChanges()
+    expect(q('em-riepilogo')).toBeNull()
+    expect(servizio.elenca).toHaveBeenCalled()
+  })
+
+  it('Emetti FIR si ferma alla prima mancanza di firma con un messaggio chiaro', async () => {
+    const tre = [
+      ritiroDiProva({
+        id: 'a',
+        statoVisibile: 'FIR_BOZZA',
+        fir: { id: 'fa', numero: null, status: 'DRAFT' },
+      }),
+      ritiroDiProva({
+        id: 'b',
+        statoVisibile: 'FIR_BOZZA',
+        fir: { id: 'fb', numero: null, status: 'DRAFT' },
+      }),
+      ritiroDiProva({
+        id: 'c',
+        statoVisibile: 'FIR_BOZZA',
+        fir: { id: 'fc', numero: null, status: 'DRAFT' },
+      }),
+    ]
+    await crea('ADMIN', tre)
+    fir.emettiFIR.and.callFake(id =>
+      id === 'fb'
+        ? throwError(() => ({
+            status: 400,
+            error: { message: 'Firma produttore non riuscita: x' },
+          }))
+        : of({} as unknown as FIR)
+    )
+    q<HTMLInputElement>('ri-sel-tutti')!.click()
+    fixture.detectChanges()
+    bottone('ri-emetti')!.click()
+    fixture.detectChanges()
+    expect(fir.emettiFIR.calls.allArgs()).toEqual([['fa'], ['fb']])
+    expect(q('em-stop')?.textContent).toContain('certificato di firma')
+    expect(q('em-riga-a')?.textContent).toContain('Emesso')
+    expect(q('em-riga-b')?.textContent).toContain('Errore')
+    expect(q('em-riga-c')?.textContent).toContain('Non tentato')
+  })
+
+  it('Distinta apre la scelta del giorno e scarica il PDF del giorno e del mezzo', async () => {
+    await crea('VIEWER')
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    servizio.distinta.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    fixture.componentInstance.filtri.dal = '2026-12-01'
+    bottone('ri-distinta')!.click()
+    fixture.detectChanges()
+    const mezzo = q<HTMLSelectElement>('di-mezzo')!
+    expect(mezzo).not.toBeNull()
+    bottone('di-scarica')!.click()
+    fixture.detectChanges()
+    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined)
+    expect(toast.success).toHaveBeenCalledWith('Distinta scaricata.')
+  })
+
+  it('Distinta: un errore resta nel dialog', async () => {
+    await crea()
+    servizio.distinta.and.returnValue(
+      throwError(() => ({ status: 404, error: { message: 'Automezzo non trovato.' } }))
+    )
+    fixture.componentInstance.filtri.dal = '2026-12-01'
+    bottone('ri-distinta')!.click()
+    fixture.detectChanges()
+    bottone('di-scarica')!.click()
+    fixture.detectChanges()
+    expect(q('di-errore')?.textContent).toContain('Automezzo non trovato.')
   })
 
   it('Annulla chiede il motivo e non parte senza', async () => {
@@ -183,6 +315,10 @@ describe('RitiriComponent', () => {
     await crea('VIEWER')
     expect(q('ri-nuovo')).toBeNull()
     expect(q('ri-genera')).toBeNull()
+    expect(q('ri-emetti')).toBeNull()
+    expect(q('ri-stampa-fir')).toBeNull()
+    // la distinta e` di lettura: la vedono tutti
+    expect(q('ri-distinta')).not.toBeNull()
     expect(q('ri-sel-r1')).toBeNull()
   })
 
