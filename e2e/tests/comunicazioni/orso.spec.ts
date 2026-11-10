@@ -146,14 +146,17 @@ test.describe('Comunicazioni O.R.SO.', () => {
     await page.goto('/comunicazioni')
     expect((await anteprima).status()).toBe(200)
 
-    // Anteprima: mesi (febbraio, marzo) e CER, senza bloccanti.
+    // Anteprima: mesi (febbraio, marzo) e CER, con uscite e giacenza a fine mese, senza bloccanti.
     await expect(page.getByTestId('comunicazioni-tabella')).toBeVisible({ timeout: ATTESA_SERVER })
     const righe = page.getByTestId('comunicazioni-riga')
-    await expect(righe).toHaveCount(3, { timeout: ATTESA_SERVER })
-    await expect(righe.filter({ hasText: /Febbraio/i })).toHaveCount(1)
-    await expect(righe.filter({ hasText: /Marzo/i })).toHaveCount(2)
-    await expect(righe.filter({ hasText: /15\s?01\s?01/ })).toHaveCount(2)
-    await expect(righe.filter({ hasText: /15\s?01\s?07/ })).toHaveCount(1)
+    const riga = (mese: RegExp, cer: RegExp) =>
+      righe.filter({ hasText: mese }).filter({ hasText: cer })
+    await expect(riga(/Febbraio/, /15\s?01\s?01/)).toContainText('1,200 t')
+    await expect(riga(/Febbraio/, /15\s?01\s?01/)).toContainText('giacenza a fine mese 1,800 t')
+    await expect(riga(/Marzo/, /15\s?01\s?01/)).toContainText('0,800 t')
+    await expect(riga(/Marzo/, /15\s?01\s?01/)).toContainText('giacenza a fine mese 1,000 t')
+    await expect(riga(/Marzo/, /15\s?01\s?07/)).toContainText('0,500 t')
+    await expect(riga(/Marzo/, /15\s?01\s?07/)).toContainText('giacenza a fine mese 0,500 t')
     await expect(page.getByTestId('comunicazioni-bloccanti')).toHaveCount(0)
 
     // Genera

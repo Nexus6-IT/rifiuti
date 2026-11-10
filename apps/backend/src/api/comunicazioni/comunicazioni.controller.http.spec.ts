@@ -89,6 +89,20 @@ describe('ComunicazioniController - catena HTTP', () => {
     expect(orso.anteprima).toHaveBeenCalledWith(TENANT_SELEZIONATO, SEDE, 2026)
   })
 
+  it('anteprima: dice se il ruolo effettivo nell azienda puo generare (puoGenerare)', async () => {
+    const chiama = async () =>
+      (
+        await request(app.getHttpServer())
+          .get(`/comunicazioni/orso/anteprima?unitaLocaleId=${SEDE}&anno=2026`)
+          .set('X-Tenant-ID', TENANT_SELEZIONATO)
+          .expect(200)
+      ).body
+    ruolo = 'OPERATOR'
+    expect((await chiama()).puoGenerare).toBe(true)
+    ruolo = 'VIEWER'
+    expect((await chiama()).puoGenerare).toBe(false)
+  })
+
   it('anteprima: sede o anno non validi -> 400, servizio non chiamato', async () => {
     await request(app.getHttpServer())
       .get('/comunicazioni/orso/anteprima?unitaLocaleId=x&anno=2026')

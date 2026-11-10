@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { NoopAnimationsModule } from '@angular/platform-browser/animations'
 import { signal } from '@angular/core'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { ComunicazioniComponent } from './comunicazioni.component'
 import { ComunicazioniService } from './comunicazioni.service'
 import { AnteprimaOrso, ComunicazioneVista } from './comunicazioni.model'
@@ -26,7 +26,7 @@ const vista = (o: Partial<ComunicazioneVista> = {}): ComunicazioneVista => ({
   periodoDa: '2026-01-01',
   periodoA: '2026-12-31',
   tracciato: 'ImpiantoMesi',
-  versione: 1,
+  versione: '1',
   stato: 'GENERATA',
   hashDati: 'h',
   nomeFile: 'f.xml',
@@ -59,6 +59,7 @@ const anteprima = (o: Partial<AnteprimaOrso> = {}): AnteprimaOrso => ({
   bloccanti: false,
   hashDati: 'h',
   ultima: null,
+  puoGenerare: true,
   ...o,
 })
 
@@ -160,19 +161,98 @@ describe('ComunicazioniComponent', () => {
   it('un errore COMUNICAZIONE_CON_BLOCCANTI mostra un messaggio chiaro', () => {
     setup('OPERATOR', [sede('ul-1', 'Sede 1')])
     svc.generaOrso.and.returnValue(
-      throwError(() => ({ status: 400, error: { code: 'COMUNICAZIONE_CON_BLOCCANTI' } }))
+      throwError(() => ({
+        status: 400,
+        error: { error: 'COMUNICAZIONE_CON_BLOCCANTI', message: 'x', details: { avvisi: [] } },
+      }))
     )
     component.genera()
     expect(toast.error).toHaveBeenCalledWith(jasmine.stringMatching(/bloccanti|avvisi/i))
   })
 
-  it('un VIEWER non vede «Genera» né «Segna inviata»', () => {
-    setup('VIEWER', [sede('ul-1', 'Sede 1')])
+  it('un VIEWER nell azienda non vede «Genera» né «Segna inviata»', () => {
+    setup('ADMIN', [sede('ul-1', 'Sede 1')])
+    svc.anteprimaOrso.and.returnValue(of(anteprima({ puoGenerare: false })))
     svc.storicoOrso.and.returnValue(of([vista()]))
     component.carica()
     fixture.detectChanges()
     expect(q('comunicazioni-genera')).toBeNull()
     expect(q('comunicazioni-segna-inviata')).toBeNull()
+  })
+
+  it('conta il ruolo effettivo nell azienda, non quello globale dell utente', () => {
+    setup('VIEWER', [sede('ul-1', 'Sede 1')]) // globale VIEWER, ma OPERATOR nell'azienda
+    svc.storicoOrso.and.returnValue(of([vista()]))
+    component.carica()
+    fixture.detectChanges()
+    expect(q('comunicazioni-genera')).not.toBeNull()
+    expect(q('comunicazioni-segna-inviata')).not.toBeNull()
+  })
+
+  it('mostra per ogni avviso i movimenti coinvolti con data, numero e CER', () => {
+    setup('OPERATOR', [sede('ul-1', 'Sede 1')])
+    svc.anteprimaOrso.and.returnValue(
+      of(
+        anteprima({
+          avvisi: [
+            {
+              codice: 'OPERAZIONE_MANCANTE',
+              messaggio: 'Operazione mancante',
+              movimentoIds: ['m1'],
+              movimenti: [{ id: 'm1', data: '2026-03-10', numero: '4/2026', cer: '150101' }],
+            },
+          ],
+        })
+      )
+    )
+    component.carica()
+    fixture.detectChanges()
+    const testo = q('comunicazioni-avviso')?.textContent ?? ''
+    expect(testo).toContain('4/2026')
+    expect(testo).toContain('10/03/2026')
+    expect(testo).toContain('150101')
+  })
+
+  it('una risposta vecchia non sovrascrive quella dell ultima sede scelta', () => {
+    setup('OPERATOR', [sede('ul-1', 'Sede 1'), sede('ul-2', 'Sede 2')])
+    const lenta = new Subject<AnteprimaOrso>()
+    const veloce = new Subject<AnteprimaOrso>()
+    svc.anteprimaOrso.and.returnValues(lenta, veloce)
+    component.scegliSede('ul-1')
+    component.scegliSede('ul-2')
+    veloce.next(anteprima({ hashDati: 'nuova' }))
+    lenta.next(anteprima({ hashDati: 'vecchia' }))
+    expect(component.anteprima()?.hashDati).toBe('nuova')
+  })
+
+  it('la colonna dei prodotti dice «giacenza a fine mese»', () => {
+    setup('OPERATOR', [sede('ul-1', 'Sede 1')])
+    svc.anteprimaOrso.and.returnValue(
+      of(
+        anteprima({
+          mesi: [
+            {
+              mese: 2,
+              ricevuti: [],
+              prodotti: [
+                {
+                  cer: '15 01 06',
+                  descrizione: 'Misti',
+                  operazioni: [],
+                  totT: '2',
+                  giacenzaFineMeseT: '3',
+                },
+              ],
+            },
+          ],
+        })
+      )
+    )
+    component.carica()
+    fixture.detectChanges()
+    const t = fixture.nativeElement.querySelector('[data-testid="comunicazioni-riga"]').textContent
+    expect(t).toContain('giacenza a fine mese 3,000 t')
+    expect(t).not.toContain('trattato internamente')
   })
 
   it('«Segna inviata» chiama il servizio e ricarica', () => {

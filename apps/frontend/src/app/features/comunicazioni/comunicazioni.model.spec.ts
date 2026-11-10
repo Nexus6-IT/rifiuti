@@ -21,7 +21,7 @@ describe('comunicazioni.model', () => {
             descrizione: 'Carta',
             operazioni: ['R3'],
             totT: '2',
-            trattataInternamenteT: '0',
+            giacenzaFineMeseT: '0',
           },
         ],
       },

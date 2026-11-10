@@ -52,7 +52,12 @@ export class ComunicazioniController {
   @ApiOperation({ summary: 'Anteprima O.R.SO. annuale di una sede, con avvisi' })
   async anteprima(@Req() req: any, @Query() q: AnteprimaOrsoQueryDto) {
     const tenantId = requireRequestTenantId(req)
-    return this.comeHttp(() => this.orso.anteprima(tenantId, q.unitaLocaleId, q.anno))
+    const anteprima = await this.comeHttp(() =>
+      this.orso.anteprima(tenantId, q.unitaLocaleId, q.anno)
+    )
+    // Ruolo EFFETTIVO nell'azienda selezionata: il frontend non deve dedurlo dal ruolo globale.
+    const ruolo = await this.membership.ruoloEffettivo(req.user, tenantId)
+    return { ...anteprima, puoGenerare: RUOLI_OPERATORE_COMUNICAZIONI.includes(ruolo) }
   }
 
   @Post('orso')

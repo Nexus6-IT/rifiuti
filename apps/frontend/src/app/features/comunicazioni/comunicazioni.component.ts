@@ -7,29 +7,15 @@ import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
-import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
+import { codiceErrore } from '../listino/errori-azione'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { ComunicazioniService } from './comunicazioni.service'
-import {
-  AnteprimaOrso,
-  ComunicazioneVista,
-  puoGenerareComunicazioni,
-  righeDaAnteprima,
-} from './comunicazioni.model'
+import { AnteprimaOrso, ComunicazioneVista, righeDaAnteprima } from './comunicazioni.model'
 
 interface SedeScelta {
   id: string
   denominazione: string
-}
-
-/** Legge il codice d'errore del backend (corpo JSON `{ code }` o `{ message: { code } }`). */
-function codiceErrore(err: unknown): string | undefined {
-  const corpo = (err as { error?: { code?: string; message?: { code?: string } | string } })?.error
-  if (!corpo) return undefined
-  if (typeof corpo.code === 'string') return corpo.code
-  if (typeof corpo.message === 'object' && corpo.message) return corpo.message.code
-  return undefined
 }
 
 /**
@@ -131,6 +117,11 @@ function codiceErrore(err: unknown): string | undefined {
               <span *ngIf="v.movimentoIds.length > 0" class="text-secondary">
                 ({{ v.movimentoIds.length }} movimenti)</span
               >
+              <ul *ngIf="v.movimenti?.length" class="m-0 pl-3 text-secondary">
+                <li *ngFor="let mv of v.movimenti">
+                  n. {{ mv.numero }} del {{ mv.data | date: 'dd/MM/yyyy' }} — CER {{ mv.cer }}
+                </li>
+              </ul>
             </li>
           </ul>
           <p *ngIf="a.bloccanti" class="mt-2 mb-0" data-testid="comunicazioni-bloccanti">
@@ -255,9 +246,10 @@ function codiceErrore(err: unknown): string | undefined {
 export class ComunicazioniComponent implements OnInit {
   private readonly servizio = inject(ComunicazioniService)
   private readonly sediServizio = inject(RentriUnitaLocaleService)
-  private readonly auth = inject(AuthService)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
+
+  private contatoreRichieste = 0
 
   readonly sedi = signal<SedeScelta[]>([])
   readonly unitaLocaleId = signal<string | null>(null)
@@ -270,7 +262,8 @@ export class ComunicazioniComponent implements OnInit {
 
   readonly anni = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i)
   readonly righe = computed(() => righeDaAnteprima(this.anteprima()?.mesi ?? []))
-  readonly puoScrivere = computed(() => puoGenerareComunicazioni(this.auth.currentUser()?.role))
+  /** Ruolo effettivo nell'azienda selezionata, calcolato dal backend con l'anteprima. */
+  readonly puoScrivere = computed(() => this.anteprima()?.puoGenerare === true)
   readonly generaDisabilitato = computed(
     () => this.inCorso() || this.caricamento() || (this.anteprima()?.bloccanti ?? true)
   )
@@ -303,14 +296,19 @@ export class ComunicazioniComponent implements OnInit {
     const sede = this.unitaLocaleId()
     if (!sede) return
     const anno = this.anno()
+    const richiesta = ++this.contatoreRichieste
+    // Una risposta di una richiesta superata (sede o anno cambiati nel frattempo) si scarta.
+    const attuale = () => richiesta === this.contatoreRichieste
     this.errore.set(null)
     this.caricamento.set(true)
     this.servizio.anteprimaOrso(sede, anno).subscribe({
       next: a => {
+        if (!attuale()) return
         this.anteprima.set(a)
         this.caricamento.set(false)
       },
       error: () => {
+        if (!attuale()) return
         this.anteprima.set(null)
         this.caricamento.set(false)
         this.errore.set("Impossibile calcolare l'anteprima.")
@@ -322,9 +320,15 @@ export class ComunicazioniComponent implements OnInit {
   private caricaStorico(): void {
     const sede = this.unitaLocaleId()
     if (!sede) return
+    const richiesta = this.contatoreRichieste
     this.servizio.storicoOrso(sede, this.anno()).subscribe({
-      next: s => this.storico.set(s),
-      error: () => this.errore.set('Impossibile caricare lo storico.'),
+      next: s => {
+        if (richiesta === this.contatoreRichieste) this.storico.set(s)
+      },
+      error: () => {
+        if (richiesta === this.contatoreRichieste)
+          this.errore.set('Impossibile caricare lo storico.')
+      },
     })
   }
 

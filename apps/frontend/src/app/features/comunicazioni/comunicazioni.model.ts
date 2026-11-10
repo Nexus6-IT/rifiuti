@@ -20,7 +20,7 @@ export interface RigaProdotto {
   descrizione: string
   operazioni: string[]
   totT: string
-  trattataInternamenteT: string
+  giacenzaFineMeseT: string
 }
 
 export interface MeseAnteprima {
@@ -29,10 +29,21 @@ export interface MeseAnteprima {
   prodotti: RigaProdotto[]
 }
 
+/** Movimento coinvolto in un avviso: quanto serve per ritrovarlo nel registro. */
+export interface MovimentoAvviso {
+  id: string
+  /** Giorno `AAAA-MM-GG`. */
+  data: string
+  /** Numero progressivo nel registro, «n/anno». */
+  numero: string
+  cer: string
+}
+
 export interface AvvisoComunicazione {
   codice: string
   messaggio: string
   movimentoIds: string[]
+  movimenti?: MovimentoAvviso[]
 }
 
 export type StatoComunicazione = 'GENERATA' | 'INVIATA'
@@ -44,7 +55,7 @@ export interface ComunicazioneVista {
   periodoDa: string
   periodoA: string
   tracciato: string
-  versione: number
+  versione: string
   stato: StatoComunicazione
   hashDati: string
   nomeFile: string
@@ -63,6 +74,8 @@ export interface AnteprimaOrso {
   bloccanti: boolean
   hashDati: string
   ultima?: ComunicazioneVista | null
+  /** Ruolo effettivo nell'azienda selezionata: può generare e segnare «inviata». */
+  puoGenerare?: boolean
 }
 
 export interface FileScaricato {
@@ -133,7 +146,7 @@ export function righeDaAnteprima(mesi: MeseAnteprima[]): RigaTabella[] {
         descrizione: p.descrizione,
         operazioni: p.operazioni.join(', '),
         quantita: formattaTonnellate(p.totT),
-        dettaglio: `trattato internamente ${formattaTonnellate(p.trattataInternamenteT)}`,
+        dettaglio: `giacenza a fine mese ${formattaTonnellate(p.giacenzaFineMeseT)}`,
       })
     }
   }
