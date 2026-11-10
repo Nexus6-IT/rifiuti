@@ -63,10 +63,16 @@ describe('ritiri.model', () => {
 
   it('messaggioErroreRitiri traduce i 409 noti e non mostra altro che il messaggio', () => {
     expect(
-      messaggioErroreRitiri({ status: 409, error: { error: 'RITIRO_CON_FIR', message: 'Il ritiro ha un FIR.' } }, 'x')
+      messaggioErroreRitiri(
+        { status: 409, error: { error: 'RITIRO_CON_FIR', message: 'Il ritiro ha un FIR.' } },
+        'x'
+      )
     ).toContain('annulla prima il FIR')
     expect(
-      messaggioErroreRitiri({ status: 409, error: { error: 'RITIRO_MODIFICATO', message: 'Versione vecchia.' } }, 'x')
+      messaggioErroreRitiri(
+        { status: 409, error: { error: 'RITIRO_MODIFICATO', message: 'Versione vecchia.' } },
+        'x'
+      )
     ).toContain('modificato da un altro utente')
     expect(messaggioErroreRitiri({ status: 400, error: { message: ['a', 'b'] } }, 'x')).toBe('a b')
     expect(messaggioErroreRitiri({ status: 500 }, 'ripiego')).toBe('ripiego')
