@@ -59,7 +59,7 @@ describe('RitiriController - catena HTTP', () => {
       nonEseguito: jest.fn().mockResolvedValue({ id: ID }),
       riprogramma: jest.fn().mockResolvedValue({ id: ID }),
     }
-    genera = { genera: jest.fn().mockResolvedValue({ esiti: [] }) }
+    genera = { genera: jest.fn().mockResolvedValue({ righe: [] }) }
     const logger: any = {
       setContext: jest.fn(),
       info: jest.fn(),
@@ -254,6 +254,13 @@ describe('RitiriController - catena HTTP', () => {
       const ids = [U(11), U(10)]
       await http().post('/ritiri/genera-fir').send({ ritiroIds: ids }).expect(200)
       expect(genera.genera).toHaveBeenCalledWith(TENANT, UTENTE, ids)
+      genera.genera.mockResolvedValueOnce({
+        righe: [
+          { ritiroId: ids[0], esito: 'ERRORE', codice: 'RITIRO_NON_TROVATO', messaggio: 'x' },
+        ],
+      })
+      const r = await http().post('/ritiri/genera-fir').send({ ritiroIds: ids }).expect(200)
+      expect(r.body.esiti[0].codice).toBe('RITIRO_NON_TROVATO')
       await http().post('/ritiri/genera-fir').send({ ritiroIds: [] }).expect(400)
       await http()
         .post('/ritiri/genera-fir')

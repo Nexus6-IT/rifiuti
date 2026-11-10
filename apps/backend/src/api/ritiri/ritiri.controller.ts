@@ -65,7 +65,11 @@ export class RitiriController {
   async generaFirDaRitiri(@Req() req: any, @Body() dto: GeneraFirDto) {
     const tenantId = requireRequestTenantId(req)
     await this.richiediScrittura(req, tenantId)
-    return comeHttpRitiri(() => this.generaFir.genera(tenantId, req.user.id, dto.ritiroIds))
+    // Il frontend legge `esiti` (una riga per ritiro, nell'ordine di generazione).
+    return comeHttpRitiri(async () => {
+      const { righe } = await this.generaFir.genera(tenantId, req.user.id, dto.ritiroIds)
+      return { esiti: righe }
+    })
   }
 
   @Get(':id')
