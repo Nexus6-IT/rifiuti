@@ -127,7 +127,7 @@ describe('Firme FIR lungo il ciclo di vita (Postgres reale, ruolo wasteflow_app)
     return fir.id
   }
 
-  const ok = async <T>(p: Promise<{ isSuccess: boolean; error?: unknown }>): Promise<void> => {
+  const ok = async (p: Promise<{ isSuccess: boolean; error?: unknown }>): Promise<void> => {
     const r = await p
     if (!r.isSuccess) throw new Error(`use case fallito: ${String(r.error)}`)
   }

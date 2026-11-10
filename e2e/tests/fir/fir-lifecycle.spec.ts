@@ -288,7 +288,7 @@ test.describe('Ciclo di vita FIR completo', () => {
     })
 
     await page.getByTestId('fir-detail-conferma-consegna').click()
-    const dialog = page.getByTestId('fir-detail-consegna-dialog')
+    const dialog = page.getByRole('dialog', { name: 'Conferma consegna' })
     await expect(dialog).toBeVisible()
     const peso = dialog.locator('#consegna-peso')
     await peso.click()
