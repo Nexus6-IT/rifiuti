@@ -6,7 +6,6 @@
  * Eseguire con `npm run test:postgres` (o jest con `jest.postgres.config.js`).
  */
 import { PrismaClient } from '@prisma/client'
-import { createHash } from 'crypto'
 import { urlComeRuolo } from '../database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
 
