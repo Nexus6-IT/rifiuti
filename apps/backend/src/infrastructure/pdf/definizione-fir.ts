@@ -1,4 +1,5 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
+import { esaminaLogo } from '../../domain/modelli-stampa/logo'
 import { formattaDataItaliana, formattaDataOraItaliana } from '../../core/time/anno-italiano'
 
 /** Ambiti di un modello di stampa (specchio dell'enum Prisma `AmbitoModelloStampa`). */
@@ -37,19 +38,13 @@ export const COPIE_MAX = 4
 export const FIR_SERIE_MAX = 100
 
 /**
- * Riconosce il formato dai byte reali del logo (PNG o JPEG): l'intestazione `data:image/...`
- * dichiarata dal client non basta. Restituisce il tipo oppure lancia.
+ * Verifica il logo con il controllo unico di `domain/modelli-stampa/logo` (formato dai byte reali,
+ * dimensione) e lancia se non va. Restituisce il data URL per pdfmake.
  */
-export function verificaLogo(logoDataUrl: string): void {
-  const m = /^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=]+)$/i.exec(logoDataUrl)
-  if (!m) throw new ModelloStampaNonValidoError('il logo deve essere un PNG o JPEG in base64')
-  const byte = Buffer.from(m[2].slice(0, 16), 'base64')
-  const png = byte.length >= 8 && byte.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-  const jpeg = byte.length >= 3 && byte[0] === 0xff && byte[1] === 0xd8 && byte[2] === 0xff
-  const dichiaratoPng = m[1].toLowerCase() === 'png'
-  if (!(dichiaratoPng ? png : jpeg)) {
-    throw new ModelloStampaNonValidoError('il contenuto del logo non corrisponde al formato')
-  }
+export function verificaLogo(logo: string): string {
+  const esito = esaminaLogo(logo)
+  if (!esito.ok) throw new ModelloStampaNonValidoError(esito.motivo)
+  return esito.dataUrl
 }
 
 /** Valida un modello e restituisce le copie effettive (default 1). */
@@ -328,7 +323,7 @@ function intestazione(modello: ModelloStampaFir | null | undefined): Content {
   if (modello?.logoBase64) {
     return {
       columns: [
-        { image: modello.logoBase64, fit: [80, 40], width: 90 },
+        { image: verificaLogo(modello.logoBase64), fit: [80, 40], width: 90 },
         { text: titolo, style: 'header', alignment: 'center', width: '*' },
         { text: '', width: 90 },
       ],

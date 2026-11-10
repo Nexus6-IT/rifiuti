@@ -92,7 +92,7 @@ describe('distinta dei ritiri, definizione pura', () => {
   it('il logo con magic bytes sbagliati non finisce nel PDF', () => {
     const png =
       'data:image/png;base64,' +
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]).toString('base64')
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString('base64')
     const falso = 'data:image/png;base64,' + Buffer.from('not an image!').toString('base64')
     expect(logoValido(png)).toBe(png)
     expect(logoValido(falso)).toBeNull()
@@ -102,6 +102,13 @@ describe('distinta dei ritiri, definizione pura', () => {
     expect(
       testo(definizioneDistinta(dati([riga()]), modello({ logoBase64: falso })))
     ).not.toContain('"image"')
+  })
+
+  it("il logo come base64 puro (senza data:) e' accettato e diventa data URL", () => {
+    const puro = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]).toString(
+      'base64'
+    )
+    expect(logoValido(puro)).toBe(`data:image/png;base64,${puro}`)
   })
 
   it('nome file senza caratteri spuri', () => {

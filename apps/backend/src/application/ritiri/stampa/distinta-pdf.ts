@@ -6,6 +6,7 @@
  * `ambito`); `sceglieModelloDistinta` applica la regola DISTINTA_RITIRI, poi GENERALE, poi niente.
  */
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
+import { esaminaLogo } from '../../../domain/modelli-stampa/logo'
 
 export type AmbitoModello = 'GENERALE' | 'FIR' | 'DISTINTA_RITIRI'
 
@@ -52,15 +53,14 @@ export function sceglieModelloDistinta(
   )
 }
 
-/** Logo valido solo se data URL base64 con firma PNG o JPEG reale; altrimenti si omette. */
+/**
+ * Data URL pronto per pdfmake se il logo (base64 puro o data URL) e' un PNG o JPEG reale,
+ * altrimenti `null` e il logo si omette. Il controllo e' quello unico di `domain/modelli-stampa/logo`.
+ */
 export function logoValido(logoBase64: string | null): string | null {
   if (!logoBase64) return null
-  const m = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(logoBase64)
-  if (!m) return null
-  const testa = Buffer.from(m[2].slice(0, 16), 'base64')
-  const png = m[1] === 'png' && testa.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
-  const jpg = m[1] === 'jpeg' && testa.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
-  return png || jpg ? logoBase64 : null
+  const esito = esaminaLogo(logoBase64)
+  return esito.ok ? esito.dataUrl : null
 }
 
 function dataIt(iso: string): string {

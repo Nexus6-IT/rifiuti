@@ -41,6 +41,12 @@ describe('definizioneFir', () => {
     expect(testo(definizioneFir(fir('FIR-2026-000001')))).not.toContain('CODICE QR VERIFICA')
   })
 
+  it('il logo conservato come base64 puro (senza data:) diventa un data URL per il PDF', () => {
+    const puro = PNG_1X1.replace('data:image/png;base64,', '')
+    const t = testo(definizioneFir(fir('X'), undefined, { logoBase64: puro }))
+    expect(t).toContain(PNG_1X1)
+  })
+
   it('il modello applica intestazione, piè di pagina, colori e logo', () => {
     const modello: ModelloStampaFir = {
       headerText: 'Ditta Rossi',
