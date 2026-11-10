@@ -68,7 +68,8 @@ describe('RLS: catalogo delle tabelle per azienda', () => {
     // `application/fatturazione/adattatori/mappature.service.postgres.spec.ts`.
     // 76 dalla fase 4.4a: le nove tabelle della fatturazione per periodo sono provate per nome in
     // `application/fatturazione/fatturazione.schema.postgres.spec.ts`.
-    expect(righe.length).toBe(77)
+    // 78 dalla 4.7 (T1): `ritiri`, provata per nome in `ritiri-migration.postgres.spec.ts`.
+    expect(righe.length).toBe(78)
     for (const r of righe) {
       expect({ t: r.tabella, rls: r.rls, forzata: r.forzata }).toEqual({
         t: r.tabella,
