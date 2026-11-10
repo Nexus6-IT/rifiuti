@@ -68,12 +68,15 @@ interface MovimentoGrezzo {
   firId: string | null
   movementDate: Date
   counterpartAddress: string | null
+  counterpartName: string | null
+  movimentoOriginaleId: string | null
   progressiveYear: number
   progressiveNumber: number
 }
 
 interface FirGrezzo {
   id: string
+  firNumber: string | null
   producerSedeId: string | null
   wasteOperationCode: string | null
   wasteOperationType: string | null
@@ -125,6 +128,14 @@ export interface MovimentoOrso {
   provinciaDaIndirizzo: boolean
   /** Numero progressivo nel registro, «n/anno», per riconoscere il movimento. */
   numero: string
+  /** Radice della catena delle correzioni (`movimentoOriginaleId ?? id`): ci si agganciano le marcature per consorzio. */
+  radiceId: string
+  causale: string
+  /** Denominazione e indirizzo della controparte, come scritti sul movimento. */
+  controparte: string | null
+  indirizzoControparte: string | null
+  /** Numero del FIR collegato, se emesso. */
+  firNumero: string | null
 }
 
 /** Giacenza del CER a fine mese (kg), da aperture e movimenti vigenti dei registri della sede. */
@@ -280,6 +291,8 @@ export async function leggiMovimentiOrso(
       firId: true,
       movementDate: true,
       counterpartAddress: true,
+      counterpartName: true,
+      movimentoOriginaleId: true,
       progressiveYear: true,
       progressiveNumber: true,
     },
@@ -293,6 +306,7 @@ export async function leggiMovimentiOrso(
         where: { tenantId: p.tenantId, id: { in: firIds } },
         select: {
           id: true,
+          firNumber: true,
           producerSedeId: true,
           wasteOperationCode: true,
           wasteOperationType: true,
@@ -358,6 +372,11 @@ export async function leggiMovimentiOrso(
       provinciaConferitore: provinciaFir ?? provinciaIndirizzo,
       provinciaDaIndirizzo: provinciaFir === null && provinciaIndirizzo !== null,
       numero: `${m.progressiveNumber}/${m.progressiveYear}`,
+      radiceId: m.movimentoOriginaleId ?? m.id,
+      causale: m.causale,
+      controparte: m.counterpartName?.trim() || null,
+      indirizzoControparte: m.counterpartAddress?.trim() || null,
+      firNumero: f?.firNumber?.trim() || null,
     }
   })
   const giacenze = p.anno === undefined ? [] : await calcolaGiacenze(db, p, registri, tutti)

@@ -118,6 +118,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['comunicazioni'],
     motivo: 'Comunicazioni ai consorzi (O.R.SO.)',
   },
+  'api/comunicazioni/marcatura-consorzi.controller.ts': {
+    chiavi: ['comunicazioni'],
+    motivo: 'Marcatura dei movimenti per consorzio: regole, correzioni, estratto',
+  },
   // giacenze
   'application/giacenze/giacenze.controller.ts': {
     chiavi: ['giacenze'],
