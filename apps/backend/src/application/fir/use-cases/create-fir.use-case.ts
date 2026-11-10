@@ -10,7 +10,12 @@ import { ProduttoreRepository } from '../../../domain/registry/repositories/prod
 import { TrasportatoreRepository } from '../../../domain/registry/repositories/trasportatore.repository'
 import { DestinatarioRepository } from '../../../domain/registry/repositories/destinatario.repository'
 import { Result } from '../../../core/application/result'
-import { SedeNonValidaPerRuoloError } from '../../../core/domain/errors'
+import {
+  FirGiaGeneratoDalRitiroError,
+  RitiroNonProgrammatoError,
+  RitiroNonTrovatoError,
+  SedeNonValidaPerRuoloError,
+} from '../../../core/domain/errors'
 import { CreateFIRCommand } from '../commands/create-fir.command'
 import { verificaCerPerFormulario } from '../verifica-cer-formulario'
 import {
@@ -116,6 +121,7 @@ export class CreateFIRUseCase {
         annotazioni: command.annotazioni,
         provenienza: command.provenienza,
         tipoTrattaPrincipale: command.tipoTrattaPrincipale,
+        ritiroId: command.ritiroId,
       })
 
       // 5. Persist FIR
@@ -124,6 +130,14 @@ export class CreateFIRUseCase {
       // 6. Return success
       return Result.ok<FIR>(fir)
     } catch (error) {
+      // Errori della generazione da ritiro: il chiamante (serie) li distingue per tipo.
+      if (
+        error instanceof RitiroNonProgrammatoError ||
+        error instanceof FirGiaGeneratoDalRitiroError ||
+        error instanceof RitiroNonTrovatoError
+      ) {
+        throw error
+      }
       return Result.fail<FIR>(`Failed to create FIR: ${error.message}`)
     }
   }

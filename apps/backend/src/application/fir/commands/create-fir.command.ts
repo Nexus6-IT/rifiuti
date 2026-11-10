@@ -48,6 +48,8 @@ export class CreateFIRCommand {
     public readonly annotazioni?: string,
     /** Sede scelta (F2-10 D9): assente = sede predefinita del ruolo. */
     public readonly produttoreSedeId?: string,
-    public readonly destinatarioSedeId?: string
+    public readonly destinatarioSedeId?: string,
+    /** 4.7: ritiro programmato di origine (campo C9). */
+    public readonly ritiroId?: string
   ) {}
 }
