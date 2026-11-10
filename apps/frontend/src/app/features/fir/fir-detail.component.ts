@@ -387,7 +387,7 @@ const ORIGINE_LEGAME_LABELS: Record<string, string> = {
                   [attr.aria-label]="'Presa in carico FIR ' + (f.numeroProgressivo || f.id)"
                 />
               }
-              @if (f.stato === 'IN_TRANSITO') {
+              @if (puoConfermareConsegna(f)) {
                 <p-button
                   label="Conferma consegna"
                   icon="pi pi-check"
@@ -1230,6 +1230,11 @@ export class FirDetailComponent implements OnInit {
       : `scostamento ${base}`
   }
 
+  /** «Conferma consegna» solo su un FIR in transito NON legato a RENTRI (lì comanda RENTRI). */
+  puoConfermareConsegna(fir: FIR): boolean {
+    return fir.stato === FIRStato.IN_TRANSITO && !fir.rentriNumeroFir
+  }
+
   /** «Modifica» solo su una bozza modificabile e per i ruoli che possono modificare. */
   puoModificare(fir: FIR): boolean {
     return (
@@ -1255,7 +1260,7 @@ export class FirDetailComponent implements OnInit {
       this.puoModificare(fir) ||
       fir.stato === FIRStato.BOZZA ||
       fir.stato === FIRStato.EMESSO ||
-      fir.stato === FIRStato.IN_TRANSITO ||
+      this.puoConfermareConsegna(fir) ||
       this.canTrasmettereRentri(fir) ||
       this.canRiprovareRentri(fir) ||
       this.mostraRitrasmettiDopoVerifica(fir) ||

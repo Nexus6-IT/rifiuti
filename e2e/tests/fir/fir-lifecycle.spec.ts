@@ -262,11 +262,11 @@ test.describe('Ciclo di vita FIR completo', () => {
     }>('GET', `/fir/${fir.id}/verify`, tokenAdmin)
     expect(verifica.stato, JSON.stringify(verifica.corpo)).toBe(200)
     expect(verifica.corpo.signatureCount).toBe(3)
-    // I ruoli della verifica sono in italiano (PRODUTTORE, TRASPORTATORE, DESTINATARIO).
+    // I ruoli della verifica sono in inglese (PRODUCER, CARRIER, RECEIVER).
     expect(verifica.corpo.signatures.map(s => s.role).sort()).toEqual([
-      'DESTINATARIO',
-      'PRODUTTORE',
-      'TRASPORTATORE',
+      'CARRIER',
+      'PRODUCER',
+      'RECEIVER',
     ])
     expect(
       verifica.corpo.signatures.filter(s => !s.isValid).map(s => s.role),

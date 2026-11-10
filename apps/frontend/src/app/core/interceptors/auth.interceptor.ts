@@ -26,10 +26,12 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     '/auth/refresh',
     '/health',
     '/auth/access-request',
-    // Verifica pubblica delle firme (QR del PDF): anonima, niente token ne' refresh.
-    '/verify',
   ]
-  const isPublicEndpoint = publicEndpoints.some(endpoint => req.url.includes(endpoint))
+  // Verifica pubblica delle firme (QR del PDF): anonima, niente token ne' refresh.
+  // Match esatto su `/fir/<id>/verify` (non `/verify-url`, che e' autenticato).
+  const isVerificaPubblica = /\/fir\/[^/?#]+\/verify(?:[?#]|$)/.test(req.url)
+  const isPublicEndpoint =
+    isVerificaPubblica || publicEndpoints.some(endpoint => req.url.includes(endpoint))
 
   if (isPublicEndpoint) {
     return next(req)

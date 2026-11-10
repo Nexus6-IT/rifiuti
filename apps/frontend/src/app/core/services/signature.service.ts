@@ -171,20 +171,6 @@ export class SignatureService {
  * Type Definitions
  */
 
-export interface ApplySignatureResponse {
-  success: boolean
-  signature: {
-    role: 'PRODUCER' | 'CARRIER' | 'RECEIVER'
-    signerFiscalCode: string
-    signerName: string
-    signedAt: Date
-    signatureMethod: string
-  }
-  firStatus: string
-  isCompleted: boolean
-  message?: string
-}
-
 export interface VerifySignaturesResponse {
   firId: string
   firNumber: string

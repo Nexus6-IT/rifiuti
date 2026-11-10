@@ -1613,6 +1613,19 @@ describe('FirDetailComponent', () => {
       expect(component['consegnaDialogVisible']).toBeTrue()
     })
 
+    it('su un FIR IN_TRANSITO legato a RENTRI il bottone non c e (comanda RENTRI)', () => {
+      setup()
+      firService.getFIRById.and.returnValue(
+        of({ ...baseFIR, stato: FIRStato.IN_TRANSITO, rentriNumeroFir: 'FIR-RENTRI-1' })
+      )
+      fixture.detectChanges()
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="fir-detail-conferma-consegna"]'
+        )
+      ).toBeNull()
+    })
+
     it('su un FIR EMESSO il bottone non c e', () => {
       setup()
       firService.getFIRById.and.returnValue(of(baseFIR))

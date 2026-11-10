@@ -94,3 +94,41 @@ describe('authInterceptor — refresh rifiutato per azienda non accessibile', ()
     expect(router.navigate).not.toHaveBeenCalled()
   })
 })
+
+describe('authInterceptor — endpoint pubblico /verify', () => {
+  let http: HttpClient
+  let backend: HttpTestingController
+
+  beforeEach(() => {
+    localStorage.clear()
+    localStorage.setItem('accessToken', 'token')
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+        { provide: Router, useValue: { url: '/', navigate: jasmine.createSpy('navigate') } },
+      ],
+    })
+    http = TestBed.inject(HttpClient)
+    backend = TestBed.inject(HttpTestingController)
+  })
+
+  afterEach(() => {
+    backend.verify()
+    localStorage.clear()
+  })
+
+  it('GET /fir/:id/verify va senza Authorization', () => {
+    http.get(`${environment.apiUrl}/fir/abc/verify`).subscribe()
+    expect(
+      backend.expectOne(r => r.url.endsWith('/fir/abc/verify')).request.headers.has('Authorization')
+    ).toBeFalse()
+  })
+
+  it('GET /fir/:id/verify-url resta autenticato', () => {
+    http.get(`${environment.apiUrl}/fir/abc/verify-url`).subscribe()
+    expect(
+      backend.expectOne(r => r.url.endsWith('/verify-url')).request.headers.get('Authorization')
+    ).toBe('Bearer token')
+  })
+})
