@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test'
 import { currentTargetIsProduction } from '../../fixtures/auth'
 import {
   accediUiComeAzienda,
+  assicuraDbLocale,
   clientDbLocale,
+  MOTIVO_DB_NON_LOCALE,
+  saltaSeDbNonLocale,
   creaAziendaDiTest,
   tokenAzienda,
   type AziendaDiTest,
@@ -47,13 +50,10 @@ const anagraficheCreate: AnagraficaCreata[] = []
 
 test.describe('Stato RENTRI — lista, dettaglio, cronologia, azione manuale', () => {
   test.describe.configure({ mode: 'serial', timeout: 90_000 })
-  test.skip(
-    db === null,
-    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
-  )
+  test.skip(saltaSeDbNonLocale(db), MOTIVO_DB_NON_LOCALE)
 
   test.beforeAll(async () => {
-    if (!db) return
+    assicuraDbLocale(db)
     azienda = await creaAziendaDiTest(db, 'stato RENTRI')
     // RENTRI e' un modulo a parte, non incluso nel piano PROFESSIONAL: si aggiunge a questa azienda.
     await db.tenant.update({
@@ -88,9 +88,11 @@ test.describe('Stato RENTRI — lista, dettaglio, cronologia, azione manuale', (
     await firList.expectLoaded()
 
     // Il badge RENTRI compare solo per FIR non in BOZZA/ANNULLATO (FirListComponent.mostraStatoRentri).
-    await expect(firList.rentriBadge(fir.numeroProgressivo!)).toBeVisible({
-      timeout: ATTESA_SERVER,
-    })
+    const badge = firList.rentriBadge(fir.numeroProgressivo!)
+    await expect(badge).toBeVisible({ timeout: ATTESA_SERVER })
+    // Stato iniziale dopo l'emissione: PENDING (verificato sul FIR creato) = «Da trasmettere».
+    expect(fir.rentriSyncStatus).toBe('PENDING')
+    await expect(badge).toContainText('Da trasmettere')
     // Una bozza non ha ancora nulla da trasmettere: nessun badge.
     const bozza = await creaFirInStato(tokenAdmin, anagrafiche, 'BOZZA')
     await page.reload()
@@ -113,14 +115,43 @@ test.describe('Stato RENTRI — lista, dettaglio, cronologia, azione manuale', (
     await expect(detail.numero).toBeVisible()
     await expect(detail.numero).toContainText(fir.numeroProgressivo!)
     // La cronologia (app-rentri-sync-logs) e' renderizzata per QUALUNQUE FIR, indipendentemente
-    // dallo stato. Il messaggio di stato vuoto sta DENTRO la tabella (emptymessage): con la tabella
-    // vuota i due locator risolvono lo stesso blocco due volte (strict mode violation).
+    // dallo stato.
     await expect(detail.syncLogs).toBeVisible()
-    // NOTA: con zero log il messaggio di stato vuoto e' nel DOM ma senza dimensioni (display: none);
-    // si verifica che sia presente, non che sia visibile. Da guardare con il restyle delle tabelle.
-    await expect(
-      detail.syncLogsEmpty.or(detail.syncLogsTable.locator('tbody tr')).first()
-    ).toBeAttached()
+    // Caso reale: un tentativo fallito registrato per questo FIR (per id esatto; il log e' tolto
+    // in cascata dal teardown globale insieme al FIR).
+    const log = await db!.rENTRISyncLog.create({
+      data: {
+        firId: fir.id,
+        tenantId: azienda.tenantId,
+        status: 'FAILURE',
+        attempt: 1,
+        requestPayload: '{}',
+        errorMessage: 'HTTP 403 Forbidden',
+        errorCode: 'RENTRI_FORBIDDEN',
+      },
+    })
+    await detail.syncLogsRefresh.click()
+    const riga = detail.syncLogRow(log.id)
+    await expect(riga).toBeVisible({ timeout: ATTESA_SERVER })
+    await expect(detail.syncLogsTable).toBeVisible()
+    await expect(riga).toContainText('FAILURE')
+    await expect(detail.syncLogsEmpty).toHaveCount(0)
+  })
+
+  test('la cronologia RENTRI senza log mostra il messaggio «Nessun log di sincronizzazione»', async ({
+    page,
+  }) => {
+    // Regressione: GET /rentri/sync/logs rispondeva 400 (page/limit di query non convertiti in
+    // numeri), la cronologia mostrava «Impossibile caricare i log» e il messaggio di stato vuoto
+    // restava nascosto. Corretto con @Type(() => Number) in SyncLogsQueryDto.
+    // Una BOZZA non trasmette nulla, quindi nessun log puo' comparire per effetto del sync.
+    const fir = await creaFirInStato(tokenAdmin, anagrafiche, 'BOZZA')
+    await accediUiComeAzienda(page, azienda, 'operator')
+    const detail = new FirDetailPage(page)
+    await detail.goto(fir.id)
+    await detail.expectLoaded()
+    await expect(detail.syncLogs).toBeVisible()
+    await expect(detail.syncLogsEmpty).toBeVisible({ timeout: 5_000 })
   })
 
   test("l'azione manuale di trasmissione a RENTRI è disponibile per un FIR non ancora sincronizzato", async ({
@@ -152,22 +183,32 @@ test.describe('Stato RENTRI — lista, dettaglio, cronologia, azione manuale', (
   }) => {
     const fir = await creaFirInStato(tokenAdmin, anagrafiche, 'EMESSO')
     // Fotografia di un tentativo fallito (HTTP 403 dell'ente), scritta per id esatto sul FIR di prova.
-    await db!.fIR.update({
-      where: { id: fir.id },
-      data: {
-        rentriSyncStatus: 'FAILED',
-        rentriSyncAttempts: 1,
-        rentriLastSyncError: 'HTTP 403 Forbidden',
-        rentriLastSyncErrorCode: 'RENTRI_FORBIDDEN',
-      },
-    })
+    // Race: l'emissione puo' avere accodato un job di sync automatico che, se parte dopo la
+    // scrittura, riporta lo stato a SYNCING/FAILED con altro errore (l'azienda non ha credenziali).
+    // Non si puo' disattivare il worker dal test (gira nel backend, gia' avviato), quindi si rende
+    // l'asserzione convergente: a ogni giro si riscrive la fotografia, si ricarica la pagina e si
+    // attende il messaggio; passa solo quando la pagina mostra davvero lo stato scritto.
+    const scriviFallito = () =>
+      db!.fIR.update({
+        where: { id: fir.id },
+        data: {
+          rentriSyncStatus: 'FAILED',
+          rentriSyncAttempts: 1,
+          rentriLastSyncError: 'HTTP 403 Forbidden',
+          rentriLastSyncErrorCode: 'RENTRI_FORBIDDEN',
+        },
+      })
     await accediUiComeAzienda(page, azienda, 'operator')
 
     const detail = new FirDetailPage(page)
-    await detail.goto(fir.id)
-    await detail.expectLoaded()
-
-    await expect(detail.rentriMessaggioErrore).toBeVisible()
+    await expect(async () => {
+      await scriviFallito()
+      await detail.goto(fir.id)
+      await detail.expectLoaded()
+      await expect(detail.rentriMessaggioErrore).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: ATTESA_SERVER })
+    // Stato del badge: FAILED al primo tentativo = «Riprova 1/5».
+    await expect(detail.rentriBadge(fir.numeroProgressivo!)).toContainText('Riprova 1/5')
     const testo = (await detail.rentriMessaggioErrore.innerText()).trim()
 
     // "Comprensibile" = non un codice/enum tecnico: niente SCREAMING_SNAKE_CASE puro, contiene

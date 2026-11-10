@@ -10,6 +10,7 @@ import {
   Max,
 } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
+import { Type } from 'class-transformer'
 import type { RentriAzioneUtente } from '../../../application/rentri/rentri-error-presentation'
 
 /**
@@ -261,6 +262,7 @@ export class SyncLogsQueryDto {
     required: false,
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number
@@ -272,6 +274,7 @@ export class SyncLogsQueryDto {
     required: false,
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)

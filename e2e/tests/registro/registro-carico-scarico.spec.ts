@@ -1,7 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   accediUiComeAzienda,
+  assicuraDbLocale,
   clientDbLocale,
+  MOTIVO_DB_NON_LOCALE,
+  saltaSeDbNonLocale,
   creaAziendaDiTest,
   tokenAzienda,
   type AziendaDiTest,
@@ -60,13 +63,10 @@ async function apriRegistro(page: Page): Promise<void> {
 
 test.describe('Registro carico/scarico', () => {
   test.describe.configure({ mode: 'serial', timeout: 90_000 })
-  test.skip(
-    db === null,
-    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
-  )
+  test.skip(saltaSeDbNonLocale(db), MOTIVO_DB_NON_LOCALE)
 
   test.beforeAll(async () => {
-    if (!db) return
+    assicuraDbLocale(db)
     azienda = await creaAziendaDiTest(db, 'registro C/S')
     tokenAdmin = await tokenAzienda(azienda, 'admin')
     await ok('POST', '/registro/registri/assicura', tokenAdmin)
@@ -160,10 +160,14 @@ test.describe('Registro carico/scarico', () => {
 
     // Tipo = Scarico: resta solo lo scarico.
     await page.locator('p-dropdown:has(#filtro-tipo)').click()
-    await attendiRisposta(page, () => page.getByRole('option', { name: 'Scarico' }).click(), {
-      metodo: 'GET',
-      percorso: /^\/registro\?/,
-    })
+    await attendiRisposta(
+      page,
+      () => page.getByRole('option', { name: 'Scarico', exact: true }).click(),
+      {
+        metodo: 'GET',
+        percorso: /^\/registro\?/,
+      }
+    )
     await expect(page.getByTestId(`registro-riga-${ids.scaricoA}`)).toBeVisible({
       timeout: ATTESA_SERVER,
     })

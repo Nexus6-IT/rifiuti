@@ -1,7 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   accediUiComeAzienda,
+  assicuraDbLocale,
   clientDbLocale,
+  MOTIVO_DB_NON_LOCALE,
+  saltaSeDbNonLocale,
   creaAziendaDiTest,
   tokenAzienda,
   type AziendaDiTest,
@@ -70,13 +73,10 @@ async function confermaDialog(page: Page, etichetta: string, percorso: RegExp): 
 
 test.describe('Ciclo di vita FIR completo', () => {
   test.describe.configure({ mode: 'serial', timeout: 90_000 })
-  test.skip(
-    db === null,
-    'Serve un database locale (DATABASE_URL su localhost) per creare l’azienda di test dedicata'
-  )
+  test.skip(saltaSeDbNonLocale(db), MOTIVO_DB_NON_LOCALE)
 
   test.beforeAll(async () => {
-    if (!db) return
+    assicuraDbLocale(db)
     azienda = await creaAziendaDiTest(db, 'ciclo FIR')
     // RENTRI e' un modulo a parte, non incluso nel piano PROFESSIONAL: si aggiunge a questa azienda.
     await db.tenant.update({
@@ -118,7 +118,7 @@ test.describe('Ciclo di vita FIR completo', () => {
     // (le opzioni arrivano dal server e il clic puo' cadere mentre il pannello si ridisegna).
     const scegli = async (inputId: string, opzione: string) => {
       const menu = finestra.locator(`p-dropdown:has(#${inputId})`)
-      const voce = page.getByRole('option', { name: opzione })
+      const voce = page.getByRole('option', { name: opzione, exact: true })
       await expect(async () => {
         if (!(await voce.isVisible())) await menu.click()
         await voce.click({ timeout: 3_000 })
@@ -150,7 +150,7 @@ test.describe('Ciclo di vita FIR completo', () => {
     const riga = lista.rigaPerId(creato.id)
     await expect(riga).toBeVisible({ timeout: ATTESA_SERVER })
     await expect(lista.statoPerId(creato.id)).toHaveText(/bozza/i)
-    await expect(riga).toContainText('15 01 01')
+    await expect(riga).toContainText(CER_A)
     await expect(riga).toContainText('N/D')
     // Una bozza si emette o si modifica, ma non ha ancora azioni di trasporto.
     await expect(lista.actionButtonInRow(riga, /Emetti/)).toBeVisible()
@@ -249,11 +249,20 @@ test.describe('Ciclo di vita FIR completo', () => {
     await expect(lista.statoPerId(fir.id)).toHaveText(/emesso/i, { timeout: ATTESA_SERVER })
   })
 
-  test('firma digitale: un FIR consegnato porta le tre firme (produttore, trasportatore, destinatario) valide', async () => {
-    // La finestra di firma non e' raggiungibile dalla lista (nessun template la monta): la firma
-    // si esercita dall'API, come fa l'emissione. Ogni passo del ciclo firma da se' (SIGNATURE_PROVIDER
-    // sandbox in CI) e la verifica pubblica (GET /fir/:id/verify, la stessa del QR sulla copia
-    // cartacea) ricalcola le firme.
+  // Difetto del prodotto, indagine in corso: «verifica pubblica: solo la firma del destinatario è
+  // valida». Su un FIR consegnato le firme di produttore e trasportatore sono su un hash del
+  // documento diverso da quello attuale (la consegna aggiunge peso e data), quindi
+  // GET /fir/:id/verify risponde allValid=false. Il test asserisce il comportamento GIUSTO ed e'
+  // marcato `test.fail()`: oggi fallisce (atteso, risulta verde); quando il difetto sara' corretto
+  // diventera' rosso («atteso il fallimento, ma passa») e andra' tolto il marcatore.
+  test('firma digitale: un FIR consegnato porta tre firme valide, verifica pubblica allValid (difetto noto: solo la firma del destinatario è valida)', async () => {
+    test.fail(
+      true,
+      'verifica pubblica: solo la firma del destinatario è valida (allValid=false su FIR consegnato, indagine in corso)'
+    )
+    // La finestra di firma non e' raggiungibile dalla lista (v. il fixme sotto): la firma si
+    // esercita dall'API. Ogni passo del ciclo firma da se' (SIGNATURE_PROVIDER sandbox in CI) e la
+    // verifica pubblica (GET /fir/:id/verify, la stessa del QR sulla copia cartacea) ricalcola le firme.
     const fir = await creaFirInStato(tokenAdmin, anagrafiche, 'CONSEGNATO')
     const verifica = await chiama<{
       allValid: boolean
@@ -269,18 +278,16 @@ test.describe('Ciclo di vita FIR completo', () => {
       'PRODUTTORE',
       'TRASPORTATORE',
     ])
-    // Ogni firma e' un metodo dichiarato e marcato nel tempo; l'ultima (destinatario) si verifica.
-    const dest = verifica.corpo.signatures.find(s => s.role === 'DESTINATARIO')!
-    expect(dest.isValid).toBe(true)
-    // NOTA (difetto del prodotto, non corretto qui): sul FIR consegnato la verifica pubblica dice
-    // `allValid: false`, perche' le firme di produttore e trasportatore sono state apposte su un
-    // hash del documento diverso da quello attuale (la consegna aggiunge peso e data). Finche' non
-    // e' deciso se l'hash debba escludere i dati di consegna, non lo si asserisce.
-    test.info().annotations.push({
-      type: 'difetto-noto',
-      description:
-        'allValid=false su FIR consegnato: hash del documento cambiato dopo le prime firme',
-    })
+    expect(
+      verifica.corpo.signatures.filter(s => !s.isValid).map(s => s.role),
+      'firme non valide'
+    ).toEqual([])
+    expect(verifica.corpo.allValid).toBe(true)
+  })
+
+  test('firma del FIR dall’interfaccia', async () => {
+    test.fixme(true, 'dialog di firma non montato in nessuna pagina')
+    // Da scrivere quando il dialog di firma (signature-dialog) sara' montato in lista o dettaglio FIR.
   })
 
   test('sync RENTRI in batch: i FIR emessi vengono accodati, una bozza viene saltata', async () => {
