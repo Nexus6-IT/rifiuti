@@ -358,6 +358,7 @@ describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
       const a = await azienda()
       const r1 = await ritiro(a)
       const r2 = await ritiro(a)
+      const r3 = await ritiro(a) // senza FIR: l'unico parziale non scatta prima del trigger
       const conOrigine = await fir(a, r1)
       const senza = await fir(a, null)
       await expect(
@@ -367,7 +368,7 @@ describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
         owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = NULL WHERE id = '${conOrigine}'`)
       ).rejects.toThrow(/RITIRO_ID_IMMUTABILE/)
       await expect(
-        owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = '${r1}' WHERE id = '${senza}'`)
+        owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = '${r3}' WHERE id = '${senza}'`)
       ).rejects.toThrow(/RITIRO_ID_IMMUTABILE/)
       // Gli altri UPDATE del FIR non sono toccati.
       await expect(
