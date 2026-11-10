@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema id="ImpiantoMesi" targetNamespace="https://orso.arpalombardia.it/schemi/ImpiantoMesi.xsd" elementFormDefault="qualified" xmlns="https://orso.arpalombardia.it/schemi/ImpiantoMesi.xsd" xmlns:mstns="https://orso.arpalombardia.it/schemi/ImpiantoMesi.xsd" xmlns:xs="http://www.w3.org/2001/XMLSchema" version="1">
+
+  <!-- Nodo principale -->
+  <xs:element name="ImpiantoMesi" nillable="false">
+    <xs:complexType>
+      <xs:sequence maxOccurs="unbounded">
+        <xs:element name="Anno" minOccurs="1" maxOccurs="unbounded" type="tAnno" />
+        <xs:element name="NuovoImpianto" minOccurs="0" maxOccurs="unbounded" type="tNuovoImpianto" />
+      </xs:sequence>
+      <xs:attribute name="autore" use="optional" type="xs:string" />
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Definizione anno -->
+  <xs:complexType name="tAnno">
+    <xs:sequence minOccurs="1" maxOccurs="unbounded">
+      <xs:element name="Mese" minOccurs="1" maxOccurs="unbounded" type="tMese" />
+    </xs:sequence>
+    <xs:attribute name="value" use="required" type="tNumeroAnno" />
+  </xs:complexType>
+
+  <!-- Definizione dati mensili -->
+  <xs:complexType name="tMese">
+    <xs:sequence minOccurs="1" maxOccurs="unbounded">
+      <xs:element name="RifiutoRicevuto" minOccurs="0" type="tRifiutoRicevuto" />
+      <xs:element name="RifiutoProdotto" minOccurs="0" type="tRifiutoProdotto" />
+    </xs:sequence>
+    <xs:attribute name="value" use="required" type="tNumeroMese" />
+  </xs:complexType>
+
+  <!-- Definizione rifiuto ricevuto -->
+  <xs:complexType name="tRifiutoRicevuto">
+    <xs:sequence>
+      <xs:element name="Descrizione" minOccurs="1" maxOccurs="1" type="tDescrizioneRifiuto" nillable="false" />
+      <xs:sequence minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="Operazione" type="tOperazione" />
+      </xs:sequence>
+      <xs:element name="Trattato" minOccurs="0" maxOccurs="1" type="tQuantitativo" />
+      <xs:element name="TipoRifEcotassa" minOccurs="0" maxOccurs="1" type="tTipoRifiutoEcotassa" />
+      <!--<xs:element name="SoloTrat" minOccurs="0" maxOccurs="1" type="xs:boolean" />-->
+      <xs:element name="Note" minOccurs="0" maxOccurs="1" type="tNoteRifiuto"  nillable="true" />
+      <xs:element name="Allegato" minOccurs="0" maxOccurs="1" type="tFile" />
+      <xs:sequence minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="In" type="tIn" />
+      </xs:sequence>
+    </xs:sequence>
+    <xs:attribute name="CER" use="required" type="tCER" />
+  </xs:complexType>
+
+  <!-- Definizione rifiuto prodotto -->
+  <xs:complexType name="tRifiutoProdotto">
+    <xs:sequence>
+      <xs:element name="Descrizione" minOccurs="1" maxOccurs="1" type="tDescrizioneRifiuto" nillable="false" />
+      <xs:element name="Note" minOccurs="0" maxOccurs="1" type="tNoteRifiuto"   nillable="true"/>
+      <xs:element name="Allegato" minOccurs="0" maxOccurs="1" type="tFile" />
+      <xs:sequence minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="Out" type="tOut" />
+      </xs:sequence>
+    </xs:sequence>
+    <xs:attribute name="CER" use="required" type="tCER" />
+    <xs:attribute name="QuantitaTrattataInternamente" use="required" type="tQuantitaZ" />
+  </xs:complexType>
+
+  <!-- Definizione singolo movimento in ingresso-->
+  <xs:complexType name="tIn">
+    <xs:attribute name="q" type="tQuantitaZ" use="required" />
+    <xs:attribute name="f" type="t01" use="required" />
+    <xs:attribute name="ts" type="tTipoSoggettoIn" use="required" />
+    <xs:attribute name="s" type="tIdSoggettoIn" use="required" />
+  </xs:complexType>
+
+  <!-- Definizione singolo movimento in uscita-->
+  <xs:complexType name="tOut">
+    <xs:attribute name="q" type="tQuantitaNZ" use="required" />
+    <xs:attribute name="ts" type="tTipoSoggettoOut" use="required" />
+    <xs:attribute name="s" type="tIdSoggettoOut" use="required" />
+  </xs:complexType>
+
+  <!-- Definizione nuovo impianto -->
+  <xs:complexType name="tNuovoImpianto">
+    <xs:sequence>
+      <xs:element minOccurs="0" maxOccurs="1" name="IndirizzoSL" type="tIndirizzo" />
+      <xs:element minOccurs="1" maxOccurs="1" name="IndirizzoUL" type="tIndirizzo" />
+    </xs:sequence>
+    <xs:attribute name="id" use="required" type="xs:int" />
+    <xs:attribute name="RagioneSociale" use="required" type="tRagioneSociale" />
+    <xs:attribute name="FormaSocietaria" use="optional" type="tFormaSocietaria" />
+    <xs:attribute name="CodfisPIVA" use="required" type="tCodfisPIVA" />
+  </xs:complexType>
+
+
+  <!-- Tipi di base -->
+
+
+  <!-- Numero dell'anno -->
+
+  <xs:simpleType name="tNumeroAnno">
+    <xs:restriction base="xs:int">
+      <xs:minInclusive value="1900" />
+      <xs:maxInclusive value="2999" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Numero del mese -->
+  <xs:simpleType name="tNumeroMese">
+    <xs:restriction base="xs:int">
+      <xs:minInclusive value="1" />
+      <xs:maxInclusive value="12" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Codice CER dei rifiuti ricevuti/prodotti -->
+  <xs:simpleType name="tCER">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="6" />
+      <xs:maxLength value="6" />
+      <xs:pattern value="[0-9]{6}" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Quantitativo (zero ammesso) -->
+  <xs:simpleType name="tQuantitaZ">
+    <xs:restriction base="xs:decimal">
+      <xs:minInclusive value="0" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Quantitativo (zero non ammesso) -->
+  <xs:simpleType name="tQuantitaNZ">
+    <xs:restriction base="xs:decimal">
+      <xs:minExclusive value="0" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Zero o uno (zero non ammesso) -->
+  <xs:simpleType name="t01">
+    <xs:restriction base="xs:int">
+      <xs:enumeration value="0" />
+      <xs:enumeration value="1" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Descrizioni dei rifiuti ricevuti/prodotti -->
+  <xs:simpleType name="tDescrizioneRifiuto">
+    <xs:restriction base="xs:string">
+      <xs:whiteSpace value="collapse" />
+      <xs:minLength value="1" />
+      <xs:maxLength value="100" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--- Quantitativo Trattato per i rifiuti ricevuti -->
+  <xs:simpleType name="tQuantitativo">
+    <xs:restriction base="xs:double">
+      <xs:minInclusive value="0"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Note sui rifiuti ricevuti/prodotti -->
+  <xs:simpleType name="tNoteRifiuto">
+    <xs:restriction base="xs:string">
+      <xs:whiteSpace value="preserve" />
+      <xs:minLength value="1" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Operazioni possibili sui rifiuti ricevuti -->
+  <xs:simpleType name="tOperazione">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="D1"/>
+      <xs:enumeration value="D2"/>
+      <xs:enumeration value="D3"/>
+      <xs:enumeration value="D4"/>
+      <xs:enumeration value="D5"/>
+      <xs:enumeration value="D6"/>
+      <xs:enumeration value="D7"/>
+      <xs:enumeration value="D8"/>
+      <xs:enumeration value="D9"/>
+      <xs:enumeration value="D10"/>
+      <xs:enumeration value="D11"/>
+      <xs:enumeration value="D12"/>
+      <xs:enumeration value="D13"/>
+      <xs:enumeration value="D14"/>
+      <xs:enumeration value="D15"/>
+      <xs:enumeration value="R1"/>
+      <xs:enumeration value="R2"/>
+      <xs:enumeration value="R3"/>
+      <xs:enumeration value="R4"/>
+      <xs:enumeration value="R5"/>
+      <xs:enumeration value="R6"/>
+      <xs:enumeration value="R7"/>
+      <xs:enumeration value="R8"/>
+      <xs:enumeration value="R9"/>
+      <xs:enumeration value="R10"/>
+      <xs:enumeration value="R11"/>
+      <xs:enumeration value="R12"/>
+      <xs:enumeration value="R13"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- File allegato -->
+  <xs:simpleType name="tNomeFile">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="4" />
+      <xs:maxLength value="150" />
+      <xs:pattern value="[^\\/]+\.[^\\/]+" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tContentType">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="3" />
+      <xs:maxLength value="50" />
+      <xs:pattern value="[^\\/]+/[^\\/]+" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tFileContent">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="tFile" >
+    <xs:simpleContent>
+      <xs:extension base="tFileContent">
+        <xs:attribute name="NomeFile" type="tNomeFile" use="required" />
+        <xs:attribute name="ContentType" type="tContentType" use="required" />
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <!-- Possibili tipo di soggetti conferitori -->
+  <xs:simpleType name="tTipoSoggettoIn">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="C" />
+      <xs:enumeration value="I" />
+      <xs:enumeration value="Inew" />
+      <xs:enumeration value="Tot" />
+      <xs:enumeration value="Extra" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Possibili tipo di rifiuti ai fini dell'Ecotassa-->
+  <xs:simpleType name="tTipoRifiutoEcotassa">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="" />
+      <xs:enumeration value="SCS" /><!-- scarto e sovvallo-->
+      <xs:enumeration value="FAN" /><!-- fango-->
+      <xs:enumeration value="FR" /><!-- fuori regione-->
+      <xs:enumeration value="CeD" /><!-- Rifiuti inerti da costruzione e demolizione-->
+      <xs:enumeration value="AMI" /><!-- Rifiuti contenenti amianto-->
+      <xs:enumeration value="CES" /><!-- Ceneri e scorie da incenerimento/coincenerimento-->
+      <xs:enumeration value="SNR" /><!-- Rifiuti pericolosi stabili e non reattivi-->
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Identificativo soggetti conferitori -->
+  <xs:simpleType name="tIdSoggettoIn">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+      <xs:maxLength value="9" />
+      <xs:pattern value="[0-9]+" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Possibili tipo di soggetti destinatari -->
+  <xs:simpleType name="tTipoSoggettoOut">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="I" />
+      <xs:enumeration value="Inew" />
+      <xs:enumeration value="Tot" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Identificativo soggetti destinatari -->
+  <xs:simpleType name="tIdSoggettoOut">
+    <xs:restriction base="xs:int">
+      <xs:minInclusive value="0" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Nuovi impianti - Ragione sociale -->
+  <xs:simpleType name="tRagioneSociale">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+      <xs:maxLength value="255" />
+      <xs:whiteSpace value="collapse" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tFormaSocietaria">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+      <xs:maxLength value="10" />
+      <xs:whiteSpace value="collapse" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tCodfisPIVA">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="11" />
+      <xs:maxLength value="16" />
+      <xs:pattern value="[A-Za-z0-9]+" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tTipoIndirizzo">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+      <xs:maxLength value="10" />
+      <xs:whiteSpace value="collapse" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:complexType name="tIndirizzo">
+    <xs:attribute name="Tipo" use="optional" type="tTipoIndirizzo" />
+    <xs:attribute name="Nome" use="optional" type="tNomeIndirizzo" />
+    <xs:attribute name="Civico" use="optional" type="tCivicoIndirizzo" />
+    <xs:attribute name="CAP" use="optional" type="tCAPIndirizzo" />
+    <xs:attribute name="Provincia" use="required" type="tProvinciaIndirizzo" />
+    <xs:attribute name="Comune" use="required" type="tComuneIndirizzo" />
+  </xs:complexType>
+  <xs:simpleType name="tNomeIndirizzo">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+      <xs:maxLength value="100" />
+      <xs:whiteSpace value="collapse" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tCivicoIndirizzo">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1" />
+      <xs:maxLength value="10" />
+      <xs:whiteSpace value="collapse" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tCAPIndirizzo">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="5" />
+      <xs:maxLength value="5" />
+      <xs:pattern value="[0-9]*" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tProvinciaIndirizzo">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="3" />
+      <xs:maxLength value="3" />
+      <xs:pattern value="[0-9]{3}" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="tComuneIndirizzo">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="3" />
+      <xs:maxLength value="3" />
+      <xs:pattern value="[0-9]{3}" />
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>
