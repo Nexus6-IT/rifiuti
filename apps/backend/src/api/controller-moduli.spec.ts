@@ -138,8 +138,7 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   'api/clienti/spese-accessorie.controller.ts': CONTRATTI('Spese accessorie'),
   'api/clienti/testi-fatturazione.controller.ts': CONTRATTI('Testi di fatturazione'),
   'api/modelli-stampa/modelli-stampa.controller.ts': {
-    // TODO(integrazione T13): con la chiave `ritiri` diventa ['fir', 'ritiri'].
-    chiavi: ['fir'],
+    chiavi: ['fir', 'ritiri'],
     motivo: 'Modelli di stampa di FIR e distinta dei ritiri',
   },
   'api/listino/addebiti.controller.ts': CONTRATTI('Listino: addebiti'),

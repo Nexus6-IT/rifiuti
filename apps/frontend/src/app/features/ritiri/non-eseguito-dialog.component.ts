@@ -41,7 +41,7 @@ import { STILI_RITIRI } from './ritiri-stili'
           [ngModel]="motivo"
           (ngModelChange)="impostaMotivo($event)"
           [attr.aria-invalid]="errore() ? true : null"
-          [attr.aria-describedby]="prefisso + '-errore'"
+          [attr.aria-describedby]="errore() ? prefisso + '-errore' : null"
           [attr.data-testid]="prefisso + '-motivo'"
         ></textarea>
       </div>

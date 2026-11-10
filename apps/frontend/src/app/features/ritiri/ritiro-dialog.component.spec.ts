@@ -64,6 +64,15 @@ describe('RitiroDialogComponent', () => {
     expect(document.body.textContent).toContain('La quantità deve essere maggiore di zero.')
   })
 
+  it('senza provenienza (ritiro vecchio) non salva e chiede di sceglierla', async () => {
+    await crea(ritiroDiProva({ provenienza: null }))
+    bottone('rd-salva')!.click()
+    fixture.detectChanges()
+    expect(servizio.modifica).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Indica la provenienza del rifiuto.')
+    expect(q('rd-provenienza')!.textContent).not.toContain('Non indicata')
+  })
+
   it('in modifica precompila i campi e salva con la versione letta', async () => {
     const r = ritiroDiProva({ versione: 7 })
     await crea(r)

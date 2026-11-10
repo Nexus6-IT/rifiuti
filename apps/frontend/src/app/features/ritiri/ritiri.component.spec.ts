@@ -142,7 +142,7 @@ describe('RitiriComponent', () => {
   it('un 409 RITIRO_CON_FIR resta nel dialog con la frase che dice cosa fare', async () => {
     await crea()
     servizio.nonEseguito.and.returnValue(
-      throwError(() => ({ status: 409, error: { code: 'RITIRO_CON_FIR' } }))
+      throwError(() => ({ status: 409, error: { error: 'RITIRO_CON_FIR' } }))
     )
     fixture.componentInstance.apriAzione('NON_ESEGUITO', righe[0])
     fixture.componentInstance.motivo = 'mezzo guasto'

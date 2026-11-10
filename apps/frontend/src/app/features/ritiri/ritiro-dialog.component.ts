@@ -300,11 +300,15 @@ type ValoriForm = {
               class="p-inputtext w-full"
               formControlName="provenienza"
               data-testid="rd-provenienza"
+              [attr.aria-invalid]="errore('provenienza') ? true : null"
             >
-              <option value="">Non indicata</option>
+              <option value="" disabled>Scegli…</option>
               <option value="SPECIALE">Speciale</option>
               <option value="URBANO">Urbano</option>
             </select>
+            <small *ngIf="errore('provenienza') as e" class="field-error" role="alert">{{
+              e
+            }}</small>
           </div>
           <div class="field">
             <label for="rd-tratta">Tratta</label>
@@ -667,6 +671,8 @@ export class RitiroDialogComponent implements OnInit {
         return v.quantita != null && v.quantita > 0
           ? null
           : 'La quantità deve essere maggiore di zero.'
+      case 'provenienza':
+        return v.provenienza ? null : 'Indica la provenienza del rifiuto.'
       case 'fino':
         if (!v.ripeti) return null
         if (!v.fino) return 'Indica fino a quando ripetere.'
@@ -685,6 +691,7 @@ export class RitiroDialogComponent implements OnInit {
       'cerCode',
       'descrizione',
       'quantita',
+      'provenienza',
       'fino',
     ].some(c => this.errore(c) !== null)
   }
@@ -710,7 +717,7 @@ export class RitiroDialogComponent implements OnInit {
       quantitaPresunta: (v.quantita ?? 0).toFixed(2),
       unita: v.unita,
       codiceOperazione: testo(v.codiceOperazione),
-      provenienza: v.provenienza || null,
+      provenienza: v.provenienza as ProvenienzaRifiuto,
       tipoTratta: v.tipoTratta,
       annotazioni: testo(v.annotazioni),
       noteInterne: testo(v.noteInterne),

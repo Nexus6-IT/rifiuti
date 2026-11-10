@@ -134,6 +134,14 @@ export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
     messaggi.push("Il codice dell'operazione deve essere un codice R o D (es. R13, D10).")
   }
 
+  // Il FIR manuale non ha default per questi due campi: senza, la generazione fallirebbe dopo.
+  if (dati.provenienza !== 'URBANO' && dati.provenienza !== 'SPECIALE') {
+    messaggi.push('Indica la provenienza del rifiuto (urbano o speciale).')
+  }
+  if (!dati.tipoTratta || !['TERRESTRE', 'FERROVIARIA', 'MARITTIMA'].includes(dati.tipoTratta)) {
+    messaggi.push('Indica il tipo di tratta (terrestre, ferroviaria o marittima).')
+  }
+
   if (messaggi.length > 0) return { ok: false, messaggi }
 
   return {
@@ -157,8 +165,8 @@ export function normalizzaDatiRitiro(dati: DatiRitiro): EsitoNormalizzazione {
       unita,
       tipoOperazione: tipoOperazioneDa(codiceOperazione ?? ''),
       codiceOperazione: codiceOperazione ?? '',
-      provenienza: dati.provenienza ?? null,
-      tipoTratta: dati.tipoTratta ?? null,
+      provenienza: dati.provenienza,
+      tipoTratta: dati.tipoTratta,
       annotazioni: vuotoANull(dati.annotazioni),
       noteInterne: vuotoANull(dati.noteInterne),
     },

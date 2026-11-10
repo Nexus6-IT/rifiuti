@@ -40,9 +40,8 @@ export const RUOLI_MODELLI_SCRITTURA = ['SUPER_ADMIN', 'ADMIN'] as const
 @ApiTags('modelli-stampa')
 @ApiBearerAuth()
 @Controller('modelli-stampa')
-// TODO(integrazione T13): la chiave `ritiri` entra nel catalogo con T13; allora diventa
-// `@RichiedeModulo('fir', 'ritiri')` (P7 §5) e la riga di `controller-moduli.spec.ts` la segue.
-@RichiedeModulo('fir')
+// P7 §5: i modelli servono sia al FIR sia alla distinta dei ritiri.
+@RichiedeModulo('fir', 'ritiri')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ModelliStampaController {
   constructor(private readonly modelli: ModelliStampaService) {}

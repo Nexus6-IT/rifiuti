@@ -14,6 +14,8 @@ import {
   type AmbitoModelloStampa,
   type DatiModelloStampa,
 } from '../../domain/modelli-stampa/modello'
+import { esaminaLogo } from '../../domain/modelli-stampa/logo'
+import { logoLeggibile } from '../../infrastructure/pdf/logo-leggibile'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
   confrontaVersione,
@@ -80,6 +82,20 @@ function validaOLancia(dati: DatiModelloStampa): void {
   }
 }
 
+/**
+ * Il logo deve potersi incorporare davvero in un PDF (revisione I1): firma e dimensione giuste non
+ * bastano, un PNG corrotto romperebbe la stampa. Si prova prima di toccare il database.
+ */
+async function verificaLogoLeggibile(dati: DatiModelloStampa): Promise<void> {
+  if (!dati.logoBase64) return
+  const esito = esaminaLogo(dati.logoBase64)
+  if (esito.ok && (await logoLeggibile(esito.dataUrl))) return
+  throw new BadRequestException({
+    message: ['Logo non leggibile: carica un PNG o JPEG valido.'],
+    error: 'MODELLO_STAMPA_NON_VALIDO',
+  })
+}
+
 /** Colonne scritte da creazione e modifica (il `logo_url` non si usa: non c'e' storage). */
 const colonne = (d: DatiModelloStampa) => ({
   name: d.nome,
@@ -130,6 +146,7 @@ export class ModelliStampaService {
       ...nuovo,
     })
     validaOLancia(dati)
+    await verificaLogoLeggibile(dati)
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {
@@ -159,6 +176,7 @@ export class ModelliStampaService {
     const { versione, ...resto } = m
     const dati = normalizzaModello(resto)
     validaOLancia(dati)
+    await verificaLogoLeggibile(dati)
     return nelContestoTenant(tenantId, () =>
       this.prisma
         .$transaction(async tx => {

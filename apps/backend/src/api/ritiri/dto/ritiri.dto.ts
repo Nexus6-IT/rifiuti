@@ -117,15 +117,13 @@ export class DatiRitiroDto {
   @MaxLength(10, { message: "Il codice dell'operazione può avere al massimo 10 caratteri." })
   codiceOperazione!: string
 
-  @ApiPropertyOptional({ enum: PROVENIENZE, nullable: true })
-  @IsOptional()
-  @IsIn(PROVENIENZE, { message: 'La provenienza non è valida.' })
-  provenienza?: (typeof PROVENIENZE)[number] | null
+  @ApiProperty({ enum: PROVENIENZE })
+  @IsIn(PROVENIENZE, { message: 'Indica la provenienza del rifiuto (urbano o speciale).' })
+  provenienza!: (typeof PROVENIENZE)[number]
 
-  @ApiPropertyOptional({ enum: TIPI_TRATTA, nullable: true })
-  @IsOptional()
-  @IsIn(TIPI_TRATTA, { message: 'Il tipo di tratta non è valido.' })
-  tipoTratta?: (typeof TIPI_TRATTA)[number] | null
+  @ApiProperty({ enum: TIPI_TRATTA })
+  @IsIn(TIPI_TRATTA, { message: 'Indica il tipo di tratta (terrestre, ferroviaria o marittima).' })
+  tipoTratta!: (typeof TIPI_TRATTA)[number]
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()

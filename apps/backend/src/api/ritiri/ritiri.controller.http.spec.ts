@@ -38,6 +38,8 @@ const dati = {
   descrizione: 'Rifiuti urbani',
   quantitaPresunta: '1250.50',
   codiceOperazione: 'R13',
+  provenienza: 'SPECIALE' as const,
+  tipoTratta: 'TERRESTRE' as const,
 }
 
 describe('RitiriController - catena HTTP', () => {
@@ -284,6 +286,28 @@ describe('RitiriController - catena HTTP', () => {
         .expect(400)
       expect(servizio.crea).not.toHaveBeenCalled()
     })
+  })
+
+  describe('provenienza e tratta obbligatorie (revisione I3)', () => {
+    it.each(['provenienza', 'tipoTratta'])(
+      'senza %s la creazione e la modifica sono 400',
+      async campo => {
+        const { [campo]: _x, ...senza } = dati as Record<string, unknown>
+        await http()
+          .post('/ritiri')
+          .send({ ...senza, chiaveIdempotenza: U(9) })
+          .expect(400)
+        await http()
+          .put(`/ritiri/${ID}`)
+          .send({ ...senza, versione: 1 })
+          .expect(400)
+        await http()
+          .post('/ritiri')
+          .send({ ...dati, [campo]: null, chiaveIdempotenza: U(9) })
+          .expect(400)
+        expect(servizio.crea).not.toHaveBeenCalled()
+      }
+    )
   })
 
   describe('errori di dominio', () => {

@@ -116,8 +116,9 @@ export interface DatiRitiro {
   quantitaPresunta: string
   unita: string
   codiceOperazione?: string | null
-  provenienza?: ProvenienzaRifiuto | null
-  tipoTratta?: TipoTratta | null
+  /** Obbligatori: il FIR non ha default e la generazione non deve fallire dopo. */
+  provenienza: ProvenienzaRifiuto
+  tipoTratta: TipoTratta
   annotazioni?: string | null
   noteInterne?: string | null
 }
@@ -181,6 +182,7 @@ export const ETICHETTA_FASCIA: Readonly<Record<FasciaRitiro, string>> = {
 }
 
 export const MESSAGGI_CODICE_ESITO: Readonly<Record<string, string>> = {
+  RITIRO_NON_TROVATO: 'Il ritiro non esiste più.',
   RITIRO_NON_PROGRAMMATO: 'Il ritiro non è più programmato.',
   CER_NON_VALIDO: 'Il codice CER non è valido per un formulario.',
   SEDE_NON_VALIDA: 'Una delle sedi non appartiene alla ditta indicata.',
@@ -249,9 +251,10 @@ export function anteprimaDate(partenza: string, r: RipetizioneRitiro): string[] 
 export function messaggioErroreRitiri(err: unknown, ripiego: string): string {
   const e = err as {
     status?: number
-    error?: { code?: string; message?: string | string[] }
+    error?: { error?: string; message?: string | string[] }
   } | null
-  const codice = e?.error?.code
+  // Il filtro globale mette il codice macchina in `error` (non in `code`).
+  const codice = e?.error?.error
   if (codice === 'RITIRO_CON_FIR') return 'Il ritiro ha un FIR attivo: annulla prima il FIR.'
   if (codice === 'RITIRO_MODIFICATO' || (e?.status === 409 && !e.error?.message)) {
     return 'Il ritiro è stato modificato da un altro utente: ricarica l’elenco e riprova.'

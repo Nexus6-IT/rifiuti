@@ -63,7 +63,7 @@ export class PDFService {
     modello?: ModelloStampaFir | null
   ): Promise<Buffer> {
     this.logger.info(`Generating FIR PDF: ${fir.firNumber}`)
-    return this.rendi(definizioneFir(fir, qrCodeDataUrl, modello))
+    return this.rendiConFallbackLogo(modello, m => definizioneFir(fir, qrCodeDataUrl, m))
   }
 
   /** Un solo PDF per piu' FIR (serie), `copie` del modello per ciascuno. */
@@ -72,12 +72,31 @@ export class PDFService {
     modello?: ModelloStampaFir | null
   ): Promise<Buffer> {
     this.logger.info(`Generating FIR series PDF: ${elementi.length} FIR`)
-    return this.rendi(definizioneFirInSerie(elementi, modello))
+    return this.rendiConFallbackLogo(modello, m => definizioneFirInSerie(elementi, m))
   }
 
   /** Contenuto del FIR (usato dai test che ispezionano il documento). */
   private buildFIRContent(fir: any, qrCodeDataUrl?: string): Content[] {
     return contenutoFir(fir, qrCodeDataUrl)
+  }
+
+  /**
+   * Un logo con i byte giusti ma non decodificabile (PNG corrotto) non deve bloccare la stampa
+   * dei FIR dell'azienda: si rifa il documento senza logo e si segnala nel log (revisione I1).
+   */
+  private async rendiConFallbackLogo(
+    modello: ModelloStampaFir | null | undefined,
+    costruisci: (m: ModelloStampaFir | null | undefined) => TDocumentDefinitions
+  ): Promise<Buffer> {
+    try {
+      return await this.rendi(costruisci(modello))
+    } catch (err) {
+      if (!modello?.logoBase64) throw err
+      this.logger.warn('Logo del modello di stampa non leggibile: PDF prodotto senza logo', {
+        causa: err instanceof Error ? err.message : String(err),
+      })
+      return await this.rendi(costruisci({ ...modello, logoBase64: null }))
+    }
   }
 
   private rendi(docDefinition: TDocumentDefinitions): Promise<Buffer> {

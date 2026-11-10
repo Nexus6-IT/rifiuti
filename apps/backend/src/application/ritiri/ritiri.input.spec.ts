@@ -16,6 +16,8 @@ const base = (
   descrizione: 'Rifiuti urbani',
   quantitaPresunta: '1250.5',
   codiceOperazione: 'R13',
+  provenienza: 'SPECIALE',
+  tipoTratta: 'TERRESTRE',
   ...(extra as Partial<DatiRitiro>),
 })
 
@@ -34,6 +36,17 @@ describe('normalizzaDatiRitiro', () => {
     const e = normalizzaDatiRitiro(base({ codiceOperazione: c }))
     expect(e.ok).toBe(false)
     if (!e.ok) expect(e.messaggi.join(' ')).toContain('codice')
+  })
+
+  it.each([
+    [{ provenienza: undefined }, 'provenienza'],
+    [{ provenienza: null }, 'provenienza'],
+    [{ tipoTratta: undefined }, 'tratta'],
+    [{ tipoTratta: null }, 'tratta'],
+  ])('rifiuta provenienza o tipo di tratta assenti (%j)', (extra, parola) => {
+    const e = normalizzaDatiRitiro(base(extra as never))
+    expect(e.ok).toBe(false)
+    if (!e.ok) expect(e.messaggi.join(' ')).toContain(parola)
   })
 
   it.each(['X1', '10', 'RR'])('rifiuta il codice operazione %p che non comincia con D o R', c => {

@@ -411,7 +411,9 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
         update: scalars,
       })
     } catch (error) {
-      throw this.translateUniqueConstraintError(error, fir)
+      // Le traduzioni del ritiro di origine valgono solo in creazione: su un UPDATE (emissione
+      // compresa) un 23505 sul numero del FIR non e' «FIR gia generato dal ritiro».
+      throw this.translateUniqueConstraintError(error, fir, !riga)
     }
 
     await this.persistSignatures(client, fir, tenantId)
@@ -521,7 +523,7 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
    * il nostro vincolo) viene rilanciato invariato: questo repository non
    * deve mascherare problemi diversi da quello che sa spiegare.
    */
-  private translateUniqueConstraintError(error: unknown, fir: FIR): unknown {
+  private translateUniqueConstraintError(error: unknown, fir: FIR, inCreazione: boolean): unknown {
     const isUniqueViolationOnRentriNumeroFir =
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002' &&
@@ -532,6 +534,8 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
     if (isUniqueViolationOnRentriNumeroFir && fir.rentriNumeroFir) {
       return new FormularioGiaAgganciatoError(fir.rentriNumeroFir)
     }
+
+    if (!inCreazione) return error
 
     // 4.7: ritiro di origine. Il 23505 sull'indice parziale e' la corsa fra due generazioni.
     const messaggio = error instanceof Error ? error.message : ''

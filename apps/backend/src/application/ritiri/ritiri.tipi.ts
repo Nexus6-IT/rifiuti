@@ -88,8 +88,9 @@ export interface DatiRitiro {
   unita?: string
   /** Obbligatorio (R/D): il tipo di operazione ne deriva, non si indica a parte. */
   codiceOperazione: string
-  provenienza?: ProvenienzaRifiuto | null
-  tipoTratta?: TipoTratta | null
+  /** Obbligatori: il FIR manuale non ha default e la generazione dal ritiro non deve fallire dopo. */
+  provenienza: ProvenienzaRifiuto
+  tipoTratta: TipoTratta
   annotazioni?: string | null
   noteInterne?: string | null
 }

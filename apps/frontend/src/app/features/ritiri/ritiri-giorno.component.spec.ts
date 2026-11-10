@@ -162,7 +162,7 @@ describe('RitiriGiornoComponent', () => {
     bottone('rg-ne-r1')!.click()
     fixture.detectChanges()
     servizio.nonEseguito.and.returnValue(
-      throwError(() => ({ status: 409, error: { code: 'RITIRO_CON_FIR' } }))
+      throwError(() => ({ status: 409, error: { error: 'RITIRO_CON_FIR' } }))
     )
     const area = q<HTMLTextAreaElement>('ne-motivo')!
     area.value = 'x'

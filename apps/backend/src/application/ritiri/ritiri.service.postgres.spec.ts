@@ -106,6 +106,8 @@ describe('Servizio ritiri — Postgres reale, ruolo wasteflow_app', () => {
     descrizione: 'Rifiuti urbani non differenziati',
     quantitaPresunta: '1250.5',
     codiceOperazione: 'R13',
+    provenienza: 'SPECIALE' as const,
+    tipoTratta: 'TERRESTRE' as const,
     chiaveIdempotenza: crypto.randomUUID(),
     ...extra,
   })

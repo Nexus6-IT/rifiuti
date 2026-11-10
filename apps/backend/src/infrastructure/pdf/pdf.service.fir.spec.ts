@@ -216,3 +216,42 @@ describe('PDFService.buildFIRContent - date e ore in ora italiana', () => {
     expect(testo).not.toContain('24/10/2026')
   })
 })
+
+describe('PDFService: logo del modello non decodificabile (revisione I1)', () => {
+  const logger = {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  } as unknown as LoggerService
+  const rotto = Buffer.concat([
+    Buffer.from('89504e470d0a1a0a', 'hex'),
+    Buffer.alloc(100, 7),
+  ]).toString('base64')
+  const fir = {
+    status: 'EMESSO',
+    firNumber: 'FIR-2026-000001',
+    createdAt: new Date('2026-03-05T10:00:00Z'),
+    producer: { companyName: 'Produttore SRL' },
+    carrier: { companyName: 'Trasportatore SRL' },
+    receiver: { companyName: 'Destinatario SRL' },
+    cerCode: '13 02 05*',
+    quantity: 120,
+    unitOfMeasure: 'KG',
+    signatures: [],
+  }
+
+  it('il PDF del FIR esce senza logo invece di fallire, e lo segnala nel log', async () => {
+    const service = new PDFService(logger)
+    const pdf = await service.generateFIRPDF(fir, undefined, { logoBase64: rotto, copie: 1 } as any)
+    expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
+    expect(logger.warn).toHaveBeenCalled()
+  })
+
+  it('anche la serie esce senza logo', async () => {
+    const service = new PDFService(logger)
+    const pdf = await service.generateFIRSeriePDF([{ fir }], { logoBase64: rotto, copie: 1 } as any)
+    expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
+  })
+})

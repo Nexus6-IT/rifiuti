@@ -271,6 +271,29 @@ describe('FIR: origine dal ritiro (Postgres reale, ruolo wasteflow_app)', () => 
     )
   })
 
+  it('UPDATE di un FIR da ritiro con un numero gia usato: l’errore resta quello del numero (I2)', async () => {
+    const primo = await esegui(await ritiro())
+    const secondo = await esegui(await ritiro())
+    const numero = `FIR-2026-9${sfx}`.slice(0, 16)
+    await owner.fIR.update({ where: { id: primo.value.id }, data: { firNumber: numero } })
+    const fir = await nelTenant(() => repo.findById(secondo.value.id))
+    expect(fir?.ritiroId).toBeTruthy()
+    fir!.emetti(numero, {
+      firmatario: 'Prova',
+      timestamp: new Date(),
+      certificato: 'firma-di-prova',
+      userId,
+    })
+    const errore = await nelTenant(() => repo.save(fir!)).then(
+      () => null,
+      (e: unknown) => e
+    )
+    expect(errore).not.toBeNull()
+    expect(errore).not.toBeInstanceOf(FirGiaGeneratoDalRitiroError)
+    expect(errore).not.toBeInstanceOf(RitiroNonTrovatoError)
+    expect(errore).not.toBeInstanceOf(RitiroNonProgrammatoError)
+  })
+
   it('il documento firmato non cambia con ritiroId (FIR crittografico senza il campo)', async () => {
     const rid = await ritiro()
     const r = await esegui(rid)

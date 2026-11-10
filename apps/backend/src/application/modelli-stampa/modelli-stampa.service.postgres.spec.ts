@@ -24,7 +24,9 @@ import {
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
 import { ModelliStampaService } from './modelli-stampa.service'
 
-const PNG = Buffer.from('89504e470d0a1a0a0000000d', 'hex').toString('base64')
+// 1x1 reale: il logo si prova davvero con il motore PDF (revisione I1).
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
 describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -133,6 +135,11 @@ describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
     await expect(
       prova({ logoBase64: Buffer.from('non e un png').toString('base64') })
     ).rejects.toMatchObject({ status: 400 })
+    // Firma PNG giusta ma corpo corrotto: non si puo' incorporare nel PDF (revisione I1).
+    const pngRotto = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(100, 7)])
+    await expect(prova({ logoBase64: pngRotto.toString('base64') })).rejects.toMatchObject({
+      status: 400,
+    })
     await expect(prova({ copie: 9 })).rejects.toMatchObject({ status: 400 })
     await expect(prova({ colorePrimario: 'rosso' })).rejects.toMatchObject({ status: 400 })
     expect(await owner.companyTemplate.count({ where: { tenantId } })).toBe(0)

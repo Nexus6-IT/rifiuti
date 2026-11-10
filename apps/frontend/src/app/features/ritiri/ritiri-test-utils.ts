@@ -19,5 +19,7 @@ export const ritiroDiProva = (p: Partial<RitiroVista> = {}): RitiroVista => ({
   fir: null,
   serieId: null,
   versione: 1,
+  provenienza: 'SPECIALE',
+  tipoTratta: 'TERRESTRE',
   ...p,
 })
