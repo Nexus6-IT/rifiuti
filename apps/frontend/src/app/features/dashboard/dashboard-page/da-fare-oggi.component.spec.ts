@@ -88,6 +88,19 @@ describe('DaFareOggiComponent', () => {
     expect(el.querySelectorAll('li').length).toBe(12)
   })
 
+  it('errore: con il modulo RENTRI il testo nomina il certificato RENTRI', () => {
+    const el = crea({ errore: true, conRentri: true })
+    const voceErrore = el.querySelector('[data-testid="attenzione-voce-verifica-fallita"]')
+    expect(voceErrore?.textContent).toContain('certificato RENTRI')
+  })
+
+  it('errore: senza il modulo RENTRI il testo non nomina il certificato RENTRI', () => {
+    const el = crea({ errore: true, conRentri: false })
+    const voceErrore = el.querySelector('[data-testid="attenzione-voce-verifica-fallita"]')
+    expect(voceErrore?.textContent).not.toContain('RENTRI')
+    expect(voceErrore?.textContent).toContain('autorizzazioni')
+  })
+
   it('senza voci e senza errore non disegna nessuna fascia', () => {
     const el = crea({ voci: [] })
     expect(el.querySelector('[data-testid="attenzione-fascia"]')).toBeNull()

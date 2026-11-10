@@ -8,6 +8,7 @@ import {
   IsEnum,
   IsArray,
   IsIn,
+  ValidateIf,
 } from 'class-validator'
 import { SubscriptionTier, SubscriptionStatus } from '@prisma/client'
 import { FEATURE_KEYS } from '../../../application/admin/feature-catalog'
@@ -19,7 +20,7 @@ import { FEATURE_KEYS } from '../../../application/admin/feature-catalog'
  * (identificativo univoco — gestione dedicata se mai necessaria).
  */
 export class UpdateTenantDto {
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined) // obbligatorio: null NON ammesso
   @IsString()
   @Length(1, 255)
   ragioneSociale?: string
@@ -27,17 +28,20 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   @Length(11, 16)
-  codiceFiscale?: string
+  /** `null` azzera il valore (campo svuotato in modifica); omesso lo lascia invariato. */
+  codiceFiscale?: string | null
 
   @IsOptional()
   @IsString()
   @Length(1, 255)
-  pec?: string
+  /** `null` azzera il valore (campo svuotato in modifica); omesso lo lascia invariato. */
+  pec?: string | null
 
   @IsOptional()
   @IsString()
   @Length(1, 20)
-  telefono?: string
+  /** `null` azzera il valore (campo svuotato in modifica); omesso lo lascia invariato. */
+  telefono?: string | null
 
   @IsOptional()
   @IsString()
@@ -66,7 +70,7 @@ export class UpdateTenantDto {
   @Length(1, 25)
   legaleRappresentanteCognome?: string
 
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined) // obbligatorio: null NON ammesso
   @IsString()
   @Length(1, 255)
   address?: string
@@ -74,24 +78,25 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   @Length(1, 10)
-  civico?: string
+  /** `null` azzera il valore (campo svuotato in modifica); omesso lo lascia invariato. */
+  civico?: string | null
 
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined) // obbligatorio: null NON ammesso
   @IsString()
   @Length(1, 100)
   city?: string
 
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined) // obbligatorio: null NON ammesso
   @IsString()
   @Length(2, 2, { message: 'province deve essere la sigla di 2 lettere' })
   province?: string
 
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined) // obbligatorio: null NON ammesso
   @IsString()
   @Matches(/^[0-9]{5}$/, { message: 'postalCode deve contenere 5 cifre' })
   postalCode?: string
 
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined) // obbligatorio: null NON ammesso
   @IsString()
   @Length(2, 2)
   country?: string

@@ -129,6 +129,7 @@ function inCaricamento<T>(): Sorgente<T> {
             [voci]="voci()"
             [errore]="attenzione().errore"
             [caricamento]="attenzione().caricamento"
+            [conRentri]="ff.has('rentri')"
             (riprova)="caricaAttenzione()"
           />
           <app-fir-mese-stati

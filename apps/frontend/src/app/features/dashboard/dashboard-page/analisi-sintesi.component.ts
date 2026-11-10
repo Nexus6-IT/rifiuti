@@ -117,6 +117,10 @@ import { STILI_BLOCCO } from './dashboard-stili'
         .cella:nth-child(-n + 2) {
           border-top: 0;
         }
+        /* Numero dispari di celle (senza modulo rentri sono 3): l'ultima prende tutta la riga. */
+        .cella:last-child:nth-child(odd) {
+          grid-column: 1 / -1;
+        }
       }
     `,
   ],
