@@ -179,6 +179,7 @@ model Tenant {
   marcatoriAddebitiFatturati  MarcatoreAddebitoFatturato[]
   contatoriFileFatturapa      ContatoreFileFatturapa[]
   mappatureExportContabile    MappaturaExportContabile[]
+  ritiri                      Ritiro[]
   comunicazioniConsorzi       ComunicazioneConsorzio[]
   comunicazioniConsorziMovimenti ComunicazioneConsorzioMovimento[]
 
@@ -548,6 +549,11 @@ model FIR {
   // Pese (Fase 4 pezzo 8a): accessi collegati a questo FIR.
   collegamentiAccesso CollegamentoAccesso[]
 
+  /// 4.7: ritiro di origine (campo C9 del FIR). Immutabile (trigger `firs_ritiro_controlli`); un
+  /// solo FIR non annullato per ritiro (indice unico parziale `firs_ritiro_attivo_key`, solo SQL).
+  ritiroId String? @map("ritiro_id") @db.Uuid
+  ritiro   Ritiro? @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "firs_ritiro_fkey")
+
   // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
   // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
   @@unique([id, tenantId])
@@ -572,6 +578,7 @@ model FIR {
   // Supporta la query di campionamento del Task 4 (R5): per tenant, solo i
   // FIR SYNCED, ordinati per "meno recentemente verificato" (NULL prima).
   @@index([tenantId, rentriSyncStatus, rentriLastReconciledAt])
+  @@index([tenantId, ritiroId], map: "firs_tenant_ritiro_idx")
   @@map("firs")
 }
 
@@ -805,6 +812,14 @@ model CompanyTemplate {
   fontFamily     String @default("Roboto") @map("font_family") @db.VarChar(50)
 
   isDefault Boolean @default(false) @map("is_default")
+
+  /// 4.7: a cosa serve il modello (stampa generale, FIR o distinta dei ritiri). Un solo modello
+  /// predefinito per ambito (indice unico parziale solo in SQL, Prisma non conosce il WHERE).
+  ambito   AmbitoModelloStampa @default(GENERALE)
+  /// Copie del FIR stampate in serie (1..4, CHECK in SQL).
+  copie    Int                 @default(1) @db.SmallInt
+  /// Lock ottimistico delle modifiche dalla pagina dei modelli.
+  versione Int                 @default(1)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1318,7 +1333,10 @@ model Produttore {
   ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_ditta_fkey")
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "produttori_sede_fkey")
 
+  ritiri Ritiro[]
+
   @@unique([tenantId, dittaId], map: "produttori_tenant_id_ditta_id_key")
+  @@unique([id, tenantId], map: "produttori_id_tenant_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "produttori_sede_id_idx")
   @@map("produttori")
@@ -1361,8 +1379,10 @@ model Trasportatore {
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "trasportatori_sede_fkey")
 
   automezzi Automezzo[]
+  ritiri    Ritiro[]
 
   @@unique([tenantId, dittaId], map: "trasportatori_tenant_id_ditta_id_key")
+  @@unique([id, tenantId], map: "trasportatori_id_tenant_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "trasportatori_sede_id_idx")
   @@map("trasportatori")
@@ -1404,7 +1424,10 @@ model Destinatario {
   ditta   Ditta     @relation(fields: [dittaId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_ditta_fkey")
   sede    SedeDitta @relation(fields: [sedeId, dittaId, tenantId], references: [id, dittaId, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "destinatari_sede_fkey")
 
+  ritiri Ritiro[]
+
   @@unique([tenantId, dittaId], map: "destinatari_tenant_id_ditta_id_key")
+  @@unique([id, tenantId], map: "destinatari_id_tenant_id_key")
   @@index([tenantId])
   @@index([sedeId], map: "destinatari_sede_id_idx")
   @@map("destinatari")
@@ -2559,6 +2582,8 @@ model SedeDitta {
   clienti       Cliente[]
   agenti        Agente[]
   contrattiCliente ContrattoCliente[]
+  ritiriProduttore   Ritiro[] @relation("RitiroProduttoreSede")
+  ritiriDestinatario Ritiro[] @relation("RitiroDestinatarioSede")
 
   @@unique([id, tenantId], map: "sedi_ditte_id_tenant_id_key")
   @@unique([id, dittaId, tenantId], map: "sedi_ditte_id_ditta_id_tenant_id_key")
@@ -2712,6 +2737,7 @@ model Automezzo {
   taraPesata    Pesata?        @relation("TaraAutomezzo", fields: [taraPesataId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "automezzi_tara_pesata_fkey")
   accessi       AccessoPesa[]
   pesate        Pesata[]       @relation("PesateAutomezzo")
+  ritiri        Ritiro[]
 
   @@unique([id, tenantId], map: "automezzi_id_tenant_id_key")
   @@index([tenantId], map: "automezzi_tenant_id_idx")
@@ -4273,6 +4299,91 @@ model ContatoreFileFatturapa {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "contatori_file_fatturapa_tenant_id_fkey")
 
   @@map("contatori_file_fatturapa")
+}
+
+/// 4.7: stato di un ritiro programmato. "Da generare" / "FIR generato" non sono stati: si ricavano
+/// dal FIR collegato (`firs.ritiro_id`).
+enum StatoRitiro {
+  PROGRAMMATO
+  NON_ESEGUITO
+  ANNULLATO
+
+  @@map("stato_ritiro")
+}
+
+enum FasciaRitiro {
+  MATTINA
+  POMERIGGIO
+
+  @@map("fascia_ritiro")
+}
+
+enum AmbitoModelloStampa {
+  GENERALE
+  FIR
+  DISTINTA_RITIRI
+
+  @@map("ambito_modello_stampa")
+}
+
+/// Ritiro programmato (4.7): un passaggio del mezzo presso un produttore, in una data. Dal ritiro si
+/// genera la bozza di FIR (`firs.ritiro_id`). Mai cancellato (`ruoli-db.sql`): si annulla con motivo.
+/// Coerenza sede-ditta controllata nel servizio, come per il FIR. CHECK, trigger e indici parziali
+/// sono solo in SQL (migration `20261110100000_ritiri_e_modelli`).
+model Ritiro {
+  id                  String               @id(map: "ritiri_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String               @map("tenant_id") @db.Uuid
+  dataPrevista        DateTime             @map("data_prevista") @db.Date
+  fascia              FasciaRitiro?
+  ordineGiro          Int?                 @map("ordine_giro") @db.SmallInt
+  produttoreId        String               @map("produttore_id") @db.Uuid
+  produttoreSedeId    String               @map("produttore_sede_id") @db.Uuid
+  trasportatoreId     String               @map("trasportatore_id") @db.Uuid
+  destinatarioId      String               @map("destinatario_id") @db.Uuid
+  destinatarioSedeId  String               @map("destinatario_sede_id") @db.Uuid
+  automezzoId         String?              @map("automezzo_id") @db.Uuid
+  cerCode             String               @map("cer_code") @db.VarChar(10)
+  descrizione         String               @db.VarChar(500)
+  statoFisico         String?              @map("stato_fisico") @db.VarChar(50)
+  caratteristichePericolo String?          @map("caratteristiche_pericolo") @db.Text
+  numeroColli         Int?                 @map("numero_colli")
+  quantitaPresunta    Decimal              @map("quantita_presunta") @db.Decimal(10, 2)
+  unita               String               @default("KG") @db.VarChar(10)
+  tipoOperazione      WasteOperationType   @map("tipo_operazione")
+  codiceOperazione    String?              @map("codice_operazione") @db.VarChar(10)
+  provenienza         ProvenienzaRifiuto?
+  tipoTratta          TipoTratta?          @map("tipo_tratta")
+  /// Va sul FIR (campo 17).
+  annotazioni         String?              @db.Text
+  /// Solo per l'operatore: non finisce sul FIR.
+  noteInterne         String?              @map("note_interne") @db.Text
+  stato               StatoRitiro          @default(PROGRAMMATO)
+  /// Obbligatorio se NON_ESEGUITO o ANNULLATO, vietato altrimenti (CHECK).
+  motivo              String?              @db.VarChar(500)
+  serieId             String?              @map("serie_id") @db.Uuid
+  chiaveIdempotenza   String?              @map("chiave_idempotenza") @db.Uuid
+  versione            Int                  @default(1)
+  creatoDa            String               @map("creato_da") @db.Uuid
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  annullatoDa         String?              @map("annullato_da") @db.Uuid
+  annullatoIl         DateTime?            @map("annullato_il") @db.Timestamptz(3)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "ritiri_tenant_id_fkey")
+  produttore   Produttore    @relation(fields: [produttoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_produttore_fkey")
+  produttoreSede   SedeDitta @relation("RitiroProduttoreSede", fields: [produttoreSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_produttore_sede_fkey")
+  trasportatore Trasportatore @relation(fields: [trasportatoreId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_trasportatore_fkey")
+  destinatario Destinatario  @relation(fields: [destinatarioId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_fkey")
+  destinatarioSede SedeDitta @relation("RitiroDestinatarioSede", fields: [destinatarioSedeId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_destinatario_sede_fkey")
+  automezzo    Automezzo?    @relation(fields: [automezzoId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "ritiri_automezzo_fkey")
+  firs         FIR[]
+
+  @@unique([id, tenantId], map: "ritiri_id_tenant_id_key")
+  @@unique([tenantId, chiaveIdempotenza, dataPrevista], map: "ritiri_idempotenza_key")
+  @@index([tenantId, dataPrevista], map: "ritiri_tenant_data_idx")
+  @@index([tenantId, automezzoId, dataPrevista, ordineGiro], map: "ritiri_tenant_mezzo_data_idx")
+  @@index([tenantId, produttoreId], map: "ritiri_tenant_produttore_idx")
+  @@map("ritiri")
 }
 
 /// Mappatura per azienda fra una chiave di WasteFlow (codice IVA, conto dei ricavi, cliente, pagamento, registro) e il codice che il gestionale contabile si aspetta (4.4c, Task 29, §7.3). Una riga per (azienda, adattatore, tipo, chiave); il valore nullo non esiste: cancellare una voce la elimina. CHECK solo in migration: `mappature_export_contabile_tipo_ammesso`, `_adattatore_non_vuoto`, `_valore_non_vuoto`, `_chiave_non_vuota`, `_versione_positiva`.

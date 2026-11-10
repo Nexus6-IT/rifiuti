@@ -48,6 +48,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
   { key: 'pese', label: 'Pese (inserimento manuale)' },
+  { key: 'ritiri', label: 'Ritiri programmati' },
   { key: 'comunicazioni', label: 'Comunicazioni a consorzi e osservatori' },
 ]
 

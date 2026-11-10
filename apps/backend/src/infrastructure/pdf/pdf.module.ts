@@ -4,6 +4,7 @@ import { PdfController } from '../../api/pdf/pdf.controller'
 import { PrismaModule } from '../database/prisma.module'
 import { LoggerModule } from '../../core/logger/logger.module'
 import { MUDModule } from '../../application/mud/mud.module'
+import { ModelliStampaModule } from '../../api/modelli-stampa/modelli-stampa.module'
 import { SignaturesModule } from '../../application/signatures/signatures.module'
 
 /**
@@ -17,7 +18,7 @@ import { SignaturesModule } from '../../application/signatures/signatures.module
  * valore inventato dal controller PDF (unica fonte di verità).
  */
 @Module({
-  imports: [LoggerModule, PrismaModule, MUDModule, SignaturesModule],
+  imports: [LoggerModule, PrismaModule, MUDModule, SignaturesModule, ModelliStampaModule],
   controllers: [PdfController],
   providers: [PDFService],
   exports: [PDFService],

@@ -343,3 +343,33 @@ export class SedeNonValidaPerRuoloError extends DatiControparteNonValidiError {
     this.name = 'SedeNonValidaPerRuoloError'
   }
 }
+
+/** 4.7: il ritiro da cui nasce il FIR non esiste (o è di un altro tenant). */
+export class RitiroNonTrovatoError extends DomainError {
+  static readonly CODICE = 'RITIRO_NON_TROVATO'
+  constructor() {
+    super('Il ritiro di origine del FIR non esiste.')
+    this.name = 'RitiroNonTrovatoError'
+  }
+}
+
+/** 4.7: il ritiro non è più PROGRAMMATO (annullato o non eseguito): non genera FIR. */
+export class RitiroNonProgrammatoError extends DomainError {
+  static readonly CODICE = 'RITIRO_NON_PROGRAMMATO'
+  constructor() {
+    super('Il ritiro non è più programmato: non si può generare il FIR.')
+    this.name = 'RitiroNonProgrammatoError'
+  }
+}
+
+/**
+ * 4.7: esiste già un FIR non annullato per questo ritiro (indice unico parziale
+ * `firs_ritiro_attivo_key`). È una corsa prevista (due generazioni insieme), non un guasto.
+ */
+export class FirGiaGeneratoDalRitiroError extends DomainError {
+  static readonly CODICE = 'FIR_GIA_GENERATO_DAL_RITIRO'
+  constructor() {
+    super('Per questo ritiro esiste già un FIR non annullato.')
+    this.name = 'FirGiaGeneratoDalRitiroError'
+  }
+}

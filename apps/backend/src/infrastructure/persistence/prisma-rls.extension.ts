@@ -136,6 +136,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   'ContatoreFileFatturapa',
   // Mappature dell'export contabile (4.4c, Task 29).
   'MappaturaExportContabile',
+  // Ritiri programmati (4.7).
+  'Ritiro',
   // Comunicazioni a consorzi e osservatori (4.9a, T0).
   'ComunicazioneConsorzio',
   'ComunicazioneConsorzioMovimento',

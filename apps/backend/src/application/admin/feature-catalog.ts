@@ -25,6 +25,7 @@ export const FEATURE_KEYS = [
   'rentri',
   'reference_data',
   'pese',
+  'ritiri',
   'comunicazioni',
 ] as const
 
@@ -45,6 +46,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   rentri: 'Interoperabilità RENTRI',
   reference_data: 'Dati di riferimento (ISTAT/ATECO)',
   pese: 'Pese (inserimento manuale)',
+  ritiri: 'Ritiri programmati',
   comunicazioni: 'Comunicazioni a consorzi e osservatori',
 }
 
@@ -67,6 +69,7 @@ const PROFESSIONAL_FEATURES: FeatureKey[] = [
   'esg',
   'anomalie',
   'pese',
+  'ritiri',
 ]
 
 export const PLAN_FEATURES: Record<SubscriptionTier, FeatureKey[]> = {

@@ -49,7 +49,7 @@ DECLARE
   v_sola_lettura text[] := ARRAY['causali_registro'];
   v_solo_inserimento text[] := ARRAY['pesate', 'rettifiche_peso', 'allegati_pesa'];
   v_senza_cancellazione text[] :=
-    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa'];
+    ARRAY['accessi_pesa', 'collegamenti_accesso', 'automezzi', 'strumenti_pesa', 'ritiri'];
 BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE EXCEPTION 'lo script va eseguito da un superuser (serve per BYPASSRLS), non da %', current_user;

@@ -9,6 +9,7 @@ import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
+import { jsonConLimite } from './core/http/json-con-limite'
 import { opzioniSentry } from './core/monitoring/opzioni-sentry'
 
 // Error tracking Bugsink/Sentry — attivo solo se SENTRY_DSN è impostato.
@@ -22,6 +23,11 @@ async function bootstrap() {
   // rawBody: true è necessario per la verifica della firma webhook Stripe.
   // Il raw body è accessibile via req.rawBody (Buffer) nei controller.
   const app = await NestFactory.create(AppModule, { rawBody: true })
+
+  // Il logo di un modello di stampa (4.7) pesa fino a 256 KiB: in base64 sono ~350 KB, oltre il
+  // limite di 100 KB del parser JSON di default (413). Il limite piu' alto vale solo su questa
+  // rotta, montato PRIMA del parser globale (che salta le richieste gia' lette).
+  app.use(`/${process.env.API_PREFIX || 'api/v1'}/modelli-stampa`, jsonConLimite('600kb'))
 
   // Security: Helmet.js - Set various HTTP headers for security (T256)
   app.use(
@@ -77,6 +83,7 @@ async function bootstrap() {
       'X-Page-Size',
       'Content-Disposition',
       'X-Documenti-Saltati',
+      'X-Fir-Esclusi',
     ],
     maxAge: 3600, // Cache preflight requests for 1 hour
   })

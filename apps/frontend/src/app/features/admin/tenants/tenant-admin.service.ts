@@ -20,6 +20,7 @@ export type FeatureFlag =
   | 'rentri'
   | 'reference_data'
   | 'pese'
+  | 'ritiri'
   | 'comunicazioni'
 
 /** Stato dell'abbonamento del tenant. */

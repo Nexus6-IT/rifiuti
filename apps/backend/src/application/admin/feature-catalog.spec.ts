@@ -80,6 +80,33 @@ describe('calcolaDeltaModuli', () => {
   })
 })
 
+describe('feature-catalog: ritiri', () => {
+  it('ritiri nel piano PROFESSIONAL e ENTERPRISE, non in TRIAL', () => {
+    expect(PLAN_FEATURES[SubscriptionTier.PROFESSIONAL]).toContain('ritiri')
+    expect(PLAN_FEATURES[SubscriptionTier.ENTERPRISE]).toContain('ritiri')
+    expect(PLAN_FEATURES[SubscriptionTier.TRIAL]).not.toContain('ritiri')
+  })
+
+  it('è una chiave valida con etichetta in italiano', () => {
+    expect(FEATURE_KEYS).toContain('ritiri')
+    expect(isFeatureKey('ritiri')).toBe(true)
+    expect(FEATURE_LABELS.ritiri).toBe('Ritiri programmati')
+  })
+
+  it('un tenant TRIAL non la riceve, uno PROFESSIONAL sì, e si può togliere', () => {
+    expect(effectiveFeatures({ subscriptionTier: SubscriptionTier.TRIAL })).not.toContain('ritiri')
+    expect(effectiveFeatures({ subscriptionTier: SubscriptionTier.PROFESSIONAL })).toContain(
+      'ritiri'
+    )
+    expect(
+      effectiveFeatures({
+        subscriptionTier: SubscriptionTier.PROFESSIONAL,
+        featureTolte: ['ritiri'],
+      })
+    ).not.toContain('ritiri')
+  })
+})
+
 describe('feature-catalog: comunicazioni', () => {
   it('il modulo comunicazioni e solo in ENTERPRISE e si aggiunge ai piani via featureFlags', () => {
     expect(FEATURE_KEYS).toContain('comunicazioni')

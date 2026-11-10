@@ -1262,6 +1262,7 @@ export class LayoutComponent implements OnInit {
       feature: 'comunicazioni',
     },
     { label: 'Giacenze', route: '/giacenze', icon: 'pi pi-box', feature: 'giacenze' },
+    { label: 'Ritiri', route: '/ritiri', icon: 'pi pi-calendar-plus', feature: 'ritiri' },
     { label: 'Pese', route: '/pese', icon: 'pi pi-calculator', feature: 'pese' },
     { label: 'Contratti', route: '/contratti', icon: 'pi pi-briefcase', feature: 'contratti' },
     { label: 'Clienti', route: '/clienti', icon: 'pi pi-users', feature: 'contratti' },
@@ -1326,7 +1327,8 @@ export class LayoutComponent implements OnInit {
     label: string
     route: string
     icon: string
-    feature: string
+    /** Una chiave, oppure un elenco: la voce compare se è attivo almeno uno dei moduli. */
+    feature: string | string[]
     adminOnly?: boolean
     /** Voce visibile al solo SUPER_ADMIN (piu' restrittiva di `adminOnly`). */
     superAdminOnly?: boolean
@@ -1367,6 +1369,14 @@ export class LayoutComponent implements OnInit {
       feature: 'rentri',
     },
     {
+      // Modelli di stampa di FIR e distinta ritiri: scrittura solo ADMIN, serve fir o ritiri.
+      label: 'Modelli di stampa',
+      route: '/impostazioni/modelli-stampa',
+      icon: 'pi pi-print',
+      feature: ['fir', 'ritiri'],
+      adminOnly: true,
+    },
+    {
       // Manutenzione di tabelle di piattaforma: solo SUPER_ADMIN (2026-07-28).
       label: 'Dati di riferimento',
       route: '/reference-data',
@@ -1384,7 +1394,7 @@ export class LayoutComponent implements OnInit {
   readonly visibleImpostazioni = computed(() =>
     this.navImpostazioni.filter(
       item =>
-        this.ff.has(item.feature) &&
+        [item.feature].flat().some(f => this.ff.has(f)) &&
         (!item.adminOnly || this.canSeeAdminSection()) &&
         (!item.superAdminOnly || this.isSuperAdmin())
     )

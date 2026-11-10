@@ -79,7 +79,7 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   },
   'api/pdf/pdf.controller.ts': {
     motivo: 'Un solo controller per due moduli: il PDF del FIR (fir) e quello del MUD (mud)',
-    metodi: { downloadFIR: ['fir'], downloadMUD: ['mud'] },
+    metodi: { downloadFIR: ['fir'], downloadFIRSerie: ['fir'], downloadMUD: ['mud'] },
   },
   // cer: catalogo condiviso in lettura con FIR, registro e giacenze
   'api/cer/cer.controller.ts': {
@@ -141,6 +141,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   'api/clienti/registri-iva.controller.ts': CONTRATTI('Registri IVA'),
   'api/clienti/spese-accessorie.controller.ts': CONTRATTI('Spese accessorie'),
   'api/clienti/testi-fatturazione.controller.ts': CONTRATTI('Testi di fatturazione'),
+  'api/modelli-stampa/modelli-stampa.controller.ts': {
+    chiavi: ['fir', 'ritiri'],
+    motivo: 'Modelli di stampa di FIR e distinta dei ritiri',
+  },
   'api/listino/addebiti.controller.ts': CONTRATTI('Listino: addebiti'),
   'api/listino/allegati-elenco.controller.ts': CONTRATTI('Listino: allegati degli elenchi'),
   'api/listino/codici-iva.controller.ts': CONTRATTI('Listino: codici IVA'),
@@ -172,7 +176,12 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     chiavi: ['anomalie'],
     motivo: 'Anomalie e controlli di coerenza',
   },
-  'api/pese/pese.controller.ts': { chiavi: ['pese'], motivo: 'Pese in ingresso e uscita' },
+  'api/pese/pese.controller.ts': {
+    chiavi: ['pese'],
+    motivo: 'Pese in ingresso e uscita; elenco automezzi letto anche dai ritiri',
+    metodi: { elencaAutomezzi: ['pese', 'ritiri'] },
+  },
+  'api/ritiri/ritiri.controller.ts': { chiavi: ['ritiri'], motivo: 'Ritiri programmati' },
   'application/reference-data/reference-data.controller.ts': {
     chiavi: ['reference_data'],
     motivo: 'Dati di riferimento (SUPER_ADMIN)',

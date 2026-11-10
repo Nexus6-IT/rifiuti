@@ -6,6 +6,7 @@ import { PDFService } from '../../infrastructure/pdf/pdf.service'
 import { PrismaService } from '../../infrastructure/database/prisma.service'
 import { MUDGeneratorService } from '../../application/mud/mud-generator.service'
 import { VerifySignaturesUseCase } from '../../application/signatures/verify-signatures.use-case'
+import { ModelliStampaService } from '../../application/modelli-stampa/modelli-stampa.service'
 import { codificaBase45 } from '../../infrastructure/rentri/qr/base45'
 
 /**
@@ -37,6 +38,7 @@ describe('PdfController — QR del formulario su downloadFIR', () => {
   let prisma: { fIR: { findFirst: jest.Mock } }
   let mudGenerator: { generateMUDReport: jest.Mock }
   let verifySignaturesUseCase: { generateVerificationUrl: jest.Mock }
+  let modelli: { list: jest.Mock; getById: jest.Mock }
   let res: { set: jest.Mock; send: jest.Mock }
 
   const firVidimato = {
@@ -65,13 +67,15 @@ describe('PdfController — QR del formulario su downloadFIR', () => {
     verifySignaturesUseCase = {
       generateVerificationUrl: jest.fn().mockReturnValue('https://rifiuti.ignicraft.com/verify/x'),
     }
+    modelli = { list: jest.fn().mockResolvedValue([]), getById: jest.fn() }
     res = { set: jest.fn(), send: jest.fn() }
 
     controller = new PdfController(
       pdfService as unknown as PDFService,
       prisma as unknown as PrismaService,
       mudGenerator as unknown as MUDGeneratorService,
-      verifySignaturesUseCase as unknown as VerifySignaturesUseCase
+      verifySignaturesUseCase as unknown as VerifySignaturesUseCase,
+      modelli as unknown as ModelliStampaService
     )
   })
 
