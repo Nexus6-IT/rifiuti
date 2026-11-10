@@ -57,6 +57,20 @@ describe('LayoutComponent: voce di menu Pese', () => {
   })
 })
 
+describe('LayoutComponent: voce di menu Comunicazioni', () => {
+  it('punta a /comunicazioni ed è gated dalla feature comunicazioni', () => {
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent, HttpClientTestingModule],
+      providers: [provideRouter([]), MessageService],
+    })
+    const layout = TestBed.createComponent(LayoutComponent).componentInstance
+    const voce = layout.navMain.find(v => v.route === '/comunicazioni')
+    expect(voce).toEqual(
+      jasmine.objectContaining({ label: 'Comunicazioni', feature: 'comunicazioni' })
+    )
+  })
+})
+
 describe('LayoutComponent: voce di menu Clienti', () => {
   it('la voce Clienti sostituisce quella temporanea delle tabelle di fatturazione', () => {
     TestBed.configureTestingModule({
