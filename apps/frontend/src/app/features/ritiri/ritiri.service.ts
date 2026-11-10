@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http'
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable } from 'rxjs'
 import { environment } from '../../../environments/environment'
@@ -60,5 +60,13 @@ export class RitiriService {
   /** Bozze di FIR dai ritiri indicati (da 1 a 100); nessuna emissione e nessuna trasmissione. */
   generaFir(ritiroIds: string[]): Observable<RisultatoGenerazioneFir> {
     return this.http.post<RisultatoGenerazioneFir>(`${this.base}/genera-fir`, { ritiroIds })
+  }
+
+  /** PDF del FIR sul modello predefinito (P7 §4: `GET /pdf/fir/:id`); `Content-Disposition` per il nome. */
+  scaricaPdfFir(firId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${environment.apiUrl}/pdf/fir/${firId}`, {
+      responseType: 'blob',
+      observe: 'response',
+    })
   }
 }

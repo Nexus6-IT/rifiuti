@@ -76,4 +76,12 @@ describe('RitiriService', () => {
     expect(r.request.method).toBe('POST')
     expect(r.request.body).toEqual({ ritiroIds: ['a', 'b'] })
   })
+
+  it('scaricaPdfFir chiede il PDF del FIR come blob', () => {
+    service.scaricaPdfFir('f1').subscribe()
+    const r = http.expectOne(`${environment.apiUrl}/pdf/fir/f1`)
+    expect(r.request.method).toBe('GET')
+    expect(r.request.responseType).toBe('blob')
+    r.flush(new Blob(['x']))
+  })
 })
