@@ -4289,7 +4289,6 @@ model ContatoreFileFatturapa {
   @@map("contatori_file_fatturapa")
 }
 
-/// Mappatura per azienda fra una chiave di WasteFlow (codice IVA, conto dei ricavi, cliente, pagamento, registro) e il codice che il gestionale contabile si aspetta (4.4c, Task 29, §7.3). Una riga per (azienda, adattatore, tipo, chiave); il valore nullo non esiste: cancellare una voce la elimina. CHECK solo in migration: `mappature_export_contabile_tipo_ammesso`, `_adattatore_non_vuoto`, `_valore_non_vuoto`, `_chiave_non_vuota`, `_versione_positiva`.
 /// 4.7: stato di un ritiro programmato. "Da generare" / "FIR generato" non sono stati: si ricavano
 /// dal FIR collegato (`firs.ritiro_id`).
 enum StatoRitiro {
@@ -4375,6 +4374,7 @@ model Ritiro {
   @@map("ritiri")
 }
 
+/// Mappatura per azienda fra una chiave di WasteFlow (codice IVA, conto dei ricavi, cliente, pagamento, registro) e il codice che il gestionale contabile si aspetta (4.4c, Task 29, §7.3). Una riga per (azienda, adattatore, tipo, chiave); il valore nullo non esiste: cancellare una voce la elimina. CHECK solo in migration: `mappature_export_contabile_tipo_ammesso`, `_adattatore_non_vuoto`, `_valore_non_vuoto`, `_chiave_non_vuota`, `_versione_positiva`.
 model MappaturaExportContabile {
   id              String   @id(map: "mappature_export_contabile_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String   @map("tenant_id") @db.Uuid

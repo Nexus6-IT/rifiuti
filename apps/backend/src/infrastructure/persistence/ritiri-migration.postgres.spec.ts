@@ -7,6 +7,8 @@
  * le prove di RLS e di privilegi girano COME `wasteflow_app` nel contesto dell'azienda. La pulizia
  * cancella SOLO le aziende create qui, per id esatto (la cascata da `tenants` porta via il resto).
  */
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { PrismaClient } from '@prisma/client'
 import { clientComeRuolo } from '../database/client-come-ruolo'
 import { creaDittaConRuolo, partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
@@ -260,11 +262,88 @@ describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
       await expect(fir(a, r, 'CANCELLED')).resolves.toEqual(expect.any(String))
     })
 
-    it('chiave esterna composta: il ritiro di un altro tenant e rifiutato', async () => {
+    it('chiave esterna composta: il ritiro di un altro tenant e rifiutato dalla FK (23503), non dal trigger', async () => {
       const a = await azienda()
       const b = await azienda()
       const rb = await ritiro(b)
-      await expect(fir(a, rb)).rejects.toThrow()
+      const errore = await fir(a, rb).catch((e: unknown) => e)
+      expect(errore).toMatchObject({
+        code: 'P2003',
+        meta: { field_name: expect.stringMatching(/firs_ritiro_fkey/) },
+      })
+      expect(String(errore)).not.toMatch(/RITIRO_NON_PROGRAMMATO/)
+      // Anche un ritiro inesistente: FK, non trigger.
+      const inesistente = fir(a, '00000000-0000-4000-8000-000000000000')
+      await expect(inesistente).rejects.toThrow(/firs_ritiro_fkey/)
+    })
+
+    it('la FK firs_ritiro_fkey copre (ritiro_id, tenant_id) verso ritiri', async () => {
+      const r = await owner.$queryRawUnsafe<{ colonne: string[]; tabella: string }[]>(
+        `SELECT (SELECT array_agg(attname::text ORDER BY k.ord) FROM unnest(conkey) WITH ORDINALITY k(n, ord)
+                   JOIN pg_attribute at ON at.attrelid = conrelid AND at.attnum = k.n) AS colonne,
+                confrelid::regclass::text AS tabella
+           FROM pg_constraint WHERE conname = 'firs_ritiro_fkey'`
+      )
+      expect(r).toEqual([{ colonne: ['ritiro_id', 'tenant_id'], tabella: 'ritiri' }])
+    })
+
+    it('trigger: SQLSTATE dedicati WR001 (non programmato) e WR002 (ritiro_id immutabile)', async () => {
+      const a = await azienda()
+      const annullato = await ritiro(a, { stato: 'ANNULLATO', motivo: 'x' })
+      const r1 = await ritiro(a)
+      const f = await fir(a, r1)
+      await expect(fir(a, annullato)).rejects.toThrow(/code: "WR001"/)
+      await expect(
+        owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = NULL WHERE id = '${f}'`)
+      ).rejects.toThrow(/WR002/)
+    })
+
+    it("trigger: l'annullo gia' commesso prima dell'INSERT del FIR fa fallire l'INSERT", async () => {
+      const a = await azienda()
+      const r = await ritiro(a)
+      await owner.$transaction(async tx => {
+        await tx.$queryRawUnsafe(`SELECT id FROM ritiri WHERE id = '${r}' FOR UPDATE`)
+        await tx.$executeRawUnsafe(
+          `UPDATE ritiri SET stato = 'ANNULLATO', motivo = 'cliente', updated_at = now() WHERE id = '${r}'`
+        )
+      })
+      await expect(fir(a, r)).rejects.toThrow(/RITIRO_NON_PROGRAMMATO/)
+    })
+
+    it('INSERT del FIR con ritiro come wasteflow_app: privilegi e RLS del FOR SHARE', async () => {
+      const a = await azienda()
+      const b = await azienda()
+      const r = await ritiro(a)
+      const ins = (t: string, ritiroId: string) =>
+        comeApp(t, tx =>
+          tx.fIR.create({
+            data: {
+              tenantId: t,
+              producerUserId: a.utente,
+              ritiroId,
+              producerPartitaIva: '12345678903',
+              producerName: 'P',
+              producerAddress: 'V',
+              carrierPartitaIva: '12345678903',
+              carrierName: 'T',
+              carrierVehiclePlate: 'AB123CD',
+              receiverPartitaIva: '12345678903',
+              receiverName: 'D',
+              receiverAddress: 'V',
+              cerCode: '20 03 01',
+              wasteDescription: 'x',
+              wasteCategory: 'x',
+              quantity: 1,
+              transportDate: new Date(),
+            },
+            select: { id: true },
+          })
+        )
+      await expect(ins(a.t, r)).resolves.toEqual({ id: expect.any(String) })
+      // Un secondo FIR attivo: indice parziale (23505) anche per il ruolo applicativo.
+      await expect(ins(a.t, r)).rejects.toMatchObject({ code: 'P2002' })
+      // Dal contesto di un'altra azienda il ritiro non si vede: nessun errore del trigger, ci pensa la FK.
+      await expect(ins(b.t, r)).rejects.toThrow()
     })
 
     it('trigger: INSERT su un ritiro ANNULLATO o NON_ESEGUITO fallisce con RITIRO_NON_PROGRAMMATO', async () => {
@@ -283,13 +362,13 @@ describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
       const senza = await fir(a, null)
       await expect(
         owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = '${r2}' WHERE id = '${conOrigine}'`)
-      ).rejects.toThrow(/ritiro di origine/)
+      ).rejects.toThrow(/RITIRO_ID_IMMUTABILE/)
       await expect(
         owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = NULL WHERE id = '${conOrigine}'`)
-      ).rejects.toThrow(/ritiro di origine/)
+      ).rejects.toThrow(/RITIRO_ID_IMMUTABILE/)
       await expect(
         owner.$executeRawUnsafe(`UPDATE firs SET ritiro_id = '${r1}' WHERE id = '${senza}'`)
-      ).rejects.toThrow(/ritiro di origine/)
+      ).rejects.toThrow(/RITIRO_ID_IMMUTABILE/)
       // Gli altri UPDATE del FIR non sono toccati.
       await expect(
         owner.$executeRawUnsafe(`UPDATE firs SET waste_notes = 'ok' WHERE id = '${conOrigine}'`)
@@ -390,6 +469,54 @@ describe('Ritiri e modelli di stampa: schema (Postgres reale)', () => {
       await expect(modello(a.t, { copie: 0 })).rejects.toThrow(/company_templates_copie_ammesse/)
       await expect(modello(a.t, { copie: 5 })).rejects.toThrow(/company_templates_copie_ammesse/)
       await expect(modello(a.t, { copie: 4 })).resolves.toBe(1)
+    })
+
+    it('la deduplica della migration lascia un solo predefinito (il piu recente, a parita il maggior id)', async () => {
+      const a = await azienda()
+      const sql = readFileSync(
+        join(__dirname, '../../../prisma/migrations/20261110100000_ritiri_e_modelli/migration.sql'),
+        'utf8'
+      )
+      const dedup = /UPDATE "company_templates" t SET[\s\S]*?\(t\."updated_at", t\."id"\)\);/.exec(
+        sql
+      )?.[0]
+      expect(dedup).toBeDefined()
+      const ID = [
+        'a0000000-0000-4000-8000-000000000001',
+        'a0000000-0000-4000-8000-000000000002',
+        'a0000000-0000-4000-8000-000000000003',
+      ]
+      class Rollback extends Error {}
+      let esito: { id: string; is_default: boolean }[] = []
+      await owner
+        .$transaction(async tx => {
+          await tx.$executeRawUnsafe(`DROP INDEX "company_templates_default_ambito_key"`)
+          const ins = (id: string, ts: string) =>
+            tx.$executeRawUnsafe(
+              `INSERT INTO company_templates (id, tenant_id, name, is_default, updated_at) VALUES ('${id}', '${a.t}', 'M', true, '${ts}')`
+            )
+          await ins(ID[0], '2026-11-01T10:00:00Z')
+          await ins(ID[1], '2026-11-02T10:00:00Z')
+          await ins(ID[2], '2026-11-02T10:00:00Z')
+          await tx.$executeRawUnsafe(dedup as string)
+          esito = await tx.$queryRawUnsafe(
+            `SELECT id::text AS id, is_default FROM company_templates WHERE tenant_id = '${a.t}' ORDER BY id`
+          )
+          throw new Rollback()
+        })
+        .catch((e: unknown) => {
+          if (!(e instanceof Rollback)) throw e
+        })
+      expect(esito).toEqual([
+        { id: ID[0], is_default: false },
+        { id: ID[1], is_default: false },
+        { id: ID[2], is_default: true },
+      ])
+      // Rollback completo: l'indice e' tornato.
+      const idx = await owner.$queryRawUnsafe<unknown[]>(
+        `SELECT 1 FROM pg_indexes WHERE indexname = 'company_templates_default_ambito_key'`
+      )
+      expect(idx).toHaveLength(1)
     })
 
     it('un solo modello predefinito per ambito e azienda', async () => {
