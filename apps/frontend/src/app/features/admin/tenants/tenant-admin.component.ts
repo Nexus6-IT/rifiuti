@@ -48,6 +48,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
   { key: 'pese', label: 'Pese (inserimento manuale)' },
+  { key: 'comunicazioni', label: 'Comunicazioni a consorzi e osservatori' },
 ]
 
 /** Feature del piano: allineate a `PLAN_FEATURES` del backend (feature-catalog.ts). */
