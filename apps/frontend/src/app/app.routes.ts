@@ -130,6 +130,16 @@ export const routes: Routes = [
           ),
       },
       {
+        // Comunicazioni ai consorzi (O.R.SO., 4.9a): lettura per tutti, scrittura ADMIN/OPERATOR (backend)
+        path: 'comunicazioni',
+        canActivate: [moduloGuard],
+        data: { modulo: 'comunicazioni' },
+        loadComponent: () =>
+          import('./features/comunicazioni/comunicazioni.component').then(
+            m => m.ComunicazioniComponent
+          ),
+      },
+      {
         path: 'mud',
         canActivate: [moduloGuard],
         data: { modulo: 'mud' },

@@ -38,6 +38,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       "ambito dell'abbinamento: teste vigenti con la loro radice; le righe di catene non vigenti risultano INCOERENTI",
   },
+  'application/comunicazioni/lettore-movimenti-orso.ts': {
+    scelta: 'vigenti',
+    motivo:
+      'movimenti e giacenze a fine mese della comunicazione O.R.SO.: contano solo le righe vigenti (rettifiche e annullamenti)',
+  },
   'application/anomaly/anomaly-detection.service.ts': {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',
