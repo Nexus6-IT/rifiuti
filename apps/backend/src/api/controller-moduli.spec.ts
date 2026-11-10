@@ -114,6 +114,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   },
   // mud
   'api/mud/mud.controller.ts': { chiavi: ['mud'], motivo: 'Dichiarazione MUD' },
+  'api/comunicazioni/comunicazioni.controller.ts': {
+    chiavi: ['comunicazioni'],
+    motivo: 'Comunicazioni ai consorzi (O.R.SO.)',
+  },
   // giacenze
   'application/giacenze/giacenze.controller.ts': {
     chiavi: ['giacenze'],
