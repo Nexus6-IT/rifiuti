@@ -287,6 +287,8 @@ export interface CreateFIRProps {
    * contratto RENTRI. Stessa nota di opzionalità di `provenienza` sopra.
    */
   tipoTrattaPrincipale?: TipoTratta
+  /** 4.7: ritiro programmato da cui nasce la bozza (campo C9). Immutabile. */
+  ritiroId?: string
 }
 
 // Domain Events
@@ -502,7 +504,9 @@ export class FIR extends AggregateRoot {
      */
     private _firmePresenti: boolean = false,
     /** Stato DB AWAITING_PRODUCER (in attesa della firma del produttore): valorizzato da `toDomain`. */
-    private _inAttesaFirmaProduttore: boolean = false
+    private _inAttesaFirmaProduttore: boolean = false,
+    /** 4.7: ritiro di origine; non entra nel documento firmato (che lo costruisce il FIR crittografico). */
+    private readonly _ritiroId: string | null = null
   ) {
     super()
   }
@@ -558,7 +562,11 @@ export class FIR extends AggregateRoot {
       props.provenienza ?? null,
       props.tipoTrattaPrincipale ?? null,
       null, // rentriTransazioneInAttesa
-      null // rentriSyncAvviatoAt
+      null, // rentriSyncAvviatoAt
+      0, // versione
+      false, // firmePresenti
+      false, // inAttesaFirmaProduttore
+      props.ritiroId ?? null
     )
   }
 
@@ -1401,6 +1409,11 @@ export class FIR extends AggregateRoot {
    */
   get trasportatoriAggiuntivi(): TrattaTrasportoFIR[] {
     return this._trasportatoriAggiuntivi
+  }
+
+  /** 4.7: ritiro programmato di origine, o `null`. */
+  get ritiroId(): string | null {
+    return this._ritiroId
   }
 
   /** Campo 17 FIR (DM 59/2023): annotazioni libere. */
