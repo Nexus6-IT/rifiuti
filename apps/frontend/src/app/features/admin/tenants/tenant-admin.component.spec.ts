@@ -164,6 +164,53 @@ describe('TenantAdminComponent - Numero REA', () => {
     expect(dto.atecoCode).toBeNull()
   })
 
+  it('svuotando codice fiscale, PEC, telefono e civico in modifica invia null; i campi obbligatori restano stringhe', async () => {
+    await apriDialog(
+      tenant({ codiceFiscale: '12345678901', pec: 'a@pec.it', telefono: '06123', civico: '5' })
+    )
+    component.form.codiceFiscale = ''
+    component.form.pec = '  '
+    component.form.telefono = ''
+    component.form.civico = ''
+
+    component.save()
+
+    const dto = service.update.calls.mostRecent().args[1]
+    expect(dto.codiceFiscale).toBeNull()
+    expect(dto.pec).toBeNull()
+    expect(dto.telefono).toBeNull()
+    expect(dto.civico).toBeNull()
+    expect(typeof dto.ragioneSociale).toBe('string')
+    expect(typeof dto.address).toBe('string')
+    expect(typeof dto.city).toBe('string')
+    expect(typeof dto.province).toBe('string')
+    expect(typeof dto.postalCode).toBe('string')
+  })
+
+  it('in modifica un campo facoltativo non toccato resta invariato e country svuotato non va mai a null', async () => {
+    await apriDialog(tenant({ telefono: '06123' }))
+    component.form.country = ''
+
+    component.save()
+
+    const dto = service.update.calls.mostRecent().args[1]
+    expect(dto.telefono).toBe('06123')
+    expect(dto.country).toBeUndefined()
+  })
+
+  it('in creazione i campi facoltativi vuoti sono omessi, non null', async () => {
+    await apriDialog()
+    compilaObbligatori()
+
+    component.save()
+
+    const dto = service.create.calls.mostRecent().args[0]
+    expect(dto.codiceFiscale).toBeUndefined()
+    expect(dto.pec).toBeUndefined()
+    expect(dto.telefono).toBeUndefined()
+    expect(dto.civico).toBeUndefined()
+  })
+
   it('il suggerimento del REA dice solo cifre, senza sigla', async () => {
     const input = await apriDialog()
 

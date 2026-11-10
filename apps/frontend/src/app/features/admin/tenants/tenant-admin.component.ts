@@ -1172,6 +1172,11 @@ export class TenantAdminComponent implements OnInit {
       // In modifica un campo svuotato deve azzerare il valore (null), non essere omesso.
       atecoCode: this.form.atecoCode?.trim() || null,
       reaNumber: this.form.reaNumber?.trim() || null,
+      codiceFiscale: this.form.codiceFiscale?.trim() || null,
+      pec: this.form.pec?.trim() || null,
+      telefono: this.form.telefono?.trim() || null,
+      civico: this.form.civico?.trim() || null,
+      // `country` NON si svuota: la colonna non e' nullable (default IT), vuoto = invariato.
     }
   }
 
