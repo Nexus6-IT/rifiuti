@@ -16,6 +16,8 @@ describe('ExportService.esporta XML_ZIP: bozze scelte fra i saltati', () => {
         const testo = strings.join('?')
         interrogazioni.push(testo)
         if (testo.includes('current_setting')) return [{ v: 'on' }]
+        if (testo.includes('AS stato'))
+          return opzioni.righe.map(id => ({ id, stato: 'DEFINITIVO' }))
         if (testo.includes('AS n ')) return [{ n: opzioni.bozze }]
         if (testo.includes('AS totale')) return [{ totale: opzioni.righe.length }]
         return opzioni.righe.map(id => ({ id, numero: 1, anno: 2026, registroCodice: 'A' }))
@@ -59,8 +61,9 @@ describe('ExportService.esporta XML_ZIP: bozze scelte fra i saltati', () => {
     const { servizio, tx } = crea({ bozze: 5, righe: [idDefinitivo] })
     const r = await esporta(servizio)
     expect(r.saltati).toBe(1)
-    // Solo conteggio e righe: nessuna lettura delle bozze.
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2)
+    // Nessuna lettura delle bozze (la query del loro conteggio ha `AS n`).
+    const testi = tx.$queryRaw.mock.calls.map(([strings]) => strings.join('?'))
+    expect(testi.some(t => t.includes('AS n '))).toBe(false)
   })
 
   it('con sole bozze scelte (nessun esportabile): 400 NESSUN_DOCUMENTO_DA_ESPORTARE, zip non chiamato', async () => {

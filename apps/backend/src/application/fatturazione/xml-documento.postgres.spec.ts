@@ -549,6 +549,24 @@ describe('XmlDocumentoService — Postgres reale, ruolo wasteflow_app', () => {
     ).toMatchObject({ status: 400, codice: 'NESSUN_DOCUMENTO_DA_ESPORTARE' })
   }, 90_000)
 
+  it('ExportService XML_ZIP: una selezione di soli ANNULLATI risponde 400 NESSUN_DOCUMENTO_DA_ESPORTARE (nessuno zip vuoto)', async () => {
+    const az = await b.t19.azienda()
+    const docs = await b.definitivi(az, 2)
+    // Si annulla solo l'ultimo numero emesso: dal piu' recente.
+    await b.annullaCorrente(az, docs[1].id)
+    await b.annullaCorrente(az, docs[0].id)
+    expect(
+      await esito(
+        esportatore.esporta(az.tenantId, az.utenteId, {
+          formato: 'XML_ZIP',
+          selezione: { documentoIds: docs.map(d => d.id) },
+          confermaEmissione: true,
+        })
+      )
+    ).toMatchObject({ status: 400, codice: 'NESSUN_DOCUMENTO_DA_ESPORTARE' })
+    expect(await contatore(az.tenantId)).toBe(0)
+  }, 90_000)
+
   // -------------------------------------------------------------------------------------------
   // Concorrenza: annullo, contatore
   // -------------------------------------------------------------------------------------------

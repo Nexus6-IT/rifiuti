@@ -268,19 +268,23 @@ export class ExportService {
   ): Promise<EsitoExport> {
     const selezione = b.selezione ?? {}
     validaSelezione(selezione, TETTO_DOCUMENTI_XML_ZIP)
-    const { ids, bozzeScelte } = await nelContestoTenant(tenantId, () =>
+    const { ids, bozzeScelte, definitivi } = await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(
         async tx => {
           const letta = await this.seleziona(tx, tenantId, selezione, {
             tetto: TETTO_DOCUMENTI_XML_ZIP,
             senzaBozze: true,
           })
-          return { ids: letta.documenti.map(d => d.id), bozzeScelte: letta.bozzeScelte }
+          const ids = letta.documenti.map(d => d.id)
+          // Stati letti nella stessa transazione: una selezione di soli annullati non e' un export.
+          const stati = await this.statiDocumenti(tx, tenantId, ids)
+          const definitivi = ids.filter(id => stati.get(id) === 'DEFINITIVO').length
+          return { ids, bozzeScelte: letta.bozzeScelte, definitivi }
         },
         { timeout: 60_000, isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
       )
     )
-    if (ids.length === 0) {
+    if (definitivi === 0) {
       throw new BadRequestException({
         error: 'NESSUN_DOCUMENTO_DA_ESPORTARE',
         message:
