@@ -8,7 +8,7 @@
  * Stile «Libro mastro» (giro 2): token del tema, Geist, griglia 8pt, WCAG 2.1 AA.
  */
 
-import { Component, DestroyRef, OnInit, inject, signal, computed } from '@angular/core'
+import { Component, DestroyRef, Injector, OnInit, inject, signal, computed } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { EMPTY, Subject, Subscription, combineLatest, merge } from 'rxjs'
 import {
@@ -124,6 +124,9 @@ import {
 } from '../legami/blocco-fatturazione.component'
 import { DatiLegameRegistrazione } from '../legami/legami.model'
 import { EsitoRiquadro, RiquadroLegameComponent } from '../legami/riquadro-legame.component'
+import { MarcaturaMovimentoComponent } from '../comunicazioni/marcatura-movimento.component'
+import { ConsorziService } from '../comunicazioni/consorzi.service'
+import { MarcaturaMovimento, etichetteMovimento } from '../comunicazioni/consorzi.model'
 
 interface DropdownOption<T> {
   label: string
@@ -175,6 +178,7 @@ function fineGiornata(d: Date): Date {
     CorreggiMovimentoDialogComponent,
     BloccoFatturazioneComponent,
     RiquadroLegameComponent,
+    MarcaturaMovimentoComponent,
   ],
   providers: [DatePipe],
   template: `
@@ -467,6 +471,12 @@ function fineGiornata(d: Date): Date {
                 <td class="cell-nowrap c-data">{{ m.movementDate | date: 'dd/MM/yyyy' }}</td>
                 <td class="c-cer">
                   <span class="cell-mono">{{ m.cerCode }}</span>
+                  <span
+                    *ngFor="let e of etichetteConsorzi(m.id)"
+                    class="etichetta-consorzio"
+                    [attr.data-testid]="'registro-consorzio-' + m.id"
+                    >{{ e.testo }}</span
+                  >
                 </td>
                 <td class="c-causale">
                   <span class="causale-label">{{ causaleLabel(m) }}</span>
@@ -1170,6 +1180,12 @@ function fineGiornata(d: Date): Date {
             {{ d.unit }} · {{ causaleLabel(d) }}
             <span *ngIf="d.counterpartName"> · {{ d.counterpartName }}</span>
           </section>
+          <app-marcatura-movimento
+            *ngIf="ff.has('comunicazioni')"
+            [movimentoId]="d.id"
+            [marcatura]="consorziMovimenti()[d.id] ?? null"
+            (cambiato)="aggiornaConsorzi(d.id, $event)"
+          ></app-marcatura-movimento>
           <ng-container *ngIf="ff.has('contratti')">
             <app-riquadro-legame
               [movimentoId]="d.id"
@@ -1218,6 +1234,18 @@ function fineGiornata(d: Date): Date {
          non selezionato = outlined). Evita il SelectButton di PrimeNG, il cui
          pseudo-elemento ::before (tema Aura) copre lo sfondo del segmento
          attivo rendendolo bianco su bianco con le override globali del DS. */
+      .etichetta-consorzio {
+        display: inline-block;
+        margin-left: var(--spacing-sm, 0.5rem);
+        padding: 0 var(--spacing-sm, 0.5rem);
+        border: 1px solid var(--brand-primary-dark, currentColor);
+        border-radius: var(--radius-md, 0.375rem);
+        background: var(--brand-primary-50, transparent);
+        color: var(--text-primary, inherit);
+        font-size: var(--font-size-xs, 0.75rem);
+        line-height: 1.25rem;
+        white-space: nowrap;
+      }
       .type-toggle {
         display: flex;
         gap: var(--spacing-sm);
@@ -1627,6 +1655,9 @@ export class RegistroComponent implements OnInit {
   // ─── Stato ────────────────────────────────────────────────────────────────
 
   readonly movimenti = signal<Movimento[]>([])
+  /** Consorzi dei movimenti della pagina (modulo `comunicazioni`), per l'etichetta nella riga. */
+  readonly consorziMovimenti = signal<Record<string, MarcaturaMovimento>>({})
+  private readonly injector = inject(Injector)
   readonly paginazione = signal({ total: 0, page: 1, limit: 20, totalPages: 0 })
   readonly loading = signal(false)
   readonly saving = signal(false)
@@ -2757,6 +2788,7 @@ export class RegistroComponent implements OnInit {
       .subscribe({
         next: (data: PaginatedMovimenti) => {
           this.movimenti.set(data.items)
+          this.caricaConsorzi(data.items)
           this.rentriSelezionati.set([])
           this.paginazione.set({
             total: data.total,
@@ -2771,6 +2803,37 @@ export class RegistroComponent implements OnInit {
           this.toast.error('Errore nel caricamento del registro')
           this.loading.set(false)
         },
+      })
+  }
+
+  /** Etichette dei consorzi di un movimento (vuote se il modulo non c'e' o nessuna regola lo prende). */
+  etichetteConsorzi(movimentoId: string) {
+    return etichetteMovimento(this.consorziMovimenti()[movimentoId])
+  }
+
+  aggiornaConsorzi(movimentoId: string, m: MarcaturaMovimento): void {
+    this.consorziMovimenti.update(c => ({ ...c, [movimentoId]: m }))
+  }
+
+  /**
+   * Legge in un colpo i consorzi dei movimenti della pagina. Solo col modulo `comunicazioni`:
+   * senza, l'API risponde 403. Un errore non blocca il registro (le etichette mancano e basta).
+   */
+  private caricaConsorzi(items: Movimento[]): void {
+    this.consorziMovimenti.set({})
+    if (!this.ff.has('comunicazioni') || items.length === 0) return
+    let servizio: ConsorziService
+    try {
+      servizio = this.injector.get(ConsorziService)
+    } catch {
+      return
+    }
+    servizio
+      .consorziDeiMovimenti(items.slice(0, 200).map(m => m.id))
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: r => this.consorziMovimenti.set(r),
+        error: () => undefined,
       })
   }
 
