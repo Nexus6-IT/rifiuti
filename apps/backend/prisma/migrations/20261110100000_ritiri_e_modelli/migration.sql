@@ -18,7 +18,7 @@
 -- la policy. Gli indici parziali e i trigger si scrivono solo in SQL (Prisma non conosce il WHERE).
 --
 -- Ripristino a mano: DROP TRIGGER firs_ritiro_controlli ON firs; DROP FUNCTION firs_ritiro_controlli();
--- DROP INDEX firs_ritiro_attivo_key, firs_tenant_ritiro_idx, company_templates_default_ambito_key;
+-- (la deduplica di `is_default` in `company_templates` non si annulla.) DROP INDEX firs_ritiro_attivo_key, firs_tenant_ritiro_idx, company_templates_default_ambito_key;
 -- ALTER TABLE firs DROP CONSTRAINT firs_ritiro_fkey; ALTER TABLE firs DROP COLUMN ritiro_id;
 -- DROP TABLE ritiri; ALTER TABLE company_templates DROP COLUMN ambito, DROP COLUMN copie,
 -- DROP COLUMN versione; DROP TYPE stato_ritiro, fascia_ritiro, ambito_modello_stampa; i tre
@@ -114,6 +114,10 @@ CREATE INDEX "firs_tenant_ritiro_idx" ON "firs"("tenant_id", "ritiro_id");
 CREATE UNIQUE INDEX "firs_ritiro_attivo_key" ON "firs"("tenant_id", "ritiro_id")
   WHERE "ritiro_id" IS NOT NULL AND "status" <> 'CANCELLED';
 
+-- SQLSTATE dedicati del trigger (il codice chiamante non deve dipendere dal testo):
+--   WR001 = RITIRO_NON_PROGRAMMATO (INSERT di un FIR su un ritiro esistente non PROGRAMMATO);
+--   WR002 = RITIRO_ID_IMMUTABILE (UPDATE di firs.ritiro_id).
+-- Un ritiro inesistente nel tenant non e' un errore del trigger: lo segnala la FK (23503).
 CREATE FUNCTION firs_ritiro_controlli() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE
   v_stato "stato_ritiro";
@@ -125,14 +129,15 @@ BEGIN
       -- nasce e l'annullo risponde 409).
       SELECT "stato" INTO v_stato FROM "ritiri"
         WHERE "id" = NEW."ritiro_id" AND "tenant_id" = NEW."tenant_id" FOR SHARE;
-      IF v_stato IS DISTINCT FROM 'PROGRAMMATO' THEN
-        RAISE EXCEPTION 'RITIRO_NON_PROGRAMMATO';
+      -- Ritiro inesistente (o di un altro tenant): nessun errore qui, ci pensa la FK composta (23503).
+      IF FOUND AND v_stato <> 'PROGRAMMATO' THEN
+        RAISE EXCEPTION 'RITIRO_NON_PROGRAMMATO' USING ERRCODE = 'WR001';
       END IF;
     END IF;
     RETURN NEW;
   END IF;
   IF NEW."ritiro_id" IS DISTINCT FROM OLD."ritiro_id" THEN
-    RAISE EXCEPTION 'firs: il ritiro di origine non si modifica';
+    RAISE EXCEPTION 'RITIRO_ID_IMMUTABILE' USING ERRCODE = 'WR002';
   END IF;
   RETURN NEW;
 END;
