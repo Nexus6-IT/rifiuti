@@ -208,7 +208,9 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
   'api/rentri/rentri-sync.controller.ts': { chiavi: ['rentri'], motivo: 'RENTRI: trasmissioni' },
   'api/rentri/rentri-unita-locale.controller.ts': {
     chiavi: ['rentri'],
-    motivo: 'RENTRI: unita locali',
+    motivo:
+      'RENTRI: unita locali; l elenco e una lettura condivisa con le comunicazioni (scelta sede)',
+    metodi: { list: ['rentri', 'comunicazioni'] },
   },
 }
 

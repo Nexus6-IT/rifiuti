@@ -51,7 +51,7 @@ function codiceErrore(err: unknown): string | undefined {
   ],
   providers: [ConfirmationService, DatePipe],
   template: `
-    <div class="page">
+    <div class="page pagina-lavoro">
       <p-confirmDialog></p-confirmDialog>
 
       <header class="page-header">
@@ -156,31 +156,36 @@ function codiceErrore(err: unknown): string | undefined {
           <p *ngIf="righe().length === 0" class="text-secondary" data-testid="comunicazioni-vuota">
             Nessun movimento nell'anno per questa sede.
           </p>
-          <div class="table-scroll" *ngIf="righe().length > 0">
-            <table class="wf-table" data-testid="comunicazioni-tabella">
-              <thead>
+          <div class="table-card" *ngIf="righe().length > 0">
+            <p-table
+              [value]="righe()"
+              styleClass="p-datatable-sm"
+              aria-label="Anteprima O.R.SO. per mese e CER"
+              data-testid="comunicazioni-tabella"
+            >
+              <ng-template pTemplate="header">
                 <tr>
-                  <th>Mese</th>
-                  <th>Tipo</th>
-                  <th>CER</th>
-                  <th>Descrizione</th>
-                  <th>Operazioni</th>
-                  <th class="num-col">Quantità</th>
-                  <th>Dettaglio</th>
+                  <th scope="col">Mese</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">CER</th>
+                  <th scope="col">Descrizione</th>
+                  <th scope="col">Operazioni</th>
+                  <th scope="col" class="num-col">Quantità</th>
+                  <th scope="col">Dettaglio</th>
                 </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let r of righe()" data-testid="comunicazioni-riga">
+              </ng-template>
+              <ng-template pTemplate="body" let-r>
+                <tr data-testid="comunicazioni-riga">
                   <td>{{ r.meseNome }}</td>
                   <td>{{ r.direzione }}</td>
-                  <td class="mono">{{ r.cer }}</td>
+                  <td class="cell-mono">{{ r.cer }}</td>
                   <td>{{ r.descrizione }}</td>
                   <td>{{ r.operazioni }}</td>
                   <td class="num-col">{{ r.quantita }}</td>
                   <td class="text-secondary">{{ r.dettaglio }}</td>
                 </tr>
-              </tbody>
-            </table>
+              </ng-template>
+            </p-table>
           </div>
         </section>
       </ng-container>
@@ -190,19 +195,23 @@ function codiceErrore(err: unknown): string | undefined {
         <p *ngIf="storico().length === 0" class="text-secondary">
           Nessun file generato per questo anno.
         </p>
-        <div class="table-scroll" *ngIf="storico().length > 0">
-          <table class="wf-table">
-            <thead>
+        <div class="table-card" *ngIf="storico().length > 0">
+          <p-table
+            [value]="storico()"
+            styleClass="p-datatable-sm"
+            aria-label="Storico comunicazioni"
+          >
+            <ng-template pTemplate="header">
               <tr>
-                <th>Generata il</th>
-                <th>Versione</th>
-                <th>Stato</th>
-                <th>File</th>
-                <th class="azioni-col">Azioni</th>
+                <th scope="col">Generata il</th>
+                <th scope="col">Versione</th>
+                <th scope="col">Stato</th>
+                <th scope="col">File</th>
+                <th scope="col" class="azioni-col">Azioni</th>
               </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let c of storico()" data-testid="comunicazioni-storico-riga">
+            </ng-template>
+            <ng-template pTemplate="body" let-c>
+              <tr data-testid="comunicazioni-storico-riga">
                 <td>{{ c.generataIl | date: 'dd/MM/yyyy HH:mm' }}</td>
                 <td class="num-col">{{ c.versione }}</td>
                 <td>
@@ -217,7 +226,7 @@ function codiceErrore(err: unknown): string | undefined {
                     >Modificata dopo l'invio</span
                   >
                 </td>
-                <td class="mono">{{ c.nomeFile }}</td>
+                <td class="cell-mono">{{ c.nomeFile }}</td>
                 <td class="azioni-col">
                   <p-button
                     label="Scarica file"
@@ -236,8 +245,8 @@ function codiceErrore(err: unknown): string | undefined {
                   ></p-button>
                 </td>
               </tr>
-            </tbody>
-          </table>
+            </ng-template>
+          </p-table>
         </div>
       </section>
     </div>
