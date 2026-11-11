@@ -23,6 +23,7 @@ import { scaricaPdf } from './scarica-pdf'
       (visibleChange)="!$event && chiuso.emit()"
       header="Distinta dei ritiri"
       [modal]="true"
+      [focusOnShow]="false"
       [style]="{ width: '480px', maxWidth: '95vw' }"
       closeAriaLabel="Chiudi senza scaricare"
     >
