@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { giornoItaliano } from '../../core/time/anno-italiano'
+import { giornoItaliano, inizioGiornoItaliano } from '../../core/time/anno-italiano'
 import {
   eConsorzio,
   type MovimentoDaClassificare,
@@ -21,12 +21,15 @@ const DATA = /^\d{4}-\d{2}-\d{2}$/
 const GIORNI_MASSIMI = 366 * 5
 
 const mezzanotteUtc = (d: string) => new Date(`${d}T00:00:00.000Z`)
+const giornoSuccessivo = (d: string) =>
+  new Date(mezzanotteUtc(d).getTime() + 86_400_000).toISOString().slice(0, 10)
 
 /**
  * Estratto CSV per consorzio e periodo (4.9b, T11): i movimenti vigenti marcati per quel consorzio
  * (regole + correzioni), con controparte, CER, kg e FIR. Riusa il lettore dei movimenti vigenti di
- * 4.9a (`leggiMovimentiOrso`), una sede alla volta. I registri senza sede (storici) non sono letti
- * dal lettore e restano fuori dall'estratto.
+ * 4.9a (`leggiMovimentiOrso`), una sede alla volta. Senza filtro di sede («tutte le sedi») legge
+ * anche i registri senza sede (storici o importati); con una sede li esclude. Il periodo e' sui
+ * giorni di Roma: inizio alle 00:00 del primo giorno, fine alle 00:00 del giorno dopo l'ultimo.
  */
 @Injectable()
 export class EstrattoConsorziService implements EstrattoConsorziPort {
@@ -50,8 +53,9 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
     if ((fineIncl.getTime() - inizio.getTime()) / 86_400_000 > GIORNI_MASSIMI) {
       throw new MarcaturaNonValidaError('Periodo troppo lungo: al massimo cinque anni.')
     }
-    // Fine ESCLUSA del lettore: il giorno dopo l'ultimo.
-    const fine = new Date(fineIncl.getTime() + 86_400_000)
+    // Limiti sul giorno di Roma (con l'ora legale); fine ESCLUSA del lettore: il giorno dopo l'ultimo.
+    const daIstante = inizioGiornoItaliano(da)
+    const aIstante = inizioGiornoItaliano(giornoSuccessivo(a))
 
     const sedi = await this.prisma.rentriUnitaLocale.findMany({
       where: { tenantId, ...(params.unitaLocaleId ? { id: params.unitaLocaleId } : {}) },
@@ -72,12 +76,14 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
     const pesiSpecifici = leggiIntegrazioni(record?.reportData).pesiSpecifici
 
     const righe: Array<RigaEstrattoConsorzio & { ordine: string }> = []
-    for (const sede of sedi) {
+    const ambiti: Array<string | null> = sedi.map(s => s.id)
+    if (!params.unitaLocaleId) ambiti.push(null)
+    for (const ambito of ambiti) {
       const lettura = await leggiMovimentiOrso(this.prisma, {
         tenantId,
-        unitaLocaleId: sede.id,
-        da: inizio,
-        a: fine,
+        unitaLocaleId: ambito,
+        da: daIstante,
+        a: aIstante,
         catalogo,
         pesiSpecifici,
       })

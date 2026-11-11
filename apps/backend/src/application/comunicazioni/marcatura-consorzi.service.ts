@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
+import type { CatalogoCausali } from '../../domain/waste-movement/catalogo-causali'
+import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
 import {
   CONSORZI,
   classificaConsorzi,
@@ -27,6 +29,8 @@ import {
 
 const LIMITE_MOVIMENTI = 200
 const DATA = /^\d{4}-\d{2}-\d{2}$/
+/** Una regola senza data vale da sempre: non deve spegnere quelle di sistema per il passato. */
+const DA_SEMPRE = '1970-01-01'
 
 type RigaRegola = Prisma.RegolaConsorzioGetPayload<Record<string, never>>
 
@@ -62,8 +66,23 @@ function vistaDa(d: RegolaConsorzioDef, sistema: boolean, inVigore: boolean): Re
   }
 }
 
-/** Convalida l'input e lo porta ai campi del database. Lancia `MarcaturaNonValidaError`. */
-function campiRegola(input: InputRegolaConsorzio) {
+/**
+ * La causale deve esistere nel catalogo (di sistema o dell'azienda) per il verso della regola, o per
+ * uno dei due se la regola vale per entrambi: il confronto e' esatto, quindi un codice scritto male
+ * non prenderebbe mai nessun movimento.
+ */
+function causaleEsiste(catalogo: CatalogoCausali, codice: string, verso: VersoMovimento | null) {
+  const giorno = giornoItaliano(new Date())
+  const versi: VersoMovimento[] = verso ? [verso] : ['CARICO', 'SCARICO']
+  return versi.some(v => catalogo.comportamento(v, codice, giorno) !== null)
+}
+
+/**
+ * Convalida l'input e lo porta ai campi del database. Lancia `MarcaturaNonValidaError`.
+ * `registroId` e `attiva` assenti restano `undefined`: in modifica non si toccano, in creazione
+ * valgono i default. La data assente e' decisa da chi chiama (creazione: da sempre).
+ */
+function campiRegola(input: InputRegolaConsorzio, catalogo: CatalogoCausali) {
   if (!eConsorzio(input.consorzio)) throw new MarcaturaNonValidaError('Consorzio non valido.')
   const cer = normalizzaCerRegola(input.cer ?? '')
   if (!cer) {
@@ -79,14 +98,17 @@ function campiRegola(input: InputRegolaConsorzio) {
     throw new MarcaturaNonValidaError('Data di inizio validità non valida.')
   }
   const causale = input.causaleCodice?.trim() || null
+  if (causale !== null && !causaleEsiste(catalogo, causale, verso)) {
+    throw new MarcaturaNonValidaError(`Causale non valida: «${causale}» non è nel catalogo.`)
+  }
   return {
     consorzio: input.consorzio,
     verso: verso as VersoMovimento | null,
     cerPrefisso: cer.cerPrefisso,
     cerEsatto: cer.cerEsatto,
     causaleCodice: causale,
-    registroId: input.registroId ?? null,
-    attiva: input.attiva ?? true,
+    ...(input.registroId === undefined ? {} : { registroId: input.registroId }),
+    ...(input.attiva === undefined ? {} : { attiva: input.attiva }),
     ...(input.validaDal === undefined
       ? {}
       : { validaDal: new Date(`${input.validaDal}T00:00:00.000Z`) }),
@@ -112,11 +134,13 @@ export class MarcaturaConsorziService implements MarcaturaConsorziPort {
 
   async elencaRegole(tenantId: string): Promise<RegolaConsorzioVista[]> {
     const proprie = await this.regoleDellAzienda(tenantId)
+    // Le regole di sistema si mostrano solo per i consorzi dove l'azienda non ne ha di proprie:
+    // alla prima regola propria vengono copiate fra quelle dell'azienda (vedi `creaRegola`).
     const consorziConRegole = new Set(proprie.map(r => r.consorzio))
     return [
       ...proprie.map(r => vistaDa(r, false, true)),
-      ...REGOLE_CONSORZIO_DI_SISTEMA.map(r =>
-        vistaDa(r, true, !consorziConRegole.has(r.consorzio))
+      ...REGOLE_CONSORZIO_DI_SISTEMA.filter(r => !consorziConRegole.has(r.consorzio)).map(r =>
+        vistaDa(r, true, true)
       ),
     ].sort(
       (a, b) =>
@@ -125,8 +149,11 @@ export class MarcaturaConsorziService implements MarcaturaConsorziPort {
     )
   }
 
-  private async controllaRegistro(tenantId: string, registroId: string | null): Promise<void> {
-    if (registroId === null) return
+  private async controllaRegistro(
+    tenantId: string,
+    registroId: string | null | undefined
+  ): Promise<void> {
+    if (registroId === null || registroId === undefined) return
     const registro = await this.prisma.registroRifiuti.findFirst({
       where: { id: registroId, tenantId },
       select: { id: true },
@@ -139,10 +166,44 @@ export class MarcaturaConsorziService implements MarcaturaConsorziPort {
     userId: string,
     input: InputRegolaConsorzio
   ): Promise<RegolaConsorzioVista> {
-    const campi = campiRegola(input)
+    const campi = campiRegola(input, await caricaCatalogoCausali(this.prisma, tenantId))
     await this.controllaRegistro(tenantId, campi.registroId)
-    const riga = await this.prisma.regolaConsorzio.create({
-      data: { ...campi, tenantId, creataDa: userId },
+    const riga = await this.prisma.$transaction(async tx => {
+      // Un lock per azienda e consorzio: due prime regole in parallelo non copiano due volte.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`regole-consorzio|${tenantId}|${campi.consorzio}`}))`
+      const esistenti = await tx.regolaConsorzio.count({
+        where: { tenantId, consorzio: campi.consorzio },
+      })
+      if (esistenti === 0) {
+        // Alla prima regola propria le regole di sistema del consorzio diventano dell'azienda
+        // (stesso periodo di validita'): aggiungere una regola non ne spegne altre in silenzio,
+        // e l'azienda puo' togliere o cambiare ciascuna copia.
+        const copie = REGOLE_CONSORZIO_DI_SISTEMA.filter(r => r.consorzio === campi.consorzio)
+        if (copie.length > 0) {
+          await tx.regolaConsorzio.createMany({
+            data: copie.map(r => ({
+              tenantId,
+              consorzio: r.consorzio,
+              verso: r.verso,
+              cerPrefisso: r.cerPrefisso,
+              cerEsatto: r.cerEsatto,
+              causaleCodice: r.causaleCodice,
+              registroId: r.registroId,
+              attiva: r.attiva,
+              validaDal: new Date(`${r.validaDal}T00:00:00.000Z`),
+              creataDa: userId,
+            })),
+          })
+        }
+      }
+      return tx.regolaConsorzio.create({
+        data: {
+          ...campi,
+          validaDal: campi.validaDal ?? new Date(`${DA_SEMPRE}T00:00:00.000Z`),
+          tenantId,
+          creataDa: userId,
+        },
+      })
     })
     return vistaDa(definizione(riga), false, true)
   }
@@ -152,7 +213,7 @@ export class MarcaturaConsorziService implements MarcaturaConsorziPort {
     id: string,
     input: InputRegolaConsorzio
   ): Promise<RegolaConsorzioVista> {
-    const campi = campiRegola(input)
+    const campi = campiRegola(input, await caricaCatalogoCausali(this.prisma, tenantId))
     await this.controllaRegistro(tenantId, campi.registroId)
     const esito = await this.prisma.regolaConsorzio.updateMany({
       where: { id, tenantId },

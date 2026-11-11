@@ -32,6 +32,7 @@ const INTESTAZIONE = [
   'Consorzio',
   'Data',
   'Numero',
+  'Anno',
   'Verso',
   'CER',
   'Descrizione',
@@ -61,22 +62,25 @@ export function estrattoConsorzioCsv(
   consorzio: Consorzio,
   righe: readonly RigaEstrattoConsorzio[]
 ): string {
-  const linee = righe.map(r =>
-    [
+  const linee = righe.map(r => {
+    // «12/2026» in una cella sola sarebbe letto da Excel come una data: due colonne.
+    const [numero, anno] = r.numero.split('/')
+    return [
       cellaCsv(consorzio),
       cellaCsv(dataCsv(r.data)),
-      cellaCsv(r.numero),
+      cellaCsv(numero),
+      cellaCsv(anno),
       cellaCsv(r.verso === 'CARICO' ? 'Carico' : 'Scarico'),
       cellaCsv(cerLeggibile(r.cer, r.pericoloso)),
       cellaTestoCsv(r.descrizione),
       cellaCsv(decimale(r.kg)),
       cellaCsv(decimale(r.quantita)),
-      cellaCsv(r.unita),
+      cellaTestoCsv(r.unita),
       cellaTestoCsv(r.controparte),
       cellaTestoCsv(r.indirizzoControparte),
-      cellaCsv(r.firNumero),
+      cellaTestoCsv(r.firNumero),
       cellaCsv(r.origine === 'MANUALE' ? 'Manuale' : 'Regola'),
     ].join(';')
-  )
+  })
   return BOM + [INTESTAZIONE.map(h => cellaCsv(h)).join(';'), ...linee].join('\r\n') + '\r\n'
 }

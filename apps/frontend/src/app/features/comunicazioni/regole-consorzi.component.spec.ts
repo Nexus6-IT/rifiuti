@@ -5,6 +5,7 @@ import { RegoleConsorziComponent } from './regole-consorzi.component'
 import { ConsorziService } from './consorzi.service'
 import { RegolaConsorzio } from './consorzi.model'
 import { ToastService } from '../../core/services/toast.service'
+import { CausaliRegistroService } from '../registro/causali-registro.service'
 
 const regola = (o: Partial<RegolaConsorzio> = {}): RegolaConsorzio => ({
   id: null,
@@ -26,6 +27,7 @@ describe('RegoleConsorziComponent', () => {
   let component: RegoleConsorziComponent
   let svc: jasmine.SpyObj<ConsorziService>
   let toast: jasmine.SpyObj<ToastService>
+  let causali: jasmine.SpyObj<CausaliRegistroService>
 
   function setup(puoModificare: boolean, regole: RegolaConsorzio[] = [regola()]): void {
     svc = jasmine.createSpyObj<ConsorziService>('ConsorziService', [
@@ -37,9 +39,20 @@ describe('RegoleConsorziComponent', () => {
     ])
     svc.regole.and.returnValue(of({ regole, puoModificare }))
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'warn'])
+    causali = jasmine.createSpyObj<CausaliRegistroService>('CausaliRegistroService', ['opzioni'])
+    const opzione = (codice: string, descrizione: string) =>
+      ({ codice, descrizione, origine: 'SISTEMA', ruoloMud: 'RICEVUTO_DA_TERZI' }) as never
+    causali.opzioni.and.callFake(tipo =>
+      of(
+        tipo === 'CARICO'
+          ? [opzione('INGRESSO_ESTERNO', 'Ingresso da terzi'), opzione('RESO', 'Reso')]
+          : [opzione('RESO', 'Reso'), opzione('USCITA_A_TERZI', 'Uscita a terzi')]
+      )
+    )
     TestBed.configureTestingModule({
       imports: [RegoleConsorziComponent, NoopAnimationsModule],
       providers: [
+        { provide: CausaliRegistroService, useValue: causali },
         { provide: ConsorziService, useValue: svc },
         { provide: ToastService, useValue: toast },
       ],
@@ -132,6 +145,48 @@ describe('RegoleConsorziComponent', () => {
       'r1',
       jasmine.objectContaining({ cer: '160601', attiva: false })
     )
+  })
+
+  it('una regola nuova non propone «oggi» come inizio: senza data vale da sempre e non manda validaDal', () => {
+    setup(true)
+    svc.creaRegola.and.returnValue(of(regola({ id: 'r1', sistema: false })))
+    component.nuova()
+    expect(component.form()!.validaDal).toBe('')
+    component.form()!.cer = '13'
+    component.salva()
+    const input = svc.creaRegola.calls.mostRecent().args[0]
+    expect('validaDal' in input).toBe(false)
+  })
+
+  it('la data 01/01/1970 (da sempre) si mostra come «da sempre»; in modifica il campo resta vuoto', () => {
+    setup(true, [regola({ id: 'r1', sistema: false, cer: '13' })])
+    expect(q('regole-riga')?.textContent).toContain('da sempre')
+    expect(q('regole-riga')?.textContent).not.toContain('1970')
+    component.modifica(component.regole()[0])
+    expect(component.form()?.validaDal).toBe('')
+  })
+
+  it('la causale si sceglie dal catalogo (carichi e scarichi, senza doppioni) e non e un testo libero', () => {
+    setup(true)
+    component.nuova()
+    expect(component.causali().map(c => c.codice)).toEqual([
+      'INGRESSO_ESTERNO',
+      'RESO',
+      'USCITA_A_TERZI',
+    ])
+    component.form()!.cer = '13'
+    component.form()!.causaleCodice = 'INGRESSO_ESTERNO'
+    svc.creaRegola.and.returnValue(of(regola({ id: 'r1', sistema: false })))
+    component.salva()
+    expect(svc.creaRegola).toHaveBeenCalledWith(
+      jasmine.objectContaining({ causaleCodice: 'INGRESSO_ESTERNO' })
+    )
+  })
+
+  it('in modifica la causale gia scelta resta nell elenco anche se oggi non e piu proponibile', () => {
+    setup(true, [regola({ id: 'r1', sistema: false, causaleCodice: 'AZ_VECCHIA' })])
+    component.modifica(component.regole()[0])
+    expect(component.causali().some(c => c.codice === 'AZ_VECCHIA')).toBe(true)
   })
 
   it('una regola di sistema non si apre in modifica', () => {

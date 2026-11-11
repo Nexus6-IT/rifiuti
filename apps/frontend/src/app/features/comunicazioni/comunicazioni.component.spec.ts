@@ -5,6 +5,7 @@ import { Subject, of, throwError } from 'rxjs'
 import { ComunicazioniComponent } from './comunicazioni.component'
 import { ComunicazioniService } from './comunicazioni.service'
 import { ConsorziService } from './consorzi.service'
+import { CausaliRegistroService } from '../registro/causali-registro.service'
 import { AnteprimaOrso, ComunicazioneVista } from './comunicazioni.model'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { AuthService } from '../../core/services/auth.service'
@@ -90,6 +91,10 @@ describe('ComunicazioniComponent', () => {
       providers: [
         { provide: ComunicazioniService, useValue: svc },
         { provide: RentriUnitaLocaleService, useValue: sediSvc },
+        {
+          provide: CausaliRegistroService,
+          useValue: { opzioni: () => of([]) },
+        },
         {
           provide: ConsorziService,
           useValue: { regole: () => of({ regole: [], puoModificare: false }) },

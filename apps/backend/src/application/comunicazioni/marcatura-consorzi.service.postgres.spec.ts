@@ -110,9 +110,15 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
         sistema: false,
       })
       const dopo = await nel(az, () => servizio.elencaRegole(az.tenantId))
-      // L'azienda ha una regola propria per CONOU: quella di sistema non vale piu'.
-      expect(dopo.find(r => r.sistema && r.consorzio === 'CONOU')?.inVigore).toBe(false)
-      expect(dopo.find(r => r.sistema && r.consorzio === 'COBAT')?.inVigore).toBe(true)
+      // Alla prima regola propria di CONOU la regola di sistema e' stata copiata fra quelle
+      // dell'azienda (I2): non compare piu' come «di sistema». COBAT resta di sistema.
+      expect(dopo.filter(r => r.consorzio === 'CONOU').map(r => [r.cer, r.sistema])).toEqual([
+        ['13', false],
+        ['1302', false],
+      ])
+      expect(dopo.filter(r => r.consorzio === 'COBAT').every(r => r.sistema && r.inVigore)).toBe(
+        true
+      )
 
       const modificata = await nel(az, () =>
         servizio.modificaRegola(az.tenantId, creata.id as string, {
@@ -130,7 +136,10 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
 
       await nel(az, () => servizio.eliminaRegola(az.tenantId, creata.id as string))
       const finale = await nel(az, () => servizio.elencaRegole(az.tenantId))
-      expect(finale.every(r => r.sistema)).toBe(true)
+      // Resta la copia della regola di sistema, che l'azienda puo' togliere a sua volta.
+      expect(finale.filter(r => !r.sistema).map(r => [r.consorzio, r.cer])).toEqual([
+        ['CONOU', '13'],
+      ])
     })
 
     it('rifiuta consorzio, CER, verso, data e registro non validi', async () => {
@@ -178,6 +187,128 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
       expect(
         (await nel(a, () => servizio.elencaRegole(a.tenantId))).some(r => r.id === regola.id)
       ).toBe(true)
+    })
+
+    it('I1: una regola nuova senza data vale da sempre; una uguale a quella di sistema non cambia l’estratto del passato', async () => {
+      const az = await nuovaAzienda('R4')
+      await carico(az, '13 02 05*', '2026-05-10')
+      const prima = await nel(az, () =>
+        estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-05-01', a: '2026-05-31' })
+      )
+      expect(prima.righe).toBe(1)
+      const creata = await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, { consorzio: 'CONOU', cer: '13' })
+      )
+      expect(creata.validaDal).toBe('1970-01-01')
+      const dopo = await nel(az, () =>
+        estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-05-01', a: '2026-05-31' })
+      )
+      expect(dopo.righe).toBe(1)
+    })
+
+    it('I2: alla prima regola propria le regole di sistema del consorzio si copiano fra quelle dell’azienda, una volta sola', async () => {
+      const az = await nuovaAzienda('R5')
+      const batt = await carico(az, '16 06 01*', '2026-05-10')
+      const nichel = await carico(az, '16 06 02*', '2026-05-11')
+      const portatili = await carico(az, '20 01 33*', '2026-05-12')
+      await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, { consorzio: 'COBAT', cer: '16 06 02*' })
+      )
+      await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, { consorzio: 'COBAT', cer: '16 06 03*' })
+      )
+      const proprie = await owner.regolaConsorzio.findMany({
+        where: { tenantId: az.tenantId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      })
+      // 2 copie di sistema + 2 nuove: la seconda creazione non copia di nuovo.
+      expect(proprie.map(r => r.cerEsatto).sort()).toEqual(['160601', '160602', '160603', '200133'])
+      expect(proprie.every(r => r.consorzio === 'COBAT' && r.creataDa === az.utenteId)).toBe(true)
+      // Aggiungere una regola non toglie niente: le tre batterie restano marcate COBAT.
+      const r = await nel(az, () =>
+        servizio.consorziDeiMovimenti(az.tenantId, [batt.id, nichel.id, portatili.id])
+      )
+      expect(r[batt.id].marcature.map(m => m.consorzio)).toEqual(['COBAT'])
+      expect(r[nichel.id].marcature.map(m => m.consorzio)).toEqual(['COBAT'])
+      expect(r[portatili.id].marcature.map(m => m.consorzio)).toEqual(['COBAT'])
+      // CONOU non e' stato toccato: resta di sistema, senza copie.
+      const elenco = await nel(az, () => servizio.elencaRegole(az.tenantId))
+      expect(elenco.filter(x => x.consorzio === 'CONOU').every(x => x.sistema)).toBe(true)
+      expect(elenco.filter(x => x.consorzio === 'COBAT').every(x => !x.sistema)).toBe(true)
+      // L'azienda puo' togliere una copia: 20 01 33* smette di marcare.
+      const copia = elenco.find(x => x.consorzio === 'COBAT' && x.cer === '200133')
+      await nel(az, () => servizio.eliminaRegola(az.tenantId, copia?.id as string))
+      const dopo = await nel(az, () => servizio.consorziDeiMovimenti(az.tenantId, [portatili.id]))
+      expect(dopo[portatili.id].marcature).toEqual([])
+    })
+
+    it('I2: creazioni in parallelo della prima regola non duplicano le copie', async () => {
+      const az = await nuovaAzienda('R6')
+      await Promise.all(
+        ['16 06 02*', '16 06 03*', '16 06 04'].map(cer =>
+          nel(az, () => servizio.creaRegola(az.tenantId, az.utenteId, { consorzio: 'COBAT', cer }))
+        )
+      )
+      const n = await owner.regolaConsorzio.count({
+        where: { tenantId: az.tenantId, cerEsatto: '160601' },
+      })
+      expect(n).toBe(1)
+    })
+
+    it('I4: la causale deve esistere nel catalogo (maiuscole comprese)', async () => {
+      const az = await nuovaAzienda('R7')
+      const prova = (causaleCodice: string) =>
+        nel(az, () =>
+          servizio.creaRegola(az.tenantId, az.utenteId, {
+            consorzio: 'CONOU',
+            cer: '13',
+            causaleCodice,
+          })
+        )
+      await expect(prova('ingresso_esterno')).rejects.toBeInstanceOf(MarcaturaNonValidaError)
+      await expect(prova('Ingresso da officina')).rejects.toBeInstanceOf(MarcaturaNonValidaError)
+      await expect(prova('AZ_NON_ESISTE')).rejects.toBeInstanceOf(MarcaturaNonValidaError)
+      const ok = await prova('INGRESSO_ESTERNO')
+      expect(ok.causaleCodice).toBe('INGRESSO_ESTERNO')
+      // Spazi attorno al codice: si tolgono, poi si controlla.
+      const spazi = await prova('  INGRESSO_ESTERNO ')
+      expect(spazi.causaleCodice).toBe('INGRESSO_ESTERNO')
+    })
+
+    it('la modifica non azzera i campi facoltativi assenti (registroId, attiva, validaDal)', async () => {
+      const az = await nuovaAzienda('R8')
+      const creata = await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, {
+          consorzio: 'COREPLA',
+          cer: '15 01 02',
+          registroId: az.registroId,
+          attiva: false,
+          validaDal: '2026-03-01',
+        })
+      )
+      const dopo = await nel(az, () =>
+        servizio.modificaRegola(az.tenantId, creata.id as string, {
+          consorzio: 'COREPLA',
+          cer: '15 01 02',
+          verso: 'CARICO',
+        })
+      )
+      expect(dopo).toMatchObject({
+        registroId: az.registroId,
+        attiva: false,
+        validaDal: '2026-03-01',
+        verso: 'CARICO',
+      })
+      // Un valore esplicito invece si applica, anche null per il registro.
+      const sciolta = await nel(az, () =>
+        servizio.modificaRegola(az.tenantId, creata.id as string, {
+          consorzio: 'COREPLA',
+          cer: '15 01 02',
+          registroId: null,
+          attiva: true,
+        })
+      )
+      expect(sciolta).toMatchObject({ registroId: null, attiva: true })
     })
   })
 
@@ -281,6 +412,44 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
       expect(await owner.datiConsorzioMovimento.count({ where: { tenantId: az.tenantId } })).toBe(1)
     })
 
+    it('la correzione segue la rettifica anche se cambia il CER: vale il CER vigente, la correzione resta sulla radice', async () => {
+      const az = await nuovaAzienda('C5')
+      const radice = await carico(az, '13 02 05*', '2026-05-10')
+      await nel(az, () =>
+        servizio.impostaOverride(az.tenantId, az.utenteId, radice.id, 'CONOU', true)
+      )
+      await nel(az, () =>
+        servizio.impostaOverride(az.tenantId, az.utenteId, radice.id, 'COREPLA', false)
+      )
+      const prima = await nel(az, () => servizio.consorziDeiMovimenti(az.tenantId, [radice.id]))
+      expect(prima[radice.id].esclusi).toEqual(['CONOU'])
+      const rettifica = await creaMovimento(owner, az, {
+        tipo: 'RETTIFICA',
+        type: 'CARICO',
+        causale: 'INGRESSO_ESTERNO',
+        cerCode: '16 06 01*',
+        quantita: 100,
+        giorno: '2026-05-10',
+        rettificatoId: radice.id,
+        originaleId: radice.id,
+      })
+      const dopo = await nel(az, () => servizio.consorziDeiMovimenti(az.tenantId, [rettifica.id]))
+      // Il CER ora e' 16 06 01*: COBAT per regola. L'esclusione CONOU non ha piu' una regola da
+      // escludere, la marcatura manuale COREPLA resta.
+      expect(dopo[rettifica.id].marcature).toEqual([
+        { consorzio: 'COBAT', origine: 'REGOLA' },
+        { consorzio: 'COREPLA', origine: 'MANUALE' },
+      ])
+      expect(dopo[rettifica.id].esclusi).toEqual([])
+      const csvConou = await nel(az, () =>
+        estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-05-01', a: '2026-05-31' })
+      )
+      const csvCobat = await nel(az, () =>
+        estratto.estratto(az.tenantId, { consorzio: 'COBAT', da: '2026-05-01', a: '2026-05-31' })
+      )
+      expect([csvConou.righe, csvCobat.righe]).toEqual([0, 1])
+    })
+
     it('RLS: movimento di un’altra azienda -> non trovato; le correzioni non si vedono fra aziende', async () => {
       const a = await nuovaAzienda('C4a')
       const b = await nuovaAzienda('C4b')
@@ -330,6 +499,61 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
       expect(linee[1].endsWith('"Regola"')).toBe(true)
       expect(linee[2]).toContain('"\'=CMD()"')
       expect(linee[2].endsWith('"Manuale"')).toBe(true)
+    })
+
+    it('I3: i limiti del periodo sono i giorni di Roma, non la mezzanotte UTC', async () => {
+      const az = await nuovaAzienda('E3')
+      // 28/2 23:30 a Roma (ora solare) = 22:30Z: fuori da marzo.
+      await carico(az, '13 02 05*', '', { istante: '2026-02-28T22:30:00Z' })
+      // 1/3 00:30 a Roma = 28/2 23:30Z: dentro marzo.
+      await carico(az, '13 02 05*', '', { istante: '2026-02-28T23:30:00Z' })
+      // 31/3 23:30 a Roma (ora legale, +2) = 21:30Z: dentro marzo.
+      await carico(az, '13 02 05*', '', { istante: '2026-03-31T21:30:00Z' })
+      // 1/4 00:30 a Roma = 31/3 22:30Z: fuori da marzo.
+      await carico(az, '13 02 05*', '', { istante: '2026-03-31T22:30:00Z' })
+      const r = await nel(az, () =>
+        estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-03-01', a: '2026-03-31' })
+      )
+      const date = r.csv
+        .split('\r\n')
+        .slice(1, -1)
+        .map(l => l.split(';')[1])
+      expect(date).toEqual(['"01/03/2026"', '"31/03/2026"'])
+    })
+
+    it('I5: «tutte le sedi» include i registri senza sede, il filtro per una sede li esclude', async () => {
+      const az = await nuovaAzienda('E4')
+      const senzaSede = await owner.registroRifiuti.create({
+        data: { tenantId: az.tenantId, descrizione: 'Registro storico', unitaLocaleId: null },
+      })
+      await carico(az, '13 02 05*', '2026-05-10')
+      await creaMovimento(
+        owner,
+        { ...az, registroId: senzaSede.id },
+        {
+          type: 'CARICO',
+          causale: 'INGRESSO_ESTERNO',
+          cerCode: '13 02 05*',
+          quantita: 50,
+          unita: 'KG',
+          giorno: '2026-05-11',
+        }
+      )
+      const tutte = await nel(az, () =>
+        estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-05-01', a: '2026-05-31' })
+      )
+      expect(tutte.righe).toBe(2)
+      const unaSede = await nel(az, () =>
+        estratto.estratto(az.tenantId, {
+          consorzio: 'CONOU',
+          da: '2026-05-01',
+          a: '2026-05-31',
+          unitaLocaleId: az.unitaLocaleId,
+        })
+      )
+      expect(unaSede.righe).toBe(1)
+      await owner.wasteMovement.deleteMany({ where: { registroId: senzaSede.id } })
+      await owner.registroRifiuti.delete({ where: { id: senzaSede.id } })
     })
 
     it('periodo o consorzio non validi -> errore, sede di un’altra azienda -> errore', async () => {

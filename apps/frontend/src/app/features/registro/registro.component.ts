@@ -1697,6 +1697,7 @@ export class RegistroComponent implements OnInit {
   bloccoStato: StatoBlocco = { visibile: false, confermabile: false }
   private firIdLegame: string | null = null
   private sottoscrizioneDatiLegame: Subscription | null = null
+  private sottoscrizioneConsorzi: Subscription | null = null
   readonly exporting = signal(false)
   readonly error = signal<string | null>(null)
 
@@ -2820,6 +2821,9 @@ export class RegistroComponent implements OnInit {
    * senza, l'API risponde 403. Un errore non blocca il registro (le etichette mancano e basta).
    */
   private caricaConsorzi(items: Movimento[]): void {
+    // Una sola richiesta in volo: la risposta di una pagina vecchia non deve sovrascrivere la nuova.
+    this.sottoscrizioneConsorzi?.unsubscribe()
+    this.sottoscrizioneConsorzi = null
     this.consorziMovimenti.set({})
     if (!this.ff.has('comunicazioni') || items.length === 0) return
     let servizio: ConsorziService
@@ -2828,7 +2832,7 @@ export class RegistroComponent implements OnInit {
     } catch {
       return
     }
-    servizio
+    this.sottoscrizioneConsorzi = servizio
       .consorziDeiMovimenti(items.slice(0, 200).map(m => m.id))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({

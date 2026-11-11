@@ -84,8 +84,11 @@ interface FirGrezzo {
 
 export interface ParametriLetturaOrso {
   tenantId: string
-  /** Sede (`RentriUnitaLocale`) di cui si comunicano i movimenti. */
-  unitaLocaleId: string
+  /**
+   * Sede (`RentriUnitaLocale`) di cui si comunicano i movimenti. `null` = i registri senza sede
+   * (storici o importati), usato dall'estratto per consorzio.
+   */
+  unitaLocaleId: string | null
   /** Inizio incluso e fine ESCLUSA del periodo, sulla data del movimento. */
   da: Date
   a: Date
@@ -261,10 +264,12 @@ export async function leggiMovimentiOrso(
       where: { tenantId: p.tenantId, unitaLocaleId: p.unitaLocaleId },
       select: { id: true },
     }),
-    db.rentriUnitaLocale.findFirst({
-      where: { id: p.unitaLocaleId, tenantId: p.tenantId },
-      select: { provincia: true },
-    }),
+    p.unitaLocaleId === null
+      ? Promise.resolve(null)
+      : db.rentriUnitaLocale.findFirst({
+          where: { id: p.unitaLocaleId, tenantId: p.tenantId },
+          select: { provincia: true },
+        }),
   ])
   const provinciaImpianto = sede?.provincia ?? null
   if (registri.length === 0) return { provinciaImpianto, movimenti: [], giacenze: [] }

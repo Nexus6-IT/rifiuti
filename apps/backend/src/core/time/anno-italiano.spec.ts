@@ -1,4 +1,5 @@
 import {
+  inizioGiornoItaliano,
   annoSolareItaliano,
   giornoItaliano,
   formattaDataItaliana,
@@ -51,5 +52,16 @@ describe('tempo italiano', () => {
     ['2026-12-31T23:00:00Z', '01/01/2027 00:00'], // mezzanotte: 00 e non 24
   ])('formattaDataOraItaliana(%s) = %s', (iso, atteso) => {
     expect(formattaDataOraItaliana(new Date(iso))).toBe(atteso)
+  })
+
+  it.each([
+    ['2026-01-15', '2026-01-14T23:00:00.000Z'], // ora solare
+    ['2026-07-01', '2026-06-30T22:00:00.000Z'], // ora legale
+    ['2026-03-29', '2026-03-28T23:00:00.000Z'], // giorno del passaggio all'ora legale: inizia in solare
+    ['2026-03-30', '2026-03-29T22:00:00.000Z'],
+    ['2026-10-25', '2026-10-24T22:00:00.000Z'], // giorno del ritorno all'ora solare: inizia in legale
+    ['2026-10-26', '2026-10-25T23:00:00.000Z'],
+  ])('inizioGiornoItaliano(%s) = %s', (giorno, atteso) => {
+    expect(inizioGiornoItaliano(giorno).toISOString()).toBe(atteso)
   })
 })

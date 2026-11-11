@@ -9,6 +9,8 @@ import { TableModule } from 'primeng/table'
 import { TagModule } from 'primeng/tag'
 import { ConfirmDialogModule } from 'primeng/confirmdialog'
 import { ConfirmationService } from 'primeng/api'
+import { forkJoin } from 'rxjs'
+import { CausaliRegistroService } from '../registro/causali-registro.service'
 import { ToastService } from '../../core/services/toast.service'
 import { leggiErroriAzione } from '../listino/errori-azione'
 import {
@@ -32,12 +34,25 @@ interface FormRegola {
   consorzio: Consorzio
   cer: string
   verso: VersoRegola | null
-  causaleCodice: string
+  causaleCodice: string | null
   attiva: boolean
   validaDal: string
 }
 
-const oggi = (): string => new Date().toISOString().slice(0, 10)
+/** Giorno di calendario locale (non UTC: fra mezzanotte e le 2 `toISOString` darebbe il giorno prima). */
+const oggi = (): string => {
+  const d = new Date()
+  const due = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`
+}
+
+/** Data di inizio validita' delle regole di sistema e di quelle create senza data: «da sempre». */
+const DA_SEMPRE = '1970-01-01'
+
+interface OpzioneCausale {
+  codice: string | null
+  etichetta: string
+}
 
 /**
  * Marcatura per consorzio (4.9b, T12): regole per azienda su CER, verso e causale, regole di
@@ -75,9 +90,10 @@ const oggi = (): string => new Date().toISOString().slice(0, 10)
       </div>
       <p class="text-secondary mt-0">
         Un movimento è del consorzio se una regola lo prende (CER, carico o scarico, causale).
-        Finché non ne definisci di tue per un consorzio valgono quelle di sistema; una tua regola,
-        anche disattiva, le sostituisce. Puoi correggere il singolo movimento dal dettaglio del
-        registro.
+        Finché non ne definisci per un consorzio valgono quelle di sistema. Alla tua prima regola
+        per un consorzio le regole di sistema vengono copiate fra le tue: le vedi qui e puoi
+        cambiarle, disattivarle o eliminarle una per una. Puoi correggere il singolo movimento dal
+        dettaglio del registro.
       </p>
 
       <p *ngIf="errore()" role="alert" data-testid="regole-errore">{{ errore() }}</p>
@@ -103,7 +119,12 @@ const oggi = (): string => new Date().toISOString().slice(0, 10)
             <tr data-testid="regole-riga" [class.text-secondary]="!r.inVigore || !r.attiva">
               <td>{{ nome(r.consorzio) }}</td>
               <td>{{ descrivi(r) }}</td>
-              <td>{{ r.validaDal | date: 'dd/MM/yyyy' }}</td>
+              <td>
+                <ng-container *ngIf="r.validaDal === daSempre; else conData"
+                  >da sempre</ng-container
+                >
+                <ng-template #conData>{{ r.validaDal | date: 'dd/MM/yyyy' }}</ng-template>
+              </td>
               <td>
                 <p-tag *ngIf="r.sistema && r.inVigore" value="Di sistema" severity="info"></p-tag>
                 <p-tag
@@ -253,17 +274,21 @@ const oggi = (): string => new Date().toISOString().slice(0, 10)
         </div>
         <div class="flex flex-column gap-1">
           <label for="reg-causale">Causale (facoltativa)</label>
-          <input
-            id="reg-causale"
-            pInputText
+          <p-dropdown
+            inputId="reg-causale"
+            [options]="causali()"
+            optionLabel="etichetta"
+            optionValue="codice"
             [(ngModel)]="f.causaleCodice"
             name="causale"
-            maxlength="100"
+            [showClear]="true"
+            placeholder="Qualsiasi causale"
+            appendTo="body"
             data-testid="regola-causale"
-          />
+          ></p-dropdown>
         </div>
         <div class="flex flex-column gap-1">
-          <label for="reg-valida">Valida dal</label>
+          <label for="reg-valida">Valida dal (facoltativa)</label>
           <input
             id="reg-valida"
             type="date"
@@ -271,6 +296,9 @@ const oggi = (): string => new Date().toISOString().slice(0, 10)
             [(ngModel)]="f.validaDal"
             name="validaDal"
           />
+          <small class="text-secondary"
+            >Se lasci vuoto la regola vale da sempre, anche per i movimenti passati.</small
+          >
         </div>
         <label class="flex align-items-center gap-2">
           <input type="checkbox" [(ngModel)]="f.attiva" name="attiva" data-testid="regola-attiva" />
@@ -294,6 +322,7 @@ export class RegoleConsorziComponent implements OnInit {
   private readonly servizio = inject(ConsorziService)
   private readonly toast = inject(ToastService)
   private readonly conferma = inject(ConfirmationService)
+  private readonly causaliCatalogo = inject(CausaliRegistroService)
 
   /** Sedi attive, per limitare l'estratto a una sede. */
   @Input() sedi: SedeScelta[] = []
@@ -312,6 +341,9 @@ export class RegoleConsorziComponent implements OnInit {
   readonly erroriForm = signal<string[]>([])
   readonly inCorso = signal(false)
   readonly scaricando = signal(false)
+  /** Causali del catalogo (carichi e scarichi) fra cui scegliere; la prima voce e' «nessun filtro». */
+  readonly causali = signal<OpzioneCausale[]>([])
+  readonly daSempre = DA_SEMPRE
 
   estrattoConsorzio: Consorzio = 'CONOU'
   estrattoDa = `${new Date().getFullYear()}-01-01`
@@ -336,30 +368,60 @@ export class RegoleConsorziComponent implements OnInit {
     })
   }
 
+  /** Carica le causali selezionabili oggi, per i due versi, senza doppioni. Un errore lascia l'elenco com'e'. */
+  private caricaCausali(inUso: string | null): void {
+    forkJoin([
+      this.causaliCatalogo.opzioni('CARICO'),
+      this.causaliCatalogo.opzioni('SCARICO'),
+    ]).subscribe({
+      next: ([carichi, scarichi]) => {
+        const perCodice = new Map<string, OpzioneCausale>()
+        for (const c of [...carichi, ...scarichi]) {
+          if (!perCodice.has(c.codice)) {
+            perCodice.set(c.codice, {
+              codice: c.codice,
+              etichetta: `${c.descrizione} (${c.codice})`,
+            })
+          }
+        }
+        // La causale gia' scelta resta selezionabile anche se oggi non e' piu' proponibile.
+        if (inUso && !perCodice.has(inUso))
+          perCodice.set(inUso, { codice: inUso, etichetta: inUso })
+        this.causali.set(
+          [...perCodice.values()].sort((a, b) => a.etichetta.localeCompare(b.etichetta))
+        )
+      },
+      error: () => this.causali.set(inUso ? [{ codice: inUso, etichetta: inUso }] : []),
+    })
+  }
+
   nuova(): void {
     this.erroriForm.set([])
+    this.caricaCausali(null)
+    // Senza data la regola vale da sempre: «oggi» spegnerebbe le regole di sistema anche per il passato.
     this.form.set({
       id: null,
       consorzio: 'CONOU',
       cer: '',
       verso: null,
-      causaleCodice: '',
+      causaleCodice: null,
       attiva: true,
-      validaDal: oggi(),
+      validaDal: '',
     })
   }
 
   modifica(r: RegolaConsorzio): void {
     if (r.sistema || !r.id) return
     this.erroriForm.set([])
+    this.caricaCausali(r.causaleCodice)
     this.form.set({
       id: r.id,
       consorzio: r.consorzio,
       cer: r.cer,
       verso: r.verso,
-      causaleCodice: r.causaleCodice ?? '',
+      causaleCodice: r.causaleCodice,
       attiva: r.attiva,
-      validaDal: r.validaDal,
+      validaDal: r.validaDal === DA_SEMPRE ? '' : r.validaDal,
     })
   }
 
@@ -382,7 +444,7 @@ export class RegoleConsorziComponent implements OnInit {
       consorzio: f.consorzio,
       cer: f.cer.trim(),
       verso: f.verso,
-      causaleCodice: f.causaleCodice.trim() || null,
+      causaleCodice: f.causaleCodice?.trim() || null,
       attiva: f.attiva,
       ...(f.validaDal ? { validaDal: f.validaDal } : {}),
     }

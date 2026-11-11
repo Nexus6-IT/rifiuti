@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { provideRouter } from '@angular/router'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { RegistroComponent } from './registro.component'
 import { RegistroService } from './registro.service'
 import { FeatureFlagsService } from '../../core/services/feature-flags.service'
@@ -138,5 +138,19 @@ describe('RegistroComponent: consorzi del movimento', () => {
     fixture.detectChanges()
     expect(fixture.componentInstance.movimenti().length).toBe(2)
     expect(fixture.nativeElement.querySelector('.etichetta-consorzio')).toBeNull()
+  })
+
+  it('corsa fra richieste: la risposta della pagina vecchia, arrivata dopo, non sovrascrive quella nuova', () => {
+    setup(true)
+    const vecchia = new Subject<Record<string, never>>()
+    const nuova = new Subject<Record<string, never>>()
+    consorzi.consorziDeiMovimenti.and.returnValues(vecchia as never, nuova as never)
+    fixture.componentInstance.ricarica()
+    fixture.componentInstance.ricarica()
+    const marcatura = (c: 'CONOU' | 'COBAT') =>
+      ({ m1: { marcature: [{ consorzio: c, origine: 'REGOLA' }], esclusi: [] } }) as never
+    nuova.next(marcatura('COBAT'))
+    vecchia.next(marcatura('CONOU'))
+    expect(fixture.componentInstance.etichetteConsorzi('m1')[0]?.testo).toContain('COBAT')
   })
 })
