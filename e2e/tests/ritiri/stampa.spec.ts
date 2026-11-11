@@ -7,6 +7,7 @@ import {
   tokenAzienda,
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
+import { getApiUrl } from '../../utils/env'
 import { ATTESA_SERVER, attendiRisposta } from '../../utils/attese'
 import { eliminaFirConPrefisso } from '../../utils/db-locale'
 import { registra } from '../../fixtures/risorse'
@@ -25,8 +26,8 @@ import {
  * E2E UI — Stampa ed emissione in serie dai ritiri (4.7, T19).
  *
  * Scenario: tre ritiri di oggi in ordine di giro → «Genera FIR» sui primi due → «Emetti FIR» in serie
- * (numeri consecutivi nell'ordine della lista) → «Stampa FIR» con anche il terzo ritiro, che non ha un
- * FIR e viene saltato (`X-Ritiri-Saltati: 1`) → «Distinta» del giorno. Lato API: «stampa FIR» di un solo
+ * (numeri consecutivi nell'ordine della lista) → «Stampa FIR» dalla UI (il frontend manda solo i ritiri con FIR:
+ * `X-Ritiri-Saltati: 0`) e via API con anche il terzo, senza FIR, che viene saltato (`X-Ritiri-Saltati: 1`) → «Distinta» del giorno. Lato API: «stampa FIR» di un solo
  * ritiro senza FIR risponde 400 `NESSUN_FIR_DA_STAMPARE`.
  * La mancanza di firma o di certificato durante l'emissione non si puo' provocare in modo
  * deterministico da qui: la copre lo spec Karma del dialog di emissione.
@@ -156,7 +157,8 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
     }
     expect(await numero(secondo.id)).toBe((await numero(primo.id)) + 1)
 
-    // 3. Stampa FIR: tre ritiri spuntati, il terzo non ha il FIR e viene saltato.
+    // 3. Stampa FIR dalla UI: tre ritiri spuntati, ma il frontend manda solo quelli con un FIR
+    //    (il terzo non ne ha): la richiesta porta due id e nessuno e' saltato.
     await page.getByTestId(`ri-sel-${primo.id}`).check()
     await page.getByTestId(`ri-sel-${secondo.id}`).check()
     await page.getByTestId(`ri-sel-${terzo.id}`).check()
@@ -165,8 +167,25 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
       percorso: '/ritiri/stampa-fir',
     })
     expect(stampa.headers()['content-type']).toContain('application/pdf')
-    expect(stampa.headers()['x-ritiri-saltati']).toBe('1')
+    expect((stampa.request().postDataJSON() as { ritiroIds: string[] }).ritiroIds.sort()).toEqual(
+      [primo.id, secondo.id].sort()
+    )
+    expect(stampa.headers()['x-ritiri-saltati']).toBe('0')
     expect((await stampa.body()).subarray(0, 4).toString()).toBe('%PDF')
+
+    // Lato API: con anche il terzo ritiro (senza FIR) il backend lo salta e lo conta.
+    const conSaltato = await fetch(`${getApiUrl()}/ritiri/stampa-fir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ritiroIds: [primo.id, secondo.id, terzo.id] }),
+    })
+    expect(conSaltato.status).toBe(200)
+    expect(conSaltato.headers.get('x-ritiri-saltati')).toBe('1')
+    expect(
+      Buffer.from(await conSaltato.arrayBuffer())
+        .subarray(0, 4)
+        .toString()
+    ).toBe('%PDF')
 
     // 4. Distinta del giorno (nessun filtro: propone oggi, tutti i mezzi).
     await page.getByTestId('ri-distinta').click()
