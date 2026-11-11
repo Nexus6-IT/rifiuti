@@ -11,6 +11,7 @@ import { ToastService } from '../../core/services/toast.service'
 import { codiceErrore } from '../listino/errori-azione'
 import { RentriUnitaLocaleService } from '../rentri/rentri-unita-locale.service'
 import { ComunicazioniService } from './comunicazioni.service'
+import { RegoleConsorziComponent } from './regole-consorzi.component'
 import { AnteprimaOrso, ComunicazioneVista, righeDaAnteprima } from './comunicazioni.model'
 
 interface SedeScelta {
@@ -34,6 +35,7 @@ interface SedeScelta {
     TableModule,
     TagModule,
     ConfirmDialogModule,
+    RegoleConsorziComponent,
   ],
   providers: [ConfirmationService, DatePipe],
   template: `
@@ -180,6 +182,8 @@ interface SedeScelta {
           </div>
         </section>
       </ng-container>
+
+      <app-regole-consorzi [sedi]="sedi()"></app-regole-consorzi>
 
       <section *ngIf="unitaLocaleId()" class="surface-card" data-testid="comunicazioni-storico">
         <h2 class="section-title">Storico</h2>

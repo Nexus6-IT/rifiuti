@@ -182,6 +182,8 @@ model Tenant {
   ritiri                      Ritiro[]
   comunicazioniConsorzi       ComunicazioneConsorzio[]
   comunicazioniConsorziMovimenti ComunicazioneConsorzioMovimento[]
+  regoleConsorzio               RegolaConsorzio[]
+  datiConsorzioMovimento        DatiConsorzioMovimento[]
 
   // Indici presenti in produzione ma non piu' dichiarati nel modello: la
   // dichiarazione era andata persa, non l'indice. `stripe_customer_id` e' il
@@ -2036,6 +2038,7 @@ model WasteMovement {
   abbinamentiComeScarico AbbinamentoCaricoScarico[] @relation("AbbinamentiScarico")
   abbinamentiComeCarico  AbbinamentoCaricoScarico[] @relation("AbbinamentiCarico")
   comunicazioniConsorzi  ComunicazioneConsorzioMovimento[]
+  datiConsorzio          DatiConsorzioMovimento[]
   /// Solo relazioni inverse (fase 4.3): il legame commerciale non aggiunge colonne al movimento.
   legamiComeOriginale LegameMovimento[] @relation("LegameOriginale")
   legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
@@ -2255,6 +2258,8 @@ model RegistroRifiuti {
   giacenzeIniziali    GiacenzaIniziale[]
   soglieDeposito      SogliaDepositoTemporaneo[]
   abbinamentiCaricoScarico AbbinamentoCaricoScarico[]
+
+  regoleConsorzio RegolaConsorzio[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, unitaLocaleId, codice])
@@ -4456,4 +4461,53 @@ model ComunicazioneConsorzioMovimento {
   @@index([movimentoId], map: "comunicazioni_consorzi_movimenti_movimento_idx")
   @@index([tenantId], map: "comunicazioni_consorzi_movimenti_tenant_id_idx")
   @@map("comunicazioni_consorzi_movimenti")
+}
+
+/// Regola per azienda che marca i movimenti di un consorzio (4.9b, T8, P9 §4.1, D3 = a). Il CER si indica col prefisso (2 o 4 cifre) o col codice esatto (6 cifre), solo cifre. `verso` NULL = carichi e scarichi. CHECK solo in migration: `regole_consorzio_consorzio_ammesso`, `_cer_prefisso_formato`, `_cer_esatto_formato`, `_cer_uno_solo`, `_causale_non_vuota`.
+model RegolaConsorzio {
+  id            String             @id(map: "regole_consorzio_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String             @map("tenant_id") @db.Uuid
+  consorzio     String             @db.VarChar(20)
+  verso         WasteMovementType?
+  cerPrefisso   String?            @map("cer_prefisso") @db.VarChar(4)
+  cerEsatto     String?            @map("cer_esatto") @db.VarChar(6)
+  causaleCodice String?            @map("causale_codice") @db.VarChar(100)
+  registroId    String?            @map("registro_id") @db.Uuid
+  attiva        Boolean            @default(true)
+  validaDal     DateTime           @default(dbgenerated("CURRENT_DATE")) @map("valida_dal") @db.Date
+  creataDa      String?            @map("creata_da") @db.Uuid
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "regole_consorzio_tenant_id_fkey")
+  registro RegistroRifiuti? @relation(fields: [registroId, tenantId], references: [id, tenantId], onDelete: Restrict, onUpdate: NoAction, map: "regole_consorzio_registro_fkey")
+
+  @@unique([id, tenantId], map: "regole_consorzio_id_tenant_id_key")
+  @@index([tenantId, consorzio], map: "regole_consorzio_tenant_id_consorzio_idx")
+  @@index([registroId], map: "regole_consorzio_registro_idx")
+  @@map("regole_consorzio")
+}
+
+/// Correzione manuale sul singolo movimento (4.9b, T8): agganciata alla RADICE della catena, come `LegameMovimento`, quindi segue rettifiche e annullamenti. `escluso` false = marcatura manuale, true = esclusione manuale. `dati` e `versioneSchema` sono per i tracciati futuri (4.9c/4.9d). CHECK solo in migration: `dati_consorzio_movimento_consorzio_ammesso`, `_schema_coerente`. Non entra nell'`entryHash` e non tocca `WasteMovement`.
+model DatiConsorzioMovimento {
+  id                   String            @id(map: "dati_consorzio_movimento_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String            @map("tenant_id") @db.Uuid
+  /// Copia di `registro_id` e `type` della radice: servono alla chiave composta.
+  registroId           String            @map("registro_id") @db.Uuid
+  verso                WasteMovementType
+  movimentoOriginaleId String            @map("movimento_originale_id") @db.Uuid
+  consorzio            String            @db.VarChar(20)
+  escluso              Boolean           @default(false)
+  dati                 Json?
+  versioneSchema       Int?              @map("versione_schema") @db.SmallInt
+  creatoDa             String?           @map("creato_da") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  tenant             Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, map: "dati_consorzio_movimento_tenant_id_fkey")
+  movimentoOriginale WasteMovement @relation(fields: [movimentoOriginaleId, registroId, tenantId, verso], references: [id, registroId, tenantId, type], onDelete: NoAction, onUpdate: NoAction, map: "dati_consorzio_movimento_originale_fkey")
+
+  @@unique([tenantId, movimentoOriginaleId, consorzio], map: "dati_consorzio_movimento_unico_key")
+  @@index([tenantId, consorzio], map: "dati_consorzio_movimento_consorzio_idx")
+  @@map("dati_consorzio_movimento")
 }

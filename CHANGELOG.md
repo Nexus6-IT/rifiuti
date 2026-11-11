@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Marcatura dei movimenti per consorzio ed estratto CSV (Fase 4.9b)
+
+Nella pagina Comunicazioni (modulo `comunicazioni`) si definiscono le regole che marcano i movimenti
+di un consorzio (CONOU, COBAT, Corepla): CER (capitolo, sottocapitolo o codice esatto), carico o
+scarico, causale, data di inizio validità. Finché un'azienda non ha regole proprie per un consorzio
+valgono quelle di sistema (CONOU = CER 13 xx xx; COBAT = 16 06 01* e 20 01 33*); una regola
+dell'azienda, anche disattiva, le sostituisce. Dal dettaglio del registro un ADMIN corregge il singolo
+movimento (marca a mano, esclude, toglie la correzione): la correzione sta sulla radice della catena e
+segue rettifiche e annullamenti; nel registro ogni riga mostra l'etichetta del consorzio. Nuovo
+estratto CSV per consorzio e periodo (data, numero, verso, CER, kg, controparte, FIR). Il registro e
+l'`entryHash` non cambiano. 2 tabelle nuove sotto RLS (82 in totale); lettura per ogni ruolo,
+scrittura per SUPER_ADMIN e ADMIN. I serializzatori ufficiali di CONOU e COBAT restano a 4.9c/4.9d.
+
 ### Added — Ritiri programmati: stampa ed emissione in serie (Fase 4 pezzo 7, PR D)
 
 Nella pagina Ritiri si spuntano i ritiri programmati e si può: **emettere i FIR in bozza in serie**

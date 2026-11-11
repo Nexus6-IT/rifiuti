@@ -141,6 +141,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set<string>([
   // Comunicazioni a consorzi e osservatori (4.9a, T0).
   'ComunicazioneConsorzio',
   'ComunicazioneConsorzioMovimento',
+  // Marcatura dei movimenti per consorzio (4.9b, T8).
+  'RegolaConsorzio',
+  'DatiConsorzioMovimento',
   'Contract',
   // Scheda SA-AUT del MUD: le autorizzazioni sono dell'impianto del tenant.
   'AutorizzazioneImpianto',
