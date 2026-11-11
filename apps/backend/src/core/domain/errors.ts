@@ -198,10 +198,13 @@ export class FirmaSenzaUtenteError extends DomainError {
 }
 
 export class FirNonPiuInBozzaError extends DomainError {
+  /** Codice e messaggio della risposta HTTP (409), senza id. */
+  static readonly CODICE = 'FIR_NON_PIU_IN_BOZZA'
+  static readonly MESSAGGIO_UTENTE =
+    'Il FIR non è più in bozza: è già stato emesso da un’altra operazione.'
+
   constructor(firId: string) {
-    super(
-      `Il FIR ${firId} non è più in bozza: è già stato emesso o annullato da un'altra operazione`
-    )
+    super(`Il FIR ${firId} non è più in bozza: è già stato emesso da un'altra operazione`)
     this.name = 'FirNonPiuInBozzaError'
   }
 }

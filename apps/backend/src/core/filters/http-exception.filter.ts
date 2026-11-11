@@ -13,6 +13,7 @@ import {
   DittaIdentificativiInConflittoError,
   DittaNonTrovataError,
   FirAnnullatoNelFrattempoError,
+  FirNonPiuInBozzaError,
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
   FirNonTrovatoError,
@@ -111,6 +112,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode = HttpStatus.CONFLICT
       errorCode = FirAnnullatoNelFrattempoError.CODICE
       message = FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE
+    }
+    // FIR non piu' in bozza (emesso o annullato da un'altra operazione): 409 senza id, senza segnalazione.
+    else if (exception instanceof FirNonPiuInBozzaError) {
+      statusCode = HttpStatus.CONFLICT
+      errorCode = FirNonPiuInBozzaError.CODICE
+      message = FirNonPiuInBozzaError.MESSAGGIO_UTENTE
     }
     // Lock ottimistico sul FIR (versione diversa da quella letta): 409, nessuna segnalazione.
     else if (exception instanceof FirModificatoNelFrattempoError) {

@@ -505,7 +505,7 @@ describe('EmettiFIRUseCase', () => {
         expect(r.value.numeroProgressivo).toMatch(/^FIR-2027-/)
       })
 
-      it('un FIR non più in bozza nel database dà un errore leggibile, non salva e non avvia RENTRI', async () => {
+      it('un FIR non più in bozza nel database si rilancia: 409 dal filtro, non Result.fail, e non avvia RENTRI', async () => {
         const fir = createBozzaFIR()
         repository.addFIR(fir)
         jest
@@ -513,11 +513,10 @@ describe('EmettiFIRUseCase', () => {
           .mockRejectedValue(new FirNonPiuInBozzaError(fir.id))
         const saveSpy = jest.spyOn(repository, 'save')
 
-        const r = await useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        await expect(
+          useCase.execute(new EmettiFIRCommand(fir.id, 'user-123', 'Test'))
+        ).rejects.toBeInstanceOf(FirNonPiuInBozzaError)
 
-        expect(r.isFailure).toBe(true)
-        expect(r.error).toContain('non è più in bozza')
-        expect(r.error).toContain('Failed to emit FIR:')
         expect(saveSpy).not.toHaveBeenCalled()
         expect(trasmissioneRentri.eseguiSeAutomatica).not.toHaveBeenCalled()
       })
@@ -659,6 +658,7 @@ describe('EmettiFIRUseCase', () => {
 
           expect(result.isFailure).toBe(true)
           expect(result.error).toContain('Firma produttore non riuscita')
+          expect(result.code).toBe('FIRMA_NON_RIUSCITA')
 
           // Il FIR NON è stato mutato: resta BOZZA, senza numero né firma.
           const stillBozza = await repository.findById(fir.id)

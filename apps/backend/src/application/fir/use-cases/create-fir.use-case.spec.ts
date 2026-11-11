@@ -356,6 +356,7 @@ describe('CreateFIRUseCase', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('Produttore not found')
+      expect(result.code).toBe('ANAGRAFICA_MANCANTE')
     })
 
     it('should persist FIR to repository', async () => {
@@ -377,6 +378,7 @@ describe('CreateFIRUseCase', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('CER code not found')
+      expect(result.code).toBe('CER_NON_VALIDO')
       expect(result.error).toContain('13 02 05*')
     })
 
@@ -397,6 +399,7 @@ describe('CreateFIRUseCase', () => {
       // Non deve MAI confondersi col messaggio "non trovato": il codice esiste,
       // solo non è più selezionabile per un formulario nuovo.
       expect(result.error).not.toContain('CER code not found')
+      expect(result.code).toBe('CER_NON_VALIDO')
     })
 
     it('should fail if produttoreId is missing', async () => {
@@ -416,6 +419,7 @@ describe('CreateFIRUseCase', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('Produttore, Trasportatore and Destinatario are required')
+      expect(result.code).toBe('ANAGRAFICA_MANCANTE')
     })
 
     it('should fail if trasportatoreId is missing', async () => {
@@ -546,6 +550,7 @@ describe('CreateFIRUseCase', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('Trasportatore not found: carrier-missing')
+      expect(result.code).toBe('ANAGRAFICA_MANCANTE')
     })
 
     it('should create a FIR with no additional carriers (backward compatible)', async () => {
@@ -628,6 +633,7 @@ describe('CreateFIRUseCase', () => {
       const result = await useCase.execute(comandoConSedi(SEDE_P))
       expect(result.isFailure).toBe(true)
       expect(result.error).toBe('La sede indicata non è una sede attiva del produttore scelto')
+      expect(result.code).toBe('SEDE_NON_VALIDA')
       expect(await firRepository.count()).toBe(0)
     })
 

@@ -84,4 +84,45 @@ describe('RitiriService', () => {
     expect(r.request.responseType).toBe('blob')
     r.flush(new Blob(['x']))
   })
+
+  it('stampaFir manda gli id e chiede un blob', () => {
+    service.stampaFir(['a', 'b']).subscribe()
+    const r = http.expectOne(`${base}/stampa-fir`)
+    expect(r.request.method).toBe('POST')
+    expect(r.request.body).toEqual({ ritiroIds: ['a', 'b'] })
+    expect(r.request.responseType).toBe('blob')
+    r.flush(new Blob(['x']))
+  })
+
+  it('distinta manda data e, se c’è, il mezzo', () => {
+    service.distinta('2026-12-01').subscribe()
+    const senza = http.expectOne(r => r.url === `${base}/distinta.pdf`)
+    expect(senza.request.params.get('data')).toBe('2026-12-01')
+    expect(senza.request.params.has('automezzoId')).toBeFalse()
+    expect(senza.request.responseType).toBe('blob')
+    senza.flush(new Blob(['x']))
+
+    service.distinta('2026-12-01', 'm1').subscribe()
+    const con = http.expectOne(r => r.url === `${base}/distinta.pdf`)
+    expect(con.request.params.get('automezzoId')).toBe('m1')
+    con.flush(new Blob(['x']))
+  })
+
+  it('un errore con corpo Blob torna con il corpo JSON letto (400 e 404 distinguibili)', done => {
+    service.stampaFir(['a']).subscribe({
+      error: err => {
+        expect(err.status).toBe(400)
+        expect(err.error.message).toBe('Nessuno dei ritiri indicati ha un FIR da stampare.')
+        done()
+      },
+    })
+    http
+      .expectOne(`${base}/stampa-fir`)
+      .flush(
+        new Blob([
+          JSON.stringify({ message: 'Nessuno dei ritiri indicati ha un FIR da stampare.' }),
+        ]),
+        { status: 400, statusText: 'Bad Request' }
+      )
+  })
 })

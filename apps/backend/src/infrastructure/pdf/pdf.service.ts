@@ -18,6 +18,11 @@ import {
   type FirConQr,
   type ModelloStampaFir,
 } from './definizione-fir'
+import {
+  definizioneDistinta,
+  type DatiDistinta,
+  type ModelloStampaDistinta,
+} from '../../application/ritiri/stampa/distinta-pdf'
 
 /** Stampante pdfmake con i font Roboto incorporati: condivisa dai servizi che generano PDF. */
 export function creaStampantePdf(): any {
@@ -75,6 +80,15 @@ export class PDFService {
     return this.rendiConFallbackLogo(modello, m => definizioneFirInSerie(elementi, m))
   }
 
+  /** Distinta dei ritiri (T16): stesso motore e stesso ripiego senza logo dei FIR. */
+  async generateDistintaPDF(
+    dati: DatiDistinta,
+    modello: ModelloStampaDistinta | null
+  ): Promise<Buffer> {
+    this.logger.info(`Generating distinta ritiri PDF: ${dati.righe.length} righe`)
+    return this.rendiConFallbackLogo(modello, m => definizioneDistinta(dati, m ?? null))
+  }
+
   /** Contenuto del FIR (usato dai test che ispezionano il documento). */
   private buildFIRContent(fir: any, qrCodeDataUrl?: string): Content[] {
     return contenutoFir(fir, qrCodeDataUrl)
@@ -84,9 +98,9 @@ export class PDFService {
    * Un logo con i byte giusti ma non decodificabile (PNG corrotto) non deve bloccare la stampa
    * dei FIR dell'azienda: si rifa il documento senza logo e si segnala nel log (revisione I1).
    */
-  private async rendiConFallbackLogo(
-    modello: ModelloStampaFir | null | undefined,
-    costruisci: (m: ModelloStampaFir | null | undefined) => TDocumentDefinitions
+  private async rendiConFallbackLogo<M extends { logoBase64?: string | null }>(
+    modello: M | null | undefined,
+    costruisci: (m: M | null | undefined) => TDocumentDefinitions
   ): Promise<Buffer> {
     try {
       return await this.rendi(costruisci(modello))

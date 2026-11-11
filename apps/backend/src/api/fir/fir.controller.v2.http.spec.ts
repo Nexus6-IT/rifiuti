@@ -38,6 +38,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard'
 import { Result } from '../../core/application/result'
 import {
   FirModificatoNelFrattempoError,
+  FirNonPiuInBozzaError,
   FirNonModificabileError,
   FirNonTrovatoError,
 } from '../../core/domain/errors'
@@ -98,6 +99,7 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
 
   // ADMIN del proprio studio (ruolo del token), che lavora nell'azienda del cliente.
   let conferma: { execute: jest.Mock }
+  let emetti: { execute: jest.Mock }
   let collegamentiAccesso: { pesoPerConsegnaFir: jest.Mock }
   const utente = { id: CONSULENTE, email: 'c@studio.it', tenantId: STUDIO, role: 'ADMIN' }
 
@@ -105,6 +107,7 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
     const prisma = prismaFinto(ruoloAssociazione)
     modifica = { execute: jest.fn().mockResolvedValue(Result.ok(firModificato(2))) }
     conferma = { execute: jest.fn().mockResolvedValue(Result.ok(firModificato(2))) }
+    emetti = { execute: jest.fn() }
     collegamentiAccesso = { pesoPerConsegnaFir: jest.fn().mockResolvedValue(12.35) }
     enforcement = {
       assertNotSuspended: jest.fn().mockResolvedValue(undefined),
@@ -121,7 +124,7 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
       controllers: [FIRControllerV2],
       providers: [
         { provide: CreateFIRUseCase, useValue: { execute: jest.fn() } },
-        { provide: EmettiFIRUseCase, useValue: { execute: jest.fn() } },
+        { provide: EmettiFIRUseCase, useValue: emetti },
         { provide: PresaInCaricoFIRUseCase, useValue: { execute: jest.fn() } },
         { provide: ConfermaConsegnaFIRUseCase, useValue: conferma },
         { provide: CollegamentiAccessoService, useValue: collegamentiAccesso },
@@ -236,6 +239,33 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
       const r = await conf({ accessoId: ACCESSO }).expect(403)
       expect(r.body.error).toBe('PESE_RISERVATE_OPERATORI')
       expect(collegamentiAccesso.pesoPerConsegnaFir).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('POST /fir/:id/emetti — codici macchina per l’emissione in serie', () => {
+    const post = () =>
+      request(app.getHttpServer())
+        .post(`/fir/${FIR_ID}/emetti`)
+        .set('X-Tenant-ID', CLIENTE)
+        .send({})
+
+    it('firma non riuscita: 400 con error FIRMA_NON_RIUSCITA', async () => {
+      await avvia()
+      emetti.execute.mockResolvedValue(
+        Result.fail('Firma produttore non riuscita: x', 'FIRMA_NON_RIUSCITA')
+      )
+      const r = await post()
+      expect(r.status).toBe(400)
+      expect(r.body.error).toBe('FIRMA_NON_RIUSCITA')
+    })
+
+    it('FIR non più in bozza: 409 FIR_NON_PIU_IN_BOZZA, senza id', async () => {
+      await avvia()
+      emetti.execute.mockRejectedValue(new FirNonPiuInBozzaError(FIR_ID))
+      const r = await post()
+      expect(r.status).toBe(409)
+      expect(r.body.error).toBe('FIR_NON_PIU_IN_BOZZA')
+      expect(r.body.message).not.toContain(FIR_ID)
     })
   })
 

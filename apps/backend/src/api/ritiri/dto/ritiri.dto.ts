@@ -3,6 +3,7 @@ import { Type } from 'class-transformer'
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsIn,
   IsInt,
@@ -256,4 +257,37 @@ export class ElencoRitiriQueryDto {
   @Min(1)
   @Max(2000)
   dimensione?: number
+}
+
+export class StampaFirDto {
+  @ApiProperty({ type: [String], minItems: 1, maxItems: 100 })
+  @IsArray({ message: 'Indicare da 1 a 100 ritiri.' })
+  @ArrayMinSize(1, { message: 'Indicare da 1 a 100 ritiri.' })
+  @ArrayMaxSize(100, { message: 'Indicare da 1 a 100 ritiri.' })
+  @ArrayUnique({ message: 'Un ritiro è indicato più volte.' })
+  @IsUUID('all', { each: true, message: 'Ritiro non valido.' })
+  ritiroIds!: string[]
+
+  @ApiPropertyOptional({ description: 'Modello di stampa; assente = predefinito FIR/GENERALE' })
+  @IsOptional()
+  @IsUUID('all', { message: 'Modello di stampa non valido.' })
+  modelloId?: string
+}
+
+export class DistintaQueryDto {
+  @ApiProperty({ example: '2026-11-12' })
+  @Matches(DATA, { message: 'La data della distinta non è valida.' })
+  data!: string
+
+  @ApiPropertyOptional({ description: 'Un solo mezzo; assente = tutti i mezzi' })
+  @IsOptional()
+  @IsUUID('all', { message: 'Automezzo non valido.' })
+  automezzoId?: string
+
+  @ApiPropertyOptional({
+    description: 'Modello di stampa; assente = predefinito DISTINTA/GENERALE',
+  })
+  @IsOptional()
+  @IsUUID('all', { message: 'Modello di stampa non valido.' })
+  modelloId?: string
 }

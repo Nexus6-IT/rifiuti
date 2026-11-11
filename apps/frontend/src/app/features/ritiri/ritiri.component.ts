@@ -1,7 +1,9 @@
 /**
  * Elenco dei ritiri programmati (4.7). Filtri per periodo, stato, CER, mezzo, trasportatore e
  * produttore (i secondari stanno nel pannello «Filtri»). Si spuntano i ritiri «da generare» e
- * «Genera FIR» crea le bozze (nessuna emissione): l'esito va riga per riga in un dialog.
+ * «Genera FIR» crea le bozze (nessuna emissione): l'esito va riga per riga in un dialog. «Emetti FIR»
+ * emette le bozze spuntate una alla volta (si ferma alla prima mancanza di firma), «Stampa FIR» scarica
+ * un PDF unico dei FIR dei ritiri spuntati e «Distinta» il foglio di viaggio del giorno.
  * Per ogni riga: Modifica, Non eseguito, Riprogramma (solo dai non eseguiti) e Annulla; il
  * backend ricontrolla che non ci sia un FIR attivo (409).
  */
@@ -20,10 +22,13 @@ import { PillolaStatoComponent } from '../../shared/components/pillola-stato.com
 import { colonneConDati } from '../../shared/utils/colonne-visibili'
 import { puoCreareFir } from '../fir/fir-permissions'
 import { AnagraficaSelectComponent } from '../registry/anagrafica-select.component'
+import { DistintaDialogComponent } from './distinta-dialog.component'
+import { EmissioneSerieDialogComponent } from './emissione-serie-dialog.component'
 import { EsitoGenerazioneDialogComponent } from './esito-generazione-dialog.component'
 import { NonEseguitoDialogComponent } from './non-eseguito-dialog.component'
 import { RitiroDialogComponent } from './ritiro-dialog.component'
 import { STILI_RITIRI } from './ritiri-stili'
+import { scaricaPdf } from './scarica-pdf'
 import {
   dataItaliana,
   ETICHETTA_FASCIA,
@@ -31,9 +36,12 @@ import {
   EsitoGenerazioneRiga,
   FiltriRitiri,
   generabile,
+  selezionabile,
   MAX_RITIRI_PER_LOTTO,
   messaggioErroreRitiri,
   modificabile,
+  daEmettereInSerie,
+  oggiIso,
   quantitaItaliana,
   RisultatoCreazioneRitiri,
   RitiroVista,
@@ -75,27 +83,68 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
     AnagraficaSelectComponent,
     RitiroDialogComponent,
     EsitoGenerazioneDialogComponent,
+    EmissioneSerieDialogComponent,
+    DistintaDialogComponent,
   ],
   template: `
     <section class="page pagina-lavoro">
       <header class="intestazione">
         <h1>Ritiri</h1>
-        <div class="comandi" *ngIf="puoScrivere()">
+        <div class="comandi">
           <p-button
+            label="Distinta"
+            icon="pi pi-print"
+            [outlined]="true"
+            (onClick)="distintaAperta.set(true)"
+            data-testid="ri-distinta"
+            ariaLabel="Distinta dei ritiri del giorno"
+          ></p-button>
+          <p-button
+            *ngIf="puoScrivere()"
+            label="Stampa FIR"
+            icon="pi pi-file-pdf"
+            [outlined]="true"
+            [disabled]="!conFir().length || stampaInCorso()"
+            [loading]="stampaInCorso()"
+            (onClick)="stampaFir()"
+            data-testid="ri-stampa-fir"
+            [ariaLabel]="
+              conFir().length
+                ? 'Stampa il PDF dei FIR di ' + conFir().length + ' ritiri'
+                : 'Stampa FIR: spunta prima uno o più ritiri con un FIR'
+            "
+          ></p-button>
+          <p-button
+            *ngIf="puoScrivere()"
+            label="Emetti FIR"
+            icon="pi pi-send"
+            [outlined]="true"
+            [disabled]="!daEmettere().length"
+            (onClick)="emissioneAperta.set(true)"
+            data-testid="ri-emetti"
+            [ariaLabel]="
+              daEmettere().length
+                ? 'Emetti i FIR in bozza di ' + daEmettere().length + ' ritiri'
+                : 'Emetti FIR: spunta prima uno o più ritiri con il FIR in bozza'
+            "
+          ></p-button>
+          <p-button
+            *ngIf="puoScrivere()"
             label="Genera FIR"
             icon="pi pi-file"
             [outlined]="true"
-            [disabled]="!selezionati().length || generazione()"
+            [disabled]="!daGenerare().length || generazione()"
             [loading]="generazione()"
             (onClick)="generaFir()"
             data-testid="ri-genera"
             [ariaLabel]="
-              selezionati().length
-                ? 'Genera i FIR in bozza per ' + selezionati().length + ' ritiri'
+              daGenerare().length
+                ? 'Genera i FIR in bozza per ' + daGenerare().length + ' ritiri'
                 : 'Genera FIR: spunta prima uno o più ritiri da generare'
             "
           ></p-button>
           <p-button
+            *ngIf="puoScrivere()"
             label="Nuovo ritiro"
             icon="pi pi-plus"
             styleClass="wf-primario"
@@ -235,9 +284,9 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
             <th scope="col" class="sel-col" *ngIf="puoScrivere()">
               <input
                 type="checkbox"
-                aria-label="Seleziona tutti i ritiri da generare di questa pagina"
+                aria-label="Seleziona tutti i ritiri programmati di questa pagina"
                 [checked]="tuttiSelezionati()"
-                [disabled]="!generabili().length"
+                [disabled]="!selezionabili().length"
                 (change)="selezionaTutti($any($event.target).checked)"
                 data-testid="ri-sel-tutti"
               />
@@ -261,7 +310,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
               <input
                 type="checkbox"
                 [checked]="selezione().has(r.id)"
-                [disabled]="!generabile(r)"
+                [disabled]="!selezionabile(r)"
                 (change)="seleziona(r, $any($event.target).checked)"
                 [attr.aria-label]="
                   'Seleziona il ritiro del ' + data(r.dataPrevista) + ' di ' + r.produttore.nome
@@ -337,6 +386,19 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
       [ritiri]="righe()"
       (chiuso)="chiudiEsiti()"
     ></app-esito-generazione-dialog>
+
+    <app-emissione-serie-dialog
+      *ngIf="emissioneAperta()"
+      [ritiri]="daEmettere()"
+      (chiuso)="chiudiEmissione()"
+    ></app-emissione-serie-dialog>
+
+    <app-distinta-dialog
+      *ngIf="distintaAperta()"
+      [data]="giornoDistinta()"
+      [mezzi]="mezzi()"
+      (chiuso)="distintaAperta.set(false)"
+    ></app-distinta-dialog>
 
     <app-non-eseguito-dialog
       *ngIf="pendenteMotivo() as p"
@@ -477,6 +539,9 @@ export class RitiriComponent implements OnInit {
   readonly filtriAperti = signal(false)
   readonly selezione = signal<ReadonlySet<string>>(new Set())
   readonly generazione = signal(false)
+  readonly stampaInCorso = signal(false)
+  readonly emissioneAperta = signal(false)
+  readonly distintaAperta = signal(false)
   readonly esiti = signal<EsitoGenerazioneRiga[] | null>(null)
   readonly dialogAperto = signal(false)
   readonly inModifica = signal<RitiroVista | null>(null)
@@ -502,11 +567,16 @@ export class RitiriComponent implements OnInit {
     dimensione: '',
   }
 
-  readonly generabili = computed(() => this.righe().filter(generabile))
+  readonly selezionabili = computed(() => this.righe().filter(selezionabile))
   readonly tuttiSelezionati = computed(
-    () => this.generabili().length > 0 && this.generabili().every(r => this.selezione().has(r.id))
+    () =>
+      this.selezionabili().length > 0 && this.selezionabili().every(r => this.selezione().has(r.id))
   )
   readonly selezionati = computed(() => this.righe().filter(r => this.selezione().has(r.id)))
+  /** Fra i ritiri spuntati: senza FIR (da generare), con la bozza (da emettere), con un FIR (da stampare). */
+  readonly daGenerare = computed(() => this.selezionati().filter(generabile))
+  readonly daEmettere = computed(() => this.selezionati().filter(daEmettereInSerie))
+  readonly conFir = computed(() => this.selezionati().filter(r => r.fir !== null))
   /** Colonne facoltative con almeno un dato nella pagina: le altre non si disegnano. */
   readonly visibili = computed(() =>
     colonneConDati(this.righe(), { mezzo: r => r.automezzo?.targa, fir: r => r.fir })
@@ -514,6 +584,7 @@ export class RitiriComponent implements OnInit {
   readonly colonneTotali = computed(() => 5 + this.visibili().size + (this.puoScrivere() ? 2 : 0))
 
   readonly generabile = generabile
+  readonly selezionabile = selezionabile
   readonly data = dataItaliana
   readonly quantita = quantitaItaliana
   readonly etichettaStato = (s: StatoVisibileRitiro): string => ETICHETTA_STATO[s]
@@ -558,9 +629,11 @@ export class RitiriComponent implements OnInit {
       next: e => {
         this.righe.set(e.righe)
         this.totale.set(e.totale)
-        // la selezione tiene solo i ritiri ancora visibili e generabili
+        // la selezione tiene solo i ritiri ancora visibili e programmati
         this.selezione.set(
-          new Set(e.righe.filter(r => generabile(r) && this.selezione().has(r.id)).map(r => r.id))
+          new Set(
+            e.righe.filter(r => selezionabile(r) && this.selezione().has(r.id)).map(r => r.id)
+          )
         )
         this.caricamento.set(false)
       },
@@ -579,7 +652,7 @@ export class RitiriComponent implements OnInit {
   }
 
   selezionaTutti(spuntato: boolean): void {
-    this.selezione.set(new Set(spuntato ? this.generabili().map(r => r.id) : []))
+    this.selezione.set(new Set(spuntato ? this.selezionabili().map(r => r.id) : []))
   }
 
   /** Le azioni della riga, in base allo stato (il backend ricontrolla il FIR attivo). */
@@ -654,7 +727,7 @@ export class RitiriComponent implements OnInit {
   }
 
   generaFir(): void {
-    const ids = this.selezionati().map(r => r.id)
+    const ids = this.daGenerare().map(r => r.id)
     if (!ids.length || this.generazione()) return
     if (ids.length > MAX_RITIRI_PER_LOTTO) {
       this.toast.warn(`Al massimo ${MAX_RITIRI_PER_LOTTO} ritiri alla volta.`)
@@ -671,6 +744,49 @@ export class RitiriComponent implements OnInit {
         this.toast.error(messaggioErroreRitiri(err, 'Impossibile generare i FIR.'))
       },
     })
+  }
+
+  /** PDF unico dei FIR dei ritiri spuntati, nell'ordine dei ritiri; avvisa se qualcuno non aveva il FIR. */
+  stampaFir(): void {
+    const ids = this.conFir().map(r => r.id)
+    if (!ids.length || this.stampaInCorso()) return
+    if (ids.length > MAX_RITIRI_PER_LOTTO) {
+      this.toast.warn(`Al massimo ${MAX_RITIRI_PER_LOTTO} ritiri alla volta.`)
+      return
+    }
+    this.stampaInCorso.set(true)
+    this.servizio.stampaFir(ids).subscribe({
+      next: risposta => {
+        this.stampaInCorso.set(false)
+        if (!scaricaPdf(risposta, 'FIR-ritiri.pdf')) {
+          this.toast.info('PDF non disponibile.')
+          return
+        }
+        const saltati = Number(risposta.headers.get('X-Ritiri-Saltati') ?? 0)
+        if (saltati > 0) {
+          this.toast.warn(
+            saltati === 1
+              ? 'Un ritiro non aveva un FIR attivo ed è stato saltato.'
+              : `${saltati} ritiri non avevano un FIR attivo e sono stati saltati.`
+          )
+        }
+      },
+      error: err => {
+        this.stampaInCorso.set(false)
+        this.toast.error(messaggioErroreRitiri(err, 'Impossibile stampare i FIR.'))
+      },
+    })
+  }
+
+  chiudiEmissione(): void {
+    this.emissioneAperta.set(false)
+    this.selezione.set(new Set())
+    this.carica()
+  }
+
+  /** Giorno proposto per la distinta: il filtro «Dal» (o «Al»), altrimenti oggi. */
+  giornoDistinta(): string {
+    return this.filtri.dal || this.filtri.al || oggiIso()
   }
 
   chiudiEsiti(): void {

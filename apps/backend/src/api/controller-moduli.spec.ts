@@ -186,6 +186,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     metodi: { elencaAutomezzi: ['pese', 'ritiri'] },
   },
   'api/ritiri/ritiri.controller.ts': { chiavi: ['ritiri'], motivo: 'Ritiri programmati' },
+  'api/ritiri/stampa-ritiri.controller.ts': {
+    chiavi: ['ritiri'],
+    motivo: 'Distinta dei ritiri e stampa dei FIR dei ritiri',
+  },
   'application/reference-data/reference-data.controller.ts': {
     chiavi: ['reference_data'],
     motivo: 'Dati di riferimento (SUPER_ADMIN)',

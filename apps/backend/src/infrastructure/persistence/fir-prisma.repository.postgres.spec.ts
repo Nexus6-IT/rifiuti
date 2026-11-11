@@ -447,6 +447,15 @@ describe('FIRPrismaRepository — vincolo di unicità (tenant_id, rentri_numero_
       expect(await prisma.fIRSignature.count({ where: { firId: f.id } })).toBe(1)
     })
 
+    it('un FIR gia` ANNULLATO prima dell emissione: FirAnnullatoNelFrattempoError, non «non piu in bozza»', async () => {
+      const f = await bozza()
+      await prisma.fIR.update({ where: { id: f.id }, data: { status: 'CANCELLED' } })
+
+      await expect(
+        repoNumeri.emettiConNumerazione(f, 2031, n => f.emetti(n, firma(utenteNumeri)))
+      ).rejects.toBeInstanceOf(FirAnnullatoNelFrattempoError)
+    })
+
     it('il progressivo ignora i numeri che non hanno il formato FIR-AAAA-N', async () => {
       // Un FIR del tenant con un riferimento fuori formato (dati storici o
       // importati) non deve far fallire il cast né contare nel massimo.
