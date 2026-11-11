@@ -244,7 +244,12 @@ interface OpzioneCausale {
             [(ngModel)]="f.consorzio"
             name="consorzio"
             appendTo="body"
+            [disabled]="f.id !== null"
+            data-testid="regola-consorzio"
           ></p-dropdown>
+          <small *ngIf="f.id !== null" class="text-secondary"
+            >Il consorzio di una regola non si cambia: elimina la regola e creane un'altra.</small
+          >
         </div>
         <div class="flex flex-column gap-1">
           <label for="reg-cer">CER</label>
@@ -446,7 +451,8 @@ export class RegoleConsorziComponent implements OnInit {
       verso: f.verso,
       causaleCodice: f.causaleCodice?.trim() || null,
       attiva: f.attiva,
-      ...(f.validaDal ? { validaDal: f.validaDal } : {}),
+      // Campo vuoto = da sempre, anche in modifica (altrimenti la vecchia data resterebbe).
+      validaDal: f.validaDal || DA_SEMPRE,
     }
     this.inCorso.set(true)
     this.erroriForm.set([])
@@ -472,7 +478,7 @@ export class RegoleConsorziComponent implements OnInit {
     this.conferma.confirm({
       key: 'regole-consorzi',
       header: 'Elimina la regola',
-      message: `Eliminare la regola «${this.nome(r.consorzio)}, ${this.descrivi(r)}»? I movimenti già marcati non cambiano nei file generati.`,
+      message: `Eliminare la regola «${this.nome(r.consorzio)}, ${this.descrivi(r)}»? I movimenti già marcati non cambiano nei file generati. Se è l'ultima regola del consorzio tornano a valere quelle di sistema: per spegnere il consorzio disattiva la regola invece di eliminarla.`,
       acceptLabel: 'Elimina',
       rejectLabel: 'Annulla',
       defaultFocus: 'reject',

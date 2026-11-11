@@ -155,7 +155,31 @@ describe('RegoleConsorziComponent', () => {
     component.form()!.cer = '13'
     component.salva()
     const input = svc.creaRegola.calls.mostRecent().args[0]
-    expect('validaDal' in input).toBe(false)
+    expect(input.validaDal).toBe('1970-01-01')
+  })
+
+  it('in modifica, «Valida dal» svuotato riporta la regola a da sempre (non lascia la vecchia data)', () => {
+    setup(true, [regola({ id: 'r1', sistema: false, cer: '13', validaDal: '2026-11-01' })])
+    svc.modificaRegola.and.returnValue(of(regola({ id: 'r1' })))
+    component.modifica(component.regole()[0])
+    expect(component.form()!.validaDal).toBe('2026-11-01')
+    component.form()!.validaDal = ''
+    component.salva()
+    expect(svc.modificaRegola).toHaveBeenCalledWith(
+      'r1',
+      jasmine.objectContaining({ validaDal: '1970-01-01' })
+    )
+  })
+
+  it('in modifica il consorzio non si cambia: il campo e disattivato, in creazione no', () => {
+    setup(true, [regola({ id: 'r1', sistema: false, cer: '13' })])
+    component.nuova()
+    fixture.detectChanges()
+    const campo = () => document.querySelector('[data-testid="regola-consorzio"]')
+    expect(campo()?.querySelector('.p-disabled')).toBeNull()
+    component.modifica(component.regole()[0])
+    fixture.detectChanges()
+    expect(campo()?.querySelector('.p-disabled')).not.toBeNull()
   })
 
   it('la data 01/01/1970 (da sempre) si mostra come «da sempre»; in modifica il campo resta vuoto', () => {

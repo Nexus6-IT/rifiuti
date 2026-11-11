@@ -26,6 +26,13 @@ export function giornoItaliano(istante: Date): string {
   return formatoGiornoRoma.format(istante)
 }
 
+/** Vero se `testo` e' un giorno di calendario esistente nel formato 'AAAA-MM-GG' (no 30 febbraio). */
+export function eGiornoDiCalendario(testo: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(testo)) return false
+  const d = new Date(`${testo}T00:00:00.000Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === testo
+}
+
 /**
  * Primo istante (00:00 a Roma) del giorno 'AAAA-MM-GG', con l'ora legale. Serve a leggere un
  * periodo «dal giorno X al giorno Y» sul calendario di Roma e non su quello UTC.

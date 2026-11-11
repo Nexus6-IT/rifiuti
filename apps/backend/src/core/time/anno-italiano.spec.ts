@@ -1,4 +1,5 @@
 import {
+  eGiornoDiCalendario,
   inizioGiornoItaliano,
   annoSolareItaliano,
   giornoItaliano,
@@ -63,5 +64,17 @@ describe('tempo italiano', () => {
     ['2026-10-26', '2026-10-25T23:00:00.000Z'],
   ])('inizioGiornoItaliano(%s) = %s', (giorno, atteso) => {
     expect(inizioGiornoItaliano(giorno).toISOString()).toBe(atteso)
+  })
+
+  it.each([
+    ['2026-02-28', true],
+    ['2028-02-29', true],
+    ['2026-02-29', false],
+    ['2026-02-30', false],
+    ['2026-13-01', false],
+    ['2026-1-01', false],
+    ['01/01/2026', false],
+  ])('eGiornoDiCalendario(%s) = %s', (testo, atteso) => {
+    expect(eGiornoDiCalendario(testo)).toBe(atteso)
   })
 })

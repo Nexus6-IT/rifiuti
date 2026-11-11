@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
-import { giornoItaliano } from '../../core/time/anno-italiano'
+import { eGiornoDiCalendario, giornoItaliano } from '../../core/time/anno-italiano'
 import type { CatalogoCausali } from '../../domain/waste-movement/catalogo-causali'
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
 import {
@@ -18,6 +18,7 @@ import {
 import { REGOLE_CONSORZIO_DI_SISTEMA } from '../../domain/comunicazioni/regole-consorzio-sistema'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import {
+  ConsorzioRegolaNonModificabileError,
   MarcaturaNonValidaError,
   MovimentoNonTrovatoError,
   RegolaConsorzioNonTrovataError,
@@ -28,7 +29,6 @@ import {
 } from './marcatura-consorzi.port'
 
 const LIMITE_MOVIMENTI = 200
-const DATA = /^\d{4}-\d{2}-\d{2}$/
 /** Una regola senza data vale da sempre: non deve spegnere quelle di sistema per il passato. */
 const DA_SEMPRE = '1970-01-01'
 
@@ -82,7 +82,12 @@ function causaleEsiste(catalogo: CatalogoCausali, codice: string, verso: VersoMo
  * `registroId` e `attiva` assenti restano `undefined`: in modifica non si toccano, in creazione
  * valgono i default. La data assente e' decisa da chi chiama (creazione: da sempre).
  */
-function campiRegola(input: InputRegolaConsorzio, catalogo: CatalogoCausali) {
+function campiRegola(
+  input: InputRegolaConsorzio,
+  catalogo: CatalogoCausali,
+  /** Causale gia' salvata (solo in modifica): se non cambia non si ricontrolla sul catalogo di oggi. */
+  causaleEsistente?: string | null
+) {
   if (!eConsorzio(input.consorzio)) throw new MarcaturaNonValidaError('Consorzio non valido.')
   const cer = normalizzaCerRegola(input.cer ?? '')
   if (!cer) {
@@ -94,11 +99,16 @@ function campiRegola(input: InputRegolaConsorzio, catalogo: CatalogoCausali) {
   if (verso !== null && verso !== 'CARICO' && verso !== 'SCARICO') {
     throw new MarcaturaNonValidaError('Verso non valido.')
   }
-  if (input.validaDal !== undefined && !DATA.test(input.validaDal)) {
+  if (typeof input.validaDal === 'string' && !eGiornoDiCalendario(input.validaDal)) {
     throw new MarcaturaNonValidaError('Data di inizio validità non valida.')
   }
   const causale = input.causaleCodice?.trim() || null
-  if (causale !== null && !causaleEsiste(catalogo, causale, verso)) {
+  // Una causale ritirata dal catalogo non deve impedire di salvare la regola che la usa gia'.
+  if (
+    causale !== null &&
+    causale !== causaleEsistente &&
+    !causaleEsiste(catalogo, causale, verso)
+  ) {
     throw new MarcaturaNonValidaError(`Causale non valida: «${causale}» non è nel catalogo.`)
   }
   return {
@@ -109,9 +119,10 @@ function campiRegola(input: InputRegolaConsorzio, catalogo: CatalogoCausali) {
     causaleCodice: causale,
     ...(input.registroId === undefined ? {} : { registroId: input.registroId }),
     ...(input.attiva === undefined ? {} : { attiva: input.attiva }),
+    // `null` = da sempre; assente = invariata (in creazione la decide chi chiama).
     ...(input.validaDal === undefined
       ? {}
-      : { validaDal: new Date(`${input.validaDal}T00:00:00.000Z`) }),
+      : { validaDal: new Date(`${input.validaDal ?? DA_SEMPRE}T00:00:00.000Z`) }),
   }
 }
 
@@ -213,7 +224,15 @@ export class MarcaturaConsorziService implements MarcaturaConsorziPort {
     id: string,
     input: InputRegolaConsorzio
   ): Promise<RegolaConsorzioVista> {
-    const campi = campiRegola(input, await caricaCatalogoCausali(this.prisma, tenantId))
+    const esistente = await this.prisma.regolaConsorzio.findFirst({ where: { id, tenantId } })
+    if (!esistente) throw new RegolaConsorzioNonTrovataError()
+    // Cambiare consorzio aggirerebbe la copia delle regole di sistema (e ne spegnerebbe in silenzio).
+    if (input.consorzio !== esistente.consorzio) throw new ConsorzioRegolaNonModificabileError()
+    const campi = campiRegola(
+      input,
+      await caricaCatalogoCausali(this.prisma, tenantId),
+      esistente.causaleCodice
+    )
     await this.controllaRegistro(tenantId, campi.registroId)
     const esito = await this.prisma.regolaConsorzio.updateMany({
       where: { id, tenantId },

@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common'
-import { giornoItaliano, inizioGiornoItaliano } from '../../core/time/anno-italiano'
+import {
+  eGiornoDiCalendario,
+  giornoItaliano,
+  inizioGiornoItaliano,
+} from '../../core/time/anno-italiano'
 import {
   eConsorzio,
   type MovimentoDaClassificare,
@@ -16,7 +20,6 @@ import {
   type EstrattoConsorziPort,
 } from './marcatura-consorzi.port'
 
-const DATA = /^\d{4}-\d{2}-\d{2}$/
 /** Un estratto copre al massimo cinque anni: oltre, il periodo e' quasi certamente un errore. */
 const GIORNI_MASSIMI = 366 * 5
 
@@ -44,7 +47,8 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
   ): Promise<EstrattoConsorzio> {
     const { consorzio, da, a } = params
     if (!eConsorzio(consorzio)) throw new MarcaturaNonValidaError('Consorzio non valido.')
-    if (!DATA.test(da) || !DATA.test(a)) throw new MarcaturaNonValidaError('Periodo non valido.')
+    if (!eGiornoDiCalendario(da) || !eGiornoDiCalendario(a))
+      throw new MarcaturaNonValidaError('Periodo non valido.')
     const inizio = mezzanotteUtc(da)
     const fineIncl = mezzanotteUtc(a)
     if (Number.isNaN(inizio.getTime()) || Number.isNaN(fineIncl.getTime()) || fineIncl < inizio) {

@@ -49,7 +49,7 @@ export class RegolaConsorzioDto {
   @ApiPropertyOptional({ example: '2026-01-01' })
   @IsOptional()
   @Matches(DATA, { message: 'Data di inizio validità non valida.' })
-  validaDal?: string
+  validaDal?: string | null
 }
 
 export class OverrideMovimentoDto {

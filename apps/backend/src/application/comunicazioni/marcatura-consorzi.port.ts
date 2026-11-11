@@ -33,7 +33,8 @@ export interface InputRegolaConsorzio {
   causaleCodice?: string | null
   registroId?: string | null
   attiva?: boolean
-  validaDal?: string
+  /** `AAAA-MM-GG`; `null` o assente in creazione = da sempre; `null` in modifica riporta a «da sempre», assente = invariata. */
+  validaDal?: string | null
 }
 
 export interface MarcaturaMovimentoVista {
@@ -96,6 +97,14 @@ export class MarcaturaNonValidaError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'MarcaturaNonValidaError'
+  }
+}
+
+/** Il consorzio di una regola esistente non si cambia (si elimina e si crea): risponde 400. */
+export class ConsorzioRegolaNonModificabileError extends MarcaturaNonValidaError {
+  constructor() {
+    super('Il consorzio di una regola non si può cambiare: elimina la regola e creane un’altra.')
+    this.name = 'ConsorzioRegolaNonModificabileError'
   }
 }
 

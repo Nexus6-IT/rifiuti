@@ -24,6 +24,7 @@ import {
 } from '../../infrastructure/persistence/prisma.service'
 import {
   creaAziendaMud,
+  creaCausaleAzienda,
   creaMovimento,
   pulisciAziendeMud,
   type AziendaMud,
@@ -31,6 +32,7 @@ import {
 import { MarcaturaConsorziService } from './marcatura-consorzi.service'
 import { EstrattoConsorziService } from './estratto-consorzi.service'
 import {
+  ConsorzioRegolaNonModificabileError,
   MarcaturaNonValidaError,
   MovimentoNonTrovatoError,
   RegolaConsorzioNonTrovataError,
@@ -309,6 +311,119 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
         })
       )
       expect(sciolta).toMatchObject({ registroId: null, attiva: true })
+    })
+
+    it('I-A: il consorzio di una regola non si cambia in modifica (400), la regola resta com’è', async () => {
+      const az = await nuovaAzienda('R9')
+      const creata = await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, { consorzio: 'CONOU', cer: '1302' })
+      )
+      await expect(
+        nel(az, () =>
+          servizio.modificaRegola(az.tenantId, creata.id as string, {
+            consorzio: 'COBAT',
+            cer: '1302',
+          })
+        )
+      ).rejects.toBeInstanceOf(ConsorzioRegolaNonModificabileError)
+      const riga = await owner.regolaConsorzio.findUniqueOrThrow({
+        where: { id: creata.id as string },
+      })
+      expect(riga.consorzio).toBe('CONOU')
+      // COBAT non e' stato toccato: nessuna copia, resta di sistema.
+      expect(
+        await owner.regolaConsorzio.count({ where: { tenantId: az.tenantId, consorzio: 'COBAT' } })
+      ).toBe(0)
+      // Stesso consorzio: la modifica funziona.
+      const ok = await nel(az, () =>
+        servizio.modificaRegola(az.tenantId, creata.id as string, {
+          consorzio: 'CONOU',
+          cer: '1303',
+        })
+      )
+      expect(ok.cer).toBe('1303')
+    })
+
+    it('I-B: in modifica «da sempre» (1970-01-01) riporta la regola a valere dal passato', async () => {
+      const az = await nuovaAzienda('R10')
+      const creata = await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, {
+          consorzio: 'CONOU',
+          cer: '13',
+          validaDal: '2026-11-01',
+        })
+      )
+      expect(creata.validaDal).toBe('2026-11-01')
+      const dopo = await nel(az, () =>
+        servizio.modificaRegola(az.tenantId, creata.id as string, {
+          consorzio: 'CONOU',
+          cer: '13',
+          validaDal: null,
+        })
+      )
+      expect(dopo.validaDal).toBe('1970-01-01')
+    })
+
+    it('date inesistenti (30 febbraio) -> 400 in regola ed estratto', async () => {
+      const az = await nuovaAzienda('R11')
+      await expect(
+        nel(az, () =>
+          servizio.creaRegola(az.tenantId, az.utenteId, {
+            consorzio: 'CONOU',
+            cer: '13',
+            validaDal: '2026-02-30',
+          })
+        )
+      ).rejects.toBeInstanceOf(MarcaturaNonValidaError)
+      await expect(
+        nel(az, () =>
+          estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-03-01', a: '2026-02-30' })
+        )
+      ).rejects.toBeInstanceOf(MarcaturaNonValidaError)
+      await expect(
+        nel(az, () =>
+          estratto.estratto(az.tenantId, { consorzio: 'CONOU', da: '2026-02-30', a: '2026-04-01' })
+        )
+      ).rejects.toBeInstanceOf(MarcaturaNonValidaError)
+    })
+
+    it('causale ritirata dal catalogo: la regola esistente si salva se la causale non cambia, una nuova scelta no', async () => {
+      const az = await nuovaAzienda('R12')
+      await creaCausaleAzienda(owner, az.tenantId, {
+        codice: 'AZ_RITIRATA',
+        verso: 'CARICO',
+        ruolo: 'RICEVUTO_DA_TERZI',
+        dal: '2026-01-01',
+      })
+      const creata = await nel(az, () =>
+        servizio.creaRegola(az.tenantId, az.utenteId, {
+          consorzio: 'CONOU',
+          cer: '13',
+          causaleCodice: 'AZ_RITIRATA',
+        })
+      )
+      await owner.$executeRawUnsafe(
+        `UPDATE causali_registro_azienda SET valida_al = '2026-02-01' WHERE tenant_id = $1::uuid AND codice = 'AZ_RITIRATA'`,
+        az.tenantId
+      )
+      const disattivata = await nel(az, () =>
+        servizio.modificaRegola(az.tenantId, creata.id as string, {
+          consorzio: 'CONOU',
+          cer: '13',
+          causaleCodice: 'AZ_RITIRATA',
+          attiva: false,
+        })
+      )
+      expect(disattivata).toMatchObject({ attiva: false, causaleCodice: 'AZ_RITIRATA' })
+      await expect(
+        nel(az, () =>
+          servizio.creaRegola(az.tenantId, az.utenteId, {
+            consorzio: 'COBAT',
+            cer: '16',
+            causaleCodice: 'AZ_RITIRATA',
+          })
+        )
+      ).rejects.toBeInstanceOf(MarcaturaNonValidaError)
     })
   })
 
