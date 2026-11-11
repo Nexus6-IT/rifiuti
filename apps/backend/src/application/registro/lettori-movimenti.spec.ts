@@ -43,6 +43,11 @@ const LETTORI: Record<string, { scelta: Scelta; motivo: string }> = {
     motivo:
       'movimenti e giacenze a fine mese della comunicazione O.R.SO.: contano solo le righe vigenti (rettifiche e annullamenti)',
   },
+  'application/comunicazioni/marcatura-consorzi.service.ts': {
+    scelta: 'tutte',
+    motivo:
+      "legge righe per id (il movimento e la radice della sua catena) per salvare la correzione per consorzio o mostrare la marcatura; nessun conteggio: l'estratto legge i vigenti con lettore-movimenti-orso",
+  },
   'application/anomaly/anomaly-detection.service.ts': {
     scelta: 'vigenti',
     motivo: 'giacenze impossibili: le catene annullate non contano',

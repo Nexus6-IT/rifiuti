@@ -327,8 +327,8 @@ export class RegoleConsorziComponent implements OnInit {
   /** Sedi attive, per limitare l'estratto a una sede. */
   @Input() sedi: SedeScelta[] = []
 
-  readonly consorzi = CONSORZI
-  readonly versi: ReadonlyArray<{ value: VersoRegola | null; label: string }> = [
+  readonly consorzi = [...CONSORZI]
+  readonly versi: Array<{ value: VersoRegola | null; label: string }> = [
     { value: null, label: 'Carichi e scarichi' },
     { value: 'CARICO', label: 'Solo carichi' },
     { value: 'SCARICO', label: 'Solo scarichi' },
