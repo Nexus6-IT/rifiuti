@@ -18,18 +18,13 @@ import {
   ETICHETTA_FASCIA,
   ETICHETTA_STATO,
   messaggioErroreRitiri,
+  oggiIso,
   quantitaItaliana,
   RitiroVista,
   StatoVisibileRitiro,
   TONO_STATO_RITIRO,
 } from './ritiri.model'
 import { RitiriService } from './ritiri.service'
-
-/** Oggi nel fuso locale, `AAAA-MM-GG`. */
-export function oggiIso(d: Date = new Date()): string {
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
 
 /** Ordine di giro (i senza ordine in fondo), poi fascia (mattina prima), poi produttore. */
 export function ordinaGiro(righe: readonly RitiroVista[]): RitiroVista[] {

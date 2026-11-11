@@ -14,9 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Nella pagina Ritiri si spuntano i ritiri programmati e si può: **emettere i FIR in bozza in serie**
 (uno alla volta nell'ordine della lista, con barra di avanzamento e esito per riga; il ciclo si
 ferma alla prima mancanza di firma o di certificato o al primo errore del server, e i FIR non
-tentati restano in bozza), **stampare i FIR** dei ritiri spuntati in un solo PDF (nell'ordine dei
+tentati restano in bozza; «Interrompi» aspetta l'esito del FIR in corso; un FIR già emesso da
+altri risulta «Già emesso», uno annullato nel frattempo è un errore di riga), **stampare i FIR** dei ritiri spuntati in un solo PDF (nell'ordine dei
 ritiri, con il modello di stampa dell'azienda; i ritiri senza FIR attivo sono saltati e contati) e
-scaricare la **distinta dei ritiri** del giorno, per un mezzo o per tutti, con il modello
+scaricare la **distinta dei ritiri** del giorno, per un mezzo o per tutti (con più mezzi, un blocco per targa), con il modello
 «Distinta ritiri» o in mancanza quello generale. Il numero del FIR lo assegna l'emissione, come
 oggi, e la trasmissione a RENTRI segue la modalità dell'azienda. Rotte nuove, nel modulo `ritiri`:
 `GET /ritiri/distinta.pdf` e `POST /ritiri/stampa-fir` (header `X-Ritiri-Saltati`).

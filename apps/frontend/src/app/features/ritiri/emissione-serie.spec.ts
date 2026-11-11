@@ -1,4 +1,4 @@
-import { Observable, of, throwError } from 'rxjs'
+import { Observable, Subject, of, throwError } from 'rxjs'
 import {
   AvanzamentoEmissione,
   classificaErroreEmissione,
@@ -10,14 +10,18 @@ import {
 
 const righe = (n: number): RigaEmissione[] =>
   Array.from({ length: n }, (_, i) => ({ ritiroId: `r${i}`, firId: `f${i}`, esito: null }))
-const http = (status: number, message?: string) => ({ status, error: { message } })
+const http = (status: number, codice?: string, message?: string) => ({
+  status,
+  error: { error: codice, message },
+})
 
 function esegui(
   r: RigaEmissione[],
-  emetti: (id: string) => Observable<unknown>
+  emetti: (id: string) => Observable<unknown>,
+  interrotto: () => boolean = () => false
 ): AvanzamentoEmissione[] {
   const eventi: AvanzamentoEmissione[] = []
-  emettiInSerie(r, emetti).subscribe(e => eventi.push(e))
+  emettiInSerie(r, emetti, interrotto).subscribe(e => eventi.push(e))
   return eventi
 }
 
@@ -33,9 +37,28 @@ describe('emettiInSerie', () => {
     expect(eventi.some(e => e.ferma)).toBeFalse()
   })
 
-  it('409: vale come già emesso e il ciclo continua', () => {
-    const eventi = esegui(righe(2), id => (id === 'f0' ? throwError(() => http(409)) : of({})))
+  it('409 FIR_NON_PIU_IN_BOZZA: vale come già emesso e il ciclo continua', () => {
+    const eventi = esegui(righe(2), id =>
+      id === 'f0' ? throwError(() => http(409, 'FIR_NON_PIU_IN_BOZZA')) : of({})
+    )
     expect(eventi.map(e => e.riga.esito)).toEqual(['GIA_EMESSO', 'EMESSO'])
+  })
+
+  it('409 FIR_ANNULLATO_NEL_FRATTEMPO e FIR_MODIFICATO_NEL_FRATTEMPO sono errori di riga, mai «già emesso»; si continua', () => {
+    const eventi = esegui(righe(3), id =>
+      id === 'f0'
+        ? throwError(() => http(409, 'FIR_ANNULLATO_NEL_FRATTEMPO'))
+        : id === 'f1'
+          ? throwError(() => http(409, 'FIR_MODIFICATO_NEL_FRATTEMPO'))
+          : of({})
+    )
+    expect(eventi.map(e => e.riga.esito)).toEqual(['ERRORE', 'ERRORE', 'EMESSO'])
+    expect(eventi[0].riga.messaggio).toBe('Il FIR è stato annullato nel frattempo.')
+    expect(eventi[1].riga.messaggio).toContain('modificato da un altro utente')
+  })
+
+  it('un 409 senza codice noto non vale come già emesso', () => {
+    expect(classificaErroreEmissione(http(409)).esito).toBe('ERRORE')
   })
 
   it('mancanza di firma o certificato: si ferma alla prima, con il messaggio chiaro, senza tentare le altre', () => {
@@ -43,7 +66,9 @@ describe('emettiInSerie', () => {
     const eventi = esegui(righe(4), id => {
       chiamate.push(id)
       return id === 'f1'
-        ? throwError(() => http(400, 'Firma produttore non riuscita: certificato assente'))
+        ? throwError(() =>
+            http(400, 'FIRMA_NON_RIUSCITA', 'Firma produttore non riuscita: certificato assente')
+          )
         : of({})
     })
     expect(chiamate).toEqual(['f0', 'f1'])
@@ -55,6 +80,35 @@ describe('emettiInSerie', () => {
     )
     // il testo tecnico del backend non arriva all'utente
     expect(eventi[1].riga.messaggio).not.toContain('assente')
+  })
+
+  it('il testo del messaggio non decide nulla: «certificato» in un 400 senza codice non ferma il ciclo', () => {
+    const chiamate: string[] = []
+    esegui(righe(2), id => {
+      chiamate.push(id)
+      return throwError(() => http(400, undefined, 'Firma non riuscita, certificato scaduto'))
+    })
+    expect(chiamate).toEqual(['f0', 'f1'])
+  })
+
+  it('interruzione: la richiesta in volo arriva al suo esito, le successive non partono', () => {
+    const chiamate: string[] = []
+    const volo = new Subject<unknown>()
+    let stop = false
+    const eventi = esegui(
+      righe(3),
+      id => {
+        chiamate.push(id)
+        return volo
+      },
+      () => stop
+    )
+    expect(chiamate).toEqual(['f0'])
+    stop = true
+    volo.next({})
+    volo.complete()
+    expect(chiamate).toEqual(['f0'])
+    expect(eventi.map(e => e.riga.esito)).toEqual(['EMESSO'])
   })
 
   it('errore 5xx o rete assente: si ferma', () => {
@@ -75,13 +129,14 @@ describe('emettiInSerie', () => {
     expect(classificaErroreEmissione(http(403)).ferma).toBeTrue()
     const eventi = esegui(righe(3), id =>
       id === 'f0'
-        ? throwError(() => http(400, 'Il FIR non è in bozza'))
+        ? throwError(() => http(400, undefined, 'Failed to emit FIR: il FIR 123 non è valido'))
         : id === 'f1'
-          ? throwError(() => http(404, 'FIR not found: x'))
+          ? throwError(() => http(404, undefined, 'FIR not found: x'))
           : of({})
     )
     expect(eventi.map(e => e.riga.esito)).toEqual(['ERRORE', 'ERRORE', 'EMESSO'])
-    expect(eventi[0].riga.messaggio).toBe('Il FIR non è in bozza')
+    // mai il testo grezzo del backend (inglese, con id)
+    expect(eventi[0].riga.messaggio).toBe('Il FIR non si può emettere.')
     expect(eventi[1].riga.messaggio).toBe('FIR non trovato.')
   })
 })

@@ -3,12 +3,12 @@
  * della lista, la rotta esistente `POST /fir/:id/emetti` (nessun codice nuovo lato server).
  *
  * - 200: emesso.
- * - 409: il FIR non è più in bozza, vale come già emesso.
- * - Mancanza di firma o di certificato, errore del server (5xx), rete assente, sessione scaduta o
+ * - 409 `FIR_NON_PIU_IN_BOZZA`: vale come già emesso (annullato o modificato nel frattempo: errore di riga).
+ * - Firma non riuscita (`FIRMA_NON_RIUSCITA`), errore del server (5xx), rete assente, sessione scaduta o
  *   permesso negato: il ciclo SI FERMA su quella riga, i restanti non vengono tentati.
  * - Un altro rifiuto del singolo FIR (es. FIR non trovato): errore di quella riga, si continua.
  */
-import { Observable, catchError, concatMap, from, map, of, takeWhile } from 'rxjs'
+import { EMPTY, Observable, catchError, concatMap, defer, from, map, of, takeWhile } from 'rxjs'
 
 export type EsitoEmissione = 'EMESSO' | 'GIA_EMESSO' | 'ERRORE'
 
@@ -36,15 +36,20 @@ export const MESSAGGIO_SESSIONE =
 
 interface ErroreHttp {
   status?: number
-  error?: { message?: string | string[] }
+  error?: { error?: string }
 }
 
-function testoMessaggio(err: ErroreHttp | null): string {
-  const m = err?.error?.message
-  return Array.isArray(m) ? m.join(' ') : typeof m === 'string' ? m : ''
-}
+/** Codici macchina del backend (`error` nel corpo dell'errore): mai il testo del messaggio. */
+export const CODICE_NON_PIU_IN_BOZZA = 'FIR_NON_PIU_IN_BOZZA'
+export const CODICE_ANNULLATO = 'FIR_ANNULLATO_NEL_FRATTEMPO'
+export const CODICE_MODIFICATO = 'FIR_MODIFICATO_NEL_FRATTEMPO'
+export const CODICE_FIRMA_NON_RIUSCITA = 'FIRMA_NON_RIUSCITA'
 
-/** Classifica l'errore di una singola emissione; la mancanza di firma («Firma … non riuscita») si riconosce dal testo del backend. */
+/**
+ * Classifica l'errore di una singola emissione dal codice del backend. I messaggi mostrati sono
+ * fissi e senza id. 409 `FIR_NON_PIU_IN_BOZZA` = già emesso; annullato o modificato nel frattempo
+ * sono errori della riga (non «già emesso»); `FIRMA_NON_RIUSCITA` ferma il ciclo.
+ */
 export function classificaErroreEmissione(errore: unknown): {
   esito: EsitoEmissione
   messaggio?: string
@@ -52,20 +57,32 @@ export function classificaErroreEmissione(errore: unknown): {
 } {
   const err = (errore ?? null) as ErroreHttp | null
   const stato = err?.status ?? 0
-  if (stato === 409) return { esito: 'GIA_EMESSO', ferma: false }
+  const codice = err?.error?.error
+  if (stato === 409 && codice === CODICE_NON_PIU_IN_BOZZA) {
+    return { esito: 'GIA_EMESSO', ferma: false }
+  }
+  if (stato === 409 && codice === CODICE_ANNULLATO) {
+    return { esito: 'ERRORE', messaggio: 'Il FIR è stato annullato nel frattempo.', ferma: false }
+  }
+  if (stato === 409 && codice === CODICE_MODIFICATO) {
+    return {
+      esito: 'ERRORE',
+      messaggio: 'Il FIR è stato modificato da un altro utente: ricarica l’elenco e riprova.',
+      ferma: false,
+    }
+  }
   if (stato === 401 || stato === 403) {
     return { esito: 'ERRORE', messaggio: MESSAGGIO_SESSIONE, ferma: true }
   }
   if (stato === 0 || stato >= 500) {
     return { esito: 'ERRORE', messaggio: MESSAGGIO_SERVER, ferma: true }
   }
-  const testo = testoMessaggio(err)
-  if (/firma[^:]*non riuscita|certificat/i.test(testo)) {
+  if (stato === 400 && codice === CODICE_FIRMA_NON_RIUSCITA) {
     return { esito: 'ERRORE', messaggio: MESSAGGIO_FIRMA_MANCANTE, ferma: true }
   }
   return {
     esito: 'ERRORE',
-    messaggio: stato === 404 ? 'FIR non trovato.' : testo || 'Il FIR non si può emettere.',
+    messaggio: stato === 404 ? 'FIR non trovato.' : 'Il FIR non si può emettere.',
     ferma: false,
   }
 }
@@ -76,11 +93,14 @@ export function classificaErroreEmissione(errore: unknown): {
  */
 export function emettiInSerie(
   righe: readonly RigaEmissione[],
-  emetti: (firId: string) => Observable<unknown>
+  emetti: (firId: string) => Observable<unknown>,
+  interrotto: () => boolean = () => false
 ): Observable<AvanzamentoEmissione> {
   return from(righe).pipe(
+    // `interrotto` si controlla PRIMA di ogni riga: la richiesta già partita non si annulla (il server
+    // la completa comunque) e arriva al suo esito; dopo, il ciclo si completa senza altre chiamate.
     concatMap((riga, indice) =>
-      emetti(riga.firId).pipe(
+      defer(() => (interrotto() ? EMPTY : emetti(riga.firId))).pipe(
         map(
           (): AvanzamentoEmissione => ({
             indice,

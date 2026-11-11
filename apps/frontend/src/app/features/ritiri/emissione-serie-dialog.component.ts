@@ -2,7 +2,8 @@
  * Emissione in serie dei FIR dei ritiri (4.7, T17): il dialog esegue il ciclo (uno alla volta, in
  * ordine) con una barra di avanzamento e l'esito per riga. Si ferma alla prima mancanza di firma o
  * di certificato (o errore del server) con un messaggio chiaro; le righe non tentate restano «Non
- * tentato». Il ciclo parte all'apertura; «Interrompi» lo ferma fra una riga e l'altra.
+ * tentato». Il ciclo parte all'apertura; «Interrompi» lo ferma fra una riga e l'altra: la richiesta
+ * già partita non si annulla (il server la completa comunque) e la riga mostra il suo esito vero.
  */
 import { CommonModule } from '@angular/common'
 import {
@@ -106,6 +107,7 @@ const TONO: Record<EsitoEmissione | 'NON_TENTATO', TonoStato> = {
           *ngIf="!finito()"
           label="Interrompi"
           [outlined]="true"
+          [disabled]="interrompendo()"
           (onClick)="interrompi()"
           data-testid="em-interrompi"
         ></p-button>
@@ -173,9 +175,14 @@ const TONO: Record<EsitoEmissione | 'NON_TENTATO', TonoStato> = {
 export class EmissioneSerieDialogComponent implements OnInit, OnDestroy {
   private readonly fir = inject(FirService)
   private sub: Subscription | null = null
+  private avviato = false
+  private interrotto = false
 
   /** I ritiri da emettere: servono solo `id`, il FIR e la descrizione. */
   @Input({ required: true }) set ritiri(v: RitiroVista[]) {
+    // Fotografia presa una volta sola: il ciclo lavora per indice, un nuovo input a metà strada
+    // (elenco ricaricato) non deve riscrivere le righe.
+    if (this.avviato) return
     this._ritiri = v
     this.righe.set(
       v
@@ -189,12 +196,18 @@ export class EmissioneSerieDialogComponent implements OnInit, OnDestroy {
   readonly righe = signal<RigaEmissione[]>([])
   readonly finito = signal(false)
   readonly stop = signal<string | null>(null)
+  readonly interrompendo = signal(false)
   readonly tentate = computed(() => this.righe().filter(r => r.esito !== null).length)
   readonly nonTentate = computed(() => this.righe().filter(r => r.esito === null).length)
 
   ngOnInit(): void {
+    this.avviato = true
     const daEmettere = this.righe()
-    this.sub = emettiInSerie(daEmettere, id => this.fir.emettiFIR(id)).subscribe({
+    this.sub = emettiInSerie(
+      daEmettere,
+      id => this.fir.emettiFIR(id),
+      () => this.interrotto
+    ).subscribe({
       next: a => {
         this.righe.update(rs => rs.map((r, i) => (i === a.indice ? a.riga : r)))
         if (a.ferma) {
@@ -211,10 +224,11 @@ export class EmissioneSerieDialogComponent implements OnInit, OnDestroy {
     this.sub?.unsubscribe()
   }
 
+  /** Chiede lo stop: il FIR in corso arriva al suo esito, poi il ciclo si completa da solo. */
   interrompi(): void {
-    this.sub?.unsubscribe()
-    this.stop.set('Emissione interrotta. I FIR non tentati restano in bozza.')
-    this.finito.set(true)
+    this.interrotto = true
+    this.interrompendo.set(true)
+    this.stop.set('Emissione interrotta dopo il FIR in corso. I FIR non tentati restano in bozza.')
   }
 
   chiudi(): void {

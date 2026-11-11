@@ -178,6 +178,12 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
     expect(distinta.headers()['content-disposition']).toContain('distinta-ritiri-')
     expect((await distinta.body()).subarray(0, 4).toString()).toBe('%PDF')
 
+    // Emettere di nuovo un FIR gia' emesso: 409 col codice che il frontend legge come «gia' emesso».
+    const firPrimo = (await leggiRitiro(token, primo.id)).fir!.id
+    const doppia = await chiama<{ error?: string }>('POST', `/fir/${firPrimo}/emetti`, token, {})
+    expect(doppia.stato).toBe(409)
+    expect(doppia.corpo.error).toBe('FIR_NON_PIU_IN_BOZZA')
+
     // Lato API: un solo ritiro, e senza FIR, non da' nessun PDF.
     const nessuno = await chiama<{ error?: string }>('POST', '/ritiri/stampa-fir', token, {
       ritiroIds: [terzo.id],

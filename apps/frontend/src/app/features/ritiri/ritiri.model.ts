@@ -205,6 +205,12 @@ export function daEmettereInSerie(r: RitiroVista): boolean {
   return r.stato === 'PROGRAMMATO' && r.statoVisibile === 'FIR_BOZZA' && r.fir !== null
 }
 
+/** Oggi nel fuso locale, `AAAA-MM-GG`. */
+export function oggiIso(d: Date = new Date()): string {
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 /** Modifica, non eseguito e annullo solo senza FIR attivo (il backend ricontrolla con 409). */
 export function modificabile(r: RitiroVista): boolean {
   return r.stato === 'PROGRAMMATO' && r.fir === null

@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { provideRouter } from '@angular/router'
 import { HttpHeaders, HttpResponse } from '@angular/common/http'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { AuthService } from '../../core/services/auth.service'
 import { ToastService } from '../../core/services/toast.service'
 import { FirService } from '../fir/fir.service'
@@ -203,7 +203,7 @@ describe('RitiriComponent', () => {
       id === 'fb'
         ? throwError(() => ({
             status: 400,
-            error: { message: 'Firma produttore non riuscita: x' },
+            error: { error: 'FIRMA_NON_RIUSCITA', message: 'Firma produttore non riuscita: x' },
           }))
         : of({} as unknown as FIR)
     )
@@ -216,6 +216,39 @@ describe('RitiriComponent', () => {
     expect(q('em-riga-a')?.textContent).toContain('Emesso')
     expect(q('em-riga-b')?.textContent).toContain('Errore')
     expect(q('em-riga-c')?.textContent).toContain('Non tentato')
+  })
+
+  it('Interrompi non annulla la richiesta in volo: la riga mostra il suo esito e le altre restano non tentate', async () => {
+    const due = [
+      ritiroDiProva({
+        id: 'a',
+        statoVisibile: 'FIR_BOZZA',
+        fir: { id: 'fa', numero: null, status: 'DRAFT' },
+      }),
+      ritiroDiProva({
+        id: 'b',
+        statoVisibile: 'FIR_BOZZA',
+        fir: { id: 'fb', numero: null, status: 'DRAFT' },
+      }),
+    ]
+    await crea('ADMIN', due)
+    const volo = new Subject<FIR>()
+    fir.emettiFIR.and.returnValue(volo)
+    q<HTMLInputElement>('ri-sel-tutti')!.click()
+    fixture.detectChanges()
+    bottone('ri-emetti')!.click()
+    fixture.detectChanges()
+    bottone('em-interrompi')!.click()
+    fixture.detectChanges()
+    // la richiesta e` ancora in volo: nessun «Chiudi», nessuna riga data per non tentata a torto
+    expect(q('em-chiudi')).toBeNull()
+    volo.next({} as unknown as FIR)
+    volo.complete()
+    fixture.detectChanges()
+    expect(fir.emettiFIR.calls.allArgs()).toEqual([['fa']])
+    expect(q('em-riga-a')?.textContent).toContain('Emesso')
+    expect(q('em-riga-b')?.textContent).toContain('Non tentato')
+    expect(q('em-chiudi')).not.toBeNull()
   })
 
   it('Distinta apre la scelta del giorno e scarica il PDF del giorno e del mezzo', async () => {

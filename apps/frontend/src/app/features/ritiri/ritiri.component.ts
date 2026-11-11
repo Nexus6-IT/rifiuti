@@ -41,13 +41,13 @@ import {
   messaggioErroreRitiri,
   modificabile,
   daEmettereInSerie,
+  oggiIso,
   quantitaItaliana,
   RisultatoCreazioneRitiri,
   RitiroVista,
   StatoVisibileRitiro,
   TONO_STATO_RITIRO,
 } from './ritiri.model'
-import { oggiIso } from './ritiri-giorno.component'
 import { RitiriService } from './ritiri.service'
 
 type TipoAzione = 'ANNULLA' | 'NON_ESEGUITO' | 'RIPROGRAMMA'

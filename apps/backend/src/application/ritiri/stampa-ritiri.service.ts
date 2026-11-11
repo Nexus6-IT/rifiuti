@@ -89,6 +89,11 @@ export class StampaRitiriService {
           1,
           DIMENSIONE_MASSIMA
         )
+        if (elenco.totale > elenco.righe.length) {
+          throw new RitiroDatiNonValidiError([
+            'Troppi ritiri nel giorno per una sola distinta: scegli un mezzo.',
+          ])
+        }
         return { righe: elenco.righe, automezzo: mezzo }
       })
       const dati: DatiDistinta = {
@@ -104,6 +109,7 @@ export class StampaRitiriService {
             cerCode: r.cerCode,
             quantitaPresunta: r.quantitaPresunta,
             numeroFir: r.fir?.numero ?? null,
+            mezzo: r.automezzo?.targa ?? null,
           })),
       }
       const buffer = await this.pdf.generateDistintaPDF(dati, modello)
@@ -128,17 +134,18 @@ export class StampaRitiriService {
 
     return nelContestoTenant(tenantId, async () => {
       const modello = await this.modelloFir(tenantId, modelloId)
-      const ordinati: RitiroVista[] = await this.prisma.$transaction(tx =>
-        this.repo.leggiMolti(tx, tenantId, ids)
-      )
-      const firIds = ordinati.flatMap(r => (r.fir ? [r.fir.id] : []))
-      if (firIds.length === 0) throw new NessunFirDaStampareError()
-
-      const trovati = await this.prisma.$transaction(tx =>
-        tx.fIR.findMany({ where: { id: { in: firIds }, tenantId }, include: INCLUDE_FIR })
-      )
-      const perId = new Map(trovati.map(f => [f.id, f]))
-      const firs = firIds.flatMap(id => perId.get(id) ?? [])
+      // Una sola transazione: ritiri e FIR letti nello stesso istante.
+      const { firs } = await this.prisma.$transaction(async tx => {
+        const ordinati: RitiroVista[] = await this.repo.leggiMolti(tx, tenantId, ids)
+        const firIds = ordinati.flatMap(r => (r.fir ? [r.fir.id] : []))
+        if (firIds.length === 0) throw new NessunFirDaStampareError()
+        const trovati = await tx.fIR.findMany({
+          where: { id: { in: firIds }, tenantId },
+          include: INCLUDE_FIR,
+        })
+        const perId = new Map(trovati.map(f => [f.id, f]))
+        return { firIds, firs: firIds.flatMap(id => perId.get(id) ?? []) }
+      })
       if (firs.length === 0) throw new NessunFirDaStampareError()
 
       const elementi = await Promise.all(

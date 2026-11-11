@@ -15,6 +15,7 @@ import {
   DittaIdentificativiInConflittoError,
   DittaNonTrovataError,
   FirAnnullatoNelFrattempoError,
+  FirNonPiuInBozzaError,
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
   FirNonTrovatoError,
@@ -136,6 +137,18 @@ describe('HttpExceptionFilter - segnalazione a Bugsink', () => {
           "Il FIR è stato annullato nel frattempo da un'altra operazione: ricarica la pagina per vedere lo stato aggiornato.",
       })
     )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('un FIR non più in bozza è un conflitto (409) con codice proprio e senza id', () => {
+    filter.catch(new FirNonPiuInBozzaError('fir-1'), host)
+
+    expect(response.status).toHaveBeenCalledWith(409)
+    const corpo = response.json.mock.calls[0][0]
+    expect(corpo).toEqual(
+      expect.objectContaining({ statusCode: 409, error: 'FIR_NON_PIU_IN_BOZZA' })
+    )
+    expect(corpo.message).not.toContain('fir-1')
     expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 
