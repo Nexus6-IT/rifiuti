@@ -93,6 +93,8 @@ const TONO: Record<EsitoEmissione | 'NON_TENTATO', TonoStato> = {
               <td>
                 <a
                   [routerLink]="['/fir', r.firId]"
+                  target="_blank"
+                  rel="noopener"
                   [attr.aria-label]="'Apri il FIR del ritiro ' + descrizione(r.ritiroId)"
                   >Apri il FIR</a
                 >

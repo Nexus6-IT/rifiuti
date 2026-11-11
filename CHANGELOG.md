@@ -15,7 +15,7 @@ Nella pagina Ritiri si spuntano i ritiri programmati e si può: **emettere i FIR
 (uno alla volta nell'ordine della lista, con barra di avanzamento e esito per riga; il ciclo si
 ferma alla prima mancanza di firma o di certificato o al primo errore del server, e i FIR non
 tentati restano in bozza; «Interrompi» aspetta l'esito del FIR in corso; un FIR già emesso da
-altri risulta «Già emesso», uno annullato nel frattempo è un errore di riga), **stampare i FIR** dei ritiri spuntati in un solo PDF (nell'ordine dei
+altri risulta «Già emesso», uno annullato prima o durante il ciclo è un errore di riga, mai «Già emesso»), **stampare i FIR** dei ritiri spuntati in un solo PDF (nell'ordine dei
 ritiri, con il modello di stampa dell'azienda; i ritiri senza FIR attivo sono saltati e contati) e
 scaricare la **distinta dei ritiri** del giorno, per un mezzo o per tutti (con più mezzi, un blocco per targa), con il modello
 «Distinta ritiri» o in mancanza quello generale. Il numero del FIR lo assegna l'emissione, come
@@ -470,12 +470,14 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 ## Performance Benchmarks
 
 ### Before Optimization
+
 - Permission check: 45ms avg
 - FIR list query: 320ms avg
 - Audit log query: 850ms avg
 - Cache hit rate: 60%
 
 ### After Optimization ✅
+
 - Permission check: **<10ms** (4.5x improvement)
 - FIR list query: **<100ms** (3.2x improvement)
 - Audit log query: **<200ms** (4.25x improvement)
@@ -486,6 +488,7 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 ## Security Improvements
 
 ### Authentication & Authorization
+
 - ✅ SPID/CIE Level 2 compliance
 - ✅ JWT with RS256 signing
 - ✅ Permission-based authorization
@@ -493,6 +496,7 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 - ✅ Audit trail for all permission changes
 
 ### API Security
+
 - ✅ Rate limiting (prevent abuse)
 - ✅ CSRF protection
 - ✅ Input sanitization (XSS/injection prevention)
@@ -500,6 +504,7 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 - ✅ Correlation ID tracking
 
 ### Data Security
+
 - ✅ Encryption at rest (database)
 - ✅ Encryption in transit (TLS 1.3)
 - ✅ Multi-tenant isolation (RLS)
@@ -511,6 +516,7 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 ## Infrastructure
 
 ### Database
+
 - PostgreSQL 16 (Multi-AZ)
 - Connection pooling
 - Automated backups
@@ -518,12 +524,14 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 - Cross-region replication
 
 ### Cache
+
 - Redis 7 (ElastiCache)
 - Multi-tier caching
 - 90%+ hit rate
 - Distributed cache support
 
 ### Hosting
+
 - AWS ECS (Fargate)
 - Application Load Balancer
 - CloudFront CDN
@@ -531,6 +539,7 @@ Complete production-ready waste management SaaS platform with full RENTRI compli
 - Route53 DNS
 
 ### Monitoring
+
 - CloudWatch metrics
 - Structured logging (Winston)
 - Error aggregation
@@ -550,6 +559,7 @@ None (initial release)
 ### From Development to Production
 
 1. **Database Setup**
+
    ```bash
    npm run prisma:migrate:deploy
    npm run prisma:seed

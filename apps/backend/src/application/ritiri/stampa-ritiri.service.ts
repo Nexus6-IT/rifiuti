@@ -91,7 +91,9 @@ export class StampaRitiriService {
         )
         if (elenco.totale > elenco.righe.length) {
           throw new RitiroDatiNonValidiError([
-            'Troppi ritiri nel giorno per una sola distinta: scegli un mezzo.',
+            automezzoId
+              ? 'Troppi ritiri per questo mezzo in un giorno per una sola distinta.'
+              : 'Troppi ritiri nel giorno per una sola distinta: scegli un mezzo.',
           ])
         }
         return { righe: elenco.righe, automezzo: mezzo }
