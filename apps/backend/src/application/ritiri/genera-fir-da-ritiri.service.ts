@@ -21,7 +21,7 @@ import { ProvenienzaRifiuto, TipoTratta } from '../../domain/fir/aggregates/fir.
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { RitiriRepository } from '../../infrastructure/persistence/ritiri.repository'
 import { CreateFIRCommand } from '../fir/commands/create-fir.command'
-import { CreateFIRUseCase } from '../fir/use-cases/create-fir.use-case'
+import { CODICI_CREA_FIR, CreateFIRUseCase } from '../fir/use-cases/create-fir.use-case'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
 import { RitiroDatiNonValidiError } from './errori-ritiri'
 import { eUuid } from './ritiri.input'
@@ -68,12 +68,18 @@ const errore = (ritiroId: string, codice: CodiceErroreGenerazione): EsitoGeneraz
   messaggio: MESSAGGI[codice],
 })
 
-/** Classifica il messaggio di fallimento di `CreateFIRUseCase` (testi fissi del use case). */
-function codiceDaMessaggio(messaggio: string): CodiceErroreGenerazione {
-  if (/CER code not found|codice CER/i.test(messaggio)) return 'CER_NON_VALIDO'
-  if (/sede indicata/i.test(messaggio)) return 'SEDE_NON_VALIDA'
-  if (/not found|required/i.test(messaggio)) return 'ANAGRAFICA_MANCANTE'
-  return 'ERRORE_INTERNO'
+/** Codice tipizzato del fallimento di `CreateFIRUseCase`; ogni altro caso e' un errore interno. */
+function codiceDaEsito(codice: string | undefined): CodiceErroreGenerazione {
+  switch (codice) {
+    case CODICI_CREA_FIR.CER_NON_VALIDO:
+      return 'CER_NON_VALIDO'
+    case CODICI_CREA_FIR.SEDE_NON_VALIDA:
+      return 'SEDE_NON_VALIDA'
+    case CODICI_CREA_FIR.ANAGRAFICA_MANCANTE:
+      return 'ANAGRAFICA_MANCANTE'
+    default:
+      return 'ERRORE_INTERNO'
+  }
 }
 
 @Injectable()
@@ -175,7 +181,7 @@ export class GeneraFirDaRitiriService {
       )
 
       const esito = await this.creaFir.execute(comando)
-      if (esito.isFailure) return errore(ritiroId, codiceDaMessaggio(esito.error))
+      if (esito.isFailure) return errore(ritiroId, codiceDaEsito(esito.code))
       return { ritiroId, esito: 'CREATO', firId: esito.value.id }
     } catch (err) {
       if (err instanceof FirGiaGeneratoDalRitiroError) return this.giaGenerato(tenantId, ritiroId)

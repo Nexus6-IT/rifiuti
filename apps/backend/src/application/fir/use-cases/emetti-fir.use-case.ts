@@ -36,9 +36,13 @@ import { annoSolareItaliano } from '../../../core/time/anno-italiano'
 import {
   DomainError,
   FirAnnullatoNelFrattempoError,
+  FirNonPiuInBozzaError,
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
 } from '../../../core/domain/errors'
+
+/** Codice macchina del fallimento della firma del produttore (il frontend ferma l'emissione in serie). */
+export const CODICE_FIRMA_NON_RIUSCITA = 'FIRMA_NON_RIUSCITA'
 
 export class EmettiFIRUseCase {
   constructor(
@@ -65,7 +69,10 @@ export class EmettiFIRUseCase {
     try {
       firma = await this.firmaProduttore(command)
     } catch (error) {
-      return Result.fail<FIR>(`Firma produttore non riuscita: ${error.message}`)
+      return Result.fail<FIR>(
+        `Firma produttore non riuscita: ${error.message}`,
+        CODICE_FIRMA_NON_RIUSCITA
+      )
     }
 
     // 3-5. Numero progressivo, transizione di dominio e salvataggio in UNA transaction
@@ -84,6 +91,7 @@ export class EmettiFIRUseCase {
       if (
         error instanceof FirModificatoNelFrattempoError ||
         error instanceof FirAnnullatoNelFrattempoError ||
+        error instanceof FirNonPiuInBozzaError ||
         error instanceof FirNonModificabileError
       ) {
         throw error

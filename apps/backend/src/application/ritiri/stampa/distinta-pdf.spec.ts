@@ -63,6 +63,35 @@ describe('distinta dei ritiri, definizione pura', () => {
     expect(r.map(x => x.produttore)).toEqual(['A', 'B', 'C', 'D'])
   })
 
+  it('con piu mezzi ordina prima per mezzo (senza mezzo in fondo), poi per giro', () => {
+    const r = ordinaRigheDistinta([
+      riga({ produttore: 'B1', mezzo: 'BB222BB', ordineGiro: 1 }),
+      riga({ produttore: 'N1', mezzo: null, ordineGiro: 1 }),
+      riga({ produttore: 'A2', mezzo: 'AA111AA', ordineGiro: 2 }),
+      riga({ produttore: 'A1', mezzo: 'AA111AA', ordineGiro: 1 }),
+    ])
+    expect(r.map(x => x.produttore)).toEqual(['A1', 'A2', 'B1', 'N1'])
+  })
+
+  it('tutti i mezzi: un blocco con la targa per mezzo, e uno «Senza mezzo»; un mezzo solo: nessun blocco', () => {
+    const righe = [
+      riga({ produttore: 'B1', mezzo: 'BB222BB' }),
+      riga({ produttore: 'N1', mezzo: null }),
+      riga({ produttore: 'A1', mezzo: 'AA111AA' }),
+    ]
+    const t = testo(definizioneDistinta({ ...dati(righe), automezzo: null }, null))
+    const pos = (x: string) => t.indexOf(x)
+    expect(pos('Mezzo: AA111AA')).toBeGreaterThan(-1)
+    expect(pos('Mezzo: AA111AA')).toBeLessThan(pos('A1'))
+    expect(pos('A1')).toBeLessThan(pos('Mezzo: BB222BB'))
+    expect(pos('Mezzo: BB222BB')).toBeLessThan(pos('B1'))
+    expect(pos('B1')).toBeLessThan(pos('Senza mezzo'))
+    expect(pos('Senza mezzo')).toBeLessThan(pos('N1'))
+    const unico = testo(definizioneDistinta(dati(righe), null))
+    expect(unico).not.toContain('Senza mezzo')
+    expect(unico).not.toContain('Mezzo: AA111AA')
+  })
+
   it('senza righe indica che non ci sono ritiri', () => {
     expect(testo(definizioneDistinta(dati([]), null))).toContain('Nessun ritiro programmato')
   })

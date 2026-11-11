@@ -1,6 +1,6 @@
-import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http'
+import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable } from 'rxjs'
+import { Observable, catchError, from, switchMap, throwError } from 'rxjs'
 import { environment } from '../../../environments/environment'
 import {
   ElencoRitiri,
@@ -64,9 +64,69 @@ export class RitiriService {
 
   /** PDF del FIR sul modello predefinito (P7 §4: `GET /pdf/fir/:id`); `Content-Disposition` per il nome. */
   scaricaPdfFir(firId: string): Observable<HttpResponse<Blob>> {
-    return this.http.get(`${environment.apiUrl}/pdf/fir/${firId}`, {
-      responseType: 'blob',
-      observe: 'response',
-    })
+    return this.comeErroreLeggibile(
+      this.http.get(`${environment.apiUrl}/pdf/fir/${firId}`, {
+        responseType: 'blob',
+        observe: 'response',
+      })
+    )
+  }
+
+  /** PDF unico dei FIR attivi dei ritiri (da 1 a 100); `X-Ritiri-Saltati` conta quelli senza FIR. */
+  stampaFir(ritiroIds: string[]): Observable<HttpResponse<Blob>> {
+    return this.comeErroreLeggibile(
+      this.http.post(
+        `${this.base}/stampa-fir`,
+        { ritiroIds },
+        { responseType: 'blob', observe: 'response' }
+      )
+    )
+  }
+
+  /** Distinta dei ritiri programmati del giorno (`AAAA-MM-GG`), per un mezzo o per tutti. */
+  distinta(data: string, automezzoId?: string): Observable<HttpResponse<Blob>> {
+    let params = new HttpParams().set('data', data)
+    if (automezzoId) params = params.set('automezzoId', automezzoId)
+    return this.comeErroreLeggibile(
+      this.http.get(`${this.base}/distinta.pdf`, {
+        params,
+        responseType: 'blob',
+        observe: 'response',
+      })
+    )
+  }
+
+  /**
+   * Con `responseType: 'blob'` anche il corpo dell'errore è un Blob: lo si legge come JSON, così
+   * `messaggioErroreRitiri` distingue 400 e 404 invece di dare sempre il ripiego.
+   */
+  private comeErroreLeggibile<T>(richiesta: Observable<T>): Observable<T> {
+    return richiesta.pipe(
+      catchError((err: unknown) => {
+        if (!(err instanceof HttpErrorResponse) || !(err.error instanceof Blob)) {
+          return throwError(() => err)
+        }
+        return from(err.error.text()).pipe(
+          switchMap(testo => {
+            let corpo: unknown = null
+            try {
+              corpo = JSON.parse(testo)
+            } catch {
+              corpo = null
+            }
+            return throwError(
+              () =>
+                new HttpErrorResponse({
+                  error: corpo,
+                  headers: err.headers,
+                  status: err.status,
+                  statusText: err.statusText,
+                  url: err.url ?? undefined,
+                })
+            )
+          })
+        )
+      })
+    )
   }
 }

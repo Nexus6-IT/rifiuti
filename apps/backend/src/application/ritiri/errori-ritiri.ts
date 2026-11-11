@@ -43,3 +43,27 @@ export class RitiroStatoNonValidoError extends DomainError {
     this.name = 'RitiroStatoNonValidoError'
   }
 }
+
+/** 400: nessuno dei ritiri indicati ha un FIR attivo da stampare. */
+export class NessunFirDaStampareError extends DomainError {
+  constructor() {
+    super('Nessuno dei ritiri indicati ha un FIR da stampare: genera prima i FIR.')
+    this.name = 'NessunFirDaStampareError'
+  }
+}
+
+/** 404: l'automezzo della distinta non esiste (o è di un'altra azienda). */
+export class AutomezzoNonTrovatoError extends DomainError {
+  constructor() {
+    super('Automezzo non trovato.')
+    this.name = 'AutomezzoNonTrovatoError'
+  }
+}
+
+/** 400: il modello scelto non è dell'ambito giusto (il modello FIR non si usa per la distinta). */
+export class ModelloAmbitoNonValidoError extends DomainError {
+  constructor(messaggio: string) {
+    super(messaggio)
+    this.name = 'ModelloAmbitoNonValidoError'
+  }
+}

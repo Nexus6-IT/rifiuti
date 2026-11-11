@@ -28,6 +28,8 @@ export interface RigaDistinta {
   /** Quantita` presunta, decimale in stringa (kg). */
   quantitaPresunta: string | null
   numeroFir: string | null
+  /** Targa del mezzo del ritiro (serve alla distinta «tutti i mezzi»); `null` = senza mezzo. */
+  mezzo?: string | null
 }
 
 export interface DatiDistinta {
@@ -76,7 +78,10 @@ function quantitaIt(q: string | null): string {
   return m[2] ? `${intero},${m[2]}` : intero
 }
 
-/** Ordine: fascia (mattina, pomeriggio, senza), ordine giro (senza in fondo), poi produttore. */
+/**
+ * Ordine: mezzo (per targa, senza mezzo in fondo), fascia (mattina, pomeriggio, senza), ordine
+ * giro (senza in fondo), poi produttore. Con un solo mezzo il primo criterio non pesa.
+ */
 export function ordinaRigheDistinta(righe: readonly RigaDistinta[]): RigaDistinta[] {
   const pesoFascia = (f: RigaDistinta['fascia']) =>
     f === 'MATTINA' ? 0 : f === 'POMERIGGIO' ? 1 : 2
@@ -84,12 +89,18 @@ export function ordinaRigheDistinta(righe: readonly RigaDistinta[]): RigaDistint
     .map((r, i) => ({ r, i }))
     .sort(
       (a, b) =>
+        confrontaMezzo(a.r.mezzo, b.r.mezzo) ||
         pesoFascia(a.r.fascia) - pesoFascia(b.r.fascia) ||
         (a.r.ordineGiro ?? Number.MAX_SAFE_INTEGER) - (b.r.ordineGiro ?? Number.MAX_SAFE_INTEGER) ||
         a.r.produttore.localeCompare(b.r.produttore, 'it') ||
         a.i - b.i
     )
     .map(x => x.r)
+}
+
+function confrontaMezzo(a: string | null | undefined, b: string | null | undefined): number {
+  if (a && b) return a.localeCompare(b, 'it')
+  return (a ? 0 : 1) - (b ? 0 : 1)
 }
 
 export function nomeFileDistinta(dati: DatiDistinta): string {
@@ -141,7 +152,24 @@ export function definizioneDistinta(
     ].map(t => ({ text: t, bold: true, color: primario, fontSize: 9 }) as Content),
   ]
   let fasciaPrec: string | null = null
+  // «Tutti i mezzi»: un blocco per targa, cosi' ogni mezzo ha il suo foglio di viaggio leggibile.
+  const raggruppa = dati.automezzo === null && righe.some(r => r.mezzo)
+  let mezzoPrec: string | null | undefined
   for (const r of righe) {
+    if (raggruppa && (mezzoPrec === undefined || (r.mezzo ?? null) !== mezzoPrec)) {
+      mezzoPrec = r.mezzo ?? null
+      corpo.push([
+        {
+          text: mezzoPrec ? `Mezzo: ${mezzoPrec}` : 'Senza mezzo',
+          colSpan: 7,
+          bold: true,
+          color: primario,
+          fillColor: '#f0f0f0',
+        },
+        ...Array<Content>(6).fill({ text: '' }),
+      ] as Content[])
+      fasciaPrec = null
+    }
     const etichetta = r.fascia ? ETICHETTA_FASCIA[r.fascia] : SENZA_FASCIA
     corpo.push([
       { text: etichetta === fasciaPrec ? '' : etichetta, fontSize: 9 },

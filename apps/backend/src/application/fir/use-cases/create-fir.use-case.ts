@@ -25,6 +25,13 @@ import {
   snapshotTratta,
 } from '../snapshot-parti'
 
+/** Codici macchina dei fallimenti di `execute` (il generatore dai ritiri li legge, non il testo). */
+export const CODICI_CREA_FIR = {
+  CER_NON_VALIDO: 'CER_NON_VALIDO',
+  SEDE_NON_VALIDA: 'SEDE_NON_VALIDA',
+  ANAGRAFICA_MANCANTE: 'ANAGRAFICA_MANCANTE',
+} as const
+
 export class CreateFIRUseCase {
   constructor(
     private readonly firRepository: IFIRRepository,
@@ -41,7 +48,7 @@ export class CreateFIRUseCase {
     //    Verifica condivisa con la modifica della bozza.
     const cer = await verificaCerPerFormulario(this.cerRepository, command.rifiuto.cerCode)
     if (cer.isFailure) {
-      return Result.fail<FIR>(cer.error)
+      return Result.fail<FIR>(cer.error, cer.code)
     }
     // Il cerCode normalizzato sovrascrive il valore originale (normalizzato a
     // "NN NN NN" / "NN NN NN*"). Gli altri campi del rifiuto passano invariati.
@@ -49,7 +56,10 @@ export class CreateFIRUseCase {
 
     // 2. Validate the three parties are provided
     if (!command.produttoreId || !command.trasportatoreId || !command.destinatarioId) {
-      return Result.fail<FIR>('Produttore, Trasportatore and Destinatario are required')
+      return Result.fail<FIR>(
+        'Produttore, Trasportatore and Destinatario are required',
+        CODICI_CREA_FIR.ANAGRAFICA_MANCANTE
+      )
     }
 
     // 3. Load the three parties from the registry. A FIR is a legal document:
@@ -67,16 +77,24 @@ export class CreateFIRUseCase {
           })
         : await this.produttoreRepository.findById(command.produttoreId)
       if (!produttore) {
-        return Result.fail<FIR>(`Produttore not found: ${command.produttoreId}`)
+        return Result.fail<FIR>(
+          `Produttore not found: ${command.produttoreId}`,
+          CODICI_CREA_FIR.ANAGRAFICA_MANCANTE
+        )
       }
     } catch (error) {
-      if (error instanceof SedeNonValidaPerRuoloError) return Result.fail<FIR>(error.message)
+      if (error instanceof SedeNonValidaPerRuoloError) {
+        return Result.fail<FIR>(error.message, CODICI_CREA_FIR.SEDE_NON_VALIDA)
+      }
       throw error
     }
 
     const trasportatore = await this.trasportatoreRepository.findById(command.trasportatoreId)
     if (!trasportatore) {
-      return Result.fail<FIR>(`Trasportatore not found: ${command.trasportatoreId}`)
+      return Result.fail<FIR>(
+        `Trasportatore not found: ${command.trasportatoreId}`,
+        CODICI_CREA_FIR.ANAGRAFICA_MANCANTE
+      )
     }
 
     try {
@@ -86,10 +104,15 @@ export class CreateFIRUseCase {
           })
         : await this.destinatarioRepository.findById(command.destinatarioId)
       if (!destinatario) {
-        return Result.fail<FIR>(`Destinatario not found: ${command.destinatarioId}`)
+        return Result.fail<FIR>(
+          `Destinatario not found: ${command.destinatarioId}`,
+          CODICI_CREA_FIR.ANAGRAFICA_MANCANTE
+        )
       }
     } catch (error) {
-      if (error instanceof SedeNonValidaPerRuoloError) return Result.fail<FIR>(error.message)
+      if (error instanceof SedeNonValidaPerRuoloError) {
+        return Result.fail<FIR>(error.message, CODICI_CREA_FIR.SEDE_NON_VALIDA)
+      }
       throw error
     }
 
@@ -100,7 +123,10 @@ export class CreateFIRUseCase {
     for (const tratta of command.trasportatoriAggiuntivi ?? []) {
       const carrier = await this.trasportatoreRepository.findById(tratta.trasportatoreId)
       if (!carrier) {
-        return Result.fail<FIR>(`Trasportatore not found: ${tratta.trasportatoreId}`)
+        return Result.fail<FIR>(
+          `Trasportatore not found: ${tratta.trasportatoreId}`,
+          CODICI_CREA_FIR.ANAGRAFICA_MANCANTE
+        )
       }
       trasportatoriAggiuntivi.push(snapshotTratta(carrier, tratta.ordine, tratta.tipoTratta))
     }

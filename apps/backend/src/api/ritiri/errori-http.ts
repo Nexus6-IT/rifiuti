@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { DomainError } from '../../core/domain/errors'
+import { ModelloStampaNonValidoError } from '../../infrastructure/pdf/definizione-fir'
 import {
+  AutomezzoNonTrovatoError,
+  ModelloAmbitoNonValidoError,
+  NessunFirDaStampareError,
   RitiroConFirError,
   RitiroDatiNonValidiError,
   RitiroModificatoError,
@@ -22,7 +26,21 @@ export async function comeHttpRitiri<R>(fn: () => Promise<R>): Promise<R> {
     return await fn()
   } catch (err) {
     if (err instanceof HttpException) throw err
-    if (err instanceof RitiroNonTrovatoError) throw new NotFoundException(err.message)
+    if (err instanceof RitiroNonTrovatoError || err instanceof AutomezzoNonTrovatoError) {
+      throw new NotFoundException(err.message)
+    }
+    if (err instanceof ModelloStampaNonValidoError) {
+      throw new BadRequestException({ message: err.message, error: 'MODELLO_STAMPA_NON_VALIDO' })
+    }
+    if (err instanceof ModelloAmbitoNonValidoError) {
+      throw new BadRequestException({
+        message: err.message,
+        error: 'MODELLO_STAMPA_AMBITO_NON_VALIDO',
+      })
+    }
+    if (err instanceof NessunFirDaStampareError) {
+      throw new BadRequestException({ message: err.message, error: 'NESSUN_FIR_DA_STAMPARE' })
+    }
     if (err instanceof RitiroDatiNonValidiError) {
       throw new BadRequestException({
         message: err.message,

@@ -7,6 +7,9 @@ import { ICERRepository } from '../../domain/cer/repositories/cer-repository.int
 import { Result } from '../../core/application/result'
 import { cerCanonico } from '../../domain/waste-movement/cer-registro'
 
+/** Codice macchina dei fallimenti del controllo CER. */
+export const CODICE_CER_NON_VALIDO = 'CER_NON_VALIDO'
+
 /**
  * Normalizza un codice CER al formato canonico del catalogo "NN NN NN"
  * (con "*" finale per i pericolosi). Accetta input senza spazi ("200301")
@@ -29,7 +32,7 @@ export async function verificaCerPerFormulario(
   const cerCode = normalizzaCerCode(cerGrezzo)
   const cerExists = await cerRepository.exists(cerCode)
   if (!cerExists) {
-    return Result.fail<string>(`CER code not found: ${cerGrezzo}`)
+    return Result.fail<string>(`CER code not found: ${cerGrezzo}`, CODICE_CER_NON_VALIDO)
   }
   // Il codice esiste per riferimento storico (sopra), ma un FIR NUOVO deve
   // usare la verifica piu' stringente: un codice che RENTRI ha smesso di
@@ -38,7 +41,8 @@ export async function verificaCerPerFormulario(
   const cerUtilizzabile = await cerRepository.isUtilizzabilePerNuovoFormulario(cerCode)
   if (!cerUtilizzabile) {
     return Result.fail<string>(
-      "Questo codice CER non è più valido secondo il registro dell'ente: verificane la sostituzione"
+      "Questo codice CER non è più valido secondo il registro dell'ente: verificane la sostituzione",
+      CODICE_CER_NON_VALIDO
     )
   }
   return Result.ok<string>(cerCode)

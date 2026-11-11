@@ -356,7 +356,10 @@ export class FIRControllerV2 {
       if (result.error.includes('not found')) {
         throw new NotFoundException(result.error)
       }
-      throw new BadRequestException(result.error)
+      // Il codice macchina (es. FIRMA_NON_RIUSCITA) viaggia in `error`: il client non legge il testo.
+      throw new BadRequestException(
+        result.code ? { message: result.error, error: result.code } : result.error
+      )
     }
 
     return FIRResponseDto.fromDomain(result.value)
