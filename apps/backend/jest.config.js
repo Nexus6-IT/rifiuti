@@ -51,8 +51,9 @@ module.exports = {
   // sviluppo (16 thread, 16 GB) un `npx jest src/api ...` lanciato da una
   // sessione Claude ha aperto 15 worker ts-jest da ~1 GB l'uno, ha riempito
   // RAM e swap e ha bloccato il desktop (2026-11-12). Il kernel uccideva un
-  // worker alla volta e jest lo ricreava. Gli script npm passano gia'
-  // --maxWorkers=1, che ha la precedenza su questo valore.
+  // worker alla volta e jest lo ricreava. `test:cov` e `test:postgres` passano
+  // gia' --maxWorkers=1, che ha la precedenza su questo valore; `npm test`
+  // ("jest") e `npx jest` no, e usano questo tetto.
   maxWorkers: 2,
   // Timeout per singolo test: un test bloccato (es. attesa di una connessione
   // Redis/DB che non si risolve in CI senza infra) FALLISCE dopo 30s invece di
