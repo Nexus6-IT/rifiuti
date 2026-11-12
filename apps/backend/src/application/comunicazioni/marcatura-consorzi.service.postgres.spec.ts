@@ -440,7 +440,30 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
       expect(r[olio.id].marcature).toEqual([{ consorzio: 'CONOU', origine: 'REGOLA' }])
       expect(r[batt.id].marcature.map(m => m.consorzio)).toEqual(['COBAT'])
       expect(r[portatili.id].marcature.map(m => m.consorzio)).toEqual(['COBAT'])
-      expect(r[altro.id]).toEqual({ marcature: [], esclusi: [] })
+      expect(r[altro.id]).toEqual({ marcature: [], esclusi: [], regolaPrende: [] })
+    })
+
+    it('regolaPrende: dice quali consorzi una regola attiva prenderebbe anche senza correzione manuale', async () => {
+      const az = await nuovaAzienda('C2b')
+      const olio = await carico(az, '13 02 05*', '2026-05-10')
+      const urbano = await carico(az, '20 03 01', '2026-05-11')
+      // Marcatura manuale su un movimento che una regola prenderebbe comunque.
+      const concorrente = await nel(az, () =>
+        servizio.impostaOverride(az.tenantId, az.utenteId, olio.id, 'CONOU', false)
+      )
+      expect(concorrente.marcature).toEqual([{ consorzio: 'CONOU', origine: 'MANUALE' }])
+      expect(concorrente.regolaPrende).toEqual(['CONOU'])
+      // Marcatura manuale che nessuna regola prende.
+      const solaManuale = await nel(az, () =>
+        servizio.impostaOverride(az.tenantId, az.utenteId, urbano.id, 'COREPLA', false)
+      )
+      expect(solaManuale.regolaPrende).toEqual([])
+      // Anche nella lettura per elenco.
+      const r = await nel(az, () =>
+        servizio.consorziDeiMovimenti(az.tenantId, [olio.id, urbano.id])
+      )
+      expect(r[olio.id].regolaPrende).toEqual(['CONOU'])
+      expect(r[urbano.id].regolaPrende).toEqual([])
     })
 
     it('marcatura ed esclusione manuali; una sola riga per movimento e consorzio; togliere la correzione torna alle regole', async () => {
@@ -451,7 +474,7 @@ describe('Marcatura per consorzio — Postgres reale, ruolo wasteflow_app', () =
       const escluso = await nel(az, () =>
         servizio.impostaOverride(az.tenantId, az.utenteId, olio.id, 'CONOU', true)
       )
-      expect(escluso).toEqual({ marcature: [], esclusi: ['CONOU'] })
+      expect(escluso).toEqual({ marcature: [], esclusi: ['CONOU'], regolaPrende: ['CONOU'] })
       const manuale = await nel(az, () =>
         servizio.impostaOverride(az.tenantId, az.utenteId, urbano.id, 'COREPLA', false)
       )

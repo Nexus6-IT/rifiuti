@@ -41,6 +41,11 @@ export interface MarcaturaMovimentoVista {
   marcature: Marcatura[]
   /** Consorzi che una regola prenderebbe ma che sono stati esclusi a mano. */
   esclusi: Consorzio[]
+  /**
+   * Consorzi che una regola attiva prenderebbe SENZA la correzione manuale (campo additivo):
+   * serve a sapere se, togliendo la correzione, il movimento resterebbe marcato.
+   */
+  regolaPrende: Consorzio[]
 }
 
 export interface MarcaturaConsorziPort {
