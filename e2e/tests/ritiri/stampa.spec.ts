@@ -203,4 +203,28 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
     expect(nessuno.stato).toBe(400)
     expect(nessuno.corpo.error).toBe('NESSUN_FIR_DA_STAMPARE')
   })
+
+  test('un VIEWER seleziona i ritiri e stampa i FIR, senza comandi di scrittura', async ({
+    page,
+  }) => {
+    // il ritiro lo crea l'admin via API (non apre una sessione UI), il VIEWER lo vede e basta
+    const tokenAdmin = await tokenAzienda(pro, 'admin')
+    const [ritiro] = await creaRitiri(tokenAdmin, anagrafiche, {
+      data: giornoItaliano(),
+      ordineGiro: 9,
+    })
+    ricorda([ritiro])
+
+    await accediUiComeAzienda(page, pro, 'viewer')
+    await page.goto('/ritiri')
+    const riga = page.getByTestId(`ri-riga-${ritiro.id}`)
+    await expect(riga).toBeVisible({ timeout: ATTESA_SERVER })
+    await expect(page.getByTestId(`ri-sel-${ritiro.id}`)).toBeEnabled()
+    await expect(page.getByTestId('ri-sel-tutti')).toBeVisible()
+    await expect(page.getByTestId('ri-stampa-fir')).toBeVisible()
+    await expect(page.getByTestId('ri-distinta')).toBeVisible()
+    for (const id of ['ri-genera', 'ri-emetti', 'ri-nuovo', `ri-azioni-${ritiro.id}`]) {
+      await expect(page.getByTestId(id), id).toHaveCount(0)
+    }
+  })
 })
