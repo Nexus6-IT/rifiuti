@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Ritiri: selezione e stampa FIR anche per il VIEWER, scelta del modello di stampa
+
+Nella pagina Ritiri il ruolo VIEWER seleziona i ritiri e stampa i FIR in serie (è una lettura: la
+rotta `POST /ritiri/stampa-fir` non scrive nulla ed era già aperta a tutti i ruoli); emissione,
+generazione, modifica e annullo restano riservati a chi scrive. Accanto a «Stampa FIR» un menu offre i
+modelli di ambito FIR e GENERALE, con il predefinito preselezionato; il dialogo della distinta offre i
+modelli DISTINTA_RITIRI e GENERALE. Il modello viaggia nel parametro facoltativo già esistente
+`modelloId` (backend invariato, un modello di ambito sbagliato resta un 400).
+
 ### Added — Marcatura dei movimenti per consorzio ed estratto CSV (Fase 4.9b)
 
 Nella pagina Comunicazioni (modulo `comunicazioni`) si definiscono le regole che marcano i movimenti

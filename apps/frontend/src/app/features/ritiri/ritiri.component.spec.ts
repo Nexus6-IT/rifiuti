@@ -14,6 +14,30 @@ import { RitiriComponent } from './ritiri.component'
 import { RitiroVista } from './ritiri.model'
 import { RitiriService } from './ritiri.service'
 import { ritiroDiProva } from './ritiri-test-utils'
+import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
+import { ModelloStampaVista } from '../impostazioni/modelli-stampa/modello-stampa.model'
+
+const modello = (p: Partial<ModelloStampaVista>): ModelloStampaVista => ({
+  id: 'm',
+  nome: 'Modello',
+  ambito: 'FIR',
+  copie: 1,
+  testoIntestazione: null,
+  testoPiePagina: null,
+  colorePrimario: '#000000',
+  coloreSecondario: '#000000',
+  logoBase64: null,
+  predefinito: false,
+  versione: 1,
+  ...p,
+})
+const MODELLI: ModelloStampaVista[] = [
+  modello({ id: 'mf1', nome: 'FIR standard', ambito: 'FIR', predefinito: true }),
+  modello({ id: 'mf2', nome: 'FIR a colori', ambito: 'FIR' }),
+  modello({ id: 'mg', nome: 'Generale', ambito: 'GENERALE' }),
+  modello({ id: 'md1', nome: 'Distinta giro', ambito: 'DISTINTA_RITIRI', predefinito: true }),
+  modello({ id: 'md2', nome: 'Distinta corta', ambito: 'DISTINTA_RITIRI' }),
+]
 
 const q = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.body.querySelector<T>(`[data-testid="${id}"]`)
@@ -27,6 +51,7 @@ describe('RitiriComponent', () => {
   let servizio: jasmine.SpyObj<RitiriService>
   let toast: jasmine.SpyObj<ToastService>
   let fir: jasmine.SpyObj<FirService>
+  let modelli: jasmine.SpyObj<ModelliStampaService>
 
   const righe: RitiroVista[] = [
     ritiroDiProva({ id: 'r1' }),
@@ -56,6 +81,8 @@ describe('RitiriComponent', () => {
       'distinta',
     ])
     servizio.elenca.and.returnValue(of({ righe: elenco, totale: elenco.length }))
+    modelli = jasmine.createSpyObj<ModelliStampaService>('ModelliStampaService', ['elenco'])
+    modelli.elenco.and.returnValue(of(MODELLI))
     fir = jasmine.createSpyObj<FirService>('FirService', ['emettiFIR'])
     fir.emettiFIR.and.returnValue(of({} as unknown as FIR))
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'info', 'warn'])
@@ -67,6 +94,7 @@ describe('RitiriComponent', () => {
         { provide: RitiriService, useValue: servizio },
         { provide: ToastService, useValue: toast },
         { provide: FirService, useValue: fir },
+        { provide: ModelliStampaService, useValue: modelli },
         { provide: AuthService, useValue: { currentUser: () => ({ role: ruolo }) } },
         { provide: PeseService, useValue: { elencaAutomezzi: () => of({ righe: [] }) } },
         { provide: RegistryService, useValue: {} },
@@ -148,7 +176,7 @@ describe('RitiriComponent', () => {
     bottone('ri-stampa-fir')!.click()
     fixture.detectChanges()
     // r1 non ha FIR: parte solo r2
-    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'])
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], 'mf1')
     expect(URL.createObjectURL).toHaveBeenCalled()
     expect(toast.warn).toHaveBeenCalledWith(jasmine.stringContaining('saltato'))
   })
@@ -263,7 +291,7 @@ describe('RitiriComponent', () => {
     expect(mezzo).not.toBeNull()
     bottone('di-scarica')!.click()
     fixture.detectChanges()
-    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined)
+    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, 'md1')
     expect(toast.success).toHaveBeenCalledWith('Distinta scaricata.')
   })
 
@@ -344,15 +372,85 @@ describe('RitiriComponent', () => {
     expect(c.azioni(righe[3]).altre).toEqual([])
   })
 
-  it('un lettore non vede selezione, azioni né pulsanti di scrittura', async () => {
+  it('un lettore non vede pulsanti di scrittura né azioni di riga, ma seleziona e stampa i FIR', async () => {
     await crea('VIEWER')
     expect(q('ri-nuovo')).toBeNull()
     expect(q('ri-genera')).toBeNull()
     expect(q('ri-emetti')).toBeNull()
-    expect(q('ri-stampa-fir')).toBeNull()
-    // la distinta e` di lettura: la vedono tutti
+    expect(q('ri-azioni-r1')).toBeNull()
+    // la distinta e la stampa dei FIR sono letture: le vedono tutti
     expect(q('ri-distinta')).not.toBeNull()
-    expect(q('ri-sel-r1')).toBeNull()
+    expect(q('ri-stampa-fir')).not.toBeNull()
+    expect(q<HTMLInputElement>('ri-sel-r2')!.disabled).toBeFalse()
+    expect(q('ri-sel-tutti')).not.toBeNull()
+  })
+
+  it('un lettore stampa i FIR dei ritiri spuntati', async () => {
+    await crea('VIEWER')
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    servizio.stampaFir.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], 'mf1')
+  })
+
+  it('la vista vuota copre tutte le colonne anche per un lettore', async () => {
+    await crea('VIEWER', [])
+    const c = fixture.componentInstance
+    expect(Number(q('ri-vuota')!.getAttribute('colspan'))).toBe(c.colonneTotali())
+    expect(c.colonneTotali()).toBeGreaterThanOrEqual(6 + c.visibili().size)
+  })
+
+  it('il menu del modello FIR offre i modelli FIR e generali, con il predefinito scelto', async () => {
+    await crea()
+    const menu = q<HTMLSelectElement>('ri-modello-fir')!
+    expect(Array.from(menu.options).map(o => o.value)).toEqual(['mf1', 'mf2', 'mg'])
+    expect(menu.value).toBe('mf1')
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    servizio.stampaFir.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    menu.value = 'mf2'
+    menu.dispatchEvent(new Event('change'))
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], 'mf2')
+  })
+
+  it('Distinta: il menu offre i modelli della distinta e passa quello scelto', async () => {
+    await crea()
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    servizio.distinta.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    fixture.componentInstance.filtri.dal = '2026-12-01'
+    bottone('ri-distinta')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    const menu = q<HTMLSelectElement>('di-modello')!
+    expect(Array.from(menu.options).map(o => o.value)).toEqual(['mg', 'md1', 'md2'])
+    expect(menu.value).toBe('md1')
+    menu.value = 'md2'
+    menu.dispatchEvent(new Event('change'))
+    bottone('di-scarica')!.click()
+    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, 'md2')
+  })
+
+  it('senza modelli leggibili la stampa parte senza modello (predefinito del server)', async () => {
+    await crea()
+    modelli.elenco.and.returnValue(throwError(() => ({ status: 403 })))
+    fixture.componentInstance.caricaModelli()
+    fixture.detectChanges()
+    expect(q('ri-modello-fir')).toBeNull()
+    servizio.stampaFir.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], undefined)
   })
 
   it('senza ritiri mostra il messaggio e nessun paginatore', async () => {

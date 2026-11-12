@@ -3,11 +3,13 @@
  * del PDF. Lettura: disponibile a tutti i ruoli dell'azienda.
  */
 import { CommonModule } from '@angular/common'
-import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core'
+import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core'
 import { FormsModule } from '@angular/forms'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { ToastService } from '../../core/services/toast.service'
+import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
+import { ModelloStampaVista } from '../impostazioni/modelli-stampa/modello-stampa.model'
 import { CampoDataComponent } from '../../shared/components/campo-data.component'
 import { messaggioErroreRitiri } from './ritiri.model'
 import { RitiriService } from './ritiri.service'
@@ -48,6 +50,20 @@ import { scaricaPdf } from './scarica-pdf'
         >
           <option value="">Tutti i mezzi</option>
           <option *ngFor="let m of mezzi" [value]="m.id">{{ m.targa }}</option>
+        </select>
+      </div>
+      <div class="field" *ngIf="modelli().length">
+        <label for="di-modello">Modello di stampa</label>
+        <select
+          id="di-modello"
+          class="p-inputtext"
+          [(ngModel)]="modelloId"
+          name="modello"
+          data-testid="di-modello"
+        >
+          <option *ngFor="let m of modelli()" [value]="m.id">
+            {{ m.nome }}{{ m.predefinito ? ' (predefinito)' : '' }}
+          </option>
         </select>
       </div>
       <p
@@ -91,17 +107,39 @@ import { scaricaPdf } from './scarica-pdf'
     `,
   ],
 })
-export class DistintaDialogComponent {
+export class DistintaDialogComponent implements OnInit {
   private readonly servizio = inject(RitiriService)
   private readonly toast = inject(ToastService)
+  private readonly modelliServizio = inject(ModelliStampaService)
 
   @Input() data = ''
   @Input() mezzi: { id: string; targa: string }[] = []
   @Output() chiuso = new EventEmitter<void>()
 
   mezzo = ''
+  modelloId = ''
+  /** Modelli utilizzabili per la distinta (ambito DISTINTA_RITIRI o GENERALE), predefinito in testa. */
+  readonly modelli = signal<ModelloStampaVista[]>([])
   readonly errore = signal<string | null>(null)
   readonly inCorso = signal(false)
+
+  ngOnInit(): void {
+    this.modelliServizio.elenco().subscribe({
+      next: tutti => {
+        const per = (m: ModelloStampaVista) =>
+          m.ambito === 'DISTINTA_RITIRI' || m.ambito === 'GENERALE'
+        const lista = tutti.filter(per)
+        // come il server: predefinito della distinta, poi quello generale
+        const scelto =
+          lista.find(m => m.predefinito && m.ambito === 'DISTINTA_RITIRI') ??
+          lista.find(m => m.predefinito && m.ambito === 'GENERALE')
+        this.modelli.set(lista)
+        this.modelloId = scelto?.id ?? ''
+      },
+      // senza l'elenco (es. errore) la distinta usa il modello predefinito scelto dal server
+      error: () => this.modelli.set([]),
+    })
+  }
 
   scarica(): void {
     if (this.inCorso()) return
@@ -111,20 +149,22 @@ export class DistintaDialogComponent {
     }
     this.errore.set(null)
     this.inCorso.set(true)
-    this.servizio.distinta(this.data, this.mezzo || undefined).subscribe({
-      next: risposta => {
-        this.inCorso.set(false)
-        if (!scaricaPdf(risposta, `distinta-ritiri-${this.data}.pdf`)) {
-          this.errore.set('PDF non disponibile.')
-          return
-        }
-        this.toast.success('Distinta scaricata.')
-        this.chiuso.emit()
-      },
-      error: err => {
-        this.inCorso.set(false)
-        this.errore.set(messaggioErroreRitiri(err, 'Impossibile scaricare la distinta.'))
-      },
-    })
+    this.servizio
+      .distinta(this.data, this.mezzo || undefined, this.modelloId || undefined)
+      .subscribe({
+        next: risposta => {
+          this.inCorso.set(false)
+          if (!scaricaPdf(risposta, `distinta-ritiri-${this.data}.pdf`)) {
+            this.errore.set('PDF non disponibile.')
+            return
+          }
+          this.toast.success('Distinta scaricata.')
+          this.chiuso.emit()
+        },
+        error: err => {
+          this.inCorso.set(false)
+          this.errore.set(messaggioErroreRitiri(err, 'Impossibile scaricare la distinta.'))
+        },
+      })
   }
 }

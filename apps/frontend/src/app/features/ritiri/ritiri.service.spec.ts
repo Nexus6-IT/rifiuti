@@ -94,6 +94,17 @@ describe('RitiriService', () => {
     r.flush(new Blob(['x']))
   })
 
+  it('stampaFir e distinta portano il modello solo se indicato', () => {
+    service.stampaFir(['a'], 'm1').subscribe()
+    const f = http.expectOne(`${base}/stampa-fir`)
+    expect(f.request.body).toEqual({ ritiroIds: ['a'], modelloId: 'm1' })
+    f.flush(new Blob(['x']))
+    service.distinta('2026-12-01', undefined, 'm2').subscribe()
+    const d = http.expectOne(r => r.url === `${base}/distinta.pdf`)
+    expect(d.request.params.get('modelloId')).toBe('m2')
+    d.flush(new Blob(['x']))
+  })
+
   it('distinta manda data e, se c’è, il mezzo', () => {
     service.distinta('2026-12-01').subscribe()
     const senza = http.expectOne(r => r.url === `${base}/distinta.pdf`)

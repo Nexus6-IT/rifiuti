@@ -27,6 +27,8 @@ import { EmissioneSerieDialogComponent } from './emissione-serie-dialog.componen
 import { EsitoGenerazioneDialogComponent } from './esito-generazione-dialog.component'
 import { NonEseguitoDialogComponent } from './non-eseguito-dialog.component'
 import { RitiroDialogComponent } from './ritiro-dialog.component'
+import { ModelliStampaService } from '../impostazioni/modelli-stampa/modelli-stampa.service'
+import { ModelloStampaVista } from '../impostazioni/modelli-stampa/modello-stampa.model'
 import { STILI_RITIRI } from './ritiri-stili'
 import { scaricaPdf } from './scarica-pdf'
 import {
@@ -99,8 +101,23 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
             data-testid="ri-distinta"
             ariaLabel="Distinta dei ritiri del giorno"
           ></p-button>
+          <select
+            *ngIf="modelliFir().length"
+            class="p-inputtext modello-fir"
+            aria-label="Modello di stampa dei FIR"
+            [value]="modelloFirId()"
+            (change)="modelloFirId.set($any($event.target).value)"
+            data-testid="ri-modello-fir"
+          >
+            <option
+              *ngFor="let m of modelliFir()"
+              [value]="m.id"
+              [selected]="m.id === modelloFirId()"
+            >
+              {{ m.nome }}{{ m.predefinito ? ' (predefinito)' : '' }}
+            </option>
+          </select>
           <p-button
-            *ngIf="puoScrivere()"
             label="Stampa FIR"
             icon="pi pi-file-pdf"
             [outlined]="true"
@@ -281,7 +298,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
       >
         <ng-template pTemplate="header">
           <tr>
-            <th scope="col" class="sel-col" *ngIf="puoScrivere()">
+            <th scope="col" class="sel-col">
               <input
                 type="checkbox"
                 aria-label="Seleziona tutti i ritiri programmati di questa pagina"
@@ -306,7 +323,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
         </ng-template>
         <ng-template pTemplate="body" let-r>
           <tr [attr.data-testid]="'ri-riga-' + r.id">
-            <td class="sel-col" *ngIf="puoScrivere()">
+            <td class="sel-col">
               <input
                 type="checkbox"
                 [checked]="selezione().has(r.id)"
@@ -507,6 +524,9 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
       .motivo {
         display: block;
       }
+      .modello-fir {
+        max-width: 14rem;
+      }
       .solo-lettori {
         position: absolute;
         width: 1px;
@@ -529,6 +549,7 @@ export class RitiriComponent implements OnInit {
   private readonly servizio = inject(RitiriService)
   private readonly toast = inject(ToastService)
   private readonly auth = inject(AuthService)
+  private readonly modelliServizio = inject(ModelliStampaService)
 
   readonly puoScrivere = computed(() => puoCreareFir(this.auth.currentUser()?.role))
   readonly stati = Object.entries(ETICHETTA_STATO)
@@ -540,6 +561,9 @@ export class RitiriComponent implements OnInit {
   readonly selezione = signal<ReadonlySet<string>>(new Set())
   readonly generazione = signal(false)
   readonly stampaInCorso = signal(false)
+  /** Modelli per la stampa dei FIR (ambito FIR o GENERALE); la scelta vale per «Stampa FIR». */
+  readonly modelliFir = signal<ModelloStampaVista[]>([])
+  readonly modelloFirId = signal('')
   readonly emissioneAperta = signal(false)
   readonly distintaAperta = signal(false)
   readonly esiti = signal<EsitoGenerazioneRiga[] | null>(null)
@@ -581,7 +605,7 @@ export class RitiriComponent implements OnInit {
   readonly visibili = computed(() =>
     colonneConDati(this.righe(), { mezzo: r => r.automezzo?.targa, fir: r => r.fir })
   )
-  readonly colonneTotali = computed(() => 5 + this.visibili().size + (this.puoScrivere() ? 2 : 0))
+  readonly colonneTotali = computed(() => 6 + this.visibili().size + (this.puoScrivere() ? 1 : 0))
 
   readonly generabile = generabile
   readonly selezionabile = selezionabile
@@ -594,6 +618,26 @@ export class RitiriComponent implements OnInit {
 
   ngOnInit(): void {
     this.carica()
+    this.caricaModelli()
+  }
+
+  /** Legge i modelli di stampa e preseleziona il predefinito dei FIR (poi il generale), come il server. */
+  caricaModelli(): void {
+    this.modelliServizio.elenco().subscribe({
+      next: tutti => {
+        const lista = tutti.filter(m => m.ambito === 'FIR' || m.ambito === 'GENERALE')
+        const scelto =
+          lista.find(m => m.predefinito && m.ambito === 'FIR') ??
+          lista.find(m => m.predefinito && m.ambito === 'GENERALE')
+        this.modelliFir.set(lista)
+        this.modelloFirId.set(scelto?.id ?? '')
+      },
+      // senza l'elenco la stampa usa il modello predefinito scelto dal server
+      error: () => {
+        this.modelliFir.set([])
+        this.modelloFirId.set('')
+      },
+    })
   }
 
   private filtriRichiesta(): FiltriRitiri {
@@ -755,7 +799,7 @@ export class RitiriComponent implements OnInit {
       return
     }
     this.stampaInCorso.set(true)
-    this.servizio.stampaFir(ids).subscribe({
+    this.servizio.stampaFir(ids, this.modelloFirId() || undefined).subscribe({
       next: risposta => {
         this.stampaInCorso.set(false)
         if (!scaricaPdf(risposta, 'FIR-ritiri.pdf')) {

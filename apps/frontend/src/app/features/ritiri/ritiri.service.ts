@@ -73,20 +73,21 @@ export class RitiriService {
   }
 
   /** PDF unico dei FIR attivi dei ritiri (da 1 a 100); `X-Ritiri-Saltati` conta quelli senza FIR. */
-  stampaFir(ritiroIds: string[]): Observable<HttpResponse<Blob>> {
+  stampaFir(ritiroIds: string[], modelloId?: string): Observable<HttpResponse<Blob>> {
     return this.comeErroreLeggibile(
       this.http.post(
         `${this.base}/stampa-fir`,
-        { ritiroIds },
+        { ritiroIds, ...(modelloId ? { modelloId } : {}) },
         { responseType: 'blob', observe: 'response' }
       )
     )
   }
 
   /** Distinta dei ritiri programmati del giorno (`AAAA-MM-GG`), per un mezzo o per tutti. */
-  distinta(data: string, automezzoId?: string): Observable<HttpResponse<Blob>> {
+  distinta(data: string, automezzoId?: string, modelloId?: string): Observable<HttpResponse<Blob>> {
     let params = new HttpParams().set('data', data)
     if (automezzoId) params = params.set('automezzoId', automezzoId)
+    if (modelloId) params = params.set('modelloId', modelloId)
     return this.comeErroreLeggibile(
       this.http.get(`${this.base}/distinta.pdf`, {
         params,
