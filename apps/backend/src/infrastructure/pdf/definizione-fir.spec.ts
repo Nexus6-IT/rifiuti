@@ -165,6 +165,11 @@ describe('PDFService - PDF reale', () => {
       expect((d.watermark as { opacity: number }).opacity).toBeLessThanOrEqual(0.2)
     })
 
+    it('anche un FIR in attesa del produttore (AWAITING_PRODUCER) ha la filigrana', () => {
+      const d = definizioneFir({ ...fir('FIR-2026-000003'), status: 'AWAITING_PRODUCER' })
+      expect(d.watermark).toBeDefined()
+    })
+
     it('un FIR emesso non ha filigrana', () => {
       expect(definizioneFir(fir('FIR-2026-000002')).watermark).toBeUndefined()
     })

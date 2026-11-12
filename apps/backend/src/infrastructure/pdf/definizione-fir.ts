@@ -1,5 +1,6 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
 import { esaminaLogo } from '../../domain/modelli-stampa/logo'
+import { STATI_FIR_IN_BOZZA } from '../../domain/fir/stati-fir'
 import { formattaDataItaliana, formattaDataOraItaliana } from '../../core/time/anno-italiano'
 
 /** Ambiti di un modello di stampa (specchio dell'enum Prisma `AmbitoModelloStampa`). */
@@ -315,7 +316,8 @@ function coloreStato(status: string): string {
 /** Dicitura della filigrana e del banner dei FIR in bozza (decisione 12/11/2026). */
 export const DICITURA_BOZZA = 'BOZZA – NON VALIDO'
 
-const eBozza = (fir: any): boolean => fir?.status === 'DRAFT'
+const eBozza = (fir: any): boolean =>
+  (STATI_FIR_IN_BOZZA as readonly string[]).includes(fir?.status)
 
 export interface FirConQr {
   fir: any
