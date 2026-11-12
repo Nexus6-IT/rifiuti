@@ -61,6 +61,7 @@ import { scaricaPdf } from './scarica-pdf'
           name="modello"
           data-testid="di-modello"
         >
+          <option value="">Modello predefinito</option>
           <option *ngFor="let m of modelli()" [value]="m.id">
             {{ m.nome }}{{ m.predefinito ? ' (predefinito)' : '' }}
           </option>

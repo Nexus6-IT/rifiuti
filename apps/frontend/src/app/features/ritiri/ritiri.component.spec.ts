@@ -399,14 +399,16 @@ describe('RitiriComponent', () => {
   it('la vista vuota copre tutte le colonne anche per un lettore', async () => {
     await crea('VIEWER', [])
     const c = fixture.componentInstance
-    expect(Number(q('ri-vuota')!.getAttribute('colspan'))).toBe(c.colonneTotali())
-    expect(c.colonneTotali()).toBeGreaterThanOrEqual(6 + c.visibili().size)
+    const intestazioni = document.body.querySelectorAll('thead th').length
+    expect(intestazioni).toBeGreaterThan(0)
+    expect(Number(q('ri-vuota')!.getAttribute('colspan'))).toBe(intestazioni)
+    expect(c.colonneTotali()).toBe(intestazioni)
   })
 
   it('il menu del modello FIR offre i modelli FIR e generali, con il predefinito scelto', async () => {
     await crea()
     const menu = q<HTMLSelectElement>('ri-modello-fir')!
-    expect(Array.from(menu.options).map(o => o.value)).toEqual(['mf1', 'mf2', 'mg'])
+    expect(Array.from(menu.options).map(o => o.value)).toEqual(['', 'mf1', 'mf2', 'mg'])
     expect(menu.value).toBe('mf1')
     spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
     spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
@@ -417,6 +419,54 @@ describe('RitiriComponent', () => {
     fixture.detectChanges()
     bottone('ri-stampa-fir')!.click()
     expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], 'mf2')
+  })
+
+  it('senza modello predefinito il menu mostra «Modello predefinito» e la stampa parte senza modello', async () => {
+    await crea()
+    modelli.elenco.and.returnValue(of(MODELLI.map(m => ({ ...m, predefinito: false }))))
+    fixture.componentInstance.caricaModelli()
+    fixture.detectChanges()
+    const menu = q<HTMLSelectElement>('ri-modello-fir')!
+    expect(menu.value).toBe('')
+    expect(menu.selectedOptions[0].textContent).toContain('Modello predefinito')
+    servizio.stampaFir.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], undefined)
+  })
+
+  it('si torna al «Modello predefinito» scegliendo la voce vuota', async () => {
+    await crea()
+    const menu = q<HTMLSelectElement>('ri-modello-fir')!
+    menu.value = ''
+    menu.dispatchEvent(new Event('change'))
+    servizio.stampaFir.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    q<HTMLInputElement>('ri-sel-r2')!.click()
+    fixture.detectChanges()
+    bottone('ri-stampa-fir')!.click()
+    expect(servizio.stampaFir).toHaveBeenCalledOnceWith(['r2'], undefined)
+  })
+
+  it('Distinta senza modello predefinito: voce «Modello predefinito» e nessun modelloId', async () => {
+    await crea()
+    modelli.elenco.and.returnValue(of(MODELLI.map(m => ({ ...m, predefinito: false }))))
+    spyOn(URL, 'createObjectURL').and.returnValue('blob:x')
+    spyOn(HTMLAnchorElement.prototype, 'click').and.stub()
+    servizio.distinta.and.returnValue(of(new HttpResponse({ body: new Blob(['%PDF']) })))
+    fixture.componentInstance.filtri.dal = '2026-12-01'
+    bottone('ri-distinta')!.click()
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    const menu = q<HTMLSelectElement>('di-modello')!
+    expect(menu.selectedOptions[0].textContent).toContain('Modello predefinito')
+    bottone('di-scarica')!.click()
+    expect(servizio.distinta).toHaveBeenCalledOnceWith('2026-12-01', undefined, undefined)
   })
 
   it('Distinta: il menu offre i modelli della distinta e passa quello scelto', async () => {
@@ -430,7 +480,7 @@ describe('RitiriComponent', () => {
     await fixture.whenStable()
     fixture.detectChanges()
     const menu = q<HTMLSelectElement>('di-modello')!
-    expect(Array.from(menu.options).map(o => o.value)).toEqual(['mg', 'md1', 'md2'])
+    expect(Array.from(menu.options).map(o => o.value)).toEqual(['', 'mg', 'md1', 'md2'])
     expect(menu.value).toBe('md1')
     menu.value = 'md2'
     menu.dispatchEvent(new Event('change'))

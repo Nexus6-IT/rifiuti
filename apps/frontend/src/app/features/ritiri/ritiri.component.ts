@@ -109,6 +109,7 @@ const TESTI_AZIONE: Record<TipoAzione, { titolo: string; bottone: string; perico
             (change)="modelloFirId.set($any($event.target).value)"
             data-testid="ri-modello-fir"
           >
+            <option value="" [selected]="!modelloFirId()">Modello predefinito</option>
             <option
               *ngFor="let m of modelliFir()"
               [value]="m.id"
@@ -605,7 +606,7 @@ export class RitiriComponent implements OnInit {
   readonly visibili = computed(() =>
     colonneConDati(this.righe(), { mezzo: r => r.automezzo?.targa, fir: r => r.fir })
   )
-  readonly colonneTotali = computed(() => 6 + this.visibili().size + (this.puoScrivere() ? 1 : 0))
+  readonly colonneTotali = computed(() => 7 + this.visibili().size + (this.puoScrivere() ? 1 : 0))
 
   readonly generabile = generabile
   readonly selezionabile = selezionabile
