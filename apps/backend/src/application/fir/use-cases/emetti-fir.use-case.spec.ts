@@ -433,6 +433,7 @@ describe('EmettiFIRUseCase', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('FIR not found')
+      expect(result.code).toBe('FIR_NON_TROVATO')
     })
 
     it('should emit domain event on success', async () => {

@@ -39,6 +39,7 @@ import {
   FirNonPiuInBozzaError,
   FirModificatoNelFrattempoError,
   FirNonModificabileError,
+  FirNonTrovatoError,
 } from '../../../core/domain/errors'
 
 /** Codice macchina del fallimento della firma del produttore (il frontend ferma l'emissione in serie). */
@@ -57,7 +58,7 @@ export class EmettiFIRUseCase {
     // 1. Retrieve FIR aggregate (ciclo di vita)
     const fir = await this.firRepository.findById(command.firId)
     if (!fir) {
-      return Result.fail<FIR>(`FIR not found: ${command.firId}`)
+      return Result.fail<FIR>(`FIR not found: ${command.firId}`, FirNonTrovatoError.CODICE)
     }
 
     // 2. Firma crittografica del produttore, PRIMA di applicare la transizione:

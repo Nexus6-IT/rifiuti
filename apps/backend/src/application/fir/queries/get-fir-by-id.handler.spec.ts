@@ -132,6 +132,7 @@ describe('GetFIRByIdQueryHandler', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('FIR not found')
+      expect(result.code).toBe('FIR_NON_TROVATO')
     })
 
     it('should authorize a user of the owning tenant', async () => {
@@ -156,6 +157,7 @@ describe('GetFIRByIdQueryHandler', () => {
       // Cross-tenant: non deve rivelare l'esistenza del FIR → "not found" (404)
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('FIR not found')
+      expect(result.code).toBe('FIR_NON_TROVATO')
     })
   })
 })
