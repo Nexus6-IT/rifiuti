@@ -87,13 +87,18 @@ export class MarcaturaMovimentoComponent implements OnChanges {
   readonly errore = signal<string | null>(null)
 
   readonly nome = etichettaConsorzio
+  private permessoLetto = false
 
   ngOnChanges(): void {
     this.errore.set(null)
-    this.servizio.regole().subscribe({
-      next: r => this.puoModificare.set(r.puoModificare),
-      error: () => this.puoModificare.set(false),
-    })
+    // Il permesso non cambia fra un input e l'altro: una lettura sola per istanza.
+    if (!this.permessoLetto) {
+      this.permessoLetto = true
+      this.servizio.regole().subscribe({
+        next: r => this.puoModificare.set(r.puoModificare),
+        error: () => this.puoModificare.set(false),
+      })
+    }
     if (this.marcatura) {
       this.corrente.set(this.marcatura)
       return
