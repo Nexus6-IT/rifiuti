@@ -736,7 +736,8 @@ export class FIRPrismaRepository implements IFIRRepository, IFIRModificaBozzaRep
           WHERE id = ${fir.id}::uuid AND tenant_id = ${tenantId}::uuid
           FOR UPDATE`
         // Annullato PRIMA della richiesta: e' una corsa persa per annullamento, non un FIR emesso.
-        if (righe[0]?.status === STATO_FIR_ANNULLATO) throw new FirAnnullatoNelFrattempoError(fir.id)
+        if (righe[0]?.status === STATO_FIR_ANNULLATO)
+          throw new FirAnnullatoNelFrattempoError(fir.id)
         // Fail-closed sullo stato grezzo: uno stato che non è esplicitamente una bozza
         // (anche uno sconosciuto, che statoFromDb ricondurrebbe a BOZZA) non si emette.
         const statiBozza: readonly string[] = STATI_FIR_IN_BOZZA
