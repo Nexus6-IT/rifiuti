@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Filigrana «BOZZA – NON VALIDO» sui FIR in bozza
+
+Ogni PDF di un FIR in stato DRAFT (singolo da `GET /pdf/fir/:id`, serie da `POST /ritiri/stampa-fir`)
+porta su ogni pagina la filigrana diagonale «BOZZA – NON VALIDO», chiara e semitrasparente; i FIR
+non in bozza restano senza. Il punto unico è `definizioneFirInSerie`. pdfmake ha una sola filigrana
+per documento: in una serie che mescola bozze ed emessi la filigrana non c'è e ogni bozza porta la
+dicitura in rosso in testa a ogni sua copia.
+
 ### Changed — Ritiri: selezione e stampa FIR anche per il VIEWER, scelta del modello di stampa
 
 Nella pagina Ritiri il ruolo VIEWER seleziona i ritiri e stampa i FIR in serie (è una lettura: la
