@@ -68,9 +68,12 @@ const ESECUZIONI = 6
 /**
  * Il giro piu' veloce deve stare sotto la soglia (il carico del runner non puo' rallentarli tutti)
  * e il piu' lento sotto il tetto (un piano degenere che compare solo a giri alterni, come I5, non
- * si vede dal giro migliore). Il messaggio riporta tutti i tempi.
+ * si vede dal giro migliore). I tempi di tutti i giri si stampano SEMPRE (anche a test verde, cosi'
+ * il log di CI li mostra); il messaggio d'errore li riporta comunque.
  */
-function tempiSani(tempi: number[], sogliaGiroMs: number, tettoGiroMs: number): void {
+function tempiSani(caso: string, tempi: number[], sogliaGiroMs: number, tettoGiroMs: number): void {
+  // eslint-disable-next-line no-console
+  console.log(`[piani-query] ${caso}: giri (ms) ${tempi.join(', ')}`)
   const migliore = Math.min(...tempi)
   const peggiore = Math.max(...tempi)
   if (migliore >= sogliaGiroMs || peggiore >= tettoGiroMs) {
@@ -192,7 +195,7 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
       expect(r.documenti).toBeGreaterThan(0)
       tempi.push(r.ms)
     }
-    tempiSani(tempi, SOGLIA_SELEZIONE_GIRO_MS, TETTO_SELEZIONE_GIRO_MS)
+    tempiSani('selezione', tempi, SOGLIA_SELEZIONE_GIRO_MS, TETTO_SELEZIONE_GIRO_MS)
   }, 300_000)
 
   it('prepara 500 bozze con l’anteprima', async () => {
@@ -212,7 +215,7 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
       expect(r.righe).toBeGreaterThan(0)
       tempi.push(r.ms)
     }
-    tempiSani(tempi, SOGLIA_CITATI_GIRO_MS, TETTO_CITATI_GIRO_MS)
+    tempiSani('righe citate', tempi, SOGLIA_CITATI_GIRO_MS, TETTO_CITATI_GIRO_MS)
   }, 300_000)
 
   it(`righe citate, force_generic_plan: sotto ${SOGLIA_CITATI_MS} ms (I2: conversione per riga, 5 s)`, async () => {

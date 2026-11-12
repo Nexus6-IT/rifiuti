@@ -55,6 +55,11 @@ export interface MarcaturaMovimento {
   marcature: Marcatura[]
   /** Consorzi che una regola prenderebbe ma che sono stati esclusi a mano. */
   esclusi: Consorzio[]
+  /**
+   * Consorzi che una regola attiva prenderebbe senza la correzione manuale. Additivo: assente nelle
+   * risposte che non lo portano (allora non si sa se una regola prenderebbe il movimento).
+   */
+  regolaPrende?: Consorzio[]
 }
 
 export interface EtichettaConsorzio {
