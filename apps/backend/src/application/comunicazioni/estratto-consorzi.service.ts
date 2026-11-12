@@ -12,7 +12,7 @@ import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
 import { leggiIntegrazioni } from '../mud/aggregazione/mud-integrazioni'
 import { estrattoConsorzioCsv, type RigaEstrattoConsorzio } from './estratto-consorzio-csv'
-import { leggiMovimentiOrso } from './lettore-movimenti-orso'
+import { leggiMovimentiOrso, type MovimentoOrso } from './lettore-movimenti-orso'
 import { MarcaturaConsorziService } from './marcatura-consorzi.service'
 import {
   MarcaturaNonValidaError,
@@ -82,6 +82,9 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
     const righe: Array<RigaEstrattoConsorzio & { ordine: string }> = []
     const ambiti: Array<string | null> = sedi.map(s => s.id)
     if (!params.unitaLocaleId) ambiti.push(null)
+    // Si leggono tutti gli ambiti e si classifica una volta sola: le regole dell'azienda
+    // si caricano una volta per estratto, non una per sede.
+    const letti: MovimentoOrso[] = []
     for (const ambito of ambiti) {
       const lettura = await leggiMovimentiOrso(this.prisma, {
         tenantId,
@@ -91,37 +94,38 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
         catalogo,
         pesiSpecifici,
       })
-      const daClassificare: MovimentoDaClassificare[] = lettura.movimenti.map(m => ({
-        radiceId: m.radiceId,
-        registroId: m.registroId,
+      letti.push(...lettura.movimenti)
+    }
+    const daClassificare: MovimentoDaClassificare[] = letti.map(m => ({
+      radiceId: m.radiceId,
+      registroId: m.registroId,
+      verso: m.tipo,
+      cer: m.cer,
+      causale: m.causale,
+      giorno: giornoItaliano(m.movementDate),
+    }))
+    const esiti = await this.marcatura.classifica(tenantId, daClassificare)
+    letti.forEach((m, i) => {
+      const marcatura = esiti[i].marcature.find(x => x.consorzio === consorzio)
+      if (!marcatura) return
+      const data = giornoItaliano(m.movementDate)
+      righe.push({
+        data,
+        numero: m.numero,
         verso: m.tipo,
         cer: m.cer,
-        causale: m.causale,
-        giorno: giornoItaliano(m.movementDate),
-      }))
-      const esiti = await this.marcatura.classifica(tenantId, daClassificare)
-      lettura.movimenti.forEach((m, i) => {
-        const marcatura = esiti[i].marcature.find(x => x.consorzio === consorzio)
-        if (!marcatura) return
-        const data = giornoItaliano(m.movementDate)
-        righe.push({
-          data,
-          numero: m.numero,
-          verso: m.tipo,
-          cer: m.cer,
-          pericoloso: m.pericoloso,
-          descrizione: m.descrizione,
-          kg: m.kg,
-          quantita: m.quantita,
-          unita: m.unita,
-          controparte: m.controparte,
-          indirizzoControparte: m.indirizzoControparte,
-          firNumero: m.firNumero,
-          origine: marcatura.origine,
-          ordine: `${data}|${m.numero.split('/')[1]}|${m.numero.split('/')[0].padStart(10, '0')}|${m.id}`,
-        })
+        pericoloso: m.pericoloso,
+        descrizione: m.descrizione,
+        kg: m.kg,
+        quantita: m.quantita,
+        unita: m.unita,
+        controparte: m.controparte,
+        indirizzoControparte: m.indirizzoControparte,
+        firNumero: m.firNumero,
+        origine: marcatura.origine,
+        ordine: `${data}|${m.numero.split('/')[1]}|${m.numero.split('/')[0].padStart(10, '0')}|${m.id}`,
       })
-    }
+    })
     righe.sort((x, y) => x.ordine.localeCompare(y.ordine))
     return {
       nomeFile: `estratto-${consorzio.toLowerCase()}-${da}_${a}.csv`,

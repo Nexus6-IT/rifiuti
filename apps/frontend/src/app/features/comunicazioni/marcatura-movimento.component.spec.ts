@@ -93,6 +93,18 @@ describe('MarcaturaMovimentoComponent', () => {
     expect(fixture.componentInstance.inCorso()).toBe(false)
   })
 
+  it('il permesso di modifica si legge una volta sola, anche se il padre aggiorna la marcatura', () => {
+    setup(true)
+    fixture.componentRef.setInput('marcatura', {
+      marcature: [{ consorzio: 'COBAT', origine: 'REGOLA' }],
+      esclusi: [],
+    })
+    fixture.detectChanges()
+    fixture.componentRef.setInput('marcatura', vuoto)
+    fixture.detectChanges()
+    expect(svc.regole).toHaveBeenCalledTimes(1)
+  })
+
   it('se l esito e gia noto dall elenco non rilegge', () => {
     svc = jasmine.createSpyObj<ConsorziService>('ConsorziService', [
       'regole',
