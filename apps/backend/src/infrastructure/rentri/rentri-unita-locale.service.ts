@@ -301,6 +301,10 @@ export class RentriUnitaLocaleService {
           if (movimento || progressivo || apertura) {
             throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
           }
+          // Le regole consorzio legate a questi registri (FK RESTRICT) vanno via con loro.
+          await tx.regolaConsorzio.deleteMany({
+            where: { tenantId, registroId: { in: registroIds } },
+          })
           await tx.registroRifiuti.deleteMany({ where: { tenantId, id: { in: registroIds } } })
         }
         await tx.rentriUnitaLocale.deleteMany({ where: { id, tenantId } })

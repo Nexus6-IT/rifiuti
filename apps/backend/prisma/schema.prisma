@@ -4474,7 +4474,7 @@ model RegolaConsorzio {
   causaleCodice String?            @map("causale_codice") @db.VarChar(100)
   registroId    String?            @map("registro_id") @db.Uuid
   attiva        Boolean            @default(true)
-  validaDal     DateTime           @default(dbgenerated("CURRENT_DATE")) @map("valida_dal") @db.Date
+  validaDal     DateTime           @default(dbgenerated("'1970-01-01'::date")) @map("valida_dal") @db.Date
   creataDa      String?            @map("creata_da") @db.Uuid
   createdAt     DateTime           @default(now()) @map("created_at")
   updatedAt     DateTime           @updatedAt @map("updated_at")

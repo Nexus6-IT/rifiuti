@@ -33,6 +33,7 @@ describe('RentriUnitaLocaleService', () => {
       deleteMany: jest.Mock
     }
     registroRifiuti: { findMany: jest.Mock; deleteMany: jest.Mock }
+    regolaConsorzio: { deleteMany: jest.Mock }
     wasteMovement: { findFirst: jest.Mock }
     registroProgressivoIniziale: { findFirst: jest.Mock }
     giacenzaIniziale: { findFirst: jest.Mock }
@@ -55,6 +56,7 @@ describe('RentriUnitaLocaleService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      regolaConsorzio: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       wasteMovement: { findFirst: jest.fn().mockResolvedValue(null) },
       registroProgressivoIniziale: { findFirst: jest.fn().mockResolvedValue(null) },
       giacenzaIniziale: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -470,6 +472,21 @@ describe('RentriUnitaLocaleService', () => {
       expect(db.rentriUnitaLocale.deleteMany).toHaveBeenCalledWith({
         where: { id: 'ul-1', tenantId: 'tenant-1' },
       })
+    })
+
+    it('registro vuoto con regola consorzio collegata: la regola si cancella prima del registro (niente P2003)', async () => {
+      db.rentriUnitaLocale.findFirst.mockResolvedValue(makeRow({ id: 'ul-2', principale: false }))
+      db.registroRifiuti.findMany.mockResolvedValue([{ id: 'reg-2' }])
+      db.rentriUnitaLocale.deleteMany.mockResolvedValue({ count: 1 })
+
+      await service.remove('tenant-1', 'ul-2')
+
+      expect(db.regolaConsorzio.deleteMany).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', registroId: { in: ['reg-2'] } },
+      })
+      expect(db.regolaConsorzio.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+        db.registroRifiuti.deleteMany.mock.invocationCallOrder[0]
+      )
     })
 
     it('rimuove una sede non principale senza controlli aggiuntivi', async () => {

@@ -478,6 +478,25 @@ describe('Registro per sede — Postgres reale, ruolo wasteflow_app', () => {
       expect(await owner.registroRifiuti.count({ where: { id: az.registroDi('Sede A') } })).toBe(1)
     })
 
+    it('sede con registro vuoto e una regola consorzio collegata: cancella regola, registro e sede', async () => {
+      const az = await aziendaConRegistri(['Sede A', 'Sede B'])
+      const sedeB = az.sedi.find(s => s.denominazione === 'Sede B')!
+      await owner.regolaConsorzio.create({
+        data: {
+          tenantId: az.tenantId,
+          consorzio: 'COBAT',
+          verso: 'CARICO',
+          cerPrefisso: '1606',
+          registroId: az.registroDi('Sede B'),
+        },
+      })
+
+      await elimina(az.tenantId, sedeB.id)
+
+      expect(await owner.regolaConsorzio.count({ where: { tenantId: az.tenantId } })).toBe(0)
+      expect(await owner.rentriUnitaLocale.count({ where: { id: sedeB.id } })).toBe(0)
+    })
+
     it('sede con un movimento: rifiutata col messaggio esatto, niente viene cancellato', async () => {
       const az = await aziendaConRegistri(['Sede A', 'Sede B'])
       const sedeB = az.sedi.find(s => s.denominazione === 'Sede B')!
