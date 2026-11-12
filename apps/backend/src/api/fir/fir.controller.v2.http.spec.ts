@@ -100,6 +100,9 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
   // ADMIN del proprio studio (ruolo del token), che lavora nell'azienda del cliente.
   let conferma: { execute: jest.Mock }
   let emetti: { execute: jest.Mock }
+  let presa: { execute: jest.Mock }
+  let annulla: { execute: jest.Mock }
+  let leggi: { execute: jest.Mock }
   let collegamentiAccesso: { pesoPerConsegnaFir: jest.Mock }
   const utente = { id: CONSULENTE, email: 'c@studio.it', tenantId: STUDIO, role: 'ADMIN' }
 
@@ -108,6 +111,9 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
     modifica = { execute: jest.fn().mockResolvedValue(Result.ok(firModificato(2))) }
     conferma = { execute: jest.fn().mockResolvedValue(Result.ok(firModificato(2))) }
     emetti = { execute: jest.fn() }
+    presa = { execute: jest.fn() }
+    annulla = { execute: jest.fn() }
+    leggi = { execute: jest.fn() }
     collegamentiAccesso = { pesoPerConsegnaFir: jest.fn().mockResolvedValue(12.35) }
     enforcement = {
       assertNotSuspended: jest.fn().mockResolvedValue(undefined),
@@ -125,12 +131,12 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
       providers: [
         { provide: CreateFIRUseCase, useValue: { execute: jest.fn() } },
         { provide: EmettiFIRUseCase, useValue: emetti },
-        { provide: PresaInCaricoFIRUseCase, useValue: { execute: jest.fn() } },
+        { provide: PresaInCaricoFIRUseCase, useValue: presa },
         { provide: ConfermaConsegnaFIRUseCase, useValue: conferma },
         { provide: CollegamentiAccessoService, useValue: collegamentiAccesso },
-        { provide: AnnullaFIRUseCase, useValue: { execute: jest.fn() } },
+        { provide: AnnullaFIRUseCase, useValue: annulla },
         { provide: ModificaFIRUseCase, useValue: modifica },
-        { provide: GetFIRByIdQueryHandler, useValue: { execute: jest.fn() } },
+        { provide: GetFIRByIdQueryHandler, useValue: leggi },
         { provide: ListFIRsQueryHandler, useValue: { execute: jest.fn() } },
         { provide: SubscriptionEnforcementService, useValue: enforcement },
         { provide: RuoloEffettivoService, useValue: new RuoloEffettivoService(prisma) },
@@ -267,6 +273,74 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
       expect(r.body.error).toBe('FIR_NON_PIU_IN_BOZZA')
       expect(r.body.message).not.toContain(FIR_ID)
     })
+  })
+
+  describe('classificazione degli errori dei Result: dal codice, mai dal testo', () => {
+    const NON_TROVATO = 'FIR not found: ' + FIR_ID
+    const chiamate: Array<[string, () => request.Test, () => jest.Mock]> = [
+      [
+        'GET /fir/:id',
+        () => request(app.getHttpServer()).get(`/fir/${FIR_ID}`).set('X-Tenant-ID', CLIENTE),
+        () => leggi.execute,
+      ],
+      [
+        'POST emetti',
+        () =>
+          request(app.getHttpServer())
+            .post(`/fir/${FIR_ID}/emetti`)
+            .set('X-Tenant-ID', CLIENTE)
+            .send({}),
+        () => emetti.execute,
+      ],
+      [
+        'POST presa-in-carico',
+        () =>
+          request(app.getHttpServer())
+            .post(`/fir/${FIR_ID}/presa-in-carico`)
+            .set('X-Tenant-ID', CLIENTE)
+            .send({}),
+        () => presa.execute,
+      ],
+      [
+        'POST conferma-consegna',
+        () =>
+          request(app.getHttpServer())
+            .post(`/fir/${FIR_ID}/conferma-consegna`)
+            .set('X-Tenant-ID', CLIENTE)
+            .send({ pesoEffettivo: 10 }),
+        () => conferma.execute,
+      ],
+      [
+        'POST annulla',
+        () =>
+          request(app.getHttpServer())
+            .post(`/fir/${FIR_ID}/annulla`)
+            .set('X-Tenant-ID', CLIENTE)
+            .send({ motivo: 'errore di inserimento' }),
+        () => annulla.execute,
+      ],
+    ]
+
+    it.each(chiamate)(
+      '%s: codice FIR_NON_TROVATO → 404, messaggio invariato',
+      async (_n, chiama, uc) => {
+        await avvia()
+        uc().mockResolvedValue(Result.fail(NON_TROVATO, FirNonTrovatoError.CODICE))
+        const r = await chiama()
+        expect(r.status).toBe(404)
+        expect(r.body.message).toBe(NON_TROVATO)
+      }
+    )
+
+    it.each(chiamate)(
+      '%s: un fallimento senza codice il cui testo contiene "not found" resta 400',
+      async (_n, chiama, uc) => {
+        await avvia()
+        uc().mockResolvedValue(Result.fail('Failed: sede not found nel registro'))
+        const r = await chiama()
+        expect(r.status).toBe(400)
+      }
+    )
   })
 
   describe('esito', () => {

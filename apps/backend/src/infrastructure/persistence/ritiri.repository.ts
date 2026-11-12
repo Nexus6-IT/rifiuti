@@ -300,7 +300,7 @@ export class RitiriRepository {
   async elenca(
     tx: Tx,
     tenantId: string,
-    filtri: Omit<FiltriRitiri, 'pagina' | 'dimensione'>,
+    filtri: Omit<FiltriRitiri, 'pagina' | 'dimensione'> & { stato?: StatoRitiro },
     pagina: number,
     dimensione: number
   ): Promise<{ righe: RitiroVista[]; totale: number }> {
@@ -315,6 +315,8 @@ export class RitiriRepository {
     if (filtri.produttoreId)
       condizioni.push(Prisma.sql`r.produttore_id = ${filtri.produttoreId}::uuid`)
     if (filtri.cerCode) condizioni.push(Prisma.sql`r.cer_code = ${filtri.cerCode}`)
+    // Stato grezzo (non quello visibile): serve a chi ha bisogno dei soli PROGRAMMATI, es. la distinta.
+    if (filtri.stato) condizioni.push(Prisma.sql`r.stato::text = ${filtri.stato}`)
     if (filtri.statoVisibile) condizioni.push(this.condizioneVisibile(filtri.statoVisibile))
 
     const righe = await tx.$queryRaw<RigaRitiro[]>(

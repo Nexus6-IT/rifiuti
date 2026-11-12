@@ -241,6 +241,7 @@ describe('PresaInCaricoFIRUseCase', () => {
 
       expect(result.isFailure).toBe(true)
       expect(result.error).toContain('FIR not found')
+      expect(result.code).toBe('FIR_NON_TROVATO')
     })
 
     it('should fail if FIR not in EMESSO state', async () => {

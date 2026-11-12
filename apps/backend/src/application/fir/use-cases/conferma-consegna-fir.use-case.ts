@@ -11,6 +11,7 @@
 import { FIR, FirmaDigitale } from '../../../domain/fir/aggregates/fir.aggregate'
 import { IFIRRepository } from '../../../domain/fir/repositories/fir-repository.interface'
 import { Result } from '../../../core/application/result'
+import { FirNonTrovatoError } from '../../../core/domain/errors'
 import { ConfermaConsegnaFIRCommand } from '../commands/conferma-consegna-fir.command'
 import { FIRRepository as CryptoFIRRepository } from '../../../domain/fir/fir.repository'
 import { DigitalSignatureService } from '../../signatures/digital-signature.service'
@@ -26,7 +27,7 @@ export class ConfermaConsegnaFIRUseCase {
     // 1. Retrieve FIR aggregate
     const fir = await this.firRepository.findById(command.firId)
     if (!fir) {
-      return Result.fail<FIR>(`FIR not found: ${command.firId}`)
+      return Result.fail<FIR>(`FIR not found: ${command.firId}`, FirNonTrovatoError.CODICE)
     }
 
     // 2. Firma crittografica del destinatario, PRIMA di applicare la

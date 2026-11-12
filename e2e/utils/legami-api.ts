@@ -71,16 +71,13 @@ export function giornoItaliano(giorni = 0): string {
 /** Tetto complessivo di attesa dei 429 per una chiamata (la finestra del throttler e' di 60 s). */
 const ATTESA_MAX_429_MS = 75_000
 
-/**
- * Chiamata API che restituisce stato e corpo senza lanciare. Un 429 del throttler globale si
- * riprova dopo `Retry-After` (il throttler risponde prima del controller: nulla e' stato eseguito).
- */
-export async function chiama<T = unknown>(
+/** fetch con lo stesso retry su 429 di `chiama` (il throttler risponde prima del controller). */
+async function fetchRiprovando429(
   metodo: string,
   percorso: string,
   token: string,
   corpo?: unknown
-): Promise<Risposta<T>> {
+): Promise<Response> {
   let tentativo = 0
   let attesaTotaleMs = 0
   for (;;) {
@@ -99,15 +96,40 @@ export async function chiama<T = unknown>(
         continue
       }
     }
-    const testo = await r.text()
-    let json: unknown = testo
-    try {
-      json = testo ? JSON.parse(testo) : null
-    } catch {
-      /* corpo non JSON: resta il testo */
-    }
-    return { stato: r.status, corpo: json as T }
+    return r
   }
+}
+
+/**
+ * Chiamata API che restituisce stato e corpo senza lanciare. Un 429 del throttler globale si
+ * riprova dopo `Retry-After` (il throttler risponde prima del controller: nulla e' stato eseguito).
+ */
+export async function chiama<T = unknown>(
+  metodo: string,
+  percorso: string,
+  token: string,
+  corpo?: unknown
+): Promise<Risposta<T>> {
+  const r = await fetchRiprovando429(metodo, percorso, token, corpo)
+  const testo = await r.text()
+  let json: unknown = testo
+  try {
+    json = testo ? JSON.parse(testo) : null
+  } catch {
+    /* corpo non JSON: resta il testo */
+  }
+  return { stato: r.status, corpo: json as T }
+}
+
+/** Come `chiama`, ma per risposte binarie (PDF): stato, header e byte del corpo. */
+export async function chiamaBinario(
+  metodo: string,
+  percorso: string,
+  token: string,
+  corpo?: unknown
+): Promise<{ stato: number; headers: Headers; corpo: Buffer }> {
+  const r = await fetchRiprovando429(metodo, percorso, token, corpo)
+  return { stato: r.status, headers: r.headers, corpo: Buffer.from(await r.arrayBuffer()) }
 }
 
 /** Chiamata che deve riuscire (2xx): altrimenti il test fallisce con stato e corpo. */

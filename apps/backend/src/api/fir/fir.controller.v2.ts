@@ -61,6 +61,7 @@ import { requireRequestTenantId } from '../../core/context/resolve-request-tenan
 import { RuoloApplicativo, RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { MaxDecimali } from '../../core/validators/max-decimali'
 import { RichiedeModulo } from '../../core/decorators/richiede-modulo.decorator'
+import { FirNonTrovatoError } from '../../core/domain/errors'
 
 /**
  * Ruoli EFFETTIVI (nell'azienda selezionata, A-C-06) che possono creare un FIR. Come nel
@@ -320,7 +321,7 @@ export class FIRControllerV2 {
     const result = await this.getFIRByIdHandler.execute(query)
 
     if (result.isFailure) {
-      if (result.error.includes('not found')) {
+      if (result.code === FirNonTrovatoError.CODICE) {
         throw new NotFoundException(result.error)
       }
       throw new BadRequestException(result.error)
@@ -353,7 +354,7 @@ export class FIRControllerV2 {
     const result = await this.emettiFIRUseCase.execute(command)
 
     if (result.isFailure) {
-      if (result.error.includes('not found')) {
+      if (result.code === FirNonTrovatoError.CODICE) {
         throw new NotFoundException(result.error)
       }
       // Il codice macchina (es. FIRMA_NON_RIUSCITA) viaggia in `error`: il client non legge il testo.
@@ -392,7 +393,7 @@ export class FIRControllerV2 {
     const result = await this.presaInCaricoFIRUseCase.execute(command)
 
     if (result.isFailure) {
-      if (result.error.includes('not found')) {
+      if (result.code === FirNonTrovatoError.CODICE) {
         throw new NotFoundException(result.error)
       }
       throw new BadRequestException(result.error)
@@ -462,7 +463,7 @@ export class FIRControllerV2 {
     const result = await this.confermaConsegnaFIRUseCase.execute(command)
 
     if (result.isFailure) {
-      if (result.error.includes('not found')) {
+      if (result.code === FirNonTrovatoError.CODICE) {
         throw new NotFoundException(result.error)
       }
       throw new BadRequestException(result.error)
@@ -493,7 +494,7 @@ export class FIRControllerV2 {
     const result = await this.annullaFIRUseCase.execute(command)
 
     if (result.isFailure) {
-      if (result.error.includes('not found')) {
+      if (result.code === FirNonTrovatoError.CODICE) {
         throw new NotFoundException(result.error)
       }
       throw new BadRequestException(result.error)
