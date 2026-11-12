@@ -15,6 +15,7 @@ import {
   creaAnagraficheRitiri,
   creaRitiri,
   eliminaAnagraficheRitiri,
+  generaFirRitiri,
   leggiRitiro,
   type AnagraficaCreata,
   type AnagraficheRitiri,
@@ -214,6 +215,11 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
       ordineGiro: 9,
     })
     ricorda([ritiro])
+    // con un FIR in bozza, per provare la stampa con il token del VIEWER
+    const [esito] = await generaFirRitiri(tokenAdmin, [ritiro.id])
+    expect(esito.esito, `generazione FIR: ${esito.codice ?? ''}`).toBe('CREATO')
+    firCreati.add(esito.firId!)
+    registra('fir', esito.firId!)
 
     await accediUiComeAzienda(page, pro, 'viewer')
     await page.goto('/ritiri')
@@ -226,5 +232,14 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
     for (const id of ['ri-genera', 'ri-emetti', 'ri-nuovo', `ri-azioni-${ritiro.id}`]) {
       await expect(page.getByTestId(id), id).toHaveCount(0)
     }
+
+    // la stampa e` una lettura: con il token del VIEWER la rotta risponde col PDF
+    const tokenViewer = await tokenDellaPagina(page)
+    const stampa = await chiamaBinario('POST', '/ritiri/stampa-fir', tokenViewer, {
+      ritiroIds: [ritiro.id],
+    })
+    expect(stampa.stato).toBe(200)
+    expect(stampa.headers.get('content-type')).toContain('application/pdf')
+    expect(stampa.corpo.subarray(0, 4).toString()).toBe('%PDF')
   })
 })
