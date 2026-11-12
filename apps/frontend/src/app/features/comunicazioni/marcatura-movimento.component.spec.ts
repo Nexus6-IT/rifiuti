@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { MarcaturaMovimentoComponent } from './marcatura-movimento.component'
 import { ConsorziService } from './consorzi.service'
 import { MarcaturaMovimento } from './consorzi.model'
@@ -188,6 +188,22 @@ describe('MarcaturaMovimentoComponent', () => {
       expect(svc.regole).toHaveBeenCalledTimes(2)
       expect(q('marcatura-riprova')).toBeNull()
       expect(q('marcatura-marca-CONOU')).not.toBeNull()
+    })
+    it('durante la richiesta «Riprova» e in caricamento e disabilitato; il messaggio e uno status', () => {
+      const attesa = new Subject<{ regole: never[]; puoModificare: boolean }>()
+      setup(true, vuoto, [errore(), attesa.asObservable()])
+      expect(q('marcatura-permesso-errore')?.getAttribute('role')).toBe('status')
+      const bottone = () => q('marcatura-riprova')?.querySelector('button') as HTMLButtonElement
+      expect(bottone().disabled).toBe(false)
+      bottone().click()
+      fixture.detectChanges()
+      expect(bottone().disabled).toBe(true)
+      // Un secondo clic non apre un'altra richiesta.
+      bottone().click()
+      expect(svc.regole).toHaveBeenCalledTimes(2)
+      attesa.next({ regole: [], puoModificare: true })
+      fixture.detectChanges()
+      expect(q('marcatura-riprova')).toBeNull()
     })
   })
 })

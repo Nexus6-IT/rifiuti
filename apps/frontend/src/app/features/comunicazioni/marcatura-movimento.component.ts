@@ -1,4 +1,14 @@
-import { Component, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core'
+import {
+  Component,
+  DestroyRef,
+  EventEmitter,
+  Input,
+  OnChanges,
+  Output,
+  inject,
+  signal,
+} from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { CommonModule } from '@angular/common'
 import { ButtonModule } from 'primeng/button'
 import { ToastService } from '../../core/services/toast.service'
@@ -30,13 +40,20 @@ interface RigaConsorzio {
     <section class="marcatura-mov" data-testid="marcatura-movimento" aria-label="Consorzi">
       <h3 class="section-title">Consorzi</h3>
       <p *ngIf="errore()" role="alert" data-testid="marcatura-errore">{{ errore() }}</p>
-      <p *ngIf="permessoNonLetto()" class="text-secondary" data-testid="marcatura-permesso-errore">
+      <p
+        *ngIf="permessoNonLetto()"
+        role="status"
+        class="text-secondary"
+        data-testid="marcatura-permesso-errore"
+      >
         Non è stato possibile verificare se puoi modificare i consorzi.
         <p-button
           label="Riprova"
           icon="pi pi-refresh"
           [text]="true"
           size="small"
+          [loading]="permessoInLettura()"
+          [disabled]="permessoInLettura()"
           (onClick)="leggiPermesso()"
           data-testid="marcatura-riprova"
         ></p-button>
@@ -106,7 +123,8 @@ export class MarcaturaMovimentoComponent implements OnChanges {
 
   readonly nome = etichettaConsorzio
   private permessoLetto = false
-  private permessoInLettura = false
+  readonly permessoInLettura = signal(false)
+  private readonly distrutto = inject(DestroyRef)
 
   ngOnChanges(): void {
     this.errore.set(null)
@@ -125,21 +143,24 @@ export class MarcaturaMovimentoComponent implements OnChanges {
 
   /** Legge il permesso di modifica; no-op se gia' letto o in corso. Dopo un errore si puo' ripetere. */
   leggiPermesso(): void {
-    if (this.permessoLetto || this.permessoInLettura) return
-    this.permessoInLettura = true
-    this.servizio.regole().subscribe({
-      next: r => {
-        this.permessoInLettura = false
-        this.permessoLetto = true
-        this.permessoNonLetto.set(false)
-        this.puoModificare.set(r.puoModificare)
-      },
-      error: () => {
-        this.permessoInLettura = false
-        this.permessoNonLetto.set(true)
-        this.puoModificare.set(false)
-      },
-    })
+    if (this.permessoLetto || this.permessoInLettura()) return
+    this.permessoInLettura.set(true)
+    this.servizio
+      .regole()
+      .pipe(takeUntilDestroyed(this.distrutto))
+      .subscribe({
+        next: r => {
+          this.permessoInLettura.set(false)
+          this.permessoLetto = true
+          this.permessoNonLetto.set(false)
+          this.puoModificare.set(r.puoModificare)
+        },
+        error: () => {
+          this.permessoInLettura.set(false)
+          this.permessoNonLetto.set(true)
+          this.puoModificare.set(false)
+        },
+      })
   }
 
   etichettaTogli(r: RigaConsorzio): string {
