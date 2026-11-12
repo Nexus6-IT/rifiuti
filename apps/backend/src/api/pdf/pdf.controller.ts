@@ -27,6 +27,7 @@ import {
   ModelloStampaNonValidoError,
   type ModelloStampaFir,
 } from '../../infrastructure/pdf/definizione-fir'
+import { sceglieModelloFir } from '../../application/ritiri/stampa/scelta-modello-fir'
 import { FirSerieDto } from './dto/fir-serie.dto'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -66,37 +67,24 @@ export class PdfController {
     tenantId: string,
     modelloId: string | undefined
   ): Promise<ModelloStampaFir | null> {
-    let scelto
-    if (modelloId !== undefined) {
-      if (!UUID.test(modelloId)) {
-        throw new BadRequestException({
-          message: 'modelloId non valido',
-          error: 'MODELLO_STAMPA_NON_VALIDO',
-        })
-      }
-      scelto = await this.modelliStampa.getById(tenantId, modelloId)
-      if (scelto.ambito === 'DISTINTA_RITIRI') {
-        throw new BadRequestException({
-          message: 'Il modello della distinta dei ritiri non si usa per il FIR',
-          error: 'MODELLO_STAMPA_AMBITO_NON_VALIDO',
-        })
-      }
-    } else {
-      const tutti = await this.modelliStampa.list(tenantId)
-      scelto =
-        tutti.find(m => m.predefinito && m.ambito === 'FIR') ??
-        tutti.find(m => m.predefinito && m.ambito === 'GENERALE')
+    if (modelloId !== undefined && !UUID.test(modelloId)) {
+      throw new BadRequestException({
+        message: 'modelloId non valido',
+        error: 'MODELLO_STAMPA_NON_VALIDO',
+      })
     }
-    if (!scelto) return null
-    return {
-      ambito: scelto.ambito,
-      copie: scelto.copie,
-      logoBase64: scelto.logoBase64,
-      headerText: scelto.testoIntestazione,
-      footerText: scelto.testoPiePagina,
-      primaryColor: scelto.colorePrimario,
-      secondaryColor: scelto.coloreSecondario,
+    const esito = sceglieModelloFir(
+      modelloId !== undefined
+        ? { tipo: 'ESPLICITO', modello: await this.modelliStampa.getById(tenantId, modelloId) }
+        : { tipo: 'PREDEFINITO', elenco: await this.modelliStampa.list(tenantId) }
+    )
+    if (esito.esito === 'AMBITO_NON_VALIDO') {
+      throw new BadRequestException({
+        message: 'Il modello della distinta dei ritiri non si usa per il FIR',
+        error: 'MODELLO_STAMPA_AMBITO_NON_VALIDO',
+      })
     }
+    return esito.modello
   }
 
   /** Un modello salvato ma non stampabile (es. logo corrotto) e' un 400, non un 500. */
