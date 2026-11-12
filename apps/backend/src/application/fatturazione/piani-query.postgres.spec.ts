@@ -47,10 +47,28 @@ import { insiemiPerDefinitiva } from './lock-fatturazione'
 import { selezionaElaborazione } from './selezione-fatturazione'
 
 const FILE_VOLUME = join(tmpdir(), 'wasteflow-fatt-t27a-piani-tenants.json')
-// 10 s sul totale: in locale la selezione custom ripetuta 6 volte sta a ~1,9 s; le forme degeneri superano i 20 s.
+// Soglie dei test a giro singolo (force_generic_plan): in locale ~0,3 s e ~0,04 s, la forma
+// degenere supera i 40 s e i 5 s.
 const SOGLIA_SELEZIONE_MS = 10_000
 const SOGLIA_CITATI_MS = 3_000
+// Test ripetuti col piano custom: la soglia e' PER GIRO e si applica al giro MIGLIORE, non al
+// totale. Il carico del runner CI (una CI ha misurato 16 s di totale su 6 giri, senza che la
+// fatturazione fosse toccata) allunga alcuni giri ma non tutti; il piano degenere invece e' lento
+// a ogni giro. In locale: selezione ~0,24 s per giro (degenere: 13 s), righe citate ~0,04 s per
+// giro (degenere: ~2 s). Le soglie stanno circa a meta' strada, in scala logaritmica, fra i due.
+const SOGLIA_SELEZIONE_GIRO_MS = 3_000
+const SOGLIA_CITATI_GIRO_MS = 1_000
 const ESECUZIONI = 6
+
+/** Il giro piu' veloce deve stare sotto la soglia; il messaggio riporta tutti i tempi. */
+function giroMigliore(tempi: number[], sogliaMs: number): void {
+  const migliore = Math.min(...tempi)
+  if (migliore >= sogliaMs) {
+    throw new Error(
+      `Nessun giro sotto ${sogliaMs} ms (piano degenere?). Tempi per giro (ms): ${tempi.join(', ')}`
+    )
+  }
+}
 
 describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow_app)', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
@@ -156,14 +174,14 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
     expect(r.ms).toBeLessThan(SOGLIA_SELEZIONE_MS)
   }, 200_000)
 
-  it(`selezione, piano custom, statistiche vecchie, ${ESECUZIONI} volte di fila: TOTALE sotto ${SOGLIA_SELEZIONE_MS} ms (I1: 13 s per giro; I5: IN (SELECT unnest) 22 s in totale)`, async () => {
+  it(`selezione, piano custom, statistiche vecchie, ${ESECUZIONI} volte di fila: il giro migliore sotto ${SOGLIA_SELEZIONE_GIRO_MS} ms (I1: 13 s per giro; I5: IN (SELECT unnest) ~3,7 s per giro)`, async () => {
     const tempi: number[] = []
     for (let i = 0; i < ESECUZIONI; i++) {
       const r = await selezione(false)
       expect(r.documenti).toBeGreaterThan(0)
       tempi.push(r.ms)
     }
-    expect(tempi.reduce((a, t) => a + t, 0)).toBeLessThan(SOGLIA_SELEZIONE_MS)
+    giroMigliore(tempi, SOGLIA_SELEZIONE_GIRO_MS)
   }, 300_000)
 
   it('prepara 500 bozze con l’anteprima', async () => {
@@ -175,7 +193,7 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
     expect(documentoIds).toHaveLength(500)
   }, 300_000)
 
-  it(`righe citate, piano custom, ${ESECUZIONI} volte di fila: TOTALE sotto ${SOGLIA_CITATI_MS} ms (I5: IN (SELECT unnest) 12 s in totale)`, async () => {
+  it(`righe citate, piano custom, ${ESECUZIONI} volte di fila: il giro migliore sotto ${SOGLIA_CITATI_GIRO_MS} ms (I5: IN (SELECT unnest) ~2 s per giro)`, async () => {
     const tempi: number[] = []
     for (let i = 0; i < ESECUZIONI; i++) {
       const r = await citati(documentoIds, false)
@@ -183,7 +201,7 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
       expect(r.righe).toBeGreaterThan(0)
       tempi.push(r.ms)
     }
-    expect(tempi.reduce((a, t) => a + t, 0)).toBeLessThan(SOGLIA_CITATI_MS)
+    giroMigliore(tempi, SOGLIA_CITATI_GIRO_MS)
   }, 300_000)
 
   it(`righe citate, force_generic_plan: sotto ${SOGLIA_CITATI_MS} ms (I2: conversione per riga, 5 s)`, async () => {
