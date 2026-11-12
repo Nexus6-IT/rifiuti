@@ -6,7 +6,6 @@
  * i FIR il predefinito FIR, poi il GENERALE (come `GET /pdf/fir/:id`). Con `modelloId` esplicito il
  * modello deve essere dell'azienda (404) e dell'ambito giusto (400).
  */
-import { sceglieModelloFir } from './stampa/scelta-modello-fir'
 import { Injectable } from '@nestjs/common'
 import { generaQrVidimazione } from '../../infrastructure/rentri/qr/qr-vidimazione'
 import { PDFService } from '../../infrastructure/pdf/pdf.service'
@@ -32,6 +31,7 @@ import {
   type DatiDistinta,
   type ModelloStampaDistinta,
 } from './stampa/distinta-pdf'
+import { sceglieModelloFir } from './stampa/scelta-modello-fir'
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/
 
