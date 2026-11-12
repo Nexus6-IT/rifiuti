@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { MarcaturaMovimentoComponent } from './marcatura-movimento.component'
 import { ConsorziService } from './consorzi.service'
 import { MarcaturaMovimento } from './consorzi.model'
@@ -12,7 +12,11 @@ describe('MarcaturaMovimentoComponent', () => {
   let svc: jasmine.SpyObj<ConsorziService>
   let toast: jasmine.SpyObj<ToastService>
 
-  function setup(puoModificare: boolean, stato: MarcaturaMovimento = vuoto): void {
+  function setup(
+    puoModificare: boolean,
+    stato: MarcaturaMovimento = vuoto,
+    lettureRegole: Array<ReturnType<ConsorziService['regole']>> = []
+  ): void {
     svc = jasmine.createSpyObj<ConsorziService>('ConsorziService', [
       'regole',
       'consorziDeiMovimenti',
@@ -20,6 +24,7 @@ describe('MarcaturaMovimentoComponent', () => {
       'rimuoviOverride',
     ])
     svc.regole.and.returnValue(of({ regole: [], puoModificare }))
+    if (lettureRegole.length) svc.regole.and.returnValues(...lettureRegole)
     svc.consorziDeiMovimenti.and.returnValue(of({ m1: stato }))
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['success', 'error', 'warn'])
     TestBed.configureTestingModule({
@@ -127,5 +132,78 @@ describe('MarcaturaMovimentoComponent', () => {
     fixture.detectChanges()
     expect(svc.consorziDeiMovimenti).not.toHaveBeenCalled()
     expect(q('marcatura-riga-COBAT')?.textContent).toContain('Marcato da una regola')
+  })
+  describe('correzione manuale e regola concorrente (regolaPrende)', () => {
+    const manuale = (regolaPrende?: Array<'CONOU' | 'COBAT' | 'COREPLA'>): MarcaturaMovimento => ({
+      marcature: [{ consorzio: 'CONOU', origine: 'MANUALE' }],
+      esclusi: [],
+      ...(regolaPrende ? { regolaPrende } : {}),
+    })
+
+    it('se una regola prenderebbe il movimento propone «Torna alla regola» e lo dice', () => {
+      setup(true, manuale(['CONOU']))
+      expect(q('marcatura-riga-CONOU')?.textContent).toContain('una regola lo prenderebbe')
+      expect(q('marcatura-togli-CONOU')?.textContent).toContain('Torna alla regola')
+    })
+
+    it('se nessuna regola lo prende lo dice e togliere la marcatura lo lascia non marcato', () => {
+      setup(true, manuale([]))
+      expect(q('marcatura-riga-CONOU')?.textContent).toContain('nessuna regola lo prende')
+      expect(q('marcatura-togli-CONOU')?.textContent).toContain('Togli la marcatura')
+      expect(q('marcatura-togli-CONOU')?.textContent).not.toContain('Torna alla regola')
+    })
+
+    it('senza il campo (risposta di un backend piu vecchio) resta il comportamento di prima', () => {
+      setup(true, manuale())
+      expect(q('marcatura-riga-CONOU')?.textContent).toContain('Marcato a mano')
+      expect(q('marcatura-togli-CONOU')?.textContent).toContain('Togli la marcatura')
+    })
+  })
+
+  describe('lettura del permesso: nuovo tentativo dopo un errore', () => {
+    const errore = () => throwError(() => ({ status: 500 }))
+
+    it('dopo un errore non resta bloccata: al prossimo uso rilegge e abilita i pulsanti', () => {
+      setup(true, vuoto, [errore(), of({ regole: [], puoModificare: true })])
+      expect(svc.regole).toHaveBeenCalledTimes(1)
+      expect(q('marcatura-marca-CONOU')).toBeNull()
+      // Nessun'altra chiamata senza un nuovo uso.
+      fixture.detectChanges()
+      expect(svc.regole).toHaveBeenCalledTimes(1)
+      fixture.componentRef.setInput('marcatura', vuoto)
+      fixture.detectChanges()
+      expect(svc.regole).toHaveBeenCalledTimes(2)
+      expect(q('marcatura-marca-CONOU')).not.toBeNull()
+      // Riuscita: da qui non rilegge piu.
+      fixture.componentRef.setInput('marcatura', { marcature: [], esclusi: ['COBAT'] })
+      fixture.detectChanges()
+      expect(svc.regole).toHaveBeenCalledTimes(2)
+    })
+
+    it('il pulsante «Riprova» rilegge il permesso e sparisce a lettura riuscita', () => {
+      setup(true, vuoto, [errore(), of({ regole: [], puoModificare: true })])
+      expect(q('marcatura-riprova')).not.toBeNull()
+      ;(q('marcatura-riprova')?.querySelector('button') as HTMLButtonElement).click()
+      fixture.detectChanges()
+      expect(svc.regole).toHaveBeenCalledTimes(2)
+      expect(q('marcatura-riprova')).toBeNull()
+      expect(q('marcatura-marca-CONOU')).not.toBeNull()
+    })
+    it('durante la richiesta «Riprova» e in caricamento e disabilitato; il messaggio e uno status', () => {
+      const attesa = new Subject<{ regole: never[]; puoModificare: boolean }>()
+      setup(true, vuoto, [errore(), attesa.asObservable()])
+      expect(q('marcatura-permesso-errore')?.getAttribute('role')).toBe('status')
+      const bottone = () => q('marcatura-riprova')?.querySelector('button') as HTMLButtonElement
+      expect(bottone().disabled).toBe(false)
+      bottone().click()
+      fixture.detectChanges()
+      expect(bottone().disabled).toBe(true)
+      // Un secondo clic non apre un'altra richiesta.
+      bottone().click()
+      expect(svc.regole).toHaveBeenCalledTimes(2)
+      attesa.next({ regole: [], puoModificare: true })
+      fixture.detectChanges()
+      expect(q('marcatura-riprova')).toBeNull()
+    })
   })
 })
