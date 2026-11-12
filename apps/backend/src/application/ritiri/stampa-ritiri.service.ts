@@ -85,7 +85,7 @@ export class StampaRitiriService {
         const elenco = await this.repo.elenca(
           tx,
           tenantId,
-          { dal: data, al: data, ...(automezzoId ? { automezzoId } : {}) },
+          { dal: data, al: data, stato: 'PROGRAMMATO', ...(automezzoId ? { automezzoId } : {}) },
           1,
           DIMENSIONE_MASSIMA
         )
@@ -101,18 +101,16 @@ export class StampaRitiriService {
       const dati: DatiDistinta = {
         data,
         automezzo: automezzo ? { targa: automezzo.targa, descrizione: null } : null,
-        righe: righe
-          .filter(r => r.stato === 'PROGRAMMATO')
-          .map(r => ({
-            fascia: r.fascia,
-            ordineGiro: r.ordineGiro,
-            produttore: r.produttore.nome,
-            indirizzoSede: r.produttore.indirizzo,
-            cerCode: r.cerCode,
-            quantitaPresunta: r.quantitaPresunta,
-            numeroFir: r.fir?.numero ?? null,
-            mezzo: r.automezzo?.targa ?? null,
-          })),
+        righe: righe.map(r => ({
+          fascia: r.fascia,
+          ordineGiro: r.ordineGiro,
+          produttore: r.produttore.nome,
+          indirizzoSede: r.produttore.indirizzo,
+          cerCode: r.cerCode,
+          quantitaPresunta: r.quantitaPresunta,
+          numeroFir: r.fir?.numero ?? null,
+          mezzo: r.automezzo?.targa ?? null,
+        })),
       }
       const buffer = await this.pdf.generateDistintaPDF(dati, modello)
       return { buffer, nomeFile: nomeFileDistinta(dati) }

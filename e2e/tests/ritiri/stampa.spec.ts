@@ -7,11 +7,10 @@ import {
   tokenAzienda,
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
-import { getApiUrl } from '../../utils/env'
 import { ATTESA_SERVER, attendiRisposta } from '../../utils/attese'
 import { eliminaFirConPrefisso } from '../../utils/db-locale'
 import { registra } from '../../fixtures/risorse'
-import { chiama, giornoItaliano } from '../../utils/legami-api'
+import { chiama, chiamaBinario, giornoItaliano } from '../../utils/legami-api'
 import {
   creaAnagraficheRitiri,
   creaRitiri,
@@ -174,18 +173,12 @@ test.describe('Stampa ed emissione in serie dai ritiri', () => {
     expect((await stampa.body()).subarray(0, 4).toString()).toBe('%PDF')
 
     // Lato API: con anche il terzo ritiro (senza FIR) il backend lo salta e lo conta.
-    const conSaltato = await fetch(`${getApiUrl()}/ritiri/stampa-fir`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ritiroIds: [primo.id, secondo.id, terzo.id] }),
+    const conSaltato = await chiamaBinario('POST', '/ritiri/stampa-fir', token, {
+      ritiroIds: [primo.id, secondo.id, terzo.id],
     })
-    expect(conSaltato.status).toBe(200)
+    expect(conSaltato.stato).toBe(200)
     expect(conSaltato.headers.get('x-ritiri-saltati')).toBe('1')
-    expect(
-      Buffer.from(await conSaltato.arrayBuffer())
-        .subarray(0, 4)
-        .toString()
-    ).toBe('%PDF')
+    expect(conSaltato.corpo.subarray(0, 4).toString()).toBe('%PDF')
 
     // 4. Distinta del giorno (nessun filtro: propone oggi, tutti i mezzi).
     await page.getByTestId('ri-distinta').click()

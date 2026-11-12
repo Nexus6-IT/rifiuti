@@ -321,13 +321,16 @@ describe('PUT /fir/:id — catena HTTP con azienda selezionata', () => {
       ],
     ]
 
-    it.each(chiamate)('%s: codice FIR_NON_TROVATO → 404, messaggio invariato', async (_n, chiama, uc) => {
-      await avvia()
-      uc().mockResolvedValue(Result.fail(NON_TROVATO, FirNonTrovatoError.CODICE))
-      const r = await chiama()
-      expect(r.status).toBe(404)
-      expect(r.body.message).toBe(NON_TROVATO)
-    })
+    it.each(chiamate)(
+      '%s: codice FIR_NON_TROVATO → 404, messaggio invariato',
+      async (_n, chiama, uc) => {
+        await avvia()
+        uc().mockResolvedValue(Result.fail(NON_TROVATO, FirNonTrovatoError.CODICE))
+        const r = await chiama()
+        expect(r.status).toBe(404)
+        expect(r.body.message).toBe(NON_TROVATO)
+      }
+    )
 
     it.each(chiamate)(
       '%s: un fallimento senza codice il cui testo contiene "not found" resta 400',

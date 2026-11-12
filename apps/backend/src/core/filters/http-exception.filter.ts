@@ -113,7 +113,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorCode = FirAnnullatoNelFrattempoError.CODICE
       message = FirAnnullatoNelFrattempoError.MESSAGGIO_UTENTE
     }
-    // FIR non piu' in bozza (emesso o annullato da un'altra operazione): 409 senza id, senza segnalazione.
+    // FIR non piu' in bozza (gia' emesso da un'altra operazione; l'annullamento ha il suo codice,
+    // FIR_ANNULLATO_NEL_FRATTEMPO): 409 senza id, senza segnalazione.
     else if (exception instanceof FirNonPiuInBozzaError) {
       statusCode = HttpStatus.CONFLICT
       errorCode = FirNonPiuInBozzaError.CODICE
