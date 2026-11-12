@@ -55,31 +55,33 @@ const SOGLIA_CITATI_MS = 3_000
 // sotto TETTO_*. Il carico del runner CI (una CI ha misurato 16 s di totale su 6 giri, senza che la
 // fatturazione fosse toccata) allunga alcuni giri ma non tutti: per questo non si somma. Il piano
 // degenere pero' puo' comparire a giri alterni (I5, «flaky 2/3»: provato in mutazione, 3 giri lenti
-// da 21 s e 3 sani da 0,25 s): il solo giro migliore non lo vedrebbe, da qui il tetto sul peggiore.
+// da 21 s e 3 sani da 0,25 s): il solo giro migliore non lo vedrebbe, da qui il tetto per giro (3 giri sopra: rilevato).
 // Misure locali, sano: selezione ~0,24 s per giro, righe citate ~0,04 s. Con `conJoinLineari`
 // disattivato (forma I5): selezione 5,1-5,9 s per giro su DB fresco, fino a 21 s su DB riusato.
 const SOGLIA_SELEZIONE_GIRO_MS = 3_000
 const SOGLIA_CITATI_GIRO_MS = 1_000
-// Tetto sul giro PEGGIORE (TETTO_*): vedi tempiSani.
+// Tetto per giro (TETTO_*): al massimo un giro sopra, vedi tempiSani.
 const TETTO_SELEZIONE_GIRO_MS = 8_000
 const TETTO_CITATI_GIRO_MS = 3_000
 const ESECUZIONI = 6
 
 /**
  * Il giro piu' veloce deve stare sotto la soglia (il carico del runner non puo' rallentarli tutti)
- * e il piu' lento sotto il tetto (un piano degenere che compare solo a giri alterni, come I5, non
- * si vede dal giro migliore). I tempi di tutti i giri si stampano SEMPRE (anche a test verde, cosi'
- * il log di CI li mostra); il messaggio d'errore li riporta comunque.
+ * e al massimo UN giro puo' superare il tetto (un piano degenere che compare solo a giri alterni,
+ * come I5, non si vede dal giro migliore ma supera il tetto in almeno 2 giri su 6; un solo giro
+ * lento e' uno stallo di I/O del runner: in CI visto 10,2 s su un giro con gli altri sotto 2,2 s).
+ * I tempi di tutti i giri si stampano SEMPRE (anche a test verde, cosi' il log di CI li mostra);
+ * il messaggio d'errore li riporta comunque.
  */
 function tempiSani(caso: string, tempi: number[], sogliaGiroMs: number, tettoGiroMs: number): void {
   // eslint-disable-next-line no-console
   console.log(`[piani-query] ${caso}: giri (ms) ${tempi.join(', ')}`)
   const migliore = Math.min(...tempi)
-  const peggiore = Math.max(...tempi)
-  if (migliore >= sogliaGiroMs || peggiore >= tettoGiroMs) {
+  const sopraTetto = tempi.filter(t => t >= tettoGiroMs).length
+  if (migliore >= sogliaGiroMs || sopraTetto >= 2) {
     throw new Error(
-      `Piano degenere? migliore ${migliore} ms (soglia ${sogliaGiroMs}), peggiore ${peggiore} ms ` +
-        `(tetto ${tettoGiroMs}). Tempi per giro (ms): ${tempi.join(', ')}`
+      `Piano degenere? migliore ${migliore} ms (soglia ${sogliaGiroMs}), ${sopraTetto} giri ` +
+        `sopra il tetto di ${tettoGiroMs} ms (ammesso 1). Tempi per giro (ms): ${tempi.join(', ')}`
     )
   }
 }
@@ -188,7 +190,7 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
     expect(r.ms).toBeLessThan(SOGLIA_SELEZIONE_MS)
   }, 200_000)
 
-  it(`selezione, piano custom, statistiche vecchie, ${ESECUZIONI} volte di fila: giro migliore sotto ${SOGLIA_SELEZIONE_GIRO_MS} ms e peggiore sotto ${TETTO_SELEZIONE_GIRO_MS} ms (I1: 13 s per giro; I5: 5-21 s a giri alterni)`, async () => {
+  it(`selezione, piano custom, statistiche vecchie, ${ESECUZIONI} volte di fila: giro migliore sotto ${SOGLIA_SELEZIONE_GIRO_MS} ms e al massimo un giro sopra ${TETTO_SELEZIONE_GIRO_MS} ms (I1: 13 s per giro; I5: 5-21 s a giri alterni)`, async () => {
     const tempi: number[] = []
     for (let i = 0; i < ESECUZIONI; i++) {
       const r = await selezione(false)
@@ -207,7 +209,7 @@ describe('Piani stabili con statistiche vecchie (Postgres reale, ruolo wasteflow
     expect(documentoIds).toHaveLength(500)
   }, 300_000)
 
-  it(`righe citate, piano custom, ${ESECUZIONI} volte di fila: giro migliore sotto ${SOGLIA_CITATI_GIRO_MS} ms e peggiore sotto ${TETTO_CITATI_GIRO_MS} ms (I5: IN (SELECT unnest) ~2 s per giro)`, async () => {
+  it(`righe citate, piano custom, ${ESECUZIONI} volte di fila: giro migliore sotto ${SOGLIA_CITATI_GIRO_MS} ms e al massimo un giro sopra ${TETTO_CITATI_GIRO_MS} ms (I5: IN (SELECT unnest) ~2 s per giro)`, async () => {
     const tempi: number[] = []
     for (let i = 0; i < ESECUZIONI; i++) {
       const r = await citati(documentoIds, false)
