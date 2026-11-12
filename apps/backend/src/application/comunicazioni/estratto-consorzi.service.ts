@@ -33,6 +33,8 @@ const giornoSuccessivo = (d: string) =>
  * 4.9a (`leggiMovimentiOrso`), una sede alla volta. Senza filtro di sede («tutte le sedi») legge
  * anche i registri senza sede (storici o importati); con una sede li esclude. Il periodo e' sui
  * giorni di Roma: inizio alle 00:00 del primo giorno, fine alle 00:00 del giorno dopo l'ultimo.
+ * I pesi specifici (kg per unita' non di massa) sono quelli del MUD di ciascun anno solare di Roma
+ * toccato dal periodo: una lettura del MUD per anno, e ogni movimento usa i pesi del proprio anno.
  */
 @Injectable()
 export class EstrattoConsorziService implements EstrattoConsorziPort {
