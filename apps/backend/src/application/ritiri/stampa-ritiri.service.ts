@@ -31,6 +31,7 @@ import {
   type DatiDistinta,
   type ModelloStampaDistinta,
 } from './stampa/distinta-pdf'
+import { sceglieModelloFir } from './stampa/scelta-modello-fir'
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/
 
@@ -180,30 +181,17 @@ export class StampaRitiriService {
   }
 
   private async modelloFir(tenantId: string, modelloId: string | undefined) {
-    let scelto
-    if (modelloId !== undefined) {
-      scelto = await this.modelli.getById(tenantId, modelloId)
-      if (scelto.ambito === 'DISTINTA_RITIRI') {
-        throw new ModelloAmbitoNonValidoError(
-          'Il modello della distinta dei ritiri non si usa per il FIR.'
-        )
-      }
-    } else {
-      const tutti = await this.modelli.list(tenantId)
-      scelto =
-        tutti.find(m => m.predefinito && m.ambito === 'FIR') ??
-        tutti.find(m => m.predefinito && m.ambito === 'GENERALE')
+    const esito = sceglieModelloFir(
+      modelloId !== undefined
+        ? { tipo: 'ESPLICITO', modello: await this.modelli.getById(tenantId, modelloId) }
+        : { tipo: 'PREDEFINITO', elenco: await this.modelli.list(tenantId) }
+    )
+    if (esito.esito === 'AMBITO_NON_VALIDO') {
+      throw new ModelloAmbitoNonValidoError(
+        'Il modello della distinta dei ritiri non si usa per il FIR.'
+      )
     }
-    if (!scelto) return null
-    return {
-      ambito: scelto.ambito,
-      copie: scelto.copie,
-      logoBase64: scelto.logoBase64,
-      headerText: scelto.testoIntestazione,
-      footerText: scelto.testoPiePagina,
-      primaryColor: scelto.colorePrimario,
-      secondaryColor: scelto.coloreSecondario,
-    }
+    return esito.modello
   }
 }
 
