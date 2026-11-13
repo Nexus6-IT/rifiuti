@@ -27,3 +27,25 @@ func TestComandoIgnoto(t *testing.T) {
 		t.Fatal("nessun messaggio d'errore")
 	}
 }
+
+func TestStatoSenzaAvvioEUsoAbbina(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if codice := esegui([]string{"stato", "--dati", t.TempDir()}, &out, &errOut); codice != 1 || errOut.Len() == 0 {
+		t.Fatalf("stato senza file: codice %d err %q", codice, errOut.String())
+	}
+	errOut.Reset()
+	if codice := esegui([]string{"abbina", "--dati", t.TempDir()}, &out, &errOut); codice != 2 {
+		t.Fatalf("abbina senza argomenti: codice %d", codice)
+	}
+	errOut.Reset()
+	if codice := esegui([]string{"abbina", "--dati", t.TempDir(), "--server", "http://esempio.it", "--codice", "X"}, &out, &errOut); codice != 1 {
+		t.Fatalf("abbina con http non locale: codice %d err %q", codice, errOut.String())
+	}
+}
+
+func TestEseguiSenzaAbbinamentoDaErrore(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if codice := esegui([]string{"esegui", "--dati", t.TempDir()}, &out, &errOut); codice != 1 {
+		t.Fatalf("codice %d", codice)
+	}
+}
