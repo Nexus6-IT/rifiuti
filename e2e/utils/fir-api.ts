@@ -24,6 +24,7 @@ export interface FirVisto {
   numeroProgressivo?: string | null
   stato: string
   rentriSyncStatus?: string | null
+  pesoEffettivo?: number | null
   rifiuto: { cerCode: string; quantita: number; unitaMisura: string }
 }
 
