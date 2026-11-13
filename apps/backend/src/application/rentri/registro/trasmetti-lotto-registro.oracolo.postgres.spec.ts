@@ -151,10 +151,19 @@ describe('TrasmettiLottoRegistroUseCase — Postgres reale + RENTRI finto', () =
   const righe = (tenantId: string) =>
     owner.movimentoTrasmissioneRentri.findMany({ where: { tenantId } })
 
+  // Riscaldamento: il primo uso di un client Prisma (caricamento del motore, connessione, handshake
+  // SCRAM, piano delle query) costa piu' di un intero test (misurato: primo test 317 ms, gli altri
+  // 130-170 ms). Su un runner affamato di RAM/I/O quel costo si stirava oltre i 30 s del timeout
+  // del test (CI del 12/11: scaduto proprio il primo test). Pagarlo qui, in un hook con il suo
+  // tetto, lascia il timeout dei test dove e': 30 s per qualcosa che dura 150 ms.
   beforeAll(async () => {
     app = creaPrismaServiceApplicativo()
     await app.onModuleInit()
-  })
+    // Un giro completo e scartabile (un tenant suo, ripulito in afterAll) scalda anche i percorsi
+    // di scrittura e di lettura del caso d'uso, non solo la connessione.
+    const caldo = await scenario(1)
+    await caldo.uc.trasmettiRegistro(caldo.tenantId, caldo.registroId)
+  }, 120_000)
 
   afterAll(async () => {
     if (tenantCreati.length > 0) {
