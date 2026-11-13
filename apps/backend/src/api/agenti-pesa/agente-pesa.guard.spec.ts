@@ -11,7 +11,9 @@ import type {
   RisoluzioneAgenteService,
 } from '../../application/pese/agenti/risoluzione-agente.service'
 import { generaToken, hashSegreto } from '../../domain/pese/agenti/credenziali-agente'
+import { ThrottlerException } from '@nestjs/throttler'
 import { AgentePesaGuard } from './agente-pesa.guard'
+import { FallimentiAutenticazione } from './fallimenti-autenticazione'
 import type { RichiestaConAgente } from './agente-richiesta'
 
 const TENANT = '11111111-1111-4111-8111-111111111111'
@@ -69,6 +71,50 @@ describe('AgentePesaGuard', () => {
     expect(e).toBeInstanceOf(UnauthorizedException)
     expect(e.getResponse()).toMatchObject({ error: 'TOKEN_NON_VALIDO' })
     expect(daToken).not.toHaveBeenCalled()
+  })
+
+  it('conta per IP solo i token rifiutati e, oltre il tetto, risponde 429 senza interrogare il database', async () => {
+    guard = new AgentePesaGuard(
+      { daToken } as unknown as RisoluzioneAgenteService,
+      { moduliAttivi } as unknown as ModuliAttiviService,
+      FallimentiAutenticazione.con(2, 60_000)
+    )
+    daToken.mockResolvedValue(null)
+    const ignoto = `Bearer ${generaToken()}`
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        guard.canActivate(contesto(richiesta(ignoto, { ip: '9.9.9.9' })))
+      ).rejects.toBeInstanceOf(UnauthorizedException)
+    }
+    daToken.mockClear()
+    await expect(
+      guard.canActivate(contesto(richiesta(ignoto, { ip: '9.9.9.9' })))
+    ).rejects.toBeInstanceOf(ThrottlerException)
+    expect(daToken).not.toHaveBeenCalled()
+    // un altro IP con un token valido passa
+    const valido = generaToken()
+    daToken.mockResolvedValue(risolto('ATTIVO'))
+    await expect(
+      guard.canActivate(contesto(richiesta(`Bearer ${valido}`, { ip: '8.8.8.8' })))
+    ).resolves.toBe(true)
+  })
+
+  it('le richieste autenticate (anche revocate) non incrementano il conteggio dei rifiuti', async () => {
+    const f = FallimentiAutenticazione.con(1, 60_000)
+    guard = new AgentePesaGuard(
+      { daToken } as unknown as RisoluzioneAgenteService,
+      { moduliAttivi } as unknown as ModuliAttiviService,
+      f
+    )
+    daToken.mockResolvedValue(risolto('ATTIVO'))
+    for (let i = 0; i < 5; i++) {
+      await guard.canActivate(contesto(richiesta(`Bearer ${generaToken()}`, { ip: '7.7.7.7' })))
+    }
+    daToken.mockResolvedValue(risolto('REVOCATO'))
+    await guard
+      .canActivate(contesto(richiesta(`Bearer ${generaToken()}`, { ip: '7.7.7.7' })))
+      .catch(() => undefined)
+    expect(f.bloccatoPer('7.7.7.7')).toBeNull()
   })
 
   it.each([

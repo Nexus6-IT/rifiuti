@@ -1,9 +1,11 @@
+import { ThrottlerException } from '@nestjs/throttler'
 import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
@@ -17,6 +19,7 @@ import { rispostaModuloNonAttivo } from '../../core/context/modulo-non-attivo-er
 import { VERIFICA_AZIENDA_NON_DISPONIBILE } from '../../core/context/azienda-selezionata-errori'
 import type { RichiestaConAgente } from './agente-richiesta'
 import { agenteRevocato, tokenNonValido } from './errori-agente'
+import { FallimentiAutenticazione } from './fallimenti-autenticazione'
 
 const MODULO_PESE = 'pese'
 
@@ -35,14 +38,27 @@ export class AgentePesaGuard implements CanActivate {
 
   constructor(
     private readonly risoluzione: RisoluzioneAgenteService,
-    private readonly moduli: ModuliAttiviService
+    private readonly moduli: ModuliAttiviService,
+    @Optional()
+    private readonly fallimenti: FallimentiAutenticazione = new FallimentiAutenticazione()
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<RichiestaConAgente>()
+    const ip = req.ip ?? 'ignoto'
+    // Tetto d'ingresso (I1): solo i token rifiutati contano, per IP; l'IP che ha esaurito il tetto
+    // non arriva nemmeno al database.
+    const attesa = this.fallimenti.bloccatoPer(ip)
+    if (attesa !== null) {
+      context.switchToHttp().getResponse?.()?.header?.('Retry-After', attesa)
+      throw new ThrottlerException()
+    }
     const token = this.estraiToken(req.headers?.authorization)
     // Senza prefisso o lunghezza giusti non si interroga nemmeno il database.
-    if (!token || !tokenBenFormato(token)) throw tokenNonValido()
+    if (!token || !tokenBenFormato(token)) {
+      this.fallimenti.registra(ip)
+      throw tokenNonValido()
+    }
 
     let agente: AgenteRisolto | null
     try {
@@ -52,7 +68,10 @@ export class AgentePesaGuard implements CanActivate {
       this.logger.warn(`Risoluzione dell'agente fallita: ${(err as Error).name}`)
       throw new ServiceUnavailableException({ ...VERIFICA_AZIENDA_NON_DISPONIBILE })
     }
-    if (!agente || agente.stato === 'IN_ATTESA') throw tokenNonValido()
+    if (!agente || agente.stato === 'IN_ATTESA') {
+      this.fallimenti.registra(ip)
+      throw tokenNonValido()
+    }
     if (agente.stato === 'REVOCATO') throw agenteRevocato()
 
     await this.verificaModulo(agente)

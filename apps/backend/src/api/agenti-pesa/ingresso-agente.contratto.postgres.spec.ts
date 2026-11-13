@@ -40,7 +40,7 @@ import { AgentePesaGuard } from './agente-pesa.guard'
 import { IngressoAgenteController } from './ingresso-agente.controller'
 import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
 import { ThrottlerAgenteGuard } from './throttler-agente.guard'
-import { ThrottlerIngressoGuard } from './throttler-ingresso.guard'
+import { FallimentiAutenticazione } from './fallimenti-autenticazione'
 
 interface Contratto {
   chiavePubblicaB64: string
@@ -151,7 +151,7 @@ describe('Contratto lettura-v1.json contro POST /agenti-pesa/letture (Postgres r
         AgentePesaGuard,
         ThrottlerAgenteGuard,
         ThrottlerAbbinamentoGuard,
-        ThrottlerIngressoGuard,
+        FallimentiAutenticazione,
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
       ],
     }).compile()

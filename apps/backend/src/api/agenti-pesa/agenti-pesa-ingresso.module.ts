@@ -9,7 +9,7 @@ import { RisoluzioneAgenteService } from '../../application/pese/agenti/risoluzi
 import { AgentePesaGuard } from './agente-pesa.guard'
 import { IngressoAgenteController } from './ingresso-agente.controller'
 import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
-import { ThrottlerIngressoGuard } from './throttler-ingresso.guard'
+import { FallimentiAutenticazione } from './fallimenti-autenticazione'
 import { ThrottlerAgenteGuard } from './throttler-agente.guard'
 
 /**
@@ -32,7 +32,7 @@ import { ThrottlerAgenteGuard } from './throttler-agente.guard'
     AgentePesaGuard,
     ThrottlerAgenteGuard,
     ThrottlerAbbinamentoGuard,
-    ThrottlerIngressoGuard,
+    FallimentiAutenticazione,
   ],
   exports: [RisoluzioneAgenteService, BattitoAgenteService],
 })

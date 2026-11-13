@@ -19,10 +19,11 @@ import {
 } from '../../application/pese/errori-pese'
 import { hashSegreto } from '../../domain/pese/agenti/credenziali-agente'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
+import { valoreTrustProxy } from '../../core/http/trust-proxy'
 import { AgentePesaGuard } from './agente-pesa.guard'
 import { IngressoAgenteController } from './ingresso-agente.controller'
 import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
-import { ThrottlerIngressoGuard, LIMITE_INGRESSO_PER_ROTTA } from './throttler-ingresso.guard'
+import { FallimentiAutenticazione, LIMITE_FALLIMENTI_PER_IP } from './fallimenti-autenticazione'
 import { ThrottlerAgenteGuard } from './throttler-agente.guard'
 
 const TENANT = '5a5a5a5a-0000-4000-8000-00000000000a'
@@ -81,13 +82,15 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
         AgentePesaGuard,
         ThrottlerAgenteGuard,
         ThrottlerAbbinamentoGuard,
-        ThrottlerIngressoGuard,
+        FallimentiAutenticazione,
         // Come in AppModule: il limite globale per IP c'e', e le rotte dell'agente lo escludono.
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_FILTER, useValue: new HttpExceptionFilter(logger) },
       ],
     }).compile()
     app = moduleRef.createNestApplication()
+    // Come in main.ts: nginx sullo stesso host, un hop di loopback.
+    app.getHttpAdapter().getInstance().set('trust proxy', valoreTrustProxy(undefined))
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
     )
@@ -185,16 +188,40 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       expect(r.headers['retry-after']).toBeDefined()
     })
 
-    it('token ignoti: dopo il tetto della rotta (prima dell’autenticazione) 429, non solo 401', async () => {
+    it('token ignoti: dopo il tetto per IP 429, e un agente valido da un altro IP passa ancora', async () => {
       const ignoto = `Bearer wfpa_${'C'.repeat(43)}`
-      for (let i = 0; i < LIMITE_INGRESSO_PER_ROTTA; i++) {
-        await http().get('/agenti-pesa/configurazione').set('Authorization', ignoto).expect(401)
+      for (let i = 0; i < LIMITE_FALLIMENTI_PER_IP; i++) {
+        await http()
+          .get('/agenti-pesa/configurazione')
+          .set('Authorization', ignoto)
+          .set('X-Forwarded-For', '203.0.113.50')
+          .expect(401)
       }
       const r = await http()
         .get('/agenti-pesa/configurazione')
         .set('Authorization', ignoto)
+        .set('X-Forwarded-For', '203.0.113.50')
         .expect(429)
       expect(r.headers['retry-after']).toBeDefined()
+      // Il token VALIDO dello stesso IP bloccato e' fermato prima del database; da un altro IP passa.
+      await http()
+        .get('/agenti-pesa/configurazione')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .set('X-Forwarded-For', '203.0.113.51')
+        .expect(200)
+    })
+
+    it('le richieste autenticate non contano per il tetto d’ingresso (agente valido sopra il tetto)', async () => {
+      // il limite per agente (10/min) scatta comunque; qui basta che il conteggio dei rifiuti resti a zero
+      for (let i = 0; i < 10; i++) {
+        await http()
+          .get('/agenti-pesa/configurazione')
+          .set('Authorization', `Bearer ${TOKEN}`)
+          .set('X-Forwarded-For', '203.0.113.60')
+          .expect(200)
+      }
+      const f = app.get(FallimentiAutenticazione)
+      expect(f.bloccatoPer('203.0.113.60')).toBeNull()
     })
   })
 

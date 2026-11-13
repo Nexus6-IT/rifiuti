@@ -13,7 +13,6 @@ import { AgentePesaGuard } from './agente-pesa.guard'
 import { AgenteCorrente, type AgenteCorrenteDati } from './agente-richiesta'
 import { comeHttpAgente } from './errori-http-agenti'
 import { LIMITI_AGENTE, LimiteAgente, ThrottlerAgenteGuard } from './throttler-agente.guard'
-import { ThrottlerIngressoGuard } from './throttler-ingresso.guard'
 import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
 
 /**
@@ -45,7 +44,7 @@ export class IngressoAgenteController {
 
   @Get('configurazione')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(ThrottlerIngressoGuard, AgentePesaGuard, ThrottlerAgenteGuard)
+  @UseGuards(AgentePesaGuard, ThrottlerAgenteGuard)
   @LimiteAgente(LIMITI_AGENTE.configurazione)
   @ApiOperation({ summary: 'Configurazione dell’agente (strumenti assegnati, simulazione)' })
   async configurazione(@AgenteCorrente() agente: AgenteCorrenteDati) {
@@ -54,7 +53,7 @@ export class IngressoAgenteController {
 
   @Post('letture')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(ThrottlerIngressoGuard, AgentePesaGuard, ThrottlerAgenteGuard)
+  @UseGuards(AgentePesaGuard, ThrottlerAgenteGuard)
   @LimiteAgente(LIMITI_AGENTE.letture)
   @ApiOperation({ summary: 'Riceve un lotto (1..50) di letture firmate; un esito per elemento' })
   async riceviLetture(@AgenteCorrente() agente: AgenteCorrenteDati, @Body() dto: LottoLettureDto) {
@@ -66,7 +65,7 @@ export class IngressoAgenteController {
 
   @Post('battito')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(ThrottlerIngressoGuard, AgentePesaGuard, ThrottlerAgenteGuard)
+  @UseGuards(AgentePesaGuard, ThrottlerAgenteGuard)
   @LimiteAgente(LIMITI_AGENTE.battito)
   @ApiOperation({
     summary: 'Battito: ultimo contatto, scarto dell’orologio, coda, stato strumenti',

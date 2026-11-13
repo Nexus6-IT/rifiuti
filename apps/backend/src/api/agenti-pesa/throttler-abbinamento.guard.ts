@@ -5,7 +5,7 @@ import { ThrottlerGuard, type ThrottlerLimitDetail } from '@nestjs/throttler'
 export const FINESTRA_ABBINAMENTO_MS = 60_000
 /** Tentativi al minuto per IP (D10). */
 export const LIMITE_ABBINAMENTO_PER_IP = 10
-/** Tentativi al minuto per l'intera rotta: dietro nginx `req.ip` e' quello del proxy (D10). */
+/** Tentativi al minuto per l'intera rotta (D10): rete di sicurezza se `trust proxy` fosse mal configurato. */
 export const LIMITE_ABBINAMENTO_GLOBALE = 30
 
 /**
