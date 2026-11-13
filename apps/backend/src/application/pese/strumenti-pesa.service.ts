@@ -35,6 +35,8 @@ export interface StrumentoVista {
   divisioneKg: number | null
   dataUltimaVerificazione: string | null
   attivo: boolean
+  /** agente di pesa a cui e' assegnato (4.8b), null se non assegnato */
+  agenteId?: string | null
 }
 
 type RigaStrumento = {
@@ -48,6 +50,7 @@ type RigaStrumento = {
   divisioneKg: Prisma.Decimal | number | null
   dataUltimaVerificazione: Date | null
   attivo: boolean
+  agenteId?: string | null
 }
 
 const FORMATO_DATA = /^(\d{4})-(\d{2})-(\d{2})$/
@@ -78,6 +81,7 @@ export function comeStrumentoVista(r: RigaStrumento): StrumentoVista {
       ? r.dataUltimaVerificazione.toISOString().slice(0, 10)
       : null,
     attivo: r.attivo,
+    agenteId: r.agenteId ?? null,
   }
 }
 

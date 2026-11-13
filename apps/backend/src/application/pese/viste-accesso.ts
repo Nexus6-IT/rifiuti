@@ -162,6 +162,10 @@ export interface AccessoRiepilogo {
   nettoKg: number | null
   qualita: QualitaNetto | null
   manuale: boolean
+  /** almeno una pesata arrivata da uno strumento (reale o simulata) */
+  daStrumento: boolean
+  /** almeno una pesata SIMULATA: non e' un peso reale */
+  simulato: boolean
   rettificato: boolean
   collegato: boolean
 }
@@ -577,6 +581,8 @@ export async function leggiRiepiloghi(
       nettoKg: netto.nettoKg,
       qualita: netto.qualita,
       manuale: netto.manuale,
+      daStrumento: sue.some(p => p.fonte === 'STRUMENTO' || p.fonte === 'SIMULATA'),
+      simulato: netto.simulato,
       rettificato: netto.rettificato,
       collegato: collegati.has(a.id),
     }

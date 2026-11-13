@@ -115,6 +115,27 @@ describe('Accessi di pesa da letture dello strumento — Postgres reale', () => 
       })
     )
 
+  it('elenco accessi: daStrumento e simulato; la vista dello strumento porta agenteId', async () => {
+    const s = await scenario(true)
+    const reale = await apri(s, apertura(await lettura(s)))
+    const sim = await apri(s, apertura(await lettura(s, { simulata: true })))
+    const manuale = await apri(s, {
+      chiaveIdempotenza: randomUUID(),
+      verso: 'CARICO',
+      modo: 'SINGOLA',
+      pesata: { pesoKg: 8120, strumentoEsterno: 'Pesa', motivo: 'guasto', stabileDichiarato: true },
+    })
+    const righe = (await nelTenant(s.a.tenantId, () => accessi.elenca(s.a.tenantId, {}))).righe
+    const per = (id: string) => righe.find(r => r.id === id)
+    expect(per(reale.id)).toMatchObject({ daStrumento: true, simulato: false, manuale: false })
+    expect(per(sim.id)).toMatchObject({ daStrumento: true, simulato: true })
+    expect(per(manuale.id)).toMatchObject({ daStrumento: false, simulato: false, manuale: true })
+    const strumenti = await nelTenant(s.a.tenantId, () =>
+      new StrumentiPesaService(app).elenca(s.a.tenantId)
+    )
+    expect(strumenti.find(x => x.id === s.strumento)?.agenteId).toBe(s.agente.id)
+  })
+
   it('rettifica del peso di una pesata STRUMENTO: ammessa, con avviso dedicato e audit; la firma resta verificabile', async () => {
     const s = await scenario()
     const l = await lettura(s, { pesoKg: '24880.00' })
