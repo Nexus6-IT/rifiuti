@@ -25,7 +25,8 @@ async function bootstrap() {
   // Il raw body è accessibile via req.rawBody (Buffer) nei controller.
   const app = await NestFactory.create(AppModule, { rawBody: true })
 
-  // nginx sullo stesso host: un solo hop di loopback, cosi' `req.ip` (throttler per IP, battito,
+  // nginx host + nginx del container frontend (rete docker): si fidano loopback e reti private,
+  // cosi' `req.ip` (throttler per IP, battito,
   // abbinamento, tetto dei token rifiutati) e' l'IP del client e non quello del proxy.
   app.getHttpAdapter().getInstance().set('trust proxy', valoreTrustProxy(process.env.TRUST_PROXY))
 

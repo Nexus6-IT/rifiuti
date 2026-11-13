@@ -730,6 +730,15 @@ Ripristino: vedi il commento di testa della seconda migration (`DROP TRIGGER pes
 COLUMN`, `DROP TABLE letture_pesa, agenti_pesa`, `DROP TYPE stato_agente_pesa`). **Il valore `SIMULATA`
 non si toglie da un enum PostgreSQL**: resta inutilizzato.
 
+**`TRUST_PROXY` (limiti per IP).** In produzione la catena e' client -> nginx dell'host (127.0.0.1) ->
+nginx del container frontend (rete docker, IP privato) -> `backend:3000`, e entrambi aggiungono
+`X-Forwarded-For`. Il default del backend e' `loopback, linklocal, uniquelocal`: `req.ip` e' il primo
+indirizzo non fidato risalendo la catena, cioe' il client reale (un XFF inventato dal client a sinistra
+non conta). Con il solo `loopback` il backend vedrebbe l'IP del container frontend e il limite per IP
+(abbinamento, token rifiutati, battito, altri throttler) diventerebbe globale. Sovrascrivibile con
+`TRUST_PROXY` (numero di hop, subnet; `true` e' rifiutato). Dopo il deploy verificare che nei log o
+nella colonna `ultimoIp` degli agenti compaia l'IP del client e non `172.x`.
+
 #### Pese 4.8a: privilegi, trigger, rilascio e rollback
 
 La migration `20261101600100_pese_cancellazione_e_indici` completa la precedente (entrambe mai applicate

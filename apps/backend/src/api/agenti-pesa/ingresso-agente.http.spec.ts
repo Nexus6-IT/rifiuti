@@ -92,7 +92,7 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
     app = moduleRef.createNestApplication()
     // Come in main.ts: parser di /letture a 200 KB, montato prima del parser globale.
     app.use('/agenti-pesa/letture', jsonConLimite('200kb'))
-    // Come in main.ts: nginx sullo stesso host, un hop di loopback.
+    // Come in main.ts: catena nginx host + nginx del container frontend (predefinito).
     app.getHttpAdapter().getInstance().set('trust proxy', valoreTrustProxy(undefined))
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
