@@ -4,6 +4,7 @@ import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet, ApiClientError } from '../../utils/api-client'
 import { registra } from '../../fixtures/risorse'
 import { conPrefisso } from '../../utils/run-id'
+import { giornoItaliano } from '../../utils/legami-api'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
 import { DashboardPage } from '../../pages/dashboard.page'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
@@ -127,16 +128,13 @@ function payloadTrasportatore(overrides: Partial<Record<string, unknown>> = {}) 
 
 /** Ieri (scadenza già passata) in formato ISO (solo giorno). */
 function ieriIso(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 1)
-  return d.toISOString().slice(0, 10)
+  return giornoItaliano(-1)
 }
 
 /** Fra due anni: ben oltre la soglia di 30 giorni del cruscotto (Passo 5). */
 function fraDueAnniIso(): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() + 2)
-  return d.toISOString().slice(0, 10)
+  // In giorni, non «anno + 2»: dal 29 febbraio darebbe una data inesistente.
+  return giornoItaliano(732)
 }
 
 /** Avvia a mano il job scadenzario tramite l'azione SUPER_ADMIN. */

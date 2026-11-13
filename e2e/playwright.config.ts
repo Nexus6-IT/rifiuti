@@ -49,6 +49,11 @@ export default defineConfig({
   outputDir: '../test-results',
   use: {
     baseURL,
+    // Il «oggi» dei test è sempre quello di Roma (vedi giornoItaliano in utils/legami-api.ts):
+    // senza fuso esplicito il browser della CI gira in UTC e fra 22:00/23:00 e mezzanotte
+    // il form propone ancora «ieri».
+    timezoneId: 'Europe/Rome',
+    locale: 'it-IT',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
