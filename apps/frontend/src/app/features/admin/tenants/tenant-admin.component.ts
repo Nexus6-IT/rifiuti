@@ -47,7 +47,7 @@ const FEATURE_CATALOG: { key: FeatureFlag; label: string }[] = [
   { key: 'anomalie', label: 'Anomalie' },
   { key: 'rentri', label: 'RENTRI' },
   { key: 'reference_data', label: 'Dati di riferimento' },
-  { key: 'pese', label: 'Pese (inserimento manuale)' },
+  { key: 'pese', label: 'Pese' },
   { key: 'ritiri', label: 'Ritiri programmati' },
   { key: 'comunicazioni', label: 'Comunicazioni a consorzi e osservatori' },
 ]
@@ -615,6 +615,28 @@ interface TenantFormData {
                 </div>
               </div>
             </fieldset>
+            @if (editMode()) {
+              <fieldset class="form-fieldset">
+                <legend class="form-legend">Pese</legend>
+                <label class="feature-item" for="t-pese-simulazione">
+                  <input
+                    id="t-pese-simulazione"
+                    type="checkbox"
+                    data-testid="pese-simulazione"
+                    [checked]="peseSimulazione()"
+                    [disabled]="peseSimulazioneInCorso()"
+                    (change)="cambiaSimulazione($event)"
+                    aria-describedby="t-pese-simulazione-help"
+                  />
+                  Ammetti pesate simulate (solo aziende di prova)
+                </label>
+                <small id="t-pese-simulazione-help" class="block mt-1 text-tertiary">
+                  Con il permesso l'azienda può usare le letture simulate dell'agente di pesa: non
+                  sono pesi reali e non si usano nei documenti. L'operazione resta nel registro
+                  delle attività.
+                </small>
+              </fieldset>
+            }
           }
         </form>
 
@@ -870,6 +892,10 @@ export class TenantAdminComponent implements OnInit {
     return this.isSuperAdmin() ? 'Crea tenant' : 'Crea azienda'
   })
 
+  /** Permesso delle pesate simulate dell'azienda aperta nel dialog (solo SUPER_ADMIN). */
+  readonly peseSimulazione = signal(false)
+  readonly peseSimulazioneInCorso = signal(false)
+
   displayDialog = false
   selectedTenant: Tenant | null = null
   form: TenantFormData = this.emptyForm()
@@ -1020,7 +1046,54 @@ export class TenantAdminComponent implements OnInit {
       featureFlags: this.resolveFeatures(t),
     }
     this.pianoPrecedente = t.subscriptionTier
+    this.peseSimulazione.set(t.peseSimulazioneAmmessa === true)
     this.displayDialog = true
+  }
+
+  /**
+   * Interruttore delle pesate simulate: solo il SUPER_ADMIN, con conferma. La casella torna allo
+   * stato salvato finche' il backend non risponde: il valore mostrato e' sempre quello vero.
+   */
+  cambiaSimulazione(ev: Event): void {
+    const t = this.selectedTenant
+    const casella = ev.target as HTMLInputElement
+    const ammessa = casella.checked
+    casella.checked = this.peseSimulazione()
+    if (!t || !this.isSuperAdmin() || this.peseSimulazioneInCorso()) return
+    this.confirmationService.confirm({
+      message: ammessa
+        ? `Ammettere le pesate simulate per "${t.ragioneSociale}"? Va fatto solo per aziende di prova: le letture simulate non sono pesi reali.`
+        : `Togliere il permesso delle pesate simulate a "${t.ragioneSociale}"?`,
+      header: ammessa ? 'Conferma permesso di simulazione' : 'Conferma revoca del permesso',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: ammessa ? 'Ammetti' : 'Togli',
+      rejectLabel: 'Annulla',
+      defaultFocus: 'reject',
+      accept: () => {
+        this.peseSimulazioneInCorso.set(true)
+        this.tenantService.setPeseSimulazione(t.id, ammessa).subscribe({
+          next: () => {
+            this.peseSimulazioneInCorso.set(false)
+            this.peseSimulazione.set(ammessa)
+            this.tenants.update(righe =>
+              righe.map(x => (x.id === t.id ? { ...x, peseSimulazioneAmmessa: ammessa } : x))
+            )
+            if (this.selectedTenant?.id === t.id) {
+              this.selectedTenant = { ...this.selectedTenant, peseSimulazioneAmmessa: ammessa }
+            }
+            this.toast.success(
+              ammessa ? 'Pesate simulate ammesse' : 'Permesso delle pesate simulate tolto'
+            )
+          },
+          error: err => {
+            this.peseSimulazioneInCorso.set(false)
+            this.toast.error(
+              err?.error?.message || 'Impossibile cambiare il permesso di simulazione'
+            )
+          },
+        })
+      },
+    })
   }
 
   /**
