@@ -25,6 +25,7 @@ import { ThrottlerModule } from '@nestjs/throttler'
 import request from 'supertest'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import { AbbinamentoAgenteService } from '../../application/pese/agenti/abbinamento-agente.service'
+import { BattitoAgenteService } from '../../application/pese/agenti/battito-agente.service'
 import { IngressoLettureService } from '../../application/pese/agenti/ingresso-letture.service'
 import { RisoluzioneAgenteService } from '../../application/pese/agenti/risoluzione-agente.service'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
@@ -145,6 +146,7 @@ describe('Contratto lettura-v1.json contro POST /agenti-pesa/letture (Postgres r
         RisoluzioneAgenteService,
         AbbinamentoAgenteService,
         IngressoLettureService,
+        BattitoAgenteService,
         { provide: ModuliAttiviService, useValue: { moduliAttivi: async () => ['pese'] } },
         AgentePesaGuard,
         ThrottlerAgenteGuard,
