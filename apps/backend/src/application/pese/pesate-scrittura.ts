@@ -373,7 +373,11 @@ export async function inserisciPesataDaLettura(
       : null
     const oraAgentePrima = primaLettura?.oraAgente ?? null
     const oraStrumentoPrima = primaLettura?.oraStrumento ?? ctx.prima.oraStrumento
+    // Prima MANUALE con un'ora dello strumento digitata: la lettura (che ha sempre `oraAgente`)
+    // non puo' essere piu' vecchia (review B4-B7, M5).
+    const oraManualePrima = primaLettura ? null : ctx.prima.oraStrumento
     if (
+      (oraManualePrima && lettura.oraAgente.getTime() <= oraManualePrima.getTime()) ||
       (oraAgentePrima && lettura.oraAgente.getTime() <= oraAgentePrima.getTime()) ||
       (oraStrumentoPrima &&
         lettura.oraStrumento &&

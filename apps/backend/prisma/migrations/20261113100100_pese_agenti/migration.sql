@@ -29,17 +29,17 @@
 
 SET LOCAL lock_timeout = '5s';
 
--- Precondizione: `pesate_lettura_check` (piu' sotto) impone che una pesata STRUMENTO/FILE abbia
--- `lettura_id`. Nessuna API di 4.8a ne scrive (in produzione sono 0, verificato il 13/11), ma righe
+-- Precondizione: `pesate_lettura_check` (piu' sotto) impone che una pesata STRUMENTO abbia
+-- `lettura_id` (FILE resta ammessa senza lettura). Nessuna API di 4.8a ne scrive (in produzione sono 0, verificato il 13/11), ma righe
 -- inserite a mano o da seed su un DB di collaudo farebbero fallire la migration con un errore
 -- oscuro (P3009): meglio dirlo chiaro e subito. La migration gira col proprietario (nessuna RLS).
 DO $pre$
 DECLARE
   v_n bigint;
 BEGIN
-  SELECT count(*) INTO v_n FROM pesate WHERE fonte IN ('STRUMENTO', 'FILE');
+  SELECT count(*) INTO v_n FROM pesate WHERE fonte = 'STRUMENTO';
   IF v_n > 0 THEN
-    RAISE EXCEPTION 'pese 4.8b: esistono % pesate con fonte STRUMENTO/FILE senza lettura firmata: violerebbero pesate_lettura_check. Verificare/ripulire prima di rilasciare (piano 4.8b, Task 0, D13).', v_n;
+    RAISE EXCEPTION 'pese 4.8b: esistono % pesate con fonte STRUMENTO senza lettura firmata: violerebbero pesate_lettura_check. Verificare/ripulire prima di rilasciare (piano 4.8b, Task 0, D13).', v_n;
   END IF;
 END
 $pre$;

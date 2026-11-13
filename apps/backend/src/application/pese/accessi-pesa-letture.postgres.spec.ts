@@ -220,6 +220,26 @@ describe('Accessi di pesa da letture dello strumento — Postgres reale', () => 
     await expect(seconda(s, v.id, precedente)).rejects.toThrow(/successiva alla prima/)
   })
 
+  it('prima pesata MANUALE con ora dello strumento: una lettura più vecchia come seconda pesata è 422', async () => {
+    const s = await scenario()
+    const v = await apri(s, {
+      chiaveIdempotenza: randomUUID(),
+      verso: 'CARICO',
+      modo: 'DOPPIA',
+      pesata: {
+        pesoKg: 24000,
+        strumentoEsterno: 'Pesa del cliente',
+        motivo: 'display guasto',
+        stabileDichiarato: true,
+        oraStrumento: new Date(Date.now() - 60_000).toISOString(),
+      },
+    })
+    const vecchia = await lettura(s, { oraAgente: new Date(Date.now() - 600_000) })
+    await expect(seconda(s, v.id, vecchia)).rejects.toThrow(/successiva alla prima/)
+    const nuova = await lettura(s, { oraAgente: new Date() })
+    await expect(seconda(s, v.id, nuova)).resolves.toBeDefined()
+  })
+
   it('lettura di uno strumento di un’altra sede: 422; strumento disattivato: 422', async () => {
     const s = await scenario()
     const altraSede = await owner.registroRifiuti.create({

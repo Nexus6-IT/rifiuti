@@ -19,6 +19,7 @@ import {
 } from '../../application/pese/errori-pese'
 import { hashSegreto } from '../../domain/pese/agenti/credenziali-agente'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
+import { jsonConLimite } from '../../core/http/json-con-limite'
 import { valoreTrustProxy } from '../../core/http/trust-proxy'
 import { AgentePesaGuard } from './agente-pesa.guard'
 import { IngressoAgenteController } from './ingresso-agente.controller'
@@ -89,6 +90,8 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       ],
     }).compile()
     app = moduleRef.createNestApplication()
+    // Come in main.ts: parser di /letture a 200 KB, montato prima del parser globale.
+    app.use('/agenti-pesa/letture', jsonConLimite('200kb'))
     // Come in main.ts: nginx sullo stesso host, un hop di loopback.
     app.getHttpAdapter().getInstance().set('trust proxy', valoreTrustProxy(undefined))
     app.useGlobalPipes(
@@ -248,6 +251,14 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       await manda({ letture: [{ ...el, firma: 'AAAA' }] }).expect(400)
       await manda({ letture: [{ ...el, extra: 1 }] }).expect(400)
       expect(letture.riceviLotto).not.toHaveBeenCalled()
+    })
+
+    it('un lotto di 50 elementi al massimo (≈ 147 KB, oltre il limite di default di 100 KB) passa dal parser da 200 KB', async () => {
+      const grande = { payload: 'A'.repeat(2800), firma: `${'A'.repeat(86)}==` }
+      const corpoGrande = { letture: Array.from({ length: 50 }, () => grande) }
+      expect(JSON.stringify(corpoGrande).length).toBeGreaterThan(100 * 1024)
+      await manda(corpoGrande).expect(200)
+      expect(letture.riceviLotto.mock.calls[0][1]).toHaveLength(50)
     })
 
     it('corpo che non è JSON: 400', async () => {

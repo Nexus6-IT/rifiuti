@@ -98,6 +98,8 @@ export class IngressoLettureService {
     ricezione: Date
   ): Promise<EsitoElemento[]> {
     const inizio = this.orologio()
+    // Lo stato `ATTIVO` e' riletto una volta per lotto (`leggiContesto`): un lotto in corso puo'
+    // proseguire per al massimo MS_MASSIMI_LOTTO (10 s) dopo una revoca. Accettato (M4).
     return nelContestoTenant(agente.tenantId, async () => {
       const contesto = await this.leggiContesto(agente)
       const chiave = chiavePubblicaDaBase64(contesto.chiavePubblica)

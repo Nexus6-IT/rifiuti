@@ -77,7 +77,6 @@ export class BattitoAgenteService {
       })
       if (!azienda) throw new AgentePesaNonTrovatoError()
       if (scrivi) {
-        this.scrittoAl.set(agente.id, ora)
         const scarto = Date.parse(dati.oraAgente) - ricezione.getTime()
         await this.prisma.$transaction(async tx => {
           await tx.agentePesa.updateMany({
@@ -104,6 +103,8 @@ export class BattitoAgenteService {
             data: { ultimaSequenza: BigInt(dati.ultimaSequenza) },
           })
         })
+        // Dopo la scrittura riuscita: se la transazione fallisce si riprova al battito dopo (M6).
+        this.scrittoAl.set(agente.id, ora)
       }
       return {
         oraServer: this.nuovaData().toISOString(),
