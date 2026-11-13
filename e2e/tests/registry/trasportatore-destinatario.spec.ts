@@ -5,6 +5,7 @@ import { hasRoleCredentials } from '../../utils/env'
 import { apiLogin, apiPost, apiGet } from '../../utils/api-client'
 import { registra } from '../../fixtures/risorse'
 import { conPrefisso, conPrefissoUnico } from '../../utils/run-id'
+import { giornoItaliano } from '../../utils/legami-api'
 import { AnagrafichePage } from '../../pages/anagrafiche.page'
 import { FirListPage } from '../../pages/fir-list.page'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
@@ -83,24 +84,15 @@ function payloadDestinatario(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-/** Giorno locale `AAAA-MM-GG` (mai `toISOString`: sposterebbe il giorno nei fusi lontani da UTC). */
-function giornoLocale(d: Date): string {
-  const due = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`
-}
-
-/** Ieri (scadenza passata) in formato ISO (solo giorno). */
+/** Ieri (scadenza passata) in formato ISO (solo giorno), nel fuso di Roma. */
 function ieriIso(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 1)
-  return giornoLocale(d)
+  return giornoItaliano(-1)
 }
 
-/** Fra un anno (scadenza futura) in formato ISO (solo giorno). */
+/** Fra un anno (scadenza futura) in formato ISO (solo giorno), nel fuso di Roma. */
 function fraUnAnnoIso(): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() + 1)
-  return giornoLocale(d)
+  const oggi = giornoItaliano()
+  return `${Number(oggi.slice(0, 4)) + 1}${oggi.slice(4)}`
 }
 
 /**

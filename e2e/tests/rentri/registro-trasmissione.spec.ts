@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { loginAndSaveState, skipReason } from '../../fixtures/auth'
 import { hasRoleCredentials, getApiUrl, getRentriFakeUrl } from '../../utils/env'
+import { giornoItaliano } from '../../utils/legami-api'
 
 /**
  * F2-9 — trasmissione del registro carico/scarico a RENTRI, sulla fake.
@@ -86,7 +87,7 @@ test.describe('RENTRI — trasmissione del registro (sulla fake)', () => {
     }
 
     // Un carico con causale DT (modalità manuale: nulla parte da solo).
-    const oggi = new Date().toISOString().slice(0, 10)
+    const oggi = giornoItaliano()
     const crea = await request.post(`${api}/registro`, {
       headers: auth,
       data: {
