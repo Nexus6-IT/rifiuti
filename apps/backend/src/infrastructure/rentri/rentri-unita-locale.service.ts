@@ -6,6 +6,9 @@ import { NUM_ISCR_SITO_PATTERN } from './rentri-credential.service'
 const SEDE_CON_DATI_DI_PESA = 'La sede ha dati di pesa: non si può eliminare.'
 /** Nome del vincolo violato (meta Prisma), mai il testo del messaggio. */
 const FK_PESA = /^(accessi_pesa|strumenti_pesa|pesate|collegamenti_accesso)_/
+const FK_REGOLA_CONSORZIO = /^regole_consorzio_/
+const SEDE_CON_REGOLE_CONSORZIO =
+  'Nel frattempo è stata creata una regola consorzio collegata al registro della sede: riprova.'
 const SEDE_CON_REGISTRO_CON_MOVIMENTI =
   'La sede ha un registro con movimenti, progressivo iniziale o giacenze iniziali: disattivala invece di eliminarla.'
 
@@ -316,6 +319,10 @@ export class RentriUnitaLocaleService {
         const meta = (error.meta ?? {}) as { constraint?: unknown; field_name?: unknown }
         const vincolo = String(meta.constraint ?? meta.field_name ?? '')
         if (FK_PESA.test(vincolo)) throw new BadRequestException(SEDE_CON_DATI_DI_PESA)
+        // Regola creata in parallelo dopo il deleteMany: non è un registro con movimenti.
+        if (FK_REGOLA_CONSORZIO.test(vincolo)) {
+          throw new BadRequestException(SEDE_CON_REGOLE_CONSORZIO)
+        }
         throw new BadRequestException(SEDE_CON_REGISTRO_CON_MOVIMENTI)
       }
       throw error
