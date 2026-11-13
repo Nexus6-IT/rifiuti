@@ -125,3 +125,22 @@ export class FirNonTrovatoError extends DomainError {
     this.name = 'FirNonTrovatoError'
   }
 }
+
+/**
+ * Codice di abbinamento ignoto, scaduto o gia' usato (Fase 4 pezzo 8b): UNA sola classe e UN solo
+ * messaggio per i tre casi, cosi' dall'esterno non si capisce quale sia (nessun indizio).
+ */
+export class CodiceAbbinamentoNonValidoError extends DomainError {
+  constructor() {
+    super('Codice di abbinamento non valido o scaduto.')
+    this.name = 'CodiceAbbinamentoNonValidoError'
+  }
+}
+
+/** Agente di pesa non trovato nell'azienda (404). */
+export class AgentePesaNonTrovatoError extends DomainError {
+  constructor() {
+    super('Agente di pesa non trovato.')
+    this.name = 'AgentePesaNonTrovatoError'
+  }
+}

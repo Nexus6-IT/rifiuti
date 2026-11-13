@@ -238,6 +238,8 @@ export const BASE: Record<string, string> = {
   'api/auth/auth.controller.ts': 'Autenticazione: precede ogni azienda',
   'api/access-request/access-request.controller.ts':
     'Richiesta di accesso (lead): pubblica, senza utente',
+  'api/agenti-pesa/ingresso-agente.controller.ts':
+    "Rotte dell'agente di pesa: senza utente, autenticate dal token dell'agente; il modulo pese lo verifica AgentePesaGuard",
   'api/me/me-features.controller.ts': 'Dice al frontend quali moduli sono attivi',
   'api/me/membership.controller.ts': "Appartenenza dell'utente alle aziende e selezione azienda",
   'api/admin/access-request-admin.controller.ts': 'Amministrazione di piattaforma (SUPER_ADMIN)',
