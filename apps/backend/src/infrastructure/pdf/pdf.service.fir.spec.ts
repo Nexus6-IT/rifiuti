@@ -323,7 +323,7 @@ describe('PDFService.generateFIRSeriePDF - filigrana BOZZA per pagina (render re
     expect([...passate[0].values()].some(Boolean)).toBe(false)
   })
 
-  it('serie mista con logo corrotto: la misura non produce PDF e l\'avviso esce una volta sola', async () => {
+  it("serie mista con logo corrotto: la misura non produce PDF e l'avviso esce una volta sola", async () => {
     const rotto = Buffer.concat([
       Buffer.from('89504e470d0a1a0a', 'hex'),
       Buffer.alloc(100, 7),

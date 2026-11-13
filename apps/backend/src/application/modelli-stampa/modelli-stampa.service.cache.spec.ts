@@ -35,9 +35,7 @@ describe('ModelliStampaService — cache loghi con modifica concorrente', () => 
     // Prima lettura: metadati V1, ma nel frattempo il modello e' passato a V2 con un altro logo.
     findFirst.mockResolvedValueOnce(metadati(1))
     findMany.mockResolvedValueOnce([riga(2, 'LOGO_V2')])
-    const primo = await TenantContext.run({ tenantId: TENANT }, () =>
-      service.getById(TENANT, 'm1')
-    )
+    const primo = await TenantContext.run({ tenantId: TENANT }, () => service.getById(TENANT, 'm1'))
     expect(primo.versione).toBe(2)
     expect(primo.nome).toBe('Modello v2')
     expect(primo.logoBase64).toBe('LOGO_V2')
@@ -53,9 +51,7 @@ describe('ModelliStampaService — cache loghi con modifica concorrente', () => 
 
     // V2 e' in cache col suo logo: nessuna nuova query dei loghi.
     findFirst.mockResolvedValueOnce(metadati(2))
-    const terzo = await TenantContext.run({ tenantId: TENANT }, () =>
-      service.getById(TENANT, 'm1')
-    )
+    const terzo = await TenantContext.run({ tenantId: TENANT }, () => service.getById(TENANT, 'm1'))
     expect(findMany).toHaveBeenCalledTimes(2)
     expect(terzo.logoBase64).toBe('LOGO_V2')
   })
