@@ -271,3 +271,46 @@ func TestAbbinaFallitoNonLasciaCredenziali(t *testing.T) {
 		t.Fatalf("nessuna credenziale deve esistere: %v", err)
 	}
 }
+
+// Contatore locale perso (file e cartelle vuoti) con il server gia' a 40: la configurazione dice 40 e
+// l'agente numera da 41, senza nemmeno un rifiuto.
+func TestContatoreRiallineatoDallaConfigurazione(t *testing.T) {
+	srv := nuovoServerFinto(t)
+	srv.seqOccupate.Store(40)
+	srv.confUltima.Store(40)
+	o := preparata(t, srv, true, `{"pesi":[24880],"intervalloMs":10}`)
+	a := avvia(t, o)
+	attendi(t, "una lettura accettata", func() bool { return srv.numAccettate() >= 1 })
+	a.stop()
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if srv.rinumerate != 0 || srv.accettate[0].Sequenza != 41 {
+		t.Fatalf("rifiuti %d, sequenza %d", srv.rinumerate, srv.accettate[0].Sequenza)
+	}
+}
+
+// Il server si accorge dopo (la configurazione dice ancora 0): SEQUENZA_GIA_USATA riallinea il
+// contatore e la lettura viene ri-numerata, ri-firmata e accettata, senza perdite ne' doppioni.
+func TestSequenzaGiaUsataRiallineaERinumera(t *testing.T) {
+	srv := nuovoServerFinto(t)
+	srv.seqOccupate.Store(40)
+	o := preparata(t, srv, true, `{"pesi":[24880,12540],"intervalloMs":10}`)
+	a := avvia(t, o)
+	attendi(t, "due letture accettate", func() bool { return srv.numAccettate() >= 2 })
+	a.stop()
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if srv.firmeErrate != 0 || srv.duplicati != 0 || srv.rinumerate == 0 {
+		t.Fatalf("firme errate %d, doppioni %d, rinumerate %d", srv.firmeErrate, srv.duplicati, srv.rinumerate)
+	}
+	pesi := map[string]bool{}
+	for _, p := range srv.accettate {
+		if p.Sequenza <= 40 {
+			t.Fatalf("accettata la sequenza %d", p.Sequenza)
+		}
+		pesi[p.PesoKg] = true
+	}
+	if !pesi["24880.00"] || !pesi["12540.00"] {
+		t.Fatalf("pesi accettati %v: nessuna lettura persa", pesi)
+	}
+}

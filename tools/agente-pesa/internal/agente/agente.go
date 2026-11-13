@@ -154,6 +154,11 @@ func Esegui(ctx context.Context, o Opzioni) error {
 	if err := cfg.Valida(config.Vincoli{CartellaDati: o.Dati, StrumentiServer: ids(a.serv.Strumenti)}); err != nil {
 		return fmt.Errorf("configurazione non valida:\n%w", err)
 	}
+	// Mai numerare sotto l'ultima sequenza nota al server (contatore locale perso): max(locale, server).
+	if err := q.AlzaSequenza(a.serv.UltimaSequenza); err != nil {
+		return fmt.Errorf("riallineamento della sequenza: %w", err)
+	}
+	a.mitt.Rinumera = a.rinumera
 	a.mitt.Lotto = a.serv.LottoMassimo // il Mittente lo porta comunque a 1..50
 	a.simOk = a.serv.SimulazioneAmmessa
 	if err := q.Pulisci(30 * 24 * time.Hour); err != nil {
@@ -295,6 +300,41 @@ func (a *agente) strumento(ctx context.Context, sc config.Strumento) {
 			b = time.Minute
 		}
 	}
+}
+
+// rinumera risponde a SEQUENZA_GIA_USATA: alza il contatore all'ultima sequenza del server e accoda la
+// stessa lettura con una nuova sequenza e una nuova chiave, firmata di nuovo (i byte firmati sono
+// immutabili, quindi non si puo' correggere in loco). L'originale lo scarta il Mittente dopo.
+func (a *agente) rinumera(e coda.Elemento, ultimaServer int64) error {
+	if err := a.coda.AlzaSequenza(ultimaServer); err != nil {
+		return err
+	}
+	raw, err := base64.StdEncoding.DecodeString(e.PayloadB64)
+	if err != nil {
+		return fmt.Errorf("payload non decodificabile: %w", err)
+	}
+	var p lettura.Payload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return fmt.Errorf("payload non leggibile: %w", err)
+	}
+	seq, err := a.coda.ProssimaSequenza()
+	if err != nil {
+		return err
+	}
+	n, err := p.Rinumera(seq)
+	if err != nil {
+		return err
+	}
+	byt := n.Bytes()
+	sig := firma.Firma(a.cred.Chiave(), byt)
+	if err := a.coda.Accoda(coda.Elemento{
+		PayloadB64: base64.StdEncoding.EncodeToString(byt), FirmaB64: base64.StdEncoding.EncodeToString(sig),
+		ChiaveIdempotenza: n.ChiaveIdempotenza, Sequenza: seq, CreataIl: e.CreataIl,
+	}); err != nil {
+		return err
+	}
+	a.ultimaSeq.Store(seq)
+	return nil
 }
 
 // consuma e' il nucleo: solo Definitivo && Stabile diventa una lettura firmata e accodata.

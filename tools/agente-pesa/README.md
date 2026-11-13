@@ -80,6 +80,12 @@ e' attivo (o un secondo `esegui`) si ferma con «agente gia' in esecuzione». Tu
   basta, le letture gia' in coda diventano valide), `STRUMENTO_NON_ASSEGNATO`, `STRUMENTO_NON_ATTIVO` (assegnare
   o riattivare lo strumento in WasteFlow) e `FUORI_PORTATA` (correggere la portata). Ogni altro codice, anche
   sconosciuto, e' definitivo (firma, agente, peso, simulazione, chiave o alibi gia' usati, payload non valido).
+- Contatore delle sequenze perso (file `sequenza` cancellato e cartelle vuote): all'avvio l'agente parte da
+  `max(locale, ultimaSequenza del server)`; se il server risponde `SEQUENZA_GIA_USATA` (con `ultimaSequenza`)
+  l'agente riallinea il contatore e ri-numera la lettura con una nuova sequenza e una nuova chiave,
+  ri-firmandola: non si perde nulla. L'originale va in `scartate\` col motivo «ri-numerata». Il server non
+  accetta mai due volte la stessa lettura: una ritrasmissione identica e' `GIA_RICEVUTA`. Se la
+  ri-numerazione fallisce la lettura resta in coda e si riprova come un rifiuto transitorio.
 - Se il server rifiuta un intero lotto per formato (400, 413, 422) le letture sono reinviate una a una: solo
   quella malformata va in `scartate\` (motivo `HTTP_400`...) e le altre partono.
 - «agente revocato»: l'agente e' stato revocato in WasteFlow; l'invio e' fermo (controllo ogni 10 minuti) e

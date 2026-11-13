@@ -248,3 +248,24 @@ func TestContratto(t *testing.T) {
 		t.Fatal("la firma del file di contratto non e' valida")
 	}
 }
+
+func TestRinumeraCambiaSoloSequenzaEChiave(t *testing.T) {
+	p, err := Nuova(agenteID, strumentoID, 5, campioneBase(), oraAgente, "SIMULATA", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := p.Rinumera(90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.Sequenza != 90 || n.ChiaveIdempotenza == p.ChiaveIdempotenza {
+		t.Fatalf("sequenza %d, chiave invariata? %v", n.Sequenza, n.ChiaveIdempotenza == p.ChiaveIdempotenza)
+	}
+	n.Sequenza, n.ChiaveIdempotenza = p.Sequenza, p.ChiaveIdempotenza
+	if string(n.Bytes()) != string(p.Bytes()) {
+		t.Fatal("la rinumerazione ha cambiato altro oltre a sequenza e chiave")
+	}
+	if _, err := p.Rinumera(0); err == nil {
+		t.Fatal("sequenza 0 deve dare errore")
+	}
+}

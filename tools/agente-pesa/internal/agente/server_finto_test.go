@@ -34,6 +34,11 @@ type serverFinto struct {
 	duplicati   int
 	battiti     []map[string]any
 	letture     atomic.Int32
+	// seqOccupate: il server ha gia' letture fino a questa sequenza (contatore dell'agente perso).
+	seqOccupate atomic.Int64
+	// confUltima e' l'ultimaSequenza dichiarata dalla configurazione.
+	confUltima atomic.Int64
+	rinumerate int
 }
 
 func nuovoServerFinto(t *testing.T) *serverFinto {
@@ -75,7 +80,7 @@ func (s *serverFinto) gestisci(w http.ResponseWriter, r *http.Request) {
 			"strumenti": s.strumenti(), "simulazioneAmmessa": s.simAmmessa.Load()})
 	case "/agenti-pesa/configurazione":
 		json200(w, 200, map[string]any{"agenteId": idAgente, "azienda": map[string]string{"ragioneSociale": "Prova Srl"}, "strumenti": s.strumenti(),
-			"simulazioneAmmessa": s.simAmmessa.Load(), "intervalloBattitoS": 60, "lottoMassimo": 50, "oraServer": "2026-11-13T10:00:00.000Z"})
+			"simulazioneAmmessa": s.simAmmessa.Load(), "intervalloBattitoS": 60, "lottoMassimo": 50, "ultimaSequenza": s.confUltima.Load(), "oraServer": "2026-11-13T10:00:00.000Z"})
 	case "/agenti-pesa/battito":
 		if s.giu.Load() {
 			json200(w, 503, map[string]string{"error": "NON_DISPONIBILE"})
@@ -112,6 +117,12 @@ func (s *serverFinto) gestisci(w http.ResponseWriter, r *http.Request) {
 			if s.viste[p.ChiaveIdempotenza] {
 				s.duplicati++
 				esiti = append(esiti, map[string]any{"chiaveIdempotenza": p.ChiaveIdempotenza, "esito": "GIA_RICEVUTA"})
+				continue
+			}
+			if p.Sequenza <= s.seqOccupate.Load() {
+				s.rinumerate++
+				esiti = append(esiti, map[string]any{"chiaveIdempotenza": p.ChiaveIdempotenza, "esito": "RIFIUTATA", "codice": "SEQUENZA_GIA_USATA",
+					"messaggio": "gia' usata", "ultimaSequenza": s.seqOccupate.Load()})
 				continue
 			}
 			s.viste[p.ChiaveIdempotenza] = true

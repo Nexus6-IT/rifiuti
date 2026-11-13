@@ -132,6 +132,21 @@ func Nuova(agenteID, strumentoID string, seq int64, c driver.Campione, oraAgente
 	return p, nil
 }
 
+// Rinumera copia il payload con una nuova sequenza e una nuova chiave di idempotenza: serve quando
+// il server dice che la sequenza era gia' usata (contatore perso). Il resto della lettura, ora
+// compresa, resta quello misurato; il payload va ri-firmato con Bytes().
+func (p Payload) Rinumera(seq int64) (Payload, error) {
+	if seq < 1 {
+		return Payload{}, errors.New("la sequenza parte da 1")
+	}
+	k, err := uuidV4()
+	if err != nil {
+		return Payload{}, err
+	}
+	p.Sequenza, p.ChiaveIdempotenza = seq, k
+	return p, nil
+}
+
 func stampabile(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] < 0x20 || s[i] > 0x7e {

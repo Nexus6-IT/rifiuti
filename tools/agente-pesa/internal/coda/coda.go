@@ -184,6 +184,22 @@ func (c *Coda) ProssimaSequenza() (int64, error) {
 	return ultima, nil
 }
 
+// AlzaSequenza porta il contatore ad almeno n (mai indietro) e lo persiste: serve a riallinearsi
+// all'ultima sequenza nota al server quando il contatore locale e' stato perso (il server rifiuta
+// una sequenza gia' usata). La prossima sequenza riservata sara' > n.
+func (c *Coda) AlzaSequenza(n int64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if n <= c.ultima {
+		return nil
+	}
+	if err := fsatomic.Scrivi(filepath.Join(c.dir, "sequenza"), []byte(strconv.FormatInt(n, 10)), 0o600); err != nil {
+		return err
+	}
+	c.ultima = n
+	return nil
+}
+
 // Accoda scrive l'elemento in modo atomico.
 func (c *Coda) Accoda(l Elemento) error {
 	if l.Sequenza < 1 || !reChiave.MatchString(l.ChiaveIdempotenza) {

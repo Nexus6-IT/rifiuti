@@ -307,7 +307,10 @@ Percorsi relativi a `apps/backend/` salvo indicazione; `fe/` = `apps/frontend/sr
   `FIRMA_NON_VALIDA`, `PAYLOAD_NON_VALIDO`, `AGENTE_DIVERSO`, `STRUMENTO_NON_ASSEGNATO`,
   `STRUMENTO_NON_ATTIVO`, `PESO_INSTABILE`, `PESO_NON_VALIDO` (≤ 0 o > 99.999.999,99),
   `FUORI_PORTATA`, `OROLOGIO_AVANTI` (`oraAgente` o `oraStrumento` oltre `ricezione + 5 min`),
-  `SIMULAZIONE_NON_AMMESSA`, `CHIAVE_RIUSATA` (stessa chiave, payload diverso), `ALIBI_GIA_USATO`.
+  `SIMULAZIONE_NON_AMMESSA`, `CHIAVE_RIUSATA` (stessa chiave, payload diverso), `SEQUENZA_GIA_USATA` (stessa sequenza, altra
+  chiave: l'esito porta `ultimaSequenza`; l'agente riallinea il contatore e ri-numera, non scarta),
+  `ALIBI_GIA_USATO`. Transitori per l'agente Go: `OROLOGIO_AVANTI`, `STRUMENTO_NON_ASSEGNATO`,
+  `STRUMENTO_NON_ATTIVO`, `FUORI_PORTATA`; tutti gli altri sono definitivi.
   Avvisi (calcolati in lettura dalle colonne, mai salvati): «Trasmessa in differita (N min dopo la
   pesata)» se `ricezione − oraAgente > 15 min` (coda offline); «Orologio dello strumento sfasato di
   N min rispetto al PC» se `|oraStrumento − oraAgente| > 10 min`; «Lettura simulata: non è un peso
@@ -322,7 +325,8 @@ Percorsi relativi a `apps/backend/` salvo indicazione; `fe/` = `apps/frontend/sr
     usato: **sempre la stessa** risposta 401 `{ error: 'CODICE_NON_VALIDO', message: 'Codice di
     abbinamento non valido o scaduto.' }` (nessun indizio su quale dei tre).
   - `GET /agenti-pesa/configurazione` (token): `{ agenteId, azienda, strumenti, simulazioneAmmessa,
-    intervalloBattitoS: 60, lottoMassimo: 50, oraServer }`.
+    intervalloBattitoS: 60, lottoMassimo: 50, ultimaSequenza, oraServer }` (`ultimaSequenza` = massimo
+    noto al server, 0 se nessuna: l'agente non numera sotto).
   - `POST /agenti-pesa/letture` (token): `{ letture: [{ payload: base64 (≤ 2800 caratteri), firma:
     base64 }] }` (1..50) → `200 { esiti: [{ chiaveIdempotenza | null, esito: 'ACCETTATA' |
     'GIA_RICEVUTA' | 'RIFIUTATA', letturaId?, codice?, messaggio?, avvisi? }] }`, un esito per

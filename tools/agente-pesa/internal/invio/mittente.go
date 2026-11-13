@@ -28,6 +28,10 @@ type Mittente struct {
 	BackoffMax time.Duration // default 5 min
 	// Jitter altera la durata del backoff; nil = nessun jitter (default: +-20% casuale nel costruttore dell'agente).
 	Jitter func(time.Duration) time.Duration
+	// Rinumera e' chiamata con SEQUENZA_GIA_USATA (contatore perso): deve riallineare il contatore a
+	// ultimaServer e accodare la stessa lettura con una nuova sequenza, firmata di nuovo. Se manca o
+	// fallisce la lettura resta in coda e si riprova (come un rifiuto transitorio).
+	Rinumera func(e coda.Elemento, ultimaServer int64) error
 
 	mu       sync.Mutex
 	nonPrima time.Time
@@ -70,6 +74,38 @@ var CodiciTransitori = map[string]bool{
 	"STRUMENTO_NON_ASSEGNATO": true,
 	"STRUMENTO_NON_ATTIVO":    true,
 	"FUORI_PORTATA":           true,
+}
+
+// CodiceSequenzaGiaUsata: il server ha gia' una lettura di questo agente con la stessa sequenza ma
+// con altra chiave o contenuto (una vera ritrasmissione sarebbe GIA_RICEVUTA). La lettura NON e'
+// stata accettata e non e' un doppione da buttare: il contatore locale e' indietro. Non e' fra i
+// transitori (il tempo non lo risolve) ne' fra i definitivi: richiede il riallineamento.
+const CodiceSequenzaGiaUsata = "SEQUENZA_GIA_USATA"
+
+// rinumera gestisce SEQUENZA_GIA_USATA. Restituisce true se l'elemento e' stato trattato (sostituito da
+// una copia con nuova sequenza, o sospeso); la nuova copia e' accodata PRIMA di scartare l'originale:
+// un crash in mezzo lascia un doppione (stessa pesata con due chiavi) e mai una lettura persa.
+func (m *Mittente) rinumera(e coda.Elemento, x EsitoLettura, r *Risultato) bool {
+	motivo := fmt.Sprintf("%s: %s", x.Codice, x.Messaggio)
+	if m.Rinumera != nil {
+		err := m.Rinumera(e, x.UltimaSequenza)
+		if err == nil {
+			if serr := m.Coda.Segna(e.ChiaveIdempotenza, coda.Rifiutata, fmt.Sprintf("ri-numerata: il server era alla sequenza %d (%s)", x.UltimaSequenza, motivo)); serr != nil {
+				r.Errore = serr
+				return true
+			}
+			m.log().Warn("sequenza gia' usata: contatore riallineato, lettura ri-numerata", "sequenza", e.Sequenza, "ultimaServer", x.UltimaSequenza)
+			r.Sospese++
+			return true
+		}
+		m.log().Warn("ri-numerazione non riuscita, la lettura resta in coda", "sequenza", e.Sequenza, "errore", err)
+	}
+	if _, err := m.Coda.Sospendi(e.ChiaveIdempotenza, motivo); err != nil {
+		r.Errore = err
+	} else {
+		r.Sospese++
+	}
+	return true
 }
 
 // LottoEffettivo e' il lotto realmente usato: da 1 a LottoMassimo (0 o fuori scala = LottoMassimo).
@@ -251,6 +287,11 @@ func (m *Mittente) applica(el []coda.Elemento, esiti []EsitoLettura, r *Risultat
 			s = coda.GiaRicevuta
 		case "RIFIUTATA":
 			motivo = x.Codice + ": " + x.Messaggio
+			if x.Codice == CodiceSequenzaGiaUsata {
+				if m.rinumera(e, x, r) {
+					continue
+				}
+			}
 			if CodiciTransitori[x.Codice] {
 				m.log().Warn("lettura rifiutata dal server per un motivo transitorio, resta in coda", "sequenza", e.Sequenza, "codice", x.Codice)
 				scartata, err := m.Coda.Sospendi(e.ChiaveIdempotenza, motivo)

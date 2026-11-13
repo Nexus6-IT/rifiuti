@@ -48,7 +48,9 @@ type Configurazione struct {
 	SimulazioneAmmessa bool        `json:"simulazioneAmmessa"`
 	IntervalloBattitoS int         `json:"intervalloBattitoS"`
 	LottoMassimo       int         `json:"lottoMassimo"`
-	OraServer          string      `json:"oraServer"`
+	// UltimaSequenza e' l'ultima sequenza nota al server (0 = nessuna): l'agente non numera sotto.
+	UltimaSequenza int64  `json:"ultimaSequenza"`
+	OraServer      string `json:"oraServer"`
 }
 
 // ElementoLotto e' una lettura inviata: i byte esatti firmati e la firma, in base64.
@@ -59,12 +61,14 @@ type ElementoLotto struct {
 
 // EsitoLettura e' l'esito del server per un elemento del lotto (stesso ordine dell'invio).
 type EsitoLettura struct {
-	ChiaveIdempotenza *string  `json:"chiaveIdempotenza"`
-	Esito             string   `json:"esito"` // ACCETTATA | GIA_RICEVUTA | RIFIUTATA
-	LetturaID         string   `json:"letturaId,omitempty"`
-	Codice            string   `json:"codice,omitempty"`
-	Messaggio         string   `json:"messaggio,omitempty"`
-	Avvisi            []string `json:"avvisi,omitempty"`
+	ChiaveIdempotenza *string `json:"chiaveIdempotenza"`
+	Esito             string  `json:"esito"` // ACCETTATA | GIA_RICEVUTA | RIFIUTATA
+	LetturaID         string  `json:"letturaId,omitempty"`
+	Codice            string  `json:"codice,omitempty"`
+	Messaggio         string  `json:"messaggio,omitempty"`
+	// UltimaSequenza c'e' solo con SEQUENZA_GIA_USATA: da li' l'agente riparte.
+	UltimaSequenza int64    `json:"ultimaSequenza,omitempty"`
+	Avvisi         []string `json:"avvisi,omitempty"`
 }
 
 // StatoStrumento e' lo stato di uno strumento nel battito.

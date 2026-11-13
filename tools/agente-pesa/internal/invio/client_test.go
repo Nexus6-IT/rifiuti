@@ -442,3 +442,48 @@ func TestRedirectNonSeguiti(t *testing.T) {
 		t.Fatal("il redirect e' stato seguito (e con lui l'header Authorization)")
 	}
 }
+
+func rispostaSequenza(w http.ResponseWriter, n int, ultima int) {
+	esitiPer(w, n, func(int) map[string]any {
+		return map[string]any{"esito": "RIFIUTATA", "codice": "SEQUENZA_GIA_USATA", "messaggio": "gia' usata", "ultimaSequenza": ultima}
+	})
+}
+
+func TestSequenzaGiaUsataRinumeraEScartaLOriginale(t *testing.T) {
+	f := nuovo(t, 1, func(w http.ResponseWriter, r *http.Request, f *fixture) { rispostaSequenza(w, 1, 77) })
+	var vista int64
+	f.m.Rinumera = func(e coda.Elemento, ultima int64) error {
+		vista = ultima
+		return f.m.Coda.Accoda(coda.Elemento{PayloadB64: e.PayloadB64, FirmaB64: e.FirmaB64, ChiaveIdempotenza: chiave(99), Sequenza: 78})
+	}
+	r := f.m.Ciclo(context.Background())
+	if vista != 77 || r.Rifiutate != 0 || r.Sospese != 1 || r.Errore != nil {
+		t.Fatalf("ultima %d risultato %+v", vista, r)
+	}
+	if k := f.m.Coda.Conta(); k.InAttesa != 1 || k.Scartate != 1 {
+		t.Fatalf("coda %+v: l'originale va in scartate e la copia resta in coda", k)
+	}
+	motivi, _ := filepath.Glob(filepath.Join(f.m.Coda.Dir(), "scartate", "*.motivo.txt"))
+	if b, _ := os.ReadFile(motivi[0]); !strings.Contains(string(b), "ri-numerata") {
+		t.Fatalf("motivo %q", b)
+	}
+}
+
+func TestSequenzaGiaUsataSenzaRinumerazioneRestaInCoda(t *testing.T) {
+	for nome, hook := range map[string]func(coda.Elemento, int64) error{
+		"hook assente":   nil,
+		"hook in errore": func(coda.Elemento, int64) error { return fmt.Errorf("disco pieno") },
+	} {
+		t.Run(nome, func(t *testing.T) {
+			f := nuovo(t, 1, func(w http.ResponseWriter, r *http.Request, f *fixture) { rispostaSequenza(w, 1, 77) })
+			f.m.Rinumera = hook
+			r := f.m.Ciclo(context.Background())
+			if r.Sospese != 1 || r.Rifiutate != 0 {
+				t.Fatalf("risultato %+v", r)
+			}
+			if k := f.m.Coda.Conta(); k.InAttesa != 1 || k.Scartate != 0 {
+				t.Fatalf("la lettura non va persa: %+v", k)
+			}
+		})
+	}
+}

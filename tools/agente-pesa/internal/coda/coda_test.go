@@ -352,3 +352,21 @@ func TestTmpRimastiInInviateEScartateCancellati(t *testing.T) {
 		}
 	}
 }
+
+func TestAlzaSequenzaNonVaMaiIndietroEPersiste(t *testing.T) {
+	c, d := apri(t)
+	c.ProssimaSequenza() // 1
+	if err := c.AlzaSequenza(40); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AlzaSequenza(10); err != nil { // indietro: ignorata
+		t.Fatal(err)
+	}
+	if got, _ := c.ProssimaSequenza(); got != 41 {
+		t.Fatalf("sequenza %d, attesa 41", got)
+	}
+	c2, _ := Apri(d)
+	if got, _ := c2.ProssimaSequenza(); got != 42 {
+		t.Fatalf("dopo il riavvio %d, attesa 42", got)
+	}
+}
