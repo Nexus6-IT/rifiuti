@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { Subject, of, throwError } from 'rxjs'
 import { SecondaPesataDialogComponent } from './seconda-pesata-dialog.component'
-import { AccessoVista, PeseService, StrumentoPesa } from './pese.service'
+import { AccessoVista, DatiPesataManuale, PeseService, StrumentoPesa } from './pese.service'
 import { By } from '@angular/platform-browser'
 import { accesso, incolla, q, qb, scegli, scrivi, tasto } from './pese-test-utils'
 
@@ -133,14 +133,18 @@ describe('SecondaPesataDialogComponent (DOM)', () => {
     pese.secondaPesata.and.returnValue(of(accesso()))
     compila('1250')
     qb('sp-salva')!.click()
-    expect(pese.secondaPesata.calls.mostRecent().args[1].pesata.pesoKg).toBe(1250)
+    expect((pese.secondaPesata.calls.mostRecent().args[1].pesata as DatiPesataManuale).pesoKg).toBe(
+      1250
+    )
 
     fixture.destroy()
     fixture = TestBed.createComponent(OspiteComponent)
     fixture.detectChanges()
     compila('12,5')
     qb('sp-salva')!.click()
-    expect(pese.secondaPesata.calls.mostRecent().args[1].pesata.pesoKg).toBe(12.5)
+    expect((pese.secondaPesata.calls.mostRecent().args[1].pesata as DatiPesataManuale).pesoKg).toBe(
+      12.5
+    )
 
     fixture.destroy()
     fixture = TestBed.createComponent(OspiteComponent)
@@ -159,7 +163,7 @@ describe('SecondaPesataDialogComponent (DOM)', () => {
     scrivi(q<HTMLInputElement>('pm-data')!, '2026-07-15')
     scrivi(q<HTMLInputElement>('pm-ora')!, '10:30')
     qb('sp-salva')!.click()
-    const dati = pese.secondaPesata.calls.mostRecent().args[1].pesata
+    const dati = pese.secondaPesata.calls.mostRecent().args[1].pesata as DatiPesataManuale
     expect(dati).toEqual(
       jasmine.objectContaining({
         pesoKg: 8000,
@@ -184,7 +188,7 @@ describe('SecondaPesataDialogComponent (DOM)', () => {
     expect(q('pm-esterno-errore')).not.toBeNull()
     scrivi(q<HTMLInputElement>('pm-esterno')!, 'Pesa del cliente')
     qb('sp-salva')!.click()
-    const dati = pese.secondaPesata.calls.mostRecent().args[1].pesata
+    const dati = pese.secondaPesata.calls.mostRecent().args[1].pesata as DatiPesataManuale
     expect(dati.strumentoId).toBeNull()
     expect(dati.strumentoEsterno).toBe('Pesa del cliente')
   })

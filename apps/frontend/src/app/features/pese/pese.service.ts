@@ -6,7 +6,7 @@ import { environment } from '../../../environments/environment'
 // Tipi delle viste del backend (D15 del piano 4.8a). I permessi non si deducono dal token:
 // li dice il backend in ogni risposta di elenco e di dettaglio.
 
-export type FontePesata = 'STRUMENTO' | 'FILE' | 'MANUALE' | 'TARA_ANAGRAFICA'
+export type FontePesata = 'STRUMENTO' | 'FILE' | 'MANUALE' | 'TARA_ANAGRAFICA' | 'SIMULATA'
 export type VersoPesata = 'CARICO' | 'SCARICO'
 export type ModoPesatura = 'DOPPIA' | 'TARA_ANAGRAFICA' | 'SINGOLA'
 export type StatoAccesso = 'APERTO' | 'CHIUSO' | 'ANNULLATO'
@@ -103,6 +103,12 @@ export interface PesataVista {
   alibiId: string | null
   oraStrumento: string | null
   oraRicezione: string
+  /** Lettura firmata da cui la pesata e' copiata (fonti STRUMENTO e SIMULATA), altrimenti null. */
+  letturaId?: string | null
+  /** Firma della lettura riverificata dal backend; null se la pesata non ha lettura. */
+  firmaValida?: boolean | null
+  /** Descrizione dell'agente che ha letto lo strumento. */
+  agente?: string | null
   operatore: string | null
   motivo: string | null
   allegato: AllegatoVista | null
@@ -117,6 +123,8 @@ export interface EsitoNetto {
   nettoKg: number | null
   qualita: QualitaNetto | null
   manuale: boolean
+  /** Almeno una pesata SIMULATA: non e' un peso reale. */
+  simulato?: boolean
   rettificato: boolean
   errore: string | null
   avvisi: string[]
@@ -220,6 +228,11 @@ export interface DatiPesataManuale {
   stabileDichiarato: true
 }
 
+/** Pesata presa da una lettura dello strumento: il peso non si digita (4.8b). */
+export interface DatiPesataDaLettura {
+  letturaId: string
+}
+
 export interface DatiAperturaAccesso {
   chiaveIdempotenza: string
   registroId?: string | null
@@ -231,12 +244,12 @@ export interface DatiAperturaAccesso {
   cerCode?: string | null
   descrizione?: string | null
   note?: string | null
-  pesata: DatiPesataManuale
+  pesata: DatiPesataManuale | DatiPesataDaLettura
 }
 
 export interface DatiSecondaPesata {
   chiaveIdempotenza: string
-  pesata: DatiPesataManuale
+  pesata: DatiPesataManuale | DatiPesataDaLettura
 }
 
 export interface DatiRettifica {
@@ -248,6 +261,76 @@ export interface DatiCollegamento {
   tipo: 'FIR' | 'MOVIMENTO'
   firId?: string
   movimentoId?: string
+}
+
+// --- agenti di pesa e letture (4.8b) -----------------------------------------------------
+
+export type StatoAgente = 'IN_ATTESA' | 'ATTIVO' | 'REVOCATO'
+export type StatoStrumentoAgente = 'OK' | 'ERRORE' | 'NON_CONFIGURATO'
+
+export interface AgenteStrumentoVista {
+  id: string
+  descrizione: string
+  stato: StatoStrumentoAgente | null
+  ultimoErrore: string | null
+}
+
+export interface AgenteVista {
+  id: string
+  descrizione: string
+  registro: { id: string; descrizione: string } | null
+  stato: StatoAgente
+  abbinatoIl: string | null
+  /** dato tecnico: solo per chi gestisce */
+  nomeHost: string | null
+  versioneAgente: string | null
+  ultimoContattoIl: string | null
+  inLinea: boolean
+  scartoOrologioS: number | null
+  codaInAttesa: number | null
+  lettureScartate: number | null
+  /** SHA-256 della chiave pubblica a gruppi di 4, per il riscontro a vista con l'agente */
+  improntaChiave: string | null
+  strumenti: AgenteStrumentoVista[]
+  codiceScadeIl: string | null
+  revocatoIl: string | null
+  motivoRevoca: string | null
+  ultimoIp: string | null
+}
+
+export interface ElencoAgenti {
+  righe: AgenteVista[]
+  puoGestire: boolean
+}
+
+/** Risposta di creazione e di nuovo codice: il codice si vede UNA volta. */
+export interface AgenteCreato {
+  agente: AgenteVista
+  codice: string
+  scadeIl: string
+}
+
+export interface LetturaVista {
+  id: string
+  strumento: { id: string; descrizione: string }
+  pesoKg: number
+  alibiId: string | null
+  oraStrumento: string | null
+  oraAgente: string
+  oraRicezione: string
+  simulata: boolean
+  usataIn: { accessoId: string; numero: string } | null
+  utilizzabile: boolean
+  avvisi: string[]
+  firmaValida: boolean
+}
+
+export interface FiltriLetture {
+  registroId?: string
+  strumentoId?: string
+  libere?: boolean
+  /** ISO 8601 */
+  dal?: string
 }
 
 /** Corpo multipart: `dati` = JSON, `allegato` = file facoltativo (campi come il backend). */
@@ -278,6 +361,31 @@ export class PeseService {
   }
   aggiornaStrumento(id: string, dati: DatiStrumento): Observable<StrumentoPesa> {
     return this.http.put<StrumentoPesa>(`${this.API_URL}/strumenti/${id}`, dati)
+  }
+
+  // --- agenti di pesa ----------------------------------------------------------------------
+  elencaAgenti(): Observable<ElencoAgenti> {
+    return this.http.get<ElencoAgenti>(`${this.API_URL}/agenti`)
+  }
+  creaAgente(dati: { descrizione: string; registroId?: string | null }): Observable<AgenteCreato> {
+    return this.http.post<AgenteCreato>(`${this.API_URL}/agenti`, dati)
+  }
+  nuovoCodiceAgente(id: string): Observable<AgenteCreato> {
+    return this.http.post<AgenteCreato>(`${this.API_URL}/agenti/${id}/codice`, {})
+  }
+  revocaAgente(id: string, motivo: string): Observable<AgenteVista> {
+    return this.http.post<AgenteVista>(`${this.API_URL}/agenti/${id}/revoca`, { motivo })
+  }
+  /** `agenteId` nullo libera lo strumento. */
+  assegnaStrumento(strumentoId: string, agenteId: string | null): Observable<unknown> {
+    return this.http.put(`${this.API_URL}/strumenti/${strumentoId}/agente`, { agenteId })
+  }
+  elencaLetture(filtri: FiltriLetture = {}): Observable<{ righe: LetturaVista[] }> {
+    let params = new HttpParams()
+    for (const [k, v] of Object.entries(filtri)) {
+      if (v !== undefined && v !== null && v !== '') params = params.set(k, String(v))
+    }
+    return this.http.get<{ righe: LetturaVista[] }>(`${this.API_URL}/letture`, { params })
   }
 
   // --- automezzi ---------------------------------------------------------------------------
