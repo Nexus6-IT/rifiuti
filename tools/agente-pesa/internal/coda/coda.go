@@ -3,6 +3,10 @@
 // Layout in <dir>: in-attesa/<sequenza 12 cifre>-<chiave>.json, inviate/, scartate/ (con
 // <nome>.motivo.txt accanto) e il file "sequenza". Ogni scrittura e' atomica (tmp + fsync + rename).
 // Consegna almeno una volta: l'idempotenza del server la rende esattamente una.
+//
+// Una lettura rifiutata dal server per un motivo che il tempo puo' risolvere (orologio, strumento
+// non ancora assegnato...) e' "sospesa": resta in in-attesa/ con una data di riprova e scade, in
+// scartate/, dopo ScadenzaSospese. Le sospese non bloccano le letture successive.
 package coda
 
 import (
@@ -24,6 +28,13 @@ import (
 // LimitePredefinito: oltre questo numero di file in attesa l'agente smette di accettare letture.
 const LimitePredefinito = 100_000
 
+// Tempi della riprova delle letture sospese: backoff 10 min, 20, 40, poi 1 ora; scarto dopo 7 giorni.
+const (
+	RiprovaMin      = 10 * time.Minute
+	RiprovaMax      = time.Hour
+	ScadenzaSospese = 7 * 24 * time.Hour
+)
+
 // Esito dice cosa ha risposto il server per un elemento.
 type Esito int
 
@@ -39,6 +50,7 @@ var (
 	ErrDuplicato  = errors.New("elemento gia' in coda")
 
 	reNome   = regexp.MustCompile(`^(\d{12})-([0-9a-f-]{36})\.json$`)
+	reSeq    = regexp.MustCompile(`^(\d{12})-[0-9a-f-]{36}\.`)
 	reChiave = regexp.MustCompile(`^[0-9a-f-]{36}$`)
 )
 
@@ -50,25 +62,43 @@ type Elemento struct {
 	Sequenza          int64     `json:"sequenza"`
 	CreataIl          time.Time `json:"creataIl"`
 	Tentativi         int       `json:"tentativi"`
+	// Solo per le letture sospese (rifiuto transitorio del server).
+	SospesaDal   *time.Time `json:"sospesaDal,omitempty"`
+	RiprovaDopo  *time.Time `json:"riprovaDopo,omitempty"`
+	UltimoMotivo string     `json:"ultimoMotivo,omitempty"`
 }
 
 // Conteggi riassume la coda.
 type Conteggi struct{ InAttesa, Inviate, Scartate int }
 
 type voce struct {
-	seq    int64
-	chiave string
-	nome   string
+	seq     int64
+	chiave  string
+	nome    string
+	riprova time.Time // sospesa fino a questa ora (zero = pronta)
 }
 
 // Coda e' sicura per piu' goroutine di un solo processo.
 type Coda struct {
 	// Limite e' il massimo di elementi in attesa (default LimitePredefinito).
 	Limite int
+	// Adesso da' l'ora (default time.Now); l'agente ci mette il suo orologio.
+	Adesso func() time.Time
 
 	mu     sync.Mutex
 	dir    string
 	ordine []voce // ordinato per sequenza
+	ultima int64  // ultima sequenza riservata (in memoria: il file "sequenza" non e' l'unica fonte)
+}
+
+// Dir e' la cartella della coda.
+func (c *Coda) Dir() string { return c.dir }
+
+func (c *Coda) ora() time.Time {
+	if c.Adesso != nil {
+		return c.Adesso()
+	}
+	return time.Now()
 }
 
 func sottocartella(dir, n string) string { return filepath.Join(dir, n) }
@@ -81,7 +111,7 @@ func Apri(dir string) (*Coda, error) {
 		}
 	}
 	c := &Coda{Limite: LimitePredefinito, dir: dir}
-	for _, d := range []string{dir, sottocartella(dir, "in-attesa")} {
+	for _, d := range []string{dir, sottocartella(dir, "in-attesa"), sottocartella(dir, "inviate"), sottocartella(dir, "scartate")} {
 		es, err := os.ReadDir(d)
 		if err != nil {
 			return nil, err
@@ -107,32 +137,50 @@ func Apri(dir string) (*Coda, error) {
 		c.ordine = append(c.ordine, voce{seq: seq, chiave: m[2], nome: e.Name()})
 	}
 	sort.Slice(c.ordine, func(i, j int) bool { return c.ordine[i].nome < c.ordine[j].nome })
+	c.ultima = ricostruisciSequenza(dir)
 	return c, nil
 }
 
+// ricostruisciSequenza e' il massimo fra il file "sequenza" (se leggibile) e i numeri nei nomi dei
+// file in in-attesa/, inviate/ e scartate/: un file mancante o corrotto non fa ripartire la
+// numerazione da un valore gia' usato (il server rifiuta due letture con la stessa sequenza).
+func ricostruisciSequenza(dir string) int64 {
+	var max int64
+	if b, err := os.ReadFile(filepath.Join(dir, "sequenza")); err == nil {
+		if n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64); err == nil && n > max {
+			max = n
+		}
+	}
+	for _, s := range []string{"in-attesa", "inviate", "scartate"} {
+		es, _ := os.ReadDir(sottocartella(dir, s))
+		for _, e := range es {
+			if m := reSeq.FindStringSubmatch(e.Name()); m != nil {
+				if n, _ := strconv.ParseInt(m[1], 10, 64); n > max {
+					max = n
+				}
+			}
+		}
+	}
+	return max
+}
+
 // ProssimaSequenza riserva e persiste (prima del file della lettura) il prossimo numero di sequenza.
-// Parte da 1 e non viene mai riusato, neppure dopo un crash o la perdita del file "sequenza".
+// Parte da 1 e non viene riusato: il massimo e' tenuto in memoria e ricostruito all'apertura anche
+// dai nomi dei file, quindi un file "sequenza" corrotto o perso non lo fa ripartire. Resta un solo
+// caso scoperto: file perso E nessuna lettura piu' presente in nessuna cartella (inviate/ si pulisce
+// dopo 30 giorni) E riavvio del processo.
 func (c *Coda) ProssimaSequenza() (int64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var ultima int64
-	p := filepath.Join(c.dir, "sequenza")
-	if b, err := os.ReadFile(p); err == nil {
-		n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("file sequenza illeggibile: %w", err)
-		}
-		ultima = n
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return 0, err
-	}
+	ultima := c.ultima
 	if n := len(c.ordine); n > 0 && c.ordine[n-1].seq > ultima {
 		ultima = c.ordine[n-1].seq
 	}
 	ultima++
-	if err := fsatomic.Scrivi(p, []byte(strconv.FormatInt(ultima, 10)), 0o600); err != nil {
+	if err := fsatomic.Scrivi(filepath.Join(c.dir, "sequenza"), []byte(strconv.FormatInt(ultima, 10)), 0o600); err != nil {
 		return 0, err
 	}
+	c.ultima = ultima
 	return ultima, nil
 }
 
@@ -170,30 +218,101 @@ func (c *Coda) Accoda(l Elemento) error {
 	return nil
 }
 
-// Prossimi restituisce fino a n elementi, in ordine di sequenza. Un file illeggibile e' spostato
-// in scartate/ con il motivo e saltato.
+// Prossimi restituisce fino a n elementi pronti, in ordine di sequenza; le sospese non ancora
+// scadute sono saltate. Un file con contenuto non valido e' spostato in scartate/ con il motivo.
+// Un errore di lettura (per esempio un file tenuto aperto dall'antivirus su Windows) NON sposta
+// nulla: la lettura resta dov'e', viene saltata e il primo errore e' restituito insieme agli altri
+// elementi.
 func (c *Coda) Prossimi(n int) ([]Elemento, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	ora := c.ora()
 	var out []Elemento
+	var primoErr error
 	for i := 0; i < len(c.ordine) && len(out) < n; {
 		v := c.ordine[i]
-		b, err := os.ReadFile(filepath.Join(sottocartella(c.dir, "in-attesa"), v.nome))
-		var e Elemento
-		if err == nil {
-			err = json.Unmarshal(b, &e)
+		if ora.Before(v.riprova) {
+			i++
+			continue
 		}
+		b, err := os.ReadFile(filepath.Join(sottocartella(c.dir, "in-attesa"), v.nome))
 		if err != nil {
+			if primoErr == nil {
+				primoErr = fmt.Errorf("lettura di %s: %w", v.nome, err)
+			}
+			i++
+			continue
+		}
+		var e Elemento
+		if err := json.Unmarshal(b, &e); err != nil {
 			if err := c.sposta(v, "scartate", "file illeggibile: "+err.Error()); err != nil {
 				return out, err
 			}
 			c.ordine = append(c.ordine[:i], c.ordine[i+1:]...)
 			continue
 		}
+		if e.RiprovaDopo != nil && ora.Before(*e.RiprovaDopo) { // sospesa prima di un riavvio
+			c.ordine[i].riprova = *e.RiprovaDopo
+			i++
+			continue
+		}
 		out = append(out, e)
 		i++
 	}
-	return out, nil
+	return out, primoErr
+}
+
+// Sospendi tiene la lettura in coda dopo un rifiuto transitorio del server: la riprova avviene dopo
+// un backoff (10 min, 20, 40, poi 1 ora) e, se la prima sospensione risale a oltre ScadenzaSospese,
+// la lettura passa in scartate/. Restituisce true se e' stata scartata.
+func (c *Coda) Sospendi(chiave, motivo string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, v := range c.ordine {
+		if v.chiave != chiave {
+			continue
+		}
+		p := filepath.Join(sottocartella(c.dir, "in-attesa"), v.nome)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return false, err
+		}
+		var e Elemento
+		if err := json.Unmarshal(b, &e); err != nil {
+			return false, fmt.Errorf("elemento illeggibile: %w", err)
+		}
+		ora := c.ora().UTC()
+		if e.SospesaDal == nil {
+			e.SospesaDal = &ora
+		}
+		if ora.Sub(*e.SospesaDal) >= ScadenzaSospese {
+			if err := c.sposta(v, "scartate", fmt.Sprintf("scaduta dopo 7 giorni di tentativi (%s): %s", ora.Sub(*e.SospesaDal).Round(time.Hour), motivo)); err != nil {
+				return false, err
+			}
+			c.ordine = append(c.ordine[:i], c.ordine[i+1:]...)
+			return true, nil
+		}
+		e.Tentativi++
+		attesa := RiprovaMin
+		for k := 1; k < e.Tentativi && attesa < RiprovaMax; k++ {
+			attesa *= 2
+		}
+		if attesa > RiprovaMax {
+			attesa = RiprovaMax
+		}
+		dopo := ora.Add(attesa)
+		e.RiprovaDopo, e.UltimoMotivo = &dopo, motivo
+		nuovo, err := json.Marshal(e)
+		if err != nil {
+			return false, err
+		}
+		if err := fsatomic.Scrivi(p, nuovo, 0o600); err != nil {
+			return false, err
+		}
+		c.ordine[i].riprova = dopo
+		return false, nil
+	}
+	return false, ErrNonTrovata
 }
 
 func (c *Coda) sposta(v voce, dest, motivo string) error {

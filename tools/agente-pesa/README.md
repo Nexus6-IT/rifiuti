@@ -29,8 +29,17 @@ Windows SmartScreen puo' avvisare di un editore sconosciuto: e' atteso.
    ```powershell
    .\agente-pesa.exe abbina --server https://<backend> --codice XXXX-XXXX-XXXX
    ```
+   Per non lasciare il codice nella cronologia di PowerShell si puo' passare `--codice -` (lo legge da
+   stdin) o impostare la variabile `WASTEFLOW_CODICE`.
    Crea `C:\ProgramData\WasteFlow\AgentePesa` con la chiave privata e il token (cifrati con DPAPI della
-   macchina) e il file `agente-pesa.json`. La chiave privata non lascia mai il PC.
+   macchina) e il file `agente-pesa.json`. La chiave privata non lascia mai il PC. La cartella viene
+   riservata ad amministratori e SYSTEM (senza ereditare i permessi di `ProgramData`) **prima** di
+   scrivere le credenziali, quindi non c'e' una finestra in cui siano leggibili da altri utenti.
+   Limite noto: DPAPI e' a livello di macchina (serve al servizio, che gira con un altro account),
+   quindi la protezione delle credenziali e' l'ACL della cartella, non la cifratura: chi e'
+   amministratore del PC le puo' leggere. Se `abbina` non riesce a salvare le credenziali dopo che il
+   server ha consumato il codice, l'agente risulta ATTIVO senza credenziali: va revocato in WasteFlow
+   e ricreato.
 3. Aprire `agente-pesa.json` e, per ogni strumento, indicare `driver` e `parametri`. Esempio di collaudo:
    ```json
    { "server": "https://<backend>", "simulazione": true,
@@ -47,10 +56,15 @@ Windows SmartScreen puo' avvisare di un editore sconosciuto: e' atteso.
    ```
    Il servizio `WasteFlowAgentePesa` parte in automatico (ritardato), gira con l'account virtuale
    `NT SERVICE\WasteFlowAgentePesa` (privilegi minimi; `servizio installa` limita la cartella dati
-   ad amministratori, SYSTEM e a quell'account) e si riavvia dopo un errore (10 s, 60 s, 5 min).
+   ad amministratori, SYSTEM e a quell'account) e si riavvia dopo un errore (10 s, 60 s, 5 min), anche
+   quando esce con un errore (configurazione non valida, coda bloccata dall'antivirus). Se un passo
+   dell'installazione fallisce il servizio viene rimosso.
+   Dopo l'installazione `agente-pesa.exe stato` si legge solo da un terminale da amministratore: la
+   cartella dati non e' piu' leggibile dagli utenti normali.
 
 Comandi: `abbina`, `esegui` (in primo piano, per le prove), `stato`, `servizio installa|rimuovi|avvia|ferma`,
-`versione`. Tutti accettano `--dati <cartella>` (predefinita `C:\ProgramData\WasteFlow\AgentePesa`).
+`versione`. Un solo agente alla volta per cartella dati: un `esegui` lanciato a mano mentre il servizio
+e' attivo (o un secondo `esegui`) si ferma con «agente gia' in esecuzione». Tutti accettano `--dati <cartella>` (predefinita `C:\ProgramData\WasteFlow\AgentePesa`).
 
 ## Risoluzione dei problemi
 
@@ -59,7 +73,15 @@ Comandi: `abbina`, `esegui` (in primo piano, per le prove), `stato`, `servizio i
   sono sostituiti da `[token]`).
 - Senza rete le letture restano in `in-attesa\` e partono da sole, in ordine, al ritorno della
   connessione (fino a 100.000; oltre, le nuove letture sono scartate e il log lo dice).
-- Letture rifiutate dal server: in `scartate\`, con il motivo in `<nome>.motivo.txt`.
+- Letture rifiutate dal server: in `scartate\`, con il motivo in `<nome>.motivo.txt`. Un rifiuto per un
+  motivo che il tempo puo' risolvere NON scarta la lettura: resta in `in-attesa\` e si riprova dopo 10
+  minuti, poi 20, 40 e ogni ora (senza bloccare le letture successive); dopo 7 giorni passa in
+  `scartate\` col motivo. I codici transitori sono `OROLOGIO_AVANTI` (orologio del PC avanti: correggerlo
+  basta, le letture gia' in coda diventano valide), `STRUMENTO_NON_ASSEGNATO`, `STRUMENTO_NON_ATTIVO` (assegnare
+  o riattivare lo strumento in WasteFlow) e `FUORI_PORTATA` (correggere la portata). Ogni altro codice, anche
+  sconosciuto, e' definitivo (firma, agente, peso, simulazione, chiave o alibi gia' usati, payload non valido).
+- Se il server rifiuta un intero lotto per formato (400, 413, 422) le letture sono reinviate una a una: solo
+  quella malformata va in `scartate\` (motivo `HTTP_400`...) e le altre partono.
 - «agente revocato»: l'agente e' stato revocato in WasteFlow; l'invio e' fermo (controllo ogni 10 minuti) e
   la coda e' conservata. Serve un agente nuovo (cancellare la cartella dati e rifare `abbina`).
 - `http://` e' accettato solo verso `localhost`; per il resto serve `https://` con certificato valido.

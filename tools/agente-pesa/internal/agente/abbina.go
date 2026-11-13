@@ -11,6 +11,7 @@ import (
 	"wasteflow/agente-pesa/internal/config"
 	"wasteflow/agente-pesa/internal/firma"
 	"wasteflow/agente-pesa/internal/invio"
+	"wasteflow/agente-pesa/internal/permessi"
 )
 
 // Abbina scambia il codice di abbinamento con il token: genera la coppia Ed25519 (la privata non
@@ -22,8 +23,10 @@ func Abbina(ctx context.Context, o Opzioni, server, codice string) (invio.Rispos
 	if err := config.ValidaServer(server); err != nil {
 		return r, err
 	}
-	if err := os.MkdirAll(o.Dati, 0o755); err != nil {
-		return r, err
+	// Prima di ogni segreto: la cartella dati e' riservata agli amministratori fin dall'inizio, non
+	// solo dopo `servizio installa` (fra i due passi la chiave privata sarebbe leggibile da tutti).
+	if err := permessi.Cartella(o.Dati); err != nil {
+		return r, fmt.Errorf("cartella dati non protetta, abbinamento annullato: %w", err)
 	}
 	cust := firma.Custode{Percorso: filepath.Join(o.Dati, FileCredenziali)}
 	if _, err := os.Stat(cust.Percorso); err == nil {
@@ -46,7 +49,7 @@ func Abbina(ctx context.Context, o Opzioni, server, codice string) (invio.Rispos
 		return r, err
 	}
 	if err := cust.Salva(firma.Credenziali{AgenteID: r.AgenteID, Token: r.Token, Privata: priv}); err != nil {
-		return r, fmt.Errorf("credenziali non salvate: %w", err)
+		return r, fmt.Errorf("credenziali non salvate: %w; il server ha gia' consumato il codice e l'agente risulta ATTIVO senza credenziali: revocarlo in WasteFlow e crearne uno nuovo", err)
 	}
 	pc := filepath.Join(o.Dati, config.NomeFile)
 	c, err := config.Carica(pc)

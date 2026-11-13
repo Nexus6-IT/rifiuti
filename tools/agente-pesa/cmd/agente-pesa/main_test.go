@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -47,5 +48,26 @@ func TestEseguiSenzaAbbinamentoDaErrore(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if codice := esegui([]string{"esegui", "--dati", t.TempDir()}, &out, &errOut); codice != 1 {
 		t.Fatalf("codice %d", codice)
+	}
+}
+
+func TestCodiceDaStdinEDaAmbiente(t *testing.T) {
+	var out, errOut bytes.Buffer
+	// il server http non locale fa fallire l'abbinamento DOPO aver letto il codice: 1, non 2 (uso)
+	stdin = strings.NewReader("ABCD-EFGH-JKMN\n")
+	if c := esegui([]string{"abbina", "--dati", t.TempDir(), "--server", "http://esempio.it", "--codice", "-"}, &out, &errOut); c != 1 {
+		t.Fatalf("da stdin: codice %d err %q", c, errOut.String())
+	}
+	t.Setenv(envCodice, "ABCD-EFGH-JKMN")
+	if c := esegui([]string{"abbina", "--dati", t.TempDir(), "--server", "http://esempio.it"}, &out, &errOut); c != 1 {
+		t.Fatalf("da ambiente: codice %d", c)
+	}
+	t.Setenv(envCodice, "")
+	if c := esegui([]string{"abbina", "--dati", t.TempDir(), "--server", "http://esempio.it"}, &out, &errOut); c != 2 {
+		t.Fatalf("senza codice: codice %d, atteso 2", c)
+	}
+	stdin = strings.NewReader("")
+	if c := esegui([]string{"abbina", "--dati", t.TempDir(), "--server", "http://esempio.it", "--codice", "-"}, &out, &errOut); c != 2 {
+		t.Fatalf("stdin vuoto: codice %d, atteso 2", c)
 	}
 }

@@ -219,3 +219,55 @@ func TestAbbinaCodiceErratoEDoppio(t *testing.T) {
 		t.Fatal("secondo abbinamento sullo stesso PC: atteso un errore")
 	}
 }
+
+func TestSecondaIstanzaSuStessaCartellaRifiutata(t *testing.T) {
+	srv := nuovoServerFinto(t)
+	o := preparata(t, srv, true, `{"pesi":[100],"intervalloMs":50}`)
+	a := avvia(t, o)
+	attendi(t, "prima istanza attiva", func() bool { return srv.numAccettate() >= 1 })
+	ctx, annulla := context.WithTimeout(context.Background(), 5*time.Second)
+	defer annulla()
+	err := Esegui(ctx, o)
+	if err == nil || !strings.Contains(err.Error(), "gia' in esecuzione") {
+		t.Fatalf("la seconda istanza deve fallire con un errore chiaro: %v", err)
+	}
+	if err := a.stop(); err != nil {
+		t.Fatal(err)
+	}
+	// libera dopo l'arresto della prima
+	b := avvia(t, o)
+	attendi(t, "nuova istanza attiva", func() bool { return srv.numAccettate() >= 2 })
+	b.stop()
+}
+
+func TestAbbinaRiservaLaCartellaPrimaDelleCredenziali(t *testing.T) {
+	srv := nuovoServerFinto(t)
+	for _, preesiste := range []bool{false, true} {
+		dati := filepath.Join(t.TempDir(), "dati")
+		if preesiste {
+			if err := os.MkdirAll(dati, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			os.Chmod(dati, 0o755)
+		}
+		o := Opzioni{Dati: dati, Versione: "test"}
+		if _, err := Abbina(context.Background(), o, srv.URL, "ABCD-EFGH-JKMN"); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(dati)
+		if err != nil || info.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("preesistente=%v: la cartella dati deve essere riservata, permessi %v err %v", preesiste, info.Mode().Perm(), err)
+		}
+	}
+}
+
+func TestAbbinaFallitoNonLasciaCredenziali(t *testing.T) {
+	srv := nuovoServerFinto(t)
+	dati := filepath.Join(t.TempDir(), "dati")
+	if _, err := Abbina(context.Background(), Opzioni{Dati: dati}, srv.URL, "CODICE-SBAGLIATO"); err == nil {
+		t.Fatal("il codice e' sbagliato")
+	}
+	if _, err := os.Stat(filepath.Join(dati, FileCredenziali)); !os.IsNotExist(err) {
+		t.Fatalf("nessuna credenziale deve esistere: %v", err)
+	}
+}

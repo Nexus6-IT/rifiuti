@@ -122,7 +122,12 @@ func NuovoClient(server, token, versione string, log *slog.Logger) (*Client, err
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Client{base: u, token: token, http: &http.Client{Timeout: 30 * time.Second}, versione: versione, log: log}, nil
+	return &Client{base: u, token: token, http: &http.Client{
+		Timeout: 30 * time.Second,
+		// Nessun redirect: l'API non ne fa, e seguirne uno (anche https->http) rimanderebbe
+		// l'header Authorization altrove.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}, versione: versione, log: log}, nil
 }
 
 // ConToken restituisce una copia del client con il token indicato (dopo l'abbinamento).
