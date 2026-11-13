@@ -12,15 +12,15 @@ import {
   type AziendaDiTest,
 } from '../../utils/azienda-di-test'
 import { ATTESA_SERVER, attendiRisposta, percorsoApi } from '../../utils/attese'
-import { chiama } from '../../utils/legami-api'
+import { chiama, giornoItaliano } from '../../utils/legami-api'
 import { conPrefissoUnico } from '../../utils/run-id'
 
 /**
  * E2E delle comunicazioni O.R.SO. (4.9a, T7), contro backend, Postgres e Redis reali.
  *
  * Due aziende di prova create qui: ENTERPRISE (ha il modulo `comunicazioni`) e PROFESSIONAL
- * (non lo ha). Nell'ENTERPRISE: una sede con provincia, tre scarichi nell'anno corrente creati
- * via API (due CER, due mesi) -> anteprima con mesi e CER -> Genera -> scarica l'XML e lo valida
+ * (non lo ha). Nell'ENTERPRISE: una sede con provincia, tre scarichi nell'anno precedente creati
+ * via API (due CER, due mesi) nell'anno precedente -> anteprima con mesi e CER -> Genera -> scarica l'XML e lo valida
  * contro l'XSD in fixture -> Segna inviata. Nella PROFESSIONAL: la pagina non si apre e nessuna
  * chiamata API viene respinta con 403.
  *
@@ -37,7 +37,9 @@ const XSD = readFileSync(
   'utf8'
 )
 const db = clientDbLocale()
-const ANNO = new Date().getFullYear()
+// Anno precedente a quello (di Roma) di oggi: i movimenti di gennaio-marzo dell'anno corrente
+// sarebbero nel futuro se il test girasse a gennaio o febbraio, e il mese non entrerebbe nel file.
+const ANNO = Number(giornoItaliano().slice(0, 4)) - 1
 const MESSAGGIO = "Il modulo non è attivo per l'azienda selezionata."
 
 function numeroSito(): string {
@@ -145,6 +147,18 @@ test.describe('Comunicazioni O.R.SO.', () => {
     )
     await page.goto('/comunicazioni')
     expect((await anteprima).status()).toBe(200)
+
+    // La pagina parte dall'anno corrente: si sceglie l'anno dei movimenti e si attende la sua anteprima.
+    const anteprimaAnno = page.waitForResponse(
+      r =>
+        percorsoApi(r.url())?.startsWith('/comunicazioni/orso/anteprima') === true &&
+        new URL(r.url()).searchParams.get('anno') === String(ANNO),
+      { timeout: ATTESA_SERVER }
+    )
+    anteprimaAnno.catch(() => undefined)
+    await page.getByTestId('comunicazioni-anno').click()
+    await page.getByRole('option', { name: String(ANNO), exact: true }).click()
+    expect((await anteprimaAnno).status()).toBe(200)
 
     // Anteprima: mesi (febbraio, marzo) e CER, con uscite e giacenza a fine mese, senza bloccanti.
     await expect(page.getByTestId('comunicazioni-tabella')).toBeVisible({ timeout: ATTESA_SERVER })
