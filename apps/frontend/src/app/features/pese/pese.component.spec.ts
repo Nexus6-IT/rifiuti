@@ -38,6 +38,7 @@ describe('PeseComponent (larghezza a 390 px)', () => {
     const pese = jasmine.createSpyObj<PeseService>('PeseService', [
       'elencaAccessi',
       'elencaStrumenti',
+      'elencaAgenti',
       'elencaAutomezzi',
     ])
     pese.elencaAccessi.and.callFake(f =>
@@ -50,6 +51,7 @@ describe('PeseComponent (larghezza a 390 px)', () => {
       )
     )
     pese.elencaStrumenti.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: true }))
+    pese.elencaAgenti.and.returnValue(of({ righe: [], puoGestire: false }))
     pese.elencaAutomezzi.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: true }))
     const registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
     registri.listRegistri.and.returnValue(of([]))

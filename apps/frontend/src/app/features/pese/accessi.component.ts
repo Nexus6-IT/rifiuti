@@ -29,6 +29,7 @@ import {
   FiltriAccessi,
   PeseService,
   StatoAccesso,
+  AgenteVista,
   StrumentoPesa,
 } from './pese.service'
 import { CampoDataComponent } from '../../shared/components/campo-data.component'
@@ -49,6 +50,7 @@ import { CampoDataComponent } from '../../shared/components/campo-data.component
       *ngIf="selezionato() as id"
       [accessoId]="id"
       [strumenti]="strumenti()"
+      [agenti]="agenti()"
       (indietro)="chiudiDettaglio()"
       (modificato)="daRicaricare = true"
     ></app-accesso-dettaglio>
@@ -258,6 +260,7 @@ import { CampoDataComponent } from '../../shared/components/campo-data.component
       [registri]="registri()"
       [strumenti]="strumenti()"
       [automezzi]="automezzi()"
+      [agenti]="agenti()"
       (creato)="creato($event)"
       (chiuso)="chiudiNuovo()"
     ></app-nuovo-accesso-dialog>
@@ -347,6 +350,7 @@ export class AccessiComponent implements OnInit {
 
   readonly registri = signal<RegistroVista[]>([])
   readonly strumenti = signal<StrumentoPesa[]>([])
+  readonly agenti = signal<AgenteVista[]>([])
   readonly automezzi = signal<Automezzo[]>([])
   readonly righe = signal<AccessoRiepilogo[]>([])
   readonly aperti = signal<AccessoRiepilogo[]>([])
@@ -384,6 +388,9 @@ export class AccessiComponent implements OnInit {
     this.pese
       .elencaStrumenti()
       .subscribe({ next: e => this.strumenti.set(e.righe), error: () => undefined })
+    this.pese
+      .elencaAgenti()
+      .subscribe({ next: e => this.agenti.set(e.righe), error: () => undefined })
     this.pese
       .elencaAutomezzi()
       .subscribe({ next: e => this.automezzi.set(e.righe), error: () => undefined })

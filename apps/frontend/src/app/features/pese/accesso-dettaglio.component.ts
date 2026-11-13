@@ -32,6 +32,7 @@ import {
   CollegamentoVista,
   PesataVista,
   PeseService,
+  AgenteVista,
   StrumentoPesa,
 } from './pese.service'
 
@@ -47,6 +48,9 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
   dateStyle: 'short',
   timeStyle: 'short',
 })
+
+/** Come nel backend: l'avviso e' gia' mostrato a parte, qui non si ripete. */
+const AVVISO_SIMULATA_BACKEND = 'Pesata simulata: non è un peso reale.'
 
 @Component({
   selector: 'app-accesso-dettaglio',
@@ -117,6 +121,9 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
         <dd *ngIf="a.note">{{ a.note }}</dd>
       </dl>
 
+      <p *ngIf="a.netto.simulato" class="avviso-manuale" data-testid="ad-avviso-simulata">
+        Accesso con pesate simulate: non è un peso reale e non si usa nei documenti.
+      </p>
       <p *ngIf="haManuale(a)" class="avviso-manuale" data-testid="ad-avviso-manuale">
         {{ avvisoManuale }}
       </p>
@@ -179,10 +186,14 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
                   <td>{{ p.ordine }}</td>
                   <td>
                     {{ fonte(p.fonte) }}
+                    <div class="nota" *ngIf="p.agente" [attr.data-testid]="'ad-agente-' + p.ordine">
+                      Agente: {{ p.agente }}
+                    </div>
                     <span
                       class="badge"
                       *ngFor="let b of badge(p)"
-                      [class.badge-ko]="b === 'Dato alterato'"
+                      [class.badge-ko]="b === 'Dato alterato' || b === 'Firma non verificata'"
+                      [class.badge-simulata]="b === 'Simulata'"
                       [attr.data-testid]="'ad-badge-' + p.ordine"
                       >{{ b }}</span
                     >
@@ -350,6 +361,7 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
           *ngSwitchCase="'seconda'"
           [accesso]="a"
           [strumenti]="strumenti"
+          [agenti]="agenti"
           (fatto)="fatto($event, 'Seconda pesata registrata.')"
           (chiuso)="chiudiDialogo()"
           (ricarica)="carica()"
@@ -426,6 +438,9 @@ const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
       }
       .badge-ko {
         color: var(--color-danger);
+      }
+      .badge-simulata {
+        color: var(--badge-simulata-ink, #6d28d9);
       }
       .riepilogo {
         display: grid;
@@ -519,6 +534,7 @@ export class AccessoDettaglioComponent implements OnInit {
 
   @Input({ required: true }) accessoId!: string
   @Input() strumenti: StrumentoPesa[] = []
+  @Input() agenti: AgenteVista[] = []
   @Output() indietro = new EventEmitter<void>()
   /** Qualcosa e' cambiato: l'elenco va riletto quando si torna indietro. */
   @Output() modificato = new EventEmitter<void>()
@@ -573,10 +589,12 @@ export class AccessoDettaglioComponent implements OnInit {
   }
   /** L'avviso metrologico e' gia' mostrato a parte: qui non si ripete. */
   avvisi(a: AccessoVista): string[] {
-    return [...new Set([...a.avvisi, ...a.netto.avvisi])].filter(v => v !== AVVISO_PESATA_MANUALE)
+    return [...new Set([...a.avvisi, ...a.netto.avvisi])].filter(
+      v => v !== AVVISO_PESATA_MANUALE && v !== AVVISO_SIMULATA_BACKEND
+    )
   }
   avvisiPesata(p: PesataVista): string[] {
-    return p.avvisi.filter(v => v !== AVVISO_PESATA_MANUALE)
+    return p.avvisi.filter(v => v !== AVVISO_PESATA_MANUALE && v !== AVVISO_SIMULATA_BACKEND)
   }
   puoRettificarePesata(a: AccessoVista, p: PesataVista): boolean {
     return a.puoRettificare && a.stato !== 'ANNULLATO' && p.fonte !== 'TARA_ANAGRAFICA'

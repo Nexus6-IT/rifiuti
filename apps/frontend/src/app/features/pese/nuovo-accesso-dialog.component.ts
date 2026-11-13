@@ -22,11 +22,14 @@ import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
 import { registroPredefinito, etichettaRegistro } from '../registro/registro-sede'
 import { RegistroVista } from '../registro/registro.service'
-import { messaggioErrorePese, normalizzaTarga } from './pese-formato'
+import { messaggioErrorePese, normalizzaTarga, uuidV4 } from './pese-formato'
+import { haStrumentoConAgente } from './letture-strumento.component'
+import { SorgentePesata, SorgentePesataComponent } from './sorgente-pesata.component'
 import { STILI_PESE } from './pese-stili'
 import { PesataManualeFormComponent } from './pesata-manuale-form.component'
 import {
   AccessoVista,
+  AgenteVista,
   Automezzo,
   ModoPesatura,
   PeseService,
@@ -45,6 +48,7 @@ const ALTRO_MEZZO = ''
     ButtonModule,
     DialogModule,
     PesataManualeFormComponent,
+    SorgentePesataComponent,
   ],
   template: `
     <p-dialog
@@ -199,11 +203,23 @@ const ALTRO_MEZZO = ''
         </div>
       </form>
       <h3 class="titolo">{{ titoloPesata() }}</h3>
-      <app-pesata-manuale-form
-        idPrefisso="na-pm"
-        [etichettaPeso]="etichettaPeso()"
-        [strumenti]="strumentiAttivi()"
-      ></app-pesata-manuale-form>
+      <app-sorgente-pesata
+        idPrefisso="na-src"
+        [sorgente]="sorgente()"
+        [registroId]="valori().registroId || null"
+        (sorgenteChange)="cambiaSorgente($event)"
+        (letturaScelta)="lettura.set($event)"
+      ></app-sorgente-pesata>
+      <p *ngIf="erroreLettura()" class="field-error" role="alert" data-testid="na-lettura-errore">
+        Scegliere una lettura dello strumento.
+      </p>
+      <div [hidden]="sorgente() === 'STRUMENTO'">
+        <app-pesata-manuale-form
+          idPrefisso="na-pm"
+          [etichettaPeso]="etichettaPeso()"
+          [strumenti]="strumentiAttivi()"
+        ></app-pesata-manuale-form>
+      </div>
       <p *ngIf="errore() as e" class="field-error" role="alert" data-testid="na-errore">{{ e }}</p>
       <div class="azioni">
         <p-button label="Annulla" [text]="true" (onClick)="chiuso.emit()"></p-button>
@@ -236,6 +252,8 @@ export class NuovoAccessoDialogComponent implements OnInit {
   @Input() registri: RegistroVista[] = []
   @Input() strumenti: StrumentoPesa[] = []
   @Input() automezzi: Automezzo[] = []
+  /** Agenti di pesa dell'azienda: decidono se il predefinito e' «Da strumento». */
+  @Input() agenti: AgenteVista[] = []
   @Output() creato = new EventEmitter<AccessoVista>()
   @Output() chiuso = new EventEmitter<void>()
 
@@ -246,6 +264,10 @@ export class NuovoAccessoDialogComponent implements OnInit {
   readonly tentato = signal(false)
   readonly salvataggio = signal(false)
   readonly errore = signal<string | null>(null)
+  readonly sorgente = signal<SorgentePesata>('MANUALE')
+  readonly lettura = signal<string | null>(null)
+  /** Chiave di idempotenza dell'invio da lettura (quella del form manuale e' un'altra). */
+  private readonly chiaveLettura = uuidV4()
   readonly valori = signal({ registroId: '', modo: 'DOPPIA' as ModoPesatura })
 
   readonly form = new FormGroup({
@@ -266,6 +288,20 @@ export class NuovoAccessoDialogComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.distrutto))
       .subscribe(v => this.valori.set({ registroId: v.registroId ?? '', modo: v.modo ?? 'DOPPIA' }))
     this.valori.set({ registroId: this.form.controls.registroId.value, modo: 'DOPPIA' })
+    this.sorgente.set(
+      haStrumentoConAgente(this.agenti, this.form.controls.registroId.value || null)
+        ? 'STRUMENTO'
+        : 'MANUALE'
+    )
+  }
+
+  cambiaSorgente(s: SorgentePesata): void {
+    this.sorgente.set(s)
+    this.lettura.set(null)
+  }
+
+  erroreLettura(): boolean {
+    return this.tentato() && this.sorgente() === 'STRUMENTO' && !this.lettura()
   }
 
   automezziAttivi(): Automezzo[] {
@@ -326,18 +362,20 @@ export class NuovoAccessoDialogComponent implements OnInit {
         : this.erroreTarga()
           ? 'na-targa'
           : null
-    const r = this.pesataForm.raccogli()
+    const daStrumento = this.sorgente() === 'STRUMENTO'
+    const r = daStrumento ? null : this.pesataForm.raccogli()
     if (rigaSbagliata) {
       document.getElementById(rigaSbagliata)?.focus()
       return
     }
-    if (!r) return
+    const letturaId = this.lettura()
+    if (daStrumento ? !letturaId : !r) return
     this.errore.set(null)
     this.salvataggio.set(true)
     this.pese
       .apriAccesso(
         {
-          chiaveIdempotenza: this.pesataForm.chiaveIdempotenza,
+          chiaveIdempotenza: daStrumento ? this.chiaveLettura : this.pesataForm.chiaveIdempotenza,
           registroId: v.registroId || null,
           verso: v.verso,
           modo: v.modo,
@@ -347,10 +385,10 @@ export class NuovoAccessoDialogComponent implements OnInit {
           cerCode: v.cerCode.trim() || null,
           descrizione: v.descrizione.trim() || null,
           note: v.note.trim() || null,
-          pesata: r.pesata,
+          pesata: daStrumento ? { letturaId: letturaId! } : r!.pesata,
         },
-        r.allegato,
-        r.nomeFile
+        daStrumento ? null : r!.allegato,
+        daStrumento ? undefined : r!.nomeFile
       )
       .subscribe({
         next: a => {

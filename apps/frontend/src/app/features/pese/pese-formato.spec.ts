@@ -107,7 +107,7 @@ describe('etichette e badge', () => {
   it('integra false aggiunge Dato alterato; tara anagrafica da Tara dichiarata', () => {
     expect(badgePesata(pesata({ integra: false }))).toContain('Dato alterato')
     expect(badgePesata(pesata({ fonte: 'TARA_ANAGRAFICA' }))).toEqual(['Tara dichiarata'])
-    expect(badgePesata(pesata({ fonte: 'STRUMENTO' }))).toEqual([])
+    expect(badgePesata(pesata({ fonte: 'STRUMENTO' }))).toEqual(['Da strumento'])
   })
 })
 
@@ -247,5 +247,23 @@ describe('formati degli agenti di pesa', () => {
     expect(indirizzoServerAgente('http://localhost:3000/api/v1/', 'http://x')).toBe(
       'http://localhost:3000/api/v1'
     )
+  })
+})
+
+describe('badge delle pesate da strumento', () => {
+  it('Da strumento con firma verificata o non verificata; Simulata a parte', () => {
+    expect(badgePesata(pesata({ fonte: 'STRUMENTO', firmaValida: true }))).toEqual([
+      'Da strumento',
+      'Firma verificata',
+    ])
+    expect(badgePesata(pesata({ fonte: 'STRUMENTO', firmaValida: false }))).toEqual([
+      'Da strumento',
+      'Firma non verificata',
+    ])
+    expect(badgePesata(pesata({ fonte: 'SIMULATA', firmaValida: true }))).toEqual([
+      'Simulata',
+      'Firma verificata',
+    ])
+    expect(etichettaFonte('SIMULATA')).toBe('Simulata')
   })
 })

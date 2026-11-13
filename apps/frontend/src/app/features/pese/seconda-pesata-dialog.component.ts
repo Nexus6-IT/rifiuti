@@ -19,15 +19,23 @@ import {
 } from '@angular/core'
 import { ButtonModule } from 'primeng/button'
 import { DialogModule } from 'primeng/dialog'
-import { messaggioErrorePese } from './pese-formato'
+import { messaggioErrorePese, uuidV4 } from './pese-formato'
+import { haStrumentoConAgente } from './letture-strumento.component'
+import { SorgentePesata, SorgentePesataComponent } from './sorgente-pesata.component'
 import { STILI_PESE } from './pese-stili'
 import { PesataManualeFormComponent } from './pesata-manuale-form.component'
-import { AccessoVista, PeseService, StrumentoPesa } from './pese.service'
+import { AccessoVista, AgenteVista, PeseService, StrumentoPesa } from './pese.service'
 
 @Component({
   selector: 'app-seconda-pesata-dialog',
   standalone: true,
-  imports: [CommonModule, ButtonModule, DialogModule, PesataManualeFormComponent],
+  imports: [
+    CommonModule,
+    ButtonModule,
+    DialogModule,
+    PesataManualeFormComponent,
+    SorgentePesataComponent,
+  ],
   template: `
     <p-dialog
       [visible]="true"
@@ -38,11 +46,23 @@ import { AccessoVista, PeseService, StrumentoPesa } from './pese.service'
       closeAriaLabel="Chiudi la finestra della seconda pesata"
       (onShow)="mettiAFuoco()"
     >
-      <app-pesata-manuale-form
-        idPrefisso="sp"
-        etichettaPeso="Seconda pesata (kg)"
-        [strumenti]="strumentiAttivi()"
-      ></app-pesata-manuale-form>
+      <app-sorgente-pesata
+        idPrefisso="sp-src"
+        [sorgente]="sorgente()"
+        [registroId]="accesso.registro.id"
+        (sorgenteChange)="cambiaSorgente($event)"
+        (letturaScelta)="lettura.set($event)"
+      ></app-sorgente-pesata>
+      <p *ngIf="erroreLettura()" class="field-error" role="alert" data-testid="sp-lettura-errore">
+        Scegliere una lettura dello strumento.
+      </p>
+      <div [hidden]="sorgente() === 'STRUMENTO'">
+        <app-pesata-manuale-form
+          idPrefisso="sp"
+          etichettaPeso="Seconda pesata (kg)"
+          [strumenti]="strumentiAttivi()"
+        ></app-pesata-manuale-form>
+      </div>
       <p *ngIf="errore() as e" class="field-error" role="alert" data-testid="sp-errore">{{ e }}</p>
       <div class="azioni">
         <p-button label="Annulla" [text]="true" (onClick)="chiuso.emit()"></p-button>
@@ -65,6 +85,8 @@ export class SecondaPesataDialogComponent implements OnInit {
 
   @Input({ required: true }) accesso!: AccessoVista
   @Input() strumenti: StrumentoPesa[] = []
+  /** Agenti di pesa dell'azienda: decidono se il predefinito e' «Da strumento». */
+  @Input() agenti: AgenteVista[] = []
   @Output() fatto = new EventEmitter<AccessoVista>()
   @Output() chiuso = new EventEmitter<void>()
   /** Il backend ha risposto 409: l'accesso va riletto. */
@@ -75,13 +97,29 @@ export class SecondaPesataDialogComponent implements OnInit {
   readonly salvataggio = signal(false)
   readonly errore = signal<string | null>(null)
   readonly strumentiAttivi = signal<StrumentoPesa[]>([])
+  readonly sorgente = signal<SorgentePesata>('MANUALE')
+  readonly lettura = signal<string | null>(null)
+  readonly tentato = signal(false)
+  private readonly chiaveLettura = uuidV4()
 
   ngOnInit(): void {
+    this.sorgente.set(
+      haStrumentoConAgente(this.agenti, this.accesso.registro.id) ? 'STRUMENTO' : 'MANUALE'
+    )
     this.strumentiAttivi.set(
       this.strumenti.filter(
         s => s.attivo && (!s.registroId || s.registroId === this.accesso.registro.id)
       )
     )
+  }
+
+  cambiaSorgente(s: SorgentePesata): void {
+    this.sorgente.set(s)
+    this.lettura.set(null)
+  }
+
+  erroreLettura(): boolean {
+    return this.tentato() && this.sorgente() === 'STRUMENTO' && !this.lettura()
   }
 
   mettiAFuoco(): void {
@@ -90,16 +128,21 @@ export class SecondaPesataDialogComponent implements OnInit {
 
   salva(): void {
     if (this.salvataggio() || !this.form) return
-    const r = this.form.raccogli()
-    if (!r) return
+    this.tentato.set(true)
+    const daStrumento = this.sorgente() === 'STRUMENTO'
+    const r = daStrumento ? null : this.form.raccogli()
+    const letturaId = this.lettura()
+    if (daStrumento ? !letturaId : !r) return
     this.errore.set(null)
     this.salvataggio.set(true)
     this.pese
       .secondaPesata(
         this.accesso.id,
-        { chiaveIdempotenza: this.form.chiaveIdempotenza, pesata: r.pesata },
-        r.allegato,
-        r.nomeFile
+        daStrumento
+          ? { chiaveIdempotenza: this.chiaveLettura, pesata: { letturaId: letturaId! } }
+          : { chiaveIdempotenza: this.form.chiaveIdempotenza, pesata: r!.pesata },
+        daStrumento ? null : r!.allegato,
+        daStrumento ? undefined : r!.nomeFile
       )
       .subscribe({
         next: a => {

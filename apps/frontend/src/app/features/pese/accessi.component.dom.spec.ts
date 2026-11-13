@@ -69,10 +69,12 @@ describe('AccessiComponent (DOM)', () => {
     pese = jasmine.createSpyObj<PeseService>('PeseService', [
       'elencaAccessi',
       'elencaStrumenti',
+      'elencaAgenti',
       'elencaAutomezzi',
       'dettaglioAccesso',
     ])
     pese.elencaStrumenti.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: true }))
+    pese.elencaAgenti.and.returnValue(of({ righe: [], puoGestire: false }))
     pese.elencaAutomezzi.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: true }))
     registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
     TestBed.configureTestingModule({
@@ -273,10 +275,12 @@ describe('PeseComponent (schede)', () => {
     const pese = jasmine.createSpyObj<PeseService>('PeseService', [
       'elencaAccessi',
       'elencaStrumenti',
+      'elencaAgenti',
       'elencaAutomezzi',
     ])
     pese.elencaAccessi.and.returnValue(of(elenco([])))
     pese.elencaStrumenti.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: false }))
+    pese.elencaAgenti.and.returnValue(of({ righe: [], puoGestire: false }))
     pese.elencaAutomezzi.and.returnValue(of({ righe: [], puoOperare: true, puoRettificare: false }))
     const registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
     registri.listRegistri.and.returnValue(of([]))

@@ -68,6 +68,46 @@ describe('AccessoDettaglioComponent (DOM)', () => {
   })
   afterEach(() => fixture?.destroy())
 
+  it('pesata da strumento: badge, agente e firma verificata; simulata in evidenza', () => {
+    apri(
+      accesso({
+        pesate: [
+          pesata({
+            fonte: 'STRUMENTO',
+            letturaId: 'l1',
+            firmaValida: true,
+            agente: 'PC pesa ingresso',
+          }),
+          pesata({
+            id: 'p2',
+            ordine: 2,
+            fonte: 'SIMULATA',
+            letturaId: 'l2',
+            firmaValida: false,
+            avvisi: ['Pesata simulata: non è un peso reale.'],
+          }),
+        ],
+        netto: {
+          ...accesso().netto,
+          simulato: true,
+          avvisi: ['Pesata simulata: non è un peso reale.'],
+        },
+      })
+    )
+    const badge1 = Array.from(document.body.querySelectorAll('[data-testid="ad-badge-1"]')).map(
+      e => e.textContent
+    )
+    expect(badge1).toEqual(['Da strumento', 'Firma verificata'])
+    expect(q('ad-agente-1')!.textContent).toContain('PC pesa ingresso')
+    const badge2 = Array.from(document.body.querySelectorAll('[data-testid="ad-badge-2"]')).map(
+      e => e.textContent
+    )
+    expect(badge2).toEqual(['Simulata', 'Firma non verificata'])
+    expect(q('ad-avviso-simulata')!.textContent).toContain('non si usa nei documenti')
+    // l'avviso del backend non si ripete nell'elenco degli avvisi
+    expect(q('ad-avvisi')?.textContent ?? '').not.toContain('non è un peso reale')
+  })
+
   it('pesata manuale mostra il badge Manuale e l avviso metrologico', () => {
     apri(
       accesso({

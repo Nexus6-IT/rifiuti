@@ -27,6 +27,10 @@ export function badgePesata(p: PesataVista): string[] {
   if (p.rettifiche.length > 0) badge.push('Rettificato')
   if (p.fonte === 'MANUALE' && !p.allegato) badge.push('Senza prova documentale')
   if (!p.integra) badge.push('Dato alterato')
+  if (p.fonte === 'STRUMENTO') badge.push('Da strumento')
+  if (p.fonte === 'SIMULATA') badge.push('Simulata')
+  if (p.firmaValida === true) badge.push('Firma verificata')
+  if (p.firmaValida === false) badge.push('Firma non verificata')
   return badge
 }
 
@@ -278,3 +282,15 @@ export function contoAllaRovescia(scadeIl: string, adesso: Date = new Date()): s
 export function indirizzoServerAgente(apiUrl: string, origine: string): string {
   return new URL(apiUrl, origine).href.replace(/\/+$/, '')
 }
+
+const formatoDataOra = new Intl.DateTimeFormat('it-IT', {
+  timeZone: FUSO,
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+/** "13/11, 09:15:03" in ora di Roma. */
+export const dataOraItaliana = (iso: string): string => formatoDataOra.format(new Date(iso))
