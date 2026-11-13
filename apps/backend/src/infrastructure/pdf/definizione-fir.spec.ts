@@ -2,8 +2,10 @@ import { PDFService } from './pdf.service'
 import {
   definizioneFir,
   definizioneFirInSerie,
+  eSerieMista,
   ModelloStampaNonValidoError,
   type ModelloStampaFir,
+  type PagineDeiBlocchi,
 } from './definizione-fir'
 import { LoggerService } from '../../core/logger/logger.service'
 
@@ -179,11 +181,87 @@ describe('PDFService - PDF reale', () => {
       expect(d.watermark).toBeDefined()
     })
 
-    it('in serie mista nessuna filigrana su tutto il documento: la bozza porta la sua dicitura', () => {
+    it('in serie mista nessuna filigrana di documento: la bozza porta la dicitura e la filigrana per pagina', () => {
       const d = definizioneFirInSerie([{ fir: fir('A') }, { fir: bozza('B') }], null)
       expect(d.watermark).toBeUndefined()
-      const t = testo(d)
-      expect(t.match(/BOZZA – NON VALIDO/g)).toHaveLength(1)
+      expect(typeof d.background).toBe('function')
+      expect(typeof d.pageBreakBefore).toBe('function')
+      // la dicitura rossa in testa alla bozza resta (la filigrana SVG sta in `background`, non nel contenuto)
+      expect(testo(d).match(/BOZZA – NON VALIDO/g)).toHaveLength(1)
+    })
+
+    it('serie di sole bozze o di soli emessi: nessun background per pagina', () => {
+      expect(
+        definizioneFirInSerie([{ fir: bozza('A') }, { fir: bozza('B') }]).background
+      ).toBeUndefined()
+      expect(
+        definizioneFirInSerie([{ fir: fir('A') }, { fir: fir('B') }]).background
+      ).toBeUndefined()
+    })
+
+    it('eSerieMista: vera solo con bozze ed emessi insieme', () => {
+      expect(eSerieMista([{ fir: fir('A') }, { fir: bozza('B') }])).toBe(true)
+      expect(eSerieMista([{ fir: bozza('A') }, { fir: bozza('B') }])).toBe(false)
+      expect(eSerieMista([{ fir: fir('A') }])).toBe(false)
+    })
+
+    describe('serie mista: filigrana per pagina', () => {
+      const dim = { width: 595, height: 842 }
+      const conMappa = (modello?: ModelloStampaFir | null) => {
+        const pagine: PagineDeiBlocchi = new Map()
+        const d = definizioneFirInSerie(
+          [{ fir: fir('A') }, { fir: bozza('B') }, { fir: fir('C') }, { fir: bozza('D') }],
+          modello,
+          pagine
+        )
+        const registra = (i: number, pagina: number) =>
+          d.pageBreakBefore!(
+            { id: `fir-blocco-${i}`, startPosition: { pageNumber: pagina } } as never,
+            [],
+            [],
+            []
+          )
+        const sulla = (p: number) => (d.background as (p: number, s: typeof dim) => unknown)(p, dim)
+        return { d, pagine, registra, sulla }
+      }
+
+      it("prima della passata di misura non c'e' filigrana su nessuna pagina", () => {
+        const { sulla } = conMappa()
+        expect([1, 2, 3, 4].map(sulla)).toEqual([null, null, null, null])
+      })
+
+      it("dopo la misura la filigrana e' solo sulle pagine dei blocchi in bozza, anche multi-pagina", () => {
+        const { registra, sulla, pagine } = conMappa()
+        // A: p1; B (bozza): p2-p3; C: p4; D (bozza): p5-p6
+        for (const [i, p] of [
+          [0, 1],
+          [1, 2],
+          [2, 4],
+          [3, 5],
+        ])
+          expect(registra(i, p)).toBe(false)
+        expect([...pagine]).toEqual([
+          [0, 1],
+          [1, 2],
+          [2, 4],
+          [3, 5],
+        ])
+        const marcate = [1, 2, 3, 4, 5, 6].map(p => sulla(p) !== null)
+        expect(marcate).toEqual([false, true, true, false, true, true])
+        expect(JSON.stringify(sulla(2))).toContain('BOZZA – NON VALIDO')
+      })
+
+      it('pageBreakBefore non sposta mai nulla e ignora i nodi senza marcatore', () => {
+        const { d, pagine } = conMappa()
+        expect(d.pageBreakBefore!({ id: 'altro' } as never, [], [], [])).toBe(false)
+        expect(d.pageBreakBefore!({} as never, [], [], [])).toBe(false)
+        expect(pagine.size).toBe(0)
+      })
+
+      it("ogni copia e' un blocco: con 2 copie i marcatori sono 8, uno per copia", () => {
+        const { d } = conMappa({ copie: 2 } as ModelloStampaFir)
+        expect(testo(d).match(/fir-blocco-\d+/g)).toHaveLength(8)
+      })
     })
 
     it('in serie di soli emessi nessuna traccia di bozza', () => {

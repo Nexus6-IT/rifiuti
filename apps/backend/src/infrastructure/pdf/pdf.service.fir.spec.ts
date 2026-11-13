@@ -255,3 +255,76 @@ describe('PDFService: logo del modello non decodificabile (revisione I1)', () =>
     expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
   })
 })
+
+describe('PDFService.generateFIRSeriePDF - filigrana BOZZA per pagina (render reale pdfmake)', () => {
+  const logger = {
+    setContext: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  } as unknown as LoggerService
+
+  const fir = (numero: string, status: string) => ({
+    status,
+    firNumber: numero,
+    createdAt: new Date('2026-03-05T10:00:00Z'),
+    producer: { companyName: 'Produttore SRL' },
+    carrier: { companyName: 'Trasportatore SRL' },
+    receiver: { companyName: 'Destinatario SRL' },
+    cerCode: '13 02 05*',
+    quantity: 120,
+    unitOfMeasure: 'KG',
+    signatures: [],
+  })
+
+  /** Esegue la serie e registra, per ogni passata di rendering, quali pagine hanno la filigrana. */
+  const rendiERegistra = async (elementi: Array<{ fir: object }>, copie: number) => {
+    const service = new PDFService(logger)
+    const passate: Array<Map<number, boolean>> = []
+    const originale = (service as any).rendi.bind(service)
+    jest.spyOn(service as any, 'rendi').mockImplementation((def: any) => {
+      const mappa = new Map<number, boolean>()
+      passate.push(mappa)
+      if (typeof def.background === 'function') {
+        const bg = def.background
+        def.background = (p: number, dim: unknown) => {
+          const r = bg(p, dim)
+          mappa.set(p, r !== null && r !== undefined)
+          return r
+        }
+      }
+      return originale(def)
+    })
+    const pdf = await service.generateFIRSeriePDF(elementi as never, { copie } as never)
+    return { pdf, passate }
+  }
+
+  it('serie mista: la filigrana e solo sulle pagine della bozza (2 copie = 2 pagine)', async () => {
+    const { pdf, passate } = await rendiERegistra(
+      [{ fir: fir('A', 'EMESSO') }, { fir: fir('B', 'DRAFT') }, { fir: fir('C', 'EMESSO') }],
+      2
+    )
+    expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
+    // passata di misura + passata vera
+    expect(passate).toHaveLength(2)
+    // A: p1-2, B (bozza): p3-4, C: p5-6
+    expect([...passate[1].entries()].sort(([a], [b]) => a - b)).toEqual([
+      [1, false],
+      [2, false],
+      [3, true],
+      [4, true],
+      [5, false],
+      [6, false],
+    ])
+    // la passata di misura non ha ancora la mappa: nessuna filigrana
+    expect([...passate[0].values()].some(Boolean)).toBe(false)
+  })
+
+  it('serie non mista: una sola passata', async () => {
+    const solo = await rendiERegistra([{ fir: fir('A', 'EMESSO') }, { fir: fir('B', 'EMESSO') }], 1)
+    expect(solo.passate).toHaveLength(1)
+    const bozze = await rendiERegistra([{ fir: fir('A', 'DRAFT') }, { fir: fir('B', 'DRAFT') }], 1)
+    expect(bozze.passate).toHaveLength(1)
+  })
+})

@@ -15,7 +15,9 @@ import {
   contenutoFir,
   definizioneFir,
   definizioneFirInSerie,
+  eSerieMista,
   type FirConQr,
+  type PagineDeiBlocchi,
   type ModelloStampaFir,
 } from './definizione-fir'
 import {
@@ -77,7 +79,12 @@ export class PDFService {
     modello?: ModelloStampaFir | null
   ): Promise<Buffer> {
     this.logger.info(`Generating FIR series PDF: ${elementi.length} FIR`)
-    return this.rendiConFallbackLogo(modello, m => definizioneFirInSerie(elementi, m))
+    const pagine: PagineDeiBlocchi = new Map()
+    const costruisci = (m: ModelloStampaFir | null | undefined) =>
+      definizioneFirInSerie(elementi, m, pagine)
+    // Serie mista (bozze + emessi): la filigrana per pagina ha bisogno di una passata di misura.
+    if (eSerieMista(elementi)) await this.rendiConFallbackLogo(modello, costruisci)
+    return this.rendiConFallbackLogo(modello, costruisci)
   }
 
   /** Distinta dei ritiri (T16): stesso motore e stesso ripiego senza logo dei FIR. */
