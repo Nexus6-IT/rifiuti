@@ -220,10 +220,7 @@ test.describe('Ciclo di vita FIR completo', () => {
     await expect(lista.statoPerId(fir.id)).toHaveText(/consegnato/i, { timeout: ATTESA_SERVER })
     // A consegna avvenuta il ciclo e' chiuso: nessuna azione di trasporto sulla riga.
     await expect(lista.actionButtonInRow(riga, /Conferma consegna/)).toHaveCount(0)
-    const consegnato = (await leggiFir(tokenAdmin, fir.id)) as {
-      stato: string
-      pesoEffettivo: number
-    }
+    const consegnato = await leggiFir(tokenAdmin, fir.id)
     expect(consegnato.stato).toBe('CONSEGNATO')
     expect(consegnato.pesoEffettivo).toBe(9.5)
   })
