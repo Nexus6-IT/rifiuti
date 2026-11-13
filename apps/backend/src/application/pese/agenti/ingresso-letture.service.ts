@@ -34,6 +34,8 @@ export type EsitoElemento =
       esito: 'RIFIUTATA'
       codice: CodiceRifiuto
       messaggio: string
+      /** solo con `SEQUENZA_GIA_USATA`: ultima sequenza nota al server, da cui l'agente riparte */
+      ultimaSequenza?: number
     }
 
 /** Tempo massimo per un lotto: oltre, si interrompe con 503 (mai `RIFIUTATA` per un timeout). */
@@ -46,6 +48,31 @@ const rifiutata = (
   codice: CodiceRifiuto,
   messaggio = MESSAGGI_RIFIUTO[codice]
 ): EsitoElemento => ({ chiaveIdempotenza, esito: 'RIFIUTATA', codice, messaggio })
+
+/**
+ * Ultima sequenza nota per un agente: il massimo fra il valore registrato (battiti e letture) e le
+ * letture presenti; 0 se non ce ne sono. Serve all'agente per riallinearsi (review B4-B7, I2).
+ */
+export async function ultimaSequenzaNota(
+  db: Pick<Prisma.TransactionClient, 'agentePesa' | 'letturaPesa'>,
+  agente: { id: string; tenantId: string }
+): Promise<number> {
+  const [riga, max] = await Promise.all([
+    db.agentePesa.findFirst({
+      where: { id: agente.id, tenantId: agente.tenantId },
+      select: { ultimaSequenza: true },
+    }),
+    db.letturaPesa.aggregate({
+      where: { agenteId: agente.id, tenantId: agente.tenantId },
+      _max: { sequenza: true },
+    }),
+  ])
+  return Number(
+    [riga?.ultimaSequenza ?? BigInt(0), max._max.sequenza ?? BigInt(0)].reduce((a, b) =>
+      a > b ? a : b
+    )
+  )
+}
 
 const eUnico = (err: unknown): boolean =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
@@ -205,11 +232,16 @@ export class IngressoLettureService {
         })
         if (alibi) return rifiutata(p.chiaveIdempotenza, 'ALIBI_GIA_USATO')
       }
-      return rifiutata(
-        p.chiaveIdempotenza,
-        'CHIAVE_RIUSATA',
-        'Sequenza già usata da un’altra lettura di questo agente.'
-      )
+      // Stessa sequenza, chiave e contenuto diversi (la stessa lettura sarebbe GIA_RICEVUTA, sopra):
+      // l'agente ha perso il contatore. Codice proprio, con l'ultima sequenza nota, cosi' il client
+      // si riallinea e ri-numera la lettura invece di scartarla. La lettura NON e' accettata.
+      return {
+        chiaveIdempotenza: p.chiaveIdempotenza,
+        esito: 'RIFIUTATA',
+        codice: 'SEQUENZA_GIA_USATA',
+        messaggio: MESSAGGI_RIFIUTO.SEQUENZA_GIA_USATA,
+        ultimaSequenza: await ultimaSequenzaNota(this.prisma, agente),
+      }
     }
   }
 

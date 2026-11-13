@@ -210,4 +210,16 @@ describe('AbbinamentoAgenteService (Postgres reale)', () => {
     })
     expect(new Date(c.oraServer).toISOString()).toBe(c.oraServer)
   })
+
+  it('configurazione: ultimaSequenza = 0 per un agente nuovo, poi l’ultima nota al server', async () => {
+    const a = await azienda()
+    const ag = await creaAgenteAttivoDiProva(owner, a)
+    expect(await servizio.configurazione({ id: ag.id, tenantId: a.tenantId })).toMatchObject({
+      ultimaSequenza: 0,
+    })
+    await owner.agentePesa.update({ where: { id: ag.id }, data: { ultimaSequenza: BigInt(41) } })
+    expect(await servizio.configurazione({ id: ag.id, tenantId: a.tenantId })).toMatchObject({
+      ultimaSequenza: 41,
+    })
+  })
 })

@@ -13,6 +13,7 @@ import {
   CodiceAbbinamentoNonValidoError,
   DatiPesaNonValidiError,
 } from '../errori-pese'
+import { ultimaSequenzaNota } from './ingresso-letture.service'
 import { nelContestoTenant } from '../nel-contesto-tenant'
 import { RisoluzioneAgenteService } from './risoluzione-agente.service'
 
@@ -46,6 +47,8 @@ export interface RispostaConfigurazione {
   simulazioneAmmessa: boolean
   intervalloBattitoS: number
   lottoMassimo: number
+  /** ultima sequenza nota al server: l'agente riparte da qui se ha perso il contatore */
+  ultimaSequenza: number
   /** ISO 8601 UTC */
   oraServer: string
 }
@@ -147,6 +150,7 @@ export class AbbinamentoAgenteService {
           ...base,
           intervalloBattitoS: INTERVALLO_BATTITO_S,
           lottoMassimo: LOTTO_MASSIMO,
+          ultimaSequenza: await ultimaSequenzaNota(tx, agente),
           oraServer: this.orologio().toISOString(),
         }
       })

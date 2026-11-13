@@ -125,6 +125,29 @@ describe('IngressoLettureService (Postgres reale)', () => {
     expect(await righe(s)).toBe(1)
   })
 
+  it('sequenza già usata da un’altra lettura: SEQUENZA_GIA_USATA con ultimaSequenza, nessuna riga nuova', async () => {
+    const s = await scenario()
+    await invia(s, [lettura(s, { sequenza: 5 })])
+    await invia(s, [lettura(s, { sequenza: 9 })])
+    // altra lettura (chiave diversa) che riusa la sequenza 5: l'agente ha perso il contatore
+    const [r] = await invia(s, [lettura(s, { sequenza: 5, pesoKg: '77.00' })])
+    expect(r).toMatchObject({
+      esito: 'RIFIUTATA',
+      codice: 'SEQUENZA_GIA_USATA',
+      ultimaSequenza: 9,
+    })
+    expect(await righe(s)).toBe(2)
+  })
+
+  it('un vero replay della stessa lettura resta GIA_RICEVUTA (non SEQUENZA_GIA_USATA, non accettata di nuovo)', async () => {
+    const s = await scenario()
+    const el = lettura(s, { sequenza: 5 })
+    await invia(s, [el])
+    const [r] = await invia(s, [el])
+    expect(r).toMatchObject({ esito: 'GIA_RICEVUTA' })
+    expect(await righe(s)).toBe(1)
+  })
+
   it('strumento di un’altra azienda nel payload firmato dall’agente A: STRUMENTO_NON_ASSEGNATO, nessuna riga in B', async () => {
     const a = await scenario()
     const b = await scenario()

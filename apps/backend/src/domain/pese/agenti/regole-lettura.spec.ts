@@ -157,6 +157,7 @@ describe('valutaLettura: rifiuti', () => {
       'OROLOGIO_AVANTI',
       'SIMULAZIONE_NON_AMMESSA',
       'CHIAVE_RIUSATA',
+      'SEQUENZA_GIA_USATA',
       'ALIBI_GIA_USATO',
     ]
     expect(Object.keys(MESSAGGI_RIFIUTO).sort()).toEqual([...codici].sort())

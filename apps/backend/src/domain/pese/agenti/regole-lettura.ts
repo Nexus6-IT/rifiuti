@@ -3,7 +3,7 @@ import { PESO_MASSIMO_CENTESIMI, type PayloadLettura } from './payload-lettura'
 /**
  * Regole di una lettura in ingresso (Fase 4 pezzo 8b, D7). Dominio puro: riceve il payload già
  * verificato e lo stato letto dal database, restituisce accettabile (con avvisi) o rifiutata.
- * `CHIAVE_RIUSATA` e `ALIBI_GIA_USATO` dipendono dallo stato del database e li decide il servizio
+ * `CHIAVE_RIUSATA`, `SEQUENZA_GIA_USATA` e `ALIBI_GIA_USATO` dipendono dallo stato del database e li decide il servizio
  * d'ingresso (B5): qui esistono come codici e messaggi, non come esito di `valutaLettura`.
  */
 
@@ -28,6 +28,7 @@ export type CodiceRifiuto =
   | 'OROLOGIO_AVANTI'
   | 'SIMULAZIONE_NON_AMMESSA'
   | 'CHIAVE_RIUSATA'
+  | 'SEQUENZA_GIA_USATA'
   | 'ALIBI_GIA_USATO'
 
 export const MESSAGGI_RIFIUTO: Readonly<Record<CodiceRifiuto, string>> = {
@@ -42,6 +43,8 @@ export const MESSAGGI_RIFIUTO: Readonly<Record<CodiceRifiuto, string>> = {
   OROLOGIO_AVANTI: 'Orario della lettura nel futuro: controllare l’orologio del PC della pesa.',
   SIMULAZIONE_NON_AMMESSA: 'Letture simulate non ammesse per questa azienda.',
   CHIAVE_RIUSATA: 'Chiave di idempotenza già usata con un contenuto diverso.',
+  SEQUENZA_GIA_USATA:
+    'Sequenza già usata da un’altra lettura di questo agente: riallineare il contatore.',
   ALIBI_GIA_USATO: 'Alibi già registrato per questo strumento.',
 }
 
