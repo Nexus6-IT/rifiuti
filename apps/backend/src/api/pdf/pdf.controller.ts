@@ -27,7 +27,7 @@ import {
   ModelloStampaNonValidoError,
   type ModelloStampaFir,
 } from '../../infrastructure/pdf/definizione-fir'
-import { sceglieModelloFir } from '../../application/ritiri/stampa/scelta-modello-fir'
+import { sceglieModelloFir } from '../../application/modelli-stampa/scelta-modello-fir'
 import { FirSerieDto } from './dto/fir-serie.dto'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

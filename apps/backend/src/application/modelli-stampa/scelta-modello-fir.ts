@@ -1,4 +1,4 @@
-import type { ModelloStampaFir } from '../../../infrastructure/pdf/definizione-fir'
+import type { ModelloStampaFir } from '../../infrastructure/pdf/definizione-fir'
 
 /** Il modello salvato, nei soli campi che servono alla scelta e alla stampa del FIR. */
 export interface ModelloSalvato {
