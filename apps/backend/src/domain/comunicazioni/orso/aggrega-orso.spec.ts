@@ -163,6 +163,18 @@ describe('aggregaOrso', () => {
     ])
   })
 
+  it('una giacenza negativa non entra nel file ma produce un avviso non bloccante', () => {
+    const r = aggregaOrso([], {
+      ...P,
+      giacenze: [{ mese: 4, cer: '17 04 05', descrizione: 'Ferro e acciaio', kg: -300 }],
+    })
+    expect(r.mesi.flatMap(m => m.prodotti)).toEqual([])
+    expect(r.avvisi).toEqual([
+      { codice: 'GIACENZA_NEGATIVA', bloccante: false, mese: 4, cer: '170405', movimentoIds: [] },
+    ])
+    expect(r.bloccato).toBe(false)
+  })
+
   it('un CER in giacenza senza uscite nel mese compare come prodotto senza uscite', () => {
     const r = aggregaOrso([], {
       ...P,

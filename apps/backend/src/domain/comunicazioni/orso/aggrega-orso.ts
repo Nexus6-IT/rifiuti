@@ -130,8 +130,20 @@ export function aggregaOrso(movimenti: readonly MovimentoOrso[], p: ParametriOrs
   // non ha uscite nel mese compare un nodo senza uscite.
   for (const gz of p.giacenze ?? []) {
     const g = Math.round(gz.kg * 1000)
-    if (!Number.isInteger(gz.mese) || gz.mese < 1 || gz.mese > 12 || !(g > 0)) continue
+    if (!Number.isInteger(gz.mese) || gz.mese < 1 || gz.mese > 12) continue
     const cer = chiaveConfrontoCer(gz.cer)
+    if (g < 0) {
+      // Più scarichi che carichi: registro incoerente. Non entra nel file (resta 0) ma si avvisa.
+      avvisiMap.set(`GIACENZA_NEGATIVA|${gz.mese}|${cer}`, {
+        codice: 'GIACENZA_NEGATIVA',
+        bloccante: false,
+        mese: gz.mese,
+        cer,
+        movimentoIds: [],
+      })
+      continue
+    }
+    if (!(g > 0)) continue
     const nodi = [...prodotti.values()]
       .filter(n => n.mese === gz.mese && n.cer === cer)
       .sort((a, b) => a.descrizione.localeCompare(b.descrizione))
