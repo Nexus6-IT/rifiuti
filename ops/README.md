@@ -715,6 +715,21 @@ stato_accesso_pesa, modo_pesatura, fonte_pesata;` e `DELETE FROM _prisma_migrati
 migration_name = '20261101600000_pese_modello_dati';`. Con dati già inseriti le pesate (e gli
 allegati) sono documentazione del registro e del FIR: esportarle prima di un `DROP`.
 
+#### Pese 4.8b: agenti di pesa e letture firmate (`20261113100000_pese_fonte_simulata`, `20261113100100_pese_agenti`)
+
+Due migration additive. La prima aggiunge solo il valore `SIMULATA` all'enum `fonte_pesata` (un valore
+enum non e' usabile nella transazione in cui nasce: per questo sta da sola). La seconda crea
+`stato_agente_pesa`, `agenti_pesa` e `letture_pesa` (RLS, 84 tabelle con `tenant_id` in tutto), le colonne
+`strumenti_pesa.agente_id`, `pesate.lettura_id` e `tenants.pese_simulazione_ammessa` (default false), i
+trigger `letture_pesa_immutabile`, `agenti_pesa_controlli`, `pesate_da_lettura` e il CHECK
+`pesate_lettura_check`. **Precondizione:** `SELECT count(*) FROM pesate WHERE fonte IN ('STRUMENTO','FILE')`
+deve dare 0 (da 8b `STRUMENTO` richiede una lettura firmata). Dopo il deploy rilanciare `ops/db-ruoli.sh`
+(`letture_pesa` solo SELECT e INSERT, `agenti_pesa` senza DELETE).
+
+Ripristino: vedi il commento di testa della seconda migration (`DROP TRIGGER pesate_da_lettura`, `DROP
+COLUMN`, `DROP TABLE letture_pesa, agenti_pesa`, `DROP TYPE stato_agente_pesa`). **Il valore `SIMULATA`
+non si toglie da un enum PostgreSQL**: resta inutilizzato.
+
 #### Pese 4.8a: privilegi, trigger, rilascio e rollback
 
 La migration `20261101600100_pese_cancellazione_e_indici` completa la precedente (entrambe mai applicate

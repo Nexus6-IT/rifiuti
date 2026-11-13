@@ -194,9 +194,9 @@ describe('Automezzi e strumenti di pesa — Postgres reale, ruolo wasteflow_app'
     for (const [k, peso] of pesi.entries()) {
       const [p] = await owner.$queryRaw<{ id: string }[]>`
         INSERT INTO pesate (tenant_id, accesso_id, ordine, fonte, strumento_id, peso_kg, stabile,
-                            ora_ricezione, chiave_idempotenza, impronta)
-        VALUES (${a.tenantId}::uuid, ${acc.id}::uuid, ${k + 1}, 'STRUMENTO', ${strumentoId}::uuid,
-                ${peso}, true, ${ora}, gen_random_uuid(), ${HASH})
+                            ora_ricezione, operatore_id, motivo_manuale, chiave_idempotenza, impronta)
+        VALUES (${a.tenantId}::uuid, ${acc.id}::uuid, ${k + 1}, 'MANUALE', ${strumentoId}::uuid,
+                ${peso}, true, ${ora}, ${a.utenteId}::uuid, 'scontrino', gen_random_uuid(), ${HASH})
         RETURNING id::text AS id`
       ids.push(p.id)
     }
