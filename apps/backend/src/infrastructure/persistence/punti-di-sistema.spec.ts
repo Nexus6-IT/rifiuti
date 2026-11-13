@@ -26,6 +26,8 @@ const PUNTI_DI_SISTEMA: Record<string, string> = {
     "elenco di tutte le aziende per il super admin e lookup dell'utente chiamante",
   'application/admin/user-admin.service.ts':
     "elenco utenti su tutte le aziende e lookup per id del super admin prima di conoscere l'azienda",
+  'application/pese/agenti/risoluzione-agente.service.ts':
+    "token o codice dell'agente di pesa: l'azienda e' ignota prima della lettura",
   'application/registro/causali/catalogo-causali-avvio.service.ts':
     "catalogo di sistema delle causali: tabella globale (niente tenant, niente RLS), letta all'avvio quando non c'è alcun contesto azienda",
   'application/notifications/deadline-checker.service.ts':
