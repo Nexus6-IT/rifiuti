@@ -26,11 +26,19 @@ on:
     # `docs/` (i file letti dalle suite sono `monitoring/alerts/*.yml` e
     # `tools/rentri-fake/`, che restano fuori dal filtro).
     #
+    # `tools/agente-pesa/**` e' l'agente Go che gira sul PC della pesa, non nel
+    # VPS: un commit che tocca solo quello non cambia nulla in produzione. La
+    # suite backend legge `tools/agente-pesa/testdata/contratto/` (payload-lettura.spec.ts),
+    # ma un commit che cambia SOLO il contratto non cambia cio' che gira: il
+    # contratto resta verificato dal job `agente-pesa` e dal job `backend` di
+    # ci.yml, che non ignora `tools/`.
+    #
     # Per rilasciare comunque dopo un commit filtrato: `workflow_dispatch`.
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
       - 'LICENSE'
+      - 'tools/agente-pesa/**'
   # Avvio manuale: permette di ri-rilasciare (o ritentare un gate caduto per
   # ragioni transitorie) senza dover creare un commit fittizio su master.
   workflow_dispatch:

@@ -11,6 +11,8 @@
 # gli stessi test. I test di integrazione PostgreSQL e l'E2E stanno solo qui,
 # quindi prima di fondere una PR in master si lancia questo workflow a mano
 # sul branch della PR.
+# Sei job: backend, frontend, test-postgres, e2e, agente-pesa (Go: vet, test e
+# build Windows nel container di GO_IMAGE) e security.
 # Runner: self-hosted Gitea con label `ubuntu-latest`.
 # Solo CI (nessun deploy).
 #
@@ -738,6 +740,49 @@ jobs:
           if [ -f /tmp/backend-e2e-devlogin.pid ]; then
             kill "$(cat /tmp/backend-e2e-devlogin.pid)" 2>/dev/null || true
           fi
+
+  # ==========================================================================
+  # AGENTE DI PESA - Go (vet, test, build Windows nel container di GO_IMAGE)
+  # ==========================================================================
+  # Niente setup-go: scarica Go da GitHub e la sua cache usa il server di cache
+  # di GitHub Actions, assente su Gitea. Si usa lo stesso GO_IMAGE del locale,
+  # con lo schema docker create + docker cp del job e2e.
+  agente-pesa:
+    name: "Agente di pesa (Go: vet, test, build Windows)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GO_CI_CONTAINER: agente-pesa-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test e build nel container Go
+        run: |
+          IMG="$(cat tools/agente-pesa/GO_IMAGE)"
+          docker rm -f "$GO_CI_CONTAINER" 2>/dev/null || true
+          docker create --name "$GO_CI_CONTAINER" --label "neat.ci.job=agente-pesa-${{ github.run_id }}" \
+            -e CGO_ENABLED=0 -e GITHUB_SHA="${{ github.sha }}" -w /src "$IMG" sh -c '
+              set -e
+              test -z "$(gofmt -l .)"
+              go vet ./...
+              GOOS=windows go vet ./...
+              go test -count=1 ./...
+              GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.versione=${GITHUB_SHA:-ci}" -o dist/agente-pesa.exe ./cmd/agente-pesa
+              sha256sum dist/agente-pesa.exe > dist/agente-pesa.exe.sha256'
+          docker cp tools/agente-pesa/. "$GO_CI_CONTAINER":/src
+          docker start -a "$GO_CI_CONTAINER"
+          mkdir -p dist-agente && docker cp "$GO_CI_CONTAINER":/src/dist/. dist-agente/
+
+      # upload-artifact@v3: la v4 non funziona su Gitea (come in ROADS).
+      - uses: actions/upload-artifact@v3
+        with:
+          name: agente-pesa-windows
+          path: dist-agente/
+          retention-days: 14
+
+      - name: Rimuovi il container Go (sempre)
+        if: always()
+        run: docker rm -f "$GO_CI_CONTAINER" 2>/dev/null || true
 
   # ==========================================================================
   # SECURITY - npm audit (non bloccante)
