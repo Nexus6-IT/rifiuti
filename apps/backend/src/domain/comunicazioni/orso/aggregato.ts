@@ -31,6 +31,7 @@ export type CodiceAvvisoOrso =
   | 'PROVINCIA_CONFERITORE_MANCANTE'
   | 'QUANTITA_NON_CONVERTIBILE'
   | 'OPERAZIONE_MANCANTE'
+  | 'GIACENZA_NEGATIVA'
 
 /** Giacenza del CER a fine mese, calcolata dal registro (carichi - scarichi vigenti, aperture). */
 export interface GiacenzaFineMeseOrso {

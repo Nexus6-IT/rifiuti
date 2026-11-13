@@ -56,6 +56,8 @@ const MESSAGGI: Record<CodiceAvvisoComunicazione, string> = {
   QUANTITA_NON_CONVERTIBILE:
     'Quantità in un’unità non convertibile in kg (manca il peso specifico): il movimento non può entrare nel file.',
   OPERAZIONE_MANCANTE: 'Operazione di recupero o smaltimento non indicata sul movimento.',
+  GIACENZA_NEGATIVA:
+    'Giacenza a fine mese negativa per un CER (più scarichi che carichi nel registro): nel file è indicata come 0, controlla i movimenti.',
   PROVINCIA_DA_INDIRIZZO:
     'Provincia del conferitore ricavata dall’indirizzo della controparte (nessun FIR collegato): verifica che sia corretta.',
   PROVINCIA_IMPIANTO_MANCANTE:
