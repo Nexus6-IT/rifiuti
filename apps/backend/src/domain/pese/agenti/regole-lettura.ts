@@ -115,9 +115,9 @@ export function valutaLettura(p: PayloadLettura, ctx: ContestoValutazione): Esit
     return rifiuto('FUORI_PORTATA')
   }
   const limite = ctx.ricezione.getTime() + MINUTI_TOLLERANZA_OROLOGIO * MS_MINUTO
-  if (p.oraAgente.getTime() > limite || (p.oraStrumento && p.oraStrumento.getTime() > limite)) {
-    return rifiuto('OROLOGIO_AVANTI')
-  }
+  // Solo l'ora del PC dell'agente (correggibile dal tecnico): un orologio dello strumento avanti, per
+  // esempio fermo sull'ora legale, non fa perdere le letture ma segnala lo sfasamento (I4).
+  if (p.oraAgente.getTime() > limite) return rifiuto('OROLOGIO_AVANTI')
   if (p.simulata && !ctx.simulazioneAmmessa) return rifiuto('SIMULAZIONE_NON_AMMESSA')
   return {
     esito: 'ACCETTABILE',

@@ -306,7 +306,7 @@ Percorsi relativi a `apps/backend/` salvo indicazione; `fe/` = `apps/frontend/sr
   messaggio: string }`). Codici di rifiuto (stabili, letti dall'agente):
   `FIRMA_NON_VALIDA`, `PAYLOAD_NON_VALIDO`, `AGENTE_DIVERSO`, `STRUMENTO_NON_ASSEGNATO`,
   `STRUMENTO_NON_ATTIVO`, `PESO_INSTABILE`, `PESO_NON_VALIDO` (≤ 0 o > 99.999.999,99),
-  `FUORI_PORTATA`, `OROLOGIO_AVANTI` (`oraAgente` o `oraStrumento` oltre `ricezione + 5 min`),
+  `FUORI_PORTATA`, `OROLOGIO_AVANTI` (solo `oraAgente` oltre `ricezione + 5 min`; `oraStrumento` avanti = lettura accettata con l'avviso di sfasamento),
   `SIMULAZIONE_NON_AMMESSA`, `CHIAVE_RIUSATA` (stessa chiave, payload diverso), `SEQUENZA_GIA_USATA` (stessa sequenza, altra
   chiave: l'esito porta `ultimaSequenza`; l'agente riallinea il contatore e ri-numera, non scarta),
   `ALIBI_GIA_USATO`. Transitori per l'agente Go: `OROLOGIO_AVANTI`, `STRUMENTO_NON_ASSEGNATO`,

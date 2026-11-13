@@ -127,12 +127,13 @@ describe('valutaLettura: rifiuti', () => {
     )
   })
 
-  it('OROLOGIO_AVANTI: vale anche per oraStrumento', () => {
-    rifiutata(
-      payload({ oraAgente: min(RICEZIONE, -1), oraStrumento: min(RICEZIONE, 6) }),
-      ctx(),
-      'OROLOGIO_AVANTI'
+  it('oraStrumento avanti (anche di un’ora): lettura accettata con l’avviso di sfasamento, non OROLOGIO_AVANTI', () => {
+    const v = valutaLettura(
+      payload({ oraAgente: min(RICEZIONE, -1), oraStrumento: min(RICEZIONE, 60) }),
+      ctx()
     )
+    expect(v.esito).toBe('ACCETTABILE')
+    expect(v.esito === 'ACCETTABILE' && v.avvisi.join('|')).toContain('sfasato')
   })
 
   it('SIMULAZIONE_NON_AMMESSA e, con il permesso, accettata con avviso', () => {
