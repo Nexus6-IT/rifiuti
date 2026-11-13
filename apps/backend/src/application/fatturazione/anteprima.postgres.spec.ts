@@ -3,6 +3,7 @@
  * contro un Postgres reale, collegato COME `wasteflow_app` (RLS FORCE). Il proprietario prepara gli
  * scenari e legge lo stato finale; pulizia solo per id esatti (`pulisciTenantDiTest`).
  */
+import { ConflictException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 import { urlComeRuolo } from '../../infrastructure/database/client-come-ruolo'
 import { eDatabaseDiTestLocale } from '../../test-support/database-di-test'
@@ -93,6 +94,29 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
     )
     await nel(az.tenantId, () => eseguiAnteprima(app, az.tenantId, r.id, 1))
     return r.id
+  }
+
+  /**
+   * Diagnostica per il solo caso di errore: sessioni del database in transazione aperta o in attesa
+   * di lock al momento del 409. Non cambia l'esito del test, ne arricchisce il messaggio.
+   */
+  async function arricchisciConStatoDb(err: ConflictException): Promise<Error> {
+    try {
+      const sessioni = await owner.$queryRawUnsafe<Record<string, unknown>[]>(
+        `SELECT pid, state, wait_event_type, wait_event, application_name,
+                now() - xact_start AS eta_transazione, left(query, 160) AS query,
+                pg_blocking_pids(pid) AS bloccata_da
+         FROM pg_stat_activity
+         WHERE datname = current_database() AND pid <> pg_backend_pid()
+           AND (state <> 'idle' OR wait_event_type = 'Lock')
+         ORDER BY xact_start NULLS LAST`
+      )
+      return new Error(
+        `${err.message} | sessioni attive al momento del 409: ${JSON.stringify(sessioni)}`
+      )
+    } catch {
+      return err
+    }
   }
 
   const elaborazione = async (id: string) =>
@@ -455,9 +479,18 @@ describe('Anteprima — Postgres reale, ruolo wasteflow_app', () => {
         l.legameId
       )
       const legami = new LegamiService(app, new PropostaLegameService(app))
-      const v = await legami.conferma(az.tenantId, az.utenteId, l.legameId, versione, {
-        contrattoId: c2.contrattoId,
-      })
+      const v = await legami
+        .conferma(az.tenantId, az.utenteId, l.legameId, versione, {
+          contrattoId: c2.contrattoId,
+        })
+        .catch(async (err: unknown) => {
+          // CI del 12/11: qui e' uscito un 409 OPERAZIONE_CONCORRENTE (lock_timeout 10 s) senza che
+          // il log mostrasse chi teneva il lock. Un test che non ha concorrenti non deve vederlo:
+          // se succede, l'errore porta con se' chi stava tenendo cosa (pg_stat_activity/pg_locks),
+          // cosi' la prossima volta si legge la causa invece di indovinarla.
+          if (err instanceof ConflictException) throw await arricchisciConStatoDb(err)
+          throw err
+        })
       expect(v.stato).toBe('CONFERMATO')
 
       const nuova = await nel(az.tenantId, () =>
