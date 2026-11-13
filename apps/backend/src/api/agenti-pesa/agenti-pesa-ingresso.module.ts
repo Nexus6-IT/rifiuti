@@ -3,6 +3,7 @@ import { ThrottlerModule } from '@nestjs/throttler'
 import { PrismaModule } from '../../infrastructure/persistence/prisma.module'
 import { ModuliAttiviModule } from '../../application/admin/moduli-attivi.module'
 import { AbbinamentoAgenteService } from '../../application/pese/agenti/abbinamento-agente.service'
+import { IngressoLettureService } from '../../application/pese/agenti/ingresso-letture.service'
 import { RisoluzioneAgenteService } from '../../application/pese/agenti/risoluzione-agente.service'
 import { AgentePesaGuard } from './agente-pesa.guard'
 import { IngressoAgenteController } from './ingresso-agente.controller'
@@ -25,6 +26,7 @@ import { ThrottlerAgenteGuard } from './throttler-agente.guard'
   providers: [
     RisoluzioneAgenteService,
     AbbinamentoAgenteService,
+    IngressoLettureService,
     AgentePesaGuard,
     ThrottlerAgenteGuard,
     ThrottlerAbbinamentoGuard,

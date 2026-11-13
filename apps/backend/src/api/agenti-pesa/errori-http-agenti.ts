@@ -1,7 +1,12 @@
-import { NotFoundException, UnauthorizedException } from '@nestjs/common'
+import {
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common'
 import {
   AgentePesaNonTrovatoError,
   CodiceAbbinamentoNonValidoError,
+  LottoOltreTempoError,
 } from '../../application/pese/errori-pese'
 import { comeHttpPese } from '../pese/errori-http'
 
@@ -18,6 +23,9 @@ export function comeHttpAgente<R>(fn: () => Promise<R>): Promise<R> {
     } catch (err) {
       if (err instanceof CodiceAbbinamentoNonValidoError) {
         throw new UnauthorizedException({ error: CODICE_NON_VALIDO, message: err.message })
+      }
+      if (err instanceof LottoOltreTempoError) {
+        throw new ServiceUnavailableException({ error: 'LOTTO_OLTRE_TEMPO', message: err.message })
       }
       if (err instanceof AgentePesaNonTrovatoError) throw new NotFoundException(err.message)
       throw err

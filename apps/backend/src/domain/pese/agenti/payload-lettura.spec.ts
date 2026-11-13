@@ -139,6 +139,14 @@ describe('leggiPayloadLettura', () => {
     })
   })
 
+  it('payload firmato con un BOM UTF-8 iniziale → PAYLOAD_NON_VALIDO (i byte conservati devono coincidere con quelli letti)', () => {
+    const firmato = firma(privateKey, '\ufeff' + JSON.stringify(BASE))
+    expect(leggiPayloadLettura(firmato.payloadB64, firmato.firmaB64, publicKey)).toMatchObject({
+      ok: false,
+      codice: 'PAYLOAD_NON_VALIDO',
+    })
+  })
+
   it('payload oltre 2048 byte → PAYLOAD_NON_VALIDO prima di verificare', () => {
     const grande = Buffer.alloc(2049, 0x61).toString('base64')
     const { firmaB64 } = firma(privateKey, BASE)

@@ -96,6 +96,11 @@ function alibiValido(v: unknown): v is string {
 }
 
 function interpreta(bytes: Buffer): EsitoLetturaPayload {
+  // TextDecoder toglie un BOM iniziale in silenzio: i byte conservati e quelli interpretati
+  // potrebbero divergere. L'agente non ne scrive mai: si rifiuta.
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return nonValido('BOM iniziale non ammesso')
+  }
   let json: unknown
   try {
     json = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))

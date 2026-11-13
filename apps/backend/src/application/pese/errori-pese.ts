@@ -144,3 +144,11 @@ export class AgentePesaNonTrovatoError extends DomainError {
     this.name = 'AgentePesaNonTrovatoError'
   }
 }
+
+/** Il lotto di letture ha superato il tempo massimo: 503, l'agente ritrasmette (idempotenza). */
+export class LottoOltreTempoError extends DomainError {
+  constructor() {
+    super('Il lotto di letture ha superato il tempo massimo: riprovare.')
+    this.name = 'LottoOltreTempoError'
+  }
+}

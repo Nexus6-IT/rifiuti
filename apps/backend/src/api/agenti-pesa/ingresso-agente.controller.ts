@@ -3,6 +3,8 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
 import { Public } from '../../auth/decorators/public.decorator'
 import { AbbinamentoAgenteService } from '../../application/pese/agenti/abbinamento-agente.service'
+import { IngressoLettureService } from '../../application/pese/agenti/ingresso-letture.service'
+import { LottoLettureDto } from './dto/lotto-letture.dto'
 import { AbbinamentoDto } from './dto/abbinamento.dto'
 import { AgentePesaGuard } from './agente-pesa.guard'
 import { AgenteCorrente, type AgenteCorrenteDati } from './agente-richiesta'
@@ -24,7 +26,10 @@ import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
 @Controller('agenti-pesa')
 @SkipThrottle({ short: true, medium: true, long: true })
 export class IngressoAgenteController {
-  constructor(private readonly abbinamento: AbbinamentoAgenteService) {}
+  constructor(
+    private readonly abbinamento: AbbinamentoAgenteService,
+    private readonly letture: IngressoLettureService
+  ) {}
 
   @Public()
   @Post('abbinamento')
@@ -41,5 +46,17 @@ export class IngressoAgenteController {
   @ApiOperation({ summary: 'Configurazione dell’agente (strumenti assegnati, simulazione)' })
   async configurazione(@AgenteCorrente() agente: AgenteCorrenteDati) {
     return comeHttpAgente(() => this.abbinamento.configurazione(agente))
+  }
+
+  @Post('letture')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerIngressoGuard, AgentePesaGuard, ThrottlerAgenteGuard)
+  @LimiteAgente(LIMITI_AGENTE.letture)
+  @ApiOperation({ summary: 'Riceve un lotto (1..50) di letture firmate; un esito per elemento' })
+  async riceviLetture(@AgenteCorrente() agente: AgenteCorrenteDati, @Body() dto: LottoLettureDto) {
+    const esiti = await comeHttpAgente(() =>
+      this.letture.riceviLotto(agente, dto.letture, new Date())
+    )
+    return { esiti }
   }
 }

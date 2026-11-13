@@ -9,9 +9,13 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import request from 'supertest'
 import { AbbinamentoAgenteService } from '../../application/pese/agenti/abbinamento-agente.service'
+import { IngressoLettureService } from '../../application/pese/agenti/ingresso-letture.service'
 import { RisoluzioneAgenteService } from '../../application/pese/agenti/risoluzione-agente.service'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
-import { CodiceAbbinamentoNonValidoError } from '../../application/pese/errori-pese'
+import {
+  CodiceAbbinamentoNonValidoError,
+  LottoOltreTempoError,
+} from '../../application/pese/errori-pese'
 import { hashSegreto } from '../../domain/pese/agenti/credenziali-agente'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
 import { AgentePesaGuard } from './agente-pesa.guard'
@@ -29,6 +33,7 @@ const CHIAVE_PUB = 'A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg='
 describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP', () => {
   let app: INestApplication
   let abbinamento: Record<string, jest.Mock>
+  let letture: Record<string, jest.Mock>
   let stato: 'ATTIVO' | 'REVOCATO'
 
   beforeEach(async () => {
@@ -37,6 +42,7 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       abbina: jest.fn().mockResolvedValue({ agenteId: AGENTE, token: TOKEN, strumenti: [] }),
       configurazione: jest.fn().mockResolvedValue({ agenteId: AGENTE, strumenti: [] }),
     }
+    letture = { riceviLotto: jest.fn().mockResolvedValue([]) }
     const logger: any = {
       setContext: jest.fn(),
       info: jest.fn(),
@@ -54,6 +60,7 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       controllers: [IngressoAgenteController],
       providers: [
         { provide: AbbinamentoAgenteService, useValue: abbinamento },
+        { provide: IngressoLettureService, useValue: letture },
         {
           provide: RisoluzioneAgenteService,
           useValue: {
@@ -180,6 +187,60 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
         .set('Authorization', ignoto)
         .expect(429)
       expect(r.headers['retry-after']).toBeDefined()
+    })
+  })
+
+  describe('POST /agenti-pesa/letture', () => {
+    const el = { payload: Buffer.from('{}').toString('base64'), firma: `${'A'.repeat(86)}==` }
+    const manda = (corpo: unknown, token = TOKEN) =>
+      http()
+        .post('/agenti-pesa/letture')
+        .set('Authorization', `Bearer ${token}`)
+        .send(corpo as object)
+
+    it('un lotto valido risponde 200 con gli esiti e passa l’agente del token', async () => {
+      letture.riceviLotto.mockResolvedValue([{ chiaveIdempotenza: null, esito: 'ACCETTATA' }])
+      const r = await manda({ letture: [el] }).expect(200)
+      expect(r.body).toEqual({ esiti: [{ chiaveIdempotenza: null, esito: 'ACCETTATA' }] })
+      expect(letture.riceviLotto.mock.calls[0][0]).toEqual({ id: AGENTE, tenantId: TENANT })
+      expect(letture.riceviLotto.mock.calls[0][1]).toHaveLength(1)
+    })
+
+    it('51 elementi, lotto vuoto, base64 sbagliato o firma di lunghezza sbagliata: 400', async () => {
+      await manda({ letture: Array.from({ length: 51 }, () => el) }).expect(400)
+      await manda({ letture: [] }).expect(400)
+      await manda({ letture: [{ ...el, payload: 'non base64!' }] }).expect(400)
+      await manda({ letture: [{ ...el, firma: 'AAAA' }] }).expect(400)
+      await manda({ letture: [{ ...el, extra: 1 }] }).expect(400)
+      expect(letture.riceviLotto).not.toHaveBeenCalled()
+    })
+
+    it('corpo che non è JSON: 400', async () => {
+      await http()
+        .post('/agenti-pesa/letture')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .set('Content-Type', 'application/json')
+        .send('{non json')
+        .expect(400)
+    })
+
+    it('61 richieste in un minuto dello stesso agente: la 61a è 429 con Retry-After', async () => {
+      for (let i = 0; i < 60; i++) await manda({ letture: [el] }).expect(200)
+      const r = await manda({ letture: [el] }).expect(429)
+      expect(r.headers['retry-after']).toBeDefined()
+    })
+
+    it('agente revocato fra due richieste: la seconda è 403', async () => {
+      await manda({ letture: [el] }).expect(200)
+      stato = 'REVOCATO'
+      const r = await manda({ letture: [el] }).expect(403)
+      expect(r.body.error).toBe('AGENTE_REVOCATO')
+    })
+
+    it('lotto oltre il tempo massimo: 503 LOTTO_OLTRE_TEMPO', async () => {
+      letture.riceviLotto.mockRejectedValue(new LottoOltreTempoError())
+      const r = await manda({ letture: [el] }).expect(503)
+      expect(r.body.error).toBe('LOTTO_OLTRE_TEMPO')
     })
   })
 })

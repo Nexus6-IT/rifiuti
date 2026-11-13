@@ -29,6 +29,9 @@ async function bootstrap() {
   // rotta, montato PRIMA del parser globale (che salta le richieste gia' lette).
   app.use(`/${process.env.API_PREFIX || 'api/v1'}/modelli-stampa`, jsonConLimite('600kb'))
 
+  // Un lotto di 50 letture dell'agente di pesa puo' arrivare a ~145 KB in base64 (4.8b).
+  app.use(`/${process.env.API_PREFIX || 'api/v1'}/agenti-pesa/letture`, jsonConLimite('200kb'))
+
   // Security: Helmet.js - Set various HTTP headers for security (T256)
   app.use(
     helmet({
