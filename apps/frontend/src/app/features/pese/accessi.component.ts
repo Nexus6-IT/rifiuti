@@ -214,6 +214,15 @@ import { CampoDataComponent } from '../../shared/components/campo-data.component
                   <span class="badge" *ngIf="r.manuale" [attr.data-testid]="'ac-manuale-' + r.id"
                     >Manuale</span
                   >
+                  <span
+                    class="badge"
+                    *ngIf="r.daStrumento && !r.simulato"
+                    [attr.data-testid]="'ac-strumento-' + r.id"
+                    >Da strumento</span
+                  >
+                  <span class="badge" *ngIf="r.simulato" [attr.data-testid]="'ac-simulato-' + r.id"
+                    >Simulata</span
+                  >
                   <span class="badge" *ngIf="r.rettificato">Rettificato</span>
                   <span class="badge" *ngIf="r.collegato">Collegato</span>
                 </td>

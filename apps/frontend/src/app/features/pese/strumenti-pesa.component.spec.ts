@@ -3,7 +3,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations'
 import { HttpClientTestingModule } from '@angular/common/http/testing'
 import { of, throwError } from 'rxjs'
 import { StrumentiPesaComponent } from './strumenti-pesa.component'
-import { ElencoConPermessi, PeseService, StrumentoPesa } from './pese.service'
+import { AgenteVista, ElencoConPermessi, PeseService, StrumentoPesa } from './pese.service'
 import { RegistroService } from '../registro/registro.service'
 import { ToastService } from '../../core/services/toast.service'
 import { scriviCampoData } from '../../shared/testing/campo-data'
@@ -67,7 +67,9 @@ describe('StrumentiPesaComponent (DOM)', () => {
       'elencaStrumenti',
       'creaStrumento',
       'aggiornaStrumento',
+      'elencaAgenti',
     ])
+    pese.elencaAgenti.and.returnValue(of({ righe: [], puoGestire: true }))
     registri = jasmine.createSpyObj<RegistroService>('RegistroService', ['listRegistri'])
     registri.listRegistri.and.returnValue(of([]))
     toast = jasmine.createSpyObj<ToastService>('ToastService', ['error', 'success', 'info', 'warn'])
@@ -91,6 +93,25 @@ describe('StrumentiPesaComponent (DOM)', () => {
     expect(t).toContain('20 kg')
     expect(t).toContain('10/05/2025')
     expect(q('str-verificazione-scaduta-s1')).toBeNull()
+  })
+
+  it('colonna agente: nome dell’agente assegnato oppure «Non assegnato» (solo per chi gestisce)', () => {
+    pese.elencaAgenti.and.returnValue(
+      of({
+        righe: [{ id: 'a1', descrizione: 'PC pesa ingresso' } as AgenteVista],
+        puoGestire: true,
+      })
+    )
+    apri(elenco([strumento({ agenteId: 'a1' }), strumento({ id: 's2', agenteId: null })]))
+    fixture.detectChanges()
+    expect(q('str-agente-s1')!.textContent).toContain('PC pesa ingresso')
+    expect(q('str-agente-s2')!.textContent).toContain('Non assegnato')
+  })
+
+  it('senza i permessi di gestione la colonna agente non c’è e gli agenti non si leggono', () => {
+    apri(elenco([strumento({ agenteId: 'a1' })], false))
+    expect(q('str-agente-s1')).toBeNull()
+    expect(pese.elencaAgenti).not.toHaveBeenCalled()
   })
 
   it('avvisa se la verificazione e scaduta o manca', () => {

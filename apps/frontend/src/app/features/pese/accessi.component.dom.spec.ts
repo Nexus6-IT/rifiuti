@@ -118,6 +118,28 @@ describe('AccessiComponent (DOM)', () => {
     expect(t).toContain('16.000 kg')
   })
 
+  it('la riga mostra «Da strumento» per le letture reali e «Simulata» per quelle simulate', async () => {
+    registri.listRegistri.and.returnValue(of([reg('r1', true)]))
+    pese.elencaAccessi.and.returnValue(
+      of(
+        elenco([
+          riga('s1', { daStrumento: true, simulato: false }),
+          riga('s2', { daStrumento: true, simulato: true }),
+          riga('s3', { manuale: true }),
+        ])
+      )
+    )
+    fixture = TestBed.createComponent(AccessiComponent)
+    fixture.detectChanges()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(q('ac-strumento-s1')?.textContent).toContain('Da strumento')
+    expect(q('ac-simulato-s1')).toBeNull()
+    expect(q('ac-simulato-s2')?.textContent).toContain('Simulata')
+    expect(q('ac-strumento-s2')).toBeNull()
+    expect(q('ac-strumento-s3')).toBeNull()
+  })
+
   it('filtra per stato, periodo e targa', async () => {
     await apri([reg('r1', true)])
     scegli(q<HTMLSelectElement>('ac-f-stato')!, 'ANNULLATO')

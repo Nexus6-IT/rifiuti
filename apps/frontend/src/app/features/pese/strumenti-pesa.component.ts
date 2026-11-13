@@ -81,6 +81,7 @@ const decimaliMax =
           <th scope="col">Divisione</th>
           <th scope="col">Ultima verificazione</th>
           <th scope="col">Stato</th>
+          <th scope="col" *ngIf="puoGestire()">Agente</th>
           <th scope="col" *ngIf="puoGestire()">Azioni</th>
         </tr>
       </ng-template>
@@ -113,6 +114,9 @@ const decimaliMax =
             </ng-template>
           </td>
           <td>{{ s.attivo ? 'Attivo' : 'Disattivato' }}</td>
+          <td *ngIf="puoGestire()" [attr.data-testid]="'str-agente-' + s.id">
+            {{ nomeAgente(s) }}
+          </td>
           <td *ngIf="puoGestire()">
             <p-button
               label="Modifica"
@@ -128,7 +132,7 @@ const decimaliMax =
       </ng-template>
       <ng-template pTemplate="emptymessage">
         <tr>
-          <td [attr.colspan]="puoGestire() ? 7 : 6">
+          <td [attr.colspan]="puoGestire() ? 8 : 6">
             <span data-testid="str-vuota">Nessuno strumento di pesa registrato.</span>
           </td>
         </tr>
@@ -381,6 +385,8 @@ export class StrumentiPesaComponent implements OnInit {
   private readonly toast = inject(ToastService)
 
   readonly righe = signal<StrumentoPesa[]>([])
+  /** id agente -> descrizione, solo per chi gestisce (l'elenco degli agenti e' degli amministratori) */
+  private readonly agenti = signal<Map<string, string>>(new Map())
   readonly puoGestire = signal(false)
   readonly caricamento = signal(false)
   readonly erroreElenco = signal<string | null>(null)
@@ -428,12 +434,25 @@ export class StrumentiPesaComponent implements OnInit {
         this.righe.set(e.righe)
         this.puoGestire.set(e.puoRettificare)
         this.caricamento.set(false)
+        if (e.puoRettificare) this.caricaAgenti()
       },
       error: err => {
         this.caricamento.set(false)
         this.erroreElenco.set(messaggioErrorePese(err, 'Impossibile leggere gli strumenti.'))
       },
     })
+  }
+
+  private caricaAgenti(): void {
+    this.pese.elencaAgenti().subscribe({
+      next: e => this.agenti.set(new Map(e.righe.map(a => [a.id, a.descrizione]))),
+      error: () => this.agenti.set(new Map()),
+    })
+  }
+
+  nomeAgente(s: StrumentoPesa): string {
+    if (!s.agenteId) return 'Non assegnato'
+    return this.agenti().get(s.agenteId) ?? 'Agente'
   }
 
   costruttoreModello(s: StrumentoPesa): string {

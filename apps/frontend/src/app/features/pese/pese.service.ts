@@ -33,6 +33,8 @@ export interface StrumentoPesa {
   /** AAAA-MM-GG */
   dataUltimaVerificazione: string | null
   attivo: boolean
+  /** agente di pesa a cui e' assegnato (4.8b); null = non assegnato */
+  agenteId?: string | null
 }
 
 export interface DatiStrumento {
@@ -197,6 +199,10 @@ export interface AccessoRiepilogo {
   nettoKg: number | null
   qualita: QualitaNetto | null
   manuale: boolean
+  /** almeno una pesata arrivata da uno strumento (reale o simulata) */
+  daStrumento?: boolean
+  /** almeno una pesata SIMULATA */
+  simulato?: boolean
   rettificato: boolean
   collegato: boolean
 }
