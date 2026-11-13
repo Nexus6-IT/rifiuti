@@ -29,7 +29,7 @@ describe('EstrattoConsorziService.estratto', () => {
   it('legge le regole una volta sola, anche con piu sedi (classifica unica per tutti gli ambiti)', async () => {
     const prisma = {
       rentriUnitaLocale: { findMany: jest.fn().mockResolvedValue([{ id: 's1' }, { id: 's2' }]) },
-      mUDReport: { findFirst: jest.fn().mockResolvedValue(null) },
+      mUDReport: { findMany: jest.fn().mockResolvedValue([]) },
     }
     const classifica = jest.fn(async (_t: string, ms: ReadonlyArray<unknown>) =>
       ms.map(() => ({ marcature: [{ consorzio: 'COBAT', origine: 'REGOLA' }] }))
@@ -48,52 +48,64 @@ describe('EstrattoConsorziService.estratto', () => {
     expect(esito.righe).toBe(3)
     expect(classifica).toHaveBeenCalledTimes(1)
   })
-  it('usa i pesi specifici del MUD di ciascun anno del periodo, una lettura per anno', async () => {
-    const findFirst = jest.fn(async (args: { where: { year: number } }) => ({
-      reportData: {
-        integrazioni: {
-          pesiSpecifici: {
-            '160601|kg': {
-              cerCode: '160601',
-              unita: 'kg',
-              kgPerUnita: args.where.year === 2025 ? 1.1 : 2.2,
+  it('legge i MUD di tutti gli anni in una query e il lettore una volta per ambito, con i pesi per anno', async () => {
+    const findMany = jest.fn(async () =>
+      [2025, 2026].map(year => ({
+        year,
+        reportData: {
+          integrazioni: {
+            pesiSpecifici: {
+              '160601|kg': {
+                cerCode: '160601',
+                unita: 'kg',
+                kgPerUnita: year === 2025 ? 1.1 : 2.2,
+              },
             },
           },
         },
-      },
-    }))
+      }))
+    )
     const prisma = {
       rentriUnitaLocale: { findMany: jest.fn().mockResolvedValue([{ id: 's1' }]) },
-      mUDReport: { findFirst },
+      mUDReport: { findMany },
     }
     const classifica = jest.fn(async (_t: string, ms: ReadonlyArray<unknown>) =>
       ms.map(() => ({ marcature: [{ consorzio: 'COBAT', origine: 'REGOLA' }] }))
     )
-    const chiamate: Array<{ pesi: unknown; da: Date; a: Date }> = []
+    const chiamate: Array<{ perAnno: Record<number, unknown>; da: Date; a: Date }> = []
     ;(leggiMovimentiOrso as jest.Mock).mockReset()
     ;(leggiMovimentiOrso as jest.Mock).mockImplementation(async (_p, par) => {
-      chiamate.push({ pesi: par.pesiSpecifici, da: par.da, a: par.a })
+      chiamate.push({ perAnno: par.pesiSpecificiPerAnno, da: par.da, a: par.a })
       return { movimenti: [] }
     })
     const servizio = new EstrattoConsorziService(prisma as never, { classifica } as never)
 
     await servizio.estratto('t1', { consorzio: 'COBAT', da: '2025-11-01', a: '2026-02-28' })
 
-    expect(findFirst).toHaveBeenCalledTimes(2)
-    const anni = findFirst.mock.calls.map(c => c[0].where.year).sort()
-    expect(anni).toEqual([2025, 2026])
-    // 2 ambiti (sede s1 + registri senza sede) x 2 anni
-    expect(chiamate).toHaveLength(4)
-    const c25 = chiamate.find(
-      c => (c.pesi as Record<string, { kgPerUnita: number }>)['160601|kg']?.kgPerUnita === 1.1
+    expect(findMany).toHaveBeenCalledTimes(1)
+    // 2 ambiti (sede s1 + registri senza sede), una lettura ciascuno sull'intero periodo
+    expect(chiamate).toHaveLength(2)
+    const pesi = chiamate[0].perAnno as Record<number, Record<string, { kgPerUnita: number }>>
+    expect(pesi[2025]['160601|kg'].kgPerUnita).toBe(1.1)
+    expect(pesi[2026]['160601|kg'].kgPerUnita).toBe(2.2)
+    expect(chiamate[0].da.toISOString()).toBe('2025-10-31T23:00:00.000Z')
+    expect(chiamate[0].a.toISOString()).toBe('2026-02-28T23:00:00.000Z')
+  })
+  it('un anno senza MUD non ha pesi (nessuna conversione), gli altri si', async () => {
+    const findMany = jest.fn(async () => [])
+    const prisma = {
+      rentriUnitaLocale: { findMany: jest.fn().mockResolvedValue([]) },
+      mUDReport: { findMany },
+    }
+    ;(leggiMovimentiOrso as jest.Mock).mockReset()
+    ;(leggiMovimentiOrso as jest.Mock).mockResolvedValue({ movimenti: [] })
+    const servizio = new EstrattoConsorziService(
+      prisma as never,
+      { classifica: jest.fn().mockResolvedValue([]) } as never
     )
-    const c26 = chiamate.find(
-      c => (c.pesi as Record<string, { kgPerUnita: number }>)['160601|kg']?.kgPerUnita === 2.2
-    )
-    expect(c25).toBeDefined()
-    expect(c26).toBeDefined()
-    // i due sotto-intervalli si toccano al capodanno di Roma e coprono il periodo intero
-    expect(c25!.a.getTime()).toBe(c26!.da.getTime())
-    expect(c25!.da.toISOString()).toBe('2025-10-31T23:00:00.000Z')
+    await servizio.estratto('t1', { consorzio: 'COBAT', da: '2021-01-01', a: '2025-12-31' })
+    expect(findMany).toHaveBeenCalledTimes(1)
+    const arg = (findMany.mock.calls[0] as unknown as [{ where: { year: { in: number[] } } }])[0]
+    expect(arg.where.year.in).toEqual([2021, 2022, 2023, 2024, 2025])
   })
 })
