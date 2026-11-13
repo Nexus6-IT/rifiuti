@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -169,5 +170,185 @@ func TestFileIllegibileScartato(t *testing.T) {
 	}
 	if k := c.Conta(); k.Scartate != 1 || k.InAttesa != 1 {
 		t.Fatalf("conteggi %+v", k)
+	}
+}
+
+// orologioProva e' un'ora che il test sposta a mano.
+type orologioProva struct{ t time.Time }
+
+func (o *orologioProva) adesso() time.Time { return o.t }
+
+func apriConOra(t *testing.T) (*Coda, string, *orologioProva) {
+	t.Helper()
+	c, d := apri(t)
+	o := &orologioProva{t: time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)}
+	c.Adesso = o.adesso
+	return c, d, o
+}
+
+func TestSospesaRestaInCodaERiprovaConBackoff(t *testing.T) {
+	c, _, o := apriConOra(t)
+	c.Accoda(el(1))
+	c.Accoda(el(2))
+	scartata, err := c.Sospendi(chiave(1), "OROLOGIO_AVANTI: pc avanti")
+	if err != nil || scartata {
+		t.Fatalf("scartata=%v err=%v", scartata, err)
+	}
+	// non scade: la 2 passa avanti, la 1 non blocca la testa
+	got, _ := c.Prossimi(10)
+	if len(got) != 1 || got[0].Sequenza != 2 {
+		t.Fatalf("prossimi %+v", got)
+	}
+	if k := c.Conta(); k.InAttesa != 2 || k.Scartate != 0 {
+		t.Fatalf("conteggi %+v", k)
+	}
+	o.t = o.t.Add(RiprovaMin - time.Second)
+	if got, _ := c.Prossimi(10); len(got) != 1 {
+		t.Fatalf("prima della scadenza: %+v", got)
+	}
+	o.t = o.t.Add(time.Second)
+	got, _ = c.Prossimi(10)
+	if len(got) != 2 || got[0].Sequenza != 1 || got[0].Tentativi != 1 {
+		t.Fatalf("alla scadenza: %+v", got)
+	}
+	// backoff crescente con tetto: 10, 20, 40, 60, 60 minuti
+	atteso := []time.Duration{20 * time.Minute, 40 * time.Minute, time.Hour, time.Hour}
+	for _, a := range atteso {
+		if _, err := c.Sospendi(chiave(1), "OROLOGIO_AVANTI"); err != nil {
+			t.Fatal(err)
+		}
+		o.t = o.t.Add(a - time.Second)
+		if got, _ := c.Prossimi(10); len(got) != 1 {
+			t.Fatalf("attesa %v: troppo presto %+v", a, got)
+		}
+		o.t = o.t.Add(time.Second)
+		if got, _ := c.Prossimi(10); len(got) != 2 {
+			t.Fatalf("attesa %v: doveva essere pronta", a)
+		}
+	}
+}
+
+func TestSospesaSopravviveAlRiavvio(t *testing.T) {
+	c, d, o := apriConOra(t)
+	c.Accoda(el(1))
+	c.Sospendi(chiave(1), "FUORI_PORTATA")
+	c2, err := Apri(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2.Adesso = o.adesso
+	if got, _ := c2.Prossimi(10); len(got) != 0 {
+		t.Fatalf("dopo il riavvio la riprova deve restare: %+v", got)
+	}
+	o.t = o.t.Add(RiprovaMin)
+	if got, _ := c2.Prossimi(10); len(got) != 1 {
+		t.Fatalf("scaduta: %+v", got)
+	}
+}
+
+func TestSospesaScadeDopoSetteGiorni(t *testing.T) {
+	c, d, o := apriConOra(t)
+	c.Accoda(el(1))
+	if scartata, _ := c.Sospendi(chiave(1), "STRUMENTO_NON_ASSEGNATO: x"); scartata {
+		t.Fatal("la prima sospensione non scarta")
+	}
+	o.t = o.t.Add(ScadenzaSospese + time.Minute)
+	scartata, err := c.Sospendi(chiave(1), "STRUMENTO_NON_ASSEGNATO: x")
+	if err != nil || !scartata {
+		t.Fatalf("scartata=%v err=%v", scartata, err)
+	}
+	if k := c.Conta(); k.InAttesa != 0 || k.Scartate != 1 {
+		t.Fatalf("conteggi %+v", k)
+	}
+	m, _ := os.ReadFile(filepath.Join(d, "scartate", fmt.Sprintf("%012d-%s.motivo.txt", 1, chiave(1))))
+	if !strings.Contains(string(m), "STRUMENTO_NON_ASSEGNATO") || !strings.Contains(string(m), "7 giorni") {
+		t.Fatalf("motivo %q", m)
+	}
+	if err := func() error { _, e := c.Sospendi(chiave(9), "x"); return e }(); !errors.Is(err, ErrNonTrovata) {
+		t.Fatalf("errore %v", err)
+	}
+}
+
+func TestSequenzaFileCorrottoRicostruitaDalleCartelle(t *testing.T) {
+	c, d := apri(t)
+	for i := 0; i < 3; i++ {
+		c.ProssimaSequenza()
+	}
+	c.Accoda(el(7))
+	c.Accoda(el(8))
+	c.Segna(chiave(7), Accettata, "")
+	c.Segna(chiave(8), Rifiutata, "x")
+	for _, contenuto := range []string{"", "xyz", "-5"} {
+		os.WriteFile(filepath.Join(d, "sequenza"), []byte(contenuto), 0o600)
+		c2, err := Apri(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := c2.ProssimaSequenza()
+		if err != nil || got != 9 {
+			t.Fatalf("file %q: sequenza %d err %v, attesa 9 (max in inviate/scartate)", contenuto, got, err)
+		}
+	}
+}
+
+func TestSequenzaFilePersoConTuttoInInviate(t *testing.T) {
+	c, d := apri(t)
+	c.Accoda(el(5))
+	c.Segna(chiave(5), Accettata, "")
+	os.Remove(filepath.Join(d, "sequenza"))
+	c2, _ := Apri(d)
+	if got, err := c2.ProssimaSequenza(); err != nil || got != 6 {
+		t.Fatalf("sequenza %d err %v", got, err)
+	}
+}
+
+func TestSequenzaInMemoriaAncheSeIlFileSparisce(t *testing.T) {
+	c, d := apri(t)
+	c.ProssimaSequenza()
+	c.ProssimaSequenza()
+	os.Remove(filepath.Join(d, "sequenza"))
+	if got, _ := c.ProssimaSequenza(); got != 3 {
+		t.Fatalf("sequenza %d", got)
+	}
+}
+
+func TestErroreDiLetturaNonScartaLaLettura(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root legge anche i file con permessi 000")
+	}
+	c, d := apri(t)
+	c.Accoda(el(1))
+	c.Accoda(el(2))
+	p := filepath.Join(d, "in-attesa", fmt.Sprintf("%012d-%s.json", 1, chiave(1)))
+	os.Chmod(p, 0)
+	got, err := c.Prossimi(5)
+	if err == nil {
+		t.Fatal("l'errore di I/O deve essere restituito")
+	}
+	if len(got) != 1 || got[0].Sequenza != 2 {
+		t.Fatalf("le altre letture devono passare: %+v", got)
+	}
+	if k := c.Conta(); k.Scartate != 0 || k.InAttesa != 2 {
+		t.Fatalf("la lettura non va spostata: %+v", k)
+	}
+	os.Chmod(p, 0o600)
+	if got, err := c.Prossimi(5); err != nil || len(got) != 2 {
+		t.Fatalf("dopo il ripristino: %+v %v", got, err)
+	}
+}
+
+func TestTmpRimastiInInviateEScartateCancellati(t *testing.T) {
+	_, d := apri(t)
+	a := filepath.Join(d, "inviate", "x.json.tmp")
+	b := filepath.Join(d, "scartate", "y.motivo.txt.tmp")
+	os.WriteFile(a, []byte("x"), 0o600)
+	os.WriteFile(b, []byte("y"), 0o600)
+	if _, err := Apri(d); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{a, b} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s non cancellato", p)
+		}
 	}
 }

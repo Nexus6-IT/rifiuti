@@ -22,6 +22,7 @@ import (
 	"wasteflow/agente-pesa/internal/firma"
 	"wasteflow/agente-pesa/internal/fsatomic"
 	"wasteflow/agente-pesa/internal/invio"
+	"wasteflow/agente-pesa/internal/istanza"
 	"wasteflow/agente-pesa/internal/lettura"
 	"wasteflow/agente-pesa/internal/orologio"
 )
@@ -30,6 +31,7 @@ import (
 const (
 	FileCredenziali = "credenziali.bin"
 	FileStato       = "stato.json"
+	FileLock        = "agente-pesa.lock"
 	fileConfServer  = "configurazione-server.json"
 )
 
@@ -113,6 +115,14 @@ func percorso(o Opzioni, f string) string { return filepath.Join(o.Dati, f) }
 // di configurazione o di avvio (il gestore dei servizi lo riavvia).
 func Esegui(ctx context.Context, o Opzioni) error {
 	o.predefiniti()
+	if err := os.MkdirAll(o.Dati, 0o700); err != nil {
+		return fmt.Errorf("cartella dati: %w", err)
+	}
+	rilascia, err := istanza.Blocca(percorso(o, FileLock))
+	if err != nil {
+		return err
+	}
+	defer rilascia()
 	cfg, err := config.Carica(percorso(o, config.NomeFile))
 	if err != nil {
 		return fmt.Errorf("configurazione: %w (eseguire prima `agente-pesa abbina`)", err)
@@ -129,6 +139,7 @@ func Esegui(ctx context.Context, o Opzioni) error {
 	if err != nil {
 		return fmt.Errorf("coda: %w", err)
 	}
+	q.Adesso = o.Orologio.Adesso
 	a := &agente{o: o, cfg: cfg, cred: cred, cl: cl, coda: q, strumenti: map[string]*StatoStrumento{}, annulla: map[string]context.CancelFunc{}}
 	a.mitt = &invio.Mittente{Client: cl, Coda: q, Orologio: o.Orologio, Log: o.Log, BackoffMin: o.BackoffMin, BackoffMax: o.BackoffMax}
 	if o.BackoffMin == 0 && o.BackoffMax == 0 {
@@ -143,7 +154,7 @@ func Esegui(ctx context.Context, o Opzioni) error {
 	if err := cfg.Valida(config.Vincoli{CartellaDati: o.Dati, StrumentiServer: ids(a.serv.Strumenti)}); err != nil {
 		return fmt.Errorf("configurazione non valida:\n%w", err)
 	}
-	a.mitt.Lotto = a.serv.LottoMassimo
+	a.mitt.Lotto = a.serv.LottoMassimo // il Mittente lo porta comunque a 1..50
 	a.simOk = a.serv.SimulazioneAmmessa
 	if err := q.Pulisci(30 * 24 * time.Hour); err != nil {
 		o.Log.Warn("pulizia delle letture inviate non riuscita", "errore", err)
@@ -342,7 +353,7 @@ func (a *agente) cicloInvio(ctx context.Context) {
 			a.ultimoErr = r.Errore.Error()
 		}
 		a.mu.Unlock()
-		if r.Inviate >= a.mitt.Lotto && r.Attesa == 0 && r.Errore == nil {
+		if r.Inviate >= a.mitt.LottoEffettivo() && r.Attesa == 0 && r.Errore == nil {
 			continue // lotto pieno: c'e' ancora coda da svuotare
 		}
 		pausa := a.o.IntervalloInvio

@@ -85,29 +85,40 @@ func (r *Rotante) apri() error {
 	return nil
 }
 
+// ruota chiude il file corrente, sposta i vecchi e riapre. Se spostare fallisce (su Windows un
+// altro processo puo' tenere il file) riapre comunque il file corrente in append: il log non deve
+// restare senza file aperto.
 func (r *Rotante) ruota() error {
 	r.f.Close()
+	r.f = nil
+	var errRot error
 	if r.file > 1 {
 		os.Remove(fmt.Sprintf("%s.%d", r.path, r.file-1))
 		for i := r.file - 2; i >= 1; i-- {
 			os.Rename(fmt.Sprintf("%s.%d", r.path, i), fmt.Sprintf("%s.%d", r.path, i+1))
 		}
-		if err := os.Rename(r.path, r.path+".1"); err != nil {
-			return err
-		}
-	} else if err := os.Remove(r.path); err != nil {
+		errRot = os.Rename(r.path, r.path+".1")
+	} else {
+		errRot = os.Remove(r.path)
+	}
+	if err := r.apri(); err != nil {
 		return err
 	}
-	return r.apri()
+	return errRot
 }
 
 func (r *Rotante) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.dim > 0 && r.dim+int64(len(p)) > r.maxByte {
-		if err := r.ruota(); err != nil {
+	if r.f == nil { // una riapertura precedente era fallita
+		if err := r.apri(); err != nil {
 			return 0, err
 		}
+	}
+	if r.dim > 0 && r.dim+int64(len(p)) > r.maxByte {
+		if err := r.ruota(); err != nil && r.f == nil {
+			return 0, err
+		} // altrimenti si scrive comunque sul file riaperto
 	}
 	n, err := r.f.Write(p)
 	r.dim += int64(n)
@@ -118,5 +129,8 @@ func (r *Rotante) Write(p []byte) (int, error) {
 func (r *Rotante) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.f == nil {
+		return nil
+	}
 	return r.f.Close()
 }

@@ -47,3 +47,23 @@ func TestTokenMascheratoNeiValoriEdErrori(t *testing.T) {
 		t.Fatalf("log inatteso: %s", s)
 	}
 }
+
+func TestRotazioneFallitaNonBloccaPerSempreLaScrittura(t *testing.T) {
+	d := filepath.Join(t.TempDir(), "log")
+	p := filepath.Join(d, "agente-pesa.log")
+	r, err := NuovoRotante(p, 50, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	// la rotazione fallisce: la destinazione e' una cartella non vuota
+	os.MkdirAll(filepath.Join(p+".1", "x"), 0o755)
+	linea := []byte(strings.Repeat("a", 40) + "\n")
+	r.Write(linea)
+	r.Write(linea) // supera la soglia: la rotazione fallisce
+	for i := 0; i < 3; i++ {
+		if _, err := r.Write(linea); err != nil {
+			t.Fatalf("scrittura %d dopo una rotazione fallita: %v", i, err)
+		}
+	}
+}

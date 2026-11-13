@@ -8,6 +8,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"wasteflow/agente-pesa/internal/agente"
@@ -28,6 +30,27 @@ import (
 
 // versione e' sovrascritta in build con -ldflags "-X main.versione=<tag>".
 var versione = "dev"
+
+// envCodice e' la variabile d'ambiente alternativa a --codice.
+const envCodice = "WASTEFLOW_CODICE"
+
+// stdin e' sostituibile nei test.
+var stdin io.Reader = os.Stdin
+
+// leggiCodice: il valore di --codice; "-" legge una riga da stdin; vuoto cade sulla variabile d'ambiente.
+func leggiCodice(v string) (string, error) {
+	switch v {
+	case "":
+		return strings.TrimSpace(os.Getenv(envCodice)), nil
+	case "-":
+		riga, err := bufio.NewReader(stdin).ReadString('\n')
+		if err != nil && riga == "" {
+			return "", fmt.Errorf("nessun codice su stdin: %w", err)
+		}
+		return strings.TrimSpace(riga), nil
+	}
+	return v, nil
+}
 
 const uso = "uso: agente-pesa <comando> (comandi: abbina, esegui, stato, servizio, versione)"
 
@@ -50,10 +73,16 @@ func esegui(args []string, out, errOut io.Writer) int {
 	case "abbina":
 		fs, dati := nuovoFlagSet("abbina", errOut)
 		server := fs.String("server", "", "indirizzo del backend WasteFlow (https://...)")
-		codice := fs.String("codice", "", "codice di abbinamento mostrato nell'interfaccia (XXXX-XXXX-XXXX)")
+		codice := fs.String("codice", "", "codice di abbinamento (XXXX-XXXX-XXXX); `-` lo legge da stdin, se omesso dalla variabile "+envCodice+" (cosi' non resta nella cronologia dei comandi)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
 		}
+		cod, err := leggiCodice(*codice)
+		if err != nil {
+			fmt.Fprintln(errOut, "codice di abbinamento:", err)
+			return 2
+		}
+		*codice = cod
 		if *server == "" || *codice == "" {
 			fmt.Fprintln(errOut, "servono --server e --codice")
 			return 2

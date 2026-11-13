@@ -7,9 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"time"
+
+	"wasteflow/agente-pesa/internal/permessi"
 
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
@@ -119,13 +119,15 @@ func Gestisci(azione, exe, dati string) error {
 	return errors.New("azione sconosciuta (installa, rimuovi, avvia, ferma)")
 }
 
-func installa(m *mgr.Mgr, exe, dati string) error {
+func installa(m *mgr.Mgr, exe, dati string) (esito error) {
 	if s, err := m.OpenService(NomeServizio); err == nil {
 		s.Close()
 		return errors.New("il servizio e' gia' installato")
 	}
-	if err := os.MkdirAll(dati, 0o755); err != nil {
-		return err
+	// Cartella riservata ad amministratori e SYSTEM PRIMA di creare il servizio (di norma e' gia'
+	// cosi' dopo `abbina`; qui si garantisce anche per chi la prepara a mano).
+	if err := permessi.Cartella(dati); err != nil {
+		return fmt.Errorf("cartella dati: %w", err)
 	}
 	s, err := m.CreateService(NomeServizio, exe, mgr.Config{
 		DisplayName:      "WasteFlow Agente di pesa",
@@ -137,7 +139,13 @@ func installa(m *mgr.Mgr, exe, dati string) error {
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	// Se un passo seguente fallisce il servizio non resta installato a meta'.
+	defer func() {
+		if esito != nil {
+			_ = s.Delete()
+		}
+		s.Close()
+	}()
 	// riavvio dopo un errore: 10 s, 60 s, 5 min
 	if err := s.SetRecoveryActions([]mgr.RecoveryAction{
 		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
@@ -146,14 +154,16 @@ func installa(m *mgr.Mgr, exe, dati string) error {
 	}, 24*3600); err != nil {
 		return fmt.Errorf("azioni di ripristino: %w", err)
 	}
+	// Senza questo le azioni di ripristino scattano solo se il processo va in crash: l'uscita con
+	// codice di errore (configurazione non valida, coda bloccata dall'antivirus...) lascerebbe il
+	// servizio fermo.
+	if err := s.SetRecoveryActionsOnNonCrashFailures(true); err != nil {
+		return fmt.Errorf("riavvio anche dopo uscita con errore: %w", err)
+	}
 	_ = eventlog.InstallAsEventCreate(NomeServizio, eventlog.Error|eventlog.Warning|eventlog.Info)
-	// ACL: solo amministratori, SYSTEM e l'account del servizio (rimuove l'ereditarieta')
-	out, err := exec.Command("icacls", dati, "/inheritance:r",
-		"/grant", `BUILTIN\Administrators:(OI)(CI)F`,
-		"/grant", `NT AUTHORITY\SYSTEM:(OI)(CI)F`,
-		"/grant", accountVirtuale+`:(OI)(CI)M`).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("icacls: %w: %s", err, out)
+	// l'account virtuale esiste solo dopo CreateService: ora puo' ricevere il permesso di modifica
+	if err := permessi.Concedi(dati, accountVirtuale); err != nil {
+		return err
 	}
 	return nil
 }

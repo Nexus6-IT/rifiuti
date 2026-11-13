@@ -1,7 +1,9 @@
 package driver
 
 import (
+	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"wasteflow/agente-pesa/internal/driver/trasporto"
@@ -9,23 +11,30 @@ import (
 
 func fabbricaVuota(Parametri, trasporto.Apri) (Driver, error) { return nil, nil }
 
+// provaN rende unico il nome per ogni esecuzione: il registro e' globale e -count>1 rilancia i test.
+var provaN atomic.Int32
+
+func nomeUnico(base string) string { return fmt.Sprintf("%s-%d", base, provaN.Add(1)) }
+
 func TestRegistroNomeDuplicatoPanic(t *testing.T) {
-	Registra("PROVA-DUP", fabbricaVuota)
+	dup := nomeUnico("PROVA-DUP")
+	Registra(dup, fabbricaVuota)
 	defer func() {
 		if recover() == nil {
 			t.Fatal("attesa una panic per il nome duplicato")
 		}
 	}()
-	Registra("PROVA-DUP", fabbricaVuota)
+	Registra(dup, fabbricaVuota)
 }
 
 func TestCreaDriverIgnotoElencaIDisponibili(t *testing.T) {
-	Registra("PROVA-ELENCO", fabbricaVuota)
+	elenco := nomeUnico("PROVA-ELENCO")
+	Registra(elenco, fabbricaVuota)
 	_, err := Crea("NON-ESISTE", Parametri{}, nil)
-	if err == nil || !strings.Contains(err.Error(), "NON-ESISTE") || !strings.Contains(err.Error(), "PROVA-ELENCO") {
+	if err == nil || !strings.Contains(err.Error(), "NON-ESISTE") || !strings.Contains(err.Error(), elenco) {
 		t.Fatalf("errore poco leggibile: %v", err)
 	}
-	if !Esiste("PROVA-ELENCO") || Esiste("NON-ESISTE") {
+	if !Esiste(elenco) || Esiste("NON-ESISTE") {
 		t.Fatal("Esiste sbagliato")
 	}
 }
