@@ -152,3 +152,11 @@ export class LottoOltreTempoError extends DomainError {
     this.name = 'LottoOltreTempoError'
   }
 }
+
+/** Lettura dello strumento assente o di un'altra azienda (404). */
+export class LetturaNonTrovataError extends DomainError {
+  constructor() {
+    super('Lettura non trovata.')
+    this.name = 'LetturaNonTrovataError'
+  }
+}

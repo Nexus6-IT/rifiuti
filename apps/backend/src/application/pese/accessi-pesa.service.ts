@@ -24,10 +24,12 @@ import type {
   AperturaAccessoDati,
   FileCaricato,
   FiltriAccessi,
+  PesataDaLetturaDati,
   PesataManualeDati,
   SecondaPesataDati,
   UtentePesa,
 } from './accessi-pesa.tipi'
+import { eDaLettura } from './accessi-pesa.tipi'
 import { AllegatiPesaService } from './allegati-pesa.service'
 import { AutomezziService } from './automezzi.service'
 import { bloccaAccesso, bloccaAutomezzo, bloccaChiaveIdempotenza } from './blocchi-accesso'
@@ -43,6 +45,8 @@ import {
 import { MSG_TRIGGER, MSG_TRIGGER_INCOERENZA } from './messaggi-trigger-pese'
 import { nelContestoTenant } from './nel-contesto-tenant'
 import {
+  MSG_LETTURA_GIA_USATA,
+  inserisciPesataDaLettura,
   inserisciPesataManuale,
   inserisciPesataTaraAnagrafica,
   type PesataScritta,
@@ -83,6 +87,9 @@ export async function traduciErroreDatabase(
 ): Promise<unknown> {
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
     const target = targetDi(err)
+    if (haColonna(target, 'lettura_id')) {
+      return new StatoAccessoNonValidoError(MSG_LETTURA_GIA_USATA)
+    }
     if (haColonna(target, 'chiave_idempotenza')) {
       return new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
     }
@@ -247,8 +254,14 @@ export class AccessiPesaService {
               cerCode = cerCanonico(cerCode)
             }
 
-            const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
-            this.verificaSedeStrumento(strumento, registro.id)
+            const daLettura = eDaLettura(dati.pesata)
+            if (daLettura && allegato) {
+              throw new RegolaPesataError(['Una pesata da strumento non ha un allegato.'])
+            }
+            const strumento = eDaLettura(dati.pesata)
+              ? null
+              : await this.leggiStrumento(tx, tenantId, dati.pesata)
+            if (!daLettura) this.verificaSedeStrumento(strumento, registro.id)
             // Tara dichiarata: l'automezzo si blocca PRIMA di creare l'accesso (vedi ordine dei lock)
             if (dati.modo === 'TARA_ANAGRAFICA') {
               await bloccaAutomezzo(tx, tenantId, automezzoId as string)
@@ -280,12 +293,18 @@ export class AccessiPesaService {
               chiaveIdempotenza: dati.chiaveIdempotenza,
               adesso,
             }
-            const prima = await inserisciPesataManuale(
-              tx,
-              { ...contesto, ordine: 1, strumento, allegati: this.allegati },
-              dati.pesata,
-              allegato
-            )
+            const prima = eDaLettura(dati.pesata)
+              ? await inserisciPesataDaLettura(
+                  tx,
+                  { ...contesto, registroId: registro.id, ordine: 1 },
+                  dati.pesata.letturaId
+                )
+              : await inserisciPesataManuale(
+                  tx,
+                  { ...contesto, ordine: 1, strumento, allegati: this.allegati },
+                  dati.pesata,
+                  allegato
+                )
             await this.audit(
               tx,
               tenantId,
@@ -296,6 +315,7 @@ export class AccessiPesaService {
                 accessoId: accesso.id,
                 modo: dati.modo,
                 verso: dati.verso,
+                ...(eDaLettura(dati.pesata) ? { letturaId: dati.pesata.letturaId } : {}),
               }
             )
             const scritte: PesataScritta[] = [prima]
@@ -348,25 +368,47 @@ export class AccessiPesaService {
             })
             if (!prima) throw new StatoAccessoNonValidoError(MSG_NON_SECONDA)
             const adesso = this.adesso()
-            const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
-            this.verificaSedeStrumento(strumento, accesso.registroId)
-            const seconda = await inserisciPesataManuale(
-              tx,
-              {
-                tenantId,
-                utenteId: utente.id,
-                accessoId,
-                ordine: 2,
-                modo: 'DOPPIA',
-                chiaveIdempotenza: dati.chiaveIdempotenza,
-                adesso,
-                strumento,
-                oraPrimaPesata: prima.oraStrumento,
-                allegati: this.allegati,
-              },
-              dati.pesata,
-              allegato
-            )
+            if (eDaLettura(dati.pesata) && allegato) {
+              throw new RegolaPesataError(['Una pesata da strumento non ha un allegato.'])
+            }
+            let seconda: PesataScritta
+            if (eDaLettura(dati.pesata)) {
+              seconda = await inserisciPesataDaLettura(
+                tx,
+                {
+                  tenantId,
+                  utenteId: utente.id,
+                  accessoId,
+                  registroId: accesso.registroId,
+                  ordine: 2,
+                  modo: 'DOPPIA',
+                  chiaveIdempotenza: dati.chiaveIdempotenza,
+                  adesso,
+                  prima: { letturaId: prima.letturaId, oraStrumento: prima.oraStrumento },
+                },
+                dati.pesata.letturaId
+              )
+            } else {
+              const strumento = await this.leggiStrumento(tx, tenantId, dati.pesata)
+              this.verificaSedeStrumento(strumento, accesso.registroId)
+              seconda = await inserisciPesataManuale(
+                tx,
+                {
+                  tenantId,
+                  utenteId: utente.id,
+                  accessoId,
+                  ordine: 2,
+                  modo: 'DOPPIA',
+                  chiaveIdempotenza: dati.chiaveIdempotenza,
+                  adesso,
+                  strumento,
+                  oraPrimaPesata: prima.oraStrumento,
+                  allegati: this.allegati,
+                },
+                dati.pesata,
+                allegato
+              )
+            }
             const primaScritta: PesataScritta = {
               id: prima.id,
               ordine: 1,
@@ -530,13 +572,20 @@ export class AccessiPesaService {
    */
   private async rileggiConflitto(
     tenantId: string,
-    dati: { chiaveIdempotenza: string; pesata: PesataManualeDati }
+    dati: { chiaveIdempotenza: string; pesata: PesataManualeDati | PesataDaLetturaDati }
   ): Promise<unknown | null> {
     const stessa = await this.prisma.pesata.findFirst({
       where: { tenantId, chiaveIdempotenza: dati.chiaveIdempotenza },
       select: { id: true },
     })
     if (stessa) return new StatoAccessoNonValidoError('Questa pesata è già stata registrata.')
+    if (eDaLettura(dati.pesata)) {
+      const lettura = await this.prisma.pesata.findFirst({
+        where: { tenantId, letturaId: dati.pesata.letturaId },
+        select: { id: true },
+      })
+      return lettura ? new StatoAccessoNonValidoError(MSG_LETTURA_GIA_USATA) : null
+    }
     if (dati.pesata.strumentoId && dati.pesata.alibiId?.trim()) {
       const alibi = await this.prisma.pesata.findFirst({
         where: {

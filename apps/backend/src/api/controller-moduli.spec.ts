@@ -185,6 +185,10 @@ export const MAPPA_MODULI: Record<string, VoceModulo> = {
     motivo: 'Pese in ingresso e uscita; elenco automezzi letto anche dai ritiri',
     metodi: { elencaAutomezzi: ['pese', 'ritiri'] },
   },
+  'api/pese/agenti-pesa.controller.ts': {
+    chiavi: ['pese'],
+    motivo: 'Agenti di pesa e letture dello strumento (4.8b)',
+  },
   'api/ritiri/ritiri.controller.ts': { chiavi: ['ritiri'], motivo: 'Ritiri programmati' },
   'api/ritiri/stampa-ritiri.controller.ts': {
     chiavi: ['ritiri'],

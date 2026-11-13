@@ -17,6 +17,8 @@ import {
   CollegamentoNonValidoError,
   DatiPesaNonValidiError,
   FirNonTrovatoError,
+  AgentePesaNonTrovatoError,
+  LetturaNonTrovataError,
   PesataNonTrovataError,
   RegolaPesataError,
   RuoloPesaInsufficienteError,
@@ -74,6 +76,8 @@ export async function comeHttpPese<R>(fn: () => Promise<R>): Promise<R> {
       err instanceof AccessoNonTrovatoError ||
       err instanceof AllegatoNonTrovatoError ||
       err instanceof CollegamentoNonTrovatoError ||
+      err instanceof AgentePesaNonTrovatoError ||
+      err instanceof LetturaNonTrovataError ||
       err instanceof FirNonTrovatoError
     ) {
       throw new NotFoundException(err.message)

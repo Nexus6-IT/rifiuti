@@ -206,3 +206,60 @@ export async function creaStrumentoDiProva(
   })
   return r.id
 }
+
+/**
+ * Lettura gia' accettata (come la scriverebbe l'ingresso): payload firmato davvero con la chiave
+ * dell'agente, inserita COL PROPRIETARIO. Restituisce l'id della riga.
+ */
+export async function creaLetturaDiProva(
+  owner: PrismaClient,
+  agente: AgenteDiProva,
+  tenantId: string,
+  strumentoId: string,
+  opzioni: {
+    sequenza?: number
+    pesoKg?: string
+    alibiId?: string | null
+    oraAgente?: Date
+    oraStrumento?: Date | null
+    simulata?: boolean
+  } = {}
+): Promise<string> {
+  contatore++
+  const simulata = opzioni.simulata ?? false
+  const oraAgente = opzioni.oraAgente ?? new Date(Date.now() - 60_000)
+  const p = payloadDiProva(
+    { agenteId: agente.id, strumentoId },
+    {
+      sequenza: opzioni.sequenza ?? contatore,
+      pesoKg: opzioni.pesoKg ?? '12340.00',
+      alibiId: opzioni.alibiId === undefined ? null : opzioni.alibiId,
+      oraAgente: oraAgente.toISOString(),
+      oraStrumento: opzioni.oraStrumento ? opzioni.oraStrumento.toISOString() : null,
+      driver: simulata ? 'SIMULATA' : 'D800-MP',
+      simulata,
+    }
+  )
+  const f = firmaLetturaDiProva(agente.chiavi.privata, p)
+  const r = await owner.letturaPesa.create({
+    data: {
+      tenantId,
+      agenteId: agente.id,
+      strumentoId,
+      chiaveIdempotenza: p.chiaveIdempotenza,
+      sequenza: BigInt(p.sequenza),
+      pesoKg: p.pesoKg,
+      stabile: true,
+      alibiId: p.alibiId,
+      oraStrumento: opzioni.oraStrumento ?? null,
+      oraAgente,
+      oraRicezione: new Date(oraAgente.getTime() + 1_000),
+      driver: p.driver,
+      simulata,
+      payload: Buffer.from(f.payload, 'base64').toString('utf8'),
+      firma: f.firma,
+    },
+    select: { id: true },
+  })
+  return r.id
+}

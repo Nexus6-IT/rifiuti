@@ -1097,3 +1097,38 @@ file condivisi), mai in parallelo a un task backend.
 7. **Q7 — Chi apre l'accesso.** Proposta: l'operatore, dalla lettura; automatico dopo, con le card.
 8. **Q8 — Modulo commerciale.** Proposta: dentro `pese`; rinominare l'etichetta in «Pese».
 9. **D10 della roadmap — indicatore e cliente pilota.** Non risolvibile qui: serve per i driver reali.
+
+## Note di implementazione B4-B7 (contratto con l'agente Go)
+
+Scritte dopo B4-B7; valgono come contratto fra `tools/agente-pesa` e il backend.
+
+- **Percorso.** Le rotte stanno sotto il prefisso globale: `server` nella configurazione dell'agente
+  deve comprendere `/api/v1` (es. `https://<backend>/api/v1`); il client Go aggiunge `/agenti-pesa/...`.
+- **Esiti per elemento di `POST /agenti-pesa/letture`.** `ACCETTATA`, `GIA_RICEVUTA` (stessa chiave e
+  stesso payload; controllata PRIMA delle regole, quindi una lettura gia' registrata resta
+  `GIA_RICEVUTA` anche se lo strumento viene poi disassegnato) o `RIFIUTATA` con `codice` e `messaggio`.
+  `chiaveIdempotenza` e' `null` quando la firma o il payload non si leggono.
+- **Codici RIFIUTATA transitori** (l'agente li riprova con backoff e li tiene in `in-attesa/` fino a 7
+  giorni): `OROLOGIO_AVANTI` (orologio del PC avanti oltre 5 min: si corregge il PC), 
+  `STRUMENTO_NON_ASSEGNATO` (lo strumento verra' assegnato all'agente), `STRUMENTO_NON_ATTIVO`,
+  `FUORI_PORTATA` (portata dello strumento da correggere in anagrafica). **Definitivi** (la lettura va in
+  `scartate/`): `FIRMA_NON_VALIDA`, `PAYLOAD_NON_VALIDO`, `AGENTE_DIVERSO`, `PESO_INSTABILE`,
+  `PESO_NON_VALIDO`, `SIMULAZIONE_NON_AMMESSA`, `CHIAVE_RIUSATA` (anche per una `sequenza` gia' usata,
+  col messaggio dedicato), `ALIBI_GIA_USATO` (anche se l'alibi e' di una pesata MANUALE).
+  Ogni codice sconosciuto e' trattato come definitivo dall'agente.
+- **Codici HTTP.** 401 `TOKEN_NON_VALIDO` (token assente, ignoto o agente IN_ATTESA) e `CODICE_NON_VALIDO`
+  (abbinamento: lo stesso corpo per codice ignoto, scaduto, usato o di un agente revocato); 403
+  `AGENTE_REVOCATO` o `MODULO_NON_ATTIVO`; 429 con `Retry-After` (secondi); 503 `LOTTO_OLTRE_TEMPO`
+  (lotto oltre 10 s: l'agente ritrasmette, gli elementi gia' scritti tornano `GIA_RICEVUTA`); 400 per un
+  corpo non valido (lotto di 0 o oltre 50 elementi, base64 o firma di lunghezza sbagliata).
+- **`oraServer`** e' una stringa ISO 8601 UTC (`2026-11-13T09:15:03.123Z`).
+- **Strumenti in `configurazione` e all'abbinamento:** solo quelli assegnati all'agente e attivi.
+- **Limiti.** Per agente: `letture` 60/min, `battito` 10/min, `configurazione` 10/min. Prima
+  dell'autenticazione un tetto per rotta di 600/min (tracker costante: dietro nginx senza `trust proxy`
+  l'IP e' quello del proxy), cosi' i token ignoti o revocati non sono illimitati. Abbinamento: 10/min
+  per IP e 30/min per la rotta. Storage in memoria (R6).
+- **Corpo di `letture`:** il parser JSON di `/agenti-pesa/letture` ha il limite a 200 KB (50 letture da
+  2800 caratteri arrivano a ~145 KB).
+- **Byte conservati.** `letture_pesa.payload` e' il testo dei byte verificati; un BOM UTF-8 iniziale e'
+  `PAYLOAD_NON_VALIDO` (altrimenti la decodifica lo tolga e la riverifica fallirebbe). Chiavi duplicate
+  nel JSON: non rilevate (come in Go, vince l'ultima).

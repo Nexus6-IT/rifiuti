@@ -21,6 +21,10 @@ export interface CampiImprontaPesata {
   automezzoId?: Opzionale<string>
   taraAggiornataIl?: Opzionale<Date>
   chiaveIdempotenza: string
+  /** Solo fonti STRUMENTO e SIMULATA (impronta p2): lettura firmata da cui la pesata e' copiata. */
+  letturaId?: Opzionale<string>
+  /** Solo fonti STRUMENTO e SIMULATA (impronta p2): firma dell'agente sulla lettura (base64). */
+  firmaAgente?: Opzionale<string>
 }
 
 export interface CampiImprontaRettifica {
@@ -57,28 +61,34 @@ const iso = (d: Opzionale<Date>): string | null => (d ? d.toISOString() : null)
 const txt = (s: Opzionale<string>): string | null => s ?? null
 const sha256 = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex')
 
-/** Impronta di una pesata (nessuna catena fra righe). */
+/**
+ * Impronta di una pesata (nessuna catena fra righe). Versione 1 (`p1|`, 16 campi) per MANUALE,
+ * FILE e TARA_ANAGRAFICA; versione 2 (`p2|`) per STRUMENTO e SIMULATA: gli stessi 16 campi piu',
+ * in coda, `letturaId` e `firmaAgente`. La versione si deduce dalla fonte: nessuna colonna.
+ */
 export function improntaPesata(c: CampiImprontaPesata): string {
+  const dallaLettura = c.fonte === 'STRUMENTO' || c.fonte === 'SIMULATA'
+  const campi = [
+    c.tenantId,
+    c.accessoId,
+    String(c.ordine),
+    c.fonte,
+    txt(c.strumentoId),
+    txt(c.strumentoEsterno),
+    txt(c.alibiId),
+    formattaDecimaleCanonico(c.pesoKg),
+    c.stabile ? '1' : '0',
+    iso(c.oraStrumento),
+    c.oraRicezione.toISOString(),
+    txt(c.operatoreId),
+    txt(c.allegatoSha256),
+    txt(c.automezzoId),
+    iso(c.taraAggiornataIl),
+    c.chiaveIdempotenza,
+  ]
   return sha256(
-    'p1|' +
-      JSON.stringify([
-        c.tenantId,
-        c.accessoId,
-        String(c.ordine),
-        c.fonte,
-        txt(c.strumentoId),
-        txt(c.strumentoEsterno),
-        txt(c.alibiId),
-        formattaDecimaleCanonico(c.pesoKg),
-        c.stabile ? '1' : '0',
-        iso(c.oraStrumento),
-        c.oraRicezione.toISOString(),
-        txt(c.operatoreId),
-        txt(c.allegatoSha256),
-        txt(c.automezzoId),
-        iso(c.taraAggiornataIl),
-        c.chiaveIdempotenza,
-      ])
+    (dallaLettura ? 'p2|' : 'p1|') +
+      JSON.stringify(dallaLettura ? [...campi, txt(c.letturaId), txt(c.firmaAgente)] : campi)
   )
 }
 

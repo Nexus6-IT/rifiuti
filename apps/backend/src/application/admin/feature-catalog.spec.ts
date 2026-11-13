@@ -18,7 +18,7 @@ describe('feature-catalog: pese', () => {
   it('è una chiave valida con etichetta in italiano', () => {
     expect(FEATURE_KEYS).toContain('pese')
     expect(isFeatureKey('pese')).toBe(true)
-    expect(FEATURE_LABELS.pese).toBe('Pese (inserimento manuale)')
+    expect(FEATURE_LABELS.pese).toBe('Pese')
   })
 
   it('un tenant TRIAL non la riceve, uno PROFESSIONAL sì', () => {

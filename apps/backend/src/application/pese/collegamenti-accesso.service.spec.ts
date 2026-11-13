@@ -77,6 +77,8 @@ describe('CollegamentiAccessoService (Prisma finto)', () => {
         }),
         update: jest.fn().mockResolvedValue({}),
       },
+      pesata: { count: jest.fn().mockResolvedValue(0) },
+      tenant: { findUnique: jest.fn().mockResolvedValue({ peseSimulazioneAmmessa: false }) },
       activityLog: { create: jest.fn().mockResolvedValue({}) },
     }
     ;(leggiRadiceOrdinaria as jest.Mock).mockResolvedValue({

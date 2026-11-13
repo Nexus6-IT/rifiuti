@@ -22,12 +22,15 @@ export interface EsitoNetto {
   nettoKg: number | null
   qualita: QualitaNetto | null
   manuale: boolean
+  /** Almeno una pesata SIMULATA: non e' un peso reale (4.8b, D14). */
+  simulato: boolean
   rettificato: boolean
   errore: string | null
   avvisi: string[]
 }
 
 export const AVVISO_MANUALE = 'Pesata inserita a mano: nessuna garanzia metrologica.'
+export const AVVISO_SIMULATA = 'Pesata simulata: non è un peso reale.'
 export const AVVISO_TARA_DICHIARATA =
   "Netto calcolato con la tara dichiarata dell'automezzo, non con una seconda pesata."
 export const AVVISO_SINGOLA = 'Pesata singola: netto letto dallo strumento.'
@@ -69,6 +72,7 @@ function esito(parziale: Partial<EsitoNetto> & Pick<EsitoNetto, 'stato'>): Esito
     nettoKg: null,
     qualita: null,
     manuale: false,
+    simulato: false,
     rettificato: false,
     errore: null,
     avvisi: [],
@@ -88,11 +92,13 @@ export function calcolaNetto(
   oggi: string
 ): EsitoNetto {
   const manuale = pesate.some(p => p.fonte === 'MANUALE')
+  const simulato = pesate.some(p => p.fonte === 'SIMULATA')
   const rettificato = pesate.some(p => p.rettifiche.length > 0)
   const avvisi: string[] = []
   if (manuale) avvisi.push(AVVISO_MANUALE)
+  if (simulato) avvisi.push(AVVISO_SIMULATA)
   if (rettificato) avvisi.push(AVVISO_RETTIFICATO)
-  const base = { manuale, rettificato }
+  const base = { manuale, simulato, rettificato }
 
   if (pesate.some(p => !p.stabile)) {
     return esito({

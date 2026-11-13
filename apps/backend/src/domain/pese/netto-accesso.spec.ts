@@ -1,5 +1,6 @@
 import {
   AVVISO_MANUALE,
+  AVVISO_SIMULATA,
   AVVISO_RETTIFICATO,
   AVVISO_SINGOLA,
   AVVISO_TARA_DICHIARATA,
@@ -142,6 +143,28 @@ describe('calcolaNetto', () => {
     )
     expect(e.manuale).toBe(true)
     expect(e.avvisi).toContain(AVVISO_MANUALE)
+  })
+
+  it('una pesata SIMULATA si calcola come STRUMENTO: simulato true, AVVISO_SIMULATA, manuale false', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [
+        pesata({ ordine: 1, pesoKg: 24880, fonte: 'SIMULATA' }),
+        pesata({ ordine: 2, pesoKg: 12540, fonte: 'SIMULATA' }),
+      ],
+      OGGI
+    )
+    expect(e).toMatchObject({ stato: 'CALCOLATO', nettoKg: 12340, simulato: true, manuale: false })
+    expect(e.avvisi).toContain(AVVISO_SIMULATA)
+    const reale = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [pesata({ ordine: 1, pesoKg: 24880 }), pesata({ ordine: 2, pesoKg: 12540 })],
+      OGGI
+    )
+    expect(reale.simulato).toBe(false)
+    expect(reale.avvisi).not.toContain(AVVISO_SIMULATA)
   })
 
   it('rettifiche 3 e 1 in disordine: vale la numero 3', () => {
