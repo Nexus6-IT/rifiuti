@@ -20,7 +20,7 @@ import { conPrefissoUnico } from '../../utils/run-id'
  *
  * Due aziende di prova create qui: ENTERPRISE (ha il modulo `comunicazioni`) e PROFESSIONAL
  * (non lo ha). Nell'ENTERPRISE: una sede con provincia, tre scarichi nell'anno precedente creati
- * via API (due CER, due mesi) nell'anno precedente -> anteprima con mesi e CER -> Genera -> scarica l'XML e lo valida
+ * via API (due CER, due mesi) -> anteprima con mesi e CER -> Genera -> scarica l'XML e lo valida
  * contro l'XSD in fixture -> Segna inviata. Nella PROFESSIONAL: la pagina non si apre e nessuna
  * chiamata API viene respinta con 403.
  *
