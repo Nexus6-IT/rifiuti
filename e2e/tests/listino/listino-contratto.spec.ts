@@ -10,7 +10,13 @@ import {
 } from '../../utils/azienda-di-test'
 import { partitaIvaCasualeValida } from '../../utils/partita-iva'
 import { conPrefissoUnico } from '../../utils/run-id'
-import { ATTESA_SERVER, attendiElenco, cliccaEAttendi, cliccaEChiudi } from '../../utils/attese'
+import {
+  ATTESA_SERVER,
+  attendiElenco,
+  cliccaEAttendi,
+  cliccaEChiudi,
+  percorsoApi,
+} from '../../utils/attese'
 import { eseguiAzioneRiga, nomiAzioniRiga } from '../../utils/azioni-riga'
 
 /**
@@ -502,10 +508,16 @@ test.describe('Listino del contratto — admin', () => {
     await expect(dlg).toBeVisible()
     await sceltaClienteDiOrigine(page, dlg)
     await scegliVoce(dlg.getByTestId('copia-origine-contratto'), d.numeroA)
+    // La scelta del contratto fa leggere i suoi elenchi: si prosegue a lettura finita.
+    await expect(dlg.getByTestId('copia-origine-elenco')).toBeVisible({ timeout: ATTESA_SERVER })
     await scegliVoce(dlg.getByTestId('copia-origine-elenco'), '001')
+    await expect(dlg.getByTestId('copia-avanti')).toBeEnabled({ timeout: ATTESA_SERVER })
     await dlg.getByTestId('copia-avanti').click()
     await expect(dlg.getByTestId('copia-conferma')).toContainText('sostituite')
-    await cliccaEAttendi(page, dlg.getByTestId('copia-conferma-finale'))
+    await cliccaEAttendi(page, dlg.getByTestId('copia-conferma-finale'), {
+      metodo: 'POST',
+      percorso: /\/elenchi-addebiti\/[^/]+\/sostituisci-da/,
+    })
 
     // Tre righe copiate (CER, V, F); il minimo (MW) resta fuori.
     await expect(dlg.getByTestId('copia-esito')).toContainText('Righe copiate: 3.', {
@@ -715,9 +727,18 @@ async function apriListino(page: Page, id: string, numero: string): Promise<void
   await expect(
     pagina(page).getByRole('heading', { level: 1, name: 'Contratti clienti' })
   ).toBeVisible()
-  const filtrato = attendiElenco(page, /\/contratti-clienti$/)
+  // Si attende proprio la lettura filtrata per numero (non quella iniziale della pagina), cosi' la
+  // tavola non si ridisegna sotto il click sul contratto.
+  const filtrato = page.waitForResponse(
+    r =>
+      r.request().method() === 'GET' &&
+      /\/contratti-clienti$/.test(percorsoApi(r.url())?.split('?')[0] ?? '') &&
+      r.url().includes(numero),
+    { timeout: ATTESA_SERVER }
+  )
+  filtrato.catch(() => undefined)
   await pagina(page).getByRole('searchbox', { name: 'Cerca un contratto' }).fill(numero)
-  await filtrato
+  expect((await filtrato).ok(), 'elenco dei contratti filtrato per numero').toBe(true)
   await pagina(page).getByTestId(`contratti-listino-${id}`).click()
   await expect(
     pagina(page).getByRole('heading', { level: 1, name: `Listino del contratto ${numero}` })
