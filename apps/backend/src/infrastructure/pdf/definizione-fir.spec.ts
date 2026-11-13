@@ -153,4 +153,42 @@ describe('PDFService - PDF reale', () => {
     ])
     expect(pagine(pdf)).toBe(2)
   })
+
+  describe('filigrana BOZZA', () => {
+    const bozza = (numero: string) => ({ ...fir(numero), status: 'DRAFT' })
+
+    it('un FIR in bozza ha la filigrana diagonale «BOZZA – NON VALIDO»', () => {
+      const d = definizioneFir(bozza('FIR-2026-000001'))
+      expect(d.watermark).toEqual(
+        expect.objectContaining({ text: 'BOZZA – NON VALIDO', opacity: expect.any(Number) })
+      )
+      expect((d.watermark as { opacity: number }).opacity).toBeLessThanOrEqual(0.2)
+    })
+
+    it('anche un FIR in attesa del produttore (AWAITING_PRODUCER) ha la filigrana', () => {
+      const d = definizioneFir({ ...fir('FIR-2026-000003'), status: 'AWAITING_PRODUCER' })
+      expect(d.watermark).toBeDefined()
+    })
+
+    it('un FIR emesso non ha filigrana', () => {
+      expect(definizioneFir(fir('FIR-2026-000002')).watermark).toBeUndefined()
+    })
+
+    it('in serie di sole bozze la filigrana e` su tutto il documento', () => {
+      const d = definizioneFirInSerie([{ fir: bozza('A') }, { fir: bozza('B') }])
+      expect(d.watermark).toBeDefined()
+    })
+
+    it('in serie mista nessuna filigrana su tutto il documento: la bozza porta la sua dicitura', () => {
+      const d = definizioneFirInSerie([{ fir: fir('A') }, { fir: bozza('B') }], null)
+      expect(d.watermark).toBeUndefined()
+      const t = testo(d)
+      expect(t.match(/BOZZA – NON VALIDO/g)).toHaveLength(1)
+    })
+
+    it('in serie di soli emessi nessuna traccia di bozza', () => {
+      const d = definizioneFirInSerie([{ fir: fir('A') }, { fir: fir('B') }])
+      expect(testo(d)).not.toContain('BOZZA')
+    })
+  })
 })

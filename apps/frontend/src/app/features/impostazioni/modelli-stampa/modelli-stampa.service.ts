@@ -5,7 +5,7 @@ import { environment } from '../../../../environments/environment'
 import { DatiModelloStampa, ModelloStampaVista } from './modello-stampa.model'
 
 /**
- * Servizio HTTP dei modelli di stampa (`ModelliStampaController`, solo ADMIN). Le modifiche
+ * Servizio HTTP dei modelli di stampa (`ModelliStampaController`: elenco per tutti i ruoli, scrittura solo ADMIN). Le modifiche
  * portano la `versione` letta: un 409 vuol dire che il modello e' cambiato nel frattempo.
  */
 @Injectable({ providedIn: 'root' })

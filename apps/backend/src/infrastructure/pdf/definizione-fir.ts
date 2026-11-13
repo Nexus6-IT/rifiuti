@@ -1,5 +1,6 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces'
 import { esaminaLogo } from '../../domain/modelli-stampa/logo'
+import { STATI_FIR_IN_BOZZA } from '../../domain/fir/stati-fir'
 import { formattaDataItaliana, formattaDataOraItaliana } from '../../core/time/anno-italiano'
 
 /** Ambiti di un modello di stampa (specchio dell'enum Prisma `AmbitoModelloStampa`). */
@@ -312,6 +313,12 @@ function coloreStato(status: string): string {
   return colors[status] || '#34495e'
 }
 
+/** Dicitura della filigrana e del banner dei FIR in bozza (decisione 12/11/2026). */
+export const DICITURA_BOZZA = 'BOZZA – NON VALIDO'
+
+const eBozza = (fir: any): boolean =>
+  (STATI_FIR_IN_BOZZA as readonly string[]).includes(fir?.status)
+
 export interface FirConQr {
   fir: any
   /** Data URL del QR: da passare solo per un FIR vidimato (regola invariata). */
@@ -349,6 +356,13 @@ function stili(modello: ModelloStampaFir | null | undefined): TDocumentDefinitio
     label: { fontSize: 9, color: '#7f8c8d', margin: [0, 2, 0, 0] },
     value: { fontSize: 11, margin: [0, 0, 0, 8] },
     signature: { fontSize: 10, color: '#27ae60', margin: [0, 4, 0, 4] },
+    bozza: {
+      fontSize: 16,
+      bold: true,
+      color: '#e74c3c',
+      alignment: 'center',
+      margin: [0, 0, 0, 8],
+    },
     copia: { fontSize: 9, italics: true, alignment: 'right', color: '#7f8c8d' },
   }
 }
@@ -368,10 +382,15 @@ export function definizioneFirInSerie(
   }
   const copie = validaModello(modello)
 
+  const tutteBozze = elementi.every(e => eBozza(e.fir))
   const content: Content[] = []
   for (const { fir, qrCodeDataUrl } of elementi) {
     for (let n = 1; n <= copie; n++) {
       const blocco: Content[] = []
+      // Serie mista: la filigrana e` del documento intero, quindi la bozza porta la dicitura nel testo.
+      if (eBozza(fir) && !tutteBozze) {
+        blocco.push({ text: DICITURA_BOZZA, style: 'bozza' })
+      }
       if (copie > 1) {
         blocco.push({ text: `Copia ${n} di ${copie}`, style: 'copia' })
       }
@@ -397,6 +416,16 @@ export function definizioneFirInSerie(
     }),
     content,
     styles: stili(modello),
+  }
+  // pdfmake ha una sola filigrana per documento, uguale su ogni pagina: solo se TUTTI i FIR sono bozze.
+  if (tutteBozze) {
+    doc.watermark = {
+      text: DICITURA_BOZZA,
+      color: '#e74c3c',
+      opacity: 0.15,
+      bold: true,
+      italics: false,
+    }
   }
   return doc
 }
