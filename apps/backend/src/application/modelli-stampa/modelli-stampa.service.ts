@@ -151,17 +151,26 @@ export class ModelliStampaService {
       if (dalla === undefined) mancanti.push(r.id)
       else loghi.set(r.id, dalla)
     }
+    // Righe lette per intero (logo compreso) nella stessa query: logo e versione arrivano insieme,
+    // quindi la chiave di cache descrive sempre il logo che contiene. Se fra le due letture una
+    // modifica concorrente ha alzato la versione, si usa l'intera riga piu' recente: mai metadati
+    // di V con il logo di V+1.
+    const complete = new Map<string, Riga>()
     if (mancanti.length > 0) {
       const lette = await this.prisma.companyTemplate.findMany({
         where: { tenantId, id: { in: mancanti } },
-        select: { id: true, versione: true, logoBase64: true },
       })
       for (const l of lette) {
         this.cacheLogo.set(tenantId, l.id, l.versione, l.logoBase64)
         loghi.set(l.id, l.logoBase64)
+        complete.set(l.id, l)
       }
     }
-    return righe.map(r => ({ ...r, logoBase64: loghi.get(r.id) ?? null }))
+    return righe.map(r => {
+      const piuRecente = complete.get(r.id)
+      if (piuRecente && piuRecente.versione !== r.versione) return piuRecente
+      return { ...r, logoBase64: loghi.get(r.id) ?? null }
+    })
   }
 
   async list(tenantId: string): Promise<ModelloStampaVista[]> {
