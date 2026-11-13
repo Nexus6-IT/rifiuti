@@ -1,9 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common'
+import type { Request } from 'express'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
 import { Public } from '../../auth/decorators/public.decorator'
 import { AbbinamentoAgenteService } from '../../application/pese/agenti/abbinamento-agente.service'
 import { IngressoLettureService } from '../../application/pese/agenti/ingresso-letture.service'
+import { BattitoAgenteService } from '../../application/pese/agenti/battito-agente.service'
+import { BattitoDto } from './dto/battito.dto'
 import { LottoLettureDto } from './dto/lotto-letture.dto'
 import { AbbinamentoDto } from './dto/abbinamento.dto'
 import { AgentePesaGuard } from './agente-pesa.guard'
@@ -28,7 +31,8 @@ import { ThrottlerAbbinamentoGuard } from './throttler-abbinamento.guard'
 export class IngressoAgenteController {
   constructor(
     private readonly abbinamento: AbbinamentoAgenteService,
-    private readonly letture: IngressoLettureService
+    private readonly letture: IngressoLettureService,
+    private readonly battito: BattitoAgenteService
   ) {}
 
   @Public()
@@ -58,5 +62,20 @@ export class IngressoAgenteController {
       this.letture.riceviLotto(agente, dto.letture, new Date())
     )
     return { esiti }
+  }
+
+  @Post('battito')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerIngressoGuard, AgentePesaGuard, ThrottlerAgenteGuard)
+  @LimiteAgente(LIMITI_AGENTE.battito)
+  @ApiOperation({
+    summary: 'Battito: ultimo contatto, scarto dell’orologio, coda, stato strumenti',
+  })
+  async registraBattito(
+    @AgenteCorrente() agente: AgenteCorrenteDati,
+    @Body() dto: BattitoDto,
+    @Req() req: Request
+  ) {
+    return comeHttpAgente(() => this.battito.registra(agente, dto, req.ip ?? null, new Date()))
   }
 }

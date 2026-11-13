@@ -10,6 +10,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import request from 'supertest'
 import { AbbinamentoAgenteService } from '../../application/pese/agenti/abbinamento-agente.service'
 import { IngressoLettureService } from '../../application/pese/agenti/ingresso-letture.service'
+import { BattitoAgenteService } from '../../application/pese/agenti/battito-agente.service'
 import { RisoluzioneAgenteService } from '../../application/pese/agenti/risoluzione-agente.service'
 import { ModuliAttiviService } from '../../application/admin/moduli-attivi.service'
 import {
@@ -34,6 +35,7 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
   let app: INestApplication
   let abbinamento: Record<string, jest.Mock>
   let letture: Record<string, jest.Mock>
+  let battito: Record<string, jest.Mock>
   let stato: 'ATTIVO' | 'REVOCATO'
 
   beforeEach(async () => {
@@ -41,6 +43,11 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
     abbinamento = {
       abbina: jest.fn().mockResolvedValue({ agenteId: AGENTE, token: TOKEN, strumenti: [] }),
       configurazione: jest.fn().mockResolvedValue({ agenteId: AGENTE, strumenti: [] }),
+    }
+    battito = {
+      registra: jest
+        .fn()
+        .mockResolvedValue({ oraServer: 'x', simulazioneAmmessa: false, revocato: false }),
     }
     letture = { riceviLotto: jest.fn().mockResolvedValue([]) }
     const logger: any = {
@@ -61,6 +68,7 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       providers: [
         { provide: AbbinamentoAgenteService, useValue: abbinamento },
         { provide: IngressoLettureService, useValue: letture },
+        { provide: BattitoAgenteService, useValue: battito },
         {
           provide: RisoluzioneAgenteService,
           useValue: {
@@ -241,6 +249,39 @@ describe('IngressoAgenteController (abbinamento, configurazione) - catena HTTP',
       letture.riceviLotto.mockRejectedValue(new LottoOltreTempoError())
       const r = await manda({ letture: [el] }).expect(503)
       expect(r.body.error).toBe('LOTTO_OLTRE_TEMPO')
+    })
+  })
+
+  describe('POST /agenti-pesa/battito', () => {
+    const corpo = {
+      versione: '1.0.0',
+      oraAgente: '2026-11-13T09:15:03.123Z',
+      codaInAttesa: 0,
+      lettureScartate: 0,
+      ultimaSequenza: 41,
+      strumenti: [{ strumentoId: AGENTE, stato: 'OK' }],
+    }
+    const manda = (c: unknown) =>
+      http()
+        .post('/agenti-pesa/battito')
+        .set('Authorization', `Bearer ${TOKEN}`)
+        .send(c as object)
+
+    it('200 con la risposta del servizio; l’agente è quello del token', async () => {
+      await manda(corpo).expect(200)
+      expect(battito.registra.mock.calls[0][0]).toEqual({ id: AGENTE, tenantId: TENANT })
+    })
+
+    it('ora senza offset, stato sconosciuto, numeri negativi: 400', async () => {
+      await manda({ ...corpo, oraAgente: '2026-11-13T09:15:03' }).expect(400)
+      await manda({ ...corpo, strumenti: [{ strumentoId: AGENTE, stato: 'BOH' }] }).expect(400)
+      await manda({ ...corpo, codaInAttesa: -1 }).expect(400)
+      expect(battito.registra).not.toHaveBeenCalled()
+    })
+
+    it('agente revocato: 403', async () => {
+      stato = 'REVOCATO'
+      await manda(corpo).expect(403)
     })
   })
 })
