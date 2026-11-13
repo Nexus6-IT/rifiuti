@@ -91,8 +91,8 @@ function ieriIso(): string {
 
 /** Fra un anno (scadenza futura) in formato ISO (solo giorno), nel fuso di Roma. */
 function fraUnAnnoIso(): string {
-  const oggi = giornoItaliano()
-  return `${Number(oggi.slice(0, 4)) + 1}${oggi.slice(4)}`
+  // In giorni, non «anno + 1»: dal 29 febbraio darebbe una data inesistente.
+  return giornoItaliano(366)
 }
 
 /**

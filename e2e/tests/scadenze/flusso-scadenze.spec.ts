@@ -133,8 +133,8 @@ function ieriIso(): string {
 
 /** Fra due anni: ben oltre la soglia di 30 giorni del cruscotto (Passo 5). */
 function fraDueAnniIso(): string {
-  const oggi = giornoItaliano()
-  return `${Number(oggi.slice(0, 4)) + 2}${oggi.slice(4)}`
+  // In giorni, non «anno + 2»: dal 29 febbraio darebbe una data inesistente.
+  return giornoItaliano(732)
 }
 
 /** Avvia a mano il job scadenzario tramite l'azione SUPER_ADMIN. */
