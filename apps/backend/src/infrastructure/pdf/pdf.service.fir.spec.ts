@@ -282,8 +282,10 @@ describe('PDFService.generateFIRSeriePDF - filigrana BOZZA per pagina (render re
   const rendiERegistra = async (elementi: Array<{ fir: object }>, copie: number) => {
     const service = new PDFService(logger)
     const passate: Array<Map<number, boolean>> = []
-    const originale = (service as any).rendi.bind(service)
-    jest.spyOn(service as any, 'rendi').mockImplementation((def: any) => {
+    // La misura e il render vero passano entrambi da createPdfKitDocument.
+    const stampante = (service as any).printer
+    const originale = stampante.createPdfKitDocument.bind(stampante)
+    jest.spyOn(stampante, 'createPdfKitDocument').mockImplementation((def: any) => {
       const mappa = new Map<number, boolean>()
       passate.push(mappa)
       if (typeof def.background === 'function') {
@@ -319,6 +321,23 @@ describe('PDFService.generateFIRSeriePDF - filigrana BOZZA per pagina (render re
     ])
     // la passata di misura non ha ancora la mappa: nessuna filigrana
     expect([...passate[0].values()].some(Boolean)).toBe(false)
+  })
+
+  it('serie mista con logo corrotto: la misura non produce PDF e l\'avviso esce una volta sola', async () => {
+    const rotto = Buffer.concat([
+      Buffer.from('89504e470d0a1a0a', 'hex'),
+      Buffer.alloc(100, 7),
+    ]).toString('base64')
+    const service = new PDFService(logger)
+    const rendi = jest.spyOn(service as any, 'rendi')
+    ;(logger.warn as jest.Mock).mockClear()
+    const pdf = await service.generateFIRSeriePDF(
+      [{ fir: fir('A', 'EMESSO') }, { fir: fir('B', 'DRAFT') }] as never,
+      { copie: 1, logoBase64: rotto } as never
+    )
+    expect(pdf.subarray(0, 4).toString()).toBe('%PDF')
+    expect(logger.warn).toHaveBeenCalledTimes(1)
+    expect(rendi).toHaveBeenCalledTimes(1)
   })
 
   it('serie non mista: una sola passata', async () => {

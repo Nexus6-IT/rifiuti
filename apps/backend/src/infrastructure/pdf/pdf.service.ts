@@ -83,8 +83,12 @@ export class PDFService {
     const costruisci = (m: ModelloStampaFir | null | undefined) =>
       definizioneFirInSerie(elementi, m, pagine)
     // Serie mista (bozze + emessi): la filigrana per pagina ha bisogno di una passata di misura.
-    if (eSerieMista(elementi)) await this.rendiConFallbackLogo(modello, costruisci)
-    return this.rendiConFallbackLogo(modello, costruisci)
+    // La misura impagina senza produrre ne' consumare il PDF e decide anche se il logo e'
+    // leggibile: l'avviso del logo corrotto esce una volta sola.
+    const effettivo = eSerieMista(elementi)
+      ? await this.misuraConFallbackLogo(modello, costruisci)
+      : modello
+    return this.rendiConFallbackLogo(effettivo, costruisci)
   }
 
   /** Distinta dei ritiri (T16): stesso motore e stesso ripiego senza logo dei FIR. */
@@ -117,6 +121,29 @@ export class PDFService {
         causa: err instanceof Error ? err.message : String(err),
       })
       return await this.rendi(costruisci({ ...modello, logoBase64: null }))
+    }
+  }
+
+  /**
+   * Passata di misura: layout e render nel documento pdfkit, senza `end()` e senza leggere lo
+   * stream, quindi nessun PDF in memoria. Restituisce il modello da usare nel render vero
+   * (senza logo se quello del modello non si decodifica).
+   */
+  private async misuraConFallbackLogo<M extends { logoBase64?: string | null }>(
+    modello: M | null | undefined,
+    costruisci: (m: M | null | undefined) => TDocumentDefinitions
+  ): Promise<M | null | undefined> {
+    try {
+      this.printer.createPdfKitDocument(costruisci(modello))
+      return modello
+    } catch (err) {
+      if (!modello?.logoBase64) throw err
+      this.logger.warn('Logo del modello di stampa non leggibile: PDF prodotto senza logo', {
+        causa: err instanceof Error ? err.message : String(err),
+      })
+      const senzaLogo = { ...modello, logoBase64: null }
+      this.printer.createPdfKitDocument(costruisci(senzaLogo))
+      return senzaLogo
     }
   }
 
