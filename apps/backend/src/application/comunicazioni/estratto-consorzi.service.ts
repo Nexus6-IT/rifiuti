@@ -86,8 +86,10 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
       }),
     ])
     // Come il vecchio findFirst per anno: se un anno avesse piu' report vale il primo.
-    const pesiSpecificiPerAnno: Record<number, ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']> =
-      {}
+    const pesiSpecificiPerAnno: Record<
+      number,
+      ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']
+    > = {}
     for (const anno of anni) {
       const record = reportMud.find(r => r.year === anno)
       pesiSpecificiPerAnno[anno] = leggiIntegrazioni(record?.reportData).pesiSpecifici

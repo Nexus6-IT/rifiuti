@@ -25,6 +25,7 @@ import {
   type VincoliNoti,
 } from '../clienti/anagrafica-versionata'
 import { nelContestoTenant } from '../pese/nel-contesto-tenant'
+import { CacheLogo } from './cache-logo'
 
 export type { AmbitoModelloStampa, DatiModelloStampa }
 
@@ -54,6 +55,29 @@ const VINCOLI: VincoliNoti = {
 }
 
 type Riga = Prisma.CompanyTemplateGetPayload<object>
+
+/** Tutte le colonne tranne il logo, che e' pesante e si legge dalla cache (vedi `conLogo`). */
+const SENZA_LOGO = {
+  id: true,
+  tenantId: true,
+  createdAt: true,
+  updatedAt: true,
+  name: true,
+  logoUrl: true,
+  headerText: true,
+  footerText: true,
+  primaryColor: true,
+  secondaryColor: true,
+  fontFamily: true,
+  isDefault: true,
+  ambito: true,
+  copie: true,
+  versione: true,
+} satisfies Prisma.CompanyTemplateSelect
+type RigaSenzaLogo = Prisma.CompanyTemplateGetPayload<{ select: typeof SENZA_LOGO }>
+
+/** Tetti della cache dei loghi: 200 modelli, ~32 MB di base64, 10 minuti. */
+const CACHE_LOGHI = { maxVoci: 200, maxCaratteri: 32 * 1024 * 1024, ttlMs: 10 * 60_000 }
 
 const vista = (r: Riga): ModelloStampaVista => ({
   id: r.id,
@@ -110,23 +134,56 @@ const colonne = (d: DatiModelloStampa) => ({
 
 @Injectable()
 export class ModelliStampaService {
+  private readonly cacheLogo = new CacheLogo(CACHE_LOGHI)
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Completa le righe lette senza logo: quelli gia' in cache (chiave azienda + modello + versione)
+   * non si rileggono, gli altri si caricano in una query sola, scoped all'azienda, e si mettono in
+   * cache con la versione della riga da cui arrivano (mai con quella di un'altra lettura).
+   */
+  private async conLogo(tenantId: string, righe: RigaSenzaLogo[]): Promise<Riga[]> {
+    const loghi = new Map<string, string | null>()
+    const mancanti: string[] = []
+    for (const r of righe) {
+      const dalla = this.cacheLogo.get(tenantId, r.id, r.versione)
+      if (dalla === undefined) mancanti.push(r.id)
+      else loghi.set(r.id, dalla)
+    }
+    if (mancanti.length > 0) {
+      const lette = await this.prisma.companyTemplate.findMany({
+        where: { tenantId, id: { in: mancanti } },
+        select: { id: true, versione: true, logoBase64: true },
+      })
+      for (const l of lette) {
+        this.cacheLogo.set(tenantId, l.id, l.versione, l.logoBase64)
+        loghi.set(l.id, l.logoBase64)
+      }
+    }
+    return righe.map(r => ({ ...r, logoBase64: loghi.get(r.id) ?? null }))
+  }
 
   async list(tenantId: string): Promise<ModelloStampaVista[]> {
     return nelContestoTenant(tenantId, async () => {
       const righe = await this.prisma.companyTemplate.findMany({
         where: { tenantId },
+        select: SENZA_LOGO,
         orderBy: [{ ambito: 'asc' }, { isDefault: 'desc' }, { name: 'asc' }],
       })
-      return righe.map(vista)
+      return (await this.conLogo(tenantId, righe)).map(vista)
     })
   }
 
   async getById(tenantId: string, id: string): Promise<ModelloStampaVista> {
     return nelContestoTenant(tenantId, async () => {
-      const riga = await this.prisma.companyTemplate.findFirst({ where: { id, tenantId } })
+      const riga = await this.prisma.companyTemplate.findFirst({
+        where: { id, tenantId },
+        select: SENZA_LOGO,
+      })
       if (!riga) throw nonTrovato()
-      return vista(riga)
+      const [completa] = await this.conLogo(tenantId, [riga])
+      return vista(completa)
     })
   }
 
@@ -204,6 +261,10 @@ export class ModelliStampaService {
           })
           return vista(dopo)
         })
+        .then(v => {
+          this.cacheLogo.invalida(tenantId, id) // la versione e' salita: la voce vecchia non serve piu'
+          return v
+        })
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
   }
@@ -268,6 +329,7 @@ export class ModelliStampaService {
             ambito: riga.ambito,
           })
         })
+        .then(() => this.cacheLogo.invalida(tenantId, id))
         .catch(err => traduciErrorePrisma(err, ENTITA, VINCOLI))
     )
   }
