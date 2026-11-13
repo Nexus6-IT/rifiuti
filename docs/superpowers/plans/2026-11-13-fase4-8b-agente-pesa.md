@@ -59,7 +59,9 @@ Task 0), dipendenza esterna unica `golang.org/x/sys` (servizio Windows e DPAPI).
   bilancia generica senza checksum) e §8 (difetti 1-15, mappati in «Difetti da non ripetere»).
 - Codice reale verificato su `3ab9392d` (sotto, «Stato di partenza»).
 
-## DA CONFERMARE CON GRAZIANO (il piano è eseguibile con le raccomandazioni)
+## DECISIONI DI GRAZIANO (13/11: Q1-Q8 confermate come raccomandate)
+
+Confermate il 13/11 tutte le raccomandazioni Q1-Q8 (Q1+Q2: permesso su colonna tenant gestita dal SUPER_ADMIN; Q8: modulo `pese`). Precondizione D13 verificata in produzione il 13/11: 0 pesate con fonte STRUMENTO o FILE.
 
 Le domande sono anche in fondo, con la proposta; qui l'impatto.
 
