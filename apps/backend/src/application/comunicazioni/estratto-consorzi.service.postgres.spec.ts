@@ -100,4 +100,29 @@ describe('EstrattoConsorziService — capodanno di Roma, Postgres reale', () => 
     expect(del31).toMatch(/\b50\b/)
     expect(del01).toMatch(/\b200\b/)
   })
+
+  it('un estratto su cinque anni legge i movimenti una volta per sede, non una per anno', async () => {
+    const classifica = async (_t: string, ms: ReadonlyArray<unknown>) =>
+      ms.map(() => ({ marcature: [{ consorzio: 'COBAT', origine: 'REGOLA' }] }))
+    const servizio = new EstrattoConsorziService(app, { classifica } as never)
+    const lettureMovimenti = jest.spyOn(app.wasteMovement, 'findMany')
+    const lettureMud = jest.spyOn(app.mUDReport, 'findMany')
+    try {
+      const esito = await TenantContext.run({ tenantId: az.tenantId }, () =>
+        servizio.estratto(az.tenantId, {
+          consorzio: 'COBAT',
+          da: '2021-01-01',
+          a: '2025-12-31',
+          unitaLocaleId: az.unitaLocaleId,
+        })
+      )
+      // solo la riga delle 23:30 Roma del 31/12/2025: quella delle 00:30 del 01/01/2026 e' fuori periodo
+      expect(esito.righe).toBe(1)
+      expect(lettureMovimenti).toHaveBeenCalledTimes(1)
+      expect(lettureMud).toHaveBeenCalledTimes(1)
+    } finally {
+      lettureMovimenti.mockRestore()
+      lettureMud.mockRestore()
+    }
+  })
 })

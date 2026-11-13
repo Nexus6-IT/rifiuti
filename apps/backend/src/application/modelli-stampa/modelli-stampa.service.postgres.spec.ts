@@ -28,6 +28,10 @@ import { ModelliStampaService } from './modelli-stampa.service'
 const PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
+// Un secondo PNG valido, diverso dal primo (rosso): per provare che il logo in cache segue le modifiche.
+const PNG_ROSSO =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+
 describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
   const owner = new PrismaClient({ datasourceUrl: urlProprietario })
   let app: PrismaService
@@ -260,5 +264,48 @@ describe('ModelliStampaService — Postgres reale, ruolo wasteflow_app', () => {
       'MODELLO_STAMPA_PREDEFINITO',
     ])
     expect(JSON.stringify(audit.map(a => a.metadata))).not.toContain('Titolo')
+  })
+
+  it('cache dei loghi: la lettura ripetuta e la modifica del logo restano coerenti, due aziende separate', async () => {
+    const a = await azienda()
+    const b = await azienda()
+    const ma = await nel(a.tenantId, () =>
+      service.crea(a.tenantId, a.utenteId, dati('A', { logoBase64: PNG }))
+    )
+    const mb = await nel(b.tenantId, () =>
+      service.crea(b.tenantId, b.utenteId, dati('B', { logoBase64: PNG_ROSSO }))
+    )
+    // due letture di fila (la seconda dalla cache): stesso logo, e mai quello dell'altra azienda
+    for (let i = 0; i < 2; i++) {
+      const elencoA = await nel(a.tenantId, () => service.list(a.tenantId))
+      const elencoB = await nel(b.tenantId, () => service.list(b.tenantId))
+      expect(elencoA.map(m => m.logoBase64)).toEqual([PNG])
+      expect(elencoB.map(m => m.logoBase64)).toEqual([PNG_ROSSO])
+    }
+    // l'azienda A non vede il modello di B nemmeno per id
+    await expect(nel(a.tenantId, () => service.getById(a.tenantId, mb.id))).rejects.toMatchObject({
+      response: expect.objectContaining({ error: 'MODELLO_STAMPA_NON_TROVATO' }),
+    })
+    // cambia il logo di A: la lettura successiva lo vede subito
+    await nel(a.tenantId, () =>
+      service.modifica(a.tenantId, a.utenteId, ma.id, {
+        ...dati('A', { logoBase64: PNG_ROSSO }),
+        versione: 1,
+      })
+    )
+    expect((await nel(a.tenantId, () => service.getById(a.tenantId, ma.id))).logoBase64).toBe(
+      PNG_ROSSO
+    )
+    // e quando lo si toglie, torna null (non il vecchio dalla cache)
+    await nel(a.tenantId, () =>
+      service.modifica(a.tenantId, a.utenteId, ma.id, {
+        ...dati('A', { logoBase64: null }),
+        versione: 2,
+      })
+    )
+    expect((await nel(a.tenantId, () => service.getById(a.tenantId, ma.id))).logoBase64).toBeNull()
+    // un'altra istanza (cache propria) che legge da zero vede lo stesso
+    const altra = new ModelliStampaService(app)
+    expect((await nel(a.tenantId, () => altra.getById(a.tenantId, ma.id))).logoBase64).toBeNull()
   })
 })

@@ -34,7 +34,7 @@ const giornoSuccessivo = (d: string) =>
  * anche i registri senza sede (storici o importati); con una sede li esclude. Il periodo e' sui
  * giorni di Roma: inizio alle 00:00 del primo giorno, fine alle 00:00 del giorno dopo l'ultimo.
  * I pesi specifici (kg per unita' non di massa) sono quelli del MUD di ciascun anno solare di Roma
- * toccato dal periodo: una lettura del MUD per anno, e ogni movimento usa i pesi del proprio anno.
+ * toccato dal periodo: una sola lettura dei MUD per tutti gli anni, e ogni movimento usa i pesi del proprio anno.
  */
 @Injectable()
 export class EstrattoConsorziService implements EstrattoConsorziPort {
@@ -77,18 +77,23 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
     const annoDa = Number(da.slice(0, 4))
     const annoA = Number(a.slice(0, 4))
     const anni = Array.from({ length: annoA - annoDa + 1 }, (_, i) => annoDa + i)
-    const [catalogo, pesiPerAnno] = await Promise.all([
+    const [catalogo, reportMud] = await Promise.all([
       caricaCatalogoCausali(this.prisma, tenantId),
-      Promise.all(
-        anni.map(async anno => {
-          const record = await this.prisma.mUDReport.findFirst({
-            where: { tenantId, year: anno },
-            select: { reportData: true },
-          })
-          return leggiIntegrazioni(record?.reportData).pesiSpecifici
-        })
-      ),
+      this.prisma.mUDReport.findMany({
+        where: { tenantId, year: { in: anni } },
+        select: { year: true, reportData: true },
+        orderBy: { id: 'asc' },
+      }),
     ])
+    // Come il vecchio findFirst per anno: se un anno avesse piu' report vale il primo.
+    const pesiSpecificiPerAnno: Record<
+      number,
+      ReturnType<typeof leggiIntegrazioni>['pesiSpecifici']
+    > = {}
+    for (const anno of anni) {
+      const record = reportMud.find(r => r.year === anno)
+      pesiSpecificiPerAnno[anno] = leggiIntegrazioni(record?.reportData).pesiSpecifici
+    }
 
     const righe: Array<RigaEstrattoConsorzio & { ordine: string }> = []
     const ambiti: Array<string | null> = sedi.map(s => s.id)
@@ -97,24 +102,17 @@ export class EstrattoConsorziService implements EstrattoConsorziPort {
     // si caricano una volta per estratto, non una per sede.
     const letti: MovimentoOrso[] = []
     for (const ambito of ambiti) {
-      for (const [i, anno] of anni.entries()) {
-        const daAnno = new Date(
-          Math.max(daIstante.getTime(), inizioGiornoItaliano(`${anno}-01-01`).getTime())
-        )
-        const aAnno = new Date(
-          Math.min(aIstante.getTime(), inizioGiornoItaliano(`${anno + 1}-01-01`).getTime())
-        )
-        if (aAnno <= daAnno) continue
-        const lettura = await leggiMovimentiOrso(this.prisma, {
-          tenantId,
-          unitaLocaleId: ambito,
-          da: daAnno,
-          a: aAnno,
-          catalogo,
-          pesiSpecifici: pesiPerAnno[i],
-        })
-        letti.push(...lettura.movimenti)
-      }
+      // Una lettura per ambito sull'intero periodo: ogni movimento usa i pesi del proprio anno
+      // solare di Roma (`pesiSpecificiPerAnno`), non una lettura per anno.
+      const lettura = await leggiMovimentiOrso(this.prisma, {
+        tenantId,
+        unitaLocaleId: ambito,
+        da: daIstante,
+        a: aIstante,
+        catalogo,
+        pesiSpecificiPerAnno,
+      })
+      letti.push(...lettura.movimenti)
     }
     const daClassificare: MovimentoDaClassificare[] = letti.map(m => ({
       radiceId: m.radiceId,

@@ -368,13 +368,51 @@ function stili(modello: ModelloStampaFir | null | undefined): TDocumentDefinitio
 }
 
 /**
+ * Pagina di inizio di ogni blocco (FIR x copia) di una serie, nell'ordine di stampa. Serve alla
+ * filigrana per pagina delle serie miste: la riempie la passata di misura di pdfmake
+ * (`pageBreakBefore`) e la legge `background` nella passata successiva. Vedi `eSerieMista`.
+ */
+export type PagineDeiBlocchi = Map<number, number>
+
+/** Serie con bozze e FIR emessi insieme: solo qui la filigrana va decisa pagina per pagina. */
+export const eSerieMista = (elementi: readonly FirConQr[]): boolean => {
+  const bozze = elementi.filter(e => eBozza(e.fir)).length
+  return bozze > 0 && bozze < elementi.length
+}
+
+const PREFISSO_BLOCCO = 'fir-blocco-'
+
+/** Filigrana diagonale come contenuto di `background` (pdfmake ha `watermark` solo a livello documento). */
+function filigranaDiPagina(larghezza: number, altezza: number): Content {
+  const cx = larghezza / 2
+  const cy = altezza / 2
+  return {
+    svg:
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${larghezza}" height="${altezza}">` +
+      `<text x="${cx}" y="${cy}" text-anchor="middle" font-family="Roboto" font-size="52" ` +
+      `font-weight="bold" fill="#e74c3c" fill-opacity="0.15" ` +
+      `transform="rotate(-45 ${cx} ${cy})">${DICITURA_BOZZA}</text></svg>`,
+    absolutePosition: { x: 0, y: 0 },
+  } as Content
+}
+
+/**
  * Definizione pdfmake di una serie di FIR: un solo documento, ogni FIR ripetuto `copie` volte
  * con un `pageBreak` fra una copia e la successiva e la dicitura "Copia n di N".
  * Funzione pura: nessun I/O. Rifiuta modelli non validi (copie, colori, magic bytes del logo).
+ *
+ * Filigrana «BOZZA»: serie di sole bozze = `watermark` del documento. Serie mista = `background`
+ * per pagina: ogni blocco ha un `id`, `pageBreakBefore` (che qui non sposta nulla) registra in
+ * `pagine` la pagina in cui comincia, e `background` mette la filigrana sulle pagine dei blocchi
+ * in bozza. pdfmake chiama `background` mentre impagina, prima di sapere dove cadono i blocchi,
+ * quindi serve una passata di misura: chi stampa una serie mista (`eSerieMista`) costruisce e
+ * impagina la definizione due volte con la STESSA mappa `pagine` (vedi PDFService). Senza passata
+ * di misura la mappa e' vuota e restano solo le diciture rosse in testa a ogni bozza.
  */
 export function definizioneFirInSerie(
   elementi: FirConQr[],
-  modello?: ModelloStampaFir | null
+  modello?: ModelloStampaFir | null,
+  pagine: PagineDeiBlocchi = new Map()
 ): TDocumentDefinitions {
   if (elementi.length === 0) throw new ModelloStampaNonValidoError('nessun FIR da stampare')
   if (elementi.length > FIR_SERIE_MAX) {
@@ -383,11 +421,13 @@ export function definizioneFirInSerie(
   const copie = validaModello(modello)
 
   const tutteBozze = elementi.every(e => eBozza(e.fir))
+  const mista = eSerieMista(elementi)
+  const bozzaDelBlocco: boolean[] = []
   const content: Content[] = []
   for (const { fir, qrCodeDataUrl } of elementi) {
     for (let n = 1; n <= copie; n++) {
       const blocco: Content[] = []
-      // Serie mista: la filigrana e` del documento intero, quindi la bozza porta la dicitura nel testo.
+      // Serie mista: la bozza porta anche la dicitura nel testo (la filigrana dipende dalla passata di misura).
       if (eBozza(fir) && !tutteBozze) {
         blocco.push({ text: DICITURA_BOZZA, style: 'bozza' })
       }
@@ -395,6 +435,14 @@ export function definizioneFirInSerie(
         blocco.push({ text: `Copia ${n} di ${copie}`, style: 'copia' })
       }
       blocco.push(...contenutoFir(fir, qrCodeDataUrl))
+      if (mista && blocco.length > 0) {
+        // Marcatore del blocco: pdfmake gli associa le pagine in cui cade.
+        blocco[0] = {
+          id: `${PREFISSO_BLOCCO}${bozzaDelBlocco.length}`,
+          stack: [blocco[0]],
+        } as Content
+      }
+      bozzaDelBlocco.push(eBozza(fir))
       // Il primo elemento del documento non ha salto pagina davanti.
       if (content.length > 0 && blocco.length > 0) {
         blocco[0] = { stack: [blocco[0]], pageBreak: 'before' } as Content
@@ -417,7 +465,6 @@ export function definizioneFirInSerie(
     content,
     styles: stili(modello),
   }
-  // pdfmake ha una sola filigrana per documento, uguale su ogni pagina: solo se TUTTI i FIR sono bozze.
   if (tutteBozze) {
     doc.watermark = {
       text: DICITURA_BOZZA,
@@ -425,6 +472,29 @@ export function definizioneFirInSerie(
       opacity: 0.15,
       bold: true,
       italics: false,
+    }
+  } else if (mista) {
+    doc.pageBreakBefore = nodo => {
+      const id = typeof nodo.id === 'string' ? nodo.id : ''
+      if (id.startsWith(PREFISSO_BLOCCO)) {
+        const pagina = nodo.startPosition?.pageNumber
+        if (typeof pagina === 'number') pagine.set(Number(id.slice(PREFISSO_BLOCCO.length)), pagina)
+      }
+      return false
+    }
+    doc.background = (paginaCorrente, dimensioni) => {
+      // Il blocco della pagina e' l'ultimo che comincia a pagina <= corrente.
+      let blocco = -1
+      let inizio = 0
+      for (const [i, pagina] of pagine) {
+        if (pagina <= paginaCorrente && pagina >= inizio) {
+          blocco = i
+          inizio = pagina
+        }
+      }
+      return blocco >= 0 && bozzaDelBlocco[blocco]
+        ? filigranaDiPagina(dimensioni.width, dimensioni.height)
+        : null
     }
   }
   return doc

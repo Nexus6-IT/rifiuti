@@ -95,6 +95,11 @@ export interface ParametriLetturaOrso {
   catalogo: CatalogoCausali
   /** Pesi specifici del MUD per le unità non di massa; assenti = nessuna conversione. */
   pesiSpecifici?: IntegrazioniMud['pesiSpecifici']
+  /**
+   * Pesi specifici per anno solare di Roma del movimento (periodi su piu' anni in una lettura sola).
+   * Per l'anno del movimento, se presente, ha la precedenza su `pesiSpecifici`.
+   */
+  pesiSpecificiPerAnno?: Readonly<Record<number, IntegrazioniMud['pesiSpecifici']>>
   /** Anno solare di `da`: se presente si calcolano le giacenze a fine mese (12 mesi). */
   anno?: number
 }
@@ -349,7 +354,10 @@ export async function leggiMovimentiOrso(
     const cer = cerSoloCifre(m.cerCode)
     let kg = convertiInKg(quantita, m.unit)
     if (kg === null) {
-      const peso = p.pesiSpecifici?.[chiavePesoSpecifico(cer, m.unit ?? '')]
+      const pesi =
+        p.pesiSpecificiPerAnno?.[Number(giornoItaliano(m.movementDate).slice(0, 4))] ??
+        p.pesiSpecifici
+      const peso = pesi?.[chiavePesoSpecifico(cer, m.unit ?? '')]
       kg = peso ? arrotonda3(quantita * peso.kgPerUnita) : null
     }
     const op = operazioneDelMovimento(p.catalogo, m, f)
