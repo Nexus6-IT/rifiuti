@@ -2,6 +2,7 @@ import {
   AVVISO_MANUALE,
   AVVISO_SIMULATA,
   AVVISO_RETTIFICATO,
+  AVVISO_PESO_STRUMENTO_RETTIFICATO,
   AVVISO_SINGOLA,
   AVVISO_TARA_DICHIARATA,
   calcolaNetto,
@@ -181,6 +182,46 @@ describe('calcolaNetto', () => {
     expect(e.nettoKg).toBe(12360)
     expect(e.rettificato).toBe(true)
     expect(e.avvisi).toContain(AVVISO_RETTIFICATO)
+  })
+
+  it.each(['STRUMENTO', 'SIMULATA'] as const)(
+    'peso %s rettificato: avviso dedicato oltre a quello generico',
+    fonte => {
+      const e = calcolaNetto(
+        'CARICO',
+        'DOPPIA',
+        [
+          pesata({
+            ordine: 1,
+            fonte,
+            pesoKg: 24880,
+            rettifiche: [{ numero: 1, pesoNuovoKg: 24000 }],
+          }),
+          pesata({ ordine: 2, fonte, pesoKg: 12540 }),
+        ],
+        OGGI
+      )
+      expect(e.avvisi).toContain(AVVISO_RETTIFICATO)
+      expect(e.avvisi).toContain(AVVISO_PESO_STRUMENTO_RETTIFICATO)
+    }
+  )
+
+  it('peso MANUALE rettificato: niente avviso dello strumento', () => {
+    const e = calcolaNetto(
+      'CARICO',
+      'DOPPIA',
+      [
+        pesata({
+          ordine: 1,
+          fonte: 'MANUALE',
+          pesoKg: 24880,
+          rettifiche: [{ numero: 1, pesoNuovoKg: 24000 }],
+        }),
+        pesata({ ordine: 2, fonte: 'MANUALE', pesoKg: 12540 }),
+      ],
+      OGGI
+    )
+    expect(e.avvisi).not.toContain(AVVISO_PESO_STRUMENTO_RETTIFICATO)
   })
 
   it('stabile false → NON_VALIDO "Una pesata instabile non è un peso."', () => {

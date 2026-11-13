@@ -194,6 +194,35 @@ describe('RettifichePesoService (Prisma finto)', () => {
     expect(avvisoTaraNonAggiornata('AB123CD')).not.toMatch(/[0-9a-f]{8}-/)
   })
 
+  it.each(['STRUMENTO', 'SIMULATA'])(
+    'pesata %s: la rettifica e` ammessa e lascia un audit dedicato',
+    async fonte => {
+      tx.pesata.findFirst.mockResolvedValue({
+        id: PES,
+        accessoId: ACC,
+        fonte,
+        pesoKg: new Prisma.Decimal('24000'),
+      })
+
+      await service.rettifica(T, admin, PES, dati())
+
+      expect(tx.rettificaPeso.create).toHaveBeenCalledTimes(1)
+      const azioni = tx.activityLog.create.mock.calls.map((c: any) => c[0].data.action)
+      expect(azioni).toEqual(['PESA_PESATA_RETTIFICATA', 'PESA_PESO_STRUMENTO_RETTIFICATO'])
+      expect(tx.activityLog.create.mock.calls[1][0].data.metadata).toMatchObject({
+        fonte,
+        precedente: 24000,
+        nuovo: 23500,
+      })
+    }
+  )
+
+  it('pesata MANUALE: nessun audit dello strumento', async () => {
+    await service.rettifica(T, admin, PES, dati())
+    const azioni = tx.activityLog.create.mock.calls.map((c: any) => c[0].data.action)
+    expect(azioni).toEqual(['PESA_PESATA_RETTIFICATA'])
+  })
+
   it('serve il ruolo di responsabile', async () => {
     await expect(service.rettifica(T, operatore, PES, dati())).rejects.toThrow(
       RuoloPesaInsufficienteError

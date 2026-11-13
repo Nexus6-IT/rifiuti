@@ -36,6 +36,12 @@ export const AVVISO_TARA_DICHIARATA =
 export const AVVISO_SINGOLA = 'Pesata singola: netto letto dallo strumento.'
 export const AVVISO_RETTIFICATO =
   'Peso rettificato: il valore originale resta visibile nelle rettifiche.'
+/**
+ * Rettifica del peso di una pesata STRUMENTO o SIMULATA (review B4-B7, I3: ammessa per decisione di
+ * Graziano, ma sempre segnalata): il peso firmato dallo strumento resta nella pesata, il netto usa
+ * quello rettificato.
+ */
+export const AVVISO_PESO_STRUMENTO_RETTIFICATO = 'Peso dello strumento rettificato a mano.'
 export const GIORNI_TARA_VECCHIA = 365
 
 const MS_GIORNO = 24 * 60 * 60 * 1000
@@ -98,6 +104,11 @@ export function calcolaNetto(
   if (manuale) avvisi.push(AVVISO_MANUALE)
   if (simulato) avvisi.push(AVVISO_SIMULATA)
   if (rettificato) avvisi.push(AVVISO_RETTIFICATO)
+  if (
+    pesate.some(p => (p.fonte === 'STRUMENTO' || p.fonte === 'SIMULATA') && p.rettifiche.length > 0)
+  ) {
+    avvisi.push(AVVISO_PESO_STRUMENTO_RETTIFICATO)
+  }
   const base = { manuale, simulato, rettificato }
 
   if (pesate.some(p => !p.stabile)) {

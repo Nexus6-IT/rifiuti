@@ -317,7 +317,8 @@ export interface ContestoPesataDaLettura {
 /**
  * Pesata da una lettura firmata dell'agente (D12): STRUMENTO, o SIMULATA se la lettura lo e'.
  * Peso, alibi, ora e firma si COPIANO dalla lettura (il trigger `pesate_da_lettura` impone che
- * coincidano: nessuno puo' «aggiustare» un peso arrivato dallo strumento). Il chiamante tiene gia'
+ * coincidano: la RIGA della pesata non si modifica). Una rettifica del peso resta ammessa, e' una riga a
+ * parte nelle rettifiche con avviso «peso dello strumento rettificato a mano» (review B4-B7, I3). Il chiamante tiene gia'
  * i lock dell'accesso; qui si prende `lettura-pesa|<id>` e l'unico `pesate_lettura_id_key` e' la
  * rete. Mai `FOR SHARE`/`FOR UPDATE` su `letture_pesa` (D4).
  */

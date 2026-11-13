@@ -42,6 +42,8 @@ import {
   StatoAccessoNonValidoError,
 } from './errori-pese'
 import { StrumentiPesaService } from './strumenti-pesa.service'
+import { RettifichePesoService } from './rettifiche-peso.service'
+import { AVVISO_PESO_STRUMENTO_RETTIFICATO } from '../../domain/pese/netto-accesso'
 
 interface Scenario {
   a: AziendaPesaDiProva
@@ -54,6 +56,7 @@ describe('Accessi di pesa da letture dello strumento — Postgres reale', () => 
   let app: PrismaService
   let accessi: AccessiPesaService
   let collegamenti: CollegamentiAccessoService
+  let rettifiche: RettifichePesoService
   const tenantCreati: string[] = []
 
   beforeAll(async () => {
@@ -73,6 +76,7 @@ describe('Accessi di pesa da letture dello strumento — Postgres reale', () => 
       new AllegatiPesaService(app)
     )
     collegamenti = new CollegamentiAccessoService(app)
+    rettifiche = new RettifichePesoService(app, new AllegatiPesaService(app))
   })
   afterAll(async () => {
     if (tenantCreati.length) await owner.tenant.deleteMany({ where: { id: { in: tenantCreati } } })
@@ -110,6 +114,30 @@ describe('Accessi di pesa da letture dello strumento — Postgres reale', () => 
         pesata: { letturaId },
       })
     )
+
+  it('rettifica del peso di una pesata STRUMENTO: ammessa, con avviso dedicato e audit; la firma resta verificabile', async () => {
+    const s = await scenario()
+    const l = await lettura(s, { pesoKg: '24880.00' })
+    const v = await apri(s, apertura(l))
+
+    const dopo = await nelTenant(s.a.tenantId, () =>
+      rettifiche.rettifica(s.a.tenantId, op(s), v.pesate[0].id, {
+        pesoNuovoKg: 24000,
+        motivo: 'errore dello strumento',
+      })
+    )
+
+    expect(dopo.avvisi).toContain(AVVISO_PESO_STRUMENTO_RETTIFICATO)
+    expect(dopo.pesate[0]).toMatchObject({
+      fonte: 'STRUMENTO',
+      pesoOriginaleKg: 24880,
+      firmaValida: true,
+    })
+    const audit = await owner.activityLog.findFirstOrThrow({
+      where: { tenantId: s.a.tenantId, action: 'PESA_PESO_STRUMENTO_RETTIFICATO' },
+    })
+    expect(audit.metadata).toMatchObject({ fonte: 'STRUMENTO', precedente: 24880, nuovo: 24000 })
+  })
 
   it('apertura DOPPIA con una lettura: pesata STRUMENTO con firma, alibi e ora della lettura, impronta p2 integra, firma valida', async () => {
     const s = await scenario()
