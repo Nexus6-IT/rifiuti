@@ -838,6 +838,8 @@ file `N…T.txt` e `N…S.txt` da 718 byte per riga).
 
 ## Domande aperte per Graziano (con proposta)
 
+**Decisioni di Graziano (14/11):** Q1-Q6 confermate come proposte (progressivo COBAT = progressivo del registro; segna inviata con conferma esplicita nel manifest; lettera O.R.R. fuori; ARPA a mano; CONOU predefiniti per CER con correzione; nessun file con un bloccante).
+
 1. **Q1 — Progressivo COBAT dal 2026** (la formula di WinWaste si ferma al 2025). Proposta: numero
    progressivo del movimento nel registro, 6 cifre, isolato in `progressivoCobat()`; alternativa:
    contatore 1..n per file.
