@@ -97,3 +97,9 @@ ruvector.db
 
 # Foto e rapporti dell inspector (restyle)
 .taste-skill/
+
+# Import WinWaste (Fase 3): MAI committare dati reali di un cliente.
+# Lo staging vive sulla workstation, fuori dal repo; le fixture sintetiche stanno in
+# apps/backend/test/fixtures/winwaste (non coperte da questi pattern).
+**/staging-winwaste/**
+*.bak
