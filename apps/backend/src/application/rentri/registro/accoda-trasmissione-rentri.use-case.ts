@@ -464,16 +464,20 @@ export class AccodaTrasmissioneRentriUseCase {
       // riga DA_RICONCILIARE; cosi' l'UPDATE sotto la tratta come un 409.
       // Nessuna riga: la si crea gia' esclusa. Una riga comparsa nel frattempo (adozione del job)
       // non e' un errore: l'UPDATE qui sotto decide in base al suo stato.
+      // Una correzione la cui catena parte da un importato non riconciliato NON riceve una riga
+      // (Q4): lo stesso filtro dell'adozione, cosi' l'esclusione non sporca la coda.
       await tx.$executeRaw`
         INSERT INTO "movimenti_trasmissione_rentri"
           ("tenant_id", "movimento_id", "registro_id", "tipo", "origine", "accodato_da", "updated_at")
-        SELECT ${tenantId}::uuid, ${movimento.id}::uuid, ${movimento.registroId}::uuid,
-          ${movimento.type}::"waste_movement_type",
-          ${movimento.movimentoRettificatoId ? 'CORREZIONE' : 'AUTOMATICA'}::"origine_trasmissione_rentri",
+        SELECT m."tenant_id", m."id", m."registro_id", m."type",
+          (CASE WHEN m."movimento_rettificato_id" IS NOT NULL THEN 'CORREZIONE' ELSE 'AUTOMATICA' END)::"origine_trasmissione_rentri",
           ${utenteId}::uuid, now()
-        WHERE NOT EXISTS (
-          SELECT 1 FROM "movimenti_trasmissione_rentri" t
-          WHERE t."movimento_id" = ${movimento.id}::uuid AND t."tenant_id" = ${tenantId}::uuid)
+        FROM "waste_movements" m
+        WHERE m."id" = ${movimento.id}::uuid AND m."tenant_id" = ${tenantId}::uuid
+          AND ${NESSUNA_CATENA_DA_RICONCILIARE}
+          AND NOT EXISTS (
+            SELECT 1 FROM "movimenti_trasmissione_rentri" t
+            WHERE t."movimento_id" = m."id" AND t."tenant_id" = m."tenant_id")
         ON CONFLICT ("movimento_id") DO NOTHING`
       const r = await tx.movimentoTrasmissioneRentri.updateMany({
         where: {
@@ -491,7 +495,19 @@ export class AccodaTrasmissioneRentriUseCase {
           where: { tenantId, movimentoId },
           select: { stato: true, origine: true, esclusoIl: true },
         })
-        if (!riga) throw new MovimentoNonTrovatoError()
+        if (!riga) {
+          if (movimento.movimentoRettificatoId) {
+            throw new TrasmissioneNonModificabileError(
+              "Correzione di un movimento importato: non si accoda finché l'importato non è riconciliato."
+            )
+          }
+          throw new MovimentoNonTrovatoError()
+        }
+        if (riga.stato === 'DA_RICONCILIARE') {
+          throw new TrasmissioneNonModificabileError(
+            "Movimento importato da un altro programma: non si esclude, resta fuori dall'invio finché non è riconciliato."
+          )
+        }
         if (riga.esclusoIl) {
           throw new TrasmissioneNonModificabileError(
             "L'annotazione è già esclusa dall'invio automatico."

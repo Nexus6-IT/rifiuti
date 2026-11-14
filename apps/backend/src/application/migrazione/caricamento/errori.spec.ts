@@ -1,4 +1,9 @@
-import { CaricamentoBloccoFallitoError, LottoGiaInCorsoError, causaSenzaDati } from './errori'
+import {
+  CaricamentoBloccoFallitoError,
+  LottoGiaInCorsoError,
+  LottoNonInCorsoError,
+  causaSenzaDati,
+} from './errori'
 
 describe('causaSenzaDati (Fase 3, Task 9)', () => {
   const raw = (code: string, message: string) => ({ code: 'P2010', meta: { code, message } })
@@ -21,6 +26,12 @@ describe('causaSenzaDati (Fase 3, Task 9)', () => {
     expect(c).toContain('regola di prova')
     expect(c).not.toContain('ERROR:')
     expect(c.length).toBeLessThan(400)
+  })
+
+  it('lotto non in corso: messaggio dedicato, non "errore del database"', () => {
+    expect(causaSenzaDati(new LottoNonInCorsoError('l1'))).toBe(
+      'il lotto di import non è in corso (già concluso o annullato)'
+    )
   })
 
   it('codice presente solo sul livello alto', () => {

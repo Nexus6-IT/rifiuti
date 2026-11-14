@@ -563,9 +563,6 @@ model FIR {
   ritiroId String? @map("ritiro_id") @db.Uuid
   ritiro   Ritiro? @relation(fields: [ritiroId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "firs_ritiro_fkey")
 
-  // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
-  // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
-
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
   /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
@@ -578,6 +575,8 @@ model FIR {
   bloccatoInvio     Boolean @default(false) @map("bloccato_invio")
   motivoBloccoInvio String? @map("motivo_blocco_invio") @db.VarChar(500)
 
+  // Bersaglio della chiave esterna composta delle figlie (firma, trasportatore,
+  // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
   @@unique([id, tenantId])
   @@unique([tenantId, firNumber])
   // Vincolo di unicità (non solo indice, v. R2 Task 3): due FIR locali dello

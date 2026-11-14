@@ -9,6 +9,14 @@ export class LottoGiaInCorsoError extends Error {
   }
 }
 
+/** Il lotto non e' (piu') `IN_CORSO` per questa azienda: non si registrano blocchi ne' si conclude. */
+export class LottoNonInCorsoError extends Error {
+  constructor(readonly lottoId: string) {
+    super(`Il lotto di import ${lottoId} non e' IN_CORSO per questa azienda`)
+    this.name = 'LottoNonInCorsoError'
+  }
+}
+
 /** Il blocco `numeroBlocco` e' fallito: il lotto e' `FALLITO` e il caricamento si e' fermato. */
 export class CaricamentoBloccoFallitoError extends Error {
   constructor(
@@ -48,6 +56,9 @@ const DESCRIZIONE_SQLSTATE: Record<string, string> = {
  * il blocco.
  */
 export function causaSenzaDati(errore: unknown): string {
+  if (errore instanceof LottoNonInCorsoError) {
+    return 'il lotto di import non è in corso (già concluso o annullato)'
+  }
   const e = errore as {
     code?: unknown
     message?: unknown

@@ -6,6 +6,9 @@
  * POST finche' non e' riconciliato (3.6). Il test d'architettura `scritture-rentri-guardate.spec.ts`
  * fa fallire un nuovo punto di scrittura privo della chiamata.
  *
+ * `conferma-legame-rentri` non ha la guardia di proposito: lavora solo in locale (nessuna chiamata a
+ * RENTRI) e un importato non puo' avere un legame proposto (la modalita' IBRIDA non parte per lui).
+ *
  * Un FIR riacquisito da RENTRI (`acquisisci-formulario-rentri`, scelta NUOVO) nasce legato e NON e'
  * un import: non ha `import_source` e non e' bloccato.
  */

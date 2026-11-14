@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client'
 import { LoggerService } from '../../../core/logger/logger.service'
 import { TenantContext } from '../../../core/context/tenant-context'
 import { PrismaService } from '../../../infrastructure/persistence/prisma.service'
-import { LottoGiaInCorsoError } from './errori'
+import { LottoGiaInCorsoError, LottoNonInCorsoError } from './errori'
 import { AvviaLotto, CONTEGGI_VUOTI, ConteggiLotto, LottoCreato, Tx } from './tipi'
 
 const LUNGHEZZA_ERRORE = 1000
@@ -73,12 +73,13 @@ export class LottiImportService {
     lottoId: string,
     blocco: { lette: number; inserite: number; saltate: number; scartate?: number }
   ): Promise<ConteggiLotto> {
-    const riga = await tx.lottoImport.findFirst({
-      where: { id: lottoId, tenantId, stato: 'IN_CORSO' },
-      select: { conteggi: true },
-    })
-    if (!riga) throw new Error('Lotto di import non in corso per questa azienda')
-    const c = { ...CONTEGGI_VUOTI, ...(riga.conteggi as Partial<ConteggiLotto>) }
+    // FOR UPDATE: due caricatori sullo stesso lotto si accodano invece di perdere aggiornamenti.
+    const righe = await tx.$queryRaw<Array<{ conteggi: unknown }>>`
+      SELECT "conteggi" FROM "lotti_import"
+      WHERE "id" = ${lottoId}::uuid AND "tenant_id" = ${tenantId}::uuid AND "stato" = 'IN_CORSO'
+      FOR UPDATE`
+    if (righe.length === 0) throw new LottoNonInCorsoError(lottoId)
+    const c = { ...CONTEGGI_VUOTI, ...(righe[0].conteggi as Partial<ConteggiLotto>) }
     const nuovi: ConteggiLotto = {
       lette: c.lette + blocco.lette,
       inserite: c.inserite + blocco.inserite,
@@ -100,7 +101,7 @@ export class LottiImportService {
         where: { id: lottoId, tenantId, stato: 'IN_CORSO' },
         data: { stato: 'COMPLETATO', conclusoIl: new Date() },
       })
-      if (r.count !== 1) throw new Error('Lotto di import non in corso: impossibile completarlo')
+      if (r.count !== 1) throw new LottoNonInCorsoError(lottoId)
     })
     this.logger.info('Lotto di import completato', { tenantId, lottoId })
   }

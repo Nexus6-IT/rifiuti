@@ -113,6 +113,22 @@ describe('Fase 3 (3.1): lotti_import (Postgres reale)', () => {
     await comeApp(b, insertSql(campi(b)))
   })
 
+  it('un lotto concluso non si modifica piu e non torna IN_CORSO; da IN_CORSO si conclude', async () => {
+    const a = await azienda()
+    const [{ id }] = await comeApp<{ id: string }>(a, insertSql(campi(a)))
+    await comeApp(a, `UPDATE lotti_import SET conteggi = '{"lette":1}' WHERE id = '${id}'`)
+    await comeApp(a, `UPDATE lotti_import SET stato = 'COMPLETATO' WHERE id = '${id}'`)
+    await expect(
+      comeApp(a, `UPDATE lotti_import SET stato = 'IN_CORSO' WHERE id = '${id}'`)
+    ).rejects.toThrow(/gia' concluso|23000/)
+    await expect(
+      comeApp(a, `UPDATE lotti_import SET conteggi = '{"lette":9}' WHERE id = '${id}'`)
+    ).rejects.toThrow(/gia' concluso|23000/)
+    await expect(
+      comeApp(a, `UPDATE lotti_import SET stato = 'ANNULLATO' WHERE id = '${id}'`)
+    ).rejects.toThrow(/gia' concluso|23000/)
+  })
+
   it('archivio fuori formato rifiutato', async () => {
     const a = await azienda()
     for (const archivio of ['WW0001202', 'WW000120266', 'ww00012026', 'XX00012026', 'WW0001202A']) {

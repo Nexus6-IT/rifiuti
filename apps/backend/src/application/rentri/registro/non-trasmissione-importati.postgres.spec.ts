@@ -340,13 +340,24 @@ describe('Fase 3 (3.1): adozione e coda del registro saltano gli importati — P
       const accoda = new AccodaTrasmissioneRentriUseCase(app, logger)
       await expect(
         accoda.escludiDaInvioAutomatico(az.tenantId, utenteId, 'ADMIN', imp.movimentoId, 'motivo')
-      ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+      ).rejects.toThrow(/importato.*riconcili/i)
       await expect(
         accoda.togliDallaCoda(az.tenantId, utenteId, imp.movimentoId)
       ).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
       const r = await rigaDi(imp.movimentoId)
       expect(r?.stato).toBe('DA_RICONCILIARE')
       expect(r?.esclusoIl).toBeNull()
+    })
+
+    it('escludiDaInvioAutomatico sulla correzione di un importato: 409 e nessuna riga creata (Q4)', async () => {
+      const az = await azienda()
+      const imp = await creaMovimentoImportato(owner, az)
+      const c1 = await correzione(az, { id: imp.movimentoId }, imp.movimentoId)
+      const accoda = new AccodaTrasmissioneRentriUseCase(app, logger)
+      const p = accoda.escludiDaInvioAutomatico(az.tenantId, utenteId, 'ADMIN', c1.id, 'motivo')
+      await expect(p).rejects.toBeInstanceOf(TrasmissioneNonModificabileError)
+      await expect(p).rejects.toThrow(/correzione di un movimento importato/i)
+      expect(await rigaDi(c1.id)).toBeNull()
     })
   })
 })
