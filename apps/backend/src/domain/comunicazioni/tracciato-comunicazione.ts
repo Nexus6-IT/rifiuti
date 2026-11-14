@@ -2,6 +2,9 @@
  * Contratto di un tracciato di comunicazione a un consorzio o osservatorio, e registro dei
  * tracciati disponibili (sul modello di `application/mud/export/mud-version.registry.ts`, ma puro).
  */
+export type CodificaTracciato = 'utf-8' | 'windows-1252'
+export type AffidabilitaTracciato = 'UFFICIALE' | 'RICAVATO_WINWASTE'
+
 export interface TracciatoComunicazione<D = unknown> {
   /** Chiave del consorzio/osservatorio, es. `ORSO`. */
   readonly consorzio: string
@@ -11,6 +14,12 @@ export interface TracciatoComunicazione<D = unknown> {
   readonly estensione: string
   /** Tipo MIME del file prodotto. */
   readonly contentType: string
+  /** Codifica del file (D7): il contenuto resta testo, si codifica allo scaricamento. */
+  readonly codifica: CodificaTracciato
+  /** Affidabilità del tracciato (D7/D8): ufficiale o ricavato da WinWaste, da confermare. */
+  readonly affidabilita: AffidabilitaTracciato
+  /** Nota mostrata in interfaccia e nel manifest sull'affidabilità. */
+  readonly notaAffidabilita: string
   /** Errori bloccanti dei dati rispetto al tracciato; lista vuota se serializzabili. */
   validaDati(dati: D): string[]
   /** Produce il contenuto del file. Lancia se `validaDati` non è vuota. */

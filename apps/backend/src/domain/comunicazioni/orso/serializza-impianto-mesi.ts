@@ -134,6 +134,9 @@ export const TracciatoOrsoImpiantoMesi: TracciatoComunicazione<ImpiantoMesiDati>
   versione: 'ImpiantoMesi-1',
   estensione: 'xml',
   contentType: 'application/xml',
+  codifica: 'utf-8',
+  affidabilita: 'UFFICIALE',
+  notaAffidabilita: 'Tracciato ufficiale O.R.SO. (XSD ImpiantoMesi).',
   validaDati: validaImpiantoMesi,
   serializza: serializzaImpiantoMesi,
 }
