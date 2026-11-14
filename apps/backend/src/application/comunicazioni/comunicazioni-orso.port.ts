@@ -66,6 +66,12 @@ export interface ComunicazioneVista {
   inviataIl?: string
   inviataDa?: string
   modificataDopoInvio: boolean
+  /**
+   * Affidabilita' del tracciato (4.9c-f, D8, campo additivo): `UFFICIALE` oppure
+   * `RICAVATO_WINWASTE` (da confermare con un file reale).
+   */
+  affidabilita?: 'UFFICIALE' | 'RICAVATO_WINWASTE'
+  notaAffidabilita?: string
 }
 
 export interface AnteprimaOrso {
