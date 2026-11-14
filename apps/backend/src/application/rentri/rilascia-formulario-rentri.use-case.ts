@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { verificaFirNonBloccato } from '../../domain/fir/guardia-invio-rentri'
 import { LoggerService } from '../../core/logger/logger.service'
 import { DomainException } from '../../domain/shared/domain-exception'
 import { RentriOrigineLegame } from '../../domain/fir/aggregates/fir.aggregate'
@@ -70,6 +71,8 @@ export class RilasciaFormularioRENTRIUseCase {
     if (!fir || fir.tenantId !== input.tenantId) {
       throw DomainException.notFound('FIR', input.firId)
     }
+    // Fase 3 (D4): FIR importato = nessuna scrittura verso RENTRI prima della riconciliazione.
+    verificaFirNonBloccato(fir)
 
     if (!fir.rentriNumeroFir || !fir.rentriOrigineLegame) {
       throw DomainException.businessRuleViolation(

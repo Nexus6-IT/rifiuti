@@ -1,0 +1,76 @@
+/**
+ * Test d'architettura (Fase 3, D4/Q5): ogni file sotto `src/` che chiama un metodo di SCRITTURA
+ * verso RENTRI su un FIR (POST/PUT/DELETE del client `RENTRIApiClient`) deve chiamare anche
+ * `verificaFirNonBloccato`. Un nuovo punto di scrittura senza la guardia fa fallire il test: e' la
+ * rete che tiene i FIR importati fuori da RENTRI finche' non sono riconciliati (3.6).
+ *
+ * Lettura del sorgente, come `punti-di-sistema.spec.ts`. Nota: `acquisisci-formulario-rentri` e'
+ * nell'elenco perche' guarda il FIR bersaglio dell'aggancio (scelta COLLEGA_ESISTENTE); il ramo
+ * NUOVO crea un FIR che nasce legato e non e' un import (Q5), quindi non ha nulla da bloccare.
+ */
+import { readdirSync, readFileSync, statSync } from 'fs'
+import { join, relative, sep } from 'path'
+
+const SRC = join(__dirname, '..', '..')
+
+/** Metodi del client che scrivono su RENTRI per un FIR (censimento del Task 0). */
+const SCRITTURE = [
+  'creaFormulario',
+  'inviaAccettazione',
+  'annullaFormulario',
+  'inviaNoteAnnullamento',
+  'richiediHashPerFirma',
+  'autorizzaFirmaRemota',
+  'firmaHashRemoto',
+  'inviaAcquisizioneFirma',
+  'caricaAllegato',
+  'eliminaAllegato',
+  'rilasciaVisibilita',
+  'acquisisciVisibilita',
+]
+const CHIAMATA = new RegExp(
+  `\\b(?:rentriApiClient|apiClient|rentriClient|client)\\s*\\.\\s*(${SCRITTURE.join('|')})\\s*\\(`,
+  'g'
+)
+
+/** File che DEVONO risultare guardati (se uno sparisce dal censimento il test lo dice). */
+const ATTESI = [
+  'application/rentri/accetta-o-respingi-fir.use-case.ts',
+  'application/rentri/acquisisci-formulario-rentri.use-case.ts',
+  'application/rentri/annulla-fir-rentri.use-case.ts',
+  'application/rentri/completa-operazione-con-firma.use-case.ts',
+  'application/rentri/gestisci-allegati-fir.use-case.ts',
+  'application/rentri/rilascia-formulario-rentri.use-case.ts',
+  'application/rentri/sync-fir-to-rentri.use-case.ts',
+]
+
+function sorgenti(dir: string, uscita: string[] = []): string[] {
+  for (const nome of readdirSync(dir)) {
+    const p = join(dir, nome)
+    if (statSync(p).isDirectory()) sorgenti(p, uscita)
+    else if (nome.endsWith('.ts') && !nome.endsWith('.spec.ts')) uscita.push(p)
+  }
+  return uscita
+}
+
+describe('Fase 3: ogni scrittura verso RENTRI su un FIR passa da verificaFirNonBloccato', () => {
+  const trovati = new Map<string, string[]>()
+  for (const file of sorgenti(SRC)) {
+    const rel = relative(SRC, file).split(sep).join('/')
+    // Il client stesso definisce i metodi: non e' un chiamante.
+    if (rel.startsWith('infrastructure/rentri/')) continue
+    const testo = readFileSync(file, 'utf8')
+    const metodi = [...testo.matchAll(CHIAMATA)].map(m => m[1])
+    if (metodi.length > 0) trovati.set(rel, metodi)
+  }
+
+  it("il censimento trova i chiamanti attesi (il test non puo' passare a vuoto)", () => {
+    expect([...trovati.keys()].sort()).toEqual([...ATTESI].sort())
+  })
+
+  it.each([...trovati.keys()].sort())('%s chiama verificaFirNonBloccato', rel => {
+    const testo = readFileSync(join(SRC, rel), 'utf8')
+    expect(testo).toMatch(/\bverificaFirNonBloccato\s*\(/)
+    expect(testo).toContain("domain/fir/guardia-invio-rentri'")
+  })
+})
