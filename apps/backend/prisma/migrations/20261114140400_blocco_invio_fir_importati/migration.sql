@@ -1,7 +1,7 @@
 -- Fase 3 (3.1), D4 del piano `2026-11-14-fase3-import-piano`: blocco all'invio a RENTRI dei FIR
 -- importati, tutto nel database (guardie e filtri applicativi sono nel Task 7).
 --
--- Presuppone `20261114100200_provenienza_import` (`firs.import_source`).
+-- Presuppone `20261114140200_provenienza_import` (`firs.import_source`).
 --
 -- Cosa fa, in quest'ordine (un solo script, transazionale):
 --   1. `SET LOCAL lock_timeout = '5s'`;
@@ -25,7 +25,7 @@
 -- ON firs; DROP TRIGGER firs_sblocco_importati ON firs; DROP FUNCTION firs_blocco_invio_importati(); DROP FUNCTION firs_sblocco_importati(); ALTER TABLE firs DROP CONSTRAINT
 -- firs_bloccato_invio_motivo_check, DROP COLUMN motivo_blocco_invio, DROP COLUMN bloccato_invio.
 -- Ripristino da migration fallita (P3009): transazionale; se `firs` non ha la colonna `bloccato_invio`:
--- `npx prisma migrate resolve --rolled-back 20261114100400_blocco_invio_fir_importati`, poi si rilancia.
+-- `npx prisma migrate resolve --rolled-back 20261114140400_blocco_invio_fir_importati`, poi si rilancia.
 
 SET LOCAL lock_timeout = '5s';
 

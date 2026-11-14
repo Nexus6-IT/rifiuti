@@ -17,7 +17,7 @@
 -- DROP TYPE "ambito_lotto_import". Da fare solo se la migration `...100200` non e' stata applicata
 -- (le sue FK puntano a questa tabella).
 -- Ripristino da migration fallita (P3009): transazionale; se `to_regclass('public.lotti_import')` e'
--- NULL: `npx prisma migrate resolve --rolled-back 20261114100100_lotti_import`, poi si rilancia.
+-- NULL: `npx prisma migrate resolve --rolled-back 20261114140100_lotti_import`, poi si rilancia.
 
 SET LOCAL lock_timeout = '5s';
 

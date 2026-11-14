@@ -1,8 +1,8 @@
 -- Fase 3 (3.1), D3 del piano `2026-11-14-fase3-import-piano`: blocco all'invio a RENTRI dei
 -- MOVIMENTI importati, tutto nel database (la parte applicativa e' nel Task 6).
 --
--- Presuppone la migration `20261114100000_import_valori_trasmissione` (i due valori di enum nuovi:
--- una migration precedente, quindi gia' utilizzabili qui) e `20261114100200_provenienza_import`
+-- Presuppone la migration `20261114140000_import_valori_trasmissione` (i due valori di enum nuovi:
+-- una migration precedente, quindi gia' utilizzabili qui) e `20261114140200_provenienza_import`
 -- (`waste_movements.import_source`).
 --
 -- Cosa fa, in quest'ordine (un solo script, transazionale):
@@ -50,7 +50,7 @@
 --       CHECK (stato NOT IN ('TRASMESSA', 'GIA_SU_RENTRI', 'INCERTA') OR bloccato_invio);
 -- Ripristino da migration fallita (P3009): transazionale; se il trigger
 -- `waste_movements_importato_bloccato` non esiste: `npx prisma migrate resolve --rolled-back
--- 20261114100300_blocco_invio_importati`, poi si rilancia.
+-- 20261114140300_blocco_invio_importati`, poi si rilancia.
 
 SET LOCAL lock_timeout = '5s';
 

@@ -28,7 +28,7 @@
 -- DROP COLUMN lotto_import_id;` poi `DROP FUNCTION provenienza_import_immutabile()`. Solo se nessuna
 -- riga e' stata importata: altrimenti si perde la provenienza.
 -- Ripristino da migration fallita (P3009): transazionale; se `waste_movements` non ha la colonna
--- `import_source`: `npx prisma migrate resolve --rolled-back 20261114100200_provenienza_import`, poi
+-- `import_source`: `npx prisma migrate resolve --rolled-back 20261114140200_provenienza_import`, poi
 -- si rilancia.
 
 SET LOCAL lock_timeout = '5s';

@@ -50,7 +50,7 @@ const NOVE_TABELLE = [
 
 /**
  * Colonne di `waste_movements` su master `8e991f87`: la 4.4 non ne aggiunge (scritte a mano, mai lette a
- * runtime). In coda le tre della provenienza di import (Fase 3, 3.1, migration `20261114100200`).
+ * runtime). In coda le tre della provenienza di import (Fase 3, 3.1, migration `20261114140200`).
  */
 const COLONNE_WASTE_MOVEMENTS_ATTESE = [
   'id',

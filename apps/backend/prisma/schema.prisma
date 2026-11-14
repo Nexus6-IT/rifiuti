@@ -567,14 +567,14 @@ model FIR {
   // allegato): obbliga il loro tenant_id a coincidere con quello del FIR.
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
   lottoImport   LottoImport? @relation(fields: [lottoImportId, tenantId], references: [id, tenantId], onDelete: NoAction, onUpdate: NoAction, map: "firs_lotto_import_fkey")
 
   /// Fase 3 (3.1): FIR bloccato all'invio a RENTRI (gli importati nascono bloccati: trigger e CHECK nella migration
-  /// `20261114100400_blocco_invio_fir_importati`; uno sblocco e' vietato per gli importati fino a 3.6).
+  /// `20261114140400_blocco_invio_fir_importati`; uno sblocco e' vietato per gli importati fino a 3.6).
   bloccatoInvio     Boolean @default(false) @map("bloccato_invio")
   motivoBloccoInvio String? @map("motivo_blocco_invio") @db.VarChar(500)
 
@@ -1358,7 +1358,7 @@ model Produttore {
   ritiri Ritiro[]
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
@@ -1411,7 +1411,7 @@ model Trasportatore {
   ritiri    Ritiro[]
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
@@ -1463,7 +1463,7 @@ model Destinatario {
   ritiri Ritiro[]
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
@@ -2085,7 +2085,7 @@ model WasteMovement {
   legamiComeVigente   LegameMovimento[] @relation("LegameVigente")
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
@@ -2600,7 +2600,7 @@ model Ditta {
   agenti        Agente[]
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid
@@ -2647,7 +2647,7 @@ model SedeDitta {
   ritiriDestinatario Ritiro[] @relation("RitiroDestinatarioSede")
 
   /// Fase 3 (3.1): provenienza di un record importato (tutte e tre o nessuna, immutabili: trigger e CHECK
-  /// nella migration `20261114100200_provenienza_import`; unico parziale solo SQL).
+  /// nella migration `20261114140200_provenienza_import`; unico parziale solo SQL).
   importSource  String?      @map("import_source") @db.VarChar(30)
   legacyKey     String?      @map("legacy_key") @db.VarChar(200)
   lottoImportId String?      @map("lotto_import_id") @db.Uuid

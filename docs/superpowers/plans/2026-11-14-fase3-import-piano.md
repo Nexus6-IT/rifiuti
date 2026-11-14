@@ -333,9 +333,9 @@ le spec accanto.
 ## Task 2: migration dei valori di enum e tabella `lotti_import`
 
 **Dipende da 1.** **File:** `prisma/schema.prisma` (enum nuovi, valori nuovi, modello `LottoImport` in
-coda, relazione inversa su `Tenant`), migration `20261114100000_import_valori_trasmissione` (solo
+coda, relazione inversa su `Tenant`), migration `20261114140000_import_valori_trasmissione` (solo
 `ALTER TYPE … ADD VALUE 'DA_RICONCILIARE'` e `'IMPORTAZIONE'`), migration
-`20261114100100_lotti_import`, `prisma/sql/ruoli-db.sql` (`lotti_import` in `v_senza_cancellazione`),
+`20261114140100_lotti_import`, `prisma/sql/ruoli-db.sql` (`lotti_import` in `v_senza_cancellazione`),
 `prisma-rls.extension.ts`, `README-tenant-transazione.md`, `rls-catalogo.postgres.spec.ts` (84 → 85),
 `src/infrastructure/database/ruoli-db.postgres.spec.ts`, nuovo
 `src/application/migrazione/lotti-import.schema.postgres.spec.ts`.
@@ -358,7 +358,7 @@ coda, relazione inversa su `Tenant`), migration `20261114100000_import_valori_tr
 
 **Dipende da 2.** **File:** `prisma/schema.prisma` (tre campi in fondo a `WasteMovement`, `FIR`,
 `Ditta`, `SedeDitta`, `Produttore`, `Trasportatore`, `Destinatario`, con commento `///` e relazione
-verso `LottoImport`), migration `20261114100200_provenienza_import`, nuovo
+verso `LottoImport`), migration `20261114140200_provenienza_import`, nuovo
 `src/application/migrazione/provenienza.schema.postgres.spec.ts`.
 
 - [ ] Migration: colonne NULL, CHECK `<tabella>_provenienza_check` (tutti o nessuno, `import_source`
@@ -382,7 +382,7 @@ verso `LottoImport`), migration `20261114100200_provenienza_import`, nuovo
 
 ## Task 4: blocco all'invio dei movimenti importati (database)
 
-**Dipende da 3.** **File:** migration `20261114100300_blocco_invio_importati` (parte movimenti),
+**Dipende da 3.** **File:** migration `20261114140300_blocco_invio_importati` (parte movimenti),
 `prisma/schema.prisma` (solo commenti degli enum), nuovo
 `src/application/rentri/registro/trasmissione-importati.schema.postgres.spec.ts`; estensione di
 `trasmissione-rentri.schema.postgres.spec.ts` se fissa l'elenco dei CHECK.
