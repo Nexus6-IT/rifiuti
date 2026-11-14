@@ -23,6 +23,7 @@ const MAPPA_MODULI: Record<string, string | string[]> = {
   destinatari: 'anagrafiche',
   mud: 'mud',
   comunicazioni: 'comunicazioni',
+  'comunicazioni/consorzi': 'comunicazioni',
   esg: 'esg',
   pese: 'pese',
   giacenze: 'giacenze',

@@ -54,6 +54,17 @@ describe('ComunicazioniController - catena HTTP', () => {
       manifest: jest
         .fn()
         .mockResolvedValue({ nomeFile: 'Movi.txt.manifest.txt', testo: 'MANIFEST' }),
+      anteprima: jest
+        .fn()
+        .mockResolvedValue({
+          numeroRecord: 2,
+          bloccanti: false,
+          affidabilita: 'RICAVATO_WINWASTE',
+        }),
+      genera: jest
+        .fn()
+        .mockResolvedValue({ id: ID, stato: 'GENERATA', affidabilita: 'RICAVATO_WINWASTE' }),
+      elenca: jest.fn().mockResolvedValue([]),
       consorzioDi: jest.fn().mockResolvedValue('ORSO'),
       segnaInviata: jest.fn().mockResolvedValue({ id: ID, stato: 'INVIATA' }),
     }
@@ -272,6 +283,117 @@ describe('ComunicazioniController - catena HTTP', () => {
     expect(tracciato.manifest).toHaveBeenCalledWith(TENANT_TOKEN, ID)
   })
 
+  describe.each([
+    ['conou', 'CONOU'],
+    ['cobat', 'COBAT'],
+  ])('tracciato %s', (rotta, consorzio) => {
+    const PERIODO = { da: '2026-05-01', a: '2026-05-31' }
+
+    it('anteprima: azienda selezionata, sede e periodo al servizio generico, puoGenerare dal ruolo', async () => {
+      ruolo = 'OPERATOR'
+      const r = await request(app.getHttpServer())
+        .get(
+          `/comunicazioni/${rotta}/anteprima?unitaLocaleId=${SEDE}&da=${PERIODO.da}&a=${PERIODO.a}`
+        )
+        .set('X-Tenant-ID', TENANT_SELEZIONATO)
+        .expect(200)
+      expect(tracciato.anteprima).toHaveBeenCalledWith(TENANT_SELEZIONATO, {
+        consorzio,
+        unitaLocaleId: SEDE,
+        ...PERIODO,
+      })
+      expect(r.body).toMatchObject({
+        numeroRecord: 2,
+        affidabilita: 'RICAVATO_WINWASTE',
+        puoGenerare: true,
+      })
+      ruolo = 'VIEWER'
+      const v = await request(app.getHttpServer())
+        .get(
+          `/comunicazioni/${rotta}/anteprima?unitaLocaleId=${SEDE}&da=${PERIODO.da}&a=${PERIODO.a}`
+        )
+        .expect(200)
+      expect(v.body.puoGenerare).toBe(false)
+    })
+
+    it('anteprima: sede o periodo non validi -> 400, servizio non chiamato', async () => {
+      await request(app.getHttpServer())
+        .get(`/comunicazioni/${rotta}/anteprima?unitaLocaleId=x&da=${PERIODO.da}&a=${PERIODO.a}`)
+        .expect(400)
+      await request(app.getHttpServer())
+        .get(`/comunicazioni/${rotta}/anteprima?unitaLocaleId=${SEDE}&da=2026-5-1&a=${PERIODO.a}`)
+        .expect(400)
+      expect(tracciato.anteprima).not.toHaveBeenCalled()
+    })
+
+    it('genera: ADMIN e OPERATOR ok (201) con utente e corpo; VIEWER 403; corpo non valido 400', async () => {
+      for (const r of ['ADMIN', 'OPERATOR']) {
+        ruolo = r
+        await request(app.getHttpServer())
+          .post(`/comunicazioni/${rotta}`)
+          .set('X-Tenant-ID', TENANT_SELEZIONATO)
+          .send({ unitaLocaleId: SEDE, ...PERIODO })
+          .expect(201)
+      }
+      expect(tracciato.genera).toHaveBeenCalledWith(TENANT_SELEZIONATO, UTENTE, {
+        consorzio,
+        unitaLocaleId: SEDE,
+        ...PERIODO,
+      })
+      tracciato.genera.mockClear()
+      ruolo = 'VIEWER'
+      const vietato = await request(app.getHttpServer())
+        .post(`/comunicazioni/${rotta}`)
+        .send({ unitaLocaleId: SEDE, ...PERIODO })
+        .expect(403)
+      expect(JSON.stringify(vietato.body)).toContain('COMUNICAZIONI_RISERVATE_OPERATORI')
+      ruolo = 'ADMIN'
+      await request(app.getHttpServer())
+        .post(`/comunicazioni/${rotta}`)
+        .send({ unitaLocaleId: SEDE, da: 'x', a: PERIODO.a })
+        .expect(400)
+      await request(app.getHttpServer())
+        .post(`/comunicazioni/${rotta}`)
+        .send({ unitaLocaleId: SEDE, ...PERIODO, consorzio: 'ORSO' })
+        .expect(400)
+      expect(tracciato.genera).not.toHaveBeenCalled()
+    })
+
+    it('genera con bloccanti: 400 COMUNICAZIONE_CON_BLOCCANTI con gli avvisi', async () => {
+      tracciato.genera.mockRejectedValue(
+        new ComunicazioneConBloccantiError([
+          { codice: 'ATECO_MANCANTE', messaggio: 'm', movimentoIds: [], bloccante: true } as never,
+        ])
+      )
+      const r = await request(app.getHttpServer())
+        .post(`/comunicazioni/${rotta}`)
+        .send({ unitaLocaleId: SEDE, ...PERIODO })
+        .expect(400)
+      expect(JSON.stringify(r.body)).toContain('COMUNICAZIONE_CON_BLOCCANTI')
+      expect(JSON.stringify(r.body)).toContain('ATECO_MANCANTE')
+    })
+
+    it('storico: consorzio, sede e periodo validati e passati al servizio generico', async () => {
+      await request(app.getHttpServer())
+        .get(
+          `/comunicazioni/tracciati?consorzio=${consorzio}&unitaLocaleId=${SEDE}&da=${PERIODO.da}&a=${PERIODO.a}`
+        )
+        .set('X-Tenant-ID', TENANT_SELEZIONATO)
+        .expect(200)
+      expect(tracciato.elenca).toHaveBeenCalledWith(TENANT_SELEZIONATO, {
+        consorzio,
+        unitaLocaleId: SEDE,
+        ...PERIODO,
+      })
+    })
+  })
+
+  it('storico tracciati: consorzio non ammesso -> 400', async () => {
+    await request(app.getHttpServer()).get('/comunicazioni/tracciati?consorzio=ORSO').expect(400)
+    await request(app.getHttpServer()).get('/comunicazioni/tracciati').expect(400)
+    expect(tracciato.elenca).not.toHaveBeenCalled()
+  })
+
   it('senza il modulo comunicazioni: 403 MODULO_NON_ATTIVO su ogni rotta, servizio non chiamato', async () => {
     moduliAttivi.mockResolvedValue(['registro'])
     const server = app.getHttpServer()
@@ -282,8 +404,15 @@ describe('ComunicazioniController - catena HTTP', () => {
       await request(server).get(`/comunicazioni/${ID}/file`),
       await request(server).get(`/comunicazioni/${ID}/manifest`),
       await request(server).post(`/comunicazioni/${ID}/inviata`),
+      await request(server).get(
+        `/comunicazioni/conou/anteprima?unitaLocaleId=${SEDE}&da=2026-05-01&a=2026-05-31`
+      ),
+      await request(server)
+        .post('/comunicazioni/cobat')
+        .send({ unitaLocaleId: SEDE, da: '2026-05-01', a: '2026-05-31' }),
+      await request(server).get('/comunicazioni/tracciati?consorzio=CONOU'),
     ]
-    expect(risposte.map(r => r.status)).toEqual([403, 403, 403, 403, 403, 403])
+    expect(risposte.map(r => r.status)).toEqual([403, 403, 403, 403, 403, 403, 403, 403, 403])
     expect(JSON.stringify(risposte[0].body)).toContain('MODULO_NON_ATTIVO')
     for (const m of [...Object.values(orso), ...Object.values(tracciato)]) {
       expect(m).not.toHaveBeenCalled()

@@ -132,4 +132,75 @@ describe('ConfigurazioneSedeComponent', () => {
     expect(svc.impostaConfigurazione).not.toHaveBeenCalled()
     expect(q('config-salva')).toBeNull()
   })
+
+  it('CONOU: modifica dei predefiniti per CER (prodotto e percentuale) dalle righe', () => {
+    setup({
+      CONOU: config('CONOU', {
+        codiceDeposito: 'DEP001',
+        predefinitiPerCer: { '130205': { prodotto: 'A', percentualeOlio: 84.99 } },
+      }),
+    })
+    const c = fixture.componentInstance
+    expect(c.predefiniti).toEqual([{ cer: '130205', prodotto: 'A', percentuale: '84.99' }])
+    c.aggiungiPredefinito()
+    c.predefiniti[1] = { cer: '13 01 01*', prodotto: 'B', percentuale: '70,5' }
+    expect(c.datiDaSalvare()).toEqual({
+      codiceDeposito: 'DEP001',
+      predefinitiPerCer: {
+        '130205': { prodotto: 'A', percentualeOlio: 84.99 },
+        '130101': { prodotto: 'B', percentualeOlio: 70.5 },
+      },
+    })
+    c.togliPredefinito(0)
+    expect(Object.keys(c.datiDaSalvare()['predefinitiPerCer'] as object)).toEqual(['130101'])
+  })
+
+  it('CONOU: una riga senza percentuale salva solo il prodotto; una riga senza CER si ignora', () => {
+    setup({ CONOU: config('CONOU', {}) })
+    const c = fixture.componentInstance
+    c.aggiungiPredefinito()
+    c.aggiungiPredefinito()
+    c.predefiniti[0] = { cer: '130205', prodotto: 'C', percentuale: '' }
+    expect(c.datiDaSalvare()).toEqual({ predefinitiPerCer: { '130205': { prodotto: 'C' } } })
+    c.predefiniti = []
+    expect(c.datiDaSalvare()).toEqual({})
+  })
+
+  it('CONOU: togliere tutte le righe svuota la mappa gia salvata', () => {
+    setup({
+      CONOU: config('CONOU', { predefinitiPerCer: { '130205': { prodotto: 'A' } } }),
+    })
+    const c = fixture.componentInstance
+    c.togliPredefinito(0)
+    expect(c.datiDaSalvare()).toEqual({ predefinitiPerCer: {} })
+  })
+
+  it('COBAT: modifica del PGF per CER dalle righe', () => {
+    setup({
+      COBAT: config('COBAT', {
+        campagnaPredefinita: { codice: '26', descrizione: 'C' },
+        pgfPerCer: { '160601': 'A' },
+      }),
+    })
+    const c = fixture.componentInstance
+    c.scegli('COBAT')
+    expect(c.pgfRighe).toEqual([{ cer: '160601', pgf: 'A' }])
+    c.aggiungiPgf()
+    c.pgfRighe[1] = { cer: '16 06 02*', pgf: 'C' }
+    expect(c.datiDaSalvare()['pgfPerCer']).toEqual({ '160601': 'A', '160602': 'C' })
+    c.togliPgf(0)
+    expect(c.datiDaSalvare()['pgfPerCer']).toEqual({ '160602': 'C' })
+  })
+
+  it('solo chi puo modificare vede aggiungi e togli', () => {
+    setup({
+      CONOU: config(
+        'CONOU',
+        { predefinitiPerCer: { '130205': { prodotto: 'A' } } },
+        { puoModificare: false }
+      ),
+    })
+    expect(q('config-predefinito-aggiungi')).toBeNull()
+    expect(q('config-predefinito-togli')).toBeNull()
+  })
 })
