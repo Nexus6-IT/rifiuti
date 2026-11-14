@@ -34,7 +34,11 @@ import {
   type AziendaMud,
 } from '../mud/aggregazione/mud-seed.postgres-spec'
 import { partitaIvaUnica } from '../../test-support/anagrafiche-di-test'
+import { registroTracciati } from '../../domain/comunicazioni/registro-tracciati'
 import { ComunicazioniOrsoService } from './comunicazioni-orso.service'
+import { ComunicazioniTracciatoService } from './comunicazioni-tracciato.service'
+import { ConfigurazioneComunicazioniService } from './configurazione-comunicazioni.service'
+import { MarcaturaConsorziService } from './marcatura-consorzi.service'
 import {
   ComunicazioneConBloccantiError,
   ComunicazioneNonTrovataError,
@@ -217,6 +221,31 @@ describe('ComunicazioniOrsoService — Postgres reale, ruolo wasteflow_app', () 
     const a = await nelTenant(az, () => servizio.anteprima(az.tenantId, az.unitaLocaleId, 2025))
     expect(a.avvisi.map(x => x.codice)).toContain('DESCRIZIONE_VUOTA')
     expect(a.bloccanti).toBe(true)
+  })
+
+  it('compatibilita 4.9a: GET :id/file del servizio generico dà gli stessi byte e lo stesso Content-Type di prima', async () => {
+    const az = await nuovaAzienda('O9')
+    await caricoConFir(az, 'MI', 200, '2025-03-11')
+    await scarico(az, 100, '2025-03-20', 'Scarti è € ü')
+    const g = await nelTenant(az, () =>
+      servizio.genera(az.tenantId, az.utenteId, az.unitaLocaleId, 2025)
+    )
+    const generico = new ComunicazioniTracciatoService(
+      app,
+      new MarcaturaConsorziService(app),
+      new ConfigurazioneComunicazioniService(app),
+      [],
+      registroTracciati
+    )
+    const vecchio = await nelTenant(az, () => servizio.file(az.tenantId, g.id))
+    const nuovo = await nelTenant(az, () => generico.file(az.tenantId, g.id))
+    // Golden della 4.9a: `res.setHeader('Content-Type', 'application/xml; charset=utf-8')` e
+    // `res.send(xml)` (stringa → UTF-8).
+    expect(nuovo.contentType).toBe('application/xml; charset=utf-8')
+    expect(nuovo.nomeFile).toBe(vecchio.nomeFile)
+    expect(Buffer.compare(nuovo.contenuto, Buffer.from(vecchio.xml, 'utf8'))).toBe(0)
+    // Ci sono davvero caratteri non ASCII: il confronto non e' banale.
+    expect(nuovo.contenuto.includes(Buffer.from('è € ü', 'utf8'))).toBe(true)
   })
 
   it('anteprima, generazione idempotente, file, invio e modifica dopo l’invio', async () => {

@@ -17,6 +17,8 @@ import {
 import {
   COMUNICAZIONI_TRACCIATO_SERVICE,
   ConfermaVerificaRichiestaError,
+  FileNonCodificabileError,
+  TracciatoNonDisponibileError,
 } from '../../application/comunicazioni/comunicazioni-tracciato.port'
 import { RuoloEffettivoService } from '../me/ruolo-effettivo.service'
 import { HttpExceptionFilter } from '../../core/filters/http-exception.filter'
@@ -206,6 +208,15 @@ describe('ComunicazioniController - catena HTTP', () => {
     expect(tracciato.file).toHaveBeenCalledWith(TENANT_TOKEN, ID)
     ruolo = 'VIEWER'
     await request(app.getHttpServer()).get(`/comunicazioni/${ID}/file`).expect(200)
+  })
+
+  it('file: contenuto non codificabile o tracciato non piu’ disponibile -> 422, non 500', async () => {
+    tracciato.file.mockRejectedValueOnce(new FileNonCodificabileError('carattere'))
+    const a = await request(app.getHttpServer()).get(`/comunicazioni/${ID}/file`).expect(422)
+    expect(JSON.stringify(a.body)).toContain('FILE_NON_CODIFICABILE')
+    tracciato.file.mockRejectedValueOnce(new TracciatoNonDisponibileError('X', 'X-1'))
+    const b = await request(app.getHttpServer()).get(`/comunicazioni/${ID}/file`).expect(422)
+    expect(JSON.stringify(b.body)).toContain('TRACCIATO_NON_DISPONIBILE')
   })
 
   it('file e inviata: id non UUID -> 400; comunicazione inesistente -> 404', async () => {

@@ -1,4 +1,9 @@
-import { codificaCp1252, nonRappresentabili, rappresentabile } from './codifica-cp1252'
+import {
+  cercaCampiNonRappresentabili,
+  codificaCp1252,
+  nonRappresentabili,
+  rappresentabile,
+} from './codifica-cp1252'
 
 describe('codifica Windows-1252', () => {
   it('ASCII e Latin-1 (0xA0-0xFF) restano un byte uguale al code point', () => {
@@ -42,5 +47,23 @@ describe('codifica Windows-1252', () => {
 
   it('stringa vuota → buffer vuoto', () => {
     expect(codificaCp1252('')).toHaveLength(0)
+  })
+
+  it('cercaCampiNonRappresentabili: percorso del campo e movimento piu’ vicino', () => {
+    const dati = {
+      deposito: 'ok €',
+      testa: { ragione: 'A → B' },
+      righe: [
+        { movimentoId: 'm1', prodotto: 'va bene', note: 'x😀' },
+        { movimentoIds: ['m2', 'm3'], dettaglio: { nome: '∑' } },
+        { prodotto: 'fine' },
+      ],
+    }
+    expect(cercaCampiNonRappresentabili(dati)).toEqual([
+      { campo: 'testa.ragione', caratteri: ['→'], movimentoIds: [] },
+      { campo: 'righe[0].note', caratteri: ['😀'], movimentoIds: ['m1'] },
+      { campo: 'righe[1].dettaglio.nome', caratteri: ['∑'], movimentoIds: ['m2', 'm3'] },
+    ])
+    expect(cercaCampiNonRappresentabili({ a: 'è € ñ', n: 3, v: null })).toEqual([])
   })
 })
