@@ -1,3 +1,4 @@
+import { TracciatoCobat } from './cobat/serializza-cobat'
 import { TracciatoConou } from './conou/serializza-conou'
 import { TracciatoOrsoImpiantoMesi } from './orso/serializza-impianto-mesi'
 import { RegistroTracciati } from './tracciato-comunicazione'
@@ -6,3 +7,4 @@ import { RegistroTracciati } from './tracciato-comunicazione'
 export const registroTracciati = new RegistroTracciati()
   .registra(TracciatoOrsoImpiantoMesi)
   .registra(TracciatoConou)
+  .registra(TracciatoCobat)
