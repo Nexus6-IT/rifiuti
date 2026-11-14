@@ -42,7 +42,7 @@ const PERCENTUALE_OLIO_MANCANTE_MAX = PERCENTUALE_OLIO_MASSIMA / 100
 const DIFFERENZE = [
   'OLIOtiporif (tabella CER -> prodotti) in WinWaste e` definita e mai usata: qui valida il prodotto e propone il predefinito.',
   'ISTAT del comune di lunghezza 3: WinWaste lo esporta lo stesso su conferma, qui e` un errore bloccante (nessun file con errori noti).',
-  'La sostituzione «bonifica» (detentore -> comune di raccolta) non e` dedotta dal movimento: solo con causale B e comune di raccolta indicati esplicitamente.',
+  'La sostituzione «bonifica» (detentore -> comune di raccolta) non e` dedotta dal movimento: solo con causale B e comune di raccolta indicati esplicitamente. Come WinWaste cambia CAP, indirizzo, civico, provincia, comune e ISTAT; CF, partita IVA, ragione sociale e ATECO restano quelli del detentore.',
   'Valori vuoti: campo di spazi (WinWaste scrive uno spazio e poi riempie, stesso risultato).',
 ]
 
@@ -251,9 +251,8 @@ export class PreparatoreConou implements PreparatoreTracciato<DatiFileConou, Con
         cfDetentore: cf,
         cap: raccolta && comuneRaccolta?.cap ? comuneRaccolta.cap : (sede?.cap ?? ''),
         partitaIva: piva,
-        ragioneSociale: comuneRaccolta
-          ? `COMUNE DI ${comuneRaccolta.name}`.toUpperCase()
-          : (sede?.ditta.ragioneSociale ?? ''),
+        // Come WinWaste (ComuCou:3248-3268): la bonifica non cambia la ragione sociale.
+        ragioneSociale: sede?.ditta.ragioneSociale ?? '',
         indirizzo: raccolta?.indirizzo ?? sede?.via ?? '',
         civico: raccolta ? (raccolta.civico ?? '-') : (sede?.civico ?? ''),
         provincia: comuneRaccolta?.provinciaSigla ?? sede?.provincia ?? '',
@@ -287,7 +286,15 @@ export class PreparatoreConou implements PreparatoreTracciato<DatiFileConou, Con
         for (const errore of validaRigaConou(riga)) {
           // Il codice deposito mancante e` gia` un avviso di sede.
           if (!config.codiceDeposito && /deposito/i.test(errore)) continue
-          bloc('RIGA_NON_VALIDA', errore, correzioneRiga(errore, correzioneSede))
+          const carattere = /^(.+?): carattere non rappresentabile/.exec(errore)
+          nuove.push({
+            codice: carattere ? 'CARATTERI_NON_RAPPRESENTABILI' : 'RIGA_NON_VALIDA',
+            messaggio: errore,
+            bloccante: true,
+            movimento: m,
+            correzione: correzioneRiga(errore, correzioneSede),
+            ...(carattere ? { campo: carattere[1] } : {}),
+          })
         }
       }
       segn.push(...nuove)

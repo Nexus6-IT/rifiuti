@@ -218,15 +218,50 @@ export function codaCobat(r: Pick<RecordCobat, 'campagnaCodice' | 'campagnaDescr
 
 const nonVuoto = (v: string | null | undefined) => (v ?? '').trim() !== ''
 
-function validaBloccoRegione(etichetta: string, codreg: string | undefined, e: string[]): void {
+function validaBloccoRegione(
+  etichetta: string,
+  codreg: string | undefined,
+  blocco: BloccoErroreCobat,
+  out: ErroreRecordCobat[]
+): void {
   if (!/^[A-Z]$/.test(codreg ?? '')) {
-    e.push(`Regione di ${etichetta} non trovata: senza regione il record non e valido`)
+    out.push({
+      messaggio: `Regione di ${etichetta} non trovata: senza regione il record non e valido`,
+      origine: 'ANAGRAFICA',
+      blocco,
+      campo: `regione ${etichetta}`,
+    })
   }
 }
 
-/** Errori bloccanti di un record. */
+/** Blocco del record a cui appartiene un errore (serve a trovare l'anagrafica da correggere). */
+export type BloccoErroreCobat = 'produttore' | 'trasportatore' | 'smaltitore' | 'intermediario'
+
+/**
+ * Errore bloccante di un record con il punto in cui si corregge: `MOVIMENTO` (dato del movimento),
+ * `ANAGRAFICA` (dato del soggetto del `blocco`), `CAMPAGNA` (campagna del movimento o predefinita
+ * della sede). `carattere` = carattere non rappresentabile in Windows-1252 (`campo` valorizzato).
+ */
+export interface ErroreRecordCobat {
+  messaggio: string
+  origine: 'MOVIMENTO' | 'ANAGRAFICA' | 'CAMPAGNA'
+  blocco?: BloccoErroreCobat
+  campo?: string
+  carattere?: boolean
+}
+
+/** Errori bloccanti di un record, in forma di testo. */
 export function validaRecordCobat(r: RecordCobat): string[] {
-  const e: string[] = []
+  return erroriRecordCobat(r).map(x => x.messaggio)
+}
+
+/** Errori bloccanti di un record con il punto di correzione (D14). */
+export function erroriRecordCobat(r: RecordCobat): ErroreRecordCobat[] {
+  const out: ErroreRecordCobat[] = []
+  const e = {
+    push: (...m: string[]) =>
+      out.push(...m.map(messaggio => ({ messaggio, origine: 'MOVIMENTO' as const }))),
+  }
   const anno = Number(r.dataRegistrazione.slice(0, 4))
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.dataRegistrazione)) e.push('Data di registrazione non valida')
   else if (anno < ANNO_MINIMO_COBAT) {
@@ -250,62 +285,107 @@ export function validaRecordCobat(r: RecordCobat): string[] {
     e.push('Quantita in tonnellate errata')
   if (!Number.isFinite(r.quam3) || r.quam3 < 0 || r.quam3 >= 1e6)
     e.push('Quantita in metri cubi errata')
-  if (!/^[A-Za-z0-9]{2}$/.test(r.campagnaCodice)) e.push('Codice campagna errato (2 caratteri)')
+  if (!/^[A-Za-z0-9]{2}$/.test(r.campagnaCodice)) {
+    out.push({
+      messaggio: 'Codice campagna errato (2 caratteri)',
+      origine: 'CAMPAGNA',
+      campo: 'codice campagna',
+    })
+  }
 
-  const regioni: Array<[string, string | undefined]> = [
-    ['produttore (sede legale)', r.produttore?.sedeLegale.codreg],
-    ['produttore (unita locale)', r.produttore?.unitaLocale.codreg],
-    ['trasportatore', r.trasportatore?.sedeLegale.codreg],
-    ['smaltitore (sede legale)', r.smaltitore?.sedeLegale.codreg],
-    ['smaltitore (unita locale)', r.smaltitore?.unitaLocale.codreg],
-    ['intermediario', r.intermediario?.codreg],
+  const regioni: Array<[string, string | undefined, BloccoErroreCobat, boolean]> = [
+    ['produttore (sede legale)', r.produttore?.sedeLegale.codreg, 'produttore', !!r.produttore],
+    ['produttore (unita locale)', r.produttore?.unitaLocale.codreg, 'produttore', !!r.produttore],
+    ['trasportatore', r.trasportatore?.sedeLegale.codreg, 'trasportatore', !!r.trasportatore],
+    ['smaltitore (sede legale)', r.smaltitore?.sedeLegale.codreg, 'smaltitore', !!r.smaltitore],
+    ['smaltitore (unita locale)', r.smaltitore?.unitaLocale.codreg, 'smaltitore', !!r.smaltitore],
+    ['intermediario', r.intermediario?.codreg, 'intermediario', !!r.intermediario],
   ]
-  const presenti = [
-    r.produttore,
-    r.produttore,
-    r.trasportatore,
-    r.smaltitore,
-    r.smaltitore,
-    r.intermediario,
-  ]
-  regioni.forEach(([etichetta, codreg], i) => {
-    if (presenti[i]) validaBloccoRegione(etichetta, codreg, e)
-  })
+  for (const [etichetta, codreg, blocco, presente] of regioni) {
+    if (presente) validaBloccoRegione(etichetta, codreg, blocco, out)
+  }
 
   // Caratteri non rappresentabili in Windows-1252 (D6): si controllano tutti i testi del record.
-  const valori: Array<[string, string]> = [
-    ['codazi', r.codazi],
-    ['targa', r.targa],
-    ['rimorchio', r.rimorchio],
-    ['bolla', r.bolla],
-    ['autista', r.autista],
-    ['campagna', r.campagnaDescrizione],
+  interface Valore {
+    campo: string
+    valore: string
+    origine: ErroreRecordCobat['origine']
+    blocco?: BloccoErroreCobat
+  }
+  const valori: Valore[] = [
+    { campo: 'codazi', valore: r.codazi, origine: 'MOVIMENTO' },
+    { campo: 'targa', valore: r.targa, origine: 'MOVIMENTO' },
+    { campo: 'rimorchio', valore: r.rimorchio, origine: 'MOVIMENTO' },
+    { campo: 'bolla', valore: r.bolla, origine: 'MOVIMENTO' },
+    { campo: 'autista', valore: r.autista, origine: 'MOVIMENTO' },
+    { campo: 'campagna', valore: r.campagnaDescrizione, origine: 'CAMPAGNA' },
   ]
-  for (const b of [
-    r.produttore?.sedeLegale,
-    r.trasportatore?.sedeLegale,
-    r.smaltitore?.sedeLegale,
-  ]) {
+  const legali: Array<[BloccoErroreCobat, BloccoSedeLegaleCobat | undefined]> = [
+    ['produttore', r.produttore?.sedeLegale],
+    ['trasportatore', r.trasportatore?.sedeLegale],
+    ['smaltitore', r.smaltitore?.sedeLegale],
+  ]
+  for (const [blocco, b] of legali) {
+    if (!b) continue
+    const o = 'ANAGRAFICA' as const
+    valori.push(
+      { campo: `descrizione ${blocco}`, valore: b.descrizione, origine: o, blocco },
+      { campo: `via ${blocco}`, valore: b.via, origine: o, blocco },
+      { campo: `localita ${blocco}`, valore: b.localita, origine: o, blocco },
+      {
+        campo: `legale rappresentante ${blocco}`,
+        valore: `${b.legaleRappresentanteCognome}${b.legaleRappresentanteNome}`,
+        origine: o,
+        blocco,
+      }
+    )
+  }
+  const unita: Array<[BloccoErroreCobat, BloccoUnitaLocaleCobat | undefined]> = [
+    ['produttore', r.produttore?.unitaLocale],
+    ['smaltitore', r.smaltitore?.unitaLocale],
+  ]
+  for (const [blocco, b] of unita) {
     if (!b) continue
     valori.push(
-      ['descrizione', b.descrizione],
-      ['via', b.via],
-      ['localita', b.localita],
-      ['legale rappresentante', `${b.legaleRappresentanteCognome}${b.legaleRappresentanteNome}`]
+      { campo: `via unita locale ${blocco}`, valore: b.via, origine: 'ANAGRAFICA', blocco },
+      {
+        campo: `localita unita locale ${blocco}`,
+        valore: b.localita,
+        origine: 'ANAGRAFICA',
+        blocco,
+      }
     )
-  }
-  for (const b of [r.produttore?.unitaLocale, r.smaltitore?.unitaLocale]) {
-    if (b) valori.push(['via unita locale', b.via], ['localita unita locale', b.localita])
   }
   if (r.intermediario) {
+    const blocco = 'intermediario' as const
     valori.push(
-      ['intermediario', r.intermediario.descrizione],
-      ['via intermediario', r.intermediario.via],
-      ['localita intermediario', r.intermediario.localita]
+      {
+        campo: 'intermediario',
+        valore: r.intermediario.descrizione,
+        origine: 'ANAGRAFICA',
+        blocco,
+      },
+      { campo: 'via intermediario', valore: r.intermediario.via, origine: 'ANAGRAFICA', blocco },
+      {
+        campo: 'localita intermediario',
+        valore: r.intermediario.localita,
+        origine: 'ANAGRAFICA',
+        blocco,
+      }
     )
   }
-  for (const [etichetta, v] of valori) e.push(...caratteriNonRappresentabili(v, etichetta))
-  return e
+  for (const v of valori) {
+    for (const messaggio of caratteriNonRappresentabili(v.valore, v.campo)) {
+      out.push({
+        messaggio,
+        origine: v.origine,
+        ...(v.blocco ? { blocco: v.blocco } : {}),
+        campo: v.campo,
+        carattere: true,
+      })
+    }
+  }
+  return out
 }
 
 /**

@@ -380,4 +380,62 @@ describe('PreparatoreCobat', () => {
     expect(p.dati.record[0].pgf).toBe('')
     expect(p.avvisi.find(a => a.codice === 'PGF_NON_INDICATO')?.bloccante).toBe(false)
   })
+
+  describe('punto di correzione degli errori di record (D14)', () => {
+    const trova = (p: { avvisi: Array<{ codice: string }> }, codice: string) =>
+      p.avvisi.find(a => a.codice === codice) as
+        | { codice: string; campo?: string; correzione?: unknown; bloccante: boolean }
+        | undefined
+
+    it('emoji nella ragione sociale della controparte: anagrafica della sede, campo e codice uniforme', async () => {
+      const prod = sede('s1', 'd1', 'AUTORICAMBI 😀 SNC', '05555555555')
+      const p = await preparatore.prepara(
+        ctx([movimento()], { sedi: [prod, vettore, destinatarioEsterno] })
+      )
+      const a = trova(p, 'CARATTERI_NON_RAPPRESENTABILI')
+      expect(a).toMatchObject({
+        bloccante: true,
+        campo: 'descrizione produttore',
+        correzione: { tipo: 'ANAGRAFICA_SEDE', sedeDittaId: 's1' },
+      })
+      expect(trova(p, 'RECORD_NON_VALIDO')).toBeUndefined()
+    })
+
+    it('emoji nella via del trasportatore: anagrafica del trasportatore', async () => {
+      const vet = sede('s2', 'd2', 'TRASPORTI RAPIDI SRL', '09876543210', { via: 'VIA 😀' })
+      const p = await preparatore.prepara(
+        ctx([movimento()], { sedi: [produttore, vet, destinatarioEsterno] })
+      )
+      expect(trova(p, 'CARATTERI_NON_RAPPRESENTABILI')).toMatchObject({
+        campo: 'via trasportatore',
+        correzione: { tipo: 'ANAGRAFICA_SEDE', sedeDittaId: 's2' },
+      })
+    })
+
+    it('emoji nella descrizione della campagna predefinita: configurazione della sede', async () => {
+      const p = await preparatore.prepara(
+        ctx([movimento()], {
+          config: { campagnaPredefinita: { codice: '01', descrizione: 'ESTATE 😀' } },
+        })
+      )
+      expect(trova(p, 'CARATTERI_NON_RAPPRESENTABILI')).toMatchObject({
+        campo: 'campagna',
+        correzione: { tipo: 'CONFIGURAZIONE_SEDE' },
+      })
+    })
+
+    it('campagna indicata sul movimento con emoji: si corregge il movimento', async () => {
+      const p = await preparatore.prepara(
+        ctx([movimento()], { dati: { m1: { campagna: { codice: '01', descrizione: 'X 😀' } } } })
+      )
+      expect(trova(p, 'CARATTERI_NON_RAPPRESENTABILI')).toMatchObject({
+        correzione: { tipo: 'MOVIMENTO' },
+      })
+    })
+
+    it('errore proprio del movimento (CER): resta sul movimento con codice RECORD_NON_VALIDO', async () => {
+      const p = await preparatore.prepara(ctx([movimento({ cer: '1606' })]))
+      expect(trova(p, 'RECORD_NON_VALIDO')).toMatchObject({ correzione: { tipo: 'MOVIMENTO' } })
+    })
+  })
 })

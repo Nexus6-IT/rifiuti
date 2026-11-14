@@ -20,11 +20,18 @@ describe('scomponiNumeroFir (calcolaformu di WinWaste)', () => {
     expect(scomponiNumeroFir('AB123/2100')).toEqual({ serie: 'AB', numero: '123/2100', anno: '' })
     expect(scomponiNumeroFir('AB123/xyz')).toEqual({ serie: 'AB', numero: '123/xyz', anno: '' })
   })
-  it('formato RENTRI con lettere, cifre e anno', () => {
+  it('formato con serie, numero e anno a due cifre', () => {
     expect(scomponiNumeroFir('FIR000012345/24')).toEqual({
       serie: 'FIR',
       numero: '000012345',
       anno: '2024',
+    })
+  })
+  it('numero FIR reale di WasteFlow (FIR-2026-000007): serie e numero spezzati, anno vuoto', () => {
+    expect(scomponiNumeroFir('FIR-2026-000007')).toEqual({
+      serie: 'FIR-20',
+      numero: '26-000007',
+      anno: '',
     })
   })
   it('serie oltre 6 o numero oltre 10: taglio fisso a 6 caratteri', () => {

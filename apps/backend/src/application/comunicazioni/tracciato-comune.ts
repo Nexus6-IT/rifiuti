@@ -159,6 +159,8 @@ export interface SegnalazioneMovimento {
   bloccante: boolean
   movimento: MovimentoOrso
   correzione?: CorrezioneAvviso
+  /** Campo del tracciato che contiene l'errore (se noto). */
+  campo?: string
 }
 
 const chiaveCorrezione = (c?: CorrezioneAvviso): string =>
@@ -170,7 +172,13 @@ export function aggregaSegnalazioni(
 ): AvvisoTracciato[] {
   const gruppi = new Map<string, { avviso: AvvisoTracciato; visti: Set<string> }>()
   for (const s of segnalazioni) {
-    const k = [s.codice, s.messaggio, s.bloccante, chiaveCorrezione(s.correzione)].join('\u0000')
+    const k = [
+      s.codice,
+      s.messaggio,
+      s.bloccante,
+      chiaveCorrezione(s.correzione),
+      s.campo ?? '',
+    ].join('\u0000')
     let g = gruppi.get(k)
     if (!g) {
       g = {
@@ -181,6 +189,7 @@ export function aggregaSegnalazioni(
           movimenti: [],
           bloccante: s.bloccante,
           ...(s.correzione ? { correzione: s.correzione } : {}),
+          ...(s.campo ? { campo: s.campo } : {}),
         },
         visti: new Set(),
       }

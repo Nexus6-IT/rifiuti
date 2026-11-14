@@ -267,7 +267,8 @@ describe('PreparatoreConou', () => {
     expect(codici(p)).toEqual([])
     expect(p.dati.righe[0]).toMatchObject({
       causale: 'B',
-      ragioneSociale: 'COMUNE DI MILANO',
+      // Come WinWaste: la ragione sociale resta quella del detentore.
+      ragioneSociale: 'OFFICINA ROSSI SRL',
       indirizzo: 'PIAZZA DUOMO',
       civico: '1',
       cap: '20100',

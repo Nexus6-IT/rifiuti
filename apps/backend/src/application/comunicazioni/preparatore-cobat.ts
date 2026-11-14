@@ -20,7 +20,7 @@ import type {
   DatiFileCobat,
   RecordCobat,
 } from '../../domain/comunicazioni/cobat/record-cobat'
-import { validaRecordCobat } from '../../domain/comunicazioni/cobat/serializza-cobat'
+import { erroriRecordCobat } from '../../domain/comunicazioni/cobat/serializza-cobat'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import type {
   ContestoPreparazione,
@@ -45,7 +45,7 @@ import {
 const DIFFERENZE = [
   'Blocco trasportatore: cognome e nome del legale rappresentante invece della descrizione e dell’ISTAT dell’unita` locale (difetto di WinWaste in ComuCou:2388-2389, non replicato).',
   'Progressivo (progdta): numero progressivo del movimento nel registro, non la formula `base + movimenti.cod` di WinWaste (definita solo fino al 2025 e non unica oltre 100 000 movimenti).',
-  'codazi: precedenza esplicita destinatario > trasportatore > produttore (in WinWaste «vince l’ultimo» per ordine di valutazione, stesso risultato).',
+  'codazi: precedenza esplicita destinatario > trasportatore > produttore (in WinWaste «vince l’ultimo» per ordine di valutazione, stesso risultato salvo un soggetto successivo senza codice fiscale ma con partita IVA: li la partita IVA vince su un codice fiscale precedente, in WinWaste no).',
   'Un carattere non rappresentabile in Windows-1252 e` un errore bloccante con movimento e campo (WinWaste non controlla).',
   'Nessun file se un solo movimento ha un errore bloccante, come in WinWaste.',
 ]
@@ -463,7 +463,33 @@ export class PreparatoreCobat implements PreparatoreTracciato<DatiFileCobat, Con
         campagnaDescrizione: campagna.descrizione,
       }
       if (!nuove.some(n => n.bloccante)) {
-        for (const errore of validaRecordCobat(rec)) bloc('RECORD_NON_VALIDO', errore)
+        const parteDi: Record<string, Parte | null> = {
+          produttore: v.produttore,
+          trasportatore: v.trasportatore,
+          smaltitore: v.destinatario,
+        }
+        for (const errore of erroriRecordCobat(rec)) {
+          let correzione: SegnalazioneMovimento['correzione'] = { tipo: 'MOVIMENTO' }
+          if (errore.origine === 'CAMPAGNA') {
+            // Campagna del movimento: si corregge li'; altrimenti e' quella predefinita della sede.
+            if (dati.campagna === undefined) correzione = { tipo: 'CONFIGURAZIONE_SEDE' }
+          } else if (errore.origine === 'ANAGRAFICA') {
+            const parte = errore.blocco ? parteDi[errore.blocco] : null
+            if (parte?.tipo === 'SEDE') {
+              correzione = { tipo: 'ANAGRAFICA_SEDE', sedeDittaId: parte.sede.id }
+            } else if (parte?.tipo === 'NOI') {
+              correzione = { tipo: 'CONFIGURAZIONE_SEDE' }
+            }
+          }
+          nuove.push({
+            codice: errore.carattere ? 'CARATTERI_NON_RAPPRESENTABILI' : 'RECORD_NON_VALIDO',
+            messaggio: errore.messaggio,
+            bloccante: true,
+            movimento: m,
+            correzione,
+            ...(errore.campo ? { campo: errore.campo } : {}),
+          })
+        }
       }
       segn.push(...nuove)
       record.push(rec)
