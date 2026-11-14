@@ -192,7 +192,7 @@ export class AgentiPesaService {
     if (testo.length > 500) {
       throw new DatiPesaNonValidiError(['Il motivo può avere al massimo 500 caratteri.'])
     }
-    return nelContestoTenant(tenantId, () =>
+    const vista = await nelContestoTenant(tenantId, () =>
       this.prisma.$transaction(async tx => {
         const prima = await tx.agentePesa.findFirst({
           where: { id: agenteId, tenantId },
@@ -233,6 +233,9 @@ export class AgentiPesaService {
         return this.vista(riga, true)
       })
     )
+    // Solo a transazione confermata: se la revoca fallisce lo stato vivo non si tocca.
+    this.battito.dimentica(agenteId)
+    return vista
   }
 
   /** Assegna uno strumento a un agente (o lo libera con `null`); l'agente non deve essere revocato. */
