@@ -25,8 +25,10 @@ nel futuro e' rifiutata (`OROLOGIO_AVANTI`) e la lettura resta in coda (codici t
 10-20-40 minuti, poi ogni ora, scadenza 7 giorni). Se il contatore delle sequenze si perde l'agente
 si riallinea (`SEQUENZA_GIA_USATA`) e ri-numera la lettura senza perderla. Il SUPER_ADMIN ammette le
 pesate simulate azienda per azienda (solo aziende di prova). Nessun driver reale: seriale e TCP
-arrivano col pilota (domande Q1-Q8 del piano). Migration additive `20261113100000_pese_fonte_simulata`
-e `20261113100100_pese_agenti` (precondizione: nessuna pesata STRUMENTO/FILE esistente; dopo il deploy
+arrivano col pilota (domande Q1-Q8 del piano). Il backend ammette solo i driver di `DRIVER_AMMESSI`
+(oggi `SIMULATA`; un'altra lettura e' rifiutata con `DRIVER_NON_AMMESSO`, definitivo per l'agente);
+una pesata simulata non puo' diventare la tara di un automezzo. Migration additive `20261113100000_pese_fonte_simulata`
+e `20261113100100_pese_agenti` (precondizione: nessuna pesata con fonte STRUMENTO esistente; dopo il deploy
 rilanciare `ops/db-ruoli.sh`; il valore `SIMULATA` non si toglie dall'enum). Rilascio: l'impronta
 SHA-256 dell'eseguibile (non firmato) si pubblica nel README della release (`agente-pesa.exe.sha256`).
 
@@ -35,7 +37,7 @@ SHA-256 dell'eseguibile (non firmato) si pubblica nel README della release (`age
 Dietro i due nginx (host e container frontend) il backend vedeva come client l'IP del container
 frontend e i limiti per IP (abbinamento, token rifiutati, throttler globale) erano di fatto uno solo
 per tutti. Ora `req.ip` e' il client reale. Sovrascrivibile con `TRUST_PROXY` (numero di hop o
-subnet; `true` resta rifiutato). Dopo il deploy controllare che `ultimoIp` degli agenti non sia `172.x`.
+subnet; `true` resta rifiutato). Dopo il deploy controllare che `ultimoIp` degli agenti non sia un IP privato (192.168.x o 172.x).
 
 ### Added — Filigrana «BOZZA – NON VALIDO» sui FIR in bozza
 

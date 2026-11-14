@@ -722,7 +722,7 @@ enum non e' usabile nella transazione in cui nasce: per questo sta da sola). La 
 `stato_agente_pesa`, `agenti_pesa` e `letture_pesa` (RLS, 84 tabelle con `tenant_id` in tutto), le colonne
 `strumenti_pesa.agente_id`, `pesate.lettura_id` e `tenants.pese_simulazione_ammessa` (default false), i
 trigger `letture_pesa_immutabile`, `agenti_pesa_controlli`, `pesate_da_lettura` e il CHECK
-`pesate_lettura_check`. **Precondizione:** `SELECT count(*) FROM pesate WHERE fonte IN ('STRUMENTO','FILE')`
+`pesate_lettura_check`. **Precondizione:** `SELECT count(*) FROM pesate WHERE fonte = 'STRUMENTO'`
 deve dare 0 (da 8b `STRUMENTO` richiede una lettura firmata). Dopo il deploy rilanciare `ops/db-ruoli.sh`
 (`letture_pesa` solo SELECT e INSERT, `agenti_pesa` senza DELETE).
 
@@ -747,7 +747,7 @@ indirizzo non fidato risalendo la catena, cioe' il client reale (un XFF inventat
 non conta). Con il solo `loopback` il backend vedrebbe l'IP del container frontend e il limite per IP
 (abbinamento, token rifiutati, battito, altri throttler) diventerebbe globale. Sovrascrivibile con
 `TRUST_PROXY` (numero di hop, subnet; `true` e' rifiutato). Dopo il deploy verificare che nei log o
-nella colonna `ultimoIp` degli agenti compaia l'IP del client e non `172.x`.
+nella colonna `ultimoIp` degli agenti compaia l'IP del client e non un IP privato (192.168.x o 172.x).
 
 #### Pese 4.8a: privilegi, trigger, rilascio e rollback
 
