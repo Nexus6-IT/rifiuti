@@ -1,16 +1,22 @@
 import { createHash } from 'node:crypto'
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { giornoItaliano } from '../../core/time/anno-italiano'
 import { PrismaService } from '../../infrastructure/persistence/prisma.service'
 import { aggregaOrso } from '../../domain/comunicazioni/orso/aggrega-orso'
+import { aggregaOrsoDettagliata } from '../../domain/comunicazioni/orso/aggrega-orso-dettagliata'
 import {
   adattaMovimentiOrso,
+  aggregatoDettagliatoInImpiantoMesi,
   aggregatoInImpiantoMesi,
   movimentiConteggiati,
   movimentiSenzaDescrizione,
 } from '../../domain/comunicazioni/orso/adatta-orso'
-import type { AggregatoOrso, CodiceAvvisoOrso } from '../../domain/comunicazioni/orso/aggregato'
+import type {
+  AggregatoOrso,
+  AggregatoOrsoDettagliato,
+  CodiceAvvisoOrso,
+} from '../../domain/comunicazioni/orso/aggregato'
 import type { ImpiantoMesiDati } from '../../domain/comunicazioni/orso/impianto-mesi'
 import { registroTracciati } from '../../domain/comunicazioni/registro-tracciati'
 import { caricaCatalogoCausali } from '../registro/causali/catalogo-causali.repository'
@@ -26,7 +32,20 @@ import {
   type ComunicazioniOrsoPort,
   type FileComunicazione,
   type MeseOrso as AnteprimaMeseOrso,
+  type ModalitaOrso,
 } from './comunicazioni-orso.port'
+import {
+  ANAGRAFICA_COMUNICAZIONI_SERVICE,
+  type AnagraficaComunicazioniPort,
+} from './anagrafica-comunicazioni.port'
+import { AnagraficaComunicazioniService } from './anagrafica-comunicazioni.service'
+import {
+  CONFIGURAZIONE_COMUNICAZIONI_SERVICE,
+  type ConfigurazioneComunicazioniPort,
+} from './configurazione-comunicazioni.port'
+import { ConfigurazioneComunicazioniService } from './configurazione-comunicazioni.service'
+import { leggiDettagliTracciato } from './lettore-dettagli-tracciato'
+import { risolviSoggettiOrso, type CodiceErroreSoggetto } from './soggetti-orso'
 import {
   leggiMovimentiOrso,
   type MovimentoOrso as MovimentoLettoDb,
@@ -41,6 +60,12 @@ import {
 export const CONSORZIO_ORSO = 'ORSO'
 const TRACCIATO = 'ImpiantoMesi'
 const VERSIONE = '1'
+/** Versione della modalità dettagliata (4.9e): hash, idempotenza e storico restano separati. */
+export const VERSIONE_DETTAGLIATA = '1-dettagliata'
+
+const versioneDi = (m: ModalitaOrso) => (m === 'DETTAGLIATA' ? VERSIONE_DETTAGLIATA : VERSIONE)
+const modalitaDiVersione = (versione: string): ModalitaOrso =>
+  versione === VERSIONE_DETTAGLIATA ? 'DETTAGLIATA' : 'NORMALE'
 const AUTORE = 'WasteFlow'
 
 export type CodiceAvvisoComunicazione =
@@ -49,6 +74,7 @@ export type CodiceAvvisoComunicazione =
   | 'DESCRIZIONE_VUOTA'
   | 'PROVINCIA_DA_INDIRIZZO'
   | 'DATI_NON_VALIDI'
+  | CodiceErroreSoggetto
 
 const MESSAGGI: Record<CodiceAvvisoComunicazione, string> = {
   PROVINCIA_CONFERITORE_MANCANTE:
@@ -65,6 +91,12 @@ const MESSAGGI: Record<CodiceAvvisoComunicazione, string> = {
   DESCRIZIONE_VUOTA:
     'Movimento senza descrizione del rifiuto: il tracciato richiede da 1 a 100 caratteri.',
   DATI_NON_VALIDI: 'I dati non rispettano il tracciato O.R.SO.',
+  SOGGETTO_NON_IDENTIFICATO:
+    'Il conferitore o il destinatario non si ricava dal FIR (manca il FIR o la sede della ditta): in modalità dettagliata ogni movimento deve avere il suo soggetto.',
+  ISTAT_SOGGETTO_NON_VALIDO:
+    'Il codice ISTAT del comune della sede del soggetto non è utilizzabile: correggilo nell’anagrafica della sede della ditta.',
+  CODICE_FISCALE_SOGGETTO_NON_VALIDO:
+    'Il soggetto non ha un codice fiscale o una partita IVA di 11 o 16 caratteri: correggilo nell’anagrafica della ditta.',
 }
 
 const BLOCCANTI = new Set<CodiceAvvisoComunicazione>([
@@ -73,6 +105,9 @@ const BLOCCANTI = new Set<CodiceAvvisoComunicazione>([
   'PROVINCIA_IMPIANTO_MANCANTE',
   'DESCRIZIONE_VUOTA',
   'DATI_NON_VALIDI',
+  'SOGGETTO_NON_IDENTIFICATO',
+  'ISTAT_SOGGETTO_NON_VALIDO',
+  'CODICE_FISCALE_SOGGETTO_NON_VALIDO',
 ])
 
 export function eBloccante(codice: CodiceAvvisoComunicazione): boolean {
@@ -129,21 +164,71 @@ export function anteprimaMesi(a: AggregatoOrso): AnteprimaMeseOrso[] {
   })
 }
 
+/** Anteprima mese per mese in modalità dettagliata: stesse righe, con il soggetto di ogni quota. */
+export function anteprimaMesiDettagliata(a: AggregatoOrsoDettagliato): AnteprimaMeseOrso[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const m = a.mesi.find(x => x.mese === i + 1)
+    return {
+      mese: i + 1,
+      ricevuti: (m?.ricevuti ?? []).map(r => ({
+        cer: r.cer,
+        descrizione: r.descrizione,
+        operazioni: r.operazioni,
+        totT: r.totale,
+        // Nessun «Extra» in modalità dettagliata: il dettaglio per soggetto lo sostituisce.
+        extraT: '0',
+        conFir: r.ingressi.some(x => x.f === 1),
+        soggetti: r.ingressi.map(x => ({
+          ts: x.ts,
+          s: x.s,
+          etichetta: x.etichetta,
+          qT: x.totale,
+          conFir: x.f === 1,
+        })),
+      })),
+      prodotti: (m?.prodotti ?? []).map(p => ({
+        cer: p.cer,
+        descrizione: p.descrizione,
+        operazioni: [],
+        totT: p.totale,
+        giacenzaFineMeseT: p.giacenzaFineMese,
+        soggetti: p.uscite.map(x => ({ ts: x.ts, s: x.s, etichetta: x.etichetta, qT: x.totale })),
+      })),
+    }
+  })
+}
+
 /** Avvisi raggruppati per codice (uno per tipo, con tutti i movimenti coinvolti). */
 export function raggruppaAvvisi(
-  grezzi: ReadonlyArray<{ codice: CodiceAvvisoComunicazione; movimentoIds: string[] }>,
+  grezzi: ReadonlyArray<{
+    codice: CodiceAvvisoComunicazione
+    movimentoIds: string[]
+    /** Sede o soggetto coinvolto: si accoda al messaggio (modalità dettagliata). */
+    dettaglio?: string
+  }>,
   dettagli: ReadonlyMap<string, MovimentoAvviso> = new Map()
 ): AvvisoComunicazione[] {
   const perCodice = new Map<CodiceAvvisoComunicazione, Set<string>>()
+  const dettaglioPerCodice = new Map<CodiceAvvisoComunicazione, string[]>()
   for (const a of grezzi) {
     const ids = perCodice.get(a.codice) ?? new Set<string>()
     a.movimentoIds.forEach(id => ids.add(id))
     perCodice.set(a.codice, ids)
+    if (a.dettaglio) {
+      const d = dettaglioPerCodice.get(a.codice) ?? []
+      if (!d.includes(a.dettaglio)) d.push(a.dettaglio)
+      dettaglioPerCodice.set(a.codice, d)
+    }
+  }
+  const coda = (codice: CodiceAvvisoComunicazione): string => {
+    const d = dettaglioPerCodice.get(codice) ?? []
+    if (d.length === 0) return ''
+    return ` ${d.slice(0, 5).join('; ')}${d.length > 5 ? `; altri ${d.length - 5}` : ''}.`
   }
   return [...perCodice.entries()]
     .map(([codice, ids]) => ({
       codice,
-      messaggio: MESSAGGI[codice],
+      messaggio: `${MESSAGGI[codice]}${coda(codice)}`,
       movimentoIds: [...ids].sort(),
       movimenti: [...ids]
         .sort()
@@ -160,9 +245,12 @@ export function raggruppaAvvisi(
 interface Calcolo {
   unita: { id: string; nome: string; provincia: string | null; numIscrSito: string }
   anno: number
+  modalita: ModalitaOrso
   letti: MovimentoLettoDb[]
   dati: ImpiantoMesiDati
-  aggregato: AggregatoOrso
+  /** Anteprima mese per mese, già nella forma dell'API. */
+  mesi: AnteprimaMeseOrso[]
+  nuoviImpianti: number
   avvisi: AvvisoComunicazione[]
   bloccanti: boolean
   hashDati: string
@@ -208,6 +296,10 @@ const LIMITE_ELENCO = 200
 
 const giorno = (d: Date) => d.toISOString().slice(0, 10)
 
+function nota(modalita: ModalitaOrso): string {
+  return registroTracciati.get('ORSO', `${TRACCIATO}-${versioneDi(modalita)}`).notaAffidabilita
+}
+
 function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneVista {
   const stato = r.stato === 'INVIATA' ? 'INVIATA' : 'GENERATA'
   return {
@@ -227,20 +319,48 @@ function vista(r: RigaComunicazione, hashAttuale: string | null): ComunicazioneV
     ...(r.inviataDa ? { inviataDa: r.inviataDa } : {}),
     modificataDopoInvio: stato === 'INVIATA' && hashAttuale !== null && hashAttuale !== r.hashDati,
     affidabilita: 'UFFICIALE',
-    notaAffidabilita: 'Tracciato ufficiale O.R.SO. (XSD ImpiantoMesi).',
+    notaAffidabilita: nota(modalitaDiVersione(r.versione)),
   }
 }
 
 @Injectable()
 export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly configurazione: ConfigurazioneComunicazioniPort
+  private readonly anagrafica: AnagraficaComunicazioniPort
 
-  private async calcola(tenantId: string, unitaLocaleId: string, anno: number): Promise<Calcolo> {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(CONFIGURAZIONE_COMUNICAZIONI_SERVICE)
+    configurazione?: ConfigurazioneComunicazioniPort,
+    @Optional()
+    @Inject(ANAGRAFICA_COMUNICAZIONI_SERVICE)
+    anagrafica?: AnagraficaComunicazioniPort
+  ) {
+    this.configurazione = configurazione ?? new ConfigurazioneComunicazioniService(prisma)
+    this.anagrafica = anagrafica ?? new AnagraficaComunicazioniService(prisma)
+  }
+
+  /** Modalità della sede (configurazione D4): normale se non c'è una configurazione salvata. */
+  private async modalitaDellaSede(tenantId: string, unitaLocaleId: string): Promise<ModalitaOrso> {
+    const c = await this.configurazione.leggi(tenantId, unitaLocaleId, 'ORSO')
+    return c.dati.modalita
+  }
+
+  private async calcola(
+    tenantId: string,
+    unitaLocaleId: string,
+    anno: number,
+    modalitaForzata?: ModalitaOrso
+  ): Promise<Calcolo> {
     const unita = await this.prisma.rentriUnitaLocale.findFirst({
       where: { id: unitaLocaleId, tenantId },
       select: { id: true, denominazione: true, provincia: true, numIscrSito: true },
     })
     if (!unita) throw new ComunicazioneNonTrovataError()
+    // Le comunicazioni già generate si ricalcolano nella loro modalità, non in quella di adesso:
+    // passare da normale a dettagliata non le tocca.
+    const modalita = modalitaForzata ?? (await this.modalitaDellaSede(tenantId, unitaLocaleId))
 
     const { inizio, fine } = limitiAnnoMud(anno)
     const [catalogo, record] = await Promise.all([
@@ -263,27 +383,92 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
     const provincia = (lettura.provinciaImpianto ?? '').trim() || null
     // Anno in corso: si dichiarano i mesi fino a quello corrente; gli anni passati per intero.
     const ultimoMese = ultimoMeseDichiarabile(anno)
-    const aggregato = aggregaOrso(adattaMovimentiOrso(lettura.movimenti), {
-      anno,
-      provinciaImpianto: provincia ?? '',
-      giacenze: lettura.giacenze.filter(g => g.mese <= ultimoMese),
-    })
-    const dati = aggregatoInImpiantoMesi(aggregato, AUTORE, ultimoMese)
+    const giacenze = lettura.giacenze.filter(g => g.mese <= ultimoMese)
+    const adattati = adattaMovimentiOrso(lettura.movimenti)
 
-    const grezzi: Array<{ codice: CodiceAvvisoComunicazione; movimentoIds: string[] }> =
-      aggregato.avvisi.filter(
+    let dati: ImpiantoMesiDati
+    let mesi: AnteprimaMeseOrso[]
+    let nuoviImpianti = 0
+    let avvisiAggregatore: ReadonlyArray<{
+      codice: CodiceAvvisoComunicazione
+      movimentoIds: string[]
+      dettaglio?: string
+    }>
+    if (modalita === 'DETTAGLIATA') {
+      // Soggetti dal FIR di ogni movimento conteggiato (query fisse, un ISTAT per sede).
+      const conteggiati = movimentiConteggiati(lettura.movimenti).filter(
+        m => Number(giornoItaliano(m.movementDate).slice(5, 7)) <= ultimoMese
+      )
+      const dett = await leggiDettagliTracciato(this.prisma, {
+        tenantId,
+        movimenti: conteggiati,
+      })
+      const ris = await risolviSoggettiOrso(
+        conteggiati.map(m => ({ id: m.id, tipo: m.tipo, firId: m.firId })),
+        dett,
+        sedeId => this.anagrafica.risolviIstat(tenantId, sedeId)
+      )
+      const aggregato = aggregaOrsoDettagliata(
+        adattati.map(m => ({ ...m, soggetto: ris.soggetti.get(m.id) ?? null })),
+        { anno, provinciaImpianto: provincia ?? '', giacenze, ultimoMese }
+      )
+      dati = aggregatoDettagliatoInImpiantoMesi(aggregato, AUTORE, ultimoMese)
+      mesi = anteprimaMesiDettagliata(aggregato)
+      nuoviImpianti = aggregato.nuoviImpianti.length
+      // Un movimento già spiegato da un errore sulla sede (ISTAT, codice fiscale) non si ripete
+      // come «soggetto non identificato».
+      const spiegati = new Set(ris.errori.flatMap(e => e.movimentoIds))
+      avvisiAggregatore = [
+        ...aggregato.avvisi
+          .map(a => ({
+            codice: a.codice as CodiceAvvisoComunicazione,
+            movimentoIds:
+              a.codice === 'SOGGETTO_NON_IDENTIFICATO'
+                ? a.movimentoIds.filter(id => !spiegati.has(id))
+                : a.movimentoIds,
+          }))
+          .filter(a => a.codice !== 'SOGGETTO_NON_IDENTIFICATO' || a.movimentoIds.length > 0),
+        ...ris.errori.map(e => ({
+          codice: e.codice,
+          movimentoIds: e.movimentoIds,
+          dettaglio: e.dettaglio,
+        })),
+      ]
+    } else {
+      const aggregato = aggregaOrso(adattati, {
+        anno,
+        provinciaImpianto: provincia ?? '',
+        giacenze,
+      })
+      dati = aggregatoInImpiantoMesi(aggregato, AUTORE, ultimoMese)
+      mesi = anteprimaMesi(aggregato)
+      avvisiAggregatore = aggregato.avvisi.filter(
         a => provincia !== null || a.codice !== 'PROVINCIA_CONFERITORE_MANCANTE'
       )
-    if (provincia === null) grezzi.push({ codice: 'PROVINCIA_IMPIANTO_MANCANTE', movimentoIds: [] })
-    const daIndirizzo = movimentiConteggiati(lettura.movimenti).filter(m => m.provinciaDaIndirizzo)
-    if (daIndirizzo.length > 0) {
-      grezzi.push({ codice: 'PROVINCIA_DA_INDIRIZZO', movimentoIds: daIndirizzo.map(m => m.id) })
+    }
+
+    const grezzi: Array<{
+      codice: CodiceAvvisoComunicazione
+      movimentoIds: string[]
+      dettaglio?: string
+    }> = [...avvisiAggregatore]
+    // La provincia serve solo per distinguere i carichi extra-provinciali (modalità normale).
+    if (modalita === 'NORMALE') {
+      if (provincia === null) {
+        grezzi.push({ codice: 'PROVINCIA_IMPIANTO_MANCANTE', movimentoIds: [] })
+      }
+      const daIndirizzo = movimentiConteggiati(lettura.movimenti).filter(
+        m => m.provinciaDaIndirizzo
+      )
+      if (daIndirizzo.length > 0) {
+        grezzi.push({ codice: 'PROVINCIA_DA_INDIRIZZO', movimentoIds: daIndirizzo.map(m => m.id) })
+      }
     }
     const senzaDescrizione = movimentiSenzaDescrizione(lettura.movimenti)
     if (senzaDescrizione.length > 0) {
       grezzi.push({ codice: 'DESCRIZIONE_VUOTA', movimentoIds: senzaDescrizione.map(m => m.id) })
     }
-    const bloccantiTracciato = this.tracciato().validaDati(dati)
+    const bloccantiTracciato = this.tracciato(modalita).validaDati(dati)
     const dettagli = new Map(
       lettura.movimenti.map(m => [
         m.id,
@@ -316,17 +501,22 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
         numIscrSito: unita.numIscrSito,
       },
       anno,
+      modalita,
       letti: lettura.movimenti,
       dati,
-      aggregato,
+      mesi,
+      nuoviImpianti,
       avvisi,
       bloccanti: avvisi.some(a => eBloccante(a.codice as CodiceAvvisoComunicazione)),
       hashDati: hashDatiOrso(dati),
     }
   }
 
-  private tracciato() {
-    return registroTracciati.get<ImpiantoMesiDati>(CONSORZIO_ORSO, `${TRACCIATO}-${VERSIONE}`)
+  private tracciato(modalita: ModalitaOrso = 'NORMALE') {
+    return registroTracciati.get<ImpiantoMesiDati>(
+      CONSORZIO_ORSO,
+      `${TRACCIATO}-${versioneDi(modalita)}`
+    )
   }
 
   private periodo(anno: number) {
@@ -342,14 +532,21 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
         consorzio: CONSORZIO_ORSO,
         unitaLocaleId: p.unitaLocaleId,
         ...this.periodo(p.anno),
+        // Solo la modalità di adesso: le comunicazioni dell'altra restano nello storico.
+        versione: versioneDi(c.modalita),
       },
       orderBy: [{ generataIl: 'desc' }, { id: 'desc' }],
       select: SELEZIONE_VISTA,
     })
+    const t = this.tracciato(c.modalita)
     return {
+      modalita: c.modalita,
+      ...(c.modalita === 'DETTAGLIATA' ? { nuoviImpianti: c.nuoviImpianti } : {}),
+      affidabilita: t.affidabilita,
+      notaAffidabilita: t.notaAffidabilita,
       unitaLocale: { id: c.unita.id, nome: c.unita.nome, provincia: c.unita.provincia },
       anno: c.anno,
-      mesi: anteprimaMesi(c.aggregato),
+      mesi: c.mesi,
       avvisi: c.avvisi,
       bloccanti: c.bloccanti,
       hashDati: c.hashDati,
@@ -377,7 +574,7 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       unitaLocaleId: p.unitaLocaleId,
       ...this.periodo(p.anno),
       tracciato: TRACCIATO,
-      versione: VERSIONE,
+      versione: versioneDi(c.modalita),
       hashDati: c.hashDati,
     }
     const cerca = () =>
@@ -385,7 +582,7 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
     const esistente = await cerca()
     if (esistente) return vista(esistente, c.hashDati)
 
-    const contenuto = this.tracciato().serializza(c.dati)
+    const contenuto = this.tracciato(c.modalita).serializza(c.dati)
     const snapshot = movimentiConteggiati(c.letti).map(m => ({
       tenantId,
       movimentoId: m.id,
@@ -399,7 +596,7 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
         const riga = await tx.comunicazioneConsorzio.create({
           data: {
             ...chiave,
-            nomeFile: `${CONSORZIO_ORSO}_${TRACCIATO}_${p.anno}_${sede}.${this.tracciato().estensione}`,
+            nomeFile: `${CONSORZIO_ORSO}_${TRACCIATO}_${p.anno}_${sede}${c.modalita === 'DETTAGLIATA' ? '_dettagliata' : ''}.${this.tracciato(c.modalita).estensione}`,
             contenuto,
             stato: 'GENERATA',
             generataDa: utenteId,
@@ -447,11 +644,12 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       let hash: string | null = null
       if (r.stato === 'INVIATA' && calcolaHash) {
         const anno = r.periodoDa.getUTCFullYear()
-        const k = `${r.unitaLocaleId}|${anno}`
+        const modalita = modalitaDiVersione(r.versione)
+        const k = `${r.unitaLocaleId}|${anno}|${modalita}`
         if (!attuali.has(k)) {
           attuali.set(
             k,
-            await this.calcola(tenantId, r.unitaLocaleId, anno).then(
+            await this.calcola(tenantId, r.unitaLocaleId, anno, modalita).then(
               x => x.hashDati,
               () => null
             )
@@ -494,7 +692,12 @@ export class ComunicazioniOrsoService implements ComunicazioniOrsoPort {
       select: SELEZIONE_VISTA,
     })
     if (!corrente) throw new ComunicazioneNonTrovataError()
-    const hash = await this.calcola(tenantId, r.unitaLocaleId, r.periodoDa.getUTCFullYear()).then(
+    const hash = await this.calcola(
+      tenantId,
+      r.unitaLocaleId,
+      r.periodoDa.getUTCFullYear(),
+      modalitaDiVersione(r.versione)
+    ).then(
       x => x.hashDati,
       () => null
     )
