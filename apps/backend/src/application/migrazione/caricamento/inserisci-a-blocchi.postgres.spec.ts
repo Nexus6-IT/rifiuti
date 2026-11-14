@@ -43,7 +43,6 @@ describe('Fase 3 (3.1): motore di caricamento a blocchi — Postgres reale, ruol
     error: jest.fn(),
   }
   const tenantCreati: string[] = []
-  let n = 0
   const seme = 7_000_000 + (Date.now() % 900_000)
 
   const dip = () => ({ prisma: app, lotti, logger })
@@ -145,7 +144,7 @@ describe('Fase 3 (3.1): motore di caricamento a blocchi — Postgres reale, ruol
     )
   })
 
-  it("P.IVA gia' presente con un'altra chiave nel secondo blocco: primo blocco scritto, secondo annullato, lotto FALLITO col blocco e la classe dell\'errore (mai i valori), terzo non tentato", async () => {
+  it("P.IVA gia' presente con un'altra chiave nel secondo blocco: primo blocco scritto, secondo annullato, lotto FALLITO col blocco e la classe dell errore (mai i valori), terzo non tentato", async () => {
     const t = await azienda()
     const input = righe(450)
     // la P.IVA della riga 250 (blocco 2) esiste gia' con una chiave legacy DIVERSA
