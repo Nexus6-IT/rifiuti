@@ -36,7 +36,7 @@ describe('decodificaDataDocumento', () => {
 
 describe('confrontaConDtuk', () => {
   const dtuk = (v: string): DtukDecodificata => {
-    const r = decodificaDtuk(v)
+    const r = decodificaDtuk(v, 2026)
     if (!r.ok) throw new Error('fixture')
     return r.valore
   }

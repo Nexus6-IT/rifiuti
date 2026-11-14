@@ -208,7 +208,7 @@ describe('analizzaArchivio: scenari', () => {
       tab('MOVIMENTI', [
         mov({ COD: '1', OPER: '27', KGNUM: 'x' }),
         mov({ COD: '2', OPER: '27', KGNUM: '10.000000', NETTO: '10' }),
-        mov({ COD: '3', OPER: '52', DTUK: '$$20260105' }),
+        mov({ COD: '3', OPER: '52', DTUK: '$$260105' }),
       ]),
     ])
     expect(r.corrispondenzeDedotte).toEqual([

@@ -50,12 +50,16 @@ function costruttore(tabella: string, predefiniti: Record<string, Valore> = {}) 
   }
 }
 
-/** Numero con virgola decimale a 3 cifre, allineato a destra su 12 caratteri (`RELAZ`). */
-function dodici(n: number): string {
-  return n.toFixed(3).replace('.', ',').padStart(12, ' ')
+/** Numero come lo scrive WinWaste in `RELAZ`: intero senza decimali, altrimenti virgola a 3 cifre. */
+function numeroRelaz(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace('.', ',')
 }
 
-/** Segmento di `RELAZ` di 34 caratteri (`docs/giacenze.md` §2.2). */
+/**
+ * Segmento di `RELAZ` di 34 caratteri (`docs/giacenze.md` §2.2) nella forma OSSERVATA
+ * sul database modello: codice del carico allineato a sinistra su 8, kg allineati a
+ * sinistra su 12, m3 allineati a destra su 12 (es. `C1       R1000                   0`).
+ */
 function segmento(
   tipo: 'C' | 'P' | 'G',
   codice: string,
@@ -63,7 +67,7 @@ function segmento(
   kg: number,
   m3 = 0
 ): string {
-  return `${tipo}${codice.padEnd(8, ' ')}${classe}${dodici(kg)}${dodici(m3)}`
+  return `${tipo}${codice.padEnd(8, ' ')}${classe}${numeroRelaz(kg).padEnd(12, ' ')}${numeroRelaz(m3).padStart(12, ' ')}`
 }
 
 /** Campo composito `C4`: 31 posizioni separate da `§` (`docs/formulari.md` §2.2). */
@@ -181,10 +185,10 @@ const MOVIMENTI: Riga[] = [
     PROT1: '000004',
     KGNUM: dec(400),
   }),
-  // 5: annullato (prefisso $$)
+  // 5: annullato ($$ al posto delle prime due cifre dell'anno: forma osservata sul modello)
   carico(5, {
     DATR: '25-01',
-    DTUK: '$$20260125',
+    DTUK: '$$260125',
     CER: '150110',
     TIPOL: 'P',
     FISI: '2',
@@ -385,8 +389,17 @@ const FORMULARI: Riga[] = [
     BLOK: 'R',
     KGNUM: '100',
   }),
-  // richiesta del portale (accettata)
-  fir(4, { FORMU: '', DATD: '23-01-2026', DTUK: '20260123', NETTO: '250', C7: '0', KGNUM: '250' }),
+  // richiesta del portale (accettata); RELAZ contiene testo libero imbottito con Chr(255), come
+  // nel modello: non e' una relazione, il FIR non va scartato (avviso RELAZ_NON_DECODIFICABILE)
+  fir(4, {
+    FORMU: '',
+    DATD: '23-01-2026',
+    DTUK: '20260123',
+    NETTO: '250',
+    C7: '0',
+    KGNUM: '250',
+    RELAZ: `NOTE DI PROVA PER IL TRASPORTO${'\u00ff'.repeat(9)}`,
+  }),
   // ricopiato quando C7 era numerico
   fir(5, {
     FORMU: 'XRIF000004/26',

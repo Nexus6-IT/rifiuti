@@ -41,7 +41,7 @@ describe('parsaMovimenti sulla fixture WW00012026', () => {
     expect(annullati.map(m => m.cod)).toEqual([5])
     expect(annullati[0]).toMatchObject({
       causaAnnullo: 'PREFISSO_ANNULLO',
-      data: '2026-01-25',
+      data: '2026-01-25', // DTUK '$$260125'
       legacyKey: '0001|2026|MOVIMENTI|5',
     })
   })
@@ -99,7 +99,11 @@ describe('parsaFormulari sulla fixture WW00012026', () => {
     const r = await parsaFormulari(sorgenteDa(staging, 'FORMULARI'), CONTESTO)
     expect(r.righeLette).toBe(6)
     expect(sintesi(r.scarti)).toEqual(['6:6:C7_SCONOSCIUTO'])
-    expect(r.avvisi).toEqual([])
+    // RELAZ di un FIR del portale e testo libero: avviso, il FIR non e scartato e il testo resta nel grezzo
+    expect(sintesi(r.avvisi)).toEqual(['4:4:RELAZ_NON_DECODIFICABILE'])
+    const f4 = r.record.find(f => f.cod === 4)!
+    expect(f4.relaz).toEqual([])
+    expect(f4.grezzo.RELAZ).toBe(`NOTE DI PROVA PER IL TRASPORTO${'\u00ff'.repeat(9)}`)
     expect(r.record.map(f => [f.cod, f.statoFir, f.annullato])).toEqual([
       [1, 'EMESSO', false],
       [2, 'RICOPIATO', false],

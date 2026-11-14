@@ -10,6 +10,20 @@ describe('decodificaRelaz', () => {
     expect(decodificaRelaz(v)).toEqual({ ok: true, valore: [] })
   })
 
+  it('forma OSSERVATA sul database modello: codice e kg a sinistra, m3 a destra, kg interi', () => {
+    // C + '1' + 7 spazi + R + '1000' + 8 spazi + 11 spazi + '0' (stringa reale del modello)
+    const reale = 'C1       R1000                   0'
+    expect(reale).toHaveLength(34)
+    expect(decodificaRelaz(reale)).toEqual({
+      ok: true,
+      valore: [{ tipo: 'C', cod: 1, classe: 'R', kg: 1000, m3: 0 }],
+    })
+    expect(decodificaRelaz('C21      R950                    0')).toMatchObject({
+      ok: true,
+      valore: [{ cod: 21, kg: 950 }],
+    })
+  })
+
   it('un segmento di carico dell anno corrente', () => {
     const s = seg('C', '00000001', 'R', 600, 1.5)
     expect(s).toHaveLength(34)

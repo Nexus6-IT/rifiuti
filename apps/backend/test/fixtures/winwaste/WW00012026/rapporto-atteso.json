@@ -4,7 +4,7 @@
   "ditta": "0001",
   "anno": 2026,
   "estrattoIl": "2026-11-14T00:00:00.000Z",
-  "hashManifest": "fa93fdec2e39c5fb3f9b22c078439ecc6ab52b6b4826a07cbd2e94899895def9",
+  "hashManifest": "25bcade029b1c27bcd1e6e735ec898dee9dc89b43f0fecdb0e9982806306d952",
   "avvisiStaging": [],
   "scartiPerCodice": [
     {
@@ -47,6 +47,11 @@
     {
       "tabella": "MOVIMENTI",
       "codice": "KGNUM_INCOERENTE",
+      "conteggio": 1
+    },
+    {
+      "tabella": "FORMULARI",
+      "codice": "RELAZ_NON_DECODIFICABILE",
       "conteggio": 1
     }
   ],
@@ -113,7 +118,7 @@
         "righeLette": 6,
         "record": 5,
         "scartate": 1,
-        "conAvvisi": 0
+        "conAvvisi": 1
       },
       {
         "tabella": "GIACENZE RIFIUTI",

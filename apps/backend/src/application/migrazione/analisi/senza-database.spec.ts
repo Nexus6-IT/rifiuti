@@ -11,6 +11,7 @@ const SRC = join(__dirname, '../../..')
 const PERCORSI = [
   'application/migrazione/staging',
   'application/migrazione/analisi',
+  'application/migrazione/estrazione',
   'domain/migrazione',
   'cli/migrazione-analizza.ts',
 ]

@@ -48,6 +48,7 @@ describe('parsaMovimenti: scarti', () => {
     ['COD non valido', { COD: 'abc' }, 'COD_NON_VALIDO'],
     ['COD zero', { COD: '0' }, 'COD_NON_VALIDO'],
     ['DTUK non valida', { DTUK: '20261345' }, 'DTUK_NON_VALIDA'],
+    ['DTUK annullata non valida', { DTUK: '$$261345' }, 'DTUK_NON_VALIDA'],
     ['OPER sconosciuto', { OPER: '19' }, 'OPER_SCONOSCIUTO'],
     ['netto non valido', { NETTO: '1.234' }, 'NUMERO_IT'],
     ['volume senza unita', { VOLU: '5', UM: '' }, 'UM_SCONOSCIUTA'],
@@ -78,7 +79,7 @@ describe('parsaMovimenti: scarti', () => {
 
   it('l obbligo di relazione non vale per gli annullati, per MAG1 zero o per netto zero', async () => {
     const r = await movimenti(
-      base({ COD: '1', OPER: '23', DTUK: '$$20260105' }),
+      base({ COD: '1', OPER: '23', DTUK: '$$260105' }),
       base({ COD: '2', OPER: '23', MAG1: '0' }),
       base({ COD: '3', OPER: '23', MAG1: '' }),
       base({ COD: '4', OPER: '23', NETTO: '0', KGNUM: '0.000000' }),
@@ -249,7 +250,7 @@ describe('parsaFormulari: unita', () => {
   })
 
   it('annullato da DTUK o da C7, una sola causa', async () => {
-    const r = await parsa(fir({ DTUK: '$$20260120', C7: 'A' }), fir({ COD: '2', C7: 'A' }))
+    const r = await parsa(fir({ DTUK: '$$260120', C7: 'A' }), fir({ COD: '2', C7: 'A' }))
     expect(r.record.map(f => [f.annullato, f.causaAnnullo])).toEqual([
       [true, 'PREFISSO_ANNULLO'],
       [true, 'C7_ANNULLATO'],
@@ -283,6 +284,16 @@ describe('parsaFormulari: unita', () => {
       fir({ COD: '3', C6: 'altro' })
     )
     expect(r.record.map(f => f.digitale)).toEqual([true, true, false])
+  })
+
+  it('RELAZ illeggibile in un FIR: avviso e testo conservato (in MOVIMENTI sarebbe uno scarto)', async () => {
+    const r = await parsa(fir({ RELAZ: 'PORTARE ATTREZZATURA' }))
+    expect(r.scarti).toEqual([])
+    expect(codiciAvviso(r)).toEqual(['RELAZ_NON_DECODIFICABILE'])
+    expect(r.record[0].grezzo.RELAZ).toBe('PORTARE ATTREZZATURA')
+    const ok = await parsa(fir({ RELAZ: seg('1', 5) }))
+    expect(ok.record[0].relaz).toHaveLength(1)
+    expect(ok.record[0].grezzo.RELAZ).toBeUndefined()
   })
 
   it('scarti di decodifica del corpo comune anche nei FIR', async () => {

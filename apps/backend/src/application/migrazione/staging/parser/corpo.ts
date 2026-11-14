@@ -99,7 +99,7 @@ export function decodificaCorpo(
     avvisi,
   })
 
-  const dtuk = decodificaDtuk(v(riga, 'DTUK'))
+  const dtuk = decodificaDtuk(v(riga, 'DTUK'), contesto.anno)
   if (!dtuk.ok) return fallisce(dtuk)
   const oper = decodificaOper(v(riga, 'OPER'))
   if (!oper.ok) return fallisce(oper)
@@ -111,8 +111,18 @@ export function decodificaCorpo(
   if (!quantita.ok) return fallisce(quantita)
   const cer = decodificaCer(v(riga, 'CER'), v(riga, 'TIPOL'))
   if (!cer.ok) return fallisce(cer)
+  // In MOVIMENTI RELAZ e' la relazione di carico/scarico: un valore illeggibile e' uno scarto.
+  // In FORMULARI, sul database modello, contiene testo libero (note) imbottito con Chr(255):
+  // non e' una relazione, quindi resta nel `grezzo` con un avviso e non scarta il FIR.
   const relaz = decodificaRelaz(v(riga, 'RELAZ'))
-  if (!relaz.ok) return fallisce(relaz)
+  if (!relaz.ok && tabella === 'MOVIMENTI') return fallisce(relaz)
+  if (!relaz.ok) {
+    avvisi.push({
+      codice: 'RELAZ_NON_DECODIFICABILE',
+      dettaglio:
+        'RELAZ: non e una relazione di carico/scarico (testo libero?), conservata nel grezzo',
+    })
+  }
 
   const datr = decodificaDatr(v(riga, 'DATR'), contesto.anno)
   if (!datr.ok) avvisi.push({ codice: datr.codice, dettaglio: datr.dettaglio })
@@ -153,6 +163,8 @@ export function decodificaCorpo(
   }
 
   const mappate = new Set([...COLONNE_CORPO_MAPPATE, ...mappateExtra])
+  // RELAZ non decodificata: il testo originale non si perde.
+  if (!relaz.ok) mappate.delete('RELAZ')
   return {
     avvisi,
     corpo: {
@@ -183,7 +195,7 @@ export function decodificaCorpo(
       lordoKg,
       taraKg,
       c4: c4.ok ? c4.valore : null,
-      relaz: relaz.valore,
+      relaz: relaz.ok ? relaz.valore : [],
       grezzoCorpo: raccogliGrezzo(riga.campi, mappate),
     },
   }

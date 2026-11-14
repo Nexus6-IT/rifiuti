@@ -115,7 +115,7 @@
         "IMPORT"
       ],
       "righe": 18,
-      "sha256": "f9a307ece01edd1af62bee7643372f3acd79cd2789f127dabb28cae6d0168def"
+      "sha256": "88b5413346d504e63ba7c2189133c40c099b8e4bd9c2ec49ec4213e1e626ed95"
     },
     "FORMULARI": {
       "file": "formulari.jsonl",
@@ -223,7 +223,7 @@
         "IMPORT"
       ],
       "righe": 6,
-      "sha256": "e9d494646b7c213b16a2cdc37722dea19e7cf33afb254c004015df18db2ff30d"
+      "sha256": "aa98c6af7d83acc18f0c7eb621fbb1fdc01662953acb5c3eeb73e2c5c1ac225d"
     },
     "GIACENZE RIFIUTI": {
       "file": "giacenze-rifiuti.jsonl",

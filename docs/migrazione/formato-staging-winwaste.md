@@ -121,3 +121,33 @@ tutto `varchar` con default `''`). Differenze che contano per chi legge lo stagi
   le allarga: un database reale puo' averle piu' larghe).
 - Il modello e' del 2014: l'introspezione del database del cliente (stessa query del §4 dello
   schema) va fatta prima di mappare.
+
+## Formati verificati sui dati del database modello (14/11/2026)
+
+L'estrattore e' stato provato su una copia del database modello dell'installer (`WW00002014`,
+dati demo: 16 `MOVIMENTI`, 4 `FORMULARI`, 14 causali, 4 registri). Cio' che i dati hanno
+confermato o corretto rispetto alla documentazione scritta dal codice:
+
+| Campo | Osservato | Decisione |
+|---|---|---|
+| `DTUK` annullato | `$$140131`: il prefisso `$$` **sostituisce** le prime due cifre dell'anno (8 caratteri, non 10) | il secolo si prende dall'anno del database; `$$` + altro = scarto `DTUK_NON_VALIDA` |
+| `DTUK` attivo | `aaaammgg` (`20140102`) | come documentato |
+| `RELAZ` in `MOVIMENTI` | `C1       R1000                   0`: codice del carico a sinistra su 8, kg a sinistra su 12 e **interi**, m3 a destra su 12 | il decodificatore tronca gli spazi e accetta interi e virgola decimale |
+| `RELAZ` in `FORMULARI` | **testo libero** (note) imbottito con `Chr(255)`, non una relazione | avviso `RELAZ_NON_DECODIFICABILE`, FIR tenuto, testo nel `grezzo` (in `MOVIMENTI` resta uno scarto) |
+| `PROD`/`SMAL` | `000001.0001` (6 + `.` + 4) | forma presunta confermata |
+| `STATO` | `R002`, `R002$` (esaurito) | come documentato |
+| `C7` dei FIR | `0`, `1`, `2` (richieste del portale) | classe `PORTALE` |
+| colonne | identiche a quelle documentate (nessun avviso `COLONNA_*`) | — |
+
+Con questi aggiustamenti i dati demo si decodificano senza scarti; il registro `0002` ha
+protocolli 1..7 senza buchi e l'ultimo coincide con `PRT` del registro; le giacenze calcolate da
+`RELAZ` coincidono con `GIASCAR`. Restano **da riverificare su un `.bak` reale**: il secolo dei
+`$$`, la forma dei decimali dentro `RELAZ`, `OPER` 27/51/52 (non presenti nel modello) e le
+colonne del database di un cliente (che puo' avere tipi piu' larghi, vedi sopra).
+
+## Estrazione da SQL Server
+
+`tools/import-winwaste` (README proprio) legge da un SQL Server con un login di **sola
+lettura** (rifiuta chi puo' scrivere) e scrive questo formato. Il nucleo senza driver sta in
+`apps/backend/src/application/migrazione/estrazione/` ed e' sempre testato; il driver `mssql`
+sta solo nel tool. La prova contro un SQL Server vero e' opt-in (`WASTEFLOW_TEST_MSSQL=1`).
