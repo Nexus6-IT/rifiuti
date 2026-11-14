@@ -78,6 +78,28 @@ describe('costruisciManifest', () => {
     )
   })
 
+  it('numero di record: dice se non e’ ricalcolabile oppure se i dati sono cambiati', () => {
+    expect(
+      costruisciManifest({ ...base, numeroRecord: null, numeroRecordMotivo: 'NON_RICALCOLABILE' })
+    ).toMatch(/Record nel file: {2}non disponibile \(non ricalcolabile/)
+    expect(
+      costruisciManifest({ ...base, numeroRecord: null, numeroRecordMotivo: 'DATI_CAMBIATI' })
+    ).toContain('dati cambiati dopo la generazione')
+    expect(costruisciManifest({ ...base, numeroRecord: null })).toContain(
+      'dati cambiati dopo la generazione'
+    )
+  })
+
+  it('inviata: nomina chi l’ha segnata e che la conferma e’ richiesta dal servizio', () => {
+    const t = costruisciManifest({
+      ...base,
+      stato: 'INVIATA',
+      inviataIl: '2026-04-03T09:00:00.000Z',
+      inviataDa: 'utente-1',
+    })
+    expect(t).toContain('segnata da utente-1')
+  })
+
   it('e’ deterministico', () => {
     expect(costruisciManifest(base)).toBe(costruisciManifest({ ...base }))
   })

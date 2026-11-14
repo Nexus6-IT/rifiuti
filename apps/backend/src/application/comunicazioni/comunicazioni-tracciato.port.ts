@@ -27,6 +27,8 @@ export type CorrezioneAvviso =
 export interface AvvisoTracciato extends AvvisoOrso {
   bloccante: boolean
   correzione?: CorrezioneAvviso
+  /** Campo dei dati a cui l'avviso si riferisce (es. `righe[2].prodotto`), se ce n'e' uno. */
+  campo?: string
 }
 
 export interface UnitaPropria {
@@ -79,6 +81,20 @@ export type SelezioneMovimenti =
   /** Tutti i movimenti vigenti della sede. */
   | { tipo: 'TUTTI' }
 
+/**
+ * Contratto del preparatore (vincoli per chi ne scrive uno):
+ * - `prepara` deve essere DETERMINISTICO: stessi input, stessi `dati` con le chiavi create sempre
+ *   nello stesso ordine (l'hash e' lo SHA-256 di `JSON.stringify(dati)`: niente `Object.assign` di
+ *   oggetti con chiavi variabili, niente `undefined` che compare e scompare).
+ * - Tutto cio' che influenza `dati` oltre a periodo, sede e movimenti DEVE passare dai parametri
+ *   della richiesta e ritornare da `parametriDaTracciato(nomeTracciato)`: il ricalcolo di una
+ *   comunicazione salvata («modificata dopo l'invio», manifest) ricostruisce i parametri solo da li'.
+ * - Il servizio generico blocca da se' i caratteri fuori da Windows-1252 (avviso
+ *   `CARATTERI_NON_RAPPRESENTABILI`, con campo e movimento): il preparatore puo' comunque
+ *   segnalarli prima, con un messaggio piu' specifico.
+ * - Per avere l'avviso collegato al movimento, i dati per movimento portano `movimentoId` (o
+ *   `movimentoIds`), vedi `cercaCampiNonRappresentabili`.
+ */
 export interface PreparatoreTracciato<D = unknown, C = unknown> {
   /** Consorzio e versione del tracciato nel `RegistroTracciati`. */
   readonly consorzio: string
@@ -188,6 +204,27 @@ export class ConfermaVerificaRichiestaError extends Error {
       'Il tracciato e’ ricavato da WinWaste e non e’ stato verificato con il consorzio: conferma di aver verificato che il consorzio accetta questo file.'
     )
     this.name = 'ConfermaVerificaRichiestaError'
+  }
+}
+
+/**
+ * Il contenuto salvato non si puo' codificare nella codifica del tracciato (carattere fuori da
+ * Windows-1252): dati storici non piu' scaricabili. Risponde 422.
+ */
+export class FileNonCodificabileError extends Error {
+  constructor(readonly dettaglio: string) {
+    super(`Il file non si puo’ scaricare: ${dettaglio}`)
+    this.name = 'FileNonCodificabileError'
+  }
+}
+
+/** Il tracciato della comunicazione non e' piu' nel registro: la codifica non si indovina. 422. */
+export class TracciatoNonDisponibileError extends Error {
+  constructor(tracciato: string, versione: string) {
+    super(
+      `Il tracciato ${tracciato} (versione ${versione}) non e’ piu’ disponibile: il file non si puo’ scaricare con la codifica giusta.`
+    )
+    this.name = 'TracciatoNonDisponibileError'
   }
 }
 

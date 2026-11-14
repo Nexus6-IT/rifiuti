@@ -79,3 +79,48 @@ export function codificaCp1252(testo: string): Buffer {
   }
   return Buffer.from(byte)
 }
+
+/** Un campo di testo dei dati con caratteri che Windows-1252 non puo' rappresentare. */
+export interface CampoNonRappresentabile {
+  /** Percorso del campo nei dati, es. `righe[2].prodotto`. */
+  campo: string
+  caratteri: string[]
+  /** Movimenti legati al campo (vedi `cercaCampiNonRappresentabili`). */
+  movimentoIds: string[]
+}
+
+const PROFONDITA_MASSIMA = 12
+
+/**
+ * Cerca nei dati di un tracciato i campi di testo non rappresentabili in Windows-1252 (rete di
+ * sicurezza del servizio generico: vale per ogni tracciato, anche se il preparatore non controlla).
+ * Convenzione per il movimento: un oggetto con `movimentoId` (stringa) o `movimentoIds` (elenco di
+ * stringhe) lo trasmette a tutti i campi che contiene, finche' un oggetto piu' interno non ne
+ * dichiara un altro. Chi prepara i dati la rispetta per avere l'avviso collegato al movimento.
+ */
+export function cercaCampiNonRappresentabili(dati: unknown): CampoNonRappresentabile[] {
+  const out: CampoNonRappresentabile[] = []
+  const visita = (v: unknown, percorso: string, movimentoIds: string[], profondita: number) => {
+    if (typeof v === 'string') {
+      const caratteri = nonRappresentabili(v)
+      if (caratteri.length > 0) out.push({ campo: percorso || '(radice)', caratteri, movimentoIds })
+      return
+    }
+    if (v === null || typeof v !== 'object' || profondita > PROFONDITA_MASSIMA) return
+    if (Array.isArray(v)) {
+      v.forEach((x, i) => visita(x, `${percorso}[${i}]`, movimentoIds, profondita + 1))
+      return
+    }
+    const o = v as Record<string, unknown>
+    let ids = movimentoIds
+    if (typeof o.movimentoId === 'string') ids = [o.movimentoId]
+    else if (Array.isArray(o.movimentoIds) && o.movimentoIds.every(x => typeof x === 'string')) {
+      ids = o.movimentoIds as string[]
+    }
+    for (const [k, x] of Object.entries(o)) {
+      visita(x, percorso ? `${percorso}.${k}` : k, ids, profondita + 1)
+    }
+  }
+  visita(dati, '', [], 0)
+  return out
+}

@@ -39,7 +39,9 @@ import {
 } from './comunicazioni-orso.port'
 import {
   ConfermaVerificaRichiestaError,
+  FileNonCodificabileError,
   RichiestaComunicazioneNonValidaError,
+  TracciatoNonDisponibileError,
   type PreparatoreTracciato,
   type RichiestaComunicazione,
 } from './comunicazioni-tracciato.port'
@@ -52,6 +54,8 @@ interface RigaFinta {
   cer: string
   kg: number
   prodotto: string
+  movimentoId?: string
+  note?: string
 }
 interface DatiFinti {
   deposito: string
@@ -70,7 +74,7 @@ const TracciatoFinto: TracciatoComunicazione<DatiFinti> = {
   // La prima riga porta un € e una à: devono diventare 0x80 e 0xE0 allo scaricamento.
   serializza: d =>
     `${d.deposito} € à\r\n` +
-    d.righe.map(r => `${r.cer}|${r.kg}|${r.prodotto}`).join('\r\n') +
+    d.righe.map(r => `${r.cer}|${r.kg}|${r.prodotto}${r.note ? `|${r.note}` : ''}`).join('\r\n') +
     '\r\n',
 }
 
@@ -87,10 +91,19 @@ const PreparatoreFinto: PreparatoreTracciato<DatiFinti, { codiceDeposito?: strin
   async prepara(ctx) {
     const righe: RigaFinta[] = ctx.movimenti.map(m => {
       const dati = ctx.dettagli.datiTracciato.get(m.radiceId) as { prodotto?: string } | undefined
-      return { cer: m.cer, kg: m.kg ?? 0, prodotto: dati?.prodotto ?? '?' }
+      return {
+        cer: m.cer,
+        kg: m.kg ?? 0,
+        prodotto: dati?.prodotto ?? '?',
+        // Solo per i test della rete di sicurezza sui caratteri: non cambia l'hash degli altri.
+        ...(ctx.parametri.note ? { movimentoId: m.id, note: ctx.parametri.note } : {}),
+      }
     })
     return {
-      dati: { deposito: ctx.configurazione.codiceDeposito ?? '', righe },
+      dati: {
+        deposito: ctx.parametri.deposito ?? ctx.configurazione.codiceDeposito ?? '',
+        righe,
+      },
       avvisi: ctx.movimenti
         .filter(m => m.firId === null)
         .map(m => ({
@@ -282,6 +295,64 @@ describe('Comunicazione a tracciato (servizio generico) — Postgres reale, ruol
     expect(await owner.comunicazioneConsorzio.count({ where: { tenantId: az.tenantId } })).toBe(0)
   })
 
+  it('rete di sicurezza: un carattere fuori da Windows-1252 e’ bloccante, con campo e movimento, e non si scrive nulla', async () => {
+    const az = await nuovaAzienda('G9')
+    const m = await olio(az, '2026-05-10')
+    await nel(az, () => dati.imposta(az.tenantId, az.utenteId, m.id, 'CONOU', { prodotto: 'A' }))
+    // Il preparatore finto NON controlla i caratteri: lo fa il servizio generico.
+    const casi: Array<[Record<string, string>, string, string[]]> = [
+      [{ note: 'a→b' }, 'righe[0].note', [m.id]],
+      [{ note: 'ok 😀' }, 'righe[0].note', [m.id]],
+      [{ deposito: 'DEP → 1' }, 'deposito', []],
+    ]
+    for (const [parametri, campo, movimentoIds] of casi) {
+      const r = richiesta(az, { parametri })
+      const a = await nel(az, () => servizio.anteprima(az.tenantId, r))
+      expect(a.bloccanti).toBe(true)
+      const avviso = a.avvisi.find(x => x.codice === 'CARATTERI_NON_RAPPRESENTABILI')
+      expect(avviso).toMatchObject({ bloccante: true, campo, movimentoIds })
+      expect(avviso?.messaggio).toContain('Windows-1252')
+      await expect(
+        nel(az, () => servizio.genera(az.tenantId, az.utenteId, r))
+      ).rejects.toBeInstanceOf(ComunicazioneConBloccantiError)
+    }
+    expect(await owner.comunicazioneConsorzio.count({ where: { tenantId: az.tenantId } })).toBe(0)
+    // Caratteri validi in Windows-1252 (€ à ñ) non bloccano.
+    const ok = await nel(az, () =>
+      servizio.anteprima(az.tenantId, richiesta(az, { parametri: { note: 'è € ñ' } }))
+    )
+    expect(ok.avvisi.map(x => x.codice)).not.toContain('CARATTERI_NON_RAPPRESENTABILI')
+    expect(ok.bloccanti).toBe(false)
+  })
+
+  it('file(): un contenuto non codificabile (riga storica) da’ un errore di dominio, non un 500', async () => {
+    const az = await nuovaAzienda('G10')
+    const m = await olio(az, '2026-05-10')
+    await nel(az, () => dati.imposta(az.tenantId, az.utenteId, m.id, 'CONOU', { prodotto: 'A' }))
+    const g = await nel(az, () => servizio.genera(az.tenantId, az.utenteId, richiesta(az)))
+    await owner.comunicazioneConsorzio.update({
+      where: { id: g.id },
+      data: { contenuto: 'x → y' },
+    })
+    await expect(nel(az, () => servizio.file(az.tenantId, g.id))).rejects.toBeInstanceOf(
+      FileNonCodificabileError
+    )
+  })
+
+  it('file() e manifest di una riga il cui tracciato non e’ piu’ nel registro: niente indovinare la codifica', async () => {
+    const az = await nuovaAzienda('G11')
+    const m = await olio(az, '2026-05-10')
+    await nel(az, () => dati.imposta(az.tenantId, az.utenteId, m.id, 'CONOU', { prodotto: 'A' }))
+    const g = await nel(az, () => servizio.genera(az.tenantId, az.utenteId, richiesta(az)))
+    await owner.comunicazioneConsorzio.update({
+      where: { id: g.id },
+      data: { versione: 'Sparito-1' },
+    })
+    await expect(nel(az, () => servizio.file(az.tenantId, g.id))).rejects.toBeInstanceOf(
+      TracciatoNonDisponibileError
+    )
+  })
+
   it('segna inviata: serve la conferma per un tracciato ricavato; ripetuta non cambia nulla; modifica dopo l’invio', async () => {
     const az = await nuovaAzienda('G5')
     const m = await olio(az, '2026-05-10')
@@ -351,6 +422,7 @@ describe('Comunicazione a tracciato (servizio generico) — Postgres reale, ruol
     await nel(az, () => servizio.segnaInviata(az.tenantId, az.utenteId, g.id, true))
     const inviata = await nel(az, () => servizio.manifest(az.tenantId, g.id))
     expect(inviata.testo).toContain('Ho verificato che il consorzio accetta questo file')
+    expect(inviata.testo).toContain(`da ${az.utenteId}`)
     expect(inviata.testo).toContain('i dati sono cambiati dopo l’invio')
   })
 
