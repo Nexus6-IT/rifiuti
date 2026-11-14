@@ -27,7 +27,7 @@ Windows SmartScreen puo' avvisare di un editore sconosciuto: e' atteso.
 2. In WasteFlow, pagina Agenti, creare un agente e copiare il codice di abbinamento
    (`XXXX-XXXX-XXXX`, vale 15 minuti):
    ```powershell
-   .\agente-pesa.exe abbina --server https://<backend> --codice XXXX-XXXX-XXXX
+   .\agente-pesa.exe abbina --server https://<backend>/api/v1 --codice XXXX-XXXX-XXXX
    ```
    Per non lasciare il codice nella cronologia di PowerShell si puo' passare `--codice -` (lo legge da
    stdin) o impostare la variabile `WASTEFLOW_CODICE`.
@@ -40,9 +40,12 @@ Windows SmartScreen puo' avvisare di un editore sconosciuto: e' atteso.
    amministratore del PC le puo' leggere. Se `abbina` non riesce a salvare le credenziali dopo che il
    server ha consumato il codice, l'agente risulta ATTIVO senza credenziali: va revocato in WasteFlow
    e ricreato.
+   L'indirizzo `server` comprende **sempre** il prefisso `/api/v1` (`https://rifiuti.ignicraft.com/api/v1`):
+   senza, ogni chiamata dell'agente risponde 404. Il comando completo, con l'indirizzo giusto, e' quello
+   che la pagina Agenti di WasteFlow mostra insieme al codice.
 3. Aprire `agente-pesa.json` e, per ogni strumento, indicare `driver` e `parametri`. Esempio di collaudo:
    ```json
-   { "server": "https://<backend>", "simulazione": true,
+   { "server": "https://<backend>/api/v1", "simulazione": true,
      "strumenti": [{ "strumentoId": "<uuid>", "driver": "SIMULATA",
                      "parametri": { "pesi": [24880, 12540], "intervalloS": 30 } }],
      "log": { "livello": "info", "maxMB": 10, "file": 5 } }

@@ -730,6 +730,16 @@ Ripristino: vedi il commento di testa della seconda migration (`DROP TRIGGER pes
 COLUMN`, `DROP TABLE letture_pesa, agenti_pesa`, `DROP TYPE stato_agente_pesa`). **Il valore `SIMULATA`
 non si toglie da un enum PostgreSQL**: resta inutilizzato.
 
+**Rollback del codice (4.8b).** Il codice precedente ignora `agenti_pesa`, `letture_pesa` e le nuove
+colonne. Le rotte `/agenti-pesa/*` spariscono: gli agenti ricevono 404, trattano la risposta come un
+errore transitorio (restano in coda con backoff, nessuna lettura persa) e riprendono da soli a
+rilascio ripristinato. Le pesate create da lettura (`fonte` STRUMENTO o `SIMULATA`, `lettura_id`)
+restano valide e leggibili: il vecchio codice le mostra come pesate qualunque. **Ripristino a mano**
+(solo su un database SENZA agenti ne' letture, vedi sopra): `SIMULATA` non si rimuove dall'enum
+`fonte_pesata`. Per spegnere le pesate simulate di un'azienda senza toccare il codice:
+`UPDATE tenants SET pese_simulazione_ammessa = false WHERE id = '<azienda>';` (le letture simulate
+gia' arrivate restano). Revocare un agente smarrito: dalla pagina Agenti (la coda sul PC e' conservata).
+
 **`TRUST_PROXY` (limiti per IP).** In produzione la catena e' client -> nginx dell'host (127.0.0.1) ->
 nginx del container frontend (rete docker, IP privato) -> `backend:3000`, e entrambi aggiungono
 `X-Forwarded-For`. Il default del backend e' `loopback, linklocal, uniquelocal`: `req.ip` e' il primo

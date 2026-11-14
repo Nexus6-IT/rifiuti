@@ -1136,3 +1136,15 @@ Scritte dopo B4-B7; valgono come contratto fra `tools/agente-pesa` e il backend.
 - **Byte conservati.** `letture_pesa.payload` e' il testo dei byte verificati; un BOM UTF-8 iniziale e'
   `PAYLOAD_NON_VALIDO` (altrimenti la decodifica lo tolga e la riverifica fallirebbe). Chiavi duplicate
   nel JSON: non rilevate (come in Go, vince l'ultima).
+
+## Stato di esecuzione (14/11/2026)
+
+Task 0, G1-G6, B1-B7, F1-F3, E1 e F4 fatti sul branch `feat/fase4-8b-agente-pesa`, con le correzioni
+delle revisioni (B1-B3, B4-B7, Go) e `TRUST_PROXY` predefinito su `loopback, linklocal, uniquelocal`.
+Prova reale in locale: agente Go compilato per Linux con driver SIMULATA contro il backend del
+worktree: abbinamento, letture firmate arrivate e visibili da `GET /pese/letture` (firma valida,
+simulata, utilizzabile), agente «in linea». **Non provato:** Windows (servizio, DPAPI, `icacls`,
+riavvio del PC, antivirus/SmartScreen) e la perdita di rete di due minuti: restano a Graziano col PC
+della pesa. e2e: `e2e/tests/mud-pese/pese-agente.spec.ts` con agente finto in Node. Seguiti: driver
+reali (seriale/TCP) col pilota, domande Q1-Q8, firma Authenticode, minori delle revisioni non fatti
+(vedi i rapporti `2026-11-13-4-8b-*`).
